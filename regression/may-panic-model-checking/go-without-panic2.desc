@@ -1,0 +1,7 @@
+CORE
+go-without-panic2.go
+--may-panic-model-checking
+^EXIT=0$
+^SIGNAL=0$
+^no unrecovered panics found$
+--

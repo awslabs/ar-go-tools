@@ -1,0 +1,332 @@
+// Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+// An overapproximating analysis for go routines that may generate an unrecovered panic
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"go/token"
+	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
+	"sort"
+	"strings"
+)
+
+func locationString(program *ssa.Program, f *ssa.Function) string {
+	pos := f.Pos()
+	position := program.Fset.Position(pos)
+	return position.String()
+}
+
+func addGoFunction(f *ssa.Function, pos token.Pos, goFunctions map[*ssa.Function][]token.Pos) {
+	// already in map?
+	if entry, found := goFunctions[f]; found { // yes
+		goFunctions[f] = append(entry, pos)
+	} else { // no
+		goFunctions[f] = append(make([]token.Pos, 0, 1), pos)
+	}
+}
+
+// finds the functions that are the argument of "go ..."
+func findGoFunctions(allFunctions map[*ssa.Function]bool) map[*ssa.Function][]token.Pos {
+	result := make(map[*ssa.Function][]token.Pos)
+
+	for f := range allFunctions {
+		for _, b := range f.Blocks {
+			for _, instr := range b.Instrs {
+				switch v := instr.(type) {
+				case *ssa.Go:
+					// invoke?
+					if v.Call.IsInvoke() {
+					} else {
+						switch value := v.Call.Value.(type) {
+						case *ssa.Function:
+							addGoFunction(value, v.Pos(), result)
+
+						case *ssa.MakeClosure:
+							switch fn := value.Fn.(type) {
+							case *ssa.Function:
+								addGoFunction(fn, v.Pos(), result)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+func findCreators(program *ssa.Program, f *ssa.Function, goFunctions map[*ssa.Function][]token.Pos) []string {
+
+	result := make([]string, 0)
+
+	creators := goFunctions[f]
+
+	for _, pos := range creators {
+		position := program.Fset.Position(pos)
+		result = append(result, position.String())
+	}
+
+	// sort to get a stable output
+	sort.Slice(result, func(i, j int) bool {
+		return result[i] < result[j]
+	})
+
+	return result
+}
+
+func doesRecover(f *ssa.Function) bool {
+	for _, b := range f.Blocks {
+		for _, instr := range b.Instrs {
+			switch v := instr.(type) {
+			case *ssa.Call:
+				// invoke?
+				if v.Call.IsInvoke() {
+				} else {
+					switch value := v.Call.Value.(type) {
+					case *ssa.Function:
+
+					case *ssa.Builtin:
+						builtinName := value.Name()
+						switch builtinName {
+						case "recover":
+							// yes, it calls the "recover" builtin
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func findRecoverFunctions(allFunctions map[*ssa.Function]bool) map[*ssa.Function]bool {
+	result := make(map[*ssa.Function]bool)
+
+	for f := range allFunctions {
+		if doesRecover(f) {
+			result[f] = true
+		}
+	}
+
+	return result
+}
+
+func doesDeferRecover(f *ssa.Function, recoverFunctions map[*ssa.Function]bool) bool {
+	for _, b := range f.Blocks {
+		for _, instr := range b.Instrs {
+			switch v := instr.(type) {
+			case *ssa.Defer:
+				// invoke?
+				if v.Call.IsInvoke() {
+				} else {
+					switch value := v.Call.Value.(type) {
+					case *ssa.Function:
+						_, found := recoverFunctions[value]
+						if found {
+							return true
+						}
+
+					case *ssa.MakeClosure:
+						switch fn := value.Fn.(type) {
+						case *ssa.Function:
+							_, found := recoverFunctions[fn]
+							if found {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func findErroredFunctions(goFunctions map[*ssa.Function][]token.Pos, recoverFunctions map[*ssa.Function]bool) map[*ssa.Function]bool {
+	result := make(map[*ssa.Function]bool)
+
+	// look for defer + recover
+	for f := range goFunctions {
+		if !doesDeferRecover(f, recoverFunctions) {
+			result[f] = true
+		}
+	}
+
+	return result
+}
+
+var whitelist = []string{
+	"archive",
+	"bufio",
+	"builtin",
+	"bytes",
+	"cmd",
+	"compress",
+	"container",
+	"context",
+	"crypto",
+	"database",
+	"debug",
+	"encoding",
+	"errors",
+	"expvar",
+	"flag",
+	"fmt",
+	"go",
+	"golang.org/x",
+	"hash",
+	"html",
+	"image",
+	"index",
+	"internal",
+	"io",
+	"log",
+	"math",
+	"mime",
+	"net",
+	"os",
+	"path",
+	"plugin",
+	"reflect",
+	"regexp",
+	"runtime",
+	"sort",
+	"strconv",
+	"strings",
+	"sync",
+	"syscall",
+	"text",
+	"time",
+	"unicode",
+	"unsafe"}
+
+func whitelisted(path string) bool {
+	for _, p := range whitelist {
+		if p == path || strings.HasPrefix(path, p+"/") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func mayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
+
+	// Get all the functions
+	allFunctions := ssautil.AllFunctions(program)
+
+	// find all functions that are the argument of "go ..."
+	goFunctions := findGoFunctions(allFunctions)
+
+	// we filter out the ones we consider "out of scope"
+	for f := range goFunctions {
+		if f.Pkg != nil {
+			pkg := f.Pkg.Pkg
+			path := pkg.Path()
+			if whitelisted(path) || isExcluded(program, f, exclude) {
+				delete(goFunctions, f)
+			}
+		}
+	}
+
+	// find all functions that contain "recover"
+	recoverFunctions := findRecoverFunctions(allFunctions)
+
+	// check that the "go functions" contain "defer recover function"
+	erroredFunctions := findErroredFunctions(goFunctions, recoverFunctions)
+
+	// get the (full) names of all errored functions
+	type nameAndFunction struct {
+		name string
+		f    *ssa.Function
+	}
+
+	functionNames := make([]nameAndFunction, 0, len(allFunctions)+1)
+	for f := range erroredFunctions {
+		functionNames = append(functionNames, nameAndFunction{name: f.RelString(nil), f: f})
+	}
+
+	// sort alphabetically by name
+	sort.Slice(functionNames, func(i, j int) bool {
+		return functionNames[i].name < functionNames[j].name
+	})
+
+	/*
+	  for f := range goFunctions {
+	    fmt.Printf("go: %s\n", f.RelString(nil));
+	  }
+	  for f := range recoverFunctions {
+	    fmt.Printf("defer/recover: %s\n", f.RelString(nil));
+	  }
+	  for f := range erroredFunctions {
+	    fmt.Printf("error: %s\n", f.RelString(nil));
+	  }
+	*/
+
+	if jsonFlag {
+		type Location struct {
+			Function string
+			Filename string
+			Line     int
+			Column   int
+		}
+
+		makeLocation3 := func(program *ssa.Program, function string, pos *token.Pos) Location {
+			position := program.Fset.Position(*pos)
+			return Location{function, position.Filename, position.Line, position.Column}
+		}
+
+		makeLocation := func(program *ssa.Program, f *ssa.Function) Location {
+			function := f.RelString(nil)
+			pos := f.Pos()
+			return makeLocation3(program, function, &pos)
+		}
+
+		type Finding struct {
+			Description string
+			GoRoutine   Location
+			Creators    []Location
+		}
+
+		result := make([]Finding, 0, len(functionNames))
+
+		for _, function := range functionNames {
+			goRoutine := makeLocation(program, function.f)
+			creators := make([]Location, 0)
+
+			creatorPos := goFunctions[function.f]
+
+			for _, pos := range creatorPos {
+				creators = append(creators, makeLocation3(program, "", &pos))
+			}
+
+			result = append(result, Finding{"unrecovered panic", goRoutine, creators})
+		}
+
+		buf, _ := json.Marshal(result)
+		fmt.Println(string(buf))
+	} else {
+		if len(erroredFunctions) == 0 {
+			fmt.Printf("no unrecovered panics found\n")
+		} else {
+			for _, function := range functionNames {
+				fmt.Printf(Red("unrecovered panic")+" in %s\n", function.name)
+				fmt.Printf("  %s\n", function.name)
+				fmt.Printf("  %s\n", locationString(program, function.f))
+				creators := findCreators(program, function.f, goFunctions)
+				for _, creator := range creators {
+					fmt.Printf("  created by %s\n", creator)
+				}
+			}
+
+			fmt.Printf("%s\n", Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
+		}
+	}
+}

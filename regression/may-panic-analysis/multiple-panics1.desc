@@ -1,0 +1,8 @@
+KNOWNBUG
+multiple-panics1.go
+--may-panic-analysis
+^EXIT=0$
+^SIGNAL=0$
+^unrecovered panic in command-line-arguments\.foo$
+^unrecovered panic in command-line-arguments\.bar$
+--

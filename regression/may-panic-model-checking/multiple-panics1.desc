@@ -1,0 +1,8 @@
+CORE
+multiple-panics1.go
+--may-panic-model-checking
+^EXIT=0$
+^SIGNAL=0$
+^unrecovered panic in command-line-arguments\.foo$
+^unrecovered panic in command-line-arguments\.bar$
+--

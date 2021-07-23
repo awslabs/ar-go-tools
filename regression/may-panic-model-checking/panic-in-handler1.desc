@@ -1,0 +1,8 @@
+CORE
+panic-in-handler1.go
+--may-panic-model-checking
+^EXIT=0$
+^SIGNAL=0$
+^unrecovered panic in command-line-arguments\.main$
+^  command-line-arguments\.main\$1 .*panic-in-handler1.go:9$
+--

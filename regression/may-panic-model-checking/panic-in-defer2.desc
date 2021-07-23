@@ -1,0 +1,7 @@
+CORE
+panic-in-defer2.go
+--may-panic-model-checking
+^EXIT=0$
+^SIGNAL=0$
+^unrecovered panic in command-line-arguments\.main$
+--
