@@ -21,31 +21,45 @@ func findEntry(allFunctions map[*ssa.Function]bool) *ssa.Function {
 	return nil
 }
 
-func findInterfaceCallees(program *ssa.Program, interfaceType types.Type, v ssa.Value, action func(*ssa.Function)) {
+func findInterfaceMethods(interfaceType types.Type, target *[]*types.Func) {
 	switch t := interfaceType.(type) {
 	case *types.Named:
-		findInterfaceCallees(program, t.Underlying(), v, action) // recursive call
+		findInterfaceMethods(t.Underlying(), target) // recursive call
 
 	case *types.Interface:
-		// get the methods we need for the interface, as a map
-		methodsNeeded := make(map[string]bool)
-
 		for i := 0; i < t.NumExplicitMethods(); i++ {
 			m := t.ExplicitMethod(i)
-			methodsNeeded[m.Name()] = true
+			*target = append(*target, m)
 		}
 
-		// get the methods of 'v.Type()'
-		methodSet := program.MethodSets.MethodSet(v.Type())
-		for i := 0; i < methodSet.Len(); i++ {
-			selection := methodSet.At(i)
+		for i := 0; i < t.NumEmbeddeds(); i++ {
+			findInterfaceMethods(t.EmbeddedType(i), target) // recursive call
+		}
+	}
+}
 
-			// Do we need it?
-			_, need := methodsNeeded[selection.Obj().Name()]
-			if need {
-				f := program.MethodValue(selection)
-				action(f)
-			}
+func findInterfaceCallees(program *ssa.Program, interfaceType types.Type, v ssa.Value, action func(*ssa.Function)) {
+
+	interfaceMethods := make([]*types.Func, 0)
+	findInterfaceMethods(interfaceType, &interfaceMethods)
+
+	// turn the array into a map for fast lookup
+	methodsNeeded := make(map[string]bool)
+
+	for _, m := range interfaceMethods {
+		methodsNeeded[m.Name()] = true
+	}
+
+	// get the methods of 'v.Type()'
+	methodSet := program.MethodSets.MethodSet(v.Type())
+	for i := 0; i < methodSet.Len(); i++ {
+		selection := methodSet.At(i)
+
+		// Do we need it?
+		_, need := methodsNeeded[selection.Obj().Name()]
+		if need {
+			f := program.MethodValue(selection)
+			action(f)
 		}
 	}
 }
