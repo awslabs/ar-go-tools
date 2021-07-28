@@ -48,10 +48,11 @@ func calculateLocs(f *ssa.Function) uint {
 
 func dependencyAnalysis(program *ssa.Program, jsonFlag bool) {
 
+	// all functions we have got
 	allFunctions := ssautil.AllFunctions(program)
 
 	// functions known to be reachable
-	reachable := findReachable(allFunctions)
+	reachable := findReachable(program)
 
 	// count reachable and unreachable LOCs, per dependency
 	type dependency struct {

@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"go/types"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 	"sort"
@@ -20,7 +21,69 @@ func findEntry(allFunctions map[*ssa.Function]bool) *ssa.Function {
 	return nil
 }
 
-func findReachable(allFunctions map[*ssa.Function]bool) map[*ssa.Function]bool {
+func findInterfaceCallees(program *ssa.Program, interfaceType types.Type, v ssa.Value, action func(*ssa.Function)) {
+	switch t := interfaceType.(type) {
+	case *types.Named:
+		findInterfaceCallees(program, t.Underlying(), v, action) // recursive call
+
+	case *types.Interface:
+		// get the methods we need for the interface, as a map
+		methodsNeeded := make(map[string]bool)
+
+		for i := 0; i < t.NumExplicitMethods(); i++ {
+			m := t.ExplicitMethod(i)
+			methodsNeeded[m.Name()] = true
+		}
+
+		// get the methods of 'v.Type()'
+		methodSet := program.MethodSets.MethodSet(v.Type())
+		for i := 0; i < methodSet.Len(); i++ {
+			selection := methodSet.At(i)
+
+			// Do we need it?
+			_, need := methodsNeeded[selection.Obj().Name()]
+			if need {
+				f := program.MethodValue(selection)
+				action(f)
+			}
+		}
+	}
+}
+
+// discover the callees of the given function, and apply the given action to these
+func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Function)) {
+	for _, b := range f.Blocks {
+		for _, instr := range b.Instrs {
+			switch v := instr.(type) {
+			case *ssa.Call:
+				// invoke?
+				if v.Call.IsInvoke() {
+					// We invoke a method via an interface.
+					// This is covered by 'MakeInterface' below.
+				} else {
+					switch value := v.Call.Value.(type) {
+					case *ssa.Function:
+						action(value)
+
+					case *ssa.MakeClosure:
+						switch fn := value.Fn.(type) {
+						case *ssa.Function:
+							action(fn)
+						}
+					}
+				}
+
+			case *ssa.MakeInterface:
+				findInterfaceCallees(program, v.Type(), v.X, action)
+			}
+		}
+	}
+}
+
+func findReachable(program *ssa.Program) map[*ssa.Function]bool {
+
+	allFunctions := ssautil.AllFunctions(program)
+
 	reachable := make(map[*ssa.Function]bool)
 
 	frontier := make([]*ssa.Function, 0)
@@ -30,42 +93,17 @@ func findReachable(allFunctions map[*ssa.Function]bool) map[*ssa.Function]bool {
 		frontier = append(frontier, entry)
 	}
 
+	// compute the fixedpoint
 	for len(frontier) != 0 {
 		f := frontier[len(frontier)-1]
 		frontier = frontier[:len(frontier)-1]
 		reachable[f] = true
-
-		for _, b := range f.Blocks {
-			for _, instr := range b.Instrs {
-				switch v := instr.(type) {
-				case *ssa.Call:
-					// invoke?
-					if v.Call.IsInvoke() {
-					} else {
-						switch value := v.Call.Value.(type) {
-						case *ssa.Function:
-							_, ok := reachable[value]
-							if !ok {
-								frontier = append(frontier, value)
-							}
-
-						case *ssa.MakeClosure:
-							switch fn := value.Fn.(type) {
-							case *ssa.Function:
-								_, ok := reachable[fn]
-								if !ok {
-									frontier = append(frontier, fn)
-								}
-							}
-						}
-					}
-
-				case *ssa.MakeInterface:
-					// we consider all methods of this type
-				}
+		findCallees(program, f, func(fnext *ssa.Function) {
+			_, ok := reachable[fnext]
+			if !ok {
+				frontier = append(frontier, fnext)
 			}
-		}
-
+		})
 	}
 
 	return reachable
@@ -73,8 +111,7 @@ func findReachable(allFunctions map[*ssa.Function]bool) map[*ssa.Function]bool {
 
 func reachableFunctionsAnalysis(program *ssa.Program, jsonFlag bool) {
 
-	allFunctions := ssautil.AllFunctions(program)
-	reachable := findReachable(allFunctions)
+	reachable := findReachable(program)
 
 	functionNames := make([]string, 0, len(reachable))
 
@@ -89,7 +126,7 @@ func reachableFunctionsAnalysis(program *ssa.Program, jsonFlag bool) {
 
 	if jsonFlag {
 		buf, _ := json.Marshal(functionNames)
-                fmt.Println(string(buf))
+		fmt.Println(string(buf))
 	} else {
 		for _, name := range functionNames {
 			fmt.Printf("%s\n", name)

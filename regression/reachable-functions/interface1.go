@@ -8,12 +8,19 @@ type someInterface interface {
 type type1 struct {
 }
 
+// used by someInterface
 func (object *type1) doA() int {
 	return 1
 }
 
+// used by someInterface
 func (object *type1) doB() int {
-	return 1
+	return 2
+}
+
+// NOT used by someInterface
+func (object *type1) doC() int {
+	return 3
 }
 
 func doInvoke(instance someInterface) {

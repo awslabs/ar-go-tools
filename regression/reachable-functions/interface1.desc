@@ -1,10 +1,11 @@
-KNOWNBUG
+CORE
 interface1.go
 --reachable-functions
 ^EXIT=0$
 ^SIGNAL=0$
-^command-line-arguments\.doA$
-^command-line-arguments\.doB$
+^\(\*command-line-arguments\.type1\)\.doA$
+^\(\*command-line-arguments\.type1\)\.doB$
 ^command-line-arguments\.doInvoke$
 ^command-line-arguments\.main$
 --
+^\(\*command-line-arguments\.type1\)\.doC$
