@@ -3,7 +3,7 @@
 package main
 
 import (
-	//	"encoding/json"
+	"encoding/json"
 	"fmt"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -87,7 +87,12 @@ func reachableFunctionsAnalysis(program *ssa.Program, jsonFlag bool) {
 		return functionNames[i] < functionNames[j]
 	})
 
-	for _, name := range functionNames {
-		fmt.Printf("%s\n", name)
+	if jsonFlag {
+		buf, _ := json.Marshal(functionNames)
+                fmt.Println(string(buf))
+	} else {
+		for _, name := range functionNames {
+			fmt.Printf("%s\n", name)
+		}
 	}
 }
