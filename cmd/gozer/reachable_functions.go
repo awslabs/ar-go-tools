@@ -87,6 +87,24 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 					}
 				}
 
+			case *ssa.Go:
+				// invoke?
+				if v.Call.IsInvoke() {
+					// We invoke a method via an interface.
+					// This is covered by 'MakeInterface' below.
+				} else {
+					switch value := v.Call.Value.(type) {
+					case *ssa.Function:
+						action(value)
+
+					case *ssa.MakeClosure:
+						switch fn := value.Fn.(type) {
+						case *ssa.Function:
+							action(fn)
+						}
+					}
+				}
+
 			case *ssa.MakeInterface:
 				findInterfaceCallees(program, v.Type(), v.X, action)
 			}
