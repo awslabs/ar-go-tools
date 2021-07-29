@@ -66,6 +66,8 @@ func findInterfaceCallees(program *ssa.Program, interfaceType types.Type, v ssa.
 
 // discover the callees of the given function, and apply the given action to these
 func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Function)) {
+
+	// look for functions that are called
 	for _, b := range f.Blocks {
 		for _, instr := range b.Instrs {
 			switch v := instr.(type) {
@@ -108,6 +110,23 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 			case *ssa.MakeInterface:
 				findInterfaceCallees(program, v.Type(), v.X, action)
 			}
+		}
+	}
+
+	// look for functions whose address is taken
+	seen := make(map[ssa.Value]bool)
+
+	valueAction := func(v ssa.Value) {
+		switch x := v.(type) {
+
+		case *ssa.Function:
+			action(x)
+		}
+	}
+
+	for _, b := range f.Blocks {
+		for _, instr := range b.Instrs {
+			preTraversalVisitValuesInstruction(instr, &seen, valueAction)
 		}
 	}
 }
