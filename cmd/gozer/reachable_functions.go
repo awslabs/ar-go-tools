@@ -40,26 +40,39 @@ func findInterfaceMethods(interfaceType types.Type, target *[]*types.Func) {
 
 func findInterfaceCallees(program *ssa.Program, interfaceType types.Type, v ssa.Value, action func(*ssa.Function)) {
 
+	// get the methods of 'v.Type()'
+	methodSet := program.MethodSets.MethodSet(v.Type())
+
+	// look at the methods in the interface
 	interfaceMethods := make([]*types.Func, 0)
 	findInterfaceMethods(interfaceType, &interfaceMethods)
 
-	// turn the array into a map for fast lookup
-	methodsNeeded := make(map[string]bool)
-
-	for _, m := range interfaceMethods {
-		methodsNeeded[m.Name()] = true
-	}
-
-	// get the methods of 'v.Type()'
-	methodSet := program.MethodSets.MethodSet(v.Type())
-	for i := 0; i < methodSet.Len(); i++ {
-		selection := methodSet.At(i)
-
-		// Do we need it?
-		_, need := methodsNeeded[selection.Obj().Name()]
-		if need {
+	// empty, i.e., interface{}?
+	if len(interfaceMethods) == 0 {
+		// all methods are considered reachable
+		for i := 0; i < methodSet.Len(); i++ {
+			selection := methodSet.At(i)
 			f := program.MethodValue(selection)
 			action(f)
+		}
+	} else {
+		// turn the array into a map for fast lookup
+		methodsNeeded := make(map[string]bool)
+
+		for _, m := range interfaceMethods {
+			methodsNeeded[m.Name()] = true
+		}
+
+		// look at the methods of 'v.Type()'
+		for i := 0; i < methodSet.Len(); i++ {
+			selection := methodSet.At(i)
+
+			// Do we need it?
+			_, need := methodsNeeded[selection.Obj().Name()]
+			if need {
+				f := program.MethodValue(selection)
+				action(f)
+			}
 		}
 	}
 }
