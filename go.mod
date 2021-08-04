@@ -1,6 +1,6 @@
-module gozer
+module git.amazon.com/pkg/ARG-GoAnalyzer
 
-go 1.12
+go 1.15
 
 require (
 	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
