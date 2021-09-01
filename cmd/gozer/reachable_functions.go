@@ -11,14 +11,18 @@ import (
 	"sort"
 )
 
-func findEntry(allFunctions map[*ssa.Function]bool) *ssa.Function {
+func findEntryPoints(allFunctions map[*ssa.Function]bool) []*ssa.Function {
+
+	var entryPoints = make([]*ssa.Function, 0)
+
 	for f, _ := range allFunctions {
-		if f.RelString(nil) == "command-line-arguments.main" {
-			return f
+		var name = f.RelString(nil)
+		if name == "command-line-arguments.main" || name == "command-line-arguments.init" {
+			entryPoints = append(entryPoints, f)
 		}
 	}
 
-	return nil
+	return entryPoints
 }
 
 func findInterfaceMethods(interfaceType types.Type, target *[]*types.Func) {
@@ -152,9 +156,9 @@ func findReachable(program *ssa.Program) map[*ssa.Function]bool {
 
 	frontier := make([]*ssa.Function, 0)
 
-	entry := findEntry(allFunctions)
-	if entry != nil {
-		frontier = append(frontier, entry)
+	entryPoints := findEntryPoints(allFunctions)
+	for _, f := range entryPoints {
+		frontier = append(frontier, f)
 	}
 
 	// compute the fixedpoint

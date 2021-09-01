@@ -1,0 +1,9 @@
+CORE
+init1.go
+--reachable-functions
+^EXIT=0$
+^SIGNAL=0$
+^command-line-arguments\.main$
+^command-line-arguments\.reachable$
+--
+^command-line-arguments\.notReachable$
