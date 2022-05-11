@@ -8,6 +8,8 @@ import (
 	"flag"
 	"fmt"
 	"go/build"
+	"io"
+	"log"
 	"os"
 
 	"golang.org/x/tools/go/buildutil"
@@ -28,6 +30,7 @@ var (
 	reachableFunctionsFlag                 = false
 	ssaStatisticsFlag                      = false
 	exclude                   excludeFlags = []string{}
+	covFilename                            = ""
 )
 
 func (exclude *excludeFlags) String() string {
@@ -41,6 +44,7 @@ func (exclude *excludeFlags) Set(value string) error {
 
 func init() {
 	flag.BoolVar(&dependencyAnalysisFlag, "dependency-analysis", false, "quantify the degree of usage of all dependencies")
+	flag.StringVar(&covFilename, "cover", "", "output coverage file")
 	flag.BoolVar(&jsonFlag, "json", false, "output results as JSON")
 	flag.Var(&mode, "build", ssa.BuilderModeDoc)
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
@@ -139,7 +143,20 @@ func doMain() error {
 	} else if mayPanicModelCheckingFlag {
 		mayPanicModelChecking(program, excludeAbsolute, jsonFlag)
 	} else if dependencyAnalysisFlag {
-		dependencyAnalysis(program, jsonFlag)
+		var outfile io.WriteCloser
+
+		if covFilename != "" {
+			outfile, err = os.OpenFile(covFilename, os.O_APPEND|os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer outfile.Close()
+
+			outfile.Write([]byte("mode: set\n"))
+		}
+
+		dependencyAnalysis(program, jsonFlag, outfile)
+
 	} else if reachableFunctionsFlag {
 		reachableFunctionsAnalysis(program, jsonFlag)
 	} else {
