@@ -1,6 +1,6 @@
 KNOWNBUG
 go-without-panic1.go
---may-panic-analysis
+
 ^EXIT=0$
 ^SIGNAL=0$
 ^no unrecovered panics found$

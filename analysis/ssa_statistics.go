@@ -1,14 +1,15 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-package main
+package analysis
 
 import (
 	"encoding/json"
 	"fmt"
+
 	"golang.org/x/tools/go/ssa"
 )
 
-func ssaStatistics(allFunctions *map[*ssa.Function]bool, exclude []string, jsonFlag bool) {
+func SSAStatistics(allFunctions *map[*ssa.Function]bool, exclude []string, jsonFlag bool) {
 
 	type Result struct {
 		NumberOfFunctions         uint

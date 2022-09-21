@@ -1,14 +1,15 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-package main
+package analysis
 
 import (
-	"golang.org/x/tools/go/ssa"
 	"os"
 	"strings"
+
+	"golang.org/x/tools/go/ssa"
 )
 
-func makeAbsolute(excludeRelative []string) []string {
+func MakeAbsolute(excludeRelative []string) []string {
 	result := make([]string, 0, len(excludeRelative))
 
 	cwd, _ := os.Getwd()
@@ -40,7 +41,7 @@ func isExcludedOne(program *ssa.Program, f *ssa.Function, exclude string) bool {
 	}
 }
 
-func isExcluded(program *ssa.Program, f *ssa.Function, exclude []string) bool {
+func IsExcluded(program *ssa.Program, f *ssa.Function, exclude []string) bool {
 	for _, e := range exclude {
 		if isExcludedOne(program, f, e) {
 			return true

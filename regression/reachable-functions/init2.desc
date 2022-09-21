@@ -1,6 +1,6 @@
 CORE
 init2.go
---reachable-functions init2_other_file.go
+init2_other_file.go
 ^EXIT=0$
 ^SIGNAL=0$
 ^command-line-arguments\.main$

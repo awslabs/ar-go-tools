@@ -1,6 +1,6 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-package main
+package reachability
 
 import (
 	"golang.org/x/tools/go/ssa"

@@ -1,14 +1,15 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 // conversion of Go identifiers into C/C++ identifiers
-package main
+package maypanic
 
 import (
-	"golang.org/x/tools/go/ssa"
 	"strings"
+
+	"golang.org/x/tools/go/ssa"
 )
 
-func convertIdentifier(f *ssa.Function) string {
+func ConvertIdentifier(f *ssa.Function) string {
 
 	fullName := f.RelString(nil)
 

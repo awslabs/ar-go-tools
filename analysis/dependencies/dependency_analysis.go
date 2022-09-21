@@ -1,6 +1,6 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-package main
+package dependencies
 
 import (
 	//	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/reachability"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -107,13 +108,13 @@ func emitCoverageLine(file io.Writer, program *ssa.Program, f *ssa.Function, nam
 
 }
 
-func dependencyAnalysis(program *ssa.Program, jsonFlag bool, covFile io.Writer) {
+func DependencyAnalysis(program *ssa.Program, jsonFlag bool, covFile io.Writer) {
 
 	// all functions we have got
 	allFunctions := ssautil.AllFunctions(program)
 
 	// functions known to be reachable
-	reachable := findReachable(program)
+	reachable := reachability.FindReachable(program)
 
 	// count reachable and unreachable LOCs, per dependency
 	type dependency struct {

@@ -1,16 +1,20 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
+package maypanic
+
 // An overapproximating analysis for go routines that may generate an unrecovered panic
-package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"go/token"
-	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 	"sort"
 	"strings"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+
+	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 func locationString(program *ssa.Program, f *ssa.Function) string {
@@ -217,7 +221,7 @@ func whitelisted(path string) bool {
 	return false
 }
 
-func mayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
+func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 
 	// Get all the functions
 	allFunctions := ssautil.AllFunctions(program)
@@ -230,7 +234,7 @@ func mayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 		if f.Pkg != nil {
 			pkg := f.Pkg.Pkg
 			path := pkg.Path()
-			if whitelisted(path) || isExcluded(program, f, exclude) {
+			if whitelisted(path) || analysis.IsExcluded(program, f, exclude) {
 				delete(goFunctions, f)
 			}
 		}
@@ -317,7 +321,7 @@ func mayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 			fmt.Printf("no unrecovered panics found\n")
 		} else {
 			for _, function := range functionNames {
-				fmt.Printf(Red("unrecovered panic")+" in %s\n", function.name)
+				fmt.Printf(analysis.Red("unrecovered panic")+" in %s\n", function.name)
 				fmt.Printf("  %s\n", function.name)
 				fmt.Printf("  %s\n", locationString(program, function.f))
 				creators := findCreators(program, function.f, goFunctions)
@@ -326,7 +330,7 @@ func mayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 				}
 			}
 
-			fmt.Printf("%s\n", Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
+			fmt.Printf("%s\n", analysis.Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
 		}
 	}
 }

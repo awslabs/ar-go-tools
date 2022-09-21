@@ -1,14 +1,15 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-package main
+package reachability
 
 import (
 	"encoding/json"
 	"fmt"
 	"go/types"
+	"sort"
+
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
-	"sort"
 )
 
 func findEntryPoints(allFunctions map[*ssa.Function]bool) []*ssa.Function {
@@ -148,7 +149,7 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 	}
 }
 
-func findReachable(program *ssa.Program) map[*ssa.Function]bool {
+func FindReachable(program *ssa.Program) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(program)
 
@@ -177,9 +178,9 @@ func findReachable(program *ssa.Program) map[*ssa.Function]bool {
 	return reachable
 }
 
-func reachableFunctionsAnalysis(program *ssa.Program, jsonFlag bool) {
+func ReachableFunctionsAnalysis(program *ssa.Program, jsonFlag bool) {
 
-	reachable := findReachable(program)
+	reachable := FindReachable(program)
 
 	functionNames := make([]string, 0, len(reachable))
 

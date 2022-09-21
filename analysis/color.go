@@ -1,9 +1,10 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-package main
+package analysis
 
 import (
 	"fmt"
+
 	"golang.org/x/term"
 )
 

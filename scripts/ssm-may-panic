@@ -1,0 +1,52 @@
+#!/bin/sh
+
+if [ ! -e amazon-ssm-agent ] ; then
+  echo getting SSM source code
+  git clone https://github.com/aws/amazon-ssm-agent.git
+fi
+
+cd amazon-ssm-agent
+
+#export GOPATH=`pwd`/vendor
+
+OPT="--exclude vendor --exclude extra"
+
+# amazon-ssm-agent
+echo amazon-ssm-agent
+../bin/maypanic $OPT core/agent.go core/agent_unix.go core/agent_parser.go
+
+echo
+
+# ssm-agent-worker
+echo ssm-agent-worker
+../bin/maypanic $OPT agent/agent.go agent/agent_unix.go agent/agent_parser.go
+
+echo
+
+# updater
+echo updater
+../bin/maypanic $OPT  agent/update/updater/updater.go agent/update/updater/updater_unix.go
+
+echo
+
+# ssm-cli
+echo ssm-cli
+../bin/maypanic $OPT agent/cli-main/cli-main.go
+
+echo
+
+# ssm-document-worker
+echo ssm-document-worker
+../bin/maypanic $OPT agent/framework/processor/executer/outofproc/worker/main.go
+
+echo
+
+# ssm-session-logger
+echo ssm-session-logger
+../bin/maypanic $OPT agent/session/logging/main.go
+
+echo
+
+# ssm-session-worker
+echo ssm-session-worker
+../bin/maypanic $OPT agent/framework/processor/executer/outofproc/sessionworker/main.go
