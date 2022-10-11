@@ -17,6 +17,9 @@ statistics: go.mod cmd/statistics/*.go analysis/*.go
 reachability: go.mod cmd/reachability/*.go analysis/*.go analysis/reachability/*.go
 	go build -o bin/reachability cmd/reachability/*.go
 
+static-commands: go.mod cmd/static-commands/*.go analysis/*.go analysis/static-commands/*.go
+	go build -o bin/static-commands cmd/static-commands/*.go
+
 all: maypanic statistics reachability dependencies
 
 clean:
