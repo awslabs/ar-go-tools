@@ -20,7 +20,10 @@ reachability: go.mod cmd/reachability/*.go analysis/*.go analysis/reachability/*
 static-commands: go.mod cmd/static-commands/*.go analysis/*.go analysis/static-commands/*.go
 	go build -o bin/static-commands cmd/static-commands/*.go
 
-all: maypanic statistics reachability dependencies
+render: go.mod cmd/render/*.go analysis/*.go analysis/rendering/*.go
+	go build -o bin/render cmd/render/*.go
+
+all: maypanic statistics reachability dependencies static-commands render
 
 clean:
 	rm -rf bin

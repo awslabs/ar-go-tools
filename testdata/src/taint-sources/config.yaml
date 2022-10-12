@@ -1,0 +1,11 @@
+sources:
+  - package: fmt
+    method: Sprintf
+  - package: main
+    method: zoo
+  - package: main
+    type: Bar
+  - type: SomeStruct
+    field: DataField
+  - package: bar
+    field: Pickles

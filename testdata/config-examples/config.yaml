@@ -1,0 +1,7 @@
+sanitizers:
+  - package: "a"
+    method: "b"
+
+sinks:
+  - package: "c"
+    method: "d"

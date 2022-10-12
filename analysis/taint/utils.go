@@ -1,0 +1,111 @@
+package taint
+
+import (
+	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"go/types"
+	"golang.org/x/tools/go/ssa"
+)
+
+type functionToNode map[*ssa.Function][]*ssa.Node
+
+type PackageToNodes map[*ssa.Package]functionToNode
+
+type nodeIdFunction func(*config.Config, *ssa.Node) bool
+
+func newPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIdFunction) PackageToNodes {
+	packageMap := make(PackageToNodes)
+	for _, pkg := range pkgs {
+		pkgMap := newPackageMap(c, pkg, f)
+		if len(pkgMap) > 0 {
+			packageMap[pkg] = pkgMap
+		}
+	}
+	return packageMap
+}
+
+func newPackageMap(c *config.Config, pkg *ssa.Package, f nodeIdFunction) functionToNode {
+	fMap := make(functionToNode)
+	for _, mem := range pkg.Members {
+		switch fn := mem.(type) {
+		case *ssa.Function:
+			populateFunctionMap(c, fMap, fn, f)
+		}
+	}
+	return fMap
+}
+
+func populateFunctionMap(config *config.Config, fMap functionToNode, current *ssa.Function, f nodeIdFunction) {
+	var sources []*ssa.Node
+	for _, b := range current.Blocks {
+		for _, instr := range b.Instrs {
+			// An instruction should always be a Node too.
+			if n := instr.(ssa.Node); f(config, &n) {
+				sources = append(sources, &n)
+			}
+		}
+	}
+	fMap[current] = sources
+}
+
+func FindSafeCalleePkg(n *ssa.Call) (string, error) {
+	if n == nil || n.Call.StaticCallee() == nil || n.Call.StaticCallee().Pkg == nil {
+		return "", fmt.Errorf("no static callee package")
+	}
+	return n.Call.StaticCallee().Pkg.Pkg.Name(), nil
+}
+
+// FindTypePackage finds the package declaring t or returns an error
+// Returns a package name and the name of the type declared in that package
+func FindTypePackage(t types.Type) (string, string, error) {
+	switch typ := t.(type) {
+	case *types.Pointer:
+		return FindTypePackage(typ.Elem()) // recursive call
+	case *types.Named:
+		// Return package name, type name
+		return typ.Obj().Pkg().Name(), typ.Obj().Name(), nil
+	case *types.Array:
+		return FindTypePackage(typ.Elem()) // recursive call
+	case *types.Map:
+		return FindTypePackage(typ.Elem()) // recursive call
+	case *types.Slice:
+		return FindTypePackage(typ.Elem()) // recursive call
+	case *types.Chan:
+		return FindTypePackage(typ.Elem()) // recursive call
+	case *types.Basic, *types.Tuple, *types.Interface, *types.Signature:
+		// We ignore this for now (tuple may involve multiple packages)
+		return "", "", fmt.Errorf("not a type with a package and name")
+	default:
+		// We should never reach this!
+		fmt.Printf("unexpected type received: %T %v; please report this issue\n", typ, typ)
+		return "", "", nil
+	}
+}
+
+// FieldAddrFieldName finds the name of a field access in ssa.FieldAddr
+// if it cannot find a proper field name, returns "?"
+func FieldAddrFieldName(fieldAddr *ssa.FieldAddr) string {
+	return getFieldNameFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
+}
+
+// FieldFieldName finds the name of a field access in ssa.Field
+// if it cannot find a proper field name, returns "?"
+func FieldFieldName(fieldAddr *ssa.Field) string {
+	return getFieldNameFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
+}
+
+func getFieldNameFromType(t types.Type, i int) string {
+	switch typ := t.(type) {
+	case *types.Pointer:
+		return getFieldNameFromType(typ.Elem().Underlying(), i) // recursive call
+	case *types.Struct:
+		// Get the field name given its index
+		fieldName := "?"
+		if 0 <= i && i < typ.NumFields() {
+			fieldName = typ.Field(i).Name()
+		}
+		return fieldName
+	default:
+		return "?"
+	}
+}

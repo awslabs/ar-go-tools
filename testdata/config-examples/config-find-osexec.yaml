@@ -1,0 +1,3 @@
+staticcommands:
+  - package: os/exec
+    method: Command
