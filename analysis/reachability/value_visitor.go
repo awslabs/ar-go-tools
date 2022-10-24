@@ -41,6 +41,7 @@ func preTraversalVisitValuesInstruction(instruction ssa.Instruction, seen *map[s
 		visit(x.X)
 
 	case *ssa.Convert:
+		//fmt.Println("visiting an Instruction Convert to ", x.X.Type())
 		visit(x.X)
 
 	case *ssa.DebugRef:
@@ -185,6 +186,7 @@ func preTraversalVisitValues(value ssa.Value, seen *map[ssa.Value]bool, action f
 		visit(x.X)
 
 	case *ssa.Convert:
+		//fmt.Println("visiting a Value Convert to ", x.X.Type())
 		visit(x.X)
 
 	case *ssa.Extract:
