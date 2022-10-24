@@ -6,19 +6,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/types"
+	"os"
 	"sort"
 
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-func findEntryPoints(allFunctions map[*ssa.Function]bool) []*ssa.Function {
+func findEntryPoints(allFunctions map[*ssa.Function]bool, excludeMain bool, excludeInit bool) []*ssa.Function {
 
 	var entryPoints = make([]*ssa.Function, 0)
 
 	for f, _ := range allFunctions {
 		var name = f.RelString(nil)
-		if name == "command-line-arguments.main" || name == "command-line-arguments.init" {
+
+		if (!excludeMain && name == "command-line-arguments.main") ||
+			(!excludeInit && name == "command-line-arguments.init") {
 			entryPoints = append(entryPoints, f)
 		}
 	}
@@ -62,7 +65,7 @@ func findInterfaceCallees(program *ssa.Program, interfaceType types.Type, v ssa.
 		}
 	} else {
 		// turn the array into a map for fast lookup
-		methodsNeeded := make(map[string]bool)
+		methodsNeeded := make(map[string]bool, len(interfaceMethods))
 
 		for _, m := range interfaceMethods {
 			methodsNeeded[m.Name()] = true
@@ -90,24 +93,9 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 		for _, instr := range b.Instrs {
 			switch v := instr.(type) {
 			case *ssa.Call:
-				// invoke?
-				if v.Call.IsInvoke() {
-					// We invoke a method via an interface.
-					// This is covered by 'MakeInterface' below.
-				} else {
-					switch value := v.Call.Value.(type) {
-					case *ssa.Function:
-						action(value)
-
-					case *ssa.MakeClosure:
-						switch fn := value.Fn.(type) {
-						case *ssa.Function:
-							action(fn)
-						}
-					}
-				}
-
+			case *ssa.Defer:
 			case *ssa.Go:
+
 				// invoke?
 				if v.Call.IsInvoke() {
 					// We invoke a method via an interface.
@@ -118,10 +106,10 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 						action(value)
 
 					case *ssa.MakeClosure:
-						switch fn := value.Fn.(type) {
-						case *ssa.Function:
+						if fn, ok := value.Fn.(*ssa.Function); ok {
 							action(fn)
 						}
+
 					}
 				}
 
@@ -135,9 +123,7 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 	seen := make(map[ssa.Value]bool)
 
 	valueAction := func(v ssa.Value) {
-		switch x := v.(type) {
-
-		case *ssa.Function:
+		if x, ok := v.(*ssa.Function); ok {
 			action(x)
 		}
 	}
@@ -149,16 +135,17 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 	}
 }
 
-func FindReachable(program *ssa.Program) map[*ssa.Function]bool {
+func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(program)
 
-	reachable := make(map[*ssa.Function]bool)
+	reachable := make(map[*ssa.Function]bool, len(allFunctions))
 
 	frontier := make([]*ssa.Function, 0)
 
-	entryPoints := findEntryPoints(allFunctions)
+	entryPoints := findEntryPoints(allFunctions, excludeMain, excludeInit)
 	for _, f := range entryPoints {
+		reachable[f] = true
 		frontier = append(frontier, f)
 	}
 
@@ -166,21 +153,23 @@ func FindReachable(program *ssa.Program) map[*ssa.Function]bool {
 	for len(frontier) != 0 {
 		f := frontier[len(frontier)-1]
 		frontier = frontier[:len(frontier)-1]
-		reachable[f] = true
 		findCallees(program, f, func(fnext *ssa.Function) {
-			_, ok := reachable[fnext]
-			if !ok {
+			//if strings.Contains(fnext.Name(), "nsafe") {
+			//	fmt.Println(f, "calls", fnext)
+			//}
+			if !reachable[fnext] {
+				reachable[fnext] = true
 				frontier = append(frontier, fnext)
 			}
 		})
 	}
-
 	return reachable
 }
 
-func ReachableFunctionsAnalysis(program *ssa.Program, jsonFlag bool) {
+func ReachableFunctionsAnalysis(program *ssa.Program, excludeMain bool, excludeInit bool, jsonFlag bool) {
 
-	reachable := FindReachable(program)
+	reachable := FindReachable(program, excludeMain, excludeInit)
+	fmt.Fprintln(os.Stderr, len(reachable), "reachable functions")
 
 	functionNames := make([]string, 0, len(reachable))
 

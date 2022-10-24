@@ -5,6 +5,8 @@
 #endif
 
 
+all: maypanic statistics reachability dependencies static-commands render
+
 maypanic: go.mod cmd/maypanic/*.go analysis/*.go analysis/reachability/*.go analysis/maypanic/*.go
 	go build -o bin/maypanic cmd/maypanic/*.go
 
@@ -22,8 +24,6 @@ static-commands: go.mod cmd/static-commands/*.go analysis/*.go analysis/static-c
 
 render: go.mod cmd/render/*.go analysis/*.go analysis/rendering/*.go
 	go build -o bin/render cmd/render/*.go
-
-all: maypanic statistics reachability dependencies static-commands render
 
 clean:
 	rm -rf bin

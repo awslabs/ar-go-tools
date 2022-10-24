@@ -114,7 +114,7 @@ func DependencyAnalysis(program *ssa.Program, jsonFlag bool, covFile io.Writer) 
 	allFunctions := ssautil.AllFunctions(program)
 
 	// functions known to be reachable
-	reachable := reachability.FindReachable(program)
+	reachable := reachability.FindReachable(program, false, false)
 
 	// count reachable and unreachable LOCs, per dependency
 	type dependency struct {
