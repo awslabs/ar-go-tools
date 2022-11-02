@@ -6,7 +6,7 @@
 // the fields defined in the Config struct type. The other fields  are defined
 // by the types of the fields of Config and nested struct types.
 // For example, a valid config file is as follows:
-// Sinks:
+// SinkFromSource:
 //   - Package: fmt
 //     Method: Printf
 //
@@ -43,6 +43,7 @@ type Config struct {
 	Sinks          []CodeIdentifier
 	Sources        []CodeIdentifier
 	StaticCommands []CodeIdentifier
+	PkgPrefix      string
 }
 
 // Load reads a configuration from a file

@@ -93,16 +93,18 @@ func TestLoad(t *testing.T) {
 	//
 	testLoadOneFile(t,
 		"config3.yaml",
-		mkConfig(
-			[]CodeIdentifier{{"pkg1", "Foo", "Obj", "", ""}},
-			[]CodeIdentifier{{"y", "b", "", "", ""},
+		Config{
+			Sanitizers: []CodeIdentifier{{"pkg1", "Foo", "Obj", "", ""}},
+			Sinks: []CodeIdentifier{{"y", "b", "", "", ""},
 				{"x", "", "Obj1", "", ""}},
-			[]CodeIdentifier{
+			Sources: []CodeIdentifier{
 				{"some/package", "SuperMethod", "", "", ""},
 
 				{"some/other/package", "", "", "OneField", "ThatStruct"},
 			},
-		),
+			PkgPrefix: "a",
+		},
+
 	)
 	// Test configuration file for static-commands
 	osExecCid := CodeIdentifier{"os/exec", "Command", "", "", ""}

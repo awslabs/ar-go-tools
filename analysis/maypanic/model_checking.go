@@ -192,7 +192,7 @@ func makeBlockMap(f *ssa.Function) []int {
 
 	blockMap := make([]int, 0, len(f.Blocks))
 
-	var instructionIndex int = 0
+	var instructionIndex = 0
 
 	for _, b := range f.Blocks {
 		blockMap = append(blockMap, instructionIndex)
@@ -217,7 +217,7 @@ func mayPanicFunctionBody(program *ssa.Program, functionIndex int, f *ssa.Functi
 
 	fmt.Fprintf(buf, "  switch(state.frame().instruction_index) {\n")
 
-	var instructionIndex int = 0
+	var instructionIndex = 0
 
 	for _, b := range f.Blocks {
 		fmt.Fprintf(buf, "\n    // block %d", b.Index)
@@ -294,7 +294,7 @@ func MayPanicModelChecking(program *ssa.Program, exclude []string, json bool) {
 	fmt.Fprintf(&buf, "const unsigned *line_numbers[] = {\n")
 	for _, nameAndFunction := range functionNames {
 		fmt.Fprintf(&buf, "  (unsigned[]){")
-		var first bool = true
+		var first = true
 		for _, b := range nameAndFunction.f.Blocks {
 			for _, instr := range b.Instrs {
 				if first {
@@ -352,7 +352,7 @@ func MayPanicModelChecking(program *ssa.Program, exclude []string, json bool) {
 	buf.WriteString("}\n\n")
 
 	// find the 'main' function to generate initial_states()
-	var mainFunctionIndex int = -1
+	var mainFunctionIndex = -1
 
 	for functionIndex, nameAndFunction := range functionNames {
 		if nameAndFunction.name == "command-line-arguments.main" {

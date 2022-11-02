@@ -124,7 +124,7 @@ func DependencyAnalysis(program *ssa.Program, jsonFlag bool, covFile io.Writer) 
 
 	dependencyMap := make(map[string]dependency)
 
-	for f, _ := range allFunctions {
+	for f := range allFunctions {
 		ok, id := isDependency(f)
 		if ok {
 			//fmt.Println(f.Pkg.Pkg.Path())
@@ -149,7 +149,7 @@ func DependencyAnalysis(program *ssa.Program, jsonFlag bool, covFile io.Writer) 
 	// order alphabetically
 	dependencyNames := make([]string, 0, len(dependencyMap))
 
-	for key, _ := range dependencyMap {
+	for key := range dependencyMap {
 		dependencyNames = append(dependencyNames, key)
 	}
 

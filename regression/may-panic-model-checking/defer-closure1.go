@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 func main() {
-	var s string = "hello"
+	var s = "hello"
 
 	// 's' will be captured
 	defer func() {
