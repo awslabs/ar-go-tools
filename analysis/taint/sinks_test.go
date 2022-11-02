@@ -32,7 +32,7 @@ func runSinkAnalysis(pass *analysis.Pass) (interface{}, error) {
 	for _, fnMap := range sourceMap {
 		for _, instrs := range fnMap {
 			for _, instruction := range instrs {
-				pos := (*instruction).Pos() // getting the position with this should be ok for calls and rvalues
+				pos := (instruction).Pos() // getting the position with this should be ok for calls and rvalues
 				if pos != token.NoPos {
 					pass.Reportf(pos, "found a sink")
 				}

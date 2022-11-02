@@ -17,7 +17,7 @@ func findEntryPoints(allFunctions map[*ssa.Function]bool, excludeMain bool, excl
 
 	var entryPoints = make([]*ssa.Function, 0)
 
-	for f, _ := range allFunctions {
+	for f := range allFunctions {
 		var name = f.RelString(nil)
 
 		if (!excludeMain && name == "command-line-arguments.main") ||
@@ -173,7 +173,7 @@ func ReachableFunctionsAnalysis(program *ssa.Program, excludeMain bool, excludeI
 
 	functionNames := make([]string, 0, len(reachable))
 
-	for f, _ := range reachable {
+	for f := range reachable {
 		functionNames = append(functionNames, f.RelString(nil))
 	}
 

@@ -10,14 +10,14 @@ func NewSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
 	return newPackagesMap(c, pkgs, isSourceNode)
 }
 
-func isSourceNode(cfg *config.Config, n *ssa.Node) bool {
-	switch node := (*n).(type) {
+func isSourceNode(cfg *config.Config, n ssa.Node) bool {
+	switch node := (n).(type) {
 	// Look for calls to functions that are considered sources
 	case *ssa.Call:
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
-			calleePkg, err := FindSafeCalleePkg(node)
+			calleePkg, err := FindSafeCalleePkg(node.Common())
 			if err != nil {
 				return false // skip if we can't get the package
 			} else {
@@ -25,7 +25,7 @@ func isSourceNode(cfg *config.Config, n *ssa.Node) bool {
 			}
 		} else {
 			funcValue := node.Call.Value.Name()
-			calleePkg, err := FindSafeCalleePkg(node)
+			calleePkg, err := FindSafeCalleePkg(node.Common())
 			if err != nil {
 				return false // skip if we can't get the package
 			} else {

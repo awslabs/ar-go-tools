@@ -6,8 +6,8 @@ func notReachable() {
 func reachable() {
 }
 
-var f func() = reachable
+var f = reachable
 
 func main() {
-        f() // calls 'reachable'
+	f() // calls 'reachable'
 }

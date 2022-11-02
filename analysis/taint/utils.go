@@ -3,15 +3,16 @@ package taint
 import (
 	"fmt"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"go/types"
 	"golang.org/x/tools/go/ssa"
 )
 
-type functionToNode map[*ssa.Function][]*ssa.Node
+type functionToNode map[*ssa.Function][]ssa.Node
 
 type PackageToNodes map[*ssa.Package]functionToNode
 
-type nodeIdFunction func(*config.Config, *ssa.Node) bool
+type nodeIdFunction func(*config.Config, ssa.Node) bool
 
 func newPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIdFunction) PackageToNodes {
 	packageMap := make(PackageToNodes)
@@ -36,23 +37,23 @@ func newPackageMap(c *config.Config, pkg *ssa.Package, f nodeIdFunction) functio
 }
 
 func populateFunctionMap(config *config.Config, fMap functionToNode, current *ssa.Function, f nodeIdFunction) {
-	var sources []*ssa.Node
+	var sources []ssa.Node
 	for _, b := range current.Blocks {
 		for _, instr := range b.Instrs {
 			// An instruction should always be a Node too.
-			if n := instr.(ssa.Node); f(config, &n) {
-				sources = append(sources, &n)
+			if n := instr.(ssa.Node); f(config, n) {
+				sources = append(sources, n)
 			}
 		}
 	}
 	fMap[current] = sources
 }
 
-func FindSafeCalleePkg(n *ssa.Call) (string, error) {
-	if n == nil || n.Call.StaticCallee() == nil || n.Call.StaticCallee().Pkg == nil {
+func FindSafeCalleePkg(n *ssa.CallCommon) (string, error) {
+	if n == nil || n.StaticCallee() == nil || n.StaticCallee().Pkg == nil {
 		return "", fmt.Errorf("no static callee package")
 	}
-	return n.Call.StaticCallee().Pkg.Pkg.Name(), nil
+	return n.StaticCallee().Pkg.Pkg.Name(), nil
 }
 
 // FindTypePackage finds the package declaring t or returns an error
@@ -63,7 +64,20 @@ func FindTypePackage(t types.Type) (string, string, error) {
 		return FindTypePackage(typ.Elem()) // recursive call
 	case *types.Named:
 		// Return package name, type name
-		return typ.Obj().Pkg().Name(), typ.Obj().Name(), nil
+		obj := typ.Obj()
+		if obj != nil {
+			pkg := obj.Pkg()
+			if pkg != nil {
+				return pkg.Name(), obj.Name(), nil
+			} else {
+				// obj is in Universe
+				return "", obj.Name(), nil
+			}
+
+		} else {
+			return "", "", fmt.Errorf("could not get name")
+		}
+
 	case *types.Array:
 		return FindTypePackage(typ.Elem()) // recursive call
 	case *types.Map:
@@ -107,5 +121,74 @@ func getFieldNameFromType(t types.Type, i int) string {
 		return fieldName
 	default:
 		return "?"
+	}
+}
+
+func IntraProceduralPathExists(begin ssa.Instruction, end ssa.Instruction) bool {
+	return FindIntraProceduralPath(begin, end) != nil
+}
+
+func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) []ssa.Instruction {
+	if begin.Parent() != end.Parent() {
+		return nil
+	}
+	if begin.Block() != end.Block() {
+		blockPath := FindPathBetweenBlocks(begin.Block(), end.Block())
+		if blockPath == nil {
+			return nil
+		} else {
+			var path []ssa.Instruction
+
+			path = append(path, GetnstructionsBetween(begin.Block(), begin, ssafuncs.LastInstr(begin.Block()))...)
+			for _, block := range blockPath[1 : len(blockPath)-1] {
+				path = append(path, block.Instrs...)
+			}
+			path = append(path, GetnstructionsBetween(end.Block(), ssafuncs.FirstInstr(end.Block()), end)...)
+			return path
+		}
+	} else {
+		return GetnstructionsBetween(begin.Block(), begin, end)
+	}
+}
+
+func GetnstructionsBetween(block *ssa.BasicBlock, begin ssa.Instruction, end ssa.Instruction) []ssa.Instruction {
+	flag := false
+	var path []ssa.Instruction
+	for _, instr := range block.Instrs {
+		if instr == begin {
+			flag = true
+		}
+		if flag {
+			path = append(path, instr) // type cast cannot fail
+		}
+		if flag && instr == end {
+			return path
+		}
+	}
+	return nil
+}
+
+func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.BasicBlock {
+	visited := make(map[*ssa.BasicBlock]int)
+	t := &ssafuncs.BlockTree{Block: begin, Parent: nil, Children: []*ssafuncs.BlockTree{}}
+	queue := []*ssafuncs.BlockTree{t}
+	// BFS - optimize?
+	for {
+		if len(queue) == 0 {
+			return nil
+		} else {
+			cur := queue[len(queue)-1]
+			queue = queue[:len(queue)-1]
+			visited[cur.Block] = 1
+			if cur.Block == end {
+				return cur.PathToLeaf().ToBlocks()
+			}
+			for _, block := range cur.Block.Succs {
+				if _, ok := visited[block]; !ok {
+					child := cur.AddChild(block)
+					queue = append(queue, child)
+				}
+			}
+		}
 	}
 }
