@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -135,7 +136,7 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 	}
 }
 
-func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
+func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, graph analysis.DependencyGraph) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(program)
 
@@ -154,9 +155,14 @@ func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool) map
 		f := frontier[len(frontier)-1]
 		frontier = frontier[:len(frontier)-1]
 		findCallees(program, f, func(fnext *ssa.Function) {
-			//if strings.Contains(fnext.Name(), "nsafe") {
-			//	fmt.Println(f, "calls", fnext)
-			//}
+			if graph != nil {
+				from := analysis.PackageNameFromFunction(f)
+				to := analysis.PackageNameFromFunction(fnext)
+				if from != to {
+					graph.Add(from, to)
+				}
+			}
+
 			if !reachable[fnext] {
 				reachable[fnext] = true
 				frontier = append(frontier, fnext)
@@ -168,7 +174,7 @@ func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool) map
 
 func ReachableFunctionsAnalysis(program *ssa.Program, excludeMain bool, excludeInit bool, jsonFlag bool) {
 
-	reachable := FindReachable(program, excludeMain, excludeInit)
+	reachable := FindReachable(program, excludeMain, excludeInit, nil)
 	fmt.Fprintln(os.Stderr, len(reachable), "reachable functions")
 
 	functionNames := make([]string, 0, len(reachable))

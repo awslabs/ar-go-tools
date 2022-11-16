@@ -22,14 +22,18 @@ import (
 // flags
 
 var (
-	jsonFlag    = false
-	mode        = ssa.BuilderMode(0)
-	covFilename = ""
+	jsonFlag      = false
+	stdlib        = false
+	mode          = ssa.BuilderMode(0)
+	covFilename   = ""
+	graphFilename = ""
 )
 
 func init() {
 	flag.StringVar(&covFilename, "cover", "", "output coverage file")
+	flag.StringVar(&graphFilename, "graph", "", "output graphviz file")
 	flag.BoolVar(&jsonFlag, "json", false, "output results as JSON")
+	flag.BoolVar(&stdlib, "stdlib", false, "include standard library packages")
 	flag.Var(&mode, "build", ssa.BuilderModeDoc)
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 }
@@ -89,7 +93,18 @@ func doMain() error {
 		outfile.Write([]byte("mode: set\n"))
 	}
 
-	dependencies.DependencyAnalysis(program, jsonFlag, outfile)
+	dependencyGraph := dependencies.DependencyAnalysis(program, jsonFlag, stdlib, outfile, graphFilename != "")
+
+	if dependencyGraph != nil {
+		//fmt.Println("Checking cycles in dependency graph")
+		if dependencyGraph.Cycles() {
+			fmt.Println("FOUND CYCLES IN THE DEPENDENCY GRAPH")
+		}
+	}
+
+	if graphFilename != "" {
+		dependencyGraph.DumpAsGraphviz(graphFilename, stdlib)
+	}
 
 	return nil
 }

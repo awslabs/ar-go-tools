@@ -21,3 +21,17 @@ func TestComputePath(t *testing.T) {
 //   pkg = github.com/aws/amazon-ssm-agent/agent/managedInstances/registration
 // we need to iterate through progressively removing the initial elements from the package name
 // until we find a match.
+
+func TestComputePath2(t *testing.T) {
+	x := computePath("/Users/kienzld/reference/Amazon-ssm-agent/agent/agent/agent.go",
+		"github.com/aws/amazon-ssm-agent/agent/agent")
+	if x != "github.com/aws/amazon-ssm-agent/agent/agent/agent.go" {
+		t.Errorf("error")
+	}
+	fmt.Println(x)
+}
+
+//computePath(
+///Users/kienzld/reference/Amazon-ssm-agent/agent/agent/agent.go
+//github.com/aws/amazon-ssm-agent/agent/agent
+//github.com/aws/amazon-ssm-agent/agent/agent/agent.go

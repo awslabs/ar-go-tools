@@ -9,28 +9,29 @@ import (
 	"sort"
 	"strings"
 
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/reachability"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 func isDependency(f *ssa.Function) (bool, string) {
-	if f.Pkg != nil {
-		packagePath := f.Pkg.Pkg.Path()
-		split := strings.Split(packagePath, "/")
-		if len(split) >= 3 {
-			if strings.Index(split[0], ".") == -1 {
-				// no dot in the first component, e.g., "runtime"
-				return false, ""
-			} else {
-				// dot found, e.g. github.com
-				return true, split[0] + "/" + split[1] + "/" + split[2]
-			}
+	packagePath := analysis.PackageNameFromFunction(f)
+	if packagePath == "" {
+		return false, ""
+	}
+	//	packagePath := f.Pkg.Pkg.Path()
+	split := strings.Split(packagePath, "/")
+	if len(split) >= 3 {
+		if strings.Index(split[0], ".") == -1 {
+			// no dot in the first component, e.g., "runtime"
+			return false, packagePath
 		} else {
-			return false, ""
+			// dot found, e.g. github.com
+			return true, split[0] + "/" + split[1] + "/" + split[2]
 		}
 	} else {
-		return false, ""
+		return false, packagePath
 	}
 }
 
@@ -57,10 +58,17 @@ func calculateLocs(f *ssa.Function) uint {
 // but this seems to be the most general approach for now.
 func computePath(filepath string, pkg string) string {
 
+	verbose := strings.HasSuffix(filepath, "agent.go")
+	if verbose {
+		fmt.Printf("computePath(%s,%s)=", filepath, pkg)
+	}
 	// if the full package name appears in the filepath, then just chop off the prefix
 	// and return the full packagename with the path within the package.
 	offset := strings.Index(filepath, pkg)
 	if offset >= 0 {
+		if verbose {
+			fmt.Println("1", filepath[offset:])
+		}
 		return filepath[offset:]
 	}
 
@@ -75,13 +83,20 @@ func computePath(filepath string, pkg string) string {
 	for {
 		newsplit := strings.Index(pkg[split:], "/")
 		if newsplit == -1 {
+			if verbose {
+				fmt.Println(filepath)
+			}
 			return filepath // bail
 		}
-		split = split + newsplit + 1 // skip the "/"
+		split = split + newsplit
 		offset = strings.Index(filepath, pkg[split:])
 		if offset >= 0 {
+			if verbose {
+				fmt.Println(pkg[:split] + filepath[offset:])
+			}
 			return pkg[:split] + filepath[offset:]
 		}
+		split++ // skip the "/"
 	}
 }
 
@@ -108,13 +123,18 @@ func emitCoverageLine(file io.Writer, program *ssa.Program, f *ssa.Function, nam
 
 }
 
-func DependencyAnalysis(program *ssa.Program, jsonFlag bool, covFile io.Writer) {
+func DependencyAnalysis(program *ssa.Program, jsonFlag bool, includeStdlib bool, covFile io.Writer, graph bool) analysis.DependencyGraph {
 
 	// all functions we have got
 	allFunctions := ssautil.AllFunctions(program)
 
+	var dependencyGraph analysis.DependencyGraph = nil
+	if graph {
+		dependencyGraph = analysis.NewDependencyGraph()
+	}
+
 	// functions known to be reachable
-	reachable := reachability.FindReachable(program, false, false)
+	reachable := reachability.FindReachable(program, false, false, dependencyGraph)
 
 	// count reachable and unreachable LOCs, per dependency
 	type dependency struct {
@@ -126,7 +146,7 @@ func DependencyAnalysis(program *ssa.Program, jsonFlag bool, covFile io.Writer) 
 
 	for f := range allFunctions {
 		ok, id := isDependency(f)
-		if ok {
+		if ok || includeStdlib {
 			//fmt.Println(f.Pkg.Pkg.Path())
 			entry := dependencyMap[id]
 			locs := calculateLocs(f)
@@ -164,4 +184,6 @@ func DependencyAnalysis(program *ssa.Program, jsonFlag bool, covFile io.Writer) 
 		// fmt.Printf("%s %d%%\n", dependencyName, 100 * entry.reachableLocs / total)
 		fmt.Printf("%s %d %d\n", dependencyName, entry.reachableLocs, total)
 	}
+
+	return dependencyGraph
 }
