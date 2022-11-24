@@ -27,6 +27,7 @@ func findEntryPoints(allFunctions map[*ssa.Function]bool, excludeMain bool, excl
 		}
 	}
 
+	fmt.Fprintf(os.Stderr, "findEntryPoints found %d entry points\n", len(entryPoints))
 	return entryPoints
 }
 
@@ -139,6 +140,7 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, graph analysis.DependencyGraph) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(program)
+	fmt.Fprintf(os.Stderr, "allFunctions contains %d total\n", len(allFunctions))
 
 	reachable := make(map[*ssa.Function]bool, len(allFunctions))
 
@@ -169,6 +171,8 @@ func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, gra
 			}
 		})
 	}
+	fmt.Fprintf(os.Stderr, "FindReachable reports %d reachable functions\n", len(reachable))
+
 	return reachable
 }
 
