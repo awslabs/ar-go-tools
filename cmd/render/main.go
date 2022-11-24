@@ -10,17 +10,19 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	render "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/rendering"
-	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/go/ssa"
 	"os"
 	"time"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	render "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/rendering"
+	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/ssa"
 )
 
 var (
-	modeFlag   = flag.String("buildmode", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
-	cgOutFlag  = flag.String("cgout", "", "Output file for call graph (no output if not specified)")
+	modeFlag   = flag.String("analysis", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
+	cgOut      = flag.String("cgout", "", "Output file for call graph (no output if not specified)")
 	ssaOutFlag = flag.String("ssaout", "", "Output folder for ssa (no output if not specified)")
 )
 
@@ -37,7 +39,7 @@ Usage:
     render [options] <package path(s)>
 Examples:
 Render a callgraph computed using pointer analysis
-% render -buildmode pointer  -cgout example.dot package...
+% render -analysis pointer  -cgout example.dot package...
 Print out all the packages in SSA form
 % render -ssaout tmpSsa pacakge...
 `
@@ -84,11 +86,13 @@ func main() {
 		return
 	}
 
-	if cgOutFlag != nil && *cgOutFlag != "" {
-		// Compute the call graph
+	var cg *callgraph.Graph
+
+	// Compute the call graph
+	if *cgOut != "" {
 		fmt.Fprintf(os.Stderr, analysis.Faint("Computing call graph")+"\n")
 		start := time.Now()
-		callGraph, err := callgraphAnalysisMode.ComputeCallgraph(program)
+		cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
 		cgComputeDuration := time.Since(start).Seconds()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, analysis.Red("Could not compute callgraph: %v", err))
@@ -96,10 +100,12 @@ func main() {
 		} else {
 			fmt.Fprintf(os.Stderr, analysis.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 		}
+	}
 
-		fmt.Fprintf(os.Stderr, analysis.Faint("Writing call graph in ")+*cgOutFlag+"\n")
+	if *cgOut != "" {
+		fmt.Fprintf(os.Stderr, analysis.Faint("Writing call graph in "+*cgOut+"\n"))
 
-		err = render.GraphvizToFile(callGraph, *cgOutFlag)
+		err = render.GraphvizToFile(cg, *cgOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v", err)
 			return

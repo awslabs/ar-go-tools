@@ -5,7 +5,7 @@
 #endif
 
 
-all: maypanic statistics reachability dependencies static-commands render taint
+all: maypanic statistics reachability dependencies static-commands render taint compare
 
 maypanic: go.mod cmd/maypanic/*.go analysis/*.go analysis/reachability/*.go analysis/maypanic/*.go
 	go build -o bin/maypanic cmd/maypanic/*.go
@@ -27,6 +27,9 @@ render: go.mod cmd/render/*.go analysis/*.go analysis/rendering/*.go
 
 taint: go.mod cmd/taint/*.go analysis/*.go analysis/taint/*.go
 	go build -o bin/taint cmd/taint/*.go
+
+compare: go.mod cmd/compare/*.go analysis/*.go analysis/reachability/*.go
+	go build -o bin/compare cmd/compare/*.go
 
 clean:
 	rm -rf bin
