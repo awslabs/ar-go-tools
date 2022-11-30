@@ -82,3 +82,11 @@ You can try running:
 Which will run the analysis without searching for sources and sinks but will build all the data flow summaries it would
 need to perform the taint analysis.
 
+The `scripts` folder contains a script to run the `taint` tool on the SSM agent:
+`./taint/ssm-agent`
+Note that there will be warnings and errors, since the implementation is not complete. You will see the different 
+passes of the analysis running:
+- constructing the callgraph and building aliasing information (pointer analysis)
+- constructing the function summaries and detecting intra-procedural taint flows (intra-procedural analysis)
+- traversing the inter-procedural flow graph from taint sources (inter-procedural analysis)
+

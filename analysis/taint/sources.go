@@ -1,6 +1,7 @@
 package taint
 
 import (
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"golang.org/x/tools/go/ssa"
 )
@@ -12,7 +13,7 @@ func NewSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
 
 func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 	switch node := (n).(type) {
-	// Look for calls to functions that are considered sources
+	// Look for callees to functions that are considered sources
 	case *ssa.Call:
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
@@ -64,4 +65,9 @@ func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 	default:
 		return false
 	}
+}
+
+func isSourceFunction(cfg *config.Config, f *ssa.Function) bool {
+	pkg := analysis.PackageNameFromFunction(f)
+	return cfg.IsSource(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 }

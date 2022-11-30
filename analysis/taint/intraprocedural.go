@@ -1,356 +1,256 @@
 package taint
 
 import (
+	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
-	"go/types"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
-// intraProcedural is the main entry point of the intra procedural analysis.
-func intraProcedural(tt *TrackingInfo, ptrAnalysis *pointer.Result, function *ssa.Function) {
-	tracker := &taintTracker{
-		trackingInfo: tt,
-		pointerInfo:  ptrAnalysis,
-		changeFlag:   true,
-		blocksSeen:   map[*ssa.BasicBlock]struct{}{},
-	}
-	ssafuncs.RunForwardIterative(tracker, function)
+// This file implements the intra-procedural analysis. This analysis pass inspects a single function and constructs:
+// - a dataflow summary of the function
+// - the intra-procedural paths from a source to a sink
+// This file `intraprocedural.go` contains all the logic of the analysis and the transfer functions
+// called to handle each instruction.
+// The `intraprocedural_instruction_ops.go` file contains all the functions that define how instructions in the function
+// are handled.
+
+// stateTracker contains the information used by the intra-procedural taint analysis. The main components modified by
+// the analysis  are the taintInfo and the argFlows fields, which contain information about taint flows and argument
+// flows respectively.
+type stateTracker struct {
+	taintInfo   *FlowInformation         // the taint information for the analysis
+	pointerInfo *pointer.Result          // the pointer analysis results used by the taint analysis
+	changeFlag  bool                     // a flag to keep track of changes in the analysis state
+	blocksSeen  map[*ssa.BasicBlock]bool // a map to keep track of blocks seen during the analysis
+	errors      map[ssa.Node]error       // we don't panic during the analysis, but accumulate errors
+	summary     *SummaryGraph            // summary is the function summary currently being built
 }
 
-// getTaintedValueOrigin returns a source and true if v is a tainted value, otherwise it returns (nil, false)
+// IntraResult holds the results of the intra-procedural analysis.
+type IntraResult struct {
+	IntraPaths map[ssa.Instruction]map[ssa.Instruction]bool // IntraPaths are the intra-procedural paths from sources
+	// to sinks. This might disappear as the inter-procedural analysis should subsume it, but it is kept for now as
+	// the user has the option to turn off the inter-procedural pass in the analysis.
+	Summary *SummaryGraph // Summary is the procedure summary built by the analysis
+}
+
+// intraProcedural is the main entry point of the intra procedural analysis.
+func intraProcedural(cfg *config.Config, ptrAnalysis *pointer.Result, function *ssa.Function, runit bool) (IntraResult, error) {
+	sm := NewSummaryGraph(function, ptrAnalysis.CallGraph.Nodes[function])
+	tt := NewFlowInfo(cfg)
+	tracker := &stateTracker{
+		taintInfo:   tt,
+		pointerInfo: ptrAnalysis,
+		changeFlag:  true,
+		blocksSeen:  map[*ssa.BasicBlock]bool{},
+		errors:      map[ssa.Node]error{},
+		summary:     sm,
+	}
+
+	// The parameters of the function are marked as Parameter
+	for _, param := range function.Params {
+		tt.AddSource(param, NewSource(param, Parameter, "*"))
+	}
+
+	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
+	if runit {
+		ssafuncs.RunForwardIterative(tracker, function)
+		sm.constructed = true
+	}
+
+	// If we have errors, return one (TODO: we'll decide how to handle them later)
+	for _, err := range tracker.errors {
+		return IntraResult{}, fmt.Errorf("error in intraprocedural analysis: %w", err)
+	}
+	return IntraResult{IntraPaths: tt.SinkSources, Summary: sm}, nil
+}
+
+// getMarkedValueOrigins returns a source and true if v is a marked value, otherwise it returns (nil, false)
 // Uses both the direct taint information in the taint tracking info, and the pointer taint information, i.e:
-// - A value is tainted if it is directly tainted
-// - A value is tainted if it is a pointer and some alias is tainted.
+// - A value is marked if it is directly marked
+// - A value is marked if it is a pointer and some alias is marked.
 // The path parameter enables path-sensitivity. If path is "*", any path is accepted and the analysis
 // over-approximates.
-func (t *taintTracker) getTaintedValueOrigin(v ssa.Value, path string) (*Source, bool) {
-	// The value is directly marked as tainted.
-	n, ok := t.trackingInfo.taintedValues[v]
-	if ok {
-		// Check that any path or paths match
-		if path == "*" || n.Path == path {
-			return n, ok
+func (t *stateTracker) getMarkedValueOrigins(v ssa.Value, path string) []Source {
+	var origins []Source
+	// when the value is directly marked as tainted.
+	for source := range t.taintInfo.markedValues[v] {
+		if path == "*" || source.RegionPath == path {
+			origins = append(origins, source)
 		}
 	}
 
-	updateAsPtr := func(ptr pointer.Pointer) (*Source, bool) {
+	// when the value's aliases is marked by intersecting with another marked values aliases
+	if ptr := t.getAnyPointer(v); ptr != nil {
 		ptsToSet := ptr.PointsTo()
-		for otherPtsTo, source := range t.trackingInfo.taintedPointers {
+		for otherPtsTo, source := range t.taintInfo.markedPointers {
 			if ptsToSet.Intersects(*otherPtsTo) {
-				t.taintValue(v, source)
-				return source, true
+				t.markValue(v, source)
+				origins = append(origins, source)
 			}
 		}
-		return nil, false
 	}
-
-	// Check direct queries
-	if ptr, ptrExists := t.pointerInfo.Queries[v]; ptrExists {
-		if node, tainted := updateAsPtr(ptr); tainted {
-			return node, tainted
-		}
-	}
-
-	// Check indirect queries
-	if ptr, ptrExists := t.pointerInfo.IndirectQueries[v]; ptrExists {
-		if node, tainted := updateAsPtr(ptr); tainted {
-			return node, tainted
-		}
-	}
-
-	return nil, false
+	return origins
 }
 
-func (t *taintTracker) taintAllAliases(source *Source, ptsToSet pointer.PointsToSet) {
+// getAnyPointer returns the pointer to x according to the pointer analysis
+func (t *stateTracker) getAnyPointer(x ssa.Value) *pointer.Pointer {
+	// pointer information in Queries and IndirectQueries should be mutually exclusive, but we run both.
+	if ptr, ptrExists := t.pointerInfo.Queries[x]; ptrExists {
+		return &ptr
+	}
+	// Check indirect queries
+	if ptr, ptrExists := t.pointerInfo.IndirectQueries[x]; ptrExists {
+		return &ptr
+	}
+	return nil
+}
+
+// paramAliases returns the list of parameters of the function the value x aliases to.
+// TODO: cache some of the information obtained by this query
+func (t *stateTracker) paramAliases(x ssa.Value) []ssa.Value {
+	var aliasedParams []ssa.Value
+	for _, param := range t.summary.parent.Params {
+		if x == param {
+			aliasedParams = append(aliasedParams, param)
+		} else {
+			paramPtr := t.getAnyPointer(param)
+			xPtr := t.getAnyPointer(x)
+			if paramPtr != nil && xPtr != nil && paramPtr.PointsTo().Intersects(xPtr.PointsTo()) {
+				aliasedParams = append(aliasedParams, param)
+			}
+		}
+	}
+	return aliasedParams
+}
+
+// checkCopyIntoArgs checks whether the source in is copying or writing into a value that aliases with
+// one of the function's parameters. This keeps tracks of data flows to the function parameters that a
+// caller might see.
+func (t *stateTracker) checkCopyIntoArgs(in Source, out ssa.Value) {
+	for _, aliasedParam := range t.paramAliases(out) {
+		t.summary.addParamEdge(in, aliasedParam.(ssa.Node)) // type conversion is safe
+	}
+}
+
+// markAllAliases marks all the aliases of the pointer set using the source
+func (t *stateTracker) markAllAliases(source Source, ptsToSet pointer.PointsToSet) {
 	// Look at every value in the points-to set.
 	for _, label := range ptsToSet.Labels() {
 		if label != nil && label.Value() != nil {
-			source.Path = label.Path()
-			t.trackingInfo.taintedValues[label.Value()] = source
+			source.RegionPath = label.Path()
+			t.taintInfo.AddSource(label.Value(), source)
 		}
 	}
-	t.trackingInfo.taintedPointers[&ptsToSet] = source
+	t.taintInfo.markedPointers[&ptsToSet] = source
 }
 
-// taintValue marks the value v as tainted with origin taintOrigin
+// markValue marks the value v as tainted with origin taintOrigin
 // if the value was not marked as tainted, it changes the changeFlag to true to indicate that the taint information
 // has changed for the current pass
-func (t *taintTracker) taintValue(v ssa.Value, source *Source) {
-	if _, ok := t.trackingInfo.taintedValues[v]; ok {
+func (t *stateTracker) markValue(v ssa.Value, source Source) {
+	if t.taintInfo.HasSource(v, source) {
 		return
 	}
 	// v was not tainted before
-	t.changeFlag = true
-
-	t.trackingInfo.taintedValues[v] = source
+	t.changeFlag = t.taintInfo.AddSource(v, source)
 	// Propagate to any other value that is an alias of v
 	// By direct query
 	if ptr, ptrExists := t.pointerInfo.Queries[v]; ptrExists {
-		t.taintAllAliases(source, ptr.PointsTo())
+		t.markAllAliases(source, ptr.PointsTo())
 	}
 	// By indirect query
 	if ptr, ptrExists := t.pointerInfo.IndirectQueries[v]; ptrExists {
-		t.taintAllAliases(source, ptr.PointsTo())
+		t.markAllAliases(source, ptr.PointsTo())
 	}
 }
 
-func (t *taintTracker) AddFlowToSink(source ssa.Instruction, sink ssa.Instruction) {
-	if _, ok := t.trackingInfo.SinkFromSource[sink]; ok {
-		return
-	}
-	if IntraProceduralPathExists(source, sink) {
-		t.trackingInfo.SinkFromSource[sink] = source
+func (t *stateTracker) AddFlowToSink(source Source, sink ssa.Instruction) {
+	// A flow from a tainted source to a sink is added in the taint tracking info
+	if source.IsTainted() {
+		sourceInstr := source.Node.(ssa.Instruction) // a taint-source must be an instruction
+		if t.taintInfo.HasSinkSourcePair(sink, sourceInstr) {
+			return // skip computing paths
+		}
+		if IntraProceduralPathExists(sourceInstr, sink) {
+			_ = t.taintInfo.AddSinkSourcePair(sink, sourceInstr)
+		}
 	}
 }
 
 // Helpers for propagating taint
 
-func simpleTransitiveTaintPropagation(t *taintTracker, in ssa.Value, out ssa.Value) {
-	if n, ok := t.getTaintedValueOrigin(in, "*"); ok {
-		t.taintValue(out, n)
-	}
+// simpleTransitiveMarkPropagation  propagates all the marks from in to out
+func simpleTransitiveMarkPropagation(t *stateTracker, in ssa.Value, out ssa.Value) {
+	pathSensitiveMarkPropagation(t, in, out, "*")
 }
 
-func pathSensitiveTaintPropagation(t *taintTracker, in ssa.Value, out ssa.Value, path string) {
-	if n, ok := t.getTaintedValueOrigin(in, path); ok {
-		t.taintValue(out, n)
+// pathSensitiveMarkPropagation propagates all the marks from in to out with the object path string
+func pathSensitiveMarkPropagation(t *stateTracker, in ssa.Value, out ssa.Value, path string) {
+	for _, origin := range t.getMarkedValueOrigins(in, path) {
+		t.markValue(out, origin)
+		t.checkCopyIntoArgs(origin, out)
 	}
 }
 
 // callCommonTaint can be used for Call, Defer and Go that wrap a CallCommon.
-func (t *taintTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.Instruction, callCommon *ssa.CallCommon) {
-	if isSourceNode(t.trackingInfo.config, callInstr.(ssa.Node)) { // type cast cannot fail
-		source := NewSource(callInstr, TaintedVal, "")
-		t.taintValue(callValue, source)
-	}
-
-	if isSinkNode(t.trackingInfo.config, callInstr.(ssa.Node)) {
-		for _, arg := range callCommon.Args {
-			if origin, ok := t.getTaintedValueOrigin(arg, "*"); ok && origin.IsTainted() {
-				t.AddFlowToSink(origin.GetTaintSourceInstruction(), callInstr)
-			}
-		}
-	}
+func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallInstruction, callCommon *ssa.CallCommon) {
 	// Special cases: move somewhere else later.
 	if callCommon.Value != nil {
 		switch callCommon.Value.Name() {
+		// for append, we simply propagate the taint like in a binary operator
 		case "append":
 			for _, arg := range callCommon.Args {
-				simpleTransitiveTaintPropagation(t, arg, callValue)
+				simpleTransitiveMarkPropagation(t, arg, callValue)
+			}
+			return
+
+		// for len, we also propagate the taint. This may not be necessary
+		case "len":
+			for _, arg := range callCommon.Args {
+				simpleTransitiveMarkPropagation(t, arg, callValue)
+			}
+			return
+		}
+	}
+	// Add call instruction to summary, in case it hasn't been added through callgraph
+	t.summary.addCallInstr(callInstr)
+	// Check if node is source according to config
+	sourceType := CallReturn
+	if isSourceNode(t.taintInfo.config, callInstr.(ssa.Node)) { // type cast cannot fail
+		sourceType += TaintedVal
+	}
+	// Mark call
+	t.markValue(callValue, NewSource(callInstr.(ssa.Node), sourceType, ""))
+
+	callIsSink := isSinkNode(t.taintInfo.config, callInstr.(ssa.Node))
+
+	// Iterate over each argument and add edges and marks when necessary
+	for _, arg := range callCommon.Args {
+		// Mark call argument
+		t.markValue(arg, NewQualifierSource(callInstr.(ssa.Node), arg, CallSiteArg, ""))
+
+		for _, source := range t.getMarkedValueOrigins(arg, "*") {
+
+			if source.IsTainted() {
+				if callIsSink {
+					// This is an intra-procedural path from a source to a sink
+					t.AddFlowToSink(source, callInstr)
+				}
+			}
+			// Add any necessary edge in the summary flow graph (incoming edges at call site)
+			pathExists := true
+			if sourceInstr, ok := source.Node.(ssa.Instruction); ok {
+				pathExists = IntraProceduralPathExists(sourceInstr, callInstr)
+			}
+			if pathExists {
+				t.summary.addCallArgEdge(source, callInstr, arg)
+				for _, x := range t.paramAliases(arg) {
+					t.summary.addParamEdge(source, x.(ssa.Node))
+				}
 			}
 		}
 	}
-}
-
-// Implement path sensitivity operations
-
-func (t *taintTracker) NewBlock(block *ssa.BasicBlock) {
-	t.changeFlag = false
-	// If the block has not been visited yet, declare that information has changed.
-	if _, ok := t.blocksSeen[block]; !ok {
-		t.blocksSeen[block] = struct{}{}
-		t.changeFlag = true
-	}
-}
-
-func (t *taintTracker) ChangedOnEndBlock() bool {
-	return t.changeFlag
-}
-
-// Below are all the interface functions to implement the InstrOp interface
-
-func (t *taintTracker) DoCall(call *ssa.Call) {
-	t.callCommonTaint(call, call, call.Common())
-}
-
-func (t *taintTracker) DoDefer(d *ssa.Defer) {
-	t.callCommonTaint(d.Value(), d, d.Common())
-}
-
-func (t *taintTracker) DoGo(g *ssa.Go) {
-	t.callCommonTaint(g.Value(), g, g.Common())
-}
-
-func (t *taintTracker) DoDebugRef(*ssa.DebugRef) {}
-
-func (t *taintTracker) DoUnOp(x *ssa.UnOp) {
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoBinOp(binop *ssa.BinOp) {
-	// If either operand is tainted, taint the value.
-	// We might want more precision later.
-	simpleTransitiveTaintPropagation(t, binop.X, binop)
-	simpleTransitiveTaintPropagation(t, binop.Y, binop)
-}
-
-func (t *taintTracker) DoChangeInterface(x *ssa.ChangeInterface) {
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoChangeType(x *ssa.ChangeType) {
-	// Changing type doesn't change taint
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoConvert(x *ssa.Convert) {
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoMakeInterface(x *ssa.MakeInterface) {
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoExtract(x *ssa.Extract) {
-	// TODO: tuple index sensitive propagation
-	simpleTransitiveTaintPropagation(t, x.Tuple, x)
-	//  "Warning: The analysis is imprecise on tuples.\n"
-}
-
-func (t *taintTracker) DoSlice(x *ssa.Slice) {
-	// Taking a slice propagates taint information
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoReturn(r *ssa.Return) {
-	for _, result := range r.Results {
-		if source, ok := t.getTaintedValueOrigin(result, "*"); ok && source.IsTainted() {
-			t.AddFlowToSink(source.GetTaintSourceInstruction(), r)
-		}
-	}
-
-}
-
-func (t *taintTracker) DoRunDefers(*ssa.RunDefers) {
-	// TODO: handle defers
-	// "Warning: The analysis is unsound on defers.\n"
-}
-
-func (t *taintTracker) DoPanic(x *ssa.Panic) {
-	// A panic is always a sink
-	if isSinkNode(t.trackingInfo.config, x) {
-		if origin, ok := t.getTaintedValueOrigin(x.X, "*"); ok && origin.IsTainted() {
-			t.AddFlowToSink(origin.GetTaintSourceInstruction(), x)
-		}
-	}
-}
-
-func (t *taintTracker) DoSend(x *ssa.Send) {
-	// Sending a tainted value over the channel taints the whole channel
-	simpleTransitiveTaintPropagation(t, x.X, x.Chan)
-}
-
-func (t *taintTracker) DoStore(x *ssa.Store) {
-	simpleTransitiveTaintPropagation(t, x.Val, x.Addr)
-}
-
-func (t *taintTracker) DoIf(*ssa.If) {
-	// Do nothing
-	// TODO: do we want to add path sensivity, i.e. conditional on tainted value taints all values in condition?
-}
-
-func (t *taintTracker) DoJump(*ssa.Jump) {
-	// Do nothing
-}
-
-func (t *taintTracker) DoMakeChan(*ssa.MakeChan) {
-	// Do nothing
-}
-
-func (t *taintTracker) DoAlloc(x *ssa.Alloc) {
-	if isSourceNode(t.trackingInfo.config, x) {
-		source := NewSource(x, TaintedVal, "")
-		t.taintValue(x, source)
-	}
-}
-
-func (t *taintTracker) DoMakeSlice(*ssa.MakeSlice) {
-	// Do nothing
-}
-
-func (t *taintTracker) DoMakeMap(*ssa.MakeMap) {
-	// Do nothing
-}
-
-func (t *taintTracker) DoRange(x *ssa.Range) {
-	// An iterator over a tainted value is tainted
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoNext(x *ssa.Next) {
-	simpleTransitiveTaintPropagation(t, x.Iter, x)
-}
-
-func (t *taintTracker) DoFieldAddr(x *ssa.FieldAddr) {
-	path := "*" // over-approximation
-	// Try to get precise field name to be field sensitive
-	xTyp := x.X.Type().Underlying()
-	if ptrTyp, ok := xTyp.(*types.Pointer); ok {
-		eltTyp := ptrTyp.Elem().Underlying()
-		if structTyp, ok := eltTyp.(*types.Struct); ok {
-			path = structTyp.Field(x.Field).Name()
-		}
-	}
-	// Taint is propagated if field of struct is tainted
-	pathSensitiveTaintPropagation(t, x.X, x, path)
-}
-
-func (t *taintTracker) DoField(x *ssa.Field) {
-	path := "*" // over-approximation
-	// Try to get precise field name to be field sensitive
-	xTyp := x.X.Type().Underlying()
-	if structTyp, ok := xTyp.(*types.Struct); ok {
-		path = structTyp.Field(x.Field).Name()
-	}
-	// Taint is propagated if field of struct is tainted
-	pathSensitiveTaintPropagation(t, x.X, x, path)
-}
-
-func (t *taintTracker) DoIndexAddr(x *ssa.IndexAddr) {
-	// An indexing taints the value if either index or the indexed value is tainted
-	simpleTransitiveTaintPropagation(t, x.Index, x)
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoIndex(x *ssa.Index) {
-	// An indexing taints the value if either index or array is tainted
-	simpleTransitiveTaintPropagation(t, x.Index, x)
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoLookup(x *ssa.Lookup) {
-	simpleTransitiveTaintPropagation(t, x.X, x)
-	simpleTransitiveTaintPropagation(t, x.Index, x)
-}
-
-func (t *taintTracker) DoMapUpdate(x *ssa.MapUpdate) {
-	// Adding a tainted key or value in a map taints the whole map
-	simpleTransitiveTaintPropagation(t, x.Key, x.Map)
-	simpleTransitiveTaintPropagation(t, x.Value, x.Map)
-}
-
-func (t *taintTracker) DoTypeAssert(x *ssa.TypeAssert) {
-	simpleTransitiveTaintPropagation(t, x.X, x)
-}
-
-func (t *taintTracker) DoMakeClosure(x *ssa.MakeClosure) {
-	// TODO: build summary of closure
-	// panic(x)
-	// "Warning: The analysis does not support closures yet. Results may be unsound.\n"
-}
-
-func (t *taintTracker) DoPhi(phi *ssa.Phi) {
-	for _, edge := range phi.Edges {
-		simpleTransitiveTaintPropagation(t, edge, phi)
-	}
-}
-
-func (t *taintTracker) DoSelect(x *ssa.Select) {
-	//	"Warning: The analysis does not support select statements.\n"
-	// panic(x)
 }

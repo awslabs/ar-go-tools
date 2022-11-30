@@ -32,7 +32,7 @@ func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {
 	for _, fnMap := range sourceMap {
 		for _, instructions := range fnMap {
 			for _, instruction := range instructions {
-				pos := (instruction).Pos() // getting the position with this should be ok for calls and rvalues
+				pos := (instruction).Pos() // getting the position with this should be ok for callees and rvalues
 				if pos != token.NoPos {
 					pass.Reportf(pos, "found a source")
 				}
@@ -44,7 +44,7 @@ func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {
 
 func TestAllSources(t *testing.T) {
 	var err error
-	// Paths
+	// TaintFlows
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get wd: %s", err)

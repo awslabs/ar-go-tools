@@ -124,14 +124,20 @@ func getFieldNameFromType(t types.Type, i int) string {
 	}
 }
 
+// IntraProceduralPathExists returns true iff there is a path between the begin and end instructions in a single
+// function body.
 func IntraProceduralPathExists(begin ssa.Instruction, end ssa.Instruction) bool {
 	return FindIntraProceduralPath(begin, end) != nil
 }
 
+// FindIntraProceduralPath returns a path between the begin and end instructions.
+// Returns nil if there is no path between being and end inside the function.
 func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) []ssa.Instruction {
+	// Return nil if the parent functions of being and end are different
 	if begin.Parent() != end.Parent() {
 		return nil
 	}
+
 	if begin.Block() != end.Block() {
 		blockPath := FindPathBetweenBlocks(begin.Block(), end.Block())
 		if blockPath == nil {
@@ -139,19 +145,22 @@ func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) []ssa.I
 		} else {
 			var path []ssa.Instruction
 
-			path = append(path, GetnstructionsBetween(begin.Block(), begin, ssafuncs.LastInstr(begin.Block()))...)
+			path = append(path, InstructionsBetween(begin.Block(), begin, ssafuncs.LastInstr(begin.Block()))...)
 			for _, block := range blockPath[1 : len(blockPath)-1] {
 				path = append(path, block.Instrs...)
 			}
-			path = append(path, GetnstructionsBetween(end.Block(), ssafuncs.FirstInstr(end.Block()), end)...)
+			path = append(path, InstructionsBetween(end.Block(), ssafuncs.FirstInstr(end.Block()), end)...)
 			return path
 		}
 	} else {
-		return GetnstructionsBetween(begin.Block(), begin, end)
+		return InstructionsBetween(begin.Block(), begin, end)
 	}
 }
 
-func GetnstructionsBetween(block *ssa.BasicBlock, begin ssa.Instruction, end ssa.Instruction) []ssa.Instruction {
+// InstructionsBetween returns the instructions between begin and end in the block.
+// If begin and end are not two instructions that appear in the same block and being appears before end, then
+// the function returns nil.
+func InstructionsBetween(block *ssa.BasicBlock, begin ssa.Instruction, end ssa.Instruction) []ssa.Instruction {
 	flag := false
 	var path []ssa.Instruction
 	for _, instr := range block.Instrs {
@@ -168,6 +177,8 @@ func GetnstructionsBetween(block *ssa.BasicBlock, begin ssa.Instruction, end ssa
 	return nil
 }
 
+// FindPathBetweenBlocks is a BFS of the blocks successor graph returns a list of block indexes representing a path
+// from begin to end. Returns nil iff there is no such path.
 func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.BasicBlock {
 	visited := make(map[*ssa.BasicBlock]int)
 	t := &ssafuncs.BlockTree{Block: begin, Parent: nil, Children: []*ssafuncs.BlockTree{}}

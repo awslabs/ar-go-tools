@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 func Foo(x int) int {
-	return x*x + 1 // want "count 2 instructions at return"
+	return x*x + 1
 }
 
 func Bar(x int) []int {
@@ -24,11 +24,11 @@ func Bar(x int) []int {
 				s[i] += 1
 			}
 			// ssa block 7
-			return s // want "count 17 instructions at return"
+			return s
 		}
 	}
 	// ssa block 2
-	return s // want "count 5 instructions at return"
+	return s
 }
 
 func main() {

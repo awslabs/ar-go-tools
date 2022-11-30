@@ -31,20 +31,6 @@ func (t *BlockTree) CountPathOccurrences(block *ssa.BasicBlock) int {
 	return c
 }
 
-// PathToLeaf returns the path from the root to the receiver
-func (t *BlockTree) PathToLeaf() *BlockPath {
-	if t == nil {
-		return nil
-	}
-
-	p := &BlockPath{block: t.Block, next: nil}
-	for leaf := t; leaf != nil; leaf = leaf.Parent {
-		p2 := &BlockPath{block: leaf.Block, next: p}
-		p = p2
-	}
-	return p
-}
-
 // A BlockPath is a simple list of blocks
 type BlockPath struct {
 	block *ssa.BasicBlock
@@ -58,4 +44,18 @@ func (b *BlockPath) ToBlocks() []*ssa.BasicBlock {
 		blocks = append(blocks, cur.block)
 	}
 	return blocks
+}
+
+// PathToLeaf returns the path from the root to the receiver
+func (t *BlockTree) PathToLeaf() *BlockPath {
+	if t == nil {
+		return nil
+	}
+
+	p := &BlockPath{block: t.Block, next: nil}
+	for leaf := t; leaf != nil; leaf = leaf.Parent {
+		p2 := &BlockPath{block: leaf.Block, next: p}
+		p = p2
+	}
+	return p
 }

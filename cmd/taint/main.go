@@ -50,6 +50,8 @@ func main() {
 		os.Exit(2)
 	}
 
+	logger := log.New(os.Stdout, "", log.Flags())
+
 	packageConfig := &packages.Config{
 		// packages.LoadSyntax for given files only
 		Mode:  analysis.CallgraphPkgLoadMode,
@@ -66,7 +68,7 @@ func main() {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
+	logger.Printf(analysis.Faint("Reading sources") + "\n")
 
 	program, err := analysis.LoadProgram(packageConfig, buildmode, flag.Args())
 	if err != nil {
@@ -75,23 +77,28 @@ func main() {
 	}
 
 	start := time.Now()
-	analysisInfo, err := taint.Analyze(log.Default(), taintConfig, program)
+	analysisInfo, err := taint.Analyze(logger, taintConfig, program)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
 		return
 	}
-	fmt.Printf("Analysis took %3.4f s\n", duration.Seconds())
+	logger.Printf("Analysis took %3.4f s\n", duration.Seconds())
 	// Prints location in the SSA
-	for sink, source := range analysisInfo.SinkFromSource {
-		sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
-		sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
-		fmt.Printf("A source has reached a sink in function %s:\n\tSink: %s\n\t\t[%s]\n\tSource: %s\n\t\t[%s]\n",
-			sink.Parent().Name(),
-			sink.String(),
-			sinkPos.String(),
-			source.String(),
-			sourcePos.String(),
-		)
+
+	for sink, sources := range analysisInfo.TaintFlows {
+		for source := range sources {
+			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
+			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
+			logger.Printf("%s in function %s:\n\tSink: %s\n\t\t[%s]\n\tSource: %s\n\t\t[%s]\n",
+				analysis.Red("A source has reached a sink"),
+				sink.Parent().Name(),
+				sink.String(),
+				sinkPos.String(),
+				source.String(),
+				sourcePos.String(),
+			)
+		}
 	}
+
 }

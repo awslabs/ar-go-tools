@@ -109,7 +109,7 @@ func runVisitorPass(pass *analysis.Pass) (interface{}, error) {
 
 func TestAll(t *testing.T) {
 	var err error
-	// Paths
+	// TaintFlows
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get wd: %s", err)
