@@ -1,7 +1,7 @@
-pkgprefix: "github.com/aws" # focus on functions in aws
+pkgprefix: "git.amazon.com" # focus on functions in this package
 sources:
-   - method: "GetMessages"
-     package: "github.com/aws/amazon-ssm-agent/agent/runcommand/mds"
+  - package: "github.com/aws/amazon-ssm-agent/agent/runcommand/contracts"
+    type: "SendCommandPayload"
 sinks:
   - package: "github.com/aws/amazon-ssm-agent/agent/jsonutil"
     method: "Marshal"

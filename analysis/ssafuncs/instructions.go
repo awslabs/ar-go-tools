@@ -1,6 +1,5 @@
 // Package ssafuncs provides functions to operate on the SSA representation of a program.
 // It provides an interface to implement visitors for SSA instructions.
-// TODO: provide functionality to perform a fixpoint traversal
 package ssafuncs
 
 import (
@@ -143,7 +142,7 @@ func LastInstr(block *ssa.BasicBlock) ssa.Instruction {
 	}
 }
 
-// FirstInstr returns the last instruction in a block. There is always a last instruction for a reachable block.
+// FirstInstr returns the first instruction in a block. There is always a first instruction for a reachable block.
 // Returns nil for an empty block (a block can be empty if it is non-reachable)
 func FirstInstr(block *ssa.BasicBlock) ssa.Instruction {
 	if len(block.Instrs) == 0 {

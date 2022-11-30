@@ -6,16 +6,21 @@
 // the fields defined in the Config struct type. The other fields  are defined
 // by the types of the fields of Config and nested struct types.
 // For example, a valid config file is as follows:
-// SinkFromSource:
-//   - Package: fmt
-//     Method: Printf
+// ```
+// sinks::
+//   - package: fmt
+//     method: Printf
 //
-// Sources:
-//   - Method: Read
+// sources:
+//   - method: Read
+//
+// ```
+// (note the use of lowercase)
 package config
 
 import (
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
 	"gopkg.in/yaml.v3"
 	"os"
 )
@@ -39,11 +44,12 @@ func LoadGlobal() (*Config, error) {
 // To add elements to a config file, add fields to this struct.
 // If some field is not defined in the config file, it will be empty/zero in the struct.
 type Config struct {
-	Sanitizers     []CodeIdentifier
-	Sinks          []CodeIdentifier
-	Sources        []CodeIdentifier
-	StaticCommands []CodeIdentifier
-	PkgPrefix      string
+	Sanitizers          []CodeIdentifier
+	Sinks               []CodeIdentifier
+	Sources             []CodeIdentifier
+	StaticCommands      []CodeIdentifier
+	PkgPrefix           string
+	SkipInterprocedural bool
 }
 
 // Load reads a configuration from a file
@@ -57,13 +63,20 @@ func Load(filename string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not unmarshal config file: %w", err)
 	}
+
+	functional.Map(config.Sanitizers, CompileRegexes)
+	functional.Map(config.Sinks, CompileRegexes)
+	functional.Map(config.Sources, CompileRegexes)
+	functional.Map(config.StaticCommands, CompileRegexes)
+
 	return &config, nil
 }
 
 // Below are functions used to query the configuration on specific facts
 
 func (c Config) IsSource(cid CodeIdentifier) bool {
-	return ExistsCid(c.Sources, cid.equalOnNonEmptyFields)
+	b := ExistsCid(c.Sources, cid.equalOnNonEmptyFields)
+	return b
 }
 
 func (c Config) IsSink(cid CodeIdentifier) bool {

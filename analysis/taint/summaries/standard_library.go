@@ -1,9 +1,10 @@
 // Package summaries defines how taint analysis information can be summarized for a given function.
 package summaries
 
-// StdPackages maps the names of standard library packages to the map of summaries for the package.
+// stdPackages maps the names of standard library packages to the map of summaries for the package.
 // This also serves as a reference to use for ignoring packages.
-var StdPackages = map[string]map[string]Summary{
+// Each of the maps in stdPackages map the function string (function.String()) to the summary.
+var stdPackages = map[string]map[string]Summary{
 	"archive/tar":     SummaryArchiveTar,
 	"archive/zip":     SummaryArchiveZip,
 	"bufio":           SummaryBufIo,
@@ -40,6 +41,7 @@ var StdPackages = map[string]map[string]Summary{
 	"hash":            SummaryHash,
 	"html":            SummaryHtml,
 	"image":           SummaryImage,
+	"image/color":     SummaryImage,
 	"index":           SummaryIndex,
 	"io":              SummaryIo,
 	"io/fs":           SummaryIo,
@@ -143,7 +145,13 @@ var SummaryDebug = map[string]Summary{}
 
 var SummaryEmbed = map[string]Summary{}
 
-var SummaryEncoding = map[string]Summary{}
+var SummaryEncoding = map[string]Summary{
+	// func Indent(dst *bytes.Buffer, src []byte, prefix, indent string) error
+	"encoding/json.Indent": {
+		[][]int{{0}, {0}, {0}, {0}}, // all args taint the first
+		[][]int{{}, {0}, {0}, {0}},  // all args except first taint return error
+	},
+}
 
 var SummaryErrors = map[string]Summary{}
 
@@ -152,11 +160,25 @@ var SummaryExpVar = map[string]Summary{}
 var SummaryFlag = map[string]Summary{}
 
 var SummaryFmt = map[string]Summary{
+	"fmt.init":       NoTaintPropagation,
+	"fmt.newPrinter": NoTaintPropagation,
+	// func Println(a ...any) (n int, err error) {
+	"fmt.Println": NoTaintPropagation,
 	// func Errorf(format string, a ...interface{}) error
-	"fmt.Errorf": {
-		TaintingArgs: [][]int{{0}},
-		TaintingRets: [][]int{{0}, {0}},
+	"fmt.Errorf": NoTaintPropagation,
+	// func Fprintf(w io.Writer, format string, a ...any) (n int, err error)
+	"fmt.Fprintf": {
+		TaintingArgs: [][]int{
+			{0}, // w is tainted -> w stays tainted
+			{0}},
+		TaintingRets: [][]int{
+			{},
+		},
 	},
+	//func Sprintf(format string, a ...any) string
+	"fmt.Sprintf": FormatterPropagation,
+	// func Printf(format string, a ...any) (n int, err error)
+	"fmt.Printf": FormatterPropagation,
 }
 
 var SummaryGo = map[string]Summary{}
@@ -171,7 +193,9 @@ var SummaryIndex = map[string]Summary{}
 
 var SummaryIo = map[string]Summary{}
 
-var SummaryLog = map[string]Summary{}
+var SummaryLog = map[string]Summary{
+	"log.Debugf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
+}
 
 var SummaryMath = map[string]Summary{}
 
@@ -181,19 +205,29 @@ var SummaryNet = map[string]Summary{}
 
 var SummaryOs = map[string]Summary{}
 
-var SummaryPath = map[string]Summary{}
+var SummaryPath = map[string]Summary{
+	// func Join(elem ...string) string
+	"path.Join":          SingleVarArgPropagation,
+	"path/filepath.Join": SingleVarArgPropagation,
+}
 
 var SummaryPlugin = map[string]Summary{}
 
 var SummaryReflect = map[string]Summary{}
 
-var SummaryRegexp = map[string]Summary{}
+var SummaryRegexp = map[string]Summary{
+	// matching regexp doesn't taint arguments but either taints return
+	"regexp.MatchString": {[][]int{}, [][]int{{0}, {0}}},
+	"regexp.MatchReader": {[][]int{}, [][]int{{0}, {0}}},
+}
 
 var SummaryRuntime = map[string]Summary{}
 
 var SummarySort = map[string]Summary{}
 
-var SummaryStrConv = map[string]Summary{}
+var SummaryStrConv = map[string]Summary{
+	"strconv.Itoa": {[][]int{{}}, [][]int{{0}, {0}}},
+}
 
 var SummaryStrings = map[string]Summary{}
 

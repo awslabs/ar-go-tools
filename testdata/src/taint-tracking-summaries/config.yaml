@@ -1,0 +1,10 @@
+sources:
+  - package: main
+    method: Source
+  - package: command-line-arguments
+    method: Source
+sinks:
+  - package: command-line-arguments
+    method: Sink
+  - package: main
+    method: Sink

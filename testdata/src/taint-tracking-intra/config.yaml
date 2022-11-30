@@ -12,3 +12,4 @@ sinks:
     method: sink2
   - package: main
     method: sink3
+skipinterprocedural: true

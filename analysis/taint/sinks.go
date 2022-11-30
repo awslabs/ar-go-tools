@@ -12,7 +12,7 @@ func NewSinkMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
 
 func isSinkNode(cfg *config.Config, n ssa.Node) bool {
 	switch node := (n).(type) {
-	// Look for calls to functions that are considered sinks
+	// Look for callees to functions that are considered sinks
 	case *ssa.Call, *ssa.Go, *ssa.Defer:
 		// This condition should always be true
 		if callNode, ok := node.(ssa.CallInstruction); ok {

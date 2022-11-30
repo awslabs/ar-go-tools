@@ -16,7 +16,7 @@ type Bar struct {
 }
 
 type SomeStruct struct {
-	DataField string // DataField is marked as source in config.yaml
+	DataField string
 	OtherData string
 }
 
@@ -257,6 +257,44 @@ func testMapAndField2() {
 	sink1(a[1])        // source reaches sink here
 }
 
+func testMultipleSources1() {
+	b := mkBar()
+	s := fmt.Sprintf("Tainted")
+	t := b.BarData
+	sink3(s + t)
+}
+
+func testMultipleSources2() {
+	var a []string
+	if random.Int() > 10 {
+		a = append(a, fmt.Sprintf("tainted"))
+	} else {
+		x := mkBar()
+		a = append(a, x.BarData)
+	}
+	sink1(a[0])
+}
+
+func testMultipleSources3() {
+	a := make([]*string, 2)
+	b := "ok"
+	a[0] = &b
+	if random.Int() > 10 {
+		b = fmt.Sprintf("tainted")
+	} else {
+		for i := 0; i < 10; i++ {
+			b = fmt.Sprintf("tainted too")
+			if b == "ok" {
+				x := mkBar()
+				b = b + x.BarData
+			} else {
+				b = *a[0] + "0"
+			}
+		}
+	}
+	sink1(*a[0])
+}
+
 func main() {
 	simple1()
 	part2()
@@ -275,4 +313,7 @@ func main() {
 	testMapAndField2()
 	ignore(testReturnTaintedValue())
 	ignore(testLongFunction())
+	testMultipleSources1()
+	testMultipleSources2()
+	testMultipleSources3()
 }
