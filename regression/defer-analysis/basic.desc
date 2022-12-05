@@ -1,0 +1,16 @@
+CORE
+basic.go
+--verbose
+
+^EXIT=0$
+^SIGNAL=0$
+^> f1 1$
+^> f2 0$
+^> f2 1$
+^> f3 2$
+^> f4 0 1 1$
+^Unbounded defer stack in f5 \(
+^> f6 0 1 2 3 4 3 2 3 2 1 2 3 2 1 2 1$
+^> f7 2 1$
+^18 functions had bounded defers$
+--

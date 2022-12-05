@@ -28,6 +28,9 @@ render: go.mod cmd/render/*.go analysis/*.go analysis/rendering/*.go
 taint: go.mod cmd/taint/*.go analysis/*.go analysis/taint/*.go
 	go build -o bin/taint cmd/taint/*.go
 
+defer: go.mod cmd/defer/*.go analysis/*.go
+	go build -o bin/defer cmd/defer/*.go
+
 compare: go.mod cmd/compare/*.go analysis/*.go analysis/reachability/*.go
 	go build -o bin/compare cmd/compare/*.go
 

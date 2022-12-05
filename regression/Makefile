@@ -4,6 +4,7 @@ test:
 	@./test.pl -s reachability -e -p -c "../../bin/reachability" reachable-functions
 	@./test.pl -s panic -e -p -c "../../bin/maypanic" may-panic-analysis
 	@./test.pl -s panic-model -e -p -c "../../bin/maypanic" may-panic-model-checking
+	@./test.pl -s defer -e -p -c "../../bin/defer" defer-analysis
 
 #	@./test.pl -e -p -c "../../cmd/gozer/gozer"
 
