@@ -15,7 +15,6 @@ import (
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dependencies"
 	"golang.org/x/tools/go/buildutil"
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -66,15 +65,9 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	cfg := &packages.Config{
-		// packages.LoadSyntax for given files only
-		Mode:  packages.LoadAllSyntax,
-		Tests: false,
-	}
-
 	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
 
-	program, err := analysis.LoadProgram(cfg, mode, flag.Args())
+	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}

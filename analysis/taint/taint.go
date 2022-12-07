@@ -5,32 +5,20 @@ package taint
 
 import (
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint/summaries"
 	"go/types"
-	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/go/pointer"
-	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 	"log"
 	"os"
 	"strings"
 	"time"
-)
 
-const PkgLoadMode = packages.NeedName |
-	packages.NeedFiles |
-	packages.NeedCompiledGoFiles |
-	packages.NeedImports |
-	packages.NeedDeps |
-	packages.NeedExportFile |
-	packages.NeedTypes |
-	packages.NeedSyntax |
-	packages.NeedTypesInfo |
-	packages.NeedTypesSizes |
-	packages.NeedModule
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint/summaries"
+	"golang.org/x/tools/go/pointer"
+	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
+)
 
 type AnalysisResult struct {
 	TaintFlows SinkToSources

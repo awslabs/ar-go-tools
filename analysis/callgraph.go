@@ -4,6 +4,8 @@ package analysis
 
 import (
 	"fmt"
+	"os"
+
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/callgraph/rta"
@@ -13,7 +15,6 @@ import (
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
-	"os"
 )
 
 type SsaInfo struct {
@@ -22,7 +23,7 @@ type SsaInfo struct {
 	Mains    []*ssa.Package
 }
 
-const CallgraphPkgLoadMode = packages.NeedName |
+const PkgLoadMode = packages.NeedName |
 	packages.NeedFiles |
 	packages.NeedCompiledGoFiles |
 	packages.NeedImports |

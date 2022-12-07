@@ -10,14 +10,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint"
-	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/go/ssa"
 	"log"
 	"os"
 	"time"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint"
+	"golang.org/x/tools/go/ssa"
 )
 
 var (
@@ -52,12 +52,6 @@ func main() {
 
 	logger := log.New(os.Stdout, "", log.Flags())
 
-	packageConfig := &packages.Config{
-		// packages.LoadSyntax for given files only
-		Mode:  analysis.CallgraphPkgLoadMode,
-		Tests: false,
-	}
-
 	taintConfig := &config.Config{} // empty default config
 	if *configPath != "" {
 		config.SetGlobalConfig(*configPath)
@@ -70,7 +64,7 @@ func main() {
 
 	logger.Printf(analysis.Faint("Reading sources") + "\n")
 
-	program, err := analysis.LoadProgram(packageConfig, buildmode, flag.Args())
+	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return

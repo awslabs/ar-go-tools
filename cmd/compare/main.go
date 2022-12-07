@@ -11,17 +11,19 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/reachability"
 	"golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 var (
-	modeFlag = flag.String("analysis", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
+	modeFlag = flag.String("graph", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
 	binary   = flag.String("binary", "", "Pull the symbol table from specified binary file")
 )
 
@@ -67,15 +69,9 @@ func main() {
 		os.Exit(2)
 	}
 
-	cfg := &packages.Config{
-		// packages.LoadSyntax for given files only
-		Mode:  analysis.CallgraphPkgLoadMode,
-		Tests: false,
-	}
-
 	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
 
-	program, err := analysis.LoadProgram(cfg, buildmode, flag.Args())
+	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not load program: %v", err)
 		return
@@ -84,15 +80,15 @@ func main() {
 	var cg *callgraph.Graph
 
 	// Compute the call graph
-	fmt.Fprintf(os.Stderr, analysis.Faint("Computing call graph")+"\n")
+	fmt.Fprintln(os.Stderr, analysis.Faint("Computing call graph"))
 	start := time.Now()
 	cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
 	cgComputeDuration := time.Since(start).Seconds()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, analysis.Red("Could not compute callgraph: %v", err))
+		fmt.Fprint(os.Stderr, analysis.Red("Could not compute callgraph: %v\n", err))
 		return
 	} else {
-		fmt.Fprintf(os.Stderr, analysis.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+		fmt.Fprint(os.Stderr, analysis.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	}
 
 	//Load the binary
@@ -107,6 +103,12 @@ func main() {
 
 	callgraph := callgraphReachable(cg, false, false)
 	reachable := findReachableNames(program)
+	allfuncs := findAllFunctionNames(program)
+
+	stripAllParens(callgraph)
+	stripAllParens(reachable)
+	stripAllParens(symbols)
+	stripAllParens(allfuncs)
 
 	all := make(map[string]bool)
 
@@ -119,15 +121,49 @@ func main() {
 	for f := range reachable {
 		all[f] = true
 	}
+	for f := range allfuncs {
+		all[f] = true
+	}
 
-	for f := range all {
-		fmt.Printf("%c %c %c %s\n", ch(reachable[f]), ch(callgraph[f]), ch(symbols[f]), f)
+	allsorted := make([]string, 0, len(all))
+
+	for key := range all {
+		allsorted = append(allsorted, key)
+	}
+	sort.Slice(allsorted, func(i, j int) bool {
+		return stripLeadingAsterisk(allsorted[i]) < stripLeadingAsterisk(allsorted[j])
+	})
+
+	for _, f := range allsorted {
+		fmt.Printf("%c %c %c %c %s\n", ch(allfuncs[f]), ch(reachable[f]), ch(callgraph[f]), ch(symbols[f]), f)
 	}
 
 	fmt.Printf("%d total functions\n", len(all))
-	fmt.Printf("Missing %d from callgraph, %d from reachability, %d from binary\n",
-		len(all)-len(callgraph), len(all)-len(reachable), len(all)-len(symbols))
+	fmt.Printf("Missing %d from allfuncs, %d from callgraph, %d from reachability, %d from binary\n",
+		len(all)-len(allfuncs), len(all)-len(callgraph), len(all)-len(reachable), len(all)-len(symbols))
 
+}
+
+func stripAllParens(m map[string]bool) {
+	for key, b := range m {
+		if strings.ContainsAny(key, "()") {
+			delete(m, key)
+			m[stripParens(key)] = b
+		}
+	}
+}
+
+func stripParens(s string) string {
+	s1 := strings.ReplaceAll(s, "(", "")
+	s2 := strings.ReplaceAll(s1, ")", "")
+	return s2
+}
+
+func stripLeadingAsterisk(s string) string {
+	if len(s) == 0 || s[0] != '*' {
+		return s
+	}
+	return s[1:]
 }
 
 func ch(c bool) rune {
@@ -188,8 +224,7 @@ func findCallgraphEntryPoints(cg *callgraph.Graph, excludeMain bool, excludeInit
 
 }
 
-func findReachableNames(program *ssa.Program) map[string]bool {
-	funcs := reachability.FindReachable(program, false, false, nil)
+func funcsToStrings(funcs map[*ssa.Function]bool) map[string]bool {
 	names := make(map[string]bool, len(funcs))
 
 	for f, t := range funcs {
@@ -199,4 +234,14 @@ func findReachableNames(program *ssa.Program) map[string]bool {
 		names[f.String()] = true
 	}
 	return names
+}
+
+func findReachableNames(program *ssa.Program) map[string]bool {
+	funcs := reachability.FindReachable(program, false, false, nil)
+	return funcsToStrings(funcs)
+}
+
+func findAllFunctionNames(program *ssa.Program) map[string]bool {
+	funcs := ssautil.AllFunctions(program)
+	return funcsToStrings(funcs)
 }
