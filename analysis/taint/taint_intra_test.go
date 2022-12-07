@@ -1,14 +1,14 @@
 package taint
 
 import (
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/go/ssa"
 	"log"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"golang.org/x/tools/go/ssa"
 )
 
 func loadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *config.Config) {
@@ -23,16 +23,13 @@ func loadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *con
 	if err != nil {
 		t.Errorf("could not set config file: %v", err)
 	}
-	pkgLoadConfig := &packages.Config{
-		Mode:  PkgLoadMode,
-		Tests: false,
-	}
+
 	files := []string{filepath.Join(testdata, "src", dir, "main.go")}
 	for _, extraFile := range extraFiles {
 		files = append(files, filepath.Join(testdata, "src", dir, extraFile))
 	}
 
-	pkgs, err := analysis.LoadProgram(pkgLoadConfig, ssa.BuilderMode(0), files)
+	pkgs, err := analysis.LoadProgram(nil, "", ssa.BuilderMode(0), files)
 	if err != nil {
 		t.Fatalf("error loading packages.")
 	}

@@ -17,6 +17,7 @@ func ReadNMFile(filename string) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	fileScanner := bufio.NewScanner(infile)
 	fileScanner.Split(bufio.ScanLines)
 
@@ -35,6 +36,20 @@ func ReadNMFile(filename string) (map[string]bool, error) {
 			name = "(*" + name[:index] + name[index+2:]
 			//fmt.Fprintf(os.Stderr, "Munged name is %s\n", name)
 		}
+
+		if strings.HasPrefix(name, "type..eq.") || strings.HasPrefix(name, "type..hash.") {
+			continue
+		}
+
+		if strings.HasSuffix(name, ".abi0") {
+			name = name[:len(name)-5]
+		}
+
+		n := strings.LastIndex(name, ".func")
+		if n != -1 {
+			name = name[:n] + "$" + name[n+5:]
+		}
+
 		symbols[name] = true
 	}
 

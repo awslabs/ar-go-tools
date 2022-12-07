@@ -16,7 +16,6 @@ import (
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	render "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/rendering"
 	"golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -72,15 +71,9 @@ func main() {
 		os.Exit(2)
 	}
 
-	cfg := &packages.Config{
-		// packages.LoadSyntax for given files only
-		Mode:  analysis.CallgraphPkgLoadMode,
-		Tests: false,
-	}
-
 	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
 
-	program, err := analysis.LoadProgram(cfg, buildmode, flag.Args())
+	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not load program: %v", err)
 		return

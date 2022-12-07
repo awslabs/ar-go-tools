@@ -85,12 +85,12 @@ func doMain() error {
 	}
 
 	if modelCheckingFlag {
-		cfg.Mode = packages.LoadSyntax
+		cfg.Mode = packages.LoadSyntax // this is equivalent to LoadAllSyntax, less NeedDeps
 	}
 
 	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
 
-	program, err := analysis.LoadProgram(cfg, mode, flag.Args())
+	program, err := analysis.LoadProgram(cfg, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
