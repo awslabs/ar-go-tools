@@ -10,51 +10,51 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// This analysis determines which set of defer instructions can reach each program point.
-// For now, everything except whether the result is bounded is thrown away.
-// The analysis could be easily extended to save the results at e.g. each RunDefers or each
-// panic point.
-
-type DeferResults struct {
-	deferStackBounded bool // unbounded == "bad" == false
-}
-
 // A stack is a representation of the runtime stack of defered expressions
 // (represented by a slice of the indices of instructions that generated each deferred function)
 // A stackSet is a set of stacks, represented as a sorted slice.
 // We use indices to represent instructions so that we can compare them (instructions do not know
 // their own index).
-type instrIndices struct {
-	block int // index of block in function
-	ins   int // index of instruction in block
+type InstrIndices struct {
+	Block int // index of block in function
+	Ins   int // index of instruction in block
 }
-type stack []instrIndices
-type stackSet []stack
+type Stack []InstrIndices
+type StackSet []Stack
+
+// This analysis determines which set of defer instructions can reach each program point.
+// For now, everything except whether the result is bounded is thrown away.
+// The analysis could be easily extended to save the results at e.g. each RunDefers or each
+// panic point.
+type DeferResults struct {
+	DeferStackBounded bool // unbounded == "bad" == false
+	RunDeferSets      map[*ssa.RunDefers]StackSet
+}
 
 // A stack set that is empty. Subtly different from a stack set of a single empty stack!
 // A stack set that is empty represents no control flow paths reach that point.
 // A stack set with a single empty stack means control flow reaches there with no defers.
-func stackSetEmpty() stackSet {
-	return stackSet{}
+func stackSetEmpty() StackSet {
+	return StackSet{}
 }
 
 // Compares two stacks for their order. Result can be compared to zero:
 //   a < b <--> stackCompare(a, b) < 0
 //   a = b <--> stackCompare(a, b) = 0
 //   a > b <--> stackCompare(a, b) > 0
-func stackCompare(a stack, b stack) int {
+func stackCompare(a Stack, b Stack) int {
 	for i := 0; i < len(a) && i < len(b); i++ {
 		a_ins, b_ins := a[i], b[i]
-		if a_ins.block < b_ins.block {
+		if a_ins.Block < b_ins.Block {
 			return -1
 		}
-		if a_ins.block > b_ins.block {
+		if a_ins.Block > b_ins.Block {
 			return 1
 		}
-		if a_ins.ins < b_ins.ins {
+		if a_ins.Ins < b_ins.Ins {
 			return -1
 		}
-		if a_ins.ins > b_ins.ins {
+		if a_ins.Ins > b_ins.Ins {
 			return 1
 		}
 	}
@@ -68,8 +68,8 @@ func stackCompare(a stack, b stack) int {
 }
 
 // Takes the union of two stack sets, and return whether the result is the same as `a` (first arg)
-func stackSetUnion(a stackSet, b stackSet) (r stackSet, sameAsA bool) {
-	r = []stack{}
+func stackSetUnion(a StackSet, b StackSet) (r StackSet, sameAsA bool) {
+	r = []Stack{}
 	sameAsA = true
 	aIndex, bIndex := 0, 0
 
@@ -114,25 +114,25 @@ func stackSetUnion(a stackSet, b stackSet) (r stackSet, sameAsA bool) {
 
 // Append {block, ins} to the stack. Ensures that the stack is always copied, so that
 // the stacks are treated as value types, i.e. are immutable.
-func stackPushed(s stack, block int, ins int) stack {
-	return append(s[0:len(s):len(s)], instrIndices{
+func stackPushed(s Stack, block int, ins int) Stack {
+	return append(s[0:len(s):len(s)], InstrIndices{
 		block,
 		ins})
 }
 
 // Computes the "transfer function" of an instruction: maps an stack set from the
 // program point right before a function to the set right after that instruction.
-func dataflowTransfer(block int, ins int, instr *ssa.Instruction, initial stackSet) (final stackSet, repeated bool) {
+func dataflowTransfer(block int, ins int, instr *ssa.Instruction, initial StackSet) (final StackSet, repeated bool) {
 	switch (*instr).(type) {
 	case *ssa.Defer:
-		newStacks := []stack{}
+		newStacks := []Stack{}
 		repeated = false
 		// For each stack, if the current instruction is already there, keep the stack as is
 		// Otherwise, append the current instruction
 		for _, stack := range initial {
 			var thisStackRepeated = false
 			for _, entry := range stack {
-				if entry.block == block && entry.ins == ins {
+				if entry.Block == block && entry.Ins == ins {
 					thisStackRepeated = true
 				}
 			}
@@ -146,33 +146,33 @@ func dataflowTransfer(block int, ins int, instr *ssa.Instruction, initial stackS
 		// We might have changed the sort order and introduced duplicates. Sort and de-duplicate
 		sort.Slice(newStacks, func(i, j int) bool { return stackCompare(newStacks[i], newStacks[j]) < 0 })
 		if len(newStacks) > 0 {
-			final = []stack{newStacks[0]}
+			final = []Stack{newStacks[0]}
 			for _, s := range newStacks[1:] {
 				if stackCompare(final[len(final)-1], s) != 0 {
 					final = append(final, s)
 				}
 			}
 		} else {
-			final = []stack{}
+			final = []Stack{}
 		}
 		return final, repeated
 	case *ssa.RunDefers:
-		return stackSet{stack{}}, false
+		return StackSet{Stack{}}, false
 	default:
 		return initial, false
 	}
 }
 
 // Analyzes a single function using a fixpoint loop
-func analyzeFuncDefer(fn *ssa.Function, verbose bool) DeferResults {
+func AnalyzeFunctionDefers(fn *ssa.Function, verbose bool) DeferResults {
 	// The preorder should make the analysis converge faster
 	blocks := fn.DomPreorder()
 	if len(blocks) == 0 {
 		// Early out for external functions (no basic blocks)
-		return DeferResults{true}
+		return DeferResults{true, map[*ssa.RunDefers]StackSet{}}
 	}
 	// blockInitialStates represent the dataflow information on entry to each block
-	dataflowBlockInitialStates := make([]stackSet, len(blocks))
+	dataflowBlockInitialStates := make([]StackSet, len(blocks))
 	// Change flags are a poor man's work list
 	dataflowBlockChanged := make([]bool, len(blocks))
 	for _, b := range blocks {
@@ -180,11 +180,11 @@ func analyzeFuncDefer(fn *ssa.Function, verbose bool) DeferResults {
 		dataflowBlockChanged[b.Index] = false
 	}
 	// Entry block starts with a single empty stack, and we mark it as changed
-	dataflowBlockInitialStates[0] = stackSet{stack{}}
+	dataflowBlockInitialStates[0] = StackSet{Stack{}}
 	dataflowBlockChanged[0] = true
 
 	// Save the set of stacks at each RunDefers instruction
-	runDeferSets := map[*ssa.RunDefers]stackSet{}
+	runDeferSets := map[*ssa.RunDefers]StackSet{}
 
 	// Because the stacks are not bounded, we need to decide on how many iterations to perform.
 	// With the change tracking and preorder, we might be able to get away with a fixed iteration count,
@@ -240,9 +240,9 @@ func analyzeFuncDefer(fn *ssa.Function, verbose bool) DeferResults {
 		}
 	}
 	if anyRepeated {
-		return DeferResults{false}
+		return DeferResults{false, runDeferSets}
 	}
-	return DeferResults{true}
+	return DeferResults{true, runDeferSets}
 }
 
 // Run the analysis on an entire program, and report the results to stdout
@@ -256,8 +256,8 @@ func AnalyzeDefer(program *ssa.Program, verbose bool) {
 	sort.Slice(sortedFunctions, func(i int, j int) bool { return sortedFunctions[i].Name() < sortedFunctions[j].Name() })
 	boundedFuncCount := 0
 	for _, f := range sortedFunctions {
-		results := analyzeFuncDefer(f, verbose)
-		if !results.deferStackBounded {
+		results := AnalyzeFunctionDefers(f, verbose)
+		if !results.DeferStackBounded {
 			fmt.Printf("Unbounded defer stack in %s (%s, %v)\n", f.Name(), f.Pkg.Pkg.Name(), f.Prog.Fset.PositionFor(f.Pos(), false))
 		} else {
 			boundedFuncCount++
