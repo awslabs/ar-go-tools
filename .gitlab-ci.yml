@@ -1,0 +1,21 @@
+image: golang:latest
+
+stages:
+  - test
+  - build
+  - deploy
+
+runtests:
+  stage: test
+  script:
+    - go vet ./analysis/...
+    - go test ./analysis/...
+
+compile:
+  stage: build
+  script:
+    - make
+  artifacts:
+    paths:
+      - bin
+
