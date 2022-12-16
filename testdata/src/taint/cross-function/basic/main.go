@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 func test0() {
-	s := source1()
+	s := source1() // @Source(A)
 	s1 := copyInput(s, 1)
 	s3 := ""
 	copyInto(s1, &s3)
@@ -31,7 +31,7 @@ func argReachesSink(x string) {
 	a[0] = "x"
 	a[1] = "ok"
 	a[2] = x
-	sink1(a[2]) // want "reached by tainting call on line 6"
+	sink1(a[2]) // want "reached by tainting call on line 6" @Sink(A)
 }
 
 func source1() string {
@@ -44,4 +44,5 @@ func main() {
 	test2()   // see example.go
 	test3(10) // see example.go
 	test4()   // see example2.go
+	test5()   // see example3.go
 }

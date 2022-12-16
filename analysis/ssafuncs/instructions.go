@@ -151,3 +151,14 @@ func FirstInstr(block *ssa.BasicBlock) ssa.Instruction {
 		return block.Instrs[0]
 	}
 }
+
+// GetArgs returns the arguments of a function call including the receiver when the function called is a method.
+// More precisely, it returns instr.Common().Args, but prepends instr.Common().Value if the call is "invoke" mode.
+func GetArgs(instr ssa.CallInstruction) []ssa.Value {
+	var args []ssa.Value
+	if instr.Common().IsInvoke() {
+		args = append(args, instr.Common().Value)
+	}
+	args = append(args, instr.Common().Args...)
+	return args
+}

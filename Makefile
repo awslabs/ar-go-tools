@@ -7,6 +7,11 @@
 
 all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan
 
+install: taint_install
+
+test: **/*.go
+	go test ./analysis/...
+
 maypanic: go.mod cmd/maypanic/*.go analysis/*.go analysis/reachability/*.go analysis/maypanic/*.go
 	go build -o bin/maypanic cmd/maypanic/*.go
 
@@ -36,6 +41,9 @@ compare: go.mod cmd/compare/*.go analysis/*.go analysis/reachability/*.go
 
 packagescan: go.mod cmd/packagescan/*.go analysis/*.go analysis/packagescan/*.go
 	go build -o bin/packagescan cmd/packagescan/*.go
+
+taint_install: taint
+	go install ./cmd/taint/...
 
 clean:
 	rm -rf bin

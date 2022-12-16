@@ -18,11 +18,11 @@ func genString() string {
 func test4() {
 	s1 := genString()
 	sink1(s1)
-	s1 = source3()
-	sink1(s1) // this sink is reached by a tainted data
+	s1 = source3() // @Source(example2)
+	sink1(s1)      // this sink is reached by a tainted data @Sink(example2)
 	var s []string
 	for _, c := range s1 {
 		s = append(s, strconv.Itoa(int(c)))
 	}
-	sink2(s[0]) // this sink is also reached
+	sink2(s[0]) // this sink is also reached @Sink(example2)
 }

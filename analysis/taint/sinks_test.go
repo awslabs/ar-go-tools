@@ -51,10 +51,10 @@ func TestAllSinks(t *testing.T) {
 	}
 	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
 	// Load config
-	configFile := filepath.Join(testdata, "src/taint-sinks/config.yaml")
+	configFile := filepath.Join(testdata, "src/taint/sinks/config.yaml")
 	config.SetGlobalConfig(configFile)
 	if err != nil {
 		t.Errorf("could not set config file: %v", err)
 	}
-	analysistest.Run(t, testdata, taintSinksAnalyzer, "taint-sinks", "bar")
+	analysistest.Run(t, testdata, taintSinksAnalyzer, "taint/sinks", "bar")
 }

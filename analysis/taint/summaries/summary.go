@@ -28,9 +28,9 @@ var NoTaintPropagation = Summary{TaintingRets: [][]int{}, TaintingArgs: [][]int{
 // This will propagate the taint to the return value.
 var SingleVarArgPropagation = Summary{TaintingArgs: [][]int{{0}}, TaintingRets: [][]int{{0}}}
 
-// FormatterPropagation is a summary for functions like Printf where the second argument might be tainted,
+// FormatterPropagation is a summary for functions like Printf where the first and second arguments might be tainted,
 // and this will taint the returned value (for example, an error, a string with Sprintf
-var FormatterPropagation = Summary{TaintingArgs: [][]int{{}, {0}}, TaintingRets: [][]int{{}, {0}}}
+var FormatterPropagation = Summary{TaintingArgs: [][]int{{0}, {1}}, TaintingRets: [][]int{{0}, {0}}}
 
 // IsStdPackage returns true if the input package is in the standard library or the runtime. The standard library
 // is defined internally as the list of packages in summaries.stdPackages

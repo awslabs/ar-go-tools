@@ -2,9 +2,11 @@ package taint
 
 import (
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint/summaries"
+	"go/token"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"io"
@@ -21,6 +23,7 @@ type GraphNode interface {
 	Graph() *SummaryGraph
 	Out() map[GraphNode]objectPath
 	ParentName() string
+	Position() token.Position
 	String() string
 	IsSink(config *config.Config) bool
 }
@@ -35,6 +38,7 @@ type ParamNode struct {
 
 func (a *ParamNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ParamNode) Out() map[GraphNode]objectPath { return a.out }
+func (a *ParamNode) Position() token.Position      { return analysis.SafeValuePos(a.ssaNode) }
 func (a *ParamNode) ParentName() string {
 	if a.parent != nil && a.parent.parent != nil {
 		return a.parent.parent.Name()
@@ -57,6 +61,7 @@ type CallNodeArg struct {
 
 func (a *CallNodeArg) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *CallNodeArg) Out() map[GraphNode]objectPath { return a.out }
+func (a *CallNodeArg) Position() token.Position      { return analysis.SafeValuePos(a.ssaValue) }
 func (a *CallNodeArg) ParentName() string {
 	if a.parent != nil && a.parent.parent != nil && a.parent.parent.parent != nil {
 		return a.parent.parent.parent.Name()
@@ -82,6 +87,16 @@ type CallNode struct {
 
 func (a *CallNode) Graph() *SummaryGraph          { return a.parent }
 func (a *CallNode) Out() map[GraphNode]objectPath { return a.out }
+
+func (a *CallNode) Position() token.Position {
+	if a.callSite != nil {
+		return analysis.SafeValuePos(a.callSite.Common().Value)
+	} else {
+		return analysis.DummyPos
+	}
+
+}
+
 func (a *CallNode) ParentName() string {
 	if a.parent != nil && a.parent.parent != nil {
 		return a.parent.parent.Name()
@@ -101,6 +116,19 @@ func (a *CallNode) IsSink(config *config.Config) bool {
 	return isSinkNode(config, a.callSite.(ssa.Node))
 }
 
+func (a *CallNode) FuncName() string {
+	if a.callSite != nil {
+		if a.callSite.Common().IsInvoke() {
+			return a.callSite.Common().Method.String()
+		} else {
+			return a.callSite.Common().Value.String()
+		}
+	} else {
+		return "<CallNode with nil callSite>"
+	}
+
+}
+
 // A ReturnNode is a node that represents a node where the function returns.
 type ReturnNode struct {
 	parent *SummaryGraph
@@ -108,6 +136,7 @@ type ReturnNode struct {
 
 func (a *ReturnNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ReturnNode) Out() map[GraphNode]objectPath { return nil }
+func (a *ReturnNode) Position() token.Position      { return analysis.SafeFunctionPos(a.parent.parent) }
 func (a *ReturnNode) ParentName() string {
 	if a.parent != nil && a.parent.parent != nil {
 		return a.parent.parent.Name()
@@ -124,11 +153,10 @@ func (a *ReturnNode) IsSink(_ *config.Config) bool {
 
 // SummaryGraph is the function dataflow summary graph.
 type SummaryGraph struct {
-	constructed bool                    // if the summary graph has been constructed, or if just a dummy
-	parent      *ssa.Function           // the ssa function it summarizes
-	params      map[ssa.Node]*ParamNode // the parameters of the function, associated to ParamNode
-	callers     map[*SummaryGraph]bool  // the summaries of the functions calling this summary
-	callsites   map[ssa.CallInstruction]*CallNode
+	constructed bool                                // true if summary graph is constructed, false if it is a dummy
+	parent      *ssa.Function                       // the ssa function it summarizes
+	params      map[ssa.Node]*ParamNode             // the parameters of the function, associated to ParamNode
+	callsites   map[ssa.CallInstruction]*CallNode   // the call sites of the function
 	callees     map[ssa.CallInstruction][]*CallNode // the call instructions are linked to CallNode.
 	// A call site can have multiple callees
 	returns map[ssa.Instruction]*ReturnNode // the return instructions are linked to ReturnNode
@@ -145,7 +173,6 @@ func NewSummaryGraph(f *ssa.Function, cg *callgraph.Node) *SummaryGraph {
 	g := &SummaryGraph{
 		constructed: false,
 		parent:      f,
-		callers:     map[*SummaryGraph]bool{},
 		params:      make(map[ssa.Node]*ParamNode, len(f.Params)),
 		callees:     make(map[ssa.CallInstruction][]*CallNode),
 		callsites:   make(map[ssa.CallInstruction]*CallNode),
@@ -214,15 +241,16 @@ func containsCallNode(nodes []*CallNode, node *CallNode) bool {
 
 // addCallNode adds a call site to the summary
 // @requires g != nil
-func (g *SummaryGraph) addCallNode(node *CallNode) {
+func (g *SummaryGraph) addCallNode(node *CallNode) bool {
 	if callNodes, ok := g.callees[node.callSite]; ok {
 		if containsCallNode(callNodes, node) {
-			return
+			return false
 		}
 		g.callees[node.callSite] = append(callNodes, node)
 	} else {
 		g.callees[node.callSite] = []*CallNode{node}
 	}
+	return true
 }
 
 // addCallee adds a call site to the summary from a callgraph edge
@@ -232,15 +260,17 @@ func (g *SummaryGraph) addCallee(edge *callgraph.Edge) {
 		return
 	}
 
+	args := ssafuncs.GetArgs(edge.Site)
+
 	node := &CallNode{
 		parent:   g,
 		callee:   edge.Callee.Func,
-		args:     make([]*CallNodeArg, len(edge.Callee.Func.Params)),
+		args:     make([]*CallNodeArg, len(args)),
 		callSite: edge.Site,
 		out:      make(map[GraphNode]objectPath),
 	}
 
-	for pos, arg := range edge.Site.Common().Args {
+	for pos, arg := range args {
 		argNode := &CallNodeArg{
 			parent:   node,
 			ssaValue: arg,
@@ -255,25 +285,69 @@ func (g *SummaryGraph) addCallee(edge *callgraph.Edge) {
 
 // addCallInstr adds a call site to the summary from a call instruction (use when no call graph is available)
 // @requires g != nil
-func (g *SummaryGraph) addCallInstr(instr ssa.CallInstruction) {
-	node := &CallNode{
-		parent:   g,
-		callee:   instr.Common().StaticCallee(),
-		args:     make([]*CallNodeArg, len(instr.Common().Args)),
-		callSite: instr,
-		out:      make(map[GraphNode]objectPath),
+func (g *SummaryGraph) addCallInstr(c *analysis.Cache, instr ssa.CallInstruction) {
+	// Already seen this instruction? Multiple calls of this function will not gather more information.
+	if _, ok := g.callees[instr]; ok {
+		return
 	}
 
-	for pos, arg := range instr.Common().Args {
-		argNode := &CallNodeArg{
-			parent:   node,
-			ssaValue: arg,
+	args := ssafuncs.GetArgs(instr)
+	callees, err := c.ResolveCallee(instr)
+	if err != nil {
+		c.Logger.Fatalf("missing information in cache (%s), could not resolve callee in instruction %s", err,
+			instr.String())
+	}
+	// Add each callee as a node for this call instruction
+	for _, callee := range callees {
+		node := &CallNode{
+			parent:   g,
+			callee:   callee,
+			args:     make([]*CallNodeArg, len(args)),
+			callSite: instr,
 			out:      make(map[GraphNode]objectPath),
 		}
-		node.args[pos] = argNode
+
+		for pos, arg := range args {
+			argNode := &CallNodeArg{
+				parent:   node,
+				ssaValue: arg,
+				out:      make(map[GraphNode]objectPath),
+			}
+			node.args[pos] = argNode
+		}
+		g.addCallNode(node)
 	}
 
-	g.addCallNode(node)
+	if len(callees) == 0 {
+		c.Logger.Printf("No callee found for %s.\n", instr.String())
+		c.Logger.Printf("Location: %s.\n", instr.Parent().Prog.Fset.Position(instr.Pos()))
+		if instr.Value() != nil {
+			fmt.Printf("Value: %s\n", instr.Value().String())
+			fmt.Printf("Type: %s\n", instr.Value().Type())
+		} else {
+			fmt.Printf("Type: %s\n", instr.Common().Value.Type())
+		}
+
+		fmt.Printf("Method: %s\n", instr.Common().Method)
+		// TODO: remove that when we have a method to resolve all callees
+		node := &CallNode{
+			parent:   g,
+			callee:   nil,
+			args:     make([]*CallNodeArg, len(args)),
+			callSite: instr,
+			out:      make(map[GraphNode]objectPath),
+		}
+
+		for pos, arg := range args {
+			argNode := &CallNodeArg{
+				parent:   node,
+				ssaValue: arg,
+				out:      make(map[GraphNode]objectPath),
+			}
+			node.args[pos] = argNode
+		}
+		g.addCallNode(node)
+	}
 }
 
 // addReturn adds a return node to the summary
@@ -330,7 +404,8 @@ func (g *SummaryGraph) addEdge(source Source, dest GraphNode) {
 func (g *SummaryGraph) addCallArgEdge(source Source, call ssa.CallInstruction, arg ssa.Value) {
 	callNodes := g.callees[call]
 	if callNodes == nil {
-		g.addError(fmt.Errorf("attempting to set call edge but no call node"))
+		g.addError(fmt.Errorf("attempting to set call arg edge but no call node for %s", call))
+		os.Exit(1)
 		return
 	}
 
@@ -372,7 +447,7 @@ func (g *SummaryGraph) addParamEdge(source Source, param ssa.Node) {
 
 // addParamEdgeByPos adds an edge between the arguments at position src and dest in the summary graph.
 // Returns true if it successfully added an edge.
-// Returns false if it failed to add an edge because it could no fetch the required data (the positions might not be
+// Returns false if it failed to add an edge because it could not fetch the required data (the positions might not be
 // correct)
 func (g *SummaryGraph) addParamEdgeByPos(src int, dest int) bool {
 	n := len(g.parent.Params)

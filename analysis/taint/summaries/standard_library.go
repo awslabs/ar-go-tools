@@ -121,7 +121,13 @@ var SummaryBufIo = map[string]Summary{}
 
 var SummaryBuiltin = map[string]Summary{}
 
-var SummaryBytes = map[string]Summary{}
+var SummaryBytes = map[string]Summary{
+	// func (b *Buffer) Bytes() []byte
+	"(*bytes.Buffer).Bytes": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
+}
 
 var SummaryCompressBzip2 = map[string]Summary{}
 
@@ -150,6 +156,16 @@ var SummaryEncoding = map[string]Summary{
 	"encoding/json.Indent": {
 		[][]int{{0}, {0}, {0}, {0}}, // all args taint the first
 		[][]int{{}, {0}, {0}, {0}},  // all args except first taint return error
+	},
+	// func Marshal(v any) ([]byte, error)
+	"encoding/json.Marshal": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
+	// func Unmarshal(data []byte, v any) error
+	"encoding/json.Unmarshal": {
+		[][]int{{0, 1}, {}},
+		[][]int{{0}, {0}},
 	},
 }
 
@@ -229,9 +245,44 @@ var SummaryStrConv = map[string]Summary{
 	"strconv.Itoa": {[][]int{{}}, [][]int{{0}, {0}}},
 }
 
-var SummaryStrings = map[string]Summary{}
+var SummaryStrings = map[string]Summary{
+	// func HasPrefix(s, prefix string) bool {
+	"strings.HasPrefix": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
+	// func HasSuffix(s, prefix string) bool {
+	"strings.HasSuffix": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
+	// func Split(s, sep string) []string
+	"strings.Split": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	//func TrimSpace(s string) string
+	"strings.TrimSpace": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
+	// func LastIndex(s string, substr string) int
+	"strings.LastIndex": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
+}
 
-var SummarySync = map[string]Summary{}
+var SummarySync = map[string]Summary{
+	"(*sync.Mutex).Unlock": {
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	"(*sync.Mutex).Lock": {
+		[][]int{{0}},
+		[][]int{{}},
+	},
+}
 
 var SummarySysccall = map[string]Summary{}
 

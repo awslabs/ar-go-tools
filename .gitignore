@@ -1,5 +1,8 @@
 **/.DS_Store
+*.out
+*.log
 amazon-ssm-agent
 bin
 tmp
 errors.txt
+large-tests

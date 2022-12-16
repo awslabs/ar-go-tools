@@ -51,10 +51,10 @@ func TestAllSources(t *testing.T) {
 	}
 	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
 	// Load config; in command, should be set using some flag
-	configFile := filepath.Join(testdata, "src/taint-sources/config.yaml")
+	configFile := filepath.Join(testdata, "src/taint/sources/config.yaml")
 	config.SetGlobalConfig(configFile)
 	if err != nil {
 		t.Errorf("could not set config file: %v", err)
 	}
-	analysistest.Run(t, testdata, taintSourcesAnalyzer, "taint-sources", "bar")
+	analysistest.Run(t, testdata, taintSourcesAnalyzer, "taint/sources", "bar")
 }
