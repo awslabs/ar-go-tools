@@ -22,9 +22,27 @@ func Union[T comparable](a map[T]bool, b map[T]bool) map[T]bool {
 	return a
 }
 
-// Map iterates over all elements in the slice and call the function on that element.
-func Map[T any](a []T, f func(T) T) {
+// Iter iterates over all elements in the slice and call the function on that element.
+func Iter[T any](a []T, f func(T) T) {
 	for i, x := range a {
 		a[i] = f(x)
 	}
+}
+
+// Map returns a new slice b such for any i <= len(a), b[i] = f(a[i])
+func Map[T any, S any](a []T, f func(T) S) []S {
+	var b []S
+	for _, x := range a {
+		b = append(b, f(x))
+	}
+	return b
+}
+
+func Contains[T comparable](a []T, x T) bool {
+	for _, y := range a {
+		if x == y {
+			return true
+		}
+	}
+	return false
 }

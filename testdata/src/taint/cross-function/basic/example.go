@@ -11,11 +11,11 @@ func passing(s1 string, s2 string) string {
 }
 
 func test2() {
-	s := source3()
+	s := source3() // @Source(example1)
 	s2 := "ok"
 	s3 := passing(s, s2)
 	s4 := fmt.Sprintf("%s", s3)
-	sink1(s4) // tainted data reaches this
+	sink1(s4) // tainted data reaches this @Sink(example1)
 }
 
 func f(key string, m map[string]string) string {
@@ -29,7 +29,7 @@ func f(key string, m map[string]string) string {
 
 func genKey(x int) string {
 	if x < 1 {
-		return source3()
+		return source3() // @Source(example1bis)
 	} else {
 		return fmt.Sprintf("Ok-%d", x)
 	}
@@ -42,6 +42,6 @@ func test3(n int) {
 	}
 	taintedStuff := f("Ok-8", m)
 	if len(taintedStuff) > 0 {
-		sink1(taintedStuff)
+		sink1(taintedStuff) //@Sink(example1bis)
 	}
 }

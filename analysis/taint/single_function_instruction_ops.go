@@ -27,8 +27,8 @@ func (t *stateTracker) DoCall(call *ssa.Call) {
 	t.callCommonTaint(call, call, call.Common())
 }
 
-func (t *stateTracker) DoDefer(d *ssa.Defer) {
-	t.callCommonTaint(d.Value(), d, d.Common())
+func (t *stateTracker) DoDefer(_ *ssa.Defer) {
+	// Defers will be handled when RunDefers are handled
 }
 
 func (t *stateTracker) DoGo(g *ssa.Go) {
@@ -91,9 +91,10 @@ func (t *stateTracker) DoReturn(r *ssa.Return) {
 }
 
 func (t *stateTracker) DoRunDefers(r *ssa.RunDefers) {
-	// TODO: handle defers
-	err := fmt.Errorf("encountered a run defers in SSA but ignored it: analysis unsound")
-	t.errors[r] = err
+	err := t.doDefersStackSimulation(r)
+	if err != nil {
+		t.errors[r] = err
+	}
 }
 
 func (t *stateTracker) DoPanic(x *ssa.Panic) {

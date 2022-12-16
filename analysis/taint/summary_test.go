@@ -2,13 +2,17 @@ package taint
 
 import (
 	"log"
+	"path"
+	"runtime"
 	"testing"
 )
 
 func TestFunctionSummaries(t *testing.T) {
 	var err error
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/summaries")
 	// Loading the program for testdata/src/taint-tracking-summaries/main.go
-	program, cfg := loadTest(t, "taint-tracking-summaries", []string{})
+	program, cfg := loadTest(t, dir, []string{})
 	result, err := Analyze(log.Default(), cfg, program)
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)

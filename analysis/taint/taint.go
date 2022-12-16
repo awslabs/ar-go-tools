@@ -1,21 +1,20 @@
 // Package taint contains all the taint analysis functionality in argot. The Analyze function is the main entry
-// point of the analysis, and callees the intraProcedural and interProcedural analysis functions in two distinct
+// point of the analysis, and callees the singleFunctionAnalysis and interProcedural analysis functions in two distinct
 // whole-program analysis steps.
 package taint
 
 import (
 	"fmt"
-	"go/types"
 	"log"
 	"os"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint/summaries"
-	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -35,37 +34,33 @@ type AnalysisResult struct {
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
 func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
+	// Number of working routines to use in parallel. TODO: make this an option?
+	numRoutines := runtime.NumCPU() - 1
+	if numRoutines <= 0 {
+		numRoutines = 1
+	}
+
+	cache := analysis.NewCache(prog, logger, cfg)
+	prog.Build()
+
 	// ** First step **
-	// Running the pointer analysis over the whole program. We will query values only in
+	// - Running the pointer analysis over the whole program. We will query values only in
 	// the user defined functions since we plan to analyze only user-defined functions. Any function from the runtime
 	// or from the standard library that is called in the program should be summarized in the summaries package.
-	start := time.Now()
-	logger.Println("Gathering values and starting pointer analysis.")
-	pCfg := &pointer.Config{
-		Mains:           ssautil.MainPackages(prog.AllPackages()),
-		Reflection:      false,
-		BuildCallGraph:  true,
-		Queries:         make(map[ssa.Value]struct{}),
-		IndirectQueries: make(map[ssa.Value]struct{}),
+	// - Running the type analysis to map functions to their type
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go populatePointerCache(cache, wg)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Modifies the implementationsByType and is fine to use concurrently with pointer analysis on cache
+		populateTypeCache(cache)
+	}()
+	wg.Wait()
+	if err := cache.CheckError(); err != nil {
+		return AnalysisResult{}, err
 	}
-
-	functions := map[*ssa.Function]bool{}
-	for function := range ssautil.AllFunctions(prog) {
-		// If the function is a user-defined function (it can be from a dependency) then every value that can
-		// can potentially alias is marked for querying.
-		if userDefinedFunction(function) {
-			functions[function] = true
-			ssafuncs.IterateInstructions(function, func(instruction *ssa.Instruction) { addQuery(pCfg, instruction) })
-		}
-	}
-
-	// Do the pointer analysis
-	ptrRes, err := pointer.Analyze(pCfg)
-	if err != nil {
-		return AnalysisResult{}, fmt.Errorf("pointer analysis: %w", err)
-	}
-
-	logger.Printf("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
 
 	// ** Second step **
 	// The intra-procedural analysis is run on every function `f` such that `ignoreInFirstPass(f)` is
@@ -74,36 +69,37 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// The goal of this step is to build function summaries: a graph that represents how data flows through the
 	// function being analyzed.
 
-	logger.Printf("Starting intra-procedural analysis on %d functions\n", len(functions))
-	start = time.Now()
+	logger.Println("Starting intra-procedural analysis ...")
+	start := time.Now()
 
-	ifg := IFGraph{summaries: map[*ssa.Function]*SummaryGraph{}, callgraph: ptrRes.CallGraph}
+	ifg := IFGraph{summaries: map[*ssa.Function]*SummaryGraph{}, cache: cache}
 
 	// taintFlowCandidates contains all the possible taint-flow candidates.
 	taintFlowCandidates := make(SinkToSources)
-	d := 0
-	// This pass also ignores some predefined packages
-	for function := range functions {
-		// Only build summaries for non-stdlib functions here
-		if !summaries.IsStdFunction(function) {
-			// runAnalysis determines if we just build a placeholder summary or run the analysis
-			runAnalysis := !ignoreInFirstPass(cfg, function)
-			logger.Printf("Package: %s | function: %s - %t\n",
-				analysis.PackageNameFromFunction(function), function.Name(), runAnalysis)
-			result, err := intraProcedural(cfg, ptrRes, function, runAnalysis)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error while analyzing %s:\n\t%v\n", function.Name(), err)
-			}
-			if result.Summary != nil {
-				ifg.summaries[function] = result.Summary
-			}
+	// Start the intraprocedural summary building routines
+	jobs := make(chan intraProceduralJob, numRoutines+1)
+	output := make(chan SingleFunctionResult, numRoutines+1)
+	done := make(chan int)
+	for proc := 0; proc < numRoutines; proc++ {
+		go jobConsumer(jobs, output, done)
+	}
+	// Start the collecting routine
+	wg.Add(1)
+	go collectResults(output, done, numRoutines, &ifg, taintFlowCandidates, wg)
 
-			mergeSinkToSources(taintFlowCandidates, result.IntraPaths)
-			if runAnalysis {
-				d++
+	// Feed the jobs in the jobs channel
+	// This pass also ignores some predefined packages
+	for function := range ssautil.AllFunctions(prog) {
+		// Only build summaries for non-stdlib functions here
+		if !summaries.IsStdFunction(function) && userDefinedFunction(function) {
+			jobs <- intraProceduralJob{
+				function: function,
+				cache:    cache,
 			}
 		}
 	}
+	close(jobs)
+	wg.Wait()
 	logger.Printf("Intra-procedural pass done (%.2f s).", time.Since(start).Seconds())
 
 	// ** Third step **
@@ -112,50 +108,87 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// that is reachable from a source.
 	logger.Println("Starting inter-procedural pass...")
 	start = time.Now()
-	ifg.interProceduralPass(cfg, logger, taintFlowCandidates)
+	ifg.crossFunctionPass(cfg, logger, taintFlowCandidates)
 	logger.Printf("Inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
 	return AnalysisResult{TaintFlows: taintFlowCandidates, Graph: ifg}, nil
 }
 
-// addQuery adds a query for the instruction to the pointer configuration, performing all the necessary checks to
-// ensure the query can be added safely.
-func addQuery(cfg *pointer.Config, instruction *ssa.Instruction) {
-	if instruction == nil {
-		return
-	}
+// populateTypeCache is a proxy to run the PopulateTypesToImplementationsMap in a goroutine
+func populateTypeCache(c *analysis.Cache) {
+	// Load information for analysis and cache it.
+	c.Logger.Println("Caching information about types and functions for analysis...")
+	start := time.Now()
+	c.PopulateTypesToImplementationMap()
+	c.Logger.Printf("Cache population terminated, added %d items (%.2f s)\n",
+		c.Size(), time.Since(start).Seconds())
+}
 
-	for _, operand := range (*instruction).Operands([]*ssa.Value{}) {
-		if *operand != nil && (*operand).Type() != nil {
-			typ := (*operand).Type()
-			// Add query if value is of a type that can point
-			if pointer.CanPoint(typ) {
-				cfg.AddQuery(*operand)
+// populatePointerCache is a proxy to run the pointer analysis in a goroutine
+func populatePointerCache(c *analysis.Cache, wg *sync.WaitGroup) {
+	defer wg.Done()
+	start := time.Now()
+	c.Logger.Println("Gathering values and starting pointer analysis...")
+	c.PopulatePointerAnalysisResult(userDefinedFunction)
+	c.Logger.Printf("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
+}
+
+// an intraProceduralHob contains all the information necessary to run the intraprocedural analysis on function
+type intraProceduralJob struct {
+	cache    *analysis.Cache
+	function *ssa.Function
+	output   chan SingleFunctionResult
+}
+
+// jobConsumer consumes jobs from the jobs channel, and closes ouput when done
+func jobConsumer(jobs chan intraProceduralJob, output chan SingleFunctionResult, done chan int) {
+	for job := range jobs {
+		runIntraProceduralOnFunction(job, output)
+	}
+	if done != nil {
+		done <- 0
+	}
+}
+
+// runIntraProceduralOnFunction is a simple function that runs the intraprocedural analysis with the information in job
+func runIntraProceduralOnFunction(job intraProceduralJob, output chan SingleFunctionResult) {
+	runAnalysis := !ignoreInFirstPass(job.cache.Config, job.function)
+	job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
+		analysis.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
+	result, err := singleFunctionAnalysis(job.cache, job.function, runAnalysis)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error while analyzing %s:\n\t%v\n", job.function.Name(), err)
+	}
+	output <- result
+}
+
+// collectResults waits for the results in c and adds them to graph, taintFlowCandidates. It waits for numProducers
+// messages on the done channel to terminate and clean up.
+// Operations on graph and candidates are sequential.
+// cleans up done and c channels
+func collectResults(c chan SingleFunctionResult, done chan int, numProducers int, graph *IFGraph, candidates SinkToSources,
+	wg *sync.WaitGroup) {
+	defer wg.Done()
+	counter := numProducers
+	for {
+		select {
+		case result := <-c:
+			if result.Summary != nil {
+				graph.summaries[result.Summary.parent] = result.Summary
 			}
-			indirectQuery(typ, operand, cfg)
+			mergeSinkToSources(candidates, result.IntraPaths)
+		case <-done:
+			counter--
+			if counter == 0 {
+				close(done)
+				close(c)
+				return
+			}
+
 		}
 	}
 }
 
-// indirectQuery wraps an update to the IndirectQuery of the pointer config. We need to wrap it
-// because typ.Underlying() may panic despite typ being non-nil
-func indirectQuery(typ types.Type, operand *ssa.Value, cfg *pointer.Config) {
-	defer func() {
-		if r := recover(); r != nil {
-			// Do nothing. Is that panic a bug? Occurs on a *ssa.opaqueType
-		}
-	}()
-
-	if typ.Underlying() != nil {
-		// Add indirect query if value is of pointer type, and underlying type can point
-		if ptrType, ok := typ.Underlying().(*types.Pointer); ok {
-			if pointer.CanPoint(ptrType.Elem()) {
-				cfg.AddIndirectQuery(*operand)
-			}
-		}
-	}
-}
-
-// userDefinedFunction returns true when the function argument is a user-defined function. A function is considered
+// userDefinedFunction returns true when function is a user-defined function. A function is considered
 // to be user-defined if it is not in the standard library (in summaries.stdPackages) or in the runtime.
 // For example, the functions in the non-standard library packages are considered user-defined.
 func userDefinedFunction(function *ssa.Function) bool {

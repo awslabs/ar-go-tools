@@ -64,10 +64,10 @@ func Load(filename string) (*Config, error) {
 		return nil, fmt.Errorf("could not unmarshal config file: %w", err)
 	}
 
-	functional.Map(config.Sanitizers, CompileRegexes)
-	functional.Map(config.Sinks, CompileRegexes)
-	functional.Map(config.Sources, CompileRegexes)
-	functional.Map(config.StaticCommands, CompileRegexes)
+	functional.Iter(config.Sanitizers, CompileRegexes)
+	functional.Iter(config.Sinks, CompileRegexes)
+	functional.Iter(config.Sources, CompileRegexes)
+	functional.Iter(config.StaticCommands, CompileRegexes)
 
 	return &config, nil
 }

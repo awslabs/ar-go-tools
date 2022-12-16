@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"go/token"
 	"os"
 	"strings"
 
@@ -51,4 +52,33 @@ func PackageNameFromFunction(f *ssa.Function) string {
 
 	fmt.Fprintln(os.Stderr, "Object Package is nil", f.String())
 	return ""
+}
+
+// DummyPos is a dummy position returned to indicate that no position could be found. Can also be used when generating
+// code, and the generated code has no position.
+var DummyPos = token.Position{
+	Filename: "unknown",
+	Offset:   -1,
+	Line:     -1,
+	Column:   -1,
+}
+
+// SafeValuePos returns the position of the instruction or the dummy position.
+func SafeValuePos(value ssa.Value) token.Position {
+	if value == nil {
+		return DummyPos
+	}
+	if parent := value.Parent(); parent != nil && parent.Prog != nil && parent.Prog.Fset != nil {
+		return value.Parent().Prog.Fset.Position(value.Pos())
+	} else {
+		return DummyPos
+	}
+}
+
+func SafeFunctionPos(function *ssa.Function) token.Position {
+	if function.Prog != nil && function.Prog.Fset != nil {
+		return function.Prog.Fset.Position(function.Pos())
+	} else {
+		return DummyPos
+	}
 }

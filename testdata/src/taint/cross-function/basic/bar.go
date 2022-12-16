@@ -11,7 +11,7 @@ func source2(x int) string {
 }
 
 func producer(x chan string) {
-	x <- source2(10)
+	x <- source2(10) // @Source(line14)
 }
 
 func producerCaller(b chan string) {
@@ -20,7 +20,7 @@ func producerCaller(b chan string) {
 }
 
 func consumer(b chan string) {
-	sink2(<-b) // want "reached by tainting call on line 14"
+	sink2(<-b) // want "reached by tainting call on line 14" @Sink(line14)
 }
 
 func test1() {
