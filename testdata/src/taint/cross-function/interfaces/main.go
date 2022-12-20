@@ -31,6 +31,7 @@ func main() {
 	x := A{Field: s}
 	runInterface(x) // the sink here will be reached
 	test()
+	test4()
 }
 
 // Example 2
@@ -81,3 +82,24 @@ func test3() {
 	}
 	runInterface2(&x) // the sink here will be reached
 }
+
+// Example 4
+
+type D struct {
+	Field string
+}
+
+func (d D) F() string {
+	sink(d.Field) // @Sink(E)
+	return d.Field
+}
+
+func test4() {
+	x := D{
+		Field: source(), // this is a source @Source(E)
+	}
+	var _ Interface = (*D)(nil) // D satisfies Interface
+	f := D.F
+	f(x) // the sink here will be reached
+}
+

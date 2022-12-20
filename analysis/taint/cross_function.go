@@ -103,7 +103,7 @@ func (ifg IFGraph) crossFunctionPass(cfg *config.Config, logger *log.Logger, tai
 		for _, callNodes := range summary.callees {
 			for _, node := range callNodes {
 				if node.callee != nil {
-					calleeSummary, _ := ifg.summaries[node.callee]
+					calleeSummary := findCalleeSummary(node.callee, ifg.summaries)
 					// If it's not in the generated summaries, try to fetch it from predefined summaries
 					if calleeSummary == nil {
 						calleeSummary = LoadPredefinedSummary(node.callee, ifg.cache.PointerAnalysis.CallGraph)
@@ -136,6 +136,24 @@ func (ifg IFGraph) crossFunctionPass(cfg *config.Config, logger *log.Logger, tai
 			visitFromSource(logger, ifg.cache, NodeWithTrace{node, nil}, taintFlows)
 		}
 	}
+}
+
+// findCalleeSummary returns the summary graph of callee in summaries if present. Returns nil if not.
+func findCalleeSummary(callee *ssa.Function, summaries map[*ssa.Function]*SummaryGraph) *SummaryGraph {
+	if summary, ok := summaries[callee]; ok {
+		return summary
+	}
+
+	for summarized, summary := range summaries {
+		// sometimes a "thunk" function will be the same as a normal function,
+		// just with a different name ending in $thunk and the same position
+		if (strings.HasPrefix(callee.Name(), summarized.Name()) || strings.HasPrefix(summarized.Name(), callee.Name())) &&
+			callee.Pos() == summarized.Pos() {
+			return summary
+		}
+	}
+
+	return nil
 }
 
 // visitFromSource runs the inter-procedural analysis from a specific source and adds any detected taint flow
