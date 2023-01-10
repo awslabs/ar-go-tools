@@ -31,7 +31,7 @@ func runTest(t *testing.T, dirName string, files []string) {
 }
 
 func TestCrossFunctionBasic(t *testing.T) {
-	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go"})
+	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go"})
 }
 
 func TestCrossFunctionInterfaces(t *testing.T) {
@@ -52,4 +52,8 @@ func TestCrossFunctionExample2(t *testing.T) {
 
 func TestCrossFunctionDefers(t *testing.T) {
 	runTest(t, "defers", []string{})
+}
+
+func TestCrossFunctionClosures(t *testing.T) {
+	runTest(t, "closures", []string{"helpers.go"})
 }

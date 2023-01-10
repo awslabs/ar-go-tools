@@ -6,6 +6,10 @@ type A struct {
 	x string
 }
 
+type B struct {
+	Source string
+}
+
 func (a A) f(i string) string {
 	return a.x + i
 }
@@ -44,11 +48,20 @@ func Foo(s string, s2 *string, obj A) int {
 	return l
 }
 
+func FooBar(x string) {
+	s := B{Source: x}
+	s2 := "ok"
+	s3 := Foo(s.Source, &s2, A{})
+	s4 := fmt.Sprintf("%s", s3)
+	Sink(s4)
+}
+
 func main() {
 	s := fmt.Sprintf("bad-%s", "data")
 	s2 := "example2"
 	obj := A{x: "ex"}
 	Foo(s, &s2, obj)
+	FooBar("x")
 	c := make(chan string, 10)
 	c <- s2
 	go ChannelProducer(c)

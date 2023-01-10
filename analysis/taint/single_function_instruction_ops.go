@@ -135,6 +135,8 @@ func (t *stateTracker) DoAlloc(x *ssa.Alloc) {
 		source := NewSource(x, TaintedVal, "")
 		t.markValue(x, source)
 	}
+	// An allocation may be a source
+	t.optionalSyntheticNode(x, x, x)
 }
 
 func (t *stateTracker) DoMakeSlice(*ssa.MakeSlice) {
@@ -155,28 +157,36 @@ func (t *stateTracker) DoNext(x *ssa.Next) {
 }
 
 func (t *stateTracker) DoFieldAddr(x *ssa.FieldAddr) {
-	path := "*" // over-approximation
+	// A FieldAddr may be a source
+	t.optionalSyntheticNode(x, x, x)
+
+	// Propagate taint with field sensitivity
+	field := "*" // over-approximation
 	// Try to get precise field name to be field sensitive
 	xTyp := x.X.Type().Underlying()
 	if ptrTyp, ok := xTyp.(*types.Pointer); ok {
 		eltTyp := ptrTyp.Elem().Underlying()
 		if structTyp, ok := eltTyp.(*types.Struct); ok {
-			path = structTyp.Field(x.Field).Name()
+			field = structTyp.Field(x.Field).Name()
 		}
 	}
 	// Taint is propagated if field of struct is tainted
-	pathSensitiveMarkPropagation(t, x.X, x, path)
+	pathSensitiveMarkPropagation(t, x.X, x, field)
 }
 
 func (t *stateTracker) DoField(x *ssa.Field) {
-	path := "*" // over-approximation
+	// A field may be a source
+	t.optionalSyntheticNode(x, x, x)
+
+	// Propagate taint with field sensitivity
+	field := "*" // over-approximation
 	// Try to get precise field name to be field sensitive
 	xTyp := x.X.Type().Underlying()
 	if structTyp, ok := xTyp.(*types.Struct); ok {
-		path = structTyp.Field(x.Field).Name()
+		field = structTyp.Field(x.Field).Name()
 	}
 	// Taint is propagated if field of struct is tainted
-	pathSensitiveMarkPropagation(t, x.X, x, path)
+	pathSensitiveMarkPropagation(t, x.X, x, field)
 }
 
 func (t *stateTracker) DoIndexAddr(x *ssa.IndexAddr) {
@@ -207,9 +217,7 @@ func (t *stateTracker) DoTypeAssert(x *ssa.TypeAssert) {
 }
 
 func (t *stateTracker) DoMakeClosure(x *ssa.MakeClosure) {
-	// TODO: build summary of closure
-	err := fmt.Errorf("encountered a closure but ignored it: analysis unsound")
-	t.errors[x] = err
+	t.addClosureNode(x)
 }
 
 func (t *stateTracker) DoPhi(phi *ssa.Phi) {

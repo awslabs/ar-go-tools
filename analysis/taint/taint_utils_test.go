@@ -90,15 +90,15 @@ func getExpectedSourceToSink(reldir string, dir string) map[PosNoColumn]map[PosN
 
 func TestAll(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/cross-function/example2")
+	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/cross-function/basic")
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)
 	}
-	source2sink := getExpectedSourceToSink(dir, ".")
-	for sink, sources := range source2sink {
+	sink2source := getExpectedSourceToSink(dir, ".")
+	for sink, sources := range sink2source {
 		for source := range sources {
-			fmt.Printf("Source %s -> sink %s\n", sink, source)
+			fmt.Printf("Source %s -> sink %s\n", source, sink)
 		}
 	}
 }

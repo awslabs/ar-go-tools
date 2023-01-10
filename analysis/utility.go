@@ -75,6 +75,18 @@ func SafeValuePos(value ssa.Value) token.Position {
 	}
 }
 
+// SafeInstructionPos returns the position of the instruction or the dummy position.
+func SafeInstructionPos(instruction ssa.Instruction) token.Position {
+	if instruction == nil {
+		return DummyPos
+	}
+	if parent := instruction.Parent(); parent != nil && parent.Prog != nil && parent.Prog.Fset != nil {
+		return instruction.Parent().Prog.Fset.Position(instruction.Pos())
+	} else {
+		return DummyPos
+	}
+}
+
 func SafeFunctionPos(function *ssa.Function) token.Position {
 	if function.Prog != nil && function.Prog.Fset != nil {
 		return function.Prog.Fset.Position(function.Pos())

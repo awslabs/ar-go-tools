@@ -89,6 +89,13 @@ func OutputSsaPackages(p *ssa.Program, dirName string) error {
 	return nil
 }
 
+func writeAnons(b bytes.Buffer, f *ssa.Function) {
+	for _, anon := range f.AnonFuncs {
+		ssa.WriteFunction(&b, anon)
+		writeAnons(b, anon)
+	}
+}
+
 func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 	file, err := os.Create(filename)
 	if err != nil {
@@ -100,7 +107,6 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 	defer w.Flush()
 
 	var b bytes.Buffer
-	defer b.WriteTo(w)
 
 	// Write the package summary
 	ssa.WritePackage(&b, pkg)
@@ -109,12 +115,19 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 		switch pkgM := pkgMember.(type) {
 		case *ssa.Function:
 			ssa.WriteFunction(&b, pkgM)
+			writeAnons(b, pkgM)
+			b.WriteTo(w)
+			b.Reset()
+		case *ssa.Global:
+			fmt.Fprintf(w, "%s\n", pkgM.String())
 		case *ssa.Type:
 			methods := typeutil.IntuitiveMethodSet(pkgM.Type(), &p.MethodSets)
 			for _, sel := range methods {
 				functionMethod := p.MethodValue(sel)
 				if functionMethod != nil {
 					ssa.WriteFunction(&b, functionMethod)
+					b.WriteTo(w)
+					b.Reset()
 				}
 			}
 		}

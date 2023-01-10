@@ -49,7 +49,10 @@ type Config struct {
 	Sources             []CodeIdentifier
 	StaticCommands      []CodeIdentifier
 	PkgPrefix           string
+	CoverageFile        string
+	Coverage            string
 	SkipInterprocedural bool
+	OutputSummaries     bool
 }
 
 // Load reads a configuration from a file

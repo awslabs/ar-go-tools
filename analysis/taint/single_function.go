@@ -69,6 +69,11 @@ func singleFunctionAnalysis(cache *analysis.Cache, function *ssa.Function, runit
 		tt.AddSource(param, NewSource(param, Parameter, "*"))
 	}
 
+	// The free variables of the function are marked
+	for _, fv := range function.FreeVars {
+		tt.AddSource(fv, NewSource(fv, FreeVar, "*"))
+	}
+
 	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
 	if runit {
 		ssafuncs.RunForwardIterative(tracker, function)
@@ -141,12 +146,33 @@ func (t *stateTracker) paramAliases(x ssa.Value) []ssa.Value {
 	return aliasedParams
 }
 
+// freeVarAliases returns the list of free variables of the function the value x aliases to.
+// TODO: cache some of the information obtained by this query
+func (t *stateTracker) freeVarAliases(x ssa.Value) []ssa.Value {
+	var aliasedFv []ssa.Value
+	for _, fv := range t.summary.parent.FreeVars {
+		if x == fv {
+			aliasedFv = append(aliasedFv, fv)
+		} else {
+			fvPtr := t.getAnyPointer(fv)
+			xPtr := t.getAnyPointer(x)
+			if fvPtr != nil && xPtr != nil && fvPtr.PointsTo().Intersects(xPtr.PointsTo()) {
+				aliasedFv = append(aliasedFv, fv)
+			}
+		}
+	}
+	return aliasedFv
+}
+
 // checkCopyIntoArgs checks whether the source in is copying or writing into a value that aliases with
 // one of the function's parameters. This keeps tracks of data flows to the function parameters that a
 // caller might see.
 func (t *stateTracker) checkCopyIntoArgs(in Source, out ssa.Value) {
 	for _, aliasedParam := range t.paramAliases(out) {
 		t.summary.addParamEdge(in, aliasedParam.(ssa.Node)) // type conversion is safe
+	}
+	for _, aliasedFreeVar := range t.freeVarAliases(out) {
+		t.summary.addFreeVarEdge(in, aliasedFreeVar.(ssa.Node)) // type conversion is safe
 	}
 }
 
@@ -210,6 +236,36 @@ func pathSensitiveMarkPropagation(t *stateTracker, in ssa.Value, out ssa.Value, 
 	}
 }
 
+// addClosureNode adds a closure node to the graph, and all the related sources and edges.
+// The closure value is tracked like any other value.
+func (t *stateTracker) addClosureNode(x *ssa.MakeClosure) {
+	t.summary.addClosure(x)
+	t.markValue(x, NewSource(x, Closure, ""))
+	for _, boundVar := range x.Bindings {
+		t.markValue(boundVar, NewQualifierSource(x, boundVar, BoundVar, ""))
+
+		for _, origin := range t.getMarkedValueOrigins(boundVar, "*") {
+			t.summary.addBoundVarEdge(origin, x, boundVar)
+
+			for _, y := range t.paramAliases(boundVar) {
+				t.summary.addParamEdge(origin, y.(ssa.Node))
+			}
+			for _, y := range t.freeVarAliases(boundVar) {
+				t.summary.addFreeVarEdge(origin, y.(ssa.Node))
+			}
+		}
+	}
+	t.markValue(x, NewSource(x, Closure, "*"))
+}
+
+func (t *stateTracker) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
+	if isSourceNode(t.cache.Config, asNode) {
+		s := NewSource(asNode, Synthetic+TaintedVal, "")
+		t.summary.addSyntheticNode(asInstr, "source")
+		t.markValue(asValue, s)
+	}
+}
+
 // callCommonTaint can be used for Call, Defer and Go that wrap a CallCommon.
 func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallInstruction, callCommon *ssa.CallCommon) {
 	// Special cases
@@ -236,7 +292,7 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 
 		for _, source := range t.getMarkedValueOrigins(arg, "*") {
 
-			if source.IsTainted() {
+			if source.IsTainted() && !source.IsSynthetic() {
 				if callIsSink {
 					// This is an intra-procedural path from a source to a sink
 					t.AddFlowToSink(source, callInstr)
@@ -247,6 +303,9 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 				t.summary.addCallArgEdge(source, callInstr, arg)
 				for _, x := range t.paramAliases(arg) {
 					t.summary.addParamEdge(source, x.(ssa.Node))
+				}
+				for _, y := range t.freeVarAliases(arg) {
+					t.summary.addFreeVarEdge(source, y.(ssa.Node))
 				}
 			}
 		}
@@ -310,6 +369,10 @@ func (t *stateTracker) doBuiltinCall(callValue ssa.Value, callCommon *ssa.CallCo
 
 		// for close, delete, nothing is propagated
 		case "close", "delete":
+			return true
+
+		// the builtin println doesn't return anything
+		case "println":
 			return true
 
 		// for recover, we will need some form of panic analysis

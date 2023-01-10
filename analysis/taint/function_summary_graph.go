@@ -51,6 +51,29 @@ func (a *ParamNode) IsSink(_ *config.Config) bool {
 	return false
 }
 
+// FreeVarNode is a node that represents a free variable of the function (for closures)
+type FreeVarNode struct {
+	parent  *SummaryGraph
+	ssaNode *ssa.FreeVar
+	fvPos   int
+	out     map[GraphNode]objectPath
+}
+
+func (a *FreeVarNode) Graph() *SummaryGraph          { return a.parent }
+func (a *FreeVarNode) Out() map[GraphNode]objectPath { return a.out }
+func (a *FreeVarNode) Position() token.Position      { return analysis.SafeValuePos(a.ssaNode) }
+func (a *FreeVarNode) ParentName() string {
+	if a.parent != nil && a.parent.parent != nil {
+		return a.parent.parent.Name()
+	} else {
+		return "ParamNode"
+	}
+}
+func (a *FreeVarNode) IsSink(_ *config.Config) bool {
+	// A Free var node is never a sink; the sink will be identified at the call site, not the callee definition.
+	return false
+}
+
 // CallNodeArg is a node that represents the argument of a function call
 type CallNodeArg struct {
 	parent   *CallNode
@@ -94,7 +117,6 @@ func (a *CallNode) Position() token.Position {
 	} else {
 		return analysis.DummyPos
 	}
-
 }
 
 func (a *CallNode) ParentName() string {
@@ -116,6 +138,8 @@ func (a *CallNode) IsSink(config *config.Config) bool {
 	return isSinkNode(config, a.callSite.(ssa.Node))
 }
 
+// FuncName returns the name of the function being called. It can be either the method name or a function name. The
+// function could be a value (and not a static call), in which case the name of the value is returned.
 func (a *CallNode) FuncName() string {
 	if a.callSite != nil {
 		if a.callSite.Common().IsInvoke() {
@@ -149,15 +173,115 @@ func (a *ReturnNode) IsSink(_ *config.Config) bool {
 	return false
 }
 
+type ClosureNode struct {
+	// the parent of a closure node is the summary of the function in which the closure is created
+	parent *SummaryGraph
+
+	// the closureSummary is the data flow summary of the closure
+	closureSummary *SummaryGraph
+
+	// the instruction is the MakeClosure instruction
+	instr ssa.Instruction
+
+	// the nodes corresponding to the bound variables
+	boundVars []*BoundVarNode
+	out       map[GraphNode]objectPath
+}
+
+func (a *ClosureNode) Graph() *SummaryGraph          { return a.parent }
+func (a *ClosureNode) Out() map[GraphNode]objectPath { return a.out }
+
+func (a *ClosureNode) Position() token.Position {
+	if a.instr != nil {
+		return analysis.SafeInstructionPos(a.instr)
+	} else {
+		return analysis.DummyPos
+	}
+}
+
+func (a *ClosureNode) ParentName() string {
+	if a.parent != nil && a.parent.parent != nil {
+		return a.parent.parent.Name()
+	} else {
+		return "CallNode"
+	}
+}
+func (a *ClosureNode) FindBoundVar(v ssa.Value) *BoundVarNode {
+	for _, bv := range a.boundVars {
+		if bv.ssaValue == v {
+			return bv
+		}
+	}
+	return nil
+}
+
+func (a *ClosureNode) IsSink(_ *config.Config) bool {
+	return false
+}
+
+// BoundVarNode is a node that represents the bound variable when a closure is created
+type BoundVarNode struct {
+	// the parent is the closure node that captures the variables
+	parent *ClosureNode
+
+	// the ssaValue is the value that corresponds to the bound variable in the SSA
+	ssaValue ssa.Value
+
+	// bPos is the position of the bound variable, and correspond to fvPos is the closure's summary
+	bPos int
+
+	out map[GraphNode]objectPath
+}
+
+func (a *BoundVarNode) Graph() *SummaryGraph          { return a.parent.parent }
+func (a *BoundVarNode) Out() map[GraphNode]objectPath { return a.out }
+func (a *BoundVarNode) Position() token.Position      { return analysis.SafeValuePos(a.ssaValue) }
+func (a *BoundVarNode) ParentName() string {
+	if a.parent != nil && a.parent.parent != nil && a.parent.parent.parent != nil {
+		return a.parent.parent.parent.Name()
+	} else {
+		return "BoundVarNode"
+	}
+}
+
+func (a *BoundVarNode) IsSink(_ *config.Config) bool {
+	// A bound variable is never a sink
+	return false
+}
+
+// A SyntheticNode can be used to represent any other type of node.
+type SyntheticNode struct {
+	parent *SummaryGraph            // the parent of a SyntheticNode is the summary of the function in which it appears
+	instr  ssa.Instruction          // a SyntheticNode must correspond to a specific instruction
+	label  string                   // the label can be used to record information about synthetic nodes
+	out    map[GraphNode]objectPath // the out maps the node to other nodes to which data flows
+}
+
+func (a *SyntheticNode) Graph() *SummaryGraph          { return a.parent }
+func (a *SyntheticNode) Out() map[GraphNode]objectPath { return a.out }
+func (a *SyntheticNode) Position() token.Position      { return analysis.SafeInstructionPos(a.instr) }
+func (a *SyntheticNode) IsSink(cfg *config.Config) bool {
+	return isSinkNode(cfg, a.instr.(ssa.Node)) // safe type conversion
+}
+func (a *SyntheticNode) ParentName() string {
+	if a.instr != nil {
+		return a.instr.Parent().Name()
+	}
+	return ""
+}
+
 // Graph
 
 // SummaryGraph is the function dataflow summary graph.
 type SummaryGraph struct {
-	constructed bool                                // true if summary graph is constructed, false if it is a dummy
-	parent      *ssa.Function                       // the ssa function it summarizes
-	params      map[ssa.Node]*ParamNode             // the parameters of the function, associated to ParamNode
-	callsites   map[ssa.CallInstruction]*CallNode   // the call sites of the function
-	callees     map[ssa.CallInstruction][]*CallNode // the call instructions are linked to CallNode.
+	constructed    bool                                // true if summary graph is constructed, false if it is a dummy
+	parent         *ssa.Function                       // the ssa function it summarizes
+	params         map[ssa.Node]*ParamNode             // the parameters of the function, associated to ParamNode
+	freeVars       map[ssa.Node]*FreeVarNode           // the free variables of the function, associated to FreeVarNode
+	callsites      map[ssa.CallInstruction]*CallNode   // the call sites of the function
+	callees        map[ssa.CallInstruction][]*CallNode // the call instructions are linked to CallNode.
+	closures       map[ssa.Instruction]*ClosureNode    // the MakeClosure nodes are linked to ClosureNode
+	syntheticNodes map[ssa.Instruction]*SyntheticNode
 	// A call site can have multiple callees
 	returns map[ssa.Instruction]*ReturnNode // the return instructions are linked to ReturnNode
 }
@@ -171,19 +295,27 @@ func NewSummaryGraph(f *ssa.Function, cg *callgraph.Node) *SummaryGraph {
 		return nil
 	}
 	g := &SummaryGraph{
-		constructed: false,
-		parent:      f,
-		params:      make(map[ssa.Node]*ParamNode, len(f.Params)),
-		callees:     make(map[ssa.CallInstruction][]*CallNode),
-		callsites:   make(map[ssa.CallInstruction]*CallNode),
-		returns:     nil,
+		constructed:    false,
+		parent:         f,
+		params:         make(map[ssa.Node]*ParamNode, len(f.Params)),
+		freeVars:       make(map[ssa.Node]*FreeVarNode, len(f.FreeVars)),
+		callees:        make(map[ssa.CallInstruction][]*CallNode),
+		callsites:      make(map[ssa.CallInstruction]*CallNode),
+		returns:        make(map[ssa.Instruction]*ReturnNode),
+		closures:       make(map[ssa.Instruction]*ClosureNode),
+		syntheticNodes: make(map[ssa.Instruction]*SyntheticNode),
 	}
 	// Add the parameters
 	for pos, param := range f.Params {
 		g.addParam(param, pos)
 	}
+
+	// Add the free variables
+	for pos, fv := range f.FreeVars {
+		g.addFreeVar(fv, pos)
+	}
+
 	// Add return instructions
-	g.returns = make(map[ssa.Instruction]*ReturnNode)
 	// A single return node, but map tracks possible return paths
 	returnNode := &ReturnNode{parent: g}
 	for _, block := range f.Blocks {
@@ -219,13 +351,27 @@ func (g *SummaryGraph) addParam(param *ssa.Parameter, pos int) {
 		return
 	}
 
-	node := &ParamNode{
+	g.params[param] = &ParamNode{
 		parent:  g,
 		ssaNode: param,
 		out:     make(map[GraphNode]objectPath),
 		argPos:  pos,
 	}
-	g.params[param] = node
+}
+
+// addFreeVar adds a free variable to the summary
+// @requires g != nil
+func (g *SummaryGraph) addFreeVar(fv *ssa.FreeVar, pos int) {
+	if fv == nil {
+		return
+	}
+
+	g.freeVars[fv] = &FreeVarNode{
+		parent:  g,
+		ssaNode: fv,
+		out:     make(map[GraphNode]objectPath),
+		fvPos:   pos,
+	}
 }
 
 // containsCallNode returns true if nodes contains node, otherwise false
@@ -358,6 +504,49 @@ func (g *SummaryGraph) addReturn(instr ssa.Instruction, node *ReturnNode) {
 	}
 }
 
+// addClosure adds a closure node to the summary
+// @requires g != nil
+func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
+	if _, ok := g.closures[x]; ok {
+		return
+	}
+
+	node := &ClosureNode{
+		parent:         g,
+		closureSummary: nil,
+		instr:          x,
+		boundVars:      []*BoundVarNode{},
+		out:            make(map[GraphNode]objectPath),
+	}
+	g.closures[x] = node
+
+	for pos, binding := range x.Bindings {
+		bindingNode := &BoundVarNode{
+			parent:   node,
+			ssaValue: binding,
+			bPos:     pos,
+			out:      make(map[GraphNode]objectPath),
+		}
+		node.boundVars = append(node.boundVars, bindingNode)
+	}
+}
+
+// addSyntheticNode adds a synthetic node to the summary. instr will be the instruction of the synthetic node, and
+// label will be its label. The node is created only if the instruction is not present in the g.syntheticNodes map.
+// If a node is created, then g.syntheticNodes[instr] will be the node created.
+// @requires g != nil
+func (g *SummaryGraph) addSyntheticNode(instr ssa.Instruction, label string) {
+	if _, ok := g.syntheticNodes[instr]; !ok {
+		node := &SyntheticNode{
+			parent: g,
+			instr:  instr,
+			label:  label,
+			out:    make(map[GraphNode]objectPath),
+		}
+		g.syntheticNodes[instr] = node
+	}
+}
+
 // Functions to add edges to the graph
 
 // addEdge adds an edge between source and dest in the summary graph g.
@@ -365,6 +554,7 @@ func (g *SummaryGraph) addReturn(instr ssa.Instruction, node *ReturnNode) {
 func (g *SummaryGraph) addEdge(source Source, dest GraphNode) {
 	// This function's goal is to define how the source of an edge is obtained in the summary given a Source that
 	// is produced in the intra-procedural analysis.
+
 	if source.IsParameter() {
 		if sourceArgNode, ok := g.params[source.Node]; ok && sourceArgNode != dest {
 			sourceArgNode.out[dest] = source.RegionPath
@@ -397,6 +587,40 @@ func (g *SummaryGraph) addEdge(source Source, dest GraphNode) {
 
 		}
 	}
+
+	if source.IsFreeVar() {
+		if sourceFreeVarNode, ok := g.freeVars[source.Node]; ok && sourceFreeVarNode != dest {
+			sourceFreeVarNode.out[dest] = source.RegionPath
+		}
+	}
+
+	if source.IsBoundVar() {
+		// A bound var source's node must be a make closure node
+		sourceClosure := source.Node.(ssa.Instruction)
+		if cNode, ok := g.closures[sourceClosure]; ok {
+			bvNode := cNode.FindBoundVar(source.Qualifier)
+			if bvNode != nil && bvNode != dest {
+				bvNode.out[dest] = source.RegionPath
+			}
+		}
+	}
+
+	if source.IsClosure() {
+		sourceClosure := source.Node.(ssa.Instruction)
+		if cNode, ok := g.closures[sourceClosure]; ok {
+			if cNode != dest {
+				cNode.out[dest] = source.RegionPath
+			}
+		}
+	}
+
+	if source.IsSynthetic() {
+		// A synthetic source can refer to any instruction
+		sourceInstr := source.Node.(ssa.Instruction)
+		if sourceNode, ok := g.syntheticNodes[sourceInstr]; ok {
+			sourceNode.out[dest] = source.RegionPath
+		}
+	}
 }
 
 // addCallArgEdge adds an edge in the summary from a source to a function call argument
@@ -417,6 +641,25 @@ func (g *SummaryGraph) addCallArgEdge(source Source, call ssa.CallInstruction, a
 		}
 		g.addEdge(source, callNodeArg)
 	}
+}
+
+// addBoundVarEdge adds an edge in the summary from a source to a function call argument
+// @requires g != nil
+func (g *SummaryGraph) addBoundVarEdge(source Source, closure *ssa.MakeClosure, v ssa.Value) {
+	closureNode := g.closures[closure]
+	if closureNode == nil {
+		g.addError(fmt.Errorf("attempting to set bound arg edge but no closure node for %s", closure))
+		os.Exit(1)
+		return
+	}
+
+	boundVarNode := closureNode.FindBoundVar(v)
+	if boundVarNode == nil {
+		g.addError(fmt.Errorf("attempting to set call arg edge but no call arg node"))
+		return
+	}
+	g.addEdge(source, boundVarNode)
+
 }
 
 // addReturnEdge adds an edge in the summary from the source to a return instruction
@@ -468,6 +711,15 @@ func (g *SummaryGraph) addParamEdgeByPos(src int, dest int) bool {
 		}
 	}
 	return false
+}
+
+// addBoundVarEdge adds an edge in the summary from the source to a bound variable of a closure
+func (g *SummaryGraph) addFreeVarEdge(source Source, freeVar ssa.Node) {
+	freeVarNode := g.freeVars[freeVar]
+	if freeVarNode == nil {
+		g.addError(fmt.Errorf("attempting to set free var edge but no free var node"))
+	}
+	g.addEdge(source, freeVarNode)
 }
 
 // addReturnEdgeByPos adds an edge between the parameter at position src to the returned tuple position dest.
@@ -542,6 +794,22 @@ func (a *ReturnNode) String() string {
 	return fmt.Sprintf("\"%s.return\"", a.parent.parent.Name())
 }
 
+func (a *SyntheticNode) String() string {
+	return fmt.Sprintf("\"synthetic: %s = %s\"", a.instr.(ssa.Value).Name(), a.instr.String())
+}
+
+func (a *FreeVarNode) String() string {
+	return fmt.Sprintf("\"freevar:%s\"", a.ssaNode.Name())
+}
+
+func (a *BoundVarNode) String() string {
+	return fmt.Sprintf("\"boundvar:%s\"", a.ssaValue.String())
+}
+
+func (a *ClosureNode) String() string {
+	return fmt.Sprintf("\"closure:%s\"", a.instr.String())
+}
+
 // print the summary graph to w in the graphviz format.
 // If g is nil, then prints the empty graph "subgraph {}"
 func (g *SummaryGraph) print(w io.Writer) {
@@ -555,6 +823,13 @@ func (g *SummaryGraph) print(w io.Writer) {
 			fmt.Fprintf(w, "\t%s -> %s;\n", a.String(), n.String())
 		}
 	}
+
+	for _, a := range g.freeVars {
+		for n := range a.Out() {
+			fmt.Fprintf(w, "\t%s -> %s;\n", a.String(), n.String())
+		}
+	}
+
 	for _, callNodes := range g.callees {
 		for _, callN := range callNodes {
 			for n := range callN.Out() {
@@ -567,10 +842,29 @@ func (g *SummaryGraph) print(w io.Writer) {
 			}
 		}
 	}
+
+	for _, closure := range g.closures {
+		for _, boundvar := range closure.boundVars {
+			for n := range boundvar.Out() {
+				fmt.Fprintf(w, "\t%s -> %s", boundvar.String(), n.String())
+			}
+		}
+		for o := range closure.Out() {
+			fmt.Fprintf(w, "\t%s -> %s", closure.String(), o.String())
+		}
+	}
+
 	for _, r := range g.returns {
 		for n := range r.Out() {
 			fmt.Fprintf(w, "\t%s -> %s;\n", r.String(), n.String())
 		}
 	}
+
+	for _, s := range g.syntheticNodes {
+		for n := range s.Out() {
+			fmt.Fprintf(w, "\t%s -> %s;\n", s.String(), n.String())
+		}
+	}
+
 	fmt.Fprint(w, "}\n")
 }
