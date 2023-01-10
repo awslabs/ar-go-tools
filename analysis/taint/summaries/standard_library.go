@@ -70,8 +70,8 @@ var stdPackages = map[string]map[string]Summary{
 	"strings":         SummaryStrings,
 	"sync":            SummarySync,
 	"sync/atomic":     SummarySync,
-	"syscall":         SummarySysccall,
-	"syscall/js":      SummarySysccall,
+	"syscall":         SummarySyscall,
+	"syscall/js":      SummarySyscall,
 	"testing":         SummaryTesting,
 	"text":            SummaryText,
 	"time":            SummaryTime,
@@ -126,6 +126,11 @@ var SummaryBytes = map[string]Summary{
 	"(*bytes.Buffer).Bytes": {
 		[][]int{{0}},
 		[][]int{{0}},
+	},
+	// func (r *Reader) Seek(offset int64, whence int) (int64, error)
+	"(*bytes.Reader).Seek": {
+		[][]int{{}, {0}, {0}},
+		[][]int{{0}, {0}, {0}},
 	},
 }
 
@@ -217,9 +222,36 @@ var SummaryMath = map[string]Summary{}
 
 var SummaryMime = map[string]Summary{}
 
-var SummaryNet = map[string]Summary{}
+var SummaryNet = map[string]Summary{
+	// func Dial(network, address string) (Conn, error) {
+	"net.Dial": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
+	// func (r *Request) WithContext(ctx context.Context) *Request
+	"(*net/http.Request).WithContext": {
+		[][]int{{0}, {1}}, // context does not taint receiver
+		[][]int{{0}, {1}},
+	},
+}
 
-var SummaryOs = map[string]Summary{}
+var SummaryOs = map[string]Summary{
+	// func (f *File) Seek(offset int64, whence int) (ret int64, err error)
+	"(*os.File).Seek": {
+		[][]int{{}, {0}, {0}},
+		[][]int{{0}, {0}, {0}},
+	},
+	// func Create(name string) (*File, error)
+	"os.Create": {
+		[][]int{{}},
+		[][]int{{0}},
+	},
+	// func Open(name string) (*File, error)
+	"os.Open": {
+		[][]int{{}},
+		[][]int{{0}},
+	},
+}
 
 var SummaryPath = map[string]Summary{
 	// func Join(elem ...string) string
@@ -246,6 +278,16 @@ var SummaryStrConv = map[string]Summary{
 }
 
 var SummaryStrings = map[string]Summary{
+	// func Contains(s, substr string) bool {
+	"strings.Contains": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
+	// func EqualFold(s, t string) bool {
+	"strings.EqualFold": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
 	// func HasPrefix(s, prefix string) bool {
 	"strings.HasPrefix": {
 		[][]int{{}, {}},
@@ -271,6 +313,46 @@ var SummaryStrings = map[string]Summary{
 		[][]int{{}, {}},
 		[][]int{{0}, {0}},
 	},
+	// func NewReader(s string) *Reader
+	"strings.NewReader": {
+		[][]int{{}},
+		[][]int{{0}}, // input taints output
+	},
+	// func (r *Reader) Len() int
+	"(*strings.Reader).Len": {
+		[][]int{{}},
+		[][]int{{0}}, // receiver taints output
+	},
+	// func (r *Reader) Read(b []byte) (n int, err error)
+	"(*strings.Reader).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	// func (r *Reader) ReadAt(b []byte, off int64) (n int, err error)
+	"(*strings.Reader).ReadAt": {
+		[][]int{{1}, {}, {}},
+		[][]int{{0}, {}, {0}},
+	},
+	// func (r *Reader) ReadByte() (byte, error)
+	"(*strings.Reader).ReadByte": {
+		[][]int{{}},
+		[][]int{{0}},
+	},
+	// func (r *Reader) ReadRune() (ch rune, size int, err error)
+	"(*strings.Reader).ReadRune": {
+		[][]int{{}},
+		[][]int{{0}},
+	},
+	// func (r *Reader) Seek(offset int64, whence int) (int64, error)
+	"(*strings.Reader).Seek": {
+		[][]int{{}, {0}, {0}}, // inputs taint the receiver (state change)
+		[][]int{{0}, {0}, {0}},
+	},
+	// func TrimFunc(s string, f func(rune) bool) string {
+	"strings.TrimFunc": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
 }
 
 var SummarySync = map[string]Summary{
@@ -282,9 +364,33 @@ var SummarySync = map[string]Summary{
 		[][]int{{0}},
 		[][]int{{}},
 	},
+	// func (rw *RWMutex) Lock()
+	"(*sync.RWMutex).Lock": NoTaintPropagation,
+	// func (rw *RWMutex) RLock()
+	"(*sync.RWMutex).RLock": NoTaintPropagation,
+	//func (rw *RWMutex) RLocker() Locker
+	"(*sync.RWMutex).RLocker": {
+		[][]int{{}},
+		[][]int{{0}}, // receiver taints output
+	},
+	// func (rw *RWMutex) RUnlock()
+	"(*sync.RWMutex).RUnlock": NoTaintPropagation,
+	// func (rw *RWMutex) TryLock() bool
+	"(*sync.RWMutex).TryLock": {
+		[][]int{{}},
+		[][]int{{0}}, // receiver taints output
+	},
+	// func (rw *RWMutex) Unlock()
+	"(*sync.RWMutex).Unlock": NoTaintPropagation,
+	// func (*WaitGroup) Add(int)
+	"(*sync.WaitGroup).Add": NoTaintPropagation,
+	// func (wg *WaitGroup) Done()
+	"(*sync.WaitGroup).Done": NoTaintPropagation,
+	// func (wg *WaitGroup) Wait()
+	"(*sync.WaitGroup).Wait": NoTaintPropagation,
 }
 
-var SummarySysccall = map[string]Summary{}
+var SummarySyscall = map[string]Summary{}
 
 var SummaryTesting = map[string]Summary{}
 

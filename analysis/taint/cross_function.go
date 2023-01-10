@@ -7,6 +7,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 	"io"
 	"log"
+	"os"
 	"strings"
 )
 
@@ -89,16 +90,49 @@ type NodeWithTrace struct {
 // This function does nothing if there are no summaries (i.e. `len(ifg.summaries) == 0` or if `cfg.SkipInterprocedural`
 // is set to true.
 func (ifg IFGraph) crossFunctionPass(cfg *config.Config, logger *log.Logger, taintFlows SinkToSources) {
+	var err error
+	var sourceFuncs []*SummaryGraph
+	var entryPoints []NodeWithTrace
+
 	// Skip the pass if user configuration demands it
 	if cfg.SkipInterprocedural || len(ifg.summaries) == 0 {
 		return
 	}
+	// Open the coverage file if specified in configuration
+	var coverage *os.File
+	if cfg.CoverageFile != "" {
+		coverage, err = os.Create(cfg.CoverageFile)
+		defer coverage.Close()
+		if err != nil {
+			coverage = nil
+			logger.Printf("Warning: could not create coverage file %s, continuing.\n", cfg.CoverageFile)
+			logger.Printf("Error was: %s", err)
+		} else {
+			_, _ = coverage.WriteString("mode: set\n")
+		}
+	}
 
-	var entryPoints []*SummaryGraph
+	// Open a file to output summaries
+	var summariesFile *os.File
+	if cfg.OutputSummaries {
+		summariesFile, err = os.Create("flow-summaries.out")
+		defer summariesFile.Close()
+		if err != nil {
+			coverage = nil
+			logger.Printf("Warning: could not create summaries files, continuing.\n")
+			logger.Printf("Error was: %s", err)
+		}
+	}
+
 	// Build the interprocedural graph: link all the summaries together, identify source nodes
 	for _, summary := range ifg.summaries {
 		if summary == nil {
 			continue
+		}
+		if summariesFile != nil {
+			_, _ = summariesFile.WriteString(fmt.Sprintf("%s:\n", summary.parent.String()))
+			summary.print(summariesFile)
+			_, _ = summariesFile.WriteString("\n")
 		}
 		for _, callNodes := range summary.callees {
 			for _, node := range callNodes {
@@ -121,20 +155,30 @@ func (ifg IFGraph) crossFunctionPass(cfg *config.Config, logger *log.Logger, tai
 			}
 		}
 
-		// Identify the entry points: all the call sites of the sources
+		// Identify the entry points for that function: all the call sites if it is a source, and all the synthetic
+		// nodes that are sources in the function body.
+		for _, snode := range summary.syntheticNodes {
+			entry := NodeWithTrace{Node: snode, Trace: nil}
+			entryPoints = append(entryPoints, entry)
+		}
 		if isSourceFunction(cfg, summary.parent) {
-			entryPoints = append(entryPoints, summary)
+			sourceFuncs = append(sourceFuncs, summary)
 		}
 	}
 
-	logger.Printf("--- # source functions: %d ---\n", len(entryPoints))
+	for _, summary := range sourceFuncs {
+		for _, node := range summary.callsites {
+			entry := NodeWithTrace{node, nil}
+			entryPoints = append(entryPoints, entry)
+		}
+	}
+
+	logger.Printf("--- # sources of tainted data: %d ---\n", len(entryPoints))
 
 	// Run the analysis for every source point. We may be able to change this to run the analysis for all sources
 	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
 	for _, entry := range entryPoints {
-		for _, node := range entry.callsites {
-			visitFromSource(logger, ifg.cache, NodeWithTrace{node, nil}, taintFlows)
-		}
+		visitFromSource(logger, ifg.cache, entry, taintFlows, coverage)
 	}
 }
 
@@ -158,7 +202,8 @@ func findCalleeSummary(callee *ssa.Function, summaries map[*ssa.Function]*Summar
 
 // visitFromSource runs the inter-procedural analysis from a specific source and adds any detected taint flow
 // to the taintFlows.
-func visitFromSource(logger *log.Logger, c *analysis.Cache, source NodeWithTrace, taintFlows SinkToSources) {
+func visitFromSource(logger *log.Logger, c *analysis.Cache, source NodeWithTrace, taintFlows SinkToSources,
+	coverage *os.File) {
 	seen := make(map[NodeWithTrace]bool)
 	que := []NodeWithTrace{source}
 
@@ -182,8 +227,12 @@ func visitFromSource(logger *log.Logger, c *analysis.Cache, source NodeWithTrace
 		elt := que[len(que)-1]
 		que = que[:len(que)-1]
 		pos := elt.Node.Position()
-		if pos.String() != "unknown" {
-			logger.Printf("-> %s\n", pos)
+		if coverage != nil && pos.String() != "unknown" && pos.String() != "-" {
+			if strings.Contains(pos.Filename, c.Config.Coverage) {
+				_, _ = coverage.WriteString(
+					fmt.Sprintf("%s:%d.1,%d.%d 1 1\n",
+						pos.Filename, pos.Line, pos.Line, pos.Column))
+			}
 		}
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
@@ -319,6 +368,13 @@ func visitFromSource(logger *log.Logger, c *analysis.Cache, source NodeWithTrace
 			for x := range graphNode.Out() {
 				addNext(NodeWithTrace{Node: x, Trace: trace})
 			}
+
+		// Synthetic nodes can only be sources and data should only flow from those nodes: we only need to follow the
+		// outgoing edges
+		case *SyntheticNode:
+			for x := range graphNode.Out() {
+				addNext(NodeWithTrace{Node: x, Trace: elt.Trace})
+			}
 		}
 	}
 }
@@ -327,7 +383,7 @@ func visitFromSource(logger *log.Logger, c *analysis.Cache, source NodeWithTrace
 // returns true if it adds a new path.
 // @requires elt.Node.IsSink()
 func addNewPathCandidate(paths SinkToSources, source GraphNode, sink GraphNode) bool {
-	var sourceInstr ssa.CallInstruction
+	var sourceInstr ssa.Instruction
 	var sinkInstr ssa.CallInstruction
 
 	// The sink is the current node. Since elt.Node.IsSink() should be true,
@@ -336,6 +392,8 @@ func addNewPathCandidate(paths SinkToSources, source GraphNode, sink GraphNode) 
 		sourceInstr = node.callSite
 	case *CallNodeArg:
 		sourceInstr = node.parent.callSite
+	case *SyntheticNode:
+		sourceInstr = node.instr
 	}
 
 	switch node := sink.(type) {

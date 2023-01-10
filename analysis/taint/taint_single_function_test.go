@@ -54,12 +54,16 @@ func checkExpected(t *testing.T, program *ssa.Program, taintFlows SinkToSources,
 
 func checkExpectedPositions(t *testing.T, program *ssa.Program, taintFlows SinkToSources,
 	expected map[PosNoColumn]map[PosNoColumn]bool) {
+	seen := make(map[PosNoColumn]map[PosNoColumn]bool)
 	for sink, sources := range ReachedSinkPositions(program, taintFlows) {
 		for source := range sources {
 			posSink := RemoveColumn(sink)
+			if _, ok := seen[posSink]; !ok {
+				seen[posSink] = map[PosNoColumn]bool{}
+			}
 			posSource := RemoveColumn(source)
 			if _, ok := expected[posSink]; ok && expected[posSink][posSource] {
-				delete(expected[posSink], posSource)
+				seen[posSink][posSource] = true
 			} else {
 				t.Errorf("ERROR in main.go: false positive: %s flows to %s\n", posSource, posSink)
 			}
@@ -68,8 +72,10 @@ func checkExpectedPositions(t *testing.T, program *ssa.Program, taintFlows SinkT
 
 	for sinkLine, sources := range expected {
 		for sourceLine := range sources {
-			// Remaining entries have not been detected!
-			t.Errorf("ERROR in main.go: failed to detect that %s flows to %s\n", sourceLine, sinkLine)
+			if !seen[sinkLine][sourceLine] {
+				// Remaining entries have not been detected!
+				t.Errorf("ERROR in main.go: failed to detect that %s flows to %s\n", sourceLine, sinkLine)
+			}
 		}
 	}
 }
@@ -105,7 +111,7 @@ func TestSingleFunction(t *testing.T) {
 		195: {192: true},
 		207: {205: true},
 		257: {252: true},
-		255: {252: true}, // TODO: see #3
+		255: {252: true},
 		264: {261: true, 262: true},
 		275: {270: true, 272: true},
 		295: {283: true, 286: true, 288: true},

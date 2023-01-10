@@ -76,8 +76,8 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 
 	// taintFlowCandidates contains all the possible taint-flow candidates.
 	taintFlowCandidates := make(SinkToSources)
-	// Start the intraprocedural summary building routines
-	jobs := make(chan intraProceduralJob, numRoutines+1)
+	// Start the single function summary building routines
+	jobs := make(chan singleFunctionJob, numRoutines+1)
 	output := make(chan SingleFunctionResult, numRoutines+1)
 	done := make(chan int)
 	for proc := 0; proc < numRoutines; proc++ {
@@ -92,7 +92,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	for function := range ssautil.AllFunctions(prog) {
 		// Only build summaries for non-stdlib functions here
 		if !summaries.IsStdFunction(function) && userDefinedFunction(function) {
-			jobs <- intraProceduralJob{
+			jobs <- singleFunctionJob{
 				function: function,
 				cache:    cache,
 			}
@@ -133,14 +133,14 @@ func populatePointerCache(c *analysis.Cache, wg *sync.WaitGroup) {
 }
 
 // an intraProceduralHob contains all the information necessary to run the intraprocedural analysis on function
-type intraProceduralJob struct {
+type singleFunctionJob struct {
 	cache    *analysis.Cache
 	function *ssa.Function
 	output   chan SingleFunctionResult
 }
 
 // jobConsumer consumes jobs from the jobs channel, and closes ouput when done
-func jobConsumer(jobs chan intraProceduralJob, output chan SingleFunctionResult, done chan int) {
+func jobConsumer(jobs chan singleFunctionJob, output chan SingleFunctionResult, done chan int) {
 	for job := range jobs {
 		runIntraProceduralOnFunction(job, output)
 	}
@@ -150,7 +150,7 @@ func jobConsumer(jobs chan intraProceduralJob, output chan SingleFunctionResult,
 }
 
 // runIntraProceduralOnFunction is a simple function that runs the intraprocedural analysis with the information in job
-func runIntraProceduralOnFunction(job intraProceduralJob, output chan SingleFunctionResult) {
+func runIntraProceduralOnFunction(job singleFunctionJob, output chan SingleFunctionResult) {
 	runAnalysis := !ignoreInFirstPass(job.cache.Config, job.function)
 	job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
 		analysis.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
@@ -183,7 +183,6 @@ func collectResults(c chan SingleFunctionResult, done chan int, numProducers int
 				close(c)
 				return
 			}
-
 		}
 	}
 }

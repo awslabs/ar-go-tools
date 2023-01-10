@@ -15,9 +15,13 @@ type SourceType int
 
 const (
 	Parameter   SourceType = 1 << iota // A Parameter is a function parameter.
+	FreeVar                            // A FreeVar is a free variable in a closure.
 	TaintedVal                         // A TaintedVal is a value tainted by a taint source.
 	CallSiteArg                        // A CallSiteArg is a call site argument.
 	CallReturn                         // A CallReturn is a call site return.
+	Closure                            // A Closure is a closure creation site
+	BoundVar                           // A BoundVar is a variable bound by a closure
+	Synthetic                          // A Synthetic node type for any other node.
 )
 
 // Source is a node with additional information about its type and region path (matching the paths in pointer analysis)
@@ -89,6 +93,21 @@ func (s *Source) IsParameter() bool {
 	return s.Type&Parameter != 0
 }
 
+// IsFreeVar returns true if the source is a closure free variable.
+func (s *Source) IsFreeVar() bool {
+	return s.Type&FreeVar != 0
+}
+
+// IsBoundVar returns true if the source is a closure free variable.
+func (s *Source) IsBoundVar() bool {
+	return s.Type&BoundVar != 0
+}
+
+// IsClosure returns true if the source is a closure
+func (s *Source) IsClosure() bool {
+	return s.Type&Closure != 0
+}
+
 // IsCallSiteArg returns true if the source is a call site argument. If it returns true, then s.qualifier must be
 // non-nil.
 func (s *Source) IsCallSiteArg() bool {
@@ -98,6 +117,11 @@ func (s *Source) IsCallSiteArg() bool {
 // IsCallReturn returns true if the source is a call return.
 func (s *Source) IsCallReturn() bool {
 	return s.Type&CallReturn != 0
+}
+
+// IsSynthetic returns true if the source is synthetic.
+func (s *Source) IsSynthetic() bool {
+	return s.Type&Synthetic != 0
 }
 
 // FlowInformation contains the information necessary for the taint analysis and function summary building.

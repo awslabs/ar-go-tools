@@ -7,9 +7,5 @@ sources:
     type: Bar
 sinks:
   - package: main
-    method: sink1
-  - package: main
-    method: sink2
-  - package: main
-    method: sink3
+    method: sink[1-9]
 skipinterprocedural: true

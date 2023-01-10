@@ -23,7 +23,7 @@ func TestFunctionSummaries(t *testing.T) {
 		if function.Name() == "main" {
 			ok := len(summary.returns) == 1
 			ok = ok && len(summary.params) == 0
-			ok = ok && len(summary.callees) == 4
+			ok = ok && len(summary.callees) == 5
 			if !ok {
 				t.Errorf("main graph is not as expected")
 			}
@@ -70,6 +70,14 @@ func TestFunctionSummaries(t *testing.T) {
 						t.Errorf("in Foo, s should have one outgoing edge")
 					}
 				}
+			}
+		}
+
+		if function.Name() == "FooBar" {
+			ok := len(summary.returns) == 1
+			ok = ok && len(summary.syntheticNodes) == 2
+			if !ok {
+				t.Errorf("FooBar graph is not as expected")
 			}
 		}
 

@@ -90,3 +90,34 @@ passes of the analysis running:
 - constructing the function summaries and detecting intra-procedural taint flows (intra-procedural analysis)
 - traversing the inter-procedural flow graph from taint sources (inter-procedural analysis)
 
+#### Taint Analysis Config File
+The taint analysis uses a config file that contains the definition of the sinks and sources to be considered, as well
+as various configuration options. Several examples are in the `testdata` examples. The configuration file for the agent
+analysis contains the following:
+```yaml
+pkgprefix: "github.com/aws" # focus on functions in aws
+coveragefile: "taint-coverage.out" # output the lines covered by the taint flow propagation
+coverage: "amazon-ssm-agent/agent" # coverage is only reported for those file that have amazon-ssm-agent/agent as substring
+outputsummaries: true
+sources:
+   - method: "GetMessages"
+     package: "github.com/aws/amazon-ssm-agent/agent/runcommand/mds"
+sinks:
+  - package: "github.com/aws/amazon-ssm-agent/agent/jsonutil"
+    method: "Marshal"
+  - method: "(.*)Submit"
+```
+- The `pkgprefix` option specifies which files to analyze: summaries will be built only for the functions that have a 
+package name that starts with this prefix. 
+- The `coveragefile` option specifies where the coverage file output should be written. One can then use
+`go tool cover -html=coveragefilename` to inspect which lines have been reached by tainted data. `coverage` specifies
+for which files coverage needs to be reported; in this example, any file that contains `amazon-ssm-agent/agent` in 
+its path.
+- The `outputsummaries` option is a boolean that specifies whether a representation of the summaries needs to be 
+produced. If set to true, the dataflow summaries can be inspected in the `flow-summaries.out` file in the same folder
+where the tool is run.
+- The `sources` and `sinks` each specify sets of identifiers for sources and sinks. A source can be specified by a 
+method (or function) name with `method` or a field name with `field`. A sink must be a function (or method). The 
+`package` information narrows down how function, methods and fields are matched. Note that the strings are Go regexes.
+For example, in the test files, one can specify the package as `(main|command-line-arguments)` to allow for the 
+different ways the main package could be loaded.
