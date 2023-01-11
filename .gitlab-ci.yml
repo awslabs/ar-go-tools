@@ -26,4 +26,12 @@ runtests:
   stage: test
   script:
     - go vet ./analysis/...
-    - go test ./analysis/...
+    - go test -coverprofile=coverage.txt -covermode count ./analysis/...
+    - go install github.com/boumenot/gocover-cobertura@latest
+    - gocover-cobertura < coverage.txt > coverage.xml 
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
