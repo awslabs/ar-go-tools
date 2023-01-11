@@ -1,21 +1,29 @@
-image: golang:latest
+image: registry.gitlab.aws.dev/cm-arg/argot:latest
 
 stages:
-  - test
   - build
-  - deploy
+  - test
+
+compile:
+  stage: build
+  script:
+    - go mod download
+    - go build -o bin/compare cmd/compare/*.go
+    - go build -o bin/defer cmd/defer/*.go 
+    - go build -o bin/dependencies cmd/dependencies/*.go 
+    - go build -o bin/maypanic cmd/maypanic/*.go 
+    - go build -o bin/packagescan cmd/packagescan/*.go
+    - go build -o bin/reachability cmd/reachability/*.go 
+    - go build -o bin/render cmd/render/*.go 
+    - go build -o bin/static-commands cmd/static-commands/*.go 
+    - go build -o bin/statistics cmd/statistics/*.go 
+    - go build -o bin/taint cmd/taint/*.go
+  artifacts:
+    paths:
+      - bin
 
 runtests:
   stage: test
   script:
     - go vet ./analysis/...
     - go test ./analysis/...
-
-compile:
-  stage: build
-  script:
-    - make
-  artifacts:
-    paths:
-      - bin
-
