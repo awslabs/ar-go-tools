@@ -1,3 +1,7 @@
+[![pipeline status](https://gitlab.aws.dev/cm-arg/argot/badges/mainline/pipeline.svg)](https://gitlab.aws.dev/cm-arg/argot/-/commits/mainline)
+[![coverage report](https://gitlab.aws.dev/cm-arg/argot/badges/mainline/coverage.svg)](https://gitlab.aws.dev/cm-arg/argot/-/commits/mainline) 
+[![Latest Release](https://gitlab.aws.dev/cm-arg/argot/-/badges/release.svg)](https://gitlab.aws.dev/cm-arg/argot/-/releases)
+
 # Argot
 
 Argot is Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
