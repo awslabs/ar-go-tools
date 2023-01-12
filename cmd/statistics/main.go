@@ -7,10 +7,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/maypanic"
 	"go/build"
 	"os"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -69,17 +71,17 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, format.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
-	excludeAbsolute := analysis.MakeAbsolute(exclude)
+	excludeAbsolute := maypanic.MakeAbsolute(exclude)
 
 	allFunctions := ssautil.AllFunctions(program)
 	analysis.SSAStatistics(&allFunctions, excludeAbsolute, jsonFlag)

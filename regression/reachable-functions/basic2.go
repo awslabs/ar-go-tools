@@ -4,7 +4,7 @@ func notReachable() {
 }
 
 func alsoNotReachable() {
-    notReachable()
+	notReachable()
 }
 
 func reachable() {

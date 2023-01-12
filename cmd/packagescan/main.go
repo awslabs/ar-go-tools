@@ -7,12 +7,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"go/build"
 	"os"
 	"sort"
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
@@ -64,7 +65,7 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Scanning sources for "+pkg)+"\n")
+	fmt.Fprintf(os.Stderr, format.Faint("Scanning sources for "+pkg)+"\n")
 
 	// todo -- do we want to make the choice of platforms a command line argument?
 	// I made all three the default as a forcing function ("mechanism") to ensure that I
@@ -80,7 +81,7 @@ func doMain() error {
 			return err
 		}
 
-		fmt.Fprintln(os.Stderr, analysis.Faint("Analyzing for "+platform))
+		fmt.Fprintln(os.Stderr, format.Faint("Analyzing for "+platform))
 
 		allPkgs := analysis.AllPackages(ssautil.AllFunctions(program))
 

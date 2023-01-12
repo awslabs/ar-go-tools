@@ -1,4 +1,4 @@
-package analysis
+package reachability
 
 import (
 	"fmt"

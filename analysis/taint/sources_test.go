@@ -2,15 +2,16 @@ package taint
 
 import (
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"go/token"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 // For testing purposes only: an analyzer that identifies where sources are

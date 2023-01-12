@@ -1,14 +1,14 @@
 package taint
 
 import (
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"golang.org/x/tools/go/ssa"
 )
 
 // NewSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
-func NewSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
-	return newPackagesMap(c, pkgs, isSourceNode)
+func NewSourceMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
+	return dataflow.NewPackagesMap(c, pkgs, isSourceNode)
 }
 
 func isSourceNode(cfg *config.Config, n ssa.Node) bool {
@@ -18,7 +18,7 @@ func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
-			calleePkg, err := FindSafeCalleePkg(node.Common())
+			calleePkg, err := dataflow.FindSafeCalleePkg(node.Common())
 			if err != nil {
 				return false // skip if we can't get the package
 			} else {
@@ -26,7 +26,7 @@ func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 			}
 		} else {
 			funcValue := node.Call.Value.Name()
-			calleePkg, err := FindSafeCalleePkg(node.Common())
+			calleePkg, err := dataflow.FindSafeCalleePkg(node.Common())
 			if err != nil {
 				return false // skip if we can't get the package
 			} else {
@@ -36,8 +36,8 @@ func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 
 	// Field accesses that are considered as sources
 	case *ssa.Field:
-		fieldName := FieldFieldName(node)
-		packageName, typeName, err := FindTypePackage(node.X.Type())
+		fieldName := dataflow.FieldFieldName(node)
+		packageName, typeName, err := dataflow.FindTypePackage(node.X.Type())
 		if err != nil {
 			return false
 		} else {
@@ -45,8 +45,8 @@ func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 		}
 
 	case *ssa.FieldAddr:
-		fieldName := FieldAddrFieldName(node)
-		packageName, typeName, err := FindTypePackage(node.X.Type())
+		fieldName := dataflow.FieldAddrFieldName(node)
+		packageName, typeName, err := dataflow.FindTypePackage(node.X.Type())
 		if err != nil {
 			return false
 		} else {
@@ -55,7 +55,7 @@ func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 
 	// Allocations of data of a type that is a source
 	case *ssa.Alloc:
-		packageName, typeName, err := FindTypePackage(node.Type())
+		packageName, typeName, err := dataflow.FindTypePackage(node.Type())
 		if err != nil {
 			return false
 		} else {
@@ -65,9 +65,4 @@ func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 	default:
 		return false
 	}
-}
-
-func isSourceFunction(cfg *config.Config, f *ssa.Function) bool {
-	pkg := analysis.PackageNameFromFunction(f)
-	return cfg.IsSource(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 }

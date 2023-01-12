@@ -1,8 +1,9 @@
-package analysis
+package dataflow
 
 import (
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"go/types"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"

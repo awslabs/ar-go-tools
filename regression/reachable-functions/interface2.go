@@ -6,7 +6,7 @@ type innerInterface interface {
 }
 
 type someInterfaceGroup interface {
-        innerInterface
+	innerInterface
 }
 
 type type1 struct {

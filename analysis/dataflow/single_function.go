@@ -1,13 +1,16 @@
-package taint
+package dataflow
 
 import (
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"go/types"
+	"os"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/defers"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
-	"os"
 )
 
 // This file implements the single function analysis. This analysis pass inspects a single function and constructs:
@@ -19,46 +22,51 @@ import (
 // are handled.
 
 // stateTracker contains the information used by the intra-procedural taint analysis. The main components modified by
-// the analysis  are the taintInfo and the argFlows fields, which contain information about taint flows and argument
+// the analysis  are the flowInfo and the argFlows fields, which contain information about taint flows and argument
 // flows respectively.
 type stateTracker struct {
-	taintInfo   *FlowInformation                             // the taint information for the analysis
-	cache       *analysis.Cache                              // the analysis cache containing pointer information, callgraph, ...
-	changeFlag  bool                                         // a flag to keep track of changes in the analysis state
-	blocksSeen  map[*ssa.BasicBlock]bool                     // a map to keep track of blocks seen during the analysis
-	errors      map[ssa.Node]error                           // we don't panic during the analysis, but accumulate errors
-	summary     *SummaryGraph                                // summary is the function summary currently being built
-	deferStacks analysis.DeferResults                        // information about the possible defer stacks at RunDefers
-	instrPaths  map[ssa.Instruction]map[ssa.Instruction]bool // instrPaths[i][j] means there is a path from i to j
+	flowInfo     *FlowInformation                             // the data flow information for the analysis
+	cache        *Cache                                       // the analysis cache containing pointer information, callgraph, ...
+	changeFlag   bool                                         // a flag to keep track of changes in the analysis state
+	blocksSeen   map[*ssa.BasicBlock]bool                     // a map to keep track of blocks seen during the analysis
+	errors       map[ssa.Node]error                           // we don't panic during the analysis, but accumulate errors
+	summary      *SummaryGraph                                // summary is the function summary currently being built
+	deferStacks  defers.Results                               // information about the possible defer stacks at RunDefers
+	instrPaths   map[ssa.Instruction]map[ssa.Instruction]bool // instrPaths[i][j] means there is a path from i to j
+	isSourceNode func(*config.Config, ssa.Node) bool          // function that determines if a node is a source
+	isSinkNode   func(*config.Config, ssa.Node) bool          // function that determines if a node is a sink
 }
 
 // SingleFunctionResult holds the results of the intra-procedural analysis.
 type SingleFunctionResult struct {
-	IntraPaths map[ssa.Instruction]map[ssa.Instruction]bool // IntraPaths are the intra-procedural paths from sources
+	DataFlows map[ssa.Instruction]map[ssa.Instruction]bool // DataFlows are the intra-procedural data-flow paths from sources
 	// to sinks. This might disappear as the inter-procedural analysis should subsume it, but it is kept for now as
 	// the user has the option to turn off the inter-procedural pass in the analysis.
 	Summary *SummaryGraph // Summary is the procedure summary built by the analysis
 }
 
-// singleFunctionAnalysis is the main entry point of the intra procedural analysis.
-func singleFunctionAnalysis(cache *analysis.Cache, function *ssa.Function, runit bool) (SingleFunctionResult, error) {
+// SingleFunctionAnalysis is the main entry point of the intra procedural analysis.
+func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
+	isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) (SingleFunctionResult, error) {
 	sm := NewSummaryGraph(function, cache.PointerAnalysis.CallGraph.Nodes[function])
 	tt := NewFlowInfo(cache.Config)
 	tracker := &stateTracker{
-		taintInfo:   tt,
-		cache:       cache,
-		changeFlag:  true,
-		blocksSeen:  map[*ssa.BasicBlock]bool{},
-		errors:      map[ssa.Node]error{},
-		summary:     sm,
-		deferStacks: analysis.AnalyzeFunctionDefers(function, false),
-		instrPaths:  map[ssa.Instruction]map[ssa.Instruction]bool{},
+		flowInfo:     tt,
+		cache:        cache,
+		changeFlag:   true,
+		blocksSeen:   map[*ssa.BasicBlock]bool{},
+		errors:       map[ssa.Node]error{},
+		summary:      sm,
+		deferStacks:  defers.AnalyzeFunction(function, false),
+		instrPaths:   map[ssa.Instruction]map[ssa.Instruction]bool{},
+		isSourceNode: isSourceNode,
+		isSinkNode:   isSinkNode,
 	}
 
 	// Output warning if defer stack is unbounded
 	if !tracker.deferStacks.DeferStackBounded {
 		err := cache.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
-			function.String(), analysis.Yellow("analysis unsound!")))
+			function.String(), format.Yellow("analysis unsound!")))
 		if err != nil {
 			return SingleFunctionResult{}, err
 		}
@@ -77,14 +85,14 @@ func singleFunctionAnalysis(cache *analysis.Cache, function *ssa.Function, runit
 	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
 	if runit {
 		ssafuncs.RunForwardIterative(tracker, function)
-		sm.constructed = true
+		sm.Constructed = true
 	}
 
 	// If we have errors, return one (TODO: we'll decide how to handle them later)
 	for _, err := range tracker.errors {
 		return SingleFunctionResult{}, fmt.Errorf("error in intraprocedural analysis: %w", err)
 	}
-	return SingleFunctionResult{IntraPaths: tt.SinkSources, Summary: sm}, nil
+	return SingleFunctionResult{DataFlows: tt.SinkSources, Summary: sm}, nil
 }
 
 // getMarkedValueOrigins returns a source and true if v is a marked value, otherwise it returns (nil, false)
@@ -96,7 +104,7 @@ func singleFunctionAnalysis(cache *analysis.Cache, function *ssa.Function, runit
 func (t *stateTracker) getMarkedValueOrigins(v ssa.Value, path string) []Source {
 	var origins []Source
 	// when the value is directly marked as tainted.
-	for source := range t.taintInfo.markedValues[v] {
+	for source := range t.flowInfo.MarkedValues[v] {
 		if path == "*" || source.RegionPath == path || source.RegionPath == "*" || source.RegionPath == "" {
 			origins = append(origins, source)
 		}
@@ -105,7 +113,7 @@ func (t *stateTracker) getMarkedValueOrigins(v ssa.Value, path string) []Source 
 	// when the value's aliases is marked by intersecting with another marked values aliases
 	if ptr := t.getAnyPointer(v); ptr != nil {
 		ptsToSet := ptr.PointsTo()
-		for otherPtsTo, source := range t.taintInfo.markedPointers {
+		for otherPtsTo, source := range t.flowInfo.MarkedPointers {
 			if ptsToSet.Intersects(*otherPtsTo) {
 				t.markValue(v, source)
 				origins = append(origins, source)
@@ -132,7 +140,7 @@ func (t *stateTracker) getAnyPointer(x ssa.Value) *pointer.Pointer {
 // TODO: cache some of the information obtained by this query
 func (t *stateTracker) paramAliases(x ssa.Value) []ssa.Value {
 	var aliasedParams []ssa.Value
-	for _, param := range t.summary.parent.Params {
+	for _, param := range t.summary.Parent.Params {
 		if x == param {
 			aliasedParams = append(aliasedParams, param)
 		} else {
@@ -150,7 +158,7 @@ func (t *stateTracker) paramAliases(x ssa.Value) []ssa.Value {
 // TODO: cache some of the information obtained by this query
 func (t *stateTracker) freeVarAliases(x ssa.Value) []ssa.Value {
 	var aliasedFv []ssa.Value
-	for _, fv := range t.summary.parent.FreeVars {
+	for _, fv := range t.summary.Parent.FreeVars {
 		if x == fv {
 			aliasedFv = append(aliasedFv, fv)
 		} else {
@@ -169,10 +177,10 @@ func (t *stateTracker) freeVarAliases(x ssa.Value) []ssa.Value {
 // caller might see.
 func (t *stateTracker) checkCopyIntoArgs(in Source, out ssa.Value) {
 	for _, aliasedParam := range t.paramAliases(out) {
-		t.summary.addParamEdge(in, aliasedParam.(ssa.Node)) // type conversion is safe
+		t.summary.AddParamEdge(in, aliasedParam.(ssa.Node)) // type conversion is safe
 	}
 	for _, aliasedFreeVar := range t.freeVarAliases(out) {
-		t.summary.addFreeVarEdge(in, aliasedFreeVar.(ssa.Node)) // type conversion is safe
+		t.summary.AddFreeVarEdge(in, aliasedFreeVar.(ssa.Node)) // type conversion is safe
 	}
 }
 
@@ -182,21 +190,21 @@ func (t *stateTracker) markAllAliases(source Source, ptsToSet pointer.PointsToSe
 	for _, label := range ptsToSet.Labels() {
 		if label != nil && label.Value() != nil {
 			source.RegionPath = label.Path()
-			t.taintInfo.AddSource(label.Value(), source)
+			t.flowInfo.AddSource(label.Value(), source)
 		}
 	}
-	t.taintInfo.markedPointers[&ptsToSet] = source
+	t.flowInfo.MarkedPointers[&ptsToSet] = source
 }
 
 // markValue marks the value v as tainted with origin taintOrigin
 // if the value was not marked as tainted, it changes the changeFlag to true to indicate that the taint information
 // has changed for the current pass
 func (t *stateTracker) markValue(v ssa.Value, source Source) {
-	if t.taintInfo.HasSource(v, source) {
+	if t.flowInfo.HasSource(v, source) {
 		return
 	}
 	// v was not tainted before
-	t.changeFlag = t.taintInfo.AddSource(v, source)
+	t.changeFlag = t.flowInfo.AddSource(v, source)
 	// Propagate to any other value that is an alias of v
 	// By direct query
 	if ptr, ptrExists := t.cache.PointerAnalysis.Queries[v]; ptrExists {
@@ -212,16 +220,16 @@ func (t *stateTracker) AddFlowToSink(source Source, sink ssa.Instruction) {
 	// A flow from a tainted source to a sink is added in the taint tracking info
 	if source.IsTainted() {
 		sourceInstr := source.Node.(ssa.Instruction) // a taint-source must be an instruction
-		if t.taintInfo.HasSinkSourcePair(sink, sourceInstr) {
+		if t.flowInfo.HasSinkSourcePair(sink, sourceInstr) {
 			return // skip computing paths
 		}
 		if t.checkFlow(source, sink, nil) {
-			_ = t.taintInfo.AddSinkSourcePair(sink, sourceInstr)
+			_ = t.flowInfo.AddSinkSourcePair(sink, sourceInstr)
 		}
 	}
 }
 
-// Helpers for propagating taint
+// Helpers for propagating data flow
 
 // simpleTransitiveMarkPropagation  propagates all the marks from in to out
 func simpleTransitiveMarkPropagation(t *stateTracker, in ssa.Value, out ssa.Value) {
@@ -239,19 +247,19 @@ func pathSensitiveMarkPropagation(t *stateTracker, in ssa.Value, out ssa.Value, 
 // addClosureNode adds a closure node to the graph, and all the related sources and edges.
 // The closure value is tracked like any other value.
 func (t *stateTracker) addClosureNode(x *ssa.MakeClosure) {
-	t.summary.addClosure(x)
+	t.summary.AddClosure(x)
 	t.markValue(x, NewSource(x, Closure, ""))
 	for _, boundVar := range x.Bindings {
 		t.markValue(boundVar, NewQualifierSource(x, boundVar, BoundVar, ""))
 
 		for _, origin := range t.getMarkedValueOrigins(boundVar, "*") {
-			t.summary.addBoundVarEdge(origin, x, boundVar)
+			t.summary.AddBoundVarEdge(origin, x, boundVar)
 
 			for _, y := range t.paramAliases(boundVar) {
-				t.summary.addParamEdge(origin, y.(ssa.Node))
+				t.summary.AddParamEdge(origin, y.(ssa.Node))
 			}
 			for _, y := range t.freeVarAliases(boundVar) {
-				t.summary.addFreeVarEdge(origin, y.(ssa.Node))
+				t.summary.AddFreeVarEdge(origin, y.(ssa.Node))
 			}
 		}
 	}
@@ -259,9 +267,9 @@ func (t *stateTracker) addClosureNode(x *ssa.MakeClosure) {
 }
 
 func (t *stateTracker) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
-	if isSourceNode(t.cache.Config, asNode) {
+	if t.isSourceNode(t.cache.Config, asNode) {
 		s := NewSource(asNode, Synthetic+TaintedVal, "")
-		t.summary.addSyntheticNode(asInstr, "source")
+		t.summary.AddSyntheticNode(asInstr, "source")
 		t.markValue(asValue, s)
 	}
 }
@@ -273,16 +281,16 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 		return
 	}
 	// Add call instruction to summary, in case it hasn't been added through callgraph
-	t.summary.addCallInstr(t.cache, callInstr)
+	t.summary.AddCallInstr(t.cache, callInstr)
 	// Check if node is source according to config
 	sourceType := CallReturn
-	if isSourceNode(t.taintInfo.config, callInstr.(ssa.Node)) { // type cast cannot fail
+	if t.isSourceNode(t.flowInfo.Config, callInstr.(ssa.Node)) { // type cast cannot fail
 		sourceType += TaintedVal
 	}
 	// Mark call
 	t.markValue(callValue, NewSource(callInstr.(ssa.Node), sourceType, ""))
 
-	callIsSink := isSinkNode(t.taintInfo.config, callInstr.(ssa.Node))
+	callIsSink := t.isSinkNode(t.flowInfo.Config, callInstr.(ssa.Node))
 
 	args := ssafuncs.GetArgs(callInstr)
 	// Iterate over each argument and add edges and marks when necessary
@@ -300,12 +308,12 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 			}
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
 			if t.checkFlow(source, callInstr, arg) {
-				t.summary.addCallArgEdge(source, callInstr, arg)
+				t.summary.AddCallArgEdge(source, callInstr, arg)
 				for _, x := range t.paramAliases(arg) {
-					t.summary.addParamEdge(source, x.(ssa.Node))
+					t.summary.AddParamEdge(source, x.(ssa.Node))
 				}
 				for _, y := range t.freeVarAliases(arg) {
-					t.summary.addFreeVarEdge(source, y.(ssa.Node))
+					t.summary.AddFreeVarEdge(source, y.(ssa.Node))
 				}
 			}
 		}
@@ -398,7 +406,7 @@ func (t *stateTracker) doBuiltinCall(callValue ssa.Value, callCommon *ssa.CallCo
 }
 
 func (t *stateTracker) getInstr(blockNum int, instrNum int) (ssa.Instruction, error) {
-	block := t.summary.parent.Blocks[blockNum]
+	block := t.summary.Parent.Blocks[blockNum]
 	if block == nil {
 		return nil, fmt.Errorf("invalid block")
 	}

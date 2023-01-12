@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -63,7 +64,7 @@ func DeferStats(functions *map[*ssa.Function]bool) {
 			}
 		}
 		if defers > 1 {
-			fmt.Printf("%s has %d defers and %d rundefers\n", PackageNameFromFunction(f)+"."+f.Name(), defers, rundefers)
+			fmt.Printf("%s has %d defers and %d rundefers\n", packagescan.PackageNameFromFunction(f)+"."+f.Name(), defers, rundefers)
 		}
 		sumDefers += defers
 		if defers > 0 {
@@ -82,7 +83,7 @@ func ClosureStats(functions *map[*ssa.Function]bool) {
 
 	for f := range *functions {
 		found := false
-		pkg := PackageNameFromFunction(f)
+		pkg := packagescan.PackageNameFromFunction(f)
 		if !ofInterest(pkg, false) {
 			continue
 		}

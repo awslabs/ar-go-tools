@@ -1,10 +1,11 @@
-package taint
+package dataflow
 
 import (
 	"fmt"
+	"go/types"
+
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
-	"go/types"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -14,7 +15,7 @@ type PackageToNodes map[*ssa.Package]functionToNode
 
 type nodeIdFunction func(*config.Config, ssa.Node) bool
 
-func newPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIdFunction) PackageToNodes {
+func NewPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIdFunction) PackageToNodes {
 	packageMap := make(PackageToNodes)
 	for _, pkg := range pkgs {
 		pkgMap := newPackageMap(c, pkg, f)

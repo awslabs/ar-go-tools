@@ -9,6 +9,7 @@ import (
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -33,8 +34,8 @@ func loadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *con
 	return pkgs, cfg
 }
 
-func checkExpected(t *testing.T, program *ssa.Program, taintFlows SinkToSources, expected map[int]map[int]bool) {
-	for sink, sources := range ReachedSinkPositions(program, taintFlows) {
+func checkExpected(t *testing.T, program *ssa.Program, taintFlows dataflow.DataFlows, expected map[int]map[int]bool) {
+	for sink, sources := range dataflow.ReachedSinkPositions(program, taintFlows) {
 		for source := range sources {
 			if _, ok := expected[sink.Line]; ok && expected[sink.Line][source.Line] {
 				delete(expected[sink.Line], source.Line)
@@ -52,10 +53,10 @@ func checkExpected(t *testing.T, program *ssa.Program, taintFlows SinkToSources,
 	}
 }
 
-func checkExpectedPositions(t *testing.T, program *ssa.Program, taintFlows SinkToSources,
+func checkExpectedPositions(t *testing.T, program *ssa.Program, taintFlows dataflow.DataFlows,
 	expected map[PosNoColumn]map[PosNoColumn]bool) {
 	seen := make(map[PosNoColumn]map[PosNoColumn]bool)
-	for sink, sources := range ReachedSinkPositions(program, taintFlows) {
+	for sink, sources := range dataflow.ReachedSinkPositions(program, taintFlows) {
 		for source := range sources {
 			posSink := RemoveColumn(sink)
 			if _, ok := seen[posSink]; !ok {

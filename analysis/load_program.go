@@ -10,6 +10,18 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
+const PkgLoadMode = packages.NeedName |
+	packages.NeedFiles |
+	packages.NeedCompiledGoFiles |
+	packages.NeedImports |
+	packages.NeedDeps |
+	packages.NeedExportFile |
+	packages.NeedTypes |
+	packages.NeedSyntax |
+	packages.NeedTypesInfo |
+	packages.NeedTypesSizes |
+	packages.NeedModule
+
 func LoadProgram(config *packages.Config, platform string, buildmode ssa.BuilderMode, args []string) (*ssa.Program, error) {
 
 	if config == nil {

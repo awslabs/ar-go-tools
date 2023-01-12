@@ -1,6 +1,6 @@
 // Copyright 2022 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-package analysis
+package dataflow
 
 import (
 	"fmt"
@@ -12,7 +12,6 @@ import (
 	"golang.org/x/tools/go/callgraph/rta"
 	"golang.org/x/tools/go/callgraph/static"
 	"golang.org/x/tools/go/callgraph/vta"
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -22,18 +21,6 @@ type SsaInfo struct {
 	Packages []*ssa.Package
 	Mains    []*ssa.Package
 }
-
-const PkgLoadMode = packages.NeedName |
-	packages.NeedFiles |
-	packages.NeedCompiledGoFiles |
-	packages.NeedImports |
-	packages.NeedDeps |
-	packages.NeedExportFile |
-	packages.NeedTypes |
-	packages.NeedSyntax |
-	packages.NeedTypesInfo |
-	packages.NeedTypesSizes |
-	packages.NeedModule
 
 type CallgraphAnalysisMode uint64
 

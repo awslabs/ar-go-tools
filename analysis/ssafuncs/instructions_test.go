@@ -2,13 +2,14 @@ package ssafuncs
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 // pathSensitiveInstrOpTemplate implements a simple instruction counter.

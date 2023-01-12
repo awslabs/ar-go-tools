@@ -1,8 +1,9 @@
-package taint
+package dataflow
 
 import (
 	"fmt"
 	"go/types"
+
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -85,7 +86,7 @@ func (t *stateTracker) DoSlice(x *ssa.Slice) {
 func (t *stateTracker) DoReturn(r *ssa.Return) {
 	for _, result := range r.Results {
 		for _, origin := range t.getMarkedValueOrigins(result, "*") {
-			t.summary.addReturnEdge(origin, r)
+			t.summary.AddReturnEdge(origin, r)
 		}
 	}
 }
@@ -99,7 +100,7 @@ func (t *stateTracker) DoRunDefers(r *ssa.RunDefers) {
 
 func (t *stateTracker) DoPanic(x *ssa.Panic) {
 	// A panic is always a sink
-	if isSinkNode(t.taintInfo.config, x) {
+	if t.isSinkNode(t.flowInfo.Config, x) {
 		for _, origin := range t.getMarkedValueOrigins(x.X, "*") {
 			if origin.IsTainted() {
 				t.AddFlowToSink(origin, x)
@@ -131,7 +132,7 @@ func (t *stateTracker) DoMakeChan(*ssa.MakeChan) {
 }
 
 func (t *stateTracker) DoAlloc(x *ssa.Alloc) {
-	if isSourceNode(t.taintInfo.config, x) {
+	if t.isSourceNode(t.flowInfo.Config, x) {
 		source := NewSource(x, TaintedVal, "")
 		t.markValue(x, source)
 	}

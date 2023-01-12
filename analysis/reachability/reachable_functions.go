@@ -9,7 +9,7 @@ import (
 	"os"
 	"sort"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -137,7 +137,7 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 	}
 }
 
-func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, graph analysis.DependencyGraph) map[*ssa.Function]bool {
+func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, graph DependencyGraph) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(program)
 	fmt.Fprintf(os.Stderr, "allFunctions contains %d total\n", len(allFunctions))
@@ -158,8 +158,8 @@ func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, gra
 		frontier = frontier[:len(frontier)-1]
 		findCallees(program, f, func(fnext *ssa.Function) {
 			if graph != nil {
-				from := analysis.PackageNameFromFunction(f)
-				to := analysis.PackageNameFromFunction(fnext)
+				from := packagescan.PackageNameFromFunction(f)
+				to := packagescan.PackageNameFromFunction(fnext)
 				if from != to {
 					graph.Add(from, to)
 				}
