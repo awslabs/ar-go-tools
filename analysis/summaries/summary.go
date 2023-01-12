@@ -1,36 +1,40 @@
+// Package summaries defines how data flow information can be summarized for a given function.
+// These summaries are only for pre-determined functions (e.g. standard library functions) and are not computed during the analysis.
 package summaries
 
 import (
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"golang.org/x/tools/go/ssa"
 	"strings"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
+	"golang.org/x/tools/go/ssa"
 )
 
-// Summary summarizes taint-flow information for a function.
+// Summary summarizes data flow information for a function.
+// This makes an analysis faster because it does not have to compute this information for the pre-summarized functions.
 type Summary struct {
-	// TaintingArgs is an array A that maps input argument positions to the arguments that are tainted
+	// Args is an array A that maps input argument positions to the arguments that are tainted
 	// if the input argument is tainted. For example,  A[0] = [0,1] means that if the first argument
 	// of the function is tainted, then when the function returns, the first and the last argument
-	// are tainted.
+	// are tainted. TODO word this better for data flows (and not taints)
 	// A[1] = [] means that the second argument is sanitized.
 	// A[1] = [1] means that the taint on the second argument is conserved, but no other argument is tainted.
-	TaintingArgs [][]int
-	// TaintingRets is an array A that links information between input arguments and outputs.
-	// A[0] = [0] means that if argument 0 is tainted, then the first returned value is also tainted.
-	TaintingRets [][]int
+	Args [][]int
+	// Rets is an array A that links information between input arguments and outputs.
+	// A[0] = [0] marks a data flow from argument 0 to the first returned value.
+	Rets [][]int
 }
 
-// NoTaintPropagation is a summary for functions that do not propagate the taint. The return value, is used, is a
+// NoDataFlowPropagation is a summary for functions that do not have a data flow. The return value, if used, is a
 // sanitized value.
-var NoTaintPropagation = Summary{TaintingRets: [][]int{}, TaintingArgs: [][]int{}}
+var NoDataFlowPropagation = Summary{Rets: [][]int{}, Args: [][]int{}}
 
 // SingleVarArgPropagation is a summary for functions that have a single variadic argument (func f(arg ..any) {...})
-// This will propagate the taint to the return value.
-var SingleVarArgPropagation = Summary{TaintingArgs: [][]int{{0}}, TaintingRets: [][]int{{0}}}
+// This will propagate the data flow to the return value.
+var SingleVarArgPropagation = Summary{Args: [][]int{{0}}, Rets: [][]int{{0}}}
 
 // FormatterPropagation is a summary for functions like Printf where the first and second arguments might be tainted,
-// and this will taint the returned value (for example, an error, a string with Sprintf
-var FormatterPropagation = Summary{TaintingArgs: [][]int{{0}, {1}}, TaintingRets: [][]int{{0}, {0}}}
+// and this will taint the returned value (for example: an error, a string with Sprintf).
+var FormatterPropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}
 
 // IsStdPackage returns true if the input package is in the standard library or the runtime. The standard library
 // is defined internally as the list of packages in summaries.stdPackages
@@ -52,7 +56,7 @@ func IsStdFunction(function *ssa.Function) bool {
 	if function == nil {
 		return false
 	}
-	pkgName := analysis.PackageNameFromFunction(function)
+	pkgName := packagescan.PackageNameFromFunction(function)
 	_, ok := stdPackages[pkgName]
 	return ok || strings.HasPrefix(pkgName, "runtime")
 }
@@ -79,7 +83,7 @@ func SummaryOfFunc(function *ssa.Function) (Summary, bool) {
 	if function == nil {
 		return Summary{}, false
 	}
-	pkgName := analysis.PackageNameFromFunction(function)
+	pkgName := packagescan.PackageNameFromFunction(function)
 	if s, ok := stdPackages[pkgName]; ok {
 		summary, ok := s[function.String()]
 		return summary, ok
@@ -91,4 +95,20 @@ func SummaryOfFunc(function *ssa.Function) (Summary, bool) {
 	}
 
 	return Summary{}, false
+}
+
+// IsUserDefinedFunction returns true when function is a user-defined function. A function is considered
+// to be user-defined if it is not in the standard library (in summaries.stdPackages) or in the runtime.
+// For example, the functions in the non-standard library packages are considered user-defined.
+func IsUserDefinedFunction(function *ssa.Function) bool {
+	if function == nil {
+		return false
+	}
+	pkg := function.Package()
+	if pkg == nil {
+		return false
+	}
+
+	// Not in a standard lib package
+	return !IsStdPackage(pkg)
 }

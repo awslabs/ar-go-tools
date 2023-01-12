@@ -7,7 +7,7 @@ func reachable() {
 }
 
 func init() {
-        reachable()
+	reachable()
 }
 
 func main() {

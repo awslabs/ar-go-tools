@@ -10,11 +10,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"log"
 	"os"
 	"time"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint"
 	"golang.org/x/tools/go/ssa"
@@ -62,7 +63,7 @@ func main() {
 		}
 	}
 
-	logger.Printf(analysis.Faint("Reading sources") + "\n")
+	logger.Printf(format.Faint("Reading sources") + "\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -85,7 +86,7 @@ func main() {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
 			logger.Printf("%s in function %s:\n\tSink: %s\n\t\t[%s]\n\tSource: %s\n\t\t[%s]\n",
-				analysis.Red("A source has reached a sink"),
+				format.Red("A source has reached a sink"),
 				sink.Parent().Name(),
 				sink.String(),
 				sinkPos.String(),

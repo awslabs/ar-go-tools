@@ -1,6 +1,8 @@
 // Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-package analysis
+// Package defers implements an analysis that determines which set of defer instructions can reach each program point.
+// For now, everything except whether the result is bounded is thrown away.
+package defers
 
 import (
 	"fmt"
@@ -10,38 +12,40 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// A stack is a representation of the runtime stack of defered expressions
-// (represented by a slice of the indices of instructions that generated each deferred function)
-// A stackSet is a set of stacks, represented as a sorted slice.
-// We use indices to represent instructions so that we can compare them (instructions do not know
+// InstrIndices represents instructions so that we can compare them (instructions do not know
 // their own index).
 type InstrIndices struct {
 	Block int // index of block in function
 	Ins   int // index of instruction in block
 }
+
+// Stack is a representation of the runtime stack of deferred expressions
+// (represented by a slice of the indices of instructions that generated each deferred function).
 type Stack []InstrIndices
+
+// StackSet is a set of stacks, represented as a sorted slice.
 type StackSet []Stack
 
-// This analysis determines which set of defer instructions can reach each program point.
-// For now, everything except whether the result is bounded is thrown away.
+// Results represents the results of the analysis.
 // The analysis could be easily extended to save the results at e.g. each RunDefers or each
 // panic point.
-type DeferResults struct {
+type Results struct {
 	DeferStackBounded bool // unbounded == "bad" == false
 	RunDeferSets      map[*ssa.RunDefers]StackSet
 }
 
-// A stack set that is empty. Subtly different from a stack set of a single empty stack!
+// stackSetEmpty represents a stack set that is empty. Subtly different from a stack set of a single empty stack!
 // A stack set that is empty represents no control flow paths reach that point.
 // A stack set with a single empty stack means control flow reaches there with no defers.
 func stackSetEmpty() StackSet {
 	return StackSet{}
 }
 
-// Compares two stacks for their order. Result can be compared to zero:
-//   a < b <--> stackCompare(a, b) < 0
-//   a = b <--> stackCompare(a, b) = 0
-//   a > b <--> stackCompare(a, b) > 0
+// stackCompare compares two stacks for their order. Result can be compared to zero:
+//
+//	a < b <--> stackCompare(a, b) < 0
+//	a = b <--> stackCompare(a, b) = 0
+//	a > b <--> stackCompare(a, b) > 0
 func stackCompare(a Stack, b Stack) int {
 	for i := 0; i < len(a) && i < len(b); i++ {
 		a_ins, b_ins := a[i], b[i]
@@ -67,7 +71,7 @@ func stackCompare(a Stack, b Stack) int {
 	return 0
 }
 
-// Takes the union of two stack sets, and return whether the result is the same as `a` (first arg)
+// stackSetUnion takes the union of two stack sets, and return whether the result is the same as `a` (first arg).
 func stackSetUnion(a StackSet, b StackSet) (r StackSet, sameAsA bool) {
 	r = []Stack{}
 	sameAsA = true
@@ -112,7 +116,7 @@ func stackSetUnion(a StackSet, b StackSet) (r StackSet, sameAsA bool) {
 	return r, sameAsA
 }
 
-// Append {block, ins} to the stack. Ensures that the stack is always copied, so that
+// stackPushed appends {block, ins} to the stack. Ensures that the stack is always copied, so that
 // the stacks are treated as value types, i.e. are immutable.
 func stackPushed(s Stack, block int, ins int) Stack {
 	return append(s[0:len(s):len(s)], InstrIndices{
@@ -120,7 +124,7 @@ func stackPushed(s Stack, block int, ins int) Stack {
 		ins})
 }
 
-// Computes the "transfer function" of an instruction: maps an stack set from the
+// dataflowTransfer computes the "transfer function" of an instruction: maps a stack set from the
 // program point right before a function to the set right after that instruction.
 func dataflowTransfer(block int, ins int, instr *ssa.Instruction, initial StackSet) (final StackSet, repeated bool) {
 	switch (*instr).(type) {
@@ -163,13 +167,13 @@ func dataflowTransfer(block int, ins int, instr *ssa.Instruction, initial StackS
 	}
 }
 
-// Analyzes a single function using a fixpoint loop
-func AnalyzeFunctionDefers(fn *ssa.Function, verbose bool) DeferResults {
+// AnalyzeFunction analyzes defers for a single function using a fixpoint loop.
+func AnalyzeFunction(fn *ssa.Function, verbose bool) Results {
 	// The preorder should make the analysis converge faster
 	blocks := fn.DomPreorder()
 	if len(blocks) == 0 {
 		// Early out for external functions (no basic blocks)
-		return DeferResults{true, map[*ssa.RunDefers]StackSet{}}
+		return Results{true, map[*ssa.RunDefers]StackSet{}}
 	}
 	// blockInitialStates represent the dataflow information on entry to each block
 	dataflowBlockInitialStates := make([]StackSet, len(blocks))
@@ -202,7 +206,7 @@ func AnalyzeFunctionDefers(fn *ssa.Function, verbose bool) DeferResults {
 			iterationChanged = true
 			dataflowBlockChanged[i] = false
 			value := dataflowBlockInitialStates[i]
-			// Propogate dataflow forward through the instructions
+			// Propagate dataflow forward through the instructions
 			for j, ins := range b.Instrs {
 				if r, ok := ins.(*ssa.RunDefers); ok {
 					runDeferSets[r] = value
@@ -240,13 +244,13 @@ func AnalyzeFunctionDefers(fn *ssa.Function, verbose bool) DeferResults {
 		}
 	}
 	if anyRepeated {
-		return DeferResults{false, runDeferSets}
+		return Results{false, runDeferSets}
 	}
-	return DeferResults{true, runDeferSets}
+	return Results{true, runDeferSets}
 }
 
-// Run the analysis on an entire program, and report the results to stdout
-func AnalyzeDefer(program *ssa.Program, verbose bool) {
+// AnalyzeProgram runs the analysis on an entire program, and report the results to stdout.
+func AnalyzeProgram(program *ssa.Program, verbose bool) {
 	functions := ssautil.AllFunctions(program)
 	// Sort the functions so output is consistent between runs. AllFunctions should return a slice, not a go-style set
 	sortedFunctions := []*ssa.Function{}
@@ -256,7 +260,7 @@ func AnalyzeDefer(program *ssa.Program, verbose bool) {
 	sort.Slice(sortedFunctions, func(i int, j int) bool { return sortedFunctions[i].Name() < sortedFunctions[j].Name() })
 	boundedFuncCount := 0
 	for _, f := range sortedFunctions {
-		results := AnalyzeFunctionDefers(f, verbose)
+		results := AnalyzeFunction(f, verbose)
 		if !results.DeferStackBounded {
 			fmt.Printf("Unbounded defer stack in %s (%s, %v)\n", f.Name(), f.Pkg.Pkg.Name(), f.Prog.Fset.PositionFor(f.Pos(), false))
 		} else {

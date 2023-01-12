@@ -1,4 +1,3 @@
-// Package summaries defines how taint analysis information can be summarized for a given function.
 package summaries
 
 // stdPackages maps the names of standard library packages to the map of summaries for the package.
@@ -181,18 +180,18 @@ var SummaryExpVar = map[string]Summary{}
 var SummaryFlag = map[string]Summary{}
 
 var SummaryFmt = map[string]Summary{
-	"fmt.init":       NoTaintPropagation,
-	"fmt.newPrinter": NoTaintPropagation,
+	"fmt.init":       NoDataFlowPropagation,
+	"fmt.newPrinter": NoDataFlowPropagation,
 	// func Println(a ...any) (n int, err error) {
-	"fmt.Println": NoTaintPropagation,
+	"fmt.Println": NoDataFlowPropagation,
 	// func Errorf(format string, a ...interface{}) error
-	"fmt.Errorf": NoTaintPropagation,
+	"fmt.Errorf": NoDataFlowPropagation,
 	// func Fprintf(w io.Writer, format string, a ...any) (n int, err error)
 	"fmt.Fprintf": {
-		TaintingArgs: [][]int{
+		Args: [][]int{
 			{0}, // w is tainted -> w stays tainted
 			{0}},
-		TaintingRets: [][]int{
+		Rets: [][]int{
 			{},
 		},
 	},
@@ -365,29 +364,29 @@ var SummarySync = map[string]Summary{
 		[][]int{{}},
 	},
 	// func (rw *RWMutex) Lock()
-	"(*sync.RWMutex).Lock": NoTaintPropagation,
+	"(*sync.RWMutex).Lock": NoDataFlowPropagation,
 	// func (rw *RWMutex) RLock()
-	"(*sync.RWMutex).RLock": NoTaintPropagation,
+	"(*sync.RWMutex).RLock": NoDataFlowPropagation,
 	//func (rw *RWMutex) RLocker() Locker
 	"(*sync.RWMutex).RLocker": {
 		[][]int{{}},
 		[][]int{{0}}, // receiver taints output
 	},
 	// func (rw *RWMutex) RUnlock()
-	"(*sync.RWMutex).RUnlock": NoTaintPropagation,
+	"(*sync.RWMutex).RUnlock": NoDataFlowPropagation,
 	// func (rw *RWMutex) TryLock() bool
 	"(*sync.RWMutex).TryLock": {
 		[][]int{{}},
 		[][]int{{0}}, // receiver taints output
 	},
 	// func (rw *RWMutex) Unlock()
-	"(*sync.RWMutex).Unlock": NoTaintPropagation,
+	"(*sync.RWMutex).Unlock": NoDataFlowPropagation,
 	// func (*WaitGroup) Add(int)
-	"(*sync.WaitGroup).Add": NoTaintPropagation,
+	"(*sync.WaitGroup).Add": NoDataFlowPropagation,
 	// func (wg *WaitGroup) Done()
-	"(*sync.WaitGroup).Done": NoTaintPropagation,
+	"(*sync.WaitGroup).Done": NoDataFlowPropagation,
 	// func (wg *WaitGroup) Wait()
-	"(*sync.WaitGroup).Wait": NoTaintPropagation,
+	"(*sync.WaitGroup).Wait": NoDataFlowPropagation,
 }
 
 var SummarySyscall = map[string]Summary{}

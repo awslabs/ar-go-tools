@@ -9,14 +9,14 @@ import (
 	"sort"
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/reachability"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 func isDependency(f *ssa.Function) (bool, string) {
-	packagePath := analysis.PackageNameFromFunction(f)
+	packagePath := packagescan.PackageNameFromFunction(f)
 	if packagePath == "" {
 		return false, ""
 	}
@@ -123,14 +123,14 @@ func emitCoverageLine(file io.Writer, program *ssa.Program, f *ssa.Function, nam
 
 }
 
-func DependencyAnalysis(program *ssa.Program, jsonFlag bool, includeStdlib bool, covFile io.Writer, graph bool) analysis.DependencyGraph {
+func DependencyAnalysis(program *ssa.Program, jsonFlag bool, includeStdlib bool, covFile io.Writer, graph bool) reachability.DependencyGraph {
 
 	// all functions we have got
 	allFunctions := ssautil.AllFunctions(program)
 
-	var dependencyGraph analysis.DependencyGraph = nil
+	var dependencyGraph reachability.DependencyGraph = nil
 	if graph {
-		dependencyGraph = analysis.NewDependencyGraph()
+		dependencyGraph = reachability.NewDependencyGraph()
 	}
 
 	// functions known to be reachable

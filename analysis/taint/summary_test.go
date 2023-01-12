@@ -5,6 +5,8 @@ import (
 	"path"
 	"runtime"
 	"testing"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 )
 
 func TestFunctionSummaries(t *testing.T) {
@@ -18,29 +20,29 @@ func TestFunctionSummaries(t *testing.T) {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
 
-	for function, summary := range result.Graph.summaries {
+	for function, summary := range result.Graph.Summaries {
 
 		if function.Name() == "main" {
-			ok := len(summary.returns) == 1
-			ok = ok && len(summary.params) == 0
-			ok = ok && len(summary.callees) == 5
+			ok := len(summary.Returns) == 1
+			ok = ok && len(summary.Params) == 0
+			ok = ok && len(summary.Callees) == 5
 			if !ok {
 				t.Errorf("main graph is not as expected")
 			}
 		}
 
 		if function.Name() == "Bar" {
-			ok := len(summary.returns) == 1
-			ok = ok && len(summary.params) == 1
-			ok = ok && len(summary.callees) == 1
+			ok := len(summary.Returns) == 1
+			ok = ok && len(summary.Params) == 1
+			ok = ok && len(summary.Callees) == 1
 			if !ok {
 				t.Errorf("Bar graph is not as expected")
 			}
-			for _, argNode := range summary.params {
+			for _, argNode := range summary.Params {
 				ok = len(argNode.Out()) == 2
 				for dest := range argNode.Out() {
-					_, isCallNodeArg := dest.(*CallNodeArg)
-					_, isReturnNode := dest.(*ReturnNode)
+					_, isCallNodeArg := dest.(*dataflow.CallNodeArg)
+					_, isReturnNode := dest.(*dataflow.ReturnNode)
 					ok = ok && (isCallNodeArg || isReturnNode)
 				}
 				if !ok {
@@ -51,21 +53,21 @@ func TestFunctionSummaries(t *testing.T) {
 		}
 
 		if function.Name() == "Foo" {
-			ok := len(summary.returns) == 1
-			ok = ok && len(summary.params) == 3
-			ok = ok && len(summary.callees) == 2
+			ok := len(summary.Returns) == 1
+			ok = ok && len(summary.Params) == 3
+			ok = ok && len(summary.Callees) == 2
 			if !ok {
 				t.Errorf("Foo graph is not as expected")
 			}
-			for _, argNode := range summary.params {
-				if argNode.ssaNode.Name() == "s" {
-					ok = len(argNode.out) == 1
+			for _, argNode := range summary.Params {
+				if argNode.SsaNode().Name() == "s" {
+					ok = len(argNode.Out()) == 1
 					if !ok {
 						t.Errorf("in Foo, s should have one outgoing edge")
 					}
 				}
-				if argNode.ssaNode.Name() == "s2" {
-					ok = len(argNode.out) == 1
+				if argNode.SsaNode().Name() == "s2" {
+					ok = len(argNode.Out()) == 1
 					if !ok {
 						t.Errorf("in Foo, s should have one outgoing edge")
 					}
@@ -74,13 +76,11 @@ func TestFunctionSummaries(t *testing.T) {
 		}
 
 		if function.Name() == "FooBar" {
-			ok := len(summary.returns) == 1
-			ok = ok && len(summary.syntheticNodes) == 2
+			ok := len(summary.Returns) == 1
+			ok = ok && len(summary.SyntheticNodes) == 2
 			if !ok {
 				t.Errorf("FooBar graph is not as expected")
 			}
 		}
-
 	}
-
 }

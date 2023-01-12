@@ -7,10 +7,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"go/build"
 	"os"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/reachability"
 
 	"golang.org/x/tools/go/buildutil"
@@ -67,14 +68,14 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, format.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
 	reachability.ReachableFunctionsAnalysis(program, excludeMain, excludeInit, jsonFlag)

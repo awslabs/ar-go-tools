@@ -7,11 +7,11 @@ func reachable() {
 }
 
 func main() {
-        var f func()
+	var f func()
 
-        if f == nil {
-                f = reachable
-        }
+	if f == nil {
+		f = reachable
+	}
 
-        f() // calls 'reachable'
+	f() // calls 'reachable'
 }

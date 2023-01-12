@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/reachability"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -51,25 +53,25 @@ func main() {
 	}
 
 	// The strings constants are used only here
-	var callgraphAnalysisMode analysis.CallgraphAnalysisMode
+	var callgraphAnalysisMode dataflow.CallgraphAnalysisMode
 	// modeFlag cannot be null here
 	switch *modeFlag {
 	case "pointer":
-		callgraphAnalysisMode = analysis.PointerAnalysis
+		callgraphAnalysisMode = dataflow.PointerAnalysis
 	case "cha":
-		callgraphAnalysisMode = analysis.ClassHierarchyAnalysis
+		callgraphAnalysisMode = dataflow.ClassHierarchyAnalysis
 	case "rta":
-		callgraphAnalysisMode = analysis.RapidTypeAnalysis
+		callgraphAnalysisMode = dataflow.RapidTypeAnalysis
 	case "vta":
-		callgraphAnalysisMode = analysis.VariableTypeAnalysis
+		callgraphAnalysisMode = dataflow.VariableTypeAnalysis
 	case "static":
-		callgraphAnalysisMode = analysis.StaticAnalysis
+		callgraphAnalysisMode = dataflow.StaticAnalysis
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "analysis %s not recognized", *modeFlag)
 		os.Exit(2)
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -80,15 +82,15 @@ func main() {
 	var cg *callgraph.Graph
 
 	// Compute the call graph
-	fmt.Fprintln(os.Stderr, analysis.Faint("Computing call graph"))
+	fmt.Fprintln(os.Stderr, format.Faint("Computing call graph"))
 	start := time.Now()
 	cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
 	cgComputeDuration := time.Since(start).Seconds()
 	if err != nil {
-		fmt.Fprint(os.Stderr, analysis.Red("Could not compute callgraph: %v\n", err))
+		fmt.Fprint(os.Stderr, format.Red("Could not compute callgraph: %v\n", err))
 		return
 	} else {
-		fmt.Fprint(os.Stderr, analysis.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+		fmt.Fprint(os.Stderr, format.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	}
 
 	//Load the binary

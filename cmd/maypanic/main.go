@@ -7,10 +7,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"go/build"
 	"os"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/maypanic"
 
 	"golang.org/x/tools/go/buildutil"
@@ -88,17 +89,17 @@ func doMain() error {
 		cfg.Mode = packages.LoadSyntax // this is equivalent to LoadAllSyntax, less NeedDeps
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(cfg, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, analysis.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, format.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
-	excludeAbsolute := analysis.MakeAbsolute(exclude)
+	excludeAbsolute := maypanic.MakeAbsolute(exclude)
 
 	if modelCheckingFlag {
 		maypanic.MayPanicModelChecking(program, excludeAbsolute, jsonFlag)

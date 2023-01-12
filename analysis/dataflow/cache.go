@@ -1,13 +1,15 @@
-package analysis
+package dataflow
 
 import (
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"golang.org/x/tools/go/pointer"
-	"golang.org/x/tools/go/ssa"
 	"io"
 	"log"
 	"sync"
+	"time"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"golang.org/x/tools/go/pointer"
+	"golang.org/x/tools/go/ssa"
 )
 
 // Cache holds information that might need to be used during program analysis
@@ -37,9 +39,9 @@ type Cache struct {
 	errorMutex sync.Mutex
 }
 
-// NewCache returns a properly initialized cache
-func NewCache(p *ssa.Program, l *log.Logger, c *config.Config) *Cache {
-	return &Cache{
+// NewCache returns a properly initialized cache by running steps in parallel.
+func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cache)) (*Cache, error) {
+	cache := &Cache{
 		Logger:                l,
 		Config:                c,
 		Program:               p,
@@ -47,6 +49,22 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config) *Cache {
 		PointerAnalysis:       nil,
 		errors:                map[error]bool{},
 	}
+
+	wg := &sync.WaitGroup{}
+	for _, step := range steps {
+		step := step
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			step(cache)
+		}()
+	}
+	wg.Wait()
+	if err := cache.CheckError(); err != nil {
+		return nil, fmt.Errorf("failed to build cache: %w", err)
+	}
+
+	return cache, nil
 }
 
 func (c *Cache) Size() int {
@@ -87,6 +105,16 @@ func (c *Cache) PopulateTypesToImplementationMap() {
 	}
 }
 
+// PopulateTypesVerbose is a verbose wrapper around PopulateTypesToImplementationsMap.
+func (c *Cache) PopulateTypesVerbose() {
+	// Load information for analysis and cache it.
+	c.Logger.Println("Caching information about types and functions for analysis...")
+	start := time.Now()
+	c.PopulateTypesToImplementationMap()
+	c.Logger.Printf("Cache population terminated, added %d items (%.2f s)\n",
+		c.Size(), time.Since(start).Seconds())
+}
+
 // PopulatePointerAnalysisResult populates the PointerAnalysis field of the cache by running the pointer analysis
 // with queries on every function in the package such that functionFilter is true.
 //
@@ -97,6 +125,14 @@ func (c *Cache) PopulatePointerAnalysisResult(functionFilter func(*ssa.Function)
 		c.AddError(err)
 	}
 	c.PointerAnalysis = ptrResult
+}
+
+// PopulatePointersVerbose is a verbose wrapper around PopulatePointerAnalysisResult.
+func (c *Cache) PopulatePointersVerbose(functionFilter func(*ssa.Function) bool) {
+	start := time.Now()
+	c.Logger.Println("Gathering values and starting pointer analysis...")
+	c.PopulatePointerAnalysisResult(functionFilter)
+	c.Logger.Printf("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
 }
 
 //

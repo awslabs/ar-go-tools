@@ -10,5 +10,5 @@ func SomeFunction() {
 }
 
 func init() {
-        reachable()
+	reachable()
 }

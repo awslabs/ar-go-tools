@@ -1,8 +1,9 @@
-package taint
+package dataflow
 
 import (
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"go/token"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -32,11 +33,11 @@ type Source struct {
 	Qualifier  ssa.Value
 }
 
-// SinkToSources is a map from instructions to sets of instructions. We use this to represents taint flows: if there
-// are two instructions sink,source such that map[sink][source], then there is a taint flow from source to sink.
-type SinkToSources = map[ssa.Instruction]map[ssa.Instruction]bool
+// DataFlows is a map from instructions to sets of instructions. We use this to represents data flows: if there
+// are two instructions sink,source such that map[sink][source], then there is a data flow from source to sink.
+type DataFlows = map[ssa.Instruction]map[ssa.Instruction]bool
 
-// unionPaths is a utility function to merge two sets of instructions
+// unionPaths is a utility function to merge two sets of instructions.
 func unionPaths(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[ssa.Instruction]bool {
 	for x, yb := range p2 {
 		ya, ina := p1[x]
@@ -49,10 +50,10 @@ func unionPaths(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[ss
 	return p1
 }
 
-// mergeSinkToSources merges its two input SinkToSources map. When the function returns, the first argument contains
+// MergeDataFlows merges its two input DataFlows maps. When the function returns, the first argument contains
 // all the entries in the second one.
 // @requires a != nil
-func mergeSinkToSources(a SinkToSources, b SinkToSources) {
+func MergeDataFlows(a DataFlows, b DataFlows) {
 	for x, yb := range b {
 		ya, ina := a[x]
 		if ina {
@@ -124,33 +125,33 @@ func (s *Source) IsSynthetic() bool {
 	return s.Type&Synthetic != 0
 }
 
-// FlowInformation contains the information necessary for the taint analysis and function summary building.
+// FlowInformation contains the information necessary for the analysis and function summary building.
 type FlowInformation struct {
-	config         *config.Config                               // user provided configuration identifying sources and sinks
-	markedValues   map[ssa.Value]map[Source]bool                // map from values to the set of sources that mark them
-	markedPointers map[*pointer.PointsToSet]Source              // map from pointer sets to the sources that mark them
+	Config         *config.Config                               // user provided configuration identifying sources and sinks
+	MarkedValues   map[ssa.Value]map[Source]bool                // map from values to the set of sources that mark them
+	MarkedPointers map[*pointer.PointsToSet]Source              // map from pointer sets to the sources that mark them
 	SinkSources    map[ssa.Instruction]map[ssa.Instruction]bool // map from the sinks to the set of sources that reach them
 }
 
 // NewFlowInfo returns a new FlowInformation with all maps initialized.
 func NewFlowInfo(cfg *config.Config) *FlowInformation {
 	return &FlowInformation{
-		config:         cfg,
-		markedValues:   make(map[ssa.Value]map[Source]bool),
-		markedPointers: make(map[*pointer.PointsToSet]Source),
+		Config:         cfg,
+		MarkedValues:   make(map[ssa.Value]map[Source]bool),
+		MarkedPointers: make(map[*pointer.PointsToSet]Source),
 		SinkSources:    make(map[ssa.Instruction]map[ssa.Instruction]bool),
 	}
 }
 
 func (t *FlowInformation) HasSource(v ssa.Value, s Source) bool {
-	sources, ok := t.markedValues[v]
+	sources, ok := t.MarkedValues[v]
 	return ok && sources[s]
 }
 
 // AddSource adds a source to the tracking info structure and returns a boolean
 // if new information has been inserted.
 func (t *FlowInformation) AddSource(v ssa.Value, s Source) bool {
-	if vSources, ok := t.markedValues[v]; ok {
+	if vSources, ok := t.MarkedValues[v]; ok {
 		if vSources[s] {
 			return false
 		} else {
@@ -158,7 +159,7 @@ func (t *FlowInformation) AddSource(v ssa.Value, s Source) bool {
 			return true
 		}
 	} else {
-		t.markedValues[v] = map[Source]bool{s: true}
+		t.MarkedValues[v] = map[Source]bool{s: true}
 		return true
 	}
 }
@@ -184,9 +185,9 @@ func (t *FlowInformation) AddSinkSourcePair(sink ssa.Instruction, source ssa.Ins
 	}
 }
 
-// ReachedSinkPositions translated a SinkToSources map in a program to a map from positions to set of positions,
+// ReachedSinkPositions translated a DataFlows map in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func ReachedSinkPositions(prog *ssa.Program, m SinkToSources) map[token.Position]map[token.Position]bool {
+func ReachedSinkPositions(prog *ssa.Program, m DataFlows) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 
 	for sinkNode, sourceNodes := range m {
