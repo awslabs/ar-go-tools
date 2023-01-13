@@ -1,6 +1,8 @@
 **/.DS_Store
 *.out
 *.log
+coverage.txt
+coverage.xml
 amazon-ssm-agent
 bin
 tmp

@@ -166,6 +166,18 @@ func (g CrossFunctionFlowGraph) CrossFunctionPass(cfg *config.Config, logger *lo
 			}
 		}
 
+		for _, closureNode := range summary.CreatedClosures {
+			if closureNode.instr != nil {
+				closureSummary := findClosureSummary(closureNode.instr, g.Summaries)
+
+				// Add edge from created closure summary to creator
+				if closureSummary != nil {
+					closureSummary.ReferringMakeClosures[closureNode.instr] = closureNode
+				}
+				closureNode.ClosureSummary = closureSummary // nil is safe
+			}
+		}
+
 		// Identify the entry points for that function: all the call sites if it is a source, and all the synthetic
 		// nodes that are sources in the function body.
 		for _, snode := range summary.SyntheticNodes {
@@ -209,6 +221,20 @@ func findCalleeSummary(callee *ssa.Function, summaries map[*ssa.Function]*Summar
 	}
 
 	return nil
+}
+
+// findClosureSummary returns the summary graph of the function used in the MakeClosure instruction instr
+func findClosureSummary(instr *ssa.MakeClosure, summaries map[*ssa.Function]*SummaryGraph) *SummaryGraph {
+	switch funcValue := instr.Fn.(type) {
+	case *ssa.Function:
+		if summary, ok := summaries[funcValue]; ok {
+			return summary
+		} else {
+			return nil
+		}
+	default:
+		return nil
+	}
 }
 
 func isSourceFunction(cfg *config.Config, f *ssa.Function) bool {

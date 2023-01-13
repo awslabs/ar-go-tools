@@ -18,7 +18,7 @@ func isSink(n dataflow.GraphNode, cfg *config.Config) bool {
 		return false
 	case *dataflow.CallNodeArg:
 		// A call node argument is a sink if the callee is a sink
-		return isSink(n.Parent(), cfg)
+		return isSink(n.ParentNode(), cfg)
 	case *dataflow.CallNode:
 		return isSinkNode(cfg, n.CallSite().(ssa.Node))
 	case *dataflow.SyntheticNode:

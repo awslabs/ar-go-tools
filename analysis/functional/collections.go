@@ -38,11 +38,17 @@ func Map[T any, S any](a []T, f func(T) S) []S {
 	return b
 }
 
-func Contains[T comparable](a []T, x T) bool {
-	for _, y := range a {
-		if x == y {
+// Exists returns true when there exists some x in slice a such that f(x), otherwise false.
+func Exists[T any](a []T, f func(T) bool) bool {
+	for _, x := range a {
+		if f(x) {
 			return true
 		}
 	}
 	return false
+}
+
+// Contains returns true when there is some y in slice a such that x == y
+func Contains[T comparable](a []T, x T) bool {
+	return Exists(a, func(y T) bool { return x == y })
 }
