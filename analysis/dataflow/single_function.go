@@ -8,6 +8,7 @@ import (
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/defers"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -266,6 +267,7 @@ func (t *stateTracker) addClosureNode(x *ssa.MakeClosure) {
 	t.markValue(x, NewSource(x, Closure, "*"))
 }
 
+// optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (t *stateTracker) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
 	if t.isSourceNode(t.cache.Config, asNode) {
 		s := NewSource(asNode, Synthetic+TaintedVal, "")
@@ -274,7 +276,7 @@ func (t *stateTracker) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Inst
 	}
 }
 
-// callCommonTaint can be used for Call, Defer and Go that wrap a CallCommon.
+// callCommonTaint can be used for Call and Go instructions that wrap a CallCommon.
 func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallInstruction, callCommon *ssa.CallCommon) {
 	// Special cases
 	if t.doBuiltinCall(callValue, callCommon, callInstr) {
@@ -320,23 +322,44 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 	}
 }
 
-func (t *stateTracker) checkFlow(source Source, dest ssa.Instruction, val ssa.Value) bool {
+// checkFlow checks whether there can be a flow between the source and the dest instruction. The destination must be
+// and instruction. destVal can be used to specify that the flow is to the destination (the location) through
+// a specific value. For example, destVal can be the argument of a function call.
+func (t *stateTracker) checkFlow(source Source, dest ssa.Instruction, destVal ssa.Value) bool {
 	sourceInstr, ok := source.Node.(ssa.Instruction)
 	if !ok {
 		return true
 	}
-	if val != nil {
-		_, ok := dest.(*ssa.Defer)
-		// For defers, we check reachability depending on the value type (reference of value)
-		if ok {
-			if _, isPtr := val.Type().Underlying().(*types.Pointer); isPtr {
-				return true
-			} else {
-				return t.checkPathBetweenInstrs(sourceInstr, dest)
+
+	if destVal == nil {
+		return t.checkPathBetweenInstrs(sourceInstr, dest)
+	}
+
+	// If the destination instruction is a Defer and the destination value is a reference (pointer type) then the
+	// taint will always flow to it, since the Defer will be executed after the source.
+	if _, isDefer := dest.(*ssa.Defer); isDefer {
+		if _, isPtr := destVal.Type().Underlying().(*types.Pointer); isPtr {
+			return true
+		} else {
+			return t.checkPathBetweenInstrs(sourceInstr, dest)
+		}
+	} else {
+		n := t.summary.Parent.Name()
+		_ = n
+		if asVal, isVal := dest.(ssa.Value); isVal {
+			// If the destination is a value of function type, then there is a flow when the source occurs before
+			// any instruction that refers to the function (e.g. the function is returned, or called)
+			// This is often the case when there is a flow through a closure that binds variables by reference, and
+			// the variable is tainted after the closure is created.
+			if _, isFunc := asVal.Type().Underlying().(*types.Signature); isFunc {
+				return functional.Exists(*asVal.Referrers(),
+					func(i ssa.Instruction) bool {
+						return t.checkPathBetweenInstrs(sourceInstr, i)
+					})
 			}
 		}
+		return t.checkPathBetweenInstrs(sourceInstr, dest)
 	}
-	return t.checkPathBetweenInstrs(sourceInstr, dest)
 }
 
 func (t *stateTracker) checkPathBetweenInstrs(source ssa.Instruction, dest ssa.Instruction) bool {

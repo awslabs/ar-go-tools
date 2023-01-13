@@ -3,36 +3,12 @@ package taint
 import (
 	"log"
 	"path"
-	"path/filepath"
 	"runtime"
 	"testing"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"golang.org/x/tools/go/ssa"
 )
-
-func loadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *config.Config) {
-	var err error
-	// Load config; in command, should be set using some flag
-	configFile := filepath.Join(dir, "config.yaml")
-	config.SetGlobalConfig(configFile)
-	files := []string{filepath.Join(dir, "./main.go")}
-	for _, extraFile := range extraFiles {
-		files = append(files, filepath.Join(dir, extraFile))
-	}
-
-	pkgs, err := analysis.LoadProgram(nil, "", ssa.BuilderMode(0), files)
-	if err != nil {
-		t.Fatalf("error loading packages.")
-	}
-	cfg, err := config.LoadGlobal()
-	if err != nil {
-		t.Fatalf("error loading global config.")
-	}
-	return pkgs, cfg
-}
 
 func checkExpected(t *testing.T, program *ssa.Program, taintFlows dataflow.DataFlows, expected map[int]map[int]bool) {
 	for sink, sources := range dataflow.ReachedSinkPositions(program, taintFlows) {
@@ -49,34 +25,6 @@ func checkExpected(t *testing.T, program *ssa.Program, taintFlows dataflow.DataF
 		for sourceLine := range sources {
 			// Remaining entries have not been detected!
 			t.Errorf("ERROR in main.go: failed to detect that %d flows to %d\n", sourceLine, sinkLine)
-		}
-	}
-}
-
-func checkExpectedPositions(t *testing.T, program *ssa.Program, taintFlows dataflow.DataFlows,
-	expected map[PosNoColumn]map[PosNoColumn]bool) {
-	seen := make(map[PosNoColumn]map[PosNoColumn]bool)
-	for sink, sources := range dataflow.ReachedSinkPositions(program, taintFlows) {
-		for source := range sources {
-			posSink := RemoveColumn(sink)
-			if _, ok := seen[posSink]; !ok {
-				seen[posSink] = map[PosNoColumn]bool{}
-			}
-			posSource := RemoveColumn(source)
-			if _, ok := expected[posSink]; ok && expected[posSink][posSource] {
-				seen[posSink][posSource] = true
-			} else {
-				t.Errorf("ERROR in main.go: false positive: %s flows to %s\n", posSource, posSink)
-			}
-		}
-	}
-
-	for sinkLine, sources := range expected {
-		for sourceLine := range sources {
-			if !seen[sinkLine][sourceLine] {
-				// Remaining entries have not been detected!
-				t.Errorf("ERROR in main.go: failed to detect that %s flows to %s\n", sourceLine, sinkLine)
-			}
 		}
 	}
 }
