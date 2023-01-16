@@ -10,6 +10,7 @@ all: maypanic statistics reachability dependencies static-commands render taint 
 install: taint_install
 
 test: **/*.go
+	go clean -testcache
 	go test ./analysis/...
 
 maypanic: go.mod cmd/maypanic/*.go analysis/*.go analysis/reachability/*.go analysis/maypanic/*.go

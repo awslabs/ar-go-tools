@@ -2,9 +2,18 @@ package main
 
 // fmt.Sprintf is marked as source in config.yaml
 import (
-	"bar"
 	"fmt"
 )
+
+type Stuff struct {
+	Pickles string
+}
+
+func MkStuff() Stuff {
+	return Stuff{
+		Pickles: "...", // want "found a source"
+	}
+}
 
 type Foo struct {
 	Data string
@@ -26,11 +35,11 @@ func (f Foo) zoo() bool {
 }
 
 func mkBar() Bar {
-	return Bar{BarData: "stuff"} // want "found a source"
+	return Bar{BarData: "stuff"} // want "found a source" "found a source"
 }
 
 func mkSomeStruct() SomeStruct {
-	return SomeStruct{DataField: "data", OtherField: 0}
+	return SomeStruct{DataField: "data", OtherField: 0} // want "found a source"
 }
 
 // ignore helper for ignoring unused variables
@@ -41,12 +50,12 @@ func main() {
 	x := Foo{Data: s}
 	if x.zoo() { // want "found a source"
 		fmt.Println(x.Data)
-		fmt.Println(bar.MkStuff().Pickles) // want "found a source"
+		fmt.Println(MkStuff().Pickles) // want "found a source"
 	}
-	y := Bar{BarData: "tainted"} // want "found a source"
+	y := Bar{BarData: "tainted"} // want "found a source" "found a source"
 	y = mkBar()
-	z := SomeStruct{DataField: "tainted"}
-	a := z.DataField // want "found a source"
+	z := SomeStruct{DataField: "tainted"} // want "found a source"
+	a := z.DataField                      // want "found a source"
 	b := z.OtherField
 
 	if len(mkSomeStruct().DataField) > 0 { // want "found a source"

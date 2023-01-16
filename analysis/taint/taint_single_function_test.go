@@ -1,6 +1,7 @@
 package taint
 
 import (
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
 	"log"
 	"path"
 	"runtime"
@@ -33,7 +34,7 @@ func TestSingleFunction(t *testing.T) {
 	var err error
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/single-function")
-	pkgs, cfg := loadTest(t, dir, []string{})
+	pkgs, cfg := utils.LoadTest(t, dir, []string{})
 
 	result, err := Analyze(log.Default(), cfg, pkgs)
 	if err != nil {

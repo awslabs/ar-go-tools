@@ -57,5 +57,5 @@ func TestAllSources(t *testing.T) {
 	if err != nil {
 		t.Errorf("could not set config file: %v", err)
 	}
-	analysistest.Run(t, testdata, taintSourcesAnalyzer, "taint/sources", "bar")
+	analysistest.Run(t, testdata, taintSourcesAnalyzer, "taint/sources")
 }
