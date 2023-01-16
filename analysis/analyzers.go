@@ -44,34 +44,52 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 
 	// flowCandidates contains all the possible data-flow candidates.
 	flowCandidates := make(dataflow.DataFlows)
-	// Start the single function summary building routines
-	jobs := make(chan singleFunctionJob, args.NumRoutines+1)
-	output := make(chan dataflow.SingleFunctionResult, args.NumRoutines+1)
-	done := make(chan int)
-	for proc := 0; proc < args.NumRoutines; proc++ {
-		go jobConsumer(jobs, output, done, args.IsSourceNode, args.IsSinkNode)
-	}
-	// Start the collecting routine
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		collectResults(output, done, args.NumRoutines, &fg, flowCandidates)
-	}()
 
-	// Feed the jobs in the jobs channel
-	// This pass also ignores some predefined packages
-	for function := range ssautil.AllFunctions(args.Cache.Program) {
-		if args.ShouldBuildSummary(function) {
-			jobs <- singleFunctionJob{
-				function: function,
-				cache:    args.Cache,
+	if args.NumRoutines > 1 {
+		// Start the single function summary building routines
+		jobs := make(chan singleFunctionJob, args.NumRoutines+1)
+		output := make(chan dataflow.SingleFunctionResult, args.NumRoutines+1)
+		done := make(chan int)
+		for proc := 0; proc < args.NumRoutines; proc++ {
+			go jobConsumer(jobs, output, done, args.IsSourceNode, args.IsSinkNode)
+		}
+		// Start the collecting routine
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			collectResults(output, done, args.NumRoutines, &fg, flowCandidates)
+		}()
+
+		// Feed the jobs in the jobs channel
+		// This pass also ignores some predefined packages
+		for function := range ssautil.AllFunctions(args.Cache.Program) {
+			if args.ShouldBuildSummary(function) {
+				jobs <- singleFunctionJob{
+					function: function,
+					cache:    args.Cache,
+				}
+			}
+
+		}
+		close(jobs)
+		wg.Wait()
+	} else {
+		// Run without goroutines when there is only one routine
+		for function := range ssautil.AllFunctions(args.Cache.Program) {
+			if args.ShouldBuildSummary(function) {
+				job := singleFunctionJob{
+					function: function,
+					cache:    args.Cache,
+				}
+				result := runIntraProceduralOnFunction(job, args.IsSourceNode, args.IsSinkNode)
+				if result.Summary != nil {
+					fg.Summaries[result.Summary.Parent] = result.Summary
+				}
+				dataflow.MergeDataFlows(flowCandidates, result.DataFlows)
 			}
 		}
-
 	}
-	close(jobs)
-	wg.Wait()
 	logger.Printf("Single-function pass done (%.2f s).", time.Since(start).Seconds())
 
 	return SingleFunctionResult{FlowGraph: fg, FlowCandidates: flowCandidates}
@@ -103,9 +121,10 @@ type singleFunctionJob struct {
 }
 
 // jobConsumer consumes jobs from the jobs channel, and closes output when done.
-func jobConsumer(jobs chan singleFunctionJob, output chan dataflow.SingleFunctionResult, done chan int, isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) {
+func jobConsumer(jobs chan singleFunctionJob, output chan dataflow.SingleFunctionResult, done chan int,
+	isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) {
 	for job := range jobs {
-		runIntraProceduralOnFunction(job, output, isSourceNode, isSinkNode)
+		output <- runIntraProceduralOnFunction(job, isSourceNode, isSinkNode)
 	}
 	if done != nil {
 		done <- 0
@@ -113,7 +132,9 @@ func jobConsumer(jobs chan singleFunctionJob, output chan dataflow.SingleFunctio
 }
 
 // runIntraProceduralOnFunction is a simple function that runs the intraprocedural analysis with the information in job
-func runIntraProceduralOnFunction(job singleFunctionJob, output chan dataflow.SingleFunctionResult, isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) {
+// and returns the result of the analysis
+func runIntraProceduralOnFunction(job singleFunctionJob,
+	isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
 	runAnalysis := !ignoreInFirstPass(job.cache.Config, job.function)
 	job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
 		packagescan.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
@@ -121,14 +142,15 @@ func runIntraProceduralOnFunction(job singleFunctionJob, output chan dataflow.Si
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error while analyzing %s:\n\t%v\n", job.function.Name(), err)
 	}
-	output <- result
+	return result
 }
 
 // collectResults waits for the results in c and adds them to graph, candidates. It waits for numProducers
 // messages on the done channel to terminate and clean up.
 // Operations on graph and candidates are sequential.
 // cleans up done and c channels
-func collectResults(c chan dataflow.SingleFunctionResult, done chan int, numProducers int, graph *dataflow.CrossFunctionFlowGraph, candidates dataflow.DataFlows) {
+func collectResults(c chan dataflow.SingleFunctionResult, done chan int, numProducers int,
+	graph *dataflow.CrossFunctionFlowGraph, candidates dataflow.DataFlows) {
 	counter := numProducers
 	for {
 		select {

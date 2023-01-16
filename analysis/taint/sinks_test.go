@@ -57,5 +57,5 @@ func TestAllSinks(t *testing.T) {
 	if err != nil {
 		t.Errorf("could not set config file: %v", err)
 	}
-	analysistest.Run(t, testdata, taintSinksAnalyzer, "taint/sinks", "bar")
+	analysistest.Run(t, testdata, taintSinksAnalyzer, "taint/sinks")
 }

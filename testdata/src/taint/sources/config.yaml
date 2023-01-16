@@ -7,5 +7,4 @@ sources:
     type: Bar
   - type: SomeStruct
     field: DataField
-  - package: bar
-    field: Pickles
+  - field: Pickles

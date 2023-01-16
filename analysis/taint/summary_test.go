@@ -1,6 +1,7 @@
 package taint
 
 import (
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
 	"log"
 	"path"
 	"runtime"
@@ -14,7 +15,7 @@ func TestFunctionSummaries(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/summaries")
 	// Loading the program for testdata/src/taint-tracking-summaries/main.go
-	program, cfg := loadTest(t, dir, []string{})
+	program, cfg := utils.LoadTest(t, dir, []string{})
 	result, err := Analyze(log.Default(), cfg, program)
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)

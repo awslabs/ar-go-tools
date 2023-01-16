@@ -2,16 +2,14 @@ package taint
 
 import (
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
 	"go/parser"
 	"go/token"
 	"golang.org/x/tools/go/ssa"
 	"log"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -97,27 +95,6 @@ func getExpectedSourceToSink(reldir string, dir string) map[LPos]map[LPos]bool {
 	return source2sink
 }
 
-func loadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *config.Config) {
-	var err error
-	// Load config; in command, should be set using some flag
-	configFile := filepath.Join(dir, "config.yaml")
-	config.SetGlobalConfig(configFile)
-	files := []string{filepath.Join(dir, "./main.go")}
-	for _, extraFile := range extraFiles {
-		files = append(files, filepath.Join(dir, extraFile))
-	}
-
-	pkgs, err := analysis.LoadProgram(nil, "", ssa.BuilderMode(0), files)
-	if err != nil {
-		t.Fatalf("error loading packages.")
-	}
-	cfg, err := config.LoadGlobal()
-	if err != nil {
-		t.Fatalf("error loading global config.")
-	}
-	return pkgs, cfg
-}
-
 func checkExpectedPositions(t *testing.T, p *ssa.Program, flows dataflow.DataFlows, expect map[LPos]map[LPos]bool) {
 	seen := make(map[LPos]map[LPos]bool)
 	for sink, sources := range dataflow.ReachedSinkPositions(p, flows) {
@@ -156,9 +133,9 @@ func runTest(t *testing.T, dirName string, files []string) {
 		panic(err)
 	}
 
-	// The loadTest function is relative to the testdata/src/taint-tracking-inter folder so we can
+	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder so we can
 	// load an entire module with subpackages
-	program, cfg := loadTest(t, ".", files)
+	program, cfg := utils.LoadTest(t, ".", files)
 
 	result, err := Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
 	if err != nil {
