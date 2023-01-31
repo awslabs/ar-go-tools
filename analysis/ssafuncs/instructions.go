@@ -3,6 +3,7 @@
 package ssafuncs
 
 import (
+	. "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -161,4 +162,17 @@ func GetArgs(instr ssa.CallInstruction) []ssa.Value {
 	}
 	args = append(args, instr.Common().Args...)
 	return args
+}
+
+// InstrMethodKey return a method key (as used in the cache for indexing interface methods) if the instruction
+// calls a method from an interface
+// Returns an optional value
+// TODO: this may not be idiomatic but I'm testing this "Optional" implementation
+func InstrMethodKey(instr ssa.CallInstruction) Optional[string] {
+	methodFunc := instr.Common().Method
+	if methodFunc != nil {
+		methodKey := instr.Common().Value.Type().String() + "." + methodFunc.Name()
+		return Some[string](methodKey)
+	}
+	return None[string]()
 }

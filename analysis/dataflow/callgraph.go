@@ -85,8 +85,11 @@ func (mode CallgraphAnalysisMode) ComputeCallgraph(prog *ssa.Program) (*callgrap
 // ComputeMethodImplementations populates a map from method implementation type string to the different implementations
 // corresponding to that method.
 // The map can be indexed by using the signature of an interface method and calling String() on it.
-func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map[*ssa.Function]bool) error {
-	interfaceTypes := map[*types.Interface]map[string]*types.Selection{}
+// If the provided contracts map is non-nil, then the function also builds a summary graph for each interface
+// method such that contracts[methodId] = nil
+func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map[*ssa.Function]bool,
+	contracts map[string]*SummaryGraph, keys map[string]string) error {
+	interfaceTypes := map[*ssa.Type]map[string]*types.Selection{}
 	signatureTypes := map[string]bool{} // TODO: use this to index function by signature
 	// Fetch all interface types
 	for _, pkg := range p.AllPackages() {
@@ -95,7 +98,7 @@ func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map
 			case *ssa.Type:
 				switch iType := memType.Type().Underlying().(type) {
 				case *types.Interface:
-					interfaceTypes[iType] = methodSetToNameMap(p.MethodSets.MethodSet(memType.Type()))
+					interfaceTypes[memType] = methodSetToNameMap(p.MethodSets.MethodSet(memType.Type()))
 				case *types.Signature:
 					signatureTypes[iType.String()] = true
 				}
@@ -104,9 +107,11 @@ func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map
 	}
 
 	// Fetch implementations of all interface methods
-	for _, typ := range p.RuntimeTypes() {
-		for interfaceType, interfaceMethods := range interfaceTypes {
-			if types.Implements(typ.Underlying(), interfaceType) {
+
+	for interfaceType, interfaceMethods := range interfaceTypes {
+		for _, typ := range p.RuntimeTypes() {
+			// Find the interfaces it implements (type conversion cannot fail)
+			if types.Implements(typ.Underlying(), interfaceType.Type().Underlying().(*types.Interface)) {
 				set := p.MethodSets.MethodSet(typ)
 				for i := 0; i < set.Len(); i++ {
 					method := set.At(i)
@@ -116,15 +121,54 @@ func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map
 					matchingInterfaceMethod := interfaceMethods[methodValue.Name()]
 					if methodValue != nil && matchingInterfaceMethod != nil {
 						key := matchingInterfaceMethod.Recv().String() + "." + methodValue.Name()
+						keys[methodValue.String()] = key
 						addImplementation(implementations, key, methodValue)
+						addContractSummaryGraph(contracts, key, methodValue)
 					}
 				}
 			}
 		}
 	}
+
+	computeErrorBuiltinImplementations(p, implementations, contracts, keys)
+
 	return nil
 }
 
+// computeErrorBuiltinImplementations adds the implementations of the builtin error interface (the error.Error method)
+// to the implementations map
+func computeErrorBuiltinImplementations(p *ssa.Program, implementations map[string]map[*ssa.Function]bool,
+	contracts map[string]*SummaryGraph, keys map[string]string) {
+	key := "error.Error"
+	for _, typ := range p.RuntimeTypes() {
+		set := p.MethodSets.MethodSet(typ)
+		// Does it implement the error builtin?
+		for i := 0; i < set.Len(); i++ {
+			method := set.At(i)
+			// Get the function implementation
+			methodValue := p.MethodValue(method)
+			if methodValue.Name() != "Error" || len(methodValue.Params) > 1 {
+				continue
+			}
+			results := methodValue.Signature.Results()
+			if results.Len() != 1 {
+				continue
+			}
+			expectedString := results.At(0).Type().Underlying()
+			if expectedString.String() != "string" {
+				continue
+			}
+
+			keys[methodValue.String()] = key
+			// Get the interface method being implemented
+			addImplementation(implementations, key, methodValue)
+			addContractSummaryGraph(contracts, key, methodValue)
+		}
+	}
+}
+
+// addImplementation sets the value of key in implementationsMap to function, handling the creation of nested maps.
+// @requires implementationMap != nil
 func addImplementation(implementationMap map[string]map[*ssa.Function]bool, key string, function *ssa.Function) {
 	if implementations, ok := implementationMap[key]; ok {
 		if !implementations[function] {
@@ -132,6 +176,21 @@ func addImplementation(implementationMap map[string]map[*ssa.Function]bool, key 
 		}
 	} else {
 		implementationMap[key] = map[*ssa.Function]bool{function: true}
+	}
+}
+
+// addContractSummaryGraph sets the value of contract[methodId] to a new summary of function if the methodId key
+// is present in contracts but the associated value is nil
+// Does nothing if contracts is nil.
+func addContractSummaryGraph(contracts map[string]*SummaryGraph, methodId string, function *ssa.Function) {
+	if contracts == nil || function == nil {
+		return
+	}
+	// Entry must be present
+	if curSummary, ok := contracts[methodId]; ok {
+		if curSummary == nil {
+			contracts[methodId] = NewSummaryGraph(function)
+		}
 	}
 }
 
@@ -143,4 +202,55 @@ func methodSetToNameMap(methodSet *types.MethodSet) map[string]*types.Selection 
 		nameMap[method.Obj().Name()] = method
 	}
 	return nameMap
+}
+
+// CallGraphReachable returns a map where each entry is a reachable function
+func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
+	fmt.Fprintf(os.Stderr, "callGraph has %d total nodes\n", len(cg.Nodes))
+
+	entryPoints := findCallgraphEntryPoints(cg, excludeMain, excludeInit)
+	fmt.Fprintf(os.Stderr, "findCallgraphEntryPoints found %d entry points\n", len(entryPoints))
+
+	//	fmt.Fprintf(os.Stderr, "Root node is %v\n", cg.Root.Func.String())
+
+	reachable := make(map[*ssa.Function]bool, len(cg.Nodes))
+
+	frontier := make([]*callgraph.Node, 0)
+
+	for _, node := range entryPoints {
+		//	node := cg.Root
+		reachable[node.Func] = true
+		frontier = append(frontier, node)
+	}
+
+	for len(frontier) != 0 {
+		node := frontier[len(frontier)-1]
+		frontier = frontier[:len(frontier)-1]
+		for _, edge := range node.Out {
+			if !reachable[edge.Callee.Func] {
+				reachable[edge.Callee.Func] = true
+				frontier = append(frontier, edge.Callee)
+			}
+		}
+	}
+	fmt.Fprintf(os.Stderr, "Callgraph Reachable reports %d reachable nodes\n", len(reachable))
+
+	return reachable
+}
+
+func findCallgraphEntryPoints(cg *callgraph.Graph, excludeMain bool, excludeInit bool) []*callgraph.Node {
+	entryPoints := make([]*callgraph.Node, 0)
+	for f, node := range cg.Nodes {
+		if f == nil {
+			continue
+		}
+		var name = f.String()
+
+		if (!excludeMain && name == "command-line-arguments.main") ||
+			(!excludeInit && name == "command-line-arguments.init") {
+			entryPoints = append(entryPoints, node)
+		}
+	}
+	return entryPoints
+
 }

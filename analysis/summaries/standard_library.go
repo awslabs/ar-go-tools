@@ -64,6 +64,7 @@ var stdPackages = map[string]map[string]Summary{
 	"regexp":          SummaryRegexp,
 	"regexp/syntax":   SummaryRegexp,
 	"runtime":         SummaryRuntime,
+	"runtime/debug":   SummaryRuntime,
 	"sort":            SummarySort,
 	"strconv":         SummaryStrConv,
 	"strings":         SummaryStrings,
@@ -116,11 +117,24 @@ var SummaryArchiveTar = map[string]Summary{}
 
 var SummaryArchiveZip = map[string]Summary{}
 
-var SummaryBufIo = map[string]Summary{}
+var SummaryBufIo = map[string]Summary{
+	"bufio.NewReader":           SingleVarArgPropagation,
+	"bufio.NewReaderSize":       TwoArgPropagation,
+	"bufio.NewScanner":          SingleVarArgPropagation,
+	"(*bufio.Reader).ReadSlice": TwoArgPropagation,
+	"(*bufio.Scanner).Scan": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*bufio.Scanner).Split": TwoArgPropagation,
+	"(*bufio.Scanner).Text":  SingleVarArgPropagation,
+}
 
 var SummaryBuiltin = map[string]Summary{}
 
 var SummaryBytes = map[string]Summary{
+	// func Equal(a, b []byte) bool {
+	"bytes.Equal": TwoArgPropagation,
 	// func NewBuffer(buf []byte) *Buffer
 	"bytes.NewBuffer": {
 		[][]int{{0}},
@@ -136,10 +150,21 @@ var SummaryBytes = map[string]Summary{
 		[][]int{{0}},
 		[][]int{{0}},
 	},
+	"bytes.Runes": SingleVarArgPropagation,
 	// func (b *Buffer) Bytes() []byte
 	"(*bytes.Buffer).Bytes": {
 		[][]int{{0}},
 		[][]int{{0}},
+	},
+	// func (b *Buffer) String() string
+	"(*bytes.Buffer).String": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
+	// func (b *Buffer) Write(c) error
+	"(*bytes.Buffer).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
 	},
 	// func (b *Buffer) WriteByte(c byte) error
 	"(*bytes.Buffer).WriteByte": {
@@ -182,7 +207,21 @@ var SummaryContainer = map[string]Summary{}
 
 var SummaryContext = map[string]Summary{}
 
-var SummaryCrypto = map[string]Summary{}
+var SummaryCrypto = map[string]Summary{
+	"crypto/aes.NewCipher":             SingleVarArgPropagation,
+	"crypto/cipher.NewGCM":             SingleVarArgPropagation,
+	"crypto/tls.X509KeyPair":           TwoArgPropagation,
+	"crypto/x509.NewCertPool":          NoDataFlowPropagation,
+	"crypto/x509.MarshalPKIXPublicKey": SingleVarArgPropagation,
+	"crypto/x509.ParsePKCS1PrivateKey": SingleVarArgPropagation,
+	"crypto/x509.SystemCertPool":       NoDataFlowPropagation,
+	"(crypto.Hash).New":                SingleVarArgPropagation,
+	"(*crypto/tls.Config).Clone":       SingleVarArgPropagation,
+	"(*crypto/x509.CertPool).AppendCertsFromPEM": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+}
 
 var SummaryDatabase = map[string]Summary{}
 
@@ -206,9 +245,23 @@ var SummaryEncoding = map[string]Summary{
 		[][]int{{0, 1}, {}},
 		[][]int{{0}, {0}},
 	},
+	"(encoding/json.Number).Float64": SingleVarArgPropagation,
+	"(encoding/json.Number).String":  SingleVarArgPropagation,
+	// func NewDecoder(r io.Reader) *Decoder {
+	"encoding/xml.NewDecoder": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
+	// func Unmarshal(data []byte, v any) error
+	"encoding/xml.Unmarshal": {
+		[][]int{{0, 1}, {}},
+		[][]int{{0}, {0}},
+	},
 }
 
-var SummaryErrors = map[string]Summary{}
+var SummaryErrors = map[string]Summary{
+	"errors.New": SingleVarArgPropagation,
+}
 
 var SummaryExpVar = map[string]Summary{}
 
@@ -221,13 +274,18 @@ var SummaryFmt = map[string]Summary{
 	"fmt.Println": NoDataFlowPropagation,
 	// func Errorf(format string, a ...interface{}) error
 	"fmt.Errorf": NoDataFlowPropagation,
+	"fmt.Fprint": {
+		Args: [][]int{{0}, {0, 1}},
+		Rets: [][]int{{0}, {0}},
+	},
 	// func Fprintf(w io.Writer, format string, a ...any) (n int, err error)
 	"fmt.Fprintf": {
 		Args: [][]int{
-			{0}, // w is tainted -> w stays tainted
-			{0}},
+			{0},     // w is tainted -> w stays tainted
+			{0, 1},  // format string is tainted -> w is tainted
+			{0, 2}}, // some argument tainted -> w is tainted
 		Rets: [][]int{
-			{},
+			{0}, {0}, {0},
 		},
 	},
 	//func Sprintf(format string, a ...any) string
@@ -262,6 +320,11 @@ var SummaryIo = map[string]Summary{
 		[][]int{{0}, {0, 1}, {0, 2}},
 		[][]int{{0}, {0}, {0}},
 	},
+	// func ReadFull(r Reader, buf []byte) (n int, err error) {
+	"io.ReadFull": {
+		[][]int{{0, 1}, {0}},
+		[][]int{{0}, {0}},
+	},
 	// func TeeReader(r Reader, w Writer) Reader
 	"io.TeeReader": {
 		[][]int{{0, 1}, {1}},
@@ -283,7 +346,21 @@ var SummaryLog = map[string]Summary{
 	},
 }
 
-var SummaryMath = map[string]Summary{}
+var SummaryMath = map[string]Summary{
+	"math.Abs":            SingleVarArgPropagation,
+	"math.Max":            TwoArgPropagation,
+	"math.Min":            TwoArgPropagation,
+	"math.Mod":            TwoArgPropagation,
+	"math.Modf":           SingleVarArgPropagation,
+	"math.Pow":            TwoArgPropagation,
+	"math.Pow10":          SingleVarArgPropagation,
+	"math.Round":          SingleVarArgPropagation,
+	"math.RoundToEven":    SingleVarArgPropagation,
+	"math/rand.Int":       NoDataFlowPropagation,
+	"math/rand.Intn":      NoDataFlowPropagation,
+	"math/rand.New":       SingleVarArgPropagation,
+	"math/rand.NewSource": SingleVarArgPropagation,
+}
 
 var SummaryMime = map[string]Summary{}
 
@@ -298,10 +375,16 @@ var SummaryNet = map[string]Summary{
 		[][]int{{0}},
 		[][]int{{0}},
 	},
+	"net/http.StatusTest": SingleVarArgPropagation,
 	// func CanonicalHeaderKey(s string) string
 	"net/http.CanonicalHeaderKey": {
 		[][]int{{0}},
 		[][]int{{0}},
+	},
+	// func (c *Client) Do(req *Request) (*Response, error)
+	"(*net/http.Client).Do": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
 	},
 	// func (h Header) Add(key string, value string)
 	"(net/http.Header).Add": {
@@ -336,41 +419,89 @@ var SummaryNet = map[string]Summary{
 }
 
 var SummaryOs = map[string]Summary{
+	"os/exec.Command":       TwoArgPropagation,
+	"(*os/exec.Cmd).Output": SingleVarArgPropagation,
+	"(*os.File).Close":      SingleVarArgPropagation,
+	"(*os.File).WriteAt": {
+		[][]int{{0}, {0, 1}, {0, 2}},
+		[][]int{{0}, {0}, {0}},
+	},
+	"(*os.File).WriteString": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
 	// func (f *File) Seek(offset int64, whence int) (ret int64, err error)
 	"(*os.File).Seek": {
 		[][]int{{}, {0}, {0}},
 		[][]int{{0}, {0}, {0}},
 	},
 	// func Create(name string) (*File, error)
-	"os.Create": {
-		[][]int{{}},
-		[][]int{{0}},
+	"os.Create": SingleVarArgPropagation,
+	"os.Expand": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	// func Getenv
+	"os.Getenv":     SingleVarArgPropagation,
+	"os.Hostname":   NoDataFlowPropagation,
+	"os.IsExist":    SingleVarArgPropagation,
+	"os.IsNotExist": SingleVarArgPropagation,
+	// func MkdirAll(path string, perm FileMode) error
+	"os.MkdirAll": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
 	},
 	// func Open(name string) (*File, error)
-	"os.Open": {
-		[][]int{{}},
-		[][]int{{0}},
+	"os.Open": SingleVarArgPropagation,
+	// func OpenFile(name string, flag int, perm FileMode) (*File, error)
+	"os.OpenFile": {
+		[][]int{{0}, {1}, {2}},
+		[][]int{{0}, {0}, {0}},
 	},
+	// func Remove(name string) error {
+	"os.Remove":    SingleVarArgPropagation,
+	"os.RemoveAll": SingleVarArgPropagation,
+	"os.Rename":    {[][]int{{0}, {0, 1}}, [][]int{{0}, {0}}},
+	"os.Stat":      SingleVarArgPropagation,
 }
 
 var SummaryPath = map[string]Summary{
 	// func Join(elem ...string) string
-	"path.Join":          SingleVarArgPropagation,
-	"path.Clean":         SingleVarArgPropagation,
-	"path/filepath.Join": SingleVarArgPropagation,
+	"path.Join":           SingleVarArgPropagation,
+	"path.Clean":          SingleVarArgPropagation,
+	"path/filepath.Base":  SingleVarArgPropagation,
+	"path/filepath.Dir":   SingleVarArgPropagation,
+	"path/filepath.IsAbs": SingleVarArgPropagation,
+	"path/filepath.Join":  SingleVarArgPropagation,
+	"path/filepath.Rel":   {[][]int{{0}, {1}}, [][]int{{0}, {0}}},
 }
 
 var SummaryPlugin = map[string]Summary{}
 
 var SummaryReflect = map[string]Summary{
-	"reflect.ValueOf": SingleVarArgPropagation,
+	"reflect.DeepEqual": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
 	// func Indirect(v Value) Value
 	"reflect.Indirect": SingleVarArgPropagation,
-	// func (v Value) Elem() Value
-	"(reflect.Value).Elem": {
-		[][]int{{0}},
-		[][]int{{0}},
+	// func MakeMap(typ Type) Value {
+	"reflect.MakeMap": SingleVarArgPropagation,
+	"reflect.MakeSlice": {
+		[][]int{{0}, {1}, {2}},
+		[][]int{{0}, {0}, {0}},
 	},
+	"reflect.New":     SingleVarArgPropagation,
+	"reflect.TypeOf":  SingleVarArgPropagation,
+	"reflect.ValueOf": SingleVarArgPropagation,
+	"reflect.Zero":    SingleVarArgPropagation,
+	// func (tag StructTag) Get(key string) string
+	"(reflect.StructTag).Get": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	// func (v Value) Elem() Value
+	"(reflect.Value).Elem": SingleVarArgPropagation,
 	// func (v Value) Field(i int) Value
 	"(reflect.Value).Field": {
 		[][]int{{0}, {1}},
@@ -381,35 +512,32 @@ var SummaryReflect = map[string]Summary{
 		[][]int{{0}, {1}},
 		[][]int{{0}, {0}},
 	},
+	// func (v Value) Index(i int) Value
+	"(reflect.Value).Index": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	// func (v Value) Interface() any
+	"(reflect.Value).Interface": SingleVarArgPropagation,
 	// func (v Value) IsNil() bool
 	"(reflect.Value).IsNil": {
 		[][]int{{0}},
 		[][]int{{0}},
 	},
 	// func (v Value) IsValid() bool
-	"(reflect.Value).IsValid": {
-		[][]int{{0}},
-		[][]int{{0}},
-	},
+	"(reflect.Value).IsValid": SingleVarArgPropagation,
 	// func (v Value) Kind() Kind
-	"(reflect.Value).Kind": {
-		[][]int{{0}},
-		[][]int{{0}},
-	},
+	"(reflect.Value).Kind": SingleVarArgPropagation,
 	// func (v Value) Len() int
-	"(reflect.Value).Len": {
-		[][]int{{0}},
-		[][]int{{0}},
-	},
+	"(reflect.Value).Len": SingleVarArgPropagation,
 	// func (v Value) NumField() int
-	"(reflect.Value).NumField": {
-		[][]int{{0}},
-		[][]int{{0}},
-	},
+	"(reflect.Value).NumField": SingleVarArgPropagation,
 	// func (v Value) MapKeys() []Value
-	"(reflect.Value).MapKeys": {
-		[][]int{{0}},
-		[][]int{{0}},
+	"(reflect.Value).MapKeys": SingleVarArgPropagation,
+	// func (v Value) MapIndex(key) []Value
+	"(reflect.Value).MapIndex": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
 	},
 	// func (v Value) Set(x Value)
 	"(reflect.Value).Set": {
@@ -426,14 +554,30 @@ var SummaryReflect = map[string]Summary{
 		[][]int{{0}},
 		[][]int{{0}},
 	},
+	//
+	"(*reflect.rtype).Elem": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
 }
 
 var SummaryRegexp = map[string]Summary{
+	"regexp.Compile": SingleVarArgPropagation,
 	// matching regexp doesn't taint arguments but either taints return
 	"regexp.MatchString": {[][]int{}, [][]int{{0}, {0}}},
 	"regexp.MatchReader": {[][]int{}, [][]int{{0}, {0}}},
+	"regexp.MustCompile": SingleVarArgPropagation,
+	"(*regexp.Regexp).Match": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
 	// func (re *Regexp) MatchString(s string) bool
 	"(*regexp.Regexp).MatchString": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	// func (re *Regexp) FindAllString(s string, n int) []string
+	"(*regexp.Regexp).FindAllString": {
 		[][]int{{0}, {1}},
 		[][]int{{0}, {0}},
 	},
@@ -444,7 +588,9 @@ var SummaryRegexp = map[string]Summary{
 	},
 }
 
-var SummaryRuntime = map[string]Summary{}
+var SummaryRuntime = map[string]Summary{
+	"runtime/debug.Stack": NoDataFlowPropagation,
+}
 
 var SummarySort = map[string]Summary{
 	// func Strings(x []string)
@@ -455,8 +601,11 @@ var SummarySort = map[string]Summary{
 }
 
 var SummaryStrConv = map[string]Summary{
-	"strconv.Itoa":      {[][]int{{0}}, [][]int{{0}, {0}}},
-	"strconv.FormatInt": {[][]int{{0}, {1}}, [][]int{{0}, {0}}},
+	"strconv.Atoi":        {[][]int{{0}}, [][]int{{0}}},
+	"strconv.Itoa":        {[][]int{{0}}, [][]int{{0}}},
+	"strconv.FormatBool":  SingleVarArgPropagation,
+	"strconv.FormatInt":   {[][]int{{0}, {1}}, [][]int{{0}, {0}}},
+	"strconv.FormatFloat": {[][]int{{0}, {1}, {2}, {3}}, [][]int{{0}, {0}, {0}, {0}}},
 	// func ParseBool(str string) (bool, error)
 	"strconv.ParseBool": {[][]int{{0}}, [][]int{{0}}},
 	// func(s string, base int, bitSize int) (i int64, err error)
@@ -476,41 +625,22 @@ var SummaryStrings = map[string]Summary{
 		[][]int{{}, {}},
 		[][]int{{0}, {0}},
 	},
+	// func Compare(a, b string) int
+	"strings.Compare": TwoArgPropagation,
 	// func Count(s, substr string) int {
-	"strings.Count": {
-		[][]int{{0}, {1}},
-		[][]int{{0}, {0}},
-	},
+	"strings.Count": TwoArgPropagation,
 	// func EqualFold(s, t string) bool {
-	"strings.EqualFold": {
-		[][]int{{}, {}},
-		[][]int{{0}, {0}},
-	},
+	"strings.EqualFold": TwoArgPropagation,
 	// func HasPrefix(s, prefix string) bool {
-	"strings.HasPrefix": {
-		[][]int{{}, {}},
-		[][]int{{0}, {0}},
-	},
+	"strings.HasPrefix": TwoArgPropagation,
 	// func HasSuffix(s, prefix string) bool {
-	"strings.HasSuffix": {
-		[][]int{{0}, {1}},
-		[][]int{{0}, {0}},
-	},
+	"strings.HasSuffix": TwoArgPropagation,
 	// func Index(s, substr string) int
-	"strings.Index": {
-		[][]int{{0}, {1}},
-		[][]int{{0}, {0}},
-	},
+	"strings.Index": TwoArgPropagation,
 	// func IndexAny(s, chars string) int {
-	"strings.IndexAny": {
-		[][]int{{0}, {1}},
-		[][]int{{0}, {0}},
-	},
+	"strings.IndexAny": TwoArgPropagation,
 	// func IndexByte(s string, c byte) int {
-	"strings.IndexByte": {
-		[][]int{{0}, {1}},
-		[][]int{{0}, {0}},
-	},
+	"strings.IndexByte": TwoArgPropagation,
 	// func Join(elems []string, sep string) string {
 	"strings.Join": {
 		[][]int{{0}, {1}},
@@ -528,8 +658,18 @@ var SummaryStrings = map[string]Summary{
 	},
 	// func Replace(s, old, new string, n int) string {
 	"strings.Replace": {
+		[][]int{{0}, {1}, {2}, {3}},
+		[][]int{{0}, {0}, {0}, {0}},
+	},
+	// func ReplaceAll(s, old, new string) string {
+	"strings.ReplaceAll": {
 		[][]int{{0}, {1}, {2}},
 		[][]int{{0}, {0}, {0}},
+	},
+	// func Repeat(s string, count int) string {
+	"strings.Repeat": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
 	},
 	// func SplitN(s, sep string, n int) []string
 	"strings.SplitN": {
@@ -556,11 +696,14 @@ var SummaryStrings = map[string]Summary{
 		[][]int{{0}, {1}},
 		[][]int{{0}, {0}},
 	},
-	// func ToLower(s string) string {
-	"strings.ToLower": {
-		[][]int{{0}},
-		[][]int{{0}},
+	// func TrimSuffix(s, suffix string) string {
+	"strings.TrimSuffix": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
 	},
+	// func ToLower(s string) string {
+	"strings.ToLower": SingleVarArgPropagation,
+	"strings.ToUpper": SingleVarArgPropagation,
 	//func TrimSpace(s string) string
 	"strings.TrimSpace": {
 		[][]int{{0}},
@@ -599,13 +742,17 @@ var SummaryStrings = map[string]Summary{
 }
 
 var SummarySync = map[string]Summary{
+	"sync/atomic.LoadUint32": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
 	// func StoreInt32(addr *int32, val int32)
 	" sync/atomic.StoreInt32": {
 		[][]int{{0}, {0, 1}},
 		[][]int{{}},
 	},
 	// func StoreUint32(addr *uint32, val uint32)
-	" sync/atomic.StoreUint32": {
+	"sync/atomic.StoreUint32": {
 		[][]int{{0}, {0, 1}},
 		[][]int{{}},
 	},
@@ -629,6 +776,12 @@ var SummarySync = map[string]Summary{
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {}},
 	},
+	"(*sync.Once).Do": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"(*sync.Map).Load":   SingleVarArgPropagation,
+	"(*sync.Map).Delete": SingleVarArgPropagation,
 	"(*sync.Mutex).Unlock": {
 		[][]int{{0}},
 		[][]int{{}},
@@ -663,28 +816,60 @@ var SummarySync = map[string]Summary{
 	"(*sync.WaitGroup).Wait": NoDataFlowPropagation,
 }
 
-var SummarySyscall = map[string]Summary{}
+var SummarySyscall = map[string]Summary{
+	"syscall.Getuid": NoDataFlowPropagation,
+}
 
 var SummaryTesting = map[string]Summary{}
 
 var SummaryText = map[string]Summary{}
 
 var SummaryTime = map[string]Summary{
+	"time.After":  SingleVarArgPropagation,
+	"time.Before": SingleVarArgPropagation,
 	// func Parse(layout, value string) (Time, error)
 	"time.Parse": {
 		[][]int{{0}, {1}},
 		[][]int{{0}, {0}},
 	},
-	// func (t Time) UTC() Time
-	"(time.Time).UTC": SingleVarArgPropagation,
-	// func (t Time) Format(layout string) string
-	"(time.Time).Format": {
+	// func Sleep(d Duration)
+	"time.Sleep": {
+		[][]int{{0}},
+		[][]int{},
+	},
+	"time.NewTimer": SingleVarArgPropagation,
+	"time.Now":      NoDataFlowPropagation,
+	"time.Since":    SingleVarArgPropagation,
+	// func Unix(sec int64, nsec int64) Time
+	"time.Unix": {
 		[][]int{{0}, {1}},
 		[][]int{{0}, {0}},
 	},
+	"(*time.Ticker).Stop": SingleVarArgPropagation,
+	// func (t Time) Add(d Duration) Time
+	"(time.Time).Add": TwoArgPropagation,
+	// func (t Time) After(d Duration) Time
+	"(time.Time).After": TwoArgPropagation,
+	// func (t Time) Before(d Duration) Time
+	"(time.Time).Before": TwoArgPropagation,
+	"(time.Time).Day":    SingleVarArgPropagation,
+	// func (t Time) IsZero() Time
+	"(time.Time).IsZero": SingleVarArgPropagation,
+	// func (t Time) Format(layout string) string
+	"(time.Time).Format": TwoArgPropagation,
+	"(time.Time).Month":  SingleVarArgPropagation,
+	"(time.Time).Second": SingleVarArgPropagation,
+	"(time.Time).Sub":    TwoArgPropagation,
+	// func (t Time) UTC() Time
+	"(time.Time).UTC": SingleVarArgPropagation,
+	// func (t Time) UnixNano() int64
+	"(time.Time).UnixNano": SingleVarArgPropagation,
+	"(time.Time).Year":     SingleVarArgPropagation,
 }
 
-var SummaryUnicode = map[string]Summary{}
+var SummaryUnicode = map[string]Summary{
+	"unicode.IsSpace": SingleVarArgPropagation,
+}
 
 var SummaryUnsafe = map[string]Summary{}
 

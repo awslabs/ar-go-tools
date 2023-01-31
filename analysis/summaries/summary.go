@@ -32,6 +32,10 @@ var NoDataFlowPropagation = Summary{Rets: [][]int{}, Args: [][]int{}}
 // This will propagate the data flow to the return value.
 var SingleVarArgPropagation = Summary{Args: [][]int{{0}}, Rets: [][]int{{0}}}
 
+// TwoArgPropagation is a summary for functions that have two arguments and both propagate their data to the return
+// value, but there is no dataflow between arguments.
+var TwoArgPropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}
+
 // FormatterPropagation is a summary for functions like Printf where the first and second arguments might be tainted,
 // and this will taint the returned value (for example: an error, a string with Sprintf).
 var FormatterPropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}

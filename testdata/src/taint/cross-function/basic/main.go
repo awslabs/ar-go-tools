@@ -40,11 +40,12 @@ func source1() string {
 
 func main() {
 	test0()
-	test1()             // see bar.go
-	test2()             // see example.go
-	test3(10)           // see example.go
-	test4()             // see example2.go
-	test5()             // see example3.go
-	testField()         // see fields.go
-	testFieldEmbedded() // see fields.go
+	test1()                // see bar.go
+	test2()                // see example.go
+	test3(10)              // see example.go
+	test4()                // see example2.go
+	test5()                // see example3.go
+	testField()            // see fields.go
+	testFieldEmbedded()    // see fields.go
+	runSanitizerExamples() // see sanitizers.go
 }

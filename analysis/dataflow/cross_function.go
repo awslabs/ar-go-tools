@@ -104,34 +104,38 @@ func (g CrossFunctionFlowGraph) CrossFunctionPass(cfg *config.Config, logger *lo
 	var err error
 	var sourceFuncs []*SummaryGraph
 	var entryPoints []NodeWithTrace
+	var coverage *os.File
+	var summariesFile *os.File
 
 	// Skip the pass if user configuration demands it
 	if cfg.SkipInterprocedural || len(g.Summaries) == 0 {
 		return
 	}
 	// Open the coverage file if specified in configuration
-	var coverage *os.File
-	if cfg.CoverageFile != "" {
-		coverage, err = os.Create(cfg.CoverageFile)
+	if cfg.ReportCoverage {
+		coverage, err = os.CreateTemp(cfg.ReportsDir, "coverage-*.out")
 		defer coverage.Close()
 		if err != nil {
 			coverage = nil
-			logger.Printf("Warning: could not create coverage file %s, continuing.\n", cfg.CoverageFile)
+			logger.Printf("Warning: could not create coverage file, continuing.\n")
 			logger.Printf("Error was: %s", err)
 		} else {
+			logger.Printf("Writing coverage information in %s.\n", coverage.Name())
 			_, _ = coverage.WriteString("mode: set\n")
 		}
 	}
 
 	// Open a file to output summaries
-	var summariesFile *os.File
-	if cfg.OutputSummaries {
-		summariesFile, err = os.Create("flow-summaries.out")
+	if cfg.ReportSummaries {
+		summariesFile, err = os.CreateTemp(cfg.ReportsDir, "summaries-*.out")
 		defer summariesFile.Close()
 		if err != nil {
 			coverage = nil
 			logger.Printf("Warning: could not create summaries files, continuing.\n")
 			logger.Printf("Error was: %s", err)
+		} else {
+			logger.Printf("Writing summaries in %s.\n", summariesFile.Name())
+			_, _ = coverage.WriteString("mode: set\n")
 		}
 	}
 
@@ -148,18 +152,32 @@ func (g CrossFunctionFlowGraph) CrossFunctionPass(cfg *config.Config, logger *lo
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
 				if node.Callee() != nil {
-					calleeSummary := findCalleeSummary(node.Callee(), g.Summaries)
-					// If it's not in the generated summaries, try to fetch it from predefined summaries
+					var calleeSummary *SummaryGraph
+
+					if node.callee.Type != InterfaceContract {
+						calleeSummary = findCalleeSummary(node.Callee(), g.Summaries)
+					}
+					// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
+					// contracts
 					if calleeSummary == nil {
-						calleeSummary = LoadPredefinedSummary(node.Callee(), g.cache.PointerAnalysis.CallGraph)
-						if calleeSummary != nil {
-							logger.Printf("Loaded %s from summaries.\n", node.Callee().String())
+						if calleeSummary = g.cache.LoadInterfaceContractSummary(node); calleeSummary != nil {
+							if g.cache.Config.Verbose {
+								logger.Printf("Loaded %s from interface contracts.\n",
+									node.CallSite().Common().String())
+							}
+							g.Summaries[node.Callee()] = calleeSummary
+						} else if calleeSummary = LoadPredefinedSummary(node.Callee()); calleeSummary != nil {
+							if g.cache.Config.Verbose {
+								logger.Printf("Loaded %s from summaries.\n", node.Callee().String())
+							}
 							g.Summaries[node.Callee()] = calleeSummary
 						}
 					}
 					// Add edge from callee to caller (adding a call site in the callee)
 					if calleeSummary != nil {
 						calleeSummary.Callsites[node.CallSite()] = node
+					} else {
+						summaryNotFound(g, node)
 					}
 					node.CalleeSummary = calleeSummary // nil is safe
 				}
@@ -240,4 +258,10 @@ func findClosureSummary(instr *ssa.MakeClosure, summaries map[*ssa.Function]*Sum
 func isSourceFunction(cfg *config.Config, f *ssa.Function) bool {
 	pkg := packagescan.PackageNameFromFunction(f)
 	return cfg.IsSource(config.CodeIdentifier{Package: pkg, Method: f.Name()})
+}
+
+func summaryNotFound(g CrossFunctionFlowGraph, node *CallNode) {
+	if g.cache.Config.Verbose {
+		g.cache.Logger.Printf("Could not find summary of %s", node.callSite.String())
+	}
 }

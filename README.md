@@ -87,7 +87,7 @@ Which will run the analysis without searching for sources and sinks but will bui
 need to perform the taint analysis.
 
 The `scripts` folder contains a script to run the `taint` tool on the SSM agent:
-`./taint/ssm-agent`
+`./scripts/ssm-taint`
 Note that there will be warnings and errors, since the implementation is not complete. You will see the different 
 passes of the analysis running:
 - constructing the callgraph and building aliasing information (pointer analysis)
@@ -99,10 +99,15 @@ The taint analysis uses a config file that contains the definition of the sinks 
 as various configuration options. Several examples are in the `testdata` examples. The configuration file for the agent
 analysis contains the following:
 ```yaml
-pkgprefix: "github.com/aws" # focus on functions in aws
-coveragefile: "taint-coverage.out" # output the lines covered by the taint flow propagation
+# Report all data
+reportsdir: "taint-report" # report will be in subdirectory taint-report where this file is
+reportcoverage: true
+reportsummaries: true
+reportpaths: true
 coverage: "amazon-ssm-agent/agent" # coverage is only reported for those file that have amazon-ssm-agent/agent as substring
-outputsummaries: true
+# Use interface contracts
+dataflowspecs: "agent-specs.json"
+pkgprefix: "github.com/aws" # focus on functions in aws
 sources:
    - method: "GetMessages"
      package: "github.com/aws/amazon-ssm-agent/agent/runcommand/mds"
@@ -111,15 +116,22 @@ sinks:
     method: "Marshal"
   - method: "(.*)Submit"
 ```
+The first configuration options are for the output of the tool. 
+- The `reportsdir` option specifies where the output files should be written. If the directory doesn't exist, it will 
+be created. When running the script, this means all the output will be in `amazon-ssm-agent/taint-report`.
+- The `reportcoverage` option is set to true to enable reporting coverage for the taint analysis. For each run, a new
+temporary file with a name matching `coverage-*.out` will be generated. You can inspect the coverage using the 
+usual Go tool (e.g. `go tool cover -html=amazon-ssm-agent/taint-report/coverage-*.out`)
+- The `reportsummaries` option is set to enable reporting the dataflow summaries built for the function in the agent.
+Look for a file with a name matching `summaries-*.out` in the report folder.
+- The `reportpaths` option enables reporting the taint flows from source to sink. For each flow, one report file with 
+a name matching `flow-*.out` will be created in the report folder.
+
+The other options change the behaviour of the analysis itself:
 - The `pkgprefix` option specifies which files to analyze: summaries will be built only for the functions that have a 
-package name that starts with this prefix. 
-- The `coveragefile` option specifies where the coverage file output should be written. One can then use
-`go tool cover -html=coveragefilename` to inspect which lines have been reached by tainted data. `coverage` specifies
-for which files coverage needs to be reported; in this example, any file that contains `amazon-ssm-agent/agent` in 
-its path.
-- The `outputsummaries` option is a boolean that specifies whether a representation of the summaries needs to be 
-produced. If set to true, the dataflow summaries can be inspected in the `flow-summaries.out` file in the same folder
-where the tool is run.
+package name that starts with this prefix.
+- The `dataflowspecs` specifies a JSON file that contains dataflow summaries for interfaces. The tool will use those
+summaries to replace calls to interface methods, greatly reducing the complexity of the cross-function flow analysis.
 - The `sources` and `sinks` each specify sets of identifiers for sources and sinks. A source can be specified by a 
 method (or function) name with `method` or a field name with `field`. A sink must be a function (or method). The 
 `package` information narrows down how function, methods and fields are matched. Note that the strings are Go regexes.

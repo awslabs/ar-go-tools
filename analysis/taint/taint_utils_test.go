@@ -3,13 +3,17 @@ package taint
 import (
 	"fmt"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"golang.org/x/tools/go/ssa"
+	"io/fs"
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -42,14 +46,28 @@ func RelPos(pos token.Position, reldir string) LPos {
 // expected flows from sources to sink in the form of a map from sink positions to all the source position that
 // reach that sink.
 func getExpectedSourceToSink(reldir string, dir string) map[LPos]map[LPos]bool {
+	var err error
+	d := make(map[string]*ast.Package)
 	source2sink := map[LPos]map[LPos]bool{}
 	sourceIds := map[string]token.Position{}
 	fset := token.NewFileSet() // positions are relative to fset
-	d, err := parser.ParseDir(fset, dir, nil, parser.ParseComments)
+
+	err = filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			d0, err := parser.ParseDir(fset, info.Name(), nil, parser.ParseComments)
+			functional.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		fmt.Println(err)
-		return source2sink
+		return nil
 	}
+
 	// Get all the source positions with their identifiers
 	for _, f := range d {
 		for _, f := range f.Files {
@@ -116,7 +134,7 @@ func checkExpectedPositions(t *testing.T, p *ssa.Program, flows dataflow.DataFlo
 		for sourceLine := range sources {
 			if !seen[sinkLine][sourceLine] {
 				// Remaining entries have not been detected!
-				t.Errorf("ERROR in main.go: failed to detect that %s flows to %s\n", sourceLine, sinkLine)
+				t.Errorf("ERROR in main.go: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
 			}
 		}
 	}
@@ -144,6 +162,8 @@ func runTest(t *testing.T, dirName string, files []string) {
 
 	expected := getExpectedSourceToSink(dir, ".")
 	checkExpectedPositions(t, program, result.TaintFlows, expected)
+	// Remove reports - comment if you want to inspect
+	os.RemoveAll(cfg.ReportsDir)
 }
 
 func TestAll(t *testing.T) {

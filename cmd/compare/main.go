@@ -103,18 +103,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Read %d text symbols from binary\n", len(symbols))
 	}
 
-	callgraph := callgraphReachable(cg, false, false)
+	callgraphReachable := make(map[string]bool)
+	for entry := range dataflow.CallGraphReachable(cg, false, false) {
+		callgraphReachable[entry.Name()] = true
+	}
 	reachable := findReachableNames(program)
 	allfuncs := findAllFunctionNames(program)
 
-	stripAllParens(callgraph)
+	stripAllParens(callgraphReachable)
 	stripAllParens(reachable)
 	stripAllParens(symbols)
 	stripAllParens(allfuncs)
 
 	all := make(map[string]bool)
 
-	for f := range callgraph {
+	for f := range callgraphReachable {
 		all[f] = true
 	}
 	for f := range symbols {
@@ -137,12 +140,13 @@ func main() {
 	})
 
 	for _, f := range allsorted {
-		fmt.Printf("%c %c %c %c %s\n", ch(allfuncs[f]), ch(reachable[f]), ch(callgraph[f]), ch(symbols[f]), f)
+		fmt.Printf("%c %c %c %c %s\n",
+			ch(allfuncs[f]), ch(reachable[f]), ch(callgraphReachable[f]), ch(symbols[f]), f)
 	}
 
 	fmt.Printf("%d total functions\n", len(all))
 	fmt.Printf("Missing %d from allfuncs, %d from callgraph, %d from reachability, %d from binary\n",
-		len(all)-len(allfuncs), len(all)-len(callgraph), len(all)-len(reachable), len(all)-len(symbols))
+		len(all)-len(allfuncs), len(all)-len(callgraphReachable), len(all)-len(reachable), len(all)-len(symbols))
 
 }
 
@@ -173,57 +177,6 @@ func ch(c bool) rune {
 		return 'X'
 	}
 	return ' '
-}
-
-func callgraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool) map[string]bool {
-	fmt.Fprintf(os.Stderr, "callGraph has %d total nodes\n", len(cg.Nodes))
-
-	entryPoints := findCallgraphEntryPoints(cg, excludeMain, excludeInit)
-	fmt.Fprintf(os.Stderr, "findCallgraphEntryPoints found %d entry points\n", len(entryPoints))
-
-	//	fmt.Fprintf(os.Stderr, "Root node is %v\n", cg.Root.Func.String())
-
-	reachable := make(map[string]bool, len(cg.Nodes))
-
-	frontier := make([]*callgraph.Node, 0)
-
-	for _, node := range entryPoints {
-		//	node := cg.Root
-		reachable[node.Func.String()] = true
-		frontier = append(frontier, node)
-	}
-
-	for len(frontier) != 0 {
-		node := frontier[len(frontier)-1]
-		frontier = frontier[:len(frontier)-1]
-		for _, edge := range node.Out {
-			if !reachable[edge.Callee.Func.String()] {
-				reachable[edge.Callee.Func.String()] = true
-				frontier = append(frontier, edge.Callee)
-			}
-		}
-	}
-	fmt.Fprintf(os.Stderr, "Callgraph Reachable reports %d reachable nodes\n", len(reachable))
-
-	return reachable
-}
-
-func findCallgraphEntryPoints(cg *callgraph.Graph, excludeMain bool, excludeInit bool) []*callgraph.Node {
-	entryPoints := make([]*callgraph.Node, 0)
-	for f, node := range cg.Nodes {
-		if f == nil {
-			fmt.Println("Got a nil function?")
-			continue
-		}
-		var name = f.String()
-
-		if (!excludeMain && name == "command-line-arguments.main") ||
-			(!excludeInit && name == "command-line-arguments.init") {
-			entryPoints = append(entryPoints, node)
-		}
-	}
-	return entryPoints
-
 }
 
 func funcsToStrings(funcs map[*ssa.Function]bool) map[string]bool {
