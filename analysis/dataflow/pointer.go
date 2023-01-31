@@ -37,7 +37,7 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 		// If the function is a user-defined function (it can be from a dependency) then every value that can
 		// can potentially alias is marked for querying.
 		if functionFilter(function) {
-			ssafuncs.IterateInstructions(function, func(instruction *ssa.Instruction) { addQuery(pCfg, instruction) })
+			ssafuncs.IterateInstructions(function, func(instruction ssa.Instruction) { addQuery(pCfg, instruction) })
 		}
 	}
 
@@ -47,12 +47,12 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 
 // addQuery adds a query for the instruction to the pointer configuration, performing all the necessary checks to
 // ensure the query can be added safely.
-func addQuery(cfg *pointer.Config, instruction *ssa.Instruction) {
+func addQuery(cfg *pointer.Config, instruction ssa.Instruction) {
 	if instruction == nil {
 		return
 	}
 
-	for _, operand := range (*instruction).Operands([]*ssa.Value{}) {
+	for _, operand := range instruction.Operands([]*ssa.Value{}) {
 		if *operand != nil && (*operand).Type() != nil {
 			typ := (*operand).Type()
 			// Add query if value is of a type that can point

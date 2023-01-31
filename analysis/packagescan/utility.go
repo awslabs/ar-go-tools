@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/ssa"
+
+	. "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
 )
 
 // at this point, the f.String contains something like this:
@@ -64,33 +66,33 @@ var DummyPos = token.Position{
 }
 
 // SafeValuePos returns the position of the instruction or the dummy position.
-func SafeValuePos(value ssa.Value) token.Position {
+func SafeValuePos(value ssa.Value) Optional[token.Position] {
 	if value == nil {
-		return DummyPos
+		return None[token.Position]()
 	}
 	if parent := value.Parent(); parent != nil && parent.Prog != nil && parent.Prog.Fset != nil {
-		return value.Parent().Prog.Fset.Position(value.Pos())
+		return Some(value.Parent().Prog.Fset.Position(value.Pos()))
 	} else {
-		return DummyPos
+		return None[token.Position]()
 	}
 }
 
 // SafeInstructionPos returns the position of the instruction or the dummy position.
-func SafeInstructionPos(instruction ssa.Instruction) token.Position {
+func SafeInstructionPos(instruction ssa.Instruction) Optional[token.Position] {
 	if instruction == nil {
-		return DummyPos
+		return None[token.Position]()
 	}
 	if parent := instruction.Parent(); parent != nil && parent.Prog != nil && parent.Prog.Fset != nil {
-		return instruction.Parent().Prog.Fset.Position(instruction.Pos())
+		return Some(instruction.Parent().Prog.Fset.Position(instruction.Pos()))
 	} else {
-		return DummyPos
+		return None[token.Position]()
 	}
 }
 
-func SafeFunctionPos(function *ssa.Function) token.Position {
+func SafeFunctionPos(function *ssa.Function) Optional[token.Position] {
 	if function.Prog != nil && function.Prog.Fset != nil {
-		return function.Prog.Fset.Position(function.Pos())
+		return Some(function.Prog.Fset.Position(function.Pos()))
 	} else {
-		return DummyPos
+		return None[token.Position]()
 	}
 }

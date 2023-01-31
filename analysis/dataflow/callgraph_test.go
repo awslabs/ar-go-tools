@@ -34,7 +34,9 @@ func TestComputeMethodImplementations(t *testing.T) {
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow")
 	program, _ := utils.LoadTest(t, dir, []string{})
 	implementations := map[string]map[*ssa.Function]bool{}
-	err := df.ComputeMethodImplementations(program, implementations)
+	contracts := map[string]*df.SummaryGraph{}
+	keys := map[string]string{}
+	err := df.ComputeMethodImplementations(program, implementations, contracts, keys)
 	if err != nil {
 		t.Fatalf("Error computing method implementations: %s", err)
 	}

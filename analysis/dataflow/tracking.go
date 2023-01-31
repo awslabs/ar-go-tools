@@ -22,6 +22,7 @@ const (
 	CallReturn                         // A CallReturn is a call site return.
 	Closure                            // A Closure is a closure creation site
 	BoundVar                           // A BoundVar is a variable bound by a closure
+	Global                             // A Global is package global
 	Synthetic                          // A Synthetic node type for any other node.
 )
 
@@ -107,6 +108,11 @@ func (s *Source) IsBoundVar() bool {
 // IsClosure returns true if the source is a closure
 func (s *Source) IsClosure() bool {
 	return s.Type&Closure != 0
+}
+
+// IsGlobal returns true if the source is a global
+func (s *Source) IsGlobal() bool {
+	return s.Type&Global != 0
 }
 
 // IsCallSiteArg returns true if the source is a call site argument. If it returns true, then s.qualifier must be

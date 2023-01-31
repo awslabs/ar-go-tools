@@ -25,7 +25,7 @@ func checkExpected(t *testing.T, program *ssa.Program, taintFlows dataflow.DataF
 	for sinkLine, sources := range expected {
 		for sourceLine := range sources {
 			// Remaining entries have not been detected!
-			t.Errorf("ERROR in main.go: failed to detect that %d flows to %d\n", sourceLine, sinkLine)
+			t.Errorf("ERROR in main.go: failed to detect that %d:0 flows to %d:0\n", sourceLine, sinkLine)
 		}
 	}
 }

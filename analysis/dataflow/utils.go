@@ -5,6 +5,7 @@ import (
 	"go/types"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	. "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 )
@@ -50,11 +51,11 @@ func populateFunctionMap(config *config.Config, fMap functionToNode, current *ss
 	fMap[current] = sources
 }
 
-func FindSafeCalleePkg(n *ssa.CallCommon) (string, error) {
+func FindSafeCalleePkg(n *ssa.CallCommon) Optional[string] {
 	if n == nil || n.StaticCallee() == nil || n.StaticCallee().Pkg == nil {
-		return "", fmt.Errorf("no static callee package")
+		return None[string]()
 	}
-	return n.StaticCallee().Pkg.Pkg.Name(), nil
+	return Some(n.StaticCallee().Pkg.Pkg.Name())
 }
 
 // FindTypePackage finds the package declaring t or returns an error
@@ -90,6 +91,9 @@ func FindTypePackage(t types.Type) (string, string, error) {
 	case *types.Basic, *types.Tuple, *types.Interface, *types.Signature:
 		// We ignore this for now (tuple may involve multiple packages)
 		return "", "", fmt.Errorf("not a type with a package and name")
+	case *types.Struct:
+		// Anonymous structs
+		return "", "", fmt.Errorf("%s: not a type with a package and name", typ)
 	default:
 		// We should never reach this!
 		fmt.Printf("unexpected type received: %T %v; please report this issue\n", typ, typ)
@@ -203,4 +207,26 @@ func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.Ba
 			}
 		}
 	}
+}
+
+// containsCallNode returns true if nodes contains node, otherwise false
+func containsCallNode(nodes []*CallNode, node *CallNode) bool {
+	// The number of nodes in a call is expected to be small
+	for _, x := range nodes {
+		if x.Callee() == node.Callee() {
+			return true
+		}
+	}
+	return false
+}
+
+// MapContainsCallNode returns true if nodes contains node, otherwise false
+func MapContainsCallNode(nodes map[ssa.CallInstruction]*CallNode, node *CallNode) bool {
+	// The number of nodes in a call is expected to be small
+	for _, x := range nodes {
+		if x.callee == node.callee {
+			return true
+		}
+	}
+	return false
 }

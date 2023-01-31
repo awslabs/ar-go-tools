@@ -6,6 +6,10 @@ func source3() string {
 	return "tainted"
 }
 
+func source8() string {
+	return "tainted"
+}
+
 func passing(s1 string, s2 string) string {
 	return s1 + s2
 }
@@ -29,7 +33,7 @@ func f(key string, m map[string]string) string {
 
 func genKey(x int) string {
 	if x < 1 {
-		return source3() // @Source(example1bis)
+		return source8() // @Source(example1bis)
 	} else {
 		return fmt.Sprintf("Ok-%d", x)
 	}

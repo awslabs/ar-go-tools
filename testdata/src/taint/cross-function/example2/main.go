@@ -53,6 +53,6 @@ func main() {
 	if len(y) > 2 {
 		return
 	}
-	z := extract(y)
+	z := extract(extract(y))
 	sink1(z) // @Sink(source1)
 }

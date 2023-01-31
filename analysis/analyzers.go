@@ -3,6 +3,7 @@ package analysis
 
 import (
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"log"
 	"os"
 	"strings"
@@ -11,10 +12,8 @@ import (
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // SingleFunctionResult represents the result of running a single-function analysis pass.
@@ -63,7 +62,7 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 
 		// Feed the jobs in the jobs channel
 		// This pass also ignores some predefined packages
-		for function := range ssautil.AllFunctions(args.Cache.Program) {
+		for function := range args.Cache.ReachableFunctions(false, false) {
 			if args.ShouldBuildSummary(function) {
 				jobs <- singleFunctionJob{
 					function: function,
@@ -76,7 +75,7 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 		wg.Wait()
 	} else {
 		// Run without goroutines when there is only one routine
-		for function := range ssautil.AllFunctions(args.Cache.Program) {
+		for function := range args.Cache.ReachableFunctions(false, false) {
 			if args.ShouldBuildSummary(function) {
 				job := singleFunctionJob{
 					function: function,
@@ -136,8 +135,10 @@ func jobConsumer(jobs chan singleFunctionJob, output chan dataflow.SingleFunctio
 func runIntraProceduralOnFunction(job singleFunctionJob,
 	isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
 	runAnalysis := !ignoreInFirstPass(job.cache.Config, job.function)
-	job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
-		packagescan.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
+	if job.cache.Config.Verbose {
+		job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
+			packagescan.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
+	}
 	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function, runAnalysis, isSourceNode, isSinkNode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error while analyzing %s:\n\t%v\n", job.function.Name(), err)

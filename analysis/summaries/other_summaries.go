@@ -1,10 +1,10 @@
 package summaries
 
 var OtherPackages = map[string]map[string]Summary{
-	"gopkg.in/yaml.v2":              SummaryYaml,
-	"gopkg.in/yaml.v3":              SummaryYaml,
-	"github.com/aws/aws-sdk-go/aws": SummaryAwsSdk,
-	"golang.org/x/crypto":           SummaryGolangCrypto,
+	"gopkg.in/yaml.v2":          SummaryYaml,
+	"gopkg.in/yaml.v3":          SummaryYaml,
+	"github.com/aws/aws-sdk-go": SummaryAwsSdk,
+	"golang.org/x/crypto":       SummaryGolangCrypto,
 }
 
 var SummaryYaml = map[string]Summary{
@@ -14,6 +14,11 @@ var SummaryYaml = map[string]Summary{
 }
 var SummaryAwsSdk = map[string]Summary{
 	"github.com/aws/aws-sdk-go/aws.mergeInConfig": {},
+	// func UnmarshalXML(v interface{}, d *xml.Decoder, wrapper string) error {
+	"github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil.UnmarshalXML": {
+		[][]int{{0}, {0, 1}, {0, 2}},
+		[][]int{{0}, {0}, {0}},
+	},
 }
 
 var SummaryGolangCrypto = map[string]Summary{}

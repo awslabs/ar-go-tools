@@ -45,6 +45,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	cache, err := dataflow.NewCache(prog, logger, cfg, []func(*dataflow.Cache){
 		func(cache *dataflow.Cache) { cache.PopulateTypesVerbose() },
 		func(cache *dataflow.Cache) { cache.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
+		func(cache *dataflow.Cache) { cache.PopulateGlobalsVerbose() },
 	})
 	if err != nil {
 		return AnalysisResult{}, err

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -31,8 +32,15 @@ type Cache struct {
 	// If t is the signature of a function, then map[t.string()] will return all the functions matching that type.
 	implementationsByType map[string]map[*ssa.Function]bool
 
+	// DataFlowContracts are dataflow graphs for interfaces.
+	DataFlowContracts map[string]*SummaryGraph
+	keys              map[string]string
+
 	// The result of a pointer analysis.
 	PointerAnalysis *pointer.Result
+
+	// The global analysis
+	Globals map[*ssa.Global]*GlobalNode
 
 	// Stored errors
 	errors     map[error]bool
@@ -41,13 +49,36 @@ type Cache struct {
 
 // NewCache returns a properly initialized cache by running steps in parallel.
 func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cache)) (*Cache, error) {
+	var contracts []Contract
+	var err error
+
 	cache := &Cache{
 		Logger:                l,
 		Config:                c,
 		Program:               p,
 		implementationsByType: map[string]map[*ssa.Function]bool{},
+		DataFlowContracts:     map[string]*SummaryGraph{},
+		keys:                  map[string]string{},
 		PointerAnalysis:       nil,
+		Globals:               map[*ssa.Global]*GlobalNode{},
 		errors:                map[error]bool{},
+	}
+
+	// Load the dataflow contract of the interfaces from a json file if specified.
+	if c.DataflowSpecs != "" {
+		contracts, err = LoadDefinitions(c.RelPath(c.DataflowSpecs))
+		if err != nil {
+			return nil, err
+		}
+		if c.Verbose {
+			l.Printf("Loaded dataflow contracts from %s\n", c.DataflowSpecs)
+		}
+		// Initialize all the entries of DataFlowContracts
+		for _, contract := range contracts {
+			for method := range contract.Methods {
+				cache.DataFlowContracts[contract.Key(method)] = nil
+			}
+		}
 	}
 
 	wg := &sync.WaitGroup{}
@@ -62,6 +93,14 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cac
 	wg.Wait()
 	if err := cache.CheckError(); err != nil {
 		return nil, fmt.Errorf("failed to build cache: %w", err)
+	}
+
+	if c.DataflowSpecs != "" {
+		for _, contract := range contracts {
+			for method, methodSummary := range contract.Methods {
+				cache.DataFlowContracts[contract.Key(method)].PopulateGraphFromSummary(methodSummary, true)
+			}
+		}
 	}
 
 	return cache, nil
@@ -100,7 +139,7 @@ func (c *Cache) CheckError() error {
 
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations
 func (c *Cache) PopulateTypesToImplementationMap() {
-	if err := ComputeMethodImplementations(c.Program, c.implementationsByType); err != nil {
+	if err := ComputeMethodImplementations(c.Program, c.implementationsByType, c.DataFlowContracts, c.keys); err != nil {
 		c.AddError(err)
 	}
 }
@@ -135,9 +174,70 @@ func (c *Cache) PopulatePointersVerbose(functionFilter func(*ssa.Function) bool)
 	c.Logger.Printf("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
 }
 
-//
+// PopulateGlobals adds global nodes for every global defined in the program's packages
+func (c *Cache) PopulateGlobals() {
+	for _, pkg := range c.Program.AllPackages() {
+		for _, member := range pkg.Members {
+			glob, ok := member.(*ssa.Global)
+			if ok {
+				c.Globals[glob] = NewGlobalNode(glob)
+			}
+		}
+	}
+}
+
+// PopulateGlobalsVerbose is a verbose wrapper around PopulateGlobals
+func (c *Cache) PopulateGlobalsVerbose() {
+	start := time.Now()
+	c.Logger.Println("Gathering global variable declaration in the program...")
+	c.PopulateGlobals()
+	c.Logger.Printf("Global gathering terminated, added %d items (%.2f s)",
+		len(c.Globals), time.Since(start).Seconds())
+}
+
 // Functions to retrieve results from the information stored in the cache
-//
+
+// ReachableFunctions returns the set of reachable functions according to the pointer analysis
+// If the pointer analysis hasn't been run, then returns an empty map.
+func (c *Cache) ReachableFunctions(excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
+	if c.PointerAnalysis != nil {
+		return CallGraphReachable(c.PointerAnalysis.CallGraph, excludeMain, excludeInit)
+	} else {
+		return make(map[*ssa.Function]bool)
+	}
+}
+
+// Functions for callee resolution
+
+// A CalleeType gives information about how the callee was resolved
+type CalleeType int
+
+const (
+	Static CalleeType = 1 << iota
+	CallGraph
+	InterfaceContract
+	InterfaceMethod
+)
+
+func (t CalleeType) Code() string {
+	switch t {
+	case Static:
+		return "SA"
+	case CallGraph:
+		return "CG"
+	case InterfaceContract:
+		return "IC"
+	case InterfaceMethod:
+		return "IM"
+	default:
+		return ""
+	}
+}
+
+type CalleeInfo struct {
+	Callee *ssa.Function
+	Type   CalleeType
+}
 
 // ResolveCallee resolves the callee(s) at the call instruction instr.
 //
@@ -150,43 +250,68 @@ func (c *Cache) PopulatePointersVerbose(functionFilter func(*ssa.Function) bool)
 // type of the call variable at the location.
 //
 // Returns a non-nil error if it requires some information in the cache that has not been computed.
-func (c *Cache) ResolveCallee(instr ssa.CallInstruction) ([]*ssa.Function, error) {
+func (c *Cache) ResolveCallee(instr ssa.CallInstruction) ([]CalleeInfo, error) {
 	callee := instr.Common().StaticCallee()
+
 	if callee != nil {
-		return []*ssa.Function{callee}, nil
+		return []CalleeInfo{{Callee: callee, Type: Static}}, nil
 	}
 
-	if c.PointerAnalysis == nil {
-		return nil, fmt.Errorf("cannot resolve non-static callee without pointer analysis result")
+	// If it is a method, try first to find an interface contract, and return the implementation that is used
+	// in the summary
+	mKey := ssafuncs.InstrMethodKey(instr)
+	if summary, ok := c.DataFlowContracts[mKey.ValueOr("")]; ok && summary != nil {
+		return []CalleeInfo{{Callee: summary.Parent, Type: InterfaceContract}}, nil
 	}
 
-	var callees []*ssa.Function
-	node, ok := c.PointerAnalysis.CallGraph.Nodes[instr.Parent()]
-	if ok {
-		for _, callEdge := range node.Out {
-			if callEdge.Site == instr {
-				callees = append(callees, callEdge.Callee.Func)
+	var callees []CalleeInfo
+
+	// Try using the callgraph from the pointer analysis
+	if c.PointerAnalysis != nil {
+		node, ok := c.PointerAnalysis.CallGraph.Nodes[instr.Parent()]
+		if ok {
+			for _, callEdge := range node.Out {
+				if callEdge.Site == instr {
+					callees = append(callees, CalleeInfo{Callee: callEdge.Callee.Func, Type: CallGraph})
+				}
 			}
 		}
-	}
-	// If we have found the callees using the callgraph, return
-	if len(callees) > 0 {
-		return callees, nil
+		// If we have found the callees using the callgraph, return
+		if len(callees) > 0 {
+			return callees, nil
+		}
 	}
 
+	// Last option is to use the map from type string to implementation
 	if c.implementationsByType == nil || len(c.implementationsByType) == 0 {
 		return nil, fmt.Errorf("cannot resolve callee without information about possible implementations")
 	}
 
-	methodFunc := instr.Common().Method
-	if methodFunc != nil {
-		mInterface := instr.Common().Value
-		key := mInterface.Type().String() + "." + methodFunc.Name()
-		if implementations, ok := c.implementationsByType[key]; ok {
-			for implementation := range implementations {
-				callees = append(callees, implementation)
-			}
+	if implementations, ok := c.implementationsByType[mKey.ValueOr("")]; ok {
+		for implementation := range implementations {
+			callees = append(callees, CalleeInfo{Callee: implementation, Type: InterfaceMethod})
 		}
 	}
 	return callees, nil
+}
+
+func (c *Cache) HasInterfaceContractSummary(f *ssa.Function) bool {
+	if methodKey, ok := c.keys[f.String()]; ok {
+		return c.DataFlowContracts[methodKey] != nil
+	}
+	return false
+}
+
+func (c *Cache) LoadInterfaceContractSummary(node *CallNode) *SummaryGraph {
+	if node == nil || node.callee.Callee == nil || node.callee.Type != InterfaceContract {
+		return nil
+	}
+	methodFunc := node.CallSite().Common().Method
+	if methodFunc != nil {
+		methodKey := node.CallSite().Common().Value.Type().String() + "." + methodFunc.Name()
+		if summary, ok := c.DataFlowContracts[methodKey]; ok {
+			return summary
+		}
+	}
+	return nil
 }

@@ -41,46 +41,46 @@ func (t *stateTracker) DoDebugRef(*ssa.DebugRef) {
 }
 
 func (t *stateTracker) DoUnOp(x *ssa.UnOp) {
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoBinOp(binop *ssa.BinOp) {
 	// If either operand is tainted, taint the value.
 	// We might want more precision later.
-	simpleTransitiveMarkPropagation(t, binop.X, binop)
-	simpleTransitiveMarkPropagation(t, binop.Y, binop)
+	simpleTransitiveMarkPropagation(t, binop, binop.X, binop)
+	simpleTransitiveMarkPropagation(t, binop, binop.Y, binop)
 }
 
 func (t *stateTracker) DoChangeInterface(x *ssa.ChangeInterface) {
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoChangeType(x *ssa.ChangeType) {
 	// Changing type doesn't change taint
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoConvert(x *ssa.Convert) {
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoMakeInterface(x *ssa.MakeInterface) {
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoExtract(x *ssa.Extract) {
 	// TODO: tuple index sensitive propagation
-	simpleTransitiveMarkPropagation(t, x.Tuple, x)
+	simpleTransitiveMarkPropagation(t, x, x.Tuple, x)
 	//  "Warning: The analysis is imprecise on tuples.\n"
 }
 
 func (t *stateTracker) DoSlice(x *ssa.Slice) {
 	// Taking a slice propagates taint information
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoReturn(r *ssa.Return) {
@@ -111,11 +111,11 @@ func (t *stateTracker) DoPanic(x *ssa.Panic) {
 
 func (t *stateTracker) DoSend(x *ssa.Send) {
 	// Sending a tainted value over the channel taints the whole channel
-	simpleTransitiveMarkPropagation(t, x.X, x.Chan)
+	simpleTransitiveMarkPropagation(t, x, x.X, x.Chan)
 }
 
 func (t *stateTracker) DoStore(x *ssa.Store) {
-	simpleTransitiveMarkPropagation(t, x.Val, x.Addr)
+	simpleTransitiveMarkPropagation(t, x, x.Val, x.Addr)
 }
 
 func (t *stateTracker) DoIf(*ssa.If) {
@@ -150,11 +150,11 @@ func (t *stateTracker) DoMakeMap(*ssa.MakeMap) {
 
 func (t *stateTracker) DoRange(x *ssa.Range) {
 	// An iterator over a tainted value is tainted
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoNext(x *ssa.Next) {
-	simpleTransitiveMarkPropagation(t, x.Iter, x)
+	simpleTransitiveMarkPropagation(t, x, x.Iter, x)
 }
 
 func (t *stateTracker) DoFieldAddr(x *ssa.FieldAddr) {
@@ -172,7 +172,7 @@ func (t *stateTracker) DoFieldAddr(x *ssa.FieldAddr) {
 		}
 	}
 	// Taint is propagated if field of struct is tainted
-	pathSensitiveMarkPropagation(t, x.X, x, field)
+	pathSensitiveMarkPropagation(t, x, x.X, x, field)
 }
 
 func (t *stateTracker) DoField(x *ssa.Field) {
@@ -187,34 +187,34 @@ func (t *stateTracker) DoField(x *ssa.Field) {
 		field = structTyp.Field(x.Field).Name()
 	}
 	// Taint is propagated if field of struct is tainted
-	pathSensitiveMarkPropagation(t, x.X, x, field)
+	pathSensitiveMarkPropagation(t, x, x.X, x, field)
 }
 
 func (t *stateTracker) DoIndexAddr(x *ssa.IndexAddr) {
 	// An indexing taints the value if either index or the indexed value is tainted
-	simpleTransitiveMarkPropagation(t, x.Index, x)
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.Index, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoIndex(x *ssa.Index) {
 	// An indexing taints the value if either index or array is tainted
-	simpleTransitiveMarkPropagation(t, x.Index, x)
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.Index, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoLookup(x *ssa.Lookup) {
-	simpleTransitiveMarkPropagation(t, x.X, x)
-	simpleTransitiveMarkPropagation(t, x.Index, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.Index, x)
 }
 
 func (t *stateTracker) DoMapUpdate(x *ssa.MapUpdate) {
 	// Adding a tainted key or value in a map taints the whole map
-	simpleTransitiveMarkPropagation(t, x.Key, x.Map)
-	simpleTransitiveMarkPropagation(t, x.Value, x.Map)
+	simpleTransitiveMarkPropagation(t, x, x.Key, x.Map)
+	simpleTransitiveMarkPropagation(t, x, x.Value, x.Map)
 }
 
 func (t *stateTracker) DoTypeAssert(x *ssa.TypeAssert) {
-	simpleTransitiveMarkPropagation(t, x.X, x)
+	simpleTransitiveMarkPropagation(t, x, x.X, x)
 }
 
 func (t *stateTracker) DoMakeClosure(x *ssa.MakeClosure) {
@@ -223,7 +223,7 @@ func (t *stateTracker) DoMakeClosure(x *ssa.MakeClosure) {
 
 func (t *stateTracker) DoPhi(phi *ssa.Phi) {
 	for _, edge := range phi.Edges {
-		simpleTransitiveMarkPropagation(t, edge, phi)
+		simpleTransitiveMarkPropagation(t, phi, edge, phi)
 	}
 }
 
