@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.19-alpine
+FROM public.ecr.aws/docker/library/golang:1.20-alpine
 RUN apk --no-cache add ca-certificates git
 RUN apk --no-cache add make
 WORKDIR argot

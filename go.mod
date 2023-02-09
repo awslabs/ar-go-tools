@@ -1,9 +1,9 @@
 module git.amazon.com/pkg/ARG-GoAnalyzer
 
-go 1.19
+go 1.20
 
 require (
-	golang.org/x/term v0.2.0
+	golang.org/x/term v0.4.0
 	golang.org/x/tools v0.5.0
 	gopkg.in/yaml.v3 v3.0.1
 )

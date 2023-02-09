@@ -16,6 +16,9 @@ func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name strin
 	if implementsName == nil {
 		t.Fatalf("interface method %s undefined", name)
 	} else if len(implementsName) != len(expect) {
+		for f := range implementsName {
+			t.Logf("Implements: %s", f.String())
+		}
 		t.Fatalf("method %s has %d implementations, not %d", name, len(implementsName), len(expect))
 	} else {
 		for f := range implementsName {
@@ -62,6 +65,7 @@ func TestComputeMethodImplementations(t *testing.T) {
 		"(*internal/poll.FD).Write":         true,
 		"(os.onlyWriter).Write":             true,
 		"(*io.PipeWriter).Write":            true,
+		"(*io.OffsetWriter).Write":          true, // new in 1.20
 	})
 }
 
