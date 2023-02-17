@@ -311,6 +311,15 @@ func (t *stateTracker) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Inst
 		t.summary.AddSyntheticNode(asInstr, "source")
 		t.markValue(asValue, s)
 	}
+
+	for _, origin := range t.getMarkedValueOrigins(asValue, "*") {
+		_, isField := asInstr.(*ssa.Field)
+		_, isFieldAddr := asInstr.(*ssa.FieldAddr)
+		// check flow to avoid duplicate edges between synthetic nodes
+		if (isField || isFieldAddr) && t.checkFlow(origin, asInstr, asValue) {
+			t.summary.AddSyntheticNodeEdge(origin, asInstr, "*")
+		}
+	}
 }
 
 // callCommonTaint can be used for Call and Go instructions that wrap a CallCommon.
