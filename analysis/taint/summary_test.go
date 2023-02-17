@@ -1,13 +1,15 @@
 package taint
 
 import (
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
 	"log"
 	"path"
 	"runtime"
+	"strings"
 	"testing"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
+	"golang.org/x/tools/go/ssa"
 )
 
 func TestFunctionSummaries(t *testing.T) {
@@ -26,7 +28,7 @@ func TestFunctionSummaries(t *testing.T) {
 		if function.Name() == "main" {
 			ok := len(summary.Returns) == 1
 			ok = ok && len(summary.Params) == 0
-			ok = ok && len(summary.Callees) == 5
+			ok = ok && len(summary.Callees) == 7 // 6 regular function calls + 1 closure
 			if !ok {
 				t.Errorf("main graph is not as expected")
 			}
@@ -39,18 +41,35 @@ func TestFunctionSummaries(t *testing.T) {
 			if !ok {
 				t.Errorf("Bar graph is not as expected")
 			}
-			for _, argNode := range summary.Params {
-				ok = len(argNode.Out()) == 2
-				for dest := range argNode.Out() {
+			for _, paramNode := range summary.Params {
+				if len(paramNode.Out()) < 2 {
+					t.Errorf("Bar parameter should only have at least two outgoing edges to a function call argument, but got: %v", paramNode.Out())
+				}
+				hasCallOrReturn := false
+				for dest := range paramNode.Out() {
 					_, isCallNodeArg := dest.(*dataflow.CallNodeArg)
 					_, isReturnNode := dest.(*dataflow.ReturnNode)
-					ok = ok && (isCallNodeArg || isReturnNode)
+					if isCallNodeArg || isReturnNode {
+						hasCallOrReturn = true
+					}
+
+					if len(dest.In()) < 1 {
+						t.Errorf("Bar parameter outgoing edge have at least 1 incoming edge, but got: %v", dest.In())
+					}
+					hasParam := false
+					for src := range dest.In() {
+						if _, ok := src.(*dataflow.ParamNode); ok {
+							hasParam = true
+						}
+					}
+					if !hasParam {
+						t.Errorf("Bar parameter outgoing edge's should have an incoming edge that is a parameter node, but got: %v", dest.In())
+					}
 				}
-				if !ok {
-					t.Errorf("Bar argument should only have two outgoing edges to a function call argument")
+				if !hasCallOrReturn {
+					t.Errorf("Bar parameter outgoing edge should have a CallNodeArg or ReturnNode, but got: %v", paramNode.Out())
 				}
 			}
-
 		}
 
 		if function.Name() == "Foo" {
@@ -60,17 +79,116 @@ func TestFunctionSummaries(t *testing.T) {
 			if !ok {
 				t.Errorf("Foo graph is not as expected")
 			}
-			for _, argNode := range summary.Params {
-				if argNode.SsaNode().Name() == "s" {
-					ok = len(argNode.Out()) == 1
-					if !ok {
-						t.Errorf("in Foo, s should have one outgoing edge")
+			for _, paramNode := range summary.Params {
+				if paramNode.SsaNode().Name() == "s" {
+					if len(paramNode.Out()) < 1 {
+						t.Errorf("in Foo, s should have at least one outgoing edge, but got: %v", paramNode.Out())
+					}
+					hasCall := false
+					for out := range paramNode.Out() {
+						if _, ok := out.(*dataflow.CallNodeArg); ok {
+							hasCall = true
+						}
+
+						if len(out.In()) != 1 {
+							t.Errorf("in Foo, the outgoing edge of param s should have one incoming edge, but got: %v", out.In())
+						}
+
+						for in := range out.In() {
+							if _, ok := in.(*dataflow.ParamNode); !ok {
+								t.Errorf(
+									"in Foo, the incoming edge of the outgoing edge of param s should be a parameter node, but got: %T",
+									in)
+							}
+						}
+					}
+					if !hasCall {
+						t.Errorf("in Foo, an outgoing edge of param s should be a call node argument, but got: %v", paramNode.Out())
+					}
+
+					// even though there is a statement `a[0] = s` in the
+					// function body of Foo, there are no incoming edges from
+					// parameter s because s is never modified in Foo
+					if len(paramNode.In()) != 0 {
+						t.Errorf("in Foo, param s should not have any incoming edges, but got: %v", paramNode.In())
 					}
 				}
-				if argNode.SsaNode().Name() == "s2" {
-					ok = len(argNode.Out()) == 1
-					if !ok {
-						t.Errorf("in Foo, s should have one outgoing edge")
+				if paramNode.SsaNode().Name() == "s2" {
+					if len(paramNode.Out()) != 1 {
+						t.Errorf("in Foo, s2 should have one outgoing edge, but got: %v", paramNode.Out())
+					}
+					for out := range paramNode.Out() {
+						// statement `l := Bar(*s2)`
+						if _, ok := out.(*dataflow.CallNodeArg); !ok {
+							t.Errorf("in Foo, the outgoing edge of param s2 should be a call node argument, but got: %T", out)
+						}
+
+						if len(out.In()) != 2 {
+							t.Errorf("in Foo, the outgoing edge of param s2 should have 2 incoming edges, but got: %v", out.In())
+						}
+
+						hasParam := false
+						hasCall := false
+						for in := range out.In() {
+							if _, ok := in.(*dataflow.ParamNode); ok {
+								hasParam = true
+							}
+							// statement `*s2 = obj.f(a[9])` comes before the call to `Bar(*s2)`
+							if call, ok := in.(*dataflow.CallNode); ok {
+								if call.FuncName() != "(command-line-arguments.A).f" {
+									t.Errorf(
+										"in Foo, an incoming edge of the outgoing edge of param s2 is not a call to (A).f, but got: %s",
+										call.FuncName())
+								}
+								hasCall = true
+							}
+						}
+						if !hasParam {
+							t.Errorf("in Foo, 1 incoming edge of the outgoing edge of param s2 should be a parameter node")
+						}
+						if !hasCall {
+							t.Errorf("in Foo, 1 incoming edge of the outgoing edge of param s2 should be a call node")
+						}
+					}
+
+					// s2 has one incoming edge because its value is only
+					// modified once in Foo:
+					// `*s2 = obj.f(a[9])`
+					if len(paramNode.In()) != 1 {
+						t.Errorf("in Foo, param s2 should have one incoming edge, but got: %v", paramNode.In())
+					}
+					for in := range paramNode.In() {
+						if call, ok := in.(*dataflow.CallNode); ok {
+							if call.FuncName() != "(command-line-arguments.A).f" {
+								t.Errorf("in Foo, incoming edge of param s2 is not a call to (A).f, but got: %s", call.FuncName())
+							}
+						} else {
+							t.Errorf("in Foo, incoming edge of param s2 should be a call node, but got: %T", in)
+						}
+					}
+				}
+			}
+
+			for _, ret := range summary.Returns {
+				if len(ret.Out()) != 0 {
+					t.Errorf("in Foo, return should not have any outgoing edges, but got: %v", ret.Out())
+				}
+
+				// from statements:
+				// ```
+				// l := Bar(*s2)
+				// return l
+				// ```
+				if len(ret.In()) != 1 {
+					t.Errorf("in Foo, return should have one incoming edge, but got: %v", ret.In())
+				}
+				for in := range ret.In() {
+					if call, ok := in.(*dataflow.CallNode); ok {
+						if call.FuncName() != "command-line-arguments.Bar" {
+							t.Errorf("in Foo, incoming edge of return is not a call to Bar, but got: %s", call.FuncName())
+						}
+					} else {
+						t.Errorf("in Foo, incoming edge of return should be a call node, but got: %T", in)
 					}
 				}
 			}
@@ -78,9 +196,277 @@ func TestFunctionSummaries(t *testing.T) {
 
 		if function.Name() == "FooBar" {
 			ok := len(summary.Returns) == 1
-			ok = ok && len(summary.SyntheticNodes) == 2
+			// for statements:
+			// `s := B{Source: x}`
+			// `s3 := Foo(s.Source, &s2, A{})`
+			ok = ok && len(summary.SyntheticNodes) >= 2
 			if !ok {
 				t.Errorf("FooBar graph is not as expected")
+			}
+
+			for _, ret := range summary.Returns {
+				if len(ret.Out()) != 0 {
+					t.Errorf("in FooBar, return should not have any outgoing edges, but got: %v", ret.Out())
+				}
+
+				if len(ret.In()) != 0 {
+					t.Errorf("in FooBar, return should not have any incoming edges, but got: %v", ret.In())
+				}
+			}
+
+			for _, param := range summary.Params {
+				if len(param.Out()) < 1 {
+					t.Errorf("in FooBar, param node should have at least one outgoing edge, but got: %v", param.Out())
+				}
+
+				hasSynthetic := false
+				for out := range param.Out() {
+					// func FooBar(x string) {
+					//     s := B{Source: x}
+					if _, ok := out.(*dataflow.SyntheticNode); ok {
+						hasSynthetic = true
+					}
+				}
+
+				if !hasSynthetic {
+					t.Errorf("in FooBar, param node should have an outgoing edge to a synthetic node")
+				}
+			}
+
+			hasFieldAddr := false
+			for _, synth := range summary.SyntheticNodes {
+				if _, ok := synth.Instr().(*ssa.FieldAddr); ok {
+					hasFieldAddr = true
+					if len(synth.Out()) < 1 {
+						t.Errorf("in FooBar, synthetic node should have at least 1 outgoing edge, but got: %v", synth.Out())
+					}
+
+					if len(synth.In()) < 1 {
+						t.Errorf("in FooBar, synthetic node should have at least 1 incoming edge, but got: %v", synth.In())
+					}
+
+					hasParam := false
+					for in := range synth.In() {
+						if _, ok := in.(*dataflow.ParamNode); ok {
+							hasParam = true
+						}
+					}
+					if !hasParam {
+						t.Errorf("in FooBar, synthetic node should have an incoming edge that is a parameter, but got: %v", synth.In())
+					}
+				}
+			}
+			if !hasFieldAddr {
+				t.Errorf("in FooBar, a synthetic node should be a *ssa.FieldAddr")
+			}
+		}
+
+		if function.Name() == "Baz" {
+			if len(summary.AccessGlobalNodes) < 1 {
+				t.Errorf("in Baz, summary should have at least 1 access global node, but got: %v", summary.AccessGlobalNodes)
+			}
+			hasSyntheticIn := false
+			hasCallOut := false
+			for _, globalSet := range summary.AccessGlobalNodes {
+				if len(globalSet) == 0 {
+					t.Errorf("in Baz, set of globals should be present")
+				}
+				for _, global := range globalSet {
+					for in := range global.In() {
+						if _, ok := in.(*dataflow.SyntheticNode); ok {
+							hasSyntheticIn = true
+						}
+					}
+					for out := range global.Out() {
+						if _, ok := out.(*dataflow.CallNodeArg); ok {
+							hasCallOut = true
+
+							hasGlobal := false
+							for in := range out.In() {
+								if _, ok := in.(*dataflow.AccessGlobalNode); ok {
+									hasGlobal = true
+								}
+							}
+							if !hasGlobal {
+								t.Errorf("in Baz, a global's outgoing node's incoming nodes should contain a global, but got: %v", out.In())
+							}
+						}
+					}
+				}
+			}
+			if !hasSyntheticIn {
+				t.Errorf("in Baz, a global should have a synthetic incoming node")
+			}
+			if !hasCallOut {
+				t.Errorf("in Baz, a global should have an outgoing call node argument")
+			}
+
+			if len(summary.CreatedClosures) < 1 {
+				t.Errorf("in Baz, summary should have at least 1 created closure node, but got: %v", summary.CreatedClosures)
+			}
+			for _, closure := range summary.CreatedClosures {
+				if len(closure.BoundVars()) < 2 {
+					t.Errorf("in Baz, closure should have at least 2 bound variable, but got: %v", closure.BoundVars())
+				}
+				// `ok` is the bound var
+				// ```
+				// ok := "ok"
+				// closure := func(s string) string {
+				// 	Sink(s1)
+				// 	s4 := fmt.Sprintf("%s", s)
+				// 	Sink(s4)
+				// 	return s + ok
+				// }
+				// s5 := closure(ok)
+				// ok = s.Source
+				// ```
+				hasCallArgOut := false
+				hasCallIn := false
+				hasSynthIn := false
+				for _, boundvar := range closure.BoundVars() {
+					for out := range boundvar.Out() {
+						if _, ok := out.(*dataflow.CallNodeArg); ok {
+							hasCallArgOut = true
+						}
+					}
+					if len(boundvar.In()) < 1 {
+						t.Errorf("in Baz, a bound var of the closure should have at least 1 incoming edges, but got: %v", boundvar.In())
+					}
+					for in := range boundvar.In() {
+						if _, ok := in.(*dataflow.CallNode); ok {
+							hasCallIn = true
+						}
+						if _, ok := in.(*dataflow.SyntheticNode); ok {
+							hasSynthIn = true
+						}
+					}
+				}
+				if !hasCallArgOut {
+					t.Errorf("in Baz, a bound var of the closure should have an outgoing edge that is a call node arg")
+				}
+				if !hasCallIn {
+					t.Errorf("in Baz, a bound var of the closure should have an incoming edge that is a call node")
+				}
+				if !hasSynthIn {
+					t.Errorf("in Baz, a bound var of the closure should have an incoming edge that is a synthetic node")
+				}
+			}
+
+			if len(summary.Callees) < 3 {
+				t.Errorf("in Baz, summary should have at least 3 callees, but got: %v", summary.Callees)
+			}
+			for _, callees := range summary.Callees {
+				for _, callee := range callees {
+					for _, arg := range callee.Args() {
+						name := callee.FuncName()
+						if name == "command-line-arguments.Sink" {
+							if len(arg.Out()) != 0 {
+								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
+							}
+
+							if len(arg.In()) < 1 {
+								t.Errorf("in Baz, callee arg to %s should have at least one incoming edge, but got: %v", name, arg.In())
+							}
+							hasCall := false
+							for in := range arg.In() {
+								if _, ok := in.(*dataflow.CallNode); ok {
+									hasCall = true
+								}
+							}
+							if !hasCall {
+								t.Errorf("in Baz, callee arg to %s should have an incoming edge that is a call node, but got: %v", name, arg.In())
+							}
+						} else if strings.HasPrefix(name, "make closure Baz$1") {
+							if len(arg.Out()) != 0 {
+								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
+							}
+
+							if len(arg.In()) < 2 {
+								t.Errorf("in Baz, callee arg to %s should have at least 2 incoming edges, but got: %v", name, arg.In())
+							}
+							hasSynth := false
+							hasParam := false
+							for in := range arg.In() {
+								if _, ok := in.(*dataflow.SyntheticNode); ok {
+									hasSynth = true
+								}
+								if _, ok := in.(*dataflow.ParamNode); ok {
+									hasParam = true
+								}
+							}
+							if !hasSynth {
+								t.Errorf("in Baz, callee arg to %s should have a synthetic node incoming edge, but got: %v", name, arg.In())
+							}
+							if !hasParam {
+								t.Errorf("in Baz, callee arg to %s should have a parameter node incoming edge, but got: %v", name, arg.In())
+							}
+						} else if name == "fmt.Sprintf" {
+							// ignore the first arg to fmt.Sprintf (format string)
+							if arg.Index() == 0 {
+								continue
+							}
+							if len(arg.Out()) != 0 {
+								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
+							}
+
+							if len(arg.In()) < 4 {
+								t.Errorf("in Baz, callee arg to %s should have at least 4 incoming edges, but got: %v", name, arg.In())
+							}
+							hasGlobal := false
+							hasSynth := false
+							for in := range arg.In() {
+								if _, ok := in.(*dataflow.SyntheticNode); ok {
+									hasSynth = true
+								}
+								if _, ok := in.(*dataflow.AccessGlobalNode); ok {
+									hasGlobal = true
+								}
+							}
+							if !hasSynth {
+								t.Errorf("in Baz, callee arg to %s should have a synthetic node incoming edge, but got: %v", name, arg.In())
+							}
+							if !hasGlobal {
+								t.Errorf("in Baz, callee arg to %s should have a global node incoming edge, but got: %v", name, arg.In())
+							}
+						} else {
+							t.Errorf("in Baz, callee arg to %s is not expected", name)
+						}
+					}
+				}
+			}
+		}
+
+		if function.Name() == "Baz$1" {
+			if len(summary.FreeVars) < 1 {
+				t.Errorf("in Baz, closure should have at least one free variable, but got: %v", summary.FreeVars)
+			}
+
+			hasCallNodeArgOut := false
+			hasReturnOut := false
+			for _, freevar := range summary.FreeVars {
+				if len(freevar.Out()) < 1 {
+					t.Errorf("in Baz, closure freevar should have at least one outgoing edge, but got: %v", freevar.Out())
+				}
+				for out := range freevar.Out() {
+					if arg, ok := out.(*dataflow.CallNodeArg); ok {
+						if arg.ParentNode().FuncName() == "command-line-arguments.Sink" {
+							hasCallNodeArgOut = true
+						}
+					}
+					if _, ok := out.(*dataflow.ReturnNode); ok {
+						hasReturnOut = true
+					}
+				}
+				if len(freevar.In()) != 0 {
+					// technically it does, but this is a single-function analysis (even for closures)
+					t.Errorf("in Baz, closure freevar should have no incoming edges, but got: %v", freevar.In())
+				}
+			}
+			if !hasCallNodeArgOut {
+				t.Errorf("in Baz, a closure freevar outgoing edge should be a call arg to Sink()")
+			}
+			if !hasReturnOut {
+				t.Errorf("in Baz, a closure freevar outgoing edge should be a return")
 			}
 		}
 	}

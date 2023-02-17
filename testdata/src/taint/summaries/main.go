@@ -2,6 +2,8 @@ package main
 
 import "fmt"
 
+var global string
+
 type A struct {
 	x string
 }
@@ -56,6 +58,24 @@ func FooBar(x string) {
 	Sink(s4)
 }
 
+func Baz(x string) {
+	s := B{Source: x}
+	global = s.Source
+	s1 := fmt.Sprintf("%s", global)
+	Sink(s1)
+
+	ok := "ok" // bound variable
+	closure := func(s string) string {
+		Sink(s1)
+		s4 := fmt.Sprintf("%s", s)
+		Sink(s4)
+		return s + ok
+	}
+	s5 := closure(ok)
+	ok = s.Source
+	Sink(s5)
+}
+
 func main() {
 	s := fmt.Sprintf("bad-%s", "data")
 	s2 := "example2"
@@ -66,4 +86,6 @@ func main() {
 	c <- s2
 	go ChannelProducer(c)
 	go ChannelConsumer(c)
+	x := Source()
+	Baz(x)
 }
