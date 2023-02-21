@@ -4,14 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/types/typeutil"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 // edgeColor defines specific color for specific edges in the callgraph

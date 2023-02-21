@@ -3,6 +3,7 @@ module git.amazon.com/pkg/ARG-GoAnalyzer
 go 1.20
 
 require (
+	github.com/dave/dst v0.27.2
 	github.com/yourbasic/graph v0.0.0-20210606180040-8ecfec1c2869
 	golang.org/x/exp v0.0.0-20230206171751-46f607a40771
 	golang.org/x/term v0.5.0

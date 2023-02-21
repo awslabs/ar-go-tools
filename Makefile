@@ -28,6 +28,9 @@ reachability: go.mod cmd/reachability/*.go analysis/*.go analysis/reachability/*
 static-commands: go.mod cmd/static-commands/*.go analysis/*.go analysis/static-commands/*.go
 	go build -o bin/static-commands cmd/static-commands/*.go
 
+refactor: go.mod cmd/refactor/*.go analysis/*.go analysis/refactoring/*.go
+	go build -o bin/refactor cmd/refactor/*.go
+
 render: go.mod cmd/render/*.go analysis/*.go analysis/rendering/*.go
 	go build -o bin/render cmd/render/*.go
 
