@@ -70,5 +70,13 @@
     "Methods": {
       "Filter":{"Args":  [[0],[0]], "Rets": [[0],[0]] }
     }
+  },
+  {
+    "InterfaceId" : "github.com/aws/aws-sdk-go/aws/request.Retryer",
+    "Methods": {
+      "RetryRules": {"Args": [[0],[1]], "Rets": [[0],[0]]},
+      "ShouldRetry": { "Args": [[0],[1]], "Rets": [[0],[0]] },
+      "MaxRetries": { "Args": [[0]], "Rets": [[0]] }
+    }
   }
 ]

@@ -32,62 +32,10 @@ func (g CrossFunctionFlowGraph) Print(w io.Writer) {
 	fmt.Fprintf(w, "}\n")
 }
 
-// Trace is a doubly-linked list with a pointer to origin where each node is a call site.
-type Trace struct {
-	Call   *CallNode
-	Origin *Trace
-	Parent *Trace
-	Next   []*Trace
-	len    int
-}
-
-func NewTrace(initNode *CallNode) *Trace {
-	origin := &Trace{Call: initNode, Parent: nil, Next: []*Trace{}, len: 1}
-	origin.Origin = origin
-	return origin
-}
-
-func (n *Trace) String() string {
-	if n == nil || n.len == 0 {
-		return ""
-	}
-	s := make([]string, n.len)
-	for cur := n; cur != nil; cur = cur.Parent {
-		if cur.len >= 1 {
-			s[cur.len-1] = cur.Call.FuncName()
-		}
-	}
-	return strings.Join(s, "_")
-}
-
-// IsLasso checks returns true if the trace is more than one node long and the current node has the same call as the last node.
-func (n *Trace) IsLasso() bool {
-	if n == nil || n.len <= 1 {
-		return false
-	}
-	last := n
-	for cur := last.Parent; cur != nil; cur = cur.Parent {
-		if cur.Call.FuncName() == last.Call.FuncName() {
-			return true
-		}
-	}
-	return false
-}
-
-func (n *Trace) Add(callNode *CallNode) *Trace {
-	if n == nil {
-		return NewTrace(callNode)
-	} else {
-		newNode := &Trace{Call: callNode, Parent: n, Next: []*Trace{}, Origin: n.Origin, len: n.len + 1}
-		n.Next = append(n.Next, newNode)
-		return newNode
-	}
-
-}
-
 type NodeWithTrace struct {
-	Node  GraphNode
-	Trace *Trace
+	Node         GraphNode
+	Trace        *NodeTree[*CallNode]
+	ClosureTrace *NodeTree[*ClosureNode]
 }
 
 // SourceVisitor represents a visitor that runs the inter-procedural analysis from a specific source and adds any
@@ -100,43 +48,27 @@ type SourceVisitor func(logger *log.Logger, c *Cache, source NodeWithTrace, data
 //
 // This function does nothing if there are no summaries (i.e. `len(g.summaries) == 0` or if `cfg.SkipInterprocedural`
 // is set to true.
-func (g CrossFunctionFlowGraph) CrossFunctionPass(cfg *config.Config, logger *log.Logger, dataFlows DataFlows, visitor SourceVisitor) {
-	var err error
+func (g CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows, visitor SourceVisitor) {
 	var sourceFuncs []*SummaryGraph
 	var entryPoints []NodeWithTrace
-	var coverage *os.File
-	var summariesFile *os.File
+
+	cfg := c.Config
+	logger := c.Logger
 
 	// Skip the pass if user configuration demands it
 	if cfg.SkipInterprocedural || len(g.Summaries) == 0 {
 		return
 	}
 	// Open the coverage file if specified in configuration
-	if cfg.ReportCoverage {
-		coverage, err = os.CreateTemp(cfg.ReportsDir, "coverage-*.out")
+	coverage := openCoverage(c)
+	if coverage != nil {
 		defer coverage.Close()
-		if err != nil {
-			coverage = nil
-			logger.Printf("Warning: could not create coverage file, continuing.\n")
-			logger.Printf("Error was: %s", err)
-		} else {
-			logger.Printf("Writing coverage information in %s.\n", coverage.Name())
-			_, _ = coverage.WriteString("mode: set\n")
-		}
 	}
 
 	// Open a file to output summaries
-	if cfg.ReportSummaries {
-		summariesFile, err = os.CreateTemp(cfg.ReportsDir, "summaries-*.out")
+	summariesFile := openSummaries(c)
+	if summariesFile != nil {
 		defer summariesFile.Close()
-		if err != nil {
-			coverage = nil
-			logger.Printf("Warning: could not create summaries files, continuing.\n")
-			logger.Printf("Error was: %s", err)
-		} else {
-			logger.Printf("Writing summaries in %s.\n", summariesFile.Name())
-			_, _ = coverage.WriteString("mode: set\n")
-		}
 	}
 
 	// Build the cross-function data flow graph: link all the summaries together, identify source nodes
@@ -151,7 +83,7 @@ func (g CrossFunctionFlowGraph) CrossFunctionPass(cfg *config.Config, logger *lo
 		}
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
-				if node.Callee() != nil {
+				if node.Callee() != nil && node.CalleeSummary == nil {
 					var calleeSummary *SummaryGraph
 
 					if node.callee.Type != InterfaceContract {
@@ -175,7 +107,9 @@ func (g CrossFunctionFlowGraph) CrossFunctionPass(cfg *config.Config, logger *lo
 					}
 					// Add edge from callee to caller (adding a call site in the callee)
 					if calleeSummary != nil {
-						calleeSummary.Callsites[node.CallSite()] = node
+						if x := calleeSummary.Callsites[node.CallSite()]; x == nil {
+							calleeSummary.Callsites[node.CallSite()] = node
+						}
 					} else {
 						summaryNotFound(g, node)
 					}
@@ -209,7 +143,7 @@ func (g CrossFunctionFlowGraph) CrossFunctionPass(cfg *config.Config, logger *lo
 
 	for _, summary := range sourceFuncs {
 		for _, node := range summary.Callsites {
-			entry := NodeWithTrace{node, nil}
+			entry := NodeWithTrace{node, nil, nil}
 			entryPoints = append(entryPoints, entry)
 		}
 	}
@@ -264,4 +198,64 @@ func summaryNotFound(g CrossFunctionFlowGraph, node *CallNode) {
 	if g.cache.Config.Verbose {
 		g.cache.Logger.Printf("Could not find summary of %s", node.callSite.String())
 	}
+}
+
+// openCoverage opens the coverage file, if the config requires it.
+// the caller is responsible for closing the file if non-nil
+func openCoverage(c *Cache) *os.File {
+	var err error
+	var coverage *os.File
+
+	if c.Config.ReportCoverage {
+		coverage, err = os.CreateTemp(c.Config.ReportsDir, "coverage-*.out")
+		if err != nil {
+			coverage = nil
+			c.Logger.Printf("Warning: could not create coverage file, continuing.\n")
+			c.Logger.Printf("Error was: %s", err)
+		} else {
+			c.Logger.Printf("Writing coverage information in %s.\n", coverage.Name())
+			_, _ = coverage.WriteString("mode: set\n")
+		}
+	}
+	return coverage
+}
+
+// openSummaries returns a non-nil opened file if the configuration is set properly
+// the caller is responsible for closing the file if non-nil
+func openSummaries(c *Cache) *os.File {
+	var err error
+	var summariesFile *os.File
+
+	if c.Config.ReportSummaries {
+		summariesFile, err = os.CreateTemp(c.Config.ReportsDir, "summaries-*.out")
+		if err != nil {
+			summariesFile = nil
+			c.Logger.Printf("Warning: could not create summaries files, continuing.\n")
+			c.Logger.Printf("Error was: %s", err)
+		} else {
+			c.Logger.Printf("Writing summaries in %s.\n", summariesFile.Name())
+		}
+	}
+	return summariesFile
+}
+
+// CheckCallStackContainsCallsite returns true if nodes contains a call node with the same callsite as the node
+func CheckCallStackContainsCallsite(c *Cache, nodes map[ssa.CallInstruction]*CallNode, node *CallNode) bool {
+	// The number of nodes in a call is expected to be small
+	for _, x := range nodes {
+		// TODO: this is a condition that should never be true, but I need it for debugging
+		if x.String() == node.String() && x.Position(c).String() != "-" && node.Position(c).String() != "-" &&
+			x.Position(c) == node.Position(c) && x.CallSite() != node.CallSite() {
+			fmt.Printf("%s differs from %s\n", x, node)
+			fmt.Printf("Callnode : %s\n", x.FullString())
+			fmt.Printf("Trace    : %s\n", node.FullString())
+			fmt.Printf("%s\n%s\n", node.Position(c), x.Position(c))
+			fmt.Printf("%s == %s ? false\n", node.CallSite(), x.CallSite())
+			panic(false)
+		}
+		if x.CallSite() == node.CallSite() && x.Callee() == node.Callee() {
+			return true
+		}
+	}
+	return false
 }

@@ -2,9 +2,7 @@
 sources:
   - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
     # Sources can be source1, source2, etc.
-    method: "(source[1-9])"
-  - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
-    field: "Source[1-9]?"
+    method: ".*((s|S)ource[1-9])"
 sinks:
   - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
     # Similarly, sinks are sink1 sink2 sink2 ...

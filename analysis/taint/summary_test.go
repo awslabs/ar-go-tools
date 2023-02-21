@@ -2,6 +2,7 @@ package taint
 
 import (
 	"log"
+	"os"
 	"path"
 	"runtime"
 	"strings"
@@ -22,7 +23,7 @@ func TestFunctionSummaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
-
+	result.Graph.Print(os.Stdout)
 	for function, summary := range result.Graph.Summaries {
 
 		if function.Name() == "main" {
@@ -135,10 +136,10 @@ func TestFunctionSummaries(t *testing.T) {
 							}
 							// statement `*s2 = obj.f(a[9])` comes before the call to `Bar(*s2)`
 							if call, ok := in.(*dataflow.CallNode); ok {
-								if call.FuncName() != "(command-line-arguments.A).f" {
+								if call.FuncString() != "(command-line-arguments.A).f" {
 									t.Errorf(
 										"in Foo, an incoming edge of the outgoing edge of param s2 is not a call to (A).f, but got: %s",
-										call.FuncName())
+										call.FuncString())
 								}
 								hasCall = true
 							}
@@ -159,7 +160,7 @@ func TestFunctionSummaries(t *testing.T) {
 					}
 					for in := range paramNode.In() {
 						if call, ok := in.(*dataflow.CallNode); ok {
-							if call.FuncName() != "(command-line-arguments.A).f" {
+							if call.FuncString() != "(command-line-arguments.A).f" {
 								t.Errorf("in Foo, incoming edge of param s2 is not a call to (A).f, but got: %s", call.FuncName())
 							}
 						} else {
@@ -184,8 +185,8 @@ func TestFunctionSummaries(t *testing.T) {
 				}
 				for in := range ret.In() {
 					if call, ok := in.(*dataflow.CallNode); ok {
-						if call.FuncName() != "command-line-arguments.Bar" {
-							t.Errorf("in Foo, incoming edge of return is not a call to Bar, but got: %s", call.FuncName())
+						if call.FuncString() != "command-line-arguments.Bar" {
+							t.Errorf("in Foo, incoming edge of return is not a call to Bar, but got: %s", call.FuncString())
 						}
 					} else {
 						t.Errorf("in Foo, incoming edge of return should be a call node, but got: %T", in)
@@ -358,7 +359,7 @@ func TestFunctionSummaries(t *testing.T) {
 			for _, callees := range summary.Callees {
 				for _, callee := range callees {
 					for _, arg := range callee.Args() {
-						name := callee.FuncName()
+						name := callee.FuncString()
 						if name == "command-line-arguments.Sink" {
 							if len(arg.Out()) != 0 {
 								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
@@ -449,7 +450,7 @@ func TestFunctionSummaries(t *testing.T) {
 				}
 				for out := range freevar.Out() {
 					if arg, ok := out.(*dataflow.CallNodeArg); ok {
-						if arg.ParentNode().FuncName() == "command-line-arguments.Sink" {
+						if arg.ParentNode().FuncString() == "command-line-arguments.Sink" {
 							hasCallNodeArgOut = true
 						}
 					}

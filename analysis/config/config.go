@@ -20,10 +20,11 @@ package config
 
 import (
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -98,6 +99,11 @@ type Config struct {
 	// ReportNoCalleeSites specifies whether the tool should report where it does not find any callee.
 	ReportNoCalleeSites bool
 
+	// MaxDepth sets a limit for the number of function call depth explored during the analysis
+	// Default is 1000 (TODO: work towards not needing this)
+	// If provided MaxDepth is <= 0, then it will be reset to default.
+	MaxDepth int
+
 	// Verbose control the verbosity of the tool
 	Verbose bool
 }
@@ -140,6 +146,11 @@ func Load(filename string) (*Config, error) {
 				}
 			}
 		}
+	}
+
+	// Set the MaxDepth default if it is <= 0
+	if config.MaxDepth <= 0 {
+		config.MaxDepth = DefaultMaxCallDepth
 	}
 
 	functional.Iter(config.Sanitizers, CompileRegexes)

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/concurrency"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -30,11 +30,11 @@ var (
 	buildmode = ssa.BuilderMode(0)
 )
 
-const usage = ` Perform taint analysis on your packages.
+const usage = ` Lightweight concurrency analysis.
 Usage:
-    taint [options] <package path(s)>
+    concur [options] <package path(s)>
 Examples:
-% taint -config config.yaml package...
+% concur -config config.yaml package...
 `
 
 func main() {
@@ -49,10 +49,10 @@ func main() {
 
 	logger := log.New(os.Stdout, "", log.Flags())
 
-	taintConfig := &config.Config{} // empty default config
+	analysisConfig := &config.Config{} // empty default config
 	if *configPath != "" {
 		config.SetGlobalConfig(*configPath)
-		taintConfig, err = config.LoadGlobal()
+		analysisConfig, err = config.LoadGlobal()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not load config %s\n", *configPath)
 			return
@@ -61,7 +61,7 @@ func main() {
 
 	// Override config parameters with command-line parameters
 	if *verbose {
-		taintConfig.Verbose = true
+		analysisConfig.Verbose = true
 	}
 
 	logger.Printf(format.Faint("Reading sources") + "\n")
@@ -73,27 +73,11 @@ func main() {
 	}
 
 	start := time.Now()
-	analysisInfo, err := taint.Analyze(logger, taintConfig, program)
+	_, err = concurrency.Analyze(logger, analysisConfig, program)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
 		return
 	}
 	logger.Printf("Analysis took %3.4f s\n", duration.Seconds())
-	// Prints location in the SSA
-
-	for sink, sources := range analysisInfo.TaintFlows {
-		for source := range sources {
-			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
-			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
-			logger.Printf("%s in function %s:\n\tSink: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
-				format.Red("A source has reached a sink"),
-				sink.Parent().Name(),
-				sink.String(),
-				sinkPos.String(),
-				source.String(),
-				sourcePos.String(),
-			)
-		}
-	}
 }

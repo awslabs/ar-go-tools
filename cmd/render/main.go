@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	callgraph2 "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"os"
@@ -24,6 +25,7 @@ import (
 var (
 	modeFlag   = flag.String("analysis", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
 	cgOut      = flag.String("cgout", "", "Output file for call graph (no output if not specified)")
+	configPath = flag.String("config", "", "Config file")
 	ssaOutFlag = flag.String("ssaout", "", "Output folder for ssa (no output if not specified)")
 )
 
@@ -46,6 +48,8 @@ Print out all the packages in SSA form
 `
 
 func main() {
+	var err error
+
 	flag.Parse()
 
 	if flag.NArg() == 0 {
@@ -71,6 +75,16 @@ func main() {
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "analysis %s not recognized", *modeFlag)
 		os.Exit(2)
+	}
+
+	renderConfig := &config.Config{} // empty default config
+	if *configPath != "" {
+		config.SetGlobalConfig(*configPath)
+		renderConfig, err = config.LoadGlobal()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not load config %s\n", *configPath)
+			return
+		}
 	}
 
 	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
@@ -100,7 +114,7 @@ func main() {
 	if *cgOut != "" {
 		fmt.Fprintf(os.Stderr, format.Faint("Writing call graph in "+*cgOut+"\n"))
 
-		err = render.GraphvizToFile(cg, *cgOut)
+		err = render.GraphvizToFile(renderConfig, cg, *cgOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v", err)
 			return

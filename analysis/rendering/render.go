@@ -4,16 +4,61 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
+// edgeColor defines specific color for specific edges in the callgraph
+// - a go call site will be colored with a blue edge
+// - all other call sites will have a default color edge
+func edgeColor(edge *callgraph.Edge) string {
+	_, isGo := edge.Site.(*ssa.Go)
+	if isGo {
+		return "[color=blue]"
+	}
+	return ""
+}
+
+func nodeStr(node *callgraph.Node) string {
+	return node.Func.String()
+}
+
+func pkgString(node *callgraph.Node) string {
+	if node != nil && node.Func != nil {
+		if node.Func.Pkg != nil {
+			return node.Func.Pkg.String()
+		}
+	}
+	return ""
+}
+
+func fnName(node *callgraph.Node) string {
+	if node != nil && node.Func != nil {
+		return node.Func.Name()
+	} else {
+		return ""
+	}
+}
+
+var ExcludedNodes = []string{"String", "GoString", "init", "Error", "Code", "Message", "Err", "OrigErr"}
+
+func filterFn(edge *callgraph.Edge) bool {
+	for _, name := range ExcludedNodes {
+		if fnName(edge.Callee) == name || fnName(edge.Caller) == name {
+			return false
+		}
+	}
+	return true
+}
+
 // WriteGraphviz writes a graphviz representation the call-graph to w
-func WriteGraphviz(cg *callgraph.Graph, w io.Writer) error {
+func WriteGraphviz(config *config.Config, cg *callgraph.Graph, w io.Writer) error {
 	var err error
 	before := "digraph callgraph {\n"
 	after := "}\n"
@@ -23,10 +68,16 @@ func WriteGraphviz(cg *callgraph.Graph, w io.Writer) error {
 		return fmt.Errorf("error while writing in file: %w", err)
 	}
 	if err := callgraph.GraphVisitEdges(cg, func(edge *callgraph.Edge) error {
-		s := fmt.Sprintf("  \"%s\" -> \"%s\"\n", edge.Caller.String(), edge.Callee.String())
-		_, err := w.Write([]byte(s))
-		if err != nil {
-			return fmt.Errorf("error while writing in file: %w", err)
+		if edge.Caller.Func != nil && edge.Callee.Func != nil &&
+			strings.HasPrefix(pkgString(edge.Caller), "package "+config.PkgPrefix) &&
+			strings.HasPrefix(pkgString(edge.Callee), "package "+config.PkgPrefix) &&
+			filterFn(edge) {
+			s := fmt.Sprintf("  \"%s\" -> \"%s\" %s;\n",
+				nodeStr(edge.Caller), nodeStr(edge.Callee), edgeColor(edge))
+			_, err := w.Write([]byte(s))
+			if err != nil {
+				return fmt.Errorf("error while writing in file: %w", err)
+			}
 		}
 		return nil
 	}); err != nil {
@@ -39,7 +90,7 @@ func WriteGraphviz(cg *callgraph.Graph, w io.Writer) error {
 	return nil
 }
 
-func GraphvizToFile(cg *callgraph.Graph, filename string) error {
+func GraphvizToFile(config *config.Config, cg *callgraph.Graph, filename string) error {
 	var err error
 	f, err := os.Create(filename)
 	if err != nil {
@@ -49,7 +100,7 @@ func GraphvizToFile(cg *callgraph.Graph, filename string) error {
 	w := bufio.NewWriter(f)
 	defer w.Flush()
 
-	err = WriteGraphviz(cg, w)
+	err = WriteGraphviz(config, cg, w)
 	if err != nil {
 		return fmt.Errorf("error while writing graph: %w", err)
 	}

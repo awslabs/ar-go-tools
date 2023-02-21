@@ -51,7 +51,7 @@ func TestCodeIdentifier_equalOnNonEmptyFields_regexes(t *testing.T) {
 }
 
 func mkConfig(sanitizers []CodeIdentifier, sinks []CodeIdentifier, sources []CodeIdentifier) Config {
-	return Config{Sanitizers: sanitizers, Sinks: sinks, Sources: sources}
+	return Config{Sanitizers: sanitizers, Sinks: sinks, Sources: sources, MaxDepth: DefaultMaxCallDepth}
 }
 
 func testLoadOneFile(t *testing.T, filename string, expected Config) {
@@ -113,11 +113,12 @@ func TestLoad(t *testing.T) {
 				{"some/other/package", "", "", "OneField", "ThatStruct", nil},
 			},
 			PkgPrefix: "a",
+			MaxDepth:  DefaultMaxCallDepth,
 		},
 	)
 	// Test configuration file for static-commands
 	osExecCid := CodeIdentifier{"os/exec", "Command", "", "", "", nil}
 	testLoadOneFile(t,
 		"config-find-osexec.yaml",
-		Config{StaticCommands: []CodeIdentifier{osExecCid}})
+		Config{StaticCommands: []CodeIdentifier{osExecCid}, MaxDepth: DefaultMaxCallDepth})
 }

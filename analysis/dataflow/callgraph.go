@@ -252,5 +252,4 @@ func findCallgraphEntryPoints(cg *callgraph.Graph, excludeMain bool, excludeInit
 		}
 	}
 	return entryPoints
-
 }

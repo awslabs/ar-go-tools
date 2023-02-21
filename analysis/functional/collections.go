@@ -1,5 +1,11 @@
 package functional
 
+import (
+	"sort"
+
+	"golang.org/x/exp/constraints"
+)
+
 // Merge merges the two maps into the first map.
 // if x is in b but not in a, then a[x] := b[x]
 // if x in both in a and b, then a[x] := both(a[x], b[x])
@@ -51,4 +57,17 @@ func Exists[T any](a []T, f func(T) bool) bool {
 // Contains returns true when there is some y in slice a such that x == y
 func Contains[T comparable](a []T, x T) bool {
 	return Exists(a, func(y T) bool { return x == y })
+}
+
+// SetToSlice converts a set represented as a map from elements to booleans into a slice.
+// Sorts the result in increasing order
+func SetToSlice[T constraints.Ordered](set map[T]bool) []T {
+	var s []T
+	for r, b := range set {
+		if b {
+			s = append(s, r)
+		}
+	}
+	sort.Slice(s, func(i int, j int) bool { return s[i] < s[j] })
+	return s
 }

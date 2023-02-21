@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"runtime"
 	"sync"
 	"time"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -45,6 +47,21 @@ type Cache struct {
 	// Stored errors
 	errors     map[error]bool
 	errorMutex sync.Mutex
+}
+
+// BuildFullCache runs NewCache, building all information that can be built in the cache
+func BuildFullCache(logger *log.Logger, config *config.Config, program *ssa.Program) (*Cache, error) {
+	numRoutines := runtime.NumCPU() - 1
+	if numRoutines <= 0 {
+		numRoutines = 1
+	}
+
+	program.Build()
+	return NewCache(program, logger, config, []func(*Cache){
+		func(cache *Cache) { cache.PopulateTypesVerbose() },
+		func(cache *Cache) { cache.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
+		func(cache *Cache) { cache.PopulateGlobalsVerbose() },
+	})
 }
 
 // NewCache returns a properly initialized cache by running steps in parallel.
@@ -250,21 +267,21 @@ type CalleeInfo struct {
 // type of the call variable at the location.
 //
 // Returns a non-nil error if it requires some information in the cache that has not been computed.
-func (c *Cache) ResolveCallee(instr ssa.CallInstruction) ([]CalleeInfo, error) {
+func (c *Cache) ResolveCallee(instr ssa.CallInstruction) (map[*ssa.Function]CalleeInfo, error) {
 	callee := instr.Common().StaticCallee()
 
 	if callee != nil {
-		return []CalleeInfo{{Callee: callee, Type: Static}}, nil
+		return map[*ssa.Function]CalleeInfo{callee: {Callee: callee, Type: Static}}, nil
 	}
 
 	// If it is a method, try first to find an interface contract, and return the implementation that is used
 	// in the summary
 	mKey := ssafuncs.InstrMethodKey(instr)
 	if summary, ok := c.DataFlowContracts[mKey.ValueOr("")]; ok && summary != nil {
-		return []CalleeInfo{{Callee: summary.Parent, Type: InterfaceContract}}, nil
+		return map[*ssa.Function]CalleeInfo{summary.Parent: {Callee: summary.Parent, Type: InterfaceContract}}, nil
 	}
 
-	var callees []CalleeInfo
+	callees := map[*ssa.Function]CalleeInfo{}
 
 	// Try using the callgraph from the pointer analysis
 	if c.PointerAnalysis != nil {
@@ -272,7 +289,8 @@ func (c *Cache) ResolveCallee(instr ssa.CallInstruction) ([]CalleeInfo, error) {
 		if ok {
 			for _, callEdge := range node.Out {
 				if callEdge.Site == instr {
-					callees = append(callees, CalleeInfo{Callee: callEdge.Callee.Func, Type: CallGraph})
+					f := callEdge.Callee.Func
+					callees[f] = CalleeInfo{Callee: f, Type: CallGraph}
 				}
 			}
 		}
@@ -289,7 +307,7 @@ func (c *Cache) ResolveCallee(instr ssa.CallInstruction) ([]CalleeInfo, error) {
 
 	if implementations, ok := c.implementationsByType[mKey.ValueOr("")]; ok {
 		for implementation := range implementations {
-			callees = append(callees, CalleeInfo{Callee: implementation, Type: InterfaceMethod})
+			callees[implementation] = CalleeInfo{Callee: implementation, Type: InterfaceMethod}
 		}
 	}
 	return callees, nil

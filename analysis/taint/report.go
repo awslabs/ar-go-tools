@@ -12,7 +12,7 @@ import (
 
 // addCoverage adds an entry to coverage by properly formatting the position of the visitorNode in the context of
 // the cache
-func addCoverage(c *dataflow.Cache, elt visitorNode, coverage map[string]bool) {
+func addCoverage(c *dataflow.Cache, elt *visitorNode, coverage map[string]bool) {
 	pos := elt.Node.Position(c)
 	if coverage != nil {
 		if strings.Contains(pos.Filename, c.Config.Coverage) {
@@ -40,10 +40,14 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 
 // ReportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger
-func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink dataflow.NodeWithTrace) {
+func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink *visitorNode) {
 	c.Logger.Printf(" 💀 Sink reached at %s\n", format.Red(sink.Node.Position(c)))
 	c.Logger.Printf(" Add new path from %s to %s <== \n",
 		format.Green(source.Node.String()), format.Red(sink.Node.String()))
+	sinkPos := sink.Node.Position(c)
+	if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
+		sinkPos = callArg.ParentNode().Position(c)
+	}
 	if c.Config.ReportPaths {
 		tmp, err := os.CreateTemp(c.Config.ReportsDir, "flow-*.out")
 		if err != nil {
@@ -55,6 +59,23 @@ func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink data
 		tmp.WriteString(fmt.Sprintf("Source: %s\n", source.Node.String()))
 		tmp.WriteString(fmt.Sprintf("At: %s\n", source.Node.Position(c)))
 		tmp.WriteString(fmt.Sprintf("Sink: %s\n", sink.Node.String()))
-		tmp.WriteString(fmt.Sprintf("At: %s\n", sink.Node.Position(c)))
+		tmp.WriteString(fmt.Sprintf("At: %s\n", sinkPos))
+
+		nodes := []*visitorNode{}
+		cur := sink
+		for cur != nil {
+			nodes = append(nodes, cur)
+			cur = cur.prev
+		}
+
+		tmp.WriteString(fmt.Sprintf("Trace:\n"))
+		prefix := c.Logger.Prefix()
+		c.Logger.SetPrefix(prefix + "TRACE: ")
+		for i := len(nodes) - 1; i >= 0; i-- {
+			tmp.WriteString(fmt.Sprintf("%s\n", nodes[i].Node.Position(c).String()))
+			c.Logger.Printf("[%s] %s\n", dataflow.FuncNames(nodes[i].Trace), nodes[i].Node.Position(c).String())
+		}
+		c.Logger.Printf("%s\n", sinkPos.String())
+		c.Logger.SetPrefix(prefix)
 	}
 }
