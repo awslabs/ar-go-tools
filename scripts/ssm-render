@@ -8,13 +8,8 @@ fi
 cd amazon-ssm-agent || exit
 
 # amazon-ssm-agent
-echo "Running on agent, errors in taint-errors.txt"
-../bin/taint -config ../testdata/config-examples/config-agent.yaml \
+echo "Running render callgraph on agent"
+../bin/render -config ../testdata/config-examples/config-agent.yaml -cgout callgraph.dot \
               agent/agent.go \
               agent/agent_unix.go \
-              agent/agent_parser.go \
-              2> taint-errors.txt
-
-echo
-
-# TODO: add the other components of the agent
+              agent/agent_parser.go

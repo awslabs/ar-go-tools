@@ -2,13 +2,9 @@ package taint
 
 import (
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"golang.org/x/tools/go/ssa"
 	"io/fs"
 	"log"
 	"os"
@@ -18,6 +14,11 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
+	"golang.org/x/tools/go/ssa"
 )
 
 // Match annotations of the form "@Source(id1, id2, id3)"
@@ -125,7 +126,7 @@ func checkExpectedPositions(t *testing.T, p *ssa.Program, flows dataflow.DataFlo
 			if _, ok := expect[posSink]; ok && expect[posSink][posSource] {
 				seen[posSink][posSource] = true
 			} else {
-				t.Errorf("ERROR in main.go: false positive: %s flows to %s\n", posSource, posSink)
+				t.Errorf("ERROR in main.go: false positive:\n\t%s\n flows to\n\t%s\n", posSource, posSink)
 			}
 		}
 	}
@@ -159,7 +160,7 @@ func runTest(t *testing.T, dirName string, files []string) {
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
-
+	
 	expected := getExpectedSourceToSink(dir, ".")
 	checkExpectedPositions(t, program, result.TaintFlows, expected)
 	// Remove reports - comment if you want to inspect

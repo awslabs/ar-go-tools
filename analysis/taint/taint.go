@@ -15,9 +15,16 @@ import (
 )
 
 type AnalysisResult struct {
+	// TaintFlows contains all the data flows from the sources to the sinks detected during the analysis
 	TaintFlows dataflow.DataFlows
-	Graph      dataflow.CrossFunctionFlowGraph
-	Errors     []error
+
+	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
+	// each function appearing in the program and analyzed.
+	Graph dataflow.CrossFunctionFlowGraph
+
+	// Errors contains a list of errors produced by the analysis. Errors may have been added at different steps of the
+	// analysis.
+	Errors []error
 }
 
 // Analyze runs the taint analysis on the program prog with the user-provided configuration config.
@@ -77,8 +84,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// previous step by building function summaries. This analysis consists in checking whether there exists a sink
 	// that is reachable from a source.
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
-		Logger:             logger,
-		Config:             cfg,
+		Cache:              cache,
 		FlowGraph:          fg,
 		DataFlowCandidates: flowCandidates,
 		Visitor:            visitFromSource,

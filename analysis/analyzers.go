@@ -3,12 +3,12 @@ package analysis
 
 import (
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
-	"log"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
@@ -96,8 +96,7 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 
 // RunCrossFunctionArgs represents the arguments to RunCrossFunction.
 type RunCrossFunctionArgs struct {
-	Logger             *log.Logger
-	Config             *config.Config
+	Cache              *dataflow.Cache
 	FlowGraph          dataflow.CrossFunctionFlowGraph
 	DataFlowCandidates dataflow.DataFlows
 	Visitor            dataflow.SourceVisitor
@@ -106,10 +105,10 @@ type RunCrossFunctionArgs struct {
 // RunCrossFunction runs the cross-function analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
 func RunCrossFunction(args RunCrossFunctionArgs) {
-	args.Logger.Println("Starting cross-function pass...")
+	args.Cache.Logger.Println("Starting cross-function pass...")
 	start := time.Now()
-	args.FlowGraph.CrossFunctionPass(args.Config, args.Logger, args.DataFlowCandidates, args.Visitor)
-	args.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
+	args.FlowGraph.CrossFunctionPass(args.Cache, args.DataFlowCandidates, args.Visitor)
+	args.Cache.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
 }
 
 // singleFunctionJob contains all the information necessary to run the single-function analysis on function.

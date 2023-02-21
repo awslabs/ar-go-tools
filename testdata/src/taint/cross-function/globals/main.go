@@ -1,6 +1,8 @@
 package main
 
-import "test-globals/foo"
+import (
+	"test-globals/foo"
+)
 
 // TestTaintPropagatesThroughGlobal
 var x T

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/types"
 	"os"
+	"strings"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/defers"
@@ -149,6 +150,14 @@ func (t *stateTracker) getMarkedValueOrigins(v ssa.Value, path string) []Source 
 	return origins
 }
 
+func pointers(p pointer.Pointer) string {
+	var s []string
+	for _, label := range p.PointsTo().Labels() {
+		s = append(s, label.Value().String())
+	}
+	return "{" + strings.Join(s, ", ") + "}"
+}
+
 // getAnyPointer returns the pointer to x according to the pointer analysis
 func (t *stateTracker) getAnyPointer(x ssa.Value) *pointer.Pointer {
 	// pointer information in Queries and IndirectQueries should be mutually exclusive, but we run both.
@@ -248,6 +257,16 @@ func (t *stateTracker) markValue(v ssa.Value, source Source) {
 	if ptr, ptrExists := t.cache.PointerAnalysis.IndirectQueries[v]; ptrExists {
 		t.markAllAliases(source, ptr.PointsTo())
 	}
+
+	// SPECIAL CASE: value is result of make any <- v', mark v'
+	// handles cases where a function f(_ any...) is called on some argument of concrete type
+	if miVal, isMakeInterface := v.(*ssa.MakeInterface); isMakeInterface {
+		// conversion to any or interface{}
+		typStr := miVal.Type().String()
+		if typStr == "any" || typStr == "interface{}" {
+			t.markValue(miVal.X, source)
+		}
+	}
 }
 
 func (t *stateTracker) AddFlowToSink(source Source, sink ssa.Instruction) {
@@ -330,6 +349,13 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 	}
 	// Add call instruction to summary, in case it hasn't been added through callgraph
 	t.summary.AddCallInstr(t.cache, callInstr)
+	// If a closure is being called: the closure value flows to the callsite
+	if callInstr.Common().Method == nil {
+		for _, source := range t.getMarkedValueOrigins(callInstr.Common().Value, "*") {
+			t.summary.AddCallNodeEdge(source, callInstr)
+		}
+	}
+
 	// Check if node is source according to config
 	sourceType := CallReturn
 	if t.isSourceNode(t.flowInfo.Config, callInstr.(ssa.Node)) { // type cast cannot fail
@@ -345,7 +371,6 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 	for _, arg := range args {
 		// Mark call argument
 		t.markValue(arg, NewQualifierSource(callInstr.(ssa.Node), arg, CallSiteArg, ""))
-
 		// Special case: a global is received directly as an argument
 		if _, ok := arg.(*ssa.Global); ok {
 			tmpSrc := NewQualifierSource(callInstr.(ssa.Node), arg, Global, "")
@@ -443,17 +468,25 @@ func (t *stateTracker) doBuiltinCall(callValue ssa.Value, callCommon *ssa.CallCo
 			}
 			return true
 		case "append":
-			sliceV := callCommon.Args[0]
-			dataV := callCommon.Args[1]
-			simpleTransitiveMarkPropagation(t, instruction, sliceV, callValue)
-			simpleTransitiveMarkPropagation(t, instruction, dataV, callValue)
-			return true
+			if len(callCommon.Args) == 2 {
+				sliceV := callCommon.Args[0]
+				dataV := callCommon.Args[1]
+				simpleTransitiveMarkPropagation(t, instruction, sliceV, callValue)
+				simpleTransitiveMarkPropagation(t, instruction, dataV, callValue)
+				return true
+			} else {
+				return false
+			}
 
 		case "copy":
-			src := callCommon.Args[1]
-			dst := callCommon.Args[0]
-			simpleTransitiveMarkPropagation(t, instruction, src, dst)
-			return true
+			if len(callCommon.Args) == 2 {
+				src := callCommon.Args[1]
+				dst := callCommon.Args[0]
+				simpleTransitiveMarkPropagation(t, instruction, src, dst)
+				return true
+			} else {
+				return false
+			}
 
 		// for len, we also propagate the taint. This may not be necessary
 		case "len":

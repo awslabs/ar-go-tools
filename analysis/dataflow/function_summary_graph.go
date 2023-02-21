@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
@@ -133,10 +134,6 @@ func (a *CallNodeArg) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNodeArg) In() map[GraphNode]ObjectPath  { return a.in }
 
 func (a *CallNodeArg) Position(c *Cache) token.Position {
-	// return the position of the call site
-	if a.parent != nil {
-		return a.parent.Position(c)
-	}
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
 	} else {
@@ -176,7 +173,7 @@ func (a *CallNode) In() map[GraphNode]ObjectPath  { return a.in }
 
 func (a *CallNode) Position(c *Cache) token.Position {
 	if a.callSite != nil && a.callSite.Common() != nil && a.callSite.Common().Value != nil {
-		return c.Program.Fset.Position(a.callSite.Common().Value.Pos())
+		return c.Program.Fset.Position(a.callSite.Pos())
 	} else {
 		return packagescan.DummyPos
 	}
@@ -218,6 +215,21 @@ func (a *CallNode) Args() []*CallNodeArg {
 func (a *CallNode) FuncName() string {
 	if a.callSite != nil {
 		if a.callSite.Common().IsInvoke() {
+			return a.callSite.Common().Method.Name()
+		} else {
+			return a.callSite.Common().Value.Name()
+		}
+	} else {
+		return "<CallNode with nil callSite>"
+	}
+}
+
+// FuncString returns the string identified of the function being called. It can be either the method string or a
+// function string. The function could be a value (and not a static call), in which case the name of the value
+// is returned.
+func (a *CallNode) FuncString() string {
+	if a.callSite != nil {
+		if a.callSite.Common().IsInvoke() {
 			return a.callSite.Common().Method.String()
 		} else {
 			return a.callSite.Common().Value.String()
@@ -225,7 +237,6 @@ func (a *CallNode) FuncName() string {
 	} else {
 		return "<CallNode with nil callSite>"
 	}
-
 }
 
 // A ReturnNode is a node that represents a node where the function returns.
@@ -415,13 +426,13 @@ func (a *SyntheticNode) ParentName() string {
 
 // SummaryGraph is the function dataflow summary graph.
 type SummaryGraph struct {
-	Constructed       bool                                // true if summary graph is Constructed, false if it is a dummy
-	InterfaceContract bool                                // true if the summary is built from an interface's dataflow contract
-	Parent            *ssa.Function                       // the ssa function it summarizes
-	Params            map[ssa.Node]*ParamNode             // the parameters of the function, associated to ParamNode
-	FreeVars          map[ssa.Node]*FreeVarNode           // the free variables of the function, associated to FreeVarNode
-	Callsites         map[ssa.CallInstruction]*CallNode   // the call sites of the function
-	Callees           map[ssa.CallInstruction][]*CallNode // the call instructions are linked to CallNode.
+	Constructed       bool                                                // true if summary graph is Constructed, false if it is a dummy
+	InterfaceContract bool                                                // true if the summary is built from an interface's dataflow contract
+	Parent            *ssa.Function                                       // the ssa function it summarizes
+	Params            map[ssa.Node]*ParamNode                             // the parameters of the function, associated to ParamNode
+	FreeVars          map[ssa.Node]*FreeVarNode                           // the free variables of the function, associated to FreeVarNode
+	Callsites         map[ssa.CallInstruction]*CallNode                   // the call sites of the function
+	Callees           map[ssa.CallInstruction]map[*ssa.Function]*CallNode // the call instructions are linked to CallNode.
 
 	CreatedClosures       map[ssa.Instruction]*ClosureNode                    // the MakeClosure nodes in the function  are linked to ClosureNode
 	ReferringMakeClosures map[ssa.Instruction]*ClosureNode                    // the MakeClosure nodes referring to this function
@@ -443,7 +454,7 @@ func NewSummaryGraph(f *ssa.Function) *SummaryGraph {
 		Parent:                f,
 		Params:                make(map[ssa.Node]*ParamNode, len(f.Params)),
 		FreeVars:              make(map[ssa.Node]*FreeVarNode, len(f.FreeVars)),
-		Callees:               make(map[ssa.CallInstruction][]*CallNode),
+		Callees:               make(map[ssa.CallInstruction]map[*ssa.Function]*CallNode),
 		Callsites:             make(map[ssa.CallInstruction]*CallNode),
 		Returns:               make(map[ssa.Instruction]*ReturnNode),
 		CreatedClosures:       make(map[ssa.Instruction]*ClosureNode),
@@ -533,15 +544,14 @@ func (g *SummaryGraph) addFreeVar(fv *ssa.FreeVar, pos int) {
 }
 
 // addCallNode adds a call site to the summary
-// @requires g != nil
 func (g *SummaryGraph) addCallNode(node *CallNode) bool {
-	if callNodes, ok := g.Callees[node.callSite]; ok {
-		if containsCallNode(callNodes, node) {
-			return false
-		}
-		g.Callees[node.callSite] = append(callNodes, node)
+	if node == nil {
+		return false
+	}
+	if _, ok := g.Callees[node.callSite]; ok {
+		g.Callees[node.callSite][node.Callee()] = node
 	} else {
-		g.Callees[node.callSite] = []*CallNode{node}
+		g.Callees[node.callSite] = map[*ssa.Function]*CallNode{node.Callee(): node}
 	}
 	return true
 }
@@ -806,6 +816,19 @@ func (g *SummaryGraph) AddCallArgEdge(source Source, call ssa.CallInstruction, a
 	}
 }
 
+// AddCallNodeEdge adds an edge that flows to a call node
+func (g *SummaryGraph) AddCallNodeEdge(source Source, call ssa.CallInstruction) {
+	callNodes := g.Callees[call]
+	if callNodes == nil {
+		g.addError(fmt.Errorf("attempting to set call arg edge but no call node for %s", call))
+		os.Exit(1)
+		return
+	}
+	for _, callNode := range callNodes {
+		g.addEdge(source, callNode)
+	}
+}
+
 // AddBoundVarEdge adds an edge in the summary from a source to a function call argument
 // @requires g != nil
 func (g *SummaryGraph) AddBoundVarEdge(source Source, closure *ssa.MakeClosure, v ssa.Value) {
@@ -1016,7 +1039,7 @@ func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summary, isInt
 		}
 	}
 	// clean callees for a predefined summary
-	g.Callees = map[ssa.CallInstruction][]*CallNode{}
+	g.Callees = map[ssa.CallInstruction]map[*ssa.Function]*CallNode{}
 	// a summary graph loaded from a predefined summary is marked as constructed.
 	g.Constructed = true
 	// the isInterface parameter determines if this represents the summary from an interface dataflow contract
@@ -1163,6 +1186,30 @@ func (g *SummaryGraph) Print(w io.Writer) {
 	}
 
 	fmt.Fprint(w, "}\n")
+}
+
+func (a *CallNode) FullString() string {
+	var elt []string
+
+	if a == nil {
+		return ""
+	}
+
+	if a.callSite != nil {
+		s1 := fmt.Sprintf("callsite : \"%s\"", a.callSite.String())
+		elt = append(elt, s1)
+	}
+	if a.callee.Callee != nil {
+		s2 := fmt.Sprintf("callee : \"%s\"", a.callee.Callee.String())
+		elt = append(elt, s2)
+	}
+
+	args := strings.Join(functional.Map(a.Args(), func(cg *CallNodeArg) string { return cg.String() }), ",")
+	if len(args) > 0 {
+		elt = append(elt, fmt.Sprintf("args : [%s]", args))
+	}
+
+	return "{" + strings.Join(elt, ", ") + "}"
 }
 
 // escape escapes the inner quotes in s so the graphviz output renders correctly.

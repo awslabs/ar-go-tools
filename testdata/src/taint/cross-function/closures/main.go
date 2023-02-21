@@ -73,8 +73,7 @@ func example4bis() {
 	pre := "("
 	closure := example4pre(pre)
 	pre = source()
-	sink(closure("A")) // @Sink(example4) TODO: overapproximation: when a closure function gets tainted, every call
-	// is tainted
+	sink(closure("A")) // This is not tainted
 }
 
 // In this example, the closure returned by example5pre captures the argument of the function. If the argument
@@ -150,6 +149,29 @@ func example8() {
 	sink(s4) // @Sink(example8)
 }
 
+// This is a variation of example 5 with more degrees of nesting
+
+func example9pre(x *string) func(string) string {
+	parenthesizeN := func(a string, b int) string {
+		s := *x
+		for i := 0; i < b; i++ {
+			s = wrap(a, s, ")")
+		}
+		return s
+	}
+	return func(x string) string { return parenthesizeN(x, 0) }
+}
+
+func example9() {
+	pre := "("
+	closure := example9pre(&pre)
+	pre = source()     // @Source(example9)
+	sink(closure("A")) // @Sink(example9) the argument pre was passed "by reference"
+	ok := "("
+	closure2 := example9pre(&ok)
+	sink(closure2("B")) // @Sink(example9) TODO: overapproximation
+}
+
 func main() {
 	example1()
 	example1bis()
@@ -162,4 +184,5 @@ func main() {
 	example7()
 	example7bis()
 	example8()
+	example9()
 }

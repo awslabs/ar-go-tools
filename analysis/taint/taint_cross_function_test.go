@@ -9,6 +9,10 @@ func TestCrossFunctionBasic(t *testing.T) {
 		"sanitizers.go"})
 }
 
+func TestCrossFunctionBuiltins(t *testing.T) {
+	runTest(t, "builtins", []string{"helpers.go"})
+}
+
 func TestCrossFunctionInterfaces(t *testing.T) {
 	runTest(t, "interfaces", []string{})
 }
@@ -47,4 +51,8 @@ func TestCrossFunctionExamplesFromLevee(t *testing.T) {
 
 func TestCrossFunctionGlobals(t *testing.T) {
 	runTest(t, "globals", []string{"helpers.go"})
+}
+
+func TestCrossFunctionStdlib(t *testing.T) {
+	runTest(t, "stdlib", []string{"helpers.go"})
 }

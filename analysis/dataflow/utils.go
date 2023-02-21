@@ -213,18 +213,7 @@ func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.Ba
 func containsCallNode(nodes []*CallNode, node *CallNode) bool {
 	// The number of nodes in a call is expected to be small
 	for _, x := range nodes {
-		if x.Callee() == node.Callee() {
-			return true
-		}
-	}
-	return false
-}
-
-// MapContainsCallNode returns true if nodes contains node, otherwise false
-func MapContainsCallNode(nodes map[ssa.CallInstruction]*CallNode, node *CallNode) bool {
-	// The number of nodes in a call is expected to be small
-	for _, x := range nodes {
-		if x.callee == node.callee {
+		if x.Callee() == node.Callee() && x.CallSite() == node.CallSite() {
 			return true
 		}
 	}
