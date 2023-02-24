@@ -73,8 +73,8 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 		Cache:              cache,
 		NumRoutines:        numRoutines,
 		ShouldBuildSummary: shouldBuildSummary,
-		IsSourceNode:       isSourceNode,
-		IsSinkNode:         isSinkNode,
+		IsSourceNode:       IsSourceNode,
+		IsSinkNode:         IsSinkNode,
 	})
 	flowCandidates := res.FlowCandidates
 	fg := res.FlowGraph
@@ -87,7 +87,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 		Cache:              cache,
 		FlowGraph:          fg,
 		DataFlowCandidates: flowCandidates,
-		Visitor:            visitFromSource,
+		Visitor:            VisitFromSource,
 	})
 
 	return AnalysisResult{TaintFlows: flowCandidates, Graph: fg}, nil

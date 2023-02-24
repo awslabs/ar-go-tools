@@ -1,0 +1,20 @@
+#!/bin/sh
+
+if [ ! -e amazon-ssm-agent ] ; then
+  echo getting SSM source code
+  git clone https://github.com/aws/amazon-ssm-agent.git
+fi
+
+cd amazon-ssm-agent || exit
+
+# amazon-ssm-agent
+echo "Running on agent, errors in taint-errors.txt"
+../bin/server -config ../testdata/config-examples/config-agent.yaml \
+              agent/agent.go \
+              agent/agent_unix.go \
+              agent/agent_parser.go \
+              2> taint-errors.txt
+
+echo
+
+# TODO: add the other components of the agent

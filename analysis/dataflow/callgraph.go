@@ -206,12 +206,7 @@ func methodSetToNameMap(methodSet *types.MethodSet) map[string]*types.Selection 
 
 // CallGraphReachable returns a map where each entry is a reachable function
 func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
-	fmt.Fprintf(os.Stderr, "callGraph has %d total nodes\n", len(cg.Nodes))
-
 	entryPoints := findCallgraphEntryPoints(cg, excludeMain, excludeInit)
-	fmt.Fprintf(os.Stderr, "findCallgraphEntryPoints found %d entry points\n", len(entryPoints))
-
-	//	fmt.Fprintf(os.Stderr, "Root node is %v\n", cg.Root.Func.String())
 
 	reachable := make(map[*ssa.Function]bool, len(cg.Nodes))
 
@@ -233,7 +228,6 @@ func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool)
 			}
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Callgraph Reachable reports %d reachable nodes\n", len(reachable))
 
 	return reachable
 }

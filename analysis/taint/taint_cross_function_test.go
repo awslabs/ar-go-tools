@@ -45,6 +45,10 @@ func TestCrossFunctionSanitizers(t *testing.T) {
 	runTest(t, "sanitizers", []string{})
 }
 
+func TestCrossFunctionValidators(t *testing.T) {
+	runTest(t, "validators", []string{})
+}
+
 func TestCrossFunctionExamplesFromLevee(t *testing.T) {
 	runTest(t, "fromlevee", []string{})
 }
