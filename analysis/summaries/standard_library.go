@@ -625,6 +625,8 @@ var SummaryStrings = map[string]Summary{
 		[][]int{{}, {}},
 		[][]int{{0}, {0}},
 	},
+	// func Clone(s string) string
+	"strings.Clone": SingleVarArgPropagation,
 	// func Compare(a, b string) int
 	"strings.Compare": TwoArgPropagation,
 	// func Count(s, substr string) int {

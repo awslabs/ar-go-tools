@@ -17,19 +17,32 @@ import (
 type CrossFunctionFlowGraph struct {
 	Summaries map[*ssa.Function]*SummaryGraph
 	cache     *Cache
+	built     bool
 }
 
+// NewCrossFunctionFlowGraph returns a new non-built cross function flow graph
 func NewCrossFunctionFlowGraph(summaries map[*ssa.Function]*SummaryGraph, cache *Cache) CrossFunctionFlowGraph {
-	return CrossFunctionFlowGraph{Summaries: summaries, cache: cache}
+	return CrossFunctionFlowGraph{Summaries: summaries, cache: cache, built: false}
+}
+
+func (g *CrossFunctionFlowGraph) IsBuilt() bool {
+	return g.built
 }
 
 // Print prints each of the function summaries in the graph.
-func (g CrossFunctionFlowGraph) Print(w io.Writer) {
+func (g *CrossFunctionFlowGraph) Print(w io.Writer) {
 	fmt.Fprintf(w, "digraph program {\n")
 	for _, summary := range g.Summaries {
 		summary.Print(w)
 	}
 	fmt.Fprintf(w, "}\n")
+}
+
+// InsertSummaries inserts all the summaries from g2 in g
+func (g *CrossFunctionFlowGraph) InsertSummaries(g2 CrossFunctionFlowGraph) {
+	for f, sum := range g2.Summaries {
+		g.Summaries[f] = sum
+	}
 }
 
 type NodeWithTrace struct {
@@ -42,29 +55,10 @@ type NodeWithTrace struct {
 // detected data flow to dataFlows.
 type SourceVisitor func(logger *log.Logger, c *Cache, source NodeWithTrace, dataFlows DataFlows, coverageFile io.StringWriter)
 
-// CrossFunctionPass runs the inter-procedural pass on the inter-procedural flow graph. Candidate data flows, in the
-// form of a map from sink to sources, will be added to dataFlows. Most of the logic is in visitor that is called for
-// each possible source node identified.
-//
-// This function does nothing if there are no summaries (i.e. `len(g.summaries) == 0` or if `cfg.SkipInterprocedural`
-// is set to true.
-func (g CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows, visitor SourceVisitor) {
-	var sourceFuncs []*SummaryGraph
-	var entryPoints []NodeWithTrace
-
-	cfg := c.Config
+// BuildGraph builds the cross function flow graph by connecting summaries together
+func (g *CrossFunctionFlowGraph) BuildGraph() {
+	c := g.cache
 	logger := c.Logger
-
-	// Skip the pass if user configuration demands it
-	if cfg.SkipInterprocedural || len(g.Summaries) == 0 {
-		return
-	}
-	// Open the coverage file if specified in configuration
-	coverage := openCoverage(c)
-	if coverage != nil {
-		defer coverage.Close()
-	}
-
 	// Open a file to output summaries
 	summariesFile := openSummaries(c)
 	if summariesFile != nil {
@@ -129,14 +123,23 @@ func (g CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows,
 				closureNode.ClosureSummary = closureSummary // nil is safe
 			}
 		}
+	}
+	// Change the built flag to true
+	g.built = true
+}
 
+func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(dataFlows DataFlows, visitor SourceVisitor, coverage *os.File) {
+	var sourceFuncs []*SummaryGraph
+	var entryPoints []NodeWithTrace
+
+	for _, summary := range g.Summaries {
 		// Identify the entry points for that function: all the call sites if it is a source, and all the synthetic
 		// nodes that are sources in the function body.
 		for _, snode := range summary.SyntheticNodes {
 			entry := NodeWithTrace{Node: snode, Trace: nil}
 			entryPoints = append(entryPoints, entry)
 		}
-		if isSourceFunction(cfg, summary.Parent) {
+		if isSourceFunction(g.cache.Config, summary.Parent) {
 			sourceFuncs = append(sourceFuncs, summary)
 		}
 	}
@@ -148,13 +151,38 @@ func (g CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows,
 		}
 	}
 
-	logger.Printf("--- # sources of tainted data: %d ---\n", len(entryPoints))
+	g.cache.Logger.Printf("--- # sources of tainted data: %d ---\n", len(entryPoints))
 
 	// Run the analysis for every source point. We may be able to change this to run the analysis for all sources
 	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
 	for _, entry := range entryPoints {
-		visitor(logger, g.cache, entry, dataFlows, coverage)
+		visitor(g.cache.Logger, g.cache, entry, dataFlows, coverage)
 	}
+}
+
+// CrossFunctionPass runs the inter-procedural pass on the inter-procedural flow graph. Candidate data flows, in the
+// form of a map from sink to sources, will be added to dataFlows. Most of the logic is in visitor that is called for
+// each possible source node identified.
+//
+// This function does nothing if there are no summaries (i.e. `len(g.summaries) == 0` or if `cfg.SkipInterprocedural`
+// is set to true.
+func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows, visitor SourceVisitor) {
+	// Skip the pass if user configuration demands it
+	if c.Config.SkipInterprocedural || len(g.Summaries) == 0 {
+		return
+	}
+
+	// Build the inter-procedural flow graph
+	g.BuildGraph()
+
+	// Open the coverage file if specified in configuration
+	coverage := openCoverage(c)
+	if coverage != nil {
+		defer coverage.Close()
+	}
+
+	// Run the analysis
+	g.RunCrossFunctionPass(dataFlows, visitor, coverage)
 }
 
 // findCalleeSummary returns the summary graph of callee in summaries if present. Returns nil if not.
@@ -166,7 +194,8 @@ func findCalleeSummary(callee *ssa.Function, summaries map[*ssa.Function]*Summar
 	for summarized, summary := range summaries {
 		// sometimes a "thunk" function will be the same as a normal function,
 		// just with a different name ending in $thunk and the same position
-		if (strings.HasPrefix(callee.Name(), summarized.Name()) || strings.HasPrefix(summarized.Name(), callee.Name())) &&
+		if (strings.HasPrefix(callee.String(), summarized.String()) ||
+			strings.HasPrefix(summarized.String(), callee.String())) &&
 			callee.Pos() == summarized.Pos() {
 			return summary
 		}
@@ -194,7 +223,7 @@ func isSourceFunction(cfg *config.Config, f *ssa.Function) bool {
 	return cfg.IsSource(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 }
 
-func summaryNotFound(g CrossFunctionFlowGraph, node *CallNode) {
+func summaryNotFound(g *CrossFunctionFlowGraph, node *CallNode) {
 	if g.cache.Config.Verbose {
 		g.cache.Logger.Printf("Could not find summary of %s", node.callSite.String())
 	}
@@ -243,16 +272,6 @@ func openSummaries(c *Cache) *os.File {
 func CheckCallStackContainsCallsite(c *Cache, nodes map[ssa.CallInstruction]*CallNode, node *CallNode) bool {
 	// The number of nodes in a call is expected to be small
 	for _, x := range nodes {
-		// TODO: this is a condition that should never be true, but I need it for debugging
-		if x.String() == node.String() && x.Position(c).String() != "-" && node.Position(c).String() != "-" &&
-			x.Position(c) == node.Position(c) && x.CallSite() != node.CallSite() {
-			fmt.Printf("%s differs from %s\n", x, node)
-			fmt.Printf("Callnode : %s\n", x.FullString())
-			fmt.Printf("Trace    : %s\n", node.FullString())
-			fmt.Printf("%s\n%s\n", node.Position(c), x.Position(c))
-			fmt.Printf("%s == %s ? false\n", node.CallSite(), x.CallSite())
-			panic(false)
-		}
 		if x.CallSite() == node.CallSite() && x.Callee() == node.Callee() {
 			return true
 		}

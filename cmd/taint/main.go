@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
@@ -79,9 +80,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
 		return
 	}
-	logger.Printf("Analysis took %3.4f s\n", duration.Seconds())
-	// Prints location in the SSA
+	logger.Printf("")
+	logger.Printf("-%s", strings.Repeat("*", 80))
+	logger.Printf("Analysis took %3.4f s", duration.Seconds())
+	logger.Printf("")
+	if len(analysisInfo.TaintFlows) == 0 {
+		logger.Printf("RESULT:\n\t\t%s", format.Green("No taint flows detected ✓"))
+	} else {
+		logger.Printf("RESULT:\n\t\t%s", format.Red("Taint flows detected!"))
+	}
 
+	// Prints location in the SSA
 	for sink, sources := range analysisInfo.TaintFlows {
 		for source := range sources {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())

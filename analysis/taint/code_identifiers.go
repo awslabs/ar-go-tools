@@ -9,15 +9,15 @@ import (
 
 // NewSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
 func NewSourceMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
-	return dataflow.NewPackagesMap(c, pkgs, isSourceNode)
+	return dataflow.NewPackagesMap(c, pkgs, IsSourceNode)
 }
 
 // NewSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
 func NewSinkMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
-	return dataflow.NewPackagesMap(c, pkgs, isSinkNode)
+	return dataflow.NewPackagesMap(c, pkgs, IsSinkNode)
 }
 
-func isSourceNode(cfg *config.Config, n ssa.Node) bool {
+func IsSourceNode(cfg *config.Config, n ssa.Node) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered sources
 	case *ssa.Call:
@@ -73,7 +73,7 @@ func isSourceNode(cfg *config.Config, n ssa.Node) bool {
 	}
 }
 
-func isSinkNode(cfg *config.Config, n ssa.Node) bool {
+func IsSinkNode(cfg *config.Config, n ssa.Node) bool {
 	return isMatchingCodeIdWithCallee(cfg.IsSink, nil, n)
 }
 

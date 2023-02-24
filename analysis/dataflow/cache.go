@@ -44,6 +44,9 @@ type Cache struct {
 	// The global analysis
 	Globals map[*ssa.Global]*GlobalNode
 
+	// The dataflow analysis results
+	FlowGraph *CrossFunctionFlowGraph
+
 	// Stored errors
 	errors     map[error]bool
 	errorMutex sync.Mutex
@@ -78,8 +81,14 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cac
 		keys:                  map[string]string{},
 		PointerAnalysis:       nil,
 		Globals:               map[*ssa.Global]*GlobalNode{},
-		errors:                map[error]bool{},
+		FlowGraph: &CrossFunctionFlowGraph{
+			Summaries: map[*ssa.Function]*SummaryGraph{},
+			cache:     nil,
+		},
+		errors: map[error]bool{},
 	}
+	// Link summaries to parent cache
+	cache.FlowGraph.cache = cache
 
 	// Load the dataflow contract of the interfaces from a json file if specified.
 	if c.DataflowSpecs != "" {

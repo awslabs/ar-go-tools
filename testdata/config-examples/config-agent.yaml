@@ -4,7 +4,7 @@ reportcoverage: true
 reportsummaries: true
 reportpaths: true
 reportnocalleesites: true
-maxdepth: 50
+maxdepth: 46
 coverage: "amazon-ssm-agent/agent" # coverage is only reported for those file that have amazon-ssm-agent/agent as substring
 # Use interface contracts
 dataflowspecs: "agent-specs.json"
@@ -17,3 +17,4 @@ sources:
      package: "github.com/aws/amazon-ssm-agent/agent/runcommand/mds"
 sinks:
   - method: "(.*)Submit"
+    package: "github.com/aws/amazon-ssm-agent/agent/messageservice/messagehandler"

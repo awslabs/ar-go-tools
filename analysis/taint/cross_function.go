@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"strings"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -44,16 +44,17 @@ type visitorNode struct {
 	depth  int
 }
 
-// visitFromSource runs the inter-procedural analysis from a specific source and adds any detected taint flow
+// VisitFromSource runs the inter-procedural analysis from a specific source and adds any detected taint flow
 // to the taintFlows.
-func visitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.NodeWithTrace, taintFlows dataflow.DataFlows,
+func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.NodeWithTrace, taintFlows dataflow.DataFlows,
 	coverageWriter io.StringWriter) {
 	coverage := make(map[string]bool)
 	seen := make(map[dataflow.NodeWithTrace]bool)
 	goroutines := make(map[*ssa.Go]bool)
 	que := []*visitorNode{{NodeWithTrace: source, pStack: nil, prev: nil, depth: 0}}
 
-	logger.Printf("🍺 ==> Source: %s\n", format.Green(source.Node.String()))
+	logger.Printf("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
+	logger.Printf("==> Source: %s\n", format.Purple(source.Node.String()))
 	logger.Printf("%s %s\n", format.Green("Found at"), source.Node.Position(c))
 
 	// Search from path candidates in the inter-procedural flow graph from sources to sinks
@@ -206,8 +207,8 @@ func visitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 					}
 				}
 			} else {
-				logger.Printf("Return node %s does not return anywhere.\n", elt.Node.String())
-				logger.Printf("In %s\n", elt.Node.Position(c))
+				fmt.Fprintf(os.Stderr, "Return node %s does not return anywhere.\n", elt.Node.String())
+				fmt.Fprintf(os.Stderr, "In %s\n", elt.Node.Position(c))
 			}
 
 		// This is a call node, which materializes where the callee returns. A call node is reached from a return
@@ -401,81 +402,4 @@ func addNewPathCandidate(paths dataflow.DataFlows, source dataflow.GraphNode, si
 		return true
 	}
 	return false
-}
-
-func printMissingSummaryMessage(c *dataflow.Cache, callSite *dataflow.CallNode) {
-	if !c.Config.Verbose {
-		return
-	}
-
-	var typeString string
-	if callSite.Callee() == nil {
-		typeString = fmt.Sprintf("nil callee (in %s)",
-			packagescan.SafeFunctionPos(callSite.Graph().Parent).ValueOr(packagescan.DummyPos))
-	} else {
-		typeString = callSite.Callee().Type().String()
-	}
-	c.Logger.Printf(format.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
-		callSite.String(), typeString)))
-	if callSite.Callee() != nil && callSite.CallSite() != nil {
-		c.Logger.Printf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
-
-		pos := callSite.Position(c)
-		if pos != packagescan.DummyPos {
-			c.Logger.Printf("|_ See call site: %s", pos)
-		} else {
-			opos := packagescan.SafeFunctionPos(callSite.Graph().Parent)
-			c.Logger.Printf("|_ See call site in %s", opos.ValueOr(packagescan.DummyPos))
-		}
-
-		methodFunc := callSite.CallSite().Common().Method
-		if methodFunc != nil {
-			methodKey := callSite.CallSite().Common().Value.Type().String() + "." + methodFunc.Name()
-			c.Logger.Printf("| Or add %s to dataflow contracts", methodKey)
-		}
-	}
-}
-
-func printMissingClosureSummaryMessage(c *dataflow.Cache, closureNode *dataflow.ClosureNode) {
-	if !c.Config.Verbose {
-		return
-	}
-
-	var instrStr string
-	if closureNode.Instr() == nil {
-		instrStr = "nil instr"
-	} else {
-		instrStr = closureNode.Instr().String()
-	}
-	c.Logger.Printf(format.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
-		closureNode.String(), instrStr)))
-	if closureNode.Instr() != nil {
-		c.Logger.Printf("| Please add closure %s to summaries",
-			closureNode.Instr().Fn.String())
-		c.Logger.Printf("|_ See closure: %s", closureNode.Position(c))
-	}
-}
-
-func printWarningSummaryNotConstructed(c *dataflow.Cache, callSite *dataflow.CallNode) {
-	if !c.Config.Verbose {
-		return
-	}
-
-	c.Logger.Printf("| %s: summary has not been built for %s.",
-		format.Yellow("WARNING"),
-		format.Yellow(callSite.Graph().Parent.Name()))
-	pos := callSite.Position(c)
-	if pos != packagescan.DummyPos {
-		c.Logger.Printf(fmt.Sprintf("|_ See call site: %s", pos))
-	} else {
-		opos := packagescan.SafeFunctionPos(callSite.Graph().Parent)
-		c.Logger.Printf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(packagescan.DummyPos)))
-	}
-
-	if callSite.CallSite() != nil {
-		methodKey := ssafuncs.InstrMethodKey(callSite.CallSite())
-		if methodKey.IsSome() {
-			c.Logger.Printf(fmt.Sprintf("| Or add %s to dataflow contracts", methodKey.ValueOr("?")))
-		}
-	}
 }
