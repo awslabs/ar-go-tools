@@ -66,13 +66,13 @@ func LoadProgram(config *packages.Config, platform string, buildmode ssa.Builder
 
 func AllPackages(funcs map[*ssa.Function]bool) []*ssa.Package {
 	pkgs := make(map[*ssa.Package]bool)
-	for f, _ := range funcs {
+	for f := range funcs {
 		if f.Package() != nil {
 			pkgs[f.Package()] = true
 		}
 	}
 	pkglist := make([]*ssa.Package, 0, len(pkgs))
-	for p, _ := range pkgs {
+	for p := range pkgs {
 		pkglist = append(pkglist, p)
 	}
 	sort.Slice(pkglist, func(i, j int) bool {
