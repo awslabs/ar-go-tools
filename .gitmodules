@@ -1,0 +1,3 @@
+[submodule "amazon-ssm-agent"]
+	path = amazon-ssm-agent
+	url = https://github.com/aws/amazon-ssm-agent

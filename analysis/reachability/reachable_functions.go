@@ -89,7 +89,9 @@ func findInterfaceCallees(program *ssa.Program, interfaceType types.Type, v ssa.
 
 // discover the callees of the given function, and apply the given action to these
 func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Function)) {
-
+	if f == nil {
+		return
+	}
 	// look for functions that are called
 	for _, b := range f.Blocks {
 		for _, instr := range b.Instrs {

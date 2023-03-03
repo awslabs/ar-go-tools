@@ -36,6 +36,10 @@ func packageFromErrorName(name string) string {
 }
 
 func PackageNameFromFunction(f *ssa.Function) string {
+	if f == nil {
+		return ""
+	}
+
 	pkg := f.Package()
 	if pkg != nil {
 		return pkg.Pkg.Path()
