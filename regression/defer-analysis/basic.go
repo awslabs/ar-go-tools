@@ -1,8 +1,8 @@
 package main
 
 // Functions that substitute for arbitrary behavior
-func arbitrary() bool
-func external(int) int
+func arbitrary() bool  { return false }
+func external(int) int { return 0 }
 
 // Basic function, one defer, one return
 func f1() int {

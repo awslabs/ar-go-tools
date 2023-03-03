@@ -1,15 +1,18 @@
-package render
+package rendering
 
 import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"html"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"unsafe"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
@@ -184,4 +187,110 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 			}
 		}
 	}
+}
+
+func WriteHtmlCallgraph(program *ssa.Program, cg *callgraph.Graph, outPath string) error {
+	// fmt.Fprint(os.Stderr, "Starting writeCallgraph\n")
+	reachable := dataflow.CallGraphReachable(cg, false, false)
+	htmlOut, err := os.Create(outPath)
+	if err != nil {
+		return err
+	}
+	defer htmlOut.Close()
+	htmlOut.WriteString(`
+	<style>
+	.func {
+		margin: 0 0 0.5em;
+		border: 1px solid #BBB;
+		padding: 8px;
+	  }
+	  :target {
+		background: #FFE;
+	  }
+	  .name {
+		font-weight: bold;
+	  }
+	  .fullname {
+		color: #999;
+	  }
+	  </style>
+	  ` + "\n")
+	for fun := range reachable {
+		if fun == nil {
+			continue
+		}
+		node := cg.Nodes[fun]
+		includeDisassembly := false
+		fmt.Fprint(htmlOut, "<div class=func id=\"", uintptr(unsafe.Pointer(fun)), "\">func <span class=name>",
+			fun.Name(), "</span>()\n")
+		fmt.Fprint(htmlOut, "<div class=fullname>", fun.String(), "</div>\n")
+		for _, bb := range fun.Blocks {
+			for _, ins := range bb.Instrs {
+				switch call := ins.(type) {
+				case *ssa.Call:
+					fmt.Fprintf(htmlOut, "<div>Call at %v </div>\n", program.Fset.Position(ins.Pos()))
+					if _, ok := call.Call.Value.(*ssa.Builtin); ok {
+						// Built-ins are not part of the explicit callgraph
+						fmt.Fprintf(htmlOut, "(Builtin)\n")
+						// fmt.Fprintf(html, "CalleeCount at %v: %v\n", program.Fset.Position(ins.Pos()), 1)
+					} else {
+						callees := []*ssa.Function{}
+						for _, edge := range node.Out {
+							if edge.Site == ins {
+								callees = append(callees, edge.Callee.Func)
+							}
+						}
+						// fmt.Fprintf(html, "CalleeCount at %v: %v\n", program.Fset.Position(ins.Pos()), len(callees))
+						if len(callees) == 0 && call.Call.StaticCallee() != nil {
+							fmt.Fprintf(htmlOut, "(Predefined)\n")
+						} else if len(callees) == 0 {
+							fmt.Fprintf(htmlOut, "No callees at %v\n", program.Fset.Position(ins.Pos()))
+							includeDisassembly = true
+						} else {
+							for _, c := range callees {
+								fmt.Fprint(htmlOut, "<a href=\"#", uintptr(unsafe.Pointer(c)), "\", title=\"",
+									c.String(), "\">", c.Name(), "</a> ")
+							}
+						}
+					}
+
+					// fmt.Fprintf(html, "</div>\n")
+				}
+			}
+		}
+		fmt.Fprint(htmlOut, "<div>Callers:</div>\n")
+		for _, edge := range node.In {
+			f := edge.Caller.Func
+			isDead := ""
+			if _, ok := reachable[f]; !ok {
+				isDead = "(Dead)"
+			}
+			fmt.Fprint(htmlOut, "<div>", isDead, "<a href=\"#", uintptr(unsafe.Pointer(f)), "\">",
+				f.Name(), "</a> <span class=fullname>", f.String(), " </span></div>")
+		}
+		if includeDisassembly {
+			if syn := fun.Syntax(); syn != nil {
+				fmt.Fprint(htmlOut, "<details><summary>Source</summary><pre>\n")
+				file := program.Fset.File(syn.Pos())
+				if file != nil {
+					reader, _ := os.Open(file.Name())
+					b := make([]byte, syn.End()-syn.Pos())
+					reader.ReadAt(b, int64(file.Offset(syn.Pos())))
+					fmt.Fprint(htmlOut, html.EscapeString(strings.ReplaceAll(string(b), "\t", "    ")))
+
+				} else {
+					fmt.Fprint(htmlOut, "No file source found")
+				}
+				fmt.Fprint(htmlOut, "</pre></details>\n")
+			}
+
+			fmt.Fprint(htmlOut, "<details><summary>Assembly</summary><pre>\n")
+			buffer := bytes.NewBufferString("")
+			ssa.WriteFunction(buffer, fun)
+			fmt.Fprint(htmlOut, html.EscapeString(buffer.String()))
+			fmt.Fprint(htmlOut, "</pre></details>\n")
+		}
+		fmt.Fprint(htmlOut, "</div>\n")
+	}
+	return nil
 }
