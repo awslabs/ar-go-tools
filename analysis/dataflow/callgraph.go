@@ -228,7 +228,6 @@ func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool)
 			}
 		}
 	}
-
 	return reachable
 }
 

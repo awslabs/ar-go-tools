@@ -10,13 +10,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"time"
+
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	callgraph2 "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
-	"os"
-	"time"
-
 	render "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/rendering"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -25,6 +25,7 @@ import (
 var (
 	modeFlag   = flag.String("analysis", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
 	cgOut      = flag.String("cgout", "", "Output file for call graph (no output if not specified)")
+	htmlOut    = flag.String("htmlout", "", "Output file for call graph (no output if not specified)")
 	configPath = flag.String("config", "", "Config file")
 	ssaOutFlag = flag.String("ssaout", "", "Output folder for ssa (no output if not specified)")
 )
@@ -98,7 +99,7 @@ func main() {
 	var cg *callgraph.Graph
 
 	// Compute the call graph
-	if *cgOut != "" {
+	if *cgOut != "" || *htmlOut != "" {
 		fmt.Fprintf(os.Stderr, format.Faint("Computing call graph")+"\n")
 		start := time.Now()
 		cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
@@ -117,6 +118,16 @@ func main() {
 		err = render.GraphvizToFile(renderConfig, cg, *cgOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v", err)
+			return
+		}
+	}
+
+	if *htmlOut != "" {
+		fmt.Fprintf(os.Stderr, format.Faint("Writing call graph in "+*htmlOut+"\n"))
+
+		err = render.WriteHtmlCallgraph(program, cg, *htmlOut)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v\n", err)
 			return
 		}
 	}
