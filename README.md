@@ -25,6 +25,42 @@ The `Makefile` at the project root will call `go build` for each of the tools.
 
 ### Running the tools
 
+#### Command-Line Tool
+
+The command-line tool `argot-cli` allows you to inspect the different results of the analyses interactively. The cli 
+tool expects a program as argument and a configuration file. For example, run:
+```shell
+./bin/argot-cli -config testdata/src/taint/example1/config.yaml testdata/src/taint/example1/main.go
+```
+The cli will load the program and run the pointer and callgraph analyses. Once the program building step has terminated,
+you should see a prompt. Typing `help` will print a list of all the commands available. `exit` exits the tool.
+For example, the `list` command lets you print a list of functions matching a given regex:
+```shell
+> list command-line-arguments
+```
+Will print all the functions in the `command-line-arguments` package, which is the main package loaded by the go 
+analysis tool.
+
+A typical workflow to run taint analyses is to build the summaries of all necessary functions by running the command:
+```shell
+> summarize
+```
+And then build the cross-function flow graph:
+```shell
+> buildgraph
+```
+And finally run the taint analysis:
+```shell
+> taint
+```
+At any point you can rebuild the program by using `rebuild` and reload the configuration by using `reconfig`. This is 
+particularly useful if you want to modify source and sink definitions without having to reload the program and run the
+analyses.
+
+There are two scripts that load the cli for the agent and the document-worker (`./scripts/cli-load-agent` for the agent and 
+`./scripts/cli-load-document` for the document worker).
+
+
 #### Compare
 You can compare the set of reachable functions according to a reachability analysis use in Argot, a reachability 
 analysis built on a callgraph construction method available in the `x/tools` packages, and the functions appearing 
@@ -87,7 +123,10 @@ Which will run the analysis without searching for sources and sinks but will bui
 need to perform the taint analysis.
 
 The `scripts` folder contains a script to run the `taint` tool on the SSM agent:
-`./scripts/ssm-taint`
+`./scripts/taint-agent`
+Or on the document worker:
+`./scripts/taint-document-worker`
+
 Note that there will be warnings and errors, since the implementation is not complete. You will see the different 
 passes of the analysis running:
 - constructing the callgraph and building aliasing information (pointer analysis)
@@ -104,17 +143,17 @@ reportsdir: "taint-report" # report will be in subdirectory taint-report where t
 reportcoverage: true
 reportsummaries: true
 reportpaths: true
+maxdepth: 46 # Optional setting to limit runtime; a call depth of 46 is safe
 coverage: "amazon-ssm-agent/agent" # coverage is only reported for those file that have amazon-ssm-agent/agent as substring
 # Use interface contracts
 dataflowspecs: "agent-specs.json"
 pkgprefix: "github.com/aws" # focus on functions in aws
 sources:
-   - method: "GetMessages"
-     package: "github.com/aws/amazon-ssm-agent/agent/runcommand/mds"
+  - method: "GetMessages"
+    package: "github.com/aws/amazon-ssm-agent/agent/runcommand/mds"
 sinks:
-  - package: "github.com/aws/amazon-ssm-agent/agent/jsonutil"
-    method: "Marshal"
-  - method: "(.*)Submit"
+  - method: "(.*)PushToProcessor"
+    package: "github.com/aws/amazon-ssm-agent/agent/messageservice/messagehandler/processorwrappers"
 ```
 The first configuration options are for the output of the tool. 
 - The `reportsdir` option specifies where the output files should be written. If the directory doesn't exist, it will 
@@ -132,6 +171,9 @@ The other options change the behaviour of the analysis itself:
 package name that starts with this prefix.
 - The `dataflowspecs` specifies a JSON file that contains dataflow summaries for interfaces. The tool will use those
 summaries to replace calls to interface methods, greatly reducing the complexity of the cross-function flow analysis.
+- The `maxdepth` sets the maximum callstack size above which paths are discarded in the analysis. This option allows
+to reduce the runtime at the expense of soundness. However, large values should be safe. For example, in the scripts,
+no additional paths will be discovered with a higher value of the depth.
 - The `sources` and `sinks` each specify sets of identifiers for sources and sinks. A source can be specified by a 
 method (or function) name with `method` or a field name with `field`. A sink must be a function (or method). The 
 `package` information narrows down how function, methods and fields are matched. Note that the strings are Go regexes.

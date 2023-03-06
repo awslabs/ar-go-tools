@@ -1,0 +1,18 @@
+#!/bin/sh
+
+if [ ! -e amazon-ssm-agent ] ; then
+  echo getting SSM source code
+  git clone https://github.com/aws/amazon-ssm-agent.git
+fi
+
+cd amazon-ssm-agent || exit
+
+if [ ! -e ../taint-report-document-worker ] ; then
+  mkdir ../taint-report-document-worker
+fi
+
+# amazon-ssm-agent
+echo "Running on document worker, errors in taint-report-document-worker/taint-errors.txt"
+../bin/taint -config ../testdata/config-examples/config-document-worker.yaml \
+              agent/framework/processor/executer/outofproc/worker/main.go \
+              2> ../taint-report-document-worker/taint-errors.txt

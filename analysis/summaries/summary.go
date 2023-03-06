@@ -49,8 +49,12 @@ func IsStdPackage(pkg *ssa.Package) bool {
 		return false
 	}
 	pkgPath := pkg.Pkg.Path()
-	_, okStd := stdPackages[pkgPath]
-	return okStd || strings.HasPrefix(pkg.Pkg.Path(), "runtime")
+	return IsStdPackageName(pkgPath)
+}
+
+func IsStdPackageName(name string) bool {
+	_, ok := stdPackages[name]
+	return ok || strings.HasPrefix(name, "runtime")
 }
 
 // IsStdFunction returns true if the input function is a function from the standard library or the runtime.
@@ -63,6 +67,16 @@ func IsStdFunction(function *ssa.Function) bool {
 	pkgName := packagescan.PackageNameFromFunction(function)
 	_, ok := stdPackages[pkgName]
 	return ok || strings.HasPrefix(pkgName, "runtime")
+}
+
+// IsSummaryRequired returns true if the summary of function is needed to build a sound analysis.
+// For example, sync.Once.Do needs to be summarized because its argument will be called only inside the function,
+// and therefore, it cannot be stubbed out.
+func IsSummaryRequired(function *ssa.Function) bool {
+	if function == nil {
+		return false
+	}
+	return requiredSummaries[function.String()]
 }
 
 // PkgHasSummaries returns true if the input package has summaries. A package has summaries if it is present in either
@@ -108,11 +122,11 @@ func IsUserDefinedFunction(function *ssa.Function) bool {
 	if function == nil {
 		return false
 	}
-	pkg := function.Package()
-	if pkg == nil {
+	pkgKey := packagescan.PackageNameFromFunction(function)
+
+	if pkgKey == "" {
 		return false
 	}
-
-	// Not in a standard lib package
-	return !IsStdPackage(pkg)
+	// Check that it is not in a standard lib package
+	return !IsStdPackageName(pkgKey)
 }

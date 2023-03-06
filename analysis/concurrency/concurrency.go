@@ -76,7 +76,7 @@ func RunAnalysis(cache *dataflow.Cache) (AnalysisResult, error) {
 	for len(que) != 0 {
 		elt := que[0]
 		que = que[1:]
-		parent := vis[elt]
+
 		for _, e := range elt.Out {
 			add := false
 			// skip nil edges and edges without Callee
@@ -88,29 +88,28 @@ func RunAnalysis(cache *dataflow.Cache) (AnalysisResult, error) {
 			// setting it to {0}, i.e. the function is executed at least from the main goroutine.
 			if vis[e.Callee] == nil {
 				add = true
-				vis[e.Callee] = map[uint32]bool{0: true}
+				vis[e.Callee] = map[uint32]bool{}
 			}
 
 			// If we have a callsite, then check whether that callsite is a `go ...` instruction. If it is the case,
 			// then the callee will be appearing under an additional `go ...` instruction.
-			if e.Site != nil {
-				if g, isGo := e.Site.(*ssa.Go); isGo {
-					if !vis[e.Callee][goCalls[g]] {
-						vis[e.Callee][goCalls[g]] = true
-						add = true
-					}
-
-				}
-			}
-
-			// Check that we propagate all ids from caller to callee, and if propagation changes the ids, then
-			// we need to enqueue again the callees.
-			for id := range parent {
-				if !vis[e.Callee][id] {
+			if g, isGo := e.Site.(*ssa.Go); isGo {
+				if !vis[e.Callee][goCalls[g]] {
 					add = true
-					vis[e.Callee][id] = true
+					vis[e.Callee][goCalls[g]] = true
+				}
+
+			} else {
+				// Check that we propagate all ids from caller to callee, and if propagation changes the ids, then
+				// we need to enqueue again the callees.
+				for id := range vis[elt] {
+					if !vis[e.Callee][id] {
+						add = true
+						vis[e.Callee][id] = true
+					}
 				}
 			}
+
 			if add {
 				que = append(que, e.Callee)
 			}

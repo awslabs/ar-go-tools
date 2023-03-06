@@ -3,6 +3,7 @@ package packagescan
 import (
 	"fmt"
 	"go/token"
+	"go/types"
 	"os"
 	"strings"
 
@@ -33,6 +34,21 @@ func packageFromErrorName(name string) string {
 		return ""
 	}
 	return name[:i]
+}
+
+func PackageTypeFromFunction(f *ssa.Function) *types.Package {
+	pkg := f.Package()
+	if pkg != nil {
+		return pkg.Pkg
+	}
+
+	obj := f.Object().Pkg()
+	if obj != nil {
+		return obj
+	}
+
+	// could just return obj, but we're explicit about returning nil
+	return nil
 }
 
 func PackageNameFromFunction(f *ssa.Function) string {

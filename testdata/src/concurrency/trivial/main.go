@@ -1,46 +1,28 @@
 package main
 
-func f1() { // node 2
+func main() {
+	go f1()
 	go f2()
-	go f4()
-	f3()
+}
+
+func f1() {
+	f11()
+}
+
+func f11() {
+	go f12()
+	go f13()
+}
+
+func f12() {
+}
+
+func f13() {
+
 }
 
 func f2() {
-	f3()
-}
-
-func f3() {
-	go f2()
-}
-
-func f4() {
-	f5()
-}
-
-func f5() {
-	go f4()
-}
-
-func g() {
-	go g1()
-	g2()
-	g3()
-}
-
-func g1() {
-	f1()
-}
-
-func g2() {
-	g()
-}
-
-func g3() {
-	g2()
-}
-
-func main() { // node 1
-	go f1()
-	g()
+	go f12()
+	go f12()
+	f13()
 }

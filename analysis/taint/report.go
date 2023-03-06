@@ -78,7 +78,7 @@ func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink *vis
 			tmp.WriteString(fmt.Sprintf("%s\n", nodes[i].Node.Position(c).String()))
 			c.Logger.Printf("[%s] %s\n", dataflow.FuncNames(nodes[i].Trace), nodes[i].Node.Position(c).String())
 		}
-		c.Logger.Printf("%s\n", sinkPos.String())
+		c.Logger.Printf("SINK: %s\n", sinkPos.String())
 		c.Logger.SetPrefix(prefix)
 	}
 }
