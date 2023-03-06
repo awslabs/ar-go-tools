@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strings"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
@@ -206,9 +205,6 @@ func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 						que = addNext(c, que, seen, elt, x, nil, elt.ClosureTrace)
 					}
 				}
-			} else {
-				fmt.Fprintf(os.Stderr, "Return node %s does not return anywhere.\n", elt.Node.String())
-				fmt.Fprintf(os.Stderr, "In %s\n", elt.Node.Position(c))
 			}
 
 		// This is a call node, which materializes where the callee returns. A call node is reached from a return

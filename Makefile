@@ -5,7 +5,7 @@
 #endif
 
 
-all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan concurrency server
+all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan concurrency cli
 
 install: taint_install
 
@@ -49,13 +49,14 @@ concurrency: go.mod cmd/concurrency/*.go analysis/*.go analysis/concurrency/*.go
 packagescan: go.mod cmd/packagescan/*.go analysis/*.go analysis/packagescan/*.go
 	go build -o bin/packagescan cmd/packagescan/*.go
 
-server: go.mod cmd/server/*.go
-	go build -o bin/server cmd/server/*.go
+cli: go.mod cmd/cli/*.go
+	go build -o bin/argot-cli cmd/cli/*.go
 
 taint_install: taint
 	go install ./cmd/taint/...
 
 clean:
 	rm -rf bin
+	rm -rf **/*-report
 
 release: all

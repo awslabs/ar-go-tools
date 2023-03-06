@@ -2,8 +2,9 @@ package dataflow
 
 import (
 	"fmt"
-	"golang.org/x/tools/go/ssa"
 	"os"
+
+	"golang.org/x/tools/go/ssa"
 )
 
 func (c *Cache) ReportNoCallee(instr ssa.CallInstruction) {
@@ -12,7 +13,7 @@ func (c *Cache) ReportNoCallee(instr ssa.CallInstruction) {
 	if c.Config.ReportNoCalleeSites {
 		f, err := os.OpenFile(c.Config.ReportNoCalleeFile(), os.O_APPEND, 0644)
 		if err == nil {
-			fmt.Fprintf(os.Stderr, "Could not open %s\n", c.Config.ReportNoCalleeFile())
+			c.Err.Printf("Could not open %s\n", c.Config.ReportNoCalleeFile())
 		}
 		defer f.Close()
 		f.WriteString(fmt.Sprintf("\"%s\", %s", instr.String(), pos))

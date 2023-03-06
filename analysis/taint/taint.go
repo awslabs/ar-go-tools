@@ -66,15 +66,12 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// function being analyzed.
 
 	// Only build summaries for non-stdlib functions here
-	shouldBuildSummary := func(f *ssa.Function) bool {
-		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
-	}
 	res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		Cache:              cache,
-		NumRoutines:        numRoutines,
-		ShouldBuildSummary: shouldBuildSummary,
-		IsSourceNode:       IsSourceNode,
-		IsSinkNode:         IsSinkNode,
+		Cache:               cache,
+		NumRoutines:         numRoutines,
+		ShouldCreateSummary: ShouldCreateSummary,
+		IsSourceNode:        IsSourceNode,
+		IsSinkNode:          IsSinkNode,
 	})
 	flowCandidates := res.FlowCandidates
 	fg := res.FlowGraph
@@ -91,4 +88,8 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	})
 
 	return AnalysisResult{TaintFlows: flowCandidates, Graph: fg}, nil
+}
+
+func ShouldCreateSummary(f *ssa.Function) bool {
+	return (!summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)) || summaries.IsSummaryRequired(f)
 }

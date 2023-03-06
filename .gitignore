@@ -3,9 +3,9 @@
 *.log
 coverage.txt
 coverage.xml
-amazon-ssm-agent-experimental
+amazon-ssm-agent
 bin
 tmp
 errors.txt
 large-tests
-taint-report
+taint-report*

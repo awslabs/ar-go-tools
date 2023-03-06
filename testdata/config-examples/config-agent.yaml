@@ -16,5 +16,5 @@ sources:
    - method: "GetMessages"
      package: "github.com/aws/amazon-ssm-agent/agent/runcommand/mds"
 sinks:
-  - method: "(.*)Submit"
-    package: "github.com/aws/amazon-ssm-agent/agent/messageservice/messagehandler"
+  - method: "(.*)PushToProcessor"
+    package: "github.com/aws/amazon-ssm-agent/agent/messageservice/messagehandler/processorwrappers"

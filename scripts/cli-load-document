@@ -1,0 +1,13 @@
+#!/bin/sh
+
+if [ ! -e amazon-ssm-agent ] ; then
+  echo getting SSM source code
+  git clone https://github.com/aws/amazon-ssm-agent.git
+fi
+
+cd amazon-ssm-agent || exit
+
+# amazon-ssm-agent
+echo "Running on document worker"
+../bin/argot-cli -config ../testdata/config-examples/config-document-worker.yaml \
+              agent/framework/processor/executer/outofproc/worker/main.go

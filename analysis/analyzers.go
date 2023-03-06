@@ -2,8 +2,6 @@
 package analysis
 
 import (
-	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,11 +22,11 @@ type SingleFunctionResult struct {
 
 // RunSingleFunctionArgs represents the arguments for RunSingleFunction.
 type RunSingleFunctionArgs struct {
-	Cache              *dataflow.Cache
-	NumRoutines        int
-	ShouldBuildSummary func(function *ssa.Function) bool
-	IsSourceNode       func(*config.Config, ssa.Node) bool
-	IsSinkNode         func(*config.Config, ssa.Node) bool
+	Cache               *dataflow.Cache
+	NumRoutines         int
+	ShouldCreateSummary func(function *ssa.Function) bool
+	IsSourceNode        func(*config.Config, ssa.Node) bool
+	IsSinkNode          func(*config.Config, ssa.Node) bool
 }
 
 // RunSingleFunction runs a single-function analysis pass of program prog in parallel using numRoutines.
@@ -63,7 +61,7 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 		// Feed the jobs in the jobs channel
 		// This pass also ignores some predefined packages
 		for function := range args.Cache.ReachableFunctions(false, false) {
-			if args.ShouldBuildSummary(function) {
+			if args.ShouldCreateSummary(function) {
 				jobs <- singleFunctionJob{
 					function: function,
 					cache:    args.Cache,
@@ -76,7 +74,7 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	} else {
 		// Run without goroutines when there is only one routine
 		for function := range args.Cache.ReachableFunctions(false, false) {
-			if args.ShouldBuildSummary(function) {
+			if args.ShouldCreateSummary(function) {
 				job := singleFunctionJob{
 					function: function,
 					cache:    args.Cache,
@@ -133,15 +131,18 @@ func jobConsumer(jobs chan singleFunctionJob, output chan dataflow.SingleFunctio
 // and returns the result of the analysis
 func runIntraProceduralOnFunction(job singleFunctionJob,
 	isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
-	runAnalysis := !ignoreInFirstPass(job.cache.Config, job.function)
+	runAnalysis := shouldBuildSummary(job.cache.Config, job.function)
 	if job.cache.Config.Verbose {
 		job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
 			packagescan.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
 	}
 	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function, runAnalysis, isSourceNode, isSinkNode)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error while analyzing %s:\n\t%v\n", job.function.Name(), err)
+		job.cache.Err.Printf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
 	}
+
+	result.Summary.ShowAndClearErrors(job.cache.Logger.Writer())
+
 	return result
 }
 
@@ -170,24 +171,24 @@ func collectResults(c chan dataflow.SingleFunctionResult, done chan int, numProd
 	}
 }
 
-// ignoreInFirstPass returns true if the function can be ignored during the first pass of the analysis
+// shouldBuildSummary returns true if the function can be ignored during the first pass of the analysis
 // can be used to avoid analyzing functions with many paths.
-func ignoreInFirstPass(cfg *config.Config, function *ssa.Function) bool {
+func shouldBuildSummary(cfg *config.Config, function *ssa.Function) bool {
 	if function == nil {
-		return false
+		return true
 	}
 
 	pkg := function.Package()
 	if pkg == nil {
-		return false
+		return true
 	}
 
 	// Is PkgPrefix specified?
 	if cfg != nil && cfg.PkgPrefix != "" {
 		pkgKey := pkg.Pkg.Path()
-		return !strings.HasPrefix(pkgKey, cfg.PkgPrefix)
+		return strings.HasPrefix(pkgKey, cfg.PkgPrefix) || pkgKey == "command-line-arguments"
 	} else {
 		// Check package summaries
-		return summaries.PkgHasSummaries(pkg)
+		return !summaries.PkgHasSummaries(pkg) || summaries.IsSummaryRequired(function)
 	}
 }

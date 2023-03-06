@@ -426,19 +426,20 @@ func (a *SyntheticNode) ParentName() string {
 
 // SummaryGraph is the function dataflow summary graph.
 type SummaryGraph struct {
-	Constructed       bool                                                // true if summary graph is Constructed, false if it is a dummy
-	InterfaceContract bool                                                // true if the summary is built from an interface's dataflow contract
-	Parent            *ssa.Function                                       // the ssa function it summarizes
-	Params            map[ssa.Node]*ParamNode                             // the parameters of the function, associated to ParamNode
-	FreeVars          map[ssa.Node]*FreeVarNode                           // the free variables of the function, associated to FreeVarNode
-	Callsites         map[ssa.CallInstruction]*CallNode                   // the call sites of the function
-	Callees           map[ssa.CallInstruction]map[*ssa.Function]*CallNode // the call instructions are linked to CallNode.
+	Constructed         bool                                                // true if summary graph is Constructed, false if it is a dummy
+	IsInterfaceContract bool                                                // true if the summary is built from an interface's dataflow contract
+	Parent              *ssa.Function                                       // the ssa function it summarizes
+	Params              map[ssa.Node]*ParamNode                             // the parameters of the function, associated to ParamNode
+	FreeVars            map[ssa.Node]*FreeVarNode                           // the free variables of the function, associated to FreeVarNode
+	Callsites           map[ssa.CallInstruction]*CallNode                   // the call sites of the function
+	Callees             map[ssa.CallInstruction]map[*ssa.Function]*CallNode // the call instructions are linked to CallNode.
 
 	CreatedClosures       map[ssa.Instruction]*ClosureNode                    // the MakeClosure nodes in the function  are linked to ClosureNode
 	ReferringMakeClosures map[ssa.Instruction]*ClosureNode                    // the MakeClosure nodes referring to this function
 	SyntheticNodes        map[ssa.Instruction]*SyntheticNode                  // the synthetic nodes of the function
 	AccessGlobalNodes     map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode // the nodes accessing global information
 	Returns               map[ssa.Instruction]*ReturnNode                     // the return instructions are linked to ReturnNode
+	errors                map[error]bool
 }
 
 // NewSummaryGraph builds a new summary graph given a function and its corresponding node.
@@ -450,7 +451,7 @@ func NewSummaryGraph(f *ssa.Function) *SummaryGraph {
 	}
 	g := &SummaryGraph{
 		Constructed:           false,
-		InterfaceContract:     false,
+		IsInterfaceContract:   false,
 		Parent:                f,
 		Params:                make(map[ssa.Node]*ParamNode, len(f.Params)),
 		FreeVars:              make(map[ssa.Node]*FreeVarNode, len(f.FreeVars)),
@@ -461,6 +462,7 @@ func NewSummaryGraph(f *ssa.Function) *SummaryGraph {
 		ReferringMakeClosures: make(map[ssa.Instruction]*ClosureNode),
 		AccessGlobalNodes:     make(map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode),
 		SyntheticNodes:        make(map[ssa.Instruction]*SyntheticNode),
+		errors:                map[error]bool{},
 	}
 	// Add the parameters
 	for pos, param := range f.Params {
@@ -506,7 +508,14 @@ func (g *SummaryGraph) SyncGlobals() {
 // addError adds an error to the summary graph. Can be modified to change the behavior when an error is encountered
 // when building the summary
 func (g *SummaryGraph) addError(e error) {
-	fmt.Fprintf(os.Stderr, "Error: %s\n", e.Error())
+	g.errors[e] = true
+}
+
+func (g *SummaryGraph) ShowAndClearErrors(w io.Writer) {
+	for err := range g.errors {
+		w.Write([]byte(err.Error() + "\n"))
+	}
+	g.errors = map[error]bool{}
 }
 
 // Functions to add nodes to the graph
@@ -877,7 +886,9 @@ func (g *SummaryGraph) AddGlobalEdge(source Source, loc ssa.Instruction, v *ssa.
 	node := g.AccessGlobalNodes[loc][v]
 
 	if node == nil {
-		g.addError(fmt.Errorf("attempting to set global edge but no global node"))
+		// TODO: debug this
+		//g.addError(fmt.Errorf("attempting to set global edge but no global node"))
+		return
 	} else {
 		// Set node to written
 		node.IsWrite = true
@@ -1043,7 +1054,7 @@ func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summary, isInt
 	// a summary graph loaded from a predefined summary is marked as constructed.
 	g.Constructed = true
 	// the isInterface parameter determines if this represents the summary from an interface dataflow contract
-	g.InterfaceContract = isInterface
+	g.IsInterfaceContract = isInterface
 }
 
 // Utilities for printing graphs

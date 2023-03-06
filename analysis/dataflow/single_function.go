@@ -3,9 +3,9 @@ package dataflow
 import (
 	"fmt"
 	"go/types"
-	"os"
 	"strings"
 
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/astfuncs"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/defers"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
@@ -347,6 +347,7 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 	if t.doBuiltinCall(callValue, callCommon, callInstr) {
 		return
 	}
+
 	// Add call instruction to summary, in case it hasn't been added through callgraph
 	t.summary.AddCallInstr(t.cache, callInstr)
 	// If a closure is being called: the closure value flows to the callsite
@@ -388,11 +389,16 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
 			if t.checkFlow(source, callInstr, arg) {
 				t.summary.AddCallArgEdge(source, callInstr, arg)
+				// Add edges to parameters if the call may modify caller's arguments
 				for _, x := range t.paramAliases[arg] {
-					t.summary.AddParamEdge(source, x)
+					if astfuncs.IsNillableType(x.Type()) {
+						t.summary.AddParamEdge(source, x)
+					}
 				}
 				for _, y := range t.freeVarAliases[arg] {
-					t.summary.AddFreeVarEdge(source, y)
+					if astfuncs.IsNillableType(y.Type()) {
+						t.summary.AddFreeVarEdge(source, y)
+					}
 				}
 			}
 		}
@@ -415,14 +421,12 @@ func (t *stateTracker) checkFlow(source Source, dest ssa.Instruction, destVal ss
 	// If the destination instruction is a Defer and the destination value is a reference (pointer type) then the
 	// taint will always flow to it, since the Defer will be executed after the source.
 	if _, isDefer := dest.(*ssa.Defer); isDefer {
-		if _, isPtr := destVal.Type().Underlying().(*types.Pointer); isPtr {
+		if astfuncs.IsNillableType(destVal.Type()) {
 			return true
 		} else {
 			return t.checkPathBetweenInstrs(sourceInstr, dest)
 		}
 	} else {
-		n := t.summary.Parent.Name()
-		_ = n
 		if asVal, isVal := dest.(ssa.Value); isVal {
 			// If the destination is a value of function type, then there is a flow when the source occurs before
 			// any instruction that refers to the function (e.g. the function is returned, or called)
@@ -505,7 +509,7 @@ func (t *stateTracker) doBuiltinCall(callValue ssa.Value, callCommon *ssa.CallCo
 
 		// for recover, we will need some form of panic analysis
 		case "recover":
-			fmt.Fprintf(os.Stderr, "Encountered recover at %s, the analysis may be unsound.\n",
+			t.cache.Err.Printf("Encountered recover at %s, the analysis may be unsound.\n",
 				instruction.Parent().Prog.Fset.Position(instruction.Pos()))
 			return true
 		default:

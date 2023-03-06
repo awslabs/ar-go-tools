@@ -20,6 +20,9 @@ type Cache struct {
 	// The logger used during the analysis (can be used to control output.
 	Logger *log.Logger
 
+	// Err is a Logger for errors
+	Err *log.Logger
+
 	// The configuration file for the analysis
 	Config *config.Config
 
@@ -72,8 +75,11 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cac
 	var contracts []Contract
 	var err error
 
+	e := log.New(l.Writer(), "[ERROR] ", l.Flags())
+
 	cache := &Cache{
 		Logger:                l,
+		Err:                   e,
 		Config:                c,
 		Program:               p,
 		implementationsByType: map[string]map[*ssa.Function]bool{},

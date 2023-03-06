@@ -39,30 +39,22 @@ func TestTrivial(t *testing.T) {
 		t.Logf("%d : %s @ %s", id, goInstr, ar.Cache.Program.Fset.Position(goInstr.Pos()))
 	}
 
-	res := make([]string, len(ar.NodeColors))
+	res := make(map[string]string, len(ar.NodeColors))
 	for node, color := range ar.NodeColors {
 
 		e := strings.Join(Map(SetToSlice(color), func(i uint32) string { return strconv.Itoa(int(i)) }), ",")
 		t.Logf("Node %s - %s", node.String(), e)
-		if node.ID == 1 || // f1
-			node.ID == 2 || // g2
-			node.ID == 3 || // g
-			node.ID == 9 || // g3
-			node.ID == 0 || // root
-			node.ID == 11 { // init
-			if len(color) > 1 {
-				t.Logf("Error: expected %s to be only in main routine", node)
-			}
+
+		if (node.Func.Name() == "main" || node.Func.Name() == "init") && (len(color) != 1 || !color[0]) {
+			t.Fatalf("main should be top-level (color 0)")
 		}
-		if node.ID == 7 && len(color) != 2 { // g1
-			t.Logf("Error: expected g1() to be in its own routine and no other")
-		}
-		res[node.ID] = e
+
+		res[node.Func.Name()] = e
 	}
-	if res[5] != res[10] { // f4 and f5
-		t.Logf("Expected f4 and f5 to have same identity")
+	if res["f1"] != res["f11"] {
+		t.Fatalf("f1 and f11 should be in the same thread, but they have color %s and %s", res["f1"], res["f11"])
 	}
-	if res[4] != res[6] { // f4 and f5
-		t.Logf("Expected f2 and f3 to have same identity")
+	if !strings.Contains(res["f13"], res["f2"]) {
+		t.Fatalf("f13 should be in f2's thread, but got f2:%s and f3:%s", res["f2"], res["f3"])
 	}
 }

@@ -1,7 +1,6 @@
 package dataflow
 
 import (
-	"fmt"
 	"go/types"
 
 	"golang.org/x/tools/go/ssa"
@@ -75,7 +74,6 @@ func (t *stateTracker) DoMakeInterface(x *ssa.MakeInterface) {
 func (t *stateTracker) DoExtract(x *ssa.Extract) {
 	// TODO: tuple index sensitive propagation
 	simpleTransitiveMarkPropagation(t, x, x.Tuple, x)
-	//  "Warning: The analysis is imprecise on tuples.\n"
 }
 
 func (t *stateTracker) DoSlice(x *ssa.Slice) {
@@ -116,6 +114,11 @@ func (t *stateTracker) DoSend(x *ssa.Send) {
 
 func (t *stateTracker) DoStore(x *ssa.Store) {
 	simpleTransitiveMarkPropagation(t, x, x.Val, x.Addr)
+	// Special store
+	switch addr := x.Addr.(type) {
+	case *ssa.FieldAddr:
+		pathSensitiveMarkPropagation(t, x, x.Val, addr.X, FieldAddrFieldName(addr))
+	}
 }
 
 func (t *stateTracker) DoIf(*ssa.If) {
@@ -228,6 +231,14 @@ func (t *stateTracker) DoPhi(phi *ssa.Phi) {
 }
 
 func (t *stateTracker) DoSelect(x *ssa.Select) {
-	err := fmt.Errorf("encountered a select but ignored it: analysis unsound")
-	t.errors[x] = err
+	for _, state := range x.States {
+		switch state.Dir {
+		case types.RecvOnly:
+			simpleTransitiveMarkPropagation(t, x, state.Chan, x)
+		case types.SendOnly:
+			simpleTransitiveMarkPropagation(t, x, state.Send, state.Chan)
+		default:
+			panic("unexpected select channel type")
+		}
+	}
 }

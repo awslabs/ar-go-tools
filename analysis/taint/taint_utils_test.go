@@ -146,7 +146,7 @@ func checkExpectedPositions(t *testing.T, p *ssa.Program, flows dataflow.DataFlo
 func runTest(t *testing.T, dirName string, files []string) {
 	// Change directory to the testdata folder to be able to load packages
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/cross-function/", dirName)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/taint", dirName)
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)
@@ -160,7 +160,7 @@ func runTest(t *testing.T, dirName string, files []string) {
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
-	
+
 	expected := getExpectedSourceToSink(dir, ".")
 	checkExpectedPositions(t, program, result.TaintFlows, expected)
 	// Remove reports - comment if you want to inspect
@@ -169,7 +169,7 @@ func runTest(t *testing.T, dirName string, files []string) {
 
 func TestAll(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/cross-function/basic")
+	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/basic")
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)
