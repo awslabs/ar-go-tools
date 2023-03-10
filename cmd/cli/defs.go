@@ -26,6 +26,7 @@ const (
 	cmdReconfigName   = "reconfig"
 	cmdShowName       = "show"
 	cmdSsaValueName   = "ssaval"
+	cmdSsaInstrName   = "ssainstr"
 	cmdStateName      = "state?"
 	cmdSummarizeName  = "summarize"
 	cmdSummaryName    = "summary"

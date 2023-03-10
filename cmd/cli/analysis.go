@@ -221,5 +221,5 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 	if summary.IsInterfaceContract {
 		writeFmt(tt, "  (is interface contract)\n", tt.Escape)
 	}
-	summary.Print(tt)
+	summary.Print(true, tt)
 }

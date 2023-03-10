@@ -18,3 +18,25 @@ func IterateInstructions(function *ssa.Function, f func(instruction ssa.Instruct
 		}
 	}
 }
+
+// IterateValues applies f to every value in the function. It might apply f several times to the same value
+func IterateValues(function *ssa.Function, f func(value ssa.Value)) {
+	for _, param := range function.Params {
+		f(param)
+	}
+
+	for _, freeVar := range function.FreeVars {
+		f(freeVar)
+	}
+
+	IterateInstructions(function, func(i ssa.Instruction) {
+		var operands []*ssa.Value
+		operands = i.Operands(operands)
+		for _, operand := range operands {
+			f(*operand)
+		}
+		if v, ok := i.(ssa.Value); ok {
+			f(v)
+		}
+	})
+}

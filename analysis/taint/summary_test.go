@@ -458,9 +458,14 @@ func TestFunctionSummaries(t *testing.T) {
 						hasReturnOut = true
 					}
 				}
-				if len(freevar.In()) != 0 {
+				if freevar.SsaNode().Name() == "s1" && len(freevar.In()) != 1 {
 					// technically it does, but this is a single-function analysis (even for closures)
-					t.Errorf("in Baz, closure freevar should have no incoming edges, but got: %v", freevar.In())
+					t.Errorf("in Baz, closure freevar %s should have one incoming edge, but got: %v",
+						freevar.String(), freevar.In())
+				}
+				if freevar.SsaNode().Name() != "s1" && len(freevar.In()) != 0 {
+					t.Errorf("in Baz, closure freevar %s should have no incoming edges, but got: %v",
+						freevar.String(), freevar.In())
 				}
 			}
 			if !hasCallNodeArgOut {
