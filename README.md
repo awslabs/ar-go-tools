@@ -102,6 +102,11 @@ If you want to generate the callgraph of a program, run the following:
 Where the `-analysis` is the type of analysis to run to build the callgraph. By default, the buildmode is `pointer`,
 and the tool runs a pointer analysis using the [pointer package](https://pkg.go.dev/golang.org/x/tools/go/pointer)
 
+In order to generate an SVG file `df.svg` of the cross-function dataflow graph of the program `./testdata/src/taint/summaries/main.go`, run the following:
+``` shell
+./bin/render -dfout=df.dot -config=./testdata/src/taint/summaries/config.yaml ./testdata/src/taint/summaries/main.go && dot -Tsvg df.dot -o df.svg
+```
+
 #### Static-Commands
 
 TODO

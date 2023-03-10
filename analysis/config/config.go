@@ -108,6 +108,29 @@ type Config struct {
 	Verbose bool
 }
 
+// NewDefault returns an empty default config.
+func NewDefault() *Config {
+	return &Config{
+		sourceFile:          "",
+		nocalleereportfile:  "",
+		ReportsDir:          "",
+		Sanitizers:          nil,
+		Sinks:               nil,
+		Sources:             nil,
+		StaticCommands:      nil,
+		PkgPrefix:           "",
+		DataflowSpecs:       "",
+		SkipInterprocedural: false,
+		Coverage:            "",
+		ReportSummaries:     false,
+		ReportPaths:         false,
+		ReportCoverage:      false,
+		ReportNoCalleeSites: false,
+		MaxDepth:            1000,
+		Verbose:             false,
+	}
+}
+
 // Load reads a configuration from a file
 func Load(filename string) (*Config, error) {
 	config := Config{}
