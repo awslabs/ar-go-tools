@@ -48,12 +48,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// or from the standard library that is called in the program should be summarized in the summaries package.
 	// - Running the type analysis to map functions to their type
 
-	prog.Build()
-	cache, err := dataflow.NewCache(prog, logger, cfg, []func(*dataflow.Cache){
-		func(cache *dataflow.Cache) { cache.PopulateTypesVerbose() },
-		func(cache *dataflow.Cache) { cache.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
-		func(cache *dataflow.Cache) { cache.PopulateGlobalsVerbose() },
-	})
+	cache, err := dataflow.BuildFullCache(logger, cfg, prog)
 	if err != nil {
 		return AnalysisResult{}, err
 	}
@@ -82,9 +77,9 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// that is reachable from a source.
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		Cache:              cache,
-		FlowGraph:          fg,
 		DataFlowCandidates: flowCandidates,
 		Visitor:            VisitFromSource,
+		IsEntrypoint:       dataflow.IsSourceFunction,
 	})
 
 	return AnalysisResult{TaintFlows: flowCandidates, Graph: fg}, nil

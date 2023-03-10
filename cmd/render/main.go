@@ -10,6 +10,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	callgraph2 "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
+
 	render "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/rendering"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -26,6 +28,7 @@ var (
 	modeFlag   = flag.String("analysis", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
 	cgOut      = flag.String("cgout", "", "Output file for call graph (no output if not specified)")
 	htmlOut    = flag.String("htmlout", "", "Output file for call graph (no output if not specified)")
+	dfOut      = flag.String("dfout", "", "Output file for cross-function dataflow graph (no output if not specified)")
 	configPath = flag.String("config", "", "Config file")
 	ssaOutFlag = flag.String("ssaout", "", "Output folder for ssa (no output if not specified)")
 )
@@ -59,6 +62,8 @@ func main() {
 		os.Exit(2)
 	}
 
+	logger := log.Default()
+
 	// The strings constants are used only here
 	var callgraphAnalysisMode callgraph2.CallgraphAnalysisMode
 	// modeFlag cannot be null here
@@ -78,7 +83,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	renderConfig := &config.Config{} // empty default config
+	renderConfig := config.NewDefault() // empty default config
 	if *configPath != "" {
 		config.SetGlobalConfig(*configPath)
 		renderConfig, err = config.LoadGlobal()
@@ -124,10 +129,23 @@ func main() {
 
 	if *htmlOut != "" {
 		fmt.Fprintf(os.Stderr, format.Faint("Writing call graph in "+*htmlOut+"\n"))
-
 		err = render.WriteHtmlCallgraph(program, cg, *htmlOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v\n", err)
+		}
+	}
+
+	if *dfOut != "" {
+		fmt.Fprintf(os.Stderr, format.Faint("Writing cross-function dataflow graph in "+*dfOut+"\n"))
+
+		f, err := os.Create(*dfOut)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not create file: %v", err)
+			return
+		}
+		defer f.Close()
+		if err := render.WriteCrossFunctionGraph(renderConfig, logger, program, f); err != nil {
+			fmt.Fprintf(os.Stderr, "Could not generate cross-function flow graph:\n%v", err)
 			return
 		}
 	}

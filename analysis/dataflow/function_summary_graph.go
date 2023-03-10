@@ -1078,7 +1078,7 @@ func (a *CallNodeArg) String() string {
 }
 
 func (a *CallNode) String() string {
-	return fmt.Sprintf("\"(%s)call: %s \"", a.callee.Type.Code(), a.callSite.String())
+	return fmt.Sprintf("\"(%s)call: %s in %s\"", a.callee.Type.Code(), a.callSite.String(), a.callSite.Parent().Name())
 }
 
 func (a *ReturnNode) String() string {
@@ -1102,7 +1102,11 @@ func (a *ClosureNode) String() string {
 }
 
 func (a *AccessGlobalNode) String() string {
-	return fmt.Sprintf("\"global:%s in %s\"", a.Global.value.String(), a.instr.String())
+	typ := "read"
+	if a.IsWrite {
+		typ = "write"
+	}
+	return fmt.Sprintf("\"global:%s in %s (%s)\"", a.Global.value.String(), a.instr.String(), typ)
 }
 
 // Print the summary graph to w in the graphviz format.
@@ -1112,7 +1116,8 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 		fmt.Fprintf(w, "subgraph {}\n")
 		return
 	}
-	fmt.Fprintf(w, "subgraph %s {\n", g.Parent.Name())
+	fmt.Fprintf(w, "subgraph \"cluster_%s\" {\n", g.Parent.Name())
+	fmt.Fprintf(w, "\tlabel=\"%s\";\n", g.Parent.Name()) // label each subgraph with the function name
 	for _, a := range g.Params {
 		for n := range a.Out() {
 			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))

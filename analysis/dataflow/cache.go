@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"runtime"
 	"sync"
 	"time"
 
@@ -57,11 +56,6 @@ type Cache struct {
 
 // BuildFullCache runs NewCache, building all information that can be built in the cache
 func BuildFullCache(logger *log.Logger, config *config.Config, program *ssa.Program) (*Cache, error) {
-	numRoutines := runtime.NumCPU() - 1
-	if numRoutines <= 0 {
-		numRoutines = 1
-	}
-
 	program.Build()
 	return NewCache(program, logger, config, []func(*Cache){
 		func(cache *Cache) { cache.PopulateTypesVerbose() },

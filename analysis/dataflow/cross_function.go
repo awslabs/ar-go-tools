@@ -9,20 +9,30 @@ import (
 	"strings"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"golang.org/x/tools/go/ssa"
 )
 
 // CrossFunctionFlowGraph represents a cross-function data flow graph.
 type CrossFunctionFlowGraph struct {
-	Summaries map[*ssa.Function]*SummaryGraph
-	cache     *Cache
-	built     bool
+	Summaries     map[*ssa.Function]*SummaryGraph
+	cache         *Cache
+	built         bool
+	ForwardEdges  map[GraphNode]map[GraphNode]bool           // forward edges between nodes belonging to different subgraphs (cross-function version of (GraphNode).Out)
+	BackwardEdges map[GraphNode]map[GraphNode]bool           // backward edges between nodes belonging to different subgraphs (cross-function version of (GraphNode).In)
+	Globals       map[*GlobalNode]map[*AccessGlobalNode]bool // edges between global nodes and the nodes that access the global
 }
 
-// NewCrossFunctionFlowGraph returns a new non-built cross function flow graph
+// NewCrossFunctionFlowGraph returns a new non-built cross function flow graph.
 func NewCrossFunctionFlowGraph(summaries map[*ssa.Function]*SummaryGraph, cache *Cache) CrossFunctionFlowGraph {
-	return CrossFunctionFlowGraph{Summaries: summaries, cache: cache, built: false}
+	return CrossFunctionFlowGraph{
+		Summaries:     summaries,
+		cache:         cache,
+		built:         false,
+		ForwardEdges:  make(map[GraphNode]map[GraphNode]bool),
+		BackwardEdges: make(map[GraphNode]map[GraphNode]bool),
+	}
 }
 
 func (g *CrossFunctionFlowGraph) IsBuilt() bool {
@@ -32,9 +42,37 @@ func (g *CrossFunctionFlowGraph) IsBuilt() bool {
 // Print prints each of the function summaries in the graph.
 func (g *CrossFunctionFlowGraph) Print(w io.Writer) {
 	fmt.Fprintf(w, "digraph program {\n")
+	fmt.Fprintf(w, "\tcompound=true;\n") // visually group subgraphs together
 	for _, summary := range g.Summaries {
 		summary.Print(false, w)
 	}
+	const forwardColor = "\"#1cf4a3\""  // green
+	const backwardColor = "\"#dc143c\"" // red
+	const fmtColorEdge = "%s -> %s [color=%s];\n"
+	for src, dsts := range g.ForwardEdges {
+		for dst := range dsts {
+			fmt.Fprintf(w, fmtColorEdge, escape(src.String()), escape(dst.String()), forwardColor)
+		}
+	}
+	for dst, srcs := range g.BackwardEdges {
+		for src := range srcs {
+			fmt.Fprintf(w, fmtColorEdge, escape(dst.String()), escape(src.String()), backwardColor)
+		}
+	}
+
+	for global, accesses := range g.Globals {
+		for access := range accesses {
+			// write is an edge from global <- access, read is an edge from global -> access
+			if access.IsWrite {
+				fmt.Fprintf(w, fmtColorEdge, escape(access.String()), escape(global.String()), forwardColor)
+				fmt.Fprintf(w, fmtColorEdge, escape(global.String()), escape(access.String()), backwardColor)
+			} else {
+				fmt.Fprintf(w, fmtColorEdge, escape(global.String()), escape(access.String()), forwardColor)
+				fmt.Fprintf(w, fmtColorEdge, escape(access.String()), escape(global.String()), backwardColor)
+			}
+		}
+	}
+
 	fmt.Fprintf(w, "}\n")
 }
 
@@ -57,6 +95,7 @@ type SourceVisitor func(logger *log.Logger, c *Cache, source NodeWithTrace, data
 
 // BuildGraph builds the cross function flow graph by connecting summaries together
 func (g *CrossFunctionFlowGraph) BuildGraph() {
+	g.cache.Logger.Println("Building cross-function flow graph...")
 	c := g.cache
 	logger := c.Logger
 	// Open a file to output summaries
@@ -128,7 +167,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 	g.built = true
 }
 
-func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(dataFlows DataFlows, visitor SourceVisitor, coverage *os.File) {
+func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(dataFlows DataFlows, visitor SourceVisitor, isEntryPoint func(*config.Config, *ssa.Function) bool, coverage *os.File) {
 	var sourceFuncs []*SummaryGraph
 	var entryPoints []NodeWithTrace
 
@@ -139,7 +178,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(dataFlows DataFlows, visit
 			entry := NodeWithTrace{Node: snode, Trace: nil}
 			entryPoints = append(entryPoints, entry)
 		}
-		if isSourceFunction(g.cache.Config, summary.Parent) {
+		if isEntryPoint(g.cache.Config, summary.Parent) {
 			sourceFuncs = append(sourceFuncs, summary)
 		}
 	}
@@ -151,7 +190,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(dataFlows DataFlows, visit
 		}
 	}
 
-	g.cache.Logger.Printf("--- # sources of tainted data: %d ---\n", len(entryPoints))
+	g.cache.Logger.Printf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
 
 	// Run the analysis for every source point. We may be able to change this to run the analysis for all sources
 	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
@@ -166,7 +205,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(dataFlows DataFlows, visit
 //
 // This function does nothing if there are no summaries (i.e. `len(g.summaries) == 0` or if `cfg.SkipInterprocedural`
 // is set to true.
-func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows, visitor SourceVisitor) {
+func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows, visitor SourceVisitor, isEntryPoint func(*config.Config, *ssa.Function) bool) {
 	// Skip the pass if user configuration demands it
 	if c.Config.SkipInterprocedural || len(g.Summaries) == 0 {
 		return
@@ -182,7 +221,295 @@ func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows
 	}
 
 	// Run the analysis
-	g.RunCrossFunctionPass(dataFlows, visitor, coverage)
+	g.RunCrossFunctionPass(dataFlows, visitor, isEntryPoint, coverage)
+}
+
+type visitorNode struct {
+	NodeWithTrace
+	pStack *paramStack
+	prev   *visitorNode
+	depth  int
+}
+
+type paramStack struct {
+	p    *ParamNode
+	prev *paramStack
+}
+
+func (ps *paramStack) add(p *ParamNode) *paramStack {
+	return &paramStack{p: p, prev: ps}
+}
+
+func (ps *paramStack) parent() *paramStack {
+	if ps == nil {
+		return nil
+	} else {
+		return ps.prev
+	}
+}
+
+// VisitCrossFunctionGraph is a SourceVisitor that builds adds edges between the
+// individual single-function dataflow graphs reachable from source.
+// This visitor must be called for every entrypoint in the program to build a
+// complete dataflow graph.
+func VisitCrossFunctionGraph(logger *log.Logger, c *Cache, source NodeWithTrace, _ DataFlows, _ io.StringWriter) {
+	que := []*visitorNode{{NodeWithTrace: source, pStack: nil, prev: nil, depth: 0}}
+	seen := make(map[NodeWithTrace]bool)
+
+	// Search from path candidates in the cross-function flow graph from sources to sinks
+	// TODO: optimize call stack
+	// TODO: set of visited nodes is not handled properly right now. We should revisit some nodes,
+	// we don't revisit only if it has been visited with the same call stack
+	for len(que) != 0 {
+		elt := que[0]
+		que = que[1:]
+
+		// Check that the node does not correspond to a non-constructed summary
+		if !elt.Node.Graph().Constructed {
+			if c.Config.Verbose {
+				logger.Printf("%s: summary has not been built for %s.",
+					format.Yellow("WARNING"),
+					format.Yellow(elt.Node.Graph().Parent.Name()))
+			}
+			// In that case, continue as there is no information on data flow
+			continue
+		}
+
+		switch graphNode := elt.Node.(type) {
+
+		// This is a parameter node. We have reached this node either from a function call and the stack is non-empty,
+		// or we reached this node from another flow inside the function being called.
+		// Every successor of the node must be added, and then:
+		// - if the stack is non-empty, we flow back to the call-site argument.
+		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
+		// the function's parameter.
+		case *ParamNode:
+			for out := range graphNode.Out() {
+				que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+			}
+
+			// Then we take care of the flows that go back to the callsite of the current function.
+			// for example:
+			// func f(s string, s2 *string) { *s2 = s }
+			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
+			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
+			if elt.Trace != nil {
+				// This function was called: the value flows back to the call site only
+				// TODO: check that this assumption is correct
+				callSite := elt.Trace.Label
+				if err := checkIndex(c, graphNode, callSite, "Argument at call site"); err != nil {
+					c.AddError(err)
+				} else {
+					// Follow taint on matching argument at call site
+					arg := callSite.Args()[graphNode.Index()]
+					if arg != nil {
+						que = addNext(c, que, seen, elt, arg, elt.Trace.Parent, elt.ClosureTrace)
+
+						addEdge(c.FlowGraph, arg, graphNode)
+					}
+				}
+			} else {
+				// The value must always flow back to all call sites: we got here without context
+				for _, callSite := range graphNode.Graph().Callsites {
+					if err := checkIndex(c, graphNode, callSite, "Argument at call site"); err != nil {
+						c.AddError(err)
+					} else {
+						callSiteArg := callSite.Args()[graphNode.Index()]
+						for x := range callSiteArg.Out() {
+							que = addNext(c, que, seen, elt, x, nil, elt.ClosureTrace)
+						}
+
+						addEdge(c.FlowGraph, callSiteArg, graphNode)
+					}
+				}
+			}
+		// This is a call site argument. We have reached this either returning from a call, from the callee's parameter
+		// node, or we reached this inside a function from another node.
+		// In either case, the flow continues inside the function to the graphNode.Out() children and to the callee's
+		// parameters
+		case *CallNodeArg:
+			// Flow to next call
+			callSite := graphNode.ParentNode()
+
+			// checkNoGoRoutine(c, goroutines, callSite)
+
+			if callSite.CalleeSummary == nil { // this function has not been summarized
+				printMissingSummaryMessage(c, callSite)
+				break
+			}
+
+			if !callSite.CalleeSummary.Constructed {
+				printWarningSummaryNotConstructed(c, callSite)
+			}
+
+			// Obtain the parameter node of the callee corresponding to the argument in the call site
+			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
+			if param != nil {
+				x := callSite.CalleeSummary.Params[param]
+				que = addNext(c, que, seen, elt, x, elt.Trace.Add(callSite), elt.ClosureTrace)
+				addEdge(c.FlowGraph, graphNode, x)
+			} else {
+				c.AddError(fmt.Errorf("no parameter matching argument at position %d in %s",
+					graphNode.Index(), callSite.CalleeSummary.Parent.String()))
+			}
+
+			if elt.prev == nil || callSite.Graph() != elt.prev.Node.Graph() {
+				// We are done with propagating to the callee's parameters. Next, we need to handle
+				// the flow inside the caller function: the outgoing edges computed for the summary
+				for out := range graphNode.Out() {
+					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+				}
+			}
+
+		// This is a return node. We have reached this from any node in the return node's function.
+		// The data will flow to the caller.
+		// If the stack is non-empty, then the data flows to back the call site in the stack(the CallNode).
+		// If the stack is empty, then the data flows back to every possible call site according to the call
+		// graph.
+		case *ReturnNode:
+			// Check call stack is empty, and caller is one of the callsites
+			// Caller can be different if value flowed in function through a closure definition
+			if elt.Trace != nil && CheckCallStackContainsCallsite(c, graphNode.Graph().Callsites, elt.Trace.Label) {
+				// This function was called: the value flows back to the call site only
+				caller := elt.Trace.Label
+				addEdge(c.FlowGraph, graphNode, caller)
+				for x := range caller.Out() {
+					que = addNext(c, que, seen, elt, x, elt.Trace.Parent, elt.ClosureTrace)
+				}
+			} else if elt.ClosureTrace != nil && checkClosureReturns(graphNode, elt.ClosureTrace.Label) {
+				addEdge(c.FlowGraph, graphNode, elt.ClosureTrace.Label)
+				for cCall := range elt.ClosureTrace.Label.Out() {
+					que = addNext(c, que, seen, elt, cCall, elt.Trace, elt.ClosureTrace.Parent)
+				}
+			} else if len(graphNode.Graph().Callsites) > 0 {
+				// The value must always flow back to all call sites: we got here without context
+				for _, callSite := range graphNode.Graph().Callsites {
+					addEdge(c.FlowGraph, graphNode, callSite)
+					for x := range callSite.Out() {
+						que = addNext(c, que, seen, elt, x, nil, elt.ClosureTrace)
+					}
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "Return node %s does not return anywhere.\n", elt.Node.String())
+				fmt.Fprintf(os.Stderr, "In %s\n", elt.Node.Position(c))
+			}
+
+		// This is a call node, which materializes where the callee returns. A call node is reached from a return
+		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
+		// flows to the children of the node.
+		case *CallNode:
+			// checkNoGoRoutine(c, goroutines, graphNode)
+
+			// We pop the call from the stack and continue inside the caller
+			var trace *NodeTree[*CallNode]
+			if elt.Trace != nil {
+				trace = elt.Trace.Parent
+			}
+			for x := range graphNode.Out() {
+				que = addNext(c, que, seen, elt, x, trace, elt.ClosureTrace)
+			}
+
+		// Tainting a bound variable node means that the free variable in a closure will be tainted.
+		// For example:
+		// 1:  x := "ok" // x is not tainted here
+		// 2: f := func(s string) string { return s + x } // x is bound here
+		// 3: x := source()
+		// 4: sink(f("ok")) // will raise an alarm
+		// The flow goes from x at line 3, to x being bound at line 2, to x the free variable
+		// inside the closure definition, and finally from the return of the closure to the
+		// call site of the closure inside a sink.
+		// For more examples with closures, see testdata/src/taint/cross-function/closures/main.go
+		case *BoundVarNode:
+			// Flows inside the function creating the closure (where MakeClosure happens)
+			// This is similar to the dataflow edges between arguments
+			for out := range graphNode.Out() {
+				que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+			}
+
+			closureNode := graphNode.ParentNode()
+
+			if closureNode.ClosureSummary == nil {
+				printMissingClosureSummaryMessage(c, closureNode)
+				break
+			}
+			// Flows to the free variables of the closure
+			// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
+			fv := closureNode.ClosureSummary.Parent.FreeVars[graphNode.Index()]
+			if fv != nil {
+				x := closureNode.ClosureSummary.FreeVars[fv]
+				que = addNext(c, que, seen, elt, x, elt.Trace, elt.ClosureTrace.Add(closureNode))
+			} else {
+				c.AddError(fmt.Errorf("no free variable matching bound variable at position %d in %s",
+					graphNode.Index(), closureNode.ClosureSummary.Parent.String()))
+			}
+
+		// The data flows to a free variable inside a closure body from a bound variable inside a closure definition.
+		// (see the example for BoundVarNode)
+		case *FreeVarNode:
+			// Flows inside the function
+			for out := range graphNode.Out() {
+				que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+			}
+
+			// TODO: back flows when the free variables are tainted by the closure's body
+
+		// A closure node can be reached if a function value is tainted
+		// TODO: add an example
+		case *ClosureNode:
+			for out := range graphNode.Out() {
+				que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+			}
+
+		// Synthetic nodes can only be sources and data should only flow from those nodes: we only need to follow the
+		// outgoing edges. This node should only be a start node, unless some functionality is added to the dataflow
+		// graph summaries.
+		case *SyntheticNode:
+			for x := range graphNode.Out() {
+				que = addNext(c, que, seen, elt, x, elt.Trace, elt.ClosureTrace)
+			}
+		case *AccessGlobalNode:
+			graphNode.Global.mutex.Lock()
+			global := graphNode.Global
+			if accesses, ok := c.FlowGraph.Globals[global]; !ok {
+				if c.FlowGraph.Globals == nil {
+					c.FlowGraph.Globals = make(map[*GlobalNode]map[*AccessGlobalNode]bool)
+				}
+				c.FlowGraph.Globals[global] = map[*AccessGlobalNode]bool{graphNode: true}
+			} else {
+				if accesses == nil {
+					accesses = make(map[*AccessGlobalNode]bool)
+				}
+				accesses[graphNode] = true
+			}
+			graphNode.Global.mutex.Unlock()
+
+			if graphNode.IsWrite {
+				// Tainted data is written to ALL locations where the global is read.
+				for x := range graphNode.Global.ReadLocations {
+					// Global jump makes trace irrelevant if we don't follow the call graph!
+					que = addNext(c, que, seen, elt, x, nil, elt.ClosureTrace)
+				}
+			} else {
+				// From a read location, tainted data follows the out edges of the node
+				for out := range graphNode.Out() {
+					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+				}
+			}
+		}
+	}
+}
+
+// addEdge adds forward edge src -> dst and backwards edge src <- dst to graph.
+func addEdge(graph *CrossFunctionFlowGraph, src GraphNode, dst GraphNode) {
+	if _, ok := graph.ForwardEdges[src]; !ok {
+		graph.ForwardEdges[src] = make(map[GraphNode]bool)
+	}
+	graph.ForwardEdges[src][dst] = true
+
+	if _, ok := graph.BackwardEdges[dst]; !ok {
+		graph.BackwardEdges[dst] = make(map[GraphNode]bool)
+	}
+	graph.BackwardEdges[dst][src] = true
 }
 
 // findCalleeSummary returns the summary graph of callee in summaries if present. Returns nil if not.
@@ -218,7 +545,8 @@ func findClosureSummary(instr *ssa.MakeClosure, summaries map[*ssa.Function]*Sum
 	}
 }
 
-func isSourceFunction(cfg *config.Config, f *ssa.Function) bool {
+// IsSourceFunction returns true if cfg identifies f as a source.
+func IsSourceFunction(cfg *config.Config, f *ssa.Function) bool {
 	pkg := packagescan.PackageNameFromFunction(f)
 	return cfg.IsSource(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 }
@@ -275,6 +603,62 @@ func CheckCallStackContainsCallsite(c *Cache, nodes map[ssa.CallInstruction]*Cal
 		if x.CallSite() == node.CallSite() && x.Callee() == node.Callee() {
 			return true
 		}
+	}
+	return false
+}
+
+// addNext adds the node to the queue que, setting cur as the previous node and checking that node with the
+// trace has not been seen before
+func addNext(c *Cache,
+	que []*visitorNode,
+	seen map[NodeWithTrace]bool,
+	cur *visitorNode,
+	node GraphNode,
+	trace *NodeTree[*CallNode],
+	closureTrace *NodeTree[*ClosureNode]) []*visitorNode {
+
+	newNode := NodeWithTrace{Node: node, Trace: trace, ClosureTrace: closureTrace}
+
+	// Stop conditions: node is already in seen, trace is a lasso or depth exceeds limit
+	if seen[newNode] || trace.IsLasso() || cur.depth > c.Config.MaxDepth {
+		return que
+	}
+
+	// logic for parameter stack
+	pStack := cur.pStack
+	switch curNode := cur.Node.(type) {
+	case *ReturnNode:
+		pStack = pStack.parent()
+	case *ParamNode:
+		pStack = pStack.add(curNode)
+	}
+
+	newVis := &visitorNode{
+		NodeWithTrace: newNode,
+		pStack:        pStack,
+		prev:          cur,
+		depth:         cur.depth + 1,
+	}
+	que = append(que, newVis)
+	seen[newNode] = true
+	return que
+}
+
+// checkIndex checks that the indexed graph node is valid in the parent node call site
+func checkIndex(c *Cache, node IndexedGraphNode, callSite *CallNode, msg string) error {
+	if node.Index() >= len(callSite.Args()) {
+		pos := c.Program.Fset.Position(callSite.CallSite().Value().Pos())
+		c.Logger.Printf("%s: trying to access index %d of %s, which has"+
+			" only %d elements\nSee: %s\n", msg, node.Index(), callSite.String(), len(callSite.Args()),
+			pos)
+		return fmt.Errorf("bad index %d at %s", node.Index(), pos)
+	}
+	return nil
+}
+
+func checkClosureReturns(returnNode *ReturnNode, closureNode *ClosureNode) bool {
+	if returnNode.Graph() == closureNode.ClosureSummary {
+		return true
 	}
 	return false
 }

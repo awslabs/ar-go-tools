@@ -2,14 +2,14 @@
 package analysis
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
-
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
 )
@@ -89,15 +89,16 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	}
 	logger.Printf("Single-function pass done (%.2f s).", time.Since(start).Seconds())
 
+	args.Cache.FlowGraph = &fg
 	return SingleFunctionResult{FlowGraph: fg, FlowCandidates: flowCandidates}
 }
 
 // RunCrossFunctionArgs represents the arguments to RunCrossFunction.
 type RunCrossFunctionArgs struct {
 	Cache              *dataflow.Cache
-	FlowGraph          dataflow.CrossFunctionFlowGraph
 	DataFlowCandidates dataflow.DataFlows
 	Visitor            dataflow.SourceVisitor
+	IsEntrypoint       func(*config.Config, *ssa.Function) bool
 }
 
 // RunCrossFunction runs the cross-function analysis pass.
@@ -105,8 +106,24 @@ type RunCrossFunctionArgs struct {
 func RunCrossFunction(args RunCrossFunctionArgs) {
 	args.Cache.Logger.Println("Starting cross-function pass...")
 	start := time.Now()
-	args.FlowGraph.CrossFunctionPass(args.Cache, args.DataFlowCandidates, args.Visitor)
+	args.Cache.FlowGraph.CrossFunctionPass(args.Cache, args.DataFlowCandidates, args.Visitor, args.IsEntrypoint)
 	args.Cache.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
+}
+
+// BuildCache builds a full-program (cross-function) analysis cache from program.
+func BuildCrossFunctionGraph(cache *dataflow.Cache) (*dataflow.Cache, error) {
+	if len(cache.FlowGraph.Summaries) == 0 {
+		return nil, fmt.Errorf("cache does not contatain any summaries")
+	}
+
+	RunCrossFunction(RunCrossFunctionArgs{
+		Cache:              cache,
+		DataFlowCandidates: nil,
+		Visitor:            dataflow.VisitCrossFunctionGraph,
+		IsEntrypoint:       func(*config.Config, *ssa.Function) bool { return true },
+	})
+
+	return cache, nil
 }
 
 // singleFunctionJob contains all the information necessary to run the single-function analysis on function.

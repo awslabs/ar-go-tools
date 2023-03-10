@@ -1,8 +1,10 @@
 package dataflow
 
 import (
-	"golang.org/x/tools/go/ssa"
+	"fmt"
 	"sync"
+
+	"golang.org/x/tools/go/ssa"
 )
 
 func NewGlobalNode(g *ssa.Global) *GlobalNode {
@@ -34,5 +36,7 @@ func (g *GlobalNode) AddReadLoc(n GraphNode) {
 }
 
 func (g *GlobalNode) String() string {
-	return g.value.String()
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	return fmt.Sprintf("\"defglobal: %s\"", g.value.String())
 }

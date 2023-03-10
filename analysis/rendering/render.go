@@ -6,13 +6,17 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unsafe"
 
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
@@ -59,6 +63,42 @@ func filterFn(edge *callgraph.Edge) bool {
 		}
 	}
 	return true
+}
+
+// WriteCrossFunctionGraph writes a graphviz representation of the cross-function dataflow graph to w.
+func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ssa.Program, w io.Writer) error {
+	// every function should be included in the graph
+	// building the graph doesn't require souce/sink logic
+	cache, err := dataflow.BuildFullCache(logger, cfg, program)
+	if err != nil {
+		return fmt.Errorf("failed to build cache: %w", err)
+	}
+
+	numRoutines := runtime.NumCPU() - 1
+	if numRoutines <= 0 {
+		numRoutines = 1
+	}
+
+	// Only build summaries for non-stdlib functions here
+	shouldBuildSummary := func(f *ssa.Function) bool {
+		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
+	}
+	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
+		Cache:               cache,
+		NumRoutines:         numRoutines,
+		ShouldCreateSummary: shouldBuildSummary,
+		IsSourceNode:        func(*config.Config, ssa.Node) bool { return true },
+		IsSinkNode:          func(*config.Config, ssa.Node) bool { return true },
+	})
+
+	cache, err = analysis.BuildCrossFunctionGraph(cache)
+	if err != nil {
+		return fmt.Errorf("failed to build cross-function graph: %w", err)
+	}
+
+	cache.FlowGraph.Print(w)
+
+	return nil
 }
 
 // WriteGraphviz writes a graphviz representation the call-graph to w

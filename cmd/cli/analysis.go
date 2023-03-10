@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"os"
+	"os/exec"
 	"regexp"
 	"runtime"
+	"time"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
@@ -18,13 +22,13 @@ import (
 // executes the command with cache if cache is not nil.
 // If cache is nil, then it should print its definition on stdout
 
-// cmdShow prints the SSA representation of all the function matching a given regex
-func cmdShow(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+// cmdShowSsa prints the SSA representation of all the function matching a given regex
+func cmdShowSsa(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the ssa representation of a function.\n"+
-			"\t  show regex prints the SSA representation of the function matching the regex\n"+
-			"\t  Example:\n", tt.Escape.Blue, cmdShowName, tt.Escape.Reset)
-		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdShowName)
+			"\t  showssa regex prints the SSA representation of the function matching the regex\n"+
+			"\t  Example:\n", tt.Escape.Blue, cmdShowSsaName, tt.Escape.Reset)
+		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdShowSsaName)
 		return false
 	}
 
@@ -36,7 +40,7 @@ func cmdShow(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			b.Reset()
 		} else {
 			WriteErr(tt, "Need at least one function to show.")
-			cmdShow(tt, nil, command)
+			cmdShowSsa(tt, nil, command)
 		}
 		return false
 	}
@@ -52,6 +56,61 @@ func cmdShow(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		_, _ = b.WriteTo(tt)
 		b.Reset()
 	}
+	return false
+}
+
+// cmdShowDataflow builds and prints the cross-function dataflow graph.
+// If on macOS, the command automatically renders an SVG and opens it in Safari.
+func cmdShowDataflow(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+	if c == nil {
+		writeFmt(tt, "\t- %s%s%s : build and print the cross-function dataflow graph of a program.\n"+
+			"\t  showdataflow args prints the cross-function dataflow graph.\n"+
+			"\t    on macOS, the command also renders an SVG of the graph and opens it in Safari\n"+
+			"\t  Example:\n", tt.Escape.Blue, cmdShowDataflowName, tt.Escape.Reset)
+		writeFmt(tt, "\t  > %s main.go prog.go\n", cmdShowDataflowName)
+		return false
+	}
+
+	// TODO the dataflow graph from the CLI is slightly different from the
+	// `render` tool. This is because some function parameters are not being
+	// visited. The refactor should address this.
+	var err error
+	c, err = analysis.BuildCrossFunctionGraph(c)
+	if err != nil {
+		WriteErr(tt, "Failed to build cross-function graph: %v\n", err)
+		return false
+	}
+	var b bytes.Buffer
+	c.FlowGraph.Print(&b)
+
+	tt.Write(b.Bytes())
+	if runtime.GOOS == "darwin" {
+		dotFile, err := os.CreateTemp(os.TempDir(), "*.dot")
+		if err != nil {
+			WriteErr(tt, "Failed to create temp file: %v\n", dotFile.Name())
+			return false
+		}
+		WriteSuccess(tt, " to file %v", dotFile.Name())
+		dotFile.Write(b.Bytes())
+
+		dotCtx, dotCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer dotCancel()
+		svgFileName := dotFile.Name() + ".svg"
+		dotCmd := exec.CommandContext(dotCtx, "dot", "-Tsvg", dotFile.Name(), "-o", svgFileName)
+		if err := dotCmd.Run(); err != nil {
+			WriteErr(tt, "Failed to compile dot cross-function graph: %v\n", err)
+			return false
+		}
+
+		openCtx, openCancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer openCancel()
+		openCmd := exec.CommandContext(openCtx, "open", "-a", "Safari", svgFileName)
+		if err := openCmd.Run(); err != nil {
+			WriteErr(tt, "Failed to open dot cross-function graph SVG: %v\n", err)
+			return false
+		}
+	}
+
 	return false
 }
 
@@ -128,7 +187,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		}
 		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 			Cache:               c,
-			NumRoutines:         0,
+			NumRoutines:         numRoutines,
 			ShouldCreateSummary: shouldBuildSummary,
 			IsSourceNode:        taint.IsSourceNode,
 			IsSinkNode:          taint.IsSinkNode,
@@ -174,7 +233,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		// Run the analysis with the filter.
 		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 			Cache:               c,
-			NumRoutines:         0,
+			NumRoutines:         numRoutines,
 			ShouldCreateSummary: shouldBuildSummary,
 			IsSourceNode:        taint.IsSourceNode,
 			IsSinkNode:          taint.IsSinkNode,
@@ -206,7 +265,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 		return false
 	}
 	dataFlows := map[ssa.Instruction]map[ssa.Instruction]bool{}
-	c.FlowGraph.RunCrossFunctionPass(dataFlows, taint.VisitFromSource, nil)
+	c.FlowGraph.RunCrossFunctionPass(dataFlows, taint.VisitFromSource, dataflow.IsSourceFunction, nil)
 	return false
 }
 
