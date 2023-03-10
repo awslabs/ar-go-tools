@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"strings"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
@@ -43,6 +44,7 @@ var (
 		cmdReconfigName:   cmdReconfig,
 		cmdShowName:       cmdShow,
 		cmdSsaValueName:   cmdSsaValue,
+		cmdSsaInstrName:   cmdSsaInstr,
 		cmdStateName:      cmdState,
 		cmdSummaryName:    cmdSummary,
 		cmdSummarizeName:  cmdSummarize,
@@ -87,6 +89,20 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not load config %s\n", *configPath)
 			return
+		}
+	} else if len(flag.Args()) == 1 && strings.HasSuffix(flag.Args()[0], ".go") {
+		// Special case: look for config in .go 's folder
+		dir := path.Dir(flag.Args()[0])
+		configfile := path.Join(dir, "config.yaml")
+		config.SetGlobalConfig(configfile)
+		tmpConfig, err := config.LoadGlobal()
+		if err != nil {
+			// Reset and ignore
+			config.SetGlobalConfig("")
+		} else {
+			pConfig = tmpConfig
+			state.ConfigPath = configfile
+
 		}
 	}
 

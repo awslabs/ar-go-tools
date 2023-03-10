@@ -68,3 +68,7 @@ func TestCrossFunctionStdlib(t *testing.T) {
 func TestCrossFunctionSelects(t *testing.T) {
 	runTest(t, "selects", []string{"helpers.go"})
 }
+
+func TestCrossFunctionPanics(t *testing.T) {
+	runTest(t, "panics", []string{})
+}

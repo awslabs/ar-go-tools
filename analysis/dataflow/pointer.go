@@ -37,7 +37,18 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 		// If the function is a user-defined function (it can be from a dependency) then every value that can
 		// can potentially alias is marked for querying.
 		if functionFilter(function) {
-			ssafuncs.IterateInstructions(function, func(instruction ssa.Instruction) { addQuery(pCfg, instruction) })
+			// Add all function parameters
+			for _, param := range function.Params {
+				addValueQuery(pCfg, param)
+			}
+			// Add all free variables
+			for _, fv := range function.FreeVars {
+				addValueQuery(pCfg, fv)
+			}
+
+			ssafuncs.IterateInstructions(function, func(instruction ssa.Instruction) {
+				addInstructionQuery(pCfg, instruction)
+			})
 		}
 	}
 
@@ -47,26 +58,32 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 
 // addQuery adds a query for the instruction to the pointer configuration, performing all the necessary checks to
 // ensure the query can be added safely.
-func addQuery(cfg *pointer.Config, instruction ssa.Instruction) {
+func addInstructionQuery(cfg *pointer.Config, instruction ssa.Instruction) {
 	if instruction == nil {
 		return
 	}
 
 	for _, operand := range instruction.Operands([]*ssa.Value{}) {
 		if *operand != nil && (*operand).Type() != nil {
-			typ := (*operand).Type()
-			// Add query if value is of a type that can point
-			if pointer.CanPoint(typ) {
-				cfg.AddQuery(*operand)
-			}
-			indirectQuery(typ, operand, cfg)
+			addValueQuery(cfg, *operand)
 		}
 	}
 }
 
+func addValueQuery(cfg *pointer.Config, value ssa.Value) {
+	if value == nil {
+		return
+	}
+	typ := value.Type()
+	if pointer.CanPoint(typ) {
+		cfg.AddQuery(value)
+	}
+	indirectQuery(cfg, typ, value)
+}
+
 // indirectQuery wraps an update to the IndirectQuery of the pointer config. We need to wrap it
 // because typ.Underlying() may panic despite typ being non-nil
-func indirectQuery(typ types.Type, operand *ssa.Value, cfg *pointer.Config) {
+func indirectQuery(cfg *pointer.Config, typ types.Type, val ssa.Value) {
 	defer func() {
 		if r := recover(); r != nil {
 			// Do nothing. Is that panic a bug? Occurs on a *ssa.opaqueType
@@ -77,7 +94,7 @@ func indirectQuery(typ types.Type, operand *ssa.Value, cfg *pointer.Config) {
 		// Add indirect query if value is of pointer type, and underlying type can point
 		if ptrType, ok := typ.Underlying().(*types.Pointer); ok {
 			if pointer.CanPoint(ptrType.Elem()) {
-				cfg.AddIndirectQuery(*operand)
+				cfg.AddIndirectQuery(val)
 			}
 		}
 	}

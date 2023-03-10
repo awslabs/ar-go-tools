@@ -135,7 +135,7 @@ func (s *Source) IsSynthetic() bool {
 type FlowInformation struct {
 	Config         *config.Config                               // user provided configuration identifying sources and sinks
 	MarkedValues   map[ssa.Value]map[Source]bool                // map from values to the set of sources that mark them
-	MarkedPointers map[*pointer.PointsToSet]Source              // map from pointer sets to the sources that mark them
+	MarkedPointers map[*pointer.Pointer]Source                  // map from pointer sets to the sources that mark them
 	SinkSources    map[ssa.Instruction]map[ssa.Instruction]bool // map from the sinks to the set of sources that reach them
 }
 
@@ -144,7 +144,7 @@ func NewFlowInfo(cfg *config.Config) *FlowInformation {
 	return &FlowInformation{
 		Config:         cfg,
 		MarkedValues:   make(map[ssa.Value]map[Source]bool),
-		MarkedPointers: make(map[*pointer.PointsToSet]Source),
+		MarkedPointers: make(map[*pointer.Pointer]Source),
 		SinkSources:    make(map[ssa.Instruction]map[ssa.Instruction]bool),
 	}
 }

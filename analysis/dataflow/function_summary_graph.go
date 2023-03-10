@@ -1107,7 +1107,7 @@ func (a *AccessGlobalNode) String() string {
 
 // Print the summary graph to w in the graphviz format.
 // If g is nil, then prints the empty graph "subgraph {}"
-func (g *SummaryGraph) Print(w io.Writer) {
+func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	if g == nil || g.Parent == nil {
 		fmt.Fprintf(w, "subgraph {}\n")
 		return
@@ -1117,8 +1117,10 @@ func (g *SummaryGraph) Print(w io.Writer) {
 		for n := range a.Out() {
 			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
 		}
-		for n := range a.In() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+		if !outEdgesOnly {
+			for n := range a.In() {
+				fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+			}
 		}
 	}
 
@@ -1126,8 +1128,10 @@ func (g *SummaryGraph) Print(w io.Writer) {
 		for n := range a.Out() {
 			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
 		}
-		for n := range a.In() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+		if !outEdgesOnly {
+			for n := range a.In() {
+				fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+			}
 		}
 	}
 
@@ -1136,15 +1140,19 @@ func (g *SummaryGraph) Print(w io.Writer) {
 			for n := range callN.Out() {
 				fmt.Fprintf(w, "\t%s -> %s;\n", escape(callN.String()), escape(n.String()))
 			}
-			for n := range callN.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(callN.String()), escape(n.String()))
+			if !outEdgesOnly {
+				for n := range callN.In() {
+					fmt.Fprintf(w, "\t%s -> %s;\n", escape(callN.String()), escape(n.String()))
+				}
 			}
 			for _, x := range callN.args {
 				for n := range x.Out() {
 					fmt.Fprintf(w, "\t%s -> %s;\n", escape(x.String()), escape(n.String()))
 				}
-				for n := range x.In() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(x.String()), escape(n.String()))
+				if !outEdgesOnly {
+					for n := range x.In() {
+						fmt.Fprintf(w, "\t%s -> %s;\n", escape(x.String()), escape(n.String()))
+					}
 				}
 			}
 		}
@@ -1155,15 +1163,19 @@ func (g *SummaryGraph) Print(w io.Writer) {
 			for n := range boundvar.Out() {
 				fmt.Fprintf(w, "\t%s -> %s;\n", escape(boundvar.String()), escape(n.String()))
 			}
-			for n := range boundvar.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(boundvar.String()), escape(n.String()))
+			if !outEdgesOnly {
+				for n := range boundvar.In() {
+					fmt.Fprintf(w, "\t%s -> %s;\n", escape(boundvar.String()), escape(n.String()))
+				}
 			}
 		}
 		for o := range closure.Out() {
 			fmt.Fprintf(w, "\t%s -> %s;\n", escape(closure.String()), escape(o.String()))
 		}
-		for i := range closure.In() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(closure.String()), escape(i.String()))
+		if !outEdgesOnly {
+			for i := range closure.In() {
+				fmt.Fprintf(w, "\t%s -> %s;\n", escape(closure.String()), escape(i.String()))
+			}
 		}
 	}
 
@@ -1171,8 +1183,10 @@ func (g *SummaryGraph) Print(w io.Writer) {
 		for n := range r.Out() {
 			fmt.Fprintf(w, "\t%s -> %s;\n", escape(r.String()), escape(n.String()))
 		}
-		for n := range r.In() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(r.String()), escape(n.String()))
+		if !outEdgesOnly {
+			for n := range r.In() {
+				fmt.Fprintf(w, "\t%s -> %s;\n", escape(r.String()), escape(n.String()))
+			}
 		}
 	}
 
@@ -1180,8 +1194,10 @@ func (g *SummaryGraph) Print(w io.Writer) {
 		for n := range s.Out() {
 			fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
 		}
-		for n := range s.In() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+		if !outEdgesOnly {
+			for n := range s.In() {
+				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+			}
 		}
 	}
 
@@ -1190,8 +1206,10 @@ func (g *SummaryGraph) Print(w io.Writer) {
 			for n := range s.Out() {
 				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
 			}
-			for n := range s.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+			if !outEdgesOnly {
+				for n := range s.In() {
+					fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+				}
 			}
 		}
 	}

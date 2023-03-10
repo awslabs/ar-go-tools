@@ -33,7 +33,7 @@ func (g *CrossFunctionFlowGraph) IsBuilt() bool {
 func (g *CrossFunctionFlowGraph) Print(w io.Writer) {
 	fmt.Fprintf(w, "digraph program {\n")
 	for _, summary := range g.Summaries {
-		summary.Print(w)
+		summary.Print(false, w)
 	}
 	fmt.Fprintf(w, "}\n")
 }
@@ -72,7 +72,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 		}
 		if summariesFile != nil {
 			_, _ = summariesFile.WriteString(fmt.Sprintf("%s:\n", summary.Parent.String()))
-			summary.Print(summariesFile)
+			summary.Print(false, summariesFile)
 			_, _ = summariesFile.WriteString("\n")
 		}
 		for _, callNodes := range summary.Callees {

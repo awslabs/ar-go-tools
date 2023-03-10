@@ -2,8 +2,8 @@ package dataflow
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
-	"strings"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/astfuncs"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
@@ -37,8 +37,8 @@ type stateTracker struct {
 	instrPaths     map[ssa.Instruction]map[ssa.Instruction]bool // instrPaths[i][j] means there is a path from i to j
 	isSourceNode   func(*config.Config, ssa.Node) bool          // function that determines if a node is a source
 	isSinkNode     func(*config.Config, ssa.Node) bool          // function that determines if a node is a sink
-	paramAliases   map[ssa.Value][]*ssa.Parameter               // a map from values in the function to the parameter it aliases
-	freeVarAliases map[ssa.Value][]*ssa.FreeVar                 // a map from values to the free variable it aliases
+	paramAliases   map[ssa.Value]map[*ssa.Parameter]bool        // a map from values in the function to the parameter it aliases
+	freeVarAliases map[ssa.Value]map[*ssa.FreeVar]bool          // a map from values to the free variable it aliases
 }
 
 // SingleFunctionResult holds the results of the intra-procedural analysis.
@@ -65,8 +65,8 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 		instrPaths:     map[ssa.Instruction]map[ssa.Instruction]bool{},
 		isSourceNode:   isSourceNode,
 		isSinkNode:     isSinkNode,
-		paramAliases:   map[ssa.Value][]*ssa.Parameter{},
-		freeVarAliases: map[ssa.Value][]*ssa.FreeVar{},
+		paramAliases:   map[ssa.Value]map[*ssa.Parameter]bool{},
+		freeVarAliases: map[ssa.Value]map[*ssa.FreeVar]bool{},
 	}
 
 	// Output warning if defer stack is unbounded
@@ -78,33 +78,47 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 		}
 	}
 
+	// Initialize alias maps
+	ssafuncs.IterateValues(function, func(v ssa.Value) {
+		tracker.paramAliases[v] = map[*ssa.Parameter]bool{}
+		tracker.freeVarAliases[v] = map[*ssa.FreeVar]bool{}
+	})
+
 	// The parameters of the function are marked as Parameter
 	for _, param := range function.Params {
 		flowInfo.AddSource(param, NewSource(param, Parameter, "*"))
-		tracker.populateAliasCaches(param)
+		tracker.addParamAliases(param)
 	}
 	// The free variables of the function are marked
 	for _, fv := range function.FreeVars {
 		flowInfo.AddSource(fv, NewSource(fv, FreeVar, "*"))
-		tracker.populateAliasCaches(fv)
+		tracker.addFreeVarAliases(fv)
 	}
 
+	// Special cases: load instructions in closures
+	ssafuncs.IterateInstructions(function,
+		func(i ssa.Instruction) {
+			if load, ok := i.(*ssa.UnOp); ok && load.Op == token.MUL {
+				for _, fv := range function.FreeVars {
+					if fv == load.X {
+						tracker.freeVarAliases[load][fv] = true
+					}
+				}
+			}
+		})
+
+	// Collect global variable uses
 	ssafuncs.IterateInstructions(function,
 		func(i ssa.Instruction) {
 			var operands []*ssa.Value
 			operands = i.Operands(operands)
 			for _, operand := range operands {
-				tracker.populateAliasCaches(*operand)
-
 				// Add sources for globals
 				if glob, ok := (*operand).(*ssa.Global); ok {
 					if node, ok := cache.Globals[glob]; ok {
 						tracker.summary.AddAccessGlobalNode(i, node)
 					}
 				}
-			}
-			if v, ok := i.(ssa.Value); ok {
-				tracker.populateAliasCaches(v)
 			}
 		})
 
@@ -138,10 +152,9 @@ func (t *stateTracker) getMarkedValueOrigins(v ssa.Value, path string) []Source 
 	}
 
 	// when the value's aliases is marked by intersecting with another marked values aliases
-	if ptr := t.getAnyPointer(v); ptr != nil {
-		ptsToSet := ptr.PointsTo()
-		for otherPtsTo, source := range t.flowInfo.MarkedPointers {
-			if ptsToSet.Intersects(*otherPtsTo) {
+	if ptr := t.getPointer(v); ptr != nil {
+		for other, source := range t.flowInfo.MarkedPointers {
+			if ptr.MayAlias(*other) {
 				t.markValue(v, source)
 				origins = append(origins, source)
 			}
@@ -150,20 +163,16 @@ func (t *stateTracker) getMarkedValueOrigins(v ssa.Value, path string) []Source 
 	return origins
 }
 
-func pointers(p pointer.Pointer) string {
-	var s []string
-	for _, label := range p.PointsTo().Labels() {
-		s = append(s, label.Value().String())
-	}
-	return "{" + strings.Join(s, ", ") + "}"
-}
-
 // getAnyPointer returns the pointer to x according to the pointer analysis
-func (t *stateTracker) getAnyPointer(x ssa.Value) *pointer.Pointer {
-	// pointer information in Queries and IndirectQueries should be mutually exclusive, but we run both.
+func (t *stateTracker) getPointer(x ssa.Value) *pointer.Pointer {
 	if ptr, ptrExists := t.cache.PointerAnalysis.Queries[x]; ptrExists {
 		return &ptr
 	}
+	return nil
+}
+
+// getAnyPointer returns the pointer to x according to the pointer analysis
+func (t *stateTracker) getIndirectPointer(x ssa.Value) *pointer.Pointer {
 	// Check indirect queries
 	if ptr, ptrExists := t.cache.PointerAnalysis.IndirectQueries[x]; ptrExists {
 		return &ptr
@@ -171,52 +180,31 @@ func (t *stateTracker) getAnyPointer(x ssa.Value) *pointer.Pointer {
 	return nil
 }
 
-// populateAliasCaches adds x to the paramAliases and freeVarAliases of t, looking for all the parameters and
-// free variables the variable x aliases to.
-func (t *stateTracker) populateAliasCaches(x ssa.Value) {
-	var aliasedParams []*ssa.Parameter
-	var aliasedFv []*ssa.FreeVar
+// addParamAliases collects information about the value-aliases of the parameters
+func (t *stateTracker) addParamAliases(x *ssa.Parameter) {
+	t.paramAliases[x][x] = true
+	addAliases(x, t.summary.Parent, t.getPointer(x), t.paramAliases, t.getPointer, t.getIndirectPointer)
+	addAliases(x, t.summary.Parent, t.getIndirectPointer(x), t.paramAliases, t.getPointer, t.getIndirectPointer)
+}
 
-	if _, ok := t.paramAliases[x]; !ok {
-		for _, param := range t.summary.Parent.Params {
-			if x == param {
-				aliasedParams = append(aliasedParams, param)
-			} else {
-				paramPtr := t.getAnyPointer(param)
-				xPtr := t.getAnyPointer(x)
-				if paramPtr != nil && xPtr != nil && paramPtr.PointsTo().Intersects(xPtr.PointsTo()) {
-					aliasedParams = append(aliasedParams, param)
-				}
-			}
-		}
-		t.paramAliases[x] = aliasedParams
-	}
-
-	if _, ok := t.freeVarAliases[x]; !ok {
-		for _, fv := range t.summary.Parent.FreeVars {
-			if x == fv {
-				aliasedFv = append(aliasedFv, fv)
-			} else {
-				fvPtr := t.getAnyPointer(fv)
-				xPtr := t.getAnyPointer(x)
-				if fvPtr != nil && xPtr != nil && fvPtr.PointsTo().Intersects(xPtr.PointsTo()) {
-					aliasedFv = append(aliasedFv, fv)
-				}
-			}
-		}
-		t.freeVarAliases[x] = aliasedFv
-	}
+// addFreeVarAliases collects information about the value-aliases of the free variables
+func (t *stateTracker) addFreeVarAliases(x *ssa.FreeVar) {
+	t.freeVarAliases[x][x] = true
+	addAliases(x, t.summary.Parent, t.getPointer(x), t.freeVarAliases, t.getPointer, t.getIndirectPointer)
+	addAliases(x, t.summary.Parent, t.getIndirectPointer(x), t.freeVarAliases, t.getPointer, t.getIndirectPointer)
 }
 
 // checkCopyIntoArgs checks whether the source in is copying or writing into a value that aliases with
 // one of the function's parameters. This keeps tracks of data flows to the function parameters that a
 // caller might see.
 func (t *stateTracker) checkCopyIntoArgs(in Source, out ssa.Value) {
-	for _, aliasedParam := range t.paramAliases[out] {
-		t.summary.AddParamEdge(in, aliasedParam)
-	}
-	for _, aliasedFreeVar := range t.freeVarAliases[out] {
-		t.summary.AddFreeVarEdge(in, aliasedFreeVar)
+	if astfuncs.IsNillableType(out.Type()) {
+		for aliasedParam := range t.paramAliases[out] {
+			t.summary.AddParamEdge(in, aliasedParam)
+		}
+		for aliasedFreeVar := range t.freeVarAliases[out] {
+			t.summary.AddFreeVarEdge(in, aliasedFreeVar)
+		}
 	}
 }
 
@@ -228,15 +216,18 @@ func (t *stateTracker) checkFlowIntoGlobal(loc ssa.Instruction, origin Source, o
 }
 
 // markAllAliases marks all the aliases of the pointer set using the source
-func (t *stateTracker) markAllAliases(source Source, ptsToSet pointer.PointsToSet) {
+func (t *stateTracker) markAllAliases(source Source, ptr *pointer.Pointer) {
+	if ptr == nil {
+		return
+	}
 	// Look at every value in the points-to set.
-	for _, label := range ptsToSet.Labels() {
+	for _, label := range ptr.PointsTo().Labels() {
 		if label != nil && label.Value() != nil {
 			source.RegionPath = label.Path()
 			t.flowInfo.AddSource(label.Value(), source)
 		}
 	}
-	t.flowInfo.MarkedPointers[&ptsToSet] = source
+	t.flowInfo.MarkedPointers[ptr] = source
 }
 
 // markValue marks the value v as tainted with origin taintOrigin
@@ -251,11 +242,11 @@ func (t *stateTracker) markValue(v ssa.Value, source Source) {
 	// Propagate to any other value that is an alias of v
 	// By direct query
 	if ptr, ptrExists := t.cache.PointerAnalysis.Queries[v]; ptrExists {
-		t.markAllAliases(source, ptr.PointsTo())
+		t.markAllAliases(source, &ptr)
 	}
 	// By indirect query
 	if ptr, ptrExists := t.cache.PointerAnalysis.IndirectQueries[v]; ptrExists {
-		t.markAllAliases(source, ptr.PointsTo())
+		t.markAllAliases(source, &ptr)
 	}
 
 	// SPECIAL CASE: value is result of make any <- v', mark v'
@@ -307,17 +298,20 @@ func (t *stateTracker) addClosureNode(x *ssa.MakeClosure) {
 	t.summary.AddClosure(x)
 	t.markValue(x, NewSource(x, Closure, ""))
 	for _, boundVar := range x.Bindings {
-		t.markValue(boundVar, NewQualifierSource(x, boundVar, BoundVar, ""))
+		source := NewQualifierSource(x, boundVar, BoundVar, "")
+
+		t.markValue(boundVar, source)
+
+		for y := range t.paramAliases[boundVar] {
+			t.summary.AddParamEdge(source, y)
+		}
+
+		for y := range t.freeVarAliases[boundVar] {
+			t.summary.AddFreeVarEdge(source, y)
+		}
 
 		for _, origin := range t.getMarkedValueOrigins(boundVar, "*") {
 			t.summary.AddBoundVarEdge(origin, x, boundVar)
-
-			for _, y := range t.paramAliases[boundVar] {
-				t.summary.AddParamEdge(origin, y)
-			}
-			for _, y := range t.freeVarAliases[boundVar] {
-				t.summary.AddFreeVarEdge(origin, y)
-			}
 		}
 	}
 	t.markValue(x, NewSource(x, Closure, "*"))
@@ -390,12 +384,12 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 			if t.checkFlow(source, callInstr, arg) {
 				t.summary.AddCallArgEdge(source, callInstr, arg)
 				// Add edges to parameters if the call may modify caller's arguments
-				for _, x := range t.paramAliases[arg] {
+				for x := range t.paramAliases[arg] {
 					if astfuncs.IsNillableType(x.Type()) {
 						t.summary.AddParamEdge(source, x)
 					}
 				}
-				for _, y := range t.freeVarAliases[arg] {
+				for y := range t.freeVarAliases[arg] {
 					if astfuncs.IsNillableType(y.Type()) {
 						t.summary.AddFreeVarEdge(source, y)
 					}
@@ -561,4 +555,27 @@ func (t *stateTracker) doDefersStackSimulation(r *ssa.RunDefers) error {
 		}
 	}
 	return nil
+}
+
+// addAliases is a type parametric version of the alias caching functions
+func addAliases[T comparable](x T, f *ssa.Function, ptr *pointer.Pointer, aliases map[ssa.Value]map[T]bool,
+	oracleDirect func(value ssa.Value) *pointer.Pointer, oracleIndirect func(value ssa.Value) *pointer.Pointer) {
+	if ptr != nil {
+		for _, lb := range ptr.PointsTo().Labels() {
+			if lb != nil && lb.Value() != nil && lb.Value().Parent() == f {
+				aliases[lb.Value()][x] = true
+			}
+		}
+
+		ssafuncs.IterateValues(f, func(v ssa.Value) {
+			ptr2 := oracleIndirect(v)
+			if ptr2 != nil && ptr.MayAlias(*ptr2) {
+				aliases[v][x] = true
+			}
+			ptr3 := oracleDirect(v)
+			if ptr3 != nil && ptr.MayAlias(*ptr3) {
+				aliases[v][x] = true
+			}
+		})
+	}
 }

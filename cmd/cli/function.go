@@ -144,6 +144,42 @@ func cmdSsaValue(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 
 	for _, block := range state.CurrentFunction.Blocks {
 		for _, instr := range block.Instrs {
+			if val, isVal := instr.(ssa.Value); isVal && matchValue(r, val) {
+				showValue(tt, c, val)
+			}
+		}
+	}
+	return false
+}
+
+// cmdSsaInstr prints the ssa instructions matching a regex in the state.CurrentFunction
+func cmdSsaInstr(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+	if c == nil {
+		if state.CurrentFunction != nil {
+			writeFmt(tt, "\t- %s%s%s: show SSA instructions matching regex\n", tt.Escape.Blue,
+				cmdSsaValueName, tt.Escape.Reset)
+		}
+		return false
+	}
+
+	if state.CurrentFunction == nil {
+		WriteErr(tt, "You must first focus on a function to show an SSA instruction.")
+		return false
+	}
+
+	if len(command.Args) < 1 {
+		WriteErr(tt, "You must provide a regex string to filter SSA instructions.")
+		return false
+	}
+
+	r, err := regexp.Compile(command.Args[0])
+	if err != nil {
+		regexErr(tt, command.Args[0], err)
+		return false
+	}
+
+	for _, block := range state.CurrentFunction.Blocks {
+		for _, instr := range block.Instrs {
 			if matchInstr(r, instr) {
 				showInstr(tt, c, instr)
 			}
@@ -186,15 +222,16 @@ func matchValue(r *regexp.Regexp, val ssa.Value) bool {
 }
 
 func matchInstr(r *regexp.Regexp, instr ssa.Instruction) bool {
-	b := r.MatchString(instr.String())
-	if val, isVal := instr.(ssa.Value); isVal {
-		b = b || r.MatchString(val.Name())
-	}
-	return b
+	return r.MatchString(instr.String())
 }
 
 func showValue(tt *term.Terminal, c *dataflow.Cache, val ssa.Value) {
 	writeFmt(tt, "Matching value: %s\n", val.Name())
+	writeFmt(tt, "      kind    : %T\n", val)
+	writeFmt(tt, "      type    : %s\n", val.Type().String())
+	if instr, ok := val.(ssa.Instruction); ok {
+		writeFmt(tt, "      instr   : %s\n", instr.String())
+	}
 	writeFmt(tt, "      location: %s\n", c.Program.Fset.Position(val.Pos()))
 	if len(*(val.Referrers())) > 0 {
 		writeFmt(tt, "  referrers:\n")
@@ -227,17 +264,14 @@ func showPointer(tt *term.Terminal, ptr pointer.Pointer) {
 	for _, label := range ptr.PointsTo().Labels() {
 		if label.Value() != nil {
 			entries = append(entries,
-				displayElement{content: "[" + label.Value().Name() + "]", escape: tt.Escape.Yellow})
+				displayElement{content: "[" + label.Value().Name() + " (" + label.Value().String() + ")]",
+					escape: tt.Escape.Yellow})
 		}
 	}
 	writeEntries(tt, entries, "    ")
 }
 
 func showInstr(tt *term.Terminal, c *dataflow.Cache, instr ssa.Instruction) {
-	if val, isVal := instr.(ssa.Value); isVal {
-		showValue(tt, c, val)
-	} else {
-		writeFmt(tt, "Matching instruction: %s\n", instr.String())
-		writeFmt(tt, "            location: %s\n", c.Program.Fset.Position(instr.Pos()))
-	}
+	writeFmt(tt, "Matching instruction: %s\n", instr.String())
+	writeFmt(tt, "            location: %s\n", c.Program.Fset.Position(instr.Pos()))
 }

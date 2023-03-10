@@ -63,7 +63,6 @@ func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 	for len(que) != 0 {
 		elt := que[0]
 		que = que[1:]
-
 		// Report coverage information for the current node
 		addCoverage(c, elt, coverage)
 
@@ -259,11 +258,32 @@ func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 		// (see the example for BoundVarNode)
 		case *dataflow.FreeVarNode:
 			// Flows inside the function
-			for out := range graphNode.Out() {
-				que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
-			}
+			if elt.prev.Node.Graph() != graphNode.Graph() {
+				for out := range graphNode.Out() {
+					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+				}
+			} else if elt.ClosureTrace != nil {
+				bvs := elt.ClosureTrace.Label.BoundVars()
+				if graphNode.Index() < len(bvs) {
+					bv := bvs[graphNode.Index()]
+					que = addNext(c, que, seen, elt, bv, elt.Trace, elt.ClosureTrace.Parent)
+				} else {
+					c.AddError(fmt.Errorf("no bound variable matching free variable at position %d in %s",
+						graphNode.Index(), elt.ClosureTrace.Label.ClosureSummary.Parent.String()))
+				}
+			} else {
+				for _, makeClosureSite := range graphNode.Graph().ReferringMakeClosures {
+					bvs := makeClosureSite.BoundVars()
+					if graphNode.Index() < len(bvs) {
+						bv := bvs[graphNode.Index()]
+						que = addNext(c, que, seen, elt, bv, elt.Trace, nil)
+					} else {
+						c.AddError(fmt.Errorf("no bound variable matching free variable at position %d in %s",
+							graphNode.Index(), makeClosureSite.ClosureSummary.Parent.String()))
+					}
 
-			// TODO: back flows when the free variables are tainted by the closure's body
+				}
+			}
 
 		// A closure node can be reached if a function value is tainted
 		// TODO: add an example
