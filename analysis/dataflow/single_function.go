@@ -79,7 +79,7 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 	}
 
 	// Initialize alias maps
-	ssafuncs.IterateValues(function, func(v ssa.Value) {
+	ssafuncs.IterateValues(function, func(_ int, v ssa.Value) {
 		tracker.paramAliases[v] = map[*ssa.Parameter]bool{}
 		tracker.freeVarAliases[v] = map[*ssa.FreeVar]bool{}
 	})
@@ -97,7 +97,7 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 
 	// Special cases: load instructions in closures
 	ssafuncs.IterateInstructions(function,
-		func(i ssa.Instruction) {
+		func(_ int, i ssa.Instruction) {
 			if load, ok := i.(*ssa.UnOp); ok && load.Op == token.MUL {
 				for _, fv := range function.FreeVars {
 					if fv == load.X {
@@ -109,7 +109,7 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 
 	// Collect global variable uses
 	ssafuncs.IterateInstructions(function,
-		func(i ssa.Instruction) {
+		func(_ int, i ssa.Instruction) {
 			var operands []*ssa.Value
 			operands = i.Operands(operands)
 			for _, operand := range operands {
@@ -567,7 +567,7 @@ func addAliases[T comparable](x T, f *ssa.Function, ptr *pointer.Pointer, aliase
 			}
 		}
 
-		ssafuncs.IterateValues(f, func(v ssa.Value) {
+		ssafuncs.IterateValues(f, func(_ int, v ssa.Value) {
 			ptr2 := oracleIndirect(v)
 			if ptr2 != nil && ptr.MayAlias(*ptr2) {
 				aliases[v][x] = true

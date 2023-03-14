@@ -57,7 +57,7 @@ func RunAnalysis(cache *dataflow.Cache) (AnalysisResult, error) {
 	callId = 1
 	for function := range cache.ReachableFunctions(false, false) {
 		ssafuncs.IterateInstructions(function,
-			func(i ssa.Instruction) {
+			func(_ int, i ssa.Instruction) {
 				if goCall, isGo := i.(*ssa.Go); isGo {
 					goCalls[goCall] = callId
 					ids = append(ids, goCall)

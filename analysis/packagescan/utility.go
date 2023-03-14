@@ -85,30 +85,6 @@ var DummyPos = token.Position{
 	Column:   -1,
 }
 
-// SafeValuePos returns the position of the instruction or the dummy position.
-func SafeValuePos(value ssa.Value) Optional[token.Position] {
-	if value == nil {
-		return None[token.Position]()
-	}
-	if parent := value.Parent(); parent != nil && parent.Prog != nil && parent.Prog.Fset != nil {
-		return Some(value.Parent().Prog.Fset.Position(value.Pos()))
-	} else {
-		return None[token.Position]()
-	}
-}
-
-// SafeInstructionPos returns the position of the instruction or the dummy position.
-func SafeInstructionPos(instruction ssa.Instruction) Optional[token.Position] {
-	if instruction == nil {
-		return None[token.Position]()
-	}
-	if parent := instruction.Parent(); parent != nil && parent.Prog != nil && parent.Prog.Fset != nil {
-		return Some(instruction.Parent().Prog.Fset.Position(instruction.Pos()))
-	} else {
-		return None[token.Position]()
-	}
-}
-
 func SafeFunctionPos(function *ssa.Function) Optional[token.Position] {
 	if function.Prog != nil && function.Prog.Fset != nil {
 		return Some(function.Prog.Fset.Position(function.Pos()))

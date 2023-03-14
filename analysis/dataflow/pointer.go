@@ -46,7 +46,7 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 				addValueQuery(pCfg, fv)
 			}
 
-			ssafuncs.IterateInstructions(function, func(instruction ssa.Instruction) {
+			ssafuncs.IterateInstructions(function, func(_ int, instruction ssa.Instruction) {
 				addInstructionQuery(pCfg, instruction)
 			})
 		}

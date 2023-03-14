@@ -1,6 +1,7 @@
 package main
 
 import (
+	"go/token"
 	"regexp"
 	"strings"
 
@@ -24,10 +25,12 @@ const (
 	cmdPackageName      = "pkg"
 	cmdRebuildName      = "rebuild"
 	cmdReconfigName     = "reconfig"
+	cmdScanName         = "scan"
 	cmdShowSsaName      = "showssa"
 	cmdShowDataflowName = "showdataflow"
 	cmdSsaValueName     = "ssaval"
 	cmdStateName        = "state?"
+	cmdStatsName        = "stats"
 	cmdSummarizeName    = "summarize"
 	cmdSummaryName      = "summary"
 	cmdTaintName        = "taint"
@@ -40,6 +43,12 @@ const (
 )
 
 // ************ HELPERS *********
+
+// NameAndLoc hold a name and location together
+type NameAndLoc struct {
+	name string
+	loc  token.Position
+}
 
 // funcsMatchingCommand returns the function matching the argument of the command or all functions if there
 // is no argument
