@@ -6,6 +6,7 @@ import (
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"golang.org/x/term"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -15,6 +16,8 @@ import (
 type serverState struct {
 	// the args (the path to the program to load
 	Args []string
+
+	InitialPackages []*packages.Package
 
 	ConfigPath string
 

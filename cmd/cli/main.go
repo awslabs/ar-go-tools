@@ -15,6 +15,7 @@ import (
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"golang.org/x/term"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -42,10 +43,12 @@ var (
 		cmdPackageName:      cmdPackage,
 		cmdRebuildName:      cmdRebuild,
 		cmdReconfigName:     cmdReconfig,
+		cmdScanName:         cmdScan,
 		cmdShowSsaName:      cmdShowSsa,
 		cmdShowDataflowName: cmdShowDataflow,
 		cmdSsaValueName:     cmdSsaValue,
 		cmdStateName:        cmdState,
+		cmdStatsName:        cmdStats,
 		cmdSummaryName:      cmdSummary,
 		cmdSummarizeName:    cmdSummarize,
 		cmdTaintName:        cmdTaint,
@@ -119,6 +122,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return
 	}
+	// Keep ast in state separately for now
+	p := &packages.Config{
+		Mode:  analysis.PkgLoadMode,
+		Tests: false,
+	}
+	initialPackages, err := packages.Load(p, flag.Args()...)
+	state.InitialPackages = initialPackages
 
 	// Build the cache with all analyses
 	cache, err := dataflow.BuildFullCache(log.Default(), pConfig, program)

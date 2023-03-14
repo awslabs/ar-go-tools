@@ -11,23 +11,28 @@ type Command struct {
 	// Name is the name of the command (e.g. exit, ls, ...)
 	Name string
 
-	// Args contains all the non-named arguments
+	// Args contains all the non-named arguments (arguments without keys)
 	Args []string
 
-	// NamedArgs contains all the named arguments.
+	// NamedArgs contains all the named arguments (arguments --key value)
 	NamedArgs map[string]string
+
+	// Flags contains all the flags (arguments -key)
+	Flags map[string]bool
 }
 
-// ParseCommand parses a command of the form "command arg1 arg1 -name1 namedArg1"
+// ParseCommand parses a command of the form "command arg1 arg2 -name1 namedArg1 -flag1 arg3"
 //   - the first string is the name of the command
-//   - every string preceded by - is a named argument, and the next string will be parsed as its value
+//   - every string preceded by -- is a named argument, and the next string will be parsed as its value
 //     A valid named argument MUST have a value.
+//   - every string preceded by - but not -- is a flag,
 //   - every other string will be a non named argument
 func ParseCommand(cmd string) Command {
 	command := Command{
 		Name:      "",
 		Args:      nil,
 		NamedArgs: map[string]string{},
+		Flags:     map[string]bool{},
 	}
 
 	tokens, err := shlex.Split(cmd)
@@ -43,10 +48,14 @@ func ParseCommand(cmd string) Command {
 		if !flagCmdName {
 			command.Name = token
 			flagCmdName = true // set, will not be reset
-		} else if name, found := strings.CutPrefix(token, "-"); found && !flagArgName {
+		} else if name, foundNamed := strings.CutPrefix(token, "--"); foundNamed && !flagArgName {
+			// argument with prefix -- is for named argument with value
 			argName = name
 			flagArgName = true // set
 
+		} else if flag, foundFlag := strings.CutPrefix(token, "-"); foundFlag {
+			// argument with prefix - (and not --) is for flag without value
+			command.Flags[flag] = true
 		} else if flagArgName {
 			command.NamedArgs[argName] = token
 			flagArgName = false // reset

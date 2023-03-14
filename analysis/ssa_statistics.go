@@ -3,7 +3,6 @@
 package analysis
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,14 +10,14 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func SSAStatistics(functions *map[*ssa.Function]bool, exclude []string, jsonFlag bool) {
+type Result struct {
+	NumberOfFunctions         uint
+	NumberOfNonemptyFunctions uint
+	NumberOfBlocks            uint
+	NumberOfInstructions      uint
+}
 
-	type Result struct {
-		NumberOfFunctions         uint
-		NumberOfNonemptyFunctions uint
-		NumberOfBlocks            uint
-		NumberOfInstructions      uint
-	}
+func SSAStatistics(functions *map[*ssa.Function]bool, exclude []string) Result {
 
 	result := Result{0, 0, 0, 0}
 
@@ -34,15 +33,7 @@ func SSAStatistics(functions *map[*ssa.Function]bool, exclude []string, jsonFlag
 		}
 	}
 
-	if jsonFlag {
-		buf, _ := json.Marshal(result)
-		fmt.Println(string(buf))
-	} else {
-		fmt.Printf("Number of functions: %d\n", result.NumberOfFunctions)
-		fmt.Printf("Number of nonempty functions: %d\n", result.NumberOfNonemptyFunctions)
-		fmt.Printf("Number of blocks: %d\n", result.NumberOfBlocks)
-		fmt.Printf("Number of instructions: %d\n", result.NumberOfInstructions)
-	}
+	return result
 }
 
 func DeferStats(functions *map[*ssa.Function]bool) {

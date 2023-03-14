@@ -17,3 +17,44 @@ func IsNillableType(t types.Type) bool {
 		return false
 	}
 }
+
+// IsChannelEnclosingType return true if the type is a pointer to channel, a channel, or a datastrucure containing
+// a channel
+func IsChannelEnclosingType(t types.Type) bool {
+	visitedTypes := map[types.Type]bool{}
+	toVisit := []types.Type{t}
+	addNext := func(t types.Type) {
+		if !visitedTypes[t] {
+			toVisit = append(toVisit, t)
+		}
+	}
+	for len(toVisit) > 0 {
+		head := toVisit[0]
+		toVisit = toVisit[1:]
+		visitedTypes[head] = true
+		switch typ := head.Underlying().(type) {
+		case *types.Chan:
+			return true
+		case *types.Pointer:
+			addNext(typ.Elem())
+		case *types.Slice:
+			addNext(typ.Elem())
+		case *types.Map:
+			addNext(typ.Elem())
+		case *types.Array:
+			addNext(typ.Elem())
+		case *types.Tuple:
+			n := typ.Len()
+			for i := 0; i < n; i++ {
+				addNext(typ.At(i).Type())
+			}
+		case *types.Struct:
+			n := typ.NumFields()
+			for i := 0; i < n; i++ {
+				addNext(typ.Field(i).Type())
+			}
+
+		}
+	}
+	return false
+}

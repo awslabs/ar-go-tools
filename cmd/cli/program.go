@@ -1,12 +1,14 @@
 package main
 
 import (
+	"flag"
 	"strings"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"golang.org/x/term"
+	"golang.org/x/tools/go/packages"
 )
 
 // cmdLoad implements the "load" command that loads a program into the tool.
@@ -41,6 +43,13 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 		WriteErr(tt, "could not load program:\n%s\n", err)
 		return false
 	}
+	// Keep ast in state separately for now
+	p := &packages.Config{
+		Mode:  analysis.PkgLoadMode,
+		Tests: false,
+	}
+	initialPackages, err := packages.Load(p, flag.Args()...)
+	state.InitialPackages = initialPackages
 	// Build the cache with all analyses
 	cache, err := dataflow.BuildFullCache(c.Logger, c.Config, program)
 	if err != nil {

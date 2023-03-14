@@ -50,9 +50,9 @@ func LoadProgram(config *packages.Config, platform string, buildmode ssa.Builder
 	}
 
 	// Construct SSA for all the packages we have loaded
-	program, packages := ssautil.AllPackages(initialPackages, buildmode)
+	program, ssaPackages := ssautil.AllPackages(initialPackages, buildmode)
 
-	for i, p := range packages {
+	for i, p := range ssaPackages {
 		if p == nil {
 			return nil, fmt.Errorf("cannot build SSA for package %s", initialPackages[i])
 		}

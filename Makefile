@@ -5,7 +5,7 @@
 #endif
 
 
-all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan concurrency cli
+all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan cli refactor
 
 install: taint_install
 
@@ -28,7 +28,7 @@ reachability: go.mod cmd/reachability/*.go analysis/*.go analysis/reachability/*
 static-commands: go.mod cmd/static-commands/*.go analysis/*.go analysis/static-commands/*.go
 	go build -o bin/static-commands cmd/static-commands/*.go
 
-refactor: go.mod cmd/refactor/*.go analysis/*.go analysis/refactoring/*.go
+refactor: go.mod cmd/refactor/*.go analysis/*.go analysis/refactor/*.go
 	go build -o bin/refactor cmd/refactor/*.go
 
 render: go.mod cmd/render/*.go analysis/*.go analysis/rendering/*.go
@@ -42,9 +42,6 @@ defer: go.mod cmd/defer/*.go analysis/*.go
 
 compare: go.mod cmd/compare/*.go analysis/*.go analysis/reachability/*.go
 	go build -o bin/compare cmd/compare/*.go
-
-concurrency: go.mod cmd/concurrency/*.go analysis/*.go analysis/concurrency/*.go
-	go build -o bin/concur cmd/concurrency/*.go
 
 packagescan: go.mod cmd/packagescan/*.go analysis/*.go analysis/packagescan/*.go
 	go build -o bin/packagescan cmd/packagescan/*.go

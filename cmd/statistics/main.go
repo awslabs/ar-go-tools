@@ -5,13 +5,15 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"go/build"
+	"os"
+
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/maypanic"
-	"go/build"
-	"os"
 
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
@@ -84,7 +86,18 @@ func doMain() error {
 	excludeAbsolute := maypanic.MakeAbsolute(exclude)
 
 	allFunctions := ssautil.AllFunctions(program)
-	analysis.SSAStatistics(&allFunctions, excludeAbsolute, jsonFlag)
+
+	result := analysis.SSAStatistics(&allFunctions, excludeAbsolute)
+	if jsonFlag {
+		buf, _ := json.Marshal(result)
+		fmt.Println(string(buf))
+	} else {
+		fmt.Printf("Number of functions: %d\n", result.NumberOfFunctions)
+		fmt.Printf("Number of nonempty functions: %d\n", result.NumberOfNonemptyFunctions)
+		fmt.Printf("Number of blocks: %d\n", result.NumberOfBlocks)
+		fmt.Printf("Number of instructions: %d\n", result.NumberOfInstructions)
+	}
+	
 	//analysis.DeferStats(&allFunctions)
 	analysis.ClosureStats(&allFunctions)
 
