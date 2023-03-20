@@ -3,9 +3,7 @@ sources:
     method: Sprintf
   - package: main
     method: zoo
-  - package: main
-    type: Bar
 sinks:
   - package: main
     method: sink[1-9]
-skipinterprocedural: true
+skipinterprocedural: false

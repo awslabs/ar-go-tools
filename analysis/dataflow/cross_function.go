@@ -4,7 +4,6 @@ package dataflow
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 
@@ -13,6 +12,11 @@ import (
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
 	"golang.org/x/tools/go/ssa"
 )
+
+// Visitor represents a visitor that runs a cross-function analysis from entrypoint.
+type Visitor interface {
+	Visit(c *Cache, entrypoint NodeWithTrace)
+}
 
 // CrossFunctionFlowGraph represents a cross-function data flow graph.
 type CrossFunctionFlowGraph struct {
@@ -89,10 +93,6 @@ type NodeWithTrace struct {
 	ClosureTrace *NodeTree[*ClosureNode]
 }
 
-// SourceVisitor represents a visitor that runs the inter-procedural analysis from a specific source and adds any
-// detected data flow to dataFlows.
-type SourceVisitor func(logger *log.Logger, c *Cache, source NodeWithTrace, dataFlows DataFlows, coverageFile io.StringWriter)
-
 // BuildGraph builds the cross function flow graph by connecting summaries together
 func (g *CrossFunctionFlowGraph) BuildGraph() {
 	g.cache.Logger.Println("Building cross-function flow graph...")
@@ -104,7 +104,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 		defer summariesFile.Close()
 	}
 
-	// Build the cross-function data flow graph: link all the summaries together, identify source nodes
+	// Build the cross-function data flow graph: link all the summaries together
 	for _, summary := range g.Summaries {
 		if summary == nil {
 			continue
@@ -167,23 +167,23 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 	g.built = true
 }
 
-func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(dataFlows DataFlows, visitor SourceVisitor, isEntryPoint func(*config.Config, *ssa.Function) bool, coverage *os.File) {
-	var sourceFuncs []*SummaryGraph
+func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor, isEntryPoint func(*config.Config, *ssa.Function) bool) {
+	var entryFuncs []*SummaryGraph
 	var entryPoints []NodeWithTrace
 
 	for _, summary := range g.Summaries {
-		// Identify the entry points for that function: all the call sites if it is a source, and all the synthetic
-		// nodes that are sources in the function body.
+		// Identify the entry points for that function: all the call sites that are entrypoints
+		// and all the synthetic nodes in the function body.
 		for _, snode := range summary.SyntheticNodes {
 			entry := NodeWithTrace{Node: snode, Trace: nil}
 			entryPoints = append(entryPoints, entry)
 		}
 		if isEntryPoint(g.cache.Config, summary.Parent) {
-			sourceFuncs = append(sourceFuncs, summary)
+			entryFuncs = append(entryFuncs, summary)
 		}
 	}
 
-	for _, summary := range sourceFuncs {
+	for _, summary := range entryFuncs {
 		for _, node := range summary.Callsites {
 			entry := NodeWithTrace{node, nil, nil}
 			entryPoints = append(entryPoints, entry)
@@ -192,22 +192,25 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(dataFlows DataFlows, visit
 
 	g.cache.Logger.Printf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
 
-	// Run the analysis for every source point. We may be able to change this to run the analysis for all sources
+	// Run the analysis for every entrypoint. We may be able to change this to run the analysis for all entrypoints
 	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
 	for _, entry := range entryPoints {
-		visitor(g.cache.Logger, g.cache, entry, dataFlows, coverage)
+		visitor.Visit(g.cache, entry)
 	}
 }
 
-// CrossFunctionPass runs the inter-procedural pass on the inter-procedural flow graph. Candidate data flows, in the
-// form of a map from sink to sources, will be added to dataFlows. Most of the logic is in visitor that is called for
+// CrossFunctionPass runs the pass on the cross-function flow graph.
+// Most of the logic is in visitor that is called for
 // each possible source node identified.
 //
-// This function does nothing if there are no summaries (i.e. `len(g.summaries) == 0` or if `cfg.SkipInterprocedural`
-// is set to true.
-func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows, visitor SourceVisitor, isEntryPoint func(*config.Config, *ssa.Function) bool) {
+// This function does nothing if there are no summaries
+// (i.e. `len(g.summaries) == 0`)
+// or if `cfg.SkipInterprocedural` is set to true.
+func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, visitor Visitor, isEntryPoint func(*config.Config, *ssa.Function) bool) {
 	// Skip the pass if user configuration demands it
 	if c.Config.SkipInterprocedural || len(g.Summaries) == 0 {
+		c.Logger.Printf("Skipping cross-function pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
+			c.Config.SkipInterprocedural, len(g.Summaries))
 		return
 	}
 
@@ -221,40 +224,49 @@ func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, dataFlows DataFlows
 	}
 
 	// Run the analysis
-	g.RunCrossFunctionPass(dataFlows, visitor, isEntryPoint, coverage)
+	g.RunCrossFunctionPass(visitor, isEntryPoint)
 }
 
-type visitorNode struct {
+// VisitorNode represents a node in the cross-function dataflow graph to be visited.
+type VisitorNode struct {
 	NodeWithTrace
-	pStack *paramStack
-	prev   *visitorNode
-	depth  int
+	ParamStack *ParamStack
+	Prev       *VisitorNode
+	Depth      int
 }
 
-type paramStack struct {
-	p    *ParamNode
-	prev *paramStack
+// ParamStack represents a stack of parameters.
+type ParamStack struct {
+	Param *ParamNode
+	Prev  *ParamStack
 }
 
-func (ps *paramStack) add(p *ParamNode) *paramStack {
-	return &paramStack{p: p, prev: ps}
+// Add adds p to the stack.
+func (ps *ParamStack) Add(p *ParamNode) *ParamStack {
+	return &ParamStack{Param: p, Prev: ps}
 }
 
-func (ps *paramStack) parent() *paramStack {
+// Parent returns the previous param in the stack.
+func (ps *ParamStack) Parent() *ParamStack {
 	if ps == nil {
 		return nil
 	} else {
-		return ps.prev
+		return ps.Prev
 	}
 }
+
+// CrossFunctionGraphVisitor represents a visitor that builds the cache's
+// FlowGraph.
+type CrossFunctionGraphVisitor struct{}
 
 // VisitCrossFunctionGraph is a SourceVisitor that builds adds edges between the
 // individual single-function dataflow graphs reachable from source.
 // This visitor must be called for every entrypoint in the program to build a
 // complete dataflow graph.
-func VisitCrossFunctionGraph(logger *log.Logger, c *Cache, source NodeWithTrace, _ DataFlows, _ io.StringWriter) {
-	que := []*visitorNode{{NodeWithTrace: source, pStack: nil, prev: nil, depth: 0}}
+func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
+	que := []*VisitorNode{{NodeWithTrace: entrypoint, ParamStack: nil, Prev: nil, Depth: 0}}
 	seen := make(map[NodeWithTrace]bool)
+	logger := c.Logger
 
 	// Search from path candidates in the cross-function flow graph from sources to sinks
 	// TODO: optimize call stack
@@ -353,7 +365,7 @@ func VisitCrossFunctionGraph(logger *log.Logger, c *Cache, source NodeWithTrace,
 					graphNode.Index(), callSite.CalleeSummary.Parent.String()))
 			}
 
-			if elt.prev == nil || callSite.Graph() != elt.prev.Node.Graph() {
+			if elt.Prev == nil || callSite.Graph() != elt.Prev.Node.Graph() {
 				// We are done with propagating to the callee's parameters. Next, we need to handle
 				// the flow inside the caller function: the outgoing edges computed for the summary
 				for out := range graphNode.Out() {
@@ -610,34 +622,34 @@ func CheckCallStackContainsCallsite(c *Cache, nodes map[ssa.CallInstruction]*Cal
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the
 // trace has not been seen before
 func addNext(c *Cache,
-	que []*visitorNode,
+	que []*VisitorNode,
 	seen map[NodeWithTrace]bool,
-	cur *visitorNode,
+	cur *VisitorNode,
 	node GraphNode,
 	trace *NodeTree[*CallNode],
-	closureTrace *NodeTree[*ClosureNode]) []*visitorNode {
+	closureTrace *NodeTree[*ClosureNode]) []*VisitorNode {
 
 	newNode := NodeWithTrace{Node: node, Trace: trace, ClosureTrace: closureTrace}
 
 	// Stop conditions: node is already in seen, trace is a lasso or depth exceeds limit
-	if seen[newNode] || trace.IsLasso() || cur.depth > c.Config.MaxDepth {
+	if seen[newNode] || trace.IsLasso() || cur.Depth > c.Config.MaxDepth {
 		return que
 	}
 
 	// logic for parameter stack
-	pStack := cur.pStack
+	pStack := cur.ParamStack
 	switch curNode := cur.Node.(type) {
 	case *ReturnNode:
-		pStack = pStack.parent()
+		pStack = pStack.Parent()
 	case *ParamNode:
-		pStack = pStack.add(curNode)
+		pStack = pStack.Add(curNode)
 	}
 
-	newVis := &visitorNode{
+	newVis := &VisitorNode{
 		NodeWithTrace: newNode,
-		pStack:        pStack,
-		prev:          cur,
-		depth:         cur.depth + 1,
+		ParamStack:    pStack,
+		Prev:          cur,
+		Depth:         cur.Depth + 1,
 	}
 	que = append(que, newVis)
 	seen[newNode] = true

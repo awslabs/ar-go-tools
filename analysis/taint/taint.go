@@ -16,7 +16,7 @@ import (
 
 type AnalysisResult struct {
 	// TaintFlows contains all the data flows from the sources to the sinks detected during the analysis
-	TaintFlows dataflow.DataFlows
+	TaintFlows TaintFlows
 
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
@@ -61,28 +61,25 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// function being analyzed.
 
 	// Only build summaries for non-stdlib functions here
-	res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
+	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 		Cache:               cache,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: ShouldCreateSummary,
-		IsSourceNode:        IsSourceNode,
-		IsSinkNode:          IsSinkNode,
+		IsEntrypoint:        IsSourceNode,
 	})
-	flowCandidates := res.FlowCandidates
-	fg := res.FlowGraph
 
 	// ** Third step **
 	// the inter-procedural analysis is run over the entire program, which has been summarized in the
 	// previous step by building function summaries. This analysis consists in checking whether there exists a sink
 	// that is reachable from a source.
+	visitor := NewVisitor(nil)
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
-		Cache:              cache,
-		DataFlowCandidates: flowCandidates,
-		Visitor:            VisitFromSource,
-		IsEntrypoint:       dataflow.IsSourceFunction,
+		Cache:        cache,
+		Visitor:      visitor,
+		IsEntrypoint: dataflow.IsSourceFunction,
 	})
 
-	return AnalysisResult{TaintFlows: flowCandidates, Graph: fg}, nil
+	return AnalysisResult{Graph: *cache.FlowGraph, TaintFlows: visitor.Taints}, nil
 }
 
 func ShouldCreateSummary(f *ssa.Function) bool {

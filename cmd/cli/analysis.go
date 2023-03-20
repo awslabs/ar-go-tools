@@ -189,8 +189,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			Cache:               c,
 			NumRoutines:         numRoutines,
 			ShouldCreateSummary: shouldBuildSummary,
-			IsSourceNode:        taint.IsSourceNode,
-			IsSinkNode:          taint.IsSinkNode,
+			IsEntrypoint:        taint.IsSourceNode,
 		})
 		c.FlowGraph.InsertSummaries(res.FlowGraph)
 		WriteSuccess(tt, "%d summarized", counter)
@@ -235,8 +234,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			Cache:               c,
 			NumRoutines:         numRoutines,
 			ShouldCreateSummary: shouldBuildSummary,
-			IsSourceNode:        taint.IsSourceNode,
-			IsSinkNode:          taint.IsSinkNode,
+			IsEntrypoint:        taint.IsSourceNode,
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 		c.FlowGraph.InsertSummaries(res.FlowGraph)
@@ -264,8 +262,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
-	dataFlows := map[ssa.Instruction]map[ssa.Instruction]bool{}
-	c.FlowGraph.RunCrossFunctionPass(dataFlows, taint.VisitFromSource, dataflow.IsSourceFunction, nil)
+	c.FlowGraph.RunCrossFunctionPass(taint.NewVisitor(nil), dataflow.IsSourceFunction)
 	return false
 }
 

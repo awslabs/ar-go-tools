@@ -17,13 +17,49 @@ import (
 
 // This file implements the single function analysis. This analysis pass inspects a single function and constructs:
 // - a dataflow summary of the function
-// - the intra-procedural paths from a source to a sink
 // This file `single_function.go` contains all the logic of the analysis and the transfer functions
 // called to handle each instruction.
 // The `single_function_instruction_ops.go` file contains all the functions that define how instructions in the function
 // are handled.
 
-// stateTracker contains the information used by the intra-procedural taint analysis. The main components modified by
+// FlowInformation contains the dataflow information necessary for the analysis and function summary building.
+type FlowInformation struct {
+	Config         *config.Config              // user provided configuration identifying sources and sinks
+	MarkedValues   map[ssa.Value]map[Mark]bool // map from values to the set of sources that mark them
+	MarkedPointers map[*pointer.Pointer]Mark   // map from pointer sets to the sources that mark them
+}
+
+// NewFlowInfo returns a new FlowInformation with all maps initialized.
+func NewFlowInfo(cfg *config.Config) *FlowInformation {
+	return &FlowInformation{
+		Config:         cfg,
+		MarkedValues:   make(map[ssa.Value]map[Mark]bool),
+		MarkedPointers: make(map[*pointer.Pointer]Mark),
+	}
+}
+
+func (t *FlowInformation) HasMark(v ssa.Value, s Mark) bool {
+	marks, ok := t.MarkedValues[v]
+	return ok && marks[s]
+}
+
+// AddMark adds a mark to the tracking info structure and returns a boolean
+// if new information has been inserted.
+func (t *FlowInformation) AddMark(v ssa.Value, s Mark) bool {
+	if vMarks, ok := t.MarkedValues[v]; ok {
+		if vMarks[s] {
+			return false
+		} else {
+			vMarks[s] = true
+			return true
+		}
+	} else {
+		t.MarkedValues[v] = map[Mark]bool{s: true}
+		return true
+	}
+}
+
+// stateTracker contains the information used by the intra-procedural dataflow analysis. The main components modified by
 // the analysis  are the flowInfo and the argFlows fields, which contain information about taint flows and argument
 // flows respectively.
 type stateTracker struct {
@@ -35,23 +71,19 @@ type stateTracker struct {
 	summary        *SummaryGraph                                // summary is the function summary currently being built
 	deferStacks    defers.Results                               // information about the possible defer stacks at RunDefers
 	instrPaths     map[ssa.Instruction]map[ssa.Instruction]bool // instrPaths[i][j] means there is a path from i to j
-	isSourceNode   func(*config.Config, ssa.Node) bool          // function that determines if a node is a source
-	isSinkNode     func(*config.Config, ssa.Node) bool          // function that determines if a node is a sink
 	paramAliases   map[ssa.Value]map[*ssa.Parameter]bool        // a map from values in the function to the parameter it aliases
 	freeVarAliases map[ssa.Value]map[*ssa.FreeVar]bool          // a map from values to the free variable it aliases
+	shouldTrack    func(*config.Config, ssa.Node) bool          // function that returns true if dataflow from the node should be tracked
 }
 
 // SingleFunctionResult holds the results of the intra-procedural analysis.
 type SingleFunctionResult struct {
-	DataFlows map[ssa.Instruction]map[ssa.Instruction]bool // DataFlows are the intra-procedural data-flow paths from sources
-	// to sinks. This might disappear as the inter-procedural analysis should subsume it, but it is kept for now as
-	// the user has the option to turn off the inter-procedural pass in the analysis.
 	Summary *SummaryGraph // Summary is the procedure summary built by the analysis
 }
 
 // SingleFunctionAnalysis is the main entry point of the intra procedural analysis.
 func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
-	isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) (SingleFunctionResult, error) {
+	shouldTrack func(*config.Config, ssa.Node) bool) (SingleFunctionResult, error) {
 	sm := NewSummaryGraph(function)
 	flowInfo := NewFlowInfo(cache.Config)
 	tracker := &stateTracker{
@@ -63,10 +95,9 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 		summary:        sm,
 		deferStacks:    defers.AnalyzeFunction(function, false),
 		instrPaths:     map[ssa.Instruction]map[ssa.Instruction]bool{},
-		isSourceNode:   isSourceNode,
-		isSinkNode:     isSinkNode,
 		paramAliases:   map[ssa.Value]map[*ssa.Parameter]bool{},
 		freeVarAliases: map[ssa.Value]map[*ssa.FreeVar]bool{},
+		shouldTrack:    shouldTrack,
 	}
 
 	// Output warning if defer stack is unbounded
@@ -86,12 +117,12 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 
 	// The parameters of the function are marked as Parameter
 	for _, param := range function.Params {
-		flowInfo.AddSource(param, NewSource(param, Parameter, "*"))
+		flowInfo.AddMark(param, NewMark(param, Parameter, "*"))
 		tracker.addParamAliases(param)
 	}
 	// The free variables of the function are marked
 	for _, fv := range function.FreeVars {
-		flowInfo.AddSource(fv, NewSource(fv, FreeVar, "*"))
+		flowInfo.AddMark(fv, NewMark(fv, FreeVar, "*"))
 		tracker.addFreeVarAliases(fv)
 	}
 
@@ -113,7 +144,7 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 			var operands []*ssa.Value
 			operands = i.Operands(operands)
 			for _, operand := range operands {
-				// Add sources for globals
+				// Add marks for globals
 				if glob, ok := (*operand).(*ssa.Global); ok {
 					if node, ok := cache.Globals[glob]; ok {
 						tracker.summary.AddAccessGlobalNode(i, node)
@@ -133,30 +164,30 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 	for _, err := range tracker.errors {
 		return SingleFunctionResult{}, fmt.Errorf("error in intraprocedural analysis: %w", err)
 	}
-	return SingleFunctionResult{DataFlows: flowInfo.SinkSources, Summary: sm}, nil
+	return SingleFunctionResult{Summary: sm}, nil
 }
 
-// getMarkedValueOrigins returns a source and true if v is a marked value, otherwise it returns (nil, false)
+// getMarkedValueOrigins returns a mark and true if v is a marked value, otherwise it returns (nil, false)
 // Uses both the direct taint information in the taint tracking info, and the pointer taint information, i.e:
 // - A value is marked if it is directly marked
 // - A value is marked if it is a pointer and some alias is marked.
 // The path parameter enables path-sensitivity. If path is "*", any path is accepted and the analysis
 // over-approximates.
-func (t *stateTracker) getMarkedValueOrigins(v ssa.Value, path string) []Source {
-	var origins []Source
+func (t *stateTracker) getMarkedValueOrigins(v ssa.Value, path string) []Mark {
+	var origins []Mark
 	// when the value is directly marked as tainted.
-	for source := range t.flowInfo.MarkedValues[v] {
-		if path == "*" || source.RegionPath == path || source.RegionPath == "*" || source.RegionPath == "" {
-			origins = append(origins, source)
+	for mark := range t.flowInfo.MarkedValues[v] {
+		if path == "*" || mark.RegionPath == path || mark.RegionPath == "*" || mark.RegionPath == "" {
+			origins = append(origins, mark)
 		}
 	}
 
 	// when the value's aliases is marked by intersecting with another marked values aliases
 	if ptr := t.getPointer(v); ptr != nil {
-		for other, source := range t.flowInfo.MarkedPointers {
+		for other, mark := range t.flowInfo.MarkedPointers {
 			if ptr.MayAlias(*other) {
-				t.markValue(v, source)
-				origins = append(origins, source)
+				t.markValue(v, mark)
+				origins = append(origins, mark)
 			}
 		}
 	}
@@ -194,10 +225,10 @@ func (t *stateTracker) addFreeVarAliases(x *ssa.FreeVar) {
 	addAliases(x, t.summary.Parent, t.getIndirectPointer(x), t.freeVarAliases, t.getPointer, t.getIndirectPointer)
 }
 
-// checkCopyIntoArgs checks whether the source in is copying or writing into a value that aliases with
+// checkCopyIntoArgs checks whether the mark in is copying or writing into a value that aliases with
 // one of the function's parameters. This keeps tracks of data flows to the function parameters that a
 // caller might see.
-func (t *stateTracker) checkCopyIntoArgs(in Source, out ssa.Value) {
+func (t *stateTracker) checkCopyIntoArgs(in Mark, out ssa.Value) {
 	if astfuncs.IsNillableType(out.Type()) {
 		for aliasedParam := range t.paramAliases[out] {
 			t.summary.AddParamEdge(in, aliasedParam)
@@ -208,45 +239,45 @@ func (t *stateTracker) checkCopyIntoArgs(in Source, out ssa.Value) {
 	}
 }
 
-// checkFlowIntoGlobal checks whether the source is data flowing into a global variable
-func (t *stateTracker) checkFlowIntoGlobal(loc ssa.Instruction, origin Source, out ssa.Value) {
+// checkFlowIntoGlobal checks whether the origin is data flowing into a global variable
+func (t *stateTracker) checkFlowIntoGlobal(loc ssa.Instruction, origin Mark, out ssa.Value) {
 	if glob, isGlob := out.(*ssa.Global); isGlob {
 		t.summary.AddGlobalEdge(origin, loc, glob)
 	}
 }
 
-// markAllAliases marks all the aliases of the pointer set using the source
-func (t *stateTracker) markAllAliases(source Source, ptr *pointer.Pointer) {
+// markAllAliases marks all the aliases of the pointer set using mark.
+func (t *stateTracker) markAllAliases(mark Mark, ptr *pointer.Pointer) {
 	if ptr == nil {
 		return
 	}
 	// Look at every value in the points-to set.
 	for _, label := range ptr.PointsTo().Labels() {
 		if label != nil && label.Value() != nil {
-			source.RegionPath = label.Path()
-			t.flowInfo.AddSource(label.Value(), source)
+			mark.RegionPath = label.Path()
+			t.flowInfo.AddMark(label.Value(), mark)
 		}
 	}
-	t.flowInfo.MarkedPointers[ptr] = source
+	t.flowInfo.MarkedPointers[ptr] = mark
 }
 
-// markValue marks the value v as tainted with origin taintOrigin
-// if the value was not marked as tainted, it changes the changeFlag to true to indicate that the taint information
-// has changed for the current pass
-func (t *stateTracker) markValue(v ssa.Value, source Source) {
-	if t.flowInfo.HasSource(v, source) {
+// markValue marks the value v and all values that propagate from v.
+// If the value was not marked, it changes the changeFlag to true to indicate
+// that the mark information has changed for the current pass.
+func (t *stateTracker) markValue(v ssa.Value, mark Mark) {
+	if t.flowInfo.HasMark(v, mark) {
 		return
 	}
-	// v was not tainted before
-	t.changeFlag = t.flowInfo.AddSource(v, source)
+	// v was not marked before
+	t.changeFlag = t.flowInfo.AddMark(v, mark)
 	// Propagate to any other value that is an alias of v
 	// By direct query
 	if ptr, ptrExists := t.cache.PointerAnalysis.Queries[v]; ptrExists {
-		t.markAllAliases(source, &ptr)
+		t.markAllAliases(mark, &ptr)
 	}
 	// By indirect query
 	if ptr, ptrExists := t.cache.PointerAnalysis.IndirectQueries[v]; ptrExists {
-		t.markAllAliases(source, &ptr)
+		t.markAllAliases(mark, &ptr)
 	}
 
 	// SPECIAL CASE: value is result of make any <- v', mark v'
@@ -255,20 +286,7 @@ func (t *stateTracker) markValue(v ssa.Value, source Source) {
 		// conversion to any or interface{}
 		typStr := miVal.Type().String()
 		if typStr == "any" || typStr == "interface{}" {
-			t.markValue(miVal.X, source)
-		}
-	}
-}
-
-func (t *stateTracker) AddFlowToSink(source Source, sink ssa.Instruction) {
-	// A flow from a tainted source to a sink is added in the taint tracking info
-	if source.IsTainted() {
-		sourceInstr := source.Node.(ssa.Instruction) // a taint-source must be an instruction
-		if t.flowInfo.HasSinkSourcePair(sink, sourceInstr) {
-			return // skip computing paths
-		}
-		if t.checkFlow(source, sink, nil) {
-			_ = t.flowInfo.AddSinkSourcePair(sink, sourceInstr)
+			t.markValue(miVal.X, mark)
 		}
 	}
 }
@@ -283,7 +301,7 @@ func simpleTransitiveMarkPropagation(t *stateTracker, loc ssa.Instruction, in ss
 // pathSensitiveMarkPropagation propagates all the marks from in to out with the object path string
 func pathSensitiveMarkPropagation(t *stateTracker, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string) {
 	if glob, ok := in.(*ssa.Global); ok {
-		t.markValue(out, NewQualifierSource(loc.(ssa.Node), glob, Global, "*"))
+		t.markValue(out, NewQualifierMark(loc.(ssa.Node), glob, Global, "*"))
 	}
 	for _, origin := range t.getMarkedValueOrigins(in, path) {
 		t.markValue(out, origin)
@@ -296,31 +314,31 @@ func pathSensitiveMarkPropagation(t *stateTracker, loc ssa.Instruction, in ssa.V
 // The closure value is tracked like any other value.
 func (t *stateTracker) addClosureNode(x *ssa.MakeClosure) {
 	t.summary.AddClosure(x)
-	t.markValue(x, NewSource(x, Closure, ""))
+	t.markValue(x, NewMark(x, Closure, ""))
 	for _, boundVar := range x.Bindings {
-		source := NewQualifierSource(x, boundVar, BoundVar, "")
+		mark := NewQualifierMark(x, boundVar, BoundVar, "")
 
-		t.markValue(boundVar, source)
+		t.markValue(boundVar, mark)
 
 		for y := range t.paramAliases[boundVar] {
-			t.summary.AddParamEdge(source, y)
+			t.summary.AddParamEdge(mark, y)
 		}
 
 		for y := range t.freeVarAliases[boundVar] {
-			t.summary.AddFreeVarEdge(source, y)
+			t.summary.AddFreeVarEdge(mark, y)
 		}
 
 		for _, origin := range t.getMarkedValueOrigins(boundVar, "*") {
 			t.summary.AddBoundVarEdge(origin, x, boundVar)
 		}
 	}
-	t.markValue(x, NewSource(x, Closure, "*"))
+	t.markValue(x, NewMark(x, Closure, "*"))
 }
 
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (t *stateTracker) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
-	if t.isSourceNode(t.cache.Config, asNode) {
-		s := NewSource(asNode, Synthetic+TaintedVal, "")
+	if t.shouldTrack(t.cache.Config, asNode) {
+		s := NewMark(asNode, Synthetic+TaintedVal, "")
 		t.summary.AddSyntheticNode(asInstr, "source")
 		t.markValue(asValue, s)
 	}
@@ -346,52 +364,43 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 	t.summary.AddCallInstr(t.cache, callInstr)
 	// If a closure is being called: the closure value flows to the callsite
 	if callInstr.Common().Method == nil {
-		for _, source := range t.getMarkedValueOrigins(callInstr.Common().Value, "*") {
-			t.summary.AddCallNodeEdge(source, callInstr)
+		for _, mark := range t.getMarkedValueOrigins(callInstr.Common().Value, "*") {
+			t.summary.AddCallNodeEdge(mark, callInstr)
 		}
 	}
 
 	// Check if node is source according to config
-	sourceType := CallReturn
-	if t.isSourceNode(t.flowInfo.Config, callInstr.(ssa.Node)) { // type cast cannot fail
-		sourceType += TaintedVal
+	markType := CallReturn
+	if t.shouldTrack(t.flowInfo.Config, callInstr.(ssa.Node)) { // type cast cannot fail
+		markType += TaintedVal
 	}
 	// Mark call
-	t.markValue(callValue, NewSource(callInstr.(ssa.Node), sourceType, ""))
-
-	callIsSink := t.isSinkNode(t.flowInfo.Config, callInstr.(ssa.Node))
+	t.markValue(callValue, NewMark(callInstr.(ssa.Node), markType, ""))
 
 	args := ssafuncs.GetArgs(callInstr)
 	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
 		// Mark call argument
-		t.markValue(arg, NewQualifierSource(callInstr.(ssa.Node), arg, CallSiteArg, ""))
+		t.markValue(arg, NewQualifierMark(callInstr.(ssa.Node), arg, CallSiteArg, ""))
 		// Special case: a global is received directly as an argument
 		if _, ok := arg.(*ssa.Global); ok {
-			tmpSrc := NewQualifierSource(callInstr.(ssa.Node), arg, Global, "")
+			tmpSrc := NewQualifierMark(callInstr.(ssa.Node), arg, Global, "")
 			t.summary.AddCallArgEdge(tmpSrc, callInstr, arg)
 		}
 
-		for _, source := range t.getMarkedValueOrigins(arg, "*") {
-
-			if source.IsTainted() && !source.IsSynthetic() {
-				if callIsSink {
-					// This is an intra-procedural path from a source to a sink
-					t.AddFlowToSink(source, callInstr)
-				}
-			}
+		for _, mark := range t.getMarkedValueOrigins(arg, "*") {
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
-			if t.checkFlow(source, callInstr, arg) {
-				t.summary.AddCallArgEdge(source, callInstr, arg)
+			if t.checkFlow(mark, callInstr, arg) {
+				t.summary.AddCallArgEdge(mark, callInstr, arg)
 				// Add edges to parameters if the call may modify caller's arguments
 				for x := range t.paramAliases[arg] {
 					if astfuncs.IsNillableType(x.Type()) {
-						t.summary.AddParamEdge(source, x)
+						t.summary.AddParamEdge(mark, x)
 					}
 				}
 				for y := range t.freeVarAliases[arg] {
 					if astfuncs.IsNillableType(y.Type()) {
-						t.summary.AddFreeVarEdge(source, y)
+						t.summary.AddFreeVarEdge(mark, y)
 					}
 				}
 			}
@@ -402,7 +411,7 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 // checkFlow checks whether there can be a flow between the source and the dest instruction. The destination must be
 // and instruction. destVal can be used to specify that the flow is to the destination (the location) through
 // a specific value. For example, destVal can be the argument of a function call.
-func (t *stateTracker) checkFlow(source Source, dest ssa.Instruction, destVal ssa.Value) bool {
+func (t *stateTracker) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) bool {
 	sourceInstr, ok := source.Node.(ssa.Instruction)
 	if !ok {
 		return true

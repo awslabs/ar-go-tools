@@ -87,8 +87,7 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ss
 		Cache:               cache,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: shouldBuildSummary,
-		IsSourceNode:        func(*config.Config, ssa.Node) bool { return true },
-		IsSinkNode:          func(*config.Config, ssa.Node) bool { return true },
+		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },
 	})
 
 	cache, err = analysis.BuildCrossFunctionGraph(cache)

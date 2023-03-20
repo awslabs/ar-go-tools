@@ -3,7 +3,6 @@ package taint
 import (
 	"fmt"
 	"io"
-	"log"
 	"strings"
 
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
@@ -11,47 +10,25 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-type paramStack struct {
-	p    *dataflow.ParamNode
-	prev *paramStack
+// Visitor represents a taint flow visitor that tracks taint flows from sources to sinks.
+type Visitor struct {
+	Taints         TaintFlows
+	coverageWriter io.StringWriter
 }
 
-func (ps *paramStack) node() *dataflow.ParamNode {
-	if ps == nil {
-		return nil
-	} else {
-		return ps.p
-	}
+func NewVisitor(coverageWriter io.StringWriter) *Visitor {
+	return &Visitor{Taints: make(TaintFlows), coverageWriter: coverageWriter}
 }
 
-func (ps *paramStack) add(p *dataflow.ParamNode) *paramStack {
-	return &paramStack{p: p, prev: ps}
-}
-
-func (ps *paramStack) parent() *paramStack {
-	if ps == nil {
-		return nil
-	} else {
-		return ps.prev
-	}
-}
-
-type visitorNode struct {
-	dataflow.NodeWithTrace
-	pStack *paramStack
-	prev   *visitorNode
-	depth  int
-}
-
-// VisitFromSource runs the inter-procedural analysis from a specific source and adds any detected taint flow
-// to the taintFlows.
-func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.NodeWithTrace, taintFlows dataflow.DataFlows,
-	coverageWriter io.StringWriter) {
+// Visit runs a cross-function analysis to add any detected taint flow from source to a sink to v.Taints.
+func (v *Visitor) Visit(c *dataflow.Cache, entrypoint dataflow.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	seen := make(map[dataflow.NodeWithTrace]bool)
 	goroutines := make(map[*ssa.Go]bool)
-	que := []*visitorNode{{NodeWithTrace: source, pStack: nil, prev: nil, depth: 0}}
+	source := entrypoint
+	que := []*dataflow.VisitorNode{{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}}
 
+	logger := c.Logger
 	logger.Printf("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
 	logger.Printf("==> Source: %s\n", format.Purple(source.Node.String()))
 	logger.Printf("%s %s\n", format.Green("Found at"), source.Node.Position(c))
@@ -68,7 +45,7 @@ func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(elt.Node, c.Config) {
-			if addNewPathCandidate(taintFlows, source.Node, elt.Node) {
+			if addNewPathCandidate(v.Taints, source.Node, elt.Node) {
 				ReportTaintFlow(c, source, elt)
 			}
 			// A sink does not have successors in the taint flow analysis (but other sinks can be reached
@@ -103,7 +80,7 @@ func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
 		// the function's parameter.
 		case *dataflow.ParamNode:
-			if elt.prev.Node.Graph() != graphNode.Graph() {
+			if elt.Prev.Node.Graph() != graphNode.Graph() {
 				// Flows inside the function body. The data propagates to other locations inside the function body
 				for out := range graphNode.Out() {
 					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
@@ -171,7 +148,7 @@ func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 					graphNode.Index(), callSite.CalleeSummary.Parent.String()))
 			}
 
-			if elt.prev == nil || callSite.Graph() != elt.prev.Node.Graph() {
+			if elt.Prev == nil || callSite.Graph() != elt.Prev.Node.Graph() {
 				// We are done with propagating to the callee's parameters. Next, we need to handle
 				// the flow inside the caller function: the outgoing edges computed for the summary
 				for out := range graphNode.Out() {
@@ -258,7 +235,7 @@ func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 		// (see the example for BoundVarNode)
 		case *dataflow.FreeVarNode:
 			// Flows inside the function
-			if elt.prev.Node.Graph() != graphNode.Graph() {
+			if elt.Prev.Node.Graph() != graphNode.Graph() {
 				for out := range graphNode.Out() {
 					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
 				}
@@ -314,40 +291,43 @@ func VisitFromSource(logger *log.Logger, c *dataflow.Cache, source dataflow.Node
 			}
 		}
 	}
-	reportCoverage(coverage, coverageWriter)
+
+	if v.coverageWriter != nil {
+		reportCoverage(coverage, v.coverageWriter)
+	}
 }
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the
 // trace has not been seen before
 func addNext(c *dataflow.Cache,
-	que []*visitorNode,
+	que []*dataflow.VisitorNode,
 	seen map[dataflow.NodeWithTrace]bool,
-	cur *visitorNode,
+	cur *dataflow.VisitorNode,
 	node dataflow.GraphNode,
 	trace *dataflow.NodeTree[*dataflow.CallNode],
-	closureTrace *dataflow.NodeTree[*dataflow.ClosureNode]) []*visitorNode {
+	closureTrace *dataflow.NodeTree[*dataflow.ClosureNode]) []*dataflow.VisitorNode {
 
 	newNode := dataflow.NodeWithTrace{Node: node, Trace: trace, ClosureTrace: closureTrace}
 
 	// Stop conditions: node is already in seen, trace is a lasso or depth exceeds limit
-	if seen[newNode] || trace.IsLasso() || cur.depth > c.Config.MaxDepth {
+	if seen[newNode] || trace.IsLasso() || cur.Depth > c.Config.MaxDepth {
 		return que
 	}
 
 	// logic for parameter stack
-	pStack := cur.pStack
+	pStack := cur.ParamStack
 	switch curNode := cur.Node.(type) {
 	case *dataflow.ReturnNode:
-		pStack = pStack.parent()
+		pStack = pStack.Parent()
 	case *dataflow.ParamNode:
-		pStack = pStack.add(curNode)
+		pStack = pStack.Add(curNode)
 	}
 
-	newVis := &visitorNode{
+	newVis := &dataflow.VisitorNode{
 		NodeWithTrace: newNode,
-		pStack:        pStack,
-		prev:          cur,
-		depth:         cur.depth + 1,
+		ParamStack:    pStack,
+		Prev:          cur,
+		Depth:         cur.Depth + 1,
 	}
 	que = append(que, newVis)
 	seen[newNode] = true
@@ -386,7 +366,7 @@ func checkNoGoRoutine(c *dataflow.Cache, reportedLocs map[*ssa.Go]bool, node *da
 // addNewPathCandidate adds a new path between a source and a sink to paths using the information in elt
 // returns true if it adds a new path.
 // @requires elt.Node.IsSink()
-func addNewPathCandidate(paths dataflow.DataFlows, source dataflow.GraphNode, sink dataflow.GraphNode) bool {
+func addNewPathCandidate(paths TaintFlows, source dataflow.GraphNode, sink dataflow.GraphNode) bool {
 	var sourceInstr ssa.Instruction
 	var sinkInstr ssa.CallInstruction
 

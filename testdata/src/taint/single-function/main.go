@@ -25,7 +25,7 @@ func (f Foo) zoo() bool {
 }
 
 func mkBar() Bar {
-	return Bar{BarData: "stuff"}
+	return Bar{BarData: fmt.Sprintf("tainted")} // @Source(mkBar)
 }
 
 func mkSomeStruct() SomeStruct {
@@ -47,15 +47,15 @@ func sink3(s string) {
 func ignore(...interface{}) {}
 
 func part2() {
-	y := Bar{BarData: "tainted"} // @Source(bar0)
+	y := Bar{BarData: fmt.Sprintf("tainted")} // @Source(bar0)
 	y = mkBar()
 	z := SomeStruct{DataField: y.BarData}
-	sink3(z.DataField) // @Sink(bar0)
+	sink3(z.DataField) // @Sink(bar0, mkBar)
 	a := z.DataField
 	b := z.OtherData
-	sink3(a)         // @Sink(bar0)
-	k := mkBar()     // @Source(bar01)
-	sink3(k.BarData) // @Sink(bar01)
+	sink3(a) // @Sink(bar0, mkBar)
+	k := mkBar()
+	sink3(k.BarData) // @Sink(mkBar)
 	v := "something"
 	k.BarData = v
 	sink3(v)
@@ -63,22 +63,22 @@ func part2() {
 }
 
 func testChan() {
-	y := mkBar() // @Source(chan)
+	y := mkBar()
 	c := make(chan string)
 	c <- y.BarData
 	x := <-c
-	sink3(x) // @Sink(chan)
+	sink3(x) // @Sink(mkBar)
 }
 
 func testChan2() {
 	c := make(chan string)
 	x := "_"
 	if random.Int() > 10 {
-		y := mkBar() // @Source(chan2)
+		y := mkBar()
 		c <- y.BarData
 		x = <-c
 	}
-	sink3(x) // @Sink(chan2)
+	sink3(x) // @Sink(mkBar)
 }
 
 func testChan3() {
@@ -86,23 +86,23 @@ func testChan3() {
 	c <- "notaint"
 	sink3(<-c) // should not appear as sink receiving tainted value
 	for i := 0; i < 10; i++ {
-		y := mkBar() // @Source(bar3)
+		y := mkBar()
 		c <- y.BarData
 	}
 	for i := 0; i < 10; i++ {
 		x := <-c
-		sink3(x) // @Sink(bar3)
+		sink3(x) // @Sink(mkBar)
 	}
 }
 
 func testFlow1() {
-	y := Bar{BarData: "tainted"} // @Source(bar4)
+	y := Bar{BarData: fmt.Sprintf("tainted")} // @Source(bar4)
 	y = mkBar()
 	z := SomeStruct{DataField: y.BarData}
 	a := ""
 	if random.Int() > 10 {
 		for i := 0; i < 10; i++ {
-			sink3(a) // @Sink(bar4)
+			sink3(a) // @Sink(bar4, mkBar)
 			if random.Int() > 10 {
 				a = z.DataField
 			}
@@ -123,10 +123,10 @@ func testFieldSensitivity() {
 func simple1() {
 	s := fmt.Sprintf("taintedstuff-%s", "fortest") // @Source(simple1)
 	x := Foo{Data: s}
-	sink1(x)             // @Sink(simple1)
-	if b := x.zoo(); b { // @Source(simple11)
+	sink1(x) // @Sink(simple1)
+	if b := x.zoo(); b {
 		fmt.Println(x.Data)
-		sink1(b) // @Sink(simple11)
+		sink1(b) // @Sink(simple1)
 	}
 }
 
@@ -134,9 +134,9 @@ func testFlow2() {
 	a := ""
 	if random.Int() > 10 {
 		for i := 0; i < 10; i++ {
-			sink3(a) // @Sink(bar1)
+			sink3(a) // @Sink(bar1, mkBar)
 			if random.Int() > 10 {
-				y := Bar{BarData: "tainted"} // @Source(bar1)
+				y := Bar{BarData: fmt.Sprintf("tainted")} // @Source(bar1)
 				y = mkBar()
 				z := SomeStruct{DataField: y.BarData}
 				a = z.DataField
@@ -258,10 +258,10 @@ func testMapAndField2() {
 }
 
 func testMultipleSources1() {
-	b := mkBar()                // @Source(n2)
+	b := mkBar()
 	s := fmt.Sprintf("Tainted") // @Source(n1)
 	t := b.BarData
-	sink3(s + t) // @Sink(n1,n2)
+	sink3(s + t) // @Sink(n1, mkBar)
 }
 
 func testMultipleSources2() {
@@ -269,10 +269,10 @@ func testMultipleSources2() {
 	if random.Int() > 10 {
 		a = append(a, fmt.Sprintf("tainted")) // @Source(nm1)
 	} else {
-		x := mkBar() // @Source(nm2)
+		x := mkBar()
 		a = append(a, x.BarData)
 	}
-	sink1(a[0]) // @Sink(nm1, nm2)
+	sink1(a[0]) // @Sink(nm1, mkBar)
 }
 
 func testMultipleSources3() {
@@ -285,14 +285,14 @@ func testMultipleSources3() {
 		for i := 0; i < 10; i++ {
 			b = fmt.Sprintf("tainted too") // @Source(m3)
 			if b == "ok" {
-				x := mkBar() //@Source(m2)
+				x := mkBar()
 				b = b + x.BarData
 			} else {
 				b = *a[0] + "0"
 			}
 		}
 	}
-	sink1(*a[0]) // @Sink(m1,m2,m3)
+	sink1(*a[0]) // @Sink(m1,m3,mkBar)
 }
 
 func main() {

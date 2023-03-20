@@ -97,14 +97,8 @@ func (t *stateTracker) DoRunDefers(r *ssa.RunDefers) {
 }
 
 func (t *stateTracker) DoPanic(x *ssa.Panic) {
-	// A panic is always a sink
-	if t.isSinkNode(t.flowInfo.Config, x) {
-		for _, origin := range t.getMarkedValueOrigins(x.X, "*") {
-			if origin.IsTainted() {
-				t.AddFlowToSink(origin, x)
-			}
-		}
-	}
+	// TODO figure out how to handle this
+	// t.errors[x] = fmt.Errorf("panic is not handled yet")
 }
 
 func (t *stateTracker) DoSend(x *ssa.Send) {
@@ -135,11 +129,10 @@ func (t *stateTracker) DoMakeChan(*ssa.MakeChan) {
 }
 
 func (t *stateTracker) DoAlloc(x *ssa.Alloc) {
-	if t.isSourceNode(t.flowInfo.Config, x) {
-		source := NewSource(x, TaintedVal, "")
-		t.markValue(x, source)
+	if t.shouldTrack(t.flowInfo.Config, x) {
+		t.markValue(x, NewMark(x, TaintedVal, ""))
 	}
-	// An allocation may be a source
+	// An allocation may be a mark
 	t.optionalSyntheticNode(x, x, x)
 }
 
@@ -161,7 +154,7 @@ func (t *stateTracker) DoNext(x *ssa.Next) {
 }
 
 func (t *stateTracker) DoFieldAddr(x *ssa.FieldAddr) {
-	// A FieldAddr may be a source
+	// A FieldAddr may be a mark
 	t.optionalSyntheticNode(x, x, x)
 
 	// Propagate taint with field sensitivity
@@ -179,7 +172,7 @@ func (t *stateTracker) DoFieldAddr(x *ssa.FieldAddr) {
 }
 
 func (t *stateTracker) DoField(x *ssa.Field) {
-	// A field may be a source
+	// A field may be a mark
 	t.optionalSyntheticNode(x, x, x)
 
 	// Propagate taint with field sensitivity
