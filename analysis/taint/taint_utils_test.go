@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
 	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
 	"golang.org/x/tools/go/ssa"
@@ -114,9 +113,9 @@ func getExpectedSourceToSink(reldir string, dir string) map[LPos]map[LPos]bool {
 	return source2sink
 }
 
-func checkExpectedPositions(t *testing.T, p *ssa.Program, flows dataflow.DataFlows, expect map[LPos]map[LPos]bool) {
+func checkExpectedPositions(t *testing.T, p *ssa.Program, flows TaintFlows, expect map[LPos]map[LPos]bool) {
 	seen := make(map[LPos]map[LPos]bool)
-	for sink, sources := range dataflow.ReachedSinkPositions(p, flows) {
+	for sink, sources := range ReachedSinkPositions(p, flows) {
 		for source := range sources {
 			posSink := RemoveColumn(sink)
 			if _, ok := seen[posSink]; !ok {

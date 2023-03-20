@@ -15,7 +15,7 @@ import (
 
 // addCoverage adds an entry to coverage by properly formatting the position of the visitorNode in the context of
 // the cache
-func addCoverage(c *dataflow.Cache, elt *visitorNode, coverage map[string]bool) {
+func addCoverage(c *dataflow.Cache, elt *dataflow.VisitorNode, coverage map[string]bool) {
 	pos := elt.Node.Position(c)
 	if coverage != nil {
 		if strings.Contains(pos.Filename, c.Config.Coverage) {
@@ -43,7 +43,7 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 
 // ReportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger
-func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink *visitorNode) {
+func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
 	c.Logger.Printf(" 💀 Sink reached at %s\n", format.Red(sink.Node.Position(c)))
 	c.Logger.Printf(" Add new path from %s to %s <== \n",
 		format.Green(source.Node.String()), format.Red(sink.Node.String()))
@@ -64,11 +64,11 @@ func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink *vis
 		tmp.WriteString(fmt.Sprintf("Sink: %s\n", sink.Node.String()))
 		tmp.WriteString(fmt.Sprintf("At: %s\n", sinkPos))
 
-		nodes := []*visitorNode{}
+		nodes := []*dataflow.VisitorNode{}
 		cur := sink
 		for cur != nil {
 			nodes = append(nodes, cur)
-			cur = cur.prev
+			cur = cur.Prev
 		}
 
 		tmp.WriteString(fmt.Sprintf("Trace:\n"))

@@ -73,6 +73,17 @@ func IsSourceNode(cfg *config.Config, n ssa.Node) bool {
 	}
 }
 
+func isSource(n dataflow.GraphNode, cfg *config.Config) bool {
+	switch n := n.(type) {
+	case *dataflow.CallNode:
+		return IsSourceNode(cfg, n.CallSite().(ssa.Node)) // safe type conversion
+	case *dataflow.SyntheticNode:
+		return IsSourceNode(cfg, n.Instr().(ssa.Node)) // safe type conversion
+	default:
+		return false
+	}
+}
+
 func IsSinkNode(cfg *config.Config, n ssa.Node) bool {
 	return isMatchingCodeIdWithCallee(cfg.IsSink, nil, n)
 }

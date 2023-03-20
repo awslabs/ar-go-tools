@@ -16,8 +16,7 @@ import (
 
 // SingleFunctionResult represents the result of running a single-function analysis pass.
 type SingleFunctionResult struct {
-	FlowGraph      dataflow.CrossFunctionFlowGraph
-	FlowCandidates dataflow.DataFlows
+	FlowGraph dataflow.CrossFunctionFlowGraph
 }
 
 // RunSingleFunctionArgs represents the arguments for RunSingleFunction.
@@ -25,8 +24,9 @@ type RunSingleFunctionArgs struct {
 	Cache               *dataflow.Cache
 	NumRoutines         int
 	ShouldCreateSummary func(function *ssa.Function) bool
-	IsSourceNode        func(*config.Config, ssa.Node) bool
-	IsSinkNode          func(*config.Config, ssa.Node) bool
+	// IsEntrypoint is a function that returns true if the node should be an entrypoint to the analysis.
+	// The entrypoint node is treated as a "source" of data.
+	IsEntrypoint func(*config.Config, ssa.Node) bool
 }
 
 // RunSingleFunction runs a single-function analysis pass of program prog in parallel using numRoutines.
@@ -39,23 +39,20 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 
 	fg := dataflow.NewCrossFunctionFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, args.Cache)
 
-	// flowCandidates contains all the possible data-flow candidates.
-	flowCandidates := make(dataflow.DataFlows)
-
 	if args.NumRoutines > 1 {
 		// Start the single function summary building routines
 		jobs := make(chan singleFunctionJob, args.NumRoutines+1)
 		output := make(chan dataflow.SingleFunctionResult, args.NumRoutines+1)
 		done := make(chan int)
 		for proc := 0; proc < args.NumRoutines; proc++ {
-			go jobConsumer(jobs, output, done, args.IsSourceNode, args.IsSinkNode)
+			go jobConsumer(jobs, output, done, args.IsEntrypoint)
 		}
 		// Start the collecting routine
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			collectResults(output, done, args.NumRoutines, &fg, flowCandidates)
+			collectResults(output, done, args.NumRoutines, &fg)
 		}()
 
 		// Feed the jobs in the jobs channel
@@ -79,26 +76,24 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 					function: function,
 					cache:    args.Cache,
 				}
-				result := runIntraProceduralOnFunction(job, args.IsSourceNode, args.IsSinkNode)
+				result := runIntraProceduralOnFunction(job, args.IsEntrypoint)
 				if result.Summary != nil {
 					fg.Summaries[result.Summary.Parent] = result.Summary
 				}
-				dataflow.MergeDataFlows(flowCandidates, result.DataFlows)
 			}
 		}
 	}
 	logger.Printf("Single-function pass done (%.2f s).", time.Since(start).Seconds())
 
 	args.Cache.FlowGraph = &fg
-	return SingleFunctionResult{FlowGraph: fg, FlowCandidates: flowCandidates}
+	return SingleFunctionResult{FlowGraph: fg}
 }
 
 // RunCrossFunctionArgs represents the arguments to RunCrossFunction.
 type RunCrossFunctionArgs struct {
-	Cache              *dataflow.Cache
-	DataFlowCandidates dataflow.DataFlows
-	Visitor            dataflow.SourceVisitor
-	IsEntrypoint       func(*config.Config, *ssa.Function) bool
+	Cache        *dataflow.Cache
+	Visitor      dataflow.Visitor
+	IsEntrypoint func(*config.Config, *ssa.Function) bool
 }
 
 // RunCrossFunction runs the cross-function analysis pass.
@@ -106,7 +101,7 @@ type RunCrossFunctionArgs struct {
 func RunCrossFunction(args RunCrossFunctionArgs) {
 	args.Cache.Logger.Println("Starting cross-function pass...")
 	start := time.Now()
-	args.Cache.FlowGraph.CrossFunctionPass(args.Cache, args.DataFlowCandidates, args.Visitor, args.IsEntrypoint)
+	args.Cache.FlowGraph.CrossFunctionPass(args.Cache, args.Visitor, args.IsEntrypoint)
 	args.Cache.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
 }
 
@@ -117,10 +112,9 @@ func BuildCrossFunctionGraph(cache *dataflow.Cache) (*dataflow.Cache, error) {
 	}
 
 	RunCrossFunction(RunCrossFunctionArgs{
-		Cache:              cache,
-		DataFlowCandidates: nil,
-		Visitor:            dataflow.VisitCrossFunctionGraph,
-		IsEntrypoint:       func(*config.Config, *ssa.Function) bool { return true },
+		Cache:        cache,
+		Visitor:      dataflow.CrossFunctionGraphVisitor{},
+		IsEntrypoint: func(*config.Config, *ssa.Function) bool { return true },
 	})
 
 	return cache, nil
@@ -135,9 +129,9 @@ type singleFunctionJob struct {
 
 // jobConsumer consumes jobs from the jobs channel, and closes output when done.
 func jobConsumer(jobs chan singleFunctionJob, output chan dataflow.SingleFunctionResult, done chan int,
-	isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) {
+	isSourceNode func(*config.Config, ssa.Node) bool) {
 	for job := range jobs {
-		output <- runIntraProceduralOnFunction(job, isSourceNode, isSinkNode)
+		output <- runIntraProceduralOnFunction(job, isSourceNode)
 	}
 	if done != nil {
 		done <- 0
@@ -147,18 +141,20 @@ func jobConsumer(jobs chan singleFunctionJob, output chan dataflow.SingleFunctio
 // runIntraProceduralOnFunction is a simple function that runs the intraprocedural analysis with the information in job
 // and returns the result of the analysis
 func runIntraProceduralOnFunction(job singleFunctionJob,
-	isSourceNode, isSinkNode func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
+	isSourceNode func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
 	runAnalysis := shouldBuildSummary(job.cache.Config, job.function)
 	if job.cache.Config.Verbose {
 		job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
 			packagescan.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
 	}
-	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function, runAnalysis, isSourceNode, isSinkNode)
+	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function, runAnalysis, isSourceNode)
 	if err != nil {
 		job.cache.Err.Printf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
 	}
 
-	result.Summary.ShowAndClearErrors(job.cache.Logger.Writer())
+	if result.Summary != nil {
+		result.Summary.ShowAndClearErrors(job.cache.Logger.Writer())
+	}
 
 	return result
 }
@@ -168,7 +164,7 @@ func runIntraProceduralOnFunction(job singleFunctionJob,
 // Operations on graph and candidates are sequential.
 // cleans up done and c channels
 func collectResults(c chan dataflow.SingleFunctionResult, done chan int, numProducers int,
-	graph *dataflow.CrossFunctionFlowGraph, candidates dataflow.DataFlows) {
+	graph *dataflow.CrossFunctionFlowGraph) {
 	counter := numProducers
 	for {
 		select {
@@ -176,7 +172,6 @@ func collectResults(c chan dataflow.SingleFunctionResult, done chan int, numProd
 			if result.Summary != nil {
 				graph.Summaries[result.Summary.Parent] = result.Summary
 			}
-			dataflow.MergeDataFlows(candidates, result.DataFlows)
 		case <-done:
 			counter--
 			if counter == 0 {
