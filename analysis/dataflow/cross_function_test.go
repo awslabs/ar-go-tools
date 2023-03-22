@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/summaries"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 

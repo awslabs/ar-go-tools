@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/dataflow"
 )
 
 func AutoCompleteOfCache(_ *dataflow.Cache) func(string, int, rune) (string, int, bool) {

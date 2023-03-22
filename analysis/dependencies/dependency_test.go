@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
+	"github.com/awslabs/argot/analysis"
 	"golang.org/x/tools/go/ssa"
 )
 

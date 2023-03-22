@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
+	"github.com/awslabs/argot/analysis/config"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"

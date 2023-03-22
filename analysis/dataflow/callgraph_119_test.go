@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"testing"
 
-	df "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
+	df "github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 

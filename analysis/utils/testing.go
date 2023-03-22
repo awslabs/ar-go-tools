@@ -1,11 +1,12 @@
 package utils
 
 import (
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"golang.org/x/tools/go/ssa"
 	"path/filepath"
 	"testing"
+
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/config"
+	"golang.org/x/tools/go/ssa"
 )
 
 // LoadTest loads the program in the directory dir, looking for a main.go and a config.yaml. If additional files

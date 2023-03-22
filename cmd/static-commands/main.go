@@ -5,7 +5,7 @@
 package main
 
 import (
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/static-commands"
+	staticcommands "github.com/awslabs/argot/analysis/static-commands"
 	"golang.org/x/tools/go/analysis/singlechecker"
 )
 

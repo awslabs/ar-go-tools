@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	ac "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/astfuncs"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
+	ac "github.com/awslabs/argot/analysis/astfuncs"
+	"github.com/awslabs/argot/analysis/functional"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/dstutil"

@@ -3,9 +3,9 @@ package concurrency
 import (
 	"log"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )

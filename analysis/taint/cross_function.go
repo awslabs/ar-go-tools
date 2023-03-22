@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/format"
 	"golang.org/x/tools/go/ssa"
 )
 

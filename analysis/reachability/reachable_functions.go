@@ -9,7 +9,7 @@ import (
 	"os"
 	"sort"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/packagescan"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )

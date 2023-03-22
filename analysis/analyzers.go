@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
+	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
 )
 

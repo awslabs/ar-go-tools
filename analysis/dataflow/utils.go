@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"go/types"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	. "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/config"
+	. "github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 )
 

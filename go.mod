@@ -1,4 +1,4 @@
-module git.amazon.com/pkg/ARG-GoAnalyzer
+module github.com/awslabs/argot
 
 go 1.18
 

@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/format"
+	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 )
 
 // addCoverage adds an entry to coverage by properly formatting the position of the visitorNode in the context of

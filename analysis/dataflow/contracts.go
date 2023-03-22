@@ -2,9 +2,10 @@ package dataflow
 
 import (
 	"encoding/json"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
 	"io"
 	"os"
+
+	"github.com/awslabs/argot/analysis/summaries"
 )
 
 // A Contract for an interface specifies an interface id (the long name of the interface, i.e. package name followed

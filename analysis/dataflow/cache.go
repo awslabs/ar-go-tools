@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
+	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )

@@ -4,7 +4,7 @@ import (
 	"os"
 	"path"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/dataflow"
 	"golang.org/x/term"
 )
 

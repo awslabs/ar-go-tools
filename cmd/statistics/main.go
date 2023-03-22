@@ -11,9 +11,9 @@ import (
 	"go/build"
 	"os"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/maypanic"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/format"
+	"github.com/awslabs/argot/analysis/maypanic"
 
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
@@ -97,7 +97,7 @@ func doMain() error {
 		fmt.Printf("Number of blocks: %d\n", result.NumberOfBlocks)
 		fmt.Printf("Number of instructions: %d\n", result.NumberOfInstructions)
 	}
-	
+
 	//analysis.DeferStats(&allFunctions)
 	analysis.ClosureStats(&allFunctions)
 

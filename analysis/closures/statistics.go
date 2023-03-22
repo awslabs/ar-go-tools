@@ -3,9 +3,9 @@ package closures
 import (
 	"fmt"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/astfuncs"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/astfuncs"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 )
 

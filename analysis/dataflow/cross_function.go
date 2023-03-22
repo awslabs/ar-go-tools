@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/format"
+	"github.com/awslabs/argot/analysis/packagescan"
 	"golang.org/x/tools/go/ssa"
 )
 
