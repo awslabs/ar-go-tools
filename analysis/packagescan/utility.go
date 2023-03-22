@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/tools/go/ssa"
 
-	. "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
+	. "github.com/awslabs/argot/analysis/functional"
 )
 
 // at this point, the f.String contains something like this:

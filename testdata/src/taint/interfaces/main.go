@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/testdata/src/taint/interfaces/sub"
+	"github.com/awslabs/argot/testdata/src/taint/interfaces/sub"
 )
 
 func main() {

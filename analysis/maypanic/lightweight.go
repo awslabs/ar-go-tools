@@ -7,10 +7,11 @@ package maypanic
 import (
 	"encoding/json"
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"go/token"
 	"sort"
 	"strings"
+
+	"github.com/awslabs/argot/analysis/format"
 
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"

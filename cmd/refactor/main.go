@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/refactor"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/refactor"
 	"github.com/dave/dst/decorator"
 	"golang.org/x/tools/go/packages"
 )

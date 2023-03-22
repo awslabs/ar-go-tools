@@ -4,9 +4,9 @@ import (
 	"flag"
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/dataflow"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 )

@@ -5,11 +5,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/defers"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"go/build"
 	"os"
+
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/defers"
+	"github.com/awslabs/argot/analysis/format"
 
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"

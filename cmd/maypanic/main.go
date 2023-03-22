@@ -7,12 +7,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"go/build"
 	"os"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/maypanic"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/format"
+
+	"github.com/awslabs/argot/analysis/maypanic"
 
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/packages"

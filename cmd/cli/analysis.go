@@ -9,11 +9,11 @@ import (
 	"runtime"
 	"time"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/summaries"
+	"github.com/awslabs/argot/analysis/taint"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )

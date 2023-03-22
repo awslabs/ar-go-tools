@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/packagescan"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
+	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/utils"
 	"github.com/yourbasic/graph"
 	"golang.org/x/exp/slices"
 )

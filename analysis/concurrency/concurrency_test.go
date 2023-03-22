@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	. "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
+	. "github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/utils"
 )
 
 func loadConcurrencyTestResult(t *testing.T, subDir string) AnalysisResult {

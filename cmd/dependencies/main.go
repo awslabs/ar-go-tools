@@ -7,14 +7,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
 	"go/build"
 	"io"
 	"log"
 	"os"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dependencies"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/format"
+
+	"github.com/awslabs/argot/analysis/dependencies"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 )

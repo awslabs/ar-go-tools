@@ -5,12 +5,12 @@ import (
 	"go/token"
 	"go/types"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/astfuncs"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/defers"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/astfuncs"
+	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/defers"
+	"github.com/awslabs/argot/analysis/format"
+	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )

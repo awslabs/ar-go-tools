@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"testing"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/refactor"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/refactor"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/decorator/resolver/gopackages"

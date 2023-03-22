@@ -14,12 +14,12 @@ import (
 	"os"
 	"time"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	callgraph2 "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/config"
+	callgraph2 "github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/format"
 
-	render "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/rendering"
+	render "github.com/awslabs/argot/analysis/rendering"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )

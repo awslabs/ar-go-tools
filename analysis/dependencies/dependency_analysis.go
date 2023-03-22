@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/reachability"
+	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/reachability"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )

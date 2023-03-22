@@ -3,7 +3,7 @@
 package ssafuncs
 
 import (
-	. "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
+	. "github.com/awslabs/argot/analysis/functional"
 	"golang.org/x/tools/go/ssa"
 )
 

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/format"
+	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/format"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/config"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/taint"
+	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/taint"
 	"golang.org/x/tools/go/ssa"
 )
 

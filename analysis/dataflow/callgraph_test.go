@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"testing"
 
-	df "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/dataflow"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/utils"
+	df "github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/utils"
 	cg "golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )

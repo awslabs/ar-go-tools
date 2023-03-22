@@ -23,7 +23,7 @@ import (
 	"os"
 	"path"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
+	"github.com/awslabs/argot/analysis/functional"
 	"gopkg.in/yaml.v3"
 )
 

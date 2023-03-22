@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/functional"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/packagescan"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/ssafuncs"
-	"git.amazon.com/pkg/ARG-GoAnalyzer/analysis/summaries"
+	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
 )
 

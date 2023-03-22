@@ -1,7 +1,7 @@
 package refactor
 
 import (
-	ac "git.amazon.com/pkg/ARG-GoAnalyzer/analysis/astfuncs"
+	ac "github.com/awslabs/argot/analysis/astfuncs"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/dstutil"
