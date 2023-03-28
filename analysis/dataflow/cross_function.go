@@ -259,7 +259,7 @@ func (ps *ParamStack) Parent() *ParamStack {
 // FlowGraph.
 type CrossFunctionGraphVisitor struct{}
 
-// VisitCrossFunctionGraph is a SourceVisitor that builds adds edges between the
+// Visit is a SourceVisitor that builds adds edges between the
 // individual single-function dataflow graphs reachable from source.
 // This visitor must be called for every entrypoint in the program to build a
 // complete dataflow graph.
@@ -381,9 +381,8 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 		case *ReturnNode:
 			// Check call stack is empty, and caller is one of the callsites
 			// Caller can be different if value flowed in function through a closure definition
-			if elt.Trace != nil && CheckCallStackContainsCallsite(c, graphNode.Graph().Callsites, elt.Trace.Label) {
+			if caller := UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); caller != nil {
 				// This function was called: the value flows back to the call site only
-				caller := elt.Trace.Label
 				addEdge(c.FlowGraph, graphNode, caller)
 				for x := range caller.Out() {
 					que = addNext(c, que, seen, elt, x, elt.Trace.Parent, elt.ClosureTrace)
@@ -608,15 +607,24 @@ func openSummaries(c *Cache) *os.File {
 	return summariesFile
 }
 
-// CheckCallStackContainsCallsite returns true if nodes contains a call node with the same callsite as the node
-func CheckCallStackContainsCallsite(c *Cache, nodes map[ssa.CallInstruction]*CallNode, node *CallNode) bool {
-	// The number of nodes in a call is expected to be small
-	for _, x := range nodes {
-		if x.CallSite() == node.CallSite() && x.Callee() == node.Callee() {
-			return true
+// UnwindCallstackFromCallee returns the CallNode that should be returned upon. It satisfies the following conditions:
+// - the CallNode is in the callsites set
+// - the CallNode is in the trace
+// If no CallNode satisfies these conditions, nil is returned.
+func UnwindCallstackFromCallee(callsites map[ssa.CallInstruction]*CallNode, trace *NodeTree[*CallNode]) *CallNode {
+	// no trace = nowhere to return to.
+	if trace == nil {
+		return nil
+	}
+
+	// the number of callsites in a call is expected to be small
+	for _, x := range callsites {
+		if x.CallSite() == trace.Label.CallSite() && x.Callee() == trace.Label.Callee() {
+			return x
 		}
 	}
-	return false
+	// no return node has been found
+	return nil
 }
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the

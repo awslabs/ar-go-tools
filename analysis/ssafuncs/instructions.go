@@ -174,5 +174,6 @@ func InstrMethodKey(instr ssa.CallInstruction) Optional[string] {
 		methodKey := instr.Common().Value.Type().String() + "." + methodFunc.Name()
 		return Some[string](methodKey)
 	}
+
 	return None[string]()
 }

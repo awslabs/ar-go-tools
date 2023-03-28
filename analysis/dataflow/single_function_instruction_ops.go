@@ -24,7 +24,7 @@ func (t *stateTracker) ChangedOnEndBlock() bool {
 // Below are all the interface functions to implement the InstrOp interface
 
 func (t *stateTracker) DoCall(call *ssa.Call) {
-	t.callCommonTaint(call, call, call.Common())
+	t.callCommonMark(call, call, call.Common())
 }
 
 func (t *stateTracker) DoDefer(_ *ssa.Defer) {
@@ -32,7 +32,7 @@ func (t *stateTracker) DoDefer(_ *ssa.Defer) {
 }
 
 func (t *stateTracker) DoGo(g *ssa.Go) {
-	t.callCommonTaint(g.Value(), g, g.Common())
+	t.callCommonMark(g.Value(), g, g.Common())
 }
 
 func (t *stateTracker) DoDebugRef(*ssa.DebugRef) {
@@ -84,7 +84,7 @@ func (t *stateTracker) DoSlice(x *ssa.Slice) {
 func (t *stateTracker) DoReturn(r *ssa.Return) {
 	for _, result := range r.Results {
 		for _, origin := range t.getMarkedValueOrigins(result, "*") {
-			t.summary.AddReturnEdge(origin, r)
+			t.summary.AddReturnEdge(origin, r, nil)
 		}
 	}
 }
@@ -130,7 +130,7 @@ func (t *stateTracker) DoMakeChan(*ssa.MakeChan) {
 
 func (t *stateTracker) DoAlloc(x *ssa.Alloc) {
 	if t.shouldTrack(t.flowInfo.Config, x) {
-		t.markValue(x, NewMark(x, TaintedVal, ""))
+		t.markValue(x, NewMark(x, DefaultMark, ""))
 	}
 	// An allocation may be a mark
 	t.optionalSyntheticNode(x, x, x)

@@ -3,7 +3,7 @@ package astfuncs
 import "github.com/dave/dst"
 
 // This file contains function to manage variable names within the scope of an existing program
-// To create a new variable with name in the same scope as node n, use NewIdent(n, name).
+// To create a new variable with name in the same scope as node n, use NewName(n, name).
 
 import (
 	"fmt"
@@ -107,10 +107,13 @@ func (f *FuncInfo) FreshNameAt(n dst.Node, prefix string, i int) string {
 
 }
 
-// NewIdent returns a new identifier that is a fresh name at node n. If successful, the scope should be non-nil and
+// NewName returns a new identifier that is a fresh name at node n. If successful, the scope should be non-nil and
 // addition of the identifier in the program should be done by adding the identifier to the scope returned (if the
 // intention is to declare the identifier next to n).
-func (f *FuncInfo) NewIdent(n dst.Node, prefix string) (*types.Scope, string) {
+func (f *FuncInfo) NewName(n dst.Node, prefix string) (*types.Scope, string) {
+	if n == nil {
+		return nil, prefix
+	}
 	varName := f.FreshNameAt(n, prefix, 0)
 	scope := f.ClosestEnclosingScope(n)
 	return scope, varName

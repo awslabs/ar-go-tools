@@ -11,7 +11,7 @@ import (
 
 // NewTrue returns a new AST structure that represents the boolean true
 func NewTrue() *dst.BasicLit {
-	return &dst.BasicLit{Value: "false"}
+	return &dst.BasicLit{Value: "true"}
 }
 
 // NewFalse returns a new AST structure that represents the boolean false
@@ -102,4 +102,32 @@ func newStructTypeExpr(t *types.Struct) (dst.Expr, error) {
 		Decs:       dst.StructTypeDecorations{},
 	}
 	return res, nil
+}
+
+func NewBinOp(op token.Token, x, y dst.Expr) *dst.BinaryExpr {
+	return &dst.BinaryExpr{
+		X:    x,
+		Op:   op,
+		Y:    y,
+		Decs: dst.BinaryExprDecorations{},
+	}
+}
+
+func NewUnOp(op token.Token, x dst.Expr) *dst.UnaryExpr {
+	return &dst.UnaryExpr{
+		Op:   op,
+		X:    x,
+		Decs: dst.UnaryExprDecorations{},
+	}
+}
+
+func NewFuncDecl(name string, signature *dst.FuncType, body *dst.BlockStmt) *dst.FuncDecl {
+	f := &dst.FuncDecl{
+		Recv: nil,
+		Name: dst.NewIdent(name),
+		Type: signature,
+		Body: body,
+		Decs: dst.FuncDeclDecorations{},
+	}
+	return f
 }

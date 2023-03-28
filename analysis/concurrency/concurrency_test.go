@@ -42,7 +42,7 @@ func TestTrivial(t *testing.T) {
 	res := make(map[string]string, len(ar.NodeColors))
 	for node, color := range ar.NodeColors {
 
-		e := strings.Join(Map(SetToSlice(color), func(i uint32) string { return strconv.Itoa(int(i)) }), ",")
+		e := strings.Join(Map(SetToOrderedSlice(color), func(i uint32) string { return strconv.Itoa(int(i)) }), ",")
 		t.Logf("Node %s - %s", node.String(), e)
 
 		if (node.Func.Name() == "main" || node.Func.Name() == "init") && (len(color) != 1 || !color[0]) {

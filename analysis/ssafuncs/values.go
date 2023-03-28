@@ -1,6 +1,10 @@
 package ssafuncs
 
-import "golang.org/x/tools/go/ssa"
+import (
+	"go/token"
+
+	"golang.org/x/tools/go/ssa"
+)
 
 // A ValueOp contains the methods necessary to implement an exhaustive switch on ssa.Value
 type ValueOp interface {
@@ -97,4 +101,48 @@ func ValueSwitch(vmap ValueOp, v *ssa.Value) {
 	case *ssa.Extract:
 		vmap.DoExtract(val)
 	}
+}
+
+// ValuesWithSameData
+// TODO this function is incomplete
+func ValuesWithSameData(v ssa.Value) map[ssa.Value]bool {
+	valueSet := map[ssa.Value]bool{v: true}
+	for _, instr := range *(v.Referrers()) {
+		switch sameData := instr.(type) {
+		case *ssa.MakeInterface:
+			if sameData.X == v { // this should always be true
+				valueSet[instr.(ssa.Value)] = true // conversion will always succeed
+			}
+		case *ssa.UnOp:
+			if ok, vStruct := MatchLoadField(sameData); ok {
+				valueSet[vStruct] = true
+			}
+
+			// the default case is to not add the value to the map of values with same data as v
+		}
+	}
+	switch val := v.(type) {
+	case *ssa.MakeInterface:
+		valueSet[val.X] = true // interface cast refers to same data
+	}
+	return valueSet
+}
+
+// MatchLoadField matches instruction sequence:
+// y = &z.Field
+// z = *y
+// and returns (true, z) if x is given as argument
+func MatchLoadField(x ssa.Value) (bool, ssa.Value) {
+	if x == nil {
+		return false, nil
+	}
+	loadInstr, ok := x.(*ssa.UnOp)
+	if !ok || loadInstr.Op != token.MUL {
+		return false, nil
+	}
+	field, ok := loadInstr.X.(*ssa.FieldAddr)
+	if !ok {
+		return false, nil
+	}
+	return true, field.X
 }

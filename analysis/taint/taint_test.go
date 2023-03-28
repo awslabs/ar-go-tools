@@ -69,6 +69,10 @@ func TestCrossFunctionSelects(t *testing.T) {
 	runTest(t, "selects", []string{"helpers.go"})
 }
 
+func TestCrossFunctionTuples(t *testing.T) {
+	runTest(t, "tuples", []string{})
+}
+
 func TestCrossFunctionPanics(t *testing.T) {
 	runTest(t, "panics", []string{})
 }

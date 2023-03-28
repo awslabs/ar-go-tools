@@ -45,7 +45,7 @@ func assignErrorsTransform(funcInfo *ac.FuncInfo, c *dstutil.Cursor) bool {
 	case *dst.ExprStmt:
 		if callx, ok := x.X.(*dst.CallExpr); ok {
 			// TODO: figure out how to get the closes scope to get fresh variables
-			scope, errIdent := funcInfo.NewIdent(n, "err")
+			scope, errIdent := funcInfo.NewName(n, "err")
 			if scope != nil {
 				scope.Insert(types.NewVar(token.NoPos, funcInfo.Package.Types, errIdent, nil))
 			}

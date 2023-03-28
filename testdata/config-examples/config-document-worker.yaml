@@ -16,5 +16,5 @@ sources:
    - method: "GetMessage"
      package: "github.com/aws/amazon-ssm-agent/common/filewatcherbasedipc.*"
 sinks:
-  - method: "^Command"
+  - method: "^Start"
     package: "exec"
