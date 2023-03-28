@@ -82,9 +82,9 @@ type SingleFunctionResult struct {
 }
 
 // SingleFunctionAnalysis is the main entry point of the intra procedural analysis.
-func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
+func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool, id uint32,
 	shouldTrack func(*config.Config, ssa.Node) bool) (SingleFunctionResult, error) {
-	sm := NewSummaryGraph(function)
+	sm := NewSummaryGraph(function, id)
 	flowInfo := NewFlowInfo(cache.Config)
 	tracker := &stateTracker{
 		flowInfo:       flowInfo,

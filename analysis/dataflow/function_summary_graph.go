@@ -29,6 +29,9 @@ type ObjectPath struct {
 // GraphNode represents nodes in the function summary graph.
 // Those nodes are either input argument nodes, callgraph nodes, call arguments nodes or return nodes.
 type GraphNode interface {
+	// ID returns the unique id of the node (id is unique within a given summary)
+	ID() uint32
+
 	// Graph returns the graph the node belongs to
 	Graph() *SummaryGraph
 
@@ -62,6 +65,7 @@ type IndexedGraphNode interface {
 
 // ParamNode is a node that represents a parameter of the function (input argument)
 type ParamNode struct {
+	id      uint32
 	parent  *SummaryGraph
 	ssaNode *ssa.Parameter
 	argPos  int
@@ -69,6 +73,7 @@ type ParamNode struct {
 	in      map[GraphNode]ObjectPath
 }
 
+func (a *ParamNode) ID() uint32                    { return a.id }
 func (a *ParamNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ParamNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *ParamNode) In() map[GraphNode]ObjectPath  { return a.in }
@@ -97,6 +102,7 @@ func (a *ParamNode) ParentName() string {
 
 // FreeVarNode is a node that represents a free variable of the function (for closures)
 type FreeVarNode struct {
+	id      uint32
 	parent  *SummaryGraph
 	ssaNode *ssa.FreeVar
 	fvPos   int
@@ -104,6 +110,7 @@ type FreeVarNode struct {
 	in      map[GraphNode]ObjectPath
 }
 
+func (a *FreeVarNode) ID() uint32                    { return a.id }
 func (a *FreeVarNode) Graph() *SummaryGraph          { return a.parent }
 func (a *FreeVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *FreeVarNode) In() map[GraphNode]ObjectPath  { return a.in }
@@ -130,6 +137,7 @@ func (a *FreeVarNode) ParentName() string {
 
 // CallNodeArg is a node that represents the argument of a function call
 type CallNodeArg struct {
+	id       uint32
 	parent   *CallNode
 	ssaValue ssa.Value
 	argPos   int
@@ -137,6 +145,7 @@ type CallNodeArg struct {
 	in       map[GraphNode]ObjectPath
 }
 
+func (a *CallNodeArg) ID() uint32                    { return a.id }
 func (a *CallNodeArg) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *CallNodeArg) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNodeArg) In() map[GraphNode]ObjectPath  { return a.in }
@@ -166,6 +175,7 @@ func (a *CallNodeArg) ParentName() string {
 // CallNode is a node that represents a function call. It represents the value returned by the function call
 // and also points at the CallNodeArg nodes that are its arguments
 type CallNode struct {
+	id            uint32
 	parent        *SummaryGraph
 	callSite      ssa.CallInstruction
 	callee        CalleeInfo
@@ -175,6 +185,7 @@ type CallNode struct {
 	in            map[GraphNode]ObjectPath
 }
 
+func (a *CallNode) ID() uint32                    { return a.id }
 func (a *CallNode) Graph() *SummaryGraph          { return a.parent }
 func (a *CallNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNode) In() map[GraphNode]ObjectPath  { return a.in }
@@ -249,10 +260,12 @@ func (a *CallNode) FuncString() string {
 
 // A ReturnNode is a node that represents a node where the function returns.
 type ReturnNode struct {
+	id     uint32
 	parent *SummaryGraph
 	in     map[GraphNode]ObjectPath
 }
 
+func (a *ReturnNode) ID() uint32                    { return a.id }
 func (a *ReturnNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ReturnNode) Out() map[GraphNode]ObjectPath { return nil }
 func (a *ReturnNode) In() map[GraphNode]ObjectPath  { return a.in }
@@ -273,6 +286,8 @@ func (a *ReturnNode) ParentName() string {
 }
 
 type ClosureNode struct {
+	id uint32
+
 	// the parent of a closure node is the summary of the function in which the closure is created
 	parent *SummaryGraph
 
@@ -287,6 +302,8 @@ type ClosureNode struct {
 	out       map[GraphNode]ObjectPath
 	in        map[GraphNode]ObjectPath
 }
+
+func (a *ClosureNode) ID() uint32 { return a.id }
 
 // Graph is the parent of a closure node is the summary of the function in which the closure is created.
 func (a *ClosureNode) Graph() *SummaryGraph          { return a.parent }
@@ -327,6 +344,7 @@ func (a *ClosureNode) FindBoundVar(v ssa.Value) *BoundVarNode {
 
 // BoundVarNode is a node that represents the bound variable when a closure is created
 type BoundVarNode struct {
+	id uint32
 	// the parent is the closure node that captures the variables
 	parent *ClosureNode
 
@@ -340,6 +358,7 @@ type BoundVarNode struct {
 	in  map[GraphNode]ObjectPath
 }
 
+func (a *BoundVarNode) ID() uint32                    { return a.id }
 func (a *BoundVarNode) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *BoundVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundVarNode) In() map[GraphNode]ObjectPath  { return a.in }
@@ -370,6 +389,7 @@ func (a *BoundVarNode) ParentName() string {
 // A AccessGlobalNode represents a node where a global variable is accessed (read or written)
 // In this context, a "write" is when data flows to the node, and a "read" is when data flows from the node
 type AccessGlobalNode struct {
+	id      uint32
 	IsWrite bool            // IsWrite is true if the global is written at that location
 	graph   *SummaryGraph   // the parent graph in which the read/write occurs
 	instr   ssa.Instruction // the instruction where the global is read/written to
@@ -378,6 +398,7 @@ type AccessGlobalNode struct {
 	in      map[GraphNode]ObjectPath
 }
 
+func (a *AccessGlobalNode) ID() uint32                    { return a.id }
 func (a *AccessGlobalNode) Graph() *SummaryGraph          { return a.graph }
 func (a *AccessGlobalNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *AccessGlobalNode) In() map[GraphNode]ObjectPath  { return a.in }
@@ -401,6 +422,7 @@ func (a *AccessGlobalNode) ParentName() string {
 
 // A SyntheticNode can be used to represent any other type of node.
 type SyntheticNode struct {
+	id     uint32
 	parent *SummaryGraph            // the parent of a SyntheticNode is the summary of the function in which it appears
 	instr  ssa.Instruction          // a SyntheticNode must correspond to a specific instruction
 	label  string                   // the label can be used to record information about synthetic nodes
@@ -408,6 +430,7 @@ type SyntheticNode struct {
 	in     map[GraphNode]ObjectPath // the in maps the node to other nodes from which data flows
 }
 
+func (a *SyntheticNode) ID() uint32                    { return a.id }
 func (a *SyntheticNode) Graph() *SummaryGraph          { return a.parent }
 func (a *SyntheticNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *SyntheticNode) In() map[GraphNode]ObjectPath  { return a.in }
@@ -434,6 +457,7 @@ func (a *SyntheticNode) ParentName() string {
 
 // SummaryGraph is the function dataflow summary graph.
 type SummaryGraph struct {
+	ID                  uint32                                              // the unique ID of the summary
 	Constructed         bool                                                // true if summary graph is Constructed, false if it is a dummy
 	IsInterfaceContract bool                                                // true if the summary is built from an interface's dataflow contract
 	Parent              *ssa.Function                                       // the ssa function it summarizes
@@ -448,16 +472,18 @@ type SummaryGraph struct {
 	AccessGlobalNodes     map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode // the nodes accessing global information
 	Returns               map[ssa.Instruction]*ReturnNode                     // the return instructions are linked to ReturnNode
 	errors                map[error]bool
+	nodeCounter           uint32
 }
 
 // NewSummaryGraph builds a new summary graph given a function and its corresponding node.
 // Returns a non-nil value if and only if f is non-nil.
 // If non-nil, the returned summary graph is marked as not constructed.
-func NewSummaryGraph(f *ssa.Function) *SummaryGraph {
+func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 	if f == nil {
 		return nil
 	}
 	g := &SummaryGraph{
+		ID:                    id,
 		Constructed:           false,
 		IsInterfaceContract:   false,
 		Parent:                f,
@@ -471,6 +497,7 @@ func NewSummaryGraph(f *ssa.Function) *SummaryGraph {
 		AccessGlobalNodes:     make(map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode),
 		SyntheticNodes:        make(map[ssa.Instruction]*SyntheticNode),
 		errors:                map[error]bool{},
+		nodeCounter:           0,
 	}
 	// Add the parameters
 	for pos, param := range f.Params {
@@ -484,7 +511,8 @@ func NewSummaryGraph(f *ssa.Function) *SummaryGraph {
 
 	// Add return instructions
 	// A single return node, but map tracks possible return paths
-	returnNode := &ReturnNode{parent: g}
+	returnNode := &ReturnNode{parent: g, id: g.nodeCounter}
+	g.nodeCounter += 1
 	for _, block := range f.Blocks {
 		last := ssafuncs.LastInstr(block)
 		if last != nil {
@@ -536,12 +564,14 @@ func (g *SummaryGraph) addParam(param *ssa.Parameter, pos int) {
 	}
 
 	g.Params[param] = &ParamNode{
+		id:      g.nodeCounter,
 		parent:  g,
 		ssaNode: param,
 		out:     make(map[GraphNode]ObjectPath),
 		in:      make(map[GraphNode]ObjectPath),
 		argPos:  pos,
 	}
+	g.nodeCounter += 1
 }
 
 // addFreeVar adds a free variable to the summary
@@ -552,12 +582,14 @@ func (g *SummaryGraph) addFreeVar(fv *ssa.FreeVar, pos int) {
 	}
 
 	g.FreeVars[fv] = &FreeVarNode{
+		id:      g.nodeCounter,
 		parent:  g,
 		ssaNode: fv,
 		out:     make(map[GraphNode]ObjectPath),
 		in:      make(map[GraphNode]ObjectPath),
 		fvPos:   pos,
 	}
+	g.nodeCounter += 1
 }
 
 // addCallNode adds a call site to the summary
@@ -590,6 +622,7 @@ func (g *SummaryGraph) AddCallInstr(c *Cache, instr ssa.CallInstruction) {
 	// Add each callee as a node for this call instruction
 	for _, callee := range callees {
 		node := &CallNode{
+			id:       g.nodeCounter,
 			parent:   g,
 			callee:   callee,
 			args:     make([]*CallNodeArg, len(args)),
@@ -597,15 +630,18 @@ func (g *SummaryGraph) AddCallInstr(c *Cache, instr ssa.CallInstruction) {
 			out:      make(map[GraphNode]ObjectPath),
 			in:       make(map[GraphNode]ObjectPath),
 		}
+		g.nodeCounter += 1
 
 		for pos, arg := range args {
 			argNode := &CallNodeArg{
+				id:       g.nodeCounter,
 				parent:   node,
 				ssaValue: arg,
 				argPos:   pos,
 				out:      make(map[GraphNode]ObjectPath),
 				in:       make(map[GraphNode]ObjectPath),
 			}
+			g.nodeCounter += 1
 			node.args[pos] = argNode
 		}
 		g.addCallNode(node)
@@ -615,6 +651,7 @@ func (g *SummaryGraph) AddCallInstr(c *Cache, instr ssa.CallInstruction) {
 
 		// TODO: remove that when we have a method to resolve all callees
 		node := &CallNode{
+			id:       g.nodeCounter,
 			parent:   g,
 			callee:   CalleeInfo{},
 			args:     make([]*CallNodeArg, len(args)),
@@ -622,14 +659,17 @@ func (g *SummaryGraph) AddCallInstr(c *Cache, instr ssa.CallInstruction) {
 			out:      make(map[GraphNode]ObjectPath),
 			in:       make(map[GraphNode]ObjectPath),
 		}
+		g.nodeCounter += 1
 
 		for pos, arg := range args {
 			argNode := &CallNodeArg{
+				id:       g.nodeCounter,
 				parent:   node,
 				ssaValue: arg,
 				out:      make(map[GraphNode]ObjectPath),
 				in:       make(map[GraphNode]ObjectPath),
 			}
+			g.nodeCounter += 1
 			node.args[pos] = argNode
 		}
 		g.addCallNode(node)
@@ -652,6 +692,7 @@ func (g *SummaryGraph) AddClosure(x *ssa.MakeClosure) {
 	}
 
 	node := &ClosureNode{
+		id:             g.nodeCounter,
 		parent:         g,
 		ClosureSummary: nil,
 		instr:          x,
@@ -659,17 +700,20 @@ func (g *SummaryGraph) AddClosure(x *ssa.MakeClosure) {
 		out:            make(map[GraphNode]ObjectPath),
 		in:             make(map[GraphNode]ObjectPath),
 	}
+	g.nodeCounter += 1
 
 	g.CreatedClosures[x] = node
 
 	for pos, binding := range x.Bindings {
 		bindingNode := &BoundVarNode{
+			id:       g.nodeCounter,
 			parent:   node,
 			ssaValue: binding,
 			bPos:     pos,
 			out:      make(map[GraphNode]ObjectPath),
 			in:       make(map[GraphNode]ObjectPath),
 		}
+		g.nodeCounter += 1
 		node.boundVars = append(node.boundVars, bindingNode)
 	}
 }
@@ -682,6 +726,7 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 	}
 	if _, ok := g.AccessGlobalNodes[instr][global.value]; !ok {
 		node := &AccessGlobalNode{
+			id:      g.nodeCounter,
 			IsWrite: false,
 			graph:   g,
 			instr:   instr,
@@ -689,6 +734,7 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 			out:     make(map[GraphNode]ObjectPath),
 			in:      make(map[GraphNode]ObjectPath),
 		}
+		g.nodeCounter += 1
 		g.AccessGlobalNodes[instr][global.value] = node
 	}
 }
@@ -700,12 +746,14 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 func (g *SummaryGraph) AddSyntheticNode(instr ssa.Instruction, label string) {
 	if _, ok := g.SyntheticNodes[instr]; !ok {
 		node := &SyntheticNode{
+			id:     g.nodeCounter,
 			parent: g,
 			instr:  instr,
 			label:  label,
 			out:    make(map[GraphNode]ObjectPath),
 			in:     make(map[GraphNode]ObjectPath),
 		}
+		g.nodeCounter += 1
 		g.SyntheticNodes[instr] = node
 	}
 }
@@ -1031,12 +1079,12 @@ func (g *SummaryGraph) addReturnEdgeByPos(src int, _ int) bool {
 // If f is nil, or f has no predefined summary, then the function returns nil.
 // If f has a predefined summary, then the returned summary graph is marked as constructed.
 // cg can be nil.
-func LoadPredefinedSummary(f *ssa.Function) *SummaryGraph {
+func LoadPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
 	preDef, ok := summaries.SummaryOfFunc(f)
 	if !ok {
 		return nil
 	}
-	summaryBase := NewSummaryGraph(f)
+	summaryBase := NewSummaryGraph(f, id)
 	summaryBase.PopulateGraphFromSummary(preDef, false)
 	return summaryBase
 }
@@ -1076,38 +1124,41 @@ func (a *ParamNode) String() string {
 		if a.parent.Parent != nil {
 			fname = a.parent.Parent.Name()
 		}
-		return fmt.Sprintf("\"%s of %s [%d]\"", a.SsaNode().String(), fname, a.Index())
+		return fmt.Sprintf("\"[#%d.%d] %s of %s [%d]\"",
+			a.parent.ID, a.ID(), a.SsaNode().String(), fname, a.Index())
 	}
 }
 
 func (a *CallNodeArg) String() string {
-	return fmt.Sprintf("\"%s @arg:%s [%d]\"",
-		strings.Trim(a.ParentNode().String(), "\""),
-		a.ssaValue.Name(), a.Index())
+	return fmt.Sprintf("\"[#%d.%d] @arg %d:%s in %s \"",
+		a.ParentNode().parent.ID, a.ID(), a.Index(), a.ssaValue.Name(),
+		strings.Trim(a.ParentNode().String(), "\""))
 }
 
 func (a *CallNode) String() string {
-	return fmt.Sprintf("\"(%s)call: %s in %s\"", a.callee.Type.Code(), a.callSite.String(), a.callSite.Parent().Name())
+	return fmt.Sprintf("\"[#%d.%d] (%s)call: %s in %s\"",
+		a.parent.ID, a.id, a.callee.Type.Code(), a.callSite.String(), a.callSite.Parent().Name())
 }
 
 func (a *ReturnNode) String() string {
-	return fmt.Sprintf("\"%s.return\"", a.parent.Parent.Name())
+	return fmt.Sprintf("\"[#%d.%d] %s.return\"", a.parent.ID, a.id, a.parent.Parent.Name())
 }
 
 func (a *SyntheticNode) String() string {
-	return fmt.Sprintf("\"synthetic: %s = %s\"", a.instr.(ssa.Value).Name(), a.instr.String())
+	return fmt.Sprintf("\"[#%d.%d] synthetic: %s = %s\"",
+		a.parent.ID, a.id, a.instr.(ssa.Value).Name(), a.instr.String())
 }
 
 func (a *FreeVarNode) String() string {
-	return fmt.Sprintf("\"freevar:%s\"", a.ssaNode.Name())
+	return fmt.Sprintf("\"[#%d.%d] freevar:%s\"", a.parent.ID, a.id, a.ssaNode.Name())
 }
 
 func (a *BoundVarNode) String() string {
-	return fmt.Sprintf("\"boundvar:%s\"", a.ssaValue.String())
+	return fmt.Sprintf("\"[#%d.%d] boundvar:%s\"", a.ParentNode().parent.ID, a.id, a.ssaValue.String())
 }
 
 func (a *ClosureNode) String() string {
-	return fmt.Sprintf("\"closure:%s\"", a.instr.String())
+	return fmt.Sprintf("\"[#%d.%d] closure:%s\"", a.parent.ID, a.id, a.instr.String())
 }
 
 func (a *AccessGlobalNode) String() string {
@@ -1115,7 +1166,8 @@ func (a *AccessGlobalNode) String() string {
 	if a.IsWrite {
 		typ = "write"
 	}
-	return fmt.Sprintf("\"global:%s in %s (%s)\"", a.Global.value.String(), a.instr.String(), typ)
+	return fmt.Sprintf("\"[#%d.%d] global:%s in %s (%s)\"",
+		a.graph.ID, a.id, a.Global.value.String(), a.instr.String(), typ)
 }
 
 // Print the summary graph to w in the graphviz format.
