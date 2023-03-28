@@ -147,7 +147,8 @@ func runIntraProceduralOnFunction(job singleFunctionJob,
 		job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
 			packagescan.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
 	}
-	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function, runAnalysis, isSourceNode)
+	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function,
+		runAnalysis, dataflow.GetUniqueFunctionId(), isSourceNode)
 	if err != nil {
 		job.cache.Err.Printf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
 	}

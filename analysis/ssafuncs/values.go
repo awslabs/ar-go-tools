@@ -107,18 +107,21 @@ func ValueSwitch(vmap ValueOp, v *ssa.Value) {
 // TODO this function is incomplete
 func ValuesWithSameData(v ssa.Value) map[ssa.Value]bool {
 	valueSet := map[ssa.Value]bool{v: true}
-	for _, instr := range *(v.Referrers()) {
-		switch sameData := instr.(type) {
-		case *ssa.MakeInterface:
-			if sameData.X == v { // this should always be true
-				valueSet[instr.(ssa.Value)] = true // conversion will always succeed
-			}
-		case *ssa.UnOp:
-			if ok, vStruct := MatchLoadField(sameData); ok {
-				valueSet[vStruct] = true
-			}
+	referrers := v.Referrers()
+	if referrers != nil {
+		for _, instr := range *referrers {
+			switch sameData := instr.(type) {
+			case *ssa.MakeInterface:
+				if sameData.X == v { // this should always be true
+					valueSet[instr.(ssa.Value)] = true // conversion will always succeed
+				}
+			case *ssa.UnOp:
+				if ok, vStruct := MatchLoadField(sameData); ok {
+					valueSet[vStruct] = true
+				}
 
-			// the default case is to not add the value to the map of values with same data as v
+				// the default case is to not add the value to the map of values with same data as v
+			}
 		}
 	}
 	switch val := v.(type) {

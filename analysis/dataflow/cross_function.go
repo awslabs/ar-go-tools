@@ -131,7 +131,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 									node.CallSite().Common().String())
 							}
 							g.Summaries[node.Callee()] = calleeSummary
-						} else if calleeSummary = LoadPredefinedSummary(node.Callee()); calleeSummary != nil {
+						} else if calleeSummary = LoadPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
 							if g.cache.Config.Verbose {
 								logger.Printf("Loaded %s from summaries.\n", node.Callee().String())
 							}

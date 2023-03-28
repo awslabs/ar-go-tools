@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go/types"
 	"os"
+	"sync/atomic"
 
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
@@ -31,6 +32,15 @@ const (
 	RapidTypeAnalysis                                   // RapidTypeAnalysis TODO: review
 	VariableTypeAnalysis                                // VariableTypeAnalysis TODO: review
 )
+
+// This global variable should only be read and modified through GetUniqueFunctionId
+var uniqueFunctionIdCounter uint32 = 0
+
+// GetUniqueFunctionId increments and returns the value of the global used to give unique function ids.
+func GetUniqueFunctionId() uint32 {
+	x := atomic.AddUint32(&uniqueFunctionIdCounter, 1)
+	return x
+}
 
 // ComputeCallgraph computes the call graph of prog using the provided mode.
 func (mode CallgraphAnalysisMode) ComputeCallgraph(prog *ssa.Program) (*callgraph.Graph, error) {
@@ -123,7 +133,7 @@ func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map
 						key := matchingInterfaceMethod.Recv().String() + "." + methodValue.Name()
 						keys[methodValue.String()] = key
 						addImplementation(implementations, key, methodValue)
-						addContractSummaryGraph(contracts, key, methodValue)
+						addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionId())
 					}
 				}
 			}
@@ -162,7 +172,7 @@ func computeErrorBuiltinImplementations(p *ssa.Program, implementations map[stri
 			keys[methodValue.String()] = key
 			// Get the interface method being implemented
 			addImplementation(implementations, key, methodValue)
-			addContractSummaryGraph(contracts, key, methodValue)
+			addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionId())
 		}
 	}
 }
@@ -182,14 +192,14 @@ func addImplementation(implementationMap map[string]map[*ssa.Function]bool, key 
 // addContractSummaryGraph sets the value of contract[methodId] to a new summary of function if the methodId key
 // is present in contracts but the associated value is nil
 // Does nothing if contracts is nil.
-func addContractSummaryGraph(contracts map[string]*SummaryGraph, methodId string, function *ssa.Function) {
+func addContractSummaryGraph(contracts map[string]*SummaryGraph, methodId string, function *ssa.Function, id uint32) {
 	if contracts == nil || function == nil {
 		return
 	}
 	// Entry must be present
 	if curSummary, ok := contracts[methodId]; ok {
 		if curSummary == nil {
-			contracts[methodId] = NewSummaryGraph(function)
+			contracts[methodId] = NewSummaryGraph(function, id)
 		}
 	}
 }
