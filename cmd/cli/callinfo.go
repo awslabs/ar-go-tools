@@ -66,10 +66,11 @@ func displayCallInfo(tt *term.Terminal, c *dataflow.Cache, command Command,
 				WriteSuccess(tt, "All functions called by %s:", f.String())
 				for instr, callees := range summary.Callees {
 					writeFmt(tt, "\tAt SSA instruction %s:\n", instr.String())
-					for callee, node := range callees {
+					writeFmt(tt, "\t Position %s:\n", c.Program.Fset.Position(instr.Pos()))
+					for callee := range callees {
 						if targetFilter(callee) {
 							writeFmt(tt, "\t  %s\n", callee.String())
-							writeFmt(tt, "\t  position: %s\n", node.Position(c).String())
+							writeFmt(tt, "\t    position: %s\n", c.Program.Fset.Position(callee.Pos()))
 						}
 					}
 				}

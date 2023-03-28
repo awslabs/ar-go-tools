@@ -58,3 +58,14 @@ func IsChannelEnclosingType(t types.Type) bool {
 	}
 	return false
 }
+
+func IsPredicateFunctionType(f *types.Signature) bool {
+	if f.Results().Len() != 1 {
+		return false
+	}
+	resType := f.Results().At(0)
+	if resType.Type().Underlying().String() == "bool" {
+		return true
+	}
+	return false
+}

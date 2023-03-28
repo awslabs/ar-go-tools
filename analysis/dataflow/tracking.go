@@ -6,14 +6,14 @@ import (
 
 // MarkType identifies different marks that can be propagated during the analysis.
 // In the context of building function summaries, one can see the mark as a way to track where the data is flowing from.
-// When running the taint analysis, the TaintedVal mark tracks tainted values.
+// When running the taint analysis, the DefaultMark mark tracks tainted values.
 // The design is open to the addition of other taint types.
 type MarkType int
 
 const (
 	Parameter   MarkType = 1 << iota // A Parameter is a function parameter.
 	FreeVar                          // A FreeVar is a free variable in a closure.
-	TaintedVal                       // A TaintedVal is a value tainted by a taint source.
+	DefaultMark                      // A DefaultMark is a value with a mark.
 	CallSiteArg                      // A CallSiteArg is a call site argument.
 	CallReturn                       // A CallReturn is a call site return.
 	Closure                          // A Closure is a closure creation site
@@ -21,6 +21,31 @@ const (
 	Global                           // A Global is package global
 	Synthetic                        // A Synthetic node type for any other node.
 )
+
+func (m MarkType) String() string {
+	switch m {
+	case Parameter:
+		return "parameter"
+	case FreeVar:
+		return "freevar"
+	case DefaultMark:
+		return "default"
+	case CallSiteArg:
+		return "arg"
+	case CallReturn:
+		return "return"
+	case Closure:
+		return "closure"
+	case BoundVar:
+		return "boundvar"
+	case Global:
+		return "global"
+	case Synthetic:
+		return "synthetic"
+	default:
+		return "multiple"
+	}
+}
 
 // Mark is a node with additional information about its type and region path (matching the paths in pointer analysis).
 // This is used to mark dataflow between nodes.
@@ -53,7 +78,7 @@ func NewQualifierMark(node ssa.Node, qualifier ssa.Value, typ MarkType, path str
 
 // IsTainted returns true if the source is a taint source.
 func (s *Mark) IsTainted() bool {
-	return s.Type&TaintedVal != 0
+	return s.Type&DefaultMark != 0
 }
 
 // IsParameter returns true if the source is a function parameter.
@@ -95,4 +120,16 @@ func (s *Mark) IsCallReturn() bool {
 // IsSynthetic returns true if the source is synthetic.
 func (s *Mark) IsSynthetic() bool {
 	return s.Type&Synthetic != 0
+}
+
+func (s *Mark) String() string {
+	str := s.Type.String() + ": "
+	if s.Qualifier != nil {
+		str += s.Qualifier.Name() + " in "
+	}
+	str += s.Node.String()
+	if s.RegionPath != "" {
+		str += " [" + s.RegionPath + "]"
+	}
+	return "<mark " + str + " >"
 }

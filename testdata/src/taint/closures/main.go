@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	random "math/rand"
+	"strconv"
 )
 
 func wrap(a string, before string, after string) string {
@@ -172,7 +173,7 @@ func example9() {
 	sink(closure2("B")) // @Sink(example9) TODO: overapproximation
 }
 
-// A variaation of example9 with an additional function calling the sink
+// A variation of example9 with an additional function calling the sink
 func example10pre(x *string) func(string) string {
 	parenthesizeN := func(a string, b int) string {
 		s := *x
@@ -196,6 +197,110 @@ func example10() {
 	callSink(closure, "A")
 }
 
+// example11 is a case where a closure is assigned to a struct's field, and the closure is called later
+
+type Ex11 struct {
+	Count  int
+	Lambda func(int, string) string
+}
+
+func (e Ex11) Run(s string) string {
+	e.Count += 1
+	return e.Lambda(e.Count, s)
+}
+
+func example11() {
+	e := Ex11{
+		Count: 0,
+		Lambda: func(i int, s string) string {
+			return source() + strconv.Itoa(i) + s // @Source(ex11)
+		},
+	}
+	sink(e.Run("ok")) // @Sink(ex11)
+}
+
+// example12 is variation of example11
+
+func NewEx11() *Ex11 {
+	e := &Ex11{
+		Count: 0,
+		Lambda: func(i int, s string) string {
+			return strconv.Itoa(i) + s
+		},
+	}
+	return e
+}
+
+func example12() {
+	e := NewEx11()
+	sink(e.Run("ok")) // @Sink(ex11) TODO: false positive here because Run is called and was tainted in ex11
+}
+
+// example13
+
+type Ex13 struct {
+	Count  int
+	Lambda func(int, string) string
+}
+
+func (e Ex13) Run(s string) string {
+	e.Count += 1
+	return e.Lambda(e.Count, s)
+}
+
+func NewEx13() *Ex13 {
+	e := &Ex13{
+		Count: 0,
+		Lambda: func(i int, s string) string {
+			return strconv.Itoa(i) + s + source() // @Source(ex13)
+		},
+	}
+	return e
+}
+
+func callSinkS(run func(string) string, s string) {
+	sink(run(s)) // @Sink(ex13)
+}
+
+func example13() {
+	e := NewEx13()
+	f := e.Run
+	callSinkS(f, "ok")
+}
+
+// example14
+
+type Ex14 struct {
+	Count  int
+	Lambda func(int, string) string
+}
+
+func (e Ex14) Run(s string, i int) string {
+	e.Count += i
+	return e.Lambda(e.Count, s)
+}
+
+func NewEx14() *Ex14 {
+	data := source() // @Source(ex14)
+	e := &Ex14{
+		Count: 0,
+		Lambda: func(i int, s string) string {
+			return strconv.Itoa(i) + s + data
+		},
+	}
+	return e
+}
+
+func callSink14(run func(string) string, s string) {
+	sink(run(s)) // @Sink(ex14)
+}
+
+func example14() {
+	e := NewEx14()
+	f := e.Run
+	callSink14(func(s string) string { return f(s, 1) }, "ok")
+}
+
 func main() {
 	example1()
 	example1bis()
@@ -210,4 +315,8 @@ func main() {
 	example8()
 	example9()
 	example10()
+	example11()
+	example12()
+	example13()
+	example14()
 }

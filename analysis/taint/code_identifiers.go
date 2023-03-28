@@ -96,6 +96,13 @@ func isSanitizer(n dataflow.GraphNode, cfg *config.Config) bool {
 	return isMatchingCodeId(cfg.IsSanitizer, n)
 }
 
+func isValidatorCondition(v ssa.Value, cfg *config.Config) bool {
+	if node, ok := v.(ssa.Node); ok {
+		return isMatchingCodeIdWithCallee(cfg.IsValidator, nil, node)
+	}
+	return false
+}
+
 func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.GraphNode) bool {
 	switch n := n.(type) {
 	case *dataflow.ParamNode, *dataflow.FreeVarNode:

@@ -63,17 +63,17 @@ func (t *FlowInformation) AddMark(v ssa.Value, s Mark) bool {
 // the analysis  are the flowInfo and the argFlows fields, which contain information about taint flows and argument
 // flows respectively.
 type stateTracker struct {
-	flowInfo       *FlowInformation                             // the data flow information for the analysis
-	cache          *Cache                                       // the analysis cache containing pointer information, callgraph, ...
-	changeFlag     bool                                         // a flag to keep track of changes in the analysis state
-	blocksSeen     map[*ssa.BasicBlock]bool                     // a map to keep track of blocks seen during the analysis
-	errors         map[ssa.Node]error                           // we don't panic during the analysis, but accumulate errors
-	summary        *SummaryGraph                                // summary is the function summary currently being built
-	deferStacks    defers.Results                               // information about the possible defer stacks at RunDefers
-	instrPaths     map[ssa.Instruction]map[ssa.Instruction]bool // instrPaths[i][j] means there is a path from i to j
-	paramAliases   map[ssa.Value]map[*ssa.Parameter]bool        // a map from values in the function to the parameter it aliases
-	freeVarAliases map[ssa.Value]map[*ssa.FreeVar]bool          // a map from values to the free variable it aliases
-	shouldTrack    func(*config.Config, ssa.Node) bool          // function that returns true if dataflow from the node should be tracked
+	flowInfo       *FlowInformation                                      // the data flow information for the analysis
+	cache          *Cache                                                // the analysis cache containing pointer information, callgraph, ...
+	changeFlag     bool                                                  // a flag to keep track of changes in the analysis state
+	blocksSeen     map[*ssa.BasicBlock]bool                              // a map to keep track of blocks seen during the analysis
+	errors         map[ssa.Node]error                                    // we don't panic during the analysis, but accumulate errors
+	summary        *SummaryGraph                                         // summary is the function summary currently being built
+	deferStacks    defers.Results                                        // information about the possible defer stacks at RunDefers
+	instrPaths     map[ssa.Instruction]map[ssa.Instruction]ConditionInfo // instrPaths[i][j] means there is a path from i to j
+	paramAliases   map[ssa.Value]map[*ssa.Parameter]bool                 // a map from values in the function to the parameter it aliases
+	freeVarAliases map[ssa.Value]map[*ssa.FreeVar]bool                   // a map from values to the free variable it aliases
+	shouldTrack    func(*config.Config, ssa.Node) bool                   // function that returns true if dataflow from the node should be tracked
 }
 
 // SingleFunctionResult holds the results of the intra-procedural analysis.
@@ -94,7 +94,7 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool,
 		errors:         map[ssa.Node]error{},
 		summary:        sm,
 		deferStacks:    defers.AnalyzeFunction(function, false),
-		instrPaths:     map[ssa.Instruction]map[ssa.Instruction]bool{},
+		instrPaths:     map[ssa.Instruction]map[ssa.Instruction]ConditionInfo{},
 		paramAliases:   map[ssa.Value]map[*ssa.Parameter]bool{},
 		freeVarAliases: map[ssa.Value]map[*ssa.FreeVar]bool{},
 		shouldTrack:    shouldTrack,
@@ -231,10 +231,10 @@ func (t *stateTracker) addFreeVarAliases(x *ssa.FreeVar) {
 func (t *stateTracker) checkCopyIntoArgs(in Mark, out ssa.Value) {
 	if astfuncs.IsNillableType(out.Type()) {
 		for aliasedParam := range t.paramAliases[out] {
-			t.summary.AddParamEdge(in, aliasedParam)
+			t.summary.AddParamEdge(in, aliasedParam, nil)
 		}
 		for aliasedFreeVar := range t.freeVarAliases[out] {
-			t.summary.AddFreeVarEdge(in, aliasedFreeVar)
+			t.summary.AddFreeVarEdge(in, aliasedFreeVar, nil)
 		}
 	}
 }
@@ -242,7 +242,7 @@ func (t *stateTracker) checkCopyIntoArgs(in Mark, out ssa.Value) {
 // checkFlowIntoGlobal checks whether the origin is data flowing into a global variable
 func (t *stateTracker) checkFlowIntoGlobal(loc ssa.Instruction, origin Mark, out ssa.Value) {
 	if glob, isGlob := out.(*ssa.Global); isGlob {
-		t.summary.AddGlobalEdge(origin, loc, glob)
+		t.summary.AddGlobalEdge(origin, loc, glob, nil)
 	}
 }
 
@@ -321,15 +321,15 @@ func (t *stateTracker) addClosureNode(x *ssa.MakeClosure) {
 		t.markValue(boundVar, mark)
 
 		for y := range t.paramAliases[boundVar] {
-			t.summary.AddParamEdge(mark, y)
+			t.summary.AddParamEdge(mark, y, nil)
 		}
 
 		for y := range t.freeVarAliases[boundVar] {
-			t.summary.AddFreeVarEdge(mark, y)
+			t.summary.AddFreeVarEdge(mark, y, nil)
 		}
 
 		for _, origin := range t.getMarkedValueOrigins(boundVar, "*") {
-			t.summary.AddBoundVarEdge(origin, x, boundVar)
+			t.summary.AddBoundVarEdge(origin, x, boundVar, nil)
 		}
 	}
 	t.markValue(x, NewMark(x, Closure, "*"))
@@ -338,7 +338,7 @@ func (t *stateTracker) addClosureNode(x *ssa.MakeClosure) {
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (t *stateTracker) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
 	if t.shouldTrack(t.cache.Config, asNode) {
-		s := NewMark(asNode, Synthetic+TaintedVal, "")
+		s := NewMark(asNode, Synthetic+DefaultMark, "")
 		t.summary.AddSyntheticNode(asInstr, "source")
 		t.markValue(asValue, s)
 	}
@@ -347,14 +347,14 @@ func (t *stateTracker) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Inst
 		_, isField := asInstr.(*ssa.Field)
 		_, isFieldAddr := asInstr.(*ssa.FieldAddr)
 		// check flow to avoid duplicate edges between synthetic nodes
-		if (isField || isFieldAddr) && t.checkFlow(origin, asInstr, asValue) {
-			t.summary.AddSyntheticNodeEdge(origin, asInstr, "*")
+		if (isField || isFieldAddr) && t.checkFlow(origin, asInstr, asValue).Satisfiable {
+			t.summary.AddSyntheticNodeEdge(origin, asInstr, "*", nil)
 		}
 	}
 }
 
-// callCommonTaint can be used for Call and Go instructions that wrap a CallCommon.
-func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallInstruction, callCommon *ssa.CallCommon) {
+// callCommonMark can be used for Call and Go instructions that wrap a CallCommon.
+func (t *stateTracker) callCommonMark(callValue ssa.Value, callInstr ssa.CallInstruction, callCommon *ssa.CallCommon) {
 	// Special cases
 	if t.doBuiltinCall(callValue, callCommon, callInstr) {
 		return
@@ -365,14 +365,14 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 	// If a closure is being called: the closure value flows to the callsite
 	if callInstr.Common().Method == nil {
 		for _, mark := range t.getMarkedValueOrigins(callInstr.Common().Value, "*") {
-			t.summary.AddCallNodeEdge(mark, callInstr)
+			t.summary.AddCallNodeEdge(mark, callInstr, nil)
 		}
 	}
 
 	// Check if node is source according to config
 	markType := CallReturn
 	if t.shouldTrack(t.flowInfo.Config, callInstr.(ssa.Node)) { // type cast cannot fail
-		markType += TaintedVal
+		markType += DefaultMark
 	}
 	// Mark call
 	t.markValue(callValue, NewMark(callInstr.(ssa.Node), markType, ""))
@@ -385,22 +385,29 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 		// Special case: a global is received directly as an argument
 		if _, ok := arg.(*ssa.Global); ok {
 			tmpSrc := NewQualifierMark(callInstr.(ssa.Node), arg, Global, "")
-			t.summary.AddCallArgEdge(tmpSrc, callInstr, arg)
+			t.summary.AddCallArgEdge(tmpSrc, callInstr, arg, nil)
 		}
 
 		for _, mark := range t.getMarkedValueOrigins(arg, "*") {
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
-			if t.checkFlow(mark, callInstr, arg) {
-				t.summary.AddCallArgEdge(mark, callInstr, arg)
+			c := t.checkFlow(mark, callInstr, arg)
+			if c.Satisfiable {
+				// Add the condition only if it is a predicate on the argument, i.e. there are boolean functions
+				// that apply to the destination value
+				if c2 := c.AsPredicateTo(arg); len(c2.Conditions) > 0 {
+					t.summary.AddCallArgEdge(mark, callInstr, arg, &c2)
+				} else {
+					t.summary.AddCallArgEdge(mark, callInstr, arg, nil)
+				}
 				// Add edges to parameters if the call may modify caller's arguments
 				for x := range t.paramAliases[arg] {
 					if astfuncs.IsNillableType(x.Type()) {
-						t.summary.AddParamEdge(mark, x)
+						t.summary.AddParamEdge(mark, x, nil)
 					}
 				}
 				for y := range t.freeVarAliases[arg] {
 					if astfuncs.IsNillableType(y.Type()) {
-						t.summary.AddFreeVarEdge(mark, y)
+						t.summary.AddFreeVarEdge(mark, y, nil)
 					}
 				}
 			}
@@ -411,10 +418,10 @@ func (t *stateTracker) callCommonTaint(callValue ssa.Value, callInstr ssa.CallIn
 // checkFlow checks whether there can be a flow between the source and the dest instruction. The destination must be
 // and instruction. destVal can be used to specify that the flow is to the destination (the location) through
 // a specific value. For example, destVal can be the argument of a function call.
-func (t *stateTracker) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) bool {
+func (t *stateTracker) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) ConditionInfo {
 	sourceInstr, ok := source.Node.(ssa.Instruction)
 	if !ok {
-		return true
+		return ConditionInfo{Satisfiable: true}
 	}
 
 	if destVal == nil {
@@ -425,7 +432,7 @@ func (t *stateTracker) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.
 	// taint will always flow to it, since the Defer will be executed after the source.
 	if _, isDefer := dest.(*ssa.Defer); isDefer {
 		if astfuncs.IsNillableType(destVal.Type()) {
-			return true
+			return ConditionInfo{Satisfiable: true}
 		} else {
 			return t.checkPathBetweenInstrs(sourceInstr, dest)
 		}
@@ -436,29 +443,28 @@ func (t *stateTracker) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.
 			// This is often the case when there is a flow through a closure that binds variables by reference, and
 			// the variable is tainted after the closure is created.
 			if _, isFunc := asVal.Type().Underlying().(*types.Signature); isFunc {
-				return functional.Exists(*asVal.Referrers(),
-					func(i ssa.Instruction) bool {
-						return t.checkPathBetweenInstrs(sourceInstr, i)
-					})
+				return functional.FindMap(*asVal.Referrers(),
+					func(i ssa.Instruction) ConditionInfo { return t.checkPathBetweenInstrs(sourceInstr, i) },
+					func(c ConditionInfo) bool { return c.Satisfiable }).ValueOr(ConditionInfo{Satisfiable: false})
 			}
 		}
 		return t.checkPathBetweenInstrs(sourceInstr, dest)
 	}
 }
 
-func (t *stateTracker) checkPathBetweenInstrs(source ssa.Instruction, dest ssa.Instruction) bool {
+func (t *stateTracker) checkPathBetweenInstrs(source ssa.Instruction, dest ssa.Instruction) ConditionInfo {
 	if reachableSet, ok := t.instrPaths[source]; ok {
-		if reachesDest, ok := reachableSet[dest]; ok {
-			return reachesDest
+		if c, ok := reachableSet[dest]; ok {
+			return c
 		} else {
-			b := IntraProceduralPathExists(source, dest)
-			t.instrPaths[source][dest] = b
-			return b
+			b := FindIntraProceduralPath(source, dest)
+			t.instrPaths[source][dest] = b.Cond
+			return b.Cond
 		}
 	} else {
-		b := IntraProceduralPathExists(source, dest)
-		t.instrPaths[source] = map[ssa.Instruction]bool{dest: b}
-		return b
+		b := FindIntraProceduralPath(source, dest)
+		t.instrPaths[source] = map[ssa.Instruction]ConditionInfo{dest: b.Cond}
+		return b.Cond
 	}
 }
 
@@ -557,7 +563,7 @@ func (t *stateTracker) doDefersStackSimulation(r *ssa.RunDefers) error {
 				return err
 			}
 			if d, ok := instr.(*ssa.Defer); ok {
-				t.callCommonTaint(d.Value(), d, d.Common())
+				t.callCommonMark(d.Value(), d, d.Common())
 			} else {
 				return fmt.Errorf("defer stacks should only contain defers")
 			}

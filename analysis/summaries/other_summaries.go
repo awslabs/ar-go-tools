@@ -19,6 +19,14 @@ var SummaryAwsSdk = map[string]Summary{
 		[][]int{{0}, {0, 1}, {0, 2}},
 		[][]int{{0}, {0}, {0}},
 	},
+	"(*github.com/aws/aws-sdk-go/aws/request.Request).Send": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest": {
+		[][]int{{0}, {0, 1}, {0, 2}, {0, 3}},
+		[][]int{{0}, {0}, {0}, {0}},
+	},
 }
 
 var SummaryGolangCrypto = map[string]Summary{}

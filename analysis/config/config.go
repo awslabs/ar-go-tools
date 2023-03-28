@@ -59,6 +59,9 @@ type Config struct {
 	// Sanitizers is the list of sanitizers for the taint analysis
 	Sanitizers []CodeIdentifier
 
+	// Validators is the list of validators for the dataflow analyses
+	Validators []CodeIdentifier
+
 	// Sinks is the list of sinks for the taint analysis
 	Sinks []CodeIdentifier
 
@@ -180,7 +183,7 @@ func Load(filename string) (*Config, error) {
 	functional.Iter(config.Sinks, CompileRegexes)
 	functional.Iter(config.Sources, CompileRegexes)
 	functional.Iter(config.StaticCommands, CompileRegexes)
-
+	functional.Iter(config.Validators, CompileRegexes)
 	return &config, nil
 }
 
@@ -206,6 +209,10 @@ func (c Config) IsSink(cid CodeIdentifier) bool {
 
 func (c Config) IsSanitizer(cid CodeIdentifier) bool {
 	return ExistsCid(c.Sanitizers, cid.equalOnNonEmptyFields)
+}
+
+func (c Config) IsValidator(cid CodeIdentifier) bool {
+	return ExistsCid(c.Validators, cid.equalOnNonEmptyFields)
 }
 
 func (c Config) IsStaticCommand(cid CodeIdentifier) bool {

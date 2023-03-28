@@ -54,14 +54,25 @@ func Exists[T any](a []T, f func(T) bool) bool {
 	return false
 }
 
+// FindMap returns Some(f(x)) when there exists some x in slice a such that p(f(x)), otherwise None.
+func FindMap[T any, R any](a []T, f func(T) R, p func(R) bool) Optional[R] {
+	for _, x := range a {
+		b := f(x)
+		if p(b) {
+			return Some(b)
+		}
+	}
+	return None[R]()
+}
+
 // Contains returns true when there is some y in slice a such that x == y
 func Contains[T comparable](a []T, x T) bool {
 	return Exists(a, func(y T) bool { return x == y })
 }
 
-// SetToSlice converts a set represented as a map from elements to booleans into a slice.
+// SetToOrderedSlice converts a set represented as a map from elements to booleans into a slice.
 // Sorts the result in increasing order
-func SetToSlice[T constraints.Ordered](set map[T]bool) []T {
+func SetToOrderedSlice[T constraints.Ordered](set map[T]bool) []T {
 	var s []T
 	for r, b := range set {
 		if b {
@@ -70,4 +81,10 @@ func SetToSlice[T constraints.Ordered](set map[T]bool) []T {
 	}
 	sort.Slice(s, func(i int, j int) bool { return s[i] < s[j] })
 	return s
+}
+
+func Reverse[T any](a []T) {
+	for i, j := 0, len(a)-1; i < j; i, j = i+1, j-1 {
+		a[i], a[j] = a[j], a[i]
+	}
 }

@@ -14,7 +14,7 @@ import (
 
 func TestComputeMethodImplementations(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow")
+	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callgraph")
 	program, _ := utils.LoadTest(t, dir, []string{})
 	implementations := map[string]map[*ssa.Function]bool{}
 	contracts := map[string]*df.SummaryGraph{}

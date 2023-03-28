@@ -28,7 +28,30 @@ func gen(s *string) {
 func validatorExample0() {
 	x := source1() // @Source(ex0)
 	if Validate(x) {
+		sink1(x) // This has been validated!
+	} else {
 		sink1(x) // @Sink(ex0)
+	}
+}
+
+func validatorExample0Bis() {
+	var x string
+	gen(&x)
+	value := x // this is necessary to make sure the value validated is "owned"
+	if Validate(value) {
+		sink1(value) // This has been validated!
+	} else {
+		sink1(value) // @Sink(gen)
+	}
+}
+
+func validatorExample0BisNegative() {
+	var x string
+	gen(&x)
+	if Validate(x) { // x is loaded first then validated as a value
+		sink1(x) // @Sink(gen) // this is not validated because the SSA needs to load x again here
+	} else {
+		sink1(x) // @Sink(gen)
 	}
 }
 
@@ -45,7 +68,7 @@ func validatorExample1() {
 			k = ""
 		}
 	}
-	sink1(k) // @Sink(gen)
+	sink1(k) // @Sink(gen) TODO: false alarm, but this is acceptable for now
 }
 
 // Example 2: validator is used to return before sink if negative
@@ -56,7 +79,7 @@ func validatorExample2() {
 	if !Validate(s) {
 		return
 	}
-	sink1(s) // @Sink(gen)
+	sink1(s) // @Sink(gen) TODO: normalize conditions to identify validator usages
 }
 
 // Example 3: validator is used to assign value only when safe
@@ -68,7 +91,7 @@ func validatorExample3() {
 	if Validate(s) {
 		k = s
 	}
-	sink1(k) // @Sink(gen)
+	sink1(k) // @Sink(gen) TODO: flow sensitivity with variable reinitialized
 }
 
 // Example 4: validator is used inside a function being called
@@ -82,7 +105,7 @@ func validatorExample4() {
 	a := source1() // @Source(ex4)
 	ok, b := pass(2, a)
 	if ok {
-		sink1(b) // @Sink(ex4)
+		sink1(b) // @Sink(ex4) TODO: validators on part of the argument
 	}
 }
 
@@ -99,7 +122,7 @@ func validatorExample5() {
 			b[i] = a[i]
 		}
 	}
-	sink1(b[0]) // @Sink(ex5)
+	sink1(b[0]) // @Sink(ex5) TODO: flow sensitivity
 }
 
 // Example 6: validate an entire struct when a field is tainted
@@ -121,12 +144,14 @@ func validatorExample6() {
 	sink1(strconv.Itoa(a1.X)) // @Sink(ex6f1,ex6f2)
 	if Validate2(a1) {
 		i, _ := strconv.Atoi(a1.Y)
-		sink1(i) // @Sink(ex6f2,ex6f1)
+		sink1(i) // @Sink(ex6f1,ex6f2) TODO: do we need flow-sensitive validation?
 	}
 }
 
 func main() {
 	validatorExample0()
+	validatorExample0Bis()
+	validatorExample0BisNegative()
 	validatorExample1()
 	validatorExample2()
 	validatorExample3()

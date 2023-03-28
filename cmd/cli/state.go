@@ -69,6 +69,9 @@ func cmdList(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : list all functions matching provided regexes\n",
 			tt.Escape.Blue, cmdListName, tt.Escape.Reset)
+		writeFmt(tt, "\t  Options:\n")
+		writeFmt(tt, "\t    -r     list only reachable functions\n")
+		writeFmt(tt, "\t    -s     list only summarized functions\n")
 		return false
 	}
 
@@ -92,11 +95,14 @@ func cmdList(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		if isReachable {
 			reachStr = "x"
 			numReachable++
+		} else if command.Flags["r"] {
+			// -r means print only reachable functions
+			continue
 		}
 		if hasSummary {
 			writeFmt(tt, "%s[x][%s] %s%s\n", tt.Escape.Cyan, reachStr, fun.String(), tt.Escape.Reset)
 			numSummarized++
-		} else if isReachable {
+		} else if isReachable && !command.Flags["s"] {
 			writeFmt(tt, "%s[_][%s] %s%s\n", tt.Escape.Magenta, reachStr, fun.String(), tt.Escape.Reset)
 		} else {
 			writeFmt(tt, "[_][%s] %s\n", reachStr, fun.String())
