@@ -6,6 +6,7 @@ import (
 
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -157,7 +158,7 @@ func cmdSsaInstr(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	if c == nil {
 		if state.CurrentFunction != nil {
 			writeFmt(tt, "\t- %s%s%s: show SSA instructions matching regex\n", tt.Escape.Blue,
-				cmdSsaValueName, tt.Escape.Reset)
+				cmdSsaInstrName, tt.Escape.Reset)
 		}
 		return false
 	}
@@ -186,6 +187,73 @@ func cmdSsaInstr(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		}
 	}
 	return false
+}
+
+// cmdMayAlias prints whether matches values may alias according to the pointer analysis
+func cmdMayAlias(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+	if c == nil {
+		if state.CurrentFunction != nil {
+			writeFmt(tt, "\t- %s%s%s: print whether matching values may alias\n", tt.Escape.Blue,
+				cmdMayAliasName, tt.Escape.Reset)
+		}
+		return false
+	}
+
+	if state.CurrentFunction == nil {
+		WriteErr(tt, "You must first focus on a function to query aliasing information.")
+		return false
+	}
+
+	if len(command.Args) < 1 {
+		WriteErr(tt, "You must provide two regexes to show aliasing information.")
+		return false
+	}
+
+	r, err := regexp.Compile(command.Args[0])
+	if err != nil {
+		regexErr(tt, command.Args[0], err)
+		return false
+	}
+
+	values1 := map[ssa.Value]bool{}
+	ssafuncs.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+		if value != nil {
+			if r.MatchString(value.Name()) {
+				values1[value] = true
+			}
+		}
+	})
+
+	for v1 := range values1 {
+		if ptr, ptrExists := c.PointerAnalysis.Queries[v1]; ptrExists {
+			writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
+			ssafuncs.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+				if value != nil {
+					printAliases(tt, c, value, ptr)
+				}
+			})
+		}
+		if ptr, ptrExists := c.PointerAnalysis.IndirectQueries[v1]; ptrExists {
+			writeFmt(tt, "[indirect] %s may alias with:\n", v1.Name())
+			ssafuncs.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+				if value != nil {
+					printAliases(tt, c, value, ptr)
+				}
+			})
+		}
+	}
+
+	return false
+}
+
+func printAliases(tt *term.Terminal, c *dataflow.Cache, v2 ssa.Value, ptr pointer.Pointer) {
+	if ptr2, ptrExists := c.PointerAnalysis.IndirectQueries[v2]; ptrExists && ptr2.MayAlias(ptr) {
+		writeFmt(tt, "     [indirect] %s (%s)\n", v2.Name(), v2)
+	}
+
+	if ptr2, ptrExists := c.PointerAnalysis.Queries[v2]; ptrExists && ptr2.MayAlias(ptr) {
+		writeFmt(tt, "     [direct]   %s (%s)\n", v2.Name(), v2)
+	}
 }
 
 // cmdWhere prints the position of a function
@@ -218,7 +286,7 @@ func cmdWhere(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 }
 
 func matchValue(r *regexp.Regexp, val ssa.Value) bool {
-	return r.MatchString(val.String()) || r.MatchString(val.Name())
+	return r.MatchString(val.Name())
 }
 
 func matchInstr(r *regexp.Regexp, instr ssa.Instruction) bool {
@@ -263,9 +331,16 @@ func showPointer(tt *term.Terminal, ptr pointer.Pointer) {
 	var entries []displayElement
 	for _, label := range ptr.PointsTo().Labels() {
 		if label.Value() != nil {
+			f := ""
+			if label.Value().Parent() != state.CurrentFunction {
+				f = fmt.Sprintf(" in %s", label.Value().Parent().Name())
+			}
 			entries = append(entries,
-				displayElement{content: "[" + label.Value().Name() + " (" + label.Value().String() + ")]",
+				displayElement{content: "[" + label.Value().Name() + " (" + label.Value().String() + f + ")]",
 					escape: tt.Escape.Yellow})
+		} else {
+			entries = append(entries,
+				displayElement{content: "[" + label.String() + "]", escape: tt.Escape.White})
 		}
 	}
 	writeEntries(tt, entries, "    ")
