@@ -254,6 +254,7 @@ func TestFunctionSummaries(t *testing.T) {
 			}
 
 			hasFieldAddr := false
+			hasParam := false
 			for _, synth := range summary.SyntheticNodes {
 				if _, ok := synth.Instr().(*ssa.FieldAddr); ok {
 					hasFieldAddr = true
@@ -261,23 +262,19 @@ func TestFunctionSummaries(t *testing.T) {
 						t.Errorf("in FooBar, synthetic node should have at least 1 outgoing edge, but got: %v", synth.Out())
 					}
 
-					if len(synth.In()) < 1 {
-						t.Errorf("in FooBar, synthetic node should have at least 1 incoming edge, but got: %v", synth.In())
-					}
-
-					hasParam := false
 					for in := range synth.In() {
 						if _, ok := in.(*dataflow.ParamNode); ok {
 							hasParam = true
 						}
 					}
-					if !hasParam {
-						t.Errorf("in FooBar, synthetic node should have an incoming edge that is a parameter, but got: %v", synth.In())
-					}
+
 				}
 			}
 			if !hasFieldAddr {
 				t.Errorf("in FooBar, a synthetic node should be a *ssa.FieldAddr")
+			}
+			if !hasParam {
+				t.Errorf("in FooBar, one synthetic node should have an incoming edge that is a parameter")
 			}
 		}
 
@@ -338,26 +335,20 @@ func TestFunctionSummaries(t *testing.T) {
 				// 	return s + ok
 				// }
 				// s5 := closure(ok)
-				// ok = s.Source
+				// ok = s.Source // this node will be a BoundLabel node because of how flow-sensitive graphs are built
 				// ```
 				hasCallArgOut := false
 				hasCallIn := false
-				hasSynthIn := false
+
 				for _, boundvar := range closure.BoundVars() {
 					for out := range boundvar.Out() {
 						if _, ok := out.(*dataflow.CallNodeArg); ok {
 							hasCallArgOut = true
 						}
 					}
-					if len(boundvar.In()) < 1 {
-						t.Errorf("in Baz, a bound var of the closure should have at least 1 incoming edges, but got: %v", boundvar.In())
-					}
 					for in := range boundvar.In() {
 						if _, ok := in.(*dataflow.CallNode); ok {
 							hasCallIn = true
-						}
-						if _, ok := in.(*dataflow.SyntheticNode); ok {
-							hasSynthIn = true
 						}
 					}
 				}
@@ -367,8 +358,22 @@ func TestFunctionSummaries(t *testing.T) {
 				if !hasCallIn {
 					t.Errorf("in Baz, a bound var of the closure should have an incoming edge that is a call node")
 				}
+
+			}
+
+			if len(summary.BoundLabelNodes) == 1 {
+				t.Errorf("in Baz, summary shoudl have exactly 1 bound label node")
+			} else {
+				hasSynthIn := false
+				for _, boundlb := range summary.BoundLabelNodes {
+					for out := range boundlb.In() {
+						if _, ok := out.(*dataflow.SyntheticNode); ok {
+							hasSynthIn = true
+						}
+					}
+				}
 				if !hasSynthIn {
-					t.Errorf("in Baz, a bound var of the closure should have an incoming edge that is a synthetic node")
+					t.Errorf("in Baz, a bound label of the closure should have an incoming edge that is a synthetic node")
 				}
 			}
 
@@ -401,24 +406,8 @@ func TestFunctionSummaries(t *testing.T) {
 								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
 							}
 
-							if len(arg.In()) < 2 {
-								t.Errorf("in Baz, callee arg to %s should have at least 2 incoming edges, but got: %v", name, arg.In())
-							}
-							hasSynth := false
-							hasParam := false
-							for in := range arg.In() {
-								if _, ok := in.(*dataflow.SyntheticNode); ok {
-									hasSynth = true
-								}
-								if _, ok := in.(*dataflow.ParamNode); ok {
-									hasParam = true
-								}
-							}
-							if !hasSynth {
-								t.Errorf("in Baz, callee arg to %s should have a synthetic node incoming edge, but got: %v", name, arg.In())
-							}
-							if !hasParam {
-								t.Errorf("in Baz, callee arg to %s should have a parameter node incoming edge, but got: %v", name, arg.In())
+							if len(arg.In()) != 1 {
+								t.Errorf("in Baz, callee arg to %s should have 1 incoming edge, but got: %v", name, arg.In())
 							}
 						} else if name == "fmt.Sprintf" {
 							// ignore the first arg to fmt.Sprintf (format string)

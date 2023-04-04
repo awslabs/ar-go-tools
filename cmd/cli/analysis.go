@@ -275,7 +275,7 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 		writeFmt(tt, "  %s(not built)%s\n", tt.Escape.Red, tt.Escape.Reset)
 	}
 	if summary.IsInterfaceContract {
-		writeFmt(tt, "  (is interface contract)\n", tt.Escape)
+		writeFmt(tt, "  (is interface contract)\n")
 	}
 	summary.PrettyPrint(true, tt)
 }

@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"go/token"
 	"io"
-	"os"
+	"strconv"
 	"strings"
 
 	"github.com/awslabs/argot/analysis/functional"
 	"github.com/awslabs/argot/analysis/packagescan"
 	"github.com/awslabs/argot/analysis/ssafuncs"
 	"github.com/awslabs/argot/analysis/summaries"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -31,6 +32,9 @@ type ObjectPath struct {
 type GraphNode interface {
 	// ID returns the unique id of the node (id is unique within a given summary)
 	ID() uint32
+
+	// LongID returns the unique string id of the node, including the id of the parent function
+	LongID() string
 
 	// Graph returns the graph the node belongs to
 	Graph() *SummaryGraph
@@ -100,6 +104,10 @@ func (a *ParamNode) ParentName() string {
 	}
 }
 
+func (a *ParamNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
 // FreeVarNode is a node that represents a free variable of the function (for closures)
 type FreeVarNode struct {
 	id      uint32
@@ -133,6 +141,10 @@ func (a *FreeVarNode) ParentName() string {
 	} else {
 		return "ParamNode"
 	}
+}
+
+func (a *FreeVarNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
 
 // CallNodeArg is a node that represents the argument of a function call
@@ -172,6 +184,10 @@ func (a *CallNodeArg) ParentName() string {
 	}
 }
 
+func (a *CallNodeArg) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
 // CallNode is a node that represents a function call. It represents the value returned by the function call
 // and also points at the CallNodeArg nodes that are its arguments
 type CallNode struct {
@@ -196,6 +212,10 @@ func (a *CallNode) Position(c *Cache) token.Position {
 	} else {
 		return packagescan.DummyPos
 	}
+}
+
+func (a *CallNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
 
 func (a *CallNode) ParentName() string {
@@ -285,6 +305,10 @@ func (a *ReturnNode) ParentName() string {
 	}
 }
 
+func (a *ReturnNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
 type ClosureNode struct {
 	id uint32
 
@@ -318,7 +342,11 @@ func (a *ClosureNode) Position(c *Cache) token.Position {
 	}
 }
 
-// Instr retruns the makeClosure instruction corresponding to the closure node
+func (a *ClosureNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
+// Instr returns the makeClosure instruction corresponding to the closure node
 func (a *ClosureNode) Instr() *ssa.MakeClosure { return a.instr }
 
 func (a *ClosureNode) ParentName() string {
@@ -386,6 +414,10 @@ func (a *BoundVarNode) ParentName() string {
 	}
 }
 
+func (a *BoundVarNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
 // A AccessGlobalNode represents a node where a global variable is accessed (read or written)
 // In this context, a "write" is when data flows to the node, and a "read" is when data flows from the node
 type AccessGlobalNode struct {
@@ -418,6 +450,10 @@ func (a *AccessGlobalNode) ParentName() string {
 		return a.instr.Parent().Name()
 	}
 	return ""
+}
+
+func (a *AccessGlobalNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.graph.ID)) + "." + strconv.Itoa(int(a.id))
 }
 
 // A SyntheticNode can be used to represent any other type of node.
@@ -453,6 +489,55 @@ func (a *SyntheticNode) ParentName() string {
 	return ""
 }
 
+func (a *SyntheticNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
+// A BoundLabelNode is used to track dataflow from modified bound variables to closure bodies
+type BoundLabelNode struct {
+	id         uint32
+	parent     *SummaryGraph   // the parent of a SyntheticNode is the summary of the function in which it appears
+	instr      ssa.Instruction // a SyntheticNode must correspond to a specific instruction
+	targetInfo BindingInfo     // the targetInfo may be point to another function
+	targetAnon *SummaryGraph   // the targetAnon should be the anonymous function designated by the targetInfo
+	label      *pointer.Label
+	out        map[GraphNode]ObjectPath // the out maps the node to other nodes to which data flows
+	in         map[GraphNode]ObjectPath // the in maps the node to other nodes from which data flows
+}
+
+func (a *BoundLabelNode) ID() uint32                    { return a.id }
+func (a *BoundLabelNode) Graph() *SummaryGraph          { return a.parent }
+func (a *BoundLabelNode) Out() map[GraphNode]ObjectPath { return a.out }
+func (a *BoundLabelNode) In() map[GraphNode]ObjectPath  { return a.in }
+
+func (a *BoundLabelNode) Position(c *Cache) token.Position {
+	if a.instr != nil {
+		return c.Program.Fset.Position(a.instr.Pos())
+	} else {
+		return packagescan.DummyPos
+	}
+}
+
+// Instr correspond to the instruction matching that synthetic node
+func (a *BoundLabelNode) Instr() ssa.Instruction { return a.instr }
+
+func (a *BoundLabelNode) DestInfo() BindingInfo { return a.targetInfo }
+
+func (a *BoundLabelNode) Index() int { return a.targetInfo.BoundIndex }
+
+func (a *BoundLabelNode) DestClosure() *SummaryGraph { return a.targetAnon }
+
+func (a *BoundLabelNode) ParentName() string {
+	if a.instr != nil {
+		return a.instr.Parent().Name()
+	}
+	return ""
+}
+
+func (a *BoundLabelNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
 // Graph
 
 // SummaryGraph is the function dataflow summary graph.
@@ -469,6 +554,7 @@ type SummaryGraph struct {
 	CreatedClosures       map[ssa.Instruction]*ClosureNode                    // the MakeClosure nodes in the function  are linked to ClosureNode
 	ReferringMakeClosures map[ssa.Instruction]*ClosureNode                    // the MakeClosure nodes referring to this function
 	SyntheticNodes        map[ssa.Instruction]*SyntheticNode                  // the synthetic nodes of the function
+	BoundLabelNodes       map[ssa.Instruction]*BoundLabelNode                 // the label nodes of the function
 	AccessGlobalNodes     map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode // the nodes accessing global information
 	Returns               map[ssa.Instruction]*ReturnNode                     // the return instructions are linked to ReturnNode
 	errors                map[error]bool
@@ -496,6 +582,7 @@ func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 		ReferringMakeClosures: make(map[ssa.Instruction]*ClosureNode),
 		AccessGlobalNodes:     make(map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode),
 		SyntheticNodes:        make(map[ssa.Instruction]*SyntheticNode),
+		BoundLabelNodes:       make(map[ssa.Instruction]*BoundLabelNode),
 		errors:                map[error]bool{},
 		nodeCounter:           0,
 	}
@@ -758,6 +845,22 @@ func (g *SummaryGraph) AddSyntheticNode(instr ssa.Instruction, label string) {
 	}
 }
 
+func (g *SummaryGraph) AddBoundLabelNode(instr ssa.Instruction, label *pointer.Label, target BindingInfo) {
+	if _, ok := g.BoundLabelNodes[instr]; !ok {
+		node := &BoundLabelNode{
+			id:         g.nodeCounter,
+			parent:     g,
+			instr:      instr,
+			label:      label,
+			targetInfo: target,
+			out:        make(map[GraphNode]ObjectPath),
+			in:         make(map[GraphNode]ObjectPath),
+		}
+		g.nodeCounter += 1
+		g.BoundLabelNodes[instr] = node
+	}
+}
+
 func (g *SummaryGraph) AddSyntheticNodeEdge(mark Mark, instr ssa.Instruction, label string, info *ConditionInfo) {
 	node, ok := g.SyntheticNodes[instr]
 	if !ok {
@@ -766,9 +869,17 @@ func (g *SummaryGraph) AddSyntheticNodeEdge(mark Mark, instr ssa.Instruction, la
 	g.addEdge(mark, node, info)
 }
 
+func (g *SummaryGraph) AddBoundLabelNodeEdge(mark Mark, instr ssa.Instruction, info *ConditionInfo) {
+	node, ok := g.BoundLabelNodes[instr]
+	if !ok {
+		return
+	}
+	g.addEdge(mark, node, info)
+}
+
 // Functions to add edges to the graph
 
-// addEdge adds an edge between source and dest in the summary graph g.
+// addEdge adds an edge between source and targetInfo in the summary graph g.
 // @requires g != nil
 func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo) {
 	// This function's goal is to define how the source of an edge is obtained in the summary given a Mark that
@@ -866,8 +977,6 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 func (g *SummaryGraph) AddCallArgEdge(mark Mark, call ssa.CallInstruction, arg ssa.Value, cond *ConditionInfo) {
 	callNodes := g.Callees[call]
 	if callNodes == nil {
-		g.addError(fmt.Errorf("attempting to set call arg edge but no call node for %s", call))
-		os.Exit(1)
 		return
 	}
 
@@ -885,8 +994,6 @@ func (g *SummaryGraph) AddCallArgEdge(mark Mark, call ssa.CallInstruction, arg s
 func (g *SummaryGraph) AddCallNodeEdge(mark Mark, call ssa.CallInstruction, cond *ConditionInfo) {
 	callNodes := g.Callees[call]
 	if callNodes == nil {
-		g.addError(fmt.Errorf("attempting to set call arg edge but no call node for %s", call))
-		os.Exit(1)
 		return
 	}
 	for _, callNode := range callNodes {
@@ -900,13 +1007,12 @@ func (g *SummaryGraph) AddBoundVarEdge(mark Mark, closure *ssa.MakeClosure, v ss
 	closureNode := g.CreatedClosures[closure]
 	if closureNode == nil {
 		g.addError(fmt.Errorf("attempting to set bound arg edge but no closure node for %s", closure))
-		os.Exit(1)
 		return
 	}
 
 	boundVarNode := closureNode.FindBoundVar(v)
 	if boundVarNode == nil {
-		g.addError(fmt.Errorf("attempting to set call arg edge but no call arg node"))
+		g.addError(fmt.Errorf("attempting to set bound var edge but no bound var node"))
 		return
 	}
 	g.addEdge(mark, boundVarNode, cond)
@@ -1000,6 +1106,11 @@ func addInEdge(dest GraphNode, source GraphNode, path ObjectPath) {
 			node.in = make(map[GraphNode]ObjectPath)
 		}
 		node.in[source] = path
+	case *BoundLabelNode:
+		if node.in == nil {
+			node.in = make(map[GraphNode]ObjectPath)
+		}
+		node.in[source] = path
 	default:
 		panic(fmt.Sprintf("invalid dest node type: %T", dest))
 	}
@@ -1007,7 +1118,7 @@ func addInEdge(dest GraphNode, source GraphNode, path ObjectPath) {
 
 // Loading function summaries from predefined summaries
 
-// addParamEdgeByPos adds an edge between the arguments at position src and dest in the summary graph.
+// addParamEdgeByPos adds an edge between the arguments at position src and targetInfo in the summary graph.
 // Returns true if it successfully added an edge.
 // Returns false if it failed to add an edge because it could not fetch the required data (the positions might not be
 // correct)
@@ -1046,7 +1157,7 @@ func (g *SummaryGraph) AddFreeVarEdge(mark Mark, freeVar ssa.Node, cond *Conditi
 	g.addEdge(mark, freeVarNode, cond)
 }
 
-// addReturnEdgeByPos adds an edge between the parameter at position src to the returned tuple position dest.
+// addReturnEdgeByPos adds an edge between the parameter at position src to the returned tuple position targetInfo.
 // The tuple position is simply ignored.
 // TODO: change this when we support tracking tuple indexes.
 func (g *SummaryGraph) addReturnEdgeByPos(src int, _ int) bool {
@@ -1170,6 +1281,11 @@ func (a *AccessGlobalNode) String() string {
 		a.graph.ID, a.id, a.Global.value.String(), a.instr.String(), typ)
 }
 
+func (a *BoundLabelNode) String() string {
+	return fmt.Sprintf("\"[#%d.%d] bound: %s to %s #%d\"", a.parent.ID, a.id, a.instr.String(),
+		a.targetInfo.MakeClosure.String(), a.targetInfo.BoundIndex)
+}
+
 // Print the summary graph to w in the graphviz format.
 // If g is nil, then prints the empty graph "subgraph {}"
 func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
@@ -1267,6 +1383,17 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 		}
 	}
 
+	for _, s := range g.BoundLabelNodes {
+		for n := range s.Out() {
+			fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+		}
+		if !outEdgesOnly {
+			for n := range s.In() {
+				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+			}
+		}
+	}
+
 	for _, group := range g.AccessGlobalNodes {
 		for _, s := range group {
 			for n := range s.Out() {
@@ -1320,6 +1447,10 @@ func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer) {
 
 	for _, s := range g.SyntheticNodes {
 		ppNodes("Synthetic", w, s, outEdgesOnly)
+	}
+
+	for _, s := range g.BoundLabelNodes {
+		ppNodes("Bound by label", w, s, outEdgesOnly)
 	}
 
 	for _, group := range g.AccessGlobalNodes {
@@ -1390,6 +1521,10 @@ func (g *SummaryGraph) ForAllNodes(f func(n GraphNode)) {
 	}
 
 	for _, s := range g.SyntheticNodes {
+		f(s)
+	}
+
+	for _, s := range g.BoundLabelNodes {
 		f(s)
 	}
 

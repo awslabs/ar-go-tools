@@ -87,10 +87,17 @@ func (g *CrossFunctionFlowGraph) InsertSummaries(g2 CrossFunctionFlowGraph) {
 	}
 }
 
+type KeyType = string
+
 type NodeWithTrace struct {
 	Node         GraphNode
 	Trace        *NodeTree[*CallNode]
 	ClosureTrace *NodeTree[*ClosureNode]
+}
+
+func (g NodeWithTrace) Key() KeyType {
+	s := g.Node.LongID() + "!" + g.Trace.Key() + "!" + g.ClosureTrace.Key()
+	return s
 }
 
 // BuildGraph builds the cross function flow graph by connecting summaries together
@@ -114,6 +121,8 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 			summary.Print(false, summariesFile)
 			_, _ = summariesFile.WriteString("\n")
 		}
+
+		// Interprocedural edges: callers to callees
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil {
@@ -151,6 +160,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 			}
 		}
 
+		// Interprocedural edges: closure creation to anonymous function
 		for _, closureNode := range summary.CreatedClosures {
 			if closureNode.instr != nil {
 				closureSummary := findClosureSummary(closureNode.instr, g.Summaries)
@@ -162,12 +172,21 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 				closureNode.ClosureSummary = closureSummary // nil is safe
 			}
 		}
+
+		// Interprocedural edges: bound variable to capturing anonymous function
+		for _, boundLabelNode := range summary.BoundLabelNodes {
+			if boundLabelNode.targetInfo.MakeClosure != nil {
+				closureSummary := findClosureSummary(boundLabelNode.targetInfo.MakeClosure, g.Summaries)
+				boundLabelNode.targetAnon = closureSummary // nil is safe
+			}
+		}
 	}
 	// Change the built flag to true
 	g.built = true
 }
 
-func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor, isEntryPoint func(*config.Config, *ssa.Function) bool) {
+func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
+	isEntryPoint func(*config.Config, *ssa.Function) bool) {
 	var entryFuncs []*SummaryGraph
 	var entryPoints []NodeWithTrace
 
@@ -175,7 +194,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor, isEntryPo
 		// Identify the entry points for that function: all the call sites that are entrypoints
 		// and all the synthetic nodes in the function body.
 		for _, snode := range summary.SyntheticNodes {
-			entry := NodeWithTrace{Node: snode, Trace: nil}
+			entry := NodeWithTrace{Node: snode}
 			entryPoints = append(entryPoints, entry)
 		}
 		if isEntryPoint(g.cache.Config, summary.Parent) {
@@ -185,7 +204,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor, isEntryPo
 
 	for _, summary := range entryFuncs {
 		for _, node := range summary.Callsites {
-			entry := NodeWithTrace{node, nil, nil}
+			entry := NodeWithTrace{Node: node}
 			entryPoints = append(entryPoints, entry)
 		}
 	}

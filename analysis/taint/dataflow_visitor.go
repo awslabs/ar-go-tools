@@ -23,7 +23,7 @@ func NewVisitor(coverageWriter io.StringWriter) *Visitor {
 // Visit runs a cross-function analysis to add any detected taint flow from source to a sink to v.Taints.
 func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 	coverage := make(map[string]bool)
-	seen := make(map[df.NodeWithTrace]bool)
+	seen := make(map[df.KeyType]bool)
 	goroutines := make(map[*ssa.Go]bool)
 	source := entrypoint
 	que := []*df.VisitorNode{{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}}
@@ -34,8 +34,6 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 	logger.Printf("%s %s\n", format.Green("Found at"), source.Node.Position(c))
 
 	// Search from path candidates in the inter-procedural flow graph from sources to sinks
-	// TODO: optimize call stack
-	// TODO: set of visited nodes is not handled properly right now. We should revisit some nodes,
 	// we don't revisit only if it has been visited with the same call stack
 	for len(que) != 0 {
 		elt := que[0]
@@ -212,7 +210,7 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 			closureNode := graphNode.ParentNode()
 
 			if closureNode.ClosureSummary == nil {
-				printMissingClosureSummaryMessage(c, closureNode)
+				printMissingClosureNodeSummaryMessage(c, closureNode)
 				break
 			}
 			// Flows to the free variables of the closure
@@ -220,7 +218,8 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 			fv := closureNode.ClosureSummary.Parent.FreeVars[graphNode.Index()]
 			if fv != nil {
 				x := closureNode.ClosureSummary.FreeVars[fv]
-				que = addNext(c, que, seen, elt, x, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Add(closureNode))
+				que = addNext(c, que, seen, elt, x, df.ObjectPath{},
+					elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
 				c.AddError(fmt.Errorf("no free variable matching bound variable at position %d in %s",
 					graphNode.Index(), closureNode.ClosureSummary.Parent.String()))
@@ -285,6 +284,29 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 					que = addNext(c, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 				}
 			}
+
+		// A BoundLabel flows to the body of the closure that captures it.
+		case *df.BoundLabelNode:
+			closureSummary := graphNode.DestClosure()
+			if closureSummary == nil {
+				printMissingClosureSummaryMessage(c, graphNode)
+				break
+			}
+			closureNode := closureSummary.ReferringMakeClosures[graphNode.DestInfo().MakeClosure]
+			if closureNode == nil {
+				printMissingClosureNodeSummaryMessage(c, closureNode)
+				break
+			}
+			// Flows to the free variables of the closure
+			// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
+			fv := closureSummary.Parent.FreeVars[graphNode.Index()]
+			if fv != nil {
+				x := closureSummary.FreeVars[fv]
+				que = addNext(c, que, seen, elt, x, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Add(closureNode))
+			} else {
+				c.AddError(fmt.Errorf("no free variable matching bound variable at position %d in %s",
+					graphNode.Index(), closureSummary.Parent.String()))
+			}
 		}
 	}
 
@@ -297,7 +319,7 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 // trace has not been seen before
 func addNext(c *df.Cache,
 	que []*df.VisitorNode,
-	seen map[df.NodeWithTrace]bool,
+	seen map[df.KeyType]bool,
 	cur *df.VisitorNode,
 	node df.GraphNode,
 	edgeInfo df.ObjectPath,
@@ -317,7 +339,7 @@ func addNext(c *df.Cache,
 	newNode := df.NodeWithTrace{Node: node, Trace: trace, ClosureTrace: closureTrace}
 
 	// Stop conditions: node is already in seen, trace is a lasso or depth exceeds limit
-	if seen[newNode] || trace.IsLasso() || cur.Depth > c.Config.MaxDepth {
+	if seen[newNode.Key()] || trace.IsLasso() || cur.Depth > c.Config.MaxDepth {
 		return que
 	}
 
@@ -337,7 +359,7 @@ func addNext(c *df.Cache,
 		Depth:         cur.Depth + 1,
 	}
 	que = append(que, newVis)
-	seen[newNode] = true
+	seen[newNode.Key()] = true
 	return que
 }
 
