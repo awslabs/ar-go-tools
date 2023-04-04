@@ -151,6 +151,8 @@ func RunAllPaths(op PathSensitiveInstrOp, function *ssa.Function) {
 // whether the analysis information has changed.
 type IterativeAnalysis interface {
 	InstrOp
+	Pre(instruction ssa.Instruction)
+	Post(instruction ssa.Instruction)
 	NewBlock(block *ssa.BasicBlock)
 	ChangedOnEndBlock() bool // ChangedOnEndBlock returns a boolean signaling the information has changed.
 }
@@ -166,6 +168,8 @@ func RunForwardIterative(op IterativeAnalysis, function *ssa.Function) {
 	}
 	// Block indexes to visit next
 	var worklist []*ssa.BasicBlock
+	// memoize paths between blocks
+	var pathMem map[*ssa.BasicBlock]map[*ssa.BasicBlock]bool
 	worklist = append(worklist, function.Blocks[0])
 	for { // until fixpoint is reached
 		// Set the current Block if there is one
@@ -177,11 +181,13 @@ func RunForwardIterative(op IterativeAnalysis, function *ssa.Function) {
 			// Iterate through instructions.
 			op.NewBlock(block)
 			for _, instr := range block.Instrs {
+				op.Pre(instr)
 				InstrSwitch(op, instr)
+				op.Post(instr)
 			}
 			if op.ChangedOnEndBlock() {
 				for _, nextBlock := range function.Blocks {
-					if block.Dominates(nextBlock) {
+					if HasPathTo(block, nextBlock, pathMem) {
 						worklist = append(worklist, nextBlock)
 					}
 				}

@@ -105,7 +105,7 @@ func RunCrossFunction(args RunCrossFunctionArgs) {
 	args.Cache.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
 }
 
-// BuildCache builds a full-program (cross-function) analysis cache from program.
+// BuildCrossFunctionGraph builds a full-program (cross-function) analysis cache from program.
 func BuildCrossFunctionGraph(cache *dataflow.Cache) (*dataflow.Cache, error) {
 	if len(cache.FlowGraph.Summaries) == 0 {
 		return nil, fmt.Errorf("cache does not contatain any summaries")

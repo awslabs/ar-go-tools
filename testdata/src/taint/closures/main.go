@@ -301,6 +301,40 @@ func example14() {
 	callSink14(func(s string) string { return f(s, 1) }, "ok")
 }
 
+// example14
+
+type Ex15 struct {
+	Count  int
+	Lambda func(int, string) string
+}
+
+func (e Ex15) Run(s string, i int) string {
+	e.Count += i
+	return e.Lambda(e.Count, s)
+}
+
+func NewEx15(data *string) *Ex14 {
+	e := &Ex14{
+		Count: 0,
+		Lambda: func(i int, s string) string {
+			return strconv.Itoa(i) + s + *data
+		},
+	}
+	return e
+}
+
+func callSink15(run func(string) string, s string) {
+	sink(run(s)) // @Sink(ex15)
+}
+
+func example15() {
+	data := "ok"
+	e := NewEx15(&data)
+	data = source() // @Source(ex15)
+	f := e.Run
+	callSink15(func(s string) string { return f(s, 1) }, "ok")
+}
+
 func main() {
 	example1()
 	example1bis()
@@ -319,4 +353,5 @@ func main() {
 	example12()
 	example13()
 	example14()
+	example15()
 }

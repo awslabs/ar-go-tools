@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/packagescan"
 	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/taint"
+	"golang.org/x/exp/slices"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -205,7 +208,7 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	}
 
 	if len(command.Args) < 1 {
-		WriteErr(tt, "You must provide two regexes to show aliasing information.")
+		WriteErr(tt, "You must provide one regex to show aliasing information.")
 		return false
 	}
 
@@ -285,6 +288,35 @@ func cmdWhere(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	return false
 }
 
+// cmdIntra shows the intermediate result of running the dataflow analysis.
+func cmdIntra(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+	if c == nil {
+		if state.CurrentFunction != nil {
+			writeFmt(tt, "\t- %s%s%s: show the intermediate result of the intraprocedural analysis\n",
+				tt.Escape.Blue, cmdIntraName, tt.Escape.Reset)
+		}
+		return false
+	}
+
+	if state.CurrentFunction == nil {
+		WriteErr(tt, "You must first focus on a function to run the intraprocedural analysis.")
+		return false
+	}
+
+	result, err := dataflow.SingleFunctionAnalysis(c, state.CurrentFunction, true, 0,
+		taint.IsSourceNode)
+	if err != nil {
+		WriteErr(tt, "Error while analyzing.")
+		return false
+	}
+	if result.FlowInformation != nil {
+		showFlowInformation(tt, c, result.FlowInformation)
+	} else {
+		WriteErr(tt, "Flow information is nil after analysis. Something went wrong?")
+	}
+	return false
+}
+
 func matchValue(r *regexp.Regexp, val ssa.Value) bool {
 	return r.MatchString(val.Name())
 }
@@ -349,4 +381,39 @@ func showPointer(tt *term.Terminal, ptr pointer.Pointer) {
 func showInstr(tt *term.Terminal, c *dataflow.Cache, instr ssa.Instruction) {
 	writeFmt(tt, "Matching instruction: %s\n", instr.String())
 	writeFmt(tt, "            location: %s\n", c.Program.Fset.Position(instr.Pos()))
+}
+
+func showFlowInformation(tt *term.Terminal, c *dataflow.Cache, fi *dataflow.FlowInformation) {
+	if fi.Function == nil {
+		return
+	}
+	writeFmt(tt, "[function %s%s%s]\n", tt.Escape.Cyan, fi.Function.Name(), tt.Escape.Reset)
+
+	ssafuncs.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) {
+		writeFmt(tt, "• instruction %s%s%s @ %s:\n", tt.Escape.Blue, i, tt.Escape.Reset,
+			c.Program.Fset.Position(i.Pos()))
+		// sort and print value -> marks
+		var mVals []ssa.Value
+		for val := range fi.MarkedValues[i] {
+			mVals = append(mVals, val)
+		}
+		slices.SortFunc(mVals, func(a ssa.Value, b ssa.Value) bool { return a.Name() < b.Name() })
+		for _, val := range mVals {
+			marks := fi.MarkedValues[i][val]
+			x := val.Name()
+			_, isFunc := val.(*ssa.Function)
+			if isFunc {
+				x = "fun " + x
+			} else if val.String() != val.Name() {
+				x += "=" + val.String()
+			}
+			writeFmt(tt, "   %s%-30s%s marked by ", tt.Escape.Magenta, x, tt.Escape.Reset)
+			var markStrings []string
+			for mark := range marks {
+				markStrings = append(markStrings,
+					fmt.Sprintf("%s%s%s", tt.Escape.Red, mark, tt.Escape.Reset))
+			}
+			writeFmt(tt, "%s\n", strings.Join(markStrings, " & "))
+		}
+	})
 }

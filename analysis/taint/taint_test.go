@@ -4,6 +4,10 @@ import (
 	"testing"
 )
 
+func TestCrossFunctionExample0(t *testing.T) {
+	runTest(t, "example0", []string{})
+}
+
 func TestCrossFunctionIntra(t *testing.T) {
 	runTest(t, "single-function", []string{})
 }

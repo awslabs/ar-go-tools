@@ -37,6 +37,7 @@ var (
 		cmdCdName:           cmdCd,
 		cmdExitName:         cmdExit,
 		cmdFocusName:        cmdFocus,
+		cmdIntraName:        cmdIntra,
 		cmdListName:         cmdList,
 		cmdLoadName:         cmdLoad,
 		cmdLsName:           cmdLs,

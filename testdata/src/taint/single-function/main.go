@@ -120,6 +120,27 @@ func testFieldSensitivity() {
 	sink1(x.DataField) // @Sink(xdata2)
 }
 
+func testFlowSensitivity() {
+	x := mkSomeStruct()
+	x.OtherData = "ok"
+	sink1(x.OtherData)                   // ok if flow sensitive
+	x.DataField = fmt.Sprintf("tainted") // @Source(flow1)
+	x.OtherData = "1"
+	sink1(x.DataField) // @Sink(flow1)
+}
+
+func testFlowSensitivity2() {
+	s := fmt.Sprintf("tainted %s", "test") // @Source(flow2)
+	var x [4]string
+	if random.Int() > 4 {
+		x[0] = "ok"
+		sink1(x[2]) // this is ok
+	} else {
+		x[1] = s
+		sink1(x[0]) // @Sink(flow2)
+	}
+}
+
 func simple1() {
 	s := fmt.Sprintf("taintedstuff-%s", "fortest") // @Source(simple1)
 	x := Foo{Data: s}
@@ -278,21 +299,21 @@ func testMultipleSources2() {
 func testMultipleSources3() {
 	a := make([]*string, 2)
 	b := "ok"
-	a[0] = &b
+	a[0] = &b // invariant: *a[0] = b
 	if random.Int() > 10 {
 		b = fmt.Sprintf("tainted") // @Source(m1)
 	} else {
 		for i := 0; i < 10; i++ {
-			b = fmt.Sprintf("tainted too") // @Source(m3)
+			b = fmt.Sprintf("tainted too") // @Source(m2)
 			if b == "ok" {
-				x := mkBar()
+				x := mkBar() // this is a source "mkBar" (see mkBar definition)
 				b = b + x.BarData
 			} else {
 				b = *a[0] + "0"
 			}
 		}
 	}
-	sink1(*a[0]) // @Sink(m1,m3,mkBar)
+	sink1(*a[0]) //@Sink(m1, m2, mkBar)
 }
 
 func main() {
@@ -304,6 +325,8 @@ func main() {
 	testChan2()
 	testChan3()
 	testFieldSensitivity()
+	testFlowSensitivity()
+	testFlowSensitivity2()
 	testAliasing1()
 	testAliasing2()
 	testSlice()

@@ -1,0 +1,63 @@
+package dataflow_test
+
+import (
+	"log"
+	"testing"
+
+	. "github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/utils"
+)
+
+func TestRunBoundingAnalysis(t *testing.T) {
+	program, config := utils.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
+	c, err := BuildFullCache(log.Default(), config, program)
+	if err != nil {
+		t.Errorf("error building cache: %s", err)
+	}
+
+	// This is a subset of what the analysis should return
+	mustCover := map[string]string{
+		"new string (lparen),example1": "make closure example1$1 [t0, t1]",
+		"new string (rparen),example1": "make closure example1$1 [t0, t1]",
+		"new string (lparen),example2": "make closure example2$1 [t0, t1]",
+		"new string (rparen),example2": "make closure example2$1 [t0, t1]",
+		"new string (pre),example5":    "make closure example5pre$1 [t0]",
+		"new string (x),example6":      "make closure example6$1$1 [x]",
+		"new string (pre),example10":   "make closure example10pre$1 [t0]",
+	}
+
+	boundingMap, err := RunBoundingAnalysis(c)
+	if err != nil {
+		t.Errorf("error runnning bounding analysis: %s", err)
+	}
+	for label, bindings := range boundingMap {
+		if label != nil {
+			f := " "
+			if label.Parent() != nil {
+				f = " in " + label.Parent().Name() + " "
+			}
+			t.Logf("Label %s with value \"%s\"%sis bound by:\n",
+				label.String(), label, f)
+		} else {
+			t.Logf("Label %s is bound by:\n", label.String())
+		}
+		for binding := range bindings {
+			t.Logf("  %s\n", binding)
+
+			// Checking that the expected binding is covered
+			if label != nil && label.Parent() != nil {
+				key := label.String() + "," + label.Parent().Name()
+				if instrName, ok := mustCover[key]; ok {
+					if instrName == binding.MakeClosure.String() {
+						delete(mustCover, key)
+					}
+				}
+			}
+		}
+	}
+	if len(mustCover) > 0 {
+		for key, data := range mustCover {
+			t.Errorf("Label %s should be bound by %s", key, data)
+		}
+	}
+}

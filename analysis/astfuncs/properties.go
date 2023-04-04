@@ -18,7 +18,7 @@ func IsNillableType(t types.Type) bool {
 	}
 }
 
-// IsChannelEnclosingType return true if the type is a pointer to channel, a channel, or a datastrucure containing
+// IsChannelEnclosingType return true if the type is a pointer to channel, a channel, or a data structure containing
 // a channel
 func IsChannelEnclosingType(t types.Type) bool {
 	visitedTypes := map[types.Type]bool{}

@@ -49,6 +49,10 @@ type Cache struct {
 	// The dataflow analysis results
 	FlowGraph *CrossFunctionFlowGraph
 
+	// BoundingInfo is a map from pointer labels to the closures that bind them. The bounding analysis produces such
+	// a map
+	BoundingInfo BoundingMap
+
 	// Stored errors
 	errors     map[error]bool
 	errorMutex sync.Mutex
@@ -57,11 +61,19 @@ type Cache struct {
 // BuildFullCache runs NewCache, building all information that can be built in the cache
 func BuildFullCache(logger *log.Logger, config *config.Config, program *ssa.Program) (*Cache, error) {
 	program.Build()
-	return NewCache(program, logger, config, []func(*Cache){
+	c, err := NewCache(program, logger, config, []func(*Cache){
 		func(cache *Cache) { cache.PopulateTypesVerbose() },
 		func(cache *Cache) { cache.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		func(cache *Cache) { cache.PopulateGlobalsVerbose() },
 	})
+	if err != nil {
+		return c, fmt.Errorf("error while running parallel steps: %v", err)
+	}
+	err = c.PopulateBoundingInformation(true)
+	if err != nil {
+		return c, fmt.Errorf("error while running bounding analysis: %v", err)
+	}
+	return c, err
 }
 
 // NewCache returns a properly initialized cache by running steps in parallel.
@@ -219,6 +231,31 @@ func (c *Cache) PopulateGlobalsVerbose() {
 	c.PopulateGlobals()
 	c.Logger.Printf("Global gathering terminated, added %d items (%.2f s)",
 		len(c.Globals), time.Since(start).Seconds())
+}
+
+// PopulateBoundingInformation runs the bounding analysis
+func (c *Cache) PopulateBoundingInformation(verbose bool) error {
+	start := time.Now()
+	if verbose {
+		c.Logger.Println("Gathering information about pointer binding in closures")
+	}
+
+	boundingInfo, err := RunBoundingAnalysis(c)
+	if err != nil {
+		if verbose {
+			c.Err.Println("Error running pointer binding analysis:")
+			c.Err.Printf("  %s", err)
+		}
+		c.AddError(err)
+		return err
+	} else {
+		c.BoundingInfo = boundingInfo
+		if verbose {
+			c.Logger.Printf("Pointer binding analysis terminated, added %d items (%.2f s)",
+				len(c.BoundingInfo), time.Since(start).Seconds())
+		}
+		return nil
+	}
 }
 
 // Functions to retrieve results from the information stored in the cache

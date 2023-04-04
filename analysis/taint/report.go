@@ -116,7 +116,27 @@ func printMissingSummaryMessage(c *dataflow.Cache, callSite *dataflow.CallNode) 
 	}
 }
 
-func printMissingClosureSummaryMessage(c *dataflow.Cache, closureNode *dataflow.ClosureNode) {
+func printMissingClosureSummaryMessage(c *dataflow.Cache, bl *dataflow.BoundLabelNode) {
+	if !c.Config.Verbose {
+		return
+	}
+
+	var instrStr string
+	if bl.Instr() == nil {
+		instrStr = "nil instr"
+	} else {
+		instrStr = bl.Instr().String()
+	}
+	c.Logger.Printf(format.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+		bl.String(), instrStr)))
+	if bl.Instr() != nil {
+		c.Logger.Printf("| Please add closure for %s to summaries",
+			bl.Instr().String())
+		c.Logger.Printf("|_ See closure: %s", bl.Position(c))
+	}
+}
+
+func printMissingClosureNodeSummaryMessage(c *dataflow.Cache, closureNode *dataflow.ClosureNode) {
 	if !c.Config.Verbose {
 		return
 	}

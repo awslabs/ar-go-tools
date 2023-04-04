@@ -71,7 +71,7 @@ func Baz(x string) {
 		Sink(s4)
 		return s + ok
 	}
-	s5 := closure(ok)
+	s5 := closure(ok) // at this point, ok can only have been modified by the closure running
 	ok = s.Source
 	Sink(s5)
 }

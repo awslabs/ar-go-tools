@@ -8,154 +8,154 @@ import (
 
 // This file contains all the instruction operations implemented for the intraprocedural analysis.
 
-func (t *stateTracker) NewBlock(block *ssa.BasicBlock) {
-	t.changeFlag = false
+func (state *analysisState) NewBlock(block *ssa.BasicBlock) {
+	state.changeFlag = false
 	// If the block has not been visited yet, declare that information has changed.
-	if !t.blocksSeen[block] {
-		t.blocksSeen[block] = true
-		t.changeFlag = true
+	if !state.blocksSeen[block] {
+		state.blocksSeen[block] = true
+		state.changeFlag = true
 	}
 }
 
-func (t *stateTracker) ChangedOnEndBlock() bool {
-	return t.changeFlag
+func (state *analysisState) ChangedOnEndBlock() bool {
+	return state.changeFlag
 }
 
 // Below are all the interface functions to implement the InstrOp interface
 
-func (t *stateTracker) DoCall(call *ssa.Call) {
-	t.callCommonMark(call, call, call.Common())
+func (state *analysisState) DoCall(call *ssa.Call) {
+	state.callCommonMark(call, call, call.Common())
 }
 
-func (t *stateTracker) DoDefer(_ *ssa.Defer) {
+func (state *analysisState) DoDefer(_ *ssa.Defer) {
 	// Defers will be handled when RunDefers are handled
 }
 
-func (t *stateTracker) DoGo(g *ssa.Go) {
-	t.callCommonMark(g.Value(), g, g.Common())
+func (state *analysisState) DoGo(g *ssa.Go) {
+	state.callCommonMark(g.Value(), g, g.Common())
 }
 
-func (t *stateTracker) DoDebugRef(*ssa.DebugRef) {
+func (state *analysisState) DoDebugRef(*ssa.DebugRef) {
 	// Do nothing, we ignore debug refs in SSA
 }
 
-func (t *stateTracker) DoUnOp(x *ssa.UnOp) {
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+func (state *analysisState) DoUnOp(x *ssa.UnOp) {
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoBinOp(binop *ssa.BinOp) {
+func (state *analysisState) DoBinOp(binop *ssa.BinOp) {
 	// If either operand is tainted, taint the value.
 	// We might want more precision later.
-	simpleTransitiveMarkPropagation(t, binop, binop.X, binop)
-	simpleTransitiveMarkPropagation(t, binop, binop.Y, binop)
+	simpleTransitiveMarkPropagation(state, binop, binop.X, binop)
+	simpleTransitiveMarkPropagation(state, binop, binop.Y, binop)
 }
 
-func (t *stateTracker) DoChangeInterface(x *ssa.ChangeInterface) {
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+func (state *analysisState) DoChangeInterface(x *ssa.ChangeInterface) {
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoChangeType(x *ssa.ChangeType) {
-	// Changing type doesn't change taint
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+func (state *analysisState) DoChangeType(x *ssa.ChangeType) {
+	// Changing type doesn'state change taint
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoConvert(x *ssa.Convert) {
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+func (state *analysisState) DoConvert(x *ssa.Convert) {
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+func (state *analysisState) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoMakeInterface(x *ssa.MakeInterface) {
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+func (state *analysisState) DoMakeInterface(x *ssa.MakeInterface) {
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoExtract(x *ssa.Extract) {
+func (state *analysisState) DoExtract(x *ssa.Extract) {
 	// TODO: tuple index sensitive propagation
-	simpleTransitiveMarkPropagation(t, x, x.Tuple, x)
+	simpleTransitiveMarkPropagation(state, x, x.Tuple, x)
 }
 
-func (t *stateTracker) DoSlice(x *ssa.Slice) {
+func (state *analysisState) DoSlice(x *ssa.Slice) {
 	// Taking a slice propagates taint information
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoReturn(r *ssa.Return) {
+func (state *analysisState) DoReturn(r *ssa.Return) {
 	for _, result := range r.Results {
-		for _, origin := range t.getMarkedValueOrigins(result, "*") {
-			t.summary.AddReturnEdge(origin, r, nil)
+		for _, origin := range state.getMarkedValues(r, result, "*") {
+			state.summary.AddReturnEdge(origin, r, nil)
 		}
 	}
 }
 
-func (t *stateTracker) DoRunDefers(r *ssa.RunDefers) {
-	err := t.doDefersStackSimulation(r)
+func (state *analysisState) DoRunDefers(r *ssa.RunDefers) {
+	err := state.doDefersStackSimulation(r)
 	if err != nil {
-		t.errors[r] = err
+		state.errors[r] = err
 	}
 }
 
-func (t *stateTracker) DoPanic(x *ssa.Panic) {
+func (state *analysisState) DoPanic(x *ssa.Panic) {
 	// TODO figure out how to handle this
-	// t.errors[x] = fmt.Errorf("panic is not handled yet")
+	// state.errors[x] = fmt.Errorf("panic is not handled yet")
 }
 
-func (t *stateTracker) DoSend(x *ssa.Send) {
+func (state *analysisState) DoSend(x *ssa.Send) {
 	// Sending a tainted value over the channel taints the whole channel
-	simpleTransitiveMarkPropagation(t, x, x.X, x.Chan)
+	simpleTransitiveMarkPropagation(state, x, x.X, x.Chan)
 }
 
-func (t *stateTracker) DoStore(x *ssa.Store) {
-	simpleTransitiveMarkPropagation(t, x, x.Val, x.Addr)
+func (state *analysisState) DoStore(x *ssa.Store) {
+	pathSensitiveMarkPropagation(state, x, x.Val, x.Addr, "*")
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
-		pathSensitiveMarkPropagation(t, x, x.Val, addr.X, FieldAddrFieldName(addr))
+		pathSensitiveMarkPropagation(state, x, x.Val, addr.X, FieldAddrFieldName(addr))
 	}
 }
 
-func (t *stateTracker) DoIf(*ssa.If) {
+func (state *analysisState) DoIf(*ssa.If) {
 	// Do nothing
 	// TODO: do we want to add path sensitivity, i.e. conditional on tainted value taints all values in condition?
 }
 
-func (t *stateTracker) DoJump(*ssa.Jump) {
+func (state *analysisState) DoJump(*ssa.Jump) {
 	// Do nothing
 }
 
-func (t *stateTracker) DoMakeChan(*ssa.MakeChan) {
+func (state *analysisState) DoMakeChan(*ssa.MakeChan) {
 	// Do nothing
 }
 
-func (t *stateTracker) DoAlloc(x *ssa.Alloc) {
-	if t.shouldTrack(t.flowInfo.Config, x) {
-		t.markValue(x, NewMark(x, DefaultMark, ""))
+func (state *analysisState) DoAlloc(x *ssa.Alloc) {
+	if state.shouldTrack(state.flowInfo.Config, x) {
+		state.markValue(x, x, NewMark(x, DefaultMark, ""))
 	}
 	// An allocation may be a mark
-	t.optionalSyntheticNode(x, x, x)
+	state.optionalSyntheticNode(x, x, x)
 }
 
-func (t *stateTracker) DoMakeSlice(*ssa.MakeSlice) {
+func (state *analysisState) DoMakeSlice(*ssa.MakeSlice) {
 	// Do nothing
 }
 
-func (t *stateTracker) DoMakeMap(*ssa.MakeMap) {
+func (state *analysisState) DoMakeMap(*ssa.MakeMap) {
 	// Do nothing
 }
 
-func (t *stateTracker) DoRange(x *ssa.Range) {
+func (state *analysisState) DoRange(x *ssa.Range) {
 	// An iterator over a tainted value is tainted
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoNext(x *ssa.Next) {
-	simpleTransitiveMarkPropagation(t, x, x.Iter, x)
+func (state *analysisState) DoNext(x *ssa.Next) {
+	simpleTransitiveMarkPropagation(state, x, x.Iter, x)
 }
 
-func (t *stateTracker) DoFieldAddr(x *ssa.FieldAddr) {
+func (state *analysisState) DoFieldAddr(x *ssa.FieldAddr) {
 	// A FieldAddr may be a mark
-	t.optionalSyntheticNode(x, x, x)
+	state.optionalSyntheticNode(x, x, x)
 
 	// Propagate taint with field sensitivity
 	field := "*" // over-approximation
@@ -168,12 +168,12 @@ func (t *stateTracker) DoFieldAddr(x *ssa.FieldAddr) {
 		}
 	}
 	// Taint is propagated if field of struct is tainted
-	pathSensitiveMarkPropagation(t, x, x.X, x, field)
+	pathSensitiveMarkPropagation(state, x, x.X, x, field)
 }
 
-func (t *stateTracker) DoField(x *ssa.Field) {
+func (state *analysisState) DoField(x *ssa.Field) {
 	// A field may be a mark
-	t.optionalSyntheticNode(x, x, x)
+	state.optionalSyntheticNode(x, x, x)
 
 	// Propagate taint with field sensitivity
 	field := "*" // over-approximation
@@ -183,53 +183,53 @@ func (t *stateTracker) DoField(x *ssa.Field) {
 		field = structTyp.Field(x.Field).Name()
 	}
 	// Taint is propagated if field of struct is tainted
-	pathSensitiveMarkPropagation(t, x, x.X, x, field)
+	pathSensitiveMarkPropagation(state, x, x.X, x, field)
 }
 
-func (t *stateTracker) DoIndexAddr(x *ssa.IndexAddr) {
+func (state *analysisState) DoIndexAddr(x *ssa.IndexAddr) {
 	// An indexing taints the value if either index or the indexed value is tainted
-	simpleTransitiveMarkPropagation(t, x, x.Index, x)
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+	simpleTransitiveMarkPropagation(state, x, x.Index, x)
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoIndex(x *ssa.Index) {
+func (state *analysisState) DoIndex(x *ssa.Index) {
 	// An indexing taints the value if either index or array is tainted
-	simpleTransitiveMarkPropagation(t, x, x.Index, x)
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+	simpleTransitiveMarkPropagation(state, x, x.Index, x)
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoLookup(x *ssa.Lookup) {
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
-	simpleTransitiveMarkPropagation(t, x, x.Index, x)
+func (state *analysisState) DoLookup(x *ssa.Lookup) {
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransitiveMarkPropagation(state, x, x.Index, x)
 }
 
-func (t *stateTracker) DoMapUpdate(x *ssa.MapUpdate) {
+func (state *analysisState) DoMapUpdate(x *ssa.MapUpdate) {
 	// Adding a tainted key or value in a map taints the whole map
-	simpleTransitiveMarkPropagation(t, x, x.Key, x.Map)
-	simpleTransitiveMarkPropagation(t, x, x.Value, x.Map)
+	simpleTransitiveMarkPropagation(state, x, x.Key, x.Map)
+	simpleTransitiveMarkPropagation(state, x, x.Value, x.Map)
 }
 
-func (t *stateTracker) DoTypeAssert(x *ssa.TypeAssert) {
-	simpleTransitiveMarkPropagation(t, x, x.X, x)
+func (state *analysisState) DoTypeAssert(x *ssa.TypeAssert) {
+	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (t *stateTracker) DoMakeClosure(x *ssa.MakeClosure) {
-	t.addClosureNode(x)
+func (state *analysisState) DoMakeClosure(x *ssa.MakeClosure) {
+	state.addClosureNode(x)
 }
 
-func (t *stateTracker) DoPhi(phi *ssa.Phi) {
+func (state *analysisState) DoPhi(phi *ssa.Phi) {
 	for _, edge := range phi.Edges {
-		simpleTransitiveMarkPropagation(t, phi, edge, phi)
+		simpleTransitiveMarkPropagation(state, phi, edge, phi)
 	}
 }
 
-func (t *stateTracker) DoSelect(x *ssa.Select) {
-	for _, state := range x.States {
-		switch state.Dir {
+func (state *analysisState) DoSelect(x *ssa.Select) {
+	for _, selectState := range x.States {
+		switch selectState.Dir {
 		case types.RecvOnly:
-			simpleTransitiveMarkPropagation(t, x, state.Chan, x)
+			simpleTransitiveMarkPropagation(state, x, selectState.Chan, x)
 		case types.SendOnly:
-			simpleTransitiveMarkPropagation(t, x, state.Send, state.Chan)
+			simpleTransitiveMarkPropagation(state, x, selectState.Send, selectState.Chan)
 		default:
 			panic("unexpected select channel type")
 		}

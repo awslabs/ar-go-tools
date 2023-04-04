@@ -77,59 +77,59 @@ func NewQualifierMark(node ssa.Node, qualifier ssa.Value, typ MarkType, path str
 }
 
 // IsTainted returns true if the source is a taint source.
-func (s *Mark) IsTainted() bool {
-	return s.Type&DefaultMark != 0
+func (m *Mark) IsTainted() bool {
+	return m.Type&DefaultMark != 0
 }
 
 // IsParameter returns true if the source is a function parameter.
-func (s *Mark) IsParameter() bool {
-	return s.Type&Parameter != 0
+func (m *Mark) IsParameter() bool {
+	return m.Type&Parameter != 0
 }
 
 // IsFreeVar returns true if the source is a closure free variable.
-func (s *Mark) IsFreeVar() bool {
-	return s.Type&FreeVar != 0
+func (m *Mark) IsFreeVar() bool {
+	return m.Type&FreeVar != 0
 }
 
 // IsBoundVar returns true if the source is a closure free variable.
-func (s *Mark) IsBoundVar() bool {
-	return s.Type&BoundVar != 0
+func (m *Mark) IsBoundVar() bool {
+	return m.Type&BoundVar != 0
 }
 
 // IsClosure returns true if the source is a closure
-func (s *Mark) IsClosure() bool {
-	return s.Type&Closure != 0
+func (m *Mark) IsClosure() bool {
+	return m.Type&Closure != 0
 }
 
 // IsGlobal returns true if the source is a global
-func (s *Mark) IsGlobal() bool {
-	return s.Type&Global != 0
+func (m *Mark) IsGlobal() bool {
+	return m.Type&Global != 0
 }
 
 // IsCallSiteArg returns true if the source is a call site argument. If it returns true, then s.qualifier must be
 // non-nil.
-func (s *Mark) IsCallSiteArg() bool {
-	return s.Type&CallSiteArg != 0
+func (m *Mark) IsCallSiteArg() bool {
+	return m.Type&CallSiteArg != 0
 }
 
 // IsCallReturn returns true if the source is a call return.
-func (s *Mark) IsCallReturn() bool {
-	return s.Type&CallReturn != 0
+func (m *Mark) IsCallReturn() bool {
+	return m.Type&CallReturn != 0
 }
 
 // IsSynthetic returns true if the source is synthetic.
-func (s *Mark) IsSynthetic() bool {
-	return s.Type&Synthetic != 0
+func (m *Mark) IsSynthetic() bool {
+	return m.Type&Synthetic != 0
 }
 
-func (s *Mark) String() string {
-	str := s.Type.String() + ": "
-	if s.Qualifier != nil {
-		str += s.Qualifier.Name() + " in "
+func (m *Mark) String() string {
+	str := m.Type.String() + ": "
+	if m.Qualifier != nil {
+		str += m.Qualifier.Name() + " in "
 	}
-	str += s.Node.String()
-	if s.RegionPath != "" {
-		str += " [" + s.RegionPath + "]"
+	str += m.Node.String()
+	if m.RegionPath != "" {
+		str += " [" + m.RegionPath + "]"
 	}
 	return "<mark " + str + " >"
 }

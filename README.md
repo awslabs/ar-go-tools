@@ -9,15 +9,16 @@ Argot is Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 ## Overview
 
 Argot is a collection of tools:
--  `compare` prints a comparison of the functions that are reachable according to two different analyses, and the 
-functions that appear in the binary.
-- `dependencies` prints the dependencies of a given program.
-- `maypanic` performs a may-panic analysis on a given program.
-- `reachability` analyzes the program an prints the functions that are reachable within it.
+- `argot-cli` is a terminal-like interface for various part of the analysis (in `cmd/cli`)
+- `compare` prints a comparison of the functions that are reachable according to two different analyses, and the 
+functions that appear in the binary,
+- `dependencies` prints the dependencies of a given program,
+- `maypanic` performs a may-panic analysis on a given program,
+- `reachability` analyzes the program an prints the functions that are reachable within it,
 - `render` can be used to render a graph representation of the callgraph, or to print the SSA form from the go analysis
-package.
-- `static-commands` identifies calls to command running executables with static arguments.
-- `statistics` prints statistics about the program.
+package,
+- `static-commands` identifies calls to command running executables with static arguments,
+- `statistics` prints statistics about the program,
 - `taint` performs a taint analysis on a given program.
 
 ### Building the tools
@@ -32,9 +33,13 @@ tool expects a program as argument and a configuration file. For example, run:
 ```shell
 ./bin/argot-cli -config testdata/src/taint/example1/config.yaml testdata/src/taint/example1/main.go
 ```
-The cli will load the program and run the pointer and callgraph analyses. Once the program building step has terminated,
-you should see a prompt. Typing `help` will print a list of all the commands available. `exit` exits the tool.
-For example, the `list` command lets you print a list of functions matching a given regex:
+The cli will load the program and run the pointer and callgraph analyses. If no config file is specified, and the 
+program is only one main file, then the tool will look for a `config.yaml` file in the same directory as the `main.go`
+file. It will always require some config file.
+
+Once the program building step has terminated,  you should see a prompt. Typing `help` will print a list of all 
+the commands available. `exit` exits the tool. For example, the `list` command lets you print a list of functions 
+matching a given regex:
 ```shell
 > list command-line-arguments
 ```
@@ -184,3 +189,37 @@ method (or function) name with `method` or a field name with `field`. A sink mus
 `package` information narrows down how function, methods and fields are matched. Note that the strings are Go regexes.
 For example, in the test files, one can specify the package as `(main|command-line-arguments)` to allow for the 
 different ways the main package could be loaded.
+
+## Source Code Organization
+
+The executables are in the `cmd` folder, we have one executable per tool listed. 
+
+The test data is in the `testdata` folder. All the Go source files used in the tests are in `testdata/src`.
+
+The library code, and most of the analysis implementations, is in the `analysis` folder. The main entry points are in 
+the `load_progam.go` file for loading progam and `analyzers.go` to call analyzers. The rest is organized in subfolders:
+- `astfuncs` contains functions for manipulating the Go AST,
+- `closures` contains analysis code specific to closures in Go,
+- `concurrency` contains the concurrency analyses,
+- `config` implements the config file system that is shared by all analyses,
+- `dataflow` implements the dataflow analysis as well as the cache object, which is shared by many analyses. Static 
+analyses that required pointer and callgraph information should depend on the dataflow cache and use its functionality
+for building information about the SSA program.
+- `defers` contains the defers analysis,
+- `dependencies` contains the dependencies analysis,
+- `format` contains formatting helpers,
+- `functional` implements some functional-style programming idioms, such as a `Map` function for slices and some data 
+structures.
+- `graph-ops` implements graph operations on the callgraph. This can be used to collect information about the callgraph,
+compute subsets of the callgraph, strongly connected components, etc.
+- `maypanic` contains the may-panic analysis,
+- `packagescan` contains the packagescan analysis,
+- `reachability` contains function-reachability analyses
+- `refactor` contains implements refactoring operations,
+- `rendering` implements rendering functions, such as printing the SSA output or representing the callgraph in various
+formats,
+- `ssafuncs` contains function for manipulating the Go SSA form (from the x/tools packages),
+- `static-commands` implements the static command detection analysis,
+- `summaries` defines dataflow summaries of some functions,
+- `taint` implements the taint analysis
+- `utils` contains some utility functions.

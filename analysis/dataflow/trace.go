@@ -1,6 +1,8 @@
 package dataflow
 
-import "strings"
+import (
+	"strings"
+)
 
 // NodeTree is a data structure to represent node trees built during the traversal of the interprocedural data flow
 // graph.
@@ -18,12 +20,26 @@ type NodeTree[T GraphNode] struct {
 
 	// len memoizes the height of the tree
 	height int
+
+	key string
 }
 
 func NewNodeTree[T GraphNode](initNode T) *NodeTree[T] {
-	origin := &NodeTree[T]{Label: initNode, Parent: nil, Children: []*NodeTree[T]{}, height: 1}
+	origin := &NodeTree[T]{
+		Label:  initNode,
+		Parent: nil, Children: []*NodeTree[T]{},
+		height: 1,
+		key:    initNode.LongID(),
+	}
 	origin.Origin = origin
 	return origin
+}
+
+func (n *NodeTree[T]) Key() string {
+	if n == nil {
+		return ""
+	}
+	return n.key
 }
 
 func (n *NodeTree[T]) String() string {
@@ -83,7 +99,14 @@ func (n *NodeTree[T]) Add(node T) *NodeTree[T] {
 	if n == nil {
 		return NewNodeTree(node)
 	} else {
-		newNode := &NodeTree[T]{Label: node, Parent: n, Children: []*NodeTree[T]{}, Origin: n.Origin, height: n.height + 1}
+		newNode := &NodeTree[T]{
+			Label:    node,
+			Parent:   n,
+			Children: []*NodeTree[T]{},
+			Origin:   n.Origin,
+			height:   n.height + 1,
+			key:      n.key + "-" + node.LongID(),
+		}
 		n.Children = append(n.Children, newNode)
 		return newNode
 	}

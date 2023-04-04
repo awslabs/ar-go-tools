@@ -18,6 +18,7 @@ const (
 	cmdCdName           = "cd"
 	cmdExitName         = "exit"
 	cmdFocusName        = "focus"
+	cmdIntraName        = "intra"
 	cmdLoadName         = "load"
 	cmdListName         = "list"
 	cmdLsName           = "ls"
