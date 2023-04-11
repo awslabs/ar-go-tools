@@ -2,6 +2,7 @@ package dataflow
 
 import (
 	"fmt"
+	"go/types"
 	"strconv"
 
 	"github.com/awslabs/argot/analysis/ssafuncs"
@@ -24,6 +25,17 @@ func (b BindingInfo) String() string {
 		return "nil"
 	}
 	return b.MakeClosure.String() + "@" + strconv.Itoa(b.BoundIndex)
+}
+
+func (b BindingInfo) Type() types.Type {
+	if b.MakeClosure == nil || b.BoundIndex < 0 || b.BoundIndex >= len(b.MakeClosure.Bindings) {
+		return nil
+	}
+	bv := b.MakeClosure.Bindings[b.BoundIndex]
+	if bv == nil {
+		return nil
+	}
+	return bv.Type()
 }
 
 // BoundingMap maps values to the binding infos that reference the closures that captured the value.

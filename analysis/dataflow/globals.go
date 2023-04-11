@@ -2,6 +2,7 @@ package dataflow
 
 import (
 	"fmt"
+	"go/types"
 	"sync"
 
 	"golang.org/x/tools/go/ssa"
@@ -39,4 +40,11 @@ func (g *GlobalNode) String() string {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 	return fmt.Sprintf("\"defglobal: %s\"", g.value.String())
+}
+
+func (g *GlobalNode) Type() types.Type {
+	if g == nil || g.value == nil {
+		return nil
+	}
+	return g.value.Type()
 }

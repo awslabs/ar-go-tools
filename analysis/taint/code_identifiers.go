@@ -103,6 +103,17 @@ func isValidatorCondition(v ssa.Value, cfg *config.Config) bool {
 	return false
 }
 
+func isFiltered(n dataflow.GraphNode, cfg *config.Config) bool {
+	for _, filter := range cfg.Filters {
+		if filter.Type != "" {
+			if filter.MatchType(n.Type()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.GraphNode) bool {
 	switch n := n.(type) {
 	case *dataflow.ParamNode, *dataflow.FreeVarNode:
