@@ -3,6 +3,7 @@ package dataflow
 import (
 	"fmt"
 	"go/token"
+	"go/types"
 	"io"
 	"strconv"
 	"strings"
@@ -56,6 +57,8 @@ type GraphNode interface {
 	Position(c *Cache) token.Position
 
 	String() string
+
+	Type() types.Type
 }
 
 type IndexedGraphNode interface {
@@ -82,7 +85,7 @@ func (a *ParamNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ParamNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *ParamNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *ParamNode) SsaNode() *ssa.Parameter       { return a.ssaNode }
-
+func (a *ParamNode) Type() types.Type              { return a.ssaNode.Type() }
 func (a *ParamNode) Position(c *Cache) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
@@ -123,6 +126,7 @@ func (a *FreeVarNode) Graph() *SummaryGraph          { return a.parent }
 func (a *FreeVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *FreeVarNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *FreeVarNode) SsaNode() *ssa.FreeVar         { return a.ssaNode }
+func (a *FreeVarNode) Type() types.Type              { return a.ssaNode.Type() }
 
 func (a *FreeVarNode) Position(c *Cache) token.Position {
 	if a.ssaNode != nil {
@@ -161,6 +165,7 @@ func (a *CallNodeArg) ID() uint32                    { return a.id }
 func (a *CallNodeArg) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *CallNodeArg) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNodeArg) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *CallNodeArg) Type() types.Type              { return a.ssaValue.Type() }
 
 func (a *CallNodeArg) Position(c *Cache) token.Position {
 	if a.ssaValue != nil {
@@ -205,6 +210,12 @@ func (a *CallNode) ID() uint32                    { return a.id }
 func (a *CallNode) Graph() *SummaryGraph          { return a.parent }
 func (a *CallNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *CallNode) Type() types.Type {
+	if call, ok := a.callSite.(*ssa.Call); ok {
+		return call.Type()
+	}
+	return nil
+}
 
 func (a *CallNode) Position(c *Cache) token.Position {
 	if a.callSite != nil && a.callSite.Common() != nil && a.callSite.Common().Value != nil {
@@ -289,6 +300,7 @@ func (a *ReturnNode) ID() uint32                    { return a.id }
 func (a *ReturnNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ReturnNode) Out() map[GraphNode]ObjectPath { return nil }
 func (a *ReturnNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *ReturnNode) Type() types.Type              { return a.parent.ReturnType() }
 func (a *ReturnNode) Position(c *Cache) token.Position {
 	if a.parent != nil && a.parent.Parent != nil {
 		return c.Program.Fset.Position(a.parent.Parent.Pos())
@@ -333,6 +345,7 @@ func (a *ClosureNode) ID() uint32 { return a.id }
 func (a *ClosureNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ClosureNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *ClosureNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *ClosureNode) Type() types.Type              { return a.instr.Type() }
 
 func (a *ClosureNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
@@ -390,6 +403,7 @@ func (a *BoundVarNode) ID() uint32                    { return a.id }
 func (a *BoundVarNode) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *BoundVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundVarNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *BoundVarNode) Type() types.Type              { return a.ssaValue.Type() }
 
 func (a *BoundVarNode) Position(c *Cache) token.Position {
 	if a.ssaValue != nil {
@@ -434,6 +448,7 @@ func (a *AccessGlobalNode) ID() uint32                    { return a.id }
 func (a *AccessGlobalNode) Graph() *SummaryGraph          { return a.graph }
 func (a *AccessGlobalNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *AccessGlobalNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *AccessGlobalNode) Type() types.Type              { return a.Global.Type() }
 
 func (a *AccessGlobalNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
@@ -470,6 +485,12 @@ func (a *SyntheticNode) ID() uint32                    { return a.id }
 func (a *SyntheticNode) Graph() *SummaryGraph          { return a.parent }
 func (a *SyntheticNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *SyntheticNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *SyntheticNode) Type() types.Type {
+	if val, ok := a.instr.(ssa.Value); ok {
+		return val.Type()
+	}
+	return nil
+}
 
 func (a *SyntheticNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
@@ -509,6 +530,7 @@ func (a *BoundLabelNode) ID() uint32                    { return a.id }
 func (a *BoundLabelNode) Graph() *SummaryGraph          { return a.parent }
 func (a *BoundLabelNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundLabelNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *BoundLabelNode) Type() types.Type              { return a.targetInfo.Type() }
 
 func (a *BoundLabelNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
@@ -611,6 +633,13 @@ func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 	}
 
 	return g
+}
+
+func (g *SummaryGraph) ReturnType() *types.Tuple {
+	if sig, ok := g.Parent.Type().Underlying().(*types.Signature); ok {
+		return sig.Results()
+	}
+	return nil
 }
 
 // SyncGlobals must be executed after the summary is built in order to synchronize the information between the

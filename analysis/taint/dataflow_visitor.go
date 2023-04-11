@@ -58,6 +58,11 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 			continue
 		}
 
+		// If the node is filtered out, we don't inspect children
+		if isFiltered(elt.Node, c.Config) {
+			continue
+		}
+
 		// Check that the node does not correspond to a non-constructed summary
 		if !elt.Node.Graph().Constructed {
 			if c.Config.Verbose {

@@ -80,6 +80,9 @@ type Config struct {
 	// analysis
 	DataflowSpecs string
 
+	// Filters contains a list of filters that can be used by analyses
+	Filters []CodeIdentifier
+
 	// SkipInterprocedural can be set to true to skip the interprocedural (cross-function analysis) step
 	SkipInterprocedural bool
 
@@ -184,6 +187,7 @@ func Load(filename string) (*Config, error) {
 	functional.Iter(config.Sources, CompileRegexes)
 	functional.Iter(config.StaticCommands, CompileRegexes)
 	functional.Iter(config.Validators, CompileRegexes)
+	functional.Iter(config.Filters, CompileRegexes)
 	return &config, nil
 }
 

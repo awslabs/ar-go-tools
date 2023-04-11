@@ -80,3 +80,7 @@ func TestCrossFunctionTuples(t *testing.T) {
 func TestCrossFunctionPanics(t *testing.T) {
 	runTest(t, "panics", []string{})
 }
+
+func TestCrossFunctionFilters(t *testing.T) {
+	runTest(t, "filters", []string{})
+}

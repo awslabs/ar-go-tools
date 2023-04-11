@@ -1,6 +1,9 @@
 package config
 
-import "regexp"
+import (
+	"go/types"
+	"regexp"
+)
 
 // A CodeIdentifier identifies a code element that is a source, sink, sanitizer, etc..
 // A code identifier can be identified from its package, method, receiver, field
@@ -78,8 +81,6 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 
 // ExistsCid is true if there is some x in a such that f(x) is true.
 // O(len(a))
-// TODO: optimize?
-// TODO: make this generic when we have generics
 func ExistsCid(a []CodeIdentifier, f func(identifier CodeIdentifier) bool) bool {
 	for _, x := range a {
 		if f(x) {
@@ -87,4 +88,17 @@ func ExistsCid(a []CodeIdentifier, f func(identifier CodeIdentifier) bool) bool 
 		}
 	}
 	return false
+}
+
+func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
+	if cid == nil {
+		return false
+	}
+	if typ == nil {
+		return cid.Type == ""
+	}
+	if cid.computedRegexs != nil && cid.computedRegexs.typeRegex != nil {
+		return cid.computedRegexs.typeRegex.MatchString(typ.String())
+	}
+	return cid.Type == typ.String()
 }
