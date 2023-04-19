@@ -47,6 +47,7 @@ var (
 		cmdReconfigName:     cmdReconfig,
 		cmdScanName:         cmdScan,
 		cmdShowSsaName:      cmdShowSsa,
+		cmdShowEscapeName:   cmdShowEscape,
 		cmdShowDataflowName: cmdShowDataflow,
 		cmdSsaInstrName:     cmdSsaInstr,
 		cmdSsaValueName:     cmdSsaValue,
