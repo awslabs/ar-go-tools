@@ -29,6 +29,7 @@ const (
 	cmdReconfigName     = "reconfig"
 	cmdScanName         = "scan"
 	cmdShowSsaName      = "showssa"
+	cmdShowEscapeName   = "showescape"
 	cmdShowDataflowName = "showdataflow"
 	cmdSsaInstrName     = "ssainstr"
 	cmdSsaValueName     = "ssaval"

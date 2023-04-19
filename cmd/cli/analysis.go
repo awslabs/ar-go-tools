@@ -11,6 +11,7 @@ import (
 
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/escape"
 	"github.com/awslabs/argot/analysis/functional"
 	"github.com/awslabs/argot/analysis/summaries"
 	"github.com/awslabs/argot/analysis/taint"
@@ -53,6 +54,45 @@ func cmdShowSsa(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	funcs := findFunc(c, target)
 	for _, f := range funcs {
 		ssa.WriteFunction(&b, f)
+		_, _ = b.WriteTo(tt)
+		b.Reset()
+	}
+	return false
+}
+
+// cmdShowEscape prints the escape graph of all the function matching a given regex
+func cmdShowEscape(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+	if c == nil {
+		writeFmt(tt, "\t- %s%s%s : print the escape graph of a function.\n"+
+			"\t  %s regex prints the escape graph of function(s) matching the regex\n"+
+			"\t  Example:\n", tt.Escape.Blue, cmdShowEscapeName, tt.Escape.Reset, cmdShowEscapeName)
+		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdShowEscapeName)
+		return false
+	}
+
+	if len(command.Args) < 1 {
+		if state.CurrentFunction != nil {
+			var b bytes.Buffer
+			nodes, eg := escape.EscapeSummary(state.CurrentFunction)
+			b.WriteString(eg.Graphviz(nodes))
+			_, _ = b.WriteTo(tt)
+			b.Reset()
+		} else {
+			WriteErr(tt, "Need at least one function to show.")
+			cmdShowSsa(tt, nil, command)
+		}
+		return false
+	}
+	target, err := regexp.Compile(command.Args[0])
+	if err != nil {
+		regexErr(tt, command.Args[0], err)
+		return false
+	}
+	var b bytes.Buffer
+	funcs := findFunc(c, target)
+	for _, f := range funcs {
+		nodes, eg := escape.EscapeSummary(f)
+		b.WriteString(eg.Graphviz(nodes))
 		_, _ = b.WriteTo(tt)
 		b.Reset()
 	}
