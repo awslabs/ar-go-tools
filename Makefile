@@ -5,7 +5,7 @@
 #endif
 
 
-all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan argot-cli refactor
+all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan argot-cli refactor setup-precommit
 
 install: taint_install cli_install
 
@@ -54,6 +54,9 @@ taint_install: taint
 
 cli_install: argot-cli
 	go install ./cmd/argot-cli
+
+setup-precommit:
+	cp ./copyrights.sh .git/hooks/pre-commit
 
 clean:
 	rm -rf bin
