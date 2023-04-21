@@ -1,0 +1,26 @@
+[
+    {
+        "ObjectPath": "(*net/http.Request)",
+        "Methods": {
+            "Clone": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] }
+        }
+    },
+    {
+        "ObjectPath": "context",
+        "Methods": {
+            "TODO": { "Args": [ [ ] ], "Rets": [ [ ] ] }
+        }
+    },
+    {
+        "InterfaceId": "io.Reader",
+        "Methods": {
+            "Read": { "Args": [ [ 0, 1 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] }
+        }
+    },
+    {
+        "InterfaceId": "io.ReadCloser",
+        "Methods": {
+            "Read": { "Args": [ [ 0, 1 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] }
+        }
+    }
+]

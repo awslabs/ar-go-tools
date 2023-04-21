@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package dataflow contains abstractions for reasoning about data flow within programs.
 package dataflow
 
@@ -20,12 +34,25 @@ type Visitor interface {
 
 // CrossFunctionFlowGraph represents a cross-function data flow graph.
 type CrossFunctionFlowGraph struct {
-	Summaries     map[*ssa.Function]*SummaryGraph
-	cache         *Cache
-	built         bool
-	ForwardEdges  map[GraphNode]map[GraphNode]bool           // forward edges between nodes belonging to different subgraphs (cross-function version of (GraphNode).Out)
-	BackwardEdges map[GraphNode]map[GraphNode]bool           // backward edges between nodes belonging to different subgraphs (cross-function version of (GraphNode).In)
-	Globals       map[*GlobalNode]map[*AccessGlobalNode]bool // edges between global nodes and the nodes that access the global
+	// ForwardEdges represents edges between nodes belonging to different subgraphs (cross-function version of
+	// (GraphNode).Out)
+	ForwardEdges map[GraphNode]map[GraphNode]bool
+
+	// BackawardEdges represents backward edges between nodes belonging to different subgraphs (cross-function
+	// version of (GraphNode).In)
+	BackwardEdges map[GraphNode]map[GraphNode]bool
+
+	// Summaries maps the functions in the SSA to their summaries
+	Summaries map[*ssa.Function]*SummaryGraph
+
+	// cache is a pointer to the cache that the dataflow graph represents
+	cache *Cache
+
+	// built indicates whether this graph has been built
+	// this should only be set to true by BuildGraph() and be false by default
+	built bool
+
+	Globals map[*GlobalNode]map[*AccessGlobalNode]bool // edges between global nodes and the nodes that access the global
 }
 
 // NewCrossFunctionFlowGraph returns a new non-built cross function flow graph.
@@ -39,6 +66,7 @@ func NewCrossFunctionFlowGraph(summaries map[*ssa.Function]*SummaryGraph, cache 
 	}
 }
 
+// IsBuilt returns true iff the cross function graph has been built, i.e. the summaries have been linked together.
 func (g *CrossFunctionFlowGraph) IsBuilt() bool {
 	return g.built
 }
@@ -87,14 +115,20 @@ func (g *CrossFunctionFlowGraph) InsertSummaries(g2 CrossFunctionFlowGraph) {
 	}
 }
 
+// KeyType is a value type to represents keys
 type KeyType = string
 
+// NodeWithTrace represents a GraphNode with two traces, a Trace for the call stack at the node and a ClosureTrace for
+// the stack of makeClosure instructions at the node
 type NodeWithTrace struct {
 	Node         GraphNode
 	Trace        *NodeTree[*CallNode]
 	ClosureTrace *NodeTree[*ClosureNode]
 }
 
+// Key generates an object of type KeyType whose *value* identifies the value of g uniquely.
+// If two NodeWithTrace objects represent the same node with the same call and closure traces, the Key() method
+// will return the same value
 func (g NodeWithTrace) Key() KeyType {
 	s := g.Node.LongID() + "!" + g.Trace.Key() + "!" + g.ClosureTrace.Key()
 	return s
@@ -134,13 +168,14 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 					// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
 					// contracts
 					if calleeSummary == nil {
-						if calleeSummary = g.cache.LoadInterfaceContractSummary(node); calleeSummary != nil {
+						if calleeSummary = g.cache.LoadExternalContractSummary(node); calleeSummary != nil {
 							if g.cache.Config.Verbose {
-								logger.Printf("Loaded %s from interface contracts.\n",
+								logger.Printf("Loaded %s from external contracts.\n",
 									node.CallSite().Common().String())
 							}
 							g.Summaries[node.Callee()] = calleeSummary
-						} else if calleeSummary = LoadPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
+						} else if calleeSummary = LoadPredefinedSummary(
+							node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
 							if g.cache.Config.Verbose {
 								logger.Printf("Loaded %s from summaries.\n", node.Callee().String())
 							}
@@ -225,7 +260,8 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 // This function does nothing if there are no summaries
 // (i.e. `len(g.summaries) == 0`)
 // or if `cfg.SkipInterprocedural` is set to true.
-func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, visitor Visitor, isEntryPoint func(*config.Config, *ssa.Function) bool) {
+func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, visitor Visitor,
+	isEntryPoint func(*config.Config, *ssa.Function) bool) {
 	// Skip the pass if user configuration demands it
 	if c.Config.SkipInterprocedural || len(g.Summaries) == 0 {
 		c.Logger.Printf("Skipping cross-function pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
@@ -329,7 +365,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 				// TODO: check that this assumption is correct
 				callSite := elt.Trace.Label
 				if err := checkIndex(c, graphNode, callSite, "Argument at call site"); err != nil {
-					c.AddError(err)
+					c.AddError("argument at call site", err)
 				} else {
 					// Follow taint on matching argument at call site
 					arg := callSite.Args()[graphNode.Index()]
@@ -343,7 +379,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					if err := checkIndex(c, graphNode, callSite, "Argument at call site"); err != nil {
-						c.AddError(err)
+						c.AddError("argument at call site", err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						for x := range callSiteArg.Out() {
@@ -380,8 +416,9 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 				que = addNext(c, que, seen, elt, x, elt.Trace.Add(callSite), elt.ClosureTrace)
 				addEdge(c.FlowGraph, graphNode, x)
 			} else {
-				c.AddError(fmt.Errorf("no parameter matching argument at position %d in %s",
-					graphNode.Index(), callSite.CalleeSummary.Parent.String()))
+				c.AddError(
+					fmt.Sprintf("no parameter matching argument in %s", callSite.CalleeSummary.Parent.String()),
+					fmt.Errorf("position %d", graphNode.Index()))
 			}
 
 			if elt.Prev == nil || callSite.Graph() != elt.Prev.Node.Graph() {
@@ -469,8 +506,10 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 				x := closureNode.ClosureSummary.FreeVars[fv]
 				que = addNext(c, que, seen, elt, x, elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
-				c.AddError(fmt.Errorf("no free variable matching bound variable at position %d in %s",
-					graphNode.Index(), closureNode.ClosureSummary.Parent.String()))
+				c.AddError(
+					fmt.Sprintf("no free variable matching bound variable in %s",
+						closureNode.ClosureSummary.Parent.String()),
+					fmt.Errorf("position %d", graphNode.Index()))
 			}
 
 		// The data flows to a free variable inside a closure body from a bound variable inside a closure definition.
@@ -582,8 +621,19 @@ func IsSourceFunction(cfg *config.Config, f *ssa.Function) bool {
 }
 
 func summaryNotFound(g *CrossFunctionFlowGraph, node *CallNode) {
-	if g.cache.Config.Verbose {
+	if g.cache.Config.Verbose &&
+		node.callee.Callee.Name() != "init" &&
+		g.cache.IsReachableFunction(node.callee.Callee) {
+
 		g.cache.Logger.Printf("Could not find summary of %s", node.callSite.String())
+		if node.callee.Callee != nil {
+			g.cache.Logger.Printf("|-- Key: %s", node.callee.Callee.String())
+		}
+		g.cache.Logger.Printf("|-- Location: %s", node.Position(g.cache))
+
+		if node.callSite.Common().IsInvoke() {
+			g.cache.Logger.Printf("|-- invoke resolved to callee %s", node.callee.Callee.String())
+		}
 	}
 }
 

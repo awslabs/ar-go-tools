@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package taint
 
 import (
@@ -33,6 +47,8 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 	logger.Printf("==> Source: %s\n", format.Purple(source.Node.String()))
 	logger.Printf("%s %s\n", format.Green("Found at"), source.Node.Position(c))
 
+	numAlarms := 0
+
 	// Search from path candidates in the inter-procedural flow graph from sources to sinks
 	// we don't revisit only if it has been visited with the same call stack
 	for len(que) != 0 {
@@ -44,7 +60,12 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(elt.Node, c.Config) {
 			if addNewPathCandidate(v.Taints, source.Node, elt.Node) {
+				numAlarms++
 				ReportTaintFlow(c, source, elt)
+				// Stop if there is a limit on number of alarms and it has been reached.
+				if c.Config.MaxAlarms > 0 && numAlarms >= c.Config.MaxAlarms {
+					return
+				}
 			}
 			// A sink does not have successors in the taint flow analysis (but other sinks can be reached
 			// as there are still values flowing).
@@ -97,7 +118,7 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
 			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
 				if err := checkIndex(c, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
-					c.AddError(err)
+					c.AddError("unwinding call stack at "+graphNode.Position(c).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
 					arg := callSite.Args()[graphNode.Index()]
@@ -109,7 +130,7 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					if err := checkIndex(c, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
-						c.AddError(err)
+						c.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						for x, oPath := range callSiteArg.Out() {
@@ -144,8 +165,9 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 				x := callSite.CalleeSummary.Params[param]
 				que = addNext(c, que, seen, elt, x, df.ObjectPath{}, elt.Trace.Add(callSite), elt.ClosureTrace)
 			} else {
-				c.AddError(fmt.Errorf("no parameter matching argument at position %d in %s",
-					graphNode.Index(), callSite.CalleeSummary.Parent.String()))
+				c.AddError(
+					fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
+					fmt.Errorf("position %d", graphNode.Index()))
 			}
 
 			if elt.Prev == nil || callSite.Graph() != elt.Prev.Node.Graph() {
@@ -226,8 +248,10 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 				que = addNext(c, que, seen, elt, x, df.ObjectPath{},
 					elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
-				c.AddError(fmt.Errorf("no free variable matching bound variable at position %d in %s",
-					graphNode.Index(), closureNode.ClosureSummary.Parent.String()))
+				c.AddError(
+					fmt.Sprintf("no free variable matching bound variable in %s",
+						closureNode.ClosureSummary.Parent.String()),
+					fmt.Errorf("at position %d", graphNode.Index()))
 			}
 
 		// The data flows to a free variable inside a closure body from a bound variable inside a closure definition.
@@ -244,8 +268,10 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 					bv := bvs[graphNode.Index()]
 					que = addNext(c, que, seen, elt, bv, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Parent)
 				} else {
-					c.AddError(fmt.Errorf("no bound variable matching free variable at position %d in %s",
-						graphNode.Index(), elt.ClosureTrace.Label.ClosureSummary.Parent.String()))
+					c.AddError(
+						fmt.Sprintf("no bound variable matching free variable in %s",
+							elt.ClosureTrace.Label.ClosureSummary.Parent.String()),
+						fmt.Errorf("at position %d", graphNode.Index()))
 				}
 			} else {
 				for _, makeClosureSite := range graphNode.Graph().ReferringMakeClosures {
@@ -254,8 +280,10 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 						bv := bvs[graphNode.Index()]
 						que = addNext(c, que, seen, elt, bv, df.ObjectPath{}, elt.Trace, nil)
 					} else {
-						c.AddError(fmt.Errorf("no bound variable matching free variable at position %d in %s",
-							graphNode.Index(), makeClosureSite.ClosureSummary.Parent.String()))
+						c.AddError(
+							fmt.Sprintf("no bound variable matching free variable in %s",
+								makeClosureSite.ClosureSummary.Parent.String()),
+							fmt.Errorf("at position %d", graphNode.Index()))
 					}
 
 				}
@@ -309,8 +337,9 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 				x := closureSummary.FreeVars[fv]
 				que = addNext(c, que, seen, elt, x, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
-				c.AddError(fmt.Errorf("no free variable matching bound variable at position %d in %s",
-					graphNode.Index(), closureSummary.Parent.String()))
+				c.AddError(
+					fmt.Sprintf("no free variable matching bound variable in %s", closureSummary.Parent.String()),
+					fmt.Errorf("at position %d", graphNode.Index()))
 			}
 		}
 	}

@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package main
 
 import (
@@ -15,10 +29,14 @@ func cmdCallers(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			tt.Escape.Blue, cmdCallersName, tt.Escape.Reset)
 		writeFmt(tt, "\t    %s will only be accurate after `%s%s%s`.\n",
 			cmdCallersName, tt.Escape.Yellow, cmdBuildGraphName, tt.Escape.Reset)
+		writeFmt(tt, "\t    -ptr to use pointer analysis callgraph only.\n")
 		return false
 	}
-
-	return displayCallInfo(tt, c, command, false, true)
+	usePtr := false
+	if command.Flags["ptr"] {
+		usePtr = true
+	}
+	return displayCallInfo(tt, c, command, usePtr, false, true)
 }
 
 // cmdCallees shows the callers of a given summarized function
@@ -28,9 +46,14 @@ func cmdCallees(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			tt.Escape.Blue, cmdCalleesName, tt.Escape.Reset)
 		writeFmt(tt, "\t    %s will only be accurate after `%s%s%s`.\n",
 			cmdCalleesName, tt.Escape.Yellow, cmdBuildGraphName, tt.Escape.Reset)
+		writeFmt(tt, "\t    -ptr to use pointer analysis callgraph only.\n")
 		return false
 	}
-	return displayCallInfo(tt, c, command, true, false)
+	usePtr := false
+	if command.Flags["ptr"] {
+		usePtr = true
+	}
+	return displayCallInfo(tt, c, command, usePtr, true, false)
 }
 
 // displayCallInfo displays callers or/and callee information for a specific command.
@@ -39,7 +62,7 @@ func cmdCallees(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 //
 // If the matching function has a summary, then the summary's info is used.
 // Otherwise, the info contained in the pointer analysis' result is used.
-func displayCallInfo(tt *term.Terminal, c *dataflow.Cache, command Command,
+func displayCallInfo(tt *term.Terminal, c *dataflow.Cache, command Command, usePtr bool,
 	displayCallees bool, displayCallers bool) bool {
 	targetFilter := func(f *ssa.Function) bool { return f != nil }
 
@@ -61,7 +84,7 @@ func displayCallInfo(tt *term.Terminal, c *dataflow.Cache, command Command,
 		// Strategy 1: the function has a summary, use it to determine callees
 		// the information in a summary should be more complete than callgraph, if the callgraph sometimes
 		// omits static calls
-		if summary, hasSummary := c.FlowGraph.Summaries[f]; hasSummary {
+		if summary, hasSummary := c.FlowGraph.Summaries[f]; hasSummary && !usePtr {
 			if displayCallees {
 				WriteSuccess(tt, "All functions called by %s:", f.String())
 				for instr, callees := range summary.Callees {
@@ -88,8 +111,9 @@ func displayCallInfo(tt *term.Terminal, c *dataflow.Cache, command Command,
 				}
 			}
 		} else {
-			// If there is no summary, then use the callgraph computed during the pointer analysis
-			// the cache should always contain the pointer analysis, and it should not be null
+			// If there is no summary, or usePtr is true, then use the callgraph computed during
+			// the pointer analysis  the cache should always contain the pointer analysis,
+			// and it should not be null
 			if node, ok := c.PointerAnalysis.CallGraph.Nodes[f]; ok {
 				if displayCallees {
 					WriteSuccess(tt, "All functions called by %s:", f.String())

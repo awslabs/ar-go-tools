@@ -1,4 +1,16 @@
-// Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package dependencies
 
@@ -75,8 +87,8 @@ func computePath(filepath string, pkg string) string {
 	// if the full package name does not appear, we have a situation where the
 	// filepath doesn't contain the full repo.  This is common when the go.mod contains
 	// the actual root of the project e.g.
-	//   filepath = /Users/kienzld/gozer/src/ARG-GoAnalyzer/amazon-ssm-agent/agent/managedInstances/registration/instance_info.go
-	//   pkg = github.com/aws/amazon-ssm-agent/agent/managedInstances/registration
+	//   filepath = packageX/packageY/foo.go
+	//   pkg = github.com/org/packageX/packageY
 	// we need to iterate through progressively removing the initial elements from the package name
 	// until we find a match.
 	split := 0

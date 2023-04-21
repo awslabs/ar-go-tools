@@ -1,7 +1,17 @@
-// Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-// gozer: a tool for analyzing Go programs
-// This is the entry point of gozer.
 package main
 
 import (
@@ -24,10 +34,9 @@ import (
 type excludeFlags []string
 
 var (
-	jsonFlag                       = false
-	mode                           = ssa.BuilderMode(0)
-	modelCheckingFlag              = false
-	exclude           excludeFlags = []string{}
+	jsonFlag              = false
+	mode                  = ssa.BuilderMode(0)
+	exclude  excludeFlags = []string{}
 )
 
 func (exclude *excludeFlags) String() string {
@@ -44,7 +53,6 @@ func init() {
 	flag.Var(&mode, "build", ssa.BuilderModeDoc)
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 	flag.Var(&exclude, "exclude", "path to exclude from analysis")
-	flag.BoolVar(&modelCheckingFlag, "may-panic-model-checking", false, "do (heavy-weight) \"may panic\" model checking")
 }
 
 const usage = `Analyze your Go packages.
@@ -66,11 +74,6 @@ func main() {
 	}
 }
 
-type nameAndFunction struct {
-	name string
-	f    *ssa.Function
-}
-
 func doMain() error {
 
 	flag.Parse()
@@ -86,10 +89,6 @@ func doMain() error {
 		Tests: false,
 	}
 
-	if modelCheckingFlag {
-		cfg.Mode = packages.LoadSyntax // this is equivalent to LoadAllSyntax, less NeedDeps
-	}
-
 	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(cfg, "", mode, flag.Args())
@@ -102,12 +101,7 @@ func doMain() error {
 	// get absolute paths for 'exclude'
 	excludeAbsolute := maypanic.MakeAbsolute(exclude)
 
-	if modelCheckingFlag {
-		maypanic.MayPanicModelChecking(program, excludeAbsolute, jsonFlag)
-	} else {
-
-		maypanic.MayPanicAnalyzer(program, excludeAbsolute, jsonFlag)
-	}
+	maypanic.MayPanicAnalyzer(program, excludeAbsolute, jsonFlag)
 
 	return nil
 }

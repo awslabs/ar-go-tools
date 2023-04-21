@@ -1,8 +1,25 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package config
 
 import (
 	"go/types"
 	"regexp"
+
+	"github.com/awslabs/argot/analysis/ssafuncs"
+	"golang.org/x/tools/go/ssa"
 )
 
 // A CodeIdentifier identifies a code element that is a source, sink, sanitizer, etc..
@@ -101,4 +118,19 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 		return cid.computedRegexs.typeRegex.MatchString(typ.String())
 	}
 	return cid.Type == typ.String()
+}
+
+func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
+	pkg := ssafuncs.PackageNameFromFunction(f)
+	if cid == nil {
+		return false
+	}
+	if f == nil {
+		return cid.Method == "" && cid.Package == ""
+	}
+	if cid.computedRegexs != nil && cid.computedRegexs.methodRegex != nil && cid.computedRegexs.packageRegex != nil {
+
+		return cid.computedRegexs.packageRegex.MatchString(pkg) && cid.computedRegexs.methodRegex.MatchString(f.Name())
+	}
+	return cid.Method == f.Name() && cid.Package == pkg
 }

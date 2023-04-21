@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package main
 
 import (
@@ -214,56 +228,91 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		numRoutines = 1
 	}
 
+	isForced := command.Flags["force"]
+
 	if len(command.Args) < 1 {
 		// Running the single-function analysis on all functions
 		WriteSuccess(tt, "Running single-function analysis on all functions")
-		counter := 0
-		shouldBuildSummary := func(f *ssa.Function) bool {
-			b := taint.ShouldCreateSummary(f)
+		createCounter := 0
+		buildCounter := 0
+		shouldCreateSummary := func(f *ssa.Function) bool {
+			b := isForced || taint.ShouldCreateSummary(f)
 			if b {
-				counter++
+				createCounter++
+			}
+			return b
+		}
+		shouldBuildSummary := func(c *dataflow.Cache, f *ssa.Function) bool {
+			b := isForced || taint.ShouldBuildSummary(c, f)
+			if b {
+				buildCounter++
 			}
 			return b
 		}
 		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 			Cache:               c,
 			NumRoutines:         numRoutines,
-			ShouldCreateSummary: shouldBuildSummary,
+			ShouldCreateSummary: shouldCreateSummary,
+			ShouldBuildSummary:  shouldBuildSummary,
 			IsEntrypoint:        taint.IsSourceNode,
 		})
 		c.FlowGraph.InsertSummaries(res.FlowGraph)
-		WriteSuccess(tt, "%d summarized", counter)
+		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
-		// Running the single-function analysis on a single function, if is can be found
+		// Running the single-function analysis on a single function, if it can be found
 		regex, err := regexp.Compile(command.Args[0])
 		if err != nil {
 			regexErr(tt, command.Args[0], err)
+			return false
 		}
 		funcs := findFunc(c, regex)
 		WriteSuccess(tt, "Running single-function analysis on functions matching %s", command.Args[0])
 
 		// Depending on the summaries threshold and the number of matched functions, different filters are used.
 		// If len(funcs) > summarizeThreshold, the filter used is similar to the one used in the taint analysis.
-		counter := 0
-		var shouldBuildSummary func(f *ssa.Function) bool
+		createCounter := 0
+		buildCounter := 0
+		var shouldCreateSummary func(f *ssa.Function) bool
+		var shouldBuildSummary func(c *dataflow.Cache, f *ssa.Function) bool
 		if len(funcs) > summarizeThreshold {
-			// above a certain threshold, we use the general analysis filters on what to summarize
+			// above a certain threshold, we use the general analysis filters on what to summarize, unless -force has
+			// been specified
 			WriteSuccess(tt, "(more than %d functions matching, other config-defined filters are in use)",
 				summarizeThreshold)
-			shouldBuildSummary = func(f *ssa.Function) bool {
-				b := !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f) && functional.Contains(funcs, f)
+			shouldCreateSummary = func(f *ssa.Function) bool {
+				b := isForced || (!summaries.IsStdFunction(f) &&
+					summaries.IsUserDefinedFunction(f) &&
+					functional.Contains(funcs, f) &&
+					!c.HasExternalContractSummary(f))
 				if b {
-					counter++
+					createCounter++
+				}
+				return b
+			}
+			shouldBuildSummary = func(c *dataflow.Cache, f *ssa.Function) bool {
+				b := isForced || (!summaries.IsStdFunction(f) &&
+					summaries.IsUserDefinedFunction(f) &&
+					functional.Contains(funcs, f) &&
+					!c.HasExternalContractSummary(f))
+				if b {
+					buildCounter++
 				}
 				return b
 			}
 		} else {
 			// below that threshold, all functions that match are summarize.
 			// useful for testing.
-			shouldBuildSummary = func(f *ssa.Function) bool {
+			shouldCreateSummary = func(f *ssa.Function) bool {
 				b := functional.Contains(funcs, f)
 				if b {
-					counter++
+					createCounter++
+				}
+				return b
+			}
+			shouldBuildSummary = func(_ *dataflow.Cache, f *ssa.Function) bool {
+				b := functional.Contains(funcs, f)
+				if b {
+					buildCounter++
 				}
 				return b
 			}
@@ -273,13 +322,14 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 			Cache:               c,
 			NumRoutines:         numRoutines,
-			ShouldCreateSummary: shouldBuildSummary,
+			ShouldCreateSummary: shouldCreateSummary,
+			ShouldBuildSummary:  shouldBuildSummary,
 			IsEntrypoint:        taint.IsSourceNode,
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 		c.FlowGraph.InsertSummaries(res.FlowGraph)
-		WriteSuccess(tt, "%d summarized", counter)
-		if counter == 0 {
+		WriteSuccess(tt, "%d summaries created, %d built.", createCounter, buildCounter)
+		if createCounter == 0 {
 			WriteSuccess(tt, "The queried functions may not be reachable?")
 			WriteSuccess(tt, "If less than %d functions match the query, then all reachable "+
 				"matching functions will be summarized", summarizeThreshold)

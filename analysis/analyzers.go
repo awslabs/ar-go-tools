@@ -1,16 +1,30 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package analysis contains helper functions for running analysis passes.
 package analysis
 
 import (
 	"fmt"
-	"strings"
+	"io"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/ssafuncs"
-	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -21,12 +35,23 @@ type SingleFunctionResult struct {
 
 // RunSingleFunctionArgs represents the arguments for RunSingleFunction.
 type RunSingleFunctionArgs struct {
-	Cache               *dataflow.Cache
-	NumRoutines         int
-	ShouldCreateSummary func(function *ssa.Function) bool
+	Cache       *dataflow.Cache
+	NumRoutines int
+
+	// ShouldCreateSummary indicates whether a summary object should be created. This does *not* means a summary
+	// will be built!
+	ShouldCreateSummary func(*ssa.Function) bool
+
+	// ShouldBuildSummary indicates whether the summary should be built when it is created
+	ShouldBuildSummary func(*dataflow.Cache, *ssa.Function) bool
+
 	// IsEntrypoint is a function that returns true if the node should be an entrypoint to the analysis.
 	// The entrypoint node is treated as a "source" of data.
 	IsEntrypoint func(*config.Config, ssa.Node) bool
+
+	// PostBlockCallback will be called each time a block is analyzed if the analysis is running on a single core
+	// This is useful for debugging purposes
+	PostBlockCallback func(state *dataflow.AnalysisState)
 }
 
 // RunSingleFunction runs a single-function analysis pass of program prog in parallel using numRoutines.
@@ -38,55 +63,66 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	start := time.Now()
 
 	fg := dataflow.NewCrossFunctionFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, args.Cache)
+	numRoutines := args.NumRoutines + 1
+	if numRoutines < 1 {
+		numRoutines = 1
+	}
 
-	if args.NumRoutines > 1 {
-		// Start the single function summary building routines
-		jobs := make(chan singleFunctionJob, args.NumRoutines+1)
-		output := make(chan dataflow.SingleFunctionResult, args.NumRoutines+1)
-		done := make(chan int)
-		for proc := 0; proc < args.NumRoutines; proc++ {
-			go jobConsumer(jobs, output, done, args.IsEntrypoint)
-		}
-		// Start the collecting routine
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			collectResults(output, done, args.NumRoutines, &fg)
-		}()
-
-		// Feed the jobs in the jobs channel
-		// This pass also ignores some predefined packages
+	// Feed the jobs in the jobs channel
+	// This pass also ignores some predefined packages
+	jobs := make(chan singleFunctionJob, numRoutines)
+	go func() {
+		defer close(jobs)
 		for function := range args.Cache.ReachableFunctions(false, false) {
 			if args.ShouldCreateSummary(function) {
 				jobs <- singleFunctionJob{
-					function: function,
-					cache:    args.Cache,
+					function:           function,
+					cache:              args.Cache,
+					shouldBuildSummary: args.ShouldBuildSummary(args.Cache, function),
 				}
 			}
+		}
+	}()
 
-		}
-		close(jobs)
-		wg.Wait()
-	} else {
-		// Run without goroutines when there is only one routine
-		for function := range args.Cache.ReachableFunctions(false, false) {
-			if args.ShouldCreateSummary(function) {
-				job := singleFunctionJob{
-					function: function,
-					cache:    args.Cache,
-				}
-				result := runIntraProceduralOnFunction(job, args.IsEntrypoint)
-				if result.Summary != nil {
-					fg.Summaries[result.Summary.Parent] = result.Summary
-				}
-			}
-		}
-	}
+	// Start the single function summary building routines
+	results := runJobs(jobs, numRoutines, args.IsEntrypoint)
+	// Start the collecting routine
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		collectResults(results, &fg, args.Cache)
+	}()
+	wg.Wait()
+
 	logger.Printf("Single-function pass done (%.2f s).", time.Since(start).Seconds())
 
 	args.Cache.FlowGraph = &fg
 	return SingleFunctionResult{FlowGraph: fg}
+}
+
+// runJobs runs the single-function analysis on each job in jobs and returns a channel with all the results.
+func runJobs(jobs <-chan singleFunctionJob, numRoutines int,
+	isEntrypoint func(*config.Config, ssa.Node) bool) <-chan dataflow.SingleFunctionResult {
+	results := make(chan dataflow.SingleFunctionResult)
+	wg := &sync.WaitGroup{}
+	wg.Add(numRoutines)
+	for i := 0; i < numRoutines; i++ {
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				results <- runSingleFunctionJob(job, isEntrypoint)
+			}
+		}()
+	}
+
+	// close output once all the goroutines that send to it are done
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	return results
 }
 
 // RunCrossFunctionArgs represents the arguments to RunCrossFunction.
@@ -122,86 +158,66 @@ func BuildCrossFunctionGraph(cache *dataflow.Cache) (*dataflow.Cache, error) {
 
 // singleFunctionJob contains all the information necessary to run the single-function analysis on function.
 type singleFunctionJob struct {
-	cache    *dataflow.Cache
-	function *ssa.Function
-	output   chan dataflow.SingleFunctionResult
+	cache              *dataflow.Cache
+	function           *ssa.Function
+	shouldBuildSummary bool
+	postBlockCallback  func(*dataflow.AnalysisState)
+	output             chan *dataflow.SummaryGraph
 }
 
-// jobConsumer consumes jobs from the jobs channel, and closes output when done.
-func jobConsumer(jobs chan singleFunctionJob, output chan dataflow.SingleFunctionResult, done chan int,
-	isSourceNode func(*config.Config, ssa.Node) bool) {
-	for job := range jobs {
-		output <- runIntraProceduralOnFunction(job, isSourceNode)
-	}
-	if done != nil {
-		done <- 0
-	}
-}
-
-// runIntraProceduralOnFunction is a simple function that runs the intraprocedural analysis with the information in job
-// and returns the result of the analysis
-func runIntraProceduralOnFunction(job singleFunctionJob,
-	isSourceNode func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
-	runAnalysis := shouldBuildSummary(job.cache.Config, job.function)
-	if job.cache.Config.Verbose {
-		job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
-			ssafuncs.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
-	}
+// runSingleFunctionJob runs the single-function analysis with the information in job
+// and returns the result of the analysis.
+func runSingleFunctionJob(job singleFunctionJob,
+	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
 	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function,
-		runAnalysis, dataflow.GetUniqueFunctionId(), isSourceNode)
+		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
 	if err != nil {
 		job.cache.Err.Printf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
+		return dataflow.SingleFunctionResult{}
+	}
+	if job.cache.Config.Verbose {
+		job.cache.Logger.Printf("Pkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
+			ssafuncs.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
+			result.Time.Seconds())
 	}
 
-	if result.Summary != nil {
-		result.Summary.ShowAndClearErrors(job.cache.Logger.Writer())
+	summary := result.Summary
+	if summary != nil {
+		summary.ShowAndClearErrors(job.cache.Logger.Writer())
 	}
 
-	return result
+	return dataflow.SingleFunctionResult{Summary: summary, Time: result.Time}
 }
 
 // collectResults waits for the results in c and adds them to graph, candidates. It waits for numProducers
 // messages on the done channel to terminate and clean up.
 // Operations on graph and candidates are sequential.
 // cleans up done and c channels
-func collectResults(c chan dataflow.SingleFunctionResult, done chan int, numProducers int,
-	graph *dataflow.CrossFunctionFlowGraph) {
-	counter := numProducers
-	for {
-		select {
-		case result := <-c:
-			if result.Summary != nil {
-				graph.Summaries[result.Summary.Parent] = result.Summary
-			}
-		case <-done:
-			counter--
-			if counter == 0 {
-				close(done)
-				close(c)
-				return
+func collectResults(c <-chan dataflow.SingleFunctionResult, graph *dataflow.CrossFunctionFlowGraph,
+	cache *dataflow.Cache) {
+	var f *os.File
+	var err error
+	if cache.Config.ReportSummaries {
+		f, err = os.CreateTemp(cache.Config.ReportsDir, "summary-times-*.csv")
+		if err != nil {
+			cache.Logger.Printf("Could not create summary times report file.")
+		}
+		defer f.Close()
+		cache.Logger.Printf("Saving report of summary times in %s\n", f.Name())
+	}
+
+	for result := range c {
+		if result.Summary != nil {
+			graph.Summaries[result.Summary.Parent] = result.Summary
+			if f != nil {
+				// should be race-free because it's only run in one goroutine
+				reportSummaryTime(f, result)
 			}
 		}
 	}
 }
 
-// shouldBuildSummary returns true if the function can be ignored during the first pass of the analysis
-// can be used to avoid analyzing functions with many paths.
-func shouldBuildSummary(cfg *config.Config, function *ssa.Function) bool {
-	if function == nil {
-		return true
-	}
-
-	pkg := function.Package()
-	if pkg == nil {
-		return true
-	}
-
-	// Is PkgPrefix specified?
-	if cfg != nil && cfg.PkgPrefix != "" {
-		pkgKey := pkg.Pkg.Path()
-		return strings.HasPrefix(pkgKey, cfg.PkgPrefix) || pkgKey == "command-line-arguments"
-	} else {
-		// Check package summaries
-		return !summaries.PkgHasSummaries(pkg) || summaries.IsSummaryRequired(function)
-	}
+func reportSummaryTime(w io.Writer, result dataflow.SingleFunctionResult) {
+	str := fmt.Sprintf("%s, %.2f\n", result.Summary.Parent.String(), result.Time.Seconds())
+	w.Write([]byte(str))
 }

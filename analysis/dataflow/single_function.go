@@ -1,8 +1,23 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package dataflow
 
 import (
 	"fmt"
 	"go/types"
+	"time"
 
 	"github.com/awslabs/argot/analysis/astfuncs"
 	"github.com/awslabs/argot/analysis/config"
@@ -14,77 +29,99 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// This file implements the single function analysis. This analysis pass inspects a single function and constructs:
-// - a dataflow summary of the function
-// This file `single_function.go` contains all the logic of the analysis and the transfer functions
-// called to handle each instruction.
-// The `single_function_instruction_ops.go` file contains all the functions that define how instructions in the function
+// This file implements the single function analysis. This analysis pass inspects a single function and constructs
+// a dataflow summary of the function.
+// - this file `single_function.go` contains the logic that determines when to run the monotone framework analysis,
+// call the monotone frameowrk analysis, and builds the dataflow graph from the result of the monotone framework
+// analysis.
+// - `single_function_monotone_analysis.go` contains all the functions relative to the monotone analysis part of this
+// single function analysis.
+// - `single_function_instruction_ops.go` file contains all the functions that define how instructions in the function
 // are handled.
 
-// SingleFunctionResult holds the results of the intra-procedural analysis.
+// SingleFunctionResult holds the results of the single-function analysis.
 type SingleFunctionResult struct {
-	Summary         *SummaryGraph    // Summary is the procedure summary built by the analysis
-	FlowInformation *FlowInformation // Flow information: the final state of the analysis
+	Summary *SummaryGraph // Summary is the procedure summary built by the analysis
+	Time    time.Duration // Time it took to compute the summary
 }
 
 // SingleFunctionAnalysis is the main entry point of the intra procedural analysis.
-func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, runit bool, id uint32,
-	shouldTrack func(*config.Config, ssa.Node) bool) (SingleFunctionResult, error) {
+func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, buildSummary bool, id uint32,
+	shouldTrack func(*config.Config, ssa.Node) bool,
+	postBlockCallback func(*AnalysisState)) (SingleFunctionResult, error) {
 	sm := NewSummaryGraph(function, id)
 	flowInfo := NewFlowInfo(cache.Config, function)
-	state := &analysisState{
-		flowInfo:       flowInfo,
-		cache:          cache,
-		changeFlag:     true,
-		blocksSeen:     map[*ssa.BasicBlock]bool{},
-		errors:         map[ssa.Node]error{},
-		summary:        sm,
-		deferStacks:    defers.AnalyzeFunction(function, false),
-		instrPaths:     map[ssa.Instruction]map[ssa.Instruction]ConditionInfo{},
-		instrPrev:      map[ssa.Instruction]map[ssa.Instruction]bool{},
-		paramAliases:   map[ssa.Value]map[*ssa.Parameter]bool{},
-		freeVarAliases: map[ssa.Value]map[*ssa.FreeVar]bool{},
-		shouldTrack:    shouldTrack,
-	}
-
 	// The function should have at least one instruction!
 	if len(function.Blocks) == 0 || len(function.Blocks[0].Instrs) == 0 {
 		return SingleFunctionResult{Summary: sm}, nil
 	}
-	// Output warning if defer stack is unbounded
-	if !state.deferStacks.DeferStackBounded {
-		err := cache.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
-			function.String(), format.Yellow("analysis unsound!")))
+
+	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
+	start := time.Now()
+	if buildSummary {
+		err := run(cache, flowInfo, sm, shouldTrack, postBlockCallback)
 		if err != nil {
-			return SingleFunctionResult{}, err
+			return SingleFunctionResult{Summary: sm, Time: time.Since(start)}, err
 		}
 	}
 
-	state.initialize()
+	return SingleFunctionResult{Summary: sm, Time: time.Since(start)}, nil
+}
 
-	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
-	if runit {
-		// Run the monotone framework analysis: populate the flowInfo. The functions for the analysis are in the
-		// single_function_monotone_analysis.go file
-		ssafuncs.RunForwardIterative(state, function)
-		// Build the edges of the summary. The functions for edge building are in this file
-		ssafuncs.IterateInstructions(function, state.makeEdgesAtInstruction)
-		// Synchronize the edges of global variables
-		sm.SyncGlobals()
-		sm.Constructed = true
+// run is the core of the single function analysis
+func run(cache *Cache, flowInfo *FlowInformation, sm *SummaryGraph,
+	shouldTrack func(*config.Config, ssa.Node) bool,
+	postBlockCallback func(*AnalysisState)) error {
+	state := &AnalysisState{
+		flowInfo:          flowInfo,
+		cache:             cache,
+		changeFlag:        true,
+		blocksSeen:        map[*ssa.BasicBlock]bool{},
+		errors:            map[ssa.Node]error{},
+		summary:           sm,
+		deferStacks:       defers.AnalyzeFunction(sm.Parent, false),
+		instrPaths:        map[ssa.Instruction]map[ssa.Instruction]ConditionInfo{},
+		instrPrev:         map[ssa.Instruction]map[ssa.Instruction]bool{},
+		paramAliases:      map[ssa.Value]map[*ssa.Parameter]bool{},
+		freeVarAliases:    map[ssa.Value]map[*ssa.FreeVar]bool{},
+		shouldTrack:       shouldTrack,
+		postBlockCallback: postBlockCallback,
 	}
 
+	// Output warning if defer stack is unbounded
+	if !state.deferStacks.DeferStackBounded {
+		err := cache.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
+			sm.Parent.String(), format.Yellow("analysis unsound!")))
+		if err != nil {
+			return err
+		}
+	}
+	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
+	state.initialize()
+	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
+	// defined generally in the ssafuncs package, but all the details, including transfer functions, are in the
+	// single_function_monotone_analysis.go file
+	ssafuncs.RunForwardIterative(state, sm.Parent)
+	// Once the analysis has run, we have a state that maps each instruction to an abstract value at that instruction.
+	// This abstract valuation maps values to the values that flow into them. This can directly be translated into
+	// a dataflow graph, with special attention for closures.
+	// Nest, we build the edges of the summary. The functions for edge building are in this file
+	ssafuncs.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
+	// Synchronize the edges of global variables
+	sm.SyncGlobals()
+	// Mark the summary as constructed
+	sm.Constructed = true
 	// If we have errors, return one (TODO: we'll decide how to handle them later)
 	for _, err := range state.errors {
-		return SingleFunctionResult{}, fmt.Errorf("error in intraprocedural analysis: %w", err)
+		return fmt.Errorf("error in intraprocedural analysis: %w", err)
 	}
-	return SingleFunctionResult{Summary: sm, FlowInformation: flowInfo}, nil
+	return nil
 }
 
 // Dataflow edges in the summary graph are added by the following functions. Those can be called after the iterative
 // analysis has computed where all marks reach values at each instruction.
 
-func (state *analysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruction) {
+func (state *AnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruction) {
 	switch typedInstr := instr.(type) {
 	case ssa.CallInstruction:
 		state.makeEdgesAtCallSite(typedInstr)
@@ -101,7 +138,7 @@ func (state *analysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruction)
 
 // makeEdgesAtCallsite generates all the edges specific to a given call site.
 // Those are the edges to and from call arguments and to and from the call value.
-func (state *analysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
+func (state *AnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 	if isHandledBuiltinCall(callInstr) {
 		return
 	}
@@ -156,7 +193,7 @@ func (state *analysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 }
 
 // updateBoundVarEdges updates the edges to bound variables.
-func (state *analysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.MakeClosure) {
+func (state *AnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
 		for _, boundVarMark := range state.getMarkedValues(instr, boundVar, "*") {
 			state.summary.AddBoundVarEdge(boundVarMark, x, boundVar, &ConditionInfo{Satisfiable: true})
@@ -166,7 +203,7 @@ func (state *analysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.Ma
 
 // makeEdgesAtClosure adds all the edges corresponding the closure creation site: bound variable edges and any edge
 // to parameters and free variables.
-func (state *analysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
+func (state *AnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
 		for _, mark := range state.getMarkedValues(x, boundVar, "*") {
 			state.summary.AddBoundVarEdge(mark, x, boundVar, nil)
@@ -182,11 +219,11 @@ func (state *analysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 }
 
 // makeEdgesAtReturn creates all the edges to the return node
-func (state *analysisState) makeEdgesAtReturn(x *ssa.Return) {
+func (state *AnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 	for markedValue, marks := range state.flowInfo.MarkedValues[x] {
 		switch val := markedValue.(type) {
 		case *ssa.Call:
-			// calling Type() will cause segmentation error
+			// calling Type() may cause segmentation error
 			break
 		default:
 			// Check the state of the analysis at the final return to see which parameters of free variables might
@@ -215,7 +252,7 @@ func (state *analysisState) makeEdgesAtReturn(x *ssa.Return) {
 // makeEdgesAtStoreInCapturedLabel creates edges for store instruction where the target is a pointer that is
 // captured by a closure somewhere. The capture information is flow- and context insensitive, so the edge creation is
 // too. The interprocedural information will be completed later.
-func (state *analysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
+func (state *AnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	bounds := state.isCapturedBy(x.Addr)
 	if len(bounds) > 0 {
 		for _, origin := range state.getMarkedValues(x, x.Addr, "*") {
@@ -231,7 +268,7 @@ func (state *analysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	}
 }
 
-func (state *analysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
+func (state *AnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
 	if asValue, ok := instr.(ssa.Value); ok && state.shouldTrack(state.cache.Config, instr.(ssa.Node)) {
 		for _, origin := range state.getMarkedValues(instr, asValue, "*") {
 			_, isField := instr.(*ssa.Field)
@@ -247,11 +284,15 @@ func (state *analysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
 // checkFlow checks whether there can be a flow between the source and the targetInfo instruction and returns a
 // condition c. If c.Satisfiable is false, there is no path. If it is true, then there may be a non-empty set of
 // conditions in the Conditions list.
+//
 // The destination must be an instruction. destVal can be used to specify that the flow is to the destination
 // (the location) through a specific value. For example, destVal can be the argument of a function call.
+//
 // Note that in the flow-sensitive analysis, the condition returned should always be satisfiable, but we use the
 // condition expressions to decorate edges and allow checking whether a flow is validated in the dataflow analysis.
-func (state *analysisState) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) ConditionInfo {
+// We should think of ways to accumulate conditions without using the checkFlow function, which was designed initially
+// to filter the spurious flows of the flow-insensitive analysis.
+func (state *AnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) ConditionInfo {
 	sourceInstr, ok := source.Node.(ssa.Instruction)
 	if !ok {
 		return ConditionInfo{Satisfiable: true}
@@ -285,7 +326,7 @@ func (state *analysisState) checkFlow(source Mark, dest ssa.Instruction, destVal
 	}
 }
 
-func (state *analysisState) checkPathBetweenInstructions(source ssa.Instruction, dest ssa.Instruction) ConditionInfo {
+func (state *AnalysisState) checkPathBetweenInstructions(source ssa.Instruction, dest ssa.Instruction) ConditionInfo {
 	if reachableSet, ok := state.instrPaths[source]; ok {
 		if c, ok := reachableSet[dest]; ok {
 			return c
@@ -303,7 +344,7 @@ func (state *analysisState) checkPathBetweenInstructions(source ssa.Instruction,
 
 // isCapturedBy checks the bounding analysis to query whether the value is captured by some closure, in which case an
 // edge will need to be added
-func (state *analysisState) isCapturedBy(value ssa.Value) []*pointer.Label {
+func (state *AnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label {
 	var maps []*pointer.Label
 	if ptr, ok := state.cache.PointerAnalysis.Queries[value]; ok {
 		for _, label := range ptr.PointsTo().Labels() {

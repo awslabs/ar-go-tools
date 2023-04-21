@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package summaries defines how data flow information can be summarized for a given function.
 // These summaries are only for pre-determined functions (e.g. standard library functions) and are not computed during the analysis.
 package summaries
@@ -79,8 +93,8 @@ func IsSummaryRequired(function *ssa.Function) bool {
 	return requiredSummaries[function.String()]
 }
 
-// PkgHasSummaries returns true if the input package has summaries. A package has summaries if it is present in either
-// the stdPackages map or the OtherPackages map that define summaries in the summaries package.
+// PkgHasSummaries returns true if the input package has summaries.
+// A package has summaries if it is present in the stdPackages.
 //
 // Returns false if the input package is nil.
 func PkgHasSummaries(pkg *ssa.Package) bool {
@@ -89,8 +103,7 @@ func PkgHasSummaries(pkg *ssa.Package) bool {
 	}
 	pkgPath := pkg.Pkg.Path()
 	_, okStd := stdPackages[pkgPath]
-	_, okOther := OtherPackages[pkgPath]
-	return okStd || okOther
+	return okStd
 }
 
 // SummaryOfFunc returns the summary of function and true if function has a summary,
@@ -103,11 +116,6 @@ func SummaryOfFunc(function *ssa.Function) (Summary, bool) {
 	}
 	pkgName := ssafuncs.PackageNameFromFunction(function)
 	if s, ok := stdPackages[pkgName]; ok {
-		summary, ok := s[function.String()]
-		return summary, ok
-	}
-
-	if s, ok := OtherPackages[pkgName]; ok {
 		summary, ok := s[function.String()]
 		return summary, ok
 	}

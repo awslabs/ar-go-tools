@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package config provides a simple way to manage configuration files.
 // Use Load(filename) to load a configuration from a specific filename.
 // Use SetGlobalConfig(filename) to set filename as the global config, and
@@ -22,6 +36,8 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
+	"strings"
 
 	"github.com/awslabs/argot/analysis/functional"
 	"gopkg.in/yaml.v3"
@@ -45,10 +61,11 @@ func LoadGlobal() (*Config, error) {
 // Config contains lists of sanitizers, sinks, sources, static commands to identify ...
 // To add elements to a config file, add fields to this struct.
 // If some field is not defined in the config file, it will be empty/zero in the struct.
+// private fields are not populated from a yaml file, but computed after initialization
 type Config struct {
 	sourceFile string
 
-	// nocalleereportfile is a file name in ReportsDir when ReportNoCaleeSites is true
+	// nocalleereportfile is a file name in ReportsDir when ReportNoCalleeSites is true
 	nocalleereportfile string
 
 	// ReportsDir is the directory where all the reports will be stored. If the yaml config file this config struct has
@@ -72,13 +89,13 @@ type Config struct {
 	// (not used)
 	StaticCommands []CodeIdentifier
 
-	// PkgPrefix is a filter for the taint analysis to build summaries only for the function whose package match the
+	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
 	// prefix
-	PkgPrefix string
+	PkgFilter string
 
 	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the taint
 	// analysis
-	DataflowSpecs string
+	DataflowSpecs []string
 
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
@@ -110,8 +127,15 @@ type Config struct {
 	// If provided MaxDepth is <= 0, then it will be reset to default.
 	MaxDepth int
 
+	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
+	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
+	MaxAlarms int
+
 	// Verbose control the verbosity of the tool
 	Verbose bool
+
+	// if the PkgFilter is specified
+	pkgFilterRegex *regexp.Regexp
 }
 
 // NewDefault returns an empty default config.
@@ -124,8 +148,8 @@ func NewDefault() *Config {
 		Sinks:               nil,
 		Sources:             nil,
 		StaticCommands:      nil,
-		PkgPrefix:           "",
-		DataflowSpecs:       "",
+		PkgFilter:           "",
+		DataflowSpecs:       []string{},
 		SkipInterprocedural: false,
 		Coverage:            "",
 		ReportSummaries:     false,
@@ -133,6 +157,7 @@ func NewDefault() *Config {
 		ReportCoverage:      false,
 		ReportNoCalleeSites: false,
 		MaxDepth:            1000,
+		MaxAlarms:           -1,
 		Verbose:             false,
 	}
 }
@@ -182,6 +207,13 @@ func Load(filename string) (*Config, error) {
 		config.MaxDepth = DefaultMaxCallDepth
 	}
 
+	if config.PkgFilter != "" {
+		r, err := regexp.Compile(config.PkgFilter)
+		if err == nil {
+			config.pkgFilterRegex = r
+		}
+	}
+
 	functional.Iter(config.Sanitizers, CompileRegexes)
 	functional.Iter(config.Sinks, CompileRegexes)
 	functional.Iter(config.Sources, CompileRegexes)
@@ -198,6 +230,16 @@ func (c Config) ReportNoCalleeFile() string {
 // RelPath returns filename path relative to the config source file
 func (c Config) RelPath(filename string) string {
 	return path.Join(path.Dir(c.sourceFile), filename)
+}
+
+func (c Config) MatchPkgFilter(pkgname string) bool {
+	if c.pkgFilterRegex != nil {
+		return c.pkgFilterRegex.MatchString(pkgname)
+	} else if c.PkgFilter != "" {
+		return strings.HasPrefix(pkgname, c.PkgFilter)
+	} else {
+		return false
+	}
 }
 
 // Below are functions used to query the configuration on specific facts

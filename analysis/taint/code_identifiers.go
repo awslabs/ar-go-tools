@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package taint
 
 import (
@@ -107,6 +121,18 @@ func isFiltered(n dataflow.GraphNode, cfg *config.Config) bool {
 	for _, filter := range cfg.Filters {
 		if filter.Type != "" {
 			if filter.MatchType(n.Type()) {
+				return true
+			}
+		}
+		var f *ssa.Function
+		switch n2 := n.(type) {
+		case *dataflow.CallNode:
+			f = n2.Callee()
+		case *dataflow.CallNodeArg:
+			f = n2.ParentNode().Callee()
+		}
+		if f != nil && filter.Method != "" && filter.Package != "" {
+			if filter.MatchPackageAndMethod(f) {
 				return true
 			}
 		}
