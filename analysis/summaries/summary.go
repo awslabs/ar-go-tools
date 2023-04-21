@@ -5,7 +5,7 @@ package summaries
 import (
 	"strings"
 
-	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -64,7 +64,7 @@ func IsStdFunction(function *ssa.Function) bool {
 	if function == nil {
 		return false
 	}
-	pkgName := packagescan.PackageNameFromFunction(function)
+	pkgName := ssafuncs.PackageNameFromFunction(function)
 	_, ok := stdPackages[pkgName]
 	return ok || strings.HasPrefix(pkgName, "runtime")
 }
@@ -101,7 +101,7 @@ func SummaryOfFunc(function *ssa.Function) (Summary, bool) {
 	if function == nil {
 		return Summary{}, false
 	}
-	pkgName := packagescan.PackageNameFromFunction(function)
+	pkgName := ssafuncs.PackageNameFromFunction(function)
 	if s, ok := stdPackages[pkgName]; ok {
 		summary, ok := s[function.String()]
 		return summary, ok
@@ -122,7 +122,7 @@ func IsUserDefinedFunction(function *ssa.Function) bool {
 	if function == nil {
 		return false
 	}
-	pkgKey := packagescan.PackageNameFromFunction(function)
+	pkgKey := ssafuncs.PackageNameFromFunction(function)
 
 	if pkgKey == "" {
 		return false

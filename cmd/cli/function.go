@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/packagescan"
 	"github.com/awslabs/argot/analysis/ssafuncs"
 	"github.com/awslabs/argot/analysis/taint"
 	"golang.org/x/exp/slices"
@@ -68,9 +67,9 @@ func cmdPackage(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		return false
 	}
 
-	pkgName := packagescan.PackageNameFromFunction(state.CurrentFunction)
+	pkgName := ssafuncs.PackageNameFromFunction(state.CurrentFunction)
 	writeFmt(tt, "Package %s:\n", pkgName)
-	pkg := packagescan.PackageTypeFromFunction(state.CurrentFunction)
+	pkg := ssafuncs.PackageTypeFromFunction(state.CurrentFunction)
 	if pkg == nil {
 		WriteErr(tt, "Could not retrieve package object.")
 		return false

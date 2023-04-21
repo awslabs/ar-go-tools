@@ -3,7 +3,7 @@ package taint
 import (
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -151,7 +151,7 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 						Package: maybePkg.Value(), Method: methodName, Receiver: receiver,
 					})
 				} else if callee != nil {
-					pkgName := packagescan.PackageNameFromFunction(callee)
+					pkgName := ssafuncs.PackageNameFromFunction(callee)
 					return codeIdOracle(config.CodeIdentifier{
 						Package: pkgName, Method: methodName, Receiver: receiver,
 					})
@@ -164,7 +164,7 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 				if maybePkg.IsSome() {
 					return codeIdOracle(config.CodeIdentifier{Package: maybePkg.Value(), Method: funcName})
 				} else if callee != nil {
-					pkgName := packagescan.PackageNameFromFunction(callee)
+					pkgName := ssafuncs.PackageNameFromFunction(callee)
 					return codeIdOracle(config.CodeIdentifier{
 						Package: pkgName, Method: funcName,
 					})
