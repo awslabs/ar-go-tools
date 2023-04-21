@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package dataflow
 
 import (
@@ -35,10 +49,10 @@ type Cache struct {
 	//
 	// If t is the signature of a function, then map[t.string()] will return all the functions matching that type.
 	implementationsByType map[string]map[*ssa.Function]bool
+	keys                  map[string]string
 
 	// DataFlowContracts are dataflow graphs for interfaces.
 	DataFlowContracts map[string]*SummaryGraph
-	keys              map[string]string
 
 	// The result of a pointer analysis.
 	PointerAnalysis *pointer.Result
@@ -53,8 +67,10 @@ type Cache struct {
 	// a map
 	BoundingInfo BoundingMap
 
+	reachableFunctions map[*ssa.Function]bool
+
 	// Stored errors
-	errors     map[error]bool
+	errors     map[string][]error
 	errorMutex sync.Mutex
 }
 
@@ -62,7 +78,7 @@ type Cache struct {
 func BuildFullCache(logger *log.Logger, config *config.Config, program *ssa.Program) (*Cache, error) {
 	program.Build()
 	c, err := NewCache(program, logger, config, []func(*Cache){
-		func(cache *Cache) { cache.PopulateTypesVerbose() },
+		func(cache *Cache) { cache.PopulateImplementations() },
 		func(cache *Cache) { cache.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		func(cache *Cache) { cache.PopulateGlobalsVerbose() },
 	})
@@ -78,8 +94,7 @@ func BuildFullCache(logger *log.Logger, config *config.Config, program *ssa.Prog
 
 // NewCache returns a properly initialized cache by running steps in parallel.
 func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cache)) (*Cache, error) {
-	var contracts []Contract
-	var err error
+	var allContracts []Contract
 
 	e := log.New(l.Writer(), "[ERROR] ", l.Flags())
 
@@ -97,25 +112,30 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cac
 			Summaries: map[*ssa.Function]*SummaryGraph{},
 			cache:     nil,
 		},
-		errors: map[error]bool{},
+		errors: map[string][]error{},
 	}
 	// Link summaries to parent cache
 	cache.FlowGraph.cache = cache
 
-	// Load the dataflow contract of the interfaces from a json file if specified.
-	if c.DataflowSpecs != "" {
-		contracts, err = LoadDefinitions(c.RelPath(c.DataflowSpecs))
-		if err != nil {
-			return nil, err
-		}
-		if c.Verbose {
-			l.Printf("Loaded dataflow contracts from %s\n", c.DataflowSpecs)
-		}
-		// Initialize all the entries of DataFlowContracts
-		for _, contract := range contracts {
-			for method := range contract.Methods {
-				cache.DataFlowContracts[contract.Key(method)] = nil
+	// Load the dataflow contracts from the specified json files, if any
+	if len(c.DataflowSpecs) > 0 {
+		for _, specFile := range c.DataflowSpecs {
+			contractsBatch, err := LoadDefinitions(c.RelPath(specFile))
+			if err != nil {
+				return nil, err
 			}
+			if c.Verbose {
+				l.Printf("Loaded %d dataflow contracts from %s\n", len(contractsBatch), specFile)
+			}
+			// Initialize all the entries of DataFlowContracts
+			for _, contract := range contractsBatch {
+				for method := range contract.Methods {
+					// contract are initially nil, the calls to ResolveCallee will set them to some non-nil value
+					// when necessary
+					cache.DataFlowContracts[contract.Key(method)] = nil
+				}
+			}
+			allContracts = append(allContracts, contractsBatch...)
 		}
 	}
 
@@ -129,17 +149,13 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cac
 		}()
 	}
 	wg.Wait()
-	if err := cache.CheckError(); err != nil {
-		return nil, fmt.Errorf("failed to build cache: %w", err)
+	if errs := cache.CheckError(); len(errs) > 0 {
+		// TODO: use errors.Join when min version of go is 1.20
+		// currently only first error is reported
+		return nil, fmt.Errorf("failed to build cache: %w", errs[0])
 	}
 
-	if c.DataflowSpecs != "" {
-		for _, contract := range contracts {
-			for method, methodSummary := range contract.Methods {
-				cache.DataFlowContracts[contract.Key(method)].PopulateGraphFromSummary(methodSummary, true)
-			}
-		}
-	}
+	cache.LinkContracts(allContracts)
 
 	return cache, nil
 }
@@ -157,20 +173,20 @@ func (c *Cache) PrintImplementations(w io.Writer) {
 	}
 }
 
-func (c *Cache) AddError(e error) {
+func (c *Cache) AddError(key string, e error) {
 	c.errorMutex.Lock()
 	defer c.errorMutex.Unlock()
 	if e != nil {
-		c.errors[e] = true
+		c.errors[key] = append(c.errors[key], e)
 	}
 }
 
-func (c *Cache) CheckError() error {
+func (c *Cache) CheckError() []error {
 	c.errorMutex.Lock()
 	defer c.errorMutex.Unlock()
-	for e := range c.errors {
+	for e, errs := range c.errors {
 		delete(c.errors, e)
-		return e
+		return errs
 	}
 	return nil
 }
@@ -178,12 +194,12 @@ func (c *Cache) CheckError() error {
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations
 func (c *Cache) PopulateTypesToImplementationMap() {
 	if err := ComputeMethodImplementations(c.Program, c.implementationsByType, c.DataFlowContracts, c.keys); err != nil {
-		c.AddError(err)
+		c.AddError("implementationsmap", err)
 	}
 }
 
-// PopulateTypesVerbose is a verbose wrapper around PopulateTypesToImplementationsMap.
-func (c *Cache) PopulateTypesVerbose() {
+// PopulateImplementations is a verbose wrapper around PopulateTypesToImplementationsMap.
+func (c *Cache) PopulateImplementations() {
 	// Load information for analysis and cache it.
 	c.Logger.Println("Caching information about types and functions for analysis...")
 	start := time.Now()
@@ -199,7 +215,7 @@ func (c *Cache) PopulateTypesVerbose() {
 func (c *Cache) PopulatePointerAnalysisResult(functionFilter func(*ssa.Function) bool) {
 	ptrResult, err := DoPointerAnalysis(c.Program, functionFilter, true)
 	if err != nil {
-		c.AddError(err)
+		c.AddError("pointeranalysis", err)
 	}
 	c.PointerAnalysis = ptrResult
 }
@@ -246,7 +262,7 @@ func (c *Cache) PopulateBoundingInformation(verbose bool) error {
 			c.Err.Println("Error running pointer binding analysis:")
 			c.Err.Printf("  %s", err)
 		}
-		c.AddError(err)
+		c.AddError("bounding analysis", err)
 		return err
 	} else {
 		c.BoundingInfo = boundingInfo
@@ -263,14 +279,27 @@ func (c *Cache) PopulateBoundingInformation(verbose bool) error {
 // ReachableFunctions returns the set of reachable functions according to the pointer analysis
 // If the pointer analysis hasn't been run, then returns an empty map.
 func (c *Cache) ReachableFunctions(excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
-	if c.PointerAnalysis != nil {
-		return CallGraphReachable(c.PointerAnalysis.CallGraph, excludeMain, excludeInit)
-	} else {
-		return make(map[*ssa.Function]bool)
+	if c.reachableFunctions == nil {
+		c.reachableFunctions = make(map[*ssa.Function]bool)
+		if c.PointerAnalysis != nil {
+			c.reachableFunctions = CallGraphReachable(c.PointerAnalysis.CallGraph, excludeMain, excludeInit)
+
+		}
 	}
+	return c.reachableFunctions
 }
 
-// Functions for callee resolution
+// IsReachableFunction returns true if f is reachable according to the pointer analysis, or if the pointer analysis
+// and ReachableFunctions has never been called.
+func (c *Cache) IsReachableFunction(f *ssa.Function) bool {
+	if c != nil && c.reachableFunctions != nil {
+		return c.reachableFunctions[f]
+	}
+	// If no reachability information has been computed, assume every function is reachable
+	return true
+}
+
+/* Functions for callee resolution */
 
 // A CalleeType gives information about how the callee was resolved
 type CalleeType int
@@ -297,6 +326,8 @@ func (t CalleeType) Code() string {
 	}
 }
 
+// CalleeInfo decorates a function with some CalleeType that records how the dataflow information of the function
+// can be resolved or how the callee's identity was determined
 type CalleeInfo struct {
 	Callee *ssa.Function
 	Type   CalleeType
@@ -313,18 +344,24 @@ type CalleeInfo struct {
 // type of the call variable at the location.
 //
 // Returns a non-nil error if it requires some information in the cache that has not been computed.
-func (c *Cache) ResolveCallee(instr ssa.CallInstruction) (map[*ssa.Function]CalleeInfo, error) {
+func (c *Cache) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map[*ssa.Function]CalleeInfo, error) {
+	// First, check if there is a static callee
 	callee := instr.Common().StaticCallee()
-
 	if callee != nil {
 		return map[*ssa.Function]CalleeInfo{callee: {Callee: callee, Type: Static}}, nil
 	}
 
-	// If it is a method, try first to find an interface contract, and return the implementation that is used
-	// in the summary
 	mKey := ssafuncs.InstrMethodKey(instr)
-	if summary, ok := c.DataFlowContracts[mKey.ValueOr("")]; ok && summary != nil {
-		return map[*ssa.Function]CalleeInfo{summary.Parent: {Callee: summary.Parent, Type: InterfaceContract}}, nil
+
+	if useContracts {
+		// If it is a method, try first to find an interface contract, and return the implementation that is used
+		// in the summary of the contract.
+		// Instead of considering all implementations, this means we have only one summarized implementation for
+		// an interface method invocation
+		if summary, ok := c.DataFlowContracts[mKey.ValueOr("")]; ok && summary != nil {
+			info := CalleeInfo{Callee: summary.Parent, Type: InterfaceContract}
+			return map[*ssa.Function]CalleeInfo{summary.Parent: info}, nil
+		}
 	}
 
 	callees := map[*ssa.Function]CalleeInfo{}
@@ -359,23 +396,60 @@ func (c *Cache) ResolveCallee(instr ssa.CallInstruction) (map[*ssa.Function]Call
 	return callees, nil
 }
 
-func (c *Cache) HasInterfaceContractSummary(f *ssa.Function) bool {
-	if methodKey, ok := c.keys[f.String()]; ok {
-		return c.DataFlowContracts[methodKey] != nil
+/*  Functions specific to dataflow contracts stored in the cache */
+
+// LinkContracts implements the step in the cache building function that links every dataflow contract with a specific
+// SSA function. This step should only link function contracts with the SSA function, but it build the summaries for
+// all contracts in allContracts.
+func (c *Cache) LinkContracts(allContracts []Contract) {
+	// This links the function contracts to their implementation by storing an empty summary graph in the
+	// DataFlowContracts map of the cache.
+	for f := range c.ReachableFunctions(false, false) {
+		if _, hasContract := c.DataFlowContracts[f.String()]; hasContract {
+			c.DataFlowContracts[f.String()] = NewSummaryGraph(f, GetUniqueFunctionId())
+		}
+	}
+
+	// Every summary for the contract in allContracts must be built
+	for _, contract := range allContracts {
+		for method, methodSummary := range contract.Methods {
+			c.DataFlowContracts[contract.Key(method)].
+				PopulateGraphFromSummary(methodSummary, contract.InterfaceId != "")
+		}
+	}
+}
+
+// HasExternalContractSummary returns true if the function f has a summary has has been loaded in the DataFlowContracts
+// of the cache.
+func (c *Cache) HasExternalContractSummary(f *ssa.Function) bool {
+	// Indirection: look for interface contract
+	if interfaceMethodKey, ok := c.keys[f.String()]; ok {
+		return c.DataFlowContracts[interfaceMethodKey] != nil
+	}
+	// Look for direct contract
+	if _, ok := c.DataFlowContracts[f.String()]; ok {
+		return true
 	}
 	return false
 }
 
-func (c *Cache) LoadInterfaceContractSummary(node *CallNode) *SummaryGraph {
-	if node == nil || node.callee.Callee == nil || node.callee.Type != InterfaceContract {
+// LoadExternalContractSummary looks for contracts loaded in the DataFlowContracts of the cache.
+func (c *Cache) LoadExternalContractSummary(node *CallNode) *SummaryGraph {
+	if node == nil || node.callee.Callee == nil {
 		return nil
 	}
-	methodFunc := node.CallSite().Common().Method
-	if methodFunc != nil {
-		methodKey := node.CallSite().Common().Value.Type().String() + "." + methodFunc.Name()
+
+	// Look first for interface contracts, they have precedence over function contracts
+	if isKey, methodKey := InterfaceMethodKey(node.CallSite()); isKey && node.callee.Type == InterfaceContract {
 		if summary, ok := c.DataFlowContracts[methodKey]; ok {
 			return summary
 		}
 	}
+
+	// Look for a function contract
+	if summary, ok := c.DataFlowContracts[node.callee.Callee.String()]; ok {
+		return summary
+	}
+
 	return nil
 }

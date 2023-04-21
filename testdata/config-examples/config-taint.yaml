@@ -1,9 +1,0 @@
-pkgprefix: "git.amazon.com" # focus on functions in this package
-sources:
-  - package: "github.com/aws/amazon-ssm-agent/agent/runcommand/contracts"
-    type: "SendCommandPayload"
-sinks:
-  - package: "github.com/aws/amazon-ssm-agent/agent/jsonutil"
-    method: "Marshal"
-  - package: "github.com/aws/amazon-ssm-agent/agent/messageservice/messagehandler"
-    method: "Submit"

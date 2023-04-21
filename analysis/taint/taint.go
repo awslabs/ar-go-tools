@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package taint contains all the taint analysis functionality in argot. The Analyze function is the main entry
 // point of the analysis, and callees the singleFunctionAnalysis and crossFunction analysis functions in two distinct
 // whole-program analysis steps.
@@ -65,6 +79,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 		Cache:               cache,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: ShouldCreateSummary,
+		ShouldBuildSummary:  ShouldBuildSummary,
 		IsEntrypoint:        IsSourceNode,
 	})
 
@@ -83,5 +98,32 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 }
 
 func ShouldCreateSummary(f *ssa.Function) bool {
-	return (!summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)) || summaries.IsSummaryRequired(f)
+	// if a summary is required, then this should evidently return true!
+	if summaries.IsSummaryRequired(f) {
+		return true
+	}
+
+	return summaries.IsUserDefinedFunction(f)
+}
+
+// shouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
+// pass. This is not necessary for functions that have summaries that are externally defined, for example.
+func ShouldBuildSummary(cache *dataflow.Cache, function *ssa.Function) bool {
+	if cache == nil || function == nil || summaries.IsSummaryRequired(function) {
+		return true
+	}
+
+	pkg := function.Package()
+	if pkg == nil {
+		return true
+	}
+
+	// Is PkgPrefix specified?
+	if cache.Config != nil && cache.Config.PkgFilter != "" {
+		pkgKey := pkg.Pkg.Path()
+		return cache.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
+	} else {
+		// Check package summaries
+		return !(summaries.PkgHasSummaries(pkg) || cache.HasExternalContractSummary(function))
+	}
 }

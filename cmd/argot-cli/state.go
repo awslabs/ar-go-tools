@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package main
 
 import (
@@ -72,7 +86,12 @@ func cmdList(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		writeFmt(tt, "\t  Options:\n")
 		writeFmt(tt, "\t    -r     list only reachable functions\n")
 		writeFmt(tt, "\t    -s     list only summarized functions\n")
+		writeFmt(tt, "\t    -h     print this help message\n")
 		return false
+	}
+
+	if command.Flags["h"] {
+		return cmdList(tt, nil, command)
 	}
 
 	funcs := funcsMatchingCommand(tt, c, command)
@@ -104,7 +123,7 @@ func cmdList(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			numSummarized++
 		} else if isReachable && !command.Flags["s"] {
 			writeFmt(tt, "%s[_][%s] %s%s\n", tt.Escape.Magenta, reachStr, fun.String(), tt.Escape.Reset)
-		} else {
+		} else if !command.Flags["s"] && !command.Flags["r"] {
 			writeFmt(tt, "[_][%s] %s\n", reachStr, fun.String())
 		}
 	}

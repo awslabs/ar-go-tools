@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package dataflow
 
 import (
@@ -8,8 +22,9 @@ import (
 
 // This file contains all the instruction operations implemented for the intraprocedural analysis.
 
-func (state *analysisState) NewBlock(block *ssa.BasicBlock) {
+func (state *AnalysisState) NewBlock(block *ssa.BasicBlock) {
 	state.changeFlag = false
+	state.curBlock = block
 	// If the block has not been visited yet, declare that information has changed.
 	if !state.blocksSeen[block] {
 		state.blocksSeen[block] = true
@@ -17,71 +32,74 @@ func (state *analysisState) NewBlock(block *ssa.BasicBlock) {
 	}
 }
 
-func (state *analysisState) ChangedOnEndBlock() bool {
+func (state *AnalysisState) ChangedOnEndBlock() bool {
+	if state != nil && state.postBlockCallback != nil {
+		state.postBlockCallback(state)
+	}
 	return state.changeFlag
 }
 
 // Below are all the interface functions to implement the InstrOp interface
 
-func (state *analysisState) DoCall(call *ssa.Call) {
+func (state *AnalysisState) DoCall(call *ssa.Call) {
 	state.callCommonMark(call, call, call.Common())
 }
 
-func (state *analysisState) DoDefer(_ *ssa.Defer) {
+func (state *AnalysisState) DoDefer(_ *ssa.Defer) {
 	// Defers will be handled when RunDefers are handled
 }
 
-func (state *analysisState) DoGo(g *ssa.Go) {
+func (state *AnalysisState) DoGo(g *ssa.Go) {
 	state.callCommonMark(g.Value(), g, g.Common())
 }
 
-func (state *analysisState) DoDebugRef(*ssa.DebugRef) {
+func (state *AnalysisState) DoDebugRef(*ssa.DebugRef) {
 	// Do nothing, we ignore debug refs in SSA
 }
 
-func (state *analysisState) DoUnOp(x *ssa.UnOp) {
+func (state *AnalysisState) DoUnOp(x *ssa.UnOp) {
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoBinOp(binop *ssa.BinOp) {
+func (state *AnalysisState) DoBinOp(binop *ssa.BinOp) {
 	// If either operand is tainted, taint the value.
 	// We might want more precision later.
 	simpleTransitiveMarkPropagation(state, binop, binop.X, binop)
 	simpleTransitiveMarkPropagation(state, binop, binop.Y, binop)
 }
 
-func (state *analysisState) DoChangeInterface(x *ssa.ChangeInterface) {
+func (state *AnalysisState) DoChangeInterface(x *ssa.ChangeInterface) {
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoChangeType(x *ssa.ChangeType) {
+func (state *AnalysisState) DoChangeType(x *ssa.ChangeType) {
 	// Changing type doesn'state change taint
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoConvert(x *ssa.Convert) {
+func (state *AnalysisState) DoConvert(x *ssa.Convert) {
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
+func (state *AnalysisState) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoMakeInterface(x *ssa.MakeInterface) {
+func (state *AnalysisState) DoMakeInterface(x *ssa.MakeInterface) {
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoExtract(x *ssa.Extract) {
+func (state *AnalysisState) DoExtract(x *ssa.Extract) {
 	// TODO: tuple index sensitive propagation
 	simpleTransitiveMarkPropagation(state, x, x.Tuple, x)
 }
 
-func (state *analysisState) DoSlice(x *ssa.Slice) {
+func (state *AnalysisState) DoSlice(x *ssa.Slice) {
 	// Taking a slice propagates taint information
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoReturn(r *ssa.Return) {
+func (state *AnalysisState) DoReturn(r *ssa.Return) {
 	for _, result := range r.Results {
 		for _, origin := range state.getMarkedValues(r, result, "*") {
 			state.summary.AddReturnEdge(origin, r, nil)
@@ -89,24 +107,24 @@ func (state *analysisState) DoReturn(r *ssa.Return) {
 	}
 }
 
-func (state *analysisState) DoRunDefers(r *ssa.RunDefers) {
+func (state *AnalysisState) DoRunDefers(r *ssa.RunDefers) {
 	err := state.doDefersStackSimulation(r)
 	if err != nil {
 		state.errors[r] = err
 	}
 }
 
-func (state *analysisState) DoPanic(x *ssa.Panic) {
+func (state *AnalysisState) DoPanic(x *ssa.Panic) {
 	// TODO figure out how to handle this
 	// state.errors[x] = fmt.Errorf("panic is not handled yet")
 }
 
-func (state *analysisState) DoSend(x *ssa.Send) {
+func (state *AnalysisState) DoSend(x *ssa.Send) {
 	// Sending a tainted value over the channel taints the whole channel
 	simpleTransitiveMarkPropagation(state, x, x.X, x.Chan)
 }
 
-func (state *analysisState) DoStore(x *ssa.Store) {
+func (state *AnalysisState) DoStore(x *ssa.Store) {
 	pathSensitiveMarkPropagation(state, x, x.Val, x.Addr, "*")
 	// Special store
 	switch addr := x.Addr.(type) {
@@ -115,20 +133,20 @@ func (state *analysisState) DoStore(x *ssa.Store) {
 	}
 }
 
-func (state *analysisState) DoIf(*ssa.If) {
+func (state *AnalysisState) DoIf(*ssa.If) {
 	// Do nothing
 	// TODO: do we want to add path sensitivity, i.e. conditional on tainted value taints all values in condition?
 }
 
-func (state *analysisState) DoJump(*ssa.Jump) {
+func (state *AnalysisState) DoJump(*ssa.Jump) {
 	// Do nothing
 }
 
-func (state *analysisState) DoMakeChan(*ssa.MakeChan) {
+func (state *AnalysisState) DoMakeChan(*ssa.MakeChan) {
 	// Do nothing
 }
 
-func (state *analysisState) DoAlloc(x *ssa.Alloc) {
+func (state *AnalysisState) DoAlloc(x *ssa.Alloc) {
 	if state.shouldTrack(state.flowInfo.Config, x) {
 		state.markValue(x, x, NewMark(x, DefaultMark, ""))
 	}
@@ -136,24 +154,24 @@ func (state *analysisState) DoAlloc(x *ssa.Alloc) {
 	state.optionalSyntheticNode(x, x, x)
 }
 
-func (state *analysisState) DoMakeSlice(*ssa.MakeSlice) {
+func (state *AnalysisState) DoMakeSlice(*ssa.MakeSlice) {
 	// Do nothing
 }
 
-func (state *analysisState) DoMakeMap(*ssa.MakeMap) {
+func (state *AnalysisState) DoMakeMap(*ssa.MakeMap) {
 	// Do nothing
 }
 
-func (state *analysisState) DoRange(x *ssa.Range) {
+func (state *AnalysisState) DoRange(x *ssa.Range) {
 	// An iterator over a tainted value is tainted
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoNext(x *ssa.Next) {
+func (state *AnalysisState) DoNext(x *ssa.Next) {
 	simpleTransitiveMarkPropagation(state, x, x.Iter, x)
 }
 
-func (state *analysisState) DoFieldAddr(x *ssa.FieldAddr) {
+func (state *AnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 	// A FieldAddr may be a mark
 	state.optionalSyntheticNode(x, x, x)
 
@@ -171,7 +189,7 @@ func (state *analysisState) DoFieldAddr(x *ssa.FieldAddr) {
 	pathSensitiveMarkPropagation(state, x, x.X, x, field)
 }
 
-func (state *analysisState) DoField(x *ssa.Field) {
+func (state *AnalysisState) DoField(x *ssa.Field) {
 	// A field may be a mark
 	state.optionalSyntheticNode(x, x, x)
 
@@ -186,44 +204,44 @@ func (state *analysisState) DoField(x *ssa.Field) {
 	pathSensitiveMarkPropagation(state, x, x.X, x, field)
 }
 
-func (state *analysisState) DoIndexAddr(x *ssa.IndexAddr) {
+func (state *AnalysisState) DoIndexAddr(x *ssa.IndexAddr) {
 	// An indexing taints the value if either index or the indexed value is tainted
 	simpleTransitiveMarkPropagation(state, x, x.Index, x)
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoIndex(x *ssa.Index) {
+func (state *AnalysisState) DoIndex(x *ssa.Index) {
 	// An indexing taints the value if either index or array is tainted
 	simpleTransitiveMarkPropagation(state, x, x.Index, x)
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoLookup(x *ssa.Lookup) {
+func (state *AnalysisState) DoLookup(x *ssa.Lookup) {
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 	simpleTransitiveMarkPropagation(state, x, x.Index, x)
 }
 
-func (state *analysisState) DoMapUpdate(x *ssa.MapUpdate) {
+func (state *AnalysisState) DoMapUpdate(x *ssa.MapUpdate) {
 	// Adding a tainted key or value in a map taints the whole map
 	simpleTransitiveMarkPropagation(state, x, x.Key, x.Map)
 	simpleTransitiveMarkPropagation(state, x, x.Value, x.Map)
 }
 
-func (state *analysisState) DoTypeAssert(x *ssa.TypeAssert) {
+func (state *AnalysisState) DoTypeAssert(x *ssa.TypeAssert) {
 	simpleTransitiveMarkPropagation(state, x, x.X, x)
 }
 
-func (state *analysisState) DoMakeClosure(x *ssa.MakeClosure) {
+func (state *AnalysisState) DoMakeClosure(x *ssa.MakeClosure) {
 	state.addClosureNode(x)
 }
 
-func (state *analysisState) DoPhi(phi *ssa.Phi) {
+func (state *AnalysisState) DoPhi(phi *ssa.Phi) {
 	for _, edge := range phi.Edges {
 		simpleTransitiveMarkPropagation(state, phi, edge, phi)
 	}
 }
 
-func (state *analysisState) DoSelect(x *ssa.Select) {
+func (state *AnalysisState) DoSelect(x *ssa.Select) {
 	for _, selectState := range x.States {
 		switch selectState.Dir {
 		case types.RecvOnly:

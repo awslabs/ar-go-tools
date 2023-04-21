@@ -1,4 +1,16 @@
-// Copyright 2022 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package main
 
@@ -7,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
 
@@ -30,6 +43,7 @@ func init() {
 
 var (
 	buildmode = ssa.BuilderMode(0)
+	version   = "unknown"
 	commands  = map[string]func(tt *term.Terminal, cache *dataflow.Cache, command Command) bool{
 		cmdBuildGraphName:   cmdBuildGraph,
 		cmdCallersName:      cmdCallers,
@@ -117,7 +131,7 @@ func main() {
 	if *verbose {
 		pConfig.Verbose = true
 	}
-
+	logger.Printf(format.Faint(fmt.Sprintf("argot-cli version %s", version)))
 	logger.Printf(format.Faint("Reading sources") + "\n")
 	state.Args = flag.Args()
 	// Load the program
@@ -145,7 +159,7 @@ func main() {
 
 // run implements the command line tool, calling interpret for each command until the exit command is input
 func run(c *dataflow.Cache) {
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	oldState /* const */, err := term.MakeRaw(int(os.Stdin.Fd()))
 	state.TermWidth, _, _ = term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {
 		panic(err)
@@ -157,6 +171,11 @@ func run(c *dataflow.Cache) {
 	c.Err.SetOutput(tt)
 	c.Err.SetFlags(0)
 	tt.AutoCompleteCallback = AutoCompleteOfCache(c)
+	// if we get a SIGINT, we exit
+	// Capture ctrl+c and exit by returning
+	captureChan := make(chan os.Signal, 1)
+	signal.Notify(captureChan, os.Interrupt)
+	go exitOnReceive(captureChan, tt, oldState)
 	// the infinite loop terminates when interpret returns true
 	for {
 		command, _ := tt.ReadLine()
@@ -187,5 +206,13 @@ func interpret(tt *term.Terminal, c *dataflow.Cache, command string) bool {
 			cmdHelp(tt, c, cmd)
 		}
 		return false
+	}
+}
+
+func exitOnReceive(c chan os.Signal, tt *term.Terminal, oldState *term.State) {
+	for range c {
+		writeFmt(tt, format.Red("Caught SIGINT, exiting!"))
+		term.Restore(int(os.Stdin.Fd()), oldState)
+		os.Exit(0)
 	}
 }

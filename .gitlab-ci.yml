@@ -1,10 +1,11 @@
-image: registry.gitlab.aws.dev/cm-arg/argot/go-1.20:latest
+image: public.ecr.aws/docker/library/golang:latest
 
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
 
 stages:
   - build
+  - analyze
   - test
 
 compile:
@@ -15,19 +16,29 @@ compile:
   script:
     - go mod download
     - go build -o bin/compare cmd/compare/*.go
-    - go build -o bin/defer cmd/defer/*.go 
-    - go build -o bin/dependencies cmd/dependencies/*.go 
-    - go build -o bin/maypanic cmd/maypanic/*.go 
+    - go build -o bin/defer cmd/defer/*.go
+    - go build -o bin/dependencies cmd/dependencies/*.go
+    - go build -o bin/maypanic cmd/maypanic/*.go
     - go build -o bin/packagescan cmd/packagescan/*.go
-    - go build -o bin/reachability cmd/reachability/*.go 
-    - go build -o bin/render cmd/render/*.go 
-    - go build -o bin/static-commands cmd/static-commands/*.go 
-    - go build -o bin/statistics cmd/statistics/*.go 
+    - go build -o bin/reachability cmd/reachability/*.go
+    - go build -o bin/render cmd/render/*.go
+    - go build -o bin/static-commands cmd/static-commands/*.go
+    - go build -o bin/statistics cmd/statistics/*.go
     - go build -o bin/taint cmd/taint/*.go
-    - go build -o bin/argot-cli cmd/cli/*.go
+    - go build -o bin/argot-cli cmd/argot-cli/*.go
   artifacts:
     paths:
       - bin
+
+analyze:
+  tags:
+  - arch:amd64
+  - size:small
+  stage: analyze
+  script:
+  - go vet ./...
+  - go install golang.org/x/vuln/cmd/govulncheck@latest
+  - govulncheck ./...
 
 runtests:
   tags:
@@ -35,10 +46,9 @@ runtests:
   - size:large
   stage: test
   script:
-    - go vet ./analysis/...
     - go test -coverprofile=coverage.txt -covermode count ./analysis/...
     - go install github.com/boumenot/gocover-cobertura@latest
-    - gocover-cobertura < coverage.txt > coverage.xml 
+    - gocover-cobertura < coverage.txt > coverage.xml
   artifacts:
     reports:
       coverage_report:

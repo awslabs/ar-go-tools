@@ -1,3 +1,17 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package main
 
 import (
@@ -290,26 +304,56 @@ func cmdWhere(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 // cmdIntra shows the intermediate result of running the dataflow analysis.
 func cmdIntra(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	if c == nil {
-		if state.CurrentFunction != nil {
-			writeFmt(tt, "\t- %s%s%s: show the intermediate result of the intraprocedural analysis\n",
-				tt.Escape.Blue, cmdIntraName, tt.Escape.Reset)
+		writeFmt(tt, "\t- %s%s%s: show the intermediate result of the intraprocedural analysis\n",
+			tt.Escape.Blue, cmdIntraName, tt.Escape.Reset)
+		writeFmt(tt, "\t    -v    print the intermediate result every time a block is analyzed\n")
+		writeFmt(tt, "\t    -h    print this help message\n")
+
+		if state.CurrentFunction == nil {
+			WriteErr(tt, "You must first focus on a function to run this command!")
+			WriteErr(tt, "Example: > focus command-line-arguments.main")
 		}
+
 		return false
+	}
+
+	if command.Flags["h"] {
+		return cmdIntra(tt, nil, command)
 	}
 
 	if state.CurrentFunction == nil {
 		WriteErr(tt, "You must first focus on a function to run the intraprocedural analysis.")
 		return false
 	}
+	var flowInfo *dataflow.FlowInformation
 
-	result, err := dataflow.SingleFunctionAnalysis(c, state.CurrentFunction, true, 0,
-		taint.IsSourceNode)
+	// This is the function that will be called after each block
+	post := func(a *dataflow.AnalysisState) {
+		flowInfo = a.FlowInfo()
+		if command.Flags["v"] {
+			if block := a.Block(); block != nil {
+				writeFmt(tt, "\n")
+				writeFmt(tt, "---- New block analyzed ----\n")
+				showBlock(tt, c, block)
+				writeFmt(tt, "     State is ↴\n")
+			}
+			showFlowInformation(tt, c, flowInfo)
+		}
+	}
+
+	_, err := dataflow.SingleFunctionAnalysis(c, state.CurrentFunction, true, 0,
+		taint.IsSourceNode, post)
 	if err != nil {
 		WriteErr(tt, "Error while analyzing.")
 		return false
 	}
-	if result.FlowInformation != nil {
-		showFlowInformation(tt, c, result.FlowInformation)
+	if flowInfo != nil {
+		if command.Flags["v"] {
+			writeFmt(tt, "\n")
+			writeFmt(tt, " ⎏  Final state is ↴\n")
+		}
+		writeFmt(tt, "[function %s%s%s]\n", tt.Escape.Cyan, flowInfo.Function.Name(), tt.Escape.Reset)
+		showFlowInformation(tt, c, flowInfo)
 	} else {
 		WriteErr(tt, "Flow information is nil after analysis. Something went wrong?")
 	}
@@ -386,7 +430,6 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.Cache, fi *dataflow.Flow
 	if fi.Function == nil {
 		return
 	}
-	writeFmt(tt, "[function %s%s%s]\n", tt.Escape.Cyan, fi.Function.Name(), tt.Escape.Reset)
 
 	ssafuncs.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) {
 		writeFmt(tt, "• instruction %s%s%s @ %s:\n", tt.Escape.Blue, i, tt.Escape.Reset,
@@ -396,8 +439,19 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.Cache, fi *dataflow.Flow
 		for val := range fi.MarkedValues[i] {
 			mVals = append(mVals, val)
 		}
-		slices.SortFunc(mVals, func(a ssa.Value, b ssa.Value) bool { return a.Name() < b.Name() })
+		slices.SortFunc(mVals, func(a ssa.Value, b ssa.Value) bool {
+			if a == nil {
+				return true
+			}
+			if b == nil {
+				return false
+			}
+			return a.Name() < b.Name()
+		})
 		for _, val := range mVals {
+			if val == nil {
+				continue
+			}
 			marks := fi.MarkedValues[i][val]
 			x := val.Name()
 			_, isFunc := val.(*ssa.Function)
@@ -415,4 +469,27 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.Cache, fi *dataflow.Flow
 			writeFmt(tt, "%s\n", strings.Join(markStrings, " & "))
 		}
 	})
+}
+
+// showBlock pretty prints the block on the terminal
+func showBlock(tt *term.Terminal, c *dataflow.Cache, block *ssa.BasicBlock) {
+	writeFmt(tt, "block %d:\n", block.Index)
+	writeFmt(tt, "%s P:%d S:%d\n", block.Comment, len(block.Preds), len(block.Succs))
+
+	for _, instr := range block.Instrs {
+		writeFmt(tt, "\t")
+		switch v := instr.(type) {
+		case ssa.Value:
+			// Left-align the instruction.
+			if name := v.Name(); name != "" {
+				writeFmt(tt, "%s = ", name)
+			}
+			writeFmt(tt, instr.String())
+		case nil:
+			writeFmt(tt, "<deleted>")
+		default:
+			writeFmt(tt, instr.String())
+		}
+		writeFmt(tt, "\n")
+	}
 }

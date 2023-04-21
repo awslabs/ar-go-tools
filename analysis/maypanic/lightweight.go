@@ -1,4 +1,16 @@
-// Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package maypanic
 
@@ -166,7 +178,7 @@ func findErroredFunctions(goFunctions map[*ssa.Function][]token.Pos, recoverFunc
 	return result
 }
 
-var whitelist = []string{
+var allowList = []string{
 	"archive",
 	"bufio",
 	"builtin",
@@ -211,8 +223,8 @@ var whitelist = []string{
 	"unicode",
 	"unsafe"}
 
-func whitelisted(path string) bool {
-	for _, p := range whitelist {
+func allowListed(path string) bool {
+	for _, p := range allowList {
 		if p == path || strings.HasPrefix(path, p+"/") {
 			return true
 		}
@@ -234,7 +246,7 @@ func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 		if f.Pkg != nil {
 			pkg := f.Pkg.Pkg
 			path := pkg.Path()
-			if whitelisted(path) || IsExcluded(program, f, exclude) {
+			if allowListed(path) || IsExcluded(program, f, exclude) {
 				delete(goFunctions, f)
 			}
 		}
