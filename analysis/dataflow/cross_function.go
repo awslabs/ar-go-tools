@@ -9,7 +9,7 @@ import (
 
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/format"
-	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -577,7 +577,7 @@ func findClosureSummary(instr *ssa.MakeClosure, summaries map[*ssa.Function]*Sum
 
 // IsSourceFunction returns true if cfg identifies f as a source.
 func IsSourceFunction(cfg *config.Config, f *ssa.Function) bool {
-	pkg := packagescan.PackageNameFromFunction(f)
+	pkg := ssafuncs.PackageNameFromFunction(f)
 	return cfg.IsSource(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 }
 

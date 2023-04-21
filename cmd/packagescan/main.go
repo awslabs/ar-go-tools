@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"go/build"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/format"
 
-	"github.com/awslabs/argot/analysis/packagescan"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -25,16 +25,22 @@ import (
 type excludeFlags []string
 
 var (
-	jsonFlag = false
-	mode     = ssa.BuilderMode(0)
-	pkg      = ""
-	inexact  = false
+	jsonFlag    = false
+	all         = false
+	mode        = ssa.BuilderMode(0)
+	pkg         = ""
+	inexact     = false
+	targets     = ""
+	rawFilename = ""
 )
 
 func init() {
 	flag.BoolVar(&jsonFlag, "json", false, "output results as JSON")
 	flag.StringVar(&pkg, "p", "unsafe", "package or prefix to scan for")
 	flag.BoolVar(&inexact, "i", false, "inexact match - match all subpackages")
+	flag.BoolVar(&all, "a", false, "dump all the packages that are imported (ignore -i and -p)")
+	flag.StringVar(&targets, "target", "windows,linux,darwin", "target platform(s)")
+	flag.StringVar(&rawFilename, "raw", "", "filename for dump of raw symbol usage")
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 }
 
@@ -47,7 +53,9 @@ Use the -help flag to display the options.
 
 Examples:
 % packagescan -p unsafe hello.go
+% packagescan -p unsafe hello.go
 % packagescan -i -p github.com/aws/aws-sdk-go hello.go
+% packagescan -a hello.go
 `
 
 func main() {
@@ -68,10 +76,23 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, format.Faint("Scanning sources for "+pkg)+"\n")
 
-	// todo -- do we want to make the choice of platforms a command line argument?
-	// I made all three the default as a forcing function ("mechanism") to ensure that I
-	// would never again overlook Windows or only report on Mac-specific packages.
-	platforms := []string{"windows", "linux", "darwin"}
+	var rawFile io.WriteCloser
+
+	if rawFilename != "" {
+		rawFile, err := os.OpenFile(rawFilename, os.O_APPEND|os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer rawFile.Close()
+
+	}
+
+	if all {
+		pkg = "" // an empty package list will match everything.
+	}
+
+	platforms := strings.Split(targets, ",")
 	results := make(map[string]map[string]bool)
 
 	// todo -- technically we could run these in parallel...
@@ -86,7 +107,7 @@ func doMain() error {
 
 		allPkgs := analysis.AllPackages(ssautil.AllFunctions(program))
 
-		pkgs := packagescan.FindImporters(allPkgs, pkg, !inexact)
+		pkgs := FindImporters(allPkgs, pkg, !inexact, rawFile)
 		results[platform] = pkgs
 	}
 
@@ -96,8 +117,8 @@ func doMain() error {
 }
 
 // header works around the lack of a ternary operator.  If the platform uses a specific
-// package, I want to print the platform name and some spaces.  If it doesn't, I want
-// an equivalent number of blank spaces.
+// package, print the platform name and some spaces.  If it doesn't, instead print
+// an equivalent number of spaces.
 func header(s string, present bool) string {
 	if present {
 		return s + "  "
@@ -108,7 +129,7 @@ func header(s string, present bool) string {
 // sortedListFromMapKeys takes a map that is keyed by a string and returns
 // a sorted slice of those strings.  This might be useful enough to move
 // to analysis/utility.go.  We might want to relax it to accept any
-// key that is Stringable.  But I'm still figuring out these generics!
+// key that is Stringable.
 func sortedListFromMapKeys[V any](m map[string]V) []string {
 	ret := make([]string, 0, len(m))
 
@@ -122,8 +143,8 @@ func sortedListFromMapKeys[V any](m map[string]V) []string {
 
 // DumpResultsByOS creates a tabular representation of the output, printing fixed size columns for
 // the package's presence in each of the target OS's, followed by the name of the package name.
-// I chose to use the platform name rather than 'X' in case the list was long and any headers
-// scrolled off.  I could also have used the first letter of the platform as a mnemonic.
+// We use the platform name rather than 'X' in case the list was long and any headers
+// scrolled off.  We could also have used the first letter of the platform as a mnemonic.
 // results is a map from platform name to a set of packages that import the target on that platform
 func DumpResultsByOS(results map[string]map[string]bool) {
 	names := sortedListFromMapKeys(results) // list platforms deterministically

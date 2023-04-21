@@ -9,7 +9,7 @@ import (
 
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/packagescan"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
 )
@@ -145,7 +145,7 @@ func runIntraProceduralOnFunction(job singleFunctionJob,
 	runAnalysis := shouldBuildSummary(job.cache.Config, job.function)
 	if job.cache.Config.Verbose {
 		job.cache.Logger.Printf("Pkg: %-140s | Func: %s - %t\n",
-			packagescan.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
+			ssafuncs.PackageNameFromFunction(job.function), job.function.Name(), runAnalysis)
 	}
 	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function,
 		runAnalysis, dataflow.GetUniqueFunctionId(), isSourceNode)

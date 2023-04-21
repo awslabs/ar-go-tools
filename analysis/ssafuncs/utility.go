@@ -1,4 +1,4 @@
-package packagescan
+package ssafuncs
 
 import (
 	"fmt"
@@ -36,6 +36,9 @@ func packageFromErrorName(name string) string {
 	return name[:i]
 }
 
+// PackageTypeFromFunction returns the package associated with a function
+// If the function has a package, return that.
+// If the function is a method, return the package of its object
 func PackageTypeFromFunction(f *ssa.Function) *types.Package {
 	pkg := f.Package()
 	if pkg != nil {
@@ -51,6 +54,12 @@ func PackageTypeFromFunction(f *ssa.Function) *types.Package {
 	return nil
 }
 
+// PackageNameFromFunction returns the best possible package name for an ssa.Function
+// If the Function has a package, use that.
+// If the function doesn't have a package, check if it's a method and use
+// the package associated with its object
+// If none of those are true, it must be an error, so try to extract the package
+// name from the various error formats.
 func PackageNameFromFunction(f *ssa.Function) string {
 	if f == nil {
 		return ""
@@ -76,8 +85,8 @@ func PackageNameFromFunction(f *ssa.Function) string {
 	return ""
 }
 
-// DummyPos is a dummy position returned to indicate that no position could be found. Can also be used when generating
-// code, and the generated code has no position.
+// DummyPos is a dummy position returned to indicate that no position could be found.
+// Can also be used when generating code, and the generated code has no position.
 var DummyPos = token.Position{
 	Filename: "unknown",
 	Offset:   -1,

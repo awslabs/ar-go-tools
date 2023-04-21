@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/awslabs/argot/analysis/format"
-	"github.com/awslabs/argot/analysis/packagescan"
 	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 )
@@ -44,7 +43,7 @@ func printMissingSummaryMessage(c *Cache, callSite *CallNode) {
 	var typeString string
 	if callSite.Callee() == nil {
 		typeString = fmt.Sprintf("nil callee (in %s)",
-			packagescan.SafeFunctionPos(callSite.Graph().Parent).ValueOr(packagescan.DummyPos))
+			ssafuncs.SafeFunctionPos(callSite.Graph().Parent).ValueOr(ssafuncs.DummyPos))
 	} else {
 		typeString = callSite.Callee().Type().String()
 	}
@@ -54,11 +53,11 @@ func printMissingSummaryMessage(c *Cache, callSite *CallNode) {
 		c.Logger.Printf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
 
 		pos := callSite.Position(c)
-		if pos != packagescan.DummyPos {
+		if pos != ssafuncs.DummyPos {
 			c.Logger.Printf("|_ See call site: %s", pos)
 		} else {
-			opos := packagescan.SafeFunctionPos(callSite.Graph().Parent)
-			c.Logger.Printf("|_ See call site in %s", opos.ValueOr(packagescan.DummyPos))
+			opos := ssafuncs.SafeFunctionPos(callSite.Graph().Parent)
+			c.Logger.Printf("|_ See call site in %s", opos.ValueOr(ssafuncs.DummyPos))
 		}
 
 		methodFunc := callSite.CallSite().Common().Method
@@ -98,11 +97,11 @@ func printWarningSummaryNotConstructed(c *Cache, callSite *CallNode) {
 		format.Yellow("WARNING"),
 		format.Yellow(callSite.Graph().Parent.Name()))
 	pos := callSite.Position(c)
-	if pos != packagescan.DummyPos {
+	if pos != ssafuncs.DummyPos {
 		c.Logger.Printf(fmt.Sprintf("|_ See call site: %s", pos))
 	} else {
-		opos := packagescan.SafeFunctionPos(callSite.Graph().Parent)
-		c.Logger.Printf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(packagescan.DummyPos)))
+		opos := ssafuncs.SafeFunctionPos(callSite.Graph().Parent)
+		c.Logger.Printf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(ssafuncs.DummyPos)))
 	}
 
 	if callSite.CallSite() != nil {

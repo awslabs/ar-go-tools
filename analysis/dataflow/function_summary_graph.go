@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis/functional"
-	"github.com/awslabs/argot/analysis/packagescan"
 	"github.com/awslabs/argot/analysis/ssafuncs"
 	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/pointer"
@@ -90,7 +89,7 @@ func (a *ParamNode) Position(c *Cache) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -132,7 +131,7 @@ func (a *FreeVarNode) Position(c *Cache) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -171,7 +170,7 @@ func (a *CallNodeArg) Position(c *Cache) token.Position {
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -221,7 +220,7 @@ func (a *CallNode) Position(c *Cache) token.Position {
 	if a.callSite != nil && a.callSite.Common() != nil && a.callSite.Common().Value != nil {
 		return c.Program.Fset.Position(a.callSite.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -305,7 +304,7 @@ func (a *ReturnNode) Position(c *Cache) token.Position {
 	if a.parent != nil && a.parent.Parent != nil {
 		return c.Program.Fset.Position(a.parent.Parent.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -351,7 +350,7 @@ func (a *ClosureNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -409,7 +408,7 @@ func (a *BoundVarNode) Position(c *Cache) token.Position {
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -454,7 +453,7 @@ func (a *AccessGlobalNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -496,7 +495,7 @@ func (a *SyntheticNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 
@@ -536,7 +535,7 @@ func (a *BoundLabelNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
-		return packagescan.DummyPos
+		return ssafuncs.DummyPos
 	}
 }
 

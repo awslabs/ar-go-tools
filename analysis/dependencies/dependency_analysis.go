@@ -9,14 +9,14 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/packagescan"
 	"github.com/awslabs/argot/analysis/reachability"
+	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 func isDependency(f *ssa.Function) (bool, string) {
-	packagePath := packagescan.PackageNameFromFunction(f)
+	packagePath := ssafuncs.PackageNameFromFunction(f)
 	if packagePath == "" {
 		return false, ""
 	}
