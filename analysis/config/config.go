@@ -39,7 +39,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -214,12 +214,12 @@ func Load(filename string) (*Config, error) {
 		}
 	}
 
-	functional.Iter(config.Sanitizers, CompileRegexes)
-	functional.Iter(config.Sinks, CompileRegexes)
-	functional.Iter(config.Sources, CompileRegexes)
-	functional.Iter(config.StaticCommands, CompileRegexes)
-	functional.Iter(config.Validators, CompileRegexes)
-	functional.Iter(config.Filters, CompileRegexes)
+	utils.Iter(config.Sanitizers, CompileRegexes)
+	utils.Iter(config.Sinks, CompileRegexes)
+	utils.Iter(config.Sources, CompileRegexes)
+	utils.Iter(config.StaticCommands, CompileRegexes)
+	utils.Iter(config.Validators, CompileRegexes)
+	utils.Iter(config.Filters, CompileRegexes)
 	return &config, nil
 }
 

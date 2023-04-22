@@ -31,8 +31,8 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/defers"
-	"github.com/awslabs/argot/analysis/format"
 	"github.com/awslabs/argot/analysis/reachability"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -54,7 +54,7 @@ var (
 	buildmode = ssa.InstantiateGenerics
 )
 
-const usage = `Compare the set of reachable functions according to pointer-based analysis, type analysis and 
+const usage = `Compare the set of reachable functions according to pointer-based analysis, type analysis and
 compiled binary.
 Usage:
   compare [options] <package path(s)>
@@ -88,7 +88,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, utils.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -99,15 +99,15 @@ func main() {
 	var cg *callgraph.Graph
 
 	// Compute the call graph
-	fmt.Fprintln(os.Stderr, format.Faint("Computing call graph"))
+	fmt.Fprintln(os.Stderr, utils.Faint("Computing call graph"))
 	start := time.Now()
 	cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
 	cgComputeDuration := time.Since(start).Seconds()
 	if err != nil {
-		fmt.Fprint(os.Stderr, format.Red("Could not compute callgraph: %v\n", err))
+		fmt.Fprint(os.Stderr, utils.Red("Could not compute callgraph: %v\n", err))
 		return
 	} else {
-		fmt.Fprint(os.Stderr, format.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+		fmt.Fprint(os.Stderr, utils.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	}
 
 	//Load the binary
@@ -126,7 +126,8 @@ func main() {
 		for entry := range dataflow.CallGraphReachable(cg, false, false) {
 			callgraphReachable[entry.String()] = true
 		}
-		fmt.Fprintf(os.Stderr, "Callgraph reachability reports %d reachable nodes out of %v total\n", len(callgraphReachable), len(cg.Nodes))
+		fmt.Fprintf(os.Stderr, "Callgraph reachability reports %d reachable nodes out of %v total\n",
+			len(callgraphReachable), len(cg.Nodes))
 
 		reachable := findReachableNames(program)
 		allfuncs := findAllFunctionNames(program)
@@ -160,7 +161,8 @@ func main() {
 			return stripLeadingAsterisk(allsorted[i]) < stripLeadingAsterisk(allsorted[j])
 		})
 		for _, f := range allsorted {
-			fmt.Printf("%c %c %c %c %s\n", ch(allfuncs[f], 'A'), ch(reachable[f], 'r'), ch(callgraphReachable[f], 'c'), ch(symbols[f], 's'), f)
+			fmt.Printf("%c %c %c %c %s\n", ch(allfuncs[f], 'A'), ch(reachable[f], 'r'), ch(callgraphReachable[f], 'c'),
+				ch(symbols[f], 's'), f)
 		}
 		fmt.Printf("%d total functions\n", len(all))
 		fmt.Printf("Missing %d from allfuncs, %d from callgraph, %d from reachability, %d from binary\n",
@@ -309,7 +311,8 @@ func visitStaticReachableEdges(program *ssa.Program, root *ssa.Function, remaini
 								visited[callee] = true
 							}
 							calleePosition := program.Fset.Position(callee.Pos())
-							edge := dynamicEdge{callerPosition.Filename, callerPosition.Line, calleePosition.Filename, calleePosition.Line}
+							edge := dynamicEdge{callerPosition.Filename, callerPosition.Line,
+								calleePosition.Filename, calleePosition.Line}
 							edge = normalizeDynamicEdge(edge)
 							delete(remainingCalledges, edge)
 						}
@@ -357,7 +360,8 @@ func reportUncoveredDynamicEdges(program *ssa.Program, static *callgraph.Graph, 
 							if edge.Site == ins {
 								c := edge.Callee.Func
 								calleePosition := program.Fset.Position(c.Pos())
-								edge := dynamicEdge{callerPosition.Filename, callerPosition.Line, calleePosition.Filename, calleePosition.Line}
+								edge := dynamicEdge{callerPosition.Filename, callerPosition.Line,
+									calleePosition.Filename, calleePosition.Line}
 								edge = normalizeDynamicEdge(edge)
 								delete(remainingCalledges, edge)
 							}
@@ -371,7 +375,8 @@ func reportUncoveredDynamicEdges(program *ssa.Program, static *callgraph.Graph, 
 								visitStaticReachableEdges(program, callee, remainingCalledges)
 							}
 							calleePosition := program.Fset.Position(callee.Pos())
-							edge := dynamicEdge{callerPosition.Filename, callerPosition.Line, calleePosition.Filename, calleePosition.Line}
+							edge := dynamicEdge{callerPosition.Filename, callerPosition.Line, calleePosition.Filename,
+								calleePosition.Line}
 							delete(remainingCalledges, edge)
 						}
 					}
@@ -385,8 +390,8 @@ func reportUncoveredDynamicEdges(program *ssa.Program, static *callgraph.Graph, 
 								if edge.Site == defInstr {
 									c := edge.Callee.Func
 									calleePosition := program.Fset.Position(c.Pos())
-									edge := dynamicEdge{callerPosition.Filename, callerPosition.Line, calleePosition.Filename, calleePosition.Line}
-									// fmt.Printf("%v:%v -> %v:%v\n", edge.callerFile, edge.callerLine, edge.calleeFile, edge.calleeLine)
+									edge := dynamicEdge{callerPosition.Filename, callerPosition.Line,
+										calleePosition.Filename, calleePosition.Line}
 									edge = normalizeDynamicEdge(edge)
 									delete(remainingCalledges, edge)
 								}

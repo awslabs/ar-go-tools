@@ -21,7 +21,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -172,8 +172,8 @@ func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, gra
 		frontier = frontier[:len(frontier)-1]
 		findCallees(program, f, func(fnext *ssa.Function) {
 			if graph != nil {
-				from := ssafuncs.PackageNameFromFunction(f)
-				to := ssafuncs.PackageNameFromFunction(fnext)
+				from := lang.PackageNameFromFunction(f)
+				to := lang.PackageNameFromFunction(fnext)
 				if from != to {
 					graph.Add(from, to)
 				}

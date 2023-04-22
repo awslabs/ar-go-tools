@@ -29,7 +29,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/testutils"
 	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
@@ -72,7 +72,7 @@ func getExpectedSourceToSink(reldir string, dir string) map[LPos]map[LPos]bool {
 		}
 		if info.IsDir() {
 			d0, err := parser.ParseDir(fset, info.Name(), nil, parser.ParseComments)
-			functional.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
+			utils.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
 			return err
 		}
 		return nil
@@ -167,7 +167,7 @@ func runTest(t *testing.T, dirName string, files []string) {
 
 	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder so we can
 	// load an entire module with subpackages
-	program, cfg := utils.LoadTest(t, ".", files)
+	program, cfg := testutils.LoadTest(t, ".", files)
 
 	result, err := Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
 	if err != nil {

@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package astfuncs
-
-import "github.com/dave/dst"
-
-// This file contains function to manage variable names within the scope of an existing program
-// To create a new variable with name in the same scope as node n, use NewName(n, name).
+// The lang package contains functions to help manipulate different objects representing elements of the Go language
+// and the ssa.
+package lang
 
 import (
 	"fmt"
 	"go/token"
 	"go/types"
 
+	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 )
+
+// This file contains function to manage variable names within the scope of an existing program
+// To create a new variable with name in the same scope as node n, use NewName(n, name).
 
 type NodeTree struct {
 	Parent *NodeTree

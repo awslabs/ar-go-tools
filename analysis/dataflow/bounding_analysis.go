@@ -19,7 +19,7 @@ import (
 	"go/types"
 	"strconv"
 
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -65,7 +65,7 @@ func RunBoundingAnalysis(cache *Cache) (BoundingMap, error) {
 	}
 	bindMap := map[ssa.Value]map[*BindingInfo]bool{}
 	for function := range cache.ReachableFunctions(false, false) {
-		ssafuncs.IterateInstructions(function, func(_ int, instr ssa.Instruction) {
+		lang.IterateInstructions(function, func(_ int, instr ssa.Instruction) {
 			InspectInstruction(cache, bindMap, instr)
 		})
 	}

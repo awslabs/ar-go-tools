@@ -21,8 +21,8 @@ import (
 	"os"
 	"strings"
 
-	ac "github.com/awslabs/argot/analysis/astfuncs"
-	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/argot/analysis/utils"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/dstutil"
@@ -36,7 +36,7 @@ func InsertNilChecks(packages []*decorator.Package) {
 
 // nilCheckInsertTransform inserts nil checks at c when c is the toplevel block in a function and the parent function
 // has parameters with comments that contain @nonnil
-func nilCheckInsertTransform(fi *ac.FuncInfo, c *dstutil.Cursor) bool {
+func nilCheckInsertTransform(fi *lang.FuncInfo, c *dstutil.Cursor) bool {
 	if blockStmt, ok := c.Node().(*dst.BlockStmt); ok {
 		parent := fi.NodeMap[blockStmt].Parent
 		if parent == nil {
@@ -63,9 +63,9 @@ func nilCheckInsertTransform(fi *ac.FuncInfo, c *dstutil.Cursor) bool {
 
 			if astParam, ok := fi.Decorator.Ast.Nodes[param].(*ast.Field); b && ok {
 				paramType := fi.Package.TypesInfo.TypeOf(astParam.Type)
-				if !ac.IsNillableType(paramType) {
+				if !lang.IsNillableType(paramType) {
 					fmt.Fprintf(os.Stderr, "WARNING: %s cannot be nil, @nonnil is superfluous.\n",
-						strings.Join(functional.Map(param.Names, func(i *dst.Ident) string { return i.Name }), ","))
+						strings.Join(utils.Map(param.Names, func(i *dst.Ident) string { return i.Name }), ","))
 					b = false
 				}
 			}
@@ -106,11 +106,11 @@ func nilCheckInsertTransform(fi *ac.FuncInfo, c *dstutil.Cursor) bool {
 // newNilCheckStmt returns a new if name == nil { .. } statement that checks whether the variable with name
 // is nil. The body of the check depends on the type of the function. If the function returns an error, then
 // the body will return an error. Otherwise, it will panic.
-func newNilCheckStmt(fi *ac.FuncInfo, name string) (*dst.IfStmt, error) {
+func newNilCheckStmt(fi *lang.FuncInfo, name string) (*dst.IfStmt, error) {
 	cond := &dst.BinaryExpr{
 		X:    &dst.Ident{Name: name},
 		Op:   token.EQL,
-		Y:    ac.NewNil(),
+		Y:    lang.NewNil(),
 		Decs: dst.BinaryExprDecorations{},
 	}
 
@@ -142,7 +142,7 @@ func newNilCheckStmt(fi *ac.FuncInfo, name string) (*dst.IfStmt, error) {
 			"// TODO: consider making the return type of the function a tuple with an error"}}
 		body = &dst.BlockStmt{
 			List: []dst.Stmt{
-				&dst.ExprStmt{X: ac.NewPanic(ac.NewFalse())},
+				&dst.ExprStmt{X: lang.NewPanic(lang.NewFalse())},
 			},
 			RbraceHasNoPos: false,
 			Decs:           dst.BlockStmtDecorations{},
@@ -180,7 +180,7 @@ func declReturnsErrorLast(fd *dst.FuncDecl) bool {
 	return false
 }
 
-func generateReturnOnlyError(fi *ac.FuncInfo, msg string) ([]dst.Expr, error) {
+func generateReturnOnlyError(fi *lang.FuncInfo, msg string) ([]dst.Expr, error) {
 	fd := fi.Decl
 	if !declReturnsErrorLast(fd) {
 		return nil, fmt.Errorf("%s does not return an error", fd.Name.Name)
@@ -197,13 +197,13 @@ func generateReturnOnlyError(fi *ac.FuncInfo, msg string) ([]dst.Expr, error) {
 					Path: "fmt",
 					Decs: dst.IdentDecorations{},
 				},
-				Args: []dst.Expr{ac.NewString(msg)},
+				Args: []dst.Expr{lang.NewString(msg)},
 			}
 			results = append(results, e)
 		} else {
 			typNode := fi.Decorator.Map.Ast.Nodes[resultType].(*ast.Field).Type
 			typ := fi.Package.TypesInfo.TypeOf(typNode)
-			zeroVal, err := ac.ZeroValueExpr(typ)
+			zeroVal, err := lang.ZeroValueExpr(typ)
 			if err != nil {
 				return nil, err
 			}

@@ -19,11 +19,11 @@ import (
 	"testing"
 
 	. "github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/analysis/testutils"
 )
 
 func TestRunBoundingAnalysis(t *testing.T) {
-	program, config := utils.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
+	program, config := testutils.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
 	c, err := BuildFullCache(log.Default(), config, program)
 	if err != nil {
 		t.Errorf("error building cache: %s", err)

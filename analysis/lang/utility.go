@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ssafuncs
+package lang
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ import (
 
 	"golang.org/x/tools/go/ssa"
 
-	. "github.com/awslabs/argot/analysis/functional"
+	. "github.com/awslabs/argot/analysis/utils"
 )
 
 // at this point, the f.String contains something like this:

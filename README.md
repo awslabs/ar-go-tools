@@ -205,7 +205,7 @@ compute subsets of the callgraph, strongly connected components, etc.
 - `refactor` contains implements refactoring operations,
 - `rendering` implements rendering functions, such as printing the SSA output or representing the callgraph in various
 formats,
-- `ssafuncs` contains function for manipulating the Go SSA form (from the x/tools packages),
+- `lang` contains function for manipulating the Go SSA form (from the x/tools packages),
 - `static-commands` implements the static command detection analysis,
 - `summaries` defines dataflow summaries of some functions,
 - `taint` implements the taint analysis

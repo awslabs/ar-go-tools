@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/functional"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"github.com/awslabs/argot/analysis/summaries"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -103,7 +103,7 @@ func (a *ParamNode) Position(c *Cache) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -145,7 +145,7 @@ func (a *FreeVarNode) Position(c *Cache) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -184,7 +184,7 @@ func (a *CallNodeArg) Position(c *Cache) token.Position {
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -234,7 +234,7 @@ func (a *CallNode) Position(c *Cache) token.Position {
 	if a.callSite != nil && a.callSite.Common() != nil && a.callSite.Common().Value != nil {
 		return c.Program.Fset.Position(a.callSite.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -318,7 +318,7 @@ func (a *ReturnNode) Position(c *Cache) token.Position {
 	if a.parent != nil && a.parent.Parent != nil {
 		return c.Program.Fset.Position(a.parent.Parent.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -364,7 +364,7 @@ func (a *ClosureNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -424,7 +424,7 @@ func (a *BoundVarNode) Position(c *Cache) token.Position {
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -469,7 +469,7 @@ func (a *AccessGlobalNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -511,7 +511,7 @@ func (a *SyntheticNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -551,7 +551,7 @@ func (a *BoundLabelNode) Position(c *Cache) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
-		return ssafuncs.DummyPos
+		return lang.DummyPos
 	}
 }
 
@@ -638,7 +638,7 @@ func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 	returnNode := &ReturnNode{parent: g, id: g.nodeCounter}
 	g.nodeCounter += 1
 	for _, block := range f.Blocks {
-		last := ssafuncs.LastInstr(block)
+		last := lang.LastInstr(block)
 		if last != nil {
 			retInstr, isReturn := last.(*ssa.Return)
 			if isReturn {
@@ -744,7 +744,7 @@ func (g *SummaryGraph) AddCallInstr(c *Cache, instr ssa.CallInstruction) {
 		return
 	}
 
-	args := ssafuncs.GetArgs(instr)
+	args := lang.GetArgs(instr)
 	callees, err := c.ResolveCallee(instr, true)
 	if err != nil {
 		c.Logger.Fatalf("missing information in cache (%s), could not resolve callee in instruction %s", err,
@@ -1601,7 +1601,7 @@ func (a *CallNode) FullString() string {
 		elt = append(elt, s2)
 	}
 
-	args := strings.Join(functional.Map(a.Args(), func(cg *CallNodeArg) string { return cg.String() }), ",")
+	args := strings.Join(utils.Map(a.Args(), func(cg *CallNodeArg) string { return cg.String() }), ",")
 	if len(args) > 0 {
 		elt = append(elt, fmt.Sprintf("args : [%s]", args))
 	}

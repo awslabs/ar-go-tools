@@ -18,10 +18,9 @@ import (
 	"fmt"
 	"go/token"
 
-	"github.com/awslabs/argot/analysis/astfuncs"
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/defers"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -89,11 +88,11 @@ func (state *AnalysisState) initialize() {
 	populateInstrPrevMap(state, firstInstr, function)
 
 	// Initialize alias maps
-	ssafuncs.IterateValues(function, func(_ int, v ssa.Value) {
+	lang.IterateValues(function, func(_ int, v ssa.Value) {
 		state.paramAliases[v] = map[*ssa.Parameter]bool{}
 		state.freeVarAliases[v] = map[*ssa.FreeVar]bool{}
 	})
-	ssafuncs.IterateInstructions(function, func(_ int, i ssa.Instruction) {
+	lang.IterateInstructions(function, func(_ int, i ssa.Instruction) {
 		state.flowInfo.MarkedValues[i] = map[ssa.Value]map[Mark]bool{}
 	})
 
@@ -109,7 +108,7 @@ func (state *AnalysisState) initialize() {
 	}
 
 	// Special cases: load instructions in closures
-	ssafuncs.IterateInstructions(function,
+	lang.IterateInstructions(function,
 		func(_ int, i ssa.Instruction) {
 			if load, ok := i.(*ssa.UnOp); ok && load.Op == token.MUL {
 				for _, fv := range function.FreeVars {
@@ -121,7 +120,7 @@ func (state *AnalysisState) initialize() {
 		})
 
 	// Collect global variable uses
-	ssafuncs.IterateInstructions(function,
+	lang.IterateInstructions(function,
 		func(_ int, i ssa.Instruction) {
 			var operands []*ssa.Value
 			operands = i.Operands(operands)
@@ -158,7 +157,7 @@ func populateInstrPrevMap(tracker *AnalysisState, firstInstr ssa.Instruction, fu
 
 	// Special case: because of panics, we assume the previous instruction of a rundefer can be any instruction before
 	// it
-	ssafuncs.IterateInstructions(function, func(_ int, instr ssa.Instruction) {
+	lang.IterateInstructions(function, func(_ int, instr ssa.Instruction) {
 		if _, ok := instr.(*ssa.RunDefers); ok {
 			for _, block := range function.Blocks {
 				for _, i := range block.Instrs {
@@ -270,7 +269,7 @@ func (state *AnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstru
 	// Mark call
 	state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, ""))
 
-	args := ssafuncs.GetArgs(instr)
+	args := lang.GetArgs(instr)
 	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
 		// Mark call argument
@@ -289,7 +288,7 @@ func (state *AnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstru
 // one of the function's parameters. This keeps tracks of data flows to the function parameters that a
 // caller might see.
 func (state *AnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
-	if astfuncs.IsNillableType(out.Type()) {
+	if lang.IsNillableType(out.Type()) {
 		for aliasedParam := range state.paramAliases[out] {
 			state.summary.AddParamEdge(in, aliasedParam, nil)
 		}
@@ -361,7 +360,7 @@ func (state *AnalysisState) markAllAliases(i ssa.Instruction, mark Mark, ptr poi
 	}
 
 	// Iterate over all values in the function, scanning for aliases of ptr, and mark the values that match
-	ssafuncs.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
+	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
 		if ptr2, ptrExists := state.cache.PointerAnalysis.IndirectQueries[value]; ptrExists && ptr2.MayAlias(ptr) {
 			state.markValue(i, value, mark)
 		}
@@ -436,7 +435,7 @@ func addAliases[T comparable](x T, f *ssa.Function, ptr *pointer.Pointer, aliase
 			}
 		}
 
-		ssafuncs.IterateValues(f, func(_ int, v ssa.Value) {
+		lang.IterateValues(f, func(_ int, v ssa.Value) {
 			ptr2 := oracleIndirect(v)
 			if ptr2 != nil && ptr.MayAlias(*ptr2) {
 				aliases[v][x] = true

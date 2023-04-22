@@ -20,9 +20,9 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/closures"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/utils"
+
 	"golang.org/x/exp/slices"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
@@ -46,18 +46,18 @@ func cmdStats(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 
 		return false
 	}
-	if functional.Contains(command.Args, "help") {
+	if utils.Contains(command.Args, "help") {
 		return cmdStats(tt, nil, command)
 	}
-	all := functional.Contains(command.Args, "all")
+	all := utils.Contains(command.Args, "all")
 
 	// general ssa stats
-	if all || functional.Contains(command.Args, "general") || len(command.Args) == 0 {
+	if all || utils.Contains(command.Args, "general") || len(command.Args) == 0 {
 		doGeneralStats(tt, c, command)
 	}
 
 	// stats about closures
-	if all || functional.Contains(command.Args, "closures") {
+	if all || utils.Contains(command.Args, "closures") {
 		doClosureStats(tt, c, command)
 	}
 
@@ -76,7 +76,7 @@ func doGeneralStats(tt *term.Terminal, c *dataflow.Cache, _ Command) {
 }
 
 func doClosureStats(tt *term.Terminal, c *dataflow.Cache, command Command) {
-	stats, err := closures.Stats(c)
+	stats, err := analysis.ComputeClosureUsageStats(c)
 	if err != nil {
 		WriteErr(tt, "could not compute closure statistics.")
 	}

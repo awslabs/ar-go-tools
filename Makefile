@@ -31,7 +31,7 @@ static-commands: go.mod cmd/static-commands/*.go analysis/*.go analysis/static-c
 refactor: go.mod cmd/refactor/*.go analysis/*.go analysis/refactor/*.go
 	go build -o bin/refactor cmd/refactor/*.go
 
-render: go.mod cmd/render/*.go analysis/*.go analysis/rendering/*.go
+render: go.mod cmd/render/*.go analysis/*.go
 	go build -o bin/render cmd/render/*.go
 
 taint: go.mod cmd/taint/*.go analysis/*.go analysis/taint/*.go

@@ -29,9 +29,8 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/config"
 	callgraph2 "github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/format"
+	"github.com/awslabs/argot/analysis/utils"
 
-	render "github.com/awslabs/argot/analysis/rendering"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -105,7 +104,7 @@ func main() {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, utils.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -117,22 +116,22 @@ func main() {
 
 	// Compute the call graph
 	if *cgOut != "" || *htmlOut != "" {
-		fmt.Fprintf(os.Stderr, format.Faint("Computing call graph")+"\n")
+		fmt.Fprintf(os.Stderr, utils.Faint("Computing call graph")+"\n")
 		start := time.Now()
 		cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
 		cgComputeDuration := time.Since(start).Seconds()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, format.Red("Could not compute callgraph: %v", err))
+			fmt.Fprintf(os.Stderr, utils.Red("Could not compute callgraph: %v", err))
 			return
 		} else {
-			fmt.Fprintf(os.Stderr, format.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+			fmt.Fprintf(os.Stderr, utils.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 		}
 	}
 
 	if *cgOut != "" {
-		fmt.Fprintf(os.Stderr, format.Faint("Writing call graph in "+*cgOut+"\n"))
+		fmt.Fprintf(os.Stderr, utils.Faint("Writing call graph in "+*cgOut+"\n"))
 
-		err = render.GraphvizToFile(renderConfig, cg, *cgOut)
+		err = GraphvizToFile(renderConfig, cg, *cgOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v", err)
 			return
@@ -140,15 +139,15 @@ func main() {
 	}
 
 	if *htmlOut != "" {
-		fmt.Fprintf(os.Stderr, format.Faint("Writing call graph in "+*htmlOut+"\n"))
-		err = render.WriteHtmlCallgraph(program, cg, *htmlOut)
+		fmt.Fprintf(os.Stderr, utils.Faint("Writing call graph in "+*htmlOut+"\n"))
+		err = WriteHtmlCallgraph(program, cg, *htmlOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v\n", err)
 		}
 	}
 
 	if *dfOut != "" {
-		fmt.Fprintf(os.Stderr, format.Faint("Writing cross-function dataflow graph in "+*dfOut+"\n"))
+		fmt.Fprintf(os.Stderr, utils.Faint("Writing cross-function dataflow graph in "+*dfOut+"\n"))
 
 		f, err := os.Create(*dfOut)
 		if err != nil {
@@ -156,15 +155,15 @@ func main() {
 			return
 		}
 		defer f.Close()
-		if err := render.WriteCrossFunctionGraph(renderConfig, logger, program, f); err != nil {
+		if err := WriteCrossFunctionGraph(renderConfig, logger, program, f); err != nil {
 			fmt.Fprintf(os.Stderr, "Could not generate cross-function flow graph:\n%v", err)
 			return
 		}
 	}
 
 	if ssaOutFlag != nil && *ssaOutFlag != "" {
-		fmt.Fprintf(os.Stderr, format.Faint("Generating SSA in ")+*ssaOutFlag+"\n")
-		err := render.OutputSsaPackages(program, *ssaOutFlag)
+		fmt.Fprintf(os.Stderr, utils.Faint("Generating SSA in ")+*ssaOutFlag+"\n")
+		err := OutputSsaPackages(program, *ssaOutFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print ssa form:\n%v\n", err)
 			return

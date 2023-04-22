@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"github.com/awslabs/argot/analysis/taint"
 	"golang.org/x/exp/slices"
 	"golang.org/x/term"
@@ -81,9 +81,9 @@ func cmdPackage(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		return false
 	}
 
-	pkgName := ssafuncs.PackageNameFromFunction(state.CurrentFunction)
+	pkgName := lang.PackageNameFromFunction(state.CurrentFunction)
 	writeFmt(tt, "Package %s:\n", pkgName)
-	pkg := ssafuncs.PackageTypeFromFunction(state.CurrentFunction)
+	pkg := lang.PackageTypeFromFunction(state.CurrentFunction)
 	if pkg == nil {
 		WriteErr(tt, "Could not retrieve package object.")
 		return false
@@ -232,7 +232,7 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	}
 
 	values1 := map[ssa.Value]bool{}
-	ssafuncs.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+	lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
 		if value != nil {
 			if r.MatchString(value.Name()) {
 				values1[value] = true
@@ -243,7 +243,7 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	for v1 := range values1 {
 		if ptr, ptrExists := c.PointerAnalysis.Queries[v1]; ptrExists {
 			writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
-			ssafuncs.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+			lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
 				if value != nil {
 					printAliases(tt, c, value, ptr)
 				}
@@ -251,7 +251,7 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		}
 		if ptr, ptrExists := c.PointerAnalysis.IndirectQueries[v1]; ptrExists {
 			writeFmt(tt, "[indirect] %s may alias with:\n", v1.Name())
-			ssafuncs.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+			lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
 				if value != nil {
 					printAliases(tt, c, value, ptr)
 				}
@@ -431,7 +431,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.Cache, fi *dataflow.Flow
 		return
 	}
 
-	ssafuncs.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) {
+	lang.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) {
 		writeFmt(tt, "• instruction %s%s%s @ %s:\n", tt.Escape.Blue, i, tt.Escape.Reset,
 			c.Program.Fset.Position(i.Pos()))
 		// sort and print value -> marks

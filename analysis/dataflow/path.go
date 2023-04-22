@@ -18,9 +18,8 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/astfuncs"
-	. "github.com/awslabs/argot/analysis/functional"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
+	. "github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -53,20 +52,20 @@ func (c Condition) String() string {
 //     Possible extensions would include computing the expression of the boolean condition, which would allow more
 //     general patterns like checking that a returned error is non-nil
 //   - v must hold the same data as one of the arguments of the call
-//     The logic for "same data" is in the ValuesWithSameData function of the ssafuncs package.
+//     The logic for "same data" is in the ValuesWithSameData function of the lang package.
 func (c Condition) IsPredicateTo(v ssa.Value) bool {
 	if c.Value == nil {
 		return false
 	}
-	vset := ssafuncs.ValuesWithSameData(v)
+	vset := lang.ValuesWithSameData(v)
 	switch x := c.Value.(type) {
 	case *ssa.Call:
 		if x.Call.IsInvoke() {
 			sig := x.Call.Method.Type()
 			if sig, ok := sig.Underlying().(*types.Signature); ok {
-				if astfuncs.IsPredicateFunctionType(sig) {
+				if lang.IsPredicateFunctionType(sig) {
 					for _, arg := range x.Call.Args {
-						for same := range ssafuncs.ValuesWithSameData(arg) {
+						for same := range lang.ValuesWithSameData(arg) {
 							if vset[same] {
 								return true
 							}
@@ -77,7 +76,7 @@ func (c Condition) IsPredicateTo(v ssa.Value) bool {
 		} else {
 			sig := x.Call.Value.Type()
 			if sig, ok := sig.Underlying().(*types.Signature); ok {
-				if astfuncs.IsPredicateFunctionType(sig) {
+				if lang.IsPredicateFunctionType(sig) {
 					for _, arg := range x.Call.Args {
 						if vset[arg] {
 							return true
@@ -159,11 +158,11 @@ func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) PathInf
 		} else {
 			var path []ssa.Instruction
 
-			path = append(path, InstructionsBetween(begin.Block(), begin, ssafuncs.LastInstr(begin.Block()))...)
+			path = append(path, InstructionsBetween(begin.Block(), begin, lang.LastInstr(begin.Block()))...)
 			for _, block := range blockPath[1 : len(blockPath)-1] {
 				path = append(path, block.Instrs...)
 			}
-			path = append(path, InstructionsBetween(end.Block(), ssafuncs.FirstInstr(end.Block()), end)...)
+			path = append(path, InstructionsBetween(end.Block(), lang.FirstInstr(end.Block()), end)...)
 			return PathInformation{
 				Blocks:       blockPath,
 				Instructions: path,
@@ -188,7 +187,7 @@ func SimplePathCondition(blocks []*ssa.BasicBlock) ConditionInfo {
 
 	for i, block := range blocks {
 		if i < len(blocks)-1 {
-			last := ssafuncs.LastInstr(block)
+			last := lang.LastInstr(block)
 			if last != nil {
 				switch branching := last.(type) {
 				case *ssa.If:
@@ -228,8 +227,8 @@ func InstructionsBetween(block *ssa.BasicBlock, begin ssa.Instruction, end ssa.I
 // from begin to end. Returns nil iff there is no such path.
 func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.BasicBlock {
 	visited := make(map[*ssa.BasicBlock]int)
-	t := &ssafuncs.BlockTree{Block: begin, Parent: nil, Children: []*ssafuncs.BlockTree{}}
-	queue := []*ssafuncs.BlockTree{t}
+	t := &lang.BlockTree{Block: begin, Parent: nil, Children: []*lang.BlockTree{}}
+	queue := []*lang.BlockTree{t}
 	// BFS - optimize?
 	for {
 		if len(queue) == 0 {

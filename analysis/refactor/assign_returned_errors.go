@@ -19,7 +19,7 @@ import (
 	"go/token"
 	"go/types"
 
-	ac "github.com/awslabs/argot/analysis/astfuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/dstutil"
@@ -52,7 +52,7 @@ func ReturnsError(signature types.Object) (*types.Tuple, bool) {
 	return nil, false
 }
 
-func assignErrorsTransform(funcInfo *ac.FuncInfo, c *dstutil.Cursor) bool {
+func assignErrorsTransform(funcInfo *lang.FuncInfo, c *dstutil.Cursor) bool {
 	n := c.Node()
 
 	switch x := n.(type) {
@@ -90,7 +90,7 @@ func assignErrorsTransform(funcInfo *ac.FuncInfo, c *dstutil.Cursor) bool {
 						// Body: panic(false)
 						Body: &dst.BlockStmt{
 							List: []dst.Stmt{
-								&dst.ExprStmt{X: ac.NewPanic(ac.NewFalse())},
+								&dst.ExprStmt{X: lang.NewPanic(lang.NewFalse())},
 							},
 						},
 						// Else empty

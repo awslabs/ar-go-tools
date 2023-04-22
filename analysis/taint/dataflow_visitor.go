@@ -20,7 +20,8 @@ import (
 	"strings"
 
 	df "github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/format"
+
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -44,8 +45,8 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 
 	logger := c.Logger
 	logger.Printf("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Printf("==> Source: %s\n", format.Purple(source.Node.String()))
-	logger.Printf("%s %s\n", format.Green("Found at"), source.Node.Position(c))
+	logger.Printf("==> Source: %s\n", utils.Purple(source.Node.String()))
+	logger.Printf("%s %s\n", utils.Green("Found at"), source.Node.Position(c))
 
 	numAlarms := 0
 
@@ -88,8 +89,8 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 		if !elt.Node.Graph().Constructed {
 			if c.Config.Verbose {
 				logger.Printf("%s: summary has not been built for %s.",
-					format.Yellow("WARNING"),
-					format.Yellow(elt.Node.Graph().Parent.Name()))
+					utils.Yellow("WARNING"),
+					utils.Yellow(elt.Node.Graph().Parent.Name()))
 			}
 			// In that case, continue as there is no information on data flow
 			continue
@@ -424,7 +425,7 @@ func checkNoGoRoutine(c *df.Cache, reportedLocs map[*ssa.Go]bool, node *df.CallN
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
 		if !reportedLocs[goroutine] {
 			reportedLocs[goroutine] = true
-			c.Logger.Printf(format.Yellow("WARNING: Data flows to Go call."))
+			c.Logger.Printf(utils.Yellow("WARNING: Data flows to Go call."))
 			c.Logger.Printf("-> Position: %s", node.Position(c))
 		}
 	}

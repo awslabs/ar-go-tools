@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package ssafuncs provides functions to operate on the SSA representation of a program.
+// Package lang provides functions to operate on the SSA representation of a program.
 // It provides an interface to implement visitors for SSA instructions.
-package ssafuncs
+package lang
 
 import (
-	. "github.com/awslabs/argot/analysis/functional"
+	. "github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 

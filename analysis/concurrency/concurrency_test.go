@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	. "github.com/awslabs/argot/analysis/functional"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/analysis/testutils"
+	. "github.com/awslabs/argot/analysis/utils"
 )
 
 func loadConcurrencyTestResult(t *testing.T, subDir string) AnalysisResult {
@@ -36,7 +36,7 @@ func loadConcurrencyTestResult(t *testing.T, subDir string) AnalysisResult {
 		panic(err)
 	}
 
-	program, cfg := utils.LoadTest(t, ".", []string{})
+	program, cfg := testutils.LoadTest(t, ".", []string{})
 	ar, err := Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)

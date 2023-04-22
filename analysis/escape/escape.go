@@ -16,8 +16,9 @@
 // that are local to the current function and goroutine. This information can be used to recover
 // local reasoning even in the face of concurrent goroutine evolution. This implementation is inspired
 // by:
-//   John Whaley and Martin Rinard. 1999. Compositional pointer and escape analysis for Java programs.
-//   SIGPLAN Not. 34, 10 (Oct. 1999), 187–206. https://doi.org/10.1145/320385.320400
+//
+//	John Whaley and Martin Rinard. 1999. Compositional pointer and escape analysis for Java programs.
+//	SIGPLAN Not. 34, 10 (Oct. 1999), 187–206. https://doi.org/10.1145/320385.320400
 package escape
 
 import (
@@ -28,7 +29,7 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/awslabs/argot/analysis/astfuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -473,7 +474,9 @@ func (g *NodeGroup) ParamNode(param ssa.Value) *Node {
 // This function is required because globals are not represented in a uniform way with
 // parameters/locals/freevars. In the SSA form, a global is implicitly a pointer to the
 // its type. So if we have a global decl:
-//     var global *S
+//
+//	var global *S
+//
 // then in the SSA, the global name effectively has type **S. We can see this in that the
 // operation global = &S{} turns into `t0 = alloc S; *global = t0`. The current graph
 // representation makes the global node directly the node that stores the value, rather
@@ -543,7 +546,7 @@ func transferFunction(instr ssa.Instruction, g *EscapeGraph, nodes *NodeGroup) {
 		}
 		return
 	case *ssa.Store:
-		if astfuncs.IsNillableType(instrType.Val.Type()) {
+		if lang.IsNillableType(instrType.Val.Type()) {
 			valNode := nodes.ValueNode(instrType.Val)
 			addrNode := nodes.ValueNode(instrType.Addr)
 			addrPointees := g.Deref(addrNode)
@@ -560,7 +563,7 @@ func transferFunction(instr ssa.Instruction, g *EscapeGraph, nodes *NodeGroup) {
 	case *ssa.UnOp:
 		// Check if this is a load operation
 		if _, ok := instrType.X.Type().(*types.Pointer); ok && instrType.Op == token.MUL {
-			if astfuncs.IsNillableType(instrType.Type()) {
+			if lang.IsNillableType(instrType.Type()) {
 				gen := func() *Node {
 					return nodes.LoadNode(instr, PointerDerefType(PointerDerefType(instrType.X.Type().Underlying())))
 				}
@@ -606,7 +609,7 @@ func transferFunction(instr ssa.Instruction, g *EscapeGraph, nodes *NodeGroup) {
 
 	case *ssa.Defer:
 	case *ssa.Field:
-		if astfuncs.IsNillableType(instrType.Type()) {
+		if lang.IsNillableType(instrType.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
 		}
 		return
@@ -623,14 +626,14 @@ func transferFunction(instr ssa.Instruction, g *EscapeGraph, nodes *NodeGroup) {
 			return
 		}
 	case *ssa.Lookup:
-		if astfuncs.IsNillableType(instrType.Type().Underlying()) {
+		if lang.IsNillableType(instrType.Type().Underlying()) {
 			gen := func() *Node { return nodes.LoadNode(instr, instrType.Type()) }
 			g.Load(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), gen)
 		}
 		return
 	case *ssa.MapUpdate:
 		// TODO: refactor this into a generic store like .Load and .WeakAssign
-		if astfuncs.IsNillableType(instrType.Value.Type()) {
+		if lang.IsNillableType(instrType.Value.Type()) {
 			valNode := nodes.ValueNode(instrType.Value)
 			addrNode := nodes.ValueNode(instrType.Map)
 			addrPointees := g.Deref(addrNode)
@@ -641,7 +644,7 @@ func transferFunction(instr ssa.Instruction, g *EscapeGraph, nodes *NodeGroup) {
 				}
 			}
 		}
-		if astfuncs.IsNillableType(instrType.Key.Type()) {
+		if lang.IsNillableType(instrType.Key.Type()) {
 			valNode := nodes.ValueNode(instrType.Key)
 			addrNode := nodes.ValueNode(instrType.Map)
 			addrPointees := g.Deref(addrNode)
@@ -671,12 +674,12 @@ func transferFunction(instr ssa.Instruction, g *EscapeGraph, nodes *NodeGroup) {
 		g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
 		return
 	case *ssa.TypeAssert:
-		if astfuncs.IsNillableType(instrType.Type()) {
+		if lang.IsNillableType(instrType.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
 		}
 		return
 	case *ssa.Convert:
-		if astfuncs.IsNillableType(instrType.Type()) {
+		if lang.IsNillableType(instrType.Type()) {
 			// TODO: conversion between string and []byte or []rune should be treated as an allocation
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
 		}
@@ -685,12 +688,12 @@ func transferFunction(instr ssa.Instruction, g *EscapeGraph, nodes *NodeGroup) {
 		g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
 		return
 	case *ssa.ChangeType:
-		if astfuncs.IsNillableType(instrType.X.Type()) {
+		if lang.IsNillableType(instrType.X.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
 		}
 		return
 	case *ssa.Phi:
-		if astfuncs.IsNillableType(instrType.Type()) {
+		if lang.IsNillableType(instrType.Type()) {
 			for _, v := range instrType.Edges {
 				g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(v), instrType.Type())
 			}
@@ -700,7 +703,7 @@ func transferFunction(instr ssa.Instruction, g *EscapeGraph, nodes *NodeGroup) {
 		if _, ok := instrType.Tuple.(*ssa.Phi); ok {
 			panic("Extract from phi?")
 		}
-		if astfuncs.IsNillableType(instrType.Type()) {
+		if lang.IsNillableType(instrType.Type()) {
 			// Note: this is not tuple-sensitive. Because the SSA does not appear to separate the extract
 			// op from the instruction that generates the tuple, we could save the precise information about
 			// tuples on the side and lookup the correct node(s) here as opposed to collapsing into a single
@@ -808,7 +811,7 @@ func EscapeSummary(f *ssa.Function) (nodes *NodeGroup, graph *EscapeGraph) {
 			if retInstr, ok := block.Instrs[len(block.Instrs)-1].(*ssa.Return); ok {
 				returnResult.Merge(blockEndState)
 				for _, rValue := range retInstr.Results {
-					if astfuncs.IsNillableType(rValue.Type()) {
+					if lang.IsNillableType(rValue.Type()) {
 						returnResult.WeakAssign(returnNode, nodes.ValueNode(rValue), rValue.Type())
 					}
 				}

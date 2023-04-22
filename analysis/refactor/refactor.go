@@ -15,21 +15,21 @@
 package refactor
 
 import (
-	ac "github.com/awslabs/argot/analysis/astfuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/dstutil"
 )
 
-type Transform func(*ac.FuncInfo, *dstutil.Cursor) bool
+type Transform func(*lang.FuncInfo, *dstutil.Cursor) bool
 
 // buildScopeTree collects information about the AST and links children nodes to parent nodes in the funcInfo.NodeMap
-func buildScopeTree(funcInfo *ac.FuncInfo, c *dstutil.Cursor) bool {
+func buildScopeTree(funcInfo *lang.FuncInfo, c *dstutil.Cursor) bool {
 	n := c.Node()
 	p := c.Parent()
 	if n != nil && p != nil {
 		if parent, ok := funcInfo.NodeMap[p]; ok {
-			cur := &ac.NodeTree{Parent: parent, Label: n}
+			cur := &lang.NodeTree{Parent: parent, Label: n}
 			funcInfo.NodeMap[n] = cur
 		}
 	}
@@ -45,10 +45,10 @@ func WithScope(packages []*decorator.Package, post Transform) {
 			// Create a new decorator, which will track the mapping between ast and dst nodes
 			for _, decl := range dstFile.Decls {
 				if funcDecl, ok := decl.(*dst.FuncDecl); ok {
-					m := map[dst.Node]*ac.NodeTree{}
-					root := &ac.NodeTree{Parent: nil, Label: funcDecl}
+					m := map[dst.Node]*lang.NodeTree{}
+					root := &lang.NodeTree{Parent: nil, Label: funcDecl}
 					m[funcDecl] = root
-					fi := &ac.FuncInfo{
+					fi := &lang.FuncInfo{
 						Package:   pack,
 						Decorator: pack.Decorator,
 						File:      dstFile,

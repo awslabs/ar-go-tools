@@ -23,8 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/format"
-
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -333,7 +332,7 @@ func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 			fmt.Printf("no unrecovered panics found\n")
 		} else {
 			for _, function := range functionNames {
-				fmt.Printf(format.Red("unrecovered panic")+" in %s\n", function.name)
+				fmt.Printf(utils.Red("unrecovered panic")+" in %s\n", function.name)
 				fmt.Printf("  %s\n", function.name)
 				fmt.Printf("  %s\n", locationString(program, function.f))
 				creators := findCreators(program, function.f, goFunctions)
@@ -342,7 +341,7 @@ func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 				}
 			}
 
-			fmt.Printf("%s\n", format.Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
+			fmt.Printf("%s\n", utils.Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
 		}
 	}
 }
