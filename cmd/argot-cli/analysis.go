@@ -26,9 +26,9 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/escape"
-	"github.com/awslabs/argot/analysis/functional"
 	"github.com/awslabs/argot/analysis/summaries"
 	"github.com/awslabs/argot/analysis/taint"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
@@ -282,7 +282,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			shouldCreateSummary = func(f *ssa.Function) bool {
 				b := isForced || (!summaries.IsStdFunction(f) &&
 					summaries.IsUserDefinedFunction(f) &&
-					functional.Contains(funcs, f) &&
+					utils.Contains(funcs, f) &&
 					!c.HasExternalContractSummary(f))
 				if b {
 					createCounter++
@@ -292,7 +292,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			shouldBuildSummary = func(c *dataflow.Cache, f *ssa.Function) bool {
 				b := isForced || (!summaries.IsStdFunction(f) &&
 					summaries.IsUserDefinedFunction(f) &&
-					functional.Contains(funcs, f) &&
+					utils.Contains(funcs, f) &&
 					!c.HasExternalContractSummary(f))
 				if b {
 					buildCounter++
@@ -303,14 +303,14 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			// below that threshold, all functions that match are summarize.
 			// useful for testing.
 			shouldCreateSummary = func(f *ssa.Function) bool {
-				b := functional.Contains(funcs, f)
+				b := utils.Contains(funcs, f)
 				if b {
 					createCounter++
 				}
 				return b
 			}
 			shouldBuildSummary = func(_ *dataflow.Cache, f *ssa.Function) bool {
-				b := functional.Contains(funcs, f)
+				b := utils.Contains(funcs, f)
 				if b {
 					buildCounter++
 				}

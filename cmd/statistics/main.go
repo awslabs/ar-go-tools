@@ -19,11 +19,13 @@ import (
 	"flag"
 	"fmt"
 	"go/build"
+	"log"
 	"os"
 
 	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/format"
+
 	"github.com/awslabs/argot/analysis/maypanic"
+	"github.com/awslabs/argot/analysis/utils"
 
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
@@ -37,6 +39,7 @@ var (
 	jsonFlag              = false
 	mode                  = ssa.BuilderMode(0)
 	exclude  excludeFlags = []string{}
+	prefix                = ""
 )
 
 func (exclude *excludeFlags) String() string {
@@ -52,7 +55,7 @@ func init() {
 	flag.BoolVar(&jsonFlag, "json", false, "output results as JSON")
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 	flag.Var(&exclude, "exclude", "path to exclude from analysis")
-
+	flag.StringVar(&prefix, "prefix", "", "prefix of packages to print statistics for")
 }
 
 const usage = `Analyze your Go packages.
@@ -60,6 +63,7 @@ const usage = `Analyze your Go packages.
 Usage:
   ssa_statistics package...
   ssa_statistics source.go
+  ssa_statistics -prefix myrepo/mypackage package...
 
 Use the -help flag to display the options.
 
@@ -83,14 +87,14 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, format.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, utils.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, format.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, utils.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
 	excludeAbsolute := maypanic.MakeAbsolute(exclude)
@@ -109,7 +113,7 @@ func doMain() error {
 	}
 
 	//analysis.DeferStats(&allFunctions)
-	analysis.ClosureStats(&allFunctions)
+	analysis.ClosureLocationsStats(log.Default(), &allFunctions, prefix)
 
 	return nil
 }

@@ -24,7 +24,7 @@ import (
 
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -177,7 +177,7 @@ func runSingleFunctionJob(job singleFunctionJob,
 	}
 	if job.cache.Config.Verbose {
 		job.cache.Logger.Printf("Pkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
-			ssafuncs.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
+			lang.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
 			result.Time.Seconds())
 	}
 

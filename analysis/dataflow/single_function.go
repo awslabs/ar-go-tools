@@ -19,12 +19,10 @@ import (
 	"go/types"
 	"time"
 
-	"github.com/awslabs/argot/analysis/astfuncs"
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/defers"
-	"github.com/awslabs/argot/analysis/format"
-	"github.com/awslabs/argot/analysis/functional"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -91,7 +89,7 @@ func run(cache *Cache, flowInfo *FlowInformation, sm *SummaryGraph,
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
 		err := cache.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
-			sm.Parent.String(), format.Yellow("analysis unsound!")))
+			sm.Parent.String(), utils.Yellow("analysis unsound!")))
 		if err != nil {
 			return err
 		}
@@ -99,14 +97,14 @@ func run(cache *Cache, flowInfo *FlowInformation, sm *SummaryGraph,
 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
 	state.initialize()
 	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
-	// defined generally in the ssafuncs package, but all the details, including transfer functions, are in the
+	// defined generally in the lang package, but all the details, including transfer functions, are in the
 	// single_function_monotone_analysis.go file
-	ssafuncs.RunForwardIterative(state, sm.Parent)
+	lang.RunForwardIterative(state, sm.Parent)
 	// Once the analysis has run, we have a state that maps each instruction to an abstract value at that instruction.
 	// This abstract valuation maps values to the values that flow into them. This can directly be translated into
 	// a dataflow graph, with special attention for closures.
 	// Nest, we build the edges of the summary. The functions for edge building are in this file
-	ssafuncs.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
+	lang.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
 	// Synchronize the edges of global variables
 	sm.SyncGlobals()
 	// Mark the summary as constructed
@@ -153,7 +151,7 @@ func (state *AnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 		}
 	}
 
-	args := ssafuncs.GetArgs(callInstr)
+	args := lang.GetArgs(callInstr)
 	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
 		// Special case: a global is received directly as an argument
@@ -178,12 +176,12 @@ func (state *AnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 				}
 				// Add edges to parameters if the call may modify caller's arguments
 				for x := range state.paramAliases[arg] {
-					if astfuncs.IsNillableType(x.Type()) {
+					if lang.IsNillableType(x.Type()) {
 						state.summary.AddParamEdge(mark, x, nil)
 					}
 				}
 				for y := range state.freeVarAliases[arg] {
-					if astfuncs.IsNillableType(y.Type()) {
+					if lang.IsNillableType(y.Type()) {
 						state.summary.AddFreeVarEdge(mark, y, nil)
 					}
 				}
@@ -229,7 +227,7 @@ func (state *AnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			// Check the state of the analysis at the final return to see which parameters of free variables might
 			// have been modified by the function
 			for mark := range marks {
-				if astfuncs.IsNillableType(val.Type()) {
+				if lang.IsNillableType(val.Type()) {
 					for aliasedParam := range state.paramAliases[markedValue] {
 						state.summary.AddParamEdge(mark, aliasedParam, nil)
 					}
@@ -305,7 +303,7 @@ func (state *AnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal
 	// If the destination instruction is a Defer and the destination value is a reference (pointer type) then the
 	// taint will always flow to it, since the Defer will be executed after the source.
 	if _, isDefer := dest.(*ssa.Defer); isDefer {
-		if astfuncs.IsNillableType(destVal.Type()) {
+		if lang.IsNillableType(destVal.Type()) {
 			return ConditionInfo{Satisfiable: true}
 		} else {
 			return state.checkPathBetweenInstructions(sourceInstr, dest)
@@ -317,7 +315,7 @@ func (state *AnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal
 			// This is often the case when there is a flow through a closure that binds variables by reference, and
 			// the variable is tainted after the closure is created.
 			if _, isFunc := asVal.Type().Underlying().(*types.Signature); isFunc {
-				return functional.FindMap(*asVal.Referrers(),
+				return utils.FindMap(*asVal.Referrers(),
 					func(i ssa.Instruction) ConditionInfo { return state.checkPathBetweenInstructions(sourceInstr, i) },
 					func(c ConditionInfo) bool { return c.Satisfiable }).ValueOr(ConditionInfo{Satisfiable: false})
 			}

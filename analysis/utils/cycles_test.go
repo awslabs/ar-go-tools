@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package graph_ops
+package utils_test
 
 import (
-	"log"
 	"os"
 	"path"
 	"runtime"
@@ -24,11 +23,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/testutils"
 	"github.com/awslabs/argot/analysis/utils"
 	"github.com/yourbasic/graph"
 	"golang.org/x/exp/slices"
+	"golang.org/x/tools/go/pointer"
+	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 func TestFindAllElementaryCycles(t *testing.T) {
@@ -40,21 +41,30 @@ func TestFindAllElementaryCycles(t *testing.T) {
 		panic(err)
 	}
 
-	program, config := utils.LoadTest(t, ".", []string{})
+	program, _ := testutils.LoadTest(t, ".", []string{})
 
-	cache, err := dataflow.BuildFullCache(log.New(os.Stdout, "[TEST] ", log.Flags()), config, program)
+	pCfg := &pointer.Config{
+		Mains:           ssautil.MainPackages(program.AllPackages()),
+		Reflection:      false,
+		BuildCallGraph:  true,
+		Queries:         make(map[ssa.Value]struct{}),
+		IndirectQueries: make(map[ssa.Value]struct{}),
+	}
+
+	// Do the pointer analysis
+	pointerAnalysis, err := pointer.Analyze(pCfg)
 
 	if err != nil {
 		t.Errorf("Error building cache: %s", err)
 	}
 
-	cg := cache.PointerAnalysis.CallGraph
-	iterator := NewCallgraphIterator(cg)
+	cg := pointerAnalysis.CallGraph
+	iterator := utils.NewCallgraphIterator(cg)
 	stats := graph.Check(iterator)
 	t.Logf("Stats:\n\tsize: %d\n\tmulti: %d\n\tloops: %d\n\tisolated: %d",
 		stats.Size, stats.Multi, stats.Loops, stats.Isolated)
 
-	cycles := FindAllElementaryCycles(iterator)
+	cycles := utils.FindAllElementaryCycles(iterator)
 	expected := []string{"242", "25102", "2642", "383", "3983"}
 
 	n := len(cycles)
@@ -64,7 +74,7 @@ func TestFindAllElementaryCycles(t *testing.T) {
 		results := make([]string, n)
 		for i, cycle := range cycles {
 			results[i] = strings.Join(
-				functional.Map(cycle, func(_x int64) string { return strconv.Itoa(int(_x)) }),
+				utils.Map(cycle, func(_x int64) string { return strconv.Itoa(int(_x)) }),
 				"")
 		}
 		sort.Slice(results, func(i, j int) bool { return results[i] < results[j] })

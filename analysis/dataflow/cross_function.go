@@ -22,8 +22,8 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/format"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -335,8 +335,8 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 		if !elt.Node.Graph().Constructed {
 			if c.Config.Verbose {
 				logger.Printf("%s: summary has not been built for %s.",
-					format.Yellow("WARNING"),
-					format.Yellow(elt.Node.Graph().Parent.Name()))
+					utils.Yellow("WARNING"),
+					utils.Yellow(elt.Node.Graph().Parent.Name()))
 			}
 			// In that case, continue as there is no information on data flow
 			continue
@@ -616,7 +616,7 @@ func findClosureSummary(instr *ssa.MakeClosure, summaries map[*ssa.Function]*Sum
 
 // IsSourceFunction returns true if cfg identifies f as a source.
 func IsSourceFunction(cfg *config.Config, f *ssa.Function) bool {
-	pkg := ssafuncs.PackageNameFromFunction(f)
+	pkg := lang.PackageNameFromFunction(f)
 	return cfg.IsSource(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 }
 

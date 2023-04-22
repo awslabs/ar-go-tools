@@ -17,7 +17,7 @@ package dataflow
 import (
 	"go/types"
 
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -60,7 +60,7 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 				addValueQuery(pCfg, fv)
 			}
 
-			ssafuncs.IterateInstructions(function, func(_ int, instruction ssa.Instruction) {
+			lang.IterateInstructions(function, func(_ int, instruction ssa.Instruction) {
 				addInstructionQuery(pCfg, instruction)
 			})
 		}

@@ -19,7 +19,7 @@ import (
 
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -70,7 +70,7 @@ func RunAnalysis(cache *dataflow.Cache) (AnalysisResult, error) {
 	ids := []*ssa.Go{nil}
 	callId = 1
 	for function := range cache.ReachableFunctions(false, false) {
-		ssafuncs.IterateInstructions(function,
+		lang.IterateInstructions(function,
 			func(_ int, i ssa.Instruction) {
 				if goCall, isGo := i.(*ssa.Go); isGo {
 					goCalls[goCall] = callId

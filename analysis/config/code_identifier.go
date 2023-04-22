@@ -18,7 +18,7 @@ import (
 	"go/types"
 	"regexp"
 
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -121,7 +121,7 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 }
 
 func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
-	pkg := ssafuncs.PackageNameFromFunction(f)
+	pkg := lang.PackageNameFromFunction(f)
 	if cid == nil {
 		return false
 	}

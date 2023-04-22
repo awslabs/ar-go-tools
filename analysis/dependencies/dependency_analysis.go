@@ -21,14 +21,14 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/awslabs/argot/analysis/lang"
 	"github.com/awslabs/argot/analysis/reachability"
-	"github.com/awslabs/argot/analysis/ssafuncs"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 func isDependency(f *ssa.Function) (bool, string) {
-	packagePath := ssafuncs.PackageNameFromFunction(f)
+	packagePath := lang.PackageNameFromFunction(f)
 	if packagePath == "" {
 		return false, ""
 	}

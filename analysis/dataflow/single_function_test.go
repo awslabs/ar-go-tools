@@ -25,7 +25,7 @@ import (
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/summaries"
 	"github.com/awslabs/argot/analysis/taint"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/analysis/testutils"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -33,7 +33,7 @@ func TestFunctionSummaries(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
 	// Loading the program for testdata/src/dataflow/summaries/main.go
-	program, cfg := utils.LoadTest(t, dir, []string{})
+	program, cfg := testutils.LoadTest(t, dir, []string{})
 	cache, err := dataflow.BuildFullCache(log.Default(), cfg, program)
 	if err != nil {
 		t.Fatalf("failed to build cache: %v", err)

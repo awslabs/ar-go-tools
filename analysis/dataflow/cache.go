@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -351,7 +351,7 @@ func (c *Cache) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map
 		return map[*ssa.Function]CalleeInfo{callee: {Callee: callee, Type: Static}}, nil
 	}
 
-	mKey := ssafuncs.InstrMethodKey(instr)
+	mKey := lang.InstrMethodKey(instr)
 
 	if useContracts {
 		// If it is a method, try first to find an interface contract, and return the implementation that is used

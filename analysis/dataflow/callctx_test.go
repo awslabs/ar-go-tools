@@ -23,13 +23,13 @@ import (
 	"testing"
 
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/analysis/testutils"
 )
 
 func TestComputeCtxts(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callctx")
-	program, config := utils.LoadTest(t, dir, []string{})
+	program, config := testutils.LoadTest(t, dir, []string{})
 	cache, err := dataflow.BuildFullCache(log.Default(), config, program)
 	if err != nil {
 		t.Fatalf("error building cache: %s", err)

@@ -19,7 +19,7 @@ import (
 	"go/types"
 
 	"github.com/awslabs/argot/analysis/config"
-	. "github.com/awslabs/argot/analysis/functional"
+	. "github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 

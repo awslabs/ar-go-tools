@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awslabs/argot/analysis/format"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -57,21 +57,21 @@ func printMissingSummaryMessage(c *Cache, callSite *CallNode) {
 	var typeString string
 	if callSite.Callee() == nil {
 		typeString = fmt.Sprintf("nil callee (in %s)",
-			ssafuncs.SafeFunctionPos(callSite.Graph().Parent).ValueOr(ssafuncs.DummyPos))
+			lang.SafeFunctionPos(callSite.Graph().Parent).ValueOr(lang.DummyPos))
 	} else {
 		typeString = callSite.Callee().Type().String()
 	}
-	c.Logger.Printf(format.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
+	c.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
 		callSite.String(), typeString)))
 	if callSite.Callee() != nil && callSite.CallSite() != nil {
 		c.Logger.Printf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
 
 		pos := callSite.Position(c)
-		if pos != ssafuncs.DummyPos {
+		if pos != lang.DummyPos {
 			c.Logger.Printf("|_ See call site: %s", pos)
 		} else {
-			opos := ssafuncs.SafeFunctionPos(callSite.Graph().Parent)
-			c.Logger.Printf("|_ See call site in %s", opos.ValueOr(ssafuncs.DummyPos))
+			opos := lang.SafeFunctionPos(callSite.Graph().Parent)
+			c.Logger.Printf("|_ See call site in %s", opos.ValueOr(lang.DummyPos))
 		}
 
 		methodFunc := callSite.CallSite().Common().Method
@@ -93,7 +93,7 @@ func printMissingClosureSummaryMessage(c *Cache, closureNode *ClosureNode) {
 	} else {
 		instrStr = closureNode.Instr().String()
 	}
-	c.Logger.Printf(format.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+	c.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
 		closureNode.String(), instrStr)))
 	if closureNode.Instr() != nil {
 		c.Logger.Printf("| Please add closure %s to summaries",
@@ -108,18 +108,18 @@ func printWarningSummaryNotConstructed(c *Cache, callSite *CallNode) {
 	}
 
 	c.Logger.Printf("| %s: summary has not been built for %s.",
-		format.Yellow("WARNING"),
-		format.Yellow(callSite.Graph().Parent.Name()))
+		utils.Yellow("WARNING"),
+		utils.Yellow(callSite.Graph().Parent.Name()))
 	pos := callSite.Position(c)
-	if pos != ssafuncs.DummyPos {
+	if pos != lang.DummyPos {
 		c.Logger.Printf(fmt.Sprintf("|_ See call site: %s", pos))
 	} else {
-		opos := ssafuncs.SafeFunctionPos(callSite.Graph().Parent)
-		c.Logger.Printf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(ssafuncs.DummyPos)))
+		opos := lang.SafeFunctionPos(callSite.Graph().Parent)
+		c.Logger.Printf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(lang.DummyPos)))
 	}
 
 	if callSite.CallSite() != nil {
-		methodKey := ssafuncs.InstrMethodKey(callSite.CallSite())
+		methodKey := lang.InstrMethodKey(callSite.CallSite())
 		if methodKey.IsSome() {
 			c.Logger.Printf(fmt.Sprintf("| Or add %s to dataflow contracts", methodKey.ValueOr("?")))
 		}

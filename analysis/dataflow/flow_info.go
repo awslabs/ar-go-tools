@@ -19,7 +19,7 @@ import (
 	"io"
 
 	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/ssafuncs"
+	"github.com/awslabs/argot/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -51,7 +51,7 @@ func (fi *FlowInformation) Show(w io.Writer) {
 		return
 	}
 	fmt.Fprintf(w, "Function %s:\n", fi.Function.Name())
-	ssafuncs.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) { fi.ShowAt(w, i) })
+	lang.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) { fi.ShowAt(w, i) })
 }
 
 // ShowAt pretty-prints the abstract state of the analysis at instruction i. A line is printed for every SSA value with

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ssafuncs
+package lang
 
 import (
-	"github.com/awslabs/argot/analysis/functional"
+	"github.com/awslabs/argot/analysis/utils"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -203,7 +203,7 @@ func RunForwardIterative(op IterativeAnalysis, function *ssa.Function) {
 			if op.ChangedOnEndBlock() {
 				for _, nextBlock := range function.Blocks {
 					if HasPathTo(block, nextBlock, pathMem) {
-						if !functional.Contains(worklist, nextBlock) {
+						if !utils.Contains(worklist, nextBlock) {
 							worklist = append(worklist, nextBlock)
 						}
 					}

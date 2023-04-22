@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/analysis/testutils"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -64,7 +64,7 @@ func TestSimpleEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, _ := utils.LoadTest(t, ".", []string{})
+	program, _ := testutils.LoadTest(t, ".", []string{})
 	result, err := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
 
 	if len(result.CallGraph.Nodes) < 7 {

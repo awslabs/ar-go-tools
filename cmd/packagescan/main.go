@@ -24,7 +24,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/format"
+	"github.com/awslabs/argot/analysis/utils"
 
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
@@ -57,7 +57,7 @@ func init() {
 const usage = `Analyze your Go packages.
 
 Usage:
-  packagescan -p package [-i] source.go ... 
+  packagescan -p package [-i] source.go ...
 
 Use the -help flag to display the options.
 
@@ -84,7 +84,7 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, format.Faint("Scanning sources for "+pkg)+"\n")
+	fmt.Fprintf(os.Stderr, utils.Faint("Scanning sources for "+pkg)+"\n")
 
 	var rawFile io.WriteCloser
 
@@ -113,7 +113,7 @@ func doMain() error {
 			return err
 		}
 
-		fmt.Fprintln(os.Stderr, format.Faint("Analyzing for "+platform))
+		fmt.Fprintln(os.Stderr, utils.Faint("Analyzing for "+platform))
 
 		allPkgs := analysis.AllPackages(ssautil.AllFunctions(program))
 
