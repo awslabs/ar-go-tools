@@ -87,8 +87,8 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	if len(command.Args) < 1 {
 		if state.CurrentFunction != nil {
 			var b bytes.Buffer
-			nodes, eg := escape.EscapeSummary(state.CurrentFunction)
-			b.WriteString(eg.Graphviz(nodes))
+			eg := escape.EscapeSummary(state.CurrentFunction)
+			b.WriteString(eg.Graphviz())
 			_, _ = b.WriteTo(tt)
 			b.Reset()
 		} else {
@@ -105,8 +105,8 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	var b bytes.Buffer
 	funcs := findFunc(c, target)
 	for _, f := range funcs {
-		nodes, eg := escape.EscapeSummary(f)
-		b.WriteString(eg.Graphviz(nodes))
+		eg := escape.EscapeSummary(f)
+		b.WriteString(eg.Graphviz())
 		_, _ = b.WriteTo(tt)
 		b.Reset()
 	}

@@ -15,13 +15,17 @@
 package escape
 
 import (
+	"fmt"
+	"log"
 	"os"
 	"path"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/summaries"
 	"github.com/awslabs/argot/analysis/testutils"
 	"golang.org/x/tools/go/ssa"
 )
@@ -72,7 +76,7 @@ func TestSimpleEscape(t *testing.T) {
 	}
 	for _, cgNode := range result.CallGraph.Nodes {
 		// Compute the summary of the node
-		_, graph := EscapeSummary(cgNode.Func)
+		graph := EscapeSummary(cgNode.Func)
 		// A general check to make sure that all global nodes are escaped.
 		for n := range graph.edges {
 			if strings.HasPrefix(n.debugInfo, "gbl:") && !graph.escaped[n] {
@@ -122,6 +126,145 @@ func TestSimpleEscape(t *testing.T) {
 					t.Errorf("Slice should only return S's")
 				}
 			}
+		}
+	}
+}
+
+// Looks up a function in the main package
+func findFunction(program *ssa.Program, name string) *ssa.Function {
+	for _, pkg := range program.AllPackages() {
+		if pkg.Pkg.Name() == "main" {
+			return pkg.Func(name)
+		}
+	}
+	return nil
+}
+
+// Is this instruction a call to a function with this name?
+func isCall(instr ssa.Instruction, name string) bool {
+	if call, ok := instr.(*ssa.Call); ok && call.Call.StaticCallee() != nil && call.Call.StaticCallee().Name() == name {
+		return true
+	}
+	return false
+}
+
+// Re-run the monotone analysis framework to get a result at each function call.
+// If the function has the name of one of our special functions, check that its
+// arguments meet the required property.
+func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
+	g := NewEmptyEscapeGraph(ea.nodes)
+	if len(bb.Preds) == 0 {
+		// Entry block uses the function-wide initial graph
+		g.Merge(ea.initialGraph)
+	} else {
+		// Take the union of all our predecessors. Treat nil as no-ops; they will
+		// be filled in later, and then the current block will be re-analyzed
+		for _, pred := range bb.Preds {
+			if predGraph := ea.blockEnd[pred]; predGraph != nil {
+				g.Merge(predGraph)
+			}
+		}
+	}
+	for _, instr := range bb.Instrs {
+		if isCall(instr, "assertSameAliases") {
+			args := instr.(*ssa.Call).Call.Args
+			if len(args) != 2 {
+				return fmt.Errorf("Expected 2 arguments to special assertion")
+			}
+			a := ea.nodes.ValueNode(args[0])
+			b := ea.nodes.ValueNode(args[1])
+			//fmt.Printf("Checking call %v %v\n%v\n", a, b, g.Graphviz(ea.nodes))
+			if !reflect.DeepEqual(g.edges[a], g.edges[b]) {
+				return fmt.Errorf("Arguments do not have the same set of edges %v != %v\n%v", a, b, g.Graphviz())
+			}
+		} else if isCall(instr, "assertAllLeaked") {
+			args := instr.(*ssa.Call).Call.Args
+			if len(args) != 1 {
+				return fmt.Errorf("Expected 1 arguments to special assertion")
+			}
+			a := ea.nodes.ValueNode(args[0])
+			for b := range g.edges[a] {
+				if !g.leaked[b] {
+					return fmt.Errorf("%v wasn't leaked in:\n%v", b, g.Graphviz())
+				}
+			}
+		} else if isCall(instr, "assertAllLocal") {
+			args := instr.(*ssa.Call).Call.Args
+			if len(args) != 1 {
+				return fmt.Errorf("Expected 1 arguments to special assertion")
+			}
+			a := ea.nodes.ValueNode(args[0])
+			for b := range g.edges[a] {
+				if g.leaked[b] || g.escaped[b] {
+					return fmt.Errorf("%v has escaped in:\n%v", b, g.Graphviz())
+				}
+			}
+		} else {
+			ea.transferFunction(instr, g, false)
+		}
+	}
+	return nil
+}
+
+// Check the escape results in the interprocedural case
+func TestInterproceduralEscape(t *testing.T) {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/interprocedural-escape")
+	err := os.Chdir(dir)
+	if err != nil {
+		t.Fatalf("failed to switch to dir %v: %v", dir, err)
+	}
+	program, config := testutils.LoadTest(t, ".", []string{})
+	config.Verbose = true
+	// Compute the summaries for everything in the main package
+	cache, err := dataflow.NewCache(program, log.Default(), config,
+		[]func(*dataflow.Cache){
+			func(cache *dataflow.Cache) { cache.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
+		})
+	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
+	if err != nil {
+		t.Fatalf("Error: %v\n", err)
+	}
+	funcsToTest := []string{
+		"testAlias",
+		"inverseAlias",
+		"inverseLeaked",
+		"inverseLocal",
+		"inverseLocalEscapedOnly",
+		"testTraverseList",
+		"testTraverseListRecur",
+		"testStepLargeList",
+		"testMultiReturnValues",
+		"testConsume",
+		"testFresh",
+		"testIdent",
+		"testExternal",
+	}
+	// For each of these distinguished functions, check that the assert*() functions
+	// are satisfied by the computed summaries (technically, the summary at particular
+	// program points)
+	for _, funcName := range funcsToTest {
+		f := findFunction(program, funcName)
+		if f == nil {
+			t.Fatalf("Could not find function %v\n", funcName)
+		}
+		summary := escapeWholeProgram.summaries[f]
+		if summary == nil {
+			t.Fatalf("%v wasn't summarized", funcName)
+		}
+		for _, bb := range f.Blocks {
+			err := checkFunctionCalls(summary, bb)
+			// test* == no error, anything else == error expected
+			if strings.HasPrefix(funcName, "test") {
+				if err != nil {
+					t.Fatalf("Error in %v: %v\n", funcName, err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
+				}
+			}
+
 		}
 	}
 }
