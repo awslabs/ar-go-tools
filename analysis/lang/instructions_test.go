@@ -101,7 +101,7 @@ func (v *InstructionCountingOp) NewBlock(block *ssa.BasicBlock) {
 // For testing purposes only: an analyzer that identifies where sources are
 // Wrap the source identification into an analysis pass for testing purposes
 var taintSourcesAnalyzer = &analysis.Analyzer{
-	Name:     "visitor-test",
+	Name:     "visitor_test",
 	Doc:      "Runs a simple visitor for testing.",
 	Run:      runVisitorPass,
 	Requires: []*analysis.Analyzer{buildssa.Analyzer},

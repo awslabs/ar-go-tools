@@ -52,7 +52,8 @@ type CrossFunctionFlowGraph struct {
 	// this should only be set to true by BuildGraph() and be false by default
 	built bool
 
-	Globals map[*GlobalNode]map[*AccessGlobalNode]bool // edges between global nodes and the nodes that access the global
+	// Globals are edges between global nodes and the nodes that access the global
+	Globals map[*GlobalNode]map[*AccessGlobalNode]bool
 }
 
 // NewCrossFunctionFlowGraph returns a new non-built cross function flow graph.
@@ -434,7 +435,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 		// If the stack is non-empty, then the data flows to back the call site in the stack(the CallNode).
 		// If the stack is empty, then the data flows back to every possible call site according to the call
 		// graph.
-		case *ReturnNode:
+		case *ReturnValNode:
 			// Check call stack is empty, and caller is one of the callsites
 			// Caller can be different if value flowed in function through a closure definition
 			if caller := UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); caller != nil {
@@ -716,7 +717,7 @@ func addNext(c *Cache,
 	// logic for parameter stack
 	pStack := cur.ParamStack
 	switch curNode := cur.Node.(type) {
-	case *ReturnNode:
+	case *ReturnValNode:
 		pStack = pStack.Parent()
 	case *ParamNode:
 		pStack = pStack.Add(curNode)
@@ -745,7 +746,7 @@ func checkIndex(c *Cache, node IndexedGraphNode, callSite *CallNode, msg string)
 	return nil
 }
 
-func checkClosureReturns(returnNode *ReturnNode, closureNode *ClosureNode) bool {
+func checkClosureReturns(returnNode *ReturnValNode, closureNode *ClosureNode) bool {
 	if returnNode.Graph() == closureNode.ClosureSummary {
 		return true
 	}

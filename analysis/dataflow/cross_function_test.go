@@ -131,7 +131,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 					t.Errorf("expected call node arg forward edge dst to be param, got: %v -> %v", src, dst)
 				}
 			}
-		case *dataflow.ReturnNode:
+		case *dataflow.ReturnValNode:
 			if len(dsts) == 0 {
 				t.Errorf("expected return node forward src to have dsts: %v", src)
 			}
@@ -156,7 +156,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 	// test backward edges
 	for src, dsts := range graph.BackwardEdges {
 		switch src.(type) {
-		case *dataflow.CallNodeArg, *dataflow.ReturnNode:
+		case *dataflow.CallNodeArg, *dataflow.ReturnValNode:
 			t.Errorf("node should not be the src of a backward edge: %v", src)
 		case *dataflow.ParamNode:
 			if len(dsts) == 0 {
@@ -172,7 +172,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 				t.Errorf("expected call node backward src to have dsts: %v", src)
 			}
 			for dst := range dsts {
-				if _, ok := dst.(*dataflow.ReturnNode); !ok {
+				if _, ok := dst.(*dataflow.ReturnValNode); !ok {
 					t.Errorf("expected call node backward edge dst to be return node, got: %v -> %v", src, dst)
 				}
 			}
@@ -181,7 +181,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 				t.Errorf("expected closure node backward src to have dsts: %v", src)
 			}
 			for dst := range dsts {
-				if _, ok := dst.(*dataflow.ReturnNode); !ok {
+				if _, ok := dst.(*dataflow.ReturnValNode); !ok {
 					t.Errorf("expected closure node backward edge dst to be return node, got: %v -> %v", src, dst)
 				}
 			}

@@ -16,6 +16,7 @@ package dataflow_test
 
 import (
 	"log"
+	"os"
 	"path"
 	"runtime"
 	"strings"
@@ -58,10 +59,19 @@ func TestFunctionSummaries(t *testing.T) {
 	if len(cache.FlowGraph.Summaries) == 0 {
 		t.Fatalf("cache does not contain any summaries")
 	}
+
 	for function, summary := range cache.FlowGraph.Summaries {
+		summary_ids := map[uint32]bool{}
+		// Check that summary's nodes all have different ids
+		summary.ForAllNodes(func(n dataflow.GraphNode) {
+			if summary_ids[n.ID()] {
+				t.Errorf("node ids should be unique")
+			}
+			summary_ids[n.ID()] = true
+		})
 
 		if function.Name() == "main" {
-			ok := len(summary.Returns) == 1
+			ok := len(summary.Returns) == 0 // main does not return any data
 			ok = ok && len(summary.Params) == 0
 			ok = ok && len(summary.Callees) == 7 // 6 regular function calls + 1 closure
 			if !ok {
@@ -83,7 +93,7 @@ func TestFunctionSummaries(t *testing.T) {
 				hasCallOrReturn := false
 				for dest := range paramNode.Out() {
 					_, isCallNodeArg := dest.(*dataflow.CallNodeArg)
-					_, isReturnNode := dest.(*dataflow.ReturnNode)
+					_, isReturnNode := dest.(*dataflow.ReturnValNode)
 					if isCallNodeArg || isReturnNode {
 						hasCallOrReturn = true
 					}
@@ -204,33 +214,36 @@ func TestFunctionSummaries(t *testing.T) {
 				}
 			}
 
-			for _, ret := range summary.Returns {
-				if len(ret.Out()) != 0 {
-					t.Errorf("in Foo, return should not have any outgoing edges, but got: %v", ret.Out())
-				}
+			for _, t_ret := range summary.Returns {
+				for _, ret := range t_ret {
+					if len(ret.Out()) != 0 {
+						t.Errorf("in Foo, return should not have any outgoing edges, but got: %v", ret.Out())
+					}
 
-				// from statements:
-				// ```
-				// l := Bar(*s2)
-				// return l
-				// ```
-				if len(ret.In()) != 1 {
-					t.Errorf("in Foo, return should have one incoming edge, but got: %v", ret.In())
-				}
-				for in := range ret.In() {
-					if call, ok := in.(*dataflow.CallNode); ok {
-						if call.FuncString() != "command-line-arguments.Bar" {
-							t.Errorf("in Foo, incoming edge of return is not a call to Bar, but got: %s", call.FuncString())
+					// from statements:
+					// ```
+					// l := Bar(*s2)
+					// return l
+					// ```
+					if len(ret.In()) != 1 {
+						t.Errorf("in Foo, return should have one incoming edge, but got: %v", ret.In())
+					}
+					for in := range ret.In() {
+						if call, ok := in.(*dataflow.CallNode); ok {
+							if call.FuncString() != "command-line-arguments.Bar" {
+								t.Errorf("in Foo, incoming edge of return is not a call to Bar, but got: %s",
+									call.FuncString())
+							}
+						} else {
+							t.Errorf("in Foo, incoming edge of return should be a call node, but got: %T", in)
 						}
-					} else {
-						t.Errorf("in Foo, incoming edge of return should be a call node, but got: %T", in)
 					}
 				}
 			}
 		}
 
 		if function.Name() == "FooBar" {
-			ok := len(summary.Returns) == 1
+			ok := len(summary.Returns) == 0 // FooBar does not return data
 			// for statements:
 			// `s := B{Source: x}`
 			// `s3 := Foo(s.Source, &s2, A{})`
@@ -239,13 +252,15 @@ func TestFunctionSummaries(t *testing.T) {
 				t.Errorf("FooBar graph is not as expected")
 			}
 
-			for _, ret := range summary.Returns {
-				if len(ret.Out()) != 0 {
-					t.Errorf("in FooBar, return should not have any outgoing edges, but got: %v", ret.Out())
-				}
+			for _, t_ret := range summary.Returns {
+				for _, ret := range t_ret {
+					if len(ret.Out()) != 0 {
+						t.Errorf("in FooBar, return should not have any outgoing edges, but got: %v", ret.Out())
+					}
 
-				if len(ret.In()) != 0 {
-					t.Errorf("in FooBar, return should not have any incoming edges, but got: %v", ret.In())
+					if len(ret.In()) != 0 {
+						t.Errorf("in FooBar, return should not have any incoming edges, but got: %v", ret.In())
+					}
 				}
 			}
 
@@ -477,13 +492,13 @@ func TestFunctionSummaries(t *testing.T) {
 							hasCallNodeArgOut = true
 						}
 					}
-					if _, ok := out.(*dataflow.ReturnNode); ok {
+					if _, ok := out.(*dataflow.ReturnValNode); ok {
 						hasReturnOut = true
 					}
 				}
-				if freevar.SsaNode().Name() == "s1" && len(freevar.In()) != 1 {
+				if freevar.SsaNode().Name() == "s1" && len(freevar.In()) != 0 {
 					// technically it does, but this is a single-function analysis (even for closures)
-					t.Errorf("in Baz, closure freevar %s should have one incoming edge, but got: %v",
+					t.Errorf("in Baz, closure freevar %s should have no incoming edges, but got: %v",
 						freevar.String(), freevar.In())
 				}
 				if freevar.SsaNode().Name() != "s1" && len(freevar.In()) != 0 {
@@ -499,4 +514,31 @@ func TestFunctionSummaries(t *testing.T) {
 			}
 		}
 	}
+}
+
+// test some methods that are meant to be nil-safe
+func TestStringNilSafety(t *testing.T) {
+	var gr *dataflow.SummaryGraph
+	gr.PopulateGraphFromSummary(summaries.Summary{}, false)
+	gr.Print(true, os.Stdout)
+	var p *dataflow.ParamNode
+	_ = p.String()
+	var n *dataflow.CallNodeArg
+	_ = n.String()
+	var m *dataflow.CallNode
+	_ = m.String()
+	var s *dataflow.SyntheticNode
+	_ = s.String()
+	var r *dataflow.ReturnValNode
+	_ = r.String()
+	var f *dataflow.FreeVarNode
+	_ = f.String()
+	var b *dataflow.BoundVarNode
+	_ = b.String()
+	var bl *dataflow.BoundLabelNode
+	_ = bl.String()
+	var g *dataflow.AccessGlobalNode
+	_ = g.String()
+	var c *dataflow.ClosureNode
+	_ = c.String()
 }

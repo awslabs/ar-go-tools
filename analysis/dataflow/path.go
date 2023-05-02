@@ -26,9 +26,9 @@ import (
 // Condition hold information about a conditional path. If Positive, then the branch is the then-branch where
 // the condition is the Value. If it is not Positive, then this refers to the else-branch
 type Condition struct {
-	// Positive indicates whether the branch is the then- or -else branch, i.e. the condition must be taken postively
+	// IsPositive indicates whether the branch is the then- or -else branch, i.e. the condition must be taken postively
 	// or negatively
-	Positive bool
+	IsPositive bool
 
 	// Value refers to the value of the condition in the branching
 	Value ssa.Value
@@ -38,10 +38,10 @@ func (c Condition) String() string {
 	if c.Value == nil {
 		return "nil"
 	}
-	if c.Positive {
+	if c.IsPositive {
 		return c.Value.String()
 	} else {
-		return "not " + c.Value.String()
+		return "!(" + c.Value.String() + ")"
 	}
 }
 
@@ -57,36 +57,68 @@ func (c Condition) IsPredicateTo(v ssa.Value) bool {
 	if c.Value == nil {
 		return false
 	}
-	vset := lang.ValuesWithSameData(v)
-	switch x := c.Value.(type) {
+	b := isValuePredicateTo(c.Value, v)
+	return b
+}
+
+// isValuePredicateTo is helper function for IsPredicateTo and has the same functionality, except that it operates
+// directly on the ssa value of the predicate
+// for example
+// f(x) != nil predicates x, x.someField and extract x #0. The logic on the val is in lang.ValuesWthSameData
+// f(x) == nil also predicates x or a value with same data
+// !f(x) and f(x) predicates x
+func isValuePredicateTo(predicate ssa.Value, val ssa.Value) bool {
+	switch x := predicate.(type) {
 	case *ssa.Call:
+		// Cases where a "predicate" function is called
+		var sig types.Type
 		if x.Call.IsInvoke() {
-			sig := x.Call.Method.Type()
-			if sig, ok := sig.Underlying().(*types.Signature); ok {
-				if lang.IsPredicateFunctionType(sig) {
-					for _, arg := range x.Call.Args {
-						for same := range lang.ValuesWithSameData(arg) {
-							if vset[same] {
-								return true
-							}
-						}
-					}
-				}
-			}
+			sig = x.Call.Method.Type()
 		} else {
-			sig := x.Call.Value.Type()
-			if sig, ok := sig.Underlying().(*types.Signature); ok {
-				if lang.IsPredicateFunctionType(sig) {
-					for _, arg := range x.Call.Args {
-						if vset[arg] {
-							return true
-						}
-					}
+			sig = x.Call.Value.Type()
+		}
+
+		signature, ok := sig.Underlying().(*types.Signature)
+		if !ok {
+			return false
+		}
+		if lang.IsPredicateFunctionType(signature) {
+			for _, arg := range x.Call.Args {
+				if lang.ValuesWithSameData(arg, val) {
+					return true
 				}
 			}
 		}
+		return false
+	case *ssa.BinOp:
+		// Cases where the condition is f(x) == nil or f(x) != nil
+		nilCheckedValue, _ := lang.MatchNilCheck(x)
+		if nilCheckedValue != nil {
+			return isValuePredicateTo(nilCheckedValue, val)
+		}
+		return false
+	case *ssa.UnOp:
+		// Cases where the condition if !f(x)
+		negatedValue := lang.MatchNegation(x)
+		if negatedValue != nil {
+			return isValuePredicateTo(negatedValue, val)
+		}
+		return false
+	case *ssa.Extract:
+		tupTyp, ok := x.Tuple.Type().(*types.Tuple)
+		if !ok {
+			return false
+		}
+		// Only the last element may be considered
+		// This is a design choice to give clear semantics to validators
+		if x.Index != tupTyp.Len()-1 {
+			return false
+		}
+		return isValuePredicateTo(x.Tuple, val)
+
+	default:
+		return false
 	}
-	return false
 }
 
 // ConditionInfo holds information about the conditions under which an object may be relevant.
@@ -130,15 +162,12 @@ type PathInformation struct {
 	// Blocks is the list of basic blocks in the path
 	Blocks []*ssa.BasicBlock
 
-	// Instructions is the list of instruction in the path
-	Instructions []ssa.Instruction
-
 	// Cond is a summary of some conditions that must be satisfied along the path. If the PathInformation refers to a
 	// path that does not exist, then Cond.Satisfiable will be false.
 	Cond ConditionInfo
 }
 
-func NonExistentPath() PathInformation {
+func NewImpossiblePath() PathInformation {
 	return PathInformation{Cond: ConditionInfo{Satisfiable: false}}
 }
 
@@ -147,34 +176,25 @@ func NonExistentPath() PathInformation {
 func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) PathInformation {
 	// Return nil if the parent functions of begin and end are different
 	if begin.Parent() != end.Parent() {
-		return NonExistentPath()
+		return NewImpossiblePath()
 	}
 
 	if begin.Block() != end.Block() {
 		blockPath := FindPathBetweenBlocks(begin.Block(), end.Block())
 
 		if blockPath == nil {
-			return NonExistentPath()
+			return NewImpossiblePath()
 		} else {
-			var path []ssa.Instruction
-
-			path = append(path, InstructionsBetween(begin.Block(), begin, lang.LastInstr(begin.Block()))...)
-			for _, block := range blockPath[1 : len(blockPath)-1] {
-				path = append(path, block.Instrs...)
-			}
-			path = append(path, InstructionsBetween(end.Block(), lang.FirstInstr(end.Block()), end)...)
 			return PathInformation{
-				Blocks:       blockPath,
-				Instructions: path,
-				Cond:         SimplePathCondition(blockPath),
+				Blocks: blockPath,
+				Cond:   SimplePathCondition(blockPath),
 			}
 		}
 	} else {
-		instrs := InstructionsBetween(begin.Block(), begin, end)
+
 		return PathInformation{
-			Blocks:       []*ssa.BasicBlock{begin.Block()},
-			Instructions: instrs,
-			Cond:         ConditionInfo{Satisfiable: instrs != nil},
+			Blocks: []*ssa.BasicBlock{begin.Block()},
+			Cond:   ConditionInfo{Satisfiable: len(begin.Block().Instrs) > 0},
 		}
 	}
 }
@@ -182,19 +202,19 @@ func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) PathInf
 // SimplePathCondition returns the ConditionInfo that aggregates all conditions encountered on the path represented by
 // the list of basic blocks. The input list of basic block must represent a program path (i.e. each basic block is
 // one of the Succs of its predecessor).
-func SimplePathCondition(blocks []*ssa.BasicBlock) ConditionInfo {
+func SimplePathCondition(path []*ssa.BasicBlock) ConditionInfo {
 	var conditions []Condition
 
-	for i, block := range blocks {
-		if i < len(blocks)-1 {
+	for i, block := range path {
+		if i < len(path)-1 {
 			last := lang.LastInstr(block)
 			if last != nil {
 				switch branching := last.(type) {
 				case *ssa.If:
-					if blocks[i+1].Index == block.Succs[0].Index {
-						conditions = append(conditions, Condition{Positive: true, Value: branching.Cond})
-					} else if blocks[i+1].Index == block.Succs[1].Index {
-						conditions = append(conditions, Condition{Positive: false, Value: branching.Cond})
+					if path[i+1].Index == block.Succs[0].Index {
+						conditions = append(conditions, Condition{IsPositive: true, Value: branching.Cond})
+					} else if path[i+1].Index == block.Succs[1].Index {
+						conditions = append(conditions, Condition{IsPositive: false, Value: branching.Cond})
 					}
 				}
 			}

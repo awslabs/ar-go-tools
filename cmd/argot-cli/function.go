@@ -464,7 +464,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.Cache, fi *dataflow.Flow
 			var markStrings []string
 			for mark := range marks {
 				markStrings = append(markStrings,
-					fmt.Sprintf("%s%s%s", tt.Escape.Red, mark, tt.Escape.Reset))
+					fmt.Sprintf("%s%s%s", tt.Escape.Red, mark.String(), tt.Escape.Reset))
 			}
 			writeFmt(tt, "%s\n", strings.Join(markStrings, " & "))
 		}

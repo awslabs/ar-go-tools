@@ -327,8 +327,8 @@ func (e Ex15) Run(s string, i int) string {
 	return e.Lambda(e.Count, s)
 }
 
-func NewEx15(data *string) *Ex14 {
-	e := &Ex14{
+func NewEx15(data *string) *Ex15 {
+	e := &Ex15{
 		Count: 0,
 		Lambda: func(i int, s string) string {
 			return strconv.Itoa(i) + s + *data

@@ -74,6 +74,7 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 		}
 
 		// If node is sanitizer, we don't want to propagate further
+		// The validators will be checked in the addNext function
 		if isSanitizer(elt.Node, c.Config) {
 			logger.Printf("Sanitizer encountered: %s\n", elt.Node.String())
 			logger.Printf("At: %s\n", elt.Node.Position(c))
@@ -184,12 +185,14 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 		// If the stack is non-empty, then the data flows to back the call site in the stack(the CallNode).
 		// If the stack is empty, then the data flows back to every possible call site according to the call
 		// graph.
-		case *df.ReturnNode:
+		case *df.ReturnValNode:
 			// Check call stack is empty, and caller is one of the callsites
 			// Caller can be different if value flowed in function through a closure definition
 			if caller := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); caller != nil {
 				for x, oPath := range caller.Out() {
-					que = addNext(c, que, seen, elt, x, oPath, elt.Trace.Parent, elt.ClosureTrace)
+					if !(graphNode.Index() >= 0 && oPath.Index >= 0 && graphNode.Index() != oPath.Index) {
+						que = addNext(c, que, seen, elt, x, oPath, elt.Trace.Parent, elt.ClosureTrace)
+					}
 				}
 			} else if elt.ClosureTrace != nil && checkClosureReturns(graphNode, elt.ClosureTrace.Label) {
 				for cCall, oPath := range elt.ClosureTrace.Label.Out() {
@@ -364,7 +367,7 @@ func addNext(c *df.Cache,
 	// Check for validators
 	if edgeInfo.Cond != nil && len(edgeInfo.Cond.Conditions) > 0 {
 		for _, condition := range edgeInfo.Cond.Conditions {
-			if condition.Positive && isValidatorCondition(condition.Value, c.Config) {
+			if isValidatorCondition(condition.IsPositive, condition.Value, c.Config) {
 				c.Logger.Printf("Validated %s.\n", condition)
 				return que
 			}
@@ -381,7 +384,7 @@ func addNext(c *df.Cache,
 	// logic for parameter stack
 	pStack := cur.ParamStack
 	switch curNode := cur.Node.(type) {
-	case *df.ReturnNode:
+	case *df.ReturnValNode:
 		pStack = pStack.Parent()
 	case *df.ParamNode:
 		pStack = pStack.Add(curNode)
@@ -414,7 +417,7 @@ func checkIndex(c *df.Cache, node df.IndexedGraphNode, callSite *df.CallNode, ms
 	return nil
 }
 
-func checkClosureReturns(returnNode *df.ReturnNode, closureNode *df.ClosureNode) bool {
+func checkClosureReturns(returnNode *df.ReturnValNode, closureNode *df.ClosureNode) bool {
 	if returnNode.Graph() == closureNode.ClosureSummary {
 		return true
 	}

@@ -63,7 +63,7 @@ func validatorExample0BisNegative() {
 	var x string
 	gen(&x)
 	if Validate(x) { // x is loaded first then validated as a value
-		sink1(x) // @Sink(gen) // this is not validated because the SSA needs to load x again here
+		sink1(x) // this is validated
 	} else {
 		sink1(x) // @Sink(gen)
 	}
@@ -93,7 +93,7 @@ func validatorExample2() {
 	if !Validate(s) {
 		return
 	}
-	sink1(s) // @Sink(gen) TODO: normalize conditions to identify validator usages
+	sink1(s) // This is validated
 }
 
 // Example 3: validator is used to assign value only when safe
@@ -162,6 +162,131 @@ func validatorExample6() {
 	}
 }
 
+// Example 7 : a validator that returns an error when data is not valid, data is validated when err == nil
+// The sink is called when err == nil and when err != nil, and alarm is raised only in the first case.
+
+func Validate3(a A) error {
+	if a.X > 0 {
+		return nil
+	} else {
+		return fmt.Errorf("error X field should be positive")
+	}
+}
+
+func example7validateOnErrorWhenNotNil() {
+	a1 := A{
+		X: 0,
+		Y: source1(), // @Source(s7)
+	}
+	if err := Validate3(a1); err != nil {
+		sink1(a1) // @Sink(s7)
+	}
+	sink1(a1) // this is validated by a nil-check
+}
+
+// Example 8 : a validator that returns an error when data is not valid, data is validated when err == nil
+// The sink is called when err != nil and err == nil but the branches are reverse compared to example7
+
+func example8validateOnErrorWhenNil() {
+	a1 := A{
+		X: 0,
+		Y: source1(), // @Source(s8)
+	}
+	if err := Validate3(a1); err == nil {
+		sink1(a1)
+	}
+	sink1(a1) // @Sink(s8)
+}
+
+// Example 9: a validator that returns something + an error when data is not valid. The data is valid when
+// the returned error is nil, and the validated data is what is passed to the validator
+
+func example9validateOnLastErrorInTuple() {
+	a1 := A{
+		X: 0,
+		Y: source1(), // @Source(s9)
+	}
+	if info, err := ValidateErr(a1); err != nil {
+		fmt.Println(info)
+		sink1(a1) // @Sink(s9)
+	}
+	sink1(a1)
+}
+
+func ValidateErr(a A) (string, error) {
+	if a.X > 0 {
+		return "ok", nil
+	} else {
+		return "bad", fmt.Errorf("error X field should be positive")
+	}
+}
+
+// Example 10: a validator that returns something + a boolean that is true when data is valid.
+
+func example10validateOnLastBoolInTuple() {
+	a1 := A{
+		X: 0,
+		Y: source1(), // @Source(s10)
+	}
+	if info, ok := ValidateBool(a1); ok {
+		fmt.Println(info)
+		sink1(a1)
+	}
+	sink1(a1) // @Sink(s10)
+}
+
+func ValidateBool(a A) (string, bool) {
+	if a.X > 0 {
+		return "ok", true
+	} else {
+		return "bad", false
+	}
+}
+
+// Example 11: a validator that returns something + an error when data is not valid. The data is valid when
+// the returned error is nil, and the validated data is what is passed to the validator
+// In this example, the validation is misused
+
+func example11validateErrWrongCondition() {
+	a1 := A{
+		X: 0,
+		Y: source1(), // @Source(s11)
+	}
+	if info, err := ValidateErr(a1); err == nil {
+		fmt.Println(info)
+	}
+	sink1(a1) // @Sink(s11)
+}
+
+// Example 12: a validator that returns something + a boolean that is true when data is valid.
+// The validator is misused in this example
+
+func example12validateBoolWrongCondition() {
+	a1 := A{
+		X: 0,
+		Y: source1(), // @Source(s12)
+	}
+	if info, ok := ValidateBool(a1); !ok {
+		fmt.Println(info)
+		sink1(a1) // @Sink(s12)
+	}
+}
+
+// Example 13: a validator is used to validate some data, but data also flows from another source,
+// which should raise an alarm.
+
+func example13ValidateThenTaint() {
+	x := source1() // @Source(ex13)
+	y := source1() // @Source(ex13bis)
+	if Validate(x) {
+		sink1(x) // This has been validated!
+		x = "(" + y + ")"
+		sink1(x) // @Sink(ex13bis)
+	} else {
+		sink1(x) // @Sink(ex13)
+	}
+}
+
 func main() {
 	validatorExample0()
 	validatorExample0Bis()
@@ -172,4 +297,16 @@ func main() {
 	validatorExample4()
 	validatorExample5()
 	validatorExample6()
+	example7validateOnErrorWhenNotNil()
+	example8validateOnErrorWhenNil()
+	example9validateOnLastErrorInTuple()
+	example10validateOnLastBoolInTuple()
+	example11validateErrWrongCondition()
+	example12validateBoolWrongCondition()
+	example13ValidateThenTaint()
+	example14validateOnReference()
+	example15validateOnReference2()
+	example16validateOnReference3()
+	example17validateOnReference4()
+	example18validateOnFieldReference()
 }
