@@ -31,7 +31,7 @@ import (
 // For testing purposes only: an analyzer that identifies where sources are
 // Wrap the source identification into an analysis pass for testing purposes
 var taintSourcesAnalyzer = &analysis.Analyzer{
-	Name:     "taint-sources",
+	Name:     "taint_sources",
 	Doc:      "Reports taint sources in Go code for testing.",
 	Run:      runSourcesAnalysis,
 	Requires: []*analysis.Analyzer{buildssa.Analyzer},
@@ -77,7 +77,7 @@ func TestAllSources(t *testing.T) {
 // For testing purposes only: an analyzer that identifies where sources are
 // Wrap the source identification into an analysis pass for testing purposes
 var taintSinksAnalyzer = &analysis.Analyzer{
-	Name:     "taint-sinks",
+	Name:     "taint_sinks",
 	Doc:      "Reports taint sinks in Go code for testing.",
 	Run:      runSinkAnalysis,
 	Requires: []*analysis.Analyzer{buildssa.Analyzer},

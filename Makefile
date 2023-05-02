@@ -10,6 +10,7 @@ all: maypanic statistics reachability dependencies static-commands render taint 
 install: taint_install cli_install
 
 test: **/*.go
+	go vet ./...
 	go clean -testcache
 	go test ./analysis/...
 

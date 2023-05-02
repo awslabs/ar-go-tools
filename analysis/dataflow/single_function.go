@@ -78,7 +78,7 @@ func run(cache *Cache, flowInfo *FlowInformation, sm *SummaryGraph,
 		errors:            map[ssa.Node]error{},
 		summary:           sm,
 		deferStacks:       defers.AnalyzeFunction(sm.Parent, false),
-		instrPaths:        map[ssa.Instruction]map[ssa.Instruction]ConditionInfo{},
+		paths:             map[*ssa.BasicBlock]map[*ssa.BasicBlock]ConditionInfo{},
 		instrPrev:         map[ssa.Instruction]map[ssa.Instruction]bool{},
 		paramAliases:      map[ssa.Value]map[*ssa.Parameter]bool{},
 		freeVarAliases:    map[ssa.Value]map[*ssa.FreeVar]bool{},
@@ -157,7 +157,7 @@ func (state *AnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 		// Special case: a global is received directly as an argument
 		switch argInstr := arg.(type) {
 		case *ssa.Global:
-			tmpSrc := NewQualifierMark(callInstr.(ssa.Node), argInstr, Global, "")
+			tmpSrc := NewMark(callInstr.(ssa.Node), Global, "", argInstr, -1)
 			state.summary.AddCallArgEdge(tmpSrc, callInstr, argInstr, nil)
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(callInstr, argInstr)
@@ -239,10 +239,14 @@ func (state *AnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 		}
 	}
 
-	for _, result := range x.Results {
+	for tupleIndex, result := range x.Results {
 		switch r := result.(type) {
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(x, r)
+		}
+
+		for _, origin := range state.getMarkedValues(x, result, "*") {
+			state.summary.AddReturnEdge(origin, x, tupleIndex, nil)
 		}
 	}
 }
@@ -325,17 +329,29 @@ func (state *AnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal
 }
 
 func (state *AnalysisState) checkPathBetweenInstructions(source ssa.Instruction, dest ssa.Instruction) ConditionInfo {
-	if reachableSet, ok := state.instrPaths[source]; ok {
-		if c, ok := reachableSet[dest]; ok {
+	var i, j int
+	for k, instr := range source.Block().Instrs {
+		if instr == source {
+			i = k
+		}
+		if instr == dest {
+			j = k
+		}
+	}
+	if source.Block() == dest.Block() && i >= j {
+		return NewImpossiblePath().Cond
+	}
+	if reachableSet, ok := state.paths[source.Block()]; ok {
+		if c, ok := reachableSet[dest.Block()]; ok {
 			return c
 		} else {
 			b := FindIntraProceduralPath(source, dest)
-			state.instrPaths[source][dest] = b.Cond
+			state.paths[source.Block()][dest.Block()] = b.Cond
 			return b.Cond
 		}
 	} else {
 		b := FindIntraProceduralPath(source, dest)
-		state.instrPaths[source] = map[ssa.Instruction]ConditionInfo{dest: b.Cond}
+		state.paths[source.Block()] = map[*ssa.BasicBlock]ConditionInfo{dest.Block(): b.Cond}
 		return b.Cond
 	}
 }

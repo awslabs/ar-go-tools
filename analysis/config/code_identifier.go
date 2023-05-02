@@ -33,6 +33,7 @@ type CodeIdentifier struct {
 	Receiver string
 	Field    string
 	Type     string
+	Label    string
 	// This will not be part of the yaml config
 	computedRegexs *CodeIdentifierRegex
 }

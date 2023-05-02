@@ -61,7 +61,7 @@ func (fi *FlowInformation) ShowAt(w io.Writer, i ssa.Instruction) {
 	for val, marks := range fi.MarkedValues[i] {
 		fmt.Fprintf(w, "   %s = %s marked by ", val.Name(), val)
 		for mark := range marks {
-			fmt.Fprintf(w, " <%s> ", mark)
+			fmt.Fprintf(w, " <%s> ", &mark)
 		}
 		fmt.Fprintf(w, "\n")
 	}

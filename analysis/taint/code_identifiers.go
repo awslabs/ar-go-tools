@@ -15,6 +15,8 @@
 package taint
 
 import (
+	"go/token"
+
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/lang"
@@ -110,9 +112,27 @@ func isSanitizer(n dataflow.GraphNode, cfg *config.Config) bool {
 	return isMatchingCodeId(cfg.IsSanitizer, n)
 }
 
-func isValidatorCondition(v ssa.Value, cfg *config.Config) bool {
-	if node, ok := v.(ssa.Node); ok {
-		return isMatchingCodeIdWithCallee(cfg.IsValidator, nil, node)
+// isValidatorCondiiton checks whether v is a validator condition according to the validators stored in the config
+// This function recurses on the value if necessary.
+func isValidatorCondition(isPositive bool, v ssa.Value, cfg *config.Config) bool {
+	switch val := v.(type) {
+	// Direct boolean check?
+	case *ssa.Call:
+		return isPositive && isMatchingCodeIdWithCallee(cfg.IsValidator, nil, val)
+	// Nil error check?
+	case *ssa.BinOp:
+		vNilChecked, isEqCheck := lang.MatchNilCheck(val)
+		// Validator condition holds on the branch where "not err != nil" or "err == nil"
+		// i.e. if not positive and not isEqCheck or positive and isEqCheck
+		return (isPositive == isEqCheck) && isValidatorCondition(true, vNilChecked, cfg)
+	case *ssa.UnOp:
+		if val.Op == token.NOT {
+			// Validator condition must hold on the negated value, with the negated positive condition
+			return isValidatorCondition(!isPositive, val.X, cfg)
+		}
+	case *ssa.Extract:
+		// Validator condition must hold on the tuple result
+		return isValidatorCondition(isPositive, val.Tuple, cfg)
 	}
 	return false
 }
@@ -152,15 +172,15 @@ func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.
 		return isMatchingCodeIdWithCallee(codeIdOracle, n.Callee(), n.CallSite().(ssa.Node))
 	case *dataflow.SyntheticNode:
 		return isMatchingCodeIdWithCallee(codeIdOracle, nil, n.Instr().(ssa.Node)) // safe type conversion
-	case *dataflow.ReturnNode, *dataflow.ClosureNode, *dataflow.BoundVarNode:
+	case *dataflow.ReturnValNode, *dataflow.ClosureNode, *dataflow.BoundVarNode:
 		return false
 	default:
 		return false
 	}
 }
 
-// isIdentifiedNodeWithCallee returns true when the node n with callee matches an identifier according to the predicate
-// codeIdOracle
+// isMatchingCodeIdWIthCallee returns true when the codeIdOracle returns true for a code identifier maching the node
+// n in the context where callee is the callee
 func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered sinks

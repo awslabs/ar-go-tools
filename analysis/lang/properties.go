@@ -32,6 +32,19 @@ func IsNillableType(t types.Type) bool {
 	}
 }
 
+// IsErrorType returns true if t is the error type
+func IsErrorType(t types.Type) bool {
+	// Only the error type can have "error" as representation
+	if t.String() == "error" {
+		return true
+	}
+	interfaceTyp, ok := t.(*types.Interface)
+	if !ok {
+		return false
+	}
+	return interfaceTyp.NumMethods() == 1 && interfaceTyp.ExplicitMethod(0).Name() == "Error"
+}
+
 // IsChannelEnclosingType return true if the type is a pointer to channel, a channel, or a data structure containing
 // a channel
 func IsChannelEnclosingType(t types.Type) bool {
@@ -73,13 +86,25 @@ func IsChannelEnclosingType(t types.Type) bool {
 	return false
 }
 
+// IsPredicateFunctionType returns true if f is a function that can be interpreted as a predicate
+// A function is a predicate if its last argument is either a boolean or an error.
 func IsPredicateFunctionType(f *types.Signature) bool {
-	if f.Results().Len() != 1 {
+	if f == nil {
 		return false
 	}
-	resType := f.Results().At(0)
-	if resType.Type().Underlying().String() == "bool" {
-		return true
+
+	n := f.Results().Len()
+	if n <= 0 {
+		return false
 	}
-	return false
+
+	resType := f.Results().At(n - 1)
+	switch t := resType.Type().Underlying().(type) {
+	case *types.Basic:
+		return t.Kind() == types.Bool
+	case *types.Interface:
+		return IsErrorType(t)
+	default:
+		return false
+	}
 }

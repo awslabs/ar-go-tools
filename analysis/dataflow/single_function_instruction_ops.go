@@ -58,53 +58,48 @@ func (state *AnalysisState) DoDebugRef(*ssa.DebugRef) {
 }
 
 func (state *AnalysisState) DoUnOp(x *ssa.UnOp) {
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoBinOp(binop *ssa.BinOp) {
 	// If either operand is tainted, taint the value.
 	// We might want more precision later.
-	simpleTransitiveMarkPropagation(state, binop, binop.X, binop)
-	simpleTransitiveMarkPropagation(state, binop, binop.Y, binop)
+	simpleTransfer(state, binop, binop.X, binop)
+	simpleTransfer(state, binop, binop.Y, binop)
 }
 
 func (state *AnalysisState) DoChangeInterface(x *ssa.ChangeInterface) {
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoChangeType(x *ssa.ChangeType) {
 	// Changing type doesn'state change taint
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoConvert(x *ssa.Convert) {
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoMakeInterface(x *ssa.MakeInterface) {
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoExtract(x *ssa.Extract) {
-	// TODO: tuple index sensitive propagation
-	simpleTransitiveMarkPropagation(state, x, x.Tuple, x)
+	transfer(state, x, x.Tuple, x, "", x.Index)
 }
 
 func (state *AnalysisState) DoSlice(x *ssa.Slice) {
 	// Taking a slice propagates taint information
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoReturn(r *ssa.Return) {
-	for _, result := range r.Results {
-		for _, origin := range state.getMarkedValues(r, result, "*") {
-			state.summary.AddReturnEdge(origin, r, nil)
-		}
-	}
+	// At a return instruction, nothing happens (there is no mark to propagate)
 }
 
 func (state *AnalysisState) DoRunDefers(r *ssa.RunDefers) {
@@ -121,15 +116,15 @@ func (state *AnalysisState) DoPanic(x *ssa.Panic) {
 
 func (state *AnalysisState) DoSend(x *ssa.Send) {
 	// Sending a tainted value over the channel taints the whole channel
-	simpleTransitiveMarkPropagation(state, x, x.X, x.Chan)
+	simpleTransfer(state, x, x.X, x.Chan)
 }
 
 func (state *AnalysisState) DoStore(x *ssa.Store) {
-	pathSensitiveMarkPropagation(state, x, x.Val, x.Addr, "*")
+	transfer(state, x, x.Val, x.Addr, "*", -1)
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
-		pathSensitiveMarkPropagation(state, x, x.Val, addr.X, FieldAddrFieldName(addr))
+		transfer(state, x, x.Val, addr.X, FieldAddrFieldName(addr), -1)
 	}
 }
 
@@ -148,7 +143,7 @@ func (state *AnalysisState) DoMakeChan(*ssa.MakeChan) {
 
 func (state *AnalysisState) DoAlloc(x *ssa.Alloc) {
 	if state.shouldTrack(state.flowInfo.Config, x) {
-		state.markValue(x, x, NewMark(x, DefaultMark, ""))
+		state.markValue(x, x, NewMark(x, DefaultMark, "", nil, -1))
 	}
 	// An allocation may be a mark
 	state.optionalSyntheticNode(x, x, x)
@@ -164,11 +159,11 @@ func (state *AnalysisState) DoMakeMap(*ssa.MakeMap) {
 
 func (state *AnalysisState) DoRange(x *ssa.Range) {
 	// An iterator over a tainted value is tainted
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoNext(x *ssa.Next) {
-	simpleTransitiveMarkPropagation(state, x, x.Iter, x)
+	simpleTransfer(state, x, x.Iter, x)
 }
 
 func (state *AnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
@@ -186,7 +181,7 @@ func (state *AnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 		}
 	}
 	// Taint is propagated if field of struct is tainted
-	pathSensitiveMarkPropagation(state, x, x.X, x, field)
+	transfer(state, x, x.X, x, field, -1)
 }
 
 func (state *AnalysisState) DoField(x *ssa.Field) {
@@ -201,34 +196,34 @@ func (state *AnalysisState) DoField(x *ssa.Field) {
 		field = structTyp.Field(x.Field).Name()
 	}
 	// Taint is propagated if field of struct is tainted
-	pathSensitiveMarkPropagation(state, x, x.X, x, field)
+	transfer(state, x, x.X, x, field, -1)
 }
 
 func (state *AnalysisState) DoIndexAddr(x *ssa.IndexAddr) {
 	// An indexing taints the value if either index or the indexed value is tainted
-	simpleTransitiveMarkPropagation(state, x, x.Index, x)
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.Index, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoIndex(x *ssa.Index) {
 	// An indexing taints the value if either index or array is tainted
-	simpleTransitiveMarkPropagation(state, x, x.Index, x)
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.Index, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoLookup(x *ssa.Lookup) {
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
-	simpleTransitiveMarkPropagation(state, x, x.Index, x)
+	simpleTransfer(state, x, x.X, x)
+	simpleTransfer(state, x, x.Index, x)
 }
 
 func (state *AnalysisState) DoMapUpdate(x *ssa.MapUpdate) {
 	// Adding a tainted key or value in a map taints the whole map
-	simpleTransitiveMarkPropagation(state, x, x.Key, x.Map)
-	simpleTransitiveMarkPropagation(state, x, x.Value, x.Map)
+	simpleTransfer(state, x, x.Key, x.Map)
+	simpleTransfer(state, x, x.Value, x.Map)
 }
 
 func (state *AnalysisState) DoTypeAssert(x *ssa.TypeAssert) {
-	simpleTransitiveMarkPropagation(state, x, x.X, x)
+	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *AnalysisState) DoMakeClosure(x *ssa.MakeClosure) {
@@ -237,7 +232,7 @@ func (state *AnalysisState) DoMakeClosure(x *ssa.MakeClosure) {
 
 func (state *AnalysisState) DoPhi(phi *ssa.Phi) {
 	for _, edge := range phi.Edges {
-		simpleTransitiveMarkPropagation(state, phi, edge, phi)
+		simpleTransfer(state, phi, edge, phi)
 	}
 }
 
@@ -245,9 +240,9 @@ func (state *AnalysisState) DoSelect(x *ssa.Select) {
 	for _, selectState := range x.States {
 		switch selectState.Dir {
 		case types.RecvOnly:
-			simpleTransitiveMarkPropagation(state, x, selectState.Chan, x)
+			simpleTransfer(state, x, selectState.Chan, x)
 		case types.SendOnly:
-			simpleTransitiveMarkPropagation(state, x, selectState.Send, selectState.Chan)
+			simpleTransfer(state, x, selectState.Send, selectState.Chan)
 		default:
 			panic("unexpected select channel type")
 		}

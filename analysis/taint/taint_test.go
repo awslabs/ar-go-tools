@@ -68,7 +68,7 @@ func TestCrossFunctionSanitizers(t *testing.T) {
 }
 
 func TestCrossFunctionValidators(t *testing.T) {
-	runTest(t, "validators", []string{})
+	runTest(t, "validators", []string{"values.go"})
 }
 
 func TestCrossFunctionExamplesFromLevee(t *testing.T) {

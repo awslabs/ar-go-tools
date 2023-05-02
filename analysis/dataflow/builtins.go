@@ -74,15 +74,15 @@ func doBuiltinCall(t *AnalysisState, callValue ssa.Value, callCommon *ssa.CallCo
 		// for append, copy we simply propagate the taint like in a binary operator
 		case "ssa:wrapnilchk":
 			for _, arg := range callCommon.Args {
-				simpleTransitiveMarkPropagation(t, instruction, arg, callValue)
+				simpleTransfer(t, instruction, arg, callValue)
 			}
 			return true
 		case "append":
 			if len(callCommon.Args) == 2 {
 				sliceV := callCommon.Args[0]
 				dataV := callCommon.Args[1]
-				simpleTransitiveMarkPropagation(t, instruction, sliceV, callValue)
-				simpleTransitiveMarkPropagation(t, instruction, dataV, callValue)
+				simpleTransfer(t, instruction, sliceV, callValue)
+				simpleTransfer(t, instruction, dataV, callValue)
 				return true
 			} else {
 				return false
@@ -92,7 +92,7 @@ func doBuiltinCall(t *AnalysisState, callValue ssa.Value, callCommon *ssa.CallCo
 			if len(callCommon.Args) == 2 {
 				src := callCommon.Args[1]
 				dst := callCommon.Args[0]
-				simpleTransitiveMarkPropagation(t, instruction, src, dst)
+				simpleTransfer(t, instruction, src, dst)
 				return true
 			} else {
 				return false
@@ -101,7 +101,7 @@ func doBuiltinCall(t *AnalysisState, callValue ssa.Value, callCommon *ssa.CallCo
 		// for len, we also propagate the taint. This may not be necessary
 		case "len":
 			for _, arg := range callCommon.Args {
-				simpleTransitiveMarkPropagation(t, instruction, arg, callValue)
+				simpleTransfer(t, instruction, arg, callValue)
 			}
 			return true
 
@@ -124,7 +124,7 @@ func doBuiltinCall(t *AnalysisState, callValue ssa.Value, callCommon *ssa.CallCo
 			if callCommon.IsInvoke() &&
 				callCommon.Method.Name() == "Error" &&
 				len(callCommon.Args) == 0 {
-				simpleTransitiveMarkPropagation(t, instruction, callCommon.Value, callValue)
+				simpleTransfer(t, instruction, callCommon.Value, callValue)
 				return true
 			} else {
 				return false

@@ -15,6 +15,8 @@
 package dataflow
 
 import (
+	"strconv"
+
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -47,7 +49,7 @@ func (m MarkType) String() string {
 	case CallSiteArg:
 		return "arg"
 	case CallReturn:
-		return "return"
+		return "call"
 	case Closure:
 		return "closure"
 	case BoundVar:
@@ -64,79 +66,83 @@ func (m MarkType) String() string {
 // Mark is a node with additional information about its type and region path (matching the paths in pointer analysis).
 // This is used to mark dataflow between nodes.
 type Mark struct {
-	Node       ssa.Node
+	// Node is the ssa node that the mark is tracking
+	Node ssa.Node
+
+	// RegionPath is the string representation of the dereference/field access/indexing operations from the ssa node
+	// to the object that this mark tracks (not used in a significant way for now)
 	RegionPath string
-	Type       MarkType
-	Qualifier  ssa.Value
+
+	// MarkType is the type of the mark
+	Type MarkType
+
+	// Qualifier gives more information about which sub-value of the current ssa value is referred to by this mark
+	Qualifier ssa.Value
+
+	// Index specifies an index of the tuple element referred to by this mark. Node's type must be a tuple.
+	// A value of -1 indicates this can be ignored
+	Index int
 }
 
-// NewMark creates a source with a single type
-func NewMark(node ssa.Node, typ MarkType, path string) Mark {
-	return Mark{
-		Node:       node,
-		RegionPath: path,
-		Type:       typ,
-		Qualifier:  nil,
-	}
-}
-
-// NewQualifierMark creates a source with a single type and a qualifier node
-func NewQualifierMark(node ssa.Node, qualifier ssa.Value, typ MarkType, path string) Mark {
+// NewMark creates a source with a single type. Using this as constructor enforces that users provide an explicit
+// value for index, whose default value has a meaning that might not be intended
+func NewMark(node ssa.Node, typ MarkType, path string, qualifier ssa.Value, index int) Mark {
 	return Mark{
 		Node:       node,
 		RegionPath: path,
 		Type:       typ,
 		Qualifier:  qualifier,
+		Index:      index,
 	}
 }
 
-// IsTainted returns true if the source is a taint source.
-func (m *Mark) IsTainted() bool {
+// IsDefault returns true if the source is a taint source.
+func (m Mark) IsDefault() bool {
 	return m.Type&DefaultMark != 0
 }
 
 // IsParameter returns true if the source is a function parameter.
-func (m *Mark) IsParameter() bool {
+func (m Mark) IsParameter() bool {
 	return m.Type&Parameter != 0
 }
 
 // IsFreeVar returns true if the source is a closure free variable.
-func (m *Mark) IsFreeVar() bool {
+func (m Mark) IsFreeVar() bool {
 	return m.Type&FreeVar != 0
 }
 
 // IsBoundVar returns true if the source is a closure free variable.
-func (m *Mark) IsBoundVar() bool {
+func (m Mark) IsBoundVar() bool {
 	return m.Type&BoundVar != 0
 }
 
 // IsClosure returns true if the source is a closure
-func (m *Mark) IsClosure() bool {
+func (m Mark) IsClosure() bool {
 	return m.Type&Closure != 0
 }
 
 // IsGlobal returns true if the source is a global
-func (m *Mark) IsGlobal() bool {
+func (m Mark) IsGlobal() bool {
 	return m.Type&Global != 0
 }
 
 // IsCallSiteArg returns true if the source is a call site argument. If it returns true, then s.qualifier must be
 // non-nil.
-func (m *Mark) IsCallSiteArg() bool {
+func (m Mark) IsCallSiteArg() bool {
 	return m.Type&CallSiteArg != 0
 }
 
 // IsCallReturn returns true if the source is a call return.
-func (m *Mark) IsCallReturn() bool {
+func (m Mark) IsCallReturn() bool {
 	return m.Type&CallReturn != 0
 }
 
 // IsSynthetic returns true if the source is synthetic.
-func (m *Mark) IsSynthetic() bool {
+func (m Mark) IsSynthetic() bool {
 	return m.Type&Synthetic != 0
 }
 
-func (m *Mark) String() string {
+func (m Mark) String() string {
 	str := m.Type.String() + ": "
 	if m.Qualifier != nil {
 		str += m.Qualifier.Name() + " in "
@@ -145,5 +151,8 @@ func (m *Mark) String() string {
 	if m.RegionPath != "" {
 		str += " [" + m.RegionPath + "]"
 	}
-	return "<mark " + str + " >"
+	if m.Index >= 0 {
+		str += " #" + strconv.Itoa(m.Index)
+	}
+	return "🏷 " + str
 }

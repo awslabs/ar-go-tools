@@ -54,8 +54,8 @@ type AnalysisState struct {
 	// deferStacks contains information about the possible defer stacks at RunDefers
 	deferStacks defers.Results
 
-	// instrPaths[i][j] means there is a path from i to j
-	instrPaths map[ssa.Instruction]map[ssa.Instruction]ConditionInfo
+	// paths[i][j] means there is a path from i to j
+	paths map[*ssa.BasicBlock]map[*ssa.BasicBlock]ConditionInfo
 
 	// instrPrev maps instruction to all their potentially preceding instructions. This is used by the analysis to
 	// transfer the abstract state in the flowInfo of an instruction to the next instruction
@@ -98,12 +98,12 @@ func (state *AnalysisState) initialize() {
 
 	// The free variables of the function are marked
 	for _, fv := range function.FreeVars {
-		state.flowInfo.AddMark(firstInstr, fv, NewMark(fv, FreeVar, ""))
+		state.flowInfo.AddMark(firstInstr, fv, NewMark(fv, FreeVar, "", nil, -1))
 		state.addFreeVarAliases(fv)
 	}
 	// The parameters of the function are marked as Parameter
 	for _, param := range function.Params {
-		state.flowInfo.AddMark(firstInstr, param, NewMark(param, Parameter, ""))
+		state.flowInfo.AddMark(firstInstr, param, NewMark(param, Parameter, "", nil, -1))
 		state.addParamAliases(param)
 	}
 
@@ -213,21 +213,26 @@ func (state *AnalysisState) getMarkedValues(i ssa.Instruction, v ssa.Value, path
 	return origins
 }
 
-// simpleTransitiveMarkPropagation  propagates all the marks from in to out
-func simpleTransitiveMarkPropagation(t *AnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
-	pathSensitiveMarkPropagation(t, loc, in, out, "*")
+// simpleTransfer  propagates all the marks from in to out, ignoring path and tuple indexes
+func simpleTransfer(t *AnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
+	transfer(t, loc, in, out, "*", -1)
 }
 
-// pathSensitiveMarkPropagation propagates all the marks from in to out with the object path string
-func pathSensitiveMarkPropagation(t *AnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string) {
+// transfer propagates all the marks from in to out with the object path string
+// an index >= 0 indicates that element index of the tuple in is accessed
+func transfer(t *AnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index int) {
 	if glob, ok := in.(*ssa.Global); ok {
-		t.markValue(loc, out, NewQualifierMark(loc.(ssa.Node), glob, Global, ""))
+		t.markValue(loc, out, NewMark(loc.(ssa.Node), Global, "", glob, index))
 	}
 
 	for _, origin := range t.getMarkedValues(loc, in, path) {
-		t.markValue(loc, out, origin)
-		t.checkCopyIntoArgs(origin, out)
-		t.checkFlowIntoGlobal(loc, origin, out)
+		newOrigin := origin
+		if index >= 0 {
+			newOrigin = NewMark(origin.Node, origin.Type, origin.RegionPath, origin.Qualifier, index)
+		}
+		t.markValue(loc, out, newOrigin)
+		t.checkCopyIntoArgs(newOrigin, out)
+		t.checkFlowIntoGlobal(loc, newOrigin, out)
 	}
 }
 
@@ -235,18 +240,18 @@ func pathSensitiveMarkPropagation(t *AnalysisState, loc ssa.Instruction, in ssa.
 // The closure value is tracked like any other value.
 func (state *AnalysisState) addClosureNode(x *ssa.MakeClosure) {
 	state.summary.AddClosure(x)
-	state.markValue(x, x, NewMark(x, Closure, ""))
+	state.markValue(x, x, NewMark(x, Closure, "", nil, -1))
 	for _, boundVar := range x.Bindings {
-		mark := NewQualifierMark(x, boundVar, BoundVar, "")
+		mark := NewMark(x, BoundVar, "", boundVar, -1)
 		state.markValue(x, boundVar, mark)
 	}
-	state.markValue(x, x, NewMark(x, Closure, ""))
+	state.markValue(x, x, NewMark(x, Closure, "", nil, -1))
 }
 
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (state *AnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
 	if state.shouldTrack(state.cache.Config, asNode) {
-		s := NewMark(asNode, Synthetic+DefaultMark, "")
+		s := NewMark(asNode, Synthetic+DefaultMark, "", nil, -1)
 		state.summary.AddSyntheticNode(asInstr, "source")
 		state.markValue(asInstr, asValue, s)
 	}
@@ -266,14 +271,21 @@ func (state *AnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstru
 	if state.shouldTrack(state.flowInfo.Config, instr.(ssa.Node)) { // type cast cannot fail
 		markType += DefaultMark
 	}
-	// Mark call
-	state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, ""))
+	// Mark call, one mark per returned value
+	res := common.Signature().Results()
+	if res.Len() > 0 {
+		for i := 0; i < res.Len(); i++ {
+			state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, "", nil, i))
+		}
+	} else {
+		state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, "", nil, -1))
+	}
 
 	args := lang.GetArgs(instr)
 	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
 		// Mark call argument
-		state.markValue(instr, arg, NewQualifierMark(instr.(ssa.Node), arg, CallSiteArg, ""))
+		state.markValue(instr, arg, NewMark(instr.(ssa.Node), CallSiteArg, "", arg, -1))
 	}
 }
 

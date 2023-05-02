@@ -117,49 +117,110 @@ func ValueSwitch(vmap ValueOp, v *ssa.Value) {
 	}
 }
 
-// ValuesWithSameData
-// TODO this function is incomplete
-func ValuesWithSameData(v ssa.Value) map[ssa.Value]bool {
-	valueSet := map[ssa.Value]bool{v: true}
-	referrers := v.Referrers()
-	if referrers != nil {
-		for _, instr := range *referrers {
-			switch sameData := instr.(type) {
-			case *ssa.MakeInterface:
-				if sameData.X == v { // this should always be true
-					valueSet[instr.(ssa.Value)] = true // conversion will always succeed
-				}
-			case *ssa.UnOp:
-				if ok, vStruct := MatchLoadField(sameData); ok {
-					valueSet[vStruct] = true
-				}
+// ValuesWithSameData defines when values v1 and v2 refer to the same data.
+// WARNING: This function is incomplete, and encodes only the necessary information for validators.
+// You should modify as much as you need.
+func ValuesWithSameData(v1 ssa.Value, v2 ssa.Value) bool {
+	if v1 == v2 {
+		return true
+	}
+	// v1 and v2 are loading the same pointer?
+	if matchLoad(v1, v2) {
+		return true
+	}
+	// v2 loads a field of v1?
+	if z := MatchLoadField(v2); z != nil {
+		return ValuesWithSameData(v1, z)
+	}
+	// v2 is a tuple element of v1?
+	if z := MatchExtract(v2); z != nil {
+		return ValuesWithSameData(v1, z)
+	}
+	// one of the two is a conversion
+	if matchConversion(v1, v2) {
+		return true
+	}
+	return false
+}
 
-				// the default case is to not add the value to the map of values with same data as v
-			}
-		}
+func matchLoad(v1 ssa.Value, v2 ssa.Value) bool {
+	l1, ok1 := v1.(*ssa.UnOp)
+	l2, ok2 := v2.(*ssa.UnOp)
+	if ok1 && ok2 && l1.Op == l2.Op && l1.Op == token.MUL {
+		return ValuesWithSameData(l1.X, l2.X)
 	}
-	switch val := v.(type) {
-	case *ssa.MakeInterface:
-		valueSet[val.X] = true // interface cast refers to same data
+	return false
+}
+
+func matchConversion(v1 ssa.Value, v2 ssa.Value) bool {
+	l1, ok1 := v1.(*ssa.MakeInterface)
+	if ok1 {
+		return ValuesWithSameData(l1.X, v2)
 	}
-	return valueSet
+
+	l2, ok2 := v2.(*ssa.MakeInterface)
+	if ok2 {
+		return ValuesWithSameData(v1, l2.X)
+	}
+
+	return false
 }
 
 // MatchLoadField matches instruction sequence:
 // y = &z.Field
-// z = *y
-// and returns (true, z) if x is given as argument
-func MatchLoadField(x ssa.Value) (bool, ssa.Value) {
+// x = *y
+// and returns (z,true) if x is given as argument
+func MatchLoadField(x ssa.Value) ssa.Value {
 	if x == nil {
-		return false, nil
+		return nil
 	}
 	loadInstr, ok := x.(*ssa.UnOp)
 	if !ok || loadInstr.Op != token.MUL {
-		return false, nil
+		return nil
 	}
 	field, ok := loadInstr.X.(*ssa.FieldAddr)
 	if !ok {
-		return false, nil
+		return nil
 	}
-	return true, field.X
+	return field.X
+}
+
+// MatchExtract is a proxy for matching a *ssa.Extract. It returns a non-nil value if x is some tuple-extraction value
+// i.e. if x is extract y #0 for some y, then y is returned, otherwise nil
+func MatchExtract(x ssa.Value) ssa.Value {
+	if v, ok := x.(*ssa.Extract); ok {
+		return v.Tuple
+	}
+	return nil
+}
+
+// MatchNilCheck returns a non-nil ssa value if x is a nil check, i.e. an instruction of the form
+// 'y == nil' or  'y != nil' for some y
+//
+// The returned ssa value is the value being checked against. The boolean is true if the check is a check of the
+// form 'y == nil' and false if 'y != nil'
+func MatchNilCheck(v ssa.Value) (ssa.Value, bool) {
+	x, ok := v.(*ssa.BinOp)
+	if !ok {
+		return nil, false
+	}
+	if (x.Op == token.NEQ || x.Op == token.EQL) && IsErrorType(x.X.Type()) {
+		if x.X.String() == "nil:error" {
+			return x.Y, x.Op == token.EQL
+		} else if x.Y.String() == "nil:error" {
+			return x.X, x.Op == token.EQL
+		} else {
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
+// MatchNegation returns a non-nil ssa. value if x is the negation of some value y, in which case y is returned.
+func MatchNegation(x ssa.Value) ssa.Value {
+	v, ok := x.(*ssa.UnOp)
+	if ok && v.Op == token.NOT {
+		return v.X
+	}
+	return nil
 }

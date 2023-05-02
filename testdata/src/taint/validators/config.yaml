@@ -12,5 +12,3 @@ sinks:
 validators:
   - package: "(main)|(command-line-arguments)$"
     method: ".*Validate[1-9]?"
-
-
