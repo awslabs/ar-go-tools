@@ -60,11 +60,16 @@ filters:                            # a list of filters that is used by the anal
 
 ## Taint Analysis
 
-The taint analysis tool `taint` performs a whole program, interprocedural taint analysis on the input it is given. In this section we focus on explaining the user interface of the taint tool and give examples of what it can analyze. To understand how the taint analysis works, the reader should refer to the technical report (work in progress).
+The taint analysis tool `taint` performs a whole program, interprocedural taint analysis on the input program that is given. In this section we focus on explaining the user interface of the taint tool and give examples of what it can analyze. To understand how the taint analysis works, the reader should refer to the technical report (work in progress). Here we explain *how to use the taint analysis tool* through a set of examples (in [Taint Analysis Examples](#taint-analysis-examples)).
 
+The tool will report flows from taint **sources** to **sinks**, taking in account **sanitizers** and **validators**. Those components are specified in the configuration file by the user (see [Taint Analysis Configuration](#taint-analysis-configuration)). The tool will output traces for each of the traces detected (and additional information if specified in the configuration file) (see [Taint Analysis Output](#taint-analysis-output)).
+
+> ⚠ The taint analysis does not support usages of the `reflect` and `unsafe` packages. We explain later how to analyze programs in the presence of those, but the result is not guaranteed to be correct when the analysis raises no alarms.
+
+### Taint Analysis Configuration
 On top of the configuration options listed in the common fields, the user can configure taint-analysis specific options. The main configuration fields are the core components of the problem specification, which are the sources, sinks, sanitizers and validators of the dataflow problem. The *sources* identify the functions that return sensitive data, and this data should never reach any of the *sinks*. The *sanitizers* are functions that clear the data of its sensitive nature, i.e. those are functions that when receiving sensitive data, will return data that does not contain any sensitive information. *Validators* have a similar role, but do not return the data. When the value returned by a validator is a boolean and is true, then the data passed to the validator is considered to be taint-free in the branch where the boolean is true. When the value returned by a validator is an error, then the data is considered taint-free in the branch where the error is `nil`.
 
-It is the user's responsibility to propery specify those functions to match their intent, and the tool does not try to automatically discover possible sources of tainted data, instead completely relying on the user's specification.
+It is the user's responsibility to properly specify those functions to match their intent, and the tool does not try to automatically discover possible sources of tainted data, instead completely relying on the user's specification.
 
 Below is an example of a config file containing a basic taint analysis specification:
 ```
@@ -94,29 +99,165 @@ dataflowspecs:                  # A list of dataflow specifications, where each 
 ```
 We explain in more detail how to write [dataflow specifications](#dataflow-specifications) later, and why the user should write dataflow specifications in some cases.
 
-### Examples
+### Taint Analysis Output
+
+TODO: describe the output of the analysis
+
+### Taint Analysis Examples
 
 Taint analyses can vary a lot in their capacities. Some analyses are more geared towards precision and reporting fewer false alarms while others are geared towards soundness, that is, reporting all possible errors, or in this case, all possible flows from source to sink. Our analysis aims at the latter, which means that in some cases it may report false alarms. In the following we give examples that showcase the different types of taint flows that can be reported by the taint analysis tool. For a more in-depth understanding of the decisions made in the implementation, the technical report explains in detail how the analysis is built.
 
 #### Simple Taint Flows
+Our taint analysis in general assumes that any operation propagates taint. For example, if a string is tainted, then adding elements to it, or taking a slice of the string, will produce tainted data.
+```[go]
+func main() {
+    x := example1.GetSensitiveData() // x is tainted
+    y := "(" + x + ")" // y is tainted because x is tainted
+    example2.LogDataPublicly(y) // an alarm is raised because tainted data reaches the sink
+}
+```
+Given the above example, and the previous configuration file, the call to `example1.GetSensitiveData` is identified as a source: the data it returns is tainted. The call to `example2.LogDataPublicly` is identified as a sink: if any argument that is passed contains tainted data, an alarm is raised and the tool will print a trace from the point where the data is tainted (by a source) to the sink it reached. In this example, there is such a trace: the analysis sees `y` as tainted because it directly depends on `x`'s data.
 
+In general, the analysis is conservative in how it propagates data: for example, if a cell of a slice gets tainted, then the entire slice is considered tainted, or if one entry in a map is tainted, then the entire map is viewed as tainted. The analysis also tracks aliases, and therefore tainting a variable will taint all its aliases.
 
 #### Inter-procedural Taint Flow
+
+The taint analysis implemented in Argot is *inter-procedural*: the flow of data is tracked across function calls, as opposed to within a single function. This means that the flow of tainted data is detected in the following example:
+```[go]
+func generate() *A {
+    x := example1.GetSensitiveData() // this is a source of sensitive data
+    return x
+}
+
+// Copy Data field from src to dest
+func copyData(src *A, dest *A) {
+    a1.Data = a2.Data
+}
+
+
+func main() {
+    a := generate()
+    b := NewA()
+    copyData(a,b)
+    example2.LogDataPublicly(b) // this is a sink that should not be reached by sensitive data
+}
+
+```
+
+The `taint` tool will report taint flows given the configuration example given previously and the snippet of code above in some context where all functions are properly defined. The data flows from the call to `example1.GetSensitiveData()` in `generate()`, to the variable `a`, then to `b` through the `copyData` function, and then finally to the call to `example2.LogDataPublicly(b)` in the `main()` function. Detecting this type of path would not be possible without an inter-procedural analysis.
+
+The taint analysis tool can detect such flows with many intermediate calls.
+
+> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `maxdepth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some taint flows. In the previous example, the trace would not be reported if the configuration file sets `maxdepth: 2`.
 
 
 #### Field Sensitivity
 
+The taint analysis is not *field-sensitive*: if a field from a structure is tainted, then the entire object is tainted. This means that the tool may raise false alarms, as illustrated in the following example:
+```[go]
+func main() {
+    a := A{}
+    a.Data = "safe-data" // the Data field does not contain sensitive data
+    a.Secret = example1.GetSensitiveData() // Secret field does
+
+    example2.LogDataPublicly(a.Data) // an alarm is raised here at the sink
+}
+```
+In this example, with the configuration used previsouly, an alarm is raised: the data flows from the call to `GetSensitiveData` to the call to `LogDataPublicly`. When the `Secret` field is assigned tainted data, the entire structure `a` is considered tainted. This means that `a.Data` is considered tainted in the call to the sink function.
+If the analysis was field-sensitive, it would not raise an alarm.
+
 
 #### Tuple Sensitivity
+
+The taint analysis is *tuple-sensitive*: it tracks the taint of different elements of the tuple separately. This is easier in Go than in other languages because tuples only exist at the boundary of function calls an returns, they cannot be manipulated elsewhere in the code.
+This means that in the following example, no false alarm is raised:
+```[go]
+
+// generate returns a tuple of values, one of which is tainted
+func generate() (*A, string) {
+    return example1.GetSensitiveData(), someSafeData()
+}
+
+func main() {
+    x, y := generate() // only x is tainted, y is not
+    example2.LogDataPublicly(y) // this does not raise any alarms
+}
+
+```
+Because the analysis tracks the taint of the tuple elements separately, it detects that `x` is tainted but `y` is not tainted in the example. This means that the call to `LogDataPublicly` is safe, and not alarm is raised.
 
 
 #### Closures
 
+[Closures](https://go.dev/tour/moretypes/25) are functions that can reference variables (*bound* variables) from outside their body. This referencing makes the taint analysis more complicated, as the data may flow from aliases of the variables *bound* by a closure to the point where the closure is executed. Our taint analysis tool is able to trace the flow of data in the presence of closures.
+
+For example, in the following:
+```[go]
+func example3prep() func(string) string {
+	lparen := "("
+	rparen := ")"
+	parenthesize := func(a string) string { return lparen + a + rparen } // rparen is captured
+	rparen = example1.GetSensitiveData() // rparent is tainted after being captured
+	return parenthesize
+}
+
+func example3() {
+	closure := example3prep()
+	x := closure("A") // when closure is called, rparent was tainted, so x is tainted
+	example2.LogDataPublicly(x) // this raises an alarm
+}
+```
+An alarm is raised because data flows from the source to the sink. When the closure is created, it captures the variable `rparen`, which is initially not tainted (it is equal to `")"`). After the closure has been created and assigned to the `parenthesize` variable, `rparen` is tainted. This means that any subsequent call to `parenthesize` will read the tainted value of `rparen` and return tainted data. This is properly tracked when `closure` is called, resulting in tainted data in `x`.
+
+### Defers
+
+[Defers](https://go.dev/tour/flowcontrol/12) are a Go specific feature: it defers the execution of a function until the surrounding function returns, or the function panics. Because of the latter, our analysis needs to be conservative when analyzing what data flows through deferred functions. It assumes that the deferred functions can be executed *at any point* in the surrounding functions, simulating any possible panic.
+
+The following example illustrates a taint flow to a deferred function, the difference between the two calls is that one captures its argument by reference:
+
+```[go]
+func main() {
+	a := A{"ok"}
+	b := &A{"ok"}
+	defer example2.LogDataPublicly(a)    // does not raise alarm, b is a value A
+	defer example2.LogDataPublicly(b)   // will raise alarm, b is &A
+	a = example1.GetSensitiveData()     // the value a is now tainted, but never used
+    *b = example1.GetSensitiveData()   // the value *b is tainted, and b will be read in the deferred function
+}
+```
+In the example, the calls to the sink `LogDataPublicly` are deferred until the end of the function. Because the first call takes `a` as argument, and `a` is a non-tainted value, this does not raise an alarm. The arguments of a deferred call are evaluated at the `defer` location. However, in the second call, the argument passed is a pointer to some structure, which is tainted later. In this case, an alarm is raised.
+
+Let us consider another example that illustrate the flows through defers, when defers can execute at any point of the function.
+```[go]
+func maypanic(x *Obj, b string) {
+	defer func() {
+		x.f = b
+	}()
+	bar()   // may panic here, and so defer may be executed
+	b = "0" // clears taint from b
+	return
+}
+
+func catchPanic(x *Obj, b string) {
+	defer func() { recover() }()
+	maypanic(x, b)
+}
+
+func main2() {
+	x := &Obj{}
+	b := example1.GetSensitiveData() // data is tainted here
+	catchPanic(x, b)  // catchPanic may cause x to be tainted if bar panics
+	example2.LogDataPublicly(x.f) // an alarm is raised here
+}
+```
+In this example, the taint may flow from `b` to `x` in `catchPanic` through `maypanic`, assuming for example that the `bar()` function may panic. When `bar()` does not panic, `b` is cleared of the taint, and `x.f` is not tainted by the defer. However, if `bar()` panics, the deferred function executes in a state where `b` is tainted, and therefore `x` gets tainted. Because `catchPanic` recovers from the panic, `x` will be tainted when `catchPanic` returns. The taint tool correctly catches this possible taint flow.
+
+> ⚠️ Programmers should not rely on reinitializing variables to clear taint inside of arbitrary functions. Instead, sanitize or validate the data in a clearly delineated function, where all possible execution paths can be carefully examined. The taint tool is conservative with respect to possible execution of defers and may raise false alarms, but it will raise fewer false alarms if the sanitization is properly done within the designated sanitizer function. However, it is the user's responsibility to ensure the sanitizer does the sanitization.
 
 
-### Dataflow Specifications
+## Dataflow Specifications
 
-Dataflow specifications allow the user to specify dataflows for functions in their program. The analysis tool will skip analyzing those functions, loading the dataflow specifited by the user instead. There are two kinds of user-specified dataflow summaries: summaries for functions, which specify the flow of data through a single function, and summaries for interface methods, which specify the flow of data through any of the interface method's implementation. The user must make sure that:
+Dataflow specifications allow the user to specify dataflows for functions in their program. The analysis tool will skip analyzing those functions, loading the dataflow specified by the user instead. There are two kinds of user-specified dataflow summaries: summaries for functions, which specify the flow of data through a single function, and summaries for interface methods, which specify the flow of data through any of the interface method's implementation. The user must make sure that:
 - in the case of a single function summary, the specified data flows subsumes any possible data flow in the function implementation
 - for an interface method summary, the specified data flows subsumes any possible data flow, for any possible implementation
 
