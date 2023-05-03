@@ -72,6 +72,7 @@ var (
 		cmdTaintName:        cmdTaint,
 		cmdUnfocusName:      cmdUnfocus,
 		cmdWhereName:        cmdWhere,
+		cmdBacktraceName:    cmdBacktrace,
 	}
 )
 

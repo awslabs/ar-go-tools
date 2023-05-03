@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/argot/analysis/backtrace"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/escape"
 	"github.com/awslabs/argot/analysis/summaries"
@@ -353,6 +354,35 @@ func cmdTaint(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 		return false
 	}
 	c.FlowGraph.RunCrossFunctionPass(taint.NewVisitor(nil), dataflow.IsSourceFunction)
+	return false
+}
+
+// cmdBacktrace runs the backtrace analysis.
+func cmdBacktrace(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
+	if c == nil {
+		writeFmt(tt, "\t- %s%s%s: run the backtrace analysis with parameters in config.\n",
+			tt.Escape.Blue, cmdTaintName, tt.Escape.Reset)
+		writeFmt(tt, "\t   Flow graph must be built first with `%s%s%s`.\n",
+			tt.Escape.Yellow, cmdBuildGraphName, tt.Escape.Reset)
+		return false
+	}
+	if !c.FlowGraph.IsBuilt() {
+		WriteErr(tt, "The cross-function dataflow graph is not built!")
+		WriteErr(tt, "Please run `%s` before calling `backtrace`.", cmdBuildGraphName)
+		return false
+	}
+
+	// TODO this technically needs summaries that are built with backtrace.IsEntrypoint,
+	// not taint.IsSourceNode
+
+	visitor := &backtrace.Visitor{}
+	c.FlowGraph.RunCrossFunctionPass(visitor, backtrace.IsEntrypoint)
+
+	writeFmt(tt, "Traces:\n")
+	for _, trace := range backtrace.Traces(c, visitor.Traces) {
+		writeFmt(tt, "%v\n", trace)
+	}
+
 	return false
 }
 

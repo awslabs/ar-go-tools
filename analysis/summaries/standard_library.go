@@ -644,6 +644,8 @@ var SummaryOs = map[string]Summary{
 	"(*os/exec.Cmd).Start": SingleVarArgPropagation,
 	//func (*exec.Cmd).Wait() error
 	"(*os/exec.Cmd).Wait": SingleVarArgPropagation,
+	// func (*exec.Cmd).Run() error
+	"(*os/exec.Cmd).Run": SingleVarArgPropagation,
 	// func (fs.FileInfo).Mode() fs.FileMode
 	"(*os.fileStat).Mode": SingleVarArgPropagation,
 	"(*os.fileStat).Name": SingleVarArgPropagation,
@@ -702,6 +704,8 @@ var SummaryOs = map[string]Summary{
 		[][]int{{0}, {1}, {2}},
 		[][]int{{0}, {0}, {0}},
 	},
+	// func ReadDir(name string) ([]DirEntry, error)
+	"os.ReadDir": SingleVarArgPropagation,
 	// func Remove(name string) error {
 	"os.Remove":           SingleVarArgPropagation,
 	"os.RemoveAll":        SingleVarArgPropagation,

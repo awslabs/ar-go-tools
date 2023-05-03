@@ -242,6 +242,10 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 		for _, node := range summary.Callsites {
 			entry := NodeWithTrace{Node: node}
 			entryPoints = append(entryPoints, entry)
+
+			for _, arg := range node.args {
+				entryPoints = append(entryPoints, NodeWithTrace{arg, nil, nil})
+			}
 		}
 	}
 
@@ -322,6 +326,7 @@ type CrossFunctionGraphVisitor struct{}
 func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 	que := []*VisitorNode{{NodeWithTrace: entrypoint, ParamStack: nil, Prev: nil, Depth: 0}}
 	seen := make(map[NodeWithTrace]bool)
+	goroutines := make(map[*ssa.Go]bool)
 	logger := c.Logger
 
 	// Search from path candidates in the cross-function flow graph from sources to sinks
@@ -352,8 +357,11 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
 		// the function's parameter.
 		case *ParamNode:
-			for out := range graphNode.Out() {
-				que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+			if elt.Prev.Node.Graph() != graphNode.Graph() {
+				// Flows inside the function body. The data propagates to other locations inside the function body
+				for out := range graphNode.Out() {
+					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+				}
 			}
 
 			// Then we take care of the flows that go back to the callsite of the current function.
@@ -361,36 +369,32 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 			// func f(s string, s2 *string) { *s2 = s }
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
-			if elt.Trace != nil {
-				// This function was called: the value flows back to the call site only
-				// TODO: check that this assumption is correct
-				callSite := elt.Trace.Label
-				if err := checkIndex(c, graphNode, callSite, "Argument at call site"); err != nil {
-					c.AddError("argument at call site", err)
+			if callSite := UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
+				if err := checkIndex(c, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
+					c.AddError("unwinding call stack at "+graphNode.Position(c).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
 					arg := callSite.Args()[graphNode.Index()]
 					if arg != nil {
 						que = addNext(c, que, seen, elt, arg, elt.Trace.Parent, elt.ClosureTrace)
-
 						addEdge(c.FlowGraph, arg, graphNode)
 					}
 				}
 			} else {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
-					if err := checkIndex(c, graphNode, callSite, "Argument at call site"); err != nil {
-						c.AddError("argument at call site", err)
+					if err := checkIndex(c, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+						c.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						for x := range callSiteArg.Out() {
 							que = addNext(c, que, seen, elt, x, nil, elt.ClosureTrace)
 						}
-
 						addEdge(c.FlowGraph, callSiteArg, graphNode)
 					}
 				}
 			}
+
 		// This is a call site argument. We have reached this either returning from a call, from the callee's parameter
 		// node, or we reached this inside a function from another node.
 		// In either case, the flow continues inside the function to the graphNode.Out() children and to the callee's
@@ -399,7 +403,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 			// Flow to next call
 			callSite := graphNode.ParentNode()
 
-			// checkNoGoRoutine(c, goroutines, callSite)
+			checkNoGoRoutine(c, goroutines, callSite)
 
 			if callSite.CalleeSummary == nil { // this function has not been summarized
 				printMissingSummaryMessage(c, callSite)
@@ -457,17 +461,13 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 						que = addNext(c, que, seen, elt, x, nil, elt.ClosureTrace)
 					}
 				}
-			} else {
-				fmt.Fprintf(os.Stderr, "Return node %s does not return anywhere.\n", elt.Node.String())
-				fmt.Fprintf(os.Stderr, "In %s\n", elt.Node.Position(c))
 			}
 
 		// This is a call node, which materializes where the callee returns. A call node is reached from a return
 		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
 		// flows to the children of the node.
 		case *CallNode:
-			// checkNoGoRoutine(c, goroutines, graphNode)
-
+			checkNoGoRoutine(c, goroutines, graphNode)
 			// We pop the call from the stack and continue inside the caller
 			var trace *NodeTree[*CallNode]
 			if elt.Trace != nil {
@@ -476,7 +476,6 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 			for x := range graphNode.Out() {
 				que = addNext(c, que, seen, elt, x, trace, elt.ClosureTrace)
 			}
-
 		// Tainting a bound variable node means that the free variable in a closure will be tainted.
 		// For example:
 		// 1:  x := "ok" // x is not tainted here
@@ -497,7 +496,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 			closureNode := graphNode.ParentNode()
 
 			if closureNode.ClosureSummary == nil {
-				printMissingClosureSummaryMessage(c, closureNode)
+				printMissingClosureNodeSummaryMessage(c, closureNode)
 				break
 			}
 			// Flows to the free variables of the closure
@@ -510,18 +509,46 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 				c.AddError(
 					fmt.Sprintf("no free variable matching bound variable in %s",
 						closureNode.ClosureSummary.Parent.String()),
-					fmt.Errorf("position %d", graphNode.Index()))
+					fmt.Errorf("at position %d", graphNode.Index()))
 			}
 
 		// The data flows to a free variable inside a closure body from a bound variable inside a closure definition.
 		// (see the example for BoundVarNode)
 		case *FreeVarNode:
 			// Flows inside the function
+			if elt.Prev.Node.Graph() != graphNode.Graph() {
+				for out := range graphNode.Out() {
+					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
+				}
+			} else if elt.ClosureTrace != nil {
+				bvs := elt.ClosureTrace.Label.BoundVars()
+				if graphNode.Index() < len(bvs) {
+					bv := bvs[graphNode.Index()]
+					que = addNext(c, que, seen, elt, bv, elt.Trace, elt.ClosureTrace.Parent)
+				} else {
+					c.AddError(
+						fmt.Sprintf("no bound variable matching free variable in %s",
+							elt.ClosureTrace.Label.ClosureSummary.Parent.String()),
+						fmt.Errorf("at position %d", graphNode.Index()))
+				}
+			} else {
+				for _, makeClosureSite := range graphNode.Graph().ReferringMakeClosures {
+					bvs := makeClosureSite.BoundVars()
+					if graphNode.Index() < len(bvs) {
+						bv := bvs[graphNode.Index()]
+						que = addNext(c, que, seen, elt, bv, elt.Trace, nil)
+					} else {
+						c.AddError(
+							fmt.Sprintf("no bound variable matching free variable in %s",
+								makeClosureSite.ClosureSummary.Parent.String()),
+							fmt.Errorf("at position %d", graphNode.Index()))
+					}
+				}
+			}
+			// Flows inside the function
 			for out := range graphNode.Out() {
 				que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
 			}
-
-			// TODO: back flows when the free variables are tainted by the closure's body
 
 		// A closure node can be reached if a function value is tainted
 		// TODO: add an example
@@ -564,6 +591,30 @@ func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
 				for out := range graphNode.Out() {
 					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
 				}
+			}
+		// A BoundLabel flows to the body of the closure that captures it.
+		case *BoundLabelNode:
+			closureSummary := graphNode.DestClosure()
+			if closureSummary == nil {
+				// printMissingClosureSummaryMessage(c, graphNode)
+				break
+			}
+			closureNode := closureSummary.ReferringMakeClosures[graphNode.DestInfo().MakeClosure]
+			if closureNode == nil {
+				// printMissingClosureNodeSummaryMessage(c, closureNode)
+				break
+			}
+			// Flows to the free variables of the closure
+			// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
+			fv := closureSummary.Parent.FreeVars[graphNode.Index()]
+			if fv != nil {
+				x := closureSummary.FreeVars[fv]
+				que = addNext(c, que, seen, elt, x, elt.Trace, elt.ClosureTrace.Add(closureNode))
+				addEdge(c.FlowGraph, graphNode, closureNode)
+			} else {
+				c.AddError(
+					fmt.Sprintf("no free variable matching bound variable in %s", closureSummary.Parent.String()),
+					fmt.Errorf("at position %d", graphNode.Index()))
 			}
 		}
 	}
@@ -751,4 +802,14 @@ func checkClosureReturns(returnNode *ReturnValNode, closureNode *ClosureNode) bo
 		return true
 	}
 	return false
+}
+
+func checkNoGoRoutine(c *Cache, reportedLocs map[*ssa.Go]bool, node *CallNode) {
+	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
+		if !reportedLocs[goroutine] {
+			reportedLocs[goroutine] = true
+			c.Logger.Printf(utils.Yellow("WARNING: Data flows to Go call."))
+			c.Logger.Printf("-> Position: %s", node.Position(c))
+		}
+	}
 }

@@ -210,6 +210,10 @@ func (a *CallNodeArg) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
 
+func (a *CallNodeArg) Value() ssa.Value {
+	return a.ssaValue
+}
+
 // CallNode is a node that represents a function call. It represents the value returned by the function call
 // and also points at the CallNodeArg nodes that are its arguments
 type CallNode struct {
@@ -425,6 +429,7 @@ func (a *BoundVarNode) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *BoundVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundVarNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *BoundVarNode) Type() types.Type              { return a.ssaValue.Type() }
+func (a *BoundVarNode) Value() ssa.Value              { return a.ssaValue }
 
 func (a *BoundVarNode) Position(c *Cache) token.Position {
 	if a.ssaValue != nil {

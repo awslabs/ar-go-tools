@@ -1,0 +1,5 @@
+backtracepoints:
+  - package: "os/exec"
+    method: "^Command$"
+
+verbose: true

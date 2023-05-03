@@ -93,14 +93,11 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ss
 		numRoutines = 1
 	}
 
-	// Only build summaries for non-stdlib functions here
-	shouldBuildSummary := func(f *ssa.Function) bool {
-		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
-	}
 	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 		Cache:               cache,
 		NumRoutines:         numRoutines,
-		ShouldCreateSummary: shouldBuildSummary,
+		ShouldCreateSummary: shouldCreateSummary,
+		ShouldBuildSummary:  shouldBuildSummary,
 		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },
 	})
 
@@ -112,6 +109,37 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ss
 	cache.FlowGraph.Print(w)
 
 	return nil
+}
+
+func shouldCreateSummary(f *ssa.Function) bool {
+	// if a summary is required, then this should evidently return true!
+	if summaries.IsSummaryRequired(f) {
+		return true
+	}
+
+	return summaries.IsUserDefinedFunction(f)
+}
+
+// shouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
+// pass. This is not necessary for functions that have summaries that are externally defined, for example.
+func shouldBuildSummary(cache *dataflow.Cache, function *ssa.Function) bool {
+	if cache == nil || function == nil || summaries.IsSummaryRequired(function) {
+		return true
+	}
+
+	pkg := function.Package()
+	if pkg == nil {
+		return true
+	}
+
+	// Is PkgPrefix specified?
+	if cache.Config != nil && cache.Config.PkgFilter != "" {
+		pkgKey := pkg.Pkg.Path()
+		return cache.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
+	} else {
+		// Check package summaries
+		return !(summaries.PkgHasSummaries(pkg) || cache.HasExternalContractSummary(function))
+	}
 }
 
 // WriteGraphviz writes a graphviz representation the call-graph to w
