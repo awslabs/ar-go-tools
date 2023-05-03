@@ -144,15 +144,18 @@ func RunCrossFunction(args RunCrossFunctionArgs) {
 // BuildCrossFunctionGraph builds a full-program (cross-function) analysis cache from program.
 func BuildCrossFunctionGraph(cache *dataflow.Cache) (*dataflow.Cache, error) {
 	if len(cache.FlowGraph.Summaries) == 0 {
-		return nil, fmt.Errorf("cache does not contatain any summaries")
+		return nil, fmt.Errorf("cache does not contain any summaries")
 	}
 
+	cache.Logger.Println("Building full-program cross-function dataflow graph...")
+	start := time.Now()
 	RunCrossFunction(RunCrossFunctionArgs{
 		Cache:        cache,
 		Visitor:      dataflow.CrossFunctionGraphVisitor{},
 		IsEntrypoint: func(*config.Config, *ssa.Function) bool { return true },
 	})
 
+	cache.Logger.Printf("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())
 	return cache, nil
 }
 

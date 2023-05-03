@@ -89,6 +89,9 @@ type Config struct {
 	// (not used)
 	StaticCommands []CodeIdentifier
 
+	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards dataflow analysis.
+	BacktracePoints []CodeIdentifier
+
 	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
 	// prefix
 	PkgFilter string
@@ -148,6 +151,7 @@ func NewDefault() *Config {
 		Sinks:               nil,
 		Sources:             nil,
 		StaticCommands:      nil,
+		BacktracePoints:     nil,
 		PkgFilter:           "",
 		DataflowSpecs:       []string{},
 		SkipInterprocedural: false,
@@ -218,6 +222,7 @@ func Load(filename string) (*Config, error) {
 	utils.Iter(config.Sinks, CompileRegexes)
 	utils.Iter(config.Sources, CompileRegexes)
 	utils.Iter(config.StaticCommands, CompileRegexes)
+	utils.Iter(config.BacktracePoints, CompileRegexes)
 	utils.Iter(config.Validators, CompileRegexes)
 	utils.Iter(config.Filters, CompileRegexes)
 	return &config, nil
@@ -263,4 +268,8 @@ func (c Config) IsValidator(cid CodeIdentifier) bool {
 
 func (c Config) IsStaticCommand(cid CodeIdentifier) bool {
 	return ExistsCid(c.StaticCommands, cid.equalOnNonEmptyFields)
+}
+
+func (c Config) IsBacktracePoint(cid CodeIdentifier) bool {
+	return ExistsCid(c.BacktracePoints, cid.equalOnNonEmptyFields)
 }

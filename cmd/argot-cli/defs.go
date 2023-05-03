@@ -54,6 +54,7 @@ const (
 	cmdTaintName        = "taint"
 	cmdUnfocusName      = "unfocus"
 	cmdWhereName        = "where"
+	cmdBacktraceName    = "backtrace"
 	// Other constants
 
 	// Summarize threshold puts a maximum size above which summary building filters are used

@@ -142,6 +142,15 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 					t.Errorf("expected return node forward edge dst to be call or closure, got: %v -> %v", src, dst)
 				}
 			}
+		case *dataflow.BoundLabelNode:
+			if len(dsts) == 0 {
+				t.Errorf("expected bound label node forward src to have dsts: %v", src)
+			}
+			for dst := range dsts {
+				if _, ok := dst.(*dataflow.ClosureNode); !ok {
+					t.Errorf("expected bound label node forward edge dst to be closure node, got: %v -> %v", src, dst)
+				}
+			}
 		default:
 			t.Errorf("unhandled node type: %T", src)
 		}
@@ -181,8 +190,10 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 				t.Errorf("expected closure node backward src to have dsts: %v", src)
 			}
 			for dst := range dsts {
-				if _, ok := dst.(*dataflow.ReturnValNode); !ok {
-					t.Errorf("expected closure node backward edge dst to be return node, got: %v -> %v", src, dst)
+				_, isReturn := dst.(*dataflow.ReturnValNode)
+				_, isBoundLabel := dst.(*dataflow.BoundLabelNode)
+				if !(isReturn || isBoundLabel) {
+					t.Errorf("expected closure node edge dst to be return or bound label node, got: %v -> %v", src, dst)
 				}
 			}
 		default:
