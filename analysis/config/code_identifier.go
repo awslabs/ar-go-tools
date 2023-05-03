@@ -35,9 +35,9 @@ type CodeIdentifier struct {
 	Type     string
 	Label    string
 	// This will not be part of the yaml config
-	computedRegexs *CodeIdentifierRegex
+	computedRegexs *codeIdentifierRegex
 }
-type CodeIdentifierRegex struct {
+type codeIdentifierRegex struct {
 	packageRegex  *regexp.Regexp
 	typeRegex     *regexp.Regexp
 	methodRegex   *regexp.Regexp
@@ -45,10 +45,10 @@ type CodeIdentifierRegex struct {
 	receiverRegex *regexp.Regexp
 }
 
-// CompileRegexes compiles the strings in the code identifier into regexes. It compiles all identifiers into regexes
+// compileRegexes compiles the strings in the code identifier into regexes. It compiles all identifiers into regexes
 // or none.
 // @ensures cid.computedRegexs != null || cid.computedRegexs.(*) != null
-func CompileRegexes(cid CodeIdentifier) CodeIdentifier {
+func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	packageRegex, err := regexp.Compile(cid.Package)
 	if err != nil {
 		return cid
@@ -69,7 +69,7 @@ func CompileRegexes(cid CodeIdentifier) CodeIdentifier {
 	if err != nil {
 		return cid
 	}
-	cid.computedRegexs = &CodeIdentifierRegex{
+	cid.computedRegexs = &codeIdentifierRegex{
 		packageRegex,
 		typeRegex,
 		methodRegex,
@@ -108,6 +108,8 @@ func ExistsCid(a []CodeIdentifier, f func(identifier CodeIdentifier) bool) bool 
 	return false
 }
 
+// MatchType checks whether the code identifier matches the type represented as a types.Type. It is safe to call with
+// nil values.
 func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 	if cid == nil {
 		return false
@@ -121,6 +123,8 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 	return cid.Type == typ.String()
 }
 
+// MatchPackageAndMethod checks whether the function f matches the code identifier on the package and method fields.
+// It is safe to call with nil values.
 func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
 	pkg := lang.PackageNameFromFunction(f)
 	if cid == nil {

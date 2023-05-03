@@ -23,16 +23,6 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// NewSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
-func NewSourceMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
-	return dataflow.NewPackagesMap(c, pkgs, IsSourceNode)
-}
-
-// NewSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
-func NewSinkMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
-	return dataflow.NewPackagesMap(c, pkgs, IsSinkNode)
-}
-
 func IsSourceNode(cfg *config.Config, n ssa.Node) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered sources

@@ -24,10 +24,10 @@ import (
 // are two instructions sink,source such that map[sink][source], then there is a data flow from source to sink.
 type TaintFlows = map[ssa.Instruction]map[ssa.Instruction]bool
 
-// MergeTaintFlows merges its two input TaintFlows maps. When the function returns, the first argument contains
+// mergeTaintFlows merges its two input TaintFlows maps. When the function returns, the first argument contains
 // all the entries in the second one.
 // @requires a != nil
-func MergeTaintFlows(a TaintFlows, b TaintFlows) {
+func mergeTaintFlows(a TaintFlows, b TaintFlows) {
 	for x, yb := range b {
 		ya, ina := a[x]
 		if ina {

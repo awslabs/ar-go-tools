@@ -38,9 +38,9 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 	// Loading the program for testdata/src/dataflow/sumaries/main.go
 	program, _ := testutils.LoadTest(t, dir, []string{})
 
-	cache, err := dataflow.BuildFullCache(log.Default(), config.NewDefault(), program)
+	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), config.NewDefault(), program)
 	if err != nil {
-		t.Fatalf("failed to build program cache: %v", err)
+		t.Fatalf("failed to build program analysis state: %v", err)
 	}
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -53,19 +53,19 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 	}
 
 	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		Cache:               cache,
+		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: shouldCreateSummary,
 		ShouldBuildSummary:  taint.ShouldBuildSummary,
 		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },
 	})
 
-	cache, err = analysis.BuildCrossFunctionGraph(cache)
+	state, err = analysis.BuildCrossFunctionGraph(state)
 	if err != nil {
 		t.Fatalf("failed to build cross-function graph: %v", err)
 	}
 
-	graph := cache.FlowGraph
+	graph := state.FlowGraph
 
 	// test duplicate edges
 	seenForward := map[string]bool{}

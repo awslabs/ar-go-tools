@@ -30,11 +30,11 @@ func TestComputeCtxts(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callctx")
 	program, config := testutils.LoadTest(t, dir, []string{})
-	cache, err := dataflow.BuildFullCache(log.Default(), config, program)
+	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), config, program)
 	if err != nil {
-		t.Fatalf("error building cache: %s", err)
+		t.Fatalf("error building state: %s", err)
 	}
-	ci, err := dataflow.ComputeCtxts(cache, 5)
+	ci, err := dataflow.ComputeCtxts(state, 5)
 	if err != nil {
 		t.Fatalf("error computing contexts: %s", err)
 	}

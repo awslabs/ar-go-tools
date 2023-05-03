@@ -55,7 +55,7 @@ func TestFindAllElementaryCycles(t *testing.T) {
 	pointerAnalysis, err := pointer.Analyze(pCfg)
 
 	if err != nil {
-		t.Errorf("Error building cache: %s", err)
+		t.Errorf("Error in pointer analysis: %s", err)
 	}
 
 	cg := pointerAnalysis.CallGraph

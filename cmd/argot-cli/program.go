@@ -26,8 +26,8 @@ import (
 )
 
 // cmdLoad implements the "load" command that loads a program into the tool.
-// Once it updates the state.Args, it calls the rebuild command to build the program and the cache.
-func cmdLoad(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+// Once it updates the state.Args, it calls the rebuild command to build the program and the state.
+func cmdLoad(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : load new program\n", tt.Escape.Blue, cmdLoadName, tt.Escape.Reset)
 		return false
@@ -41,11 +41,11 @@ func cmdLoad(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	return cmdRebuild(tt, c, command)
 }
 
-// cmdRebuild implements the rebuild command. It reloads the current program and rebuilds the cache including the
+// cmdRebuild implements the rebuild command. It reloads the current program and rebuilds the state including the
 // pointer analysis and callgraph information.
-func cmdRebuild(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
+func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
-		writeFmt(tt, "\t- %s%s%s : rebuild the program being analyzed, including cache.\n",
+		writeFmt(tt, "\t- %s%s%s : rebuild the program being analyzed, including analyzer state.\n",
 			tt.Escape.Blue, cmdRebuildName, tt.Escape.Reset)
 		return false
 	}
@@ -64,25 +64,20 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 	}
 	initialPackages, err := packages.Load(p, flag.Args()...)
 	state.InitialPackages = initialPackages
-	// Build the cache with all analyses
-	cache, err := dataflow.BuildFullCache(c.Logger, c.Config, program)
+	// Build the newState with all analyses
+	newState, err := dataflow.NewInitializedAnalyzerState(c.Logger, c.Config, program)
 	if err != nil {
-		WriteErr(tt, "error building cache: %s", err)
+		WriteErr(tt, "error building analyzer state: %s", err)
 		return false
 	}
-	// Reassign cache elements
-	c.PointerAnalysis = cache.PointerAnalysis
-	c.FlowGraph = cache.FlowGraph
-	c.DataFlowContracts = cache.DataFlowContracts
-	c.Globals = cache.Globals
-	c.Program = cache.Program
-	//c = cache
+	// Reassign state elements
+	c = newState
 	return false
 }
 
 // cmdReconfig implements the reconfig command and reloads the configuration file. If a new config file is specified,
 // then it will load that new config file.
-func cmdReconfig(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdReconfig(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : load the specified config file\n",
 			tt.Escape.Blue, cmdReconfigName, tt.Escape.Reset)

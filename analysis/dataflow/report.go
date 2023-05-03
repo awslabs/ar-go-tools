@@ -23,7 +23,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func (c *Cache) ReportNoCallee(instr ssa.CallInstruction) {
+func (c *AnalyzerState) ReportNoCallee(instr ssa.CallInstruction) {
 	pos := c.Program.Fset.Position(instr.Pos())
 
 	if c.Config.ReportNoCalleeSites {
@@ -49,7 +49,7 @@ func (c *Cache) ReportNoCallee(instr ssa.CallInstruction) {
 	}
 }
 
-func printMissingSummaryMessage(c *Cache, callSite *CallNode) {
+func printMissingSummaryMessage(c *AnalyzerState, callSite *CallNode) {
 	if !c.Config.Verbose {
 		return
 	}
@@ -82,8 +82,8 @@ func printMissingSummaryMessage(c *Cache, callSite *CallNode) {
 	}
 }
 
-func printMissingClosureSummaryMessage(c *Cache, bl *BoundLabelNode) {
-	if !c.Config.Verbose {
+func printMissingClosureSummaryMessage(s *AnalyzerState, bl *BoundLabelNode) {
+	if !s.Config.Verbose {
 		return
 	}
 
@@ -93,17 +93,17 @@ func printMissingClosureSummaryMessage(c *Cache, bl *BoundLabelNode) {
 	} else {
 		instrStr = bl.Instr().String()
 	}
-	c.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+	s.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
 		bl.String(), instrStr)))
 	if bl.Instr() != nil {
-		c.Logger.Printf("| Please add closure for %s to summaries",
+		s.Logger.Printf("| Please add closure for %s to summaries",
 			bl.Instr().String())
-		c.Logger.Printf("|_ See closure: %s", bl.Position(c))
+		s.Logger.Printf("|_ See closure: %s", bl.Position(s))
 	}
 }
 
-func printMissingClosureNodeSummaryMessage(c *Cache, closureNode *ClosureNode) {
-	if !c.Config.Verbose {
+func printMissingClosureNodeSummaryMessage(s *AnalyzerState, closureNode *ClosureNode) {
+	if !s.Config.Verbose {
 		return
 	}
 
@@ -113,16 +113,16 @@ func printMissingClosureNodeSummaryMessage(c *Cache, closureNode *ClosureNode) {
 	} else {
 		instrStr = closureNode.Instr().String()
 	}
-	c.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+	s.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
 		closureNode.String(), instrStr)))
 	if closureNode.Instr() != nil {
-		c.Logger.Printf("| Please add closure %s to summaries",
+		s.Logger.Printf("| Please add closure %s to summaries",
 			closureNode.Instr().Fn.String())
-		c.Logger.Printf("|_ See closure: %s", closureNode.Position(c))
+		s.Logger.Printf("|_ See closure: %s", closureNode.Position(s))
 	}
 }
 
-func printWarningSummaryNotConstructed(c *Cache, callSite *CallNode) {
+func printWarningSummaryNotConstructed(c *AnalyzerState, callSite *CallNode) {
 	if !c.Config.Verbose {
 		return
 	}

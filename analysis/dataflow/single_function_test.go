@@ -35,9 +35,9 @@ func TestFunctionSummaries(t *testing.T) {
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
 	// Loading the program for testdata/src/dataflow/summaries/main.go
 	program, cfg := testutils.LoadTest(t, dir, []string{})
-	cache, err := dataflow.BuildFullCache(log.Default(), cfg, program)
+	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), cfg, program)
 	if err != nil {
-		t.Fatalf("failed to build cache: %v", err)
+		t.Fatalf("failed to build analyzer state: %v", err)
 	}
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -49,18 +49,18 @@ func TestFunctionSummaries(t *testing.T) {
 		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
 	}
 	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		Cache:               cache,
+		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: shouldCreateSummary,
 		ShouldBuildSummary:  taint.ShouldBuildSummary,
 		IsEntrypoint:        taint.IsSourceNode,
 	})
 
-	if len(cache.FlowGraph.Summaries) == 0 {
-		t.Fatalf("cache does not contain any summaries")
+	if len(state.FlowGraph.Summaries) == 0 {
+		t.Fatalf("analyzer state does not contain any summaries")
 	}
 
-	for function, summary := range cache.FlowGraph.Summaries {
+	for function, summary := range state.FlowGraph.Summaries {
 		summary_ids := map[uint32]bool{}
 		// Check that summary's nodes all have different ids
 		summary.ForAllNodes(func(n dataflow.GraphNode) {

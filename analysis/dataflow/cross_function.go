@@ -29,7 +29,7 @@ import (
 
 // Visitor represents a visitor that runs a cross-function analysis from entrypoint.
 type Visitor interface {
-	Visit(c *Cache, entrypoint NodeWithTrace)
+	Visit(s *AnalyzerState, entrypoint NodeWithTrace)
 }
 
 // CrossFunctionFlowGraph represents a cross-function data flow graph.
@@ -45,8 +45,8 @@ type CrossFunctionFlowGraph struct {
 	// Summaries maps the functions in the SSA to their summaries
 	Summaries map[*ssa.Function]*SummaryGraph
 
-	// cache is a pointer to the cache that the dataflow graph represents
-	cache *Cache
+	// AnalyzerState is a pointer to the analyzer state from which the dataflow graph is computed
+	AnalyzerState *AnalyzerState
 
 	// built indicates whether this graph has been built
 	// this should only be set to true by BuildGraph() and be false by default
@@ -57,10 +57,10 @@ type CrossFunctionFlowGraph struct {
 }
 
 // NewCrossFunctionFlowGraph returns a new non-built cross function flow graph.
-func NewCrossFunctionFlowGraph(summaries map[*ssa.Function]*SummaryGraph, cache *Cache) CrossFunctionFlowGraph {
+func NewCrossFunctionFlowGraph(summaries map[*ssa.Function]*SummaryGraph, state *AnalyzerState) CrossFunctionFlowGraph {
 	return CrossFunctionFlowGraph{
 		Summaries:     summaries,
-		cache:         cache,
+		AnalyzerState: state,
 		built:         false,
 		ForwardEdges:  make(map[GraphNode]map[GraphNode]bool),
 		BackwardEdges: make(map[GraphNode]map[GraphNode]bool),
@@ -137,8 +137,8 @@ func (g NodeWithTrace) Key() KeyType {
 
 // BuildGraph builds the cross function flow graph by connecting summaries together
 func (g *CrossFunctionFlowGraph) BuildGraph() {
-	g.cache.Logger.Println("Building cross-function flow graph...")
-	c := g.cache
+	g.AnalyzerState.Logger.Println("Building cross-function flow graph...")
+	c := g.AnalyzerState
 	logger := c.Logger
 	// Open a file to output summaries
 	summariesFile := openSummaries(c)
@@ -169,15 +169,15 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 					// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
 					// contracts
 					if calleeSummary == nil {
-						if calleeSummary = g.cache.LoadExternalContractSummary(node); calleeSummary != nil {
-							if g.cache.Config.Verbose {
+						if calleeSummary = g.AnalyzerState.LoadExternalContractSummary(node); calleeSummary != nil {
+							if g.AnalyzerState.Config.Verbose {
 								logger.Printf("Loaded %s from external contracts.\n",
 									node.CallSite().Common().String())
 							}
 							g.Summaries[node.Callee()] = calleeSummary
 						} else if calleeSummary = LoadPredefinedSummary(
 							node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
-							if g.cache.Config.Verbose {
+							if g.AnalyzerState.Config.Verbose {
 								logger.Printf("Loaded %s from summaries.\n", node.Callee().String())
 							}
 							g.Summaries[node.Callee()] = calleeSummary
@@ -233,7 +233,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 			entry := NodeWithTrace{Node: snode}
 			entryPoints = append(entryPoints, entry)
 		}
-		if isEntryPoint(g.cache.Config, summary.Parent) {
+		if isEntryPoint(g.AnalyzerState.Config, summary.Parent) {
 			entryFuncs = append(entryFuncs, summary)
 		}
 	}
@@ -249,12 +249,12 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 		}
 	}
 
-	g.cache.Logger.Printf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	g.AnalyzerState.Logger.Printf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
 
 	// Run the analysis for every entrypoint. We may be able to change this to run the analysis for all entrypoints
 	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
 	for _, entry := range entryPoints {
-		visitor.Visit(g.cache, entry)
+		visitor.Visit(g.AnalyzerState, entry)
 	}
 }
 
@@ -265,7 +265,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 // This function does nothing if there are no summaries
 // (i.e. `len(g.summaries) == 0`)
 // or if `cfg.SkipInterprocedural` is set to true.
-func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *Cache, visitor Visitor,
+func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *AnalyzerState, visitor Visitor,
 	isEntryPoint func(*config.Config, *ssa.Function) bool) {
 	// Skip the pass if user configuration demands it
 	if c.Config.SkipInterprocedural || len(g.Summaries) == 0 {
@@ -315,7 +315,7 @@ func (ps *ParamStack) Parent() *ParamStack {
 	}
 }
 
-// CrossFunctionGraphVisitor represents a visitor that builds the cache's
+// CrossFunctionGraphVisitor represents a visitor that builds the analyzer state's
 // FlowGraph.
 type CrossFunctionGraphVisitor struct{}
 
@@ -323,7 +323,7 @@ type CrossFunctionGraphVisitor struct{}
 // individual single-function dataflow graphs reachable from source.
 // This visitor must be called for every entrypoint in the program to build a
 // complete dataflow graph.
-func (v CrossFunctionGraphVisitor) Visit(c *Cache, entrypoint NodeWithTrace) {
+func (v CrossFunctionGraphVisitor) Visit(c *AnalyzerState, entrypoint NodeWithTrace) {
 	que := []*VisitorNode{{NodeWithTrace: entrypoint, ParamStack: nil, Prev: nil, Depth: 0}}
 	seen := make(map[NodeWithTrace]bool)
 	goroutines := make(map[*ssa.Go]bool)
@@ -673,25 +673,25 @@ func IsSourceFunction(cfg *config.Config, f *ssa.Function) bool {
 }
 
 func summaryNotFound(g *CrossFunctionFlowGraph, node *CallNode) {
-	if g.cache.Config.Verbose &&
+	if g.AnalyzerState.Config.Verbose &&
 		node.callee.Callee.Name() != "init" &&
-		g.cache.IsReachableFunction(node.callee.Callee) {
+		g.AnalyzerState.IsReachableFunction(node.callee.Callee) {
 
-		g.cache.Logger.Printf("Could not find summary of %s", node.callSite.String())
+		g.AnalyzerState.Logger.Printf("Could not find summary of %s", node.callSite.String())
 		if node.callee.Callee != nil {
-			g.cache.Logger.Printf("|-- Key: %s", node.callee.Callee.String())
+			g.AnalyzerState.Logger.Printf("|-- Key: %s", node.callee.Callee.String())
 		}
-		g.cache.Logger.Printf("|-- Location: %s", node.Position(g.cache))
+		g.AnalyzerState.Logger.Printf("|-- Location: %s", node.Position(g.AnalyzerState))
 
 		if node.callSite.Common().IsInvoke() {
-			g.cache.Logger.Printf("|-- invoke resolved to callee %s", node.callee.Callee.String())
+			g.AnalyzerState.Logger.Printf("|-- invoke resolved to callee %s", node.callee.Callee.String())
 		}
 	}
 }
 
 // openCoverage opens the coverage file, if the config requires it.
 // the caller is responsible for closing the file if non-nil
-func openCoverage(c *Cache) *os.File {
+func openCoverage(c *AnalyzerState) *os.File {
 	var err error
 	var coverage *os.File
 
@@ -711,7 +711,7 @@ func openCoverage(c *Cache) *os.File {
 
 // openSummaries returns a non-nil opened file if the configuration is set properly
 // the caller is responsible for closing the file if non-nil
-func openSummaries(c *Cache) *os.File {
+func openSummaries(c *AnalyzerState) *os.File {
 	var err error
 	var summariesFile *os.File
 
@@ -750,7 +750,7 @@ func UnwindCallstackFromCallee(callsites map[ssa.CallInstruction]*CallNode, trac
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the
 // trace has not been seen before
-func addNext(c *Cache,
+func addNext(c *AnalyzerState,
 	que []*VisitorNode,
 	seen map[NodeWithTrace]bool,
 	cur *VisitorNode,
@@ -786,7 +786,7 @@ func addNext(c *Cache,
 }
 
 // checkIndex checks that the indexed graph node is valid in the parent node call site
-func checkIndex(c *Cache, node IndexedGraphNode, callSite *CallNode, msg string) error {
+func checkIndex(c *AnalyzerState, node IndexedGraphNode, callSite *CallNode, msg string) error {
 	if node.Index() >= len(callSite.Args()) {
 		pos := c.Program.Fset.Position(callSite.CallSite().Value().Pos())
 		c.Logger.Printf("%s: trying to access index %d of %s, which has"+
@@ -804,7 +804,7 @@ func checkClosureReturns(returnNode *ReturnValNode, closureNode *ClosureNode) bo
 	return false
 }
 
-func checkNoGoRoutine(c *Cache, reportedLocs map[*ssa.Go]bool, node *CallNode) {
+func checkNoGoRoutine(c *AnalyzerState, reportedLocs map[*ssa.Go]bool, node *CallNode) {
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
 		if !reportedLocs[goroutine] {
 			reportedLocs[goroutine] = true

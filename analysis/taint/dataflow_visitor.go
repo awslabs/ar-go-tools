@@ -25,18 +25,23 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Visitor represents a taint flow visitor that tracks taint flows from sources to sinks.
+// Visitor represents a taint flow Visitor that tracks taint flows from sources to sinks.
+// It implements the [pkg/Github.Com/Awslabs/Argot/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
-	Taints         TaintFlows
+	taints         TaintFlows
 	coverageWriter io.StringWriter
 }
 
+// NewVisitor returns a Visitor that can be used with
+// [pkg/github.com/awslabs/argot/analysis/dataflow.CrossFunctionPass] to run the taint analysis
+// independently from the  [Analyze] function
 func NewVisitor(coverageWriter io.StringWriter) *Visitor {
-	return &Visitor{Taints: make(TaintFlows), coverageWriter: coverageWriter}
+	return &Visitor{taints: make(TaintFlows), coverageWriter: coverageWriter}
 }
 
-// Visit runs a cross-function analysis to add any detected taint flow from source to a sink to v.Taints.
-func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
+// Visit runs a cross-function analysis to add any detected taint flow from source to a sink. This implements the
+// visitor interface of the datflow package.
+func (v *Visitor) Visit(c *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	seen := make(map[df.KeyType]bool)
 	goroutines := make(map[*ssa.Go]bool)
@@ -60,9 +65,9 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(elt.Node, c.Config) {
-			if addNewPathCandidate(v.Taints, source.Node, elt.Node) {
+			if addNewPathCandidate(v.taints, source.Node, elt.Node) {
 				numAlarms++
-				ReportTaintFlow(c, source, elt)
+				reportTaintFlow(c, source, elt)
 				// Stop if there is a limit on number of alarms and it has been reached.
 				if c.Config.MaxAlarms > 0 && numAlarms >= c.Config.MaxAlarms {
 					return
@@ -355,7 +360,7 @@ func (v *Visitor) Visit(c *df.Cache, entrypoint df.NodeWithTrace) {
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the
 // trace has not been seen before
-func addNext(c *df.Cache,
+func addNext(c *df.AnalyzerState,
 	que []*df.VisitorNode,
 	seen map[df.KeyType]bool,
 	cur *df.VisitorNode,
@@ -402,7 +407,7 @@ func addNext(c *df.Cache,
 }
 
 // checkIndex checks that the indexed graph node is valid in the parent node call site
-func checkIndex(c *df.Cache, node df.IndexedGraphNode, callSite *df.CallNode, msg string) error {
+func checkIndex(c *df.AnalyzerState, node df.IndexedGraphNode, callSite *df.CallNode, msg string) error {
 	if node.Index() >= len(callSite.Args()) {
 		callsitePos := callSite.Position(c)
 		nodePos := node.ParentNode().Position(c)
@@ -424,7 +429,7 @@ func checkClosureReturns(returnNode *df.ReturnValNode, closureNode *df.ClosureNo
 	return false
 }
 
-func checkNoGoRoutine(c *df.Cache, reportedLocs map[*ssa.Go]bool, node *df.CallNode) {
+func checkNoGoRoutine(c *df.AnalyzerState, reportedLocs map[*ssa.Go]bool, node *df.CallNode) {
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
 		if !reportedLocs[goroutine] {
 			reportedLocs[goroutine] = true

@@ -23,7 +23,7 @@ import (
 )
 
 // cmdCd implements the "cd" command that lets the user change the current working directory in the tool
-func cmdCd(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdCd(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : move to relative directory\n", tt.Escape.Blue, cmdCdName, tt.Escape.Reset)
 		return false
@@ -46,7 +46,7 @@ func cmdCd(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 }
 
 // cmdExit implements the exit command to exit the command-line tool.
-func cmdExit(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
+func cmdExit(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : exit the program\n", tt.Escape.Blue, cmdExitName, tt.Escape.Reset)
 		return false
@@ -57,7 +57,7 @@ func cmdExit(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 
 // cmdLs prints the entries in the current directory. Useful to navigate the current directory and load a new program
 // or a new configuration file.
-func cmdLs(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdLs(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : list files in directory\n", tt.Escape.Blue, cmdLsName, tt.Escape.Reset)
 		return false

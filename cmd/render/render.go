@@ -83,9 +83,9 @@ func filterFn(edge *callgraph.Edge) bool {
 func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ssa.Program, w io.Writer) error {
 	// every function should be included in the graph
 	// building the graph doesn't require souce/sink logic
-	cache, err := dataflow.BuildFullCache(logger, cfg, program)
+	state, err := dataflow.NewInitializedAnalyzerState(logger, cfg, program)
 	if err != nil {
-		return fmt.Errorf("failed to build cache: %w", err)
+		return fmt.Errorf("failed to build analyzer state: %w", err)
 	}
 
 	numRoutines := runtime.NumCPU() - 1
@@ -94,19 +94,19 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ss
 	}
 
 	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		Cache:               cache,
+		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: shouldCreateSummary,
 		ShouldBuildSummary:  shouldBuildSummary,
 		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },
 	})
 
-	cache, err = analysis.BuildCrossFunctionGraph(cache)
+	state, err = analysis.BuildCrossFunctionGraph(state)
 	if err != nil {
 		return fmt.Errorf("failed to build cross-function graph: %w", err)
 	}
 
-	cache.FlowGraph.Print(w)
+	state.FlowGraph.Print(w)
 
 	return nil
 }
@@ -122,7 +122,7 @@ func shouldCreateSummary(f *ssa.Function) bool {
 
 // shouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
 // pass. This is not necessary for functions that have summaries that are externally defined, for example.
-func shouldBuildSummary(cache *dataflow.Cache, function *ssa.Function) bool {
+func shouldBuildSummary(cache *dataflow.AnalyzerState, function *ssa.Function) bool {
 	if cache == nil || function == nil || summaries.IsSummaryRequired(function) {
 		return true
 	}

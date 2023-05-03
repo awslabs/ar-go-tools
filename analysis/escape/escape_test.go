@@ -217,11 +217,11 @@ func TestInterproceduralEscape(t *testing.T) {
 	program, config := testutils.LoadTest(t, ".", []string{})
 	config.Verbose = true
 	// Compute the summaries for everything in the main package
-	cache, err := dataflow.NewCache(program, log.Default(), config,
-		[]func(*dataflow.Cache){
-			func(cache *dataflow.Cache) { cache.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
+	state, err := dataflow.NewAnalyzerState(program, log.Default(), config,
+		[]func(*dataflow.AnalyzerState){
+			func(s *dataflow.AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		})
-	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
+	escapeWholeProgram, err := EscapeAnalysis(state, state.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}

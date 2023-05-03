@@ -140,7 +140,7 @@ reportcoverage: true
 reportsummaries: true
 reportpaths: true
 maxdepth: 46 # Optional setting to limit runtime; a call depth of 46 is safe
-coverage: "module/package" # coverage is only reported for files in module/package
+coveragefilter: "module/package" # coverage is only reported for files matching
 # Use interface contracts
 dataflowspecs: "specs.json"
 pkgfilter: "github.com/module1" # focus on functions in module1
@@ -189,9 +189,9 @@ the `load_progam.go` file for loading progam and `analyzers.go` to call analyzer
 - `closures` contains analysis code specific to closures in Go,
 - `concurrency` contains the concurrency analyses,
 - `config` implements the config file system that is shared by all analyses,
-- `dataflow` implements the dataflow analysis as well as the cache object, which is shared by many analyses. Static
-analyses that required pointer and callgraph information should depend on the dataflow cache and use its functionality
-for building information about the SSA program.
+- `dataflow` implements the dataflow analysis as well as the analysis state object, which is shared by many analyses.
+Static analyses that required pointer and callgraph information should depend on the dataflow analysis state and use its
+ functionality to build information about the SSA program.
 - `defers` contains the defers analysis,
 - `dependencies` contains the dependencies analysis,
 - `format` contains formatting helpers,

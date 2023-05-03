@@ -50,7 +50,7 @@ func TestTrivial(t *testing.T) {
 	ar := loadConcurrencyTestResult(t, "trivial")
 
 	for goInstr, id := range ar.GoCalls {
-		t.Logf("%d : %s @ %s", id, goInstr, ar.Cache.Program.Fset.Position(goInstr.Pos()))
+		t.Logf("%d : %s @ %s", id, goInstr, ar.AnalyzerState.Program.Fset.Position(goInstr.Pos()))
 	}
 
 	res := make(map[string]string, len(ar.NodeColors))

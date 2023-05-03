@@ -172,11 +172,11 @@ type ClosureUsageStatistics struct {
 	ClosuresReturned          map[ssa.Instruction]bool
 }
 
-// ComputeClosureUsageStats computes statistics about the usage of closures in the program contained in the cache. This
-// requires the pointer analysis to have been computed in the cache.
-func ComputeClosureUsageStats(cache *dataflow.Cache) (ClosureUsageStatistics, error) {
-	if cache.PointerAnalysis == nil || cache.Program == nil || cache.FlowGraph == nil {
-		return ClosureUsageStatistics{}, fmt.Errorf("cache should be built to collect stats")
+// ComputeClosureUsageStats computes statistics about the usage of closures in the program contained in the state. This
+// requires the pointer analysis to have been computed in the state.
+func ComputeClosureUsageStats(state *dataflow.AnalyzerState) (ClosureUsageStatistics, error) {
+	if state.PointerAnalysis == nil || state.Program == nil || state.FlowGraph == nil {
+		return ClosureUsageStatistics{}, fmt.Errorf("state should be built to collect stats")
 	}
 	stats := &ClosureUsageStatistics{
 		AnonsCapturingChannels:    map[*ssa.Function]bool{},
@@ -186,13 +186,13 @@ func ComputeClosureUsageStats(cache *dataflow.Cache) (ClosureUsageStatistics, er
 		ClosuresPassedAsArgs:      map[ssa.CallInstruction]ssa.Instruction{},
 		ClosuresCalled:            map[ssa.CallInstruction]ssa.Instruction{},
 	}
-	for function := range cache.ReachableFunctions(false, false) {
-		stats.doFunction(cache, function)
+	for function := range state.ReachableFunctions(false, false) {
+		stats.doFunction(state, function)
 	}
 	return *stats, nil
 }
 
-func (s *ClosureUsageStatistics) doFunction(cache *dataflow.Cache, function *ssa.Function) {
+func (s *ClosureUsageStatistics) doFunction(state *dataflow.AnalyzerState, function *ssa.Function) {
 	lang.IterateInstructions(function, func(index int, i ssa.Instruction) {
 		if makeClosure, isMakeClosure := i.(*ssa.MakeClosure); isMakeClosure {
 			classified := false
@@ -240,7 +240,7 @@ func (s *ClosureUsageStatistics) doFunction(cache *dataflow.Cache, function *ssa
 		return
 	} else {
 		s.TotalAnonFunctions += 1
-		if node := cache.PointerAnalysis.CallGraph.Nodes[function]; node != nil {
+		if node := state.PointerAnalysis.CallGraph.Nodes[function]; node != nil {
 			s.TotalAnonCalls += len(node.In)
 		}
 	}
@@ -250,7 +250,7 @@ func (s *ClosureUsageStatistics) doFunction(cache *dataflow.Cache, function *ssa
 			s.AnonsCapturingChannels[function] = true
 		}
 	}
-	summary := cache.FlowGraph.Summaries[function]
+	summary := state.FlowGraph.Summaries[function]
 	if summary == nil {
 		return
 	}

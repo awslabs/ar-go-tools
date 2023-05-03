@@ -20,7 +20,7 @@ import (
 )
 
 // cmdBuildGraph builds the cross-function flow graph given the current summaries
-func cmdBuildGraph(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
+func cmdBuildGraph(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : build the cross-function flow graph.\n",
 			tt.Escape.Blue, cmdBuildGraphName, tt.Escape.Reset)

@@ -28,8 +28,9 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Cache holds information that might need to be used during program analysis
-type Cache struct {
+// AnalyzerState holds information that might need to be used during program analysis, and represents the state of
+// the analyzer. Different steps of the analysis will populate the fields of this structure.
+type AnalyzerState struct {
 	// The logger used during the analysis (can be used to control output.
 	Logger *log.Logger
 
@@ -74,31 +75,38 @@ type Cache struct {
 	errorMutex sync.Mutex
 }
 
-// BuildFullCache runs NewCache, building all information that can be built in the cache
-func BuildFullCache(logger *log.Logger, config *config.Config, program *ssa.Program) (*Cache, error) {
+// NewInitializedAnalyzerState runs NewAnalyzerState, and any additional steps that are commonly used in analyses.
+// This consists in:
+//   - running pointer analysis
+//   - computing a map from interface types to the implementations of their methods
+//   - scanning the usage of globals in the program
+//   - linking aliases of bound variables to the closure that binds them
+func NewInitializedAnalyzerState(logger *log.Logger, config *config.Config,
+	program *ssa.Program) (*AnalyzerState, error) {
 	program.Build()
-	c, err := NewCache(program, logger, config, []func(*Cache){
-		func(cache *Cache) { cache.PopulateImplementations() },
-		func(cache *Cache) { cache.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
-		func(cache *Cache) { cache.PopulateGlobalsVerbose() },
+	state, err := NewAnalyzerState(program, logger, config, []func(*AnalyzerState){
+		func(a *AnalyzerState) { a.PopulateImplementations() },
+		func(a *AnalyzerState) { a.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
+		func(a *AnalyzerState) { a.PopulateGlobalsVerbose() },
 	})
 	if err != nil {
-		return c, fmt.Errorf("error while running parallel steps: %v", err)
+		return state, fmt.Errorf("error while running parallel steps: %v", err)
 	}
-	err = c.PopulateBoundingInformation(true)
+	err = state.PopulateBoundingInformation(true)
 	if err != nil {
-		return c, fmt.Errorf("error while running bounding analysis: %v", err)
+		return state, fmt.Errorf("error while running bounding analysis: %v", err)
 	}
-	return c, err
+	return state, err
 }
 
-// NewCache returns a properly initialized cache by running steps in parallel.
-func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cache)) (*Cache, error) {
+// NewAnalyzerState returns a properly initialized analyzer state by running essential steps in parallel.
+func NewAnalyzerState(p *ssa.Program, l *log.Logger, c *config.Config,
+	steps []func(*AnalyzerState)) (*AnalyzerState, error) {
 	var allContracts []Contract
 
 	e := log.New(l.Writer(), "[ERROR] ", l.Flags())
 
-	cache := &Cache{
+	state := &AnalyzerState{
 		Logger:                l,
 		Err:                   e,
 		Config:                c,
@@ -109,13 +117,13 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cac
 		PointerAnalysis:       nil,
 		Globals:               map[*ssa.Global]*GlobalNode{},
 		FlowGraph: &CrossFunctionFlowGraph{
-			Summaries: map[*ssa.Function]*SummaryGraph{},
-			cache:     nil,
+			Summaries:     map[*ssa.Function]*SummaryGraph{},
+			AnalyzerState: nil,
 		},
 		errors: map[string][]error{},
 	}
-	// Link summaries to parent cache
-	cache.FlowGraph.cache = cache
+	// Link summaries to parent analyzer state
+	state.FlowGraph.AnalyzerState = state
 
 	// Load the dataflow contracts from the specified json files, if any
 	if len(c.DataflowSpecs) > 0 {
@@ -132,7 +140,7 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cac
 				for method := range contract.Methods {
 					// contract are initially nil, the calls to ResolveCallee will set them to some non-nil value
 					// when necessary
-					cache.DataFlowContracts[contract.Key(method)] = nil
+					state.DataFlowContracts[contract.Key(method)] = nil
 				}
 			}
 			allContracts = append(allContracts, contractsBatch...)
@@ -145,26 +153,26 @@ func NewCache(p *ssa.Program, l *log.Logger, c *config.Config, steps []func(*Cac
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			step(cache)
+			step(state)
 		}()
 	}
 	wg.Wait()
-	if errs := cache.CheckError(); len(errs) > 0 {
+	if errs := state.CheckError(); len(errs) > 0 {
 		// TODO: use errors.Join when min version of go is 1.20
 		// currently only first error is reported
-		return nil, fmt.Errorf("failed to build cache: %w", errs[0])
+		return nil, fmt.Errorf("failed to build analyzer state: %w", errs[0])
 	}
 
-	cache.LinkContracts(allContracts)
+	state.linkContracts(allContracts)
 
-	return cache, nil
+	return state, nil
 }
 
-func (c *Cache) Size() int {
+func (c *AnalyzerState) Size() int {
 	return len(c.implementationsByType)
 }
 
-func (c *Cache) PrintImplementations(w io.Writer) {
+func (c *AnalyzerState) PrintImplementations(w io.Writer) {
 	for typString, implems := range c.implementationsByType {
 		fmt.Fprintf(w, "KEY: %s\n", typString)
 		for function := range implems {
@@ -173,7 +181,7 @@ func (c *Cache) PrintImplementations(w io.Writer) {
 	}
 }
 
-func (c *Cache) AddError(key string, e error) {
+func (c *AnalyzerState) AddError(key string, e error) {
 	c.errorMutex.Lock()
 	defer c.errorMutex.Unlock()
 	if e != nil {
@@ -181,7 +189,7 @@ func (c *Cache) AddError(key string, e error) {
 	}
 }
 
-func (c *Cache) CheckError() []error {
+func (c *AnalyzerState) CheckError() []error {
 	c.errorMutex.Lock()
 	defer c.errorMutex.Unlock()
 	for e, errs := range c.errors {
@@ -192,27 +200,27 @@ func (c *Cache) CheckError() []error {
 }
 
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations
-func (c *Cache) PopulateTypesToImplementationMap() {
+func (c *AnalyzerState) PopulateTypesToImplementationMap() {
 	if err := ComputeMethodImplementations(c.Program, c.implementationsByType, c.DataFlowContracts, c.keys); err != nil {
 		c.AddError("implementationsmap", err)
 	}
 }
 
 // PopulateImplementations is a verbose wrapper around PopulateTypesToImplementationsMap.
-func (c *Cache) PopulateImplementations() {
+func (c *AnalyzerState) PopulateImplementations() {
 	// Load information for analysis and cache it.
-	c.Logger.Println("Caching information about types and functions for analysis...")
+	c.Logger.Println("Computing information about types and functions for analysis...")
 	start := time.Now()
 	c.PopulateTypesToImplementationMap()
-	c.Logger.Printf("Cache population terminated, added %d items (%.2f s)\n",
+	c.Logger.Printf("Pointer analysis state computed, added %d items (%.2f s)\n",
 		c.Size(), time.Since(start).Seconds())
 }
 
-// PopulatePointerAnalysisResult populates the PointerAnalysis field of the cache by running the pointer analysis
+// PopulatePointerAnalysisResult populates the PointerAnalysis field of the analyzer state by running the pointer analysis
 // with queries on every function in the package such that functionFilter is true.
 //
-// The cache contains the result of the pointer analysis, or an error that can be inspected by CheckError
-func (c *Cache) PopulatePointerAnalysisResult(functionFilter func(*ssa.Function) bool) {
+// The analyzer state contains the result of the pointer analysis, or an error that can be inspected by CheckError
+func (c *AnalyzerState) PopulatePointerAnalysisResult(functionFilter func(*ssa.Function) bool) {
 	ptrResult, err := DoPointerAnalysis(c.Program, functionFilter, true)
 	if err != nil {
 		c.AddError("pointeranalysis", err)
@@ -221,7 +229,7 @@ func (c *Cache) PopulatePointerAnalysisResult(functionFilter func(*ssa.Function)
 }
 
 // PopulatePointersVerbose is a verbose wrapper around PopulatePointerAnalysisResult.
-func (c *Cache) PopulatePointersVerbose(functionFilter func(*ssa.Function) bool) {
+func (c *AnalyzerState) PopulatePointersVerbose(functionFilter func(*ssa.Function) bool) {
 	start := time.Now()
 	c.Logger.Println("Gathering values and starting pointer analysis...")
 	c.PopulatePointerAnalysisResult(functionFilter)
@@ -229,7 +237,7 @@ func (c *Cache) PopulatePointersVerbose(functionFilter func(*ssa.Function) bool)
 }
 
 // PopulateGlobals adds global nodes for every global defined in the program's packages
-func (c *Cache) PopulateGlobals() {
+func (c *AnalyzerState) PopulateGlobals() {
 	for _, pkg := range c.Program.AllPackages() {
 		for _, member := range pkg.Members {
 			glob, ok := member.(*ssa.Global)
@@ -241,7 +249,7 @@ func (c *Cache) PopulateGlobals() {
 }
 
 // PopulateGlobalsVerbose is a verbose wrapper around PopulateGlobals
-func (c *Cache) PopulateGlobalsVerbose() {
+func (c *AnalyzerState) PopulateGlobalsVerbose() {
 	start := time.Now()
 	c.Logger.Println("Gathering global variable declaration in the program...")
 	c.PopulateGlobals()
@@ -250,7 +258,7 @@ func (c *Cache) PopulateGlobalsVerbose() {
 }
 
 // PopulateBoundingInformation runs the bounding analysis
-func (c *Cache) PopulateBoundingInformation(verbose bool) error {
+func (c *AnalyzerState) PopulateBoundingInformation(verbose bool) error {
 	start := time.Now()
 	if verbose {
 		c.Logger.Println("Gathering information about pointer binding in closures")
@@ -274,11 +282,11 @@ func (c *Cache) PopulateBoundingInformation(verbose bool) error {
 	}
 }
 
-// Functions to retrieve results from the information stored in the cache
+// Functions to retrieve results from the information stored in the analyzer state
 
 // ReachableFunctions returns the set of reachable functions according to the pointer analysis
 // If the pointer analysis hasn't been run, then returns an empty map.
-func (c *Cache) ReachableFunctions(excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
+func (c *AnalyzerState) ReachableFunctions(excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
 	if c.reachableFunctions == nil {
 		c.reachableFunctions = make(map[*ssa.Function]bool)
 		if c.PointerAnalysis != nil {
@@ -291,7 +299,7 @@ func (c *Cache) ReachableFunctions(excludeMain bool, excludeInit bool) map[*ssa.
 
 // IsReachableFunction returns true if f is reachable according to the pointer analysis, or if the pointer analysis
 // and ReachableFunctions has never been called.
-func (c *Cache) IsReachableFunction(f *ssa.Function) bool {
+func (c *AnalyzerState) IsReachableFunction(f *ssa.Function) bool {
 	if c != nil && c.reachableFunctions != nil {
 		return c.reachableFunctions[f]
 	}
@@ -343,8 +351,8 @@ type CalleeInfo struct {
 // If the call instruction does not appear in the callgraph, then it returns all the functions that correspond to the
 // type of the call variable at the location.
 //
-// Returns a non-nil error if it requires some information in the cache that has not been computed.
-func (c *Cache) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map[*ssa.Function]CalleeInfo, error) {
+// Returns a non-nil error if it requires some information in the analyzer state that has not been computed.
+func (c *AnalyzerState) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map[*ssa.Function]CalleeInfo, error) {
 	// First, check if there is a static callee
 	callee := instr.Common().StaticCallee()
 	if callee != nil {
@@ -396,14 +404,14 @@ func (c *Cache) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map
 	return callees, nil
 }
 
-/*  Functions specific to dataflow contracts stored in the cache */
+/*  Functions specific to dataflow contracts stored in the analyzer state */
 
-// LinkContracts implements the step in the cache building function that links every dataflow contract with a specific
-// SSA function. This step should only link function contracts with the SSA function, but it build the summaries for
-// all contracts in allContracts.
-func (c *Cache) LinkContracts(allContracts []Contract) {
+// linkContracts implements the step in the analyzer state building function that links every dataflow contract with
+// a specific SSA function. This step should only link function contracts with the SSA function, but it build the
+// summaries for all contracts in allContracts.
+func (c *AnalyzerState) linkContracts(allContracts []Contract) {
 	// This links the function contracts to their implementation by storing an empty summary graph in the
-	// DataFlowContracts map of the cache.
+	// DataFlowContracts map of the analyzer state.
 	for f := range c.ReachableFunctions(false, false) {
 		if _, hasContract := c.DataFlowContracts[f.String()]; hasContract {
 			c.DataFlowContracts[f.String()] = NewSummaryGraph(f, GetUniqueFunctionId())
@@ -420,8 +428,8 @@ func (c *Cache) LinkContracts(allContracts []Contract) {
 }
 
 // HasExternalContractSummary returns true if the function f has a summary has has been loaded in the DataFlowContracts
-// of the cache.
-func (c *Cache) HasExternalContractSummary(f *ssa.Function) bool {
+// of the analyzer state.
+func (c *AnalyzerState) HasExternalContractSummary(f *ssa.Function) bool {
 	// Indirection: look for interface contract
 	if interfaceMethodKey, ok := c.keys[f.String()]; ok {
 		return c.DataFlowContracts[interfaceMethodKey] != nil
@@ -433,8 +441,8 @@ func (c *Cache) HasExternalContractSummary(f *ssa.Function) bool {
 	return false
 }
 
-// LoadExternalContractSummary looks for contracts loaded in the DataFlowContracts of the cache.
-func (c *Cache) LoadExternalContractSummary(node *CallNode) *SummaryGraph {
+// LoadExternalContractSummary looks for contracts loaded in the DataFlowContracts of the state.
+func (c *AnalyzerState) LoadExternalContractSummary(node *CallNode) *SummaryGraph {
 	if node == nil || node.callee.Callee == nil {
 		return nil
 	}

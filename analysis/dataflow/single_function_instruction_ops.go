@@ -22,7 +22,7 @@ import (
 
 // This file contains all the instruction operations implemented for the intraprocedural analysis.
 
-func (state *AnalysisState) NewBlock(block *ssa.BasicBlock) {
+func (state *IntraAnalysisState) NewBlock(block *ssa.BasicBlock) {
 	state.changeFlag = false
 	state.curBlock = block
 	// If the block has not been visited yet, declare that information has changed.
@@ -32,7 +32,7 @@ func (state *AnalysisState) NewBlock(block *ssa.BasicBlock) {
 	}
 }
 
-func (state *AnalysisState) ChangedOnEndBlock() bool {
+func (state *IntraAnalysisState) ChangedOnEndBlock() bool {
 	if state != nil && state.postBlockCallback != nil {
 		state.postBlockCallback(state)
 	}
@@ -41,85 +41,85 @@ func (state *AnalysisState) ChangedOnEndBlock() bool {
 
 // Below are all the interface functions to implement the InstrOp interface
 
-func (state *AnalysisState) DoCall(call *ssa.Call) {
+func (state *IntraAnalysisState) DoCall(call *ssa.Call) {
 	state.callCommonMark(call, call, call.Common())
 }
 
-func (state *AnalysisState) DoDefer(_ *ssa.Defer) {
+func (state *IntraAnalysisState) DoDefer(_ *ssa.Defer) {
 	// Defers will be handled when RunDefers are handled
 }
 
-func (state *AnalysisState) DoGo(g *ssa.Go) {
+func (state *IntraAnalysisState) DoGo(g *ssa.Go) {
 	state.callCommonMark(g.Value(), g, g.Common())
 }
 
-func (state *AnalysisState) DoDebugRef(*ssa.DebugRef) {
+func (state *IntraAnalysisState) DoDebugRef(*ssa.DebugRef) {
 	// Do nothing, we ignore debug refs in SSA
 }
 
-func (state *AnalysisState) DoUnOp(x *ssa.UnOp) {
+func (state *IntraAnalysisState) DoUnOp(x *ssa.UnOp) {
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoBinOp(binop *ssa.BinOp) {
+func (state *IntraAnalysisState) DoBinOp(binop *ssa.BinOp) {
 	// If either operand is tainted, taint the value.
 	// We might want more precision later.
 	simpleTransfer(state, binop, binop.X, binop)
 	simpleTransfer(state, binop, binop.Y, binop)
 }
 
-func (state *AnalysisState) DoChangeInterface(x *ssa.ChangeInterface) {
+func (state *IntraAnalysisState) DoChangeInterface(x *ssa.ChangeInterface) {
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoChangeType(x *ssa.ChangeType) {
+func (state *IntraAnalysisState) DoChangeType(x *ssa.ChangeType) {
 	// Changing type doesn'state change taint
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoConvert(x *ssa.Convert) {
+func (state *IntraAnalysisState) DoConvert(x *ssa.Convert) {
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
+func (state *IntraAnalysisState) DoSliceArrayToPointer(x *ssa.SliceToArrayPointer) {
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoMakeInterface(x *ssa.MakeInterface) {
+func (state *IntraAnalysisState) DoMakeInterface(x *ssa.MakeInterface) {
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoExtract(x *ssa.Extract) {
+func (state *IntraAnalysisState) DoExtract(x *ssa.Extract) {
 	transfer(state, x, x.Tuple, x, "", x.Index)
 }
 
-func (state *AnalysisState) DoSlice(x *ssa.Slice) {
+func (state *IntraAnalysisState) DoSlice(x *ssa.Slice) {
 	// Taking a slice propagates taint information
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoReturn(r *ssa.Return) {
+func (state *IntraAnalysisState) DoReturn(r *ssa.Return) {
 	// At a return instruction, nothing happens (there is no mark to propagate)
 }
 
-func (state *AnalysisState) DoRunDefers(r *ssa.RunDefers) {
+func (state *IntraAnalysisState) DoRunDefers(r *ssa.RunDefers) {
 	err := state.doDefersStackSimulation(r)
 	if err != nil {
 		state.errors[r] = err
 	}
 }
 
-func (state *AnalysisState) DoPanic(x *ssa.Panic) {
+func (state *IntraAnalysisState) DoPanic(x *ssa.Panic) {
 	// TODO figure out how to handle this
 	// state.errors[x] = fmt.Errorf("panic is not handled yet")
 }
 
-func (state *AnalysisState) DoSend(x *ssa.Send) {
+func (state *IntraAnalysisState) DoSend(x *ssa.Send) {
 	// Sending a tainted value over the channel taints the whole channel
 	simpleTransfer(state, x, x.X, x.Chan)
 }
 
-func (state *AnalysisState) DoStore(x *ssa.Store) {
+func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 	transfer(state, x, x.Val, x.Addr, "*", -1)
 	// Special store
 	switch addr := x.Addr.(type) {
@@ -128,20 +128,20 @@ func (state *AnalysisState) DoStore(x *ssa.Store) {
 	}
 }
 
-func (state *AnalysisState) DoIf(*ssa.If) {
+func (state *IntraAnalysisState) DoIf(*ssa.If) {
 	// Do nothing
 	// TODO: do we want to add path sensitivity, i.e. conditional on tainted value taints all values in condition?
 }
 
-func (state *AnalysisState) DoJump(*ssa.Jump) {
+func (state *IntraAnalysisState) DoJump(*ssa.Jump) {
 	// Do nothing
 }
 
-func (state *AnalysisState) DoMakeChan(*ssa.MakeChan) {
+func (state *IntraAnalysisState) DoMakeChan(*ssa.MakeChan) {
 	// Do nothing
 }
 
-func (state *AnalysisState) DoAlloc(x *ssa.Alloc) {
+func (state *IntraAnalysisState) DoAlloc(x *ssa.Alloc) {
 	if state.shouldTrack(state.flowInfo.Config, x) {
 		state.markValue(x, x, NewMark(x, DefaultMark, "", nil, -1))
 	}
@@ -149,24 +149,24 @@ func (state *AnalysisState) DoAlloc(x *ssa.Alloc) {
 	state.optionalSyntheticNode(x, x, x)
 }
 
-func (state *AnalysisState) DoMakeSlice(*ssa.MakeSlice) {
+func (state *IntraAnalysisState) DoMakeSlice(*ssa.MakeSlice) {
 	// Do nothing
 }
 
-func (state *AnalysisState) DoMakeMap(*ssa.MakeMap) {
+func (state *IntraAnalysisState) DoMakeMap(*ssa.MakeMap) {
 	// Do nothing
 }
 
-func (state *AnalysisState) DoRange(x *ssa.Range) {
+func (state *IntraAnalysisState) DoRange(x *ssa.Range) {
 	// An iterator over a tainted value is tainted
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoNext(x *ssa.Next) {
+func (state *IntraAnalysisState) DoNext(x *ssa.Next) {
 	simpleTransfer(state, x, x.Iter, x)
 }
 
-func (state *AnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
+func (state *IntraAnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 	// A FieldAddr may be a mark
 	state.optionalSyntheticNode(x, x, x)
 
@@ -184,7 +184,7 @@ func (state *AnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 	transfer(state, x, x.X, x, field, -1)
 }
 
-func (state *AnalysisState) DoField(x *ssa.Field) {
+func (state *IntraAnalysisState) DoField(x *ssa.Field) {
 	// A field may be a mark
 	state.optionalSyntheticNode(x, x, x)
 
@@ -199,44 +199,44 @@ func (state *AnalysisState) DoField(x *ssa.Field) {
 	transfer(state, x, x.X, x, field, -1)
 }
 
-func (state *AnalysisState) DoIndexAddr(x *ssa.IndexAddr) {
+func (state *IntraAnalysisState) DoIndexAddr(x *ssa.IndexAddr) {
 	// An indexing taints the value if either index or the indexed value is tainted
 	simpleTransfer(state, x, x.Index, x)
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoIndex(x *ssa.Index) {
+func (state *IntraAnalysisState) DoIndex(x *ssa.Index) {
 	// An indexing taints the value if either index or array is tainted
 	simpleTransfer(state, x, x.Index, x)
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoLookup(x *ssa.Lookup) {
+func (state *IntraAnalysisState) DoLookup(x *ssa.Lookup) {
 	simpleTransfer(state, x, x.X, x)
 	simpleTransfer(state, x, x.Index, x)
 }
 
-func (state *AnalysisState) DoMapUpdate(x *ssa.MapUpdate) {
+func (state *IntraAnalysisState) DoMapUpdate(x *ssa.MapUpdate) {
 	// Adding a tainted key or value in a map taints the whole map
 	simpleTransfer(state, x, x.Key, x.Map)
 	simpleTransfer(state, x, x.Value, x.Map)
 }
 
-func (state *AnalysisState) DoTypeAssert(x *ssa.TypeAssert) {
+func (state *IntraAnalysisState) DoTypeAssert(x *ssa.TypeAssert) {
 	simpleTransfer(state, x, x.X, x)
 }
 
-func (state *AnalysisState) DoMakeClosure(x *ssa.MakeClosure) {
+func (state *IntraAnalysisState) DoMakeClosure(x *ssa.MakeClosure) {
 	state.addClosureNode(x)
 }
 
-func (state *AnalysisState) DoPhi(phi *ssa.Phi) {
+func (state *IntraAnalysisState) DoPhi(phi *ssa.Phi) {
 	for _, edge := range phi.Edges {
 		simpleTransfer(state, phi, edge, phi)
 	}
 }
 
-func (state *AnalysisState) DoSelect(x *ssa.Select) {
+func (state *IntraAnalysisState) DoSelect(x *ssa.Select) {
 	for _, selectState := range x.States {
 		switch selectState.Dir {
 		case types.RecvOnly:

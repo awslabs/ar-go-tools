@@ -31,7 +31,7 @@ import (
 
 // cmdStats prints statistics about the program
 // Command is stats [all|general|closures]
-func cmdStats(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : show stats about program\n", tt.Escape.Blue, cmdStatsName, tt.Escape.Reset)
 		writeFmt(tt, "\t  subcommands:\n")
@@ -64,7 +64,7 @@ func cmdStats(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 	return false
 }
 
-func doGeneralStats(tt *term.Terminal, c *dataflow.Cache, _ Command) {
+func doGeneralStats(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) {
 	allFunctions := ssautil.AllFunctions(c.Program)
 	result := analysis.SSAStatistics(&allFunctions, []string{})
 
@@ -75,7 +75,7 @@ func doGeneralStats(tt *term.Terminal, c *dataflow.Cache, _ Command) {
 	writeFmt(tt, " # instructions                %d\n", result.NumberOfInstructions)
 }
 
-func doClosureStats(tt *term.Terminal, c *dataflow.Cache, command Command) {
+func doClosureStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) {
 	stats, err := analysis.ComputeClosureUsageStats(c)
 	if err != nil {
 		WriteErr(tt, "could not compute closure statistics.")
@@ -126,7 +126,7 @@ func doClosureStats(tt *term.Terminal, c *dataflow.Cache, command Command) {
 	}
 }
 
-func printInstrsWithParent[T any](tt *term.Terminal, c *dataflow.Cache, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
+func printInstrsWithParent[T any](tt *term.Terminal, c *dataflow.AnalyzerState, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
 	var fnames []NameAndLoc
 	for instruction := range instrs {
 		loc := c.Program.Fset.Position(instruction.Parent().Pos())

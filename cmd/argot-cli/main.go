@@ -44,7 +44,7 @@ func init() {
 var (
 	buildmode = ssa.BuilderMode(0)
 	version   = "unknown"
-	commands  = map[string]func(tt *term.Terminal, cache *dataflow.Cache, command Command) bool{
+	commands  = map[string]func(tt *term.Terminal, s *dataflow.AnalyzerState, command Command) bool{
 		cmdBuildGraphName:   cmdBuildGraph,
 		cmdCallersName:      cmdCallers,
 		cmdCalleesName:      cmdCallees,
@@ -149,17 +149,17 @@ func main() {
 	initialPackages, err := packages.Load(p, flag.Args()...)
 	state.InitialPackages = initialPackages
 
-	// Build the cache with all analyses
-	cache, err := dataflow.BuildFullCache(log.Default(), pConfig, program)
+	// Initialize an analyzer state
+	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), pConfig, program)
 	if err != nil {
 		panic(err)
 	}
-	// Start the command line tool with the cache containing all the information
-	run(cache)
+	// Start the command line tool with the state containing all the information
+	run(state)
 }
 
 // run implements the command line tool, calling interpret for each command until the exit command is input
-func run(c *dataflow.Cache) {
+func run(c *dataflow.AnalyzerState) {
 	oldState /* const */, err := term.MakeRaw(int(os.Stdin.Fd()))
 	state.TermWidth, _, _ = term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {
@@ -171,7 +171,7 @@ func run(c *dataflow.Cache) {
 	c.Logger.SetFlags(0) // no prefix
 	c.Err.SetOutput(tt)
 	c.Err.SetFlags(0)
-	tt.AutoCompleteCallback = AutoCompleteOfCache(c)
+	tt.AutoCompleteCallback = AutoCompleteOfAnalyzerState(c)
 	// if we get a SIGINT, we exit
 	// Capture ctrl+c and exit by returning
 	captureChan := make(chan os.Signal, 1)
@@ -187,7 +187,7 @@ func run(c *dataflow.Cache) {
 }
 
 // interpret returns true to stop
-func interpret(tt *term.Terminal, c *dataflow.Cache, command string) bool {
+func interpret(tt *term.Terminal, c *dataflow.AnalyzerState, command string) bool {
 	if command == "" {
 		return false
 	}

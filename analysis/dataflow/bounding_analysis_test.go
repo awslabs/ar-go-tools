@@ -24,9 +24,9 @@ import (
 
 func TestRunBoundingAnalysis(t *testing.T) {
 	program, config := testutils.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
-	c, err := BuildFullCache(log.Default(), config, program)
+	c, err := NewInitializedAnalyzerState(log.Default(), config, program)
 	if err != nil {
-		t.Errorf("error building cache: %s", err)
+		t.Errorf("error building state: %s", err)
 	}
 
 	// This is a subset of what the analysis should return

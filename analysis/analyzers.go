@@ -35,15 +35,15 @@ type SingleFunctionResult struct {
 
 // RunSingleFunctionArgs represents the arguments for RunSingleFunction.
 type RunSingleFunctionArgs struct {
-	Cache       *dataflow.Cache
-	NumRoutines int
+	AnalyzerState *dataflow.AnalyzerState
+	NumRoutines   int
 
 	// ShouldCreateSummary indicates whether a summary object should be created. This does *not* means a summary
 	// will be built!
 	ShouldCreateSummary func(*ssa.Function) bool
 
 	// ShouldBuildSummary indicates whether the summary should be built when it is created
-	ShouldBuildSummary func(*dataflow.Cache, *ssa.Function) bool
+	ShouldBuildSummary func(*dataflow.AnalyzerState, *ssa.Function) bool
 
 	// IsEntrypoint is a function that returns true if the node should be an entrypoint to the analysis.
 	// The entrypoint node is treated as a "source" of data.
@@ -51,18 +51,18 @@ type RunSingleFunctionArgs struct {
 
 	// PostBlockCallback will be called each time a block is analyzed if the analysis is running on a single core
 	// This is useful for debugging purposes
-	PostBlockCallback func(state *dataflow.AnalysisState)
+	PostBlockCallback func(state *dataflow.IntraAnalysisState)
 }
 
 // RunSingleFunction runs a single-function analysis pass of program prog in parallel using numRoutines.
 // It builds the function summary if shouldBuildSummary evaluates to true.
 // isSourceNode and isSinkNode are configure which nodes should be treated as data flow sources/sinks.
 func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
-	logger := args.Cache.Logger
+	logger := args.AnalyzerState.Logger
 	logger.Println("Starting single-function analysis ...")
 	start := time.Now()
 
-	fg := dataflow.NewCrossFunctionFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, args.Cache)
+	fg := dataflow.NewCrossFunctionFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, args.AnalyzerState)
 	numRoutines := args.NumRoutines + 1
 	if numRoutines < 1 {
 		numRoutines = 1
@@ -73,12 +73,12 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	jobs := make(chan singleFunctionJob, numRoutines)
 	go func() {
 		defer close(jobs)
-		for function := range args.Cache.ReachableFunctions(false, false) {
+		for function := range args.AnalyzerState.ReachableFunctions(false, false) {
 			if args.ShouldCreateSummary(function) {
 				jobs <- singleFunctionJob{
 					function:           function,
-					cache:              args.Cache,
-					shouldBuildSummary: args.ShouldBuildSummary(args.Cache, function),
+					analyzerState:      args.AnalyzerState,
+					shouldBuildSummary: args.ShouldBuildSummary(args.AnalyzerState, function),
 				}
 			}
 		}
@@ -91,13 +91,13 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		collectResults(results, &fg, args.Cache)
+		collectResults(results, &fg, args.AnalyzerState)
 	}()
 	wg.Wait()
 
 	logger.Printf("Single-function pass done (%.2f s).", time.Since(start).Seconds())
 
-	args.Cache.FlowGraph = &fg
+	args.AnalyzerState.FlowGraph = &fg
 	return SingleFunctionResult{FlowGraph: fg}
 }
 
@@ -127,44 +127,44 @@ func runJobs(jobs <-chan singleFunctionJob, numRoutines int,
 
 // RunCrossFunctionArgs represents the arguments to RunCrossFunction.
 type RunCrossFunctionArgs struct {
-	Cache        *dataflow.Cache
-	Visitor      dataflow.Visitor
-	IsEntrypoint func(*config.Config, *ssa.Function) bool
+	AnalyzerState *dataflow.AnalyzerState
+	Visitor       dataflow.Visitor
+	IsEntrypoint  func(*config.Config, *ssa.Function) bool
 }
 
 // RunCrossFunction runs the cross-function analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
 func RunCrossFunction(args RunCrossFunctionArgs) {
-	args.Cache.Logger.Println("Starting cross-function pass...")
+	args.AnalyzerState.Logger.Println("Starting cross-function pass...")
 	start := time.Now()
-	args.Cache.FlowGraph.CrossFunctionPass(args.Cache, args.Visitor, args.IsEntrypoint)
-	args.Cache.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
+	args.AnalyzerState.FlowGraph.CrossFunctionPass(args.AnalyzerState, args.Visitor, args.IsEntrypoint)
+	args.AnalyzerState.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
 }
 
-// BuildCrossFunctionGraph builds a full-program (cross-function) analysis cache from program.
-func BuildCrossFunctionGraph(cache *dataflow.Cache) (*dataflow.Cache, error) {
-	if len(cache.FlowGraph.Summaries) == 0 {
-		return nil, fmt.Errorf("cache does not contain any summaries")
+// BuildCrossFunctionGraph builds a full-program (cross-function) analysis state from program.
+func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerState, error) {
+	if len(state.FlowGraph.Summaries) == 0 {
+		return nil, fmt.Errorf("state does not contain any summaries")
 	}
 
-	cache.Logger.Println("Building full-program cross-function dataflow graph...")
+	state.Logger.Println("Building full-program cross-function dataflow graph...")
 	start := time.Now()
 	RunCrossFunction(RunCrossFunctionArgs{
-		Cache:        cache,
-		Visitor:      dataflow.CrossFunctionGraphVisitor{},
-		IsEntrypoint: func(*config.Config, *ssa.Function) bool { return true },
+		AnalyzerState: state,
+		Visitor:       dataflow.CrossFunctionGraphVisitor{},
+		IsEntrypoint:  func(*config.Config, *ssa.Function) bool { return true },
 	})
 
-	cache.Logger.Printf("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())
-	return cache, nil
+	state.Logger.Printf("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())
+	return state, nil
 }
 
 // singleFunctionJob contains all the information necessary to run the single-function analysis on function.
 type singleFunctionJob struct {
-	cache              *dataflow.Cache
+	analyzerState      *dataflow.AnalyzerState
 	function           *ssa.Function
 	shouldBuildSummary bool
-	postBlockCallback  func(*dataflow.AnalysisState)
+	postBlockCallback  func(*dataflow.IntraAnalysisState)
 	output             chan *dataflow.SummaryGraph
 }
 
@@ -172,21 +172,21 @@ type singleFunctionJob struct {
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
 	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
-	result, err := dataflow.SingleFunctionAnalysis(job.cache, job.function,
+	result, err := dataflow.SingleFunctionAnalysis(job.analyzerState, job.function,
 		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
 	if err != nil {
-		job.cache.Err.Printf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
+		job.analyzerState.Err.Printf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
 		return dataflow.SingleFunctionResult{}
 	}
-	if job.cache.Config.Verbose {
-		job.cache.Logger.Printf("Pkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
+	if job.analyzerState.Config.Verbose {
+		job.analyzerState.Logger.Printf("Pkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
 			lang.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
 			result.Time.Seconds())
 	}
 
 	summary := result.Summary
 	if summary != nil {
-		summary.ShowAndClearErrors(job.cache.Logger.Writer())
+		summary.ShowAndClearErrors(job.analyzerState.Logger.Writer())
 	}
 
 	return dataflow.SingleFunctionResult{Summary: summary, Time: result.Time}
@@ -197,16 +197,16 @@ func runSingleFunctionJob(job singleFunctionJob,
 // Operations on graph and candidates are sequential.
 // cleans up done and c channels
 func collectResults(c <-chan dataflow.SingleFunctionResult, graph *dataflow.CrossFunctionFlowGraph,
-	cache *dataflow.Cache) {
+	state *dataflow.AnalyzerState) {
 	var f *os.File
 	var err error
-	if cache.Config.ReportSummaries {
-		f, err = os.CreateTemp(cache.Config.ReportsDir, "summary-times-*.csv")
+	if state.Config.ReportSummaries {
+		f, err = os.CreateTemp(state.Config.ReportsDir, "summary-times-*.csv")
 		if err != nil {
-			cache.Logger.Printf("Could not create summary times report file.")
+			state.Logger.Printf("Could not create summary times report file.")
 		}
 		defer f.Close()
-		cache.Logger.Printf("Saving report of summary times in %s\n", f.Name())
+		state.Logger.Printf("Saving report of summary times in %s\n", f.Name())
 	}
 
 	for result := range c {

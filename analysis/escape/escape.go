@@ -16,8 +16,9 @@
 // that are local to the current function and goroutine. This information can be used to recover
 // local reasoning even in the face of concurrent goroutine execution. This implementation is inspired
 // by:
-//   John Whaley and Martin Rinard. 1999. Compositional pointer and escape analysis for Java programs.
-//   SIGPLAN Not. 34, 10 (Oct. 1999), 187–206. https://doi.org/10.1145/320385.320400
+//
+//	John Whaley and Martin Rinard. 1999. Compositional pointer and escape analysis for Java programs.
+//	SIGPLAN Not. 34, 10 (Oct. 1999), 187–206. https://doi.org/10.1145/320385.320400
 package escape
 
 import (
@@ -768,7 +769,9 @@ func (g *NodeGroup) AddForeignNode(n *Node) (changed bool) {
 // Deref() is required because globals are not represented in a uniform way with
 // parameters/locals/freevars. In the SSA form, a global is implicitly a pointer to the
 // its type. So if we have a global decl:
-//     var global *S
+//
+//	var global *S
+//
 // then in the SSA, the global name effectively has type **S. We can see this in that the
 // operation global = &S{} turns into `t0 = alloc S; *global = t0`. The current graph
 // representation makes the global node directly the node that stores the value, rather
@@ -1209,19 +1212,19 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 
 // This just prints the escape summary for each function in the callgraph.
 // This interface will change substaintially when intraprocedural analysis is finalized.
-func EscapeAnalysis(cache *dataflow.Cache, root *callgraph.Node) (*ProgramAnalysisState, error) {
+func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
-		verbose:     cache.Config.Verbose,
+		verbose:     state.Config.Verbose,
 		globalNodes: &globalNodeGroup{0},
-		logger:      cache.Logger,
+		logger:      state.Logger,
 	}
 	// Find all the nodes that are in the main package, and thus treat everything else as unsummarized
 	nodes := []*callgraph.Node{}
-	for f, node := range cache.PointerAnalysis.CallGraph.Nodes {
+	for f, node := range state.PointerAnalysis.CallGraph.Nodes {
 		if len(f.Blocks) > 0 {
 			pkg := lang.PackageTypeFromFunction(f)
-			if pkg == nil || cache.Config.MatchPkgFilter(pkg.Path()) || cache.Config.MatchPkgFilter(pkg.Name()) {
+			if pkg == nil || state.Config.MatchPkgFilter(pkg.Path()) || state.Config.MatchPkgFilter(pkg.Name()) {
 				prog.summaries[f] = newfunctionAnalysisState(f, prog)
 				nodes = append(nodes, node)
 			}
@@ -1262,11 +1265,11 @@ func EscapeAnalysis(cache *dataflow.Cache, root *callgraph.Node) (*ProgramAnalys
 		worklist = worklist[:len(worklist)-1]
 		funcName := summary.function.Name()
 		if prog.verbose {
-			cache.Logger.Printf("Analyzing %v\n", funcName)
+			state.Logger.Printf("Analyzing %v\n", funcName)
 		}
 		changed := resummarize(summary)
 		if prog.verbose {
-			cache.Logger.Printf("Func %s is (changed=%v):\n%s\n", funcName, changed, summary.finalGraph.GraphvizLabel(funcName))
+			state.Logger.Printf("Func %s is (changed=%v):\n%s\n", funcName, changed, summary.finalGraph.GraphvizLabel(funcName))
 		}
 		// Iterate over the places where this summary is used, and schedule them to be re-analyzed
 		for location, graphUsed := range summary.summaryUses {
@@ -1288,11 +1291,11 @@ func EscapeAnalysis(cache *dataflow.Cache, root *callgraph.Node) (*ProgramAnalys
 	}
 	// Print out the final graphs for debugging purposes
 	if prog.verbose {
-		for f := range cache.PointerAnalysis.CallGraph.Nodes {
+		for f := range state.PointerAnalysis.CallGraph.Nodes {
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
 				if "main" == f.Pkg.Pkg.Name() {
-					cache.Logger.Printf("Func %s summary is:\n%s\n", f.String(), summary.finalGraph.GraphvizLabel(f.String()))
+					state.Logger.Printf("Func %s summary is:\n%s\n", f.String(), summary.finalGraph.GraphvizLabel(f.String()))
 				}
 			}
 		}

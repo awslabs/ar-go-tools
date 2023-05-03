@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/argot/analysis/config"
+	"github.com/awslabs/argot/analysis/dataflow"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
@@ -37,13 +38,23 @@ var taintSourcesAnalyzer = &analysis.Analyzer{
 	Requires: []*analysis.Analyzer{buildssa.Analyzer},
 }
 
+// newSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
+func newSourceMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
+	return dataflow.NewPackagesMap(c, pkgs, IsSourceNode)
+}
+
+// newSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
+func newSinkMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
+	return dataflow.NewPackagesMap(c, pkgs, IsSinkNode)
+}
+
 func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {
 	testConfig, err := config.LoadGlobal()
 	if err != nil {
 		return nil, fmt.Errorf("could not load config: %w", err)
 	}
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
-	sourceMap := NewSourceMap(testConfig, []*ssa.Package{ssaInfo.Pkg})
+	sourceMap := newSourceMap(testConfig, []*ssa.Package{ssaInfo.Pkg})
 	for _, fnMap := range sourceMap {
 		for _, instructions := range fnMap {
 			for _, instruction := range instructions {
@@ -89,7 +100,7 @@ func runSinkAnalysis(pass *analysis.Pass) (interface{}, error) {
 		return nil, fmt.Errorf("could not load config: %w", err)
 	}
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
-	sourceMap := NewSinkMap(testConfig, []*ssa.Package{ssaInfo.Pkg})
+	sourceMap := newSinkMap(testConfig, []*ssa.Package{ssaInfo.Pkg})
 	for _, fnMap := range sourceMap {
 		for _, instrs := range fnMap {
 			for _, instruction := range instrs {

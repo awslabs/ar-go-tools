@@ -34,6 +34,7 @@ func TestAnalyze(t *testing.T) {
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
 	program, cfg := testutils.LoadTest(t, dir, []string{})
+	defer os.Remove(cfg.ReportsDir)
 
 	res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
 	if err != nil {
@@ -313,6 +314,7 @@ func TestAnalyze_Closures(t *testing.T) {
 	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
 	program, cfg := testutils.LoadTest(t, dir, []string{"helpers.go"})
+	defer os.Remove(cfg.ReportsDir)
 
 	res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
 	if err != nil {

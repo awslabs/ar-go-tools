@@ -12,7 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package config
+/*
+The Argot taint tool runs taint analysis on your code, using its SSA representation.
 
-// DefaultMaxCallDepth is the default maximum call stack value that will be considered by the analyses using it
-var DefaultMaxCallDepth = 1000
+Usage:
+
+	taint [flags] -config config.yaml main.go
+
+The flags are:
+
+	-buildmode=D      see the documentation of buildmode for the ssa package
+
+	-config path      a path to the configuration file containing definitions for sinks and sources
+
+	-verbose=false    setting verbose mode, overrides config file options if set
+*/
+package main

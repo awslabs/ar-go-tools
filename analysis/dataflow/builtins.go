@@ -63,7 +63,7 @@ func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {
 
 // doBuiltinCall returns true if the call is a builtin that is handled by default, otherwise false.
 // If true is returned, the analysis may ignore the call instruction.
-func doBuiltinCall(t *AnalysisState, callValue ssa.Value, callCommon *ssa.CallCommon,
+func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.CallCommon,
 	instruction ssa.CallInstruction) bool {
 	// For consistency check that the call is handled first.
 	if !isHandledBuiltinCall(instruction) {
@@ -115,7 +115,7 @@ func doBuiltinCall(t *AnalysisState, callValue ssa.Value, callCommon *ssa.CallCo
 
 		// for recover, we will need some form of panic analysis
 		case "recover":
-			t.cache.Err.Printf("Encountered recover at %s, the analysis may be unsound.\n",
+			t.parentAnalyzerState.Err.Printf("Encountered recover at %s, the analysis may be unsound.\n",
 				instruction.Parent().Prog.Fset.Position(instruction.Pos()))
 			return true
 		default:

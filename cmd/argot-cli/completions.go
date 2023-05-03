@@ -20,7 +20,7 @@ import (
 	"github.com/awslabs/argot/analysis/dataflow"
 )
 
-func AutoCompleteOfCache(_ *dataflow.Cache) func(string, int, rune) (string, int, bool) {
+func AutoCompleteOfAnalyzerState(_ *dataflow.AnalyzerState) func(string, int, rune) (string, int, bool) {
 	f := func(line string, pos int, key rune) (string, int, bool) {
 		if key == '\t' {
 			if len(line) > 1 && pos == len(line) {
