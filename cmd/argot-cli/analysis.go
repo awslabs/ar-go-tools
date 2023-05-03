@@ -34,12 +34,12 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Each "command" is a function func(*dataflow.Cache, string) that
-// executes the command with cache if cache is not nil.
-// If cache is nil, then it should print its definition on stdout
+// Each "command" is a function func(state *dataflow.AnalyzerState, x string) that
+// executes the command with state if state is not nil.
+// If state is nil, then it should print its definition on stdout
 
 // cmdShowSsa prints the SSA representation of all the function matching a given regex
-func cmdShowSsa(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdShowSsa(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the ssa representation of a function.\n"+
 			"\t  showssa regex prints the SSA representation of the function matching the regex\n"+
@@ -76,7 +76,7 @@ func cmdShowSsa(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 }
 
 // cmdShowEscape prints the escape graph of all the function matching a given regex
-func cmdShowEscape(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdShowEscape(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the escape graph of a function.\n"+
 			"\t  %s regex prints the escape graph of function(s) matching the regex\n"+
@@ -116,7 +116,7 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 
 // cmdShowDataflow builds and prints the cross-function dataflow graph.
 // If on macOS, the command automatically renders an SVG and opens it in Safari.
-func cmdShowDataflow(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdShowDataflow(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : build and print the cross-function dataflow graph of a program.\n"+
 			"\t  showdataflow args prints the cross-function dataflow graph.\n"+
@@ -170,7 +170,7 @@ func cmdShowDataflow(tt *term.Terminal, c *dataflow.Cache, command Command) bool
 }
 
 // cmdSummary prints a specific function's summary, if it can be found
-func cmdSummary(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdSummary(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the summary of the functions matching a regex\n",
 			tt.Escape.Blue, cmdSummaryName, tt.Escape.Reset)
@@ -215,7 +215,7 @@ func cmdSummary(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 }
 
 // cmdSummarize runs the single-function analysis.
-func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : run the single-function analysis. If a function is provided, "+
 			"run only\n", tt.Escape.Blue, cmdSummarizeName, tt.Escape.Reset)
@@ -243,7 +243,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			}
 			return b
 		}
-		shouldBuildSummary := func(c *dataflow.Cache, f *ssa.Function) bool {
+		shouldBuildSummary := func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
 			b := isForced || taint.ShouldBuildSummary(c, f)
 			if b {
 				buildCounter++
@@ -251,7 +251,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 			return b
 		}
 		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			Cache:               c,
+			AnalyzerState:       c,
 			NumRoutines:         numRoutines,
 			ShouldCreateSummary: shouldCreateSummary,
 			ShouldBuildSummary:  shouldBuildSummary,
@@ -274,7 +274,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 		createCounter := 0
 		buildCounter := 0
 		var shouldCreateSummary func(f *ssa.Function) bool
-		var shouldBuildSummary func(c *dataflow.Cache, f *ssa.Function) bool
+		var shouldBuildSummary func(c *dataflow.AnalyzerState, f *ssa.Function) bool
 		if len(funcs) > summarizeThreshold {
 			// above a certain threshold, we use the general analysis filters on what to summarize, unless -force has
 			// been specified
@@ -290,7 +290,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 				}
 				return b
 			}
-			shouldBuildSummary = func(c *dataflow.Cache, f *ssa.Function) bool {
+			shouldBuildSummary = func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
 				b := isForced || (!summaries.IsStdFunction(f) &&
 					summaries.IsUserDefinedFunction(f) &&
 					utils.Contains(funcs, f) &&
@@ -310,7 +310,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 				}
 				return b
 			}
-			shouldBuildSummary = func(_ *dataflow.Cache, f *ssa.Function) bool {
+			shouldBuildSummary = func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
 				b := utils.Contains(funcs, f)
 				if b {
 					buildCounter++
@@ -321,7 +321,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 
 		// Run the analysis with the filter.
 		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			Cache:               c,
+			AnalyzerState:       c,
 			NumRoutines:         numRoutines,
 			ShouldCreateSummary: shouldCreateSummary,
 			ShouldBuildSummary:  shouldBuildSummary,
@@ -340,7 +340,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 }
 
 // cmdTaint runs the taint analysis
-func cmdTaint(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
+func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: run the taint analysis with parameters in config.\n",
 			tt.Escape.Blue, cmdTaintName, tt.Escape.Reset)
@@ -358,7 +358,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 }
 
 // cmdBacktrace runs the backtrace analysis.
-func cmdBacktrace(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
+func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: run the backtrace analysis with parameters in config.\n",
 			tt.Escape.Blue, cmdTaintName, tt.Escape.Reset)

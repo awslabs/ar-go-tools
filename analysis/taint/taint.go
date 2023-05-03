@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package taint contains all the taint analysis functionality in argot. The Analyze function is the main entry
-// point of the analysis, and callees the singleFunctionAnalysis and crossFunction analysis functions in two distinct
-// whole-program analysis steps.
 package taint
 
 import (
@@ -62,7 +59,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// or from the standard library that is called in the program should be summarized in the summaries package.
 	// - Running the type analysis to map functions to their type
 
-	cache, err := dataflow.BuildFullCache(logger, cfg, prog)
+	state, err := dataflow.NewInitializedAnalyzerState(logger, cfg, prog)
 	if err != nil {
 		return AnalysisResult{}, err
 	}
@@ -76,7 +73,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 
 	// Only build summaries for non-stdlib functions here
 	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		Cache:               cache,
+		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: ShouldCreateSummary,
 		ShouldBuildSummary:  ShouldBuildSummary,
@@ -89,12 +86,12 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// that is reachable from a source.
 	visitor := NewVisitor(nil)
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
-		Cache:        cache,
-		Visitor:      visitor,
-		IsEntrypoint: dataflow.IsSourceFunction,
+		AnalyzerState: state,
+		Visitor:       visitor,
+		IsEntrypoint:  dataflow.IsSourceFunction,
 	})
 
-	return AnalysisResult{Graph: *cache.FlowGraph, TaintFlows: visitor.Taints}, nil
+	return AnalysisResult{Graph: *state.FlowGraph, TaintFlows: visitor.taints}, nil
 }
 
 func ShouldCreateSummary(f *ssa.Function) bool {
@@ -108,8 +105,8 @@ func ShouldCreateSummary(f *ssa.Function) bool {
 
 // shouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
 // pass. This is not necessary for functions that have summaries that are externally defined, for example.
-func ShouldBuildSummary(cache *dataflow.Cache, function *ssa.Function) bool {
-	if cache == nil || function == nil || summaries.IsSummaryRequired(function) {
+func ShouldBuildSummary(state *dataflow.AnalyzerState, function *ssa.Function) bool {
+	if state == nil || function == nil || summaries.IsSummaryRequired(function) {
 		return true
 	}
 
@@ -119,11 +116,11 @@ func ShouldBuildSummary(cache *dataflow.Cache, function *ssa.Function) bool {
 	}
 
 	// Is PkgPrefix specified?
-	if cache.Config != nil && cache.Config.PkgFilter != "" {
+	if state.Config != nil && state.Config.PkgFilter != "" {
 		pkgKey := pkg.Pkg.Path()
-		return cache.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
+		return state.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
 	} else {
 		// Check package summaries
-		return !(summaries.PkgHasSummaries(pkg) || cache.HasExternalContractSummary(function))
+		return !(summaries.PkgHasSummaries(pkg) || state.HasExternalContractSummary(function))
 	}
 }

@@ -25,15 +25,13 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// AnalysisState contains the information used by the intra-procedural dataflow analysis. The main components modified by
-// the analysis  are the flowInfo and the argFlows fields, which contain information about taint flows and argument
-// flows respectively.
-type AnalysisState struct {
+// IntraAnalysisState contains the information used by the intra-procedural dataflow analysis.
+type IntraAnalysisState struct {
 	// the data flow information for the analysis
 	flowInfo *FlowInformation
 
-	// the analysis cache containing pointer information, callgraph, ...
-	cache *Cache
+	// the analysis parentAnalyzerState containing pointer information, callgraph, ...
+	parentAnalyzerState *AnalyzerState
 
 	// changeFlag keeps track of changes in the analysis state and is reset each time a new block is visited
 	changeFlag bool
@@ -71,12 +69,12 @@ type AnalysisState struct {
 	shouldTrack func(*config.Config, ssa.Node) bool
 
 	// postBlockCallback is called after each block if it is non-nil. Useful for debugging purposes.
-	postBlockCallback func(*AnalysisState)
+	postBlockCallback func(*IntraAnalysisState)
 }
 
 // initialize initializes the state of the analysis
 // initialize should only be called on non-empty functions (non-empty state.summary.Parent)
-func (state *AnalysisState) initialize() {
+func (state *IntraAnalysisState) initialize() {
 	function := state.summary.Parent
 
 	// initialize should only be called on non-empty functions
@@ -127,7 +125,7 @@ func (state *AnalysisState) initialize() {
 			for _, operand := range operands {
 				// Add marks for globals
 				if glob, ok := (*operand).(*ssa.Global); ok {
-					if node, ok := state.cache.Globals[glob]; ok {
+					if node, ok := state.parentAnalyzerState.Globals[glob]; ok {
 						state.summary.AddAccessGlobalNode(i, node)
 					}
 				}
@@ -135,7 +133,7 @@ func (state *AnalysisState) initialize() {
 		})
 }
 
-func populateInstrPrevMap(tracker *AnalysisState, firstInstr ssa.Instruction, function *ssa.Function) {
+func populateInstrPrevMap(tracker *IntraAnalysisState, firstInstr ssa.Instruction, function *ssa.Function) {
 	tracker.instrPrev[firstInstr] = map[ssa.Instruction]bool{firstInstr: true}
 	var prevInstr ssa.Instruction
 	for _, block := range function.Blocks {
@@ -172,7 +170,7 @@ func populateInstrPrevMap(tracker *AnalysisState, firstInstr ssa.Instruction, fu
 
 // Pre is executed before an instruction is visited. For the dataflow analysis, Pre transfers all the reachable
 // values of the previous instruction to the current instruction.
-func (state *AnalysisState) Pre(ins ssa.Instruction) {
+func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
 	for predecessor := range state.instrPrev[ins] {
 		for value, marks := range state.flowInfo.MarkedValues[predecessor] {
 			if _, ok := state.flowInfo.MarkedValues[ins][value]; !ok {
@@ -191,7 +189,7 @@ func (state *AnalysisState) Pre(ins ssa.Instruction) {
 
 // Post is applied after every instruction. This is necessary to satisfy the interface, and can also be used for
 // debugging purposes
-func (state *AnalysisState) Post(_ ssa.Instruction) {
+func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 
 }
 
@@ -201,7 +199,7 @@ func (state *AnalysisState) Post(_ ssa.Instruction) {
 // - A value is marked if it is a pointer and some alias is marked.
 // The path parameter enables path-sensitivity. If path is "*", any path is accepted and the analysis
 // over-approximates.
-func (state *AnalysisState) getMarkedValues(i ssa.Instruction, v ssa.Value, path string) []Mark {
+func (state *IntraAnalysisState) getMarkedValues(i ssa.Instruction, v ssa.Value, path string) []Mark {
 	var origins []Mark
 	// when the value is directly marked as tainted.
 	for mark := range state.flowInfo.MarkedValues[i][v] {
@@ -214,13 +212,13 @@ func (state *AnalysisState) getMarkedValues(i ssa.Instruction, v ssa.Value, path
 }
 
 // simpleTransfer  propagates all the marks from in to out, ignoring path and tuple indexes
-func simpleTransfer(t *AnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
+func simpleTransfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
 	transfer(t, loc, in, out, "*", -1)
 }
 
 // transfer propagates all the marks from in to out with the object path string
 // an index >= 0 indicates that element index of the tuple in is accessed
-func transfer(t *AnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index int) {
+func transfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index int) {
 	if glob, ok := in.(*ssa.Global); ok {
 		t.markValue(loc, out, NewMark(loc.(ssa.Node), Global, "", glob, index))
 	}
@@ -238,7 +236,7 @@ func transfer(t *AnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value
 
 // addClosureNode adds a closure node to the graph, and all the related sources and edges.
 // The closure value is tracked like any other value.
-func (state *AnalysisState) addClosureNode(x *ssa.MakeClosure) {
+func (state *IntraAnalysisState) addClosureNode(x *ssa.MakeClosure) {
 	state.summary.AddClosure(x)
 	state.markValue(x, x, NewMark(x, Closure, "", nil, -1))
 	for _, boundVar := range x.Bindings {
@@ -249,8 +247,8 @@ func (state *AnalysisState) addClosureNode(x *ssa.MakeClosure) {
 }
 
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
-func (state *AnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
-	if state.shouldTrack(state.cache.Config, asNode) {
+func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
+	if state.shouldTrack(state.parentAnalyzerState.Config, asNode) {
 		s := NewMark(asNode, Synthetic+DefaultMark, "", nil, -1)
 		state.summary.AddSyntheticNode(asInstr, "source")
 		state.markValue(asInstr, asValue, s)
@@ -260,12 +258,12 @@ func (state *AnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa
 // callCommonMark can be used for Call and Go instructions that wrap a CallCommon. For a function call, the value,
 // instruction and common are the same object (x = value = instr and common = x.Common()) but for Go and Defers
 // this varies.
-func (state *AnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstruction, common *ssa.CallCommon) {
+func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstruction, common *ssa.CallCommon) {
 	// Special cases
 	if doBuiltinCall(state, value, common, instr) {
 		return
 	}
-	state.summary.AddCallInstr(state.cache, instr)
+	state.summary.AddCallInstr(state.parentAnalyzerState, instr)
 	// Check if node is source according to config
 	markType := CallReturn
 	if state.shouldTrack(state.flowInfo.Config, instr.(ssa.Node)) { // type cast cannot fail
@@ -299,7 +297,7 @@ func (state *AnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstru
 // checkCopyIntoArgs checks whether the mark in is copying or writing into a value that aliases with
 // one of the function's parameters. This keeps tracks of data flows to the function parameters that a
 // caller might see.
-func (state *AnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
+func (state *IntraAnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
 	if lang.IsNillableType(out.Type()) {
 		for aliasedParam := range state.paramAliases[out] {
 			state.summary.AddParamEdge(in, aliasedParam, nil)
@@ -311,7 +309,7 @@ func (state *AnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
 }
 
 // checkFlowIntoGlobal checks whether the origin is data flowing into a global variable
-func (state *AnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, origin Mark, out ssa.Value) {
+func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, origin Mark, out ssa.Value) {
 	if glob, isGlob := out.(*ssa.Global); isGlob {
 		state.summary.AddGlobalEdge(origin, loc, glob, nil)
 	}
@@ -324,7 +322,7 @@ func (state *AnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, origin Mark
 // markValue marks the value v and all values that propagate from v.
 // If the value was not marked, it changes the changeFlag to true to indicate
 // that the mark information has changed for the current pass.
-func (state *AnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark Mark) {
+func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark Mark) {
 	if state.flowInfo.HasMarkAt(i, v, mark) {
 		return
 	}
@@ -332,11 +330,11 @@ func (state *AnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark Mark)
 	state.changeFlag = state.flowInfo.AddMark(i, v, mark)
 	// Propagate to any other value that is an alias of v
 	// By direct query
-	if ptr, ptrExists := state.cache.PointerAnalysis.Queries[v]; ptrExists {
+	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[v]; ptrExists {
 		state.markAllAliases(i, mark, ptr)
 	}
 	// By indirect query
-	if ptr, ptrExists := state.cache.PointerAnalysis.IndirectQueries[v]; ptrExists {
+	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[v]; ptrExists {
 		state.markAllAliases(i, mark, ptr)
 	}
 
@@ -362,7 +360,7 @@ func (state *AnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark Mark)
 }
 
 // markAllAliases marks all the aliases of the pointer set using mark.
-func (state *AnalysisState) markAllAliases(i ssa.Instruction, mark Mark, ptr pointer.Pointer) {
+func (state *IntraAnalysisState) markAllAliases(i ssa.Instruction, mark Mark, ptr pointer.Pointer) {
 	// Look at every value in the points-to set.
 	for _, label := range ptr.PointsTo().Labels() {
 		if label != nil && label.Value() != nil {
@@ -373,10 +371,10 @@ func (state *AnalysisState) markAllAliases(i ssa.Instruction, mark Mark, ptr poi
 
 	// Iterate over all values in the function, scanning for aliases of ptr, and mark the values that match
 	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
-		if ptr2, ptrExists := state.cache.PointerAnalysis.IndirectQueries[value]; ptrExists && ptr2.MayAlias(ptr) {
+		if ptr2, ptrExists := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[value]; ptrExists && ptr2.MayAlias(ptr) {
 			state.markValue(i, value, mark)
 		}
-		if ptr2, ptrExists := state.cache.PointerAnalysis.Queries[value]; ptrExists && ptr2.MayAlias(ptr) {
+		if ptr2, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[value]; ptrExists && ptr2.MayAlias(ptr) {
 			state.markValue(i, value, mark)
 		}
 	})
@@ -384,7 +382,7 @@ func (state *AnalysisState) markAllAliases(i ssa.Instruction, mark Mark, ptr poi
 
 // --- Defers analysis ---
 
-func (state *AnalysisState) getInstr(blockNum int, instrNum int) (ssa.Instruction, error) {
+func (state *IntraAnalysisState) getInstr(blockNum int, instrNum int) (ssa.Instruction, error) {
 	block := state.summary.Parent.Blocks[blockNum]
 	if block == nil {
 		return nil, fmt.Errorf("invalid block")
@@ -398,7 +396,7 @@ func (state *AnalysisState) getInstr(blockNum int, instrNum int) (ssa.Instructio
 
 // doDefersStackSimulation fetches the possible defers stacks from the analysis and runs the analysis as if those
 // calls happened in order that the RunDefers location
-func (state *AnalysisState) doDefersStackSimulation(r *ssa.RunDefers) error {
+func (state *IntraAnalysisState) doDefersStackSimulation(r *ssa.RunDefers) error {
 	stackSet := state.deferStacks.RunDeferSets[r]
 	for _, stack := range stackSet {
 		// Simulate a new block
@@ -421,17 +419,17 @@ func (state *AnalysisState) doDefersStackSimulation(r *ssa.RunDefers) error {
 // --- Pointer analysis querying ---
 
 // getAnyPointer returns the pointer to x according to the pointer analysis
-func (state *AnalysisState) getPointer(x ssa.Value) *pointer.Pointer {
-	if ptr, ptrExists := state.cache.PointerAnalysis.Queries[x]; ptrExists {
+func (state *IntraAnalysisState) getPointer(x ssa.Value) *pointer.Pointer {
+	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[x]; ptrExists {
 		return &ptr
 	}
 	return nil
 }
 
 // getAnyPointer returns the pointer to x according to the pointer analysis
-func (state *AnalysisState) getIndirectPointer(x ssa.Value) *pointer.Pointer {
+func (state *IntraAnalysisState) getIndirectPointer(x ssa.Value) *pointer.Pointer {
 	// Check indirect queries
-	if ptr, ptrExists := state.cache.PointerAnalysis.IndirectQueries[x]; ptrExists {
+	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[x]; ptrExists {
 		return &ptr
 	}
 	return nil
@@ -461,7 +459,7 @@ func addAliases[T comparable](x T, f *ssa.Function, ptr *pointer.Pointer, aliase
 }
 
 // addParamAliases collects information about the value-aliases of the parameters
-func (state *AnalysisState) addParamAliases(x *ssa.Parameter) {
+func (state *IntraAnalysisState) addParamAliases(x *ssa.Parameter) {
 	state.paramAliases[x][x] = true
 	addAliases(x, state.summary.Parent, state.getPointer(x),
 		state.paramAliases, state.getPointer, state.getIndirectPointer)
@@ -470,7 +468,7 @@ func (state *AnalysisState) addParamAliases(x *ssa.Parameter) {
 }
 
 // addFreeVarAliases collects information about the value-aliases of the free variables
-func (state *AnalysisState) addFreeVarAliases(x *ssa.FreeVar) {
+func (state *IntraAnalysisState) addFreeVarAliases(x *ssa.FreeVar) {
 	state.freeVarAliases[x][x] = true
 	addAliases(x, state.summary.Parent, state.getPointer(x),
 		state.freeVarAliases, state.getPointer, state.getIndirectPointer)
@@ -478,10 +476,10 @@ func (state *AnalysisState) addFreeVarAliases(x *ssa.FreeVar) {
 		state.freeVarAliases, state.getPointer, state.getIndirectPointer)
 }
 
-func (state *AnalysisState) FlowInfo() *FlowInformation {
+func (state *IntraAnalysisState) FlowInfo() *FlowInformation {
 	return state.flowInfo
 }
 
-func (state *AnalysisState) Block() *ssa.BasicBlock {
+func (state *IntraAnalysisState) Block() *ssa.BasicBlock {
 	return state.curBlock
 }

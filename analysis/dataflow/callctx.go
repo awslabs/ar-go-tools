@@ -46,7 +46,7 @@ func callCtxKey(calls []*cg.Node) string {
 	return strings.Join(Map(calls, func(c *cg.Node) string { return strconv.Itoa(c.ID) }), ".")
 }
 
-func ComputeCtxts(c *Cache, n int) (CallCtxInfo, error) {
+func ComputeCtxts(c *AnalyzerState, n int) (CallCtxInfo, error) {
 	ci := CallCtxInfo{
 		Contexts: map[string]bool{},
 		Ids:      map[int]*cg.Node{},

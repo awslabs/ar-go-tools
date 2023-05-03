@@ -26,7 +26,7 @@ import (
 
 // AnalysisResult contains all the information resulting from the Analyze function
 type AnalysisResult struct {
-	Cache *dataflow.Cache
+	AnalyzerState *dataflow.AnalyzerState
 
 	// Ids contains the indices of Go calls. Ids[0] is always nil
 	Ids []*ssa.Go
@@ -44,23 +44,23 @@ type AnalysisResult struct {
 // Analyze runs all the concurrency specific analyses on the program with the configuration provided.
 func Analyze(logger *log.Logger, config *config.Config, program *ssa.Program) (AnalysisResult, error) {
 
-	cache, err := dataflow.BuildFullCache(logger, config, program)
+	state, err := dataflow.NewInitializedAnalyzerState(logger, config, program)
 	if err != nil {
 		return AnalysisResult{}, err
 	}
-	return RunAnalysis(cache)
+	return RunAnalysis(state)
 }
 
-// RunAnalysis runs the concurrency analysis on the program contained in the cache.
-// The dataflow cache must contain the program, as well as the results from the callgraph analysis and the pointer
-// analysis
+// RunAnalysis runs the concurrency analysis on the program contained in the state.
+// The dataflow analysis state must contain the program, as well as the results from the callgraph analysis and
+// the pointer analysis
 //
 // The analysis currently consists in:
 //
 // - a first pass to collect all occurrences of `go ...` instructions
 //
 // - a second pass to mark function with the all the `go ...` instructions they may be called from
-func RunAnalysis(cache *dataflow.Cache) (AnalysisResult, error) {
+func RunAnalysis(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 	var callId uint32
 
 	// goCalls maps from a goroutine instruction to a callId
@@ -69,21 +69,21 @@ func RunAnalysis(cache *dataflow.Cache) (AnalysisResult, error) {
 	// ids[0] represents the absence of a goroutine on top. For all others i > 0, ids[i] will point to a goroutine
 	ids := []*ssa.Go{nil}
 	callId = 1
-	for function := range cache.ReachableFunctions(false, false) {
+	for function := range state.ReachableFunctions(false, false) {
 		lang.IterateInstructions(function,
 			func(_ int, i ssa.Instruction) {
 				if goCall, isGo := i.(*ssa.Go); isGo {
 					goCalls[goCall] = callId
 					ids = append(ids, goCall)
 					callId++
-					printGoCallInformation(cache, goCall)
+					printGoCallInformation(state, goCall)
 				}
 			})
 	}
 
 	// Computing a fixpoint on the call graph. A call graph node is put into the queue every time the goroutines
 	// it may appear under change.
-	cg := cache.PointerAnalysis.CallGraph
+	cg := state.PointerAnalysis.CallGraph
 	que := []*callgraph.Node{cg.Root}
 	vis := map[*callgraph.Node]map[uint32]bool{}
 	vis[cg.Root] = map[uint32]bool{0: true}
@@ -131,20 +131,20 @@ func RunAnalysis(cache *dataflow.Cache) (AnalysisResult, error) {
 	}
 
 	return AnalysisResult{
-		Cache:      cache,
-		NodeColors: vis,
-		GoCalls:    goCalls,
-		Ids:        ids,
+		AnalyzerState: state,
+		NodeColors:    vis,
+		GoCalls:       goCalls,
+		Ids:           ids,
 	}, nil
 }
 
-func printGoCallInformation(cache *dataflow.Cache, call *ssa.Go) {
+func printGoCallInformation(state *dataflow.AnalyzerState, call *ssa.Go) {
 	if call == nil {
 		return
 	}
-	cache.Logger.Printf("Go call: %s", call.String())
+	state.Logger.Printf("Go call: %s", call.String())
 	if parent := call.Parent(); parent != nil {
-		cache.Logger.Printf("\t%s", parent.Pkg.String())
+		state.Logger.Printf("\t%s", parent.Pkg.String())
 	}
-	cache.Logger.Printf("\t%s", cache.Program.Fset.Position(call.Pos()))
+	state.Logger.Printf("\t%s", state.Program.Fset.Position(call.Pos()))
 }

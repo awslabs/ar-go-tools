@@ -178,7 +178,7 @@ func GetArgs(instr ssa.CallInstruction) []ssa.Value {
 	return args
 }
 
-// InstrMethodKey return a method key (as used in the cache for indexing interface methods) if the instruction
+// InstrMethodKey return a method key (as used in the analyzer state for indexing interface methods) if the instruction
 // calls a method from an interface
 // Returns an optional value
 // TODO: this may not be idiomatic but I'm testing this "Optional" implementation

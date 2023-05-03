@@ -1,0 +1,2 @@
+reportsdir: "bad-dir/example-report"
+reportpaths: true

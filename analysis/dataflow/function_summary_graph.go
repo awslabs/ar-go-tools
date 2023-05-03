@@ -71,7 +71,7 @@ type GraphNode interface {
 	ParentName() string
 
 	// Position returns the position of the node in the source code.
-	Position(c *Cache) token.Position
+	Position(c *AnalyzerState) token.Position
 
 	String() string
 
@@ -103,7 +103,7 @@ func (a *ParamNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *ParamNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *ParamNode) SsaNode() *ssa.Parameter       { return a.ssaNode }
 func (a *ParamNode) Type() types.Type              { return a.ssaNode.Type() }
-func (a *ParamNode) Position(c *Cache) token.Position {
+func (a *ParamNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
 	} else {
@@ -145,7 +145,7 @@ func (a *FreeVarNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *FreeVarNode) SsaNode() *ssa.FreeVar         { return a.ssaNode }
 func (a *FreeVarNode) Type() types.Type              { return a.ssaNode.Type() }
 
-func (a *FreeVarNode) Position(c *Cache) token.Position {
+func (a *FreeVarNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
 	} else {
@@ -184,7 +184,7 @@ func (a *CallNodeArg) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNodeArg) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *CallNodeArg) Type() types.Type              { return a.ssaValue.Type() }
 
-func (a *CallNodeArg) Position(c *Cache) token.Position {
+func (a *CallNodeArg) Position(c *AnalyzerState) token.Position {
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
 	} else {
@@ -238,7 +238,7 @@ func (a *CallNode) Type() types.Type {
 	return nil
 }
 
-func (a *CallNode) Position(c *Cache) token.Position {
+func (a *CallNode) Position(c *AnalyzerState) token.Position {
 	if a.callSite != nil && a.callSite.Common() != nil && a.callSite.Common().Value != nil {
 		return c.Program.Fset.Position(a.callSite.Pos())
 	} else {
@@ -324,7 +324,7 @@ func (a *ReturnValNode) ID() uint32                    { return a.id }
 func (a *ReturnValNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *ReturnValNode) Index() int                    { return a.index }
 func (a *ReturnValNode) Type() types.Type              { return a.parent.ReturnType() }
-func (a *ReturnValNode) Position(c *Cache) token.Position {
+func (a *ReturnValNode) Position(c *AnalyzerState) token.Position {
 	if a.parent != nil && a.parent.Parent != nil {
 		return c.Program.Fset.Position(a.parent.Parent.Pos())
 	} else {
@@ -370,7 +370,7 @@ func (a *ClosureNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *ClosureNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *ClosureNode) Type() types.Type              { return a.instr.Type() }
 
-func (a *ClosureNode) Position(c *Cache) token.Position {
+func (a *ClosureNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
@@ -431,7 +431,7 @@ func (a *BoundVarNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *BoundVarNode) Type() types.Type              { return a.ssaValue.Type() }
 func (a *BoundVarNode) Value() ssa.Value              { return a.ssaValue }
 
-func (a *BoundVarNode) Position(c *Cache) token.Position {
+func (a *BoundVarNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
 	} else {
@@ -476,7 +476,7 @@ func (a *AccessGlobalNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *AccessGlobalNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *AccessGlobalNode) Type() types.Type              { return a.Global.Type() }
 
-func (a *AccessGlobalNode) Position(c *Cache) token.Position {
+func (a *AccessGlobalNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
@@ -518,7 +518,7 @@ func (a *SyntheticNode) Type() types.Type {
 	return nil
 }
 
-func (a *SyntheticNode) Position(c *Cache) token.Position {
+func (a *SyntheticNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
@@ -558,7 +558,7 @@ func (a *BoundLabelNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundLabelNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *BoundLabelNode) Type() types.Type              { return a.targetInfo.Type() }
 
-func (a *BoundLabelNode) Position(c *Cache) token.Position {
+func (a *BoundLabelNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	} else {
@@ -786,7 +786,7 @@ func (g *SummaryGraph) addCallNode(node *CallNode) bool {
 
 // AddCallInstr adds a call site to the summary from a call instruction (use when no call graph is available)
 // @requires g != nil
-func (g *SummaryGraph) AddCallInstr(c *Cache, instr ssa.CallInstruction) {
+func (g *SummaryGraph) AddCallInstr(c *AnalyzerState, instr ssa.CallInstruction) {
 	// Already seen this instruction? Multiple calls of this function will not gather more information.
 	if _, ok := g.Callees[instr]; ok {
 		return
@@ -795,7 +795,7 @@ func (g *SummaryGraph) AddCallInstr(c *Cache, instr ssa.CallInstruction) {
 	args := lang.GetArgs(instr)
 	callees, err := c.ResolveCallee(instr, true)
 	if err != nil {
-		c.Logger.Fatalf("missing information in cache (%s), could not resolve callee in instruction %s", err,
+		c.Logger.Fatalf("missing information in state (%s), could not resolve callee in instruction %s", err,
 			instr.String())
 	}
 	// Add each callee as a node for this call instruction

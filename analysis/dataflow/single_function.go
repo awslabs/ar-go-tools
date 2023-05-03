@@ -44,11 +44,11 @@ type SingleFunctionResult struct {
 }
 
 // SingleFunctionAnalysis is the main entry point of the intra procedural analysis.
-func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, buildSummary bool, id uint32,
+func SingleFunctionAnalysis(state *AnalyzerState, function *ssa.Function, buildSummary bool, id uint32,
 	shouldTrack func(*config.Config, ssa.Node) bool,
-	postBlockCallback func(*AnalysisState)) (SingleFunctionResult, error) {
+	postBlockCallback func(*IntraAnalysisState)) (SingleFunctionResult, error) {
 	sm := NewSummaryGraph(function, id)
-	flowInfo := NewFlowInfo(cache.Config, function)
+	flowInfo := NewFlowInfo(state.Config, function)
 	// The function should have at least one instruction!
 	if len(function.Blocks) == 0 || len(function.Blocks[0].Instrs) == 0 {
 		return SingleFunctionResult{Summary: sm}, nil
@@ -57,7 +57,7 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, buildSummary b
 	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
 	start := time.Now()
 	if buildSummary {
-		err := run(cache, flowInfo, sm, shouldTrack, postBlockCallback)
+		err := run(state, flowInfo, sm, shouldTrack, postBlockCallback)
 		if err != nil {
 			return SingleFunctionResult{Summary: sm, Time: time.Since(start)}, err
 		}
@@ -67,28 +67,28 @@ func SingleFunctionAnalysis(cache *Cache, function *ssa.Function, buildSummary b
 }
 
 // run is the core of the single function analysis
-func run(cache *Cache, flowInfo *FlowInformation, sm *SummaryGraph,
+func run(a *AnalyzerState, flowInfo *FlowInformation, sm *SummaryGraph,
 	shouldTrack func(*config.Config, ssa.Node) bool,
-	postBlockCallback func(*AnalysisState)) error {
-	state := &AnalysisState{
-		flowInfo:          flowInfo,
-		cache:             cache,
-		changeFlag:        true,
-		blocksSeen:        map[*ssa.BasicBlock]bool{},
-		errors:            map[ssa.Node]error{},
-		summary:           sm,
-		deferStacks:       defers.AnalyzeFunction(sm.Parent, false),
-		paths:             map[*ssa.BasicBlock]map[*ssa.BasicBlock]ConditionInfo{},
-		instrPrev:         map[ssa.Instruction]map[ssa.Instruction]bool{},
-		paramAliases:      map[ssa.Value]map[*ssa.Parameter]bool{},
-		freeVarAliases:    map[ssa.Value]map[*ssa.FreeVar]bool{},
-		shouldTrack:       shouldTrack,
-		postBlockCallback: postBlockCallback,
+	postBlockCallback func(*IntraAnalysisState)) error {
+	state := &IntraAnalysisState{
+		flowInfo:            flowInfo,
+		parentAnalyzerState: a,
+		changeFlag:          true,
+		blocksSeen:          map[*ssa.BasicBlock]bool{},
+		errors:              map[ssa.Node]error{},
+		summary:             sm,
+		deferStacks:         defers.AnalyzeFunction(sm.Parent, false),
+		paths:               map[*ssa.BasicBlock]map[*ssa.BasicBlock]ConditionInfo{},
+		instrPrev:           map[ssa.Instruction]map[ssa.Instruction]bool{},
+		paramAliases:        map[ssa.Value]map[*ssa.Parameter]bool{},
+		freeVarAliases:      map[ssa.Value]map[*ssa.FreeVar]bool{},
+		shouldTrack:         shouldTrack,
+		postBlockCallback:   postBlockCallback,
 	}
 
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
-		err := cache.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
+		err := a.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
 			sm.Parent.String(), utils.Yellow("analysis unsound!")))
 		if err != nil {
 			return err
@@ -119,7 +119,7 @@ func run(cache *Cache, flowInfo *FlowInformation, sm *SummaryGraph,
 // Dataflow edges in the summary graph are added by the following functions. Those can be called after the iterative
 // analysis has computed where all marks reach values at each instruction.
 
-func (state *AnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruction) {
+func (state *IntraAnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruction) {
 	switch typedInstr := instr.(type) {
 	case ssa.CallInstruction:
 		state.makeEdgesAtCallSite(typedInstr)
@@ -136,7 +136,7 @@ func (state *AnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruction)
 
 // makeEdgesAtCallsite generates all the edges specific to a given call site.
 // Those are the edges to and from call arguments and to and from the call value.
-func (state *AnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
+func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 	if isHandledBuiltinCall(callInstr) {
 		return
 	}
@@ -191,7 +191,7 @@ func (state *AnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 }
 
 // updateBoundVarEdges updates the edges to bound variables.
-func (state *AnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.MakeClosure) {
+func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
 		for _, boundVarMark := range state.getMarkedValues(instr, boundVar, "*") {
 			state.summary.AddBoundVarEdge(boundVarMark, x, boundVar, &ConditionInfo{Satisfiable: true})
@@ -201,7 +201,7 @@ func (state *AnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.Ma
 
 // makeEdgesAtClosure adds all the edges corresponding the closure creation site: bound variable edges and any edge
 // to parameters and free variables.
-func (state *AnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
+func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
 		for _, mark := range state.getMarkedValues(x, boundVar, "*") {
 			state.summary.AddBoundVarEdge(mark, x, boundVar, nil)
@@ -217,7 +217,7 @@ func (state *AnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 }
 
 // makeEdgesAtReturn creates all the edges to the return node
-func (state *AnalysisState) makeEdgesAtReturn(x *ssa.Return) {
+func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 	for markedValue, marks := range state.flowInfo.MarkedValues[x] {
 		switch val := markedValue.(type) {
 		case *ssa.Call:
@@ -254,13 +254,13 @@ func (state *AnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 // makeEdgesAtStoreInCapturedLabel creates edges for store instruction where the target is a pointer that is
 // captured by a closure somewhere. The capture information is flow- and context insensitive, so the edge creation is
 // too. The interprocedural information will be completed later.
-func (state *AnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
+func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	bounds := state.isCapturedBy(x.Addr)
 	if len(bounds) > 0 {
 		for _, origin := range state.getMarkedValues(x, x.Addr, "*") {
 			for _, label := range bounds {
 				if label.Value() != nil {
-					for target := range state.cache.BoundingInfo[label.Value()] {
+					for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
 						state.summary.AddBoundLabelNode(x, label, *target)
 						state.summary.AddBoundLabelNodeEdge(origin, x, nil)
 					}
@@ -270,8 +270,8 @@ func (state *AnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	}
 }
 
-func (state *AnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
-	if asValue, ok := instr.(ssa.Value); ok && state.shouldTrack(state.cache.Config, instr.(ssa.Node)) {
+func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
+	if asValue, ok := instr.(ssa.Value); ok && state.shouldTrack(state.parentAnalyzerState.Config, instr.(ssa.Node)) {
 		for _, origin := range state.getMarkedValues(instr, asValue, "*") {
 			_, isField := instr.(*ssa.Field)
 			_, isFieldAddr := instr.(*ssa.FieldAddr)
@@ -294,7 +294,7 @@ func (state *AnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
 // condition expressions to decorate edges and allow checking whether a flow is validated in the dataflow analysis.
 // We should think of ways to accumulate conditions without using the checkFlow function, which was designed initially
 // to filter the spurious flows of the flow-insensitive analysis.
-func (state *AnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) ConditionInfo {
+func (state *IntraAnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) ConditionInfo {
 	sourceInstr, ok := source.Node.(ssa.Instruction)
 	if !ok {
 		return ConditionInfo{Satisfiable: true}
@@ -328,7 +328,7 @@ func (state *AnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal
 	}
 }
 
-func (state *AnalysisState) checkPathBetweenInstructions(source ssa.Instruction, dest ssa.Instruction) ConditionInfo {
+func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruction, dest ssa.Instruction) ConditionInfo {
 	var i, j int
 	for k, instr := range source.Block().Instrs {
 		if instr == source {
@@ -358,25 +358,25 @@ func (state *AnalysisState) checkPathBetweenInstructions(source ssa.Instruction,
 
 // isCapturedBy checks the bounding analysis to query whether the value is captured by some closure, in which case an
 // edge will need to be added
-func (state *AnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label {
+func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label {
 	var maps []*pointer.Label
-	if ptr, ok := state.cache.PointerAnalysis.Queries[value]; ok {
+	if ptr, ok := state.parentAnalyzerState.PointerAnalysis.Queries[value]; ok {
 		for _, label := range ptr.PointsTo().Labels() {
 			if label.Value() == nil {
 				continue
 			}
-			_, isBound := state.cache.BoundingInfo[label.Value()]
+			_, isBound := state.parentAnalyzerState.BoundingInfo[label.Value()]
 			if isBound {
 				maps = append(maps, label)
 			}
 		}
 	}
-	if ptr, ok := state.cache.PointerAnalysis.IndirectQueries[value]; ok {
+	if ptr, ok := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[value]; ok {
 		for _, label := range ptr.PointsTo().Labels() {
 			if label.Value() == nil {
 				continue
 			}
-			_, isBound := state.cache.BoundingInfo[label.Value()]
+			_, isBound := state.parentAnalyzerState.BoundingInfo[label.Value()]
 			if isBound {
 				maps = append(maps, label)
 			}

@@ -19,7 +19,6 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/lang"
@@ -27,11 +26,11 @@ import (
 )
 
 // addCoverage adds an entry to coverage by properly formatting the position of the visitorNode in the context of
-// the cache
-func addCoverage(c *dataflow.Cache, elt *dataflow.VisitorNode, coverage map[string]bool) {
+// the analyzer state
+func addCoverage(c *dataflow.AnalyzerState, elt *dataflow.VisitorNode, coverage map[string]bool) {
 	pos := elt.Node.Position(c)
 	if coverage != nil {
-		if strings.Contains(pos.Filename, c.Config.Coverage) {
+		if c.Config.MatchCoverageFilter(pos.Filename) {
 			s := fmt.Sprintf("%s:%d.1,%d.%d 1 1\n", pos.Filename, pos.Line, pos.Line, pos.Column)
 			coverage[s] = true
 		}
@@ -54,9 +53,9 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 	}
 }
 
-// ReportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
+// reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger
-func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
+func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
 	c.Logger.Printf(" 💀 Sink reached at %s\n", utils.Red(sink.Node.Position(c)))
 	c.Logger.Printf(" Add new path from %s to %s <== \n",
 		utils.Green(source.Node.String()), utils.Red(sink.Node.String()))
@@ -96,7 +95,7 @@ func ReportTaintFlow(c *dataflow.Cache, source dataflow.NodeWithTrace, sink *dat
 	}
 }
 
-func printMissingSummaryMessage(c *dataflow.Cache, callSite *dataflow.CallNode) {
+func printMissingSummaryMessage(c *dataflow.AnalyzerState, callSite *dataflow.CallNode) {
 	if !c.Config.Verbose {
 		return
 	}
@@ -129,7 +128,7 @@ func printMissingSummaryMessage(c *dataflow.Cache, callSite *dataflow.CallNode) 
 	}
 }
 
-func printMissingClosureSummaryMessage(c *dataflow.Cache, bl *dataflow.BoundLabelNode) {
+func printMissingClosureSummaryMessage(c *dataflow.AnalyzerState, bl *dataflow.BoundLabelNode) {
 	if !c.Config.Verbose {
 		return
 	}
@@ -149,7 +148,7 @@ func printMissingClosureSummaryMessage(c *dataflow.Cache, bl *dataflow.BoundLabe
 	}
 }
 
-func printMissingClosureNodeSummaryMessage(c *dataflow.Cache, closureNode *dataflow.ClosureNode) {
+func printMissingClosureNodeSummaryMessage(c *dataflow.AnalyzerState, closureNode *dataflow.ClosureNode) {
 	if !c.Config.Verbose {
 		return
 	}
@@ -169,7 +168,7 @@ func printMissingClosureNodeSummaryMessage(c *dataflow.Cache, closureNode *dataf
 	}
 }
 
-func printWarningSummaryNotConstructed(c *dataflow.Cache, callSite *dataflow.CallNode) {
+func printWarningSummaryNotConstructed(c *dataflow.AnalyzerState, callSite *dataflow.CallNode) {
 	if !c.Config.Verbose {
 		return
 	}

@@ -57,16 +57,16 @@ func (b BindingInfo) Type() types.Type {
 // y in X[v], y.MakeClosure is the instruction that captures it and y.BoundIndex is the bound variable that aliases v.
 type BoundingMap map[ssa.Value]map[*BindingInfo]bool
 
-// RunBoundingAnalysis computes the BoundingMap of the program in the cache by iterating over the instructions of each
-// reachable function.
-func RunBoundingAnalysis(cache *Cache) (BoundingMap, error) {
-	if cache.PointerAnalysis == nil {
+// RunBoundingAnalysis computes the BoundingMap of the program in the analzyer state by iterating over the instructions
+// of each reachable function.
+func RunBoundingAnalysis(state *AnalyzerState) (BoundingMap, error) {
+	if state.PointerAnalysis == nil {
 		return nil, fmt.Errorf("pointer analysis should run before bounding analysis")
 	}
 	bindMap := map[ssa.Value]map[*BindingInfo]bool{}
-	for function := range cache.ReachableFunctions(false, false) {
+	for function := range state.ReachableFunctions(false, false) {
 		lang.IterateInstructions(function, func(_ int, instr ssa.Instruction) {
-			InspectInstruction(cache, bindMap, instr)
+			InspectInstruction(state, bindMap, instr)
 		})
 	}
 	return bindMap, nil
@@ -74,16 +74,16 @@ func RunBoundingAnalysis(cache *Cache) (BoundingMap, error) {
 
 // InspectInstruction adds information to the bindMap if instruction is a closure and the pointer analysis
 // contains information about where the bound variables are allocated.
-func InspectInstruction(cache *Cache, bindMap BoundingMap, instruction ssa.Instruction) {
+func InspectInstruction(state *AnalyzerState, bindMap BoundingMap, instruction ssa.Instruction) {
 	makeClosure, ok := instruction.(*ssa.MakeClosure)
 	if !ok {
 		return
 	}
 	for i, b := range makeClosure.Bindings {
-		if ptr, ok := cache.PointerAnalysis.Queries[b]; ok {
+		if ptr, ok := state.PointerAnalysis.Queries[b]; ok {
 			registerBinding(makeClosure, i, ptr, bindMap)
 		}
-		if ptr, ok := cache.PointerAnalysis.IndirectQueries[b]; ok {
+		if ptr, ok := state.PointerAnalysis.IndirectQueries[b]; ok {
 			registerBinding(makeClosure, i, ptr, bindMap)
 		}
 	}

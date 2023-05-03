@@ -12,24 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package config provides a simple way to manage configuration files.
-// Use Load(filename) to load a configuration from a specific filename.
-// Use SetGlobalConfig(filename) to set filename as the global config, and
-// then LoadGlobal() to load the global config.
-// A config file should be in yaml format. The top-level fields can be any of
-// the fields defined in the Config struct type. The other fields  are defined
-// by the types of the fields of Config and nested struct types.
-// For example, a valid config file is as follows:
-// ```
-// sinks::
-//   - package: fmt
-//     method: Printf
-//
-// sources:
-//   - method: Read
-//
-// ```
-// (note the use of lowercase)
 package config
 
 import (
@@ -106,9 +88,9 @@ type Config struct {
 	// SkipInterprocedural can be set to true to skip the interprocedural (cross-function analysis) step
 	SkipInterprocedural bool
 
-	// Coverage can be used to filter which packages will be reported in the coverage. If non-empty, coverage will only
-	// be reported for those packages that have Coverage as a substring
-	Coverage string
+	// CoverageFilter can be used to filter which packages will be reported in the coverage. If non-empty,
+	// coverage will only for those packages that match CoverageFilter
+	CoverageFilter string
 
 	// ReportSummaries can be set to true, in which case summaries will be reported in a file names summaries-*.out in
 	// the reports directory
@@ -139,6 +121,9 @@ type Config struct {
 
 	// if the PkgFilter is specified
 	pkgFilterRegex *regexp.Regexp
+
+	// if the CoverageFilter is specified
+	coverageFilterRegex *regexp.Regexp
 }
 
 // NewDefault returns an empty default config.
@@ -155,13 +140,13 @@ func NewDefault() *Config {
 		PkgFilter:           "",
 		DataflowSpecs:       []string{},
 		SkipInterprocedural: false,
-		Coverage:            "",
+		CoverageFilter:      "",
 		ReportSummaries:     false,
 		ReportPaths:         false,
 		ReportCoverage:      false,
 		ReportNoCalleeSites: false,
 		MaxDepth:            1000,
-		MaxAlarms:           -1,
+		MaxAlarms:           0,
 		Verbose:             false,
 	}
 }
@@ -218,16 +203,26 @@ func Load(filename string) (*Config, error) {
 		}
 	}
 
-	utils.Iter(config.Sanitizers, CompileRegexes)
-	utils.Iter(config.Sinks, CompileRegexes)
-	utils.Iter(config.Sources, CompileRegexes)
-	utils.Iter(config.StaticCommands, CompileRegexes)
-	utils.Iter(config.BacktracePoints, CompileRegexes)
-	utils.Iter(config.Validators, CompileRegexes)
-	utils.Iter(config.Filters, CompileRegexes)
+	if config.CoverageFilter != "" {
+		r, err := regexp.Compile(config.CoverageFilter)
+		if err == nil {
+			config.coverageFilterRegex = r
+		}
+	}
+
+	utils.Iter(config.BacktracePoints, compileRegexes)
+	utils.Iter(config.Filters, compileRegexes)
+	utils.Iter(config.Sanitizers, compileRegexes)
+	utils.Iter(config.Sinks, compileRegexes)
+	utils.Iter(config.Sources, compileRegexes)
+	utils.Iter(config.StaticCommands, compileRegexes)
+	utils.Iter(config.Validators, compileRegexes)
+	utils.Iter(config.Validators, compileRegexes)
+
 	return &config, nil
 }
 
+// ReportNoCalleeFile return the file name that will contain the list of locations that have no callee
 func (c Config) ReportNoCalleeFile() string {
 	return c.nocalleereportfile
 }
@@ -237,6 +232,10 @@ func (c Config) RelPath(filename string) string {
 	return path.Join(path.Dir(c.sourceFile), filename)
 }
 
+// MatchPkgFilter returns true if the package name pkgname matches the package filter set in the config file. If no
+// package filter has been set in the config file, the regex will match anything and return true. This function safely
+// considers the case where a filter has been specified by the user but it could not be compiled to a regex. The safe
+// case is to check whether the pacakge filter string is a prefix of the pkgname
 func (c Config) MatchPkgFilter(pkgname string) bool {
 	if c.pkgFilterRegex != nil {
 		return c.pkgFilterRegex.MatchString(pkgname)
@@ -247,25 +246,41 @@ func (c Config) MatchPkgFilter(pkgname string) bool {
 	}
 }
 
+// MatchCoverageFilter returns true if the file name matches the coverageFilterRegex, if specified
+func (c Config) MatchCoverageFilter(filename string) bool {
+	if c.coverageFilterRegex != nil {
+		return c.coverageFilterRegex.MatchString(filename)
+	} else if c.CoverageFilter != "" {
+		return strings.HasPrefix(filename, c.CoverageFilter)
+	} else {
+		return false
+	}
+}
+
 // Below are functions used to query the configuration on specific facts
 
+// IsSource returns true if the code identifier matches a source specification in the config file
 func (c Config) IsSource(cid CodeIdentifier) bool {
 	b := ExistsCid(c.Sources, cid.equalOnNonEmptyFields)
 	return b
 }
 
+// IsSink returns true if the code identifier matches a sink specification in the config file
 func (c Config) IsSink(cid CodeIdentifier) bool {
 	return ExistsCid(c.Sinks, cid.equalOnNonEmptyFields)
 }
 
+// IsSanitizer returns true if the code identifier matches a sanitizer specification in the config file
 func (c Config) IsSanitizer(cid CodeIdentifier) bool {
 	return ExistsCid(c.Sanitizers, cid.equalOnNonEmptyFields)
 }
 
+// IsValidator returns true if the code identifier matches a validator specification in the config file
 func (c Config) IsValidator(cid CodeIdentifier) bool {
 	return ExistsCid(c.Validators, cid.equalOnNonEmptyFields)
 }
 
+// IsStaticCommand returns true if the code identifier matches a static command specification in the config file
 func (c Config) IsStaticCommand(cid CodeIdentifier) bool {
 	return ExistsCid(c.StaticCommands, cid.equalOnNonEmptyFields)
 }

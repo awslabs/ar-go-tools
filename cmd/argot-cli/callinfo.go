@@ -23,7 +23,7 @@ import (
 )
 
 // cmdCallers shows the callers of a given summarized function
-func cmdCallers(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdCallers(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: shows the callers of a given summarized function.\n",
 			tt.Escape.Blue, cmdCallersName, tt.Escape.Reset)
@@ -40,7 +40,7 @@ func cmdCallers(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 }
 
 // cmdCallees shows the callers of a given summarized function
-func cmdCallees(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdCallees(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: shows the callees of a given summarized function.\n",
 			tt.Escape.Blue, cmdCalleesName, tt.Escape.Reset)
@@ -62,7 +62,7 @@ func cmdCallees(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
 //
 // If the matching function has a summary, then the summary's info is used.
 // Otherwise, the info contained in the pointer analysis' result is used.
-func displayCallInfo(tt *term.Terminal, c *dataflow.Cache, command Command, usePtr bool,
+func displayCallInfo(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, usePtr bool,
 	displayCallees bool, displayCallers bool) bool {
 	targetFilter := func(f *ssa.Function) bool { return f != nil }
 
@@ -112,7 +112,7 @@ func displayCallInfo(tt *term.Terminal, c *dataflow.Cache, command Command, useP
 			}
 		} else {
 			// If there is no summary, or usePtr is true, then use the callgraph computed during
-			// the pointer analysis  the cache should always contain the pointer analysis,
+			// the pointer analysis  the state should always contain the pointer analysis,
 			// and it should not be null
 			if node, ok := c.PointerAnalysis.CallGraph.Nodes[f]; ok {
 				if displayCallees {

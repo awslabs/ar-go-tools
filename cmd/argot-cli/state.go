@@ -43,7 +43,7 @@ type serverState struct {
 var state = serverState{}
 
 // Help command
-func cmdHelp(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
+func cmdHelp(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print help message\t", cmdHelpName, tt.Escape.Blue, tt.Escape.Reset)
 		return false
@@ -57,7 +57,7 @@ func cmdHelp(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 }
 
 // cmdState implements the "state?" command, which prints information about the current state of the tool
-func cmdState(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
+func cmdState(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print information about the current state\n",
 			tt.Escape.Blue, cmdStateName, tt.Escape.Reset)
@@ -79,7 +79,7 @@ func cmdState(tt *term.Terminal, c *dataflow.Cache, _ Command) bool {
 }
 
 // cmdList shows all functions matching a given regex
-func cmdList(tt *term.Terminal, c *dataflow.Cache, command Command) bool {
+func cmdList(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : list all functions matching provided regexes\n",
 			tt.Escape.Blue, cmdListName, tt.Escape.Reset)
