@@ -30,7 +30,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/argot/analysis/testutils"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -72,7 +72,7 @@ func getExpectedSourceToSink(reldir string, dir string) map[LPos]map[LPos]bool {
 		}
 		if info.IsDir() {
 			d0, err := parser.ParseDir(fset, info.Name(), nil, parser.ParseComments)
-			utils.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
+			funcutil.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
 			return err
 		}
 		return nil

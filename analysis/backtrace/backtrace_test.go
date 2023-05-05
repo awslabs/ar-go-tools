@@ -26,7 +26,7 @@ import (
 	"github.com/awslabs/argot/analysis/backtrace"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/testutils"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/funcutil"
 )
 
 func TestAnalyze(t *testing.T) {
@@ -262,7 +262,7 @@ func TestAnalyze(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			if !utils.Exists(res.Traces, func(trace backtrace.Trace) bool {
+			if !funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
 				ok, err := matchTrace(trace, test.matches)
 				_ = err
 				// // NOTE commented out for debugging
@@ -278,7 +278,7 @@ func TestAnalyze(t *testing.T) {
 	}
 
 	t.Run(`trace to bar("x") should not exist`, func(t *testing.T) {
-		if utils.Exists(res.Traces, func(trace backtrace.Trace) bool {
+		if funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
 			arg, ok := trace[0].GraphNode.(*dataflow.CallNodeArg)
 			if !ok {
 				return false
@@ -432,7 +432,7 @@ func TestAnalyze_Closures(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			if !utils.Exists(res.Traces, func(trace backtrace.Trace) bool {
+			if !funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
 				ok, err := matchTrace(trace, test.matches)
 				_ = err
 				// // NOTE commented out for debugging

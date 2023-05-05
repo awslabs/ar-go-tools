@@ -25,7 +25,7 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/taint"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/colors"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -75,8 +75,8 @@ func main() {
 	if *verbose {
 		taintConfig.Verbose = true
 	}
-	logger.Printf(utils.Faint(fmt.Sprintf("Argot taint tool - build %s", version)))
-	logger.Printf(utils.Faint("Reading sources") + "\n")
+	logger.Printf(colors.Faint(fmt.Sprintf("Argot taint tool - build %s", version)))
+	logger.Printf(colors.Faint("Reading sources") + "\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -96,9 +96,9 @@ func main() {
 	logger.Printf("Analysis took %3.4f s", duration.Seconds())
 	logger.Printf("")
 	if len(analysisInfo.TaintFlows) == 0 {
-		logger.Printf("RESULT:\n\t\t%s", utils.Green("No taint flows detected ✓"))
+		logger.Printf("RESULT:\n\t\t%s", colors.Green("No taint flows detected ✓"))
 	} else {
-		logger.Printf("RESULT:\n\t\t%s", utils.Red("Taint flows detected!"))
+		logger.Printf("RESULT:\n\t\t%s", colors.Red("Taint flows detected!"))
 	}
 
 	// Prints location in the SSA
@@ -107,7 +107,7 @@ func main() {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
 			logger.Printf("%s in function %s:\n\tSink: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
-				utils.Red("A source has reached a sink"),
+				colors.Red("A source has reached a sink"),
 				sink.Parent().Name(),
 				sink.String(),
 				sinkPos.String(),

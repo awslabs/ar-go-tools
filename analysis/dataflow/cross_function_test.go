@@ -26,8 +26,8 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/render"
 	"github.com/awslabs/argot/analysis/summaries"
-	"github.com/awslabs/argot/analysis/taint"
 	"github.com/awslabs/argot/analysis/testutils"
 	"golang.org/x/tools/go/ssa"
 )
@@ -56,11 +56,11 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: shouldCreateSummary,
-		ShouldBuildSummary:  taint.ShouldBuildSummary,
+		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
 		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },
 	})
 
-	state, err = analysis.BuildCrossFunctionGraph(state)
+	state, err = render.BuildCrossFunctionGraph(state)
 	if err != nil {
 		t.Fatalf("failed to build cross-function graph: %v", err)
 	}

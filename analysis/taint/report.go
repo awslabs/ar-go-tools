@@ -21,8 +21,7 @@ import (
 	"sort"
 
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/colors"
 )
 
 // addCoverage adds an entry to coverage by properly formatting the position of the visitorNode in the context of
@@ -56,9 +55,9 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 // reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger
 func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
-	c.Logger.Printf(" 💀 Sink reached at %s\n", utils.Red(sink.Node.Position(c)))
+	c.Logger.Printf(" 💀 Sink reached at %s\n", colors.Red(sink.Node.Position(c)))
 	c.Logger.Printf(" Add new path from %s to %s <== \n",
-		utils.Green(source.Node.String()), utils.Red(sink.Node.String()))
+		colors.Green(source.Node.String()), colors.Red(sink.Node.String()))
 	sinkPos := sink.Node.Position(c)
 	if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
 		sinkPos = callArg.ParentNode().Position(c)
@@ -92,102 +91,5 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 		}
 		c.Logger.Printf("SINK: %s\n", sinkPos.String())
 		c.Logger.SetPrefix(prefix)
-	}
-}
-
-func printMissingSummaryMessage(c *dataflow.AnalyzerState, callSite *dataflow.CallNode) {
-	if !c.Config.Verbose {
-		return
-	}
-
-	var typeString string
-	if callSite.Callee() == nil {
-		typeString = fmt.Sprintf("nil callee (in %s)",
-			lang.SafeFunctionPos(callSite.Graph().Parent).ValueOr(lang.DummyPos))
-	} else {
-		typeString = callSite.Callee().Type().String()
-	}
-	c.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
-		callSite.String(), typeString)))
-	if callSite.Callee() != nil && callSite.CallSite() != nil {
-		c.Logger.Printf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
-
-		pos := callSite.Position(c)
-		if pos != lang.DummyPos {
-			c.Logger.Printf("|_ See call site: %s", pos)
-		} else {
-			opos := lang.SafeFunctionPos(callSite.Graph().Parent)
-			c.Logger.Printf("|_ See call site in %s", opos.ValueOr(lang.DummyPos))
-		}
-
-		methodFunc := callSite.CallSite().Common().Method
-		if methodFunc != nil {
-			methodKey := callSite.CallSite().Common().Value.Type().String() + "." + methodFunc.Name()
-			c.Logger.Printf("| Or add %s to dataflow contracts", methodKey)
-		}
-	}
-}
-
-func printMissingClosureSummaryMessage(c *dataflow.AnalyzerState, bl *dataflow.BoundLabelNode) {
-	if !c.Config.Verbose {
-		return
-	}
-
-	var instrStr string
-	if bl.Instr() == nil {
-		instrStr = "nil instr"
-	} else {
-		instrStr = bl.Instr().String()
-	}
-	c.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
-		bl.String(), instrStr)))
-	if bl.Instr() != nil {
-		c.Logger.Printf("| Please add closure for %s to summaries",
-			bl.Instr().String())
-		c.Logger.Printf("|_ See closure: %s", bl.Position(c))
-	}
-}
-
-func printMissingClosureNodeSummaryMessage(c *dataflow.AnalyzerState, closureNode *dataflow.ClosureNode) {
-	if !c.Config.Verbose {
-		return
-	}
-
-	var instrStr string
-	if closureNode.Instr() == nil {
-		instrStr = "nil instr"
-	} else {
-		instrStr = closureNode.Instr().String()
-	}
-	c.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
-		closureNode.String(), instrStr)))
-	if closureNode.Instr() != nil {
-		c.Logger.Printf("| Please add closure %s to summaries",
-			closureNode.Instr().Fn.String())
-		c.Logger.Printf("|_ See closure: %s", closureNode.Position(c))
-	}
-}
-
-func printWarningSummaryNotConstructed(c *dataflow.AnalyzerState, callSite *dataflow.CallNode) {
-	if !c.Config.Verbose {
-		return
-	}
-
-	c.Logger.Printf("| %s: summary has not been built for %s.",
-		utils.Yellow("WARNING"),
-		utils.Yellow(callSite.Graph().Parent.Name()))
-	pos := callSite.Position(c)
-	if pos != lang.DummyPos {
-		c.Logger.Printf(fmt.Sprintf("|_ See call site: %s", pos))
-	} else {
-		opos := lang.SafeFunctionPos(callSite.Graph().Parent)
-		c.Logger.Printf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(lang.DummyPos)))
-	}
-
-	if callSite.CallSite() != nil {
-		methodKey := lang.InstrMethodKey(callSite.CallSite())
-		if methodKey.IsSome() {
-			c.Logger.Printf(fmt.Sprintf("| Or add %s to dataflow contracts", methodKey.ValueOr("?")))
-		}
 	}
 }

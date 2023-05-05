@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package utils
+package graphutil
 
 // Implementation of Tarjan's strongly connected component (SCC) algorithm for generic nodes T.
 // Successors returns a slice containing the targets of directed edges out from the given node.

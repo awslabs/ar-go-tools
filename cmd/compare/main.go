@@ -32,7 +32,7 @@ import (
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/defers"
 	"github.com/awslabs/argot/analysis/reachability"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/colors"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -88,7 +88,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	fmt.Fprintf(os.Stderr, utils.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, colors.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -99,15 +99,15 @@ func main() {
 	var cg *callgraph.Graph
 
 	// Compute the call graph
-	fmt.Fprintln(os.Stderr, utils.Faint("Computing call graph"))
+	fmt.Fprintln(os.Stderr, colors.Faint("Computing call graph"))
 	start := time.Now()
 	cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
 	cgComputeDuration := time.Since(start).Seconds()
 	if err != nil {
-		fmt.Fprint(os.Stderr, utils.Red("Could not compute callgraph: %v\n", err))
+		fmt.Fprint(os.Stderr, colors.Red("Could not compute callgraph: %v\n", err))
 		return
 	} else {
-		fmt.Fprint(os.Stderr, utils.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+		fmt.Fprint(os.Stderr, colors.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	}
 
 	//Load the binary

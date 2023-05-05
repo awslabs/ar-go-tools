@@ -23,7 +23,7 @@ import (
 
 	"golang.org/x/tools/go/ssa"
 
-	. "github.com/awslabs/argot/analysis/utils"
+	. "github.com/awslabs/argot/internal/funcutil"
 )
 
 // at this point, the f.String contains something like this:

@@ -15,7 +15,7 @@
 package lang
 
 import (
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -203,7 +203,7 @@ func RunForwardIterative(op IterativeAnalysis, function *ssa.Function) {
 			if op.ChangedOnEndBlock() {
 				for _, nextBlock := range function.Blocks {
 					if HasPathTo(block, nextBlock, pathMem) {
-						if !utils.Contains(worklist, nextBlock) {
+						if !funcutil.Contains(worklist, nextBlock) {
 							worklist = append(worklist, nextBlock)
 						}
 					}

@@ -15,7 +15,7 @@
 package main
 
 import (
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/shims"
 	"github.com/google/shlex"
 )
 
@@ -61,12 +61,12 @@ func ParseCommand(cmd string) Command {
 		if !flagCmdName {
 			command.Name = token
 			flagCmdName = true // set, will not be reset
-		} else if name, foundNamed := utils.CutPrefix(token, "--"); foundNamed && !flagArgName {
+		} else if name, foundNamed := shims.CutPrefix(token, "--"); foundNamed && !flagArgName {
 			// argument with prefix -- is for named argument with value
 			argName = name
 			flagArgName = true // set
 
-		} else if flag, foundFlag := utils.CutPrefix(token, "-"); foundFlag {
+		} else if flag, foundFlag := shims.CutPrefix(token, "-"); foundFlag {
 			// argument with prefix - (and not --) is for flag without value
 			command.Flags[flag] = true
 		} else if flagArgName {

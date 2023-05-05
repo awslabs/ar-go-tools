@@ -20,63 +20,12 @@ import (
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/argot/internal/analysisutil"
 	"golang.org/x/tools/go/ssa"
 )
 
 func IsSourceNode(cfg *config.Config, n ssa.Node) bool {
-	switch node := (n).(type) {
-	// Look for callees to functions that are considered sources
-	case *ssa.Call:
-		if node.Call.IsInvoke() {
-			receiver := node.Call.Value.Name()
-			methodName := node.Call.Method.Name()
-			calleePkg := dataflow.FindSafeCalleePkg(node.Common())
-			if calleePkg.IsSome() {
-				return cfg.IsSource(config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
-			} else {
-				return false
-			}
-		} else {
-			funcValue := node.Call.Value.Name()
-			calleePkg := dataflow.FindSafeCalleePkg(node.Common())
-			if calleePkg.IsSome() {
-				return cfg.IsSource(config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue})
-			} else {
-				return false
-			}
-		}
-
-	// Field accesses that are considered as sources
-	case *ssa.Field:
-		fieldName := dataflow.FieldFieldName(node)
-		packageName, typeName, err := dataflow.FindTypePackage(node.X.Type())
-		if err != nil {
-			return false
-		} else {
-			return cfg.IsSource(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
-		}
-
-	case *ssa.FieldAddr:
-		fieldName := dataflow.FieldAddrFieldName(node)
-		packageName, typeName, err := dataflow.FindTypePackage(node.X.Type())
-		if err != nil {
-			return false
-		} else {
-			return cfg.IsSource(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
-		}
-
-	// Allocations of data of a type that is a source
-	case *ssa.Alloc:
-		packageName, typeName, err := dataflow.FindTypePackage(node.Type())
-		if err != nil {
-			return false
-		} else {
-			return cfg.IsSource(config.CodeIdentifier{Package: packageName, Type: typeName})
-		}
-
-	default:
-		return false
-	}
+	return analysisutil.IsEntrypointNode(cfg, n, (config.Config).IsSource)
 }
 
 func isSource(n dataflow.GraphNode, cfg *config.Config) bool {

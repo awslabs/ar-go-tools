@@ -22,8 +22,7 @@ import (
 
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/defers"
-	"github.com/awslabs/argot/analysis/utils"
-
+	"github.com/awslabs/argot/internal/colors"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -74,14 +73,14 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, utils.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, colors.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, utils.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, colors.Faint("Analyzing")+"\n")
 
 	defers.AnalyzeProgram(program, verbose)
 

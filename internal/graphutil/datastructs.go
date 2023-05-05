@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package utils
+package graphutil
+
+import "github.com/awslabs/argot/internal/funcutil"
 
 type Tree[T any] struct {
 	Parent   *Tree[T]
@@ -58,6 +60,6 @@ func (t *Tree[T]) Ancestors(n int) []*Tree[T] {
 		cur = cur.Parent
 		i += 1
 	}
-	Reverse(ans)
+	funcutil.Reverse(ans)
 	return ans
 }

@@ -24,7 +24,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/argot/analysis/testutils"
-	. "github.com/awslabs/argot/analysis/utils"
+	. "github.com/awslabs/argot/internal/funcutil"
 )
 
 func loadConcurrencyTestResult(t *testing.T, subDir string) AnalysisResult {
