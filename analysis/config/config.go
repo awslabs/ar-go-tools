@@ -21,7 +21,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/funcutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -210,14 +210,14 @@ func Load(filename string) (*Config, error) {
 		}
 	}
 
-	utils.Iter(config.BacktracePoints, compileRegexes)
-	utils.Iter(config.Filters, compileRegexes)
-	utils.Iter(config.Sanitizers, compileRegexes)
-	utils.Iter(config.Sinks, compileRegexes)
-	utils.Iter(config.Sources, compileRegexes)
-	utils.Iter(config.StaticCommands, compileRegexes)
-	utils.Iter(config.Validators, compileRegexes)
-	utils.Iter(config.Validators, compileRegexes)
+	funcutil.Iter(config.BacktracePoints, compileRegexes)
+	funcutil.Iter(config.Filters, compileRegexes)
+	funcutil.Iter(config.Sanitizers, compileRegexes)
+	funcutil.Iter(config.Sinks, compileRegexes)
+	funcutil.Iter(config.Sources, compileRegexes)
+	funcutil.Iter(config.StaticCommands, compileRegexes)
+	funcutil.Iter(config.Validators, compileRegexes)
+	funcutil.Iter(config.Validators, compileRegexes)
 
 	return &config, nil
 }

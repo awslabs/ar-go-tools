@@ -17,7 +17,7 @@
 package lang
 
 import (
-	. "github.com/awslabs/argot/analysis/utils"
+	. "github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 

@@ -22,7 +22,9 @@ import (
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/defers"
 	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/analysis/summaries"
+	"github.com/awslabs/argot/internal/colors"
+	"github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -89,7 +91,7 @@ func run(a *AnalyzerState, flowInfo *FlowInformation, sm *SummaryGraph,
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
 		err := a.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
-			sm.Parent.String(), utils.Yellow("analysis unsound!")))
+			sm.Parent.String(), colors.Yellow("analysis unsound!")))
 		if err != nil {
 			return err
 		}
@@ -319,7 +321,7 @@ func (state *IntraAnalysisState) checkFlow(source Mark, dest ssa.Instruction, de
 			// This is often the case when there is a flow through a closure that binds variables by reference, and
 			// the variable is tainted after the closure is created.
 			if _, isFunc := asVal.Type().Underlying().(*types.Signature); isFunc {
-				return utils.FindMap(*asVal.Referrers(),
+				return funcutil.FindMap(*asVal.Referrers(),
 					func(i ssa.Instruction) ConditionInfo { return state.checkPathBetweenInstructions(sourceInstr, i) },
 					func(c ConditionInfo) bool { return c.Satisfiable }).ValueOr(ConditionInfo{Satisfiable: false})
 			}
@@ -383,4 +385,37 @@ func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label 
 		}
 	}
 	return maps
+}
+
+// ShouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
+// pass. This is not necessary for functions that have summaries that are externally defined, for example.
+func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
+	if state == nil || function == nil || summaries.IsSummaryRequired(function) {
+		return true
+	}
+
+	pkg := function.Package()
+	if pkg == nil {
+		return true
+	}
+
+	// Is PkgPrefix specified?
+	if state.Config != nil && state.Config.PkgFilter != "" {
+		pkgKey := pkg.Pkg.Path()
+		return state.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
+	} else {
+		// Check package summaries
+		return !(summaries.PkgHasSummaries(pkg) || state.HasExternalContractSummary(function))
+	}
+}
+
+// ShouldCreateSummary returns true if the function's summary should be *created during the single function analysis
+// pass.
+func ShouldCreateSummary(f *ssa.Function) bool {
+	// if a summary is required, then this should evidently return true!
+	if summaries.IsSummaryRequired(f) {
+		return true
+	}
+
+	return summaries.IsUserDefinedFunction(f)
 }

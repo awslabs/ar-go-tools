@@ -22,8 +22,8 @@ import (
 
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/maypanic"
-	"github.com/awslabs/argot/analysis/utils"
-
+	"github.com/awslabs/argot/internal/analysisutil"
+	"github.com/awslabs/argot/internal/colors"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -88,17 +88,17 @@ func doMain() error {
 		Tests: false,
 	}
 
-	fmt.Fprintf(os.Stderr, utils.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, colors.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(cfg, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, utils.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, colors.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
-	excludeAbsolute := maypanic.MakeAbsolute(exclude)
+	excludeAbsolute := analysisutil.MakeAbsolute(exclude)
 
 	maypanic.MayPanicAnalyzer(program, excludeAbsolute, jsonFlag)
 

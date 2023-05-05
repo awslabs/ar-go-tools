@@ -29,8 +29,9 @@ import (
 	"github.com/awslabs/argot/analysis/config"
 	df "github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/analysis/summaries"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/analysisutil"
+	"github.com/awslabs/argot/internal/colors"
+	"github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -53,7 +54,7 @@ type AnalysisResult struct {
 type Trace []TraceNode
 
 func (t Trace) String() string {
-	return "Trace:\n" + strings.Join(utils.Map(t, func(n TraceNode) string { return "\t" + n.String() }), "\n")
+	return "Trace:\n" + strings.Join(funcutil.Map(t, func(n TraceNode) string { return "\t" + n.String() }), "\n")
 }
 
 // TraceNode represents a node in the trace.
@@ -93,9 +94,11 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
-		ShouldCreateSummary: shouldCreateSummary,
-		ShouldBuildSummary:  shouldBuildSummary,
-		IsEntrypoint:        IsEntrypointNode,
+		ShouldCreateSummary: df.ShouldCreateSummary,
+		ShouldBuildSummary:  df.ShouldBuildSummary,
+		IsEntrypoint: func(cfg *config.Config, n ssa.Node) bool {
+			return analysisutil.IsEntrypointNode(cfg, n, (config.Config).IsBacktracePoint)
+		},
 	})
 
 	visitor := &Visitor{}
@@ -149,13 +152,13 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 	logger := s.Logger
 	logger.Printf("\n%s ENTRYPOINT %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Printf("==> Node: %s\n", utils.Purple(entrypoint.String()))
-	logger.Printf("%s %s\n", utils.Green("Found at"), pos)
+	logger.Printf("==> Node: %s\n", colors.Purple(entrypoint.String()))
+	logger.Printf("%s %s\n", colors.Green("Found at"), pos)
 
 	// Skip entrypoint if it is in a dependency
 	// TODO make this an option in the config
 	if strings.Contains(pos.Filename, "vendor") {
-		logger.Printf("%s\n", utils.Red("Skipping..."))
+		logger.Printf("%s\n", colors.Red("Skipping..."))
 		return
 	}
 
@@ -174,8 +177,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		if !elt.Node.Graph().Constructed {
 			if s.Config.Verbose {
 				logger.Printf("%s: summary has not been built for %s.",
-					utils.Yellow("WARNING"),
-					utils.Yellow(elt.Node.Graph().Parent.Name()))
+					colors.Yellow("WARNING"),
+					colors.Yellow(elt.Node.Graph().Parent.Name()))
 			}
 			// In that case, continue as there is no information on data flow
 			continue
@@ -202,7 +205,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		case *df.ParamNode:
 			// The value must always flow back to all call sites
 			for _, callSite := range graphNode.Graph().Callsites {
-				if err := checkIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+				if err := analysisutil.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
 				} else {
 					arg := callSite.Args()[graphNode.Index()]
@@ -235,7 +238,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		// Data flows from the function call to the called function's return statement.
 		// It also flows backwards within the parent function.
 		case *df.CallNode:
-			checkNoGoRoutine(s, goroutines, graphNode)
+			analysisutil.CheckNoGoRoutine(s, goroutines, graphNode)
 			if graphNode.CalleeSummary != nil {
 				for _, rets := range graphNode.CalleeSummary.Returns {
 					for _, ret := range rets {
@@ -277,7 +280,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			closureNode := graphNode.ParentNode()
 
 			if closureNode.ClosureSummary == nil {
-				printMissingClosureNodeSummaryMessage(s, closureNode)
+				analysisutil.PrintMissingClosureNodeSummaryMessage(s, closureNode)
 				break
 			}
 			// Flows to the free variables of the closure
@@ -459,168 +462,4 @@ func IsStatic(node df.GraphNode) bool {
 func IsEntrypoint(cfg *config.Config, f *ssa.Function) bool {
 	pkg := lang.PackageNameFromFunction(f)
 	return cfg.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
-}
-
-// checkIndex checks that the indexed graph node is valid in the parent node call site
-func checkIndex(s *df.AnalyzerState, node df.IndexedGraphNode, callSite *df.CallNode, msg string) error {
-	if node.Index() >= len(callSite.Args()) {
-		pos := s.Program.Fset.Position(callSite.CallSite().Value().Pos())
-		s.Logger.Printf("%s: trying to access index %d of %s, which has"+
-			" only %d elements\nSee: %s\n", msg, node.Index(), callSite.String(), len(callSite.Args()),
-			pos)
-		return fmt.Errorf("bad index %d at %s", node.Index(), pos)
-	}
-	return nil
-}
-
-func checkNoGoRoutine(s *df.AnalyzerState, reportedLocs map[*ssa.Go]bool, node *df.CallNode) {
-	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
-		if !reportedLocs[goroutine] {
-			reportedLocs[goroutine] = true
-			s.Logger.Printf(utils.Yellow("WARNING: Data flows to Go call."))
-			s.Logger.Printf("-> Position: %s", node.Position(s))
-		}
-	}
-}
-
-func printMissingSummaryMessage(s *df.AnalyzerState, callSite *df.CallNode) {
-	if !s.Config.Verbose {
-		return
-	}
-
-	var typeString string
-	if callSite.Callee() == nil {
-		typeString = fmt.Sprintf("nil callee (in %s)",
-			lang.SafeFunctionPos(callSite.Graph().Parent).ValueOr(lang.DummyPos))
-	} else {
-		typeString = callSite.Callee().Type().String()
-	}
-	s.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
-		callSite.String(), typeString)))
-	if callSite.Callee() != nil && callSite.CallSite() != nil {
-		s.Logger.Printf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
-
-		pos := callSite.Position(s)
-		if pos != lang.DummyPos {
-			s.Logger.Printf("|_ See call site: %s", pos)
-		} else {
-			opos := lang.SafeFunctionPos(callSite.Graph().Parent)
-			s.Logger.Printf("|_ See call site in %s", opos.ValueOr(lang.DummyPos))
-		}
-
-		methodFunc := callSite.CallSite().Common().Method
-		if methodFunc != nil {
-			methodKey := callSite.CallSite().Common().Value.Type().String() + "." + methodFunc.Name()
-			s.Logger.Printf("| Or add %s to dataflow contracts", methodKey)
-		}
-	}
-}
-
-func printMissingClosureNodeSummaryMessage(s *df.AnalyzerState, closureNode *df.ClosureNode) {
-	if !s.Config.Verbose {
-		return
-	}
-
-	var instrStr string
-	if closureNode.Instr() == nil {
-		instrStr = "nil instr"
-	} else {
-		instrStr = closureNode.Instr().String()
-	}
-	s.Logger.Printf(utils.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
-		closureNode.String(), instrStr)))
-	if closureNode.Instr() != nil {
-		s.Logger.Printf("| Please add closure %s to summaries",
-			closureNode.Instr().Fn.String())
-		s.Logger.Printf("|_ See closure: %s", closureNode.Position(s))
-	}
-}
-
-func shouldCreateSummary(f *ssa.Function) bool {
-	// if a summary is required, then this should evidently return true!
-	if summaries.IsSummaryRequired(f) {
-		return true
-	}
-
-	return summaries.IsUserDefinedFunction(f)
-}
-
-// shouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
-// pass. This is not necessary for functions that have summaries that are externally defined, for example.
-func shouldBuildSummary(state *df.AnalyzerState, function *ssa.Function) bool {
-	if state == nil || function == nil || summaries.IsSummaryRequired(function) {
-		return true
-	}
-
-	pkg := function.Package()
-	if pkg == nil {
-		return true
-	}
-
-	// Is PkgPrefix specified?
-	if state.Config != nil && state.Config.PkgFilter != "" {
-		pkgKey := pkg.Pkg.Path()
-		return state.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
-	} else {
-		// Check package summaries
-		return !(summaries.PkgHasSummaries(pkg) || state.HasExternalContractSummary(function))
-	}
-}
-
-// IsEntrypointNode returns true if n is an entrypoint to the analysis.
-// TODO maybe move this elsewhere since the logic is somewhat duplicated in taint
-func IsEntrypointNode(cfg *config.Config, n ssa.Node) bool {
-	switch node := (n).(type) {
-	// Look for callees to functions that are considered entrypoints
-	case *ssa.Call:
-		if node.Call.IsInvoke() {
-			receiver := node.Call.Value.Name()
-			methodName := node.Call.Method.Name()
-			calleePkg := df.FindSafeCalleePkg(node.Common())
-			if calleePkg.IsSome() {
-				return cfg.IsBacktracePoint(config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
-			} else {
-				return false
-			}
-		} else {
-			funcValue := node.Call.Value.Name()
-			calleePkg := df.FindSafeCalleePkg(node.Common())
-			if calleePkg.IsSome() {
-				return cfg.IsBacktracePoint(config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue})
-			} else {
-				return false
-			}
-		}
-
-	// Field accesses that are considered as entrypoints
-	case *ssa.Field:
-		fieldName := df.FieldFieldName(node)
-		packageName, typeName, err := df.FindTypePackage(node.X.Type())
-		if err != nil {
-			return false
-		} else {
-			return cfg.IsBacktracePoint(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
-		}
-
-	case *ssa.FieldAddr:
-		fieldName := df.FieldAddrFieldName(node)
-		packageName, typeName, err := df.FindTypePackage(node.X.Type())
-		if err != nil {
-			return false
-		} else {
-			return cfg.IsBacktracePoint(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
-		}
-
-	// Allocations of data of a type that is a entrypoint
-	case *ssa.Alloc:
-		packageName, typeName, err := df.FindTypePackage(node.Type())
-		if err != nil {
-			return false
-		} else {
-			return cfg.IsBacktracePoint(config.CodeIdentifier{Package: packageName, Type: typeName})
-		}
-
-	default:
-		return false
-	}
 }

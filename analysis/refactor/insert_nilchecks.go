@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/funcutil"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/dstutil"
@@ -65,7 +65,7 @@ func nilCheckInsertTransform(fi *lang.FuncInfo, c *dstutil.Cursor) bool {
 				paramType := fi.Package.TypesInfo.TypeOf(astParam.Type)
 				if !lang.IsNillableType(paramType) {
 					fmt.Fprintf(os.Stderr, "WARNING: %s cannot be nil, @nonnil is superfluous.\n",
-						strings.Join(utils.Map(param.Names, func(i *dst.Ident) string { return i.Name }), ","))
+						strings.Join(funcutil.Map(param.Names, func(i *dst.Ident) string { return i.Name }), ","))
 					b = false
 				}
 			}

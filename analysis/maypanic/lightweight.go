@@ -23,7 +23,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/analysisutil"
+	"github.com/awslabs/argot/internal/colors"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -245,7 +246,7 @@ func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 		if f.Pkg != nil {
 			pkg := f.Pkg.Pkg
 			path := pkg.Path()
-			if allowListed(path) || IsExcluded(program, f, exclude) {
+			if allowListed(path) || analysisutil.IsExcluded(program, f, exclude) {
 				delete(goFunctions, f)
 			}
 		}
@@ -332,7 +333,7 @@ func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 			fmt.Printf("no unrecovered panics found\n")
 		} else {
 			for _, function := range functionNames {
-				fmt.Printf(utils.Red("unrecovered panic")+" in %s\n", function.name)
+				fmt.Printf(colors.Red("unrecovered panic")+" in %s\n", function.name)
 				fmt.Printf("  %s\n", function.name)
 				fmt.Printf("  %s\n", locationString(program, function.f))
 				creators := findCreators(program, function.f, goFunctions)
@@ -341,7 +342,7 @@ func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 				}
 			}
 
-			fmt.Printf("%s\n", utils.Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
+			fmt.Printf("%s\n", colors.Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
 		}
 	}
 }

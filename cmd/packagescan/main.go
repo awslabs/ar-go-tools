@@ -24,8 +24,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/utils"
-
+	"github.com/awslabs/argot/internal/colors"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -84,7 +83,7 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, utils.Faint("Scanning sources for "+pkg)+"\n")
+	fmt.Fprintf(os.Stderr, colors.Faint("Scanning sources for "+pkg)+"\n")
 
 	var rawFile io.WriteCloser
 
@@ -113,7 +112,7 @@ func doMain() error {
 			return err
 		}
 
-		fmt.Fprintln(os.Stderr, utils.Faint("Analyzing for "+platform))
+		fmt.Fprintln(os.Stderr, colors.Faint("Analyzing for "+platform))
 
 		allPkgs := analysis.AllPackages(ssautil.AllFunctions(program))
 

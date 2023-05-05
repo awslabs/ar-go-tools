@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -141,24 +142,6 @@ func RunCrossFunction(args RunCrossFunctionArgs) {
 	args.AnalyzerState.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
 }
 
-// BuildCrossFunctionGraph builds a full-program (cross-function) analysis state from program.
-func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerState, error) {
-	if len(state.FlowGraph.Summaries) == 0 {
-		return nil, fmt.Errorf("state does not contain any summaries")
-	}
-
-	state.Logger.Println("Building full-program cross-function dataflow graph...")
-	start := time.Now()
-	RunCrossFunction(RunCrossFunctionArgs{
-		AnalyzerState: state,
-		Visitor:       dataflow.CrossFunctionGraphVisitor{},
-		IsEntrypoint:  func(*config.Config, *ssa.Function) bool { return true },
-	})
-
-	state.Logger.Printf("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())
-	return state, nil
-}
-
 // singleFunctionJob contains all the information necessary to run the single-function analysis on function.
 type singleFunctionJob struct {
 	analyzerState      *dataflow.AnalyzerState
@@ -172,6 +155,7 @@ type singleFunctionJob struct {
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
 	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
+	job.analyzerState.Logger.Printf("Analyzing Pkg: %s | Func: %s ...", lang.PackageNameFromFunction(job.function), job.function.Name())
 	result, err := dataflow.SingleFunctionAnalysis(job.analyzerState, job.function,
 		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
 	if err != nil {
@@ -206,7 +190,11 @@ func collectResults(c <-chan dataflow.SingleFunctionResult, graph *dataflow.Cros
 			state.Logger.Printf("Could not create summary times report file.")
 		}
 		defer f.Close()
-		state.Logger.Printf("Saving report of summary times in %s\n", f.Name())
+		path, err := filepath.Abs(f.Name())
+		if err != nil {
+			state.Logger.Printf("Error: could not find absolute path of summary times report file %s.", f.Name())
+		}
+		state.Logger.Printf("Saving report of summary times in %s\n", path)
 	}
 
 	for result := range c {

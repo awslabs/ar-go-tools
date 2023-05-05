@@ -12,14 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package utils
-
-import "strings"
-
-// CutPrefix is the CutPrefix function from go >1.20
-func CutPrefix(s, prefix string) (after string, found bool) {
-	if !strings.HasPrefix(s, prefix) {
-		return s, false
-	}
-	return s[len(prefix):], true
-}
+// Package funcutil is an internal package providing utility functions to enable
+// functional programming idioms in Go.
+package funcutil

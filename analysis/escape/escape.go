@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The escape analysis computes a representation of which references in the program are to objects
+// Package escape provides an escape analysis which computes a representation of which references in the program are to objects
 // that are local to the current function and goroutine. This information can be used to recover
 // local reasoning even in the face of concurrent goroutine execution. This implementation is inspired
 // by:
@@ -32,7 +32,7 @@ import (
 
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/graphutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -1248,7 +1248,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	// SCC so that other members of the SCC are analyzed first.
 	worklist := make([]*functionAnalysisState, len(nodes))
 	nextIndex := len(worklist) - 1
-	for _, scc := range utils.StronglyConnectedComponents(nodes, succ) {
+	for _, scc := range graphutil.StronglyConnectedComponents(nodes, succ) {
 		for _, n := range scc {
 			if summary, ok := prog.summaries[n.Func]; ok {
 				worklist[nextIndex] = summary

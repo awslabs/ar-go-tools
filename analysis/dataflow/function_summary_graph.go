@@ -24,7 +24,7 @@ import (
 
 	"github.com/awslabs/argot/analysis/lang"
 	"github.com/awslabs/argot/analysis/summaries"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -1704,7 +1704,7 @@ func (a *CallNode) FullString() string {
 		elt = append(elt, s2)
 	}
 
-	args := strings.Join(utils.Map(a.Args(), func(cg *CallNodeArg) string { return cg.String() }), ",")
+	args := strings.Join(funcutil.Map(a.Args(), func(cg *CallNodeArg) string { return cg.String() }), ",")
 	if len(args) > 0 {
 		elt = append(elt, fmt.Sprintf("args : [%s]", args))
 	}

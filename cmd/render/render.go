@@ -30,7 +30,7 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/summaries"
+	"github.com/awslabs/argot/analysis/render"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
@@ -96,12 +96,12 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ss
 	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
-		ShouldCreateSummary: shouldCreateSummary,
-		ShouldBuildSummary:  shouldBuildSummary,
+		ShouldCreateSummary: dataflow.ShouldCreateSummary,
+		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
 		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },
 	})
 
-	state, err = analysis.BuildCrossFunctionGraph(state)
+	state, err = render.BuildCrossFunctionGraph(state)
 	if err != nil {
 		return fmt.Errorf("failed to build cross-function graph: %w", err)
 	}
@@ -109,37 +109,6 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ss
 	state.FlowGraph.Print(w)
 
 	return nil
-}
-
-func shouldCreateSummary(f *ssa.Function) bool {
-	// if a summary is required, then this should evidently return true!
-	if summaries.IsSummaryRequired(f) {
-		return true
-	}
-
-	return summaries.IsUserDefinedFunction(f)
-}
-
-// shouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
-// pass. This is not necessary for functions that have summaries that are externally defined, for example.
-func shouldBuildSummary(cache *dataflow.AnalyzerState, function *ssa.Function) bool {
-	if cache == nil || function == nil || summaries.IsSummaryRequired(function) {
-		return true
-	}
-
-	pkg := function.Package()
-	if pkg == nil {
-		return true
-	}
-
-	// Is PkgPrefix specified?
-	if cache.Config != nil && cache.Config.PkgFilter != "" {
-		pkgKey := pkg.Pkg.Path()
-		return cache.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
-	} else {
-		// Check package summaries
-		return !(summaries.PkgHasSummaries(pkg) || cache.HasExternalContractSummary(function))
-	}
 }
 
 // WriteGraphviz writes a graphviz representation the call-graph to w

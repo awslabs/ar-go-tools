@@ -194,19 +194,13 @@ Static analyses that required pointer and callgraph information should depend on
  functionality to build information about the SSA program.
 - `defers` contains the defers analysis,
 - `dependencies` contains the dependencies analysis,
-- `format` contains formatting helpers,
-- `functional` implements some functional-style programming idioms, such as a `Map` function for slices and some data
-structures.
 - `graph-ops` implements graph operations on the callgraph. This can be used to collect information about the callgraph,
 compute subsets of the callgraph, strongly connected components, etc.
 - `maypanic` contains the may-panic analysis,
 - `packagescan` contains the packagescan analysis,
 - `reachability` contains function-reachability analyses
 - `refactor` contains implements refactoring operations,
-- `rendering` implements rendering functions, such as printing the SSA output or representing the callgraph in various
-formats,
 - `lang` contains function for manipulating the Go SSA form (from the x/tools packages),
 - `static-commands` implements the static command detection analysis,
 - `summaries` defines dataflow summaries of some functions,
 - `taint` implements the taint analysis
-- `utils` contains some utility functions.

@@ -21,8 +21,7 @@ import (
 
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/utils"
-
+	"github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/exp/slices"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
@@ -46,18 +45,18 @@ func cmdStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 
 		return false
 	}
-	if utils.Contains(command.Args, "help") {
+	if funcutil.Contains(command.Args, "help") {
 		return cmdStats(tt, nil, command)
 	}
-	all := utils.Contains(command.Args, "all")
+	all := funcutil.Contains(command.Args, "all")
 
 	// general ssa stats
-	if all || utils.Contains(command.Args, "general") || len(command.Args) == 0 {
+	if all || funcutil.Contains(command.Args, "general") || len(command.Args) == 0 {
 		doGeneralStats(tt, c, command)
 	}
 
 	// stats about closures
-	if all || utils.Contains(command.Args, "closures") {
+	if all || funcutil.Contains(command.Args, "closures") {
 		doClosureStats(tt, c, command)
 	}
 

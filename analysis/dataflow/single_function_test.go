@@ -52,7 +52,7 @@ func TestFunctionSummaries(t *testing.T) {
 		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
 		ShouldCreateSummary: shouldCreateSummary,
-		ShouldBuildSummary:  taint.ShouldBuildSummary,
+		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
 		IsEntrypoint:        taint.IsSourceNode,
 	})
 

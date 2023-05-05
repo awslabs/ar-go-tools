@@ -25,7 +25,7 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/backtrace"
 	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/colors"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -76,7 +76,7 @@ func main() {
 		cfg.Verbose = true
 	}
 
-	logger.Printf(utils.Faint("Reading backtrace entrypoints") + "\n")
+	logger.Printf(colors.Faint("Reading backtrace entrypoints") + "\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -96,9 +96,9 @@ func main() {
 	logger.Printf("Analysis took %3.4f s", duration.Seconds())
 	logger.Printf("")
 	if len(analysisInfo.Traces) == 0 {
-		logger.Printf("RESULT:\n\t\t%s", utils.Red("No traces detected"))
+		logger.Printf("RESULT:\n\t\t%s", colors.Red("No traces detected"))
 	} else {
-		logger.Printf("RESULT:\n\t\t%s", utils.Green("Backtraces detected!"))
+		logger.Printf("RESULT:\n\t\t%s", colors.Green("Backtraces detected!"))
 	}
 
 	for _, trace := range analysisInfo.Traces {
