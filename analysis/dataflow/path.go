@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/argot/analysis/lang"
-	. "github.com/awslabs/argot/analysis/utils"
+	. "github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 

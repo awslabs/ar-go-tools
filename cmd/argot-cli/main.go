@@ -26,7 +26,7 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/colors"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -132,8 +132,8 @@ func main() {
 	if *verbose {
 		pConfig.Verbose = true
 	}
-	logger.Printf(utils.Faint(fmt.Sprintf("argot-cli version %s", version)))
-	logger.Printf(utils.Faint("Reading sources") + "\n")
+	logger.Printf(colors.Faint(fmt.Sprintf("argot-cli version %s", version)))
+	logger.Printf(colors.Faint("Reading sources") + "\n")
 	state.Args = flag.Args()
 	// Load the program
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
@@ -212,7 +212,7 @@ func interpret(tt *term.Terminal, c *dataflow.AnalyzerState, command string) boo
 
 func exitOnReceive(c chan os.Signal, tt *term.Terminal, oldState *term.State) {
 	for range c {
-		writeFmt(tt, utils.Red("Caught SIGINT, exiting!"))
+		writeFmt(tt, colors.Red("Caught SIGINT, exiting!"))
 		term.Restore(int(os.Stdin.Fd()), oldState)
 		os.Exit(0)
 	}

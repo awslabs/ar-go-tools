@@ -21,7 +21,6 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -75,8 +74,8 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
 		AnalyzerState:       state,
 		NumRoutines:         numRoutines,
-		ShouldCreateSummary: ShouldCreateSummary,
-		ShouldBuildSummary:  ShouldBuildSummary,
+		ShouldCreateSummary: dataflow.ShouldCreateSummary,
+		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
 		IsEntrypoint:        IsSourceNode,
 	})
 
@@ -92,35 +91,4 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	})
 
 	return AnalysisResult{Graph: *state.FlowGraph, TaintFlows: visitor.taints}, nil
-}
-
-func ShouldCreateSummary(f *ssa.Function) bool {
-	// if a summary is required, then this should evidently return true!
-	if summaries.IsSummaryRequired(f) {
-		return true
-	}
-
-	return summaries.IsUserDefinedFunction(f)
-}
-
-// shouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
-// pass. This is not necessary for functions that have summaries that are externally defined, for example.
-func ShouldBuildSummary(state *dataflow.AnalyzerState, function *ssa.Function) bool {
-	if state == nil || function == nil || summaries.IsSummaryRequired(function) {
-		return true
-	}
-
-	pkg := function.Package()
-	if pkg == nil {
-		return true
-	}
-
-	// Is PkgPrefix specified?
-	if state.Config != nil && state.Config.PkgFilter != "" {
-		pkgKey := pkg.Pkg.Path()
-		return state.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
-	} else {
-		// Check package summaries
-		return !(summaries.PkgHasSummaries(pkg) || state.HasExternalContractSummary(function))
-	}
 }

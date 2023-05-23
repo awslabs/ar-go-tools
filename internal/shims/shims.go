@@ -12,19 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package utils
+// Package shims provides functions that are in "future" releases of the Go
+// standard library.
+package shims
 
-// Compose (f,g) returns a function h: x -> f(g(x))
-func Compose[T any, S any, R any](f func(T) S, g func(S) R) func(T) R {
-	return func(x T) R { return g(f(x)) }
-}
+import "strings"
 
-// Curry2 is for currying functions. with two arguments
-func Curry2[T any, S any, R any](f func(T, S) R, x T) func(S) R {
-	return func(s S) R { return f(x, s) }
-}
-
-// Curry3 is for currying functions. with three arguments
-func Curry3[T any, S any, R any, Q any](f func(T, S, R) Q, x T) func(S, R) Q {
-	return func(s S, r R) Q { return f(x, s, r) }
+// CutPrefix is the CutPrefix function from go >1.20
+func CutPrefix(s, prefix string) (after string, found bool) {
+	if !strings.HasPrefix(s, prefix) {
+		return s, false
+	}
+	return s[len(prefix):], true
 }

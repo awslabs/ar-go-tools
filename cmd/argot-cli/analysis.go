@@ -27,9 +27,10 @@ import (
 	"github.com/awslabs/argot/analysis/backtrace"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/escape"
+	"github.com/awslabs/argot/analysis/render"
 	"github.com/awslabs/argot/analysis/summaries"
 	"github.com/awslabs/argot/analysis/taint"
-	"github.com/awslabs/argot/analysis/utils"
+	"github.com/awslabs/argot/internal/funcutil"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
@@ -130,7 +131,7 @@ func cmdShowDataflow(tt *term.Terminal, c *dataflow.AnalyzerState, command Comma
 	// `render` tool. This is because some function parameters are not being
 	// visited. The refactor should address this.
 	var err error
-	c, err = analysis.BuildCrossFunctionGraph(c)
+	c, err = render.BuildCrossFunctionGraph(c)
 	if err != nil {
 		WriteErr(tt, "Failed to build cross-function graph: %v\n", err)
 		return false
@@ -237,14 +238,14 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		createCounter := 0
 		buildCounter := 0
 		shouldCreateSummary := func(f *ssa.Function) bool {
-			b := isForced || taint.ShouldCreateSummary(f)
+			b := isForced || dataflow.ShouldCreateSummary(f)
 			if b {
 				createCounter++
 			}
 			return b
 		}
 		shouldBuildSummary := func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
-			b := isForced || taint.ShouldBuildSummary(c, f)
+			b := isForced || dataflow.ShouldBuildSummary(c, f)
 			if b {
 				buildCounter++
 			}
@@ -283,7 +284,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 			shouldCreateSummary = func(f *ssa.Function) bool {
 				b := isForced || (!summaries.IsStdFunction(f) &&
 					summaries.IsUserDefinedFunction(f) &&
-					utils.Contains(funcs, f) &&
+					funcutil.Contains(funcs, f) &&
 					!c.HasExternalContractSummary(f))
 				if b {
 					createCounter++
@@ -293,7 +294,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 			shouldBuildSummary = func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
 				b := isForced || (!summaries.IsStdFunction(f) &&
 					summaries.IsUserDefinedFunction(f) &&
-					utils.Contains(funcs, f) &&
+					funcutil.Contains(funcs, f) &&
 					!c.HasExternalContractSummary(f))
 				if b {
 					buildCounter++
@@ -304,14 +305,14 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 			// below that threshold, all functions that match are summarize.
 			// useful for testing.
 			shouldCreateSummary = func(f *ssa.Function) bool {
-				b := utils.Contains(funcs, f)
+				b := funcutil.Contains(funcs, f)
 				if b {
 					createCounter++
 				}
 				return b
 			}
 			shouldBuildSummary = func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
-				b := utils.Contains(funcs, f)
+				b := funcutil.Contains(funcs, f)
 				if b {
 					buildCounter++
 				}
