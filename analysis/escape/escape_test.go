@@ -57,7 +57,7 @@ func assertEdge(t *testing.T, g *EscapeGraph, a, b *Node) {
 			return
 		}
 	}
-	t.Errorf("Expected edge between %v -> %v\n", a, b)
+	t.Errorf("Expected edge between %v -> %v:\n%v\n", a, b, g.Graphviz())
 }
 
 // Check the escape results. The expected graph shapes are specific to a single input file, despite the arguments.
@@ -79,7 +79,7 @@ func TestSimpleEscape(t *testing.T) {
 		graph := EscapeSummary(cgNode.Func)
 		// A general check to make sure that all global nodes are escaped.
 		for n := range graph.edges {
-			if strings.HasPrefix(n.debugInfo, "gbl:") && !graph.escaped[n] {
+			if strings.HasPrefix(n.debugInfo, "gbl:") && graph.status[n] != Leaked {
 				t.Errorf("Global should have escaped %v\n", n)
 			}
 		}
@@ -97,7 +97,7 @@ func TestSimpleEscape(t *testing.T) {
 			g := findSingleNode(t, graph, "gbl:globalS")
 			s := findSingleNode(t, graph, "new S")
 			b := findSingleNode(t, graph, "new B")
-			l := findSingleNode(t, graph, "S load")
+			l := findSingleNode(t, graph, "*S load")
 			r := findSingleNode(t, graph, "return")
 			assertEdge(t, graph, g, s)
 			assertEdge(t, graph, g, l)
@@ -175,7 +175,10 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 			b := ea.nodes.ValueNode(args[1])
 			//fmt.Printf("Checking call %v %v\n%v\n", a, b, g.Graphviz(ea.nodes))
 			if !reflect.DeepEqual(g.edges[a], g.edges[b]) {
-				return fmt.Errorf("Arguments do not have the same set of edges %v != %v\n%v", a, b, g.Graphviz())
+				if !(len(g.edges[a]) == 0 && len(g.edges[b]) == 0) {
+					// TODO: figure out why deepequal is returning false for two empty maps
+					return fmt.Errorf("Arguments do not have the same set of edges %v != %v (%v != %v) %v \n%v", a, b, g.edges[a], g.edges[b], reflect.DeepEqual(g.edges[a], g.edges[b]), g.Graphviz())
+				}
 			}
 		} else if isCall(instr, "assertAllLeaked") {
 			args := instr.(*ssa.Call).Call.Args
@@ -184,7 +187,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 			}
 			a := ea.nodes.ValueNode(args[0])
 			for b := range g.edges[a] {
-				if !g.leaked[b] {
+				if g.status[b] != Leaked {
 					return fmt.Errorf("%v wasn't leaked in:\n%v", b, g.Graphviz())
 				}
 			}
@@ -195,7 +198,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 			}
 			a := ea.nodes.ValueNode(args[0])
 			for b := range g.edges[a] {
-				if g.leaked[b] || g.escaped[b] {
+				if g.status[b] != Local {
 					return fmt.Errorf("%v has escaped in:\n%v", b, g.Graphviz())
 				}
 			}
@@ -239,6 +242,64 @@ func TestInterproceduralEscape(t *testing.T) {
 		"testFresh",
 		"testIdent",
 		"testExternal",
+	}
+	// For each of these distinguished functions, check that the assert*() functions
+	// are satisfied by the computed summaries (technically, the summary at particular
+	// program points)
+	for _, funcName := range funcsToTest {
+		f := findFunction(program, funcName)
+		if f == nil {
+			t.Fatalf("Could not find function %v\n", funcName)
+		}
+		summary := escapeWholeProgram.summaries[f]
+		if summary == nil {
+			t.Fatalf("%v wasn't summarized", funcName)
+		}
+		for _, bb := range f.Blocks {
+			err := checkFunctionCalls(summary, bb)
+			// test* == no error, anything else == error expected
+			if strings.HasPrefix(funcName, "test") {
+				if err != nil {
+					t.Fatalf("Error in %v: %v\n", funcName, err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
+				}
+			}
+
+		}
+	}
+}
+
+// Check the escape results in the interprocedural case
+func TestBuiltinsEscape(t *testing.T) {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/builtins-escape")
+	err := os.Chdir(dir)
+	if err != nil {
+		t.Fatalf("failed to switch to dir %v: %v", dir, err)
+	}
+	program, config := testutils.LoadTest(t, ".", []string{})
+	config.Verbose = true
+	// Compute the summaries for everything in the main package
+	cache, err := dataflow.NewInitializedAnalyzerState(log.Default(), config, program)
+	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
+	if err != nil {
+		t.Fatalf("Error: %v\n", err)
+	}
+	funcsToTest := []string{
+		"testMethod",
+		"testVarargs",
+		"testNilArg",
+		"testVariousBuiltins",
+		"testGo",
+		"testAppend",
+		"testIndexArray",
+		"testChannel",
+		"testChannelEscape",
+		"testSelect",
+		"testConvertStringToSlice",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular

@@ -29,6 +29,7 @@ import (
 	"log"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/awslabs/argot/analysis/dataflow"
 	"github.com/awslabs/argot/analysis/lang"
@@ -51,6 +52,14 @@ const (
 	KindUnknown                  // A return value from an unanalyzed method without a summary
 )
 
+type EscapeStatus uint8
+
+const (
+	Local   EscapeStatus = 0
+	Escaped              = 1
+	Leaked               = 2
+)
+
 // A node represents the objects tracked by the escape analysis.
 // Nodes represent local variables, globals, parameters, and heap
 // cells of various kinds (maps, slices, arrays, structs)
@@ -67,19 +76,15 @@ func (n *Node) String() string {
 // Certain nodes are intrinsically external: parameters, loads, and globals.
 // Note that this doesn't include ParamVars, which are the (local) pointers
 // at the external objects.
-func (n *Node) IsIntrinsicallyExternal() bool {
+func (n *Node) IntrinsicEscape() EscapeStatus {
 	switch n.kind {
-	case KindParam, KindLoad, KindGlobal, KindUnknown:
-		return true
-	}
-	return false
-}
-func (n *Node) IsIntrinsicallyLeaked() bool {
-	switch n.kind {
+	case KindParam, KindLoad:
+		return Escaped
 	case KindGlobal, KindUnknown:
-		return true
+		return Leaked
+	default:
+		return Local
 	}
-	return false
 }
 
 // The escape graph is the element of the monotone framework and the primary
@@ -93,18 +98,16 @@ func (n *Node) IsIntrinsicallyLeaked() bool {
 // graphs are to AddEdge()s, (plus composite operations like Load,
 // WeakAssign), Merge(), and compare with Matches().
 type EscapeGraph struct {
-	edges   map[*Node]map[*Node]bool
-	escaped map[*Node]bool
-	leaked  map[*Node]bool
-	nodes   *NodeGroup
+	edges  map[*Node]map[*Node]bool
+	status map[*Node]EscapeStatus
+	nodes  *NodeGroup
 }
 
 // Produces an empty graph, which is also the unit of Merge() below
 func NewEmptyEscapeGraph(nodes *NodeGroup) *EscapeGraph {
 	gg := &EscapeGraph{
 		make(map[*Node]map[*Node]bool),
-		make(map[*Node]bool),
-		make(map[*Node]bool),
+		make(map[*Node]EscapeStatus),
 		nodes,
 	}
 	return gg
@@ -120,11 +123,8 @@ func (g *EscapeGraph) Clone() *EscapeGraph {
 		}
 		gg.edges[k] = m
 	}
-	for k, v := range g.escaped {
-		gg.escaped[k] = v
-	}
-	for k, v := range g.leaked {
-		gg.leaked[k] = v
+	for k, v := range g.status {
+		gg.status[k] = v
 	}
 	return gg
 }
@@ -145,10 +145,10 @@ func (g *EscapeGraph) Debug() string {
 			fmt.Fprintf(out, "%d", n.number)
 		}
 		statusString := ""
-		if g.escaped[v] {
+		if g.status[v] == Escaped {
 			statusString = ", *Escaped"
 		}
-		if g.leaked[v] {
+		if g.status[v] == Leaked {
 			statusString = ", *Leaked"
 		}
 		fmt.Fprintf(out, "    <%v>%s\n", v.debugInfo, statusString)
@@ -173,13 +173,14 @@ func (g *EscapeGraph) GraphvizLabel(label string) string {
 	for _, v := range ordered {
 		if v.kind == KindVar || v.kind == KindParamVar || v.kind == KindReturn {
 			extra := "shape=rect style=rounded width=0 height=0 margin=0.05 "
-			if g.escaped[v] {
+			if g.status[v] >= Escaped {
 				extra += " style=\"dashed,rounded\""
 			}
-			if g.leaked[v] {
+			if g.status[v] >= Leaked {
 				extra += " peripheries=2"
 			}
-			fmt.Fprintf(out, "%d [label=\"%s\" %s];\n", v.number, v.debugInfo, extra)
+			escaped := strings.ReplaceAll(strings.ReplaceAll(v.debugInfo, "\\", "\\\\"), "\"", "\\\"")
+			fmt.Fprintf(out, "%d [label=\"%s\" %s];\n", v.number, escaped, extra)
 			if prevInVarBlock >= 0 {
 				fmt.Fprintf(out, "%d -> %d [style=invis];\n", prevInVarBlock, v.number)
 			}
@@ -190,13 +191,14 @@ func (g *EscapeGraph) GraphvizLabel(label string) string {
 	for _, v := range ordered {
 		if !(v.kind == KindVar || v.kind == KindParamVar || v.kind == KindReturn) {
 			extra := "shape=rect"
-			if g.escaped[v] {
+			if g.status[v] >= Escaped {
 				extra += " style=dashed"
 			}
-			if g.leaked[v] {
+			if g.status[v] >= Leaked {
 				extra += " peripheries=2"
 			}
-			fmt.Fprintf(out, "%d [label=\"%s\" %s];\n", v.number, v.debugInfo, extra)
+			escaped := strings.ReplaceAll(strings.ReplaceAll(v.debugInfo, "\\", "\\\\"), "\"", "\\\"")
+			fmt.Fprintf(out, "%d [label=\"%s\" %s];\n", v.number, escaped, extra)
 		}
 		for n, isInternal := range g.edges[v] {
 			extra := ""
@@ -215,30 +217,6 @@ func (g *EscapeGraph) GraphvizLabel(label string) string {
 // this is an internal edge (created during the current function) or external edge
 // (possibly existed before the current function).
 func (g *EscapeGraph) AddEdge(base *Node, dest *Node, isInternal bool) (changed bool) {
-	if !g.addEdgeNoClosure(base, dest, isInternal) {
-		return false
-	}
-	g.computeTransitiveClosure()
-	return true
-}
-
-// Ensures g has an entry for n.
-// This is necessary to ensure that EscapeClosure() knows about n, as it
-// does not have access to the relevant NodeGroup.
-func (g *EscapeGraph) AddNode(n *Node) (changed bool) {
-	if _, ok := g.edges[n]; !ok {
-		g.edges[n] = map[*Node]bool{}
-		return true
-	}
-	return false
-}
-
-// The same as adding an edge, but without recomputing the closure of escape.
-// Useful when you are adding a bunch of edges to avoid the cost of recomputing
-// closure each time, and then doing it once at the end. Returns whether the
-// graph was changed by the operation.
-func (g *EscapeGraph) addEdgeNoClosure(base *Node, dest *Node, isInternal bool) (changed bool) {
-	// Make sure the destination is a node, so when we iterate over all nodes it will be enumerated.
 	changedOnAddNode := g.AddNode(dest)
 	if m, ok := g.edges[base]; ok {
 		// If the existing edge is already internal (map value is true), don't change it.
@@ -249,14 +227,59 @@ func (g *EscapeGraph) addEdgeNoClosure(base *Node, dest *Node, isInternal bool) 
 				return changedOnAddNode
 			}
 			m[dest] = oldEdgeIsInternal || isInternal
-			return true
+			return true // changed: upgraded edge, but edge existed before so we don't need closure
 		}
-		// no edge of any kind between
+		// no edge of any kind between existing nodes
 		m[dest] = isInternal
-		return true
 	} else {
 		g.edges[base] = map[*Node]bool{dest: isInternal}
+		g.status[base] = base.IntrinsicEscape()
+	}
+	// We added a new
+	g.computeEdgeClosure(base, dest)
+	return true
+}
+
+// Ensures g has an entry for n.
+// This is necessary to ensure that EscapeClosure() knows about n, as it
+// does not have access to the relevant NodeGroup.
+func (g *EscapeGraph) AddNode(n *Node) (changed bool) {
+	if _, ok := g.edges[n]; !ok {
+		g.edges[n] = map[*Node]bool{}
+		g.status[n] = n.IntrinsicEscape()
 		return true
+	}
+	return false
+}
+
+func (g *EscapeGraph) computeEdgeClosure(a, b *Node) {
+	if g.status[a] > g.status[b] {
+		g.status[b] = g.status[a]
+	} else {
+		return
+	}
+	worklist := []*Node{b}
+	for len(worklist) > 0 {
+		node := worklist[len(worklist)-1]
+		worklist = worklist[:len(worklist)-1]
+		nodeStatus := g.status[node]
+		for succ := range g.edges[node] {
+			if nodeStatus > g.status[succ] {
+				g.status[succ] = nodeStatus
+				worklist = append(worklist, succ)
+			}
+		}
+	}
+}
+
+func (g *EscapeGraph) JoinNodeStatus(a *Node, s EscapeStatus) {
+	if s > g.status[a] {
+		g.status[a] = s
+	} else {
+		return
+	}
+	for n := range g.edges[a] {
+		g.computeEdgeClosure(a, n)
 	}
 }
 
@@ -265,10 +288,10 @@ func (g *EscapeGraph) addEdgeNoClosure(base *Node, dest *Node, isInternal bool) 
 // any existing edges from dest
 func (g *EscapeGraph) WeakAssign(dest *Node, src *Node, t types.Type) {
 	edgePointees := g.Deref(src)
+	g.AddNode(dest)
 	for e := range edgePointees {
-		g.addEdgeNoClosure(dest, e, true)
+		g.AddEdge(dest, e, true)
 	}
-	g.computeTransitiveClosure()
 }
 
 // Applies the load operation `valNode = *addrNode`. This is a generalized operation:
@@ -284,91 +307,101 @@ func (g *EscapeGraph) Load(valNode *Node, addrNode *Node, generateLoadNode func(
 	// from val to these nodes.
 	for addrPointee := range g.Deref(addrNode) {
 		g.AddNode(addrPointee)
-		for doublePointee := range g.edges[addrPointee] { // TODO: should this also be .Deref(addrPointee)?
-			g.addEdgeNoClosure(valNode, doublePointee, true)
+		// This is not .Deref(addrPointee) because the global is no longer being treated as an implicit pointer
+		// in the ssa representation. Now, global nodes are treated the same as any other memory node, such as
+		// structs, maps, etc.
+		for doublePointee := range g.edges[addrPointee] {
+			g.AddEdge(valNode, doublePointee, true)
 		}
 		// if addrPointee is an escaped node, we need to add the load node
-		if g.escaped[addrPointee] {
+		if g.status[addrPointee] > Local {
 			if loadNode == nil {
 				loadNode = generateLoadNode()
 			}
-			g.addEdgeNoClosure(valNode, loadNode, true)
-			g.addEdgeNoClosure(addrPointee, loadNode, false)
+			g.AddEdge(valNode, loadNode, true)
+			g.AddEdge(addrPointee, loadNode, false)
 		}
 	}
 	// TODO: for load operations, if the pointer node itself (not just its pointee) is external then we have a
 	// problem, as it will also need a load node. This may not occur depending on how the SSA is constructed, i.e.
 	// if we only have e.g. instrType.X represented by a local variable (which will never be external).
-	g.computeTransitiveClosure()
+}
+
+// Stores the pointer-like value valNode into the object(s) pointed to by addrNode
+// Generalizes stores (*p = q) to include map updates (m[k] = v), channel sends,
+// and other operations that need to write to a "field" of the pointees of addr.
+func (g *EscapeGraph) Store(addrNode, valNode *Node, tp types.Type) {
+	// Store the value into all the possible aliases of *addr
+	for addrPointee := range g.Deref(addrNode) {
+		g.WeakAssign(addrPointee, valNode, tp)
+	}
 }
 
 // (Re)-computes the transitive closure of the leaked and escaped properties.
 // This shouldn't be necessary to call manually unless you are using addEdgeNoClosure
-func (g *EscapeGraph) computeTransitiveClosure() {
-	// Compute leaked first, as escape depends on it
-	g.computeTransitiveClosureForLeaked()
-	g.computeTransitiveClosureForEscape()
-}
+// func (g *EscapeGraph) computeTransitiveClosure() {
+// Compute leaked first, as escape depends on it
+// g.computeTransitiveClosureForLeaked()
+// g.computeTransitiveClosureForEscape()
+// }
 
 // Computes the reachability-based closure of escape over the edges of the graph.
 // The roots are the nodes that are .IsIntrinsicallyExternal() or leaked. Then, if
 // A has escaped, and there's an edge from A to B, then B has escaped too.
-func (g *EscapeGraph) computeTransitiveClosureForEscape() {
-	worklist := []*Node{}
-	for node := range g.edges {
-		if node.IsIntrinsicallyExternal() || g.escaped[node] || g.leaked[node] {
-			g.escaped[node] = true
-			worklist = append(worklist, node)
-		}
-	}
-	for len(worklist) > 0 {
-		node := worklist[len(worklist)-1]
-		worklist = worklist[:len(worklist)-1]
-		for succ := range g.edges[node] {
-			if !g.escaped[succ] {
-				g.escaped[succ] = true
-				worklist = append(worklist, succ)
-			}
-		}
-	}
-}
+// func (g *EscapeGraph) computeTransitiveClosureForEscape() {
+// 	worklist := []*Node{}
+// 	for node := range g.edges {
+// 		if node.IsIntrinsicallyExternal() || g.escaped[node] || g.leaked[node] {
+// 			g.escaped[node] = true
+// 			worklist = append(worklist, node)
+// 		}
+// 	}
+// 	for len(worklist) > 0 {
+// 		node := worklist[len(worklist)-1]
+// 		worklist = worklist[:len(worklist)-1]
+// 		for succ := range g.edges[node] {
+// 			if !g.escaped[succ] {
+// 				g.escaped[succ] = true
+// 				worklist = append(worklist, succ)
+// 			}
+// 		}
+// 	}
+// }
 
 // This is the same as computing closure for escaped, but for leaked. The difference
 // is that in general fewer things will be leaked than escaped. Because leak implies
 // escaped, this should be called before closure for escaped, so that it can propagate
 // properly.
-func (g *EscapeGraph) computeTransitiveClosureForLeaked() {
-	worklist := []*Node{}
-	for node := range g.edges {
-		if node.IsIntrinsicallyLeaked() || g.leaked[node] {
-			g.leaked[node] = true
-			worklist = append(worklist, node)
-		}
-	}
-	for len(worklist) > 0 {
-		node := worklist[len(worklist)-1]
-		worklist = worklist[:len(worklist)-1]
-		for succ := range g.edges[node] {
-			if !g.leaked[succ] {
-				g.leaked[succ] = true
-				worklist = append(worklist, succ)
-			}
-		}
-	}
-}
+// func (g *EscapeGraph) computeTransitiveClosureForLeaked() {
+// 	worklist := []*Node{}
+// 	for node := range g.edges {
+// 		if node.IsIntrinsicallyLeaked() || g.leaked[node] {
+// 			g.leaked[node] = true
+// 			worklist = append(worklist, node)
+// 		}
+// 	}
+// 	for len(worklist) > 0 {
+// 		node := worklist[len(worklist)-1]
+// 		worklist = worklist[:len(worklist)-1]
+// 		for succ := range g.edges[node] {
+// 			if !g.leaked[succ] {
+// 				g.leaked[succ] = true
+// 				worklist = append(worklist, succ)
+// 			}
+// 		}
+// 	}
+// }
 
-// Computes the union of this graph with another, used at the join-points of a dataflow graph.
+// Computes the union of this graph with another, used at e.g. the join-points of a dataflow graph.
+// Modifies g in-place.
 func (g *EscapeGraph) Merge(h *EscapeGraph) {
 	for node, edges := range h.edges {
 		g.AddNode(node)
-		if h.leaked[node] {
-			g.leaked[node] = true
-		}
+		g.JoinNodeStatus(node, h.status[node])
 		for dest, isInternal := range edges {
-			g.addEdgeNoClosure(node, dest, isInternal)
+			g.AddEdge(node, dest, isInternal)
 		}
 	}
-	g.computeTransitiveClosure()
 }
 
 // Computes the result of splicing in the summary (callee) of the callee's graph.
@@ -405,7 +438,9 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 		if (args[i] == nil) != (formal == nil) {
 			panic("Incorrect nil-ness of corresponding parameter nodes")
 		}
-		addUEdge(formal, args[i])
+		if formal != nil {
+			addUEdge(formal, args[i])
+		}
 	}
 	for _, ret := range rets {
 		if ret != nil {
@@ -488,8 +523,8 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 			}
 		}
 		// propagate load nodes that are referenced by escaped nodes
-		// Adds node load to g, and adds the mapping edge u'
-		// rep  - - -> load
+		// Adds node load to g, and adds the mapping edge u' and edge rep - -> load'
+		// rep  - - -> load'
 		//  |           |
 		//  | u         | u'
 		//  |           |
@@ -500,7 +535,7 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 				continue
 			}
 			for rep := range repNodes {
-				if !pre.escaped[rep] {
+				if pre.status[rep] == Local {
 					continue
 				}
 				for load, isBaseLoadInternal := range callee.edges[base] {
@@ -520,12 +555,11 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 		// that could have escaped to the heap, and just things that are parameters/loads from the callee's
 		// perspective. This means that we propagate "leaked" along u edges but not "escaped."
 		for base, repNodes := range u {
-			if callee.leaked[base] {
+			if callee.status[base] == Leaked {
 				for rep := range repNodes {
-					if !g.leaked[rep] {
+					if g.status[rep] < Leaked {
 						changed = true
-						g.leaked[rep] = true
-						g.escaped[rep] = true
+						g.JoinNodeStatus(rep, Leaked)
 					}
 				}
 			}
@@ -538,6 +572,172 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 	}
 }
 
+// Computes the result of splicing in the summary (callee) of the callee's graph.
+// args are the nodes corresponding to the caller's actual parameters at the callsite (nil if not pointer-like)
+// rets are the nodes corresponding to the caller values to assign the results to (nil if not pointer-like)
+// nodes is the NodeGroup for the caller, and also therefore the graph g
+// summary is the summary of the called function.
+// summaryNodes is the nodeGroup in the context of the called function
+func (g *EscapeGraph) CallFast(args []*Node, rets []*Node, callee *EscapeGraph) {
+	pre := g.Clone()
+	// u maps nodes in summary to the nodes in the caller
+	u := map[*Node]map[*Node]struct{}{}
+	// deferredReps are used to ensure one of the rules triggers consistently
+	deferredReps := map[*Node]map[*Node]struct{}{}
+
+	worklist := []struct{ x, y *Node }{}
+	addUEdge := func(x, y *Node) {
+		if m, ok := u[x]; ok {
+			if _, ok := m[y]; ok {
+				return
+			}
+			m[y] = struct{}{}
+		} else {
+			u[x] = map[*Node]struct{}{y: {}}
+		}
+		worklist = append(worklist, struct{ x, y *Node }{x, y})
+	}
+	addDeferredRep := func(x, y *Node) {
+		if m, ok := deferredReps[x]; ok {
+			m[y] = struct{}{}
+		} else {
+			deferredReps[x] = map[*Node]struct{}{y: {}}
+		}
+	}
+
+	// Connect argument and return nodes
+	if len(args) != len(callee.nodes.formals) {
+		panic("Incorrect number of arguments")
+	}
+	for i, formal := range callee.nodes.formals {
+		if (args[i] == nil) != (formal == nil) {
+			panic("Incorrect nil-ness of corresponding parameter nodes")
+		}
+		if formal != nil {
+			addUEdge(formal, args[i])
+		}
+	}
+	for _, ret := range rets {
+		if ret != nil {
+			addUEdge(callee.nodes.ReturnNode(), ret)
+		}
+	}
+
+	// Process edges in worklist
+	for len(worklist) > 0 {
+		edgeToProcess := worklist[len(worklist)-1]
+		worklist = worklist[:len(worklist)-1]
+		base, rep := edgeToProcess.x, edgeToProcess.y // base is in callee, rep is in g
+
+		// propagate u edges for load nodes in the callee that are referenced internally in the caller
+		// Creates the edge labeled u' in the following:
+		// rep --------> v
+		//  |            |
+		//  | u          | u'
+		//  |            |
+		// base - - - > load
+		//
+		// Base cannot be an alloc node, as then the external load edge must have been created
+		// after the allocation (e.g. if the base node was leaked)
+
+		// Alloc nodes did not exist when the call occurred, so these edges cannot point to a node in the original
+		if base.kind != KindAlloc {
+			for load, isBaseLoadInternal := range callee.edges[base] {
+				// Need base - - - > load to be an external edge (but also treat edges from param nodes as external)
+				if !(isBaseLoadInternal && base.kind != KindParamVar) {
+					for v, isRepVInternal := range pre.edges[rep] {
+						if isRepVInternal {
+							addUEdge(load, v)
+						}
+					}
+				}
+			}
+		}
+
+		// propagate internal edges created in the callee
+		// Creates a new edge rep --> x in the following:
+		// rep          x
+		//  |           |
+		//  | u         | u
+		//  |           |
+		// base ------> y
+		// If the right u edge is already present, then when we process base/rep, we will
+		// add the right thing. But if the left edge is added first, then we will miss adding
+		// an edge as there will be no edges from y -> x. Therefore, we add a "deferredRep"
+		// edge from y to rep. If y -> x is ever added later, then the case below will trigger
+		// and the edge
+		for y, isBaseYInternal := range callee.edges[base] {
+			// Need base -> y to be an internal edge (i.e. created during the execution of callee)
+			if isBaseYInternal {
+				for x := range u[y] {
+					g.AddEdge(rep, x, true)
+				}
+				addDeferredRep(y, rep)
+			}
+		}
+
+		// The same as above, but where base is the y in the above diagram
+		// There must have been a previous u edge added from b to r. The
+		// dR (deferredReps) edge tells us what r(s) we need to add edges
+		// from. We can unconditionally add the edge as adding the deferredRep
+		// edge already checked the appropriate conditions
+		// r          rep
+		// |  \_ dR   |
+		// | u   \_   | u
+		// |        \ |
+		// b  ------> base
+		// We do not keep track of what b was, but it must have existed.
+		for r := range deferredReps[base] {
+			g.AddEdge(r, rep, true)
+		}
+
+		// propagate allocations/possible allocations (from un-analyzed functions)
+		// Adds node alloc to g, and adds the mapping edge u'
+		// rep          alloc
+		//  |           |
+		//  | u         | u'
+		//  |           |
+		// base ------> alloc
+		// Rep is required to exist but we don't do anything with it. This makes sure
+		// we only add the alloc node if it will be visible in the caller
+		for alloc, isBaseAllocInternal := range callee.edges[base] {
+			if isBaseAllocInternal && (alloc.kind == KindAlloc || alloc.kind == KindUnknown) {
+				g.nodes.AddForeignNode(alloc)
+				g.AddNode(alloc)
+				addUEdge(alloc, alloc)
+			}
+		}
+
+		// propagate load nodes that are referenced by escaped nodes
+		// Adds node load to g, and adds the mapping edge u' and edge rep - -> load'
+		// rep  - - -> load'
+		//  |           |
+		//  | u         | u'
+		//  |           |
+		// base - - -> load
+		// Rep is required to be escaped.
+
+		if pre.status[rep] != Local {
+			for load, isBaseLoadInternal := range callee.edges[base] {
+				if !isBaseLoadInternal {
+					g.AddNode(load)
+					g.nodes.AddForeignNode(load)
+					g.AddEdge(rep, load, false)
+					addUEdge(load, load)
+				}
+			}
+		}
+		// Propagating "escaped" information is tricky. We need to make a distinction between things
+		// that could have escaped to the heap, and just things that are parameters/loads from the callee's
+		// perspective. This means that we propagate "leaked" along u edges but not "escaped."
+		if callee.status[base] == Leaked {
+			if g.status[rep] < Leaked {
+				g.JoinNodeStatus(rep, Leaked)
+			}
+		}
+	}
+}
+
 // Computes the result of calling an unknown function.
 // An unknown function has no bound on its allow semantics. This means that the
 // arguments are assumed to leak, and the return value is treated similarly to a
@@ -545,7 +745,7 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 func (g *EscapeGraph) CallUnknown(args []*Node, rets []*Node) {
 	for _, arg := range args {
 		for n := range g.edges[arg] {
-			g.leaked[n] = true
+			g.JoinNodeStatus(n, Leaked)
 		}
 	}
 	for _, ret := range rets {
@@ -553,10 +753,89 @@ func (g *EscapeGraph) CallUnknown(args []*Node, rets []*Node) {
 	}
 }
 
+// Computes the result of calling an builtin. The name (len, copy, etc) and the
+// effective type can be retrieved from the ssa.Builtin.
+// An unknown function has no bound on its allow semantics. This means that the
+// arguments are assumed to leak, and the return value is treated similarly to a
+// load node, except it can never be resolved with arguments like loads can be.
+func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, args []*Node, rets []*Node) {
+	switch builtin.Name() {
+	case "len": // No-op, as does not leak and the return value is not pointer-like
+		return
+	case "cap": // No-op, as does not leak and the return value is not pointer-like
+		return
+	case "close": // No-op, as does not leak and the return value is not pointer-like
+		return
+	case "complex": // No-op, as does not leak and the return value is not pointer-like
+		return
+	case "real": // No-op, as does not leak and the return value is not pointer-like
+		return
+	case "imag": // No-op, as does not leak and the return value is not pointer-like
+		return
+	case "print": // No-op, as does not leak and no return value
+		return
+	case "println": // No-op, as does not leak and no return value
+		return
+	case "recover": // We don't track panic values, so treat like an unknown call
+		g.CallUnknown(args, rets)
+	case "ssa:wrapnilchk": // treat as identity fucntion
+		g.WeakAssign(rets[0], args[0], nil)
+	case "delete": // treat as noop, as we don't actually erase information
+		return
+	case "append":
+		// ret = append(slice, x)
+		// slice is a slice, and so is x.
+		// Basically, we copy all the outedges from *x to *slice
+		// Then we copy all the edges from *slice to a new allocation node, which
+		// represents the case where there wasn't enough space (we don't track enough
+		// information to distinguish these possibilities ourselves.)
+		if len(args) != 2 {
+			panic("Append must have exactly 2 args")
+		}
+		sliceArg, xArg, ret := args[0], args[1], rets[0]
+		sig := builtin.Type().(*types.Signature)
+		sliceType := sig.Results().At(0).Type().Underlying().(*types.Slice)
+		// First, simulate the write to the array
+		for baseArray := range g.edges[sliceArg] {
+			for xArray := range g.edges[xArg] {
+				g.WeakAssign(baseArray, xArray, sliceType.Elem())
+			}
+			// The return value can be one of the existing backing arrays
+			g.AddEdge(ret, baseArray, true)
+		}
+		// Then, simulate an allocation. This happens second so we pick up the newly added edges
+		allocArray := g.nodes.AllocNode(instr, types.NewArray(sliceType.Elem(), -1))
+		for baseArray := range g.edges[sliceArg] {
+			g.WeakAssign(allocArray, baseArray, sliceType.Elem())
+		}
+		g.AddEdge(ret, allocArray, true)
+	case "copy":
+		// copy(dest, src)
+		// Both arguments are slices: copy all the outedges from *src to *dest
+		// Ignore the return value
+		// Special case: src is a string. Do nothing in that case, as we don't track
+		// characters. This is handled by not having any edges from a nil srcArg.
+		if len(args) != 2 {
+			panic("Copy must have exactly 2 args")
+		}
+		destArg, srcArg := args[0], args[1]
+		sig := builtin.Type().(*types.Signature)
+		sliceType := sig.Params().At(0).Type().Underlying().(*types.Slice)
+		// First, simulate the write to the array
+		for destArray := range g.edges[destArg] {
+			for srcArray := range g.edges[srcArg] {
+				g.WeakAssign(destArray, srcArray, sliceType.Elem())
+			}
+		}
+	default:
+		fmt.Printf("Unhandled: %v\n", builtin.Name())
+	}
+}
+
 // Checks if two graphs are equal. Used for convergence checking.
 func (g *EscapeGraph) Matches(h *EscapeGraph) bool {
 	// TODO: This may become a performance bottleneck
-	return reflect.DeepEqual(g.edges, h.edges) && reflect.DeepEqual(g.escaped, h.escaped) && reflect.DeepEqual(g.leaked, h.leaked)
+	return reflect.DeepEqual(g.edges, h.edges) && reflect.DeepEqual(g.status, h.status)
 }
 
 type globalNodeGroup struct {
@@ -585,6 +864,8 @@ type NodeGroup struct {
 	params        map[ssa.Value]*Node
 	formals       []*Node
 	returnNode    *Node
+	nilNode       *Node
+	unusedNode    *Node
 	unknownReturn *Node
 	globalNodes   *globalNodeGroup
 }
@@ -600,6 +881,8 @@ func NewNodeGroup(globalNodes *globalNodeGroup) *NodeGroup {
 		make([]*Node, 0),
 		nil,
 		nil,
+		nil,
+		nil,
 		globalNodes,
 	}
 }
@@ -609,6 +892,9 @@ func (nodes *NodeGroup) AllNodes() []*Node {
 	ordered := []*Node{}
 	alreadyAdded := map[*Node]bool{}
 	add := func(o *Node) {
+		if o == nil {
+			panic("nil *Node")
+		}
 		if !alreadyAdded[o] {
 			alreadyAdded[o] = true
 			ordered = append(ordered, o)
@@ -624,7 +910,9 @@ func (nodes *NodeGroup) AllNodes() []*Node {
 		add(o)
 	}
 	for _, o := range nodes.formals {
-		add(o)
+		if o != nil { // nil means not-pointer-like, i.e. integer
+			add(o)
+		}
 	}
 	for o := range nodes.foreign {
 		add(o)
@@ -640,6 +928,12 @@ func (nodes *NodeGroup) AllNodes() []*Node {
 	}
 	if nodes.unknownReturn != nil {
 		add(nodes.unknownReturn)
+	}
+	if nodes.nilNode != nil {
+		add(nodes.nilNode)
+	}
+	if nodes.unusedNode != nil {
+		add(nodes.unusedNode)
 	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].number < ordered[j].number })
 	return ordered
@@ -676,7 +970,7 @@ func (g *NodeGroup) ValueNode(variable ssa.Value) *Node {
 	}
 	if c, ok := variable.(*ssa.Const); ok {
 		if c.IsNil() {
-			return nil
+			return g.NilNode()
 		}
 	}
 
@@ -709,6 +1003,29 @@ func (g *NodeGroup) ReturnNode() *Node {
 	}
 	node := &Node{KindReturn, g.globalNodes.getNewID(), "return"}
 	g.returnNode = node
+	return node
+}
+
+// The nil node of a function, which represents a pointer that is always nil
+// Invariant: should not have any out edges (i.e. should never be assigned to)
+func (g *NodeGroup) NilNode() *Node {
+	if g.nilNode != nil {
+		return g.nilNode
+	}
+	node := &Node{KindVar, g.globalNodes.getNewID(), "nil"}
+	g.nilNode = node
+	return node
+}
+
+// The unused pointer node, which represents a node that you don't care about.
+// Can be used to represent the `_` identifier. Can have out edges, but these
+// edges should never be used because nothing will read from `_`.
+func (g *NodeGroup) UnusedNode() *Node {
+	if g.unusedNode != nil {
+		return g.unusedNode
+	}
+	node := &Node{KindVar, g.globalNodes.getNewID(), "_"}
+	g.unusedNode = node
 	return node
 }
 
@@ -804,6 +1121,16 @@ func PointerDerefType(t types.Type) types.Type {
 	}
 }
 
+// Gives the type of hte contents
+func ChannelContentsType(t types.Type) types.Type {
+	switch tt := t.Underlying().(type) {
+	case *types.Chan:
+		return tt.Elem()
+	default:
+		return tt
+	}
+}
+
 // The primary transfer function for an instruction's effect on a escape graph.
 // Modifies g and nodes in place with the effects of the instruction.
 func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *EscapeGraph, verbose bool) {
@@ -827,6 +1154,9 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	case *ssa.MakeMap:
 		g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, instrType.Type()), true)
 		return
+	case *ssa.MakeChan:
+		g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, instrType.Type()), true)
+		return
 	case *ssa.MakeSlice:
 		g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, instrType.Type()), true)
 		return
@@ -836,24 +1166,20 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		}
 		return
 	case *ssa.IndexAddr:
-		// TODO: array is different than *array and slice, as we need to know the object the array is part of
-		for varPointee := range g.Deref(nodes.ValueNode(instrType.X)) {
-			g.AddEdge(nodes.ValueNode(instrType), varPointee, true)
+		// raw array is different than *array and slice
+		if _, ok := instrType.X.Type().Underlying().(*types.Array); ok {
+			// Array case. It is unclear how this is generated, and what the semantics should be in this case.
+			panic("IndexAddr of direct array")
+		} else {
+			// *array or slice
+			for varPointee := range g.Deref(nodes.ValueNode(instrType.X)) {
+				g.AddEdge(nodes.ValueNode(instrType), varPointee, true)
+			}
+			return
 		}
-		return
 	case *ssa.Store:
 		if lang.IsNillableType(instrType.Val.Type()) {
-			valNode := nodes.ValueNode(instrType.Val)
-			addrNode := nodes.ValueNode(instrType.Addr)
-			addrPointees := g.Deref(addrNode)
-			valPointees := g.Deref(valNode)
-			for addrPointee := range addrPointees {
-				g.AddNode(addrPointee) // ensures that stores of nil still add the node to g
-				// (the following loop has not iterations in this case)
-				for valPointee := range valPointees {
-					g.AddEdge(addrPointee, valPointee, true)
-				}
-			}
+			g.Store(nodes.ValueNode(instrType.Addr), nodes.ValueNode(instrType.Val), instrType.Val.Type())
 		}
 		return
 	case *ssa.UnOp:
@@ -861,18 +1187,30 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		if _, ok := instrType.X.Type().(*types.Pointer); ok && instrType.Op == token.MUL {
 			if lang.IsNillableType(instrType.Type()) {
 				gen := func() *Node {
-					return nodes.LoadNode(instr, PointerDerefType(PointerDerefType(instrType.X.Type().Underlying())))
+					return nodes.LoadNode(instr, PointerDerefType(instrType.X.Type().Underlying()))
 				}
 				g.Load(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), gen)
 			}
 			return
 		} else if _, ok := instrType.X.Type().(*types.Chan); ok && instrType.Op == token.ARROW {
 			// recv on channel
-			// TODO: implement this; for now fallthrough to the end of the switch statement
+			if lang.IsNillableType(instrType.Type()) {
+				gen := func() *Node {
+					return nodes.LoadNode(instr, ChannelContentsType(instrType.X.Type().Underlying()))
+				}
+				g.Load(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), gen)
+			}
+			return
 		} else {
-			// arithmetic UnOp
+			// arithmetic UnOp: no-op
 			return
 		}
+	case *ssa.Send:
+		if lang.IsNillableType(instrType.X.Type()) {
+			// Send on channel is a write to the contents "field" of the channel
+			g.Store(nodes.ValueNode(instrType.Chan), nodes.ValueNode(instrType.X), instrType.X.Type())
+		}
+		return
 	case *ssa.Slice:
 		switch tp := instrType.X.Type().Underlying().(type) {
 		case *types.Slice:
@@ -881,10 +1219,10 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			return
 		case *types.Basic:
 			if tp.Kind() != types.String && tp.Kind() != types.UntypedString {
-				panic("Slice of BasicKind that isn't string?" + tp.String())
+				panic("Slice of BasicKind that isn't string: " + tp.String())
 			}
-			// TODO: slice of a string should be treated as an allocation??
-			// return g.WeakAssign(nodes.ValueNode(instrType), nodes.StringNode(), instrType.Type())
+			// Slice of a string creates a hidden allocation of an array to hold the string contents.
+			g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, tp), true)
 			return
 		case *types.Pointer:
 			if _, ok := tp.Elem().Underlying().(*types.Array); !ok {
@@ -898,6 +1236,34 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	case *ssa.Jump:
 		return
 	case *ssa.If:
+		return
+	case *ssa.Select:
+		recvIndex := 0 // for tuple sensitivity, this will be the index that should be read in the result tuple.
+		for _, st := range instrType.States {
+			if st.Dir == types.RecvOnly {
+				if lang.IsNillableType(ChannelContentsType(st.Chan.Type())) {
+					// TODO: This should be one load node per branch, so that different types
+					// get different nodes. This is only important if we are tuple sensitive and
+					// make the graph typed. For now, the different cases can safe share nodes,
+					// which is imprecise but sound.
+					gen := func() *Node {
+						return nodes.LoadNode(instr, ChannelContentsType(st.Chan.Type()))
+					}
+					g.Load(nodes.ValueNode(instrType), nodes.ValueNode(st.Chan), gen)
+				}
+				recvIndex += 1
+			} else if st.Dir == types.SendOnly {
+				if lang.IsNillableType(st.Send.Type()) {
+					// Send on channel is a write to the contents "field" of the channel
+					g.Store(nodes.ValueNode(st.Chan), nodes.ValueNode(st.Send), st.Send.Type())
+				}
+			} else {
+				panic("Unexpected ")
+			}
+		}
+		return
+	case *ssa.Panic:
+		g.CallUnknown([]*Node{nodes.ValueNode(instrType.X)}, []*Node{nodes.UnusedNode()})
 		return
 	case *ssa.Call:
 		// Build the argument array, consisting of the nodes that are the concrete arguments
@@ -914,12 +1280,19 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		// number of return values, and find out which extract operations we should assign the
 		// results to.
 		rets := []*Node{nodes.ValueNode(instrType)}
-		if callee := instrType.Call.StaticCallee(); callee != nil {
+
+		if builtin, ok := instrType.Call.Value.(*ssa.Builtin); ok {
+			g.CallBuiltin(instrType, builtin, args, rets)
+			return
+		} else if callee := instrType.Call.StaticCallee(); callee != nil {
 			summary := ea.prog.summaries[callee]
 			if summary != nil {
 				// We can use the finalGraph pointer freely as it will never change after it is created
 				summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
-				g.Call(args, rets, summary.finalGraph)
+				if verbose {
+					fmt.Printf("Call at %v: %v %v %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()), summary.function.String(), args, summary.finalGraph.nodes.formals)
+				}
+				g.CallFast(args, rets, summary.finalGraph)
 				if verbose {
 					ea.prog.logger.Printf("After call:\n%v", g.Graphviz())
 				}
@@ -943,6 +1316,18 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		// arguments and return an object which may be arbitrary (and is therefore leaked).
 		g.CallUnknown(args, rets)
 		return
+
+	case *ssa.Go:
+		args := make([]*Node, len(instrType.Call.Args))
+		for i, arg := range instrType.Call.Args {
+			if lang.IsNillableType(arg.Type()) {
+				args[i] = nodes.ValueNode(arg)
+			}
+		}
+		rets := []*Node{nodes.UnusedNode()}
+		// A go call always leaks arguements. The return value is irrelevant (`_`).
+		g.CallUnknown(args, rets)
+		return
 	case *ssa.Defer:
 	case *ssa.Field:
 		if lang.IsNillableType(instrType.Type()) {
@@ -960,6 +1345,11 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			gen := func() *Node { return nodes.LoadNode(instr, PointerDerefType(PointerDerefType(instrType.X.Type()))) }
 			g.Load(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), gen)
 			return
+		case *types.Array:
+			if lang.IsNillableType(instrType.Type()) {
+				g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
+			}
+			return
 		}
 	case *ssa.Lookup:
 		if lang.IsNillableType(instrType.Type().Underlying()) {
@@ -968,28 +1358,11 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		}
 		return
 	case *ssa.MapUpdate:
-		// TODO: refactor this into a generic store like .Load and .WeakAssign
 		if lang.IsNillableType(instrType.Value.Type()) {
-			valNode := nodes.ValueNode(instrType.Value)
-			addrNode := nodes.ValueNode(instrType.Map)
-			addrPointees := g.Deref(addrNode)
-			valPointees := g.Deref(valNode)
-			for addrPointee := range addrPointees {
-				for valPointee := range valPointees {
-					g.AddEdge(addrPointee, valPointee, true)
-				}
-			}
+			g.Store(nodes.ValueNode(instrType.Map), nodes.ValueNode(instrType.Value), instrType.Value.Type())
 		}
 		if lang.IsNillableType(instrType.Key.Type()) {
-			valNode := nodes.ValueNode(instrType.Key)
-			addrNode := nodes.ValueNode(instrType.Map)
-			addrPointees := g.Deref(addrNode)
-			valPointees := g.Deref(valNode)
-			for addrPointee := range addrPointees {
-				for valPointee := range valPointees {
-					g.AddEdge(addrPointee, valPointee, true)
-				}
-			}
+			g.Store(nodes.ValueNode(instrType.Map), nodes.ValueNode(instrType.Key), instrType.Key.Type())
 		}
 		return
 	case *ssa.Next:
@@ -1007,7 +1380,11 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		}
 		return
 	case *ssa.MakeInterface:
-		g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
+		if lang.IsNillableType(instrType.X.Type()) {
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
+		} else {
+			g.AddNode(nodes.ValueNode(instrType)) // Make interface from string or other non-pointer type
+		}
 		return
 	case *ssa.TypeAssert:
 		if lang.IsNillableType(instrType.Type()) {
@@ -1015,9 +1392,13 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		}
 		return
 	case *ssa.Convert:
-		if lang.IsNillableType(instrType.Type()) {
-			// TODO: conversion between string and []byte or []rune should be treated as an allocation
+		if lang.IsNillableType(instrType.X.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
+		} else if _, ok := instrType.Type().Underlying().(*types.Slice); ok {
+			if basic, ok := instrType.X.Type().Underlying().(*types.Basic); ok && (basic.Kind() == types.String || basic.Kind() == types.UntypedString) {
+				// We must be converting a string to a slice, so the semantics are to do a hidden allocation
+				g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, instrType.Type()), true)
+			}
 		}
 		return
 	case *ssa.ChangeInterface:
@@ -1051,7 +1432,8 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		return
 	default:
 	}
-	if verbose {
+	if verbose || true {
+		ea.prog.logger.Printf("At %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()))
 		ea.prog.logger.Printf("Unhandled: (type: %s) %v\n", reflect.TypeOf(instr).String(), instr)
 	}
 }
@@ -1230,7 +1612,9 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 			}
 		}
 	}
-
+	if prog.verbose {
+		prog.logger.Printf("Have a total of %d nodes", len(nodes))
+	}
 	succ := func(n *callgraph.Node) []*callgraph.Node {
 		succs := []*callgraph.Node{}
 		for _, e := range n.Out {
@@ -1301,4 +1685,29 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		}
 	}
 	return prog, nil
+}
+
+func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) map[*ssa.Instruction]bool {
+	return make(map[*ssa.Instruction]bool) // TODO: return more than an empty graph
+}
+
+// Compute the instruction locality for all instructions in f, assuming it is called from one of the callsites
+// Callsite should contain the escape graph from f's perspective; such graphs can be generated using ComputeCallsiteGraph,
+// Merge, and ComputeArbitraryCallerGraph as necessary.
+func ComputeInstructionLocality(f *ssa.Function, prog *ProgramAnalysisState, context *EscapeGraph) map[*ssa.Instruction]bool {
+	return computeInstructionLocality(prog.summaries[f], context)
+}
+
+// Computes the callsite graph from the perspective of `callee`, from the instruction `call` in `caller` when `caller` is called with `callerContext`.
+// A particular call instruction can have multiple callee functions; a possible `g` must be supplied.
+func ComputeCallsiteGraph(callerContext *EscapeGraph, caller *ssa.Function, call *ssa.Call, prog *ProgramAnalysisState, callee *ssa.Function) *EscapeGraph {
+	return ComputeArbitraryCallerGraph(callee, prog) // TODO: actually compute this
+}
+
+// Computes the caller graph for a function, making no assumptions about the caller. This is useful if a function
+// has no known caller or it can't be precisely determined. Use of this function may result in significantly fewer
+// "local" values than using precise information from ComputeCallsiteGraph.
+// (This graph is actually already computed; this function merely copies it.)
+func ComputeArbitraryCallerGraph(f *ssa.Function, prog *ProgramAnalysisState) *EscapeGraph {
+	return prog.summaries[f].initialGraph.Clone()
 }
