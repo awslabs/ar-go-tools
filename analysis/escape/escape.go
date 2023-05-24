@@ -1367,7 +1367,9 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		return
 	case *ssa.Next:
 		if !instrType.IsString {
-			gen := func() *Node { return nodes.LoadNode(instr, PointerDerefType(PointerDerefType(instrType.Iter.Type()))) }
+			gen := func() *Node {
+				return nodes.LoadNode(instr, PointerDerefType(PointerDerefType(instrType.Iter.Type())))
+			}
 			g.Load(nodes.ValueNode(instrType), nodes.ValueNode(instrType.Iter), gen)
 		}
 		return
@@ -1395,7 +1397,8 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		if lang.IsNillableType(instrType.X.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
 		} else if _, ok := instrType.Type().Underlying().(*types.Slice); ok {
-			if basic, ok := instrType.X.Type().Underlying().(*types.Basic); ok && (basic.Kind() == types.String || basic.Kind() == types.UntypedString) {
+			if basic, ok := instrType.X.Type().Underlying().(*types.Basic); ok &&
+				(basic.Kind() == types.String || basic.Kind() == types.UntypedString) {
 				// We must be converting a string to a slice, so the semantics are to do a hidden allocation
 				g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, instrType.Type()), true)
 			}
@@ -1444,9 +1447,15 @@ type functionAnalysisState struct {
 	initialGraph *EscapeGraph                     // the graph on entry to the function. never mutated.
 	nodes        *NodeGroup                       // the nodes used in these graphs
 	blockEnd     map[*ssa.BasicBlock]*EscapeGraph // the monotone framework result at each basic block end
-	finalGraph   *EscapeGraph                     // mutability: the finalGraph will never be mutated in place, so saving a reference without Clone() is safe
-	worklist     []*ssa.BasicBlock                // persist the worklist so we can add basic blocks of function calls that change
-	summaryUses  map[summaryUse]*EscapeGraph      // records uses of this summary in other functions, used to trigger re-analysis
+
+	// mutability: the finalGraph will never be mutated in place, so saving a reference without Clone() is safe
+	finalGraph *EscapeGraph
+
+	// persist the worklist so we can add basic blocks of function calls that changep
+	worklist []*ssa.BasicBlock
+
+	// records uses of this summary in other functions, used to trigger re-analysis
+	summaryUses map[summaryUse]*EscapeGraph
 }
 
 // Used to record the position at which a function summary graph is used.
@@ -1643,7 +1652,8 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	if nextIndex != -1 {
 		panic("expected reverse to be complete")
 	}
-	// The main worklist algorithm. Reanalyze each function, putting any function(s) that need to be reanalyzed back on the list
+	// The main worklist algorithm. Reanalyze each function, putting any function(s) that need to be reanalyzed back on
+	// the list
 	for len(worklist) > 0 {
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
@@ -1653,7 +1663,8 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		}
 		changed := resummarize(summary)
 		if prog.verbose {
-			state.Logger.Printf("Func %s is (changed=%v):\n%s\n", funcName, changed, summary.finalGraph.GraphvizLabel(funcName))
+			state.Logger.Printf("Func %s is (changed=%v):\n%s\n", funcName, changed,
+				summary.finalGraph.GraphvizLabel(funcName))
 		}
 		// Iterate over the places where this summary is used, and schedule them to be re-analyzed
 		for location, graphUsed := range summary.summaryUses {
@@ -1679,7 +1690,8 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
 				if "main" == f.Pkg.Pkg.Name() {
-					state.Logger.Printf("Func %s summary is:\n%s\n", f.String(), summary.finalGraph.GraphvizLabel(f.String()))
+					state.Logger.Printf("Func %s summary is:\n%s\n", f.String(),
+						summary.finalGraph.GraphvizLabel(f.String()))
 				}
 			}
 		}
@@ -1692,15 +1704,18 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 }
 
 // Compute the instruction locality for all instructions in f, assuming it is called from one of the callsites
-// Callsite should contain the escape graph from f's perspective; such graphs can be generated using ComputeCallsiteGraph,
-// Merge, and ComputeArbitraryCallerGraph as necessary.
-func ComputeInstructionLocality(f *ssa.Function, prog *ProgramAnalysisState, context *EscapeGraph) map[*ssa.Instruction]bool {
+// Callsite should contain the escape graph from f's perspective; such graphs can be generated using
+// ComputeCallsiteGraph, Merge, and ComputeArbitraryCallerGraph as necessary.
+func ComputeInstructionLocality(f *ssa.Function, prog *ProgramAnalysisState,
+	context *EscapeGraph) map[*ssa.Instruction]bool {
 	return computeInstructionLocality(prog.summaries[f], context)
 }
 
-// Computes the callsite graph from the perspective of `callee`, from the instruction `call` in `caller` when `caller` is called with `callerContext`.
+// Computes the callsite graph from the perspective of `callee`, from the instruction `call` in `caller`
+// when `caller` is called with `callerContext`.
 // A particular call instruction can have multiple callee functions; a possible `g` must be supplied.
-func ComputeCallsiteGraph(callerContext *EscapeGraph, caller *ssa.Function, call *ssa.Call, prog *ProgramAnalysisState, callee *ssa.Function) *EscapeGraph {
+func ComputeCallsiteGraph(callerContext *EscapeGraph, caller *ssa.Function, call *ssa.Call, prog *ProgramAnalysisState,
+	callee *ssa.Function) *EscapeGraph {
 	return ComputeArbitraryCallerGraph(callee, prog) // TODO: actually compute this
 }
 

@@ -98,3 +98,7 @@ func TestCrossFunctionPanics(t *testing.T) {
 func TestCrossFunctionFilters(t *testing.T) {
 	runTest(t, "filters", []string{})
 }
+
+func TestEscapeIntegration(t *testing.T) {
+	runTest(t, "escape-integration", []string{})
+}

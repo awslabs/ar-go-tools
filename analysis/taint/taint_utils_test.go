@@ -37,6 +37,7 @@ import (
 // Match annotations of the form "@Source(id1, id2, id3)"
 var SourceRegex = regexp.MustCompile(`//.*@Source\(((?:\s*\w\s*,?)+)\)`)
 var SinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
+var EscapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
 
 type LPos struct {
 	Filename string
@@ -56,13 +57,27 @@ func RelPos(pos token.Position, reldir string) LPos {
 	return LPos{Line: pos.Line, Filename: path.Join(reldir, pos.Filename)}
 }
 
-// getExpectedSourceToSink analyzes the files in dir and looks for comments @Source(id) and @Sink(id) to construct
-// expected flows from sources to sink in the form of a map from sink positions to all the source position that
-// reach that sink.
-func getExpectedSourceToSink(reldir string, dir string) map[LPos]map[LPos]bool {
+func mapComments(packages map[string]*ast.Package, fmap func(*ast.Comment)) {
+	for _, f := range packages {
+		for _, f := range f.Files {
+			for _, c := range f.Comments {
+				for _, c1 := range c.List {
+					fmap(c1)
+				}
+			}
+		}
+	}
+}
+
+// getExpectSourceToTargets analyzes the files in dir and looks for comments @Source(id) and @Sink(id) to construct
+// expected flows from sources to targets in the form of two maps from:
+// - from sink positions to all the source position that reach that sink.
+// - from escape positions to the source of data that escapes.
+func getExpectSourceToTargets(reldir string, dir string) (map[LPos]map[LPos]bool, map[LPos]map[LPos]bool) {
 	var err error
 	d := make(map[string]*ast.Package)
 	source2sink := map[LPos]map[LPos]bool{}
+	source2escape := map[LPos]map[LPos]bool{}
 	sourceIds := map[string]token.Position{}
 	fset := token.NewFileSet() // positions are relative to fset
 
@@ -79,52 +94,62 @@ func getExpectedSourceToSink(reldir string, dir string) map[LPos]map[LPos]bool {
 	})
 	if err != nil {
 		fmt.Println(err)
-		return nil
+		return nil, nil
 	}
 
 	// Get all the source positions with their identifiers
-	for _, f := range d {
-		for _, f := range f.Files {
-			for _, c := range f.Comments {
-				for _, c1 := range c.List {
-					pos := fset.Position(c1.Pos())
-					// Match a "@Source(id1, id2, id3)"
-					a := SourceRegex.FindStringSubmatch(c1.Text)
-					if len(a) > 1 {
-						for _, ident := range strings.Split(a[1], ",") {
-							sourceIdent := strings.TrimSpace(ident)
-							sourceIds[sourceIdent] = pos
-						}
-					}
-				}
+	mapComments(d, func(c1 *ast.Comment) {
+		pos := fset.Position(c1.Pos())
+		// Match a "@Source(id1, id2, id3)"
+		a := SourceRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sourceIdent := strings.TrimSpace(ident)
+				sourceIds[sourceIdent] = pos
 			}
 		}
-	}
+	})
 
-	for _, f := range d {
-		for _, f := range f.Files {
-			for _, c := range f.Comments {
-				for _, c1 := range c.List {
-					sinkPos := fset.Position(c1.Pos())
-					// Match a "@Sink(id1, id2, id3)"
-					a := SinkRegex.FindStringSubmatch(c1.Text)
-					if len(a) > 1 {
-						for _, ident := range strings.Split(a[1], ",") {
-							sourceIdent := strings.TrimSpace(ident)
-							if sourcePos, ok := sourceIds[sourceIdent]; ok {
-								relSink := RelPos(sinkPos, reldir)
-								if _, ok := source2sink[relSink]; !ok {
-									source2sink[relSink] = make(map[LPos]bool)
-								}
-								source2sink[relSink][RelPos(sourcePos, reldir)] = true
-							}
-						}
+	// Get all the sink positions
+	mapComments(d, func(c1 *ast.Comment) {
+		sinkPos := fset.Position(c1.Pos())
+		// Match a "@Sink(id1, id2, id3)"
+		a := SinkRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sourceIdent := strings.TrimSpace(ident)
+				if sourcePos, ok := sourceIds[sourceIdent]; ok {
+					relSink := RelPos(sinkPos, reldir)
+					if _, ok := source2sink[relSink]; !ok {
+						source2sink[relSink] = make(map[LPos]bool)
 					}
+					source2sink[relSink][RelPos(sourcePos, reldir)] = true
 				}
 			}
 		}
-	}
-	return source2sink
+	})
+
+	// Get all the escape positions
+	// Get all the sink positions
+	mapComments(d, func(c1 *ast.Comment) {
+		escapePos := fset.Position(c1.Pos())
+		// Match a "@Escape(id1, id2, id3)"
+		a := EscapeRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sourceIdent := strings.TrimSpace(ident)
+				if sourcePos, ok := sourceIds[sourceIdent]; ok {
+					relEscape := RelPos(escapePos, reldir)
+					if _, ok := source2escape[relEscape]; !ok {
+						source2escape[relEscape] = make(map[LPos]bool)
+					}
+					source2escape[relEscape][RelPos(sourcePos, reldir)] = true
+				}
+			}
+		}
+	})
+
+	return source2sink, source2escape
 }
 
 func checkExpectedPositions(t *testing.T, p *ssa.Program, flows TaintFlows, expect map[LPos]map[LPos]bool) {
@@ -174,7 +199,7 @@ func runTest(t *testing.T, dirName string, files []string) {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
 
-	expected := getExpectedSourceToSink(dir, ".")
+	expected, _ := getExpectSourceToTargets(dir, ".")
 	checkExpectedPositions(t, program, result.TaintFlows, expected)
 	// Remove reports - comment if you want to inspect
 	os.RemoveAll(cfg.ReportsDir)
@@ -187,7 +212,7 @@ func TestAll(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	sink2source := getExpectedSourceToSink(dir, ".")
+	sink2source, _ := getExpectSourceToTargets(dir, ".")
 	for sink, sources := range sink2source {
 		for source := range sources {
 			fmt.Printf("Source %s -> sink %s\n", source, sink)
