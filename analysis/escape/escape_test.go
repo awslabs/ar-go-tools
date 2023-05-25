@@ -329,3 +329,52 @@ func TestBuiltinsEscape(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalityComputation(t *testing.T) {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/escape-locality")
+	err := os.Chdir(dir)
+	if err != nil {
+		t.Fatalf("failed to switch to dir %v: %v", dir, err)
+	}
+	program, config := testutils.LoadTest(t, ".", []string{})
+	config.Verbose = true
+	// Compute the summaries for everything in the main package
+	cache, err := dataflow.NewInitializedAnalyzerState(log.Default(), config, program)
+	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
+	if err != nil {
+		t.Fatalf("Error: %v\n", err)
+	}
+	funcsToTest := []string{
+		"testLocality",
+	}
+	// For each of these distinguished functions, check that the assert*() functions
+	// are satisfied by the computed summaries (technically, the summary at particular
+	// program points)
+	for _, funcName := range funcsToTest {
+		f := findFunction(program, funcName)
+		if f == nil {
+			t.Fatalf("Could not find function %v\n", funcName)
+		}
+		summary := escapeWholeProgram.summaries[f]
+		if summary == nil {
+			t.Fatalf("%v wasn't summarized", funcName)
+		}
+		context := ComputeArbitraryCallerGraph(f, escapeWholeProgram)
+		locality := ComputeInstructionLocality(f, escapeWholeProgram, context)
+		for _, bb := range f.Blocks {
+			fmt.Printf("%v\n", bb)
+			for _, instr := range bb.Instrs {
+				if locality[instr] {
+					fmt.Printf("// LOCAL\n")
+				} else {
+					fmt.Printf("// non-local\n")
+				}
+				if v, ok := instr.(ssa.Value); ok {
+					fmt.Printf("%s = ", v.Name())
+				}
+				fmt.Printf("%v\n", instr)
+			}
+		}
+	}
+}

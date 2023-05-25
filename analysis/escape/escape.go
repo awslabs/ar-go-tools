@@ -1687,21 +1687,115 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	return prog, nil
 }
 
-func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) map[*ssa.Instruction]bool {
-	return make(map[*ssa.Instruction]bool) // TODO: return more than an empty graph
+// Returns true if all of the nodes pointed to by `ptr` are local, i.e.
+// not escaped or leaked. Ignores the status of `ptr` itself.
+func derefsAreLocal(g *EscapeGraph, ptr *Node) bool {
+	for n := range g.Deref(ptr) {
+		if g.status[n] != Local {
+			return false
+		}
+	}
+	return true
+}
+
+// Returns true if the given instruction is local w.r.t. the given escape graph.
+func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
+	switch instrType := instr.(type) {
+	case *ssa.Store:
+		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Addr))
+	case *ssa.UnOp:
+		if _, ok := instrType.X.Type().(*types.Pointer); ok && instrType.Op == token.MUL {
+			// Load Op
+			return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
+		} else if _, ok := instrType.X.Type().(*types.Chan); ok && instrType.Op == token.ARROW {
+			// recv on channel
+			return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
+		} else {
+			// arithmetic is local
+			return true
+		}
+	case *ssa.MakeClosure:
+		// TODO: is this just return true?
+		// fallthrough for now
+	case *ssa.Alloc, *ssa.MakeMap, *ssa.MakeChan, *ssa.MakeSlice:
+		return true
+	case *ssa.FieldAddr, *ssa.IndexAddr:
+		// address calculations don't involve loads
+		// TODO: what about ssa.IndexAddr with arrays?
+		return true
+
+	case *ssa.MakeInterface, *ssa.TypeAssert, *ssa.Convert, *ssa.ChangeInterface, *ssa.ChangeType, *ssa.Phi, *ssa.Extract:
+		// conversions and ssa specific things don't access memory
+		return true
+	case *ssa.Return, *ssa.Jump, *ssa.If:
+		// control flow (at least the operation itself, if not the computation of the argument(s)) is local
+		return true
+	default:
+		// fallthrough to the unhandled case below.
+		// Some operation can fallthrough as well, because they might not (yet) handle all forms of their instruction type.
+	}
+	fmt.Printf("Warning, unhandled locality for instruction %v\n", instr)
+	return false
+}
+
+// Fills in the locality map with the locality information of the instructions in the given basic block.
+func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock, locality map[ssa.Instruction]bool) error {
+	g := NewEmptyEscapeGraph(ea.nodes)
+	if len(bb.Preds) == 0 {
+		// Entry block uses the function-wide initial graph
+		g.Merge(ea.initialGraph)
+	} else {
+		// Take the union of all our predecessors. Treat nil as no-ops; they will
+		// be filled in later, and then the current block will be re-analyzed
+		for _, pred := range bb.Preds {
+			if predGraph := ea.blockEnd[pred]; predGraph != nil {
+				g.Merge(predGraph)
+			}
+		}
+	}
+	for _, instr := range bb.Instrs {
+		locality[instr] = instructionLocality(instr, g)
+		ea.transferFunction(instr, g, false)
+	}
+	return nil
+}
+
+// Does the work of computing instruction locality for a function. See wrapper `ComputeInstructionLocality`.
+func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) map[ssa.Instruction]bool {
+	inContextEA := &functionAnalysisState{
+		function:     ea.function,
+		prog:         ea.prog,
+		initialGraph: initial,
+		nodes:        ea.nodes,
+		blockEnd:     make(map[*ssa.BasicBlock]*EscapeGraph),
+		worklist:     []*ssa.BasicBlock{ea.function.Blocks[0]},
+	}
+	resummarize(inContextEA)
+	locality := map[ssa.Instruction]bool{}
+	for _, block := range ea.function.Blocks {
+		basicBlockInstructionLocality(inContextEA, block, locality)
+	}
+	return locality
 }
 
 // Compute the instruction locality for all instructions in f, assuming it is called from one of the callsites
 // Callsite should contain the escape graph from f's perspective; such graphs can be generated using ComputeCallsiteGraph,
 // Merge, and ComputeArbitraryCallerGraph as necessary.
-func ComputeInstructionLocality(f *ssa.Function, prog *ProgramAnalysisState, context *EscapeGraph) map[*ssa.Instruction]bool {
+// In the returned map, a `true` value means the instruction is local, i.e. only manipulates memory that is proven to be local
+// to the current goroutine. A `false` value means the instruction may read or write to memory cells that may be shared.
+func ComputeInstructionLocality(f *ssa.Function, prog *ProgramAnalysisState, context *EscapeGraph) map[ssa.Instruction]bool {
 	return computeInstructionLocality(prog.summaries[f], context)
 }
 
 // Computes the callsite graph from the perspective of `callee`, from the instruction `call` in `caller` when `caller` is called with `callerContext`.
 // A particular call instruction can have multiple callee functions; a possible `g` must be supplied.
 func ComputeCallsiteGraph(callerContext *EscapeGraph, caller *ssa.Function, call *ssa.Call, prog *ProgramAnalysisState, callee *ssa.Function) *EscapeGraph {
-	return ComputeArbitraryCallerGraph(callee, prog) // TODO: actually compute this
+	panic("unimplemented")
+	return ComputeArbitraryCallerGraph(callee, prog)
+	// TODO: actually compute this
+	// Step 1: Run the normal convergence loop with the given context escape graph.
+	// Step 2: read off the escape graph at the point just before the call
+	// Step 3: Translate from caller to callee's context (rename from arguments to formal parameters).
 }
 
 // Computes the caller graph for a function, making no assumptions about the caller. This is useful if a function
