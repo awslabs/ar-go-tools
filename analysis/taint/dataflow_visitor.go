@@ -178,7 +178,8 @@ func (v *Visitor) Visit(c *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
 			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
-				if err := analysisutil.CheckIndex(c, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
+				err := analysisutil.CheckIndex(c, graphNode, callSite, "[Unwinding callstack] Argument at call site")
+				if err != nil {
 					c.AddError("unwinding call stack at "+graphNode.Position(c).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
@@ -190,7 +191,8 @@ func (v *Visitor) Visit(c *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			} else {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
-					if err := analysisutil.CheckIndex(c, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+					err := analysisutil.CheckIndex(c, graphNode, callSite, "[No Context] Argument at call site")
+					if err != nil {
 						c.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]

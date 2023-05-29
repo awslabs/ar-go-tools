@@ -38,6 +38,8 @@ type serverState struct {
 	TermWidth int
 
 	CurrentFunction *ssa.Function
+
+	CurrentDataflowInformation *dataflow.FlowInformation
 }
 
 var state = serverState{}

@@ -193,13 +193,13 @@ func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 
 }
 
-// getMarkedValues returns a mark and true if v is a marked value at instruction i, otherwise it returns (nil, false)
+// getMarks returns a mark and true if v is a marked value at instruction i, otherwise it returns (nil, false)
 // Uses both the direct taint information in the taint tracking info, and the pointer taint information, i.e:
 // - A value is marked if it is directly marked
 // - A value is marked if it is a pointer and some alias is marked.
 // The path parameter enables path-sensitivity. If path is "*", any path is accepted and the analysis
 // over-approximates.
-func (state *IntraAnalysisState) getMarkedValues(i ssa.Instruction, v ssa.Value, path string) []Mark {
+func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path string) []Mark {
 	var origins []Mark
 	// when the value is directly marked as tainted.
 	for mark := range state.flowInfo.MarkedValues[i][v] {
@@ -223,7 +223,8 @@ func transfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.
 		t.markValue(loc, out, NewMark(loc.(ssa.Node), Global, "", glob, index))
 	}
 
-	for _, origin := range t.getMarkedValues(loc, in, path) {
+	for _, origin := range t.getMarks(loc, in, path) {
+		t.flowInfo.SetLoc(origin, loc)
 		newOrigin := origin
 		if index >= 0 {
 			newOrigin = NewMark(origin.Node, origin.Type, origin.RegionPath, origin.Qualifier, index)

@@ -55,6 +55,7 @@ var (
 		cmdListName:         cmdList,
 		cmdLoadName:         cmdLoad,
 		cmdLsName:           cmdLs,
+		cmdMarkName:         cmdMark,
 		cmdMayAliasName:     cmdMayAlias,
 		cmdPackageName:      cmdPackage,
 		cmdRebuildName:      cmdRebuild,
