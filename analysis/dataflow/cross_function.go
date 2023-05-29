@@ -83,12 +83,12 @@ func (g *CrossFunctionFlowGraph) Print(w io.Writer) {
 	const fmtColorEdge = "%s -> %s [color=%s];\n"
 	for src, dsts := range g.ForwardEdges {
 		for dst := range dsts {
-			fmt.Fprintf(w, fmtColorEdge, escape(src.String()), escape(dst.String()), forwardColor)
+			fmt.Fprintf(w, fmtColorEdge, escapeString(src.String()), escapeString(dst.String()), forwardColor)
 		}
 	}
 	for dst, srcs := range g.BackwardEdges {
 		for src := range srcs {
-			fmt.Fprintf(w, fmtColorEdge, escape(dst.String()), escape(src.String()), backwardColor)
+			fmt.Fprintf(w, fmtColorEdge, escapeString(dst.String()), escapeString(src.String()), backwardColor)
 		}
 	}
 
@@ -96,11 +96,11 @@ func (g *CrossFunctionFlowGraph) Print(w io.Writer) {
 		for access := range accesses {
 			// write is an edge from global <- access, read is an edge from global -> access
 			if access.IsWrite {
-				fmt.Fprintf(w, fmtColorEdge, escape(access.String()), escape(global.String()), forwardColor)
-				fmt.Fprintf(w, fmtColorEdge, escape(global.String()), escape(access.String()), backwardColor)
+				fmt.Fprintf(w, fmtColorEdge, escapeString(access.String()), escapeString(global.String()), forwardColor)
+				fmt.Fprintf(w, fmtColorEdge, escapeString(global.String()), escapeString(access.String()), backwardColor)
 			} else {
-				fmt.Fprintf(w, fmtColorEdge, escape(global.String()), escape(access.String()), forwardColor)
-				fmt.Fprintf(w, fmtColorEdge, escape(access.String()), escape(global.String()), backwardColor)
+				fmt.Fprintf(w, fmtColorEdge, escapeString(global.String()), escapeString(access.String()), forwardColor)
+				fmt.Fprintf(w, fmtColorEdge, escapeString(access.String()), escapeString(global.String()), backwardColor)
 			}
 		}
 	}

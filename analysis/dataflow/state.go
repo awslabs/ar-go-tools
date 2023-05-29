@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/awslabs/argot/analysis/config"
+
 	"github.com/awslabs/argot/analysis/lang"
 	"github.com/awslabs/argot/analysis/summaries"
 	"golang.org/x/tools/go/pointer"
@@ -63,6 +64,9 @@ type AnalyzerState struct {
 
 	// The dataflow analysis results
 	FlowGraph *CrossFunctionFlowGraph
+
+	// The escape analysis state
+	EscapeAnalysisState EscapeAnalysisState
 
 	// BoundingInfo is a map from pointer labels to the closures that bind them. The bounding analysis produces such
 	// a map

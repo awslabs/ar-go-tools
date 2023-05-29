@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package escape provides an escape analysis which computes a representation of which references in the program are to objects
-// that are local to the current function and goroutine. This information can be used to recover
+// Package escape provides an escape analysis which computes a representation of which references in the program
+// are to objects that are local to the current function and goroutine. This information can be used to recover
 // local reasoning even in the face of concurrent goroutine execution. This implementation is inspired
 // by:
 //
-//	John Whaley and Martin Rinard. 1999. Compositional pointer and escape analysis for Java programs.
-//	SIGPLAN Not. 34, 10 (Oct. 1999), 187–206. https://doi.org/10.1145/320385.320400
+// John Whaley and Martin Rinard. 1999. [Compositional Pointer And Escape Analysis For Java Programs.]
+// SIGPLAN Not. 34, 10 (Oct. 1999), 187–206.
+//
+// [Compositional Pointer And Escape Analysis For Java Programs.]: https://doi.org/10.1145/320385.320400
 package escape
 
 import (
@@ -56,8 +58,8 @@ type EscapeStatus uint8
 
 const (
 	Local   EscapeStatus = 0
-	Escaped              = 1
-	Leaked               = 2
+	Escaped EscapeStatus = 1
+	Leaked  EscapeStatus = 2
 )
 
 // A node represents the objects tracked by the escape analysis.
@@ -951,7 +953,8 @@ func (g *NodeGroup) AllocNode(instr ssa.Instruction, t types.Type) *Node {
 		qualifier = types.RelativeTo(instr.Parent().Package().Pkg)
 	}
 	shortTypeName := types.TypeString(t, qualifier)
-	node = &Node{KindAlloc, g.globalNodes.getNewID(), fmt.Sprintf("new %s L:%d", shortTypeName, instr.Parent().Prog.Fset.Position(instr.Pos()).Line)}
+	node = &Node{KindAlloc, g.globalNodes.getNewID(), fmt.Sprintf("new %s L:%d", shortTypeName,
+		instr.Parent().Prog.Fset.Position(instr.Pos()).Line)}
 	g.allocs[instr] = node
 	return node
 }
@@ -1056,7 +1059,8 @@ func (g *NodeGroup) LoadNode(instr ssa.Instruction, t types.Type) *Node {
 		qualifier = types.RelativeTo(instr.Parent().Package().Pkg)
 	}
 	shortTypeName := types.TypeString(t, qualifier)
-	node = &Node{KindLoad, g.globalNodes.getNewID(), fmt.Sprintf("%s load L:%d", shortTypeName, instr.Parent().Prog.Fset.Position(instr.Pos()).Line)}
+	node = &Node{KindLoad, g.globalNodes.getNewID(), fmt.Sprintf("%s load L:%d", shortTypeName,
+		instr.Parent().Prog.Fset.Position(instr.Pos()).Line)}
 	g.loads[instr] = node
 	return node
 }
@@ -1290,7 +1294,8 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				// We can use the finalGraph pointer freely as it will never change after it is created
 				summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 				if verbose {
-					fmt.Printf("Call at %v: %v %v %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()), summary.function.String(), args, summary.finalGraph.nodes.formals)
+					fmt.Printf("Call at %v: %v %v %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()),
+						summary.function.String(), args, summary.finalGraph.nodes.formals)
 				}
 				g.CallFast(args, rets, summary.finalGraph)
 				if verbose {
@@ -1299,7 +1304,8 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				return
 			} else {
 				if verbose {
-					ea.prog.logger.Printf("Warning, %v is not a summarized function: treating as unknown call\n", callee.Name())
+					ea.prog.logger.Printf("Warning, %v is not a summarized function: treating as unknown call\n",
+						callee.Name())
 				}
 			}
 		} else {
@@ -1603,7 +1609,8 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 
 // This just prints the escape summary for each function in the callgraph.
 // This interface will change substaintially when intraprocedural analysis is finalized.
-func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
+func EscapeAnalysis(state *dataflow.AnalyzerState,
+	root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
 		verbose:     state.Config.Verbose,
@@ -1689,7 +1696,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		for f := range state.PointerAnalysis.CallGraph.Nodes {
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
-				if "main" == f.Pkg.Pkg.Name() {
+				if f.Pkg.Pkg.Name() == "main" {
 					state.Logger.Printf("Func %s summary is:\n%s\n", f.String(),
 						summary.finalGraph.GraphvizLabel(f.String()))
 				}
@@ -1736,7 +1743,8 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 		// TODO: what about ssa.IndexAddr with arrays?
 		return true
 
-	case *ssa.MakeInterface, *ssa.TypeAssert, *ssa.Convert, *ssa.ChangeInterface, *ssa.ChangeType, *ssa.Phi, *ssa.Extract:
+	case *ssa.MakeInterface, *ssa.TypeAssert, *ssa.Convert,
+		*ssa.ChangeInterface, *ssa.ChangeType, *ssa.Phi, *ssa.Extract:
 		// conversions and ssa specific things don't access memory
 		return true
 	case *ssa.Return, *ssa.Jump, *ssa.If:
@@ -1751,7 +1759,8 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 }
 
 // Fills in the locality map with the locality information of the instructions in the given basic block.
-func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock, locality map[ssa.Instruction]bool) error {
+func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock,
+	locality map[ssa.Instruction]bool) error {
 	g := NewEmptyEscapeGraph(ea.nodes)
 	if len(bb.Preds) == 0 {
 		// Entry block uses the function-wide initial graph
@@ -1795,14 +1804,16 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 // Merge, and ComputeArbitraryCallerGraph as necessary.
 // In the returned map, a `true` value means the instruction is local, i.e. only manipulates memory that is proven to be local
 // to the current goroutine. A `false` value means the instruction may read or write to memory cells that may be shared.
-func ComputeInstructionLocality(f *ssa.Function, prog *ProgramAnalysisState, context *EscapeGraph) map[ssa.Instruction]bool {
+func ComputeInstructionLocality(f *ssa.Function, prog *ProgramAnalysisState,
+	context *EscapeGraph) map[ssa.Instruction]bool {
 	return computeInstructionLocality(prog.summaries[f], context)
 }
 
-// Computes the callsite graph from the perspective of `callee`, from the instruction `call` in `caller`
-// when `caller` is called with `callerContext`.
+// ComputeCallsiteGraph computes the callsite graph from the perspective of `callee`, from the instruction `call` in
+// `caller` when `caller` is called with `callerContext`.
 // A particular call instruction can have multiple callee functions; a possible `g` must be supplied.
-func ComputeCallsiteGraph(callerContext *EscapeGraph, caller *ssa.Function, call *ssa.Call, prog *ProgramAnalysisState, callee *ssa.Function) *EscapeGraph {
+func ComputeCallsiteGraph(callerContext *EscapeGraph, caller *ssa.Function, call *ssa.Call,
+	prog *ProgramAnalysisState, callee *ssa.Function) *EscapeGraph {
 	panic("unimplemented")
 	//return ComputeArbitraryCallerGraph(callee, prog)
 	// TODO: actually compute this

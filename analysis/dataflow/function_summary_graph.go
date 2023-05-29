@@ -1427,22 +1427,22 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	fmt.Fprintf(w, "\tlabel=\"%s\";\n", g.Parent.Name()) // label each subgraph with the function name
 	for _, a := range g.Params {
 		for n := range a.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(a.String()), escapeString(n.String()))
 		}
 		if !outEdgesOnly {
 			for n := range a.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(a.String()), escapeString(n.String()))
 			}
 		}
 	}
 
 	for _, a := range g.FreeVars {
 		for n := range a.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(a.String()), escapeString(n.String()))
 		}
 		if !outEdgesOnly {
 			for n := range a.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(a.String()), escapeString(n.String()))
 			}
 		}
 	}
@@ -1450,20 +1450,20 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	for _, callNodes := range g.Callees {
 		for _, callN := range callNodes {
 			for n, obj := range callN.Out() {
-				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escape(callN.String()), obj.Index, escape(n.String()))
+				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(callN.String()), obj.Index, escapeString(n.String()))
 			}
 			if !outEdgesOnly {
 				for n := range callN.In() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(callN.String()), escape(n.String()))
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(callN.String()), escapeString(n.String()))
 				}
 			}
 			for _, x := range callN.args {
 				for n := range x.Out() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(x.String()), escape(n.String()))
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(x.String()), escapeString(n.String()))
 				}
 				if !outEdgesOnly {
 					for n := range x.In() {
-						fmt.Fprintf(w, "\t%s -> %s;\n", escape(x.String()), escape(n.String()))
+						fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(x.String()), escapeString(n.String()))
 					}
 				}
 			}
@@ -1473,20 +1473,20 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	for _, closure := range g.CreatedClosures {
 		for _, boundvar := range closure.boundVars {
 			for n := range boundvar.Out() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(boundvar.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(boundvar.String()), escapeString(n.String()))
 			}
 			if !outEdgesOnly {
 				for n := range boundvar.In() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(boundvar.String()), escape(n.String()))
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(boundvar.String()), escapeString(n.String()))
 				}
 			}
 		}
 		for o := range closure.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(closure.String()), escape(o.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(closure.String()), escapeString(o.String()))
 		}
 		if !outEdgesOnly {
 			for i := range closure.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(closure.String()), escape(i.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(closure.String()), escapeString(i.String()))
 			}
 		}
 	}
@@ -1498,11 +1498,11 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 				continue
 			}
 			for n, obj := range r.Out() {
-				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escape(r.String()), obj.Index, escape(n.String()))
+				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(r.String()), obj.Index, escapeString(n.String()))
 			}
 			if !outEdgesOnly {
 				for n, obj := range r.In() {
-					fmt.Fprintf(w, "\t%s.%d -> %s;\n", escape(r.String()), obj.Index, escape(n.String()))
+					fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(r.String()), obj.Index, escapeString(n.String()))
 				}
 			}
 		}
@@ -1510,22 +1510,22 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 
 	for _, s := range g.SyntheticNodes {
 		for n := range s.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 		}
 		if !outEdgesOnly {
 			for n := range s.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 			}
 		}
 	}
 
 	for _, s := range g.BoundLabelNodes {
 		for n := range s.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 		}
 		if !outEdgesOnly {
 			for n := range s.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 			}
 		}
 	}
@@ -1533,11 +1533,11 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	for _, group := range g.AccessGlobalNodes {
 		for _, s := range group {
 			for n := range s.Out() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 			}
 			if !outEdgesOnly {
 				for n := range s.In() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 				}
 			}
 		}
@@ -1713,7 +1713,7 @@ func (a *CallNode) FullString() string {
 }
 
 // escape escapes the inner quotes in s so the graphviz output renders correctly.
-func escape(s string) string {
+func escapeString(s string) string {
 	b := make([]rune, 0, len(s))
 	for i, c := range s {
 		if !(i == 0 || // ignore starting "

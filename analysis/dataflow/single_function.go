@@ -46,10 +46,21 @@ type SingleFunctionResult struct {
 }
 
 // SingleFunctionAnalysis is the main entry point of the intra procedural analysis.
-func SingleFunctionAnalysis(state *AnalyzerState, function *ssa.Function, buildSummary bool, id uint32,
+func SingleFunctionAnalysis(state *AnalyzerState,
+	function *ssa.Function,
+	buildSummary bool,
+	id uint32,
 	shouldTrack func(*config.Config, ssa.Node) bool,
 	postBlockCallback func(*IntraAnalysisState)) (SingleFunctionResult, error) {
-	sm := NewSummaryGraph(function, id)
+	var sm *SummaryGraph
+	existingSummary := state.FlowGraph.Summaries[function]
+
+	if existingSummary == nil {
+		sm = NewSummaryGraph(function, id)
+	} else {
+		sm = existingSummary
+	}
+
 	flowInfo := NewFlowInfo(state.Config, function)
 	// The function should have at least one instruction!
 	if len(function.Blocks) == 0 || len(function.Blocks[0].Instrs) == 0 {
@@ -72,6 +83,7 @@ func SingleFunctionAnalysis(state *AnalyzerState, function *ssa.Function, buildS
 func run(a *AnalyzerState, flowInfo *FlowInformation, sm *SummaryGraph,
 	shouldTrack func(*config.Config, ssa.Node) bool,
 	postBlockCallback func(*IntraAnalysisState)) error {
+	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{
 		flowInfo:            flowInfo,
 		parentAnalyzerState: a,
@@ -330,7 +342,8 @@ func (state *IntraAnalysisState) checkFlow(source Mark, dest ssa.Instruction, de
 	}
 }
 
-func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruction, dest ssa.Instruction) ConditionInfo {
+func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruction,
+	dest ssa.Instruction) ConditionInfo {
 	var i, j int
 	for k, instr := range source.Block().Instrs {
 		if instr == source {
