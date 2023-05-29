@@ -155,7 +155,8 @@ type singleFunctionJob struct {
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
 	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
-	job.analyzerState.Logger.Printf("Analyzing Pkg: %s | Func: %s ...", lang.PackageNameFromFunction(job.function), job.function.Name())
+	job.analyzerState.Logger.Printf("Analyzing Pkg: %s | Func: %s ...",
+		lang.PackageNameFromFunction(job.function), job.function.Name())
 	result, err := dataflow.SingleFunctionAnalysis(job.analyzerState, job.function,
 		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
 	if err != nil {

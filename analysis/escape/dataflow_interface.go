@@ -19,13 +19,13 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Implemenations for the EscapeAnalysisState of the dataflow package
+// Implementations for the EscapeAnalysisState of the dataflow package
 
-func (e *ProgramAnalysisState) IsEscapeAnalysisState() bool { return true }
+func (p *ProgramAnalysisState) IsEscapeAnalysisState() bool { return true }
 
-func (e *ProgramAnalysisState) InitialGraphs() map[*ssa.Function]dataflow.EscapeGraph {
+func (p *ProgramAnalysisState) InitialGraphs() map[*ssa.Function]dataflow.EscapeGraph {
 	m := map[*ssa.Function]dataflow.EscapeGraph{}
-	for f, s := range e.summaries {
+	for f, s := range p.summaries {
 		m[f] = s.initialGraph
 	}
 	return m
@@ -53,8 +53,12 @@ func (g *EscapeGraph) ComputeInstructionLocality(prog dataflow.EscapeAnalysisSta
 // A particular call instruction can have multiple callee functions; a possible `g` must be supplied.
 func (g *EscapeGraph) ComputeCallsiteGraph(prog dataflow.EscapeAnalysisState, caller *ssa.Function, call *ssa.Call,
 	callee *ssa.Function) dataflow.EscapeGraph {
-	panic("unimplemented")
-	//return ComputeArbitraryCallerGraph(callee, prog)
+	//panic("unimplemented")
+	p, ok := prog.(*ProgramAnalysisState)
+	if !ok {
+		panic("You should not have implemented the EscapeAnalysisState interface for another type.")
+	}
+	return ComputeArbitraryCallerGraph(callee, p)
 	// TODO: actually compute this
 	// Step 1: Run the normal convergence loop with the given context escape graph.
 	// Step 2: read off the escape graph at the point just before the call
@@ -65,12 +69,7 @@ func (g *EscapeGraph) ComputeCallsiteGraph(prog dataflow.EscapeAnalysisState, ca
 // has no known caller or it can't be precisely determined. Use of this function may result in significantly fewer
 // "local" values than using precise information from ComputeCallsiteGraph.
 // (This graph is actually already computed; this function merely copies it.)
-func (g *EscapeGraph) ComputeArbitraryCallerGraph(prog dataflow.EscapeAnalysisState,
-	f *ssa.Function) dataflow.EscapeGraph {
-	p, ok := prog.(*ProgramAnalysisState)
-	if !ok {
-		panic("You should not have implemented the EscapeAnalysisState interface for another type.")
-	}
+func (p *ProgramAnalysisState) ComputeArbitraryCallerGraph(f *ssa.Function) dataflow.EscapeGraph {
 	return p.summaries[f].initialGraph.Clone()
 }
 
@@ -86,4 +85,15 @@ func (g *EscapeGraph) IMerge(g2 dataflow.EscapeGraph) {
 		panic("You should not have implemented the EscapeGraph interface for another type.")
 	}
 	g.Merge(g2p)
+}
+
+// InitializeEscapeAnalysisState initializes the escape analysis' state inside the dataflow state
+// Returns an error if an error is encountered during the escape analysis.
+func InitializeEscapeAnalysisState(state *dataflow.AnalyzerState) error {
+	eaState, err := EscapeAnalysis(state, state.PointerAnalysis.CallGraph.Root)
+	if err != nil {
+		return err
+	}
+	state.EscapeAnalysisState = eaState
+	return nil
 }

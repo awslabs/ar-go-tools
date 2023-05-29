@@ -16,18 +16,22 @@ package dataflow
 
 import "golang.org/x/tools/go/ssa"
 
+// The interfaces declared in this file allow us to build analyses that depend on the dataflow analyses but that may
+// also be used by the dataflow analysis themselves. Such analyses should be run by clients of the AnalyzerState, and
+// functions in the dataflow analysis package can optionally use the results.
+
 // EscapeAnalysisState defines a lightweight interface to allow the dataflow AnalyzerState to store the escape analysis
 // state.
 type EscapeAnalysisState interface {
 	IsEscapeAnalysisState() bool
 	InitialGraphs() map[*ssa.Function]EscapeGraph
+	ComputeArbitraryCallerGraph(f *ssa.Function) EscapeGraph
 }
 
 type EscapeGraph interface {
 	ComputeInstructionLocality(prog EscapeAnalysisState, f *ssa.Function) map[ssa.Instruction]bool
 	ComputeCallsiteGraph(prog EscapeAnalysisState,
 		caller *ssa.Function, call *ssa.Call, callee *ssa.Function) EscapeGraph
-	ComputeArbitraryCallerGraph(prog EscapeAnalysisState, f *ssa.Function) EscapeGraph
 	IMerge(EscapeGraph)
 	IClone() EscapeGraph
 }

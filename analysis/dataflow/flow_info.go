@@ -77,6 +77,7 @@ func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, s Mark) boo
 // AddMark adds a mark to the tracking info structure and returns a boolean
 // if new information has been inserted.
 func (fi *FlowInformation) AddMark(i ssa.Instruction, v ssa.Value, s Mark) bool {
+
 	if vMarks, ok := fi.MarkedValues[i][v]; ok {
 		if vMarks[s] {
 			return false

@@ -1609,8 +1609,7 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 
 // This just prints the escape summary for each function in the callgraph.
 // This interface will change substaintially when intraprocedural analysis is finalized.
-func EscapeAnalysis(state *dataflow.AnalyzerState,
-	root *callgraph.Node) (*ProgramAnalysisState, error) {
+func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
 		verbose:     state.Config.Verbose,

@@ -18,6 +18,27 @@ import (
 	"strings"
 )
 
+// KeyType is a value type to represents keys
+type KeyType = string
+
+// NodeWithTrace represents a GraphNode with two traces, a Trace for the call stack at the node and a ClosureTrace for
+// the stack of makeClosure instructions at the node
+type NodeWithTrace struct {
+	Node         GraphNode
+	Trace        *NodeTree[*CallNode]
+	ClosureTrace *NodeTree[*ClosureNode]
+}
+
+// Key generates an object of type KeyType whose *value* identifies the value of g uniquely.
+// If two NodeWithTrace objects represent the same node with the same call and closure traces, the Key() method
+// will return the same value
+func (g NodeWithTrace) Key() KeyType {
+	s := g.Node.LongID() + "!" + g.Trace.Key() + "!" + g.ClosureTrace.Key()
+	return s
+}
+
+type CallStack = NodeTree[*CallNode]
+
 // NodeTree is a data structure to represent node trees built during the traversal of the interprocedural data flow
 // graph.
 type NodeTree[T GraphNode] struct {

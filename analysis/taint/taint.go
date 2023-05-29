@@ -21,6 +21,7 @@ import (
 	"github.com/awslabs/argot/analysis"
 	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/argot/analysis/escape"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -61,6 +62,11 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	state, err := dataflow.NewInitializedAnalyzerState(logger, cfg, prog)
 	if err != nil {
 		return AnalysisResult{}, err
+	}
+
+	// Optional step: running the escape analysis
+	if cfg.UseEscapeAnalysis {
+		escape.InitializeEscapeAnalysisState(state)
 	}
 
 	// ** Second step **

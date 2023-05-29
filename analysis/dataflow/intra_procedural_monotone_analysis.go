@@ -229,7 +229,6 @@ func transfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.
 			newOrigin = NewMark(origin.Node, origin.Type, origin.RegionPath, origin.Qualifier, index)
 		}
 		t.markValue(loc, out, newOrigin)
-		t.checkCopyIntoArgs(newOrigin, out)
 		t.checkFlowIntoGlobal(loc, newOrigin, out)
 	}
 }
@@ -371,10 +370,11 @@ func (state *IntraAnalysisState) markAllAliases(i ssa.Instruction, mark Mark, pt
 
 	// Iterate over all values in the function, scanning for aliases of ptr, and mark the values that match
 	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
-		if ptr2, ptrExists := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[value]; ptrExists && ptr2.MayAlias(ptr) {
+		ptrAnalysis := state.parentAnalyzerState.PointerAnalysis
+		if ptr2, ptrExists := ptrAnalysis.IndirectQueries[value]; ptrExists && ptr2.MayAlias(ptr) {
 			state.markValue(i, value, mark)
 		}
-		if ptr2, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[value]; ptrExists && ptr2.MayAlias(ptr) {
+		if ptr2, ptrExists := ptrAnalysis.Queries[value]; ptrExists && ptr2.MayAlias(ptr) {
 			state.markValue(i, value, mark)
 		}
 	})

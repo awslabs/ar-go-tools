@@ -85,6 +85,9 @@ type Config struct {
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
 
+	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
+	UseEscapeAnalysis bool
+
 	// SkipInterprocedural can be set to true to skip the interprocedural (cross-function analysis) step
 	SkipInterprocedural bool
 
@@ -242,7 +245,7 @@ func (c Config) MatchPkgFilter(pkgname string) bool {
 	} else if c.PkgFilter != "" {
 		return strings.HasPrefix(pkgname, c.PkgFilter)
 	} else {
-		return false
+		return true
 	}
 }
 
@@ -253,7 +256,7 @@ func (c Config) MatchCoverageFilter(filename string) bool {
 	} else if c.CoverageFilter != "" {
 		return strings.HasPrefix(filename, c.CoverageFilter)
 	} else {
-		return false
+		return true
 	}
 }
 

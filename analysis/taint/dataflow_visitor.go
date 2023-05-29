@@ -28,15 +28,49 @@ import (
 // Visitor represents a taint flow Visitor that tracks taint flows from sources to sinks.
 // It implements the [pkg/Github.Com/Awslabs/Argot/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
+	roots          map[*df.CallStack]bool
+	visited        map[*df.CallStack]bool
+	escapeGraphs   map[*ssa.Function]map[*df.CallStack]df.EscapeGraph
 	taints         TaintFlows
 	coverageWriter io.StringWriter
+}
+
+func (v *Visitor) ComputeEscapeGraph(c *df.AnalyzerState, context *df.CallStack,
+	caller *ssa.Function, callee *ssa.Function) {
+	var escapeContext df.EscapeGraph
+
+	if callee == nil {
+		return
+	}
+
+	if v.escapeGraphs[callee] == nil {
+		v.escapeGraphs[callee] = map[*df.CallStack]df.EscapeGraph{}
+	}
+
+	if context != nil && caller != nil {
+		escapeContext = v.escapeGraphs[caller][context.Parent]
+	}
+
+	if escapeContext == nil {
+		v.escapeGraphs[callee][context] = c.EscapeAnalysisState.ComputeArbitraryCallerGraph(callee)
+	} else {
+		escapeInContext := escapeContext.ComputeCallsiteGraph(
+			c.EscapeAnalysisState, caller, context.Label.CallSite().Value(), callee)
+		v.escapeGraphs[callee][context] = escapeInContext
+	}
 }
 
 // NewVisitor returns a Visitor that can be used with
 // [pkg/github.com/awslabs/argot/analysis/dataflow.CrossFunctionPass] to run the taint analysis
 // independently from the  [Analyze] function
 func NewVisitor(coverageWriter io.StringWriter) *Visitor {
-	return &Visitor{taints: make(TaintFlows), coverageWriter: coverageWriter}
+	return &Visitor{
+		taints:         make(TaintFlows),
+		coverageWriter: coverageWriter,
+		roots:          map[*df.CallStack]bool{},
+		visited:        map[*df.CallStack]bool{},
+		escapeGraphs:   map[*ssa.Function]map[*df.NodeTree[*df.CallNode]]df.EscapeGraph{},
+	}
 }
 
 // Visit runs a cross-function analysis to add any detected taint flow from source to a sink. This implements the
@@ -46,6 +80,10 @@ func (v *Visitor) Visit(c *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	seen := make(map[df.KeyType]bool)
 	goroutines := make(map[*ssa.Go]bool)
 	source := entrypoint
+	v.roots[entrypoint.Trace] = true
+	if c.Config.UseEscapeAnalysis {
+		v.ComputeEscapeGraph(c, entrypoint.Trace, nil, entrypoint.Node.Graph().Parent)
+	}
 	que := []*df.VisitorNode{{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}}
 
 	logger := c.Logger
@@ -62,6 +100,22 @@ func (v *Visitor) Visit(c *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 		que = que[1:]
 		// Report coverage information for the current node
 		addCoverage(c, elt, coverage)
+
+		// TODO: for now, all instructions are scanned for "locality" but only those on the data flow path
+		// should be scanned
+		if c.Config.UseEscapeAnalysis {
+			f := elt.Node.Graph().Parent
+			egraph := v.escapeGraphs[f][elt.Trace]
+			if egraph != nil {
+				imap := egraph.ComputeInstructionLocality(c.EscapeAnalysisState, f)
+				for instr, local := range imap {
+					if !local {
+						fmt.Printf("Instruction %s in %s is not local!\n", instr, f)
+					}
+				}
+
+			}
+		}
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(elt.Node, c.Config) {
@@ -166,11 +220,20 @@ func (v *Visitor) Visit(c *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				analysisutil.PrintWarningSummaryNotConstructed(c, callSite)
 			}
 
+			// Computing context-sensitive information for othe analyses
+
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
 			if param != nil {
+				// This is where a function gets "called" and the next nodes will be analyzed in a different context
 				x := callSite.CalleeSummary.Params[param]
-				que = addNext(c, que, seen, elt, x, df.ObjectPath{}, elt.Trace.Add(callSite), elt.ClosureTrace)
+
+				newCallStack := elt.Trace.Add(callSite)
+				v.visited[newCallStack] = true
+				if c.Config.UseEscapeAnalysis {
+					v.ComputeEscapeGraph(c, newCallStack, graphNode.Graph().Parent, callSite.Callee())
+				}
+				que = addNext(c, que, seen, elt, x, df.ObjectPath{}, newCallStack, elt.ClosureTrace)
 			} else {
 				c.AddError(
 					fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
