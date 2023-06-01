@@ -25,6 +25,7 @@ The Automated Reasoning GO Tools (Argot) is a program analysis tool set, which a
 
 The following tools are included in Argot:
 - the `taint` tool allows you to perform taint analysis in your program (see [Taint Analysis](taint.md))
+- the `backtrace` tool allows you to find all the backwards data flows from a function call (see [Backtrace Analysis](backtrace.md))
 - the `argot-cli` is an interactive analysis tool, which lets the user run multiple analyses on the program and inspect various levels of debugging information (see [Argot CLI](argot-cli.md)). This tool is intended for the advanced user who understands the underlying program representations more in detail.
 - the `compare` tool, which can be used to compare the results of different reachability analyses together, on different platforms. This is useful for the user who wants to make sure the results given by some of the analyses are consistent with their assumptions, or the user that is trying to eliminate unneeded functions or dependencies.
 - the `defer` tool runs an analysis that computes the possible deferred functions that can run at each return point of a function.
