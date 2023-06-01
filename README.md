@@ -8,6 +8,7 @@
 
 Argot is a collection of tools:
 - `argot-cli` is a terminal-like interface for various part of the analysis (in `cmd/cli`)
+- `backtrace` identifies backwards data-flow traces from function calls
 - `compare` prints a comparison of the functions that are reachable according to two different analyses, and the
 functions that appear in the binary,
 - `dependencies` prints the dependencies of a given program,
@@ -61,6 +62,8 @@ At any point you can rebuild the program by using `rebuild` and reload the confi
 particularly useful if you want to modify source and sink definitions without having to reload the program and run the
 analyses.
 
+#### Backtrace
+See [doc/backtrace.md](doc/backtrace.md) for detailed documentation of this tool.
 
 #### Compare
 You can compare the set of reachable functions according to a reachability analysis use in Argot, a reachability
@@ -129,6 +132,8 @@ You can try running:
 Which will run the analysis without searching for sources and sinks but will build all the data flow summaries it would
 need to perform the taint analysis.
 
+See [doc/taint.md](doc/taint.md) for detailed documentation of this tool.
+
 #### Taint Analysis Config File
 The taint analysis uses a config file that contains the definition of the sinks and sources to be considered, as well
 as various configuration options. Several examples are in the `testdata` examples.
@@ -186,6 +191,7 @@ The test data is in the `testdata` folder. All the Go source files used in the t
 The library code, and most of the analysis implementations, is in the `analysis` folder. The main entry points are in
 the `load_progam.go` file for loading progam and `analyzers.go` to call analyzers. The rest is organized in subfolders:
 - `astfuncs` contains functions for manipulating the Go AST,
+- `backtrace` implements the "backtrace" analysis,
 - `closures` contains analysis code specific to closures in Go,
 - `concurrency` contains the concurrency analyses,
 - `config` implements the config file system that is shared by all analyses,
