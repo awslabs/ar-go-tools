@@ -62,3 +62,7 @@ func (g *GlobalNode) Type() types.Type {
 	}
 	return g.value.Type()
 }
+
+func (g *GlobalNode) Value() ssa.Value {
+	return g.value
+}

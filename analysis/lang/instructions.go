@@ -191,3 +191,79 @@ func InstrMethodKey(instr ssa.CallInstruction) Optional[string] {
 
 	return None[string]()
 }
+
+// FnReadsFrom returns true if an instruction in fn reads from val.
+func FnReadsFrom(fn *ssa.Function, val ssa.Value) bool {
+	for _, blk := range fn.Blocks {
+		for _, instr := range blk.Instrs {
+			switch instr := instr.(type) {
+			case *ssa.UnOp:
+				if instr.X == val {
+					return true
+				}
+			case *ssa.BinOp:
+				if instr.X == val || instr.Y == val {
+					return true
+				}
+			case *ssa.Store:
+				// Special store
+				switch addr := instr.Addr.(type) {
+				case *ssa.FieldAddr:
+					if addr.X == val {
+						return true
+					}
+				}
+
+				if instr.Val == val {
+					return true
+				}
+			case *ssa.MapUpdate:
+				if instr.Value == val {
+					return true
+				}
+			case *ssa.Send:
+				if instr.X == val {
+					return true
+				}
+			case *ssa.Field:
+				if instr.X == val {
+					return true
+				}
+			case *ssa.FieldAddr:
+				if instr.X == val {
+					return true
+				}
+			case *ssa.Convert:
+				if instr.X == val {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// FnWritesTo returns true if an instruction in fn writes to val.
+func FnWritesTo(fn *ssa.Function, val ssa.Value) bool {
+	for _, blk := range fn.Blocks {
+		for _, instr := range blk.Instrs {
+			switch instr := instr.(type) {
+			case *ssa.Store:
+				if instr.Addr == val {
+					return true
+				}
+			case *ssa.MapUpdate:
+				if instr.Map == val {
+					return true
+				}
+			case *ssa.Send:
+				if instr.Chan == val {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}

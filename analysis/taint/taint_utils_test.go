@@ -180,6 +180,33 @@ func runTest(t *testing.T, dirName string, files []string) {
 	os.RemoveAll(cfg.ReportsDir)
 }
 
+// runTestSummarizeOnDemand runs a test instance by building the program from all the files in files plus a file "main.go", relative
+// to the directory dirName and enables the SummarizeOnDemand configuration option.
+func runTestSummarizeOnDemand(t *testing.T, dirName string, files []string) {
+	// Change directory to the testdata folder to be able to load packages
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/taint", dirName)
+	err := os.Chdir(dir)
+	if err != nil {
+		panic(err)
+	}
+
+	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder so we can
+	// load an entire module with subpackages
+	program, cfg := testutils.LoadTest(t, ".", files)
+	cfg.SummarizeOnDemand = true
+
+	result, err := Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+	if err != nil {
+		t.Fatalf("taint analysis returned error %v", err)
+	}
+
+	expected := getExpectedSourceToSink(dir, ".")
+	checkExpectedPositions(t, program, result.TaintFlows, expected)
+	// Remove reports - comment if you want to inspect
+	os.RemoveAll(cfg.ReportsDir)
+}
+
 func TestAll(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/basic")

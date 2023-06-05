@@ -304,6 +304,9 @@ func (c *AnalyzerState) IsReachableFunction(f *ssa.Function) bool {
 		return c.reachableFunctions[f]
 	}
 	// If no reachability information has been computed, assume every function is reachable
+	if c.Config.Verbose {
+		c.Logger.Printf("No reachability information has been computed")
+	}
 	return true
 }
 
