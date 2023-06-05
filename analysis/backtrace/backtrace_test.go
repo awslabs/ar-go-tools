@@ -16,9 +16,11 @@ package backtrace_test
 
 import (
 	"fmt"
+	"go/token"
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -26,7 +28,8 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/analysis/taint"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -35,7 +38,7 @@ func TestAnalyze(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
-	program, cfg := testutils.LoadTest(t, dir, []string{})
+	program, cfg := analysistest.LoadTest(t, dir, []string{})
 	defer os.Remove(cfg.ReportsDir)
 
 	testAnalyze(t, cfg, program)
@@ -59,7 +62,7 @@ func TestAnalyze_OnDemand(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
-	program, cfg := testutils.LoadTest(t, dir, []string{})
+	program, cfg := analysistest.LoadTest(t, dir, []string{})
 	defer os.Remove(cfg.ReportsDir)
 
 	cfg.SummarizeOnDemand = true
@@ -334,7 +337,7 @@ func TestAnalyze_Closures(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
-	program, cfg := testutils.LoadTest(t, dir, []string{"helpers.go"})
+	program, cfg := analysistest.LoadTest(t, dir, []string{"helpers.go"})
 	defer os.Remove(cfg.ReportsDir)
 
 	testAnalyzeClosures(t, cfg, program)
@@ -345,7 +348,7 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
-	program, cfg := testutils.LoadTest(t, dir, []string{"helpers.go"})
+	program, cfg := analysistest.LoadTest(t, dir, []string{"helpers.go"})
 	defer os.Remove(cfg.ReportsDir)
 
 	cfg.SummarizeOnDemand = true
@@ -482,6 +485,201 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 				t.Error("no match")
 			}
 		})
+	}
+}
+
+func TestAnalyze_Taint(t *testing.T) {
+	tests := []struct {
+		name  string
+		files []string
+	}{
+		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go", "sanitizers.go"}},
+		{"builtins", []string{"helpers.go"}},
+		{"interfaces", []string{}},
+		{"parameters", []string{}},
+		{"example1", []string{}},
+	}
+
+	skip := map[string]bool{
+		"fields.go":     true,
+		"sanitizers.go": true,
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			// Change directory to the testdata folder to be able to load packages
+			_, filename, _, _ := runtime.Caller(0)
+			dir := path.Join(path.Dir(filename), "../../testdata/src/taint", test.name)
+			if err := os.Chdir(dir); err != nil {
+				t.Fatal(err)
+			}
+
+			expected := analysistest.GetExpectedSourceToSink(dir, ".")
+			if len(expected) == 0 {
+				t.Fatal("expected sources and sinks to be present")
+			}
+
+			program, cfg := analysistest.LoadTest(t, dir, test.files)
+			defer os.Remove(cfg.ReportsDir)
+
+			cfg.BacktracePoints = cfg.Sinks
+			cfg.SummarizeOnDemand = true
+			res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			t.Log("TRACES:")
+			for _, trace := range res.Traces {
+				t.Log(trace)
+			}
+
+			reached := reachedSinkPositions(program, cfg, res.Traces)
+			if len(reached) == 0 {
+				t.Fatal("expected reached sink positions to be present")
+			}
+
+			for sink, sources := range reached {
+				t.Logf("sink: %v -> sources: %v", sink, sources)
+			}
+
+			seen := make(map[analysistest.LPos]map[analysistest.LPos]bool)
+			for sink, sources := range reached {
+				for source := range sources {
+					if skip[filepath.Base(source.Filename)] || skip[filepath.Base(sink.Filename)] {
+						continue
+					}
+
+					posSink := analysistest.RemoveColumn(sink)
+					if _, ok := seen[posSink]; !ok {
+						seen[posSink] = map[analysistest.LPos]bool{}
+					}
+					posSource := analysistest.RemoveColumn(source)
+					if _, ok := expected[posSink]; ok && expected[posSink][posSource] {
+						seen[posSink][posSource] = true
+					} else {
+						t.Errorf("ERROR in main.go: false positive:\n\t%s\n flows to\n\t%s\n", posSource, posSink)
+					}
+				}
+			}
+
+			for sinkLine, sources := range expected {
+				for sourceLine := range sources {
+					if skip[filepath.Base(sourceLine.Filename)] || skip[filepath.Base(sinkLine.Filename)] {
+						continue
+					}
+
+					if !seen[sinkLine][sourceLine] {
+						// Remaining entries have not been detected!
+						t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
+					}
+				}
+			}
+
+			//for sinkLine, sources := range expected {
+			//	for sourceLine := range sources {
+			//		if skip[filepath.Base(sourceLine.Filename)] || skip[filepath.Base(sinkLine.Filename)] {
+			//			continue
+			//		}
+			//
+			//		if !funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
+			//			// the source should exist in the trace
+			//			hasSource := funcutil.Exists(trace, func(node backtrace.TraceNode) bool {
+			//				return node.Pos.Line == sourceLine.Line
+			//			})
+			//
+			//			// last node of trace should be the sink
+			//			gotSink := trace[len(trace)-1]
+			//			return hasSource && sinkLine.Line == gotSink.Pos.Line
+			//		}) {
+			//			t.Errorf("no match for source: %v -> sink: %v", sourceLine, sinkLine)
+			//		}
+			//	}
+			//}
+		})
+	}
+}
+
+// reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
+// where the map associates sink positions to sets of source positions that reach it.
+func reachedSinkPositions(prog *ssa.Program, cfg *config.Config, traces []backtrace.Trace) map[token.Position]map[token.Position]bool {
+	positions := make(map[token.Position]map[token.Position]bool)
+	for _, trace := range traces {
+		// sink is always the last node in the trace because it's the analysis entrypoint
+		sink := trace[len(trace)-1]
+		si := sinkInstr(sink.GraphNode)
+		sinkPos := si.Pos()
+		sinkFile := prog.Fset.File(sinkPos)
+		if sinkPos == token.NoPos || sinkFile == nil {
+			continue
+		}
+
+		sinkP := sinkFile.Position(sinkPos)
+		if _, ok := positions[sinkP]; !ok {
+			positions[sinkP] = map[token.Position]bool{}
+		}
+
+		for _, node := range trace {
+			if strings.Contains(node.GraphNode.String(), "invoke stringProducer.source() in fetchAndPut") {
+				fmt.Println()
+			}
+			instr, ok := sourceInstr(node.GraphNode)
+			if !ok {
+				continue
+			}
+
+			sn := sourceNode(node.GraphNode)
+			if taint.IsSourceNode(cfg, sn) {
+				sourcePos := instr.Pos()
+				sourceFile := prog.Fset.File(sourcePos)
+				if sourcePos == token.NoPos || sourceFile == nil {
+					continue
+				}
+
+				sourceP := sourceFile.Position(sourcePos)
+				positions[sinkP][sourceP] = true
+			}
+		}
+	}
+
+	return positions
+}
+
+func sourceInstr(source dataflow.GraphNode) (ssa.Instruction, bool) {
+	switch node := source.(type) {
+	case *dataflow.CallNode:
+		return node.CallSite(), true
+	case *dataflow.CallNodeArg:
+		return node.ParentNode().CallSite(), true
+	case *dataflow.SyntheticNode:
+		return node.Instr(), true
+	default:
+		return nil, false
+	}
+}
+
+func sourceNode(source dataflow.GraphNode) ssa.Node {
+	switch node := source.(type) {
+	case *dataflow.CallNode:
+		return node.CallSite().Value()
+	case *dataflow.CallNodeArg:
+		return node.ParentNode().CallSite().Value()
+	case *dataflow.SyntheticNode:
+		return node.Instr().(ssa.Node)
+	default:
+		panic(fmt.Errorf("invalid source: %T", source))
+	}
+}
+
+func sinkInstr(sink dataflow.GraphNode) ssa.Instruction {
+	switch node := sink.(type) {
+	case *dataflow.CallNode:
+		return node.CallSite()
+	case *dataflow.CallNodeArg:
+		return node.ParentNode().CallSite()
+	default:
+		panic(fmt.Errorf("invalid sink node: %T", sink))
 	}
 }
 

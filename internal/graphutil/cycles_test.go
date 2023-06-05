@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/graphutil"
 	"github.com/yourbasic/graph"
@@ -42,7 +42,7 @@ func TestFindAllElementaryCycles(t *testing.T) {
 		panic(err)
 	}
 
-	program, _ := testutils.LoadTest(t, ".", []string{})
+	program, _ := analysistest.LoadTest(t, ".", []string{})
 
 	pCfg := &pointer.Config{
 		Mains:           ssautil.MainPackages(program.AllPackages()),

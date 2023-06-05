@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
@@ -36,7 +36,7 @@ func loadConcurrencyTestResult(t *testing.T, subDir string) AnalysisResult {
 		panic(err)
 	}
 
-	program, cfg := testutils.LoadTest(t, ".", []string{})
+	program, cfg := analysistest.LoadTest(t, ".", []string{})
 	ar, err := Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)

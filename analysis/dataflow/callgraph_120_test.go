@@ -22,14 +22,14 @@ import (
 	"testing"
 
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
 
 func TestComputeMethodImplementationsGo120(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callgraph")
-	program, _ := testutils.LoadTest(t, dir, []string{})
+	program, _ := analysistest.LoadTest(t, dir, []string{})
 	implementations := map[string]map[*ssa.Function]bool{}
 	contracts := map[string]*df.SummaryGraph{}
 	keys := map[string]string{}

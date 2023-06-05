@@ -203,6 +203,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			v.Traces = append(v.Traces, t)
 			if s.Config.Verbose {
 				logger.Println("Base case reached...")
+				logger.Printf("Adding trace: %v\n", t)
 			}
 			continue
 		}
@@ -329,6 +330,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
 			// Data flows backwards from the argument to the corresponding parameter
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
+			stackLen := len(stack)
 			if param != nil {
 				x := callSite.CalleeSummary.Params[param]
 				stack = addNext(s, stack, seen, elt, x, elt.Trace.Add(callSite), elt.ClosureTrace)
@@ -336,6 +338,16 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				s.AddError(
 					fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
 					fmt.Errorf("position %d", graphNode.Index()))
+			}
+
+			// Arg base case:
+			if stackLen == len(stack) && len(graphNode.In()) == 0 {
+				t := findTrace(elt)
+				v.Traces = append(v.Traces, t)
+				if s.Config.Verbose {
+					logger.Println("CallNodeArg base case reached...")
+					logger.Printf("Adding trace: %v\n", t)
+				}
 			}
 
 			// We pop the call from the trace (callstack) when exiting the callee and returning to the caller
@@ -504,11 +516,13 @@ func isBaseCase(node df.GraphNode) bool {
 		if global, ok := node.(*df.AccessGlobalNode); ok {
 			return (global.IsWrite && len(global.In()) > 0) || (!global.IsWrite && len(global.Global.WriteLocations) > 0)
 		}
-		_, isParam := node.(*df.ParamNode)       // param should not have intra-procedural incoming edges
-		_, isCall := node.(*df.CallNode)         // call may have inter-procedural edges
+		_, isParam := node.(*df.ParamNode)     // param should not have intra-procedural incoming edges
+		_, isCall := node.(*df.CallNode)       // call may have inter-procedural edges
+		_, isCallArg := node.(*df.CallNodeArg) // call argument may have inter-procedural edges
+		hasIntraIncomingEdges = hasIntraIncomingEdges && !isCallArg
 		_, isClosure := node.(*df.ClosureNode)   // closure data flows backwards to its bound variables
 		_, isBoundVar := node.(*df.BoundVarNode) // bound variables may flow to free variables
-		return isParam || isCall || isClosure || isBoundVar
+		return isParam || isCall || isCallArg || isClosure || isBoundVar
 	}(node)
 
 	return !hasIntraIncomingEdges && !canHaveInterIncomingEdges
