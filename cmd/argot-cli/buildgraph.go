@@ -15,8 +15,10 @@
 package main
 
 import (
+	"github.com/awslabs/argot/analysis/config"
 	"github.com/awslabs/argot/analysis/dataflow"
 	"golang.org/x/term"
+	"golang.org/x/tools/go/ssa"
 )
 
 // cmdBuildGraph builds the cross-function flow graph given the current summaries
@@ -32,7 +34,7 @@ func cmdBuildGraph(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool
 		WriteErr(tt, "No summaries present. Did you run `summarize`?")
 		return false
 	}
-	c.FlowGraph.BuildGraph()
+	c.FlowGraph.BuildGraph(func(c *config.Config, n ssa.Node) bool { return true })
 	WriteSuccess(tt, "Built cross function flow graph.")
 	return false
 }

@@ -96,6 +96,9 @@ type Config struct {
 	// the reports directory
 	ReportSummaries bool
 
+	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
+	SummarizeOnDemand bool
+
 	// ReportPaths specifies whether the taint flows should be reported in separate files. For each taint flow, a new
 	// file named taint-*.out will be generated with the trace from source to sink
 	ReportPaths bool

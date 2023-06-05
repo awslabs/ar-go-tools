@@ -16,6 +16,7 @@ package funcutil
 
 import (
 	"sort"
+	"sync"
 
 	"golang.org/x/exp/constraints"
 )
@@ -56,6 +57,45 @@ func Map[T any, S any](a []T, f func(T) S) []S {
 		b = append(b, f(x))
 	}
 	return b
+}
+
+// MapParallel is a parallel version of Map using numRoutines goroutines.
+func MapParallel[T any, S any](a []T, f func(T) S, numRoutines int) []S {
+	in := make(chan T)
+	go func() {
+		defer close(in)
+		for _, x := range a {
+			in <- x
+		}
+	}()
+
+	out := make(chan S)
+	wg := &sync.WaitGroup{}
+	if numRoutines <= 0 {
+		numRoutines = 1
+	}
+
+	wg.Add(numRoutines)
+	for i := 0; i < numRoutines; i++ {
+		go func() {
+			defer wg.Done()
+			for x := range in {
+				out <- f(x)
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+
+	res := make([]S, 0, len(out))
+	for x := range out {
+		res = append(res, x)
+	}
+
+	return res
 }
 
 // Exists returns true when there exists some x in slice a such that f(x), otherwise false.

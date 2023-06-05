@@ -39,7 +39,7 @@ func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerS
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		AnalyzerState: state,
 		Visitor:       CrossFunctionGraphVisitor{},
-		IsEntrypoint:  func(*config.Config, *ssa.Function) bool { return true },
+		IsEntrypoint:  func(*config.Config, ssa.Node) bool { return true },
 	})
 
 	state.Logger.Printf("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())
