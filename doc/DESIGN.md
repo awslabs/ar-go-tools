@@ -28,12 +28,12 @@ The following tools are included in Argot:
 - the `backtrace` tool allows you to find all the backwards data flows from a function call (see [Backtrace Analysis](backtrace.md))
 - the `argot-cli` is an interactive analysis tool, which lets the user run multiple analyses on the program and inspect various levels of debugging information (see [Argot CLI](argot-cli.md)). This tool is intended for the advanced user who understands the underlying program representations more in detail.
 - the `compare` tool, which can be used to compare the results of different reachability analyses together, on different platforms. This is useful for the user who wants to make sure the results given by some of the analyses are consistent with their assumptions, or the user that is trying to eliminate unneeded functions or dependencies.
-- the `defer` tool runs an analysis that computes the possible deferred functions that can run at each return point of a function.
+- the `defer` tool runs an analysis that computes the possible deferred functions that can run at each return point of a function (see [Defer Analysis](defer.md)).
 - the `dependencies` tool scans for the input package's dependencies and returns the list of dependencies along with the count of reachable functions within each dependency.
-- the `maypanic` tool inspects the input packages to find any point in the code that may panic.
+- the `maypanic` tool inspects the input packages to find goroutines with unrecovered panics (see [May Panic Analysis](maypanic.md)).
 - the `packagescan` tool scans the input packages to find usages of specific packages in the code, such as usages of the `unsafe` package.
 - the `reachability` tool inspects the code to find which functions are reachable, and which are not.
-- the `render` tool can be used to render various representations of the code, such as its [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single-assignment_form) form or its callgraph.
+- the `render` tool can be used to render various representations of the code, such as its [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single-assignment_form) form or its callgraph (see [Render Tool](render.md)).
 - the `static-commands` tool analyzes the code to find usages of `os/exec.Command` that are defined statically.
 
 ### Configuration
