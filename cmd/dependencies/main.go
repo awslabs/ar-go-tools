@@ -22,9 +22,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/dependencies"
-	"github.com/awslabs/argot/internal/colors"
+	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/dependencies"
+	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 )

@@ -21,8 +21,8 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/awslabs/argot/internal/funcutil"
-	. "github.com/awslabs/argot/internal/graphutil"
+	. "github.com/awslabs/ar-go-tools/internal/funcutil"
+	. "github.com/awslabs/ar-go-tools/internal/graphutil"
 	cg "golang.org/x/tools/go/callgraph"
 )
 

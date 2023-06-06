@@ -21,8 +21,8 @@ import (
 	"runtime"
 	"testing"
 
-	df "github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/testutils"
+	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/testutils"
 	"golang.org/x/tools/go/ssa"
 )
 

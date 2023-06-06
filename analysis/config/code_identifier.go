@@ -18,7 +18,7 @@ import (
 	"go/types"
 	"regexp"
 
-	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 )
 

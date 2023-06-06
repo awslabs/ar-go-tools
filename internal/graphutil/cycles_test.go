@@ -23,9 +23,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/argot/analysis/testutils"
-	"github.com/awslabs/argot/internal/funcutil"
-	"github.com/awslabs/argot/internal/graphutil"
+	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/internal/graphutil"
 	"github.com/yourbasic/graph"
 	"golang.org/x/exp/slices"
 	"golang.org/x/tools/go/pointer"

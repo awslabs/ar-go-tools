@@ -21,8 +21,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/analysis/reachability"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/reachability"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )

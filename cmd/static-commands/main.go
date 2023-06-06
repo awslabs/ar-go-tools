@@ -15,7 +15,7 @@
 package main
 
 import (
-	staticcommands "github.com/awslabs/argot/analysis/static-commands"
+	staticcommands "github.com/awslabs/ar-go-tools/analysis/static-commands"
 	"golang.org/x/tools/go/analysis/singlechecker"
 )
 

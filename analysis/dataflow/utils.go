@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"go/types"
 
-	"github.com/awslabs/argot/analysis/config"
-	. "github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 

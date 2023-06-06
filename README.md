@@ -94,7 +94,7 @@ same module will be in the same folder. For example, try running:
 ./bin/render --ssaout tmp ./cmd/render/main.go
 ```
 You will find a file called `fmt.ssa` in the folder `tmp` corresponding to the `fmt` package. The folder
-`tmp/github.com/awslabs/argot` will contain the ssa representations of the packages defined in this project.
+`tmp/github.com/awslabs/ar-go-tools` will contain the ssa representations of the packages defined in this project.
 
 If you want to generate the callgraph of a program, run the following:
 ```shell
