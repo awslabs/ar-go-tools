@@ -488,6 +488,10 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 	}
 }
 
+// TestAnalyze_Taint repurposes the taint analysis tests to test the backtrace analysis.
+// The marked @Source and @Sink locations in the test files correspond to expected sources and sinks.
+// These tests check the invariant that for every trace entrypoint (corresponding to the sinks),
+// the expected source must exist somewhere in the trace.
 func TestAnalyze_Taint(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -498,11 +502,19 @@ func TestAnalyze_Taint(t *testing.T) {
 		{"interfaces", []string{}},
 		{"parameters", []string{}},
 		{"example1", []string{}},
+		{"example2", []string{}},
+		{"defers", []string{}},
+		// TODO fix closures
+		{"closures", []string{"helpers.go"}},
+		{"interface-summaries", []string{"helpers.go"}},
+		{"fromlevee", []string{}},
+		{"globals", []string{"helpers.go"}},
+		{"stdlib", []string{"helpers.go"}},
 	}
 
 	skip := map[string]bool{
-		"fields.go":     true,
-		"sanitizers.go": true,
+		"fields.go":     true, // struct fields as backtracepoints are not supported yet
+		"sanitizers.go": true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
 	}
 
 	for _, test := range tests {
@@ -630,7 +642,7 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config, traces []backtr
 			}
 
 			sn := sourceNode(node.GraphNode)
-			if taint.IsSourceNode(cfg, sn) {
+			if isSourceNode(cfg, sn) {
 				sourcePos := instr.Pos()
 				sourceFile := prog.Fset.File(sourcePos)
 				if sourcePos == token.NoPos || sourceFile == nil {
@@ -644,6 +656,29 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config, traces []backtr
 	}
 
 	return positions
+}
+
+func isSourceNode(cfg *config.Config, source ssa.Node) bool {
+	if node, ok := source.(*ssa.Call); ok {
+		if node == nil {
+			return false
+		}
+
+		// most of this logic is from analysisutil.IsEntrypointNode
+		if node.Call.IsInvoke() {
+			receiver := node.Call.Value.Name()
+			methodName := node.Call.Method.Name()
+			calleePkg := dataflow.FindSafeCalleePkg(node.Common())
+			if calleePkg.IsSome() {
+				return config.Config.IsSource(*cfg, config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
+			} else {
+				// HACK this is needed because "invoked" functions sometimes don't have a callee package
+				return config.Config.IsSource(*cfg, config.CodeIdentifier{Package: "command-line-arguments", Method: methodName, Receiver: receiver})
+			}
+		}
+	}
+
+	return taint.IsSourceNode(cfg, source)
 }
 
 func sourceInstr(source dataflow.GraphNode) (ssa.Instruction, bool) {

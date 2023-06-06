@@ -198,7 +198,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		}
 
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
-		if isBaseCase(elt.Node) {
+		if isBaseCase(elt.Node, s.Config) {
 			t := findTrace(elt)
 			v.Traces = append(v.Traces, t)
 			if s.Config.Verbose {
@@ -408,6 +408,9 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				}
 			} else {
 				if s.Config.SummarizeOnDemand {
+					if s.Config.Verbose {
+						logger.Printf("Global %v SSA instruction: %v\n", graphNode, graphNode.Instr())
+					}
 					for f := range s.ReachableFunctions(false, false) {
 						if lang.FnWritesTo(f, graphNode.Global.Value()) {
 							if s.Config.Verbose {
@@ -470,6 +473,17 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						fmt.Errorf("at position %d", graphNode.Index()))
 				}
 			} else {
+				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
+					// Summarize the free variable's closure's parent function
+					f := graphNode.Graph().Parent.Parent()
+					df.BuildSummary(s, f, isSingleFunctionEntrypoint)
+					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
+				}
+
+				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
+					panic(fmt.Errorf("[No Context] no referring make closure nodes from %v", graphNode))
+				}
+
 				// If there is no closure trace, there is no calling context so
 				// flow to every make closure site in the graph
 				for _, makeClosureSite := range graphNode.Graph().ReferringMakeClosures {
@@ -483,7 +497,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 								makeClosureSite.ClosureSummary.Parent.String()),
 							fmt.Errorf("at position %d", graphNode.Index()))
 					}
-
 				}
 			}
 
@@ -510,10 +523,15 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 }
 
 // isBaseCase returns true if the analysis should not analyze node any further.
-func isBaseCase(node df.GraphNode) bool {
+func isBaseCase(node df.GraphNode, cfg *config.Config) bool {
 	hasIntraIncomingEdges := len(node.In()) != 0
 	canHaveInterIncomingEdges := func(node df.GraphNode) bool {
 		if global, ok := node.(*df.AccessGlobalNode); ok {
+			if cfg.SummarizeOnDemand && !global.IsWrite {
+				// with on-demand summarization, global.Global.WriteLocations may not be fully populated
+				// so assume that there are always inter-procedural edges from a global read node
+				return true
+			}
 			return (global.IsWrite && len(global.In()) > 0) || (!global.IsWrite && len(global.Global.WriteLocations) > 0)
 		}
 		_, isParam := node.(*df.ParamNode)     // param should not have intra-procedural incoming edges
@@ -522,7 +540,8 @@ func isBaseCase(node df.GraphNode) bool {
 		hasIntraIncomingEdges = hasIntraIncomingEdges && !isCallArg
 		_, isClosure := node.(*df.ClosureNode)   // closure data flows backwards to its bound variables
 		_, isBoundVar := node.(*df.BoundVarNode) // bound variables may flow to free variables
-		return isParam || isCall || isCallArg || isClosure || isBoundVar
+		_, isFreeVar := node.(*df.FreeVarNode)   // free variables may flow to closure nodes
+		return isParam || isCall || isCallArg || isClosure || isBoundVar || isFreeVar
 	}(node)
 
 	return !hasIntraIncomingEdges && !canHaveInterIncomingEdges
@@ -635,6 +654,10 @@ func singleFunctionSummarizeOnDemand(state *df.AnalyzerState, cfg *config.Config
 			Type:     "",
 			Label:    "",
 		}) {
+
+			if strings.Contains(f.Name(), "$") {
+				entryFuncs = append(entryFuncs, f.Parent())
+			}
 			entryFuncs = append(entryFuncs, f)
 		}
 	}
