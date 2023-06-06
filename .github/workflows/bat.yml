@@ -1,0 +1,45 @@
+on: push
+name: build-analyze-test
+
+env:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.18', '1.19', '1.20' ]
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Setup dependencies
+        run: |
+          go mod download
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run basic analyses
+        run: |
+          go vet ./...
+      - name: Run vulnerability checking on latest
+        run: |
+          govulncheck ./...
+        if: matrix.go-version == '1.20'
+      - name: Build all executables
+        run: |
+          go build -o bin/compare cmd/compare/*.go
+          go build -o bin/defer cmd/defer/*.go
+          go build -o bin/dependencies cmd/dependencies/*.go
+          go build -o bin/maypanic cmd/maypanic/*.go
+          go build -o bin/packagescan cmd/packagescan/*.go
+          go build -o bin/reachability cmd/reachability/*.go
+          go build -o bin/render cmd/render/*.go
+          go build -o bin/static-commands cmd/static-commands/*.go
+          go build -o bin/statistics cmd/statistics/*.go
+          go build -o bin/taint cmd/taint/*.go
+          go build -o bin/argot-cli cmd/argot-cli/*.go
+      - name: Test
+        run: go test -coverprofile=coverage.txt -covermode count ./analysis/...
