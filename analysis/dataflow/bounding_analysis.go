@@ -19,7 +19,7 @@ import (
 	"go/types"
 	"strconv"
 
-	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )

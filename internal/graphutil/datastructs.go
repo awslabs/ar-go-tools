@@ -14,7 +14,7 @@
 
 package graphutil
 
-import "github.com/awslabs/argot/internal/funcutil"
+import "github.com/awslabs/ar-go-tools/internal/funcutil"
 
 type Tree[T any] struct {
 	Parent   *Tree[T]

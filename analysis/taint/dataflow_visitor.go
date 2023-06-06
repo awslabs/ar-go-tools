@@ -19,22 +19,22 @@ import (
 	"io"
 	"strings"
 
-	df "github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/internal/analysisutil"
-	"github.com/awslabs/argot/internal/colors"
+	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/tools/go/ssa"
 )
 
 // Visitor represents a taint flow Visitor that tracks taint flows from sources to sinks.
-// It implements the [pkg/Github.Com/Awslabs/Argot/Analysis/Dataflow.Visitor] interface.
+// It implements the [pkg/github.com/awslabs/ar-go-tools/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
 	taints         TaintFlows
 	coverageWriter io.StringWriter
 }
 
 // NewVisitor returns a Visitor that can be used with
-// [pkg/github.com/awslabs/argot/analysis/dataflow.CrossFunctionPass] to run the taint analysis
+// [pkg/github.com/awslabs/ar-go-tools/analysis/dataflow.CrossFunctionPass] to run the taint analysis
 // independently from the  [Analyze] function
 func NewVisitor(coverageWriter io.StringWriter) *Visitor {
 	return &Visitor{taints: make(TaintFlows), coverageWriter: coverageWriter}

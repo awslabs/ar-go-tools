@@ -22,10 +22,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/backtrace"
-	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/internal/colors"
+	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/backtrace"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/tools/go/ssa"
 )
 

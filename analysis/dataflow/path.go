@@ -18,8 +18,8 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/lang"
-	. "github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 

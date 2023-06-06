@@ -21,7 +21,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"gopkg.in/yaml.v3"
 )
 

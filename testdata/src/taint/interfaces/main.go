@@ -17,7 +17,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/awslabs/argot/testdata/src/taint/interfaces/sub"
+	"github.com/awslabs/ar-go-tools/testdata/src/taint/interfaces/sub"
 )
 
 func main() {

@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/argot/analysis/testutils"
-	. "github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
 func loadConcurrencyTestResult(t *testing.T, subDir string) AnalysisResult {

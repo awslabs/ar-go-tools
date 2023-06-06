@@ -15,7 +15,7 @@
 package main
 
 import (
-	"github.com/awslabs/argot/internal/shims"
+	"github.com/awslabs/ar-go-tools/internal/shims"
 	"github.com/google/shlex"
 )
 

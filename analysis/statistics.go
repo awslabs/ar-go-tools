@@ -19,8 +19,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 )
 

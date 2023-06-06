@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/summaries"
-	"github.com/awslabs/argot/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/testutils"
 	"golang.org/x/tools/go/ssa"
 )
 
