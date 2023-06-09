@@ -20,11 +20,10 @@ package backtrace
 
 import (
 	"fmt"
+	"go/token"
 	"log"
 	"runtime"
 	"strings"
-
-	"go/token"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -195,6 +194,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			logger.Printf("----------------\n")
 			logger.Printf("Visiting %T node: %v\n\tat %v\n", elt.Node, elt.Node, elt.Node.Position(s))
 			logger.Printf("Element trace: %s\n", elt.Trace.String())
+			logger.Printf("Element backtrace: %v\n", findTrace(elt))
 		}
 
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
@@ -286,11 +286,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					// If the argument is not part of the calling context, don't add it to the visitor stack.
 					// This is needed for context-sensitivity.
 					if elt.Trace.Len() > 0 && elt.Trace.Label != arg.ParentNode() {
-						if s.Config.Verbose {
-							logger.Printf("arg is not part of calling context in callsite: %v. skipping...\n", callSite)
-							logger.Printf("\tparent node: %v\n", arg.ParentNode())
-							logger.Printf("\ttrace label: %v\n", elt.Trace.Label)
-						}
 						continue
 					}
 
@@ -309,7 +304,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						break
 					}
 
-					df.BuildSummary(s, callSite.Callee(), isSingleFunctionEntrypoint)
+					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), isSingleFunctionEntrypoint)
 					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				} else {
 					analysisutil.PrintMissingSummaryMessage(s, callSite)
@@ -329,11 +324,14 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
 			// Data flows backwards from the argument to the corresponding parameter
+			// if the parameter is a nillable type (can be modified)
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
 			stackLen := len(stack)
 			if param != nil {
-				x := callSite.CalleeSummary.Params[param]
-				stack = addNext(s, stack, seen, elt, x, elt.Trace.Add(callSite), elt.ClosureTrace)
+				if lang.IsNillableType(param.Type()) {
+					x := callSite.CalleeSummary.Params[param]
+					stack = addNext(s, stack, seen, elt, x, elt.Trace.Add(callSite), elt.ClosureTrace)
+				}
 			} else {
 				s.AddError(
 					fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
@@ -341,6 +339,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 			// Arg base case:
+			// - matching parameter was not detected and
+			// - no more incoming edges from the arg
 			if stackLen == len(stack) && len(graphNode.In()) == 0 {
 				t := findTrace(elt)
 				v.Traces = append(v.Traces, t)
@@ -360,6 +360,13 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				for in := range graphNode.In() {
 					stack = addNext(s, stack, seen, elt, in, tr, elt.ClosureTrace)
 				}
+
+				// If any bound label flows out from the argument, make sure to visit it because it is part of the dataflow in the trace
+				for out := range graphNode.Out() {
+					if bl, ok := out.(*df.BoundLabelNode); ok {
+						stack = addNext(s, stack, seen, elt, bl, tr, elt.ClosureTrace)
+					}
+				}
 			}
 
 		// Data flows backwards within the function from the return statement.
@@ -372,8 +379,12 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		// It also flows backwards within the parent function.
 		case *df.CallNode:
 			analysisutil.CheckNoGoRoutine(s, goroutines, graphNode)
-			if s.Config.SummarizeOnDemand && graphNode.CalleeSummary == nil {
-				logger.Printf("summary for callee is nil: %v\n", graphNode.Callee().String())
+			stackLen := len(stack)
+			// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
+			// This is needed because "bound" summaries can be incomplete
+			// TODO Is there a better way to identify a "bound" function?
+			if s.Config.SummarizeOnDemand &&
+				(graphNode.CalleeSummary == nil || strings.Contains(graphNode.ParentName(), "$bound")) {
 				graphNode.CalleeSummary = df.BuildSummary(s, graphNode.Callee(), isSingleFunctionEntrypoint)
 				s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 			}
@@ -393,6 +404,16 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				stack = addNext(s, stack, seen, elt, in, elt.Trace, elt.ClosureTrace)
 			}
 
+			// Call node base case:
+			if stackLen == len(stack) {
+				t := findTrace(elt)
+				v.Traces = append(v.Traces, t)
+				if s.Config.Verbose {
+					logger.Println("CallNode base case reached...")
+					logger.Printf("Adding trace: %v\n", t)
+				}
+			}
+
 		// Data flows backwards within the function from the synthetic node.
 		case *df.SyntheticNode:
 			for in := range graphNode.In() {
@@ -402,6 +423,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		// From a global write node, data flows backwards to ALL the locations where the global is read.
 		// From a read location, backwards data flow follows the write locations of the node.
 		case *df.AccessGlobalNode:
+			//stackLen := len(stack)
 			if graphNode.IsWrite {
 				for in := range graphNode.In() {
 					stack = addNext(s, stack, seen, elt, in, elt.Trace, elt.ClosureTrace)
@@ -448,13 +470,16 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				x := closureNode.ClosureSummary.FreeVars[fv]
 				stack = addNext(s, stack, seen, elt, x, elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
-				s.AddError(
-					fmt.Sprintf("no free variable matching bound variable in %s",
-						closureNode.ClosureSummary.Parent.String()),
-					fmt.Errorf("at position %d", graphNode.Index()))
+				panic(fmt.Errorf("no free variable matching bound variable in %s at position %d", closureNode.ClosureSummary.Parent.String(), graphNode.Index()))
+				//s.AddError(
+				//	fmt.Sprintf("no free variable matching bound variable in %s",
+				//		closureNode.ClosureSummary.Parent.String()),
+				//	fmt.Errorf("at position %d", graphNode.Index()))
 			}
 
 		case *df.FreeVarNode:
+			stackLen := len(stack)
+
 			// Flows inside the function
 			if elt.prev.Node.Graph() != graphNode.Graph() {
 				for in := range graphNode.In() {
@@ -463,14 +488,18 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			} else if elt.ClosureTrace != nil {
 				// Flow to the matching bound variables at the make closure site from the closure trace
 				bvs := elt.ClosureTrace.Label.BoundVars()
+				if len(bvs) == 0 {
+					panic("no bound vars")
+				}
 				if graphNode.Index() < len(bvs) {
 					bv := bvs[graphNode.Index()]
 					stack = addNext(s, stack, seen, elt, bv, elt.Trace, elt.ClosureTrace.Parent)
 				} else {
-					s.AddError(
-						fmt.Sprintf("no bound variable matching free variable in %s",
-							elt.ClosureTrace.Label.ClosureSummary.Parent.String()),
-						fmt.Errorf("at position %d", graphNode.Index()))
+					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d", elt.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
+					// s.AddError(
+					// 	fmt.Sprintf("no bound variable matching free variable in %s",
+					// 		elt.ClosureTrace.Label.ClosureSummary.Parent.String()),
+					// 	fmt.Errorf("at position %d", graphNode.Index()))
 				}
 			} else {
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
@@ -492,11 +521,22 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						bv := bvs[graphNode.Index()]
 						stack = addNext(s, stack, seen, elt, bv, elt.Trace, nil)
 					} else {
-						s.AddError(
-							fmt.Sprintf("[No Context] no bound variable matching free variable in %s",
-								makeClosureSite.ClosureSummary.Parent.String()),
-							fmt.Errorf("at position %d", graphNode.Index()))
+						panic(fmt.Errorf("[No Context] no bound variable matching free variable in %s at position %d", makeClosureSite.ClosureSummary.Parent.String(), graphNode.Index()))
+						//s.AddError(
+						//	fmt.Sprintf("[No Context] no bound variable matching free variable in %s",
+						//		makeClosureSite.ClosureSummary.Parent.String()),
+						//	fmt.Errorf("at position %d", graphNode.Index()))
 					}
+				}
+			}
+
+			// Free var base case:
+			if stackLen == len(stack) {
+				t := findTrace(elt)
+				v.Traces = append(v.Traces, t)
+				if s.Config.Verbose {
+					logger.Println("Free var base case reached...")
+					logger.Printf("Adding trace: %v\n", t)
 				}
 			}
 
@@ -510,11 +550,17 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				stack = addNext(s, stack, seen, elt, b, elt.Trace, elt.ClosureTrace)
 			}
 
-		// case *df.BoundLabelNode:
-		// 	// TODO test this
-		// 	for in := range graphNode.In() {
-		// 		stack = addNext(s, stack, seen, elt, in, elt.Trace, elt.ClosureTrace)
-		// 	}
+			// Data also flows to the return node
+			if elt.ClosureTrace != nil {
+				for cCall := range elt.ClosureTrace.Label.In() {
+					stack = addNext(s, stack, seen, elt, cCall, elt.Trace, elt.ClosureTrace.Parent)
+				}
+			}
+
+		case *df.BoundLabelNode:
+			for in := range graphNode.In() {
+				stack = addNext(s, stack, seen, elt, in, elt.Trace, elt.ClosureTrace)
+			}
 
 		default:
 			panic(fmt.Errorf("unhandled graph node type: %T", graphNode))
@@ -582,7 +628,7 @@ func addNext(s *df.AnalyzerState,
 	newNode := df.NodeWithTrace{Node: next, Trace: trace, ClosureTrace: closureTrace}
 
 	if s.Config.Verbose {
-		s.Logger.Printf("Adding %v\n", next)
+		s.Logger.Printf("Adding %v at %v\n", next, next.Position(s))
 		s.Logger.Printf("\ttrace: %v\n", trace)
 		s.Logger.Printf("\tclosure-trace: %v\n", closureTrace)
 		s.Logger.Printf("\tseen? %v\n", seen[newNode.Key()])
@@ -723,5 +769,17 @@ func addCallToCallsites(s *df.AnalyzerState, summary *df.SummaryGraph, c ssa.Cal
 				callSites[instr] = callNode
 			}
 		}
+	}
+}
+
+// isConst returns true if node represents a constant value.
+// This is only implemented for CallNodeArg for now.
+func isConst(node df.GraphNode) bool {
+	switch n := node.(type) {
+	case *df.CallNodeArg:
+		_, ok := n.Value().(*ssa.Const)
+		return ok
+	default:
+		return false
 	}
 }
