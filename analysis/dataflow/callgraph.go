@@ -256,13 +256,9 @@ func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool)
 func findCallgraphEntryPoints(cg *callgraph.Graph, excludeMain bool, excludeInit bool) []*callgraph.Node {
 	entryPoints := make([]*callgraph.Node, 0)
 	for f, node := range cg.Nodes {
-		if f == nil {
-			continue
-		}
-		var name = f.String()
 
-		if (!excludeMain && name == "command-line-arguments.main") ||
-			(!excludeInit && name == "command-line-arguments.init") {
+		if (!excludeMain && f.Name() == "main" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") ||
+			(!excludeInit && f.Name() == "init" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") {
 			entryPoints = append(entryPoints, node)
 		}
 	}
