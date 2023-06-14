@@ -326,7 +326,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// Data flows backwards from the argument to the corresponding parameter
 			// if the parameter is a nillable type (can be modified)
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
-			stackLen := len(stack)
+			prevStackLen := len(stack)
 			if param != nil {
 				if lang.IsNillableType(param.Type()) {
 					x := callSite.CalleeSummary.Params[param]
@@ -349,9 +349,10 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 			// Arg base case:
-			// - matching parameter was not detected and
+			// - matching parameter was not detected, or
+			// - value is not bound, and
 			// - no more incoming edges from the arg
-			if stackLen == len(stack) && len(graphNode.In()) == 0 {
+			if prevStackLen == len(stack) && len(graphNode.In()) == 0 {
 				t := findTrace(elt)
 				v.Traces = append(v.Traces, t)
 				if s.Config.Verbose {
@@ -382,7 +383,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		// It also flows backwards within the parent function.
 		case *df.CallNode:
 			analysisutil.CheckNoGoRoutine(s, goroutines, graphNode)
-			stackLen := len(stack)
+			prevStackLen := len(stack)
 			// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
 			// This is needed because "bound" summaries can be incomplete
 			// TODO Is there a better way to identify a "bound" function?
@@ -408,7 +409,9 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 			// Call node base case:
-			if stackLen == len(stack) {
+			// - no new (non-visited) matching return, and
+			// - no more incoming edges from the call
+			if prevStackLen == len(stack) {
 				t := findTrace(elt)
 				v.Traces = append(v.Traces, t)
 				if s.Config.Verbose {
@@ -426,7 +429,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		// From a global write node, data flows backwards to ALL the locations where the global is read.
 		// From a read location, backwards data flow follows the write locations of the node.
 		case *df.AccessGlobalNode:
-			//stackLen := len(stack)
 			if graphNode.IsWrite {
 				for in := range graphNode.In() {
 					stack = addNext(s, stack, seen, elt, in, elt.Trace, elt.ClosureTrace)
@@ -481,7 +483,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 		case *df.FreeVarNode:
-			stackLen := len(stack)
+			prevStackLen := len(stack)
 
 			// Flows inside the function
 			if elt.prev.Node.Graph() != graphNode.Graph() {
@@ -534,7 +536,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 			// Free var base case:
-			if stackLen == len(stack) {
+			// - no new matching bound variables
+			if prevStackLen == len(stack) {
 				t := findTrace(elt)
 				v.Traces = append(v.Traces, t)
 				if s.Config.Verbose {
