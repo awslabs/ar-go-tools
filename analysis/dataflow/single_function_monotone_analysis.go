@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"go/token"
 
-	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/defers"
-	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/defers"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )

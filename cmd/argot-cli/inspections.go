@@ -19,7 +19,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"

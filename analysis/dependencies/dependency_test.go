@@ -21,7 +21,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/awslabs/argot/analysis"
+	"github.com/awslabs/ar-go-tools/analysis"
 	"golang.org/x/tools/go/ssa"
 )
 

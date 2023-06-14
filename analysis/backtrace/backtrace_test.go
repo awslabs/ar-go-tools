@@ -23,10 +23,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/argot/analysis/backtrace"
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/testutils"
-	"github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/analysis/backtrace"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"golang.org/x/tools/go/ssa"
 )
 
 func TestAnalyze(t *testing.T) {
@@ -36,9 +38,42 @@ func TestAnalyze(t *testing.T) {
 	program, cfg := testutils.LoadTest(t, dir, []string{})
 	defer os.Remove(cfg.ReportsDir)
 
+	testAnalyze(t, cfg, program)
+
+	// TODO fix the false positives
+	// if len(tests) != len(res.Traces) {
+	// 	t.Errorf("test length mismatch: got %d, want %d", len(tests), len(res.Traces))
+	// }
+
+	// TODO incorrect trace: *os.Args in main.go:31 should not flow to call to runcmd:
+	// need better context sensitivity for global read
+	// This might be fine?
+	//
+	// "[#578.2] global:os.Args in *os.Args (read)" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:38
+	// "(SA)call: runcmd(t21, t23...) in main [#578.21]: @arg 0:t21 [#578.22]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:43:26
+	// "[#577.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:85:13
+	// "(SA)call: os/exec.Command(name, args...) in runcmd [#577.3]: @arg 0:name [#577.4]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:85:13
+}
+
+func TestAnalyze_OnDemand(t *testing.T) {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
+	// Loading the program for testdata/src/backtrace/main.go
+	program, cfg := testutils.LoadTest(t, dir, []string{})
+	defer os.Remove(cfg.ReportsDir)
+
+	cfg.SummarizeOnDemand = true
+	testAnalyze(t, cfg, program)
+}
+
+func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 	res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if len(res.Traces) != 24 {
+		t.Fatalf("want 24 traces, got %v", len(res.Traces))
 	}
 
 	tests := []struct {
@@ -289,20 +324,6 @@ func TestAnalyze(t *testing.T) {
 			t.Errorf("incorrect trace")
 		}
 	})
-
-	// TODO fix the false positives
-	// if len(tests) != len(res.Traces) {
-	// 	t.Errorf("test length mismatch: got %d, want %d", len(tests), len(res.Traces))
-	// }
-
-	// TODO incorrect trace: *os.Args in main.go:31 should not flow to call to runcmd:
-	// need better context sensitivity for global read
-	// This might be fine?
-	//
-	// "[#578.2] global:os.Args in *os.Args (read)" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:38
-	// "(SA)call: runcmd(t21, t23...) in main [#578.21]: @arg 0:t21 [#578.22]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:43:26
-	// "[#577.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:85:13
-	// "(SA)call: os/exec.Command(name, args...) in runcmd [#577.3]: @arg 0:name [#577.4]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:85:13
 }
 
 func TestAnalyze_Closures(t *testing.T) {
@@ -316,6 +337,22 @@ func TestAnalyze_Closures(t *testing.T) {
 	program, cfg := testutils.LoadTest(t, dir, []string{"helpers.go"})
 	defer os.Remove(cfg.ReportsDir)
 
+	testAnalyzeClosures(t, cfg, program)
+}
+
+// TODO this is still in-progress. More testing is needed.
+func TestAnalyze_Closures_OnDemand(t *testing.T) {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/closures")
+	// Loading the program for testdata/src/taint/closures/main.go
+	program, cfg := testutils.LoadTest(t, dir, []string{"helpers.go"})
+	defer os.Remove(cfg.ReportsDir)
+
+	cfg.SummarizeOnDemand = true
+	testAnalyzeClosures(t, cfg, program)
+}
+
+func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program) {
 	res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
 	if err != nil {
 		t.Fatal(err)

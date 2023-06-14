@@ -19,9 +19,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/exp/slices"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"

@@ -17,7 +17,7 @@ package main
 import (
 	"regexp"
 
-	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )

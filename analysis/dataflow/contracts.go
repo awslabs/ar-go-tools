@@ -20,7 +20,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/awslabs/argot/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
 )
 

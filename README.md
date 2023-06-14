@@ -1,6 +1,4 @@
-[![pipeline status](https://gitlab.aws.dev/cm-arg/argot/badges/mainline/pipeline.svg)](https://gitlab.aws.dev/cm-arg/argot/-/commits/mainline)
-[![coverage report](https://gitlab.aws.dev/cm-arg/argot/badges/mainline/coverage.svg)](https://gitlab.aws.dev/cm-arg/argot/-/commits/mainline)
-[![Latest Release](https://gitlab.aws.dev/cm-arg/argot/-/badges/release.svg)](https://gitlab.aws.dev/cm-arg/argot/-/releases)
+[![build-analyze-test](https://github.com/awslabs/ar-go-tools/actions/workflows/bat.yml/badge.svg)](https://github.com/awslabs/ar-go-tools/actions/workflows/bat.yml)
 
 # Argot
 

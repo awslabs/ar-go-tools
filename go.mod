@@ -1,4 +1,4 @@
-module github.com/awslabs/argot
+module github.com/awslabs/ar-go-tools
 
 go 1.18
 

@@ -18,8 +18,8 @@ import (
 	"log"
 	"testing"
 
-	. "github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/testutils"
+	. "github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/testutils"
 )
 
 func TestRunBoundingAnalysis(t *testing.T) {

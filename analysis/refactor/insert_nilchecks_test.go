@@ -21,8 +21,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/refactor"
+	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/refactor"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/decorator/resolver/gopackages"
