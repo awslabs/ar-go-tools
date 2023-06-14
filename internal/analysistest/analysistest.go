@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package analysistest contains utility functions for testing the analysis tools.
 package analysistest
 
 import (
