@@ -437,7 +437,7 @@ func TestFunctionSummaries(t *testing.T) {
 							}
 
 							if len(arg.In()) != 1 {
-								t.Errorf("in Baz, callee arg to %s should have 1 incoming edge, but got: %v", name, arg.In())
+								t.Errorf("in Baz, callee arg to %s should have 1 incoming edges, but got: %v", name, arg.In())
 							}
 						} else if name == "fmt.Sprintf" {
 							// ignore the first arg to fmt.Sprintf (format string)

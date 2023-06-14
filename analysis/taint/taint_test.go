@@ -28,7 +28,7 @@ func TestCrossFunctionIntra(t *testing.T) {
 
 func TestCrossFunctionBasic(t *testing.T) {
 	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
-		"sanitizers.go"})
+		"sanitizers.go", "memory.go"})
 }
 
 func TestCrossFunctionBuiltins(t *testing.T) {
