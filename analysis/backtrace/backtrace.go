@@ -338,6 +338,16 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					fmt.Errorf("position %d", graphNode.Index()))
 			}
 
+			// If the arg value is bound, make sure to visit all of its outgoing values
+			// because they are all part of the dataflow in the trace
+			//
+			// See Examples 5 and 16 in argot/testdata/src/taint/closures/main.go
+			if _, ok := s.BoundingInfo[graphNode.Value()]; ok {
+				for out := range graphNode.Out() {
+					stack = addNext(s, stack, seen, elt, out, elt.Trace, elt.ClosureTrace)
+				}
+			}
+
 			// Arg base case:
 			// - matching parameter was not detected and
 			// - no more incoming edges from the arg
@@ -359,13 +369,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			if elt.prev == nil || callSite.Graph() != elt.prev.Node.Graph() {
 				for in := range graphNode.In() {
 					stack = addNext(s, stack, seen, elt, in, tr, elt.ClosureTrace)
-				}
-
-				// If any bound label flows out from the argument, make sure to visit it because it is part of the dataflow in the trace
-				for out := range graphNode.Out() {
-					if bl, ok := out.(*df.BoundLabelNode); ok {
-						stack = addNext(s, stack, seen, elt, bl, tr, elt.ClosureTrace)
-					}
 				}
 			}
 
