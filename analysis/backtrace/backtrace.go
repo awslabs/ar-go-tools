@@ -706,10 +706,6 @@ func singleFunctionSummarizeOnDemand(state *df.AnalyzerState, cfg *config.Config
 			Type:     "",
 			Label:    "",
 		}) {
-
-			if strings.Contains(f.Name(), "$") {
-				entryFuncs = append(entryFuncs, f.Parent())
-			}
 			entryFuncs = append(entryFuncs, f)
 		}
 	}
