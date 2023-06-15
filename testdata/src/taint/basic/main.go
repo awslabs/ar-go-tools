@@ -40,6 +40,10 @@ func sink1(s string) {
 	fmt.Println(s)
 }
 
+func sink3(s any) {
+	fmt.Println(s)
+}
+
 func argReachesSink(x string) {
 	a := make([]string, 10)
 	a[0] = "x"
