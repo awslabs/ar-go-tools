@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/internal/analysisutil"
-	"github.com/awslabs/argot/internal/colors"
+	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -39,7 +39,7 @@ func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerS
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		AnalyzerState: state,
 		Visitor:       CrossFunctionGraphVisitor{},
-		IsEntrypoint:  func(*config.Config, *ssa.Function) bool { return true },
+		IsEntrypoint:  func(*config.Config, ssa.Node) bool { return true },
 	})
 
 	state.Logger.Printf("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())

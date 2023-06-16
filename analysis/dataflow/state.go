@@ -21,10 +21,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awslabs/argot/analysis/config"
-
-	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -308,6 +307,9 @@ func (c *AnalyzerState) IsReachableFunction(f *ssa.Function) bool {
 		return c.reachableFunctions[f]
 	}
 	// If no reachability information has been computed, assume every function is reachable
+	if c.Config.Verbose {
+		c.Logger.Printf("No reachability information has been computed")
+	}
 	return true
 }
 

@@ -21,7 +21,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -31,10 +31,9 @@ func findEntryPoints(allFunctions map[*ssa.Function]bool, excludeMain bool, excl
 	var entryPoints = make([]*ssa.Function, 0)
 
 	for f := range allFunctions {
-		var name = f.RelString(nil)
 
-		if (!excludeMain && name == "command-line-arguments.main") ||
-			(!excludeInit && name == "command-line-arguments.init") {
+		if (!excludeMain && f.Name() == "main" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") ||
+			(!excludeInit && f.Name() == "init" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") {
 			entryPoints = append(entryPoints, f)
 		}
 	}

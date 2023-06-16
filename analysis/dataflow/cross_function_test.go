@@ -23,12 +23,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/render"
-	"github.com/awslabs/argot/analysis/summaries"
-	"github.com/awslabs/argot/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/render"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -36,7 +36,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
 	// Loading the program for testdata/src/dataflow/sumaries/main.go
-	program, _ := testutils.LoadTest(t, dir, []string{})
+	program, _ := analysistest.LoadTest(t, dir, []string{})
 
 	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), config.NewDefault(), program)
 	if err != nil {

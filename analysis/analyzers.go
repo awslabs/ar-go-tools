@@ -20,12 +20,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
-	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -69,32 +69,20 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 		numRoutines = 1
 	}
 
-	// Feed the jobs in the jobs channel
-	// This pass also ignores some predefined packages
-	jobs := make(chan singleFunctionJob, numRoutines)
-	go func() {
-		defer close(jobs)
-		for function := range args.AnalyzerState.ReachableFunctions(false, false) {
-			if args.ShouldCreateSummary(function) {
-				jobs <- singleFunctionJob{
-					function:           function,
-					analyzerState:      args.AnalyzerState,
-					shouldBuildSummary: args.ShouldBuildSummary(args.AnalyzerState, function),
-				}
-			}
+	jobs := []singleFunctionJob{}
+	for function := range args.AnalyzerState.ReachableFunctions(false, false) {
+		if args.ShouldCreateSummary(function) {
+			jobs = append(jobs, singleFunctionJob{
+				function:           function,
+				analyzerState:      args.AnalyzerState,
+				shouldBuildSummary: args.ShouldBuildSummary(args.AnalyzerState, function),
+			})
 		}
-	}()
+	}
 
 	// Start the single function summary building routines
 	results := runJobs(jobs, numRoutines, args.IsEntrypoint)
-	// Start the collecting routine
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		collectResults(results, &fg, args.AnalyzerState)
-	}()
-	wg.Wait()
+	collectResults(results, &fg, args.AnalyzerState)
 
 	logger.Printf("Single-function pass done (%.2f s).", time.Since(start).Seconds())
 
@@ -102,35 +90,21 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	return SingleFunctionResult{FlowGraph: fg}
 }
 
-// runJobs runs the single-function analysis on each job in jobs and returns a channel with all the results.
-func runJobs(jobs <-chan singleFunctionJob, numRoutines int,
-	isEntrypoint func(*config.Config, ssa.Node) bool) <-chan dataflow.SingleFunctionResult {
-	results := make(chan dataflow.SingleFunctionResult)
-	wg := &sync.WaitGroup{}
-	wg.Add(numRoutines)
-	for i := 0; i < numRoutines; i++ {
-		go func() {
-			defer wg.Done()
-			for job := range jobs {
-				results <- runSingleFunctionJob(job, isEntrypoint)
-			}
-		}()
+// runJobs runs the single-function analysis on each job in jobs in parallel and returns a slice with all the results.
+func runJobs(jobs []singleFunctionJob, numRoutines int,
+	isEntrypoint func(*config.Config, ssa.Node) bool) []dataflow.SingleFunctionResult {
+	f := func(job singleFunctionJob) dataflow.SingleFunctionResult {
+		return runSingleFunctionJob(job, isEntrypoint)
 	}
 
-	// close output once all the goroutines that send to it are done
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	return results
+	return funcutil.MapParallel(jobs, f, numRoutines)
 }
 
 // RunCrossFunctionArgs represents the arguments to RunCrossFunction.
 type RunCrossFunctionArgs struct {
 	AnalyzerState *dataflow.AnalyzerState
 	Visitor       dataflow.Visitor
-	IsEntrypoint  func(*config.Config, *ssa.Function) bool
+	IsEntrypoint  func(*config.Config, ssa.Node) bool
 }
 
 // RunCrossFunction runs the cross-function analysis pass.
@@ -181,7 +155,7 @@ func runSingleFunctionJob(job singleFunctionJob,
 // messages on the done channel to terminate and clean up.
 // Operations on graph and candidates are sequential.
 // cleans up done and c channels
-func collectResults(c <-chan dataflow.SingleFunctionResult, graph *dataflow.CrossFunctionFlowGraph,
+func collectResults(c []dataflow.SingleFunctionResult, graph *dataflow.CrossFunctionFlowGraph,
 	state *dataflow.AnalyzerState) {
 	var f *os.File
 	var err error
@@ -198,7 +172,7 @@ func collectResults(c <-chan dataflow.SingleFunctionResult, graph *dataflow.Cros
 		state.Logger.Printf("Saving report of summary times in %s\n", path)
 	}
 
-	for result := range c {
+	for _, result := range c {
 		if result.Summary != nil {
 			graph.Summaries[result.Summary.Parent] = result.Summary
 			if f != nil {

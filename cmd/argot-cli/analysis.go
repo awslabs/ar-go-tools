@@ -23,14 +23,14 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/awslabs/argot/analysis"
-	"github.com/awslabs/argot/analysis/backtrace"
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/escape"
-	"github.com/awslabs/argot/analysis/render"
-	"github.com/awslabs/argot/analysis/summaries"
-	"github.com/awslabs/argot/analysis/taint"
-	"github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/backtrace"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/escape"
+	"github.com/awslabs/ar-go-tools/analysis/render"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/taint"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
@@ -355,7 +355,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
-	c.FlowGraph.RunCrossFunctionPass(taint.NewVisitor(nil), dataflow.IsSourceFunction)
+	c.FlowGraph.RunCrossFunctionPass(taint.NewVisitor(nil), taint.IsSourceNode)
 	return false
 }
 
@@ -378,7 +378,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 	// not taint.IsSourceNode
 
 	visitor := &backtrace.Visitor{}
-	c.FlowGraph.RunCrossFunctionPass(visitor, backtrace.IsEntrypoint)
+	c.FlowGraph.RunCrossFunctionPass(visitor, backtrace.IsCrossFunctionEntrypoint)
 
 	writeFmt(tt, "Traces:\n")
 	for _, trace := range backtrace.Traces(c, visitor.Traces) {

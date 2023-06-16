@@ -19,10 +19,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/config"
-	"github.com/awslabs/argot/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -37,7 +39,7 @@ type CrossFunctionFlowGraph struct {
 	// (GraphNode).Out)
 	ForwardEdges map[GraphNode]map[GraphNode]bool
 
-	// BackawardEdges represents backward edges between nodes belonging to different subgraphs (cross-function
+	// BackwardEdges represents backward edges between nodes belonging to different subgraphs (cross-function
 	// version of (GraphNode).In)
 	BackwardEdges map[GraphNode]map[GraphNode]bool
 
@@ -116,15 +118,20 @@ func (g *CrossFunctionFlowGraph) InsertSummaries(g2 CrossFunctionFlowGraph) {
 }
 
 // BuildGraph builds the cross function flow graph by connecting summaries together
-func (g *CrossFunctionFlowGraph) BuildGraph() {
-	g.AnalyzerState.Logger.Println("Building cross-function flow graph...")
+func (g *CrossFunctionFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ssa.Node) bool) {
 	c := g.AnalyzerState
 	logger := c.Logger
+	if c.Config.Verbose {
+		logger.Println("Building cross-function flow graph...")
+	}
+
 	// Open a file to output summaries
 	summariesFile := openSummaries(c)
 	if summariesFile != nil {
 		defer summariesFile.Close()
 	}
+
+	reachable := CallGraphReachable(g.AnalyzerState.PointerAnalysis.CallGraph, false, false)
 
 	// Build the cross-function data flow graph: link all the summaries together
 	for _, summary := range g.Summaries {
@@ -147,7 +154,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 						calleeSummary = findCalleeSummary(node.Callee(), g.Summaries)
 					}
 					// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
-					// contracts
+					// contracts, or build the summary
 					if calleeSummary == nil {
 						if calleeSummary = g.AnalyzerState.LoadExternalContractSummary(node); calleeSummary != nil {
 							if g.AnalyzerState.Config.Verbose {
@@ -160,6 +167,19 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 							if g.AnalyzerState.Config.Verbose {
 								logger.Printf("Loaded %s from summaries.\n", node.Callee().String())
 							}
+							g.Summaries[node.Callee()] = calleeSummary
+						} else if c.Config.SummarizeOnDemand && reachable[node.Callee()] && ShouldBuildSummary(c, node.Callee()) {
+							if c.Config.Verbose {
+								logger.Printf("Building summary for %v...\n", node.Callee())
+							}
+							result, err := SingleFunctionAnalysis(c, node.Callee(), true, GetUniqueFunctionId(), isEntrypoint, nil)
+							if err != nil {
+								panic(fmt.Errorf("single function analysis failed for %v: %v", node.Callee(), err))
+							}
+							if c.Config.Verbose {
+								logger.Printf("Finished building summary for %v (%.2f s)", node.Callee(), result.Time.Seconds())
+							}
+							calleeSummary = result.Summary
 							g.Summaries[node.Callee()] = calleeSummary
 						}
 					}
@@ -202,7 +222,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph() {
 }
 
 func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
-	isEntryPoint func(*config.Config, *ssa.Function) bool) {
+	isEntryPoint func(*config.Config, ssa.Node) bool) {
 	var entryFuncs []*SummaryGraph
 	var entryPoints []NodeWithTrace
 
@@ -246,16 +266,16 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 // (i.e. `len(g.summaries) == 0`)
 // or if `cfg.SkipInterprocedural` is set to true.
 func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *AnalyzerState, visitor Visitor,
-	isEntryPoint func(*config.Config, *ssa.Function) bool) {
+	isEntryPoint func(*config.Config, ssa.Node) bool) {
 	// Skip the pass if user configuration demands it
-	if c.Config.SkipInterprocedural || len(g.Summaries) == 0 {
+	if c.Config.SkipInterprocedural || (!c.Config.SummarizeOnDemand && len(g.Summaries) == 0) {
 		c.Logger.Printf("Skipping cross-function pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
 			c.Config.SkipInterprocedural, len(g.Summaries))
 		return
 	}
 
 	// Build the inter-procedural flow graph
-	g.BuildGraph()
+	g.BuildGraph(isEntryPoint)
 
 	// Open the coverage file if specified in configuration
 	coverage := openCoverage(c)
@@ -408,6 +428,78 @@ func UnwindCallstackFromCallee(callsites map[ssa.CallInstruction]*CallNode, trac
 	}
 	// no return node has been found
 	return nil
+}
+
+// BuildSummary builds a summary for function and adds it to s's flow graph.
+func BuildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
+	summary := buildSummary(s, function, isEntrypoint)
+	s.FlowGraph.Summaries[function] = summary
+
+	return summary
+}
+
+// buildSummary builds a summary for function and returns it.
+func buildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
+	if summary, ok := s.FlowGraph.Summaries[function]; ok {
+		return summary
+	}
+
+	logger := s.Logger
+	id := GetUniqueFunctionId()
+	summary := LoadPredefinedSummary(function, id)
+	if summary != nil {
+		if s.Config.Verbose {
+			logger.Printf("\tLoaded pre-defined summary for %v\n", function)
+		}
+	} else {
+		if s.Config.Verbose {
+			logger.Printf("\tBuilding summary for %v...\n", function)
+		}
+		result, err := SingleFunctionAnalysis(s, function, true, id, isEntrypoint, nil)
+		if err != nil {
+			panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
+		}
+		if s.Config.Verbose {
+			logger.Printf("\tFinished building summary for %v (%.2f s)", function, result.Time.Seconds())
+		}
+		summary = result.Summary
+	}
+
+	return summary
+}
+
+// BuildSummariesFromCallgraph builds summaries for all the reachable callees of n
+// corresponding to n's trace.
+func BuildSummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntrypoint func(*config.Config, ssa.Node) bool) {
+	node := s.PointerAnalysis.CallGraph.Nodes[n.Node.Graph().Parent]
+	functions := []*ssa.Function{}
+	for _, in := range node.In {
+		callSite := in.Site
+		if n.Trace == nil || (callSite == n.Trace.Label.CallSite() && in.Callee.Func == n.Trace.Label.Callee()) {
+			createdSummary, ok := s.FlowGraph.Summaries[callSite.Parent()]
+			// build a summary for the callsite's parent if:
+			// - it is present in the flowgraph but not constructed, or
+			// - it is not present in the flowgraph, reachable, and a summary should be built for it
+			if (ok && !createdSummary.Constructed) || (!ok && s.IsReachableFunction(callSite.Parent()) && ShouldBuildSummary(s, callSite.Parent())) {
+				functions = append(functions, callSite.Parent())
+			}
+		}
+	}
+
+	type sf struct {
+		s *SummaryGraph
+		f *ssa.Function
+	}
+	f := func(fn *ssa.Function) sf {
+		return sf{s: buildSummary(s, fn, isEntrypoint), f: fn}
+	}
+	summaries := funcutil.MapParallel(functions, f, runtime.NumCPU())
+
+	for _, sf := range summaries {
+		s.FlowGraph.Summaries[sf.f] = sf.s
+	}
+
+	s.FlowGraph.BuildGraph(isEntrypoint)
 }
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the

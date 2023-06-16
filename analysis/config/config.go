@@ -21,7 +21,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -98,6 +98,9 @@ type Config struct {
 	// ReportSummaries can be set to true, in which case summaries will be reported in a file names summaries-*.out in
 	// the reports directory
 	ReportSummaries bool
+
+	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
+	SummarizeOnDemand bool
 
 	// ReportPaths specifies whether the taint flows should be reported in separate files. For each taint flow, a new
 	// file named taint-*.out will be generated with the trace from source to sink

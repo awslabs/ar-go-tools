@@ -17,7 +17,7 @@ package main
 import (
 	"strings"
 
-	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 )
 
 func AutoCompleteOfAnalyzerState(_ *dataflow.AnalyzerState) func(string, int, rune) (string, int, bool) {

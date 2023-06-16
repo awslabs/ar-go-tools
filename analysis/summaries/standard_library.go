@@ -885,6 +885,7 @@ var SummaryRuntime = map[string]Summary{
 	"runtime/debug.Stack": NoDataFlowPropagation,
 	// func (*runtime.Func).Name() string
 	"(*runtime.Func).Name": SingleVarArgPropagation,
+	"runtime.init":         NoDataFlowPropagation,
 }
 
 var SummarySort = map[string]Summary{
@@ -896,6 +897,7 @@ var SummarySort = map[string]Summary{
 }
 
 var SummaryStrConv = map[string]Summary{
+	"strconv.init": NoDataFlowPropagation,
 	"strconv.Atoi": {[][]int{{0}}, [][]int{{0}}},
 	// func AppendFloat(dst []byte, f float64, fmt byte, prec, bitSize int) []byte
 	"strconv.AppendFloat": {

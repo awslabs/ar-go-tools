@@ -19,8 +19,8 @@ import (
 	"runtime"
 	"testing"
 
-	df "github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/testutils"
+	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	cg "golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -49,7 +49,7 @@ func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name strin
 func TestPointerCallgraph(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callgraph")
-	program, _ := testutils.LoadTest(t, dir, []string{})
+	program, _ := analysistest.LoadTest(t, dir, []string{})
 	callgraph, err := df.PointerAnalysis.ComputeCallgraph(program)
 	if err != nil {
 		t.Fatalf("error computing callgraph: %s", err)

@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/awslabs/argot/analysis/lang"
-	"github.com/awslabs/argot/analysis/summaries"
-	"github.com/awslabs/argot/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -602,6 +602,13 @@ type SummaryGraph struct {
 
 	// true if the summary is built from an interface's dataflow contract
 	IsInterfaceContract bool
+
+	// true if the summary is pre-summarized
+	//
+	// pre-summarized summaries are either:
+	// - pre-defined in the summaries package, or
+	// - loaded from an external summary contract file
+	IsPreSummarized bool
 
 	// the ssa function it summarizes
 	Parent *ssa.Function
@@ -1342,6 +1349,8 @@ func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summary, isInt
 	g.Constructed = true
 	// the isInterface parameter determines if this represents the summary from an interface dataflow contract
 	g.IsInterfaceContract = isInterface
+
+	g.IsPreSummarized = true
 }
 
 // Utilities for printing graphs

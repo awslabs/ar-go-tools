@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/analysis/summaries"
-	"github.com/awslabs/argot/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -68,7 +68,7 @@ func TestSimpleEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, _ := testutils.LoadTest(t, ".", []string{})
+	program, _ := analysistest.LoadTest(t, ".", []string{})
 	result, err := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
 
 	if len(result.CallGraph.Nodes) < 7 {
@@ -217,7 +217,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, config := testutils.LoadTest(t, ".", []string{})
+	program, config := analysistest.LoadTest(t, ".", []string{})
 	config.Verbose = true
 	// Compute the summaries for everything in the main package
 	state, err := dataflow.NewAnalyzerState(program, log.Default(), config,

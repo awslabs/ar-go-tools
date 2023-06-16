@@ -20,8 +20,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/awslabs/argot/analysis/dataflow"
-	"github.com/awslabs/argot/internal/colors"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/internal/colors"
 )
 
 // addCoverage adds an entry to coverage by properly formatting the position of the visitorNode in the context of
