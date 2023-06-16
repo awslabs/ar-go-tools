@@ -15,7 +15,7 @@
 package escape
 
 import (
-	"github.com/awslabs/argot/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/tools/go/ssa"
 )
 

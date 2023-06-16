@@ -26,6 +26,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/testutils"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
@@ -280,7 +281,7 @@ func TestBuiltinsEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, config := testutils.LoadTest(t, ".", []string{})
+	program, config := analysistest.LoadTest(t, ".", []string{})
 	config.Verbose = true
 	// Compute the summaries for everything in the main package
 	cache, err := dataflow.NewInitializedAnalyzerState(log.Default(), config, program)

@@ -87,8 +87,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	goroutines := make(map[*ssa.Go]bool)
 	source := entrypoint
 	v.roots[entrypoint.Trace] = true
-	if c.Config.UseEscapeAnalysis {
-		v.storeEscapeGraph(c, entrypoint.Trace, nil, entrypoint.Node.Graph().Parent)
+	if s.Config.UseEscapeAnalysis {
+		v.storeEscapeGraph(s, entrypoint.Trace, nil, entrypoint.Node.Graph().Parent)
 	}
 	que := []*df.VisitorNode{{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}}
 
@@ -163,7 +163,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			if elt.Prev.Node.Graph() != graphNode.Graph() {
 				// Flows inside the function body. The data propagates to other locations inside the function body
 				for out, oPath := range graphNode.Out() {
-					que = v.addNext(c, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+					que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 				}
 			}
 
@@ -174,7 +174,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
 			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
 				if err := analysisutil.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
-					c.AddError("unwinding call stack at "+graphNode.Position(c).String(), err)
+					s.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
 					arg := callSite.Args()[graphNode.Index()]
@@ -245,7 +245,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 
 				newCallStack := elt.Trace.Add(callSite)
 				v.visited[newCallStack] = true
-				if c.Config.UseEscapeAnalysis {
+				if s.Config.UseEscapeAnalysis {
 					v.storeEscapeGraph(s, newCallStack, graphNode.Graph().Parent, callSite.Callee())
 				}
 				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, newCallStack, elt.ClosureTrace)
@@ -490,7 +490,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	newNode := df.NodeWithTrace{Node: toAdd, Trace: trace, ClosureTrace: closureTrace}
 
 	if s.Config.Verbose {
-		s.Logger.Printf("Adding %v\n", node)
+		s.Logger.Printf("Adding %v\n", newNode)
 		s.Logger.Printf("\ttrace: %v\n", trace)
 		s.Logger.Printf("\tclosure-trace: %v\n", closureTrace)
 		s.Logger.Printf("\tseen? %v\n", seen[newNode.Key()])
@@ -504,11 +504,11 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	}
 
 	// If configured, use the escape analysis to scan whether data on the edge escapes
-	if c.Config.UseEscapeAnalysis {
+	if s.Config.UseEscapeAnalysis {
 		f := toAdd.Graph().Parent
 		egraph := v.escapeGraphs[f][trace]
 		if egraph != nil {
-			imap := egraph.ComputeInstructionLocality(c.EscapeAnalysisState, f)
+			imap := egraph.ComputeInstructionLocality(s.EscapeAnalysisState, f)
 			for instr := range edgeInfo.Span {
 				if !imap[instr] {
 					fmt.Printf("Instruction %s in %s is not local!\n", instr, f)
