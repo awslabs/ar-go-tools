@@ -19,11 +19,11 @@ import (
 	"testing"
 
 	. "github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 )
 
 func TestRunBoundingAnalysis(t *testing.T) {
-	program, config := testutils.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
+	program, config := analysistest.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
 	c, err := NewInitializedAnalyzerState(log.Default(), config, program)
 	if err != nil {
 		t.Errorf("error building state: %s", err)

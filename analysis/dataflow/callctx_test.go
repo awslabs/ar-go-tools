@@ -23,13 +23,13 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/testutils"
+	"github.com/awslabs/ar-go-tools/internal/analysistest"
 )
 
 func TestComputeCtxts(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callctx")
-	program, config := testutils.LoadTest(t, dir, []string{})
+	program, config := analysistest.LoadTest(t, dir, []string{})
 	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), config, program)
 	if err != nil {
 		t.Fatalf("error building state: %s", err)
