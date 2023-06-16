@@ -187,7 +187,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			// func f(s string, s2 *string) { *s2 = s }
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
-			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
+			if callSite := df.UnwindCallstackFromCallee(callSites, elt.Trace); callSite != nil {
 				if err := analysisutil.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
 					s.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
 				} else {
@@ -221,7 +221,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 
 			analysisutil.CheckNoGoRoutine(s, goroutines, callSite)
 
-			if callSite.CalleeSummary == nil { // this function has not been summarized
+			if callSite.CalleeSummary == nil || !callSite.CalleeSummary.Constructed { // this function has not been summarized
 				if s.Config.SummarizeOnDemand {
 					if callSite.Callee() == nil {
 						logger.Printf("callsite has no callee: %v\n", callSite)
@@ -236,10 +236,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				}
 			}
 
-			if !callSite.CalleeSummary.Constructed {
-				analysisutil.PrintWarningSummaryNotConstructed(s, callSite)
-			}
-
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
 			if s.Config.SummarizeOnDemand && strings.Contains(callSite.ParentName(), "$thunk") {
 				// HACK: Make the callsite's callee summary point to the actual function summary, not the "thunk" summary
@@ -249,6 +245,13 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				calleeSummary := df.BuildSummary(s, callSite.Callee(), IsSourceNode)
 				s.FlowGraph.BuildGraph(IsSourceNode)
 				callSite.CalleeSummary = calleeSummary
+			} else if s.Config.SummarizeOnDemand &&
+				(callSite.CalleeSummary == nil || strings.Contains(graphNode.ParentName(), "$bound")) {
+				// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
+				// This is needed because "bound" summaries can be incomplete
+				// TODO Is there a better way to identify a "bound" function?
+				callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), IsSourceNode)
+				s.FlowGraph.BuildGraph(IsSourceNode)
 			}
 
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
@@ -381,6 +384,17 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 						fmt.Errorf("at position %d", graphNode.Index()))
 				}
 			} else {
+				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
+					// Summarize the free variable's closure's parent function
+					f := graphNode.Graph().Parent.Parent()
+					df.BuildSummary(s, f, IsSourceNode)
+					s.FlowGraph.BuildGraph(IsSourceNode)
+				}
+
+				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
+					panic(fmt.Errorf("[No Context] no referring make closure nodes from %v", graphNode))
+				}
+
 				for _, makeClosureSite := range graphNode.Graph().ReferringMakeClosures {
 					bvs := makeClosureSite.BoundVars()
 					if graphNode.Index() < len(bvs) {
@@ -448,6 +462,18 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 					break
 				}
 			}
+
+			if len(closureSummary.ReferringMakeClosures) == 0 {
+				// Summarize the bound label's closure's parent function
+				f := graphNode.DestClosure().Parent
+				df.BuildSummary(s, f, IsSourceNode)
+				s.FlowGraph.BuildGraph(IsSourceNode)
+			}
+
+			if len(closureSummary.ReferringMakeClosures) == 0 {
+				panic(fmt.Errorf("[No Context] no referring make closure nodes from %v", graphNode))
+			}
+
 			closureNode := closureSummary.ReferringMakeClosures[graphNode.DestInfo().MakeClosure]
 			if closureNode == nil {
 				logger.Printf("[ERROR] Missing closure node for bound label %v at %v\n", graphNode, graphNode.Position(s))
