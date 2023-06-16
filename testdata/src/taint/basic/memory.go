@@ -22,6 +22,14 @@ type V struct {
 	data *U
 }
 
+type X struct {
+	data *Y
+}
+
+type Y struct {
+	content *S
+}
+
 func testAliasingTransitive() {
 	testAT1()
 	testAT2()
@@ -39,6 +47,13 @@ func testAliasingTransitive() {
 	testAT14()
 	testAT15()
 	testAT16()
+	testAT17()
+	testAT18()
+	testAT19()
+	testAT20()
+	testAT21()
+	testAT22()
+	testAT23()
 }
 
 func testAT1() {
@@ -285,4 +300,109 @@ func testAT16() {
 
 func AT16_handle(s chan *S) {
 	sink1((<-s).v) // @Sink(at16)
+}
+
+func testAT17() {
+	println("AT17")
+	a := &S{next: &S{}}
+	b := make(chan *S, 10)
+	b <- a
+	a.v = "ok"
+	a.next.v = source1() // @Source(at17)
+	AT17_handle(b)
+}
+
+func AT17_handle(s chan *S) {
+	sink1((<-s).v) // @Sink(at17)
+}
+
+func testAT18() {
+	s := generateData18()
+	sink1(s.v) // @Sink(at18)
+}
+
+func generateData18() *S {
+	return &S{next: &S{v: source1()}, v: "ok"} // @Source(at18)
+}
+
+func testAT19() {
+	s := generateData19()
+	s2 := any(s.v)
+	sink2(s2.(string)) // @Sink(at19)
+}
+
+func generateData19() *S {
+	return &S{next: &S{v: source1()}, v: "ok"} // @Source(at19)
+}
+
+func testAT20() {
+	println("AT20")
+	v := V{&U{"content"}}
+	x := [10]*U{}
+	x[0] = &U{"fine"}
+	x[1] = v.data
+	x[2] = &U{"fine"}
+	AT20_populate(&v)
+	AT20_consume(x)
+}
+
+func AT20_consume(c [10]*U) {
+	for _, x := range c {
+		AT20_callSink(x)
+	}
+}
+
+func AT20_callSink(x *U) {
+	sink1(x.content) // @Sink(at20)
+}
+
+func AT20_populate(v *V) {
+	s := source1() // @Source(at20)
+	new_u := &U{s}
+	AT20_assign(new_u.content, v.data)
+}
+
+func AT20_assign(val string, data *U) {
+	data.content = val
+}
+
+func testAT21() {
+	s := new(S)
+	s.next = new(S)
+	u := s.next
+	s.next.v = source1() //@Source(at21)
+	sink1(u.v)           //@Sink(at21)
+}
+
+func testAT22() {
+	a := make([]*V, 10)
+	s := &S{}
+	for i := 0; i < 10; i++ {
+		a[i] = &V{&U{s.v}} // value copied
+	}
+	s.v = source1()
+	AT22_callSink(a[3].data)
+}
+
+func AT22_callSink(x *U) {
+	sink1(x.content) // @Sink(at22)
+}
+
+func testAT23() {
+	a := make([]*X, 10)
+	s := &S{v: "x"}
+	for i := 0; i < 10; i++ {
+		a[i] = &X{&Y{s}}
+	}
+	b := make([]*V, 10)
+	for i := 0; i < 10; i++ {
+		b[i] = &V{&U{s.v}} // value copied
+	}
+	s.v = source1() // @Source(at23)
+	AT23_callSink(b[3].data, a[3].data.content)
+}
+
+func AT23_callSink(u *U, x *S) {
+	sink1(u.content) // no tainted data reaching here
+	sink1(x.v)       // @Sink(at23)
 }
