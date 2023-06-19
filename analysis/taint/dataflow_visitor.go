@@ -236,24 +236,25 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				}
 			}
 
-			// Obtain the parameter node of the callee corresponding to the argument in the call site
-			if s.Config.SummarizeOnDemand && strings.Contains(callSite.ParentName(), "$thunk") {
-				// HACK: Make the callsite's callee summary point to the actual function summary, not the "thunk" summary
-				// This is needed because "thunk" summaries can be incomplete
-				// TODO Is there a better way to identify a function thunk?
-				logger.Printf("callsite parent is a function \"thunk\": %v\n", callSite.ParentName())
-				calleeSummary := df.BuildSummary(s, callSite.Callee(), IsSourceNode)
-				s.FlowGraph.BuildGraph(IsSourceNode)
-				callSite.CalleeSummary = calleeSummary
-			} else if s.Config.SummarizeOnDemand &&
-				(callSite.CalleeSummary == nil || strings.Contains(graphNode.ParentName(), "$bound")) {
-				// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
-				// This is needed because "bound" summaries can be incomplete
-				// TODO Is there a better way to identify a "bound" function?
-				callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), IsSourceNode)
-				s.FlowGraph.BuildGraph(IsSourceNode)
+			if s.Config.SummarizeOnDemand {
+				if strings.Contains(callSite.ParentName(), "$thunk") {
+					// HACK: Make the callsite's callee summary point to the actual function summary, not the "thunk" summary
+					// This is needed because "thunk" summaries can be incomplete
+					// TODO Is there a better way to identify a function thunk?
+					logger.Printf("callsite parent is a function \"thunk\": %v\n", callSite.ParentName())
+					calleeSummary := df.BuildSummary(s, callSite.Callee(), IsSourceNode)
+					s.FlowGraph.BuildGraph(IsSourceNode)
+					callSite.CalleeSummary = calleeSummary
+				} else if callSite.CalleeSummary == nil || strings.Contains(graphNode.ParentName(), "$bound") {
+					// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
+					// This is needed because "bound" summaries can be incomplete
+					// TODO Is there a better way to identify a "bound" function?
+					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), IsSourceNode)
+					s.FlowGraph.BuildGraph(IsSourceNode)
+				}
 			}
 
+			// Obtain the parameter node of the callee corresponding to the argument in the call site
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
 			if param != nil {
 				x := callSite.CalleeSummary.Params[param]
@@ -384,7 +385,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 						fmt.Errorf("at position %d", graphNode.Index()))
 				}
 			} else {
-				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
+				if s.Config.SummarizeOnDemand && len(graphNode.Graph().ReferringMakeClosures) == 0 {
 					// Summarize the free variable's closure's parent function
 					f := graphNode.Graph().Parent.Parent()
 					df.BuildSummary(s, f, IsSourceNode)
@@ -463,7 +464,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				}
 			}
 
-			if len(closureSummary.ReferringMakeClosures) == 0 {
+			if s.Config.SummarizeOnDemand && len(closureSummary.ReferringMakeClosures) == 0 {
 				// Summarize the bound label's closure's parent function
 				f := graphNode.DestClosure().Parent
 				df.BuildSummary(s, f, IsSourceNode)
