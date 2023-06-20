@@ -37,33 +37,39 @@ type Visitor struct {
 }
 
 func (v *Visitor) storeEscapeGraph(c *df.AnalyzerState, context *df.CallStack,
-	caller *ssa.Function, callee *ssa.Function) {
+	caller *ssa.Function, callee *ssa.Function) bool {
 	var escapeContext df.EscapeGraph
 
-	if callee == nil {
-		return
+	if callee == nil || context == nil || caller == nil {
+		return false
 	}
 
 	if v.escapeGraphs[callee] == nil {
 		v.escapeGraphs[callee] = map[*df.CallStack]df.EscapeGraph{}
 	}
 
-	// Don't recompute escape graphs with the same context
-	if v.escapeGraphs[callee][context] != nil {
-		return
+	// if trace is a lasso, context is the context_key
+	context_key := context.GetLassoHandle()
+	if context_key == nil {
+		context_key = context
 	}
 
-	if context != nil && caller != nil {
-		escapeContext = v.escapeGraphs[caller][context.Parent]
+	// Don't recompute escape graphs with the same context
+	// This will change when we re-compute and merge for recursive calls
+	if v.escapeGraphs[callee][context_key] != nil {
+		return false
 	}
+
+	escapeContext = v.escapeGraphs[caller][context.Parent]
 
 	if escapeContext == nil {
-		v.escapeGraphs[callee][context] = c.EscapeAnalysisState.ComputeArbitraryCallerGraph(callee)
+		v.escapeGraphs[callee][context_key] = c.EscapeAnalysisState.ComputeArbitraryCallerGraph(callee)
 	} else {
 		escapeInContext := escapeContext.ComputeCallsiteGraph(
 			c.EscapeAnalysisState, caller, context.Label.CallSite().Value(), callee)
-		v.escapeGraphs[callee][context] = escapeInContext
+		v.escapeGraphs[callee][context_key] = escapeInContext
 	}
+	return true
 }
 
 // NewVisitor returns a Visitor that can be used with
@@ -160,8 +166,11 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
 		// the function's parameter.
 		case *df.ParamNode:
-			if elt.Prev.Node.Graph() != graphNode.Graph() {
+			callArg, prevIsCallArg := elt.Prev.Node.(*df.CallNodeArg)
+			if elt.Prev.Node.Graph() != graphNode.Graph() ||
+				(prevIsCallArg && callArg.ParentNode().Callee() == graphNode.Graph().Parent) {
 				// Flows inside the function body. The data propagates to other locations inside the function body
+				// Second part of the condition allows self-recursive calls to be used
 				for out, oPath := range graphNode.Out() {
 					que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 				}
@@ -245,9 +254,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 
 				newCallStack := elt.Trace.Add(callSite)
 				v.visited[newCallStack] = true
-				if s.Config.UseEscapeAnalysis {
-					v.storeEscapeGraph(s, newCallStack, graphNode.Graph().Parent, callSite.Callee())
-				}
 				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, newCallStack, elt.ClosureTrace)
 			} else {
 				s.AddError(
@@ -474,7 +480,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	cur *df.VisitorNode,
 	toAdd df.GraphNode,
 	edgeInfo df.ObjectPath,
-	trace *df.NodeTree[*df.CallNode],
+	trace *df.CallStack,
 	closureTrace *df.NodeTree[*df.ClosureNode]) []*df.VisitorNode {
 
 	// Check for validators
@@ -489,22 +495,21 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 
 	newNode := df.NodeWithTrace{Node: toAdd, Trace: trace, ClosureTrace: closureTrace}
 
-	if s.Config.Verbose {
-		s.Logger.Printf("Adding %v\n", newNode)
-		s.Logger.Printf("\ttrace: %v\n", trace)
-		s.Logger.Printf("\tclosure-trace: %v\n", closureTrace)
-		s.Logger.Printf("\tseen? %v\n", seen[newNode.Key()])
-		s.Logger.Printf("\tlasso? %v\n", trace.IsLasso())
-		s.Logger.Printf("\tdepth: %v\n", cur.Depth)
-	}
-
-	// Stop conditions: node is already in seen, trace is a lasso or depth exceeds limit
-	if seen[newNode.Key()] || trace.IsLasso() || cur.Depth > s.Config.MaxDepth {
+	if seen[newNode.Key()] || cur.Depth > s.Config.MaxDepth {
 		return que
 	}
 
 	// If configured, use the escape analysis to scan whether data on the edge escapes
+	// This controls also how recursive calls are handled.
+	recursiveContextUpdated := false
+
 	if s.Config.UseEscapeAnalysis {
+		switch graphNode := cur.Node.(type) {
+		case *df.CallNodeArg:
+			callSite := graphNode.ParentNode()
+			recursiveContextUpdated = v.storeEscapeGraph(s, trace, graphNode.Graph().Parent, callSite.Callee())
+		}
+
 		f := toAdd.Graph().Parent
 		egraph := v.escapeGraphs[f][trace]
 		if egraph != nil {
@@ -514,8 +519,12 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 					fmt.Printf("Instruction %s in %s is not local!\n", instr, f)
 				}
 			}
-
 		}
+	}
+
+	// Stop conditions: node is already in seen, trace is a lasso or depth exceeds limit
+	if trace.GetLassoHandle() != nil && !recursiveContextUpdated {
+		return que
 	}
 
 	// logic for parameter stack

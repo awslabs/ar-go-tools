@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -31,6 +32,11 @@ func source1() string {
 type A struct {
 	field1 string
 	field2 int
+}
+
+type Node struct {
+	next  *Node
+	label string
 }
 
 func source2() A {
@@ -56,11 +62,38 @@ func ExampleEscape1() {
 }
 
 func ExampleEscape2() {
-	y := source2() // @Source(ex2)
-	sink1(y.field1)
+	y := source2()  // @Source(ex2)
+	sink1(y.field1) // @Sink(ex2)
+}
+
+var G Node = Node{nil, "g"}
+
+func ExampleEscapeRecursion() {
+	var mu sync.Mutex
+	mu.Lock()
+	G.label = source1()
+	go func() {
+		G.label = source1()
+		mu.Unlock()
+	}()
+	mu.Lock()
+	x := &Node{&Node{&G, "2"}, "1"}
+	_ = recursiveConcat(x)
+	//sink1(c)
+}
+
+func recursiveConcat(n *Node) string {
+	if n == nil {
+		return ""
+	}
+	r := n.label
+	r += recursiveConcat(n.next)
+	return r
 }
 
 func main() {
 	ExampleEscape1()
 	time.Sleep(100000)
+	ExampleEscape2()
+	ExampleEscapeRecursion()
 }

@@ -1753,7 +1753,7 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 		// fallthrough to the unhandled case below.
 		// Some operation can fallthrough as well, because they might not (yet) handle all forms of their instruction type.
 	}
-	fmt.Printf("Warning, unhandled locality for instruction %v\n", instr)
+	//fmt.Printf("Warning, unhandled locality for instruction %v\n", instr)
 	return false
 }
 
