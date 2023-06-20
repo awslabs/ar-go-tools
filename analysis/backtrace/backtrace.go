@@ -348,19 +348,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				}
 			}
 
-			// Arg base case:
-			// - matching parameter was not detected, or
-			// - value is not bound, and
-			// - no more incoming edges from the arg
-			if prevStackLen == len(stack) && len(graphNode.In()) == 0 {
-				t := findTrace(elt)
-				v.Traces = append(v.Traces, t)
-				if s.Config.Verbose {
-					logger.Println("CallNodeArg base case reached...")
-					logger.Printf("Adding trace: %v\n", t)
-				}
-			}
-
 			// We pop the call from the trace (callstack) when exiting the callee and returning to the caller
 			var tr *df.NodeTree[*df.CallNode]
 			if elt.Trace != nil {
@@ -370,6 +357,19 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			if elt.prev == nil || callSite.Graph() != elt.prev.Node.Graph() {
 				for in := range graphNode.In() {
 					stack = addNext(s, stack, seen, elt, in, tr, elt.ClosureTrace)
+				}
+			}
+
+			// Arg base case:
+			// - matching parameter was not detected, or
+			// - value is not bound, and
+			// - no more incoming edges from the arg
+			if prevStackLen == len(stack) {
+				t := findTrace(elt)
+				v.Traces = append(v.Traces, t)
+				if s.Config.Verbose {
+					logger.Println("CallNodeArg base case reached...")
+					logger.Printf("Adding trace: %v\n", t)
 				}
 			}
 

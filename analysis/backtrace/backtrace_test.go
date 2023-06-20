@@ -539,97 +539,82 @@ func TestAnalyze_Taint(t *testing.T) {
 
 	for _, test := range tests {
 		test := test
-		t.Run(test.name, func(t *testing.T) {
-			// Change directory to the testdata folder to be able to load packages
-			_, filename, _, _ := runtime.Caller(0)
-			dir := path.Join(path.Dir(filename), "../../testdata/src/taint", test.name)
-			if err := os.Chdir(dir); err != nil {
-				t.Fatal(err)
+		for _, isOnDemand := range []bool{false, true} {
+			name := test.name
+			if isOnDemand {
+				name += "_OnDemand"
 			}
+			t.Run(name, func(t *testing.T) {
+				// Change directory to the testdata folder to be able to load packages
+				_, filename, _, _ := runtime.Caller(0)
+				dir := path.Join(path.Dir(filename), "../../testdata/src/taint", test.name)
+				if err := os.Chdir(dir); err != nil {
+					t.Fatal(err)
+				}
 
-			expected, _ := analysistest.GetExpectSourceToTargets(dir, ".")
-			if len(expected) == 0 {
-				t.Fatal("expected sources and sinks to be present")
-			}
+				expected, _ := analysistest.GetExpectSourceToTargets(dir, ".")
+				if len(expected) == 0 {
+					t.Fatal("expected sources and sinks to be present")
+				}
 
-			program, cfg := analysistest.LoadTest(t, dir, test.files)
-			defer os.Remove(cfg.ReportsDir)
+				program, cfg := analysistest.LoadTest(t, dir, test.files)
+				defer os.Remove(cfg.ReportsDir)
 
-			cfg.BacktracePoints = cfg.Sinks
-			cfg.SummarizeOnDemand = true
-			res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
-			if err != nil {
-				t.Fatal(err)
-			}
+				cfg.BacktracePoints = cfg.Sinks
+				cfg.SummarizeOnDemand = isOnDemand
+				res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-			t.Log("TRACES:")
-			for _, trace := range res.Traces {
-				t.Log(trace)
-			}
+				t.Log("TRACES:")
+				for _, trace := range res.Traces {
+					t.Log(trace)
+				}
 
-			reached := reachedSinkPositions(program, cfg, res.Traces)
-			if len(reached) == 0 {
-				t.Fatal("expected reached sink positions to be present")
-			}
+				reached := reachedSinkPositions(program, cfg, res.Traces)
+				if len(reached) == 0 {
+					t.Fatal("expected reached sink positions to be present")
+				}
 
-			for sink, sources := range reached {
-				t.Logf("sink: %v -> sources: %v", sink, sources)
-			}
+				for sink, sources := range reached {
+					t.Logf("sink: %v -> sources: %v", sink, sources)
+				}
 
-			seen := make(map[analysistest.LPos]map[analysistest.LPos]bool)
-			for sink, sources := range reached {
-				for source := range sources {
-					if skip[filepath.Base(source.Filename)] || skip[filepath.Base(sink.Filename)] {
-						continue
-					}
+				seen := make(map[analysistest.LPos]map[analysistest.LPos]bool)
+				for sink, sources := range reached {
+					for source := range sources {
+						if skip[filepath.Base(source.Filename)] || skip[filepath.Base(sink.Filename)] {
+							continue
+						}
 
-					posSink := analysistest.RemoveColumn(sink)
-					if _, ok := seen[posSink]; !ok {
-						seen[posSink] = map[analysistest.LPos]bool{}
-					}
-					posSource := analysistest.RemoveColumn(source)
-					if _, ok := expected[posSink]; ok && expected[posSink][posSource] {
-						seen[posSink][posSource] = true
-					} else {
-						t.Errorf("ERROR in main.go: false positive:\n\t%s\n flows to\n\t%s\n", posSource, posSink)
+						posSink := analysistest.RemoveColumn(sink)
+						if _, ok := seen[posSink]; !ok {
+							seen[posSink] = map[analysistest.LPos]bool{}
+						}
+						posSource := analysistest.RemoveColumn(source)
+						if _, ok := expected[posSink]; ok && expected[posSink][posSource] {
+							seen[posSink][posSource] = true
+						} else {
+							t.Errorf("ERROR in main.go: false positive:\n\t%s\n flows to\n\t%s\n", posSource, posSink)
+						}
 					}
 				}
-			}
 
-			for sinkLine, sources := range expected {
-				for sourceLine := range sources {
-					if skip[filepath.Base(sourceLine.Filename)] || skip[filepath.Base(sinkLine.Filename)] {
-						continue
-					}
+				for sinkLine, sources := range expected {
+					for sourceLine := range sources {
+						if skip[filepath.Base(sourceLine.Filename)] || skip[filepath.Base(sinkLine.Filename)] {
+							continue
+						}
 
-					if !seen[sinkLine][sourceLine] {
-						// Remaining entries have not been detected!
-						t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
+						if !seen[sinkLine][sourceLine] {
+							// Remaining entries have not been detected!
+							t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
+						}
 					}
 				}
-			}
-
-			//for sinkLine, sources := range expected {
-			//	for sourceLine := range sources {
-			//		if skip[filepath.Base(sourceLine.Filename)] || skip[filepath.Base(sinkLine.Filename)] {
-			//			continue
-			//		}
-			//
-			//		if !funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
-			//			// the source should exist in the trace
-			//			hasSource := funcutil.Exists(trace, func(node backtrace.TraceNode) bool {
-			//				return node.Pos.Line == sourceLine.Line
-			//			})
-			//
-			//			// last node of trace should be the sink
-			//			gotSink := trace[len(trace)-1]
-			//			return hasSource && sinkLine.Line == gotSink.Pos.Line
-			//		}) {
-			//			t.Errorf("no match for source: %v -> sink: %v", sourceLine, sinkLine)
-			//		}
-			//	}
-			//}
-		})
+			})
+		}
 	}
 }
 
