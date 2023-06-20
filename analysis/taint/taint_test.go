@@ -98,8 +98,6 @@ func TestCrossFunctionClosures(t *testing.T) {
 }
 
 func TestCrossFunctionClosures_SummarizeOnDemand(t *testing.T) {
-	// TODO fix
-	t.Skipf("skipping until fixed")
 	runTestSummarizeOnDemand(t, "closures", []string{"helpers.go"})
 }
 
