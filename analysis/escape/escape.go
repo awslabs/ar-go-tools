@@ -1215,9 +1215,9 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
-		verbose:     state.Config.Verbose,
+		verbose:     state.Config.Verbose(),
 		globalNodes: &globalNodeGroup{0},
-		logger:      state.Logger,
+		logger:      state.Logger.GetDebug(),
 	}
 	// Find all the nodes that are in the main package, and thus treat everything else as unsummarized
 	nodes := []*callgraph.Node{}
@@ -1259,18 +1259,15 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	if nextIndex != -1 {
 		panic("expected reverse to be complete")
 	}
-	// The main worklist algorithm. Reanalyze each function, putting any function(s) that need to be reanalyzed back on the list
+	// The main worklist algorithm. Reanalyze each function, putting any function(s) that need to be reanalyzed back on
+	// the list
 	for len(worklist) > 0 {
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 		funcName := summary.function.Name()
-		if prog.verbose {
-			state.Logger.Printf("Analyzing %v\n", funcName)
-		}
+		state.Logger.Debugf("Analyzing %v\n", funcName)
 		changed := resummarize(summary)
-		if prog.verbose {
-			state.Logger.Printf("Func %s is (changed=%v):\n%s\n", funcName, changed, summary.finalGraph.GraphvizLabel(funcName))
-		}
+		state.Logger.Tracef("Func %s is (changed=%v):\n%s\n", funcName, changed, summary.finalGraph.GraphvizLabel(funcName))
 		// Iterate over the places where this summary is used, and schedule them to be re-analyzed
 		for location, graphUsed := range summary.summaryUses {
 			if !summary.finalGraph.Matches(graphUsed) {
@@ -1295,7 +1292,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
 				if "main" == f.Pkg.Pkg.Name() {
-					state.Logger.Printf("Func %s summary is:\n%s\n", f.String(), summary.finalGraph.GraphvizLabel(f.String()))
+					state.Logger.Debugf("Func %s summary is:\n%s\n", f.String(), summary.finalGraph.GraphvizLabel(f.String()))
 				}
 			}
 		}

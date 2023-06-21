@@ -55,8 +55,8 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 // reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger
 func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
-	c.Logger.Printf(" 💀 Sink reached at %s\n", colors.Red(sink.Node.Position(c)))
-	c.Logger.Printf(" Add new path from %s to %s <== \n",
+	c.Logger.Infof(" 💀 Sink reached at %s\n", colors.Red(sink.Node.Position(c)))
+	c.Logger.Infof(" Add new path from %s to %s <== \n",
 		colors.Green(source.Node.String()), colors.Red(sink.Node.String()))
 	sinkPos := sink.Node.Position(c)
 	if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
@@ -65,10 +65,10 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 	if c.Config.ReportPaths {
 		tmp, err := os.CreateTemp(c.Config.ReportsDir, "flow-*.out")
 		if err != nil {
-			c.Logger.Printf("Could not write report.")
+			c.Logger.Errorf("Could not write report.")
 		}
 		defer tmp.Close()
-		c.Logger.Printf("Report in %s\n", tmp.Name())
+		c.Logger.Infof("Report in %s\n", tmp.Name())
 
 		tmp.WriteString(fmt.Sprintf("Source: %s\n", source.Node.String()))
 		tmp.WriteString(fmt.Sprintf("At: %s\n", source.Node.Position(c)))
@@ -83,13 +83,12 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 		}
 
 		tmp.WriteString(fmt.Sprintf("Trace:\n"))
-		prefix := c.Logger.Prefix()
-		c.Logger.SetPrefix(prefix + "TRACE: ")
 		for i := len(nodes) - 1; i >= 0; i-- {
 			tmp.WriteString(fmt.Sprintf("%s\n", nodes[i].Node.Position(c).String()))
-			c.Logger.Printf("[%s] %s\n", dataflow.FuncNames(nodes[i].Trace), nodes[i].Node.Position(c).String())
+			c.Logger.Infof("%s - [%s] %s\n",
+				colors.Purple("TRACE"),
+				dataflow.FuncNames(nodes[i].Trace), nodes[i].Node.Position(c).String())
 		}
-		c.Logger.Printf("SINK: %s\n", sinkPos.String())
-		c.Logger.SetPrefix(prefix)
+		c.Logger.Infof("-- SINK: %s\n", sinkPos.String())
 	}
 }

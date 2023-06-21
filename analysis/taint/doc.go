@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /*
-The taint package implements most of the taint analysis functionality. It consumes the cross-function dataflow graph
+The taint package implements most of the taint analysis functionality. It consumes the inter-procedural dataflow graph
 that is built by the functions in the dataflow package. The main entry point of the analysis is the [Analyze] function,
 which returns an [AnalysisResult] containing all the taint flows discovered as well as the analyzer state resulting
 from running all the analyses.

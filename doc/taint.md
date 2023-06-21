@@ -54,8 +54,8 @@ reportpaths: true        # all the paths from sources to sinks that have been di
 
 The `taint` tool will first print messages indicating that it finished some of the preliminary analyses before starting the first pass of the dataflow analysis. In this first pass the tool analyzes each function individually and builds a summary of how the data flows through the function. The user should see a message of the sort:
 ```
-Starting single-function analysis ...
-Single-function pass done (0.00 s).
+Starting intra-procedural analysis ...
+intra-procedural pass done (0.00 s).
 ```
 Indicating that this step has terminated. For large program, this step can take from several minutes up to an hour. The functions analyzed in this pass are all the functions that are not in the standard library, not filtered out by the `pkgfilter` option of the configuration file, and not summarize in one of the dataflow specifications file provided in the configuration.
 After that, the tool will link together the dataflow summaries in an inter-procedural pass:

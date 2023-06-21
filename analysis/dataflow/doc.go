@@ -14,7 +14,7 @@
 
 /*
 The dataflow package implements the core of the dataflow analysis. In order to run the taint or the backwards
-analysis, you should first run the steps to build the cross-function dataflow graph.
+analysis, you should first run the steps to build the inter-procedural dataflow graph.
 
 The first object to build is an instance of the [AnalyzerState] with some basic analyses's results already computed.
 Assuming you have a program prog, configuration cfg and logger log, you can build an initialized state for your program

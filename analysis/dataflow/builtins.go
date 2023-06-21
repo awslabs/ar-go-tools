@@ -115,7 +115,7 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 
 		// for recover, we will need some form of panic analysis
 		case "recover":
-			t.parentAnalyzerState.Err.Printf("Encountered recover at %s, the analysis may be unsound.\n",
+			t.parentAnalyzerState.Logger.Errorf("Encountered recover at %s, the analysis may be unsound.\n",
 				instruction.Parent().Prog.Fset.Position(instruction.Pos()))
 			return true
 		default:

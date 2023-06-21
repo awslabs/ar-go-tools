@@ -15,7 +15,6 @@
 package dataflow_test
 
 import (
-	"log"
 	"os"
 	"path"
 	"runtime"
@@ -23,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
@@ -35,7 +35,7 @@ func TestFunctionSummaries(t *testing.T) {
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
 	// Loading the program for testdata/src/dataflow/summaries/main.go
 	program, cfg := analysistest.LoadTest(t, dir, []string{})
-	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), cfg, program)
+	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Fatalf("failed to build analyzer state: %v", err)
 	}
@@ -497,7 +497,7 @@ func TestFunctionSummaries(t *testing.T) {
 					}
 				}
 				if freevar.SsaNode().Name() == "s1" && len(freevar.In()) != 0 {
-					// technically it does, but this is a single-function analysis (even for closures)
+					// technically it does, but this is a intra-procedural analysis (even for closures)
 					t.Errorf("in Baz, closure freevar %s should have no incoming edges, but got: %v",
 						freevar.String(), freevar.In())
 				}

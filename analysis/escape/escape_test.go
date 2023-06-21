@@ -16,7 +16,6 @@ package escape
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"reflect"
@@ -24,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
@@ -214,10 +214,10 @@ func TestInterproceduralEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, config := analysistest.LoadTest(t, ".", []string{})
-	config.Verbose = true
+	program, cfg := analysistest.LoadTest(t, ".", []string{})
+	cfg.LogLevel = int(config.TraceLevel)
 	// Compute the summaries for everything in the main package
-	state, err := dataflow.NewAnalyzerState(program, log.Default(), config,
+	state, err := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
 		[]func(*dataflow.AnalyzerState){
 			func(s *dataflow.AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		})

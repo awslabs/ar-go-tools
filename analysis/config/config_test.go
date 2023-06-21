@@ -80,6 +80,10 @@ func loadFromTestDir(t *testing.T, filename string) (string, *Config, error) {
 }
 
 func testLoadOneFile(t *testing.T, filename string, expected Config) {
+	// set default log level that may not be specified
+	if expected.LogLevel == 0 {
+		expected.LogLevel = int(InfoLevel)
+	}
 	configFileName, config, err := loadFromTestDir(t, filename)
 	if err != nil {
 		t.Errorf("Error loading %s: %v", configFileName, err)
@@ -174,8 +178,8 @@ func TestLoadFullConfig(t *testing.T) {
 		t.Errorf("Could not load %s", fileName)
 		return
 	}
-	if !config.Verbose {
-		t.Error("full config should have set verbose")
+	if config.LogLevel != int(TraceLevel) {
+		t.Error("full config should have set trace")
 	}
 	if !config.SkipInterprocedural {
 		t.Error("full config should have set skiipinterprocedural")

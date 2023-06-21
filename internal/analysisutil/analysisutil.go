@@ -27,7 +27,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// IsEntrypointNode returns true if n is an entrypoint to the single-function analysis according to f.
+// IsEntrypointNode returns true if n is an entrypoint to the intra-procedural analysis according to f.
 func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, config.CodeIdentifier) bool) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered entrypoints
@@ -86,7 +86,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 
 // PrintMissingSummaryMessage prints a missing summary message to the cache's logger.
 func PrintMissingSummaryMessage(c *dataflow.AnalyzerState, callSite *dataflow.CallNode) {
-	if !c.Config.Verbose {
+	if !c.Config.Verbose() {
 		return
 	}
 
@@ -97,30 +97,30 @@ func PrintMissingSummaryMessage(c *dataflow.AnalyzerState, callSite *dataflow.Ca
 	} else {
 		typeString = callSite.Callee().Type().String()
 	}
-	c.Logger.Printf(colors.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
+	c.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
 		callSite.String(), typeString)))
 	if callSite.Callee() != nil && callSite.CallSite() != nil {
-		c.Logger.Printf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
+		c.Logger.Debugf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
 
 		pos := callSite.Position(c)
 		if pos != lang.DummyPos {
-			c.Logger.Printf("|_ See call site: %s", pos)
+			c.Logger.Debugf("|_ See call site: %s", pos)
 		} else {
 			opos := lang.SafeFunctionPos(callSite.Graph().Parent)
-			c.Logger.Printf("|_ See call site in %s", opos.ValueOr(lang.DummyPos))
+			c.Logger.Debugf("|_ See call site in %s", opos.ValueOr(lang.DummyPos))
 		}
 
 		methodFunc := callSite.CallSite().Common().Method
 		if methodFunc != nil {
 			methodKey := callSite.CallSite().Common().Value.Type().String() + "." + methodFunc.Name()
-			c.Logger.Printf("| Or add %s to dataflow contracts", methodKey)
+			c.Logger.Debugf("| Or add %s to dataflow contracts", methodKey)
 		}
 	}
 }
 
 // PrintMissingClosureNodeSummaryMessage prints a missing closure summary message to the cache's logger.
 func PrintMissingClosureSummaryMessage(c *dataflow.AnalyzerState, bl *dataflow.BoundLabelNode) {
-	if !c.Config.Verbose {
+	if !c.Config.Verbose() {
 		return
 	}
 
@@ -130,18 +130,18 @@ func PrintMissingClosureSummaryMessage(c *dataflow.AnalyzerState, bl *dataflow.B
 	} else {
 		instrStr = bl.Instr().String()
 	}
-	c.Logger.Printf(colors.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+	c.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
 		bl.String(), instrStr)))
 	if bl.Instr() != nil {
-		c.Logger.Printf("| Please add closure for %s to summaries",
+		c.Logger.Debugf("| Please add closure for %s to summaries",
 			bl.Instr().String())
-		c.Logger.Printf("|_ See closure: %s", bl.Position(c))
+		c.Logger.Debugf("|_ See closure: %s", bl.Position(c))
 	}
 }
 
 // PrintMissingClosureNodeSummaryMessage prints a missing closure node summary message to the cache's logger.
 func PrintMissingClosureNodeSummaryMessage(c *dataflow.AnalyzerState, closureNode *dataflow.ClosureNode) {
-	if !c.Config.Verbose {
+	if !c.Config.Verbose() {
 		return
 	}
 
@@ -151,36 +151,36 @@ func PrintMissingClosureNodeSummaryMessage(c *dataflow.AnalyzerState, closureNod
 	} else {
 		instrStr = closureNode.Instr().String()
 	}
-	c.Logger.Printf(colors.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+	c.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
 		closureNode.String(), instrStr)))
 	if closureNode.Instr() != nil {
-		c.Logger.Printf("| Please add closure %s to summaries",
+		c.Logger.Debugf("| Please add closure %s to summaries",
 			closureNode.Instr().Fn.String())
-		c.Logger.Printf("|_ See closure: %s", closureNode.Position(c))
+		c.Logger.Debugf("|_ See closure: %s", closureNode.Position(c))
 	}
 }
 
 // PrintWarningSummaryNotConstructed prints a warning message to the cache's logger.
 func PrintWarningSummaryNotConstructed(c *dataflow.AnalyzerState, callSite *dataflow.CallNode) {
-	if !c.Config.Verbose {
+	if !c.Config.Verbose() {
 		return
 	}
 
-	c.Logger.Printf("| %s: summary has not been built for %s.",
+	c.Logger.Debugf("| %s: summary has not been built for %s.",
 		colors.Yellow("WARNING"),
 		colors.Yellow(callSite.Graph().Parent.Name()))
 	pos := callSite.Position(c)
 	if pos != lang.DummyPos {
-		c.Logger.Printf(fmt.Sprintf("|_ See call site: %s", pos))
+		c.Logger.Debugf(fmt.Sprintf("|_ See call site: %s", pos))
 	} else {
 		opos := lang.SafeFunctionPos(callSite.Graph().Parent)
-		c.Logger.Printf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(lang.DummyPos)))
+		c.Logger.Debugf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(lang.DummyPos)))
 	}
 
 	if callSite.CallSite() != nil {
 		methodKey := lang.InstrMethodKey(callSite.CallSite())
 		if methodKey.IsSome() {
-			c.Logger.Printf(fmt.Sprintf("| Or add %s to dataflow contracts", methodKey.ValueOr("?")))
+			c.Logger.Debugf(fmt.Sprintf("| Or add %s to dataflow contracts", methodKey.ValueOr("?")))
 		}
 	}
 }
@@ -189,7 +189,7 @@ func PrintWarningSummaryNotConstructed(c *dataflow.AnalyzerState, callSite *data
 func CheckIndex(c *dataflow.AnalyzerState, node dataflow.IndexedGraphNode, callSite *dataflow.CallNode, msg string) error {
 	if node.Index() >= len(callSite.Args()) {
 		pos := c.Program.Fset.Position(callSite.CallSite().Value().Pos())
-		c.Logger.Printf("%s: trying to access index %d of %s, which has"+
+		c.Logger.Debugf("%s: trying to access index %d of %s, which has"+
 			" only %d elements\nSee: %s\n", msg, node.Index(), callSite.String(), len(callSite.Args()),
 			pos)
 		return fmt.Errorf("bad index %d at %s", node.Index(), pos)
@@ -210,8 +210,8 @@ func CheckNoGoRoutine(c *dataflow.AnalyzerState, reportedLocs map[*ssa.Go]bool, 
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
 		if !reportedLocs[goroutine] {
 			reportedLocs[goroutine] = true
-			c.Logger.Printf(colors.Yellow("WARNING: Data flows to Go call."))
-			c.Logger.Printf("-> Position: %s", node.Position(c))
+			c.Logger.Warnf(colors.Yellow("Data flows to Go call."))
+			c.Logger.Warnf("-> Position: %s", node.Position(c))
 		}
 	}
 }

@@ -73,7 +73,7 @@ func main() {
 
 	// Override config parameters with command-line parameters
 	if *verbose {
-		taintConfig.Verbose = true
+		taintConfig.LogLevel = int(config.DebugLevel)
 	}
 	logger.Printf(colors.Faint(fmt.Sprintf("Argot taint tool - build %s", version)))
 	logger.Printf(colors.Faint("Reading sources") + "\n")

@@ -16,12 +16,12 @@ package dataflow_test
 
 import (
 	"fmt"
-	"log"
 	"path"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 )
@@ -29,8 +29,8 @@ import (
 func TestComputeCtxts(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callctx")
-	program, config := analysistest.LoadTest(t, dir, []string{})
-	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), config, program)
+	program, cfg := analysistest.LoadTest(t, dir, []string{})
+	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Fatalf("error building state: %s", err)
 	}

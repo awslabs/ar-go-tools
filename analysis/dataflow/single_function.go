@@ -39,7 +39,7 @@ import (
 // - `single_function_instruction_ops.go` file contains all the functions that define how instructions in the function
 // are handled.
 
-// SingleFunctionResult holds the results of the single-function analysis.
+// SingleFunctionResult holds the results of the intra-procedural analysis.
 type SingleFunctionResult struct {
 	Summary *SummaryGraph // Summary is the procedure summary built by the analysis
 	Time    time.Duration // Time it took to compute the summary
@@ -90,11 +90,8 @@ func run(a *AnalyzerState, flowInfo *FlowInformation, sm *SummaryGraph,
 
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
-		err := a.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
-			sm.Parent.String(), colors.Yellow("analysis unsound!")))
-		if err != nil {
-			return err
-		}
+		a.Logger.Warnf("Defer stack unbounded in %s: %s",
+			sm.Parent.String(), colors.Yellow("analysis unsound!"))
 	}
 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
 	state.initialize()

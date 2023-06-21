@@ -15,16 +15,16 @@
 package dataflow_test
 
 import (
-	"log"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	. "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 )
 
 func TestRunBoundingAnalysis(t *testing.T) {
-	program, config := analysistest.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
-	c, err := NewInitializedAnalyzerState(log.Default(), config, program)
+	program, cfg := analysistest.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
+	c, err := NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Errorf("error building state: %s", err)
 	}

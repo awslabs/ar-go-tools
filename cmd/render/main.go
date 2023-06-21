@@ -22,7 +22,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -38,7 +37,7 @@ var (
 	modeFlag   = flag.String("analysis", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
 	cgOut      = flag.String("cgout", "", "Output file for call graph (no output if not specified)")
 	htmlOut    = flag.String("htmlout", "", "Output file for call graph (no output if not specified)")
-	dfOut      = flag.String("dfout", "", "Output file for cross-function dataflow graph (no output if not specified)")
+	dfOut      = flag.String("dfout", "", "Output file for inter-procedural dataflow graph (no output if not specified)")
 	configPath = flag.String("config", "", "Config file")
 	ssaOutFlag = flag.String("ssaout", "", "Output folder for ssa (no output if not specified)")
 )
@@ -71,8 +70,6 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
-
-	logger := log.Default()
 
 	// The strings constants are used only here
 	var callgraphAnalysisMode dataflow.CallgraphAnalysisMode
@@ -146,7 +143,7 @@ func main() {
 	}
 
 	if *dfOut != "" {
-		fmt.Fprintf(os.Stderr, colors.Faint("Writing cross-function dataflow graph in "+*dfOut+"\n"))
+		fmt.Fprintf(os.Stderr, colors.Faint("Writing inter-procedural dataflow graph in "+*dfOut+"\n"))
 
 		f, err := os.Create(*dfOut)
 		if err != nil {
@@ -154,8 +151,8 @@ func main() {
 			return
 		}
 		defer f.Close()
-		if err := WriteCrossFunctionGraph(renderConfig, logger, program, f); err != nil {
-			fmt.Fprintf(os.Stderr, "Could not generate cross-function flow graph:\n%v", err)
+		if err := WriteCrossFunctionGraph(renderConfig, config.NewLogGroup(renderConfig), program, f); err != nil {
+			fmt.Fprintf(os.Stderr, "Could not generate inter-procedural flow graph:\n%v", err)
 			return
 		}
 	}

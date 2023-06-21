@@ -43,7 +43,7 @@ The config file is expected to be in YAML format. All fields are generally optio
 Some common optional fields across tools are:
 
 ```[yaml]
-verbose: true                       # sets the output of the tool to verbose (internally default is false)
+loglevel: 4                         # sets the output of the tool to debug (default is 3 for info)
 pkgfilter: "some-package/.*"        # filter which packages should be analyzed  (a regex matching package name)
 skipinterprocedural: true           # skip the interprocedural pass if the tool has one (default is false)
 coveragefilter: "other-package/.*"  # filter for which files to report coverage (a regex matching file paths)
@@ -55,6 +55,8 @@ maxalarms: 10                       # set a maximum for how many alarms are repo
 filters:                            # a list of filters that is used by the analysis, the meaning is analysis dependent
     - "packages/*"
 ```
+
+> 📝 The tool accepts five different settings for the logging level: 1 for error logging, 2 for warnings, 3 for info, 4 for debugging information and 5 for tracing. Tracing should not be used on large programs.
 
 
 

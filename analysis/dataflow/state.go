@@ -17,7 +17,6 @@ package dataflow
 import (
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -32,10 +31,7 @@ import (
 // the analyzer. Different steps of the analysis will populate the fields of this structure.
 type AnalyzerState struct {
 	// The logger used during the analysis (can be used to control output.
-	Logger *log.Logger
-
-	// Err is a Logger for errors
-	Err *log.Logger
+	Logger *config.LogGroup
 
 	// The configuration file for the analysis
 	Config *config.Config
@@ -81,7 +77,7 @@ type AnalyzerState struct {
 //   - computing a map from interface types to the implementations of their methods
 //   - scanning the usage of globals in the program
 //   - linking aliases of bound variables to the closure that binds them
-func NewInitializedAnalyzerState(logger *log.Logger, config *config.Config,
+func NewInitializedAnalyzerState(logger *config.LogGroup, config *config.Config,
 	program *ssa.Program) (*AnalyzerState, error) {
 	program.Build()
 	state, err := NewAnalyzerState(program, logger, config, []func(*AnalyzerState){
@@ -100,15 +96,12 @@ func NewInitializedAnalyzerState(logger *log.Logger, config *config.Config,
 }
 
 // NewAnalyzerState returns a properly initialized analyzer state by running essential steps in parallel.
-func NewAnalyzerState(p *ssa.Program, l *log.Logger, c *config.Config,
+func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 	steps []func(*AnalyzerState)) (*AnalyzerState, error) {
 	var allContracts []Contract
 
-	e := log.New(l.Writer(), "[ERROR] ", l.Flags())
-
 	state := &AnalyzerState{
 		Logger:                l,
-		Err:                   e,
 		Config:                c,
 		Program:               p,
 		implementationsByType: map[string]map[*ssa.Function]bool{},
@@ -132,9 +125,7 @@ func NewAnalyzerState(p *ssa.Program, l *log.Logger, c *config.Config,
 			if err != nil {
 				return nil, err
 			}
-			if c.Verbose {
-				l.Printf("Loaded %d dataflow contracts from %s\n", len(contractsBatch), specFile)
-			}
+			l.Debugf("Loaded %d dataflow contracts from %s\n", len(contractsBatch), specFile)
 			// Initialize all the entries of DataFlowContracts
 			for _, contract := range contractsBatch {
 				for method := range contract.Methods {
@@ -209,10 +200,10 @@ func (c *AnalyzerState) PopulateTypesToImplementationMap() {
 // PopulateImplementations is a verbose wrapper around PopulateTypesToImplementationsMap.
 func (c *AnalyzerState) PopulateImplementations() {
 	// Load information for analysis and cache it.
-	c.Logger.Println("Computing information about types and functions for analysis...")
+	c.Logger.Infof("Computing information about types and functions for analysis...")
 	start := time.Now()
 	c.PopulateTypesToImplementationMap()
-	c.Logger.Printf("Pointer analysis state computed, added %d items (%.2f s)\n",
+	c.Logger.Infof("Pointer analysis state computed, added %d items (%.2f s)\n",
 		c.Size(), time.Since(start).Seconds())
 }
 
@@ -231,9 +222,9 @@ func (c *AnalyzerState) PopulatePointerAnalysisResult(functionFilter func(*ssa.F
 // PopulatePointersVerbose is a verbose wrapper around PopulatePointerAnalysisResult.
 func (c *AnalyzerState) PopulatePointersVerbose(functionFilter func(*ssa.Function) bool) {
 	start := time.Now()
-	c.Logger.Println("Gathering values and starting pointer analysis...")
+	c.Logger.Infof("Gathering values and starting pointer analysis...")
 	c.PopulatePointerAnalysisResult(functionFilter)
-	c.Logger.Printf("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
+	c.Logger.Infof("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
 }
 
 // PopulateGlobals adds global nodes for every global defined in the program's packages
@@ -251,33 +242,28 @@ func (c *AnalyzerState) PopulateGlobals() {
 // PopulateGlobalsVerbose is a verbose wrapper around PopulateGlobals
 func (c *AnalyzerState) PopulateGlobalsVerbose() {
 	start := time.Now()
-	c.Logger.Println("Gathering global variable declaration in the program...")
+	c.Logger.Infof("Gathering global variable declaration in the program...")
 	c.PopulateGlobals()
-	c.Logger.Printf("Global gathering terminated, added %d items (%.2f s)",
+	c.Logger.Infof("Global gathering terminated, added %d items (%.2f s)",
 		len(c.Globals), time.Since(start).Seconds())
 }
 
 // PopulateBoundingInformation runs the bounding analysis
 func (c *AnalyzerState) PopulateBoundingInformation(verbose bool) error {
 	start := time.Now()
-	if verbose {
-		c.Logger.Println("Gathering information about pointer binding in closures")
-	}
-
+	c.Logger.Debugf("Gathering information about pointer binding in closures")
 	boundingInfo, err := RunBoundingAnalysis(c)
 	if err != nil {
 		if verbose {
-			c.Err.Println("Error running pointer binding analysis:")
-			c.Err.Printf("  %s", err)
+			c.Logger.Errorf("Error running pointer binding analysis:")
+			c.Logger.Errorf("  %s", err)
 		}
 		c.AddError("bounding analysis", err)
 		return err
 	} else {
 		c.BoundingInfo = boundingInfo
-		if verbose {
-			c.Logger.Printf("Pointer binding analysis terminated, added %d items (%.2f s)",
-				len(c.BoundingInfo), time.Since(start).Seconds())
-		}
+		c.Logger.Debugf("Pointer binding analysis terminated, added %d items (%.2f s)",
+			len(c.BoundingInfo), time.Since(start).Seconds())
 		return nil
 	}
 }
@@ -304,9 +290,7 @@ func (c *AnalyzerState) IsReachableFunction(f *ssa.Function) bool {
 		return c.reachableFunctions[f]
 	}
 	// If no reachability information has been computed, assume every function is reachable
-	if c.Config.Verbose {
-		c.Logger.Printf("No reachability information has been computed")
-	}
+	c.Logger.Debugf("No reachability information has been computed")
 	return true
 }
 

@@ -29,7 +29,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// SingleFunctionResult represents the result of running a single-function analysis pass.
+// SingleFunctionResult represents the result of running an intra-procedural analysis pass.
 type SingleFunctionResult struct {
 	FlowGraph dataflow.CrossFunctionFlowGraph
 }
@@ -55,12 +55,12 @@ type RunSingleFunctionArgs struct {
 	PostBlockCallback func(state *dataflow.IntraAnalysisState)
 }
 
-// RunSingleFunction runs a single-function analysis pass of program prog in parallel using numRoutines.
+// RunSingleFunction runs a intra-procedural analysis pass of program prog in parallel using numRoutines.
 // It builds the function summary if shouldBuildSummary evaluates to true.
 // isSourceNode and isSinkNode are configure which nodes should be treated as data flow sources/sinks.
 func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	logger := args.AnalyzerState.Logger
-	logger.Println("Starting single-function analysis ...")
+	logger.Infof("Starting intra-procedural analysis ...")
 	start := time.Now()
 
 	fg := dataflow.NewCrossFunctionFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, args.AnalyzerState)
@@ -84,13 +84,13 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	results := runJobs(jobs, numRoutines, args.IsEntrypoint)
 	collectResults(results, &fg, args.AnalyzerState)
 
-	logger.Printf("Single-function pass done (%.2f s).", time.Since(start).Seconds())
+	logger.Infof("Intra-procedural pass done (%.2f s).", time.Since(start).Seconds())
 
 	args.AnalyzerState.FlowGraph = &fg
 	return SingleFunctionResult{FlowGraph: fg}
 }
 
-// runJobs runs the single-function analysis on each job in jobs in parallel and returns a slice with all the results.
+// runJobs runs the intra-procedural analysis on each job in jobs in parallel and returns a slice with all the results.
 func runJobs(jobs []singleFunctionJob, numRoutines int,
 	isEntrypoint func(*config.Config, ssa.Node) bool) []dataflow.SingleFunctionResult {
 	f := func(job singleFunctionJob) dataflow.SingleFunctionResult {
@@ -107,16 +107,16 @@ type RunCrossFunctionArgs struct {
 	IsEntrypoint  func(*config.Config, ssa.Node) bool
 }
 
-// RunCrossFunction runs the cross-function analysis pass.
+// RunCrossFunction runs the inter-procedural analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
 func RunCrossFunction(args RunCrossFunctionArgs) {
-	args.AnalyzerState.Logger.Println("Starting cross-function pass...")
+	args.AnalyzerState.Logger.Infof("Starting inter-procedural pass...")
 	start := time.Now()
 	args.AnalyzerState.FlowGraph.CrossFunctionPass(args.AnalyzerState, args.Visitor, args.IsEntrypoint)
-	args.AnalyzerState.Logger.Printf("Cross-function pass done (%.2f s).", time.Since(start).Seconds())
+	args.AnalyzerState.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
 }
 
-// singleFunctionJob contains all the information necessary to run the single-function analysis on function.
+// singleFunctionJob contains all the information necessary to run the intra-procedural analysis on function.
 type singleFunctionJob struct {
 	analyzerState      *dataflow.AnalyzerState
 	function           *ssa.Function
@@ -125,26 +125,27 @@ type singleFunctionJob struct {
 	output             chan *dataflow.SummaryGraph
 }
 
-// runSingleFunctionJob runs the single-function analysis with the information in job
+// runSingleFunctionJob runs the intra-procedural analysis with the information in job
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
 	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
-	job.analyzerState.Logger.Printf("Analyzing Pkg: %s | Func: %s ...", lang.PackageNameFromFunction(job.function), job.function.Name())
+	job.analyzerState.Logger.Debugf("Analyzing Pkg: %s | Func: %s ...",
+		lang.PackageNameFromFunction(job.function), job.function.Name())
 	result, err := dataflow.SingleFunctionAnalysis(job.analyzerState, job.function,
 		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
+
 	if err != nil {
-		job.analyzerState.Err.Printf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
+		job.analyzerState.Logger.Errorf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
 		return dataflow.SingleFunctionResult{}
 	}
-	if job.analyzerState.Config.Verbose {
-		job.analyzerState.Logger.Printf("Pkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
-			lang.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
-			result.Time.Seconds())
-	}
+
+	job.analyzerState.Logger.Debugf("Pkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
+		lang.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
+		result.Time.Seconds())
 
 	summary := result.Summary
 	if summary != nil {
-		summary.ShowAndClearErrors(job.analyzerState.Logger.Writer())
+		summary.ShowAndClearErrors(job.analyzerState.Logger.GetError().Writer())
 	}
 
 	return dataflow.SingleFunctionResult{Summary: summary, Time: result.Time}
@@ -161,14 +162,14 @@ func collectResults(c []dataflow.SingleFunctionResult, graph *dataflow.CrossFunc
 	if state.Config.ReportSummaries {
 		f, err = os.CreateTemp(state.Config.ReportsDir, "summary-times-*.csv")
 		if err != nil {
-			state.Logger.Printf("Could not create summary times report file.")
+			state.Logger.Errorf("Could not create summary times report file.")
 		}
 		defer f.Close()
 		path, err := filepath.Abs(f.Name())
 		if err != nil {
-			state.Logger.Printf("Error: could not find absolute path of summary times report file %s.", f.Name())
+			state.Logger.Errorf("Could not find absolute path of summary times report file %s.", f.Name())
 		}
-		state.Logger.Printf("Saving report of summary times in %s\n", path)
+		state.Logger.Infof("Saving report of summary times in %s\n", path)
 	}
 
 	for _, result := range c {
