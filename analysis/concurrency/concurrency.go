@@ -15,8 +15,6 @@
 package concurrency
 
 import (
-	"log"
-
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -42,7 +40,7 @@ type AnalysisResult struct {
 }
 
 // Analyze runs all the concurrency specific analyses on the program with the configuration provided.
-func Analyze(logger *log.Logger, config *config.Config, program *ssa.Program) (AnalysisResult, error) {
+func Analyze(logger *config.LogGroup, config *config.Config, program *ssa.Program) (AnalysisResult, error) {
 
 	state, err := dataflow.NewInitializedAnalyzerState(logger, config, program)
 	if err != nil {
@@ -142,9 +140,9 @@ func printGoCallInformation(state *dataflow.AnalyzerState, call *ssa.Go) {
 	if call == nil {
 		return
 	}
-	state.Logger.Printf("Go call: %s", call.String())
+	state.Logger.Debugf("Go call: %s", call.String())
 	if parent := call.Parent(); parent != nil {
-		state.Logger.Printf("\t%s", parent.Pkg.String())
+		state.Logger.Debugf("\t%s", parent.Pkg.String())
 	}
-	state.Logger.Printf("\t%s", state.Program.Fset.Position(call.Pos()))
+	state.Logger.Debugf("\t%s", state.Program.Fset.Position(call.Pos()))
 }

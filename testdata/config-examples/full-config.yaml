@@ -1,8 +1,8 @@
 # This is a complete config file. All fields are mostly optional, unless clearly required by the analysis you
 # are trying to run.
 
-# verbose can be set in the config file
-verbose: true
+# loglevel is 3 by default (info) and goes up to 5 (trace)
+loglevel: 5
 
 # the reports directory can be set in the config file, otherwise if any report is required it will be generated
 # with a name matching *-report in the directory where the program is called

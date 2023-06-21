@@ -34,7 +34,7 @@ func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerS
 		return nil, fmt.Errorf("state does not contain any summaries")
 	}
 
-	state.Logger.Println("Building full-program cross-function dataflow graph...")
+	state.Logger.Infof("Building full-program cross-function dataflow graph...")
 	start := time.Now()
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		AnalyzerState: state,
@@ -42,7 +42,7 @@ func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerS
 		IsEntrypoint:  func(*config.Config, ssa.Node) bool { return true },
 	})
 
-	state.Logger.Printf("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())
+	state.Logger.Infof("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())
 	return state, nil
 }
 
@@ -70,11 +70,10 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 
 		// Check that the node does not correspond to a non-constructed summary
 		if !elt.Node.Graph().Constructed {
-			if c.Config.Verbose {
-				logger.Printf("%s: summary has not been built for %s.",
-					colors.Yellow("WARNING"),
-					colors.Yellow(elt.Node.Graph().Parent.Name()))
-			}
+
+			logger.Debugf("%s: summary has not been built for %s.",
+				colors.Yellow("WARNING"),
+				colors.Yellow(elt.Node.Graph().Parent.Name()))
 			// In that case, continue as there is no information on data flow
 			continue
 		}

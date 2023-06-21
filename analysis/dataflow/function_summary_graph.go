@@ -802,8 +802,9 @@ func (g *SummaryGraph) AddCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 	args := lang.GetArgs(instr)
 	callees, err := c.ResolveCallee(instr, true)
 	if err != nil {
-		c.Logger.Fatalf("missing information in state (%s), could not resolve callee in instruction %s", err,
+		c.Logger.Errorf("missing information in state (%s), could not resolve callee in instruction %s", err,
 			instr.String())
+		panic("critical information missing in analysis")
 	}
 	// Add each callee as a node for this call instruction
 	for _, callee := range callees {

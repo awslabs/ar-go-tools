@@ -90,11 +90,8 @@ func run(a *AnalyzerState, flowInfo *FlowInformation, sm *SummaryGraph,
 
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
-		err := a.Logger.Output(2, fmt.Sprintf("Warning: defer stack unbounded in %s: %s",
-			sm.Parent.String(), colors.Yellow("analysis unsound!")))
-		if err != nil {
-			return err
-		}
+		a.Logger.Warnf("Defer stack unbounded in %s: %s",
+			sm.Parent.String(), colors.Yellow("analysis unsound!"))
 	}
 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
 	state.initialize()

@@ -17,7 +17,6 @@ package backtrace_test
 import (
 	"fmt"
 	"go/token"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -72,7 +71,9 @@ func TestAnalyze_OnDemand(t *testing.T) {
 var ignoreMatch = match{-1, nil, -1}
 
 func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+	cfg.LogLevel = int(config.TraceLevel)
+	lg := config.NewLogGroup(cfg)
+	res, err := backtrace.Analyze(lg, cfg, program)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +373,9 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 }
 
 func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+	cfg.LogLevel = int(config.TraceLevel)
+	lg := config.NewLogGroup(cfg)
+	res, err := backtrace.Analyze(lg, cfg, program)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -562,7 +565,9 @@ func TestAnalyze_Taint(t *testing.T) {
 
 				cfg.BacktracePoints = cfg.Sinks
 				cfg.SummarizeOnDemand = isOnDemand
-				res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+				cfg.LogLevel = int(config.TraceLevel)
+				lg := config.NewLogGroup(cfg)
+				res, err := backtrace.Analyze(lg, cfg, program)
 				if err != nil {
 					t.Fatal(err)
 				}

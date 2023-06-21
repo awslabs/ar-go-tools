@@ -22,7 +22,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -71,8 +70,6 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
-
-	logger := log.Default()
 
 	// The strings constants are used only here
 	var callgraphAnalysisMode dataflow.CallgraphAnalysisMode
@@ -154,7 +151,7 @@ func main() {
 			return
 		}
 		defer f.Close()
-		if err := WriteCrossFunctionGraph(renderConfig, logger, program, f); err != nil {
+		if err := WriteCrossFunctionGraph(renderConfig, config.NewLogGroup(renderConfig), program, f); err != nil {
 			fmt.Fprintf(os.Stderr, "Could not generate cross-function flow graph:\n%v", err)
 			return
 		}

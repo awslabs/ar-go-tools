@@ -5,5 +5,4 @@ sources:
     method: "source[1-9]?"
 sinks:
   - method: "sink[1-9]?"
-verbose: true
 reportsummaries: true
