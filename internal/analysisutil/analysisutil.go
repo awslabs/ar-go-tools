@@ -86,7 +86,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 
 // PrintMissingSummaryMessage prints a missing summary message to the cache's logger.
 func PrintMissingSummaryMessage(c *dataflow.AnalyzerState, callSite *dataflow.CallNode) {
-	if c.Config.LogLevel < int(config.DebugLevel) {
+	if !c.Config.Verbose() {
 		return
 	}
 
@@ -120,7 +120,7 @@ func PrintMissingSummaryMessage(c *dataflow.AnalyzerState, callSite *dataflow.Ca
 
 // PrintMissingClosureNodeSummaryMessage prints a missing closure summary message to the cache's logger.
 func PrintMissingClosureSummaryMessage(c *dataflow.AnalyzerState, bl *dataflow.BoundLabelNode) {
-	if c.Config.LogLevel < int(config.DebugLevel) {
+	if !c.Config.Verbose() {
 		return
 	}
 
@@ -141,7 +141,7 @@ func PrintMissingClosureSummaryMessage(c *dataflow.AnalyzerState, bl *dataflow.B
 
 // PrintMissingClosureNodeSummaryMessage prints a missing closure node summary message to the cache's logger.
 func PrintMissingClosureNodeSummaryMessage(c *dataflow.AnalyzerState, closureNode *dataflow.ClosureNode) {
-	if c.Config.LogLevel < int(config.DebugLevel) {
+	if !c.Config.Verbose() {
 		return
 	}
 
@@ -162,7 +162,7 @@ func PrintMissingClosureNodeSummaryMessage(c *dataflow.AnalyzerState, closureNod
 
 // PrintWarningSummaryNotConstructed prints a warning message to the cache's logger.
 func PrintWarningSummaryNotConstructed(c *dataflow.AnalyzerState, callSite *dataflow.CallNode) {
-	if c.Config.LogLevel < int(config.DebugLevel) {
+	if !c.Config.Verbose() {
 		return
 	}
 

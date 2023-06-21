@@ -30,7 +30,6 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/graphutil"
@@ -1216,7 +1215,7 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
-		verbose:     state.Config.LogLevel >= int(config.DebugLevel),
+		verbose:     state.Config.Verbose(),
 		globalNodes: &globalNodeGroup{0},
 		logger:      state.Logger.GetDebug(),
 	}

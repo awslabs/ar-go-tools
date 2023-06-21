@@ -178,7 +178,7 @@ func TestLoadFullConfig(t *testing.T) {
 		t.Errorf("Could not load %s", fileName)
 		return
 	}
-	if config.LogLevel != 5 {
+	if config.LogLevel != int(TraceLevel) {
 		t.Error("full config should have set trace")
 	}
 	if !config.SkipInterprocedural {

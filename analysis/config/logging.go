@@ -41,7 +41,7 @@ const (
 )
 
 type LogGroup struct {
-	level LogLevel
+	Level LogLevel
 	trace *log.Logger
 	debug *log.Logger
 	info  *log.Logger
@@ -52,7 +52,7 @@ type LogGroup struct {
 // NewLogGroup returns a log group that is configured to the logging settings stored inside the config
 func NewLogGroup(config *Config) *LogGroup {
 	l := &LogGroup{
-		level: LogLevel(config.LogLevel),
+		Level: LogLevel(config.LogLevel),
 		trace: log.Default(),
 		debug: log.Default(),
 		info:  log.Default(),
@@ -88,35 +88,35 @@ func (l *LogGroup) SetAllFlags(x int) {
 
 // Tracef calls Trace.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Tracef(format string, v ...any) {
-	if l.level >= TraceLevel {
+	if l.Level >= TraceLevel {
 		l.trace.Printf(format, v...)
 	}
 }
 
 // Debugf calls Debug.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Debugf(format string, v ...any) {
-	if l.level >= DebugLevel {
+	if l.Level >= DebugLevel {
 		l.debug.Printf(format, v...)
 	}
 }
 
 // Infof calls Info.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Infof(format string, v ...any) {
-	if l.level >= InfoLevel {
+	if l.Level >= InfoLevel {
 		l.info.Printf(format, v...)
 	}
 }
 
 // Warnf calls Warn.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Warnf(format string, v ...any) {
-	if l.level >= WarnLevel {
+	if l.Level >= WarnLevel {
 		l.warn.Printf(format, v...)
 	}
 }
 
 // Errorf calls Error.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Errorf(format string, v ...any) {
-	if l.level >= ErrLevel {
+	if l.Level >= ErrLevel {
 		l.err.Printf(format, v...)
 	}
 }
@@ -134,4 +134,30 @@ func (l *LogGroup) GetError() *log.Logger {
 // SetError sets the output writer of the error logger
 func (l *LogGroup) SetError(w io.Writer) {
 	l.err.SetOutput(w)
+}
+
+// LogsErrors returns true if the log group logs error messages. Note that this is the lowest logging level, and if
+// this returns false, it implies that the log group does not log anything.
+func (l *LogGroup) LogsError() bool {
+	return l.Level >= ErrLevel
+}
+
+// LogsWarning returns true if the log group logs warning messages
+func (l *LogGroup) LogsWarning() bool {
+	return l.Level >= WarnLevel
+}
+
+// LogsInfo returns true if the log group logs info messages
+func (l *LogGroup) LogsInfo() bool {
+	return l.Level >= InfoLevel
+}
+
+// LogsDebug returns true if the log group logs debug messages
+func (l *LogGroup) LogsDebug() bool {
+	return l.Level >= DebugLevel
+}
+
+// LogsTrace returns true if the log group logs trace messages
+func (l *LogGroup) LogsTrace() bool {
+	return l.Level >= TraceLevel
 }

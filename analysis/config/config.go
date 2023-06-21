@@ -296,3 +296,8 @@ func (c Config) IsStaticCommand(cid CodeIdentifier) bool {
 func (c Config) IsBacktracePoint(cid CodeIdentifier) bool {
 	return ExistsCid(c.BacktracePoints, cid.equalOnNonEmptyFields)
 }
+
+// Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)
+func (c Config) Verbose() bool {
+	return c.LogLevel >= int(DebugLevel)
+}
