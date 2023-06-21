@@ -85,7 +85,7 @@ type Config struct {
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
 
-	// SkipInterprocedural can be set to true to skip the interprocedural (cross-function analysis) step
+	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
 	SkipInterprocedural bool
 
 	// CoverageFilter can be used to filter which packages will be reported in the coverage. If non-empty,

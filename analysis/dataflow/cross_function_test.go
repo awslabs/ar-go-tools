@@ -61,7 +61,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 
 	state, err = render.BuildCrossFunctionGraph(state)
 	if err != nil {
-		t.Fatalf("failed to build cross-function graph: %v", err)
+		t.Fatalf("failed to build inter-procedural graph: %v", err)
 	}
 
 	graph := state.FlowGraph

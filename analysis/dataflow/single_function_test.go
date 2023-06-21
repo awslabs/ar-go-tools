@@ -497,7 +497,7 @@ func TestFunctionSummaries(t *testing.T) {
 					}
 				}
 				if freevar.SsaNode().Name() == "s1" && len(freevar.In()) != 0 {
-					// technically it does, but this is a single-function analysis (even for closures)
+					// technically it does, but this is a intra-procedural analysis (even for closures)
 					t.Errorf("in Baz, closure freevar %s should have no incoming edges, but got: %v",
 						freevar.String(), freevar.In())
 				}

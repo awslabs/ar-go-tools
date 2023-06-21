@@ -78,7 +78,7 @@ func filterFn(edge *callgraph.Edge) bool {
 	return true
 }
 
-// WriteCrossFunctionGraph writes a graphviz representation of the cross-function dataflow graph to w.
+// WriteCrossFunctionGraph writes a graphviz representation of the inter-procedural dataflow graph to w.
 func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, program *ssa.Program, w io.Writer) error {
 	// every function should be included in the graph
 	// building the graph doesn't require souce/sink logic
@@ -102,7 +102,7 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, progra
 
 	state, err = render.BuildCrossFunctionGraph(state)
 	if err != nil {
-		return fmt.Errorf("failed to build cross-function graph: %w", err)
+		return fmt.Errorf("failed to build inter-procedural graph: %w", err)
 	}
 
 	state.FlowGraph.Print(w)

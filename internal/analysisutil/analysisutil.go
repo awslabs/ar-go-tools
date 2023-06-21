@@ -27,7 +27,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// IsEntrypointNode returns true if n is an entrypoint to the single-function analysis according to f.
+// IsEntrypointNode returns true if n is an entrypoint to the intra-procedural analysis according to f.
 func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, config.CodeIdentifier) bool) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered entrypoints

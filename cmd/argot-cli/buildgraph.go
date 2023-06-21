@@ -21,10 +21,10 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// cmdBuildGraph builds the cross-function flow graph given the current summaries
+// cmdBuildGraph builds the inter-procedural flow graph given the current summaries
 func cmdBuildGraph(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
-		writeFmt(tt, "\t- %s%s%s : build the cross-function flow graph.\n",
+		writeFmt(tt, "\t- %s%s%s : build the inter-procedural flow graph.\n",
 			tt.Escape.Blue, cmdBuildGraphName, tt.Escape.Reset)
 		writeFmt(tt, "\t   Summaries must be built first with `%s%s%s`.\n",
 			tt.Escape.Yellow, cmdSummarizeName, tt.Escape.Reset)

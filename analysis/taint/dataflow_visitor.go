@@ -40,7 +40,7 @@ func NewVisitor(coverageWriter io.StringWriter) *Visitor {
 	return &Visitor{taints: make(TaintFlows), coverageWriter: coverageWriter}
 }
 
-// Visit runs a cross-function analysis to add any detected taint flow from source to a sink. This implements the
+// Visit runs a inter-procedural analysis to add any detected taint flow from source to a sink. This implements the
 // visitor interface of the datflow package.
 func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	coverage := make(map[string]bool)
@@ -316,7 +316,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 		// The flow goes from x at line 3, to x being bound at line 2, to x the free variable
 		// inside the closure definition, and finally from the return of the closure to the
 		// call site of the closure inside a sink.
-		// For more examples with closures, see testdata/src/taint/cross-function/closures/main.go
+		// For more examples with closures, see testdata/src/taint/inter-procedural/closures/main.go
 		case *df.BoundVarNode:
 			// Flows inside the function creating the closure (where MakeClosure happens)
 			// This is similar to the df edges between arguments

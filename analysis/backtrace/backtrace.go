@@ -133,7 +133,7 @@ type Visitor struct {
 	Traces [][]df.GraphNode
 }
 
-// Visit runs a cross-function backwards analysis to add any detected backtraces to v.Traces.
+// Visit runs a inter-procedural backwards analysis to add any detected backtraces to v.Traces.
 func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	// this is needed because for some reason isBacktracePoint returns true for
 	// some synthetic nodes

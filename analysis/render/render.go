@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package render provides functions to build a cross-function dataflow graph.
+// Package render provides functions to build a inter-procedural dataflow graph.
 // This is used to render the graph in a GraphViz format.
 package render
 
@@ -28,13 +28,13 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// BuildCrossFunctionGraph builds a full-program (cross-function) analysis state from program.
+// BuildCrossFunctionGraph builds a full-program (inter-procedural) analysis state from program.
 func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerState, error) {
 	if len(state.FlowGraph.Summaries) == 0 {
 		return nil, fmt.Errorf("state does not contain any summaries")
 	}
 
-	state.Logger.Infof("Building full-program cross-function dataflow graph...")
+	state.Logger.Infof("Building full-program inter-procedural dataflow graph...")
 	start := time.Now()
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		AnalyzerState: state,
@@ -42,7 +42,7 @@ func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerS
 		IsEntrypoint:  func(*config.Config, ssa.Node) bool { return true },
 	})
 
-	state.Logger.Infof("Full-program cross-function dataflow graph done (%.2f s).", time.Since(start).Seconds())
+	state.Logger.Infof("Full-program inter-procedural dataflow graph done (%.2f s).", time.Since(start).Seconds())
 	return state, nil
 }
 
@@ -51,7 +51,7 @@ func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerS
 type CrossFunctionGraphVisitor struct{}
 
 // Visit is a SourceVisitor that builds adds edges between the
-// individual single-function dataflow graphs reachable from source.
+// individual intra-procedural dataflow graphs reachable from source.
 // This visitor must be called for every entrypoint in the program to build a
 // complete dataflow graph.
 func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint dataflow.NodeWithTrace) {
@@ -60,7 +60,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 	goroutines := make(map[*ssa.Go]bool)
 	logger := c.Logger
 
-	// Search from path candidates in the cross-function flow graph from sources to sinks
+	// Search from path candidates in the inter-procedural flow graph from sources to sinks
 	// TODO: optimize call stack
 	// TODO: set of visited nodes is not handled properly right now. We should revisit some nodes,
 	// we don't revisit only if it has been visited with the same call stack
@@ -215,7 +215,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 		// The flow goes from x at line 3, to x being bound at line 2, to x the free variable
 		// inside the closure definition, and finally from the return of the closure to the
 		// call site of the closure inside a sink.
-		// For more examples with closures, see testdata/src/taint/cross-function/closures/main.go
+		// For more examples with closures, see testdata/src/taint/inter-procedural/closures/main.go
 		case *dataflow.BoundVarNode:
 			// Flows inside the function creating the closure (where MakeClosure happens)
 			// This is similar to the dataflow edges between arguments

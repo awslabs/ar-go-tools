@@ -39,7 +39,7 @@ import (
 // - `single_function_instruction_ops.go` file contains all the functions that define how instructions in the function
 // are handled.
 
-// SingleFunctionResult holds the results of the single-function analysis.
+// SingleFunctionResult holds the results of the intra-procedural analysis.
 type SingleFunctionResult struct {
 	Summary *SummaryGraph // Summary is the procedure summary built by the analysis
 	Time    time.Duration // Time it took to compute the summary

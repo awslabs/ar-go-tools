@@ -28,18 +28,18 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Visitor represents a visitor that runs a cross-function analysis from entrypoint.
+// Visitor represents a visitor that runs a inter-procedural analysis from entrypoint.
 type Visitor interface {
 	Visit(s *AnalyzerState, entrypoint NodeWithTrace)
 }
 
-// CrossFunctionFlowGraph represents a cross-function data flow graph.
+// CrossFunctionFlowGraph represents a inter-procedural data flow graph.
 type CrossFunctionFlowGraph struct {
-	// ForwardEdges represents edges between nodes belonging to different subgraphs (cross-function version of
+	// ForwardEdges represents edges between nodes belonging to different subgraphs (inter-procedural version of
 	// (GraphNode).Out)
 	ForwardEdges map[GraphNode]map[GraphNode]bool
 
-	// BackwardEdges represents backward edges between nodes belonging to different subgraphs (cross-function
+	// BackwardEdges represents backward edges between nodes belonging to different subgraphs (inter-procedural
 	// version of (GraphNode).In)
 	BackwardEdges map[GraphNode]map[GraphNode]bool
 
@@ -151,7 +151,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ss
 
 	reachable := CallGraphReachable(g.AnalyzerState.PointerAnalysis.CallGraph, false, false)
 
-	// Build the cross-function data flow graph: link all the summaries together
+	// Build the inter-procedural data flow graph: link all the summaries together
 	for _, summary := range g.Summaries {
 		if summary == nil {
 			continue
@@ -274,7 +274,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 	}
 }
 
-// CrossFunctionPass runs the pass on the cross-function flow graph.
+// CrossFunctionPass runs the pass on the inter-procedural flow graph.
 // Most of the logic is in visitor that is called for
 // each possible source node identified.
 //
@@ -285,7 +285,7 @@ func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *AnalyzerState, visitor Vis
 	isEntryPoint func(*config.Config, ssa.Node) bool) {
 	// Skip the pass if user configuration demands it
 	if c.Config.SkipInterprocedural || (!c.Config.SummarizeOnDemand && len(g.Summaries) == 0) {
-		c.Logger.Infof("Skipping cross-function pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
+		c.Logger.Infof("Skipping inter-procedural pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
 			c.Config.SkipInterprocedural, len(g.Summaries))
 		return
 	}
@@ -303,7 +303,7 @@ func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *AnalyzerState, visitor Vis
 	g.RunCrossFunctionPass(visitor, isEntryPoint)
 }
 
-// VisitorNode represents a node in the cross-function dataflow graph to be visited.
+// VisitorNode represents a node in the inter-procedural dataflow graph to be visited.
 type VisitorNode struct {
 	NodeWithTrace
 	ParamStack *ParamStack
