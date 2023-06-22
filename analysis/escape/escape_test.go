@@ -288,7 +288,7 @@ func TestBuiltinsEscape(t *testing.T) {
 	program, cfg := analysistest.LoadTest(t, ".", []string{})
 	cfg.LogLevel = int(config.DebugLevel)
 	// Compute the summaries for everything in the main package
-	cache, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
@@ -345,7 +345,7 @@ func TestLocalityComputation(t *testing.T) {
 	program, cfg := testutils.LoadTest(t, ".", []string{})
 	cfg.LogLevel = int(config.DebugLevel)
 	// Compute the summaries for everything in the main package
-	cache, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)

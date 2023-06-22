@@ -232,57 +232,65 @@ func (state *IntraAnalysisState) getMarksRec(i ssa.Instruction, v ssa.Value, pat
 			referrers := v.Referrers()
 			if referrers != nil {
 				for _, referrer := range *(v.Referrers()) {
-					switch ref_instr := referrer.(type) {
-					case *ssa.Send:
-						// marks on a value sent on a channel transfer to channel
-						if v == ref_instr.Chan && lang.IsNillableType(ref_instr.X.Type()) {
-							origins = append(origins, state.getMarksRec(i, ref_instr.X, path, true, queries)...)
-						}
-					case *ssa.FieldAddr:
-						// ref_instr is 'y = &v.name`
-						// the value is the struct, collect the marks on the field address. We are not field sensitive, so if the
-						// field address has marks, then the struct itself has marks.
-						origins = append(origins, state.getMarksRec(i, ref_instr, path, true, queries)...)
-					case *ssa.IndexAddr:
-						// the marks on an index address transfer to the slice (but not the marks on the index)
-						if v != ref_instr.Index {
-							origins = append(origins, state.getMarksRec(i, ref_instr, path, true, queries)...)
-						}
-					case *ssa.Slice:
-						// the marks of a slice of the value are also marks of the value
-						if v == ref_instr.X {
-							origins = append(origins, state.getMarksRec(i, ref_instr, path, true, queries)...)
-						}
-					case *ssa.Store:
-						// is a value is stored, and that value is pointer like, the marks transfer to the address
-						if v == ref_instr.Addr && lang.IsNillableType(ref_instr.Val.Type()) {
-							origins = append(origins, state.getMarksRec(i, ref_instr.Val, path, true, queries)...)
-						}
-					case *ssa.MapUpdate:
-						flow_ref := (ssa.Instruction)(ref_instr)
-						// inspect marks of referrers, but only when the referred value is the map (the value or key does not flow
-						// to the adjacent value/key).
-						// The location of the mark transfer (flow_ref) depends on whether the object written to the map is pointer
-						// like or not, like in Store
-						if v != ref_instr.Value && v != ref_instr.Key {
-							if lang.IsNillableType(ref_instr.Value.Type()) {
-								flow_ref = i
-							}
-							origins = append(origins, state.getMarksRec(flow_ref, ref_instr.Value, path, true, queries)...)
-
-							flow_ref = (ssa.Instruction)(ref_instr)
-							if lang.IsNillableType(ref_instr.Value.Type()) {
-								flow_ref = i
-							}
-							origins = append(origins, state.getMarksRec(flow_ref, ref_instr.Key, path, true, queries)...)
-						}
-					}
+					origins = append(origins, state.referrerMarks(i, v, path, referrer, queries)...)
 				}
 			}
 		}
 	}
 
 	return origins
+}
+
+//gocyclo:ignore
+func (state *IntraAnalysisState) referrerMarks(i ssa.Instruction, v ssa.Value, path string,
+	referrer ssa.Instruction, queries map[ssa.Value]bool) []Mark {
+	switch ref_instr := referrer.(type) {
+	case *ssa.Send:
+		// marks on a value sent on a channel transfer to channel
+		if v == ref_instr.Chan && lang.IsNillableType(ref_instr.X.Type()) {
+			return state.getMarksRec(i, ref_instr.X, path, true, queries)
+		}
+	case *ssa.FieldAddr:
+		// ref_instr is 'y = &v.name`
+		// the value is the struct, collect the marks on the field address. We are not field sensitive, so if the
+		// field address has marks, then the struct itself has marks.
+		return state.getMarksRec(i, ref_instr, path, true, queries)
+	case *ssa.IndexAddr:
+		// the marks on an index address transfer to the slice (but not the marks on the index)
+		if v != ref_instr.Index {
+			return state.getMarksRec(i, ref_instr, path, true, queries)
+		}
+	case *ssa.Slice:
+		// the marks of a slice of the value are also marks of the value
+		if v == ref_instr.X {
+			return state.getMarksRec(i, ref_instr, path, true, queries)
+		}
+	case *ssa.Store:
+		// is a value is stored, and that value is pointer like, the marks transfer to the address
+		if v == ref_instr.Addr && lang.IsNillableType(ref_instr.Val.Type()) {
+			return state.getMarksRec(i, ref_instr.Val, path, true, queries)
+		}
+	case *ssa.MapUpdate:
+		flow_ref := (ssa.Instruction)(ref_instr)
+		// inspect marks of referrers, but only when the referred value is the map (the value or key does not flow
+		// to the adjacent value/key).
+		// The location of the mark transfer (flow_ref) depends on whether the object written to the map is pointer
+		// like or not, like in Store
+		if v != ref_instr.Value && v != ref_instr.Key {
+			if lang.IsNillableType(ref_instr.Value.Type()) {
+				flow_ref = i
+			}
+			origins := state.getMarksRec(flow_ref, ref_instr.Value, path, true, queries)
+
+			flow_ref = (ssa.Instruction)(ref_instr)
+			if lang.IsNillableType(ref_instr.Value.Type()) {
+				flow_ref = i
+			}
+			origins = append(origins, state.getMarksRec(flow_ref, ref_instr.Key, path, true, queries)...)
+			return origins
+		}
+	}
+	return []Mark{}
 }
 
 // simpleTransfer  propagates all the marks from in to out, ignoring path and tuple indexes
@@ -431,26 +439,30 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark 
 	if _, isCall := v.(*ssa.Call); !isCall {
 		referrers := v.Referrers()
 		if referrers != nil {
-			for _, instr := range *referrers {
-				switch referrer := instr.(type) {
-				case *ssa.Store:
-					if referrer.Val == v && lang.IsNillableType(referrer.Val.Type()) {
-						state.markValue(i, referrer.Addr, mark)
-					}
-				case *ssa.IndexAddr:
-					if referrer.X == v {
-						state.markValue(i, referrer, mark)
-					}
-				case *ssa.FieldAddr:
-					if referrer.X == v {
-						state.markValue(i, referrer, mark)
-					}
-				case *ssa.UnOp:
-					if referrer.Op == token.MUL {
-						state.markValue(i, referrer, mark)
-					}
-				}
+			for _, referrer := range *referrers {
+				state.propagateToReferrer(i, referrer, v, mark)
 			}
+		}
+	}
+}
+
+func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.Instruction, v ssa.Value, mark Mark) {
+	switch referrer := ref.(type) {
+	case *ssa.Store:
+		if referrer.Val == v && lang.IsNillableType(referrer.Val.Type()) {
+			state.markValue(i, referrer.Addr, mark)
+		}
+	case *ssa.IndexAddr:
+		if referrer.X == v {
+			state.markValue(i, referrer, mark)
+		}
+	case *ssa.FieldAddr:
+		if referrer.X == v {
+			state.markValue(i, referrer, mark)
+		}
+	case *ssa.UnOp:
+		if referrer.Op == token.MUL {
+			state.markValue(i, referrer, mark)
 		}
 	}
 }

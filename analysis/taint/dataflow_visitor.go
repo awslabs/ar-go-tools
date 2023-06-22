@@ -575,22 +575,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	recursiveContextUpdated := false
 
 	if s.Config.UseEscapeAnalysis {
-		switch graphNode := cur.Node.(type) {
-		case *df.CallNodeArg:
-			callSite := graphNode.ParentNode()
-			recursiveContextUpdated = v.storeEscapeGraph(s, trace, graphNode.Graph().Parent, callSite.Callee())
-		}
-
-		f := toAdd.Graph().Parent
-		egraph := v.escapeGraphs[f][trace]
-		if egraph != nil {
-			imap := egraph.ComputeInstructionLocality(s.EscapeAnalysisState, f)
-			for instr := range edgeInfo.Span {
-				if !imap[instr] {
-					fmt.Printf("Instruction %s in %s is not local!\n", instr, f)
-				}
-			}
-		}
+		recursiveContextUpdated = v.manageEscapeContexts(s, cur, toAdd, edgeInfo, trace)
 	}
 
 	if s.Logger.LogsTrace() {
@@ -625,6 +610,28 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	que = append(que, newVis)
 	seen[newNode.Key()] = true
 	return que
+}
+
+func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode, toAdd df.GraphNode,
+	edgeInfo df.ObjectPath, trace *df.CallStack) bool {
+	update := false
+	switch graphNode := cur.Node.(type) {
+	case *df.CallNodeArg:
+		callSite := graphNode.ParentNode()
+		update = v.storeEscapeGraph(s, trace, graphNode.Graph().Parent, callSite.Callee())
+	}
+
+	f := toAdd.Graph().Parent
+	egraph := v.escapeGraphs[f][trace]
+	if egraph != nil {
+		imap := egraph.ComputeInstructionLocality(s.EscapeAnalysisState, f)
+		for instr := range edgeInfo.Span {
+			if !imap[instr] {
+				fmt.Printf("Instruction %s in %s is not local!\n", instr, f)
+			}
+		}
+	}
+	return update
 }
 
 // addNewPathCandidate adds a new path between a source and a sink to paths using the information in elt

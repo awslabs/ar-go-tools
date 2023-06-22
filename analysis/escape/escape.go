@@ -584,6 +584,8 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 // nodes is the NodeGroup for the caller, and also therefore the graph g
 // summary is the summary of the called function.
 // summaryNodes is the nodeGroup in the context of the called function
+//
+//gocyclo:ignore
 func (g *EscapeGraph) CallFast(args []*Node, rets []*Node, callee *EscapeGraph) {
 	pre := g.Clone()
 	// u maps nodes in summary to the nodes in the caller
@@ -764,6 +766,8 @@ func (g *EscapeGraph) CallUnknown(args []*Node, rets []*Node) {
 // An unknown function has no bound on its allow semantics. This means that the
 // arguments are assumed to leak, and the return value is treated similarly to a
 // load node, except it can never be resolved with arguments like loads can be.
+//
+//gocyclo:ignore
 func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, args []*Node, rets []*Node) {
 	switch builtin.Name() {
 	case "len": // No-op, as does not leak and the return value is not pointer-like
