@@ -60,7 +60,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// or from the standard library that is called in the program should be summarized in the summaries package.
 	// - Running the type analysis to map functions to their type
 
-	state, err := dataflow.NewInitializedAnalyzerState(logger, cfg, prog)
+	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, prog)
 	if err != nil {
 		return AnalysisResult{}, err
 	}

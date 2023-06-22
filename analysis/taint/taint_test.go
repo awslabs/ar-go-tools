@@ -28,11 +28,11 @@ func TestCrossFunctionExample0_SummarizeOnDemand(t *testing.T) {
 }
 
 func TestCrossFunctionIntra(t *testing.T) {
-	runTest(t, "single-function", []string{})
+	runTest(t, "intra-procedural", []string{})
 }
 
 func TestCrossFunctionIntra_SummarizeOnDemand(t *testing.T) {
-	runTestSummarizeOnDemand(t, "single-function", []string{})
+	runTestSummarizeOnDemand(t, "intra-procedural", []string{})
 }
 
 func TestCrossFunctionBasic(t *testing.T) {

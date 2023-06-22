@@ -66,6 +66,8 @@ type InstrOp interface {
 }
 
 // InstrSwitch is mainly a map from the different instructions to the methods of the visitor.
+//
+//gocyclo:ignore
 func InstrSwitch(visitor InstrOp, instr ssa.Instruction) {
 	switch instr := instr.(type) {
 	case *ssa.DebugRef:
@@ -193,6 +195,8 @@ func InstrMethodKey(instr ssa.CallInstruction) Optional[string] {
 }
 
 // FnReadsFrom returns true if an instruction in fn reads from val.
+//
+//gocyclo:ignore
 func FnReadsFrom(fn *ssa.Function, val ssa.Value) bool {
 	for _, blk := range fn.Blocks {
 		for _, instr := range blk.Instrs {

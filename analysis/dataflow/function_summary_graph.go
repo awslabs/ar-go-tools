@@ -806,8 +806,9 @@ func (g *SummaryGraph) AddCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 	args := lang.GetArgs(instr)
 	callees, err := c.ResolveCallee(instr, true)
 	if err != nil {
-		c.Logger.Fatalf("missing information in state (%s), could not resolve callee in instruction %s", err,
+		c.Logger.Errorf("missing information in state (%s), could not resolve callee in instruction %s", err,
 			instr.String())
+		panic("critical information missing in analysis")
 	}
 	// Add each callee as a node for this call instruction
 	for _, callee := range callees {
@@ -993,6 +994,8 @@ func (g *SummaryGraph) AddBoundLabelNodeEdge(mark Mark, info *ConditionInfo, spa
 
 // addEdge adds an edge between source and targetInfo in the summary graph g.
 // @requires g != nil
+//
+//gocyclo:ignore
 func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo, span map[ssa.Instruction]bool) {
 	// This function's goal is to define how the source of an edge is obtained in the summary given a Mark that
 	// is produced in the intra-procedural analysis.
@@ -1184,6 +1187,7 @@ func (g *SummaryGraph) AddGlobalEdge(mark Mark, cond *ConditionInfo, span map[ss
 	g.addEdge(mark, node, cond, span)
 }
 
+//gocyclo:ignore
 func addInEdge(dest GraphNode, source GraphNode, path ObjectPath) {
 	switch node := dest.(type) {
 	case *ParamNode:
@@ -1443,6 +1447,8 @@ func (a *BoundLabelNode) String() string {
 
 // Print the summary graph to w in the graphviz format.
 // If g is nil, then prints the empty graph "subgraph {}"
+//
+//gocyclo:ignore
 func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	if g == nil || g.Parent == nil {
 		fmt.Fprintf(w, "subgraph {}\n")
@@ -1572,6 +1578,8 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 }
 
 // PrettyPrint prints the summary graph to w in a readable format.
+//
+//gocyclo:ignore
 func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer) {
 	if g == nil || g.Parent == nil {
 		fmt.Fprintf(w, "Empty graph!\n")
@@ -1657,6 +1665,8 @@ func ppEdge(w io.Writer, n GraphNode, c ObjectPath, arrow string) {
 }
 
 // ForAllNodes applies f to all graph nodes
+//
+//gocyclo:ignore
 func (g *SummaryGraph) ForAllNodes(f func(n GraphNode)) {
 	if g == nil || g.Parent == nil {
 		return

@@ -131,7 +131,7 @@ func main() {
 
 	// Override config parameters with command-line parameters
 	if *verbose {
-		pConfig.Verbose = true
+		pConfig.LogLevel = int(config.DebugLevel)
 	}
 	logger.Printf(colors.Faint(fmt.Sprintf("argot-cli version %s", version)))
 	logger.Printf(colors.Faint("Reading sources") + "\n")
@@ -147,11 +147,11 @@ func main() {
 		Mode:  analysis.PkgLoadMode,
 		Tests: false,
 	}
-	initialPackages, err := packages.Load(p, flag.Args()...)
+	initialPackages, _ := packages.Load(p, flag.Args()...)
 	state.InitialPackages = initialPackages
 
 	// Initialize an analyzer state
-	state, err := dataflow.NewInitializedAnalyzerState(log.Default(), pConfig, program)
+	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(pConfig), pConfig, program)
 	if err != nil {
 		panic(err)
 	}
@@ -168,10 +168,8 @@ func run(c *dataflow.AnalyzerState) {
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 	tt := term.NewTerminal(os.Stdin, "> ")
-	c.Logger.SetOutput(tt)
-	c.Logger.SetFlags(0) // no prefix
-	c.Err.SetOutput(tt)
-	c.Err.SetFlags(0)
+	c.Logger.SetAllOutput(tt)
+	c.Logger.SetAllFlags(0) // no prefix
 	tt.AutoCompleteCallback = AutoCompleteOfAnalyzerState(c)
 	// if we get a SIGINT, we exit
 	// Capture ctrl+c and exit by returning

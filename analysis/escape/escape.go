@@ -165,6 +165,8 @@ func (g *EscapeGraph) Graphviz() string {
 }
 
 // Adds a label to the graph; useful for e.g. the function being analyzed
+//
+//gocyclo:ignore
 func (g *EscapeGraph) GraphvizLabel(label string) string {
 	out := bytes.NewBuffer([]byte{})
 	fmt.Fprintf(out, "digraph { // start of digraph\nrankdir = LR;\n")
@@ -412,6 +414,8 @@ func (g *EscapeGraph) Merge(h *EscapeGraph) {
 // nodes is the NodeGroup for the caller, and also therefore the graph g
 // summary is the summary of the called function.
 // summaryNodes is the nodeGroup in the context of the called function
+//
+//gocyclo:ignore
 func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 	pre := g.Clone()
 	// u maps nodes in summary to the nodes in the caller that
@@ -567,7 +571,7 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 			}
 		}
 
-		// Check if no changes occured.
+		// Check if no changes occurred.
 		if !changed {
 			break
 		}
@@ -1137,6 +1141,8 @@ func ChannelContentsType(t types.Type) types.Type {
 
 // The primary transfer function for an instruction's effect on a escape graph.
 // Modifies g and nodes in place with the effects of the instruction.
+//
+//gocyclo:ignore
 func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *EscapeGraph, verbose bool) {
 	// Switch on the instruction to handle each kind of instructions.
 	// Some instructions have sub-kinds depending on their arguments, or have alternate comma-ok forms.
@@ -1609,12 +1615,14 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 
 // This just prints the escape summary for each function in the callgraph.
 // This interface will change substaintially when intraprocedural analysis is finalized.
+//
+//gocyclo:ignore
 func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
-		verbose:     state.Config.Verbose,
+		verbose:     state.Config.Verbose(),
 		globalNodes: &globalNodeGroup{0},
-		logger:      state.Logger,
+		logger:      state.Logger.GetDebug(),
 	}
 	// Find all the nodes that are in the main package, and thus treat everything else as unsummarized
 	nodes := []*callgraph.Node{}
@@ -1664,14 +1672,9 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 		funcName := summary.function.Name()
-		if prog.verbose {
-			state.Logger.Printf("Analyzing %v\n", funcName)
-		}
+		state.Logger.Debugf("Analyzing %v\n", funcName)
 		changed := resummarize(summary)
-		if prog.verbose {
-			state.Logger.Printf("Func %s is (changed=%v):\n%s\n", funcName, changed,
-				summary.finalGraph.GraphvizLabel(funcName))
-		}
+		state.Logger.Tracef("Func %s is (changed=%v):\n%s\n", funcName, changed, summary.finalGraph.GraphvizLabel(funcName))
 		// Iterate over the places where this summary is used, and schedule them to be re-analyzed
 		for location, graphUsed := range summary.summaryUses {
 			if !summary.finalGraph.Matches(graphUsed) {
@@ -1696,8 +1699,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
 				if f.Pkg.Pkg.Name() == "main" {
-					state.Logger.Printf("Func %s summary is:\n%s\n", f.String(),
-						summary.finalGraph.GraphvizLabel(f.String()))
+					state.Logger.Debugf("Func %s summary is:\n%s\n", f.String(), summary.finalGraph.GraphvizLabel(f.String()))
 				}
 			}
 		}

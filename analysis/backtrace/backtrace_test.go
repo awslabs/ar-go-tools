@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build go1.20
+
 package backtrace_test
 
 import (
 	"fmt"
 	"go/token"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -72,7 +73,9 @@ func TestAnalyze_OnDemand(t *testing.T) {
 var ignoreMatch = match{-1, nil, -1}
 
 func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+	cfg.LogLevel = int(config.TraceLevel)
+	lg := config.NewLogGroup(cfg)
+	res, err := backtrace.Analyze(lg, cfg, program)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +375,9 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 }
 
 func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+	cfg.LogLevel = int(config.TraceLevel)
+	lg := config.NewLogGroup(cfg)
+	res, err := backtrace.Analyze(lg, cfg, program)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,6 +515,8 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 // The marked @Source and @Sink locations in the test files correspond to expected sources and sinks.
 // These tests check the invariant that for every trace entrypoint (corresponding to the sinks),
 // the expected source must exist somewhere in the trace.
+//
+//gocyclo:ignore
 func TestAnalyze_Taint(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -562,7 +569,9 @@ func TestAnalyze_Taint(t *testing.T) {
 
 				cfg.BacktracePoints = cfg.Sinks
 				cfg.SummarizeOnDemand = isOnDemand
-				res, err := backtrace.Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+				cfg.LogLevel = int(config.TraceLevel)
+				lg := config.NewLogGroup(cfg)
+				res, err := backtrace.Analyze(lg, cfg, program)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -779,6 +788,7 @@ func matchTrace(trace backtrace.Trace, matches []match) (bool, error) {
 	return true, nil
 }
 
+//gocyclo:ignore
 func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
 	switch node := tnode.GraphNode.(type) {
 	case *dataflow.CallNodeArg:

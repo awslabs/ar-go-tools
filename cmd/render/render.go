@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -79,8 +78,8 @@ func filterFn(edge *callgraph.Edge) bool {
 	return true
 }
 
-// WriteCrossFunctionGraph writes a graphviz representation of the cross-function dataflow graph to w.
-func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ssa.Program, w io.Writer) error {
+// WriteCrossFunctionGraph writes a graphviz representation of the inter-procedural dataflow graph to w.
+func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, program *ssa.Program, w io.Writer) error {
 	// every function should be included in the graph
 	// building the graph doesn't require souce/sink logic
 	state, err := dataflow.NewInitializedAnalyzerState(logger, cfg, program)
@@ -103,7 +102,7 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *log.Logger, program *ss
 
 	state, err = render.BuildCrossFunctionGraph(state)
 	if err != nil {
-		return fmt.Errorf("failed to build cross-function graph: %w", err)
+		return fmt.Errorf("failed to build inter-procedural graph: %w", err)
 	}
 
 	state.FlowGraph.Print(w)
@@ -239,6 +238,7 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 	}
 }
 
+//gocyclo:ignore
 func WriteHtmlCallgraph(program *ssa.Program, cg *callgraph.Graph, outPath string) error {
 	// fmt.Fprint(os.Stderr, "Starting writeCallgraph\n")
 	reachable := dataflow.CallGraphReachable(cg, false, false)

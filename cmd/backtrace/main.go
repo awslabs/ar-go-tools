@@ -73,7 +73,7 @@ func main() {
 
 	// Override config parameters with command-line parameters
 	if *verbose {
-		cfg.Verbose = true
+		cfg.LogLevel = int(config.DebugLevel)
 	}
 
 	logger.Printf(colors.Faint("Reading backtrace entrypoints") + "\n")
@@ -85,7 +85,7 @@ func main() {
 	}
 
 	start := time.Now()
-	analysisInfo, err := backtrace.Analyze(logger, cfg, program)
+	analysisInfo, err := backtrace.Analyze(config.NewLogGroup(cfg), cfg, program)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)

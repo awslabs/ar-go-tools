@@ -21,7 +21,6 @@ package backtrace
 import (
 	"fmt"
 	"go/token"
-	"log"
 	"runtime"
 	"strings"
 
@@ -80,7 +79,7 @@ func (n TraceNode) String() string {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
+func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -112,7 +111,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 		IsEntrypoint:  IsCrossFunctionEntrypoint,
 	})
 
-	logger.Printf(colors.Green("Found %d traces.\n"), len(visitor.Traces))
+	logger.Infof(colors.Green("Found %d traces.\n"), len(visitor.Traces))
 
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: Traces(state, visitor.Traces)}, nil
 }
@@ -134,7 +133,7 @@ type Visitor struct {
 	Traces [][]df.GraphNode
 }
 
-// Visit runs a cross-function backwards analysis to add any detected backtraces to v.Traces.
+// Visit runs a inter-procedural backwards analysis to add any detected backtraces to v.Traces.
 func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	// this is needed because for some reason isBacktracePoint returns true for
 	// some synthetic nodes
@@ -150,6 +149,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	}
 }
 
+//gocyclo:ignore
 func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 	pos := entrypoint.Position(s)
 	if !pos.IsValid() {
@@ -157,14 +157,14 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 	}
 
 	logger := s.Logger
-	logger.Printf("\n%s ENTRYPOINT %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Printf("==> Node: %s\n", colors.Purple(entrypoint.String()))
-	logger.Printf("%s %s\n", colors.Green("Found at"), pos)
+	logger.Infof("\n%s ENTRYPOINT %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
+	logger.Infof("==> Node: %s\n", colors.Purple(entrypoint.String()))
+	logger.Infof("%s %s\n", colors.Green("Found at"), pos)
 
 	// Skip entrypoint if it is in a dependency
 	// TODO make this an option in the config
 	if strings.Contains(pos.Filename, "vendor") {
-		logger.Printf("%s\n", colors.Red("Skipping..."))
+		logger.Infof("%s\n", colors.Red("Skipping..."))
 		return
 	}
 
@@ -181,30 +181,27 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 		// Check that the node does not correspond to a non-constructed summary
 		if !elt.Node.Graph().Constructed {
-			if s.Config.Verbose {
-				logger.Printf("%s: summary has not been built for %s.",
-					colors.Yellow("WARNING"),
-					colors.Yellow(elt.Node.Graph().Parent.Name()))
-			}
+
+			logger.Tracef("%s: summary has not been built for %s.",
+				colors.Yellow("WARNING"),
+				colors.Yellow(elt.Node.Graph().Parent.Name()))
+
 			// In that case, continue as there is no information on data flow
 			continue
 		}
 
-		if s.Config.Verbose {
-			logger.Printf("----------------\n")
-			logger.Printf("Visiting %T node: %v\n\tat %v\n", elt.Node, elt.Node, elt.Node.Position(s))
-			logger.Printf("Element trace: %s\n", elt.Trace.String())
-			logger.Printf("Element backtrace: %v\n", findTrace(elt))
-		}
+		logger.Tracef("----------------\n")
+		logger.Tracef("Visiting %T node: %v\n\tat %v\n", elt.Node, elt.Node, elt.Node.Position(s))
+		logger.Tracef("Element trace: %s\n", elt.Trace.String())
+		logger.Tracef("Element backtrace: %v\n", findTrace(elt))
 
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
 		if isBaseCase(elt.Node, s.Config) {
 			t := findTrace(elt)
 			v.Traces = append(v.Traces, t)
-			if s.Config.Verbose {
-				logger.Println("Base case reached...")
-				logger.Printf("Adding trace: %v\n", t)
-			}
+
+			logger.Tracef("Base case reached...")
+			logger.Tracef("Adding trace: %v\n", t)
 			continue
 		}
 
@@ -231,9 +228,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				if elt.Trace != nil {
 					fn := elt.Trace.Label.CallSite().Parent()
 					if _, ok := s.FlowGraph.Summaries[fn]; !ok {
-						if s.Config.Verbose {
-							logger.Printf("trace label parent not summarized: %v\n", fn)
-						}
+						logger.Tracef("trace label parent not summarized: %v\n", fn)
 						df.BuildSummary(s, fn, isSingleFunctionEntrypoint)
 						s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 					}
@@ -242,9 +237,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				if elt.ClosureTrace != nil {
 					fn := elt.ClosureTrace.Label.Instr().Fn.(*ssa.Function)
 					if _, ok := s.FlowGraph.Summaries[fn]; !ok {
-						if s.Config.Verbose {
-							logger.Printf("closure trace label not summarized: %v\n", fn)
-						}
+						logger.Tracef("closure trace label not summarized: %v\n", fn)
 						df.BuildSummary(s, fn, isSingleFunctionEntrypoint)
 						s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 					}
@@ -257,19 +250,12 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				callInstrs := findCallsites(s, elt.Trace.Label.Callee())
 				for _, c := range callInstrs {
 					if _, ok := callSites[c]; !ok {
-						if s.Config.Verbose {
-							logger.Printf("callsite %v not found in callsites\n", c)
-						}
-
+						logger.Tracef("callsite %v not found in callsites\n", c)
 						if summary, ok := s.FlowGraph.Summaries[c.Parent()]; ok {
-							if s.Config.Verbose {
-								logger.Printf("summary for %v found in FlowGraph", c.Parent())
-							}
+							logger.Tracef("summary for %v found in inter-procedral dataflow graph.", c.Parent())
 							addCallToCallsites(s, summary, c, callSites)
 						} else {
-							if s.Config.Verbose {
-								logger.Printf("summary for %v NOT found in FlowGraph", c.Parent())
-							}
+							logger.Tracef("summary for %v NOT found in inter-procedural dataflow graph.", c.Parent())
 							summary = df.BuildSummary(s, c.Parent(), isSingleFunctionEntrypoint)
 							s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 							addCallToCallsites(s, summary, c, callSites)
@@ -300,7 +286,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			if callSite.CalleeSummary == nil || !callSite.CalleeSummary.Constructed { // this function has not been summarized
 				if s.Config.SummarizeOnDemand {
 					if callSite.Callee() == nil {
-						logger.Printf("callsite has no callee: %v\n", callSite)
+						logger.Warnf("callsite has no callee: %v\n", callSite)
 						break
 					}
 
@@ -316,7 +302,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				// HACK: Make the callsite's callee summary point to the actual function summary, not the "thunk" summary
 				// This is needed because "thunk" summaries can be incomplete
 				// TODO Is there a better way to identify a function thunk?
-				logger.Printf("callsite parent is a function \"thunk\": %v\n", callSite.ParentName())
+				logger.Tracef("callsite parent is a function \"thunk\": %v\n", callSite.ParentName())
 				calleeSummary := df.BuildSummary(s, callSite.Callee(), isSingleFunctionEntrypoint)
 				s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				callSite.CalleeSummary = calleeSummary
@@ -367,10 +353,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			if prevStackLen == len(stack) {
 				t := findTrace(elt)
 				v.Traces = append(v.Traces, t)
-				if s.Config.Verbose {
-					logger.Println("CallNodeArg base case reached...")
-					logger.Printf("Adding trace: %v\n", t)
-				}
+				logger.Tracef("CallNodeArg base case reached...")
+				logger.Tracef("Adding trace: %v\n", t)
 			}
 
 		// Data flows backwards within the function from the return statement.
@@ -414,10 +398,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			if prevStackLen == len(stack) {
 				t := findTrace(elt)
 				v.Traces = append(v.Traces, t)
-				if s.Config.Verbose {
-					logger.Println("CallNode base case reached...")
-					logger.Printf("Adding trace: %v\n", t)
-				}
+				logger.Tracef("CallNode base case reached...")
+				logger.Tracef("Adding trace: %v\n", t)
 			}
 
 		// Data flows backwards within the function from the synthetic node.
@@ -435,14 +417,10 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				}
 			} else {
 				if s.Config.SummarizeOnDemand {
-					if s.Config.Verbose {
-						logger.Printf("Global %v SSA instruction: %v\n", graphNode, graphNode.Instr())
-					}
+					logger.Tracef("Global %v SSA instruction: %v\n", graphNode, graphNode.Instr())
 					for f := range s.ReachableFunctions(false, false) {
 						if lang.FnWritesTo(f, graphNode.Global.Value()) {
-							if s.Config.Verbose {
-								logger.Printf("Global %v written in function: %v\n", graphNode, f)
-							}
+							logger.Tracef("Global %v written in function: %v\n", graphNode, f)
 							df.BuildSummary(s, f, isSingleFunctionEntrypoint)
 						}
 					}
@@ -463,9 +441,10 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			closureNode := graphNode.ParentNode()
 
 			if s.Config.SummarizeOnDemand && closureNode.ClosureSummary == nil {
-				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function), isSingleFunctionEntrypoint)
+				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function),
+					isSingleFunctionEntrypoint)
 				s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
-				logger.Printf("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
+				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 			}
 
 			// Flows to the free variables of the closure
@@ -475,7 +454,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				x := closureNode.ClosureSummary.FreeVars[fv]
 				stack = addNext(s, stack, seen, elt, x, elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
-				panic(fmt.Errorf("no free variable matching bound variable in %s at position %d", closureNode.ClosureSummary.Parent.String(), graphNode.Index()))
+				panic(fmt.Errorf("no free variable matching bound variable in %s at position %d",
+					closureNode.ClosureSummary.Parent.String(), graphNode.Index()))
 				//s.AddError(
 				//	fmt.Sprintf("no free variable matching bound variable in %s",
 				//		closureNode.ClosureSummary.Parent.String()),
@@ -500,7 +480,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					bv := bvs[graphNode.Index()]
 					stack = addNext(s, stack, seen, elt, bv, elt.Trace, elt.ClosureTrace.Parent)
 				} else {
-					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d", elt.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
+					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d",
+						elt.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
 					// s.AddError(
 					// 	fmt.Sprintf("no bound variable matching free variable in %s",
 					// 		elt.ClosureTrace.Label.ClosureSummary.Parent.String()),
@@ -526,7 +507,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						bv := bvs[graphNode.Index()]
 						stack = addNext(s, stack, seen, elt, bv, elt.Trace, nil)
 					} else {
-						panic(fmt.Errorf("[No Context] no bound variable matching free variable in %s at position %d", makeClosureSite.ClosureSummary.Parent.String(), graphNode.Index()))
+						panic(fmt.Errorf("[No Context] no bound variable matching free variable in %s at position %d",
+							makeClosureSite.ClosureSummary.Parent.String(), graphNode.Index()))
 						//s.AddError(
 						//	fmt.Sprintf("[No Context] no bound variable matching free variable in %s",
 						//		makeClosureSite.ClosureSummary.Parent.String()),
@@ -540,10 +522,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			if prevStackLen == len(stack) {
 				t := findTrace(elt)
 				v.Traces = append(v.Traces, t)
-				if s.Config.Verbose {
-					logger.Println("Free var base case reached...")
-					logger.Printf("Adding trace: %v\n", t)
-				}
+				logger.Tracef("Free var base case reached...")
+				logger.Tracef("Adding trace: %v\n", t)
 			}
 
 		case *df.ClosureNode:
@@ -633,21 +613,16 @@ func addNext(s *df.AnalyzerState,
 
 	newNode := df.NodeWithTrace{Node: next, Trace: trace, ClosureTrace: closureTrace}
 
-	if s.Config.Verbose {
-		s.Logger.Printf("Adding %v at %v\n", next, next.Position(s))
-		s.Logger.Printf("\ttrace: %v\n", trace)
-		s.Logger.Printf("\tclosure-trace: %v\n", closureTrace)
-		s.Logger.Printf("\tseen? %v\n", seen[newNode.Key()])
-		s.Logger.Printf("\tlasso? %v\n", trace.GetLassoHandle())
-		s.Logger.Printf("\tdepth: %v\n", cur.depth)
-	}
+	s.Logger.Tracef("Adding %v at %v\n", next, next.Position(s))
+	s.Logger.Tracef("\ttrace: %v\n", trace)
+	s.Logger.Tracef("\tclosure-trace: %v\n", closureTrace)
+	s.Logger.Tracef("\tseen? %v\n", seen[newNode.Key()])
+	s.Logger.Tracef("\tlasso? %v\n", trace.GetLassoHandle() != nil)
+	s.Logger.Tracef("\tdepth: %v\n", cur.depth)
 
 	// Stop conditions
 	if seen[newNode.Key()] || trace.GetLassoHandle() != nil || cur.depth > s.Config.MaxDepth {
-		if s.Config.Verbose {
-			s.Logger.Printf("\tstopping...")
-		}
-
+		s.Logger.Tracef("\tstopping...")
 		return stack
 	}
 
@@ -765,9 +740,7 @@ func addCallToCallsites(s *df.AnalyzerState, summary *df.SummaryGraph, c ssa.Cal
 	for instr, f2n := range summary.Callees {
 		if instr == c {
 			for _, callNode := range f2n {
-				if s.Config.Verbose {
-					s.Logger.Printf("adding call instruction %v -> %v to callsites\n", instr, callNode)
-				}
+				s.Logger.Tracef("adding call instruction %v -> %v to callsites\n", instr, callNode)
 				callSites[instr] = callNode
 			}
 		}

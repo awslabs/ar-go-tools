@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
@@ -121,58 +122,61 @@ func main() {
 	}
 
 	if *compareSymbols {
-
-		callgraphReachable := make(map[string]bool)
-		for entry := range dataflow.CallGraphReachable(cg, false, false) {
-			callgraphReachable[entry.String()] = true
-		}
-		fmt.Fprintf(os.Stderr, "Callgraph reachability reports %d reachable nodes out of %v total\n",
-			len(callgraphReachable), len(cg.Nodes))
-
-		reachable := findReachableNames(program)
-		allfuncs := findAllFunctionNames(program)
-
-		stripAllParens(callgraphReachable)
-		stripAllParens(reachable)
-		stripAllParens(symbols)
-		stripAllParens(allfuncs)
-
-		all := make(map[string]bool)
-
-		for f := range callgraphReachable {
-			all[f] = true
-		}
-		for f := range symbols {
-			all[f] = true
-		}
-		for f := range reachable {
-			all[f] = true
-		}
-		for f := range allfuncs {
-			all[f] = true
-		}
-
-		allsorted := make([]string, 0, len(all))
-
-		for key := range all {
-			allsorted = append(allsorted, key)
-		}
-		sort.Slice(allsorted, func(i, j int) bool {
-			return stripLeadingAsterisk(allsorted[i]) < stripLeadingAsterisk(allsorted[j])
-		})
-		for _, f := range allsorted {
-			fmt.Printf("%c %c %c %c %s\n", ch(allfuncs[f], 'A'), ch(reachable[f], 'r'), ch(callgraphReachable[f], 'c'),
-				ch(symbols[f], 's'), f)
-		}
-		fmt.Printf("%d total functions\n", len(all))
-		fmt.Printf("Missing %d from allfuncs, %d from callgraph, %d from reachability, %d from binary\n",
-			len(all)-len(allfuncs), len(all)-len(callgraphReachable), len(all)-len(reachable), len(all)-len(symbols))
+		doCompareSymbols(program, cg, symbols)
 	}
 
 	if *dynBinary != "" && *dynCallgraphDir != "" {
 		callsites := loadDynamicCallgraph(*dynCallgraphDir, *dynBinary)
 		reportUncoveredDynamicEdges(program, cg, callsites)
 	}
+}
+
+func doCompareSymbols(program *ssa.Program, cg *callgraph.Graph, symbols map[string]bool) {
+	callgraphReachable := make(map[string]bool)
+	for entry := range dataflow.CallGraphReachable(cg, false, false) {
+		callgraphReachable[entry.String()] = true
+	}
+	fmt.Fprintf(os.Stderr, "Callgraph reachability reports %d reachable nodes out of %v total\n",
+		len(callgraphReachable), len(cg.Nodes))
+
+	reachable := findReachableNames(program)
+	allfuncs := findAllFunctionNames(program)
+
+	stripAllParens(callgraphReachable)
+	stripAllParens(reachable)
+	stripAllParens(symbols)
+	stripAllParens(allfuncs)
+
+	all := make(map[string]bool)
+
+	for f := range callgraphReachable {
+		all[f] = true
+	}
+	for f := range symbols {
+		all[f] = true
+	}
+	for f := range reachable {
+		all[f] = true
+	}
+	for f := range allfuncs {
+		all[f] = true
+	}
+
+	allsorted := make([]string, 0, len(all))
+
+	for key := range all {
+		allsorted = append(allsorted, key)
+	}
+	sort.Slice(allsorted, func(i, j int) bool {
+		return stripLeadingAsterisk(allsorted[i]) < stripLeadingAsterisk(allsorted[j])
+	})
+	for _, f := range allsorted {
+		fmt.Printf("%c %c %c %c %s\n", ch(allfuncs[f], 'A'), ch(reachable[f], 'r'), ch(callgraphReachable[f], 'c'),
+			ch(symbols[f], 's'), f)
+	}
+	fmt.Printf("%d total functions\n", len(all))
+	fmt.Printf("Missing %d from allfuncs, %d from callgraph, %d from reachability, %d from binary\n",
+		len(all)-len(allfuncs), len(all)-len(callgraphReachable), len(all)-len(reachable), len(all)-len(symbols))
 }
 
 func stripAllParens(m map[string]bool) {
@@ -335,6 +339,8 @@ func visitStaticReachableEdges(program *ssa.Program, root *ssa.Function, remaini
 // Some attempt to filter common classes of these false positives has been made (see below).
 // Additionally, due to the file:line level matching, some false negatives may occur, i.e.
 // edges in the dynamic but not static graph may not be reported.
+//
+//gocyclo:ignore
 func reportUncoveredDynamicEdges(program *ssa.Program, static *callgraph.Graph, dyn map[dynamicEdge]bool) {
 	reachable := dataflow.CallGraphReachable(static, false, false)
 	remainingCalledges := make(map[dynamicEdge]bool)
@@ -349,7 +355,7 @@ func reportUncoveredDynamicEdges(program *ssa.Program, static *callgraph.Graph, 
 		if _, ok := reachable[fun]; !ok {
 			continue
 		}
-		deferResults := defers.AnalyzeFunction(fun, false)
+		deferResults := defers.AnalyzeFunction(fun, config.NewLogGroup(config.NewDefault()))
 		for _, bb := range fun.Blocks {
 			for insIndex, ins := range bb.Instrs {
 				switch in := ins.(type) {

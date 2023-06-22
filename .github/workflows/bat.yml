@@ -6,10 +6,10 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.20.5' ]
+        go-version: ['1.18', '1.19', '1.20.5' ]
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
@@ -21,9 +21,13 @@ jobs:
         run: |
           go mod download
           go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+          go install github.com/gordonklaus/ineffassign@latest
       - name: Run basic analyses
         run: |
           go vet ./...
+          gocyclo -ignore test -over 15 .
+          ineffassign ./...
       - name: Run vulnerability checking on latest
         run: |
           govulncheck ./...

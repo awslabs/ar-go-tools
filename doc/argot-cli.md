@@ -218,7 +218,7 @@ The first step that should be taken in order to run dataflow analyses is to buil
 For example, you can summarize the `test2` function:
 ```
 > summarize test2
-Running single-function analysis on functions matching test2
+Running intra-procedural analysis on functions matching test2
 1 summaries created, 1 built.
 ```
 Then, if you call `> list test2` you should observe that the function is summarized, witnessed by the line `[x][x] command-line-arguments.test2` in the output. Summaries can be inspected using the [`summary`](#summary) command.

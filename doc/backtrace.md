@@ -38,8 +38,8 @@ reportsummaries: true    # the dataflow summaries built by the analysis will be 
 
 The `backtrace` tool will first print messages indicating that it finished some of the preliminary analyses before starting the first pass of the dataflow analysis. In this first pass the tool analyzes each function individually and builds a summary of how the data flows through the function. The user should see a message of the sort:
 ```
-Starting single-function analysis ...
-Single-function pass done (0.00 s).
+Starting intra-procedural analysis ...
+intra-procedural pass done (0.00 s).
 ```
 Indicating that this step has terminated.
 After that, the tool will link together the dataflow summaries in an inter-procedural pass:
@@ -55,7 +55,7 @@ For each source, the tool will print a message of the form:
  ==> Node: "[#584.4] @arg 0:name in [#584.3] (SA)call: os/exec.Command(name, args...) in runcmd "
 Found at /somedir/example.go:50:17
 ```
-Indicating the entrypoint. 
+Indicating the entrypoint.
 
 > ⚠ The tool will report important warnings during this analysis step. This indicates that some unsupported feature of Go has been encountered, and the final list of traces is not guaranteed to be exhaustive. However, when traces are reported, the information provided by the tool still indicates that there is probably a trace.
 

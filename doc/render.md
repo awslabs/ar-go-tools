@@ -71,8 +71,8 @@ The callgraph can be output via:
     For even moderately sized programs, the resulting callgraph can be very large, and the resulting image may be difficult to navigate.
 - `-htmlout FILE.html`. Renders the callgraph as a cross-linked HTML file. This format is more suitable for exploring the callgraph of large programs, but it does not contain a visual "graph".
 
-### Dataflow Graph 
-This option outputs the cross-function dataflow graph for a program. The construction of the graph can be configured using a config option `-config CFG.yaml`, as described in [Configuration](DESIGN.md#configuration). The graph can be rendered using:
+### Dataflow Graph
+This option outputs the inter-procedural dataflow graph for a program. The construction of the graph can be configured using a config option `-config CFG.yaml`, as described in [Configuration](DESIGN.md#configuration). The graph can be rendered using:
 - `-dfout FILE.dot`
 
 The resulting graph is the same as printed by the [showdataflow](argot-cli.md#showdataflow) CLI command.

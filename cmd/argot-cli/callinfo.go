@@ -81,66 +81,80 @@ func displayCallInfo(tt *term.Terminal, c *dataflow.AnalyzerState, command Comma
 	}
 
 	for _, f := range funcsMatchingCommand(tt, c, command) {
-		// Strategy 1: the function has a summary, use it to determine callees
-		// the information in a summary should be more complete than callgraph, if the callgraph sometimes
-		// omits static calls
 		if summary, hasSummary := c.FlowGraph.Summaries[f]; hasSummary && !usePtr {
-			if displayCallees {
-				WriteSuccess(tt, "All functions called by %s:", f.String())
-				for instr, callees := range summary.Callees {
-					writeFmt(tt, "\tAt SSA instruction %s:\n", instr.String())
-					writeFmt(tt, "\t Position %s:\n", c.Program.Fset.Position(instr.Pos()))
-					for callee := range callees {
-						if targetFilter(callee) {
-							writeFmt(tt, "\t  %s\n", callee.String())
-							writeFmt(tt, "\t    position: %s\n", c.Program.Fset.Position(callee.Pos()))
-						}
-					}
-				}
-			}
-			if displayCallers {
-				WriteSuccess(tt, "Callers of %s:", f.String())
-				for _, callsite := range summary.Callsites {
-					if targetFilter(callsite.Callee()) {
-						writeFmt(tt, "\tAt SSA instruction %s\n", callsite.String())
-						if callsite.Graph() != nil {
-							writeFmt(tt, "\t  in %s\n", callsite.Graph().Parent.Name())
-						}
-						writeFmt(tt, "\t  position: %s\n", callsite.Position(c).String())
-					}
-				}
-			}
+			// Strategy 1: the function has a summary, use it to determine callees
+			// the information in a summary should be more complete than callgraph, if the callgraph sometimes
+			// omits static calls
+			displayCallInfoWithSummary(c, tt, f, summary, targetFilter, displayCallers, displayCallees)
 		} else {
 			// If there is no summary, or usePtr is true, then use the callgraph computed during
 			// the pointer analysis  the state should always contain the pointer analysis,
 			// and it should not be null
-			if node, ok := c.PointerAnalysis.CallGraph.Nodes[f]; ok {
-				if displayCallees {
-					WriteSuccess(tt, "All functions called by %s:", f.String())
-					for _, out := range node.Out {
-						if out.Callee != nil && targetFilter(out.Callee.Func) {
-							if out.Site != nil {
-								writeFmt(tt, "\tAt SSA instruction %s:\n", out.Site.String())
-								writeFmt(tt, "\t - position: %s\n", c.Program.Fset.Position(out.Site.Pos()))
-							}
-							writeFmt(tt, "\t - %s\n", out.Callee.Func.String())
-						}
-					}
-				}
-				if displayCallers {
-					WriteSuccess(tt, "Callers of %s:", f.String())
-					for _, in := range node.In {
-						if in.Caller != nil && targetFilter(in.Caller.Func) {
-							if in.Site != nil {
-								writeFmt(tt, "\tAt SSA instruction %s:\n", in.Site.String())
-								writeFmt(tt, "\t - position: %s\n", c.Program.Fset.Position(in.Site.Pos()))
-							}
-							writeFmt(tt, "\t - %s\n", in.Caller.Func.String())
-						}
-					}
+			displayCallInfoWithoutSummary(c, tt, f, targetFilter, displayCallers, displayCallees)
+		}
+	}
+	return false
+}
+
+func displayCallInfoWithSummary(s *dataflow.AnalyzerState, tt *term.Terminal,
+	f *ssa.Function, summary *dataflow.SummaryGraph,
+	targetFilter func(*ssa.Function) bool,
+	displayCallers bool, displayCallees bool) {
+
+	if displayCallees {
+		WriteSuccess(tt, "All functions called by %s:", f.String())
+		for instr, callees := range summary.Callees {
+			writeFmt(tt, "\tAt SSA instruction %s:\n", instr.String())
+			writeFmt(tt, "\t Position %s:\n", s.Program.Fset.Position(instr.Pos()))
+			for callee := range callees {
+				if targetFilter(callee) {
+					writeFmt(tt, "\t  %s\n", callee.String())
+					writeFmt(tt, "\t    position: %s\n", s.Program.Fset.Position(callee.Pos()))
 				}
 			}
 		}
 	}
-	return false
+	if displayCallers {
+		WriteSuccess(tt, "Callers of %s:", f.String())
+		for _, callsite := range summary.Callsites {
+			if targetFilter(callsite.Callee()) {
+				writeFmt(tt, "\tAt SSA instruction %s\n", callsite.String())
+				if callsite.Graph() != nil {
+					writeFmt(tt, "\t  in %s\n", callsite.Graph().Parent.Name())
+				}
+				writeFmt(tt, "\t  position: %s\n", callsite.Position(s).String())
+			}
+		}
+	}
+}
+
+func displayCallInfoWithoutSummary(s *dataflow.AnalyzerState, tt *term.Terminal,
+	f *ssa.Function, targetFilter func(*ssa.Function) bool,
+	displayCallers bool, displayCallees bool) {
+	if node, ok := s.PointerAnalysis.CallGraph.Nodes[f]; ok {
+		if displayCallees {
+			WriteSuccess(tt, "All functions called by %s:", f.String())
+			for _, out := range node.Out {
+				if out.Callee != nil && targetFilter(out.Callee.Func) {
+					if out.Site != nil {
+						writeFmt(tt, "\tAt SSA instruction %s:\n", out.Site.String())
+						writeFmt(tt, "\t - position: %s\n", s.Program.Fset.Position(out.Site.Pos()))
+					}
+					writeFmt(tt, "\t - %s\n", out.Callee.Func.String())
+				}
+			}
+		}
+		if displayCallers {
+			WriteSuccess(tt, "Callers of %s:", f.String())
+			for _, in := range node.In {
+				if in.Caller != nil && targetFilter(in.Caller.Func) {
+					if in.Site != nil {
+						writeFmt(tt, "\tAt SSA instruction %s:\n", in.Site.String())
+						writeFmt(tt, "\t - position: %s\n", s.Program.Fset.Position(in.Site.Pos()))
+					}
+					writeFmt(tt, "\t - %s\n", in.Caller.Func.String())
+				}
+			}
+		}
+	}
 }

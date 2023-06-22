@@ -115,12 +115,12 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.AnalyzerState, command Command
 	return false
 }
 
-// cmdShowDataflow builds and prints the cross-function dataflow graph.
+// cmdShowDataflow builds and prints the inter-procedural dataflow graph.
 // If on macOS, the command automatically renders an SVG and opens it in Safari.
 func cmdShowDataflow(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
-		writeFmt(tt, "\t- %s%s%s : build and print the cross-function dataflow graph of a program.\n"+
-			"\t  showdataflow args prints the cross-function dataflow graph.\n"+
+		writeFmt(tt, "\t- %s%s%s : build and print the inter-procedural dataflow graph of a program.\n"+
+			"\t  showdataflow args prints the inter-procedural dataflow graph.\n"+
 			"\t    on macOS, the command also renders an SVG of the graph and opens it in Safari\n"+
 			"\t  Example:\n", tt.Escape.Blue, cmdShowDataflowName, tt.Escape.Reset)
 		writeFmt(tt, "\t  > %s main.go prog.go\n", cmdShowDataflowName)
@@ -133,7 +133,7 @@ func cmdShowDataflow(tt *term.Terminal, c *dataflow.AnalyzerState, command Comma
 	var err error
 	c, err = render.BuildCrossFunctionGraph(c)
 	if err != nil {
-		WriteErr(tt, "Failed to build cross-function graph: %v\n", err)
+		WriteErr(tt, "Failed to build inter-procedural graph: %v\n", err)
 		return false
 	}
 	var b bytes.Buffer
@@ -154,7 +154,7 @@ func cmdShowDataflow(tt *term.Terminal, c *dataflow.AnalyzerState, command Comma
 		svgFileName := dotFile.Name() + ".svg"
 		dotCmd := exec.CommandContext(dotCtx, "dot", "-Tsvg", dotFile.Name(), "-o", svgFileName)
 		if err := dotCmd.Run(); err != nil {
-			WriteErr(tt, "Failed to compile dot cross-function graph: %v\n", err)
+			WriteErr(tt, "Failed to compile dot inter-procedural graph: %v\n", err)
 			return false
 		}
 
@@ -162,7 +162,7 @@ func cmdShowDataflow(tt *term.Terminal, c *dataflow.AnalyzerState, command Comma
 		defer openCancel()
 		openCmd := exec.CommandContext(openCtx, "open", "-a", "Safari", svgFileName)
 		if err := openCmd.Run(); err != nil {
-			WriteErr(tt, "Failed to open dot cross-function graph SVG: %v\n", err)
+			WriteErr(tt, "Failed to open dot inter-procedural graph SVG: %v\n", err)
 			return false
 		}
 	}
@@ -215,10 +215,10 @@ func cmdSummary(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) b
 	return false
 }
 
-// cmdSummarize runs the single-function analysis.
+// cmdSummarize runs the intra-procedural analysis.
 func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
-		writeFmt(tt, "\t- %s%s%s : run the single-function analysis. If a function is provided, "+
+		writeFmt(tt, "\t- %s%s%s : run the intra-procedural analysis. If a function is provided, "+
 			"run only\n", tt.Escape.Blue, cmdSummarizeName, tt.Escape.Reset)
 		writeFmt(tt, "\t   on the provided function\n")
 		writeFmt(tt, "\t   This will build dataflow summaries for all specified functions.\n")
@@ -234,8 +234,8 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 	isForced := command.Flags["force"]
 
 	if len(command.Args) < 1 {
-		// Running the single-function analysis on all functions
-		WriteSuccess(tt, "Running single-function analysis on all functions")
+		// Running the intra-procedural analysis on all functions
+		WriteSuccess(tt, "Running intra-procedural analysis on all functions")
 		createCounter := 0
 		buildCounter := 0
 		shouldCreateSummary := func(f *ssa.Function) bool {
@@ -262,14 +262,14 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		c.FlowGraph.InsertSummaries(res.FlowGraph)
 		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
-		// Running the single-function analysis on a single function, if it can be found
+		// Running the intra-procedural analysis on a single function, if it can be found
 		regex, err := regexp.Compile(command.Args[0])
 		if err != nil {
 			regexErr(tt, command.Args[0], err)
 			return false
 		}
 		funcs := findFunc(c, regex)
-		WriteSuccess(tt, "Running single-function analysis on functions matching %s", command.Args[0])
+		WriteSuccess(tt, "Running intra-procedural analysis on functions matching %s", command.Args[0])
 
 		// Depending on the summaries threshold and the number of matched functions, different filters are used.
 		// If len(funcs) > summarizeThreshold, the filter used is similar to the one used in the taint analysis.
@@ -280,45 +280,12 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		if len(funcs) > summarizeThreshold {
 			// above a certain threshold, we use the general analysis filters on what to summarize, unless -force has
 			// been specified
-			WriteSuccess(tt, "(more than %d functions matching, other config-defined filters are in use)",
-				summarizeThreshold)
-			shouldCreateSummary = func(f *ssa.Function) bool {
-				b := isForced || (!summaries.IsStdFunction(f) &&
-					summaries.IsUserDefinedFunction(f) &&
-					funcutil.Contains(funcs, f) &&
-					!c.HasExternalContractSummary(f))
-				if b {
-					createCounter++
-				}
-				return b
-			}
-			shouldBuildSummary = func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
-				b := isForced || (!summaries.IsStdFunction(f) &&
-					summaries.IsUserDefinedFunction(f) &&
-					funcutil.Contains(funcs, f) &&
-					!c.HasExternalContractSummary(f))
-				if b {
-					buildCounter++
-				}
-				return b
-			}
+			shouldCreateSummary, shouldBuildSummary = summarizeWithDefaultParams(tt, c, funcs, isForced,
+				&createCounter, &buildCounter)
 		} else {
 			// below that threshold, all functions that match are summarize.
 			// useful for testing.
-			shouldCreateSummary = func(f *ssa.Function) bool {
-				b := funcutil.Contains(funcs, f)
-				if b {
-					createCounter++
-				}
-				return b
-			}
-			shouldBuildSummary = func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
-				b := funcutil.Contains(funcs, f)
-				if b {
-					buildCounter++
-				}
-				return b
-			}
+			shouldCreateSummary, shouldBuildSummary = alwaysSummarize(tt, c, funcs, &createCounter, &buildCounter)
 		}
 
 		// Run the analysis with the filter.
@@ -341,6 +308,54 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 	return false
 }
 
+func summarizeWithDefaultParams(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.Function, isForced bool,
+	createCounter *int, buildCounter *int) (
+	func(*ssa.Function) bool, func(*dataflow.AnalyzerState, *ssa.Function) bool) {
+	WriteSuccess(tt, "(more than %d functions matching, other config-defined filters are in use)",
+		summarizeThreshold)
+	shouldCreateSummary := func(f *ssa.Function) bool {
+		b := isForced || (!summaries.IsStdFunction(f) &&
+			summaries.IsUserDefinedFunction(f) &&
+			funcutil.Contains(funcs, f) &&
+			!c.HasExternalContractSummary(f))
+		if b {
+			(*createCounter)++
+		}
+		return b
+	}
+	shouldBuildSummary := func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
+		b := isForced || (!summaries.IsStdFunction(f) &&
+			summaries.IsUserDefinedFunction(f) &&
+			funcutil.Contains(funcs, f) &&
+			!c.HasExternalContractSummary(f))
+		if b {
+			(*buildCounter)++
+		}
+		return b
+	}
+	return shouldCreateSummary, shouldBuildSummary
+}
+
+func alwaysSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.Function,
+	createCounter *int, buildCounter *int) (
+	func(*ssa.Function) bool, func(*dataflow.AnalyzerState, *ssa.Function) bool) {
+	shouldCreateSummary := func(f *ssa.Function) bool {
+		b := funcutil.Contains(funcs, f)
+		if b {
+			(*createCounter)++
+		}
+		return b
+	}
+	shouldBuildSummary := func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
+		b := funcutil.Contains(funcs, f)
+		if b {
+			(*buildCounter)++
+		}
+		return b
+	}
+	return shouldCreateSummary, shouldBuildSummary
+}
+
 // cmdTaint runs the taint analysis
 func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
@@ -351,7 +366,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		return false
 	}
 	if !c.FlowGraph.IsBuilt() {
-		WriteErr(tt, "The cross-function dataflow graph is not built!")
+		WriteErr(tt, "The inter-procedural dataflow graph is not built!")
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
@@ -369,7 +384,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 		return false
 	}
 	if !c.FlowGraph.IsBuilt() {
-		WriteErr(tt, "The cross-function dataflow graph is not built!")
+		WriteErr(tt, "The inter-procedural dataflow graph is not built!")
 		WriteErr(tt, "Please run `%s` before calling `backtrace`.", cmdBuildGraphName)
 		return false
 	}

@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/tools/go/buildutil"
@@ -82,7 +83,12 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, colors.Faint("Analyzing")+"\n")
 
-	defers.AnalyzeProgram(program, verbose)
+	cfg := config.NewDefault()
+	if verbose {
+		cfg.LogLevel = int(config.TraceLevel)
+	}
+
+	defers.AnalyzeProgram(program, config.NewLogGroup(cfg))
 
 	return nil
 }

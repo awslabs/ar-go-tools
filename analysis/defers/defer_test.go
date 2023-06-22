@@ -22,6 +22,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -49,9 +50,9 @@ func TestBasic(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	program, err := loadProgram("basic.go")
+	program, _ := loadProgram("basic.go")
 	for f := range ssautil.AllFunctions(program) {
-		results := AnalyzeFunction(f, false)
+		results := AnalyzeFunction(f, config.NewLogGroup(config.NewDefault()))
 		switch f.Name() {
 		case "f1":
 			assertBoundedness(t, f, results, true)

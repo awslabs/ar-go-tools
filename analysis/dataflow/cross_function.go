@@ -28,18 +28,18 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Visitor represents a visitor that runs a cross-function analysis from entrypoint.
+// Visitor represents a visitor that runs a inter-procedural analysis from entrypoint.
 type Visitor interface {
 	Visit(s *AnalyzerState, entrypoint NodeWithTrace)
 }
 
-// CrossFunctionFlowGraph represents a cross-function data flow graph.
+// CrossFunctionFlowGraph represents a inter-procedural data flow graph.
 type CrossFunctionFlowGraph struct {
-	// ForwardEdges represents edges between nodes belonging to different subgraphs (cross-function version of
+	// ForwardEdges represents edges between nodes belonging to different subgraphs (inter-procedural version of
 	// (GraphNode).Out)
 	ForwardEdges map[GraphNode]map[GraphNode]bool
 
-	// BackwardEdges represents backward edges between nodes belonging to different subgraphs (cross-function
+	// BackwardEdges represents backward edges between nodes belonging to different subgraphs (inter-procedural
 	// version of (GraphNode).In)
 	BackwardEdges map[GraphNode]map[GraphNode]bool
 
@@ -118,12 +118,13 @@ func (g *CrossFunctionFlowGraph) InsertSummaries(g2 CrossFunctionFlowGraph) {
 }
 
 // BuildGraph builds the cross function flow graph by connecting summaries together
+//
+//gocyclo:ignore
 func (g *CrossFunctionFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ssa.Node) bool) {
 	c := g.AnalyzerState
 	logger := c.Logger
-	if c.Config.Verbose {
-		logger.Println("Building cross-function flow graph...")
-	}
+
+	logger.Infof("Building inter-procedural flow graph...")
 
 	// Open a file to output summaries
 	summariesFile := openSummaries(c)
@@ -131,9 +132,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ss
 		defer summariesFile.Close()
 	}
 
-	reachable := CallGraphReachable(g.AnalyzerState.PointerAnalysis.CallGraph, false, false)
-
-	// Build the cross-function data flow graph: link all the summaries together
+	// Build the inter-procedural data flow graph: link all the summaries together
 	for _, summary := range g.Summaries {
 		if summary == nil {
 			continue
@@ -148,50 +147,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ss
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil {
-					var calleeSummary *SummaryGraph
-
-					if node.callee.Type != InterfaceContract {
-						calleeSummary = findCalleeSummary(node.Callee(), g.Summaries)
-					}
-					// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
-					// contracts, or build the summary
-					if calleeSummary == nil {
-						if calleeSummary = g.AnalyzerState.LoadExternalContractSummary(node); calleeSummary != nil {
-							if g.AnalyzerState.Config.Verbose {
-								logger.Printf("Loaded %s from external contracts.\n",
-									node.CallSite().Common().String())
-							}
-							g.Summaries[node.Callee()] = calleeSummary
-						} else if calleeSummary = LoadPredefinedSummary(
-							node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
-							if g.AnalyzerState.Config.Verbose {
-								logger.Printf("Loaded %s from summaries.\n", node.Callee().String())
-							}
-							g.Summaries[node.Callee()] = calleeSummary
-						} else if c.Config.SummarizeOnDemand && reachable[node.Callee()] && ShouldBuildSummary(c, node.Callee()) {
-							if c.Config.Verbose {
-								logger.Printf("Building summary for %v...\n", node.Callee())
-							}
-							result, err := SingleFunctionAnalysis(c, node.Callee(), true, GetUniqueFunctionId(), isEntrypoint, nil)
-							if err != nil {
-								panic(fmt.Errorf("single function analysis failed for %v: %v", node.Callee(), err))
-							}
-							if c.Config.Verbose {
-								logger.Printf("Finished building summary for %v (%.2f s)", node.Callee(), result.Time.Seconds())
-							}
-							calleeSummary = result.Summary
-							g.Summaries[node.Callee()] = calleeSummary
-						}
-					}
-					// Add edge from callee to caller (adding a call site in the callee)
-					if calleeSummary != nil {
-						if x := calleeSummary.Callsites[node.CallSite()]; x == nil {
-							calleeSummary.Callsites[node.CallSite()] = node
-						}
-					} else {
-						summaryNotFound(g, node)
-					}
-					node.CalleeSummary = calleeSummary // nil is safe
+					node.CalleeSummary = resolveCalleeSummary(g, node, isEntrypoint)
 				}
 			}
 		}
@@ -249,7 +205,7 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 		}
 	}
 
-	g.AnalyzerState.Logger.Printf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	g.AnalyzerState.Logger.Debugf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
 
 	// Run the analysis for every entrypoint. We may be able to change this to run the analysis for all entrypoints
 	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
@@ -258,7 +214,66 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 	}
 }
 
-// CrossFunctionPass runs the pass on the cross-function flow graph.
+// resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
+// sets the edge from callee to caller, if it could find a summary.
+// Returns nil if no summary can be found.
+func resolveCalleeSummary(g *CrossFunctionFlowGraph, node *CallNode,
+	isEntryPoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
+	var calleeSummary *SummaryGraph
+	logger := g.AnalyzerState.Logger
+
+	// If it's not an interface contract, attempt to just find the summary in the dataflow graph's computed summaries
+	if node.callee.Type != InterfaceContract {
+		calleeSummary = findCalleeSummary(node.Callee(), g.Summaries)
+	}
+
+	// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
+	// contracts, or build the summary
+	if calleeSummary == nil {
+		// Try to load from external (user-defined) contract summaries
+		if calleeSummary = g.AnalyzerState.LoadExternalContractSummary(node); calleeSummary != nil {
+			logger.Debugf("Loaded %s from external contracts.\n",
+				node.CallSite().Common().String())
+			g.Summaries[node.Callee()] = calleeSummary
+
+			// Try to load from predefined (user-defined) summaries
+		} else if calleeSummary = LoadPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
+			logger.Debugf("Loaded %s from summaries.\n", node.Callee().String())
+			g.Summaries[node.Callee()] = calleeSummary
+
+			// If summarization on demand is set and the function is reachable, summarize it if ShouldBuildSummary is true
+		} else if g.AnalyzerState.Config.SummarizeOnDemand && g.AnalyzerState.IsReachableFunction(node.Callee()) &&
+			ShouldBuildSummary(g.AnalyzerState, node.Callee()) {
+
+			logger.Debugf("Building summary for %v...\n", node.Callee())
+
+			result, err := SingleFunctionAnalysis(
+				g.AnalyzerState, node.Callee(), true, GetUniqueFunctionId(), isEntryPoint, nil)
+
+			if err != nil {
+				panic(fmt.Errorf("intra-procedural analysis failed for %v: %v", node.Callee(), err))
+			}
+			logger.Debugf("Finished building summary for %v (%.2f s)", node.Callee(), result.Time.Seconds())
+
+			// Store the computed summary in the graph
+			calleeSummary = result.Summary
+			g.Summaries[node.Callee()] = calleeSummary
+		}
+	}
+
+	// Add edge from callee to caller (adding a call site in the callee)
+	if calleeSummary != nil {
+		if x := calleeSummary.Callsites[node.CallSite()]; x == nil {
+			calleeSummary.Callsites[node.CallSite()] = node
+		}
+	} else {
+		summaryNotFound(g, node)
+	}
+
+	return calleeSummary
+}
+
+// CrossFunctionPass runs the pass on the inter-procedural flow graph.
 // Most of the logic is in visitor that is called for
 // each possible source node identified.
 //
@@ -269,7 +284,7 @@ func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *AnalyzerState, visitor Vis
 	isEntryPoint func(*config.Config, ssa.Node) bool) {
 	// Skip the pass if user configuration demands it
 	if c.Config.SkipInterprocedural || (!c.Config.SummarizeOnDemand && len(g.Summaries) == 0) {
-		c.Logger.Printf("Skipping cross-function pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
+		c.Logger.Infof("Skipping inter-procedural pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
 			c.Config.SkipInterprocedural, len(g.Summaries))
 		return
 	}
@@ -287,7 +302,7 @@ func (g *CrossFunctionFlowGraph) CrossFunctionPass(c *AnalyzerState, visitor Vis
 	g.RunCrossFunctionPass(visitor, isEntryPoint)
 }
 
-// VisitorNode represents a node in the cross-function dataflow graph to be visited.
+// VisitorNode represents a node in the inter-procedural dataflow graph to be visited.
 type VisitorNode struct {
 	NodeWithTrace
 	ParamStack *ParamStack
@@ -355,18 +370,17 @@ func IsSourceFunction(cfg *config.Config, f *ssa.Function) bool {
 }
 
 func summaryNotFound(g *CrossFunctionFlowGraph, node *CallNode) {
-	if g.AnalyzerState.Config.Verbose &&
-		node.callee.Callee.Name() != "init" &&
+	if node.callee.Callee.Name() != "init" &&
 		g.AnalyzerState.IsReachableFunction(node.callee.Callee) {
 
-		g.AnalyzerState.Logger.Printf("Could not find summary of %s", node.callSite.String())
+		g.AnalyzerState.Logger.Debugf("Could not find summary of %s", node.callSite.String())
 		if node.callee.Callee != nil {
-			g.AnalyzerState.Logger.Printf("|-- Key: %s", node.callee.Callee.String())
+			g.AnalyzerState.Logger.Debugf("|-- Key: %s", node.callee.Callee.String())
 		}
-		g.AnalyzerState.Logger.Printf("|-- Location: %s", node.Position(g.AnalyzerState))
+		g.AnalyzerState.Logger.Debugf("|-- Location: %s", node.Position(g.AnalyzerState))
 
 		if node.callSite.Common().IsInvoke() {
-			g.AnalyzerState.Logger.Printf("|-- invoke resolved to callee %s", node.callee.Callee.String())
+			g.AnalyzerState.Logger.Debugf("|-- invoke resolved to callee %s", node.callee.Callee.String())
 		}
 	}
 }
@@ -381,10 +395,10 @@ func openCoverage(c *AnalyzerState) *os.File {
 		coverage, err = os.CreateTemp(c.Config.ReportsDir, "coverage-*.out")
 		if err != nil {
 			coverage = nil
-			c.Logger.Printf("Warning: could not create coverage file, continuing.\n")
-			c.Logger.Printf("Error was: %s", err)
+			c.Logger.Warnf("Could not create coverage file, continuing.\n")
+			c.Logger.Warnf("Error was: %s", err)
 		} else {
-			c.Logger.Printf("Writing coverage information in %s.\n", coverage.Name())
+			c.Logger.Infof("Writing coverage information in %s.\n", coverage.Name())
 			_, _ = coverage.WriteString("mode: set\n")
 		}
 	}
@@ -401,10 +415,10 @@ func openSummaries(c *AnalyzerState) *os.File {
 		summariesFile, err = os.CreateTemp(c.Config.ReportsDir, "summaries-*.out")
 		if err != nil {
 			summariesFile = nil
-			c.Logger.Printf("Warning: could not create summaries files, continuing.\n")
-			c.Logger.Printf("Error was: %s", err)
+			c.Logger.Warnf("Could not create summaries files, continuing.\n")
+			c.Logger.Warnf("Error was: %s", err)
 		} else {
-			c.Logger.Printf("Writing summaries in %s.\n", summariesFile.Name())
+			c.Logger.Infof("Writing summaries in %s.\n", summariesFile.Name())
 		}
 	}
 	return summariesFile
@@ -448,20 +462,16 @@ func buildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*c
 	id := GetUniqueFunctionId()
 	summary := LoadPredefinedSummary(function, id)
 	if summary != nil {
-		if s.Config.Verbose {
-			logger.Printf("\tLoaded pre-defined summary for %v\n", function)
-		}
+		logger.Debugf("\tLoaded pre-defined summary for %v\n", function)
 	} else {
-		if s.Config.Verbose {
-			logger.Printf("\tBuilding summary for %v...\n", function)
-		}
+		logger.Debugf("\tBuilding summary for %v...\n", function)
 		result, err := SingleFunctionAnalysis(s, function, true, id, isEntrypoint, nil)
+
 		if err != nil {
 			panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
 		}
-		if s.Config.Verbose {
-			logger.Printf("\tFinished building summary for %v (%.2f s)", function, result.Time.Seconds())
-		}
+
+		logger.Debugf("\tFinished building summary for %v (%.2f s)", function, result.Time.Seconds())
 		summary = result.Summary
 	}
 

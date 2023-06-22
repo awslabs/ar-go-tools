@@ -88,7 +88,7 @@ type Config struct {
 	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
 	UseEscapeAnalysis bool
 
-	// SkipInterprocedural can be set to true to skip the interprocedural (cross-function analysis) step
+	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
 	SkipInterprocedural bool
 
 	// CoverageFilter can be used to filter which packages will be reported in the coverage. If non-empty,
@@ -122,8 +122,8 @@ type Config struct {
 	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
 	MaxAlarms int
 
-	// Verbose control the verbosity of the tool
-	Verbose bool
+	// Loglevel controls the verbosity of the tool
+	LogLevel int
 
 	// if the PkgFilter is specified
 	pkgFilterRegex *regexp.Regexp
@@ -153,79 +153,92 @@ func NewDefault() *Config {
 		ReportNoCalleeSites: false,
 		MaxDepth:            1000,
 		MaxAlarms:           0,
-		Verbose:             false,
+		LogLevel:            int(InfoLevel),
 	}
 }
 
 // Load reads a configuration from a file
 func Load(filename string) (*Config, error) {
-	config := Config{}
+	cfg := Config{}
 	b, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("could not read config file: %w", err)
 	}
-	err = yaml.Unmarshal(b, &config)
+	err = yaml.Unmarshal(b, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("could not unmarshal config file: %w", err)
 	}
 
-	config.sourceFile = filename
+	cfg.sourceFile = filename
 
-	if config.ReportPaths || config.ReportSummaries || config.ReportCoverage || config.ReportNoCalleeSites {
-		if config.ReportsDir == "" {
-			tmpdir, err := os.MkdirTemp(path.Dir(filename), "*-report")
-			if err != nil {
-				return nil, fmt.Errorf("could not create temp dir for reports")
-			}
-			config.ReportsDir = tmpdir
-
-			if config.ReportNoCalleeSites {
-				reportFile, err := os.CreateTemp(config.ReportsDir, "nocalleesites-*.out")
-				if err != nil {
-					return nil, fmt.Errorf("could not create report file for no callee site")
-				}
-				config.nocalleereportfile = reportFile.Name()
-				reportFile.Close() // the file will be reopened as needed
-			}
-		} else {
-			err := os.Mkdir(config.ReportsDir, 0750)
-			if err != nil {
-				if !os.IsExist(err) {
-					return nil, fmt.Errorf("could not create directory %s", config.ReportsDir)
-				}
-			}
+	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
+		err = setReportsDir(&cfg, filename)
+		if err != nil {
+			return nil, err
 		}
+	}
+
+	// If logLevel has not been specified (i.e. it is 0) set the default to Info
+	if cfg.LogLevel == 0 {
+		cfg.LogLevel = int(InfoLevel)
 	}
 
 	// Set the MaxDepth default if it is <= 0
-	if config.MaxDepth <= 0 {
-		config.MaxDepth = DefaultMaxCallDepth
+	if cfg.MaxDepth <= 0 {
+		cfg.MaxDepth = DefaultMaxCallDepth
 	}
 
-	if config.PkgFilter != "" {
-		r, err := regexp.Compile(config.PkgFilter)
+	if cfg.PkgFilter != "" {
+		r, err := regexp.Compile(cfg.PkgFilter)
 		if err == nil {
-			config.pkgFilterRegex = r
+			cfg.pkgFilterRegex = r
 		}
 	}
 
-	if config.CoverageFilter != "" {
-		r, err := regexp.Compile(config.CoverageFilter)
+	if cfg.CoverageFilter != "" {
+		r, err := regexp.Compile(cfg.CoverageFilter)
 		if err == nil {
-			config.coverageFilterRegex = r
+			cfg.coverageFilterRegex = r
 		}
 	}
 
-	funcutil.Iter(config.BacktracePoints, compileRegexes)
-	funcutil.Iter(config.Filters, compileRegexes)
-	funcutil.Iter(config.Sanitizers, compileRegexes)
-	funcutil.Iter(config.Sinks, compileRegexes)
-	funcutil.Iter(config.Sources, compileRegexes)
-	funcutil.Iter(config.StaticCommands, compileRegexes)
-	funcutil.Iter(config.Validators, compileRegexes)
-	funcutil.Iter(config.Validators, compileRegexes)
+	funcutil.Iter(cfg.BacktracePoints, compileRegexes)
+	funcutil.Iter(cfg.Filters, compileRegexes)
+	funcutil.Iter(cfg.Sanitizers, compileRegexes)
+	funcutil.Iter(cfg.Sinks, compileRegexes)
+	funcutil.Iter(cfg.Sources, compileRegexes)
+	funcutil.Iter(cfg.StaticCommands, compileRegexes)
+	funcutil.Iter(cfg.Validators, compileRegexes)
+	funcutil.Iter(cfg.Validators, compileRegexes)
 
-	return &config, nil
+	return &cfg, nil
+}
+
+func setReportsDir(c *Config, filename string) error {
+	if c.ReportsDir == "" {
+		tmpdir, err := os.MkdirTemp(path.Dir(filename), "*-report")
+		if err != nil {
+			return fmt.Errorf("could not create temp dir for reports")
+		}
+		c.ReportsDir = tmpdir
+
+		if c.ReportNoCalleeSites {
+			reportFile, err := os.CreateTemp(c.ReportsDir, "nocalleesites-*.out")
+			if err != nil {
+				return fmt.Errorf("could not create report file for no callee site")
+			}
+			c.nocalleereportfile = reportFile.Name()
+			reportFile.Close() // the file will be reopened as needed
+		}
+	} else {
+		err := os.Mkdir(c.ReportsDir, 0750)
+		if err != nil {
+			if !os.IsExist(err) {
+				return fmt.Errorf("could not create directory %s", c.ReportsDir)
+			}
+		}
+	}
+	return nil
 }
 
 // ReportNoCalleeFile return the file name that will contain the list of locations that have no callee
@@ -241,7 +254,7 @@ func (c Config) RelPath(filename string) string {
 // MatchPkgFilter returns true if the package name pkgname matches the package filter set in the config file. If no
 // package filter has been set in the config file, the regex will match anything and return true. This function safely
 // considers the case where a filter has been specified by the user but it could not be compiled to a regex. The safe
-// case is to check whether the pacakge filter string is a prefix of the pkgname
+// case is to check whether the package filter string is a prefix of the pkgname
 func (c Config) MatchPkgFilter(pkgname string) bool {
 	if c.pkgFilterRegex != nil {
 		return c.pkgFilterRegex.MatchString(pkgname)
@@ -293,4 +306,9 @@ func (c Config) IsStaticCommand(cid CodeIdentifier) bool {
 
 func (c Config) IsBacktracePoint(cid CodeIdentifier) bool {
 	return ExistsCid(c.BacktracePoints, cid.equalOnNonEmptyFields)
+}
+
+// Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)
+func (c Config) Verbose() bool {
+	return c.LogLevel >= int(DebugLevel)
 }

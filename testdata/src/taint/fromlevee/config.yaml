@@ -5,7 +5,6 @@ sources:
 sinks:
   - package: "(.*)core"
     method: "Sink[1-9]?"
-verbose: true
 
 reportsdir: "report"
 reportsummaries: true
