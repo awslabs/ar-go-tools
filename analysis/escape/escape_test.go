@@ -349,7 +349,7 @@ type callgraphVisitNode struct {
 	// we don't explicitly keep track of the children here.
 }
 
-func computeNodes(state dataflow.EscapeAnalysisState2, root *ssa.Function) []*callgraphVisitNode {
+func computeNodes(state dataflow.EscapeAnalysisState, root *ssa.Function) []*callgraphVisitNode {
 	allNodes := make([]*callgraphVisitNode, 0)
 	rootContext := state.ComputeArbitraryContext(root)
 
@@ -568,7 +568,7 @@ func TestLocalityComputation(t *testing.T) {
 		if f == nil {
 			t.Fatalf("Couldn't find function %v", funcName)
 		}
-		var state dataflow.EscapeAnalysisState2 = &escapeAnalysisImpl{*escapeWholeProgram}
+		var state dataflow.EscapeAnalysisState = &escapeAnalysisImpl{*escapeWholeProgram}
 		var anyError error
 		allCallgraphWalkNodes := computeNodes(state, f)
 		for _, nodes := range groupNodesByFunc(allCallgraphWalkNodes) {

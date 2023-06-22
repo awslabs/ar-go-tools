@@ -71,15 +71,15 @@ var G Node = Node{nil, "g"}
 func ExampleEscapeRecursion() {
 	var mu sync.Mutex
 	mu.Lock()
-	G.label = source1()
+	G.label = source1() // @Source(simpleRec)
 	go func() {
 		G.label = source1()
 		mu.Unlock()
 	}()
 	mu.Lock()
 	x := &Node{&Node{&G, "2"}, "1"}
-	_ = recursiveConcat(x)
-	//sink1(c)
+	c := recursiveConcat(x)
+	sink1(c) // @Sink(simpleRec)
 }
 
 func recursiveConcat(n *Node) string {
@@ -91,9 +91,42 @@ func recursiveConcat(n *Node) string {
 	return r
 }
 
+func ExampleEscapeMutualRecursion() {
+	var mu sync.Mutex
+	mu.Lock()
+	G.label = source1() // @Source(mutualRec)
+	go func() {
+		G.label = source1()
+		mu.Unlock()
+	}()
+	mu.Lock()
+	x := &Node{&Node{&Node{&G, "3"}, "2"}, "1"}
+	c := recConcat1(x)
+	sink1(c) //@Sink(mutualRec)
+}
+
+func recConcat1(n *Node) string {
+	if n == nil {
+		return ""
+	}
+	r := n.label
+	r += recConcat2(n.next)
+	return r
+}
+
+func recConcat2(n *Node) string {
+	if n == nil {
+		return ""
+	}
+	r := n.label
+	r += recConcat1(n.next)
+	return r
+}
+
 func main() {
 	ExampleEscape1()
 	time.Sleep(100000)
 	ExampleEscape2()
 	ExampleEscapeRecursion()
+	ExampleEscapeMutualRecursion()
 }

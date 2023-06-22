@@ -135,7 +135,7 @@ func InitializeEscapeAnalysisState2(state *dataflow.AnalyzerState) error {
 }
 
 // IMPLEMENTATION OF OLD INTERFACE (SOON TO BE DEPRECATED):
-// Implementations for the EscapeAnalysisState of the dataflow package
+// Implementations for the OldEscapeAnalysisState of the dataflow package
 func (p *ProgramAnalysisState) IsEscapeAnalysisState() bool { return true }
 
 func (p *ProgramAnalysisState) InitialGraphs() map[*ssa.Function]dataflow.EscapeGraph {
@@ -152,11 +152,11 @@ func (p *ProgramAnalysisState) InitialGraphs() map[*ssa.Function]dataflow.Escape
 // In the returned map, a `true` value means the instruction is local, i.e. only manipulates memory that is proven to
 // be local to the current goroutine. A `false` value means the instruction may read or write to memory cells that may
 // be shared.
-func (g *EscapeGraph) ComputeInstructionLocality(prog dataflow.EscapeAnalysisState,
+func (g *EscapeGraph) ComputeInstructionLocality(prog dataflow.OldEscapeAnalysisState,
 	f *ssa.Function) map[ssa.Instruction]bool {
 	p, ok := prog.(*ProgramAnalysisState)
 	if !ok {
-		panic("You should not have implemented the EscapeAnalysisState interface for another type.")
+		panic("You should not have implemented the OldEscapeAnalysisState interface for another type.")
 	}
 	l, _ := computeInstructionLocality(p.summaries[f], g)
 	return l
@@ -165,12 +165,12 @@ func (g *EscapeGraph) ComputeInstructionLocality(prog dataflow.EscapeAnalysisSta
 // ComputeCallsiteGraph computes the callsite graph from the perspective of `callee`, from the instruction `call` in
 // `caller` when `caller` is called with context `g`.
 // A particular call instruction can have multiple callee functions; a possible `g` must be supplied.
-func (g *EscapeGraph) ComputeCallsiteGraph(prog dataflow.EscapeAnalysisState, caller *ssa.Function, call *ssa.Call,
+func (g *EscapeGraph) ComputeCallsiteGraph(prog dataflow.OldEscapeAnalysisState, caller *ssa.Function, call *ssa.Call,
 	callee *ssa.Function) dataflow.EscapeGraph {
 	//panic("unimplemented")
 	p, ok := prog.(*ProgramAnalysisState)
 	if !ok {
-		panic("You should not have implemented the EscapeAnalysisState interface for another type.")
+		panic("You should not have implemented the OldEscapeAnalysisState interface for another type.")
 	}
 	return ComputeArbitraryCallerGraph(callee, p)
 	// TODO: actually compute this

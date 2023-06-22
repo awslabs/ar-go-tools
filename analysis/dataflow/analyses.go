@@ -20,17 +20,17 @@ import "golang.org/x/tools/go/ssa"
 // also be used by the dataflow analysis themselves. Such analyses should be run by clients of the AnalyzerState, and
 // functions in the dataflow analysis package can optionally use the results.
 
-// EscapeAnalysisState defines a lightweight interface to allow the dataflow AnalyzerState to store the escape analysis
+// OldEscapeAnalysisState defines a lightweight interface to allow the dataflow AnalyzerState to store the escape analysis
 // state.
-type EscapeAnalysisState interface {
+type OldEscapeAnalysisState interface {
 	IsEscapeAnalysisState() bool
 	InitialGraphs() map[*ssa.Function]EscapeGraph
 	ComputeArbitraryCallerGraph(f *ssa.Function) EscapeGraph
 }
 
 type EscapeGraph interface {
-	ComputeInstructionLocality(prog EscapeAnalysisState, f *ssa.Function) map[ssa.Instruction]bool
-	ComputeCallsiteGraph(prog EscapeAnalysisState,
+	ComputeInstructionLocality(prog OldEscapeAnalysisState, f *ssa.Function) map[ssa.Instruction]bool
+	ComputeCallsiteGraph(prog OldEscapeAnalysisState,
 		caller *ssa.Function, call *ssa.Call, callee *ssa.Function) EscapeGraph
 	IMerge(EscapeGraph)
 	IClone() EscapeGraph
@@ -38,7 +38,7 @@ type EscapeGraph interface {
 
 // PROPOSED API DESIGN
 
-// Represents the state required to answer queries for a particular program. Internally, holds
+// EscapeAnalysisState Represents the state required to answer queries for a particular program. Internally, holds
 // the escape summaries of each analyzed `ssa.Function`. Summaries are bottom-up, but useful
 // locality information requires tracking information from callers (e.g. whether a particular
 // argument is allocated locally). Rather than baking in a particular context-sensitivity, this
@@ -60,16 +60,18 @@ type EscapeGraph interface {
 // contexts. Merging multiple contexts is monotone, and the `Matches()` method can be used to detect
 // convergence in the presence of recursive functions. (Note, the context returned by
 // ComputeArbitraryContext is not a unit of Merge; it should not be used to initialize a convergence loop.)
-type EscapeAnalysisState2 interface {
-	// Ensures only the escape analysis implement this interface. Returns true.
+type EscapeAnalysisState interface {
+	// IsEscapeAnalysisState2 ensures only the escape analysis implement this interface. Returns true.
 	IsEscapeAnalysisState2() bool
-	// Returns whether the escape analysis has a summary for f
+	// IsSummarized returns whether the escape analysis has a summary for f
 	IsSummarized(f *ssa.Function) bool
-	// Computes a call context for f assuming it could be called from anywhere. This is conservative, and
+	// ComputeArbitraryContext  computes a call context for f assuming it could be called from anywhere.
+	// This is conservative, and
 	// will result in less locality than if a correct call context is provided. If there are no arguments
 	// (such as for main), then there is no loss of precision.
 	ComputeArbitraryContext(f *ssa.Function) EscapeCallContext
-	// Computes locality and callsite information for a function, given a particular calling context.
+	// ComputeInstructionLocalityAndCallsites computes locality and callsite information for a function,
+	// given a particular calling context.
 	// This internally performs a potentially expensive flow-sensitive monotone convergence loop. The
 	// resulting locality map contains a true value for each instruction that is provably local, and false
 	// for instructions that may access shared memory. The callsite infos must be resolved for each
@@ -80,20 +82,20 @@ type EscapeAnalysisState2 interface {
 		callsiteInfo map[*ssa.Call]EscapeCallsiteInfo)
 }
 
-// Represents the escape-relevant context for a particular `ssa.Function`.
+// EscapeCallContext represents the escape-relevant context for a particular `ssa.Function`.
 // Can be merged with another context for the same function and compared.
 // `EscapeCallContext`s are specific to a particular ssa.Function; they cannot
 // be shared even amongst functions with the same signature.
 // EscapeCallContext objects are immutable.
 type EscapeCallContext interface {
-	// Returns a new EscapeCallContext that is the merge of `this` and `other`,
+	// Merge returns a new EscapeCallContext that is the merge of `this` and `other`,
 	// and whether the result is semantically different from `this`.
 	Merge(other EscapeCallContext) (changed bool, merged EscapeCallContext)
-	// Returns true if the two calling contexts are semantically equivalent.
+	// Matches returns true if the two calling contexts are semantically equivalent.
 	Matches(EscapeCallContext) bool
 }
 
-// Represents a call context, but from the caller's perspective at a particular
+// EscapeCallsiteInfo represents a call context, but from the caller's perspective at a particular
 // callsite. This information doesn't depend on the particular callee (e.g. the
 // implementation of an interface call), but may be `Resolve`d for a particular
 // callee. EscapeCallsiteInfo objects are immutable.
