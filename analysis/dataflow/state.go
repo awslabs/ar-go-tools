@@ -61,9 +61,7 @@ type AnalyzerState struct {
 	FlowGraph *CrossFunctionFlowGraph
 
 	// The escape analysis state
-	EscapeAnalysisState OldEscapeAnalysisState
-
-	EscapeAnalysisState2 EscapeAnalysisState
+	EscapeAnalysisState EscapeAnalysisState
 
 	// BoundingInfo is a map from pointer labels to the closures that bind them. The bounding analysis produces such
 	// a map

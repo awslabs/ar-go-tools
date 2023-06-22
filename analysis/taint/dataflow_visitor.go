@@ -26,48 +26,52 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+type EscapeInfo struct {
+	InstructionLocality map[ssa.Instruction]bool
+	CallSiteInfo        map[*ssa.Call]df.EscapeCallsiteInfo
+}
+
 // Visitor represents a taint flow Visitor that tracks taint flows from sources to sinks.
 // It implements the [pkg/github.com/awslabs/ar-go-tools/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
 	roots          map[*df.CallStack]bool
 	visited        map[*df.CallStack]bool
-	escapeGraphs   map[*ssa.Function]map[*df.CallStack]df.EscapeGraph
+	escapeGraphs   map[*ssa.Function]map[*df.CallStack]*EscapeInfo
 	taints         TaintFlows
 	coverageWriter io.StringWriter
 }
 
-func (v *Visitor) storeEscapeGraph(c *df.AnalyzerState, context *df.CallStack,
-	caller *ssa.Function, callee *ssa.Function) bool {
-	var escapeContext df.EscapeGraph
+// storeEscapeGraph computes the escape graph of calee in the context where it is called with stack. stack.Label should
+// be the caller of callee
+func (v *Visitor) storeEscapeGraph(c *df.AnalyzerState, stack *df.CallStack, callNode *df.CallNode) bool {
 
-	if callee == nil || context == nil || caller == nil {
+	if callNode == nil || stack == nil {
 		return false
 	}
 
-	if v.escapeGraphs[callee] == nil {
-		v.escapeGraphs[callee] = map[*df.CallStack]df.EscapeGraph{}
+	if v.escapeGraphs[callNode.Callee()] == nil {
+		v.escapeGraphs[callNode.Callee()] = map[*df.CallStack]*EscapeInfo{}
 	}
 
-	// if trace is a lasso, context is the context_key
-	context_key := context.GetLassoHandle()
-	if context_key == nil {
-		context_key = context
+	// if trace is a lasso, stack is the context_key
+	contextKey := stack.GetLassoHandle()
+	if contextKey == nil {
+		contextKey = stack
 	}
 
-	// Don't recompute escape graphs with the same context
-	// This will change when we re-compute and merge for recursive calls
-	if v.escapeGraphs[callee][context_key] != nil {
-		return false
-	}
+	callContext := v.escapeGraphs[stack.Label.Callee()][stack.Parent]
 
-	escapeContext = v.escapeGraphs[caller][context.Parent]
-
-	if escapeContext == nil {
-		v.escapeGraphs[callee][context_key] = c.EscapeAnalysisState.ComputeArbitraryCallerGraph(callee)
+	if callContext != nil {
+		ctxt := callContext.CallSiteInfo[callNode.CallSite().Value()]
+		escapeCallContext := ctxt.Resolve(callNode.Callee())
+		locality, info := c.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(
+			callNode.Callee(), escapeCallContext)
+		v.escapeGraphs[callNode.Callee()][contextKey] = &EscapeInfo{locality, info}
 	} else {
-		escapeInContext := escapeContext.ComputeCallsiteGraph(
-			c.EscapeAnalysisState, caller, context.Label.CallSite().Value(), callee)
-		v.escapeGraphs[callee][context_key] = escapeInContext
+		escapeNoContext := c.EscapeAnalysisState.ComputeArbitraryContext(callNode.Callee())
+		locality, info := c.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(
+			callNode.Callee(), escapeNoContext)
+		v.escapeGraphs[callNode.Callee()][contextKey] = &EscapeInfo{locality, info}
 	}
 	return true
 }
@@ -81,7 +85,7 @@ func NewVisitor(coverageWriter io.StringWriter) *Visitor {
 		coverageWriter: coverageWriter,
 		roots:          map[*df.CallStack]bool{},
 		visited:        map[*df.CallStack]bool{},
-		escapeGraphs:   map[*ssa.Function]map[*df.NodeTree[*df.CallNode]]df.EscapeGraph{},
+		escapeGraphs:   map[*ssa.Function]map[*df.NodeTree[*df.CallNode]]*EscapeInfo{},
 	}
 }
 
@@ -95,8 +99,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	goroutines := make(map[*ssa.Go]bool)
 	source := entrypoint
 	v.roots[entrypoint.Trace] = true
-	if s.Config.UseEscapeAnalysis {
-		v.storeEscapeGraph(s, entrypoint.Trace, nil, entrypoint.Node.Graph().Parent)
+	if s.Config.UseEscapeAnalysis && entrypoint.Trace != nil && entrypoint.Trace.Parent != nil {
+		v.storeEscapeGraph(s, entrypoint.Trace, entrypoint.Trace.Parent.Label)
 	}
 	que := []*df.VisitorNode{{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}}
 
@@ -228,7 +232,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
 			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
-				if err := analysisutil.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
+				err := analysisutil.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site")
+				if err != nil {
 					s.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
@@ -240,7 +245,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			} else {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
-					if err := analysisutil.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+					err := analysisutil.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
+					if err != nil {
 						s.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
@@ -618,15 +624,14 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	switch graphNode := cur.Node.(type) {
 	case *df.CallNodeArg:
 		callSite := graphNode.ParentNode()
-		update = v.storeEscapeGraph(s, trace, graphNode.Graph().Parent, callSite.Callee())
+		update = v.storeEscapeGraph(s, trace, callSite)
 	}
 
 	f := toAdd.Graph().Parent
 	egraph := v.escapeGraphs[f][trace]
 	if egraph != nil {
-		imap := egraph.ComputeInstructionLocality(s.EscapeAnalysisState, f)
 		for instr := range edgeInfo.Span {
-			if !imap[instr] {
+			if !egraph.InstructionLocality[instr] {
 				fmt.Printf("Instruction %s in %s is not local!\n", instr, f)
 			}
 		}
