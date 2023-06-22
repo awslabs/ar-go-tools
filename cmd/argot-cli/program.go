@@ -62,7 +62,7 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		Mode:  analysis.PkgLoadMode,
 		Tests: false,
 	}
-	initialPackages, err := packages.Load(p, flag.Args()...)
+	initialPackages, _ := packages.Load(p, flag.Args()...)
 	state.InitialPackages = initialPackages
 	// Build the newState with all analyses
 	newState, err := dataflow.NewInitializedAnalyzerState(c.Logger, c.Config, program)

@@ -71,7 +71,7 @@ func TestSimpleEscape(t *testing.T) {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
 	program, _ := analysistest.LoadTest(t, ".", []string{})
-	result, err := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
+	result, _ := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
 
 	if len(result.CallGraph.Nodes) < 7 {
 		t.Fatalf("Expected at least 7 nodes in the callgraph")
@@ -221,7 +221,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	program, cfg := analysistest.LoadTest(t, ".", []string{})
 	cfg.LogLevel = int(config.TraceLevel)
 	// Compute the summaries for everything in the main package
-	state, err := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
+	state, _ := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
 		[]func(*dataflow.AnalyzerState){
 			func(s *dataflow.AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		})
