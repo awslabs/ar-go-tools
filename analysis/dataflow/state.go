@@ -63,6 +63,8 @@ type AnalyzerState struct {
 	// The escape analysis state
 	EscapeAnalysisState EscapeAnalysisState
 
+	EscapeAnalysisState2 EscapeAnalysisState2
+
 	// BoundingInfo is a map from pointer labels to the closures that bind them. The bounding analysis produces such
 	// a map
 	BoundingInfo BoundingMap

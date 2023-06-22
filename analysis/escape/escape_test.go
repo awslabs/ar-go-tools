@@ -16,9 +16,15 @@ package escape
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -28,6 +34,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/analysis/testutils"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -335,6 +342,203 @@ func TestBuiltinsEscape(t *testing.T) {
 	}
 }
 
+type callgraphVisitNode struct {
+	context  dataflow.EscapeCallContext
+	fun      *ssa.Function
+	locality map[ssa.Instruction]bool
+	// we don't explicitly keep track of the children here.
+}
+
+func computeNodes(state dataflow.EscapeAnalysisState2, root *ssa.Function) []*callgraphVisitNode {
+	allNodes := make([]*callgraphVisitNode, 0)
+	rootContext := state.ComputeArbitraryContext(root)
+
+	currentNode := map[*ssa.Function]*callgraphVisitNode{}
+	var analyze func(f *ssa.Function, ctx dataflow.EscapeCallContext)
+
+	analyze = func(f *ssa.Function, ctx dataflow.EscapeCallContext) {
+		var node *callgraphVisitNode
+		added := false
+		if n, ok := currentNode[f]; !ok {
+			// haven't visited this node with the current context
+			node = &callgraphVisitNode{ctx, f, make(map[ssa.Instruction]bool)}
+			currentNode[f] = node
+			allNodes = append(allNodes, node)
+			added = true
+		} else {
+			node = n
+			changed, merged := node.context.Merge(ctx)
+			if !changed {
+				// an invocation of analyze further up the stack has already computed locality
+				// with a more general context.
+				return
+			}
+			node.context = merged
+		}
+		locality, callsites := state.ComputeInstructionLocalityAndCallsites(f, node.context)
+		node.locality = locality
+		for callsite, info := range callsites {
+			if callee := callsite.Call.StaticCallee(); state.IsSummarized(callee) {
+				analyze(callee, info.Resolve(callee))
+			}
+		}
+		if added {
+			delete(currentNode, f)
+		}
+	}
+	analyze(root, rootContext)
+	return allNodes
+}
+
+func groupNodesByFunc(nodes []*callgraphVisitNode) [][]*callgraphVisitNode {
+	sets := map[*ssa.Function][]*callgraphVisitNode{}
+	for _, n := range nodes {
+		sets[n.fun] = append(sets[n.fun], n)
+	}
+	result := [][]*callgraphVisitNode{}
+	for _, ns := range sets {
+		result = append(result, ns)
+	}
+	return result
+}
+
+// Checks the annotations for a set of nodes of the same function.
+// The annotations on some source line are interpreted as follows:
+//   - /// LOCAL
+//     All SSA instructions corresponding to this line are local, in all contexts.
+//   - /// NONLOCAL
+//     At least one corresponding instruction is not local. We need at least one
+//     because most source lines become multiple SSA ops, many of which are e.g.
+//     purely local FieldAddr computations. Must hold for each context, individually.
+//   - /// BOTH
+//     In at least one context, acts like LOCAL. In at least one context, acts like
+//     NONLOCAL. Because we don't have a way to identify the contexts, this annotation
+//     is weaker than it could theoretically be.
+func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]string) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+	// gather annotations
+	f := nodes[0].fun
+	funcStart := f.Prog.Fset.Position(f.Pos())
+	funcEnd := f.Prog.Fset.Position(f.Syntax().End())
+	fAnnos := map[int]string{}
+	fAnnosCovered := map[int]map[*callgraphVisitNode]bool{}
+	for lpos, kind := range annos {
+		if lpos.Filename == funcStart.Filename && funcStart.Line <= lpos.Line && lpos.Line <= funcEnd.Line {
+			fAnnos[lpos.Line] = kind
+			fAnnosCovered[lpos.Line] = map[*callgraphVisitNode]bool{}
+		}
+	}
+
+	for _, node := range nodes {
+		for _, bb := range f.Blocks {
+			for _, ins := range bb.Instrs {
+				if node.locality[ins] {
+					// ins is local, so do nothing.
+				} else {
+					pos := f.Prog.Fset.Position(ins.Pos())
+					if kind, ok := fAnnos[pos.Line]; ok {
+						switch kind {
+						case "LOCAL":
+							// All instructions for a local line must be local
+							return fmt.Errorf("Instruction %v on line %v was expected to be local", ins, pos.Line)
+						case "NONLOCAL":
+							fallthrough
+						case "BOTH":
+							// In NONLOCAL/BOTH, we don't have enough information to determine if there is an error
+							fAnnosCovered[pos.Line][node] = true
+						}
+					}
+				}
+			}
+		}
+		// For each context/node, check that NONLOCAL lines are satisfied
+		for line, kind := range fAnnos {
+			if kind == "NONLOCAL" {
+				if !fAnnosCovered[line][node] {
+					return fmt.Errorf("Line %v was expected to have at least one non-local instruction", line)
+				}
+			}
+		}
+	}
+
+	// Check that BOTH lines are satisfied
+	for line, kind := range fAnnos {
+		if kind == "BOTH" {
+			seenLocal, seenNonlocal := false, false
+			for _, n := range nodes {
+				if fAnnosCovered[line][n] {
+					seenNonlocal = true
+				} else {
+					seenLocal = true
+				}
+			}
+			if !seenLocal || !seenNonlocal {
+				return fmt.Errorf("Line %v was expected to be local in some contexts and non-local in others (local: %v, non-local: %v)", line, seenLocal, seenNonlocal)
+			}
+		}
+	}
+	return nil
+}
+
+// Logic for parsing comments copied from taint_utils_test.go
+// Match annotations of the form // LOCAL, // NONLOCAL, and // BOTH
+var annoRegex = regexp.MustCompile(`// *(LOCAL|NONLOCAL|BOTH) *$`)
+
+type LPos struct {
+	Filename string
+	Line     int
+}
+
+func (p LPos) String() string {
+	return fmt.Sprintf("%s:%d", p.Filename, p.Line)
+}
+
+// RelPos drops the column of the position and prepends reldir to the filename of the position
+func RelPos(pos token.Position, reldir string) LPos {
+	return LPos{Line: pos.Line, Filename: path.Join(reldir, pos.Filename)}
+}
+
+// getExpectSourceToTargets analyzes the files in dir and looks for comments // LOCAL // NONLOCAL etc
+func getAnnotations(reldir string, dir string) map[LPos]string {
+	var err error
+	d := make(map[string]*ast.Package)
+	annos := make(map[LPos]string)
+	fset := token.NewFileSet() // positions are relative to fset
+
+	err = filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			d0, err := parser.ParseDir(fset, info.Name(), nil, parser.ParseComments)
+			funcutil.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+	for _, f := range d {
+		for _, f := range f.Files {
+			for _, c := range f.Comments {
+				for _, c1 := range c.List {
+					pos := fset.Position(c1.Pos())
+					// Match a "@Source(id1, id2, id3)"
+					a := annoRegex.FindStringSubmatch(c1.Text)
+					if len(a) == 2 {
+						annos[RelPos(pos, reldir)] = a[1]
+					}
+				}
+			}
+		}
+	}
+	return annos
+}
+
 func TestLocalityComputation(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/escape-locality")
@@ -352,34 +556,36 @@ func TestLocalityComputation(t *testing.T) {
 	}
 	funcsToTest := []string{
 		"testLocality",
+		"failInterproceduralLocality1",
+		"testInterproceduralLocality1",
+		"failInterproceduralLocality2",
+		"testDiamond",
+		"testRecursion",
 	}
-	// For each of these distinguished functions, check that the assert*() functions
-	// are satisfied by the computed summaries (technically, the summary at particular
-	// program points)
+	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {
 		f := findFunction(program, funcName)
 		if f == nil {
-			t.Fatalf("Could not find function %v\n", funcName)
+			t.Fatalf("Couldn't find function %v", funcName)
 		}
-		summary := escapeWholeProgram.summaries[f]
-		if summary == nil {
-			t.Fatalf("%v wasn't summarized", funcName)
-		}
-		context := ComputeArbitraryCallerGraph(f, escapeWholeProgram)
-		locality := ComputeInstructionLocality(f, escapeWholeProgram, context)
-		for _, bb := range f.Blocks {
-			fmt.Printf("%v\n", bb)
-			for _, instr := range bb.Instrs {
-				if locality[instr] {
-					fmt.Printf("// LOCAL\n")
-				} else {
-					fmt.Printf("// non-local\n")
-				}
-				if v, ok := instr.(ssa.Value); ok {
-					fmt.Printf("%s = ", v.Name())
-				}
-				fmt.Printf("%v\n", instr)
+		var state dataflow.EscapeAnalysisState2 = &escapeAnalysisImpl{*escapeWholeProgram}
+		var anyError error
+		allCallgraphWalkNodes := computeNodes(state, f)
+		for _, nodes := range groupNodesByFunc(allCallgraphWalkNodes) {
+			// fmt.Printf("%v:\n%v\n%v\n", node.fun.Name(), node.locality, node.context.(*escapeContextImpl).g.Graphviz())
+			if err := checkLocalityAnnotations(nodes, annos); err != nil {
+				anyError = err
 			}
 		}
+		if strings.HasPrefix(funcName, "test") {
+			if anyError != nil {
+				t.Fatalf("Error %v", anyError)
+			}
+		} else {
+			if anyError == nil {
+				t.Fatalf("Expected error, but test passed")
+			}
+		}
+		t.Logf("Completed %v\n", funcName)
 	}
 }

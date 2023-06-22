@@ -62,7 +62,9 @@ type EscapeGraph interface {
 // ComputeArbitraryContext is not a unit of Merge; it should not be used to initialize a convergence loop.)
 type EscapeAnalysisState2 interface {
 	// Ensures only the escape analysis implement this interface. Returns true.
-	IsEscapeAnalysisState() bool
+	IsEscapeAnalysisState2() bool
+	// Returns whether the escape analysis has a summary for f
+	IsSummarized(f *ssa.Function) bool
 	// Computes a call context for f assuming it could be called from anywhere. This is conservative, and
 	// will result in less locality than if a correct call context is provided. If there are no arguments
 	// (such as for main), then there is no loss of precision.
