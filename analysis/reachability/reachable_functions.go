@@ -145,7 +145,7 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 
 	for _, b := range f.Blocks {
 		for _, instr := range b.Instrs {
-			preTraversalVisitValuesInstruction(instr, &seen, valueAction)
+			preTraversalVisitValuesInstruction(instr, seen, valueAction)
 		}
 	}
 }

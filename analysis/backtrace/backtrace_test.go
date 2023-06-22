@@ -515,6 +515,8 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 // The marked @Source and @Sink locations in the test files correspond to expected sources and sinks.
 // These tests check the invariant that for every trace entrypoint (corresponding to the sinks),
 // the expected source must exist somewhere in the trace.
+//
+//gocyclo:ignore
 func TestAnalyze_Taint(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -786,6 +788,7 @@ func matchTrace(trace backtrace.Trace, matches []match) (bool, error) {
 	return true, nil
 }
 
+//gocyclo:ignore
 func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
 	switch node := tnode.GraphNode.(type) {
 	case *dataflow.CallNodeArg:

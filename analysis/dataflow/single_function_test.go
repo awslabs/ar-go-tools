@@ -30,6 +30,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+//gocyclo:ignore
 func TestFunctionSummaries(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
@@ -392,7 +393,7 @@ func TestFunctionSummaries(t *testing.T) {
 			}
 
 			if len(summary.BoundLabelNodes) == 1 {
-				t.Errorf("in Baz, summary shoudl have exactly 1 bound label node")
+				t.Errorf("in Baz, summary should have exactly 1 bound label node")
 			} else {
 				hasSynthIn := false
 				for _, boundlb := range summary.BoundLabelNodes {

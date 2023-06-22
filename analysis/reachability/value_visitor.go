@@ -18,7 +18,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func preTraversalVisitValuesInstruction(instruction ssa.Instruction, seen *map[ssa.Value]bool, action func(ssa.Value)) {
+//gocyclo:ignore
+func preTraversalVisitValuesInstruction(instruction ssa.Instruction, seen map[ssa.Value]bool, action func(ssa.Value)) {
 
 	if instruction == nil {
 		return
@@ -159,16 +160,17 @@ func preTraversalVisitValuesInstruction(instruction ssa.Instruction, seen *map[s
 	}
 }
 
-func preTraversalVisitValues(value ssa.Value, seen *map[ssa.Value]bool, action func(ssa.Value)) {
+//gocyclo:ignore
+func preTraversalVisitValues(value ssa.Value, seen map[ssa.Value]bool, action func(ssa.Value)) {
 
-	if value == nil || (*seen)[value] {
+	if value == nil || seen[value] {
 		return
 	}
 
 	// perform the action on the node
 	action(value)
 
-	(*seen)[value] = true
+	seen[value] = true
 
 	// visit the children
 	visit := func(v ssa.Value) {
@@ -198,7 +200,6 @@ func preTraversalVisitValues(value ssa.Value, seen *map[ssa.Value]bool, action f
 		visit(x.X)
 
 	case *ssa.Convert:
-		//fmt.Println("visiting a Value Convert to ", x.X.Type())
 		visit(x.X)
 
 	case *ssa.Extract:

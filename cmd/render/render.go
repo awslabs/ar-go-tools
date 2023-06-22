@@ -238,6 +238,7 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 	}
 }
 
+//gocyclo:ignore
 func WriteHtmlCallgraph(program *ssa.Program, cg *callgraph.Graph, outPath string) error {
 	// fmt.Fprint(os.Stderr, "Starting writeCallgraph\n")
 	reachable := dataflow.CallGraphReachable(cg, false, false)

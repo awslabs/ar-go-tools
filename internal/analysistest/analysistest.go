@@ -72,6 +72,8 @@ func (p LPos) String() string {
 // GetExpectedSourceToSink analyzes the files in dir and looks for comments @Source(id) and @Sink(id) to construct
 // expected flows from sources to sink in the form of a map from sink positions to all the source position that
 // reach that sink.
+//
+//gocyclo:ignore
 func GetExpectedSourceToSink(reldir string, dir string) map[LPos]map[LPos]bool {
 	var err error
 	d := make(map[string]*ast.Package)

@@ -118,7 +118,7 @@ func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.
 	}
 }
 
-// isMatchingCodeIdWIthCallee returns true when the codeIdOracle returns true for a code identifier maching the node
+// isMatchingCodeIdWIthCallee returns true when the codeIdOracle returns true for a code identifier matching the node
 // n in the context where callee is the callee
 func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
 	switch node := (n).(type) {

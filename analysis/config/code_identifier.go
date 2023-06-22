@@ -81,6 +81,8 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 
 // equalOnNonEmptyFields returns true if each of the receiver's fields are either equal to the corresponding
 // argument's field, or the argument's field is empty
+//
+//gocyclo:ignore
 func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 	if cidRef.computedRegexs != nil {
 		return ((cidRef.computedRegexs.packageRegex.MatchString(cid.Package)) || (cidRef.Package == "")) &&

@@ -61,6 +61,8 @@ func assertEdge(t *testing.T, g *EscapeGraph, a, b *Node) {
 }
 
 // Check the escape results. The expected graph shapes are specific to a single input file, despite the arguments.
+//
+//gocyclo:ignore
 func TestSimpleEscape(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/simple-escape")
@@ -69,7 +71,7 @@ func TestSimpleEscape(t *testing.T) {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
 	program, _ := analysistest.LoadTest(t, ".", []string{})
-	result, err := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
+	result, _ := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
 
 	if len(result.CallGraph.Nodes) < 7 {
 		t.Fatalf("Expected at least 7 nodes in the callgraph")
@@ -151,6 +153,8 @@ func isCall(instr ssa.Instruction, name string) bool {
 // Re-run the monotone analysis framework to get a result at each function call.
 // If the function has the name of one of our special functions, check that its
 // arguments meet the required property.
+//
+//gocyclo:ignore
 func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 	g := NewEmptyEscapeGraph(ea.nodes)
 	if len(bb.Preds) == 0 {
@@ -217,7 +221,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	program, cfg := analysistest.LoadTest(t, ".", []string{})
 	cfg.LogLevel = int(config.TraceLevel)
 	// Compute the summaries for everything in the main package
-	state, err := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
+	state, _ := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
 		[]func(*dataflow.AnalyzerState){
 			func(s *dataflow.AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		})

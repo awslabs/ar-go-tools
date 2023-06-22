@@ -149,6 +149,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	}
 }
 
+//gocyclo:ignore
 func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 	pos := entrypoint.Position(s)
 	if !pos.IsValid() {

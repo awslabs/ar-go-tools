@@ -987,6 +987,8 @@ func (g *SummaryGraph) AddBoundLabelNodeEdge(mark Mark, instr ssa.Instruction, i
 
 // addEdge adds an edge between source and targetInfo in the summary graph g.
 // @requires g != nil
+//
+//gocyclo:ignore
 func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo) {
 	// This function's goal is to define how the source of an edge is obtained in the summary given a Mark that
 	// is produced in the intra-procedural analysis.
@@ -1169,6 +1171,7 @@ func (g *SummaryGraph) AddGlobalEdge(mark Mark, loc ssa.Instruction, v *ssa.Glob
 	g.addEdge(mark, node, cond)
 }
 
+//gocyclo:ignore
 func addInEdge(dest GraphNode, source GraphNode, path ObjectPath) {
 	switch node := dest.(type) {
 	case *ParamNode:
@@ -1428,6 +1431,8 @@ func (a *BoundLabelNode) String() string {
 
 // Print the summary graph to w in the graphviz format.
 // If g is nil, then prints the empty graph "subgraph {}"
+//
+//gocyclo:ignore
 func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	if g == nil || g.Parent == nil {
 		fmt.Fprintf(w, "subgraph {}\n")
@@ -1557,6 +1562,8 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 }
 
 // PrettyPrint prints the summary graph to w in a readable format.
+//
+//gocyclo:ignore
 func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer) {
 	if g == nil || g.Parent == nil {
 		fmt.Fprintf(w, "Empty graph!\n")
@@ -1642,6 +1649,8 @@ func ppEdge(w io.Writer, n GraphNode, c ObjectPath, arrow string) {
 }
 
 // ForAllNodes applies f to all graph nodes
+//
+//gocyclo:ignore
 func (g *SummaryGraph) ForAllNodes(f func(n GraphNode)) {
 	if g == nil || g.Parent == nil {
 		return

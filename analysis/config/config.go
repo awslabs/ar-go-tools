@@ -169,28 +169,9 @@ func Load(filename string) (*Config, error) {
 	cfg.sourceFile = filename
 
 	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
-		if cfg.ReportsDir == "" {
-			tmpdir, err := os.MkdirTemp(path.Dir(filename), "*-report")
-			if err != nil {
-				return nil, fmt.Errorf("could not create temp dir for reports")
-			}
-			cfg.ReportsDir = tmpdir
-
-			if cfg.ReportNoCalleeSites {
-				reportFile, err := os.CreateTemp(cfg.ReportsDir, "nocalleesites-*.out")
-				if err != nil {
-					return nil, fmt.Errorf("could not create report file for no callee site")
-				}
-				cfg.nocalleereportfile = reportFile.Name()
-				reportFile.Close() // the file will be reopened as needed
-			}
-		} else {
-			err := os.Mkdir(cfg.ReportsDir, 0750)
-			if err != nil {
-				if !os.IsExist(err) {
-					return nil, fmt.Errorf("could not create directory %s", cfg.ReportsDir)
-				}
-			}
+		err = setReportsDir(&cfg, filename)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -230,6 +211,33 @@ func Load(filename string) (*Config, error) {
 	return &cfg, nil
 }
 
+func setReportsDir(c *Config, filename string) error {
+	if c.ReportsDir == "" {
+		tmpdir, err := os.MkdirTemp(path.Dir(filename), "*-report")
+		if err != nil {
+			return fmt.Errorf("could not create temp dir for reports")
+		}
+		c.ReportsDir = tmpdir
+
+		if c.ReportNoCalleeSites {
+			reportFile, err := os.CreateTemp(c.ReportsDir, "nocalleesites-*.out")
+			if err != nil {
+				return fmt.Errorf("could not create report file for no callee site")
+			}
+			c.nocalleereportfile = reportFile.Name()
+			reportFile.Close() // the file will be reopened as needed
+		}
+	} else {
+		err := os.Mkdir(c.ReportsDir, 0750)
+		if err != nil {
+			if !os.IsExist(err) {
+				return fmt.Errorf("could not create directory %s", c.ReportsDir)
+			}
+		}
+	}
+	return nil
+}
+
 // ReportNoCalleeFile return the file name that will contain the list of locations that have no callee
 func (c Config) ReportNoCalleeFile() string {
 	return c.nocalleereportfile
@@ -243,7 +251,7 @@ func (c Config) RelPath(filename string) string {
 // MatchPkgFilter returns true if the package name pkgname matches the package filter set in the config file. If no
 // package filter has been set in the config file, the regex will match anything and return true. This function safely
 // considers the case where a filter has been specified by the user but it could not be compiled to a regex. The safe
-// case is to check whether the pacakge filter string is a prefix of the pkgname
+// case is to check whether the package filter string is a prefix of the pkgname
 func (c Config) MatchPkgFilter(pkgname string) bool {
 	if c.pkgFilterRegex != nil {
 		return c.pkgFilterRegex.MatchString(pkgname)

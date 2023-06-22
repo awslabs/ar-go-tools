@@ -172,6 +172,7 @@ func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
 	os.Remove(config.ReportsDir)
 }
 
+//gocyclo:ignore
 func TestLoadFullConfig(t *testing.T) {
 	fileName, config, err := loadFromTestDir(t, "full-config.yaml")
 	if config == nil || err != nil {
