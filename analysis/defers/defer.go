@@ -17,9 +17,9 @@
 package defers
 
 import (
-	"fmt"
 	"sort"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -180,7 +180,9 @@ func dataflowTransfer(block int, ins int, instr *ssa.Instruction, initial StackS
 }
 
 // AnalyzeFunction analyzes defers for a single function using a fixpoint loop.
-func AnalyzeFunction(fn *ssa.Function, verbose bool) Results {
+//
+//gocyclo:ignore
+func AnalyzeFunction(fn *ssa.Function, l *config.LogGroup) Results {
 	// The preorder should make the analysis converge faster
 	blocks := fn.DomPreorder()
 	if len(blocks) == 0 {
@@ -208,7 +210,6 @@ func AnalyzeFunction(fn *ssa.Function, verbose bool) Results {
 	var anyRepeated = false
 	for {
 		var iterationChanged = false
-		// fmt.Printf("Changed: %v\n", dataflowBlockChanged)
 		for _, b := range blocks {
 			i := b.Index
 			// Early out if the initial set is the same as the last time we looked
@@ -239,20 +240,19 @@ func AnalyzeFunction(fn *ssa.Function, verbose bool) Results {
 		}
 	}
 
-	if verbose {
-		fmt.Printf("Fn: %s (%v)\n", fn.Name(), fn.Prog.Fset.PositionFor(fn.Pos(), false))
+	if l.LogsTrace() {
+		l.Tracef("Fn: %s (%v)\n", fn.Name(), fn.Prog.Fset.PositionFor(fn.Pos(), false))
 		for ins, stacks := range runDeferSets {
-			fmt.Printf("Ins: %v (block %d), sets: %v\n", ins, ins.Block().Index, stacks)
-			fmt.Printf("$sets %d\n", len(stacks))
+			l.Tracef("Ins: %v (block %d), sets: %v\n", ins, ins.Block().Index, stacks)
+			l.Tracef("$sets %d\n", len(stacks))
 			for _, stack := range stacks {
-				fmt.Printf("$size %d\n", len(stack))
+				l.Tracef("$size %d\n", len(stack))
 			}
-			fmt.Printf("> %s", fn.Name())
+			l.Tracef("> %s", fn.Name())
 			for _, stack := range stacks {
-				fmt.Printf(" %d", len(stack))
+				l.Tracef(" %d", len(stack))
 			}
-			fmt.Printf("\n")
-
+			l.Tracef("\n")
 		}
 	}
 	if anyRepeated {
@@ -262,7 +262,7 @@ func AnalyzeFunction(fn *ssa.Function, verbose bool) Results {
 }
 
 // AnalyzeProgram runs the analysis on an entire program, and report the results to stdout.
-func AnalyzeProgram(program *ssa.Program, verbose bool) {
+func AnalyzeProgram(program *ssa.Program, l *config.LogGroup) {
 	functions := ssautil.AllFunctions(program)
 	// Sort the functions so output is consistent between runs.
 	sortedFunctions := []*ssa.Function{}
@@ -272,12 +272,12 @@ func AnalyzeProgram(program *ssa.Program, verbose bool) {
 	sort.Slice(sortedFunctions, func(i int, j int) bool { return sortedFunctions[i].Name() < sortedFunctions[j].Name() })
 	boundedFuncCount := 0
 	for _, f := range sortedFunctions {
-		results := AnalyzeFunction(f, verbose)
+		results := AnalyzeFunction(f, l)
 		if !results.DeferStackBounded {
-			fmt.Printf("Unbounded defer stack in %s (%s, %v)\n", f.Name(), f.Pkg.Pkg.Name(), f.Prog.Fset.PositionFor(f.Pos(), false))
+			l.Warnf("Unbounded defer stack in %s (%s, %v)\n", f.Name(), f.Pkg.Pkg.Name(), f.Prog.Fset.PositionFor(f.Pos(), false))
 		} else {
 			boundedFuncCount++
 		}
 	}
-	fmt.Printf("%d functions had bounded defers\n", boundedFuncCount)
+	l.Infof("%d functions had bounded defers\n", boundedFuncCount)
 }

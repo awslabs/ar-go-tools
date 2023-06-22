@@ -60,6 +60,7 @@ Print out all the packages in SSA form
 % render -ssaout tmpSsa package...
 `
 
+//gocyclo:ignore
 func main() {
 	var err error
 

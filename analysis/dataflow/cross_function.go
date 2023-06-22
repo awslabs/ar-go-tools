@@ -137,6 +137,8 @@ func (g NodeWithTrace) Key() KeyType {
 }
 
 // BuildGraph builds the cross function flow graph by connecting summaries together
+//
+//gocyclo:ignore
 func (g *CrossFunctionFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ssa.Node) bool) {
 	c := g.AnalyzerState
 	logger := c.Logger
@@ -148,8 +150,6 @@ func (g *CrossFunctionFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ss
 	if summariesFile != nil {
 		defer summariesFile.Close()
 	}
-
-	reachable := CallGraphReachable(g.AnalyzerState.PointerAnalysis.CallGraph, false, false)
 
 	// Build the inter-procedural data flow graph: link all the summaries together
 	for _, summary := range g.Summaries {
@@ -166,48 +166,7 @@ func (g *CrossFunctionFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ss
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil {
-					var calleeSummary *SummaryGraph
-
-					if node.callee.Type != InterfaceContract {
-						calleeSummary = findCalleeSummary(node.Callee(), g.Summaries)
-					}
-					// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
-					// contracts, or build the summary
-					if calleeSummary == nil {
-						if calleeSummary = g.AnalyzerState.LoadExternalContractSummary(node); calleeSummary != nil {
-							logger.Debugf("Loaded %s from external contracts.\n",
-								node.CallSite().Common().String())
-							g.Summaries[node.Callee()] = calleeSummary
-
-						} else if calleeSummary = LoadPredefinedSummary(
-							node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
-
-							logger.Debugf("Loaded %s from summaries.\n", node.Callee().String())
-							g.Summaries[node.Callee()] = calleeSummary
-
-						} else if c.Config.SummarizeOnDemand && reachable[node.Callee()] && ShouldBuildSummary(c, node.Callee()) {
-
-							logger.Debugf("Building summary for %v...\n", node.Callee())
-
-							result, err := SingleFunctionAnalysis(c, node.Callee(), true, GetUniqueFunctionId(), isEntrypoint, nil)
-							if err != nil {
-								panic(fmt.Errorf("single function analysis failed for %v: %v", node.Callee(), err))
-							}
-							logger.Debugf("Finished building summary for %v (%.2f s)", node.Callee(), result.Time.Seconds())
-
-							calleeSummary = result.Summary
-							g.Summaries[node.Callee()] = calleeSummary
-						}
-					}
-					// Add edge from callee to caller (adding a call site in the callee)
-					if calleeSummary != nil {
-						if x := calleeSummary.Callsites[node.CallSite()]; x == nil {
-							calleeSummary.Callsites[node.CallSite()] = node
-						}
-					} else {
-						summaryNotFound(g, node)
-					}
-					node.CalleeSummary = calleeSummary // nil is safe
+					node.CalleeSummary = resolveCalleeSummary(g, node, isEntrypoint)
 				}
 			}
 		}
@@ -272,6 +231,65 @@ func (g *CrossFunctionFlowGraph) RunCrossFunctionPass(visitor Visitor,
 	for _, entry := range entryPoints {
 		visitor.Visit(g.AnalyzerState, entry)
 	}
+}
+
+// resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
+// sets the edge from callee to caller, if it could find a summary.
+// Returns nil if no summary can be found.
+func resolveCalleeSummary(g *CrossFunctionFlowGraph, node *CallNode,
+	isEntryPoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
+	var calleeSummary *SummaryGraph
+	logger := g.AnalyzerState.Logger
+
+	// If it's not an interface contract, attempt to just find the summary in the dataflow graph's computed summaries
+	if node.callee.Type != InterfaceContract {
+		calleeSummary = findCalleeSummary(node.Callee(), g.Summaries)
+	}
+
+	// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
+	// contracts, or build the summary
+	if calleeSummary == nil {
+		// Try to load from external (user-defined) contract summaries
+		if calleeSummary = g.AnalyzerState.LoadExternalContractSummary(node); calleeSummary != nil {
+			logger.Debugf("Loaded %s from external contracts.\n",
+				node.CallSite().Common().String())
+			g.Summaries[node.Callee()] = calleeSummary
+
+			// Try to load from predefined (user-defined) summaries
+		} else if calleeSummary = LoadPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
+			logger.Debugf("Loaded %s from summaries.\n", node.Callee().String())
+			g.Summaries[node.Callee()] = calleeSummary
+
+			// If summarization on demand is set and the function is reachable, summarize it if ShouldBuildSummary is true
+		} else if g.AnalyzerState.Config.SummarizeOnDemand && g.AnalyzerState.IsReachableFunction(node.Callee()) &&
+			ShouldBuildSummary(g.AnalyzerState, node.Callee()) {
+
+			logger.Debugf("Building summary for %v...\n", node.Callee())
+
+			result, err := SingleFunctionAnalysis(
+				g.AnalyzerState, node.Callee(), true, GetUniqueFunctionId(), isEntryPoint, nil)
+
+			if err != nil {
+				panic(fmt.Errorf("intra-procedural analysis failed for %v: %v", node.Callee(), err))
+			}
+			logger.Debugf("Finished building summary for %v (%.2f s)", node.Callee(), result.Time.Seconds())
+
+			// Store the computed summary in the graph
+			calleeSummary = result.Summary
+			g.Summaries[node.Callee()] = calleeSummary
+		}
+	}
+
+	// Add edge from callee to caller (adding a call site in the callee)
+	if calleeSummary != nil {
+		if x := calleeSummary.Callsites[node.CallSite()]; x == nil {
+			calleeSummary.Callsites[node.CallSite()] = node
+		}
+	} else {
+		summaryNotFound(g, node)
+	}
+
+	return calleeSummary
 }
 
 // CrossFunctionPass runs the pass on the inter-procedural flow graph.

@@ -63,6 +63,8 @@ func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {
 
 // doBuiltinCall returns true if the call is a builtin that is handled by default, otherwise false.
 // If true is returned, the analysis may ignore the call instruction.
+//
+//gocyclo:ignore
 func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.CallCommon,
 	instruction ssa.CallInstruction) bool {
 	// For consistency check that the call is handled first.

@@ -54,6 +54,8 @@ type ValueOp interface {
 }
 
 // ValueSwitch implements a simple switch on ssa.Value that applies the correct function from the ValueOp in each case.
+//
+//gocyclo:ignore
 func ValueSwitch(vmap ValueOp, v *ssa.Value) {
 	switch val := (*v).(type) {
 	case *ssa.Function:

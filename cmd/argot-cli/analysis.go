@@ -279,45 +279,12 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		if len(funcs) > summarizeThreshold {
 			// above a certain threshold, we use the general analysis filters on what to summarize, unless -force has
 			// been specified
-			WriteSuccess(tt, "(more than %d functions matching, other config-defined filters are in use)",
-				summarizeThreshold)
-			shouldCreateSummary = func(f *ssa.Function) bool {
-				b := isForced || (!summaries.IsStdFunction(f) &&
-					summaries.IsUserDefinedFunction(f) &&
-					funcutil.Contains(funcs, f) &&
-					!c.HasExternalContractSummary(f))
-				if b {
-					createCounter++
-				}
-				return b
-			}
-			shouldBuildSummary = func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
-				b := isForced || (!summaries.IsStdFunction(f) &&
-					summaries.IsUserDefinedFunction(f) &&
-					funcutil.Contains(funcs, f) &&
-					!c.HasExternalContractSummary(f))
-				if b {
-					buildCounter++
-				}
-				return b
-			}
+			shouldCreateSummary, shouldBuildSummary = summarizeWithDefaultParams(tt, c, funcs, isForced,
+				&createCounter, &buildCounter)
 		} else {
 			// below that threshold, all functions that match are summarize.
 			// useful for testing.
-			shouldCreateSummary = func(f *ssa.Function) bool {
-				b := funcutil.Contains(funcs, f)
-				if b {
-					createCounter++
-				}
-				return b
-			}
-			shouldBuildSummary = func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
-				b := funcutil.Contains(funcs, f)
-				if b {
-					buildCounter++
-				}
-				return b
-			}
+			shouldCreateSummary, shouldBuildSummary = alwaysSummarize(tt, c, funcs, &createCounter, &buildCounter)
 		}
 
 		// Run the analysis with the filter.
@@ -338,6 +305,54 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		}
 	}
 	return false
+}
+
+func summarizeWithDefaultParams(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.Function, isForced bool,
+	createCounter *int, buildCounter *int) (
+	func(*ssa.Function) bool, func(*dataflow.AnalyzerState, *ssa.Function) bool) {
+	WriteSuccess(tt, "(more than %d functions matching, other config-defined filters are in use)",
+		summarizeThreshold)
+	shouldCreateSummary := func(f *ssa.Function) bool {
+		b := isForced || (!summaries.IsStdFunction(f) &&
+			summaries.IsUserDefinedFunction(f) &&
+			funcutil.Contains(funcs, f) &&
+			!c.HasExternalContractSummary(f))
+		if b {
+			(*createCounter)++
+		}
+		return b
+	}
+	shouldBuildSummary := func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
+		b := isForced || (!summaries.IsStdFunction(f) &&
+			summaries.IsUserDefinedFunction(f) &&
+			funcutil.Contains(funcs, f) &&
+			!c.HasExternalContractSummary(f))
+		if b {
+			(*buildCounter)++
+		}
+		return b
+	}
+	return shouldCreateSummary, shouldBuildSummary
+}
+
+func alwaysSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.Function,
+	createCounter *int, buildCounter *int) (
+	func(*ssa.Function) bool, func(*dataflow.AnalyzerState, *ssa.Function) bool) {
+	shouldCreateSummary := func(f *ssa.Function) bool {
+		b := funcutil.Contains(funcs, f)
+		if b {
+			(*createCounter)++
+		}
+		return b
+	}
+	shouldBuildSummary := func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
+		b := funcutil.Contains(funcs, f)
+		if b {
+			(*buildCounter)++
+		}
+		return b
+	}
+	return shouldCreateSummary, shouldBuildSummary
 }
 
 // cmdTaint runs the taint analysis

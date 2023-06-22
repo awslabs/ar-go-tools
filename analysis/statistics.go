@@ -193,48 +193,7 @@ func ComputeClosureUsageStats(state *dataflow.AnalyzerState) (ClosureUsageStatis
 }
 
 func (s *ClosureUsageStatistics) doFunction(state *dataflow.AnalyzerState, function *ssa.Function) {
-	lang.IterateInstructions(function, func(index int, i ssa.Instruction) {
-		if makeClosure, isMakeClosure := i.(*ssa.MakeClosure); isMakeClosure {
-			classified := false
-			s.TotalMakeClosures += 1
-			// Is that closure immediately called in a go, defer or call?
-			block := i.Block()
-			if block != nil {
-				if index+1 < len(block.Instrs) {
-					switch i2 := block.Instrs[index+1].(type) {
-					case ssa.CallInstruction:
-						if i2.Common().Value == i.(ssa.Value) {
-							s.ClosuresImmediatelyCalled[i2] = true
-							classified = true
-						}
-					}
-				}
-			}
-			// Is that closure passed as argument to another function call?
-			for _, referrer := range *(makeClosure.Referrers()) {
-				switch call := referrer.(type) {
-				case ssa.CallInstruction:
-					// The closure may be passed as an argument to the call
-					for _, arg := range call.Common().Args {
-						if arg == makeClosure {
-							s.ClosuresPassedAsArgs[call] = makeClosure
-							classified = true
-						}
-					}
-					// the closure may be called here
-					if call.Common().Value == makeClosure {
-						s.ClosuresCalled[call] = makeClosure
-					}
-				case *ssa.Return:
-					s.ClosuresReturned[makeClosure] = true
-					classified = true
-				}
-			}
-			if !classified {
-				s.ClosuresNoClass[makeClosure] = true
-			}
-		}
-	})
+	lang.IterateInstructions(function, s.doInstruction)
 
 	if function.Parent() == nil { // not an anonymous function
 		return
@@ -253,5 +212,48 @@ func (s *ClosureUsageStatistics) doFunction(state *dataflow.AnalyzerState, funct
 	summary := state.FlowGraph.Summaries[function]
 	if summary == nil {
 		return
+	}
+}
+
+func (s *ClosureUsageStatistics) doInstruction(index int, i ssa.Instruction) {
+	if makeClosure, isMakeClosure := i.(*ssa.MakeClosure); isMakeClosure {
+		classified := false
+		s.TotalMakeClosures += 1
+		// Is that closure immediately called in a go, defer or call?
+		block := i.Block()
+		if block != nil {
+			if index+1 < len(block.Instrs) {
+				switch i2 := block.Instrs[index+1].(type) {
+				case ssa.CallInstruction:
+					if i2.Common().Value == i.(ssa.Value) {
+						s.ClosuresImmediatelyCalled[i2] = true
+						classified = true
+					}
+				}
+			}
+		}
+		// Is that closure passed as argument to another function call?
+		for _, referrer := range *(makeClosure.Referrers()) {
+			switch call := referrer.(type) {
+			case ssa.CallInstruction:
+				// The closure may be passed as an argument to the call
+				for _, arg := range call.Common().Args {
+					if arg == makeClosure {
+						s.ClosuresPassedAsArgs[call] = makeClosure
+						classified = true
+					}
+				}
+				// the closure may be called here
+				if call.Common().Value == makeClosure {
+					s.ClosuresCalled[call] = makeClosure
+				}
+			case *ssa.Return:
+				s.ClosuresReturned[makeClosure] = true
+				classified = true
+			}
+		}
+		if !classified {
+			s.ClosuresNoClass[makeClosure] = true
+		}
 	}
 }

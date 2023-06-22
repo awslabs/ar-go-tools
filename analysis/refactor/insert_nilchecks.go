@@ -37,70 +37,81 @@ func InsertNilChecks(packages []*decorator.Package) {
 // nilCheckInsertTransform inserts nil checks at c when c is the toplevel block in a function and the parent function
 // has parameters with comments that contain @nonnil
 func nilCheckInsertTransform(fi *lang.FuncInfo, c *dstutil.Cursor) bool {
-	if blockStmt, ok := c.Node().(*dst.BlockStmt); ok {
-		parent := fi.NodeMap[blockStmt].Parent
-		if parent == nil {
-			fmt.Printf("Parent nil\n")
-			return true
-		}
+	blockStmt, ok := c.Node().(*dst.BlockStmt)
 
-		// Only change the first block directly under the function declaration
-		if _, isParentFd := parent.Label.(*dst.FuncDecl); !isParentFd {
-			return true
-		}
-
-		// Find all nil-checks to insert: all the parameters with a @nonnil comment
-		// that have a nillable type
-		var toInsert []*dst.Field
-		for _, param := range fi.Decl.Type.Params.List {
-			b := false
-			for _, s := range param.Decorations().End.All() {
-				if strings.Contains(s, "@nonnil") {
-					b = true
-					break
-				}
-			}
-
-			if astParam, ok := fi.Decorator.Ast.Nodes[param].(*ast.Field); b && ok {
-				paramType := fi.Package.TypesInfo.TypeOf(astParam.Type)
-				if !lang.IsNillableType(paramType) {
-					fmt.Fprintf(os.Stderr, "WARNING: %s cannot be nil, @nonnil is superfluous.\n",
-						strings.Join(funcutil.Map(param.Names, func(i *dst.Ident) string { return i.Name }), ","))
-					b = false
-				}
-			}
-
-			if b {
-				toInsert = append(toInsert, param)
-			}
-		}
-
-		var newStmts []dst.Stmt
-		for _, params := range toInsert {
-			for _, param := range params.Names {
-				newStmt, err := newNilCheckStmt(fi, param.Name)
-				if err != nil {
-					return true
-				}
-				if newStmt != nil {
-					newStmts = append(newStmts, newStmt)
-				}
-			}
-		}
-
-		if len(newStmts) > 0 {
-			body := &dst.BlockStmt{
-				List:           append(newStmts, blockStmt.List...),
-				RbraceHasNoPos: blockStmt.RbraceHasNoPos,
-				Decs:           blockStmt.Decs,
-			}
-			c.Replace(body)
-		}
-
-		return false
-	} else {
+	if !ok {
 		return true
 	}
+
+	parent := fi.NodeMap[blockStmt].Parent
+	if parent == nil {
+		fmt.Printf("Parent nil\n")
+		return true
+	}
+
+	// Only change the first block directly under the function declaration
+	if _, isParentFd := parent.Label.(*dst.FuncDecl); !isParentFd {
+		return true
+	}
+
+	// Find all nil-checks to insert: all the parameters with a @nonnil comment
+	// that have a nillable type
+	var newStmts []dst.Stmt
+	toInsert := genInserts(fi)
+
+	for _, params := range toInsert {
+		for _, param := range params.Names {
+			newStmt, err := newNilCheckStmt(fi, param.Name)
+			if err != nil {
+				return true
+			}
+			if newStmt != nil {
+				newStmts = append(newStmts, newStmt)
+			}
+		}
+	}
+
+	if len(newStmts) > 0 {
+		body := &dst.BlockStmt{
+			List:           append(newStmts, blockStmt.List...),
+			RbraceHasNoPos: blockStmt.RbraceHasNoPos,
+			Decs:           blockStmt.Decs,
+		}
+		c.Replace(body)
+	}
+	return false
+}
+
+func checkNillable(fi *lang.FuncInfo, astParam *ast.Field, param *dst.Field) bool {
+	paramType := fi.Package.TypesInfo.TypeOf(astParam.Type)
+	if !lang.IsNillableType(paramType) {
+		fmt.Fprintf(os.Stderr, "WARNING: %s cannot be nil, @nonnil is superfluous.\n",
+			strings.Join(funcutil.Map(param.Names, func(i *dst.Ident) string { return i.Name }), ","))
+		return false
+	}
+	return true
+}
+
+func genInserts(fi *lang.FuncInfo) []*dst.Field {
+	var toInsert []*dst.Field
+	for _, param := range fi.Decl.Type.Params.List {
+		b := false
+		for _, s := range param.Decorations().End.All() {
+			if strings.Contains(s, "@nonnil") {
+				b = true
+				break
+			}
+		}
+
+		if astParam, ok := fi.Decorator.Ast.Nodes[param].(*ast.Field); b && ok {
+			b = b && checkNillable(fi, astParam, param)
+		}
+
+		if b {
+			toInsert = append(toInsert, param)
+		}
+	}
+	return toInsert
 }
 
 // newNilCheckStmt returns a new if name == nil { .. } statement that checks whether the variable with name

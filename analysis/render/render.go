@@ -54,6 +54,8 @@ type CrossFunctionGraphVisitor struct{}
 // individual intra-procedural dataflow graphs reachable from source.
 // This visitor must be called for every entrypoint in the program to build a
 // complete dataflow graph.
+//
+//gocyclo:ignore
 func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint dataflow.NodeWithTrace) {
 	que := []*dataflow.VisitorNode{{NodeWithTrace: entrypoint, ParamStack: nil, Prev: nil, Depth: 0}}
 	seen := make(map[dataflow.NodeWithTrace]bool)

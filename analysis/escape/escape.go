@@ -163,6 +163,8 @@ func (g *EscapeGraph) Graphviz() string {
 }
 
 // Adds a label to the graph; useful for e.g. the function being analyzed
+//
+//gocyclo:ignore
 func (g *EscapeGraph) GraphvizLabel(label string) string {
 	out := bytes.NewBuffer([]byte{})
 	fmt.Fprintf(out, "digraph { // start of digraph\nrankdir = LR;\n")
@@ -377,6 +379,8 @@ func (g *EscapeGraph) Merge(h *EscapeGraph) {
 // nodes is the NodeGroup for the caller, and also therefore the graph g
 // summary is the summary of the called function.
 // summaryNodes is the nodeGroup in the context of the called function
+//
+//gocyclo:ignore
 func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 	pre := g.Clone()
 	// u maps nodes in summary to the nodes in the caller that
@@ -806,6 +810,8 @@ func PointerDerefType(t types.Type) types.Type {
 
 // The primary transfer function for an instruction's effect on a escape graph.
 // Modifies g and nodes in place with the effects of the instruction.
+//
+//gocyclo:ignore
 func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *EscapeGraph, verbose bool) {
 	// Switch on the instruction to handle each kind of instructions.
 	// Some instructions have sub-kinds depending on their arguments, or have alternate comma-ok forms.
@@ -1212,6 +1218,8 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 
 // This just prints the escape summary for each function in the callgraph.
 // This interface will change substaintially when intraprocedural analysis is finalized.
+//
+//gocyclo:ignore
 func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),

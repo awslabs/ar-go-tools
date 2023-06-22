@@ -30,6 +30,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+//gocyclo:ignore
 func TestFunctionSummaries(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")

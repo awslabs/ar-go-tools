@@ -61,6 +61,8 @@ func assertEdge(t *testing.T, g *EscapeGraph, a, b *Node) {
 }
 
 // Check the escape results. The expected graph shapes are specific to a single input file, despite the arguments.
+//
+//gocyclo:ignore
 func TestSimpleEscape(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/simple-escape")
@@ -151,6 +153,8 @@ func isCall(instr ssa.Instruction, name string) bool {
 // Re-run the monotone analysis framework to get a result at each function call.
 // If the function has the name of one of our special functions, check that its
 // arguments meet the required property.
+//
+//gocyclo:ignore
 func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 	g := NewEmptyEscapeGraph(ea.nodes)
 	if len(bb.Preds) == 0 {

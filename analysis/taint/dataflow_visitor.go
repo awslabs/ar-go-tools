@@ -42,6 +42,8 @@ func NewVisitor(coverageWriter io.StringWriter) *Visitor {
 
 // Visit runs a inter-procedural analysis to add any detected taint flow from source to a sink. This implements the
 // visitor interface of the datflow package.
+//
+//gocyclo:ignore
 func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	seen := make(map[df.KeyType]bool)
