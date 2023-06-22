@@ -251,7 +251,7 @@ func (c Config) RelPath(filename string) string {
 // MatchPkgFilter returns true if the package name pkgname matches the package filter set in the config file. If no
 // package filter has been set in the config file, the regex will match anything and return true. This function safely
 // considers the case where a filter has been specified by the user but it could not be compiled to a regex. The safe
-// case is to check whether the pacakge filter string is a prefix of the pkgname
+// case is to check whether the package filter string is a prefix of the pkgname
 func (c Config) MatchPkgFilter(pkgname string) bool {
 	if c.pkgFilterRegex != nil {
 		return c.pkgFilterRegex.MatchString(pkgname)

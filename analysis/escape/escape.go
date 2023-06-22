@@ -535,7 +535,7 @@ func (g *EscapeGraph) Call(args []*Node, rets []*Node, callee *EscapeGraph) {
 			}
 		}
 
-		// Check if no changes occured.
+		// Check if no changes occurred.
 		if !changed {
 			break
 		}

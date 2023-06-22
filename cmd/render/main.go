@@ -14,7 +14,7 @@
 
 // render: a tool for rendering various "visualizations" of Go programs.
 // -cgout Given a path for a .dot file, generates the callgraph of the program in that file.
-// -ssaout Given a path for a folder, generates subfolders with files containing the ssa represention of
+// -ssaout Given a path for a folder, generates subfolders with files containing the ssa representation of
 //         each package in that file.
 
 package main

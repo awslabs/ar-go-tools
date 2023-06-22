@@ -393,7 +393,7 @@ func TestFunctionSummaries(t *testing.T) {
 			}
 
 			if len(summary.BoundLabelNodes) == 1 {
-				t.Errorf("in Baz, summary shoudl have exactly 1 bound label node")
+				t.Errorf("in Baz, summary should have exactly 1 bound label node")
 			} else {
 				hasSynthIn := false
 				for _, boundlb := range summary.BoundLabelNodes {
