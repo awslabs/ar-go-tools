@@ -41,15 +41,60 @@ type Node struct {
 var globalVar *Node = nil
 
 func main() {
-	testLocality(nil)
+	testLocality()
+	testRecursion()
+	failInterproceduralLocality1()
+	testInterproceduralLocality1()
+	failInterproceduralLocality2()
+	testDiamond()
 }
 
-func testLocality(z *Node) {
+func testLocality() {
 	x := &Node{}   // LOCAL
 	x.next = nil   // LOCAL
-	y := globalVar // non-local
-	y.next = nil   // non-local
-	z.next = nil   // non-local
+	y := globalVar // NONLOCAL
+	y.next = nil   // NONLOCAL
+}
+
+func accessLocal(n *Node) {
+	n.value = "str" // LOCAL
+}
+func accessNonlocal(n *Node) {
+	n.value = "str" // NONLOCAL
+}
+func accessBoth(n *Node) {
+	n.value = "str" // BOTH
+}
+
+// This should fail the checks
+func failInterproceduralLocality1() {
+	n := &Node{}
+	globalNode.next = n
+	accessLocal(n)
+}
+
+func testInterproceduralLocality1() {
+	n := &Node{}
+	accessLocal(n)
+}
+
+func failInterproceduralLocality2() {
+	n := &Node{}
+	accessNonlocal(n)
+}
+
+func diamondLeft(n *Node) {
+	accessBoth(n)
+}
+func diamondRight(n *Node) {
+	accessBoth(n)
+}
+func testDiamond() {
+	l := &Node{}
+	r := &Node{}
+	globalNode.next = r
+	diamondLeft(l)
+	diamondRight(r)
 }
 
 func source() string {
@@ -94,4 +139,20 @@ func recursiveConcat(n *Node) string {
 	r := n.value
 	r += recursiveConcat(n.next)
 	return r
+}
+
+func leak(p *string) {
+	// pkgGlobal = p
+}
+
+// in standard library:
+func notBad(x string, p *string) {
+	*p = x
+	leak(p)
+}
+func veryBad(x string, p *string) {
+	y := "abc"
+	q := &y
+	*q = x
+	leak(q)
 }

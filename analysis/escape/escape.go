@@ -1709,6 +1709,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 // not escaped or leaked. Ignores the status of `ptr` itself.
 func derefsAreLocal(g *EscapeGraph, ptr *Node) bool {
 	for n := range g.Deref(ptr) {
+		g.AddNode(n) // Ensure n's status is correct for .IntrinsicStatus nodes() (e.g. globals)
 		if g.status[n] != Local {
 			return false
 		}
@@ -1732,16 +1733,25 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 			// arithmetic is local
 			return true
 		}
+	case *ssa.BinOp:
+		return true // arithmetic is local
+	case *ssa.Go:
+		return false // go func is clearly non-local
+	case *ssa.Call:
+		return false // functions require special handling
 	case *ssa.MakeClosure:
-		// TODO: is this just return true?
-		// fallthrough for now
+		// Making a closure is a local operation. The resulting closure may close over external
+		// objects, or may itself leak immediately, but the creation is semantically equivalent
+		// to writing some fields in a hidden struct type
+		return true
 	case *ssa.Alloc, *ssa.MakeMap, *ssa.MakeChan, *ssa.MakeSlice:
 		return true
 	case *ssa.FieldAddr, *ssa.IndexAddr:
 		// address calculations don't involve loads
 		// TODO: what about ssa.IndexAddr with arrays?
 		return true
-
+	case *ssa.Slice:
+		return true // taking sub-slices is an array operation
 	case *ssa.MakeInterface, *ssa.TypeAssert, *ssa.Convert,
 		*ssa.ChangeInterface, *ssa.ChangeType, *ssa.Phi, *ssa.Extract:
 		// conversions and ssa specific things don't access memory
@@ -1759,7 +1769,7 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 
 // Fills in the locality map with the locality information of the instructions in the given basic block.
 func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock,
-	locality map[ssa.Instruction]bool) error {
+	locality map[ssa.Instruction]bool, callsites map[*ssa.Call]escapeCallsiteInfoImpl) error {
 	g := NewEmptyEscapeGraph(ea.nodes)
 	if len(bb.Preds) == 0 {
 		// Entry block uses the function-wide initial graph
@@ -1775,13 +1785,24 @@ func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock
 	}
 	for _, instr := range bb.Instrs {
 		locality[instr] = instructionLocality(instr, g)
+		if cl, ok := instr.(*ssa.Call); ok {
+			// We need to copy g because it is about to be clobbered by the transfer function
+			callsites[cl] = escapeCallsiteInfoImpl{g.Clone(), cl, ea.nodes, ea.prog}
+		}
 		ea.transferFunction(instr, g, false)
 	}
 	return nil
 }
 
+type escapeCallsiteInfoImpl struct {
+	g        *EscapeGraph
+	callsite *ssa.Call
+	nodes    *NodeGroup
+	prog     *ProgramAnalysisState
+}
+
 // Does the work of computing instruction locality for a function. See wrapper `ComputeInstructionLocality`.
-func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) map[ssa.Instruction]bool {
+func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]bool, callsiteInfo map[*ssa.Call]escapeCallsiteInfoImpl) {
 	inContextEA := &functionAnalysisState{
 		function:     ea.function,
 		prog:         ea.prog,
@@ -1791,11 +1812,12 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 		worklist:     []*ssa.BasicBlock{ea.function.Blocks[0]},
 	}
 	resummarize(inContextEA)
-	locality := map[ssa.Instruction]bool{}
+	locality = map[ssa.Instruction]bool{}
+	callsites := map[*ssa.Call]escapeCallsiteInfoImpl{}
 	for _, block := range ea.function.Blocks {
-		basicBlockInstructionLocality(inContextEA, block, locality)
+		basicBlockInstructionLocality(inContextEA, block, locality, callsites)
 	}
-	return locality
+	return locality, callsites
 }
 
 // Compute the instruction locality for all instructions in f, assuming it is called from one of the callsites
@@ -1805,7 +1827,8 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 // to the current goroutine. A `false` value means the instruction may read or write to memory cells that may be shared.
 func ComputeInstructionLocality(f *ssa.Function, prog *ProgramAnalysisState,
 	context *EscapeGraph) map[ssa.Instruction]bool {
-	return computeInstructionLocality(prog.summaries[f], context)
+	l, _ := computeInstructionLocality(prog.summaries[f], context)
+	return l
 }
 
 // ComputeCallsiteGraph computes the callsite graph from the perspective of `callee`, from the instruction `call` in
