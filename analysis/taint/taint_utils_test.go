@@ -16,9 +16,10 @@ package taint
 
 import (
 	"fmt"
+	"go/token"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -26,31 +27,47 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func checkExpectedPositions(t *testing.T, p *ssa.Program, flows TaintFlows, expect map[analysistest.LPos]map[analysistest.LPos]bool) {
-	seen := make(map[analysistest.LPos]map[analysistest.LPos]bool)
-	for sink, sources := range ReachedSinkPositions(p, flows) {
+func checkOnlyPositionsPresent(t *testing.T, actual map[token.Position]map[token.Position]bool,
+	expect map[analysistest.LPos]map[analysistest.LPos]bool, falseAlarmFormat string, falsePositiveFormat string) {
+
+	seenTaintFlow := make(map[analysistest.LPos]map[analysistest.LPos]bool)
+
+	for sink, sources := range actual {
 		for source := range sources {
 			posSink := analysistest.RemoveColumn(sink)
-			if _, ok := seen[posSink]; !ok {
-				seen[posSink] = map[analysistest.LPos]bool{}
+			if _, ok := seenTaintFlow[posSink]; !ok {
+				seenTaintFlow[posSink] = map[analysistest.LPos]bool{}
 			}
 			posSource := analysistest.RemoveColumn(source)
 			if _, ok := expect[posSink]; ok && expect[posSink][posSource] {
-				seen[posSink][posSource] = true
+				seenTaintFlow[posSink][posSource] = true
 			} else {
-				t.Errorf("ERROR in main.go: false positive:\n\t%s\n flows to\n\t%s\n", posSource, posSink)
+				t.Errorf(falseAlarmFormat, posSource, posSink)
 			}
 		}
 	}
 
 	for sinkLine, sources := range expect {
 		for sourceLine := range sources {
-			if !seen[sinkLine][sourceLine] {
+			if !seenTaintFlow[sinkLine][sourceLine] {
 				// Remaining entries have not been detected!
-				t.Errorf("ERROR in main.go: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
+				t.Errorf(falsePositiveFormat, sourceLine, sinkLine)
 			}
 		}
 	}
+}
+
+func checkExpectedPositions(t *testing.T, p *ssa.Program, flows *Flows,
+	expectTaint map[analysistest.LPos]map[analysistest.LPos]bool,
+	expectEscapes map[analysistest.LPos]map[analysistest.LPos]bool) {
+
+	actualTaintFlows, actualEscapes := flows.ToPositions(p)
+	checkOnlyPositionsPresent(t, actualTaintFlows, expectTaint,
+		"false positive:\n\t%s\n flows to\n\t%s\n",
+		"failed to detect that:\n%s\nflows to\n%s\n")
+	checkOnlyPositionsPresent(t, actualEscapes, expectEscapes,
+		"false positive:\n%s\n escapes at\n%s\n",
+		"failed to detect that:\n%s\nescapes at\n%s\n")
 }
 
 // runTest runs a test instance by building the program from all the files in files plus a file "main.go", relative
@@ -58,7 +75,7 @@ func checkExpectedPositions(t *testing.T, p *ssa.Program, flows TaintFlows, expe
 func runTest(t *testing.T, dirName string, files []string) {
 	// Change directory to the testdata folder to be able to load packages
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/taint", dirName)
+	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", dirName)
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)
@@ -73,8 +90,8 @@ func runTest(t *testing.T, dirName string, files []string) {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
 
-	expected, _ := analysistest.GetExpectSourceToTargets(dir, ".")
-	checkExpectedPositions(t, program, result.TaintFlows, expected)
+	expectSourceToSinks, expectSourceToEscape := analysistest.GetExpectSourceToTargets(dir, ".")
+	checkExpectedPositions(t, program, result.TaintFlows, expectSourceToSinks, expectSourceToEscape)
 	// Remove reports - comment if you want to inspect
 	os.RemoveAll(cfg.ReportsDir)
 }
@@ -84,7 +101,7 @@ func runTest(t *testing.T, dirName string, files []string) {
 func runTestSummarizeOnDemand(t *testing.T, dirName string, files []string) {
 	// Change directory to the testdata folder to be able to load packages
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/taint", dirName)
+	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", dirName)
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)
@@ -100,15 +117,15 @@ func runTestSummarizeOnDemand(t *testing.T, dirName string, files []string) {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
 
-	expected, _ := analysistest.GetExpectSourceToTargets(dir, ".")
-	checkExpectedPositions(t, program, result.TaintFlows, expected)
+	expectSourceToSinks, expectSourceToEscape := analysistest.GetExpectSourceToTargets(dir, ".")
+	checkExpectedPositions(t, program, result.TaintFlows, expectSourceToSinks, expectSourceToEscape)
 	// Remove reports - comment if you want to inspect
 	os.RemoveAll(cfg.ReportsDir)
 }
 
 func TestAll(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/basic")
+	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", "basic")
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)

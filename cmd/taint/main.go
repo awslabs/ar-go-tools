@@ -95,14 +95,14 @@ func main() {
 	logger.Printf("-%s", strings.Repeat("*", 80))
 	logger.Printf("Analysis took %3.4f s", duration.Seconds())
 	logger.Printf("")
-	if len(analysisInfo.TaintFlows) == 0 {
+	if len(analysisInfo.TaintFlows.Sinks) == 0 {
 		logger.Printf("RESULT:\n\t\t%s", colors.Green("No taint flows detected ✓"))
 	} else {
 		logger.Printf("RESULT:\n\t\t%s", colors.Red("Taint flows detected!"))
 	}
 
 	// Prints location in the SSA
-	for sink, sources := range analysisInfo.TaintFlows {
+	for sink, sources := range analysisInfo.TaintFlows.Sinks {
 		for source := range sources {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())

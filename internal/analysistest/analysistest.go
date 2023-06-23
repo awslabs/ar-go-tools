@@ -57,6 +57,7 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *con
 }
 
 // Match annotations of the form "@Source(id1, id2, id3)"
+
 var SourceRegex = regexp.MustCompile(`//.*@Source\(((?:\s*\w\s*,?)+)\)`)
 var SinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
 var EscapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)

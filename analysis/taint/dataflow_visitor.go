@@ -16,6 +16,7 @@ package taint
 
 import (
 	"fmt"
+	"go/token"
 	"io"
 	"strings"
 
@@ -34,80 +35,49 @@ type EscapeInfo struct {
 // Visitor represents a taint flow Visitor that tracks taint flows from sources to sinks.
 // It implements the [pkg/github.com/awslabs/ar-go-tools/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
+	source         df.NodeWithTrace
 	roots          map[*df.CallStack]bool
 	visited        map[*df.CallStack]bool
 	escapeGraphs   map[*ssa.Function]map[*df.CallStack]*EscapeInfo
-	taints         TaintFlows
+	taints         *Flows
 	coverageWriter io.StringWriter
-}
-
-// storeEscapeGraph computes the escape graph of calee in the context where it is called with stack. stack.Label should
-// be the caller of callee
-func (v *Visitor) storeEscapeGraph(c *df.AnalyzerState, stack *df.CallStack, callNode *df.CallNode) bool {
-
-	if callNode == nil || stack == nil {
-		return false
-	}
-
-	if v.escapeGraphs[callNode.Callee()] == nil {
-		v.escapeGraphs[callNode.Callee()] = map[*df.CallStack]*EscapeInfo{}
-	}
-
-	// if trace is a lasso, stack is the context_key
-	contextKey := stack.GetLassoHandle()
-	if contextKey == nil {
-		contextKey = stack
-	}
-
-	callContext := v.escapeGraphs[stack.Label.Callee()][stack.Parent]
-
-	if callContext != nil {
-		ctxt := callContext.CallSiteInfo[callNode.CallSite().Value()]
-		escapeCallContext := ctxt.Resolve(callNode.Callee())
-		locality, info := c.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(
-			callNode.Callee(), escapeCallContext)
-		v.escapeGraphs[callNode.Callee()][contextKey] = &EscapeInfo{locality, info}
-	} else {
-		escapeNoContext := c.EscapeAnalysisState.ComputeArbitraryContext(callNode.Callee())
-		locality, info := c.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(
-			callNode.Callee(), escapeNoContext)
-		v.escapeGraphs[callNode.Callee()][contextKey] = &EscapeInfo{locality, info}
-	}
-	return true
+	alarms         map[token.Pos]string
 }
 
 // NewVisitor returns a Visitor that can be used with
 // [pkg/github.com/awslabs/ar-go-tools/analysis/dataflow.CrossFunctionPass] to run the taint analysis
-// independently from the  [Analyze] function
+// independently of the  [Analyze] function
 func NewVisitor(coverageWriter io.StringWriter) *Visitor {
 	return &Visitor{
-		taints:         make(TaintFlows),
+		source:         df.NodeWithTrace{},
+		taints:         NewFlows(),
 		coverageWriter: coverageWriter,
 		roots:          map[*df.CallStack]bool{},
 		visited:        map[*df.CallStack]bool{},
 		escapeGraphs:   map[*ssa.Function]map[*df.NodeTree[*df.CallNode]]*EscapeInfo{},
+		alarms:         map[token.Pos]string{},
 	}
 }
 
 // Visit runs a inter-procedural analysis to add any detected taint flow from source to a sink. This implements the
-// visitor interface of the datflow package.
+// visitor interface of the dataflow package.
 //
 //gocyclo:ignore
 func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	seen := make(map[df.KeyType]bool)
 	goroutines := make(map[*ssa.Go]bool)
-	source := entrypoint
+	v.source = entrypoint
 	v.roots[entrypoint.Trace] = true
 	if s.Config.UseEscapeAnalysis && entrypoint.Trace != nil && entrypoint.Trace.Parent != nil {
 		v.storeEscapeGraph(s, entrypoint.Trace, entrypoint.Trace.Parent.Label)
 	}
-	que := []*df.VisitorNode{{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}}
+	que := []*df.VisitorNode{{NodeWithTrace: v.source, ParamStack: nil, Prev: nil, Depth: 0}}
 
 	logger := s.Logger
 	logger.Infof("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Infof("==> Source: %s\n", colors.Purple(source.Node.String()))
-	logger.Infof("%s %s\n", colors.Green("Found at"), source.Node.Position(s))
+	logger.Infof("==> Source: %s\n", colors.Purple(v.source.Node.String()))
+	logger.Infof("%s %s\n", colors.Green("Found at"), v.source.Node.Position(s))
 
 	numAlarms := 0
 
@@ -124,9 +94,9 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(elt.Node, s.Config) {
-			if addNewPathCandidate(v.taints, source.Node, elt.Node) {
+			if v.taints.addNewPathCandidate(v.source.Node, elt.Node) {
 				numAlarms++
-				reportTaintFlow(s, source, elt)
+				reportTaintFlow(s, v.source, elt)
 				// Stop if there is a limit on number of alarms and it has been reached.
 				if s.Config.MaxAlarms > 0 && numAlarms >= s.Config.MaxAlarms {
 					return
@@ -632,48 +602,56 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	if egraph != nil {
 		for instr := range edgeInfo.Span {
 			if !egraph.InstructionLocality[instr] {
-				fmt.Printf("Instruction %s in %s is not local!\n", instr, f)
+				v.taints.addNewEscape(v.source.Node, instr)
+				v.raiseAlarm(s, instr.Pos(),
+					fmt.Sprintf("Instruction %s in %s is not local!\n\tPosition: %s",
+						instr, f, s.Program.Fset.Position(instr.Pos())))
 			}
 		}
 	}
 	return update
 }
 
-// addNewPathCandidate adds a new path between a source and a sink to paths using the information in elt
-// returns true if it adds a new path.
-// @requires elt.Node.IsSink()
-func addNewPathCandidate(paths TaintFlows, source df.GraphNode, sink df.GraphNode) bool {
-	var sourceInstr ssa.Instruction
-	var sinkInstr ssa.CallInstruction
+// storeEscapeGraph computes the escape graph of calee in the context where it is called with stack. stack.Label should
+// be the caller of callee
+func (v *Visitor) storeEscapeGraph(c *df.AnalyzerState, stack *df.CallStack, callNode *df.CallNode) bool {
 
-	// The source instruction depends on the type of the source: a call node or synthetic node are directly
-	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
-	// parent call node.
-	switch node := source.(type) {
-	case *df.CallNode:
-		sourceInstr = node.CallSite()
-	case *df.CallNodeArg:
-		sourceInstr = node.ParentNode().CallSite()
-	case *df.SyntheticNode:
-		sourceInstr = node.Instr()
+	if callNode == nil || stack == nil {
+		return false
 	}
 
-	// Similar thing for the sink. Synthetic nodes are currently not used as potential sinks.
-	switch node := sink.(type) {
-	case *df.CallNode:
-		sinkInstr = node.CallSite()
-	case *df.CallNodeArg:
-		sinkInstr = node.ParentNode().CallSite()
+	if v.escapeGraphs[callNode.Callee()] == nil {
+		v.escapeGraphs[callNode.Callee()] = map[*df.CallStack]*EscapeInfo{}
 	}
 
-	if sinkInstr != nil && sourceInstr != nil {
-		if _, ok := paths[sinkInstr.(ssa.Instruction)]; !ok {
-			paths[sinkInstr.(ssa.Instruction)] = make(map[ssa.Instruction]bool)
-		}
-		paths[sinkInstr.(ssa.Instruction)][sourceInstr] = true
-		return true
+	// if trace is a lasso, stack is the context_key
+	contextKey := stack.GetLassoHandle()
+	if contextKey == nil {
+		contextKey = stack
 	}
-	return false
+
+	callContext := v.escapeGraphs[stack.Label.Callee()][stack.Parent]
+
+	if callContext != nil {
+		ctxt := callContext.CallSiteInfo[callNode.CallSite().Value()]
+		escapeCallContext := ctxt.Resolve(callNode.Callee())
+		locality, info := c.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(
+			callNode.Callee(), escapeCallContext)
+		v.escapeGraphs[callNode.Callee()][contextKey] = &EscapeInfo{locality, info}
+	} else {
+		escapeNoContext := c.EscapeAnalysisState.ComputeArbitraryContext(callNode.Callee())
+		locality, info := c.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(
+			callNode.Callee(), escapeNoContext)
+		v.escapeGraphs[callNode.Callee()][contextKey] = &EscapeInfo{locality, info}
+	}
+	return true
+}
+
+func (v *Visitor) raiseAlarm(s *df.AnalyzerState, pos token.Pos, msg string) {
+	if _, alreadyRaised := v.alarms[pos]; !alreadyRaised {
+		s.Logger.Warnf(msg)
+		v.alarms[pos] = msg
+	}
 }
 
 func findCallsites(state *df.AnalyzerState, f *ssa.Function) []ssa.CallInstruction {

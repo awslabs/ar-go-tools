@@ -48,7 +48,7 @@ func source2() A {
 
 func ResetAndCallSink(x *string) {
 	*x = "ok"
-	sink1(*x) // @Sink(ex1p1)
+	sink1(*x) // @Sink(ex1p1) @Escape(ex1p1)
 }
 
 func Set(x *string) {
@@ -86,8 +86,8 @@ func recursiveConcat(n *Node) string {
 	if n == nil {
 		return ""
 	}
-	r := n.label
-	r += recursiveConcat(n.next)
+	r := n.label                 // @Escape(simpleRec)
+	r += recursiveConcat(n.next) // @Escape(simpleRec)
 	return r
 }
 
@@ -102,15 +102,15 @@ func ExampleEscapeMutualRecursion() {
 	mu.Lock()
 	x := &Node{&Node{&Node{&G, "3"}, "2"}, "1"}
 	c := recConcat1(x)
-	sink1(c) //@Sink(mutualRec)
+	sink1(c) // @Sink(mutualRec)
 }
 
 func recConcat1(n *Node) string {
 	if n == nil {
 		return ""
 	}
-	r := n.label
-	r += recConcat2(n.next)
+	r := n.label            // @Escape(mutualRec)
+	r += recConcat2(n.next) // @Escape(mutualRec)
 	return r
 }
 
@@ -118,8 +118,8 @@ func recConcat2(n *Node) string {
 	if n == nil {
 		return ""
 	}
-	r := n.label
-	r += recConcat1(n.next)
+	r := n.label            //@Escape(mutualRec)
+	r += recConcat1(n.next) //@Escape(mutualRec)
 	return r
 }
 

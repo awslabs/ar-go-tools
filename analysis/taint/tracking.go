@@ -17,23 +17,108 @@ package taint
 import (
 	"go/token"
 
+	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/tools/go/ssa"
 )
 
-// TaintFlows is a map from instructions to sets of instructions. We use this to represents data flows: if there
-// are two instructions sink,source such that map[sink][source], then there is a data flow from source to sink.
-type TaintFlows = map[ssa.Instruction]map[ssa.Instruction]bool
+// Flows stores information about where the data coming from specific instructions flows to.
+type Flows struct {
+	// Sinks maps the sink instructions to the source instruction from which the data flows
+	// More precisely, Sinks[sink][source] <== data from source flows to sink
+	Sinks map[ssa.Instruction]map[ssa.Instruction]bool
 
-// mergeTaintFlows merges its two input TaintFlows maps. When the function returns, the first argument contains
-// all the entries in the second one.
-// @requires a != nil
-func mergeTaintFlows(a TaintFlows, b TaintFlows) {
-	for x, yb := range b {
-		ya, ina := a[x]
+	// Escapes maps the instructions where data escapes, coming from the source instruction it maps to.
+	// More precisely, Escapes[instr][source] <== data from source escapes the thread at instr
+	Escapes map[ssa.Instruction]map[ssa.Instruction]bool
+}
+
+type PositionSetMap = map[token.Position]map[token.Position]bool
+
+// NewFlows returns a new object to track taint flows and flows from source to escape locations
+func NewFlows() *Flows {
+	return &Flows{
+		Sinks:   map[ssa.Instruction]map[ssa.Instruction]bool{},
+		Escapes: map[ssa.Instruction]map[ssa.Instruction]bool{},
+	}
+}
+
+// addNewPathCandidate adds a new path between a source and a sink to paths using the information in elt
+// returns true if it adds a new path.
+// @requires elt.Node.IsSink()
+func (m *Flows) addNewPathCandidate(source df.GraphNode, sink df.GraphNode) bool {
+	var sourceInstr ssa.Instruction
+	var sinkInstr ssa.CallInstruction
+
+	// The source instruction depends on the type of the source: a call node or synthetic node are directly
+	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
+	// parent call node.
+	switch node := source.(type) {
+	case *df.CallNode:
+		sourceInstr = node.CallSite()
+	case *df.CallNodeArg:
+		sourceInstr = node.ParentNode().CallSite()
+	case *df.SyntheticNode:
+		sourceInstr = node.Instr()
+	}
+
+	// Similar thing for the sink. Synthetic nodes are currently not used as potential sinks.
+	switch node := sink.(type) {
+	case *df.CallNode:
+		sinkInstr = node.CallSite()
+	case *df.CallNodeArg:
+		sinkInstr = node.ParentNode().CallSite()
+	}
+
+	if sinkInstr != nil && sourceInstr != nil {
+		if _, ok := m.Sinks[sinkInstr.(ssa.Instruction)]; !ok {
+			m.Sinks[sinkInstr.(ssa.Instruction)] = make(map[ssa.Instruction]bool)
+		}
+		m.Sinks[sinkInstr.(ssa.Instruction)][sourceInstr] = true
+		return true
+	}
+	return false
+}
+
+func (m *Flows) addNewEscape(source df.GraphNode, escapeInstr ssa.Instruction) {
+	var sourceInstr ssa.Instruction
+
+	// The source instruction depends on the type of the source: a call node or synthetic node are directly
+	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
+	// parent call node.
+	switch node := source.(type) {
+	case *df.CallNode:
+		sourceInstr = node.CallSite()
+	case *df.CallNodeArg:
+		sourceInstr = node.ParentNode().CallSite()
+	case *df.SyntheticNode:
+		sourceInstr = node.Instr()
+	}
+
+	if escapeInstr != nil && sourceInstr != nil {
+		if _, ok := m.Escapes[escapeInstr.(ssa.Instruction)]; !ok {
+			m.Escapes[escapeInstr.(ssa.Instruction)] = make(map[ssa.Instruction]bool)
+		}
+		m.Escapes[escapeInstr.(ssa.Instruction)][sourceInstr] = true
+	}
+}
+
+// Merge merges the flows from b into a
+// requires a != nil
+func (m *Flows) Merge(b *Flows) {
+	for x, yb := range b.Sinks {
+		ya, ina := m.Sinks[x]
 		if ina {
-			a[x] = unionPaths(ya, yb)
+			m.Sinks[x] = unionPaths(ya, yb)
 		} else {
-			a[x] = yb
+			m.Sinks[x] = yb
+		}
+	}
+	for x, yb := range b.Escapes {
+		ya, ina := m.Escapes[x]
+		if ina {
+			m.Escapes[x] = unionPaths(ya, yb)
+		} else {
+			m.Escapes[x] = yb
 		}
 	}
 }
@@ -51,24 +136,30 @@ func unionPaths(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[ss
 	return p1
 }
 
-// ReachedSinkPositions translated a DataFlows map in a program to a map from positions to set of positions,
-// where the map associates sink positions to sets of source positions that reach it.
-func ReachedSinkPositions(prog *ssa.Program, m TaintFlows) map[token.Position]map[token.Position]bool {
-	positions := make(map[token.Position]map[token.Position]bool)
+// ToPositions translates Flows into two sets of position maps, the first set being the set of sinks positions reached
+// by source positions, and the second set being the set of escaped positions reached by source positions.
+func (m *Flows) ToPositions(prog *ssa.Program) (PositionSetMap, PositionSetMap) {
+	return instrPSetToPositionSetMap(prog, m.Sinks), instrPSetToPositionSetMap(prog, m.Escapes)
+}
 
-	for sinkNode, sourceNodes := range m {
+// instrPSetToPositionSetMap converts the map of sets of instructions to a map of sets of positions using the program
+// prog to resolve the positions
+func instrPSetToPositionSetMap(p *ssa.Program, iMap map[ssa.Instruction]map[ssa.Instruction]bool) PositionSetMap {
+	pMap := make(PositionSetMap)
+
+	for sinkNode, sourceNodes := range iMap {
 		sinkPos := sinkNode.Pos()
-		sinkFile := prog.Fset.File(sinkPos)
+		sinkFile := p.Fset.File(sinkPos)
 		if sinkPos != token.NoPos && sinkFile != nil {
-			positions[sinkFile.Position(sinkPos)] = map[token.Position]bool{}
+			pMap[sinkFile.Position(sinkPos)] = map[token.Position]bool{}
 			for sourceNode := range sourceNodes {
 				sourcePos := sourceNode.Pos()
-				sourceFile := prog.Fset.File(sourcePos)
+				sourceFile := p.Fset.File(sourcePos)
 				if sinkPos != token.NoPos && sourceFile != nil {
-					positions[sinkFile.Position(sinkPos)][sourceFile.Position(sourcePos)] = true
+					pMap[sinkFile.Position(sinkPos)][sourceFile.Position(sourcePos)] = true
 				}
 			}
 		}
 	}
-	return positions
+	return pMap
 }

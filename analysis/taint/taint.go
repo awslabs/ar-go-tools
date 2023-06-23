@@ -28,7 +28,7 @@ import (
 
 type AnalysisResult struct {
 	// TaintFlows contains all the data flows from the sources to the sinks detected during the analysis
-	TaintFlows TaintFlows
+	TaintFlows *Flows
 
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
