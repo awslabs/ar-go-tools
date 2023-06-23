@@ -521,8 +521,6 @@ type testDef struct {
 // The marked @Source and @Sink locations in the test files correspond to expected sources and sinks.
 // These tests check the invariant that for every trace entrypoint (corresponding to the sinks),
 // the expected source must exist somewhere in the trace.
-//
-//gocyclo:ignore
 func TestAnalyze_Taint(t *testing.T) {
 	tests := []testDef{
 		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go", "sanitizers.go", "memory.go"}},
@@ -542,9 +540,9 @@ func TestAnalyze_Taint(t *testing.T) {
 	}
 
 	skip := map[string]bool{
-		"interface-summaries": true, // failing non-deterministically, todo
-		"fields.go":           true, // struct fields as backtracepoints are not supported yet
-		"sanitizers.go":       true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
+		// "interface-summaries": true, // failing non-deterministically, todo
+		"fields.go":     true, // struct fields as backtracepoints are not supported yet
+		"sanitizers.go": true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
 	}
 
 	for _, test := range tests {

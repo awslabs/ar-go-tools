@@ -17,8 +17,10 @@
 package lang
 
 import (
+	"fmt"
 	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
+	"strings"
 )
 
 // This implementation is inspired from the Go ssa interpreter
@@ -192,6 +194,24 @@ func InstrMethodKey(instr ssa.CallInstruction) Optional[string] {
 	}
 
 	return None[string]()
+}
+
+// FnHasGlobal returns true if fn
+func FnHasGlobal(fn *ssa.Function) bool {
+	fmt.Println("FINDING GLOBAL", fn)
+	res := false
+	IterateValues(fn, func(_ int, value ssa.Value) {
+		if strings.Contains(fn.String(), "init$1") {
+			fmt.Println("VALUE", value)
+		}
+		if _, ok := value.(*ssa.Global); ok {
+			res = true
+			fmt.Printf("GLOBAL FOUND: %v\n", value)
+			return
+		}
+	})
+
+	return res
 }
 
 // FnReadsFrom returns true if an instruction in fn reads from val.

@@ -92,6 +92,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 	}
 
 	if cfg.SummarizeOnDemand {
+		logger.Infof("On-demand summarization is enabled")
 		singleFunctionSummarizeOnDemand(state, cfg, numRoutines)
 	} else {
 		// Only build summaries for non-stdlib functions here
@@ -157,9 +158,9 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 	logger.Infof("==> Node: %s\n", colors.Purple(entrypoint.String()))
 	logger.Infof("%s %s\n", colors.Green("Found at"), pos)
 
-	// Skip entrypoint if it is in a dependency
+	// Skip entrypoint if it is in a dependency or in the Go standard library/runtime
 	// TODO make this an option in the config
-	if strings.Contains(pos.Filename, "vendor") {
+	if strings.Contains(pos.Filename, "vendor") || strings.Contains(pos.Filename, runtime.GOROOT()) {
 		logger.Infof("%s\n", colors.Red("Skipping..."))
 		return
 	}
@@ -175,21 +176,29 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		elt = stack[len(stack)-1]
 		stack = stack[0 : len(stack)-1]
 
-		// Check that the node does not correspond to a non-constructed summary
-		if !elt.Node.Graph().Constructed {
-
-			logger.Tracef("%s: summary has not been built for %s.",
-				colors.Yellow("WARNING"),
-				colors.Yellow(elt.Node.Graph().Parent.Name()))
-
-			// In that case, continue as there is no information on data flow
-			continue
-		}
-
 		logger.Tracef("----------------\n")
 		logger.Tracef("Visiting %T node: %v\n\tat %v\n", elt.Node, elt.Node, elt.Node.Position(s))
 		logger.Tracef("Element trace: %s\n", elt.Trace.String())
+		logger.Tracef("Element closure trace: %s\n", elt.ClosureTrace.String())
 		logger.Tracef("Element backtrace: %v\n", findTrace(elt))
+
+		// Check that the node does not correspond to a non-constructed summary
+		if !elt.Node.Graph().Constructed {
+			if !s.Config.SummarizeOnDemand {
+				logger.Tracef("%s: summary has not been built for %s.",
+					colors.Yellow("WARNING"),
+					colors.Yellow(elt.Node.Graph().Parent.Name()))
+
+				// In that case, continue as there is no information on data flow
+				continue
+			}
+
+			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
+			// built summary
+			if err := df.RunIntraProcedural(s, elt.Node.Graph()); err != nil {
+				panic(fmt.Errorf("failed to run the intra-procedural analysis: %v", err))
+			}
+		}
 
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
 		if isBaseCase(elt.Node, s.Config) {
@@ -211,113 +220,78 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				}
 			}
 
-			// The value must always flow back to all call sites
+			// If the parameter was visited from an inter-procedural edge (i.e. from a call argument node), then data
+			// must flow back to that argument.
+			if elt.Trace.Len() > 0 && elt.Trace.Label != nil {
+				callSite := elt.Trace.Label
+				if err := df.CheckIndex(s, graphNode, callSite, "[Context] No argument at call site"); err != nil {
+					s.AddError("argument at call site "+graphNode.String(), err)
+					panic("no arg at call site")
+				} else {
+					arg := callSite.Args()[graphNode.Index()]
+					stack = addNext(s, stack, seen, elt, arg, elt.Trace, elt.ClosureTrace)
+					continue
+				}
+			}
+
+			// No context: the value must always flow back to all call sites
 
 			// Summary graph callsite information may be incomplete so use the pointer analysis to fill in
 			// any missing information
 			// This should only be done for functions that have not been pre-summarized
 			if s.Config.SummarizeOnDemand && !graphNode.Graph().IsPreSummarized {
-				df.BuildSummariesFromCallgraph(s, elt.NodeWithTrace, IsCrossFunctionEntrypoint)
-			}
-
-			if s.Config.SummarizeOnDemand {
-				if elt.Trace != nil {
-					fn := elt.Trace.Label.CallSite().Parent()
-					if _, ok := s.FlowGraph.Summaries[fn]; !ok {
-						logger.Tracef("trace label parent not summarized: %v\n", fn)
-						df.BuildSummary(s, fn, isSingleFunctionEntrypoint)
-						s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
-					}
-				}
-
-				if elt.ClosureTrace != nil {
-					fn := elt.ClosureTrace.Label.Instr().Fn.(*ssa.Function)
-					if _, ok := s.FlowGraph.Summaries[fn]; !ok {
-						logger.Tracef("closure trace label not summarized: %v\n", fn)
-						df.BuildSummary(s, fn, isSingleFunctionEntrypoint)
-						s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
-					}
-				}
+				df.BuildDummySummariesFromCallgraph(s, elt.NodeWithTrace, IsCrossFunctionEntrypoint)
 			}
 
 			callSites := graphNode.Graph().Callsites
-			if s.Config.SummarizeOnDemand && elt.Trace != nil {
-				// the trace label callee may not be in the summary's callsites
-				callInstrs := findCallsites(s, elt.Trace.Label.Callee())
-				for _, c := range callInstrs {
-					if _, ok := callSites[c]; !ok {
-						logger.Tracef("callsite %v not found in callsites\n", c)
-						if summary, ok := s.FlowGraph.Summaries[c.Parent()]; ok {
-							logger.Tracef("summary for %v found in inter-procedural dataflow graph.", c.Parent())
-							addCallToCallsites(s, summary, c, callSites)
-						} else {
-							logger.Tracef("summary for %v NOT found in inter-procedural dataflow graph.", c.Parent())
-							summary = df.BuildSummary(s, c.Parent(), isSingleFunctionEntrypoint)
-							s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
-							addCallToCallsites(s, summary, c, callSites)
-						}
-					}
-				}
-			}
-
 			for _, callSite := range callSites {
 				if err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
+					panic("no arg")
 				} else {
 					arg := callSite.Args()[graphNode.Index()]
-					// If the argument is not part of the calling context, don't add it to the visitor stack.
-					// This is needed for context-sensitivity.
-					if elt.Trace.Len() > 0 && elt.Trace.Label != arg.ParentNode() {
-						continue
-					}
-
 					stack = addNext(s, stack, seen, elt, arg, elt.Trace, elt.ClosureTrace)
 				}
 			}
 
 		// Data flows backwards within the function from the function call argument.
 		case *df.CallNodeArg:
-			callSite := graphNode.ParentNode()
+			prevStackLen := len(stack)
 
-			if callSite.CalleeSummary == nil || !callSite.CalleeSummary.Constructed { // this function has not been summarized
-				if s.Config.SummarizeOnDemand {
-					if callSite.Callee() == nil {
-						logger.Warnf("callsite has no callee: %v\n", callSite)
+			callSite := graphNode.ParentNode()
+			if lang.IsNillableType(graphNode.Type()) {
+				logger.Tracef("arg is nillable\n")
+				if callSite.CalleeSummary == nil || !callSite.CalleeSummary.Constructed { // this function has not been summarized
+					if s.Config.SummarizeOnDemand {
+						if callSite.Callee() == nil {
+							panic("callsite has no callee")
+							//logger.Warnf("callsite has no callee: %v\n", callSite)
+							//break
+						}
+
+						callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionId(), isSingleFunctionEntrypoint, nil)
+						if err := df.RunIntraProcedural(s, callSite.CalleeSummary); err != nil {
+							panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
+						}
+					} else {
+						s.ReportMissingOrNotConstructedSummary(callSite)
 						break
 					}
-
-					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), isSingleFunctionEntrypoint)
-					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
-				} else {
-					s.ReportMissingOrNotConstructedSummary(callSite)
-					break
 				}
-			}
 
-			if s.Config.SummarizeOnDemand && strings.Contains(callSite.ParentName(), "$thunk") {
-				// HACK: Make the callsite's callee summary point to the actual function summary, not the "thunk" summary
-				// This is needed because "thunk" summaries can be incomplete
-				// TODO Is there a better way to identify a function thunk?
-				logger.Tracef("callsite parent is a function \"thunk\": %v\n", callSite.ParentName())
-				calleeSummary := df.BuildSummary(s, callSite.Callee(), isSingleFunctionEntrypoint)
-				s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
-				callSite.CalleeSummary = calleeSummary
-			}
-
-			// Obtain the parameter node of the callee corresponding to the argument in the call site
-			// Data flows backwards from the argument to the corresponding parameter
-			// if the parameter is a nillable type (can be modified)
-			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
-			prevStackLen := len(stack)
-			if param != nil {
-				if lang.IsNillableType(param.Type()) {
+				// Obtain the parameter node of the callee corresponding to the argument in the call site
+				// Data flows backwards from the argument to the corresponding parameter
+				// if the parameter is a nillable type (can be modified)
+				param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
+				if param != nil {
 					x := callSite.CalleeSummary.Params[param]
 					stack = addNext(s, stack, seen, elt, x, elt.Trace.Add(callSite), elt.ClosureTrace)
+				} else {
+					s.AddError(
+						fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
+						fmt.Errorf("position %d", graphNode.Index()))
+					panic("nil param")
 				}
-			} else {
-				s.AddError(
-					fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
-					fmt.Errorf("position %d", graphNode.Index()))
 			}
 
 			// If the arg value is bound, make sure to visit all of its outgoing values
@@ -335,6 +309,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			if elt.Trace != nil {
 				tr = elt.Trace.Parent
 			}
+
 			// Data flows backwards from the argument within the function
 			if elt.prev == nil || callSite.Graph() != elt.prev.Node.Graph() {
 				for in := range graphNode.In() {
@@ -364,13 +339,18 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		case *df.CallNode:
 			df.CheckNoGoRoutine(s, goroutines, graphNode)
 			prevStackLen := len(stack)
+
+			if graphNode.Callee() == nil {
+				panic("nil callee")
+			}
+
 			// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
 			// This is needed because "bound" summaries can be incomplete
 			// TODO Is there a better way to identify a "bound" function?
 			if s.Config.SummarizeOnDemand &&
-				(graphNode.CalleeSummary == nil || strings.Contains(graphNode.ParentName(), "$bound")) {
+				(graphNode.CalleeSummary == nil || !graphNode.CalleeSummary.Constructed ||
+					strings.Contains(graphNode.ParentName(), "$bound")) {
 				graphNode.CalleeSummary = df.BuildSummary(s, graphNode.Callee(), isSingleFunctionEntrypoint)
-				s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 			}
 
 			if graphNode.CalleeSummary != nil {
@@ -381,7 +361,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					}
 				}
 			} else {
-				panic(fmt.Errorf("node's callee summary is nil: %v", graphNode.Callee().String()))
+				panic(fmt.Errorf("node's callee summary is nil: %v", graphNode))
 			}
 
 			for in := range graphNode.In() {
@@ -420,7 +400,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 							df.BuildSummary(s, f, isSingleFunctionEntrypoint)
 						}
 					}
-					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
+					//s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				}
 
 				for x := range graphNode.Global.WriteLocations {
@@ -436,10 +416,11 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 			closureNode := graphNode.ParentNode()
 
-			if s.Config.SummarizeOnDemand && closureNode.ClosureSummary == nil {
+			if s.Config.SummarizeOnDemand &&
+				(closureNode.ClosureSummary == nil || !closureNode.ClosureSummary.Constructed) {
 				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function),
 					isSingleFunctionEntrypoint)
-				s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
+				//s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 			}
 
@@ -467,6 +448,12 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					stack = addNext(s, stack, seen, elt, in, elt.Trace, elt.ClosureTrace)
 				}
 			} else if elt.ClosureTrace != nil {
+				//logger.Tracef("Closure trace: %v", elt.ClosureTrace.Label)
+				//closureSummary := elt.ClosureTrace.Label.Graph()
+				//if !closureSummary.Constructed {
+				//	closureSummary = df.BuildSummary(s, elt.ClosureTrace.Label.Graph().Parent, isSingleFunctionEntrypoint)
+				//	s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
+				//}
 				// Flow to the matching bound variables at the make closure site from the closure trace
 				bvs := elt.ClosureTrace.Label.BoundVars()
 				if len(bvs) == 0 {
@@ -485,9 +472,12 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				}
 			} else {
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
-					// Summarize the free variable's closure's parent function
+					// Summarize the free variable's closure's parent function if there is one
 					f := graphNode.Graph().Parent.Parent()
-					df.BuildSummary(s, f, isSingleFunctionEntrypoint)
+					if f != nil {
+						df.BuildSummary(s, f, isSingleFunctionEntrypoint)
+					}
+					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				}
 

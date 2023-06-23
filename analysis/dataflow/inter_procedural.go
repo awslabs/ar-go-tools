@@ -24,6 +24,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"golang.org/x/exp/maps"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -123,7 +124,7 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 	c := g.AnalyzerState
 	logger := c.Logger
 
-	logger.Infof("Building inter-procedural flow graph...")
+	logger.Debugf("BuildGraph: Building inter-procedural flow graph...")
 
 	// Open a file to output summaries
 	summariesFile := openSummaries(c)
@@ -329,22 +330,18 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAlia
 		if calleeSummary = NewPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
 			logger.Debugf("Loaded %s from summaries.\n", node.Callee().String())
 			g.Summaries[node.Callee()] = calleeSummary
-
-			// If summarization on demand is set and the function is reachable, summarize it if ShouldBuildSummary is true
+		} else if g.AnalyzerState.Config.SummarizeOnDemand && summaries.IsSummaryRequired(node.Callee()) {
+			logger.Debugf("Building full summary for %v...\n", node.Callee())
+			calleeSummary = BuildSummary(g.AnalyzerState, node.Callee(), isEntryPoint)
+			// if err := RunIntraProcedural(g.AnalyzerState, calleeSummary); err != nil {
+			// 	panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
+			// }
+			g.Summaries[node.Callee()] = calleeSummary
 		} else if g.AnalyzerState.Config.SummarizeOnDemand && ShouldBuildSummary(g.AnalyzerState, node.Callee()) {
-
-			logger.Debugf("Building summary for %v...\n", node.Callee())
-
-			result, err := IntraProceduralAnalysis(
-				g.AnalyzerState, node.Callee(), true, GetUniqueFunctionId(), isEntryPoint, nil)
-
-			if err != nil {
-				panic(fmt.Errorf("intra-procedural analysis failed for %v: %v", node.Callee(), err))
-			}
-			logger.Debugf("Finished building summary for %v (%.2f s)", node.Callee(), result.Time.Seconds())
-
-			// Store the computed summary in the graph
-			calleeSummary = result.Summary
+			// If summarization on demand is set and the function is reachable, create a dummy summary for it if
+			// ShouldBuildSummary is true
+			logger.Debugf("Building dummy summary for %v...\n", node.Callee())
+			calleeSummary = NewSummaryGraph(g.AnalyzerState, node.Callee(), GetUniqueFunctionId(), isEntryPoint, nil)
 			g.Summaries[node.Callee()] = calleeSummary
 		}
 	}
@@ -555,7 +552,7 @@ func BuildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*c
 
 // buildSummary builds a summary for function and returns it.
 func buildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
-	if summary, ok := s.FlowGraph.Summaries[function]; ok {
+	if summary, ok := s.FlowGraph.Summaries[function]; ok && summary.Constructed {
 		return summary
 	}
 
@@ -563,27 +560,29 @@ func buildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*c
 	id := GetUniqueFunctionId()
 	summary := NewPredefinedSummary(function, id)
 	if summary != nil {
-		logger.Debugf("\tLoaded pre-defined summary for %v\n", function)
+		logger.Debugf("BuildSummary: Loaded pre-defined summary for %v\n", function)
 	} else {
-		logger.Debugf("\tBuilding summary for %v...\n", function)
+		logger.Debugf("BuildSummary: Building summary for %v...\n", function)
 		result, err := IntraProceduralAnalysis(s, function, true, id, isEntrypoint, nil)
 
 		if err != nil {
 			panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
 		}
 
-		logger.Debugf("\tFinished building summary for %v (%.2f s)", function, result.Time.Seconds())
+		logger.Debugf("BuildSummary: Finished building summary for %v (%.2f s)", function, result.Time.Seconds())
 		summary = result.Summary
 	}
 
 	return summary
 }
 
-// BuildSummariesFromCallgraph builds summaries for all the reachable callees of n
+// BuildDummySummariesFromCallgraph builds dummy summaries for all the reachable callees of n
 // corresponding to n's trace.
-func BuildSummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntrypoint func(*config.Config, ssa.Node) bool) {
+func BuildDummySummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntrypoint func(*config.Config, ssa.Node) bool) {
+	s.Logger.Debugf("Building dummy summaries from callgraph...\n")
+
 	node := s.PointerAnalysis.CallGraph.Nodes[n.Node.Graph().Parent]
-	functions := []*ssa.Function{}
+	functions := map[*ssa.Function]struct{}{} // this is needed to avoid summarizing functions more than once
 	for _, in := range node.In {
 		callSite := in.Site
 		if n.Trace == nil || (callSite == n.Trace.Label.CallSite() && in.Callee.Func == n.Trace.Label.Callee()) {
@@ -592,7 +591,7 @@ func BuildSummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntrypoint
 			// - it is present in the flowgraph but not constructed, or
 			// - it is not present in the flowgraph, reachable, and a summary should be built for it
 			if (ok && !createdSummary.Constructed) || (!ok && s.IsReachableFunction(callSite.Parent()) && ShouldBuildSummary(s, callSite.Parent())) {
-				functions = append(functions, callSite.Parent())
+				functions[callSite.Parent()] = struct{}{}
 			}
 		}
 	}
@@ -602,11 +601,10 @@ func BuildSummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntrypoint
 		f *ssa.Function
 	}
 	f := func(fn *ssa.Function) sf {
-		return sf{s: buildSummary(s, fn, isEntrypoint), f: fn}
+		return sf{s: NewSummaryGraph(s, fn, GetUniqueFunctionId(), isEntrypoint, nil), f: fn}
 	}
-	summaries := funcutil.MapParallel(functions, f, runtime.NumCPU())
-
-	for _, sf := range summaries {
+	sfs := funcutil.MapParallel(maps.Keys(functions), f, runtime.NumCPU())
+	for _, sf := range sfs {
 		s.FlowGraph.Summaries[sf.f] = sf.s
 	}
 

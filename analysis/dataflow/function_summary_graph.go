@@ -844,6 +844,13 @@ type SummaryGraph struct {
 // If non-nil, the returned summary graph is marked as not constructed.
 func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack func(*config.Config, ssa.Node) bool,
 	postBlockCallBack func(state *IntraAnalysisState)) *SummaryGraph {
+	if s != nil {
+		s.Logger.Debugf("Building dummy summary for %v ...\n", f)
+		if summary, ok := s.FlowGraph.Summaries[f]; ok {
+			return summary
+		}
+	}
+
 	if f == nil {
 		return nil
 	}
@@ -882,7 +889,7 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack f
 	n := f.Signature.Results().Len()
 	returnNodes := make([]*ReturnValNode, n)
 	for i := 0; i < n; i++ {
-		returnNodes[i] = &ReturnValNode{parent: g, id: g.nodeCounter, index: i}
+		returnNodes[i] = &ReturnValNode{parent: g, id: g.nodeCounter, index: i, in: make(map[GraphNode]ObjectPath)}
 		g.nodeCounter++
 	}
 
@@ -1501,54 +1508,54 @@ func (g *SummaryGraph) addFreeVarEdge(mark Mark, cond *ConditionInfo, freeVar ss
 func addInEdge(dest GraphNode, source GraphNode, path ObjectPath) {
 	switch node := dest.(type) {
 	case *ParamNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *CallNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *CallNodeArg:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *FreeVarNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *ReturnValNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *ClosureNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *SyntheticNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *AccessGlobalNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *BoundVarNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	case *BoundLabelNode:
-		if node.in == nil {
-			node.in = make(map[GraphNode]ObjectPath)
-		}
+		//if node.in == nil {
+		//	node.in = make(map[GraphNode]ObjectPath)
+		//}
 		node.in[source] = path
 	default:
 		panic(fmt.Sprintf("invalid dest node type: %T", dest))

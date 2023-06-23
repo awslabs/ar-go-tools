@@ -185,7 +185,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			// any missing information
 			// This should only be done for functions that have not been pre-summarized
 			if s.Config.SummarizeOnDemand && !graphNode.Graph().IsPreSummarized {
-				df.BuildSummariesFromCallgraph(s, elt.NodeWithTrace, IsSourceNode)
+				df.BuildDummySummariesFromCallgraph(s, elt.NodeWithTrace, IsSourceNode)
 			}
 
 			if s.Config.SummarizeOnDemand {
@@ -338,7 +338,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			// any missing information
 			// This should only be done for functions that have not been pre-summarized
 			if s.Config.SummarizeOnDemand && !graphNode.Graph().IsPreSummarized {
-				df.BuildSummariesFromCallgraph(s, elt.NodeWithTrace, IsSourceNode)
+				df.BuildDummySummariesFromCallgraph(s, elt.NodeWithTrace, IsSourceNode)
 			}
 
 			// Check call stack is empty, and caller is one of the callsites
