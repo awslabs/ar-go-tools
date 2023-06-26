@@ -71,7 +71,9 @@ func NewNodeTree[T GraphNode](initNode T) *NodeTree[T] {
 }
 
 // Key returns the key of the node. If the node has been constructed only using NewNodeTree and Add, the key will be
-// unique for each node
+// unique for each node. If the node is nil, returns the empty string.
+//
+// (nil-safe)
 func (n *NodeTree[T]) Key() string {
 	if n == nil {
 		return ""
@@ -119,6 +121,8 @@ func (n *NodeTree[T]) ToSlice() []T {
 // GetLassoHandle checks if the trace (path from root to node) is more than one node long and the current node has the same
 // call as the last node. If the trace is a lasso, the end of the handle is returned. Otherwise, the function returns
 // nil.
+//
+// (nil safe)
 func (n *NodeTree[T]) GetLassoHandle() *NodeTree[T] {
 	if n == nil || n.height <= 1 {
 		return nil

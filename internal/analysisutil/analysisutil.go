@@ -206,12 +206,16 @@ func CheckClosureReturns(returnNode *dataflow.ReturnValNode, closureNode *datafl
 }
 
 // CheckNoGoRoutine logs a message if node's callsite is a goroutine.
-func CheckNoGoRoutine(c *dataflow.AnalyzerState, reportedLocs map[*ssa.Go]bool, node *dataflow.CallNode) {
+func CheckNoGoRoutine(s *dataflow.AnalyzerState, reportedLocs map[*ssa.Go]bool, node *dataflow.CallNode) {
+	if s.Config.UseEscapeAnalysis {
+		return // escape analysis will handle any unsoundness, so there is no need to report
+	}
+
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
 		if !reportedLocs[goroutine] {
 			reportedLocs[goroutine] = true
-			c.Logger.Warnf(colors.Yellow("Data flows to Go call."))
-			c.Logger.Warnf("-> Position: %s", node.Position(c))
+			s.Logger.Warnf(colors.Yellow("Data flows to Go call."))
+			s.Logger.Warnf("-> Position: %s", node.Position(s))
 		}
 	}
 }

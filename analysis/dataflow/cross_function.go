@@ -308,6 +308,11 @@ type VisitorNode struct {
 	ParamStack *ParamStack
 	Prev       *VisitorNode
 	Depth      int
+	children   []*VisitorNode
+}
+
+func (v *VisitorNode) AddChild(c *VisitorNode) {
+	v.children = append(v.children, c)
 }
 
 // ParamStack represents a stack of parameters.

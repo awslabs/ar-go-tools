@@ -838,7 +838,7 @@ func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, a
 			}
 		}
 	default:
-		fmt.Printf("Unhandled: %v\n", builtin.Name())
+		fmt.Printf("a: %v\n", builtin.Name())
 	}
 }
 
@@ -1451,7 +1451,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		return
 	default:
 	}
-	if verbose || true {
+	if verbose {
 		ea.prog.logger.Printf("At %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()))
 		ea.prog.logger.Printf("Unhandled: (type: %s) %v\n", reflect.TypeOf(instr).String(), instr)
 	}

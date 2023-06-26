@@ -17,12 +17,12 @@ package taint
 import (
 	"fmt"
 	"go/token"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
@@ -84,8 +84,8 @@ func runTest(t *testing.T, dirName string, files []string) {
 	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder so we can
 	// load an entire module with subpackages
 	program, cfg := analysistest.LoadTest(t, ".", files)
-
-	result, err := Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+	cfg.LogLevel = int(config.InfoLevel)
+	result, err := Analyze(cfg, program)
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
@@ -112,7 +112,7 @@ func runTestSummarizeOnDemand(t *testing.T, dirName string, files []string) {
 	program, cfg := analysistest.LoadTest(t, ".", files)
 	cfg.SummarizeOnDemand = true
 
-	result, err := Analyze(log.New(os.Stdout, "[TEST] ", log.Flags()), cfg, program)
+	result, err := Analyze(cfg, program)
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)
 	}

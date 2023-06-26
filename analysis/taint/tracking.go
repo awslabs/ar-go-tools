@@ -23,18 +23,18 @@ import (
 
 // Flows stores information about where the data coming from specific instructions flows to.
 type Flows struct {
-	// Sinks maps the sink instructions to the source instruction from which the data flows
-	// More precisely, Sinks[sink][source] <== data from source flows to sink
+	// Sinks maps the sink instructions to the currentSource instruction from which the data flows
+	// More precisely, Sinks[sink][currentSource] <== data from currentSource flows to sink
 	Sinks map[ssa.Instruction]map[ssa.Instruction]bool
 
-	// Escapes maps the instructions where data escapes, coming from the source instruction it maps to.
-	// More precisely, Escapes[instr][source] <== data from source escapes the thread at instr
+	// Escapes maps the instructions where data escapes, coming from the currentSource instruction it maps to.
+	// More precisely, Escapes[instr][currentSource] <== data from currentSource escapes the thread at instr
 	Escapes map[ssa.Instruction]map[ssa.Instruction]bool
 }
 
 type PositionSetMap = map[token.Position]map[token.Position]bool
 
-// NewFlows returns a new object to track taint flows and flows from source to escape locations
+// NewFlows returns a new object to track taint flows and flows from currentSource to escape locations
 func NewFlows() *Flows {
 	return &Flows{
 		Sinks:   map[ssa.Instruction]map[ssa.Instruction]bool{},
@@ -42,14 +42,14 @@ func NewFlows() *Flows {
 	}
 }
 
-// addNewPathCandidate adds a new path between a source and a sink to paths using the information in elt
+// addNewPathCandidate adds a new path between a currentSource and a sink to paths using the information in elt
 // returns true if it adds a new path.
 // @requires elt.Node.IsSink()
 func (m *Flows) addNewPathCandidate(source df.GraphNode, sink df.GraphNode) bool {
 	var sourceInstr ssa.Instruction
 	var sinkInstr ssa.CallInstruction
 
-	// The source instruction depends on the type of the source: a call node or synthetic node are directly
+	// The currentSource instruction depends on the type of the currentSource: a call node or synthetic node are directly
 	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
 	// parent call node.
 	switch node := source.(type) {
@@ -82,7 +82,7 @@ func (m *Flows) addNewPathCandidate(source df.GraphNode, sink df.GraphNode) bool
 func (m *Flows) addNewEscape(source df.GraphNode, escapeInstr ssa.Instruction) {
 	var sourceInstr ssa.Instruction
 
-	// The source instruction depends on the type of the source: a call node or synthetic node are directly
+	// The currentSource instruction depends on the type of the currentSource: a call node or synthetic node are directly
 	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
 	// parent call node.
 	switch node := source.(type) {
@@ -137,7 +137,7 @@ func unionPaths(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[ss
 }
 
 // ToPositions translates Flows into two sets of position maps, the first set being the set of sinks positions reached
-// by source positions, and the second set being the set of escaped positions reached by source positions.
+// by currentSource positions, and the second set being the set of escaped positions reached by currentSource positions.
 func (m *Flows) ToPositions(prog *ssa.Program) (PositionSetMap, PositionSetMap) {
 	return instrPSetToPositionSetMap(prog, m.Sinks), instrPSetToPositionSetMap(prog, m.Escapes)
 }

@@ -58,7 +58,7 @@ func NewLogGroup(config *Config) *LogGroup {
 		Level: LogLevel(config.LogLevel),
 		trace: log.New(os.Stdout, colors.Faint("[TRACE] "), 0),
 		debug: log.New(os.Stdout, "[DEBUG] ", 0),
-		info:  log.New(os.Stdout, "[INFO]  ", 0),
+		info:  log.New(os.Stdout, colors.Green("[INFO]  "), 0),
 		warn:  log.New(os.Stdout, colors.Yellow("[WARN]  "), 0),
 		err:   log.New(os.Stderr, colors.Red("[ERROR] "), 0),
 	}

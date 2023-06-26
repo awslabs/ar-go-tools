@@ -15,7 +15,6 @@
 package taint
 
 import (
-	"log"
 	"runtime"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -47,7 +46,7 @@ type AnalysisResult struct {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
+func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -67,7 +66,10 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 
 	// Optional step: running the escape analysis
 	if cfg.UseEscapeAnalysis {
-		escape.InitializeEscapeAnalysisState(state)
+		err := escape.InitializeEscapeAnalysisState(state)
+		if err != nil {
+			return AnalysisResult{}, err
+		}
 	}
 
 	// ** Second step **
@@ -93,7 +95,7 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	// ** Third step **
 	// the inter-procedural analysis is run over the entire program, which has been summarized in the
 	// previous step by building function summaries. This analysis consists in checking whether there exists a sink
-	// that is reachable from a source.
+	// that is reachable from a currentSource.
 	visitor := NewVisitor(nil)
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		AnalyzerState: state,
@@ -111,6 +113,10 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 		},
 	})
 
+	// ** Fourth step **
+	// Additional analyses are run after the taint analysis has completed. Those analyses check the soundness of the
+	// result after the fact, and some other analyses can be used to prune false alarms.
+	
 	return AnalysisResult{Graph: *state.FlowGraph, TaintFlows: visitor.taints}, nil
 }
 

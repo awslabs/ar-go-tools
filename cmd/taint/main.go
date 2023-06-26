@@ -85,7 +85,7 @@ func main() {
 	}
 
 	start := time.Now()
-	analysisInfo, err := taint.Analyze(logger, taintConfig, program)
+	analysisInfo, err := taint.Analyze(taintConfig, program)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)

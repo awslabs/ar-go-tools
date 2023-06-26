@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
-	"time"
 )
 
 func sink1(s string) {
@@ -48,7 +47,7 @@ func source2() A {
 
 func ResetAndCallSink(x *string) {
 	*x = "ok"
-	sink1(*x) // @Sink(ex1p1) @Escape(ex1p1)
+	sink1(*x) // @Sink(ex1p1) @Escape(ex1p1) (with concurrency, ex1p2 should also reach)
 }
 
 func Set(x *string) {
@@ -58,7 +57,18 @@ func Set(x *string) {
 func ExampleEscape1() {
 	x := source1() // @Source(ex1p1)
 	go ResetAndCallSink(&x)
-	x = x + source1() // @Source(ex1p2)
+	x = x + source1() // @Source(ex1p2) @Escape(ex1p1)
+}
+
+func ResetAndCallSink2(x *string) {
+	*x = "ok"
+	sink1(*x) // @Sink(ex1p1bis) @Escape(ex1p1bis)
+}
+
+func ExampleEscape1bis() {
+	x := source1() // @Source(ex1p1bis)
+	ResetAndCallSink2(&x)
+	x = x + source1() // @Source(ex1p2bis)
 }
 
 func ExampleEscape2() {
@@ -66,12 +76,77 @@ func ExampleEscape2() {
 	sink1(y.field1) // @Sink(ex2)
 }
 
-var G Node = Node{nil, "g"}
+func ExampleEscape3() {
+	x := source1() // @Source(ex3)
+	a := &A{field1: x, field2: 0}
+	sink1(a.field1) // @Sink(ex3)
+	go ex3foo(x)    // no escape: only a value is passed to ex3foo
+}
+
+func ex3foo(s string) {
+	s += "ok"
+	fmt.Println(s)
+}
+
+func ExampleEscape4() {
+	x := source1() // @Source(ex4)
+	a := &A{field1: x, field2: 0}
+	sink1(a.field1) // @Sink(ex4)
+	go ex4foo(&x)
+}
+
+func ex4foo(s *string) {
+	*s += "ok"      // @Escape(ex4)
+	fmt.Println(*s) // @Escape(ex4)
+}
+
+func ExampleEscape5() {
+	x := source1() // @Source(ex5)
+	a := &A{field1: x, field2: 0}
+	sink1(a.field1) // @Sink(ex5)
+	c := make(chan string)
+	go func() { c <- x }() // value sent
+	go ex5foo(c)
+}
+
+func ex5foo(c chan string) {
+	for s := range c {
+		sink1(s) // @Sink(ex5)
+	}
+}
+
+func ExampleEscape6() {
+	x := source1() // @Source(ex6)
+	a := &A{field1: x, field2: 0}
+	sink1(a.field1) // @Sink(ex6)
+	c := make(chan *string)
+	go ex6send(c, &x)
+	go ex6foo(c)
+}
+
+func ex6send(c chan *string, x *string) {
+	c <- x // @Escape(ex6, ex6bis)
+}
+
+func ex6foo(c chan *string) {
+	for s := range c {
+		sink1(*s) // @Sink(ex6) , but not ex6bis! However, alarm is raised in ex6send
+	}
+}
+
+func ExampleEscape6bis() {
+	x := source1() // @Source(ex6bis)
+	c := make(chan *string)
+	go ex6foo(c)
+	go ex6send(c, &x)
+}
+
+var G = Node{nil, "g"}
 
 func ExampleEscapeRecursion() {
 	var mu sync.Mutex
 	mu.Lock()
-	G.label = source1() // @Source(simpleRec)
+	G.label = source1() // @Source(simpleRec) @Escape(simpleRec)
 	go func() {
 		G.label = source1()
 		mu.Unlock()
@@ -94,7 +169,7 @@ func recursiveConcat(n *Node) string {
 func ExampleEscapeMutualRecursion() {
 	var mu sync.Mutex
 	mu.Lock()
-	G.label = source1() // @Source(mutualRec)
+	G.label = source1() // @Source(mutualRec) @Escape(mutualRec)
 	go func() {
 		G.label = source1()
 		mu.Unlock()
@@ -118,15 +193,20 @@ func recConcat2(n *Node) string {
 	if n == nil {
 		return ""
 	}
-	r := n.label            //@Escape(mutualRec)
-	r += recConcat1(n.next) //@Escape(mutualRec)
+	r := n.label            // @Escape(mutualRec)
+	r += recConcat1(n.next) // @Escape(mutualRec)
 	return r
 }
 
 func main() {
 	ExampleEscape1()
-	time.Sleep(100000)
+	ExampleEscape1bis()
 	ExampleEscape2()
+	ExampleEscape3()
+	ExampleEscape4()
+	ExampleEscape5()
+	ExampleEscape6()
+	ExampleEscape6bis()
 	ExampleEscapeRecursion()
 	ExampleEscapeMutualRecursion()
 }
