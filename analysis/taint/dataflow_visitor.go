@@ -640,12 +640,14 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	f := nextNode.Graph().Parent
 	nKey := nextTrace.Key()
 	if handle := nextTrace.GetLassoHandle(); handle != nil {
+		// TODO: handle merging contexts
 		nKey = handle.Key()
 	}
 	escapeGraph := v.escapeGraphs[f][nKey]
 	if escapeGraph != nil {
 		for instr := range edgeInfo.Span {
-			if !escapeGraph.InstructionLocality[instr] {
+			_, isCall := instr.(*ssa.Call)
+			if !isCall && !escapeGraph.InstructionLocality[instr] {
 				v.taints.addNewEscape(v.currentSource.Node, instr)
 				v.raiseAlarm(s, instr.Pos(),
 					fmt.Sprintf("instruction %s in %s is not local!\n\tPosition: %s",
@@ -720,7 +722,8 @@ func findCallsites(state *df.AnalyzerState, f *ssa.Function) []ssa.CallInstructi
 }
 
 // addCallToCallsites adds c to callSites if it is in summary's callees.
-func addCallToCallsites(s *df.AnalyzerState, summary *df.SummaryGraph, c ssa.CallInstruction, callSites map[ssa.CallInstruction]*df.CallNode) {
+func addCallToCallsites(s *df.AnalyzerState, summary *df.SummaryGraph, c ssa.CallInstruction,
+	callSites map[ssa.CallInstruction]*df.CallNode) {
 	for instr, f2n := range summary.Callees {
 		if instr == c {
 			for _, callNode := range f2n {

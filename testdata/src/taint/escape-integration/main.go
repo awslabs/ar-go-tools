@@ -141,6 +141,36 @@ func ExampleEscape6bis() {
 	go ex6send(c, &x)
 }
 
+func ExampleEscape7() {
+	s := source1() // @Source(ex7)
+	s2 := s + "ok"
+	x := &Node{&Node{&Node{label: s2}, "2"}, "1"}
+	ex7foo(x.next)
+}
+
+func ex7foo(n *Node) {
+	if n == nil {
+		return
+	}
+	n2 := n.next    // @Escape(ex7) TODO: correct this false alarm for escape, handle values returned by function calls
+	sink1(n2.label) // @Sink(ex7) @Escape(ex7) TODO: same as above for the false alarm for escape
+}
+
+func ExampleEscape8() {
+	s := source1() // @Source(ex8)
+	s2 := s + "ok"
+	x := &Node{&Node{&Node{label: s2}, "2"}, "1"}
+	ex8foo(x.next)
+}
+
+func ex8foo(n *Node) {
+	if n == nil {
+		return
+	}
+	n2 := n.next       // @Escape(ex8)
+	go sink1(n2.label) // @Sink(ex8) @Escape(ex8)
+}
+
 var G = Node{nil, "g"}
 
 func ExampleEscapeRecursion() {
@@ -206,6 +236,8 @@ func main() {
 	ExampleEscape4()
 	ExampleEscape5()
 	ExampleEscape6()
+	ExampleEscape7()
+	ExampleEscape8()
 	ExampleEscape6bis()
 	ExampleEscapeRecursion()
 	ExampleEscapeMutualRecursion()
