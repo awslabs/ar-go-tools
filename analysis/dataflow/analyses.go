@@ -39,8 +39,8 @@ import "golang.org/x/tools/go/ssa"
 // convergence in the presence of recursive functions. (Note, the context returned by
 // ComputeArbitraryContext is not a unit of Merge; it should not be used to initialize a convergence loop.)
 type EscapeAnalysisState interface {
-	// IsEscapeAnalysisState2 ensures only the escape analysis implement this interface. Returns true.
-	IsEscapeAnalysisState2() bool
+	// IsEscapeAnalysisState ensures only the escape analysis implements this interface. Returns true.
+	IsEscapeAnalysisState() bool
 	// IsSummarized returns whether the escape analysis has a summary for f
 	IsSummarized(f *ssa.Function) bool
 	// ComputeArbitraryContext  computes a call context for f assuming it could be called from anywhere.

@@ -20,7 +20,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// IMPLEMENTATION OF NEW INTERACE
+// Implementation of EscapeAnalysisState and related types
 type escapeAnalysisImpl struct {
 	ProgramAnalysisState
 }
@@ -29,9 +29,12 @@ type escapeContextImpl struct {
 	f *ssa.Function
 }
 
+// Check types correspond to interfaces
+var _ dataflow.EscapeAnalysisState = (*escapeAnalysisImpl)(nil)
 var _ dataflow.EscapeCallsiteInfo = (*escapeCallsiteInfoImpl)(nil)
+var _ dataflow.EscapeCallContext = (*escapeContextImpl)(nil)
 
-func (*escapeAnalysisImpl) IsEscapeAnalysisState2() bool { return true }
+func (*escapeAnalysisImpl) IsEscapeAnalysisState() bool { return true }
 
 func (e *escapeAnalysisImpl) IsSummarized(f *ssa.Function) bool { return e.summaries[f] != nil }
 
