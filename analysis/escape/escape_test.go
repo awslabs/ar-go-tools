@@ -556,6 +556,7 @@ func TestLocalityComputation(t *testing.T) {
 	}
 	funcsToTest := []string{
 		"testLocality",
+		"testLocality2",
 		"failInterproceduralLocality1",
 		"testInterproceduralLocality1",
 		"failInterproceduralLocality2",

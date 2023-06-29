@@ -91,8 +91,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 	if s.Config.UseEscapeAnalysis {
 		sourceCaller := source.Node.Graph().Parent
-		v.storeEscapeGraphInContext(s, sourceCaller, "",
+		rootKey := ""
+		v.storeEscapeGraphInContext(s, sourceCaller, rootKey,
 			s.EscapeAnalysisState.ComputeArbitraryContext(sourceCaller))
+
+		escapeGraph := v.escapeGraphs[sourceCaller][rootKey]
+		v.checkEscape(s, source.Node, escapeGraph)
 
 		callNode, isCallNode := source.Node.(*df.CallNode)
 		if isCallNode {
@@ -118,7 +122,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			if v.taints.addNewPathCandidate(v.currentSource.Node, elt.Node) {
 				numAlarms++
 				reportTaintFlow(s, v.currentSource, elt)
-				// Stop if there is a limit on number of alarms and it has been reached.
+				// Stop if there is a limit on number of alarms, and it has been reached.
 				if s.Config.MaxAlarms > 0 && numAlarms >= s.Config.MaxAlarms {
 					return
 				}
@@ -199,8 +203,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			callSites := graphNode.Graph().Callsites
 			if s.Config.SummarizeOnDemand && elt.Trace != nil {
 				// the trace label callee may not be in the summary's callsites
-				callInstrs := findCallsites(s, elt.Trace.Label.Callee())
-				for _, c := range callInstrs {
+				for _, c := range findCallsites(s, elt.Trace.Label.Callee()) {
 					if _, ok := callSites[c]; !ok {
 						logger.Debugf("callsite %v not found in callsites\n", c)
 
@@ -291,7 +294,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				}
 			}
 
-			// Computing context-sensitive information for othe analyses
+			// Computing context-sensitive information for the analyses
 
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
@@ -587,7 +590,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	escapeContextUpdated := false
 
 	if s.Config.UseEscapeAnalysis {
-		escapeContextUpdated = v.manageEscapeContexts(s, cur, nextNode, edgeInfo, nextTrace)
+		escapeContextUpdated = v.manageEscapeContexts(s, cur, nextNode, nextTrace)
 	}
 
 	if s.Logger.LogsTrace() {
@@ -627,7 +630,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 }
 
 func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode, nextNode df.GraphNode,
-	edgeInfo df.ObjectPath, nextTrace *df.CallStack) bool {
+	nextTrace *df.CallStack) bool {
 	update := false
 
 	// Update the contexts when a new function is called.
@@ -645,15 +648,7 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	}
 	escapeGraph := v.escapeGraphs[f][nKey]
 	if escapeGraph != nil {
-		for instr := range edgeInfo.Span {
-			_, isCall := instr.(*ssa.Call)
-			if !isCall && !escapeGraph.InstructionLocality[instr] {
-				v.taints.addNewEscape(v.currentSource.Node, instr)
-				v.raiseAlarm(s, instr.Pos(),
-					fmt.Sprintf("instruction %s in %s is not local!\n\tPosition: %s",
-						instr, f, s.Program.Fset.Position(instr.Pos())))
-			}
-		}
+		v.checkEscape(s, nextNode, escapeGraph)
 	} else {
 		s.Logger.Errorf("missing escape graph for %s in context %s.", f, nKey)
 		s.Logger.Debugf("%s has %d contexts", f, len(v.escapeGraphs[f]))
@@ -661,7 +656,23 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	return update
 }
 
-// storeEscapeGraph computes the escape graph of calee in the context where it is called with stack. stack.Label should
+func (v *Visitor) checkEscape(s *df.AnalyzerState, node df.GraphNode, escapeInfo *EscapeInfo) {
+	if escapeInfo == nil {
+		s.Logger.Errorf("checking escape with missing escape graph!")
+	}
+	for instr := range node.Marks() {
+		_, isCall := instr.(ssa.CallInstruction)
+		isLocal, isTracked := escapeInfo.InstructionLocality[instr]
+		if !isCall && !isLocal && isTracked {
+			v.taints.addNewEscape(v.currentSource.Node, instr)
+			v.raiseAlarm(s, instr.Pos(),
+				fmt.Sprintf("instruction %s in %s is not local!\n\tPosition: %s",
+					instr, node.Graph().Parent, s.Program.Fset.Position(instr.Pos())))
+		}
+	}
+}
+
+// storeEscapeGraph computes the escape graph of callee in the context where it is called with stack. stack.Label should
 // be the caller of callee
 func (v *Visitor) storeEscapeGraph(s *df.AnalyzerState, stack *df.CallStack, callNode *df.CallNode) bool {
 	if callNode == nil {
@@ -672,7 +683,11 @@ func (v *Visitor) storeEscapeGraph(s *df.AnalyzerState, stack *df.CallStack, cal
 	var escapeContext *EscapeInfo
 
 	if stack != nil {
-		escapeContext = v.escapeGraphs[stack.Label.Callee()][stack.Key()]
+		key := "" // key corresponding to no context if the function is a root
+		if stack.Parent != nil {
+			key = stack.Parent.Key()
+		}
+		escapeContext = v.escapeGraphs[callNode.Graph().Parent][key]
 	}
 
 	// if trace is a lasso, stack is the context_key
@@ -683,12 +698,15 @@ func (v *Visitor) storeEscapeGraph(s *df.AnalyzerState, stack *df.CallStack, cal
 
 	if escapeContext != nil {
 		ctxt := escapeContext.CallSiteInfo[callNode.CallSite().Value()]
-		escapeCallContext := ctxt.Resolve(callee)
-		v.storeEscapeGraphInContext(s, callee, nextNodeContextKey, escapeCallContext)
-	} else {
-		escapeNoContext := s.EscapeAnalysisState.ComputeArbitraryContext(callee)
-		v.storeEscapeGraphInContext(s, callee, nextNodeContextKey, escapeNoContext)
+		if ctxt != nil {
+			escapeCallContext := ctxt.Resolve(callee)
+			v.storeEscapeGraphInContext(s, callee, nextNodeContextKey, escapeCallContext)
+			return true
+		}
 	}
+
+	escapeNoContext := s.EscapeAnalysisState.ComputeArbitraryContext(callee)
+	v.storeEscapeGraphInContext(s, callee, nextNodeContextKey, escapeNoContext)
 	return true
 }
 
