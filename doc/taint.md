@@ -319,15 +319,15 @@ In the specification for the `Reader` method, the first argument's data flows to
 ## Using Escape Analysis
 
 The dataflow analysis does not support concurrency by default, meaning that it is unsound in the presence of concurrent 
-threads. However, it can use the escape analysis built in Argot to check the validity of its assumption, and raise a 
-warning whenever that assumption is not meant. In other words, this will raise a warning when the flow of data from a 
+threads (or goroutines). However, it can use the escape analysis built in Argot to check the validity of this assumption, and raise an 
+alarm whenever that assumption is not met. In other words, this will raise a warning when the flow of data from a 
 source may interact with a memory location that is not thread-local.
 
 To enable the escape analysis, use the following option in the config file:
 ```yaml
 useescapeanalysis: true
 ```
-Then if any tainted data *escapes* the thread it originates from, the tool will print those locations at then end of its
+Then if any tainted data *escapes* the thread it originates from, the tool will print those locations at the end of its
 output.
 For example, try running `./bin/taint -config testdata/src/taint/sample-escape/config.yaml testdata/src/taint/sample-escape/main.go`, 
 you should see some output similar to:
@@ -343,6 +343,6 @@ you should see some output similar to:
                 argot/testdata/src/taint/sample-escape/main.go:41:14
 
 ```
-Indicating that no taint flow was detected, but tainted data escapes the thread it was generated in, which is a thread
+Indicating that no taint flow was detected, but tainted data escapes the thread it was generated in, which is a threat
 to the soundness of the analysis. In this case, the data may indeed flow to a sink! In general, always sanitize the 
 data before interacting with other goroutines to avoid such cases.
