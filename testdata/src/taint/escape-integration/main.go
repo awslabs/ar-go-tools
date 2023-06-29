@@ -314,6 +314,25 @@ func ex14foo(n *Node) {
 	// However, an alarm is raised because the source is written to a location that has escaped!
 }
 
+func ExampleEscape15() {
+	s := source1() //@Source(ex15)
+	x := &Node{&Node{nil, "ok"}, "ok"}
+	ex15foo(x.next) // x escapes
+	if x.next.next != nil {
+		x.next.next.label = s // @Escape(ex15) source is written to escaped value
+	}
+}
+
+func ex15foo(n *Node) {
+	n.next = &Node{}
+	go ex15bar(n.next)
+}
+
+func ex15bar(n *Node) {
+	sink1(n.next.label) // No escape here, since we don't know the source data flows here
+	// However, an alarm is raised because the source is written to a location that has escaped!
+}
+
 var G = Node{nil, "g"}
 
 func ExampleEscapeRecursion() {
@@ -388,6 +407,7 @@ func main() {
 	ExampleEscape12()
 	ExampleEscape13()
 	ExampleEscape14()
+	ExampleEscape15()
 	ExampleEscapeRecursion()
 	ExampleEscapeMutualRecursion()
 }
