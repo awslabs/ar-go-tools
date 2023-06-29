@@ -29,6 +29,9 @@ type AnalysisResult struct {
 	// TaintFlows contains all the data flows from the sources to the sinks detected during the analysis
 	TaintFlows *Flows
 
+	// State is the state at the end of the analysis, if you need to chain another analysis
+	State *dataflow.AnalyzerState
+
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
 	Graph dataflow.CrossFunctionFlowGraph
@@ -116,8 +119,8 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// ** Fourth step **
 	// Additional analyses are run after the taint analysis has completed. Those analyses check the soundness of the
 	// result after the fact, and some other analyses can be used to prune false alarms.
-	
-	return AnalysisResult{Graph: *state.FlowGraph, TaintFlows: visitor.taints}, nil
+
+	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: visitor.taints}, nil
 }
 
 func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.Config, numRoutines int) {
