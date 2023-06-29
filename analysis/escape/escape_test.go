@@ -561,6 +561,8 @@ func TestLocalityComputation(t *testing.T) {
 		"failInterproceduralLocality2",
 		"testDiamond",
 		"testRecursion",
+		"testAllInstructions",
+		"testExampleEscape7",
 	}
 	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {

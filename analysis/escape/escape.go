@@ -1741,6 +1741,21 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 			// arithmetic is local
 			return true
 		}
+	case *ssa.Send:
+		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Chan))
+	case *ssa.Range:
+		return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
+	case *ssa.Next:
+		if instrType.IsString {
+			return true
+		}
+		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Iter))
+	case *ssa.Select:
+		local := true
+		for _, state := range instrType.States {
+			local = local && derefsAreLocal(g, g.nodes.ValueNode(state.Chan))
+		}
+		return local
 	case *ssa.BinOp:
 		return true // arithmetic is local
 	case *ssa.Go:
@@ -1752,21 +1767,36 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 		// objects, or may itself leak immediately, but the creation is semantically equivalent
 		// to writing some fields in a hidden struct type
 		return true
+	case *ssa.Defer, *ssa.RunDefers:
+		// Defers and rundefers are local, as they in principle just access the stack of defered funcs.
+		// Execution of the defered closures, or the process of creating the closures, may be non-local
+		// but those are handled elsewhere
+		return true
 	case *ssa.Alloc, *ssa.MakeMap, *ssa.MakeChan, *ssa.MakeSlice:
+		// All alloc-like operations are local
 		return true
 	case *ssa.FieldAddr, *ssa.IndexAddr:
 		// address calculations don't involve loads
 		// TODO: what about ssa.IndexAddr with arrays?
 		return true
-	case *ssa.Slice:
+	case *ssa.Slice, *ssa.SliceToArrayPointer:
 		return true // taking sub-slices is an array operation
-	case *ssa.MakeInterface, *ssa.TypeAssert, *ssa.Convert,
+	case *ssa.MakeInterface, *ssa.Convert,
 		*ssa.ChangeInterface, *ssa.ChangeType, *ssa.Phi, *ssa.Extract:
 		// conversions and ssa specific things don't access memory
 		return true
+	case *ssa.TypeAssert:
+		return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
 	case *ssa.Return, *ssa.Jump, *ssa.If:
 		// control flow (at least the operation itself, if not the computation of the argument(s)) is local
 		return true
+	case *ssa.Panic:
+		// Panicing is not itself non-local, although it may of course trigger executions that are non-local
+		return true
+	case *ssa.MapUpdate:
+		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Map))
+	case *ssa.Lookup:
+		return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
 	default:
 		// fallthrough to the unhandled case below.
 		// Some operation can fallthrough as well, because they might not (yet) handle all forms of their instruction type.

@@ -47,6 +47,8 @@ func main() {
 	testInterproceduralLocality1()
 	failInterproceduralLocality2()
 	testDiamond()
+	testAllInstructions(423)
+	testExampleEscape7()
 }
 
 func testLocality() {
@@ -155,4 +157,225 @@ func veryBad(x string, p *string) {
 	q := &y
 	*q = x
 	leak(q)
+}
+
+func testExampleEscape7() {
+	x := &Node{&Node{&Node{nil, "3"}, "2"}, "1"}
+	ex7foo(x.next)
+}
+
+func ex7foo(n *Node) {
+	if n == nil {
+		return
+	}
+	n2 := n.next // LOCAL
+	_ = n2.value // LOCAL
+}
+
+func leakNode(n *Node) {
+	globalNode.next = n
+}
+func dontLeakNode(n *Node) {
+}
+
+type NodeWrapper Node
+
+func returnInts() (int, int) {
+	return 1, 2
+}
+
+type A interface {
+	Afunc(int) int
+}
+type B interface {
+	Afunc(int) int
+	Bfunc(int) int
+}
+type Bstruct struct {
+	x int
+}
+
+var bstructGlobal *Bstruct = nil
+var globalIntChan chan int = nil
+var globalMapStrStr map[string]string = nil
+
+func (b *Bstruct) Afunc(x int) int {
+	return b.x + x
+}
+func (b *Bstruct) Bfunc(x int) int {
+	return b.x * x
+}
+
+func testAllInstructions(x int) {
+	// Alloc
+	local := &Node{} // LOCAL
+	// BinOp
+	var y = x + 2  // LOCAL
+	var z = y <= 2 // LOCAL
+	_ = z
+	// Call
+	nonlocal := &Node{} // LOCAL
+	leakNode(nonlocal)  // NONLOCAL
+	dontLeakNode(local) // NONLOCAL
+	// ChangeInterface
+	binter := (B)(&Bstruct{2})                // LOCAL
+	var _ = (any)(binter)                     // LOCAL
+	var _ = (A)(binter)                       // LOCAL
+	var _ = (B)(binter)                       // LOCAL
+	bstructNonlocal := &Bstruct{3}            // LOCAL
+	bstructGlobal = bstructNonlocal           // NONLOCAL
+	var binterNonlocal = (B)(bstructNonlocal) // LOCAL
+	var _ = (A)(binterNonlocal)               // LOCAL
+	var _ = (any)(binterNonlocal)             // LOCAL
+	// ChangeType
+	var _ = (NodeWrapper)(*local) // LOCAL
+	var _ = (*NodeWrapper)(local) // LOCAL
+	// Involves a read:
+	var _ = (NodeWrapper)(*nonlocal) // NONLOCAL
+	var _ = (*NodeWrapper)(nonlocal) // LOCAL
+	// Convert
+	valF := 0.5                     // LOCAL
+	var _ = (int)(valF)             // LOCAL
+	byteslice := []byte{54, 23, 34} // LOCAL
+	s := (string)(byteslice)        // LOCAL
+	_ = ([]byte)(s)                 // LOCAL
+	// DebugRef
+	// no test, as doesn't appear in our SSA
+	// Defer
+	defersTest()
+	// Extract
+	// This might be hard to test as getting the extract by itself isn't easy
+	a, b := returnInts()
+	a = b // LOCAL
+	b = a // LOCAL
+	// Field
+	// TODO: this doesn't actually generate Field instructions, but instead FieldAddr?
+	n := *local     // LOCAL
+	nNext := n.next // LOCAL
+	dontLeakNode(nNext)
+	// FieldAddr
+	// First one is FieldAddr and Load, second/third are FieldAddr only
+	_ = local.next     // LOCAL
+	_ = &local.next    // LOCAL
+	_ = &nonlocal.next // LOCAL
+	// Go
+	node1 := &Node{}
+	node2 := &Node{}
+	go dontLeakNode(node1) // NONLOCAL
+	// If
+	if a == x { // LOCAL
+		dontLeakNode(node1)
+	} else {
+		dontLeakNode(node2)
+	}
+	// Index
+	// TODO: how to generate this instruction?
+	// IndexAddr
+	intSlice := []int{1, 2, 3, 4} // LOCAL
+	_ = &intSlice[1]              // LOCAL
+	// Jump
+	// TODO: How to annotate this instruction in the SSA?
+	// Lookup
+	mapStrStr := map[string]string{"a": "1", "b": "2"}
+	nonlocalMapStrStr := map[string]string{"a": "1", "b": "2"}
+	globalMapStrStr = nonlocalMapStrStr
+	_ = mapStrStr["a"]         // LOCAL
+	_ = nonlocalMapStrStr["a"] // NONLOCAL
+	// MakeChan
+	localChan := make(chan int)    // LOCAL
+	nonlocalChan := make(chan int) // LOCAL
+	globalIntChan = nonlocalChan
+	// MakeClosure
+	_ = func() { // LOCAL
+		nonlocal.next.value = "2"
+	}
+	// MakeInterface
+	_ = (any)(local)       // LOCAL
+	_ = (any)(nonlocal)    // LOCAL
+	_ = (B)(&Bstruct{2})   // LOCAL
+	_ = (A)(&Bstruct{2})   // LOCAL
+	_ = (any)(&Bstruct{2}) // LOCAL
+	// MakeMap
+	_ = make(map[int]string) // LOCAL
+	// MakeSlice
+	_ = make([]int, 5, 10) // LOCAL
+	// MapUpdate
+	mapStrStr["a"] = "x"         // LOCAL
+	nonlocalMapStrStr["a"] = "x" // NONLOCAL
+	// MultiConvert
+	// This doesn't show up in our SSA
+	// Next
+	for _ = range nonlocalMapStrStr { // NONLOCAL
+
+	}
+	for _ = range mapStrStr { // LOCAL
+
+	}
+	// Panic
+	testPanic()
+	// Phi
+	// This operation can't be annotated
+	// Range
+	for _ = range nonlocalMapStrStr { // NONLOCAL
+
+	}
+	for _ = range mapStrStr { // LOCAL
+
+	}
+	// Return
+	returnTest()
+	// RunDefers
+	defersTest()
+	// Select
+	// TODO: is this correctly tested?
+	select {
+	case <-nonlocalChan: // NONLOCAL
+		dontLeakNode(nonlocal)
+	}
+	select { // NONLOCAL
+	case <-nonlocalChan:
+		dontLeakNode(nonlocal)
+	case <-localChan:
+		dontLeakNode(nonlocal)
+	}
+	select { // LOCAL
+	case <-localChan: // LOCAL
+		dontLeakNode(nonlocal)
+	}
+	// Send
+	localChan <- 4    // LOCAL
+	nonlocalChan <- 6 // NONLOCAL
+	// Slice
+	_ = intSlice[1:2] // LOCAL
+	// SliceToArrayPointer
+	_ = (*[2]int)(intSlice[1:2]) // LOCAL
+	// Store
+	local.value = "a"    // LOCAL
+	nonlocal.value = "B" // NONLOCAL
+	// TypeAssert
+	_, ok := binterNonlocal.(*Bstruct) // NONLOCAL
+	_, ok = binter.(*Bstruct)          // LOCAL
+	_ = ok
+	// UnOp
+	// recv
+	_ = <-localChan    // LOCAL
+	_ = <-nonlocalChan // NONLOCAL
+	// load
+	_ = nonlocal.next // NONLOCAL
+	_ = local.next    // LOCAL
+	// arithmetic
+	_ = -x // LOCAL
+}
+
+func returnTest() *Node {
+	return &globalNode // LOCAL
+}
+
+func defersTest() {
+	defer func() {}() // LOCAL
+	return            // LOCAL
+}
+
+func testPanic() {
+	panic("hi") // LOCAL
 }
