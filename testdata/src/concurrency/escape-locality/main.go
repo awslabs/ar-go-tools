@@ -206,6 +206,13 @@ func (b *Bstruct) Bfunc(x int) int {
 	return b.x * x
 }
 
+func returnNodeStruct() *Node {
+	return &Node{nil, "hi"}
+}
+func returnArray() [2]int {
+	return [2]int{1, 2}
+}
+
 func testAllInstructions(x int) {
 	// Alloc
 	local := &Node{} // LOCAL
@@ -249,10 +256,11 @@ func testAllInstructions(x int) {
 	a = b // LOCAL
 	b = a // LOCAL
 	// Field
-	// TODO: this doesn't actually generate Field instructions, but instead FieldAddr?
-	n := *local     // LOCAL
-	nNext := n.next // LOCAL
-	dontLeakNode(nNext)
+	// instruction split so the .local and the function call can have different annotations
+	nodeRet := returnNodeStruct()
+	_ = nodeRet.value
+	_ = returnNodeStruct(). // NONLOCAL
+				value // LOCAL
 	// FieldAddr
 	// First one is FieldAddr and Load, second/third are FieldAddr only
 	_ = local.next     // LOCAL
@@ -269,10 +277,19 @@ func testAllInstructions(x int) {
 		dontLeakNode(node2)
 	}
 	// Index
-	// TODO: how to generate this instruction?
+	// TODO: this test can't quite test the right thing as we need a function
+	// call to get an Index instruction, but calls are always non-local so
+	// we can't enforce that the Index operation itself is nonlocal. There
+	// doesn't appear to be a way to split the line without automatically
+	// getting a ; inserted, either.
+	_ = returnArray()[ // NONLOCAL
+	1]                 // LOCAL
+
 	// IndexAddr
-	intSlice := []int{1, 2, 3, 4} // LOCAL
-	_ = &intSlice[1]              // LOCAL
+	intSlice := []int{1, 2, 3, 4}  // LOCAL
+	intArray := [4]int{1, 2, 3, 4} // LOCAL
+	_ = &intSlice[1]               // LOCAL
+	_ = &intArray[1]               // LOCAL
 	// Jump
 	// TODO: How to annotate this instruction in the SSA?
 	// Lookup

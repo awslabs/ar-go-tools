@@ -1779,6 +1779,9 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 		// address calculations don't involve loads
 		// TODO: what about ssa.IndexAddr with arrays?
 		return true
+	case *ssa.Field, *ssa.Index:
+		// Field/Index is always applied to a value type, so it does not access memory.
+		return true
 	case *ssa.Slice, *ssa.SliceToArrayPointer:
 		return true // taking sub-slices is an array operation
 	case *ssa.MakeInterface, *ssa.Convert,
