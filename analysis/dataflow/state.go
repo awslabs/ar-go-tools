@@ -175,6 +175,7 @@ func (c *AnalyzerState) PrintImplementations(w io.Writer) {
 	}
 }
 
+// AddError adds an error with key and error e to the state.
 func (c *AnalyzerState) AddError(key string, e error) {
 	c.errorMutex.Lock()
 	defer c.errorMutex.Unlock()
@@ -183,6 +184,9 @@ func (c *AnalyzerState) AddError(key string, e error) {
 	}
 }
 
+// CheckError checks whether there is an error in the state, and if there is, returns the first it encounters and
+// deletes it. The slice returned contains all the errors associated with one single error key (as used in
+// [*AnalyzerState.AddError])
 func (c *AnalyzerState) CheckError() []error {
 	c.errorMutex.Lock()
 	defer c.errorMutex.Unlock()
@@ -191,6 +195,18 @@ func (c *AnalyzerState) CheckError() []error {
 		return errs
 	}
 	return nil
+}
+
+// HasErrors returns true if the state has an error. Unlike [*AnalyzerState.CheckError], this is non-destructive.
+func (c *AnalyzerState) HasErrors() bool {
+	c.errorMutex.Lock()
+	defer c.errorMutex.Unlock()
+	for _, errs := range c.errors {
+		if len(errs) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations

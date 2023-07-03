@@ -320,7 +320,7 @@ In the specification for the `Reader` method, the first argument's data flows to
 
 The dataflow analysis does not support concurrency by default, meaning that it is unsound in the presence of concurrent 
 threads (or goroutines). However, it can use the escape analysis built in Argot to check the validity of this assumption, and raise an 
-alarm whenever that assumption is not met. In other words, this will raise a warning when the flow of data from a 
+alarm whenever the assumption that *concurrency does not interfere with dataflow* is not met. In other words, this will raise a warning when the flow of data from a 
 source may interact with a memory location that is not thread-local.
 
 To enable the escape analysis, use the following option in the config file:

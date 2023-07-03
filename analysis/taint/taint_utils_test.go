@@ -70,9 +70,13 @@ func checkExpectedPositions(t *testing.T, p *ssa.Program, flows *Flows,
 		"failed to detect that:\n%s\nescapes at\n%s\n")
 }
 
+func noErrorExpected(_ error) bool {
+	return false
+}
+
 // runTest runs a test instance by building the program from all the files in files plus a file "main.go", relative
 // to the directory dirName
-func runTest(t *testing.T, dirName string, files []string) {
+func runTest(t *testing.T, dirName string, files []string, errorExpected func(e error) bool) {
 	// Change directory to the testdata folder to be able to load packages
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", dirName)
@@ -87,7 +91,11 @@ func runTest(t *testing.T, dirName string, files []string) {
 	cfg.LogLevel = int(config.InfoLevel)
 	result, err := Analyze(cfg, program)
 	if err != nil {
-		t.Fatalf("taint analysis returned error %v", err)
+		for errs := result.State.CheckError(); len(errs) > 0; errs = result.State.CheckError() {
+			if !errorExpected(errs[0]) {
+				t.Fatalf("taint analysis returned error: %v", errs[0])
+			}
+		}
 	}
 
 	expectSourceToSinks, expectSourceToEscape := analysistest.GetExpectSourceToTargets(dir, ".")

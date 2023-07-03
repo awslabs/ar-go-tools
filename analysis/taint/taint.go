@@ -15,6 +15,7 @@
 package taint
 
 import (
+	"fmt"
 	"runtime"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -98,7 +99,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// ** Third step **
 	// the inter-procedural analysis is run over the entire program, which has been summarized in the
 	// previous step by building function summaries. This analysis consists in checking whether there exists a sink
-	// that is reachable from a currentSource.
+	// that is reachable from a source.
 	visitor := NewVisitor(nil)
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		AnalyzerState: state,
@@ -120,7 +121,11 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// Additional analyses are run after the taint analysis has completed. Those analyses check the soundness of the
 	// result after the fact, and some other analyses can be used to prune false alarms.
 
-	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: visitor.taints}, nil
+	if state.HasErrors() {
+		err = fmt.Errorf("analysis returned errors, check AnalysisResult.State for more details")
+	}
+	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: visitor.taints}, err
+
 }
 
 func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.Config, numRoutines int) {

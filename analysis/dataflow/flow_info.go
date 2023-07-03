@@ -35,7 +35,9 @@ type FlowInformation struct {
 	// set of marks
 	MarkedValues map[ssa.Instruction]map[ssa.Value]map[Mark]bool
 
-	// LocSet is a map from marks to the instructions that read or write those marks
+	// LocSet is a map from marks to the locations associated to it. A location is associated to a mark when it
+	// is used to propagate the mark during the monotone analysis. This is meant to be used by other analyses, and
+	// does not contain user-interpretable information.
 	LocSet map[Mark]map[ssa.Instruction]bool
 }
 

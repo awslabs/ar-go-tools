@@ -117,7 +117,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		logger.Tracef("----------------\n")
 		logger.Tracef("Visiting %T node: %v\n\tat %v\n", elt.Node, elt.Node, elt.Node.Position(s))
 
-		// If node is sink, then we reached a sink from a currentSource, and we must log the taint flow.
+		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(elt.Node, s.Config) {
 			if v.taints.addNewPathCandidate(v.currentSource.Node, elt.Node) {
 				numAlarms++
@@ -371,7 +371,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// For example:
 		// 1:  x := "ok" // x is not tainted here
 		// 2: f := func(s string) string { return s + x } // x is bound here
-		// 3: x := currentSource()
+		// 3: x := source()
 		// 4: sink(f("ok")) // will raise an alarm
 		// The flow goes from x at line 3, to x being bound at line 2, to x the free variable
 		// inside the closure definition, and finally from the return of the closure to the
@@ -650,15 +650,18 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	if escapeGraph != nil {
 		v.checkEscape(s, nextNode, escapeGraph)
 	} else {
-		s.Logger.Errorf("missing escape graph for %s in context %s.", f, nKey)
+		e := fmt.Errorf("missing escape for %s in context %s", f, nKey)
+		s.Logger.Errorf(e.Error())
 		s.Logger.Debugf("%s has %d contexts", f, len(v.escapeGraphs[f]))
+		s.AddError(e.Error(), e)
 	}
 	return update
 }
 
 func (v *Visitor) checkEscape(s *df.AnalyzerState, node df.GraphNode, escapeInfo *EscapeInfo) {
 	if escapeInfo == nil {
-		s.Logger.Errorf("checking escape with missing escape graph!")
+		s.AddError("missing escape graph",
+			fmt.Errorf("was missing escape graph for node %s when checking escape", node))
 	}
 	for instr := range node.Marks() {
 		_, isCall := instr.(ssa.CallInstruction)
