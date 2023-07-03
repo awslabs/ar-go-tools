@@ -382,10 +382,10 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 func (state *IntraAnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
 	if lang.IsNillableType(out.Type()) {
 		for aliasedParam := range state.paramAliases[out] {
-			state.summary.AddParamEdge(in, nil, state.flowInfo.LocSet[in], aliasedParam)
+			state.summary.AddParamEdge(in, nil, aliasedParam)
 		}
 		for aliasedFreeVar := range state.freeVarAliases[out] {
-			state.summary.AddFreeVarEdge(in, nil, state.flowInfo.LocSet[in], aliasedFreeVar)
+			state.summary.AddFreeVarEdge(in, nil, aliasedFreeVar)
 		}
 	}
 }
@@ -393,7 +393,7 @@ func (state *IntraAnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
 // checkFlowIntoGlobal checks whether the origin is data flowing into a global variable
 func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, origin Mark, out ssa.Value) {
 	if glob, isGlob := out.(*ssa.Global); isGlob {
-		state.summary.AddGlobalEdge(origin, nil, state.flowInfo.LocSet[origin], loc, glob)
+		state.summary.AddGlobalEdge(origin, nil, loc, glob)
 	}
 }
 

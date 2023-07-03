@@ -38,7 +38,7 @@ There is user documentation in the `doc` folder.
 The test data is in the `testdata` folder. All the Go source files used in the tests are in `testdata/src`.
 
 The library code, and most of the analysis implementations, is in the `analysis` folder. The main entry points are in
-the `load_progam.go` file for loading progam and `analyzers.go` to call analyzers. The rest is organized in subfolders:
+the `load_progam.go` file for loading program and `analyzers.go` to call analyzers. The rest is organized in subfolders:
 - `astfuncs` contains functions for manipulating the Go AST,
 - `backtrace` implements the "backtrace" analysis,
 - `concurrency` contains the concurrency analyses,

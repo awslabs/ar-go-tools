@@ -42,6 +42,7 @@ var globalVar *Node = nil
 
 func main() {
 	testLocality()
+	testLocality2()
 	testRecursion()
 	failInterproceduralLocality1()
 	testInterproceduralLocality1()
@@ -49,6 +50,20 @@ func main() {
 	testDiamond()
 	testAllInstructions(423)
 	testExampleEscape7()
+}
+
+func testLocality2() {
+	s := "a"
+	x := &Node{&Node{nil, "ok"}, "ok"} // LOCAL
+	go ex14foo(x.next)
+	if x.next.next != nil {
+		x.next.next.value = s // NONLOCAL
+	}
+}
+
+func ex14foo(n *Node) {
+	n.next = &Node{}
+	fmt.Printf(n.next.value) // NONLOCAL
 }
 
 func testLocality() {
