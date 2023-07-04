@@ -420,7 +420,7 @@ func (c *AnalyzerState) linkContracts(allContracts []Contract) {
 	// DataFlowContracts map of the analyzer state.
 	for f := range c.ReachableFunctions(false, false) {
 		if _, hasContract := c.DataFlowContracts[f.String()]; hasContract {
-			c.DataFlowContracts[f.String()] = NewSummaryGraph(nil, f, GetUniqueFunctionId())
+			c.DataFlowContracts[f.String()] = NewSummaryGraph(nil, f, GetUniqueFunctionId(), nil, nil)
 		}
 	}
 

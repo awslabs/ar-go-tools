@@ -150,8 +150,15 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			logger.Warnf("%s: summary has not been built for %s.",
 				colors.Yellow("WARNING"),
 				colors.Yellow(elt.Node.Graph().Parent.Name()))
-			// In that case, continue as there is no information on data flow
-			continue
+			if s.Config.SummarizeOnDemand {
+				err := df.RunIntraProcedural(s, elt.Node.Graph())
+				if err != nil {
+					return
+				}
+			} else {
+				// In that case, continue as there is no information on data flow
+				continue
+			}
 		}
 
 		switch graphNode := elt.Node.(type) {

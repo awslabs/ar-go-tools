@@ -180,7 +180,7 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to
 // build the inter-procedural dataflow graph. Then, it looks for every entry point designated by the isEntryPoint
-// predicate to run the visitor on those points (using the [*InterProceduralFlowGraph.RunVisitorOnEntryPoints]
+// predicate to RunIntraProcedural the visitor on those points (using the [*InterProceduralFlowGraph.RunVisitorOnEntryPoints]
 // function).
 //
 // Most of the logic of the analysis will be in the visitor's implementation by the client. This function is mostly
@@ -254,7 +254,7 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 
 	g.AnalyzerState.Logger.Debugf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
 
-	// Run the analysis for every entrypoint. We may be able to change this to run the analysis for all entrypoints
+	// Run the analysis for every entrypoint. We may be able to change this to RunIntraProcedural the analysis for all entrypoints
 	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
 	for _, entry := range entryPoints {
 		visitor.Visit(g.AnalyzerState, entry)

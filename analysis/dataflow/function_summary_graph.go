@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -679,13 +680,23 @@ type SummaryGraph struct {
 
 	// nodeCounter is used to track the number of nodes in the graph
 	nodeCounter uint32
+
+	// Below is some information related to how the summary was built. This allows us to restart building the summary
+	// if it has not been constructed.
+
+	// shouldTrack is the function used to identify specific nodes that have been tracked to build that graph.
+	shouldTrack func(*config.Config, ssa.Node) bool
+
+	// postBlockCallBack is the function that has been used after a block is completed to adjust the state
+	postBlockCallBack func(state *IntraAnalysisState)
 }
 
 // NewSummaryGraph builds a new summary graph given a function and its corresponding node.
 // Returns a non-nil value if and only if f is non-nil.
 // If s is nil, this will not populate the callees of the summary.
 // If non-nil, the returned summary graph is marked as not constructed.
-func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32) *SummaryGraph {
+func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack func(*config.Config, ssa.Node) bool,
+	postBlockCallBack func(state *IntraAnalysisState)) *SummaryGraph {
 	if f == nil {
 		return nil
 	}
@@ -706,6 +717,8 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32) *SummaryGraph
 		BoundLabelNodes:       make(map[ssa.Instruction]*BoundLabelNode),
 		errors:                map[error]bool{},
 		nodeCounter:           0,
+		shouldTrack:           shouldTrack,
+		postBlockCallBack:     postBlockCallBack,
 	}
 	// Add the parameters
 	for pos, param := range f.Params {
@@ -1036,7 +1049,7 @@ func (g *SummaryGraph) AddBoundLabelNode(instr ssa.Instruction, label *pointer.L
 	}
 }
 
-func (g *SummaryGraph) AddSyntheticNodeEdge(mark Mark, info *ConditionInfo, instr ssa.Instruction, label string) {
+func (g *SummaryGraph) AddSyntheticEdge(mark Mark, info *ConditionInfo, instr ssa.Instruction, label string) {
 
 	node, ok := g.SyntheticNodes[instr]
 	if !ok {
@@ -1251,8 +1264,8 @@ func (g *SummaryGraph) AddCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.C
 	}
 }
 
-// AddCallNodeEdge adds an edge that flows to a call node.
-func (g *SummaryGraph) AddCallNodeEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction) {
+// AddCallEdge adds an edge that flows to a call node.
+func (g *SummaryGraph) AddCallEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction) {
 
 	callNodes := g.Callees[call]
 	if callNodes == nil {
@@ -1466,7 +1479,7 @@ func LoadPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
 	if !ok {
 		return nil
 	}
-	summaryBase := NewSummaryGraph(nil, f, id)
+	summaryBase := NewSummaryGraph(nil, f, id, nil, nil)
 	summaryBase.PopulateGraphFromSummary(preDef, false)
 	return summaryBase
 }

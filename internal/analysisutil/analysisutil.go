@@ -75,7 +75,10 @@ func FindSafeCalleePkg(n *ssa.CallCommon) Optional[string] {
 		return None[string]()
 	}
 	if n.IsInvoke() && n.Method != nil {
-		return Some(n.Method.Pkg().Path())
+		if pkg := n.Method.Pkg(); pkg != nil {
+			return Some(pkg.Path())
+		}
+		return None[string]()
 	}
 	if n.StaticCallee() == nil || n.StaticCallee().Pkg == nil {
 		return None[string]()

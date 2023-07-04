@@ -211,7 +211,7 @@ func addContractSummaryGraph(contracts map[string]*SummaryGraph, methodId string
 	// Entry must be present
 	if curSummary, ok := contracts[methodId]; ok {
 		if curSummary == nil {
-			contracts[methodId] = NewSummaryGraph(nil, function, id)
+			contracts[methodId] = NewSummaryGraph(nil, function, id, nil, nil)
 		}
 	}
 }
