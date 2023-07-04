@@ -57,7 +57,7 @@ func (b BindingInfo) Type() types.Type {
 // y in X[v], y.MakeClosure is the instruction that captures it and y.BoundIndex is the bound variable that aliases v.
 type BoundingMap map[ssa.Value]map[*BindingInfo]bool
 
-// RunBoundingAnalysis computes the BoundingMap of the program in the analzyer state by iterating over the instructions
+// RunBoundingAnalysis computes the BoundingMap of the program in the analyzer state by iterating over the instructions
 // of each reachable function.
 func RunBoundingAnalysis(state *AnalyzerState) (BoundingMap, error) {
 	if state.PointerAnalysis == nil {

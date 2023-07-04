@@ -84,7 +84,7 @@ TRACE: [processData->t52] /somedir/main.go:324:32
 TRACE: [processData->t52] /somedir/main.go:34:43
 SINK: /somedir/main.go:142:3
 ```
-The first lines indicate that a flow of tainted data has been found and it reports a representation of the instructions where the source and sinks have been found. If the configuration specifies `reportpaths : true` then the next line shows where the report is stored.
+The first lines indicate that a flow of tainted data has been found, and it reports a representation of the instructions where the source and sinks have been found. If the configuration specifies `reportpaths : true` then the next line shows where the report is stored.
 Each subsequent line starting with `TRACE` shows an approximate trace from the source to the sink, with the locations at the end and the function calls between brackets. The user can inspect those locations to see whether this trace is a false alarm, or it is a path that can occur in some execution of the program.
 Finally, the tool prints the location of the sink. In some cases, the precise locations will not be available and the user will see a dash `-` printed instead of the location.
 
@@ -170,7 +170,7 @@ If the analysis was field-sensitive, it would not raise an alarm.
 
 ### Tuple Sensitivity
 
-The taint analysis is *tuple-sensitive*: it tracks the taint of different elements of the tuple separately. This is easier in Go than in other languages because tuples only exist at the boundary of function calls an returns, they cannot be manipulated elsewhere in the code.
+The taint analysis is *tuple-sensitive*: it tracks the taint of different elements of the tuple separately. This is easier in Go than in other languages because tuples only exist at the boundary of function calls a returns, they cannot be manipulated elsewhere in the code.
 This means that in the following example, no false alarm is raised:
 ```[go]
 
@@ -251,9 +251,9 @@ func main2() {
 	example2.LogDataPublicly(x.f) // an alarm is raised here
 }
 ```
-In this example, the taint may flow from `b` to `x` in `catchPanic` through `maypanic`, assuming for example that the `bar()` function may panic. When `bar()` does not panic, `b` is cleared of the taint, and `x.f` is not tainted by the defer. However, if `bar()` panics, the deferred function executes in a state where `b` is tainted, and therefore `x` gets tainted. Because `catchPanic` recovers from the panic, `x` will be tainted when `catchPanic` returns. The taint tool correctly catches this possible taint flow.
+In this example, the taint may flow from `b` to `x` in `catchPanic` through `maypanic`, assuming for example that the `bar()` function may panic. When `bar()` does not panic, `b` is cleared of the taint, and `x.f` is not tainted by the "defer". However, if `bar()` panics, the deferred function executes in a state where `b` is tainted, and therefore `x` gets tainted. Because `catchPanic` recovers from the panic, `x` will be tainted when `catchPanic` returns. The taint tool correctly catches this possible taint flow.
 
-> ⚠️ Programmers should not rely on reinitializing variables to clear taint inside of arbitrary functions. Instead, sanitize or validate the data in a clearly delineated function, where all possible execution paths can be carefully examined. The taint tool is conservative with respect to possible execution of defers and may raise false alarms, but it will raise fewer false alarms if the sanitization is properly done within the designated sanitizer function. However, it is the user's responsibility to ensure the sanitizer does the sanitization.
+> ⚠️ Programmers should not rely on reinitializing variables to clear taint inside arbitrary functions. Instead, sanitize or validate the data in a clearly delineated function, where all possible execution paths can be carefully examined. The taint tool is conservative with respect to possible execution of defers and may raise false alarms, but it will raise fewer false alarms if the sanitization is properly done within the designated sanitizer function. However, it is the user's responsibility to ensure the sanitizer does the sanitization.
 
 ### Globals
 
@@ -327,7 +327,7 @@ To enable the escape analysis, use the following option in the config file:
 ```yaml
 useescapeanalysis: true
 ```
-Then if any tainted data *escapes* the thread it originates from, the tool will print those locations at the end of its
+If any tainted data *escapes* the thread it originates from, the tool will print those locations at the end of its
 output.
 For example, try running `./bin/taint -config testdata/src/taint/sample-escape/config.yaml testdata/src/taint/sample-escape/main.go`, 
 you should see some output similar to:

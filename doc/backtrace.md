@@ -2,14 +2,14 @@
 
 The "backtrace" analysis tool `backtrace` performs a whole program, backwards interprocedural dataflow analysis on the input program that is given. It is not necessary to understand those terms in order to use the tool. In this section we focus on explaining the user interface of the backtrace tool and give examples of what it can analyze. To understand how the backtrace analysis works, the reader should refer to the technical report (work in progress). Here we explain *how to use the backtrace analysis tool* through a set of examples (in [Backtrace Analysis Examples](#backtrace-analysis-examples)).
 
-The tool will report backwards data flows from ***backtrace-points***, which are the functions from which the analysis should identify backwards data flows (traces). Those components are specified in the configuration file by the user (see [Backtrace Analysis Configuration](#backtrace-analysis-configuration)). The tool will output traces for each of the traces detected (and additional information if specified in the configuration file) (see [Backtrace Analysis Output](#backtrace-analysis-output)). The analysis entrypoints are all of the arguments to all of the calls of the backtrace-point functions. A trace represents a data flow path through the program backwards from an entrypoint. This analysis is guaranteed to report every possible backwards data flow from an entrypoint.
+The tool will report backwards data flows from ***backtrace-points***, which are the functions from which the analysis should identify backwards data flows (traces). Those components are specified in the configuration file by the user (see [Backtrace Analysis Configuration](#backtrace-analysis-configuration)). The tool will output traces for each of the traces detected (and additional information if specified in the configuration file) (see [Backtrace Analysis Output](#backtrace-analysis-output)). The analysis entry points are all the arguments to all the calls of the backtrace-point functions. A trace represents a data flow path through the program backwards from an entrypoint. This analysis is guaranteed to report every possible backwards data flow from an entrypoint.
 
 A trace terminates for a specific entrypoint when an instruction no longer has any inward data flow paths. For example, a trace which reaches the function call argument `f("end")` will end---the string constant `"end"` has no more inward data flow paths because no instructions write to it.
 
 > ⚠ The backtrace analysis does not support usages of the `reflect` and `unsafe` packages. We explain later how to analyze programs in the presence of those, but the result is not guaranteed to be correct when the analysis raises no alarms.
 
 ## Backtrace Analysis Configuration
-On top of the configuration options listed in the common fields, the user can configure backtrace-analysis specific options. The main configuration fields are the core components of the problem specification, which are the entrypoints to the analysis. The *backtrace-points* identify the functions from which the analysis should find all of the backwards data flows.
+On top of the configuration options listed in the common fields, the user can configure backtrace-analysis specific options. The main configuration fields are the core components of the problem specification, which are the entry points to the analysis. The *backtrace-points* identify the functions from which the analysis should find all the backwards data flows.
 
 Below is an example of a config file containing a basic backtrace analysis specification:
 ```
@@ -17,7 +17,7 @@ backtracepoints:                        # A list of entrypoints
     - package: "os/exec"
       method: "Command$"
 ```
-In this configuration file, the user is trying to detect all the possible traces from calls to some function `Command` in a package matching `os/exec`. The tool will treat all of the arguments to all of the calls to `os/exec.Command` as entrypoints.
+In this configuration file, the user is trying to detect all the possible traces from calls to some function `Command` in a package matching `os/exec`. The tool will treat all the arguments to all the calls to `os/exec.Command` as entry points.
 
 > 📝 Note that all strings in the `package` and `method` fields are parsed as regexes; for example, to match `F` precisely, one should write `"^F"`; the `"backtracepoints"` specification will match any function name containing `F`.
 
@@ -173,12 +173,12 @@ In general, we do not know where the data written to a global may be read from. 
 
 ## Dataflow Specifications
 
-Dataflow specifications allow the user to specify dataflows for functions in their program. The analysis tool will skip analyzing those functions, loading the dataflow specified by the user instead. There are two kinds of user-specified dataflow summaries: summaries for functions, which specify the flow of data through a single function, and summaries for interface methods, which specify the flow of data through any of the interface method's implementation. The user must make sure that:
+Dataflow specifications allow the user to specify data flows for functions in their program. The analysis tool will skip analyzing those functions, loading the dataflow specified by the user instead. There are two kinds of user-specified dataflow summaries: summaries for functions, which specify the flow of data through a single function, and summaries for interface methods, which specify the flow of data through any of the interface method's implementation. The user must make sure that:
 - in the case of a single function summary, the specified data flows subsumes any possible data flow in the function implementation
 - for an interface method summary, the specified data flows subsumes any possible data flow, for any possible implementation
 
 There are two reasons a user may want to specify a data flow summary:
-- for performance: the analysis of some functions can take a lot of time, even though the flows of data can be summarized very succintly. This is the case for functions that have complex control flow and manipulate many data structures. It is also useful to summarize simple interfaces because this reduces the complexity of the call graph: a set of calls to every implementation of the interface is replaced by a single call to the summary for interface methods that are summarized by the user.
+- for performance: the analysis of some functions can take a lot of time, even though the flows of data can be summarized very succinctly. This is the case for functions that have complex control flow and manipulate many data structures. It is also useful to summarize simple interfaces because this reduces the complexity of the call graph: a set of calls to every implementation of the interface is replaced by a single call to the summary for interface methods that are summarized by the user.
 - for soundness: the analysis does not support reflection and some uses of the unsafe package. If a function uses those packages, then it should be summarized by the user. The analysis will raise alarms whenever some unsupported feature of the language is encountered during the analysis.
 
 Dataflow specifications are json files that contain a list of specifications. Each specification is a structure that contains either an `"InterfaceId"` or an `"ObjectPath"`, along with a dictionary `"Methods"`. If an interface id is specified, then the dataflow specifications for each of the methods are interpreted as specifications for the interface methods, i.e. they specify every possible implementation of the interface. For example, consider the following dataflow specifications:

@@ -683,8 +683,9 @@ type SummaryGraph struct {
 
 // NewSummaryGraph builds a new summary graph given a function and its corresponding node.
 // Returns a non-nil value if and only if f is non-nil.
+// If s is nil, this will not populate the callees of the summary.
 // If non-nil, the returned summary graph is marked as not constructed.
-func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
+func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32) *SummaryGraph {
 	if f == nil {
 		return nil
 	}
@@ -721,7 +722,7 @@ func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 	n := f.Signature.Results().Len()
 	returnNodes := make([]*ReturnValNode, n)
 	for i := 0; i < n; i++ {
-		returnNodes[i] = &ReturnValNode{parent: g, id: uint32(g.nodeCounter), index: i}
+		returnNodes[i] = &ReturnValNode{parent: g, id: g.nodeCounter, index: i}
 		g.nodeCounter++
 	}
 
@@ -737,7 +738,40 @@ func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 		}
 	}
 
+	g.initializeInnerNodes(s)
+
 	return g
+}
+
+func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState) {
+	// Add all call instructions
+	lang.IterateInstructions(g.Parent, func(_ int, instruction ssa.Instruction) {
+		switch x := instruction.(type) {
+		case ssa.CallInstruction:
+			if s != nil && !isHandledBuiltinCall(x) {
+				g.addCallInstr(s, x)
+			}
+		case *ssa.MakeClosure:
+			g.addClosure(x)
+		}
+	})
+
+	// Add global nodes if the state is non-nil
+	if s != nil {
+		lang.IterateInstructions(g.Parent,
+			func(_ int, i ssa.Instruction) {
+				var operands []*ssa.Value
+				operands = i.Operands(operands)
+				for _, operand := range operands {
+					// Add marks for globals
+					if glob, ok := (*operand).(*ssa.Global); ok {
+						if node, ok := s.Globals[glob]; ok {
+							g.AddAccessGlobalNode(i, node)
+						}
+					}
+				}
+			})
+	}
 }
 
 func (g *SummaryGraph) ReturnType() *types.Tuple {
@@ -826,9 +860,9 @@ func (g *SummaryGraph) addCallNode(node *CallNode) bool {
 	return true
 }
 
-// AddCallInstr adds a call site to the summary from a call instruction (use when no call graph is available)
+// addCallInstr adds a call site to the summary from a call instruction (use when no call graph is available)
 // @requires g != nil
-func (g *SummaryGraph) AddCallInstr(c *AnalyzerState, instr ssa.CallInstruction) {
+func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction) {
 	// Already seen this instruction? Multiple calls of this function will not gather more information.
 	if _, ok := g.Callees[instr]; ok {
 		return
@@ -912,9 +946,9 @@ func (g *SummaryGraph) addReturn(instr ssa.Instruction, node *ReturnValNode) {
 	g.Returns[instr][node.index] = node
 }
 
-// AddClosure adds a closure node to the summary
+// addClosure adds a closure node to the summary
 // @requires g != nil
-func (g *SummaryGraph) AddClosure(x *ssa.MakeClosure) {
+func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
 	if _, ok := g.CreatedClosures[x]; ok {
 		return
 	}
@@ -1432,7 +1466,7 @@ func LoadPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
 	if !ok {
 		return nil
 	}
-	summaryBase := NewSummaryGraph(f, id)
+	summaryBase := NewSummaryGraph(nil, f, id)
 	summaryBase.PopulateGraphFromSummary(preDef, false)
 	return summaryBase
 }

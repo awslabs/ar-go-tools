@@ -25,7 +25,8 @@ func main() {
 	err = nil
 	a = nil
 	x := 1
-	if x > 0 {
+	if //goland:noinspection GoBoolExpressions
+	x > 0 {
 		y := 1
 		fmt.Printf("%d, %d, %v\n", y, a, err)
 	}

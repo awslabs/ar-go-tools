@@ -62,13 +62,13 @@ func TestFunctionSummaries(t *testing.T) {
 	}
 
 	for function, summary := range state.FlowGraph.Summaries {
-		summary_ids := map[uint32]bool{}
+		summaryIds := map[uint32]bool{}
 		// Check that summary's nodes all have different ids
 		summary.ForAllNodes(func(n dataflow.GraphNode) {
-			if summary_ids[n.ID()] {
+			if summaryIds[n.ID()] {
 				t.Errorf("node ids should be unique")
 			}
-			summary_ids[n.ID()] = true
+			summaryIds[n.ID()] = true
 		})
 
 		if function.Name() == "main" {
@@ -215,8 +215,8 @@ func TestFunctionSummaries(t *testing.T) {
 				}
 			}
 
-			for _, t_ret := range summary.Returns {
-				for _, ret := range t_ret {
+			for _, tRet := range summary.Returns {
+				for _, ret := range tRet {
 					if len(ret.Out()) != 0 {
 						t.Errorf("in Foo, return should not have any outgoing edges, but got: %v", ret.Out())
 					}
@@ -253,8 +253,8 @@ func TestFunctionSummaries(t *testing.T) {
 				t.Errorf("FooBar graph is not as expected")
 			}
 
-			for _, t_ret := range summary.Returns {
-				for _, ret := range t_ret {
+			for _, tRet := range summary.Returns {
+				for _, ret := range tRet {
 					if len(ret.Out()) != 0 {
 						t.Errorf("in FooBar, return should not have any outgoing edges, but got: %v", ret.Out())
 					}

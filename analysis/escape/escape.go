@@ -67,7 +67,7 @@ const (
 // cells of various kinds (maps, slices, arrays, structs)
 type Node struct {
 	kind      NodeKind
-	number    int    // For unambigous debug printing
+	number    int    // For unambiguous debug printing
 	debugInfo string // where this node comes from
 }
 
@@ -1618,7 +1618,7 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 }
 
 // This just prints the escape summary for each function in the callgraph.
-// This interface will change substaintially when intraprocedural analysis is finalized.
+// This interface will change substantially when intra-procedural analysis is finalized.
 //
 //gocyclo:ignore
 func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
@@ -1628,7 +1628,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		globalNodes: &globalNodeGroup{0},
 		logger:      state.Logger.GetDebug(),
 	}
-	// Find all the nodes that are in the main package, and thus treat everything else as unsummarized
+	// Find all the nodes that are in the main package, and thus treat everything else as not summarized
 	nodes := []*callgraph.Node{}
 	for f, node := range state.PointerAnalysis.CallGraph.Nodes {
 		if len(f.Blocks) > 0 {
@@ -1794,7 +1794,7 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 		// control flow (at least the operation itself, if not the computation of the argument(s)) is local
 		return true
 	case *ssa.Panic:
-		// Panicing is not itself non-local, although it may of course trigger executions that are non-local
+		// Panicking is not itself non-local, although it may of course trigger executions that are non-local
 		return true
 	case *ssa.MapUpdate:
 		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Map))

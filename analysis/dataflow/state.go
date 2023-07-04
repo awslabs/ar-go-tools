@@ -58,7 +58,7 @@ type AnalyzerState struct {
 	Globals map[*ssa.Global]*GlobalNode
 
 	// The dataflow analysis results
-	FlowGraph *CrossFunctionFlowGraph
+	FlowGraph *InterProceduralFlowGraph
 
 	// The escape analysis state
 	EscapeAnalysisState EscapeAnalysisState
@@ -112,7 +112,7 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 		keys:                  map[string]string{},
 		PointerAnalysis:       nil,
 		Globals:               map[*ssa.Global]*GlobalNode{},
-		FlowGraph: &CrossFunctionFlowGraph{
+		FlowGraph: &InterProceduralFlowGraph{
 			Summaries:     map[*ssa.Function]*SummaryGraph{},
 			AnalyzerState: nil,
 		},
@@ -420,7 +420,7 @@ func (c *AnalyzerState) linkContracts(allContracts []Contract) {
 	// DataFlowContracts map of the analyzer state.
 	for f := range c.ReachableFunctions(false, false) {
 		if _, hasContract := c.DataFlowContracts[f.String()]; hasContract {
-			c.DataFlowContracts[f.String()] = NewSummaryGraph(f, GetUniqueFunctionId())
+			c.DataFlowContracts[f.String()] = NewSummaryGraph(nil, f, GetUniqueFunctionId())
 		}
 	}
 

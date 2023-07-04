@@ -68,7 +68,7 @@ func PackageTypeFromFunction(f *ssa.Function) *types.Package {
 	return nil
 }
 
-// PackageNameFromFunction returns the best possible package name for an ssa.Function
+// PackageNameFromFunction returns the best possible package name for a ssa.Function
 // If the Function has a package, use that.
 // If the function doesn't have a package, check if it's a method and use
 // the package associated with its object

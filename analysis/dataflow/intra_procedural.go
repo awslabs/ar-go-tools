@@ -56,7 +56,7 @@ func SingleFunctionAnalysis(state *AnalyzerState,
 	existingSummary := state.FlowGraph.Summaries[function]
 
 	if existingSummary == nil {
-		sm = NewSummaryGraph(function, id)
+		sm = NewSummaryGraph(state, function, id)
 	} else {
 		sm = existingSummary
 	}

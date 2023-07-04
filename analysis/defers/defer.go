@@ -60,17 +60,17 @@ func stackSetEmpty() StackSet {
 //	a > b <--> stackCompare(a, b) > 0
 func stackCompare(a Stack, b Stack) int {
 	for i := 0; i < len(a) && i < len(b); i++ {
-		a_ins, b_ins := a[i], b[i]
-		if a_ins.Block < b_ins.Block {
+		aIns, bIns := a[i], b[i]
+		if aIns.Block < bIns.Block {
 			return -1
 		}
-		if a_ins.Block > b_ins.Block {
+		if aIns.Block > bIns.Block {
 			return 1
 		}
-		if a_ins.Ins < b_ins.Ins {
+		if aIns.Ins < bIns.Ins {
 			return -1
 		}
-		if a_ins.Ins > b_ins.Ins {
+		if aIns.Ins > bIns.Ins {
 			return 1
 		}
 	}

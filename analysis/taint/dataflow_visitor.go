@@ -58,13 +58,13 @@ type Visitor struct {
 }
 
 // NewVisitor returns a Visitor that can be used with
-// [pkg/github.com/awslabs/ar-go-tools/analysis/dataflow.CrossFunctionPass] to run the taint analysis
+// [pkg/github.com/awslabs/ar-go-tools/analysis/dataflow.BuildAndRunVisitor] to run the taint analysis
 // independently of the  [Analyze] function
-func NewVisitor(coverageWriter io.StringWriter) *Visitor {
+func NewVisitor() *Visitor {
 	return &Visitor{
 		currentSource:  df.NodeWithTrace{},
 		taints:         NewFlows(),
-		coverageWriter: coverageWriter,
+		coverageWriter: nil,
 		roots:          map[df.NodeWithTrace]*df.VisitorNode{},
 		visited:        map[*df.CallStack]bool{},
 		escapeGraphs:   map[*ssa.Function]map[df.KeyType]*EscapeInfo{},
@@ -345,6 +345,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					que = v.addNext(s, que, seen, elt, cCall, oPath, elt.Trace, elt.ClosureTrace.Parent)
 				}
 			} else if len(graphNode.Graph().Callsites) > 0 {
+				s.Logger.Infof("Flow back without trace from %s", graphNode.Graph().Parent)
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					for x, oPath := range callSite.Out() {
@@ -497,42 +498,43 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// A BoundLabel flows to the body of the closure that captures it.
 		case *df.BoundLabelNode:
-			closureSummary := graphNode.DestClosure()
-			if closureSummary == nil {
+			destClosureSummary := graphNode.DestClosure()
+			if destClosureSummary == nil {
 				if s.Config.SummarizeOnDemand {
-					closureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function), IsSourceNode)
+					destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function), IsSourceNode)
 					s.FlowGraph.BuildGraph(IsSourceNode)
 				} else {
-					logger.Warnf("Missing closure summary for bound label %v at %v\n", graphNode, graphNode.Position(s))
+					logger.Warnf("Missing closure summary for bound label %v at %v\n", graphNode,
+						graphNode.Position(s))
 					break
 				}
 			}
 
-			if s.Config.SummarizeOnDemand && len(closureSummary.ReferringMakeClosures) == 0 {
+			if s.Config.SummarizeOnDemand && len(destClosureSummary.ReferringMakeClosures) == 0 {
 				// Summarize the bound label's closure's parent function
 				f := graphNode.DestClosure().Parent
 				df.BuildSummary(s, f, IsSourceNode)
 				s.FlowGraph.BuildGraph(IsSourceNode)
 			}
 
-			if len(closureSummary.ReferringMakeClosures) == 0 {
+			if len(destClosureSummary.ReferringMakeClosures) == 0 {
 				panic(fmt.Errorf("[No Context] no referring make closure nodes from %v", graphNode))
 			}
 
-			closureNode := closureSummary.ReferringMakeClosures[graphNode.DestInfo().MakeClosure]
+			closureNode := destClosureSummary.ReferringMakeClosures[graphNode.DestInfo().MakeClosure]
 			if closureNode == nil {
 				logger.Warnf("Missing closure node for bound label %v at %v\n", graphNode, graphNode.Position(s))
 				break
 			}
 			// Flows to the free variables of the closure
 			// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
-			fv := closureSummary.Parent.FreeVars[graphNode.Index()]
+			fv := destClosureSummary.Parent.FreeVars[graphNode.Index()]
 			if fv != nil {
-				x := closureSummary.FreeVars[fv]
+				x := destClosureSummary.FreeVars[fv]
 				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
 				s.AddError(
-					fmt.Sprintf("no free variable matching bound variable in %s", closureSummary.Parent.String()),
+					fmt.Sprintf("no free variable matching bound variable in %s", destClosureSummary.Parent.String()),
 					fmt.Errorf("at position %d", graphNode.Index()))
 			}
 		}

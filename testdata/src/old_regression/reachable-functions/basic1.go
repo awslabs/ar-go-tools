@@ -14,9 +14,11 @@
 
 package main
 
+//goland:noinspection ALL
 func notReachable() {
 }
 
+//goland:noinspection ALL
 func reachable() {
 }
 

@@ -1,6 +1,6 @@
 # Argot CLI
 
-The command line tool `argot-cli` (the CLI) provides many commands to help programmers understand the analyses performed by other tools in Argot. In order to use the CLI effectively, you should have a high-level understanding of static analysis techniques. More precisely, you should have an understanding of what the SSA reprsentation of a program is to use the SSA related tools, and an understanding of dataflow analysis techniques in order to use the dataflow analysis related tools. The CLI is a great tool if you want to modify the algorithms on your own and you need to debug the results. The main motiviation is that the results of the analyses can be computed incrementally, and results of interest can be recomputed on demand.
+The command line tool `argot-cli` (the CLI) provides many commands to help programmers understand the analyses performed by other tools in Argot. In order to use the CLI effectively, you should have a high-level understanding of static analysis techniques. More precisely, you should have an understanding of what the SSA representation of a program is to use the SSA related tools, and an understanding of dataflow analysis techniques in order to use the dataflow analysis related tools. The CLI is a great tool if you want to modify the algorithms on your own, and you need to debug the results. The main motivation is that the results of the analyses can be computed incrementally, and results of interest can be recomputed on demand.
 
 Like many of the tools there,
 it must be started with a *program to analyze* and *a configuration file*. To start the `argot-cli` with some program `main.go` and some configuration file `config.yaml`:
@@ -9,7 +9,7 @@ argot-cli -config config.yaml main.go
 ```
 > If you installed the CLI using `make install`, then call `argot-cli`. If you only built the cli using `make argot-cli`, look for the executable `./bin/argot-cli`
 
-We will illustrate all the features of the CLI through an example in this document. For a complete list of the commands available in the CLI, type `help` once the program has started an the prompt starting with `>` appears.
+We will illustrate all the features of the CLI through an example in this document. For a complete list of the commands available in the CLI, type `help` once the program has started and the prompt starting with `>` appears.
 Type [`exit`](#exit) in the prompt to exit the CLI.
 You can also have a look at [the documentation](../cmd/argot-cli/doc.go) of the executable, or the [list of commands](#commands) at the end of this section.
 
@@ -37,7 +37,7 @@ With matching messages that indicate each of the analyses (pointer analysis, glo
 ```
 2023/05/24 14:19:22 Gathering information about pointer binding in closures
 ```
-All the analyses should take less than a second in total for this simple example, but for larger programs, it can takes minutes!
+All the analyses should take less than a second in total for this simple example, but for larger programs, it can take minutes!
 If everything runs successfully you should be presented with a prompt:
 ```
 2023/05/24 14:19:22 Pointer binding analysis terminated, added 0 items (0.00 s)
@@ -62,7 +62,7 @@ Focused function  : none
 # summaries built : 0
 flow graph built? : false
 ```
-The first lines of output are self-explanatory. We will see later how to *focus* on a specific function; for now, there is no focused function. `state?` also prints the number of functions in the loaded program, and the number of dataflow summaries that have been built and whether the inter-procedural dataflow graph has been built. These last two parts are specific to the dataflow-based analyses, such as the [taint analysis](taint.md) and the [backwards flow analysis](TODO).
+The first lines of output are self-explanatory. We will see later how to *focus* on a specific function; for now, there is no focused function. `state?` also prints the number of functions in the loaded program, and the number of dataflow summaries that have been built and whether the inter-procedural dataflow graph has been built. These last two parts are specific to the dataflow-based analyses, such as the [taint analysis](taint.md) and the [backwards flow analysis](backtrace.md).
 
 
 ### Utilities
@@ -74,7 +74,7 @@ The tool provides a few utilities to change directories, reload config files and
 ```
 > cd testdata/src/taint/example1
 ```
-If you have changed directory and need to reload the config file or the program, you will need to respecify the paths, for example `> reconfig config.yaml` in this case to reload the config file. Calling `> rebuild` would fail here, so you need to first load the program relatively to the new location by using `> load main.go` (and any subsequent call to `> rebuild` will succeed, provided the program can be compiled and you have not changed location).
+If you have changed directory and need to reload the config file or the program, you will need to respecify the paths, for example `> reconfig config.yaml` in this case to reload the config file. Calling `> rebuild` would fail here, so you need to first load the program relatively to the new location by using `> load main.go` (and any subsequent call to `> rebuild` will succeed, provided the program can be compiled, and you have not changed location).
 
 
 ### Statistics
@@ -90,14 +90,14 @@ SSA stats:
  # blocks                      29739
  # instructions                190921
 ```
-Additionally, `stats` has a few *subcommands*: `help`, `all`, `general` and `closures`. `stats help` prints a help message that explains those options.  The `general` statistics are the ones printed by the command withtout subcommands. `stats closures` prints more information about closure usage and number of closures in the code. `stats all` prints both general and closure statistics.
+Additionally, `stats` has a few *subcommands*: `help`, `all`, `general` and `closures`. `stats help` prints a help message that explains those options.  The `general` statistics are the ones printed by the command without subcommands. `stats closures` prints more information about closure usage and number of closures in the code. `stats all` prints both general and closure statistics.
 For the `closure` subcommand, several flags can be used to print locations of closure usage (`-U`, `-C` and `-I`). Their definition is accessible by typing `stats help`.
 To print all information, type:
 ```
 > stats all -U -C -I
 ```
 In our example, there is only a few closures and this reports only two anonymous functions capturing channels.
-> 📝 Command flags such as `-U`, `-C` and `-I` above always need to be specified separately with their preceding dash. Commands like `stats` can also accepts a name argument `--filter something`. Try running `stats all -U -C -I --filter Read`.
+> 📝 Command flags such as `-U`, `-C` and `-I` above always need to be specified separately with their preceding dash. Commands like `stats` can also accept a name argument `--filter something`. Try running `stats all -U -C -I --filter Read`.
 
 
 ## Inspecting The SSA
@@ -108,7 +108,7 @@ The arguments provided to the commands are interpreted as regexes, and used as f
 ```
 > list command-line-arguments.*
 ```
-Alternatively, using a shorter regex, e.g. calling `list com.*ts.`, would work just as well. Note that in terminals that support escape codes, some functions might appear in different colors to higlight whether those functions are *reachable* and/or *summarized*. The first two elements of each line also  indicate whether a function is summarized `[x][_]` or reachable `[_][x]` or both `[x][x]`. Initially, you should see an ouput of the form:
+Alternatively, using a shorter regex, e.g. calling `list com.*ts.`, would work just as well. Note that in terminals that support escape codes, some functions might appear in different colors to highlight whether those functions are *reachable* and/or *summarized*. The first two elements of each line also  indicate whether a function is summarized `[x][_]` or reachable `[_][x]` or both `[x][x]`. Initially, you should see an output of the form:
 ```
 > list com.*ts
 Found 10 matching functions:
@@ -169,7 +169,7 @@ To focus on a specific function, give an argument to the [`focus`](#focus) comma
 > focus test2
 Focusing on command-line-arguments.test2.
 ```
-The CLI prints a response that shows is has succsefully loaded the function. The prompt should now be prefixed by the name of the function.
+The CLI prints a response that shows is has successfully loaded the function. The prompt should now be prefixed by the name of the function.
 
 > ⚠  The argument of focus is interpreted as a regex (as in most cases in the CLI) but only one function must match that regex. For example, if the focus command is called with `test` as argument in the example, you should see an error output that says <font color='red'>Too many matching functions:</font> and then list all the matches. The list of matches should help you refine your regex to match only the function you want. If no function matches the regex, for example if you use the command `focus doesnotexist`, then an error <font color='red'>No matching function.</font> should be printed.
 
@@ -198,11 +198,11 @@ Matching value: t0
     [t0 (local fooProducer (w))]
 ```
 The output of the command shows that exactly one value matches the name `t0`; it is an allocation (the kind is `*ssa.Alloc`) of a variable of type `*command-line-arguments.fooProducer`. The instruction also indicates that this is a local variable, since it is defined by the instruction `local fooProducer (w)`. Recall that the SSA representation is defined in the [ssa package](https://pkg.go.dev/golang.org/x/tools/go/ssa).
-The instructions that refer to the value `t0` are then displayed: an instruction that takes the adress of field `I` of `t0`, and a dereference of `t0` itself. To inspect those instructions, one can use the next command `ssainstr` or look at the ssa (using `showssa`) to see which value it defines.
+The instructions that refer to the value `t0` are then displayed: an instruction that takes the address of field `I` of `t0`, and a dereference of `t0` itself. To inspect those instructions, one can use the next command `ssainstr` or look at the ssa (using `showssa`) to see which value it defines.
 The final element in the output shows that the only direct alias of `t0` is itself.
 
 
-- [`ssainstr`](#ssainstr) shows all the SSA instructions matching the regex provided as argumnet in the focused function. For example, `test2 > ssainstr t1` should print the only instruction that refers to `t1` in the SSA. The matching location in the source code is the location where the struct field is set to 1.
+- [`ssainstr`](#ssainstr) shows all the SSA instructions matching the regex provided as argument in the focused function. For example, `test2 > ssainstr t1` should print the only instruction that refers to `t1` in the SSA. The matching location in the source code is the location where the struct field is set to 1.
 - [`pkg`](#pkg) shows the package of the current function.
 
 At any point, you can exit *focused* mode by using the [`unfocus`](#unfocus) command:
@@ -267,7 +267,7 @@ test2 > intra
   - "freevar" if it is a free variable,
   - "arg" if it is the argument in a function call,
   - "call" if it is the result of a function call,
-  - "return" it it appear in one return of the function,
+  - "return" if it appears in one return of the function,
   - "boundvar" if it is bound by a closure,
   - "closure" if the value is a closure,
   - "synthetic" if the value corresponds to a node that has been synthetically added (such as some field accesses),
@@ -296,7 +296,7 @@ Indicating a path from `stringProducer.source()` to `sink` here. If the options 
 
 # Commands
 
-All available commads are listed here, with more detailed documentation than in the message printed by `help`.
+All available commands are listed here, with more detailed documentation than in the message printed by `help`.
 
 ### Buildgraph
 
@@ -352,7 +352,7 @@ The user can additionally provide the following flags:
 [Focused mode] `pkg` prints the package of the current function, in focused mode.
 
 ### Rebuild
-`rebuild` reloads the program using the path to the program currently loaded, reading all source files and recomputing the results of the main analyses that are performed when the tool is first loaded. After rebuilding, function summaries are kept but they do not match the new program that has been loaded. They can be inspected for comparison, but they should be rebuilt if any analysis that consumes them is needed (`summarize` and `buildgraph` should be called again).
+`rebuild` reloads the program using the path to the program currently loaded, reading all source files and recomputing the results of the main analyses that are performed when the tool is first loaded. After rebuilding, function summaries are kept, but they do not match the new program that has been loaded. They can be inspected for comparison, but they should be rebuilt if any analysis that consumes them is needed (`summarize` and `buildgraph` should be called again).
 
 ### Reconfig
 
@@ -371,12 +371,12 @@ The user can additionally provide the following flags:
 [Focused mode] `ssaval` shows information about all the values matching the regex provided as argument. This information contains the kind of value in the SSA representation, the type of the values, its location and defining instruction (if available), and finally aliasing information.
 
 ### Ssainstr
-[Focused mode] `ssainstr` shows information about all the instruction matching the regex provided as argumnet. It will print all the matching instructions in the SSA and show their location in the source code.
+[Focused mode] `ssainstr` shows information about all the instruction matching the regex provided as argument. It will print all the matching instructions in the SSA and show their location in the source code.
 
 ### State
 `state?` prints a summary of the state of the tool including:
 - the path to the program currently loaded.
-- the path to the condiguration file currently loaded.
+- the path to the configuration file currently loaded.
 - the current working directory.
 - the function currently in focus, if any, or "none".
 - the number of functions in the SSA representation of the program.

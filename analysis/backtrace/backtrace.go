@@ -38,9 +38,9 @@ import (
 type AnalysisResult struct {
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
-	Graph df.CrossFunctionFlowGraph
+	Graph df.InterProceduralFlowGraph
 
-	// Traces represents all the paths where data flows out from the analysis entrypoints.
+	// Traces represents all the paths where data flows out from the analysis entry points.
 	Traces []Trace
 }
 
@@ -133,7 +133,7 @@ type Visitor struct {
 	Traces [][]df.GraphNode
 }
 
-// Visit runs a inter-procedural backwards analysis to add any detected backtraces to v.Traces.
+// Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
 func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	// this is needed because for some reason isBacktracePoint returns true for
 	// some synthetic nodes
@@ -252,7 +252,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					if _, ok := callSites[c]; !ok {
 						logger.Tracef("callsite %v not found in callsites\n", c)
 						if summary, ok := s.FlowGraph.Summaries[c.Parent()]; ok {
-							logger.Tracef("summary for %v found in inter-procedral dataflow graph.", c.Parent())
+							logger.Tracef("summary for %v found in inter-procedural dataflow graph.", c.Parent())
 							addCallToCallsites(s, summary, c, callSites)
 						} else {
 							logger.Tracef("summary for %v NOT found in inter-procedural dataflow graph.", c.Parent())
@@ -663,7 +663,7 @@ func IsCrossFunctionEntrypoint(cfg *config.Config, n ssa.Node) bool {
 }
 
 func isSingleFunctionEntrypoint(cfg *config.Config, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(cfg, n, (config.Config).IsBacktracePoint)
+	return analysisutil.IsEntrypointNode(cfg, n, config.Config.IsBacktracePoint)
 }
 
 func singleFunctionSummarizeOnDemand(state *df.AnalyzerState, cfg *config.Config, numRoutines int) {

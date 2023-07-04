@@ -35,7 +35,7 @@ type AnalysisResult struct {
 
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
-	Graph dataflow.CrossFunctionFlowGraph
+	Graph dataflow.InterProceduralFlowGraph
 
 	// Errors contains a list of errors produced by the analysis. Errors may have been added at different steps of the
 	// analysis.
@@ -100,7 +100,8 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// the inter-procedural analysis is run over the entire program, which has been summarized in the
 	// previous step by building function summaries. This analysis consists in checking whether there exists a sink
 	// that is reachable from a source.
-	visitor := NewVisitor(nil)
+
+	visitor := NewVisitor()
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		AnalyzerState: state,
 		Visitor:       visitor,

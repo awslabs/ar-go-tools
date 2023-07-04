@@ -22,7 +22,7 @@ using the [NewInitializedAnalyzerState] function:
 
 	state, err := dataflow.NewInitializedAnalyzerState(log, cfg, prog)
 
-This initilization runs the pointer analysis on the program, as well as a scanning step for global variables, interface
+This initialization runs the pointer analysis on the program, as well as a scanning step for global variables, interface
 method implementations and variable bounding information.
 
 To build the dataflow summary of a single function, run the [SingleFunctionAnalysis] function, which runs the

@@ -90,6 +90,8 @@ func (state *IntraAnalysisState) initialize() {
 		state.paramAliases[v] = map[*ssa.Parameter]bool{}
 		state.freeVarAliases[v] = map[*ssa.FreeVar]bool{}
 	})
+
+	// Initialize maps from instructions to abstract states (map from values to sets of marks)
 	lang.IterateInstructions(function, func(_ int, i ssa.Instruction) {
 		state.flowInfo.MarkedValues[i] = map[ssa.Value]map[Mark]bool{}
 	})
@@ -116,38 +118,31 @@ func (state *IntraAnalysisState) initialize() {
 				}
 			}
 		})
-
-	// Collect global variable uses
-	lang.IterateInstructions(function,
-		func(_ int, i ssa.Instruction) {
-			var operands []*ssa.Value
-			operands = i.Operands(operands)
-			for _, operand := range operands {
-				// Add marks for globals
-				if glob, ok := (*operand).(*ssa.Global); ok {
-					if node, ok := state.parentAnalyzerState.Globals[glob]; ok {
-						state.summary.AddAccessGlobalNode(i, node)
-					}
-				}
-			}
-		})
 }
 
-func populateInstrPrevMap(tracker *IntraAnalysisState, firstInstr ssa.Instruction, function *ssa.Function) {
-	tracker.instrPrev[firstInstr] = map[ssa.Instruction]bool{firstInstr: true}
+// populateInstrPrevMap populates the instrPrev map in the intra analysis state. Once this function has been called,
+// intraState.instrPrev maps instructions to the preceding instructions in the function. In a block, the preceding
+// instruction is the instruction before in the block. At the beginning of the block, the preceding instructions are
+// the last instruction of each of the predecessor blocks.
+//
+// We make a special case for instructions in defer statements: we assume that any instruction before a [ssa.RunDefers]
+// (and not a [ssa.Defer]!) can be a preceding instruction. This over-approximates program executions where any instruction
+// can panic.
+func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruction, function *ssa.Function) {
+	intraState.instrPrev[firstInstr] = map[ssa.Instruction]bool{firstInstr: true}
 	var prevInstr ssa.Instruction
 	for _, block := range function.Blocks {
 		for j, instr := range block.Instrs {
-			tracker.instrPrev[instr] = map[ssa.Instruction]bool{}
+			intraState.instrPrev[instr] = map[ssa.Instruction]bool{}
 			if j == 0 {
 				for _, pred := range block.Preds {
 					if pred != nil && len(pred.Instrs) > 0 {
 						last := pred.Instrs[len(pred.Instrs)-1]
-						tracker.instrPrev[instr][last] = true
+						intraState.instrPrev[instr][last] = true
 					}
 				}
 			} else if prevInstr != nil {
-				tracker.instrPrev[instr][prevInstr] = true
+				intraState.instrPrev[instr][prevInstr] = true
 			}
 			prevInstr = instr
 		}
@@ -159,8 +154,8 @@ func populateInstrPrevMap(tracker *IntraAnalysisState, firstInstr ssa.Instructio
 		if _, ok := instr.(*ssa.RunDefers); ok {
 			for _, block := range function.Blocks {
 				for _, i := range block.Instrs {
-					if tracker.checkPathBetweenInstructions(i, instr).Satisfiable {
-						tracker.instrPrev[i][instr] = true
+					if intraState.checkPathBetweenInstructions(i, instr).Satisfiable {
+						intraState.instrPrev[i][instr] = true
 					}
 				}
 			}
@@ -169,7 +164,8 @@ func populateInstrPrevMap(tracker *IntraAnalysisState, firstInstr ssa.Instructio
 }
 
 // Pre is executed before an instruction is visited. For the dataflow analysis, Pre transfers all the reachable
-// values of the previous instruction to the current instruction.
+// values of the previous instruction to the current instruction;
+// Pre ensures that the analysis is a monotone analysis.
 func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
 	for predecessor := range state.instrPrev[ins] {
 		for value, marks := range state.flowInfo.MarkedValues[predecessor] {
@@ -188,7 +184,7 @@ func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
 }
 
 // Post is applied after every instruction. This is necessary to satisfy the interface, and can also be used for
-// debugging purposes
+// debugging purposes.
 func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 
 }
@@ -220,7 +216,7 @@ func (state *IntraAnalysisState) getMarksRec(i ssa.Instruction, v ssa.Value, pat
 	}
 
 	if isProceduralEntry {
-		if _, is_call := v.(*ssa.Call); !is_call {
+		if _, isCall := v.(*ssa.Call); !isCall {
 			// If any of the aliases of the value is marked, add the marks
 			for _, ptr := range state.findAllPointers(v) {
 				for _, label := range ptr.PointsTo().Labels() {
@@ -244,49 +240,49 @@ func (state *IntraAnalysisState) getMarksRec(i ssa.Instruction, v ssa.Value, pat
 //gocyclo:ignore
 func (state *IntraAnalysisState) referrerMarks(i ssa.Instruction, v ssa.Value, path string,
 	referrer ssa.Instruction, queries map[ssa.Value]bool) []Mark {
-	switch ref_instr := referrer.(type) {
+	switch refInstr := referrer.(type) {
 	case *ssa.Send:
 		// marks on a value sent on a channel transfer to channel
-		if v == ref_instr.Chan && lang.IsNillableType(ref_instr.X.Type()) {
-			return state.getMarksRec(i, ref_instr.X, path, true, queries)
+		if v == refInstr.Chan && lang.IsNillableType(refInstr.X.Type()) {
+			return state.getMarksRec(i, refInstr.X, path, true, queries)
 		}
 	case *ssa.FieldAddr:
-		// ref_instr is 'y = &v.name`
+		// refInstr is "y = &v.name"
 		// the value is the struct, collect the marks on the field address. We are not field sensitive, so if the
 		// field address has marks, then the struct itself has marks.
-		return state.getMarksRec(i, ref_instr, path, true, queries)
+		return state.getMarksRec(i, refInstr, path, true, queries)
 	case *ssa.IndexAddr:
 		// the marks on an index address transfer to the slice (but not the marks on the index)
-		if v != ref_instr.Index {
-			return state.getMarksRec(i, ref_instr, path, true, queries)
+		if v != refInstr.Index {
+			return state.getMarksRec(i, refInstr, path, true, queries)
 		}
 	case *ssa.Slice:
 		// the marks of a slice of the value are also marks of the value
-		if v == ref_instr.X {
-			return state.getMarksRec(i, ref_instr, path, true, queries)
+		if v == refInstr.X {
+			return state.getMarksRec(i, refInstr, path, true, queries)
 		}
 	case *ssa.Store:
 		// is a value is stored, and that value is pointer like, the marks transfer to the address
-		if v == ref_instr.Addr && lang.IsNillableType(ref_instr.Val.Type()) {
-			return state.getMarksRec(i, ref_instr.Val, path, true, queries)
+		if v == refInstr.Addr && lang.IsNillableType(refInstr.Val.Type()) {
+			return state.getMarksRec(i, refInstr.Val, path, true, queries)
 		}
 	case *ssa.MapUpdate:
-		flow_ref := (ssa.Instruction)(ref_instr)
+		flowRef := (ssa.Instruction)(refInstr)
 		// inspect marks of referrers, but only when the referred value is the map (the value or key does not flow
 		// to the adjacent value/key).
-		// The location of the mark transfer (flow_ref) depends on whether the object written to the map is pointer
+		// The location of the mark transfer (flowRef) depends on whether the object written to the map is pointer
 		// like or not, like in Store
-		if v != ref_instr.Value && v != ref_instr.Key {
-			if lang.IsNillableType(ref_instr.Value.Type()) {
-				flow_ref = i
+		if v != refInstr.Value && v != refInstr.Key {
+			if lang.IsNillableType(refInstr.Value.Type()) {
+				flowRef = i
 			}
-			origins := state.getMarksRec(flow_ref, ref_instr.Value, path, true, queries)
+			origins := state.getMarksRec(flowRef, refInstr.Value, path, true, queries)
 
-			flow_ref = (ssa.Instruction)(ref_instr)
-			if lang.IsNillableType(ref_instr.Value.Type()) {
-				flow_ref = i
+			flowRef = (ssa.Instruction)(refInstr)
+			if lang.IsNillableType(refInstr.Value.Type()) {
+				flowRef = i
 			}
-			origins = append(origins, state.getMarksRec(flow_ref, ref_instr.Key, path, true, queries)...)
+			origins = append(origins, state.getMarksRec(flowRef, refInstr.Key, path, true, queries)...)
 			return origins
 		}
 	}
@@ -316,10 +312,9 @@ func transfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.
 	}
 }
 
-// addClosureNode adds a closure node to the graph, and all the related sources and edges.
+// markClosureNode adds a closure node to the graph, and all the related sources and edges.
 // The closure value is tracked like any other value.
-func (state *IntraAnalysisState) addClosureNode(x *ssa.MakeClosure) {
-	state.summary.AddClosure(x)
+func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 	state.markValue(x, x, NewMark(x, Closure, "", nil, -1))
 	for _, boundVar := range x.Bindings {
 		mark := NewMark(x, BoundVar, "", boundVar, -1)
@@ -345,7 +340,6 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 	if doBuiltinCall(state, value, common, instr) {
 		return
 	}
-	state.summary.AddCallInstr(state.parentAnalyzerState, instr)
 	// Check if node is source according to config
 	markType := CallReturn
 	if state.shouldTrack(state.flowInfo.Config, instr.(ssa.Node)) { // type cast cannot fail

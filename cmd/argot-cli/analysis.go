@@ -319,7 +319,7 @@ func summarizeWithDefaultParams(tt *term.Terminal, c *dataflow.AnalyzerState, fu
 			funcutil.Contains(funcs, f) &&
 			!c.HasExternalContractSummary(f))
 		if b {
-			(*createCounter)++
+			*createCounter++
 		}
 		return b
 	}
@@ -329,7 +329,7 @@ func summarizeWithDefaultParams(tt *term.Terminal, c *dataflow.AnalyzerState, fu
 			funcutil.Contains(funcs, f) &&
 			!c.HasExternalContractSummary(f))
 		if b {
-			(*buildCounter)++
+			*buildCounter++
 		}
 		return b
 	}
@@ -342,14 +342,14 @@ func alwaysSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.
 	shouldCreateSummary := func(f *ssa.Function) bool {
 		b := funcutil.Contains(funcs, f)
 		if b {
-			(*createCounter)++
+			*createCounter++
 		}
 		return b
 	}
 	shouldBuildSummary := func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
 		b := funcutil.Contains(funcs, f)
 		if b {
-			(*buildCounter)++
+			*buildCounter++
 		}
 		return b
 	}
@@ -370,7 +370,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
-	c.FlowGraph.RunCrossFunctionPass(taint.NewVisitor(nil), taint.IsSourceNode)
+	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(), taint.IsSourceNode)
 	return false
 }
 
@@ -393,7 +393,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 	// not taint.IsSourceNode
 
 	visitor := &backtrace.Visitor{}
-	c.FlowGraph.RunCrossFunctionPass(visitor, backtrace.IsCrossFunctionEntrypoint)
+	c.FlowGraph.RunVisitorOnEntryPoints(visitor, backtrace.IsCrossFunctionEntrypoint)
 
 	writeFmt(tt, "Traces:\n")
 	for _, trace := range backtrace.Traces(c, visitor.Traces) {

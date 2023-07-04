@@ -351,7 +351,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 }
 
 // addEdge adds forward edge src -> dst and backwards edge src <- dst to graph.
-func addEdge(graph *dataflow.CrossFunctionFlowGraph, src dataflow.GraphNode, dst dataflow.GraphNode) {
+func addEdge(graph *dataflow.InterProceduralFlowGraph, src dataflow.GraphNode, dst dataflow.GraphNode) {
 	if _, ok := graph.ForwardEdges[src]; !ok {
 		graph.ForwardEdges[src] = make(map[dataflow.GraphNode]bool)
 	}

@@ -16,6 +16,7 @@ package main
 
 import "fmt"
 
+//goland:noinspection GoUnreachableCode
 func main() {
 	panic("whatnot")
 

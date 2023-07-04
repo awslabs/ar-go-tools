@@ -31,7 +31,7 @@ import (
 
 // SingleFunctionResult represents the result of running an intra-procedural analysis pass.
 type SingleFunctionResult struct {
-	FlowGraph dataflow.CrossFunctionFlowGraph
+	FlowGraph dataflow.InterProceduralFlowGraph
 }
 
 // RunSingleFunctionArgs represents the arguments for RunSingleFunction.
@@ -63,7 +63,7 @@ func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
 	logger.Infof("Starting intra-procedural analysis ...")
 	start := time.Now()
 
-	fg := dataflow.NewCrossFunctionFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, args.AnalyzerState)
+	fg := dataflow.NewInterProceduralFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, args.AnalyzerState)
 	numRoutines := args.NumRoutines + 1
 	if numRoutines < 1 {
 		numRoutines = 1
@@ -112,7 +112,7 @@ type RunCrossFunctionArgs struct {
 func RunCrossFunction(args RunCrossFunctionArgs) {
 	args.AnalyzerState.Logger.Infof("Starting inter-procedural pass...")
 	start := time.Now()
-	args.AnalyzerState.FlowGraph.CrossFunctionPass(args.AnalyzerState, args.Visitor, args.IsEntrypoint)
+	args.AnalyzerState.FlowGraph.BuildAndRunVisitor(args.AnalyzerState, args.Visitor, args.IsEntrypoint)
 	args.AnalyzerState.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
 }
 
@@ -155,7 +155,7 @@ func runSingleFunctionJob(job singleFunctionJob,
 // messages on the done channel to terminate and clean up.
 // Operations on graph and candidates are sequential.
 // cleans up done and c channels
-func collectResults(c []dataflow.SingleFunctionResult, graph *dataflow.CrossFunctionFlowGraph,
+func collectResults(c []dataflow.SingleFunctionResult, graph *dataflow.InterProceduralFlowGraph,
 	state *dataflow.AnalyzerState) {
 	var f *os.File
 	var err error

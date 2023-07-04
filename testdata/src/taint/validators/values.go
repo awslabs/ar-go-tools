@@ -62,7 +62,7 @@ func example17validateOnReference4() {
 	}
 }
 
-// Example 18: validation on a intermediate reference
+// Example 18: validation on an intermediate reference
 
 type B struct {
 	stringPtr *string

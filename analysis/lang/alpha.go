@@ -70,7 +70,7 @@ func (f *FuncInfo) FunctionScope() *types.Scope {
 //	  node 3
 //	}
 //
-// the closest scope for node1 is the then-branch scope, for node2 the else-brnach scope
+// the closest scope for node1 is the then-branch scope, for node2 the else-branch scope
 // and for node3 the function scope
 func (f *FuncInfo) ClosestEnclosingScope(n dst.Node) *types.Scope {
 	if nodeT, ok := f.NodeMap[n]; ok {
@@ -105,7 +105,7 @@ func (f *FuncInfo) NameExistsAt(n dst.Node, name string) bool {
 }
 
 // FreshNameAt returns a fresh identifier at node n. The identifier will be of the form `prefix(NUM)` where
-// NUM is empty or some interger. For example, FreshNameAt(n,"s", 0) may return "s", "s0" or "s1".
+// NUM is empty or some integer. For example, FreshNameAt(n,"s", 0) may return "s", "s0" or "s1".
 func (f *FuncInfo) FreshNameAt(n dst.Node, prefix string, i int) string {
 	name := prefix
 	if i > 0 {

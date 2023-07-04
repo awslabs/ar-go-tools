@@ -102,7 +102,8 @@ func (m *Flows) addNewEscape(source df.GraphNode, escapeInstr ssa.Instruction) {
 	}
 }
 
-// Merge merges the flows from b into a
+// Merge merges the flows from b into a.
+//
 // requires a != nil
 func (m *Flows) Merge(b *Flows) {
 	for x, yb := range b.Sinks {

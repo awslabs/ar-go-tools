@@ -30,7 +30,7 @@ import (
 // IsEntrypointNode returns true if n is an entrypoint to the intra-procedural analysis according to f.
 func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, config.CodeIdentifier) bool) bool {
 	switch node := (n).(type) {
-	// Look for callees to functions that are considered entrypoints
+	// Look for callees to functions that are considered entry points
 	case *ssa.Call:
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
@@ -51,7 +51,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 			}
 		}
 
-	// Field accesses that are considered as entrypoints
+	// Field accesses that are considered as entry points
 	case *ssa.Field:
 		fieldName := dataflow.FieldFieldName(node)
 		packageName, typeName, err := dataflow.FindTypePackage(node.X.Type())
@@ -70,7 +70,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 			return f(*cfg, config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
 		}
 
-	// Allocations of data of a type that is a entrypoint
+	// Allocations of data of a type that is an entry point
 	case *ssa.Alloc:
 		packageName, typeName, err := dataflow.FindTypePackage(node.Type())
 		if err != nil {
