@@ -119,7 +119,7 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 			if callCommon.IsInvoke() {
 				receiver := callCommon.Value.Name()
 				methodName := callCommon.Method.Name()
-				maybePkg := dataflow.FindSafeCalleePkg(callCommon)
+				maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
 				if maybePkg.IsSome() {
 					return codeIdOracle(config.CodeIdentifier{
 						Package: maybePkg.Value(), Method: methodName, Receiver: receiver,
@@ -134,7 +134,7 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 				}
 			} else {
 				funcName := callCommon.Value.Name()
-				maybePkg := dataflow.FindSafeCalleePkg(callCommon)
+				maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
 				if maybePkg.IsSome() {
 					return codeIdOracle(config.CodeIdentifier{Package: maybePkg.Value(), Method: funcName})
 				} else if callee != nil {

@@ -158,10 +158,10 @@ func testFlowSensitivity2() {
 func simple1() {
 	s := fmt.Sprintf("taintedstuff-%s", "fortest") // @Source(simple1)
 	x := Foo{Data: s}
-	sink1(x) // @Sink(simple1)
-	if b := x.zoo(); b {
+	sink1(x)             // @Sink(simple1)
+	if b := x.zoo(); b { // @Source(simple1zoo)
 		fmt.Println(x.Data)
-		sink1(b) // @Sink(simple1)
+		sink1(b) // @Sink(simple1, simple1zoo)
 	}
 }
 

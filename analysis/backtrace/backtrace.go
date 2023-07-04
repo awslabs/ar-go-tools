@@ -265,7 +265,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 			for _, callSite := range callSites {
-				if err := analysisutil.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+				if err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
 				} else {
 					arg := callSite.Args()[graphNode.Index()]
@@ -293,7 +293,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), isSingleFunctionEntrypoint)
 					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				} else {
-					analysisutil.PrintMissingSummaryMessage(s, callSite)
+					df.PrintMissingSummaryMessage(s, callSite)
 					break
 				}
 			}
@@ -366,7 +366,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		// Data flows from the function call to the called function's return statement.
 		// It also flows backwards within the parent function.
 		case *df.CallNode:
-			analysisutil.CheckNoGoRoutine(s, goroutines, graphNode)
+			df.CheckNoGoRoutine(s, goroutines, graphNode)
 			prevStackLen := len(stack)
 			// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
 			// This is needed because "bound" summaries can be incomplete

@@ -23,7 +23,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/tools/go/ssa"
 )
@@ -102,7 +101,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
 			if callSite := dataflow.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
-				if err := analysisutil.CheckIndex(c, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
+				if err := dataflow.CheckIndex(c, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
 					c.AddError("unwinding call stack at "+graphNode.Position(c).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
@@ -115,7 +114,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 			} else {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
-					if err := analysisutil.CheckIndex(c, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+					if err := dataflow.CheckIndex(c, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
 						c.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
@@ -135,15 +134,15 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 			// Flow to next call
 			callSite := graphNode.ParentNode()
 
-			analysisutil.CheckNoGoRoutine(c, goroutines, callSite)
+			dataflow.CheckNoGoRoutine(c, goroutines, callSite)
 
 			if callSite.CalleeSummary == nil { // this function has not been summarized
-				analysisutil.PrintMissingSummaryMessage(c, callSite)
+				dataflow.PrintMissingSummaryMessage(c, callSite)
 				break
 			}
 
 			if !callSite.CalleeSummary.Constructed {
-				analysisutil.PrintWarningSummaryNotConstructed(c, callSite)
+				dataflow.PrintWarningSummaryNotConstructed(c, callSite)
 			}
 
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
@@ -180,7 +179,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 				for x := range caller.Out() {
 					que = addNext(c, que, seen, elt, x, elt.Trace.Parent, elt.ClosureTrace)
 				}
-			} else if elt.ClosureTrace != nil && analysisutil.CheckClosureReturns(graphNode, elt.ClosureTrace.Label) {
+			} else if elt.ClosureTrace != nil && dataflow.CheckClosureReturns(graphNode, elt.ClosureTrace.Label) {
 				addEdge(c.FlowGraph, graphNode, elt.ClosureTrace.Label)
 				for cCall := range elt.ClosureTrace.Label.Out() {
 					que = addNext(c, que, seen, elt, cCall, elt.Trace, elt.ClosureTrace.Parent)
@@ -199,7 +198,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
 		// flows to the children of the node.
 		case *dataflow.CallNode:
-			analysisutil.CheckNoGoRoutine(c, goroutines, graphNode)
+			dataflow.CheckNoGoRoutine(c, goroutines, graphNode)
 			// We pop the call from the stack and continue inside the caller
 			var trace *dataflow.NodeTree[*dataflow.CallNode]
 			if elt.Trace != nil {
@@ -228,7 +227,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 			closureNode := graphNode.ParentNode()
 
 			if closureNode.ClosureSummary == nil {
-				analysisutil.PrintMissingClosureNodeSummaryMessage(c, closureNode)
+				dataflow.PrintMissingClosureNodeSummaryMessage(c, closureNode)
 				break
 			}
 			// Flows to the free variables of the closure

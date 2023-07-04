@@ -1,9 +1,9 @@
 sources:
   - package: fmt
     method: Sprintf
-  - package: main
+  - package: "((main)|(command-line-arguments))"
     method: zoo
 sinks:
-  - package: main
+  - package: "((main)|(command-line-arguments))"
     method: sink[1-9]
 skipinterprocedural: false

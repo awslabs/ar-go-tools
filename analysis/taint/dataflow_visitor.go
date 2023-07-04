@@ -22,7 +22,6 @@ import (
 
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/tools/go/ssa"
 )
@@ -86,12 +85,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	logger.Infof("==> Source: %s\n", colors.Purple(v.currentSource.Node.String()))
 	logger.Infof("%s %s\n", colors.Green("Found at"), v.currentSource.Node.Position(s))
 
-	v.roots[source] = &df.VisitorNode{NodeWithTrace: v.currentSource, ParamStack: nil, Prev: nil, Depth: 0}
+	v.roots[source] = &df.VisitorNode{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}
 	que := []*df.VisitorNode{v.roots[source]}
 
 	if s.Config.UseEscapeAnalysis {
 		sourceCaller := source.Node.Graph().Parent
-		rootKey := ""
+		rootKey := source.Trace.Parent.Key()
 		v.storeEscapeGraphInContext(s, sourceCaller, rootKey,
 			s.EscapeAnalysisState.ComputeArbitraryContext(sourceCaller))
 
@@ -116,6 +115,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		logger.Tracef("----------------\n")
 		logger.Tracef("Visiting %T node: %v\n\tat %v\n", elt.Node, elt.Node, elt.Node.Position(s))
+		logger.Tracef("Trace: %s\n", elt.Trace.String())
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(elt.Node, s.Config) {
@@ -226,7 +226,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
 			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
-				err := analysisutil.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site")
+				err := df.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site")
 				if err != nil {
 					s.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
 				} else {
@@ -239,7 +239,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			} else {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
-					err := analysisutil.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
+					err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
 					if err != nil {
 						s.AddError("argument at call site "+graphNode.String(), err)
 					} else {
@@ -259,7 +259,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			// Flow to next call
 			callSite := graphNode.ParentNode()
 
-			analysisutil.CheckNoGoRoutine(s, goroutines, callSite)
+			df.CheckNoGoRoutine(s, goroutines, callSite)
 
 			if callSite.CalleeSummary == nil || !callSite.CalleeSummary.Constructed { // this function has not been summarized
 				if s.Config.SummarizeOnDemand {
@@ -271,7 +271,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					df.BuildSummary(s, callSite.Callee(), IsSourceNode)
 					s.FlowGraph.BuildGraph(IsSourceNode)
 				} else {
-					analysisutil.PrintMissingSummaryMessage(s, callSite)
+					df.PrintMissingSummaryMessage(s, callSite)
 					break
 				}
 			}
@@ -340,12 +340,11 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						que = v.addNext(s, que, seen, elt, x, oPath, elt.Trace.Parent, elt.ClosureTrace)
 					}
 				}
-			} else if elt.ClosureTrace != nil && analysisutil.CheckClosureReturns(graphNode, elt.ClosureTrace.Label) {
+			} else if elt.ClosureTrace != nil && df.CheckClosureReturns(graphNode, elt.ClosureTrace.Label) {
 				for cCall, oPath := range elt.ClosureTrace.Label.Out() {
 					que = v.addNext(s, que, seen, elt, cCall, oPath, elt.Trace, elt.ClosureTrace.Parent)
 				}
 			} else if len(graphNode.Graph().Callsites) > 0 {
-				s.Logger.Infof("Flow back without trace from %s", graphNode.Graph().Parent)
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					for x, oPath := range callSite.Out() {
@@ -358,7 +357,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
 		// flows to the children of the node.
 		case *df.CallNode:
-			analysisutil.CheckNoGoRoutine(s, goroutines, graphNode)
+			df.CheckNoGoRoutine(s, goroutines, graphNode)
 			// We pop the call from the stack and continue inside the caller
 			var trace *df.NodeTree[*df.CallNode]
 			if elt.Trace != nil {
@@ -393,7 +392,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					s.FlowGraph.BuildGraph(IsSourceNode)
 					logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 				} else {
-					analysisutil.PrintMissingClosureNodeSummaryMessage(s, closureNode)
+					df.PrintMissingClosureNodeSummaryMessage(s, closureNode)
 					break
 				}
 			}

@@ -22,6 +22,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -84,7 +85,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// function being analyzed.
 
 	if cfg.SummarizeOnDemand {
-		singleFunctionSummarizeOnDemand(state, cfg, numRoutines)
+		intraProceduralPassWithOnDemand(state, cfg, numRoutines)
 	} else {
 		// Only build summaries for non-stdlib functions here
 		analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
@@ -105,17 +106,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
 		AnalyzerState: state,
 		Visitor:       visitor,
-		IsEntrypoint: func(c *config.Config, node ssa.Node) bool {
-			if f, ok := node.(*ssa.Function); ok {
-				return dataflow.IsSourceFunction(c, f)
-			}
-
-			if c.SummarizeOnDemand {
-				return IsSourceNode(c, node)
-			}
-
-			return false
-		},
+		IsEntrypoint:  IsSourceNode,
 	})
 
 	// ** Fourth step **
@@ -129,7 +120,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 
 }
 
-func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.Config, numRoutines int) {
+func intraProceduralPassWithOnDemand(state *dataflow.AnalyzerState, cfg *config.Config, numRoutines int) {
 	sourceFuncs := []*ssa.Function{}
 	for f := range dataflow.CallGraphReachable(state.PointerAnalysis.CallGraph, false, false) {
 		pkg := ""
@@ -151,9 +142,9 @@ func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.
 			for _, instr := range blk.Instrs {
 				var fieldName string
 				if field, ok := instr.(*ssa.Field); ok {
-					fieldName = dataflow.FieldFieldName(field)
+					fieldName = analysisutil.FieldFieldName(field)
 				} else if fieldAddr, ok := instr.(*ssa.FieldAddr); ok {
-					fieldName = dataflow.FieldAddrFieldName(fieldAddr)
+					fieldName = analysisutil.FieldAddrFieldName(fieldAddr)
 				}
 				if fieldName != "" && cfg.IsSource(config.CodeIdentifier{
 					Package:  pkg,
@@ -189,9 +180,7 @@ func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.
 		ShouldBuildSummary: func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
 			return shouldSummarize[f]
 		},
-		IsEntrypoint: func(c *config.Config, n ssa.Node) bool {
-			return IsSourceNode(c, n)
-		},
+		IsEntrypoint: IsSourceNode,
 	})
 }
 

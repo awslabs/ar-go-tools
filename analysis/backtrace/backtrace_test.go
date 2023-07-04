@@ -31,6 +31,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -682,7 +683,7 @@ func isSourceNode(cfg *config.Config, source ssa.Node) bool {
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
-			calleePkg := dataflow.FindSafeCalleePkg(node.Common())
+			calleePkg := analysisutil.FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
 				return config.Config.IsSource(*cfg, config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
 			} else {

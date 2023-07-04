@@ -214,30 +214,42 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor 
 // RunVisitorOnEntryPoints runs the visitor on the entry points designated by the isEntryPoint function.
 func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 	isEntryPoint func(*config.Config, ssa.Node) bool) {
-	var entryFuncs []*SummaryGraph
 	var entryPoints []NodeWithTrace
 
 	for _, summary := range g.Summaries {
 		// Identify the entry points for that function: all the call sites that are entry points
-		// and all the synthetic nodes in the function body.
-		for _, snode := range summary.SyntheticNodes {
-			entry := NodeWithTrace{Node: snode}
-			entryPoints = append(entryPoints, entry)
-		}
-		if isEntryPoint(g.AnalyzerState.Config, summary.Parent) {
-			entryFuncs = append(entryFuncs, summary)
-		}
-	}
-
-	for _, summary := range entryFuncs {
-		for _, node := range summary.Callsites {
-			entry := NodeWithTrace{Node: node}
-			entryPoints = append(entryPoints, entry)
-
-			for _, arg := range node.args {
-				entryPoints = append(entryPoints, NodeWithTrace{arg, nil, nil})
+		summary.ForAllNodes(func(n GraphNode) {
+			switch node := n.(type) {
+			case *SyntheticNode:
+				// all synthetic nodes are entry points
+				entry := NodeWithTrace{Node: node}
+				entryPoints = append(entryPoints, entry)
+			case *CallNodeArg:
+				if isEntryPoint(g.AnalyzerState.Config, node.parent.CallSite().Value()) {
+					entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+					entryPoints = append(entryPoints, entry)
+				}
+			case *CallNode:
+				if node.callSite != nil && isEntryPoint(g.AnalyzerState.Config, node.callSite.Value()) {
+					// Assume a different entry point for different contexts
+					if len(node.parent.Callsites) > 0 {
+						// If there are callsites, adding context gives more interpretable results
+						for _, contextNode := range node.parent.Callsites {
+							trace := NewNodeTree(contextNode).Add(node)
+							entry := NodeWithTrace{Node: node, Trace: trace, ClosureTrace: nil}
+							entryPoints = append(entryPoints, entry)
+						}
+					} else {
+						// Default is to start without context (trace is nil)
+						entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+						entryPoints = append(entryPoints, entry)
+					}
+					for _, arg := range node.args {
+						entryPoints = append(entryPoints, NodeWithTrace{arg, nil, nil})
+					}
+				}
 			}
-		}
+		})
 	}
 
 	g.AnalyzerState.Logger.Debugf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))

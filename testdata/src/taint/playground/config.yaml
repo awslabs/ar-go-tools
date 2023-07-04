@@ -2,13 +2,14 @@
 sources:
   - package: (main|command-line-arguments)
     field: Source
-  - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
+  - package: "(main)|(command-line-arguments)|(github.com[[:graph:]]*)$"
     # Sources can be source1, source2, etc.
     method: "source[1-9]?"
 sinks:
-  - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
+  - package: "(main)|(command-line-arguments)|(github.com[[:graph:]]*)$"
     # Similarly, sinks are sink1 sink2 sink2 ...
     method: "sink[1-9]?"
 filters:
   - type: "^int$"
 reportpaths: true
+loglevel: 4
