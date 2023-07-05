@@ -575,7 +575,6 @@ func TestLocalityComputation(t *testing.T) {
 		var anyError error
 		allCallgraphWalkNodes := computeNodes(state, f)
 		for _, nodes := range groupNodesByFunc(allCallgraphWalkNodes) {
-			// fmt.Printf("%v:\n%v\n%v\n", node.fun.Name(), node.locality, node.context.(*escapeContextImpl).g.Graphviz())
 			if err := checkLocalityAnnotations(nodes, annos); err != nil {
 				anyError = err
 			}
@@ -589,6 +588,7 @@ func TestLocalityComputation(t *testing.T) {
 				t.Fatalf("Expected error, but test passed")
 			}
 		}
+		// Print the end of the function to make logs easier to read
 		t.Logf("Completed %v\n", funcName)
 	}
 }
