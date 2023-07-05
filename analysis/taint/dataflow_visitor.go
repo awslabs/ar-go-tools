@@ -16,6 +16,7 @@ package taint
 
 import (
 	"fmt"
+	"go/token"
 	"io"
 	"strings"
 
@@ -26,35 +27,82 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+type EscapeInfo struct {
+	InstructionLocality map[ssa.Instruction]bool
+	CallSiteInfo        map[*ssa.Call]df.EscapeCallsiteInfo
+}
+
+func (e *EscapeInfo) String() string {
+	s := "EscapeInfo:\n"
+	for instr, local := range e.InstructionLocality {
+		if val, isVal := instr.(ssa.Value); isVal {
+			s += fmt.Sprintf(" [%v] %s\n", local, val)
+		} else {
+			s += fmt.Sprintf(" [%v] %s\n", local, instr)
+		}
+
+	}
+	return s
+}
+
 // Visitor represents a taint flow Visitor that tracks taint flows from sources to sinks.
 // It implements the [pkg/github.com/awslabs/ar-go-tools/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
-	taints         TaintFlows
+	currentSource  df.NodeWithTrace
+	roots          map[df.NodeWithTrace]*df.VisitorNode
+	visited        map[*df.CallStack]bool
+	escapeGraphs   map[*ssa.Function]map[df.KeyType]*EscapeInfo
+	taints         *Flows
 	coverageWriter io.StringWriter
+	alarms         map[token.Pos]string
 }
 
 // NewVisitor returns a Visitor that can be used with
 // [pkg/github.com/awslabs/ar-go-tools/analysis/dataflow.CrossFunctionPass] to run the taint analysis
-// independently from the  [Analyze] function
+// independently of the  [Analyze] function
 func NewVisitor(coverageWriter io.StringWriter) *Visitor {
-	return &Visitor{taints: make(TaintFlows), coverageWriter: coverageWriter}
+	return &Visitor{
+		currentSource:  df.NodeWithTrace{},
+		taints:         NewFlows(),
+		coverageWriter: coverageWriter,
+		roots:          map[df.NodeWithTrace]*df.VisitorNode{},
+		visited:        map[*df.CallStack]bool{},
+		escapeGraphs:   map[*ssa.Function]map[df.KeyType]*EscapeInfo{},
+		alarms:         map[token.Pos]string{},
+	}
 }
 
-// Visit runs a inter-procedural analysis to add any detected taint flow from source to a sink. This implements the
-// visitor interface of the datflow package.
+// Visit runs an inter-procedural analysis to add any detected taint flow from currentSource to a sink. This implements
+// the visitor interface of the dataflow package.
 //
 //gocyclo:ignore
-func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
+func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	seen := make(map[df.KeyType]bool)
 	goroutines := make(map[*ssa.Go]bool)
-	source := entrypoint
-	que := []*df.VisitorNode{{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}}
-
+	v.currentSource = source
 	logger := s.Logger
 	logger.Infof("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Infof("==> Source: %s\n", colors.Purple(source.Node.String()))
-	logger.Infof("%s %s\n", colors.Green("Found at"), source.Node.Position(s))
+	logger.Infof("==> Source: %s\n", colors.Purple(v.currentSource.Node.String()))
+	logger.Infof("%s %s\n", colors.Green("Found at"), v.currentSource.Node.Position(s))
+
+	v.roots[source] = &df.VisitorNode{NodeWithTrace: v.currentSource, ParamStack: nil, Prev: nil, Depth: 0}
+	que := []*df.VisitorNode{v.roots[source]}
+
+	if s.Config.UseEscapeAnalysis {
+		sourceCaller := source.Node.Graph().Parent
+		rootKey := ""
+		v.storeEscapeGraphInContext(s, sourceCaller, rootKey,
+			s.EscapeAnalysisState.ComputeArbitraryContext(sourceCaller))
+
+		escapeGraph := v.escapeGraphs[sourceCaller][rootKey]
+		v.checkEscape(s, source.Node, escapeGraph)
+
+		callNode, isCallNode := source.Node.(*df.CallNode)
+		if isCallNode {
+			v.storeEscapeGraph(s, source.Trace, callNode)
+		}
+	}
 
 	numAlarms := 0
 
@@ -71,10 +119,10 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(elt.Node, s.Config) {
-			if addNewPathCandidate(v.taints, source.Node, elt.Node) {
+			if v.taints.addNewPathCandidate(v.currentSource.Node, elt.Node) {
 				numAlarms++
-				reportTaintFlow(s, source, elt)
-				// Stop if there is a limit on number of alarms and it has been reached.
+				reportTaintFlow(s, v.currentSource, elt)
+				// Stop if there is a limit on number of alarms, and it has been reached.
 				if s.Config.MaxAlarms > 0 && numAlarms >= s.Config.MaxAlarms {
 					return
 				}
@@ -115,10 +163,13 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
 		// the function's parameter.
 		case *df.ParamNode:
-			if elt.Prev.Node.Graph() != graphNode.Graph() {
+			callArg, prevIsCallArg := elt.Prev.Node.(*df.CallNodeArg)
+			if elt.Prev.Node.Graph() != graphNode.Graph() ||
+				(prevIsCallArg && callArg.ParentNode().Callee() == graphNode.Graph().Parent) {
 				// Flows inside the function body. The data propagates to other locations inside the function body
+				// Second part of the condition allows self-recursive calls to be used
 				for out, oPath := range graphNode.Out() {
-					que = addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+					que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 				}
 			}
 
@@ -152,8 +203,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			callSites := graphNode.Graph().Callsites
 			if s.Config.SummarizeOnDemand && elt.Trace != nil {
 				// the trace label callee may not be in the summary's callsites
-				callInstrs := findCallsites(s, elt.Trace.Label.Callee())
-				for _, c := range callInstrs {
+				for _, c := range findCallsites(s, elt.Trace.Label.Callee()) {
 					if _, ok := callSites[c]; !ok {
 						logger.Debugf("callsite %v not found in callsites\n", c)
 
@@ -175,25 +225,27 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			// func f(s string, s2 *string) { *s2 = s }
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
-			if callSite := df.UnwindCallstackFromCallee(callSites, elt.Trace); callSite != nil {
-				if err := analysisutil.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
+			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
+				err := analysisutil.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site")
+				if err != nil {
 					s.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
 					arg := callSite.Args()[graphNode.Index()]
 					if arg != nil {
-						que = addNext(s, que, seen, elt, arg, df.ObjectPath{}, elt.Trace.Parent, elt.ClosureTrace)
+						que = v.addNext(s, que, seen, elt, arg, df.ObjectPath{}, elt.Trace.Parent, elt.ClosureTrace)
 					}
 				}
 			} else {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
-					if err := analysisutil.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+					err := analysisutil.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
+					if err != nil {
 						s.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						for x, oPath := range callSiteArg.Out() {
-							que = addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
+							que = v.addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
 						}
 					}
 				}
@@ -242,11 +294,17 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				}
 			}
 
+			// Computing context-sensitive information for the analyses
+
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
 			if param != nil {
+				// This is where a function gets "called" and the next nodes will be analyzed in a different context
 				x := callSite.CalleeSummary.Params[param]
-				que = addNext(s, que, seen, elt, x, df.ObjectPath{}, elt.Trace.Add(callSite), elt.ClosureTrace)
+
+				newCallStack := elt.Trace.Add(callSite)
+				v.visited[newCallStack] = true
+				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, newCallStack, elt.ClosureTrace)
 			} else {
 				s.AddError(
 					fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
@@ -257,7 +315,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				// We are done with propagating to the callee's parameters. Next, we need to handle
 				// the flow inside the caller function: the outgoing edges computed for the summary
 				for out, oPath := range graphNode.Out() {
-					que = addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+					que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 				}
 			}
 
@@ -279,18 +337,18 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			if caller := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); caller != nil {
 				for x, oPath := range caller.Out() {
 					if !(graphNode.Index() >= 0 && oPath.Index >= 0 && graphNode.Index() != oPath.Index) {
-						que = addNext(s, que, seen, elt, x, oPath, elt.Trace.Parent, elt.ClosureTrace)
+						que = v.addNext(s, que, seen, elt, x, oPath, elt.Trace.Parent, elt.ClosureTrace)
 					}
 				}
 			} else if elt.ClosureTrace != nil && analysisutil.CheckClosureReturns(graphNode, elt.ClosureTrace.Label) {
 				for cCall, oPath := range elt.ClosureTrace.Label.Out() {
-					que = addNext(s, que, seen, elt, cCall, oPath, elt.Trace, elt.ClosureTrace.Parent)
+					que = v.addNext(s, que, seen, elt, cCall, oPath, elt.Trace, elt.ClosureTrace.Parent)
 				}
 			} else if len(graphNode.Graph().Callsites) > 0 {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					for x, oPath := range callSite.Out() {
-						que = addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
+						que = v.addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
 					}
 				}
 			}
@@ -306,7 +364,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				trace = elt.Trace.Parent
 			}
 			for x, oPath := range graphNode.Out() {
-				que = addNext(s, que, seen, elt, x, oPath, trace, elt.ClosureTrace)
+				que = v.addNext(s, que, seen, elt, x, oPath, trace, elt.ClosureTrace)
 			}
 
 		// Tainting a bound variable node means that the free variable in a closure will be tainted.
@@ -323,7 +381,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			// Flows inside the function creating the closure (where MakeClosure happens)
 			// This is similar to the df edges between arguments
 			for out, oPath := range graphNode.Out() {
-				que = addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+				que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 			}
 
 			closureNode := graphNode.ParentNode()
@@ -344,7 +402,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			fv := closureNode.ClosureSummary.Parent.FreeVars[graphNode.Index()]
 			if fv != nil {
 				x := closureNode.ClosureSummary.FreeVars[fv]
-				que = addNext(s, que, seen, elt, x, df.ObjectPath{},
+				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{},
 					elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
 				s.AddError(
@@ -359,13 +417,13 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			// Flows inside the function
 			if elt.Prev.Node.Graph() != graphNode.Graph() {
 				for out, oPath := range graphNode.Out() {
-					que = addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+					que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 				}
 			} else if elt.ClosureTrace != nil {
 				bvs := elt.ClosureTrace.Label.BoundVars()
 				if graphNode.Index() < len(bvs) {
 					bv := bvs[graphNode.Index()]
-					que = addNext(s, que, seen, elt, bv, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Parent)
+					que = v.addNext(s, que, seen, elt, bv, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Parent)
 				} else {
 					s.AddError(
 						fmt.Sprintf("no bound variable matching free variable in %s",
@@ -388,7 +446,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 					bvs := makeClosureSite.BoundVars()
 					if graphNode.Index() < len(bvs) {
 						bv := bvs[graphNode.Index()]
-						que = addNext(s, que, seen, elt, bv, df.ObjectPath{}, elt.Trace, nil)
+						que = v.addNext(s, que, seen, elt, bv, df.ObjectPath{}, elt.Trace, nil)
 					} else {
 						s.AddError(
 							fmt.Sprintf("no bound variable matching free variable in %s",
@@ -403,7 +461,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 		// TODO: add an example
 		case *df.ClosureNode:
 			for out, oPath := range graphNode.Out() {
-				que = addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+				que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 			}
 
 		// Synthetic nodes can only be sources and data should only flow from those nodes: we only need to follow the
@@ -411,7 +469,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 		// graph summaries.
 		case *df.SyntheticNode:
 			for x, oPath := range graphNode.Out() {
-				que = addNext(s, que, seen, elt, x, oPath, elt.Trace, elt.ClosureTrace)
+				que = v.addNext(s, que, seen, elt, x, oPath, elt.Trace, elt.ClosureTrace)
 			}
 
 		case *df.AccessGlobalNode:
@@ -428,12 +486,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 				// Tainted data is written to ALL locations where the global is read.
 				for x := range graphNode.Global.ReadLocations {
 					// Global jump makes trace irrelevant if we don't follow the call graph!
-					que = addNext(s, que, seen, elt, x, df.ObjectPath{}, nil, elt.ClosureTrace)
+					que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, nil, elt.ClosureTrace)
 				}
 			} else {
 				// From a read location, tainted data follows the out edges of the node
 				for out, oPath := range graphNode.Out() {
-					que = addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+					que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
 				}
 			}
 
@@ -471,7 +529,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 			fv := closureSummary.Parent.FreeVars[graphNode.Index()]
 			if fv != nil {
 				x := closureSummary.FreeVars[fv]
-				que = addNext(s, que, seen, elt, x, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Add(closureNode))
+				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
 				s.AddError(
 					fmt.Sprintf("no free variable matching bound variable in %s", closureSummary.Parent.String()),
@@ -487,14 +545,28 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the
 // trace has not been seen before
-func addNext(s *df.AnalyzerState,
+//
+// - que is the DFS/BFS queue in the calling algorithm
+//
+// - seen is the set of node keys that have been seen before
+//
+// - cur is the current visitor node
+//
+// - nextNode is the graph node to add to the queue
+//
+// - edgeInfo is the label of the edge from cur's node to toAdd
+//
+// - nextTrace is the trace of the visitor node that will be added with nextNode as node
+//
+// - nextClosureTrace is the trace of the closures that will be added with nextNode as node
+func (v *Visitor) addNext(s *df.AnalyzerState,
 	que []*df.VisitorNode,
 	seen map[df.KeyType]bool,
 	cur *df.VisitorNode,
-	node df.GraphNode,
+	nextNode df.GraphNode,
 	edgeInfo df.ObjectPath,
-	trace *df.NodeTree[*df.CallNode],
-	closureTrace *df.NodeTree[*df.ClosureNode]) []*df.VisitorNode {
+	nextTrace *df.CallStack,
+	nextClosureTrace *df.NodeTree[*df.ClosureNode]) []*df.VisitorNode {
 
 	// Check for validators
 	if edgeInfo.Cond != nil && len(edgeInfo.Cond.Conditions) > 0 {
@@ -506,17 +578,32 @@ func addNext(s *df.AnalyzerState,
 		}
 	}
 
-	newNode := df.NodeWithTrace{Node: node, Trace: trace, ClosureTrace: closureTrace}
+	nextNodeWithTrace := df.NodeWithTrace{Node: nextNode, Trace: nextTrace, ClosureTrace: nextClosureTrace}
 
-	s.Logger.Tracef("Adding %v\n", node)
-	s.Logger.Tracef("\ttrace: %v\n", trace)
-	s.Logger.Tracef("\tclosure-trace: %v\n", closureTrace)
-	s.Logger.Tracef("\tseen? %v\n", seen[newNode.Key()])
-	s.Logger.Tracef("\tlasso? %v\n", trace.IsLasso())
-	s.Logger.Tracef("\tdepth: %v\n", cur.Depth)
+	// First set of stop conditions: node has already been seen, or depth exceeds limit
+	if seen[nextNodeWithTrace.Key()] || cur.Depth > s.Config.MaxDepth {
+		return que
+	}
 
-	// Stop conditions: node is already in seen, trace is a lasso or depth exceeds limit
-	if seen[newNode.Key()] || trace.IsLasso() || cur.Depth > s.Config.MaxDepth {
+	// If configured, use the escape analysis to scan whether data on the edge escapes
+	// This controls also how recursive calls are handled.
+	escapeContextUpdated := false
+
+	if s.Config.UseEscapeAnalysis {
+		escapeContextUpdated = v.manageEscapeContexts(s, cur, nextNode, nextTrace)
+	}
+
+	if s.Logger.LogsTrace() {
+		s.Logger.Tracef("Adding %v\n", nextNodeWithTrace)
+		s.Logger.Tracef("\ttrace: %v\n", nextTrace)
+		s.Logger.Tracef("\tclosure-trace: %v\n", nextClosureTrace)
+		s.Logger.Tracef("\tseen? %v\n", seen[nextNodeWithTrace.Key()])
+		s.Logger.Tracef("\tlasso? %v\n", nextTrace.GetLassoHandle() != nil)
+		s.Logger.Tracef("\tdepth: %v\n", cur.Depth)
+	}
+
+	// Second set of stopping conditions: the escape context is unchanged on a loop path
+	if nextTrace.GetLassoHandle() != nil && !escapeContextUpdated {
 		return que
 	}
 
@@ -529,52 +616,118 @@ func addNext(s *df.AnalyzerState,
 		pStack = pStack.Add(curNode)
 	}
 
-	newVis := &df.VisitorNode{
-		NodeWithTrace: newNode,
+	// Adding the next node with trace in a visitor node to the queue, and recording the "execution" tree
+	nextVisitorNode := &df.VisitorNode{
+		NodeWithTrace: nextNodeWithTrace,
 		ParamStack:    pStack,
 		Prev:          cur,
 		Depth:         cur.Depth + 1,
 	}
-	que = append(que, newVis)
-	seen[newNode.Key()] = true
+	cur.AddChild(nextVisitorNode)
+	que = append(que, nextVisitorNode)
+	seen[nextNodeWithTrace.Key()] = true
 	return que
 }
 
-// addNewPathCandidate adds a new path between a source and a sink to paths using the information in elt
-// returns true if it adds a new path.
-// @requires elt.Node.IsSink()
-func addNewPathCandidate(paths TaintFlows, source df.GraphNode, sink df.GraphNode) bool {
-	var sourceInstr ssa.Instruction
-	var sinkInstr ssa.CallInstruction
+func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode, nextNode df.GraphNode,
+	nextTrace *df.CallStack) bool {
+	update := false
 
-	// The source instruction depends on the type of the source: a call node or synthetic node are directly
-	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
-	// parent call node.
-	switch node := source.(type) {
-	case *df.CallNode:
-		sourceInstr = node.CallSite()
+	// Update the contexts when a new function is called.
+	switch curNode := cur.Node.(type) {
 	case *df.CallNodeArg:
-		sourceInstr = node.ParentNode().CallSite()
-	case *df.SyntheticNode:
-		sourceInstr = node.Instr()
+		callSite := curNode.ParentNode()
+		update = v.storeEscapeGraph(s, nextTrace, callSite)
 	}
 
-	// Similar thing for the sink. Synthetic nodes are currently not used as potential sinks.
-	switch node := sink.(type) {
-	case *df.CallNode:
-		sinkInstr = node.CallSite()
-	case *df.CallNodeArg:
-		sinkInstr = node.ParentNode().CallSite()
+	f := nextNode.Graph().Parent
+	nKey := nextTrace.Key()
+	if handle := nextTrace.GetLassoHandle(); handle != nil {
+		// TODO: handle merging contexts
+		nKey = handle.Key()
 	}
+	escapeGraph := v.escapeGraphs[f][nKey]
+	if escapeGraph != nil {
+		v.checkEscape(s, nextNode, escapeGraph)
+	} else {
+		e := fmt.Errorf("missing escape for %s in context %s", f, nKey)
+		s.Logger.Errorf(e.Error())
+		s.Logger.Debugf("%s has %d contexts", f, len(v.escapeGraphs[f]))
+		s.AddError(e.Error(), e)
+	}
+	return update
+}
 
-	if sinkInstr != nil && sourceInstr != nil {
-		if _, ok := paths[sinkInstr.(ssa.Instruction)]; !ok {
-			paths[sinkInstr.(ssa.Instruction)] = make(map[ssa.Instruction]bool)
+func (v *Visitor) checkEscape(s *df.AnalyzerState, node df.GraphNode, escapeInfo *EscapeInfo) {
+	if escapeInfo == nil {
+		s.AddError("missing escape graph",
+			fmt.Errorf("was missing escape graph for node %s when checking escape", node))
+	}
+	for instr := range node.Marks() {
+		_, isCall := instr.(ssa.CallInstruction)
+		isLocal, isTracked := escapeInfo.InstructionLocality[instr]
+		if !isCall && !isLocal && isTracked {
+			v.taints.addNewEscape(v.currentSource.Node, instr)
+			v.raiseAlarm(s, instr.Pos(),
+				fmt.Sprintf("instruction %s in %s is not local!\n\tPosition: %s",
+					instr, node.Graph().Parent, s.Program.Fset.Position(instr.Pos())))
 		}
-		paths[sinkInstr.(ssa.Instruction)][sourceInstr] = true
-		return true
 	}
-	return false
+}
+
+// storeEscapeGraph computes the escape graph of callee in the context where it is called with stack. stack.Label should
+// be the caller of callee
+func (v *Visitor) storeEscapeGraph(s *df.AnalyzerState, stack *df.CallStack, callNode *df.CallNode) bool {
+	if callNode == nil {
+		return false
+	}
+	callee := callNode.Callee()
+
+	var escapeContext *EscapeInfo
+
+	if stack != nil {
+		key := "" // key corresponding to no context if the function is a root
+		if stack.Parent != nil {
+			key = stack.Parent.Key()
+		}
+		escapeContext = v.escapeGraphs[callNode.Graph().Parent][key]
+	}
+
+	// if trace is a lasso, stack is the context_key
+	nextNodeContextKey := stack.GetLassoHandle().Key()
+	if nextNodeContextKey == "" {
+		nextNodeContextKey = stack.Key()
+	}
+
+	if escapeContext != nil {
+		ctxt := escapeContext.CallSiteInfo[callNode.CallSite().Value()]
+		if ctxt != nil {
+			escapeCallContext := ctxt.Resolve(callee)
+			v.storeEscapeGraphInContext(s, callee, nextNodeContextKey, escapeCallContext)
+			return true
+		}
+	}
+
+	escapeNoContext := s.EscapeAnalysisState.ComputeArbitraryContext(callee)
+	v.storeEscapeGraphInContext(s, callee, nextNodeContextKey, escapeNoContext)
+	return true
+}
+
+func (v *Visitor) storeEscapeGraphInContext(s *df.AnalyzerState, f *ssa.Function, key df.KeyType,
+	ctx df.EscapeCallContext) {
+	if v.escapeGraphs[f] == nil {
+		v.escapeGraphs[f] = map[df.KeyType]*EscapeInfo{}
+	}
+
+	locality, info := s.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(f, ctx)
+	v.escapeGraphs[f][key] = &EscapeInfo{locality, info}
+}
+
+func (v *Visitor) raiseAlarm(s *df.AnalyzerState, pos token.Pos, msg string) {
+	if _, alreadyRaised := v.alarms[pos]; !alreadyRaised {
+		s.Logger.Warnf(msg)
+		v.alarms[pos] = msg
+	}
 }
 
 func findCallsites(state *df.AnalyzerState, f *ssa.Function) []ssa.CallInstruction {
@@ -590,7 +743,8 @@ func findCallsites(state *df.AnalyzerState, f *ssa.Function) []ssa.CallInstructi
 }
 
 // addCallToCallsites adds c to callSites if it is in summary's callees.
-func addCallToCallsites(s *df.AnalyzerState, summary *df.SummaryGraph, c ssa.CallInstruction, callSites map[ssa.CallInstruction]*df.CallNode) {
+func addCallToCallsites(s *df.AnalyzerState, summary *df.SummaryGraph, c ssa.CallInstruction,
+	callSites map[ssa.CallInstruction]*df.CallNode) {
 	for instr, f2n := range summary.Callees {
 		if instr == c {
 			for _, callNode := range f2n {

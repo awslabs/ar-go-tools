@@ -29,6 +29,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+type LocSet = map[ssa.Instruction]bool
+
 // ObjectPath contains information relative to the object pointed to.
 type ObjectPath struct {
 	// RelPath is the relative object memory path, e.g. * for dereference TODO: use this for field sensitivity
@@ -76,6 +78,10 @@ type GraphNode interface {
 	String() string
 
 	Type() types.Type
+
+	Marks() LocSet
+
+	SetLocs(LocSet)
 }
 
 type IndexedGraphNode interface {
@@ -95,6 +101,7 @@ type ParamNode struct {
 	argPos  int
 	out     map[GraphNode]ObjectPath
 	in      map[GraphNode]ObjectPath
+	marks   LocSet
 }
 
 func (a *ParamNode) ID() uint32                    { return a.id }
@@ -103,6 +110,8 @@ func (a *ParamNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *ParamNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *ParamNode) SsaNode() *ssa.Parameter       { return a.ssaNode }
 func (a *ParamNode) Type() types.Type              { return a.ssaNode.Type() }
+func (a *ParamNode) Marks() LocSet                 { return a.marks }
+func (a *ParamNode) SetLocs(set LocSet)            { a.marks = set }
 func (a *ParamNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
@@ -136,12 +145,15 @@ type FreeVarNode struct {
 	fvPos   int
 	out     map[GraphNode]ObjectPath
 	in      map[GraphNode]ObjectPath
+	marks   LocSet
 }
 
 func (a *FreeVarNode) ID() uint32                    { return a.id }
 func (a *FreeVarNode) Graph() *SummaryGraph          { return a.parent }
 func (a *FreeVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *FreeVarNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *FreeVarNode) Marks() LocSet                 { return a.marks }
+func (a *FreeVarNode) SetLocs(set LocSet)            { a.marks = set }
 func (a *FreeVarNode) SsaNode() *ssa.FreeVar         { return a.ssaNode }
 func (a *FreeVarNode) Type() types.Type              { return a.ssaNode.Type() }
 
@@ -176,12 +188,15 @@ type CallNodeArg struct {
 	argPos   int
 	out      map[GraphNode]ObjectPath
 	in       map[GraphNode]ObjectPath
+	marks    LocSet
 }
 
 func (a *CallNodeArg) ID() uint32                    { return a.id }
 func (a *CallNodeArg) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *CallNodeArg) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNodeArg) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *CallNodeArg) Marks() LocSet                 { return a.marks }
+func (a *CallNodeArg) SetLocs(set LocSet)            { a.marks = set }
 func (a *CallNodeArg) Type() types.Type              { return a.ssaValue.Type() }
 
 func (a *CallNodeArg) Position(c *AnalyzerState) token.Position {
@@ -225,12 +240,15 @@ type CallNode struct {
 	args          []*CallNodeArg
 	out           map[GraphNode]ObjectPath
 	in            map[GraphNode]ObjectPath
+	marks         LocSet
 }
 
 func (a *CallNode) ID() uint32                    { return a.id }
 func (a *CallNode) Graph() *SummaryGraph          { return a.parent }
 func (a *CallNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *CallNode) Marks() LocSet                 { return a.marks }
+func (a *CallNode) SetLocs(set LocSet)            { a.marks = set }
 func (a *CallNode) Type() types.Type {
 	if call, ok := a.callSite.(*ssa.Call); ok {
 		return call.Type()
@@ -322,6 +340,8 @@ func (a *ReturnValNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ReturnValNode) Out() map[GraphNode]ObjectPath { return nil }
 func (a *ReturnValNode) ID() uint32                    { return a.id }
 func (a *ReturnValNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *ReturnValNode) Marks() LocSet                 { return nil }
+func (a *ReturnValNode) SetLocs(set LocSet)            {}
 func (a *ReturnValNode) Index() int                    { return a.index }
 func (a *ReturnValNode) Type() types.Type              { return a.parent.ReturnType() }
 func (a *ReturnValNode) Position(c *AnalyzerState) token.Position {
@@ -360,6 +380,7 @@ type ClosureNode struct {
 	boundVars []*BoundVarNode
 	out       map[GraphNode]ObjectPath
 	in        map[GraphNode]ObjectPath
+	marks     LocSet
 }
 
 func (a *ClosureNode) ID() uint32 { return a.id }
@@ -368,6 +389,8 @@ func (a *ClosureNode) ID() uint32 { return a.id }
 func (a *ClosureNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ClosureNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *ClosureNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *ClosureNode) Marks() LocSet                 { return a.marks }
+func (a *ClosureNode) SetLocs(set LocSet)            { a.marks = set }
 func (a *ClosureNode) Type() types.Type              { return a.instr.Type() }
 
 func (a *ClosureNode) Position(c *AnalyzerState) token.Position {
@@ -420,14 +443,17 @@ type BoundVarNode struct {
 	// bPos is the position of the bound variable, and correspond to fvPos is the closure's summary
 	bPos int
 
-	out map[GraphNode]ObjectPath
-	in  map[GraphNode]ObjectPath
+	out   map[GraphNode]ObjectPath
+	in    map[GraphNode]ObjectPath
+	marks LocSet
 }
 
 func (a *BoundVarNode) ID() uint32                    { return a.id }
 func (a *BoundVarNode) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *BoundVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundVarNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *BoundVarNode) Marks() LocSet                 { return a.marks }
+func (a *BoundVarNode) SetLocs(set LocSet)            { a.marks = set }
 func (a *BoundVarNode) Type() types.Type              { return a.ssaValue.Type() }
 func (a *BoundVarNode) Value() ssa.Value              { return a.ssaValue }
 
@@ -468,12 +494,15 @@ type AccessGlobalNode struct {
 	Global  *GlobalNode     // the corresponding global node
 	out     map[GraphNode]ObjectPath
 	in      map[GraphNode]ObjectPath
+	marks   LocSet
 }
 
 func (a *AccessGlobalNode) ID() uint32                    { return a.id }
 func (a *AccessGlobalNode) Graph() *SummaryGraph          { return a.graph }
 func (a *AccessGlobalNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *AccessGlobalNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *AccessGlobalNode) Marks() LocSet                 { return a.marks }
+func (a *AccessGlobalNode) SetLocs(set LocSet)            { a.marks = set }
 func (a *AccessGlobalNode) Type() types.Type              { return a.Global.Type() }
 
 func (a *AccessGlobalNode) Position(c *AnalyzerState) token.Position {
@@ -505,12 +534,15 @@ type SyntheticNode struct {
 	label  string                   // the label can be used to record information about synthetic nodes
 	out    map[GraphNode]ObjectPath // the out maps the node to other nodes to which data flows
 	in     map[GraphNode]ObjectPath // the in maps the node to other nodes from which data flows
+	marks  LocSet
 }
 
 func (a *SyntheticNode) ID() uint32                    { return a.id }
 func (a *SyntheticNode) Graph() *SummaryGraph          { return a.parent }
 func (a *SyntheticNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *SyntheticNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *SyntheticNode) Marks() LocSet                 { return a.marks }
+func (a *SyntheticNode) SetLocs(set LocSet)            { a.marks = set }
 func (a *SyntheticNode) Type() types.Type {
 	if val, ok := a.instr.(ssa.Value); ok {
 		return val.Type()
@@ -550,12 +582,15 @@ type BoundLabelNode struct {
 	label      *pointer.Label
 	out        map[GraphNode]ObjectPath // the out maps the node to other nodes to which data flows
 	in         map[GraphNode]ObjectPath // the in maps the node to other nodes from which data flows
+	marks      LocSet
 }
 
 func (a *BoundLabelNode) ID() uint32                    { return a.id }
 func (a *BoundLabelNode) Graph() *SummaryGraph          { return a.parent }
 func (a *BoundLabelNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundLabelNode) In() map[GraphNode]ObjectPath  { return a.in }
+func (a *BoundLabelNode) Marks() LocSet                 { return a.marks }
+func (a *BoundLabelNode) SetLocs(set LocSet)            { a.marks = set }
 func (a *BoundLabelNode) Type() types.Type              { return a.targetInfo.Type() }
 
 func (a *BoundLabelNode) Position(c *AnalyzerState) token.Position {
@@ -967,7 +1002,8 @@ func (g *SummaryGraph) AddBoundLabelNode(instr ssa.Instruction, label *pointer.L
 	}
 }
 
-func (g *SummaryGraph) AddSyntheticNodeEdge(mark Mark, instr ssa.Instruction, label string, info *ConditionInfo) {
+func (g *SummaryGraph) AddSyntheticNodeEdge(mark Mark, info *ConditionInfo, instr ssa.Instruction, label string) {
+
 	node, ok := g.SyntheticNodes[instr]
 	if !ok {
 		return
@@ -975,12 +1011,95 @@ func (g *SummaryGraph) AddSyntheticNodeEdge(mark Mark, instr ssa.Instruction, la
 	g.addEdge(mark, node, info)
 }
 
-func (g *SummaryGraph) AddBoundLabelNodeEdge(mark Mark, instr ssa.Instruction, info *ConditionInfo) {
+func (g *SummaryGraph) AddBoundLabelNodeEdge(mark Mark, info *ConditionInfo,
+	instr ssa.Instruction) {
 	node, ok := g.BoundLabelNodes[instr]
 	if !ok {
 		return
 	}
 	g.addEdge(mark, node, info)
+}
+
+// selectNodesFromMark returns a slice of nodes that correspond to the mark. In most cases this slice should have only
+// one element.
+//
+//gocyclo:ignore
+func (g *SummaryGraph) selectNodesFromMark(m Mark) []GraphNode {
+	var nodes []GraphNode
+
+	if m.IsParameter() {
+		if argNode, ok := g.Params[m.Node]; ok {
+			nodes = append(nodes, argNode)
+		}
+	}
+
+	if m.IsCallSiteArg() {
+		// A CallSite source node must be a CallInstruction
+		sourceCallInstr := m.Node.(ssa.CallInstruction)
+		// and it must have a qualifier representing the argument
+		if callNodes, ok := g.Callees[sourceCallInstr]; ok {
+			for _, callNode := range callNodes {
+				argNode := callNode.FindArg(m.Qualifier)
+				if argNode != nil {
+					nodes = append(nodes, argNode)
+				}
+			}
+		}
+	}
+
+	if m.IsCallReturn() {
+		// A CallReturn source node must be a CallInstruction
+		callInstruction := m.Node.(ssa.CallInstruction)
+		if callNodes, ok := g.Callees[callInstruction]; ok {
+			for _, callNode := range callNodes {
+				nodes = append(nodes, callNode)
+			}
+
+		}
+	}
+
+	if m.IsFreeVar() {
+		if freeVarNode, ok := g.FreeVars[m.Node]; ok {
+			nodes = append(nodes, freeVarNode)
+		}
+	}
+
+	if m.IsBoundVar() {
+		// A bound var source's node must be a make closure node
+		closureInstruction := m.Node.(ssa.Instruction)
+		if cNode, ok := g.CreatedClosures[closureInstruction]; ok {
+			bvNode := cNode.FindBoundVar(m.Qualifier)
+			if bvNode != nil {
+				nodes = append(nodes, bvNode)
+			}
+		}
+	}
+
+	if m.IsClosure() {
+		closureInstruction := m.Node.(ssa.Instruction)
+		if cNode, ok := g.CreatedClosures[closureInstruction]; ok {
+			nodes = append(nodes, cNode)
+		}
+	}
+
+	if m.IsSynthetic() {
+		// A synthetic source can refer to any instruction
+		synthetic := m.Node.(ssa.Instruction)
+		if syntheticNode, ok := g.SyntheticNodes[synthetic]; ok {
+			nodes = append(nodes, syntheticNode)
+		}
+	}
+
+	if m.IsGlobal() {
+		globalAccessInstruction := m.Node.(ssa.Instruction)
+		if group, ok := g.AccessGlobalNodes[globalAccessInstruction]; ok {
+			if globalNode, ok := group[m.Qualifier]; ok {
+				nodes = append(nodes, globalNode)
+			}
+		}
+	}
+
+	return nodes
 }
 
 // Functions to add edges to the graph
@@ -1082,7 +1201,7 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 
 // AddCallArgEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
-func (g *SummaryGraph) AddCallArgEdge(mark Mark, call ssa.CallInstruction, arg ssa.Value, cond *ConditionInfo) {
+func (g *SummaryGraph) AddCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction, arg ssa.Value) {
 	callNodes := g.Callees[call]
 	if callNodes == nil {
 		return
@@ -1099,7 +1218,8 @@ func (g *SummaryGraph) AddCallArgEdge(mark Mark, call ssa.CallInstruction, arg s
 }
 
 // AddCallNodeEdge adds an edge that flows to a call node.
-func (g *SummaryGraph) AddCallNodeEdge(mark Mark, call ssa.CallInstruction, cond *ConditionInfo) {
+func (g *SummaryGraph) AddCallNodeEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction) {
+
 	callNodes := g.Callees[call]
 	if callNodes == nil {
 		return
@@ -1111,7 +1231,8 @@ func (g *SummaryGraph) AddCallNodeEdge(mark Mark, call ssa.CallInstruction, cond
 
 // AddBoundVarEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
-func (g *SummaryGraph) AddBoundVarEdge(mark Mark, closure *ssa.MakeClosure, v ssa.Value, cond *ConditionInfo) {
+func (g *SummaryGraph) AddBoundVarEdge(mark Mark, cond *ConditionInfo, closure *ssa.MakeClosure, v ssa.Value) {
+
 	closureNode := g.CreatedClosures[closure]
 	if closureNode == nil {
 		g.addError(fmt.Errorf("attempting to set bound arg edge but no closure node for %s", closure))
@@ -1129,7 +1250,8 @@ func (g *SummaryGraph) AddBoundVarEdge(mark Mark, closure *ssa.MakeClosure, v ss
 
 // AddReturnEdge adds an edge in the summary from the mark to a return instruction
 // @requires g != nil
-func (g *SummaryGraph) AddReturnEdge(mark Mark, retInstr ssa.Instruction, tupleIndex int, cond *ConditionInfo) {
+func (g *SummaryGraph) AddReturnEdge(mark Mark, cond *ConditionInfo, retInstr ssa.Instruction, tupleIndex int) {
+
 	if tupleIndex < 0 || tupleIndex > len(g.Returns) {
 		return
 	}
@@ -1145,7 +1267,7 @@ func (g *SummaryGraph) AddReturnEdge(mark Mark, retInstr ssa.Instruction, tupleI
 }
 
 // AddParamEdge adds an edge in the summary from the mark to a parameter of the function
-func (g *SummaryGraph) AddParamEdge(mark Mark, param ssa.Node, cond *ConditionInfo) {
+func (g *SummaryGraph) AddParamEdge(mark Mark, cond *ConditionInfo, param ssa.Node) {
 	paramNode := g.Params[param]
 
 	if paramNode == nil {
@@ -1156,7 +1278,8 @@ func (g *SummaryGraph) AddParamEdge(mark Mark, param ssa.Node, cond *ConditionIn
 }
 
 // AddGlobalEdge adds an edge from a mark to a GlobalNode
-func (g *SummaryGraph) AddGlobalEdge(mark Mark, loc ssa.Instruction, v *ssa.Global, cond *ConditionInfo) {
+func (g *SummaryGraph) AddGlobalEdge(mark Mark, cond *ConditionInfo, loc ssa.Instruction, v *ssa.Global) {
+
 	node := g.AccessGlobalNodes[loc][v]
 
 	if node == nil {
@@ -1262,7 +1385,7 @@ func (g *SummaryGraph) addParamEdgeByPos(src int, dest int) bool {
 }
 
 // AddFreeVarEdge adds an edge in the summary from the mark to a bound variable of a closure
-func (g *SummaryGraph) AddFreeVarEdge(mark Mark, freeVar ssa.Node, cond *ConditionInfo) {
+func (g *SummaryGraph) AddFreeVarEdge(mark Mark, cond *ConditionInfo, freeVar ssa.Node) {
 	freeVarNode := g.FreeVars[freeVar]
 	if freeVarNode == nil {
 		g.addError(fmt.Errorf("attempting to set free var edge but no free var node"))
@@ -1442,22 +1565,22 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	fmt.Fprintf(w, "\tlabel=\"%s\";\n", g.Parent.Name()) // label each subgraph with the function name
 	for _, a := range g.Params {
 		for n := range a.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(a.String()), escapeString(n.String()))
 		}
 		if !outEdgesOnly {
 			for n := range a.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(a.String()), escapeString(n.String()))
 			}
 		}
 	}
 
 	for _, a := range g.FreeVars {
 		for n := range a.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(a.String()), escapeString(n.String()))
 		}
 		if !outEdgesOnly {
 			for n := range a.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(a.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(a.String()), escapeString(n.String()))
 			}
 		}
 	}
@@ -1465,20 +1588,20 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	for _, callNodes := range g.Callees {
 		for _, callN := range callNodes {
 			for n, obj := range callN.Out() {
-				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escape(callN.String()), obj.Index, escape(n.String()))
+				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(callN.String()), obj.Index, escapeString(n.String()))
 			}
 			if !outEdgesOnly {
 				for n := range callN.In() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(callN.String()), escape(n.String()))
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(callN.String()), escapeString(n.String()))
 				}
 			}
 			for _, x := range callN.args {
 				for n := range x.Out() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(x.String()), escape(n.String()))
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(x.String()), escapeString(n.String()))
 				}
 				if !outEdgesOnly {
 					for n := range x.In() {
-						fmt.Fprintf(w, "\t%s -> %s;\n", escape(x.String()), escape(n.String()))
+						fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(x.String()), escapeString(n.String()))
 					}
 				}
 			}
@@ -1488,20 +1611,20 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	for _, closure := range g.CreatedClosures {
 		for _, boundvar := range closure.boundVars {
 			for n := range boundvar.Out() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(boundvar.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(boundvar.String()), escapeString(n.String()))
 			}
 			if !outEdgesOnly {
 				for n := range boundvar.In() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(boundvar.String()), escape(n.String()))
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(boundvar.String()), escapeString(n.String()))
 				}
 			}
 		}
 		for o := range closure.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(closure.String()), escape(o.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(closure.String()), escapeString(o.String()))
 		}
 		if !outEdgesOnly {
 			for i := range closure.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(closure.String()), escape(i.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(closure.String()), escapeString(i.String()))
 			}
 		}
 	}
@@ -1513,11 +1636,11 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 				continue
 			}
 			for n, obj := range r.Out() {
-				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escape(r.String()), obj.Index, escape(n.String()))
+				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(r.String()), obj.Index, escapeString(n.String()))
 			}
 			if !outEdgesOnly {
 				for n, obj := range r.In() {
-					fmt.Fprintf(w, "\t%s.%d -> %s;\n", escape(r.String()), obj.Index, escape(n.String()))
+					fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(r.String()), obj.Index, escapeString(n.String()))
 				}
 			}
 		}
@@ -1525,22 +1648,22 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 
 	for _, s := range g.SyntheticNodes {
 		for n := range s.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 		}
 		if !outEdgesOnly {
 			for n := range s.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 			}
 		}
 	}
 
 	for _, s := range g.BoundLabelNodes {
 		for n := range s.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 		}
 		if !outEdgesOnly {
 			for n := range s.In() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 			}
 		}
 	}
@@ -1548,11 +1671,11 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 	for _, group := range g.AccessGlobalNodes {
 		for _, s := range group {
 			for n := range s.Out() {
-				fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 			}
 			if !outEdgesOnly {
 				for n := range s.In() {
-					fmt.Fprintf(w, "\t%s -> %s;\n", escape(s.String()), escape(n.String()))
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 				}
 			}
 		}
@@ -1732,7 +1855,7 @@ func (a *CallNode) FullString() string {
 }
 
 // escape escapes the inner quotes in s so the graphviz output renders correctly.
-func escape(s string) string {
+func escapeString(s string) string {
 	b := make([]rune, 0, len(s))
 	for i, c := range s {
 		if !(i == 0 || // ignore starting "

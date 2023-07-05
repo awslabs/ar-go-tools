@@ -348,6 +348,7 @@ func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 		return false
 	}
 	if flowInfo != nil {
+		state.CurrentDataflowInformation = flowInfo
 		if command.Flags["v"] {
 			writeFmt(tt, "\n")
 			writeFmt(tt, " ⎏  Final state is ↴\n")
@@ -357,6 +358,53 @@ func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 	} else {
 		WriteErr(tt, "Flow information is nil after analysis. Something went wrong?")
 	}
+	return false
+}
+
+// cmdMark shows intermediate information about a mark in the dataflow analysis
+func cmdMark(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
+	if c == nil {
+		writeFmt(tt, "\t- %s%s%s: show information about a mark in the intraprocedural analysis\n",
+			tt.Escape.Blue, cmdMarkName, tt.Escape.Reset)
+		writeFmt(tt, "\t    -h    print this help message\n")
+
+		if state.CurrentFunction == nil {
+			WriteErr(tt, "You must first focus on a function to run this command!")
+			WriteErr(tt, "Example: > focus command-line-arguments.main")
+		}
+
+		return false
+	}
+
+	if command.Flags["h"] {
+		return cmdMark(tt, nil, command)
+	}
+
+	if state.CurrentDataflowInformation == nil || state.CurrentDataflowInformation.Function != state.CurrentFunction {
+		writeFmt(tt, "Running the intra-procedural dataflow analysis first...\n")
+		_ = cmdIntra(tt, c, command)
+	}
+
+	r, err := regexp.Compile(command.Args[0])
+	if err != nil {
+		regexErr(tt, command.Args[0], err)
+		return false
+	}
+
+	foundMatch := false
+	for mark, instructionSet := range state.CurrentDataflowInformation.LocSet {
+		if r.MatchString(mark.String()) {
+			foundMatch = true
+			writeFmt(tt, "Mark %s\n", mark.String())
+			for instr := range instructionSet {
+				writeFmt(tt, "\t - %s\n", instr.String())
+			}
+		}
+	}
+	if !foundMatch {
+		WriteErr(tt, "Did not find any mark matching %s", r.String())
+	}
+
 	return false
 }
 
@@ -426,6 +474,26 @@ func showInstr(tt *term.Terminal, c *dataflow.AnalyzerState, instr ssa.Instructi
 	writeFmt(tt, "            location: %s\n", c.Program.Fset.Position(instr.Pos()))
 }
 
+func setStr(a ssa.Value, s *string) {
+	// Fencing off the insane error with some String() calls on ssa values
+	defer func() {
+		if r := recover(); r != nil {
+			*s = ""
+		}
+	}()
+	*s = a.String()
+}
+
+func setName(a ssa.Value, s *string) {
+	// Fencing off the insane error with some String() calls on ssa values
+	defer func() {
+		if r := recover(); r != nil {
+			*s = ""
+		}
+	}()
+	*s = a.Name()
+}
+
 func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataflow.FlowInformation) {
 	if fi.Function == nil {
 		return
@@ -446,19 +514,25 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			if b == nil {
 				return false
 			}
-			return a.Name() < b.Name()
+
+			var s1, s2 string
+			setStr(a, &s1)
+			setStr(a, &s2)
+			return s1 < s2
 		})
 		for _, val := range mVals {
 			if val == nil {
 				continue
 			}
 			marks := fi.MarkedValues[i][val]
-			x := val.Name()
+			var x, vStr, vName string
+			setStr(val, &vStr)
+			setName(val, &vName)
 			_, isFunc := val.(*ssa.Function)
 			if isFunc {
-				x = "fun " + x
-			} else if val.String() != val.Name() {
-				x += "=" + val.String()
+				x = "fun " + vName
+			} else if vStr != vName {
+				x = vName + "=" + vStr
 			}
 			writeFmt(tt, "   %s%-30s%s marked by ", tt.Escape.Magenta, x, tt.Escape.Reset)
 			var markStrings []string

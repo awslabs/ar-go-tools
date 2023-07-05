@@ -32,7 +32,7 @@ import (
 // This file implements the single function analysis. This analysis pass inspects a single function and constructs
 // a dataflow summary of the function.
 // - this file `single_function.go` contains the logic that determines when to run the monotone framework analysis,
-// call the monotone frameowrk analysis, and builds the dataflow graph from the result of the monotone framework
+// call the monotone framework analysis, and builds the dataflow graph from the result of the monotone framework
 // analysis.
 // - `single_function_monotone_analysis.go` contains all the functions relative to the monotone analysis part of this
 // single function analysis.
@@ -46,10 +46,21 @@ type SingleFunctionResult struct {
 }
 
 // SingleFunctionAnalysis is the main entry point of the intra procedural analysis.
-func SingleFunctionAnalysis(state *AnalyzerState, function *ssa.Function, buildSummary bool, id uint32,
+func SingleFunctionAnalysis(state *AnalyzerState,
+	function *ssa.Function,
+	buildSummary bool,
+	id uint32,
 	shouldTrack func(*config.Config, ssa.Node) bool,
 	postBlockCallback func(*IntraAnalysisState)) (SingleFunctionResult, error) {
-	sm := NewSummaryGraph(function, id)
+	var sm *SummaryGraph
+	existingSummary := state.FlowGraph.Summaries[function]
+
+	if existingSummary == nil {
+		sm = NewSummaryGraph(function, id)
+	} else {
+		sm = existingSummary
+	}
+
 	flowInfo := NewFlowInfo(state.Config, function)
 	// The function should have at least one instruction!
 	if len(function.Blocks) == 0 || len(function.Blocks[0].Instrs) == 0 {
@@ -72,6 +83,7 @@ func SingleFunctionAnalysis(state *AnalyzerState, function *ssa.Function, buildS
 func run(a *AnalyzerState, flowInfo *FlowInformation, sm *SummaryGraph,
 	shouldTrack func(*config.Config, ssa.Node) bool,
 	postBlockCallback func(*IntraAnalysisState)) error {
+	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{
 		flowInfo:            flowInfo,
 		parentAnalyzerState: a,
@@ -106,6 +118,8 @@ func run(a *AnalyzerState, flowInfo *FlowInformation, sm *SummaryGraph,
 	lang.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
 	// Synchronize the edges of global variables
 	sm.SyncGlobals()
+	// Update the locsets / marks of the nodes
+	state.moveLocSetsToSummary()
 	// Mark the summary as constructed
 	sm.Constructed = true
 	// If we have errors, return one (TODO: we'll decide how to handle them later)
@@ -141,8 +155,8 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 	}
 	// add call node edges for call instructions whose value corresponds to a function (i.e. the Method is nil)
 	if callInstr.Common().Method == nil {
-		for _, mark := range state.getMarkedValues(callInstr, callInstr.Common().Value, "*") {
-			state.summary.AddCallNodeEdge(mark, callInstr, nil)
+		for _, mark := range state.getMarks(callInstr, callInstr.Common().Value, "*", false) {
+			state.summary.AddCallNodeEdge(mark, nil, callInstr)
 			switch x := mark.Node.(type) {
 			case *ssa.MakeClosure:
 				state.updateBoundVarEdges(callInstr, x)
@@ -157,31 +171,31 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 		switch argInstr := arg.(type) {
 		case *ssa.Global:
 			tmpSrc := NewMark(callInstr.(ssa.Node), Global, "", argInstr, -1)
-			state.summary.AddCallArgEdge(tmpSrc, callInstr, argInstr, nil)
+			state.summary.AddCallArgEdge(tmpSrc, nil, callInstr, argInstr)
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(callInstr, argInstr)
 		}
 
-		for _, mark := range state.getMarkedValues(callInstr, arg, "*") {
+		for _, mark := range state.getMarks(callInstr, arg, "*", true) {
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
 			c := state.checkFlow(mark, callInstr, arg)
 			if c.Satisfiable {
 				// Add the condition only if it is a predicate on the argument, i.e. there are boolean functions
 				// that apply to the destination value
 				if c2 := c.AsPredicateTo(arg); len(c2.Conditions) > 0 {
-					state.summary.AddCallArgEdge(mark, callInstr, arg, &c2)
+					state.summary.AddCallArgEdge(mark, &c2, callInstr, arg)
 				} else {
-					state.summary.AddCallArgEdge(mark, callInstr, arg, nil)
+					state.summary.AddCallArgEdge(mark, nil, callInstr, arg)
 				}
 				// Add edges to parameters if the call may modify caller's arguments
 				for x := range state.paramAliases[arg] {
 					if lang.IsNillableType(x.Type()) {
-						state.summary.AddParamEdge(mark, x, nil)
+						state.summary.AddParamEdge(mark, nil, x)
 					}
 				}
 				for y := range state.freeVarAliases[arg] {
 					if lang.IsNillableType(y.Type()) {
-						state.summary.AddFreeVarEdge(mark, y, nil)
+						state.summary.AddFreeVarEdge(mark, nil, y)
 					}
 				}
 			}
@@ -192,8 +206,8 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 // updateBoundVarEdges updates the edges to bound variables.
 func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
-		for _, boundVarMark := range state.getMarkedValues(instr, boundVar, "*") {
-			state.summary.AddBoundVarEdge(boundVarMark, x, boundVar, &ConditionInfo{Satisfiable: true})
+		for _, boundVarMark := range state.getMarks(instr, boundVar, "*", false) {
+			state.summary.AddBoundVarEdge(boundVarMark, &ConditionInfo{Satisfiable: true}, x, boundVar)
 		}
 	}
 }
@@ -202,14 +216,14 @@ func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *s
 // to parameters and free variables.
 func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
-		for _, mark := range state.getMarkedValues(x, boundVar, "*") {
-			state.summary.AddBoundVarEdge(mark, x, boundVar, nil)
+		for _, mark := range state.getMarks(x, boundVar, "*", false) {
+			state.summary.AddBoundVarEdge(mark, nil, x, boundVar)
 			for y := range state.paramAliases[boundVar] {
-				state.summary.AddParamEdge(mark, y, nil)
+				state.summary.AddParamEdge(mark, nil, y)
 			}
 
 			for y := range state.freeVarAliases[boundVar] {
-				state.summary.AddFreeVarEdge(mark, y, nil)
+				state.summary.AddFreeVarEdge(mark, nil, y)
 			}
 		}
 	}
@@ -228,10 +242,10 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			for mark := range marks {
 				if lang.IsNillableType(val.Type()) {
 					for aliasedParam := range state.paramAliases[markedValue] {
-						state.summary.AddParamEdge(mark, aliasedParam, nil)
+						state.summary.AddParamEdge(mark, nil, aliasedParam)
 					}
 					for aliasedFreeVar := range state.freeVarAliases[markedValue] {
-						state.summary.AddFreeVarEdge(mark, aliasedFreeVar, nil)
+						state.summary.AddFreeVarEdge(mark, nil, aliasedFreeVar)
 					}
 				}
 			}
@@ -244,8 +258,8 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			state.updateBoundVarEdges(x, r)
 		}
 
-		for _, origin := range state.getMarkedValues(x, result, "*") {
-			state.summary.AddReturnEdge(origin, x, tupleIndex, nil)
+		for _, origin := range state.getMarks(x, result, "*", true) {
+			state.summary.AddReturnEdge(origin, nil, x, tupleIndex)
 		}
 	}
 }
@@ -256,12 +270,12 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	bounds := state.isCapturedBy(x.Addr)
 	if len(bounds) > 0 {
-		for _, origin := range state.getMarkedValues(x, x.Addr, "*") {
+		for _, origin := range state.getMarks(x, x.Addr, "*", false) {
 			for _, label := range bounds {
 				if label.Value() != nil {
 					for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
 						state.summary.AddBoundLabelNode(x, label, *target)
-						state.summary.AddBoundLabelNodeEdge(origin, x, nil)
+						state.summary.AddBoundLabelNodeEdge(origin, nil, x)
 					}
 				}
 			}
@@ -271,13 +285,21 @@ func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 
 func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
 	if asValue, ok := instr.(ssa.Value); ok && state.shouldTrack(state.parentAnalyzerState.Config, instr.(ssa.Node)) {
-		for _, origin := range state.getMarkedValues(instr, asValue, "*") {
+		for _, origin := range state.getMarks(instr, asValue, "*", false) {
 			_, isField := instr.(*ssa.Field)
 			_, isFieldAddr := instr.(*ssa.FieldAddr)
 			// check flow to avoid duplicate edges between synthetic nodes
 			if isField || isFieldAddr {
-				state.summary.AddSyntheticNodeEdge(origin, instr, "*", nil)
+				state.summary.AddSyntheticNodeEdge(origin, nil, instr, "*")
 			}
+		}
+	}
+}
+
+func (state *IntraAnalysisState) moveLocSetsToSummary() {
+	for mark, locset := range state.flowInfo.LocSet {
+		for _, graphNode := range state.summary.selectNodesFromMark(mark) {
+			graphNode.SetLocs(locset)
 		}
 	}
 }
@@ -327,7 +349,8 @@ func (state *IntraAnalysisState) checkFlow(source Mark, dest ssa.Instruction, de
 	}
 }
 
-func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruction, dest ssa.Instruction) ConditionInfo {
+func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruction,
+	dest ssa.Instruction) ConditionInfo {
 	var i, j int
 	for k, instr := range source.Block().Instrs {
 		if instr == source {

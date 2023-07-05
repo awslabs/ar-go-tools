@@ -1,3 +1,4 @@
+useescapeanalysis: true
 # The package regex matches all possible ways the package name might appear depending on how the program is loaded
 sources:
   - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
@@ -7,3 +8,4 @@ sinks:
   - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
     # Similarly, sinks are sink1 sink2 sink2 ...
     method: "sink[1-9]?"
+reportpaths: true

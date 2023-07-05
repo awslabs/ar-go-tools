@@ -85,32 +85,64 @@ func main() {
 	}
 
 	start := time.Now()
-	analysisInfo, err := taint.Analyze(logger, taintConfig, program)
+	result, err := taint.Analyze(taintConfig, program)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
 		return
 	}
-	logger.Printf("")
-	logger.Printf("-%s", strings.Repeat("*", 80))
-	logger.Printf("Analysis took %3.4f s", duration.Seconds())
-	logger.Printf("")
-	if len(analysisInfo.TaintFlows) == 0 {
-		logger.Printf("RESULT:\n\t\t%s", colors.Green("No taint flows detected ✓"))
+	result.State.Logger.Infof("")
+	result.State.Logger.Infof("-%s", strings.Repeat("*", 80))
+	result.State.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
+	result.State.Logger.Infof("")
+	if len(result.TaintFlows.Sinks) == 0 {
+		result.State.Logger.Infof(
+			"RESULT:\n\t\t%s", colors.Green("No taint flows detected ✓"))
 	} else {
-		logger.Printf("RESULT:\n\t\t%s", colors.Red("Taint flows detected!"))
+		result.State.Logger.Errorf(
+			"RESULT:\n\t\t%s", colors.Red("Taint flows detected!"))
+	}
+	if len(result.TaintFlows.Escapes) > 0 {
+		result.State.Logger.Errorf(
+			"ESCAPE ANALYSIS RESULT:\n\t\t%s", colors.Red("Tainted data escapes origin thread!"))
+
+	} else if taintConfig.UseEscapeAnalysis {
+		result.State.Logger.Infof(
+			"ESCAPE ANALYSIS RESULT:\n\t\t%s", colors.Green("Tainted data does not escape ✓"))
 	}
 
-	// Prints location in the SSA
-	for sink, sources := range analysisInfo.TaintFlows {
+	Report(program, result)
+}
+
+func Report(program *ssa.Program, result taint.AnalysisResult) {
+	// Prints location of sinks and sources in the SSA
+	for sink, sources := range result.TaintFlows.Sinks {
 		for source := range sources {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
-			logger.Printf("%s in function %s:\n\tSink: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
+			result.State.Logger.Warnf(
+				"%s in function %s:\n\tSink: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
 				colors.Red("A source has reached a sink"),
 				sink.Parent().Name(),
 				sink.String(),
 				sinkPos.String(),
+				source.String(),
+				sourcePos.String(),
+			)
+		}
+	}
+
+	// Prints location of positions where source data escapes in the SSA
+	for escape, sources := range result.TaintFlows.Escapes {
+		for source := range sources {
+			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
+			escapePos := program.Fset.File(escape.Pos()).Position(escape.Pos())
+			result.State.Logger.Warnf(
+				"%s in function %s:\n\tS: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
+				colors.Yellow("Data escapes thread"),
+				escape.Parent().Name(),
+				escape.String(),
+				escapePos.String(),
 				source.String(),
 				sourcePos.String(),
 			)

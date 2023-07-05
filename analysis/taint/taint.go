@@ -15,19 +15,23 @@
 package taint
 
 import (
-	"log"
+	"fmt"
 	"runtime"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
 
 type AnalysisResult struct {
 	// TaintFlows contains all the data flows from the sources to the sinks detected during the analysis
-	TaintFlows TaintFlows
+	TaintFlows *Flows
+
+	// State is the state at the end of the analysis, if you need to chain another analysis
+	State *dataflow.AnalyzerState
 
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
@@ -46,7 +50,7 @@ type AnalysisResult struct {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
+func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -62,6 +66,14 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, prog)
 	if err != nil {
 		return AnalysisResult{}, err
+	}
+
+	// Optional step: running the escape analysis
+	if cfg.UseEscapeAnalysis {
+		err := escape.InitializeEscapeAnalysisState(state)
+		if err != nil {
+			return AnalysisResult{}, err
+		}
 	}
 
 	// ** Second step **
@@ -105,7 +117,15 @@ func Analyze(logger *log.Logger, cfg *config.Config, prog *ssa.Program) (Analysi
 		},
 	})
 
-	return AnalysisResult{Graph: *state.FlowGraph, TaintFlows: visitor.taints}, nil
+	// ** Fourth step **
+	// Additional analyses are run after the taint analysis has completed. Those analyses check the soundness of the
+	// result after the fact, and some other analyses can be used to prune false alarms.
+
+	if state.HasErrors() {
+		err = fmt.Errorf("analysis returned errors, check AnalysisResult.State for more details")
+	}
+	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: visitor.taints}, err
+
 }
 
 func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.Config, numRoutines int) {

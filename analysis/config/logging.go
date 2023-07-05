@@ -17,25 +17,28 @@ package config
 import (
 	"io"
 	"log"
+	"os"
+
+	"github.com/awslabs/ar-go-tools/internal/colors"
 )
 
 type LogLevel int
 
 const (
-	// ErrLevel=1 - the minimum level of logging.
+	// ErrLevel =1 - the minimum level of logging.
 	ErrLevel LogLevel = iota + 1
 
-	// WarnLEvel=2 - the level for logging warnings, and errors
+	// WarnLevel =2 - the level for logging warnings, and errors
 	WarnLevel
 
-	// InfoLevel=3 - the level for logging high-level information, results
+	// InfoLevel =3 - the level for logging high-level information, results
 	InfoLevel
 
-	// DebugLevel=4 - the level for debugging information. The tool will run properly on large programs with
+	// DebugLevel =4 - the level for debugging information. The tool will run properly on large programs with
 	// that level of debug information.
 	DebugLevel
 
-	// TraceLevel=5 - the level for tracing. The tool will not run properly on large programs with that level
+	// TraceLevel =5 - the level for tracing. The tool will not run properly on large programs with that level
 	// of information, but this is useful on smaller testing programs.
 	TraceLevel
 )
@@ -53,18 +56,12 @@ type LogGroup struct {
 func NewLogGroup(config *Config) *LogGroup {
 	l := &LogGroup{
 		Level: LogLevel(config.LogLevel),
-		trace: log.Default(),
-		debug: log.Default(),
-		info:  log.Default(),
-		warn:  log.Default(),
-		err:   log.Default(),
+		trace: log.New(os.Stdout, colors.Faint("[TRACE] "), 0),
+		debug: log.New(os.Stdout, "[DEBUG] ", 0),
+		info:  log.New(os.Stdout, colors.Green("[INFO]  "), 0),
+		warn:  log.New(os.Stdout, colors.Yellow("[WARN]  "), 0),
+		err:   log.New(os.Stderr, colors.Red("[ERROR] "), 0),
 	}
-
-	l.trace.SetPrefix("[TRACE] ")
-	l.debug.SetPrefix("[DEBUG] ")
-	l.info.SetPrefix("[INFO] ")
-	l.warn.SetPrefix("[WARN] ")
-	l.err.SetPrefix("[ERROR] ")
 	return l
 }
 

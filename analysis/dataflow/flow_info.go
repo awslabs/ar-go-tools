@@ -34,6 +34,11 @@ type FlowInformation struct {
 	// MarkedValues maps instructions to abstract states, i.e. a map from values to their abstract value, which is a
 	// set of marks
 	MarkedValues map[ssa.Instruction]map[ssa.Value]map[Mark]bool
+
+	// LocSet is a map from marks to the locations associated to it. A location is associated to a mark when it
+	// is used to propagate the mark during the monotone analysis. This is meant to be used by other analyses, and
+	// does not contain user-interpretable information.
+	LocSet map[Mark]map[ssa.Instruction]bool
 }
 
 // NewFlowInfo returns a new FlowInformation with all maps initialized.
@@ -42,6 +47,7 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 		Function:     f,
 		Config:       cfg,
 		MarkedValues: make(map[ssa.Instruction]map[ssa.Value]map[Mark]bool),
+		LocSet:       make(map[Mark]map[ssa.Instruction]bool),
 	}
 }
 
@@ -77,6 +83,7 @@ func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, s Mark) boo
 // AddMark adds a mark to the tracking info structure and returns a boolean
 // if new information has been inserted.
 func (fi *FlowInformation) AddMark(i ssa.Instruction, v ssa.Value, s Mark) bool {
+
 	if vMarks, ok := fi.MarkedValues[i][v]; ok {
 		if vMarks[s] {
 			return false
@@ -88,4 +95,11 @@ func (fi *FlowInformation) AddMark(i ssa.Instruction, v ssa.Value, s Mark) bool 
 		fi.MarkedValues[i][v] = map[Mark]bool{s: true}
 		return true
 	}
+}
+
+func (fi *FlowInformation) SetLoc(mark Mark, instr ssa.Instruction) {
+	if fi.LocSet[mark] == nil {
+		fi.LocSet[mark] = map[ssa.Instruction]bool{}
+	}
+	fi.LocSet[mark][instr] = true
 }

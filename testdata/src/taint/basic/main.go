@@ -40,6 +40,10 @@ func sink1(s string) {
 	fmt.Println(s)
 }
 
+func sink3(s any) {
+	fmt.Println(s)
+}
+
 func argReachesSink(x string) {
 	a := make([]string, 10)
 	a[0] = "x"
@@ -54,12 +58,13 @@ func source1() string {
 
 func main() {
 	test0()
-	test1()                // see bar.go
-	test2()                // see example.go
-	test3(10)              // see example.go
-	test4()                // see example2.go
-	test5()                // see example3.go
-	testField()            // see fields.go
-	testFieldEmbedded()    // see fields.go
-	runSanitizerExamples() // see sanitizers.go
+	test1()                  // see bar.go
+	test2()                  // see example.go
+	test3(10)                // see example.go
+	test4()                  // see example2.go
+	test5()                  // see example3.go
+	testField()              // see fields.go
+	testFieldEmbedded()      // see fields.go
+	runSanitizerExamples()   // see sanitizers.go
+	testAliasingTransitive() // see memory.go
 }

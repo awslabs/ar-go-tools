@@ -617,11 +617,11 @@ func addNext(s *df.AnalyzerState,
 	s.Logger.Tracef("\ttrace: %v\n", trace)
 	s.Logger.Tracef("\tclosure-trace: %v\n", closureTrace)
 	s.Logger.Tracef("\tseen? %v\n", seen[newNode.Key()])
-	s.Logger.Tracef("\tlasso? %v\n", trace.IsLasso())
+	s.Logger.Tracef("\tlasso? %v\n", trace.GetLassoHandle() != nil)
 	s.Logger.Tracef("\tdepth: %v\n", cur.depth)
 
 	// Stop conditions
-	if seen[newNode.Key()] || trace.IsLasso() || cur.depth > s.Config.MaxDepth {
+	if seen[newNode.Key()] || trace.GetLassoHandle() != nil || cur.depth > s.Config.MaxDepth {
 		s.Logger.Tracef("\tstopping...")
 		return stack
 	}

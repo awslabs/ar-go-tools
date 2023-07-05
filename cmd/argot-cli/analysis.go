@@ -222,6 +222,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 			"run only\n", tt.Escape.Blue, cmdSummarizeName, tt.Escape.Reset)
 		writeFmt(tt, "\t   on the provided function\n")
 		writeFmt(tt, "\t   This will build dataflow summaries for all specified functions.\n")
+		writeFmt(tt, "\t   -force flag will force summarization and bypass filters on reachable functions.\n")
 		return false
 	}
 

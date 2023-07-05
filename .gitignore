@@ -9,3 +9,4 @@ tmp
 errors.txt
 large-tests
 taint-report*
+*-report
