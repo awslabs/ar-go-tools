@@ -116,11 +116,24 @@ func testVariousBuiltins() int {
 	x := make([]int, 5)
 	l := len(x)
 
+	// New is lowered to one of the Make*/Alloc instructions plus "address of"
+	y := new(Node)
+	z := new(int)
+	w := new(chan int)
+	assertAllLocal(y)
+	assertAllLocal(z)
+	// w is a *chan int, so a pointer to a heap cell containing the pointer-like channel
+	// reference. Ensure both are local
+	assertAllLocal(w)
+	assertAllLocal(*w)
+
 	return l
 }
 
 func testAppend(s []*Node) []*Node {
 	s = append(s, &Node{})
+	// Test multiple append arguments
+	s = append(s, &Node{}, &Node{})
 	return s
 }
 
