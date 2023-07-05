@@ -102,10 +102,8 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// that is reachable from a source.
 
 	visitor := NewVisitor()
-	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
-		AnalyzerState: state,
-		Visitor:       visitor,
-		IsEntrypoint:  IsSourceNode,
+	analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
+		IsEntrypoint: IsSourceNode,
 	})
 
 	// ** Fourth step **

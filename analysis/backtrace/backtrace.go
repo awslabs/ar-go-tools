@@ -103,10 +103,8 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 	}
 
 	visitor := &Visitor{}
-	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
-		AnalyzerState: state,
-		Visitor:       visitor,
-		IsEntrypoint:  IsCrossFunctionEntrypoint,
+	analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
+		IsEntrypoint: IsCrossFunctionEntrypoint,
 	})
 
 	logger.Infof(colors.Green("Found %d traces.\n"), len(visitor.Traces))

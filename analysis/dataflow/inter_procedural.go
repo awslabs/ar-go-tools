@@ -20,10 +20,8 @@ import (
 	"io"
 	"os"
 	"runtime"
-	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -133,7 +131,14 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 	}
 
 	// Build the inter-procedural data flow graph:
-	// STEP 1: link all the summaries together
+	nameAliases := map[string]*ssa.Function{}
+	// STEP 1: build a map from full function names to summaries
+	for summarized := range g.Summaries {
+		// sometimes a "thunk" function will be the same as a normal function,
+		// just with a different name ending in $thunk and the same position
+		nameAliases[summarized.String()] = summarized
+	}
+	// STEP 2: link all the summaries together
 	for _, summary := range g.Summaries {
 		if summary == nil {
 			continue
@@ -148,7 +153,7 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil {
-					node.CalleeSummary = g.resolveCalleeSummary(node, isEntrypoint)
+					node.CalleeSummary = g.resolveCalleeSummary(node, nameAliases, isEntrypoint)
 				}
 			}
 		}
@@ -156,7 +161,7 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		// Interprocedural edges: closure creation to anonymous function
 		for _, closureNode := range summary.CreatedClosures {
 			if closureNode.instr != nil {
-				closureSummary := findClosureSummary(closureNode.instr, g.Summaries)
+				closureSummary := g.findClosureSummary(closureNode.instr)
 
 				// Add edge from created closure summary to creator
 				if closureSummary != nil {
@@ -169,7 +174,7 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		// Interprocedural edges: bound variable to capturing anonymous function
 		for _, boundLabelNode := range summary.BoundLabelNodes {
 			if boundLabelNode.targetInfo.MakeClosure != nil {
-				closureSummary := findClosureSummary(boundLabelNode.targetInfo.MakeClosure, g.Summaries)
+				closureSummary := g.findClosureSummary(boundLabelNode.targetInfo.MakeClosure)
 				boundLabelNode.targetAnon = closureSummary // nil is safe
 			}
 		}
@@ -264,14 +269,14 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 // resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
 // sets the edge from callee to caller, if it could find a summary.
 // Returns nil if no summary can be found.
-func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
+func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAliases map[string]*ssa.Function,
 	isEntryPoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
 	var calleeSummary *SummaryGraph
 	logger := g.AnalyzerState.Logger
 
 	// If it's not an interface contract, attempt to just find the summary in the dataflow graph's computed summaries
 	if node.callee.Type != InterfaceContract {
-		calleeSummary = findCalleeSummary(node.Callee(), g.Summaries)
+		calleeSummary = g.findSummary(node.Callee(), nameAliases)
 	}
 
 	// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
@@ -314,7 +319,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 			calleeSummary.Callsites[node.CallSite()] = node
 		}
 	} else {
-		summaryNotFound(g, node)
+		g.summaryNotFound(node)
 	}
 
 	return calleeSummary
@@ -325,30 +330,56 @@ func (g *InterProceduralFlowGraph) findCallPathFromCallNode(origin *CallNode, de
 	return nil
 }
 
-// findCalleeSummary returns the summary graph of callee in summaries if present. Returns nil if not.
-func findCalleeSummary(callee *ssa.Function, summaries map[*ssa.Function]*SummaryGraph) *SummaryGraph {
-	if summary, ok := summaries[callee]; ok {
+// findSummary returns the summary graph of f in summaries if present. Returns nil if not.
+//
+// This will also return a summary if:
+//   - f$thunk is the input, and f has a summary, then f's summary is returned
+//   - f is the input, and f$thunk has a summary, then f$thunk's summary is returned.
+//
+// This also holds for f and f$bound. The function checks that the position of the returned summary is the same as the
+// position of the function.
+func (g *InterProceduralFlowGraph) findSummary(f *ssa.Function, names map[string]*ssa.Function) *SummaryGraph {
+	if summary, ok := g.Summaries[f]; ok {
 		return summary
 	}
-
-	for summarized, summary := range summaries {
-		// sometimes a "thunk" function will be the same as a normal function,
-		// just with a different name ending in $thunk and the same position
-		if (strings.HasPrefix(callee.String(), summarized.String()) ||
-			strings.HasPrefix(summarized.String(), callee.String())) &&
-			callee.Pos() == summarized.Pos() {
-			return summary
-		}
+	// Check if the function might correspond to a thunk
+	actualThunk := g.findSummaryModuloSuffix(f, names, "$thunk")
+	if actualThunk != nil {
+		return actualThunk
+	}
+	// Check if the function might correspond to a bound function
+	actualBound := g.findSummaryModuloSuffix(f, names, "$bound")
+	if actualBound != nil {
+		return actualBound
 	}
 
 	return nil
 }
 
+func (g *InterProceduralFlowGraph) findSummaryModuloSuffix(f *ssa.Function, names map[string]*ssa.Function,
+	suffix string) *SummaryGraph {
+	// Either the function has been summarized, and we are looking for function + suffix,
+	// or the function + suffix has been summarized, and we are looking for the function.
+	if alias, ok := names[f.String()+suffix]; ok {
+		summary := g.Summaries[alias]
+		if summary != nil && f.Pos() == summary.Parent.Pos() {
+			return summary
+		}
+	}
+	if alias, ok := names[f.String()]; ok {
+		summary := g.Summaries[alias]
+		if summary != nil && f.Pos() == summary.Parent.Pos() {
+			return summary
+		}
+	}
+	return nil
+}
+
 // findClosureSummary returns the summary graph of the function used in the MakeClosure instruction instr
-func findClosureSummary(instr *ssa.MakeClosure, summaries map[*ssa.Function]*SummaryGraph) *SummaryGraph {
+func (g *InterProceduralFlowGraph) findClosureSummary(instr *ssa.MakeClosure) *SummaryGraph {
 	switch funcValue := instr.Fn.(type) {
 	case *ssa.Function:
-		if summary, ok := summaries[funcValue]; ok {
+		if summary, ok := g.Summaries[funcValue]; ok {
 			return summary
 		} else {
 			return nil
@@ -358,13 +389,7 @@ func findClosureSummary(instr *ssa.MakeClosure, summaries map[*ssa.Function]*Sum
 	}
 }
 
-// IsSourceFunction returns true if cfg identifies f as a source.
-func IsSourceFunction(cfg *config.Config, f *ssa.Function) bool {
-	pkg := lang.PackageNameFromFunction(f)
-	return cfg.IsSource(config.CodeIdentifier{Package: pkg, Method: f.Name()})
-}
-
-func summaryNotFound(g *InterProceduralFlowGraph, node *CallNode) {
+func (g *InterProceduralFlowGraph) summaryNotFound(node *CallNode) {
 	if node.callee.Callee.Name() != "init" &&
 		g.AnalyzerState.IsReachableFunction(node.callee.Callee) {
 

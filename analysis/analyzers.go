@@ -90,20 +90,19 @@ func runJobs(jobs []singleFunctionJob, numRoutines int,
 	return funcutil.MapParallel(jobs, f, numRoutines)
 }
 
-// RunCrossFunctionArgs represents the arguments to RunCrossFunction.
-type RunCrossFunctionArgs struct {
-	AnalyzerState *dataflow.AnalyzerState
-	Visitor       dataflow.Visitor
-	IsEntrypoint  func(*config.Config, ssa.Node) bool
+// InterProceduralParams represents the arguments to RunInterProcedural.
+type InterProceduralParams struct {
+	// IsEntryPoint is a predicate that defines which ssa nodes are entry points of the analysis.
+	IsEntrypoint func(*config.Config, ssa.Node) bool
 }
 
-// RunCrossFunction runs the inter-procedural analysis pass.
+// RunInterProcedural runs the inter-procedural analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
-func RunCrossFunction(args RunCrossFunctionArgs) {
-	args.AnalyzerState.Logger.Infof("Starting inter-procedural pass...")
+func RunInterProcedural(state *dataflow.AnalyzerState, visitor dataflow.Visitor, params InterProceduralParams) {
+	state.Logger.Infof("Starting inter-procedural pass...")
 	start := time.Now()
-	args.AnalyzerState.FlowGraph.BuildAndRunVisitor(args.AnalyzerState, args.Visitor, args.IsEntrypoint)
-	args.AnalyzerState.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
+	state.FlowGraph.BuildAndRunVisitor(state, visitor, params.IsEntrypoint)
+	state.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
 }
 
 // singleFunctionJob contains all the information necessary to run the intra-procedural analysis on function.

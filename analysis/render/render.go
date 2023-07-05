@@ -35,10 +35,8 @@ func BuildCrossFunctionGraph(state *dataflow.AnalyzerState) (*dataflow.AnalyzerS
 
 	state.Logger.Infof("Building full-program inter-procedural dataflow graph...")
 	start := time.Now()
-	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
-		AnalyzerState: state,
-		Visitor:       CrossFunctionGraphVisitor{},
-		IsEntrypoint:  func(*config.Config, ssa.Node) bool { return true },
+	analysis.RunInterProcedural(state, CrossFunctionGraphVisitor{}, analysis.InterProceduralParams{
+		IsEntrypoint: func(*config.Config, ssa.Node) bool { return true },
 	})
 
 	state.Logger.Infof("Full-program inter-procedural dataflow graph done (%.2f s).", time.Since(start).Seconds())
