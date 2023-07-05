@@ -25,13 +25,13 @@ using the [NewInitializedAnalyzerState] function:
 This initialization runs the pointer analysis on the program, as well as a scanning step for global variables, interface
 method implementations and variable bounding information.
 
-To build the dataflow summary of a single function, run the [SingleFunctionAnalysis] function, which runs the
+To build the dataflow summary of a single function, run the [IntraProceduralAnalysis] function, which runs the
 intra-procedural analysis on the function:
 
 	id := 0 // some id for the summary
 	isEntryPoint // some function that identifies entry points for your analyses
 	postBlockCallBack // optional, some function that get called after each block is analyzed
 	shouldBuildSummary // this indicates when the summary should be built, as opposed to simply be created
-	dataflow.SingleFunctionAnalysis(state, function, shouldBuildSummary, id, isEntryPoint, postBlockCallback)
+	dataflow.IntraProceduralAnalysis(state, function, shouldBuildSummary, id, isEntryPoint, postBlockCallback)
 */
 package dataflow

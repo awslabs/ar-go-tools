@@ -294,7 +294,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 
 			logger.Debugf("Building summary for %v...\n", node.Callee())
 
-			result, err := SingleFunctionAnalysis(
+			result, err := IntraProceduralAnalysis(
 				g.AnalyzerState, node.Callee(), true, GetUniqueFunctionId(), isEntryPoint, nil)
 
 			if err != nil {
@@ -460,7 +460,7 @@ func buildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*c
 		logger.Debugf("\tLoaded pre-defined summary for %v\n", function)
 	} else {
 		logger.Debugf("\tBuilding summary for %v...\n", function)
-		result, err := SingleFunctionAnalysis(s, function, true, id, isEntrypoint, nil)
+		result, err := IntraProceduralAnalysis(s, function, true, id, isEntrypoint, nil)
 
 		if err != nil {
 			panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))

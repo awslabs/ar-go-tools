@@ -29,17 +29,9 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// SingleFunctionResult represents the result of running an intra-procedural analysis pass.
-type SingleFunctionResult struct {
-	FlowGraph dataflow.InterProceduralFlowGraph
-}
-
-// RunSingleFunctionArgs represents the arguments for RunSingleFunction.
-type RunSingleFunctionArgs struct {
-	AnalyzerState *dataflow.AnalyzerState
-	NumRoutines   int
-
-	// ShouldCreateSummary indicates whether a summary object should be created. This does *not* means a summary
+// IntraAnalysisParams represents the arguments for RunIntraProcedural.
+type IntraAnalysisParams struct {
+	// ShouldCreateSummary indicates whether a summary object should be created. This does *not* mean a summary
 	// will be built!
 	ShouldCreateSummary func(*ssa.Function) bool
 
@@ -55,45 +47,43 @@ type RunSingleFunctionArgs struct {
 	PostBlockCallback func(state *dataflow.IntraAnalysisState)
 }
 
-// RunSingleFunction runs a intra-procedural analysis pass of program prog in parallel using numRoutines.
-// It builds the function summary if shouldBuildSummary evaluates to true.
-// isSourceNode and isSinkNode are configure which nodes should be treated as data flow sources/sinks.
-func RunSingleFunction(args RunSingleFunctionArgs) SingleFunctionResult {
-	logger := args.AnalyzerState.Logger
-	logger.Infof("Starting intra-procedural analysis ...")
+// RunIntraProcedural runs an intra-procedural analysis pass of program prog in parallel using numRoutines, using the
+// analyzer state. The args specify the intraprocedural analysis parameters.
+// RunIntraProcedural updates the summaries stored in the state's FlowGraph
+func RunIntraProcedural(state *dataflow.AnalyzerState, numRoutines int, args IntraAnalysisParams) {
+	state.Logger.Infof("Starting intra-procedural analysis ...")
 	start := time.Now()
 
-	fg := dataflow.NewInterProceduralFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, args.AnalyzerState)
-	numRoutines := args.NumRoutines + 1
+	fg := dataflow.NewInterProceduralFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, state)
+	numRoutines = numRoutines + 1
 	if numRoutines < 1 {
 		numRoutines = 1
 	}
 
-	jobs := []singleFunctionJob{}
-	for function := range args.AnalyzerState.ReachableFunctions(false, false) {
+	var jobs []singleFunctionJob
+	for function := range state.ReachableFunctions(false, false) {
 		if args.ShouldCreateSummary(function) {
 			jobs = append(jobs, singleFunctionJob{
 				function:           function,
-				analyzerState:      args.AnalyzerState,
-				shouldBuildSummary: args.ShouldBuildSummary(args.AnalyzerState, function),
+				analyzerState:      state,
+				shouldBuildSummary: args.ShouldBuildSummary(state, function),
 			})
 		}
 	}
 
 	// Start the single function summary building routines
 	results := runJobs(jobs, numRoutines, args.IsEntrypoint)
-	collectResults(results, &fg, args.AnalyzerState)
+	collectResults(results, &fg, state)
 
-	logger.Infof("Intra-procedural pass done (%.2f s).", time.Since(start).Seconds())
+	state.Logger.Infof("Intra-procedural pass done (%.2f s).", time.Since(start).Seconds())
 
-	args.AnalyzerState.FlowGraph = &fg
-	return SingleFunctionResult{FlowGraph: fg}
+	state.FlowGraph.InsertSummaries(fg)
 }
 
 // runJobs runs the intra-procedural analysis on each job in jobs in parallel and returns a slice with all the results.
 func runJobs(jobs []singleFunctionJob, numRoutines int,
-	isEntrypoint func(*config.Config, ssa.Node) bool) []dataflow.SingleFunctionResult {
-	f := func(job singleFunctionJob) dataflow.SingleFunctionResult {
+	isEntrypoint func(*config.Config, ssa.Node) bool) []dataflow.IntraProceduralResult {
+	f := func(job singleFunctionJob) dataflow.IntraProceduralResult {
 		return runSingleFunctionJob(job, isEntrypoint)
 	}
 
@@ -128,19 +118,19 @@ type singleFunctionJob struct {
 // runSingleFunctionJob runs the intra-procedural analysis with the information in job
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
-	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.SingleFunctionResult {
-	job.analyzerState.Logger.Debugf("Analyzing Pkg: %s | Func: %s ...",
-		lang.PackageNameFromFunction(job.function), job.function.Name())
-	result, err := dataflow.SingleFunctionAnalysis(job.analyzerState, job.function,
+	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.IntraProceduralResult {
+	job.analyzerState.Logger.Debugf("%-10sPkg: %-60s | Func: %-30s ...",
+		"Analyzing", lang.PackageNameFromFunction(job.function), job.function.Name())
+	result, err := dataflow.IntraProceduralAnalysis(job.analyzerState, job.function,
 		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
 
 	if err != nil {
 		job.analyzerState.Logger.Errorf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
-		return dataflow.SingleFunctionResult{}
+		return dataflow.IntraProceduralResult{}
 	}
 
-	job.analyzerState.Logger.Debugf("Pkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
-		lang.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
+	job.analyzerState.Logger.Debugf("%-10sPkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
+		" ", lang.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
 		result.Time.Seconds())
 
 	summary := result.Summary
@@ -148,14 +138,14 @@ func runSingleFunctionJob(job singleFunctionJob,
 		summary.ShowAndClearErrors(job.analyzerState.Logger.GetError().Writer())
 	}
 
-	return dataflow.SingleFunctionResult{Summary: summary, Time: result.Time}
+	return dataflow.IntraProceduralResult{Summary: summary, Time: result.Time}
 }
 
 // collectResults waits for the results in c and adds them to graph, candidates. It waits for numProducers
 // messages on the done channel to terminate and clean up.
 // Operations on graph and candidates are sequential.
 // cleans up done and c channels
-func collectResults(c []dataflow.SingleFunctionResult, graph *dataflow.InterProceduralFlowGraph,
+func collectResults(c []dataflow.IntraProceduralResult, graph *dataflow.InterProceduralFlowGraph,
 	state *dataflow.AnalyzerState) {
 	var f *os.File
 	var err error
@@ -183,7 +173,7 @@ func collectResults(c []dataflow.SingleFunctionResult, graph *dataflow.InterProc
 	}
 }
 
-func reportSummaryTime(w io.Writer, result dataflow.SingleFunctionResult) {
+func reportSummaryTime(w io.Writer, result dataflow.IntraProceduralResult) {
 	str := fmt.Sprintf("%s, %.2f\n", result.Summary.Parent.String(), result.Time.Seconds())
 	w.Write([]byte(str))
 }

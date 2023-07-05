@@ -39,19 +39,19 @@ import (
 // - `single_function_instruction_ops.go` file contains all the functions that define how instructions in the function
 // are handled.
 
-// SingleFunctionResult holds the results of the intra-procedural analysis.
-type SingleFunctionResult struct {
+// IntraProceduralResult holds the results of the intra-procedural analysis.
+type IntraProceduralResult struct {
 	Summary *SummaryGraph // Summary is the procedure summary built by the analysis
 	Time    time.Duration // Time it took to compute the summary
 }
 
-// SingleFunctionAnalysis is the main entry point of the intra procedural analysis.
-func SingleFunctionAnalysis(state *AnalyzerState,
+// IntraProceduralAnalysis is the main entry point of the intra procedural analysis.
+func IntraProceduralAnalysis(state *AnalyzerState,
 	function *ssa.Function,
 	buildSummary bool,
 	id uint32,
 	shouldTrack func(*config.Config, ssa.Node) bool,
-	postBlockCallback func(*IntraAnalysisState)) (SingleFunctionResult, error) {
+	postBlockCallback func(*IntraAnalysisState)) (IntraProceduralResult, error) {
 	var sm *SummaryGraph
 	existingSummary := state.FlowGraph.Summaries[function]
 
@@ -63,7 +63,7 @@ func SingleFunctionAnalysis(state *AnalyzerState,
 
 	// The function should have at least one instruction!
 	if len(function.Blocks) == 0 || len(function.Blocks[0].Instrs) == 0 {
-		return SingleFunctionResult{Summary: sm}, nil
+		return IntraProceduralResult{Summary: sm}, nil
 	}
 
 	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
@@ -71,11 +71,11 @@ func SingleFunctionAnalysis(state *AnalyzerState,
 	if buildSummary {
 		err := RunIntraProcedural(state, sm)
 		if err != nil {
-			return SingleFunctionResult{Summary: sm, Time: time.Since(start)}, err
+			return IntraProceduralResult{Summary: sm, Time: time.Since(start)}, err
 		}
 	}
 
-	return SingleFunctionResult{Summary: sm, Time: time.Since(start)}, nil
+	return IntraProceduralResult{Summary: sm, Time: time.Since(start)}, nil
 }
 
 // RunIntraProcedural is the core of the intra-procedural analysis. It updates the summary graph *in place* using the

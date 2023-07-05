@@ -95,9 +95,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 		singleFunctionSummarizeOnDemand(state, cfg, numRoutines)
 	} else {
 		// Only build summaries for non-stdlib functions here
-		analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			AnalyzerState:       state,
-			NumRoutines:         numRoutines,
+		analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: df.ShouldCreateSummary,
 			ShouldBuildSummary:  df.ShouldBuildSummary,
 			IsEntrypoint:        isSingleFunctionEntrypoint,
@@ -698,9 +696,7 @@ func singleFunctionSummarizeOnDemand(state *df.AnalyzerState, cfg *config.Config
 		}
 	}
 
-	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		AnalyzerState: state,
-		NumRoutines:   numRoutines,
+	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: func(f *ssa.Function) bool {
 			return shouldSummarize[f] // these concurrent map reads are safe because they are not written to
 		},

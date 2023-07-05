@@ -52,9 +52,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
 	}
 
-	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		AnalyzerState:       state,
-		NumRoutines:         numRoutines,
+	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: shouldCreateSummary,
 		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
 		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },

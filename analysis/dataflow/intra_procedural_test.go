@@ -49,9 +49,7 @@ func TestFunctionSummaries(t *testing.T) {
 	shouldCreateSummary := func(f *ssa.Function) bool {
 		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
 	}
-	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		AnalyzerState:       state,
-		NumRoutines:         numRoutines,
+	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: shouldCreateSummary,
 		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
 		IsEntrypoint:        taint.IsSourceNode,

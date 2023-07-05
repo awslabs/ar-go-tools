@@ -252,14 +252,11 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 			}
 			return b
 		}
-		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			AnalyzerState:       c,
-			NumRoutines:         numRoutines,
+		analysis.RunIntraProcedural(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: shouldCreateSummary,
 			ShouldBuildSummary:  shouldBuildSummary,
 			IsEntrypoint:        taint.IsSourceNode,
 		})
-		c.FlowGraph.InsertSummaries(res.FlowGraph)
 		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
 		// Running the intra-procedural analysis on a single function, if it can be found
@@ -289,15 +286,13 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		}
 
 		// Run the analysis with the filter.
-		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			AnalyzerState:       c,
-			NumRoutines:         numRoutines,
+		analysis.RunIntraProcedural(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: shouldCreateSummary,
 			ShouldBuildSummary:  shouldBuildSummary,
 			IsEntrypoint:        taint.IsSourceNode,
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
-		c.FlowGraph.InsertSummaries(res.FlowGraph)
+
 		WriteSuccess(tt, "%d summaries created, %d built.", createCounter, buildCounter)
 		if createCounter == 0 {
 			WriteSuccess(tt, "The queried functions may not be reachable?")

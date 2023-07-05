@@ -85,16 +85,15 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// function being analyzed.
 
 	if cfg.SummarizeOnDemand {
-		intraProceduralPassWithOnDemand(state, cfg, numRoutines)
+		intraProceduralPassWithOnDemand(state, numRoutines)
 	} else {
 		// Only build summaries for non-stdlib functions here
-		analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			AnalyzerState:       state,
-			NumRoutines:         numRoutines,
-			ShouldCreateSummary: dataflow.ShouldCreateSummary,
-			ShouldBuildSummary:  dataflow.ShouldBuildSummary,
-			IsEntrypoint:        IsSourceNode,
-		})
+		analysis.RunIntraProcedural(state, numRoutines,
+			analysis.IntraAnalysisParams{
+				ShouldCreateSummary: dataflow.ShouldCreateSummary,
+				ShouldBuildSummary:  dataflow.ShouldBuildSummary,
+				IsEntrypoint:        IsSourceNode,
+			})
 	}
 
 	// ** Third step **
@@ -120,9 +119,10 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 
 }
 
-func intraProceduralPassWithOnDemand(state *dataflow.AnalyzerState, cfg *config.Config, numRoutines int) {
+func intraProceduralPassWithOnDemand(state *dataflow.AnalyzerState, numRoutines int) {
+	cfg := state.Config
 	sourceFuncs := []*ssa.Function{}
-	for f := range dataflow.CallGraphReachable(state.PointerAnalysis.CallGraph, false, false) {
+	for f := range state.ReachableFunctions(false, false) {
 		pkg := ""
 		if f.Package() != nil {
 			pkg = f.Package().String()
@@ -171,9 +171,7 @@ func intraProceduralPassWithOnDemand(state *dataflow.AnalyzerState, cfg *config.
 		}
 	}
 
-	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		AnalyzerState: state,
-		NumRoutines:   numRoutines,
+	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: func(f *ssa.Function) bool {
 			return shouldSummarize[f]
 		},
