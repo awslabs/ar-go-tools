@@ -1467,14 +1467,14 @@ func (g *SummaryGraph) addReturnEdgeByPos(src int, pos int) bool {
 	return false
 }
 
-// LoadPredefinedSummary searches for a summary for f in the summaries packages and builds the SummaryGraph it
+// NewPredefinedSummary searches for a summary for f in the summaries packages and builds the SummaryGraph it
 // represents. The resulting summary will only contain parameter and return nodes and edges between those. It will
 // not include any call node or call argument nodes.
 //
 // If f is nil, or f has no predefined summary, then the function returns nil.
 // If f has a predefined summary, then the returned summary graph is marked as constructed.
 // cg can be nil.
-func LoadPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
+func NewPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
 	preDef, ok := summaries.SummaryOfFunc(f)
 	if !ok {
 		return nil

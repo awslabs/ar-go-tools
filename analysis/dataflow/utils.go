@@ -35,8 +35,13 @@ func PrintMissingSummaryMessage(c *AnalyzerState, callSite *CallNode) {
 	} else {
 		typeString = callSite.Callee().Type().String()
 	}
-	c.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
-		callSite.String(), typeString)))
+	if callSite.CalleeSummary == nil {
+		c.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
+			callSite.String(), typeString)))
+	} else if !callSite.CalleeSummary.Constructed {
+		c.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been constructed (call %s).",
+			callSite.String(), typeString)))
+	}
 	if callSite.Callee() != nil && callSite.CallSite() != nil {
 		c.Logger.Debugf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
 

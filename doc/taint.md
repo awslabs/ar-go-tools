@@ -315,6 +315,8 @@ In the specification for the `Reader` method, the first argument's data flows to
 
 >⚠️ Correct specification of the summaries is currently the user's responsibility, but we are working on tools to check the correctness of the summaries when the functions summarized are supported by the analysis.
 
+>⚠️ Dataflow contracts have precedence over function contracts. This means that if for some function call the tool has the choice between picking the function's contract or the dataflow contract, it will pick the dataflow contract.
+
 
 ## Using Escape Analysis
 

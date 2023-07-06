@@ -22,6 +22,7 @@ import (
 	"runtime"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -138,7 +139,29 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		// just with a different name ending in $thunk and the same position
 		nameAliases[summarized.String()] = summarized
 	}
-	// STEP 2: link all the summaries together
+	// STEP 2: Enforce dataflow contracts
+	for _, summary := range g.Summaries {
+		if summary == nil {
+			continue
+		}
+		for _, callNodes := range summary.Callees {
+			for _, node := range callNodes {
+				if node.Callee() != nil && node.CalleeSummary == nil {
+					if externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node); externalContractSummary != nil {
+						logger.Debugf("Loaded %s from external contracts.\n",
+							node.CallSite().Common().String())
+						g.Summaries[node.Callee()] = externalContractSummary
+						node.CalleeSummary = externalContractSummary
+						if x := externalContractSummary.Callsites[node.CallSite()]; x == nil {
+							externalContractSummary.Callsites[node.CallSite()] = node
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// STEP 3: link all the summaries together
 	for _, summary := range g.Summaries {
 		if summary == nil {
 			continue
@@ -152,7 +175,8 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		// Interprocedural edges: callers to callees
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
-				if node.Callee() != nil && node.CalleeSummary == nil {
+				if node.Callee() != nil && node.CalleeSummary == nil &&
+					g.AnalyzerState.IsReachableFunction(node.Callee()) {
 					node.CalleeSummary = g.resolveCalleeSummary(node, nameAliases, isEntrypoint)
 				}
 			}
@@ -279,23 +303,13 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAlia
 		calleeSummary = g.findSummary(node.Callee(), nameAliases)
 	}
 
-	// If it's not in the generated summaries, try to fetch it from predefined summaries or interface
-	// contracts, or build the summary
 	if calleeSummary == nil {
-		// Try to load from external (user-defined) contract summaries
-		if calleeSummary = g.AnalyzerState.LoadExternalContractSummary(node); calleeSummary != nil {
-			logger.Debugf("Loaded %s from external contracts.\n",
-				node.CallSite().Common().String())
-			g.Summaries[node.Callee()] = calleeSummary
-
-			// Try to load from predefined (user-defined) summaries
-		} else if calleeSummary = LoadPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
+		if calleeSummary = NewPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
 			logger.Debugf("Loaded %s from summaries.\n", node.Callee().String())
 			g.Summaries[node.Callee()] = calleeSummary
 
 			// If summarization on demand is set and the function is reachable, summarize it if ShouldBuildSummary is true
-		} else if g.AnalyzerState.Config.SummarizeOnDemand && g.AnalyzerState.IsReachableFunction(node.Callee()) &&
-			ShouldBuildSummary(g.AnalyzerState, node.Callee()) {
+		} else if g.AnalyzerState.Config.SummarizeOnDemand && ShouldBuildSummary(g.AnalyzerState, node.Callee()) {
 
 			logger.Debugf("Building summary for %v...\n", node.Callee())
 
@@ -310,6 +324,13 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAlia
 			// Store the computed summary in the graph
 			calleeSummary = result.Summary
 			g.Summaries[node.Callee()] = calleeSummary
+		}
+	}
+
+	if calleeSummary != nil && !calleeSummary.Constructed {
+		if shortSummary, isPredefined := summaries.SummaryOfFunc(node.Callee()); isPredefined {
+			calleeSummary.PopulateGraphFromSummary(shortSummary, false)
+			logger.Debugf("Constructed %s from summaries.\n", node.Callee().String())
 		}
 	}
 
@@ -480,7 +501,7 @@ func buildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*c
 
 	logger := s.Logger
 	id := GetUniqueFunctionId()
-	summary := LoadPredefinedSummary(function, id)
+	summary := NewPredefinedSummary(function, id)
 	if summary != nil {
 		logger.Debugf("\tLoaded pre-defined summary for %v\n", function)
 	} else {

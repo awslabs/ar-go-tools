@@ -436,10 +436,5 @@ func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
 // ShouldCreateSummary returns true if the function's summary should be *created during the single function analysis
 // pass.
 func ShouldCreateSummary(f *ssa.Function) bool {
-	// if a summary is required, then this should evidently return true!
-	if summaries.IsSummaryRequired(f) {
-		return true
-	}
-
-	return summaries.IsUserDefinedFunction(f)
+	return true
 }

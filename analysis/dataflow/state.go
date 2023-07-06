@@ -436,7 +436,7 @@ func (c *AnalyzerState) linkContracts(allContracts []Contract) {
 	}
 }
 
-// HasExternalContractSummary returns true if the function f has a summary has has been loaded in the DataFlowContracts
+// HasExternalContractSummary returns true if the function f has a summary has been loaded in the DataFlowContracts
 // of the analyzer state.
 func (c *AnalyzerState) HasExternalContractSummary(f *ssa.Function) bool {
 	// Indirection: look for interface contract
