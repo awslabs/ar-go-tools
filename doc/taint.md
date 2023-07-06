@@ -170,7 +170,7 @@ If the analysis was field-sensitive, it would not raise an alarm.
 
 ### Tuple Sensitivity
 
-The taint analysis is *tuple-sensitive*: it tracks the taint of different elements of the tuple separately. This is easier in Go than in other languages because tuples only exist at the boundary of function calls a returns, they cannot be manipulated elsewhere in the code.
+The taint analysis is *tuple-sensitive*: it tracks the taint of different elements of the tuple separately. This is easier in Go than in other languages because tuples only exist at the boundary of function calls and returns, they cannot be manipulated elsewhere in the code.
 This means that in the following example, no false alarm is raised:
 ```[go]
 
