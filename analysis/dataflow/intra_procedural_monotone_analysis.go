@@ -327,7 +327,7 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
 	if state.shouldTrack(state.parentAnalyzerState.Config, asNode) {
 		s := NewMark(asNode, Synthetic+DefaultMark, "", nil, -1)
-		state.summary.AddSyntheticNode(asInstr, "source")
+		state.summary.addSyntheticNode(asInstr, "source")
 		state.markValue(asInstr, asValue, s)
 	}
 }
@@ -376,10 +376,10 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 func (state *IntraAnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
 	if lang.IsNillableType(out.Type()) {
 		for aliasedParam := range state.paramAliases[out] {
-			state.summary.AddParamEdge(in, nil, aliasedParam)
+			state.summary.addParamEdge(in, nil, aliasedParam)
 		}
 		for aliasedFreeVar := range state.freeVarAliases[out] {
-			state.summary.AddFreeVarEdge(in, nil, aliasedFreeVar)
+			state.summary.addFreeVarEdge(in, nil, aliasedFreeVar)
 		}
 	}
 }
@@ -387,7 +387,7 @@ func (state *IntraAnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
 // checkFlowIntoGlobal checks whether the origin is data flowing into a global variable
 func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, origin Mark, out ssa.Value) {
 	if glob, isGlob := out.(*ssa.Global); isGlob {
-		state.summary.AddGlobalEdge(origin, nil, loc, glob)
+		state.summary.addGlobalEdge(origin, nil, loc, glob)
 	}
 }
 

@@ -27,18 +27,18 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Visitor represents a visitor that runs am inter-procedural analysis from entrypoint.
+// Visitor represents a visitor that runs an inter-procedural analysis from entrypoint.
 type Visitor interface {
 	Visit(s *AnalyzerState, entrypoint NodeWithTrace)
 }
 
 // InterProceduralFlowGraph represents an inter-procedural data flow graph.
 type InterProceduralFlowGraph struct {
-	// ForwardEdges represents edges between nodes belonging to different subgraphs (inter-procedural version of
+	// ForwardEdges represents edges between nodes belonging to different sub-graphs (inter-procedural version of
 	// (GraphNode).Out)
 	ForwardEdges map[GraphNode]map[GraphNode]bool
 
-	// BackwardEdges represents backward edges between nodes belonging to different subgraphs (inter-procedural
+	// BackwardEdges represents backward edges between nodes belonging to different sub-graphs (inter-procedural
 	// version of (GraphNode).In)
 	BackwardEdges map[GraphNode]map[GraphNode]bool
 

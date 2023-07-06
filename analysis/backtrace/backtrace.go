@@ -289,7 +289,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), isSingleFunctionEntrypoint)
 					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				} else {
-					df.PrintMissingSummaryMessage(s, callSite)
+					s.ReportMissingOrNotConstructedSummary(callSite)
 					break
 				}
 			}

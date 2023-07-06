@@ -160,7 +160,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 	// add call node edges for call instructions whose value corresponds to a function (i.e. the Method is nil)
 	if callInstr.Common().Method == nil {
 		for _, mark := range state.getMarks(callInstr, callInstr.Common().Value, "*", false) {
-			state.summary.AddCallEdge(mark, nil, callInstr)
+			state.summary.addCallEdge(mark, nil, callInstr)
 			switch x := mark.Node.(type) {
 			case *ssa.MakeClosure:
 				state.updateBoundVarEdges(callInstr, x)
@@ -175,7 +175,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 		switch argInstr := arg.(type) {
 		case *ssa.Global:
 			tmpSrc := NewMark(callInstr.(ssa.Node), Global, "", argInstr, -1)
-			state.summary.AddCallArgEdge(tmpSrc, nil, callInstr, argInstr)
+			state.summary.addCallArgEdge(tmpSrc, nil, callInstr, argInstr)
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(callInstr, argInstr)
 		}
@@ -187,19 +187,19 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 				// Add the condition only if it is a predicate on the argument, i.e. there are boolean functions
 				// that apply to the destination value
 				if c2 := c.AsPredicateTo(arg); len(c2.Conditions) > 0 {
-					state.summary.AddCallArgEdge(mark, &c2, callInstr, arg)
+					state.summary.addCallArgEdge(mark, &c2, callInstr, arg)
 				} else {
-					state.summary.AddCallArgEdge(mark, nil, callInstr, arg)
+					state.summary.addCallArgEdge(mark, nil, callInstr, arg)
 				}
 				// Add edges to parameters if the call may modify caller's arguments
 				for x := range state.paramAliases[arg] {
 					if lang.IsNillableType(x.Type()) {
-						state.summary.AddParamEdge(mark, nil, x)
+						state.summary.addParamEdge(mark, nil, x)
 					}
 				}
 				for y := range state.freeVarAliases[arg] {
 					if lang.IsNillableType(y.Type()) {
-						state.summary.AddFreeVarEdge(mark, nil, y)
+						state.summary.addFreeVarEdge(mark, nil, y)
 					}
 				}
 			}
@@ -211,7 +211,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
 		for _, boundVarMark := range state.getMarks(instr, boundVar, "*", false) {
-			state.summary.AddBoundVarEdge(boundVarMark, &ConditionInfo{Satisfiable: true}, x, boundVar)
+			state.summary.addBoundVarEdge(boundVarMark, &ConditionInfo{Satisfiable: true}, x, boundVar)
 		}
 	}
 }
@@ -221,13 +221,13 @@ func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *s
 func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
 		for _, mark := range state.getMarks(x, boundVar, "*", false) {
-			state.summary.AddBoundVarEdge(mark, nil, x, boundVar)
+			state.summary.addBoundVarEdge(mark, nil, x, boundVar)
 			for y := range state.paramAliases[boundVar] {
-				state.summary.AddParamEdge(mark, nil, y)
+				state.summary.addParamEdge(mark, nil, y)
 			}
 
 			for y := range state.freeVarAliases[boundVar] {
-				state.summary.AddFreeVarEdge(mark, nil, y)
+				state.summary.addFreeVarEdge(mark, nil, y)
 			}
 		}
 	}
@@ -246,10 +246,10 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			for mark := range marks {
 				if lang.IsNillableType(val.Type()) {
 					for aliasedParam := range state.paramAliases[markedValue] {
-						state.summary.AddParamEdge(mark, nil, aliasedParam)
+						state.summary.addParamEdge(mark, nil, aliasedParam)
 					}
 					for aliasedFreeVar := range state.freeVarAliases[markedValue] {
-						state.summary.AddFreeVarEdge(mark, nil, aliasedFreeVar)
+						state.summary.addFreeVarEdge(mark, nil, aliasedFreeVar)
 					}
 				}
 			}
@@ -263,7 +263,7 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 		}
 
 		for _, origin := range state.getMarks(x, result, "*", true) {
-			state.summary.AddReturnEdge(origin, nil, x, tupleIndex)
+			state.summary.addReturnEdge(origin, nil, x, tupleIndex)
 		}
 	}
 }
@@ -278,8 +278,8 @@ func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 			for _, label := range bounds {
 				if label.Value() != nil {
 					for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
-						state.summary.AddBoundLabelNode(x, label, *target)
-						state.summary.AddBoundLabelNodeEdge(origin, nil, x)
+						state.summary.addBoundLabelNode(x, label, *target)
+						state.summary.addBoundLabelEdge(origin, nil, x)
 					}
 				}
 			}
@@ -294,7 +294,7 @@ func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) 
 			_, isFieldAddr := instr.(*ssa.FieldAddr)
 			// check flow to avoid duplicate edges between synthetic nodes
 			if isField || isFieldAddr {
-				state.summary.AddSyntheticEdge(origin, nil, instr, "*")
+				state.summary.addSyntheticEdge(origin, nil, instr, "*")
 			}
 		}
 	}

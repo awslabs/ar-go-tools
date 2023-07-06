@@ -278,7 +278,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					df.BuildSummary(s, callSite.Callee(), IsSourceNode)
 					s.FlowGraph.BuildGraph(IsSourceNode)
 				} else {
-					df.PrintMissingSummaryMessage(s, callSite)
+					s.ReportMissingOrNotConstructedSummary(callSite)
 					break
 				}
 			}
@@ -399,7 +399,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					s.FlowGraph.BuildGraph(IsSourceNode)
 					logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 				} else {
-					df.PrintMissingClosureNodeSummaryMessage(s, closureNode)
+					s.ReportMissingClosureNode(closureNode)
 					break
 				}
 			}

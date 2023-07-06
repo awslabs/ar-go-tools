@@ -135,12 +135,12 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 			dataflow.CheckNoGoRoutine(c, goroutines, callSite)
 
 			if callSite.CalleeSummary == nil { // this function has not been summarized
-				dataflow.PrintMissingSummaryMessage(c, callSite)
+				c.ReportMissingOrNotConstructedSummary(callSite)
 				break
 			}
 
 			if !callSite.CalleeSummary.Constructed {
-				dataflow.PrintWarningSummaryNotConstructed(c, callSite)
+				c.ReportSummaryNotConstructed(callSite)
 			}
 
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
@@ -225,7 +225,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 			closureNode := graphNode.ParentNode()
 
 			if closureNode.ClosureSummary == nil {
-				dataflow.PrintMissingClosureNodeSummaryMessage(c, closureNode)
+				c.ReportMissingClosureNode(closureNode)
 				break
 			}
 			// Flows to the free variables of the closure
