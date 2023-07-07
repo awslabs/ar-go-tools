@@ -1,9 +1,9 @@
 sources:
-  - package: fmt
+  - package: "fmt"
     method: Sprintf
-  - package: main
+  - package: "(main)|(command-line-arguments)|(taint/sources)$"
     method: zoo
-  - package: main
+  - package: "(main)|(command-line-arguments)|(taint/sources)$"
     type: Bar
   - type: SomeStruct
     field: DataField

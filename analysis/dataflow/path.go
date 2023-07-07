@@ -26,7 +26,7 @@ import (
 // Condition hold information about a conditional path. If Positive, then the branch is the then-branch where
 // the condition is the Value. If it is not Positive, then this refers to the else-branch
 type Condition struct {
-	// IsPositive indicates whether the branch is the then- or -else branch, i.e. the condition must be taken postively
+	// IsPositive indicates whether the branch is the then- or -else branch, i.e. the condition must be taken positively
 	// or negatively
 	IsPositive bool
 

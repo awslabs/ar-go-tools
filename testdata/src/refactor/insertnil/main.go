@@ -33,7 +33,7 @@ func test1(x any /* @nonnil */) {
 func test2(x string, y []string /* @nonnil */) {
 	print(x)
 	for _, yy := range y {
-		test3(x, yy)
+		test3(&x, &yy)
 	}
 }
 

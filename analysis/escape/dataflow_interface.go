@@ -63,7 +63,7 @@ func (p *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Funct
 func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCallContext {
 	calleeSummary, ok := c.prog.summaries[callee]
 	if !ok {
-		panic("Cannot resolve escape context for unsummarized function")
+		panic("Cannot resolve escape context for non-summarized function")
 	}
 	nodes := calleeSummary.nodes
 	g := NewEmptyEscapeGraph(calleeSummary.nodes)
@@ -94,7 +94,7 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 			mapNode(c.nodes.ValueNode(arg), nodes.ValueNode(callee.Params[i]))
 		}
 	}
-	// TODO: freevars should be copied from the object representing the closure object
+	// TODO: free vars should be copied from the object representing the closure object
 	return &escapeContextImpl{g, callee}
 }
 

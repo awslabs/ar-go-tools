@@ -137,7 +137,7 @@ func testAppend(s []*Node) []*Node {
 	return s
 }
 
-var globalArray [3]*Node = [...]*Node{
+var globalArray = [...]*Node{
 	nil, nil, nil,
 }
 

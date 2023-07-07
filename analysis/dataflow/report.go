@@ -18,29 +18,116 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/tools/go/ssa"
 )
 
-func (c *AnalyzerState) ReportNoCallee(instr ssa.CallInstruction) {
-	pos := c.Program.Fset.Position(instr.Pos())
+func (s *AnalyzerState) reportNoCallee(instr ssa.CallInstruction) {
+	pos := s.Program.Fset.Position(instr.Pos())
 
-	if c.Config.ReportNoCalleeSites {
-		f, err := os.OpenFile(c.Config.ReportNoCalleeFile(), os.O_APPEND, 0644)
+	if s.Config.ReportNoCalleeSites {
+		f, err := os.OpenFile(s.Config.ReportNoCalleeFile(), os.O_APPEND, 0644)
 		if err == nil {
-			c.Logger.Errorf("Could not open %s\n", c.Config.ReportNoCalleeFile())
+			s.Logger.Errorf("Could not open %s\n", s.Config.ReportNoCalleeFile())
 		}
 		defer f.Close()
 		f.WriteString(fmt.Sprintf("\"%s\", %s", instr.String(), pos))
 	}
 
-	c.Logger.Warnf("No callee found for %s.\n", instr.String())
-	c.Logger.Warnf("Location: %s.\n", pos)
+	s.Logger.Warnf("No callee found for %s.\n", instr.String())
+	s.Logger.Warnf("Location: %s.\n", pos)
 	if instr.Value() != nil {
-		c.Logger.Warnf("Value: %s\n", instr.Value().String())
-		c.Logger.Warnf("Type: %s\n", instr.Value().Type())
+		s.Logger.Warnf("Value: %s\n", instr.Value().String())
+		s.Logger.Warnf("Type: %s\n", instr.Value().Type())
 	} else {
-		c.Logger.Warnf("Type: %s\n", instr.Common().Value.Type())
+		s.Logger.Warnf("Type: %s\n", instr.Common().Value.Type())
 	}
 
-	c.Logger.Warnf("Method: %s\n", instr.Common().Method)
+	s.Logger.Warnf("Method: %s\n", instr.Common().Method)
+}
+
+// ReportMissingOrNotConstructedSummary prints a missing summary message to the cache's logger.
+func (s *AnalyzerState) ReportMissingOrNotConstructedSummary(callSite *CallNode) {
+	if !s.Config.Verbose() {
+		return
+	}
+
+	var typeString string
+	if callSite.Callee() == nil {
+		typeString = fmt.Sprintf("nil callee (in %s)",
+			lang.SafeFunctionPos(callSite.Graph().Parent).ValueOr(lang.DummyPos))
+	} else {
+		typeString = callSite.Callee().Type().String()
+	}
+	if callSite.CalleeSummary == nil {
+		s.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
+			callSite.String(), typeString)))
+	} else if !callSite.CalleeSummary.Constructed {
+		s.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been constructed (call %s).",
+			callSite.String(), typeString)))
+	}
+	if callSite.Callee() != nil && callSite.CallSite() != nil {
+		s.Logger.Debugf(fmt.Sprintf("| Please add %s to summaries", callSite.Callee().String()))
+
+		pos := callSite.Position(s)
+		if pos != lang.DummyPos {
+			s.Logger.Debugf("|_ See call site: %s", pos)
+		} else {
+			opos := lang.SafeFunctionPos(callSite.Graph().Parent)
+			s.Logger.Debugf("|_ See call site in %s", opos.ValueOr(lang.DummyPos))
+		}
+
+		methodFunc := callSite.CallSite().Common().Method
+		if methodFunc != nil {
+			methodKey := callSite.CallSite().Common().Value.Type().String() + "." + methodFunc.Name()
+			s.Logger.Debugf("| Or add %s to dataflow contracts", methodKey)
+		}
+	}
+}
+
+// ReportMissingClosureNode prints a missing closure node summary message to the cache's logger.
+func (s *AnalyzerState) ReportMissingClosureNode(closureNode *ClosureNode) {
+	if !s.Config.Verbose() {
+		return
+	}
+
+	var instrStr string
+	if closureNode.Instr() == nil {
+		instrStr = "nil instr"
+	} else {
+		instrStr = closureNode.Instr().String()
+	}
+	s.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+		closureNode.String(), instrStr)))
+	if closureNode.Instr() != nil {
+		s.Logger.Debugf("| Please add closure %s to summaries",
+			closureNode.Instr().Fn.String())
+		s.Logger.Debugf("|_ See closure: %s", closureNode.Position(s))
+	}
+}
+
+// ReportSummaryNotConstructed prints a warning message to the cache's logger.
+func (s *AnalyzerState) ReportSummaryNotConstructed(callSite *CallNode) {
+	if !s.Config.Verbose() {
+		return
+	}
+
+	s.Logger.Debugf("| %s: summary has not been built for %s.",
+		colors.Yellow("WARNING"),
+		colors.Yellow(callSite.Graph().Parent.Name()))
+	pos := callSite.Position(s)
+	if pos != lang.DummyPos {
+		s.Logger.Debugf(fmt.Sprintf("|_ See call site: %s", pos))
+	} else {
+		opos := lang.SafeFunctionPos(callSite.Graph().Parent)
+		s.Logger.Debugf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(lang.DummyPos)))
+	}
+
+	if callSite.CallSite() != nil {
+		methodKey := lang.InstrMethodKey(callSite.CallSite())
+		if methodKey.IsSome() {
+			s.Logger.Debugf(fmt.Sprintf("| Or add %s to dataflow contracts", methodKey.ValueOr("?")))
+		}
+	}
 }

@@ -1,3 +1,3 @@
 sinks:
-  - package: main
+  - package: "((main)|(taint/sinks))"
     method: sinkFunction

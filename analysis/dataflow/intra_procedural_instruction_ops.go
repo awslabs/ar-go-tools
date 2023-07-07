@@ -17,6 +17,7 @@ package dataflow
 import (
 	"go/types"
 
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -73,7 +74,7 @@ func (state *IntraAnalysisState) DoChangeInterface(x *ssa.ChangeInterface) {
 }
 
 func (state *IntraAnalysisState) DoChangeType(x *ssa.ChangeType) {
-	// Changing type doesn'state change taint
+	// Changing type doesn't change taint
 	simpleTransfer(state, x, x.X, x)
 }
 
@@ -124,7 +125,7 @@ func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
-		transfer(state, x, x.Val, addr.X, FieldAddrFieldName(addr), -1)
+		transfer(state, x, x.Val, addr.X, analysisutil.FieldAddrFieldName(addr), -1)
 	}
 }
 
@@ -227,7 +228,7 @@ func (state *IntraAnalysisState) DoTypeAssert(x *ssa.TypeAssert) {
 }
 
 func (state *IntraAnalysisState) DoMakeClosure(x *ssa.MakeClosure) {
-	state.addClosureNode(x)
+	state.markClosureNode(x)
 }
 
 func (state *IntraAnalysisState) DoPhi(phi *ssa.Phi) {
