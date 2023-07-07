@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package datastructs
 
 import (
 	"fmt"
@@ -115,7 +115,7 @@ type DocumentInfo struct {
 	SessionOwner    string
 }
 
-func newDocumentInfo(msg InstanceMessage, parsedMsg SendCommandPayload) DocumentInfo {
+func NewDocumentInfo(msg InstanceMessage, parsedMsg SendCommandPayload) DocumentInfo {
 
 	documentInfo := new(DocumentInfo)
 

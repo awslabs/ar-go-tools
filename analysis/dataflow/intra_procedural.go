@@ -59,6 +59,8 @@ func IntraProceduralAnalysis(state *AnalyzerState,
 		sm = NewSummaryGraph(state, function, id, shouldTrack, postBlockCallback)
 	} else {
 		sm = existingSummary
+		existingSummary.postBlockCallBack = postBlockCallback
+		existingSummary.shouldTrack = shouldTrack
 	}
 
 	// The function should have at least one instruction!
@@ -355,18 +357,22 @@ func (state *IntraAnalysisState) checkFlow(source Mark, dest ssa.Instruction, de
 
 func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruction,
 	dest ssa.Instruction) ConditionInfo {
-	var i, j int
+	var sourceIndex, destIndex int
 	for k, instr := range source.Block().Instrs {
 		if instr == source {
-			i = k
+			sourceIndex = k
 		}
 		if instr == dest {
-			j = k
+			destIndex = k
 		}
 	}
-	if source.Block() == dest.Block() && i >= j {
-		return NewImpossiblePath().Cond
+
+	if source.Block().Index == dest.Block().Index && sourceIndex < destIndex {
+		n := NewImpossiblePath()
+		n.Cond.Satisfiable = true
+		return ConditionInfo{Satisfiable: true}
 	}
+
 	if reachableSet, ok := state.paths[source.Block()]; ok {
 		if c, ok := reachableSet[dest.Block()]; ok {
 			return c

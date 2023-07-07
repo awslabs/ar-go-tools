@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package messaging
 
 import (
 	"context"
@@ -22,6 +22,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	. "agent-example/datastructs"
 )
 
 type Content struct {
@@ -93,7 +95,7 @@ func ParseSendCommandMessage(context context.Context, msg InstanceMessage, messa
 	messageOrchestrationDirectory := filepath.Join(messagesOrchestrationRootDir, commandID)
 
 	documentType := "SendCommand"
-	documentInfo := newDocumentInfo(msg, parsedMessage)
+	documentInfo := NewDocumentInfo(msg, parsedMessage)
 	parserInfo := DocumentParserInfo{
 		OrchestrationDir: messageOrchestrationDirectory,
 		S3Bucket:         parsedMessage.OutputS3BucketName,
@@ -126,18 +128,16 @@ func ParseSendCommandMessage(context context.Context, msg InstanceMessage, messa
 
 	obj := parsedContentJson.Search()
 	if obj != "{}" {
-		//This will be true only for aws:cloudwatch
 		stripConfig := strings.Replace(strings.Replace(strings.Replace(obj, "\\t", "", -1), "\\n", "", -1), "\\", "", -1)
 		stripConfig = strings.TrimSuffix(strings.TrimPrefix(stripConfig, "\""), "\"")
 
 		finalLogConfig := fmt.Sprintf(stripConfig)
 
-		// Parameters > properties is another path where the config file is printed
 		if _, err = parsedContentJson.Set(finalLogConfig, "parameters"); err != nil {
-			logger.Printf("Error occurred when setting Parameters->properties with scrubbed credentials - ", err)
+			logger.Printf("Error occurred when setting properties with scrubbed credentials - ", err)
 		}
 		if _, err = parsedContentJson.Set(finalLogConfig, "cloudWatch"); err != nil {
-			logger.Printf("Error occurred when setting aws:cloudWatch->properties with scrubbed credentials - ", err)
+			logger.Printf("Error occurred when setting properties with scrubbed credentials - ", err)
 		}
 		logger.Print("ParsedMessage is ", parsedContentJson)
 	} else {

@@ -14,6 +14,11 @@
 
 package main
 
+import (
+	"math/rand"
+	"strconv"
+)
+
 type U struct {
 	content string
 }
@@ -54,6 +59,7 @@ func testAliasingTransitive() {
 	testAT21()
 	testAT22()
 	testAT23()
+	testAT24()
 }
 
 func testAT1() {
@@ -405,4 +411,38 @@ func testAT23() {
 func At23Callsink(u *U, x *S) {
 	sink1(u.content) // no tainted data reaching here
 	sink1(x.v)       // @Sink(at23)
+}
+
+func testAT24() {
+	a := make([]*X, 20)
+	for i := 0; i < 20; i++ {
+		a[i] = &X{data: &Y{&S{v: strconv.Itoa(i * rand.Int())}}}
+		sink1(a[i].data.content.v)
+	}
+	y := at24takeAlias(a)   // grab an alias of a struct in the array
+	at24populate(y.content) // put tainted data in its content
+	at24consume(a)          // consume the array by calling the sink on it
+}
+
+func at24populate(s *S) {
+	if s != nil {
+		s.v = source1() // @Source(at24)
+	}
+}
+
+func at24takeAlias(a []*X) *Y {
+	for i := range a {
+		if i > rand.Int() {
+			return a[i].data
+		}
+	}
+	return nil
+}
+
+func at24consume(a []*X) {
+	for _, elt := range a {
+		if elt.data != nil && elt.data.content != nil {
+			sink1(elt.data.content.v) //@Sink(at24)
+		}
+	}
 }

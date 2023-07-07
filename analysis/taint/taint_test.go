@@ -194,6 +194,10 @@ func TestEscapeIntegration(t *testing.T) {
 		func(e error) bool { return r.MatchString(e.Error()) })
 }
 
+func TestComplexExample(t *testing.T) {
+	runTest(t, "agent-example", []string{}, false, noErrorExpected)
+}
+
 func TestPlayground(t *testing.T) {
 	runTest(t, "playground", []string{}, false, noErrorExpected)
 }

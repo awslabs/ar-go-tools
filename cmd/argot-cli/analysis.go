@@ -409,5 +409,7 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 	if summary.IsInterfaceContract {
 		writeFmt(tt, "  (is interface contract)\n")
 	}
+	writeFmt(tt, "Nodes:\n")
+	summary.ForAllNodes(func(n dataflow.GraphNode) { writeFmt(tt, "\t %s\n", n) })
 	summary.PrettyPrint(true, tt)
 }

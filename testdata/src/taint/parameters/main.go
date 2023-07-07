@@ -29,6 +29,7 @@ func main() {
 	test2()
 	test3()
 	test4()
+	test5()
 }
 
 // This set of examples tests taint tracking across function calls that appear as parameters of other functions
@@ -109,4 +110,24 @@ func test4() {
 
 func taintWithReference2(v *string) {
 	invisibleTaint(*v)
+}
+
+func test5() {
+	recursiveShifter(source("tainted"), "ok", "ok", "ok", "ok", "ok") // @Source(test5)
+	// In the next call, source is erased before reaching the sink between recursive calls
+	recursiveShifterResets(source("tainted"), "ok", "ok", "ok", "ok", "ok")
+}
+
+func recursiveShifter(a, b, c, d, e, f string) {
+	if a == "ok" {
+		sink(f) // @Sink(test5)
+	}
+	recursiveShifter(b, c, d, e, f, a)
+}
+
+func recursiveShifterResets(a, b, c, d, e, f string) {
+	if a == "ok" {
+		sink(f) // never reached
+	}
+	recursiveShifter(b, c, d, e, f, "ok")
 }
