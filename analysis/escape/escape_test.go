@@ -328,6 +328,10 @@ func TestBuiltinsEscape(t *testing.T) {
 		"testBoundMethodOfLocal1",
 		"testBoundMethodOfLocal2",
 		"testBoundMethodOfLocal3",
+		"testMethodNonPointer",
+		"testFuncStruct",
+		"testMethodOnNonTracked1",
+		"testMethodOnNonTracked2",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular

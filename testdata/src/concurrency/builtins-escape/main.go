@@ -61,6 +61,10 @@ func main() {
 	testBoundMethodOfLocal1()
 	testBoundMethodOfLocal2()
 	testBoundMethodOfLocal3()
+	testMethodNonPointer()
+	testFuncStruct()
+	testMethodOnNonTracked1()
+	testMethodOnNonTracked2()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -450,5 +454,61 @@ func testBoundMethodOfLocal3() {
 	funcForBoundMethodTestOnly = f
 	// Test that the leak still happens even if f is invoked directly
 	f(b)
+	assertAllLeaked(b)
+}
+
+type someStruct struct {
+	n *Node
+}
+
+func (s someStruct) MethodOnNonPointer() error {
+	s.n = &Node{}
+	return nil
+}
+func (s someStruct) MethodThatLeaks() {
+	globalVar = s.n
+}
+
+func funcThatReturnsStructDirectly() someStruct {
+	return someStruct{globalVar}
+}
+func funcThatReturnsPointer() *someStruct {
+	return &someStruct{globalVar}
+}
+
+func testMethodNonPointer() {
+	a := &Node{}
+	s := someStruct{a}
+	s.MethodOnNonPointer()
+	s.MethodThatLeaks()
+	assertAllLeaked(a)
+}
+
+func testFuncStruct() {
+	a := funcThatReturnsStructDirectly().n
+	b := funcThatReturnsPointer().n
+	assertAllLeaked(a)
+	assertAllLeaked(b)
+}
+
+type A int
+
+func (a A) Method() *Node {
+	return globalVar
+}
+
+type MethodInterface interface {
+	Method() *Node
+}
+
+func testMethodOnNonTracked1() {
+	var x A
+	b := x.Method()
+	assertAllLeaked(b)
+}
+
+func testMethodOnNonTracked2() {
+	var x MethodInterface = new(A)
+	b := x.Method()
 	assertAllLeaked(b)
 }

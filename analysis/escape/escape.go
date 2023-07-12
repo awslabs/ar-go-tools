@@ -361,7 +361,7 @@ func (g *EscapeGraph) Merge(h *EscapeGraph) {
 // summaryNodes is the nodeGroup in the context of the called function
 //
 //gocyclo:ignore
-func (g *EscapeGraph) Call(receiver *Node, args []*Node, freeVars []*Node, rets []*Node, callee *EscapeGraph) {
+func (g *EscapeGraph) Call(args []*Node, freeVars []*Node, rets []*Node, callee *EscapeGraph) {
 	pre := g.Clone()
 	// u maps nodes in summary to the nodes in the caller
 	u := map[*Node]map[*Node]struct{}{}
@@ -394,6 +394,7 @@ func (g *EscapeGraph) Call(receiver *Node, args []*Node, freeVars []*Node, rets 
 	}
 	for i, formal := range callee.nodes.formals {
 		if (args[i] == nil) != (formal == nil) {
+			fmt.Printf("args[i] %s formal %s\n", args[i], formal)
 			panic("Incorrect nil-ness of corresponding parameter nodes")
 		}
 		if formal != nil {
@@ -510,7 +511,7 @@ func (g *EscapeGraph) Call(receiver *Node, args []*Node, freeVars []*Node, rets 
 
 		if status, ok := pre.status[rep]; !ok || status != Local {
 			for load, isBaseLoadInternal := range callee.edges[base] {
-				if !isBaseLoadInternal || base.kind == KindParamVar {
+				if !isBaseLoadInternal || base.kind == KindParamVar || base.kind == KindGlobal {
 					g.AddNode(load)
 					g.nodes.AddForeignNode(load)
 					g.AddEdge(rep, load, false)
@@ -527,6 +528,7 @@ func (g *EscapeGraph) Call(receiver *Node, args []*Node, freeVars []*Node, rets 
 			}
 		}
 	}
+	// fmt.Printf("Post call convergence:\n%s\n", g.Graphviz())
 }
 
 // CallUnknown Computes the result of calling an unknown function.
@@ -930,6 +932,11 @@ func ChannelContentsType(t types.Type) types.Type {
 	}
 }
 
+func IsEscapeTracked(t types.Type) bool {
+	_, ok := t.Underlying().(*types.Struct)
+	return lang.IsNillableType(t) || ok
+}
+
 func (ea *functionAnalysisState) getCallees(instr ssa.CallInstruction) (map[*ssa.Function]dataflow.CalleeInfo, error) {
 	if ea.prog.state == nil {
 		return nil, fmt.Errorf("No analyzer state")
@@ -994,12 +1001,21 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	case *ssa.Store:
 		if lang.IsNillableType(instrType.Val.Type()) {
 			g.Store(nodes.ValueNode(instrType.Addr), nodes.ValueNode(instrType.Val), instrType.Val.Type())
+		} else if IsEscapeTracked(instrType.Val.Type()) {
+			// Handle struct types
+			valNode := nodes.ValueNode(instrType.Val)
+			// When copying from a non-local struc
+			if g.status[valNode] != Local {
+				loadNode := nodes.LoadNode(instr, PointerDerefType(instrType.Val.Type().Underlying()))
+				g.AddEdge(valNode, loadNode, false)
+			}
+			g.Store(nodes.ValueNode(instrType.Addr), nodes.ValueNode(instrType.Val), instrType.Val.Type())
 		}
 		return
 	case *ssa.UnOp:
 		// Check if this is a load operation
 		if _, ok := instrType.X.Type().(*types.Pointer); ok && instrType.Op == token.MUL {
-			if lang.IsNillableType(instrType.Type()) {
+			if IsEscapeTracked(instrType.Type()) {
 				gen := func() *Node {
 					return nodes.LoadNode(instr, PointerDerefType(instrType.X.Type().Underlying()))
 				}
@@ -1008,7 +1024,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			return
 		} else if _, ok := instrType.X.Type().(*types.Chan); ok && instrType.Op == token.ARROW {
 			// recv on channel
-			if lang.IsNillableType(instrType.Type()) {
+			if IsEscapeTracked(instrType.Type()) {
 				gen := func() *Node {
 					return nodes.LoadNode(instr, ChannelContentsType(instrType.X.Type().Underlying()))
 				}
@@ -1020,7 +1036,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			return
 		}
 	case *ssa.Send:
-		if lang.IsNillableType(instrType.X.Type()) {
+		if IsEscapeTracked(instrType.X.Type()) {
 			// Send on channel is a write to the contents "field" of the channel
 			g.Store(nodes.ValueNode(instrType.Chan), nodes.ValueNode(instrType.X), instrType.X.Type())
 		}
@@ -1055,7 +1071,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		recvIndex := 0 // for tuple sensitivity, this will be the index that should be read in the result tuple.
 		for _, st := range instrType.States {
 			if st.Dir == types.RecvOnly {
-				if lang.IsNillableType(ChannelContentsType(st.Chan.Type())) {
+				if IsEscapeTracked(ChannelContentsType(st.Chan.Type())) {
 					// TODO: This should be one load node per branch, so that different types
 					// get different nodes. This is only important if we are tuple sensitive and
 					// make the graph typed. For now, the different cases can safe share nodes,
@@ -1067,7 +1083,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				}
 				recvIndex += 1
 			} else if st.Dir == types.SendOnly {
-				if lang.IsNillableType(st.Send.Type()) {
+				if IsEscapeTracked(st.Send.Type()) {
 					// Send on channel is a write to the contents "field" of the channel
 					g.Store(nodes.ValueNode(st.Chan), nodes.ValueNode(st.Send), st.Send.Type())
 				}
@@ -1085,7 +1101,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		// the formal parameter definitions.
 		args := make([]*Node, len(instrType.Call.Args))
 		for i, arg := range instrType.Call.Args {
-			if lang.IsNillableType(arg.Type()) {
+			if IsEscapeTracked(arg.Type()) {
 				args[i] = nodes.ValueNode(arg)
 			}
 		}
@@ -1116,7 +1132,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 						freeVars = append(freeVars, nodes.ValueNode(fv))
 					}
 				}
-				g.Call(nil, args, freeVars, rets, summary.finalGraph)
+				g.Call(args, freeVars, rets, summary.finalGraph)
 				if verbose {
 					ea.prog.logger.Printf("After call:\n%v", g.Graphviz())
 				}
@@ -1157,13 +1173,13 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 								// support that yet anyway
 								freeVars := []*Node{}
 								for _, fv := range concreteCallee.FreeVars {
-									if lang.IsNillableType(fv.Type()) {
+									if IsEscapeTracked(fv.Type()) {
 										freeVars = append(freeVars, pointee)
 									} else {
 										freeVars = append(freeVars, nil)
 									}
 								}
-								v.Call(nil, args, freeVars, rets, summary.finalGraph)
+								v.Call(args, freeVars, rets, summary.finalGraph)
 							} else {
 								v.CallUnknown(args, rets)
 							}
@@ -1183,27 +1199,21 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 								summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 
 								for pointee := range g.Deref(calleeNode) {
-									// fmt.Printf("Nonlocal indirect pointee %s\n", pointee.String())
-									// // Check if the closure node itself is non-local (i.e. escaped if it is an argument) and the callee
-									// // is a closure. In this case, we need to make sure there is at least one node representing the free
-									// // variables of the closure. Failure to create this node will result in the function essentially
-									// // assuming the free variables are nil, as there won't be any closure out edges.
-									// if g.status[pointee] != Local && len(callee.FreeVars) > 0 {
-									// 	fmt.Printf("Creating load node\n")
-									// 	loadNode := g.nodes.LoadNode(instrType, callee.FreeVars[0].Type())
-									// 	pre.AddEdge(pointee, loadNode, false)
-									// }
+									// Check if the closure node itself is non-local (i.e. escaped if it is an argument) and the callee
+									// is a closure. In this case, we need to make sure there is at least one node representing the free
+									// variables of the closure. Failure to create this node will result in the function essentially
+									// assuming the free variables are nil, as there won't be any closure out edges.
 									if g.status[pointee] != Local {
 										freeVars := []*Node{}
 										for _, fv := range callee.FreeVars {
-											if lang.IsNillableType(fv.Type()) {
+											if IsEscapeTracked(fv.Type()) {
 												freeVars = append(freeVars, pointee)
 											} else {
 												freeVars = append(freeVars, nil)
 											}
 										}
 										v := pre.Clone()
-										v.Call(nil, args, freeVars, rets, summary.finalGraph)
+										v.Call(args, freeVars, rets, summary.finalGraph)
 										g.Merge(v)
 									}
 								}
@@ -1230,6 +1240,10 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				for _, a := range args {
 					argsWithReceiver = append(argsWithReceiver, a)
 				}
+				argsWithNilReceiver := []*Node{nil}
+				for _, a := range args {
+					argsWithNilReceiver = append(argsWithNilReceiver, a)
+				}
 
 				if callees, err := ea.getCallees(instrType); err == nil {
 					pre := g.Clone()
@@ -1239,7 +1253,11 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 							// Record our use of this summary for recursion-covergence purposes
 							summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 							v := pre.Clone()
-							v.Call(nil, argsWithReceiver, nil, rets, summary.finalGraph)
+							appropriateArgs := argsWithReceiver
+							if !IsEscapeTracked(callee.Params[0].Type()) {
+								appropriateArgs = argsWithNilReceiver
+							}
+							v.Call(appropriateArgs, nil, rets, summary.finalGraph)
 							g.Merge(v)
 						} else {
 							g.CallUnknown(args, rets)
@@ -1268,7 +1286,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	case *ssa.Go:
 		args := make([]*Node, len(instrType.Call.Args))
 		for i, arg := range instrType.Call.Args {
-			if lang.IsNillableType(arg.Type()) {
+			if IsEscapeTracked(arg.Type()) {
 				args[i] = nodes.ValueNode(arg)
 			}
 		}
@@ -1278,7 +1296,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		return
 	case *ssa.Defer:
 	case *ssa.Field:
-		if lang.IsNillableType(instrType.Type()) {
+		if IsEscapeTracked(instrType.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
 		}
 		return
@@ -1294,22 +1312,22 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			g.Load(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), gen)
 			return
 		case *types.Array:
-			if lang.IsNillableType(instrType.Type()) {
+			if IsEscapeTracked(instrType.Type()) {
 				g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
 			}
 			return
 		}
 	case *ssa.Lookup:
-		if lang.IsNillableType(instrType.Type().Underlying()) {
+		if IsEscapeTracked(instrType.Type().Underlying()) {
 			gen := func() *Node { return nodes.LoadNode(instr, instrType.Type()) }
 			g.Load(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), gen)
 		}
 		return
 	case *ssa.MapUpdate:
-		if lang.IsNillableType(instrType.Value.Type()) {
+		if IsEscapeTracked(instrType.Value.Type()) {
 			g.Store(nodes.ValueNode(instrType.Map), nodes.ValueNode(instrType.Value), instrType.Value.Type())
 		}
-		if lang.IsNillableType(instrType.Key.Type()) {
+		if IsEscapeTracked(instrType.Key.Type()) {
 			g.Store(nodes.ValueNode(instrType.Map), nodes.ValueNode(instrType.Key), instrType.Key.Type())
 		}
 		return
@@ -1330,19 +1348,19 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		}
 		return
 	case *ssa.MakeInterface:
-		if lang.IsNillableType(instrType.X.Type()) {
+		if IsEscapeTracked(instrType.X.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
 		} else {
 			g.AddNode(nodes.ValueNode(instrType)) // Make interface from string or other non-pointer type
 		}
 		return
 	case *ssa.TypeAssert:
-		if lang.IsNillableType(instrType.Type()) {
+		if IsEscapeTracked(instrType.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
 		}
 		return
 	case *ssa.Convert:
-		if lang.IsNillableType(instrType.X.Type()) {
+		if IsEscapeTracked(instrType.X.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
 		} else if _, ok := instrType.Type().Underlying().(*types.Slice); ok {
 			if basic, ok := instrType.X.Type().Underlying().(*types.Basic); ok &&
@@ -1356,12 +1374,12 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
 		return
 	case *ssa.ChangeType:
-		if lang.IsNillableType(instrType.X.Type()) {
+		if IsEscapeTracked(instrType.X.Type()) {
 			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
 		}
 		return
 	case *ssa.Phi:
-		if lang.IsNillableType(instrType.Type()) {
+		if IsEscapeTracked(instrType.Type()) {
 			for _, v := range instrType.Edges {
 				g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(v), instrType.Type())
 			}
@@ -1371,7 +1389,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		if _, ok := instrType.Tuple.(*ssa.Phi); ok {
 			panic("Extract from phi?")
 		}
-		if lang.IsNillableType(instrType.Type()) {
+		if IsEscapeTracked(instrType.Type()) {
 			// Note: this is not tuple-sensitive. Because the SSA does not appear to separate the extract
 			// op from the instruction that generates the tuple, we could save the precise information about
 			// tuples on the side and lookup the correct node(s) here as opposed to collapsing into a single
@@ -1424,6 +1442,10 @@ func newfunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *
 			paramNode := nodes.ParamNode(p)
 			formalNode = nodes.ValueNode(p)
 			initialGraph.AddEdge(formalNode, paramNode, true)
+		} else if IsEscapeTracked(p.Type()) {
+			formalNode = nodes.ValueNode(p)
+			initialGraph.AddNode(formalNode)
+			initialGraph.status[formalNode] = Escaped
 		}
 		nodes.formals = append(nodes.formals, formalNode)
 	}
@@ -1433,6 +1455,10 @@ func newfunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *
 			paramNode := nodes.ParamNode(p)
 			freeVarNode = nodes.ValueNode(p)
 			initialGraph.AddEdge(freeVarNode, paramNode, true)
+		} else if IsEscapeTracked(p.Type()) {
+			freeVarNode = nodes.ValueNode(p)
+			initialGraph.AddNode(freeVarNode)
+			initialGraph.status[freeVarNode] = Escaped
 		}
 		nodes.freevars = append(nodes.freevars, freeVarNode)
 	}
@@ -1545,7 +1571,7 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 			if retInstr, ok := block.Instrs[len(block.Instrs)-1].(*ssa.Return); ok {
 				returnResult.Merge(blockEndState)
 				for _, rValue := range retInstr.Results {
-					if lang.IsNillableType(rValue.Type()) {
+					if IsEscapeTracked(rValue.Type()) {
 						returnResult.WeakAssign(returnNode, analysis.nodes.ValueNode(rValue), rValue.Type())
 					}
 				}
