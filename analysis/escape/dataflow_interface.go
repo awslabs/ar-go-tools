@@ -60,6 +60,7 @@ func (p *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Funct
 	return locality, callsiteInfo
 }
 
+//gocyclo:ignore
 func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCallContext {
 	calleeSummary, ok := c.prog.summaries[callee]
 	if !ok {
