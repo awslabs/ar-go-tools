@@ -254,6 +254,7 @@ func TestInterproceduralEscape(t *testing.T) {
 		"testFresh",
 		"testIdent",
 		"testExternal",
+		"testChain",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -312,6 +313,21 @@ func TestBuiltinsEscape(t *testing.T) {
 		"testChannelEscape",
 		"testSelect",
 		"testConvertStringToSlice",
+		"testImmediateClosure1",
+		"testImmediateClosure2",
+		"testLocalVarClosure1",
+		"testLocalVarClosure2",
+		"testLocalVarClosure3",
+		"testLeakOfFunc",
+		"testCalleeClosure1",
+		"testCalleeClosure2",
+		"testGlobalFunc1",
+		"testGlobalFunc2",
+		"testGlobalFunc3",
+		"testMethodOfLocal",
+		"testBoundMethodOfLocal1",
+		"testBoundMethodOfLocal2",
+		"testBoundMethodOfLocal3",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -378,8 +394,11 @@ func computeNodes(state dataflow.EscapeAnalysisState, root *ssa.Function) []*cal
 		locality, callsites := state.ComputeInstructionLocalityAndCallsites(f, node.context)
 		node.locality = locality
 		for callsite, info := range callsites {
-			if callee := callsite.Call.StaticCallee(); state.IsSummarized(callee) {
-				analyze(callee, info.Resolve(callee))
+			callees, _ := state.(*escapeAnalysisImpl).state.ResolveCallee(callsite, true)
+			for callee := range callees {
+				if state.IsSummarized(callee) {
+					analyze(callee, info.Resolve(callee))
+				}
 			}
 		}
 		if added {
@@ -426,8 +445,19 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]string
 	fAnnosCovered := map[int]map[*callgraphVisitNode]bool{}
 	for lpos, kind := range annos {
 		if lpos.Filename == funcStart.Filename && funcStart.Line <= lpos.Line && lpos.Line <= funcEnd.Line {
-			fAnnos[lpos.Line] = kind
-			fAnnosCovered[lpos.Line] = map[*callgraphVisitNode]bool{}
+			// Ignore annotations inside closures; those will be caught by the closure itself
+			foundClosureContainingAnno := false
+			for _, subfunction := range f.AnonFuncs {
+				subfuncStart := subfunction.Prog.Fset.Position(f.Pos())
+				subfuncEnd := subfunction.Prog.Fset.Position(f.Syntax().End())
+				if subfuncStart.Line <= lpos.Line && lpos.Line <= subfuncEnd.Line {
+					foundClosureContainingAnno = true
+				}
+			}
+			if !foundClosureContainingAnno {
+				fAnnos[lpos.Line] = kind
+				fAnnosCovered[lpos.Line] = map[*callgraphVisitNode]bool{}
+			}
 		}
 	}
 
@@ -564,6 +594,8 @@ func TestLocalityComputation(t *testing.T) {
 		"testRecursion",
 		"testAllInstructions",
 		"testExampleEscape7",
+		"testClosureFreeVar",
+		"testClosureFreeVar2",
 	}
 	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {

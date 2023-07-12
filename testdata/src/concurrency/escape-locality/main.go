@@ -23,16 +23,6 @@ import (
 // isn't boolean sensitive, we don't have to do anything fancy here.
 func arbitrary() bool { return false }
 
-// This is a no-op, but calls are checked by the test harness to check
-// the set of edges from x and y are the same (i.e. they have the SameAliases).
-func assertSameAliases(x, y any) {}
-
-// Same, but asserts that all edges are to nodes that have leaked
-func assertAllLeaked(x any) {}
-
-// Same, but asserts all pointees are local (not escaped or leaked)
-func assertAllLocal(x any) {}
-
 type Node struct {
 	next  *Node
 	value string
@@ -50,6 +40,8 @@ func main() {
 	testDiamond()
 	testAllInstructions(423)
 	testExampleEscape7()
+	testClosureFreeVar()
+	testClosureFreeVar2()
 }
 
 func testLocality2() {
@@ -410,4 +402,37 @@ func defersTest() {
 
 func testPanic() {
 	panic("hi") // LOCAL
+}
+
+func callF(f func(*Node) *Node, b *Node) {
+	x := f(b)
+	x.next = nil // NONLOCAL
+}
+
+func testClosureFreeVar() {
+	a := &Node{}
+	b := &Node{}
+	f := func(b *Node) *Node {
+		a.next = b // NONLOCAL
+		return b
+	}
+	leakNode(a)
+	callF(f, b)
+	b.value = "3" // NONLOCAL
+}
+
+func callF2(f func(*Node) *Node, b *Node) {
+	x := f(b)
+	x.next = nil // LOCAL
+}
+func testClosureFreeVar2() {
+	a := &Node{}
+	b := &Node{}
+	f := func(b *Node) *Node {
+		leakNode(a)
+		return b
+	}
+	callF2(f, b)
+	a.value = "1" // NONLOCAL
+	b.value = "2" // LOCAL
 }
