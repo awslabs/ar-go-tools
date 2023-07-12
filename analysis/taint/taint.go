@@ -22,6 +22,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -35,7 +36,7 @@ type AnalysisResult struct {
 
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
-	Graph dataflow.CrossFunctionFlowGraph
+	Graph dataflow.InterProceduralFlowGraph
 
 	// Errors contains a list of errors produced by the analysis. Errors may have been added at different steps of the
 	// analysis.
@@ -84,37 +85,25 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// function being analyzed.
 
 	if cfg.SummarizeOnDemand {
-		singleFunctionSummarizeOnDemand(state, cfg, numRoutines)
+		intraProceduralPassWithOnDemand(state, numRoutines)
 	} else {
 		// Only build summaries for non-stdlib functions here
-		analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			AnalyzerState:       state,
-			NumRoutines:         numRoutines,
-			ShouldCreateSummary: dataflow.ShouldCreateSummary,
-			ShouldBuildSummary:  dataflow.ShouldBuildSummary,
-			IsEntrypoint:        IsSourceNode,
-		})
+		analysis.RunIntraProcedural(state, numRoutines,
+			analysis.IntraAnalysisParams{
+				ShouldCreateSummary: dataflow.ShouldCreateSummary,
+				ShouldBuildSummary:  dataflow.ShouldBuildSummary,
+				IsEntrypoint:        IsSourceNode,
+			})
 	}
 
 	// ** Third step **
 	// the inter-procedural analysis is run over the entire program, which has been summarized in the
 	// previous step by building function summaries. This analysis consists in checking whether there exists a sink
 	// that is reachable from a source.
-	visitor := NewVisitor(nil)
-	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
-		AnalyzerState: state,
-		Visitor:       visitor,
-		IsEntrypoint: func(c *config.Config, node ssa.Node) bool {
-			if f, ok := node.(*ssa.Function); ok {
-				return dataflow.IsSourceFunction(c, f)
-			}
 
-			if c.SummarizeOnDemand {
-				return IsSourceNode(c, node)
-			}
-
-			return false
-		},
+	visitor := NewVisitor()
+	analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
+		IsEntrypoint: IsSourceNode,
 	})
 
 	// ** Fourth step **
@@ -128,9 +117,10 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 
 }
 
-func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.Config, numRoutines int) {
+func intraProceduralPassWithOnDemand(state *dataflow.AnalyzerState, numRoutines int) {
+	cfg := state.Config
 	sourceFuncs := []*ssa.Function{}
-	for f := range dataflow.CallGraphReachable(state.PointerAnalysis.CallGraph, false, false) {
+	for f := range state.ReachableFunctions(false, false) {
 		pkg := ""
 		if f.Package() != nil {
 			pkg = f.Package().String()
@@ -150,9 +140,9 @@ func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.
 			for _, instr := range blk.Instrs {
 				var fieldName string
 				if field, ok := instr.(*ssa.Field); ok {
-					fieldName = dataflow.FieldFieldName(field)
+					fieldName = analysisutil.FieldFieldName(field)
 				} else if fieldAddr, ok := instr.(*ssa.FieldAddr); ok {
-					fieldName = dataflow.FieldAddrFieldName(fieldAddr)
+					fieldName = analysisutil.FieldAddrFieldName(fieldAddr)
 				}
 				if fieldName != "" && cfg.IsSource(config.CodeIdentifier{
 					Package:  pkg,
@@ -179,18 +169,14 @@ func singleFunctionSummarizeOnDemand(state *dataflow.AnalyzerState, cfg *config.
 		}
 	}
 
-	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		AnalyzerState: state,
-		NumRoutines:   numRoutines,
+	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: func(f *ssa.Function) bool {
 			return shouldSummarize[f]
 		},
 		ShouldBuildSummary: func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
 			return shouldSummarize[f]
 		},
-		IsEntrypoint: func(c *config.Config, n ssa.Node) bool {
-			return IsSourceNode(c, n)
-		},
+		IsEntrypoint: IsSourceNode,
 	})
 }
 

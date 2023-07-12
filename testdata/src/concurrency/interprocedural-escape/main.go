@@ -157,7 +157,7 @@ func identity(n *Node) *Node {
 	return n
 }
 
-// Test that the summary of the identity function correctly returns its argumen
+// Test that the summary of the identity function correctly returns its argument
 func testIdent() *Node {
 	x := &Node{nil}
 	y := identity(x)

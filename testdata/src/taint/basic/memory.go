@@ -71,15 +71,15 @@ func populate(u *U) {
 func testAT2() {
 	v := V{&U{"ok"}}
 	x := &(v.data.content)
-	AT2_populate(&v)
-	AT2_consume(x)
+	At2Populate(&v)
+	At2Consume(x)
 }
 
-func AT2_consume(content *string) {
+func At2Consume(content *string) {
 	sink1(*content) // @Sink(at2)
 }
 
-func AT2_populate(v *V) {
+func At2Populate(v *V) {
 	v.data.content = source1() // @Source(at2)
 }
 
@@ -92,21 +92,21 @@ func testAT3() {
 	a := &S{}
 	b := &S{a, "ok"}
 	a.v = source1() // @Source(at3)
-	AT3_handle(b)
+	At3Handle(b)
 }
 
-func AT3_handle(s *S) {
+func At3Handle(s *S) {
 	sink1(s.next.v) // @Sink(at3)
 }
 
 func testAT4() {
 	a := &S{}
 	b := &S{a, "ok"}
-	AT4_handle(b)
+	At4Handle(b)
 	a.v = source1() // tainted after AT4_handle is called.
 }
 
-func AT4_handle(s *S) {
+func At4Handle(s *S) {
 	sink1(s.next.v)
 }
 
@@ -114,10 +114,10 @@ func testAT5() {
 	a := &S{}
 	b := map[string]*S{"ok": a}
 	a.v = source1() // @Source(at5) --> whole map is tainted here
-	AT5_handle(b)
+	At5Handle(b)
 }
 
-func AT5_handle(s map[string]*S) {
+func At5Handle(s map[string]*S) {
 	for x, val := range s {
 		sink1(x)     // @Sink(at5)
 		sink1(val.v) // @Sink(at5)
@@ -129,27 +129,27 @@ func testAT6() {
 	v := V{&U{"content"}}
 	x := map[string]string{"ok1": "fine"}
 	x["ok"] = v.data.content // value is written to map
-	AT6_populate(&v)
-	AT6_consume(x)
+	At6Populate(&v)
+	At6Consume(x)
 }
 
-func AT6_consume(content map[string]string) {
+func At6Consume(content map[string]string) {
 	for _, val := range content {
 		sink1(val) // no taint flows here
 	}
 }
 
-func AT6_populate(v *V) {
+func At6Populate(v *V) {
 	v.data.content = source1()
 }
 
 func testAT7() {
 	key := "ok"
 	sourceMap := map[*string]string{&key: source1()}
-	AT7_consume(&key, sourceMap)
+	At7Consume(&key, sourceMap)
 }
 
-func AT7_consume(key *string, sources map[*string]string) {
+func At7Consume(key *string, sources map[*string]string) {
 	delete(sources, key)
 	sink1(*key) // The key is not tainted
 }
@@ -159,17 +159,17 @@ func testAT8() {
 	v := V{&U{"content"}}
 	x := map[string]*U{"ok1": &U{"content2"}}
 	x["ok"] = v.data
-	AT8_populate(&v)
-	AT8_consume(x)
+	At8Populate(&v)
+	At8Consume(x)
 }
 
-func AT8_consume(content map[string]*U) {
+func At8Consume(content map[string]*U) {
 	for _, val := range content {
 		sink1(val.content) // @Sink(at8)
 	}
 }
 
-func AT8_populate(v *V) {
+func At8Populate(v *V) {
 	v.data.content = source1() // @Source(at8)
 }
 
@@ -178,17 +178,17 @@ func testAT9() {
 	v := V{&U{"content"}}
 	x := []*U{&U{"content2"}}
 	x[0] = v.data
-	AT9_populate(&v)
-	AT9_consume(x)
+	At9Populate(&v)
+	At9Consume(x)
 }
 
-func AT9_consume(content []*U) {
+func At9Consume(content []*U) {
 	for _, val := range content {
 		sink1(val.content) // @Sink(at9)
 	}
 }
 
-func AT9_populate(v *V) {
+func At9Populate(v *V) {
 	v.data.content = source1() // @Source(at9)
 }
 
@@ -196,10 +196,10 @@ func testAT10() {
 	a := &S{}
 	b := []*S{a}
 	a.v = source1() // @Source(at10) --> whole slice is tainted here
-	AT10_handle(b)
+	At10Handle(b)
 }
 
-func AT10_handle(s []*S) {
+func At10Handle(s []*S) {
 	for _, val := range s {
 		sink1(val.v) // @Sink(at10)
 	}
@@ -210,10 +210,10 @@ func testAT11() {
 	a := &S{}
 	b := []S{*a} // value is stored in slice, not pointer
 	a.v = source1()
-	AT11_handle(b)
+	At11Handle(b)
 }
 
-func AT11_handle(s []S) {
+func At11Handle(s []S) {
 	for _, val := range s {
 		sink1(val.v) // no tainted data reaches here.
 	}
@@ -226,10 +226,10 @@ func testAT12() {
 	a.next = b
 	c := []*S{a}
 	b.v = source1() // @Source(at12) --> whole slice is tainted here
-	AT12_handle(c)
+	At12Handle(c)
 }
 
-func AT12_handle(s []*S) {
+func At12Handle(s []*S) {
 	for _, val := range s {
 		sink1(val.next.v) // @Sink(at12)
 	}
@@ -243,10 +243,10 @@ func testAT13() {
 	c := []*S{a}
 	d := &S{v: source1()} // @Source(at13)
 	b.next = d
-	AT13_handle(c)
+	At13Handle(c)
 }
 
-func AT13_handle(s []*S) {
+func At13Handle(s []*S) {
 	for _, val := range s {
 		sink1(val.next.v) // @Sink(at13) - imprecision, here the entire val is considered tainted
 	}
@@ -258,15 +258,15 @@ func testAT14() {
 	x := make(chan string, 10)
 	x <- "fine"
 	x <- v.data.content // value is written to channel
-	AT14_populate(&v)
-	AT14_consume(x)
+	At14Populate(&v)
+	At14Consume(x)
 }
 
-func AT14_consume(content chan string) {
-	sink1((<-content))
+func At14Consume(content chan string) {
+	sink1(<-content)
 }
 
-func AT14_populate(v *V) {
+func At14Populate(v *V) {
 	v.data.content = source1()
 }
 
@@ -276,16 +276,16 @@ func testAT15() {
 	x := make(chan *U, 10)
 	x <- &U{"fine"}
 	x <- v.data // pointer to U into channel
-	AT15_populate(&v)
-	AT15_consume(x)
+	At15Populate(&v)
+	At15Consume(x)
 }
 
-func AT15_consume(c chan *U) {
+func At15Consume(c chan *U) {
 	sink1((<-c).content) // @Sink(at15)
 	sink1((<-c).content) // @Sink(at15)
 }
 
-func AT15_populate(v *V) {
+func At15Populate(v *V) {
 	v.data.content = source1() // @Source(at15)
 }
 
@@ -295,10 +295,10 @@ func testAT16() {
 	b := make(chan *S, 10)
 	b <- a
 	a.v = source1() // @Source(at16)
-	AT16_handle(b)
+	At16Handle(b)
 }
 
-func AT16_handle(s chan *S) {
+func At16Handle(s chan *S) {
 	sink1((<-s).v) // @Sink(at16)
 }
 
@@ -309,10 +309,10 @@ func testAT17() {
 	b <- a
 	a.v = "ok"
 	a.next.v = source1() // @Source(at17)
-	AT17_handle(b)
+	At17Handle(b)
 }
 
-func AT17_handle(s chan *S) {
+func At17Handle(s chan *S) {
 	sink1((<-s).v) // @Sink(at17)
 }
 
@@ -342,27 +342,27 @@ func testAT20() {
 	x[0] = &U{"fine"}
 	x[1] = v.data
 	x[2] = &U{"fine"}
-	AT20_populate(&v)
-	AT20_consume(x)
+	At20Populate(&v)
+	At20Consume(x)
 }
 
-func AT20_consume(c [10]*U) {
+func At20Consume(c [10]*U) {
 	for _, x := range c {
-		AT20_callSink(x)
+		At20Callsink(x)
 	}
 }
 
-func AT20_callSink(x *U) {
+func At20Callsink(x *U) {
 	sink1(x.content) // @Sink(at20)
 }
 
-func AT20_populate(v *V) {
+func At20Populate(v *V) {
 	s := source1() // @Source(at20)
-	new_u := &U{s}
-	AT20_assign(new_u.content, v.data)
+	newU := &U{s}
+	At20Assign(newU.content, v.data)
 }
 
-func AT20_assign(val string, data *U) {
+func At20Assign(val string, data *U) {
 	data.content = val
 }
 
@@ -381,10 +381,10 @@ func testAT22() {
 		a[i] = &V{&U{s.v}} // value copied
 	}
 	s.v = source1()
-	AT22_callSink(a[3].data)
+	At22Callsink(a[3].data)
 }
 
-func AT22_callSink(x *U) {
+func At22Callsink(x *U) {
 	sink1(x.content) // @Sink(at22)
 }
 
@@ -399,10 +399,10 @@ func testAT23() {
 		b[i] = &V{&U{s.v}} // value copied
 	}
 	s.v = source1() // @Source(at23)
-	AT23_callSink(b[3].data, a[3].data.content)
+	At23Callsink(b[3].data, a[3].data.content)
 }
 
-func AT23_callSink(u *U, x *S) {
+func At23Callsink(u *U, x *S) {
 	sink1(u.content) // no tainted data reaching here
 	sink1(x.v)       // @Sink(at23)
 }

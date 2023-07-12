@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -679,12 +680,23 @@ type SummaryGraph struct {
 
 	// nodeCounter is used to track the number of nodes in the graph
 	nodeCounter uint32
+
+	// Below is some information related to how the summary was built. This allows us to restart building the summary
+	// if it has not been constructed.
+
+	// shouldTrack is the function used to identify specific nodes that have been tracked to build that graph.
+	shouldTrack func(*config.Config, ssa.Node) bool
+
+	// postBlockCallBack is the function that has been used after a block is completed to adjust the state
+	postBlockCallBack func(state *IntraAnalysisState)
 }
 
 // NewSummaryGraph builds a new summary graph given a function and its corresponding node.
 // Returns a non-nil value if and only if f is non-nil.
+// If s is nil, this will not populate the callees of the summary.
 // If non-nil, the returned summary graph is marked as not constructed.
-func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
+func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack func(*config.Config, ssa.Node) bool,
+	postBlockCallBack func(state *IntraAnalysisState)) *SummaryGraph {
 	if f == nil {
 		return nil
 	}
@@ -705,6 +717,8 @@ func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 		BoundLabelNodes:       make(map[ssa.Instruction]*BoundLabelNode),
 		errors:                map[error]bool{},
 		nodeCounter:           0,
+		shouldTrack:           shouldTrack,
+		postBlockCallBack:     postBlockCallBack,
 	}
 	// Add the parameters
 	for pos, param := range f.Params {
@@ -721,7 +735,7 @@ func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 	n := f.Signature.Results().Len()
 	returnNodes := make([]*ReturnValNode, n)
 	for i := 0; i < n; i++ {
-		returnNodes[i] = &ReturnValNode{parent: g, id: uint32(g.nodeCounter), index: i}
+		returnNodes[i] = &ReturnValNode{parent: g, id: g.nodeCounter, index: i}
 		g.nodeCounter++
 	}
 
@@ -737,7 +751,40 @@ func NewSummaryGraph(f *ssa.Function, id uint32) *SummaryGraph {
 		}
 	}
 
+	g.initializeInnerNodes(s)
+
 	return g
+}
+
+func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState) {
+	// Add all call instructions
+	lang.IterateInstructions(g.Parent, func(_ int, instruction ssa.Instruction) {
+		switch x := instruction.(type) {
+		case ssa.CallInstruction:
+			if s != nil && !isHandledBuiltinCall(x) {
+				g.addCallInstr(s, x)
+			}
+		case *ssa.MakeClosure:
+			g.addClosure(x)
+		}
+	})
+
+	// Add global nodes if the state is non-nil
+	if s != nil {
+		lang.IterateInstructions(g.Parent,
+			func(_ int, i ssa.Instruction) {
+				var operands []*ssa.Value
+				operands = i.Operands(operands)
+				for _, operand := range operands {
+					// Add marks for globals
+					if glob, ok := (*operand).(*ssa.Global); ok {
+						if node, ok := s.Globals[glob]; ok {
+							g.AddAccessGlobalNode(i, node)
+						}
+					}
+				}
+			})
+	}
 }
 
 func (g *SummaryGraph) ReturnType() *types.Tuple {
@@ -826,9 +873,9 @@ func (g *SummaryGraph) addCallNode(node *CallNode) bool {
 	return true
 }
 
-// AddCallInstr adds a call site to the summary from a call instruction (use when no call graph is available)
+// addCallInstr adds a call site to the summary from a call instruction (use when no call graph is available)
 // @requires g != nil
-func (g *SummaryGraph) AddCallInstr(c *AnalyzerState, instr ssa.CallInstruction) {
+func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction) {
 	// Already seen this instruction? Multiple calls of this function will not gather more information.
 	if _, ok := g.Callees[instr]; ok {
 		return
@@ -912,9 +959,9 @@ func (g *SummaryGraph) addReturn(instr ssa.Instruction, node *ReturnValNode) {
 	g.Returns[instr][node.index] = node
 }
 
-// AddClosure adds a closure node to the summary
+// addClosure adds a closure node to the summary
 // @requires g != nil
-func (g *SummaryGraph) AddClosure(x *ssa.MakeClosure) {
+func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
 	if _, ok := g.CreatedClosures[x]; ok {
 		return
 	}
@@ -967,11 +1014,11 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 	}
 }
 
-// AddSyntheticNode adds a synthetic node to the summary. instr will be the instruction of the synthetic node, and
+// addSyntheticNode adds a synthetic node to the summary. instr will be the instruction of the synthetic node, and
 // label will be its label. The node is created only if the instruction is not present in the g.syntheticNodes map.
 // If a node is created, then g.syntheticNodes[instr] will be the node created.
 // @requires g != nil
-func (g *SummaryGraph) AddSyntheticNode(instr ssa.Instruction, label string) {
+func (g *SummaryGraph) addSyntheticNode(instr ssa.Instruction, label string) {
 	if _, ok := g.SyntheticNodes[instr]; !ok {
 		node := &SyntheticNode{
 			id:     g.nodeCounter,
@@ -986,7 +1033,7 @@ func (g *SummaryGraph) AddSyntheticNode(instr ssa.Instruction, label string) {
 	}
 }
 
-func (g *SummaryGraph) AddBoundLabelNode(instr ssa.Instruction, label *pointer.Label, target BindingInfo) {
+func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.Label, target BindingInfo) {
 	if _, ok := g.BoundLabelNodes[instr]; !ok {
 		node := &BoundLabelNode{
 			id:         g.nodeCounter,
@@ -1002,7 +1049,7 @@ func (g *SummaryGraph) AddBoundLabelNode(instr ssa.Instruction, label *pointer.L
 	}
 }
 
-func (g *SummaryGraph) AddSyntheticNodeEdge(mark Mark, info *ConditionInfo, instr ssa.Instruction, label string) {
+func (g *SummaryGraph) addSyntheticEdge(mark Mark, info *ConditionInfo, instr ssa.Instruction, label string) {
 
 	node, ok := g.SyntheticNodes[instr]
 	if !ok {
@@ -1011,7 +1058,7 @@ func (g *SummaryGraph) AddSyntheticNodeEdge(mark Mark, info *ConditionInfo, inst
 	g.addEdge(mark, node, info)
 }
 
-func (g *SummaryGraph) AddBoundLabelNodeEdge(mark Mark, info *ConditionInfo,
+func (g *SummaryGraph) addBoundLabelEdge(mark Mark, info *ConditionInfo,
 	instr ssa.Instruction) {
 	node, ok := g.BoundLabelNodes[instr]
 	if !ok {
@@ -1199,9 +1246,9 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 	}
 }
 
-// AddCallArgEdge adds an edge in the summary from a mark to a function call argument.
+// addCallArgEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
-func (g *SummaryGraph) AddCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction, arg ssa.Value) {
+func (g *SummaryGraph) addCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction, arg ssa.Value) {
 	callNodes := g.Callees[call]
 	if callNodes == nil {
 		return
@@ -1217,8 +1264,8 @@ func (g *SummaryGraph) AddCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.C
 	}
 }
 
-// AddCallNodeEdge adds an edge that flows to a call node.
-func (g *SummaryGraph) AddCallNodeEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction) {
+// addCallEdge adds an edge that flows to a call node.
+func (g *SummaryGraph) addCallEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction) {
 
 	callNodes := g.Callees[call]
 	if callNodes == nil {
@@ -1229,9 +1276,9 @@ func (g *SummaryGraph) AddCallNodeEdge(mark Mark, cond *ConditionInfo, call ssa.
 	}
 }
 
-// AddBoundVarEdge adds an edge in the summary from a mark to a function call argument.
+// addBoundVarEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
-func (g *SummaryGraph) AddBoundVarEdge(mark Mark, cond *ConditionInfo, closure *ssa.MakeClosure, v ssa.Value) {
+func (g *SummaryGraph) addBoundVarEdge(mark Mark, cond *ConditionInfo, closure *ssa.MakeClosure, v ssa.Value) {
 
 	closureNode := g.CreatedClosures[closure]
 	if closureNode == nil {
@@ -1248,9 +1295,9 @@ func (g *SummaryGraph) AddBoundVarEdge(mark Mark, cond *ConditionInfo, closure *
 
 }
 
-// AddReturnEdge adds an edge in the summary from the mark to a return instruction
+// addReturnEdge adds an edge in the summary from the mark to a return instruction
 // @requires g != nil
-func (g *SummaryGraph) AddReturnEdge(mark Mark, cond *ConditionInfo, retInstr ssa.Instruction, tupleIndex int) {
+func (g *SummaryGraph) addReturnEdge(mark Mark, cond *ConditionInfo, retInstr ssa.Instruction, tupleIndex int) {
 
 	if tupleIndex < 0 || tupleIndex > len(g.Returns) {
 		return
@@ -1266,8 +1313,8 @@ func (g *SummaryGraph) AddReturnEdge(mark Mark, cond *ConditionInfo, retInstr ss
 	g.addEdge(mark, retNode, cond)
 }
 
-// AddParamEdge adds an edge in the summary from the mark to a parameter of the function
-func (g *SummaryGraph) AddParamEdge(mark Mark, cond *ConditionInfo, param ssa.Node) {
+// addParamEdge adds an edge in the summary from the mark to a parameter of the function
+func (g *SummaryGraph) addParamEdge(mark Mark, cond *ConditionInfo, param ssa.Node) {
 	paramNode := g.Params[param]
 
 	if paramNode == nil {
@@ -1277,8 +1324,8 @@ func (g *SummaryGraph) AddParamEdge(mark Mark, cond *ConditionInfo, param ssa.No
 	g.addEdge(mark, paramNode, cond)
 }
 
-// AddGlobalEdge adds an edge from a mark to a GlobalNode
-func (g *SummaryGraph) AddGlobalEdge(mark Mark, cond *ConditionInfo, loc ssa.Instruction, v *ssa.Global) {
+// addGlobalEdge adds an edge from a mark to a GlobalNode
+func (g *SummaryGraph) addGlobalEdge(mark Mark, cond *ConditionInfo, loc ssa.Instruction, v *ssa.Global) {
 
 	node := g.AccessGlobalNodes[loc][v]
 
@@ -1292,6 +1339,15 @@ func (g *SummaryGraph) AddGlobalEdge(mark Mark, cond *ConditionInfo, loc ssa.Ins
 	}
 
 	g.addEdge(mark, node, cond)
+}
+
+// addFreeVarEdge adds an edge in the summary from the mark to a bound variable of a closure
+func (g *SummaryGraph) addFreeVarEdge(mark Mark, cond *ConditionInfo, freeVar ssa.Node) {
+	freeVarNode := g.FreeVars[freeVar]
+	if freeVarNode == nil {
+		g.addError(fmt.Errorf("attempting to set free var edge but no free var node"))
+	}
+	g.addEdge(mark, freeVarNode, cond)
 }
 
 //gocyclo:ignore
@@ -1384,15 +1440,6 @@ func (g *SummaryGraph) addParamEdgeByPos(src int, dest int) bool {
 	return false
 }
 
-// AddFreeVarEdge adds an edge in the summary from the mark to a bound variable of a closure
-func (g *SummaryGraph) AddFreeVarEdge(mark Mark, cond *ConditionInfo, freeVar ssa.Node) {
-	freeVarNode := g.FreeVars[freeVar]
-	if freeVarNode == nil {
-		g.addError(fmt.Errorf("attempting to set free var edge but no free var node"))
-	}
-	g.addEdge(mark, freeVarNode, cond)
-}
-
 // addReturnEdgeByPos adds an edge between the parameter at position src to the returned tuple position targetInfo.
 func (g *SummaryGraph) addReturnEdgeByPos(src int, pos int) bool {
 	if src < 0 || src >= len(g.Parent.Params) || pos < 0 {
@@ -1420,19 +1467,19 @@ func (g *SummaryGraph) addReturnEdgeByPos(src int, pos int) bool {
 	return false
 }
 
-// LoadPredefinedSummary searches for a summary for f in the summaries packages and builds the SummaryGraph it
+// NewPredefinedSummary searches for a summary for f in the summaries packages and builds the SummaryGraph it
 // represents. The resulting summary will only contain parameter and return nodes and edges between those. It will
 // not include any call node or call argument nodes.
 //
 // If f is nil, or f has no predefined summary, then the function returns nil.
 // If f has a predefined summary, then the returned summary graph is marked as constructed.
 // cg can be nil.
-func LoadPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
+func NewPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
 	preDef, ok := summaries.SummaryOfFunc(f)
 	if !ok {
 		return nil
 	}
-	summaryBase := NewSummaryGraph(f, id)
+	summaryBase := NewSummaryGraph(nil, f, id, nil, nil)
 	summaryBase.PopulateGraphFromSummary(preDef, false)
 	return summaryBase
 }

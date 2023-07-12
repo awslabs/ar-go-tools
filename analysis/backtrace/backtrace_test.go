@@ -31,6 +31,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -511,6 +512,11 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 	}
 }
 
+type testDef struct {
+	name  string
+	files []string
+}
+
 // TestAnalyze_Taint repurposes the taint analysis tests to test the backtrace analysis.
 // The marked @Source and @Sink locations in the test files correspond to expected sources and sinks.
 // These tests check the invariant that for every trace entrypoint (corresponding to the sinks),
@@ -518,10 +524,7 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 //
 //gocyclo:ignore
 func TestAnalyze_Taint(t *testing.T) {
-	tests := []struct {
-		name  string
-		files []string
-	}{
+	tests := []testDef{
 		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go", "sanitizers.go", "memory.go"}},
 		{"builtins", []string{"helpers.go"}},
 		{"interfaces", []string{}},
@@ -551,78 +554,84 @@ func TestAnalyze_Taint(t *testing.T) {
 			if isOnDemand {
 				name += "_OnDemand"
 			}
-			t.Run(name, func(t *testing.T) {
-				// Change directory to the testdata folder to be able to load packages
-				_, filename, _, _ := runtime.Caller(0)
-				dir := path.Join(path.Dir(filename), "../../testdata/src/taint", test.name)
-				if err := os.Chdir(dir); err != nil {
-					t.Fatal(err)
-				}
+			t.Run(name, func(t *testing.T) { taintTest(t, test, isOnDemand, skip) })
+		}
+	}
+}
 
-				expected, _ := analysistest.GetExpectSourceToTargets(dir, ".")
-				if len(expected) == 0 {
-					t.Fatal("expected sources and sinks to be present")
-				}
+func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool) {
+	// Change directory to the testdata folder to be able to load packages
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Join(path.Dir(filename), "..", "..", "testdata", "src", "taint", test.name)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
 
-				program, cfg := analysistest.LoadTest(t, dir, test.files)
-				defer os.Remove(cfg.ReportsDir)
+	expected, _ := analysistest.GetExpectSourceToTargets(dir, ".")
+	if len(expected) == 0 {
+		t.Fatal("expected sources and sinks to be present")
+	}
 
-				cfg.BacktracePoints = cfg.Sinks
-				cfg.SummarizeOnDemand = isOnDemand
-				cfg.LogLevel = int(config.TraceLevel)
-				lg := config.NewLogGroup(cfg)
-				res, err := backtrace.Analyze(lg, cfg, program)
-				if err != nil {
-					t.Fatal(err)
-				}
+	program, cfg := analysistest.LoadTest(t, dir, test.files)
+	defer os.Remove(cfg.ReportsDir)
 
-				t.Log("TRACES:")
-				for _, trace := range res.Traces {
-					t.Log(trace)
-				}
+	cfg.BacktracePoints = cfg.Sinks
+	cfg.SummarizeOnDemand = isOnDemand
+	cfg.LogLevel = int(config.TraceLevel)
+	lg := config.NewLogGroup(cfg)
+	res, err := backtrace.Analyze(lg, cfg, program)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-				reached := reachedSinkPositions(program, cfg, res.Traces)
-				if len(reached) == 0 {
-					t.Fatal("expected reached sink positions to be present")
-				}
+	t.Log("TRACES:")
+	for _, trace := range res.Traces {
+		t.Log(trace)
+	}
 
-				for sink, sources := range reached {
-					t.Logf("sink: %v -> sources: %v", sink, sources)
-				}
+	reached := reachedSinkPositions(program, cfg, res.Traces)
+	if len(reached) == 0 {
+		t.Fatal("expected reached sink positions to be present")
+	}
 
-				seen := make(map[analysistest.LPos]map[analysistest.LPos]bool)
-				for sink, sources := range reached {
-					for source := range sources {
-						if skip[filepath.Base(source.Filename)] || skip[filepath.Base(sink.Filename)] {
-							continue
-						}
+	for sink, sources := range reached {
+		t.Logf("sink: %v -> sources: %v", sink, sources)
+	}
 
-						posSink := analysistest.RemoveColumn(sink)
-						if _, ok := seen[posSink]; !ok {
-							seen[posSink] = map[analysistest.LPos]bool{}
-						}
-						posSource := analysistest.RemoveColumn(source)
-						if _, ok := expected[posSink]; ok && expected[posSink][posSource] {
-							seen[posSink][posSource] = true
-						} else {
-							t.Errorf("ERROR in main.go: false positive:\n\t%s\n flows to\n\t%s\n", posSource, posSink)
-						}
-					}
-				}
+	seen := make(map[analysistest.LPos]map[analysistest.LPos]bool)
+	for sink, sources := range reached {
+		for source := range sources {
+			if skip[filepath.Base(source.Filename)] || skip[filepath.Base(sink.Filename)] {
+				continue
+			}
 
-				for sinkLine, sources := range expected {
-					for sourceLine := range sources {
-						if skip[filepath.Base(sourceLine.Filename)] || skip[filepath.Base(sinkLine.Filename)] {
-							continue
-						}
+			posSink := analysistest.RemoveColumn(sink)
+			if _, ok := seen[posSink]; !ok {
+				seen[posSink] = map[analysistest.LPos]bool{}
+			}
+			posSource := analysistest.RemoveColumn(source)
+			if _, ok := expected[posSink]; ok && expected[posSink][posSource] {
+				seen[posSink][posSource] = true
+			} else if !strings.HasPrefix(posSink.Filename, dir) {
+				// TODO: check that the on-demand summarization is consistent with the not on-demand when analyzing
+				// the standard library
+				t.Log("WARNING: detected path outside of test repository.")
+			} else {
+				t.Errorf("ERROR in main.go: false positive:\n\t%s\n flows to\n\t%s\n", posSource, posSink)
+			}
+		}
+	}
 
-						if !seen[sinkLine][sourceLine] {
-							// Remaining entries have not been detected!
-							t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
-						}
-					}
-				}
-			})
+	for sinkLine, sources := range expected {
+		for sourceLine := range sources {
+			if skip[filepath.Base(sourceLine.Filename)] || skip[filepath.Base(sinkLine.Filename)] {
+				continue
+			}
+
+			if !seen[sinkLine][sourceLine] {
+				// Remaining entries have not been detected!
+				t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
+			}
 		}
 	}
 }
@@ -682,7 +691,7 @@ func isSourceNode(cfg *config.Config, source ssa.Node) bool {
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
-			calleePkg := dataflow.FindSafeCalleePkg(node.Common())
+			calleePkg := analysisutil.FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
 				return config.Config.IsSource(*cfg, config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
 			} else {

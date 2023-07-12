@@ -27,7 +27,7 @@ func source1() string {
 	return fmt.Sprintf("<tainted:%d>", rand.Int())
 }
 
-type A struct {
+type a struct {
 	field1 string
 	field2 int
 }

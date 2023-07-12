@@ -38,9 +38,9 @@ import (
 type AnalysisResult struct {
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
-	Graph df.CrossFunctionFlowGraph
+	Graph df.InterProceduralFlowGraph
 
-	// Traces represents all the paths where data flows out from the analysis entrypoints.
+	// Traces represents all the paths where data flows out from the analysis entry points.
 	Traces []Trace
 }
 
@@ -95,9 +95,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 		singleFunctionSummarizeOnDemand(state, cfg, numRoutines)
 	} else {
 		// Only build summaries for non-stdlib functions here
-		analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			AnalyzerState:       state,
-			NumRoutines:         numRoutines,
+		analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: df.ShouldCreateSummary,
 			ShouldBuildSummary:  df.ShouldBuildSummary,
 			IsEntrypoint:        isSingleFunctionEntrypoint,
@@ -105,10 +103,8 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 	}
 
 	visitor := &Visitor{}
-	analysis.RunCrossFunction(analysis.RunCrossFunctionArgs{
-		AnalyzerState: state,
-		Visitor:       visitor,
-		IsEntrypoint:  IsCrossFunctionEntrypoint,
+	analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
+		IsEntrypoint: IsCrossFunctionEntrypoint,
 	})
 
 	logger.Infof(colors.Green("Found %d traces.\n"), len(visitor.Traces))
@@ -133,7 +129,7 @@ type Visitor struct {
 	Traces [][]df.GraphNode
 }
 
-// Visit runs a inter-procedural backwards analysis to add any detected backtraces to v.Traces.
+// Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
 func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	// this is needed because for some reason isBacktracePoint returns true for
 	// some synthetic nodes
@@ -252,7 +248,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					if _, ok := callSites[c]; !ok {
 						logger.Tracef("callsite %v not found in callsites\n", c)
 						if summary, ok := s.FlowGraph.Summaries[c.Parent()]; ok {
-							logger.Tracef("summary for %v found in inter-procedral dataflow graph.", c.Parent())
+							logger.Tracef("summary for %v found in inter-procedural dataflow graph.", c.Parent())
 							addCallToCallsites(s, summary, c, callSites)
 						} else {
 							logger.Tracef("summary for %v NOT found in inter-procedural dataflow graph.", c.Parent())
@@ -265,7 +261,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 			for _, callSite := range callSites {
-				if err := analysisutil.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+				if err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
 				} else {
 					arg := callSite.Args()[graphNode.Index()]
@@ -293,7 +289,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), isSingleFunctionEntrypoint)
 					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				} else {
-					analysisutil.PrintMissingSummaryMessage(s, callSite)
+					s.ReportMissingOrNotConstructedSummary(callSite)
 					break
 				}
 			}
@@ -366,7 +362,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		// Data flows from the function call to the called function's return statement.
 		// It also flows backwards within the parent function.
 		case *df.CallNode:
-			analysisutil.CheckNoGoRoutine(s, goroutines, graphNode)
+			df.CheckNoGoRoutine(s, goroutines, graphNode)
 			prevStackLen := len(stack)
 			// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
 			// This is needed because "bound" summaries can be incomplete
@@ -663,7 +659,7 @@ func IsCrossFunctionEntrypoint(cfg *config.Config, n ssa.Node) bool {
 }
 
 func isSingleFunctionEntrypoint(cfg *config.Config, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(cfg, n, (config.Config).IsBacktracePoint)
+	return analysisutil.IsEntrypointNode(cfg, n, config.Config.IsBacktracePoint)
 }
 
 func singleFunctionSummarizeOnDemand(state *df.AnalyzerState, cfg *config.Config, numRoutines int) {
@@ -698,9 +694,7 @@ func singleFunctionSummarizeOnDemand(state *df.AnalyzerState, cfg *config.Config
 		}
 	}
 
-	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		AnalyzerState: state,
-		NumRoutines:   numRoutines,
+	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: func(f *ssa.Function) bool {
 			return shouldSummarize[f] // these concurrent map reads are safe because they are not written to
 		},

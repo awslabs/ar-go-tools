@@ -35,7 +35,7 @@ import (
 func TestCrossFunctionFlowGraph(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
-	// Loading the program for testdata/src/dataflow/sumaries/main.go
+	// Loading the program for testdata/src/dataflow/summaries/main.go
 	program, _ := analysistest.LoadTest(t, dir, []string{})
 	cfg := config.NewDefault()
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
@@ -52,9 +52,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
 	}
 
-	analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-		AnalyzerState:       state,
-		NumRoutines:         numRoutines,
+	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: shouldCreateSummary,
 		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
 		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },
@@ -223,7 +221,7 @@ func numEdges(edges map[dataflow.GraphNode]map[dataflow.GraphNode]bool) int {
 // - backward edges are sorted by the order of dst
 //
 // This is used for debugging.
-func logEdges(t *testing.T, graph *dataflow.CrossFunctionFlowGraph) {
+func logEdges(t *testing.T, graph *dataflow.InterProceduralFlowGraph) {
 	sortedForward := make([]string, 0, len(graph.ForwardEdges))
 	for src, dsts := range graph.ForwardEdges {
 		for dst := range dsts {

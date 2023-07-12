@@ -48,7 +48,7 @@ func NewFloat32(value float32) *dst.BasicLit {
 	return &dst.BasicLit{Value: strconv.FormatFloat(float64(value), 'E', -1, 32)}
 }
 
-// NewString retursn a new AST structure that represents the string value
+// NewString returns a new AST structure that represents the string value
 func NewString(value string) *dst.BasicLit {
 	return &dst.BasicLit{Value: "\"" + value + "\"", Kind: token.STRING}
 }

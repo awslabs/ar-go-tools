@@ -76,7 +76,7 @@ func noErrorExpected(_ error) bool {
 
 // runTest runs a test instance by building the program from all the files in files plus a file "main.go", relative
 // to the directory dirName
-func runTest(t *testing.T, dirName string, files []string, errorExpected func(e error) bool) {
+func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) {
 	// Change directory to the testdata folder to be able to load packages
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", dirName)
@@ -85,10 +85,11 @@ func runTest(t *testing.T, dirName string, files []string, errorExpected func(e 
 		panic(err)
 	}
 
-	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder so we can
+	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder, so we can
 	// load an entire module with subpackages
 	program, cfg := analysistest.LoadTest(t, ".", files)
 	cfg.LogLevel = int(config.InfoLevel)
+	cfg.SummarizeOnDemand = summarizeOnDemand
 	result, err := Analyze(cfg, program)
 	if err != nil {
 		for errs := result.State.CheckError(); len(errs) > 0; errs = result.State.CheckError() {
@@ -96,33 +97,6 @@ func runTest(t *testing.T, dirName string, files []string, errorExpected func(e 
 				t.Fatalf("taint analysis returned error: %v", errs[0])
 			}
 		}
-	}
-
-	expectSourceToSinks, expectSourceToEscape := analysistest.GetExpectSourceToTargets(dir, ".")
-	checkExpectedPositions(t, program, result.TaintFlows, expectSourceToSinks, expectSourceToEscape)
-	// Remove reports - comment if you want to inspect
-	os.RemoveAll(cfg.ReportsDir)
-}
-
-// runTestSummarizeOnDemand runs a test instance by building the program from all the files in files plus a file "main.go", relative
-// to the directory dirName and enables the SummarizeOnDemand configuration option.
-func runTestSummarizeOnDemand(t *testing.T, dirName string, files []string) {
-	// Change directory to the testdata folder to be able to load packages
-	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", dirName)
-	err := os.Chdir(dir)
-	if err != nil {
-		panic(err)
-	}
-
-	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder so we can
-	// load an entire module with subpackages
-	program, cfg := analysistest.LoadTest(t, ".", files)
-	cfg.SummarizeOnDemand = true
-
-	result, err := Analyze(cfg, program)
-	if err != nil {
-		t.Fatalf("taint analysis returned error %v", err)
 	}
 
 	expectSourceToSinks, expectSourceToEscape := analysistest.GetExpectSourceToTargets(dir, ".")

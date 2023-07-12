@@ -25,18 +25,7 @@ import (
 )
 
 func IsSourceNode(cfg *config.Config, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(cfg, n, (config.Config).IsSource)
-}
-
-func isSource(n dataflow.GraphNode, cfg *config.Config) bool {
-	switch n := n.(type) {
-	case *dataflow.CallNode:
-		return IsSourceNode(cfg, n.CallSite().(ssa.Node)) // safe type conversion
-	case *dataflow.SyntheticNode:
-		return IsSourceNode(cfg, n.Instr().(ssa.Node)) // safe type conversion
-	default:
-		return false
-	}
+	return analysisutil.IsEntrypointNode(cfg, n, config.Config.IsSource)
 }
 
 func IsSinkNode(cfg *config.Config, n ssa.Node) bool {
@@ -51,8 +40,8 @@ func isSanitizer(n dataflow.GraphNode, cfg *config.Config) bool {
 	return isMatchingCodeId(cfg.IsSanitizer, n)
 }
 
-// isValidatorCondiiton checks whether v is a validator condition according to the validators stored in the config
-// This function recurses on the value if necessary.
+// isValidatorCondition checks whether v is a validator condition according to the validators stored in the config
+// This function makes recursive calls on the value if necessary.
 func isValidatorCondition(isPositive bool, v ssa.Value, cfg *config.Config) bool {
 	switch val := v.(type) {
 	// Direct boolean check?
@@ -130,7 +119,7 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 			if callCommon.IsInvoke() {
 				receiver := callCommon.Value.Name()
 				methodName := callCommon.Method.Name()
-				maybePkg := dataflow.FindSafeCalleePkg(callCommon)
+				maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
 				if maybePkg.IsSome() {
 					return codeIdOracle(config.CodeIdentifier{
 						Package: maybePkg.Value(), Method: methodName, Receiver: receiver,
@@ -145,7 +134,7 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 				}
 			} else {
 				funcName := callCommon.Value.Name()
-				maybePkg := dataflow.FindSafeCalleePkg(callCommon)
+				maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
 				if maybePkg.IsSome() {
 					return codeIdOracle(config.CodeIdentifier{Package: maybePkg.Value(), Method: funcName})
 				} else if callee != nil {

@@ -14,6 +14,7 @@
 
 package main
 
+//goland:noinspection Annotator
 func notReachable() {
 }
 
@@ -21,6 +22,7 @@ func alsoNotReachable() {
 	notReachable()
 }
 
+//goland:noinspection Annotator
 func reachable() {
 }
 

@@ -67,7 +67,7 @@ const (
 // cells of various kinds (maps, slices, arrays, structs)
 type Node struct {
 	kind      NodeKind
-	number    int    // For unambigous debug printing
+	number    int    // For unambiguous debug printing
 	debugInfo string // where this node comes from
 }
 
@@ -1570,7 +1570,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		logger:      state.Logger.GetDebug(),
 		state:       state,
 	}
-	// Find all the nodes that are in the main package, and thus treat everything else as unsummarized
+	// Find all the nodes that are in the main package, and thus treat everything else as not summarized
 	nodes := []*callgraph.Node{}
 	for f, node := range state.PointerAnalysis.CallGraph.Nodes {
 		if len(f.Blocks) > 0 {

@@ -113,7 +113,7 @@ func sink(s string) {
 	fmt.Printf("Sink: %v\n", s)
 }
 
-var globalNode Node = Node{nil, "g"}
+var globalNode = Node{nil, "g"}
 
 func testRecursion() {
 	// Lock to ensure program doesn't have a data race

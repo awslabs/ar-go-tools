@@ -252,14 +252,11 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 			}
 			return b
 		}
-		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			AnalyzerState:       c,
-			NumRoutines:         numRoutines,
+		analysis.RunIntraProcedural(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: shouldCreateSummary,
 			ShouldBuildSummary:  shouldBuildSummary,
 			IsEntrypoint:        taint.IsSourceNode,
 		})
-		c.FlowGraph.InsertSummaries(res.FlowGraph)
 		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
 		// Running the intra-procedural analysis on a single function, if it can be found
@@ -289,15 +286,13 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		}
 
 		// Run the analysis with the filter.
-		res := analysis.RunSingleFunction(analysis.RunSingleFunctionArgs{
-			AnalyzerState:       c,
-			NumRoutines:         numRoutines,
+		analysis.RunIntraProcedural(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: shouldCreateSummary,
 			ShouldBuildSummary:  shouldBuildSummary,
 			IsEntrypoint:        taint.IsSourceNode,
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
-		c.FlowGraph.InsertSummaries(res.FlowGraph)
+
 		WriteSuccess(tt, "%d summaries created, %d built.", createCounter, buildCounter)
 		if createCounter == 0 {
 			WriteSuccess(tt, "The queried functions may not be reachable?")
@@ -319,7 +314,7 @@ func summarizeWithDefaultParams(tt *term.Terminal, c *dataflow.AnalyzerState, fu
 			funcutil.Contains(funcs, f) &&
 			!c.HasExternalContractSummary(f))
 		if b {
-			(*createCounter)++
+			*createCounter++
 		}
 		return b
 	}
@@ -329,7 +324,7 @@ func summarizeWithDefaultParams(tt *term.Terminal, c *dataflow.AnalyzerState, fu
 			funcutil.Contains(funcs, f) &&
 			!c.HasExternalContractSummary(f))
 		if b {
-			(*buildCounter)++
+			*buildCounter++
 		}
 		return b
 	}
@@ -342,14 +337,14 @@ func alwaysSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.
 	shouldCreateSummary := func(f *ssa.Function) bool {
 		b := funcutil.Contains(funcs, f)
 		if b {
-			(*createCounter)++
+			*createCounter++
 		}
 		return b
 	}
 	shouldBuildSummary := func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
 		b := funcutil.Contains(funcs, f)
 		if b {
-			(*buildCounter)++
+			*buildCounter++
 		}
 		return b
 	}
@@ -370,7 +365,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
-	c.FlowGraph.RunCrossFunctionPass(taint.NewVisitor(nil), taint.IsSourceNode)
+	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(), taint.IsSourceNode)
 	return false
 }
 
@@ -393,7 +388,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 	// not taint.IsSourceNode
 
 	visitor := &backtrace.Visitor{}
-	c.FlowGraph.RunCrossFunctionPass(visitor, backtrace.IsCrossFunctionEntrypoint)
+	c.FlowGraph.RunVisitorOnEntryPoints(visitor, backtrace.IsCrossFunctionEntrypoint)
 
 	writeFmt(tt, "Traces:\n")
 	for _, trace := range backtrace.Traces(c, visitor.Traces) {

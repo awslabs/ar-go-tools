@@ -82,6 +82,8 @@ func doMain() error {
 		os.Exit(1)
 	}
 
+	// TODO: LoadAllSyntax is deprecated
+	//goland:noinspection GoDeprecation
 	cfg := &packages.Config{
 		// packages.LoadSyntax for given files only
 		Mode:  packages.LoadAllSyntax,

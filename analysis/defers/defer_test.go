@@ -37,6 +37,7 @@ func loadProgram(file string) (*ssa.Program, error) {
 	if err != nil {
 		return nil, err
 	}
+	//goland:noinspection ALL
 	program := ssautil.CreateProgram(prog, 0)
 	program.Build()
 	return program, err

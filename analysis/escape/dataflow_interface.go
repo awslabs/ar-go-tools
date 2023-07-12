@@ -63,7 +63,7 @@ func (p *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Funct
 func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCallContext {
 	calleeSummary, ok := c.prog.summaries[callee]
 	if !ok {
-		panic("Cannot resolve escape context for unsummarized function")
+		panic("Cannot resolve escape context for non-summarized function")
 	}
 	nodes := calleeSummary.nodes
 	g := NewEmptyEscapeGraph(nodes)

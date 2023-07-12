@@ -22,12 +22,52 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
 )
+
+type functionToNode map[*ssa.Function][]ssa.Node
+
+type PackageToNodes map[*ssa.Package]functionToNode
+
+type nodeIdFunction func(*config.Config, ssa.Node) bool
+
+func NewPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIdFunction) PackageToNodes {
+	packageMap := make(PackageToNodes)
+	for _, pkg := range pkgs {
+		pkgMap := newPackageMap(c, pkg, f)
+		if len(pkgMap) > 0 {
+			packageMap[pkg] = pkgMap
+		}
+	}
+	return packageMap
+}
+
+func newPackageMap(c *config.Config, pkg *ssa.Package, f nodeIdFunction) functionToNode {
+	fMap := make(functionToNode)
+	for _, mem := range pkg.Members {
+		switch fn := mem.(type) {
+		case *ssa.Function:
+			populateFunctionMap(c, fMap, fn, f)
+		}
+	}
+	return fMap
+}
+
+func populateFunctionMap(config *config.Config, fMap functionToNode, current *ssa.Function, f nodeIdFunction) {
+	var sources []ssa.Node
+	for _, b := range current.Blocks {
+		for _, instr := range b.Instrs {
+			// An instruction should always be a Node too.
+			if n := instr.(ssa.Node); f(config, n) {
+				sources = append(sources, n)
+			}
+		}
+	}
+	fMap[current] = sources
+}
 
 // For testing purposes only: an analyzer that identifies where sources are
 // Wrap the source identification into an analysis pass for testing purposes
@@ -39,13 +79,13 @@ var taintSourcesAnalyzer = &analysis.Analyzer{
 }
 
 // newSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
-func newSourceMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
-	return dataflow.NewPackagesMap(c, pkgs, IsSourceNode)
+func newSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
+	return NewPackagesMap(c, pkgs, IsSourceNode)
 }
 
 // newSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
-func newSinkMap(c *config.Config, pkgs []*ssa.Package) dataflow.PackageToNodes {
-	return dataflow.NewPackagesMap(c, pkgs, IsSinkNode)
+func newSinkMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
+	return NewPackagesMap(c, pkgs, IsSinkNode)
 }
 
 func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {

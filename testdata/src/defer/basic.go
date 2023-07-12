@@ -26,7 +26,7 @@ func f1() int {
 	return external(i)
 }
 
-// Test a branch before a defer. Should be a return with no stacks, and one with one stack
+// Test a branch before a Defer. Should be a return with no stacks, and one with one stack
 func f2() int {
 	if arbitrary() {
 		return 0
@@ -65,6 +65,7 @@ func f4() (err error) {
 // Unbounded set, should fail
 func f5() (err error) {
 	for i := 0; i < 10; i++ {
+		//goland:noinspection GoDeferInLoop
 		defer func() {
 			err = *new(error)
 		}()
@@ -89,7 +90,7 @@ func f6() (err error) {
 	return nil
 }
 
-// Test a branch with a defer.
+// Test a branch with a Defer.
 func f7() int {
 	if arbitrary() {
 		defer external(3)
