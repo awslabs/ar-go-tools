@@ -28,11 +28,11 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
-	"log"
 	"reflect"
 	"sort"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/graphutil"
@@ -528,7 +528,6 @@ func (g *EscapeGraph) Call(args []*Node, freeVars []*Node, rets []*Node, callee 
 			}
 		}
 	}
-	// fmt.Printf("Post call convergence:\n%s\n", g.Graphviz())
 }
 
 // CallUnknown Computes the result of calling an unknown function.
@@ -553,30 +552,32 @@ func (g *EscapeGraph) CallUnknown(args []*Node, rets []*Node) {
 // never be resolved with arguments like loads can be.
 //
 //gocyclo:ignore
-func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, args []*Node, rets []*Node) {
+func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, args []*Node, rets []*Node) error {
 	switch builtin.Name() {
 	case "len": // No-op, as does not leak and the return value is not pointer-like
-		return
+		return nil
 	case "cap": // No-op, as does not leak and the return value is not pointer-like
-		return
+		return nil
 	case "close": // No-op, as does not leak and the return value is not pointer-like
-		return
+		return nil
 	case "complex": // No-op, as does not leak and the return value is not pointer-like
-		return
+		return nil
 	case "real": // No-op, as does not leak and the return value is not pointer-like
-		return
+		return nil
 	case "imag": // No-op, as does not leak and the return value is not pointer-like
-		return
+		return nil
 	case "print": // No-op, as does not leak and no return value
-		return
+		return nil
 	case "println": // No-op, as does not leak and no return value
-		return
+		return nil
 	case "recover": // We don't track panic values, so treat like an unknown call
 		g.CallUnknown(args, rets)
+		return nil
 	case "ssa:wrapnilchk": // treat as identity fucntion
 		g.WeakAssign(rets[0], args[0], nil)
+		return nil
 	case "delete": // treat as noop, as we don't actually erase information
-		return
+		return nil
 	case "append":
 		// ret = append(slice, x)
 		// slice is a slice, and so is x.
@@ -604,6 +605,7 @@ func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, a
 			g.WeakAssign(allocArray, baseArray, sliceType.Elem())
 		}
 		g.AddEdge(ret, allocArray, true)
+		return nil
 	case "copy":
 		// copy(dest, src)
 		// Both arguments are slices: copy all the outedges from *src to *dest
@@ -622,8 +624,11 @@ func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, a
 				g.WeakAssign(destArray, srcArray, sliceType.Elem())
 			}
 		}
+		return nil
+	case "String", "StringData", "Slice", "SliceData", "Add":
+		return fmt.Errorf("unsafe operation %v\n", builtin.Name())
 	default:
-		fmt.Printf("Unhandled builtin: %v\n", builtin.Name())
+		return fmt.Errorf("unhandled: %v\n", builtin.Name())
 	}
 }
 
@@ -1112,7 +1117,10 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		rets := []*Node{nodes.ValueNode(instrType)}
 
 		if builtin, ok := instrType.Call.Value.(*ssa.Builtin); ok {
-			g.CallBuiltin(instrType, builtin, args, rets)
+			err := g.CallBuiltin(instrType, builtin, args, rets)
+			if err != nil {
+				ea.prog.logger.Warnf("Warning, escape analysis does not handle builtin: %s", err)
+			}
 			return
 		} else if callee := instrType.Call.StaticCallee(); callee != nil {
 			summary := ea.prog.summaries[callee]
@@ -1134,12 +1142,12 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				}
 				g.Call(args, freeVars, rets, summary.finalGraph)
 				if verbose {
-					ea.prog.logger.Printf("After call:\n%v", g.Graphviz())
+					ea.prog.logger.Tracef("After call:\n%v", g.Graphviz())
 				}
 				return
 			} else {
 				if verbose {
-					ea.prog.logger.Printf("Warning, %v is not a summarized function: treating as unknown call\n",
+					ea.prog.logger.Tracef("Warning, %v is not a summarized function: treating as unknown call\n",
 						callee.Name())
 				}
 			}
@@ -1222,12 +1230,12 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 							}
 						}
 					} else {
-						ea.prog.logger.Printf("Warning, can't resolve indirect of %v, treating as unknown call\n", instrType)
+						ea.prog.logger.Debugf("Warning, can't resolve indirect of %v, treating as unknown call\n", instrType)
 						g.CallUnknown(args, rets)
 					}
 				}
 				if verbose {
-					ea.prog.logger.Printf("After indirect call:\n%v", g.Graphviz())
+					ea.prog.logger.Debugf("After indirect call:\n%v", g.Graphviz())
 				}
 				return
 			} else {
@@ -1264,11 +1272,11 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 						}
 					}
 				} else {
-					ea.prog.logger.Printf("Warning, %v invoke did not find callees, treating as unknown call\n", instrType)
+					ea.prog.logger.Debugf("Warning, %v invoke did not find callees, treating as unknown call\n", instrType)
 					g.CallUnknown(argsWithReceiver, rets)
 				}
 				if verbose {
-					ea.prog.logger.Printf("After invoke call:\n%v", g.Graphviz())
+					ea.prog.logger.Debugf("After invoke call:\n%v", g.Graphviz())
 				}
 				return
 			}
@@ -1402,8 +1410,8 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	default:
 	}
 	if verbose {
-		ea.prog.logger.Printf("At %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()))
-		ea.prog.logger.Printf("Unhandled: (type: %s) %v\n", reflect.TypeOf(instr).String(), instr)
+		ea.prog.logger.Debugf("At %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()))
+		ea.prog.logger.Debugf("Unhandled: (type: %s) %v\n", reflect.TypeOf(instr).String(), instr)
 	}
 }
 
@@ -1555,7 +1563,7 @@ type ProgramAnalysisState struct {
 	summaries   map[*ssa.Function]*functionAnalysisState
 	globalNodes *globalNodeGroup
 	verbose     bool
-	logger      *log.Logger
+	logger      *config.LogGroup
 	state       *dataflow.AnalyzerState
 }
 
@@ -1593,7 +1601,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
 		verbose:     state.Config.Verbose(),
 		globalNodes: &globalNodeGroup{0, make(map[*Node]*ssa.Function)},
-		logger:      state.Logger.GetDebug(),
+		logger:      state.Logger,
 		state:       state,
 	}
 	// Find all the nodes that are in the main package, and thus treat everything else as not summarized
@@ -1608,7 +1616,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		}
 	}
 	if prog.verbose {
-		prog.logger.Printf("Have a total of %d nodes", len(nodes))
+		prog.logger.Tracef("Have a total of %d nodes", len(nodes))
 	}
 	succ := func(n *callgraph.Node) []*callgraph.Node {
 		succs := []*callgraph.Node{}
@@ -1827,7 +1835,7 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 		basicBlockInstructionLocality(inContextEA, block, locality, callsites)
 	}
 	if ea.prog.verbose {
-		ea.prog.logger.Printf("Final graph after computing locality for %s is\n%s\n", ea.function.Name(), inContextEA.finalGraph.Graphviz())
+		ea.prog.logger.Tracef("Final graph after computing locality for %s is\n%s\n", ea.function.Name(), inContextEA.finalGraph.Graphviz())
 	}
 	return locality, callsites
 }
