@@ -61,10 +61,16 @@ func main() {
 	testBoundMethodOfLocal1()
 	testBoundMethodOfLocal2()
 	testBoundMethodOfLocal3()
-	testMethodNonPointer()
+	testMethodNonPointer1()
+	testMethodNonPointer2()
 	testFuncStruct()
+	testFuncStructArg()
 	testMethodOnNonTracked1()
 	testMethodOnNonTracked2()
+	testNonPointerFreeVar()
+	testMultipleBoundVars()
+	testSiblingClosure()
+	testInterfaceDirectStruct()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -396,7 +402,6 @@ type Assigner struct {
 func (a *Assigner) assign(b *Node) {
 	a.a.next = b
 }
-
 func testMethodOfLocal() {
 	a := &Node{}
 	b := &Node{}
@@ -407,6 +412,9 @@ func testMethodOfLocal() {
 }
 
 func identityForFuncOfNode(x func(*Node)) func(*Node) {
+	return x
+}
+func identityForFuncOfNothing(x func()) func() {
 	return x
 }
 
@@ -476,9 +484,17 @@ func funcThatReturnsPointer() *someStruct {
 	return &someStruct{globalVar}
 }
 
-func testMethodNonPointer() {
+func testMethodNonPointer1() {
 	a := &Node{}
 	s := someStruct{a}
+	s.MethodOnNonPointer()
+	s.MethodThatLeaks()
+	assertAllLeaked(a)
+}
+func testMethodNonPointer2() {
+	a := &Node{}
+	// Now s is a pointer, but the method is defined on the original
+	s := &someStruct{a}
 	s.MethodOnNonPointer()
 	s.MethodThatLeaks()
 	assertAllLeaked(a)
@@ -489,6 +505,17 @@ func testFuncStruct() {
 	b := funcThatReturnsPointer().n
 	assertAllLeaked(a)
 	assertAllLeaked(b)
+}
+
+func funcWithDirectStructArg(s someStruct) {
+	globalVar = s.n
+}
+
+func testFuncStructArg() {
+	a := &Node{}
+	s := someStruct{a}
+	funcWithDirectStructArg(s)
+	assertAllLeaked(a)
 }
 
 type A int
@@ -511,4 +538,62 @@ func testMethodOnNonTracked2() {
 	var x MethodInterface = new(A)
 	b := x.Method()
 	assertAllLeaked(b)
+}
+
+func testNonPointerFreeVar() {
+	x := 5
+	f := func() {
+		x += 5
+	}
+	identityForFuncOfNothing(f)()
+}
+
+func callFunc(f func()) {
+	f()
+}
+func testMultipleBoundVars() {
+	a := &Node{}
+	b := &Node{}
+	f := func() {
+		a.next = b
+	}
+	callFunc(f)
+	globalVar = a
+	assertAllLeaked(a)
+	assertAllLeaked(b)
+}
+
+func makeClosureToLeak(n *Node) func() {
+	return func() { globalVar = n }
+}
+func callFunc2(f func()) {
+	f()
+}
+func testSiblingClosure() {
+	a := &Node{}
+	callFunc2(makeClosureToLeak(a))
+	assertAllLeaked(a)
+}
+
+type thingDoer struct {
+	a *Node
+}
+
+func (t thingDoer) thingMethod() {
+	globalVar = t.a
+}
+
+type DoInterface interface {
+	thingMethod()
+}
+
+func doThing(d DoInterface) {
+	d.thingMethod()
+}
+
+func testInterfaceDirectStruct() {
+	a := &Node{}
+	thing := thingDoer{a}
+	doThing(thing)
+	assertAllLeaked(a)
 }

@@ -361,7 +361,7 @@ func (g *EscapeGraph) Merge(h *EscapeGraph) {
 // summaryNodes is the nodeGroup in the context of the called function
 //
 //gocyclo:ignore
-func (g *EscapeGraph) Call(args []*Node, freeVars []*Node, rets []*Node, callee *EscapeGraph) {
+func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Node, callee *EscapeGraph) {
 	pre := g.Clone()
 	// u maps nodes in summary to the nodes in the caller
 	u := map[*Node]map[*Node]struct{}{}
@@ -394,7 +394,6 @@ func (g *EscapeGraph) Call(args []*Node, freeVars []*Node, rets []*Node, callee 
 	}
 	for i, formal := range callee.nodes.formals {
 		if (args[i] == nil) != (formal == nil) {
-			fmt.Printf("args[i] %s formal %s\n", args[i], formal)
 			panic("Incorrect nil-ness of corresponding parameter nodes")
 		}
 		if formal != nil {
@@ -402,11 +401,18 @@ func (g *EscapeGraph) Call(args []*Node, freeVars []*Node, rets []*Node, callee 
 		}
 	}
 	for i, freevar := range callee.nodes.freevars {
-		if (freeVars[i] == nil) != (freevar == nil) {
+		if (freeVarsPointees[i] == nil) != (freevar == nil) {
 			panic("Incorrect nil-ness of corresponding free var nodes")
 		}
 		if freevar != nil {
-			addUEdge(freevar, freeVars[i])
+			if len(freeVarsPointees[i]) == 0 {
+				panic("Invariant: (pointer-like) free vars must always have at least one node representative")
+			}
+			for _, outerPointee := range freeVarsPointees[i] {
+				for innerPointee := range callee.edges[freevar] {
+					addUEdge(innerPointee, outerPointee)
+				}
+			}
 		}
 	}
 	for _, ret := range rets {
@@ -1128,16 +1134,20 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				// We can use the finalGraph pointer freely as it will never change after it is created
 				summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 				if verbose {
-					fmt.Printf("Call at %v: %v %v %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()),
+					ea.prog.logger.Tracef("Call at %v: %v %v %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()),
 						summary.function.String(), args, summary.finalGraph.nodes.formals)
 				}
-				freeVars := []*Node{}
+				freeVars := [][]*Node{}
 				// For a immediately invoked func, the  value will be a MakeClosure, where we can get the
 				// freevars directly from. In this case, we don't need field sensitivity to align the right
 				// value, as we can directly get the corresponding node.
 				if mkClosure, ok := instrType.Call.Value.(*ssa.MakeClosure); ok {
 					for _, fv := range mkClosure.Bindings {
-						freeVars = append(freeVars, nodes.ValueNode(fv))
+						pointees := []*Node{}
+						for p := range g.Deref(nodes.ValueNode(fv)) {
+							pointees = append(pointees, p)
+						}
+						freeVars = append(freeVars, pointees)
 					}
 				}
 				g.Call(args, freeVars, rets, summary.finalGraph)
@@ -1165,24 +1175,30 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				pre := g.Clone()
 				calleeNode := nodes.ValueNode(instrType.Call.Value)
 				nonlocal := g.status[calleeNode] != Local
-				for pointee := range g.Deref(calleeNode) {
-					if g.status[pointee] == Local {
+				for closureNode := range g.Deref(calleeNode) {
+					// The closure node represent the actual closure object.
+					// Its fields point at allocs which hold the actual data. If the actual
+					// data is a pointer to struct/interface, then the alloc will just hold a pointer
+					// calleeNode --> closureNode --> new *S --> struct S
+					if g.status[closureNode] == Local {
 						// Find the corresponding ssa.Function, and perform the invoke
-						if concreteCallee, ok := nodes.globalNodes.function[pointee]; ok {
+						if concreteCallee, ok := nodes.globalNodes.function[closureNode]; ok {
 							summary := ea.prog.summaries[concreteCallee]
 							v := pre.Clone()
 							if summary != nil {
 								// Record our use of this summary for recursion-covergence purposes
 								summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 
-								// Free vars should be a node that points at the actual alloc nodes that
-								// hold each free var. Conveniently, the func node itself does this for
-								// all free vars. This loses field/free variable sensitivity, but we don't
-								// support that yet anyway
-								freeVars := []*Node{}
+								// Free vars should be a list of the possible alloc nodes that
+								// hold each free var.
+								freeVars := [][]*Node{}
 								for _, fv := range concreteCallee.FreeVars {
 									if IsEscapeTracked(fv.Type()) {
-										freeVars = append(freeVars, pointee)
+										pointees := []*Node{}
+										for allocNode := range pre.edges[closureNode] {
+											pointees = append(pointees, allocNode)
+										}
+										freeVars = append(freeVars, pointees)
 									} else {
 										freeVars = append(freeVars, nil)
 									}
@@ -1200,22 +1216,30 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				if nonlocal {
 					if callees, err := ea.getCallees(instrType); err == nil {
 						pre := g.Clone()
-						for callee := range callees {
-							summary := ea.prog.summaries[callee]
+						for concreteCallee := range callees {
+							summary := ea.prog.summaries[concreteCallee]
 							if summary != nil {
 								// Record our use of this summary for recursion-covergence purposes
 								summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 
-								for pointee := range g.Deref(calleeNode) {
+								for closureNode := range g.Deref(calleeNode) {
 									// Check if the closure node itself is non-local (i.e. escaped if it is an argument) and the callee
 									// is a closure. In this case, we need to make sure there is at least one node representing the free
 									// variables of the closure. Failure to create this node will result in the function essentially
 									// assuming the free variables are nil, as there won't be any closure out edges.
-									if g.status[pointee] != Local {
-										freeVars := []*Node{}
-										for _, fv := range callee.FreeVars {
+									if g.status[closureNode] != Local {
+										// Add a load node for external closures, to represent the bound variable storage nodes
+										if len(concreteCallee.FreeVars) > 0 {
+											pre.AddEdge(closureNode, nodes.LoadNode(instrType, concreteCallee.FreeVars[0].Type()), false)
+										}
+										freeVars := [][]*Node{}
+										for _, fv := range concreteCallee.FreeVars {
 											if IsEscapeTracked(fv.Type()) {
-												freeVars = append(freeVars, pointee)
+												pointees := []*Node{}
+												for allocNode := range pre.edges[closureNode] {
+													pointees = append(pointees, allocNode)
+												}
+												freeVars = append(freeVars, pointees)
 											} else {
 												freeVars = append(freeVars, nil)
 											}

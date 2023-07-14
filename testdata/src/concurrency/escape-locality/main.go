@@ -42,6 +42,8 @@ func main() {
 	testExampleEscape7()
 	testClosureFreeVar()
 	testClosureFreeVar2()
+	testClosureNonPointerFreeVar()
+	testBoundMethod()
 }
 
 func testLocality2() {
@@ -435,4 +437,41 @@ func testClosureFreeVar2() {
 	callF2(f, b)
 	a.value = "1" // NONLOCAL
 	b.value = "2" // LOCAL
+}
+
+func callF3(f func(*Node, int) *Node, b *Node) {
+	x := f(b, 32)
+	x.next = nil // LOCAL
+}
+func testClosureNonPointerFreeVar() {
+	a := &Node{}
+	b := &Node{}
+	x := 4
+	f := func(b *Node, y int) *Node {
+		leakNode(a)
+		x += y
+		return b
+	}
+	callF3(f, b)
+	a.value = "1" // NONLOCAL
+	b.value = "2" // LOCAL
+}
+
+func indirectFunc(f func(*Node)) {
+	f(&Node{})
+}
+
+type Assigner struct {
+	a *Node
+}
+
+func (a *Assigner) assign(b *Node) {
+	a.a.next = b // NONLOCAL
+}
+
+func testBoundMethod() {
+	a := &Assigner{&Node{}}
+	f := a.assign
+	globalNode.next = a.a
+	indirectFunc(f)
 }

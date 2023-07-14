@@ -328,10 +328,16 @@ func TestBuiltinsEscape(t *testing.T) {
 		"testBoundMethodOfLocal1",
 		"testBoundMethodOfLocal2",
 		"testBoundMethodOfLocal3",
-		"testMethodNonPointer",
+		"testMethodNonPointer1",
+		"testMethodNonPointer2",
 		"testFuncStruct",
+		"testFuncStructArg",
 		"testMethodOnNonTracked1",
 		"testMethodOnNonTracked2",
+		"testNonPointerFreeVar",
+		"testMultipleBoundVars",
+		"testSiblingClosure",
+		"testInterfaceDirectStruct",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -443,6 +449,10 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]string
 	}
 	// gather annotations
 	f := nodes[0].fun
+	// Synthetic functions have no locations, and thus we can't match anything up
+	if f.Syntax() == nil {
+		return nil
+	}
 	funcStart := f.Prog.Fset.Position(f.Pos())
 	funcEnd := f.Prog.Fset.Position(f.Syntax().End())
 	fAnnos := map[int]string{}
@@ -600,6 +610,8 @@ func TestLocalityComputation(t *testing.T) {
 		"testExampleEscape7",
 		"testClosureFreeVar",
 		"testClosureFreeVar2",
+		"testClosureNonPointerFreeVar",
+		"testBoundMethod",
 	}
 	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {
