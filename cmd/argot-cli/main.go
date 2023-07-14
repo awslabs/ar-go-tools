@@ -71,6 +71,7 @@ var (
 		cmdSummaryName:      cmdSummary,
 		cmdSummarizeName:    cmdSummarize,
 		cmdTaintName:        cmdTaint,
+		cmdTraceName:        cmdTrace,
 		cmdUnfocusName:      cmdUnfocus,
 		cmdWhereName:        cmdWhere,
 		cmdBacktraceName:    cmdBacktrace,

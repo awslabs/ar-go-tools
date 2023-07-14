@@ -225,12 +225,20 @@ Then, if you call `> list test2` you should observe that the function is summari
 In this example:
 ```
 > summary test2
-Found summary of command-line-arguments.test2:
+Found summary of example1.test2:
+Nodes:
+         "[#846.0] (SA)call: (fooProducer).source(t3) in test2"
+         "[#846.1] @arg 0:t3 in [#846.0] (SA)call: (fooProducer).source(t3) in test2 "
+         "[#846.2] (SA)call: f(t5, "ok":string) in test2"
+         "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
+         "[#846.4] @arg 1:"ok":string in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
+         "[#846.5] (SA)call: sink(t6) in test2"
+         "[#846.6] @arg 0:t6 in [#846.5] (SA)call: sink(t6) in test2 "
 Summary of test2:
-  Call "[#461.0] (SA)call: (fooProducer).source(t3) in test2":
-    (#0) -> "[#461.3] @arg 0:t5 in [#461.2] (SA)call: f(t5, "ok":string) in test2 "
-  Call "[#461.2] (SA)call: f(t5, "ok":string) in test2":
-    (#0) -> "[#461.6] @arg 0:t6 in [#461.5] (SA)call: sink(t6) in test2 "
+  Call "[#846.0] (SA)call: (fooProducer).source(t3) in test2":
+    (#0) -> "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
+  Call "[#846.2] (SA)call: f(t5, "ok":string) in test2":
+    (#0) -> "[#846.6] @arg 0:t6 in [#846.5] (SA)call: sink(t6) in test2 "
 (1 matching summaries)
 ```
 Shows that there are two dataflow edges in the dataflow summary of `test2`. The first edge indicates that the result of the call to `(fooProducer).source` flows to the argument `t5` (at position 0) in the call to `f`. The second edge indicates that the result of the call to `f` flows to the argument `t6` (also at position 0) in the call to `sink`.
@@ -284,15 +292,32 @@ It shows that the value `t6` is reached by the data coming from the result of th
 
 The state of the analysis can also be printed every time the analyzer has finished analyzing a block. To do that, provide the `-v` flag to the `intra` command.
 
-### Running Taint Analysis
+### Running the Taint Analysis
 
 The [`taint`](#taint) command has the same functionality as the [taint analysis tool](taint.md): it runs a taint analysis using the source, sink and sanitizer definitions that are given in the configuration file. For more information about how to use that command, refer to the guide for the [taint tool](taint.md). In the context of the CLI, you should make sure you have run `summarize` and `buildgraph` before running `taint`.
 In our running example, running `> taint` will identify four different paths from source to sink. When data from a source reaches a sink, a message of the following form will be printed:
 ```
  💀 Sink reached at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:58:7
- Add new path from "[#467.2] (CG)call: invoke stringProducer.source() in fetchAndPut" to "[#462.4] @arg 0:t6 in [#462.3] (SA)call: sink(t6) in main " <==
+ Add new path from "[#744.2] (CG)call: invoke stringProducer.source() in fetchAndPut" to "[#626.4] @arg 0:t6 in [#626.3] (SA)call: sink(t6) in main " <==
 ```
 Indicating a path from `stringProducer.source()` to `sink` here. If the options in the configuration file have been set, this path will be reported in more detail in the report folder.
+
+### Running a Custom Dataflow Analysis
+
+The [`trace`](#trace) commands lets the user run more fine-grained analyses, in the context where they are aware of the inner representation of the dataflow graph.
+The command requires one argument, a regular expression that matches node ids. For example, suppose we ran the command `>summary test2` listed earlier.
+The node ids are for example`#846.1`, `#846.2`, `#846.3` (note that the exact ids will differ between runs).  To trace the dataflow from the call to `f` (node `#461.2`) we can run the following command:
+```
+> trace 846.3
+[INFO]     
+****************************** NEW SOURCE ******************************
+[INFO]  ==> Source: "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
+[INFO]  Found at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:67:9
+[INFO]   💀 Sink reached at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:67:8
+[INFO]   Add new path from "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 " to "[#846.6] @arg 0:t6 in [#846.5] (SA)call: sink(t6) in test2 " <== 
+```
+Adding the `-t` option will print all the intermediate states encountered during the traversal. In this case, a sink is reached
+immediately. 
 
 # Commands
 
@@ -404,6 +429,9 @@ The user can additionally provide the following flags:
 
 ### Taint
 `taint` runs the taint analysis on the inter-procedural flow graph that has been built by [`buildgraph`](#buildgraph) using the information stored in the loaded configuration.
+
+### Trace 
+`trace` runs an inter-procedural dataflow analysis starting from every node with an id matching the provided argument. The `-t` option allows the tool to print trace-level information while the analysis runs.
 
 ### Unfocus
 `unfocus` exits *focused* mode.

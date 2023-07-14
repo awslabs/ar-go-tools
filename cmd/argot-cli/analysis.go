@@ -365,7 +365,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
-	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(), taint.IsSourceNode)
+	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(), taint.IsSourceNode, nil)
 	return false
 }
 
@@ -388,7 +388,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 	// not taint.IsSourceNode
 
 	visitor := &backtrace.Visitor{}
-	c.FlowGraph.RunVisitorOnEntryPoints(visitor, backtrace.IsCrossFunctionEntrypoint)
+	c.FlowGraph.RunVisitorOnEntryPoints(visitor, backtrace.IsCrossFunctionEntrypoint, nil)
 
 	writeFmt(tt, "Traces:\n")
 	for _, trace := range backtrace.Traces(c, visitor.Traces) {
