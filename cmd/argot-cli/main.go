@@ -26,6 +26,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/internal/colors"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
@@ -155,6 +156,14 @@ func main() {
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(pConfig), pConfig, program)
 	if err != nil {
 		panic(err)
+	}
+
+	// Optional step: running the escape analysis
+	if pConfig.UseEscapeAnalysis {
+		err := escape.InitializeEscapeAnalysisState(state)
+		if err != nil {
+			panic(err)
+		}
 	}
 	// Start the command line tool with the state containing all the information
 	run(state)

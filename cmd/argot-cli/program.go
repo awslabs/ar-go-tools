@@ -21,6 +21,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 )
@@ -68,7 +69,17 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	newState, err := dataflow.NewInitializedAnalyzerState(c.Logger, c.Config, program)
 	if err != nil {
 		WriteErr(tt, "error building analyzer state: %s", err)
+		WriteErr(tt, "state is left unchanged")
 		return false
+	}
+	// Optional step: running the escape analysis
+	if c.Config.UseEscapeAnalysis {
+		err := escape.InitializeEscapeAnalysisState(newState)
+		if err != nil {
+			WriteErr(tt, "error running escape analysis: %s", err)
+			WriteErr(tt, "state is left unchanged")
+			return false
+		}
 	}
 	// Reassign state elements
 	c = newState
