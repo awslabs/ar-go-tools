@@ -144,7 +144,12 @@ func (a *ParamNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *ParamNode) SsaNode() *ssa.Parameter       { return a.ssaNode }
 func (a *ParamNode) Type() types.Type              { return a.ssaNode.Type() }
 func (a *ParamNode) Marks() LocSet                 { return a.marks }
-func (a *ParamNode) SetLocs(set LocSet)            { a.marks = set }
+func (a *ParamNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
 func (a *ParamNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
@@ -193,9 +198,14 @@ func (a *FreeVarNode) Graph() *SummaryGraph          { return a.parent }
 func (a *FreeVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *FreeVarNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *FreeVarNode) Marks() LocSet                 { return a.marks }
-func (a *FreeVarNode) SetLocs(set LocSet)            { a.marks = set }
-func (a *FreeVarNode) SsaNode() *ssa.FreeVar         { return a.ssaNode }
-func (a *FreeVarNode) Type() types.Type              { return a.ssaNode.Type() }
+func (a *FreeVarNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
+func (a *FreeVarNode) SsaNode() *ssa.FreeVar { return a.ssaNode }
+func (a *FreeVarNode) Type() types.Type      { return a.ssaNode.Type() }
 
 func (a *FreeVarNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaNode != nil {
@@ -243,8 +253,13 @@ func (a *CallNodeArg) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *CallNodeArg) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNodeArg) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *CallNodeArg) Marks() LocSet                 { return a.marks }
-func (a *CallNodeArg) SetLocs(set LocSet)            { a.marks = set }
-func (a *CallNodeArg) Type() types.Type              { return a.ssaValue.Type() }
+func (a *CallNodeArg) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
+func (a *CallNodeArg) Type() types.Type { return a.ssaValue.Type() }
 
 func (a *CallNodeArg) Position(c *AnalyzerState) token.Position {
 	if a.ssaValue != nil {
@@ -302,7 +317,12 @@ func (a *CallNode) Graph() *SummaryGraph          { return a.parent }
 func (a *CallNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *CallNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *CallNode) Marks() LocSet                 { return a.marks }
-func (a *CallNode) SetLocs(set LocSet)            { a.marks = set }
+func (a *CallNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
 func (a *CallNode) Type() types.Type {
 	if call, ok := a.callSite.(*ssa.Call); ok {
 		return call.Type()
@@ -458,8 +478,13 @@ func (a *ClosureNode) Graph() *SummaryGraph          { return a.parent }
 func (a *ClosureNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *ClosureNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *ClosureNode) Marks() LocSet                 { return a.marks }
-func (a *ClosureNode) SetLocs(set LocSet)            { a.marks = set }
-func (a *ClosureNode) Type() types.Type              { return a.instr.Type() }
+func (a *ClosureNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
+func (a *ClosureNode) Type() types.Type { return a.instr.Type() }
 
 func (a *ClosureNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
@@ -528,9 +553,14 @@ func (a *BoundVarNode) Graph() *SummaryGraph          { return a.parent.parent }
 func (a *BoundVarNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundVarNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *BoundVarNode) Marks() LocSet                 { return a.marks }
-func (a *BoundVarNode) SetLocs(set LocSet)            { a.marks = set }
-func (a *BoundVarNode) Type() types.Type              { return a.ssaValue.Type() }
-func (a *BoundVarNode) Value() ssa.Value              { return a.ssaValue }
+func (a *BoundVarNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
+func (a *BoundVarNode) Type() types.Type { return a.ssaValue.Type() }
+func (a *BoundVarNode) Value() ssa.Value { return a.ssaValue }
 
 func (a *BoundVarNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaValue != nil {
@@ -584,8 +614,13 @@ func (a *AccessGlobalNode) Graph() *SummaryGraph          { return a.graph }
 func (a *AccessGlobalNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *AccessGlobalNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *AccessGlobalNode) Marks() LocSet                 { return a.marks }
-func (a *AccessGlobalNode) SetLocs(set LocSet)            { a.marks = set }
-func (a *AccessGlobalNode) Type() types.Type              { return a.Global.Type() }
+func (a *AccessGlobalNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
+func (a *AccessGlobalNode) Type() types.Type { return a.Global.Type() }
 
 func (a *AccessGlobalNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
@@ -631,7 +666,12 @@ func (a *SyntheticNode) Graph() *SummaryGraph          { return a.parent }
 func (a *SyntheticNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *SyntheticNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *SyntheticNode) Marks() LocSet                 { return a.marks }
-func (a *SyntheticNode) SetLocs(set LocSet)            { a.marks = set }
+func (a *SyntheticNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
 func (a *SyntheticNode) Type() types.Type {
 	if val, ok := a.instr.(ssa.Value); ok {
 		return val.Type()
@@ -686,8 +726,13 @@ func (a *BoundLabelNode) Graph() *SummaryGraph          { return a.parent }
 func (a *BoundLabelNode) Out() map[GraphNode]ObjectPath { return a.out }
 func (a *BoundLabelNode) In() map[GraphNode]ObjectPath  { return a.in }
 func (a *BoundLabelNode) Marks() LocSet                 { return a.marks }
-func (a *BoundLabelNode) SetLocs(set LocSet)            { a.marks = set }
-func (a *BoundLabelNode) Type() types.Type              { return a.targetInfo.Type() }
+func (a *BoundLabelNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
+func (a *BoundLabelNode) Type() types.Type { return a.targetInfo.Type() }
 
 func (a *BoundLabelNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {

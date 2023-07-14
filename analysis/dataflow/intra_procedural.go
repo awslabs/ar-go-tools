@@ -306,9 +306,9 @@ func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) 
 }
 
 func (state *IntraAnalysisState) moveLocSetsToSummary() {
-	for mark, locset := range state.flowInfo.LocSet {
+	for mark, locSet := range state.flowInfo.LocSet {
 		for _, graphNode := range state.summary.selectNodesFromMark(mark) {
-			graphNode.SetLocs(locset)
+			graphNode.SetLocs(locSet)
 		}
 	}
 }

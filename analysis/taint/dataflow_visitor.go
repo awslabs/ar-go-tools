@@ -173,6 +173,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			callArg, prevIsCallArg := elt.Prev.Node.(*df.CallNodeArg)
 			if elt.Prev.Node.Graph() != graphNode.Graph() ||
 				(prevIsCallArg && callArg.ParentNode().Callee() == graphNode.Graph().Parent) {
+				fmt.Printf("P Marks: %v\n", elt.Node.Marks())
 				// Flows inside the function body. The data propagates to other locations inside the function body
 				// Second part of the condition allows self-recursive calls to be used
 				for out, oPath := range graphNode.Out() {
@@ -311,6 +312,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 				newCallStack := elt.Trace.Add(callSite)
 				v.visited[newCallStack] = true
+				fmt.Printf("A Marks: %v\n", elt.Node.Marks())
 				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, newCallStack, elt.ClosureTrace)
 			} else {
 				s.AddError(
