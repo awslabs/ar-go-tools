@@ -14,8 +14,6 @@
 
 package dataflow
 
-// Functions in this file are experimental: our analyses are not context-sensitive for the time being!
-
 import (
 	"fmt"
 	"strconv"
@@ -25,6 +23,49 @@ import (
 	. "github.com/awslabs/ar-go-tools/internal/graphutil"
 	cg "golang.org/x/tools/go/callgraph"
 )
+
+func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
+	if s.PointerAnalysis == nil {
+		return nil
+	}
+
+	var que []*CallStack
+	visited := map[*CallNode]bool{}
+
+	for _, e := range s.PointerAnalysis.CallGraph.Root.Out {
+		summary := s.FlowGraph.Summaries[e.Callee.Func]
+		if summary != nil {
+			for _, callNodeSet := range summary.Callees {
+				for _, callNode := range callNodeSet {
+					que = append(que, NewNodeTree(callNode))
+				}
+			}
+		}
+	}
+	var results []*CallStack
+
+	for len(que) > 0 {
+		elt := que[0]
+		que = que[1:]
+		if elt.Label == n {
+			results = append(results, elt)
+		}
+		visited[elt.Label] = true
+		if elt.Label.CalleeSummary != nil {
+			for _, callNodeSet := range elt.Label.CalleeSummary.Callees {
+				for _, callNode := range callNodeSet {
+					if !visited[callNode] {
+						que = append(que, elt.Add(callNode))
+					}
+				}
+			}
+		}
+	}
+
+	return results
+}
+
+// Following functions are experimental: our analyses are not context-sensitive for the time being!
 
 type CallCtxInfo struct {
 	Contexts map[string]bool

@@ -320,7 +320,6 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 		mark := NewMark(x, BoundVar, "", boundVar, -1)
 		state.markValue(x, boundVar, mark)
 	}
-	state.markValue(x, x, NewMark(x, Closure, "", nil, -1))
 }
 
 // optionalSyntheticNode tracks the flow of data from a synthetic node.

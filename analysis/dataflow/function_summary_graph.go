@@ -78,11 +78,17 @@ type GraphNode interface {
 
 	String() string
 
+	// Type returns the type of the node
 	Type() types.Type
 
+	// Marks returns the loc-set of the node
 	Marks() LocSet
 
+	// SetLocs sets the loc-set of the node
 	SetLocs(LocSet)
+
+	// Equal lifts equality to the interface level
+	Equal(GraphNode) bool
 }
 
 type IndexedGraphNode interface {
@@ -92,6 +98,32 @@ type IndexedGraphNode interface {
 
 	// Index returns the position of the node in the parent node structure (argument or bound variable position)
 	Index() int
+}
+
+func NodeKind(g GraphNode) string {
+	switch g.(type) {
+	case *ParamNode:
+		return "Param  "
+	case *CallNode:
+		return "Call   "
+	case *CallNodeArg:
+		return "CallArg"
+	case *ReturnValNode:
+		return "RetVal "
+	case *ClosureNode:
+		return "Closure"
+	case *BoundLabelNode:
+		return "BoundLb"
+	case *SyntheticNode:
+		return "Synth  "
+	case *BoundVarNode:
+		return "BoundV "
+	case *FreeVarNode:
+		return "FreeV  "
+	case *AccessGlobalNode:
+		return "Global "
+	}
+	return ""
 }
 
 // ParamNode is a node that represents a parameter of the function (input argument)
@@ -119,6 +151,13 @@ func (a *ParamNode) Position(c *AnalyzerState) token.Position {
 	} else {
 		return lang.DummyPos
 	}
+}
+
+func (a *ParamNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*ParamNode); ok {
+		return a == a2
+	}
+	return false
 }
 
 // Index returns the parameter position of the node in the function's signature
@@ -166,6 +205,13 @@ func (a *FreeVarNode) Position(c *AnalyzerState) token.Position {
 	}
 }
 
+func (a *FreeVarNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*FreeVarNode); ok {
+		return a == a2
+	}
+	return false
+}
+
 // Index returns the free variable position in the function's signature
 func (a *FreeVarNode) Index() int { return a.fvPos }
 
@@ -206,6 +252,13 @@ func (a *CallNodeArg) Position(c *AnalyzerState) token.Position {
 	} else {
 		return lang.DummyPos
 	}
+}
+
+func (a *CallNodeArg) Equal(node GraphNode) bool {
+	if a2, ok := node.(*CallNodeArg); ok {
+		return a == a2
+	}
+	return false
 }
 
 // ParentNode returns the parent call node
@@ -263,6 +316,13 @@ func (a *CallNode) Position(c *AnalyzerState) token.Position {
 	} else {
 		return lang.DummyPos
 	}
+}
+
+func (a *CallNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*CallNode); ok {
+		return a == a2
+	}
+	return false
 }
 
 func (a *CallNode) LongID() string {
@@ -353,6 +413,13 @@ func (a *ReturnValNode) Position(c *AnalyzerState) token.Position {
 	}
 }
 
+func (a *ReturnValNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*ReturnValNode); ok {
+		return a == a2
+	}
+	return false
+}
+
 func (a *ReturnValNode) ParentName() string {
 	if a.parent != nil && a.parent.Parent != nil {
 		return a.parent.Parent.Name()
@@ -400,6 +467,13 @@ func (a *ClosureNode) Position(c *AnalyzerState) token.Position {
 	} else {
 		return lang.DummyPos
 	}
+}
+
+func (a *ClosureNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*ClosureNode); ok {
+		return a == a2
+	}
+	return false
 }
 
 func (a *ClosureNode) LongID() string {
@@ -466,6 +540,13 @@ func (a *BoundVarNode) Position(c *AnalyzerState) token.Position {
 	}
 }
 
+func (a *BoundVarNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*BoundVarNode); ok {
+		return a == a2
+	}
+	return false
+}
+
 // Index returns the position of the bound variable in the make closure instruction. It will correspond to the
 // position of the matching variable in the closure's free variables.
 func (a *BoundVarNode) Index() int { return a.bPos }
@@ -514,6 +595,13 @@ func (a *AccessGlobalNode) Position(c *AnalyzerState) token.Position {
 	}
 }
 
+func (a *AccessGlobalNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*AccessGlobalNode); ok {
+		return a == a2
+	}
+	return false
+}
+
 func (a *AccessGlobalNode) Instr() ssa.Instruction { return a.instr }
 
 func (a *AccessGlobalNode) ParentName() string {
@@ -559,6 +647,13 @@ func (a *SyntheticNode) Position(c *AnalyzerState) token.Position {
 	}
 }
 
+func (a *SyntheticNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*SyntheticNode); ok {
+		return a == a2
+	}
+	return false
+}
+
 // Instr correspond to the instruction matching that synthetic node
 func (a *SyntheticNode) Instr() ssa.Instruction { return a.instr }
 
@@ -600,6 +695,13 @@ func (a *BoundLabelNode) Position(c *AnalyzerState) token.Position {
 	} else {
 		return lang.DummyPos
 	}
+}
+
+func (a *BoundLabelNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*BoundLabelNode); ok {
+		return a == a2
+	}
+	return false
 }
 
 // Instr correspond to the instruction matching that synthetic node

@@ -237,42 +237,47 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor 
 	}
 
 	// Run the analysis
-	g.RunVisitorOnEntryPoints(visitor, isEntryPoint)
+	g.RunVisitorOnEntryPoints(visitor, isEntryPoint, nil)
 }
 
-// RunVisitorOnEntryPoints runs the visitor on the entry points designated by the isEntryPoint function.
+// RunVisitorOnEntryPoints runs the visitor on the entry points designated by either the isEntryPoint function
+// or the isGraphEntryPoint function.
 func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
-	isEntryPoint func(*config.Config, ssa.Node) bool) {
+	isEntryPointSsa func(*config.Config, ssa.Node) bool,
+	isEntryPointGraphNode func(node GraphNode) bool) {
 	var entryPoints []NodeWithTrace
 
 	for _, summary := range g.Summaries {
 		// Identify the entry points for that function: all the call sites that are entry points
 		summary.ForAllNodes(func(n GraphNode) {
+			if isEntryPointGraphNode != nil && isEntryPointGraphNode(n) {
+				for _, callnode := range n.Graph().Callsites {
+					contexts := GetAllCallingContexts(g.AnalyzerState, callnode)
+					entryPoints = addWithContexts(contexts, n, entryPoints)
+				}
+			}
+
+			// if the isEntryPointSsa function is not specified, skip the special casing
+			if isEntryPointSsa == nil {
+				return
+			}
+
+			// special cases for each SSA node type supported
 			switch node := n.(type) {
 			case *SyntheticNode:
 				// all synthetic nodes are entry points
 				entry := NodeWithTrace{Node: node}
 				entryPoints = append(entryPoints, entry)
 			case *CallNodeArg:
-				if isEntryPoint(g.AnalyzerState.Config, node.parent.CallSite().Value()) {
+				if isEntryPointSsa(g.AnalyzerState.Config, node.parent.CallSite().Value()) {
 					entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
 					entryPoints = append(entryPoints, entry)
 				}
 			case *CallNode:
-				if node.callSite != nil && isEntryPoint(g.AnalyzerState.Config, node.callSite.Value()) {
-					// Assume a different entry point for different contexts
-					if len(node.parent.Callsites) > 0 {
-						// If there are callsites, adding context gives more interpretable results
-						for _, contextNode := range node.parent.Callsites {
-							trace := NewNodeTree(contextNode).Add(node)
-							entry := NodeWithTrace{Node: node, Trace: trace, ClosureTrace: nil}
-							entryPoints = append(entryPoints, entry)
-						}
-					} else {
-						// Default is to start without context (trace is nil)
-						entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-						entryPoints = append(entryPoints, entry)
-					}
+				if node.callSite != nil && isEntryPointSsa(g.AnalyzerState.Config, node.callSite.Value()) {
+					contexts := GetAllCallingContexts(g.AnalyzerState, node)
+					entryPoints = addWithContexts(contexts, node, entryPoints)
+
 					for _, arg := range node.args {
 						entryPoints = append(entryPoints, NodeWithTrace{arg, nil, nil})
 					}
@@ -288,6 +293,23 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 	for _, entry := range entryPoints {
 		visitor.Visit(g.AnalyzerState, entry)
 	}
+}
+
+func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints []NodeWithTrace) []NodeWithTrace {
+	if contexts == nil {
+		// Default is to start without context (trace is nil)
+		entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+		entryPoints = append(entryPoints, entry)
+	} else {
+		for _, ctxt := range contexts {
+			entryPoints = append(entryPoints, NodeWithTrace{
+				Node:         node,
+				Trace:        ctxt,
+				ClosureTrace: nil,
+			})
+		}
+	}
+	return entryPoints
 }
 
 // resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
@@ -467,22 +489,60 @@ func openSummaries(c *AnalyzerState) *os.File {
 
 // UnwindCallstackFromCallee returns the CallNode that should be returned upon. It satisfies the following conditions:
 // - the CallNode is in the callsites set
-// - the CallNode is in the trace
+// - the CallNode is in the stack
 // If no CallNode satisfies these conditions, nil is returned.
-func UnwindCallstackFromCallee(callsites map[ssa.CallInstruction]*CallNode, trace *NodeTree[*CallNode]) *CallNode {
+func UnwindCallstackFromCallee(callsites map[ssa.CallInstruction]*CallNode, stack *CallStack) *CallNode {
 	// no trace = nowhere to return to.
-	if trace == nil {
+	if stack == nil {
 		return nil
 	}
 
 	// the number of callsites in a call is expected to be small
 	for _, x := range callsites {
-		if x.CallSite() == trace.Label.CallSite() && x.Callee() == trace.Label.Callee() {
+		if x.CallSite() == stack.Label.CallSite() && x.Callee() == stack.Label.Callee() {
 			return x
 		}
 	}
 	// no return node has been found
 	return nil
+}
+
+// UnwindCallStackToFunc looks for the callstack pointer where f was called. Returns nil if no such function can be
+// found
+func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
+	cur := stack
+	for cur != nil {
+		if cur.Label.Callee() == f {
+			return cur
+		}
+		cur = cur.Parent
+	}
+	return nil
+}
+
+// CompleteCallStackToNode completes the callstack stack with the call nodes to reach node. Returns nil if node is not
+// reachable from the last call node of the stack.
+func CompleteCallStackToNode(stack *CallStack, n *CallNode) *CallStack {
+	if stack == nil {
+		return nil
+	}
+	if stack.Label == n {
+		return stack
+	}
+	var tmpRoot *CallStack
+	tmpRoot = NewNodeTree(stack.Label)
+	queue := []*CallStack{tmpRoot}
+	for len(queue) > 0 {
+		elt := queue[0]
+		queue = queue[1:]
+		if elt.Label == n {
+			return stack.Append(elt)
+		}
+		for _, callNode := range elt.Label.parent.Callsites {
+			queue = append(queue, elt.Add(callNode))
+		}
+	}
+	return stack
 }
 
 // BuildSummary builds a summary for function and adds it to s's flow graph.

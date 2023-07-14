@@ -223,6 +223,9 @@ func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *s
 func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
 		for _, mark := range state.getMarks(x, boundVar, "*", false) {
+			if mark.IsClosure() && mark.Node == x {
+				continue // avoid spurious edges from closure to its own bound variables
+			}
 			state.summary.addBoundVarEdge(mark, nil, x, boundVar)
 			for y := range state.paramAliases[boundVar] {
 				state.summary.addParamEdge(mark, nil, y)
