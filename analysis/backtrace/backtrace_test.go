@@ -627,13 +627,6 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 			}
 
 			if !seen[sinkLine][sourceLine] {
-				// TODO: known error cases to fix
-				// case: a recursive function
-				if strings.HasSuffix(sinkLine.Filename, "/taint/parameters/main.go") &&
-					sourceLine.Line == 116 && sinkLine.Line == 123 &&
-					strings.HasSuffix(sourceLine.Filename, "/taint/parameters/main.go") {
-					continue
-				}
 				// Remaining entries have not been detected!
 				t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
 			}

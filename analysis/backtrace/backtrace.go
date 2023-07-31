@@ -310,8 +310,15 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				tr = elt.Trace.Parent
 			}
 
+			// Check if the previous node was a parameter coming from the same function (recursive call)
+			prevIsRecursiveParam := false
+			if elt.prev != nil {
+				if param, ok := elt.prev.Node.(*df.ParamNode); ok {
+					prevIsRecursiveParam = param.Graph() == callSite.Graph()
+				}
+			}
 			// Data flows backwards from the argument within the function
-			if elt.prev == nil || callSite.Graph() != elt.prev.Node.Graph() {
+			if elt.prev == nil || callSite.Graph() != elt.prev.Node.Graph() || prevIsRecursiveParam {
 				for in := range graphNode.In() {
 					stack = addNext(s, stack, seen, elt, in, tr, elt.ClosureTrace)
 				}
