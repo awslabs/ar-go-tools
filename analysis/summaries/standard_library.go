@@ -568,6 +568,7 @@ var SummaryMath = map[string]Summary{
 	"math/rand.New":                SingleVarArgPropagation,
 	"math/rand.NewSource":          SingleVarArgPropagation,
 	"math/rand.Seed":               NoDataFlowPropagation,
+	"math/rand.Float32":            NoDataFlowPropagation,
 	"(*math/big.Float).Set":        TwoArgPropagation,
 	"(*math/big.Float).SetFloat64": TwoArgPropagation,
 	"(*math/big.Float).SetInf":     TwoArgPropagation,

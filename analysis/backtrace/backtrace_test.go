@@ -634,12 +634,6 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 					strings.HasSuffix(sourceLine.Filename, "/taint/parameters/main.go") {
 					continue
 				}
-				// case: a builtin
-				if strings.HasSuffix(sinkLine.Filename, "/taint/builtins/main.go") &&
-					(sourceLine.Line == 88 || sourceLine.Line == 89) && sinkLine.Line == 91 &&
-					strings.HasSuffix(sourceLine.Filename, "/taint/builtins/main.go") {
-					continue
-				}
 				// Remaining entries have not been detected!
 				t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
 			}
