@@ -269,9 +269,10 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 							//break
 						}
 
-						callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionId(), isSingleFunctionEntrypoint, nil)
-						if err := df.RunIntraProcedural(s, callSite.CalleeSummary); err != nil {
-							panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
+						// the callee summary may not have been created yet
+						if callSite.CalleeSummary == nil {
+							callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionId(),
+								isSingleFunctionEntrypoint, nil)
 						}
 					} else {
 						s.ReportMissingOrNotConstructedSummary(callSite)
@@ -279,11 +280,14 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					}
 				}
 
+				// Computing context-sensitive information for the analyses
+
 				// Obtain the parameter node of the callee corresponding to the argument in the call site
 				// Data flows backwards from the argument to the corresponding parameter
 				// if the parameter is a nillable type (can be modified)
 				param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
 				if param != nil {
+					// This is where a function gets "called" and the next nodes will be analyzed in a different context
 					x := callSite.CalleeSummary.Params[param]
 					stack = addNext(s, stack, seen, elt, x, elt.Trace.Add(callSite), elt.ClosureTrace)
 				} else {
@@ -391,8 +395,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				stack = addNext(s, stack, seen, elt, in, elt.Trace, elt.ClosureTrace)
 			}
 
-		// From a global write node, data flows backwards to ALL the locations where the global is read.
-		// From a read location, backwards data flow follows the write locations of the node.
+		// From a global write node, data flows backwards intra-procedurally.
+		// From a read location, backwards data flow follows ALL the write locations of the node.
 		case *df.AccessGlobalNode:
 			if graphNode.IsWrite {
 				for in := range graphNode.In() {
@@ -423,8 +427,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 			closureNode := graphNode.ParentNode()
 
-			if s.Config.SummarizeOnDemand &&
-				(closureNode.ClosureSummary == nil || !closureNode.ClosureSummary.Constructed) {
+			if s.Config.SummarizeOnDemand && closureNode.ClosureSummary == nil {
 				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function),
 					isSingleFunctionEntrypoint)
 				//s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
@@ -520,20 +523,9 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 		case *df.ClosureNode:
-			for in := range graphNode.In() {
-				stack = addNext(s, stack, seen, elt, in, elt.Trace, elt.ClosureTrace)
-			}
-
 			// Data flows backwards from the bound variables of the closure
 			for _, b := range graphNode.BoundVars() {
 				stack = addNext(s, stack, seen, elt, b, elt.Trace, elt.ClosureTrace)
-			}
-
-			// Data also flows to the return node
-			if elt.ClosureTrace != nil {
-				for cCall := range elt.ClosureTrace.Label.In() {
-					stack = addNext(s, stack, seen, elt, cCall, elt.Trace, elt.ClosureTrace.Parent)
-				}
 			}
 
 		case *df.BoundLabelNode:
