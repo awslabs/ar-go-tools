@@ -1311,6 +1311,7 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 	}
 }
 
+//gocyclo:ignore
 func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *EscapeGraph, verbose bool, args []*Node, rets []*Node) {
 	// Handle indirect calls. The approach is the same for both indirect and invoke:
 	// Loop through all the different out-edges of the func value/receiver. If they are local, we
