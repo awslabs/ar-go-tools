@@ -943,6 +943,11 @@ func ChannelContentsType(t types.Type) types.Type {
 	}
 }
 
+// IsEscapeTracked returns true if t is a type that must be tracked by the escape
+// analysis, because it is either a pointer-like type ("nillables"), or it is a struct
+// that may directly contain pointer-like types. Struct types are usually represented by
+// pointers to a memory object containing the struct, except when the struct is directly
+// an argument or return value from a function.
 func IsEscapeTracked(t types.Type) bool {
 	_, ok := t.Underlying().(*types.Struct)
 	return lang.IsNillableType(t) || ok
@@ -1127,192 +1132,16 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			if err != nil {
 				ea.prog.logger.Warnf("Warning, escape analysis does not handle builtin: %s", err)
 			}
-			return
 		} else if callee := instrType.Call.StaticCallee(); callee != nil {
-			summary := ea.prog.summaries[callee]
-			if summary != nil {
-				// We can use the finalGraph pointer freely as it will never change after it is created
-				summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
-				if verbose {
-					ea.prog.logger.Tracef("Call at %v: %v %v %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()),
-						summary.function.String(), args, summary.finalGraph.nodes.formals)
-				}
-				freeVars := [][]*Node{}
-				// For a immediately invoked func, the  value will be a MakeClosure, where we can get the
-				// freevars directly from. In this case, we don't need field sensitivity to align the right
-				// value, as we can directly get the corresponding node.
-				if mkClosure, ok := instrType.Call.Value.(*ssa.MakeClosure); ok {
-					for _, fv := range mkClosure.Bindings {
-						pointees := []*Node{}
-						for p := range g.Deref(nodes.ValueNode(fv)) {
-							pointees = append(pointees, p)
-						}
-						freeVars = append(freeVars, pointees)
-					}
-				}
-				g.Call(args, freeVars, rets, summary.finalGraph)
-				if verbose {
-					ea.prog.logger.Tracef("After call:\n%v", g.Graphviz())
-				}
-				return
-			} else {
-				if verbose {
-					ea.prog.logger.Tracef("Warning, %v is not a summarized function: treating as unknown call\n",
-						callee.Name())
-				}
-			}
-		} else {
+			ea.transferCallStaticCallee(instrType, g, verbose, args, rets)
+		} else if instrType.Call.IsInvoke() {
 			// If no static callee, either we have an indirect call, e.g. t3(t4) or a method invocation,
-			// e.g. invoke t3.Method(t8, t13). Indirect calls can be closures, bound methods, regular named
-			// functions, or thunks.
-
-			// Handle indirect calls first. The approach is the same for both:
-			// Loop through all the different out-edges of the func value/receiver. If they are local, we
-			// know which MakeClosure/concrete type was used to create that node, so process the ssa.Function.
-			// If there are any out-edges to an non-local value (either leaked or escaped), then use the pointer
-			// analysis to over-approximate the set of possiblities, and then call each of those.
-			if !instrType.Call.IsInvoke() {
-				pre := g.Clone()
-				calleeNode := nodes.ValueNode(instrType.Call.Value)
-				nonlocal := g.status[calleeNode] != Local
-				for closureNode := range g.Deref(calleeNode) {
-					// The closure node represent the actual closure object.
-					// Its fields point at allocs which hold the actual data. If the actual
-					// data is a pointer to struct/interface, then the alloc will just hold a pointer
-					// calleeNode --> closureNode --> new *S --> struct S
-					if g.status[closureNode] == Local {
-						// Find the corresponding ssa.Function, and perform the invoke
-						if concreteCallee, ok := nodes.globalNodes.function[closureNode]; ok {
-							summary := ea.prog.summaries[concreteCallee]
-							v := pre.Clone()
-							if summary != nil {
-								// Record our use of this summary for recursion-covergence purposes
-								summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
-
-								// Free vars should be a list of the possible alloc nodes that
-								// hold each free var.
-								freeVars := [][]*Node{}
-								for _, fv := range concreteCallee.FreeVars {
-									if IsEscapeTracked(fv.Type()) {
-										pointees := []*Node{}
-										for allocNode := range pre.edges[closureNode] {
-											pointees = append(pointees, allocNode)
-										}
-										freeVars = append(freeVars, pointees)
-									} else {
-										freeVars = append(freeVars, nil)
-									}
-								}
-								v.Call(args, freeVars, rets, summary.finalGraph)
-							} else {
-								v.CallUnknown(args, rets)
-							}
-							g.Merge(v)
-						}
-					} else {
-						nonlocal = true
-					}
-				}
-				if nonlocal {
-					if callees, err := ea.getCallees(instrType); err == nil {
-						pre := g.Clone()
-						for concreteCallee := range callees {
-							summary := ea.prog.summaries[concreteCallee]
-							if summary != nil {
-								// Record our use of this summary for recursion-covergence purposes
-								summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
-
-								for closureNode := range g.Deref(calleeNode) {
-									// Check if the closure node itself is non-local (i.e. escaped if it is an argument) and the callee
-									// is a closure. In this case, we need to make sure there is at least one node representing the free
-									// variables of the closure. Failure to create this node will result in the function essentially
-									// assuming the free variables are nil, as there won't be any closure out edges.
-									if g.status[closureNode] != Local {
-										// Add a load node for external closures, to represent the bound variable storage nodes
-										if len(concreteCallee.FreeVars) > 0 {
-											pre.AddEdge(closureNode, nodes.LoadNode(instrType, concreteCallee.FreeVars[0].Type()), false)
-										}
-										freeVars := [][]*Node{}
-										for _, fv := range concreteCallee.FreeVars {
-											if IsEscapeTracked(fv.Type()) {
-												pointees := []*Node{}
-												for allocNode := range pre.edges[closureNode] {
-													pointees = append(pointees, allocNode)
-												}
-												freeVars = append(freeVars, pointees)
-											} else {
-												freeVars = append(freeVars, nil)
-											}
-										}
-										v := pre.Clone()
-										v.Call(args, freeVars, rets, summary.finalGraph)
-										g.Merge(v)
-									}
-								}
-							} else {
-								g.CallUnknown(args, rets)
-							}
-						}
-					} else {
-						ea.prog.logger.Debugf("Warning, can't resolve indirect of %v, treating as unknown call\n", instrType)
-						g.CallUnknown(args, rets)
-					}
-				}
-				if verbose {
-					ea.prog.logger.Debugf("After indirect call:\n%v", g.Graphviz())
-				}
-				return
-			} else {
-				// Find the methods that it could be, according to pointer analysis
-				// Invoke each with each possible receiver
-				// Note: unlike above, we do the full cross product of all possible method implementations
-				// with all receivers, even ones that we could deduce aren't possible.
-				receiverNode := nodes.ValueNode(instrType.Call.Value)
-				argsWithReceiver := []*Node{receiverNode}
-				for _, a := range args {
-					argsWithReceiver = append(argsWithReceiver, a)
-				}
-				argsWithNilReceiver := []*Node{nil}
-				for _, a := range args {
-					argsWithNilReceiver = append(argsWithNilReceiver, a)
-				}
-
-				if callees, err := ea.getCallees(instrType); err == nil {
-					pre := g.Clone()
-					for callee := range callees {
-						summary := ea.prog.summaries[callee]
-						if summary != nil {
-							// Record our use of this summary for recursion-covergence purposes
-							summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
-							v := pre.Clone()
-							appropriateArgs := argsWithReceiver
-							if !IsEscapeTracked(callee.Params[0].Type()) {
-								appropriateArgs = argsWithNilReceiver
-							}
-							v.Call(appropriateArgs, nil, rets, summary.finalGraph)
-							g.Merge(v)
-						} else {
-							g.CallUnknown(args, rets)
-						}
-					}
-				} else {
-					ea.prog.logger.Debugf("Warning, %v invoke did not find callees, treating as unknown call\n", instrType)
-					g.CallUnknown(argsWithReceiver, rets)
-				}
-				if verbose {
-					ea.prog.logger.Debugf("After invoke call:\n%v", g.Graphviz())
-				}
-				return
-			}
-			// All control flow should have returned
+			// e.g. invoke t3.Method(t8, t13).
+			ea.transferCallInvoke(instrType, g, verbose, args, rets)
+		} else {
+			//  Indirect call callees can be closures, bound methods, regular named functions, or thunks.
+			ea.transferCallIndirect(instrType, g, verbose, args, rets)
 		}
-		// If we didn't find a summary or didn't know the callee, use the arbitrary function assumption.
-		// Crucially, this is different from a function that will have a summary but we just haven't
-		// seen yet (e.g. when there is recursion). If we haven't seen a function, then it will have the
-		// initial lattice value (basically, the empty graph), and as the monotone framework loop proceeds,
-		// will get more and more edges. This case, by contrast, imposes a fixed semantics: leak all the
-		// arguments and return an object which may be arbitrary (and is therefore leaked).
-		g.CallUnknown(args, rets)
 		return
 
 	case *ssa.Go:
@@ -1436,6 +1265,191 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	if verbose {
 		ea.prog.logger.Debugf("At %v\n", instr.Parent().Prog.Fset.Position(instr.Pos()))
 		ea.prog.logger.Debugf("Unhandled: (type: %s) %v\n", reflect.TypeOf(instr).String(), instr)
+	}
+}
+
+func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g *EscapeGraph, verbose bool, args []*Node, rets []*Node) {
+	// Handle calls where we know the callee
+	callee := instrType.Call.StaticCallee()
+	summary := ea.prog.summaries[callee]
+	if summary != nil {
+		// We can use the finalGraph pointer freely as it will never change after it is created
+		summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
+		if verbose {
+			ea.prog.logger.Tracef("Call at %v: %v %v %v\n", instrType.Parent().Prog.Fset.Position(instrType.Pos()),
+				summary.function.String(), args, summary.finalGraph.nodes.formals)
+		}
+		freeVars := [][]*Node{}
+		// For a immediately invoked func, the  value will be a MakeClosure, where we can get the
+		// freevars directly from. In this case, we don't need field sensitivity to align the right
+		// value, as we can directly get the corresponding node.
+		if mkClosure, ok := instrType.Call.Value.(*ssa.MakeClosure); ok {
+			for _, fv := range mkClosure.Bindings {
+				pointees := []*Node{}
+				for p := range g.Deref(ea.nodes.ValueNode(fv)) {
+					pointees = append(pointees, p)
+				}
+				freeVars = append(freeVars, pointees)
+			}
+		}
+		g.Call(args, freeVars, rets, summary.finalGraph)
+		if verbose {
+			ea.prog.logger.Tracef("After call:\n%v", g.Graphviz())
+		}
+	} else {
+		if verbose {
+			ea.prog.logger.Tracef("Warning, %v is not a summarized function: treating as unknown call\n",
+				callee.Name())
+		}
+		// If we didn't find a summary or didn't know the callee, use the arbitrary function assumption.
+		// Crucially, this is different from a function that will have a summary but we just haven't
+		// seen yet (e.g. when there is recursion). If we haven't seen a function, then it will have the
+		// initial lattice value (basically, the empty graph), and as the monotone framework loop proceeds,
+		// will get more and more edges. This case, by contrast, imposes a fixed semantics: leak all the
+		// arguments and return an object which may be arbitrary (and is therefore leaked).
+		g.CallUnknown(args, rets)
+	}
+}
+
+func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *EscapeGraph, verbose bool, args []*Node, rets []*Node) {
+	// Handle indirect calls. The approach is the same for both indirect and invoke:
+	// Loop through all the different out-edges of the func value/receiver. If they are local, we
+	// know which MakeClosure/concrete type was used to create that node, so process the ssa.Function.
+	// If there are any out-edges to an non-local value (either leaked or escaped), then use the pointer
+	// analysis to over-approximate the set of possiblities, and then call each of those.
+	pre := g.Clone()
+	calleeNode := ea.nodes.ValueNode(instrType.Call.Value)
+	nonlocal := g.status[calleeNode] != Local
+	for closureNode := range g.Deref(calleeNode) {
+		// The closure node represents the actual closure object.
+		// Its fields point at allocs which hold the actual data. If the actual
+		// data is a pointer to struct/interface, then the alloc will just hold a pointer
+		// calleeNode --> closureNode --> new *S --> struct S
+		if g.status[closureNode] == Local {
+			// Find the corresponding ssa.Function, and perform the invoke
+			if concreteCallee, ok := ea.nodes.globalNodes.function[closureNode]; ok {
+				summary := ea.prog.summaries[concreteCallee]
+				v := pre.Clone()
+				if summary != nil {
+					// Record our use of this summary for recursion-covergence purposes
+					summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
+
+					// Free vars should be a list of the possible alloc nodes that
+					// hold each free var.
+					freeVars := [][]*Node{}
+					for _, fv := range concreteCallee.FreeVars {
+						if IsEscapeTracked(fv.Type()) {
+							pointees := []*Node{}
+							for allocNode := range pre.edges[closureNode] {
+								pointees = append(pointees, allocNode)
+							}
+							freeVars = append(freeVars, pointees)
+						} else {
+							freeVars = append(freeVars, nil)
+						}
+					}
+					v.Call(args, freeVars, rets, summary.finalGraph)
+				} else {
+					v.CallUnknown(args, rets)
+				}
+				g.Merge(v)
+			}
+		} else {
+			nonlocal = true
+		}
+	}
+	if nonlocal {
+		// Either the pointer or a closure object was non-local. Therefore we can't know for certain exactly what function was called
+		// or what data the closure refers to. Therefore, we need to basically do all the logic again, but assuming arbitrary
+		// data could be loaded from e.g. free vars.
+		if callees, err := ea.getCallees(instrType); err == nil {
+			pre := g.Clone()
+			for concreteCallee := range callees {
+				summary := ea.prog.summaries[concreteCallee]
+				if summary != nil {
+					// Record our use of this summary for recursion-covergence purposes
+					summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
+
+					for closureNode := range g.Deref(calleeNode) {
+						// Check if the closure node itself is non-local (i.e. escaped if it is an argument) and the callee
+						// is a closure. In this case, we need to make sure there is at least one node representing the free
+						// variables of the closure. Failure to create this node will result in the function essentially
+						// assuming the free variables are nil, as there won't be any closure out edges.
+						if g.status[closureNode] != Local {
+							// Add a load node for external closures, to represent the bound variable storage nodes
+							if len(concreteCallee.FreeVars) > 0 {
+								pre.AddEdge(closureNode, ea.nodes.LoadNode(instrType, concreteCallee.FreeVars[0].Type()), false)
+							}
+							freeVars := [][]*Node{}
+							for _, fv := range concreteCallee.FreeVars {
+								if IsEscapeTracked(fv.Type()) {
+									pointees := []*Node{}
+									for allocNode := range pre.edges[closureNode] {
+										pointees = append(pointees, allocNode)
+									}
+									freeVars = append(freeVars, pointees)
+								} else {
+									freeVars = append(freeVars, nil)
+								}
+							}
+							v := pre.Clone()
+							v.Call(args, freeVars, rets, summary.finalGraph)
+							g.Merge(v)
+						}
+					}
+				} else {
+					g.CallUnknown(args, rets)
+				}
+			}
+		} else {
+			ea.prog.logger.Debugf("Warning, can't resolve indirect of %v, treating as unknown call\n", instrType)
+			g.CallUnknown(args, rets)
+		}
+	}
+	if verbose {
+		ea.prog.logger.Debugf("After indirect call:\n%v", g.Graphviz())
+	}
+}
+
+func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *EscapeGraph, verbose bool, args []*Node, rets []*Node) {
+	// Find the methods that it could be, according to pointer analysis
+	// Invoke each with each possible receiver
+	// Note: unlike for indirect calls, we do the full cross product of all possible method implementations
+	// with all receivers, even ones that we could deduce aren't possible.
+	receiverNode := ea.nodes.ValueNode(instrType.Call.Value)
+	argsWithReceiver := []*Node{receiverNode}
+	for _, a := range args {
+		argsWithReceiver = append(argsWithReceiver, a)
+	}
+	argsWithNilReceiver := []*Node{nil}
+	for _, a := range args {
+		argsWithNilReceiver = append(argsWithNilReceiver, a)
+	}
+
+	if callees, err := ea.getCallees(instrType); err == nil {
+		pre := g.Clone()
+		for callee := range callees {
+			summary := ea.prog.summaries[callee]
+			if summary != nil {
+				// Record our use of this summary for recursion-covergence purposes
+				summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
+				v := pre.Clone()
+				appropriateArgs := argsWithReceiver
+				if !IsEscapeTracked(callee.Params[0].Type()) {
+					appropriateArgs = argsWithNilReceiver
+				}
+				v.Call(appropriateArgs, nil, rets, summary.finalGraph)
+				g.Merge(v)
+			} else {
+				g.CallUnknown(args, rets)
+			}
+		}
+	} else {
+		ea.prog.logger.Debugf("Warning, %v invoke did not find callees, treating as unknown call\n", instrType)
+		g.CallUnknown(argsWithReceiver, rets)
+	}
+	if verbose {
+		ea.prog.logger.Debugf("After invoke call:\n%v", g.Graphviz())
 	}
 }
 
