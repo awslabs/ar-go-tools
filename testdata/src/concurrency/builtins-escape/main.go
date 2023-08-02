@@ -46,6 +46,31 @@ func main() {
 	testChannelEscape()
 	testSelect()
 	testConvertStringToSlice()
+	testImmediateClosure1()
+	testImmediateClosure2()
+	testLocalVarClosure1()
+	testLocalVarClosure2()
+	testLocalVarClosure3()
+	testLeakOfFunc()
+	testCalleeClosure1()
+	testCalleeClosure2()
+	testGlobalFunc1()
+	testGlobalFunc2()
+	testGlobalFunc3()
+	testMethodOfLocal()
+	testBoundMethodOfLocal1()
+	testBoundMethodOfLocal2()
+	testBoundMethodOfLocal3()
+	testMethodNonPointer1()
+	testMethodNonPointer2()
+	testFuncStruct()
+	testFuncStructArg()
+	testMethodOnNonTracked1()
+	testMethodOnNonTracked2()
+	testNonPointerFreeVar()
+	testMultipleBoundVars()
+	testSiblingClosure()
+	testInterfaceDirectStruct()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -207,4 +232,368 @@ func testConvertStringToSlice() {
 	assertAllLocal(z)
 	w := x[:]
 	assertAllLocal(w)
+}
+
+func testImmediateClosure1() {
+	a := &Node{}
+	b := &Node{}
+	globalVar.next = a
+	assertAllLeaked(a)
+	func(a, b *Node) {
+		a.next = b
+	}(a, b)
+	assertAllLeaked(b)
+}
+
+func testImmediateClosure2() {
+	a := &Node{}
+	b := &Node{}
+	globalVar.next = a
+	assertAllLeaked(a)
+	func() {
+		a.next = b
+	}()
+	assertAllLeaked(b)
+}
+
+func testLocalVarClosure1() {
+	a := &Node{}
+	b := &Node{}
+	x := func() {
+		a.next = b
+	}
+	globalVar.next = a
+	assertAllLeaked(a)
+	x()
+	assertAllLeaked(b)
+}
+
+func testLocalVarClosure2() {
+	a := &Node{}
+	b := &Node{}
+	x := func() {
+		a.next = b
+	}
+	y := func() {
+		a.next = b
+	}
+	globalVar.next = a
+	assertAllLeaked(a)
+	var z func()
+	if arbitrary() {
+		z = x
+	} else {
+		z = y
+	}
+	// This just forces z() to not be a
+	z()
+	assertAllLeaked(b)
+}
+
+func testLocalVarClosure3() {
+	a := &Node{}
+	b := &Node{}
+	c := &Node{}
+	x := func(b, c *Node) {
+		a.next = b
+	}
+	y := func(b, c *Node) {
+		a.next = c
+	}
+	globalVar.next = a
+	assertAllLeaked(a)
+	var z func(*Node, *Node)
+	if arbitrary() {
+		z = x
+	} else {
+		z = y
+	}
+	// Test that we can have both a.next = b and a.next = c on this line
+	// This makes sure that the results of applying all summaries are merged,
+	// as in this test either b or c is leaked individually by each func.
+	z(b, c)
+	assertAllLeaked(b)
+	assertAllLeaked(c)
+}
+
+// global var for funcs
+var callback func()
+
+func testLeakOfFunc() {
+	a := &Node{}
+
+	x := func() {
+		a.next = a
+	}
+	// This leaks a because the closure has a reference to a
+	callback = x
+	assertAllLeaked(a)
+	callback()
+}
+
+func getAssignerFunc(a *Node) func(*Node) {
+	return func(b *Node) {
+		a.next = b
+	}
+}
+
+// Test that a closure returned from a callee performs the given assignment
+func testCalleeClosure1() {
+	a := &Node{}
+	b := &Node{}
+	globalVar.next = a
+	f := getAssignerFunc(a)
+	f(b)
+	assertAllLeaked(b)
+}
+
+// The same as above, but without a leaked value
+func testCalleeClosure2() {
+	a := &Node{}
+	b := &Node{}
+	f := getAssignerFunc(a)
+	f(b)
+	assertAllLocal(b)
+}
+
+func fieldAssigner(a, b *Node) {
+	a.next = b
+}
+func noFieldAssigner(a, b *Node) {
+
+}
+
+var globalNodeProcessorFunc func(a, b *Node)
+
+// Test that pointers to functions work, and that the correct
+// implementations are picked up from the pointer analysis
+func testGlobalFunc1() {
+	globalNodeProcessorFunc = fieldAssigner
+	a := &Node{}
+	b := &Node{}
+	globalNodeProcessorFunc(a, b)
+	assertAllLocal(b)
+}
+func testGlobalFunc2() {
+	globalNodeProcessorFunc = fieldAssigner
+	a := &Node{}
+	b := &Node{}
+	globalVar.next = a
+	globalNodeProcessorFunc(a, b)
+	assertAllLeaked(b)
+}
+
+// Tests that the variable could still point to field assigner, even though
+// that can't actually happen in this program
+func testGlobalFunc3() {
+	globalNodeProcessorFunc = noFieldAssigner
+	a := &Node{}
+	b := &Node{}
+	globalVar.next = a
+	// The analysis should still conclude that `a.next=b`` could be executed
+	globalNodeProcessorFunc(a, b)
+	assertAllLeaked(b)
+}
+
+type Assigner struct {
+	a *Node
+}
+
+func (a *Assigner) assign(b *Node) {
+	a.a.next = b
+}
+func testMethodOfLocal() {
+	a := &Node{}
+	b := &Node{}
+	globalVar.next = a
+	assigner := Assigner{a}
+	assigner.assign(b)
+	assertAllLeaked(b)
+}
+
+func identityForFuncOfNode(x func(*Node)) func(*Node) {
+	return x
+}
+func identityForFuncOfNothing(x func()) func() {
+	return x
+}
+
+func testBoundMethodOfLocal1() {
+	a := &Node{}
+	b := &Node{}
+	globalVar.next = a
+	assigner := Assigner{a}
+	// Force processing though non-local means
+	f := identityForFuncOfNode(func(b *Node) { assigner.assign(b) })
+	f(b)
+	assertAllLeaked(b)
+}
+
+func testBoundMethodOfLocal1b() {
+	a := &Node{}
+	b := &Node{}
+	globalVar.next = a
+	assigner := Assigner{a}
+	// Force processing though non-local means
+	f := identityForFuncOfNode(assigner.assign)
+	f(b)
+	assertAllLeaked(b)
+}
+func testBoundMethodOfLocal2() {
+	a := &Node{}
+	b := &Node{}
+	assigner := Assigner{a}
+	// The bound method leaks, but call it directly
+	f := assigner.assign
+	assertAllLocal(b)
+	f(b)
+	// Here is where b leaks
+	funcForBoundMethodTestOnly = f
+	assertAllLeaked(b)
+}
+
+var funcForBoundMethodTestOnly func(*Node)
+
+func testBoundMethodOfLocal3() {
+	a := &Node{}
+	b := &Node{}
+	assigner := Assigner{a}
+	f := assigner.assign
+	funcForBoundMethodTestOnly = f
+	// Test that the leak still happens even if f is invoked directly
+	f(b)
+	assertAllLeaked(b)
+}
+
+type someStruct struct {
+	n *Node
+}
+
+func (s someStruct) MethodOnNonPointer() error {
+	s.n = &Node{}
+	return nil
+}
+func (s someStruct) MethodThatLeaks() {
+	globalVar = s.n
+}
+
+func funcThatReturnsStructDirectly() someStruct {
+	return someStruct{globalVar}
+}
+func funcThatReturnsPointer() *someStruct {
+	return &someStruct{globalVar}
+}
+
+func testMethodNonPointer1() {
+	a := &Node{}
+	s := someStruct{a}
+	s.MethodOnNonPointer()
+	s.MethodThatLeaks()
+	assertAllLeaked(a)
+}
+func testMethodNonPointer2() {
+	a := &Node{}
+	// Now s is a pointer, but the method is defined on the original
+	s := &someStruct{a}
+	s.MethodOnNonPointer()
+	s.MethodThatLeaks()
+	assertAllLeaked(a)
+}
+
+func testFuncStruct() {
+	a := funcThatReturnsStructDirectly().n
+	b := funcThatReturnsPointer().n
+	assertAllLeaked(a)
+	assertAllLeaked(b)
+}
+
+func funcWithDirectStructArg(s someStruct) {
+	globalVar = s.n
+}
+
+func testFuncStructArg() {
+	a := &Node{}
+	s := someStruct{a}
+	funcWithDirectStructArg(s)
+	assertAllLeaked(a)
+}
+
+type A int
+
+func (a A) Method() *Node {
+	return globalVar
+}
+
+type MethodInterface interface {
+	Method() *Node
+}
+
+func testMethodOnNonTracked1() {
+	var x A
+	b := x.Method()
+	assertAllLeaked(b)
+}
+
+func testMethodOnNonTracked2() {
+	var x MethodInterface = new(A)
+	b := x.Method()
+	assertAllLeaked(b)
+}
+
+func testNonPointerFreeVar() {
+	x := 5
+	f := func() {
+		x += 5
+	}
+	identityForFuncOfNothing(f)()
+}
+
+func callFunc(f func()) {
+	f()
+}
+func testMultipleBoundVars() {
+	a := &Node{}
+	b := &Node{}
+	f := func() {
+		a.next = b
+	}
+	callFunc(f)
+	globalVar = a
+	assertAllLeaked(a)
+	assertAllLeaked(b)
+}
+
+func makeClosureToLeak(n *Node) func() {
+	return func() { globalVar = n }
+}
+func callFunc2(f func()) {
+	f()
+}
+func testSiblingClosure() {
+	a := &Node{}
+	callFunc2(makeClosureToLeak(a))
+	assertAllLeaked(a)
+}
+
+type thingDoer struct {
+	a *Node
+}
+
+func (t thingDoer) thingMethod() {
+	globalVar = t.a
+}
+
+type DoInterface interface {
+	thingMethod()
+}
+
+func doThing(d DoInterface) {
+	d.thingMethod()
+}
+
+func testInterfaceDirectStruct() {
+	a := &Node{}
+	thing := thingDoer{a}
+	doThing(thing)
+	assertAllLeaked(a)
 }

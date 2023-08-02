@@ -60,13 +60,14 @@ func (p *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Funct
 	return locality, callsiteInfo
 }
 
+//gocyclo:ignore
 func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCallContext {
 	calleeSummary, ok := c.prog.summaries[callee]
 	if !ok {
 		panic("Cannot resolve escape context for non-summarized function")
 	}
 	nodes := calleeSummary.nodes
-	g := NewEmptyEscapeGraph(calleeSummary.nodes)
+	g := NewEmptyEscapeGraph(nodes)
 	// Copy over nodes into g that are reachable from the arguments.
 	if len(callee.Params) != len(c.callsite.Call.Args) {
 		panic("Argument mismatch")
@@ -89,12 +90,44 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 		}
 	}
 
-	for i, arg := range c.callsite.Call.Args {
-		if lang.IsNillableType(arg.Type()) {
-			mapNode(c.nodes.ValueNode(arg), nodes.ValueNode(callee.Params[i]))
+	if c.callsite.Call.IsInvoke() {
+		// An invoke, e.g. t3.Method(t5)
+		// The callsite parameters do not include the receiver, but the callee Params do
+		// We need to map them correctly and then offset the rest of the args
+		mapNode(c.nodes.ValueNode(c.callsite.Call.Value), nodes.ValueNode(callee.Params[0]))
+		for i, arg := range c.callsite.Call.Args {
+			if lang.IsNillableType(arg.Type()) {
+				mapNode(c.nodes.ValueNode(arg), nodes.ValueNode(callee.Params[i+1]))
+			}
+		}
+	} else {
+		if c.callsite.Call.StaticCallee() == nil {
+			// An indirect function call, e.g. t3(t5)
+			for _, freeVar := range callee.FreeVars {
+				if lang.IsNillableType(freeVar.Type()) {
+					for closureNode := range c.g.Deref(c.nodes.ValueNode(c.callsite.Call.Value)) {
+						mapNode(closureNode, nodes.ValueNode(freeVar))
+					}
+				}
+			}
+		} else if _, ok := c.callsite.Call.Value.(*ssa.MakeClosure); ok {
+			// A immediately invoked function, i.e. t3(t5) where t3 = MakeClosure...
+			// TODO: Could be more precise by aligning freevars with the specific closure bindings
+			for _, freeVar := range callee.FreeVars {
+				if lang.IsNillableType(freeVar.Type()) {
+					mapNode(c.nodes.ValueNode(c.callsite.Call.Value), nodes.ValueNode(freeVar))
+				}
+			}
+		} else {
+			// this is static callee and the target isn't a closure, so no special handling
+		}
+		// Now do the args, for all case except invoke
+		for i, arg := range c.callsite.Call.Args {
+			if lang.IsNillableType(arg.Type()) {
+				mapNode(c.nodes.ValueNode(arg), nodes.ValueNode(callee.Params[i]))
+			}
 		}
 	}
-	// TODO: free vars should be copied from the object representing the closure object
 	return &escapeContextImpl{g, callee}
 }
 

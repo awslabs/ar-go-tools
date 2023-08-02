@@ -50,6 +50,7 @@ func main() {
 	testFresh()
 	testIdent()
 	testExternal()
+	testChain()
 }
 
 // Basic test of the assertSameAliases function
@@ -196,4 +197,18 @@ func testExternal() error {
 	_, err := fmt.Printf("Value: %v\n", x)
 	assertAllLeaked(x)
 	return err
+}
+
+func chainExtend(a *Node, b *Node) {
+	a.next.next.next = b
+}
+func chainExtendWrapper(a *Node, b *Node) {
+	chainExtend(a, b)
+}
+func testChain() {
+	a := &Node{&Node{&Node{}}}
+	b := &Node{}
+	chainExtendWrapper(a, b)
+	globalVar = a
+	assertAllLeaked(b)
 }
