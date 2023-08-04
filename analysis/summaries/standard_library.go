@@ -530,6 +530,11 @@ var SummaryIo = map[string]Summary{
 var SummaryLog = map[string]Summary{
 	"log.Debugf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	"log.Printf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
+	// func (l *Logger) Printf(v ...any)
+	"(*log.Logger).Print": {
+		[][]int{{0}},
+		[][]int{{}, {}, {}},
+	},
 	// func (l *Logger) Printf(format string, v ...any)
 	"(*log.Logger).Printf": {
 		[][]int{{0}, {0, 1}, {0, 2}},

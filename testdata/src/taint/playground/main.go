@@ -16,64 +16,53 @@ package main
 
 import (
 	"fmt"
-	"strconv"
+	"math/rand"
 )
 
-func source() string {
-	return "tainted"
+func sink1(s string) {
+	fmt.Printf("Sink: %s\n", s)
 }
 
-func sink(s string) {
-	fmt.Println(s)
+func source1() string {
+	return fmt.Sprintf("<tainted:%d>", rand.Int())
 }
 
-// example11 is a case where a closure is assigned to a struct's field, and the closure is called later
-
-type Ex11 struct {
-	Count  int
-	Lambda func(int, string) string
+type A struct {
+	field1 string
+	field2 int
 }
 
-func (e Ex11) Run(s string) string {
-	e.Count += 1
-	return e.Lambda(e.Count, s)
+type Node struct {
+	next  *Node
+	label string
 }
 
-func example11() {
-	s1 := source() // @Source(ex11)
-	e := Ex11{
-		Count: 0,
-		Lambda: func(i int, s string) string {
-			return s1 + strconv.Itoa(i) + s
-		},
+func source2() A {
+	return A{
+		field1: fmt.Sprintf("<tainted:%d>", rand.Int()),
+		field2: rand.Int(),
 	}
-
-	f(&e)
 }
 
-func f(e *Ex11) {
-	sink(e.Run("ok")) // @Sink(ex11)
+func ExampleEscape6() {
+	x := source1() // @Source(ex6)
+	a := &A{field1: x, field2: 0}
+	sink1(a.field1) // @Sink(ex6)
+	c := make(chan *string)
+	go ex6send(c, &x)
+	go ex6foo(c)
 }
 
-// example12 is variation of example11
+func ex6send(c chan *string, x *string) {
+	c <- x // @Escape(ex6, ex6bis)
+}
 
-func NewEx11() *Ex11 {
-	s1 := fmt.Sprintf("Ok")
-	e := &Ex11{
-		Count: 0,
-		Lambda: func(i int, s string) string {
-			return strconv.Itoa(i) + s + s1
-		},
+func ex6foo(c chan *string) {
+	for s := range c { //@Escape(ex6)
+		sink1(*s) // @Sink(ex6) , but not ex6bis! However, alarm is raised in ex6send
 	}
-	return e
-}
-
-func example12() {
-	e := NewEx11()
-	sink(e.Run("ok")) // @Sink(ex11) TODO: false positive here because Run is called and was tainted in ex11
 }
 
 func main() {
-	example11()
-	example12()
+	ExampleEscape6()
 }

@@ -173,6 +173,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			callArg, prevIsCallArg := elt.Prev.Node.(*df.CallNodeArg)
 			if elt.Prev.Node.Graph() != graphNode.Graph() ||
 				(prevIsCallArg && callArg.ParentNode().Callee() == graphNode.Graph().Parent) {
+				fmt.Printf("P Marks: %v\n", elt.Node.Marks())
 				// Flows inside the function body. The data propagates to other locations inside the function body
 				// Second part of the condition allows self-recursive calls to be used
 				for out, oPath := range graphNode.Out() {
@@ -311,6 +312,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 				newCallStack := elt.Trace.Add(callSite)
 				v.visited[newCallStack] = true
+				fmt.Printf("A Marks: %v\n", elt.Node.Marks())
 				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, newCallStack, elt.ClosureTrace)
 			} else {
 				s.AddError(
@@ -505,8 +507,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// A BoundLabel flows to the body of the closure that captures it.
 		case *df.BoundLabelNode:
 			destClosureSummary := graphNode.DestClosure()
-			if destClosureSummary == nil {
-				if s.Config.SummarizeOnDemand {
+			if s.Config.SummarizeOnDemand {
+				if destClosureSummary == nil {
 					destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function), IsSourceNode)
 					s.FlowGraph.BuildGraph(IsSourceNode)
 				} else {
@@ -514,13 +516,13 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						graphNode.Position(s))
 					break
 				}
-			}
 
-			if s.Config.SummarizeOnDemand && len(destClosureSummary.ReferringMakeClosures) == 0 {
-				// Summarize the bound label's closure's parent function
-				f := graphNode.DestClosure().Parent
-				df.BuildSummary(s, f, IsSourceNode)
-				s.FlowGraph.BuildGraph(IsSourceNode)
+				if len(destClosureSummary.ReferringMakeClosures) == 0 {
+					// Summarize the bound label's closure's parent function
+					f := graphNode.DestClosure().Parent
+					df.BuildSummary(s, f, IsSourceNode)
+					s.FlowGraph.BuildGraph(IsSourceNode)
+				}
 			}
 
 			if len(destClosureSummary.ReferringMakeClosures) == 0 {
@@ -532,16 +534,24 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				logger.Warnf("Missing closure node for bound label %v at %v\n", graphNode, graphNode.Position(s))
 				break
 			}
-			// Flows to the free variables of the closure
-			// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
-			fv := destClosureSummary.Parent.FreeVars[graphNode.Index()]
-			if fv != nil {
-				x := destClosureSummary.FreeVars[fv]
-				que = v.addNext(s, que, seen, elt, x, df.ObjectPath{}, elt.Trace, elt.ClosureTrace.Add(closureNode))
-			} else {
-				s.AddError(
-					fmt.Sprintf("no free variable matching bound variable in %s", destClosureSummary.Parent.String()),
-					fmt.Errorf("at position %d", graphNode.Index()))
+			callStackAtMakeClosure := df.UnwindCallStackToFunc(elt.Trace, closureNode.Graph().Parent)
+			for _, closureCallNode := range destClosureSummary.Callsites {
+				newCallStack := df.CompleteCallStackToNode(callStackAtMakeClosure, closureCallNode)
+				// Flows to the free variables of the closure
+				// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
+				fv := destClosureSummary.Parent.FreeVars[graphNode.Index()]
+				if fv != nil {
+					x := destClosureSummary.FreeVars[fv]
+					que = v.addNext(s,
+						que,
+						seen, elt, x, df.ObjectPath{},
+						newCallStack,
+						elt.ClosureTrace.Add(closureNode))
+				} else {
+					s.AddError(
+						fmt.Sprintf("no free variable matching bound variable in %s", destClosureSummary.Parent.String()),
+						fmt.Errorf("at position %d", graphNode.Index()))
+				}
 			}
 		}
 	}

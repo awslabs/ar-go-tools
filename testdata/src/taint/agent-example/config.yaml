@@ -1,0 +1,7 @@
+sources:
+  - method: "source"
+    package: "((main)|(command-line-arguments)|(agent-example))"
+sinks:
+  - method: "sink"
+loglevel: 4
+reportpaths: true

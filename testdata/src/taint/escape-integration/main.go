@@ -125,7 +125,7 @@ func ex6send(c chan *string, x *string) {
 }
 
 func ex6foo(c chan *string) {
-	for s := range c {
+	for s := range c { //@Escape(ex6)
 		sink1(*s) // @Sink(ex6) , but not ex6bis! However, alarm is raised in ex6send
 	}
 }

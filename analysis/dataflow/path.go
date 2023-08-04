@@ -179,22 +179,14 @@ func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) PathInf
 		return NewImpossiblePath()
 	}
 
-	if begin.Block() != end.Block() {
-		blockPath := FindPathBetweenBlocks(begin.Block(), end.Block())
+	blockPath := FindPathBetweenBlocks(begin.Block(), end.Block())
 
-		if blockPath == nil {
-			return NewImpossiblePath()
-		} else {
-			return PathInformation{
-				Blocks: blockPath,
-				Cond:   SimplePathCondition(blockPath),
-			}
-		}
+	if blockPath == nil {
+		return NewImpossiblePath()
 	} else {
-
 		return PathInformation{
-			Blocks: []*ssa.BasicBlock{begin.Block()},
-			Cond:   ConditionInfo{Satisfiable: len(begin.Block().Instrs) > 0},
+			Blocks: blockPath,
+			Cond:   SimplePathCondition(blockPath),
 		}
 	}
 }
@@ -248,7 +240,11 @@ func InstructionsBetween(block *ssa.BasicBlock, begin ssa.Instruction, end ssa.I
 func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.BasicBlock {
 	visited := make(map[*ssa.BasicBlock]int)
 	t := &lang.BlockTree{Block: begin, Parent: nil, Children: []*lang.BlockTree{}}
-	queue := []*lang.BlockTree{t}
+	var queue []*lang.BlockTree
+	for _, succ := range begin.Succs {
+		x := t.AddChild(succ)
+		queue = append(queue, x)
+	}
 	// BFS - optimize?
 	for {
 		if len(queue) == 0 {

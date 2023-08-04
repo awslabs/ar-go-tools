@@ -59,6 +59,8 @@ func IntraProceduralAnalysis(state *AnalyzerState,
 		sm = NewSummaryGraph(state, function, id, shouldTrack, postBlockCallback)
 	} else {
 		sm = existingSummary
+		existingSummary.postBlockCallBack = postBlockCallback
+		existingSummary.shouldTrack = shouldTrack
 	}
 
 	// The function should have at least one instruction!
@@ -221,6 +223,9 @@ func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *s
 func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
 		for _, mark := range state.getMarks(x, boundVar, "*", false) {
+			if mark.IsClosure() && mark.Node == x {
+				continue // avoid spurious edges from closure to its own bound variables
+			}
 			state.summary.addBoundVarEdge(mark, nil, x, boundVar)
 			for y := range state.paramAliases[boundVar] {
 				state.summary.addParamEdge(mark, nil, y)
@@ -301,9 +306,9 @@ func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) 
 }
 
 func (state *IntraAnalysisState) moveLocSetsToSummary() {
-	for mark, locset := range state.flowInfo.LocSet {
+	for mark, locSet := range state.flowInfo.LocSet {
 		for _, graphNode := range state.summary.selectNodesFromMark(mark) {
-			graphNode.SetLocs(locset)
+			graphNode.SetLocs(locSet)
 		}
 	}
 }
@@ -355,18 +360,22 @@ func (state *IntraAnalysisState) checkFlow(source Mark, dest ssa.Instruction, de
 
 func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruction,
 	dest ssa.Instruction) ConditionInfo {
-	var i, j int
+	var sourceIndex, destIndex int
 	for k, instr := range source.Block().Instrs {
 		if instr == source {
-			i = k
+			sourceIndex = k
 		}
 		if instr == dest {
-			j = k
+			destIndex = k
 		}
 	}
-	if source.Block() == dest.Block() && i >= j {
-		return NewImpossiblePath().Cond
+
+	if source.Block().Index == dest.Block().Index && sourceIndex < destIndex {
+		n := NewImpossiblePath()
+		n.Cond.Satisfiable = true
+		return ConditionInfo{Satisfiable: true}
 	}
+
 	if reachableSet, ok := state.paths[source.Block()]; ok {
 		if c, ok := reachableSet[dest.Block()]; ok {
 			return c

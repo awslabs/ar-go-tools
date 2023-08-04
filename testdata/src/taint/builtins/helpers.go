@@ -48,6 +48,10 @@ func source2() R {
 	return R(strconv.Itoa(rand.Int()) + "tainted")
 }
 
+func source3() float32 {
+	return rand.Float32()
+}
+
 func sink(_ ...any) {
 
 }

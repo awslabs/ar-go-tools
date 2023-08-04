@@ -1,6 +1,6 @@
 module github.com/awslabs/ar-go-tools
 
-go 1.18
+go 1.20
 
 require (
 	github.com/dave/dst v0.27.2
