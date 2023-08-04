@@ -349,6 +349,23 @@ func example15() {
 	callSink15(func(s string) string { return f(s, 1) }, "ok")
 }
 
+func example16() {
+	pre := "("
+	closure := example16pre(&pre)
+	taintPre(&pre)
+	sink(closure("A")) // @Sink(example16) the argument pre was passed "by reference" and tainted in taintPre
+}
+
+// example16pre is a duplicate of example5pre
+func example16pre(x *string) func(string) string {
+	parenthesize := func(a string) string { return wrap(a, *x, ")") }
+	return parenthesize
+}
+
+func taintPre(pre *string) {
+	*pre = source() // @Source(example16)
+}
+
 func main() {
 	example1()
 	example1bis()
@@ -368,4 +385,5 @@ func main() {
 	example13()
 	example14()
 	example15()
+	example16()
 }

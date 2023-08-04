@@ -540,7 +540,6 @@ func TestAnalyze_Taint(t *testing.T) {
 	}
 
 	skip := map[string]bool{
-		// "interface-summaries": true, // failing non-deterministically, todo
 		"fields.go":     true, // struct fields as backtracepoints are not supported yet
 		"sanitizers.go": true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
 	}
