@@ -88,7 +88,7 @@ func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand boo
 	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder, so we can
 	// load an entire module with subpackages
 	program, cfg := analysistest.LoadTest(t, ".", files)
-	cfg.LogLevel = int(config.InfoLevel)
+	cfg.LogLevel = int(config.TraceLevel)
 	cfg.SummarizeOnDemand = summarizeOnDemand
 	result, err := Analyze(cfg, program)
 	if err != nil {

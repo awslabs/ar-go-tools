@@ -93,7 +93,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 
 	if cfg.SummarizeOnDemand {
 		logger.Infof("On-demand summarization is enabled")
-		singleFunctionSummarizeOnDemand(state, cfg, numRoutines)
+		intraProceduralPassWithOnDemand(state, numRoutines)
 	} else {
 		// Only build summaries for non-stdlib functions here
 		analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
@@ -651,9 +651,10 @@ func isSingleFunctionEntrypoint(cfg *config.Config, n ssa.Node) bool {
 	return analysisutil.IsEntrypointNode(cfg, n, config.Config.IsBacktracePoint)
 }
 
-func singleFunctionSummarizeOnDemand(state *df.AnalyzerState, cfg *config.Config, numRoutines int) {
+func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {
+	cfg := state.Config
 	entryFuncs := []*ssa.Function{}
-	for f := range df.CallGraphReachable(state.PointerAnalysis.CallGraph, false, false) {
+	for f := range state.ReachableFunctions(false, false) {
 		pkg := ""
 		if f.Package() != nil {
 			pkg = f.Package().String()
@@ -672,8 +673,6 @@ func singleFunctionSummarizeOnDemand(state *df.AnalyzerState, cfg *config.Config
 
 	// shouldSummarize stores all the functions that should be summarized
 	shouldSummarize := map[*ssa.Function]bool{}
-	// compute all the reachable functions
-	state.ReachableFunctions(false, true)
 	for _, entry := range entryFuncs {
 		callers := allCallers(state, entry)
 		for _, c := range callers {
@@ -704,30 +703,6 @@ func allCallers(state *df.AnalyzerState, entry *ssa.Function) []*callgraph.Edge 
 	}
 
 	return res
-}
-
-func findCallsites(state *df.AnalyzerState, f *ssa.Function) []ssa.CallInstruction {
-	node := state.PointerAnalysis.CallGraph.Nodes[f]
-	res := make([]ssa.CallInstruction, 0, len(node.In))
-	for _, in := range node.In {
-		if in.Site != nil {
-			res = append(res, in.Site)
-		}
-	}
-
-	return res
-}
-
-// addCallToCallsites adds c to callSites if it is in summary's callees.
-func addCallToCallsites(s *df.AnalyzerState, summary *df.SummaryGraph, c ssa.CallInstruction, callSites map[ssa.CallInstruction]*df.CallNode) {
-	for instr, f2n := range summary.Callees {
-		if instr == c {
-			for _, callNode := range f2n {
-				s.Logger.Tracef("adding call instruction %v -> %v to callsites\n", instr, callNode)
-				callSites[instr] = callNode
-			}
-		}
-	}
 }
 
 // isConst returns true if node represents a constant value.

@@ -340,7 +340,6 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAlia
 		} else if g.AnalyzerState.Config.SummarizeOnDemand && ShouldBuildSummary(g.AnalyzerState, node.Callee()) {
 			// If summarization on demand is set and the function is reachable, create a dummy summary for it if
 			// ShouldBuildSummary is true
-			logger.Debugf("Building dummy summary for %v...\n", node.Callee())
 			calleeSummary = NewSummaryGraph(g.AnalyzerState, node.Callee(), GetUniqueFunctionId(), isEntryPoint, nil)
 			g.Summaries[node.Callee()] = calleeSummary
 		}

@@ -845,7 +845,6 @@ type SummaryGraph struct {
 func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack func(*config.Config, ssa.Node) bool,
 	postBlockCallBack func(state *IntraAnalysisState)) *SummaryGraph {
 	if s != nil {
-		s.Logger.Debugf("Building dummy summary for %v ...\n", f)
 		if summary, ok := s.FlowGraph.Summaries[f]; ok {
 			return summary
 		}
@@ -854,6 +853,11 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack f
 	if f == nil {
 		return nil
 	}
+
+	if s != nil {
+		s.Logger.Debugf("Building dummy summary for %v ...\n", f)
+	}
+
 	g := &SummaryGraph{
 		ID:                    id,
 		Constructed:           false,

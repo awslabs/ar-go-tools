@@ -42,6 +42,7 @@ var stdPackages = map[string]map[string]Summary{
 	"crypto/internal/boring":      SummaryCrypto,
 	"crypto/internal/nistec":      SummaryCrypto,
 	"crypto/internal/nistec/fiat": SummaryCrypto,
+	"crypto/rand":                 SummaryCrypto,
 	"crypto/rsa":                  SummaryCrypto,
 	"crypto/sha1":                 SummaryCrypto,
 	"crypto/tls":                  SummaryCrypto,
@@ -247,6 +248,11 @@ var SummaryCrypto = map[string]Summary{
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {0}},
 	},
+	// func Read(b []byte) (n int, err error)
+	"crypto/Rand.Read": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
 }
 
 var SummaryDatabase = map[string]Summary{}
@@ -446,6 +452,7 @@ var SummaryFmt = map[string]Summary{
 			{0}, {0}, {0},
 		},
 	},
+	"fmt.Sprint": SingleVarArgPropagation,
 	//func Sprintf(format string, a ...any) string
 	"fmt.Sprintf": FormatterPropagation,
 	// func Printf(format string, a ...any) (n int, err error)
@@ -640,6 +647,11 @@ var SummaryNet = map[string]Summary{
 	"(*net/http.Request).WithContext": {
 		[][]int{{0}, {1}}, // context does not taint receiver
 		[][]int{{0}, {1}},
+	},
+	// func Parse(rawURL string) (*URL, error)
+	"net/url.Parse": {
+		[][]int{{}},
+		[][]int{{0, 1}, {0, 1}},
 	},
 }
 
