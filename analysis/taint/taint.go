@@ -120,6 +120,8 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 func intraProceduralPassWithOnDemand(state *dataflow.AnalyzerState, numRoutines int) {
 	cfg := state.Config
 	sourceFuncs := []*ssa.Function{}
+	// shouldSummarize stores all the functions that should be summarized
+	shouldSummarize := map[*ssa.Function]bool{}
 	for f := range state.ReachableFunctions(false, false) {
 		pkg := ""
 		if f.Package() != nil {
@@ -153,13 +155,14 @@ func intraProceduralPassWithOnDemand(state *dataflow.AnalyzerState, numRoutines 
 					Label:    "",
 				}) {
 					sourceFuncs = append(sourceFuncs, f)
+					// Always summarize functions with synthetic nodes because un-constructed summaries do not
+					// contain them
+					shouldSummarize[f] = true
 				}
 			}
 		}
 	}
 
-	// shouldSummarize stores all the functions that should be summarized
-	shouldSummarize := map[*ssa.Function]bool{}
 	for _, source := range sourceFuncs {
 		callers := allCallers(state, source)
 		for _, c := range callers {

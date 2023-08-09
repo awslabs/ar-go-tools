@@ -758,6 +758,8 @@ func (a *BoundLabelNode) Index() int { return a.targetInfo.BoundIndex }
 
 func (a *BoundLabelNode) DestClosure() *SummaryGraph { return a.targetAnon }
 
+func (a *BoundLabelNode) SetDestClosure(g *SummaryGraph) { a.targetAnon = g }
+
 func (a *BoundLabelNode) ParentName() string {
 	if a.instr != nil {
 		return a.instr.Parent().Name()

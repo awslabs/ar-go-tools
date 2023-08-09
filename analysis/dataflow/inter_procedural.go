@@ -187,9 +187,11 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		for _, closureNode := range summary.CreatedClosures {
 			if closureNode.instr != nil {
 				closureSummary := g.findClosureSummary(closureNode.instr)
+				//g.AnalyzerState.Logger.Tracef("CLOSURE SUMMARY for %v: %v\n", closureNode.instr, closureSummary)
 
 				// Add edge from created closure summary to creator
 				if closureSummary != nil {
+					//logger.Tracef("REFERRING MAKE CLOSURE %v -> %v\n", closureSummary.Parent, closureNode)
 					closureSummary.ReferringMakeClosures[closureNode.instr] = closureNode
 				}
 				closureNode.ClosureSummary = closureSummary // nil is safe
@@ -584,11 +586,24 @@ func BuildDummySummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntry
 	functions := map[*ssa.Function]struct{}{} // this is needed to avoid summarizing functions more than once
 	for _, in := range node.In {
 		callSite := in.Site
+		if n.Trace != nil {
+			s.Logger.Tracef("Callsite: %v\n", callSite)
+			s.Logger.Tracef("Label callsite: %v\n", n.Trace.Label.CallSite())
+			s.Logger.Tracef("Callee: %v\n", in.Callee.Func)
+			s.Logger.Tracef("Label callee: %v\n", n.Trace.Label.Callee())
+		}
 		if n.Trace == nil || (callSite == n.Trace.Label.CallSite() && in.Callee.Func == n.Trace.Label.Callee()) {
 			createdSummary, ok := s.FlowGraph.Summaries[callSite.Parent()]
 			// build a summary for the callsite's parent if:
 			// - it is present in the flowgraph but not constructed, or
 			// - it is not present in the flowgraph, reachable, and a summary should be built for it
+			//s.Logger.Tracef("For %v\n", callSite.Parent())
+			//s.Logger.Tracef("\tCreated summary? %v\n", ok)
+			//if ok {
+			//	s.Logger.Tracef("\tConstructed? %v\n", createdSummary.Constructed)
+			//}
+			//s.Logger.Tracef("\tReachable? %v\n", s.IsReachableFunction(callSite.Parent()))
+			//s.Logger.Tracef("\tShould build summary? %v\n", ShouldBuildSummary(s, callSite.Parent()))
 			if (ok && !createdSummary.Constructed) || (!ok && s.IsReachableFunction(callSite.Parent()) && ShouldBuildSummary(s, callSite.Parent())) {
 				functions[callSite.Parent()] = struct{}{}
 			}
@@ -604,6 +619,8 @@ func BuildDummySummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntry
 	}
 	sfs := funcutil.MapParallel(maps.Keys(functions), f, runtime.NumCPU())
 	for _, sf := range sfs {
+		s.Logger.Tracef("Adding %v to flow graph", sf.f)
+		s.Logger.Tracef("Summary callees: %v", sf.s.Callees)
 		s.FlowGraph.Summaries[sf.f] = sf.s
 	}
 

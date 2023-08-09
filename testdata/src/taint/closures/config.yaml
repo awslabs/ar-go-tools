@@ -14,3 +14,4 @@ backtracepoints:
     # Similarly, sinks are sink1 sink2 sink2 ...
     method: "sink[1-9]?"
 reportpaths: true
+verbose: true

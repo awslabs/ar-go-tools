@@ -269,6 +269,11 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						s.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
+						if !callSiteArg.Graph().Constructed {
+							if err := df.RunIntraProcedural(s, callSiteArg.Graph()); err != nil {
+								panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
+							}
+						}
 						for x, oPath := range callSiteArg.Out() {
 							que = v.addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
 						}
@@ -290,8 +295,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				if s.Config.SummarizeOnDemand {
 					if callSite.Callee() == nil {
 						panic("callsite has no callee")
-						// logger.Warnf("callsite has no callee: %v\n", callSite)
-						// break
+						//logger.Warnf("callsite has no callee: %v\n", callSite)
+						//break
 					}
 
 					// the callee summary may not have been created yet
@@ -307,23 +312,23 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				}
 			}
 
-			// if s.Config.SummarizeOnDemand {
-			// 	if strings.Contains(callSite.ParentName(), "$thunk") {
-			// 		// HACK: Make the callsite's callee summary point to the actual function summary, not the "thunk" summary
-			// 		// This is needed because "thunk" summaries can be incomplete
-			// 		// TODO Is there a better way to identify a function thunk?
-			// 		logger.Tracef("callsite parent is a function \"thunk\": %v\n", callSite.ParentName())
-			// 		calleeSummary := df.BuildSummary(s, callSite.Callee(), IsSourceNode)
-			// 		s.FlowGraph.BuildGraph(IsSourceNode)
-			// 		callSite.CalleeSummary = calleeSummary
-			// 	} else if callSite.CalleeSummary == nil || strings.Contains(graphNode.ParentName(), "$bound") {
-			// 		// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
-			// 		// This is needed because "bound" summaries can be incomplete
-			// 		// TODO Is there a better way to identify a "bound" function?
-			// 		callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), IsSourceNode)
-			// 		s.FlowGraph.BuildGraph(IsSourceNode)
-			// 	}
-			// }
+			if s.Config.SummarizeOnDemand {
+				if strings.Contains(callSite.ParentName(), "$thunk") {
+					// HACK: Make the callsite's callee summary point to the actual function summary, not the "thunk" summary
+					// This is needed because "thunk" summaries can be incomplete
+					// TODO Is there a better way to identify a function thunk?
+					logger.Tracef("callsite parent is a function \"thunk\": %v\n", callSite.ParentName())
+					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), IsSourceNode)
+					// s.FlowGraph.BuildGraph(IsSourceNode)
+					// callSite.CalleeSummary = calleeSummary
+				} else if callSite.CalleeSummary == nil || strings.Contains(graphNode.ParentName(), "$bound") {
+					// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
+					// This is needed because "bound" summaries can be incomplete
+					// TODO Is there a better way to identify a "bound" function?
+					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee(), IsSourceNode)
+					// s.FlowGraph.BuildGraph(IsSourceNode)
+				}
+			}
 
 			// Computing context-sensitive information for the analyses
 
@@ -367,22 +372,40 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			// Check call stack is empty, and caller is one of the callsites
 			// Caller can be different if value flowed in function through a closure definition
 			if caller := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); caller != nil {
+				logger.Tracef("unwound caller: %v\n", caller)
+				if !caller.Graph().Constructed {
+					if err := df.RunIntraProcedural(s, caller.Graph()); err != nil {
+						panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
+					}
+				}
 				for x, oPath := range caller.Out() {
 					if !(graphNode.Index() >= 0 && oPath.Index >= 0 && graphNode.Index() != oPath.Index) {
 						que = v.addNext(s, que, seen, elt, x, oPath, elt.Trace.Parent, elt.ClosureTrace)
 					}
 				}
 			} else if elt.ClosureTrace != nil && df.CheckClosureReturns(graphNode, elt.ClosureTrace.Label) {
+				if !elt.ClosureTrace.Label.Graph().Constructed {
+					if err := df.RunIntraProcedural(s, elt.ClosureTrace.Label.Graph()); err != nil {
+						panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
+					}
+				}
 				for cCall, oPath := range elt.ClosureTrace.Label.Out() {
 					que = v.addNext(s, que, seen, elt, cCall, oPath, elt.Trace, elt.ClosureTrace.Parent)
 				}
 			} else if len(graphNode.Graph().Callsites) > 0 {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
+					if !callSite.Graph().Constructed {
+						if err := df.RunIntraProcedural(s, callSite.Graph()); err != nil {
+							panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
+						}
+					}
 					for x, oPath := range callSite.Out() {
 						que = v.addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
 					}
 				}
+			} else {
+				panic("no call node to return to")
 			}
 
 		// This is a call node, which materializes where the callee returns. A call node is reached from a return
@@ -550,17 +573,19 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			if s.Config.SummarizeOnDemand {
 				if destClosureSummary == nil {
 					destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function), IsSourceNode)
-					s.FlowGraph.BuildGraph(IsSourceNode)
-				} else {
-					logger.Warnf("Missing closure summary for bound label %v at %v\n", graphNode,
-						graphNode.Position(s))
-					break
+					graphNode.SetDestClosure(destClosureSummary)
+					//s.FlowGraph.BuildGraph(IsSourceNode)
 				}
 
-				if len(destClosureSummary.ReferringMakeClosures) == 0 {
+				df.BuildDummySummariesFromCallgraph(s, elt.NodeWithTrace, IsSourceNode)
+
+				if len(graphNode.DestClosure().ReferringMakeClosures) == 0 {
 					// Summarize the bound label's closure's parent function
-					f := graphNode.DestClosure().Parent
-					df.BuildSummary(s, f, IsSourceNode)
+					//logger.Tracef("dest closure: %+v\n", graphNode.DestClosure())
+					//if err := df.RunIntraProcedural(s, destClosureSummary); err != nil {
+					//	panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
+					//}
+					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.BuildGraph(IsSourceNode)
 				}
 			}
@@ -651,14 +676,14 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 		escapeContextUpdated = v.manageEscapeContexts(s, cur, nextNode, nextTrace)
 	}
 
-	if s.Logger.LogsTrace() {
-		s.Logger.Tracef("Adding %v\n", nextNodeWithTrace)
-		s.Logger.Tracef("\ttrace: %v\n", nextTrace)
-		s.Logger.Tracef("\tclosure-trace: %v\n", nextClosureTrace)
-		s.Logger.Tracef("\tseen? %v\n", seen[nextNodeWithTrace.Key()])
-		s.Logger.Tracef("\tlasso? %v\n", nextTrace.GetLassoHandle() != nil)
-		s.Logger.Tracef("\tdepth: %v\n", cur.Depth)
-	}
+	//if s.Logger.LogsTrace() {
+	s.Logger.Tracef("Adding %v\n", nextNodeWithTrace)
+	s.Logger.Tracef("\ttrace: %v\n", nextTrace)
+	s.Logger.Tracef("\tclosure-trace: %v\n", nextClosureTrace)
+	s.Logger.Tracef("\tseen? %v\n", seen[nextNodeWithTrace.Key()])
+	s.Logger.Tracef("\tlasso? %v\n", nextTrace.GetLassoHandle() != nil)
+	s.Logger.Tracef("\tdepth: %v\n", cur.Depth)
+	//}
 
 	// Second set of stopping conditions: the escape context is unchanged on a loop path
 	if nextTrace.GetLassoHandle() != nil && !escapeContextUpdated {

@@ -85,16 +85,16 @@ func (l *LogGroup) SetAllFlags(x int) {
 
 // Tracef calls Trace.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Tracef(format string, v ...any) {
-	if l.Level >= TraceLevel {
-		l.trace.Printf(format, v...)
-	}
+	//if l.Level >= TraceLevel {
+	l.trace.Printf(format, v...)
+	//}
 }
 
 // Debugf calls Debug.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Debugf(format string, v ...any) {
-	if l.Level >= DebugLevel {
-		l.debug.Printf(format, v...)
-	}
+	//if l.Level >= DebugLevel {
+	l.debug.Printf(format, v...)
+	//}
 }
 
 // Infof calls Info.Printf to print to the trace logger. Arguments are handled in the manner of Printf

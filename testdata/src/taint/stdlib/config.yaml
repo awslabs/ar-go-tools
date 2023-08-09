@@ -11,4 +11,4 @@ sanitizers:
   - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
     method: ".*(s|S)anitize[1-9]?"
 reportpaths: true
-
+verbose: true
