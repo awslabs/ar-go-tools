@@ -97,9 +97,8 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 	} else {
 		// Only build summaries for non-stdlib functions here
 		analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
-			ShouldCreateSummary: df.ShouldCreateSummary,
-			ShouldBuildSummary:  df.ShouldBuildSummary,
-			IsEntrypoint:        isSingleFunctionEntrypoint,
+			ShouldBuildSummary: df.ShouldBuildSummary,
+			IsEntrypoint:       isSingleFunctionEntrypoint,
 		})
 	}
 
@@ -675,16 +674,11 @@ func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {
 	for _, entry := range entryFuncs {
 		callers := allCallers(state, entry)
 		for _, c := range callers {
-			if df.ShouldCreateSummary(c.Caller.Func) {
-				shouldSummarize[c.Caller.Func] = true
-			}
+			shouldSummarize[c.Caller.Func] = true
 		}
 	}
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
-		ShouldCreateSummary: func(f *ssa.Function) bool {
-			return shouldSummarize[f] // these concurrent map reads are safe because they are not written to
-		},
 		ShouldBuildSummary: func(_ *df.AnalyzerState, f *ssa.Function) bool {
 			return shouldSummarize[f]
 		},

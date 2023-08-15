@@ -444,9 +444,3 @@ func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
 		return !(summaries.PkgHasSummaries(pkg) || state.HasExternalContractSummary(function))
 	}
 }
-
-// ShouldCreateSummary returns true if the function's summary should be *created during the single function analysis
-// pass.
-func ShouldCreateSummary(f *ssa.Function) bool {
-	return true
-}

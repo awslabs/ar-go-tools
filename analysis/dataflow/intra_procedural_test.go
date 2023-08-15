@@ -45,15 +45,9 @@ func TestFunctionSummaries(t *testing.T) {
 		numRoutines = 1
 	}
 
-	// Only build summaries for non-stdlib functions here
-	shouldCreateSummary := func(f *ssa.Function) bool {
-		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
-	}
-
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
-		ShouldCreateSummary: shouldCreateSummary,
-		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
-		IsEntrypoint:        taint.IsSourceNode,
+		ShouldBuildSummary: dataflow.ShouldBuildSummary,
+		IsEntrypoint:       taint.IsSourceNode,
 	})
 
 	if len(state.FlowGraph.Summaries) == 0 {

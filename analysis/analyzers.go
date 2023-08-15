@@ -31,10 +31,6 @@ import (
 
 // IntraAnalysisParams represents the arguments for RunIntraProcedural.
 type IntraAnalysisParams struct {
-	// ShouldCreateSummary indicates whether a summary object should be created. This does *not* mean a summary
-	// will be built!
-	ShouldCreateSummary func(*ssa.Function) bool
-
 	// ShouldBuildSummary indicates whether the summary should be built when it is created
 	ShouldBuildSummary func(*dataflow.AnalyzerState, *ssa.Function) bool
 

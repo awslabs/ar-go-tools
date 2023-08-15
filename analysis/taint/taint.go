@@ -85,9 +85,8 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// Only build summaries for non-stdlib functions here
 	analysis.RunIntraProceduralPass(state, numRoutines,
 		analysis.IntraAnalysisParams{
-			ShouldCreateSummary: dataflow.ShouldCreateSummary,
-			ShouldBuildSummary:  dataflow.ShouldBuildSummary,
-			IsEntrypoint:        IsSourceNode,
+			ShouldBuildSummary: dataflow.ShouldBuildSummary,
+			IsEntrypoint:       IsSourceNode,
 		})
 
 	// ** Third step **
