@@ -106,7 +106,6 @@ func TestCrossFunctionInterfaceSummaries(t *testing.T) {
 }
 
 func TestCrossFunctionInterfaceSummaries_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("Skipping until fixed.")
 	runTest(t, "interface-summaries", []string{"helpers.go"}, true, noErrorExpected)
 }
 
@@ -115,7 +114,6 @@ func TestCrossFunctionSanitizers(t *testing.T) {
 }
 
 func TestCrossFunctionSanitizers_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("skipping until fixed")
 	runTest(t, "sanitizers", []string{}, true, noErrorExpected)
 }
 
@@ -124,7 +122,6 @@ func TestCrossFunctionValidators(t *testing.T) {
 }
 
 func TestCrossFunctionValidators_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("skipping until fixed")
 	runTest(t, "validators", []string{"values.go"}, true, noErrorExpected)
 }
 

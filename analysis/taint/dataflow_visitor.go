@@ -182,13 +182,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				}
 			}
 
-			// Summary graph callsite information may be incomplete so use the pointer analysis to fill in
-			// any missing information
-			// This should only be done for functions that have not been pre-summarized
-			if s.Config.SummarizeOnDemand && !graphNode.Graph().IsPreSummarized {
-				df.BuildDummySummariesFromCallgraph(s, elt.NodeWithTrace, IsSourceNode)
-			}
-
 			// Then we take care of the flows that go back to the callsite of the current function.
 			// for example:
 			// func f(s string, s2 *string) { *s2 = s }
@@ -239,38 +232,14 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				if s.Config.SummarizeOnDemand {
 					if callSite.Callee() == nil {
 						panic("callsite has no callee")
-						//logger.Warnf("callsite has no callee: %v\n", callSite)
-						//break
 					}
-
 					// the callee summary may not have been created yet
 					if callSite.CalleeSummary == nil {
-						callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionId(),
-							IsSourceNode, nil)
+						panic("unexpected missing callee summary for reachable function")
 					}
-					// df.BuildSummary(s, callSite.Callee(), IsSourceNode)
-					// s.FlowGraph.BuildGraph(IsSourceNode)
 				} else {
 					s.ReportMissingOrNotConstructedSummary(callSite)
 					break
-				}
-			}
-
-			if s.Config.SummarizeOnDemand {
-				if strings.Contains(callSite.ParentName(), "$thunk") {
-					// HACK: Make the callsite's callee summary point to the actual function summary, not the "thunk" summary
-					// This is needed because "thunk" summaries can be incomplete
-					// TODO Is there a better way to identify a function thunk?
-					logger.Tracef("callsite parent is a function \"thunk\": %v\n", callSite.ParentName())
-					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee())
-					// s.FlowGraph.BuildGraph(IsSourceNode)
-					// callSite.CalleeSummary = calleeSummary
-				} else if callSite.CalleeSummary == nil || strings.Contains(graphNode.ParentName(), "$bound") {
-					// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
-					// This is needed because "bound" summaries can be incomplete
-					// TODO Is there a better way to identify a "bound" function?
-					callSite.CalleeSummary = df.BuildSummary(s, callSite.Callee())
-					// s.FlowGraph.BuildGraph(IsSourceNode)
 				}
 			}
 
@@ -306,13 +275,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// If the stack is empty, then the data flows back to every possible call site according to the call
 		// graph.
 		case *df.ReturnValNode:
-			// Summary graph callsite information may be incomplete so use the pointer analysis to fill in
-			// any missing information
-			// This should only be done for functions that have not been pre-summarized
-			if s.Config.SummarizeOnDemand && !graphNode.Graph().IsPreSummarized {
-				df.BuildDummySummariesFromCallgraph(s, elt.NodeWithTrace, IsSourceNode)
-			}
-
 			// Check call stack is empty, and caller is one of the callsites
 			// Caller can be different if value flowed in function through a closure definition
 			if caller := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); caller != nil {
@@ -386,7 +348,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			closureNode := graphNode.ParentNode()
 			if s.Config.SummarizeOnDemand && closureNode.ClosureSummary == nil {
 				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
-				//s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 			}
 
@@ -438,7 +399,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						df.BuildSummary(s, f)
 					}
 					// This is needed to get the referring make closures outside the function
-					s.FlowGraph.BuildGraph(IsSourceNode)
+					s.FlowGraph.BuildGraph()
 				}
 
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
@@ -506,13 +467,10 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				if destClosureSummary == nil {
 					destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function))
 					graphNode.SetDestClosure(destClosureSummary)
-					//s.FlowGraph.BuildGraph(IsSourceNode)
 				}
 
-				df.BuildDummySummariesFromCallgraph(s, elt.NodeWithTrace, IsSourceNode)
-
 				if len(graphNode.DestClosure().ReferringMakeClosures) == 0 {
-					s.FlowGraph.BuildGraph(IsSourceNode)
+					s.FlowGraph.BuildGraph()
 				}
 			}
 

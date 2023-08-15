@@ -234,14 +234,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 			// No context: the value must always flow back to all call sites
-
-			// Summary graph callsite information may be incomplete so use the pointer analysis to fill in
-			// any missing information
-			// This should only be done for functions that have not been pre-summarized
-			if s.Config.SummarizeOnDemand && !graphNode.Graph().IsPreSummarized {
-				df.BuildDummySummariesFromCallgraph(s, elt.NodeWithTrace, IsCrossFunctionEntrypoint)
-			}
-
 			callSites := graphNode.Graph().Callsites
 			for _, callSite := range callSites {
 				if err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
@@ -486,7 +478,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						df.BuildSummary(s, f)
 					}
 					// This is needed to get the referring make closures outside the function
-					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
+					s.FlowGraph.BuildGraph()
 				}
 
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {

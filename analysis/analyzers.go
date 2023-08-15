@@ -113,19 +113,23 @@ type singleFunctionJob struct {
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
 	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.IntraProceduralResult {
-	job.analyzerState.Logger.Debugf("%-10sPkg: %-60s | Func: %-30s ...",
-		"Analyzing", lang.PackageNameFromFunction(job.function), job.function.Name())
+	targetName := lang.PackageNameFromFunction(job.function) + "." + job.function.Name()
+	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", targetName)
 	result, err := dataflow.IntraProceduralAnalysis(job.analyzerState, job.function,
 		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
 
-	if err != nil {
-		job.analyzerState.Logger.Errorf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
-		return dataflow.IntraProceduralResult{}
+	if job.analyzerState.Logger.LogsDebug() {
+		if err != nil {
+			job.analyzerState.Logger.Errorf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
+			return dataflow.IntraProceduralResult{}
+		}
+		if job.shouldBuildSummary {
+			job.analyzerState.Logger.Debugf("%-12s %-90s summarized in %.2f s\n",
+				" ", targetName, result.Time.Seconds())
+		} else {
+			job.analyzerState.Logger.Debugf("%-12s %-90s skipped\n", " ", targetName)
+		}
 	}
-
-	job.analyzerState.Logger.Debugf("%-10sPkg: %-60s | Func: %-30s | %-5t | %.2f s\n",
-		" ", lang.PackageNameFromFunction(job.function), job.function.Name(), job.shouldBuildSummary,
-		result.Time.Seconds())
 
 	summary := result.Summary
 	if summary != nil {

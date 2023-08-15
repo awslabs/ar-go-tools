@@ -19,12 +19,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"golang.org/x/exp/maps"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -120,7 +117,7 @@ func (g *InterProceduralFlowGraph) InsertSummaries(g2 InterProceduralFlowGraph) 
 // BuildGraph builds the cross function flow graph by connecting summaries together
 //
 //gocyclo:ignore
-func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ssa.Node) bool) {
+func (g *InterProceduralFlowGraph) BuildGraph() {
 	c := g.AnalyzerState
 	logger := c.Logger
 
@@ -179,7 +176,7 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil &&
 					g.AnalyzerState.IsReachableFunction(node.Callee()) {
-					node.CalleeSummary = g.resolveCalleeSummary(node, nameAliases, isEntrypoint)
+					node.CalleeSummary = g.resolveCalleeSummary(node, nameAliases)
 				}
 			}
 		}
@@ -229,7 +226,7 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor 
 	}
 
 	// Build the inter-procedural flow graph
-	g.BuildGraph(isEntryPoint)
+	g.BuildGraph()
 
 	// Open the coverage file if specified in configuration
 	coverage := openCoverage(c)
@@ -316,8 +313,7 @@ func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints []NodeWi
 // resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
 // sets the edge from callee to caller, if it could find a summary.
 // Returns nil if no summary can be found.
-func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAliases map[string]*ssa.Function,
-	isEntryPoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
+func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAliases map[string]*ssa.Function) *SummaryGraph {
 	var calleeSummary *SummaryGraph
 	logger := g.AnalyzerState.Logger
 
@@ -549,54 +545,4 @@ func BuildSummary(s *AnalyzerState, function *ssa.Function) *SummaryGraph {
 	logger.Debugf("BuildSummary: Finished constructing summary for %v (%.2f s)", function, elapsed.Seconds())
 
 	return summary
-}
-
-// BuildDummySummariesFromCallgraph builds dummy summaries for all the reachable callees of n
-// corresponding to n's trace.
-func BuildDummySummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntrypoint func(*config.Config, ssa.Node) bool) {
-	s.Logger.Debugf("Building dummy summaries from callgraph...\n")
-
-	node := s.PointerAnalysis.CallGraph.Nodes[n.Node.Graph().Parent]
-	functions := map[*ssa.Function]struct{}{} // this is needed to avoid summarizing functions more than once
-	for _, in := range node.In {
-		callSite := in.Site
-		if n.Trace != nil {
-			s.Logger.Tracef("Callsite: %v\n", callSite)
-			s.Logger.Tracef("Label callsite: %v\n", n.Trace.Label.CallSite())
-			s.Logger.Tracef("Callee: %v\n", in.Callee.Func)
-			s.Logger.Tracef("Label callee: %v\n", n.Trace.Label.Callee())
-		}
-		if n.Trace == nil || (callSite == n.Trace.Label.CallSite() && in.Callee.Func == n.Trace.Label.Callee()) {
-			createdSummary, ok := s.FlowGraph.Summaries[callSite.Parent()]
-			// build a summary for the callsite's parent if:
-			// - it is present in the flowgraph but not constructed, or
-			// - it is not present in the flowgraph, reachable, and a summary should be built for it
-			//s.Logger.Tracef("For %v\n", callSite.Parent())
-			//s.Logger.Tracef("\tCreated summary? %v\n", ok)
-			//if ok {
-			//	s.Logger.Tracef("\tConstructed? %v\n", createdSummary.Constructed)
-			//}
-			//s.Logger.Tracef("\tReachable? %v\n", s.IsReachableFunction(callSite.Parent()))
-			//s.Logger.Tracef("\tShould build summary? %v\n", ShouldBuildSummary(s, callSite.Parent()))
-			if (ok && !createdSummary.Constructed) || (!ok && s.IsReachableFunction(callSite.Parent()) && ShouldBuildSummary(s, callSite.Parent())) {
-				functions[callSite.Parent()] = struct{}{}
-			}
-		}
-	}
-
-	type sf struct {
-		s *SummaryGraph
-		f *ssa.Function
-	}
-	f := func(fn *ssa.Function) sf {
-		return sf{s: NewSummaryGraph(s, fn, GetUniqueFunctionId(), isEntrypoint, nil), f: fn}
-	}
-	sfs := funcutil.MapParallel(maps.Keys(functions), f, runtime.NumCPU())
-	for _, sf := range sfs {
-		s.Logger.Tracef("Adding %v to flow graph", sf.f)
-		s.Logger.Tracef("Summary callees: %v", sf.s.Callees)
-		s.FlowGraph.Summaries[sf.f] = sf.s
-	}
-
-	s.FlowGraph.BuildGraph(isEntrypoint)
 }

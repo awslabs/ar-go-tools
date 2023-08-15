@@ -92,9 +92,9 @@ func (l *LogGroup) Tracef(format string, v ...any) {
 
 // Debugf calls Debug.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Debugf(format string, v ...any) {
-	//if l.Level >= DebugLevel {
-	l.debug.Printf(format, v...)
-	//}
+	if l.Level >= DebugLevel {
+		l.debug.Printf(format, v...)
+	}
 }
 
 // Infof calls Info.Printf to print to the trace logger. Arguments are handled in the manner of Printf
