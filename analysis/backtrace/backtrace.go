@@ -96,7 +96,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 		intraProceduralPassWithOnDemand(state, numRoutines)
 	} else {
 		// Only build summaries for non-stdlib functions here
-		analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
+		analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: df.ShouldCreateSummary,
 			ShouldBuildSummary:  df.ShouldBuildSummary,
 			IsEntrypoint:        isSingleFunctionEntrypoint,
@@ -195,7 +195,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
 			// built summary
-			if err := df.RunIntraProcedural(s, elt.Node.Graph()); err != nil {
+			if _, err := df.RunIntraProcedural(s, elt.Node.Graph()); err != nil {
 				panic(fmt.Errorf("failed to run the intra-procedural analysis: %v", err))
 			}
 		}
@@ -361,7 +361,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			if s.Config.SummarizeOnDemand &&
 				(graphNode.CalleeSummary == nil || !graphNode.CalleeSummary.Constructed ||
 					strings.Contains(graphNode.ParentName(), "$bound")) {
-				graphNode.CalleeSummary = df.BuildSummary(s, graphNode.Callee(), isSingleFunctionEntrypoint)
+				graphNode.CalleeSummary = df.BuildSummary(s, graphNode.Callee())
 			}
 
 			if graphNode.CalleeSummary != nil {
@@ -408,7 +408,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					for f := range s.ReachableFunctions(false, false) {
 						if lang.FnWritesTo(f, graphNode.Global.Value()) {
 							logger.Tracef("Global %v written in function: %v\n", graphNode, f)
-							df.BuildSummary(s, f, isSingleFunctionEntrypoint)
+							df.BuildSummary(s, f)
 						}
 					}
 					//s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
@@ -428,8 +428,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			closureNode := graphNode.ParentNode()
 
 			if s.Config.SummarizeOnDemand && closureNode.ClosureSummary == nil {
-				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function),
-					isSingleFunctionEntrypoint)
+				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
 				//s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
 				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 			}
@@ -485,7 +484,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					// Summarize the free variable's closure's parent function if there is one
 					f := graphNode.Graph().Parent.Parent()
 					if f != nil {
-						df.BuildSummary(s, f, isSingleFunctionEntrypoint)
+						df.BuildSummary(s, f)
 					}
 					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
@@ -682,7 +681,7 @@ func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {
 		}
 	}
 
-	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
+	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: func(f *ssa.Function) bool {
 			return shouldSummarize[f] // these concurrent map reads are safe because they are not written to
 		},

@@ -24,7 +24,6 @@ func TestCrossFunctionExample0(t *testing.T) {
 }
 
 func TestCrossFunctionExample0_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("Example 0 has a false positive in the tests")
 	runTest(t, "example0", []string{}, true, noErrorExpected)
 }
 
@@ -67,7 +66,6 @@ func TestCrossFunctionParameters(t *testing.T) {
 }
 
 func TestCrossFunctionParameters_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("skipping until fixed")
 	runTest(t, "parameters", []string{}, true, noErrorExpected)
 }
 
@@ -76,7 +74,6 @@ func TestCrossFunctionExample1(t *testing.T) {
 }
 
 func TestCrossFunctionExample1_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("skipping until fixed")
 	runTest(t, "example1", []string{}, true, noErrorExpected)
 }
 
@@ -101,7 +98,6 @@ func TestCrossFunctionClosures(t *testing.T) {
 }
 
 func TestCrossFunctionClosures_SummarizeOnDemand(t *testing.T) {
-	//t.Skipf("Skipping until fixed.")
 	runTest(t, "closures", []string{"helpers.go"}, true, noErrorExpected)
 }
 

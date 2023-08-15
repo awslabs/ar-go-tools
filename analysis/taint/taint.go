@@ -22,8 +22,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
-	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -84,17 +82,13 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// The goal of this step is to build function summaries: a graph that represents how data flows through the
 	// function being analyzed.
 
-	if cfg.SummarizeOnDemand {
-		intraProceduralPassWithOnDemand(state, numRoutines)
-	} else {
-		// Only build summaries for non-stdlib functions here
-		analysis.RunIntraProcedural(state, numRoutines,
-			analysis.IntraAnalysisParams{
-				ShouldCreateSummary: dataflow.ShouldCreateSummary,
-				ShouldBuildSummary:  dataflow.ShouldBuildSummary,
-				IsEntrypoint:        IsSourceNode,
-			})
-	}
+	// Only build summaries for non-stdlib functions here
+	analysis.RunIntraProceduralPass(state, numRoutines,
+		analysis.IntraAnalysisParams{
+			ShouldCreateSummary: dataflow.ShouldCreateSummary,
+			ShouldBuildSummary:  dataflow.ShouldBuildSummary,
+			IsEntrypoint:        IsSourceNode,
+		})
 
 	// ** Third step **
 	// the inter-procedural analysis is run over the entire program, which has been summarized in the
@@ -114,83 +108,4 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 		err = fmt.Errorf("analysis returned errors, check AnalysisResult.State for more details")
 	}
 	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: visitor.taints}, err
-
-}
-
-func intraProceduralPassWithOnDemand(state *dataflow.AnalyzerState, numRoutines int) {
-	cfg := state.Config
-	sourceFuncs := []*ssa.Function{}
-	// shouldSummarize stores all the functions that should be summarized
-	shouldSummarize := map[*ssa.Function]bool{}
-	for f := range state.ReachableFunctions(false, false) {
-		pkg := ""
-		if f.Package() != nil {
-			pkg = f.Package().String()
-		}
-		if cfg.IsSource(config.CodeIdentifier{
-			Package:  pkg,
-			Method:   f.Name(),
-			Receiver: "",
-			Field:    "",
-			Type:     "",
-			Label:    "",
-		}) {
-			sourceFuncs = append(sourceFuncs, f)
-		}
-
-		for _, blk := range f.Blocks {
-			for _, instr := range blk.Instrs {
-				var fieldName string
-				if field, ok := instr.(*ssa.Field); ok {
-					fieldName = analysisutil.FieldFieldName(field)
-				} else if fieldAddr, ok := instr.(*ssa.FieldAddr); ok {
-					fieldName = analysisutil.FieldAddrFieldName(fieldAddr)
-				}
-				if fieldName != "" && cfg.IsSource(config.CodeIdentifier{
-					Package:  pkg,
-					Method:   "",
-					Receiver: "",
-					Field:    fieldName,
-					Type:     "",
-					Label:    "",
-				}) {
-					sourceFuncs = append(sourceFuncs, f)
-					// Always summarize functions with synthetic nodes because un-constructed summaries do not
-					// contain them
-					shouldSummarize[f] = true
-				}
-			}
-		}
-	}
-
-	for _, source := range sourceFuncs {
-		callers := allCallers(state, source)
-		for _, c := range callers {
-			if dataflow.ShouldBuildSummary(state, c.Caller.Func) {
-				shouldSummarize[c.Caller.Func] = true
-			}
-		}
-	}
-
-	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
-		ShouldCreateSummary: func(f *ssa.Function) bool {
-			return shouldSummarize[f]
-		},
-		ShouldBuildSummary: func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
-			return shouldSummarize[f]
-		},
-		IsEntrypoint: IsSourceNode,
-	})
-}
-
-func allCallers(state *dataflow.AnalyzerState, entry *ssa.Function) []*callgraph.Edge {
-	node := state.PointerAnalysis.CallGraph.Nodes[entry]
-	res := make([]*callgraph.Edge, 0, len(node.In))
-	for _, in := range node.In {
-		if in.Caller != nil {
-			res = append(res, in)
-		}
-	}
-
-	return res
 }

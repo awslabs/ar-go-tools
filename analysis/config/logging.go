@@ -85,9 +85,9 @@ func (l *LogGroup) SetAllFlags(x int) {
 
 // Tracef calls Trace.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Tracef(format string, v ...any) {
-	//if l.Level >= TraceLevel {
-	l.trace.Printf(format, v...)
-	//}
+	if l.Level >= TraceLevel {
+		l.trace.Printf(format, v...)
+	}
 }
 
 // Debugf calls Debug.Printf to print to the trace logger. Arguments are handled in the manner of Printf
@@ -133,7 +133,7 @@ func (l *LogGroup) SetError(w io.Writer) {
 	l.err.SetOutput(w)
 }
 
-// LogsErrors returns true if the log group logs error messages. Note that this is the lowest logging level, and if
+// LogsError returns true if the log group logs error messages. Note that this is the lowest logging level, and if
 // this returns false, it implies that the log group does not log anything.
 func (l *LogGroup) LogsError() bool {
 	return l.Level >= ErrLevel

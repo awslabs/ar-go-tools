@@ -21,6 +21,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -827,8 +828,8 @@ type SummaryGraph struct {
 	// errors can be used to accumulate errors that were encountered while building the summary graph
 	errors map[error]bool
 
-	// nodeCounter is used to track the number of nodes in the graph
-	nodeCounter uint32
+	// lastNodeId is used to track the number of nodes in the graph
+	lastNodeId *uint32
 
 	// Below is some information related to how the summary was built. This allows us to restart building the summary
 	// if it has not been constructed.
@@ -856,9 +857,8 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack f
 		return nil
 	}
 
-	if s != nil {
-		s.Logger.Debugf("Building dummy summary for %v ...\n", f)
-	}
+	var lastNodeId uint32
+	lastNodeId = 0
 
 	g := &SummaryGraph{
 		ID:                    id,
@@ -876,7 +876,7 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack f
 		SyntheticNodes:        make(map[ssa.Instruction]*SyntheticNode),
 		BoundLabelNodes:       make(map[ssa.Instruction]*BoundLabelNode),
 		errors:                map[error]bool{},
-		nodeCounter:           0,
+		lastNodeId:            &lastNodeId,
 		shouldTrack:           shouldTrack,
 		postBlockCallBack:     postBlockCallBack,
 	}
@@ -895,8 +895,7 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack f
 	n := f.Signature.Results().Len()
 	returnNodes := make([]*ReturnValNode, n)
 	for i := 0; i < n; i++ {
-		returnNodes[i] = &ReturnValNode{parent: g, id: g.nodeCounter, index: i, in: make(map[GraphNode]ObjectPath)}
-		g.nodeCounter++
+		returnNodes[i] = &ReturnValNode{parent: g, id: g.newNodeId(), index: i, in: make(map[GraphNode]ObjectPath)}
 	}
 
 	for _, block := range f.Blocks {
@@ -911,12 +910,16 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack f
 		}
 	}
 
-	g.initializeInnerNodes(s)
+	g.initializeInnerNodes(s, shouldTrack)
 
 	return g
 }
 
-func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState) {
+func (g *SummaryGraph) newNodeId() uint32 {
+	return atomic.AddUint32(g.lastNodeId, 1)
+}
+
+func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState, shouldTrack func(*config.Config, ssa.Node) bool) {
 	// Add all call instructions
 	lang.IterateInstructions(g.Parent, func(_ int, instruction ssa.Instruction) {
 		switch x := instruction.(type) {
@@ -926,6 +929,10 @@ func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState) {
 			}
 		case *ssa.MakeClosure:
 			g.addClosure(x)
+		case *ssa.Alloc, *ssa.FieldAddr, *ssa.Field:
+			if shouldTrack != nil && shouldTrack(s.Config, x.(ssa.Node)) { // conversion will never fail for that switch case
+				g.addSyntheticNode(x, "source")
+			}
 		}
 	})
 
@@ -992,14 +999,13 @@ func (g *SummaryGraph) addParam(param *ssa.Parameter, pos int) {
 	}
 
 	g.Params[param] = &ParamNode{
-		id:      g.nodeCounter,
+		id:      g.newNodeId(),
 		parent:  g,
 		ssaNode: param,
 		out:     make(map[GraphNode]ObjectPath),
 		in:      make(map[GraphNode]ObjectPath),
 		argPos:  pos,
 	}
-	g.nodeCounter += 1
 }
 
 // addFreeVar adds a free variable to the summary
@@ -1010,14 +1016,13 @@ func (g *SummaryGraph) addFreeVar(fv *ssa.FreeVar, pos int) {
 	}
 
 	g.FreeVars[fv] = &FreeVarNode{
-		id:      g.nodeCounter,
+		id:      g.newNodeId(),
 		parent:  g,
 		ssaNode: fv,
 		out:     make(map[GraphNode]ObjectPath),
 		in:      make(map[GraphNode]ObjectPath),
 		fvPos:   pos,
 	}
-	g.nodeCounter += 1
 }
 
 // addCallNode adds a call site to the summary
@@ -1051,7 +1056,7 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 	// Add each callee as a node for this call instruction
 	for _, callee := range callees {
 		node := &CallNode{
-			id:       g.nodeCounter,
+			id:       g.newNodeId(),
 			parent:   g,
 			callee:   callee,
 			args:     make([]*CallNodeArg, len(args)),
@@ -1059,46 +1064,16 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 			out:      make(map[GraphNode]ObjectPath),
 			in:       make(map[GraphNode]ObjectPath),
 		}
-		g.nodeCounter += 1
 
 		for pos, arg := range args {
 			argNode := &CallNodeArg{
-				id:       g.nodeCounter,
+				id:       g.newNodeId(),
 				parent:   node,
 				ssaValue: arg,
 				argPos:   pos,
 				out:      make(map[GraphNode]ObjectPath),
 				in:       make(map[GraphNode]ObjectPath),
 			}
-			g.nodeCounter += 1
-			node.args[pos] = argNode
-		}
-		g.addCallNode(node)
-	}
-
-	if len(callees) == 0 {
-
-		// TODO: remove that when we have a method to resolve all callees
-		node := &CallNode{
-			id:       g.nodeCounter,
-			parent:   g,
-			callee:   CalleeInfo{},
-			args:     make([]*CallNodeArg, len(args)),
-			callSite: instr,
-			out:      make(map[GraphNode]ObjectPath),
-			in:       make(map[GraphNode]ObjectPath),
-		}
-		g.nodeCounter += 1
-
-		for pos, arg := range args {
-			argNode := &CallNodeArg{
-				id:       g.nodeCounter,
-				parent:   node,
-				ssaValue: arg,
-				out:      make(map[GraphNode]ObjectPath),
-				in:       make(map[GraphNode]ObjectPath),
-			}
-			g.nodeCounter += 1
 			node.args[pos] = argNode
 		}
 		g.addCallNode(node)
@@ -1127,7 +1102,7 @@ func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
 	}
 
 	node := &ClosureNode{
-		id:             g.nodeCounter,
+		id:             g.newNodeId(),
 		parent:         g,
 		ClosureSummary: nil,
 		instr:          x,
@@ -1135,20 +1110,18 @@ func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
 		out:            make(map[GraphNode]ObjectPath),
 		in:             make(map[GraphNode]ObjectPath),
 	}
-	g.nodeCounter += 1
 
 	g.CreatedClosures[x] = node
 
 	for pos, binding := range x.Bindings {
 		bindingNode := &BoundVarNode{
-			id:       g.nodeCounter,
+			id:       g.newNodeId(),
 			parent:   node,
 			ssaValue: binding,
 			bPos:     pos,
 			out:      make(map[GraphNode]ObjectPath),
 			in:       make(map[GraphNode]ObjectPath),
 		}
-		g.nodeCounter += 1
 		node.boundVars = append(node.boundVars, bindingNode)
 	}
 }
@@ -1161,7 +1134,7 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 	}
 	if _, ok := g.AccessGlobalNodes[instr][global.value]; !ok {
 		node := &AccessGlobalNode{
-			id:      g.nodeCounter,
+			id:      g.newNodeId(),
 			IsWrite: false,
 			graph:   g,
 			instr:   instr,
@@ -1169,7 +1142,6 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 			out:     make(map[GraphNode]ObjectPath),
 			in:      make(map[GraphNode]ObjectPath),
 		}
-		g.nodeCounter += 1
 		g.AccessGlobalNodes[instr][global.value] = node
 	}
 }
@@ -1181,14 +1153,13 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 func (g *SummaryGraph) addSyntheticNode(instr ssa.Instruction, label string) {
 	if _, ok := g.SyntheticNodes[instr]; !ok {
 		node := &SyntheticNode{
-			id:     g.nodeCounter,
+			id:     g.newNodeId(),
 			parent: g,
 			instr:  instr,
 			label:  label,
 			out:    make(map[GraphNode]ObjectPath),
 			in:     make(map[GraphNode]ObjectPath),
 		}
-		g.nodeCounter += 1
 		g.SyntheticNodes[instr] = node
 	}
 }
@@ -1196,7 +1167,7 @@ func (g *SummaryGraph) addSyntheticNode(instr ssa.Instruction, label string) {
 func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.Label, target BindingInfo) {
 	if _, ok := g.BoundLabelNodes[instr]; !ok {
 		node := &BoundLabelNode{
-			id:         g.nodeCounter,
+			id:         g.newNodeId(),
 			parent:     g,
 			instr:      instr,
 			label:      label,
@@ -1204,7 +1175,6 @@ func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.L
 			out:        make(map[GraphNode]ObjectPath),
 			in:         make(map[GraphNode]ObjectPath),
 		}
-		g.nodeCounter += 1
 		g.BoundLabelNodes[instr] = node
 	}
 }

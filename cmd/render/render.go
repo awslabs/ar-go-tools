@@ -92,7 +92,7 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, progra
 		numRoutines = 1
 	}
 
-	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
+	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldCreateSummary: dataflow.ShouldCreateSummary,
 		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
 		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },

@@ -47,10 +47,10 @@ type IntraAnalysisParams struct {
 	PostBlockCallback func(state *dataflow.IntraAnalysisState)
 }
 
-// RunIntraProcedural runs an intra-procedural analysis pass of program prog in parallel using numRoutines, using the
+// RunIntraProceduralPass runs an intra-procedural analysis pass of program prog in parallel using numRoutines, using the
 // analyzer state. The args specify the intraprocedural analysis parameters.
-// RunIntraProcedural updates the summaries stored in the state's FlowGraph
-func RunIntraProcedural(state *dataflow.AnalyzerState, numRoutines int, args IntraAnalysisParams) {
+// RunIntraProceduralPass updates the summaries stored in the state's FlowGraph
+func RunIntraProceduralPass(state *dataflow.AnalyzerState, numRoutines int, args IntraAnalysisParams) {
 	state.Logger.Infof("Starting intra-procedural analysis ...")
 	start := time.Now()
 
@@ -62,13 +62,12 @@ func RunIntraProcedural(state *dataflow.AnalyzerState, numRoutines int, args Int
 
 	var jobs []singleFunctionJob
 	for function := range state.ReachableFunctions(false, false) {
-		if args.ShouldCreateSummary(function) {
-			jobs = append(jobs, singleFunctionJob{
-				function:           function,
-				analyzerState:      state,
-				shouldBuildSummary: args.ShouldBuildSummary(state, function),
-			})
-		}
+		jobs = append(jobs, singleFunctionJob{
+			function:      function,
+			analyzerState: state,
+			// Summary is built only when it is not on-demand, and the summary should be built
+			shouldBuildSummary: !state.Config.SummarizeOnDemand && args.ShouldBuildSummary(state, function),
+		})
 	}
 
 	// Start the single function summary building routines

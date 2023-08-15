@@ -252,7 +252,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 			}
 			return b
 		}
-		analysis.RunIntraProcedural(c, numRoutines, analysis.IntraAnalysisParams{
+		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: shouldCreateSummary,
 			ShouldBuildSummary:  shouldBuildSummary,
 			IsEntrypoint:        taint.IsSourceNode,
@@ -286,7 +286,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		}
 
 		// Run the analysis with the filter.
-		analysis.RunIntraProcedural(c, numRoutines, analysis.IntraAnalysisParams{
+		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldCreateSummary: shouldCreateSummary,
 			ShouldBuildSummary:  shouldBuildSummary,
 			IsEntrypoint:        taint.IsSourceNode,

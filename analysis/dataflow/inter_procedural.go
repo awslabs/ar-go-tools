@@ -148,7 +148,8 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil {
-					if externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node); externalContractSummary != nil {
+					externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node)
+					if externalContractSummary != nil {
 						logger.Debugf("Loaded %s from external contracts.\n",
 							node.CallSite().Common().String())
 						g.Summaries[node.Callee()] = externalContractSummary
@@ -187,11 +188,8 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		for _, closureNode := range summary.CreatedClosures {
 			if closureNode.instr != nil {
 				closureSummary := g.findClosureSummary(closureNode.instr)
-				//g.AnalyzerState.Logger.Tracef("CLOSURE SUMMARY for %v: %v\n", closureNode.instr, closureSummary)
-
 				// Add edge from created closure summary to creator
 				if closureSummary != nil {
-					//logger.Tracef("REFERRING MAKE CLOSURE %v -> %v\n", closureSummary.Parent, closureNode)
 					closureSummary.ReferringMakeClosures[closureNode.instr] = closureNode
 				}
 				closureNode.ClosureSummary = closureSummary // nil is safe
@@ -332,18 +330,6 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAlia
 		if calleeSummary = NewPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
 			logger.Debugf("Loaded %s from summaries.\n", node.Callee().String())
 			g.Summaries[node.Callee()] = calleeSummary
-		} else if g.AnalyzerState.Config.SummarizeOnDemand && summaries.IsSummaryRequired(node.Callee()) {
-			logger.Debugf("Building full summary for %v...\n", node.Callee())
-			calleeSummary = BuildSummary(g.AnalyzerState, node.Callee(), isEntryPoint)
-			// if err := RunIntraProcedural(g.AnalyzerState, calleeSummary); err != nil {
-			// 	panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
-			// }
-			g.Summaries[node.Callee()] = calleeSummary
-		} else if g.AnalyzerState.Config.SummarizeOnDemand && ShouldBuildSummary(g.AnalyzerState, node.Callee()) {
-			// If summarization on demand is set and the function is reachable, create a dummy summary for it if
-			// ShouldBuildSummary is true
-			calleeSummary = NewSummaryGraph(g.AnalyzerState, node.Callee(), GetUniqueFunctionId(), isEntryPoint, nil)
-			g.Summaries[node.Callee()] = calleeSummary
 		}
 	}
 
@@ -364,11 +350,6 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAlia
 	}
 
 	return calleeSummary
-}
-
-func (g *InterProceduralFlowGraph) findCallPathFromCallNode(origin *CallNode, dest GraphNode) *NodeTree[*CallNode] {
-	fmt.Printf("Search for a path from %s to %s\n", origin, dest)
-	return nil
 }
 
 // findSummary returns the summary graph of f in summaries if present. Returns nil if not.
@@ -543,36 +524,29 @@ func CompleteCallStackToNode(stack *CallStack, n *CallNode) *CallStack {
 	return stack
 }
 
-// BuildSummary builds a summary for function and adds it to s's flow graph.
-func BuildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
-	summary := buildSummary(s, function, isEntrypoint)
-	s.FlowGraph.Summaries[function] = summary
-
-	return summary
-}
-
-// buildSummary builds a summary for function and returns it.
-func buildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
-	if summary, ok := s.FlowGraph.Summaries[function]; ok && summary.Constructed {
+// BuildSummary builds a summary for function and returns it.
+// If the summary was not already in the flow graph of the state, it creates a new summary and adds it to the flow graph.
+func BuildSummary(s *AnalyzerState, function *ssa.Function) *SummaryGraph {
+	summary := s.FlowGraph.Summaries[function]
+	if summary != nil && summary.Constructed {
 		return summary
+	}
+	if summary == nil {
+		id := GetUniqueFunctionId()
+		summary = NewPredefinedSummary(function, id)
+		s.FlowGraph.Summaries[function] = summary
 	}
 
 	logger := s.Logger
-	id := GetUniqueFunctionId()
-	summary := NewPredefinedSummary(function, id)
-	if summary != nil {
-		logger.Debugf("BuildSummary: Loaded pre-defined summary for %v\n", function)
-	} else {
-		logger.Debugf("BuildSummary: Building summary for %v...\n", function)
-		result, err := IntraProceduralAnalysis(s, function, true, id, isEntrypoint, nil)
 
-		if err != nil {
-			panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
-		}
+	logger.Debugf("BuildSummary: Constructing summary for %v...\n", function)
+	elapsed, err := RunIntraProcedural(s, summary)
 
-		logger.Debugf("BuildSummary: Finished building summary for %v (%.2f s)", function, result.Time.Seconds())
-		summary = result.Summary
+	if err != nil {
+		panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
 	}
+
+	logger.Debugf("BuildSummary: Finished constructing summary for %v (%.2f s)", function, elapsed.Seconds())
 
 	return summary
 }
