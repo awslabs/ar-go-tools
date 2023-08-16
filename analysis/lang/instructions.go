@@ -197,16 +197,12 @@ func InstrMethodKey(instr ssa.CallInstruction) Optional[string] {
 	return None[string]()
 }
 
-// FnHasGlobal returns true if fn
+// FnHasGlobal returns true if fn has a global value.
 func FnHasGlobal(fn *ssa.Function) bool {
 	res := false
 	IterateValues(fn, func(_ int, value ssa.Value) {
-		if strings.Contains(fn.String(), "init$1") {
-			fmt.Println("VALUE", value)
-		}
 		if _, ok := value.(*ssa.Global); ok {
 			res = true
-			fmt.Printf("GLOBAL FOUND: %v\n", value)
 			return
 		}
 	})

@@ -61,6 +61,6 @@ setup-precommit:
 
 clean:
 	rm -rf bin
-	find . -name "*-report" | xargs rm -rf
+	find ./testdata -name "*-report" | xargs rm -rf
 
 release: all
