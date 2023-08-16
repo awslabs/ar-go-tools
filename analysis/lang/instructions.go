@@ -17,9 +17,6 @@
 package lang
 
 import (
-	"fmt"
-	"strings"
-
 	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
