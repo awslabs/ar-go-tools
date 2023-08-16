@@ -100,13 +100,25 @@ func RunInterProcedural(state *dataflow.AnalyzerState, visitor dataflow.Visitor,
 	state.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
 }
 
-// singleFunctionJob contains all the information necessary to run the intra-procedural analysis on function.
+// singleFunctionJob contains all the information necessary to run the intra-procedural analysis on one function.
 type singleFunctionJob struct {
-	analyzerState      *dataflow.AnalyzerState
-	function           *ssa.Function
+	// analyzerState is the state of the global analyzer. It should only be read, except for specific thread-safe
+	// parts. Individual summaries stored in the FlowGraph will not be modified concurrently.
+	analyzerState *dataflow.AnalyzerState
+
+	// function is the function that needs to be summarized
+	function *ssa.Function
+
+	// shouldBuildSummary indicates whether the summary will be built. Note that the summary will always be created,
+	// but if shouldBuildSummary is false, the intra-procedural dataflow analysis will not be run.
 	shouldBuildSummary bool
-	postBlockCallback  func(*dataflow.IntraAnalysisState)
-	output             chan *dataflow.SummaryGraph
+
+	// postBlockCallback will be called after every block during the intra-procedural analysis, with the state of
+	// the intra-procedural analysis at that point
+	postBlockCallback func(*dataflow.IntraAnalysisState)
+
+	// output is the channel for the summary generated
+	output chan *dataflow.SummaryGraph
 }
 
 // runSingleFunctionJob runs the intra-procedural analysis with the information in job
@@ -147,6 +159,8 @@ func collectResults(c []dataflow.IntraProceduralResult, graph *dataflow.InterPro
 	state *dataflow.AnalyzerState) {
 	var f *os.File
 	var err error
+
+	// Check is user required a report of all summaries created
 	if state.Config.ReportSummaries {
 		f, err = os.CreateTemp(state.Config.ReportsDir, "summary-times-*.csv")
 		if err != nil {

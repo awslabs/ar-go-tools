@@ -610,7 +610,9 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	f := nextNode.Graph().Parent
 	nKey := nextTrace.Key()
 	if handle := nextTrace.GetLassoHandle(); handle != nil {
-		// TODO: handle merging contexts
+		// TODO: handle merging contexts for recursive functions
+		// the "handle" of the lasso is the part of the context that will be common between all the recursive calls
+		// of a given function. Recomputing escape contexts under each new complete callstack should converge.
 		nKey = handle.Key()
 	}
 	escapeGraph := v.escapeGraphs[f][nKey]
@@ -625,8 +627,10 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	return update
 }
 
+// checkEscape checks that the instructions associated to the node do not involve operations that manipulate data
+// that has escape, in the state s and under the escape context escapeInfo.
 func (v *Visitor) checkEscape(s *df.AnalyzerState, node df.GraphNode, escapeInfo *EscapeInfo) {
-	if escapeInfo == nil {
+	if escapeInfo == nil { // the escapeInfo must not be nil. A missing escapeInfo means an error in the algorithm.
 		s.AddError("missing escape graph",
 			fmt.Errorf("was missing escape graph for node %s when checking escape", node))
 	}
@@ -690,6 +694,8 @@ func (v *Visitor) storeEscapeGraphInContext(s *df.AnalyzerState, f *ssa.Function
 	v.escapeGraphs[f][key] = &EscapeInfo{locality, info}
 }
 
+// raiseAlarm raises an alarm (loags a warning message) if that alarm has not already been raised. This avoids repeated
+// warning messages to the user.
 func (v *Visitor) raiseAlarm(s *df.AnalyzerState, pos token.Pos, msg string) {
 	if _, alreadyRaised := v.alarms[pos]; !alreadyRaised {
 		s.Logger.Warnf(msg)

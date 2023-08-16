@@ -119,18 +119,22 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 	// defined generally in the lang package, but all the details, including transfer functions, are in the
 	// single_function_monotone_analysis.go file
 	lang.RunForwardIterative(state, sm.Parent)
-	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract value at that instruction.
-	// This abstract valuation maps values to the values that flow into them. This can directly be translated into
-	// a dataflow graph, with special attention for closures.
-	// Nest, we build the edges of the summary. The functions for edge building are in this file
+	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract value at
+	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
+	// translated into a dataflow graph, with special attention for closures.
+
+	// Next, we build the edges of the summary. The functions for edge building are in this file
 	lang.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
 	// Synchronize the edges of global variables
 	sm.SyncGlobals()
-	// Update the locsets / marks of the nodes
+	// Update the locsets / marks of the nodes. The locsets are elements that can be used to check results against
+	// other analyses. Currently, the locsets are the set of instructions that the data represented by a given node
+	// flows to.
 	state.moveLocSetsToSummary()
 	// Mark the summary as constructed
 	sm.Constructed = true
-	// If we have errors, return one (TODO: we'll decide how to handle them later)
+	// If we have errors, return one. This is sufficient to warn the user that the results are incorrect.
+	// TODO: manage error messages for better debugging
 	for _, err := range state.errors {
 		return time.Since(start), fmt.Errorf("error in intraprocedural analysis: %w", err)
 	}

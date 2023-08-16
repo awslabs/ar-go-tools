@@ -55,7 +55,9 @@ type InterProceduralFlowGraph struct {
 }
 
 // NewInterProceduralFlowGraph returns a new non-built cross function flow graph.
-func NewInterProceduralFlowGraph(summaries map[*ssa.Function]*SummaryGraph, state *AnalyzerState) InterProceduralFlowGraph {
+func NewInterProceduralFlowGraph(summaries map[*ssa.Function]*SummaryGraph,
+	state *AnalyzerState) InterProceduralFlowGraph {
+
 	return InterProceduralFlowGraph{
 		Summaries:     summaries,
 		AnalyzerState: state,
@@ -313,7 +315,8 @@ func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints []NodeWi
 // resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
 // sets the edge from callee to caller, if it could find a summary.
 // Returns nil if no summary can be found.
-func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAliases map[string]*ssa.Function) *SummaryGraph {
+func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
+	nameAliases map[string]*ssa.Function) *SummaryGraph {
 	var calleeSummary *SummaryGraph
 	logger := g.AnalyzerState.Logger
 
@@ -521,7 +524,10 @@ func CompleteCallStackToNode(stack *CallStack, n *CallNode) *CallStack {
 }
 
 // BuildSummary builds a summary for function and returns it.
-// If the summary was not already in the flow graph of the state, it creates a new summary and adds it to the flow graph.
+// If the summary was already built, i.e. there in a summary corresponding to the function in the flow graph, then
+// the summary is constructed by running the intra-procedural dataflow analysis.
+// If the summary was not already in the flow graph of the state, it creates a new summary, adds it to the flow graph
+// and then runs the intra-procedural dataflow analysis.
 func BuildSummary(s *AnalyzerState, function *ssa.Function) *SummaryGraph {
 	summary := s.FlowGraph.Summaries[function]
 	if summary != nil && summary.Constructed {
