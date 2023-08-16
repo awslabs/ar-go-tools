@@ -286,7 +286,13 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 		})
 	}
 
-	g.AnalyzerState.Logger.Debugf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	g.AnalyzerState.Logger.Infof("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	if g.AnalyzerState.Logger.LogsDebug() {
+		for _, entryPoint := range entryPoints {
+			g.AnalyzerState.Logger.Debugf("Entry: %s", entryPoint.Node.String())
+			g.AnalyzerState.Logger.Debugf("      in context %s", entryPoint.Trace.String())
+		}
+	}
 
 	// Run the analysis for every entrypoint. We may be able to change this to RunIntraProcedural the analysis for all entrypoints
 	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
@@ -295,8 +301,10 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 	}
 }
 
+// addWithContexts adds an entry corresponding to node in each of the contexts to the entryPoints
+// if contexts is empty or nil, then the node is added without context
 func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints []NodeWithTrace) []NodeWithTrace {
-	if contexts == nil {
+	if len(contexts) == 0 {
 		// Default is to start without context (trace is nil)
 		entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
 		entryPoints = append(entryPoints, entry)

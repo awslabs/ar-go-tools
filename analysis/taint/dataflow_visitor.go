@@ -560,15 +560,6 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 		escapeContextUpdated = v.manageEscapeContexts(s, cur, nextNode, nextTrace)
 	}
 
-	if s.Logger.LogsTrace() {
-		s.Logger.Tracef("Adding %v\n", nextNodeWithTrace)
-		s.Logger.Tracef("\ttrace: %v\n", nextTrace)
-		s.Logger.Tracef("\tclosure-trace: %v\n", nextClosureTrace)
-		s.Logger.Tracef("\tseen? %v\n", seen[nextNodeWithTrace.Key()])
-		s.Logger.Tracef("\tlasso? %v\n", nextTrace.GetLassoHandle() != nil)
-		s.Logger.Tracef("\tdepth: %v\n", cur.Depth)
-	}
-
 	// Second set of stopping conditions: the escape context is unchanged on a loop path
 	if nextTrace.GetLassoHandle() != nil && !escapeContextUpdated {
 		return que
