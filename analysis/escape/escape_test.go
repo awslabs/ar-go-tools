@@ -42,7 +42,7 @@ import (
 // exactly one match
 func findSingleNode(t *testing.T, g *EscapeGraph, name string) *Node {
 	var node *Node
-	for n := range g.edges {
+	for _, n := range g.nodes.AllNodes() {
 		if strings.HasPrefix(n.debugInfo, name) {
 			if node != nil {
 				t.Errorf("Duplicate node found for %s\n", name)
@@ -60,12 +60,9 @@ func findSingleNode(t *testing.T, g *EscapeGraph, name string) *Node {
 
 // Ensure there is an edge from a to b
 func assertEdge(t *testing.T, g *EscapeGraph, a, b *Node) {
-	if succs, ok := g.edges[a]; ok {
-		if _, ok := succs[b]; ok {
-			return
-		}
+	if len(g.Edges(a, b, true, true)) == 0 {
+		t.Errorf("Expected edge between %v -> %v:\n%v\n", a, b, g.Graphviz())
 	}
-	t.Errorf("Expected edge between %v -> %v:\n%v\n", a, b, g.Graphviz())
 }
 
 // Check the escape results. The expected graph shapes are specific to a single input file, despite the arguments.
@@ -88,7 +85,7 @@ func TestSimpleEscape(t *testing.T) {
 		// Compute the summary of the node
 		graph := EscapeSummary(cgNode.Func)
 		// A general check to make sure that all global nodes are escaped.
-		for n := range graph.edges {
+		for _, n := range graph.nodes.AllNodes() {
 			if strings.HasPrefix(n.debugInfo, "gbl:") && graph.status[n] != Leaked {
 				t.Errorf("Global should have escaped %v\n", n)
 			}
@@ -128,10 +125,10 @@ func TestSimpleEscape(t *testing.T) {
 			assertEdge(t, graph, x, y)
 		case "command-line-arguments.testSlice":
 			x := findSingleNode(t, graph, "return")
-			if len(graph.edges[x]) == 0 {
+			if len(graph.Pointees(x)) == 0 {
 				t.Errorf("Slice should return some object")
 			}
-			for y := range graph.edges[x] {
+			for y := range graph.Pointees(x) {
 				if !strings.HasPrefix(y.debugInfo, "new S") {
 					t.Errorf("Slice should only return S's")
 				}
@@ -186,10 +183,16 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 			a := ea.nodes.ValueNode(args[0])
 			b := ea.nodes.ValueNode(args[1])
 			//fmt.Printf("Checking call %v %v\n%v\n", a, b, g.Graphviz(ea.nodes))
-			if !reflect.DeepEqual(g.edges[a], g.edges[b]) {
-				if !(len(g.edges[a]) == 0 && len(g.edges[b]) == 0) {
+			if !reflect.DeepEqual(g.internalEdges[a], g.internalEdges[b]) {
+				if !(len(g.internalEdges[a]) == 0 && len(g.internalEdges[b]) == 0) {
 					// TODO: figure out why deepequal is returning false for two empty maps
-					return fmt.Errorf("Arguments do not have the same set of edges %v != %v (%v != %v) %v \n%v", a, b, g.edges[a], g.edges[b], reflect.DeepEqual(g.edges[a], g.edges[b]), g.Graphviz())
+					return fmt.Errorf("Arguments do not have the same set of edges %v != %v", a, b)
+				}
+			}
+			if !reflect.DeepEqual(g.externalEdges[a], g.externalEdges[b]) {
+				if !(len(g.externalEdges[a]) == 0 && len(g.externalEdges[b]) == 0) {
+					// TODO: figure out why deepequal is returning false for two empty maps
+					return fmt.Errorf("Arguments do not have the same set of edges %v != %v", a, b)
 				}
 			}
 		} else if isCall(instr, "assertAllLeaked") {
@@ -198,9 +201,9 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				return fmt.Errorf("Expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
-			for b := range g.edges[a] {
-				if g.status[b] != Leaked {
-					return fmt.Errorf("%v wasn't leaked in:\n%v", b, g.Graphviz())
+			for _, e := range g.Edges(a, nil, true, true) {
+				if g.status[e.dest] != Leaked {
+					return fmt.Errorf("%v wasn't leaked in:\n%v", e, g.Graphviz())
 				}
 			}
 		} else if isCall(instr, "assertAllLocal") {
@@ -209,9 +212,9 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				return fmt.Errorf("Expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
-			for b := range g.edges[a] {
-				if g.status[b] != Local {
-					return fmt.Errorf("%v has escaped in:\n%v", b, g.Graphviz())
+			for _, e := range g.Edges(a, nil, true, true) {
+				if g.status[e.dest] != Local {
+					return fmt.Errorf("%v has escaped in:\n%v", e.dest, g.Graphviz())
 				}
 			}
 		} else {
@@ -230,7 +233,7 @@ func TestInterproceduralEscape(t *testing.T) {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
 	program, cfg := analysistest.LoadTest(t, ".", []string{})
-	cfg.LogLevel = int(config.TraceLevel)
+	cfg.LogLevel = int(config.DebugLevel)
 	// Compute the summaries for everything in the main package
 	state, _ := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
 		[]func(*dataflow.AnalyzerState){
@@ -255,6 +258,7 @@ func TestInterproceduralEscape(t *testing.T) {
 		"testIdent",
 		"testExternal",
 		"testChain",
+		"testStickyErrorReader",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
