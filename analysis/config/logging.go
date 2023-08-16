@@ -133,7 +133,7 @@ func (l *LogGroup) SetError(w io.Writer) {
 	l.err.SetOutput(w)
 }
 
-// LogsErrors returns true if the log group logs error messages. Note that this is the lowest logging level, and if
+// LogsError returns true if the log group logs error messages. Note that this is the lowest logging level, and if
 // this returns false, it implies that the log group does not log anything.
 func (l *LogGroup) LogsError() bool {
 	return l.Level >= ErrLevel

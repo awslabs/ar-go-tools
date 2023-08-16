@@ -59,17 +59,23 @@ func Map[T any, S any](a []T, f func(T) S) []S {
 	return b
 }
 
+// elt is a helper struct to ensure that MapParallel maintains element order.
+type elt[T any] struct {
+	idx int // index in original slice
+	x   T
+}
+
 // MapParallel is a parallel version of Map using numRoutines goroutines.
 func MapParallel[T any, S any](a []T, f func(T) S, numRoutines int) []S {
-	in := make(chan T)
+	in := make(chan elt[T])
 	go func() {
 		defer close(in)
-		for _, x := range a {
-			in <- x
+		for i, x := range a {
+			in <- elt[T]{i, x}
 		}
 	}()
 
-	out := make(chan S)
+	out := make(chan elt[S])
 	wg := &sync.WaitGroup{}
 	if numRoutines <= 0 {
 		numRoutines = 1
@@ -80,7 +86,7 @@ func MapParallel[T any, S any](a []T, f func(T) S, numRoutines int) []S {
 		go func() {
 			defer wg.Done()
 			for x := range in {
-				out <- f(x)
+				out <- elt[S]{x.idx, f(x.x)}
 			}
 		}()
 	}
@@ -90,9 +96,14 @@ func MapParallel[T any, S any](a []T, f func(T) S, numRoutines int) []S {
 		close(out)
 	}()
 
-	res := make([]S, 0, len(out))
+	xs := make([]elt[S], 0, len(out))
 	for x := range out {
-		res = append(res, x)
+		xs = append(xs, x)
+	}
+
+	res := make([]S, len(xs))
+	for _, x := range xs {
+		res[x.idx] = x.x
 	}
 
 	return res

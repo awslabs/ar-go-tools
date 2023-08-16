@@ -26,7 +26,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/render"
-	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
@@ -47,15 +46,9 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 		numRoutines = 1
 	}
 
-	// Only build summaries for non-stdlib functions here
-	shouldCreateSummary := func(f *ssa.Function) bool {
-		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
-	}
-
-	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
-		ShouldCreateSummary: shouldCreateSummary,
-		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
-		IsEntrypoint:        func(*config.Config, ssa.Node) bool { return true },
+	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
+		ShouldBuildSummary: dataflow.ShouldBuildSummary,
+		IsEntrypoint:       func(*config.Config, ssa.Node) bool { return true },
 	})
 
 	state, err = render.BuildCrossFunctionGraph(state)

@@ -521,8 +521,6 @@ type testDef struct {
 // The marked @Source and @Sink locations in the test files correspond to expected sources and sinks.
 // These tests check the invariant that for every trace entrypoint (corresponding to the sinks),
 // the expected source must exist somewhere in the trace.
-//
-//gocyclo:ignore
 func TestAnalyze_Taint(t *testing.T) {
 	tests := []testDef{
 		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go", "sanitizers.go", "memory.go"}},
@@ -542,9 +540,8 @@ func TestAnalyze_Taint(t *testing.T) {
 	}
 
 	skip := map[string]bool{
-		"interface-summaries": true, // failing non-deterministically, todo
-		"fields.go":           true, // struct fields as backtracepoints are not supported yet
-		"sanitizers.go":       true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
+		"fields.go":     true, // struct fields as backtracepoints are not supported yet
+		"sanitizers.go": true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
 	}
 
 	for _, test := range tests {
@@ -629,19 +626,6 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 			}
 
 			if !seen[sinkLine][sourceLine] {
-				// TODO: known error cases to fix
-				// case: a recursive function
-				if strings.HasSuffix(sinkLine.Filename, "/taint/parameters/main.go") &&
-					sourceLine.Line == 116 && sinkLine.Line == 123 &&
-					strings.HasSuffix(sourceLine.Filename, "/taint/parameters/main.go") {
-					continue
-				}
-				// case: a builtin
-				if strings.HasSuffix(sinkLine.Filename, "/taint/builtins/main.go") &&
-					(sourceLine.Line == 88 || sourceLine.Line == 89) && sinkLine.Line == 91 &&
-					strings.HasSuffix(sourceLine.Filename, "/taint/builtins/main.go") {
-					continue
-				}
 				// Remaining entries have not been detected!
 				t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
 			}

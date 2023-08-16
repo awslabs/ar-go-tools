@@ -52,6 +52,7 @@ func IntraProceduralAnalysis(state *AnalyzerState,
 	id uint32,
 	shouldTrack func(*config.Config, ssa.Node) bool,
 	postBlockCallback func(*IntraAnalysisState)) (IntraProceduralResult, error) {
+	var err error
 	var sm *SummaryGraph
 	existingSummary := state.FlowGraph.Summaries[function]
 
@@ -68,16 +69,16 @@ func IntraProceduralAnalysis(state *AnalyzerState,
 		return IntraProceduralResult{Summary: sm}, nil
 	}
 
+	elapsed := time.Duration(0)
 	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
-	start := time.Now()
 	if buildSummary {
-		err := RunIntraProcedural(state, sm)
+		elapsed, err = RunIntraProcedural(state, sm)
 		if err != nil {
-			return IntraProceduralResult{Summary: sm, Time: time.Since(start)}, err
+			return IntraProceduralResult{Summary: sm, Time: elapsed}, err
 		}
 	}
 
-	return IntraProceduralResult{Summary: sm, Time: time.Since(start)}, nil
+	return IntraProceduralResult{Summary: sm, Time: elapsed}, nil
 }
 
 // RunIntraProcedural is the core of the intra-procedural analysis. It updates the summary graph *in place* using the
@@ -86,8 +87,9 @@ func IntraProceduralAnalysis(state *AnalyzerState,
 //
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
-func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) error {
-
+func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, error) {
+	start := time.Now()
+	a.Logger.Debugf("RunIntraProcedural: Building summary for %v...\n", sm.Parent)
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
 	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{
@@ -117,22 +119,26 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) error {
 	// defined generally in the lang package, but all the details, including transfer functions, are in the
 	// single_function_monotone_analysis.go file
 	lang.RunForwardIterative(state, sm.Parent)
-	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract value at that instruction.
-	// This abstract valuation maps values to the values that flow into them. This can directly be translated into
-	// a dataflow graph, with special attention for closures.
-	// Nest, we build the edges of the summary. The functions for edge building are in this file
+	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract value at
+	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
+	// translated into a dataflow graph, with special attention for closures.
+
+	// Next, we build the edges of the summary. The functions for edge building are in this file
 	lang.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
 	// Synchronize the edges of global variables
 	sm.SyncGlobals()
-	// Update the locsets / marks of the nodes
+	// Update the locsets / marks of the nodes. The locsets are elements that can be used to check results against
+	// other analyses. Currently, the locsets are the set of instructions that the data represented by a given node
+	// flows to.
 	state.moveLocSetsToSummary()
 	// Mark the summary as constructed
 	sm.Constructed = true
-	// If we have errors, return one (TODO: we'll decide how to handle them later)
+	// If we have errors, return one. This is sufficient to warn the user that the results are incorrect.
+	// TODO: manage error messages for better debugging
 	for _, err := range state.errors {
-		return fmt.Errorf("error in intraprocedural analysis: %w", err)
+		return time.Since(start), fmt.Errorf("error in intraprocedural analysis: %w", err)
 	}
-	return nil
+	return time.Since(start), nil
 }
 
 // Dataflow edges in the summary graph are added by the following functions. Those can be called after the iterative
@@ -292,6 +298,7 @@ func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	}
 }
 
+// makeEdgesSyntheticNodes analyzes the synthetic
 func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
 	if asValue, ok := instr.(ssa.Value); ok && state.shouldTrack(state.parentAnalyzerState.Config, instr.(ssa.Node)) {
 		for _, origin := range state.getMarks(instr, asValue, "*", false) {
@@ -440,10 +447,4 @@ func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
 		// Check package summaries
 		return !(summaries.PkgHasSummaries(pkg) || state.HasExternalContractSummary(function))
 	}
-}
-
-// ShouldCreateSummary returns true if the function's summary should be *created during the single function analysis
-// pass.
-func ShouldCreateSummary(f *ssa.Function) bool {
-	return true
 }

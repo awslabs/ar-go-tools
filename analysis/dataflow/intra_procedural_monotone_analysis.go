@@ -326,7 +326,6 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
 	if state.shouldTrack(state.parentAnalyzerState.Config, asNode) {
 		s := NewMark(asNode, Synthetic+DefaultMark, "", nil, -1)
-		state.summary.addSyntheticNode(asInstr, "source")
 		state.markValue(asInstr, asValue, s)
 	}
 }
