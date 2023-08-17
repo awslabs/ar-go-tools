@@ -76,6 +76,7 @@ func NewVisitor() *Visitor {
 //
 //gocyclo:ignore
 func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
+	ignoreNonSummarized := !s.Config.SummarizeOnDemand && s.Config.IgnoreNonSummarized
 	coverage := make(map[string]bool)
 	seen := make(map[df.KeyType]bool)
 	goroutines := make(map[*ssa.Go]bool)
@@ -113,7 +114,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// Report coverage information for the current node
 		addCoverage(s, elt, coverage)
 
-		logger.Tracef("----------------\n")
 		logger.Tracef("Visiting %T node: %v\n\tat %v\n", elt.Node, elt.Node, elt.Node.Position(s))
 		logger.Tracef("Trace: %s\n", elt.Trace.String())
 
@@ -147,7 +147,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// Check that the node does not correspond to a non-constructed summary
 		if !elt.Node.Graph().Constructed {
-			if !s.Config.SummarizeOnDemand {
+			if ignoreNonSummarized {
 				logger.Tracef("%s: summary has not been built for %s.",
 					colors.Yellow("WARNING"),
 					colors.Yellow(elt.Node.Graph().Parent.Name()))
@@ -158,9 +158,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
 			// built summary
-			if _, err := df.RunIntraProcedural(s, elt.Node.Graph()); err != nil {
-				panic(fmt.Errorf("failed to run the intra-procedural analysis: %v", err))
-			}
+			v.onDemandIntraProcedural(s, elt.Node.Graph())
 		}
 
 		switch graphNode := elt.Node.(type) {
@@ -206,10 +204,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						s.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
-						if !callSiteArg.Graph().Constructed {
-							if _, err := df.RunIntraProcedural(s, callSiteArg.Graph()); err != nil {
-								panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
-							}
+						if !callSiteArg.Graph().Constructed && !ignoreNonSummarized {
+							v.onDemandIntraProcedural(s, callSiteArg.Graph())
 						}
 						for x, oPath := range callSiteArg.Out() {
 							que = v.addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
@@ -228,18 +224,37 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 			df.CheckNoGoRoutine(s, goroutines, callSite)
 
-			if callSite.CalleeSummary == nil || !callSite.CalleeSummary.Constructed { // this function has not been summarized
-				if s.Config.SummarizeOnDemand {
-					if callSite.Callee() == nil {
-						panic("callsite has no callee")
-					}
-					// the callee summary may not have been created yet
-					if callSite.CalleeSummary == nil {
-						panic("unexpected missing callee summary for reachable function")
-					}
-				} else {
+			// Logic for when the summary has not been created
+			if callSite.CalleeSummary == nil {
+				if callSite.Callee() == nil {
+					panic("callsite has no callee")
+				}
+				// the callee summary may not have been created yet
+				if ignoreNonSummarized {
+					//
 					s.ReportMissingOrNotConstructedSummary(callSite)
 					break
+				} else {
+					if s.IsReachableFunction(callSite.Callee()) {
+						panic(fmt.Sprintf("unexpected missing callee summary for reachable function %s",
+							callSite.Callee()))
+					} else {
+						// Ignore the callee, it is not reachable.
+						// If it was reachable, there should be a summary. If a bug is encountered here, then the
+						// problem should be in the initial reachability computation logic, not here.
+						break
+					}
+				}
+			}
+			// callSite.CalleeSummary should be non-nil from now on in this branch.
+
+			// Logic for when the summary has not been constructed
+			if !callSite.CalleeSummary.Constructed {
+				if ignoreNonSummarized {
+					s.ReportMissingOrNotConstructedSummary(callSite)
+					break
+				} else {
+					v.onDemandIntraProcedural(s, callSite.CalleeSummary)
 				}
 			}
 
@@ -280,9 +295,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			if caller := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); caller != nil {
 				logger.Tracef("unwound caller: %v\n", caller)
 				if !caller.Graph().Constructed {
-					if _, err := df.RunIntraProcedural(s, caller.Graph()); err != nil {
-						panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
-					}
+					v.onDemandIntraProcedural(s, caller.Graph())
 				}
 				for x, oPath := range caller.Out() {
 					if !(graphNode.Index() >= 0 && oPath.Index >= 0 && graphNode.Index() != oPath.Index) {
@@ -291,9 +304,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				}
 			} else if elt.ClosureTrace != nil && df.CheckClosureReturns(graphNode, elt.ClosureTrace.Label) {
 				if !elt.ClosureTrace.Label.Graph().Constructed {
-					if _, err := df.RunIntraProcedural(s, elt.ClosureTrace.Label.Graph()); err != nil {
-						panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
-					}
+					v.onDemandIntraProcedural(s, elt.ClosureTrace.Label.Graph())
 				}
 				for cCall, oPath := range elt.ClosureTrace.Label.Out() {
 					que = v.addNext(s, que, seen, elt, cCall, oPath, elt.Trace, elt.ClosureTrace.Parent)
@@ -302,9 +313,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					if !callSite.Graph().Constructed {
-						if _, err := df.RunIntraProcedural(s, callSite.Graph()); err != nil {
-							panic(fmt.Errorf("failed to run intra-procedural analysis: %v", err))
-						}
+						v.onDemandIntraProcedural(s, callSite.Graph())
 					}
 					for x, oPath := range callSite.Out() {
 						que = v.addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
@@ -346,7 +355,10 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			}
 
 			closureNode := graphNode.ParentNode()
-			if s.Config.SummarizeOnDemand && closureNode.ClosureSummary == nil {
+			if closureNode.ClosureSummary == nil {
+				if ignoreNonSummarized {
+					break
+				}
 				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
 				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 			}
@@ -439,7 +451,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		case *df.AccessGlobalNode:
 			if graphNode.IsWrite {
-				if s.Config.SummarizeOnDemand {
+				if !ignoreNonSummarized {
 					for f := range s.ReachableFunctions(false, false) {
 						if lang.FnReadsFrom(f, graphNode.Global.Value()) {
 							logger.Tracef("Global %v read in function: %v\n", graphNode, f)
@@ -463,7 +475,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// A BoundLabel flows to the body of the closure that captures it.
 		case *df.BoundLabelNode:
 			destClosureSummary := graphNode.DestClosure()
-			if s.Config.SummarizeOnDemand {
+			if !ignoreNonSummarized {
 				if destClosureSummary == nil {
 					destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function))
 					graphNode.SetDestClosure(destClosureSummary)
@@ -507,6 +519,18 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 	if v.coverageWriter != nil {
 		reportCoverage(coverage, v.coverageWriter)
+	}
+}
+
+// onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
+// This panics when the analysis fails, because it is expected that an error will cause any further result
+// to be invalid.
+func (v *Visitor) onDemandIntraProcedural(s *df.AnalyzerState, summary *df.SummaryGraph) {
+	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
+	elapsed, err := df.RunIntraProcedural(s, summary)
+	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
+	if err != nil {
+		panic(fmt.Sprintf("failed to run intra-procedural analysis : %v", err))
 	}
 }
 
