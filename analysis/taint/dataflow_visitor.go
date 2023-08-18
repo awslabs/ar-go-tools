@@ -497,7 +497,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			}
 			callStackAtMakeClosure := df.UnwindCallStackToFunc(elt.Trace, closureNode.Graph().Parent)
 			for _, closureCallNode := range destClosureSummary.Callsites {
-				newCallStack := df.CompleteCallStackToNode(callStackAtMakeClosure, closureCallNode)
+				newCallStack := df.CompleteCallStackToNode(callStackAtMakeClosure, closureCallNode, s.Config.MaxDepth)
 				// Flows to the free variables of the closure
 				// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
 				fv := destClosureSummary.Parent.FreeVars[graphNode.Index()]

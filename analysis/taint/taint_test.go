@@ -105,7 +105,6 @@ func TestCrossFunctionInterfaceSummaries(t *testing.T) {
 }
 
 func TestCrossFunctionInterfaceSummaries_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("Skipping until fixed.")
 	runTest(t, "interface-summaries", []string{"helpers.go"}, true, noErrorExpected)
 }
 

@@ -519,7 +519,7 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 
 // CompleteCallStackToNode completes the callstack stack with the call nodes to reach node. Returns nil if node is not
 // reachable from the last call node of the stack.
-func CompleteCallStackToNode(stack *CallStack, n *CallNode) *CallStack {
+func CompleteCallStackToNode(stack *CallStack, n *CallNode, maxsize int) *CallStack {
 	if stack == nil {
 		return nil
 	}
@@ -537,7 +537,7 @@ func CompleteCallStackToNode(stack *CallStack, n *CallNode) *CallStack {
 		if elt.Label == n {
 			return stack.Append(elt)
 		}
-		if i > 100 {
+		if maxsize > 0 && i > maxsize {
 			return stack
 		}
 		for _, callNode := range elt.Label.parent.Callsites {
