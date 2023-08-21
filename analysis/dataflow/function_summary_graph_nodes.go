@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"fmt"
 	"go/token"
 	"go/types"
 	"strconv"
@@ -115,6 +116,32 @@ func NodeKind(g GraphNode) string {
 		return "BoundV "
 	case *FreeVarNode:
 		return "FreeV  "
+	case *AccessGlobalNode:
+		return "Global "
+	}
+	return ""
+}
+
+func NodeSummary(g GraphNode) string {
+	switch x := g.(type) {
+	case *ParamNode:
+		return fmt.Sprintf("Parameter %s of %s", x.ssaNode.Name(), x.parent.Parent.Name())
+	case *CallNode:
+		return fmt.Sprintf("Result of call to %s", x.Callee().Name())
+	case *CallNodeArg:
+		return fmt.Sprintf("Argument %v in call to %s", x.Index(), x.ParentNode().Callee().Name())
+	case *ReturnValNode:
+		return fmt.Sprintf("Return value of %s", x.ParentName())
+	case *ClosureNode:
+		return fmt.Sprintf("Closure")
+	case *BoundLabelNode:
+		return fmt.Sprintf("Bound label")
+	case *SyntheticNode:
+		return fmt.Sprintf("Synthetic node")
+	case *BoundVarNode:
+		return "Bound variable"
+	case *FreeVarNode:
+		return "Free variable"
 	case *AccessGlobalNode:
 		return "Global "
 	}
@@ -257,8 +284,8 @@ func (a *CallNodeArg) SetLocs(set LocSet) {
 func (a *CallNodeArg) Type() types.Type { return a.ssaValue.Type() }
 
 func (a *CallNodeArg) Position(c *AnalyzerState) token.Position {
-	if a.ssaValue != nil {
-		return c.Program.Fset.Position(a.ssaValue.Pos())
+	if a.parent != nil {
+		return a.parent.Position(c)
 	} else {
 		return lang.DummyPos
 	}
