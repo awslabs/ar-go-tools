@@ -46,8 +46,11 @@ There are additional options for the outputs:
 reportsummaries: true    # the dataflow summaries built by the analysis will be printed in a file in the reports directory
 
 reportpaths: true        # all the paths from sources to sinks that have been discovered will be printed in individual files in the reports directory
-
-
+```
+And some other options:
+```
+sourcetaintsargs: false  # by default, the result of a call to a source function is tainted. In some cases
+a user might want to consider all arguments of a source function to be tainted 
 ```
 
 ## Taint Analysis Output

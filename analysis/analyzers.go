@@ -137,10 +137,10 @@ func runSingleFunctionJob(job singleFunctionJob,
 
 	if job.analyzerState.Logger.LogsDebug() {
 		if job.shouldBuildSummary {
-			job.analyzerState.Logger.Debugf("%-12s %-90s summarized in %.2f s\n",
+			job.analyzerState.Logger.Debugf("%-12s %-90s [%.2f s]\n",
 				" ", targetName, result.Time.Seconds())
 		} else {
-			job.analyzerState.Logger.Debugf("%-12s %-90s skipped\n", " ", targetName)
+			job.analyzerState.Logger.Debugf("%-12s %-90s [ SKIP ]\n", " ", targetName)
 		}
 	}
 

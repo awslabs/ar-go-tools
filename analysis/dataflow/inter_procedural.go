@@ -245,71 +245,90 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor 
 func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 	isEntryPointSsa func(*config.Config, ssa.Node) bool,
 	isEntryPointGraphNode func(node GraphNode) bool) {
-	var entryPoints []NodeWithTrace
+
+	entryPoints := make(map[KeyType]NodeWithTrace)
 
 	for _, summary := range g.Summaries {
 		// Identify the entry points for that function: all the call sites that are entry points
-		summary.ForAllNodes(func(n GraphNode) {
-			if isEntryPointGraphNode != nil && isEntryPointGraphNode(n) {
-				for _, callnode := range n.Graph().Callsites {
-					contexts := GetAllCallingContexts(g.AnalyzerState, callnode)
-					entryPoints = addWithContexts(contexts, n, entryPoints)
-				}
-			}
-
-			// if the isEntryPointSsa function is not specified, skip the special casing
-			if isEntryPointSsa == nil {
-				return
-			}
-
-			// special cases for each SSA node type supported
-			switch node := n.(type) {
-			case *SyntheticNode:
-				// all synthetic nodes are entry points
-				entry := NodeWithTrace{Node: node}
-				entryPoints = append(entryPoints, entry)
-			case *CallNodeArg:
-				if isEntryPointSsa(g.AnalyzerState.Config, node.parent.CallSite().Value()) {
-					entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-					entryPoints = append(entryPoints, entry)
-				}
-			case *CallNode:
-				if node.callSite != nil && isEntryPointSsa(g.AnalyzerState.Config, node.callSite.Value()) {
-					contexts := GetAllCallingContexts(g.AnalyzerState, node)
-					entryPoints = addWithContexts(contexts, node, entryPoints)
-
-					for _, arg := range node.args {
-						entryPoints = append(entryPoints, NodeWithTrace{arg, nil, nil})
-					}
-				}
-			}
-		})
+		summary.ForAllNodes(scanEntryPoints(isEntryPointGraphNode, g, entryPoints, isEntryPointSsa))
 	}
 
-	g.AnalyzerState.Logger.Debugf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	g.AnalyzerState.Logger.Infof("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	if g.AnalyzerState.Logger.LogsDebug() {
+		for _, entryPoint := range entryPoints {
+			g.AnalyzerState.Logger.Debugf("Entry: %s", entryPoint.Node.String())
+			g.AnalyzerState.Logger.Debugf("      in context %s", entryPoint.Trace.String())
+		}
+	}
 
-	// Run the analysis for every entrypoint. We may be able to change this to RunIntraProcedural the analysis for all entrypoints
-	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
+	// Run the analysis for every entrypoint. We may be able to change this to RunIntraProcedural the analysis for all
+	// entrypoints at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack
+	// implements.
 	for _, entry := range entryPoints {
 		visitor.Visit(g.AnalyzerState, entry)
 	}
 }
 
-func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints []NodeWithTrace) []NodeWithTrace {
-	if contexts == nil {
+func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterProceduralFlowGraph,
+	entryPoints map[KeyType]NodeWithTrace, isEntryPointSsa func(*config.Config, ssa.Node) bool) func(n GraphNode) {
+	return func(n GraphNode) {
+		if isEntryPointGraphNode != nil && isEntryPointGraphNode(n) {
+			for _, callnode := range n.Graph().Callsites {
+				contexts := GetAllCallingContexts(g.AnalyzerState, callnode)
+				addWithContexts(contexts, n, entryPoints)
+			}
+		}
+
+		// if the isEntryPointSsa function is not specified, skip the special casing
+		if isEntryPointSsa == nil {
+			return
+		}
+
+		// special cases for each SSA node type supported
+		switch node := n.(type) {
+		case *SyntheticNode:
+			// all synthetic nodes are entry points
+			entry := NodeWithTrace{Node: node}
+			entryPoints[entry.Key()] = entry
+		case *CallNodeArg:
+			if g.AnalyzerState.Config.SourceTaintsArgs &&
+				isEntryPointSsa(g.AnalyzerState.Config, node.parent.CallSite().Value()) {
+				entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+				entryPoints[entry.Key()] = entry
+			}
+		case *CallNode:
+			if node.callSite != nil && isEntryPointSsa(g.AnalyzerState.Config, node.callSite.Value()) {
+				contexts := GetAllCallingContexts(g.AnalyzerState, node)
+				addWithContexts(contexts, node, entryPoints)
+
+				if g.AnalyzerState.Config.SourceTaintsArgs {
+					for _, arg := range node.args {
+						entry := NodeWithTrace{arg, nil, nil}
+						entryPoints[entry.Key()] = entry
+					}
+				}
+			}
+		}
+	}
+}
+
+// addWithContexts adds an entry corresponding to node in each of the contexts to the entryPoints
+// if contexts is empty or nil, then the node is added without context
+func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints map[KeyType]NodeWithTrace) {
+	if len(contexts) == 0 {
 		// Default is to start without context (trace is nil)
 		entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-		entryPoints = append(entryPoints, entry)
+		entryPoints[entry.Key()] = entry
 	} else {
 		for _, ctxt := range contexts {
-			entryPoints = append(entryPoints, NodeWithTrace{
+			n := NodeWithTrace{
 				Node:         node,
 				Trace:        ctxt,
 				ClosureTrace: nil,
-			})
+			}
+			entryPoints[n.Key()] = n
 		}
 	}
-	return entryPoints
 }
 
 // resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
@@ -500,7 +519,7 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 
 // CompleteCallStackToNode completes the callstack stack with the call nodes to reach node. Returns nil if node is not
 // reachable from the last call node of the stack.
-func CompleteCallStackToNode(stack *CallStack, n *CallNode) *CallStack {
+func CompleteCallStackToNode(stack *CallStack, n *CallNode, maxsize int) *CallStack {
 	if stack == nil {
 		return nil
 	}
@@ -510,14 +529,21 @@ func CompleteCallStackToNode(stack *CallStack, n *CallNode) *CallStack {
 	var tmpRoot *CallStack
 	tmpRoot = NewNodeTree(stack.Label)
 	queue := []*CallStack{tmpRoot}
+	i := 0
 	for len(queue) > 0 {
 		elt := queue[0]
 		queue = queue[1:]
+		i += 1
 		if elt.Label == n {
 			return stack.Append(elt)
 		}
+		if maxsize > 0 && i > maxsize {
+			return stack
+		}
 		for _, callNode := range elt.Label.parent.Callsites {
-			queue = append(queue, elt.Add(callNode))
+			if !PathContains(elt, callNode) {
+				queue = append(queue, elt.Add(callNode))
+			}
 		}
 	}
 	return stack

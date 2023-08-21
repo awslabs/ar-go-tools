@@ -12,16 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package summaries
+package taint
 
-// requiredSummaries contains a list of functions that need to be analyzed for the analysis to build a sound model
-// of the program.
-// For example, (*sync.Once).Do needs to be summarized because it will call its argument. Stubbing out Do.Once would
-// only model the flow of data but not the callgraph.
-var requiredSummaries = map[string]bool{
-	"(*sync.Once).Do":     true,
-	"(*sync.Once).doSlow": true,
-	"path/filepath.Walk":  true,
-	"flag.Func":           true,
-	"sort.Sort":           true,
+import (
+	"regexp"
+	"testing"
+)
+
+func TestEscapeIntegration(t *testing.T) {
+	// Closures not implemented
+	r := regexp.MustCompile("missing escape for (.*\\$.*) in context")
+	runTest(t, "escape-integration", []string{}, false,
+		func(e error) bool { return r.MatchString(e.Error()) })
+}
+
+func TestPlayground(t *testing.T) {
+	runTest(t, "playground", []string{}, false, noErrorExpected)
 }

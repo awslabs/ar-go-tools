@@ -89,7 +89,6 @@ func IntraProceduralAnalysis(state *AnalyzerState,
 // related to the edges.
 func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, error) {
 	start := time.Now()
-	a.Logger.Debugf("RunIntraProcedural: Building summary for %v...\n", sm.Parent)
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
 	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{

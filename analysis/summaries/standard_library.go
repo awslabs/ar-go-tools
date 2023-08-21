@@ -532,6 +532,10 @@ var SummaryIo = map[string]Summary{
 		[][]int{{0}},
 		[][]int{{0}},
 	},
+	"(*io.PipeWriter).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
 }
 
 var SummaryLog = map[string]Summary{
@@ -1201,10 +1205,13 @@ var SummaryTime = map[string]Summary{
 	"(time.Time).IsZero": SingleVarArgPropagation,
 	"(time.Time).Equal":  TwoArgPropagation,
 	// func (t Time) Format(layout string) string
-	"(time.Time).Format": TwoArgPropagation,
-	"(time.Time).Month":  SingleVarArgPropagation,
-	"(time.Time).Second": SingleVarArgPropagation,
-	"(time.Time).Sub":    TwoArgPropagation,
+	"(time.Time).Format":     TwoArgPropagation,
+	"(time.Time).Month":      SingleVarArgPropagation,
+	"(time.Time).Hour":       SingleVarArgPropagation,
+	"(time.Time).Minute":     SingleVarArgPropagation,
+	"(time.Time).Second":     SingleVarArgPropagation,
+	"(time.Time).Nanosecond": SingleVarArgPropagation,
+	"(time.Time).Sub":        TwoArgPropagation,
 	// func (t Time) UTC() Time
 	"(time.Time).UTC": SingleVarArgPropagation,
 	// func (t Time) UnixNano() int64

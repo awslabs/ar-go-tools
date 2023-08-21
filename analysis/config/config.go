@@ -102,6 +102,15 @@ type Config struct {
 	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
 	SummarizeOnDemand bool
 
+	// IgnoreNonSummarized allows the analysis to ignore when the summary of a function has not been built in the first
+	// analysis phase. This is only for experimentation, since the results may be unsound.
+	// This has no effect when SummarizeOnDemand is true
+	IgnoreNonSummarized bool
+
+	// SourceTaintsArgs specifies whether calls to a source function also taints the argument. This is usually not
+	// the case, but might be useful for some users or for source functions that do not return anything.
+	SourceTaintsArgs bool
+
 	// ReportPaths specifies whether the taint flows should be reported in separate files. For each taint flow, a new
 	// file named taint-*.out will be generated with the trace from source to sink
 	ReportPaths bool
@@ -154,6 +163,8 @@ func NewDefault() *Config {
 		MaxDepth:            1000,
 		MaxAlarms:           0,
 		LogLevel:            int(InfoLevel),
+		SourceTaintsArgs:    false,
+		IgnoreNonSummarized: false,
 	}
 }
 

@@ -101,7 +101,6 @@ func TestCap() {
 	ch <- source1()
 	c2 := cap(ch)
 	sink(c2)
-
 }
 
 func main() {
