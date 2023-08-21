@@ -244,6 +244,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 			if b {
 				buildCounter++
 			}
+			createCounter++
 			return b
 		}
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{

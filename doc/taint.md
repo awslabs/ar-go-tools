@@ -50,8 +50,44 @@ reportpaths: true        # all the paths from sources to sinks that have been di
 And some other options:
 ```
 sourcetaintsargs: false  # by default, the result of a call to a source function is tainted. In some cases
-a user might want to consider all arguments of a source function to be tainted 
+a user might want to consider all arguments of a source function to be tainted
 ```
+### Specifying code locations
+
+In the above example, the user specified code locations for the elements that defines their dataflow problem (sources, sinks, sanitizers and validators). The most common form for these *code identifiers* is the one shown above where a method and a package are specified, e.g.:
+```
+sources:
+    - package: "example1"
+      method: "GetSensitiveData"
+```
+specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `sourcetaintsargs` option is set to true). There are also other possible code identifers, for example one can view any object of a given type as sources:
+```
+sources:
+    - package: "mypackage"
+      type: "taintedDataType"
+```
+This implies that any object of type `taintedDataType` from the package `mypackage` is a source of tainted data. Every allocation of an object of this type will be marked as a source. Other source specifications are for channel receives and field reads.
+
+**Channel receives** are of the following form:
+```
+sources:
+    - package: "mypackage"
+      type: "chan A"
+      kind: "channel receive"
+```
+The difference compared to the previous specification is the `kind` attribute that explicitly specifies that only the action of receiving data from that type is considered as a source. Here, any data read from a channel of type `chan A` in `mypackage` will be considered tainted (where `A` is the type within the `mypackage` package).
+
+**Field reads** are of the form:
+```
+sources:
+    - package: "mypackage"
+      type: "structA"
+      field: "taintedMember"
+```
+This implies that any access to the field `taintedMember` of a struct of type `structA` in package `mypackage` will be seen as a source of tainted data.
+
+
+> The specifications for sources can be function calls, types, channel receives or field reads. The specifications for sinks, sanitizers and validators can only be functions (method and package).
 
 ## Taint Analysis Output
 
@@ -323,9 +359,9 @@ In the specification for the `Reader` method, the first argument's data flows to
 
 ## Using Escape Analysis
 
-The dataflow analysis does not support concurrency by default, meaning that it is unsound in the presence of concurrent 
-threads (or goroutines). However, it can use the escape analysis built in Argot to check the validity of this assumption, and raise an 
-alarm whenever the assumption that *concurrency does not interfere with dataflow* is not met. In other words, this will raise a warning when the flow of data from a 
+The dataflow analysis does not support concurrency by default, meaning that it is unsound in the presence of concurrent
+threads (or goroutines). However, it can use the escape analysis built in Argot to check the validity of this assumption, and raise an
+alarm whenever the assumption that *concurrency does not interfere with dataflow* is not met. In other words, this will raise a warning when the flow of data from a
 source may interact with a memory location that is not thread-local.
 
 To enable the escape analysis, use the following option in the config file:
@@ -334,7 +370,7 @@ useescapeanalysis: true
 ```
 If any tainted data *escapes* the thread it originates from, the tool will print those locations at the end of its
 output.
-For example, try running `./bin/taint -config testdata/src/taint/sample-escape/config.yaml testdata/src/taint/sample-escape/main.go`, 
+For example, try running `./bin/taint -config testdata/src/taint/sample-escape/config.yaml testdata/src/taint/sample-escape/main.go`,
 you should see some output similar to:
 ```
 [INFO]  RESULT:
@@ -349,5 +385,5 @@ you should see some output similar to:
 
 ```
 Indicating that no taint flow was detected, but tainted data escapes the thread it was generated in, which is a threat
-to the soundness of the analysis. In this case, the data may indeed flow to a sink! In general, always sanitize the 
+to the soundness of the analysis. In this case, the data may indeed flow to a sink! In general, always sanitize the
 data before interacting with other goroutines to avoid such cases.

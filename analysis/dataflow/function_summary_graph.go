@@ -185,7 +185,9 @@ func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState, shouldTrack func(*
 			}
 		case *ssa.MakeClosure:
 			g.addClosure(x)
-		case *ssa.Alloc, *ssa.FieldAddr, *ssa.Field:
+
+		// Other types of sources that may be used in config
+		case *ssa.Alloc, *ssa.FieldAddr, *ssa.Field, *ssa.UnOp:
 			if shouldTrack != nil && shouldTrack(s.Config, x.(ssa.Node)) { // conversion will never fail for that switch case
 				g.addSyntheticNode(x, "source")
 			}

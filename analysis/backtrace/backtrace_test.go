@@ -523,7 +523,8 @@ type testDef struct {
 // the expected source must exist somewhere in the trace.
 func TestAnalyze_Taint(t *testing.T) {
 	tests := []testDef{
-		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go", "sanitizers.go", "memory.go"}},
+		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
+			"sanitizers.go", "memory.go", "channels.go"}},
 		{"builtins", []string{"helpers.go"}},
 		{"interfaces", []string{}},
 		{"parameters", []string{}},
@@ -542,6 +543,7 @@ func TestAnalyze_Taint(t *testing.T) {
 	skip := map[string]bool{
 		"fields.go":     true, // struct fields as backtracepoints are not supported yet
 		"sanitizers.go": true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
+		"channels.go":   true, // backtrace doesn't trace channel reads as sources
 	}
 
 	for _, test := range tests {

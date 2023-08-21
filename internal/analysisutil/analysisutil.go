@@ -19,6 +19,7 @@ package analysisutil
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -27,19 +28,20 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// FindTypePackage finds the package declaring t or returns an error
-// Returns a package name and the name of the type declared in that package
-func FindTypePackage(t types.Type) (string, string, error) {
+// FindEltTypePackage finds the package declaring the elements of t or returns an error
+// Returns a package name and the name of the type declared in that package.
+// preform is the formatting of the type of the element; usually %s
+func FindEltTypePackage(t types.Type, preform string) (string, string, error) {
 	switch typ := t.(type) {
 	case *types.Pointer:
-		return FindTypePackage(typ.Elem()) // recursive call
+		return FindEltTypePackage(typ.Elem(), fmt.Sprintf(preform, "*%s")) // recursive call
 	case *types.Named:
 		// Return package name, type name
 		obj := typ.Obj()
 		if obj != nil {
 			pkg := obj.Pkg()
 			if pkg != nil {
-				return pkg.Name(), obj.Name(), nil
+				return pkg.Name(), fmt.Sprintf(preform, obj.Name()), nil
 			} else {
 				// obj is in Universe
 				return "", obj.Name(), nil
@@ -50,13 +52,15 @@ func FindTypePackage(t types.Type) (string, string, error) {
 		}
 
 	case *types.Array:
-		return FindTypePackage(typ.Elem()) // recursive call
+		n := typ.Len()
+		p := fmt.Sprintf(preform, fmt.Sprintf("[%v]", n)+"%s")
+		return FindEltTypePackage(typ.Elem(), p) // recursive call
 	case *types.Map:
-		return FindTypePackage(typ.Elem()) // recursive call
+		return FindEltTypePackage(typ.Elem(), fmt.Sprintf(preform, "map["+typ.Key().String()+"]%s")) // recursive call
 	case *types.Slice:
-		return FindTypePackage(typ.Elem()) // recursive call
+		return FindEltTypePackage(typ.Elem(), fmt.Sprintf(preform, "[]%s")) // recursive call
 	case *types.Chan:
-		return FindTypePackage(typ.Elem()) // recursive call
+		return FindEltTypePackage(typ.Elem(), fmt.Sprintf(preform, "chan %s")) // recursive call
 	case *types.Basic, *types.Tuple, *types.Interface, *types.Signature:
 		// We ignore this for now (tuple may involve multiple packages)
 		return "", "", fmt.Errorf("not a type with a package and name")
@@ -115,7 +119,7 @@ func getFieldNameFromType(t types.Type, i int) string {
 	}
 }
 
-// IsEntrypointNode returns true if n is an entrypoint to the intra-procedural analysis according to f.
+// IsEntrypointNode returns true if n is an entrypoint to the analysis according to f.
 func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, config.CodeIdentifier) bool) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered entry points
@@ -128,47 +132,54 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 			methodName := node.Call.Method.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
-				return f(*cfg, config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
-			} else {
-				return false
+				return f(*cfg,
+					config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
 			}
+			return false
 		} else {
 			funcValue := node.Call.Value.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
 				return f(*cfg, config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue})
-			} else {
-				return false
 			}
+			return false
 		}
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:
 		fieldName := FieldFieldName(node)
-		packageName, typeName, err := FindTypePackage(node.X.Type())
+		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
 			return false
-		} else {
-			return f(*cfg, config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
 		}
+		return f(*cfg, config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
 
 	case *ssa.FieldAddr:
 		fieldName := FieldAddrFieldName(node)
-		packageName, typeName, err := FindTypePackage(node.X.Type())
+		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
 			return false
-		} else {
-			return f(*cfg, config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
 		}
+		return f(*cfg, config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
 
 	// Allocations of data of a type that is an entry point
 	case *ssa.Alloc:
-		packageName, typeName, err := FindTypePackage(node.Type())
+		packageName, typeName, err := FindEltTypePackage(node.Type(), "%s")
 		if err != nil {
 			return false
-		} else {
-			return f(*cfg, config.CodeIdentifier{Package: packageName, Type: typeName})
 		}
+		return f(*cfg, config.CodeIdentifier{Package: packageName, Type: typeName})
+
+	// Channel receives can be sources
+	case *ssa.UnOp:
+		if node.Op == token.ARROW {
+			packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
+			if err != nil {
+				return false
+			}
+			return f(*cfg, config.CodeIdentifier{Package: packageName, Type: typeName, Kind: "channel receive"})
+		}
+		return false
 
 	default:
 		return false
