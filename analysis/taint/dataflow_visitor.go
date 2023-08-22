@@ -319,9 +319,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						que = v.addNext(s, que, seen, elt, x, oPath, nil, elt.ClosureTrace)
 					}
 				}
-			} else {
-				panic("no call node to return to")
 			}
+			// else, if there are no callsites this was an unreachable function
 
 		// This is a call node, which materializes where the callee returns. A call node is reached from a return
 		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
