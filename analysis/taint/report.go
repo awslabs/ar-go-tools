@@ -21,6 +21,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -130,21 +131,47 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 				continue
 			}
 			src, offset := getSourceAround(pos, c.Program.Fset)
-			link := ""
+			cardHeader := ""
 			amazonSrc := strings.Index(pos.Filename, "/amazon-ssm-agent/")
 			if amazonSrc != -1 {
 				relativeFile := pos.Filename[amazonSrc+len("/amazon-ssm-agent/"):]
 				href := fmt.Sprintf("https://code.amazon.com/packages/Amazon-ssm-agent/blobs/heads/Credens/--/%s#L%d", relativeFile, pos.Line)
-				link = fmt.Sprintf(`<a class="codelink" href="%s">🡵</a>`, href)
+				cardHeader = fmt.Sprintf(`<a class="codelink" href="%s">🡵</a>`, href)
 			}
-			cardSources = append(cardSources, fmt.Sprintf(`<div class="flow-card" id="card%d">%s<pre><code class="language-go">%s</code></pre></div><!-- line %d -->`, cardIndex, link, src, pos.Line))
-			cardData = append(cardData, []int{offset, offset})
+			filename := pos.Filename
+			if idx := strings.Index(filename, "/goroot/"); idx != -1 {
+				filename = filename[idx+1:]
+			} else if idx := strings.Index(filename, "/amazon-ssm-agent/"); idx != -1 {
+				filename = filename[idx+len("/amazon-ssm-agent/"):]
+			}
+			cardSources = append(cardSources, fmt.Sprintf("<div class=\"spacer\"><code>%s</code></div>", dataflow.NodeSummary(nodes[i].Node)))
+			cardHeader += fmt.Sprintf("<div class=\"location-header\">%s:%d</div>", filename, pos.Line)
+			cardSources = append(cardSources, fmt.Sprintf(`<div class="flow-card" id="card%d">%s<pre><code class="language-go">%s</code></pre></div><!-- line %d -->`, cardIndex, cardHeader, src, pos.Line))
+
+			offset2 := offset
+			// Look forward to find an identifier
+			r := regexp.MustCompile("^[a-zA-Z_][a-zA-Z_0-9]*")
+			if match := r.FindStringIndex(src[offset:]); match != nil {
+				offset2 = offset + match[1]
+			} else {
+				// Otherwise, try looking backwards
+				index := offset
+				for index > 0 {
+					c := rune(src[index-1])
+					if !(('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('0' <= c && c <= '9') || ('_' == c)) {
+						break
+					}
+					index -= 1
+				}
+				offset = index
+			}
+			cardData = append(cardData, []int{offset, offset2})
 			cardIndex += 1
 		}
 
 		d, _ := json.Marshal(cardData)
 		report := strings.ReplaceAll(htmlReport, "$CARD_DATA", string(d))
-		report = strings.Replace(report, "$FLOW_CARDS", strings.Join(cardSources, "\n<div class=\"spacer\"></div>\n"), 1)
+		report = strings.Replace(report, "$FLOW_CARDS", strings.Join(cardSources, "\n"), 1)
 		tmp.WriteString(report)
 	}
 }
@@ -197,26 +224,51 @@ pre code.hljs {
     overflow: hidden;
 }
 .flow-card  {
-    max-width: 500px;
     border-radius: 5px;
     border: 2px solid #EED;
 	overflow: hidden;
 	position: relative;
 }
 .spacer {
-    height: 30px;
+	height: 30px;
+	line-height: 30px;
+	padding-left: 5px;
 }
 .flow-anchor {
     background: #DDD;
 }
+
+/* Adjust the colors to be less distracting */
 .hljs {
     background: none;
 }
+.hljs-string {
+    color: #573212;
+}
+.hljs-literal {
+	color: #3e5935;
+}
+.hljs-type {
+	color: #752d2d;
+}
+.hljs-section, .hljs-title {
+	color: #752d2d;
+	font-weight: 500;
+}
+.hljs-addition, .hljs-built_in, .hljs-bullet, .hljs-code {
+	color: #240;
+  }
 .codelink {
 	position: absolute;
 	right: 5px;
 	text-decoration: none;
 }
+.location-header {
+	font-family: monospace;
+	font-size: 0.8em;
+	color: #999;
+	margin-left: 2px;
+  }
 </style>
 </head>
 <body>
