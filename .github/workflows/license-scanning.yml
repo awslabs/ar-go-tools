@@ -29,10 +29,10 @@ jobs:
           go install github.com/google/go-licenses@latest
       - name: Run license scanning tool, check for disallowed licenses
         run: |
-          go-licenses check --include-tests ./analysis ./internal/* ./cmd/* --disallowed_types=forbidden,restricted,reciprocal
+          go-licenses check --include_tests ./analysis ./internal/* ./cmd/* --disallowed_types=forbidden,restricted,reciprocal
       - name: Produce report for licenses
         run: |
-          go-licenses report --include-tests ./analysis ./internal/* ./cmd/* --disallowed_types=forbidden,restricted,reciprocal > licenses_report.csv
+          go-licenses report --include_tests ./analysis ./internal/* ./cmd/* > licenses_report.csv
       - name: Archive license report
         uses: actions/upload-artifact@v3
         with:
