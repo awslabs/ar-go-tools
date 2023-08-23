@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build go1.20
-
 package backtrace_test
 
 import (
@@ -74,7 +72,7 @@ func TestAnalyze_OnDemand(t *testing.T) {
 var ignoreMatch = match{-1, nil, -1}
 
 func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	cfg.LogLevel = int(config.TraceLevel)
+	cfg.LogLevel = int(config.InfoLevel)
 	lg := config.NewLogGroup(cfg)
 	res, err := backtrace.Analyze(lg, cfg, program)
 	if err != nil {
@@ -89,16 +87,16 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			name: `trace to os/exec.Command arg 0 in main from os/exec.Command arg 0 in main`,
 			// "(SA)call: os/exec.Command("ls":string, nil:[]string...) in main [#576.5]: @arg 0:"ls":string [#576.6]" at -
 			matches: []match{
-				{arg, argval{`"ls":string`, 0}, 0},
+				{arg, argval{`"ls":string`, 0}, 26},
 			},
 		},
 		{
 			name: `trace to os/exec.Command arg 1 in main from os/exec.Command arg 1 in main`,
 			// "(SA)call: os/exec.Command("ls":string, nil:[]string...) in main [#580.5]: @arg 1:nil:[]string [#580.7]" at -
 			matches: []match{
-				{arg, argval{`nil:[]string`, 1}, 0},
+				{arg, argval{`nil:[]string`, 1}, 26},
 				{param, `parameter arg : []string`, -1}, // line -1 means ignore position
-				{arg, argval{`nil:[]string`, 1}, 0},
+				{arg, argval{`nil:[]string`, 1}, 26},
 			},
 		},
 		{
@@ -135,7 +133,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 				{globalRead, `*os.Args`, -1}, // TODO figure out why line 43 is not in any of the traces
 				{arg, argval{nil, 0}, 43},
 				{param, `parameter name : string`, 71},
-				{arg, argval{`name`, 0}, 71},
+				{arg, argval{`name`, 0}, 72},
 			},
 		},
 		{
@@ -150,7 +148,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 				{globalRead, `*os.Args`, -1}, // TODO figure out why line 43 is not in any of the traces
 				{arg, argval{nil, 1}, 43},
 				{param, `parameter args : []string`, 71},
-				{arg, argval{`args`, 1}, 71},
+				{arg, argval{`args`, 1}, 72},
 			},
 		},
 		{
@@ -159,9 +157,9 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#581.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			// "(SA)call: os/exec.Command(name, args...) in runcmd [#581.3]: @arg 0:name [#581.4]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			matches: []match{
-				{arg, argval{`"ls1":string`, 0}, 0},
+				{arg, argval{`"ls1":string`, 0}, 36},
 				{param, `parameter name : string`, 71},
-				{arg, argval{`name`, 0}, 71},
+				{arg, argval{`name`, 0}, 72},
 			},
 		},
 		{
@@ -173,11 +171,11 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 				// NOTE duplicate arg and param matches are needed because a mutable parameter acts as an "inout" parameter:
 				// data can flow from a param to an arg back to the param if it was mutated inside the function
 				// TODO detect the mutation inside the function to make this more precise
-				{arg, argval{`nil:[]string`, 1}, 0},
+				{arg, argval{`nil:[]string`, 1}, 36},
 				{param, `parameter args : []string`, 71},
-				{arg, argval{`nil:[]string`, 1}, 0},
+				{arg, argval{`nil:[]string`, 1}, 36},
 				{param, `parameter args : []string`, 71},
-				{arg, argval{`args`, 1}, 71},
+				{arg, argval{`args`, 1}, 72},
 			},
 		},
 		{
@@ -186,9 +184,9 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#582.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			// "(SA)call: os/exec.Command(name, args...) in runcmd [#582.3]: @arg 0:name [#582.4]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			matches: []match{
-				{arg, argval{`"ls2":string`, 0}, 0},
+				{arg, argval{`"ls2":string`, 0}, 39},
 				{param, `parameter name : string`, 71},
-				{arg, argval{`name`, 0}, 71},
+				{arg, argval{`name`, 0}, 72},
 			},
 		},
 		{
@@ -197,11 +195,11 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#582.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			// "(SA)call: os/exec.Command(name, args...) in runcmd [#582.3]: @arg 0:name [#582.4]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			matches: []match{
-				{arg, argval{`nil:[]string`, 1}, 0},
+				{arg, argval{`nil:[]string`, 1}, 39},
 				{param, `parameter args : []string`, 71},
-				{arg, argval{`nil:[]string`, 1}, 0},
+				{arg, argval{`nil:[]string`, 1}, 39},
 				{param, `parameter args : []string`, 71},
-				{arg, argval{`args`, 1}, 71},
+				{arg, argval{`args`, 1}, 72},
 			},
 		},
 		{
@@ -218,9 +216,9 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#583.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			// "[#583.4] @arg 0:name in [#583.3] (SA)call: os/exec.Command(name, args...) in runcmd " at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71
 			matches: []match{
-				{arg, argval{`"ls3":string`, 0}, 0},
+				{arg, argval{`"ls3":string`, 0}, 49},
 				{param, `parameter x : string`, 63},
-				{arg, argval{`x`, 0}, 63},
+				{arg, argval{`x`, 0}, 64},
 				{param, `parameter x : string`, 67},
 				{ret, nil, 67},
 				{call, `baz`, 64},
@@ -228,7 +226,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 				{call, `bar`, 49},
 				{arg, argval{nil, 0}, 49},
 				{param, `parameter name : string`, 71},
-				{arg, argval{nil, 0}, 71},
+				{arg, argval{nil, 0}, 72},
 			},
 		},
 		{
@@ -237,9 +235,9 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#577.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			// "(SA)call: os/exec.Command(name, args...) in runcmd [#577.3]: @arg 0:name [#577.4]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			matches: []match{
-				{arg, argval{`"ls4":string`, 0}, 0},
+				{arg, argval{`"ls4":string`, 0}, 55},
 				{param, `parameter name : string`, 71},
-				{arg, argval{`name`, 0}, 71},
+				{arg, argval{`name`, 0}, 72},
 			},
 		},
 		{
@@ -248,11 +246,11 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#578.1] parameter args : []string of runcmd [1]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:26
 			// "(SA)call: os/exec.Command(name, args...) in runcmd [#578.3]: @arg 1:args [#578.5]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:26
 			matches: []match{
-				{arg, argval{`nil:[]string`, 1}, 0},
+				{arg, argval{`nil:[]string`, 1}, 55},
 				{param, `parameter args : []string`, 71},
-				{arg, argval{`nil:[]string`, 1}, 0},
+				{arg, argval{`nil:[]string`, 1}, 55},
 				{param, `parameter args : []string`, 71},
-				{arg, argval{`args`, 1}, 71},
+				{arg, argval{`args`, 1}, 72},
 			},
 		},
 		{
@@ -269,7 +267,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#580.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			// "[#580.4] @arg 0:name in [#580.3] (SA)call: os/exec.Command(name, args...) in runcmd " at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			matches: []match{
-				{arg, argval{`"hello1":string`, 0}, 0},
+				{arg, argval{`"hello1":string`, 0}, 81},
 				{param, `parameter x : string`, 67},
 				{ret, nil, 67},
 				{call, `baz`, 81},
@@ -279,7 +277,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 				{call, `write`, 82},
 				{arg, argval{nil, 0}, 82},
 				{param, `parameter name : string`, 71},
-				{arg, argval{nil, 0}, 71},
+				{arg, argval{nil, 0}, 72},
 			},
 		},
 		{
@@ -294,7 +292,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#580.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			// "[#580.4] @arg 0:name in [#580.3] (SA)call: os/exec.Command(name, args...) in runcmd " at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			matches: []match{
-				{arg, argval{`"hello2":string`, 0}, 0},
+				{arg, argval{`"hello2":string`, 0}, 87},
 				{param, `parameter x : string`, 67},
 				{ret, nil, 67},
 				{call, `baz`, 87},
@@ -302,7 +300,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 				{call, `write`, 82},
 				{arg, argval{nil, 0}, 82},
 				{param, `parameter name : string`, 71},
-				{arg, argval{nil, 0}, 71},
+				{arg, argval{nil, 0}, 72},
 			},
 		},
 	}
@@ -354,7 +352,7 @@ func TestAnalyze_Closures(t *testing.T) {
 	// This test uses the taint analysis' closures test file to ensure completeness.
 	// The backtracepoints (entrypoints to the backwards analysis) are identical to the sinks in the taint analysis.
 	// See the config.yaml file for details.
-
+	//t.Skipf("Skip until tests are fixed so they do not depend on a specific output format.")
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
@@ -376,7 +374,7 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 }
 
 func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	cfg.LogLevel = int(config.TraceLevel)
+	cfg.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
 	lg := config.NewLogGroup(cfg)
 	res, err := backtrace.Analyze(lg, cfg, program)
 	if err != nil {
@@ -407,11 +405,11 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 			matches: []match{
 				{ret, nil, 23},
 				{call, `source`, 32},
-				{arg, argval{nil, 0}, 32},
+				{arg, argval{nil, 0}, 33},
 				{param, `parameter a : string`, 31},
 				{arg, argval{nil, 0}, 31},
 				{param, `parameter a : string`, 23},
-				{arg, argval{nil, 1}, 0},
+				{arg, argval{nil, 1}, 24},
 				{param, `parameter a : []any`, 237},
 				{ret, nil, 237},
 				{call, `Sprintf`, 24},
@@ -419,7 +417,7 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 				{call, `wrap`, 31},
 				{ret, nil, 31},
 				{call, nil, 33},
-				{arg, argval{nil, 0}, 0},
+				{arg, argval{nil, 0}, 34},
 			},
 		},
 		{
@@ -444,7 +442,7 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 				{freevar, `lparen`, 29},
 				{arg, argval{nil, 1}, 31},
 				{param, `parameter before : string`, 23},
-				{arg, argval{nil, 1}, 0},
+				{arg, argval{nil, 1}, 24},
 				{param, `parameter a : []any`, 237},
 				{ret, nil, 237},
 				{call, `Sprintf`, 24},
@@ -452,7 +450,7 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 				{call, `wrap`, 31},
 				{ret, nil, 31},
 				{call, nil, 33},
-				{arg, argval{nil, 0}, 0},
+				{arg, argval{nil, 0}, 34},
 			},
 		},
 		{
@@ -477,7 +475,7 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 				{call, nil, 116},
 				{ret, nil, 114},
 				{call, nil, 119},
-				{arg, argval{nil, 0}, 0},
+				{arg, argval{nil, 0}, 120},
 			},
 		},
 	}
@@ -523,7 +521,8 @@ type testDef struct {
 // the expected source must exist somewhere in the trace.
 func TestAnalyze_Taint(t *testing.T) {
 	tests := []testDef{
-		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go", "sanitizers.go", "memory.go"}},
+		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
+			"sanitizers.go", "memory.go", "channels.go"}},
 		{"builtins", []string{"helpers.go"}},
 		{"interfaces", []string{}},
 		{"parameters", []string{}},
@@ -542,6 +541,7 @@ func TestAnalyze_Taint(t *testing.T) {
 	skip := map[string]bool{
 		"fields.go":     true, // struct fields as backtracepoints are not supported yet
 		"sanitizers.go": true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
+		"channels.go":   true, // backtrace doesn't trace channel reads as sources
 	}
 
 	for _, test := range tests {
@@ -574,7 +574,7 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 
 	cfg.BacktracePoints = cfg.Sinks
 	cfg.SummarizeOnDemand = isOnDemand
-	cfg.LogLevel = int(config.TraceLevel)
+	cfg.LogLevel = int(config.DebugLevel)
 	lg := config.NewLogGroup(cfg)
 	res, err := backtrace.Analyze(lg, cfg, program)
 	if err != nil {

@@ -44,23 +44,25 @@ const (
 )
 
 type LogGroup struct {
-	Level LogLevel
-	trace *log.Logger
-	debug *log.Logger
-	info  *log.Logger
-	warn  *log.Logger
-	err   *log.Logger
+	Level        LogLevel
+	suppressWarn bool
+	trace        *log.Logger
+	debug        *log.Logger
+	info         *log.Logger
+	warn         *log.Logger
+	err          *log.Logger
 }
 
 // NewLogGroup returns a log group that is configured to the logging settings stored inside the config
 func NewLogGroup(config *Config) *LogGroup {
 	l := &LogGroup{
-		Level: LogLevel(config.LogLevel),
-		trace: log.New(os.Stdout, colors.Faint("[TRACE] "), 0),
-		debug: log.New(os.Stdout, "[DEBUG] ", 0),
-		info:  log.New(os.Stdout, colors.Green("[INFO]  "), 0),
-		warn:  log.New(os.Stdout, colors.Yellow("[WARN]  "), 0),
-		err:   log.New(os.Stdout, colors.Red("[ERROR] "), 0),
+		Level:        LogLevel(config.LogLevel),
+		suppressWarn: !config.Warn,
+		trace:        log.New(os.Stdout, colors.Faint("[TRACE] "), 0),
+		debug:        log.New(os.Stdout, "[DEBUG] ", 0),
+		info:         log.New(os.Stdout, colors.Green("[INFO]  "), 0),
+		warn:         log.New(os.Stdout, colors.Yellow("[WARN]  "), 0),
+		err:          log.New(os.Stdout, colors.Red("[ERROR] "), 0),
 	}
 	return l
 }
@@ -106,7 +108,7 @@ func (l *LogGroup) Infof(format string, v ...any) {
 
 // Warnf calls Warn.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Warnf(format string, v ...any) {
-	if l.Level >= WarnLevel {
+	if l.Level >= WarnLevel && !l.suppressWarn {
 		l.warn.Printf(format, v...)
 	}
 }
@@ -141,7 +143,7 @@ func (l *LogGroup) LogsError() bool {
 
 // LogsWarning returns true if the log group logs warning messages
 func (l *LogGroup) LogsWarning() bool {
-	return l.Level >= WarnLevel
+	return l.Level >= WarnLevel && !l.suppressWarn
 }
 
 // LogsInfo returns true if the log group logs info messages

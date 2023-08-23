@@ -36,12 +36,12 @@ func TestCrossFunctionIntra_SummarizeOnDemand(t *testing.T) {
 
 func TestCrossFunctionBasic(t *testing.T) {
 	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
-		"sanitizers.go", "memory.go"}, false, noErrorExpected)
+		"sanitizers.go", "memory.go", "channels.go"}, false, noErrorExpected)
 }
 
 func TestCrossFunctionBasic_SummarizeOnDemand(t *testing.T) {
 	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
-		"sanitizers.go", "memory.go"}, true, noErrorExpected)
+		"sanitizers.go", "memory.go", "channels.go"}, true, noErrorExpected)
 }
 
 func TestCrossFunctionBuiltins(t *testing.T) {

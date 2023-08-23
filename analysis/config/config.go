@@ -134,6 +134,9 @@ type Config struct {
 	// Loglevel controls the verbosity of the tool
 	LogLevel int
 
+	// Suppress warnings
+	Warn bool
+
 	// if the PkgFilter is specified
 	pkgFilterRegex *regexp.Regexp
 
@@ -163,6 +166,7 @@ func NewDefault() *Config {
 		MaxDepth:            1000,
 		MaxAlarms:           0,
 		LogLevel:            int(InfoLevel),
+		Warn:                true,
 		SourceTaintsArgs:    false,
 		IgnoreNonSummarized: false,
 	}
@@ -170,12 +174,12 @@ func NewDefault() *Config {
 
 // Load reads a configuration from a file
 func Load(filename string) (*Config, error) {
-	cfg := Config{}
+	cfg := NewDefault()
 	b, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("could not read config file: %w", err)
 	}
-	err = yaml.Unmarshal(b, &cfg)
+	err = yaml.Unmarshal(b, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("could not unmarshal config file: %w", err)
 	}
@@ -183,7 +187,7 @@ func Load(filename string) (*Config, error) {
 	cfg.sourceFile = filename
 
 	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
-		err = setReportsDir(&cfg, filename)
+		err = setReportsDir(cfg, filename)
 		if err != nil {
 			return nil, err
 		}
@@ -222,7 +226,7 @@ func Load(filename string) (*Config, error) {
 	funcutil.Iter(cfg.Validators, compileRegexes)
 	funcutil.Iter(cfg.Validators, compileRegexes)
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 func setReportsDir(c *Config, filename string) error {

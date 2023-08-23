@@ -287,6 +287,25 @@ func example13ValidateThenTaint() {
 	}
 }
 
+// Example 19: validate a parameter of the function
+func example19ValidateFunctionParameter() {
+	a1 := A{0, source1()} // @Source(ex19)
+	validateThenSink(a1)
+}
+
+func validateThenSink(ax A) {
+	dummyUsage(&(ax.Y))
+	_, err := ValidateErr(ax)
+	if err != nil {
+		return
+	}
+	sink1(ax)
+}
+
+func dummyUsage(x *string) {
+	fmt.Println(*x)
+}
+
 func main() {
 	validatorExample0()
 	validatorExample0Bis()
@@ -309,4 +328,5 @@ func main() {
 	example16validateOnReference3()
 	example17validateOnReference4()
 	example18validateOnFieldReference()
+	example19ValidateFunctionParameter()
 }

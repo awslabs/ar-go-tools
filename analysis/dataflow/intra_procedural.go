@@ -191,22 +191,23 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
 			c := state.checkFlow(mark, callInstr, arg)
 			if c.Satisfiable {
+				var applicableCond *ConditionInfo
+				if c2 := c.AsPredicateTo(arg); len(c2.Conditions) > 0 {
+					applicableCond = &c2
+				}
 				// Add the condition only if it is a predicate on the argument, i.e. there are boolean functions
 				// that apply to the destination value
-				if c2 := c.AsPredicateTo(arg); len(c2.Conditions) > 0 {
-					state.summary.addCallArgEdge(mark, &c2, callInstr, arg)
-				} else {
-					state.summary.addCallArgEdge(mark, nil, callInstr, arg)
-				}
+				state.summary.addCallArgEdge(mark, applicableCond, callInstr, arg)
+
 				// Add edges to parameters if the call may modify caller's arguments
 				for x := range state.paramAliases[arg] {
 					if lang.IsNillableType(x.Type()) {
-						state.summary.addParamEdge(mark, nil, x)
+						state.summary.addParamEdge(mark, applicableCond, x)
 					}
 				}
 				for y := range state.freeVarAliases[arg] {
 					if lang.IsNillableType(y.Type()) {
-						state.summary.addFreeVarEdge(mark, nil, y)
+						state.summary.addFreeVarEdge(mark, applicableCond, y)
 					}
 				}
 			}
@@ -251,7 +252,7 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			// calling Type() may cause segmentation error
 			break
 		default:
-			// Check the state of the analysis at the final return to see which parameters of free variables might
+			// Check the state of the analysis at the final return to see which parameters or free variables might
 			// have been modified by the function
 			for mark := range marks {
 				if lang.IsNillableType(val.Type()) {
@@ -333,7 +334,14 @@ func (state *IntraAnalysisState) moveLocSetsToSummary() {
 func (state *IntraAnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) ConditionInfo {
 	sourceInstr, ok := source.Node.(ssa.Instruction)
 	if !ok {
-		return ConditionInfo{Satisfiable: true}
+		// if destination is parameter or free variable, this check is not meant to do anything
+		// (the flow to a parameter or free var is observed AFTER the function returns)
+		_, isDestParam := destVal.(*ssa.Parameter)
+		_, isDestFreeVar := destVal.(*ssa.Parameter)
+		if !source.IsParameter() || len(dest.Parent().Blocks) <= 0 || isDestFreeVar || isDestParam {
+			return ConditionInfo{Satisfiable: true}
+		}
+		sourceInstr = dest.Parent().Blocks[0].Instrs[0]
 	}
 
 	if destVal == nil {
