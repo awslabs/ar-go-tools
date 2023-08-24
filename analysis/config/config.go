@@ -123,8 +123,8 @@ type Config struct {
 	ReportNoCalleeSites bool
 
 	// MaxDepth sets a limit for the number of function call depth explored during the analysis
-	// Default is 1000 (TODO: work towards not needing this)
-	// If provided MaxDepth is <= 0, then it will be reset to default.
+	// Default is -1.
+	// If provided MaxDepth is <= 0, then it is ignored.
 	MaxDepth int
 
 	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
@@ -163,7 +163,7 @@ func NewDefault() *Config {
 		ReportPaths:         false,
 		ReportCoverage:      false,
 		ReportNoCalleeSites: false,
-		MaxDepth:            1000,
+		MaxDepth:            DefaultMaxCallDepth,
 		MaxAlarms:           0,
 		LogLevel:            int(InfoLevel),
 		Warn:                true,
@@ -326,4 +326,14 @@ func (c Config) IsBacktracePoint(cid CodeIdentifier) bool {
 // Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)
 func (c Config) Verbose() bool {
 	return c.LogLevel >= int(DebugLevel)
+}
+
+// ExceedsMaxDepth returns true if the input exceeds the maximum depth parameter of the configuration.
+// (this implements the logic for using maximum depth; if the configuration setting is < 0, then this returns false)
+func (c Config) ExceedsMaxDepth(d int) bool {
+	if c.MaxDepth <= 0 {
+		return false
+	} else {
+		return d > c.MaxDepth
+	}
 }

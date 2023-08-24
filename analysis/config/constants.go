@@ -15,4 +15,5 @@
 package config
 
 // DefaultMaxCallDepth is the default maximum call stack value that will be considered by the analyses using it
-var DefaultMaxCallDepth = 1000
+// -1 means that depth limit is ignored
+var DefaultMaxCallDepth = -1

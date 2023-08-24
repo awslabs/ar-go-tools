@@ -203,8 +203,10 @@ func cmdSummary(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) b
 			printSummary(tt, command, summary)
 		}
 	}
-	if numSummaries > 0 {
+	if numSummaries > 1 {
 		WriteSuccess(tt, "(%d matching summaries)", numSummaries)
+	} else if numSummaries == 1 {
+		WriteSuccess(tt, "(1 matching summary)")
 	} else {
 		if numFuncs > 0 {
 			WriteSuccess(tt, "No summaries found. Consider building summaries (summarize).")

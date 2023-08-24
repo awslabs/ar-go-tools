@@ -60,7 +60,7 @@ func addNext(c *AnalyzerState,
 	newNode := NodeWithTrace{Node: node, Trace: trace, ClosureTrace: closureTrace}
 
 	// Stop conditions: node is already in seen, trace is a lasso or depth exceeds limit
-	if seen[newNode] || trace.GetLassoHandle() != nil || cur.Depth > c.Config.MaxDepth {
+	if seen[newNode] || trace.GetLassoHandle() != nil || c.Config.ExceedsMaxDepth(cur.Depth) {
 		return que
 	}
 
