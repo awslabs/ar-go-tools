@@ -1,3 +1,4 @@
+
 # Render Tool
 
 The `render` tool allows the user to show the results of several intermediate representations and analyzes of a given program. It is primarily useful as a debugging tool. The tool loads the program, runs any requested analyes, and writes the results to one or more files. The tool can output:
@@ -76,3 +77,4 @@ This option outputs the inter-procedural dataflow graph for a program. The const
 - `-dfout FILE.dot`
 
 The resulting graph is the same as printed by the [showdataflow](argot-cli.md#showdataflow) CLI command.
+

@@ -1,10 +1,15 @@
+
 # Taint Analysis
 
-The taint analysis tool `taint` performs a whole program, interprocedural taint analysis on the input program that is given. It is not necessary to understand those terms in order to use the tool. In this section we focus on explaining the user interface of the taint tool and give examples of what it can analyze. To understand how the taint analysis works, the reader should refer to the technical report (work in progress). Here we explain *how to use the taint analysis tool* through a set of examples (in [Taint Analysis Examples](#taint-analysis-examples)).
+The taint analysis tool `taint` performs a whole program, interprocedural taint analysis on the input program that is given. It is not necessary to understand those terms in order to use the tool, but you should be able to understand what problem it solves. A detailed explanation of taint analysis, or [taint checking](https://en.wikipedia.org/wiki/Taint_checking), is out of scope for this user guide. We refer the reader to the many useful resources available online. Note that our analysis is entirely "offline", i.e. static, as opposed to dynamic analyses that run the program and observe its behaviour. Our analysis constructs an internal representation that allows it to simulate all possible executions, without ever actually executing the program. As such, we are able to give strong guarantees about the results, under certain conditions. More precisely, we can state some [soundness](https://blog.sigplan.org/2019/08/07/what-does-it-mean-for-a-program-analysis-to-be-sound/) properties; *soundness* here means that if the analysis does not report any error, then there is no possible execution of the program that leads to an error. In our case (taint analysis), an error means that tainted data from a source flows to a sink.
+
+> ⚠ The taint analysis is **sound** in the absence of concurrency (e.g. goroutines), in the absence of usage of the `unsafe` and `reflect` packages of the Go library, and under certain configuration settings (see [Taint Analysis Configuration](#taint-analysis-configuration)). We explain later how to obtain reliable results for programs that use any of those features.
+
+In this section we focus on explaining the user interface of the taint tool and give examples of what it can analyze. To understand how the taint analysis works, the reader should refer to the technical report (work in progress). Here we explain *how to use the taint analysis tool* through a set of examples (in [Taint Analysis Examples](#taint-analysis-examples)).
 
 The tool will report flows from taint **sources** to **sinks**, taking in account **sanitizers** and **validators**. Those components are specified in the configuration file by the user (see [Taint Analysis Configuration](#taint-analysis-configuration)). The tool will output traces for each of the traces detected (and additional information if specified in the configuration file) (see [Taint Analysis Output](#taint-analysis-output)).
 
-> ⚠ The taint analysis does not support usages of the `reflect` and `unsafe` packages. We explain later how to analyze programs in the presence of those, but the result is not guaranteed to be correct when the analysis raises no alarms.
+
 
 ## Taint Analysis Configuration
 On top of the configuration options listed in the common fields, the user can configure taint-analysis specific options. The main configuration fields are the core components of the problem specification, which are the sources, sinks, sanitizers and validators of the dataflow problem. The *sources* identify the functions that return sensitive data, and this data should never reach any of the *sinks*. The *sanitizers* are functions that clear the data of its sensitive nature, i.e. those are functions that when receiving sensitive data, will return data that does not contain any sensitive information. *Validators* have a similar role, but do not return the data. When the value returned by a validator is a boolean and is true, then the data passed to the validator is considered to be taint-free in the branch where the boolean is true. When the value returned by a validator is an error, then the data is considered taint-free in the branch where the error is `nil`.
@@ -89,39 +94,69 @@ This implies that any access to the field `taintedMember` of a struct of type `s
 
 > The specifications for sources can be function calls, types, channel receives or field reads. The specifications for sinks, sanitizers and validators can only be functions (method and package).
 
+### Controlling The Data Flow Search
+
+The configuration contains some specific fields that allow users to tune how the analysis searches for data flows. Those options, if not set to their default value, will cause the analysis to possible ignore some tainted flows. However, this can be useful when the analysis reports false positives and the user wants to trade soundness for precision.
+
+#### Filters
+By default, the analysis considers that any type can carry tainted data. In some cases, this can be excessive, as one might not see boolean values as tainted data (for example, a boolean cannot store a user's password). In order to ignore flows that pass through variables of certain types, one add filters. Filters are either a *type* or a *method*, optionally within a *package*. A type filter will cause the tool to ignore data flows through objects of that type, and a method filter will cause the tool to ignore data flows through that method (or function).
+```
+ filters:
+     - type: "bool$"
+     - type: "error$"
+     - method: "myFunc$"
+       package: "myPackage"
+```
+With the configuration setting above, the tool will not follow data flows through `bool` and `error` types, and not through calls to the function `myFunc` in package `myPackage`. 
+
+#### Search Depth
+The `maxdepth` parameter controls how deep the dataflow paths can be. By default, or if it is set to any value <= 0, the limit is ignored and the tool will search for paths of any lengths. Setting the depth parameter can be useful to filter out some long paths when you have alarms, so that you can focus on solving problems for the shorter paths. This can also be useful if you have a strong confidence in a limit of how long the paths can be between your source and sinks. Note that the path length is counted in the terms of number of nodes; nodes are the function calls, parameters, returns, closure creation and free variables. If this is set to any positive value, the analysis is not sound.
+
+#### Number of Alarms
+
+The `maxalarms` setting lets you limit the number of alarms the tool reports. This is useful when many paths are reported, and you want to only focus on a few reported problems. Setting this parameter has no effect on the soundness of the analysis; any value <= 0 will cause the limit to be ignored. The default value is 0.
+
+#### Warning Suppression 
+The use can set the setting `warn: false` to suppress warnings during the analysis. This means that if the analysis encounters program constructs that make it unsound, those will not be reported. This setting does not affect the soundness of the analysis, but it will cause the tool to not report when your program falls beyond the soundness guarantees.
+
+#### Package Filtering
+The `pkgfilter` setting lets you choose for which packages functions representations are pre-computed. For example, with `pkgfilter: "(mymodule/.*|deps.*)"`, the tool will first summarize the functions in the packages that match this regex. This does not change the soundness of the analysis, but this has an effect on performance of the tool. 
+
 ## Taint Analysis Output
 
 The `taint` tool will first print messages indicating that it finished some of the preliminary analyses before starting the first pass of the dataflow analysis. In this first pass the tool analyzes each function individually and builds a summary of how the data flows through the function. The user should see a message of the sort:
 ```
-Starting intra-procedural analysis ...
-intra-procedural pass done (0.00 s).
+[INFO]  Starting intra-procedural analysis ...
+[INFO]  Intra-procedural pass done (0.01 s).
 ```
 Indicating that this step has terminated. For large program, this step can take from several minutes up to an hour. The functions analyzed in this pass are all the functions that are not in the standard library, not filtered out by the `pkgfilter` option of the configuration file, and not summarize in one of the dataflow specifications file provided in the configuration.
 After that, the tool will link together the dataflow summaries in an inter-procedural pass:
 ```
-Starting inter-procedural pass...
-Building inter-procedural flow graph...
---- # of analysis entrypoints: 8 ---
+[INFO]  Starting inter-procedural pass...
+[INFO]  --- # of analysis entrypoints: 8 ---
 ```
 Once the inter-procedural dataflow graph has been built, the number of entry points discovered are listed. Those are all the source locations matching the source specifications given in the configuration file. If that number is not as expected, the user should check that the configuration correctly specifies the code elements that should be sources.
 For each source, the tool will print a message of the form:
 ```
 ****************************** NEW SOURCE ******************************
- ==> Source: "[#467.2] (SA)call: GetSensitiveData in loadUserData"
-Found at /somedir/example.go:50:17
+[INFO]  ==> Source: "[#467.2] (SA)call: GetSensitiveData in loadUserData"
+[INFO]  Found at /somedir/example.go:50:17
 ```
 Indicating the source location. If any flow of tainted data from that source location to a sink location is found, then the tool will print traces showing that flow, for example:
 ```
-💀 Sink reached at /somedir/main.go:50:12
-Add new path from "[#467.2] (SA)call: GetSensitiveData in loadUserData" to "[#23371.15] @arg 0:t20 in [#23371.14] (SA)call: LogDataPublicly(t22) in Log " <==
-Report in taint-report/flow-2507865943.out
-TRACE: [] /somedir/example.go:50:17
-TRACE: [] /somedir/example.go:12:4
-TRACE: [processData] /somedir/processing.go:120:3
-TRACE: [processData] /somedir/processing.go:180:23
-TRACE: [processData->t52] /somedir/main.go:324:32
-TRACE: [processData->t52] /somedir/main.go:34:43
-SINK: /somedir/main.go:142:3
+[INFO]  💀 Sink reached at /somedir/main.go:50:12
+[INFO]  Add new path from "[#467.2] (SA)call: GetSensitiveData in loadUserData" to "[#23371.15] @arg 0:t20 in [#23371.14] (SA)call: LogDataPublicly(t22) in Log " <==
+```
+And if the logging level is set to debug (`loglevel: 4` in configuration file), a trace is printed:
+```
+[DEBUG] Report in taint-report/flow-2507865943.out
+[DEBUG] TRACE: [] /somedir/example.go:50:17
+[DEBUG] TRACE: [] /somedir/example.go:12:4
+[DEBUG] TRACE: [processData] /somedir/processing.go:120:3
+[DEBUG] TRACE: [processData] /somedir/processing.go:180:23
+[DEBUG] TRACE: [processData->t52] /somedir/main.go:324:32
+[DEBUG] TRACE: [processData->t52] /somedir/main.go:34:43
+[DEBUG] SINK: /somedir/main.go:142:3
 ```
 The first lines indicate that a flow of tainted data has been found, and it reports a representation of the instructions where the source and sinks have been found. If the configuration specifies `reportpaths : true` then the next line shows where the report is stored.
 Each subsequent line starting with `TRACE` shows an approximate trace from the source to the sink, with the locations at the end and the function calls between brackets. The user can inspect those locations to see whether this trace is a false alarm, or it is a path that can occur in some execution of the program.
@@ -129,14 +164,19 @@ Finally, the tool prints the location of the sink. In some cases, the precise lo
 
 > ⚠ The tool will report important warnings during this analysis step. This indicates that some unsupported feature of Go has been encountered, and the final result is not guaranteed to be correct if no taint flow is reported. However, when taint flows are reported, the information provided by the tool still indicates that there is probably a taint flow. In other words, the presence of non-supported features only threatens the correctness of a result that says "no taint flows have been detected".
 
-Once the analysis has terminated, the tool will print a final message:
+Once the analysis has terminated, the tool will print a final message followed by a short summary of the taint flows detected:
 ```
-RESULT:
+[ERROR] RESULT:
      Taint flows detected!
+[WARN]  A source has reached a sink in function test2:
+        Sink: [SSA] sink(t6)
+                /somedir/main.go:68:6
+        Source: [SSA] (fooProducer).source(t3)
+                /somedir/main.go:66:15     
 ```
-followed by a short summary of the taint flows detected, or:
+If there are no taint flows detected, then the success message will be printed:
 ```
-RESULT:
+[INFO] RESULT:
     No taint flows detected ✓
 ```
 Meaning that the input program does have any flow of tainted data from source to sink.
@@ -357,7 +397,7 @@ In the specification for the `Reader` method, the first argument's data flows to
 >⚠️ Dataflow contracts have precedence over function contracts. This means that if for some function call the tool has the choice between picking the function's contract or the dataflow contract, it will pick the dataflow contract.
 
 
-## Using Escape Analysis
+## Using Escape Analysis (experimental)
 
 The dataflow analysis does not support concurrency by default, meaning that it is unsound in the presence of concurrent
 threads (or goroutines). However, it can use the escape analysis built in Argot to check the validity of this assumption, and raise an

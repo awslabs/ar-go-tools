@@ -1,3 +1,5 @@
+# Package Scanner
+
 packagescan is a tool that searches the codebase of a program and identifies each package that imports a specific target package.  It was originally written to locate all the places where "unsafe" or "reflect" are used in a program.
 
 As with the other AR-Go-Tools, packagescan works at the whole program level.  When invoked it will attempt to build the program arguments provided and then iterate through each package that contributed code to the build.  It will search the imports of those packages and enumerate all the packages that contain an import of the target package.  
