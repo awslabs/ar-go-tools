@@ -170,9 +170,10 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
 		// the function's parameter.
 		case *df.ParamNode:
-			if elt.Prev != nil && elt.Prev.Node != nil && elt.Prev.Node.Graph() != graphNode.Graph() {
+			if elt.Prev != nil && elt.Prev.Node != nil {
 				callArg, prevIsCallArg := elt.Prev.Node.(*df.CallNodeArg)
-				if prevIsCallArg && callArg.ParentNode().Callee() == graphNode.Graph().Parent {
+				if elt.Prev.Node.Graph() != graphNode.Graph() || (prevIsCallArg &&
+					callArg.ParentNode().Callee() == graphNode.Graph().Parent) {
 					// Flows inside the function body. The data propagates to other locations inside the function body
 					// Second part of the condition allows self-recursive calls to be used
 					for out, oPath := range graphNode.Out() {
