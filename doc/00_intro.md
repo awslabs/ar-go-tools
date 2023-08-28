@@ -34,6 +34,7 @@ The following tools are included in Argot:
 - the `reachability` tool inspects the code to find which functions are reachable, and which are not (see [Reachability Tool](09_reachability.md#reachability-tool)).
 - the `render` tool can be used to render various representations of the code, such as its [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single-assignment_form) (SSA) form or its callgraph (see [Render Tool](10_render.md#render-tool)).
 - the `static-commands` tool analyzes the code to find usages of `os/exec.Command` that are defined statically.
+- the 'racerg' tool, an experimental tool for data race detection (See [RacerG](11_racerg.md#racerg-sound-and-scalable-static-data-race-detector-for-go))
 
 These tools can be used by developers to better understand their code, through the analysis of higher-level representations. For example, one can understand how the code is organized by looking at the callgraph, which abstract away the code and retains only the caller/callee information. In general, we do not state guarantees about the correctness of these tools, except for the dataflow analyses (see [taint analysis](01_taint.md#taint-analysis) and [backtrace](02_backtrace.md#backtrace-analysis))). However, we believe the representations obtained for each of these tools are useful enough to aid programmers.
 

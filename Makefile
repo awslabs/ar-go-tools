@@ -5,7 +5,7 @@
 #endif
 
 
-all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan backtrace argot-cli setup-precommit
+all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan backtrace argot-cli racerg setup-precommit
 
 install: taint_install cli_install
 
@@ -49,6 +49,9 @@ backtrace: go.mod cmd/backtrace/*.go analysis/*.go analysis/backtrace/*.go
 
 argot-cli: go.mod cmd/argot-cli/*.go
 	go build -o bin/argot-cli cmd/argot-cli/*.go
+
+racerg: go.mod cmd/racerg/*.go
+	go build -o bin/racerg cmd/racerg/*.go
 
 taint_install: taint
 	go install ./cmd/taint/...

@@ -70,9 +70,6 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
-	"golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/callgraph/cha"
-	"golang.org/x/tools/go/packages"
 	"io"
 	"log"
 	"os"
@@ -81,6 +78,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/callgraph/cha"
+	"golang.org/x/tools/go/packages"
 
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -168,25 +169,6 @@ func createSSA(args []string) (*ssa.Program, []*ssa.Package, error) {
 	return ssaProg, ssaPkgs, nil
 }
 
-// Find all main functions in Main packages as entry points of programs.
-// This is currently unused. Instead, the analysis entries are passed directly
-// into the Datalog analysis using the roots-path flag.
-func findEntryPoints(allFunctions map[*ssa.Function]bool, excludeMain bool, excludeInit bool) []*ssa.Function {
-
-	var entryPoints = make([]*ssa.Function, 0)
-	log.Println("all entry functions:")
-	for f := range allFunctions {
-		if (!excludeMain && f.Name() == "main" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") ||
-			(!excludeInit && f.Name() == "init" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") {
-			f.Pkg.Pkg.Name()
-			entryPoints = append(entryPoints, f)
-		}
-	}
-
-	log.Printf("findEntryPoints found %d entry points\n\n", len(entryPoints))
-	return entryPoints
-}
-
 // Get a qualified name for each local variable by prefixing with the name of the enclosing function.
 func getQualifiedName(parentName, varName string) string {
 	return parentName + ":" + varName
@@ -197,7 +179,7 @@ func getQualifiedNameGlobal(pkgName, varName string) string {
 	return pkgName + "@" + varName
 }
 
-// Get the textual representation of an SSA value.
+// printSSAValue returns the textual representation of an SSA value.
 // The locals get a prefix with the enclosing function name.
 // The globals get a prefix with the enclosing package name.
 func printSSAValue(pv *ssa.Value) string {
@@ -222,7 +204,7 @@ func printSSAValue(pv *ssa.Value) string {
 	}
 }
 
-// Get a qualified name for a function by prefixing the enclosing package name.
+// getFuncName returns a qualified name for a function by prefixing the enclosing package name.
 func getFuncName(f *ssa.Function) string {
 	if f.Pkg != nil {
 		if f.Pkg.Pkg != nil {
@@ -232,7 +214,7 @@ func getFuncName(f *ssa.Function) string {
 	return f.Name()
 }
 
-// Prints facts about a certain relation with arbitrary arity.
+// printFact prints facts about a certain relation with arbitrary arity.
 func printFact(relationName string, additionalArgs ...any) {
 	// Each fact file gets its own writer that is created just once and reused later.
 	w, ok := factWriters[relationName]
@@ -268,7 +250,7 @@ func printFact(relationName string, additionalArgs ...any) {
 	}
 }
 
-// Extract from SSA information about call commons.
+// processCallCommon extracts from SSA information about call commons.
 //
 // A call common represents either a dynamic call or invoke, or a static call.
 // For a dynamic call, we need to record:
@@ -318,7 +300,7 @@ func processCallCommon(cc *ssa.CallCommon) (callKind, funcName, receiver string,
 	return
 }
 
-// Get a string representation of a Go type.
+// printType prints a string representation of a Go type.
 // Distinguish between value types, reference types, pointer types, and interface types.
 // TODO: refactor the design of this function and the overall text-based interface for types
 func printType(t types.Type) (typeStr, typeKind, elemType string) {
@@ -376,7 +358,7 @@ func printType(t types.Type) (typeStr, typeKind, elemType string) {
 	return
 }
 
-// Check if an SSA value represents a constant int64
+// checkIfConst checks if an SSA value represents a constant int64
 func checkIfConst(v *ssa.Value) (val int64, ok bool) {
 	switch vt := (*v).(type) {
 	case *ssa.Const:
@@ -397,13 +379,13 @@ func checkIfConst(v *ssa.Value) (val int64, ok bool) {
 	return
 }
 
-/*
-Print facts about an SSA function:
-  - Formal args
-  - Formal return values
-  - Artificially created entry point and return points
-  - Facts about each instruction inside the function
-*/
+// processFunction prints facts about an SSA function:
+// - Formal args
+//   - Formal return values
+//   - Artificially created entry point and return points
+//   - Facts about each instruction inside the function
+//
+//gocyclo:ignore
 func processFunction(debugFactWriter io.Writer, ssaWriter io.Writer, f *ssa.Function) {
 
 	funcName := getFuncName(f)
@@ -779,6 +761,7 @@ func processFunction(debugFactWriter io.Writer, ssaWriter io.Writer, f *ssa.Func
 
 }
 
+// printEmptyFacts prints empty fact files for specific relations.
 // Souffle errors on facts file that do not exist, create empty fact files for these relations.
 // TODO: The list of all facts that might get read by souffle is currently not complete.
 func printEmptyFacts() {
@@ -801,7 +784,7 @@ func printEmptyFacts() {
 	}
 }
 
-// Invoke the Souffle executable on the analysis using the generated facts, capture the stdout
+// runSouffle invokes the Souffle executable on the analysis using the generated facts, capture the stdout
 // of Souffle.
 func runSouffle() {
 	souffleFactsDir = "-F" + outputPath
@@ -927,8 +910,8 @@ func parseSouffleOutput(prog *ssa.Program) {
 	}
 }
 
+//gocyclo:ignore
 func main() {
-
 	flag.Parse()
 	if len(flag.Args()) == 0 {
 		fmt.Fprint(os.Stderr, "no package given")
@@ -1011,9 +994,7 @@ func main() {
 	for _, fName := range functionNames {
 		log.Println("processing relevant function:", fName)
 		funcPtr := findFunctionByName[fName]
-		//if funcPtr.Name() != "init" {
 		processFunction(factsFile, ssaFile, funcPtr)
-		//}
 	}
 
 	// Copy the analysis root file to the output folder
