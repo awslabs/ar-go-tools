@@ -25,7 +25,7 @@ package,
 The `Makefile` at the project root will call `go build` for each of the tools.
 
 ### Running the tools
-For a more detailed guide on how to run and use the tools, see the [DESIGN.md](doc/DESIGN.md) document. There are links
+For a more detailed guide on how to run and use the tools, see the [00_intro.md](doc/00_intro.md) document. There are links
 to documents for each of the tools listed above, as well as an explanation on how to configure those tools that have
 shared options.
 

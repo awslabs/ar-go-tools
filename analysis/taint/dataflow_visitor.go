@@ -170,13 +170,15 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
 		// the function's parameter.
 		case *df.ParamNode:
-			callArg, prevIsCallArg := elt.Prev.Node.(*df.CallNodeArg)
-			if elt.Prev.Node.Graph() != graphNode.Graph() ||
-				(prevIsCallArg && callArg.ParentNode().Callee() == graphNode.Graph().Parent) {
-				// Flows inside the function body. The data propagates to other locations inside the function body
-				// Second part of the condition allows self-recursive calls to be used
-				for out, oPath := range graphNode.Out() {
-					que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+			if elt.Prev != nil && elt.Prev.Node != nil {
+				callArg, prevIsCallArg := elt.Prev.Node.(*df.CallNodeArg)
+				if elt.Prev.Node.Graph() != graphNode.Graph() || (prevIsCallArg &&
+					callArg.ParentNode().Callee() == graphNode.Graph().Parent) {
+					// Flows inside the function body. The data propagates to other locations inside the function body
+					// Second part of the condition allows self-recursive calls to be used
+					for out, oPath := range graphNode.Out() {
+						que = v.addNext(s, que, seen, elt, out, oPath, elt.Trace, elt.ClosureTrace)
+					}
 				}
 			}
 
@@ -571,7 +573,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	nextNodeWithTrace := df.NodeWithTrace{Node: nextNode, Trace: nextTrace, ClosureTrace: nextClosureTrace}
 
 	// First set of stop conditions: node has already been seen, or depth exceeds limit
-	if seen[nextNodeWithTrace.Key()] || cur.Depth > s.Config.MaxDepth {
+	if seen[nextNodeWithTrace.Key()] || s.Config.ExceedsMaxDepth(cur.Depth) {
 		return que
 	}
 

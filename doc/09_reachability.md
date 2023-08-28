@@ -1,3 +1,6 @@
+
+# Reachability Tool
+
 Several of the AR-Go-Tools use the reachability algorithm in analysis/reachability.  This algorithm performs a whole-program analysis of which functions are called either directly or via an interface.  It is less conservative than the x/tools AllFunctions but more conservative than the pointer analysis.  
 
 The reachability tool is a thin wrapper around the reachability algorithm, dumping a complete list of every function that the algorithm considers to be reachable.  The tool exists to allow deep dives into the results of other tools, such as dependencies or packagescan.  While other tools can provide a summary of package reachability, the reachabilty tool can provide the supporting function-level data which can then be filtered to determine which specific functions are responsible for package inclusion.  
