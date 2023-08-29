@@ -1,4 +1,6 @@
-# RacerG: Sound and Scalable Static Data Race Detector for Go
+# Racerg: Sound And Scalable Static Data Race Detector For Go
+
+The `racerg` tool implements a sound and scalable static data race detector for Go. This tool is experimental, and as such has limited support for the features of the Go language. However, this limited supports affords the tool much stronger guarantees about its results. `racerg` is a static analysis tool, as opposed to the race detector in the Go language, which is dynamic. As opposed to the other tools in Argot, `racerg` has a few additional dependencies that the user must install before being able to use the tool.
 
 ## Dependencies
 
@@ -20,7 +22,7 @@ sudo cmake --build build -j8 --target install
 
 A [pre-compiled binary](https://souffle-lang.github.io/install.html) is available without OpenMP support.
 
-2. The Go language. 
+2. The Go language should already be installed on your machine if you are using Argot. If that is not the case, run on MacOs:
 
 ```
 brew install go
@@ -28,11 +30,12 @@ brew install go
 
 ## Running
 
-Suppose the project root directory is `/Users/shaowz/RacerG/`. An analysis on the example Go source `examples/returnValue.go` can be run using the following command:
+Suppose the project root directory is `/Users/<username>/ar-go-tools` and you have installed `souffle` in `/Users/<username>/souffle`.
+An analysis on some example Go source `examples/returnValue.go` can be run using the following command:
 
 ```
-cd /Users/shaowz/RacerG
-go run cmd/main.go -souffle-path=/Users/shaowz/souffle/build/src/souffle -souffle-analysis=/Users/shaowz/RacerG/analysis.dl -roots-path=/Users/shaowz/RacerG/roots.csv -mod=/Users/shaowz/RacerG/examples -output=./output/ /Users/shaowz/RacerG/examples/returnValue.go
+cd /Users/<username>/ar-go-tools
+go run cmd/racerg/main.go -souffle-path=/Users/<username>/souffle/build/src/souffle -souffle-analysis=/Users/<username>/ar-go-tools/analysis.dl -roots-path=/Users/<username>/ar-go-tools/roots.csv -mod=/Users/<username>/ar-go-tools/examples -output=./output/ /Users/<username>/ar-go-tools/examples/returnValue.go
 ```
 
 Explanations of the available command line flags are as follows:
@@ -72,6 +75,6 @@ analysis starts with the main function in the main package, or "main.main".
 
 ## Architecture
 
-The implementation consists of a fact generator `cmd/main.go`, which encodes information about the Go SSA
-program and writes it to the output folder; and the Soufflé Datalog based analysis `analysis.dl`. 
+The implementation consists of a fact generator `cmd/racerg/main.go`, which encodes information about the Go SSA
+program and writes it to the output folder; and the Soufflé Datalog based analysis `analysis.dl`.
 Documentation is available along with the source.

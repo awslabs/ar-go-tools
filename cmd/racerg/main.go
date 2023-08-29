@@ -914,7 +914,8 @@ func parseSouffleOutput(prog *ssa.Program) {
 func main() {
 	flag.Parse()
 	if len(flag.Args()) == 0 {
-		fmt.Fprint(os.Stderr, "no package given")
+		fmt.Fprint(os.Stderr, "Error: no package given, exiting..\n")
+		flag.Usage()
 		os.Exit(1)
 	}
 
