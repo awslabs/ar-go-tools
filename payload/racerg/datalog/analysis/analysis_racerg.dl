@@ -1,0 +1,1977 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// C-Preprocessor Macros
+
+// Used to enable output of intermediate result csv files for debugging
+// #define DEBUG
+
+// Some common definitions
+
+// A Go identifier
+.type GoId <: symbol
+
+// Identifiers used in Go types
+.type GoTypeId <: symbol
+
+// Set of function names, has the form pkgName.funcName
+.type FuncName <: GoId
+
+// Set of package names
+.type PkgName <: GoId
+
+// Set of variable names. Global and local variables are distinguished through their names,
+// e.g., a local variable is main.main:t1, while a global is main@g1
+.type VarName <: GoId
+
+
+// Construction of thread-sensitive control-flow graphs (CFG).
+
+// We follow these steps:
+// 1. Compute the intra-procedural CFG.
+// 2. Read in an (over-approximating) call graph as computed by the Go cha package.
+// 3. Compute the inter-procedural CFG (ICFG) using the cha call graph by connecting all CFG nodes
+//     that are connected via function calls that are not "go f()".
+// 3. Read in a fact file called _AnalysisRoots.facts that records the designated analysis entry points, also
+//     use these as thread spawning locations.
+// 4. Explode the ICFG such that each CFG node now comes with a thread context, i.e., the SSA location
+//     of a go instruction that spanws the thread. 
+
+
+// A number that corresponds to a line in the SSA of the source program, emitted by the fact generator
+.type SSALoc <: number
+
+
+// info on control-flow (basic block) information for each SSA instruction
+.decl Inst(loc:SSALoc, insideFunc:FuncName, instName:symbol, bbInd:number, instInd:number)
+.input Inst(IO="file", filename="_Inst.facts", delimiter="\t")
+
+// info about each SSA function
+// For convenience, we create an artificial start and return node for each function.
+// The start node goes before the first BB, and the return node goes after each return instruction.
+.decl Function(funcName:FuncName, numBB:number, startLoc:SSALoc, returnLoc:SSALoc)
+.input Function(IO="file", filename="_Function.facts", delimiter="\t")
+
+// basic blocks (BB)
+.decl BB(insideFunc:FuncName, bbInd:number, numInst:number)
+.input BB(IO="file", filename="_BB.facts", delimiter="\t")
+
+// successors of a BB
+.decl BBSucc(insideFunc:FuncName, bbInd:number, succInd:number, succBB:number)
+.input BBSucc(IO="file", filename="_BBSucc.facts", delimiter="\t")
+
+// CHA call graph
+.decl CHACallGraph(callInstLoc:SSALoc, caller:FuncName, callee:FuncName, isGo:symbol)
+.input CHACallGraph(IO="file", filename="_ChaCallGraph.facts", delimiter="\t")
+
+// Statically resolved function calls
+.decl StaticCall(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, goOrCall:symbol, invokedFunc:FuncName)
+.input StaticCall(IO="file", filename="_StaticCall.facts", delimiter="\t")
+
+// Invoke, or not statically resolved function calls
+.decl Invoke(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, goOrCall:symbol, receiver:VarName, invokedFunc:FuncName)
+.input Invoke(IO="file", filename="_Invoke.facts", delimiter="\t")
+
+// return instruction
+.decl ReturnInst(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number)
+.input ReturnInst(IO="file", filename="_Return.facts", delimiter="\t")
+
+// rundefer instruction
+.decl RunDeferInst(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number)
+.input RunDeferInst(IO="file", filename="_RunDefer.facts", delimiter="\t")
+
+
+
+// A control flow graph point either originates from the SSA or is created by the analysis
+// that augments the CFG by considering defers
+.type CFGPoint =
+      SSA {loc:SSALoc} 
+    | FunctionDecl {f:FuncName}
+    | GlobalDecl {}
+    | DeferCall {f:FuncName, rundeferLoc:SSALoc, callLoc:SSALoc, residualStack:DeferredFuncStack}
+
+// SSA locations that correspond to CFG nodes
+.decl cfgNode(p:CFGPoint)
+
+// cfgAfter represents an intra-procedural CFG edge within a function f
+.decl cfgAfter(f:FuncName, x:CFGPoint, y:CFGPoint)
+
+// An SSA location is in a function
+.decl cfgInFunction(p:CFGPoint, f:FuncName)
+
+// an SSA location is a CFG node if corresponds to an instruction or the artificial start/return node
+cfgInFunction($SSA(loc), func), cfgNode($SSA(loc)) :- Inst(loc, func, _, _, _).
+cfgInFunction($SSA(loc), func), cfgNode($SSA(loc)) :- Function(func, _, _, loc).
+cfgInFunction($SSA(loc), func), cfgNode($SSA(loc)) :- Function(func, _, loc, _).
+cfgInFunction($FunctionDecl(func), func) :- Function(func, _, _, _).
+
+// A tentative CFG, not considering the effect of defer and rundefer
+.decl tentativeCFGAfter(f:FuncName, x:CFGPoint, y:CFGPoint)
+
+// possible CFG edge due to instruction ordering within a BB
+tentativeCFGAfter(f, lx, ly) :- 
+    lx=$SSA(x), ly=$SSA(y),
+    cfgNode(lx), cfgNode(ly), 
+    Inst(x, f, _, bbInd, instIndx), Inst(y, f, _, bbInd, instIndy), 
+    instIndx+1 = instIndy.
+
+// possible CFG edge due to ordering of BBs
+tentativeCFGAfter(f, lx, ly) :- 
+    lx=$SSA(x), ly=$SSA(y),
+    cfgNode(lx), cfgNode(ly), 
+    Inst(x, f, _, bbIndx, instIndx), Inst(y, f, _, bbIndy, 0), 
+    BB(f, bbIndx, numInst1), instIndx+1=numInst1, 
+    BBSucc(f, bbIndx, _, bbIndy).
+
+// the artificial function entry point goes before the first instruction of f
+tentativeCFGAfter(f, lx, ly) :-
+    lx=$SSA(x), ly=$SSA(y),
+    cfgNode(lx), cfgNode(ly), 
+    Inst(y, f, _, 0, 0), 
+    Function(f, _, x, _).
+
+// the artifical function return point goes after every return instruction of f
+tentativeCFGAfter(f, lx, ly) :- 
+    lx=$SSA(x), ly=$SSA(y),
+    cfgNode(lx), cfgNode(ly), 
+    ReturnInst(x, f, _, _),
+    Function(f, _, _, y).
+
+// add the edge from the artificial entry and return node into real CFG
+cfgAfter(f, lx, ly) :-
+    tentativeCFGAfter(f, lx, ly),
+    lx=$SSA(x),
+    Function(f, _, x, _).
+
+cfgAfter(f, lx, ly) :-
+    tentativeCFGAfter(f, lx, ly),
+    ly=$SSA(y),
+    Function(f, _, _, y).
+
+// the proposed edge is real if the previous instruction is not defer or rundefer,
+// which both disrupts the normal control flow
+cfgAfter(f, lx, ly) :- 
+    tentativeCFGAfter(f, lx, ly),
+    lx=$SSA(x),
+    ly=$SSA(y),
+    Inst(x, f, xinst, _, _), 
+    xinst!="RunDefer",
+    !isDefer(f, x),
+    !isDefer(f, y).
+
+// skip the defer instruction to connect with the next inst
+cfgAfter(f, lx, lz) :- 
+    tentativeCFGAfter(f, lx, ly),
+    tentativeCFGAfter(f, ly, lz),
+    ly=$SSA(y),
+    Inst(y, f, yinst, _, _), 
+    isDefer(f, y). 
+
+// find CFG successors of the rundefer instructions
+.decl runDeferSucc(f:FuncName, rundefer:CFGPoint, succ:CFGPoint)
+
+runDeferSucc(f, rundefer, succ) :- 
+    tentativeCFGAfter(f, rundefer, succ),
+    rundefer=$SSA(x), 
+    cfgNode(rundefer), cfgNode(succ), 
+    Inst(x, f, xinst, _, _), 
+    xinst="RunDefer".
+
+// Analysis of deferred function calls, this can be done in an intra-procedural way.
+// This needs to be done before we start the context-sensitive analysis.
+
+// Stack of deferred functions accumulated at a CFG location
+.type DeferredFuncStack = [head:SSALoc, tail:DeferredFuncStack]
+// Deferred function stack for a function at each intra-procedural CFG node
+.decl deferStackAtPoint(func:FuncName, point:SSALoc, s:DeferredFuncStack)
+// whether an SSA instruction n is a deferred call in function f
+.decl isDefer(f:FuncName, n:SSALoc)
+
+// TODO: currently we assume defers instructions are not inside any loop (also encouraged by Go)
+
+// collects defer instructions
+isDefer(f, n) :- StaticCall(n, f, _, _, "Defer", _).
+isDefer(f, n) :- Invoke(n, f, _, _, "Defer", _, _).
+
+// At the function entry, the stack is empty
+deferStackAtPoint(f, x, nil) :- Function(f, _, x, _).
+
+// Add a deferred function into the stack at y, 
+//  if x is a defer and x goes to y
+deferStackAtPoint(f, y, [x, s]) :- 
+    tentativeCFGAfter(f, lx, ly), 
+    lx=$SSA(x),
+    ly=$SSA(y),
+    deferStackAtPoint(f, x, s), 
+    isDefer(f, x).
+
+// Pass the stack as is if x is not a defer
+deferStackAtPoint(f, y, s) :- 
+    deferStackAtPoint(f, x, s), 
+    tentativeCFGAfter(f, lx, ly), 
+    lx=$SSA(x),
+    ly=$SSA(y),
+    !isDefer(f, x), 
+    !RunDeferInst(x, f, _, _).
+
+// Clear the stack if x is a rundefer
+deferStackAtPoint(f, y, nil) :- 
+    tentativeCFGAfter(f, lx, ly), 
+    lx=$SSA(x),
+    ly=$SSA(y),
+    RunDeferInst(x, f, _, _).
+
+
+// Create the first added node for each stack of deferred calls at each rundefer instruction
+cfgAfter(f, $SSA(runDeferLoc), newNode), cfgNode(newNode) :-
+    newNode=$DeferCall(f, runDeferLoc, firstCallee, residualStack),
+    deferStackAtPoint(f, runDeferLoc, [firstCallee, residualStack]),
+    // runDeferLoc=$SSA(runDeferSSALoc),
+    RunDeferInst(runDeferLoc, f, _, _).
+
+// Creating new nodes while consuming the stack of deferred calls
+cfgAfter(f, currNode, newNode), cfgNode(newNode) :-
+    cfgNode(currNode),
+    currNode=$DeferCall(f, rundeferLoc, currCallee, currNodeResidualStack),
+    currNodeResidualStack!=nil,
+    currNodeResidualStack=[nextCallee, nextResidual],
+    newNode=$DeferCall(f, rundeferLoc, nextCallee, nextResidual).
+
+// Connect the last added deferred call node to the next instruction after the rundefer
+cfgAfter(f, lastAddedNode, nextCFGPointAfterRunDefer) :-
+    cfgNode(lastAddedNode),
+    lastAddedNode=$DeferCall(f, rundeferLoc, currCallee, nil),
+    runDeferSucc(f, $SSA(rundeferLoc), nextCFGPointAfterRunDefer).
+
+// Entry points for the analysis
+.decl AnalysisRoots(pkg:symbol, f:FuncName)
+.input AnalysisRoots(IO="file", filename="_AnalysisRoots.facts", delimiter=",")
+
+// .decl StaticCall(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, goOrCall:symbol, invokedFunc:FuncName)
+
+CHACallGraph(entry, entryFunc, initFuncName, "false"),
+StaticCall(entry, entryFunc, 0, 0, "Call",initFuncName ) :-
+    initFuncName=cat(pkg, ".init"),
+    AnalysisRoots(pkg, entryFunc),
+    Function(entryFunc, _, entry, _),
+    Function(initFuncName, _, _, _).
+
+
+// A thread  either a root thread; or is identified by a parent CSCFG node where the thread
+// is spawned, and a CFG nodes for the first node of the thread; or is a "ghost" thread
+// that is created along a normal thread when a thread creation site is inside a loop
+.type Thread = RT {func:FuncName} | Th {parent: CSCFGNode} | GTh {parent: CSCFGNode} | Any {}
+// A call site context is a list of CFG nodes that are all call sites
+.type CallSiteContext = [head:CSCFGNode, tail:CallSiteContext]
+// Each context-sensitive CFG node consists of an SSA location, a thread, and a call site context
+.type CSCFGNode = [loc:CFGPoint, t:Thread, csctx:CallSiteContext]
+
+// Edges in the context-sensitive CFG
+.decl CSCFGEdge(x:CSCFGNode, y:CSCFGNode)
+// A context-sensitive CFG node is reachable
+.decl reachableCS(n:CSCFGNode)
+// Reachability of functions
+.decl funcReachableCS(f:FuncName, t:Thread, csctx:CallSiteContext)
+// Denote each statically found thread
+.decl isThread(t:Thread)
+// The first CSCFGNode for each thread
+.decl firstNodeOfThread(thread:Thread, n:CSCFGNode)
+// Associate a number with a thread
+.decl threadId(id:number, t:Thread)
+
+// Whether a CSCFG edge represents a go or non-go call
+.decl isNonGoCallEdge(x:CSCFGNode, y:CSCFGNode)
+.decl isGoCallEdge(x:CSCFGNode, y:CSCFGNode)
+
+.decl intraThreadCFGEdge(tid:number, x:CSCFGNode, y:CSCFGNode)
+
+intraThreadCFGEdge(tid, x, y) :-
+    CSCFGEdge(x, y),
+    threadId(tid, t),
+    x = [xloc, t, xctx],
+    y = [yloc, t, yctx].
+
+// The following rules compute the context-sensitive CFG along with context-sensitive 
+// reachability.
+
+// TODO: study whether we need to limit the depth of contexts, I think for small programs we do not
+// TODO: the proposed synchronization analysis does not work if we do not fully blow-up the CFG
+//       e.g., if a thread is actually an abstraction of multiple threads with different contexts
+
+
+// The entry location is a context-sensitive CFG node with the root thread context, 
+// and empty call site context isThread($RT()).
+firstNodeOfThread($RT(func), [loc, $RT(func), nil]), 
+isThread($RT(func)),
+threadId(autoinc(), $RT(func)),
+funcReachableCS(func, $RT(func), nil),
+reachableCS([loc, $RT(func), nil]) :- 
+    loc=$SSA(entry), AnalysisRoots(_, func), Function(func, _, entry, _).
+
+
+// for instructions that are not function calls, it is the same as intra-procedural CFG
+reachableCS(nextNode), CSCFGEdge(thisNode, nextNode) :-
+    thisNode=[x, thread, csctx],
+    nextNode=[y, thread, csctx],
+    reachableCS(thisNode),
+    cfgAfter(_, x, y), 
+    x=$SSA(sx),
+    !CHACallGraph(sx, _, _, _).
+
+// the control flow in the caller is not transferred to the function called using go
+reachableCS(nextNode), CSCFGEdge(thisNode, nextNode) :-
+    thisNode=[x, thread, csctx],
+    nextNode=[y, thread, csctx],
+    reachableCS(thisNode),
+    cfgAfter(caller, x, y), 
+    x=$SSA(sx),
+    CHACallGraph(sx, caller, _, isGo),
+    isGo="true".
+
+// we skip the library functions and other functions we do not have source code for
+reachableCS(nextNode), CSCFGEdge(thisNode, nextNode) :-
+    thisNode=[x, thread, csctx],
+    nextNode=[y, thread, csctx],
+    reachableCS(thisNode),
+    cfgAfter(caller, x, y), 
+    x=$SSA(sx),
+    CHACallGraph(sx, caller, callee, _),
+    !Function(callee, _, _, _).
+
+// whether an SSA location represents a defer call
+.decl isNotDeferCall(x:SSALoc)
+isNotDeferCall(x) :- StaticCall(x, _, _, _, kind, _), kind!="Defer".
+isNotDeferCall(x) :- Invoke(x, _, _, _, kind, _, _), kind!="Defer".
+
+// for non-go calls, add the caller CS-CFG node to the call site context
+reachableCS(nextNode), 
+funcReachableCS(callee, thread, [thisNode, csctx]),
+CSCFGEdge(thisNode, nextNode), 
+isNonGoCallEdge(thisNode, nextNode) :-
+    thisNode=[x, thread, csctx],
+    reachableCS(thisNode),
+    nextNode=[y, thread, [thisNode, csctx]],
+    y=$SSA(sy),
+    Function(callee, _, sy, _),
+    x=$SSA(sx),
+    isNotDeferCall(sx),
+    CHACallGraph(sx, caller, callee, isGo), 
+    isGo="false".
+
+// handle deferred function calls similarly
+reachableCS(nextNode), 
+funcReachableCS(callee, thread, [thisNode, csctx]),
+CSCFGEdge(thisNode, nextNode),
+isNonGoCallEdge(thisNode, nextNode) :-
+    thisNode=[x, thread, csctx],
+    reachableCS(thisNode),
+    nextNode=[y, thread, [thisNode, csctx]],
+    y=$SSA(sy),
+    Function(callee, _, sy, _),
+    x=$DeferCall(f, rundeferLoc, callLoc, s), // x is a defer call node
+    CHACallGraph(callLoc, caller, callee, _). 
+
+// for non-go calls, pop a call site context when a callee returns to its caller
+reachableCS(nextNode), 
+CSCFGEdge(thisNode, nextNode),
+isNonGoCallEdge(thisNode, nextNode) :-
+    thisNode=[returnLoc, thread, [csctxHead, csctxTail]],
+    csctxHead=[callsiteNode, thread, othercsctx],
+    reachableCS(thisNode),
+    nextNode=[nextInst, thread, csctxTail],
+    cfgAfter(caller, callsiteNode, nextInst),
+    callsiteNode=$SSA(scallInst),
+    returnLoc=$SSA(sreturnLoc),
+    // isNotDeferCall(scallInst),
+    Function(callee, _, _, sreturnLoc),
+    CHACallGraph(scallInst, caller, callee, isGo), 
+    isGo="false".
+
+// handle deferred function calls similarly
+reachableCS(nextNode), 
+CSCFGEdge(thisNode, nextNode),
+isNonGoCallEdge(thisNode, nextNode) :-
+    thisNode=[returnLoc, thread, [csctxHead, csctxTail]],
+    csctxHead=[callsiteNode, thread, othercsctx],
+    reachableCS(thisNode),
+    nextNode=[nextInst, thread, csctxTail],
+    cfgAfter(caller, callsiteNode, nextInst),
+    returnLoc=$SSA(sreturnLoc),
+    callsiteNode=$DeferCall(f, rundeferLoc, callLoc, s),
+    Function(callee, _, _, sreturnLoc),
+    CHACallGraph(scallInst, caller, callee, _).
+
+// for go calls, add the caller CS-CFG node to the thread context, also create a new
+// thread
+isThread(spawnedThread), 
+threadId(autoinc(), spawnedThread),
+firstNodeOfThread(spawnedThread, [y, spawnedThread, nil]), 
+reachableCS([y, spawnedThread, nil]), 
+funcReachableCS(callee, spawnedThread, nil),
+CSCFGEdge(thisNode, [y, spawnedThread, nil]),
+isGoCallEdge(thisNode, [y, spawnedThread, nil]) :-
+    isThread(spawningThread),
+    thisNode=[x, spawningThread, csctx],
+    reachableCS(thisNode),
+    spawnedThread=$Th(thisNode),
+    y=$SSA(sy),
+    x=$SSA(sx),
+    Function(callee, _, sy, _),
+    CHACallGraph(sx, caller, callee, isGo), 
+    isGo="true".
+
+// for go calls that happen in non-trivial SCCs, add an additional thread
+isThread(ghostThread), 
+threadId(autoinc(), ghostThread),
+firstNodeOfThread(ghostThread, [y, ghostThread, nil]), 
+reachableCS([y, ghostThread, nil]), 
+funcReachableCS(callee, ghostThread, nil),
+CSCFGEdge(thisNode, [y, ghostThread, nil]),
+isGoCallEdge(thisNode, [y, ghostThread, nil]) :-
+    isThread(spawningThread),
+    thisNode=[x, spawningThread, csctx],
+    reachableCS(thisNode),
+    ghostThread=$GTh(thisNode),
+    inNonTrivialSCC(spawningThread, thisNode),
+    y=$SSA(sy),
+    x=$SSA(sx),
+    Function(callee, _, sy, _),
+    CHACallGraph(sx, caller, callee, isGo), 
+    isGo="true".
+
+// Within a thread t, a CSCFGNode y is reachable from another one x
+.decl intraThreadReach(t:Thread, x:CSCFGNode, y:CSCFGNode)
+
+// filtering out the CSCFGEdge across thread boundaries
+intraThreadReach(t, x, y) :- 
+    x=[xloc, t, xctx],
+    y=[yloc, t, yctx],
+    CSCFGEdge(x, y).
+
+// reach is reflexive
+intraThreadReach(t, x, x) :-
+    reachableCS(x),
+    x=[xloc, t, xctx].
+
+// reach is transitive
+intraThreadReach(t, x, z) :-
+    intraThreadReach(t, x, y),
+    CSCFGEdge(y, z).
+
+// intra-thread reach back, i.e., there exists a path from x to y 
+// if we reverse the direction of all edges in the CFG
+.decl intraThreadReachBack(t:Thread, x:CSCFGNode, y:CSCFGNode)
+
+intraThreadReachBack(t, x, x) :-
+    reachableCS(x),
+    x=[xloc, t, xctx].
+
+intraThreadReachBack(t, x, y) :-
+    intraThreadReachBack(t, x, z),
+    CSCFGEdge(y, z).
+
+// if x -> y but x does not reach y in the reverse CFG, then x happens strictly before y
+// due the intra-thread CFG ordering
+.decl intraThreadHB(t:Thread, x:CSCFGNode, y:CSCFGNode)
+intraThreadHB(t, x, y) :-
+    intraThreadReach(t, x, y),
+    !intraThreadReachBack(t, x, y).
+
+// Node x and y are in the same strongly connected component in the intra-thread CFG
+.decl sameSCC(t:Thread, x:CSCFGNode, y:CSCFGNode)
+sameSCC(t, x, y) :-
+    intraThreadReach(t, x, y),
+    intraThreadReachBack(t, x, y).
+
+// A node x is contained in some non-trivial SCC (every node is a trivial SCC by itself)
+.decl inNonTrivialSCC(t:Thread, x:CSCFGNode)
+inNonTrivialSCC(t, x) :-
+    sameSCC(t, x, y),
+    x != y.
+
+// Context-sensitive may-point-to analysis
+
+// Given the context-sensitive control flow edges, we can now compute the
+// context-sensitive may and must points-to facts.
+
+// Facts that encode various SSA instructions
+
+// Allocation
+.decl Alloc(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                var:VarName, allocInd:number)
+.input Alloc(IO="file", filename="_Alloc.facts", delimiter="\t")
+
+// Globals
+.decl Global(var:VarName, type:GoTypeId, typeKind:symbol, elemType:GoTypeId)
+.input Global(IO="file", filename="_Global.facts", delimiter="\t")
+
+// Load
+.decl Load(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                toVar:VarName, addrOfVar:symbol)
+.input Load(IO="file", filename="_Load.facts", delimiter="\t")
+
+// Store
+.decl Store(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                toVar:VarName, from:VarName)
+.input Store(IO="file", filename="_Store.facts", delimiter="\t")
+
+// Binary operation
+.decl BinOp(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                toVar:VarName, from1:VarName, from2:VarName)
+.input BinOp(IO="file", filename="_BinOp.facts", delimiter="\t")
+
+
+// MakeInterface
+.decl MakeInterface(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                toVar:VarName, from:VarName)
+.input MakeInterface(IO="file", filename="_MakeInterface.facts", delimiter="\t")
+
+.decl Phi(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number,
+                toVar:VarName, ind:number, from:VarName)
+.input Phi(IO="file", filename="_Phi.facts", delimiter="\t")
+
+// Get a Field of struct
+.decl Field(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                toVar:VarName, base:VarName, field:number)
+.input Field(IO="file", filename="_Field.facts", delimiter="\t")
+
+// Get the address of a field of struct
+.decl FieldAddr(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                toVar:VarName, base:VarName, field:number)
+.input FieldAddr(IO="file", filename="_FieldAddr.facts", delimiter="\t")
+
+// Take the address of the element at a constant index of an array
+.decl AddrArrayConstIndex(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+    toVar:VarName, baseArray:VarName, resolvedInd:number)
+.input AddrArrayConstIndex(IO="file", filename="_AddrArrayConstIndex.facts", delimiter="\t")
+
+// Actual arguments of a function call
+.decl ActualArg(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                callKind:symbol, callee:symbol, argInd:number, actualArg:VarName, 
+                typeStr:GoTypeId, typeKind:symbol, elemType:GoTypeId)
+.input ActualArg(IO="file", filename="_ActualArg.facts", delimiter="\t")
+
+// Formal arguments in a function declaration
+.decl FormalParam(func:FuncName, paramId:number, param:VarName, 
+                typeStr:GoTypeId, typeKind:symbol, elemType:GoTypeId)
+.input FormalParam(IO="file", filename="_FormalParam.facts", delimiter="\t")
+
+// Free variables in a (closure) function
+.decl FreeVar(func:FuncName, fvInd:number, fv:VarName, 
+                typeStr:GoTypeId, typeKind:symbol, elemType:GoTypeId)
+.input FreeVar(IO="file", filename="_FreeVar.facts", delimiter="\t")
+
+// Closure function binds a free variable
+.decl ClosureBindsFreeVar(func:FuncName, fvInd:number, fv:VarName)
+.input ClosureBindsFreeVar(IO="file", filename="_ClosureBindsFreeVar.facts", delimiter="\t")
+
+// Actual return value that is assigned to using the return value of a function call
+.decl ActualReturn(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                callKind:symbol, actualReturnTupleVar:VarName, returnTupleLen:number,
+                returnVarType:symbol, returnVarTypeKind:symbol, returnVarElemType:symbol)
+.input ActualReturn(IO="file", filename="_ActualReturn.facts", delimiter="\t")
+
+// Formal return tuple inside the callee function
+.decl FormalReturnTuple(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                formalReturnVar:VarName, formalReturnVarInd:number)
+.input FormalReturnTuple(IO="file", filename="_FormalReturnTuple.facts", delimiter="\t")
+
+// The length of the formal return tuple inside the callee function
+.decl FormalReturnTupleLen(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                returnTupleLen:number)
+.input FormalReturnTupleLen(IO="file", filename="_FormalReturnTupleLen.facts", delimiter="\t")
+
+// Types of local variables
+.decl LocalVarType(var:VarName, type:GoTypeId, typeKind:symbol, elemType:GoTypeId)
+.input LocalVarType(IO="file", filename="_LocalVarType.facts", delimiter="\t")
+
+// Struct fields and their types
+.decl StructFields(structType:GoTypeId, fieldInd:number, fieldType:GoTypeId, 
+    fieldTypeKind:symbol, fieldTypeElemType:GoTypeId)
+.input StructFields(IO="file", filename="_StructFields.facts", delimiter="\t")
+
+// Extract an element inside a tuple
+.decl ExtractTuple(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, 
+                toVar:VarName, tupleVar:VarName, tupleInd:number)
+.input ExtractTuple(IO="file", filename="_ExtractTuple.facts", delimiter="\t")
+
+// Make channel instruction, with capacity
+.decl MakeChan(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number,
+                var:VarName, cap:number)
+.input MakeChan(IO="file", filename="_MakeChan.facts", delimiter="\t")
+
+.decl Send(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, content:symbol, chan:VarName)
+.input Send(IO="file", filename="_Send.facts", delimiter="\t")
+
+.decl Receive(loc:SSALoc, insideFunc:FuncName, bbInd:number, instInd:number, intoReg:VarName, chan:VarName)
+.input Receive(IO="file", filename="_Receive.facts", delimiter="\t")
+
+// The actual pointer analysis
+
+// Context type for points-to facts
+.type PTContext = [t:Thread, csctx:CallSiteContext]
+
+// Different kinds of memory allocation
+.type AllocKind = 
+      Var {var:VarName}     //local or global variable
+    | Global {var:VarName}  // global allocation
+    | Const {loc:SSALoc}    // a constant
+    | Alloc {ind:number}    // a memory allocation
+    | Struct {loc:SSALoc}   // a struct allocation
+    | Field {loc:SSALoc, fieldInd:number} // a field of a struct
+    | GlobalField {var:VarName, fieldInd:number} // field of a global struct
+    | Array {loc:SSALoc}   // an array allocation
+    | ArrayConstInd {loc:SSALoc, ind:number}   // a known index of an array
+    | ArrayAnyInd {loc:SSALoc}  // an unknown index of an array
+    | ArrayMeta {loc:SSALoc}    // meta field (length) of a slice object
+    | Map {loc:SSALoc}          // a map object
+    | MapElement {loc:SSALoc}   // an element of a map
+    | MapMeta {loc:SSALoc}      // meta data of a map
+    | ChanUnbuff {loc:SSALoc}   // an unbuffered channel object
+    | ChanBuff {loc:SSALoc}     // a buffered channel object
+    | TupleInd {loc:SSALoc, tupleInd:number}        // a tuple element
+
+// An allocation site consists of an SSA location, a kind, and a context
+.type AllocSite = [func:FuncName, pos:CFGPoint, kind:AllocKind, ctx:PTContext]
+
+// Predicate for the existence of a context-sensitive allocation
+.decl isAllocSite(alloc:AllocSite)
+
+// x -> y (may point to) under ctx
+.decl pointsTo(x:AllocSite, y:AllocSite, ctx:PTContext)
+// *x -> y (may point to via deferencing pointer) under ctx
+.decl ptrPointsTo(x:AllocSite, y:AllocSite, ctx:PTContext)
+
+.decl allocSiteHasType(alloc:AllocSite, t:GoTypeId)
+
+// A CFG node reads or writes a non-local memory location, aka allocation
+// When calculating these relations, we ignore the writes to the unique local registers
+// in the SSA. 
+
+.type AccessKind <: symbol
+.decl cfgNodeAccessesAlloc(n:CSCFGNode, alloc:AllocSite, accessKind:AccessKind)
+// .decl cfgNodeWritesAlloc(n:CSCFGNode, alloc:AllocSite)
+
+// An allocation site always points to itself
+// x -> x
+pointsTo(x, x, ctx) :-
+    isAllocSite(x),
+    x=[func, pos, kind, ctx].
+
+// If x -> y and y *-> z then x *-> z
+ptrPointsTo(x, z, ctx) :-
+    isAllocSite(x),
+    pointsTo(x, y, ctx),
+    ptrPointsTo(y, z, ctx2).
+
+// global variables and corresponding global allocation sites
+// allocating a global non-struct variable case
+allocSiteHasType(globalAlloc, ptElemType),
+isAllocSite(globalVar),
+ptrPointsTo(globalVar, globalAlloc, ctx),
+isAllocSite(globalAlloc) :-
+    Global(varName, _, "Pointer", ptElemType),
+    ptElemType!="Struct",
+    ctx=[$Any(), nil],
+    globalVar=["", $GlobalDecl(), $Var(varName), ctx],
+    globalAlloc=["", $GlobalDecl(), $Global(varName), ctx].
+
+// allocating a global struct case, 
+// also need to populate the allocations for struct fields
+allocSiteHasType(globalAlloc, structType),
+allocSiteHasType(structField, fieldType),
+isAllocSite(globalVar),
+isAllocSite(structField),
+ptrPointsTo(globalVar, globalAlloc, ctx),
+isAllocSite(globalAlloc) :-
+    Global(varName, ptrTypeStr, "Pointer", ptElemType),
+    ptElemType="Struct",
+    ctx=[$Any(), nil],
+    globalVar=["", $GlobalDecl(), $Var(varName), ctx],
+    globalAlloc=["", $GlobalDecl(), $Global(varName), ctx],
+    StructFields(structType, fieldInd, fieldType, _, _),
+    ptrTypeStr=cat("*", structType),
+    structField=["", $GlobalDecl(), $GlobalField(varName, fieldInd), ctx].
+
+// Create allocation sites that correspond to function parameters and free variables
+isAllocSite(paramAlloc) :-
+    funcReachableCS(func, thread, csctx),
+    FormalParam(func, paramInd, paramName, _, typeKind, _),
+    paramAlloc=[func, $FunctionDecl(func), $Var(paramName), [thread, csctx]].
+
+// Create an allocation for a free variable in a function f, if f is reachable under some context
+isAllocSite(freeVarAlloc) :-                 
+    funcReachableCS(func, thread, csctx),
+    FreeVar(func, fvInd, fvName, _, typeKind, _),
+    freeVarAlloc=[func, $FunctionDecl(func), $Var(fvName), [thread, csctx]].
+
+
+// Allocation instruction: localVar = new rhs
+
+// Allocation case 1: an allocation of a local variable
+// We create a new allocation Alloc(#allocIndex) for the rhs, and for the localVar
+// Then let localVar *-> Alloc(#allocIndex)
+allocSiteHasType(rhs, "Value"),
+isAllocSite(localVar), 
+isAllocSite(rhs),
+ptrPointsTo(localVar, rhs, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    pos=cfgLoc,
+    localVar=[func, pos, $Var(varName), ctx],
+    // The LHS of the allocation is a pointer to a value
+    LocalVarType(varName, _, "Pointer", "Value"), 
+    rhs=[func, pos, $Alloc(allocInd), ctx],
+    cfgLoc=$SSA(ssaLoc),
+    Alloc(ssaLoc, func, _, _, varName, allocInd).
+
+// Allocation case 2: allocation of an array, including its elements and metadata
+allocSiteHasType(arr, "Array"),
+isAllocSite(localVar), 
+isAllocSite(arr),
+isAllocSite(arrAnyInd),
+isAllocSite(arrMeta),
+ptrPointsTo(localVar, arr, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    pos=cfgLoc,
+    localVar=[func, pos, $Var(varName), ctx],
+    // The LHS of the allocation is a pointer to a value
+    LocalVarType(varName, _, "Pointer", "Array"), 
+    arr=[func, pos, $Array(allocInd), ctx],
+    arrAnyInd=[func, pos, $ArrayAnyInd(allocInd), ctx],
+    arrMeta=[func, pos, $ArrayMeta(allocInd), ctx],
+    cfgLoc=$SSA(ssaLoc),
+    Alloc(ssaLoc, func, _, _, varName, allocInd).
+
+// Allocation case 3: allocation of a struct and its fields
+allocSiteHasType(struct, structType),
+allocSiteHasType(structField, fieldType),
+isAllocSite(localVar), 
+isAllocSite(struct),
+isAllocSite(structField),
+ptrPointsTo(localVar, struct, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    pos=cfgLoc,
+    localVar=[func, pos, $Var(varName), ctx],
+    // The LHS of the allocation is a pointer to a value
+    LocalVarType(varName, varTypeStr, "Pointer", "Struct"), 
+    struct=[func, pos, $Struct(ssaLoc), ctx],
+    StructFields(structType, fieldInd, fieldType, _, _),
+    varTypeStr=cat("*", structType),
+    structField=[func, cfgLoc, $Field(ssaLoc, fieldInd), ctx],
+    cfgLoc=$SSA(ssaLoc),
+    Alloc(ssaLoc, func, _, _, varName, allocInd).
+
+// if we do not have the struct type information globally,
+// we just create allocations for the struct itself, and
+// create allocations for its fields lazily
+allocSiteHasType(struct, substr(varTypeStr, 1, strlen(varTypeStr))),
+isAllocSite(localVar), 
+isAllocSite(struct),
+ptrPointsTo(localVar, struct, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    pos=cfgLoc,
+    localVar=[func, pos, $Var(varName), ctx],
+    LocalVarType(varName, varTypeStr, "Pointer", "Struct"), 
+    struct=[func, pos, $Struct(ssaLoc), ctx],
+    cfgLoc=$SSA(ssaLoc),
+    Alloc(ssaLoc, func, _, _, varName, allocInd).
+
+// Allocation case 4: allocation of a channel variable
+allocSiteHasType(rhs, "Chan"),
+isAllocSite(localVar), 
+isAllocSite(rhs),
+ptrPointsTo(localVar, rhs, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    pos=cfgLoc,
+    localVar=[func, pos, $Var(varName), ctx],
+    // The LHS of the allocation is a pointer to a value
+    LocalVarType(varName, _, "Pointer", "Chan"), 
+    rhs=[func, pos, $Alloc(allocInd), ctx],
+    cfgLoc=$SSA(ssaLoc),
+    Alloc(ssaLoc, func, _, _, varName, allocInd).
+
+// Store a new constant into a localVar: *localVar = Constant
+// We should create a new constant object as an allocation, 
+// then let *localVar -> Const, but for our purpose propagating
+// pointers to constants is less interesting
+cfgNodeAccessesAlloc(node, t, "w"),
+isAllocSite(rhs) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    ctx=[thread, csctx],
+    isAllocSite(localVar),
+    localVar=[func, varPos, $Var(toVarName), ctx],
+    ptrPointsTo(localVar, t, ctx),
+    rhs=[func, cfgLoc, $Const(ssaLoc), ctx],
+    contains("Const", from),
+    // from="Constant",
+    Store(ssaLoc, func, _, _, toVarName, from).
+
+// Binary operation, only need to create alloc site for lhs
+isAllocSite(localVar) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    ctx=[thread, csctx],
+    localVar=[func, cfgLoc, $Var(toVarName), ctx],
+    BinOp(ssaLoc, func, _, _, toVarName, from1, from2).
+
+// General store: *toVar = from
+// If toVar *-> t, ie toVar is the address of some allocation t, then t -> from
+cfgNodeAccessesAlloc(node, z, "r"),
+cfgNodeAccessesAlloc(node, t, "w"),
+pointsTo(t, z, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    Store(ssaLoc, func, _, _, toVar, from),
+    !contains("Const", from),
+    // from!="Constant",
+    ctx=[thread, csctx],
+    isAllocSite(x),
+    x=[xFunc, xPos, $Var(toVar), ctx],
+    ptrPointsTo(x, t, ctx),
+    isAllocSite(y),
+    pointsTo(y, z, ctx),
+    (   y=[yfunc, yPos, $Var(from), ctx];   // y is a local
+        y=["", yPos, $Global(from), gctx]      // or y is a global
+    ).
+
+cfgNodeAccessesAlloc(node, z, "r"),
+cfgNodeAccessesAlloc(node, t, "w"),
+pointsTo(t, z, gctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    Store(ssaLoc, func, _, _, toVar, from),
+    !contains("Const", from),
+    // from!="Constant",
+    ctx=[thread, csctx],
+    gctx=[$Any(), nil],
+    isAllocSite(x),
+    x=[xFunc, xPos, $Var(toVar), gctx],
+    ptrPointsTo(x, t, gctx),
+    isAllocSite(y),
+    pointsTo(y, z, ctx),
+    (   y=[yfunc, yPos, $Var(from), ctx];           // y is a local var
+        y=["", $GlobalDecl(), $Global(from), gctx]; // or y is a global alloc
+        y=["", $GlobalDecl(), $Var(from), gctx]     // y is global var
+    ).
+
+// General store: *toVar = from
+// If from -> sth, then toVar *-> sth
+// cfgNodeAccessesAlloc(node, t, "w"),
+// pointsTo(t, z, ctx),
+cfgNodeAccessesAlloc(node, z, "r"),
+ptrPointsTo(x, z, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    Store(ssaLoc, func, _, _, toVar, from),
+    !LocalVarType(from, _, "Value", _),
+    !contains("Const", from),
+    // from!="Constant",
+    ctx=[thread, csctx],
+    isAllocSite(x),
+    x=[xFunc, xPos, $Var(toVar), ctx],
+    isAllocSite(y),
+    pointsTo(y, z, ctx),
+    (   y=[yfunc, yPos, $Var(from), ctx];   // y is a local
+        y=["", yPos, $Global(from), gctx]      // or y is a global
+    ).
+
+cfgNodeAccessesAlloc(node, z, "r"),
+ptrPointsTo(x, z, gctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    Store(ssaLoc, func, _, _, toVar, from),
+    !LocalVarType(from, _, "Value", _),
+    !contains("Const", from),
+    // from!="Constant",
+    ctx=[thread, csctx],
+    gctx=[$Any(), nil],
+    isAllocSite(x),
+    x=[xFunc, xPos, $Var(toVar), gctx],
+    isAllocSite(y),
+    pointsTo(y, z, ctx),
+    (   y=[yfunc, yPos, $Var(from), ctx];   // y is a local
+        y=["", yPos, $Global(from), gctx];      // or y is a global
+        y=["", $GlobalDecl(), $Var(from), gctx]     // y is global var
+    ).
+
+// Take the address of array or slice element: x = &arr[ind]
+// if arr *-> $Array(ArrayAllocInd), then x *-> $ArrayElemAtInd(ArrayAllocInd, ind) 
+// The allocation for the specific array index might not exist, also create it
+allocSiteHasType(arrayElemAtIndAlloc, substr(varTypeStr, 1, strlen(varTypeStr))),
+allocSiteHasType(arrayElemAnyIndAlloc, substr(varTypeStr, 1, strlen(varTypeStr))),
+isAllocSite(x),
+isAllocSite(arrayElemAtIndAlloc),
+isAllocSite(arrayElemAnyIndAlloc),
+ptrPointsTo(x, arrayElemAtIndAlloc, ctx), 
+ptrPointsTo(x, arrayElemAnyIndAlloc, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    pos=cfgLoc,
+    AddrArrayConstIndex(ssaLoc, func, _, _, toVar, fromArrayPtr, arrayInd),
+    x=[func, pos, $Var(toVar), ctx],
+    LocalVarType(toVar, varTypeStr, "Pointer", _), 
+    isAllocSite(fromArrayAlloc),
+    fromArrayAlloc=[func3, pos3, $Var(fromArrayPtr), fromAllocCtx],
+    ptrPointsTo(fromArrayAlloc, arrayAlloc, ctx),
+    arrayAlloc=[func2, pos2, $Array(arrayAllocInd), allocCtx],
+    arrayElemAtIndAlloc=[func2, pos2, $ArrayConstInd(arrayAllocInd, arrayInd), allocCtx],
+    arrayElemAnyIndAlloc=[func2, pos2, $ArrayAnyInd(arrayAllocInd), allocCtx].
+
+// creation of a channel object, which is subsequently
+// assigned to channel variables
+allocSiteHasType(chanObjAlloc, "ChanObject"),
+isAllocSite(localVar), 
+isAllocSite(chanObjAlloc),
+pointsTo(localVar, chanObjAlloc, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    MakeChan(ssaLoc, func, _, _, varName, cap),
+    localVar=[func, cfgLoc, $Var(varName), ctx],
+    LocalVarType(varName, _, "Chan", "NA"), 
+    chanObjAlloc=[func, cfgLoc, $ChanUnbuff(ssaLoc), ctx], 
+    cap=0.
+
+allocSiteHasType(chanObjAlloc, "ChanObject"),
+isAllocSite(localVar), 
+isAllocSite(chanObjAlloc),
+pointsTo(localVar, chanObjAlloc, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    MakeChan(ssaLoc, func, _, _, varName, cap),
+    localVar=[func, cfgLoc, $Var(varName), ctx],
+    LocalVarType(varName, _, "Chan", "NA"), 
+    chanObjAlloc=[func, cfgLoc, $ChanBuff(ssaLoc), ctx], 
+    cap!=0.
+
+// Take the address of a field of a struct: x = &base[fieldInd]
+// For every allocation that base points to, create a new allocation for its 
+// corresponding field, and let x ptrPointsTo it
+allocSiteHasType(structFieldAlloc, substr(varTypeStr, 1, strlen(varTypeStr))),
+isAllocSite(x),
+isAllocSite(structFieldAlloc),
+ptrPointsTo(x, structFieldAlloc, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    pos=cfgLoc,
+    FieldAddr(ssaLoc, func, _, _, toVar, fromStructBase, fieldInd),
+    x=[func, pos, $Var(toVar), ctx],
+    LocalVarType(toVar, varTypeStr, "Pointer", _), 
+    fromStructBaseAlloc=[func2, pos2, $Var(fromStructBase), fromAllocCtx],
+    ptrPointsTo(fromStructBaseAlloc, structAlloc, ctx),
+    isAllocSite(structAlloc),
+    structAlloc=[func3, pos3, $Struct(structAllocSSA), allocCtx],
+    structFieldAlloc=[func3, pos3, $Field(structAllocSSA, fieldInd), allocCtx].
+
+// For the global struct do the similar
+allocSiteHasType(structFieldAlloc, fieldType),
+isAllocSite(x),
+isAllocSite(structFieldAlloc),
+ptrPointsTo(x, structFieldAlloc, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    pos=cfgLoc,
+    FieldAddr(ssaLoc, func, _, _, toVar, fromStructBase, fieldInd),
+    fromStructBaseAlloc=[func2, pos2, $Var(fromStructBase), fromAllocCtx],
+    ptrPointsTo(fromStructBaseAlloc, structAlloc, ctx2),
+    isAllocSite(structAlloc),
+    allocSiteHasType(structAlloc, structType),
+    StructFields(structType, fieldInd, fieldType, _, _),
+    structAlloc=[func3, pos3, $Global(varName), allocCtx],
+    structFieldAlloc=[func3, pos3, $GlobalField(varName, fieldInd), allocCtx],
+    x=[func, pos, $Var(toVar), ctx],
+    Global(varName, varTypeStr, "Pointer", _).
+
+// Get a field of a struct: x = base[fieldInd]
+// basically the same as above
+allocSiteHasType(structFieldAlloc, varTypeStr),
+isAllocSite(x),
+isAllocSite(structFieldAlloc),
+pointsTo(x, structFieldAlloc, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    ctx=[thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    pos=cfgLoc,
+    Field(ssaLoc, func, _, _, toVar, fromStructBase, fieldInd),
+    fromStructBaseAlloc=[func2, pos2, $Var(fromStructBase), fromAllocCtx],
+    ptrPointsTo(fromStructBaseAlloc, structAlloc, ctx),
+    isAllocSite(structAlloc),
+    structAlloc=[func3, pos3, $Struct(structAllocSSA), allocCtx],
+    structFieldAlloc=[func3, pos3, $Field(structAllocSSA, fieldInd), allocCtx],
+    x=[func, pos, $Var(toVar), ctx],
+    LocalVarType(toVar, varTypeStr, _, _).
+
+
+// General load: toVar = *fromAddr
+// If from -> other, and other *-> target, then toVarName -> target
+// If the instruction is x = *y, then if y -> w, w *-> z, that yields x -> z.
+cfgNodeAccessesAlloc(node, z, "r"),
+isAllocSite(x),
+pointsTo(x, z, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    Load(ssaLoc, func, _, _, toVar, fromAddr),
+    ctx=[thread, csctx],
+    x=[func, cfgLoc, $Var(toVar), ctx],
+    isAllocSite(y),
+    pointsTo(y, w, ctx),
+    y=[yfunc, yPos, $Var(fromAddr), ctx],   // y is a local
+    isAllocSite(w),
+    ptrPointsTo(w, z, wctx).
+    
+
+cfgNodeAccessesAlloc(node, z, "r"),
+isAllocSite(x),
+pointsTo(x, z, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    Load(ssaLoc, func, _, _, toVar, fromAddr),
+    ctx=[thread, csctx],
+    gctx=[$Any(), nil],
+    x=[func, cfgLoc, $Var(toVar), ctx],
+    isAllocSite(y),
+    pointsTo(y, w, gctx),
+    y=["", $GlobalDecl(), $Var(fromAddr), gctx],      // or y is a global
+    isAllocSite(w),
+    ptrPointsTo(w, z, wctx).
+
+// MakeInterface: x = make ?? <- y, y is not a value
+// Similar to type casting in C. 
+// If y -> z, then x -> z.
+isAllocSite(x),
+pointsTo(x, z, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    MakeInterface(ssaLoc, func, _, _, toVar, from),
+    !LocalVarType(from, _, "Value", _),
+    !contains("Const", from),
+    // from!="Constant",
+    ctx=[thread, csctx],
+    x=[func, cfgLoc, $Var(toVar), ctx],
+    isAllocSite(y),
+    pointsTo(y, z, ctx),
+    (   
+        y=[yfunc, yPos, $Var(from), ctx];   // y is a local
+        y=["", yPos, $Global(from), gctx]      // or y is a global
+    ).
+
+// MakeInterface: x = make ?? <- Constant
+// Similar to type casting in C. 
+// If y -> z, then x -> z.
+isAllocSite(x) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    MakeInterface(ssaLoc, func, _, _, toVar, from),
+    contains("Const", from),
+    // from="Constant",
+    ctx=[thread, csctx],
+    x=[func, cfgLoc, $Var(toVar), ctx].
+
+// Phi: x = Phi [ind: from] 
+// Similar to type casting in C. 
+// If y -> z, then x -> z.
+isAllocSite(x),
+pointsTo(x, z, ctx) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    Phi(ssaLoc, func, _, _, toVar, _, from),
+    !LocalVarType(from, _, "Value", _),
+    !contains("Const", from),
+    // from!="Constant",
+    ctx=[thread, csctx],
+    x=[func, cfgLoc, $Var(toVar), ctx],
+    isAllocSite(y),
+    pointsTo(y, z, ctx),
+    (   
+        y=[yfunc, yPos, $Var(from), ctx];   // y is a local
+        y=["", $GlobalDecl(), $Var(from), gctx]      // or y is a global
+    ).
+
+// MakeInterface: x = make ?? <- Constant
+// Similar to type casting in C. 
+// If y -> z, then x -> z.
+isAllocSite(x) :-
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    Phi(ssaLoc, func, _, _, toVar, _, from),
+    contains("Const", from),
+    // from="Constant",
+    ctx=[thread, csctx],
+    x=[func, cfgLoc, $Var(toVar), ctx].
+
+// Inter-procedural assign that connects variables in the caller and callee
+// We only connect variables that have non-value, non-constant types, since those 
+// that do are copied during function invocation, and therefore do not 
+// point to the same memory.
+
+.decl interpAssign(toVar:VarName, callee:FuncName, fromVar:VarName, caller:FuncName)
+
+// Inter-procedural assign due to call instructions
+interpAssign(paramName, callee, argName, caller) :-
+    CHACallGraph(callInst, caller, callee, _),
+    ActualArg(callInst, caller, _, _, _, callee, argInd, argName, _, _, _), 
+    FormalParam(callee, paramInd, paramName, _, typeKind, _),
+    argInd=paramInd,
+    typeKind != "Value".
+
+// Inter-procedural assign due to bindings of free vars
+interpAssign(freeVarName, closureFunc, capturedVarName, caller) :-
+    funcReachableCS(caller, _, _),
+    funcReachableCS(closureFunc, _, _),
+    CHACallGraph(_, caller, closureFunc, _),
+    ClosureBindsFreeVar(closureFunc, fvInd, capturedVarName),
+    FreeVar(closureFunc, fvInd, freeVarName, _, typeKind, _),
+    typeKind != "Value".
+
+// Compute context-sensitive points-to facts given the inter-procedural assigns
+// and context-sensitive CFG edges that correspond to function calls
+
+// whatever callerAlloc points to propagates to calleeAlloc, if 
+// there is an interprocedural assign, also compute a new PTContext
+// for the callee
+pointsTo(calleeAlloc, z, [calleeThread, calleeCsctx]) :-
+    interpAssign(toVar, callee, fromVar, caller),
+    (
+        isGoCallEdge(callerNode, calleeNode);
+        isNonGoCallEdge(callerNode, calleeNode)
+    ),
+    calleeNode=[calleeCFGPoint, calleeThread, calleeCsctx],
+    callerNode=[callerCFGPoint, callerThread, callerCsctx], 
+    isAllocSite(calleeAlloc),
+    calleeAlloc=[callee, pos1, $Var(toVar), [calleeThread, calleeCsctx]],
+    isAllocSite(callerAlloc), 
+    callerAlloc=[caller, pos2, $Var(fromVar), [callerThread, callerCsctx]],
+    pointsTo(callerAlloc, z, [callerThread, callerCsctx]).
+
+
+// Propagate point-to using through return values
+.decl returnTupleIn(calleeCtx:PTContext, tupleInd:number, calleeVar:VarName)
+
+returnTupleIn(calleeCtx, tupleInd, calleeVar) :-
+    isNonGoCallEdge(callerNode, calleeNode),
+    calleeNode=[calleeCFGPoint, calleeThread, calleeCsctx],
+    cfgInFunction(calleeCFGPoint, callee),
+    calleeCtx=[calleeThread, calleeCsctx],
+    FormalReturnTuple(_, callee, _, _, calleeVar, tupleInd).
+
+// Propagate point-to through a single return value
+isAllocSite(varAllocInCaller),
+pointsTo(varAllocInCaller, z, [callerThread, callerCsctx]) :-
+    isNonGoCallEdge(callerNode, calleeNode),
+    callerNode=[callerCFGPoint, callerThread, callerCsctx], 
+    calleeNode=[calleeCFGPoint, calleeThread, calleeCsctx],
+    calleeCtx=[calleeThread, calleeCsctx],
+    cfgInFunction(callerCFGPoint, caller),
+    cfgInFunction(calleeCFGPoint, callee),
+    ActualReturn(callInst, caller, _, _, _, actualRetVar, returnTupleLen, _, _, _), 
+    returnTupleLen=1,
+    LocalVarType(actualRetVar, _, typeKind, _),
+    typeKind!="Value",
+    varAllocInCaller=[caller, $SSA(callInst), $Var(actualRetVar), [callerThread, callerCsctx]],
+    returnTupleIn(calleeCtx, 0, calleeVar),
+    isAllocSite(calleeVarAlloc),
+    calleeVarAlloc=[callee, pos1, $Var(calleeVar), calleeCtx],
+    pointsTo(calleeVarAlloc, z, calleeCtx).
+
+// Propagate point-to through each element of the tuple
+// We directly grab the point-to information accumulated inside the callee,
+// and feed that into the LHS of extract instructions in the caller
+isAllocSite(toVarAlloc),
+pointsTo(toVarAlloc, z, [callerThread, callerCsctx]) :-
+    isNonGoCallEdge(callerNode, calleeNode),
+    callerNode=[callerCFGPoint, callerThread, callerCsctx], 
+    calleeNode=[calleeCFGPoint, calleeThread, calleeCsctx],
+    calleeCtx=[calleeThread, calleeCsctx],
+    cfgInFunction(callerCFGPoint, caller),
+    cfgInFunction(calleeCFGPoint, callee),
+    ActualReturn(callInst, caller, _, _, _, actualRetVar, returnTupleLen, _, _, _), 
+    returnTupleLen>1,
+    ExtractTuple(extractLoc, caller, _, _, toVar, actualRetVar, tupleInd),
+    LocalVarType(toVar, _, typeKind, _),
+    typeKind!="Value",
+    toVarAlloc=[caller, $SSA(extractLoc), $Var(toVar), [callerThread, callerCsctx]],
+    returnTupleIn(calleeCtx, tupleInd, calleeVar),
+    isAllocSite(calleeVarAlloc),
+    calleeVarAlloc=[callee, pos1, $Var(calleeVar), calleeCtx],
+    pointsTo(calleeVarAlloc, z, calleeCtx).
+    
+
+// A pair of accesses escapes thread if the accesses happen on different threads,
+// and at least one access is a write. This relation is calculated before the
+// MHIP analysis to reduce the number of pairs considered.
+.decl accessEscapesThread(alloc:AllocSite, 
+    x:CSCFGNode, akx:AccessKind, 
+    y:CSCFGNode, aky:AccessKind)
+
+accessEscapesThread(alloc, x, akx, y, aky) :-
+    isAllocSite(alloc),
+    allocSiteHasType(alloc, allocType),
+    // Exclude sync primitives from the memory accesses to consider
+    allocType!="Chan",
+    allocType!="ChanObject",
+    allocType!="Mutex",
+    allocType!="Waitgroup",
+    !isAllocOfSyncPrim(alloc, _),
+    cfgNodeAccessesAlloc(x, alloc, akx),
+    x=[loc1, t1, csctx1],
+    cfgNodeAccessesAlloc(y, alloc, aky),
+    y=[loc2, t2, csctx2],
+    threadId(tid1, t1),
+    threadId(tid2, t2),
+    tid1 < tid2,
+    (akx = "w" ; aky = "w" ).
+
+// Finding out the allocations for mutexes, wait groups, and channels
+.decl isAllocOfSyncPrim(x:AllocSite, type:GoTypeId)
+
+isAllocOfSyncPrim(x, type) :-
+    isAllocSite(x),
+    allocSiteHasType(x, t),
+    (
+        t="sync.Mutex",type="Mutex";
+        t="sync.WaitGroup",type="Waitgroup";
+        t="ChanObject",type="Chan"
+    ).
+
+.decl isChan(x:AllocSite) inline
+isChan(x) :- isAllocOfSyncPrim(x, "Chan").
+
+.decl isMutex(x:AllocSite) inline
+isMutex(x) :- isAllocOfSyncPrim(x, "Mutex").
+
+.decl isWg(x:AllocSite) inline
+isWg(x) :- isAllocOfSyncPrim(x, "Waitgroup").
+
+// The central relation we rely on in doing the synchronization analysis
+// Whether an allocation must point to one single synchronization primitive
+.decl mayPointToTwoChans(x:AllocSite, ctx:PTContext, s1:AllocSite, s2:AllocSite)
+mayPointToTwoChans(x, ctx, s1, s2) :-
+    isAllocSite(x),
+    isChan(s1), isChan(s2),
+    s1!=s2,
+    pointsTo(x, s1, ctx),
+    pointsTo(x, s2, ctx).
+
+.decl mustPointToChan(x:AllocSite, ctx:PTContext, ch:AllocSite)
+mustPointToChan(x, ctx, ch) :-
+    isAllocSite(x),
+    isChan(ch),
+    !mayPointToTwoChans(x, ctx, _, _),
+    pointsTo(x, ch, ctx).
+
+.decl mayPtrPointToTwoSyncPrims(x:AllocSite, ctx:PTContext, s1:AllocSite, s2:AllocSite)
+mayPtrPointToTwoSyncPrims(x, ctx, s1, s2) :-
+    isAllocSite(x),
+    isAllocOfSyncPrim(s1, primKind),
+    isAllocOfSyncPrim(s2, primKind),
+    s1!=s2,
+    primKind!="Chan",
+    ptrPointsTo(x, s1, ctx),
+    ptrPointsTo(x, s2, ctx).
+
+.decl mustPtrPointToSyncPrim(x:AllocSite, ctx:PTContext, syncPrim:AllocSite)
+mustPtrPointToSyncPrim(x, ctx, p) :-
+    isAllocSite(x),
+    isAllocOfSyncPrim(p, primKind),
+    primKind!="Chan",
+    !mayPtrPointToTwoSyncPrims(x, ctx, _, _),
+    ptrPointsTo(x, p, ctx).
+
+.decl mayPtrPointToSyncPrim(x:AllocSite, ctx:PTContext, syncPrim:AllocSite)
+mayPtrPointToSyncPrim(x, ctx, p) :-
+    ptrPointsTo(x, p, ctx).
+
+
+// Channel Analysis
+
+// Compute must happen before relations via channel operations whose ordering is guaranteed
+// by control flow.
+
+// Collect channel operations at each CFG node
+.decl chanOp(tid:number, node:CSCFGNode, ch:AllocSite, mustOrMay:symbol, sendOrRecv:symbol)
+
+chanOp(tid, node, ch, "!", "send") :- 
+    threadId(tid, thread),
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    ctx=[thread, csctx],
+    Send(ssaLoc, _, _, _, _, chVar),
+    isAllocSite(chVarAlloc),
+    chVarAlloc=[chFunc, chPos, $Var(chVar), ctx],
+    mustPointToChan(chVarAlloc, ctx, ch).
+
+chanOp(tid, node, ch, "?", "send") :- 
+    threadId(tid, thread),
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    ctx=[thread, csctx],
+    Send(ssaLoc, _, _, _, _, chVar),
+    isAllocSite(chVarAlloc),
+    chVarAlloc=[chFunc, chPos, $Var(chVar), ctx],
+    pointsTo(chVarAlloc, ch, ctx),
+    isChan(ch).
+
+chanOp(tid, node, ch, "!", "recv") :- 
+    threadId(tid, thread),
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    ctx=[thread, csctx],
+    Receive(ssaLoc, _, _, _, _, chVar),
+    isAllocSite(chVarAlloc),
+    chVarAlloc=[chFunc, chPos, $Var(chVar), ctx],
+    mustPointToChan(chVarAlloc, ctx, ch).
+
+chanOp(tid, node, ch, "?", "recv") :- 
+    threadId(tid, thread),
+    reachableCS(node),
+    node=[cfgLoc, thread, csctx],
+    cfgLoc=$SSA(ssaLoc),
+    ctx=[thread, csctx],
+    Receive(ssaLoc, _, _, _, _, chVar),
+    isAllocSite(chVarAlloc),
+    chVarAlloc=[chFunc, chPos, $Var(chVar), ctx],
+    pointsTo(chVarAlloc, ch, ctx),
+    isChan(ch).
+
+// A thread has a channel operation
+.decl chanOpOnThread(ch:AllocSite, t:number)
+chanOpOnThread(ch, t) :-
+    isChan(ch),
+    chanOp(t, _, ch, _, _).
+
+// Operations on a channel happen within more than 2 threads
+.decl chanSharedByMoreThanTwoThreads(ch:AllocSite, tid1:number, tid2:number, tid3:number)
+
+chanSharedByMoreThanTwoThreads(ch, tid1, tid2, tid3) :-
+    chanOpOnThread(ch, tid1),
+    chanOpOnThread(ch, tid2),
+    chanOpOnThread(ch, tid3),
+    tid1<tid2,
+    tid2<tid3.
+
+// The channel that is used by exactly 2 threads
+.decl chanSharedByOnlyTwoThreads(ch:AllocSite, tid1:number, tid2:number)
+
+chanSharedByOnlyTwoThreads(ch, tid1, tid2) :-
+    chanOpOnThread(ch, tid1),
+    chanOpOnThread(ch, tid2),
+    tid1<tid2,
+    !chanSharedByMoreThanTwoThreads(ch, _, _, _).
+
+// If the channel is used by exactly 2 threads, we analyze the operations on each thread
+.decl canAnalyze(ch:AllocSite, tid:number)
+
+canAnalyze(ch, tid1),
+canAnalyze(ch, tid2) :-
+    chanSharedByOnlyTwoThreads(ch, tid1, tid2).
+
+// Count the number of operations on a channel in the CFG since the start of a thread
+.decl numOfOpSinceThreadStarts(tid:number, ch:AllocSite, p:CSCFGNode, cnt:number, 
+            mustOrMay:symbol, sendOrRecv:symbol)
+
+// We can only analyze those threads and channels that are eligible, therefore
+// we only create the base conditions for these.
+numOfOpSinceThreadStarts(tid, ch, startNode, 0, "!", "send"),
+numOfOpSinceThreadStarts(tid, ch, startNode, 0, "?", "send"),
+numOfOpSinceThreadStarts(tid, ch, startNode, 0, "!", "recv"),
+numOfOpSinceThreadStarts(tid, ch, startNode, 0, "?", "recv") :-
+    canAnalyze(ch, tid),
+    threadId(tid, thread),
+    firstNodeOfThread(thread, startNode).
+
+// Inductively compute the count of number of ops along intra-thread CFG edges
+numOfOpSinceThreadStarts(tid, ch, y, cnt+1, mustOrMay, sendOrRecv) :-
+    numOfOpSinceThreadStarts(tid, ch, x, cnt, mustOrMay, sendOrRecv),
+    intraThreadCFGEdge(tid, x, y),
+    chanOp(tid, y, ch, mustOrMay, sendOrRecv).
+    
+numOfOpSinceThreadStarts(tid, ch, y, cnt, mustOrMay, sendOrRecv) :-
+    numOfOpSinceThreadStarts(tid, ch, x, cnt, mustOrMay, sendOrRecv),
+    intraThreadCFGEdge(tid, x, y),
+    !chanOp(tid, y, ch, mustOrMay, sendOrRecv).
+
+// We compute a lower bound for number of operations at a CFG node
+.decl lowerBoundNumOfOpAtPoint(tid:number, ch:AllocSite, p:CSCFGNode, cnt:number, 
+                sendOrRecv:symbol)
+
+lowerBoundNumOfOpAtPoint(tid, ch, p, cnt, sendOrRecv) :-
+    chanOp(tid, p, ch, _, sendOrRecv),
+    numOfOpSinceThreadStarts(tid, ch, p, cnt, "!", sendOrRecv).
+
+// If there is another path in the CFG that yields an even lower
+// count for the number of ops, the original result is subsumed
+lowerBoundNumOfOpAtPoint(tid, ch, p, cnt1, sendOrRecv) <=
+lowerBoundNumOfOpAtPoint(tid, ch, p, cnt2, sendOrRecv) :-
+    numOfOpSinceThreadStarts(tid, ch, p, cnt2, "!", sendOrRecv),
+    cnt2<cnt1.
+
+// We do the similar for computing the upper bound on number of ops
+.decl upperBoundNumOfOpAtPoint(tid:number, ch:AllocSite, p:CSCFGNode, cnt:number, 
+                sendOrRecv:symbol)
+
+upperBoundNumOfOpAtPoint(tid, ch, p, cnt, sendOrRecv) :-
+    chanOp(tid, p, ch, _, sendOrRecv),
+    numOfOpSinceThreadStarts(tid, ch, p, cnt, "?", sendOrRecv).
+
+upperBoundNumOfOpAtPoint(tid, ch, p, cnt1, sendOrRecv) <=
+upperBoundNumOfOpAtPoint(tid, ch, p, cnt2, sendOrRecv) :-
+    numOfOpSinceThreadStarts(tid, ch, p, cnt2, "?", sendOrRecv),
+    cnt2>cnt1.
+
+// We can conclude that a pair of send and receive must match with
+// each other, if they are both guaranteed to be the i-th send
+// and receive on a channel.
+.decl mustMatchPair(ch:AllocSite, x:CSCFGNode, y:CSCFGNode)
+
+mustMatchPair(ch, x, y) :-
+    chanOp(tid1, x, ch, "!", "send"),
+    chanOp(tid2, y, ch, "!", "recv"),
+    isChan(ch),
+    (
+        chanSharedByOnlyTwoThreads(ch, tid1, tid2);
+        chanSharedByOnlyTwoThreads(ch, tid2, tid1)
+    ),
+    lowerBoundNumOfOpAtPoint(tid1, ch, x, lbx, "send"),
+    upperBoundNumOfOpAtPoint(tid1, ch, x, ubx, "send"),
+    lowerBoundNumOfOpAtPoint(tid2, ch, y, lby, "recv"),
+    upperBoundNumOfOpAtPoint(tid2, ch, y, uby, "recv"),
+    lbx=ubx, ubx=lby, lby=uby.
+
+// A send must happen before a receive, if the ord of send is less or equal to
+// the ord of receive. This is guaranteed by the Go memory spec.
+// For example, if a must send might be the 1st or 2nd send on a channel,
+// and a must receive might be the 2nd or 3rd receive on the channel, then
+// the send must happen before the receive, no matter what.
+.decl mustAfterPair(ch:AllocSite, x:CSCFGNode, y:CSCFGNode)
+
+mustAfterPair(ch, x, y) :-
+    chanOp(tid1, x, ch, "!", "send"),
+    chanOp(tid2, y, ch, "!", "recv"),
+    isChan(ch),
+    (
+        chanSharedByOnlyTwoThreads(ch, tid1, tid2);
+        chanSharedByOnlyTwoThreads(ch, tid2, tid1)
+    ),
+    lowerBoundNumOfOpAtPoint(tid1, ch, x, lbx, "send"),
+    upperBoundNumOfOpAtPoint(tid1, ch, x, ubx, "send"),
+    lowerBoundNumOfOpAtPoint(tid2, ch, y, lby, "recv"),
+    upperBoundNumOfOpAtPoint(tid2, ch, y, uby, "recv"),
+    ubx<=lby.
+
+// If we can establish happens-before for a pair of send/receive, then
+// we can add actual edges according to whether the channel is buffered or not.
+.decl tentativeHBEdge(x:CSCFGNode, y:CSCFGNode)
+
+// tentativeHBEdge(x, y) :-
+//     mustAfterPair(ch, x, y),
+//      ch=[func, loc, $ChanBuff(ssaLoc), ctx].
+
+tentativeHBEdge(x, y) :-
+    mustAfterPair(ch, x, y),
+     ch=[func, loc, $ChanUnbuff(ssaLoc), ctx].
+
+// Unbuffered channels guarantees synchronization, therefore if we can
+// match a send and receive, this yields that the things happen before
+// the receive also must happen before the things after the send.
+// tentativeHBEdge(z, w) :-
+//     mustMatchPair(ch, x, y),
+//      ch=[func, loc, $ChanUnbuff(ssaLoc), ctx],
+//      intraThreadCFGEdge(_, z, y),
+//      intraThreadCFGEdge(_, x, w).
+tentativeHBEdge(y, x),
+tentativeHBEdge(x, y) :-
+    mustMatchPair(ch, x, y),
+     ch=[func, loc, $ChanUnbuff(ssaLoc), ctx].
+    //  intraThreadCFGEdge(_, z, y),
+    //  intraThreadCFGEdge(_, x, w).
+
+// Waitgroup analysis
+
+// First we also collect the wait group operations at CFG nodes.
+.decl wgAddAtLoc(ssaLoc:SSALoc, wgVar:VarName, num:number) inline
+
+wgAddAtLoc(ssaLoc, wgVar, 1) :-
+    ActualArg(ssaLoc, _, _, _, "Call", "sync.Add", 0, wgVar, "*sync.WaitGroup", "Pointer", _),
+    !ActualArg(ssaLoc, _, _, _, "Call", "sync.Add", 1, _, _, _, _).
+
+wgAddAtLoc(ssaLoc, wgVar, num) :-
+    ActualArg(ssaLoc, _, _, _, "Call", "sync.Add", 0, wgVar, "*sync.WaitGroup", "Pointer", _),
+    ActualArg(ssaLoc, _, _, _, "Call", "sync.Add", 1, addedAmount, _, _, _),
+    contains("ConstInt", addedAmount),
+    numStr=substr(addedAmount, 8, strlen(addedAmount)), 
+    num=to_number(numStr).
+
+.decl wgAdd(tid:number, node:CSCFGNode, mustOrMay:symbol, wg:AllocSite, cnt:number)
+
+wgAdd(tid, node, mustOrMay, wg, cnt) :-
+    reachableCS(node),
+    node=[loc1, t1, csctx1],
+    threadId(tid, t1),
+    ctx=[t1, csctx1],
+    loc1=$SSA(ssaLoc),
+    wgAddAtLoc(ssaLoc, wgVarName, cnt),
+    isAllocSite(allocSite),
+    (
+        allocSite=[func, loc, $Var(wgVarName), ctx];
+        allocSite=["", $GlobalDecl(), $Var(wgVarName), [$Any(), nil]]
+    ),
+    (
+        mustPtrPointToSyncPrim(allocSite, ctx, wg), mustOrMay="!";
+        mayPtrPointToSyncPrim(allocSite, ctx, wg), mustOrMay="?"
+    ).
+
+.decl wgWaitAtLoc(ssaLoc:SSALoc, wgVar:VarName) inline
+
+wgWaitAtLoc(ssaLoc, wgVar) :-
+    ActualArg(ssaLoc, _, _, _, "Call", "sync.Wait", 0, wgVar, "*sync.WaitGroup", "Pointer", _).
+
+.decl wgWait(tid:number, node:CSCFGNode, mustOrMay:symbol, wg:AllocSite)
+
+wgWait(tid, node, mustOrMay, wg) :-
+    reachableCS(node),
+    node=[loc1, t1, csctx1],
+    threadId(tid, t1),
+    ctx=[t1, csctx1],
+    loc1=$SSA(ssaLoc),
+    wgWaitAtLoc(ssaLoc, wgVarName),
+    isAllocSite(allocSite),
+    (
+        allocSite=[func, loc, $Var(wgVarName), ctx];
+        allocSite=["", $GlobalDecl(), $Var(wgVarName), [$Any(), nil]]
+    ),
+    (
+        mustPtrPointToSyncPrim(allocSite, ctx, wg), mustOrMay="!";
+        mayPtrPointToSyncPrim(allocSite, ctx, wg), mustOrMay="?"
+    ).
+
+
+.decl wgDoneAtLoc(ssaLoc:SSALoc, wgVar:VarName) inline
+
+wgDoneAtLoc(ssaLoc, wgVar) :-
+    ActualArg(ssaLoc, _, _, _, "Call", "sync.Done", 0, wgVar, "*sync.WaitGroup", "Pointer", _).
+
+.decl wgDone(tid:number, node:CSCFGNode, mustOrMay:symbol, wg:AllocSite)
+
+wgDone(tid, node, mustOrMay, wg) :-
+    reachableCS(node),
+    node=[loc1, t1, csctx1],
+    threadId(tid, t1),
+    ctx=[t1, csctx1],
+    loc1=$SSA(ssaLoc),
+    wgDoneAtLoc(ssaLoc, wgVarName),
+    isAllocSite(allocSite),
+    (
+        allocSite=[func, loc, $Var(wgVarName), ctx];
+        allocSite=["", $GlobalDecl(), $Var(wgVarName), [$Any(), nil]]
+    ),
+    (
+        mustPtrPointToSyncPrim(allocSite, ctx, wg), mustOrMay="!";
+        mayPtrPointToSyncPrim(allocSite, ctx, wg), mustOrMay="?"
+    ).
+
+// A thread invokes wg.Done for a certain number of times at some CFG point
+.decl threadInvokesDoneAtPoint(tid:number, node:CSCFGNode, wg:AllocSite, times:number)
+
+threadInvokesDoneAtPoint(tid, start, wg, 0) :-
+    threadId(tid, t),
+    firstNodeOfThread(t, start),
+    isWg(wg).
+
+threadInvokesDoneAtPoint(tid, next, wg, times) :-
+    threadInvokesDoneAtPoint(tid, current, wg, times),
+    intraThreadCFGEdge(tid, current, next),
+    !wgDone(tid, next, "?", wg).
+
+threadInvokesDoneAtPoint(tid, next, wg, times+1) :-
+    threadInvokesDoneAtPoint(tid, current, wg, times),
+    intraThreadCFGEdge(tid, current, next),
+    wgDone(tid, next, "?", wg).
+
+// The max number of wg.Done invoked inside a thread across all
+// CFG nodes belonging to the thread
+.decl threadInvokesDoneMax(tid:number, wg:AllocSite, times:number)
+
+threadInvokesDoneMax(tid, wg, times) :-
+    threadId(tid, t),
+    isWg(wg), 
+    times = max t : { threadInvokesDoneAtPoint(tid, _, wg, t) }.
+
+// If there is a path through the thread that invokes a certain number of 
+// wg.Done, then at the thread creation site we require the parent thread
+// to supply a greater or equal number of wg.Add
+.decl threadRequiresWgCnt(tid:number, wg:AllocSite, times:number, node:CSCFGNode)
+
+threadRequiresWgCnt(tid, wg, times, node) :-
+    threadInvokesDoneMax(tid, wg, times),
+    threadId(tid, thread),
+    (
+        thread=$Th(node);
+        thread=$GTh(node)
+    ).
+
+// Propagate the wg.Add until we hit a Phi node
+// This allows us to reason about each iteration of the loop, but prevents
+// us from reasoning about nested loops precisely
+.decl wgAddReachesNoPhi(tid:number, wg:AllocSite, addNode:CSCFGNode, reachNode:CSCFGNode, cnt:number)
+
+wgAddReachesNoPhi(tid, wg, addNode, addNode, cnt) :-
+    wgAdd(tid, addNode, "!", wg, cnt).
+
+wgAddReachesNoPhi(tid, wg, addNode, nextNode, cnt) :-
+    wgAddReachesNoPhi(tid, wg, addNode, currNode, cnt),
+    intraThreadCFGEdge(tid, currNode, nextNode),
+    nextNode=[loc1, tid1, csctx1],
+    loc1=$SSA(ssaLoc),
+    !Phi(ssaLoc, _, _, _, _, _, _).
+
+// Compute the total number that has been added to the counter inside wg
+.decl wgAddReachesSum(tid:number, wg:AllocSite, reachNode:CSCFGNode, cnt:number)
+
+wgAddReachesSum(tid, wg, node, cnt) :-
+    wgAddReachesNoPhi(tid, wg, _, node, _),
+    cnt = sum num : {wgAddReachesNoPhi(tid, wg, _, node, num)}.
+
+// Also propagate the number of "consumes" as required by each spawned thread
+.decl threadConsumesWgCntReachNoPhi(tid:number, wg:AllocSite, invokeSite:CSCFGNode, reach:CSCFGNode, times:number)
+
+threadConsumesWgCntReachNoPhi(tid, wg, invokeSite, invokeSite, times) :-
+    threadRequiresWgCnt(tid2, wg, times, invokeSite),
+    invokeSite=[loc, thread, csctx1],
+    threadId(tid, thread).
+
+threadConsumesWgCntReachNoPhi(tid, wg, invokeSite, nextNode, times) :-
+    threadConsumesWgCntReachNoPhi(tid, wg, invokeSite, currNode, times),
+    intraThreadCFGEdge(tid, currNode, nextNode),
+    nextNode=[loc1, tid1, csctx1],
+    loc1=$SSA(ssaLoc),
+    !Phi(ssaLoc, _, _, _, _, _, _).
+
+// We require all wg.Add to happen before wg.Wait
+// We also do not count the wg.Add that happens in spawned goroutines
+.decl wgAddNotBeforeWait(tid:number, wg:AllocSite, wgAddNode:CSCFGNode, wgWaitNode:CSCFGNode)
+
+wgAddNotBeforeWait(tid, wg, addNode, waitNode) :-
+    wgWait(tid, waitNode, "?", wg),
+    wgAdd(tid, addNode, "?", wg, _),
+    threadId(tid, t),
+    !intraThreadHB(t, addNode, waitNode).
+
+// If at a certain node, the Add is not sufficient to cover all the required
+// cnt needed by the spawned thread, then wg does not ensure proper synchronization
+.decl wgNotWorkAtNode(tid:number, wg:AllocSite, node:CSCFGNode)
+
+wgNotWorkAtNode(tid, wg, node) :-
+    wgWait(tid, _, _, wg),
+    reachableCS(node),
+    node=[loc1, t1, csctx1],
+    threadId(tid, t1),
+    consumes = sum times : {
+        threadConsumesWgCntReachNoPhi(tid, wg, invokeSite, node, times)},
+    adds = sum cnt: {
+        wgAddReachesSum(tid, wg, node, cnt)
+    },
+    adds<consumes.
+
+// wg works as expected
+.decl wgWorks(tid:number, wg:AllocSite)
+wgWorks(tid, wg) :-
+    wgWait(tid, _, _, wg),
+    !wgAddNotBeforeWait(tid, wg, _, _),
+    !wgNotWorkAtNode(tid, wg, _).
+
+// if a wg works, then it induces happens-before between Done and Wait
+.decl wgHBEdge(x:CSCFGNode, y:CSCFGNode)
+
+wgHBEdge(x, y) :-
+    wgWorks(tid, wg),
+    wgDone(tid2, x, "!", wg),
+    wgWait(tid, y, "!", wg).
+
+
+.decl interThreadHBEdge(x:CSCFGNode, y:CSCFGNode)
+
+interThreadHBEdge(x, y) :- isGoCallEdge(x, y).
+interThreadHBEdge(x, y) :- tentativeHBEdge(x, y).
+interThreadHBEdge(x, y) :- wgHBEdge(x, y).
+
+// vector clock inspired method for computing may-happen-in-parallel (MHIP)
+// for each CFG node n, its vector clock is a map from tid -> some
+// CFG node x on that thread, indicating that n happens after
+// x w.r.t. a thread.
+.decl vectorClock(node:CSCFGNode, tid:number, vc:CSCFGNode)
+
+vectorClock(node, tid, node) :-
+    reachableCS(node),
+    threadId(tid, vcThread),
+    node=[cfgLoc, vcThread, csctx].
+
+// an inter-thread happens-before leads to creation of a new vector clock
+// that is propagated along an edge
+vectorClock(node, tid, nodeBefore) :-
+    interThreadHBEdge(nodeBefore, node),
+    nodeBefore=[cfgLoc, vcThread, csctx],
+    threadId(tid, vcThread).
+
+// vector clocks propagate along the inter-thread HB edges
+vectorClock(nodeAfter, tid, vc) :-
+    vectorClock(node, tid, vc),
+    interThreadHBEdge(node, nodeAfter).
+
+// they also propagate along intra-thread edges
+vectorClock(node, tid, vc) :-
+    vectorClock(prev, tid, vc),
+    prev=[cfgLoc, nodeThread, csctx],
+    threadId(nodeTid, nodeThread),
+    nodeTid!=tid,
+    intraThreadCFGEdge(nodeTid, prev, node).
+
+// if two CFG points on a thread reaches a node, then we only
+// need to retain the later one if there is a happens before relation
+// between them
+vectorClock(node, tid, vc1) <= vectorClock(node, tid, vc2) :-
+    threadId(tid, t),
+    intraThreadHB(t, vc1, vc2).
+
+// we restrict the pair of nodes to compute vector clocks for to be
+// the pairs which access the same memory across different threads
+.decl needToTryOrder(x:CSCFGNode, y:CSCFGNode)
+needToTryOrder(y, x),
+needToTryOrder(x, y) :-
+    accessEscapesThread(alloc, x, akx, y, aky).
+
+// For a node x to happen before y, all vector clocks of x on tid
+// should also happen no earlier than that of y on tid.
+.decl notHBForVCOfThread(x:CSCFGNode, y:CSCFGNode, tid:number) 
+
+notHBForVCOfThread(x, y, tid) :-
+    needToTryOrder(x, y),
+    vectorClock(x, tid, _),
+    !vectorClock(y, tid, _),
+    threadId(tid, t).
+
+.decl existsUncoveredVC(x:CSCFGNode, y:CSCFGNode, tid:number, vcx:CSCFGNode)
+
+.decl vcyCovers(x:CSCFGNode, y:CSCFGNode, tid:number, vcx:CSCFGNode, vcy:CSCFGNode)
+
+vcyCovers(x, y, tid, vcx, vcy) :-
+    needToTryOrder(x, y),
+    vectorClock(x, tid, vcx),
+    vectorClock(y, tid, vcy),
+    threadId(tid, t),
+    (
+        vcx=vcy;
+        intraThreadHB(t, vcx, vcy)
+    ).
+
+existsUncoveredVC(x, y, tid, vcx) :-
+    needToTryOrder(x, y),
+    vectorClock(x, tid, vcx),
+    ( 
+        !vcyCovers(x, y, tid, vcx, _);
+        !vectorClock(y, tid, _)
+    ).
+
+notHBForVCOfThread(x, y, tid) :-
+    needToTryOrder(x, y),
+    threadId(tid, _),
+    existsUncoveredVC(x, y, tid, vcx).
+    
+.decl hbDueToVC(x:CSCFGNode, y:CSCFGNode)
+
+hbDueToVC(x, y) :-
+    needToTryOrder(x, y),
+    x=[loc1, t1, ctx1],
+    y=[loc2, t2, ctx2],
+    t1!=t2,
+    x!=y,
+    !notHBForVCOfThread(x, y, _).
+
+
+// Mutex Analysis
+
+// Collect all may and must mutex operations at CFG nodes
+.decl mutexOp(tid:number, node:CSCFGNode, mustOrMay:symbol, mutex:AllocSite, operation:symbol)
+
+mutexOp(tid, node, mustOrMay, mutex, op) :-
+    reachableCS(node),
+    node=[loc1, t1, csctx1],
+    threadId(tid, t1),
+    ctx=[t1, csctx1],
+    loc1=$SSA(ssaLoc),
+    (
+        ActualArg(ssaLoc, _, _, _, "Call", "sync.Lock", 0, receiverVarName, "*sync.Mutex", _, _), op="L";
+        ActualArg(ssaLoc, _, _, _, "Call", "sync.Unlock", 0, receiverVarName, "*sync.Mutex", _, _), op="U"
+    ),
+    isAllocSite(allocSite),
+    (
+        allocSite=[func, loc, $Var(receiverVarName), ctx];
+        allocSite=["", $GlobalDecl(), $Var(receiverVarName), [$Any(), nil]]
+    ),
+    (
+        mustPtrPointToSyncPrim(allocSite, ctx, mutex), mustOrMay="!";
+        mayPtrPointToSyncPrim(allocSite, ctx, mutex), mustOrMay="?"
+    ).
+
+// One mutex protects a particular CFG node
+.decl mutexProtects(mutex:AllocSite, tid:number, node:CSCFGNode)
+
+// A must unlock starts protecting all the CFG nodes it reaches
+mutexProtects(mutex, tid, y) :-
+    mutexOp(tid, x, "!", mutex, "L"),
+    intraThreadCFGEdge(tid, x, y).
+
+// The protection is ended by reaching a may unlock
+mutexProtects(mutex, tid, y) :-
+    mutexProtects(mutex, tid, x),
+    intraThreadCFGEdge(tid, x, y),
+    !mutexOp(tid, y, "?", mutex, "U").
+
+// The same mutex protects a pair of CFG nodes
+.decl mutexProtectsBoth(m:AllocSite, x:CSCFGNode, y:CSCFGNode)
+
+mutexProtectsBoth(m, x, y) :-
+    accessEscapesThread(_, x, _, y, _),
+    mutexProtects(m, tid1, x),
+    mutexProtects(m, tid2, y).
+
+// The output relation indicating possible CFG locations that may race
+.decl race(ak1:symbol, loc1:CFGPoint, tid1:number, thread1:Thread,
+           ak2:symbol, loc2:CFGPoint, tid2:number, thread2:Thread,
+           func:symbol, allocLoc:CFGPoint, allocKind:AllocKind)
+
+race(akx, loc1, tid1, thread1, aky, loc2, tid2, thread2, func, allocLoc, allocKind) :-
+    accessEscapesThread(alloc, x, akx, y, aky),
+    !mutexProtectsBoth(_, x, y),
+    alloc=[func, allocLoc, allocKind, allocCtx],
+    !hbDueToVC(x, y),
+    !hbDueToVC(y, x),
+    x=[loc1, thread1, csctx1],
+    y=[loc2, thread2, csctx2],
+    threadId(tid1, thread1),
+    threadId(tid2, thread2).
+
+.output race
+
+// Debugging output if the DEBUG flag is defined
+#ifdef DEBUG
+
+.output cfgNode
+.output cfgInFunction
+.output tentativeCFGAfter
+.output cfgAfter 
+.output deferStackAtPoint
+
+.output isThread
+.output threadId
+.output firstNodeOfThread
+.output funcReachableCS
+.output reachableCS
+.output CSCFGEdge
+.output intraThreadCFGEdge
+.output isNonGoCallEdge
+.output isGoCallEdge
+
+.output intraThreadReach
+.output intraThreadReachBack
+.output intraThreadHB
+
+.output isAllocSite
+.output allocSiteHasType
+.output isAllocOfSyncPrim
+
+.output interpAssign
+.output returnTupleIn
+
+.output pointsTo
+.output ptrPointsTo
+
+.output mayPointToTwoChans
+.output mustPointToChan
+.output mustPtrPointToSyncPrim
+
+.output chanOp
+
+.output chanSharedByMoreThanTwoThreads
+.output chanSharedByOnlyTwoThreads
+.output numOfOpSinceThreadStarts
+.output lowerBoundNumOfOpAtPoint
+.output upperBoundNumOfOpAtPoint
+
+.output mustAfterPair
+.output mustMatchPair
+.output tentativeHBEdge
+.output interThreadHBEdge
+
+.output cfgNodeAccessesAlloc
+.output accessEscapesThread
+
+.output vectorClock
+.output needToTryOrder
+
+.output existsUncoveredVC
+.output vcyCovers
+.output notHBForVCOfThread
+.output hbDueToVC
+
+.output mutexOp
+.output mutexProtects
+.output mutexProtectsBoth
+
+.output threadInvokesDoneAtPoint
+.output threadInvokesDoneMax
+.output wgAddReachesNoPhi
+.output wgAddReachesSum
+.output threadRequiresWgCnt
+.output wgAddNotBeforeWait
+.output wgNotWorkAtNode
+.output wgWorks
+.output wgHBEdge
+
+#endif
