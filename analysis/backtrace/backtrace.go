@@ -596,7 +596,7 @@ func addNext(s *df.AnalyzerState,
 	s.Logger.Tracef("\tdepth: %v\n", cur.depth)
 
 	// Stop conditions
-	if seen[newNode.Key()] || trace.GetLassoHandle() != nil || s.Config.ExceedsMaxDepth(cur.depth) {
+	if seen[newNode.Key()] || trace.GetLassoHandle() != nil || closureTrace.GetLassoHandle() != nil || s.Config.ExceedsMaxDepth(cur.depth) {
 		s.Logger.Tracef("\tstopping...")
 		return stack
 	}

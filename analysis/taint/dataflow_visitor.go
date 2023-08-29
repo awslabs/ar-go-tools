@@ -586,7 +586,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	}
 
 	// Second set of stopping conditions: the escape context is unchanged on a loop path
-	if nextTrace.GetLassoHandle() != nil && !escapeContextUpdated {
+	if (nextTrace.GetLassoHandle() != nil || nextClosureTrace.GetLassoHandle() != nil) && !escapeContextUpdated {
 		return que
 	}
 

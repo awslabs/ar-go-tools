@@ -362,6 +362,17 @@ func example16pre(x *string) func(string) string {
 	return parenthesize
 }
 
+func example17() {
+	data := "ok"
+	a := func() { data = "ok" }
+	b := func() { data = source() } // @Source(example17)
+	for _, f := range []func(){b, a} {
+		f()
+	}
+
+	sink(data) // @Sink(example17)
+}
+
 func taintPre(pre *string) {
 	*pre = source() // @Source(example16)
 }
@@ -386,4 +397,5 @@ func main() {
 	example14()
 	example15()
 	example16()
+	example17()
 }
