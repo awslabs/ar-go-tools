@@ -92,7 +92,13 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	logger.Infof("==> Source: %s\n", colors.Purple(v.currentSource.Node.String()))
 	logger.Infof("%s %s\n", colors.Green("Found at"), v.currentSource.Node.Position(s))
 
-	v.roots[source] = &df.VisitorNode{NodeWithTrace: source, Prev: nil, Depth: 0}
+	v.roots[source] = &df.VisitorNode{
+		NodeWithTrace: source,
+		Prev:          nil,
+		Depth:         0,
+		Status:        df.VisitorNodeStatus{Kind: df.DefaultTracing},
+	}
+
 	que := []*df.VisitorNode{v.roots[source]}
 
 	if s.Config.UseEscapeAnalysis {
@@ -120,11 +126,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// Report coverage information for the current node
 		addCoverage(s, cur, coverage)
 
-		logger.Tracef("Visiting %T node: %v\n\tat %v\n", cur.Node, cur.Node, cur.Node.Position(s))
+		logger.Tracef("(s=%v) Visiting %T node: %v\n\tat %v\n",
+			cur.Status.Kind, cur.Node, cur.Node, cur.Node.Position(s))
 		logger.Tracef("Trace: %s\n", cur.Trace.String())
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
-		if isSink(cur.Node, s.Config) {
+		if isSink(cur.Node, s.Config) && cur.Status.Kind == df.DefaultTracing {
 			if v.taints.addNewPathCandidate(v.currentSource.Node, cur.Node) {
 				numAlarms++
 				reportTaintFlow(s, v.currentSource, cur)
@@ -375,29 +382,29 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// flows to the children of the node.
 		case *df.CallNode:
 			df.CheckNoGoRoutine(s, goroutines, graphNode)
-			if cur.Status.Kind == df.ClosureTracing &&
-				graphNode.CalleeSummary != nil &&
-				// the following equality being true must imply that graphNode.CalleeSummary is a closure's summary
-				graphNode.CalleeSummary == cur.Status.ClosureSummaryGraph {
-				fv := cur.Status.ClosureSummaryGraph.Parent.FreeVars[cur.Status.Index]
 
-				if fv != nil {
-					nextNodeWithTrace := df.NodeWithTrace{
-						Node:         graphNode.CalleeSummary.FreeVars[fv],
-						Trace:        cur.Trace.Add(graphNode),
-						ClosureTrace: cur.ClosureTrace,
+			if cur.Status.Kind == df.ClosureTracing {
+				if graphNode.CalleeSummary != nil &&
+					// the following equality being true must imply that graphNode.CalleeSummary is a closure's summary
+					graphNode.CalleeSummary == cur.Status.CurrentClosure() {
+					fv := cur.Status.CurrentClosure().Parent.FreeVars[cur.Status.TracingInfo.Index]
+
+					if fv != nil {
+						nextNodeWithTrace := df.NodeWithTrace{
+							Node:         graphNode.CalleeSummary.FreeVars[fv],
+							Trace:        cur.Trace.Add(graphNode),
+							ClosureTrace: cur.ClosureTrace,
+						}
+
+						que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status.PopClosure(), df.ObjectPath{})
+					} else {
+						s.AddError(
+							fmt.Sprintf("no free variable matching bound variable in %s",
+								graphNode.CalleeSummary.Parent.String()),
+							fmt.Errorf("at position %d", cur.Status.TracingInfo.Index))
 					}
-
-					que = v.addNext(s, que, cur, nextNodeWithTrace, df.VisitorNodeStatus{Kind: df.Default},
-						df.ObjectPath{})
-				} else {
-					s.AddError(
-						fmt.Sprintf("no free variable matching bound variable in %s",
-							graphNode.CalleeSummary.Parent.String()),
-						fmt.Errorf("at position %d", cur.Status.Index))
 				}
 			}
-
 			// We pop the call from the stack and continue inside the caller
 			var trace *df.NodeTree[*df.CallNode]
 			if cur.Trace != nil {
@@ -435,32 +442,28 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			}
 
 			closureNode := graphNode.ParentNode()
-			if closureNode.ClosureSummary == nil {
+
+			if !closureNode.ClosureSummary.Constructed {
 				if ignoreNonSummarized {
 					break
 				}
-				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
-				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
+				v.onDemandIntraProcedural(s, closureNode.ClosureSummary)
+				// TODO: optimize this step
+				s.FlowGraph.BuildGraph()
 			}
 
-			// Flows to the free variables of the closure
-			// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
-			fv := closureNode.ClosureSummary.Parent.FreeVars[graphNode.Index()]
-			if fv != nil {
-				nextNodeWithTrace := df.NodeWithTrace{
-					Node:         closureNode.ClosureSummary.FreeVars[fv],
-					Trace:        cur.Trace,
-					ClosureTrace: cur.ClosureTrace.Add(closureNode),
-				}
-				que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, df.ObjectPath{})
-			} else {
-				s.AddError(
-					fmt.Sprintf("no free variable matching bound variable in %s",
-						closureNode.ClosureSummary.Parent.String()),
-					fmt.Errorf("at position %d", graphNode.Index()))
-				panic(fmt.Errorf("no free variable matching bound variable in %s at position %d",
-					closureNode.ClosureSummary.Parent.String(), graphNode.Index()))
+			closureNodeWithTrace := df.NodeWithTrace{
+				Node:         closureNode,
+				Trace:        df.UnwindCallStackToFunc(cur.Trace, closureNode.Graph().Parent),
+				ClosureTrace: cur.ClosureTrace.Add(closureNode),
 			}
+
+			que = v.addNext(s, que, cur, closureNodeWithTrace,
+				df.VisitorNodeStatus{
+					Kind:        df.ClosureTracing,
+					TracingInfo: cur.Status.TracingInfo.Next(closureNode.ClosureSummary, graphNode.Index()),
+				},
+				df.ObjectPath{})
 
 		// The data flows to a free variable inside a closure body from a bound variable inside a closure definition.
 		// (see the example for BoundVarNode)
@@ -525,14 +528,15 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 							fmt.Sprintf("no bound variable matching free variable in %s",
 								makeClosureSite.ClosureSummary.Parent.String()),
 							fmt.Errorf("at position %d", graphNode.Index()))
-						panic(fmt.Errorf("[No Context] no bound variable matching free variable in %s at position %d",
-							makeClosureSite.ClosureSummary.Parent.String(), graphNode.Index()))
+						panic(
+							fmt.Errorf(
+								"[No Context] no bound variable matching free variable in %s at position %d",
+								makeClosureSite.ClosureSummary.Parent.String(), graphNode.Index()))
 					}
 				}
 			}
 
-		// A closure node can be reached if a function value is tainted
-		// TODO: add an example
+		// A closure node is usually reached when the visitor is tracing a specific closure
 		case *df.ClosureNode:
 			for nextNode, edgeInfo := range graphNode.Out() {
 				nextNodeWithTrace := df.NodeWithTrace{
@@ -596,9 +600,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				if destClosureSummary == nil {
 					destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function))
 					graphNode.SetDestClosure(destClosureSummary)
-				}
-
-				if len(graphNode.DestClosure().ReferringMakeClosures) == 0 {
 					s.FlowGraph.BuildGraph()
 				}
 			}
@@ -613,26 +614,18 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				break
 			}
 
-			callStackAtMakeClosure := df.UnwindCallStackToFunc(cur.Trace, closureNode.Graph().Parent)
-			for _, closureCallNode := range destClosureSummary.Callsites {
-				newCallStack := df.CompleteCallStackToNode(callStackAtMakeClosure, closureCallNode, s.Config.MaxDepth)
-				// Flows to the free variables of the closure
-				// Obtain the free variable node of the closure corresponding to the bound variable in the closure creation
-				fv := destClosureSummary.Parent.FreeVars[graphNode.Index()]
-				if fv != nil {
-					nextNodeWithTrace := df.NodeWithTrace{
-						Node:         destClosureSummary.FreeVars[fv],
-						Trace:        newCallStack,
-						ClosureTrace: cur.ClosureTrace.Add(closureNode),
-					}
-
-					que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, df.ObjectPath{})
-				} else {
-					s.AddError(
-						fmt.Sprintf("no free variable matching bound variable in %s", destClosureSummary.Parent.String()),
-						fmt.Errorf("at position %d", graphNode.Index()))
-				}
+			closureNodeWithTrace := df.NodeWithTrace{
+				Node:         closureNode,
+				Trace:        df.UnwindCallStackToFunc(cur.Trace, closureNode.Graph().Parent),
+				ClosureTrace: cur.ClosureTrace.Add(closureNode),
 			}
+
+			que = v.addNext(s, que, cur, closureNodeWithTrace,
+				df.VisitorNodeStatus{
+					Kind:        df.ClosureTracing,
+					TracingInfo: cur.Status.TracingInfo.Next(closureNode.ClosureSummary, graphNode.Index()),
+				},
+				df.ObjectPath{})
 		}
 	}
 
@@ -682,8 +675,16 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 		}
 	}
 
+	// Adding the next node with trace in a visitor node to the queue, and recording the "execution" tree
+	nextVisitorNode := &df.VisitorNode{
+		NodeWithTrace: nextNodeWithTrace,
+		Status:        nextStatus,
+		Prev:          cur,
+		Depth:         cur.Depth + 1,
+	}
+
 	// First set of stop conditions: node has already been seen, or depth exceeds limit
-	if v.seen[nextNodeWithTrace.Key()] || s.Config.ExceedsMaxDepth(cur.Depth) {
+	if v.seen[nextVisitorNode.Key()] || s.Config.ExceedsMaxDepth(cur.Depth) {
 		return que
 	}
 
@@ -701,19 +702,9 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 		return que
 	}
 
-	// logic for parameter stack
-
-	// Adding the next node with trace in a visitor node to the queue, and recording the "execution" tree
-	nextVisitorNode := &df.VisitorNode{
-		NodeWithTrace: nextNodeWithTrace,
-		Status:        nextStatus,
-		Prev:          cur,
-		Depth:         cur.Depth + 1,
-	}
-
 	cur.AddChild(nextVisitorNode)
 	que = append(que, nextVisitorNode)
-	v.seen[nextNodeWithTrace.Key()] = true
+	v.seen[nextVisitorNode.Key()] = true
 	return que
 }
 
@@ -726,6 +717,9 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	case *df.CallNodeArg:
 		callSite := curNode.ParentNode()
 		update = v.storeEscapeGraph(s, nextTrace, callSite)
+	case *df.BoundLabelNode, *df.BoundVarNode:
+		//TODO: case when nextTrace.Label is nil
+		update = v.storeEscapeGraph(s, nextTrace, nextTrace.Label)
 	}
 
 	f := nextNode.Graph().Parent
@@ -740,7 +734,7 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	if escapeGraph != nil {
 		v.checkEscape(s, nextNode, escapeGraph)
 	} else {
-		e := fmt.Errorf("missing escape for %s in context %s", f, nKey)
+		e := fmt.Errorf("missing escape for %s in context %s (from %s)", f, nKey, cur.Node)
 		s.Logger.Errorf(e.Error())
 		s.Logger.Debugf("%s has %d contexts", f, len(v.escapeGraphs[f]))
 		s.AddError(e.Error(), e)

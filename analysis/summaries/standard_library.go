@@ -1114,10 +1114,6 @@ var SummarySync = map[string]Summary{
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {}},
 	},
-	"(*sync.Once).Do": {
-		[][]int{{0}, {1}},
-		[][]int{{0}, {0}},
-	},
 	"(*sync.Map).Load":   SingleVarArgPropagation,
 	"(*sync.Map).Delete": SingleVarArgPropagation,
 	"(*sync.Mutex).Unlock": {

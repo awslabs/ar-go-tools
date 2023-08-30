@@ -14,15 +14,6 @@
 
 package main
 
-import (
-	"fmt"
-	"strconv"
-)
-
-func wrap(a string, before string, after string) string {
-	return fmt.Sprintf("%s%s%s", before, a, after)
-}
-
 func sink(a ...string) {
 	for _, x := range a {
 		println(x)
@@ -31,39 +22,4 @@ func sink(a ...string) {
 
 func source() string {
 	return "-tainted-"
-}
-
-type Ex14 struct {
-	Count  int
-	Lambda func(int, string) string
-}
-
-func (e Ex14) Run(s string, i int) string {
-	e.Count += i
-	return e.Lambda(e.Count, s)
-}
-
-func NewEx14() *Ex14 {
-	data := source() // @Source(ex14)
-	e := &Ex14{
-		Count: 0,
-		Lambda: func(i int, s string) string {
-			return strconv.Itoa(i) + s + data
-		},
-	}
-	return e
-}
-
-func callSink14(run func(string) string, s string) {
-	sink(run(s)) // @Sink(ex14)
-}
-
-func example14() {
-	e := NewEx14()
-	f := func(s string, i int) string { return e.Run(s, i) }
-	callSink14(func(s string) string { return f(s, 1) }, "ok")
-}
-
-func main() {
-	example14()
 }

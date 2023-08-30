@@ -14,22 +14,74 @@
 
 package dataflow
 
+import "strconv"
+
 type VisitorKind = int
 
 const (
-	// Default is for the default dataflow analysis mode
-	Default VisitorKind = 1 << iota
+	// DefaultTracing is for the default dataflow analysis mode
+	DefaultTracing VisitorKind = 1 << iota
 	// ClosureTracing denotes the mode where the visitor is used to follow a closure
 	ClosureTracing
 )
+
+type ClosureTracingInfo struct {
+	prev                *ClosureTracingInfo
+	Index               int
+	ClosureSummaryGraph *SummaryGraph
+}
+
+func (c *ClosureTracingInfo) Next(summary *SummaryGraph, index int) *ClosureTracingInfo {
+	return &ClosureTracingInfo{
+		prev:                c,
+		Index:               index,
+		ClosureSummaryGraph: summary,
+	}
+}
 
 // VisitorNodeStatus represents the status of a visitor node. It is either in default mode, in which case
 // the Index does not mean anything, or it is in ClosureTracing mode, in which case the index represents the index of
 // the bound variable that needs to be traced to a closure call.
 type VisitorNodeStatus struct {
-	Kind                VisitorKind
-	Index               int
-	ClosureSummaryGraph *SummaryGraph
+	Kind        VisitorKind
+	TracingInfo *ClosureTracingInfo
+}
+
+func (v VisitorNodeStatus) CurrentClosure() *SummaryGraph {
+	if v.TracingInfo == nil {
+		return nil
+	}
+	return v.TracingInfo.ClosureSummaryGraph
+}
+
+func (v VisitorNodeStatus) PopClosure() VisitorNodeStatus {
+	switch v.Kind {
+	case DefaultTracing:
+		return v
+	case ClosureTracing:
+		if v.TracingInfo == nil {
+			return VisitorNodeStatus{
+				Kind:        DefaultTracing,
+				TracingInfo: nil,
+			}
+		}
+		prevTracingInfo := v.TracingInfo.prev
+		if prevTracingInfo == nil {
+			return VisitorNodeStatus{
+				Kind:        DefaultTracing,
+				TracingInfo: nil,
+			}
+		} else {
+			return VisitorNodeStatus{
+				Kind:        ClosureTracing,
+				TracingInfo: prevTracingInfo,
+			}
+		}
+	}
+	return VisitorNodeStatus{
+		Kind:        DefaultTracing,
+		TracingInfo: nil,
+	}
 }
 
 // VisitorNode represents a node in the inter-procedural dataflow graph to be visited.
@@ -39,6 +91,10 @@ type VisitorNode struct {
 	Depth    int
 	Status   VisitorNodeStatus
 	children []*VisitorNode
+}
+
+func (v *VisitorNode) Key() KeyType {
+	return v.NodeWithTrace.Key() + "_" + strconv.Itoa(v.Status.Kind)
 }
 
 func (v *VisitorNode) AddChild(c *VisitorNode) {

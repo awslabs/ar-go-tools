@@ -316,7 +316,7 @@ func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterPr
 // if contexts is empty or nil, then the node is added without context
 func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints map[KeyType]NodeWithTrace) {
 	if len(contexts) == 0 {
-		// Default is to start without context (trace is nil)
+		// DefaultTracing is to start without context (trace is nil)
 		entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
 		entryPoints[entry.Key()] = entry
 	} else {
@@ -515,38 +515,6 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 		cur = cur.Parent
 	}
 	return nil
-}
-
-// CompleteCallStackToNode completes the callstack stack with the call nodes to reach node. Returns nil if node is not
-// reachable from the last call node of the stack.
-func CompleteCallStackToNode(stack *CallStack, n *CallNode, maxsize int) *CallStack {
-	if stack == nil {
-		return nil
-	}
-	if stack.Label == n {
-		return stack
-	}
-	var tmpRoot *CallStack
-	tmpRoot = NewNodeTree(stack.Label)
-	queue := []*CallStack{tmpRoot}
-	i := 0
-	for len(queue) > 0 {
-		elt := queue[0]
-		queue = queue[1:]
-		i += 1
-		if elt.Label == n {
-			return stack.Append(elt)
-		}
-		if maxsize > 0 && i > maxsize {
-			return stack
-		}
-		for _, callNode := range elt.Label.parent.Callsites {
-			if !PathContains(elt, callNode) {
-				queue = append(queue, elt.Add(callNode))
-			}
-		}
-	}
-	return stack
 }
 
 // BuildSummary builds a summary for function and returns it.

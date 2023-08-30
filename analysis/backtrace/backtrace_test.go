@@ -530,6 +530,8 @@ func TestAnalyze_Taint(t *testing.T) {
 		{"example2", []string{}},
 		{"defers", []string{}},
 		{"closures", []string{"helpers.go"}},
+		// TODO: fix false positives
+		// {"closures_flowprecise", []string{"helpers.go"}},
 		// TODO fix false positives
 		// {"fromlevee", []string{}},
 		{"globals", []string{"helpers.go"}},
