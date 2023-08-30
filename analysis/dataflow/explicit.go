@@ -23,12 +23,21 @@ const (
 	ClosureTracing
 )
 
+// VisitorNodeStatus represents the status of a visitor node. It is either in default mode, in which case
+// the Index does not mean anything, or it is in ClosureTracing mode, in which case the index represents the index of
+// the bound variable that needs to be traced to a closure call.
+type VisitorNodeStatus struct {
+	Kind                VisitorKind
+	Index               int
+	ClosureSummaryGraph *SummaryGraph
+}
+
 // VisitorNode represents a node in the inter-procedural dataflow graph to be visited.
 type VisitorNode struct {
 	NodeWithTrace
-	Mode     VisitorKind
 	Prev     *VisitorNode
 	Depth    int
+	Status   VisitorNodeStatus
 	children []*VisitorNode
 }
 
