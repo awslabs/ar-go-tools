@@ -71,6 +71,10 @@ func main() {
 	testMultipleBoundVars()
 	testSiblingClosure()
 	testInterfaceDirectStruct()
+	testFieldSensitivity()
+	testTupleSensitivity()
+	testSlicing(23)
+	testParameterPointerToField()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -596,4 +600,52 @@ func testInterfaceDirectStruct() {
 	thing := thingDoer{a}
 	doThing(thing)
 	assertAllLeaked(a)
+}
+
+type MultiField struct {
+	a *Node
+	b *int
+	c *Node
+}
+
+func testFieldSensitivity() {
+	mf := &MultiField{}
+	mf.a = &Node{}
+	assertSameAliases(mf.b, nil)
+}
+
+func swap(a, b *Node) (x, y *Node) {
+	return b, a
+}
+func testTupleSensitivity() {
+	a := &Node{}
+	b := &Node{}
+	x, y := swap(a, b)
+	assertSameAliases(a, y)
+	assertSameAliases(b, x)
+}
+
+func testSlicing(nzone int) ([]byte, []byte) {
+	b := make([]byte, nzone)
+	c := make([]byte, 5)
+	x := &b
+	_ = c
+	return *x, []byte{2}
+}
+
+type nodeHolder struct {
+	a, b *Node
+}
+
+func writeToSomeFieldViaPointer(fieldPointer **Node, value *Node) {
+	*fieldPointer = value
+}
+func testParameterPointerToField() {
+	x := &Node{}
+	y := &Node{}
+	n := &nodeHolder{nil, nil}
+	n.b = y
+	writeToSomeFieldViaPointer(&n.a, x)
+	assertSameAliases(x, n.a)
+	assertSameAliases(y, n.b)
 }

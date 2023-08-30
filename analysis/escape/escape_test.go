@@ -85,8 +85,8 @@ func TestSimpleEscape(t *testing.T) {
 		// Compute the summary of the node
 		graph := EscapeSummary(cgNode.Func)
 		// A general check to make sure that all global nodes are escaped.
-		for _, n := range graph.nodes.AllNodes() {
-			if strings.HasPrefix(n.debugInfo, "gbl:") && graph.status[n] != Leaked {
+		for n, st := range graph.status {
+			if strings.HasPrefix(n.debugInfo, "gbl:") && st != Leaked {
 				t.Errorf("Global should have escaped %v\n", n)
 			}
 		}
@@ -94,7 +94,7 @@ func TestSimpleEscape(t *testing.T) {
 		switch cgNode.Func.String() {
 		case "command-line-arguments.consume":
 			x := findSingleNode(t, graph, "gbl:globalS")
-			y := findSingleNode(t, graph, "pointee of s")
+			y := findSingleNode(t, graph, "*s S")
 			assertEdge(t, graph, x, y)
 		case "command-line-arguments.leakThroughGlobal":
 			x := findSingleNode(t, graph, "gbl:globalS")
@@ -182,15 +182,8 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 			}
 			a := ea.nodes.ValueNode(args[0])
 			b := ea.nodes.ValueNode(args[1])
-			//fmt.Printf("Checking call %v %v\n%v\n", a, b, g.Graphviz(ea.nodes))
-			if !reflect.DeepEqual(g.internalEdges[a], g.internalEdges[b]) {
-				if !(len(g.internalEdges[a]) == 0 && len(g.internalEdges[b]) == 0) {
-					// TODO: figure out why deepequal is returning false for two empty maps
-					return fmt.Errorf("Arguments do not have the same set of edges %v != %v", a, b)
-				}
-			}
-			if !reflect.DeepEqual(g.externalEdges[a], g.externalEdges[b]) {
-				if !(len(g.externalEdges[a]) == 0 && len(g.externalEdges[b]) == 0) {
+			if !reflect.DeepEqual(g.Pointees(a), g.Pointees(b)) {
+				if !(len(g.edges[a]) == 0 && len(g.edges[b]) == 0) {
 					// TODO: figure out why deepequal is returning false for two empty maps
 					return fmt.Errorf("Arguments do not have the same set of edges %v != %v", a, b)
 				}
@@ -233,7 +226,7 @@ func TestInterproceduralEscape(t *testing.T) {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
 	program, cfg := analysistest.LoadTest(t, ".", []string{})
-	cfg.LogLevel = int(config.DebugLevel)
+	cfg.LogLevel = int(config.TraceLevel)
 	// Compute the summaries for everything in the main package
 	state, _ := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
 		[]func(*dataflow.AnalyzerState){
@@ -298,7 +291,7 @@ func TestBuiltinsEscape(t *testing.T) {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
 	program, cfg := analysistest.LoadTest(t, ".", []string{})
-	cfg.LogLevel = int(config.DebugLevel)
+	cfg.LogLevel = int(config.TraceLevel)
 	// Compute the summaries for everything in the main package
 	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
@@ -342,33 +335,38 @@ func TestBuiltinsEscape(t *testing.T) {
 		"testMultipleBoundVars",
 		"testSiblingClosure",
 		"testInterfaceDirectStruct",
+		"testFieldSensitivity",
+		"testTupleSensitivity",
+		"testParameterPointerToField",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
 	// program points)
 	for _, funcName := range funcsToTest {
-		f := findFunction(program, funcName)
-		if f == nil {
-			t.Fatalf("Could not find function %v\n", funcName)
-		}
-		summary := escapeWholeProgram.summaries[f]
-		if summary == nil {
-			t.Fatalf("%v wasn't summarized", funcName)
-		}
-		for _, bb := range f.Blocks {
-			err := checkFunctionCalls(summary, bb)
-			// test* == no error, anything else == error expected
-			if strings.HasPrefix(funcName, "test") {
-				if err != nil {
-					t.Fatalf("Error in %v: %v\n", funcName, err)
-				}
-			} else {
-				if err == nil {
-					t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
-				}
+		t.Run(funcName, func(t *testing.T) {
+			f := findFunction(program, funcName)
+			if f == nil {
+				t.Fatalf("Could not find function %v\n", funcName)
 			}
+			summary := escapeWholeProgram.summaries[f]
+			if summary == nil {
+				t.Fatalf("%v wasn't summarized", funcName)
+			}
+			for _, bb := range f.Blocks {
+				err := checkFunctionCalls(summary, bb)
+				// test* == no error, anything else == error expected
+				if strings.HasPrefix(funcName, "test") {
+					if err != nil {
+						t.Fatalf("Error in %v: %v\n", funcName, err)
+					}
+				} else {
+					if err == nil {
+						t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
+					}
+				}
 
-		}
+			}
+		})
 	}
 }
 
@@ -619,28 +617,30 @@ func TestLocalityComputation(t *testing.T) {
 	}
 	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {
-		f := findFunction(program, funcName)
-		if f == nil {
-			t.Fatalf("Couldn't find function %v", funcName)
-		}
-		var state dataflow.EscapeAnalysisState = &escapeAnalysisImpl{*escapeWholeProgram}
-		var anyError error
-		allCallgraphWalkNodes := computeNodes(state, f)
-		for _, nodes := range groupNodesByFunc(allCallgraphWalkNodes) {
-			if err := checkLocalityAnnotations(nodes, annos); err != nil {
-				anyError = err
+		t.Run(funcName, func(t *testing.T) {
+			f := findFunction(program, funcName)
+			if f == nil {
+				t.Fatalf("Couldn't find function %v", funcName)
 			}
-		}
-		if strings.HasPrefix(funcName, "test") {
-			if anyError != nil {
-				t.Fatalf("Error %v", anyError)
+			var state dataflow.EscapeAnalysisState = &escapeAnalysisImpl{*escapeWholeProgram}
+			var anyError error
+			allCallgraphWalkNodes := computeNodes(state, f)
+			for _, nodes := range groupNodesByFunc(allCallgraphWalkNodes) {
+				if err := checkLocalityAnnotations(nodes, annos); err != nil {
+					anyError = err
+				}
 			}
-		} else {
-			if anyError == nil {
-				t.Fatalf("Expected error, but test passed")
+			if strings.HasPrefix(funcName, "test") {
+				if anyError != nil {
+					t.Fatalf("Error %v", anyError)
+				}
+			} else {
+				if anyError == nil {
+					t.Fatalf("Expected error, but test passed")
+				}
 			}
-		}
-		// Print the end of the function to make logs easier to read
-		t.Logf("Completed %v\n", funcName)
+			// Print the end of the function to make logs easier to read
+			t.Logf("Completed %v\n", funcName)
+		})
 	}
 }

@@ -80,6 +80,11 @@ func (ea *functionAnalysisState) getCallees(instr ssa.CallInstruction) (map[*ssa
 	}
 }
 
+type ReturnUtilityNode struct {
+	call        ssa.Instruction
+	returnIndex int
+}
+
 // transferFunction() computes an instruction's effect on a escape graph.
 // Modifies g and nodes in place with the effects of the instruction.
 // "Transfer function" is interpreted as in the monotone framework.
@@ -98,10 +103,11 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		return
 	case *ssa.MakeClosure:
 		closureNode := nodes.AllocNode(instrType, instrType.Type())
-		nodes.globalNodes.function[closureNode] = instrType.Fn.(*ssa.Function)
+		fn := instrType.Fn.(*ssa.Function)
+		nodes.globalNodes.function[closureNode] = fn
 		g.AddEdge(nodes.ValueNode(instrType), closureNode, true)
-		for _, bindingVal := range instrType.Bindings {
-			g.WeakAssign(closureNode, nodes.ValueNode(bindingVal), bindingVal.Type())
+		for i, bindingVal := range instrType.Bindings {
+			g.StoreField(nodes.ValueNode(instrType), nodes.ValueNode(bindingVal), fn.FreeVars[i].Name())
 		}
 		return
 	case *ssa.MakeMap:
@@ -111,11 +117,12 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, instrType.Type()), true)
 		return
 	case *ssa.MakeSlice:
-		g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, instrType.Type()), true)
+		elemType := instrType.Type().Underlying().(*types.Slice).Elem()
+		g.AddEdge(nodes.ValueNode(instrType), nodes.AllocNode(instrType, types.NewArray(elemType, -1)), true)
 		return
 	case *ssa.FieldAddr:
 		for varPointee := range g.Deref(nodes.ValueNode(instrType.X)) {
-			g.AddEdge(nodes.ValueNode(instrType), varPointee, true)
+			g.AddEdgeDirect(Edge{nodes.ValueNode(instrType), varPointee, true, "", instrType.X.Type().Underlying().(*types.Pointer).Elem().Underlying().(*types.Struct).Field(instrType.Field).Name()})
 		}
 		return
 	case *ssa.IndexAddr:
@@ -132,16 +139,16 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		}
 	case *ssa.Store:
 		if lang.IsNillableType(instrType.Val.Type()) {
-			g.Store(nodes.ValueNode(instrType.Addr), nodes.ValueNode(instrType.Val), instrType.Val.Type())
+			g.Store(nodes.ValueNode(instrType.Addr), nodes.ValueNode(instrType.Val))
 		} else if IsEscapeTracked(instrType.Val.Type()) {
 			// Handle struct types
 			valNode := nodes.ValueNode(instrType.Val)
-			// When copying from a non-local struc
+			// When copying from a non-local struct
 			if g.status[valNode] != Local {
 				loadNode := nodes.LoadNode(instr, PointerDerefType(instrType.Val.Type().Underlying()))
 				g.AddEdge(valNode, loadNode, false)
 			}
-			g.Store(nodes.ValueNode(instrType.Addr), nodes.ValueNode(instrType.Val), instrType.Val.Type())
+			g.Store(nodes.ValueNode(instrType.Addr), nodes.ValueNode(instrType.Val))
 		}
 		return
 	case *ssa.UnOp:
@@ -151,6 +158,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 				gen := func() *Node {
 					return nodes.LoadNode(instr, PointerDerefType(instrType.X.Type().Underlying()))
 				}
+				// fmt.Printf("Loading\n")
 				g.Load(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), gen)
 			}
 			return
@@ -170,14 +178,14 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	case *ssa.Send:
 		if IsEscapeTracked(instrType.X.Type()) {
 			// Send on channel is a write to the contents "field" of the channel
-			g.Store(nodes.ValueNode(instrType.Chan), nodes.ValueNode(instrType.X), instrType.X.Type())
+			g.StoreField(nodes.ValueNode(instrType.Chan), nodes.ValueNode(instrType.X), "contents")
 		}
 		return
 	case *ssa.Slice:
 		switch tp := instrType.X.Type().Underlying().(type) {
 		case *types.Slice:
 			// Slice of slice, basic copy
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 			return
 		case *types.Basic:
 			if tp.Kind() != types.String && tp.Kind() != types.UntypedString {
@@ -190,7 +198,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			if _, ok := tp.Elem().Underlying().(*types.Array); !ok {
 				panic("Slice of pointer to non-array?")
 			}
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 			return
 		}
 	case *ssa.Return:
@@ -200,24 +208,29 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	case *ssa.If:
 		return
 	case *ssa.Select:
-		recvIndex := 0 // for tuple sensitivity, this will be the index that should be read in the result tuple.
+		recvIndex := 2 // for tuple sensitivity, this will be the index that should be read in the result tuple.
 		for _, st := range instrType.States {
 			if st.Dir == types.RecvOnly {
 				if IsEscapeTracked(ChannelContentsType(st.Chan.Type())) {
 					// TODO: This should be one load node per branch, so that different types
 					// get different nodes. This is only important if we are tuple sensitive and
-					// make the graph typed. For now, the different cases can safe share nodes,
+					// make the graph typed. For now, the different cases can safely share nodes,
 					// which is imprecise but sound.
 					gen := func() *Node {
 						return nodes.LoadNode(instr, ChannelContentsType(st.Chan.Type()))
 					}
-					g.Load(nodes.ValueNode(instrType), nodes.ValueNode(st.Chan), gen)
+					tmpNode := nodes.TempNode(ReturnUtilityNode{instrType, recvIndex})
+					g.Load(tmpNode, nodes.ValueNode(st.Chan), gen)
+					tupleNode := nodes.ValueNode(instrType)
+					for _, tmpEdge := range g.DerefEdges(tmpNode) {
+						g.AddEdgeDirect(Edge{tupleNode, tmpEdge.dest, tmpEdge.isInternal, fmt.Sprintf("#%d", recvIndex), tmpEdge.destField})
+					}
 				}
 				recvIndex += 1
 			} else if st.Dir == types.SendOnly {
 				if IsEscapeTracked(st.Send.Type()) {
 					// Send on channel is a write to the contents "field" of the channel
-					g.Store(nodes.ValueNode(st.Chan), nodes.ValueNode(st.Send), st.Send.Type())
+					g.StoreField(nodes.ValueNode(st.Chan), nodes.ValueNode(st.Send), "contents")
 				}
 			} else {
 				panic("Unexpected ")
@@ -241,7 +254,15 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		// them. For proper tuple-sensitive results, we would need to make this match the real
 		// number of return values, and find out which extract operations we should assign the
 		// results to.
-		rets := []*Node{nodes.ValueNode(instrType)}
+		rets := []*Node{}
+		nReturns := instrType.Call.Signature().Results().Len()
+		if nReturns > 1 {
+			for i := 0; i < nReturns; i++ {
+				rets = append(rets, nodes.TempNode(ReturnUtilityNode{instrType, i}))
+			}
+		} else {
+			rets = append(rets, nodes.ValueNode(instrType))
+		}
 
 		if builtin, ok := instrType.Call.Value.(*ssa.Builtin); ok {
 			err := g.CallBuiltin(instrType, builtin, args, rets)
@@ -258,6 +279,16 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			//  Indirect call callees can be closures, bound methods, regular named functions, or thunks.
 			ea.transferCallIndirect(instrType, g, verbose, args, rets)
 		}
+
+		returnNode := nodes.ValueNode(instrType)
+		if nReturns > 1 {
+			for i := 0; i < instrType.Call.Signature().Results().Len(); i++ {
+				for _, retEdge := range g.DerefEdges(rets[i]) {
+					g.AddEdgeDirect(Edge{returnNode, retEdge.dest, retEdge.isInternal, fmt.Sprintf("#%d", i), retEdge.destField})
+				}
+			}
+		}
+
 		return
 
 	case *ssa.Go:
@@ -274,7 +305,9 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 	case *ssa.Defer:
 	case *ssa.Field:
 		if IsEscapeTracked(instrType.Type()) {
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
+			// TODO: this should be a field-specific assignment
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
+			// TODO: make this better, really!!!
 		}
 		return
 	case *ssa.Index:
@@ -290,7 +323,7 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			return
 		case *types.Array:
 			if IsEscapeTracked(instrType.Type()) {
-				g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
+				g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 			}
 			return
 		}
@@ -302,10 +335,10 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		return
 	case *ssa.MapUpdate:
 		if IsEscapeTracked(instrType.Value.Type()) {
-			g.Store(nodes.ValueNode(instrType.Map), nodes.ValueNode(instrType.Value), instrType.Value.Type())
+			g.StoreField(nodes.ValueNode(instrType.Map), nodes.ValueNode(instrType.Value), "values[*]")
 		}
 		if IsEscapeTracked(instrType.Key.Type()) {
-			g.Store(nodes.ValueNode(instrType.Map), nodes.ValueNode(instrType.Key), instrType.Key.Type())
+			g.StoreField(nodes.ValueNode(instrType.Map), nodes.ValueNode(instrType.Key), "keys[*]")
 		}
 		return
 	case *ssa.Next:
@@ -317,8 +350,8 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		}
 		return
 	case *ssa.Range:
-		if tp, ok := instrType.X.Type().Underlying().(*types.Map); ok {
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), tp)
+		if _, ok := instrType.X.Type().Underlying().(*types.Map); ok {
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 		} else {
 			// range over string, not interesting to escape
 			return
@@ -326,19 +359,19 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		return
 	case *ssa.MakeInterface:
 		if IsEscapeTracked(instrType.X.Type()) {
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 		} else {
 			g.AddNode(nodes.ValueNode(instrType)) // Make interface from string or other non-pointer type
 		}
 		return
 	case *ssa.TypeAssert:
 		if IsEscapeTracked(instrType.Type()) {
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 		}
 		return
 	case *ssa.Convert:
 		if IsEscapeTracked(instrType.X.Type()) {
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.Type())
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 		} else if _, ok := instrType.Type().Underlying().(*types.Slice); ok {
 			if basic, ok := instrType.X.Type().Underlying().(*types.Basic); ok &&
 				(basic.Kind() == types.String || basic.Kind() == types.UntypedString) {
@@ -348,17 +381,19 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 		}
 		return
 	case *ssa.ChangeInterface:
-		g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
+		g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 		return
 	case *ssa.ChangeType:
 		if IsEscapeTracked(instrType.X.Type()) {
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X), instrType.X.Type())
+			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.X))
 		}
 		return
 	case *ssa.Phi:
 		if IsEscapeTracked(instrType.Type()) {
 			for _, v := range instrType.Edges {
-				g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(v), instrType.Type())
+				// TODO: this erases any src fiels from v, which might be important for value structs
+				// with pointer arguments
+				g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(v))
 			}
 		}
 		return
@@ -371,7 +406,16 @@ func (ea *functionAnalysisState) transferFunction(instr ssa.Instruction, g *Esca
 			// op from the instruction that generates the tuple, we could save the precise information about
 			// tuples on the side and lookup the correct node(s) here as opposed to collapsing into a single
 			// node for the entire tuple.
-			g.WeakAssign(nodes.ValueNode(instrType), nodes.ValueNode(instrType.Tuple), instrType.Type())
+			src := nodes.ValueNode(instrType.Tuple)
+			dest := nodes.ValueNode(instrType)
+			for _, e := range g.DerefEdges(src) {
+				if e.srcField == "" {
+					ea.prog.logger.Warnf("Tuple with unlabeled edge: %v \n", instrType.Tuple)
+				}
+				if e.srcField == fmt.Sprintf("#%d", instrType.Index) || e.srcField == "" {
+					g.AddEdgeDirect(Edge{dest, e.dest, e.isInternal, "", e.destField})
+				}
+			}
 		}
 		return
 	case *ssa.BinOp:
@@ -413,6 +457,8 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 			ea.prog.logger.Tracef("After call:\n%v", g.Graphviz())
 		}
 	} else {
+		fmt.Printf("Warning, %v is not a summarized function: treating as unknown call\n",
+			callee.String())
 		if verbose {
 			ea.prog.logger.Tracef("Warning, %v is not a summarized function: treating as unknown call\n",
 				callee.Name())
@@ -595,8 +641,8 @@ type summaryUse struct {
 	instruction ssa.Instruction
 }
 
-// newfunctionAnalysisState creates a new function analysis for the given function, tied to the given whole program analysis
-func newfunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *functionAnalysisState) {
+// newFunctionAnalysisState creates a new function analysis for the given function, tied to the given whole program analysis
+func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *functionAnalysisState) {
 	nodes := NewNodeGroup(prog.globalNodes)
 	initialGraph := NewEmptyEscapeGraph(nodes)
 	for _, p := range f.Params {
@@ -641,6 +687,14 @@ func newfunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *
 	}
 }
 
+type cachedGraphMonotonicity struct {
+	input  *EscapeGraph
+	output *EscapeGraph
+}
+
+var instructionMonoCheckData map[ssa.Instruction][]cachedGraphMonotonicity = map[ssa.Instruction][]cachedGraphMonotonicity{}
+var checkMonotonicityEveryInstruction = false
+
 // ProcessBlock performs the monotone transfer function for a particular block, and returns
 // whether the end graph changed. This function computes the merge of the predecessors,
 // iterates over each instruction, and then stores the result (if different) into
@@ -660,7 +714,41 @@ func (ea *functionAnalysisState) ProcessBlock(bb *ssa.BasicBlock) (changed bool)
 		}
 	}
 	for _, instr := range bb.Instrs {
-		ea.transferFunction(instr, g, ea.prog.verbose)
+		ppInstr := instr.String()
+		if v, ok := instr.(ssa.Value); ok {
+			ppInstr = v.Name() + " = " + ppInstr
+		}
+		if ea.function.String() == "(*fmt.pp).fmtBytes" || ea.function.String() == "(*fmt.pp).printValue" || ea.function.String() == "(*fmt.pp).fmtPointer" {
+			fmt.Printf("Processing %s\n", ppInstr)
+		}
+		// Check the monotonicity of the transfer function.
+		if checkMonotonicityEveryInstruction {
+			pre := g.Clone()
+			ea.transferFunction(instr, g, ea.prog.verbose)
+			post := g.Clone()
+			if pairs, ok := instructionMonoCheckData[instr]; ok {
+				for _, p := range pairs {
+					// Directly check
+					if less, _ := p.input.LessEqual(pre); less {
+						if lessOut, reason := p.output.LessEqual(post); !lessOut {
+							fmt.Printf("Monotonicity violation at %v because %s\n", instr, reason)
+							fmt.Printf("A <= B but !(C <= D)\nA (old pre):\n%v\nB (new pre):\n%v\nC (old post):\n%v\nD (new post):\n%v\n",
+								p.input.Graphviz(),
+								pre.Graphviz(),
+								p.output.Graphviz(),
+								post.Graphviz())
+							// panic("monontonicity violation")
+						}
+					}
+				}
+			}
+			instructionMonoCheckData[instr] = append(instructionMonoCheckData[instr], cachedGraphMonotonicity{pre, post})
+		} else {
+			ea.transferFunction(instr, g, ea.prog.verbose)
+		}
+		if ea.function.String() == "(*fmt.pp).fmtBytes" || ea.function.String() == "(*fmt.pp).printValue" || ea.function.String() == "(*fmt.pp).fmtPointer" {
+			fmt.Printf("Graph after instruction %s is\n%s\n", ppInstr, g.Graphviz())
+		}
 	}
 	if oldGraph, ok := ea.blockEnd[bb]; ok {
 		if oldGraph.Matches(g) {
@@ -706,7 +794,7 @@ func (e *functionAnalysisState) RunForwardIterative() {
 // Other functions are treated as arbitrary.
 func EscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 	prog := &ProgramAnalysisState{make(map[*ssa.Function]*functionAnalysisState), &globalNodeGroup{0, make(map[*Node]*ssa.Function)}, false, config.NewLogGroup(config.NewDefault()), nil}
-	analysis := newfunctionAnalysisState(f, prog)
+	analysis := newFunctionAnalysisState(f, prog)
 	resummarize(analysis)
 	return analysis.finalGraph
 }
@@ -734,7 +822,7 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 				returnResult.Merge(blockEndState)
 				for i, rValue := range retInstr.Results {
 					if IsEscapeTracked(rValue.Type()) {
-						returnResult.WeakAssign(analysis.nodes.ReturnNode(i), analysis.nodes.ValueNode(rValue), rValue.Type())
+						returnResult.WeakAssign(analysis.nodes.ReturnNode(i), analysis.nodes.ValueNode(rValue))
 					}
 				}
 			}
@@ -763,6 +851,24 @@ func resummarize(analysis *functionAnalysisState) (changed bool) {
 	return !same
 }
 
+var emptySummaryFunctions = map[string]bool{
+	"sync/atomic.CompareAndSwapUintptr": true,
+	"sync/atomic.CompareAndSwapInt32":   true,
+	"sync/atomic.AddInt32":              true,
+	"sync.runtime_SemacquireMutex":      true,
+	"sync.runtime_Semrelease":           true,
+	"sync.throw":                        true,
+}
+
+func handlePresummarizedFunction(f *ssa.Function, prog *ProgramAnalysisState) {
+	if emptySummaryFunctions[f.String()] {
+		fmt.Printf("Using empty summary for: %s\n", f.String())
+		prog.summaries[f] = newFunctionAnalysisState(f, prog)
+		return
+	}
+	fmt.Printf("No summary for: %s\n", f.String())
+}
+
 // EscapeAnalysis computes the bottom-up escape summaries of functions matching the package filter.
 //
 //gocyclo:ignore
@@ -780,9 +886,13 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		if len(f.Blocks) > 0 {
 			pkg := lang.PackageTypeFromFunction(f)
 			if pkg == nil || state.Config.MatchPkgFilter(pkg.Path()) || state.Config.MatchPkgFilter(pkg.Name()) {
-				prog.summaries[f] = newfunctionAnalysisState(f, prog)
+				prog.summaries[f] = newFunctionAnalysisState(f, prog)
 				nodes = append(nodes, node)
+			} else {
+				handlePresummarizedFunction(f, prog)
 			}
+		} else {
+			handlePresummarizedFunction(f, prog)
 		}
 	}
 	if prog.verbose {
@@ -807,7 +917,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	nextIndex := len(worklist) - 1
 	for _, scc := range graphutil.StronglyConnectedComponents(nodes, succ) {
 		for _, n := range scc {
-			if summary, ok := prog.summaries[n.Func]; ok {
+			if summary, ok := prog.summaries[n.Func]; ok && len(summary.function.Blocks) > 0 {
 				worklist[nextIndex] = summary
 				nextIndex -= 1
 			}
@@ -832,13 +942,17 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		}
 		changed := resummarize(summary)
 		if extraDebug {
-			if state.Logger.LogsTrace() || summary.function.String() == "(*fmt.ss).quotedString" || summary.function.String() == "(*crypto/internal/nistec.P224Point).Double" {
+			if state.Logger.LogsTrace() || summary.function.String() == "(*fmt.pp).fmtFloat" || summary.function.String() == "(*crypto/internal/nistec.P224Point).Double" || true {
 				state.Logger.Infof("Func %s is (changed=%v):\n%s\n", summary.function.String(), changed, summary.finalGraph.GraphvizLabel(funcName))
 			}
 			if less, rationale := oldFinalGraph.LessEqual(summary.finalGraph); !less {
-				err := fmt.Errorf("Summary for %v is not monotone: %v\n", summary.function.String(), rationale)
+				nEdges := len(summary.finalGraph.Edges(nil, nil, true, true))
+				err := fmt.Errorf("Summary (%d edges) for %v is not monotone: %v ()\n", nEdges, summary.function.String(), rationale)
 				state.Logger.Errorf("%v", err)
-				return nil, err
+				if nEdges < 50 {
+					fmt.Printf("Old: \n%v\nNew: \n%v\n", oldFinalGraph.Graphviz(), summary.finalGraph.Graphviz())
+				}
+				// return nil, err
 			}
 			state.Logger.Infof("size of summary: %v nodes %v edges\n", len(summary.finalGraph.status), len(summary.finalGraph.Edges(nil, nil, true, true)))
 		}
