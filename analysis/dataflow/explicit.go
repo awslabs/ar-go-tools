@@ -14,9 +14,19 @@
 
 package dataflow
 
+type VisitorKind = int
+
+const (
+	// Default is for the default dataflow analysis mode
+	Default VisitorKind = 1 << iota
+	// ClosureTracing denotes the mode where the visitor is used to follow a closure
+	ClosureTracing
+)
+
 // VisitorNode represents a node in the inter-procedural dataflow graph to be visited.
 type VisitorNode struct {
 	NodeWithTrace
+	Mode     VisitorKind
 	Prev     *VisitorNode
 	Depth    int
 	children []*VisitorNode
