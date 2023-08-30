@@ -54,7 +54,7 @@ type CrossFunctionGraphVisitor struct{}
 //
 //gocyclo:ignore
 func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint dataflow.NodeWithTrace) {
-	que := []*dataflow.VisitorNode{{NodeWithTrace: entrypoint, ParamStack: nil, Prev: nil, Depth: 0}}
+	que := []*dataflow.VisitorNode{{NodeWithTrace: entrypoint, Prev: nil, Depth: 0}}
 	seen := make(map[dataflow.NodeWithTrace]bool)
 	goroutines := make(map[*ssa.Go]bool)
 	logger := c.Logger
@@ -377,18 +377,8 @@ func addNext(c *dataflow.AnalyzerState,
 		return que
 	}
 
-	// logic for parameter stack
-	pStack := cur.ParamStack
-	switch curNode := cur.Node.(type) {
-	case *dataflow.ReturnValNode:
-		pStack = pStack.Parent()
-	case *dataflow.ParamNode:
-		pStack = pStack.Add(curNode)
-	}
-
 	newVis := &dataflow.VisitorNode{
 		NodeWithTrace: newNode,
-		ParamStack:    pStack,
 		Prev:          cur,
 		Depth:         cur.Depth + 1,
 	}

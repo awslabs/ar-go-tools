@@ -17,10 +17,9 @@ package dataflow
 // VisitorNode represents a node in the inter-procedural dataflow graph to be visited.
 type VisitorNode struct {
 	NodeWithTrace
-	ParamStack *ParamStack
-	Prev       *VisitorNode
-	Depth      int
-	children   []*VisitorNode
+	Prev     *VisitorNode
+	Depth    int
+	children []*VisitorNode
 }
 
 func (v *VisitorNode) AddChild(c *VisitorNode) {
@@ -64,18 +63,8 @@ func addNext(c *AnalyzerState,
 		return que
 	}
 
-	// logic for parameter stack
-	pStack := cur.ParamStack
-	switch curNode := cur.Node.(type) {
-	case *ReturnValNode:
-		pStack = pStack.Parent()
-	case *ParamNode:
-		pStack = pStack.Add(curNode)
-	}
-
 	newVis := &VisitorNode{
 		NodeWithTrace: newNode,
-		ParamStack:    pStack,
 		Prev:          cur,
 		Depth:         cur.Depth + 1,
 	}

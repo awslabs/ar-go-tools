@@ -86,7 +86,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	logger.Infof("==> Source: %s\n", colors.Purple(v.currentSource.Node.String()))
 	logger.Infof("%s %s\n", colors.Green("Found at"), v.currentSource.Node.Position(s))
 
-	v.roots[source] = &df.VisitorNode{NodeWithTrace: source, ParamStack: nil, Prev: nil, Depth: 0}
+	v.roots[source] = &df.VisitorNode{NodeWithTrace: source, Prev: nil, Depth: 0}
 	que := []*df.VisitorNode{v.roots[source]}
 
 	if s.Config.UseEscapeAnalysis {
@@ -591,18 +591,10 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	}
 
 	// logic for parameter stack
-	pStack := cur.ParamStack
-	switch curNode := cur.Node.(type) {
-	case *df.ReturnValNode:
-		pStack = pStack.Parent()
-	case *df.ParamNode:
-		pStack = pStack.Add(curNode)
-	}
 
 	// Adding the next node with trace in a visitor node to the queue, and recording the "execution" tree
 	nextVisitorNode := &df.VisitorNode{
 		NodeWithTrace: nextNodeWithTrace,
-		ParamStack:    pStack,
 		Prev:          cur,
 		Depth:         cur.Depth + 1,
 	}
@@ -710,7 +702,7 @@ func (v *Visitor) storeEscapeGraphInContext(s *df.AnalyzerState, f *ssa.Function
 	v.escapeGraphs[f][key] = &EscapeInfo{locality, info}
 }
 
-// raiseAlarm raises an alarm (loags a warning message) if that alarm has not already been raised. This avoids repeated
+// raiseAlarm raises an alarm (logs a warning message) if that alarm has not already been raised. This avoids repeated
 // warning messages to the user.
 func (v *Visitor) raiseAlarm(s *df.AnalyzerState, pos token.Pos, msg string) {
 	if _, alreadyRaised := v.alarms[pos]; !alreadyRaised {
