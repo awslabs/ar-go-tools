@@ -103,7 +103,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 	if s.Config.UseEscapeAnalysis {
 		sourceCaller := source.Node.Graph().Parent
-		rootKey := source.Trace.Parent.Key()
+		var rootKey df.KeyType
+		if source.Trace != nil {
+			rootKey = source.Trace.Parent.Key()
+		} else {
+			rootKey = ""
+		}
 		v.storeEscapeGraphInContext(s, sourceCaller, rootKey,
 			s.EscapeAnalysisState.ComputeArbitraryContext(sourceCaller))
 
@@ -467,9 +472,11 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// The data flows to a free variable inside a closure body from a bound variable inside a closure definition.
 		// (see the example for BoundVarNode)
+		// The date can also flow from the function body to the free var node, in which case it implies the bound
+		// variable (in the caller) is tainted after the function returns.
 		case *df.FreeVarNode:
 			// Flows inside the function
-			if cur.Prev.Node.Graph() != graphNode.Graph() {
+			if cur.Prev == nil || (cur.Prev.Node.Graph() != graphNode.Graph()) {
 				for nextNode, edgeInfo := range graphNode.Out() {
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         nextNode,
@@ -487,7 +494,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					bv := bvs[graphNode.Index()]
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         bv,
-						Trace:        cur.Trace,
+						Trace:        cur.Trace.Parent,
 						ClosureTrace: cur.ClosureTrace.Parent,
 					}
 					que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, df.ObjectPath{})
@@ -717,9 +724,14 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	case *df.CallNodeArg:
 		callSite := curNode.ParentNode()
 		update = v.storeEscapeGraph(s, nextTrace, callSite)
+	case *df.CallNode:
+		update = v.storeEscapeGraph(s, nextTrace, curNode)
 	case *df.BoundLabelNode, *df.BoundVarNode:
-		//TODO: case when nextTrace.Label is nil
-		update = v.storeEscapeGraph(s, nextTrace, nextTrace.Label)
+		if nextTrace != nil {
+			update = v.storeEscapeGraph(s, nextTrace, nextTrace.Label)
+		} else {
+			update = v.storeEscapeGraph(s, nil, nil)
+		}
 	}
 
 	f := nextNode.Graph().Parent
@@ -771,8 +783,8 @@ func (v *Visitor) storeEscapeGraph(s *df.AnalyzerState, stack *df.CallStack, cal
 
 	var escapeContext *EscapeInfo
 
+	key := "" // key corresponding to no context if the function is a root
 	if stack != nil {
-		key := "" // key corresponding to no context if the function is a root
 		if stack.Parent != nil {
 			key = stack.Parent.Key()
 		}

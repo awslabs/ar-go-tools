@@ -101,7 +101,7 @@ func ExampleEscape5() {
 	a := &A{field1: x, field2: 0}
 	sink1(a.field1) // @Sink(ex5)
 	c := make(chan string)
-	go func() { c <- x }() // value sent
+	go func() { c <- x }() // @Escape(ex5)
 	go ex5foo(c)
 }
 
