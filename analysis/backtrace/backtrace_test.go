@@ -349,13 +349,12 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 }
 
 func TestAnalyze_Closures(t *testing.T) {
-	t.Skipf("Check that this test is necessary")
 	// This test uses the taint analysis' closures test file to ensure completeness.
 	// The backtracepoints (entrypoints to the backwards analysis) are identical to the sinks in the taint analysis.
 	// See the config.yaml file for details.
 	//t.Skipf("Skip until tests are fixed so they do not depend on a specific output format.")
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/closures")
+	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
 	program, cfg := analysistest.LoadTest(t, dir, []string{"helpers.go"})
 	defer os.Remove(cfg.ReportsDir)
@@ -364,9 +363,8 @@ func TestAnalyze_Closures(t *testing.T) {
 }
 
 func TestAnalyze_Closures_OnDemand(t *testing.T) {
-	t.Skipf("Check that this test is necessary.")
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/closures")
+	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
 	program, cfg := analysistest.LoadTest(t, dir, []string{"helpers.go"})
 	defer os.Remove(cfg.ReportsDir)
