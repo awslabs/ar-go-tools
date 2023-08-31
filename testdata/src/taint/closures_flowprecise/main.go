@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 )
 
 func wrap(a string, before string, after string) string {
@@ -39,7 +40,7 @@ func example1RunStringGetter(stringGetter func() string) string {
 func example1tainter(s *E1) {
 	s.Index = 0
 	v := &s.Data
-	*v = source() // @Source(ex18)
+	*v = source() // @Source(ex1)
 }
 
 func example1() {
@@ -49,10 +50,100 @@ func example1() {
 	example1tainter(data)
 	x1 := example1RunStringGetter(a)
 	x2 := example1RunStringGetter(b)
-	sink(x1) //@Sink(ex18)
+	sink(x1) //@Sink(ex1)
 	sink(x2)
+}
+
+// example2: a variation of example1 with slightly more complexity
+func example2RunStringGetter(stringGetter func() string) string {
+	return stringGetter()
+}
+
+func example2tainter(s *E1) {
+	s.Index = 0
+	v := &s.Data
+	*v = source() // @Source(ex2)
+}
+
+func example2() {
+	data := &E1{Data: "ok", Index: 10}
+	a := func() string { return fmt.Sprintf("%s", data.Data) }
+	b := func() string { return "fine" }
+	c := func() string { return fmt.Sprintf("Calling a: %s", a()) }
+	example2tainter(data)
+	x1 := example2RunStringGetter(a)
+	x2 := example2RunStringGetter(b)
+	x3 := example2RunStringGetter(c)
+	sink(x1) //@Sink(ex2)
+	sink(x2)
+	sink(x3) //@Sink(ex2)
+}
+
+// example3: mapping
+
+func Map[T any, R any](a []T, f func(T) R) []R {
+	res := make([]R, len(a))
+	for i, x := range a {
+		res[i] = f(x)
+	}
+	return res
+}
+
+func example3() {
+	a := make([]string, 10)
+	for i := range a {
+		a[i] = "a-" + strconv.Itoa(i)
+	}
+	x := Map(a, func(s string) E1 {
+		return E1{
+			Data:  s,
+			Index: 0,
+		}
+	})
+	sink(x[0].Data) // @Sink(ex3) TODO: improve precision, flow was not used here
+	y := Map(a, func(s string) E1 {
+		return E1{
+			Data:  s + source(), //@Source(ex3)
+			Index: 0,
+		}
+	})
+	sink(y[0].Data) // @Sink(ex3)
+}
+
+func MapX[T any, R any](a []T, f func(T) R) []R {
+	res := make([]R, len(a))
+	for i, x := range a {
+		res[i] = f(x)
+	}
+	return res
+}
+
+func example3bis() {
+	a := make([]string, 10)
+	for i := range a {
+		a[i] = "a-" + strconv.Itoa(i)
+	}
+	x := MapX(a, func(s string) E1 {
+		return E1{
+			Data:  s,
+			Index: 0,
+		}
+	})
+	sink(x[0].Data)
+	appendix := source() //@Source(ex3bis)
+	f := func(s string) E1 {
+		return E1{
+			Data:  s + appendix,
+			Index: 0,
+		}
+	}
+	y := MapX(a, f)
+	sink(y[0].Data) // @Sink(ex3bis)
 }
 
 func main() {
 	example1()
+	example2()
+	example3()
+	example3bis()
 }

@@ -30,7 +30,7 @@ import (
 
 // flags
 var (
-	mode    = ssa.BuilderMode(0)
+	mode    = ssa.InstantiateGenerics
 	verbose = false
 )
 

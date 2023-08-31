@@ -34,7 +34,7 @@ var (
 	jsonFlag    = false
 	excludeMain = false
 	excludeInit = false
-	mode        = ssa.BuilderMode(0)
+	mode        = ssa.InstantiateGenerics
 )
 
 func init() {

@@ -43,7 +43,7 @@ func init() {
 }
 
 var (
-	buildmode = ssa.BuilderMode(0)
+	buildmode = ssa.InstantiateGenerics
 	version   = "unknown"
 	commands  = map[string]func(tt *term.Terminal, s *dataflow.AnalyzerState, command Command) bool{
 		cmdBuildGraphName:   cmdBuildGraph,

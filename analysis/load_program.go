@@ -36,7 +36,10 @@ const PkgLoadMode = packages.NeedName |
 	packages.NeedTypesSizes |
 	packages.NeedModule
 
-func LoadProgram(config *packages.Config, platform string, buildmode ssa.BuilderMode, args []string) (*ssa.Program, error) {
+func LoadProgram(config *packages.Config,
+	platform string,
+	buildmode ssa.BuilderMode,
+	args []string) (*ssa.Program, error) {
 
 	if config == nil {
 		config = &packages.Config{

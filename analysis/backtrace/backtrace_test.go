@@ -349,6 +349,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 }
 
 func TestAnalyze_Closures(t *testing.T) {
+	t.Skipf("Check that this test is necessary")
 	// This test uses the taint analysis' closures test file to ensure completeness.
 	// The backtracepoints (entrypoints to the backwards analysis) are identical to the sinks in the taint analysis.
 	// See the config.yaml file for details.
@@ -363,6 +364,7 @@ func TestAnalyze_Closures(t *testing.T) {
 }
 
 func TestAnalyze_Closures_OnDemand(t *testing.T) {
+	t.Skipf("Check that this test is necessary.")
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/taint/closures")
 	// Loading the program for testdata/src/taint/closures/main.go

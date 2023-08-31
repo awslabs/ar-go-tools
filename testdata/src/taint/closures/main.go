@@ -18,6 +18,7 @@ import (
 	"fmt"
 	random "math/rand"
 	"strconv"
+	"sync"
 )
 
 func wrap(a string, before string, after string) string {
@@ -377,6 +378,35 @@ func taintPre(pre *string) {
 	*pre = source() // @Source(example16)
 }
 
+// example3: using do once
+func example18() {
+	doer := &sync.Once{}
+	s := source() //@Source(ex18)
+	s2 := "nice-data"
+	x := ""
+	x2 := ""
+	f1 := func(s string) func() {
+		return func() { x = s }
+	}
+	f2 := func(s string) func() {
+		return func() { fmt.Printf(s) }
+	}
+	f3 := func(s string) func() {
+		return func() { x2 = s }
+	}
+	switch random.Int() {
+	case 1:
+		doer.Do(f1(s))
+	case 2:
+		doer.Do(f2(s))
+	default:
+		doer.Do(f3(s2))
+	}
+
+	sink(x) // @Sink(ex18)
+	sink(x2)
+}
+
 func main() {
 	example1()
 	example1bis()
@@ -398,4 +428,5 @@ func main() {
 	example15()
 	example16()
 	example17()
+	example18()
 }
