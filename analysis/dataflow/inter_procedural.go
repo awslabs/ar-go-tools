@@ -350,7 +350,7 @@ func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterPr
 // if contexts is empty or nil, then the node is added without context
 func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints map[KeyType]NodeWithTrace) {
 	if len(contexts) == 0 {
-		// DefaultTracing is to start without context (trace is nil)
+		// Default behaviour is to start without context (trace is nil)
 		entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
 		entryPoints[entry.Key()] = entry
 	} else {
