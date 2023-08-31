@@ -70,6 +70,7 @@ var stdPackages = map[string]map[string]Summary{
 	"io/fs":                       SummaryIo,
 	"io/ioutil":                   SummaryIo,
 	"log":                         SummaryLog,
+	"maps":                        SummaryMaps,
 	"math":                        SummaryMath,
 	"math/big":                    SummaryMath,
 	"math/bits":                   SummaryMath,
@@ -558,6 +559,10 @@ var SummaryLog = map[string]Summary{
 	},
 }
 
+var SummaryMaps = map[string]Summary{
+	"maps.clone": SingleVarArgPropagation,
+}
+
 var SummaryMath = map[string]Summary{
 	"math.init":                    NoDataFlowPropagation,
 	"math.Abs":                     SingleVarArgPropagation,
@@ -908,6 +913,7 @@ var SummaryRuntime = map[string]Summary{
 	// func (*runtime.Func).Name() string
 	"(*runtime.Func).Name": SingleVarArgPropagation,
 	"runtime.init":         NoDataFlowPropagation,
+	"runtime.clone":        SingleVarArgPropagation,
 }
 
 var SummarySort = map[string]Summary{

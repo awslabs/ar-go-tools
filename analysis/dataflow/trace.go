@@ -200,13 +200,13 @@ func FuncNames(n *NodeTree[*CallNode]) string {
 	s := make([]string, n.height)
 	for cur := n; cur != nil; cur = cur.Parent {
 		if cur.height >= 1 {
-			s[cur.height-1] = cur.Label.FuncName()
+			s[cur.height-1] = "(" + cur.Label.LongID() + ")" + cur.Label.FuncName()
 		}
 	}
 	return strings.Join(s, "->")
 }
 
-// ClosureNames reutrns a string that contains all the closure names in the current trace
+// ClosureNames returns a string that contains all the closure names in the current trace
 func ClosureNames(n *NodeTree[*ClosureNode]) string {
 	if n == nil || n.height == 0 {
 		return ""

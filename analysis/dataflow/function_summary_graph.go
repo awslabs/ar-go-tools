@@ -154,6 +154,7 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack f
 		returnNodes[i] = &ReturnValNode{parent: g, id: g.newNodeId(), index: i, in: make(map[GraphNode]ObjectPath)}
 	}
 
+	// Adding return nodes
 	for _, block := range f.Blocks {
 		last := lang.LastInstr(block)
 		if last != nil {
@@ -163,6 +164,12 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32, shouldTrack f
 					g.addReturn(retInstr, returnNodes[i])
 				}
 			}
+		}
+	}
+	// When the function is external, we need to add a dummy return node
+	if lang.IsExternal(g.Parent) {
+		for i := 0; i < n; i++ {
+			g.addReturn(nil, returnNodes[i])
 		}
 	}
 

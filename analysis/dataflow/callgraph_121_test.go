@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !go1.20
+//go:build go1.21
 
 package dataflow_test
 
@@ -26,7 +26,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func TestComputeMethodImplementationsGo120(t *testing.T) {
+func TestComputeMethodImplementationsGo121(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callgraph")
 	program, _ := analysistest.LoadTest(t, dir, []string{})
@@ -54,11 +54,11 @@ func TestComputeMethodImplementationsGo120(t *testing.T) {
 		"(*fmt.pp).Write":                   true,
 		"(*io.multiWriter).Write":           true,
 		"(*os.File).Write":                  true,
-		"(*os.onlyWriter).Write":            true,
 		"(*io.discard).Write":               true,
 		"(*internal/poll.FD).Write":         true,
-		"(os.onlyWriter).Write":             true,
 		"(*io.PipeWriter).Write":            true,
 		"(*io.OffsetWriter).Write":          true, // new in 1.20
+		"(*os.fileWithoutReadFrom).Write":   true, // new in 1.21
+		"(os.fileWithoutReadFrom).Write":    true, // new in 1.21
 	})
 }
