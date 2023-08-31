@@ -38,6 +38,10 @@ func genT() T {
 	}
 }
 
+func source3() string {
+	return strconv.Itoa(rand.Int()) + "tainted"
+}
+
 func source1() T {
 	return T{
 		Data:  strconv.Itoa(rand.Int()) + "tainted",
