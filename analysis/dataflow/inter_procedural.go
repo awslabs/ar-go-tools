@@ -123,7 +123,7 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 	c := g.AnalyzerState
 	logger := c.Logger
 
-	logger.Debugf("BuildGraph: Building inter-procedural flow graph...")
+	logger.Debugf("Building inter-procedural flow graph...")
 
 	// Open a file to output summaries
 	summariesFile := openSummaries(c)
@@ -205,6 +205,40 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 	}
 	// Change the built flag to true
 	g.built = true
+}
+
+// Sync synchronizes inter-procedural information in the graph. This is useful if updating a summary generates nodes
+// that may require edges to nodes in other functions.
+//
+//gocyclo:ignore
+func (g *InterProceduralFlowGraph) Sync() {
+	if !g.built {
+		g.AnalyzerState.Logger.Warnf("Attempting to sync an inter-procedural graph that has not been built.")
+	}
+	for _, summary := range g.Summaries {
+		if summary == nil {
+			continue
+		}
+		// Interprocedural edges: closure creation to anonymous function
+		for _, closureNode := range summary.CreatedClosures {
+			if closureNode.instr != nil {
+				closureSummary := g.findClosureSummary(closureNode.instr)
+				// Add edge from created closure summary to creator
+				if closureSummary != nil {
+					closureSummary.ReferringMakeClosures[closureNode.instr] = closureNode
+				}
+				closureNode.ClosureSummary = closureSummary // nil is safe
+			}
+		}
+
+		// Interprocedural edges: bound variable to capturing anonymous function
+		for _, boundLabelNode := range summary.BoundLabelNodes {
+			if boundLabelNode.targetInfo.MakeClosure != nil {
+				closureSummary := g.findClosureSummary(boundLabelNode.targetInfo.MakeClosure)
+				boundLabelNode.targetAnon = closureSummary // nil is safe
+			}
+		}
+	}
 }
 
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to

@@ -453,8 +453,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					break
 				}
 				v.onDemandIntraProcedural(s, closureNode.ClosureSummary)
-				// TODO: optimize this step
-				s.FlowGraph.BuildGraph()
+				s.FlowGraph.Sync()
 			}
 
 			closureNodeWithTrace := df.NodeWithTrace{
@@ -514,7 +513,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						df.BuildSummary(s, f)
 					}
 					// This is needed to get the referring make closures outside the function
-					s.FlowGraph.BuildGraph()
+					s.FlowGraph.Sync()
 				}
 
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
@@ -607,7 +606,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				if destClosureSummary == nil {
 					destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function))
 					graphNode.SetDestClosure(destClosureSummary)
-					s.FlowGraph.BuildGraph()
+					s.FlowGraph.Sync()
 				}
 			}
 
