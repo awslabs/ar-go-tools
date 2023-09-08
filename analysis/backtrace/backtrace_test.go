@@ -104,6 +104,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#582.1] global:os.Args in *os.Args (read)" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:26
 			// "(SA)call: os/exec.Command(t6, t8...) in main [#582.10]: @arg 0:t6 [#582.11]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:30
 			matches: []match{
+				ignoreMatch, // {return, "runtime_args", -1}
 				ignoreMatch, // {call, "runtime_args", -1},
 				ignoreMatch, // {globalWrite, "*Args", -1},
 				{globalRead, `*os.Args`, 31},
@@ -115,6 +116,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 			// "[#582.1] global:os.Args in *os.Args (read)" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:38
 			// "(SA)call: os/exec.Command(t6, t8...) in main [#582.10]: @arg 1:t8 [#582.12]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:42
 			matches: []match{
+				ignoreMatch, // {return, "runtime_args, -1}
 				ignoreMatch, // {call, "runtime_args", -1},
 				ignoreMatch, // {globalWrite, "*Args", -1},
 				{globalRead, `*os.Args`, 31},
