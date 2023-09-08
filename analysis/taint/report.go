@@ -84,6 +84,9 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 
 		tmp.WriteString(fmt.Sprintf("Trace:\n"))
 		for i := len(nodes) - 1; i >= 0; i-- {
+			if nodes[i].Status.Kind != dataflow.DefaultTracing {
+				continue
+			}
 			tmp.WriteString(fmt.Sprintf("%s\n", nodes[i].Node.Position(c).String()))
 			c.Logger.Infof("%s - %s",
 				colors.Purple("TRACE"),

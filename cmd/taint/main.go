@@ -34,7 +34,7 @@ var (
 	configPath = flag.String("config", "", "Config file path for taint analysis")
 	verbose    = flag.Bool("verbose", false, "Verbose printing on standard output")
 	// Other constants
-	buildmode = ssa.BuilderMode(0)
+	buildmode = ssa.InstantiateGenerics // necessary for reachability
 	version   = "unknown"
 )
 

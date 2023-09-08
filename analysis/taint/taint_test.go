@@ -100,6 +100,14 @@ func TestCrossFunctionClosures_SummarizeOnDemand(t *testing.T) {
 	runTest(t, "closures", []string{"helpers.go"}, true, noErrorExpected)
 }
 
+func TestCrossFunctionClosuresFlowPrecise(t *testing.T) {
+	runTest(t, "closures_flowprecise", []string{"helpers.go"}, false, noErrorExpected)
+}
+
+func TestCrossFunctionClosuresFlowPrecise_SummarizeOnDemand(t *testing.T) {
+	runTest(t, "closures_flowprecise", []string{"helpers.go"}, true, noErrorExpected)
+}
+
 func TestCrossFunctionInterfaceSummaries(t *testing.T) {
 	runTest(t, "interface-summaries", []string{"helpers.go"}, false, noErrorExpected)
 }
@@ -182,4 +190,8 @@ func TestCrossFunctionFilters_SummarizeOnDemand(t *testing.T) {
 
 func TestComplexExample(t *testing.T) {
 	runTest(t, "agent-example", []string{}, false, noErrorExpected)
+}
+
+func TestPlayground(t *testing.T) {
+	runTest(t, "playground", []string{}, false, noErrorExpected)
 }

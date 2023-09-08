@@ -123,7 +123,7 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 	c := g.AnalyzerState
 	logger := c.Logger
 
-	logger.Debugf("BuildGraph: Building inter-procedural flow graph...")
+	logger.Debugf("Building inter-procedural flow graph...")
 
 	// Open a file to output summaries
 	summariesFile := openSummaries(c)
@@ -205,6 +205,40 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 	}
 	// Change the built flag to true
 	g.built = true
+}
+
+// Sync synchronizes inter-procedural information in the graph. This is useful if updating a summary generates nodes
+// that may require edges to nodes in other functions.
+//
+//gocyclo:ignore
+func (g *InterProceduralFlowGraph) Sync() {
+	if !g.built {
+		g.AnalyzerState.Logger.Warnf("Attempting to sync an inter-procedural graph that has not been built.")
+	}
+	for _, summary := range g.Summaries {
+		if summary == nil {
+			continue
+		}
+		// Interprocedural edges: closure creation to anonymous function
+		for _, closureNode := range summary.CreatedClosures {
+			if closureNode.instr != nil {
+				closureSummary := g.findClosureSummary(closureNode.instr)
+				// Add edge from created closure summary to creator
+				if closureSummary != nil {
+					closureSummary.ReferringMakeClosures[closureNode.instr] = closureNode
+				}
+				closureNode.ClosureSummary = closureSummary // nil is safe
+			}
+		}
+
+		// Interprocedural edges: bound variable to capturing anonymous function
+		for _, boundLabelNode := range summary.BoundLabelNodes {
+			if boundLabelNode.targetInfo.MakeClosure != nil {
+				closureSummary := g.findClosureSummary(boundLabelNode.targetInfo.MakeClosure)
+				boundLabelNode.targetAnon = closureSummary // nil is safe
+			}
+		}
+	}
 }
 
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to
@@ -316,7 +350,7 @@ func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterPr
 // if contexts is empty or nil, then the node is added without context
 func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints map[KeyType]NodeWithTrace) {
 	if len(contexts) == 0 {
-		// Default is to start without context (trace is nil)
+		// Default behaviour is to start without context (trace is nil)
 		entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
 		entryPoints[entry.Key()] = entry
 	} else {
@@ -515,38 +549,6 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 		cur = cur.Parent
 	}
 	return nil
-}
-
-// CompleteCallStackToNode completes the callstack stack with the call nodes to reach node. Returns nil if node is not
-// reachable from the last call node of the stack.
-func CompleteCallStackToNode(stack *CallStack, n *CallNode, maxsize int) *CallStack {
-	if stack == nil {
-		return nil
-	}
-	if stack.Label == n {
-		return stack
-	}
-	var tmpRoot *CallStack
-	tmpRoot = NewNodeTree(stack.Label)
-	queue := []*CallStack{tmpRoot}
-	i := 0
-	for len(queue) > 0 {
-		elt := queue[0]
-		queue = queue[1:]
-		i += 1
-		if elt.Label == n {
-			return stack.Append(elt)
-		}
-		if maxsize > 0 && i > maxsize {
-			return stack
-		}
-		for _, callNode := range elt.Label.parent.Callsites {
-			if !PathContains(elt, callNode) {
-				queue = append(queue, elt.Add(callNode))
-			}
-		}
-	}
-	return stack
 }
 
 // BuildSummary builds a summary for function and returns it.

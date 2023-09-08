@@ -47,7 +47,7 @@ func init() {
 }
 
 var (
-	buildmode = ssa.BuilderMode(0)
+	buildmode = ssa.InstantiateGenerics // necessary for all reachability-dependent analyses
 )
 
 const usage = ` Render callgraphs or ssa representation of your packages.

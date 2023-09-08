@@ -45,7 +45,7 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *con
 		files = append(files, filepath.Join(dir, extraFile))
 	}
 
-	pkgs, err := analysis.LoadProgram(nil, "", ssa.BuilderMode(0), files)
+	pkgs, err := analysis.LoadProgram(nil, "", ssa.InstantiateGenerics|ssa.GlobalDebug, files)
 	if err != nil {
 		t.Fatalf("error loading packages.")
 	}

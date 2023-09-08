@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package taint
+package main
 
-import (
-	"testing"
-)
+func sink(a ...string) {
+	for _, x := range a {
+		println(x)
+	}
+}
 
-func TestEscapeIntegration(t *testing.T) {
-	runTest(t, "escape-integration", []string{}, false,
-		noErrorExpected)
+func source() string {
+	return "-tainted-"
 }
