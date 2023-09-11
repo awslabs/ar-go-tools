@@ -22,7 +22,15 @@ func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {
 		// for append, copy we simply propagate the taint like in a binary operator
 		case "ssa:wrapnilchk":
 			return true
-		case "append", "len", "close", "delete", "println", "print", "recover", "complex", "cap":
+		case "append", "len", "close", "delete", "println", "print", "recover", "cap":
+			return true
+
+		// Complex numbers
+		case "complex", "imag", "real":
+			return true
+
+		// starting from go1.21
+		case "min", "max", "clear":
 			return true
 
 		case "copy":
@@ -90,7 +98,7 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 			// taking the capacity does not propagate taint
 			return true
 
-		case "complex":
+		case "complex", "min", "max":
 			if len(callCommon.Args) == 2 {
 				f1 := callCommon.Args[1]
 				f2 := callCommon.Args[0]
@@ -101,15 +109,15 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 				return false
 			}
 
-		// for len, we also propagate the taint. This may not be necessary
-		case "len":
+		// for len, imag, real we also propagate the taint. This may not be necessary
+		case "len", "imag", "real":
 			for _, arg := range callCommon.Args {
 				simpleTransfer(t, instruction, arg, callValue)
 			}
 			return true
 
 		// for close, delete, nothing is propagated
-		case "close", "delete":
+		case "close", "delete", "clear":
 			return true
 
 		// the builtin println doesn't return anything

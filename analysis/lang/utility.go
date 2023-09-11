@@ -15,10 +15,8 @@
 package lang
 
 import (
-	"fmt"
 	"go/token"
 	"go/types"
-	"os"
 	"strings"
 
 	"golang.org/x/tools/go/ssa"
@@ -102,7 +100,6 @@ func PackageNameFromFunction(f *ssa.Function) string {
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, "Object Package is nil", f.String())
 	return ""
 }
 

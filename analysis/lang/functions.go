@@ -18,6 +18,12 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// IsExternal returns true if function is external (in ssa, when Blocks is nil)
+func IsExternal(function *ssa.Function) bool {
+	// This is indicated in the ssa documentation
+	return function.Blocks == nil
+}
+
 // IterateInstructions iterates through all the instructions in the function, in no specific order.
 // It ignores the order in which blocks should be executed.
 func IterateInstructions(function *ssa.Function, f func(index int, instruction ssa.Instruction)) {

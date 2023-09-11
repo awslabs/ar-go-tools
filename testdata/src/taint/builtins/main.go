@@ -103,6 +103,38 @@ func TestCap() {
 	sink(c2)
 }
 
+func TestImag() {
+	f1 := source3() // @Source(imag1)
+	f2 := source3() // @Source(imag2)
+	c := complex(f1, f2)
+	i := imag(c)
+	sink(i) // @Sink(imag1, imag2)
+}
+
+func TestImag2() {
+	f1 := float32(1.0)
+	f2 := source3() // @Source(imag21)
+	c := complex(f1, f2)
+	i := imag(c)
+	sink(i) // @Sink(imag21)
+}
+
+func TestReal() {
+	f1 := source3() // @Source(real1)
+	f2 := source3() // @Source(real2)
+	c := complex(f1, f2)
+	i := real(c)
+	sink(i) // @Sink(real1, real2)
+}
+
+func TestReal2() {
+	f1 := source3() // @Source(real21)
+	f2 := float32(1)
+	c := complex(f1, f2)
+	i := real(c)
+	sink(i) // @Sink(real21)
+}
+
 func main() {
 	TestCopy()
 	TestCopy2()
@@ -116,4 +148,8 @@ func main() {
 	TestDelete()
 	TestComplex()
 	TestCap()
+	TestImag()
+	TestImag2()
+	TestReal()
+	TestReal2()
 }
