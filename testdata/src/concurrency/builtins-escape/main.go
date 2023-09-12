@@ -79,6 +79,7 @@ func main() {
 	testNestedStruct()
 	testForRange()
 	testTypeCorrectness()
+	testGoReceiver()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -760,4 +761,13 @@ func testTypeCorrectness() {
 	}
 	z := string(out)
 	_ = z
+}
+
+func testGoReceiver() *Node {
+	x := &Node{}
+	go func() {
+		x.next = &Node{}
+	}()
+	assertAllLeaked(x.next) // It should not be local
+	return x
 }

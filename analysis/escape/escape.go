@@ -322,15 +322,24 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		return
 
 	case *ssa.Go:
+		// A go call always leaks arguments and receiver/closure. The return value is irrelevant.
 		args := make([]*Node, len(instr.Call.Args))
 		for i, arg := range instr.Call.Args {
 			if IsEscapeTracked(arg.Type()) {
 				args[i] = nodes.ValueNode(arg)
 			}
 		}
-		rets := []*Node{nodes.UnusedNode()}
-		// A go call always leaks arguements. The return value is irrelevant (`_`).
-		g.CallUnknown(args, rets)
+		// Add the receiver of the call or the closure, if present. The parameters are out
+		// of order, but it doesn't matter for CallUnknown.
+		switch instr.Call.Value.(type) {
+		case *ssa.Function, *ssa.Builtin, *ssa.Global:
+			// do nothing, there is no receiver or globals are already leaked
+		case ssa.Instruction, *ssa.Parameter, *ssa.FreeVar:
+			args = append(args, nodes.ValueNode(instr.Call.Value))
+		default:
+			panic(fmt.Sprintf("Go statment of unknown value type %s", reflect.TypeOf(instr.Call.Value.String())))
+		}
+		g.CallUnknown(args, []*Node{})
 		return
 	case *ssa.Defer:
 
@@ -453,6 +462,9 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		}
 		return
 	case *ssa.BinOp:
+		return
+	case *ssa.DebugRef:
+		// Noop, as debugref is just an annotation for mapping back to source
 		return
 	default:
 	}
@@ -993,6 +1005,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 
+		prog.logger.Tracef("Analyzing %s\n", summary.function.String())
 		changed := resummarize(summary)
 		if !changed {
 			continue
