@@ -53,6 +53,7 @@ const (
 	cmdSummarizeName    = "summarize"
 	cmdSummaryName      = "summary"
 	cmdTaintName        = "taint"
+	cmdTraceName        = "trace"
 	cmdUnfocusName      = "unfocus"
 	cmdWhereName        = "where"
 	cmdBacktraceName    = "backtrace"

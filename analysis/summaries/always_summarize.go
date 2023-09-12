@@ -23,4 +23,5 @@ var requiredSummaries = map[string]bool{
 	"(*sync.Once).doSlow": true,
 	"path/filepath.Walk":  true,
 	"flag.Func":           true,
+	"sort.Sort":           true,
 }

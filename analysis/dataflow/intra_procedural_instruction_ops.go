@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"go/token"
 	"go/types"
 
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
@@ -59,6 +60,9 @@ func (state *IntraAnalysisState) DoDebugRef(*ssa.DebugRef) {
 }
 
 func (state *IntraAnalysisState) DoUnOp(x *ssa.UnOp) {
+	if x.Op == token.ARROW {
+		state.optionalSyntheticNode(x, x, x)
+	}
 	simpleTransfer(state, x, x.X, x)
 }
 

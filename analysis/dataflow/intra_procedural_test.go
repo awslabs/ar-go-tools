@@ -45,14 +45,9 @@ func TestFunctionSummaries(t *testing.T) {
 		numRoutines = 1
 	}
 
-	// Only build summaries for non-stdlib functions here
-	shouldCreateSummary := func(f *ssa.Function) bool {
-		return !summaries.IsStdFunction(f) && summaries.IsUserDefinedFunction(f)
-	}
-	analysis.RunIntraProcedural(state, numRoutines, analysis.IntraAnalysisParams{
-		ShouldCreateSummary: shouldCreateSummary,
-		ShouldBuildSummary:  dataflow.ShouldBuildSummary,
-		IsEntrypoint:        taint.IsSourceNode,
+	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
+		ShouldBuildSummary: dataflow.ShouldBuildSummary,
+		IsEntrypoint:       taint.IsSourceNode,
 	})
 
 	if len(state.FlowGraph.Summaries) == 0 {
@@ -60,13 +55,13 @@ func TestFunctionSummaries(t *testing.T) {
 	}
 
 	for function, summary := range state.FlowGraph.Summaries {
-		summaryIds := map[uint32]bool{}
+		summaryIds := map[uint32]dataflow.GraphNode{}
 		// Check that summary's nodes all have different ids
 		summary.ForAllNodes(func(n dataflow.GraphNode) {
-			if summaryIds[n.ID()] {
-				t.Errorf("node ids should be unique")
+			if x, ok := summaryIds[n.ID()]; ok && x != n {
+				t.Errorf("node ids should be unique, but %d repeats: %s and %s [%t]", n.ID(), x, n, x == n)
 			}
-			summaryIds[n.ID()] = true
+			summaryIds[n.ID()] = n
 		})
 
 		if function.Name() == "main" {

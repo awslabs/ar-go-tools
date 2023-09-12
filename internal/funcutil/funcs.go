@@ -14,6 +14,12 @@
 
 package funcutil
 
+// First returns the first of two arguments
+func First[T any](x T, _ T) T { return x }
+
+// Second returns the first of two arguments
+func Second[T any](_ T, y T) T { return y }
+
 // Compose (f,g) returns a function h: x -> f(g(x))
 func Compose[T any, S any, R any](f func(T) S, g func(S) R) func(T) R {
 	return func(x T) R { return g(f(x)) }

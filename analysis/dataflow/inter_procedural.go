@@ -19,11 +19,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -57,7 +55,9 @@ type InterProceduralFlowGraph struct {
 }
 
 // NewInterProceduralFlowGraph returns a new non-built cross function flow graph.
-func NewInterProceduralFlowGraph(summaries map[*ssa.Function]*SummaryGraph, state *AnalyzerState) InterProceduralFlowGraph {
+func NewInterProceduralFlowGraph(summaries map[*ssa.Function]*SummaryGraph,
+	state *AnalyzerState) InterProceduralFlowGraph {
+
 	return InterProceduralFlowGraph{
 		Summaries:     summaries,
 		AnalyzerState: state,
@@ -119,11 +119,11 @@ func (g *InterProceduralFlowGraph) InsertSummaries(g2 InterProceduralFlowGraph) 
 // BuildGraph builds the cross function flow graph by connecting summaries together
 //
 //gocyclo:ignore
-func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, ssa.Node) bool) {
+func (g *InterProceduralFlowGraph) BuildGraph() {
 	c := g.AnalyzerState
 	logger := c.Logger
 
-	logger.Infof("Building inter-procedural flow graph...")
+	logger.Debugf("Building inter-procedural flow graph...")
 
 	// Open a file to output summaries
 	summariesFile := openSummaries(c)
@@ -147,7 +147,8 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil {
-					if externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node); externalContractSummary != nil {
+					externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node)
+					if externalContractSummary != nil {
 						logger.Debugf("Loaded %s from external contracts.\n",
 							node.CallSite().Common().String())
 						g.Summaries[node.Callee()] = externalContractSummary
@@ -177,7 +178,7 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil &&
 					g.AnalyzerState.IsReachableFunction(node.Callee()) {
-					node.CalleeSummary = g.resolveCalleeSummary(node, nameAliases, isEntrypoint)
+					node.CalleeSummary = g.resolveCalleeSummary(node, nameAliases)
 				}
 			}
 		}
@@ -186,7 +187,6 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 		for _, closureNode := range summary.CreatedClosures {
 			if closureNode.instr != nil {
 				closureSummary := g.findClosureSummary(closureNode.instr)
-
 				// Add edge from created closure summary to creator
 				if closureSummary != nil {
 					closureSummary.ReferringMakeClosures[closureNode.instr] = closureNode
@@ -205,6 +205,40 @@ func (g *InterProceduralFlowGraph) BuildGraph(isEntrypoint func(*config.Config, 
 	}
 	// Change the built flag to true
 	g.built = true
+}
+
+// Sync synchronizes inter-procedural information in the graph. This is useful if updating a summary generates nodes
+// that may require edges to nodes in other functions.
+//
+//gocyclo:ignore
+func (g *InterProceduralFlowGraph) Sync() {
+	if !g.built {
+		g.AnalyzerState.Logger.Warnf("Attempting to sync an inter-procedural graph that has not been built.")
+	}
+	for _, summary := range g.Summaries {
+		if summary == nil {
+			continue
+		}
+		// Interprocedural edges: closure creation to anonymous function
+		for _, closureNode := range summary.CreatedClosures {
+			if closureNode.instr != nil {
+				closureSummary := g.findClosureSummary(closureNode.instr)
+				// Add edge from created closure summary to creator
+				if closureSummary != nil {
+					closureSummary.ReferringMakeClosures[closureNode.instr] = closureNode
+				}
+				closureNode.ClosureSummary = closureSummary // nil is safe
+			}
+		}
+
+		// Interprocedural edges: bound variable to capturing anonymous function
+		for _, boundLabelNode := range summary.BoundLabelNodes {
+			if boundLabelNode.targetInfo.MakeClosure != nil {
+				closureSummary := g.findClosureSummary(boundLabelNode.targetInfo.MakeClosure)
+				boundLabelNode.targetAnon = closureSummary // nil is safe
+			}
+		}
+	}
 }
 
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to
@@ -228,7 +262,7 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor 
 	}
 
 	// Build the inter-procedural flow graph
-	g.BuildGraph(isEntryPoint)
+	g.BuildGraph()
 
 	// Open the coverage file if specified in configuration
 	coverage := openCoverage(c)
@@ -237,64 +271,105 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor 
 	}
 
 	// Run the analysis
-	g.RunVisitorOnEntryPoints(visitor, isEntryPoint)
+	g.RunVisitorOnEntryPoints(visitor, isEntryPoint, nil)
 }
 
-// RunVisitorOnEntryPoints runs the visitor on the entry points designated by the isEntryPoint function.
+// RunVisitorOnEntryPoints runs the visitor on the entry points designated by either the isEntryPoint function
+// or the isGraphEntryPoint function.
 func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
-	isEntryPoint func(*config.Config, ssa.Node) bool) {
-	var entryPoints []NodeWithTrace
+	isEntryPointSsa func(*config.Config, ssa.Node) bool,
+	isEntryPointGraphNode func(node GraphNode) bool) {
+
+	entryPoints := make(map[KeyType]NodeWithTrace)
 
 	for _, summary := range g.Summaries {
 		// Identify the entry points for that function: all the call sites that are entry points
-		summary.ForAllNodes(func(n GraphNode) {
-			switch node := n.(type) {
-			case *SyntheticNode:
-				// all synthetic nodes are entry points
-				entry := NodeWithTrace{Node: node}
-				entryPoints = append(entryPoints, entry)
-			case *CallNodeArg:
-				if isEntryPoint(g.AnalyzerState.Config, node.parent.CallSite().Value()) {
-					entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-					entryPoints = append(entryPoints, entry)
-				}
-			case *CallNode:
-				if node.callSite != nil && isEntryPoint(g.AnalyzerState.Config, node.callSite.Value()) {
-					// Assume a different entry point for different contexts
-					if len(node.parent.Callsites) > 0 {
-						// If there are callsites, adding context gives more interpretable results
-						for _, contextNode := range node.parent.Callsites {
-							trace := NewNodeTree(contextNode).Add(node)
-							entry := NodeWithTrace{Node: node, Trace: trace, ClosureTrace: nil}
-							entryPoints = append(entryPoints, entry)
-						}
-					} else {
-						// Default is to start without context (trace is nil)
-						entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-						entryPoints = append(entryPoints, entry)
-					}
+		summary.ForAllNodes(scanEntryPoints(isEntryPointGraphNode, g, entryPoints, isEntryPointSsa))
+	}
+
+	g.AnalyzerState.Logger.Infof("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	if g.AnalyzerState.Logger.LogsDebug() {
+		for _, entryPoint := range entryPoints {
+			g.AnalyzerState.Logger.Debugf("Entry: %s", entryPoint.Node.String())
+			g.AnalyzerState.Logger.Debugf("      in context %s", entryPoint.Trace.String())
+		}
+	}
+
+	// Run the analysis for every entrypoint. We may be able to change this to RunIntraProcedural the analysis for all
+	// entrypoints at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack
+	// implements.
+	for _, entry := range entryPoints {
+		visitor.Visit(g.AnalyzerState, entry)
+	}
+}
+
+func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterProceduralFlowGraph,
+	entryPoints map[KeyType]NodeWithTrace, isEntryPointSsa func(*config.Config, ssa.Node) bool) func(n GraphNode) {
+	return func(n GraphNode) {
+		if isEntryPointGraphNode != nil && isEntryPointGraphNode(n) {
+			for _, callnode := range n.Graph().Callsites {
+				contexts := GetAllCallingContexts(g.AnalyzerState, callnode)
+				addWithContexts(contexts, n, entryPoints)
+			}
+		}
+
+		// if the isEntryPointSsa function is not specified, skip the special casing
+		if isEntryPointSsa == nil {
+			return
+		}
+
+		// special cases for each SSA node type supported
+		switch node := n.(type) {
+		case *SyntheticNode:
+			// all synthetic nodes are entry points
+			entry := NodeWithTrace{Node: node}
+			entryPoints[entry.Key()] = entry
+		case *CallNodeArg:
+			if g.AnalyzerState.Config.SourceTaintsArgs &&
+				isEntryPointSsa(g.AnalyzerState.Config, node.parent.CallSite().Value()) {
+				entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+				entryPoints[entry.Key()] = entry
+			}
+		case *CallNode:
+			if node.callSite != nil && isEntryPointSsa(g.AnalyzerState.Config, node.callSite.Value()) {
+				contexts := GetAllCallingContexts(g.AnalyzerState, node)
+				addWithContexts(contexts, node, entryPoints)
+
+				if g.AnalyzerState.Config.SourceTaintsArgs {
 					for _, arg := range node.args {
-						entryPoints = append(entryPoints, NodeWithTrace{arg, nil, nil})
+						entry := NodeWithTrace{arg, nil, nil}
+						entryPoints[entry.Key()] = entry
 					}
 				}
 			}
-		})
+		}
 	}
+}
 
-	g.AnalyzerState.Logger.Debugf("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
-
-	// Run the analysis for every entrypoint. We may be able to change this to RunIntraProcedural the analysis for all entrypoints
-	// at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack implements.
-	for _, entry := range entryPoints {
-		visitor.Visit(g.AnalyzerState, entry)
+// addWithContexts adds an entry corresponding to node in each of the contexts to the entryPoints
+// if contexts is empty or nil, then the node is added without context
+func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints map[KeyType]NodeWithTrace) {
+	if len(contexts) == 0 {
+		// Default behaviour is to start without context (trace is nil)
+		entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+		entryPoints[entry.Key()] = entry
+	} else {
+		for _, ctxt := range contexts {
+			n := NodeWithTrace{
+				Node:         node,
+				Trace:        ctxt,
+				ClosureTrace: nil,
+			}
+			entryPoints[n.Key()] = n
+		}
 	}
 }
 
 // resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
 // sets the edge from callee to caller, if it could find a summary.
 // Returns nil if no summary can be found.
-func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAliases map[string]*ssa.Function,
-	isEntryPoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
+func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
+	nameAliases map[string]*ssa.Function) *SummaryGraph {
 	var calleeSummary *SummaryGraph
 	logger := g.AnalyzerState.Logger
 
@@ -306,23 +381,6 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAlia
 	if calleeSummary == nil {
 		if calleeSummary = NewPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
 			logger.Debugf("Loaded %s from summaries.\n", node.Callee().String())
-			g.Summaries[node.Callee()] = calleeSummary
-
-			// If summarization on demand is set and the function is reachable, summarize it if ShouldBuildSummary is true
-		} else if g.AnalyzerState.Config.SummarizeOnDemand && ShouldBuildSummary(g.AnalyzerState, node.Callee()) {
-
-			logger.Debugf("Building summary for %v...\n", node.Callee())
-
-			result, err := IntraProceduralAnalysis(
-				g.AnalyzerState, node.Callee(), true, GetUniqueFunctionId(), isEntryPoint, nil)
-
-			if err != nil {
-				panic(fmt.Errorf("intra-procedural analysis failed for %v: %v", node.Callee(), err))
-			}
-			logger.Debugf("Finished building summary for %v (%.2f s)", node.Callee(), result.Time.Seconds())
-
-			// Store the computed summary in the graph
-			calleeSummary = result.Summary
 			g.Summaries[node.Callee()] = calleeSummary
 		}
 	}
@@ -344,11 +402,6 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode, nameAlia
 	}
 
 	return calleeSummary
-}
-
-func (g *InterProceduralFlowGraph) findCallPathFromCallNode(origin *CallNode, dest GraphNode) *NodeTree[*CallNode] {
-	fmt.Printf("Search for a path from %s to %s\n", origin, dest)
-	return nil
 }
 
 // findSummary returns the summary graph of f in summaries if present. Returns nil if not.
@@ -467,17 +520,17 @@ func openSummaries(c *AnalyzerState) *os.File {
 
 // UnwindCallstackFromCallee returns the CallNode that should be returned upon. It satisfies the following conditions:
 // - the CallNode is in the callsites set
-// - the CallNode is in the trace
+// - the CallNode is in the stack
 // If no CallNode satisfies these conditions, nil is returned.
-func UnwindCallstackFromCallee(callsites map[ssa.CallInstruction]*CallNode, trace *NodeTree[*CallNode]) *CallNode {
+func UnwindCallstackFromCallee(callsites map[ssa.CallInstruction]*CallNode, stack *CallStack) *CallNode {
 	// no trace = nowhere to return to.
-	if trace == nil {
+	if stack == nil {
 		return nil
 	}
 
 	// the number of callsites in a call is expected to be small
 	for _, x := range callsites {
-		if x.CallSite() == trace.Label.CallSite() && x.Callee() == trace.Label.Callee() {
+		if x.CallSite() == stack.Label.CallSite() && x.Callee() == stack.Label.Callee() {
 			return x
 		}
 	}
@@ -485,70 +538,45 @@ func UnwindCallstackFromCallee(callsites map[ssa.CallInstruction]*CallNode, trac
 	return nil
 }
 
-// BuildSummary builds a summary for function and adds it to s's flow graph.
-func BuildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
-	summary := buildSummary(s, function, isEntrypoint)
-	s.FlowGraph.Summaries[function] = summary
-
-	return summary
+// UnwindCallStackToFunc looks for the callstack pointer where f was called. Returns nil if no such function can be
+// found
+func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
+	cur := stack
+	for cur != nil {
+		if cur.Label.Callee() == f {
+			return cur
+		}
+		cur = cur.Parent
+	}
+	return nil
 }
 
-// buildSummary builds a summary for function and returns it.
-func buildSummary(s *AnalyzerState, function *ssa.Function, isEntrypoint func(*config.Config, ssa.Node) bool) *SummaryGraph {
-	if summary, ok := s.FlowGraph.Summaries[function]; ok {
+// BuildSummary builds a summary for function and returns it.
+// If the summary was already built, i.e. there in a summary corresponding to the function in the flow graph, then
+// the summary is constructed by running the intra-procedural dataflow analysis.
+// If the summary was not already in the flow graph of the state, it creates a new summary, adds it to the flow graph
+// and then runs the intra-procedural dataflow analysis.
+func BuildSummary(s *AnalyzerState, function *ssa.Function) *SummaryGraph {
+	summary := s.FlowGraph.Summaries[function]
+	if summary != nil && summary.Constructed {
 		return summary
+	}
+	if summary == nil {
+		id := GetUniqueFunctionId()
+		summary = NewPredefinedSummary(function, id)
+		s.FlowGraph.Summaries[function] = summary
 	}
 
 	logger := s.Logger
-	id := GetUniqueFunctionId()
-	summary := NewPredefinedSummary(function, id)
-	if summary != nil {
-		logger.Debugf("\tLoaded pre-defined summary for %v\n", function)
-	} else {
-		logger.Debugf("\tBuilding summary for %v...\n", function)
-		result, err := IntraProceduralAnalysis(s, function, true, id, isEntrypoint, nil)
 
-		if err != nil {
-			panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
-		}
+	logger.Debugf("BuildSummary: Constructing summary for %v...\n", function)
+	elapsed, err := RunIntraProcedural(s, summary)
 
-		logger.Debugf("\tFinished building summary for %v (%.2f s)", function, result.Time.Seconds())
-		summary = result.Summary
+	if err != nil {
+		panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
 	}
+
+	logger.Debugf("BuildSummary: Finished constructing summary for %v (%.2f s)", function, elapsed.Seconds())
 
 	return summary
-}
-
-// BuildSummariesFromCallgraph builds summaries for all the reachable callees of n
-// corresponding to n's trace.
-func BuildSummariesFromCallgraph(s *AnalyzerState, n NodeWithTrace, isEntrypoint func(*config.Config, ssa.Node) bool) {
-	node := s.PointerAnalysis.CallGraph.Nodes[n.Node.Graph().Parent]
-	functions := []*ssa.Function{}
-	for _, in := range node.In {
-		callSite := in.Site
-		if n.Trace == nil || (callSite == n.Trace.Label.CallSite() && in.Callee.Func == n.Trace.Label.Callee()) {
-			createdSummary, ok := s.FlowGraph.Summaries[callSite.Parent()]
-			// build a summary for the callsite's parent if:
-			// - it is present in the flowgraph but not constructed, or
-			// - it is not present in the flowgraph, reachable, and a summary should be built for it
-			if (ok && !createdSummary.Constructed) || (!ok && s.IsReachableFunction(callSite.Parent()) && ShouldBuildSummary(s, callSite.Parent())) {
-				functions = append(functions, callSite.Parent())
-			}
-		}
-	}
-
-	type sf struct {
-		s *SummaryGraph
-		f *ssa.Function
-	}
-	f := func(fn *ssa.Function) sf {
-		return sf{s: buildSummary(s, fn, isEntrypoint), f: fn}
-	}
-	summaries := funcutil.MapParallel(functions, f, runtime.NumCPU())
-
-	for _, sf := range summaries {
-		s.FlowGraph.Summaries[sf.f] = sf.s
-	}
-
-	s.FlowGraph.BuildGraph(isEntrypoint)
 }

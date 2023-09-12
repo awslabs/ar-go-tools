@@ -1,0 +1,41 @@
+on:
+  pull_request:
+    branches:
+      - mainline
+  push:
+    branches:
+      - mainline
+  schedule:
+    - cron: '30 15 * * 1,3'
+
+name: license-scanning
+
+env:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '>=1.20'
+      - name: Setup dependencies
+        run: |
+          go mod download
+          go install github.com/google/go-licenses@latest
+      - name: Run license scanning tool, check for disallowed licenses
+        run: |
+          go-licenses check --include_tests ./analysis ./internal/* ./cmd/* --disallowed_types=forbidden,restricted,reciprocal
+      - name: Produce report for licenses
+        run: |
+          go-licenses report --include_tests ./analysis ./internal/* ./cmd/* > licenses_report.csv
+      - name: Archive license report
+        uses: actions/upload-artifact@v3
+        with:
+          name: licenses-report
+          retention-days: 3
+          path: licenses_report.csv

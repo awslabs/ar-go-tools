@@ -194,6 +194,19 @@ func InstrMethodKey(instr ssa.CallInstruction) Optional[string] {
 	return None[string]()
 }
 
+// FnHasGlobal returns true if fn has a global value.
+func FnHasGlobal(fn *ssa.Function) bool {
+	res := false
+	IterateValues(fn, func(_ int, value ssa.Value) {
+		if _, ok := value.(*ssa.Global); ok {
+			res = true
+			return
+		}
+	})
+
+	return res
+}
+
 // FnReadsFrom returns true if an instruction in fn reads from val.
 //
 //gocyclo:ignore

@@ -1,3 +1,4 @@
+
 # Argot CLI
 
 The command line tool `argot-cli` (the CLI) provides many commands to help programmers understand the analyses performed by other tools in Argot. In order to use the CLI effectively, you should have a high-level understanding of static analysis techniques. More precisely, you should have an understanding of what the SSA representation of a program is to use the SSA related tools, and an understanding of dataflow analysis techniques in order to use the dataflow analysis related tools. The CLI is a great tool if you want to modify the algorithms on your own, and you need to debug the results. The main motivation is that the results of the analyses can be computed incrementally, and results of interest can be recomputed on demand.
@@ -29,18 +30,15 @@ argot-cli -config ./testdata/src/taint/example1/config.yaml ./Testdata/Src/Taint
 
 You should see first a few lines of output that explain what the tool is analyzing. First, a `Reading sources` message will indicate that the tool is reading the sources. It should be followed by messages similar to the following:
 ```
-2023/05/24 14:19:22 Gathering global variable declaration in the program...
-2023/05/24 14:19:22 Gathering values and starting pointer analysis...
-2023/05/24 14:19:22 Computing information about types and functions for analysis...
+[INFO]  Gathering global variable declaration in the program...
+[INFO]  Gathering values and starting pointer analysis...
+[INFO]  Computing information about types and functions for analysis...
 ```
 With matching messages that indicate each of the analyses (pointer analysis, global variable collection, type and function collection) terminate. Finally, the tool looks where variables are bound by some closure in the code.
-```
-2023/05/24 14:19:22 Gathering information about pointer binding in closures
-```
 All the analyses should take less than a second in total for this simple example, but for larger programs, it can take minutes!
 If everything runs successfully you should be presented with a prompt:
 ```
-2023/05/24 14:19:22 Pointer binding analysis terminated, added 0 items (0.00 s)
+[INFO]  Pointer analysis terminated (0.13 s)
 >
 ```
 And you can start querying and rendering the state of the analyses, as well as run other analyses.
@@ -62,7 +60,7 @@ Focused function  : none
 # summaries built : 0
 flow graph built? : false
 ```
-The first lines of output are self-explanatory. We will see later how to *focus* on a specific function; for now, there is no focused function. `state?` also prints the number of functions in the loaded program, and the number of dataflow summaries that have been built and whether the inter-procedural dataflow graph has been built. These last two parts are specific to the dataflow-based analyses, such as the [taint analysis](taint.md) and the [backwards flow analysis](backtrace.md).
+The first lines of output are self-explanatory. We will see later how to *focus* on a specific function; for now, there is no focused function. `state?` also prints the number of functions in the loaded program, and the number of dataflow summaries that have been built and whether the inter-procedural dataflow graph has been built. These last two parts are specific to the dataflow-based analyses, such as the [taint analysis](01_taint.md#taint-analysis) and the [backwards flow analysis](02_backtrace.md#backtrace-analysis).
 
 
 ### Utilities
@@ -213,7 +211,7 @@ Unfocus test2.
 
 ## Running Dataflow Analyses
 
-The first step that should be taken in order to run dataflow analyses is to build the dataflow summaries of the functions of interest in the program. The [`summarize`](#summarize) command does exactly that: it builds the summaries for all functions of interest, according to the config file, when no argument is specified. If some argument regex is specified, then it builds the summaries for only the functions matching the regex. For more information on what parts of the configuration file are relevant, refer to the guide on using the [taint analysis](taint.md) tool.
+The first step that should be taken in order to run dataflow analyses is to build the dataflow summaries of the functions of interest in the program. The [`summarize`](#summarize) command does exactly that: it builds the summaries for all functions of interest, according to the config file, when no argument is specified. If some argument regex is specified, then it builds the summaries for only the functions matching the regex. For more information on what parts of the configuration file are relevant, refer to the guide on using the [taint analysis](01_taint.md#taint-analysis) tool.
 
 For example, you can summarize the `test2` function:
 ```
@@ -225,13 +223,21 @@ Then, if you call `> list test2` you should observe that the function is summari
 In this example:
 ```
 > summary test2
-Found summary of command-line-arguments.test2:
+Found summary of example1.test2:
+Nodes:
+         "[#846.0] (SA)call: (fooProducer).source(t3) in test2"
+         "[#846.1] @arg 0:t3 in [#846.0] (SA)call: (fooProducer).source(t3) in test2 "
+         "[#846.2] (SA)call: f(t5, "ok":string) in test2"
+         "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
+         "[#846.4] @arg 1:"ok":string in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
+         "[#846.5] (SA)call: sink(t6) in test2"
+         "[#846.6] @arg 0:t6 in [#846.5] (SA)call: sink(t6) in test2 "
 Summary of test2:
-  Call "[#461.0] (SA)call: (fooProducer).source(t3) in test2":
-    (#0) -> "[#461.3] @arg 0:t5 in [#461.2] (SA)call: f(t5, "ok":string) in test2 "
-  Call "[#461.2] (SA)call: f(t5, "ok":string) in test2":
-    (#0) -> "[#461.6] @arg 0:t6 in [#461.5] (SA)call: sink(t6) in test2 "
-(1 matching summaries)
+  Call "[#846.0] (SA)call: (fooProducer).source(t3) in test2":
+    (#0) -> "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
+  Call "[#846.2] (SA)call: f(t5, "ok":string) in test2":
+    (#0) -> "[#846.6] @arg 0:t6 in [#846.5] (SA)call: sink(t6) in test2 "
+(1 matching summary)
 ```
 Shows that there are two dataflow edges in the dataflow summary of `test2`. The first edge indicates that the result of the call to `(fooProducer).source` flows to the argument `t5` (at position 0) in the call to `f`. The second edge indicates that the result of the call to `f` flows to the argument `t6` (also at position 0) in the call to `sink`.
 
@@ -284,15 +290,32 @@ It shows that the value `t6` is reached by the data coming from the result of th
 
 The state of the analysis can also be printed every time the analyzer has finished analyzing a block. To do that, provide the `-v` flag to the `intra` command.
 
-### Running Taint Analysis
+### Running the Taint Analysis
 
-The [`taint`](#taint) command has the same functionality as the [taint analysis tool](taint.md): it runs a taint analysis using the source, sink and sanitizer definitions that are given in the configuration file. For more information about how to use that command, refer to the guide for the [taint tool](taint.md). In the context of the CLI, you should make sure you have run `summarize` and `buildgraph` before running `taint`.
+The [`taint`](#taint) command has the same functionality as the [taint analysis tool](01_taint.md#taint-analysis): it runs a taint analysis using the source, sink and sanitizer definitions that are given in the configuration file. For more information about how to use that command, refer to the guide for the [taint tool](taint.md). In the context of the CLI, you should make sure you have run `summarize` and `buildgraph` before running `taint`.
 In our running example, running `> taint` will identify four different paths from source to sink. When data from a source reaches a sink, a message of the following form will be printed:
 ```
  💀 Sink reached at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:58:7
- Add new path from "[#467.2] (CG)call: invoke stringProducer.source() in fetchAndPut" to "[#462.4] @arg 0:t6 in [#462.3] (SA)call: sink(t6) in main " <==
+ Add new path from "[#744.2] (CG)call: invoke stringProducer.source() in fetchAndPut" to "[#626.4] @arg 0:t6 in [#626.3] (SA)call: sink(t6) in main " <==
 ```
 Indicating a path from `stringProducer.source()` to `sink` here. If the options in the configuration file have been set, this path will be reported in more detail in the report folder.
+
+### Running a Custom Dataflow Analysis
+
+The [`trace`](#trace) commands lets the user run more fine-grained analyses, in the context where they are aware of the inner representation of the dataflow graph.
+The command requires one argument, a regular expression that matches node ids. For example, suppose we ran the command `>summary test2` listed earlier.
+The node ids are for example`#846.1`, `#846.2`, `#846.3` (note that the exact ids will differ between runs).  To trace the dataflow from the call to `f` (node `#461.2`) we can run the following command:
+```
+> trace 846.3
+[INFO]     
+****************************** NEW SOURCE ******************************
+[INFO]  ==> Source: "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
+[INFO]  Found at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:67:9
+[INFO]   💀 Sink reached at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:67:8
+[INFO]   Add new path from "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 " to "[#846.6] @arg 0:t6 in [#846.5] (SA)call: sink(t6) in test2 " <== 
+```
+Adding the `-t` option will print all the intermediate states encountered during the traversal. In this case, a sink is reached
+immediately. 
 
 # Commands
 
@@ -333,7 +356,7 @@ The output of the `intra` command prints:
   - `<instruction location>` is the location of the instruction in the source code. If the SSA instruction has no corresponding location in the source code, `-` will be printed.
 - after each instruction line, and for each value that is tracked at the instruction, a line of the form `<value string> marked by <list of labels>`, where:
   - `<value string>` is a string representation of the SSA value.
-  -  `<list of labels>` is a list of data labels separated with `&`, each label starting with `🏷`.  For more information on the labels, please refer to the section on [inspecting the intra-procedural analysis](#inspecting-the-intra-procedural-analysis).
+  - `<list of labels>` is a list of data labels separated with `&`, each label starting with `🏷`.  For more information on the labels, please refer to the section on [inspecting the intra-procedural analysis](#inspecting-the-intra-procedural-analysis).
 
 ### List
 `list` lists all the functions in the program. If an argument is provided, it is read as a regex, and only function whose complete name (including the package name) match the regex will be printed.
@@ -396,7 +419,7 @@ The user can additionally provide the following flags:
 
 ### Summarize
 
-`summarize` builds the dataflow summaries of the functions matching the regex provided as argument, or all the functions that should be summarized according to the configuration if no argument is provided. For more information about the summarization, refer to the guide for the [taint analysis tool](taint.md).
+`summarize` builds the dataflow summaries of the functions matching the regex provided as argument, or all the functions that should be summarized according to the configuration if no argument is provided. For more information about the summarization, refer to the guide for the [taint analysis tool](01_taint.md#taint-analysis).
 
 ### Summary
 
@@ -404,6 +427,9 @@ The user can additionally provide the following flags:
 
 ### Taint
 `taint` runs the taint analysis on the inter-procedural flow graph that has been built by [`buildgraph`](#buildgraph) using the information stored in the loaded configuration.
+
+### Trace 
+`trace` runs an inter-procedural dataflow analysis starting from every node with an id matching the provided argument. The `-t` option allows the tool to print trace-level information while the analysis runs.
 
 ### Unfocus
 `unfocus` exits *focused* mode.

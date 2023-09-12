@@ -15,10 +15,8 @@
 package lang
 
 import (
-	"fmt"
 	"go/token"
 	"go/types"
-	"os"
 	"strings"
 
 	"golang.org/x/tools/go/ssa"
@@ -59,6 +57,11 @@ func PackageTypeFromFunction(f *ssa.Function) *types.Package {
 		return pkg.Pkg
 	}
 
+	// f.Object can happen with some generics
+	if f.Object() == nil {
+		return nil
+	}
+
 	obj := f.Object().Pkg()
 	if obj != nil {
 		return obj
@@ -85,17 +88,18 @@ func PackageNameFromFunction(f *ssa.Function) string {
 	}
 
 	// this is a method, so need to get its Object first
-	obj := f.Object().Pkg()
-	if obj != nil {
-		return obj.Path()
+	if f.Object() != nil {
+		obj := f.Object().Pkg()
+		if obj != nil {
+			return obj.Path()
+		}
+
+		name := packageFromErrorName(f.String())
+		if name != "" {
+			return name
+		}
 	}
 
-	name := packageFromErrorName(f.String())
-	if name != "" {
-		return name
-	}
-
-	fmt.Fprintln(os.Stderr, "Object Package is nil", f.String())
 	return ""
 }
 

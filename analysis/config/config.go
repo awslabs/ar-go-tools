@@ -102,6 +102,15 @@ type Config struct {
 	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
 	SummarizeOnDemand bool
 
+	// IgnoreNonSummarized allows the analysis to ignore when the summary of a function has not been built in the first
+	// analysis phase. This is only for experimentation, since the results may be unsound.
+	// This has no effect when SummarizeOnDemand is true
+	IgnoreNonSummarized bool
+
+	// SourceTaintsArgs specifies whether calls to a source function also taints the argument. This is usually not
+	// the case, but might be useful for some users or for source functions that do not return anything.
+	SourceTaintsArgs bool
+
 	// ReportPaths specifies whether the taint flows should be reported in separate files. For each taint flow, a new
 	// file named taint-*.out will be generated with the trace from source to sink
 	ReportPaths bool
@@ -114,8 +123,8 @@ type Config struct {
 	ReportNoCalleeSites bool
 
 	// MaxDepth sets a limit for the number of function call depth explored during the analysis
-	// Default is 1000 (TODO: work towards not needing this)
-	// If provided MaxDepth is <= 0, then it will be reset to default.
+	// Default is -1.
+	// If provided MaxDepth is <= 0, then it is ignored.
 	MaxDepth int
 
 	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
@@ -124,6 +133,9 @@ type Config struct {
 
 	// Loglevel controls the verbosity of the tool
 	LogLevel int
+
+	// Suppress warnings
+	Warn bool
 
 	// if the PkgFilter is specified
 	pkgFilterRegex *regexp.Regexp
@@ -151,20 +163,23 @@ func NewDefault() *Config {
 		ReportPaths:         false,
 		ReportCoverage:      false,
 		ReportNoCalleeSites: false,
-		MaxDepth:            1000,
+		MaxDepth:            DefaultMaxCallDepth,
 		MaxAlarms:           0,
 		LogLevel:            int(InfoLevel),
+		Warn:                true,
+		SourceTaintsArgs:    false,
+		IgnoreNonSummarized: false,
 	}
 }
 
 // Load reads a configuration from a file
 func Load(filename string) (*Config, error) {
-	cfg := Config{}
+	cfg := NewDefault()
 	b, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("could not read config file: %w", err)
 	}
-	err = yaml.Unmarshal(b, &cfg)
+	err = yaml.Unmarshal(b, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("could not unmarshal config file: %w", err)
 	}
@@ -172,7 +187,7 @@ func Load(filename string) (*Config, error) {
 	cfg.sourceFile = filename
 
 	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
-		err = setReportsDir(&cfg, filename)
+		err = setReportsDir(cfg, filename)
 		if err != nil {
 			return nil, err
 		}
@@ -211,7 +226,7 @@ func Load(filename string) (*Config, error) {
 	funcutil.Iter(cfg.Validators, compileRegexes)
 	funcutil.Iter(cfg.Validators, compileRegexes)
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 func setReportsDir(c *Config, filename string) error {
@@ -311,4 +326,14 @@ func (c Config) IsBacktracePoint(cid CodeIdentifier) bool {
 // Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)
 func (c Config) Verbose() bool {
 	return c.LogLevel >= int(DebugLevel)
+}
+
+// ExceedsMaxDepth returns true if the input exceeds the maximum depth parameter of the configuration.
+// (this implements the logic for using maximum depth; if the configuration setting is < 0, then this returns false)
+func (c Config) ExceedsMaxDepth(d int) bool {
+	if c.MaxDepth <= 0 {
+		return false
+	} else {
+		return d > c.MaxDepth
+	}
 }

@@ -17,22 +17,31 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"strconv"
 	"time"
+
+	"agent-example/datastructs"
+	"agent-example/messaging"
 )
 
 func sink(v any) {
 	fmt.Println(v)
 }
 
+func source(id int) string {
+	return fmt.Sprintf("tainted-payload-%d", id)
+}
+
 func main() {
-	msg := InstanceMessage{
+	msg := datastructs.InstanceMessage{
 		CreatedDate: time.Now().String(),
-		Destination: "",
-		MessageId:   "",
-		Payload:     "",
-		Topic:       "",
+		Destination: "foo",
+		MessageId:   strconv.Itoa(rand.Int()),
+		Payload:     source(rand.Int()), //@Source(msg)
+		Topic:       "bar",
 	}
 
-	docState, _ := ParseSendCommandMessage(context.Background(), msg, "tmp", "mds")
-	sink(docState)
+	docState, _ := messaging.ParseSendCommandMessage(context.Background(), msg, "tmp", "mds")
+	sink(docState) // @Sink(msg)
 }

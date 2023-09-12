@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build go1.20
+//go:build !go1.20
 
 package dataflow_test
 

@@ -15,7 +15,6 @@
 package taint
 
 import (
-	"regexp"
 	"testing"
 )
 
@@ -24,7 +23,6 @@ func TestCrossFunctionExample0(t *testing.T) {
 }
 
 func TestCrossFunctionExample0_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("Example 0 has a false positive in the tests")
 	runTest(t, "example0", []string{}, true, noErrorExpected)
 }
 
@@ -38,12 +36,12 @@ func TestCrossFunctionIntra_SummarizeOnDemand(t *testing.T) {
 
 func TestCrossFunctionBasic(t *testing.T) {
 	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
-		"sanitizers.go", "memory.go"}, false, noErrorExpected)
+		"sanitizers.go", "memory.go", "channels.go"}, false, noErrorExpected)
 }
 
 func TestCrossFunctionBasic_SummarizeOnDemand(t *testing.T) {
 	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
-		"sanitizers.go", "memory.go"}, true, noErrorExpected)
+		"sanitizers.go", "memory.go", "channels.go"}, true, noErrorExpected)
 }
 
 func TestCrossFunctionBuiltins(t *testing.T) {
@@ -67,7 +65,6 @@ func TestCrossFunctionParameters(t *testing.T) {
 }
 
 func TestCrossFunctionParameters_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("skipping until fixed")
 	runTest(t, "parameters", []string{}, true, noErrorExpected)
 }
 
@@ -76,7 +73,6 @@ func TestCrossFunctionExample1(t *testing.T) {
 }
 
 func TestCrossFunctionExample1_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("skipping until fixed")
 	runTest(t, "example1", []string{}, true, noErrorExpected)
 }
 
@@ -101,8 +97,15 @@ func TestCrossFunctionClosures(t *testing.T) {
 }
 
 func TestCrossFunctionClosures_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("Skipping until fixed.")
 	runTest(t, "closures", []string{"helpers.go"}, true, noErrorExpected)
+}
+
+func TestCrossFunctionClosuresFlowPrecise(t *testing.T) {
+	runTest(t, "closures_flowprecise", []string{"helpers.go"}, false, noErrorExpected)
+}
+
+func TestCrossFunctionClosuresFlowPrecise_SummarizeOnDemand(t *testing.T) {
+	runTest(t, "closures_flowprecise", []string{"helpers.go"}, true, noErrorExpected)
 }
 
 func TestCrossFunctionInterfaceSummaries(t *testing.T) {
@@ -118,7 +121,6 @@ func TestCrossFunctionSanitizers(t *testing.T) {
 }
 
 func TestCrossFunctionSanitizers_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("skipping until fixed")
 	runTest(t, "sanitizers", []string{}, true, noErrorExpected)
 }
 
@@ -127,7 +129,6 @@ func TestCrossFunctionValidators(t *testing.T) {
 }
 
 func TestCrossFunctionValidators_SummarizeOnDemand(t *testing.T) {
-	t.Skipf("skipping until fixed")
 	runTest(t, "validators", []string{"values.go"}, true, noErrorExpected)
 }
 
@@ -187,11 +188,8 @@ func TestCrossFunctionFilters_SummarizeOnDemand(t *testing.T) {
 	runTest(t, "filters", []string{}, true, noErrorExpected)
 }
 
-func TestEscapeIntegration(t *testing.T) {
-	// Closures not implemented
-	r := regexp.MustCompile("missing escape for (.*\\$.*) in context")
-	runTest(t, "escape-integration", []string{}, false,
-		func(e error) bool { return r.MatchString(e.Error()) })
+func TestComplexExample(t *testing.T) {
+	runTest(t, "agent-example", []string{}, false, noErrorExpected)
 }
 
 func TestPlayground(t *testing.T) {

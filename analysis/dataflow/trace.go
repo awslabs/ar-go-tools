@@ -140,18 +140,56 @@ func (n *NodeTree[T]) GetLassoHandle() *NodeTree[T] {
 func (n *NodeTree[T]) Add(node T) *NodeTree[T] {
 	if n == nil {
 		return NewNodeTree(node)
-	} else {
-		newNode := &NodeTree[T]{
-			Label:    node,
-			Parent:   n,
-			Children: []*NodeTree[T]{},
-			Origin:   n.Origin,
-			height:   n.height + 1,
-			key:      n.key + "-" + node.LongID(),
-		}
-		n.Children = append(n.Children, newNode)
-		return newNode
 	}
+	// Check that the child node is not already there
+	for _, ch := range n.Children {
+		if ch.Label.Equal(node) {
+			return ch
+		}
+	}
+
+	// A new node needs to be allocated
+	newNode := &NodeTree[T]{
+		Label:    node,
+		Parent:   n,
+		Children: []*NodeTree[T]{},
+		Origin:   n.Origin,
+		height:   n.height + 1,
+		key:      n.key + "-" + node.LongID(),
+	}
+	n.Children = append(n.Children, newNode)
+	return newNode
+}
+
+func (n *NodeTree[T]) Append(tree *NodeTree[T]) *NodeTree[T] {
+	if tree == n {
+		return n
+	}
+	s := tree.ToSlice()
+	if len(s) == 0 {
+		return n
+	}
+	if !n.Label.Equal(s[0]) {
+		return nil
+	}
+	cur := n
+	for _, e := range s[1:] {
+		cur = cur.Add(e)
+	}
+	return cur
+}
+
+// PathContains returns true if n has c on the path from the root
+func PathContains(n *NodeTree[*CallNode], c *CallNode) bool {
+	if n == nil || n.height == 0 {
+		return false
+	}
+	for cur := n; cur != nil; cur = cur.Parent {
+		if cur.Label == c {
+			return true
+		}
+	}
+	return false
 }
 
 // FuncNames returns a string that contains all the function names in the current trace (from root to leaf)
@@ -162,13 +200,13 @@ func FuncNames(n *NodeTree[*CallNode]) string {
 	s := make([]string, n.height)
 	for cur := n; cur != nil; cur = cur.Parent {
 		if cur.height >= 1 {
-			s[cur.height-1] = cur.Label.FuncName()
+			s[cur.height-1] = "(" + cur.Label.LongID() + ")" + cur.Label.FuncName()
 		}
 	}
 	return strings.Join(s, "->")
 }
 
-// ClosureNames reutrns a string that contains all the closure names in the current trace
+// ClosureNames returns a string that contains all the closure names in the current trace
 func ClosureNames(n *NodeTree[*ClosureNode]) string {
 	if n == nil || n.height == 0 {
 		return ""

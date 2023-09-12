@@ -37,6 +37,59 @@ func testSelect1() {
 
 }
 
+func testSelect2() {
+	x := R("ok")
+	var y R
+	var z R
+	c1 := make(chan R, 10)
+	c2 := make(chan R, 10)
+	quit := make(chan int)
+
+	for {
+		select {
+		case c2 <- y:
+			fmt.Println("Ok")
+		case y = <-c1:
+			sink(y) // @Sink(test2)
+		case z = <-c2:
+			sink(z) // @Sink(test2)
+		case c1 <- x:
+			x = source2() // @Source(test2)
+		case <-quit:
+			fmt.Println("quit")
+			return
+		}
+	}
+}
+
+func testSelect3() {
+	s := R("ok")
+	x := &s
+	var y *R
+	c := make(chan *R, 10)
+	quit := make(chan int)
+
+	for {
+		select {
+		case y = <-c:
+			sink(*y) // @Sink(test3)
+			set(x)
+		case c <- x:
+			fmt.Println("ok")
+		case <-quit:
+			fmt.Println("quit")
+			return
+		}
+	}
+
+}
+
+func set(x *R) {
+	*x = source2() // @Source(test3)
+}
+
 func main() {
 	testSelect1()
+	testSelect2()
+	testSelect3()
 }

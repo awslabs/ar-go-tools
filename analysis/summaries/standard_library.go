@@ -42,6 +42,7 @@ var stdPackages = map[string]map[string]Summary{
 	"crypto/internal/boring":      SummaryCrypto,
 	"crypto/internal/nistec":      SummaryCrypto,
 	"crypto/internal/nistec/fiat": SummaryCrypto,
+	"crypto/rand":                 SummaryCrypto,
 	"crypto/rsa":                  SummaryCrypto,
 	"crypto/sha1":                 SummaryCrypto,
 	"crypto/tls":                  SummaryCrypto,
@@ -69,6 +70,7 @@ var stdPackages = map[string]map[string]Summary{
 	"io/fs":                       SummaryIo,
 	"io/ioutil":                   SummaryIo,
 	"log":                         SummaryLog,
+	"maps":                        SummaryMaps,
 	"math":                        SummaryMath,
 	"math/big":                    SummaryMath,
 	"math/bits":                   SummaryMath,
@@ -246,6 +248,11 @@ var SummaryCrypto = map[string]Summary{
 	"(*crypto/x509.CertPool).AppendCertsFromPEM": {
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {0}},
+	},
+	// func Read(b []byte) (n int, err error)
+	"crypto/Rand.Read": {
+		[][]int{{0}},
+		[][]int{{0}},
 	},
 }
 
@@ -446,6 +453,7 @@ var SummaryFmt = map[string]Summary{
 			{0}, {0}, {0},
 		},
 	},
+	"fmt.Sprint": SingleVarArgPropagation,
 	//func Sprintf(format string, a ...any) string
 	"fmt.Sprintf": FormatterPropagation,
 	// func Printf(format string, a ...any) (n int, err error)
@@ -525,11 +533,20 @@ var SummaryIo = map[string]Summary{
 		[][]int{{0}},
 		[][]int{{0}},
 	},
+	"(*io.PipeWriter).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
 }
 
 var SummaryLog = map[string]Summary{
 	"log.Debugf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	"log.Printf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
+	// func (l *Logger) Printf(v ...any)
+	"(*log.Logger).Print": {
+		[][]int{{0}},
+		[][]int{{}, {}, {}},
+	},
 	// func (l *Logger) Printf(format string, v ...any)
 	"(*log.Logger).Printf": {
 		[][]int{{0}, {0, 1}, {0, 2}},
@@ -540,6 +557,10 @@ var SummaryLog = map[string]Summary{
 		[][]int{{0}, {0, 1}},
 		[][]int{{}, {}},
 	},
+}
+
+var SummaryMaps = map[string]Summary{
+	"maps.clone": SingleVarArgPropagation,
 }
 
 var SummaryMath = map[string]Summary{
@@ -563,6 +584,7 @@ var SummaryMath = map[string]Summary{
 	"math/rand.New":                SingleVarArgPropagation,
 	"math/rand.NewSource":          SingleVarArgPropagation,
 	"math/rand.Seed":               NoDataFlowPropagation,
+	"math/rand.Float32":            NoDataFlowPropagation,
 	"(*math/big.Float).Set":        TwoArgPropagation,
 	"(*math/big.Float).SetFloat64": TwoArgPropagation,
 	"(*math/big.Float).SetInf":     TwoArgPropagation,
@@ -634,6 +656,11 @@ var SummaryNet = map[string]Summary{
 	"(*net/http.Request).WithContext": {
 		[][]int{{0}, {1}}, // context does not taint receiver
 		[][]int{{0}, {1}},
+	},
+	// func Parse(rawURL string) (*URL, error)
+	"net/url.Parse": {
+		[][]int{{}},
+		[][]int{{0, 1}, {0, 1}},
 	},
 }
 
@@ -886,6 +913,7 @@ var SummaryRuntime = map[string]Summary{
 	// func (*runtime.Func).Name() string
 	"(*runtime.Func).Name": SingleVarArgPropagation,
 	"runtime.init":         NoDataFlowPropagation,
+	"runtime.clone":        SingleVarArgPropagation,
 }
 
 var SummarySort = map[string]Summary{
@@ -1092,10 +1120,6 @@ var SummarySync = map[string]Summary{
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {}},
 	},
-	"(*sync.Once).Do": {
-		[][]int{{0}, {1}},
-		[][]int{{0}, {0}},
-	},
 	"(*sync.Map).Load":   SingleVarArgPropagation,
 	"(*sync.Map).Delete": SingleVarArgPropagation,
 	"(*sync.Mutex).Unlock": {
@@ -1183,10 +1207,13 @@ var SummaryTime = map[string]Summary{
 	"(time.Time).IsZero": SingleVarArgPropagation,
 	"(time.Time).Equal":  TwoArgPropagation,
 	// func (t Time) Format(layout string) string
-	"(time.Time).Format": TwoArgPropagation,
-	"(time.Time).Month":  SingleVarArgPropagation,
-	"(time.Time).Second": SingleVarArgPropagation,
-	"(time.Time).Sub":    TwoArgPropagation,
+	"(time.Time).Format":     TwoArgPropagation,
+	"(time.Time).Month":      SingleVarArgPropagation,
+	"(time.Time).Hour":       SingleVarArgPropagation,
+	"(time.Time).Minute":     SingleVarArgPropagation,
+	"(time.Time).Second":     SingleVarArgPropagation,
+	"(time.Time).Nanosecond": SingleVarArgPropagation,
+	"(time.Time).Sub":        TwoArgPropagation,
 	// func (t Time) UTC() Time
 	"(time.Time).UTC": SingleVarArgPropagation,
 	// func (t Time) UnixNano() int64

@@ -22,7 +22,15 @@ func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {
 		// for append, copy we simply propagate the taint like in a binary operator
 		case "ssa:wrapnilchk":
 			return true
-		case "append":
+		case "append", "len", "close", "delete", "println", "print", "recover", "cap":
+			return true
+
+		// Complex numbers
+		case "complex", "imag", "real":
+			return true
+
+		// starting from go1.21
+		case "min", "max", "clear":
 			return true
 
 		case "copy":
@@ -32,21 +40,6 @@ func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {
 				return false
 			}
 
-		// for len, we also propagate the taint. This may not be necessary
-		case "len":
-			return true
-
-		// for close, delete, nothing is propagated
-		case "close", "delete":
-			return true
-
-		// the builtin println doesn't return anything
-		case "println":
-			return true
-
-		// for recover, we will need some form of panic analysis
-		case "recover":
-			return true
 		default:
 			// Special case: the call to Error() of the builtin error interface
 			if instruction.Common().IsInvoke() && instruction.Common().Method.Name() == "Error" &&
@@ -94,35 +87,50 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 			if len(callCommon.Args) == 2 {
 				src := callCommon.Args[1]
 				dst := callCommon.Args[0]
+				// copy transfers from source to destination
 				simpleTransfer(t, instruction, src, dst)
 				return true
 			} else {
 				return false
 			}
 
-		// for len, we also propagate the taint. This may not be necessary
-		case "len":
+		case "cap":
+			// taking the capacity does not propagate taint
+			return true
+
+		case "complex", "min", "max":
+			if len(callCommon.Args) == 2 {
+				f1 := callCommon.Args[1]
+				f2 := callCommon.Args[0]
+				simpleTransfer(t, instruction, f1, callValue)
+				simpleTransfer(t, instruction, f2, callValue)
+				return true
+			} else {
+				return false
+			}
+
+		// for len, imag, real we also propagate the taint. This may not be necessary
+		case "len", "imag", "real":
 			for _, arg := range callCommon.Args {
 				simpleTransfer(t, instruction, arg, callValue)
 			}
 			return true
 
 		// for close, delete, nothing is propagated
-		case "close", "delete":
+		case "close", "delete", "clear":
 			return true
 
 		// the builtin println doesn't return anything
-		case "println":
+		case "println", "print":
 			return true
 
 		// for recover, we will need some form of panic analysis
 		case "recover":
-			t.parentAnalyzerState.Logger.Errorf("Encountered recover at %s, the analysis may be unsound.\n",
+			t.parentAnalyzerState.Logger.Warnf("Encountered recover at %s, the analysis may be unsound.\n",
 				instruction.Parent().Prog.Fset.Position(instruction.Pos()))
 			return true
 		default:
 			// Special case: the call to Error() of the builtin error interface
-			// TODO: double check
 			if callCommon.IsInvoke() &&
 				callCommon.Method.Name() == "Error" &&
 				len(callCommon.Args) == 0 {

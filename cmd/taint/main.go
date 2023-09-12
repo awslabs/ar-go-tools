@@ -34,7 +34,7 @@ var (
 	configPath = flag.String("config", "", "Config file path for taint analysis")
 	verbose    = flag.Bool("verbose", false, "Verbose printing on standard output")
 	// Other constants
-	buildmode = ssa.BuilderMode(0)
+	buildmode = ssa.InstantiateGenerics // necessary for reachability
 	version   = "unknown"
 )
 
@@ -137,7 +137,7 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 		for source := range sources {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			escapePos := program.Fset.File(escape.Pos()).Position(escape.Pos())
-			result.State.Logger.Warnf(
+			result.State.Logger.Errorf(
 				"%s in function %s:\n\tS: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
 				colors.Yellow("Data escapes thread"),
 				escape.Parent().Name(),

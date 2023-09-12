@@ -101,7 +101,7 @@ func ExampleEscape5() {
 	a := &A{field1: x, field2: 0}
 	sink1(a.field1) // @Sink(ex5)
 	c := make(chan string)
-	go func() { c <- x }() // value sent
+	go func() { c <- x }() // @Escape(ex5)
 	go ex5foo(c)
 }
 
@@ -125,7 +125,7 @@ func ex6send(c chan *string, x *string) {
 }
 
 func ex6foo(c chan *string) {
-	for s := range c {
+	for s := range c { //@Escape(ex6)
 		sink1(*s) // @Sink(ex6) , but not ex6bis! However, alarm is raised in ex6send
 	}
 }

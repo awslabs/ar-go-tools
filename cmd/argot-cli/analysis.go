@@ -117,7 +117,7 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.AnalyzerState, command Command
 
 // cmdShowDataflow builds and prints the inter-procedural dataflow graph.
 // If on macOS, the command automatically renders an SVG and opens it in Safari.
-func cmdShowDataflow(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
+func cmdShowDataflow(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : build and print the inter-procedural dataflow graph of a program.\n"+
 			"\t  showdataflow args prints the inter-procedural dataflow graph.\n"+
@@ -203,8 +203,10 @@ func cmdSummary(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) b
 			printSummary(tt, command, summary)
 		}
 	}
-	if numSummaries > 0 {
+	if numSummaries > 1 {
 		WriteSuccess(tt, "(%d matching summaries)", numSummaries)
+	} else if numSummaries == 1 {
+		WriteSuccess(tt, "(1 matching summary)")
 	} else {
 		if numFuncs > 0 {
 			WriteSuccess(tt, "No summaries found. Consider building summaries (summarize).")
@@ -238,24 +240,18 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		WriteSuccess(tt, "Running intra-procedural analysis on all functions")
 		createCounter := 0
 		buildCounter := 0
-		shouldCreateSummary := func(f *ssa.Function) bool {
-			b := isForced || dataflow.ShouldCreateSummary(f)
-			if b {
-				createCounter++
-			}
-			return b
-		}
+
 		shouldBuildSummary := func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
 			b := isForced || dataflow.ShouldBuildSummary(c, f)
 			if b {
 				buildCounter++
 			}
+			createCounter++
 			return b
 		}
-		analysis.RunIntraProcedural(c, numRoutines, analysis.IntraAnalysisParams{
-			ShouldCreateSummary: shouldCreateSummary,
-			ShouldBuildSummary:  shouldBuildSummary,
-			IsEntrypoint:        taint.IsSourceNode,
+		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
+			ShouldBuildSummary: shouldBuildSummary,
+			IsEntrypoint:       taint.IsSourceNode,
 		})
 		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
@@ -270,31 +266,28 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 
 		// Depending on the summaries threshold and the number of matched functions, different filters are used.
 		// If len(funcs) > summarizeThreshold, the filter used is similar to the one used in the taint analysis.
-		createCounter := 0
 		buildCounter := 0
-		var shouldCreateSummary func(f *ssa.Function) bool
+
 		var shouldBuildSummary func(c *dataflow.AnalyzerState, f *ssa.Function) bool
 		if len(funcs) > summarizeThreshold {
 			// above a certain threshold, we use the general analysis filters on what to summarize, unless -force has
 			// been specified
-			shouldCreateSummary, shouldBuildSummary = summarizeWithDefaultParams(tt, c, funcs, isForced,
-				&createCounter, &buildCounter)
+			shouldBuildSummary = summarizeWithDefaultParams(tt, funcs, isForced, &buildCounter)
 		} else {
 			// below that threshold, all functions that match are summarize.
 			// useful for testing.
-			shouldCreateSummary, shouldBuildSummary = alwaysSummarize(tt, c, funcs, &createCounter, &buildCounter)
+			shouldBuildSummary = alwaysSummarize(funcs, &buildCounter)
 		}
 
 		// Run the analysis with the filter.
-		analysis.RunIntraProcedural(c, numRoutines, analysis.IntraAnalysisParams{
-			ShouldCreateSummary: shouldCreateSummary,
-			ShouldBuildSummary:  shouldBuildSummary,
-			IsEntrypoint:        taint.IsSourceNode,
+		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
+			ShouldBuildSummary: shouldBuildSummary,
+			IsEntrypoint:       taint.IsSourceNode,
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 
-		WriteSuccess(tt, "%d summaries created, %d built.", createCounter, buildCounter)
-		if createCounter == 0 {
+		WriteSuccess(tt, "%d summaries created, %d built.", len(funcs), buildCounter)
+		if buildCounter == 0 {
 			WriteSuccess(tt, "The queried functions may not be reachable?")
 			WriteSuccess(tt, "If less than %d functions match the query, then all reachable "+
 				"matching functions will be summarized", summarizeThreshold)
@@ -303,21 +296,10 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 	return false
 }
 
-func summarizeWithDefaultParams(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.Function, isForced bool,
-	createCounter *int, buildCounter *int) (
-	func(*ssa.Function) bool, func(*dataflow.AnalyzerState, *ssa.Function) bool) {
+func summarizeWithDefaultParams(tt *term.Terminal, funcs []*ssa.Function, isForced bool,
+	buildCounter *int) func(*dataflow.AnalyzerState, *ssa.Function) bool {
 	WriteSuccess(tt, "(more than %d functions matching, other config-defined filters are in use)",
 		summarizeThreshold)
-	shouldCreateSummary := func(f *ssa.Function) bool {
-		b := isForced || (!summaries.IsStdFunction(f) &&
-			summaries.IsUserDefinedFunction(f) &&
-			funcutil.Contains(funcs, f) &&
-			!c.HasExternalContractSummary(f))
-		if b {
-			*createCounter++
-		}
-		return b
-	}
 	shouldBuildSummary := func(c *dataflow.AnalyzerState, f *ssa.Function) bool {
 		b := isForced || (!summaries.IsStdFunction(f) &&
 			summaries.IsUserDefinedFunction(f) &&
@@ -328,19 +310,10 @@ func summarizeWithDefaultParams(tt *term.Terminal, c *dataflow.AnalyzerState, fu
 		}
 		return b
 	}
-	return shouldCreateSummary, shouldBuildSummary
+	return shouldBuildSummary
 }
 
-func alwaysSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.Function,
-	createCounter *int, buildCounter *int) (
-	func(*ssa.Function) bool, func(*dataflow.AnalyzerState, *ssa.Function) bool) {
-	shouldCreateSummary := func(f *ssa.Function) bool {
-		b := funcutil.Contains(funcs, f)
-		if b {
-			*createCounter++
-		}
-		return b
-	}
+func alwaysSummarize(funcs []*ssa.Function, buildCounter *int) func(*dataflow.AnalyzerState, *ssa.Function) bool {
 	shouldBuildSummary := func(_ *dataflow.AnalyzerState, f *ssa.Function) bool {
 		b := funcutil.Contains(funcs, f)
 		if b {
@@ -348,7 +321,7 @@ func alwaysSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, funcs []*ssa.
 		}
 		return b
 	}
-	return shouldCreateSummary, shouldBuildSummary
+	return shouldBuildSummary
 }
 
 // cmdTaint runs the taint analysis
@@ -365,7 +338,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
-	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(), taint.IsSourceNode)
+	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(), taint.IsSourceNode, nil)
 	return false
 }
 
@@ -388,7 +361,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 	// not taint.IsSourceNode
 
 	visitor := &backtrace.Visitor{}
-	c.FlowGraph.RunVisitorOnEntryPoints(visitor, backtrace.IsCrossFunctionEntrypoint)
+	c.FlowGraph.RunVisitorOnEntryPoints(visitor, backtrace.IsCrossFunctionEntrypoint, nil)
 
 	writeFmt(tt, "Traces:\n")
 	for _, trace := range backtrace.Traces(c, visitor.Traces) {
@@ -409,5 +382,7 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 	if summary.IsInterfaceContract {
 		writeFmt(tt, "  (is interface contract)\n")
 	}
+	writeFmt(tt, "Nodes:\n")
+	summary.ForAllNodes(func(n dataflow.GraphNode) { writeFmt(tt, "\t %s\n", n) })
 	summary.PrettyPrint(true, tt)
 }

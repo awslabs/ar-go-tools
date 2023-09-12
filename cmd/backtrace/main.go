@@ -39,7 +39,7 @@ func init() {
 }
 
 var (
-	buildmode = ssa.BuilderMode(0)
+	buildmode = ssa.InstantiateGenerics
 )
 
 const usage = `Find the backwards data flow traces from function arguments.

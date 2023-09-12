@@ -30,7 +30,7 @@ The flags are:
 		If [program files] is only one main.go file, the program will look for a file config.yaml in the same folder
 		as the config file.
 
-There are 28 commands you can use once you have started the argot-cli and your program has been loaded and some
+There are 29 commands you can use once you have started the argot-cli and your program has been loaded and some
 information has been collected.
 
 # Basic Commands
@@ -81,6 +81,8 @@ Commands to run analyses and inspect resulting information:
 	buildgraph          builds the cross-cross function graph. You must first use `summarize` to build summaries
 
 	taint               run the taint analysis
+
+	trace               run a dataflow graph exploration (taint analysis from any node given its id)
 
 	showdataflow        build and print the dataflow graph of a program
 

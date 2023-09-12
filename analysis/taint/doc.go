@@ -13,12 +13,14 @@
 // limitations under the License.
 
 /*
-The taint package implements most of the taint analysis functionality. It consumes the inter-procedural dataflow graph
+Package taint implements most of the taint analysis functionality. It consumes the inter-procedural dataflow graph
 that is built by the functions in the dataflow package. The main entry point of the analysis is the [Analyze] function,
 which returns an [AnalysisResult] containing all the taint flows discovered as well as the analyzer state resulting
 from running all the analyses.
 
-The decisions on summary creation and summary building are encoded in the [ShouldCreateSummary] and [ShouldBuildSummary]
-functions respectively.
+When the analysis is not set to on-demand, the decision on summary building is encoded in [ShouldBuildSummary].
+
+When the analysis is set to use the escape analysis, the taint analysis runs the escape analysis and the dataflow
+analysis separately, and then cross-checks the results, making sure none of the tainted data ever escapes.
 */
 package taint

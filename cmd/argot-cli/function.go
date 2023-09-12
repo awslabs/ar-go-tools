@@ -366,14 +366,15 @@ func cmdMark(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: show information about a mark in the intraprocedural analysis\n",
 			tt.Escape.Blue, cmdMarkName, tt.Escape.Reset)
+		writeFmt(tt, "\t          (only in focused mode)\n")
 		writeFmt(tt, "\t    -h    print this help message\n")
 
-		if state.CurrentFunction == nil {
-			WriteErr(tt, "You must first focus on a function to run this command!")
-			WriteErr(tt, "Example: > focus command-line-arguments.main")
-		}
-
 		return false
+	}
+
+	if state.CurrentFunction == nil {
+		WriteErr(tt, "You must first focus on a function to run this command!")
+		WriteErr(tt, "Example: > focus command-line-arguments.main")
 	}
 
 	if command.Flags["h"] {

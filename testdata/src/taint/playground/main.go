@@ -19,61 +19,51 @@ import (
 	"strconv"
 )
 
+func wrap(a string, before string, after string) string {
+	return fmt.Sprintf("%s%s%s", before, a, after)
+}
+
+func sink(a ...string) {
+	for _, x := range a {
+		println(x)
+	}
+}
+
 func source() string {
-	return "tainted"
+	return "-tainted-"
 }
 
-func sink(s string) {
-	fmt.Println(s)
-}
-
-// example11 is a case where a closure is assigned to a struct's field, and the closure is called later
-
-type Ex11 struct {
+type Ex14 struct {
 	Count  int
 	Lambda func(int, string) string
 }
 
-func (e Ex11) Run(s string) string {
-	e.Count += 1
+func (e Ex14) Run(s string, i int) string {
+	e.Count += i
 	return e.Lambda(e.Count, s)
 }
 
-func example11() {
-	s1 := source() // @Source(ex11)
-	e := Ex11{
+func NewEx14() *Ex14 {
+	data := source() // @Source(ex14)
+	e := &Ex14{
 		Count: 0,
 		Lambda: func(i int, s string) string {
-			return s1 + strconv.Itoa(i) + s
-		},
-	}
-
-	f(&e)
-}
-
-func f(e *Ex11) {
-	sink(e.Run("ok")) // @Sink(ex11)
-}
-
-// example12 is variation of example11
-
-func NewEx11() *Ex11 {
-	s1 := fmt.Sprintf("Ok")
-	e := &Ex11{
-		Count: 0,
-		Lambda: func(i int, s string) string {
-			return strconv.Itoa(i) + s + s1
+			return strconv.Itoa(i) + s + data
 		},
 	}
 	return e
 }
 
-func example12() {
-	e := NewEx11()
-	sink(e.Run("ok")) // @Sink(ex11) TODO: false positive here because Run is called and was tainted in ex11
+func callSink14(run func(string) string, s string) {
+	sink(run(s)) // @Sink(ex14)
+}
+
+func example14() {
+	e := NewEx14()
+	f := func(s string, i int) string { return e.Run(s, i) }
+	callSink14(func(s string) string { return f(s, 1) }, "ok")
 }
 
 func main() {
-	example11()
-	example12()
+	example14()
 }

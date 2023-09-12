@@ -15,10 +15,8 @@
 package main
 
 import (
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
-	"golang.org/x/tools/go/ssa"
 )
 
 // cmdBuildGraph builds the inter-procedural flow graph given the current summaries
@@ -34,7 +32,7 @@ func cmdBuildGraph(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool
 		WriteErr(tt, "No summaries present. Did you run `summarize`?")
 		return false
 	}
-	c.FlowGraph.BuildGraph(func(c *config.Config, n ssa.Node) bool { return true })
+	c.FlowGraph.BuildGraph()
 	WriteSuccess(tt, "Built cross function flow graph.")
 	return false
 }

@@ -34,6 +34,7 @@ type CodeIdentifier struct {
 	Field    string
 	Type     string
 	Label    string
+	Kind     string
 	// This will not be part of the yaml config
 	computedRegexs *codeIdentifierRegex
 }
@@ -89,13 +90,15 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 			((cidRef.computedRegexs.methodRegex.MatchString(cid.Method)) || (cidRef.Method == "")) &&
 			((cidRef.computedRegexs.receiverRegex.MatchString(cid.Receiver)) || (cidRef.Receiver == "")) &&
 			((cidRef.computedRegexs.fieldRegex.MatchString(cid.Field)) || (cidRef.Field == "")) &&
-			(cidRef.computedRegexs.typeRegex.MatchString(cid.Type) || (cidRef.Type == ""))
+			(cidRef.computedRegexs.typeRegex.MatchString(cid.Type) || (cidRef.Type == "")) &&
+			(cidRef.Kind == cid.Kind)
 	} else {
 		return ((cid.Package == cidRef.Package) || (cidRef.Package == "")) &&
 			((cid.Method == cidRef.Method) || (cidRef.Method == "")) &&
 			((cid.Receiver == cidRef.Receiver) || (cidRef.Receiver == "")) &&
 			((cid.Field == cidRef.Field) || (cidRef.Field == "")) &&
-			((cid.Type == cidRef.Type) || (cidRef.Type == ""))
+			((cid.Type == cidRef.Type) || (cidRef.Type == "")) &&
+			(cidRef.Kind == cid.Kind)
 	}
 }
 

@@ -1,3 +1,6 @@
+
+# Dependency Scanner
+
 The dependency analysis tool ('dependencies') is a whole program analysis tool that performs a conservative reachability analysis to measure what fraction of each imported library is (or at least could be) used by the program.  
 
 The purpose of this tool is to get a sense of how much of each dependency is actually consumed.  So, for example, you might discover that a fairly large package is being imported but only a handful of functions are actually needed.   While importing packages for a single function is considered idiomatic in other languages, Go encourages minimizing the number of dependencies.
@@ -13,4 +16,3 @@ The dependency tool supports a `stdlib` flag to instruct it to suppress output o
 The dependency tool allows the buildmode and tags to be controlled with command line arguments, as per all the other AR-Go-tools.  [cf: common docs].  This may be deprecated.
 
 If invoked with the -graph option, the dependency tool will generate a directed graph of which packages depend on other packages.  It will emit a sorted list of packages as standard output, and emit a graphviz-compatible file format with the complete output.  This can be quite large and too much for graphviz to render, but searching the file for specific package names will provide useful data about how a particular package is being imported.  This is similar to the "go mod why" function, but that will show you every potential dependency of every package, whereas this tool will limit its output to only those dependencies that are actually used in the program being analyzed. 
-
