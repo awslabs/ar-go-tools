@@ -761,10 +761,6 @@ func (ea *functionAnalysisState) ProcessBlock(bb *ssa.BasicBlock) (changed bool)
 		}
 	}
 	for _, instr := range bb.Instrs {
-		ppInstr := instr.String()
-		if v, ok := instr.(ssa.Value); ok {
-			ppInstr = v.Name() + " = " + ppInstr
-		}
 		// Check the monotonicity of the transfer function.
 		if checkMonotonicityEveryInstruction {
 			pre := g.Clone()
@@ -996,29 +992,8 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	for len(worklist) > 0 {
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
-		funcName := summary.function.Name()
 
-		extraDebug := true
-		// Block of debugging info. If this survives to PR, I've made a mistake!
-		var oldFinalGraph *EscapeGraph
-		if extraDebug {
-			state.Logger.Debugf("Analyzing %v\n", summary.function.String())
-			oldFinalGraph = summary.finalGraph // final graphs are not updated in place so this is safe
-		}
 		changed := resummarize(summary)
-		if extraDebug {
-			if state.Logger.LogsTrace() || summary.function.String() == "(*fmt.pp).fmtFloat" || summary.function.String() == "(*crypto/internal/nistec.P224Point).Double" {
-				state.Logger.Debugf("Func %s is (changed=%v):\n%s\n", summary.function.String(), changed, summary.finalGraph.GraphvizLabel(funcName))
-			}
-			if less, rationale := oldFinalGraph.LessEqual(summary.finalGraph); !less && !summary.overflow {
-				nEdges := len(summary.finalGraph.Edges(nil, nil, true, true))
-				err := fmt.Errorf("Summary (%d edges) for %v is not monotone: %v ()\n", nEdges, summary.function.String(), rationale)
-				// Just log it, don't abort if we find a monotonicity violation for now
-				state.Logger.Errorf("%v", err)
-				// return nil, err
-			}
-			state.Logger.Debugf("size of summary: %v nodes %v edges\n", len(summary.finalGraph.status), len(summary.finalGraph.Edges(nil, nil, true, true)))
-		}
 		if !changed {
 			continue
 		}
