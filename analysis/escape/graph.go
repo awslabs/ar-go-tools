@@ -181,6 +181,8 @@ func (g *EscapeGraph) CloneReachable(roots []*Node) *EscapeGraph {
 //
 // If both includeExternal and includeInteral are false, the result will always be empty. This method
 // is convenient, but may not be the most efficient.
+//
+//gocyclo:ignore
 func (g *EscapeGraph) Edges(src, dest *Node, includeExternal, includeInternal bool) []*Edge {
 	edges := make([]*Edge, 0, 1)
 	if src != nil {
