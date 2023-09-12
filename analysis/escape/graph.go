@@ -47,6 +47,14 @@ const (
 	Leaked  EscapeStatus = 2
 )
 
+type EdgeFlags uint8
+
+const (
+	EdgeInternal EdgeFlags = 1 << iota
+	EdgeExternal
+	EdgeSubnode
+)
+
 // A node represents the objects tracked by the escape analysis.
 // Nodes represent local variables, globals, parameters, and heap
 // cells of various kinds (maps, slices, arrays, structs)
@@ -85,7 +93,7 @@ func (n *Node) IntrinsicEscape() EscapeStatus {
 // graphs are to AddEdge()s, (plus composite operations like Load,
 // WeakAssign), Merge(), and compare with Matches().
 type EscapeGraph struct {
-	edges  map[*Node]map[*Node]map[Edge]bool
+	edges  map[*Node]map[*Node]EdgeFlags
 	status map[*Node]EscapeStatus
 	nodes  *NodeGroup
 }
@@ -93,14 +101,13 @@ type Edge struct {
 	src        *Node
 	dest       *Node
 	isInternal bool
-	srcField   string
-	destField  string
 }
 
 // NewEmptyEscapeGraph produces an empty graph, which is also the unit of Merge() below
 func NewEmptyEscapeGraph(nodes *NodeGroup) *EscapeGraph {
 	gg := &EscapeGraph{
-		make(map[*Node]map[*Node]map[Edge]bool),
+		// make(map[*Node]map[*Node]map[Edge]bool),
+		make(map[*Node]map[*Node]EdgeFlags),
 		make(map[*Node]EscapeStatus),
 		nodes,
 	}
@@ -110,19 +117,52 @@ func NewEmptyEscapeGraph(nodes *NodeGroup) *EscapeGraph {
 // Clones a graph, but preserves node identities between the two graphs.
 func (g *EscapeGraph) Clone() *EscapeGraph {
 	gg := NewEmptyEscapeGraph(g.nodes)
-	for k, v := range g.edges {
-		m := make(map[*Node]map[Edge]bool, len(v))
-		for k2, v2 := range v {
-			v2New := map[Edge]bool{}
-			for k3, v3 := range v2 {
-				v2New[k3] = v3
-			}
-			m[k2] = v2New
+	for src, outEdges := range g.edges {
+		newOutEdges := make(map[*Node]EdgeFlags, len(outEdges))
+		for dest, f := range outEdges {
+			newOutEdges[dest] = f
 		}
-		gg.edges[k] = m
+		gg.edges[src] = newOutEdges
 	}
 	for k, v := range g.status {
 		gg.status[k] = v
+	}
+	return gg
+}
+
+func (g *EscapeGraph) CloneReachable(roots []*Node) *EscapeGraph {
+	reachable := make(map[*Node]bool, len(g.status))
+	worklist := make([]*Node, 0, len(roots))
+
+	for _, r := range roots {
+		reachable[r] = true
+		worklist = append(worklist, r)
+	}
+	for len(worklist) > 0 {
+		n := worklist[len(worklist)-1]
+		worklist = worklist[0 : len(worklist)-1]
+		for d := range g.edges[n] {
+			if !reachable[d] {
+				reachable[d] = true
+				worklist = append(worklist, d)
+			}
+		}
+	}
+	gg := NewEmptyEscapeGraph(g.nodes)
+	for src, outEdges := range g.edges {
+		if !reachable[src] {
+			continue
+		}
+		newOutEdges := make(map[*Node]EdgeFlags, len(outEdges))
+		for dest, f := range outEdges {
+			newOutEdges[dest] = f
+		}
+		gg.edges[src] = newOutEdges
+	}
+	for node, st := range g.status {
+		if reachable[node] {
+			gg.status[node] = st
+		}
 	}
 	return gg
 }
@@ -146,23 +186,23 @@ func (g *EscapeGraph) Edges(src, dest *Node, includeExternal, includeInternal bo
 	if src != nil {
 		for d, es := range g.edges[src] {
 			if dest == nil || dest == d {
-				for e := range es {
-					if (includeExternal && !e.isInternal) || (includeInternal && e.isInternal) {
-						ee := e
-						edges = append(edges, &ee)
-					}
+				if includeExternal && (es&EdgeExternal != 0) {
+					edges = append(edges, &Edge{src, d, false})
+				}
+				if includeInternal && (es&EdgeInternal != 0) {
+					edges = append(edges, &Edge{src, d, true})
 				}
 			}
 		}
 	} else {
-		for _, outEdges := range g.edges {
+		for s, outEdges := range g.edges {
 			for d, es := range outEdges {
 				if dest == nil || dest == d {
-					for e := range es {
-						if includeExternal && !e.isInternal || includeExternal && e.isInternal {
-							ee := e
-							edges = append(edges, &ee)
-						}
+					if includeExternal && (es&EdgeExternal != 0) {
+						edges = append(edges, &Edge{s, d, false})
+					}
+					if includeInternal && (es&EdgeInternal != 0) {
+						edges = append(edges, &Edge{s, d, true})
 					}
 				}
 			}
@@ -215,37 +255,9 @@ func (g *EscapeGraph) DerefEdges(addr *Node) []*Edge {
 		return []*Edge{}
 	}
 	if addr.kind == KindGlobal {
-		return []*Edge{{addr, addr, false, "", ""}}
+		return []*Edge{{addr, addr, false}}
 	}
 	return g.Edges(addr, nil, true, true)
-}
-
-// Debug returns a (multi-line) string representation suitable for debug printing.
-// Not very visual, but easier to read in a terminal. See also Graphviz() below.
-func (g *EscapeGraph) Debug() string {
-	out := bytes.NewBuffer([]byte{})
-	ordered := g.nodes.AllNodes()
-	for _, v := range ordered {
-		fmt.Fprintf(out, "%v -> ", v.number)
-		first := true
-		for n := range g.Pointees(v) {
-			if !first {
-				fmt.Fprintf(out, ", ")
-			}
-			first = false
-			fmt.Fprintf(out, "%d", n.number)
-		}
-		statusString := ""
-		if g.status[v] == Escaped {
-			statusString = ", *Escaped"
-		}
-		if g.status[v] == Leaked {
-			statusString = ", *Leaked"
-		}
-		fmt.Fprintf(out, "    <%v>%s\n", v.debugInfo, statusString)
-	}
-
-	return out.String()
 }
 
 // Graphviz returns a (multi-line) dot/graphviz input describing the graph.
@@ -278,6 +290,13 @@ func (g *EscapeGraph) GraphvizLabel(label string) string {
 			if g.status[v] >= Leaked {
 				extra += " peripheries=2"
 			}
+			if t, ok := g.nodes.globalNodes.types[v]; ok {
+				typeName := t.String()
+				escaped := strings.ReplaceAll(strings.ReplaceAll(typeName, "\\", "\\\\"), "\"", "\\\"")
+				extra = fmt.Sprintf("%s tooltip=\"%s\"", extra, escaped)
+			} else {
+				extra = extra + " color=red"
+			}
 			escaped := strings.ReplaceAll(strings.ReplaceAll(v.debugInfo, "\\", "\\\\"), "\"", "\\\"")
 			fmt.Fprintf(out, "%d [label=\"%s\" %s];\n", v.number, escaped, extra)
 			if prevInVarBlock >= 0 {
@@ -296,13 +315,23 @@ func (g *EscapeGraph) GraphvizLabel(label string) string {
 			if g.status[v] >= Leaked {
 				extra += " peripheries=2"
 			}
+			if t, ok := g.nodes.globalNodes.types[v]; ok {
+				typeName := t.String()
+				escaped := strings.ReplaceAll(strings.ReplaceAll(typeName, "\\", "\\\\"), "\"", "\\\"")
+				extra = fmt.Sprintf("%s tooltip=\"%s\"", extra, escaped)
+			} else {
+				extra = extra + " color=red"
+			}
 			escaped := strings.ReplaceAll(strings.ReplaceAll(v.debugInfo, "\\", "\\\\"), "\"", "\\\"")
 			fmt.Fprintf(out, "%d [label=\"%s\" %s];\n", v.number, escaped, extra)
 		}
 		for _, e := range g.Edges(v, nil, true, true) {
-			extra := fmt.Sprintf("headlabel=\"%s\" taillabel=\"%s\"", e.destField, e.srcField)
+			extra := "" // fmt.Sprintf("headlabel=\"%s\" taillabel=\"%s\"", e.destField, e.srcField)
 			if !e.isInternal {
 				extra += " style=dashed penwidth=2"
+			}
+			if g.nodes.globalNodes.parent[e.dest] == e.src {
+				extra += " color=gray"
 			}
 			fmt.Fprintf(out, "%d -> %d [%s];\n", e.src.number, e.dest.number, extra)
 		}
@@ -315,48 +344,84 @@ func (g *EscapeGraph) GraphvizLabel(label string) string {
 // AddEdge adds an edge from base to dest. isInternal (almost always `true`) signals whether
 // this is an internal edge (created during the current function) or external edge
 // (possibly existed before the current function).
-func (g *EscapeGraph) AddEdge(base *Node, dest *Node, isInternal bool) (changed bool) {
-	return g.AddEdgeDirect(Edge{base, dest, isInternal, "", ""})
-}
-
-// AddEdge adds an edge from base to dest. isInternal (almost always `true`) signals whether
-// this is an internal edge (created during the current function) or external edge
-// (possibly existed before the current function).
-func (g *EscapeGraph) AddEdgeDirect(e Edge) (changed bool) {
-	if strings.HasPrefix(e.src.debugInfo, "new [-1]byte") {
-		fmt.Printf("Adding out-edge to array of bytes??\n")
-		panic("oops")
+func (g *EscapeGraph) AddEdge(src *Node, dest *Node, isInternal bool) (changed bool) {
+	outEdges, ok := g.edges[src]
+	if !ok {
+		g.AddNode(src)
+		outEdges = make(map[*Node]EdgeFlags)
+		g.edges[src] = outEdges
 	}
-	if outEdges, ok := g.edges[e.src]; ok {
-		if existingEdges, ok := outEdges[e.dest]; ok {
-			if _, ok := existingEdges[e]; ok {
-				return false
-			}
-			existingEdges[e] = true
-		} else {
-			// There are outedges from src, but not to dest
-			g.AddNode(e.dest)
-			outEdges[e.dest] = map[Edge]bool{e: true}
-		}
+	g.AddNode(dest)
+	if isInternal {
+		outEdges[dest] |= EdgeInternal
 	} else {
-		// There are no out-edges from src
-		g.AddNode(e.src)
-		g.AddNode(e.dest)
-		g.edges[e.src] = map[*Node]map[Edge]bool{e.dest: {e: true}}
+		outEdges[dest] |= EdgeExternal
 	}
-	// We added a new edge, so recompute closure
-	g.computeEdgeClosure(e.src, e.dest)
+	g.computeEdgeClosure(src, dest)
 	return true
 }
 
 // AddNode, Ensures g has an entry for n.
 func (g *EscapeGraph) AddNode(n *Node) (changed bool) {
 	if _, ok := g.status[n]; !ok {
-		g.edges[n] = map[*Node]map[Edge]bool{}
+		g.edges[n] = map[*Node]EdgeFlags{}
 		g.status[n] = n.IntrinsicEscape()
 		return true
 	}
 	return false
+}
+
+type fieldSubnodeReason struct {
+	field string
+}
+
+func (g *EscapeGraph) FieldSubnode(base *Node, field string, tp types.Type) *Node {
+	// Canonicalize the type, so that we don't get the same field twice.
+	// This is necessary because we use the type as a key into the subnode map.
+	// Ideally, we would only key on the field name, and thus the types would only
+	// be advisory, rather than essential
+	if tp != nil {
+		tp = tp.Underlying()
+	}
+	if subnodes, ok := g.nodes.globalNodes.subnodes[base]; ok {
+		if nodeData, ok := subnodes[fieldSubnodeReason{field}]; ok {
+			g.AddEdge(base, nodeData.node, true)
+			return nodeData.node
+		}
+		f := g.nodes.FieldNode(base, field, tp)
+		subnodes[fieldSubnodeReason{field}] = struct {
+			node *Node
+			data any
+		}{f, tp}
+		g.nodes.globalNodes.parent[f] = base
+		g.AddEdge(base, f, true)
+		return f
+	}
+	f := g.nodes.FieldNode(base, field, tp)
+	g.nodes.globalNodes.subnodes[base] = map[any]nodeWithData{fieldSubnodeReason{field}: {f, tp}}
+	g.nodes.globalNodes.parent[f] = base
+	g.AddEdge(base, f, true)
+	return f
+}
+
+func (g *EscapeGraph) IsSubnodeEdge(base, n *Node) bool {
+	p, ok := g.nodes.globalNodes.parent[n]
+	return ok && p == base
+}
+
+func (g *EscapeGraph) IsSubnode(n *Node) bool {
+	_, ok := g.nodes.globalNodes.parent[n]
+	return ok
+}
+
+func (g *EscapeGraph) AnalogousSubnode(base *Node, subnode *Node) *Node {
+	// TODO make this work for all reasons, not just fields
+	for reason, nodeData := range g.nodes.globalNodes.subnodes[g.nodes.globalNodes.parent[subnode]] {
+		if r, ok := reason.(fieldSubnodeReason); ok && nodeData.node == subnode {
+			return g.FieldSubnode(base, r.field, nodeData.data.(types.Type))
+		}
+	}
+	panic("Subnode argument is not a subnode: reason not found")
 }
 
 func (g *EscapeGraph) computeEdgeClosure(a, b *Node) {
@@ -396,22 +461,22 @@ func (g *EscapeGraph) JoinNodeStatus(a *Node, s EscapeStatus) {
 func (g *EscapeGraph) WeakAssign(dest *Node, src *Node) {
 	g.AddNode(dest)
 	for _, e := range g.DerefEdges(src) {
-		g.AddEdgeDirect(Edge{dest, e.dest, e.isInternal, e.srcField, e.destField})
+		if g.IsSubnodeEdge(e.src, e.dest) {
+			destNode := g.AnalogousSubnode(dest, e.dest)
+			g.WeakAssign(destNode, e.dest)
+		} else {
+			g.AddEdge(dest, e.dest, e.isInternal)
+		}
 	}
 }
 
-func forgetField(f string) {
-	if f != "" {
-		fmt.Printf("Forgetting field: %s\n", f)
-	}
-}
-
-// Load applies the load operation `valNode = *addrNode` and modifies g.
-// This is a generalized operation: it also applies to reading from slices, maps, globals, etc.
+// Load applies the load operation `valNode = *addrNode[.field]` and modifies g.
+// This is a generalized operation: it also applies to reading the specified field from slices, maps, globals, etc.
+// If field is empty (""), then dereference the object itself, otherwise dereference only the specified field.
 // generateLoadNode is called to lazily create a node if the load can happen against an
-// external object; this can't be determined a priori, and we don't want to create a load node
+// external object; this can't always be determined a priori, and we don't want to create a load node
 // unless necessary.
-func (g *EscapeGraph) Load(valNode *Node, addrNode *Node, generateLoadNode func() *Node) {
+func (g *EscapeGraph) LoadField(valNode *Node, addrNode *Node, generateLoadNode func() *Node, field string, tp types.Type) {
 	var loadNode *Node
 	// Nodes are addr ->* addrPointee ->* doublePointee
 	// val = *addr means we need to add edges from val to whatever node(s) *addr (i.e. all the addrPointees)'
@@ -421,28 +486,25 @@ func (g *EscapeGraph) Load(valNode *Node, addrNode *Node, generateLoadNode func(
 	for _, addrEdge := range g.DerefEdges(addrNode) {
 		addrPointee := addrEdge.dest
 		g.AddNode(addrPointee)
+		addrPointeeField := addrPointee
+		// For non-empty fields, we take edges from the field subnode of each pointee. Otherwise, we are treating
+		// the pointee itself as a pointer-like object, and taking edges from that.
+		if field != "" {
+			addrPointeeField = g.FieldSubnode(addrPointee, field, tp)
+		}
 		// This is not .Deref(addrPointee) because the global is no longer being treated as an implicit pointer
 		// in the ssa representation. Now, global nodes are treated the same as any other memory node, such as
 		// structs, maps, etc.
-		for _, pointeeEdge := range g.Edges(addrPointee, nil, true, true) {
-			doublePointee := pointeeEdge.dest
-			if addrEdge.destField == "" || pointeeEdge.srcField == "" || addrEdge.destField == pointeeEdge.srcField {
-				forgetField(addrEdge.srcField)
-				g.AddEdgeDirect(Edge{valNode, doublePointee, true, "", pointeeEdge.destField})
-			}
-
+		for _, pointeeEdge := range g.Edges(addrPointeeField, nil, true, true) {
+			g.AddEdge(valNode, pointeeEdge.dest, true)
 		}
 		// if addrPointee is an escaped node, we need to add the load node
 		if g.status[addrPointee] > Local {
 			if loadNode == nil {
 				loadNode = generateLoadNode()
 			}
-			forgetField(addrEdge.srcField)
-			// fmt.Printf("Before load link:\n%s", g.Graphviz())
-			g.AddEdgeDirect(Edge{valNode, loadNode, true, "", ""})
-			// fmt.Printf("Mid load link:\n%s", g.Graphviz())
-			g.AddEdgeDirect(Edge{addrPointee, loadNode, false, addrEdge.destField, ""})
-			// fmt.Printf("After load link:\n%s", g.Graphviz())
+			g.AddEdge(valNode, loadNode, true)
+			g.AddEdge(addrPointeeField, loadNode, false)
 		}
 	}
 	// TODO: for load operations, if the pointer node itself (not just its pointee) is external then we have a
@@ -450,32 +512,19 @@ func (g *EscapeGraph) Load(valNode *Node, addrNode *Node, generateLoadNode func(
 	// if we only have e.g. instrType.X represented by a local variable (which will never be external).
 }
 
-// Stores the pointer-like value valNode into the object(s) pointed to by addrNode
-// The field of the resulting operation will be whatever the addrNode edges point at. This is suitable for
-// a plain store operation, but not generalized stores to pseudo-fields (see StoreField)
-func (g *EscapeGraph) Store(addrNode, valNode *Node) {
-	// Store the value into all the possible aliases of *addr
-	for _, edge := range g.DerefEdges(addrNode) {
-		addrPointee := edge.dest
-		for _, valEdge := range g.Edges(valNode, nil, true, true) {
-			forgetField(valEdge.srcField)
-			// fmt.Printf("Before add edge\n%v", g.Graphviz())
-			g.AddEdgeDirect(Edge{addrPointee, valEdge.dest, true, edge.destField, valEdge.destField})
-			// fmt.Printf("After add edge\n%v", g.Graphviz())
-		}
-	}
-}
-
 // Stores the pointer-like value valNode into the field of object(s) pointed to by addrNode
 // Generalizes to include map updates (m[k] = v), channel sends, and other operations that need to write
-// to a specific "field" of the pointees of addr.
-func (g *EscapeGraph) StoreField(addrNode, valNode *Node, field string) {
+// to a specific "field" of the pointees of addr. If the field is empt (""), writes to the object itself.
+func (g *EscapeGraph) StoreField(addrNode, valNode *Node, field string, tp types.Type) {
 	// Store the value into all the possible aliases of *addr
 	for _, edge := range g.DerefEdges(addrNode) {
 		addrPointee := edge.dest
 		for _, valEdge := range g.Edges(valNode, nil, true, true) {
-			forgetField(valEdge.srcField)
-			g.AddEdgeDirect(Edge{addrPointee, valEdge.dest, true, field, valEdge.destField})
+			fieldNode := addrPointee
+			if field != "" {
+				fieldNode = g.FieldSubnode(addrPointee, field, tp)
+			}
+			g.AddEdge(fieldNode, valEdge.dest, true)
 		}
 	}
 }
@@ -484,7 +533,7 @@ func (g *EscapeGraph) StoreField(addrNode, valNode *Node, field string) {
 // Modifies g in-place.
 func (g *EscapeGraph) Merge(h *EscapeGraph) {
 	for _, e := range h.Edges(nil, nil, true, true) {
-		g.AddEdgeDirect(*e)
+		g.AddEdge(e.src, e.dest, e.isInternal)
 	}
 	for node, s := range h.status {
 		g.JoinNodeStatus(node, s)
@@ -505,8 +554,8 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 	deferredReps := map[*Node]map[Edge]struct{}{}
 
 	worklist := []Edge{}
-	addUEdge := func(x, y *Node, field string) {
-		e := Edge{x, y, true, "", field}
+	addUEdge := func(x, y *Node) {
+		e := Edge{x, y, true}
 		if m, ok := u[x]; ok {
 			if _, ok := m[e]; ok {
 				return
@@ -515,7 +564,6 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 		} else {
 			u[x] = map[Edge]struct{}{e: {}}
 		}
-		// fmt.Printf("Adding U edge %v -> %v\n", x, y)
 		worklist = append(worklist, e)
 	}
 	addDeferredRep := func(x *Node, e Edge) {
@@ -535,14 +583,7 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 			panic("Incorrect nil-ness of corresponding parameter nodes")
 		}
 		if formal != nil {
-			for _, edge := range pre.Edges(args[i], nil, true, true) {
-				// This gets the parameter node, i.e. the node representing the abstract pointee of the
-				// formal: param in formal ----> param. Because parameters are not assigned to, this will
-				// always be the same as in the initial graph. This loop should thus only execute the body once.
-				for paramNode := range callee.Pointees(formal) {
-					addUEdge(paramNode, edge.dest, edge.destField)
-				}
-			}
+			addUEdge(formal, args[i])
 		}
 	}
 	for i, freevar := range callee.nodes.freevars {
@@ -557,19 +598,14 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 				// As in the parameter case, this connects the pointee of the free var (the free param object)
 				// with the objects that it could be in the caller
 				for _, outerPointee := range freeVarsPointees[i] {
-					addUEdge(innerPointee, outerPointee, "")
+					addUEdge(innerPointee, outerPointee)
 				}
 			}
 		}
 	}
 	for i, ret := range rets {
 		if ret != nil {
-			for returnedNode := range callee.Pointees(callee.nodes.ReturnNode(i)) {
-				for actualObject := range pre.Pointees(ret) {
-					addUEdge(returnedNode, actualObject, "")
-				}
-			}
-			addUEdge(callee.nodes.ReturnNode(i), ret, "")
+			addUEdge(callee.nodes.ReturnNode(i, nil), ret)
 		}
 	}
 
@@ -577,7 +613,7 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 	for len(worklist) > 0 {
 		edgeToProcess := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
-		base, rep, field := edgeToProcess.src, edgeToProcess.dest, edgeToProcess.destField // base is in callee, rep is in g
+		base, rep := edgeToProcess.src, edgeToProcess.dest // base is in callee, rep is in g
 
 		// propagate u edges for load nodes in the callee that are referenced internally in the caller
 		// Creates the edge labeled u' in the following:
@@ -600,7 +636,7 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 					// }
 					// Instead, we break the abstraction a bit and access the map directly
 					for v := range pre.edges[rep] {
-						addUEdge(baseEdge.dest, v, "")
+						addUEdge(baseEdge.dest, v)
 					}
 				}
 			}
@@ -619,24 +655,41 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 		// edge from y to rep. If y -> x is ever added later, then the case below will trigger
 		// and the edge will be completed.
 		for _, edge := range callee.Edges(base, nil, false, true) {
-
-			// y is edge.dest
-			// If the base ---> y edge doesn't have a field, but the u edge does, then base
-			// corresponds to a field in rep, and so we use that as the source field for the new edge
-			f := edge.srcField
-			if f == "" {
-				f = field
+			if callee.IsSubnodeEdge(edge.src, edge.dest) {
+				// This is a special subnode edge, add the analogous edge in the caller graph, and link
+				fieldNode := g.AnalogousSubnode(rep, edge.dest)
+				addUEdge(edge.dest, fieldNode)
+			} else {
+				// Normal edge, y is edge.dest
+				for uEdge := range u[edge.dest] {
+					g.AddEdge(rep, uEdge.dest, true)
+				}
+				// Edge.dest will be overwritten by whatever x ends up being, so leave it nil.
+				addDeferredRep(edge.dest, Edge{rep, nil, true})
 			}
-			for uEdge := range u[edge.dest] {
-				// fmt.Printf("Propogating internal edge %v %v\n", rep, x)
 
-				g.AddEdgeDirect(Edge{rep, uEdge.dest, true, f, edge.destField})
-			}
-			// Edge.dest will be overwritten by whatever x ends up being, so leave it nil.
-			// We still use the same logic for the source field
-			addDeferredRep(edge.dest, Edge{rep, nil, true, f, edge.destField})
 		}
 
+		// Add edges for the pointees of parameters, to link them with their representatives in the caller.
+		// This happens here so that we can handle subnodes appropriately. Subnodes still have the kind of their
+		// parent, so e.g. fields of a paramter are still KindParamVar.
+		if base.kind == KindParamVar {
+			for _, edge := range callee.Edges(base, nil, true, true) {
+				if callee.IsSubnodeEdge(edge.src, edge.dest) {
+					// This is a special subnode edge
+					// find the subnode relationship
+					fieldNode := g.AnalogousSubnode(rep, edge.dest)
+					addUEdge(edge.dest, fieldNode)
+				} else {
+					for p := range pre.Pointees(rep) {
+						if !pre.IsSubnodeEdge(rep, p) {
+							addUEdge(edge.dest, p)
+						}
+					}
+				}
+
+			}
+		}
 		// The same as above, but where base is the y in the above diagram
 		// There must have been a previous u edge added from b to r. The
 		// dR (deferredReps) edge tells us what r(s) we need to add edges
@@ -649,8 +702,7 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 		// b  ------> base
 		// We must keep track of what b was for field sensitivity.
 		for e := range deferredReps[base] {
-			// fmt.Printf("Adding deferred internal edge %v %v\n", r, rep)
-			g.AddEdgeDirect(Edge{e.src, rep, true, e.srcField, e.destField})
+			g.AddEdge(e.src, rep, true)
 		}
 
 		// propagate allocations/possible allocations (from un-analyzed functions)
@@ -663,11 +715,13 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 		// Rep is required to exist but we don't do anything with it. This makes sure
 		// we only add the alloc node if it will be visible in the caller
 		for _, edge := range callee.Edges(base, nil, true, true) {
-			if edge.isInternal && (edge.dest.kind == KindAlloc || edge.dest.kind == KindUnknown) {
-				// fmt.Printf("Adding alloc node %v\n", edge.dest)
+			isInternalToAllocNode := edge.isInternal && (edge.dest.kind == KindAlloc || edge.dest.kind == KindUnknown)
+			isLeakedLoadNode := edge.isInternal && (callee.status[edge.dest] == Leaked && edge.dest.kind == KindLoad)
+
+			if isInternalToAllocNode || isLeakedLoadNode {
 				g.nodes.AddForeignNode(edge.dest)
 				g.AddNode(edge.dest)
-				addUEdge(edge.dest, edge.dest, "")
+				addUEdge(edge.dest, edge.dest)
 			}
 		}
 
@@ -680,23 +734,14 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 		// base - - -> load
 		// Rep is required to be escaped.
 
-		if status, ok := pre.status[rep]; !ok || status != Local {
+		if status, ok := pre.status[rep]; (!ok && g.status[rep] != Local) || status != Local {
 			for _, edge := range callee.Edges(base, nil, true, true) {
-				if !edge.isInternal || base.kind == KindParamVar || base.kind == KindGlobal {
+				if !edge.isInternal || base.kind == KindGlobal {
 					g.AddNode(edge.dest)
 					g.nodes.AddForeignNode(edge.dest)
-					// fmt.Printf("Adding load edge %v %v\n", rep, edge.dest)
 
-					// If the base - - - > load edge doesn't have a field, but the u edge does,
-					// then base corresponds to a field in rep, and so we use that as the source
-					// field for the new edge
-					f := edge.srcField
-					if f == "" {
-						f = field
-					}
-
-					g.AddEdgeDirect(Edge{rep, edge.dest, false, f, edge.destField})
-					addUEdge(edge.dest, edge.dest, "")
+					g.AddEdge(rep, edge.dest, false)
+					addUEdge(edge.dest, edge.dest)
 				}
 			}
 		}
@@ -806,7 +851,12 @@ func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, a
 			}
 		}
 		return nil
-	case "String", "StringData", "Slice", "SliceData", "Add":
+	case "String": // converts something to a string, which isn't tracked
+		return nil
+	case "SliceData", "Slice": // Both convert a slice to/from its underlying array
+		g.WeakAssign(rets[0], args[0])
+		return nil
+	case "StringData", "Add":
 		return fmt.Errorf("unsafe operation %v\n", builtin.Name())
 	default:
 		return fmt.Errorf("unhandled: %v\n", builtin.Name())
@@ -825,19 +875,6 @@ func (g *EscapeGraph) Matches(h *EscapeGraph) bool {
 	return true
 }
 
-// returns true if b "covers" a, in the sense that b is a superset of a. Essentially,
-// blank covers everything, and blank is not covered by anything except blank.
-// The same field covers itself, but not different fields.
-func fieldCovers(a string, b string) bool {
-	if b == "" {
-		return true
-	}
-	if a == b {
-		return true
-	}
-	return false
-}
-
 // LessEqual returns true if g is less than or equal to h in the lattice ordering
 // associated with the monotone framework. This function is useful for detecting convergence
 // problems and correctness bugs.
@@ -845,14 +882,7 @@ func (g *EscapeGraph) LessEqual(h *EscapeGraph) (isLessEq bool, reason string) {
 	// In order for g <= h, the set of edges of g must all be contained in h, and the
 	// nodes statuses must be pairwise less or equal.
 	for _, gEdge := range g.Edges(nil, nil, true, true) {
-		covered := false
-		for _, hEdge := range h.Edges(gEdge.src, gEdge.dest, !gEdge.isInternal, gEdge.isInternal) {
-			if fieldCovers(gEdge.srcField, hEdge.srcField) && fieldCovers(gEdge.srcField, hEdge.srcField) {
-				covered = true
-				break
-			}
-		}
-		if !covered {
+		if len(h.Edges(gEdge.src, gEdge.dest, !gEdge.isInternal, gEdge.isInternal)) == 0 {
 			return false, fmt.Sprintf("missing edge %v -> %v (internal: %v)", gEdge.src, gEdge.dest, gEdge.isInternal)
 		}
 	}
@@ -868,10 +898,29 @@ func (g *EscapeGraph) LessEqual(h *EscapeGraph) (isLessEq bool, reason string) {
 	return true, ""
 }
 
+// We use nodeWithData to allow associating extra data with a subnode relationship, without
+// making it part of the lookup key. This is useful for field types, which may not be exactly
+// the same in multiple uses (e.g. due to aliases).
+type nodeWithData struct {
+	node *Node
+	data any
+}
+
 type globalNodeGroup struct {
 	nextNode int
 	function map[*Node]*ssa.Function
+	subnodes map[*Node]map[any]nodeWithData // map from root node to reasons to subnode children
+	parent   map[*Node]*Node                // nodes can only have one parent for now; subnodes form a forest.
+	types    map[*Node]types.Type
 	// TODO: introduce a mutex around nextNode for multithreading
+}
+
+func newGlobalNodeGroup() *globalNodeGroup {
+	return &globalNodeGroup{0,
+		make(map[*Node]*ssa.Function),
+		make(map[*Node]map[any]nodeWithData),
+		make(map[*Node]*Node),
+		make(map[*Node]types.Type)}
 }
 
 // getNewID generates a new globally unique id for a node. The id is used to uniquely identify
@@ -889,7 +938,7 @@ func (gn *globalNodeGroup) getNewID() int {
 type NodeGroup struct {
 	variables     map[ssa.Value]*Node
 	allocs        map[ssa.Instruction]*Node
-	loads         map[ssa.Instruction]*Node
+	loads         map[any]*Node
 	globals       map[ssa.Value]*Node
 	foreign       map[*Node]struct{}
 	params        map[ssa.Value]*Node
@@ -907,7 +956,7 @@ func NewNodeGroup(globalNodes *globalNodeGroup) *NodeGroup {
 	return &NodeGroup{
 		make(map[ssa.Value]*Node),
 		make(map[ssa.Instruction]*Node),
-		make(map[ssa.Instruction]*Node),
+		make(map[any]*Node),
 		make(map[ssa.Value]*Node),
 		make(map[*Node]struct{}),
 		make(map[ssa.Value]*Node),
@@ -920,58 +969,6 @@ func NewNodeGroup(globalNodes *globalNodeGroup) *NodeGroup {
 		nil,
 		globalNodes,
 	}
-}
-
-// AllNodes returns all nodes in the group, sorted by their number.
-func (nodes *NodeGroup) AllNodes() []*Node {
-	ordered := []*Node{}
-	alreadyAdded := map[*Node]bool{}
-	add := func(o *Node) {
-		if o == nil {
-			panic("nil *Node")
-		}
-		if !alreadyAdded[o] {
-			alreadyAdded[o] = true
-			ordered = append(ordered, o)
-		}
-	}
-	for _, o := range nodes.variables {
-		add(o)
-	}
-	for _, o := range nodes.allocs {
-		add(o)
-	}
-	for _, o := range nodes.globals {
-		add(o)
-	}
-	for _, o := range nodes.formals {
-		if o != nil { // nil means not-pointer-like, i.e. integer
-			add(o)
-		}
-	}
-	for o := range nodes.foreign {
-		add(o)
-	}
-	for _, o := range nodes.params {
-		add(o)
-	}
-	for _, o := range nodes.loads {
-		add(o)
-	}
-	for _, node := range nodes.returnNodes {
-		add(node)
-	}
-	if nodes.unknownReturn != nil {
-		add(nodes.unknownReturn)
-	}
-	if nodes.nilNode != nil {
-		add(nodes.nilNode)
-	}
-	if nodes.unusedNode != nil {
-		add(nodes.unusedNode)
-	}
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].number < ordered[j].number })
-	return ordered
 }
 
 // AllocNode creates a node that represents an allocation, such as &S{}, make([]int, 3),
@@ -989,6 +986,7 @@ func (g *NodeGroup) AllocNode(instr ssa.Instruction, t types.Type) *Node {
 	node = &Node{KindAlloc, g.globalNodes.getNewID(), fmt.Sprintf("new %s L:%d", shortTypeName,
 		instr.Parent().Prog.Fset.Position(instr.Pos()).Line)}
 	g.allocs[instr] = node
+	g.globalNodes.types[node] = t
 	return node
 }
 
@@ -1028,32 +1026,38 @@ func (g *NodeGroup) ValueNode(variable ssa.Value) *Node {
 	}
 	node = &Node{kind, g.globalNodes.getNewID(), kindStr + variable.Name()}
 	g.variables[variable] = node
-	return node
-}
-
-// ReturnNode returns the return node of a function, which represents all the
-// implicit or explicit variables that capture the returned values. There is
-// one node per function.
-func (g *NodeGroup) TempNode(key any) *Node {
-	if node, ok := g.tempNodes[key]; ok {
-		return node
+	// Use variable type, unless it is a range (which doesn't have a type)
+	if _, ok := variable.(*ssa.Range); !ok {
+		g.globalNodes.types[node] = variable.Type()
 	}
-
-	node := &Node{KindVar, g.globalNodes.getNewID(), fmt.Sprintf("tmp")}
-	g.tempNodes[key] = node
 	return node
 }
 
 // ReturnNode returns the return node of a function, which represents all the
 // implicit or explicit variables that capture the returned values. There is
 // one node per function.
-func (g *NodeGroup) ReturnNode(i int) *Node {
+func (g *NodeGroup) FieldNode(base *Node, field string, tp types.Type) *Node {
+	node := &Node{base.kind, g.globalNodes.getNewID(), field}
+	g.globalNodes.types[node] = tp
+	return node
+}
+
+// ReturnNode returns the return node of a function, which represents all the
+// implicit or explicit variables that capture the returned values. There is
+// one node per function.
+func (g *NodeGroup) ReturnNode(i int, t types.Type) *Node {
 	if node, ok := g.returnNodes[i]; ok {
+		if t != nil && g.globalNodes.types[node] == nil {
+			g.globalNodes.types[node] = t
+		}
 		return node
 	}
 
 	node := &Node{KindReturn, g.globalNodes.getNewID(), fmt.Sprintf("return %v", i)}
 	g.returnNodes[i] = node
+	if t != nil && g.globalNodes.types[node] == nil {
+		g.globalNodes.types[node] = t
+	}
 	return node
 }
 
@@ -1097,8 +1101,8 @@ func (g *NodeGroup) UnknownReturnNode() *Node {
 
 // LoadNode creates a load node, which represents the object(s) that are potentially
 // reached through some load-like operation, e.g. *ptr, map[key], etc.
-func (g *NodeGroup) LoadNode(instr ssa.Instruction, t types.Type) *Node {
-	node, ok := g.loads[instr]
+func (g *NodeGroup) LoadNode(location any, instr ssa.Instruction, t types.Type) *Node {
+	node, ok := g.loads[location]
 	if ok {
 		return node
 	}
@@ -1109,7 +1113,8 @@ func (g *NodeGroup) LoadNode(instr ssa.Instruction, t types.Type) *Node {
 	shortTypeName := types.TypeString(t, qualifier)
 	node = &Node{KindLoad, g.globalNodes.getNewID(), fmt.Sprintf("%s load L:%d", shortTypeName,
 		instr.Parent().Prog.Fset.Position(instr.Pos()).Line)}
-	g.loads[instr] = node
+	g.loads[location] = node
+	g.globalNodes.types[node] = t
 	return node
 }
 
@@ -1124,9 +1129,10 @@ func (g *NodeGroup) ParamNode(param ssa.Value) *Node {
 	if param.Parent().Package() != nil {
 		qualifier = types.RelativeTo(param.Parent().Package().Pkg)
 	}
-	shortTypeName := types.TypeString(PointerDerefType(param.Type()), qualifier)
+	shortTypeName := types.TypeString(NillableDerefType(param.Type()), qualifier)
 	node = &Node{KindParam, g.globalNodes.getNewID(), fmt.Sprintf("*%s %v", param.Name(), shortTypeName)}
 	g.params[param] = node
+	g.globalNodes.types[node] = NillableDerefType(param.Type())
 	return node
 }
 
@@ -1138,45 +1144,4 @@ func (g *NodeGroup) AddForeignNode(n *Node) (changed bool) {
 	}
 	g.foreign[n] = struct{}{}
 	return true
-}
-
-func (g *EscapeGraph) CloneReachable(roots []*Node) *EscapeGraph {
-	reachable := make(map[*Node]bool, len(g.status))
-	worklist := make([]*Node, 0, len(roots))
-
-	for _, r := range roots {
-		reachable[r] = true
-		worklist = append(worklist, r)
-	}
-	for len(worklist) > 0 {
-		n := worklist[len(worklist)-1]
-		worklist = worklist[0 : len(worklist)-1]
-		for d := range g.edges[n] {
-			if !reachable[d] {
-				reachable[d] = true
-				worklist = append(worklist, d)
-			}
-		}
-	}
-	gg := NewEmptyEscapeGraph(g.nodes)
-	for src, outEdges := range g.edges {
-		if !reachable[src] {
-			continue
-		}
-		newOutEdges := make(map[*Node]map[Edge]bool, len(outEdges))
-		for dest, edgeSet := range outEdges {
-			newEdgeSet := make(map[Edge]bool, len(edgeSet))
-			for k3 := range edgeSet {
-				newEdgeSet[k3] = true
-			}
-			newOutEdges[dest] = newEdgeSet
-		}
-		gg.edges[src] = newOutEdges
-	}
-	for node, st := range g.status {
-		if reachable[node] {
-			gg.status[node] = st
-		}
-	}
-	return gg
 }

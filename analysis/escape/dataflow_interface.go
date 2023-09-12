@@ -107,16 +107,17 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 			for _, freeVar := range callee.FreeVars {
 				if lang.IsNillableType(freeVar.Type()) {
 					for closureNode := range c.g.Deref(c.nodes.ValueNode(c.callsite.Call.Value)) {
-						mapNode(closureNode, nodes.ValueNode(freeVar))
+						mapNode(c.g.FieldSubnode(closureNode, freeVar.Name(), freeVar.Type()), nodes.ValueNode(freeVar))
 					}
 				}
 			}
 		} else if _, ok := c.callsite.Call.Value.(*ssa.MakeClosure); ok {
 			// A immediately invoked function, i.e. t3(t5) where t3 = MakeClosure...
-			// TODO: Could be more precise by aligning freevars with the specific closure bindings
 			for _, freeVar := range callee.FreeVars {
 				if lang.IsNillableType(freeVar.Type()) {
-					mapNode(c.nodes.ValueNode(c.callsite.Call.Value), nodes.ValueNode(freeVar))
+					for closureNode := range c.g.Deref(c.nodes.ValueNode(c.callsite.Call.Value)) {
+						mapNode(c.g.FieldSubnode(closureNode, freeVar.Name(), freeVar.Type()), nodes.ValueNode(freeVar))
+					}
 				}
 			}
 		} else {

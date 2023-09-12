@@ -75,6 +75,10 @@ func main() {
 	testTupleSensitivity()
 	testSlicing(23)
 	testParameterPointerToField()
+	testStructSelfPointerToField()
+	testNestedStruct()
+	testForRange()
+	testTypeCorrectness()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -579,6 +583,10 @@ func testSiblingClosure() {
 	assertAllLeaked(a)
 }
 
+type DoInterface interface {
+	thingMethod()
+}
+
 type thingDoer struct {
 	a *Node
 }
@@ -587,11 +595,20 @@ func (t thingDoer) thingMethod() {
 	globalVar = t.a
 }
 
-type DoInterface interface {
-	thingMethod()
+func doThing(d DoInterface) {
+	d.thingMethod()
 }
 
-func doThing(d DoInterface) {
+// The same as above, but for a pointer receiver
+type thingDoer2 struct {
+	a *Node
+}
+
+func (t *thingDoer2) thingMethod() {
+	globalVar = t.a
+}
+
+func doThing2(d DoInterface) {
 	d.thingMethod()
 }
 
@@ -600,6 +617,10 @@ func testInterfaceDirectStruct() {
 	thing := thingDoer{a}
 	doThing(thing)
 	assertAllLeaked(a)
+	b := &Node{}
+	thing2 := &thingDoer2{b}
+	doThing2(thing2)
+	assertAllLeaked(b)
 }
 
 type MultiField struct {
@@ -648,4 +669,95 @@ func testParameterPointerToField() {
 	writeToSomeFieldViaPointer(&n.a, x)
 	assertSameAliases(x, n.a)
 	assertSameAliases(y, n.b)
+}
+
+type selfPointerStruct struct {
+	n              *Node
+	nodeDblPointer **Node
+}
+
+func newSelfReference() *selfPointerStruct {
+	x := &selfPointerStruct{}
+	x.nodeDblPointer = &x.n
+	return x
+}
+func testStructSelfPointerToField() {
+	x := newSelfReference()
+	y := &Node{}
+	writeToSomeFieldViaPointer(x.nodeDblPointer, y)
+	// check that the write went to x.n
+	assertSameAliases(x.n, y)
+}
+
+type nestedStruct struct {
+	a *Node
+	b nodeHolder
+}
+
+func returnNestedStruct(a, ba, bb *Node) nestedStruct {
+	return nestedStruct{a, nodeHolder{ba, bb}}
+}
+func getFieldA(n nestedStruct) *Node {
+	return n.a
+}
+func getFieldBB(n nestedStruct) *Node {
+	return n.b.b
+}
+func testNestedStruct() {
+	x, y, z := &Node{}, &Node{}, &Node{}
+	n := returnNestedStruct(x, y, z)
+	assertSameAliases(n.a, x)
+	assertSameAliases(n.b.a, y)
+	assertSameAliases(n.b.b, z)
+	n2 := nestedStruct{x, nodeHolder{y, z}}
+	assertSameAliases(getFieldA(n2), x)
+	assertSameAliases(getFieldBB(n2), z)
+}
+
+func mapKV(m map[*Node]*Node) (*Node, *Node) {
+	for k, v := range m {
+		return k, v
+	}
+	return nil, nil
+}
+func mapKVintValue(m map[*Node]int) (*Node, int) {
+	for k, v := range m {
+		return k, v
+	}
+	return nil, 0
+}
+
+func testForRange() {
+	x := &Node{}
+	y := &Node{}
+
+	m := map[*Node]*Node{x: y}
+	z, w := mapKV(m)
+	assertSameAliases(x, z)
+	assertSameAliases(y, w)
+
+	m2 := map[*Node]int{}
+	x = &Node{}
+	m2[x] = 4
+	for x := range m2 {
+		_ = x
+	}
+	z2, _ := mapKVintValue(m2)
+	assertSameAliases(x, z2)
+}
+
+func testTypeCorrectness() {
+	x := make([]int, 5)
+	var p *int = &x[2]
+	*p = 4
+
+	in := "asdkfja;"
+	out := []byte(in)
+	for i, c := range out {
+		if 'A' <= c && c <= 'Z' {
+			out[i] += 'a' - 'A'
+		}
+	}
+	z := string(out)
+	_ = z
 }
