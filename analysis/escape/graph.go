@@ -39,6 +39,7 @@ const (
 	KindUnknown                  // A return value from an unanalyzed method without a summary
 )
 
+// EscapeStatus represents whether a node is Local, Escaped, or Leaked
 type EscapeStatus uint8
 
 const (
@@ -47,17 +48,17 @@ const (
 	Leaked  EscapeStatus = 2
 )
 
-type EdgeFlags uint8
+// edgeFlags are used when representing an edge, as we can pack multiple edges into the same byte
+type edgeFlags uint8
 
 const (
-	EdgeInternal EdgeFlags = 1 << iota
+	EdgeInternal edgeFlags = 1 << iota
 	EdgeExternal
-	EdgeSubnode
+	EdgeSubnode // currently unused
 )
 
-// A node represents the objects tracked by the escape analysis.
-// Nodes represent local variables, globals, parameters, and heap
-// cells of various kinds (maps, slices, arrays, structs)
+// A node represents the objects tracked by the escape analysis. Nodes represent local variables,
+// globals, parameters, and heap cells of various kinds (maps, slices, arrays, structs)
 type Node struct {
 	kind      NodeKind
 	number    int    // For unambiguous debug printing
@@ -68,9 +69,10 @@ func (n *Node) String() string {
 	return fmt.Sprintf("%d<%s>", n.number, n.debugInfo)
 }
 
-// Certain nodes are intrinsically external: parameters, loads, and globals.
-// Note that this doesn't include ParamVars, which are the (local) pointers
-// at the external objects.
+// IntrinsicEscape returns the intrinsic status of a node. Certain nodes are intrinsically external:
+// parameters, loads, and globals. Note that this doesn't include ParamVars, which are the (local)
+// pointers at the external objects. Other nodes are intrinsically escaped, as they represent
+// parameters.
 func (n *Node) IntrinsicEscape() EscapeStatus {
 	switch n.kind {
 	case KindParam, KindLoad:
@@ -82,21 +84,22 @@ func (n *Node) IntrinsicEscape() EscapeStatus {
 	}
 }
 
-// The escape graph is the element of the monotone framework and the primary
-// focus of the escape analysis. The graph represents edges as src -> dest
-// -> isInternal. The final bool is semantically significant: the edges are
-// labeled as internal or external. Escaped is a set of nodes that are not
-// known to be local in the current context; they are treated differently on
-// load operations. Leaked is a subset of escaped nodes that have (possibly)
-// leaked out of the current goroutine, whereas escaped nodes may still be
-// local depending on the calling context. The major operations on escape
-// graphs are to AddEdge()s, (plus composite operations like Load,
-// WeakAssign), Merge(), and compare with Matches().
+// The escape graph is the element of the monotone framework and the primary focus of the escape
+// analysis. The graph represents edges as src -> dest -> isInternal. The final bool is semantically
+// significant: the edges are labeled as internal or external. Escaped is a set of nodes that are
+// not known to be local in the current context; they are treated differently on load operations.
+// Leaked is a subset of escaped nodes that have (possibly) leaked out of the current goroutine,
+// whereas escaped nodes may still be local depending on the calling context. The major operations
+// on escape graphs are to AddEdge()s, (plus composite operations like Load, WeakAssign), Merge(),
+// and compare with Matches().
 type EscapeGraph struct {
-	edges  map[*Node]map[*Node]EdgeFlags
+	edges  map[*Node]map[*Node]edgeFlags
 	status map[*Node]EscapeStatus
 	nodes  *NodeGroup
 }
+
+// Represents a single atomic edge within the escape graph. Nodes connected by more than one kind of
+// edge will produce multiple Edge's when queried.
 type Edge struct {
 	src        *Node
 	dest       *Node
@@ -107,18 +110,18 @@ type Edge struct {
 func NewEmptyEscapeGraph(nodes *NodeGroup) *EscapeGraph {
 	gg := &EscapeGraph{
 		// make(map[*Node]map[*Node]map[Edge]bool),
-		make(map[*Node]map[*Node]EdgeFlags),
+		make(map[*Node]map[*Node]edgeFlags),
 		make(map[*Node]EscapeStatus),
 		nodes,
 	}
 	return gg
 }
 
-// Clones a graph, but preserves node identities between the two graphs.
+// Clones a graph, preserving node identities between the two graphs.
 func (g *EscapeGraph) Clone() *EscapeGraph {
 	gg := NewEmptyEscapeGraph(g.nodes)
 	for src, outEdges := range g.edges {
-		newOutEdges := make(map[*Node]EdgeFlags, len(outEdges))
+		newOutEdges := make(map[*Node]edgeFlags, len(outEdges))
 		for dest, f := range outEdges {
 			newOutEdges[dest] = f
 		}
@@ -130,6 +133,7 @@ func (g *EscapeGraph) Clone() *EscapeGraph {
 	return gg
 }
 
+// CloneReachable clones an escape graph, but only preserving the nodes that are reachable from roots.
 func (g *EscapeGraph) CloneReachable(roots []*Node) *EscapeGraph {
 	reachable := make(map[*Node]bool, len(g.status))
 	worklist := make([]*Node, 0, len(roots))
@@ -153,7 +157,7 @@ func (g *EscapeGraph) CloneReachable(roots []*Node) *EscapeGraph {
 		if !reachable[src] {
 			continue
 		}
-		newOutEdges := make(map[*Node]EdgeFlags, len(outEdges))
+		newOutEdges := make(map[*Node]edgeFlags, len(outEdges))
 		for dest, f := range outEdges {
 			newOutEdges[dest] = f
 		}
@@ -213,8 +217,8 @@ func (g *EscapeGraph) Edges(src, dest *Node, includeExternal, includeInternal bo
 	return edges
 }
 
-// Pointees returns the set of nodes (as a map to empty struct) that are pointed to
-// by src directly by any type of edge.
+// Pointees returns the set of nodes (as a map to empty struct) that are pointed to by src by any
+// type of direct edge.
 func (g *EscapeGraph) Pointees(src *Node) map[*Node]struct{} {
 	pointees := make(map[*Node]struct{}, 4)
 	for d := range g.edges[src] {
@@ -224,20 +228,19 @@ func (g *EscapeGraph) Pointees(src *Node) map[*Node]struct{} {
 }
 
 // Deref() is required because globals are not represented in a uniform way with
-// parameters/locals/freevars. In the SSA form, a global is implicitly a pointer to the
-// its type. So if we have a global decl:
+// parameters/locals/freevars. In the SSA form, a global is implicitly a pointer to the its type. So
+// if we have a global decl:
 //
 //	var global *S
 //
-// then in the SSA, the global name effectively has type **S. We can see this in that the
-// operation global = &S{} turns into `t0 = alloc S; *global = t0`. The current graph
-// representation makes the global node directly the node that stores the value, rather
-// than pointing at a virtual node that then points at the actual value like a **S parameter
-// would. This decision was made so that globals could be instantiated lazily via the
-// NodeGroup: they don't need to create two nodes with an edge like params/freevars do.
-// This is probably the wrong choice; instead, these node pairs should be created based
-// on a scan of the instructions for globals that are accessed, during the creation
-// of the initial escape graph.
+// then in the SSA, the global name effectively has type **S. We can see this in that the operation
+// global = &S{} turns into `t0 = alloc S; *global = t0`. The current graph representation makes the
+// global node directly the node that stores the value, rather than pointing at a virtual node that
+// then points at the actual value like a **S parameter would. This decision was made so that
+// globals could be instantiated lazily via the NodeGroup: they don't need to create two nodes with
+// an edge like params/freevars do. This is probably the wrong choice; instead, these node pairs
+// should be created based on a scan of the instructions for globals that are accessed, during the
+// creation of the initial escape graph.
 func (g *EscapeGraph) Deref(addr *Node) map[*Node]bool {
 	if addr == nil {
 		return map[*Node]bool{}
@@ -252,6 +255,8 @@ func (g *EscapeGraph) Deref(addr *Node) map[*Node]bool {
 	return addrPointees
 }
 
+// DerefEdges produces a slice of edges that are out-edges from a given node. It takes
+// into account the oddness of the global variable representation.
 func (g *EscapeGraph) DerefEdges(addr *Node) []*Edge {
 	if addr == nil {
 		return []*Edge{}
@@ -263,18 +268,12 @@ func (g *EscapeGraph) DerefEdges(addr *Node) []*Edge {
 }
 
 // Graphviz returns a (multi-line) dot/graphviz input describing the graph.
-func (g *EscapeGraph) Graphviz() string {
-	return g.GraphvizLabel("")
-}
-
-// GraphvizLabel is like Graphvis, but adds a label to the graph; useful
-// for e.g. displaying the function being analyzed.
 //
 //gocyclo:ignore
-func (g *EscapeGraph) GraphvizLabel(label string) string {
+func (g *EscapeGraph) Graphviz() string {
 	out := bytes.NewBuffer([]byte{})
-	fmt.Fprintf(out, "digraph { // start of digraph\nrankdir = LR;\n")
-	fmt.Fprintf(out, "graph[label=\"%s\"];\n", label)
+	fmt.Fprintf(out, "\ndigraph { // start of digraph\nrankdir = LR;\n")
+	fmt.Fprintf(out, "graph[label=\"%s\"];\n", "")
 	fmt.Fprintf(out, "subgraph {\nrank=same;\n")
 	prevInVarBlock := -1
 	ordered := []*Node{}
@@ -343,14 +342,14 @@ func (g *EscapeGraph) GraphvizLabel(label string) string {
 	return out.String()
 }
 
-// AddEdge adds an edge from base to dest. isInternal (almost always `true`) signals whether
+// AddEdge adds an edge from base to dest. isInternal (usually `true`) signals whether
 // this is an internal edge (created during the current function) or external edge
 // (possibly existed before the current function).
 func (g *EscapeGraph) AddEdge(src *Node, dest *Node, isInternal bool) (changed bool) {
 	outEdges, ok := g.edges[src]
 	if !ok {
 		g.AddNode(src)
-		outEdges = make(map[*Node]EdgeFlags)
+		outEdges = make(map[*Node]edgeFlags)
 		g.edges[src] = outEdges
 	}
 	g.AddNode(dest)
@@ -363,34 +362,32 @@ func (g *EscapeGraph) AddEdge(src *Node, dest *Node, isInternal bool) (changed b
 	return true
 }
 
-// AddNode, Ensures g has an entry for n.
+// AddNode ensures g has an entry for node n.
 func (g *EscapeGraph) AddNode(n *Node) (changed bool) {
 	if _, ok := g.status[n]; !ok {
-		g.edges[n] = map[*Node]EdgeFlags{}
+		g.edges[n] = map[*Node]edgeFlags{}
 		g.status[n] = n.IntrinsicEscape()
 		return true
 	}
 	return false
 }
 
+// Subnodes have a "reason" for the subnode relationship. This struct
+// represents the field subnode relationship, which is used for both struct
+// fields and also field-like things such as keys[*] and values[*] of maps
 type fieldSubnodeReason struct {
 	field string
 }
 
+// FieldSubnode returns the singular field subnode of `base`, with label `field`.
+// The type tp is a hint for the type to apply to the new node.
 func (g *EscapeGraph) FieldSubnode(base *Node, field string, tp types.Type) *Node {
-	// Canonicalize the type, so that we don't get the same field twice.
-	// This is necessary because we use the type as a key into the subnode map.
-	// Ideally, we would only key on the field name, and thus the types would only
-	// be advisory, rather than essential
-	if tp != nil {
-		tp = tp.Underlying()
-	}
 	if subnodes, ok := g.nodes.globalNodes.subnodes[base]; ok {
 		if nodeData, ok := subnodes[fieldSubnodeReason{field}]; ok {
 			g.AddEdge(base, nodeData.node, true)
 			return nodeData.node
 		}
-		f := g.nodes.FieldNode(base, field, tp)
+		f := g.nodes.NewNode(base.kind, field, tp)
 		subnodes[fieldSubnodeReason{field}] = struct {
 			node *Node
 			data any
@@ -399,23 +396,28 @@ func (g *EscapeGraph) FieldSubnode(base *Node, field string, tp types.Type) *Nod
 		g.AddEdge(base, f, true)
 		return f
 	}
-	f := g.nodes.FieldNode(base, field, tp)
+	f := g.nodes.NewNode(base.kind, field, tp)
 	g.nodes.globalNodes.subnodes[base] = map[any]nodeWithData{fieldSubnodeReason{field}: {f, tp}}
 	g.nodes.globalNodes.parent[f] = base
 	g.AddEdge(base, f, true)
 	return f
 }
 
+// IsSubnodeEdge returns whether base and n have a subnode relationship, from base to n.
+// There may also be other edges between these two nodes.
 func (g *EscapeGraph) IsSubnodeEdge(base, n *Node) bool {
 	p, ok := g.nodes.globalNodes.parent[n]
 	return ok && p == base
 }
 
+// IsSubnode returns true if n is a subnode of some other node.
 func (g *EscapeGraph) IsSubnode(n *Node) bool {
 	_, ok := g.nodes.globalNodes.parent[n]
 	return ok
 }
 
+// AnalogousSubnode returns the subnode of base that has the same relationship with base that
+// subnode has with its parent. Typically used to copy fields
 func (g *EscapeGraph) AnalogousSubnode(base *Node, subnode *Node) *Node {
 	// TODO make this work for all reasons, not just fields
 	for reason, nodeData := range g.nodes.globalNodes.subnodes[g.nodes.globalNodes.parent[subnode]] {
@@ -446,20 +448,23 @@ func (g *EscapeGraph) computeEdgeClosure(a, b *Node) {
 	}
 }
 
-func (g *EscapeGraph) JoinNodeStatus(a *Node, s EscapeStatus) {
-	if s > g.status[a] {
-		g.status[a] = s
+// MergeNodeStatus sets the status of n to at least s. Doesn't modify the status if the current
+// status is greater equal to s. Modifies g.
+func (g *EscapeGraph) MergeNodeStatus(n *Node, s EscapeStatus) {
+	if s > g.status[n] {
+		g.status[n] = s
 	} else {
 		return
 	}
-	for n := range g.Pointees(a) {
-		g.computeEdgeClosure(a, n)
+	for pointee := range g.Pointees(n) {
+		g.computeEdgeClosure(n, pointee)
 	}
 }
 
-// Applies the weak-assignment operation `dest = src`. Basically, ensures that
-// dest points to whatever src points to. Weak here means that it does not erase
-// any existing edges from dest
+// WeakAssign applies the weak-assignment operation `dest = src`. Basically, ensures that dest
+// points to whatever src points to. Weak here means that it does not erase any existing edges from
+// dest. Handles subnodes recursively, so it works for structure types, but does not generate load
+// nodes. See copyStruct.
 func (g *EscapeGraph) WeakAssign(dest *Node, src *Node) {
 	g.AddNode(dest)
 	for _, e := range g.DerefEdges(src) {
@@ -472,7 +477,7 @@ func (g *EscapeGraph) WeakAssign(dest *Node, src *Node) {
 	}
 }
 
-// Load applies the load operation `valNode = *addrNode[.field]` and modifies g.
+// LoadField applies the load operation `valNode = *addrNode[.field]` and modifies g.
 // This is a generalized operation: it also applies to reading the specified field from slices, maps, globals, etc.
 // If field is empty (""), then dereference the object itself, otherwise dereference only the specified field.
 // generateLoadNode is called to lazily create a node if the load can happen against an
@@ -514,9 +519,9 @@ func (g *EscapeGraph) LoadField(valNode *Node, addrNode *Node, generateLoadNode 
 	// if we only have e.g. instrType.X represented by a local variable (which will never be external).
 }
 
-// Stores the pointer-like value valNode into the field of object(s) pointed to by addrNode
-// Generalizes to include map updates (m[k] = v), channel sends, and other operations that need to write
-// to a specific "field" of the pointees of addr. If the field is empt (""), writes to the object itself.
+// StoreField applies the effect of storing the pointer-like value valNode into the field of object(s) pointed to by addrNode. Generalizes
+// to include map updates (m[k] = v), channel sends, and other operations that need to write to a specific "field" of the pointees of addr.
+// If the field is empty (""), writes to the object itself.
 func (g *EscapeGraph) StoreField(addrNode, valNode *Node, field string, tp types.Type) {
 	// Store the value into all the possible aliases of *addr
 	for _, edge := range g.DerefEdges(addrNode) {
@@ -531,21 +536,20 @@ func (g *EscapeGraph) StoreField(addrNode, valNode *Node, field string, tp types
 	}
 }
 
-// Merge computes the union of this graph with another, used at e.g. the join-points of a dataflow graph.
-// Modifies g in-place.
+// Merge computes the union of this graph with another, used at e.g. the join-points of a dataflow graph. Modifies g in-place.
 func (g *EscapeGraph) Merge(h *EscapeGraph) {
 	for _, e := range h.Edges(nil, nil, true, true) {
 		g.AddEdge(e.src, e.dest, e.isInternal)
 	}
 	for node, s := range h.status {
-		g.JoinNodeStatus(node, s)
+		g.MergeNodeStatus(node, s)
 	}
 }
 
-// Computes the result of splicing in the summary (callee) of the callee's graph.
-// args are the nodes corresponding to the caller's actual parameters at the callsite (nil if not pointer-like)
-// rets are the nodes corresponding to the caller values to assign the results to (nil if not pointer-like)
-// callee is the summary of the called function.
+// Call computes the result of splicing in the summary (callee) of the callee's graph. args are the
+// nodes corresponding to the caller's actual parameters at the callsite (nil if not pointer-like).
+// rets are the nodes corresponding to the caller values to assign the results to (nil if not
+// pointer-like). callee is the summary of the called function.
 //
 //gocyclo:ignore
 func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Node, callee *EscapeGraph) {
@@ -752,116 +756,24 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 		// perspective. This means that we propagate "leaked" along u edges but not "escaped."
 		if callee.status[base] == Leaked {
 			if g.status[rep] < Leaked {
-				g.JoinNodeStatus(rep, Leaked)
+				g.MergeNodeStatus(rep, Leaked)
 			}
 		}
 	}
 }
 
-// CallUnknown Computes the result of calling an unknown function.
-// An unknown function has no bound on its allowed semantics. This means that the
-// arguments are assumed to leak, and the return value is treated similarly to a
-// load node, except it can never be resolved with arguments like loads can be.
+// CallUnknown computes the result of calling an unknown function. An unknown function has no bound
+// on its allowed semantics. This means that the arguments are assumed to leak, and the return value
+// is treated similarly to a load node, except it can never be resolved with arguments like loads
+// can be.
 func (g *EscapeGraph) CallUnknown(args []*Node, rets []*Node) {
 	for _, arg := range args {
 		for n := range g.Pointees(arg) {
-			g.JoinNodeStatus(n, Leaked)
+			g.MergeNodeStatus(n, Leaked)
 		}
 	}
 	for _, ret := range rets {
 		g.AddEdge(ret, g.nodes.UnknownReturnNode(), true)
-	}
-}
-
-// CallBuiltin computes the result of calling an builtin. The name (len, copy, etc)
-// and the effective type can be retrieved from the ssa.Builtin. An unknown function
-// has no bound on its allow semantics. This means that the arguments are assumed
-// to leak, and the return value is treated similarly to a load node, except it can
-// never be resolved with arguments like loads can be.
-//
-//gocyclo:ignore
-func (g *EscapeGraph) CallBuiltin(instr ssa.Instruction, builtin *ssa.Builtin, args []*Node, rets []*Node) error {
-	switch builtin.Name() {
-	case "len": // No-op, as does not leak and the return value is not pointer-like
-		return nil
-	case "cap": // No-op, as does not leak and the return value is not pointer-like
-		return nil
-	case "close": // No-op, as does not leak and the return value is not pointer-like
-		return nil
-	case "complex": // No-op, as does not leak and the return value is not pointer-like
-		return nil
-	case "real": // No-op, as does not leak and the return value is not pointer-like
-		return nil
-	case "imag": // No-op, as does not leak and the return value is not pointer-like
-		return nil
-	case "print": // No-op, as does not leak and no return value
-		return nil
-	case "println": // No-op, as does not leak and no return value
-		return nil
-	case "recover": // We don't track panic values, so treat like an unknown call
-		g.CallUnknown(args, rets)
-		return nil
-	case "ssa:wrapnilchk": // treat as identity fucntion
-		g.WeakAssign(rets[0], args[0])
-		return nil
-	case "delete": // treat as noop, as we don't actually erase information
-		return nil
-	case "append":
-		// ret = append(slice, x)
-		// slice is a slice, and so is x.
-		// Basically, we copy all the outedges from *x to *slice
-		// Then we copy all the edges from *slice to a new allocation node, which
-		// represents the case where there wasn't enough space (we don't track enough
-		// information to distinguish these possibilities ourselves.)
-		if len(args) != 2 {
-			panic("Append must have exactly 2 args")
-		}
-		sliceArg, xArg, ret := args[0], args[1], rets[0]
-		sig := builtin.Type().(*types.Signature)
-		sliceType := sig.Results().At(0).Type().Underlying().(*types.Slice)
-		// First, simulate the write to the array
-		for baseArray := range g.Pointees(sliceArg) {
-			for xArray := range g.Pointees(xArg) {
-				g.WeakAssign(baseArray, xArray)
-			}
-			// The return value can be one of the existing backing arrays
-			g.AddEdge(ret, baseArray, true)
-		}
-		// Then, simulate an allocation. This happens second so we pick up the newly added edges
-		allocArray := g.nodes.AllocNode(instr, types.NewArray(sliceType.Elem(), -1))
-		for baseArray := range g.Pointees(sliceArg) {
-			g.WeakAssign(allocArray, baseArray) // TODO: use a field representing the contents?
-		}
-		g.AddEdge(ret, allocArray, true)
-		return nil
-	case "copy":
-		// copy(dest, src)
-		// Both arguments are slices: copy all the outedges from *src to *dest
-		// Ignore the return value
-		// Special case: src is a string. Do nothing in that case, as we don't track
-		// characters. This is handled by not having any edges from a nil srcArg.
-		if len(args) != 2 {
-			panic("Copy must have exactly 2 args")
-		}
-		destArg, srcArg := args[0], args[1]
-		// sig := builtin.Type().(*types.Signature)
-		// sliceType := sig.Params().At(0).Type().Underlying().(*types.Slice)
-		// Simulate the write to the array
-		for destArray := range g.Pointees(destArg) {
-			for srcArray := range g.Pointees(srcArg) {
-				g.WeakAssign(destArray, srcArray)
-			}
-		}
-		return nil
-	case "String": // converts something to a string, which isn't tracked
-		return nil
-	case "SliceData", "Slice": // Both convert a slice to/from its underlying array
-		g.WeakAssign(rets[0], args[0])
-		return nil
-	case "StringData", "Add":
-		return fmt.Errorf("unsafe operation %v\n", builtin.Name())
-	default:
-		return fmt.Errorf("unhandled: %v\n", builtin.Name())
 	}
 }
 
@@ -954,6 +866,9 @@ type NodeGroup struct {
 	globalNodes   *globalNodeGroup
 }
 
+// NewNodeGroup returns a fresh node group that is tied to the underlying global group.
+// Node groups with the same global node group may interact by sharing foreign nodes, but
+// interactions across globalNodeGroups leads to unspecified behavior.
 func NewNodeGroup(globalNodes *globalNodeGroup) *NodeGroup {
 	return &NodeGroup{
 		make(map[ssa.Value]*Node),
@@ -992,7 +907,7 @@ func (g *NodeGroup) AllocNode(instr ssa.Instruction, t types.Type) *Node {
 	return node
 }
 
-// Value node returns a node that represents a ssa.Value. Most such values are virtual registers created
+// ValueNode returns a node that represents a ssa.Value. Most such values are virtual registers created
 // by instructions, e.g. the t1 in `t1 = *t0`.
 func (g *NodeGroup) ValueNode(variable ssa.Value) *Node {
 	// a ssa.Value is one of:
@@ -1035,18 +950,16 @@ func (g *NodeGroup) ValueNode(variable ssa.Value) *Node {
 	return node
 }
 
-// ReturnNode returns the return node of a function, which represents all the
-// implicit or explicit variables that capture the returned values. There is
-// one node per function.
-func (g *NodeGroup) FieldNode(base *Node, field string, tp types.Type) *Node {
-	node := &Node{base.kind, g.globalNodes.getNewID(), field}
+// NewNode returns an entirely new node with the defined fields, and the given type hint
+func (g *NodeGroup) NewNode(kind NodeKind, debug string, tp types.Type) *Node {
+	node := &Node{kind, g.globalNodes.getNewID(), debug}
 	g.globalNodes.types[node] = tp
 	return node
 }
 
-// ReturnNode returns the return node of a function, which represents all the
+// ReturnNode returns the indexed return node of a function, which represents all the
 // implicit or explicit variables that capture the returned values. There is
-// one node per function.
+// one node per function return slot.
 func (g *NodeGroup) ReturnNode(i int, t types.Type) *Node {
 	if node, ok := g.returnNodes[i]; ok {
 		if t != nil && g.globalNodes.types[node] == nil {
