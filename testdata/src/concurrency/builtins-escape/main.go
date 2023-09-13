@@ -80,6 +80,7 @@ func main() {
 	testForRange()
 	testTypeCorrectness()
 	testGoReceiver()
+	testMultiChannelSelect()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -770,4 +771,26 @@ func testGoReceiver() *Node {
 	}()
 	assertAllLeaked(x.next) // It should not be local
 	return x
+}
+
+func multiSelect(c1 chan *Node, c2 chan *nodeHolder) (*Node, *nodeHolder) {
+	select {
+	case x := <-c1:
+		return x, nil
+	case nh := <-c2:
+		return nil, nh
+	}
+	return nil, nil
+}
+func testMultiChannelSelect() {
+	c1 := make(chan *Node, 1)
+	x := &Node{}
+	c1 <- x
+	c2 := make(chan *nodeHolder, 1)
+	nh := &nodeHolder{}
+	c2 <- nh
+
+	xp, nhp := multiSelect(c1, c2)
+	assertSameAliases(x, xp)
+	assertSameAliases(nh, nhp)
 }

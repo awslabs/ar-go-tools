@@ -115,6 +115,12 @@ type mapKeyValueLoad struct {
 	access ssa.Instruction
 	field  string
 }
+type selectRecvLoad struct {
+	selectInstr ssa.Instruction
+	recvIndex   int
+}
+
+var channelContentsField = "contents"
 
 // CopyStruct copies the fields of src onto dest, while adding load nodes for nillable types.
 // The instr parameter is used to key the load nodes to ensure a finite number are created, and
@@ -234,7 +240,7 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 				gen := func() *Node {
 					return nodes.LoadNode(instr, instr, NillableDerefType(contentsType))
 				}
-				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), gen, "contents", contentsType)
+				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), gen, channelContentsField, contentsType)
 			} else if IsEscapeTracked(instr.Type()) {
 				ea.prog.logger.Warnf("Channel of struct %s unhandled", instr.Type().String())
 			}
@@ -247,7 +253,7 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		if lang.IsNillableType(instr.X.Type()) {
 			// Send on channel
 			contentsType := ChannelContentsType(instr.X.Type().Underlying())
-			g.StoreField(nodes.ValueNode(instr.Chan), nodes.ValueNode(instr.X), "contents", contentsType)
+			g.StoreField(nodes.ValueNode(instr.Chan), nodes.ValueNode(instr.X), channelContentsField, contentsType)
 		}
 		return
 	case *ssa.Slice:
@@ -277,30 +283,28 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 	case *ssa.If:
 		return
 	case *ssa.Select:
-		recvIndex := 2 // for tuple sensitivity, this will be the index that should be read in the result tuple.
+		// The result tuple is (index, recvOk, ...recvs), so we need to start the index at 2 and
+		// only count receives when assigning indices.
+		recvIndex := 2
 		for _, st := range instr.States {
 			if st.Dir == types.RecvOnly {
 				if IsEscapeTracked(ChannelContentsType(st.Chan.Type())) {
-					// TODO: This should be one load node per branch, so that different types
-					// get different nodes. This is only important if we are tuple sensitive and
-					// make the graph typed. For now, the different cases can safely share nodes,
-					// which is imprecise but sound.
 					contentsType := ChannelContentsType(st.Chan.Type())
 					gen := func() *Node {
-						return nodes.LoadNode(instr, instr, contentsType)
+						return nodes.LoadNode(selectRecvLoad{instr, recvIndex}, instr, contentsType)
 					}
 					tupleNode := nodes.ValueNode(instr)
 					dest := g.FieldSubnode(tupleNode, fmt.Sprintf("#%d", recvIndex), contentsType)
-					g.LoadField(dest, nodes.ValueNode(st.Chan), gen, "contents", contentsType)
+					g.LoadField(dest, nodes.ValueNode(st.Chan), gen, channelContentsField, contentsType)
 				}
 				recvIndex += 1
 			} else if st.Dir == types.SendOnly {
 				if IsEscapeTracked(st.Send.Type()) {
 					// Send on channel is a write to the contents "field" of the channel
-					g.StoreField(nodes.ValueNode(st.Chan), nodes.ValueNode(st.Send), "contents", st.Send.Type())
+					g.StoreField(nodes.ValueNode(st.Chan), nodes.ValueNode(st.Send), channelContentsField, st.Send.Type())
 				}
 			} else {
-				panic("Unexpected select type")
+				panic("Unexpected select send/recv type")
 			}
 		}
 		return
