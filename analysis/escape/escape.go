@@ -120,7 +120,10 @@ type selectRecvLoad struct {
 	recvIndex   int
 }
 
+// Constants for pseudo-fields of built-in types
 var channelContentsField = "contents"
+var mapKeysField = "keys[*]"
+var mapValuesField = "values[*]"
 
 // CopyStruct copies the fields of src onto dest, while adding load nodes for nillable types.
 // The instr parameter is used to key the load nodes to ensure a finite number are created, and
@@ -398,15 +401,15 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 	case *ssa.Lookup:
 		if IsEscapeTracked(instr.Type().Underlying()) {
 			gen := func() *Node { return nodes.LoadNode(instr, instr, instr.Type()) }
-			g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), gen, "values[*]", instr.Type())
+			g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), gen, mapValuesField, instr.Type())
 		}
 		return
 	case *ssa.MapUpdate:
 		if IsEscapeTracked(instr.Value.Type()) {
-			g.StoreField(nodes.ValueNode(instr.Map), nodes.ValueNode(instr.Value), "values[*]", instr.Value.Type())
+			g.StoreField(nodes.ValueNode(instr.Map), nodes.ValueNode(instr.Value), mapValuesField, instr.Value.Type())
 		}
 		if IsEscapeTracked(instr.Key.Type()) {
-			g.StoreField(nodes.ValueNode(instr.Map), nodes.ValueNode(instr.Key), "keys[*]", instr.Key.Type())
+			g.StoreField(nodes.ValueNode(instr.Map), nodes.ValueNode(instr.Key), mapKeysField, instr.Key.Type())
 		}
 		return
 	case *ssa.Next:
@@ -417,15 +420,15 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 			valueType := instr.Type().Underlying().(*types.Tuple).At(2).Type()
 			if IsEscapeTracked(keyType) {
 				gen := func() *Node {
-					return nodes.LoadNode(mapKeyValueLoad{instr, "keys[*]"}, instr, NillableDerefType(keyType))
+					return nodes.LoadNode(mapKeyValueLoad{instr, mapKeysField}, instr, NillableDerefType(keyType))
 				}
-				g.LoadField(g.FieldSubnode(tupleNode, "#1", keyType), nodes.ValueNode(instr.Iter), gen, "keys[*]", keyType)
+				g.LoadField(g.FieldSubnode(tupleNode, "#1", keyType), nodes.ValueNode(instr.Iter), gen, mapKeysField, keyType)
 			}
 			if IsEscapeTracked(valueType) {
 				gen := func() *Node {
-					return nodes.LoadNode(mapKeyValueLoad{instr, "values[*]"}, instr, NillableDerefType(valueType))
+					return nodes.LoadNode(mapKeyValueLoad{instr, mapValuesField}, instr, NillableDerefType(valueType))
 				}
-				g.LoadField(g.FieldSubnode(tupleNode, "#2", valueType), nodes.ValueNode(instr.Iter), gen, "values[*]", valueType)
+				g.LoadField(g.FieldSubnode(tupleNode, "#2", valueType), nodes.ValueNode(instr.Iter), gen, mapValuesField, valueType)
 			}
 		}
 		return
