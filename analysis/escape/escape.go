@@ -121,9 +121,9 @@ type selectRecvLoad struct {
 }
 
 // Constants for pseudo-fields of built-in types
-var channelContentsField = "contents"
-var mapKeysField = "keys[*]"
-var mapValuesField = "values[*]"
+const channelContentsField = "contents"
+const mapKeysField = "keys[*]"
+const mapValuesField = "values[*]"
 
 // CopyStruct copies the fields of src onto dest, while adding load nodes for nillable types.
 // The instr parameter is used to key the load nodes to ensure a finite number are created, and
@@ -951,7 +951,7 @@ func (ea *functionAnalysisState) addToBlockWorklist(block *ssa.BasicBlock) {
 // Impose an artifical maximum number of edges in a given graph. This is an unsound hack that
 // is just present so that we can gauge progress while developing the analysis.
 // TODO: remove this limit by making the analysis scale better
-var graphMaximumEdges = 10000
+const graphMaximumEdges = 10000
 
 // RunForwardIterative is an implementation of the convergence loop of the monotonic framework.
 // Each block is processed, and if it's result changes the successors are added.
