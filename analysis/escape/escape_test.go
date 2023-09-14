@@ -215,7 +215,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				}
 			}
 		}
-		ea.transferFunction(instr, g, false)
+		ea.transferFunction(instr, g)
 	}
 	return nil
 }

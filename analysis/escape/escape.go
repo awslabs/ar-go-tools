@@ -151,7 +151,7 @@ func (g *EscapeGraph) copyStruct(dest *Node, src *Node, instr ssa.Instruction, f
 // "Transfer function" is interpreted as in the monotone framework.
 //
 //gocyclo:ignore
-func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g *EscapeGraph, verbose bool) {
+func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g *EscapeGraph) {
 	// Switch on the instruction to handle each kind of instructions.
 	// Some instructions have sub-kinds depending on their arguments, or have alternate comma-ok forms.
 	// If an instruction is handled, return. Otherwise, fall through to the end of the function to print
@@ -345,14 +345,14 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 				ea.prog.logger.Warnf("Warning, escape analysis does not handle builtin: %s", err)
 			}
 		} else if callee := instr.Call.StaticCallee(); callee != nil {
-			ea.transferCallStaticCallee(instr, g, verbose, args, rets)
+			ea.transferCallStaticCallee(instr, g, args, rets)
 		} else if instr.Call.IsInvoke() {
 			// If no static callee, either we have an indirect call, e.g. t3(t4) or a method invocation,
 			// e.g. invoke t3.Method(t8, t13).
-			ea.transferCallInvoke(instr, g, verbose, args, rets)
+			ea.transferCallInvoke(instr, g, args, rets)
 		} else {
 			//  Indirect call callees can be closures, bound methods, regular named functions, or thunks.
-			ea.transferCallIndirect(instr, g, verbose, args, rets)
+			ea.transferCallIndirect(instr, g, args, rets)
 		}
 
 		return
@@ -510,14 +510,14 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 	}
 }
 
-func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g *EscapeGraph, verbose bool, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
 	// Handle calls where we know the callee
 	callee := instrType.Call.StaticCallee()
 	summary := ea.prog.summaries[callee]
 	if summary != nil {
 		// We can use the finalGraph pointer freely as it will never change after it is created
 		summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
-		if verbose {
+		if ea.prog.logger.LogsTrace() {
 			ea.prog.logger.Tracef("Call at %v: %v %v %v\n", instrType.Parent().Prog.Fset.Position(instrType.Pos()),
 				summary.function.String(), args, summary.finalGraph.nodes.formals)
 		}
@@ -535,11 +535,11 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 			}
 		}
 		g.Call(args, freeVars, rets, summary.finalGraph)
-		if verbose {
+		if ea.prog.logger.LogsTrace() {
 			ea.prog.logger.Tracef("After call:\n%v", g.Graphviz())
 		}
 	} else {
-		if verbose {
+		if ea.prog.logger.LogsTrace() {
 			ea.prog.logger.Tracef("Warning, %v is not a summarized function: treating as unknown call\n",
 				callee.Name())
 		}
@@ -559,7 +559,7 @@ type closureFreeVarLoad struct {
 }
 
 //gocyclo:ignore
-func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *EscapeGraph, verbose bool, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
 	// Handle indirect calls. The approach is the same for both indirect and invoke:
 	// Loop through all the different out-edges of the func value/receiver. If they are local, we
 	// know which MakeClosure/concrete type was used to create that node, so process the ssa.Function.
@@ -654,12 +654,12 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 			g.CallUnknown(args, rets)
 		}
 	}
-	if verbose {
+	if ea.prog.logger.LogsTrace() {
 		ea.prog.logger.Tracef("After indirect call:\n%v", g.Graphviz())
 	}
 }
 
-func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *EscapeGraph, verbose bool, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
 	// Find the methods that it could be, according to pointer analysis
 	// Invoke each with each possible receiver
 	// Note: unlike for indirect calls, we do the full cross product of all possible method implementations
@@ -903,7 +903,7 @@ func (ea *functionAnalysisState) ProcessBlock(bb *ssa.BasicBlock) (changed bool)
 		// Check the monotonicity of the transfer function.
 		if checkMonotonicityEveryInstruction {
 			pre := g.Clone()
-			ea.transferFunction(instr, g, ea.prog.verbose)
+			ea.transferFunction(instr, g)
 			post := g.Clone()
 			if pairs, ok := instructionMonoCheckData[instr]; ok {
 				for _, p := range pairs {
@@ -922,7 +922,7 @@ func (ea *functionAnalysisState) ProcessBlock(bb *ssa.BasicBlock) (changed bool)
 			}
 			instructionMonoCheckData[instr] = append(instructionMonoCheckData[instr], cachedGraphMonotonicity{pre, post})
 		} else {
-			ea.transferFunction(instr, g, ea.prog.verbose)
+			ea.transferFunction(instr, g)
 		}
 	}
 	if oldGraph, ok := ea.blockEnd[bb]; ok {
@@ -948,6 +948,11 @@ func (ea *functionAnalysisState) addToBlockWorklist(block *ssa.BasicBlock) {
 	}
 }
 
+// Impose an artifical maximum number of edges in a given graph. This is an unsound hack that
+// is just present so that we can gauge progress while developing the analysis.
+// TODO: remove this limit by making the analysis scale better
+var graphMaximumEdges = 10000
+
 // RunForwardIterative is an implementation of the convergence loop of the monotonic framework.
 // Each block is processed, and if it's result changes the successors are added.
 func (ea *functionAnalysisState) RunForwardIterative() error {
@@ -962,7 +967,7 @@ func (ea *functionAnalysisState) RunForwardIterative() error {
 		if g != nil {
 			l = len(g.Edges(nil, nil, true, true))
 		}
-		if l > 10000 {
+		if l > graphMaximumEdges {
 			return fmt.Errorf("Intermediate graph too large")
 		}
 		if ea.ProcessBlock(block) {
@@ -980,7 +985,6 @@ func EscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 	prog := &ProgramAnalysisState{
 		make(map[*ssa.Function]*functionAnalysisState),
 		newGlobalNodeGroup(),
-		false,
 		config.NewLogGroup(config.NewDefault()),
 		nil,
 	}
@@ -995,7 +999,6 @@ func EscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 type ProgramAnalysisState struct {
 	summaries   map[*ssa.Function]*functionAnalysisState
 	globalNodes *globalNodeGroup
-	verbose     bool
 	logger      *config.LogGroup
 	state       *dataflow.AnalyzerState
 }
@@ -1075,7 +1078,6 @@ func handlePresummarizedFunction(f *ssa.Function, prog *ProgramAnalysisState) {
 func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
-		verbose:     state.Config.Verbose(),
 		globalNodes: newGlobalNodeGroup(),
 		logger:      state.Logger,
 		state:       state,
@@ -1095,7 +1097,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 			handlePresummarizedFunction(f, prog)
 		}
 	}
-	if prog.verbose {
+	if prog.logger.LogsTrace() {
 		prog.logger.Tracef("Have a total of %d nodes", len(nodes))
 	}
 	succ := func(n *callgraph.Node) []*callgraph.Node {
@@ -1132,7 +1134,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 
-		prog.logger.Tracef("Analyzing %s\n", summary.function.String())
+		prog.logger.Infof("Computing escape summary for %s\n", summary.function.String())
 		changed := resummarize(summary)
 		if !changed {
 			continue
@@ -1156,7 +1158,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		}
 	}
 	// Print out the final graphs for debugging purposes
-	if prog.verbose {
+	if prog.logger.LogsDebug() {
 		for f := range state.PointerAnalysis.CallGraph.Nodes {
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
@@ -1288,7 +1290,7 @@ func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock
 			// We need to copy g because it is about to be clobbered by the transfer function
 			callsites[cl] = escapeCallsiteInfoImpl{g.Clone(), cl, ea.nodes, ea.prog}
 		}
-		ea.transferFunction(instr, g, false)
+		ea.transferFunction(instr, g)
 	}
 	return nil
 }
@@ -1316,7 +1318,7 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 	for _, block := range ea.function.Blocks {
 		basicBlockInstructionLocality(inContextEA, block, locality, callsites)
 	}
-	if ea.prog.verbose {
+	if ea.prog.logger.LogsTrace() {
 		ea.prog.logger.Tracef("Final graph after computing locality for %s is\n%s\n", ea.function.Name(), inContextEA.finalGraph.Graphviz())
 	}
 	return locality, callsites
