@@ -71,6 +71,16 @@ func main() {
 	testMultipleBoundVars()
 	testSiblingClosure()
 	testInterfaceDirectStruct()
+	testFieldSensitivity()
+	testTupleSensitivity()
+	testSlicing(23)
+	testParameterPointerToField()
+	testStructSelfPointerToField()
+	testNestedStruct()
+	testForRange()
+	testTypeCorrectness()
+	testGoReceiver()
+	testMultiChannelSelect()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -575,6 +585,10 @@ func testSiblingClosure() {
 	assertAllLeaked(a)
 }
 
+type DoInterface interface {
+	thingMethod()
+}
+
 type thingDoer struct {
 	a *Node
 }
@@ -583,11 +597,20 @@ func (t thingDoer) thingMethod() {
 	globalVar = t.a
 }
 
-type DoInterface interface {
-	thingMethod()
+func doThing(d DoInterface) {
+	d.thingMethod()
 }
 
-func doThing(d DoInterface) {
+// The same as above, but for a pointer receiver
+type thingDoer2 struct {
+	a *Node
+}
+
+func (t *thingDoer2) thingMethod() {
+	globalVar = t.a
+}
+
+func doThing2(d DoInterface) {
 	d.thingMethod()
 }
 
@@ -596,4 +619,178 @@ func testInterfaceDirectStruct() {
 	thing := thingDoer{a}
 	doThing(thing)
 	assertAllLeaked(a)
+	b := &Node{}
+	thing2 := &thingDoer2{b}
+	doThing2(thing2)
+	assertAllLeaked(b)
+}
+
+type MultiField struct {
+	a *Node
+	b *int
+	c *Node
+}
+
+func testFieldSensitivity() {
+	mf := &MultiField{}
+	mf.a = &Node{}
+	assertSameAliases(mf.b, nil)
+}
+
+func swap(a, b *Node) (x, y *Node) {
+	return b, a
+}
+func testTupleSensitivity() {
+	a := &Node{}
+	b := &Node{}
+	x, y := swap(a, b)
+	assertSameAliases(a, y)
+	assertSameAliases(b, x)
+}
+
+func testSlicing(nzone int) ([]byte, []byte) {
+	b := make([]byte, nzone)
+	c := make([]byte, 5)
+	x := &b
+	_ = c
+	return *x, []byte{2}
+}
+
+type nodeHolder struct {
+	a, b *Node
+}
+
+func writeToSomeFieldViaPointer(fieldPointer **Node, value *Node) {
+	*fieldPointer = value
+}
+func testParameterPointerToField() {
+	x := &Node{}
+	y := &Node{}
+	n := &nodeHolder{nil, nil}
+	n.b = y
+	writeToSomeFieldViaPointer(&n.a, x)
+	assertSameAliases(x, n.a)
+	assertSameAliases(y, n.b)
+}
+
+type selfPointerStruct struct {
+	n              *Node
+	nodeDblPointer **Node
+}
+
+func newSelfReference() *selfPointerStruct {
+	x := &selfPointerStruct{}
+	x.nodeDblPointer = &x.n
+	return x
+}
+func testStructSelfPointerToField() {
+	x := newSelfReference()
+	y := &Node{}
+	writeToSomeFieldViaPointer(x.nodeDblPointer, y)
+	// check that the write went to x.n
+	assertSameAliases(x.n, y)
+}
+
+type nestedStruct struct {
+	a *Node
+	b nodeHolder
+}
+
+func returnNestedStruct(a, ba, bb *Node) nestedStruct {
+	return nestedStruct{a, nodeHolder{ba, bb}}
+}
+func getFieldA(n nestedStruct) *Node {
+	return n.a
+}
+func getFieldBB(n nestedStruct) *Node {
+	return n.b.b
+}
+func testNestedStruct() {
+	x, y, z := &Node{}, &Node{}, &Node{}
+	n := returnNestedStruct(x, y, z)
+	assertSameAliases(n.a, x)
+	assertSameAliases(n.b.a, y)
+	assertSameAliases(n.b.b, z)
+	n2 := nestedStruct{x, nodeHolder{y, z}}
+	assertSameAliases(getFieldA(n2), x)
+	assertSameAliases(getFieldBB(n2), z)
+}
+
+func mapKV(m map[*Node]*Node) (*Node, *Node) {
+	for k, v := range m {
+		return k, v
+	}
+	return nil, nil
+}
+func mapKVintValue(m map[*Node]int) (*Node, int) {
+	for k, v := range m {
+		return k, v
+	}
+	return nil, 0
+}
+
+func testForRange() {
+	x := &Node{}
+	y := &Node{}
+
+	m := map[*Node]*Node{x: y}
+	z, w := mapKV(m)
+	assertSameAliases(x, z)
+	assertSameAliases(y, w)
+
+	m2 := map[*Node]int{}
+	x = &Node{}
+	m2[x] = 4
+	for x := range m2 {
+		_ = x
+	}
+	z2, _ := mapKVintValue(m2)
+	assertSameAliases(x, z2)
+}
+
+func testTypeCorrectness() {
+	x := make([]int, 5)
+	var p *int = &x[2]
+	*p = 4
+
+	in := "asdkfja;"
+	out := []byte(in)
+	for i, c := range out {
+		if 'A' <= c && c <= 'Z' {
+			out[i] += 'a' - 'A'
+		}
+	}
+	z := string(out)
+	_ = z
+}
+
+func testGoReceiver() *Node {
+	x := &Node{}
+	go func() {
+		x.next = &Node{}
+	}()
+	assertAllLeaked(x.next) // It should not be local
+	return x
+}
+
+func multiSelect(c1 chan *Node, c2 chan *nodeHolder) (*Node, *nodeHolder) {
+	select {
+	case x := <-c1:
+		return x, nil
+	case nh := <-c2:
+		return nil, nh
+	}
+	return nil, nil
+}
+func testMultiChannelSelect() {
+	c1 := make(chan *Node, 1)
+	x := &Node{}
+	c1 <- x
+	c2 := make(chan *nodeHolder, 1)
+	nh := &nodeHolder{}
+	c2 <- nh
+
+	xp, nhp := multiSelect(c1, c2)
+	assertSameAliases(x, xp)
+	assertSameAliases(nh, nhp)
 }

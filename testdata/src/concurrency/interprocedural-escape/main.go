@@ -51,6 +51,7 @@ func main() {
 	testIdent()
 	testExternal()
 	testChain()
+	testStickyErrorReader()
 }
 
 // Basic test of the assertSameAliases function
@@ -211,4 +212,39 @@ func testChain() {
 	chainExtendWrapper(a, b)
 	globalVar = a
 	assertAllLeaked(b)
+}
+
+type Reader interface {
+	Read(p []byte) (n int, err error)
+}
+
+type stickyErrorReader struct {
+	r   Reader
+	err error
+}
+
+type simpleReader struct {
+	data []byte
+}
+
+func (r *stickyErrorReader) Read(p []byte) (n int, _ error) {
+	// if r.err != nil {
+	// 	return 0, r.err
+	// }
+	n, r.err = r.r.Read(p)
+	return n, r.err
+}
+func (r *simpleReader) Read(p []byte) (n int, _ error) {
+	return copy(p, r.data), nil
+}
+
+func testStickyErrorReader() {
+	baseReader := &simpleReader{([]byte("alsdfja;s'd"))}
+	x := len(baseReader.data)
+	var r Reader = nil // &stickyErrorReader{baseReader, nil}
+	for i := 0; i < x; i++ {
+		r = &stickyErrorReader{r, nil}
+	}
+	p := []byte{0, 0, 0, 0}
+	r.Read(p)
 }

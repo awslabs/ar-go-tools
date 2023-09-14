@@ -42,7 +42,7 @@ import (
 // exactly one match
 func findSingleNode(t *testing.T, g *EscapeGraph, name string) *Node {
 	var node *Node
-	for n := range g.edges {
+	for n := range g.status {
 		if strings.HasPrefix(n.debugInfo, name) {
 			if node != nil {
 				t.Errorf("Duplicate node found for %s\n", name)
@@ -60,12 +60,9 @@ func findSingleNode(t *testing.T, g *EscapeGraph, name string) *Node {
 
 // Ensure there is an edge from a to b
 func assertEdge(t *testing.T, g *EscapeGraph, a, b *Node) {
-	if succs, ok := g.edges[a]; ok {
-		if _, ok := succs[b]; ok {
-			return
-		}
+	if len(g.Edges(a, b, true, true)) == 0 {
+		t.Errorf("Expected edge between %v -> %v:\n%v\n", a, b, g.Graphviz())
 	}
-	t.Errorf("Expected edge between %v -> %v:\n%v\n", a, b, g.Graphviz())
 }
 
 // Check the escape results. The expected graph shapes are specific to a single input file, despite the arguments.
@@ -81,63 +78,67 @@ func TestSimpleEscape(t *testing.T) {
 	program, _ := analysistest.LoadTest(t, ".", []string{})
 	result, _ := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
 
-	if len(result.CallGraph.Nodes) < 7 {
-		t.Fatalf("Expected at least 7 nodes in the callgraph")
+	getGraph := func(f string) *EscapeGraph {
+		fn := findFunction(program, f)
+		cgNode := result.CallGraph.Nodes[fn]
+		return EscapeSummary(cgNode.Func)
 	}
-	for _, cgNode := range result.CallGraph.Nodes {
-		// Compute the summary of the node
-		graph := EscapeSummary(cgNode.Func)
-		// A general check to make sure that all global nodes are escaped.
-		for n := range graph.edges {
-			if strings.HasPrefix(n.debugInfo, "gbl:") && graph.status[n] != Leaked {
-				t.Errorf("Global should have escaped %v\n", n)
+	t.Run("consume", func(t *testing.T) {
+		graph := getGraph("consume")
+		x := findSingleNode(t, graph, "gbl:globalS")
+		y := findSingleNode(t, graph, "*s S")
+		assertEdge(t, graph, x, y)
+	})
+	t.Run("leakThroughGlobal", func(t *testing.T) {
+		graph := getGraph("leakThroughGlobal")
+		x := findSingleNode(t, graph, "gbl:globalS")
+		y := findSingleNode(t, graph, "new S")
+		assertEdge(t, graph, x, y)
+	})
+	t.Run("testGlobalLoadStore", func(t *testing.T) {
+		graph := getGraph("testGlobalLoadStore")
+		g := findSingleNode(t, graph, "gbl:globalS")
+		s := findSingleNode(t, graph, "new S")
+		b := findSingleNode(t, graph, "new B")
+		l := findSingleNode(t, graph, "S load")
+		r := findSingleNode(t, graph, "return")
+		assertEdge(t, graph, g, s)
+		assertEdge(t, graph, g, l)
+		assertEdge(t, graph, graph.FieldSubnode(s, "Bptr", nil), b)
+		assertEdge(t, graph, r, s)
+		assertEdge(t, graph, r, l)
+	})
+	t.Run("testMapValue", func(t *testing.T) {
+		graph := getGraph("testMapValue")
+		x := findSingleNode(t, graph, "return")
+		y := findSingleNode(t, graph, "new S")
+		assertEdge(t, graph, x, y)
+	})
+	t.Run("testMapKey", func(t *testing.T) {
+		graph := getGraph("testMapKey")
+		x := findSingleNode(t, graph, "return")
+		y := findSingleNode(t, graph, "new S")
+		assertEdge(t, graph, x, y)
+	})
+	t.Run("testFieldOfGlobal", func(t *testing.T) {
+		graph := getGraph("testFieldOfGlobal")
+		x := findSingleNode(t, graph, "gbl:GG")
+		y := findSingleNode(t, graph, "new B")
+		x = graph.FieldSubnode(x, "Bptr", nil)
+		assertEdge(t, graph, x, y)
+	})
+	t.Run("testSlice", func(t *testing.T) {
+		graph := getGraph("testSlice")
+		x := findSingleNode(t, graph, "return")
+		if len(graph.Pointees(x)) == 0 {
+			t.Errorf("Slice should return some object")
+		}
+		for y := range graph.Pointees(x) {
+			if !strings.HasPrefix(y.debugInfo, "new S") {
+				t.Errorf("Slice should only return S's")
 			}
 		}
-		// Check properties of each test function.
-		switch cgNode.Func.String() {
-		case "command-line-arguments.consume":
-			x := findSingleNode(t, graph, "gbl:globalS")
-			y := findSingleNode(t, graph, "pointee of s")
-			assertEdge(t, graph, x, y)
-		case "command-line-arguments.leakThroughGlobal":
-			x := findSingleNode(t, graph, "gbl:globalS")
-			y := findSingleNode(t, graph, "new S")
-			assertEdge(t, graph, x, y)
-		case "command-line-arguments.testGlobalLoadStore":
-			g := findSingleNode(t, graph, "gbl:globalS")
-			s := findSingleNode(t, graph, "new S")
-			b := findSingleNode(t, graph, "new B")
-			l := findSingleNode(t, graph, "*S load")
-			r := findSingleNode(t, graph, "return")
-			assertEdge(t, graph, g, s)
-			assertEdge(t, graph, g, l)
-			assertEdge(t, graph, s, b)
-			assertEdge(t, graph, r, s)
-			assertEdge(t, graph, r, l)
-		case "command-line-arguments.testMapValue":
-			x := findSingleNode(t, graph, "return")
-			y := findSingleNode(t, graph, "new S")
-			assertEdge(t, graph, x, y)
-		case "command-line-arguments.testMapKey":
-			x := findSingleNode(t, graph, "return")
-			y := findSingleNode(t, graph, "new S")
-			assertEdge(t, graph, x, y)
-		case "command-line-arguments.testFieldOfGlobal":
-			x := findSingleNode(t, graph, "gbl:GG")
-			y := findSingleNode(t, graph, "new B")
-			assertEdge(t, graph, x, y)
-		case "command-line-arguments.testSlice":
-			x := findSingleNode(t, graph, "return")
-			if len(graph.edges[x]) == 0 {
-				t.Errorf("Slice should return some object")
-			}
-			for y := range graph.edges[x] {
-				if !strings.HasPrefix(y.debugInfo, "new S") {
-					t.Errorf("Slice should only return S's")
-				}
-			}
-		}
-	}
+	})
 }
 
 // Looks up a function in the main package
@@ -185,11 +186,10 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 			}
 			a := ea.nodes.ValueNode(args[0])
 			b := ea.nodes.ValueNode(args[1])
-			//fmt.Printf("Checking call %v %v\n%v\n", a, b, g.Graphviz(ea.nodes))
-			if !reflect.DeepEqual(g.edges[a], g.edges[b]) {
+			if !reflect.DeepEqual(g.Pointees(a), g.Pointees(b)) {
 				if !(len(g.edges[a]) == 0 && len(g.edges[b]) == 0) {
 					// TODO: figure out why deepequal is returning false for two empty maps
-					return fmt.Errorf("Arguments do not have the same set of edges %v != %v (%v != %v) %v \n%v", a, b, g.edges[a], g.edges[b], reflect.DeepEqual(g.edges[a], g.edges[b]), g.Graphviz())
+					return fmt.Errorf("Arguments do not have the same set of edges %v != %v", a, b)
 				}
 			}
 		} else if isCall(instr, "assertAllLeaked") {
@@ -198,9 +198,9 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				return fmt.Errorf("Expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
-			for b := range g.edges[a] {
-				if g.status[b] != Leaked {
-					return fmt.Errorf("%v wasn't leaked in:\n%v", b, g.Graphviz())
+			for _, e := range g.Edges(a, nil, true, true) {
+				if g.status[e.dest] != Leaked {
+					return fmt.Errorf("%v wasn't leaked in:\n%v", e.dest, g.Graphviz())
 				}
 			}
 		} else if isCall(instr, "assertAllLocal") {
@@ -209,14 +209,13 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				return fmt.Errorf("Expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
-			for b := range g.edges[a] {
-				if g.status[b] != Local {
-					return fmt.Errorf("%v has escaped in:\n%v", b, g.Graphviz())
+			for _, e := range g.Edges(a, nil, true, true) {
+				if g.status[e.dest] != Local {
+					return fmt.Errorf("%v has escaped in:\n%v", e.dest, g.Graphviz())
 				}
 			}
-		} else {
-			ea.transferFunction(instr, g, false)
 		}
+		ea.transferFunction(instr, g)
 	}
 	return nil
 }
@@ -255,33 +254,35 @@ func TestInterproceduralEscape(t *testing.T) {
 		"testIdent",
 		"testExternal",
 		"testChain",
+		"testStickyErrorReader",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
 	// program points)
 	for _, funcName := range funcsToTest {
-		f := findFunction(program, funcName)
-		if f == nil {
-			t.Fatalf("Could not find function %v\n", funcName)
-		}
-		summary := escapeWholeProgram.summaries[f]
-		if summary == nil {
-			t.Fatalf("%v wasn't summarized", funcName)
-		}
-		for _, bb := range f.Blocks {
-			err := checkFunctionCalls(summary, bb)
-			// test* == no error, anything else == error expected
-			if strings.HasPrefix(funcName, "test") {
-				if err != nil {
-					t.Fatalf("Error in %v: %v\n", funcName, err)
-				}
-			} else {
-				if err == nil {
-					t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
+		t.Run(funcName, func(t *testing.T) {
+			f := findFunction(program, funcName)
+			if f == nil {
+				t.Fatalf("Could not find function %v\n", funcName)
+			}
+			summary := escapeWholeProgram.summaries[f]
+			if summary == nil {
+				t.Fatalf("%v wasn't summarized", funcName)
+			}
+			for _, bb := range f.Blocks {
+				err := checkFunctionCalls(summary, bb)
+				// test* == no error, anything else == error expected
+				if strings.HasPrefix(funcName, "test") {
+					if err != nil {
+						t.Fatalf("Error in %v: %v\n", funcName, err)
+					}
+				} else {
+					if err == nil {
+						t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
+					}
 				}
 			}
-
-		}
+		})
 	}
 }
 
@@ -294,7 +295,7 @@ func TestBuiltinsEscape(t *testing.T) {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
 	program, cfg := analysistest.LoadTest(t, ".", []string{})
-	cfg.LogLevel = int(config.DebugLevel)
+	cfg.LogLevel = int(config.TraceLevel)
 	// Compute the summaries for everything in the main package
 	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
@@ -338,33 +339,44 @@ func TestBuiltinsEscape(t *testing.T) {
 		"testMultipleBoundVars",
 		"testSiblingClosure",
 		"testInterfaceDirectStruct",
+		"testFieldSensitivity",
+		"testTupleSensitivity",
+		"testParameterPointerToField",
+		"testStructSelfPointerToField",
+		"testNestedStruct",
+		"testForRange",
+		"testTypeCorrectness",
+		"testGoReceiver",
+		"testMultiChannelSelect",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
 	// program points)
 	for _, funcName := range funcsToTest {
-		f := findFunction(program, funcName)
-		if f == nil {
-			t.Fatalf("Could not find function %v\n", funcName)
-		}
-		summary := escapeWholeProgram.summaries[f]
-		if summary == nil {
-			t.Fatalf("%v wasn't summarized", funcName)
-		}
-		for _, bb := range f.Blocks {
-			err := checkFunctionCalls(summary, bb)
-			// test* == no error, anything else == error expected
-			if strings.HasPrefix(funcName, "test") {
-				if err != nil {
-					t.Fatalf("Error in %v: %v\n", funcName, err)
-				}
-			} else {
-				if err == nil {
-					t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
-				}
+		t.Run(funcName, func(t *testing.T) {
+			f := findFunction(program, funcName)
+			if f == nil {
+				t.Fatalf("Could not find function %v\n", funcName)
 			}
+			summary := escapeWholeProgram.summaries[f]
+			if summary == nil {
+				t.Fatalf("%v wasn't summarized", funcName)
+			}
+			for _, bb := range f.Blocks {
+				err := checkFunctionCalls(summary, bb)
+				// test* == no error, anything else == error expected
+				if strings.HasPrefix(funcName, "test") {
+					if err != nil {
+						t.Fatalf("Error in %v: %v\n", funcName, err)
+					}
+				} else {
+					if err == nil {
+						t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
+					}
+				}
 
-		}
+			}
+		})
 	}
 }
 
@@ -615,28 +627,30 @@ func TestLocalityComputation(t *testing.T) {
 	}
 	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {
-		f := findFunction(program, funcName)
-		if f == nil {
-			t.Fatalf("Couldn't find function %v", funcName)
-		}
-		var state dataflow.EscapeAnalysisState = &escapeAnalysisImpl{*escapeWholeProgram}
-		var anyError error
-		allCallgraphWalkNodes := computeNodes(state, f)
-		for _, nodes := range groupNodesByFunc(allCallgraphWalkNodes) {
-			if err := checkLocalityAnnotations(nodes, annos); err != nil {
-				anyError = err
+		t.Run(funcName, func(t *testing.T) {
+			f := findFunction(program, funcName)
+			if f == nil {
+				t.Fatalf("Couldn't find function %v", funcName)
 			}
-		}
-		if strings.HasPrefix(funcName, "test") {
-			if anyError != nil {
-				t.Fatalf("Error %v", anyError)
+			var state dataflow.EscapeAnalysisState = &escapeAnalysisImpl{*escapeWholeProgram}
+			var anyError error
+			allCallgraphWalkNodes := computeNodes(state, f)
+			for _, nodes := range groupNodesByFunc(allCallgraphWalkNodes) {
+				if err := checkLocalityAnnotations(nodes, annos); err != nil {
+					anyError = err
+				}
 			}
-		} else {
-			if anyError == nil {
-				t.Fatalf("Expected error, but test passed")
+			if strings.HasPrefix(funcName, "test") {
+				if anyError != nil {
+					t.Fatalf("Error %v", anyError)
+				}
+			} else {
+				if anyError == nil {
+					t.Fatalf("Expected error, but test passed")
+				}
 			}
-		}
-		// Print the end of the function to make logs easier to read
-		t.Logf("Completed %v\n", funcName)
+			// Print the end of the function to make logs easier to read
+			t.Logf("Completed %v\n", funcName)
+		})
 	}
 }
