@@ -80,10 +80,10 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 	// will be the same exact Nodes.
 	mapNode = func(callerNode *Node, inner *Node) {
 		g.status[inner] = c.g.status[callerNode]
-		for _, e := range c.g.Edges(callerNode, nil, true, true) {
+		for _, e := range c.g.Edges(callerNode, nil, EdgeAll) {
 			pointee := e.dest
 			nodes.AddForeignNode(pointee)
-			g.AddEdge(inner, pointee, e.isInternal)
+			g.AddEdge(inner, pointee, e.mask)
 			if !mappedNodes[pointee] {
 				mappedNodes[pointee] = true
 				mapNode(pointee, pointee)
