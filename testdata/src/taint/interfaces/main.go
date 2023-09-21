@@ -76,7 +76,7 @@ func test() {
 		Field1: source(), // this is a source @Source(C)
 		Field2: "ok",
 	}
-	sink(x.Field2)   // @Sink(C) TODO: field sensitivity
+	sink(x.Field2)
 	runInterface(&x) // the sink here will be reached
 	test3()
 }

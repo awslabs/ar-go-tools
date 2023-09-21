@@ -135,7 +135,7 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 			// Initialize all the entries of DataFlowContracts
 			for _, contract := range contractsBatch {
 				for method := range contract.Methods {
-					// contract are initially nil, the calls to ResolveCallee will set them to some non-nil value
+					// contract are initially nil, the calls to ResolveCallee will set them to some non-nil Value
 					// when necessary
 					state.DataFlowContracts[contract.Key(method)] = nil
 				}

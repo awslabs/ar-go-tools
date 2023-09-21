@@ -1,0 +1,43 @@
+;; -*- mode: emacs-lisp; lexical-binding:t; coding: utf-8-emacs; -*-
+;; --------------------------------------------------------------------------
+;; Desktop File for Emacs
+;; --------------------------------------------------------------------------
+;; Created Mon Nov 27 11:15:52 2023
+;; Desktop file format version 208
+;; Emacs version 29.1
+
+;; Global section:
+(setq desktop-saved-frameset [frameset 1 (25956 49336 585826 0) (desktop . "208") "victornl@c889f3b2faa2.ant.amazon.com" nil nil ((((minibuffer . t) (undecorated) (override-redirect) (font . "-*-JetBrains Mono-regular-normal-normal-*-12-*-*-*-m-0-iso10646-1") (border-width . 0) (internal-border-width . 0) (child-frame-border-width) (right-divider-width . 0) (bottom-divider-width . 0) (vertical-scroll-bars . right) (horizontal-scroll-bars) (foreground-color . "#bbc2cf") (background-color . "#242730") (mouse-color . "#F8F8F2") (border-color . "black") (screen-gamma) (line-spacing) (left-fringe . 8) (right-fringe . 8) (no-special-glyphs) (alpha) (alpha-background) (scroll-bar-foreground) (scroll-bar-background) (tab-bar-lines . 0) (tool-bar-lines . 1) (title) (inhibit-double-buffering) (menu-bar-lines . 1) (icon-type) (auto-raise) (auto-lower) (cursor-type . box) (scroll-bar-width . 15) (scroll-bar-height . 15) (no-focus-on-map) (no-accept-focus) (fullscreen . fullscreen) (visibility . t) (skip-taskbar) (z-group) (display-type . color) (background-mode . dark) (cursor-color . "#51afef") (font-parameter . "JetBrains Mono") (environment) (powerline-cache) (last-focus-update . t) (frameset--id . "EC90-6B19-D716-6299") (frameset--mini t . t) (modeline . t) (unsplittable) (icon-name) (display . "Mac") (explicit-name) (tool-bar-position . top) (tabs (current-tab (name . "load_program.go") (explicit-name))) (lsp-ui-doc-buffer . "Unprintable entity") (height . 116) (width . 475) (left . 1512) (top + -1705)) ((min-height . 4) (min-width . 20) (min-height-ignore . 2) (min-width-ignore . 14) (min-height-safe . 1) (min-width-safe . 4) (min-pixel-height . 64) (min-pixel-width . 140) (min-pixel-height-ignore . 32) (min-pixel-width-ignore . 98) (min-pixel-height-safe . 16) (min-pixel-width-safe . 28)) hc (pixel-width . 3360) (pixel-height . 1850) (total-width . 480) (total-height . 116) (normal-height . 1.0) (normal-width . 1.0) (combination-limit) (leaf (pixel-width . 1680) (pixel-height . 1850) (total-width . 240) (total-height . 116) (normal-height . 1.0) (normal-width . 0.5) (buffer "load_program.go" (selected . t) (hscroll . 0) (fringes 8 8 nil nil) (margins nil) (scroll-bars nil 3 t nil 0 t nil) (vscroll . 0) (dedicated) (point . 2467) (start . 1611)) (prev-buffers (".emacs" 4602 5511))) (leaf (last . t) (pixel-width . 1680) (pixel-height . 1850) (total-width . 240) (total-height . 116) (normal-height . 1.0) (normal-width . 0.5) (buffer ".emacs" (selected) (hscroll . 0) (fringes 8 8 nil nil) (margins nil) (scroll-bars nil 3 t nil 0 t nil) (vscroll . 0) (dedicated) (point . 3743) (start . 1789)))))])
+(setq desktop-missing-file-warning nil)
+(setq tags-file-name nil)
+(setq tags-table-list nil)
+(setq search-ring '(#("gocode" 0 6 (isearch-case-fold-search t isearch-regexp-function nil)) #("lsp-" 0 4 (isearch-case-fold-search t isearch-regexp-function nil)) #("go" 0 2 (isearch-case-fold-search t isearch-regexp-function nil)) #("installed" 0 9 (isearch-case-fold-search t isearch-regexp-function nil)) #("may" 0 3 (isearch-case-fold-search t isearch-regexp-function nil))))
+(setq regexp-search-ring nil)
+(setq register-alist nil)
+(setq file-name-history '("~/repos/argot/analysis/load_program.go" "~/repos/argot" "~/.emacs" "~/repos/argot" "~/repos/document-synthesis/" "~/repos/document-synthesis" "~/repos/document-synthesis/" "~/Documents/Research/proposals.md" "~/repos/document-synthesis/lib/dsl/Program.ml" "~/.emacs" "~/repos/document-synthesis/" "~/" "~/.zshrc" "~/.aws/credentials" "~/Documents/Research/proposals.md" "~/Documents/Research" "~/.emacs"))
+
+;; Buffer section -- buffers listed in same order as in buffer list:
+(desktop-create-buffer 208
+  "/Users/victornl/repos/argot/analysis/load_program.go"
+  "load_program.go"
+  'go-mode
+  '(lsp-ui-doc-mode lsp-ui-sideline-mode lsp-ui-mode lsp-mode flymake-mode lsp-modeline-workspace-status-mode eldoc-mode rainbow-delimiters-mode auto-complete-mode font-lock-mode)
+  2467
+  '(255 nil)
+  nil
+  nil
+  '((indent-tabs-mode . t) (buffer-display-time 25956 49315 339724 0) (buffer-file-coding-system . undecided-unix))
+  '((mark-ring (2466))))
+
+(desktop-create-buffer 208
+  "/Users/victornl/.emacs"
+  ".emacs"
+  'emacs-lisp-mode
+  '(rainbow-delimiters-mode eldoc-mode font-lock-mode auto-complete-mode)
+  3743
+  '(3954 nil)
+  nil
+  nil
+  '((buffer-display-time 25956 49315 339725 0) (buffer-file-coding-system . undecided-unix))
+  '((mark-ring (1 4036 4036 4036 4036 4035 4318 4679 5498 4036 4036 4036 4036 3800 3622 3986))))
+

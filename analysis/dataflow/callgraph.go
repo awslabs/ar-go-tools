@@ -48,7 +48,7 @@ const (
 // This global variable should only be read and modified through GetUniqueFunctionId
 var uniqueFunctionIdCounter uint32 = 0
 
-// GetUniqueFunctionId increments and returns the value of the global used to give unique function ids.
+// GetUniqueFunctionId increments and returns the Value of the global used to give unique function ids.
 func GetUniqueFunctionId() uint32 {
 	x := atomic.AddUint32(&uniqueFunctionIdCounter, 1)
 	return x
@@ -189,7 +189,7 @@ func computeErrorBuiltinImplementations(p *ssa.Program, implementations map[stri
 	}
 }
 
-// addImplementation sets the value of key in implementationsMap to function, handling the creation of nested maps.
+// addImplementation sets the Value of key in implementationsMap to function, handling the creation of nested maps.
 // @requires implementationMap != nil
 func addImplementation(implementationMap map[string]map[*ssa.Function]bool, key string, function *ssa.Function) {
 	if implementations, ok := implementationMap[key]; ok {
@@ -201,8 +201,8 @@ func addImplementation(implementationMap map[string]map[*ssa.Function]bool, key 
 	}
 }
 
-// addContractSummaryGraph sets the value of contract[methodId] to a new summary of function if the methodId key
-// is present in contracts but the associated value is nil
+// addContractSummaryGraph sets the Value of contract[methodId] to a new summary of function if the methodId key
+// is present in contracts but the associated Value is nil
 // Does nothing if contracts is nil.
 func addContractSummaryGraph(contracts map[string]*SummaryGraph, methodId string, function *ssa.Function, id uint32) {
 	if contracts == nil || function == nil {

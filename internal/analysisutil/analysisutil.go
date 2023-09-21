@@ -113,19 +113,20 @@ func FindValuePackage(n ssa.Value) Optional[string] {
 // FieldAddrFieldName finds the name of a field access in ssa.FieldAddr
 // if it cannot find a proper field name, returns "?"
 func FieldAddrFieldName(fieldAddr *ssa.FieldAddr) string {
-	return getFieldNameFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
+	return GetFieldNameFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
 }
 
 // FieldFieldName finds the name of a field access in ssa.Field
 // if it cannot find a proper field name, returns "?"
 func FieldFieldName(fieldAddr *ssa.Field) string {
-	return getFieldNameFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
+	return GetFieldNameFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
 }
 
-func getFieldNameFromType(t types.Type, i int) string {
+// GetFieldNameFromType returns the name of field i if t is a struct or pointer to a struct
+func GetFieldNameFromType(t types.Type, i int) string {
 	switch typ := t.(type) {
 	case *types.Pointer:
-		return getFieldNameFromType(typ.Elem().Underlying(), i) // recursive call
+		return GetFieldNameFromType(typ.Elem().Underlying(), i) // recursive call
 	case *types.Struct:
 		// Get the field name given its index
 		fieldName := "?"

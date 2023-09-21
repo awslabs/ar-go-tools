@@ -118,7 +118,7 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 	// defined generally in the lang package, but all the details, including transfer functions, are in the
 	// single_function_monotone_analysis.go file
 	lang.RunForwardIterative(state, sm.Parent)
-	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract value at
+	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract Value at
 	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
 	// translated into a dataflow graph, with special attention for closures.
 
@@ -136,6 +136,9 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 	// TODO: manage error messages for better debugging
 	for _, err := range state.errors {
 		return time.Since(start), fmt.Errorf("error in intraprocedural analysis: %w", err)
+	}
+	if sm.Parent.Name() == "testFieldAndSlice" { // TODO
+		reportFlowInformation(a, state.flowInfo)
 	}
 	return time.Since(start), nil
 }
@@ -159,14 +162,15 @@ func (state *IntraAnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruc
 }
 
 // makeEdgesAtCallsite generates all the edges specific to a given call site.
-// Those are the edges to and from call arguments and to and from the call value.
+// Those are the edges to and from call arguments and to and from the call Value.
 func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 	if isHandledBuiltinCall(callInstr) {
 		return
 	}
-	// add call node edges for call instructions whose value corresponds to a function (i.e. the Method is nil)
+	// add call node edges for call instructions whose Value corresponds to a function (i.e. the Method is nil)
 	if callInstr.Common().Method == nil {
-		for _, mark := range state.getMarks(callInstr, callInstr.Common().Value, "*", false) {
+		// TODO: ignore path until we have field sensitivity in inter-procedural analysis
+		for _, mark := range state.getMarks(callInstr, callInstr.Common().Value, "", false, true) {
 			state.summary.addCallEdge(mark, nil, callInstr)
 			switch x := mark.Node.(type) {
 			case *ssa.MakeClosure:
@@ -187,7 +191,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 			state.updateBoundVarEdges(callInstr, argInstr)
 		}
 
-		for _, mark := range state.getMarks(callInstr, arg, "*", true) {
+		for _, mark := range state.getMarks(callInstr, arg, "", true, true) {
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
 			c := state.checkFlow(mark, callInstr, arg)
 			if c.Satisfiable {
@@ -196,7 +200,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 					applicableCond = &c2
 				}
 				// Add the condition only if it is a predicate on the argument, i.e. there are boolean functions
-				// that apply to the destination value
+				// that apply to the destination Value
 				state.summary.addCallArgEdge(mark, applicableCond, callInstr, arg)
 
 				// Add edges to parameters if the call may modify caller's arguments
@@ -218,7 +222,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 // updateBoundVarEdges updates the edges to bound variables.
 func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
-		for _, boundVarMark := range state.getMarks(instr, boundVar, "*", false) {
+		for _, boundVarMark := range state.getMarks(instr, boundVar, "", false, false) {
 			state.summary.addBoundVarEdge(boundVarMark, &ConditionInfo{Satisfiable: true}, x, boundVar)
 		}
 	}
@@ -228,7 +232,7 @@ func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *s
 // to parameters and free variables.
 func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
-		for _, mark := range state.getMarks(x, boundVar, "*", false) {
+		for _, mark := range state.getMarks(x, boundVar, "", false, false) {
 			if mark.IsClosure() && mark.Node == x {
 				continue // avoid spurious edges from closure to its own bound variables
 			}
@@ -246,7 +250,7 @@ func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 
 // makeEdgesAtReturn creates all the edges to the return node
 func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
-	for markedValue, marks := range state.flowInfo.MarkedValues[x] {
+	for markedValue, abstractState := range state.flowInfo.MarkedValues[x] {
 		switch val := markedValue.(type) {
 		case *ssa.Call:
 			// calling Type() may cause segmentation error
@@ -254,13 +258,13 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 		default:
 			// Check the state of the analysis at the final return to see which parameters or free variables might
 			// have been modified by the function
-			for mark := range marks {
+			for _, mark := range abstractState.AllMarks() {
 				if lang.IsNillableType(val.Type()) {
 					for aliasedParam := range state.paramAliases[markedValue] {
-						state.summary.addParamEdge(mark, nil, aliasedParam)
+						state.summary.addParamEdge(mark.Mark, nil, aliasedParam)
 					}
 					for aliasedFreeVar := range state.freeVarAliases[markedValue] {
-						state.summary.addFreeVarEdge(mark, nil, aliasedFreeVar)
+						state.summary.addFreeVarEdge(mark.Mark, nil, aliasedFreeVar)
 					}
 				}
 			}
@@ -273,7 +277,7 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			state.updateBoundVarEdges(x, r)
 		}
 
-		for _, origin := range state.getMarks(x, result, "*", true) {
+		for _, origin := range state.getMarks(x, result, "", true, true) {
 			state.summary.addReturnEdge(origin, nil, x, tupleIndex)
 		}
 	}
@@ -285,7 +289,7 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	bounds := state.isCapturedBy(x.Addr)
 	if len(bounds) > 0 {
-		for _, origin := range state.getMarks(x, x.Addr, "*", false) {
+		for _, origin := range state.getMarks(x, x.Addr, "", false, false) {
 			for _, label := range bounds {
 				if label.Value() != nil {
 					for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
@@ -303,12 +307,12 @@ func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) 
 	aState := state.parentAnalyzerState
 	if asValue, ok := instr.(ssa.Value); ok &&
 		state.shouldTrack(aState.Config, aState.PointerAnalysis, instr.(ssa.Node)) {
-		for _, origin := range state.getMarks(instr, asValue, "*", false) {
+		for _, origin := range state.getMarks(instr, asValue, "", false, false) {
 			_, isField := instr.(*ssa.Field)
 			_, isFieldAddr := instr.(*ssa.FieldAddr)
 			// check flow to avoid duplicate edges between synthetic nodes
 			if isField || isFieldAddr {
-				state.summary.addSyntheticEdge(origin, nil, instr, "*")
+				state.summary.addSyntheticEdge(origin, nil, instr, "")
 			}
 		}
 	}

@@ -50,7 +50,7 @@ func TestRunBoundingAnalysis(t *testing.T) {
 			if label.Parent() != nil {
 				f = " in " + label.Parent().Name() + " "
 			}
-			t.Logf("Label %s with value \"%s\"%sis bound by:\n",
+			t.Logf("Label %s with Value \"%s\"%sis bound by:\n",
 				label.String(), label, f)
 		} else {
 			t.Logf("Label %s is bound by:\n", label.String())

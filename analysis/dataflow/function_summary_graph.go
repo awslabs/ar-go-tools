@@ -79,7 +79,7 @@ type SummaryGraph struct {
 	// the nodes accessing global information
 	AccessGlobalNodes map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode
 
-	// the return instructions are linked to ReturnNode, one per value in a tuple returned
+	// the return instructions are linked to ReturnNode, one per Value in a tuple returned
 	Returns map[ssa.Instruction][]*ReturnValNode
 
 	// errors can be used to accumulate errors that were encountered while building the summary graph
@@ -99,7 +99,7 @@ type SummaryGraph struct {
 }
 
 // NewSummaryGraph builds a new summary graph given a function and its corresponding node.
-// Returns a non-nil value if and only if f is non-nil.
+// Returns a non-nil Value if and only if f is non-nil.
 // If s is nil, this will not populate the callees of the summary.
 // If non-nil, the returned summary graph is marked as not constructed.
 func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
@@ -360,7 +360,7 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 // @requires g != nil
 func (g *SummaryGraph) addReturn(instr ssa.Instruction, node *ReturnValNode) {
 	n := g.Parent.Signature.Results().Len()
-	// No value is returned
+	// No Value is returned
 	if n <= 0 {
 		return
 	}
@@ -1089,7 +1089,7 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 
 	for _, retTuple := range g.Returns {
 		for _, r := range retTuple {
-			// a return node can be nil if its value is constant
+			// a return node can be nil if its Value is constant
 			if r == nil {
 				continue
 			}

@@ -31,9 +31,9 @@ type FlowInformation struct {
 	// user provided configuration identifying specific dataflow nodes to track and other settings (e.g. verbosity)
 	Config *config.Config
 
-	// MarkedValues maps instructions to abstract states, i.e. a map from values to their abstract value, which is a
+	// MarkedValues maps instructions to abstract states, i.e. a map from values to their abstract Value, which is a
 	// set of marks
-	MarkedValues map[ssa.Instruction]map[ssa.Value]map[Mark]bool
+	MarkedValues map[ssa.Instruction]map[ssa.Value]abstractValue
 
 	// LocSet is a map from marks to the locations associated to it. A location is associated to a mark when it
 	// is used to propagate the mark during the monotone analysis. This is meant to be used by other analyses, and
@@ -46,7 +46,7 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 	return &FlowInformation{
 		Function:     f,
 		Config:       cfg,
-		MarkedValues: make(map[ssa.Instruction]map[ssa.Value]map[Mark]bool),
+		MarkedValues: make(map[ssa.Instruction]map[ssa.Value]abstractValue),
 		LocSet:       make(map[Mark]map[ssa.Instruction]bool),
 	}
 }
@@ -60,39 +60,36 @@ func (fi *FlowInformation) Show(w io.Writer) {
 	lang.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) { fi.ShowAt(w, i) })
 }
 
-// ShowAt pretty-prints the abstract state of the analysis at instruction i. A line is printed for every SSA value with
-// an abstract value (a set of marks).
+// ShowAt pretty-prints the abstract state of the analysis at instruction i. A line is printed for every SSA Value with
+// an abstract Value (a set of marks).
 func (fi *FlowInformation) ShowAt(w io.Writer, i ssa.Instruction) {
 	fmt.Fprintf(w, "Instruction %s:\n", i)
-	for val, marks := range fi.MarkedValues[i] {
-		fmt.Fprintf(w, "   %s = %s marked by ", val.Name(), val)
-		for mark := range marks {
-			fmt.Fprintf(w, " <%s> ", &mark)
-		}
-		fmt.Fprintf(w, "\n")
+	for _, a := range fi.MarkedValues[i] {
+		a.Show(w)
 	}
 }
 
-// HasMarkAt returns true if the value v has an abstract state at instruction i, and this abstract state contains the
+// HasMarkAt returns true if the Value v has an abstract state at instruction i, and this abstract state contains the
 // mark s.
-func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, s Mark) bool {
+func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, path string, s Mark) bool {
 	marks, ok := fi.MarkedValues[i][v]
-	return ok && marks[s]
+	return ok && marks.HasMarkAt(path, s)
 }
 
 // AddMark adds a mark to the tracking info structure and returns a boolean
 // if new information has been inserted.
-func (fi *FlowInformation) AddMark(i ssa.Instruction, v ssa.Value, s Mark) bool {
-
-	if vMarks, ok := fi.MarkedValues[i][v]; ok {
-		if vMarks[s] {
+func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value, path string, s Mark) bool {
+	if abstractState, ok := fi.MarkedValues[i][value]; ok {
+		if abstractState.HasMarkAt(path, s) {
 			return false
 		} else {
-			vMarks[s] = true
+			abstractState.Add(path, s)
 			return true
 		}
 	} else {
-		fi.MarkedValues[i][v] = map[Mark]bool{s: true}
+		as := newAbstractValue(value)
+		as.Add(path, s)
+		fi.MarkedValues[i][value] = as
 		return true
 	}
 }

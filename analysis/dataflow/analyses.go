@@ -51,7 +51,7 @@ type EscapeAnalysisState interface {
 	// ComputeInstructionLocalityAndCallsites computes locality and callsite information for a function,
 	// given a particular calling context.
 	// This internally performs a potentially expensive flow-sensitive monotone convergence loop. The
-	// resulting locality map contains a true value for each instruction that is provably local, and false
+	// resulting locality map contains a true Value for each instruction that is provably local, and false
 	// for instructions that may access shared memory. The callsite infos must be resolved for each
 	// possible concrete callee; see `EscapeCallsiteInfo.Resolve()`. Only calls to non-builtins are
 	// available in `callsiteInfo`.

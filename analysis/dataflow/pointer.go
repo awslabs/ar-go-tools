@@ -26,8 +26,8 @@ import (
 // This file contains functions for running the pointer analysis on a program. The pointer analysis is implemented in
 // the x/tools/go/pointer package.
 
-// DoPointerAnalysis runs the pointer analysis on the program p, marking every value in the functions filtered by
-// functionFilter as potential value to query for aliasing.
+// DoPointerAnalysis runs the pointer analysis on the program p, marking every Value in the functions filtered by
+// functionFilter as potential Value to query for aliasing.
 //
 // - p is the program to be analyzed
 //
@@ -35,7 +35,7 @@ import (
 //
 // - buildCallGraph determines whether the analysis must also build the callgraph of the program
 //
-// If error != nil, the *pointer.Result is such that every value in the functions f such that functionFilter(f) is true
+// If error != nil, the *pointer.Result is such that every Value in the functions f such that functionFilter(f) is true
 // will be in the Queries or IndirectQueries of the pointer.Result
 func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, buildCallGraph bool) (*pointer.Result,
 	error) {
@@ -48,7 +48,7 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 	}
 
 	for function := range ssautil.AllFunctions(p) {
-		// If the function is a user-defined function (it can be from a dependency) then every value that can
+		// If the function is a user-defined function (it can be from a dependency) then every Value that can
 		// can potentially alias is marked for querying.
 		if functionFilter(function) {
 			// Add all function parameters
@@ -105,7 +105,7 @@ func indirectQuery(cfg *pointer.Config, typ types.Type, val ssa.Value) {
 	}()
 
 	if typ.Underlying() != nil {
-		// Add indirect query if value is of pointer type, and underlying type can point
+		// Add indirect query if Value is of pointer type, and underlying type can point
 		if ptrType, ok := typ.Underlying().(*types.Pointer); ok {
 			if pointer.CanPoint(ptrType.Elem()) {
 				cfg.AddIndirectQuery(val)

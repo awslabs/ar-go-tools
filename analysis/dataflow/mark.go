@@ -29,7 +29,7 @@ type MarkType int
 const (
 	Parameter   MarkType = 1 << iota // A Parameter is a function parameter.
 	FreeVar                          // A FreeVar is a free variable in a closure.
-	DefaultMark                      // A DefaultMark is a value with a mark.
+	DefaultMark                      // A DefaultMark is a Value with a mark.
 	CallSiteArg                      // A CallSiteArg is a call site argument.
 	CallReturn                       // A CallReturn is a call site return.
 	Closure                          // A Closure is a closure creation site
@@ -63,7 +63,7 @@ func (m MarkType) String() string {
 	}
 }
 
-// Mark is a node with additional information about its type and region path (matching the paths in pointer analysis).
+// Mark is a node with additional information about its type and region Path (matching the paths in pointer analysis).
 // This is used to mark dataflow between nodes.
 type Mark struct {
 	// Node is the ssa node that the mark is tracking
@@ -76,22 +76,42 @@ type Mark struct {
 	// MarkType is the type of the mark
 	Type MarkType
 
-	// Qualifier gives more information about which sub-value of the current ssa value is referred to by this mark
+	// Qualifier gives more information about which sub-Value of the current ssa Value is referred to by this mark
 	Qualifier ssa.Value
 
 	// Index specifies an index of the tuple element referred to by this mark. Node's type must be a tuple.
-	// A value of -1 indicates this can be ignored
+	// A Value of -1 indicates this can be ignored
 	Index int
 }
 
 // NewMark creates a source with a single type. Using this as constructor enforces that users provide an explicit
-// value for index, whose default value has a meaning that might not be intended
+// Value for index, whose default Value has a meaning that might not be intended
 func NewMark(node ssa.Node, typ MarkType, path string, qualifier ssa.Value, index int) Mark {
 	return Mark{
 		Node:       node,
 		RegionPath: path,
 		Type:       typ,
 		Qualifier:  qualifier,
+		Index:      index,
+	}
+}
+
+func (m Mark) WithPath(path string) Mark {
+	return Mark{
+		Node:       m.Node,
+		RegionPath: path,
+		Type:       m.Type,
+		Qualifier:  m.Qualifier,
+		Index:      m.Index,
+	}
+}
+
+func (m Mark) WithIndex(index int) Mark {
+	return Mark{
+		Node:       m.Node,
+		RegionPath: m.RegionPath,
+		Type:       m.Type,
+		Qualifier:  m.Qualifier,
 		Index:      index,
 	}
 }
@@ -149,7 +169,7 @@ func (m Mark) String() string {
 	}
 	str += m.Node.String()
 	if m.RegionPath != "" {
-		str += " [" + m.RegionPath + "]"
+		str = "(" + str + ")." + m.RegionPath
 	}
 	if m.Index >= 0 {
 		str += " #" + strconv.Itoa(m.Index)

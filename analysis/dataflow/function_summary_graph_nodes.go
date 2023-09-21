@@ -30,10 +30,10 @@ type LocSet = map[ssa.Instruction]bool
 
 // ObjectPath contains information relative to the object pointed to.
 type ObjectPath struct {
-	// RelPath is the relative object memory path, e.g. * for dereference TODO: use this for field sensitivity
+	// RelPath is the relative object memory Path, e.g. * for dereference TODO: use this for field sensitivity
 	RelPath string
 
-	// Index is the relative tuple element reference by this path
+	// Index is the relative tuple element reference by this Path
 	// if < 0, this means it is not used
 	Index int
 
@@ -56,12 +56,12 @@ type GraphNode interface {
 	// Graph returns the graph the node belongs to
 	Graph() *SummaryGraph
 
-	// Out returns the outgoing edges from the node. The ObjectPath specifies a possible "object path", e.g. a field
+	// Out returns the outgoing edges from the node. The ObjectPath specifies a possible "object Path", e.g. a field
 	// or a slice index, which refines the dataflow information (currently not in use, "" or "*" means everything in
 	// the edge flows to the destination).
 	Out() map[GraphNode]ObjectPath
 
-	// In returns the incoming edges from the node. The ObjectPath specifies a possible "object path", e.g. a field
+	// In returns the incoming edges from the node. The ObjectPath specifies a possible "object Path", e.g. a field
 	// or a slice index, which refines the dataflow information (currently not in use, "" or "*" means everything in
 	// the edge flows to the destination).
 	In() map[GraphNode]ObjectPath
@@ -367,7 +367,7 @@ func (a *CallNodeArg) Value() ssa.Value {
 	return a.ssaValue
 }
 
-// CallNode is a node that represents a function call. It represents the value returned by the function call
+// CallNode is a node that represents a function call. It represents the Value returned by the function call
 // and also points at the CallNodeArg nodes that are its arguments
 type CallNode struct {
 	id            uint32
@@ -450,7 +450,7 @@ func (a *CallNode) Args() []*CallNodeArg {
 }
 
 // FuncName returns the name of the function being called. It can be either the method name or a function name. The
-// function could be a value (and not a static call), in which case the name of the value is returned.
+// function could be a Value (and not a static call), in which case the name of the Value is returned.
 func (a *CallNode) FuncName() string {
 	if a.callSite != nil {
 		if a.callSite.Common().IsInvoke() {
@@ -464,7 +464,7 @@ func (a *CallNode) FuncName() string {
 }
 
 // FuncString returns the string identified of the function being called. It can be either the method string or a
-// function string. The function could be a value (and not a static call), in which case the name of the value
+// function string. The function could be a Value (and not a static call), in which case the name of the Value
 // is returned.
 func (a *CallNode) FuncString() string {
 	if a.callSite != nil {
@@ -478,10 +478,10 @@ func (a *CallNode) FuncString() string {
 	}
 }
 
-// A ReturnValNode is a node that represents a value returned by a function
+// A ReturnValNode is a node that represents a Value returned by a function
 type ReturnValNode struct {
 	id     uint32
-	index  int // when a function returns a tuple, a return node represents a single indexed value
+	index  int // when a function returns a tuple, a return node represents a single indexed Value
 	parent *SummaryGraph
 	in     map[GraphNode]ObjectPath
 }
@@ -606,7 +606,7 @@ type BoundVarNode struct {
 	// the parent is the closure node that captures the variables
 	parent *ClosureNode
 
-	// the ssaValue is the value that corresponds to the bound variable in the SSA
+	// the ssaValue is the Value that corresponds to the bound variable in the SSA
 	ssaValue ssa.Value
 
 	// bPos is the position of the bound variable, and correspond to fvPos is the closure's summary

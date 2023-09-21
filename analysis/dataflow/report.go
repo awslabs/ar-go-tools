@@ -17,6 +17,8 @@ package dataflow
 import (
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -131,4 +133,66 @@ func (s *AnalyzerState) ReportSummaryNotConstructed(callSite *CallNode) {
 				formatutil.Sanitize(methodKey.ValueOr("?"))))
 		}
 	}
+}
+
+func reportFlowInformation(state *AnalyzerState, fi *FlowInformation) {
+	if fi.Function == nil {
+		return
+	}
+
+	lang.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) {
+		state.Logger.Infof("• instruction %s @ %s:\n", formatutil.Cyan(i.String()), state.Program.Fset.Position(i.Pos()))
+		// sort and print Value -> marks
+		var mVals []ssa.Value
+		for val := range fi.MarkedValues[i] {
+			mVals = append(mVals, val)
+		}
+		slices.SortFunc(mVals, func(a, b ssa.Value) int {
+			var s1, s2 string
+			setStr(a, &s1)
+			setStr(a, &s2)
+			return strings.Compare(s1, s2)
+		})
+		for _, val := range mVals {
+			marks := fi.MarkedValues[i][val]
+			var x, vStr, vName string
+			setStr(val, &vStr)
+			setName(val, &vName)
+			_, isFunc := val.(*ssa.Function)
+			if isFunc {
+				x = "fun " + vName
+			} else if vStr != vName {
+				x = vName + "=" + vStr
+			}
+			for path, markSet := range marks.PathMappings {
+				var markStrings []string
+				for mark := range markSet {
+					markStrings = append(markStrings, formatutil.Red(mark.String()))
+				}
+				state.Logger.Infof(
+					"   %-30s %-10s marked by %s\n",
+					formatutil.Magenta(x), formatutil.Yellow(path),
+					strings.Join(markStrings, " & "))
+			}
+		}
+	})
+}
+
+func setStr(a ssa.Value, s *string) {
+	defer func() {
+		if r := recover(); r != nil {
+			*s = ""
+		}
+	}()
+	*s = a.String()
+}
+
+func setName(a ssa.Value, s *string) {
+	// Fencing off the insane error with some String() calls on ssa values
+	defer func() {
+		if r := recover(); r != nil {
+			*s = ""
+		}
+	}()
+	*s = a.Name()
 }
