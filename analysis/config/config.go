@@ -179,9 +179,13 @@ func Load(filename string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not read config file: %w", err)
 	}
-	err = yaml.Unmarshal(b, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("could not unmarshal config file: %w", err)
+	errYaml := yaml.Unmarshal(b, cfg)
+	if errYaml != nil {
+		errXml := ParseXmlConfigFormat(cfg, b)
+		if errXml != nil {
+			return nil, fmt.Errorf("could not unmarshal config file, not as yaml: %w, not as xml: %v",
+				errYaml, errXml)
+		}
 	}
 
 	cfg.sourceFile = filename
