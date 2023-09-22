@@ -15,4 +15,6 @@ sinks:
 sanitizers:
   - package: "(main)|(command-line-arguments)"
     method: ".*(s|S)anitize[1-9]?"
-verbose: true
+
+options:
+    verbose: true

@@ -1,2 +1,3 @@
-reportpaths: true
-reportnocalleesites: true
+options:
+    report-paths: true
+    report-no-callee-sites: true

@@ -5,5 +5,6 @@ sources:
     method: "source[1-9]?"
 sinks:
   - method: "sink[1-9]?"
-reportsummaries: true
-loglevel: 4
+options:
+    report-summaries: true
+    log-level: 4

@@ -3,5 +3,7 @@ sources:
     package: "((main)|(command-line-arguments)|(agent-example))"
 sinks:
   - method: "sink"
-loglevel: 4
-reportpaths: true
+
+options:
+    log-level: 4
+    report-paths: true

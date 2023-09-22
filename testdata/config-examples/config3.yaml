@@ -1,5 +1,7 @@
 # Comment
-pkgfilter: "a"
+options:
+    pkg-filter: "a"
+
 sinks:
   - package: y
     method: b

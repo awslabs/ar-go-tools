@@ -6,5 +6,6 @@ sources:
 sinks:
   - package: "((main)|(command-line-arguments))"
     method: sink[1-9]
-skipinterprocedural: false
-verbose: true
+options:
+    skip-interprocedural: false
+    verbose: true

@@ -28,13 +28,13 @@ import (
 // This is meant to replicate functionality in go-flow-levee and gokart, and can be
 // extended as needed
 type CodeIdentifier struct {
-	Package  string
-	Method   string
-	Receiver string
-	Field    string
-	Type     string
-	Label    string
-	Kind     string
+	Package  string `xml:"package,attr"`
+	Method   string `xml:"method,attr"`
+	Receiver string `xml:"receiver,attr"`
+	Field    string `xml:"field,attr"`
+	Type     string `xml:"type,attr"`
+	Label    string `xml:"label,attr"`
+	Kind     string `xml:"kind,attr"`
 	// This will not be part of the yaml config
 	computedRegexs *codeIdentifierRegex
 }

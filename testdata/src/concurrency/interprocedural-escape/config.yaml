@@ -1,1 +1,2 @@
-pkgfilter: "main"
+options:
+    pkg-filter: "main"

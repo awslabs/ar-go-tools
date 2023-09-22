@@ -17,7 +17,7 @@ On top of the configuration options listed in the common fields, the user can co
 It is the user's responsibility to properly specify those functions to match their intent, and the tool does not try to automatically discover possible sources of tainted data, instead completely relying on the user's specification.
 
 Below is an example of a config file containing a basic taint analysis specification:
-```
+```yaml
 sources:                        # A list of sources of tainted/sensitive data
     - package: "example1"
       method: "GetSensitiveData"
@@ -39,34 +39,35 @@ In this configuration file, the user is trying to detect whether data coming fro
 > 📝 Note that all strings in the `package` and `method` fields are parsed as regexes; for example, to match `Sanitizer` precisely, one should write `"^Sanitizer$"`; the `"Sanitizer"` specification will match any function name containing `Sanitizer`.
 
 An advanced feature of the taint analysis is that you can specify dataflow summaries yourself:
-```
-dataflowspecs:                  # A list of dataflow specifications, where each element is a json file containing
+```yaml
+dataflow-specs:                  # A list of dataflow specifications, where each element is a json file containing
     - "specs-mylib.json"        # dataflow specifications.
 
 ```
 We explain in more detail how to write [dataflow specifications](#dataflow-specifications) later, and why the user should write dataflow specifications in some cases.
 
 There are additional options for the outputs:
-```
-reportsummaries: true    # the dataflow summaries built by the analysis will be printed in a file in the reports directory
+```yaml
+options:
+  report-summaries: true    # the dataflow summaries built by the analysis will be printed in a file in the reports directory
 
-reportpaths: true        # all the paths from sources to sinks that have been discovered will be printed in individual files in the reports directory
+  report-paths: true        # all the paths from sources to sinks that have been discovered will be printed in individual files in the reports directory
 ```
 And some other options:
-```
-sourcetaintsargs: false  # by default, the result of a call to a source function is tainted. In some cases
-a user might want to consider all arguments of a source function to be tainted
+```yaml
+options:
+  source-taints-args: false  # by default, the result of a call to a source function is tainted. In some cases a user might want to consider all arguments of a source function to be tainted
 ```
 ### Specifying code locations
 
 In the above example, the user specified code locations for the elements that defines their dataflow problem (sources, sinks, sanitizers and validators). The most common form for these *code identifiers* is the one shown above where a method and a package are specified, e.g.:
-```
+```yaml
 sources:
     - package: "example1"
       method: "GetSensitiveData"
 ```
-specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `sourcetaintsargs` option is set to true). There are also other possible code identifers, for example one can view any object of a given type as sources:
-```
+specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `source-taints-args` option is set to true). There are also other possible code identifers, for example one can view any object of a given type as sources:
+```yaml
 sources:
     - package: "mypackage"
       type: "taintedDataType"
@@ -74,7 +75,7 @@ sources:
 This implies that any object of type `taintedDataType` from the package `mypackage` is a source of tainted data. Every allocation of an object of this type will be marked as a source. Other source specifications are for channel receives and field reads.
 
 **Channel receives** are of the following form:
-```
+```yaml
 sources:
     - package: "mypackage"
       type: "chan A"
@@ -83,7 +84,7 @@ sources:
 The difference compared to the previous specification is the `kind` attribute that explicitly specifies that only the action of receiving data from that type is considered as a source. Here, any data read from a channel of type `chan A` in `mypackage` will be considered tainted (where `A` is the type within the `mypackage` package).
 
 **Field reads** are of the form:
-```
+```yaml
 sources:
     - package: "mypackage"
       type: "structA"
@@ -100,7 +101,7 @@ The configuration contains some specific fields that allow users to tune how the
 
 #### Filters
 By default, the analysis considers that any type can carry tainted data. In some cases, this can be excessive, as one might not see boolean values as tainted data (for example, a boolean cannot store a user's password). In order to ignore flows that pass through variables of certain types, one add filters. Filters are either a *type* or a *method*, optionally within a *package*. A type filter will cause the tool to ignore data flows through objects of that type, and a method filter will cause the tool to ignore data flows through that method (or function).
-```
+```yaml
  filters:
      - type: "bool$"
      - type: "error$"
@@ -110,11 +111,11 @@ By default, the analysis considers that any type can carry tainted data. In some
 With the configuration setting above, the tool will not follow data flows through `bool` and `error` types, and not through calls to the function `myFunc` in package `myPackage`. 
 
 #### Search Depth
-The `maxdepth` parameter controls how deep the dataflow paths can be. By default, or if it is set to any value <= 0, the limit is ignored and the tool will search for paths of any lengths. Setting the depth parameter can be useful to filter out some long paths when you have alarms, so that you can focus on solving problems for the shorter paths. This can also be useful if you have a strong confidence in a limit of how long the paths can be between your source and sinks. Note that the path length is counted in the terms of number of nodes; nodes are the function calls, parameters, returns, closure creation and free variables. If this is set to any positive value, the analysis is not sound.
+The `max-depth` parameter controls how deep the dataflow paths can be. By default, or if it is set to any value <= 0, the limit is ignored and the tool will search for paths of any lengths. Setting the depth parameter can be useful to filter out some long paths when you have alarms, so that you can focus on solving problems for the shorter paths. This can also be useful if you have a strong confidence in a limit of how long the paths can be between your source and sinks. Note that the path length is counted in the terms of number of nodes; nodes are the function calls, parameters, returns, closure creation and free variables. If this is set to any positive value, the analysis is not sound.
 
 #### Number of Alarms
 
-The `maxalarms` setting lets you limit the number of alarms the tool reports. This is useful when many paths are reported, and you want to only focus on a few reported problems. Setting this parameter has no effect on the soundness of the analysis; any value <= 0 will cause the limit to be ignored. The default value is 0.
+The `max-alarms` setting lets you limit the number of alarms the tool reports. This is useful when many paths are reported, and you want to only focus on a few reported problems. Setting this parameter has no effect on the soundness of the analysis; any value <= 0 will cause the limit to be ignored. The default value is 0.
 
 #### Warning Suppression 
 The use can set the setting `warn: false` to suppress warnings during the analysis. This means that if the analysis encounters program constructs that make it unsound, those will not be reported. This setting does not affect the soundness of the analysis, but it will cause the tool to not report when your program falls beyond the soundness guarantees.
@@ -147,7 +148,7 @@ Indicating the source location. If any flow of tainted data from that source loc
 [INFO]  💀 Sink reached at /somedir/main.go:50:12
 [INFO]  Add new path from "[#467.2] (SA)call: GetSensitiveData in loadUserData" to "[#23371.15] @arg 0:t20 in [#23371.14] (SA)call: LogDataPublicly(t22) in Log " <==
 ```
-And if the logging level is set to debug (`loglevel: 4` in configuration file), a trace is printed:
+And if the logging level is set to debug (`log-level: 4` in configuration file), a trace is printed:
 ```
 [DEBUG] Report in taint-report/flow-2507865943.out
 [DEBUG] TRACE: [] /somedir/example.go:50:17
@@ -189,7 +190,7 @@ Taint analyses can vary a lot in their capacities. Some analyses are more geared
 
 ### Simple Taint Flows
 Our taint analysis in general assumes that any operation propagates taint. For example, if a string is tainted, then adding elements to it, or taking a slice of the string, will produce tainted data.
-```[go]
+```go
 func main() {
     x := example1.GetSensitiveData() // x is tainted
     y := "(" + x + ")" // y is tainted because x is tainted
@@ -203,7 +204,7 @@ In general, the analysis is conservative in how it propagates data: for example,
 ### Inter-procedural Taint Flow
 
 The taint analysis implemented in Argot is *inter-procedural*: the flow of data is tracked across function calls, as opposed to within a single function. This means that the flow of tainted data is detected in the following example:
-```[go]
+```go
 func generate() *A {
     x := example1.GetSensitiveData() // this is a source of sensitive data
     return x
@@ -228,13 +229,13 @@ The `taint` tool will report taint flows given the configuration example given p
 
 The taint analysis tool can detect such flows with many intermediate calls.
 
-> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `maxdepth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some taint flows. In the previous example, the trace would not be reported if the configuration file sets `maxdepth: 2`.
+> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `max-depth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some taint flows. In the previous example, the trace would not be reported if the configuration file sets `maxdepth: 2`.
 
 
 ### Field Sensitivity
 
 The taint analysis is not *field-sensitive*: if a field from a structure is tainted, then the entire object is tainted. This means that the tool may raise false alarms, as illustrated in the following example:
-```[go]
+```go
 func main() {
     a := A{}
     a.Data = "safe-data" // the Data field does not contain sensitive data
@@ -251,7 +252,7 @@ If the analysis was field-sensitive, it would not raise an alarm.
 
 The taint analysis is *tuple-sensitive*: it tracks the taint of different elements of the tuple separately. This is easier in Go than in other languages because tuples only exist at the boundary of function calls and returns, they cannot be manipulated elsewhere in the code.
 This means that in the following example, no false alarm is raised:
-```[go]
+```go
 
 // generate returns a tuple of values, one of which is tainted
 func generate() (*A, string) {
@@ -272,7 +273,7 @@ Because the analysis tracks the taint of the tuple elements separately, it detec
 [Closures](https://go.dev/tour/moretypes/25) are functions that can reference variables (*bound* variables) from outside their body. This referencing makes the taint analysis more complicated, as the data may flow from aliases of the variables *bound* by a closure to the point where the closure is executed. Our taint analysis tool is able to trace the flow of data in the presence of closures.
 
 For example, in the following:
-```[go]
+```go
 func example3prep() func(string) string {
 	lparen := "("
 	rparen := ")"
@@ -295,7 +296,7 @@ An alarm is raised because data flows from the source to the sink. When the clos
 
 The following example illustrates a taint flow to a deferred function, the difference between the two calls is that one captures its argument by reference:
 
-```[go]
+```go
 func main() {
 	a := A{"ok"}
 	b := &A{"ok"}
@@ -308,7 +309,7 @@ func main() {
 In the example, the calls to the sink `LogDataPublicly` are deferred until the end of the function. Because the first call takes `a` as argument, and `a` is a non-tainted value, this does not raise an alarm. The arguments of a deferred call are evaluated at the `defer` location. However, in the second call, the argument passed is a pointer to some structure, which is tainted later. In this case, an alarm is raised.
 
 Let us consider another example that illustrate the flows through defers, when defers can execute at any point of the function.
-```[go]
+```go
 func maypanic(x *Obj, b string) {
 	defer func() {
 		x.f = b
@@ -339,7 +340,7 @@ In this example, the taint may flow from `b` to `x` in `catchPanic` through `may
 The analysis tracks the flow to globals, but it does not precisely determine a relation between the locations where globals are read and written. This means that when a global variable is written to with tainted data, then every program point that reads the global variable is considered tainted, independently of program execution order.
 
 Consider the following example, where `y` is a global variable that is written in two locations, and read in two locations. Only the second write propagates tainted data to `y`:
-```[go]
+```go
 var y T // y is a global variable
 
 func main() {
@@ -367,7 +368,7 @@ There are two reasons a user may want to specify a data flow summary:
 - for soundness: the analysis does not support reflection and some uses of the unsafe package. If a function uses those packages, then it should be summarized by the user. The analysis will raise alarms whenever some unsupported feature of the language is encountered during the analysis.
 
 Dataflow specifications are json files that contain a list of specifications. Each specification is a structure that contains either an `"InterfaceId"` or an `"ObjectPath"`, along with a dictionary `"Methods"`. If an interface id is specified, then the dataflow specifications for each of the methods are interpreted as specifications for the interface methods, i.e. they specify every possible implementation of the interface. For example, consider the following dataflow specifications:
-```[json]
+```json
 [
     {
         "ObjectPath": "gopkg.in/yaml.v2",
@@ -406,7 +407,8 @@ source may interact with a memory location that is not thread-local.
 
 To enable the escape analysis, use the following option in the config file:
 ```yaml
-useescapeanalysis: true
+options:
+  use-escape-analysis: true
 ```
 If any tainted data *escapes* the thread it originates from, the tool will print those locations at the end of its
 output.

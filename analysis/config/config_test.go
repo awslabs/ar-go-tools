@@ -164,13 +164,13 @@ func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
 		return
 	}
 	if !config.ReportNoCalleeSites {
-		t.Errorf("Expected reportnocalleesites to be true in %s", fileName)
+		t.Errorf("Expected report-no-callee-sites to be true in %s", fileName)
 	}
 	if config.ReportNoCalleeFile() != config.nocalleereportfile {
 		t.Errorf("ReportNoCalleeFile should return private value")
 	}
 	if config.ReportsDir == "" {
-		t.Errorf("Expected reportsdir to be non-empty after loading config %s", fileName)
+		t.Errorf("Expected reports-dir to be non-empty after loading config %s", fileName)
 	}
 	// Remove temporary files
 	os.Remove(config.nocalleereportfile)
@@ -191,7 +191,7 @@ func TestLoadFullConfig(t *testing.T) {
 		t.Error("full config should have set skiipinterprocedural")
 	}
 	if !config.ReportCoverage {
-		t.Error("full config should have set reportcoverage")
+		t.Error("full config should have set report-coverage")
 	}
 	if !config.ReportNoCalleeSites {
 		t.Error("full config should have set reportnocalleesites")
@@ -206,7 +206,7 @@ func TestLoadFullConfig(t *testing.T) {
 		t.Error("full config should specify two dataflow spec files")
 	}
 	if config.MaxDepth != 42 {
-		t.Error("full config should set MaxDepth to 42")
+		t.Error("full config should set max-depth to 42")
 	}
 	if config.MaxAlarms != 16 {
 		t.Error("full config should set MaxAlarms to 16")
@@ -215,7 +215,7 @@ func TestLoadFullConfig(t *testing.T) {
 		t.Error("full config coverage filter should match files in argot")
 	}
 	if config.PkgFilter == "" {
-		t.Error("full config should specify a pkgfilter")
+		t.Error("full config should specify a pkg-filter")
 	}
 	if !config.MatchPkgFilter("argot/analysis/analyzers.go") {
 		t.Error("full config coverage filter should match files in analysis")
@@ -223,6 +223,22 @@ func TestLoadFullConfig(t *testing.T) {
 	if len(config.Sinks) != 1 || len(config.Validators) != 1 || len(config.Sanitizers) != 1 ||
 		len(config.Sources) != 1 {
 		t.Error("full config should have one element in each of sinks, validators, sanitizers and sources")
+	}
+	if !config.SourceTaintsArgs {
+		t.Error("full config should have source-taints-args set")
+	}
+	if config.Warn {
+		t.Error("full config should have warn set to false")
+	}
+	if !config.IgnoreNonSummarized {
+		t.Errorf("full config should have set ignorenonsummarized")
+	}
+	if !config.UseEscapeAnalysis {
+		t.Errorf("full config should have set useescapeaanalysis")
+	}
+
+	if !config.SummarizeOnDemand {
+		t.Errorf("full config should set summarize-on-demand")
 	}
 	// Remove temporary files
 	os.Remove(config.nocalleereportfile)
@@ -262,9 +278,11 @@ func TestLoadMisc(t *testing.T) {
 
 				{"some/other/package", "", "", "OneField", "ThatStruct", "", "", nil},
 			},
-			PkgFilter: "a",
-			MaxDepth:  DefaultMaxCallDepth,
-			Warn:      true,
+			Options: Options{
+				PkgFilter: "a",
+				MaxDepth:  DefaultMaxCallDepth,
+				Warn:      true,
+			},
 		},
 	)
 	// Test configuration file for static-commands

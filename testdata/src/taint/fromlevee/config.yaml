@@ -6,5 +6,6 @@ sinks:
   - package: "(.*)core"
     method: "Sink[1-9]?"
 
-reportsdir: "report"
-reportsummaries: true
+options:
+   reports-dir: "report"
+   report-summaries: true

@@ -14,4 +14,6 @@ sanitizers:
 filters:
   - type: "error$" # the $ is important to match only exactly the type
   - type: "bool$"
-reportpaths: true
+
+options:
+    report-paths: true
