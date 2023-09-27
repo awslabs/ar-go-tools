@@ -66,10 +66,12 @@ func TestCodeIdentifier_equalOnNonEmptyFields_regexes(t *testing.T) {
 
 func mkConfig(sanitizers []CodeIdentifier, sinks []CodeIdentifier, sources []CodeIdentifier) Config {
 	c := NewDefault()
-	c.Sanitizers = sanitizers
-	c.Sinks = sinks
-	c.Sources = sources
+	ts := TaintSpec{}
+	ts.Sanitizers = sanitizers
+	ts.Sinks = sinks
+	ts.Sources = sources
 	c.MaxDepth = DefaultMaxCallDepth
+	c.TaintTrackingProblems = []TaintSpec{ts}
 	return *c
 }
 
@@ -220,8 +222,11 @@ func TestLoadFullConfig(t *testing.T) {
 	if !config.MatchPkgFilter("argot/analysis/analyzers.go") {
 		t.Error("full config coverage filter should match files in analysis")
 	}
-	if len(config.Sinks) != 1 || len(config.Validators) != 1 || len(config.Sanitizers) != 1 ||
-		len(config.Sources) != 1 {
+	if len(config.TaintTrackingProblems) != 1 ||
+		len(config.TaintTrackingProblems[0].Sinks) != 1 ||
+		len(config.TaintTrackingProblems[0].Validators) != 1 ||
+		len(config.TaintTrackingProblems[0].Sanitizers) != 1 ||
+		len(config.TaintTrackingProblems[0].Sources) != 1 {
 		t.Error("full config should have one element in each of sinks, validators, sanitizers and sources")
 	}
 	if !config.SourceTaintsArgs {
@@ -270,13 +275,17 @@ func TestLoadMisc(t *testing.T) {
 	testLoadOneFile(t,
 		"config3.yaml",
 		Config{
-			Sanitizers: []CodeIdentifier{{"pkg1", "Foo", "Obj", "", "", "", "", nil}},
-			Sinks: []CodeIdentifier{{"y", "b", "", "", "", "", "", nil},
-				{"x", "", "Obj1", "", "", "", "", nil}},
-			Sources: []CodeIdentifier{
-				{"some/package", "SuperMethod", "", "", "", "", "", nil},
+			TaintTrackingProblems: []TaintSpec{
+				{
+					Sanitizers: []CodeIdentifier{{"pkg1", "Foo", "Obj", "", "", "", "", nil}},
+					Sinks: []CodeIdentifier{{"y", "b", "", "", "", "", "", nil},
+						{"x", "", "Obj1", "", "", "", "", nil}},
+					Sources: []CodeIdentifier{
+						{"some/package", "SuperMethod", "", "", "", "", "", nil},
 
-				{"some/other/package", "", "", "OneField", "ThatStruct", "", "", nil},
+						{"some/other/package", "", "", "OneField", "ThatStruct", "", "", nil},
+					},
+				},
 			},
 			Options: Options{
 				PkgFilter: "a",
@@ -288,6 +297,6 @@ func TestLoadMisc(t *testing.T) {
 	// Test configuration file for static-commands
 	osExecCid := CodeIdentifier{"os/exec", "Command", "", "", "", "", "", nil}
 	cfg := NewDefault()
-	cfg.StaticCommands = []CodeIdentifier{osExecCid}
+	cfg.StaticCommandsProblems = []StaticCommandsSpec{{[]CodeIdentifier{osExecCid}}}
 	testLoadOneFile(t, "config-find-osexec.yaml", *cfg)
 }

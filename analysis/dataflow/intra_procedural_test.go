@@ -47,7 +47,7 @@ func TestFunctionSummaries(t *testing.T) {
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		IsEntrypoint:       taint.IsSourceNode,
+		IsEntrypoint:       taint.IsSomeSourceNode,
 	})
 
 	if len(state.FlowGraph.Summaries) == 0 {

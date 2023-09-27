@@ -68,18 +68,18 @@ dataflow-specs:
   - "example.json"
   - "example2.json"
 
+taint-tracking-problems:
+  - validators:
+      - method: "Validate"
+        package: "x"
 
-validators:
-  - method: "Validate"
-    package: "x"
+    sinks:
+      - method: "Sink"
+        package: "sensitiveDataManipulation"
 
-sinks:
-  - method: "Sink"
-    package: "sensitiveDataManipulation"
+    sources:
+      - type: "Data"
+        field: "UserProvided"
 
-sources:
-  - type: "Data"
-    field: "UserProvided"
-
-sanitizers:
-  - method: "Sanitize"
+    sanitizers:
+      - method: "Sanitize"

@@ -31,11 +31,11 @@ type Object struct {
 	Id string `xml:"id,attr"`
 	CodeIdentifier
 	Options
-	IsSource      string `xml:"isSource,attr"`
-	IsSink        string `xml:"isSink,attr"`
-	IsSanitizer   string `xml:"isSanitizer,attr"`
-	IsValidator   string `xml:"isValidator,attr"`
-	DataflowSpecs string `xml:"dataflowSpecs,attr"`
+	IsSource      string `xml:"taint-source,attr"`
+	IsSink        string `xml:"taint-sink,attr"`
+	IsSanitizer   string `xml:"taint-sanitizer,attr"`
+	IsValidator   string `xml:"taint-validator,attr"`
+	DataflowSpecs string `xml:"dataflow-specs,attr"`
 	Filters       string `xml:"filters,attr"`
 }
 
@@ -72,17 +72,18 @@ func ParseXmlConfigFormat(c *Config, b []byte) error {
 
 		cid := obj.CodeIdentifier
 
+		ts := TaintSpec{}
 		if obj.IsSink == "true" {
-			c.Sinks = append(c.Sinks, cid)
+			ts.Sinks = append(ts.Sinks, cid)
 		}
 		if obj.IsSource == "true" {
-			c.Sources = append(c.Sources, cid)
+			ts.Sources = append(ts.Sources, cid)
 		}
 		if obj.IsSanitizer == "true" {
-			c.Sanitizers = append(c.Sanitizers, cid)
+			ts.Sanitizers = append(ts.Sanitizers, cid)
 		}
 		if obj.IsValidator == "true" {
-			c.Validators = append(c.Validators, cid)
+			ts.Validators = append(ts.Validators, cid)
 		}
 	}
 	// TODO: use edges to infer which sources/sinks/sanitizers go together

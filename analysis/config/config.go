@@ -52,6 +52,28 @@ type Config struct {
 	// nocalleereportfile is a file name in ReportsDir when ReportNoCalleeSites is true
 	nocalleereportfile string
 
+	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the taint
+	// analysis
+	DataflowSpecs []string `yaml:"dataflow-specs"`
+
+	// if the PkgFilter is specified
+	pkgFilterRegex *regexp.Regexp
+
+	// if the CoverageFilter is specified
+	coverageFilterRegex *regexp.Regexp
+
+	// TaintTrackingProblems lists the taint tracking specifications
+	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking-problems"`
+
+	// SlicingProblems lists the program slicing specifications
+	SlicingProblems []SlicingSpec `yaml:"slicing-problems"`
+
+	// StaticCommandsProblems lists the static commands problems
+	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems"`
+}
+
+// TaintSpec contains code identifiers that identify a specific taint tracking problem
+type TaintSpec struct {
 	// Sanitizers is the list of sanitizers for the taint analysis
 	Sanitizers []CodeIdentifier
 
@@ -64,25 +86,25 @@ type Config struct {
 	// Sources is the list of sources for the taint analysis
 	Sources []CodeIdentifier
 
-	// StaticCommands is the list of identifiers to be considered as command execution for the static commands analysi
-	// (not used)
-	StaticCommands []CodeIdentifier
+	// Filters contains a list of filters that can be used by analyses
+	Filters []CodeIdentifier
+}
 
-	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards dataflow analysis.
+// SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
+type SlicingSpec struct {
+	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards
+	// dataflow analysis.
 	BacktracePoints []CodeIdentifier
-
-	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the taint
-	// analysis
-	DataflowSpecs []string `yaml:"dataflow-specs"`
 
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
+}
 
-	// if the PkgFilter is specified
-	pkgFilterRegex *regexp.Regexp
-
-	// if the CoverageFilter is specified
-	coverageFilterRegex *regexp.Regexp
+// StaticCommandsSpec contains code identifiers for the problem of identifying which commands are static
+type StaticCommandsSpec struct {
+	// StaticCommands is the list of identifiers to be considered as command execution for the static commands analysis
+	// (not used)
+	StaticCommands []CodeIdentifier `yaml:"static-commands"`
 }
 
 type Options struct {
@@ -151,14 +173,12 @@ type Options struct {
 // NewDefault returns an empty default config.
 func NewDefault() *Config {
 	return &Config{
-		sourceFile:         "",
-		nocalleereportfile: "",
-		Sanitizers:         nil,
-		Sinks:              nil,
-		Sources:            nil,
-		StaticCommands:     nil,
-		BacktracePoints:    nil,
-		DataflowSpecs:      []string{},
+		sourceFile:             "",
+		nocalleereportfile:     "",
+		TaintTrackingProblems:  nil,
+		SlicingProblems:        nil,
+		StaticCommandsProblems: nil,
+		DataflowSpecs:          []string{},
 		Options: Options{
 			ReportsDir:          "",
 			PkgFilter:           "",
@@ -227,14 +247,22 @@ func Load(filename string) (*Config, error) {
 		}
 	}
 
-	funcutil.Iter(cfg.BacktracePoints, compileRegexes)
-	funcutil.Iter(cfg.Filters, compileRegexes)
-	funcutil.Iter(cfg.Sanitizers, compileRegexes)
-	funcutil.Iter(cfg.Sinks, compileRegexes)
-	funcutil.Iter(cfg.Sources, compileRegexes)
-	funcutil.Iter(cfg.StaticCommands, compileRegexes)
-	funcutil.Iter(cfg.Validators, compileRegexes)
-	funcutil.Iter(cfg.Validators, compileRegexes)
+	for _, tSpec := range cfg.TaintTrackingProblems {
+		funcutil.Iter(tSpec.Sanitizers, compileRegexes)
+		funcutil.Iter(tSpec.Sinks, compileRegexes)
+		funcutil.Iter(tSpec.Sources, compileRegexes)
+		funcutil.Iter(tSpec.Validators, compileRegexes)
+		funcutil.Iter(tSpec.Filters, compileRegexes)
+	}
+
+	for _, sSpec := range cfg.SlicingProblems {
+		funcutil.Iter(sSpec.BacktracePoints, compileRegexes)
+		funcutil.Iter(sSpec.Filters, compileRegexes)
+	}
+
+	for _, stSpec := range cfg.StaticCommandsProblems {
+		funcutil.Iter(stSpec.StaticCommands, compileRegexes)
+	}
 
 	return cfg, nil
 }
@@ -303,34 +331,73 @@ func (c Config) MatchCoverageFilter(filename string) bool {
 
 // Below are functions used to query the configuration on specific facts
 
+func (c Config) isSomeTaintSpecCid(cid CodeIdentifier, f func(t TaintSpec, cid CodeIdentifier) bool) bool {
+	for _, x := range c.TaintTrackingProblems {
+		if f(x, cid) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSomeSource returns true if the code identifier matches any source in the config
+func (c Config) IsSomeSource(cid CodeIdentifier) bool {
+	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSource(cid2) })
+}
+
+// IsSomeSink returns true if the code identifier matches any sink in the config
+func (c Config) IsSomeSink(cid CodeIdentifier) bool {
+	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSink(cid2) })
+}
+
+// IsSomeSanitizer returns true if the code identifier matches any sanitizer in the config
+func (c Config) IsSomeSanitizer(cid CodeIdentifier) bool {
+	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSanitizer(cid2) })
+}
+
+// IsSomeValidator returns true if the code identifier matches any validator in the config
+func (c Config) IsSomeValidator(cid CodeIdentifier) bool {
+	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsValidator(cid2) })
+}
+
+// IsSomeBacktracePoint returns true if the code identifier matches any backtrace point in the slicing problems
+func (c Config) IsSomeBacktracePoint(cid CodeIdentifier) bool {
+	for _, ss := range c.SlicingProblems {
+		if ss.IsBacktracePoint(cid) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsSource returns true if the code identifier matches a source specification in the config file
-func (c Config) IsSource(cid CodeIdentifier) bool {
-	b := ExistsCid(c.Sources, cid.equalOnNonEmptyFields)
+func (ts TaintSpec) IsSource(cid CodeIdentifier) bool {
+	b := ExistsCid(ts.Sources, cid.equalOnNonEmptyFields)
 	return b
 }
 
 // IsSink returns true if the code identifier matches a sink specification in the config file
-func (c Config) IsSink(cid CodeIdentifier) bool {
-	return ExistsCid(c.Sinks, cid.equalOnNonEmptyFields)
+func (ts TaintSpec) IsSink(cid CodeIdentifier) bool {
+	return ExistsCid(ts.Sinks, cid.equalOnNonEmptyFields)
 }
 
 // IsSanitizer returns true if the code identifier matches a sanitizer specification in the config file
-func (c Config) IsSanitizer(cid CodeIdentifier) bool {
-	return ExistsCid(c.Sanitizers, cid.equalOnNonEmptyFields)
+func (ts TaintSpec) IsSanitizer(cid CodeIdentifier) bool {
+	return ExistsCid(ts.Sanitizers, cid.equalOnNonEmptyFields)
 }
 
 // IsValidator returns true if the code identifier matches a validator specification in the config file
-func (c Config) IsValidator(cid CodeIdentifier) bool {
-	return ExistsCid(c.Validators, cid.equalOnNonEmptyFields)
+func (ts TaintSpec) IsValidator(cid CodeIdentifier) bool {
+	return ExistsCid(ts.Validators, cid.equalOnNonEmptyFields)
 }
 
 // IsStaticCommand returns true if the code identifier matches a static command specification in the config file
-func (c Config) IsStaticCommand(cid CodeIdentifier) bool {
-	return ExistsCid(c.StaticCommands, cid.equalOnNonEmptyFields)
+func (scs StaticCommandsSpec) IsStaticCommand(cid CodeIdentifier) bool {
+	return ExistsCid(scs.StaticCommands, cid.equalOnNonEmptyFields)
 }
 
-func (c Config) IsBacktracePoint(cid CodeIdentifier) bool {
-	return ExistsCid(c.BacktracePoints, cid.equalOnNonEmptyFields)
+func (ss SlicingSpec) IsBacktracePoint(cid CodeIdentifier) bool {
+	return ExistsCid(ss.BacktracePoints, cid.equalOnNonEmptyFields)
 }
 
 // Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)

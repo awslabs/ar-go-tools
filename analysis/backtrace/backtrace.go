@@ -98,18 +98,26 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 		// Only build summaries for non-stdlib functions here
 		analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: df.ShouldBuildSummary,
-			IsEntrypoint:       isSingleFunctionEntrypoint,
+			IsEntrypoint:       isSomeIntraProceduralEntryPoint,
 		})
 	}
 
-	visitor := &Visitor{}
-	analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
-		IsEntrypoint: IsCrossFunctionEntrypoint,
-	})
+	traces := [][]df.GraphNode{}
 
-	logger.Infof(colors.Green("Found %d traces.\n"), len(visitor.Traces))
+	for _, ps := range cfg.SlicingProblems {
+		visitor := &Visitor{}
+		visitor.SlicingSpec = &ps
+		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
+			IsEntrypoint: func(node ssa.Node) bool {
+				return IsInterProceduralEntryPoint(visitor.SlicingSpec, node)
+			},
+		})
+		traces = append(traces, visitor.Traces...)
+	}
 
-	return AnalysisResult{Graph: *state.FlowGraph, Traces: Traces(state, visitor.Traces)}, nil
+	logger.Infof(colors.Green("Found %d traces.\n"), len(traces))
+
+	return AnalysisResult{Graph: *state.FlowGraph, Traces: Traces(state, traces)}, nil
 }
 
 func Traces(s *df.AnalyzerState, traces [][]df.GraphNode) []Trace {
@@ -126,7 +134,8 @@ func Traces(s *df.AnalyzerState, traces [][]df.GraphNode) []Trace {
 }
 
 type Visitor struct {
-	Traces [][]df.GraphNode
+	SlicingSpec *config.SlicingSpec
+	Traces      [][]df.GraphNode
 }
 
 // Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
@@ -263,7 +272,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						// the callee summary may not have been created yet
 						if callSite.CalleeSummary == nil {
 							callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionId(),
-								isSingleFunctionEntrypoint, nil)
+								isSomeIntraProceduralEntryPoint, nil)
 						}
 					} else {
 						s.ReportMissingOrNotConstructedSummary(callSite)
@@ -402,7 +411,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 							df.BuildSummary(s, f)
 						}
 					}
-					//s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
+					//s.FlowGraph.BuildGraph(IsInterProceduralEntryPoint)
 				}
 
 				for x := range graphNode.Global.WriteLocations {
@@ -420,7 +429,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 			if s.Config.SummarizeOnDemand && closureNode.ClosureSummary == nil {
 				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
-				//s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
+				//s.FlowGraph.BuildGraph(IsInterProceduralEntryPoint)
 				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 			}
 
@@ -451,8 +460,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				//logger.Tracef("Closure trace: %v", elt.ClosureTrace.Label)
 				//closureSummary := elt.ClosureTrace.Label.Graph()
 				//if !closureSummary.Constructed {
-				//	closureSummary = df.BuildSummary(s, elt.ClosureTrace.Label.Graph().Parent, isSingleFunctionEntrypoint)
-				//	s.FlowGraph.BuildGraph(IsCrossFunctionEntrypoint)
+				//	closureSummary = df.BuildSummary(s, elt.ClosureTrace.Label.Graph().Parent, isIntraProceduralEntryPoint)
+				//	s.FlowGraph.BuildGraph(IsInterProceduralEntryPoint)
 				//}
 				// Flow to the matching bound variables at the make closure site from the closure trace
 				bvs := elt.ClosureTrace.Label.BoundVars()
@@ -627,18 +636,26 @@ func IsStatic(node df.GraphNode) bool {
 	}
 }
 
-// IsCrossFunctionEntrypoint returns true if cfg identifies n as a backtrace entrypoint.
-func IsCrossFunctionEntrypoint(cfg *config.Config, n ssa.Node) bool {
+// IsInterProceduralEntryPoint returns true if cfg identifies n as a backtrace entrypoint.
+func IsInterProceduralEntryPoint(ss *config.SlicingSpec, n ssa.Node) bool {
 	if f, ok := n.(*ssa.Function); ok {
 		pkg := lang.PackageNameFromFunction(f)
-		return cfg.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
+		return ss.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 	}
 
-	return isSingleFunctionEntrypoint(cfg, n)
+	return isIntraProceduralEntryPoint(ss, n)
 }
 
-func isSingleFunctionEntrypoint(cfg *config.Config, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(cfg, n, config.Config.IsBacktracePoint)
+func isSomeIntraProceduralEntryPoint(cfg *config.Config, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(n, func(cid config.CodeIdentifier) bool {
+		return cfg.IsSomeBacktracePoint(cid)
+	})
+}
+
+func isIntraProceduralEntryPoint(ss *config.SlicingSpec, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(n, func(cid config.CodeIdentifier) bool {
+		return ss.IsBacktracePoint(cid)
+	})
 }
 
 func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {
@@ -649,7 +666,7 @@ func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {
 		if f.Package() != nil {
 			pkg = f.Package().String()
 		}
-		if cfg.IsBacktracePoint(config.CodeIdentifier{
+		if cfg.IsSomeBacktracePoint(config.CodeIdentifier{
 			Package:  pkg,
 			Method:   f.Name(),
 			Receiver: "",
@@ -674,7 +691,7 @@ func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {
 		ShouldBuildSummary: func(_ *df.AnalyzerState, f *ssa.Function) bool {
 			return shouldSummarize[f]
 		},
-		IsEntrypoint: isSingleFunctionEntrypoint,
+		IsEntrypoint: isSomeIntraProceduralEntryPoint,
 	})
 }
 

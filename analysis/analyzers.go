@@ -88,7 +88,7 @@ func runJobs(jobs []singleFunctionJob, numRoutines int,
 // InterProceduralParams represents the arguments to RunInterProcedural.
 type InterProceduralParams struct {
 	// IsEntryPoint is a predicate that defines which ssa nodes are entry points of the analysis.
-	IsEntrypoint func(*config.Config, ssa.Node) bool
+	IsEntrypoint func(ssa.Node) bool
 }
 
 // RunInterProcedural runs the inter-procedural analysis pass.

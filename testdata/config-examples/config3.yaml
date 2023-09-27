@@ -2,20 +2,21 @@
 options:
     pkg-filter: "a"
 
-sinks:
-  - package: y
-    method: b
-  - package: x
-    receiver: Obj1
+taint-tracking-problems:
+    - sinks:
+      - package: y
+        method: b
+      - package: x
+        receiver: Obj1
 
-sanitizers:
-  - package: pkg1
-    method: Foo
-    receiver: Obj
+      sanitizers:
+        - package: pkg1
+          method: Foo
+          receiver: Obj
 
-sources:
-  - package: some/package
-    method: SuperMethod
-  - package: some/other/package
-    type: ThatStruct
-    field: OneField
+      sources:
+        - package: some/package
+          method: SuperMethod
+        - package: some/other/package
+          type: ThatStruct
+          field: OneField

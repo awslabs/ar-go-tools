@@ -120,7 +120,7 @@ func getFieldNameFromType(t types.Type, i int) string {
 }
 
 // IsEntrypointNode returns true if n is an entrypoint to the analysis according to f.
-func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, config.CodeIdentifier) bool) bool {
+func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered entry points
 	case *ssa.Call:
@@ -132,7 +132,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 			methodName := node.Call.Method.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
-				return f(*cfg,
+				return f(
 					config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
 			}
 			return false
@@ -140,7 +140,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 			funcValue := node.Call.Value.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
-				return f(*cfg, config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue})
+				return f(config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue})
 			}
 			return false
 		}
@@ -152,7 +152,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 		if err != nil {
 			return false
 		}
-		return f(*cfg, config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
+		return f(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
 
 	case *ssa.FieldAddr:
 		fieldName := FieldAddrFieldName(node)
@@ -160,7 +160,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 		if err != nil {
 			return false
 		}
-		return f(*cfg, config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
+		return f(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
 
 	// Allocations of data of a type that is an entry point
 	case *ssa.Alloc:
@@ -168,7 +168,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 		if err != nil {
 			return false
 		}
-		return f(*cfg, config.CodeIdentifier{Package: packageName, Type: typeName})
+		return f(config.CodeIdentifier{Package: packageName, Type: typeName})
 
 	// Channel receives can be sources
 	case *ssa.UnOp:
@@ -177,7 +177,7 @@ func IsEntrypointNode(cfg *config.Config, n ssa.Node, f func(config.Config, conf
 			if err != nil {
 				return false
 			}
-			return f(*cfg, config.CodeIdentifier{Package: packageName, Type: typeName, Kind: "channel receive"})
+			return f(config.CodeIdentifier{Package: packageName, Type: typeName, Kind: "channel receive"})
 		}
 		return false
 

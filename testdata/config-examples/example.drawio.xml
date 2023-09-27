@@ -6,17 +6,17 @@
           <mxCell />
         </object>
         <mxCell id="1" parent="0" />
-        <object label="&lt;div&gt;Source of tainted data&lt;/div&gt;" package="(main)|(command-line-arguments)|((.*)ar-go-tools)" method="source[1-9]" isSource="true" id="2hWxdChP9oScqINdt46a-1">
+        <object label="&lt;div&gt;Source of tainted data&lt;/div&gt;" package="(main)|(command-line-arguments)|((.*)ar-go-tools)" method="source[1-9]" taint-source="true" id="2hWxdChP9oScqINdt46a-1">
           <mxCell style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
             <mxGeometry x="410" y="80" width="120" height="60" as="geometry" />
           </mxCell>
         </object>
-        <object label="Function handling sensitive data" package="(main)|(command-line-arguments)|((.*)ar-go-tools)" method="(s|S)ink[1-9]" isSink="true" id="2hWxdChP9oScqINdt46a-2">
+        <object label="Function handling sensitive data" package="(main)|(command-line-arguments)|((.*)ar-go-tools)" method="(s|S)ink[1-9]" taint-sink="true" id="2hWxdChP9oScqINdt46a-2">
           <mxCell style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
             <mxGeometry x="410" y="310" width="120" height="60" as="geometry" />
           </mxCell>
         </object>
-        <object label="Clean up input data" method="(s|S)anitize[1-9]?" isSanitizer="true" id="2hWxdChP9oScqINdt46a-3">
+        <object label="Clean up input data" method="(s|S)anitize[1-9]?" taint-sanitizer="true" id="2hWxdChP9oScqINdt46a-3">
           <mxCell style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
             <mxGeometry x="410" y="190" width="120" height="60" as="geometry" />
           </mxCell>

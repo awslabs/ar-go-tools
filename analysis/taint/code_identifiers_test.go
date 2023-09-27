@@ -80,12 +80,15 @@ var taintSourcesAnalyzer = &analysis.Analyzer{
 
 // newSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
 func newSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
-	return NewPackagesMap(c, pkgs, IsSourceNode)
+	return NewPackagesMap(c, pkgs, IsSomeSourceNode)
 }
 
 // newSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
 func newSinkMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
-	return NewPackagesMap(c, pkgs, IsSinkNode)
+	return NewPackagesMap(c, pkgs,
+		func(cfg *config.Config, node ssa.Node) bool {
+			return isMatchingCodeIdWithCallee(cfg.IsSomeSink, nil, node)
+		})
 }
 
 func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {

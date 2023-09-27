@@ -1,6 +1,8 @@
-sources:
-  - method: "source"
-    package: "(main|command-line-arguments)"
-sinks:
-  - package: "(main|command-line-arguments)"
-    method: "sink"
+taint-tracking-problems:
+  -
+    sources:
+      - method: "source"
+        package: "(main|command-line-arguments)"
+    sinks:
+      - package: "(main|command-line-arguments)"
+        method: "sink"
