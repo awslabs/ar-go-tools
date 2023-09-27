@@ -55,9 +55,6 @@ options:
   report-paths: true                   # whether to report paths, if the analysis reports paths (default false)
   report-no-callee-sites: true         # whehter to report when callgraph analysis does not find a callee (default false)
   max-alarms: 10                       # set a maximum for how many alarms are reported (default is 0 which means ignore)
-  
-filters:                            # a list of filters that is used by the analysis, the meaning is analysis dependent
-    - "packages/*"
 ```
 
 > 📝 The tool accepts five different settings for the logging level: 1 for error logging, 2 for warnings, 3 for info, 4 for debugging information and 5 for tracing. Tracing should not be used on large programs.

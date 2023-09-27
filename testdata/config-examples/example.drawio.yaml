@@ -8,8 +8,8 @@ taint-tracking-problems:
   - sources:
       - package: "(main)|(command-line-arguments)|((.*)ar-go-tools)"
         method: "source[1-9]"
-  - sinks:
+    sinks:
       - package: "(main)|(command-line-arguments)|((.*)ar-go-tools)"
         method: "(s|S)ink[1-9]"
-  - sanitizers:
+    sanitizers:
       - method: "(s|S)anitize[1-9]?"
