@@ -9,13 +9,14 @@ A trace terminates for a specific entrypoint when an instruction no longer has a
 > ⚠ The backtrace analysis does not support usages of the `reflect` and `unsafe` packages. We explain later how to analyze programs in the presence of those, but the result is not guaranteed to be correct when the analysis raises no alarms.
 
 ## Backtrace Analysis Configuration
-On top of the configuration options listed in the common fields, the user can configure backtrace-analysis specific options. The main configuration fields are the core components of the problem specification, which are the entry points to the analysis. The *backtrace-points* identify the functions from which the analysis should find all the backwards data flows.
+On top of the configuration options listed in the common fields, the user can specify backtrace analysis (or program slicing) problems. The configuration file accepts an option `slicing-problems` that is a list of slicing problems. Each slicing problem must set the *backtrace-points* , which identify the functions from which the analysis should find all the backwards data flows.
 
-Below is an example of a config file containing a basic backtrace analysis specification:
+Below is an example of a config file containing one basic backtrace analysis specification (as part of `slicing-problems`):
 ```yaml
-backtracepoints:                        # A list of entrypoints
-    - package: "os/exec"
-      method: "Command$"
+slicing-problems:
+    - backtracepoints:                        # A list of entrypoints
+        - package: "os/exec"
+          method: "Command$"
 ```
 In this configuration file, the user is trying to detect all the possible traces from calls to some function `Command` in a package matching `os/exec`. The tool will treat all the arguments to all the calls to `os/exec.Command` as entry points.
 
