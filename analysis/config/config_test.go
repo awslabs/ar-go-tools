@@ -232,8 +232,8 @@ func TestLoadFullConfig(t *testing.T) {
 	if !config.SourceTaintsArgs {
 		t.Error("full config should have source-taints-args set")
 	}
-	if config.Warn {
-		t.Error("full config should have warn set to false")
+	if config.SilenceWarn {
+		t.Error("full config should have warn set to true")
 	}
 	if !config.IgnoreNonSummarized {
 		t.Errorf("full config should have set ignorenonsummarized")
@@ -288,9 +288,9 @@ func TestLoadMisc(t *testing.T) {
 				},
 			},
 			Options: Options{
-				PkgFilter: "a",
-				MaxDepth:  DefaultMaxCallDepth,
-				Warn:      true,
+				PkgFilter:   "a",
+				MaxDepth:    DefaultMaxCallDepth,
+				SilenceWarn: false,
 			},
 		},
 	)

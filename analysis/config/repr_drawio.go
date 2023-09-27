@@ -16,7 +16,6 @@ package config
 
 import (
 	"encoding/xml"
-	"fmt"
 	"strings"
 )
 
@@ -59,37 +58,34 @@ func ParseXmlConfigFormat(c *Config, b []byte) error {
 				specs := strings.Split(obj.DataflowSpecs, ",")
 				c.DataflowSpecs = specs
 			}
-			if obj.PkgFilter != "" {
-				c.PkgFilter = obj.PkgFilter
-			}
-			if obj.Filters != "" {
-				// TODO Filters
-			}
-			fmt.Printf("Options: %v\n", obj.Options)
-
 			c.Options = obj.Options
 		}
 
 		cid := obj.CodeIdentifier
 
 		ts := TaintSpec{}
+		addSpec := false
 		if obj.IsSink == "true" {
 			ts.Sinks = append(ts.Sinks, cid)
+			addSpec = true
 		}
 		if obj.IsSource == "true" {
 			ts.Sources = append(ts.Sources, cid)
+			addSpec = true
 		}
 		if obj.IsSanitizer == "true" {
 			ts.Sanitizers = append(ts.Sanitizers, cid)
+			addSpec = true
 		}
 		if obj.IsValidator == "true" {
 			ts.Validators = append(ts.Validators, cid)
+			addSpec = true
+		}
+		if addSpec {
+			c.TaintTrackingProblems = append(c.TaintTrackingProblems, ts)
 		}
 	}
 	// TODO: use edges to infer which sources/sinks/sanitizers go together
-	for _, edge := range x.Edge {
-		fmt.Println(edge.Edge)
-	}
 	return nil
 
 }

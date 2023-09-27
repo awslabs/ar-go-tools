@@ -14,11 +14,20 @@
 
 package config
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestSimpleFlowWithOption(t *testing.T) {
 	_, config, err := loadFromTestDir(t, "example.drawio.xml")
-	if config == nil || err != nil {
-		t.Fatalf("error: %v", err)
+	_, config2, err2 := loadFromTestDir(t, "example.drawio.yaml")
+	if config == nil || err != nil || config2 == nil || err2 != nil {
+		t.Fatalf("error: %v, %v", err, err2)
+	}
+	if config.Options != config2.Options {
+		fmt.Printf("Config options:\n.yml: %+v\n", config2.Options)
+		fmt.Printf(".xml: %+v\n", config.Options)
+		t.Fatalf("configs from xml and yaml differ")
 	}
 }

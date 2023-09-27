@@ -47,7 +47,7 @@ options:
   max-alarms: 16
 
   # this can be set to suppress warnings. Errors (i.e. taint detected will be reported)
-  warn: false
+  silence-warn: true
 
   # this can be set so that source function are also tainting their arguments
   source-taints-args: true

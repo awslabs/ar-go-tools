@@ -111,11 +111,11 @@ type Options struct {
 	// ReportsDir is the directory where all the reports will be stored. If the yaml config file this config struct has
 	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
 	// in the folder the binary is called.
-	ReportsDir string `xml:"reports-dir" yaml:"reports-dir"`
+	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir"`
 
 	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
 	// prefix
-	PkgFilter string `xml:"pkgFilter,attr" yaml:"pkg-filter"`
+	PkgFilter string `xml:"pkg-filter,attr" yaml:"pkg-filter"`
 
 	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
 	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis"`
@@ -167,7 +167,7 @@ type Options struct {
 	LogLevel int `xml:"log-level,attr" yaml:"log-level"`
 
 	// Suppress warnings
-	Warn bool `xml:"warn,attr"`
+	SilenceWarn bool `xml:"silence-warn,attr"`
 }
 
 // NewDefault returns an empty default config.
@@ -191,7 +191,7 @@ func NewDefault() *Config {
 			MaxDepth:            DefaultMaxCallDepth,
 			MaxAlarms:           0,
 			LogLevel:            int(InfoLevel),
-			Warn:                true,
+			SilenceWarn:         false,
 			SourceTaintsArgs:    false,
 			IgnoreNonSummarized: false,
 		},

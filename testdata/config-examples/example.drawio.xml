@@ -2,7 +2,7 @@
   <diagram name="Page-1" id="Nw8MfN9Sv6a54UeQwqo8">
     <mxGraphModel dx="977" dy="610" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1120" pageHeight="630" math="0" shadow="0">
       <root>
-        <object label="" report-paths="true" id="0">
+        <object label="" report-paths="1" reports-dir="test-dir" pkg-filter="abc" report-summaries="1" id="0">
           <mxCell />
         </object>
         <mxCell id="1" parent="0" />

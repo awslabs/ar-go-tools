@@ -16,23 +16,25 @@ On top of the configuration options listed in the common fields, the user can co
 
 It is the user's responsibility to properly specify those functions to match their intent, and the tool does not try to automatically discover possible sources of tainted data, instead completely relying on the user's specification.
 
-Below is an example of a config file containing a basic taint analysis specification:
+Below is an example of a config file containing a basic taint analysis specification. One can specify several problems in `taint-tracking-problems`. The following specifies exactly one problem:
 ```yaml
-sources:                        # A list of sources of tainted/sensitive data
-    - package: "example1"
-      method: "GetSensitiveData"
-
-sinks:                          # A list of sinks that should not be reached by senstive data
-    - package: "example2"
-      method: "LogDataPublicly"
-
-sanitizers:                     # A list of sanitizers that remove the taint from data
-    - package: "example1"
-      method: "Sanitize"
-
-validators:                     # A list of validators that validates data, and removes taint when valid
-    - package: "example3"
-      method: "Validator"
+taint-tracking-problems:
+  -
+    sources:                        # A list of sources of tainted/sensitive data
+        - package: "example1"
+          method: "GetSensitiveData"
+    
+    sinks:                          # A list of sinks that should not be reached by senstive data
+        - package: "example2"
+          method: "LogDataPublicly"
+    
+    sanitizers:                     # A list of sanitizers that remove the taint from data
+        - package: "example1"
+          method: "Sanitize"
+    
+    validators:                     # A list of validators that validates data, and removes taint when valid
+        - package: "example3"
+          method: "Validator"
 ```
 In this configuration file, the user is trying to detect whether data coming from calls to some function `GetSensitiveData` in a package matching `example1` is flowing to a function `LogDataPublicly` in a package `example2`. If the data passes through a function `Sanitize` in the `example1` package, then it is santize. If the data is validated by the function `Validator` in package `example3`, then it is also taint-free.
 
@@ -62,33 +64,37 @@ options:
 
 In the above example, the user specified code locations for the elements that defines their dataflow problem (sources, sinks, sanitizers and validators). The most common form for these *code identifiers* is the one shown above where a method and a package are specified, e.g.:
 ```yaml
-sources:
-    - package: "example1"
-      method: "GetSensitiveData"
+taint-tracking-problems:
+    - sources:
+        - package: "example1"
+          method: "GetSensitiveData"
 ```
 specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `source-taints-args` option is set to true). There are also other possible code identifers, for example one can view any object of a given type as sources:
 ```yaml
-sources:
-    - package: "mypackage"
-      type: "taintedDataType"
+taint-tracking-problems:
+    - sources:
+        - package: "mypackage"
+          type: "taintedDataType"
 ```
 This implies that any object of type `taintedDataType` from the package `mypackage` is a source of tainted data. Every allocation of an object of this type will be marked as a source. Other source specifications are for channel receives and field reads.
 
 **Channel receives** are of the following form:
 ```yaml
-sources:
-    - package: "mypackage"
-      type: "chan A"
-      kind: "channel receive"
+taint-tracking-problems:
+    - sources:
+        - package: "mypackage"
+          type: "chan A"
+          kind: "channel receive"
 ```
 The difference compared to the previous specification is the `kind` attribute that explicitly specifies that only the action of receiving data from that type is considered as a source. Here, any data read from a channel of type `chan A` in `mypackage` will be considered tainted (where `A` is the type within the `mypackage` package).
 
 **Field reads** are of the form:
 ```yaml
-sources:
-    - package: "mypackage"
-      type: "structA"
-      field: "taintedMember"
+taint-tracking-problems:
+    - sources:
+        - package: "mypackage"
+          type: "structA"
+          field: "taintedMember"
 ```
 This implies that any access to the field `taintedMember` of a struct of type `structA` in package `mypackage` will be seen as a source of tainted data.
 
@@ -102,11 +108,13 @@ The configuration contains some specific fields that allow users to tune how the
 #### Filters
 By default, the analysis considers that any type can carry tainted data. In some cases, this can be excessive, as one might not see boolean values as tainted data (for example, a boolean cannot store a user's password). In order to ignore flows that pass through variables of certain types, one add filters. Filters are either a *type* or a *method*, optionally within a *package*. A type filter will cause the tool to ignore data flows through objects of that type, and a method filter will cause the tool to ignore data flows through that method (or function).
 ```yaml
- filters:
-     - type: "bool$"
-     - type: "error$"
-     - method: "myFunc$"
-       package: "myPackage"
+taint-tracking-problems:
+    -    
+      filters:
+         - type: "bool$"
+         - type: "error$"
+         - method: "myFunc$"
+           package: "myPackage"
 ```
 With the configuration setting above, the tool will not follow data flows through `bool` and `error` types, and not through calls to the function `myFunc` in package `myPackage`. 
 
