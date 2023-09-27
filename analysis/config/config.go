@@ -199,6 +199,8 @@ func NewDefault() *Config {
 }
 
 // Load reads a configuration from a file
+//
+//gocyclo:ignore
 func Load(filename string) (*Config, error) {
 	cfg := NewDefault()
 	b, err := os.ReadFile(filename)

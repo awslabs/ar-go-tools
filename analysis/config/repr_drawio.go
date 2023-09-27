@@ -91,6 +91,17 @@ func ParseXmlConfigFormat(c *Config, b []byte) error {
 
 	specs := map[string]*TaintSpec{}
 
+	setProblems(c, x, sources, sinks, sanitizers, validators, specs)
+
+	return nil
+}
+
+func setProblems(c *Config, x *MxFile,
+	sources map[string]CodeIdentifier,
+	sinks map[string]CodeIdentifier,
+	sanitizers map[string]CodeIdentifier,
+	validators map[string]CodeIdentifier,
+	specs map[string]*TaintSpec) {
 	for _, obj := range x.Object {
 		if obj.Cell.Edge {
 			handleEdge(obj.Cell, obj.Forbidden, sources, sinks, sanitizers, validators, specs)
@@ -105,8 +116,6 @@ func ParseXmlConfigFormat(c *Config, b []byte) error {
 	for _, spec := range specs {
 		c.TaintTrackingProblems = append(c.TaintTrackingProblems, *spec)
 	}
-
-	return nil
 }
 
 func handleEdge(cell mxCell, forbidden bool,
