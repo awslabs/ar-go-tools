@@ -52,8 +52,8 @@ type Config struct {
 	// nocalleereportfile is a file name in ReportsDir when ReportNoCalleeSites is true
 	nocalleereportfile string
 
-	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the taint
-	// analysis
+	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the dataflow
+	// analyses
 	DataflowSpecs []string `yaml:"dataflow-specs"`
 
 	// if the PkgFilter is specified

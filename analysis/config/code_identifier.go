@@ -28,7 +28,7 @@ import (
 // This is meant to replicate functionality in go-flow-levee and gokart, and can be
 // extended as needed
 type CodeIdentifier struct {
-	Package  string `xml:"package,attr"`
+	Package  string `xml:"package,attr"` // in drawio input, package is an attribute
 	Method   string `xml:"method,attr"`
 	Receiver string `xml:"receiver,attr"`
 	Field    string `xml:"field,attr"`
