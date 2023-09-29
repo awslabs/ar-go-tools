@@ -1,19 +1,22 @@
 # Comment
-pkgfilter: "a"
-sinks:
-  - package: y
-    method: b
-  - package: x
-    receiver: Obj1
+options:
+    pkg-filter: "a"
 
-sanitizers:
-  - package: pkg1
-    method: Foo
-    receiver: Obj
+taint-tracking-problems:
+    - sinks:
+      - package: y
+        method: b
+      - package: x
+        receiver: Obj1
 
-sources:
-  - package: some/package
-    method: SuperMethod
-  - package: some/other/package
-    type: ThatStruct
-    field: OneField
+      sanitizers:
+        - package: pkg1
+          method: Foo
+          receiver: Obj
+
+      sources:
+        - package: some/package
+          method: SuperMethod
+        - package: some/other/package
+          type: ThatStruct
+          field: OneField

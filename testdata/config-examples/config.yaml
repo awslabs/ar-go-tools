@@ -1,7 +1,8 @@
-sanitizers:
-  - package: "a"
-    method: "b"
+taint-tracking-problems:
+  - sanitizers:
+      - package: "a"
+        method: "b"
 
-sinks:
-  - package: "c"
-    method: "d"
+    sinks:
+      - package: "c"
+        method: "d"

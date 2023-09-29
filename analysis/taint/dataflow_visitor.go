@@ -20,6 +20,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/colors"
@@ -47,6 +48,7 @@ func (e *EscapeInfo) String() string {
 // Visitor represents a taint flow Visitor that tracks taint flows from sources to sinks.
 // It implements the [pkg/github.com/awslabs/ar-go-tools/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
+	taintSpec      *config.TaintSpec
 	currentSource  df.NodeWithTrace
 	roots          map[df.NodeWithTrace]*df.VisitorNode
 	visited        map[*df.CallStack]bool
@@ -60,8 +62,9 @@ type Visitor struct {
 // NewVisitor returns a Visitor that can be used with
 // [pkg/github.com/awslabs/ar-go-tools/analysis/dataflow.BuildAndRunVisitor] to run the taint analysis
 // independently of the  [Analyze] function
-func NewVisitor() *Visitor {
+func NewVisitor(ts *config.TaintSpec) *Visitor {
 	return &Visitor{
+		taintSpec:      ts,
 		currentSource:  df.NodeWithTrace{},
 		taints:         NewFlows(),
 		coverageWriter: nil,
@@ -136,7 +139,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		logger.Tracef("Trace: %s\n", cur.Trace.String())
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
-		if isSink(cur.Node, s.Config) && cur.Status.Kind == df.DefaultTracing {
+		if isSink(v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
 			if v.taints.addNewPathCandidate(v.currentSource.Node, cur.Node) {
 				numAlarms++
 				reportTaintFlow(s, v.currentSource, cur)
@@ -152,14 +155,14 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// If node is sanitizer, we don't want to propagate further
 		// The validators will be checked in the addNext function
-		if isSanitizer(cur.Node, s.Config) {
+		if isSanitizer(v.taintSpec, cur.Node) {
 			logger.Infof("Sanitizer encountered: %s\n", cur.Node.String())
 			logger.Infof("At: %s\n", cur.Node.Position(s))
 			continue
 		}
 
 		// If the node is filtered out, we don't inspect children
-		if isFiltered(cur.Node, s.Config) {
+		if isFiltered(v.taintSpec, cur.Node) {
 			continue
 		}
 
@@ -674,7 +677,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	// Check for validators
 	if edgeInfo.Cond != nil && len(edgeInfo.Cond.Conditions) > 0 {
 		for _, condition := range edgeInfo.Cond.Conditions {
-			if isValidatorCondition(condition.IsPositive, condition.Value, s.Config) {
+			if isValidatorCondition(v.taintSpec, condition.Value, condition.IsPositive) {
 				s.Logger.Debugf("Validated %s.\n", condition)
 				return que
 			}

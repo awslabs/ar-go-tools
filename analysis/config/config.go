@@ -45,16 +45,35 @@ func LoadGlobal() (*Config, error) {
 // If some field is not defined in the config file, it will be empty/zero in the struct.
 // private fields are not populated from a yaml file, but computed after initialization
 type Config struct {
+	Options
+
 	sourceFile string
 
 	// nocalleereportfile is a file name in ReportsDir when ReportNoCalleeSites is true
 	nocalleereportfile string
 
-	// ReportsDir is the directory where all the reports will be stored. If the yaml config file this config struct has
-	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
-	// in the folder the binary is called.
-	ReportsDir string
+	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the dataflow
+	// analyses
+	DataflowSpecs []string `yaml:"dataflow-specs"`
 
+	// if the PkgFilter is specified
+	pkgFilterRegex *regexp.Regexp
+
+	// if the CoverageFilter is specified
+	coverageFilterRegex *regexp.Regexp
+
+	// TaintTrackingProblems lists the taint tracking specifications
+	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking-problems"`
+
+	// SlicingProblems lists the program slicing specifications
+	SlicingProblems []SlicingSpec `yaml:"slicing-problems"`
+
+	// StaticCommandsProblems lists the static commands problems
+	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems"`
+}
+
+// TaintSpec contains code identifiers that identify a specific taint tracking problem
+type TaintSpec struct {
 	// Sanitizers is the list of sanitizers for the taint analysis
 	Sanitizers []CodeIdentifier
 
@@ -67,121 +86,134 @@ type Config struct {
 	// Sources is the list of sources for the taint analysis
 	Sources []CodeIdentifier
 
-	// StaticCommands is the list of identifiers to be considered as command execution for the static commands analysi
-	// (not used)
-	StaticCommands []CodeIdentifier
+	// Filters contains a list of filters that can be used by analyses
+	Filters []CodeIdentifier
+}
 
-	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards dataflow analysis.
+// SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
+type SlicingSpec struct {
+	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards
+	// dataflow analysis.
 	BacktracePoints []CodeIdentifier
-
-	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
-	// prefix
-	PkgFilter string
-
-	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the taint
-	// analysis
-	DataflowSpecs []string
 
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
+}
+
+// StaticCommandsSpec contains code identifiers for the problem of identifying which commands are static
+type StaticCommandsSpec struct {
+	// StaticCommands is the list of identifiers to be considered as command execution for the static commands analysis
+	// (not used)
+	StaticCommands []CodeIdentifier `yaml:"static-commands"`
+}
+
+type Options struct {
+	// ReportsDir is the directory where all the reports will be stored. If the yaml config file this config struct has
+	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
+	// in the folder the binary is called.
+	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir"`
+
+	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
+	// prefix
+	PkgFilter string `xml:"pkg-filter,attr" yaml:"pkg-filter"`
 
 	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
-	UseEscapeAnalysis bool
+	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis"`
 
 	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
-	SkipInterprocedural bool
+	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural"`
 
 	// CoverageFilter can be used to filter which packages will be reported in the coverage. If non-empty,
 	// coverage will only for those packages that match CoverageFilter
-	CoverageFilter string
+	CoverageFilter string `xml:"coverage-filter,attr" yaml:"coverage-filter"`
 
 	// ReportSummaries can be set to true, in which case summaries will be reported in a file names summaries-*.out in
 	// the reports directory
-	ReportSummaries bool
+	ReportSummaries bool `xml:"report-summaries,attr" yaml:"report-summaries"`
 
 	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
-	SummarizeOnDemand bool
+	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand"`
 
 	// IgnoreNonSummarized allows the analysis to ignore when the summary of a function has not been built in the first
 	// analysis phase. This is only for experimentation, since the results may be unsound.
 	// This has no effect when SummarizeOnDemand is true
-	IgnoreNonSummarized bool
+	IgnoreNonSummarized bool `xml:"ignoreNonSummarized,attr" yaml:"ignore-non-summarized"`
 
 	// SourceTaintsArgs specifies whether calls to a source function also taints the argument. This is usually not
 	// the case, but might be useful for some users or for source functions that do not return anything.
-	SourceTaintsArgs bool
+	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args"`
 
 	// ReportPaths specifies whether the taint flows should be reported in separate files. For each taint flow, a new
 	// file named taint-*.out will be generated with the trace from source to sink
-	ReportPaths bool
+	ReportPaths bool `xml:"report-paths,attr" yaml:"report-paths"`
 
 	// ReportCoverage specifies whether coverage should be reported. If true, then a file names coverage-*.out will
 	// be created in the report directory, containing the coverage data generated by the analysis
-	ReportCoverage bool
+	ReportCoverage bool `xml:"report-coverage,attr" yaml:"report-coverage"`
 
 	// ReportNoCalleeSites specifies whether the tool should report where it does not find any callee.
-	ReportNoCalleeSites bool
+	ReportNoCalleeSites bool `xml:"report-no-callee-sites,attr" yaml:"report-no-callee-sites"`
 
 	// MaxDepth sets a limit for the number of function call depth explored during the analysis
 	// Default is -1.
 	// If provided MaxDepth is <= 0, then it is ignored.
-	MaxDepth int
+	MaxDepth int `xml:"max-depth,attr" yaml:"max-depth"`
 
 	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
 	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
-	MaxAlarms int
+	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms"`
 
 	// Loglevel controls the verbosity of the tool
-	LogLevel int
+	LogLevel int `xml:"log-level,attr" yaml:"log-level"`
 
 	// Suppress warnings
-	Warn bool
-
-	// if the PkgFilter is specified
-	pkgFilterRegex *regexp.Regexp
-
-	// if the CoverageFilter is specified
-	coverageFilterRegex *regexp.Regexp
+	SilenceWarn bool `xml:"silence-warn,attr"`
 }
 
 // NewDefault returns an empty default config.
 func NewDefault() *Config {
 	return &Config{
-		sourceFile:          "",
-		nocalleereportfile:  "",
-		ReportsDir:          "",
-		Sanitizers:          nil,
-		Sinks:               nil,
-		Sources:             nil,
-		StaticCommands:      nil,
-		BacktracePoints:     nil,
-		PkgFilter:           "",
-		DataflowSpecs:       []string{},
-		SkipInterprocedural: false,
-		CoverageFilter:      "",
-		ReportSummaries:     false,
-		ReportPaths:         false,
-		ReportCoverage:      false,
-		ReportNoCalleeSites: false,
-		MaxDepth:            DefaultMaxCallDepth,
-		MaxAlarms:           0,
-		LogLevel:            int(InfoLevel),
-		Warn:                true,
-		SourceTaintsArgs:    false,
-		IgnoreNonSummarized: false,
+		sourceFile:             "",
+		nocalleereportfile:     "",
+		TaintTrackingProblems:  nil,
+		SlicingProblems:        nil,
+		StaticCommandsProblems: nil,
+		DataflowSpecs:          []string{},
+		Options: Options{
+			ReportsDir:          "",
+			PkgFilter:           "",
+			SkipInterprocedural: false,
+			CoverageFilter:      "",
+			ReportSummaries:     false,
+			ReportPaths:         false,
+			ReportCoverage:      false,
+			ReportNoCalleeSites: false,
+			MaxDepth:            DefaultMaxCallDepth,
+			MaxAlarms:           0,
+			LogLevel:            int(InfoLevel),
+			SilenceWarn:         false,
+			SourceTaintsArgs:    false,
+			IgnoreNonSummarized: false,
+		},
 	}
 }
 
 // Load reads a configuration from a file
+//
+//gocyclo:ignore
 func Load(filename string) (*Config, error) {
 	cfg := NewDefault()
 	b, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("could not read config file: %w", err)
 	}
-	err = yaml.Unmarshal(b, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("could not unmarshal config file: %w", err)
+	errYaml := yaml.Unmarshal(b, cfg)
+	if errYaml != nil {
+		errXml := ParseXmlConfigFormat(cfg, b)
+		if errXml != nil {
+			return nil, fmt.Errorf("could not unmarshal config file, not as yaml: %w, not as xml: %v",
+				errYaml, errXml)
+		}
 	}
 
 	cfg.sourceFile = filename
@@ -217,14 +249,22 @@ func Load(filename string) (*Config, error) {
 		}
 	}
 
-	funcutil.Iter(cfg.BacktracePoints, compileRegexes)
-	funcutil.Iter(cfg.Filters, compileRegexes)
-	funcutil.Iter(cfg.Sanitizers, compileRegexes)
-	funcutil.Iter(cfg.Sinks, compileRegexes)
-	funcutil.Iter(cfg.Sources, compileRegexes)
-	funcutil.Iter(cfg.StaticCommands, compileRegexes)
-	funcutil.Iter(cfg.Validators, compileRegexes)
-	funcutil.Iter(cfg.Validators, compileRegexes)
+	for _, tSpec := range cfg.TaintTrackingProblems {
+		funcutil.Iter(tSpec.Sanitizers, compileRegexes)
+		funcutil.Iter(tSpec.Sinks, compileRegexes)
+		funcutil.Iter(tSpec.Sources, compileRegexes)
+		funcutil.Iter(tSpec.Validators, compileRegexes)
+		funcutil.Iter(tSpec.Filters, compileRegexes)
+	}
+
+	for _, sSpec := range cfg.SlicingProblems {
+		funcutil.Iter(sSpec.BacktracePoints, compileRegexes)
+		funcutil.Iter(sSpec.Filters, compileRegexes)
+	}
+
+	for _, stSpec := range cfg.StaticCommandsProblems {
+		funcutil.Iter(stSpec.StaticCommands, compileRegexes)
+	}
 
 	return cfg, nil
 }
@@ -293,34 +333,73 @@ func (c Config) MatchCoverageFilter(filename string) bool {
 
 // Below are functions used to query the configuration on specific facts
 
+func (c Config) isSomeTaintSpecCid(cid CodeIdentifier, f func(t TaintSpec, cid CodeIdentifier) bool) bool {
+	for _, x := range c.TaintTrackingProblems {
+		if f(x, cid) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSomeSource returns true if the code identifier matches any source in the config
+func (c Config) IsSomeSource(cid CodeIdentifier) bool {
+	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSource(cid2) })
+}
+
+// IsSomeSink returns true if the code identifier matches any sink in the config
+func (c Config) IsSomeSink(cid CodeIdentifier) bool {
+	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSink(cid2) })
+}
+
+// IsSomeSanitizer returns true if the code identifier matches any sanitizer in the config
+func (c Config) IsSomeSanitizer(cid CodeIdentifier) bool {
+	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSanitizer(cid2) })
+}
+
+// IsSomeValidator returns true if the code identifier matches any validator in the config
+func (c Config) IsSomeValidator(cid CodeIdentifier) bool {
+	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsValidator(cid2) })
+}
+
+// IsSomeBacktracePoint returns true if the code identifier matches any backtrace point in the slicing problems
+func (c Config) IsSomeBacktracePoint(cid CodeIdentifier) bool {
+	for _, ss := range c.SlicingProblems {
+		if ss.IsBacktracePoint(cid) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsSource returns true if the code identifier matches a source specification in the config file
-func (c Config) IsSource(cid CodeIdentifier) bool {
-	b := ExistsCid(c.Sources, cid.equalOnNonEmptyFields)
+func (ts TaintSpec) IsSource(cid CodeIdentifier) bool {
+	b := ExistsCid(ts.Sources, cid.equalOnNonEmptyFields)
 	return b
 }
 
 // IsSink returns true if the code identifier matches a sink specification in the config file
-func (c Config) IsSink(cid CodeIdentifier) bool {
-	return ExistsCid(c.Sinks, cid.equalOnNonEmptyFields)
+func (ts TaintSpec) IsSink(cid CodeIdentifier) bool {
+	return ExistsCid(ts.Sinks, cid.equalOnNonEmptyFields)
 }
 
 // IsSanitizer returns true if the code identifier matches a sanitizer specification in the config file
-func (c Config) IsSanitizer(cid CodeIdentifier) bool {
-	return ExistsCid(c.Sanitizers, cid.equalOnNonEmptyFields)
+func (ts TaintSpec) IsSanitizer(cid CodeIdentifier) bool {
+	return ExistsCid(ts.Sanitizers, cid.equalOnNonEmptyFields)
 }
 
 // IsValidator returns true if the code identifier matches a validator specification in the config file
-func (c Config) IsValidator(cid CodeIdentifier) bool {
-	return ExistsCid(c.Validators, cid.equalOnNonEmptyFields)
+func (ts TaintSpec) IsValidator(cid CodeIdentifier) bool {
+	return ExistsCid(ts.Validators, cid.equalOnNonEmptyFields)
 }
 
 // IsStaticCommand returns true if the code identifier matches a static command specification in the config file
-func (c Config) IsStaticCommand(cid CodeIdentifier) bool {
-	return ExistsCid(c.StaticCommands, cid.equalOnNonEmptyFields)
+func (scs StaticCommandsSpec) IsStaticCommand(cid CodeIdentifier) bool {
+	return ExistsCid(scs.StaticCommands, cid.equalOnNonEmptyFields)
 }
 
-func (c Config) IsBacktracePoint(cid CodeIdentifier) bool {
-	return ExistsCid(c.BacktracePoints, cid.equalOnNonEmptyFields)
+func (ss SlicingSpec) IsBacktracePoint(cid CodeIdentifier) bool {
+	return ExistsCid(ss.BacktracePoints, cid.equalOnNonEmptyFields)
 }
 
 // Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)

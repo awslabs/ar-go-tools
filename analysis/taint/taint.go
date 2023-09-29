@@ -86,18 +86,26 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	analysis.RunIntraProceduralPass(state, numRoutines,
 		analysis.IntraAnalysisParams{
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
-			IsEntrypoint:       IsSourceNode,
+			// For the intra-procedural pass, all source nodes of all problems are marked
+			IsEntrypoint: IsSomeSourceNode,
 		})
 
 	// ** Third step **
 	// the inter-procedural analysis is run over the entire program, which has been summarized in the
 	// previous step by building function summaries. This analysis consists in checking whether there exists a sink
-	// that is reachable from a source.
+	// that is reachable from a source, for every taint tracking problem defined by the config.
 
-	visitor := NewVisitor()
-	analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
-		IsEntrypoint: IsSourceNode,
-	})
+	taintFlows := NewFlows()
+
+	for _, taintSpec := range cfg.TaintTrackingProblems {
+		visitor := NewVisitor(&taintSpec)
+		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
+			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
+			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(&taintSpec, node) },
+		})
+
+		taintFlows.Merge(visitor.taints)
+	}
 
 	// ** Fourth step **
 	// Additional analyses are run after the taint analysis has completed. Those analyses check the soundness of the
@@ -106,5 +114,5 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	if state.HasErrors() {
 		err = fmt.Errorf("analysis returned errors, check AnalysisResult.State for more details")
 	}
-	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: visitor.taints}, err
+	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
 }

@@ -9,29 +9,32 @@ A trace terminates for a specific entrypoint when an instruction no longer has a
 > ⚠ The backtrace analysis does not support usages of the `reflect` and `unsafe` packages. We explain later how to analyze programs in the presence of those, but the result is not guaranteed to be correct when the analysis raises no alarms.
 
 ## Backtrace Analysis Configuration
-On top of the configuration options listed in the common fields, the user can configure backtrace-analysis specific options. The main configuration fields are the core components of the problem specification, which are the entry points to the analysis. The *backtrace-points* identify the functions from which the analysis should find all the backwards data flows.
+On top of the configuration options listed in the common fields, the user can specify backtrace analysis (or program slicing) problems. The configuration file accepts an option `slicing-problems` that is a list of slicing problems. Each slicing problem must set the *backtrace-points* , which identify the functions from which the analysis should find all the backwards data flows.
 
-Below is an example of a config file containing a basic backtrace analysis specification:
-```
-backtracepoints:                        # A list of entrypoints
-    - package: "os/exec"
-      method: "Command$"
+Below is an example of a config file containing one basic backtrace analysis specification (as part of `slicing-problems`):
+```yaml
+slicing-problems:
+    - backtracepoints:                        # A list of entrypoints
+        - package: "os/exec"
+          method: "Command$"
 ```
 In this configuration file, the user is trying to detect all the possible traces from calls to some function `Command` in a package matching `os/exec`. The tool will treat all the arguments to all the calls to `os/exec.Command` as entry points.
 
 > 📝 Note that all strings in the `package` and `method` fields are parsed as regexes; for example, to match `F` precisely, one should write `"^F"`; the `"backtracepoints"` specification will match any function name containing `F`.
 
 An advanced feature of the backtrace analysis is that you can specify dataflow summaries yourself:
-```
-dataflowspecs:                  # A list of dataflow specifications, where each element is a json file containing
+```yaml
+options:
+  dataflow-specs:                  # A list of dataflow specifications, where each element is a json file containing
     - "specs-mylib.json"        # dataflow specifications.
 
 ```
 We explain in more detail how to write [dataflow specifications](#dataflow-specifications) later, and why the user should write dataflow specifications in some cases.
 
 There are additional options for the outputs:
-```
-reportsummaries: true    # the dataflow summaries built by the analysis will be printed in a file in the reports directory
+```yaml
+options:
+  report-summaries: true    # the dataflow summaries built by the analysis will be printed in a file in the reports directory
 ```
 
 ## Backtrace Analysis Output
@@ -86,7 +89,7 @@ The first line of the trace represents the "source" of the data flow to the back
 ### Simple Data Flows
 
 Our backtrace analysis in general assumes that any operation propagates data flow.
-```[go]
+```go
 func main() {
     x := example1.GetSensitiveData() // no data flows backwards from `x` in this context so the analysis terminates
     y := "(" + x + ")" // data flows backwards from `y` to `x`
@@ -99,7 +102,7 @@ In general, the analysis is conservative in how it propagates data: for example,
 ### Inter-procedural Data Flow
 
 The backtrace analysis implemented in Argot is *inter-procedural*: the flow of data is tracked across function calls, as opposed to within a single function.
-```[go]
+```go
 func generate() *A {
     x := example1.GetSensitiveData() // no data flows backwards from `x` in this context so the analysis terminates
     return x // data flows backwards from `return x` to `x := example1.GetSensitiveData()`
@@ -124,7 +127,7 @@ The `backtrace` tool will report traces given the configuration example given pr
 
 The backtrace analysis tool can detect such flows with many intermediate calls.
 
-> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `maxdepth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some traces. In the previous example, one trace would not be reported if the configuration file sets `maxdepth: 2`.
+> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `max-depth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some traces. In the previous example, one trace would not be reported if the configuration file sets `maxdepth: 2`.
 
 
 ### Closures
@@ -132,7 +135,7 @@ The backtrace analysis tool can detect such flows with many intermediate calls.
 [Closures](https://go.dev/tour/moretypes/25) are functions that can reference variables (*bound* variables) from outside their body. This referencing makes the backtrace analysis more complicated, as the data may flow from aliases of the variables *bound* by a closure to the point where the closure is executed. Our tool is able to trace the flow of data in the presence of closures.
 
 For example, in the following:
-```[go]
+```go
 func example3prep() func(string) string {
 	lparen := "("
 	rparen := ")"
@@ -156,7 +159,7 @@ The backwards dataflow analysis is able to find a trace from `example1.GetSensit
 The analysis tracks the flow to globals, but it does not precisely determine a relation between the locations where globals are read and written. This means that when a global variable is written to, then there is a data flow to every program point that reads the global variable, independently of program execution order. In the backwards direction, a global read has a backwards data flow to every write to that variable.
 
 Consider the following example, where `y` is a global variable that is written in two locations, and read in two locations. Only the second write propagates data to `y`:
-```[go]
+```go
 var y T // y is a global variable
 
 func main() {
@@ -182,7 +185,7 @@ There are two reasons a user may want to specify a data flow summary:
 - for soundness: the analysis does not support reflection and some uses of the unsafe package. If a function uses those packages, then it should be summarized by the user. The analysis will raise alarms whenever some unsupported feature of the language is encountered during the analysis.
 
 Dataflow specifications are json files that contain a list of specifications. Each specification is a structure that contains either an `"InterfaceId"` or an `"ObjectPath"`, along with a dictionary `"Methods"`. If an interface id is specified, then the dataflow specifications for each of the methods are interpreted as specifications for the interface methods, i.e. they specify every possible implementation of the interface. For example, consider the following dataflow specifications:
-```[json]
+```json
 [
     {
         "ObjectPath": "gopkg.in/yaml.v2",

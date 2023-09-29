@@ -1,3 +1,4 @@
-staticcommands:
-  - package: os/exec
-    method: Command
+static-commands-problems:
+  - static-commands:
+    - package: os/exec
+      method: Command

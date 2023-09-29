@@ -1,2 +1,3 @@
-reportpaths: true
+options:
+    report-paths: true
 
