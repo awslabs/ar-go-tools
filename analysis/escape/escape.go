@@ -51,8 +51,8 @@ import (
 //	[]T          [-1]T
 //	func()       impl func()
 //	map          impl map
-//	interface{}  impl interface
 //	chan         impl chan
+//	interface{}  impl interface
 //
 // Slices are isomorphic to a struct value with three fields: a pointer to an array, and integer length/capacity.
 // The deref is therefore an array of the same type, but because the size may be dynamic, we use -1 as the
@@ -61,23 +61,82 @@ import (
 // The deref of these "opaque" types is formed by wrapping them in a `impl`, to make a pseudo-type.
 // This is currently not supported, and these types are passed through unchanged.
 func NillableDerefType(t types.Type) types.Type {
+	return nillableDerefType(t, t)
+}
+
+// nillableDerefType is the actual implementation of NillableDerefType, that takes the "pretty"
+// version of t as an additional argument. This both helps make printing the types shorter, but also
+// prevents spurious unwraps.
+func nillableDerefType(t types.Type, pretty types.Type) types.Type {
 	switch tt := t.(type) {
 	case *types.Pointer:
 		return tt.Elem()
 	case *types.Named:
-		// For a named type, recurse on the underlying type. If it isn't any different, return the
-		// input unchanged. This avoids e.g. unpacking interfaces into their definition, which
-		// usually isn't helpful.
+		// For a named type, recurse on the underlying type. Preserve pretty, so that if we need
+		// to wrap the type, we wrap the original type and not the expansion
 		x := tt.Underlying()
-		y := NillableDerefType(x)
-		if x != y {
-			return y
-		}
-		return tt // return original type (without unwrapping *Named) if there was no change
+		return nillableDerefType(x, pretty)
 	case *types.Slice:
 		return types.NewArray(tt.Elem(), -1) // arrays of length -1 are of statically undetermined size
+	case *types.Chan, *types.Map, *types.Interface:
+		return &ImplType{pretty}
+	case *types.Signature:
+		return &FunctionImplType{pretty, nil}
 	default:
-		return tt
+		return pretty
+	}
+}
+
+// Represents the pointee of a function pointer
+type FunctionImplType struct {
+	tp  types.Type
+	fun *ssa.Function // may be nil to represent an unknown closure type
+}
+
+func (t *FunctionImplType) String() string {
+	if t.fun == nil {
+		return fmt.Sprintf("impl of %s", t.tp.String())
+	}
+	return fmt.Sprintf("closure %s of %s", t.fun.String(), t.tp.String())
+}
+
+func (t *FunctionImplType) Underlying() types.Type {
+	return t
+}
+
+// Represents the pointee of a map, channel, or interface
+type ImplType struct {
+	tp types.Type
+}
+
+func (t *ImplType) String() string {
+	return fmt.Sprintf("impl of %s", t.tp.String())
+}
+func (t *ImplType) Underlying() types.Type {
+	return t
+}
+
+var _ types.Type = (*FunctionImplType)(nil)
+var _ types.Type = (*ImplType)(nil)
+
+// AddressOfType computes what type would point to a given type. It is roughly the inverse of NillableDerefType.
+func AddressOfType(t types.Type) types.Type {
+	return addressOfType(t, t)
+}
+func addressOfType(t types.Type, pretty types.Type) types.Type {
+	switch tt := t.(type) {
+	case *types.Named:
+		// For a named type, recurse on the underlying type. Preserve pretty, so that if we need
+		// to wrap the type, we wrap the original type and not the expansion
+		return addressOfType(tt.Underlying(), pretty)
+	case *types.Array:
+		return types.NewSlice(tt.Elem())
+	case *ImplType:
+		return tt.tp
+	case *FunctionImplType:
+		return tt.tp
+	default:
+		return types.NewPointer(pretty)
 	}
 }
 
@@ -174,23 +233,25 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		g.AddEdge(nodes.ValueNode(instr), nodes.AllocNode(instr, NillableDerefType(instr.Type())), EdgeInternal)
 		return
 	case *ssa.MakeClosure:
-		closureNode := nodes.AllocNode(instr, instr.Type())
 		fn := instr.Fn.(*ssa.Function)
+		tp := &FunctionImplType{instr.Type(), fn}
+		closureNode := nodes.AllocNode(instr, tp)
 		nodes.globalNodes.function[closureNode] = fn
 		g.AddEdge(nodes.ValueNode(instr), closureNode, EdgeInternal)
 		for i, bindingVal := range instr.Bindings {
 			g.StoreField(nodes.ValueNode(instr), nodes.ValueNode(bindingVal), fn.FreeVars[i].Name(), fn.FreeVars[i].Type())
 		}
 		return
+	// These three cases look redundant, but instr has a different type in each, which is enough to
+	// require separate cases.
 	case *ssa.MakeMap:
-		g.AddEdge(nodes.ValueNode(instr), nodes.AllocNode(instr, instr.Type()), EdgeInternal)
+		g.AddEdge(nodes.ValueNode(instr), nodes.AllocNode(instr, NillableDerefType(instr.Type())), EdgeInternal)
 		return
 	case *ssa.MakeChan:
-		g.AddEdge(nodes.ValueNode(instr), nodes.AllocNode(instr, instr.Type()), EdgeInternal)
+		g.AddEdge(nodes.ValueNode(instr), nodes.AllocNode(instr, NillableDerefType(instr.Type())), EdgeInternal)
 		return
 	case *ssa.MakeSlice:
-		elemType := instr.Type().Underlying().(*types.Slice).Elem()
-		g.AddEdge(nodes.ValueNode(instr), nodes.AllocNode(instr, types.NewArray(elemType, -1)), EdgeInternal)
+		g.AddEdge(nodes.ValueNode(instr), nodes.AllocNode(instr, NillableDerefType(instr.Type())), EdgeInternal)
 		return
 	case *ssa.FieldAddr:
 		field := instr.X.Type().Underlying().(*types.Pointer).Elem().Underlying().(*types.Struct).Field(instr.Field)
@@ -461,13 +522,27 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 			g.WeakAssign(allocNode, nodes.ValueNode(instr.X))
 			g.AddEdge(nodes.ValueNode(instr), allocNode, EdgeInternal)
 		} else {
-			g.AddNode(nodes.ValueNode(instr)) // Make interface from string or other non-pointer type
+			g.AddNode(nodes.ValueNode(instr)) // Make interface from int, string or other non-pointer type
 		}
 		return
 	case *ssa.TypeAssert:
-		if IsEscapeTracked(instr.Type()) {
-			g.WeakAssign(nodes.ValueNode(instr), nodes.ValueNode(instr.X))
+		dest := nodes.ValueNode(instr)
+		if instr.CommaOk {
+			dest = g.FieldSubnode(dest, "#0", instr.AssertedType)
 		}
+		if IsEscapeTracked(instr.AssertedType) {
+			src := nodes.ValueNode(instr.X)
+			dest := g.FieldSubnode(nodes.ValueNode(instr), "#0", instr.AssertedType)
+			for _, e := range g.DerefEdges(src) {
+				// propogate untyped nodes or nodes that have a type that matches. We use
+				// AddressOfType, because if the node has type e.g. struct or impl of map, we need
+				// to allow assignment to asserted types *struct or map.
+				if tp, ok := g.nodes.globalNodes.types[e.dest]; !ok || types.AssignableTo(AddressOfType(tp), instr.AssertedType) {
+					g.AddEdge(dest, e.dest, EdgeInternal)
+				}
+			}
+		}
+		// TODO: do we need an alternative case for type-asserts directly to a struct type?
 		return
 	case *ssa.Convert:
 		if IsEscapeTracked(instr.X.Type()) {
@@ -545,7 +620,7 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 				freeVars = append(freeVars, pointees)
 			}
 		}
-		g.Call(args, freeVars, rets, summary.finalGraph)
+		g.Call(nil, args, freeVars, rets, summary.finalGraph)
 		if ea.prog.logger.LogsTrace() {
 			ea.prog.logger.Tracef("After call:\n%v", g.Graphviz())
 		}
@@ -608,7 +683,7 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 							freeVars = append(freeVars, nil)
 						}
 					}
-					v.Call(args, freeVars, rets, summary.finalGraph)
+					v.Call(nil, args, freeVars, rets, summary.finalGraph)
 				} else {
 					v.CallUnknown(args, rets)
 				}
@@ -652,7 +727,7 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 								}
 							}
 							v := pre.Clone()
-							v.Call(args, freeVars, rets, summary.finalGraph)
+							v.Call(nil, args, freeVars, rets, summary.finalGraph)
 							g.Merge(v)
 						}
 					}
@@ -687,18 +762,18 @@ func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *Esca
 				v := pre.Clone()
 				if lang.IsNillableType(callee.Params[0].Type()) {
 					// The receiver has pointer type, so we're good
-					v.Call(append([]*Node{receiverNode}, args...), nil, rets, summary.finalGraph)
+					v.Call(receiverNode, append([]*Node{receiverNode}, args...), nil, rets, summary.finalGraph)
 					g.Merge(v)
 				} else if IsEscapeTracked(callee.Params[0].Type()) {
 					// The receiver has struct type, so deref the indirect receiver explicitly
 					for x := range pre.Deref(receiverNode) {
 						v := pre.Clone()
-						v.Call(append([]*Node{x}, args...), nil, rets, summary.finalGraph)
+						v.Call(x, append([]*Node{x}, args...), nil, rets, summary.finalGraph)
 						g.Merge(v)
 					}
 				} else {
 					// The receiver has primitive type, so use a nil receiver
-					v.Call(append([]*Node{nil}, args...), nil, rets, summary.finalGraph)
+					v.Call(nil, append([]*Node{nil}, args...), nil, rets, summary.finalGraph)
 					g.Merge(v)
 				}
 			} else {
@@ -1058,7 +1133,7 @@ func resummarize(ea *functionAnalysisState) (changed bool) {
 		}
 	}
 	returnResult = returnResult.CloneReachable(roots)
-	returnResult = simplifySummary(returnResult)
+	returnResult = simplifySummary(returnResult, ea.prog.logger)
 	same := ea.finalGraph != nil && ea.finalGraph.Matches(returnResult)
 	// The returnResult is always a fresh graph rather than mutating the old one, so we preserve the invariant
 	// that the finalGraph never mutates
@@ -1177,8 +1252,8 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		for f := range state.PointerAnalysis.CallGraph.Nodes {
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
-				if strings.HasPrefix(f.String(), "fmt.Printf") {
-					state.Logger.Infof("Func summary for %s is:%s\n", f.String(), summary.finalGraph.Graphviz())
+				if strings.HasPrefix(f.String(), "(*fmt.ss).") {
+					state.Logger.Debugf("Func summary for %s is:%s\n", f.String(), summary.finalGraph.Graphviz())
 				}
 			}
 		}
@@ -1403,21 +1478,28 @@ func TypecheckEscapeGraph(g *EscapeGraph) error {
 	return nil
 }
 
-func simplifySummary(g *EscapeGraph) *EscapeGraph {
-	totalNodes, loadNodes, escapedLoadNodes, escapedLoadNodesWithNoInternalEdges := 0, 0, 0, 0
-	for node, status := range g.status {
-		totalNodes += 1
-		if node.kind == KindLoad {
-			loadNodes += 1
-			if status == Escaped {
-				escapedLoadNodes += 1
-				if len(g.Edges(nil, node, EdgeInternal))+len(g.Edges(node, nil, EdgeInternal)) == 0 {
-					escapedLoadNodesWithNoInternalEdges += 1
+// simplifySummary is intended to remove irrelevant nodes from the graph.
+// Currently, it just estimates the number of nodes that could possibly be simplified
+// This process must be very careful to not affect the
+func simplifySummary(g *EscapeGraph, logger *config.LogGroup) *EscapeGraph {
+	if logger.LogsTrace() {
+		totalNodes, loadNodes, escapedLoadNodes, escapedLoadNodesWithNoInternalEdges := 0, 0, 0, 0
+		for node, status := range g.status {
+			totalNodes += 1
+			if node.kind == KindLoad {
+				loadNodes += 1
+				// Only escaped, not leaked nodes can be removed
+				if status == Escaped {
+					escapedLoadNodes += 1
+					// Nodes without any internal edges are good candidates to remove
+					if len(g.Edges(nil, node, EdgeInternal))+len(g.Edges(node, nil, EdgeInternal)) == 0 {
+						escapedLoadNodesWithNoInternalEdges += 1
+					}
 				}
-			}
 
+			}
 		}
+		logger.Tracef("Node statistics for summary: %d %d %d %d\n", totalNodes, loadNodes, escapedLoadNodes, escapedLoadNodesWithNoInternalEdges)
 	}
-	fmt.Printf("Node statistics for summary: %d %d %d %d\n", totalNodes, loadNodes, escapedLoadNodes, escapedLoadNodesWithNoInternalEdges)
 	return g
 }

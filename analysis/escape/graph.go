@@ -279,7 +279,7 @@ func (g *EscapeGraph) DerefEdges(addr *Node) []*Edge {
 	return g.Edges(addr, nil, EdgeAll)
 }
 
-// Graphviz returns a (multi-line) dot/graphviz input describing the graph.
+// Graphviz returns a (multi-line string) dot/graphviz input describing the graph.
 //
 //gocyclo:ignore
 func (g *EscapeGraph) Graphviz() string {
@@ -308,11 +308,13 @@ func (g *EscapeGraph) Graphviz() string {
 			continue
 		}
 		for reason, nodeData := range subnodes {
-			if _, ok := reason.(fieldSubnodeReason); ok {
+			_, ok := reason.(fieldSubnodeReason)
+			_, ok2 := reason.(implementationSubnodeReason)
+			if ok || ok2 {
 				isFieldParent[v] = true
 				p := nodeData.node
 				for g.IsSubnode(p) {
-					p = g.nodes.globalNodes.parent[p]
+					p = g.nodes.globalNodes.parent[p].node
 				}
 				ordinaryAncestor[nodeData.node] = p
 			}
@@ -344,6 +346,30 @@ func (g *EscapeGraph) Graphviz() string {
 		}
 		sort.Slice(children, func(i int, j int) bool { return children[i].reason.field < children[j].reason.field })
 		for _, p := range children {
+			child := p.node
+			colorProp := ""
+			if g.status[child] == Escaped {
+				colorProp = " COLOR=\"#CCCCCC\""
+			} else if g.status[child] == Leaked {
+				colorProp = " COLOR=\"#555555\""
+			}
+			t += fmt.Sprintf(`<TR><TD BORDER="1"%s PORT="%d" ALIGN="left" CELLPADDING="4">%s</TD></TR>`,
+				colorProp, child.number, subnodeLabel(child))
+
+		}
+
+		type pair2 struct {
+			reason implementationSubnodeReason
+			node   *Node
+		}
+		children2 := []pair2{}
+		for reason, nodeData := range g.nodes.globalNodes.subnodes[n] {
+			if r, ok := reason.(implementationSubnodeReason); ok {
+				children2 = append(children2, pair2{r, nodeData.node})
+			}
+		}
+		sort.Slice(children2, func(i int, j int) bool { return children2[i].reason.tp.String() < children2[j].reason.tp.String() })
+		for _, p := range children2 {
 			child := p.node
 			colorProp := ""
 			if g.status[child] == Escaped {
@@ -461,26 +487,55 @@ type fieldSubnodeReason struct {
 	field string
 }
 
+// Subnodes have a "reason" for the subnode relationship. This struct represents the concrete
+// implementation subnode relationship, which is used for interfaces and function pointers.
+type implementationSubnodeReason struct {
+	tp types.Type
+}
+
 // FieldSubnode returns the singular field subnode of `base`, with label `field`.
 // The type tp is a hint for the type to apply to the new node.
 func (g *EscapeGraph) FieldSubnode(base *Node, field string, tp types.Type) *Node {
+	reason := fieldSubnodeReason{field}
 	if subnodes, ok := g.nodes.globalNodes.subnodes[base]; ok {
-		if nodeData, ok := subnodes[fieldSubnodeReason{field}]; ok {
+		if nodeData, ok := subnodes[reason]; ok {
 			g.AddEdge(base, nodeData.node, EdgeSubnode)
 			return nodeData.node
 		}
 		f := g.nodes.NewNode(base.kind, field, tp)
-		subnodes[fieldSubnodeReason{field}] = struct {
-			node *Node
-			data any
-		}{f, tp}
-		g.nodes.globalNodes.parent[f] = base
+		subnodes[reason] = nodeWithData{f, tp}
+		g.nodes.globalNodes.parent[f] = nodeWithData{base, reason}
 		g.AddEdge(base, f, EdgeSubnode)
 		return f
 	}
 	f := g.nodes.NewNode(base.kind, field, tp)
-	g.nodes.globalNodes.subnodes[base] = map[any]nodeWithData{fieldSubnodeReason{field}: {f, tp}}
-	g.nodes.globalNodes.parent[f] = base
+	g.nodes.globalNodes.subnodes[base] = map[any]nodeWithData{reason: {f, tp}}
+	g.nodes.globalNodes.parent[f] = nodeWithData{base, reason}
+	g.AddEdge(base, f, EdgeSubnode)
+	return f
+}
+
+// ImplementationSubnode returns the singular implementation subnode of `base`, with a given concrete type.
+func (g *EscapeGraph) ImplementationSubnode(base *Node, concreteTp types.Type) *Node {
+	reason := implementationSubnodeReason{concreteTp} // TODO: how to canonicalize the type?
+	// Assert that we aren't creating a double impl subnode.
+	if parentReason, ok := g.nodes.globalNodes.parent[base]; ok {
+		if _, ok := parentReason.data.(implementationSubnodeReason); ok {
+			panic("Adding implementation subnode to an existing subnode")
+		}
+	}
+	if subnodes, ok := g.nodes.globalNodes.subnodes[base]; ok {
+		if nodeData, ok := subnodes[reason]; ok {
+			g.AddEdge(base, nodeData.node, EdgeSubnode)
+			return nodeData.node // relationship already exists, return that node
+		}
+	} else {
+		g.nodes.globalNodes.subnodes[base] = map[any]nodeWithData{}
+	}
+	subnodes := g.nodes.globalNodes.subnodes[base]
+	f := g.nodes.NewNode(base.kind, fmt.Sprintf("impl: %s", concreteTp.String()), concreteTp)
+	subnodes[reason] = nodeWithData{f, concreteTp}
+	g.nodes.globalNodes.parent[f] = nodeWithData{base, reason}
 	g.AddEdge(base, f, EdgeSubnode)
 	return f
 }
@@ -489,7 +544,7 @@ func (g *EscapeGraph) FieldSubnode(base *Node, field string, tp types.Type) *Nod
 // There may also be other edges between these two nodes.
 func (g *EscapeGraph) IsSubnodeEdge(base, n *Node) bool {
 	p, ok := g.nodes.globalNodes.parent[n]
-	return ok && p == base
+	return ok && p.node == base
 }
 
 // IsSubnode returns true if n is a subnode of some other node.
@@ -499,12 +554,30 @@ func (g *EscapeGraph) IsSubnode(n *Node) bool {
 }
 
 // AnalogousSubnode returns the subnode of base that has the same relationship with base that
-// subnode has with its parent. Typically used to copy fields
+// subnode has with its parent. Typically used to copy fields. For implementation subnodes, if base
+// is not abstract (i.e. can't have subnodes), the result will be either the base node itself or
+// nil, depending on whether the types match.
 func (g *EscapeGraph) AnalogousSubnode(base *Node, subnode *Node) *Node {
-	// TODO make this work for all reasons, not just fields
-	for reason, nodeData := range g.nodes.globalNodes.subnodes[g.nodes.globalNodes.parent[subnode]] {
+	for reason, nodeData := range g.nodes.globalNodes.subnodes[g.nodes.globalNodes.parent[subnode].node] {
 		if r, ok := reason.(fieldSubnodeReason); ok && nodeData.node == subnode {
 			return g.FieldSubnode(base, r.field, nodeData.data.(types.Type))
+		} else if r, ok := reason.(implementationSubnodeReason); ok && nodeData.node == subnode {
+			if baseTp, ok := g.nodes.globalNodes.types[base]; ok {
+				// Check the base type, the type of the node we are adding a subnode for.
+				// If it is abstract (e.g. interface type), create a subnode. Otherwise, if the
+				// types are the same, then use the base node itself. If the types are different,
+				// then return nil.
+				if IsAbstractType(baseTp) {
+					return g.ImplementationSubnode(base, r.tp)
+				} else if CompatibleTypes(r.tp, baseTp) {
+					return base
+				} else {
+					return nil
+				}
+			} else {
+				// conservatively use a subnode, even if we don't have a type
+				return g.ImplementationSubnode(base, r.tp)
+			}
 		}
 	}
 	panic("Subnode argument is not a subnode: reason not found")
@@ -632,38 +705,128 @@ func (g *EscapeGraph) Merge(h *EscapeGraph) {
 	}
 }
 
+// AsImplInterfaceType returns the corresponding interface type, if the input is is an abstract
+// interface implementation type, otherwise it returns nil.
+func AsImplInterfaceType(a types.Type) types.Type {
+	if aa, ok := a.(*ImplType); ok {
+		if _, ok := aa.tp.Underlying().(*types.Interface); ok {
+			return aa.tp
+		}
+	}
+	return nil
+}
+
+// CompatibleTypes returns true if a node of tpA can represent a node of tpB. Conservatively return
+// true if either doesn't have a type (represented by tpA or tpB being nil). Represent here means
+// that tpA is tpB or tpA satisfies the interface tpB.
+func CompatibleTypes(tpA, tpB types.Type) (r bool) {
+	// Swallow errors caused by supplying our custom ImplType as types.Type to the types package
+	defer func() {
+		if x := recover(); x != nil {
+			r = true
+		}
+	}()
+	// Allow nil
+	if tpA == nil || tpB == nil {
+		return true
+	}
+	if iType := AsImplInterfaceType(tpB); iType != nil {
+		return types.AssignableTo(tpA, iType) || types.AssignableTo(types.NewPointer(tpA), iType)
+	}
+	if types.AssignableTo(tpA, tpB) {
+		return true
+	}
+	return false
+}
+
+// IsAbstractType returns true if the input is an abstract type, i.e. an interface impl or a
+// function impl with no specific function.
+func IsAbstractType(tp types.Type) (r bool) {
+	switch t := tp.(type) {
+	case *ImplType:
+		switch t.tp.Underlying().(type) {
+		case *types.Interface:
+			return true
+		default:
+			return false
+		}
+	case *FunctionImplType:
+		return t.fun == nil
+	case *types.Named:
+		return IsAbstractType(tp.Underlying())
+	default:
+		return false
+	}
+}
+func IsAbstractNode(g *EscapeGraph, n *Node) bool {
+	if tp, ok := g.nodes.globalNodes.types[n]; ok {
+		return IsAbstractType(tp)
+	}
+	return false
+}
+
 // Call computes the result of splicing in the summary (callee) of the callee's graph. args are the
 // nodes corresponding to the caller's actual parameters at the callsite (nil if not pointer-like).
 // rets are the nodes corresponding to the caller values to assign the results to (nil if not
 // pointer-like). callee is the summary of the called function.
 //
 //gocyclo:ignore
-func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Node, callee *EscapeGraph) {
+func (g *EscapeGraph) Call(receiver *Node, args []*Node, freeVarsPointees [][]*Node, rets []*Node, callee *EscapeGraph) {
 	pre := g.Clone()
+	type uEdge struct {
+		src, dest *Node
+	}
 	// u maps nodes in summary to the nodes in the caller
-	u := map[*Node]map[Edge]struct{}{}
+	u := map[*Node]map[uEdge]struct{}{}
 	// deferredReps are used to ensure one of the rules triggers consistently
-	deferredReps := map[*Node]map[Edge]struct{}{}
-
-	worklist := []Edge{}
+	deferredReps := map[*Node]map[uEdge]struct{}{}
+	var receiverInCallee *Node = nil
+	if receiver != nil {
+		receiverInCallee = callee.nodes.formals[0]
+	}
+	worklist := []uEdge{}
 	addUEdge := func(x, y *Node) {
-		e := Edge{x, y, true, false, EdgeInternal}
+		// Redirect u edges that would be from a concrete node in the callee to an abstract node in
+		// the caller, so that they point at the implementation subnode of the correct type.
+		if tp, ok := g.nodes.globalNodes.types[x]; ok && IsAbstractNode(pre, y) && !IsAbstractNode(g, x) {
+			y = g.ImplementationSubnode(y, tp)
+		}
+		e := uEdge{x, y}
 		if m, ok := u[x]; ok {
 			if _, ok := m[e]; ok {
 				return
 			}
 			m[e] = struct{}{}
 		} else {
-			u[x] = map[Edge]struct{}{e: {}}
+			u[x] = map[uEdge]struct{}{e: {}}
 		}
 		worklist = append(worklist, e)
 	}
-	addDeferredRep := func(x *Node, e Edge) {
+	addDeferredRep := func(x *Node, e uEdge) {
 		if m, ok := deferredReps[x]; ok {
 			m[e] = struct{}{}
 		} else {
-			deferredReps[x] = map[Edge]struct{}{e: {}}
+			deferredReps[x] = map[uEdge]struct{}{e: {}}
 		}
+	}
+	// Adds an edge, but only if there isn't already and edge between src and dest's implementation
+	// parent (if it has one). Such edges are already implied, and are therefore redundant. This may
+	// not prevent all such redundant edges, as this only works if the edge to the subnode is added
+	// after the edge to the parent.
+	addEdge := func(src, dest *Node, m edgeFlags) {
+		var existingParentEdgeFlags edgeFlags = 0
+		if parentReason, ok := g.nodes.globalNodes.parent[dest]; ok {
+			if _, ok := parentReason.data.(implementationSubnodeReason); ok {
+				if outEdges, ok := g.edges[src]; ok {
+					existingParentEdgeFlags = outEdges[parentReason.node]
+				}
+			}
+		}
+		flagsToSet := m & (^existingParentEdgeFlags)
+		if flagsToSet == 0 {
+			return
+		}
+		g.AddEdge(src, dest, flagsToSet)
 	}
 
 	// Connect argument and return nodes
@@ -750,21 +913,25 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 			if edge.isSubnode {
 				// This is a special subnode edge, add the analogous edge in the caller graph, and link
 				fieldNode := g.AnalogousSubnode(rep, edge.dest)
-				addUEdge(edge.dest, fieldNode)
+				if fieldNode != nil {
+					addUEdge(edge.dest, fieldNode)
+				}
 			} else {
 				// Normal edge, y is edge.dest
 				for uEdge := range u[edge.dest] {
-					g.AddEdge(rep, uEdge.dest, EdgeInternal)
+					addEdge(rep, uEdge.dest, EdgeInternal)
 				}
 				// Edge.dest will be overwritten by whatever x ends up being, so leave it nil.
-				addDeferredRep(edge.dest, Edge{rep, nil, true, false, EdgeInternal})
+				addDeferredRep(edge.dest, uEdge{rep, nil})
 			}
 
 		}
 
-		// Add edges for the pointees of parameters, to link them with their representatives in the caller.
-		// This happens here so that we can handle subnodes appropriately. Subnodes still have the kind of their
-		// parent, so e.g. fields of a paramter are still KindParamVar.
+		// Add edges for the pointees of parameters, to link them with their representatives in the
+		// caller. This happens here so that we can handle subnodes appropriately. Subnodes still
+		// have the kind of their parent, so e.g. fields of a parameter are still KindParamVar,
+		// which causes this rule to trigger recursively to match up all the fields of struct-type
+		// parameters.
 		if base.kind == KindParamVar {
 			for _, edge := range callee.Edges(base, nil, EdgeAll) {
 				if edge.isSubnode {
@@ -775,7 +942,14 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 				} else {
 					for p := range pre.Pointees(rep) {
 						if !pre.IsSubnodeEdge(rep, p) {
-							addUEdge(edge.dest, p)
+							// Filter out pointees of the receiver that do not have the correct
+							// type. This is how we ensure the method is only applied to nodes of
+							// the correct type. addUEdge will handle the case where the pointee is
+							// an interface node by redirecting to the appropriate subnode.
+							compat := CompatibleTypes(g.nodes.globalNodes.types[edge.dest], g.nodes.globalNodes.types[p])
+							if base != receiverInCallee || compat {
+								addUEdge(edge.dest, p)
+							}
 						}
 					}
 				}
@@ -793,7 +967,7 @@ func (g *EscapeGraph) Call(args []*Node, freeVarsPointees [][]*Node, rets []*Nod
 		// |        \ |
 		// b  ------> base
 		for e := range deferredReps[base] {
-			g.AddEdge(e.src, rep, EdgeInternal)
+			addEdge(e.src, rep, EdgeInternal)
 		}
 
 		// propagate allocations/possible allocations (from un-analyzed functions)
@@ -909,7 +1083,7 @@ type globalNodeGroup struct {
 	nextNode int
 	function map[*Node]*ssa.Function
 	subnodes map[*Node]map[any]nodeWithData // map from root node to reasons to subnode children
-	parent   map[*Node]*Node                // nodes can only have one parent for now; subnodes form a forest.
+	parent   map[*Node]nodeWithData         // nodes can only have one parent for now; subnodes form a forest. value has parent + reason
 	types    map[*Node]types.Type
 	// TODO: introduce a mutex around nextNode for multithreading
 }
@@ -918,7 +1092,7 @@ func newGlobalNodeGroup() *globalNodeGroup {
 	return &globalNodeGroup{0,
 		make(map[*Node]*ssa.Function),
 		make(map[*Node]map[any]nodeWithData),
-		make(map[*Node]*Node),
+		make(map[*Node]nodeWithData),
 		make(map[*Node]types.Type)}
 }
 

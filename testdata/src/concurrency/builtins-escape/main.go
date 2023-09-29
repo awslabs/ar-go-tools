@@ -81,6 +81,8 @@ func main() {
 	testTypeCorrectness()
 	testGoReceiver()
 	testMultiChannelSelect()
+	testInterfaces()
+	testInterfaces2()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -793,4 +795,55 @@ func testMultiChannelSelect() {
 	xp, nhp := multiSelect(c1, c2)
 	assertSameAliases(x, xp)
 	assertSameAliases(nh, nhp)
+}
+
+type DoAction interface {
+	Action(*Node)
+}
+
+type DoerA struct {
+	a *Node
+}
+type DoerB struct {
+	a *Node
+}
+
+func (a *DoerA) Action(n *Node) {
+	a.a = n
+}
+func (b *DoerB) Action(n *Node) {
+
+}
+
+func testInterfaces() {
+	var doer DoAction = &DoerA{}
+	if arbitrary() {
+		doer = &DoerB{}
+	}
+	N := &Node{}
+	doer.Action(N)
+	if asB, ok := doer.(*DoerB); ok {
+		assertSameAliases(nil, asB.a)
+	}
+	if asA, ok := doer.(*DoerA); ok {
+		assertSameAliases(N, asA.a)
+	}
+}
+
+func doActionOnArgument(d DoAction, n *Node) {
+	d.Action(n)
+}
+func testInterfaces2() {
+	var doer DoAction = &DoerA{}
+	if arbitrary() {
+		doer = &DoerB{}
+	}
+	N := &Node{}
+	doActionOnArgument(doer, N)
+	if asB, ok := doer.(*DoerB); ok {
+		assertSameAliases(nil, asB.a)
+	}
+	if asA, ok := doer.(*DoerA); ok {
+		assertSameAliases(N, asA.a)
+	}
 }

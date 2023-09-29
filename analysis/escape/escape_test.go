@@ -348,6 +348,8 @@ func TestBuiltinsEscape(t *testing.T) {
 		"testTypeCorrectness",
 		"testGoReceiver",
 		"testMultiChannelSelect",
+		"testInterfaces",
+		"testInterfaces2",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
