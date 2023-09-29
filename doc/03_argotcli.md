@@ -5,7 +5,7 @@ The command line tool `argot-cli` (the CLI) provides many commands to help progr
 
 Like many of the tools there,
 it must be started with a *program to analyze* and *a configuration file*. To start the `argot-cli` with some program `main.go` and some configuration file `config.yaml`:
-```
+```shell
 argot-cli -config config.yaml main.go
 ```
 > If you installed the CLI using `make install`, then call `argot-cli`. If you only built the cli using `make argot-cli`, look for the executable `./bin/argot-cli`
@@ -23,7 +23,7 @@ Each command may accept arguments, flags and/or named arguments, separated by sp
 # Detailed Example: Loading `testdata/src/taint/example1`
 
 First, we use the CLI to load the Go program in `testdata/src/taint/example1`:
-```[shell]
+```shell
 argot-cli -config ./testdata/src/taint/example1/config.yaml ./Testdata/Src/Taint/Example1/Main.Go
 ```
 > 📝 If the program is only a `main.go` file and there is a file `config.yaml` in the same directory, then you can omit the `-config ...`. In the example above, using `argot-cli ./testdata/src/taint/example1/main.go` will load the same program with the same configuration.

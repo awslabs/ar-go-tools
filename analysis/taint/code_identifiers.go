@@ -24,49 +24,51 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func IsSourceNode(cfg *config.Config, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(cfg, n, config.Config.IsSource)
+// IsSomeSourceNode returns true if n matches the code identifier of some source in the config
+func IsSomeSourceNode(cfg *config.Config, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(n, cfg.IsSomeSource)
 }
 
-func IsSinkNode(cfg *config.Config, n ssa.Node) bool {
-	return isMatchingCodeIdWithCallee(cfg.IsSink, nil, n)
+// IsSourceNode returns true if n matches the code identifier of a source node in the taint specification
+func IsSourceNode(ts *config.TaintSpec, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(n, ts.IsSource)
 }
 
-func isSink(n dataflow.GraphNode, cfg *config.Config) bool {
-	return isMatchingCodeId(cfg.IsSink, n)
+func isSink(ts *config.TaintSpec, n dataflow.GraphNode) bool {
+	return isMatchingCodeId(ts.IsSink, n)
 }
 
-func isSanitizer(n dataflow.GraphNode, cfg *config.Config) bool {
-	return isMatchingCodeId(cfg.IsSanitizer, n)
+func isSanitizer(ts *config.TaintSpec, n dataflow.GraphNode) bool {
+	return isMatchingCodeId(ts.IsSanitizer, n)
 }
 
 // isValidatorCondition checks whether v is a validator condition according to the validators stored in the config
 // This function makes recursive calls on the value if necessary.
-func isValidatorCondition(isPositive bool, v ssa.Value, cfg *config.Config) bool {
+func isValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bool {
 	switch val := v.(type) {
 	// Direct boolean check?
 	case *ssa.Call:
-		return isPositive && isMatchingCodeIdWithCallee(cfg.IsValidator, nil, val)
+		return isPositive && isMatchingCodeIdWithCallee(ts.IsValidator, nil, val)
 	// Nil error check?
 	case *ssa.BinOp:
 		vNilChecked, isEqCheck := lang.MatchNilCheck(val)
 		// Validator condition holds on the branch where "not err != nil" or "err == nil"
 		// i.e. if not positive and not isEqCheck or positive and isEqCheck
-		return (isPositive == isEqCheck) && isValidatorCondition(true, vNilChecked, cfg)
+		return (isPositive == isEqCheck) && isValidatorCondition(ts, vNilChecked, true)
 	case *ssa.UnOp:
 		if val.Op == token.NOT {
 			// Validator condition must hold on the negated value, with the negated positive condition
-			return isValidatorCondition(!isPositive, val.X, cfg)
+			return isValidatorCondition(ts, val.X, !isPositive)
 		}
 	case *ssa.Extract:
 		// Validator condition must hold on the tuple result
-		return isValidatorCondition(isPositive, val.Tuple, cfg)
+		return isValidatorCondition(ts, val.Tuple, isPositive)
 	}
 	return false
 }
 
-func isFiltered(n dataflow.GraphNode, cfg *config.Config) bool {
-	for _, filter := range cfg.Filters {
+func isFiltered(ts *config.TaintSpec, n dataflow.GraphNode) bool {
+	for _, filter := range ts.Filters {
 		if filter.Type != "" {
 			if filter.MatchType(n.Type()) {
 				return true

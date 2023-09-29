@@ -15,7 +15,7 @@ The third algorithm uses the call-graph analysis for even more accurate reachabi
 All three of these can be optionally compared against the "ground truth" offered by the symbol table of the actual compiled binary.  This is more complex because it requires that the binary be built and the symbol table dumped using the `go tool nm`.  It also is less accurate because (a) the symbols in the binary use a slightly different naming convention than that used by x/tools, (b) the binary will appear to not contain functions that were actually inlined by the compiler, and (c) the binary includes lower-level (e.g. hash and equality) functions that are automatically created.  However, it can be very useful in terms of locating opportunities for refactoring the code to reduce bloat when functions that aren't needed are included in the binary because the compiler can't tell that they aren't required.
 
 To run the compare tool with all four possibilities against (for example) the reachability tool, perform the following steps:
-```
+```shell
 go build ./cmd/reachability/
 go tool nm ./reachability > reachability.symbols
 bin/compare -symbols -binary reachability.symbols ./cmd/reachability 
@@ -56,7 +56,7 @@ Some attempt to filter common classes of these false positives has been made. It
 
 The tool can be run by e.g.:
 
-```
+```shell
 bin/compare -callgraphs /tmp/callgraph-logs -dynbinary main src/main.go
 ```
 

@@ -251,7 +251,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		}
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			IsEntrypoint:       taint.IsSourceNode,
+			IsEntrypoint:       taint.IsSomeSourceNode,
 		})
 		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
@@ -282,7 +282,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		// Run the analysis with the filter.
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			IsEntrypoint:       taint.IsSourceNode,
+			IsEntrypoint:       taint.IsSomeSourceNode,
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 
@@ -338,7 +338,13 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
-	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(), taint.IsSourceNode, nil)
+	for _, ts := range c.Config.TaintTrackingProblems {
+		c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(&ts),
+			func(node ssa.Node) bool {
+				return taint.IsSourceNode(&ts, node)
+			},
+			nil)
+	}
 	return false
 }
 
@@ -359,12 +365,19 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 
 	// TODO this technically needs summaries that are built with backtrace.IsEntrypoint,
 	// not taint.IsSourceNode
+	var traces [][]dataflow.GraphNode
+	for _, ps := range c.Config.SlicingProblems {
+		visitor := &backtrace.Visitor{}
+		visitor.SlicingSpec = &ps
+		c.FlowGraph.RunVisitorOnEntryPoints(visitor, func(node ssa.Node) bool {
+			return backtrace.IsInterProceduralEntryPoint(&ps, node)
+		}, nil)
 
-	visitor := &backtrace.Visitor{}
-	c.FlowGraph.RunVisitorOnEntryPoints(visitor, backtrace.IsCrossFunctionEntrypoint, nil)
+		traces = append(traces, visitor.Traces...)
+	}
 
 	writeFmt(tt, "Traces:\n")
-	for _, trace := range backtrace.Traces(c, visitor.Traces) {
+	for _, trace := range backtrace.Traces(c, traces) {
 		writeFmt(tt, "%v\n", trace)
 	}
 

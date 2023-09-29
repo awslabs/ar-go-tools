@@ -1,0 +1,48 @@
+<mxfile host="drawio.corp.amazon.com" modified="2023-09-22T20:35:22.941Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/115.0" etag="SBdgUiJWIMp7PtS1smuM" version="21.7.4" type="device">
+  <diagram name="Page-1" id="Nw8MfN9Sv6a54UeQwqo8">
+    <mxGraphModel dx="977" dy="610" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1120" pageHeight="630" math="0" shadow="0">
+      <root>
+        <object label="" report-paths="true" id="0">
+          <mxCell />
+        </object>
+        <mxCell id="1" parent="0" />
+        <object label="&lt;div&gt;Source of tainted data&lt;/div&gt;" package="(main)|(command-line-arguments)|((.*)ar-go-tools)" method="source[1-9]" isSource="true" id="2hWxdChP9oScqINdt46a-1">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+            <mxGeometry x="410" y="80" width="120" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object label="Function handling sensitive data" package="(main)|(command-line-arguments)|((.*)ar-go-tools)" method="(s|S)ink[1-9]" isSink="true" id="2hWxdChP9oScqINdt46a-2">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+            <mxGeometry x="410" y="310" width="120" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <object label="Clean up input data" method="(s|S)anitize[1-9]?" isSanitizer="true" id="2hWxdChP9oScqINdt46a-3">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+            <mxGeometry x="410" y="190" width="120" height="60" as="geometry" />
+          </mxCell>
+        </object>
+        <mxCell id="2hWxdChP9oScqINdt46a-4" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="2hWxdChP9oScqINdt46a-1" target="2hWxdChP9oScqINdt46a-3">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="500" y="350" as="sourcePoint" />
+            <mxPoint x="550" y="300" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2hWxdChP9oScqINdt46a-5" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="2hWxdChP9oScqINdt46a-3" target="2hWxdChP9oScqINdt46a-2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="540" y="310" as="sourcePoint" />
+            <mxPoint x="590" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="2hWxdChP9oScqINdt46a-6" value="&lt;div&gt;forbidden flow&lt;br&gt;&lt;/div&gt;" style="endArrow=classic;html=1;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fillColor=#e51400;strokeColor=#B20000;labelBackgroundColor=#ff0000;fontColor=#ffffff;" edge="1" parent="1" source="2hWxdChP9oScqINdt46a-1" target="2hWxdChP9oScqINdt46a-2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="250" y="250" as="sourcePoint" />
+            <mxPoint x="300" y="200" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="260" y="230" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

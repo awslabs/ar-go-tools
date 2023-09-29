@@ -1,5 +1,7 @@
-backtracepoints:
-  - package: "os/exec"
-    method: "^Command$"
+slicing-problems:
+  - backtracepoints:
+    - package: "os/exec"
+      method: "^Command$"
 
-loglevel: 5 # trace logging
+options:
+    log-level: 5 # trace logging

@@ -1,2 +1,4 @@
-reportsdir: "example-report"
-reportpaths: true
+
+options:
+    reports-dir: "example-report"
+    report-paths: true

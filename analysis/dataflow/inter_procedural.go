@@ -20,7 +20,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"golang.org/x/tools/go/ssa"
 )
@@ -253,7 +252,7 @@ func (g *InterProceduralFlowGraph) Sync() {
 // (i.e. `len(g.summaries) == 0`)
 // or if `cfg.SkipInterprocedural` is set to true.
 func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor Visitor,
-	isEntryPoint func(*config.Config, ssa.Node) bool) {
+	isEntryPoint func(ssa.Node) bool) {
 	// Skip the pass if user configuration demands it
 	if c.Config.SkipInterprocedural || (!c.Config.SummarizeOnDemand && len(g.Summaries) == 0) {
 		c.Logger.Infof("Skipping inter-procedural pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
@@ -277,7 +276,7 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor 
 // RunVisitorOnEntryPoints runs the visitor on the entry points designated by either the isEntryPoint function
 // or the isGraphEntryPoint function.
 func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
-	isEntryPointSsa func(*config.Config, ssa.Node) bool,
+	isEntryPointSsa func(ssa.Node) bool,
 	isEntryPointGraphNode func(node GraphNode) bool) {
 
 	entryPoints := make(map[KeyType]NodeWithTrace)
@@ -304,7 +303,7 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 }
 
 func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterProceduralFlowGraph,
-	entryPoints map[KeyType]NodeWithTrace, isEntryPointSsa func(*config.Config, ssa.Node) bool) func(n GraphNode) {
+	entryPoints map[KeyType]NodeWithTrace, isEntryPointSsa func(ssa.Node) bool) func(n GraphNode) {
 	return func(n GraphNode) {
 		if isEntryPointGraphNode != nil && isEntryPointGraphNode(n) {
 			for _, callnode := range n.Graph().Callsites {
@@ -326,12 +325,12 @@ func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterPr
 			entryPoints[entry.Key()] = entry
 		case *CallNodeArg:
 			if g.AnalyzerState.Config.SourceTaintsArgs &&
-				isEntryPointSsa(g.AnalyzerState.Config, node.parent.CallSite().Value()) {
+				isEntryPointSsa(node.parent.CallSite().Value()) {
 				entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
 				entryPoints[entry.Key()] = entry
 			}
 		case *CallNode:
-			if node.callSite != nil && isEntryPointSsa(g.AnalyzerState.Config, node.callSite.Value()) {
+			if node.callSite != nil && isEntryPointSsa(node.callSite.Value()) {
 				contexts := GetAllCallingContexts(g.AnalyzerState, node)
 				addWithContexts(contexts, node, entryPoints)
 

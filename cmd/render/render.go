@@ -235,7 +235,6 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 	}
 }
 
-//gocyclo:ignore
 func WriteHtmlCallgraph(program *ssa.Program, cg *callgraph.Graph, outPath string) error {
 	// fmt.Fprint(os.Stderr, "Starting writeCallgraph\n")
 	reachable := dataflow.CallGraphReachable(cg, false, false)
@@ -275,33 +274,7 @@ func WriteHtmlCallgraph(program *ssa.Program, cg *callgraph.Graph, outPath strin
 			for _, ins := range bb.Instrs {
 				switch call := ins.(type) {
 				case *ssa.Call:
-					fmt.Fprintf(htmlOut, "<div>Call at %v </div>\n", program.Fset.Position(ins.Pos()))
-					if _, ok := call.Call.Value.(*ssa.Builtin); ok {
-						// Built-ins are not part of the explicit callgraph
-						fmt.Fprintf(htmlOut, "(Builtin)\n")
-						// fmt.Fprintf(html, "CalleeCount at %v: %v\n", program.Fset.Position(ins.Pos()), 1)
-					} else {
-						callees := []*ssa.Function{}
-						for _, edge := range node.Out {
-							if edge.Site == ins {
-								callees = append(callees, edge.Callee.Func)
-							}
-						}
-						// fmt.Fprintf(html, "CalleeCount at %v: %v\n", program.Fset.Position(ins.Pos()), len(callees))
-						if len(callees) == 0 && call.Call.StaticCallee() != nil {
-							fmt.Fprintf(htmlOut, "(Predefined)\n")
-						} else if len(callees) == 0 {
-							fmt.Fprintf(htmlOut, "No callees at %v\n", program.Fset.Position(ins.Pos()))
-							includeDisassembly = true
-						} else {
-							for _, c := range callees {
-								fmt.Fprint(htmlOut, "<a href=\"#", uintptr(unsafe.Pointer(c)), "\", title=\"",
-									c.String(), "\">", c.Name(), "</a> ")
-							}
-						}
-					}
-
-					// fmt.Fprintf(html, "</div>\n")
+					includeDisassembly = outputCall(program, htmlOut, ins, call, node, includeDisassembly)
 				}
 			}
 		}
@@ -340,4 +313,32 @@ func WriteHtmlCallgraph(program *ssa.Program, cg *callgraph.Graph, outPath strin
 		fmt.Fprint(htmlOut, "</div>\n")
 	}
 	return nil
+}
+
+func outputCall(program *ssa.Program, htmlOut *os.File, ins ssa.Instruction, call *ssa.Call, node *callgraph.Node,
+	includeDisassembly bool) bool {
+	fmt.Fprintf(htmlOut, "<div>Call at %v </div>\n", program.Fset.Position(ins.Pos()))
+	if _, ok := call.Call.Value.(*ssa.Builtin); ok {
+		// Built-ins are not part of the explicit callgraph
+		fmt.Fprintf(htmlOut, "(Builtin)\n")
+	} else {
+		callees := []*ssa.Function{}
+		for _, edge := range node.Out {
+			if edge.Site == ins {
+				callees = append(callees, edge.Callee.Func)
+			}
+		}
+		if len(callees) == 0 && call.Call.StaticCallee() != nil {
+			fmt.Fprintf(htmlOut, "(Predefined)\n")
+		} else if len(callees) == 0 {
+			fmt.Fprintf(htmlOut, "No callees at %v\n", program.Fset.Position(ins.Pos()))
+			includeDisassembly = true
+		} else {
+			for _, c := range callees {
+				fmt.Fprint(htmlOut, "<a href=\"#", uintptr(unsafe.Pointer(c)), "\", title=\"",
+					c.String(), "\">", c.Name(), "</a> ")
+			}
+		}
+	}
+	return includeDisassembly
 }

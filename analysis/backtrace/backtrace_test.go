@@ -576,7 +576,10 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 	program, cfg := analysistest.LoadTest(t, dir, test.files)
 	defer os.Remove(cfg.ReportsDir)
 
-	cfg.BacktracePoints = cfg.Sinks
+	if len(cfg.TaintTrackingProblems) < 1 {
+		t.Fatal("expect at least one taint tracking problem")
+	}
+	cfg.SlicingProblems = []config.SlicingSpec{{BacktracePoints: cfg.TaintTrackingProblems[0].Sinks}}
 	cfg.SummarizeOnDemand = isOnDemand
 	cfg.LogLevel = int(config.DebugLevel)
 	lg := config.NewLogGroup(cfg)
@@ -694,15 +697,17 @@ func isSourceNode(cfg *config.Config, source ssa.Node) bool {
 			methodName := node.Call.Method.Name()
 			calleePkg := analysisutil.FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
-				return config.Config.IsSource(*cfg, config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
+				return config.Config.IsSomeSource(*cfg,
+					config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
 			} else {
 				// HACK this is needed because "invoked" functions sometimes don't have a callee package
-				return config.Config.IsSource(*cfg, config.CodeIdentifier{Package: "command-line-arguments", Method: methodName, Receiver: receiver})
+				return config.Config.IsSomeSource(*cfg,
+					config.CodeIdentifier{Package: "command-line-arguments", Method: methodName, Receiver: receiver})
 			}
 		}
 	}
 
-	return taint.IsSourceNode(cfg, source)
+	return taint.IsSomeSourceNode(cfg, source)
 }
 
 func sourceInstr(source dataflow.GraphNode) (ssa.Instruction, bool) {

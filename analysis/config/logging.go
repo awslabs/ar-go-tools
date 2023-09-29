@@ -57,7 +57,7 @@ type LogGroup struct {
 func NewLogGroup(config *Config) *LogGroup {
 	l := &LogGroup{
 		Level:        LogLevel(config.LogLevel),
-		suppressWarn: !config.Warn,
+		suppressWarn: config.SilenceWarn,
 		trace:        log.New(os.Stdout, colors.Faint("[TRACE] "), 0),
 		debug:        log.New(os.Stdout, "[DEBUG] ", 0),
 		info:         log.New(os.Stdout, colors.Green("[INFO]  "), 0),

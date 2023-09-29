@@ -1,2 +1,3 @@
-reportsdir: "bad-dir/example-report"
-reportpaths: true
+options:
+    reports-dir: "bad-dir/example-report"
+    report-paths: true
