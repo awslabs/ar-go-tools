@@ -83,6 +83,7 @@ func main() {
 	testMultiChannelSelect()
 	testInterfaces()
 	testInterfaces2()
+	testInterfaces3()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -844,6 +845,22 @@ func testInterfaces2() {
 		assertSameAliases(nil, asB.a)
 	}
 	if asA, ok := doer.(*DoerA); ok {
+		assertSameAliases(N, asA.a)
+	}
+}
+
+func testInterfaces3() {
+	var doer DoAction = &DoerA{}
+	if arbitrary() {
+		doer = &DoerB{}
+	}
+	N := &Node{}
+	doActionOnArgument(doer, N)
+	// Same as above but don't use comma ok form of type cast
+	if asB := doer.(*DoerB); asB != nil {
+		assertSameAliases(nil, asB.a)
+	}
+	if asA := doer.(*DoerA); asA != nil {
 		assertSameAliases(N, asA.a)
 	}
 }

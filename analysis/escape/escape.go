@@ -532,7 +532,6 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		}
 		if IsEscapeTracked(instr.AssertedType) {
 			src := nodes.ValueNode(instr.X)
-			dest := g.FieldSubnode(nodes.ValueNode(instr), "#0", instr.AssertedType)
 			for _, e := range g.DerefEdges(src) {
 				// propogate untyped nodes or nodes that have a type that matches. We use
 				// AddressOfType, because if the node has type e.g. struct or impl of map, we need
