@@ -45,7 +45,7 @@ func TestArrayRemainsTaintedWhenSourceIsOverwritten(s core.SourceT) {
 func TestRangeOverArray() {
 	sources := [1]core.Container{{Data: core.Source1()}} // @Source(ar5)
 	for i, s := range sources {
-		core.Sink(s) // @Sink(ar5)
+		core.Sink(s.Data) // @Sink(ar5)
 		core.Sink(i)
 	}
 }

@@ -208,10 +208,10 @@ func TestCrossFunctionWithContext_SummarizeOnDemand(t *testing.T) {
 	runTest(t, "with-context", []string{}, true, noErrorExpected)
 }
 
-func TestPlayground(t *testing.T) {
-	runTest(t, "playground", []string{}, false, noErrorExpected)
-}
-
 func TestField(t *testing.T) {
 	runTest(t, "fields", []string{}, false, noErrorExpected)
+}
+
+func TestPlayground(t *testing.T) {
+	runTest(t, "playground", []string{}, false, noErrorExpected)
 }

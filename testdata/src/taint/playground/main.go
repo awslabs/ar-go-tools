@@ -14,56 +14,54 @@
 
 package main
 
-import (
-	"fmt"
-	"strconv"
-)
+import "fmt"
 
-func wrap(a string, before string, after string) string {
-	return fmt.Sprintf("%s%s%s", before, a, after)
+type example struct {
+	ptr *string
 }
 
-func sink(a ...string) {
-	for _, x := range a {
-		println(x)
-	}
+type Node struct {
+	label string
+	next  *Node
+}
+
+type nestedStruct struct {
+	Ex example
+	A  string
+	B  string
+	C  string
 }
 
 func source() string {
-	return "-tainted-"
+	return "!taint!"
 }
 
-type Ex14 struct {
-	Count  int
-	Lambda func(int, string) string
-}
-
-func (e Ex14) Run(s string, i int) string {
-	e.Count += i
-	return e.Lambda(e.Count, s)
-}
-
-func NewEx14() *Ex14 {
-	data := source() // @Source(ex14)
-	e := &Ex14{
-		Count: 0,
-		Lambda: func(i int, s string) string {
-			return strconv.Itoa(i) + s + data
-		},
+func newStruct() *nestedStruct {
+	return &nestedStruct{
+		Ex: example{},
+		A:  "initial-A",
+		B:  "initial-B",
 	}
-	return e
 }
 
-func callSink14(run func(string) string, s string) {
-	sink(run(s)) // @Sink(ex14)
+func sink(s string) {
+	fmt.Printf("Sink: %s\n", s)
 }
 
-func example14() {
-	e := NewEx14()
-	f := func(s string, i int) string { return e.Run(s, i) }
-	callSink14(func(s string) string { return f(s, 1) }, "ok")
+type S struct {
+	next *S
+	v    string
+}
+
+func testSimpleField1() {
+	x := newStruct()
+	x.A = source() // @Source(testSimpleField_1)
+	x.B = "ok"
+	sink(x.B)
+	sink(x.A) // @Sink(testSimpleField_1)
+	sink(x.C)
 }
 
 func main() {
-	example14()
+	testSimpleField1()
 }

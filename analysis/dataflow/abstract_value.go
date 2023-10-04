@@ -17,13 +17,18 @@ package dataflow
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"golang.org/x/tools/go/ssa"
 )
 
+// maxAccessPathLength bound the maximum length of an access path TODO: make this a config option
+// this value does not affect soundness
+const maxAccessPathLength = 4
+
 type MarkWithPath struct {
-	Mark Mark
-	Path string
+	Mark       Mark
+	AccessPath string
 }
 
 type ValueWithPath struct {
@@ -42,19 +47,38 @@ func newAbstractValue(v ssa.Value) abstractValue {
 	}
 }
 
-func (a abstractValue) Add(path string, mark Mark) {
+func (a abstractValue) add(path string, mark Mark) {
 	if _, ok := a.PathMappings[path]; !ok {
 		a.PathMappings[path] = map[Mark]bool{}
 	}
 	a.PathMappings[path][mark] = true
 }
 
-func (a abstractValue) MarksAt(path string) map[Mark]bool {
-	return a.PathMappings[path]
+// MarksAt returns all the marks on the abstract value for a certain path. For example, if the value is marked at
+// ".field" by [m] and at "[*]" by [m'] then MarksAt(".field") will return "[m]" and MarksAt("[*]") will return "[m']".
+// MarksAt("") will return [m,m']
+// if the value is marked at "", by m”, then MarksAt(".field") will return "[m,m”]"
+func (a abstractValue) MarksAt(path string) map[MarkWithPath]bool {
+	marks := map[MarkWithPath]bool{}
+	for p, m := range a.PathMappings {
+		// Logic for matching paths
+		relAccessPath, ok := strings.CutPrefix(p, path)
+		if p == "" {
+			relAccessPath = p
+			ok = true
+		}
+		// If path matches, then add the marks with the right path
+		if ok {
+			for mark := range m {
+				marks[MarkWithPath{mark, relAccessPath}] = true
+			}
+		}
+	}
+	return marks
 }
 
 func (a abstractValue) AllMarks() []MarkWithPath {
-	x := []MarkWithPath{}
+	var x []MarkWithPath
 	for path, marks := range a.PathMappings {
 		for mark := range marks {
 			x = append(x, MarkWithPath{mark, path})
@@ -64,8 +88,12 @@ func (a abstractValue) AllMarks() []MarkWithPath {
 }
 
 func (a abstractValue) HasMarkAt(path string, m Mark) bool {
-	marks, ok := a.PathMappings[path]
-	return ok && marks[m]
+	for m2 := range a.MarksAt(path) {
+		if m2.Mark == m {
+			return true
+		}
+	}
+	return false
 }
 
 func (a abstractValue) Show(w io.Writer) {
@@ -76,4 +104,51 @@ func (a abstractValue) Show(w io.Writer) {
 		}
 		fmt.Fprintf(w, "\n")
 	}
+}
+
+func pathLen(path string) int {
+	return 1 + strings.Count(path, "[*]") + strings.Count(path, ".")
+}
+
+func pathTrimLast(path string) string {
+	if path == "" {
+		return ""
+	}
+	if prefix, ok := strings.CutSuffix(path, "[*]"); ok {
+		return prefix
+	}
+	n := strings.LastIndex(path, ".")
+	if n > 0 {
+		return path[n:]
+	} else {
+		return path
+	}
+}
+
+func pathAddField(path string, fieldName string) string {
+	if pathLen(path) > maxAccessPathLength {
+		path = pathTrimLast(path)
+	}
+	return "." + fieldName + path
+}
+
+func pathAddIndexing(path string) string {
+	if pathLen(path) > maxAccessPathLength {
+		path = pathTrimLast(path)
+	}
+	return "[*]" + path
+}
+
+func pathMatchField(path string, fieldName string) (string, bool) {
+	if path == "" {
+		return "", true
+	}
+	return strings.CutPrefix(path, "."+fieldName)
+}
+
+func pathMatchIndex(path string) (string, bool) {
+	if path == "" {
+		return "", true
+	}
+	return strings.CutPrefix(path, "[*]")
 }

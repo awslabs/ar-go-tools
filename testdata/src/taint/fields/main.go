@@ -76,19 +76,28 @@ func sink2(a any) {
 	fmt.Printf("%t", a)
 }
 
-func testSimpleField() {
+func testSimpleField1() {
+	x := newStruct()
+	x.A = source() // @Source(testSimpleField_1)
+	x.B = "ok"
+	sink(x.B)
+	sink(x.A) // @Sink(testSimpleField_1)
+	sink(x.C)
+}
+
+func testSimpleField2() {
 	x := newStruct()
 	s := &x.A
-	x.A = source() // @Source(testSimpleField)
+	x.A = source() // @Source(testSimpleField_2)
 	x.B = "ok"
-	x.C = source() // @Source(testSimpleField2)
+	x.C = source() // @Source(testSimpleField_3)
 	b := make([]string, 10)
 	b[0] = *s
 	sink(x.B)
-	sink(x.A)  // @Sink(testSimpleField)
-	sink(x.C)  // @Sink(testSimpleField2)
-	sink(*s)   // @Sink(testSimpleField)
-	sink(b[1]) // @Sink(testSimpleField)
+	sink(x.A)  // @Sink(testSimpleField_2)
+	sink(x.C)  // @Sink(testSimpleField_3)
+	sink(*s)   // @Sink(testSimpleField_2)
+	sink(b[1]) // @Sink(testSimpleField_2)
 }
 
 func testAllStructTainted() {
@@ -131,9 +140,9 @@ func testFieldAndSlice() {
 	s2 := s + "ok"
 	a := make([]*Node, 10)
 	x := &Node{label: s2}
-	//a[0] = &Node{label: "ok"}
-	//a[1] = &Node{label: "fine"}
-	//a[0].next = a[1]
+	a[0] = &Node{label: "ok"}
+	a[1] = &Node{label: "fine"}
+	a[0].next = a[1]
 	a[1].next = x // a[0] -> a[1] -> x (tainted)
 	testFieldAndSliceSink(a)
 }
@@ -141,16 +150,17 @@ func testFieldAndSlice() {
 func testFieldAndSliceSink(a []*Node) {
 	for _, x := range a {
 		if x != nil {
-			sink(x.label)
+			sink(x.label) // @Sink(testFieldAndSlice)
 			if x.next != nil {
-				sink(x.next.label)
+				sink(x.next.label) // @Sink(testFieldAndSlice)
 			}
 		}
 	}
 }
 
 func main() {
-	testSimpleField()
+	testSimpleField1()
+	testSimpleField2()
 	testAllStructTainted()
 	testFieldEmbedded()
 	testFieldEmbedded2()

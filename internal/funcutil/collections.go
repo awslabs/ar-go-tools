@@ -59,6 +59,14 @@ func Map[T any, S any](a []T, f func(T) S) []S {
 	return b
 }
 
+// MapValues returns a new slice b such for any i <= len(a), b[i] = f(a[i])
+func MapValues[T comparable, S any](a map[T]S, f func(S) S) map[T]S {
+	for k, x := range a {
+		a[k] = f(x)
+	}
+	return a
+}
+
 // elt is a helper struct to ensure that MapParallel maintains element order.
 type elt[T any] struct {
 	idx int // index in original slice

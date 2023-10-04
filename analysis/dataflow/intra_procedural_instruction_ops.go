@@ -129,7 +129,7 @@ func (state *IntraAnalysisState) DoSend(x *ssa.Send) {
 }
 
 func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
-	transferCopy(state, x, x.Val, x.Addr)
+	transfer(state, x, x.Val, x.Addr, "", -1)
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
@@ -152,7 +152,7 @@ func (state *IntraAnalysisState) DoMakeChan(*ssa.MakeChan) {
 
 func (state *IntraAnalysisState) DoAlloc(x *ssa.Alloc) {
 	if state.shouldTrack(state.flowInfo.Config, state.parentAnalyzerState.PointerAnalysis, x) {
-		state.markValue(x, x, NewMark(x, DefaultMark, "", nil, -1), "")
+		state.markValue(x, x, NewMark(x, DefaultMark, nil, -1), "")
 	}
 	// An allocation may be a mark
 	state.optionalSyntheticNode(x, x, x)
@@ -189,12 +189,11 @@ func (state *IntraAnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 			field = structTyp.Field(x.Field).Name()
 		}
 	}
+	path := ""
 	if field != "" {
-		// Taint is propagated if field of struct is tainted
-		transfer(state, x, x.X, x, "."+field, -1)
+		path = "." + field
 	}
-	// Taint is also propagated if entire struct is tainted
-	transfer(state, x, x.X, x, "", -1)
+	transfer(state, x, x.X, x, path, -1)
 }
 
 func (state *IntraAnalysisState) DoField(x *ssa.Field) {
@@ -208,26 +207,23 @@ func (state *IntraAnalysisState) DoField(x *ssa.Field) {
 	if structTyp, ok := xTyp.(*types.Struct); ok {
 		field = structTyp.Field(x.Field).Name()
 	}
+	path := ""
 	if field != "" {
-		// Taint is propagated if field of struct is tainted
-		transfer(state, x, x.X, x, "."+field, -1)
+		path = "." + field
 	}
-	// Taint is also propagated if entire struct is tainted
-	transfer(state, x, x.X, x, "", -1)
+	transfer(state, x, x.X, x, path, -1)
 }
 
 func (state *IntraAnalysisState) DoIndexAddr(x *ssa.IndexAddr) {
 	// An indexing taints the Value if either index or the indexed Value is tainted
 	simpleTransfer(state, x, x.Index, x)
 	transfer(state, x, x.X, x, "[*]", -1)
-	transfer(state, x, x.X, x, "", -1)
 }
 
 func (state *IntraAnalysisState) DoIndex(x *ssa.Index) {
 	// An indexing taints the Value if either index or array is tainted
 	simpleTransfer(state, x, x.Index, x)
 	transfer(state, x, x.X, x, "[*]", -1)
-	transfer(state, x, x.X, x, "", -1)
 }
 
 func (state *IntraAnalysisState) DoLookup(x *ssa.Lookup) {

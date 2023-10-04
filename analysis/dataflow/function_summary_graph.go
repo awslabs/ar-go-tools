@@ -567,8 +567,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 
 	if source.IsParameter() {
 		if sourceArgNode, ok := g.Params[source.Node]; ok && sourceArgNode != dest {
-			sourceArgNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-			addInEdge(dest, sourceArgNode, ObjectPath{source.RegionPath, source.Index, info})
+			sourceArgNode.out[dest] = ObjectPath{"", source.Index, info}
+			addInEdge(dest, sourceArgNode, ObjectPath{"", source.Index, info})
 		}
 	}
 
@@ -580,8 +580,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 			for _, sourceNode := range sourceNodes {
 				sourceCallArgNode := sourceNode.FindArg(source.Qualifier)
 				if sourceCallArgNode != nil && sourceCallArgNode != dest {
-					sourceCallArgNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-					addInEdge(dest, sourceCallArgNode, ObjectPath{source.RegionPath, source.Index, info})
+					sourceCallArgNode.out[dest] = ObjectPath{"", source.Index, info}
+					addInEdge(dest, sourceCallArgNode, ObjectPath{"", source.Index, info})
 				}
 			}
 		}
@@ -593,8 +593,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		if sourceNodes, ok := g.Callees[sourceCallInstr]; ok {
 			for _, sourceNode := range sourceNodes {
 				if sourceNode != dest {
-					sourceNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-					addInEdge(dest, sourceNode, ObjectPath{source.RegionPath, source.Index, info})
+					sourceNode.out[dest] = ObjectPath{"", source.Index, info}
+					addInEdge(dest, sourceNode, ObjectPath{"", source.Index, info})
 				}
 			}
 
@@ -603,8 +603,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 
 	if source.IsFreeVar() {
 		if sourceFreeVarNode, ok := g.FreeVars[source.Node]; ok && sourceFreeVarNode != dest {
-			sourceFreeVarNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-			addInEdge(dest, sourceFreeVarNode, ObjectPath{source.RegionPath, source.Index, info})
+			sourceFreeVarNode.out[dest] = ObjectPath{"", source.Index, info}
+			addInEdge(dest, sourceFreeVarNode, ObjectPath{"", source.Index, info})
 		}
 	}
 
@@ -614,8 +614,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		if cNode, ok := g.CreatedClosures[sourceClosure]; ok {
 			bvNode := cNode.FindBoundVar(source.Qualifier)
 			if bvNode != nil && bvNode != dest {
-				bvNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-				addInEdge(dest, bvNode, ObjectPath{source.RegionPath, source.Index, info})
+				bvNode.out[dest] = ObjectPath{"", source.Index, info}
+				addInEdge(dest, bvNode, ObjectPath{"", source.Index, info})
 			}
 		}
 	}
@@ -624,8 +624,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		sourceClosure := source.Node.(ssa.Instruction)
 		if cNode, ok := g.CreatedClosures[sourceClosure]; ok {
 			if cNode != dest {
-				cNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-				addInEdge(dest, cNode, ObjectPath{source.RegionPath, source.Index, info})
+				cNode.out[dest] = ObjectPath{"", source.Index, info}
+				addInEdge(dest, cNode, ObjectPath{"", source.Index, info})
 			}
 		}
 	}
@@ -635,8 +635,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		sourceInstr := source.Node.(ssa.Instruction)
 		if sourceNode, ok := g.SyntheticNodes[sourceInstr]; ok {
 			if sourceNode != dest {
-				sourceNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-				addInEdge(dest, sourceNode, ObjectPath{source.RegionPath, source.Index, info})
+				sourceNode.out[dest] = ObjectPath{"", source.Index, info}
+				addInEdge(dest, sourceNode, ObjectPath{"", source.Index, info})
 			}
 		}
 	}
@@ -645,8 +645,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		sourceInstr := source.Node.(ssa.Instruction)
 		if group, ok := g.AccessGlobalNodes[sourceInstr]; ok {
 			if sourceNode, ok := group[source.Qualifier]; ok {
-				sourceNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-				addInEdge(dest, sourceNode, ObjectPath{source.RegionPath, source.Index, info})
+				sourceNode.out[dest] = ObjectPath{"", source.Index, info}
+				addInEdge(dest, sourceNode, ObjectPath{"", source.Index, info})
 			}
 		}
 	}
@@ -1150,7 +1150,7 @@ func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer) {
 		fmt.Fprintf(w, "Empty graph!\n")
 		return
 	}
-	fmt.Fprintf(w, "Summary of %s:\n", g.Parent.Name())
+	fmt.Fprintf(w, "%s %s:\n", ftu.Yellow("Summary of"), ftu.Italic(ftu.Purple(g.Parent.Name())))
 	for _, a := range g.Params {
 		ppNodes("Parameter", w, a, outEdgesOnly)
 	}

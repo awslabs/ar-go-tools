@@ -69,10 +69,6 @@ type Mark struct {
 	// Node is the ssa node that the mark is tracking
 	Node ssa.Node
 
-	// RegionPath is the string representation of the dereference/field access/indexing operations from the ssa node
-	// to the object that this mark tracks (not used in a significant way for now)
-	RegionPath string
-
 	// MarkType is the type of the mark
 	Type MarkType
 
@@ -86,33 +82,21 @@ type Mark struct {
 
 // NewMark creates a source with a single type. Using this as constructor enforces that users provide an explicit
 // Value for index, whose default Value has a meaning that might not be intended
-func NewMark(node ssa.Node, typ MarkType, path string, qualifier ssa.Value, index int) Mark {
+func NewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int) Mark {
 	return Mark{
-		Node:       node,
-		RegionPath: path,
-		Type:       typ,
-		Qualifier:  qualifier,
-		Index:      index,
-	}
-}
-
-func (m Mark) WithPath(path string) Mark {
-	return Mark{
-		Node:       m.Node,
-		RegionPath: path,
-		Type:       m.Type,
-		Qualifier:  m.Qualifier,
-		Index:      m.Index,
+		Node:      node,
+		Type:      typ,
+		Qualifier: qualifier,
+		Index:     index,
 	}
 }
 
 func (m Mark) WithIndex(index int) Mark {
 	return Mark{
-		Node:       m.Node,
-		RegionPath: m.RegionPath,
-		Type:       m.Type,
-		Qualifier:  m.Qualifier,
-		Index:      index,
+		Node:      m.Node,
+		Type:      m.Type,
+		Qualifier: m.Qualifier,
+		Index:     index,
 	}
 }
 
@@ -168,9 +152,6 @@ func (m Mark) String() string {
 		str += m.Qualifier.Name() + " in "
 	}
 	str += m.Node.String()
-	if m.RegionPath != "" {
-		str = "(" + str + ")." + m.RegionPath
-	}
 	if m.Index >= 0 {
 		str += " #" + strconv.Itoa(m.Index)
 	}

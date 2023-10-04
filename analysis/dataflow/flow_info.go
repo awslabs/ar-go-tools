@@ -76,19 +76,20 @@ func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, path string
 	return ok && marks.HasMarkAt(path, s)
 }
 
-// AddMark adds a mark to the tracking info structure and returns a boolean
-// if new information has been inserted.
+// AddMark adds a mark to the tracking info structure and returns true if new information has been inserted.
+// If false, then "fi" has not changed.
+// In both cases, "fi" will have the mark "s" on ssa value "value" with "path" at instruction "i".
 func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value, path string, s Mark) bool {
 	if abstractState, ok := fi.MarkedValues[i][value]; ok {
 		if abstractState.HasMarkAt(path, s) {
 			return false
 		} else {
-			abstractState.Add(path, s)
+			abstractState.add(path, s)
 			return true
 		}
 	} else {
 		as := newAbstractValue(value)
-		as.Add(path, s)
+		as.add(path, s)
 		fi.MarkedValues[i][value] = as
 		return true
 	}

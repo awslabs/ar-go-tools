@@ -99,12 +99,12 @@ func (state *IntraAnalysisState) initialize() {
 
 	// The free variables of the function are marked
 	for _, fv := range function.FreeVars {
-		state.flowInfo.AddMark(firstInstr, fv, "", NewMark(fv, FreeVar, "", nil, -1))
+		state.flowInfo.AddMark(firstInstr, fv, "", NewMark(fv, FreeVar, nil, -1))
 		state.addFreeVarAliases(fv)
 	}
 	// The parameters of the function are marked as Parameter
 	for _, param := range function.Params {
-		state.flowInfo.AddMark(firstInstr, param, "", NewMark(param, Parameter, "", nil, -1))
+		state.flowInfo.AddMark(firstInstr, param, "", NewMark(param, Parameter, nil, -1))
 		state.addParamAliases(param)
 	}
 
@@ -175,8 +175,8 @@ func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
 				state.changeFlag = true
 			}
 			for _, mark := range previousAbstractState.AllMarks() {
-				if !state.flowInfo.MarkedValues[ins][value].HasMarkAt(mark.Path, mark.Mark) {
-					state.flowInfo.MarkedValues[ins][value].Add(mark.Path, mark.Mark)
+				if !state.flowInfo.MarkedValues[ins][value].HasMarkAt(mark.AccessPath, mark.Mark) {
+					state.flowInfo.MarkedValues[ins][value].add(mark.AccessPath, mark.Mark)
 					state.changeFlag = true
 				}
 			}
@@ -197,24 +197,24 @@ func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 // The Path parameter enables Path-sensitivity. If Path is "*", any Path is accepted and the analysis
 // over-approximates.
 func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path string,
-	isProceduralEntry bool, ignorePath bool) []Mark {
+	isProceduralEntry bool, ignorePath bool) []MarkWithPath {
 	return state.getMarksRec(i, v, path, isProceduralEntry, ignorePath, map[ValueWithPath]bool{})
 }
 
 func (state *IntraAnalysisState) getMarksRec(i ssa.Instruction, v ssa.Value, path string, isProceduralEntry bool,
 	ignorePath bool,
-	queries map[ValueWithPath]bool) []Mark {
+	queries map[ValueWithPath]bool) []MarkWithPath {
 
 	val := ValueWithPath{v, path}
 	if queries[val] || v == nil {
-		return []Mark{}
+		return []MarkWithPath{}
 	}
 	queries[val] = true
 
-	var origins []Mark
+	var origins []MarkWithPath
 	if ignorePath {
 		for _, mark := range state.flowInfo.MarkedValues[i][v].AllMarks() {
-			origins = append(origins, mark.Mark)
+			origins = append(origins, mark)
 		}
 	} else {
 		// when the Value is directly marked as tainted.
@@ -248,7 +248,7 @@ func (state *IntraAnalysisState) getMarksRec(i ssa.Instruction, v ssa.Value, pat
 
 //gocyclo:ignore
 func (state *IntraAnalysisState) referrerMarks(i ssa.Instruction, v ssa.Value, path string,
-	referrer ssa.Instruction, queries map[ValueWithPath]bool) []Mark {
+	referrer ssa.Instruction, queries map[ValueWithPath]bool) []MarkWithPath {
 	switch refInstr := referrer.(type) {
 	case *ssa.Send:
 		// marks on a Value sent on a channel transfer to channel
@@ -296,7 +296,7 @@ func (state *IntraAnalysisState) referrerMarks(i ssa.Instruction, v ssa.Value, p
 			return origins
 		}
 	}
-	return []Mark{}
+	return []MarkWithPath{}
 }
 
 // simpleTransfer  propagates all the marks from in to out, ignoring Path and tuple indexes
@@ -308,34 +308,36 @@ func simpleTransfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, ou
 // an index >= 0 indicates that element index of the tuple in is accessed
 func transfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index int) {
 	if glob, ok := in.(*ssa.Global); ok {
-		t.markValue(loc, out, NewMark(loc.(ssa.Node), Global, "", glob, index), "")
+		t.markValue(loc, out, NewMark(loc.(ssa.Node), Global, glob, index), "")
 	}
 
 	for _, origin := range t.getMarks(loc, in, path, false, false) {
-		t.flowInfo.SetLoc(origin, loc)
-		newOrigin := origin
+		t.flowInfo.SetLoc(origin.Mark, loc)
+		newOrigin := origin.Mark
 		if index >= 0 {
-			newOrigin = NewMark(origin.Node, origin.Type, origin.RegionPath, origin.Qualifier, index)
+			newOrigin = NewMark(origin.Mark.Node, origin.Mark.Type, origin.Mark.Qualifier, index)
 		}
-		t.markValue(loc, out, newOrigin, "")
-		t.checkFlowIntoGlobal(loc, newOrigin, out)
+		t.markValue(loc, out, newOrigin, origin.AccessPath)
+
 	}
+
+	t.checkFlowIntoGlobal(loc, in, out)
 }
 
 // transferCopy propagates the marks for a load, which only requires copying over marks and paths
 func transferCopy(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
 	aState := t.flowInfo.MarkedValues[loc][in]
 	for _, markWithPath := range aState.AllMarks() {
-		t.markValue(loc, out, markWithPath.Mark, markWithPath.Path)
+		t.markValue(loc, out, markWithPath.Mark, markWithPath.AccessPath)
 	}
 }
 
 // markClosureNode adds a closure node to the graph, and all the related sources and edges.
 // The closure Value is tracked like any other Value.
 func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
-	state.markValue(x, x, NewMark(x, Closure, "", nil, -1), "")
+	state.markValue(x, x, NewMark(x, Closure, nil, -1), "")
 	for _, boundVar := range x.Bindings {
-		mark := NewMark(x, BoundVar, "", boundVar, -1)
+		mark := NewMark(x, BoundVar, boundVar, -1)
 		state.markValue(x, boundVar, mark, "")
 	}
 }
@@ -343,7 +345,7 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
 	if state.shouldTrack(state.parentAnalyzerState.Config, state.parentAnalyzerState.PointerAnalysis, asNode) {
-		s := NewMark(asNode, Synthetic+DefaultMark, "", nil, -1)
+		s := NewMark(asNode, Synthetic+DefaultMark, nil, -1)
 		state.markValue(asInstr, asValue, s, "")
 	}
 }
@@ -367,17 +369,17 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 	res := common.Signature().Results()
 	if res.Len() > 0 {
 		for i := 0; i < res.Len(); i++ {
-			state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, "", nil, i), "")
+			state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, nil, i), "")
 		}
 	} else {
-		state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, "", nil, -1), "")
+		state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, nil, -1), "")
 	}
 
 	args := lang.GetArgs(instr)
 	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
 		// Mark call argument
-		state.markValue(instr, arg, NewMark(instr.(ssa.Node), CallSiteArg, "", arg, -1), "")
+		state.markValue(instr, arg, NewMark(instr.(ssa.Node), CallSiteArg, arg, -1), "")
 	}
 }
 
@@ -403,9 +405,13 @@ func (state *IntraAnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
 }
 
 // checkFlowIntoGlobal checks whether the origin is data flowing into a global variable
-func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, origin Mark, out ssa.Value) {
-	if glob, isGlob := out.(*ssa.Global); isGlob {
-		state.summary.addGlobalEdge(origin, nil, loc, glob)
+func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, out ssa.Value) {
+	glob, isGlob := out.(*ssa.Global)
+	if !isGlob {
+		return
+	}
+	for _, origin := range state.getMarks(loc, in, "", true, true) {
+		state.summary.addGlobalEdge(origin.Mark, nil, loc, glob)
 	}
 }
 
@@ -428,6 +434,8 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark 
 	}
 
 	switch miVal := v.(type) {
+	case *ssa.Slice:
+		state.markValue(i, miVal.X, mark, path)
 	case *ssa.MakeInterface:
 		// SPECIAL CASE: Value is result of make any <- v', mark v'
 		// handles cases where a function f(_ any...) is called on some argument of concrete type
@@ -437,13 +445,13 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark 
 			state.markValue(i, miVal.X, mark, path)
 		}
 	case *ssa.IndexAddr:
-		state.markValue(i, miVal.X, mark, "[*]"+path)
+		state.markValue(i, miVal.X, mark, pathAddIndexing(path))
 	case *ssa.Index:
-		state.markValue(i, miVal.X, mark, "[*]"+path)
+		state.markValue(i, miVal.X, mark, pathAddIndexing(path))
 	case *ssa.Field:
-		state.markValue(i, miVal.X, mark, "."+analysisutil.FieldFieldName(miVal)+path)
+		state.markValue(i, miVal.X, mark, pathAddField(path, analysisutil.FieldFieldName(miVal)))
 	case *ssa.FieldAddr:
-		state.markValue(i, miVal.X, mark, "."+analysisutil.FieldAddrFieldName(miVal)+path)
+		state.markValue(i, miVal.X, mark, pathAddField(path, analysisutil.FieldAddrFieldName(miVal)))
 
 	}
 
@@ -463,25 +471,32 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 	switch referrer := ref.(type) {
 	case *ssa.Store:
 		if referrer.Val == v && lang.IsNillableType(referrer.Val.Type()) {
-			state.markValue(i, referrer.Addr, mark, "")
+			state.markValue(i, referrer.Addr, mark, path)
 		}
 	case *ssa.IndexAddr:
-		if referrer.X == v {
-			state.markValue(i, referrer, mark, "")
+		// this referrer accesses the marked value's index
+		path2, ok := pathMatchIndex(path)
+		if ok && referrer.X == v {
+			state.markValue(i, referrer, mark, path2)
 		}
 	case *ssa.FieldAddr:
-		if referrer.X == v {
-			state.markValue(i, referrer, mark, "")
+		// this referrer accesses the marked value's field
+		path2, ok := pathMatchField(path, analysisutil.FieldAddrFieldName(referrer))
+		if referrer.X == v && ok {
+			state.markValue(i, referrer, mark, path2)
 		}
 	case *ssa.UnOp:
+		// this referrer dereferences the marked value
 		if referrer.Op == token.MUL {
-			state.markValue(i, referrer, mark, "")
+			state.markValue(i, referrer, mark, path)
+		} else if referrer.Op == token.ARROW {
+			state.markValue(i, referrer, mark, path)
 		}
 	}
 }
 
 func (state *IntraAnalysisState) findAllPointers(v ssa.Value) []pointer.Pointer {
-	allptr := []pointer.Pointer{}
+	var allptr []pointer.Pointer
 	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[v]; ptrExists {
 		allptr = append(allptr, ptr)
 	}
@@ -497,7 +512,6 @@ func (state *IntraAnalysisState) markPtrAliases(i ssa.Instruction, mark Mark, pa
 	// Look at every Value in the points-to set.
 	for _, label := range ptr.PointsTo().Labels() {
 		if label != nil && label.Value() != nil {
-			// mark.RegionPath = label.Path() // will use Path for field sensitivity
 			state.flowInfo.AddMark(i, label.Value(), label.Path()+path, mark)
 		}
 	}
