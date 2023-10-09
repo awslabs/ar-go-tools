@@ -127,23 +127,38 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 		if node == nil {
 			return false // inits cannot be entry points
 		}
+
+		isEntry := false
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
-				return f(
+				isEntry = f(
 					config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
+			} else {
+				isEntry = false
 			}
-			return false
 		} else {
 			funcValue := node.Call.Value.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
-				return f(config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue})
+				isEntry = f(config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue})
+			} else {
+				isEntry = false
 			}
-			return false
 		}
+
+		if isEntry {
+			return true
+		}
+		// Check arguments
+		for _, arg := range node.Call.Args {
+			if fn, ok := arg.(*ssa.Function); ok {
+				return f(config.CodeIdentifier{Package: fn.Package().String(), Method: fn.Name()})
+			}
+		}
+		return false
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:

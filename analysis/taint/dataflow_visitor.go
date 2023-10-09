@@ -427,6 +427,19 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, edgeInfo)
 			}
 
+			// If the call is a source node, the actual source node may be one of its arguments
+			// See the closures_paper test for an example
+			if graphNode == source.Node {
+				for _, arg := range graphNode.Args() {
+					nextNodeWithTrace := df.NodeWithTrace{
+						Node:         arg,
+						Trace:        trace,
+						ClosureTrace: cur.ClosureTrace,
+					}
+					que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, df.ObjectPath{})
+				}
+			}
+
 		// Tainting a bound variable node means that the free variable in a closure will be tainted.
 		// For example:
 		// 1:  x := "ok" // x is not tainted here

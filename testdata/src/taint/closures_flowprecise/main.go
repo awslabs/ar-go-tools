@@ -19,10 +19,6 @@ import (
 	"strconv"
 )
 
-func wrap(a string, before string, after string) string {
-	return fmt.Sprintf("%s%s%s", before, a, after)
-}
-
 // example1: in this example, a function (example1RunStringGetter) takes as argument a function and call the function
 // to obtain a string and then returns a string.
 // With precise handling of closures through their flow, we are able to differentiate what is returned between the two

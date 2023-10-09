@@ -97,7 +97,23 @@ func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.
 		return false
 	case *dataflow.CallNodeArg:
 		// A call node argument is a sink if the callee is a sink
-		return isMatchingCodeId(codeIdOracle, n.ParentNode())
+		if isMatchingCodeId(codeIdOracle, n.ParentNode()) {
+			return true
+		}
+
+		// The matching parameter node could be a sink
+		callSite := n.ParentNode()
+		if callSite == nil {
+			return false
+		}
+		if callSite.CalleeSummary == nil {
+			panic("nil callsite summary")
+		}
+		param := callSite.CalleeSummary.Parent.Params[n.Index()]
+		if param == nil {
+			return false
+		}
+		return isMatchingCodeIdWithCallee(codeIdOracle, callSite.CalleeSummary.Parent, param.Parent())
 	case *dataflow.CallNode:
 		return isMatchingCodeIdWithCallee(codeIdOracle, n.Callee(), n.CallSite().(ssa.Node))
 	case *dataflow.SyntheticNode:
@@ -150,6 +166,11 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 			}
 		}
 		return false
+	case *ssa.Function:
+		return codeIdOracle(config.CodeIdentifier{
+			Package: lang.PackageNameFromFunction(node),
+			Method:  node.Name(),
+		})
 	// We will likely extend the functionality to other types of sanitizers
 	default:
 		return false
