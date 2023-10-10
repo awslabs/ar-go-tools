@@ -1,0 +1,79 @@
+[
+  {
+    "InterfaceId": "golang.org/x/tools/go/pointer.constraint",
+    "Methods": {
+      "ptr": {"Args": [[0]], "Rets": [[0]]},
+      "solve": {"Args": [[0],[1],[2]], "Rets": [[0],[0],[0]]},
+      "presolve": {"Args": [[0],[1]], "Rets": [[0],[0]]},
+      "renumber": {"Args": [[0],[1]], "Rets": [[0],[0]]}
+    },
+    "Comment": "internal methods of pointer solving should not intervene in data flows that interest us"
+  },
+  {
+    "InterfaceId": "go/ast.Node",
+    "Methods": {
+      "Pos": {"Args": [[0]], "Rets": [[0]]},
+      "End": {"Args": [[0]], "Rets": [[0]]}
+    }
+  },
+  {
+    "InterfaceId": "go/ast.Expr",
+    "Methods": {
+      "Pos": {"Args": [[0]], "Rets": [[0]]},
+      "End": {"Args": [[0]], "Rets": [[0]]}
+    }
+  },
+  {
+    "InterfaceId": "go/ast.Stmt",
+    "Methods": {
+      "Pos": {"Args": [[0]], "Rets": [[0]]},
+      "End": {"Args": [[0]], "Rets": [[0]]}
+    }
+  },
+  {
+    "InterfaceId": "go/types.positioner",
+    "Methods": {
+      "Pos": {"Args": [[0]], "Rets": [[0]]}
+    }
+  },
+  {
+    "InterfaceId": "go/types.Type",
+    "Methods": {
+      "Underlying": {"Args": [[0]], "Rets": [[0]]},
+      "String": {"Args": [[0]], "Rets": [[0]]}
+    }
+  },
+  {
+    "InterfaceId": "golang.org/x/tools/go/ssa.Node",
+    "Methods": {
+      "String": {"Args": [[0]], "Rets": [[0]]}
+    }
+  },
+  {
+    "InterfaceId": "golang.org/x/tools/go/ssa.Value",
+    "Methods": {
+      "Pos": {"Args": [[0]], "Rets": [[0]]},
+      "Name": {"Args": [[0]], "Rets": [[0]]},
+      "Type": {"Args": [[0]], "Rets": [[0]]},
+      "String": {"Args": [[0]], "Rets": [[0]]},
+      "Referrers": {"Args": [[0]], "Rets": [[0]]}
+    }
+  },
+  {
+    "InterfaceId": "golang.org/x/tools/go/ssa.Instruction",
+    "Methods": {
+      "Pos": {"Args": [[0]], "Rets": [[0]]},
+      "Parent": {"Args": [[0]], "Rets": [[0]]},
+      "Block": {"Args": [[0]], "Rets": [[0]]},
+      "String": {"Args": [[0]], "Rets": [[0]]},
+      "Operands": {"Args": [[0,1],[1]], "Rets": [[0],[0]]},
+      "setBlock": {"Args": [[0,1],[1]], "Rets": [[0],[0]]}
+    }
+  },
+  {
+    "ObjectPath":"(*github.com/awslabs/ar-go-tools/analysis/taint.Visitor)",
+    "Methods": {
+      "Visit": {"Args": [[0],[0,1], [0,1,2]],"Rets": [[0],[0],[0]], "Comment": "This spec ignores all the calls inside, but this method is too expensive too analyze for our usage."}
+    }
+  }
+]

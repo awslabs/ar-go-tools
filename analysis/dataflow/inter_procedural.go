@@ -279,14 +279,14 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 	isEntryPointSsa func(ssa.Node) bool,
 	isEntryPointGraphNode func(node GraphNode) bool) {
 
+	g.AnalyzerState.Logger.Infof("Scanning for entry points ...\n")
 	entryPoints := make(map[KeyType]NodeWithTrace)
-
 	for _, summary := range g.Summaries {
 		// Identify the entry points for that function: all the call sites that are entry points
 		summary.ForAllNodes(scanEntryPoints(isEntryPointGraphNode, g, entryPoints, isEntryPointSsa))
 	}
 
-	g.AnalyzerState.Logger.Infof("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	g.AnalyzerState.Logger.Infof("--- # of analysis entry points: %d ---\n", len(entryPoints))
 	if g.AnalyzerState.Logger.LogsDebug() {
 		for _, entryPoint := range entryPoints {
 			g.AnalyzerState.Logger.Debugf("Entry: %s", entryPoint.Node.String())

@@ -127,20 +127,21 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 		if node == nil {
 			return false // inits cannot be entry points
 		}
+		parent := node.Parent()
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
 				return f(
-					config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
+					config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
 			}
 			return false
 		} else {
 			funcValue := node.Call.Value.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
-				return f(config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue})
+				return f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue})
 			}
 			return false
 		}
@@ -152,7 +153,11 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 		if err != nil {
 			return false
 		}
-		return f(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
+		return f(config.CodeIdentifier{
+			Context: node.Parent().String(),
+			Package: packageName,
+			Field:   fieldName,
+			Type:    typeName})
 
 	case *ssa.FieldAddr:
 		fieldName := FieldAddrFieldName(node)
@@ -160,7 +165,11 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 		if err != nil {
 			return false
 		}
-		return f(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
+		return f(config.CodeIdentifier{
+			Context: node.Parent().String(),
+			Package: packageName,
+			Field:   fieldName,
+			Type:    typeName})
 
 	// Allocations of data of a type that is an entry point
 	case *ssa.Alloc:
@@ -168,7 +177,10 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 		if err != nil {
 			return false
 		}
-		return f(config.CodeIdentifier{Package: packageName, Type: typeName})
+		return f(config.CodeIdentifier{
+			Context: node.Parent().String(),
+			Package: packageName,
+			Type:    typeName})
 
 	// Channel receives can be sources
 	case *ssa.UnOp:
@@ -177,7 +189,11 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 			if err != nil {
 				return false
 			}
-			return f(config.CodeIdentifier{Package: packageName, Type: typeName, Kind: "channel receive"})
+			return f(config.CodeIdentifier{
+				Context: node.Parent().String(),
+				Package: packageName,
+				Type:    typeName,
+				Kind:    "channel receive"})
 		}
 		return false
 

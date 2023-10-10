@@ -24,6 +24,29 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/colors"
 )
 
+// traceNodes prints trace information about the cur node.
+func traceNode(s *dataflow.AnalyzerState, cur *dataflow.VisitorNode) {
+	if !s.Logger.LogsTrace() {
+		return
+	}
+	s.Logger.Tracef("(s=%v) Visiting %T node: %v\n\tat %v\n",
+		cur.Status.Kind, cur.Node, cur.Node, cur.Node.Position(s))
+	s.Logger.Tracef("Trace: %s\n", cur.Trace.String())
+}
+
+// panicOnUnexpectedMissingFreeVar **panics**, but adds and error to the state before.
+func panicOnUnexpectedMissingFreeVar(s *dataflow.AnalyzerState,
+	makeClosureSite *dataflow.ClosureNode, graphNode *dataflow.FreeVarNode) {
+	s.AddError(
+		fmt.Sprintf("no bound variable matching free variable in %s",
+			makeClosureSite.ClosureSummary.Parent.String()),
+		fmt.Errorf("at position %d", graphNode.Index()))
+	panic(
+		fmt.Errorf(
+			"[No Context] no bound variable matching free variable in %s at position %d",
+			makeClosureSite.ClosureSummary.Parent.String(), graphNode.Index()))
+}
+
 // addCoverage adds an entry to coverage by properly formatting the position of the visitorNode in the context of
 // the analyzer state
 func addCoverage(c *dataflow.AnalyzerState, elt *dataflow.VisitorNode, coverage map[string]bool) {

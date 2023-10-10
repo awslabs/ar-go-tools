@@ -28,6 +28,7 @@ import (
 // This is meant to replicate functionality in go-flow-levee and gokart, and can be
 // extended as needed
 type CodeIdentifier struct {
+	Context  string `xml:"context,attr"`
 	Package  string `xml:"package,attr"` // in drawio input, package is an attribute
 	Method   string `xml:"method,attr"`
 	Receiver string `xml:"receiver,attr"`
@@ -39,6 +40,7 @@ type CodeIdentifier struct {
 	computedRegexs *codeIdentifierRegex
 }
 type codeIdentifierRegex struct {
+	contextRegex  *regexp.Regexp
 	packageRegex  *regexp.Regexp
 	typeRegex     *regexp.Regexp
 	methodRegex   *regexp.Regexp
@@ -50,6 +52,10 @@ type codeIdentifierRegex struct {
 // or none.
 // @ensures cid.computedRegexs != null || cid.computedRegexs.(*) != null
 func compileRegexes(cid CodeIdentifier) CodeIdentifier {
+	contextRegex, err := regexp.Compile(cid.Context)
+	if err != nil {
+		return cid
+	}
 	packageRegex, err := regexp.Compile(cid.Package)
 	if err != nil {
 		return cid
@@ -71,6 +77,7 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 		return cid
 	}
 	cid.computedRegexs = &codeIdentifierRegex{
+		contextRegex,
 		packageRegex,
 		typeRegex,
 		methodRegex,
@@ -86,14 +93,16 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 //gocyclo:ignore
 func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 	if cidRef.computedRegexs != nil {
-		return ((cidRef.computedRegexs.packageRegex.MatchString(cid.Package)) || (cidRef.Package == "")) &&
+		return ((cidRef.computedRegexs.contextRegex.MatchString(cid.Context)) || (cidRef.Context == "")) &&
+			((cidRef.computedRegexs.packageRegex.MatchString(cid.Package)) || (cidRef.Package == "")) &&
 			((cidRef.computedRegexs.methodRegex.MatchString(cid.Method)) || (cidRef.Method == "")) &&
 			((cidRef.computedRegexs.receiverRegex.MatchString(cid.Receiver)) || (cidRef.Receiver == "")) &&
 			((cidRef.computedRegexs.fieldRegex.MatchString(cid.Field)) || (cidRef.Field == "")) &&
 			(cidRef.computedRegexs.typeRegex.MatchString(cid.Type) || (cidRef.Type == "")) &&
 			(cidRef.Kind == cid.Kind)
 	} else {
-		return ((cid.Package == cidRef.Package) || (cidRef.Package == "")) &&
+		return ((cid.Context == cidRef.Context) || (cidRef.Context == "")) &&
+			((cid.Package == cidRef.Package) || (cidRef.Package == "")) &&
 			((cid.Method == cidRef.Method) || (cidRef.Method == "")) &&
 			((cid.Receiver == cidRef.Receiver) || (cidRef.Receiver == "")) &&
 			((cid.Field == cidRef.Field) || (cidRef.Field == "")) &&

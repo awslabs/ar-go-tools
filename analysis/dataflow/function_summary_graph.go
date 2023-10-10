@@ -318,6 +318,14 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 			instr.String())
 		panic("critical information missing in analysis")
 	}
+
+	if c.Logger.LogsDebug() && instr.Common().IsInvoke() && len(callees) > 10 {
+		interfaceMethod := lang.InstrMethodKey(instr)
+		c.Logger.Debugf("%d callees for method %s in %s. Consider using a dataflow contract to minimize state explosion",
+			len(callees),
+			interfaceMethod.ValueOr(""), instr)
+	}
+
 	// Add each callee as a node for this call instruction
 	for _, callee := range callees {
 		node := &CallNode{

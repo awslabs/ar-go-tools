@@ -1,0 +1,18 @@
+taint-tracking-problems:
+  - sources:
+      - package: "ssa"
+        context: "ar-go-tools" # match only calls inside ar-go-tools, not in dependencies
+        method: "String"
+  - sinks:
+      - package: "fmt"
+        method: "((Printf)|(Sprintf))"
+      - package: "config"
+        method: "((Warnf)|(Debugf)|(Infof)|(Errorf))"
+
+dataflow-specs:
+  - "argot-specs.json"
+  - "std-specs.json"
+
+options:
+  pkg-filter: "ar-go-tools"
+  max-alarms: 2
