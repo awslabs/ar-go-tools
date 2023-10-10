@@ -17,8 +17,8 @@
 package main
 
 func process(getData func() string, handle func(...string)) {
-	data := getData()
-	handle(data) // @Sink(ex1, ex2)
+	data := getData() //@Source(ex2)
+	handle(data)      // @Sink(ex1, ex2)
 }
 
 // example1 has the source function called in a closure supplied to process.
@@ -32,7 +32,7 @@ func example1() {
 // This tests the analysis' ability to handle source function entrypoints in function arguments.
 func example2() {
 	handler := sink
-	process(source, handler) // @Source(ex2)
+	process(source, handler)
 	process(func() string { return "ok" }, handler)
 }
 

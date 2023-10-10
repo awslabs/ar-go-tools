@@ -101,7 +101,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 		visitor := NewVisitor(&taintSpec)
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
-			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(&taintSpec, node) },
+			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(&taintSpec, state.PointerAnalysis, node) },
 		})
 
 		taintFlows.Merge(visitor.taints)

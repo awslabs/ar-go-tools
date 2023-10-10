@@ -642,7 +642,8 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 
 // reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func reachedSinkPositions(prog *ssa.Program, cfg *config.Config, traces []backtrace.Trace) map[token.Position]map[token.Position]bool {
+func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
+	traces []backtrace.Trace) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 	for _, trace := range traces {
 		// sink is always the last node in the trace because it's the analysis entrypoint
@@ -707,7 +708,7 @@ func isSourceNode(cfg *config.Config, source ssa.Node) bool {
 		}
 	}
 
-	return taint.IsSomeSourceNode(cfg, source)
+	return taint.IsSomeSourceNode(cfg, nil, source)
 }
 
 func sourceInstr(source dataflow.GraphNode) (ssa.Instruction, bool) {
