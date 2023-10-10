@@ -927,7 +927,7 @@ func main() {
 	}
 
 	// Create the output directory if it does not exist
-	err := os.MkdirAll(outputPath, 0750)
+	err := os.MkdirAll(outputPath, 0750) // folder permissions: drwxr-x--- (other users can't write)
 	if err != nil {
 		log.Fatal(err)
 	}
