@@ -60,7 +60,7 @@ func findSingleNode(t *testing.T, g *EscapeGraph, name string) *Node {
 
 // Ensure there is an edge from a to b
 func assertEdge(t *testing.T, g *EscapeGraph, a, b *Node) {
-	if len(g.Edges(a, b, true, true)) == 0 {
+	if len(g.Edges(a, b, EdgeAll)) == 0 {
 		t.Errorf("Expected edge between %v -> %v:\n%v\n", a, b, g.Graphviz())
 	}
 }
@@ -198,7 +198,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				return fmt.Errorf("Expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
-			for _, e := range g.Edges(a, nil, true, true) {
+			for _, e := range g.Edges(a, nil, EdgeAll) {
 				if g.status[e.dest] != Leaked {
 					return fmt.Errorf("%v wasn't leaked in:\n%v", e.dest, g.Graphviz())
 				}
@@ -209,7 +209,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				return fmt.Errorf("Expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
-			for _, e := range g.Edges(a, nil, true, true) {
+			for _, e := range g.Edges(a, nil, EdgeAll) {
 				if g.status[e.dest] != Local {
 					return fmt.Errorf("%v has escaped in:\n%v", e.dest, g.Graphviz())
 				}
@@ -348,6 +348,60 @@ func TestBuiltinsEscape(t *testing.T) {
 		"testTypeCorrectness",
 		"testGoReceiver",
 		"testMultiChannelSelect",
+		"testInterfaces",
+		"testInterfaces2",
+		"testInterfaces3",
+	}
+	// For each of these distinguished functions, check that the assert*() functions
+	// are satisfied by the computed summaries (technically, the summary at particular
+	// program points)
+	for _, funcName := range funcsToTest {
+		t.Run(funcName, func(t *testing.T) {
+			f := findFunction(program, funcName)
+			if f == nil {
+				t.Fatalf("Could not find function %v\n", funcName)
+			}
+			summary := escapeWholeProgram.summaries[f]
+			if summary == nil {
+				t.Fatalf("%v wasn't summarized", funcName)
+			}
+			for _, bb := range f.Blocks {
+				err := checkFunctionCalls(summary, bb)
+				// test* == no error, anything else == error expected
+				if strings.HasPrefix(funcName, "test") {
+					if err != nil {
+						t.Fatalf("Error in %v: %v\n", funcName, err)
+					}
+				} else {
+					if err == nil {
+						t.Fatalf("Expected fail in %v, but no error produced\n", funcName)
+					}
+				}
+
+			}
+		})
+	}
+}
+
+// Check the escape results in the interprocedural case
+func TestStdlibEscape(t *testing.T) {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/stdlib-escape")
+	err := os.Chdir(dir)
+	if err != nil {
+		t.Fatalf("failed to switch to dir %v: %v", dir, err)
+	}
+	program, cfg := analysistest.LoadTest(t, ".", []string{})
+	cfg.LogLevel = int(config.DebugLevel)
+	// Compute the summaries for everything in the main package
+	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
+	if err != nil {
+		t.Fatalf("Error: %v\n", err)
+	}
+	funcsToTest := []string{
+		// "testPrintf", // skip for now
+		// "testReflect", // skip for now
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
