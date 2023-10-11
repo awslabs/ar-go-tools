@@ -15,6 +15,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 )
 
@@ -39,15 +40,16 @@ type Node struct {
 var globalVar *Node = nil
 
 func main() {
-	// testPrintf()
+	// These tests require, directly or indirectly, some reflection support which is not yet implemented.
+	testPrintf()
 	testReflect()
 }
 
-//	func testPrintf() {
-//		x := &Node{}
-//		fmt.Printf("Node is %v\n", x)
-//		assertAllLocal(x)
-//	}
+func testPrintf() {
+	x := &Node{}
+	fmt.Printf("Node is %v\n", x)
+	assertAllLocal(x)
+}
 func testReflect() {
 	x := &Node{}
 	reflect.ValueOf(x)

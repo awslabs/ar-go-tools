@@ -1247,12 +1247,12 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		}
 	}
 	// Print out the final graphs for debugging purposes
-	if prog.logger.LogsDebug() || true {
+	if prog.logger.LogsTrace() {
 		for f := range state.PointerAnalysis.CallGraph.Nodes {
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
 				if strings.HasPrefix(f.String(), "(*fmt.ss).") {
-					state.Logger.Debugf("Func summary for %s is:%s\n", f.String(), summary.finalGraph.Graphviz())
+					state.Logger.Tracef("Func summary for %s is:%s\n", f.String(), summary.finalGraph.Graphviz())
 				}
 			}
 		}
@@ -1477,10 +1477,12 @@ func TypecheckEscapeGraph(g *EscapeGraph) error {
 	return nil
 }
 
-// simplifySummary is intended to remove irrelevant nodes from the graph.
-// Currently, it just estimates the number of nodes that could possibly be simplified
-// This process must be very careful to not affect the
+// simplifySummary is intended to remove irrelevant nodes from the graph. Currently, it just
+// estimates the number of nodes that could possibly be simplified, but does not actually do
+// simplification. This process must be very careful to not affect the mononicity of the summaries,
+// and thus the convergence of the overall algorithm, but the details of this are not yet determined.
 func simplifySummary(g *EscapeGraph, logger *config.LogGroup) *EscapeGraph {
+	// Estimate the number of load nodes that could be trimmed.
 	if logger.LogsTrace() {
 		totalNodes, loadNodes, escapedLoadNodes, escapedLoadNodesWithNoInternalEdges := 0, 0, 0, 0
 		for node, status := range g.status {
@@ -1500,5 +1502,6 @@ func simplifySummary(g *EscapeGraph, logger *config.LogGroup) *EscapeGraph {
 		}
 		logger.Tracef("Node statistics for summary: %d %d %d %d\n", totalNodes, loadNodes, escapedLoadNodes, escapedLoadNodesWithNoInternalEdges)
 	}
+	// Do not make any actual simplifications for now
 	return g
 }
