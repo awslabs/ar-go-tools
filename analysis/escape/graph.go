@@ -636,14 +636,64 @@ func (g *EscapeGraph) WeakAssign(dest *Node, src *Node) {
 	}
 }
 
+// EnsureLoadNode makes sure that if base is not local, then it has a node it points to.
+// This can either be a new load node attached to base, or an existing node if the loadOp already
+// created a load node somewhere in the base's history (this prevents infinite graphs). Regardless,
+// the base node has an out-edge to this node. The node is returned, but there may be multiple
+// external out-edges, and generally the specified load node should not be treated specially.
+func (g *EscapeGraph) EnsureLoadNode(loadOp any, tp types.Type, base *Node) *Node {
+	if g.status[base] == Local {
+		return nil // do nothing if base is not external
+	}
+	node := base
+	// fmt.Printf("Ensuring load node for %v\n", base)
+	for node != nil {
+		associatedOps := g.nodes.loadOps[node]
+		if associatedOps == nil {
+			if g.IsSubnode(node) {
+				node = g.nodes.globalNodes.parent[node].node
+				continue
+			} else {
+				break // node is not a load node
+			}
+		}
+		if associatedOps[loadOp] {
+			g.AddEdge(base, node, EdgeExternal)
+			return node
+		}
+		node = g.nodes.loadBase[node]
+	}
+	// This op is not in base's history, so find or create a load node child of base
+	loadNode := g.nodes.loadChild[base]
+	if loadNode == nil {
+		// We didn't find an existing child, so create one.
+		tpStr := "?"
+		if tp != nil {
+			tpStr = tp.String()
+		}
+		loadNode = g.nodes.NewNode(KindLoad, fmt.Sprintf("%s load", tpStr), tp)
+		g.AddEdge(base, loadNode, EdgeExternal)
+		g.nodes.loadChild[base] = loadNode
+		g.nodes.loadBase[loadNode] = base
+		g.nodes.loadOps[loadNode] = map[any]bool{}
+	}
+
+	// Regardless of whether the node is existing or not, make sure that we link base to it and that
+	// the loadOp is recorded in the history for the load node
+	g.AddEdge(base, loadNode, EdgeExternal)
+	g.nodes.loadOps[loadNode][loadOp] = true
+	// fmt.Printf("Ops for %v are %v\n", loadNode, g.nodes.loadOps[loadNode])
+	return loadNode
+}
+
 // LoadField applies the load operation `valNode = *addrNode[.field]` and modifies g.
 // This is a generalized operation: it also applies to reading the specified field from slices, maps, globals, etc.
 // If field is empty (""), then dereference the object itself, otherwise dereference only the specified field.
 // generateLoadNode is called to lazily create a node if the load can happen against an
 // external object; this can't always be determined a priori, and we don't want to create a load node
 // unless necessary.
-func (g *EscapeGraph) LoadField(valNode *Node, addrNode *Node, generateLoadNode func() *Node, field string, tp types.Type) {
-	var loadNode *Node
+func (g *EscapeGraph) LoadField(valNode *Node, addrNode *Node, loadOp any, field string, tp types.Type) {
+	// var loadNode *Node
 	// Nodes are addr ->* addrPointee ->* doublePointee
 	// val = *addr means we need to add edges from val to whatever node(s) *addr (i.e. all the addrPointees)'
 	// points to. The addrPointees are the nodes that addr points to, and the doublePointees are collectively
@@ -658,6 +708,10 @@ func (g *EscapeGraph) LoadField(valNode *Node, addrNode *Node, generateLoadNode 
 		if field != "" {
 			addrPointeeField = g.FieldSubnode(addrPointee, field, tp)
 		}
+
+		// if addrPointee is an escaped node, we need to add the load node
+		g.EnsureLoadNode(loadOp, tp, addrPointeeField)
+
 		// This is not .Deref(addrPointee) because the global is no longer being treated as an implicit pointer
 		// in the ssa representation. Now, global nodes are treated the same as any other memory node, such as
 		// structs, maps, etc.
@@ -665,13 +719,13 @@ func (g *EscapeGraph) LoadField(valNode *Node, addrNode *Node, generateLoadNode 
 			g.AddEdge(valNode, pointeeEdge.dest, EdgeInternal)
 		}
 		// if addrPointee is an escaped node, we need to add the load node
-		if g.status[addrPointee] > Local {
-			if loadNode == nil {
-				loadNode = generateLoadNode()
-			}
-			g.AddEdge(valNode, loadNode, EdgeInternal)
-			g.AddEdge(addrPointeeField, loadNode, EdgeExternal)
-		}
+		// if g.status[addrPointee] > Local {
+		// 	if loadNode == nil {
+		// 		loadNode = generateLoadNode()
+		// 	}
+		// 	g.AddEdge(valNode, loadNode, EdgeInternal)
+		// 	g.AddEdge(addrPointeeField, loadNode, EdgeExternal)
+		// }
 	}
 	// TODO: for load operations, if the pointer node itself (not just its pointee) is external then we have a
 	// problem, as it will also need a load node. This may not occur depending on how the SSA is constructed, i.e.
@@ -899,7 +953,7 @@ func (g *EscapeGraph) Call(receiver *Node, args []*Node, freeVarsPointees [][]*N
 
 		// propagate internal edges created in the callee
 		// Creates a new edge rep --> x in the following:
-		// rep          x
+		// rep -------> x
 		//  |           |
 		//  | u         | u
 		//  |           |
@@ -991,22 +1045,32 @@ func (g *EscapeGraph) Call(receiver *Node, args []*Node, freeVarsPointees [][]*N
 		}
 
 		// propagate load nodes that are referenced by escaped nodes
-		// Adds node load to g, and adds the mapping edge u' and edge rep - -> load'
+		// Adds node load' to g, and adds the mapping edge u' and edge rep - -> load'
 		// rep  - - -> load'
 		//  |           |
 		//  | u         | u'
 		//  |           |
 		// base - - -> load
-		// Rep is required to be escaped.
+		// Rep is required to be escaped (if rep didn't exist, use status from new graph).
 
 		if status, ok := pre.status[rep]; (!ok && g.status[rep] != Local) || status != Local {
 			for _, edge := range callee.Edges(base, nil, EdgeAll) {
-				if !edge.isInternal || base.kind == KindGlobal {
-					g.AddNode(edge.dest)
-					g.nodes.AddForeignNode(edge.dest)
+				// fmt.Printf("Considering %v %v %v\n", rep, base, edge.dest)
 
-					g.AddEdge(rep, edge.dest, EdgeExternal)
-					addUEdge(edge.dest, edge.dest)
+				// fmt.Printf("data: %v %v %v\n", edge.isInternal, base.kind == KindGlobal, edge.dest.kind)
+				if (!edge.isInternal || base.kind == KindGlobal) && edge.dest.kind == KindLoad {
+					loadNode := edge.dest
+					// fmt.Printf("Propogating node %v\n", g.nodes.loadOps[loadNode])
+					for op := range callee.nodes.loadOps[loadNode] {
+						loadNodeCaller := g.EnsureLoadNode(op, g.nodes.globalNodes.types[loadNode], rep)
+						addUEdge(loadNode, loadNodeCaller)
+						// fmt.Printf("Adding edge %v %v\n", loadNode, loadNodeCaller)
+					}
+					// g.AddNode(edge.dest)
+					// g.nodes.AddForeignNode(edge.dest)
+
+					// g.AddEdge(rep, edge.dest, EdgeExternal)
+					// addUEdge(edge.dest, edge.dest)
 				}
 			}
 		}
@@ -1112,6 +1176,9 @@ type NodeGroup struct {
 	variables     map[ssa.Value]*Node
 	allocs        map[ssa.Instruction]*Node
 	loads         map[any]*Node
+	loadOps       map[*Node]map[any]bool
+	loadBase      map[*Node]*Node
+	loadChild     map[*Node]*Node
 	globals       map[ssa.Value]*Node
 	foreign       map[*Node]struct{}
 	params        map[ssa.Value]*Node
@@ -1133,6 +1200,9 @@ func NewNodeGroup(globalNodes *globalNodeGroup) *NodeGroup {
 		make(map[ssa.Value]*Node),
 		make(map[ssa.Instruction]*Node),
 		make(map[any]*Node),
+		make(map[*Node]map[any]bool),
+		make(map[*Node]*Node),
+		make(map[*Node]*Node),
 		make(map[ssa.Value]*Node),
 		make(map[*Node]struct{}),
 		make(map[ssa.Value]*Node),

@@ -26,6 +26,7 @@ func main() {
 	leakThroughGlobal()
 	testFieldOfGlobal()
 	testSlice()
+	testManyAccesses(nil)
 }
 
 func testAddrOfGlobal() {
@@ -111,4 +112,37 @@ type S struct {
 }
 type Sptr struct {
 	S **S
+}
+
+func testManyAccesses(n *Node) {
+	// this creates a lot of load operations, which should result in  just one load node
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
+	_ = n.next
 }

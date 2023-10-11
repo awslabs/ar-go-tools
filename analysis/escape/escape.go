@@ -181,9 +181,9 @@ type structAssignLoad struct {
 	assign ssa.Instruction
 	field  string // for recursive structures, will be a compound field name like `.fmt.buffer.length`
 }
-type mapKeyValueLoad struct {
-	access ssa.Instruction
-	field  string
+type generalizedFieldLoad struct {
+	assign ssa.Instruction
+	field  string // used for map .keys[*], channel .contents, etc.
 }
 type selectRecvLoad struct {
 	selectInstr ssa.Instruction
@@ -205,9 +205,10 @@ func (g *EscapeGraph) copyStruct(dest *Node, src *Node, instr ssa.Instruction, f
 		fieldName, fieldType := tp.Field(i).Name(), tp.Field(i).Type()
 		if lang.IsNillableType(fieldType) {
 			fieldNode := g.FieldSubnode(src, fieldName, fieldType)
-			if g.status[fieldNode] != Local {
-				g.AddEdge(fieldNode, g.nodes.LoadNode(structAssignLoad{instr, field + "." + fieldName}, instr, NillableDerefType(fieldType)), EdgeExternal)
-			}
+			g.EnsureLoadNode(structAssignLoad{instr, field + "." + fieldName}, NillableDerefType(fieldType), fieldNode)
+			// if g.status[fieldNode] != Local {
+			// 	g.AddEdge(fieldNode, g.nodes.LoadNode(structAssignLoad{instr, field + "." + fieldName}, instr, NillableDerefType(fieldType)), EdgeExternal)
+			// }
 			g.WeakAssign(g.FieldSubnode(dest, fieldName, fieldType), fieldNode)
 		} else if IsEscapeTracked(fieldType) {
 			fieldStructType := fieldType.Underlying().(*types.Struct)
@@ -296,10 +297,7 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		// Check if this is a load operation
 		if _, ok := instr.X.Type().(*types.Pointer); ok && instr.Op == token.MUL {
 			if lang.IsNillableType(instr.Type()) {
-				gen := func() *Node {
-					return nodes.LoadNode(instr, instr, NillableDerefType(instr.Type()))
-				}
-				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), gen, "", nil)
+				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), instr, "", NillableDerefType(instr.Type()))
 			} else if IsEscapeTracked(instr.Type()) {
 				// Load of struct. Use copy struct to get the fields correctly handled
 				t := instr.Type().Underlying().(*types.Struct)
@@ -312,10 +310,11 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 			// recv on channel
 			if lang.IsNillableType(instr.Type()) {
 				contentsType := ChannelContentsType(instr.X.Type())
-				gen := func() *Node {
-					return nodes.LoadNode(instr, instr, NillableDerefType(contentsType))
-				}
-				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), gen, channelContentsField, contentsType)
+				// gen := func() *Node {
+				// 	return nodes.LoadNode(instr, instr, NillableDerefType(contentsType))
+				// }
+				loadOp := generalizedFieldLoad{instr, channelContentsField}
+				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), loadOp, channelContentsField, contentsType)
 			} else if IsEscapeTracked(instr.Type()) {
 				ea.prog.logger.Warnf("Channel of struct %s unhandled", instr.Type().String())
 			}
@@ -365,12 +364,13 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 			if st.Dir == types.RecvOnly {
 				if IsEscapeTracked(ChannelContentsType(st.Chan.Type())) {
 					contentsType := ChannelContentsType(st.Chan.Type())
-					gen := func() *Node {
-						return nodes.LoadNode(selectRecvLoad{instr, recvIndex}, instr, contentsType)
-					}
+					// gen := func() *Node {
+					// 	return nodes.LoadNode(selectRecvLoad{instr, recvIndex}, instr, contentsType)
+					// }
 					tupleNode := nodes.ValueNode(instr)
 					dest := g.FieldSubnode(tupleNode, fmt.Sprintf("#%d", recvIndex), contentsType)
-					g.LoadField(dest, nodes.ValueNode(st.Chan), gen, channelContentsField, contentsType)
+					loadOp := selectRecvLoad{instr, recvIndex}
+					g.LoadField(dest, nodes.ValueNode(st.Chan), loadOp, channelContentsField, contentsType)
 				}
 				recvIndex += 1
 			} else if st.Dir == types.SendOnly {
@@ -459,10 +459,10 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 				return
 			}
 		case *types.Slice:
-			gen := func() *Node {
-				return nodes.LoadNode(instr, instr, NillableDerefType(NillableDerefType(instr.X.Type())))
-			}
-			g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), gen, "", nil)
+			// gen := func() *Node {
+			// 	return nodes.LoadNode(instr, instr, NillableDerefType(NillableDerefType(instr.X.Type())))
+			// }
+			g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), instr, "", nil)
 			return
 		case *types.Array:
 			if IsEscapeTracked(instr.Type()) {
@@ -472,8 +472,8 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		}
 	case *ssa.Lookup:
 		if IsEscapeTracked(instr.Type()) {
-			gen := func() *Node { return nodes.LoadNode(instr, instr, instr.Type()) }
-			g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), gen, mapValuesField, instr.Type())
+			// gen := func() *Node { return nodes.LoadNode(instr, instr, instr.Type()) }
+			g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), instr, mapValuesField, instr.Type())
 		}
 		return
 	case *ssa.MapUpdate:
@@ -491,16 +491,18 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 			keyType := instr.Type().Underlying().(*types.Tuple).At(1).Type()
 			valueType := instr.Type().Underlying().(*types.Tuple).At(2).Type()
 			if IsEscapeTracked(keyType) {
-				gen := func() *Node {
-					return nodes.LoadNode(mapKeyValueLoad{instr, mapKeysField}, instr, NillableDerefType(keyType))
-				}
-				g.LoadField(g.FieldSubnode(tupleNode, "#1", keyType), nodes.ValueNode(instr.Iter), gen, mapKeysField, keyType)
+				// gen := func() *Node {
+				// 	return nodes.LoadNode(mapKeyValueLoad{instr, mapKeysField}, instr, NillableDerefType(keyType))
+				// }
+				loadOp := generalizedFieldLoad{instr, mapKeysField}
+				g.LoadField(g.FieldSubnode(tupleNode, "#1", keyType), nodes.ValueNode(instr.Iter), loadOp, mapKeysField, keyType)
 			}
 			if IsEscapeTracked(valueType) {
-				gen := func() *Node {
-					return nodes.LoadNode(mapKeyValueLoad{instr, mapValuesField}, instr, NillableDerefType(valueType))
-				}
-				g.LoadField(g.FieldSubnode(tupleNode, "#2", valueType), nodes.ValueNode(instr.Iter), gen, mapValuesField, valueType)
+				// gen := func() *Node {
+				// 	return nodes.LoadNode(, instr, NillableDerefType(valueType))
+				// }
+				loadOp := generalizedFieldLoad{instr, mapValuesField}
+				g.LoadField(g.FieldSubnode(tupleNode, "#2", valueType), nodes.ValueNode(instr.Iter), loadOp, mapValuesField, valueType)
 			}
 		}
 		return
@@ -716,7 +718,9 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 								if IsEscapeTracked(fv.Type()) {
 									pointees := []*Node{}
 									varFieldNode := pre.FieldSubnode(closureNode, fv.Name(), fv.Type())
-									pre.AddEdge(varFieldNode, ea.nodes.LoadNode(closureFreeVarLoad{instrType, fv.Name()}, instrType, NillableDerefType(concreteCallee.FreeVars[0].Type())), EdgeExternal)
+									loadOp := closureFreeVarLoad{instrType, fv.Name()}
+									pre.EnsureLoadNode(loadOp, NillableDerefType(concreteCallee.FreeVars[0].Type()), varFieldNode)
+									// pre.AddEdge(varFieldNode, ea.nodes.LoadNode(closureFreeVarLoad{instrType, fv.Name()}, instrType, NillableDerefType(concreteCallee.FreeVars[0].Type())), EdgeExternal)
 									for _, allocNodeEdge := range pre.Edges(varFieldNode, nil, EdgeAll) {
 										pointees = append(pointees, allocNodeEdge.dest)
 									}
@@ -1008,6 +1012,7 @@ func (ea *functionAnalysisState) ProcessBlock(bb *ssa.BasicBlock) (changed bool)
 			instructionMonoCheckData[instr] = append(instructionMonoCheckData[instr], cachedGraphMonotonicity{pre, post})
 		} else {
 			ea.transferFunction(instr, g)
+			// fmt.Printf("After %v: %v\n", instr, g.Graphviz())
 		}
 	}
 	if oldGraph, ok := ea.blockEnd[bb]; ok {
@@ -1137,6 +1142,9 @@ func resummarize(ea *functionAnalysisState) (changed bool) {
 	// The returnResult is always a fresh graph rather than mutating the old one, so we preserve the invariant
 	// that the finalGraph never mutates
 	ea.finalGraph = returnResult
+	if strings.HasPrefix(ea.function.String(), "(*io.nopCloserWriterTo).Read") {
+		ea.prog.logger.Infof("Func summary for %s is:%s\n", ea.function.String(), ea.finalGraph.Graphviz())
+	}
 	return !same
 }
 
@@ -1251,7 +1259,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		for f := range state.PointerAnalysis.CallGraph.Nodes {
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
-				if strings.HasPrefix(f.String(), "(*fmt.ss).") {
+				if strings.HasPrefix(f.String(), "(*fmt.ss).scan") {
 					state.Logger.Debugf("Func summary for %s is:%s\n", f.String(), summary.finalGraph.Graphviz())
 				}
 			}

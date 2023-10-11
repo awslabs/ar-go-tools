@@ -100,7 +100,7 @@ func TestSimpleEscape(t *testing.T) {
 		g := findSingleNode(t, graph, "gbl:globalS")
 		s := findSingleNode(t, graph, "new S")
 		b := findSingleNode(t, graph, "new B")
-		l := findSingleNode(t, graph, "S load")
+		l := findSingleNode(t, graph, "command-line-arguments.S load")
 		r := findSingleNode(t, graph, "return")
 		assertEdge(t, graph, g, s)
 		assertEdge(t, graph, g, l)
@@ -137,6 +137,12 @@ func TestSimpleEscape(t *testing.T) {
 			if !strings.HasPrefix(y.debugInfo, "new S") {
 				t.Errorf("Slice should only return S's")
 			}
+		}
+	})
+	t.Run("testManyAccesses", func(t *testing.T) {
+		graph := getGraph("testManyAccesses")
+		if len(graph.status) > 10 {
+			t.Errorf("Graph should not be too big")
 		}
 	})
 }
