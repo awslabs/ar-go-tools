@@ -17,14 +17,14 @@
 package main
 
 func process(getData func() string, handle func(...string)) {
-	data := getData() //@Source(ex2)
-	handle(data)      // @Sink(ex1, ex2)
+	data := getData() // @Source(ex2 call:example2->call:process->call:example2$1, ex3 call:example3->call:process->call:example3$3)
+	handle(data)      // @Sink(ex1, ex2, ex3)
 }
 
 // example1 has the source function called in a closure supplied to process.
 func example1() {
 	handler := sink
-	process(func() string { return source() }, handler) // @Source(ex1)
+	process(func() string { return source() }, handler) // @Source(ex1 call:example1->call:process->call:example1$1->call:source)
 	process(func() string { return "ok" }, handler)
 }
 
@@ -36,7 +36,28 @@ func example2() {
 	process(func() string { return "ok" }, handler)
 }
 
+// example3 has the same output as the previous two examples but the source function is returned
+// from another function and passed to process.
+// The handler and s functions modify a free variable to prevent inlining.
+func example3() {
+	str := "hello"
+	handler := func() func(...string) {
+		str += "world"
+		return sink
+	}
+	s := func() func() string {
+		str += " "
+		return source
+	}
+	process(s(), handler())
+	process(func() string { return "ok" }, handler())
+	_ = str // technically not needed but may prevent an unused variable warning in the future
+}
+
+// TODO add tests for interfaces
+
 func main() {
 	example1()
 	example2()
+	example3()
 }

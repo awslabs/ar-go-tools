@@ -568,7 +568,7 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 		t.Fatal(err)
 	}
 
-	expected, _ := analysistest.GetExpectSourceToTargets(dir, ".")
+	expected, _ := analysistest.GetExpectedTargetToSources(dir, ".")
 	if len(expected) == 0 {
 		t.Fatal("expected sources and sinks to be present")
 	}
