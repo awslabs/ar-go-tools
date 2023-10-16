@@ -72,7 +72,7 @@ func computePath(filepath string, pkg string) string {
 
 	verbose := strings.HasSuffix(filepath, "agent.go")
 	if verbose {
-		fmt.Printf("computePath(%s,%s)=", filepath, pkg)
+		fmt.Printf("computePath(%q,%q)=", filepath, pkg)
 	}
 	// if the full package name appears in the filepath, then just chop off the prefix
 	// and return the full packagename with the path within the package.
@@ -193,8 +193,7 @@ func DependencyAnalysis(program *ssa.Program, jsonFlag bool, includeStdlib bool,
 	for _, dependencyName := range dependencyNames {
 		entry := dependencyMap[dependencyName]
 		total := entry.reachableLocs + entry.unreachableLocs
-		// fmt.Printf("%s %d%%\n", dependencyName, 100 * entry.reachableLocs / total)
-		fmt.Printf("%s %d %d\n", dependencyName, entry.reachableLocs, total)
+		fmt.Printf("%q %d %d\n", dependencyName, entry.reachableLocs, total)
 	}
 
 	return dependencyGraph

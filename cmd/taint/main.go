@@ -25,7 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -66,7 +66,7 @@ func main() {
 		config.SetGlobalConfig(*configPath)
 		taintConfig, err = config.LoadGlobal()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "could not load config %s\n", *configPath)
+			fmt.Fprintf(os.Stderr, "could not load config %q\n", *configPath)
 			return
 		}
 	}
@@ -75,8 +75,8 @@ func main() {
 	if *verbose {
 		taintConfig.LogLevel = int(config.DebugLevel)
 	}
-	logger.Printf(colors.Faint(fmt.Sprintf("Argot taint tool - build %s", version)))
-	logger.Printf(colors.Faint("Reading sources") + "\n")
+	logger.Printf(formatutil.Faint(fmt.Sprintf("Argot taint tool - build %s", version)))
+	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -97,18 +97,18 @@ func main() {
 	result.State.Logger.Infof("")
 	if len(result.TaintFlows.Sinks) == 0 {
 		result.State.Logger.Infof(
-			"RESULT:\n\t\t%s", colors.Green("No taint flows detected ✓"))
+			"RESULT:\n\t\t%s", formatutil.Green("No taint flows detected ✓")) // safe %s
 	} else {
 		result.State.Logger.Errorf(
-			"RESULT:\n\t\t%s", colors.Red("Taint flows detected!"))
+			"RESULT:\n\t\t%s", formatutil.Red("Taint flows detected!")) // safe %s
 	}
 	if len(result.TaintFlows.Escapes) > 0 {
 		result.State.Logger.Errorf(
-			"ESCAPE ANALYSIS RESULT:\n\t\t%s", colors.Red("Tainted data escapes origin thread!"))
+			"ESCAPE ANALYSIS RESULT:\n\t\t%s", formatutil.Red("Tainted data escapes origin thread!")) // safe %s
 
 	} else if taintConfig.UseEscapeAnalysis {
 		result.State.Logger.Infof(
-			"ESCAPE ANALYSIS RESULT:\n\t\t%s", colors.Green("Tainted data does not escape ✓"))
+			"ESCAPE ANALYSIS RESULT:\n\t\t%s", formatutil.Green("Tainted data does not escape ✓")) // safe %s
 	}
 
 	Report(program, result)
@@ -121,13 +121,13 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
 			result.State.Logger.Warnf(
-				"%s in function %s:\n\tSink: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
-				colors.Red("A source has reached a sink"),
+				"%s in function %s:\n\tS: [SSA] %q\n\t\t%s\n\tSource: [SSA] %q\n\t\t%s\n",
+				formatutil.Red("A source has reached a sink"),
 				sink.Parent().Name(),
 				sink.String(),
-				sinkPos.String(),
+				sinkPos.String(), // safe %s (position string)
 				source.String(),
-				sourcePos.String(),
+				sourcePos.String(), // safe %s (position string)
 			)
 		}
 	}
@@ -138,13 +138,13 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			escapePos := program.Fset.File(escape.Pos()).Position(escape.Pos())
 			result.State.Logger.Errorf(
-				"%s in function %s:\n\tS: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
-				colors.Yellow("Data escapes thread"),
+				"%s in function %q:\n\tSink:   [SSA] %q\n\t\t[POSITION] %s\n\tSource: [SSA] %q\n\t\t[POSITION] %s\n",
+				formatutil.Yellow("Data escapes thread"),
 				escape.Parent().Name(),
 				escape.String(),
-				escapePos.String(),
+				escapePos.String(), // safe %s (position string)
 				source.String(),
-				sourcePos.String(),
+				sourcePos.String(), // safe %s (position string)
 			)
 		}
 	}

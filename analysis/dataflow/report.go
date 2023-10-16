@@ -19,7 +19,7 @@ import (
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -61,10 +61,10 @@ func (s *AnalyzerState) ReportMissingOrNotConstructedSummary(callSite *CallNode)
 		typeString = callSite.Callee().Type().String()
 	}
 	if callSite.CalleeSummary == nil {
-		s.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
+		s.Logger.Debugf(formatutil.Red(fmt.Sprintf("| %s has not been summarized (call %s).",
 			callSite.String(), typeString)))
 	} else if !callSite.CalleeSummary.Constructed {
-		s.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been constructed (call %s).",
+		s.Logger.Debugf(formatutil.Red(fmt.Sprintf("| %s has not been constructed (call %s).",
 			callSite.String(), typeString)))
 	}
 	if callSite.Callee() != nil && callSite.CallSite() != nil {
@@ -98,7 +98,7 @@ func (s *AnalyzerState) ReportMissingClosureNode(closureNode *ClosureNode) {
 	} else {
 		instrStr = closureNode.Instr().String()
 	}
-	s.Logger.Debugf(colors.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+	s.Logger.Debugf(formatutil.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
 		closureNode.String(), instrStr)))
 	if closureNode.Instr() != nil {
 		s.Logger.Debugf("| Please add closure %s to summaries",
@@ -114,8 +114,8 @@ func (s *AnalyzerState) ReportSummaryNotConstructed(callSite *CallNode) {
 	}
 
 	s.Logger.Debugf("| %s: summary has not been built for %s.",
-		colors.Yellow("WARNING"),
-		colors.Yellow(callSite.Graph().Parent.Name()))
+		formatutil.Yellow("WARNING"),
+		formatutil.Yellow(callSite.Graph().Parent.Name()))
 	pos := callSite.Position(s)
 	if pos != lang.DummyPos {
 		s.Logger.Debugf(fmt.Sprintf("|_ See call site: %s", pos))

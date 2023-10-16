@@ -19,7 +19,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
 
 type LogLevel int
@@ -58,11 +58,11 @@ func NewLogGroup(config *Config) *LogGroup {
 	l := &LogGroup{
 		Level:        LogLevel(config.LogLevel),
 		suppressWarn: config.SilenceWarn,
-		trace:        log.New(os.Stdout, colors.Faint("[TRACE] "), 0),
+		trace:        log.New(os.Stdout, formatutil.Faint("[TRACE] "), 0),
 		debug:        log.New(os.Stdout, "[DEBUG] ", 0),
-		info:         log.New(os.Stdout, colors.Green("[INFO]  "), 0),
-		warn:         log.New(os.Stdout, colors.Yellow("[WARN]  "), 0),
-		err:          log.New(os.Stdout, colors.Red("[ERROR] "), 0),
+		info:         log.New(os.Stdout, formatutil.Green("[INFO]  "), 0),
+		warn:         log.New(os.Stdout, formatutil.Yellow("[WARN]  "), 0),
+		err:          log.New(os.Stdout, formatutil.Red("[ERROR] "), 0),
 	}
 	return l
 }

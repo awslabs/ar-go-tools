@@ -29,7 +29,7 @@ import (
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -115,7 +115,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 		traces = append(traces, visitor.Traces...)
 	}
 
-	logger.Infof(colors.Green("Found %d traces.\n"), len(traces))
+	logger.Infof(formatutil.Green("Found %d traces.\n"), len(traces))
 
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: Traces(state, traces)}, nil
 }
@@ -163,13 +163,13 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 	logger := s.Logger
 	logger.Infof("\n%s ENTRYPOINT %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Infof("==> Node: %s\n", colors.Purple(entrypoint.String()))
-	logger.Infof("%s %s\n", colors.Green("Found at"), pos)
+	logger.Infof("==> Node: %s\n", formatutil.Purple(entrypoint.String()))
+	logger.Infof("%s %s\n", formatutil.Green("Found at"), pos)
 
 	// Skip entrypoint if it is in a dependency or in the Go standard library/runtime
 	// TODO make this an option in the config
 	if strings.Contains(pos.Filename, "vendor") || strings.Contains(pos.Filename, runtime.GOROOT()) {
-		logger.Infof("%s\n", colors.Red("Skipping..."))
+		logger.Infof("%s\n", formatutil.Red("Skipping..."))
 		return
 	}
 
@@ -194,8 +194,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		if !elt.Node.Graph().Constructed {
 			if !s.Config.SummarizeOnDemand {
 				logger.Tracef("%s: summary has not been built for %s.",
-					colors.Yellow("WARNING"),
-					colors.Yellow(elt.Node.Graph().Parent.Name()))
+					formatutil.Yellow("WARNING"),
+					formatutil.Yellow(elt.Node.Graph().Parent.Name()))
 
 				// In that case, continue as there is no information on data flow
 				continue

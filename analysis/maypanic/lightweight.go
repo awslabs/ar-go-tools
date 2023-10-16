@@ -24,7 +24,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -274,18 +274,6 @@ func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 		return functionNames[i].name < functionNames[j].name
 	})
 
-	/*
-	  for f := range goFunctions {
-	    fmt.Printf("go: %s\n", f.RelString(nil));
-	  }
-	  for f := range recoverFunctions {
-	    fmt.Printf("defer/recover: %s\n", f.RelString(nil));
-	  }
-	  for f := range erroredFunctions {
-	    fmt.Printf("error: %s\n", f.RelString(nil));
-	  }
-	*/
-
 	if jsonFlag {
 		type Location struct {
 			Function string
@@ -333,16 +321,16 @@ func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 			fmt.Printf("no unrecovered panics found\n")
 		} else {
 			for _, function := range functionNames {
-				fmt.Printf(colors.Red("unrecovered panic")+" in %s\n", function.name)
-				fmt.Printf("  %s\n", function.name)
-				fmt.Printf("  %s\n", locationString(program, function.f))
+				fmt.Printf(formatutil.Red("unrecovered panic")+" in %s\n", formatutil.Sanitize(function.name))
+				fmt.Printf("  %s\n", formatutil.Sanitize(function.name))
+				fmt.Printf("  %s\n", formatutil.Sanitize(locationString(program, function.f)))
 				creators := findCreators(program, function.f, goFunctions)
 				for _, creator := range creators {
-					fmt.Printf("  created by %s\n", creator)
+					fmt.Printf("  created by %q\n", creator)
 				}
 			}
 
-			fmt.Printf("%s\n", colors.Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
+			fmt.Printf("%s\n", formatutil.Faint(fmt.Sprintf("Found %d unrecovered panics", len(functionNames))))
 		}
 	}
 }

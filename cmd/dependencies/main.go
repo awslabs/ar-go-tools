@@ -24,7 +24,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/dependencies"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -76,14 +76,14 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, colors.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, colors.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 
 	var outfile io.WriteCloser
 

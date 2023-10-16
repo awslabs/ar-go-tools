@@ -23,7 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -92,8 +92,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	v.currentSource = source
 	logger := s.Logger
 	logger.Infof("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Infof("==> Source: %s\n", colors.Purple(v.currentSource.Node.String()))
-	logger.Infof("%s %s\n", colors.Green("Found at"), v.currentSource.Node.Position(s))
+	logger.Infof("==> Source: %s\n", formatutil.Purple(v.currentSource.Node.String()))
+	logger.Infof("%s %s\n", formatutil.Green("Found at"), v.currentSource.Node.Position(s))
 
 	v.roots[source] = &df.VisitorNode{
 		NodeWithTrace: source,
@@ -152,8 +152,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		if !cur.Node.Graph().Constructed {
 			if ignoreNonSummarized {
 				logger.Tracef("%s: summary has not been built for %s.",
-					colors.Yellow("WARNING"),
-					colors.Yellow(cur.Node.Graph().Parent.Name()))
+					formatutil.Yellow("WARNING"),
+					formatutil.Yellow(cur.Node.Graph().Parent.Name()))
 
 				// In that case, continue as there is no information on data flow
 				continue

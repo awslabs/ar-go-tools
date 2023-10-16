@@ -21,7 +21,7 @@ import (
 	"sort"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
 
 // traceNodes prints trace information about the cur node.
@@ -78,9 +78,9 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 // reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger
 func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
-	c.Logger.Infof(" 💀 Sink reached at %s\n", colors.Red(sink.Node.Position(c)))
+	c.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(c)))
 	c.Logger.Infof(" Add new path from %s to %s <== \n",
-		colors.Green(source.Node.String()), colors.Red(sink.Node.String()))
+		formatutil.Green(source.Node.String()), formatutil.Red(sink.Node.String()))
 	sinkPos := sink.Node.Position(c)
 	if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
 		sinkPos = callArg.ParentNode().Position(c)
@@ -112,7 +112,7 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 			}
 			tmp.WriteString(fmt.Sprintf("%s\n", nodes[i].Node.Position(c).String()))
 			c.Logger.Infof("%s - %s",
-				colors.Purple("TRACE"),
+				formatutil.Purple("TRACE"),
 				dataflow.NodeSummary(nodes[i].Node))
 			c.Logger.Infof("%s - %s [%s] %s\n",
 				"     ",

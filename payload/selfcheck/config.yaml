@@ -14,5 +14,6 @@ dataflow-specs:
   - "std-specs.json"
 
 options:
+  log-level: 4
   pkg-filter: "ar-go-tools"
   max-alarms: 2

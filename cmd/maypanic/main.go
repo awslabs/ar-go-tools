@@ -23,7 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/maypanic"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -68,7 +68,7 @@ Examples:
 
 func main() {
 	if err := doMain(); err != nil {
-		fmt.Fprintf(os.Stderr, "maypanic: %s\n", err)
+		fmt.Fprintf(os.Stderr, "maypanic: %s\n", err) // safe, errors are escaped
 		os.Exit(1)
 	}
 }
@@ -90,14 +90,14 @@ func doMain() error {
 		Tests: false,
 	}
 
-	fmt.Fprintf(os.Stderr, colors.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(cfg, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, colors.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
 	excludeAbsolute := analysisutil.MakeAbsolute(exclude)

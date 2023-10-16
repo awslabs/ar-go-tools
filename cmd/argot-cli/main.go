@@ -27,7 +27,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -112,7 +112,7 @@ func main() {
 		pConfig, err = config.LoadGlobal()
 		state.ConfigPath = *configPath
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "could not load config %s\n", *configPath)
+			fmt.Fprintf(os.Stderr, "could not load config %q\n", *configPath)
 			return
 		}
 	} else if len(flag.Args()) == 1 && strings.HasSuffix(flag.Args()[0], ".go") {
@@ -135,8 +135,8 @@ func main() {
 	if *verbose {
 		pConfig.LogLevel = int(config.DebugLevel)
 	}
-	logger.Printf(colors.Faint(fmt.Sprintf("argot-cli version %s", version)))
-	logger.Printf(colors.Faint("Reading sources") + "\n")
+	logger.Printf(formatutil.Faint(fmt.Sprintf("argot-cli version %s", version))) // safe %s
+	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 	state.Args = flag.Args()
 	// Load the program
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
@@ -212,7 +212,7 @@ func interpret(tt *term.Terminal, c *dataflow.AnalyzerState, command string) boo
 		if cmd.Name == cmdHelpName {
 			cmdHelp(tt, c, cmd)
 		} else {
-			WriteErr(tt, "Command name \"%s\" not recognized.", cmd.Name)
+			WriteErr(tt, "Command name %q not recognized.", cmd.Name)
 			cmdHelp(tt, c, cmd)
 		}
 		return false
@@ -221,7 +221,7 @@ func interpret(tt *term.Terminal, c *dataflow.AnalyzerState, command string) boo
 
 func exitOnReceive(c chan os.Signal, tt *term.Terminal, oldState *term.State) {
 	for range c {
-		writeFmt(tt, colors.Red("Caught SIGINT, exiting!"))
+		writeFmt(tt, formatutil.Red("Caught SIGINT, exiting!"))
 		term.Restore(int(os.Stdin.Fd()), oldState)
 		os.Exit(0)
 	}

@@ -22,6 +22,7 @@ import (
 	"sort"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -210,7 +211,7 @@ func ReachableFunctionsAnalysis(program *ssa.Program, excludeMain bool, excludeI
 		fmt.Println(string(buf))
 	} else {
 		for _, name := range functionNames {
-			fmt.Printf("%s\n", name)
+			fmt.Printf("%s\n", formatutil.Sanitize(name))
 		}
 	}
 }

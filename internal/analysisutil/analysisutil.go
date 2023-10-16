@@ -66,7 +66,7 @@ func FindEltTypePackage(t types.Type, preform string) (string, string, error) {
 		return "", "", fmt.Errorf("not a type with a package and name")
 	case *types.Struct:
 		// Anonymous structs
-		return "", "", fmt.Errorf("%s: not a type with a package and name", typ)
+		return "", "", fmt.Errorf("%q: not a type with a package and name", typ)
 	default:
 		// We should never reach this!
 		fmt.Printf("unexpected type received: %T %v; please report this issue\n", typ, typ)
@@ -134,7 +134,11 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 			calleePkg := FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
 				return f(
-					config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
+					config.CodeIdentifier{
+						Context:  parent.String(),
+						Package:  calleePkg.Value(),
+						Method:   methodName,
+						Receiver: receiver})
 			}
 			return false
 		} else {

@@ -17,7 +17,7 @@ package dataflow
 import (
 	"fmt"
 
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -50,7 +50,7 @@ func CheckNoGoRoutine(s *AnalyzerState, reportedLocs map[*ssa.Go]bool, node *Cal
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
 		if !reportedLocs[goroutine] {
 			reportedLocs[goroutine] = true
-			s.Logger.Warnf(colors.Yellow("Data flows to Go call."))
+			s.Logger.Warnf(formatutil.Yellow("Data flows to Go call."))
 			s.Logger.Warnf("-> Position: %s", node.Position(s))
 		}
 	}
