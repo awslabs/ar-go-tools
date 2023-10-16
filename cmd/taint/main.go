@@ -75,7 +75,7 @@ func main() {
 	if *verbose {
 		taintConfig.LogLevel = int(config.DebugLevel)
 	}
-	logger.Printf(formatutil.Faint(fmt.Sprintf("Argot taint tool - build %s", version)))
+	logger.Printf(formatutil.Faint("Argot taint tool - build " + version))
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
@@ -92,7 +92,7 @@ func main() {
 		return
 	}
 	result.State.Logger.Infof("")
-	result.State.Logger.Infof("-%s", strings.Repeat("*", 80))
+	result.State.Logger.Infof(strings.Repeat("*", 80))
 	result.State.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
 	result.State.Logger.Infof("")
 	if len(result.TaintFlows.Sinks) == 0 {
@@ -121,12 +121,12 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
 			result.State.Logger.Warnf(
-				"%s in function %s:\n\tS: [SSA] %q\n\t\t%s\n\tSource: [SSA] %q\n\t\t%s\n",
+				"%s in function %s:\n\tS: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
 				formatutil.Red("A source has reached a sink"),
 				sink.Parent().Name(),
-				sink.String(),
+				formatutil.SanitizeRepr(sink),
 				sinkPos.String(), // safe %s (position string)
-				source.String(),
+				formatutil.SanitizeRepr(source),
 				sourcePos.String(), // safe %s (position string)
 			)
 		}
@@ -141,9 +141,9 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 				"%s in function %q:\n\tSink:   [SSA] %q\n\t\t[POSITION] %s\n\tSource: [SSA] %q\n\t\t[POSITION] %s\n",
 				formatutil.Yellow("Data escapes thread"),
 				escape.Parent().Name(),
-				escape.String(),
+				formatutil.SanitizeRepr(escape),
 				escapePos.String(), // safe %s (position string)
-				source.String(),
+				formatutil.SanitizeRepr(source),
 				sourcePos.String(), // safe %s (position string)
 			)
 		}

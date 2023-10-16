@@ -101,7 +101,7 @@ func testLoadOneFile(t *testing.T, filename string, expected Config) {
 	}
 	configFileName, config, err := loadFromTestDir(t, filename)
 	if err != nil {
-		t.Errorf("Error loading %s: %v", configFileName, err)
+		t.Errorf("Error loading %q: %v", configFileName, err)
 	}
 	c1, err1 := yaml.Marshal(config)
 	c2, err2 := yaml.Marshal(expected)
@@ -112,7 +112,7 @@ func testLoadOneFile(t *testing.T, filename string, expected Config) {
 		t.Errorf("Error marshalling %v", expected)
 	}
 	if string(c1) != string(c2) {
-		t.Errorf("Error in %s:\n%s is not\n%s\n", filename, c1, c2)
+		t.Errorf("Error in %q:\n%q is not\n%q\n", filename, c1, c2)
 	}
 }
 
@@ -170,17 +170,17 @@ func TestLoadWithReportNoDirReturnsError(t *testing.T) {
 func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
 	fileName, config, err := loadFromTestDir(t, "config_with_reports_no_dir_spec.yaml")
 	if config == nil || err != nil {
-		t.Errorf("Could not load %s", fileName)
+		t.Errorf("Could not load %q", fileName)
 		return
 	}
 	if !config.ReportNoCalleeSites {
-		t.Errorf("Expected report-no-callee-sites to be true in %s", fileName)
+		t.Errorf("Expected report-no-callee-sites to be true in %q", fileName)
 	}
 	if config.ReportNoCalleeFile() != config.nocalleereportfile {
 		t.Errorf("ReportNoCalleeFile should return private value")
 	}
 	if config.ReportsDir == "" {
-		t.Errorf("Expected reports-dir to be non-empty after loading config %s", fileName)
+		t.Errorf("Expected reports-dir to be non-empty after loading config %q", fileName)
 	}
 	// Remove temporary files
 	os.Remove(config.nocalleereportfile)

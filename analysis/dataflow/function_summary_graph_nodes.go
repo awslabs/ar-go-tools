@@ -72,6 +72,9 @@ type GraphNode interface {
 	// Position returns the position of the node in the source code.
 	Position(c *AnalyzerState) token.Position
 
+	// String prints the string representation of the node.
+	// All strings methods should return sanitized output. That is, the underlying information related to the source
+	// code is sanitized before being returned.
 	String() string
 
 	// Type returns the type of the node

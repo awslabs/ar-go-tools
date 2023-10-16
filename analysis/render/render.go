@@ -71,7 +71,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 
 			logger.Debugf("%s: summary has not been built for %s.",
 				formatutil.Yellow("WARNING"),
-				formatutil.Yellow(elt.Node.Graph().Parent.Name()))
+				formatutil.Yellow(formatutil.Sanitize(elt.Node.Graph().Parent.Name())))
 			// In that case, continue as there is no information on data flow
 			continue
 		}

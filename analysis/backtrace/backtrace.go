@@ -442,10 +442,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			} else {
 				panic(fmt.Errorf("no free variable matching bound variable in %s at position %d",
 					closureNode.ClosureSummary.Parent.String(), graphNode.Index()))
-				//s.AddError(
-				//	fmt.Sprintf("no free variable matching bound variable in %s",
-				//		closureNode.ClosureSummary.Parent.String()),
-				//	fmt.Errorf("at position %d", graphNode.Index()))
 			}
 
 		case *df.FreeVarNode:
@@ -474,10 +470,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				} else {
 					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d",
 						elt.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
-					// s.AddError(
-					// 	fmt.Sprintf("no bound variable matching free variable in %s",
-					// 		elt.ClosureTrace.Label.ClosureSummary.Parent.String()),
-					// 	fmt.Errorf("at position %d", graphNode.Index()))
 				}
 			} else {
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {

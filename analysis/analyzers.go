@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -126,12 +127,12 @@ type singleFunctionJob struct {
 func runSingleFunctionJob(job singleFunctionJob,
 	isEntrypoint func(*config.Config, ssa.Node) bool) dataflow.IntraProceduralResult {
 	targetName := lang.PackageNameFromFunction(job.function) + "." + job.function.Name()
-	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", targetName)
+	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
 	result, err := dataflow.IntraProceduralAnalysis(job.analyzerState, job.function,
 		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
 
 	if err != nil {
-		job.analyzerState.Logger.Errorf("error while analyzing %s:\n\t%v\n", job.function.Name(), err)
+		job.analyzerState.Logger.Errorf("error while analyzing %q:\n\t%v\n", job.function.Name(), err)
 		return dataflow.IntraProceduralResult{}
 	}
 
@@ -170,7 +171,7 @@ func collectResults(c []dataflow.IntraProceduralResult, graph *dataflow.InterPro
 		defer f.Close()
 		path, err := filepath.Abs(f.Name())
 		if err != nil {
-			state.Logger.Errorf("Could not find absolute path of summary times report file %s.", f.Name())
+			state.Logger.Errorf("Could not find absolute path of summary times report file %q.", f.Name())
 		}
 		state.Logger.Infof("Saving report of summary times in %s\n", path)
 	}
@@ -187,6 +188,8 @@ func collectResults(c []dataflow.IntraProceduralResult, graph *dataflow.InterPro
 }
 
 func reportSummaryTime(w io.Writer, result dataflow.IntraProceduralResult) {
-	str := fmt.Sprintf("%s, %.2f\n", result.Summary.Parent.String(), result.Time.Seconds())
+	str := fmt.Sprintf("%s, %.2f\n",
+		formatutil.SanitizeRepr(result.Summary.Parent),
+		result.Time.Seconds())
 	w.Write([]byte(str))
 }
