@@ -25,7 +25,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/pointer"
-
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -146,7 +145,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
-      if calleePkg.IsSome() {
+			if calleePkg.IsSome() {
 				return f(
 					config.CodeIdentifier{
 						Context:  parent.String(),
@@ -159,7 +158,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 		// Check if the actual function called matches an entrypoint
 		funcValue := node.Call.Value.Name()
 		calleePkg := FindSafeCalleePkg(node.Common())
-    if calleePkg.IsSome() && f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue}) {
+		if calleePkg.IsSome() && f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue}) {
 			return true
 		}
 		// Check if any alias matches an entrypoint
@@ -173,7 +172,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 		for _, label := range ptr.PointsTo().Labels() {
 			funcValue = label.Value().Name()
 			funcPackage := FindValuePackage(label.Value())
-      if funcPackage.IsSome() && f(config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}) {
+			if funcPackage.IsSome() && f(config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}) {
 				return true
 			}
 		}

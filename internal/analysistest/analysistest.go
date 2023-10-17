@@ -77,6 +77,10 @@ type AnnotationId struct {
 	Pos LPos
 }
 
+func (id AnnotationId) String() string {
+	return fmt.Sprintf("Id %s:%s at %s", id.Id, id.Meta, id.Pos.String())
+}
+
 // SourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
 // where the "argument" is either an identifier (e.g. id) or an identifier with
 // associated "metadata" (e.g. id call:example1->call:helper->call:example1$1).
