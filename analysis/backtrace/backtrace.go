@@ -32,6 +32,7 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/colors"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -109,7 +110,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 		visitor.SlicingSpec = &ps
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			IsEntrypoint: func(node ssa.Node) bool {
-				return IsInterProceduralEntryPoint(visitor.SlicingSpec, node)
+				return IsInterProceduralEntryPoint(state, visitor.SlicingSpec, node)
 			},
 		})
 		traces = append(traces, visitor.Traces...)
@@ -637,23 +638,23 @@ func IsStatic(node df.GraphNode) bool {
 }
 
 // IsInterProceduralEntryPoint returns true if cfg identifies n as a backtrace entrypoint.
-func IsInterProceduralEntryPoint(ss *config.SlicingSpec, n ssa.Node) bool {
+func IsInterProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec, n ssa.Node) bool {
 	if f, ok := n.(*ssa.Function); ok {
 		pkg := lang.PackageNameFromFunction(f)
 		return ss.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 	}
 
-	return isIntraProceduralEntryPoint(ss, n)
+	return isIntraProceduralEntryPoint(state, ss, n)
 }
 
-func isSomeIntraProceduralEntryPoint(cfg *config.Config, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(n, func(cid config.CodeIdentifier) bool {
+func isSomeIntraProceduralEntryPoint(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(p, n, func(cid config.CodeIdentifier) bool {
 		return cfg.IsSomeBacktracePoint(cid)
 	})
 }
 
-func isIntraProceduralEntryPoint(ss *config.SlicingSpec, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(n, func(cid config.CodeIdentifier) bool {
+func isIntraProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, func(cid config.CodeIdentifier) bool {
 		return ss.IsBacktracePoint(cid)
 	})
 }

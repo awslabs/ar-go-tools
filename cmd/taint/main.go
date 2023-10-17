@@ -118,16 +118,19 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 	// Prints location of sinks and sources in the SSA
 	for sink, sources := range result.TaintFlows.Sinks {
 		for source := range sources {
-			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
-			sinkPos := program.Fset.File(sink.Pos()).Position(sink.Pos())
+			sourceInstr := source.Instr
+			sinkInstr := sink.Instr
+			sourcePos := program.Fset.File(sourceInstr.Pos()).Position(sourceInstr.Pos())
+			sinkPos := program.Fset.File(sinkInstr.Pos()).Position(sinkInstr.Pos())
 			result.State.Logger.Warnf(
-				"%s in function %s:\n\tSink: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
+				"%s in function %s:\n\tSink: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n\tTrace: %s\n",
 				colors.Red("A source has reached a sink"),
-				sink.Parent().Name(),
-				sink.String(),
+				sinkInstr.Parent().Name(),
+				sinkInstr.String(),
 				sinkPos.String(),
-				source.String(),
+				sourceInstr.String(),
 				sourcePos.String(),
+				source.Trace,
 			)
 		}
 	}

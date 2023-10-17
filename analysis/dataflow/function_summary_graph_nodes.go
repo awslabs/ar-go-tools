@@ -96,6 +96,23 @@ type IndexedGraphNode interface {
 	Index() int
 }
 
+// Instr returns the SSA instruction corresponding to node. Returns nil if there is no SSA instruction.
+func Instr(node GraphNode) ssa.Instruction {
+	// The instruction depends on the type of the node: a call node or synthetic node are directly
+	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
+	// parent call node.
+	switch node := node.(type) {
+	case *CallNode:
+		return node.CallSite()
+	case *CallNodeArg:
+		return node.ParentNode().CallSite()
+	case *SyntheticNode:
+		return node.Instr()
+	}
+
+	return nil
+}
+
 func NodeKind(g GraphNode) string {
 	switch g.(type) {
 	case *ParamNode:
@@ -144,6 +161,33 @@ func NodeSummary(g GraphNode) string {
 		return "Free variable"
 	case *AccessGlobalNode:
 		return "Global "
+	}
+	return ""
+}
+
+// shortNodeSummary returns a condensed summary (no whitespace) of a node.
+func shortNodeSummary(g GraphNode) string {
+	switch x := g.(type) {
+	case *ParamNode:
+		return fmt.Sprintf("param:%s:%s", x.ssaNode.Name(), x.parent.Parent.Name())
+	case *CallNode:
+		return fmt.Sprintf("call:%s", x.Callee().Name())
+	case *CallNodeArg:
+		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().Callee().Name())
+	case *ReturnValNode:
+		return fmt.Sprintf("ret:%s", x.ParentName())
+	case *ClosureNode:
+		return "closure"
+	case *BoundLabelNode:
+		return "bound-label"
+	case *SyntheticNode:
+		return "synth"
+	case *BoundVarNode:
+		return "bound-var"
+	case *FreeVarNode:
+		return "free-var"
+	case *AccessGlobalNode:
+		return fmt.Sprintf("global:%v", x.Global.Value())
 	}
 	return ""
 }

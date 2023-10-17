@@ -21,17 +21,18 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
 // IsSomeSourceNode returns true if n matches the code identifier of some source in the config
-func IsSomeSourceNode(cfg *config.Config, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(n, cfg.IsSomeSource)
+func IsSomeSourceNode(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(p, n, cfg.IsSomeSource)
 }
 
 // IsSourceNode returns true if n matches the code identifier of a source node in the taint specification
-func IsSourceNode(ts *config.TaintSpec, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(n, ts.IsSource)
+func IsSourceNode(ts *config.TaintSpec, p *pointer.Result, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(p, n, ts.IsSource)
 }
 
 func isSink(ts *config.TaintSpec, n dataflow.GraphNode) bool {
