@@ -24,7 +24,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -85,14 +85,14 @@ func doMain() error {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, colors.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, colors.Faint("Analyzing")+"\n")
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
 	excludeAbsolute := analysisutil.MakeAbsolute(exclude)

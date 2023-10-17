@@ -200,6 +200,14 @@ func TestComplexExample(t *testing.T) {
 	runTest(t, "agent-example", []string{}, false, noErrorExpected)
 }
 
+func TestCrossFunctionWithContext(t *testing.T) {
+	runTest(t, "with-context", []string{}, false, noErrorExpected)
+}
+
+func TestCrossFunctionWithContext_SummarizeOnDemand(t *testing.T) {
+	runTest(t, "with-context", []string{}, true, noErrorExpected)
+}
+
 func TestPlayground(t *testing.T) {
 	runTest(t, "playground", []string{}, false, noErrorExpected)
 }

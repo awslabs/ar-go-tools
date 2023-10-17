@@ -1,0 +1,74 @@
+[
+    {
+        "InterfaceId": "error",
+        "Methods": {
+            "Error": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] }
+        }
+    },
+    {
+        "InterfaceId": "reflect.Type",
+        "Methods": {
+            "Align": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] },
+            "FieldAlign": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] },
+            "Method": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] },
+            "MethodByName": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0, 1 ], [ 0, 1 ] ] },
+            "Name": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "PkgPath": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Size": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Field": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Kind": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "String": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Implements": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] },
+            "AssignableTo": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] },
+            "ConvertibleTo": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] },
+            "Comparable": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Bits": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "ChanDir": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "IsVariadic": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Elem": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "FieldByIndex": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] },
+            "FieldByName": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0, 1 ], [ 0, 1 ] ] },
+            "FieldByNameFunc": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0, 1 ], [ 0, 1 ] ] },
+            "In": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] },
+            "Key": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Len": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "NumField": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "NumIn": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "NumOut": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Out": { "Args": [ [ 0 ], [ 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] }
+        }
+    },
+    {
+        "InterfaceId": "io.Reader",
+        "Methods": {
+            "Read": { "Args": [ [ 0, 1 ], [ 0 ] ], "Rets": [ [ 0, 1 ], [ ] ] }
+        }
+    },
+    {
+        "InterfaceId": "io.ReadCloser",
+        "Methods": {
+            "Close": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Read": { "Args": [ [ 0 ], [ 0, 1 ] ], "Rets": [ [ 0 ], [ 0 ] ] }
+        }
+    },
+    {
+        "InterfaceId": "context.Context",
+        "Methods": {
+            "Done": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+            "Err": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] }
+        }
+    },
+    {
+        "InterfaceId": "io.RuneReader",
+        "Methods": {
+            "ReadRune": { "Args": [ [ 0 ] ], "Rets": [ [ 0, 1, 2 ] ] }
+        }
+    },
+    {
+        "InterfaceId": "io.RuneScanner",
+        "Methods": {
+            "ReadRune": { "Args": [ [ 0 ] ], "Rets": [ [ 0, 1, 2 ] ] },
+            "UnreadRune": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] }
+        }
+    }
+]

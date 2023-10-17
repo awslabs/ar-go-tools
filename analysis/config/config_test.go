@@ -37,29 +37,37 @@ func checkNotEqualOnNonEmptyFields(t *testing.T, cid1 CodeIdentifier, cid2 CodeI
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_selfEquals(t *testing.T) {
-	cid1 := CodeIdentifier{"a", "b", "", "", "", "", "", nil}
+	cid1 := CodeIdentifier{"", "a", "b", "", "", "", "", "", nil}
 	checkEqualOnNonEmptyFields(t, cid1, cid1)
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_emptyMatchesAny(t *testing.T) {
-	cid1 := CodeIdentifier{"a", "b", "c", "d", "e", "", "", nil}
-	cid2 := CodeIdentifier{"de", "234jbn", "23kjb", "d", "234", "", "", nil}
+	cid1 := CodeIdentifier{"", "a", "b", "c", "d", "e", "", "", nil}
+	cid2 := CodeIdentifier{"", "de", "234jbn", "23kjb", "d", "234", "", "", nil}
 	cidEmpty := CodeIdentifier{}
 	checkEqualOnNonEmptyFields(t, cid1, cidEmpty)
 	checkEqualOnNonEmptyFields(t, cid2, cidEmpty)
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_oneDiff(t *testing.T) {
-	cid1 := CodeIdentifier{"a", "b", "", "", "", "", "", nil}
-	cid2 := CodeIdentifier{"a", "", "", "", "", "", "", nil}
+	cid1 := CodeIdentifier{"", "a", "b", "", "", "", "", "", nil}
+	cid2 := CodeIdentifier{"", "a", "", "", "", "", "", "", nil}
 	checkEqualOnNonEmptyFields(t, cid1, cid2)
 	checkNotEqualOnNonEmptyFields(t, cid2, cid1)
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_regexes(t *testing.T) {
-	cid1 := CodeIdentifier{"main", "b", "", "", "", "", "", nil}
-	cid1bis := CodeIdentifier{"command-line-arguments", "b", "", "", "", "", "", nil}
-	cid2 := CodeIdentifier{"(main)|(command-line-arguments)$", "", "", "", "", "", "", nil}
+	cid1 := CodeIdentifier{"", "main", "b", "", "", "", "", "", nil}
+	cid1bis := CodeIdentifier{"", "command-line-arguments", "b", "", "", "", "", "", nil}
+	cid2 := CodeIdentifier{"", "(main)|(command-line-arguments)$", "", "", "", "", "", "", nil}
+	checkEqualOnNonEmptyFields(t, cid1, cid2)
+	checkEqualOnNonEmptyFields(t, cid1bis, cid2)
+}
+
+func TestCodeIdentifier_equalOnNonEmptyFields_regexes_withContexts(t *testing.T) {
+	cid1 := CodeIdentifier{"main-package", "main", "b", "", "", "", "", "", nil}
+	cid1bis := CodeIdentifier{"main", "command-line-arguments", "b", "", "", "", "", "", nil}
+	cid2 := CodeIdentifier{"mai.*", "(main)|(command-line-arguments)$", "", "", "", "", "", "", nil}
 	checkEqualOnNonEmptyFields(t, cid1, cid2)
 	checkEqualOnNonEmptyFields(t, cid1bis, cid2)
 }
@@ -93,7 +101,7 @@ func testLoadOneFile(t *testing.T, filename string, expected Config) {
 	}
 	configFileName, config, err := loadFromTestDir(t, filename)
 	if err != nil {
-		t.Errorf("Error loading %s: %v", configFileName, err)
+		t.Errorf("Error loading %q: %v", configFileName, err)
 	}
 	c1, err1 := yaml.Marshal(config)
 	c2, err2 := yaml.Marshal(expected)
@@ -104,7 +112,7 @@ func testLoadOneFile(t *testing.T, filename string, expected Config) {
 		t.Errorf("Error marshalling %v", expected)
 	}
 	if string(c1) != string(c2) {
-		t.Errorf("Error in %s:\n%s is not\n%s\n", filename, c1, c2)
+		t.Errorf("Error in %q:\n%q is not\n%q\n", filename, c1, c2)
 	}
 }
 
@@ -162,17 +170,17 @@ func TestLoadWithReportNoDirReturnsError(t *testing.T) {
 func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
 	fileName, config, err := loadFromTestDir(t, "config_with_reports_no_dir_spec.yaml")
 	if config == nil || err != nil {
-		t.Errorf("Could not load %s", fileName)
+		t.Errorf("Could not load %q", fileName)
 		return
 	}
 	if !config.ReportNoCalleeSites {
-		t.Errorf("Expected report-no-callee-sites to be true in %s", fileName)
+		t.Errorf("Expected report-no-callee-sites to be true in %q", fileName)
 	}
 	if config.ReportNoCalleeFile() != config.nocalleereportfile {
 		t.Errorf("ReportNoCalleeFile should return private value")
 	}
 	if config.ReportsDir == "" {
-		t.Errorf("Expected reports-dir to be non-empty after loading config %s", fileName)
+		t.Errorf("Expected reports-dir to be non-empty after loading config %q", fileName)
 	}
 	// Remove temporary files
 	os.Remove(config.nocalleereportfile)
@@ -256,8 +264,8 @@ func TestLoadMisc(t *testing.T) {
 		t,
 		"config.yaml",
 		mkConfig(
-			[]CodeIdentifier{{"a", "b", "", "", "", "", "", nil}},
-			[]CodeIdentifier{{"c", "d", "", "", "", "", "", nil}},
+			[]CodeIdentifier{{"", "a", "b", "", "", "", "", "", nil}},
+			[]CodeIdentifier{{"", "c", "d", "", "", "", "", "", nil}},
 			[]CodeIdentifier{},
 		),
 	)
@@ -265,10 +273,10 @@ func TestLoadMisc(t *testing.T) {
 	testLoadOneFile(t,
 		"config2.yaml",
 		mkConfig(
-			[]CodeIdentifier{{"x", "a", "", "b", "", "", "", nil}},
-			[]CodeIdentifier{{"y", "b", "", "", "", "", "", nil}},
-			[]CodeIdentifier{{"p", "a", "", "", "", "", "", nil},
-				{"p2", "a", "", "", "", "", "", nil}},
+			[]CodeIdentifier{{"", "x", "a", "", "b", "", "", "", nil}},
+			[]CodeIdentifier{{"", "y", "b", "", "", "", "", "", nil}},
+			[]CodeIdentifier{{"", "p", "a", "", "", "", "", "", nil},
+				{"", "p2", "a", "", "", "", "", "", nil}},
 		),
 	)
 	//
@@ -277,13 +285,13 @@ func TestLoadMisc(t *testing.T) {
 		Config{
 			TaintTrackingProblems: []TaintSpec{
 				{
-					Sanitizers: []CodeIdentifier{{"pkg1", "Foo", "Obj", "", "", "", "", nil}},
-					Sinks: []CodeIdentifier{{"y", "b", "", "", "", "", "", nil},
-						{"x", "", "Obj1", "", "", "", "", nil}},
+					Sanitizers: []CodeIdentifier{{"", "pkg1", "Foo", "Obj", "", "", "", "", nil}},
+					Sinks: []CodeIdentifier{{"", "y", "b", "", "", "", "", "", nil},
+						{"", "x", "", "Obj1", "", "", "", "", nil}},
 					Sources: []CodeIdentifier{
-						{"some/package", "SuperMethod", "", "", "", "", "", nil},
+						{"", "some/package", "SuperMethod", "", "", "", "", "", nil},
 
-						{"some/other/package", "", "", "OneField", "ThatStruct", "", "", nil},
+						{"", "some/other/package", "", "", "OneField", "ThatStruct", "", "", nil},
 					},
 				},
 			},
@@ -295,7 +303,7 @@ func TestLoadMisc(t *testing.T) {
 		},
 	)
 	// Test configuration file for static-commands
-	osExecCid := CodeIdentifier{"os/exec", "Command", "", "", "", "", "", nil}
+	osExecCid := CodeIdentifier{"", "os/exec", "Command", "", "", "", "", "", nil}
 	cfg := NewDefault()
 	cfg.StaticCommandsProblems = []StaticCommandsSpec{{[]CodeIdentifier{osExecCid}}}
 	testLoadOneFile(t, "config-find-osexec.yaml", *cfg)

@@ -72,13 +72,16 @@ import (
 	"go/types"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/packages"
@@ -102,9 +105,14 @@ var souffleOutputDir string
 var numSouffleThreads int
 var rootFunctionsFilePath string
 
-const souffleOutputFileName = "race.csv"             // souffle analysis result file to be read
-const ssaOutputFileName = "_ssa.log"                 // file name to output for the SSA
-const factGenerationLogName = "_generated_facts.log" // detailed log file for debugging fact generation
+// souffle analysis result file to be read
+func souffleOutputFileName(uuid string) string { return fmt.Sprintf("race-%s.csv", uuid) }
+
+// file name to output for the SSA
+func ssaOutputFileName(uuid string) string { return fmt.Sprintf("_ssa-%s.log", uuid) }
+
+// detailed log file for debugging fact generation
+func factGenerationLogName(uuid string) string { return fmt.Sprintf("_generated_facts-%s.log", uuid) }
 
 // An arbitrary program counter to represent different SSA locations.
 var programCounter = 0
@@ -815,9 +823,9 @@ func findSourceLocation(prog *ssa.Program, ssaLocation int) (originalSourceLocat
 }
 
 // Parse the souffle output on the potential data races computed and print the results.
-func parseSouffleOutput(prog *ssa.Program) {
+func parseSouffleOutput(stamp string, prog *ssa.Program) {
 	// Find the souffle output file
-	racesFilePath := outputPath + souffleOutputFileName
+	racesFilePath := outputPath + souffleOutputFileName(stamp)
 	f, err := os.Open(racesFilePath)
 	if err != nil {
 		log.Fatal("Unable to read input file "+racesFilePath, err)
@@ -877,9 +885,9 @@ func parseSouffleOutput(prog *ssa.Program) {
 				threadSpawnLocEndInd := strings.Index(thread, ",")
 				threadSpawnLocStr := thread[threadSpawnLocStartInd:threadSpawnLocEndInd]
 				threadSpawnLoc := interp(threadSpawnLocStr)
-				fmt.Printf("\tThread %s (%s, spawned at [ %s ])\n", tid, threadType, threadSpawnLoc)
+				fmt.Printf("\tThread %q (%q, spawned at [ %q ])\n", tid, threadType, threadSpawnLoc)
 			} else {
-				fmt.Printf("\tThread %s (%s)\n", tid, threadType)
+				fmt.Printf("\tThread %q (%q)\n", tid, threadType)
 			}
 
 			if readWrite == "r" {
@@ -887,10 +895,10 @@ func parseSouffleOutput(prog *ssa.Program) {
 			} else {
 				accessKind = "write"
 			}
-			fmt.Printf("\tAccess: %s\n", accessKind)
+			fmt.Printf("\tAccess: %s\n", formatutil.Sanitize(accessKind))
 
 			srcLoc := interp(srcLocStr)
-			fmt.Printf("\tAccess location: [ %s ]\n", srcLoc)
+			fmt.Printf("\tAccess location: [ %s ]\n", formatutil.Sanitize(srcLoc))
 
 		}
 
@@ -901,7 +909,8 @@ func parseSouffleOutput(prog *ssa.Program) {
 		memLoc := interp(record[9])
 		allocType := record[9][1:]
 		if len(memLocFunc) > 0 {
-			fmt.Printf("Memory accessed:\n\tallocated in func %s at [ %s ]\n", memLocFunc, memLoc)
+			fmt.Printf("Memory accessed:\n\tallocated in func %s at [ %s ]\n",
+				formatutil.Sanitize(memLocFunc), formatutil.Sanitize(memLoc))
 		} else {
 			fmt.Printf("Memory accessed:\n\t%s (global)\n", allocType)
 		}
@@ -919,14 +928,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// should remove previous analysis results
-	err := os.RemoveAll(outputPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// TODO: check paths exist for those paths that are received through args
-	err = os.MkdirAll(outputPath, os.ModePerm)
+	// Create the output directory if it does not exist
+	err := os.MkdirAll(outputPath, 0750) // folder permissions: drwxr-x--- (other users can't write)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -963,14 +966,17 @@ func main() {
 		}
 	}
 
+	now := time.Now()
+	stamp := fmt.Sprintf("_%d-%d-%d_%d:%d:%d_id%d_",
+		now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), rand.Int())
 	// Generate facts for Soufflé Datalog
-	factsFile, err := os.Create(factGenerationLogName)
+	factsFile, err := os.Create(factGenerationLogName(stamp))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer factsFile.Close()
 
-	ssaFile, err2 := os.Create(ssaOutputFileName)
+	ssaFile, err2 := os.Create(ssaOutputFileName(stamp))
 	if err2 != nil {
 		log.Fatal(err2)
 	}
@@ -1032,8 +1038,8 @@ func main() {
 	})
 
 	// Print debugging information to stdout
-	log.Println("Facts debug log:", factGenerationLogName)
-	log.Println("SSA:", ssaOutputFileName)
+	log.Println("Facts debug log:", factGenerationLogName(stamp))
+	log.Println("SSA:", ssaOutputFileName(stamp))
 
 	// Print the facts that Souffle might read, even though it might be populated for the
 	// source program that is being analyzed. Souffle errs on non-existing fact files.
@@ -1048,6 +1054,6 @@ func main() {
 	runSouffle()
 
 	// Read the souffle output from disk and print the results.
-	parseSouffleOutput(prog)
+	parseSouffleOutput(stamp, prog)
 
 }

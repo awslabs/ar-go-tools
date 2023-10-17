@@ -67,7 +67,7 @@ func FindEltTypePackage(t types.Type, preform string) (string, string, error) {
 		return "", "", fmt.Errorf("not a type with a package and name")
 	case *types.Struct:
 		// Anonymous structs
-		return "", "", fmt.Errorf("%s: not a type with a package and name", typ)
+		return "", "", fmt.Errorf("%q: not a type with a package and name", typ)
 	default:
 		// We should never reach this!
 		fmt.Printf("unexpected type received: %T %v; please report this issue\n", typ, typ)
@@ -141,20 +141,25 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 			return false // inits cannot be entry points
 		}
 
+		parent := node.Parent()
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
 			calleePkg := FindSafeCalleePkg(node.Common())
-			if calleePkg.IsSome() &&
-				f(config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver}) {
-				return true
+      if calleePkg.IsSome() {
+				return f(
+					config.CodeIdentifier{
+						Context:  parent.String(),
+						Package:  calleePkg.Value(),
+						Method:   methodName,
+						Receiver: receiver})
 			}
 			return false
 		}
 		// Check if the actual function called matches an entrypoint
 		funcValue := node.Call.Value.Name()
 		calleePkg := FindSafeCalleePkg(node.Common())
-		if calleePkg.IsSome() && f(config.CodeIdentifier{Package: calleePkg.Value(), Method: funcValue}) {
+    if calleePkg.IsSome() && f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue}) {
 			return true
 		}
 		// Check if any alias matches an entrypoint
@@ -168,7 +173,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 		for _, label := range ptr.PointsTo().Labels() {
 			funcValue = label.Value().Name()
 			funcPackage := FindValuePackage(label.Value())
-			if funcPackage.IsSome() && f(config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}) {
+      if funcPackage.IsSome() && f(config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}) {
 				return true
 			}
 		}
@@ -181,7 +186,11 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 		if err != nil {
 			return false
 		}
-		return f(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
+		return f(config.CodeIdentifier{
+			Context: node.Parent().String(),
+			Package: packageName,
+			Field:   fieldName,
+			Type:    typeName})
 
 	case *ssa.FieldAddr:
 		fieldName := FieldAddrFieldName(node)
@@ -189,7 +198,11 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 		if err != nil {
 			return false
 		}
-		return f(config.CodeIdentifier{Package: packageName, Field: fieldName, Type: typeName})
+		return f(config.CodeIdentifier{
+			Context: node.Parent().String(),
+			Package: packageName,
+			Field:   fieldName,
+			Type:    typeName})
 
 	// Allocations of data of a type that is an entry point
 	case *ssa.Alloc:
@@ -197,7 +210,10 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 		if err != nil {
 			return false
 		}
-		return f(config.CodeIdentifier{Package: packageName, Type: typeName})
+		return f(config.CodeIdentifier{
+			Context: node.Parent().String(),
+			Package: packageName,
+			Type:    typeName})
 
 	// Channel receives can be sources
 	case *ssa.UnOp:
@@ -206,7 +222,11 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 			if err != nil {
 				return false
 			}
-			return f(config.CodeIdentifier{Package: packageName, Type: typeName, Kind: "channel receive"})
+			return f(config.CodeIdentifier{
+				Context: node.Parent().String(),
+				Package: packageName,
+				Type:    typeName,
+				Kind:    "channel receive"})
 		}
 		return false
 

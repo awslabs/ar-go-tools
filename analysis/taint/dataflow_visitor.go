@@ -23,7 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -92,8 +92,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	v.currentSource = source
 	logger := s.Logger
 	logger.Infof("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Infof("==> Source: %s\n", colors.Purple(v.currentSource.Node.String()))
-	logger.Infof("%s %s\n", colors.Green("Found at"), v.currentSource.Node.Position(s))
+	logger.Infof("==> Source: %s\n", formatutil.Purple(v.currentSource.Node.String()))
+	logger.Infof("%s %s\n", formatutil.Green("Found at"), v.currentSource.Node.Position(s))
 
 	v.roots[source] = &df.VisitorNode{
 		NodeWithTrace: source,
@@ -105,23 +105,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	que := []*df.VisitorNode{v.roots[source]}
 
 	if s.Config.UseEscapeAnalysis {
-		sourceCaller := source.Node.Graph().Parent
-		var rootKey df.KeyType
-		if source.Trace != nil {
-			rootKey = source.Trace.Parent.Key()
-		} else {
-			rootKey = ""
-		}
-		v.storeEscapeGraphInContext(s, sourceCaller, rootKey,
-			s.EscapeAnalysisState.ComputeArbitraryContext(sourceCaller))
-
-		escapeGraph := v.escapeGraphs[sourceCaller][rootKey]
-		v.checkEscape(s, source.Node, escapeGraph)
-
-		callNode, isCallNode := source.Node.(*df.CallNode)
-		if isCallNode {
-			v.storeEscapeGraph(s, source.Trace, callNode)
-		}
+		v.initEscapeAnalysisInfo(s, source)
 	}
 
 	numAlarms := 0
@@ -134,9 +118,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// Report coverage information for the current node
 		addCoverage(s, cur, coverage)
 
-		logger.Tracef("(s=%v) Visiting %T node: %v\n\tat %v\n",
-			cur.Status.Kind, cur.Node, cur.Node, cur.Node.Position(s))
-		logger.Tracef("Trace: %s\n", cur.Trace.String())
+		traceNode(s, cur)
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
@@ -171,8 +153,8 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		if !cur.Node.Graph().Constructed {
 			if ignoreNonSummarized {
 				logger.Tracef("%s: summary has not been built for %s.",
-					colors.Yellow("WARNING"),
-					colors.Yellow(cur.Node.Graph().Parent.Name()))
+					formatutil.Yellow("WARNING"),
+					formatutil.Yellow(cur.Node.Graph().Parent.Name()))
 
 				// In that case, continue as there is no information on data flow
 				continue
@@ -547,14 +529,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						}
 						que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, df.ObjectPath{})
 					} else {
-						s.AddError(
-							fmt.Sprintf("no bound variable matching free variable in %s",
-								makeClosureSite.ClosureSummary.Parent.String()),
-							fmt.Errorf("at position %d", graphNode.Index()))
-						panic(
-							fmt.Errorf(
-								"[No Context] no bound variable matching free variable in %s at position %d",
-								makeClosureSite.ClosureSummary.Parent.String(), graphNode.Index()))
+						panicOnUnexpectedMissingFreeVar(s, makeClosureSite, graphNode)
 					}
 				}
 			}
@@ -654,6 +629,29 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 	if v.coverageWriter != nil {
 		reportCoverage(coverage, v.coverageWriter)
+	}
+}
+
+// initEscapeAnalysisInfo initializes the information required by the escape analysis.
+// This consists mainly in storing the escape graph of the function where the source appears
+func (v *Visitor) initEscapeAnalysisInfo(s *df.AnalyzerState, source df.NodeWithTrace) {
+	sourceCaller := source.Node.Graph().Parent
+	var rootKey df.KeyType
+	// Resolve the context
+	if source.Trace != nil {
+		rootKey = source.Trace.Parent.Key()
+	} else {
+		rootKey = ""
+	}
+	v.storeEscapeGraphInContext(s, sourceCaller, rootKey,
+		s.EscapeAnalysisState.ComputeArbitraryContext(sourceCaller))
+
+	escapeGraph := v.escapeGraphs[sourceCaller][rootKey]
+	v.checkEscape(s, source.Node, escapeGraph)
+
+	callNode, isCallNode := source.Node.(*df.CallNode)
+	if isCallNode {
+		v.storeEscapeGraph(s, source.Trace, callNode)
 	}
 }
 

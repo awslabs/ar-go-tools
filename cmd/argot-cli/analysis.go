@@ -79,10 +79,10 @@ func cmdShowSsa(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) b
 // cmdShowEscape prints the escape graph of all the function matching a given regex
 func cmdShowEscape(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
-		writeFmt(tt, "\t- %s%s%s : print the escape graph of a function.\n"+
+		writeFmt(tt, "\t- %s%s%s : print the escape graph of a function.\n"+ // safe %s (position string)
 			"\t  %s regex prints the escape graph of function(s) matching the regex\n"+
 			"\t  Example:\n", tt.Escape.Blue, cmdShowEscapeName, tt.Escape.Reset, cmdShowEscapeName)
-		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdShowEscapeName)
+		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdShowEscapeName) // safe %s (position string)
 		return false
 	}
 

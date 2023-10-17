@@ -23,7 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -110,7 +110,7 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
 		a.Logger.Warnf("Defer stack unbounded in %s: %s",
-			sm.Parent.String(), colors.Yellow("analysis unsound!"))
+			sm.Parent.String(), formatutil.Yellow("analysis unsound!"))
 	}
 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
 	state.initialize()
