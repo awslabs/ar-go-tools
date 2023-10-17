@@ -261,6 +261,7 @@ func TestInterproceduralEscape(t *testing.T) {
 		"testExternal",
 		"testChain",
 		"testStickyErrorReader",
+		"testMutualInterfaceRecursion",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular

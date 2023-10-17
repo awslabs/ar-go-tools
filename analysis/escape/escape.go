@@ -190,6 +190,13 @@ type selectRecvLoad struct {
 	recvIndex   int
 }
 
+// abstractTypeLoad is used for loads of an abstract type (interface/function impl). Omits the
+// instruction so all such loads share the same operation, which substaintially cuts down on the
+// number of nodes at the cost of some precision.
+type abstractTypeLoad struct {
+	tp string
+}
+
 // Constants for pseudo-fields of built-in types
 const channelContentsField = "contents"
 const mapKeysField = "keys[*]"
@@ -912,16 +919,33 @@ type summaryUse struct {
 	instruction ssa.Instruction
 }
 
+type parameterLoad struct {
+	function *ssa.Function
+	param    int
+}
+
 // newFunctionAnalysisState creates a new function analysis for the given function, tied to the given whole program analysis
 func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *functionAnalysisState) {
 	nodes := NewNodeGroup(prog.globalNodes)
 	initialGraph := NewEmptyEscapeGraph(nodes)
-	for _, p := range f.Params {
+	for i, p := range f.Params {
 		var formalNode *Node = nil
 		if lang.IsNillableType(p.Type()) {
 			paramNode := nodes.ParamNode(p)
 			formalNode = nodes.ValueNode(p)
 			initialGraph.AddEdge(formalNode, paramNode, EdgeInternal)
+			// Add a "load" operation to the pointee of parameters. These nodes are not exactly load
+			// nodes, but we need to treat them as such for the purposes of EnsureLoadNode. We use a
+			// parameter load operation if it is a normal type, and an abstractTypeLoad if it is
+			// abstract. Normally this distinction is handled by EnsureLoadNode, but we aren't
+			// creating true load nodes here so we must do it ourselves.
+			pointeeType := NillableDerefType(p.Type())
+			if !IsAbstractType(pointeeType) {
+				initialGraph.nodes.loadOps[paramNode] = map[any]bool{parameterLoad{f, i}: true}
+			} else {
+				loadOp := abstractTypeLoad{pointeeType.String()}
+				initialGraph.nodes.loadOps[paramNode] = map[any]bool{loadOp: true}
+			}
 		} else if IsEscapeTracked(p.Type()) {
 			formalNode = nodes.ValueNode(p)
 			initialGraph.AddNode(formalNode)
@@ -1137,7 +1161,7 @@ func resummarize(ea *functionAnalysisState) (changed bool) {
 		}
 	}
 	returnResult = returnResult.CloneReachable(roots)
-	returnResult = simplifySummary(returnResult, ea.prog.logger)
+	simplifySummary(returnResult, ea.prog.logger)
 	same := ea.finalGraph != nil && ea.finalGraph.Matches(returnResult)
 	// The returnResult is always a fresh graph rather than mutating the old one, so we preserve the invariant
 	// that the finalGraph never mutates
@@ -1214,9 +1238,11 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	// SCC so that other members of the SCC are analyzed first.
 	worklist := make([]*functionAnalysisState, len(nodes))
 	nextIndex := len(worklist) - 1
-	for _, scc := range graphutil.StronglyConnectedComponents(nodes, succ) {
+	sccOfFunc := map[*functionAnalysisState]int{}
+	for sccIndex, scc := range graphutil.StronglyConnectedComponents(nodes, succ) {
 		for _, n := range scc {
 			if summary, ok := prog.summaries[n.Func]; ok && len(summary.function.Blocks) > 0 {
+				sccOfFunc[summary] = sccIndex
 				worklist[nextIndex] = summary
 				nextIndex -= 1
 			}
@@ -1250,12 +1276,17 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 				}
 				if !found {
 					worklist = append(worklist, location.function)
+					i := len(worklist) - 1
+					for i > 0 && sccOfFunc[worklist[i]] == sccOfFunc[worklist[i-1]] {
+						worklist[i], worklist[i-1] = worklist[i-1], worklist[i]
+						i = i - 1
+					}
 				}
 			}
 		}
 	}
 	// Print out the final graphs for debugging purposes
-	if prog.logger.LogsDebug() || true {
+	if prog.logger.LogsDebug() {
 		for f := range state.PointerAnalysis.CallGraph.Nodes {
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
@@ -1485,28 +1516,57 @@ func TypecheckEscapeGraph(g *EscapeGraph) error {
 	return nil
 }
 
-// simplifySummary is intended to remove irrelevant nodes from the graph.
-// Currently, it just estimates the number of nodes that could possibly be simplified
-// This process must be very careful to not affect the
-func simplifySummary(g *EscapeGraph, logger *config.LogGroup) *EscapeGraph {
-	if logger.LogsTrace() {
-		totalNodes, loadNodes, escapedLoadNodes, escapedLoadNodesWithNoInternalEdges := 0, 0, 0, 0
-		for node, status := range g.status {
-			totalNodes += 1
-			if node.kind == KindLoad {
-				loadNodes += 1
-				// Only escaped, not leaked nodes can be removed
-				if status == Escaped {
-					escapedLoadNodes += 1
-					// Nodes without any internal edges are good candidates to remove
-					if len(g.Edges(nil, node, EdgeInternal))+len(g.Edges(node, nil, EdgeInternal)) == 0 {
-						escapedLoadNodesWithNoInternalEdges += 1
-					}
-				}
-
+// simplifySummary removes irrelevant load nodes from a given function summary graph. "Irrelevant"
+// nodes are load nodes that don't have any leaks or incoming/outgoing internal edges (and also
+// doesn't point to any nodes that need to be kept). Modifies g in-place.
+func simplifySummary(g *EscapeGraph, logger *config.LogGroup) {
+	// The set of nodes to be removed
+	candidatesForRemoval := map[*Node]struct{}{}
+	// Find all load nodes that are escaped and not leaked, without any outgoing internal edges
+	for node, status := range g.status {
+		if node.kind == KindLoad && status == Escaped && len(g.Edges(node, nil, EdgeInternal)) == 0 {
+			candidatesForRemoval[node] = struct{}{}
+		}
+	}
+	// Filter nodes with incoming internal edges. The candidates now only have external/subnode
+	// edges.
+	for _, outEdges := range g.edges {
+		for dest, flags := range outEdges {
+			if flags&EdgeInternal != 0 {
+				delete(candidatesForRemoval, dest)
 			}
 		}
-		logger.Tracef("Node statistics for summary: %d %d %d %d\n", totalNodes, loadNodes, escapedLoadNodes, escapedLoadNodesWithNoInternalEdges)
 	}
-	return g
+
+	// Run a convergence loop where if a node points at something that isn't a candidate, it is not
+	// a candidate either. This could potentially be more efficient if we had a map of back-edges,
+	// but this depends on the depth we need to propogate non-candidacy backwards and the cost of
+	// creating such a back-edge map.
+	for {
+		changed := false
+		for src, _ := range candidatesForRemoval {
+			for dest, _ := range g.edges[src] {
+				if _, ok := candidatesForRemoval[dest]; !ok {
+					if _, ok := candidatesForRemoval[src]; ok {
+						delete(candidatesForRemoval, src)
+						changed = true
+					}
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	// Actually remove all the candidates from the map
+	for x := range candidatesForRemoval {
+		delete(g.status, x)
+		delete(g.edges, x)
+	}
+	// Also remove edges that point at these nodes, which may come from nodes that aren't being removed.
+	for _, outEdges := range g.edges {
+		for c := range candidatesForRemoval {
+			delete(outEdges, c)
+		}
+	}
 }

@@ -334,17 +334,18 @@ func (g *EscapeGraph) Graphviz() string {
 		}
 		t := fmt.Sprintf(`<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0"><TR><TD ALIGN="left" %s><FONT %s>%s</FONT></TD></TR>`, extra, extraFont, n.debugInfo)
 
+		// Walk over all field subnode children and render them
 		type pair struct {
-			reason fieldSubnodeReason
+			reason string
 			node   *Node
 		}
 		children := []pair{}
 		for reason, nodeData := range g.nodes.globalNodes.subnodes[n] {
-			if r, ok := reason.(fieldSubnodeReason); ok {
-				children = append(children, pair{r, nodeData.node})
+			if r, ok := reason.(fieldSubnodeReason); ok && g.edges[nodeData.node] != nil {
+				children = append(children, pair{fmt.Sprintf("%v", r), nodeData.node})
 			}
 		}
-		sort.Slice(children, func(i int, j int) bool { return children[i].reason.field < children[j].reason.field })
+		sort.Slice(children, func(i int, j int) bool { return children[i].reason < children[j].reason })
 		for _, p := range children {
 			child := p.node
 			colorProp := ""
@@ -357,19 +358,15 @@ func (g *EscapeGraph) Graphviz() string {
 				colorProp, child.number, subnodeLabel(child))
 
 		}
-
-		type pair2 struct {
-			reason implementationSubnodeReason
-			node   *Node
-		}
-		children2 := []pair2{}
+		// Walk over all implementation subnode children and render them
+		children = []pair{}
 		for reason, nodeData := range g.nodes.globalNodes.subnodes[n] {
-			if r, ok := reason.(implementationSubnodeReason); ok {
-				children2 = append(children2, pair2{r, nodeData.node})
+			if r, ok := reason.(implementationSubnodeReason); ok && g.edges[nodeData.node] != nil {
+				children = append(children, pair{fmt.Sprintf("%v", r), nodeData.node})
 			}
 		}
-		sort.Slice(children2, func(i int, j int) bool { return children2[i].reason.tp.String() < children2[j].reason.tp.String() })
-		for _, p := range children2 {
+		sort.Slice(children, func(i int, j int) bool { return children[i].reason < children[j].reason })
+		for _, p := range children {
 			child := p.node
 			colorProp := ""
 			if g.status[child] == Escaped {
@@ -447,6 +444,10 @@ func (g *EscapeGraph) Graphviz() string {
 				extra += " style=dashed"
 			}
 			fmt.Fprintf(out, "%s:e -> %s:w [%s];\n", nodePort(e.src), nodePort(e.dest), extra)
+		}
+		// Add a back-edge for load node parents, which is mostly useful for internal debugging purposes.
+		if parent, ok := g.nodes.loadBase[n]; ok {
+			fmt.Fprintf(out, "%s:w -> %s:e [%s];\n", nodePort(n), nodePort(parent), "color=orange")
 		}
 	}
 
@@ -636,6 +637,23 @@ func (g *EscapeGraph) WeakAssign(dest *Node, src *Node) {
 	}
 }
 
+func (g *EscapeGraph) getHistoryNodeOfOp(loadOp any, base *Node) *Node {
+	node := base
+	var historyNode *Node = nil
+	for node != nil {
+		associatedOps := g.nodes.loadOps[node]
+		if associatedOps != nil && associatedOps[loadOp] {
+			historyNode = node
+		}
+		if g.IsSubnode(node) {
+			node = g.nodes.globalNodes.parent[node].node
+		} else {
+			node = g.nodes.loadBase[node]
+		}
+	}
+	return historyNode
+}
+
 // EnsureLoadNode makes sure that if base is not local, then it has a node it points to.
 // This can either be a new load node attached to base, or an existing node if the loadOp already
 // created a load node somewhere in the base's history (this prevents infinite graphs). Regardless,
@@ -645,23 +663,21 @@ func (g *EscapeGraph) EnsureLoadNode(loadOp any, tp types.Type, base *Node) *Nod
 	if g.status[base] == Local {
 		return nil // do nothing if base is not external
 	}
-	node := base
-	// fmt.Printf("Ensuring load node for %v\n", base)
-	for node != nil {
-		associatedOps := g.nodes.loadOps[node]
-		if associatedOps == nil {
-			if g.IsSubnode(node) {
-				node = g.nodes.globalNodes.parent[node].node
-				continue
-			} else {
-				break // node is not a load node
-			}
-		}
-		if associatedOps[loadOp] {
-			g.AddEdge(base, node, EdgeExternal)
-			return node
-		}
-		node = g.nodes.loadBase[node]
+	// If tp is abstract, switch the load op to a generic one that is shared. This prevents a
+	// factorial blowup when there are interfaces with implementations that have fields pointing to
+	// the same interface, which can result in the analysis considering every possible way of
+	// interleaving those objects. By giving all of these potential loads the same loadOp, we ensure
+	// that the path has at most one node of each interface, which are usually much fewer than the
+	// number of implementations.
+	if IsAbstractType(tp) {
+		loadOp = abstractTypeLoad{tp.String()}
+	}
+	// If this chain of load nodes already has the op, connect base to it (may create a back-edge or
+	// a self-edge), and return that node.
+	node := g.getHistoryNodeOfOp(loadOp, base)
+	if node != nil {
+		g.AddEdge(base, node, EdgeExternal)
+		return node
 	}
 	// This op is not in base's history, so find or create a load node child of base
 	loadNode := g.nodes.loadChild[base]

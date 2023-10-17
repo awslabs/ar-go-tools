@@ -52,6 +52,7 @@ func main() {
 	testExternal()
 	testChain()
 	testStickyErrorReader()
+	testMutualInterfaceRecursion()
 }
 
 // Basic test of the assertSameAliases function
@@ -247,4 +248,58 @@ func testStickyErrorReader() {
 	}
 	p := []byte{0, 0, 0, 0}
 	r.Read(p)
+}
+
+type ActionInterface interface {
+	DoSomething(*Node) *Node
+}
+
+type Impl1 struct {
+	i ActionInterface
+}
+
+func (i *Impl1) DoSomething(n *Node) *Node {
+	return i.i.DoSomething(n)
+}
+
+type Impl2 struct {
+	i ActionInterface
+}
+
+func (i *Impl2) DoSomething(n *Node) *Node {
+	return i.i.DoSomething(n)
+}
+
+type Impl3 struct {
+	i ActionInterface
+}
+
+func (i *Impl3) DoSomething(n *Node) *Node {
+	return i.i.DoSomething(n)
+}
+
+type Impl4 struct {
+	i ActionInterface
+}
+
+func (i *Impl4) DoSomething(n *Node) *Node {
+	return i.i.DoSomething(n)
+}
+
+func getImpl() ActionInterface {
+	if arbitrary() {
+		return &Impl1{getImpl()}
+	} else if arbitrary() {
+		return &Impl2{getImpl()}
+	} else if arbitrary() {
+		return &Impl3{getImpl()}
+	} else {
+		return &Impl4{getImpl()}
+	}
+}
+
+// Test whether the size of the graph blows up for recursive interfaces
+func testMutualInterfaceRecursion() {
+	x := getImpl()
+	x.DoSomething(&Node{})
 }
