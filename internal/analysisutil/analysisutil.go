@@ -155,28 +155,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 			}
 			return false
 		}
-		// Check if the actual function called matches an entrypoint
-		funcValue := node.Call.Value.Name()
-		calleePkg := FindSafeCalleePkg(node.Common())
-		if calleePkg.IsSome() && f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue}) {
-			return true
-		}
-		// Check if any alias matches an entrypoint
-		if pointer == nil {
-			return false
-		}
-		ptr, hasAliases := pointer.Queries[node.Call.Value]
-		if !hasAliases {
-			return false
-		}
-		for _, label := range ptr.PointsTo().Labels() {
-			funcValue = label.Value().Name()
-			funcPackage := FindValuePackage(label.Value())
-			if funcPackage.IsSome() && f(config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}) {
-				return true
-			}
-		}
-		return false
+		return isFuncEntrypoint(node, parent, f) || isAliasEntrypoint(pointer, node, f)
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:
@@ -232,4 +211,33 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 	default:
 		return false
 	}
+}
+
+// isFuncEntrypoint returns true if the actual function called matches an entrypoint.
+func isFuncEntrypoint(node *ssa.Call, parent *ssa.Function, f func(config.CodeIdentifier) bool) bool {
+	funcValue := node.Call.Value.Name()
+	calleePkg := FindSafeCalleePkg(node.Common())
+	if calleePkg.IsSome() {
+		return f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue})
+	}
+	return false
+}
+
+// isAliasEntrypoint returns true if any alias to node matches an entrypoint.
+func isAliasEntrypoint(pointer *pointer.Result, node *ssa.Call, f func(config.CodeIdentifier) bool) bool {
+	if pointer == nil {
+		return false
+	}
+	ptr, hasAliases := pointer.Queries[node.Call.Value]
+	if !hasAliases {
+		return false
+	}
+	for _, label := range ptr.PointsTo().Labels() {
+		funcValue := label.Value().Name()
+		funcPackage := FindValuePackage(label.Value())
+		if funcPackage.IsSome() && f(config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}) {
+			return true
+		}
+	}
+	return false
 }
