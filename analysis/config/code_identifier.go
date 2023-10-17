@@ -28,15 +28,35 @@ import (
 // This is meant to replicate functionality in go-flow-levee and gokart, and can be
 // extended as needed
 type CodeIdentifier struct {
-	Context  string `xml:"context,attr"`
-	Package  string `xml:"package,attr"` // in drawio input, package is an attribute
-	Method   string `xml:"method,attr"`
+	// Context stores an additional string that can be used depending on context by analyses. Typically, one can use
+	// Context to match the parent function name when matching a code identifier.
+	Context string `xml:"context,attr"`
+
+	// Package identifies the package of the code identifier.
+	Package string `xml:"package,attr"` // in drawio input, package is an attribute
+
+	// Package identifies the method/function of the code identifier. Method is used loosely here to mean function
+	// or actual method
+	Method string `xml:"method,attr"`
+
+	// Receiver identified the receiver object of a method call
 	Receiver string `xml:"receiver,attr"`
-	Field    string `xml:"field,attr"`
-	Type     string `xml:"type,attr"`
-	Label    string `xml:"label,attr"`
-	Kind     string `xml:"kind,attr"`
-	// This will not be part of the yaml config
+
+	// Field identifies a specific field
+	Field string `xml:"field,attr"`
+
+	// Type identifies a specific type, which can be used for example to identify allocation of a given type
+	Type string `xml:"type,attr"`
+
+	// Label can be used to store user-defined information about the code identifier.
+	Label string `xml:"label,attr"`
+
+	// Kind can be used to give additional semantic meaning to the code identifier. For example, it can be used
+	// to tag a code identifier as a specific "channel receive"
+	Kind string `xml:"kind,attr"`
+
+	// computedRegexs is not part of the yaml config, but contains the compiled regex version of the code identifier
+	// elements that are parsed as regexes.
 	computedRegexs *codeIdentifierRegex
 }
 type codeIdentifierRegex struct {
