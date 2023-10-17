@@ -48,7 +48,6 @@ func ReadNMFile(filename string) (map[string]bool, error) {
 		index := strings.Index(name, "(*")
 		if index > 0 {
 			name = "(*" + name[:index] + name[index+2:]
-			//fmt.Fprintf(os.Stderr, "Munged name is %s\n", name)
 		}
 
 		if strings.HasPrefix(name, "type..eq.") || strings.HasPrefix(name, "type..hash.") {

@@ -18,6 +18,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -140,9 +141,9 @@ func printGoCallInformation(state *dataflow.AnalyzerState, call *ssa.Go) {
 	if call == nil {
 		return
 	}
-	state.Logger.Debugf("Go call: %s", call.String())
+	state.Logger.Debugf("Go call: %s", formatutil.SanitizeRepr(call))
 	if parent := call.Parent(); parent != nil {
-		state.Logger.Debugf("\t%s", parent.Pkg.String())
+		state.Logger.Debugf("\t%s", formatutil.SanitizeRepr(parent.Pkg))
 	}
 	state.Logger.Debugf("\t%s", state.Program.Fset.Position(call.Pos()))
 }

@@ -33,7 +33,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -89,7 +89,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	fmt.Fprintf(os.Stderr, colors.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -100,15 +100,15 @@ func main() {
 	var cg *callgraph.Graph
 
 	// Compute the call graph
-	fmt.Fprintln(os.Stderr, colors.Faint("Computing call graph"))
+	fmt.Fprintln(os.Stderr, formatutil.Faint("Computing call graph"))
 	start := time.Now()
 	cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
 	cgComputeDuration := time.Since(start).Seconds()
 	if err != nil {
-		fmt.Fprint(os.Stderr, colors.Red("Could not compute callgraph: %v\n", err))
+		fmt.Fprint(os.Stderr, formatutil.Red("Could not compute callgraph: %v\n", err))
 		return
 	} else {
-		fmt.Fprint(os.Stderr, colors.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+		fmt.Fprint(os.Stderr, formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	}
 
 	//Load the binary
@@ -172,7 +172,7 @@ func doCompareSymbols(program *ssa.Program, cg *callgraph.Graph, symbols map[str
 	})
 	for _, f := range allsorted {
 		fmt.Printf("%c %c %c %c %s\n", ch(allfuncs[f], 'A'), ch(reachable[f], 'r'), ch(callgraphReachable[f], 'c'),
-			ch(symbols[f], 's'), f)
+			ch(symbols[f], 's'), formatutil.Sanitize(f)) // function name f is safe to print
 	}
 	fmt.Printf("%d total functions\n", len(all))
 	fmt.Printf("Missing %d from allfuncs, %d from callgraph, %d from reachability, %d from binary\n",

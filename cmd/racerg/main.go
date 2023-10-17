@@ -81,6 +81,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/packages"
@@ -884,9 +885,9 @@ func parseSouffleOutput(stamp string, prog *ssa.Program) {
 				threadSpawnLocEndInd := strings.Index(thread, ",")
 				threadSpawnLocStr := thread[threadSpawnLocStartInd:threadSpawnLocEndInd]
 				threadSpawnLoc := interp(threadSpawnLocStr)
-				fmt.Printf("\tThread %s (%s, spawned at [ %s ])\n", tid, threadType, threadSpawnLoc)
+				fmt.Printf("\tThread %q (%q, spawned at [ %q ])\n", tid, threadType, threadSpawnLoc)
 			} else {
-				fmt.Printf("\tThread %s (%s)\n", tid, threadType)
+				fmt.Printf("\tThread %q (%q)\n", tid, threadType)
 			}
 
 			if readWrite == "r" {
@@ -894,10 +895,10 @@ func parseSouffleOutput(stamp string, prog *ssa.Program) {
 			} else {
 				accessKind = "write"
 			}
-			fmt.Printf("\tAccess: %s\n", accessKind)
+			fmt.Printf("\tAccess: %s\n", formatutil.Sanitize(accessKind))
 
 			srcLoc := interp(srcLocStr)
-			fmt.Printf("\tAccess location: [ %s ]\n", srcLoc)
+			fmt.Printf("\tAccess location: [ %s ]\n", formatutil.Sanitize(srcLoc))
 
 		}
 
@@ -908,7 +909,8 @@ func parseSouffleOutput(stamp string, prog *ssa.Program) {
 		memLoc := interp(record[9])
 		allocType := record[9][1:]
 		if len(memLocFunc) > 0 {
-			fmt.Printf("Memory accessed:\n\tallocated in func %s at [ %s ]\n", memLocFunc, memLoc)
+			fmt.Printf("Memory accessed:\n\tallocated in func %s at [ %s ]\n",
+				formatutil.Sanitize(memLocFunc), formatutil.Sanitize(memLoc))
 		} else {
 			fmt.Printf("Memory accessed:\n\t%s (global)\n", allocType)
 		}

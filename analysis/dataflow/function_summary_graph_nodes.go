@@ -72,6 +72,9 @@ type GraphNode interface {
 	// Position returns the position of the node in the source code.
 	Position(c *AnalyzerState) token.Position
 
+	// String prints the string representation of the node.
+	// All strings methods should return sanitized output. That is, the underlying information related to the source
+	// code is sanitized before being returned.
 	String() string
 
 	// Type returns the type of the node
@@ -125,13 +128,13 @@ func NodeKind(g GraphNode) string {
 func NodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
-		return fmt.Sprintf("Parameter %s of %s", x.ssaNode.Name(), x.parent.Parent.Name())
+		return fmt.Sprintf("Parameter %q of %q", x.ssaNode.Name(), x.parent.Parent.Name())
 	case *CallNode:
-		return fmt.Sprintf("Result of call to %s", x.Callee().Name())
+		return fmt.Sprintf("Result of call to %q", x.Callee().Name())
 	case *CallNodeArg:
-		return fmt.Sprintf("Argument %v in call to %s", x.Index(), x.ParentNode().Callee().Name())
+		return fmt.Sprintf("Argument %v in call to %q", x.Index(), x.ParentNode().Callee().Name())
 	case *ReturnValNode:
-		return fmt.Sprintf("Return value of %s", x.ParentName())
+		return fmt.Sprintf("Return value of %q", x.ParentName())
 	case *ClosureNode:
 		return fmt.Sprintf("Closure")
 	case *BoundLabelNode:

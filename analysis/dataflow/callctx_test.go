@@ -24,6 +24,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
 
 func TestComputeCtxts(t *testing.T) {
@@ -52,7 +53,7 @@ func TestComputeCtxts(t *testing.T) {
 			fmt.Printf("%s\n", ctx)
 			for _, node := range ci.KeyToNodes(ctx) {
 				if node != nil {
-					fmt.Printf("\t%s", node.Func.Name())
+					fmt.Printf("\t%s", formatutil.Sanitize(node.Func.Name()))
 				}
 			}
 			fmt.Println()

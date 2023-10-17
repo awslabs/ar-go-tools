@@ -26,7 +26,7 @@ func TestRunBoundingAnalysis(t *testing.T) {
 	program, cfg := analysistest.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
 	c, err := NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
-		t.Errorf("error building state: %s", err)
+		t.Errorf("error building state: %q", err)
 	}
 
 	// This is a subset of what the analysis should return

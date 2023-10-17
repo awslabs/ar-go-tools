@@ -33,6 +33,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/graphutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -591,7 +592,9 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 	}
 	if ea.prog.logger.LogsDebug() {
 		pos := instruction.Parent().Prog.Fset.Position(instruction.Pos())
-		ea.prog.logger.Debugf("Unhandled: (type: %s) %v at %v\n", reflect.TypeOf(instruction).String(), instruction, pos)
+		ea.prog.logger.Debugf("Unhandled: (type: %s) %v at %v\n",
+			formatutil.SanitizeRepr(reflect.TypeOf(instruction)),
+			formatutil.SanitizeRepr(instruction), pos)
 	}
 }
 
@@ -1158,7 +1161,7 @@ func handlePresummarizedFunction(f *ssa.Function, prog *ProgramAnalysisState) {
 		prog.summaries[f] = newFunctionAnalysisState(f, prog)
 		return
 	}
-	prog.logger.Debugf("No summary for: %s\n", f.String())
+	prog.logger.Debugf("No summary for: %s\n", formatutil.SanitizeRepr(f))
 }
 
 // EscapeAnalysis computes the bottom-up escape summaries of functions matching the package filter.
@@ -1223,7 +1226,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 
-		prog.logger.Infof("Computing escape summary for %s\n", summary.function.String())
+		prog.logger.Infof("Computing escape summary for %s\n", formatutil.SanitizeRepr(summary.function))
 		changed := resummarize(summary)
 		if !changed {
 			continue
@@ -1252,7 +1255,8 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
 				if strings.HasPrefix(f.String(), "(*fmt.ss).") {
-					state.Logger.Tracef("Func summary for %s is:%s\n", f.String(), summary.finalGraph.Graphviz())
+					state.Logger.Tracef("Func summary for %s is:%s\n", formatutil.Sanitize(f.String()),
+						summary.finalGraph.Graphviz())
 				}
 			}
 		}

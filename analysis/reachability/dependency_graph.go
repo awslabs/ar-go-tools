@@ -69,12 +69,10 @@ func (dg DependencyGraph) Add(depender string, dependee string) {
 }
 
 func (dg DependencyGraph) Cycles() bool {
-	//fmt.Printf("Checking cycles among %d packages\n", len(dg))
 	for _, e := range dg {
 		if len(e.dependedOnBy) != 0 {
 			continue
 		}
-		//fmt.Println("Found a starting package ", e.name)
 		if dg.findCycles(e) {
 			return true
 		}

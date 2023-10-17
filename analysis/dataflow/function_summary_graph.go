@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -318,6 +319,14 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 			instr.String())
 		panic("critical information missing in analysis")
 	}
+
+	if c.Logger.LogsDebug() && instr.Common().IsInvoke() && len(callees) > 10 {
+		interfaceMethod := lang.InstrMethodKey(instr)
+		c.Logger.Debugf("%d callees for method %s in %s. Consider using a dataflow contract to minimize state explosion",
+			len(callees),
+			interfaceMethod.ValueOr(""), ftu.SanitizeRepr(instr))
+	}
+
 	// Add each callee as a node for this call instruction
 	for _, callee := range callees {
 		node := &CallNode{
@@ -914,10 +923,10 @@ func (a *ParamNode) String() string {
 	} else {
 		fname := ""
 		if a.parent.Parent != nil {
-			fname = a.parent.Parent.Name()
+			fname = ftu.Sanitize(a.parent.Parent.Name())
 		}
 		return fmt.Sprintf("\"[#%d.%d] %s of %s [%d]\"",
-			a.parent.ID, a.ID(), a.SsaNode().String(), fname, a.Index())
+			a.parent.ID, a.ID(), ftu.SanitizeRepr(a.SsaNode()), fname, a.Index())
 	}
 }
 
@@ -926,7 +935,7 @@ func (a *CallNodeArg) String() string {
 		return ""
 	}
 	return fmt.Sprintf("\"[#%d.%d] @arg %d:%s in %s \"",
-		a.ParentNode().parent.ID, a.ID(), a.Index(), a.ssaValue.Name(),
+		a.ParentNode().parent.ID, a.ID(), a.Index(), ftu.SanitizeRepr(a.ssaValue),
 		strings.Trim(a.ParentNode().String(), "\""))
 }
 
@@ -935,14 +944,17 @@ func (a *CallNode) String() string {
 		return ""
 	}
 	return fmt.Sprintf("\"[#%d.%d] (%s)call: %s in %s\"",
-		a.parent.ID, a.id, a.callee.Type.Code(), a.callSite.String(), a.callSite.Parent().Name())
+		a.parent.ID, a.id, a.callee.Type.Code(),
+		ftu.SanitizeRepr(a.callSite),
+		ftu.Sanitize(a.callSite.Parent().Name()))
 }
 
 func (a *ReturnValNode) String() string {
 	if a == nil {
 		return ""
 	}
-	return fmt.Sprintf("\"[#%d.%d] %s.return.%d\"", a.parent.ID, a.id, a.parent.Parent.Name(), a.index)
+	return fmt.Sprintf("\"[#%d.%d] %s.return.%d\"", a.parent.ID, a.id,
+		ftu.Sanitize(a.parent.Parent.Name()), a.index)
 }
 
 func (a *SyntheticNode) String() string {
@@ -950,28 +962,28 @@ func (a *SyntheticNode) String() string {
 		return ""
 	}
 	return fmt.Sprintf("\"[#%d.%d] synthetic: %s = %s\"",
-		a.parent.ID, a.id, a.instr.(ssa.Value).Name(), a.instr.String())
+		a.parent.ID, a.id, ftu.Sanitize(a.instr.(ssa.Value).Name()), ftu.SanitizeRepr(a.instr))
 }
 
 func (a *FreeVarNode) String() string {
 	if a == nil {
 		return ""
 	}
-	return fmt.Sprintf("\"[#%d.%d] freevar:%s\"", a.parent.ID, a.id, a.ssaNode.Name())
+	return fmt.Sprintf("\"[#%d.%d] freevar:%s\"", a.parent.ID, a.id, ftu.Sanitize(a.ssaNode.Name()))
 }
 
 func (a *BoundVarNode) String() string {
 	if a == nil {
 		return ""
 	}
-	return fmt.Sprintf("\"[#%d.%d] boundvar:%s\"", a.ParentNode().parent.ID, a.id, a.ssaValue.String())
+	return fmt.Sprintf("\"[#%d.%d] boundvar:%s\"", a.ParentNode().parent.ID, a.id, ftu.SanitizeRepr(a.ssaValue))
 }
 
 func (a *ClosureNode) String() string {
 	if a == nil {
 		return ""
 	}
-	return fmt.Sprintf("\"[#%d.%d] closure:%s\"", a.parent.ID, a.id, a.instr.String())
+	return fmt.Sprintf("\"[#%d.%d] closure:%s\"", a.parent.ID, a.id, ftu.SanitizeRepr(a.instr))
 }
 
 func (a *AccessGlobalNode) String() string {
@@ -983,15 +995,17 @@ func (a *AccessGlobalNode) String() string {
 		typ = "write"
 	}
 	return fmt.Sprintf("\"[#%d.%d] global:%s in %s (%s)\"",
-		a.graph.ID, a.id, a.Global.value.String(), a.instr.String(), typ)
+		a.graph.ID, a.id, ftu.SanitizeRepr(a.Global.value), ftu.SanitizeRepr(a.instr), typ)
 }
 
 func (a *BoundLabelNode) String() string {
 	if a == nil {
 		return ""
 	}
-	return fmt.Sprintf("\"[#%d.%d] bound: %s to %s #%d\"", a.parent.ID, a.id, a.instr.String(),
-		a.targetInfo.MakeClosure.String(), a.targetInfo.BoundIndex)
+	return fmt.Sprintf("\"[#%d.%d] bound: %s to %s #%d\"", a.parent.ID, a.id,
+		ftu.SanitizeRepr(a.instr),
+		ftu.SanitizeRepr(a.targetInfo.MakeClosure),
+		a.targetInfo.BoundIndex)
 }
 
 // Print the summary graph to w in the graphviz format.
@@ -1003,7 +1017,7 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 		fmt.Fprintf(w, "subgraph {}\n")
 		return
 	}
-	fmt.Fprintf(w, "subgraph \"cluster_%s\" {\n", g.Parent.Name())
+	fmt.Fprintf(w, "subgraph \"cluster_%s\" {\n", ftu.Sanitize(g.Parent.Name()))
 	fmt.Fprintf(w, "\tlabel=\"%s\";\n", g.Parent.Name()) // label each subgraph with the function name
 	for _, a := range g.Params {
 		for n := range a.Out() {
@@ -1280,11 +1294,11 @@ func (a *CallNode) FullString() string {
 	}
 
 	if a.callSite != nil {
-		s1 := fmt.Sprintf("callsite : \"%s\"", a.callSite.String())
+		s1 := fmt.Sprintf("callsite : \"%s\"", ftu.SanitizeRepr(a.callSite))
 		elt = append(elt, s1)
 	}
 	if a.callee.Callee != nil {
-		s2 := fmt.Sprintf("callee : \"%s\"", a.callee.Callee.String())
+		s2 := fmt.Sprintf("callee : \"%s\"", ftu.SanitizeRepr(a.callee.Callee))
 		elt = append(elt, s2)
 	}
 
@@ -1309,5 +1323,5 @@ func escapeString(s string) string {
 		b = append(b, c)
 	}
 
-	return string(b)
+	return ftu.Sanitize(string(b))
 }

@@ -103,6 +103,6 @@ func findFunc(c *dataflow.AnalyzerState, target *regexp.Regexp) []*ssa.Function 
 }
 
 func regexErr(tt *term.Terminal, expr string, err error) {
-	WriteErr(tt, "Error while compiling %s into regex:", expr)
-	WriteErr(tt, "  %s", err)
+	WriteErr(tt, "Error while compiling %q into regex:", expr) // expr may come from config file
+	WriteErr(tt, "  %s", err)                                  // err is safe
 }
