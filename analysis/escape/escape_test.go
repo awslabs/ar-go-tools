@@ -65,6 +65,33 @@ func assertEdge(t *testing.T, g *EscapeGraph, a, b *Node) {
 	}
 }
 
+// unsimplifiedEscapeSummary computes the summary of a function without removing redudant nodes,
+// etc., which is required to do some tests that explicitly look for these nodes.
+func unsimplifiedEscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
+	prog := &ProgramAnalysisState{
+		make(map[*ssa.Function]*functionAnalysisState),
+		newGlobalNodeGroup(),
+		config.NewLogGroup(config.NewDefault()),
+		nil,
+	}
+	analysis := newFunctionAnalysisState(f, prog)
+	resummarize(analysis)
+	returnResult := NewEmptyEscapeGraph(analysis.nodes)
+	for block, blockEndState := range analysis.blockEnd {
+		if len(block.Instrs) > 0 {
+			if retInstr, ok := block.Instrs[len(block.Instrs)-1].(*ssa.Return); ok {
+				returnResult.Merge(blockEndState)
+				for i, rValue := range retInstr.Results {
+					if IsEscapeTracked(rValue.Type()) {
+						returnResult.WeakAssign(analysis.nodes.ReturnNode(i, rValue.Type()), analysis.nodes.ValueNode(rValue))
+					}
+				}
+			}
+		}
+	}
+	return returnResult
+}
+
 // Check the escape results. The expected graph shapes are specific to a single input file, despite the arguments.
 //
 //gocyclo:ignore
@@ -81,23 +108,23 @@ func TestSimpleEscape(t *testing.T) {
 	getGraph := func(f string) *EscapeGraph {
 		fn := findFunction(program, f)
 		cgNode := result.CallGraph.Nodes[fn]
-		return EscapeSummary(cgNode.Func)
+		return unsimplifiedEscapeSummary(cgNode.Func)
 	}
 	t.Run("consume", func(t *testing.T) {
 		graph := getGraph("consume")
-		x := findSingleNode(t, graph, "gbl:globalS")
+		x := findSingleNode(t, graph, "*globalS")
 		y := findSingleNode(t, graph, "*s S")
 		assertEdge(t, graph, x, y)
 	})
 	t.Run("leakThroughGlobal", func(t *testing.T) {
 		graph := getGraph("leakThroughGlobal")
-		x := findSingleNode(t, graph, "gbl:globalS")
+		x := findSingleNode(t, graph, "*globalS")
 		y := findSingleNode(t, graph, "new S")
 		assertEdge(t, graph, x, y)
 	})
 	t.Run("testGlobalLoadStore", func(t *testing.T) {
 		graph := getGraph("testGlobalLoadStore")
-		g := findSingleNode(t, graph, "gbl:globalS")
+		g := findSingleNode(t, graph, "*globalS")
 		s := findSingleNode(t, graph, "new S")
 		b := findSingleNode(t, graph, "new B")
 		l := findSingleNode(t, graph, "command-line-arguments.S load")
@@ -122,8 +149,11 @@ func TestSimpleEscape(t *testing.T) {
 	})
 	t.Run("testFieldOfGlobal", func(t *testing.T) {
 		graph := getGraph("testFieldOfGlobal")
-		x := findSingleNode(t, graph, "gbl:GG")
+		x := findSingleNode(t, graph, "*GG")
 		y := findSingleNode(t, graph, "new B")
+		if x == nil {
+			t.Fatalf("x must not be nil")
+		}
 		x = graph.FieldSubnode(x, "Bptr", nil)
 		assertEdge(t, graph, x, y)
 	})
@@ -140,8 +170,11 @@ func TestSimpleEscape(t *testing.T) {
 		}
 	})
 	t.Run("testManyAccesses", func(t *testing.T) {
-		graph := getGraph("testManyAccesses")
+		fn := findFunction(program, "testManyAccesses")
+		cgNode := result.CallGraph.Nodes[fn]
+		graph := EscapeSummary(cgNode.Func)
 		if len(graph.status) > 10 {
+			fmt.Printf("Graph is %s", graph.Graphviz())
 			t.Errorf("Graph should not be too big")
 		}
 	})
@@ -262,6 +295,10 @@ func TestInterproceduralEscape(t *testing.T) {
 		"testChain",
 		"testStickyErrorReader",
 		"testMutualInterfaceRecursion",
+		"testFunctionPointerReturn",
+		"testOrdinaryFunction",
+		"testBoundMethodFuncPointer",
+		"testAbstractFunction",
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -685,6 +722,7 @@ func TestLocalityComputation(t *testing.T) {
 		"testClosureFreeVar2",
 		"testClosureNonPointerFreeVar",
 		"testBoundMethod",
+		"testInterfaceMethodCall",
 	}
 	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {
