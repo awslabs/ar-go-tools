@@ -22,7 +22,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -70,8 +70,8 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.AnalyzerState, entrypoint d
 		if !elt.Node.Graph().Constructed {
 
 			logger.Debugf("%s: summary has not been built for %s.",
-				colors.Yellow("WARNING"),
-				colors.Yellow(elt.Node.Graph().Parent.Name()))
+				formatutil.Yellow("WARNING"),
+				formatutil.Yellow(formatutil.Sanitize(elt.Node.Graph().Parent.Name())))
 			// In that case, continue as there is no information on data flow
 			continue
 		}

@@ -28,7 +28,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -87,7 +87,7 @@ func main() {
 	case "static":
 		callgraphAnalysisMode = dataflow.StaticAnalysis
 	default:
-		_, _ = fmt.Fprintf(os.Stderr, "analysis %s not recognized", *modeFlag)
+		_, _ = fmt.Fprintf(os.Stderr, "analysis %q not recognized", *modeFlag)
 		os.Exit(2)
 	}
 
@@ -96,12 +96,12 @@ func main() {
 		config.SetGlobalConfig(*configPath)
 		renderConfig, err = config.LoadGlobal()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "could not load config %s\n", *configPath)
+			fmt.Fprintf(os.Stderr, "could not load config %q\n", *configPath)
 			return
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, colors.Faint("Reading sources")+"\n")
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
@@ -113,20 +113,20 @@ func main() {
 
 	// Compute the call graph
 	if *cgOut != "" || *htmlOut != "" {
-		fmt.Fprintf(os.Stderr, colors.Faint("Computing call graph")+"\n")
+		fmt.Fprintf(os.Stderr, formatutil.Faint("Computing call graph")+"\n")
 		start := time.Now()
 		cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
 		cgComputeDuration := time.Since(start).Seconds()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, colors.Red("Could not compute callgraph: %v", err))
+			fmt.Fprintf(os.Stderr, formatutil.Red("Could not compute callgraph: %v", err))
 			return
 		} else {
-			fmt.Fprintf(os.Stderr, colors.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+			fmt.Fprintf(os.Stderr, formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 		}
 	}
 
 	if *cgOut != "" {
-		fmt.Fprintf(os.Stderr, colors.Faint("Writing call graph in "+*cgOut+"\n"))
+		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing call graph in "+*cgOut+"\n"))
 
 		err = GraphvizToFile(renderConfig, cg, *cgOut)
 		if err != nil {
@@ -136,7 +136,7 @@ func main() {
 	}
 
 	if *htmlOut != "" {
-		fmt.Fprintf(os.Stderr, colors.Faint("Writing call graph in "+*htmlOut+"\n"))
+		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing call graph in "+*htmlOut+"\n"))
 		err = WriteHtmlCallgraph(program, cg, *htmlOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v\n", err)
@@ -144,7 +144,7 @@ func main() {
 	}
 
 	if *dfOut != "" {
-		fmt.Fprintf(os.Stderr, colors.Faint("Writing inter-procedural dataflow graph in "+*dfOut+"\n"))
+		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing inter-procedural dataflow graph in "+*dfOut+"\n"))
 
 		f, err := os.Create(*dfOut)
 		if err != nil {
@@ -159,7 +159,7 @@ func main() {
 	}
 
 	if ssaOutFlag != nil && *ssaOutFlag != "" {
-		fmt.Fprintf(os.Stderr, colors.Faint("Generating SSA in ")+*ssaOutFlag+"\n")
+		fmt.Fprintf(os.Stderr, formatutil.Faint("Generating SSA in ")+*ssaOutFlag+"\n")
 		err := OutputSsaPackages(program, *ssaOutFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print ssa form:\n%v\n", err)

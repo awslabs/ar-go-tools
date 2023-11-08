@@ -24,6 +24,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -115,7 +116,7 @@ func TestAll(t *testing.T) {
 	sink2source, _ := analysistest.GetExpectSourceToTargets(dir, ".")
 	for sink, sources := range sink2source {
 		for source := range sources {
-			fmt.Printf("Source %s -> sink %s\n", source, sink)
+			fmt.Printf("Source %s -> sink %s\n", formatutil.SanitizeRepr(source), formatutil.SanitizeRepr(sink))
 		}
 	}
 }

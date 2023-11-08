@@ -35,8 +35,8 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 )
 
-// edgeColor defines specific color for specific edges in the callgraph
-// - a go call site will be colored with a blue edge
+// edgeColor returns a specific color string definition for specific edges in the callgraph
+// - a go call site will be colored with a blue edge (i.e. "[color=blue]")
 // - all other call sites will have a default color edge
 func edgeColor(edge *callgraph.Edge) string {
 	_, isGo := edge.Site.(*ssa.Go)
@@ -122,7 +122,7 @@ func WriteGraphviz(config *config.Config, cg *callgraph.Graph, w io.Writer) erro
 			strings.HasPrefix(pkgString(edge.Caller), "package "+config.PkgFilter) &&
 			strings.HasPrefix(pkgString(edge.Callee), "package "+config.PkgFilter) &&
 			filterFn(edge) {
-			s := fmt.Sprintf("  \"%s\" -> \"%s\" %s;\n",
+			s := fmt.Sprintf("  \"%q\" -> \"%q\" %q;\n",
 				nodeStr(edge.Caller), nodeStr(edge.Callee), edgeColor(edge))
 			_, err := w.Write([]byte(s))
 			if err != nil {
@@ -168,7 +168,7 @@ func OutputSsaPackages(p *ssa.Program, dirName string) error {
 	}
 	err := os.MkdirAll(dirName, 0700)
 	if err != nil {
-		return fmt.Errorf("could not create directory %s: %v", dirName, err)
+		return fmt.Errorf("could not create directory %q: %v", dirName, err)
 	}
 	for _, pkg := range allPackages {
 		// Make a directory corresponding to the package path minus last elt
@@ -179,7 +179,7 @@ func OutputSsaPackages(p *ssa.Program, dirName string) error {
 			fullDirPath = filepath.Join(fullDirPath, appendDirPath)
 			err := os.MkdirAll(fullDirPath, 0700)
 			if err != nil {
-				return fmt.Errorf("could not create directory %s: %v", dirName, err)
+				return fmt.Errorf("could not create directory %q: %v", dirName, err)
 			}
 		}
 		filename := pkg.Pkg.Name() + ".ssa"
@@ -220,7 +220,7 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 			b.WriteTo(w)
 			b.Reset()
 		case *ssa.Global:
-			fmt.Fprintf(w, "%s\n", pkgM.String())
+			fmt.Fprintf(w, "%q\n", pkgM.String())
 		case *ssa.Type:
 			methods := typeutil.IntuitiveMethodSet(pkgM.Type(), &p.MethodSets)
 			for _, sel := range methods {

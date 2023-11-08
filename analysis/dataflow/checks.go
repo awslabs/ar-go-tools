@@ -17,7 +17,7 @@ package dataflow
 import (
 	"fmt"
 
-	"github.com/awslabs/ar-go-tools/internal/colors"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -26,7 +26,7 @@ func CheckIndex(c *AnalyzerState, node IndexedGraphNode, callSite *CallNode, msg
 	if node.Index() >= len(callSite.Args()) {
 		pos := c.Program.Fset.Position(callSite.CallSite().Value().Pos())
 		c.Logger.Debugf("%s: trying to access index %d of %s, which has"+
-			" only %d elements\nSee: %s\n", msg, node.Index(), callSite.String(), len(callSite.Args()),
+			" only %d elements\nSee: %s\n", msg, node.Index(), callSite, len(callSite.Args()),
 			pos)
 		return fmt.Errorf("bad index %d at %s", node.Index(), pos)
 	}
@@ -50,7 +50,7 @@ func CheckNoGoRoutine(s *AnalyzerState, reportedLocs map[*ssa.Go]bool, node *Cal
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
 		if !reportedLocs[goroutine] {
 			reportedLocs[goroutine] = true
-			s.Logger.Warnf(colors.Yellow("Data flows to Go call."))
+			s.Logger.Warnf(formatutil.Yellow("Data flows to Go call."))
 			s.Logger.Warnf("-> Position: %s", node.Position(s))
 		}
 	}

@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
@@ -112,7 +113,7 @@ func runVisitorPass(pass *analysis.Pass) (interface{}, error) {
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 
 	for _, function := range ssaInfo.SrcFuncs {
-		fmt.Printf("Function: %s\n", function.Name())
+		fmt.Printf("Function: %q\n", formatutil.Sanitize(function.Name()))
 		op := &InstructionCountingOp{pass: pass, count: 0, report: true}
 		RunDFS(op, function)
 		// Don't report on second run

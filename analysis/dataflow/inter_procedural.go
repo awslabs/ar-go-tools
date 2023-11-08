@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -149,7 +150,7 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 					externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node)
 					if externalContractSummary != nil {
 						logger.Debugf("Loaded %s from external contracts.\n",
-							node.CallSite().Common().String())
+							formatutil.SanitizeRepr(node.CallSite().Common()))
 						g.Summaries[node.Callee()] = externalContractSummary
 						node.CalleeSummary = externalContractSummary
 						if x := externalContractSummary.Callsites[node.CallSite()]; x == nil {
@@ -279,18 +280,18 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 	isEntryPointSsa func(ssa.Node) bool,
 	isEntryPointGraphNode func(node GraphNode) bool) {
 
+	g.AnalyzerState.Logger.Infof("Scanning for entry points ...\n")
 	entryPoints := make(map[KeyType]NodeWithTrace)
-
 	for _, summary := range g.Summaries {
 		// Identify the entry points for that function: all the call sites that are entry points
 		summary.ForAllNodes(scanEntryPoints(isEntryPointGraphNode, g, entryPoints, isEntryPointSsa))
 	}
 
-	g.AnalyzerState.Logger.Infof("--- # of analysis entrypoints: %d ---\n", len(entryPoints))
+	g.AnalyzerState.Logger.Infof("--- # of analysis entry points: %d ---\n", len(entryPoints))
 	if g.AnalyzerState.Logger.LogsDebug() {
 		for _, entryPoint := range entryPoints {
-			g.AnalyzerState.Logger.Debugf("Entry: %s", entryPoint.Node.String())
-			g.AnalyzerState.Logger.Debugf("      in context %s", entryPoint.Trace.String())
+			g.AnalyzerState.Logger.Debugf("Entry: %s", entryPoint.Node)
+			g.AnalyzerState.Logger.Debugf("      in context %s", entryPoint.Trace)
 		}
 	}
 
@@ -379,7 +380,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 
 	if calleeSummary == nil {
 		if calleeSummary = NewPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
-			logger.Debugf("Loaded %s from summaries.\n", node.Callee().String())
+			logger.Debugf("Loaded %s from summaries.\n", formatutil.SanitizeRepr(node.Callee()))
 			g.Summaries[node.Callee()] = calleeSummary
 		}
 	}
@@ -387,7 +388,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 	if calleeSummary != nil && !calleeSummary.Constructed {
 		if shortSummary, isPredefined := summaries.SummaryOfFunc(node.Callee()); isPredefined {
 			calleeSummary.PopulateGraphFromSummary(shortSummary, false)
-			logger.Debugf("Constructed %s from summaries.\n", node.Callee().String())
+			logger.Debugf("Constructed %s from summaries.\n", formatutil.SanitizeRepr(node.Callee()))
 		}
 	}
 
@@ -466,14 +467,15 @@ func (g *InterProceduralFlowGraph) summaryNotFound(node *CallNode) {
 	if node.callee.Callee.Name() != "init" &&
 		g.AnalyzerState.IsReachableFunction(node.callee.Callee) {
 
-		g.AnalyzerState.Logger.Debugf("Could not find summary of %s", node.callSite.String())
+		g.AnalyzerState.Logger.Debugf("Could not find summary of %s", node.callSite)
 		if node.callee.Callee != nil {
-			g.AnalyzerState.Logger.Debugf("|-- Key: %s", node.callee.Callee.String())
+			g.AnalyzerState.Logger.Debugf("|-- Key: %s", formatutil.SanitizeRepr(node.callee.Callee))
 		}
 		g.AnalyzerState.Logger.Debugf("|-- Location: %s", node.Position(g.AnalyzerState))
 
 		if node.callSite.Common().IsInvoke() {
-			g.AnalyzerState.Logger.Debugf("|-- invoke resolved to callee %s", node.callee.Callee.String())
+			g.AnalyzerState.Logger.Debugf("|-- invoke resolved to callee %s",
+				formatutil.SanitizeRepr(node.callee.Callee))
 		}
 	}
 }
