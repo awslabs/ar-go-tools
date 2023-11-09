@@ -917,6 +917,37 @@ type parameterLoad struct {
 	param    int
 }
 
+// Adds nodes for global objects (both package vars and address-taken static functions) that are
+// referenced explicitly by the body of f. Nodes for things not referenced may be added from the
+// summaries of other functions, but these don't need special handling.
+func addGlobalObjectNodes(f *ssa.Function, initialGraph *EscapeGraph) {
+	operands := []*ssa.Value{}
+	for _, blk := range f.Blocks {
+		for _, instr := range blk.Instrs {
+			operands = operands[:0]
+			// Avoid picking up the static callee of function calls
+			if c, ok := instr.(*ssa.Call); ok && c.Call.StaticCallee() != nil {
+				for i := range c.Call.Args {
+					operands = append(operands, &c.Call.Args[i])
+				}
+			} else if _, ok := instr.(*ssa.DebugRef); ok {
+				// do nothing to ignore debugref
+			} else {
+				operands = instr.Operands(operands)
+			}
+			for _, v := range operands {
+				switch vv := (*v).(type) {
+				case *ssa.Global:
+					initialGraph.AddEdge(initialGraph.nodes.ValueNode(vv), initialGraph.nodes.globalNodes.GlobalNode(vv), EdgeExternal)
+				case *ssa.Function:
+					initialGraph.AddEdge(initialGraph.nodes.ValueNode(vv), initialGraph.nodes.globalNodes.StaticFunctionNode(vv), EdgeExternal)
+				}
+			}
+		}
+	}
+
+}
+
 // newFunctionAnalysisState creates a new function analysis for the given function, tied to the given whole program analysis
 func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *functionAnalysisState) {
 	nodes := NewNodeGroup(prog.globalNodes)
@@ -967,30 +998,7 @@ func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *
 		}
 		nodes.freevars = append(nodes.freevars, freeVarNode)
 	}
-	operands := []*ssa.Value{}
-	for _, blk := range f.Blocks {
-		for _, instr := range blk.Instrs {
-			operands = operands[:0]
-			// Avoid picking up the static callee of function calls
-			if c, ok := instr.(*ssa.Call); ok && c.Call.StaticCallee() != nil {
-				for i := range c.Call.Args {
-					operands = append(operands, &c.Call.Args[i])
-				}
-			} else if _, ok := instr.(*ssa.DebugRef); ok {
-				// do nothing to ignore debugref
-			} else {
-				operands = instr.Operands(operands)
-			}
-			for _, v := range operands {
-				switch vv := (*v).(type) {
-				case *ssa.Global:
-					initialGraph.AddEdge(nodes.ValueNode(vv), nodes.globalNodes.GlobalNode(vv), EdgeExternal)
-				case *ssa.Function:
-					initialGraph.AddEdge(nodes.ValueNode(vv), nodes.globalNodes.StaticFunctionNode(vv), EdgeExternal)
-				}
-			}
-		}
-	}
+	addGlobalObjectNodes(f, initialGraph)
 
 	worklist := []*ssa.BasicBlock{}
 	if len(f.Blocks) > 0 {
@@ -1552,6 +1560,8 @@ func CanPointTo(a, b types.Type) bool {
 // unsound when the program uses e.g. unsafe constructs, and incomplete in that it will not check
 // all possible ill-typed constructs. It is instead intended to aid debugging by isolating type
 // errors to the place(s) where they are first introduced.
+//
+//gocyclo:ignore
 func TypecheckEscapeGraph(g *EscapeGraph) error {
 	typesMap := g.nodes.globalNodes.types
 	for n, succs := range g.edges {
@@ -1626,6 +1636,8 @@ func wellFormedEscapeGraph(g *EscapeGraph) error {
 // simplifySummary removes irrelevant load nodes from a given function summary graph. "Irrelevant"
 // nodes are load nodes that don't have any leaks or incoming/outgoing internal edges (and also
 // doesn't point to any nodes that need to be kept). Modifies g in-place.
+//
+//gocyclo:ignore
 func simplifySummary(g *EscapeGraph, logger *config.LogGroup) {
 	// The set of nodes to be removed
 	candidatesForRemoval := map[*Node]struct{}{}
