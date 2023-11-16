@@ -745,11 +745,15 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	escapeGraph := v.escapeGraphs[f][nKey]
 	if escapeGraph != nil {
 		v.checkEscape(s, nextNode, escapeGraph)
-	} else {
+	} else if s.EscapeAnalysisState.IsSummarized(f) {
 		e := fmt.Errorf("missing escape for %s in context %s (from %s)", f, nKey, cur.Node)
 		s.Logger.Errorf(e.Error())
 		s.Logger.Debugf("%s has %d contexts", f, len(v.escapeGraphs[f]))
 		s.AddError(e.Error(), e)
+	} else {
+		// The function doesn't have an escape graph explicitly, but we got here because of taint.
+		// Thus, we might be missing taint escape. Ideally, this should be fixed by adjusting the allowlist.
+		s.Logger.Warnf("Function %s has no escape information, but does have taint flow", f.String())
 	}
 	return update
 }
@@ -780,7 +784,9 @@ func (v *Visitor) storeEscapeGraph(s *df.AnalyzerState, stack *df.CallStack, cal
 		return false
 	}
 	callee := callNode.Callee()
-
+	if !s.EscapeAnalysisState.IsSummarized(callee) {
+		return false
+	}
 	var escapeContext *EscapeInfo
 
 	key := "" // key corresponding to no context if the function is a root

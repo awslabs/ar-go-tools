@@ -605,7 +605,7 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 	// Handle calls where we know the callee
 	callee := instrType.Call.StaticCallee()
 	summary := ea.prog.summaries[callee]
-	if summary != nil {
+	if summary != nil && !summary.overflow {
 		// We can use the finalGraph pointer freely as it will never change after it is created
 		summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 		if ea.prog.logger.LogsTrace() {
@@ -664,7 +664,7 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 			// Find the corresponding ssa.Function, and perform the invoke
 			if concreteCallee, ok := ea.nodes.globalNodes.function[closureNode]; ok {
 				summary := ea.prog.summaries[concreteCallee]
-				if summary != nil {
+				if summary != nil && !summary.overflow {
 					// Record our use of this summary for recursion-covergence purposes
 					summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 
@@ -700,7 +700,7 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 			pre := g.Clone()
 			for concreteCallee := range callees {
 				summary := ea.prog.summaries[concreteCallee]
-				if summary != nil {
+				if summary != nil && !summary.overflow {
 					// Record our use of this summary for recursion-covergence purposes
 					summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 
@@ -766,7 +766,7 @@ func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *Esca
 		pre := g.Clone()
 		for callee := range callees {
 			summary := ea.prog.summaries[callee]
-			if summary != nil {
+			if summary != nil && !summary.overflow {
 				// Record our use of this summary for recursion-covergence purposes
 				summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
 				if lang.IsNillableType(callee.Params[0].Type()) {
@@ -1095,10 +1095,15 @@ func (ea *functionAnalysisState) addToBlockWorklist(block *ssa.BasicBlock) {
 	}
 }
 
-// Impose an artifical maximum number of edges in a given graph. This is an unsound hack that
-// is just present so that we can gauge progress while developing the analysis.
-// TODO: remove this limit by making the analysis scale better
-const graphMaximumEdges = 100000
+func graphTooLarge(state *dataflow.AnalyzerState, g *EscapeGraph) bool {
+	if state == nil || g == nil {
+		return false
+	}
+	if len(g.Edges(nil, nil, EdgeAll)) > state.Config.EscapeConfig.SummaryMaximumSize {
+		return true
+	}
+	return false
+}
 
 // RunForwardIterative is an implementation of the convergence loop of the monotonic framework.
 // Each block is processed, and if it's result changes the successors are added.
@@ -1109,12 +1114,8 @@ func (ea *functionAnalysisState) RunForwardIterative() error {
 	for len(ea.worklist) > 0 {
 		block := ea.worklist[0]
 		ea.worklist = ea.worklist[1:]
-		l := 0
 		g := ea.blockEnd[block]
-		if g != nil {
-			l = len(g.Edges(nil, nil, EdgeAll))
-		}
-		if l > graphMaximumEdges {
+		if graphTooLarge(ea.prog.state, g) {
 			stats := ""
 			counts := map[string]int{}
 			for n := range g.status {
@@ -1193,12 +1194,8 @@ func resummarize(ea *functionAnalysisState) (changed bool) {
 		if ea.overflow {
 			return false
 		}
-		ea.prog.logger.Warnf("Warning, %v in %s\n", err, ea.function.String())
-		ea.prog.logger.Warnf("Could not compute summary for %s\n", ea.function.String())
+		ea.prog.logger.Warnf("Warning, could not compute summary for %s: %v\n", ea.function.String(), err)
 		ea.overflow = true
-		for i := range ea.nodes.returnNodes {
-			returnResult.AddNode(ea.nodes.ReturnNode(i, types.NewInterfaceType([]*types.Func{}, []types.Type{})))
-		}
 		return true
 	}
 
@@ -1214,16 +1211,12 @@ func resummarize(ea *functionAnalysisState) (changed bool) {
 	if wellFormedErr := wellFormedEscapeGraph(returnResult); wellFormedErr != nil {
 		panic(wellFormedErr)
 	}
-	l := len(returnResult.Edges(nil, nil, EdgeAll))
-	if l > graphMaximumEdges {
+	if graphTooLarge(ea.prog.state, returnResult) {
 		if ea.overflow {
 			return false
 		}
-		ea.prog.logger.Warnf("Warning, %v in %s\n", err, ea.function.String())
+		ea.prog.logger.Warnf("Warning, could not compute summary for %s: %v\n", ea.function.String(), err)
 		ea.overflow = true
-		for i := range ea.nodes.returnNodes {
-			returnResult.AddNode(ea.nodes.ReturnNode(i, types.NewInterfaceType([]*types.Func{}, []types.Type{})))
-		}
 		return true
 	}
 	same := ea.finalGraph != nil && ea.finalGraph.Matches(returnResult)
@@ -1284,18 +1277,30 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	// Find all the nodes that are in the main package, and thus treat everything else as not summarized
 	nodes := []*callgraph.Node{}
 	for f, node := range state.PointerAnalysis.CallGraph.Nodes {
-		if len(f.Blocks) > 0 {
-			pkg := lang.PackageTypeFromFunction(f)
-			inStdLib := pkg != nil && stdLib[pkg.Path()]
-			if !inStdLib && (pkg == nil || state.Config.MatchPkgFilter(pkg.Path()) || state.Config.MatchPkgFilter(pkg.Name())) {
-				prog.summaries[f] = newFunctionAnalysisState(f, prog)
-				nodes = append(nodes, node)
-			} else {
-				handlePresummarizedFunction(f, prog)
-			}
-		} else {
+		// No blocks means external, so must use presummary if available
+		if len(f.Blocks) == 0 {
 			handlePresummarizedFunction(f, prog)
+			continue
 		}
+		// If explicitly allowed or denied, respect that config
+		allowListStatus, ok := state.Config.EscapeConfig.Functions[f.String()]
+		if ok && allowListStatus {
+			prog.summaries[f] = newFunctionAnalysisState(f, prog)
+			nodes = append(nodes, node)
+			continue
+		} else if ok && !allowListStatus {
+			handlePresummarizedFunction(f, prog)
+			continue
+		}
+		// Check function against package filter
+		pkg := lang.PackageTypeFromFunction(f)
+		inStdLib := pkg != nil && stdLib[pkg.Path()]
+		if !inStdLib && (pkg == nil || state.Config.MatchPkgFilter(pkg.Path()) || state.Config.MatchPkgFilter(pkg.Name())) {
+			prog.summaries[f] = newFunctionAnalysisState(f, prog)
+			nodes = append(nodes, node)
+			continue
+		}
+		handlePresummarizedFunction(f, prog)
 	}
 	if prog.logger.LogsTrace() {
 		prog.logger.Tracef("Have a total of %d nodes", len(nodes))

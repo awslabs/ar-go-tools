@@ -390,6 +390,27 @@ func recConcat2(n *Node) string {
 	return r
 }
 
+func ExampleUnsummarizedFunction() {
+	s := source1() // @Source(ext)
+	t := "untainted"
+	otherFunction1(s, t)
+}
+
+// The defintion of otherFunction1 is hidden from the escape analysis, but not taint
+func otherFunction1(s string, t string) {
+	n := &Node{}
+	otherFunction2(s, t, n)
+}
+
+func otherFunction2(s string, t string, n *Node) {
+	// Here, s is tainted, and n is local, but the escape analysis does not see the definition of
+	// otherFunction1, so it assumes n is escaped
+	n.label = s // @Escape(ext)
+	n2 := &Node{}
+	n2.label = t
+	G.next = n2 // no escape should happen, as t is untainted
+}
+
 func main() {
 	ExampleEscape1()
 	ExampleEscape1bis()
@@ -410,4 +431,5 @@ func main() {
 	ExampleEscape15()
 	ExampleEscapeRecursion()
 	ExampleEscapeMutualRecursion()
+	ExampleUnsummarizedFunction()
 }
