@@ -1,0 +1,3 @@
+[submodule "testdata/src/agent-sessions/amazon-ssm-agent"]
+	path = testdata/src/agent-sessions/amazon-ssm-agent
+	url = https://github.com/aws/amazon-ssm-agent.git
