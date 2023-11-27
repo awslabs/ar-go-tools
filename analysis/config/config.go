@@ -15,7 +15,9 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"regexp"
@@ -40,6 +42,43 @@ func LoadGlobal() (*Config, error) {
 	return Load(configFile)
 }
 
+type EscapeConfig struct {
+
+	// Allow/blocklist of functions, keyed by .String() (e.g. command-line-arguments.main,
+	// (*package.Type).Method, etc). A value of true means allow, false is block, and not present is
+	// default behavior.
+	Functions map[string]bool `json:"functions"`
+
+	// The maximum size of an escape summary. If a function attempts to compute a larger summary, it
+	// will be replaced by a conservative, unsummarized stub.
+	SummaryMaximumSize int `json:"summary-maximum-size"`
+
+	// Allow/blocklist of packages, keyed by package path. A value of true means allow, false is
+	// block, and not present is default behavior.
+	PkgFilter string `json:"pkg-filter"`
+
+	// if the PkgFilter is specified
+	pkgFilterRegex *regexp.Regexp
+}
+
+func NewEscapeConfig() *EscapeConfig {
+	return &EscapeConfig{
+		Functions:          map[string]bool{},
+		PkgFilter:          "",
+		SummaryMaximumSize: 100000,
+	}
+}
+
+func (c *EscapeConfig) MatchPkgFilter(pkgname string) bool {
+	if c.pkgFilterRegex != nil {
+		return c.pkgFilterRegex.MatchString(pkgname)
+	} else if c.PkgFilter != "" {
+		return strings.HasPrefix(pkgname, c.PkgFilter)
+	} else {
+		return true
+	}
+}
+
 // Config contains lists of sanitizers, sinks, sources, static commands to identify ...
 // To add elements to a config file, add fields to this struct.
 // If some field is not defined in the config file, it will be empty/zero in the struct.
@@ -61,6 +100,8 @@ type Config struct {
 
 	// if the CoverageFilter is specified
 	coverageFilterRegex *regexp.Regexp
+
+	EscapeConfig *EscapeConfig
 
 	// TaintTrackingProblems lists the taint tracking specifications
 	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking-problems"`
@@ -119,6 +160,9 @@ type Options struct {
 
 	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
 	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis"`
+
+	// Path to a JSON file that has the escape configuration (allow/blocklist)
+	EscapeConfigFile string `xml:"escape-config,attr" yaml:"escape-config"`
 
 	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
 	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural"`
@@ -179,6 +223,7 @@ func NewDefault() *Config {
 		SlicingProblems:        nil,
 		StaticCommandsProblems: nil,
 		DataflowSpecs:          []string{},
+		EscapeConfig:           NewEscapeConfig(),
 		Options: Options{
 			ReportsDir:          "",
 			PkgFilter:           "",
@@ -249,6 +294,19 @@ func Load(filename string) (*Config, error) {
 		}
 	}
 
+	if cfg.EscapeConfigFile != "" {
+		if err := loadEscapeConfig(cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	if cfg.EscapeConfig.PkgFilter != "" {
+		r, err := regexp.Compile(cfg.EscapeConfig.PkgFilter)
+		if err == nil {
+			cfg.EscapeConfig.pkgFilterRegex = r
+		}
+	}
+
 	for _, tSpec := range cfg.TaintTrackingProblems {
 		funcutil.Iter(tSpec.Sanitizers, compileRegexes)
 		funcutil.Iter(tSpec.Sinks, compileRegexes)
@@ -293,6 +351,27 @@ func setReportsDir(c *Config, filename string) error {
 			}
 		}
 	}
+	return nil
+}
+
+func loadEscapeConfig(c *Config) error {
+	data := NewEscapeConfig()
+	if c.EscapeConfigFile != "" {
+		file, err := os.Open(c.RelPath(c.EscapeConfigFile))
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(content, &data)
+		if err != nil {
+			return err
+		}
+	}
+	c.EscapeConfig = data
 	return nil
 }
 

@@ -17,6 +17,7 @@ package taint
 import (
 	"fmt"
 	"runtime"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -69,7 +70,12 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 
 	// Optional step: running the escape analysis
 	if cfg.UseEscapeAnalysis {
+		state.Logger.Infof("Starting escape bottom-up analysis ...")
+		start := time.Now()
+
 		err := escape.InitializeEscapeAnalysisState(state)
+		state.Logger.Infof("Escape bottom-up pass done (%.2f s).", time.Since(start).Seconds())
+
 		if err != nil {
 			return AnalysisResult{}, err
 		}

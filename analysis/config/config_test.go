@@ -300,6 +300,7 @@ func TestLoadMisc(t *testing.T) {
 				MaxDepth:    DefaultMaxCallDepth,
 				SilenceWarn: false,
 			},
+			EscapeConfig: NewEscapeConfig(),
 		},
 	)
 	// Test configuration file for static-commands
