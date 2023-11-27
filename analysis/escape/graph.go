@@ -232,7 +232,7 @@ func (g *EscapeGraph) Edges(src, dest *Node, mask edgeFlags) []*Edge {
 // Pointees returns the set of nodes (as a map to empty struct) that are pointed to by src by any
 // type of direct edge.
 func (g *EscapeGraph) Pointees(src *Node) map[*Node]struct{} {
-	pointees := make(map[*Node]struct{}, 12)
+	pointees := make(map[*Node]struct{})
 	for d := range g.edges[src] {
 		pointees[d] = struct{}{}
 	}

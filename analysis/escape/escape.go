@@ -622,9 +622,6 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 			}
 		}
 		g.Call(g, nil, args, freeVars, rets, summary.finalGraph)
-		if ea.prog.logger.LogsTrace() {
-			ea.prog.logger.Tracef("After call:\n%v", g.Graphviz())
-		}
 	} else {
 		// If we didn't find a summary or didn't know the callee, use the arbitrary function assumption.
 		// Crucially, this is different from a function that will have a summary but we just haven't
@@ -1258,22 +1255,6 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		state:       state,
 	}
 
-	stdLib := map[string]bool{
-		"crypto/tls":                           true,
-		"net":                                  true,
-		"net/http":                             true,
-		"net/http/internal":                    true,
-		"net/textproto":                        true,
-		"github.com/gorilla/websocket":         true,
-		"github.com/cihub/seelog":              true,
-		"github.com/cihub/seelog/archive/gzip": true,
-		"github.com/cihub/seelog/archive/tar":  true,
-		"compress/flate":                       true,
-		"compress/gzip":                        true,
-		"archive/tar":                          true,
-		"mime/multipart":                       true,
-		"encoding/gob":                         true,
-	}
 	// Find all the nodes that are in the main package, and thus treat everything else as not summarized
 	nodes := []*callgraph.Node{}
 	for f, node := range state.PointerAnalysis.CallGraph.Nodes {
@@ -1282,7 +1263,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 			handlePresummarizedFunction(f, prog)
 			continue
 		}
-		// If explicitly allowed or denied, respect that config
+		// If individual function is explicitly allowed or denied, respect that config
 		allowListStatus, ok := state.Config.EscapeConfig.Functions[f.String()]
 		if ok && allowListStatus {
 			prog.summaries[f] = newFunctionAnalysisState(f, prog)
@@ -1292,14 +1273,16 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 			handlePresummarizedFunction(f, prog)
 			continue
 		}
+
 		// Check function against package filter
 		pkg := lang.PackageTypeFromFunction(f)
-		inStdLib := pkg != nil && stdLib[pkg.Path()]
-		if !inStdLib && (pkg == nil || state.Config.MatchPkgFilter(pkg.Path()) || state.Config.MatchPkgFilter(pkg.Name())) {
+		if pkg == nil || state.Config.EscapeConfig.MatchPkgFilter(pkg.Path()) {
 			prog.summaries[f] = newFunctionAnalysisState(f, prog)
 			nodes = append(nodes, node)
 			continue
 		}
+
+		// Default to not summarized
 		handlePresummarizedFunction(f, prog)
 	}
 	if prog.logger.LogsTrace() {
@@ -1641,8 +1624,6 @@ func wellFormedEscapeGraph(g *EscapeGraph) error {
 // simplifySummary removes irrelevant load nodes from a given function summary graph. "Irrelevant"
 // nodes are load nodes that don't have any leaks or incoming/outgoing internal edges (and also
 // doesn't point to any nodes that need to be kept). Modifies g in-place.
-//
-//gocyclo:ignore
 func simplifySummary(g *EscapeGraph, logger *config.LogGroup) {
 	// The set of nodes to be removed
 	candidatesForRemoval := map[*Node]struct{}{}
@@ -1665,11 +1646,19 @@ func simplifySummary(g *EscapeGraph, logger *config.LogGroup) {
 			}
 		}
 	}
+	// Make sure nodes that point to non-candidates aren't removed
+	removeNodesReachingNonCandidate(g, candidatesForRemoval)
+	// Finally, remove the selected nodes from g
+	removeNodesInSet(g, candidatesForRemoval)
+}
 
-	// Run a convergence loop where if a node points at something that isn't a candidate, it is not
-	// a candidate either. This could potentially be more efficient if we had a map of back-edges,
-	// but this depends on the depth we need to propogate non-candidacy backwards and the cost of
-	// creating such a back-edge map.
+// removeNodesReachingNonCandidate removes nodes from the candidate set that transitively reach, via
+// edges, a node not a candidate for removal. This effectively runs a convergence loop where if a
+// node points at something that isn't a candidate, it is not a candidate either. This could
+// potentially be more efficient if we had a map of back-edges, but this depends on the depth we
+// need to propogate non-candidacy backwards and the cost of creating such a back-edge map. Modifies
+// candidatesForRemove in-place.
+func removeNodesReachingNonCandidate(g *EscapeGraph, candidatesForRemoval map[*Node]struct{}) {
 	for {
 		changed := false
 		for src := range candidatesForRemoval {
@@ -1686,7 +1675,10 @@ func simplifySummary(g *EscapeGraph, logger *config.LogGroup) {
 			break
 		}
 	}
-	// Actually remove all the candidates from the map
+}
+
+// removeNodesInSet removes nodes from g indicated by candidatesForRemoval. Modifies g in-place.
+func removeNodesInSet(g *EscapeGraph, candidatesForRemoval map[*Node]struct{}) {
 	for x := range candidatesForRemoval {
 		delete(g.status, x)
 		delete(g.edges, x)

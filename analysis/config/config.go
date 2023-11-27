@@ -52,12 +52,30 @@ type EscapeConfig struct {
 	// The maximum size of an escape summary. If a function attempts to compute a larger summary, it
 	// will be replaced by a conservative, unsummarized stub.
 	SummaryMaximumSize int `json:"summary-maximum-size"`
+
+	// Allow/blocklist of packages, keyed by package path. A value of true means allow, false is
+	// block, and not present is default behavior.
+	PkgFilter string `json:"pkg-filter"`
+
+	// if the PkgFilter is specified
+	pkgFilterRegex *regexp.Regexp
 }
 
 func NewEscapeConfig() *EscapeConfig {
 	return &EscapeConfig{
 		Functions:          map[string]bool{},
+		PkgFilter:          "",
 		SummaryMaximumSize: 100000,
+	}
+}
+
+func (c *EscapeConfig) MatchPkgFilter(pkgname string) bool {
+	if c.pkgFilterRegex != nil {
+		return c.pkgFilterRegex.MatchString(pkgname)
+	} else if c.PkgFilter != "" {
+		return strings.HasPrefix(pkgname, c.PkgFilter)
+	} else {
+		return true
 	}
 }
 
@@ -279,6 +297,13 @@ func Load(filename string) (*Config, error) {
 	if cfg.EscapeConfigFile != "" {
 		if err := loadEscapeConfig(cfg); err != nil {
 			return nil, err
+		}
+	}
+
+	if cfg.EscapeConfig.PkgFilter != "" {
+		r, err := regexp.Compile(cfg.EscapeConfig.PkgFilter)
+		if err == nil {
+			cfg.EscapeConfig.pkgFilterRegex = r
 		}
 	}
 

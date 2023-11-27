@@ -1,2 +1,2 @@
 options:
-    pkg-filter: "main"
+    escape-config: "escape-config.json"

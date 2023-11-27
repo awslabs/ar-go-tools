@@ -1,5 +1,6 @@
 {
     "functions": {
         "command-line-arguments.otherFunction1": false
-    }
+    },
+    "pkg-filter": "command-line-arguments"
 }
