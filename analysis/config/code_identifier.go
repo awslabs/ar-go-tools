@@ -15,6 +15,7 @@
 package config
 
 import (
+	"fmt"
 	"go/types"
 	"regexp"
 
@@ -34,6 +35,9 @@ type CodeIdentifier struct {
 
 	// Package identifies the package of the code identifier.
 	Package string `xml:"package,attr"` // in drawio input, package is an attribute
+
+	// Interface identifies the interface name of the code identifier.
+	Interface string `xml:"interface,attr"`
 
 	// Package identifies the method/function of the code identifier. Method is used loosely here to mean function
 	// or actual method
@@ -59,46 +63,59 @@ type CodeIdentifier struct {
 	// elements that are parsed as regexes.
 	computedRegexs *codeIdentifierRegex
 }
+
+// NewCodeIdentifier properly intializes cid.
+func NewCodeIdentifier(cid CodeIdentifier) CodeIdentifier {
+	return compileRegexes(cid)
+}
+
 type codeIdentifierRegex struct {
-	contextRegex  *regexp.Regexp
-	packageRegex  *regexp.Regexp
-	typeRegex     *regexp.Regexp
-	methodRegex   *regexp.Regexp
-	fieldRegex    *regexp.Regexp
-	receiverRegex *regexp.Regexp
+	contextRegex   *regexp.Regexp
+	packageRegex   *regexp.Regexp
+	interfaceRegex *regexp.Regexp
+	typeRegex      *regexp.Regexp
+	methodRegex    *regexp.Regexp
+	fieldRegex     *regexp.Regexp
+	receiverRegex  *regexp.Regexp
 }
 
 // compileRegexes compiles the strings in the code identifier into regexes. It compiles all identifiers into regexes
 // or none.
 // @ensures cid.computedRegexs != null || cid.computedRegexs.(*) != null
+// TODO improve error handling
 func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	contextRegex, err := regexp.Compile(cid.Context)
 	if err != nil {
-		return cid
+		panic(fmt.Errorf("failed to compile context regex: %v", err))
 	}
 	packageRegex, err := regexp.Compile(cid.Package)
 	if err != nil {
-		return cid
+		panic(fmt.Errorf("failed to compile package regex %v: %v", cid.Package, err))
+	}
+	interfaceRegex, err := regexp.Compile(cid.Interface)
+	if err != nil {
+		panic(fmt.Errorf("failed to compile interface regex %v: %v", cid.Interface, err))
 	}
 	typeRegex, err := regexp.Compile(cid.Type)
 	if err != nil {
-		return cid
+		panic(fmt.Errorf("failed to compile type regex %v: %v", cid.Type, err))
 	}
 	methodRegex, err := regexp.Compile(cid.Method)
 	if err != nil {
-		return cid
+		panic(fmt.Errorf("failed to compile method regex %v: %v", cid.Method, err))
 	}
 	fieldRegex, err := regexp.Compile(cid.Field)
 	if err != nil {
-		return cid
+		panic(fmt.Errorf("failed to compile field regex %v: %v", cid.Field, err))
 	}
 	receiverRegex, err := regexp.Compile(cid.Receiver)
 	if err != nil {
-		return cid
+		panic(fmt.Errorf("failed to compile reciever regex %v: %v", cid.Receiver, err))
 	}
 	cid.computedRegexs = &codeIdentifierRegex{
 		contextRegex,
 		packageRegex,
+		interfaceRegex,
 		typeRegex,
 		methodRegex,
 		fieldRegex,
@@ -112,9 +129,11 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 //
 //gocyclo:ignore
 func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
+	//fmt.Printf("cid: %+v == cidref: %+v\n", cid, cidRef)
 	if cidRef.computedRegexs != nil {
 		return ((cidRef.computedRegexs.contextRegex.MatchString(cid.Context)) || (cidRef.Context == "")) &&
 			((cidRef.computedRegexs.packageRegex.MatchString(cid.Package)) || (cidRef.Package == "")) &&
+			((cidRef.computedRegexs.packageRegex.MatchString(cid.Interface)) || (cidRef.Interface == "")) &&
 			((cidRef.computedRegexs.methodRegex.MatchString(cid.Method)) || (cidRef.Method == "")) &&
 			((cidRef.computedRegexs.receiverRegex.MatchString(cid.Receiver)) || (cidRef.Receiver == "")) &&
 			((cidRef.computedRegexs.fieldRegex.MatchString(cid.Field)) || (cidRef.Field == "")) &&
@@ -123,6 +142,7 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 	} else {
 		return ((cid.Context == cidRef.Context) || (cidRef.Context == "")) &&
 			((cid.Package == cidRef.Package) || (cidRef.Package == "")) &&
+			((cid.Package == cidRef.Interface) || (cidRef.Interface == "")) &&
 			((cid.Method == cidRef.Method) || (cidRef.Method == "")) &&
 			((cid.Receiver == cidRef.Receiver) || (cidRef.Receiver == "")) &&
 			((cid.Field == cidRef.Field) || (cidRef.Field == "")) &&
@@ -140,6 +160,18 @@ func ExistsCid(a []CodeIdentifier, f func(identifier CodeIdentifier) bool) bool 
 		}
 	}
 	return false
+}
+
+// FullMethodName returns the fully qualified name of the code identifier.
+func (cid *CodeIdentifier) FullMethodName() string {
+	if cid.Method != "" {
+		return fmt.Sprintf("%v.%v.%v", cid.Package, cid.Receiver, cid.Method)
+	}
+	if cid.Interface != "" {
+		return fmt.Sprintf("%v.%v", cid.Package, cid.Interface)
+	}
+
+	return "<invalid-cid>"
 }
 
 // MatchType checks whether the code identifier matches the type represented as a types.Type. It is safe to call with
@@ -160,16 +192,32 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 // MatchPackageAndMethod checks whether the function f matches the code identifier on the package and method fields.
 // It is safe to call with nil values.
 func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
-	pkg := lang.PackageNameFromFunction(f)
 	if cid == nil {
 		return false
 	}
 	if f == nil {
 		return cid.Method == "" && cid.Package == ""
 	}
+	pkg := lang.PackageNameFromFunction(f)
 	if cid.computedRegexs != nil && cid.computedRegexs.methodRegex != nil && cid.computedRegexs.packageRegex != nil {
 
 		return cid.computedRegexs.packageRegex.MatchString(pkg) && cid.computedRegexs.methodRegex.MatchString(f.Name())
 	}
 	return cid.Method == f.Name() && cid.Package == pkg
+}
+
+func (cid *CodeIdentifier) MatchInterface(f *ssa.Function) bool {
+	if cid == nil {
+		return false
+	}
+	if f == nil {
+		return cid.Package == "" && cid.Interface == ""
+	}
+
+	pkg := lang.PackageNameFromFunction(f)
+	if cid.computedRegexs != nil && cid.computedRegexs.packageRegex != nil && cid.computedRegexs.interfaceRegex != nil {
+		return cid.computedRegexs.packageRegex.MatchString(pkg) && cid.computedRegexs.interfaceRegex.MatchString(f.Type().String())
+	}
+
+	return cid.Package == pkg && cid.Interface == f.Type().String()
 }
