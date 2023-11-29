@@ -27,6 +27,8 @@ taint-tracking-problems:
     sinks:                          # A list of sinks that should not be reached by senstive data
         - package: "example2"
           method: "LogDataPublicly"
+        - package: "example2"
+          interface: "Logger"
     
     sanitizers:                     # A list of sanitizers that remove the taint from data
         - package: "example1"
@@ -36,7 +38,7 @@ taint-tracking-problems:
         - package: "example3"
           method: "Validator"
 ```
-In this configuration file, the user is trying to detect whether data coming from calls to some function `GetSensitiveData` in a package matching `example1` is flowing to a function `LogDataPublicly` in a package `example2`. If the data passes through a function `Sanitize` in the `example1` package, then it is santize. If the data is validated by the function `Validator` in package `example3`, then it is also taint-free.
+In this configuration file, the user is trying to detect whether data coming from calls to some function `GetSensitiveData` in a package matching `example1` is flowing to a "sink". A sink is a function that is either called `LogDataPublicly` in a package `example2` or any method whose receiver implements the `example2.Logger` interface. If the data passes through a function `Sanitize` in the `example1` package, then it is santized. If the data is validated by the function `Validator` in package `example3`, then it is also taint-free.
 
 > 📝 Note that all strings in the `package` and `method` fields are parsed as regexes; for example, to match `Sanitizer` precisely, one should write `"^Sanitizer$"`; the `"Sanitizer"` specification will match any function name containing `Sanitizer`.
 
@@ -98,8 +100,16 @@ taint-tracking-problems:
 ```
 This implies that any access to the field `taintedMember` of a struct of type `structA` in package `mypackage` will be seen as a source of tainted data.
 
+**Interfaces** are of the form:
+```yaml
+taint-tracking-problems:
+    - sinks:
+        - package: "mypackage"
+          interface: "interfaceName"
+```
+This implies that any method whose receiver implements the `mypackage.interfaceName` interface will be seen as a sink.
 
-> The specifications for sources can be function calls, types, channel receives or field reads. The specifications for sinks, sanitizers and validators can only be functions (method and package).
+> The specifications for sources can be function calls, types, channel receives or field reads. The specifications for sinks, sanitizers and validators can only be functions (method and package) or interfaces (interface name and package).
 
 ### Controlling The Data Flow Search
 

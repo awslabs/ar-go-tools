@@ -17,12 +17,15 @@ package taint
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -67,6 +70,9 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	if err != nil {
 		return AnalysisResult{}, err
 	}
+
+	// Add interface implementations as sinks
+	populateConfigInterfaces(state)
 
 	// Optional step: running the escape analysis
 	if cfg.UseEscapeAnalysis {
@@ -121,4 +127,91 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 		err = fmt.Errorf("analysis returned errors, check AnalysisResult.State for more details")
 	}
 	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
+}
+
+// populateConfigInterfaces adds all the interface implementations for sinks to s.Config.TaintTrackingProblems.
+func populateConfigInterfaces(s *dataflow.AnalyzerState) {
+	newTaintSpecs := make([]config.TaintSpec, 0, len(s.Config.TaintTrackingProblems))
+	for _, taintSpec := range s.Config.TaintTrackingProblems {
+		for _, ci := range taintSpec.Sinks {
+			interfaceToImpls, ok := findImpls(s, ci)
+			if !ok {
+				continue
+			}
+
+			for interfaceMethodName, impls := range interfaceToImpls {
+				iid := interfaceMethodIdent(interfaceMethodName)
+				s.Logger.Infof("Adding interface method to config sinks: %+v\n", iid)
+				// add the interface method
+				taintSpec.Sinks = append(taintSpec.Sinks, iid)
+				for impl := range impls {
+					fid := interfaceImplMethodIdent(impl)
+					s.Logger.Infof("\tAdding interface implementation method to config sinks: %+v\n", fid)
+					taintSpec.Sinks = append(taintSpec.Sinks, fid)
+				}
+			}
+		}
+
+		// newTaintSpecs is needed because taintSpec is a copy
+		newTaintSpecs = append(newTaintSpecs, taintSpec)
+	}
+
+	s.Config.TaintTrackingProblems = newTaintSpecs
+}
+
+// interfaceMethodIdent returns the CodeIdentifier based on the interface method name.
+func interfaceMethodIdent(interfaceMethodName string) config.CodeIdentifier {
+	split := strings.Split(interfaceMethodName, ".")
+	// should always be true
+	if len(split) >= 3 {
+		// e.g. github.com/repo/package.ReceiverType.Method
+		//      ^^^^^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^ ^^^^^^
+		//      package                 receiver     method
+		return config.NewCodeIdentifier(config.CodeIdentifier{
+			Package:  strings.Join(split[0:len(split)-2], "."),
+			Receiver: split[len(split)-2],
+			Method:   split[len(split)-1],
+		})
+	}
+
+	return config.CodeIdentifier{}
+}
+
+// interfaceImplMethodIdent returns the CodeIdentifier for impl.
+func interfaceImplMethodIdent(impl *ssa.Function) config.CodeIdentifier {
+	// method receiver is the first parameter
+	// should always be true
+	if len(impl.Params) > 0 {
+		receiver := impl.Params[0]
+		recvStr := analysisutil.ReceiverStr(receiver.Type())
+		return config.NewCodeIdentifier(config.CodeIdentifier{
+			Package:  lang.PackageNameFromFunction(impl),
+			Receiver: recvStr,
+			Method:   impl.Name(),
+		})
+	}
+
+	return config.CodeIdentifier{}
+}
+
+// findImpls returns a map of the interface method name for ci's interface with all the interface implementations' methods.
+// TODO refactor to avoid string comparisons
+func findImpls(s *dataflow.AnalyzerState, ci config.CodeIdentifier) (map[string]map[*ssa.Function]bool, bool) {
+	if ci.Interface == "" {
+		return nil, false
+	}
+
+	res := make(map[string]map[*ssa.Function]bool)
+	found := false
+	for interfaceName, impls := range s.ImplementationsByType {
+		if strings.Contains(interfaceName, ci.FullMethodName()) {
+			res[interfaceName] = make(map[*ssa.Function]bool)
+			for impl := range impls {
+				res[interfaceName][impl] = true
+				found = true
+			}
+		}
+	}
+
+	return res, found
 }

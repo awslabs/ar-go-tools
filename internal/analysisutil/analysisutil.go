@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	. "github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -204,4 +205,15 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 	default:
 		return false
 	}
+}
+
+// ReceiverStr returns the string receiver name of t.
+// e.g. *repo/package.Method -> Method
+// TODO refactor to avoid string operations
+func ReceiverStr(t types.Type) string {
+	typ := t.String()
+	// get rid of pointer prefix in type name
+	typ = strings.Replace(typ, "*", "", -1)
+	split := strings.Split(typ, ".")
+	return split[len(split)-1]
 }
