@@ -621,7 +621,7 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 				freeVars = append(freeVars, ea.nodes.ValueNode(fv))
 			}
 		}
-		g.Call(g, nil, args, freeVars, rets, summary.finalGraph)
+		g.Call(g.Clone(), nil, args, freeVars, rets, summary.finalGraph)
 	} else {
 		// If we didn't find a summary or didn't know the callee, use the arbitrary function assumption.
 		// Crucially, this is different from a function that will have a summary but we just haven't
