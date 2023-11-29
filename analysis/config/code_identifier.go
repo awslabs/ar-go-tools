@@ -86,31 +86,31 @@ type codeIdentifierRegex struct {
 func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	contextRegex, err := regexp.Compile(cid.Context)
 	if err != nil {
-		panic(fmt.Errorf("failed to compile context regex: %v", err))
+		fmt.Printf("[WARN] failed to compile context regex %v: %v\n", cid.Context, err)
 	}
 	packageRegex, err := regexp.Compile(cid.Package)
 	if err != nil {
-		panic(fmt.Errorf("failed to compile package regex %v: %v", cid.Package, err))
+		fmt.Printf("[WARN] failed to compile package regex %v: %v\n", cid.Package, err)
 	}
 	interfaceRegex, err := regexp.Compile(cid.Interface)
 	if err != nil {
-		panic(fmt.Errorf("failed to compile interface regex %v: %v", cid.Interface, err))
+		fmt.Printf("[WARN] failed to compile interface regex %v: %v\n", cid.Interface, err)
 	}
 	typeRegex, err := regexp.Compile(cid.Type)
 	if err != nil {
-		panic(fmt.Errorf("failed to compile type regex %v: %v", cid.Type, err))
+		fmt.Printf("[WARN] failed to compile type regex %v: %v\n", cid.Type, err)
 	}
 	methodRegex, err := regexp.Compile(cid.Method)
 	if err != nil {
-		panic(fmt.Errorf("failed to compile method regex %v: %v", cid.Method, err))
+		fmt.Printf("[WARN] failed to compile method regex %v: %v\n", cid.Method, err)
 	}
 	fieldRegex, err := regexp.Compile(cid.Field)
 	if err != nil {
-		panic(fmt.Errorf("failed to compile field regex %v: %v", cid.Field, err))
+		fmt.Printf("[WARN] failed to compile field regex %v: %v\n", cid.Field, err)
 	}
 	receiverRegex, err := regexp.Compile(cid.Receiver)
 	if err != nil {
-		panic(fmt.Errorf("failed to compile reciever regex %v: %v", cid.Receiver, err))
+		fmt.Printf("[WARN] failed to compile reciever regex %v: %v\n", cid.Receiver, err)
 	}
 	cid.computedRegexs = &codeIdentifierRegex{
 		contextRegex,
@@ -129,7 +129,6 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 //
 //gocyclo:ignore
 func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
-	//fmt.Printf("cid: %+v == cidref: %+v\n", cid, cidRef)
 	if cidRef.computedRegexs != nil {
 		return ((cidRef.computedRegexs.contextRegex.MatchString(cid.Context)) || (cidRef.Context == "")) &&
 			((cidRef.computedRegexs.packageRegex.MatchString(cid.Package)) || (cidRef.Package == "")) &&

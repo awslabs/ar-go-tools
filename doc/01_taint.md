@@ -103,7 +103,7 @@ This implies that any access to the field `taintedMember` of a struct of type `s
 **Interfaces** are of the form:
 ```yaml
 taint-tracking-problems:
-    - sinsk:
+    - sinks:
         - package: "mypackage"
           interface: "interfaceName"
 ```
