@@ -15,6 +15,8 @@
 package escape
 
 import (
+	"fmt"
+
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/ssa"
@@ -38,11 +40,14 @@ func (*escapeAnalysisImpl) IsEscapeAnalysisState() bool { return true }
 
 func (e *escapeAnalysisImpl) IsSummarized(f *ssa.Function) bool { return e.summaries[f] != nil }
 
-func (p *escapeAnalysisImpl) ComputeArbitraryContext(f *ssa.Function) dataflow.EscapeCallContext {
-	return &escapeContextImpl{p.summaries[f].initialGraph.Clone(), f}
+func (e *escapeAnalysisImpl) ComputeArbitraryContext(f *ssa.Function) dataflow.EscapeCallContext {
+	if !e.IsSummarized(f) {
+		panic(fmt.Errorf("Computing context for un-summarized function %s", f.String()))
+	}
+	return &escapeContextImpl{e.summaries[f].initialGraph.Clone(), f}
 }
 
-func (p *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Function, ctx dataflow.EscapeCallContext) (
+func (e *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Function, ctx dataflow.EscapeCallContext) (
 	instructionLocality map[ssa.Instruction]bool,
 	callsiteInfo map[*ssa.Call]dataflow.EscapeCallsiteInfo) {
 	c, ok := ctx.(*escapeContextImpl)
@@ -52,7 +57,13 @@ func (p *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Funct
 	if f != c.f {
 		panic("Cannot compute locality of function with a different function's EscapeCallContext")
 	}
-	locality, callsites := computeInstructionLocality(p.summaries[f], c.g)
+	if !e.IsSummarized(f) {
+		panic(fmt.Sprintf("Cannot compute locality of function that is not summarized %v", f.String()))
+	}
+	if len(f.Blocks) == 0 {
+		return map[ssa.Instruction]bool{}, map[*ssa.Call]dataflow.EscapeCallsiteInfo{}
+	}
+	locality, callsites := computeInstructionLocality(e.summaries[f], c.g)
 	callsiteInfo = map[*ssa.Call]dataflow.EscapeCallsiteInfo{}
 	for k, v := range callsites {
 		callsiteInfo[k] = &escapeCallsiteInfoImpl{v.g, v.callsite, v.nodes, v.prog}
@@ -69,9 +80,6 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 	nodes := calleeSummary.nodes
 	g := NewEmptyEscapeGraph(nodes)
 	// Copy over nodes into g that are reachable from the arguments.
-	if len(callee.Params) != len(c.callsite.Call.Args) {
-		panic("Argument mismatch")
-	}
 	mappedNodes := map[*Node]bool{}
 	var mapNode func(*Node, *Node)
 
@@ -94,7 +102,7 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 	if c.callsite.Call.IsInvoke() {
 		// An invoke, e.g. t3.Method(t5)
 		// The callsite parameters do not include the receiver, but the callee Params do
-		// We need to map them correctly and then offset the rest of the args
+		// We need to map those two correctly and then offset the rest of the args
 		mapNode(c.nodes.ValueNode(c.callsite.Call.Value), nodes.ValueNode(callee.Params[0]))
 		for i, arg := range c.callsite.Call.Args {
 			if lang.IsNillableType(arg.Type()) {
@@ -102,11 +110,14 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 			}
 		}
 	} else {
+		if len(callee.Params) != len(c.callsite.Call.Args) {
+			panic(fmt.Sprintf("Argument mismatch %s params %v args %v", callee.String(), callee.Params, c.callsite.Call.Args))
+		}
 		if c.callsite.Call.StaticCallee() == nil {
 			// An indirect function call, e.g. t3(t5)
 			for _, freeVar := range callee.FreeVars {
 				if lang.IsNillableType(freeVar.Type()) {
-					for closureNode := range c.g.Deref(c.nodes.ValueNode(c.callsite.Call.Value)) {
+					for closureNode := range c.g.Pointees(c.nodes.ValueNode(c.callsite.Call.Value)) {
 						mapNode(c.g.FieldSubnode(closureNode, freeVar.Name(), freeVar.Type()), nodes.ValueNode(freeVar))
 					}
 				}
@@ -115,7 +126,7 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 			// A immediately invoked function, i.e. t3(t5) where t3 = MakeClosure...
 			for _, freeVar := range callee.FreeVars {
 				if lang.IsNillableType(freeVar.Type()) {
-					for closureNode := range c.g.Deref(c.nodes.ValueNode(c.callsite.Call.Value)) {
+					for closureNode := range c.g.Pointees(c.nodes.ValueNode(c.callsite.Call.Value)) {
 						mapNode(c.g.FieldSubnode(closureNode, freeVar.Name(), freeVar.Type()), nodes.ValueNode(freeVar))
 					}
 				}

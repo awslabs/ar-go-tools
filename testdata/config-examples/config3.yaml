@@ -20,3 +20,5 @@ taint-tracking-problems:
         - package: some/other/package
           type: ThatStruct
           field: OneField
+        - package: some/other/package
+          interface: Interface

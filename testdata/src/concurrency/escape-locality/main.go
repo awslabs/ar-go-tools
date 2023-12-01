@@ -44,6 +44,7 @@ func main() {
 	testClosureFreeVar2()
 	testClosureNonPointerFreeVar()
 	testBoundMethod()
+	testInterfaceMethodCall()
 }
 
 func testLocality2() {
@@ -474,4 +475,34 @@ func testBoundMethod() {
 	f := a.assign
 	globalNode.next = a.a
 	indirectFunc(f)
+}
+
+type Inter interface {
+	DoSomething(*Node)
+}
+
+type InterImpl1 struct {
+	a int
+}
+
+func (i *InterImpl1) DoSomething(n *Node) {
+	i.a = 1
+	if n != nil {
+		leakNode(n)
+	}
+}
+
+type InterImpl2 struct {
+	b int
+}
+
+func (i *InterImpl2) DoSomething(n *Node) {
+	i.b = 2 // LOCAL
+}
+func innerCallMethod(i Inter) {
+	i.DoSomething(nil)
+}
+func testInterfaceMethodCall() {
+	i := &InterImpl2{}
+	innerCallMethod(i)
 }

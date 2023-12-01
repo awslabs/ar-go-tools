@@ -1,0 +1,4 @@
+{
+    "pkg-filter" : "command-line-arguments",
+    "default-summarize": false
+}

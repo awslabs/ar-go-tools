@@ -13,3 +13,4 @@ taint-tracking-problems:
 options:
     report-paths: true
     use-escape-analysis: true
+    escape-config: "escape-config.json"

@@ -14,7 +14,10 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // This function represents a non-deterministic result. Because the analysis
 // isn't boolean sensitive, we don't have to do anything fancy here.
@@ -52,6 +55,11 @@ func main() {
 	testExternal()
 	testChain()
 	testStickyErrorReader()
+	testMutualInterfaceRecursion()
+	testFunctionPointerReturn()
+	testOrdinaryFunction()
+	testBoundMethodFuncPointer()
+	testAbstractFunction()
 }
 
 // Basic test of the assertSameAliases function
@@ -247,4 +255,196 @@ func testStickyErrorReader() {
 	}
 	p := []byte{0, 0, 0, 0}
 	r.Read(p)
+}
+
+type ActionInterface interface {
+	DoSomething(*Node) *Node
+}
+
+type Impl1 struct {
+	i ActionInterface
+}
+
+func (i *Impl1) DoSomething(n *Node) *Node {
+	return i.i.DoSomething(n)
+}
+
+type Impl2 struct {
+	i ActionInterface
+}
+
+func (i *Impl2) DoSomething(n *Node) *Node {
+	return i.i.DoSomething(n)
+}
+
+type Impl3 struct {
+	i ActionInterface
+}
+
+func (i *Impl3) DoSomething(n *Node) *Node {
+	return i.i.DoSomething(n)
+}
+
+type Impl4 struct {
+	i ActionInterface
+}
+
+func (i *Impl4) DoSomething(n *Node) *Node {
+	return i.i.DoSomething(n)
+}
+
+func getImpl() ActionInterface {
+	if arbitrary() {
+		return &Impl1{getImpl()}
+	} else if arbitrary() {
+		return &Impl2{getImpl()}
+	} else if arbitrary() {
+		return &Impl3{getImpl()}
+	} else {
+		return &Impl4{getImpl()}
+	}
+}
+
+// Test whether the size of the graph blows up for recursive interfaces
+func testMutualInterfaceRecursion() {
+	x := getImpl()
+	x.DoSomething(&Node{})
+}
+
+type Value struct {
+}
+type Type struct {
+}
+type encodeState struct {
+}
+
+func (v *Value) IsValid() bool {
+	return true
+}
+
+func (v *Value) Type() Type {
+	return Type{}
+}
+
+type encoderFunc func(e *encodeState, v Value)
+
+func (e *encodeState) reflectValue(v Value) {
+	valueEncoder(v)(e, v)
+}
+
+func valueEncoder(v Value) encoderFunc {
+	if !v.IsValid() {
+		return invalidValueEncoder
+	}
+	return typeEncoder(v.Type())
+}
+
+func typeEncoder(t Type) encoderFunc {
+	if fi, ok := encoderCache.Load(t); ok {
+		return fi.(encoderFunc)
+	}
+
+	// To deal with recursive types, populate the map with an
+	// indirect func before we build it. This type waits on the
+	// real func (f) to be ready and then calls it. This indirect
+	// func is only used for recursive types.
+	var (
+		wg sync.WaitGroup
+		f  encoderFunc
+	)
+	wg.Add(1)
+	fi, loaded := encoderCache.LoadOrStore(t, encoderFunc(func(e *encodeState, v Value) {
+		wg.Wait()
+		f(e, v)
+	}))
+	if loaded {
+		return fi.(encoderFunc)
+	}
+
+	// Compute the real encoder and replace the indirect func with it.
+	f = newTypeEncoder(t, true)
+	wg.Done()
+	encoderCache.Store(t, f)
+	return f
+}
+func invalidValueEncoder(e *encodeState, v Value) {
+
+}
+
+type structEncoder struct {
+}
+
+func newTypeEncoder(t Type, _ bool) encoderFunc {
+	se := structEncoder{}
+	return se.encode
+}
+
+func (se structEncoder) encode(e *encodeState, v Value) {
+}
+
+var encoderCache sync.Map // map[reflect.Type]encoderFunc
+
+func testFunctionPointerReturn() {
+	e := &encodeState{}
+	e.reflectValue(Value{})
+	newTypeEncoder(Type{}, false)(e, Value{})
+}
+
+func leakGlobally(n *Node) {
+	globalVar.next = n
+}
+func getSomeFunc() func(*Node) {
+	return leakGlobally
+}
+func testOrdinaryFunction() {
+	n := &Node{}
+	getSomeFunc()(n)
+	assertAllLeaked(n)
+}
+
+type LeakingStruct struct {
+	dest **Node
+}
+
+func (l *LeakingStruct) leak(n *Node) {
+	*l.dest = n
+}
+func globalLeaker() func(*Node) {
+	x := &LeakingStruct{&globalVar}
+	return x.leak
+}
+func testBoundMethodFuncPointer() {
+	f := globalLeaker()
+	x := &Node{}
+	f(x)
+	assertAllLeaked(x)
+}
+
+func callTwice(f func(n *Node) *Node, n *Node) {
+	f(n)
+	f(n)
+}
+func testAbstractFunction() {
+	var f1, f2 func(*Node) *Node
+	{
+		var x *Node = nil
+		f1 = func(n *Node) *Node {
+			x = n
+			_ = x
+			return nil
+		}
+	}
+	{
+		var x *Node = nil
+		f2 = func(n *Node) *Node {
+			globalVar.next = x
+			return nil
+		}
+	}
+	y := &Node{}
+	if arbitrary() {
+		f1 = f2
+	}
+	callTwice(f1, y)
+	assertAllLocal(y)
 }

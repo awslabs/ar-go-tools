@@ -22,18 +22,16 @@ import (
 	"time"
 
 	"agent-example/datastructs"
+	"agent-example/log"
 	"agent-example/messaging"
 )
-
-func sink(v any) {
-	fmt.Println(v)
-}
 
 func source(id int) string {
 	return fmt.Sprintf("tainted-payload-%d", id)
 }
 
 func main() {
+	logger := log.DefaultImpl{}
 	msg := datastructs.InstanceMessage{
 		CreatedDate: time.Now().String(),
 		Destination: "foo",
@@ -43,5 +41,10 @@ func main() {
 	}
 
 	docState, _ := messaging.ParseSendCommandMessage(context.Background(), msg, "tmp", "mds")
-	sink(docState) // @Sink(msg)
+	logger.Info(docState) // @Sink(msg)
+	logData(logger, docState)
+}
+
+func logData(logger log.Logger, data any) {
+	logger.Info(data) // @Sink(msg)
 }

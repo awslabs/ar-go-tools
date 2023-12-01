@@ -45,7 +45,7 @@ type AnalyzerState struct {
 	// that method.
 	//
 	// If t is the signature of a function, then map[t.string()] will return all the functions matching that type.
-	implementationsByType map[string]map[*ssa.Function]bool
+	ImplementationsByType map[string]map[*ssa.Function]bool
 	keys                  map[string]string
 
 	// DataFlowContracts are dataflow graphs for interfaces.
@@ -84,9 +84,9 @@ func NewInitializedAnalyzerState(logger *config.LogGroup, config *config.Config,
 	program *ssa.Program) (*AnalyzerState, error) {
 	program.Build()
 	state, err := NewAnalyzerState(program, logger, config, []func(*AnalyzerState){
-		func(a *AnalyzerState) { a.PopulateImplementations() },
-		func(a *AnalyzerState) { a.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
-		func(a *AnalyzerState) { a.PopulateGlobalsVerbose() },
+		func(s *AnalyzerState) { s.PopulateImplementations() },
+		func(s *AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
+		func(s *AnalyzerState) { s.PopulateGlobalsVerbose() },
 	})
 	if err != nil {
 		return state, fmt.Errorf("error while running parallel steps: %v", err)
@@ -107,7 +107,7 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 		Logger:                l,
 		Config:                c,
 		Program:               p,
-		implementationsByType: map[string]map[*ssa.Function]bool{},
+		ImplementationsByType: map[string]map[*ssa.Function]bool{},
 		DataFlowContracts:     map[string]*SummaryGraph{},
 		keys:                  map[string]string{},
 		PointerAnalysis:       nil,
@@ -166,11 +166,11 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 }
 
 func (s *AnalyzerState) Size() int {
-	return len(s.implementationsByType)
+	return len(s.ImplementationsByType)
 }
 
 func (s *AnalyzerState) PrintImplementations(w io.Writer) {
-	for typString, implems := range s.implementationsByType {
+	for typString, implems := range s.ImplementationsByType {
 		fmt.Fprintf(w, "KEY: %s\n", typString)
 		for function := range implems {
 			fmt.Fprintf(w, "\tFUNCTION: %s\n", function.String())
@@ -214,7 +214,7 @@ func (s *AnalyzerState) HasErrors() bool {
 
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations
 func (s *AnalyzerState) PopulateTypesToImplementationMap() {
-	if err := ComputeMethodImplementations(s.Program, s.implementationsByType, s.DataFlowContracts, s.keys); err != nil {
+	if err := ComputeMethodImplementations(s.Program, s.ImplementationsByType, s.DataFlowContracts, s.keys); err != nil {
 		s.AddError("implementationsmap", err)
 	}
 }
@@ -401,11 +401,11 @@ func (s *AnalyzerState) ResolveCallee(instr ssa.CallInstruction, useContracts bo
 	}
 
 	// Last option is to use the map from type string to implementation
-	if s.implementationsByType == nil || len(s.implementationsByType) == 0 {
+	if s.ImplementationsByType == nil || len(s.ImplementationsByType) == 0 {
 		return nil, fmt.Errorf("cannot resolve callee without information about possible implementations")
 	}
 
-	if implementations, ok := s.implementationsByType[mKey.ValueOr("")]; ok {
+	if implementations, ok := s.ImplementationsByType[mKey.ValueOr("")]; ok {
 		for implementation := range implementations {
 			callees[implementation] = CalleeInfo{Callee: implementation, Type: InterfaceMethod}
 		}
