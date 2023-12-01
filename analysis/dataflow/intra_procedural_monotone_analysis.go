@@ -26,6 +26,11 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+type IVKey struct {
+	I ssa.Instruction
+	V ssa.Value
+}
+
 // IntraAnalysisState contains the information used by the intra-procedural dataflow analysis.
 type IntraAnalysisState struct {
 	// the data flow information for the analysis
@@ -65,6 +70,8 @@ type IntraAnalysisState struct {
 
 	// freeVarAliases maps values to the free variable it aliases
 	freeVarAliases map[ssa.Value]map[*ssa.FreeVar]bool
+
+	valueAliases map[IVKey][]ValueWithPath
 
 	// shouldTrack returns true if dataflow from the ssa node should be tracked
 	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool
@@ -198,38 +205,46 @@ func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 // over-approximates.
 func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path string,
 	isProceduralEntry bool, ignorePath bool) []MarkWithPath {
-	return state.getMarksRec(i, v, path, isProceduralEntry, ignorePath, map[ValueWithPath]bool{})
+	var origins []MarkWithPath
+	values, ok := state.valueAliases[IVKey{i, v}]
+	if !ok {
+		var computedValues []ValueWithPath
+		state.getValueAliases(&computedValues, i, v, isProceduralEntry, map[ValueWithPath]bool{})
+		state.valueAliases[IVKey{i, v}] = computedValues
+		values = computedValues
+	}
+
+	for _, alias := range values {
+		if ignorePath {
+			for _, mark := range state.flowInfo.MarkedValues[i][alias.Value].AllMarks() {
+				origins = append(origins, mark)
+			}
+		} else {
+			// when the Value is directly marked as tainted.
+			for mark := range state.flowInfo.MarkedValues[i][alias.Value].MarksAt(path) {
+				origins = append(origins, mark)
+			}
+		}
+	}
+	return origins
 }
 
-func (state *IntraAnalysisState) getMarksRec(i ssa.Instruction, v ssa.Value, path string, isProceduralEntry bool,
-	ignorePath bool,
-	queries map[ValueWithPath]bool) []MarkWithPath {
+func (state *IntraAnalysisState) getValueAliases(values *[]ValueWithPath, i ssa.Instruction, v ssa.Value, isProceduralEntry bool,
+	queries map[ValueWithPath]bool) {
 
-	val := ValueWithPath{v, path}
+	val := ValueWithPath{v, "", isProceduralEntry}
 	if queries[val] || v == nil {
-		return []MarkWithPath{}
+		return
 	}
+	*values = append(*values, val)
 	queries[val] = true
-
-	var origins []MarkWithPath
-	if ignorePath {
-		for _, mark := range state.flowInfo.MarkedValues[i][v].AllMarks() {
-			origins = append(origins, mark)
-		}
-	} else {
-		// when the Value is directly marked as tainted.
-		for mark := range state.flowInfo.MarkedValues[i][v].MarksAt(path) {
-			origins = append(origins, mark)
-		}
-	}
 
 	if isProceduralEntry {
 		if _, isCall := v.(*ssa.Call); !isCall {
 			// If any of the aliases of the value is marked, add the marks
 			for _, ptr := range state.findAllPointers(v) {
 				for _, label := range ptr.PointsTo().Labels() {
-					origins = append(origins,
-						state.getMarksRec(i, label.Value(), path, true, ignorePath, queries)...)
+					state.getValueAliases(values, i, label.Value(), true, queries)
 				}
 			}
 
@@ -237,43 +252,46 @@ func (state *IntraAnalysisState) getMarksRec(i ssa.Instruction, v ssa.Value, pat
 			referrers := v.Referrers()
 			if referrers != nil {
 				for _, referrer := range *(v.Referrers()) {
-					origins = append(origins, state.referrerMarks(i, v, path, referrer, queries)...)
+					state.referrerAliases(values, i, v, referrer, queries)
 				}
 			}
 		}
 	}
-
-	return origins
 }
 
 //gocyclo:ignore
-func (state *IntraAnalysisState) referrerMarks(i ssa.Instruction, v ssa.Value, path string,
-	referrer ssa.Instruction, queries map[ValueWithPath]bool) []MarkWithPath {
+func (state *IntraAnalysisState) referrerAliases(values *[]ValueWithPath, i ssa.Instruction, v ssa.Value,
+	referrer ssa.Instruction, queries map[ValueWithPath]bool) {
 	switch refInstr := referrer.(type) {
 	case *ssa.Send:
 		// marks on a Value sent on a channel transfer to channel
 		if v == refInstr.Chan && lang.IsNillableType(refInstr.X.Type()) {
-			return state.getMarksRec(i, refInstr.X, path, true, false, queries)
+			state.getValueAliases(values, i, refInstr.X, true, queries)
+			return
 		}
 	case *ssa.FieldAddr:
 		// refInstr is "y = &v.name"
 		// the Value is the struct, collect the marks on the field address. We are not field sensitive, so if the
 		// field address has marks, then the struct itself has marks.
-		return state.getMarksRec(i, refInstr, path, true, false, queries)
+		state.getValueAliases(values, i, refInstr, true, queries)
+		return
 	case *ssa.IndexAddr:
 		// the marks on an index address transfer to the slice (but not the marks on the index)
 		if v != refInstr.Index {
-			return state.getMarksRec(i, refInstr, path, true, false, queries)
+			state.getValueAliases(values, i, refInstr, true, queries)
+			return
 		}
 	case *ssa.Slice:
 		// the marks of a slice of the Value are also marks of the Value
 		if v == refInstr.X {
-			return state.getMarksRec(i, refInstr, path, true, false, queries)
+			state.getValueAliases(values, i, refInstr, true, queries)
+			return
 		}
 	case *ssa.Store:
 		// is a Value is stored, and that Value is pointer like, the marks transfer to the address
 		if v == refInstr.Addr && lang.IsNillableType(refInstr.Val.Type()) {
-			return state.getMarksRec(i, refInstr.Val, path, true, false, queries)
+			state.getValueAliases(values, i, refInstr.Val, true, queries)
+			return
 		}
 	case *ssa.MapUpdate:
 		flowRef := (ssa.Instruction)(refInstr)
@@ -285,18 +303,16 @@ func (state *IntraAnalysisState) referrerMarks(i ssa.Instruction, v ssa.Value, p
 			if lang.IsNillableType(refInstr.Value.Type()) {
 				flowRef = i
 			}
-			origins := state.getMarksRec(flowRef, refInstr.Value, path, true, false, queries)
+			state.getValueAliases(values, flowRef, refInstr.Value, true, queries)
 
 			flowRef = (ssa.Instruction)(refInstr)
 			if lang.IsNillableType(refInstr.Value.Type()) {
 				flowRef = i
 			}
-			origins = append(origins,
-				state.getMarksRec(flowRef, refInstr.Key, path, true, false, queries)...)
-			return origins
+			state.getValueAliases(values, flowRef, refInstr.Key, true, queries)
+			return
 		}
 	}
-	return []MarkWithPath{}
 }
 
 // simpleTransfer  propagates all the marks from in to out, ignoring Path and tuple indexes

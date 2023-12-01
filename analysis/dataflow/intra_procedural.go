@@ -103,6 +103,7 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 		instrPrev:           map[ssa.Instruction]map[ssa.Instruction]bool{},
 		paramAliases:        map[ssa.Value]map[*ssa.Parameter]bool{},
 		freeVarAliases:      map[ssa.Value]map[*ssa.FreeVar]bool{},
+		valueAliases:        map[IVKey][]ValueWithPath{},
 		shouldTrack:         sm.shouldTrack,
 		postBlockCallback:   sm.postBlockCallBack,
 	}

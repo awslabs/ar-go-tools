@@ -32,8 +32,9 @@ type MarkWithPath struct {
 }
 
 type ValueWithPath struct {
-	Value ssa.Value
-	Path  string
+	Value         ssa.Value
+	Path          string
+	FromProcEntry bool
 }
 
 type abstractValue struct {
