@@ -33,6 +33,7 @@ type MarkWithPath struct {
 
 type ValueWithPath struct {
 	Value         ssa.Value
+	Instruction   ssa.Instruction
 	Path          string
 	FromProcEntry bool
 }

@@ -84,7 +84,6 @@ type IntraAnalysisState struct {
 // initialize should only be called on non-empty functions (non-empty state.summary.Parent)
 func (state *IntraAnalysisState) initialize() {
 	function := state.summary.Parent
-
 	// initialize should only be called on non-empty functions
 	if len(function.Blocks) == 0 || len(function.Blocks[0].Instrs) == 0 {
 		return
@@ -216,12 +215,12 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 
 	for _, alias := range values {
 		if ignorePath {
-			for _, mark := range state.flowInfo.MarkedValues[i][alias.Value].AllMarks() {
+			for _, mark := range state.flowInfo.MarkedValues[alias.Instruction][alias.Value].AllMarks() {
 				origins = append(origins, mark)
 			}
 		} else {
 			// when the Value is directly marked as tainted.
-			for mark := range state.flowInfo.MarkedValues[i][alias.Value].MarksAt(path) {
+			for mark := range state.flowInfo.MarkedValues[alias.Instruction][alias.Value].MarksAt(path) {
 				origins = append(origins, mark)
 			}
 		}
@@ -232,7 +231,7 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 func (state *IntraAnalysisState) getValueAliases(values *[]ValueWithPath, i ssa.Instruction, v ssa.Value, isProceduralEntry bool,
 	queries map[ValueWithPath]bool) {
 
-	val := ValueWithPath{v, "", isProceduralEntry}
+	val := ValueWithPath{v, i, "", isProceduralEntry}
 	if queries[val] || v == nil {
 		return
 	}
@@ -294,12 +293,12 @@ func (state *IntraAnalysisState) referrerAliases(values *[]ValueWithPath, i ssa.
 			return
 		}
 	case *ssa.MapUpdate:
-		flowRef := (ssa.Instruction)(refInstr)
 		// inspect marks of referrers, but only when the referred Value is the map (the Value or key does not flow
 		// to the adjacent Value/key).
 		// The location of the mark transfer (flowRef) depends on whether the object written to the map is pointer
 		// like or not, like in Store
 		if v != refInstr.Value && v != refInstr.Key {
+			flowRef := (ssa.Instruction)(refInstr)
 			if lang.IsNillableType(refInstr.Value.Type()) {
 				flowRef = i
 			}
@@ -468,7 +467,6 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark 
 		state.markValue(i, miVal.X, mark, pathAddField(path, analysisutil.FieldFieldName(miVal)))
 	case *ssa.FieldAddr:
 		state.markValue(i, miVal.X, mark, pathAddField(path, analysisutil.FieldAddrFieldName(miVal)))
-
 	}
 
 	// Propagate to select referrers
