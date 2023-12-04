@@ -17,6 +17,7 @@ package dataflow
 import (
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 
 	"golang.org/x/tools/go/ssa"
@@ -27,7 +28,7 @@ import (
 const maxAccessPathLength = 4
 
 type MarkWithPath struct {
-	Mark       Mark
+	Mark       *Mark
 	AccessPath string
 }
 
@@ -40,18 +41,18 @@ type ValueWithPath struct {
 
 type abstractValue struct {
 	value        ssa.Value
-	PathMappings map[string]map[Mark]bool
+	PathMappings map[string]map[*Mark]bool
 }
 
 func newAbstractValue(v ssa.Value) abstractValue {
 	return abstractValue{
-		value: v, PathMappings: map[string]map[Mark]bool{},
+		value: v, PathMappings: map[string]map[*Mark]bool{},
 	}
 }
 
-func (a abstractValue) add(path string, mark Mark) {
+func (a abstractValue) add(path string, mark *Mark) {
 	if _, ok := a.PathMappings[path]; !ok {
-		a.PathMappings[path] = map[Mark]bool{}
+		a.PathMappings[path] = map[*Mark]bool{}
 	}
 	a.PathMappings[path][mark] = true
 }
@@ -89,7 +90,25 @@ func (a abstractValue) AllMarks() []MarkWithPath {
 	return x
 }
 
-func (a abstractValue) HasMarkAt(path string, m Mark) bool {
+func (a abstractValue) mergeInto(b abstractValue) bool {
+	modified := false
+	for path, aMarks := range a.PathMappings {
+		if bMarks, ok := b.PathMappings[path]; !ok {
+			b.PathMappings[path] = maps.Clone(aMarks)
+			modified = true
+		} else {
+			for m := range aMarks {
+				if !bMarks[m] {
+					bMarks[m] = true
+					modified = true
+				}
+			}
+		}
+	}
+	return modified
+}
+
+func (a abstractValue) HasMarkAt(path string, m *Mark) bool {
 	for m2 := range a.MarksAt(path) {
 		if m2.Mark == m {
 			return true
@@ -102,7 +121,7 @@ func (a abstractValue) Show(w io.Writer) {
 	for path, marks := range a.PathMappings {
 		fmt.Fprintf(w, "   %s = %s .%s marked by ", a.value.Name(), a.value, path)
 		for mark := range marks {
-			fmt.Fprintf(w, " <%s> ", &mark)
+			fmt.Fprintf(w, " <%s> ", mark)
 		}
 		fmt.Fprintf(w, "\n")
 	}
@@ -127,18 +146,32 @@ func pathTrimLast(path string) string {
 	}
 }
 
-func pathAddField(path string, fieldName string) string {
+func pathPrependField(path string, fieldName string) string {
 	if pathLen(path) > maxAccessPathLength {
 		path = pathTrimLast(path)
 	}
 	return "." + fieldName + path
 }
 
-func pathAddIndexing(path string) string {
+func pathPrependIndexing(path string) string {
 	if pathLen(path) > maxAccessPathLength {
 		path = pathTrimLast(path)
 	}
 	return "[*]" + path
+}
+
+func pathAppendField(path string, fieldName string) string {
+	if pathLen(path) > maxAccessPathLength {
+		return path
+	}
+	return path + "." + fieldName
+}
+
+func pathAppendIndexing(path string) string {
+	if pathLen(path) > maxAccessPathLength {
+		return path
+	}
+	return path + "[*]"
 }
 
 func pathMatchField(path string, fieldName string) (string, bool) {

@@ -455,7 +455,7 @@ func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.L
 	}
 }
 
-func (g *SummaryGraph) addSyntheticEdge(mark Mark, info *ConditionInfo, instr ssa.Instruction, _ string) {
+func (g *SummaryGraph) addSyntheticEdge(mark *Mark, info *ConditionInfo, instr ssa.Instruction, _ string) {
 
 	node, ok := g.SyntheticNodes[instr]
 	if !ok {
@@ -464,7 +464,7 @@ func (g *SummaryGraph) addSyntheticEdge(mark Mark, info *ConditionInfo, instr ss
 	g.addEdge(mark, node, info)
 }
 
-func (g *SummaryGraph) addBoundLabelEdge(mark Mark, info *ConditionInfo,
+func (g *SummaryGraph) addBoundLabelEdge(mark *Mark, info *ConditionInfo,
 	instr ssa.Instruction) {
 	node, ok := g.BoundLabelNodes[instr]
 	if !ok {
@@ -561,7 +561,7 @@ func (g *SummaryGraph) selectNodesFromMark(m Mark) []GraphNode {
 // @requires g != nil
 //
 //gocyclo:ignore
-func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo) {
+func (g *SummaryGraph) addEdge(source *Mark, dest GraphNode, info *ConditionInfo) {
 	// This function's goal is to define how the source of an edge is obtained in the summary given a Mark that
 	// is produced in the intra-procedural analysis.
 
@@ -654,7 +654,7 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 
 // addCallArgEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
-func (g *SummaryGraph) addCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction, arg ssa.Value) {
+func (g *SummaryGraph) addCallArgEdge(mark *Mark, cond *ConditionInfo, call ssa.CallInstruction, arg ssa.Value) {
 	callNodes := g.Callees[call]
 	if callNodes == nil {
 		return
@@ -671,7 +671,7 @@ func (g *SummaryGraph) addCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.C
 }
 
 // addCallEdge adds an edge that flows to a call node.
-func (g *SummaryGraph) addCallEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction) {
+func (g *SummaryGraph) addCallEdge(mark *Mark, cond *ConditionInfo, call ssa.CallInstruction) {
 
 	callNodes := g.Callees[call]
 	if callNodes == nil {
@@ -684,7 +684,7 @@ func (g *SummaryGraph) addCallEdge(mark Mark, cond *ConditionInfo, call ssa.Call
 
 // addBoundVarEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
-func (g *SummaryGraph) addBoundVarEdge(mark Mark, cond *ConditionInfo, closure *ssa.MakeClosure, v ssa.Value) {
+func (g *SummaryGraph) addBoundVarEdge(mark *Mark, cond *ConditionInfo, closure *ssa.MakeClosure, v ssa.Value) {
 
 	closureNode := g.CreatedClosures[closure]
 	if closureNode == nil {
@@ -703,7 +703,7 @@ func (g *SummaryGraph) addBoundVarEdge(mark Mark, cond *ConditionInfo, closure *
 
 // addReturnEdge adds an edge in the summary from the mark to a return instruction
 // @requires g != nil
-func (g *SummaryGraph) addReturnEdge(mark Mark, cond *ConditionInfo, retInstr ssa.Instruction, tupleIndex int) {
+func (g *SummaryGraph) addReturnEdge(mark *Mark, cond *ConditionInfo, retInstr ssa.Instruction, tupleIndex int) {
 
 	if tupleIndex < 0 || tupleIndex > len(g.Returns) {
 		return
@@ -720,7 +720,7 @@ func (g *SummaryGraph) addReturnEdge(mark Mark, cond *ConditionInfo, retInstr ss
 }
 
 // addParamEdge adds an edge in the summary from the mark to a parameter of the function
-func (g *SummaryGraph) addParamEdge(mark Mark, cond *ConditionInfo, param ssa.Node) {
+func (g *SummaryGraph) addParamEdge(mark *Mark, cond *ConditionInfo, param ssa.Node) {
 	paramNode := g.Params[param]
 
 	if paramNode == nil {
@@ -731,7 +731,7 @@ func (g *SummaryGraph) addParamEdge(mark Mark, cond *ConditionInfo, param ssa.No
 }
 
 // addGlobalEdge adds an edge from a mark to a GlobalNode
-func (g *SummaryGraph) addGlobalEdge(mark Mark, cond *ConditionInfo, loc ssa.Instruction, v *ssa.Global) {
+func (g *SummaryGraph) addGlobalEdge(mark *Mark, cond *ConditionInfo, loc ssa.Instruction, v *ssa.Global) {
 
 	node := g.AccessGlobalNodes[loc][v]
 
@@ -748,7 +748,7 @@ func (g *SummaryGraph) addGlobalEdge(mark Mark, cond *ConditionInfo, loc ssa.Ins
 }
 
 // addFreeVarEdge adds an edge in the summary from the mark to a bound variable of a closure
-func (g *SummaryGraph) addFreeVarEdge(mark Mark, cond *ConditionInfo, freeVar ssa.Node) {
+func (g *SummaryGraph) addFreeVarEdge(mark *Mark, cond *ConditionInfo, freeVar ssa.Node) {
 	freeVarNode := g.FreeVars[freeVar]
 	if freeVarNode == nil {
 		g.addError(fmt.Errorf("attempting to set free var edge but no free var node"))

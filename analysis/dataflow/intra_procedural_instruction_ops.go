@@ -152,7 +152,7 @@ func (state *IntraAnalysisState) DoMakeChan(*ssa.MakeChan) {
 
 func (state *IntraAnalysisState) DoAlloc(x *ssa.Alloc) {
 	if state.shouldTrack(state.flowInfo.Config, state.parentAnalyzerState.PointerAnalysis, x) {
-		state.markValue(x, x, NewMark(x, DefaultMark, nil, -1), "")
+		state.markValue(x, x, state.flowInfo.GetNewMark(x, DefaultMark, nil, -1), "")
 	}
 	// An allocation may be a mark
 	state.optionalSyntheticNode(x, x, x)

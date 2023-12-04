@@ -105,12 +105,12 @@ func (state *IntraAnalysisState) initialize() {
 
 	// The free variables of the function are marked
 	for _, fv := range function.FreeVars {
-		state.flowInfo.AddMark(firstInstr, fv, "", NewMark(fv, FreeVar, nil, -1))
+		state.flowInfo.AddMark(firstInstr, fv, "", state.flowInfo.GetNewMark(fv, FreeVar, nil, -1))
 		state.addFreeVarAliases(fv)
 	}
 	// The parameters of the function are marked as Parameter
 	for _, param := range function.Params {
-		state.flowInfo.AddMark(firstInstr, param, "", NewMark(param, Parameter, nil, -1))
+		state.flowInfo.AddMark(firstInstr, param, "", state.flowInfo.GetNewMark(param, Parameter, nil, -1))
 		state.addParamAliases(param)
 	}
 
@@ -180,11 +180,8 @@ func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
 				state.flowInfo.MarkedValues[ins][value] = newAbstractValue(value)
 				state.changeFlag = true
 			}
-			for _, mark := range previousAbstractState.AllMarks() {
-				if !state.flowInfo.MarkedValues[ins][value].HasMarkAt(mark.AccessPath, mark.Mark) {
-					state.flowInfo.MarkedValues[ins][value].add(mark.AccessPath, mark.Mark)
-					state.changeFlag = true
-				}
+			if previousAbstractState.mergeInto(state.flowInfo.MarkedValues[ins][value]) {
+				state.changeFlag = true
 			}
 		}
 	}
@@ -207,10 +204,8 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 	var origins []MarkWithPath
 	values, ok := state.valueAliases[IVKey{i, v}]
 	if !ok {
-		var computedValues []ValueWithPath
-		state.getValueAliases(&computedValues, i, v, isProceduralEntry, map[ValueWithPath]bool{})
-		state.valueAliases[IVKey{i, v}] = computedValues
-		values = computedValues
+		values = state.getValueAliases(i, v, isProceduralEntry)
+		state.valueAliases[IVKey{i, v}] = values
 	}
 
 	for _, alias := range values {
@@ -228,7 +223,15 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 	return origins
 }
 
-func (state *IntraAnalysisState) getValueAliases(values *[]ValueWithPath, i ssa.Instruction, v ssa.Value, isProceduralEntry bool,
+func (state *IntraAnalysisState) getValueAliases(i ssa.Instruction, v ssa.Value, p bool) []ValueWithPath {
+	var computedValues []ValueWithPath
+	state.getValueAliasesRec(&computedValues, i, v, "", p, map[ValueWithPath]bool{})
+	return computedValues
+}
+
+func (state *IntraAnalysisState) getValueAliasesRec(values *[]ValueWithPath, i ssa.Instruction, v ssa.Value,
+	relPath string,
+	isProceduralEntry bool,
 	queries map[ValueWithPath]bool) {
 
 	val := ValueWithPath{v, i, "", isProceduralEntry}
@@ -243,7 +246,7 @@ func (state *IntraAnalysisState) getValueAliases(values *[]ValueWithPath, i ssa.
 			// If any of the aliases of the value is marked, add the marks
 			for _, ptr := range state.findAllPointers(v) {
 				for _, label := range ptr.PointsTo().Labels() {
-					state.getValueAliases(values, i, label.Value(), true, queries)
+					state.getValueAliasesRec(values, i, label.Value(), relPath, true, queries)
 				}
 			}
 
@@ -251,7 +254,7 @@ func (state *IntraAnalysisState) getValueAliases(values *[]ValueWithPath, i ssa.
 			referrers := v.Referrers()
 			if referrers != nil {
 				for _, referrer := range *(v.Referrers()) {
-					state.referrerAliases(values, i, v, referrer, queries)
+					state.referrerAliases(values, i, v, relPath, referrer, queries)
 				}
 			}
 		}
@@ -260,36 +263,36 @@ func (state *IntraAnalysisState) getValueAliases(values *[]ValueWithPath, i ssa.
 
 //gocyclo:ignore
 func (state *IntraAnalysisState) referrerAliases(values *[]ValueWithPath, i ssa.Instruction, v ssa.Value,
-	referrer ssa.Instruction, queries map[ValueWithPath]bool) {
+	path string, referrer ssa.Instruction, queries map[ValueWithPath]bool) {
 	switch refInstr := referrer.(type) {
 	case *ssa.Send:
 		// marks on a Value sent on a channel transfer to channel
 		if v == refInstr.Chan && lang.IsNillableType(refInstr.X.Type()) {
-			state.getValueAliases(values, i, refInstr.X, true, queries)
+			state.getValueAliasesRec(values, i, refInstr.X, path, true, queries)
 			return
 		}
 	case *ssa.FieldAddr:
 		// refInstr is "y = &v.name"
 		// the Value is the struct, collect the marks on the field address. We are not field sensitive, so if the
 		// field address has marks, then the struct itself has marks.
-		state.getValueAliases(values, i, refInstr, true, queries)
+		state.getValueAliasesRec(values, i, refInstr, pathAppendField(path, analysisutil.FieldAddrFieldName(refInstr)), true, queries)
 		return
 	case *ssa.IndexAddr:
 		// the marks on an index address transfer to the slice (but not the marks on the index)
 		if v != refInstr.Index {
-			state.getValueAliases(values, i, refInstr, true, queries)
+			state.getValueAliasesRec(values, i, refInstr, pathAppendIndexing(path), true, queries)
 			return
 		}
 	case *ssa.Slice:
 		// the marks of a slice of the Value are also marks of the Value
 		if v == refInstr.X {
-			state.getValueAliases(values, i, refInstr, true, queries)
+			state.getValueAliasesRec(values, i, refInstr, path, true, queries)
 			return
 		}
 	case *ssa.Store:
 		// is a Value is stored, and that Value is pointer like, the marks transfer to the address
 		if v == refInstr.Addr && lang.IsNillableType(refInstr.Val.Type()) {
-			state.getValueAliases(values, i, refInstr.Val, true, queries)
+			state.getValueAliasesRec(values, i, refInstr.Val, path, true, queries)
 			return
 		}
 	case *ssa.MapUpdate:
@@ -302,13 +305,13 @@ func (state *IntraAnalysisState) referrerAliases(values *[]ValueWithPath, i ssa.
 			if lang.IsNillableType(refInstr.Value.Type()) {
 				flowRef = i
 			}
-			state.getValueAliases(values, flowRef, refInstr.Value, true, queries)
+			state.getValueAliasesRec(values, flowRef, refInstr.Value, pathAppendIndexing(path), true, queries)
 
 			flowRef = (ssa.Instruction)(refInstr)
 			if lang.IsNillableType(refInstr.Value.Type()) {
 				flowRef = i
 			}
-			state.getValueAliases(values, flowRef, refInstr.Key, true, queries)
+			state.getValueAliasesRec(values, flowRef, refInstr.Key, pathAppendIndexing(path), true, queries)
 			return
 		}
 	}
@@ -321,22 +324,22 @@ func simpleTransfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, ou
 
 // transfer propagates all the marks from in to out with the object Path string
 // an index >= 0 indicates that element index of the tuple in is accessed
-func transfer(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index int) {
+func transfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index int) {
 	if glob, ok := in.(*ssa.Global); ok {
-		t.markValue(loc, out, NewMark(loc.(ssa.Node), Global, glob, index), "")
+		state.markValue(loc, out, state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index), "")
 	}
 
-	for _, origin := range t.getMarks(loc, in, path, false, false) {
-		t.flowInfo.SetLoc(origin.Mark, loc)
+	for _, origin := range state.getMarks(loc, in, path, false, false) {
+		state.flowInfo.SetLoc(origin.Mark, loc)
 		newOrigin := origin.Mark
 		if index >= 0 {
-			newOrigin = NewMark(origin.Mark.Node, origin.Mark.Type, origin.Mark.Qualifier, index)
+			newOrigin = state.flowInfo.GetNewMark(origin.Mark.Node, origin.Mark.Type, origin.Mark.Qualifier, index)
 		}
-		t.markValue(loc, out, newOrigin, origin.AccessPath)
+		state.markValue(loc, out, newOrigin, origin.AccessPath)
 
 	}
 
-	t.checkFlowIntoGlobal(loc, in, out)
+	state.checkFlowIntoGlobal(loc, in, out)
 }
 
 // transferCopy propagates the marks for a load, which only requires copying over marks and paths
@@ -350,9 +353,9 @@ func transferCopy(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out 
 // markClosureNode adds a closure node to the graph, and all the related sources and edges.
 // The closure Value is tracked like any other Value.
 func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
-	state.markValue(x, x, NewMark(x, Closure, nil, -1), "")
+	state.markValue(x, x, state.flowInfo.GetNewMark(x, Closure, nil, -1), "")
 	for _, boundVar := range x.Bindings {
-		mark := NewMark(x, BoundVar, boundVar, -1)
+		mark := state.flowInfo.GetNewMark(x, BoundVar, boundVar, -1)
 		state.markValue(x, boundVar, mark, "")
 	}
 }
@@ -360,7 +363,7 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
 	if state.shouldTrack(state.parentAnalyzerState.Config, state.parentAnalyzerState.PointerAnalysis, asNode) {
-		s := NewMark(asNode, Synthetic+DefaultMark, nil, -1)
+		s := state.flowInfo.GetNewMark(asNode, Synthetic+DefaultMark, nil, -1)
 		state.markValue(asInstr, asValue, s, "")
 	}
 }
@@ -384,17 +387,17 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 	res := common.Signature().Results()
 	if res.Len() > 0 {
 		for i := 0; i < res.Len(); i++ {
-			state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, nil, i), "")
+			state.markValue(instr, value, state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, i), "")
 		}
 	} else {
-		state.markValue(instr, value, NewMark(instr.(ssa.Node), markType, nil, -1), "")
+		state.markValue(instr, value, state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, -1), "")
 	}
 
 	args := lang.GetArgs(instr)
 	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
 		// Mark call argument
-		state.markValue(instr, arg, NewMark(instr.(ssa.Node), CallSiteArg, arg, -1), "")
+		state.markValue(instr, arg, state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, -1), "")
 	}
 }
 
@@ -408,7 +411,7 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 // checkCopyIntoArgs checks whether the mark in is copying or writing into a Value that aliases with
 // one of the function's parameters. This keeps tracks of data flows to the function parameters that a
 // caller might see.
-func (state *IntraAnalysisState) checkCopyIntoArgs(in Mark, out ssa.Value) {
+func (state *IntraAnalysisState) checkCopyIntoArgs(in *Mark, out ssa.Value) {
 	if lang.IsNillableType(out.Type()) {
 		for aliasedParam := range state.paramAliases[out] {
 			state.summary.addParamEdge(in, nil, aliasedParam)
@@ -437,7 +440,7 @@ func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, ou
 // markValue marks the Value v and all values that propagate from v.
 // If the Value was not marked, it changes the changeFlag to true to indicate
 // that the mark information has changed for the current pass.
-func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark Mark, path string) {
+func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark *Mark, path string) {
 	if state.flowInfo.HasMarkAt(i, v, path, mark) {
 		return
 	}
@@ -460,13 +463,13 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark 
 			state.markValue(i, miVal.X, mark, path)
 		}
 	case *ssa.IndexAddr:
-		state.markValue(i, miVal.X, mark, pathAddIndexing(path))
+		state.markValue(i, miVal.X, mark, pathPrependIndexing(path))
 	case *ssa.Index:
-		state.markValue(i, miVal.X, mark, pathAddIndexing(path))
+		state.markValue(i, miVal.X, mark, pathPrependIndexing(path))
 	case *ssa.Field:
-		state.markValue(i, miVal.X, mark, pathAddField(path, analysisutil.FieldFieldName(miVal)))
+		state.markValue(i, miVal.X, mark, pathPrependField(path, analysisutil.FieldFieldName(miVal)))
 	case *ssa.FieldAddr:
-		state.markValue(i, miVal.X, mark, pathAddField(path, analysisutil.FieldAddrFieldName(miVal)))
+		state.markValue(i, miVal.X, mark, pathPrependField(path, analysisutil.FieldAddrFieldName(miVal)))
 	}
 
 	// Propagate to select referrers
@@ -480,7 +483,7 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, mark 
 	}
 }
 
-func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.Instruction, v ssa.Value, mark Mark,
+func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.Instruction, v ssa.Value, mark *Mark,
 	path string) {
 	switch referrer := ref.(type) {
 	case *ssa.Store:
@@ -522,7 +525,7 @@ func (state *IntraAnalysisState) findAllPointers(v ssa.Value) []pointer.Pointer 
 }
 
 // markAllAliases marks all the aliases of the pointer set using mark.
-func (state *IntraAnalysisState) markPtrAliases(i ssa.Instruction, mark Mark, path string, ptr pointer.Pointer) {
+func (state *IntraAnalysisState) markPtrAliases(i ssa.Instruction, mark *Mark, path string, ptr pointer.Pointer) {
 	// Look at every Value in the points-to set.
 	for _, label := range ptr.PointsTo().Labels() {
 		if label != nil && label.Value() != nil {

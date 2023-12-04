@@ -182,7 +182,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 		// Special case: a global is received directly as an argument
 		switch argInstr := arg.(type) {
 		case *ssa.Global:
-			tmpSrc := NewMark(callInstr.(ssa.Node), Global, argInstr, -1)
+			tmpSrc := state.flowInfo.GetNewMark(callInstr.(ssa.Node), Global, argInstr, -1)
 			state.summary.addCallArgEdge(tmpSrc, nil, callInstr, argInstr)
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(callInstr, argInstr)
@@ -317,7 +317,7 @@ func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) 
 
 func (state *IntraAnalysisState) moveLocSetsToSummary() {
 	for mark, locSet := range state.flowInfo.LocSet {
-		for _, graphNode := range state.summary.selectNodesFromMark(mark) {
+		for _, graphNode := range state.summary.selectNodesFromMark(*mark) {
 			graphNode.SetLocs(locSet)
 		}
 	}
@@ -334,7 +334,7 @@ func (state *IntraAnalysisState) moveLocSetsToSummary() {
 // condition expressions to decorate edges and allow checking whether a flow is validated in the dataflow analysis.
 // We should think of ways to accumulate conditions without using the checkFlow function, which was designed initially
 // to filter the spurious flows of the flow-insensitive analysis.
-func (state *IntraAnalysisState) checkFlow(source Mark, dest ssa.Instruction, destVal ssa.Value) ConditionInfo {
+func (state *IntraAnalysisState) checkFlow(source *Mark, dest ssa.Instruction, destVal ssa.Value) ConditionInfo {
 	sourceInstr, ok := source.Node.(ssa.Instruction)
 	if !ok {
 		// if destination is parameter or free variable, this check is not meant to do anything
