@@ -31,8 +31,8 @@ type FlowInformation struct {
 	// user provided configuration identifying specific dataflow nodes to track and other settings (e.g. verbosity)
 	Config *config.Config
 
-	Marks map[Mark]*Mark
-
+	Marks           map[Mark]*Mark
+	NumBlocks       int
 	NumValues       int
 	NumInstructions int
 	ValueId         map[ssa.Value]int
@@ -82,6 +82,7 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 		Function:        f,
 		Config:          cfg,
 		Marks:           make(map[Mark]*Mark),
+		NumBlocks:       len(f.Blocks),
 		NumValues:       numValues,
 		NumInstructions: numInstructions,
 		ValueId:         valueId,
@@ -116,6 +117,15 @@ func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa
 		fi.Marks[m] = &m
 		return &m
 	}
+}
+
+// GetValueId returns the id of v if v in the FlowInformation, otherwise -1
+func (fi *FlowInformation) GetValueId(v ssa.Value) int {
+	vId, ok := fi.ValueId[v]
+	if !ok {
+		return -1
+	}
+	return vId
 }
 
 // Show prints the abstract states at each instruction in the function.

@@ -99,10 +99,10 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 		errors:              map[ssa.Node]error{},
 		summary:             sm,
 		deferStacks:         defers.AnalyzeFunction(sm.Parent, a.Logger),
-		paths:               map[*ssa.BasicBlock]map[*ssa.BasicBlock]ConditionInfo{},
+		paths:               make([]*ConditionInfo, flowInfo.NumBlocks*flowInfo.NumBlocks),
 		instrPrev:           make([]map[int]bool, flowInfo.NumInstructions),
-		paramAliases:        map[ssa.Value]map[*ssa.Parameter]bool{},
-		freeVarAliases:      map[ssa.Value]map[*ssa.FreeVar]bool{},
+		paramAliases:        make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
+		freeVarAliases:      make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
 		valueAliases:        make([][]ValueWithPath, flowInfo.NumValues*flowInfo.NumInstructions),
 		shouldTrack:         sm.shouldTrack,
 		postBlockCallback:   sm.postBlockCallBack,
@@ -199,14 +199,14 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 				// Add the condition only if it is a predicate on the argument, i.e. there are boolean functions
 				// that apply to the destination Value
 				state.summary.addCallArgEdge(mark.Mark, applicableCond, callInstr, arg)
-
+				argId := state.flowInfo.GetValueId(arg)
 				// Add edges to parameters if the call may modify caller's arguments
-				for x := range state.paramAliases[arg] {
+				for x := range state.paramAliases[argId] {
 					if lang.IsNillableType(x.Type()) {
 						state.summary.addParamEdge(mark.Mark, applicableCond, x)
 					}
 				}
-				for y := range state.freeVarAliases[arg] {
+				for y := range state.freeVarAliases[argId] {
 					if lang.IsNillableType(y.Type()) {
 						state.summary.addFreeVarEdge(mark.Mark, applicableCond, y)
 					}
@@ -235,11 +235,12 @@ func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 				continue // avoid spurious edges from closure to its own bound variables
 			}
 			state.summary.addBoundVarEdge(mark, nil, x, boundVar)
-			for y := range state.paramAliases[boundVar] {
+			boundVarId := state.flowInfo.GetValueId(boundVar)
+			for y := range state.paramAliases[boundVarId] {
 				state.summary.addParamEdge(mark, nil, y)
 			}
 
-			for y := range state.freeVarAliases[boundVar] {
+			for y := range state.freeVarAliases[boundVarId] {
 				state.summary.addFreeVarEdge(mark, nil, y)
 			}
 		}
@@ -263,11 +264,12 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			// Check the state of the analysis at the final return to see which parameters or free variables might
 			// have been modified by the function
 			for _, mark := range abstractValue.AllMarks() {
-				if lang.IsNillableType(val.Type()) {
-					for aliasedParam := range state.paramAliases[markedValue] {
+				markedValueId := state.flowInfo.GetValueId(markedValue)
+				if markedValueId >= 0 && lang.IsNillableType(val.Type()) {
+					for aliasedParam := range state.paramAliases[markedValueId] {
 						state.summary.addParamEdge(mark.Mark, nil, aliasedParam)
 					}
-					for aliasedFreeVar := range state.freeVarAliases[markedValue] {
+					for aliasedFreeVar := range state.freeVarAliases[markedValueId] {
 						state.summary.addFreeVarEdge(mark.Mark, nil, aliasedFreeVar)
 					}
 				}
@@ -400,17 +402,12 @@ func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruc
 		return ConditionInfo{Satisfiable: true}
 	}
 
-	if reachableSet, ok := state.paths[source.Block()]; ok {
-		if c, ok := reachableSet[dest.Block()]; ok {
-			return c
-		} else {
-			b := FindIntraProceduralPath(source, dest)
-			state.paths[source.Block()][dest.Block()] = b.Cond
-			return b.Cond
-		}
+	pos := source.Block().Index*state.flowInfo.NumBlocks + dest.Block().Index
+	if c := state.paths[pos]; c != nil {
+		return *c
 	} else {
 		b := FindIntraProceduralPath(source, dest)
-		state.paths[source.Block()] = map[*ssa.BasicBlock]ConditionInfo{dest.Block(): b.Cond}
+		state.paths[pos] = &b.Cond
 		return b.Cond
 	}
 }
