@@ -39,18 +39,22 @@ type ValueWithPath struct {
 	FromProcEntry bool
 }
 
-type abstractValue struct {
+type AbstractValue struct {
 	value        ssa.Value
 	PathMappings map[string]map[*Mark]bool
 }
 
-func newAbstractValue(v ssa.Value) abstractValue {
-	return abstractValue{
+func NewAbstractValue(v ssa.Value) *AbstractValue {
+	return &AbstractValue{
 		value: v, PathMappings: map[string]map[*Mark]bool{},
 	}
 }
 
-func (a abstractValue) add(path string, mark *Mark) {
+func (a *AbstractValue) GetValue() ssa.Value {
+	return a.value
+}
+
+func (a *AbstractValue) add(path string, mark *Mark) {
 	if _, ok := a.PathMappings[path]; !ok {
 		a.PathMappings[path] = map[*Mark]bool{}
 	}
@@ -61,8 +65,11 @@ func (a abstractValue) add(path string, mark *Mark) {
 // ".field" by [m] and at "[*]" by [m'] then MarksAt(".field") will return "[m]" and MarksAt("[*]") will return "[m']".
 // MarksAt("") will return [m,m']
 // if the value is marked at "", by m”, then MarksAt(".field") will return "[m,m”]"
-func (a abstractValue) MarksAt(path string) map[MarkWithPath]bool {
-	marks := map[MarkWithPath]bool{}
+func (a *AbstractValue) MarksAt(path string) []MarkWithPath {
+	if path == "" {
+		return a.AllMarks()
+	}
+	marks := []MarkWithPath{}
 	for p, m := range a.PathMappings {
 		// Logic for matching paths
 		relAccessPath, ok := strings.CutPrefix(p, path)
@@ -73,14 +80,17 @@ func (a abstractValue) MarksAt(path string) map[MarkWithPath]bool {
 		// If path matches, then add the marks with the right path
 		if ok {
 			for mark := range m {
-				marks[MarkWithPath{mark, relAccessPath}] = true
+				marks = append(marks, MarkWithPath{mark, relAccessPath})
 			}
 		}
 	}
 	return marks
 }
 
-func (a abstractValue) AllMarks() []MarkWithPath {
+func (a *AbstractValue) AllMarks() []MarkWithPath {
+	if a == nil {
+		return []MarkWithPath{}
+	}
 	var x []MarkWithPath
 	for path, marks := range a.PathMappings {
 		for mark := range marks {
@@ -90,7 +100,10 @@ func (a abstractValue) AllMarks() []MarkWithPath {
 	return x
 }
 
-func (a abstractValue) mergeInto(b abstractValue) bool {
+func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
+	if a == nil {
+		return false
+	}
 	modified := false
 	for path, aMarks := range a.PathMappings {
 		if bMarks, ok := b.PathMappings[path]; !ok {
@@ -108,8 +121,8 @@ func (a abstractValue) mergeInto(b abstractValue) bool {
 	return modified
 }
 
-func (a abstractValue) HasMarkAt(path string, m *Mark) bool {
-	for m2 := range a.MarksAt(path) {
+func (a *AbstractValue) HasMarkAt(path string, m *Mark) bool {
+	for _, m2 := range a.MarksAt(path) {
 		if m2.Mark == m {
 			return true
 		}
@@ -117,7 +130,7 @@ func (a abstractValue) HasMarkAt(path string, m *Mark) bool {
 	return false
 }
 
-func (a abstractValue) Show(w io.Writer) {
+func (a *AbstractValue) Show(w io.Writer) {
 	for path, marks := range a.PathMappings {
 		fmt.Fprintf(w, "   %s = %s .%s marked by ", a.value.Name(), a.value, path)
 		for mark := range marks {

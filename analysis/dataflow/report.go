@@ -144,8 +144,12 @@ func reportFlowInformation(state *AnalyzerState, fi *FlowInformation) {
 		state.Logger.Infof("• instruction %s @ %s:\n", formatutil.Cyan(i.String()), state.Program.Fset.Position(i.Pos()))
 		// sort and print Value -> marks
 		var mVals []ssa.Value
-		for val := range fi.MarkedValues[i] {
-			mVals = append(mVals, val)
+		iId := fi.InstrId[i]
+		index := iId * fi.NumValues
+		for _, val := range fi.MarkedValues[index : index+fi.NumValues] {
+			if val != nil {
+				mVals = append(mVals, val.value)
+			}
 		}
 		slices.SortFunc(mVals, func(a, b ssa.Value) int {
 			var s1, s2 string
@@ -154,7 +158,7 @@ func reportFlowInformation(state *AnalyzerState, fi *FlowInformation) {
 			return strings.Compare(s1, s2)
 		})
 		for _, val := range mVals {
-			marks := fi.MarkedValues[i][val]
+			marks := fi.MarkedValues[index+fi.ValueId[val]]
 			var x, vStr, vName string
 			setStr(val, &vStr)
 			setName(val, &vName)

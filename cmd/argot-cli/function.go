@@ -506,8 +506,12 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			c.Program.Fset.Position(i.Pos()))
 		// sort and print value -> marks
 		var mVals []ssa.Value
-		for val := range fi.MarkedValues[i] {
-			mVals = append(mVals, val)
+		iId := fi.InstrId[i]
+		index := iId * fi.NumValues
+		for _, val := range fi.MarkedValues[index : index+fi.NumValues] {
+			if val != nil {
+				mVals = append(mVals, val.GetValue())
+			}
 		}
 		slices.SortFunc(mVals, func(a, b ssa.Value) bool {
 
@@ -517,7 +521,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			return s1 < s2
 		})
 		for _, val := range mVals {
-			marks := fi.MarkedValues[i][val]
+			marks := fi.MarkedValues[index+fi.ValueId[val]]
 			var x, vStr, vName string
 			setStr(val, &vStr)
 			setName(val, &vName)

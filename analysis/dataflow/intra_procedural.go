@@ -100,10 +100,10 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 		summary:             sm,
 		deferStacks:         defers.AnalyzeFunction(sm.Parent, a.Logger),
 		paths:               map[*ssa.BasicBlock]map[*ssa.BasicBlock]ConditionInfo{},
-		instrPrev:           map[ssa.Instruction]map[ssa.Instruction]bool{},
+		instrPrev:           make([]map[int]bool, flowInfo.NumInstructions),
 		paramAliases:        map[ssa.Value]map[*ssa.Parameter]bool{},
 		freeVarAliases:      map[ssa.Value]map[*ssa.FreeVar]bool{},
-		valueAliases:        map[IVKey][]ValueWithPath{},
+		valueAliases:        make([][]ValueWithPath, flowInfo.NumValues*flowInfo.NumInstructions),
 		shouldTrack:         sm.shouldTrack,
 		postBlockCallback:   sm.postBlockCallBack,
 	}
@@ -187,6 +187,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(callInstr, argInstr)
 		}
+
 		for _, mark := range state.getMarks(callInstr, arg, "", true, true) {
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
 			c := state.checkFlow(mark.Mark, callInstr, arg)
@@ -247,7 +248,13 @@ func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 
 // makeEdgesAtReturn creates all the edges to the return node
 func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
-	for markedValue, abstractState := range state.flowInfo.MarkedValues[x] {
+	n := state.flowInfo.NumValues
+	iId := state.flowInfo.GetInstrPos(x)
+	for _, abstractValue := range state.flowInfo.MarkedValues[iId : iId+n] {
+		if abstractValue == nil {
+			continue
+		}
+		markedValue := abstractValue.value
 		switch val := markedValue.(type) {
 		case *ssa.Call:
 			// calling Type() may cause segmentation error
@@ -255,7 +262,7 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 		default:
 			// Check the state of the analysis at the final return to see which parameters or free variables might
 			// have been modified by the function
-			for _, mark := range abstractState.AllMarks() {
+			for _, mark := range abstractValue.AllMarks() {
 				if lang.IsNillableType(val.Type()) {
 					for aliasedParam := range state.paramAliases[markedValue] {
 						state.summary.addParamEdge(mark.Mark, nil, aliasedParam)

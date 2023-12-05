@@ -33,9 +33,15 @@ type FlowInformation struct {
 
 	Marks map[Mark]*Mark
 
+	NumValues       int
+	NumInstructions int
+	ValueId         map[ssa.Value]int
+	InstrId         map[ssa.Instruction]int
+	values          []ssa.Value
+
 	// MarkedValues maps instructions to abstract states, i.e. a map from values to their abstract Value, which is a
 	// set of marks
-	MarkedValues map[ssa.Instruction]map[ssa.Value]abstractValue
+	MarkedValues []*AbstractValue
 
 	// LocSet is a map from marks to the locations associated to it. A location is associated to a mark when it
 	// is used to propagate the mark during the monotone analysis. This is meant to be used by other analyses, and
@@ -45,13 +51,61 @@ type FlowInformation struct {
 
 // NewFlowInfo returns a new FlowInformation with all maps initialized.
 func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
-	return &FlowInformation{
-		Function:     f,
-		Config:       cfg,
-		Marks:        make(map[Mark]*Mark),
-		MarkedValues: make(map[ssa.Instruction]map[ssa.Value]abstractValue),
-		LocSet:       make(map[*Mark]map[ssa.Instruction]bool),
+	valueId := map[ssa.Value]int{}
+	numValues := 0
+	lang.IterateValues(f, func(_ int, v ssa.Value) {
+		if v == nil {
+			return
+		}
+		_, ok := valueId[v]
+		if !ok {
+			valueId[v] = numValues
+			numValues++
+		}
+	})
+	values := make([]ssa.Value, numValues)
+	for v, x := range valueId {
+		values[x] = v
 	}
+
+	numInstructions := 0
+	instrId := map[ssa.Instruction]int{}
+	lang.IterateInstructions(f, func(_ int, i ssa.Instruction) {
+		_, ok := instrId[i]
+		if !ok {
+			instrId[i] = numInstructions
+			numInstructions++
+		}
+	})
+
+	return &FlowInformation{
+		Function:        f,
+		Config:          cfg,
+		Marks:           make(map[Mark]*Mark),
+		NumValues:       numValues,
+		NumInstructions: numInstructions,
+		ValueId:         valueId,
+		InstrId:         instrId,
+		values:          values,
+		MarkedValues:    make([]*AbstractValue, numValues*numInstructions),
+		LocSet:          make(map[*Mark]map[ssa.Instruction]bool, numValues),
+	}
+}
+
+func (fi *FlowInformation) GetPos(i ssa.Instruction, v ssa.Value) int {
+	iId, ok := fi.InstrId[i]
+	if !ok {
+		return -1
+	}
+	vId, ok := fi.ValueId[v]
+	if !ok {
+		return -1
+	}
+	return iId*fi.NumValues + vId
+}
+
+func (fi *FlowInformation) GetInstrPos(i ssa.Instruction) int {
+	return fi.InstrId[i] * fi.NumValues
 }
 
 func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int) *Mark {
@@ -77,7 +131,8 @@ func (fi *FlowInformation) Show(w io.Writer) {
 // an abstract Value (a set of marks).
 func (fi *FlowInformation) ShowAt(w io.Writer, i ssa.Instruction) {
 	fmt.Fprintf(w, "Instruction %s:\n", i)
-	for _, a := range fi.MarkedValues[i] {
+	iId := fi.GetInstrPos(i)
+	for _, a := range fi.MarkedValues[iId : iId+fi.NumValues] {
 		a.Show(w)
 	}
 }
@@ -85,15 +140,23 @@ func (fi *FlowInformation) ShowAt(w io.Writer, i ssa.Instruction) {
 // HasMarkAt returns true if the Value v has an abstract state at instruction i, and this abstract state contains the
 // mark s.
 func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, path string, s *Mark) bool {
-	marks, ok := fi.MarkedValues[i][v]
-	return ok && marks.HasMarkAt(path, s)
+	index := fi.GetPos(i, v)
+	if index < 0 {
+		return false
+	}
+	marks := fi.MarkedValues[fi.GetPos(i, v)]
+	return marks != nil && marks.HasMarkAt(path, s)
 }
 
 // AddMark adds a mark to the tracking info structure and returns true if new information has been inserted.
 // If false, then "fi" has not changed.
 // In both cases, "fi" will have the mark "s" on ssa value "value" with "path" at instruction "i".
 func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value, path string, s *Mark) bool {
-	if abstractState, ok := fi.MarkedValues[i][value]; ok {
+	index := fi.GetPos(i, value)
+	if index < 0 { // this is not a value in the function
+		return false
+	}
+	if abstractState := fi.MarkedValues[index]; abstractState != nil {
 		if abstractState.HasMarkAt(path, s) {
 			return false
 		} else {
@@ -101,9 +164,9 @@ func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value, path stri
 			return true
 		}
 	} else {
-		as := newAbstractValue(value)
+		as := NewAbstractValue(value)
 		as.add(path, s)
-		fi.MarkedValues[i][value] = as
+		fi.MarkedValues[index] = as
 		return true
 	}
 }
