@@ -58,7 +58,19 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *con
 
 // TargetToSources is a mapping from a target annotation (e.g. ex in @Sink(ex, ex2))
 // to a source annotation (e.g. ex in @Source(ex, ex2)).
-type TargetToSources = map[AnnotationId]map[AnnotationId]bool
+type TargetToSources map[AnnotationId]map[AnnotationId]bool
+
+func (t TargetToSources) HasMetadata() bool {
+	for _, sources := range t {
+		for source := range sources {
+			if source.Meta != "" {
+				return true
+			}
+		}
+	}
+
+	return false
+}
 
 // AnnotationId represents an identifier in an annotation.
 type AnnotationId struct {

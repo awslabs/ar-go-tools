@@ -54,8 +54,6 @@ func example3() {
 	_ = str // technically not needed but may prevent an unused variable warning in the future
 }
 
-// TODO add tests for interfaces
-
 func main() {
 	example1()
 	example2()

@@ -36,7 +36,7 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 	type seenSink struct {
 		Pos analysistest.LPos
 	}
-	hasMeta := expectHasMetadata(expect)
+	hasMeta := expect.HasMetadata()
 	if hasMeta {
 		t.Log("Test file has annotation metadata")
 	}
@@ -112,18 +112,6 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 			}
 		}
 	}
-}
-
-func expectHasMetadata(expect analysistest.TargetToSources) bool {
-	for _, sources := range expect {
-		for source := range sources {
-			if source.Meta != "" {
-				return true
-			}
-		}
-	}
-
-	return false
 }
 
 func checkEscape(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSources, actual map[ssa.Instruction]map[ssa.Instruction]bool) {

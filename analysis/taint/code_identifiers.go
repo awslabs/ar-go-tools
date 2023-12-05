@@ -108,7 +108,7 @@ func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.
 			return false
 		}
 		if callSite.CalleeSummary == nil {
-			panic("nil callsite summary")
+			return false
 		}
 		param := callSite.CalleeSummary.Parent.Params[n.Index()]
 		if param == nil {

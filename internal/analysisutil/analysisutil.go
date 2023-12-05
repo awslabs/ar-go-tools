@@ -92,10 +92,16 @@ func FindSafeCalleePkg(n *ssa.CallCommon) Optional[string] {
 	return Some(n.StaticCallee().Pkg.Pkg.Path())
 }
 
+// FindValuePackage finds the package of n.
+// Returns None if no package was found.
 func FindValuePackage(n ssa.Value) Optional[string] {
 	switch node := n.(type) {
 	case *ssa.Function:
 		pkg := node.Package()
+		if node.Signature.Recv() != nil {
+			// the package of a method is the package of its receiver
+			pkg = node.Params[0].Parent().Package()
+		}
 		if pkg != nil {
 			return Some(pkg.String())
 		}

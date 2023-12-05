@@ -540,6 +540,7 @@ func TestAnalyze_Taint(t *testing.T) {
 		{"stdlib", []string{"helpers.go"}},
 		{"selects", []string{"helpers.go"}},
 		{"panics", []string{}},
+		{"closures_paper", []string{"helpers.go"}},
 	}
 
 	skip := map[string]bool{
@@ -571,6 +572,10 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 	expected, _ := analysistest.GetExpectedTargetToSources(dir, ".")
 	if len(expected) == 0 {
 		t.Fatal("expected sources and sinks to be present")
+	}
+	hasMeta := expected.HasMetadata()
+	if hasMeta {
+		t.Log("Test file has annotation metadata")
 	}
 
 	program, cfg := analysistest.LoadTest(t, dir, test.files)
@@ -629,6 +634,10 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 	for expectSink, expectSources := range expected {
 		for expectSource := range expectSources {
 			if skip[filepath.Base(expectSource.Pos.Filename)] || skip[filepath.Base(expectSink.Pos.Filename)] {
+				continue
+			}
+			if expectSource.Meta != "" {
+				t.Logf("WARN: failed to detect that:\n%s\nflows to\n%s\n", expectSource, expectSink)
 				continue
 			}
 
