@@ -27,12 +27,12 @@ import (
 // this value does not affect soundness
 const maxAccessPathLength = 4
 
-type MarkWithPath struct {
+type MarkWithAccessPath struct {
 	Mark       *Mark
 	AccessPath string
 }
 
-type ValueWithPath struct {
+type ValueWithAccessPath struct {
 	Value         ssa.Value
 	Instruction   ssa.Instruction
 	Path          string
@@ -40,13 +40,35 @@ type ValueWithPath struct {
 }
 
 type AbstractValue struct {
-	value        ssa.Value
-	PathMappings map[string]map[*Mark]bool
+	value           ssa.Value
+	isPathSensitive bool
+	marks           map[*Mark]bool
+	accessMarks     map[string]map[*Mark]bool
 }
 
-func NewAbstractValue(v ssa.Value) *AbstractValue {
-	return &AbstractValue{
-		value: v, PathMappings: map[string]map[*Mark]bool{},
+func NewAbstractValue(v ssa.Value, pathSensitive bool) *AbstractValue {
+	if pathSensitive {
+		return &AbstractValue{
+			value:           v,
+			accessMarks:     map[string]map[*Mark]bool{},
+			marks:           nil,
+			isPathSensitive: true,
+		}
+	} else {
+		return &AbstractValue{
+			value:           v,
+			accessMarks:     nil,
+			marks:           map[*Mark]bool{},
+			isPathSensitive: false,
+		}
+	}
+}
+
+func (a *AbstractValue) PathMappings() map[string]map[*Mark]bool {
+	if a.isPathSensitive {
+		return a.accessMarks
+	} else {
+		return map[string]map[*Mark]bool{"": a.marks}
 	}
 }
 
@@ -55,22 +77,26 @@ func (a *AbstractValue) GetValue() ssa.Value {
 }
 
 func (a *AbstractValue) add(path string, mark *Mark) {
-	if _, ok := a.PathMappings[path]; !ok {
-		a.PathMappings[path] = map[*Mark]bool{}
+	if a.isPathSensitive {
+		if _, ok := a.accessMarks[path]; !ok {
+			a.accessMarks[path] = map[*Mark]bool{}
+		}
+		a.accessMarks[path][mark] = true
+	} else {
+		a.marks[mark] = true
 	}
-	a.PathMappings[path][mark] = true
 }
 
 // MarksAt returns all the marks on the abstract value for a certain path. For example, if the value is marked at
 // ".field" by [m] and at "[*]" by [m'] then MarksAt(".field") will return "[m]" and MarksAt("[*]") will return "[m']".
 // MarksAt("") will return [m,m']
 // if the value is marked at "", by m”, then MarksAt(".field") will return "[m,m”]"
-func (a *AbstractValue) MarksAt(path string) []MarkWithPath {
-	if path == "" {
+func (a *AbstractValue) MarksAt(path string) []MarkWithAccessPath {
+	if path == "" || !a.isPathSensitive {
 		return a.AllMarks()
 	}
-	marks := []MarkWithPath{}
-	for p, m := range a.PathMappings {
+	marks := []MarkWithAccessPath{}
+	for p, m := range a.accessMarks {
 		// Logic for matching paths
 		relAccessPath, ok := strings.CutPrefix(p, path)
 		if p == "" {
@@ -80,21 +106,27 @@ func (a *AbstractValue) MarksAt(path string) []MarkWithPath {
 		// If path matches, then add the marks with the right path
 		if ok {
 			for mark := range m {
-				marks = append(marks, MarkWithPath{mark, relAccessPath})
+				marks = append(marks, MarkWithAccessPath{mark, relAccessPath})
 			}
 		}
 	}
 	return marks
 }
 
-func (a *AbstractValue) AllMarks() []MarkWithPath {
+func (a *AbstractValue) AllMarks() []MarkWithAccessPath {
 	if a == nil {
-		return []MarkWithPath{}
+		return []MarkWithAccessPath{}
 	}
-	var x []MarkWithPath
-	for path, marks := range a.PathMappings {
-		for mark := range marks {
-			x = append(x, MarkWithPath{mark, path})
+	var x []MarkWithAccessPath
+	if a.isPathSensitive {
+		for path, marks := range a.accessMarks {
+			for mark := range marks {
+				x = append(x, MarkWithAccessPath{mark, path})
+			}
+		}
+	} else {
+		for mark := range a.marks {
+			x = append(x, MarkWithAccessPath{mark, ""})
 		}
 	}
 	return x
@@ -105,14 +137,49 @@ func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
 		return false
 	}
 	modified := false
-	for path, aMarks := range a.PathMappings {
-		if bMarks, ok := b.PathMappings[path]; !ok {
-			b.PathMappings[path] = maps.Clone(aMarks)
-			modified = true
+	if a.isPathSensitive {
+		if b.isPathSensitive {
+			// merge a path-sensitive value into a path-sensitive one
+			// paths need to be transferred
+			for path, aMarks := range a.accessMarks {
+				if bMarks, ok := b.accessMarks[path]; !ok {
+					b.accessMarks[path] = maps.Clone(aMarks)
+					modified = true
+				} else {
+					for m := range aMarks {
+						if !bMarks[m] {
+							bMarks[m] = true
+							modified = true
+						}
+					}
+				}
+			}
 		} else {
-			for m := range aMarks {
-				if !bMarks[m] {
-					bMarks[m] = true
+			// merge into a non-access-path-sensitive value
+			// access path information gets lost
+			for _, m := range a.AllMarks() {
+				if !b.marks[m.Mark] {
+					modified = true
+					b.marks[m.Mark] = true
+				}
+			}
+		}
+	} else {
+		if b.isPathSensitive {
+			// transfer the marks of a to the root of b (path "")
+			for mark := range a.marks {
+				if bRootMapping, ok := b.accessMarks[""]; !ok {
+					b.accessMarks[""] = map[*Mark]bool{mark: true}
+				} else if !bRootMapping[mark] {
+					modified = true
+					b.accessMarks[""][mark] = true
+				}
+			}
+		} else {
+			// both a not path-sensitive
+			for mark := range a.marks {
+				if !b.marks[mark] {
+					b.marks[mark] = true
 					modified = true
 				}
 			}
@@ -121,22 +188,34 @@ func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
 	return modified
 }
 
+// HasMarkAt returns a boolean indicating whether the abstractValue has a mark at the given path.
 func (a *AbstractValue) HasMarkAt(path string, m *Mark) bool {
-	for _, m2 := range a.MarksAt(path) {
-		if m2.Mark == m {
-			return true
+	if !a.isPathSensitive {
+		return a.marks[m]
+	} else {
+		for _, m2 := range a.MarksAt(path) {
+			if m2.Mark == m {
+				return true
+			}
 		}
+		return false
 	}
-	return false
 }
 
+// Show writes information about the value on the writer
 func (a *AbstractValue) Show(w io.Writer) {
-	for path, marks := range a.PathMappings {
-		fmt.Fprintf(w, "   %s = %s .%s marked by ", a.value.Name(), a.value, path)
-		for mark := range marks {
-			fmt.Fprintf(w, " <%s> ", mark)
+	if !a.isPathSensitive {
+		for mark := range a.marks {
+			fmt.Fprintf(w, "   %s = %s marked by <%s>", a.value.Name(), a.value, mark.String())
 		}
-		fmt.Fprintf(w, "\n")
+	} else {
+		for path, marks := range a.accessMarks {
+			fmt.Fprintf(w, "   %s = %s .%s marked by ", a.value.Name(), a.value, path)
+			for mark := range marks {
+				fmt.Fprintf(w, " <%s> ", mark)
+			}
+			fmt.Fprintf(w, "\n")
+		}
 	}
 }
 

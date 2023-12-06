@@ -103,7 +103,7 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 		instrPrev:           make([]map[int]bool, flowInfo.NumInstructions),
 		paramAliases:        make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
 		freeVarAliases:      make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
-		valueAliases:        make([][]ValueWithPath, flowInfo.NumValues*flowInfo.NumInstructions),
+		valueAliases:        make([][]ValueWithAccessPath, flowInfo.NumValues*flowInfo.NumInstructions),
 		shouldTrack:         sm.shouldTrack,
 		postBlockCallback:   sm.postBlockCallBack,
 	}

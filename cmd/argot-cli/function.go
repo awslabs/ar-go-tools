@@ -531,7 +531,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			} else if vStr != vName {
 				x = vName + "=" + vStr
 			}
-			for path, markSet := range marks.PathMappings {
+			for path, markSet := range marks.PathMappings() {
 				var markStrings []string
 				for mark := range markSet {
 					markStrings = append(markStrings, formatutil.Red(mark.String()))

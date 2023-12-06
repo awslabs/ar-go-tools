@@ -168,7 +168,7 @@ func reportFlowInformation(state *AnalyzerState, fi *FlowInformation) {
 			} else if vStr != vName {
 				x = vName + "=" + vStr
 			}
-			for path, markSet := range marks.PathMappings {
+			for path, markSet := range marks.PathMappings() {
 				var markStrings []string
 				for mark := range markSet {
 					markStrings = append(markStrings, formatutil.Red(mark.String()))

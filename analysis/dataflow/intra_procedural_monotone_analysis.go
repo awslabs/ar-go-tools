@@ -66,7 +66,7 @@ type IntraAnalysisState struct {
 	// freeVarAliases maps values to the free variable it aliases
 	freeVarAliases []map[*ssa.FreeVar]bool
 
-	valueAliases [][]ValueWithPath
+	valueAliases [][]ValueWithAccessPath
 
 	// shouldTrack returns true if dataflow from the ssa node should be tracked
 	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool
@@ -180,7 +180,8 @@ func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
 		for valueNum, previousAbstractValue := range state.flowInfo.MarkedValues[pIndex*n : pIndex*n+n] {
 			curAbstractValue := state.flowInfo.MarkedValues[ix+valueNum]
 			if curAbstractValue == nil {
-				curAbstractValue = NewAbstractValue(state.flowInfo.values[valueNum])
+				curAbstractValue = NewAbstractValue(state.flowInfo.values[valueNum],
+					state.flowInfo.pathSensitivityFilter[valueNum])
 				state.flowInfo.MarkedValues[ix+valueNum] = curAbstractValue
 				state.changeFlag = true
 			}
@@ -204,9 +205,9 @@ func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 // The Path parameter enables Path-sensitivity. If Path is "*", any Path is accepted and the analysis
 // over-approximates.
 func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path string,
-	isProceduralEntry bool, ignorePath bool) []MarkWithPath {
+	isProceduralEntry bool, ignorePath bool) []MarkWithAccessPath {
 	index := state.flowInfo.GetPos(i, v)
-	var origins []MarkWithPath
+	var origins []MarkWithAccessPath
 	values := state.valueAliases[index]
 	if values == nil {
 		values = state.getValueAliases(i, v, isProceduralEntry)
@@ -234,18 +235,18 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 	return origins
 }
 
-func (state *IntraAnalysisState) getValueAliases(i ssa.Instruction, v ssa.Value, p bool) []ValueWithPath {
-	var computedValues []ValueWithPath
-	state.getValueAliasesRec(&computedValues, i, v, "", p, map[ValueWithPath]bool{})
+func (state *IntraAnalysisState) getValueAliases(i ssa.Instruction, v ssa.Value, p bool) []ValueWithAccessPath {
+	var computedValues []ValueWithAccessPath
+	state.getValueAliasesRec(&computedValues, i, v, "", p, map[ValueWithAccessPath]bool{})
 	return computedValues
 }
 
-func (state *IntraAnalysisState) getValueAliasesRec(values *[]ValueWithPath, i ssa.Instruction, v ssa.Value,
+func (state *IntraAnalysisState) getValueAliasesRec(values *[]ValueWithAccessPath, i ssa.Instruction, v ssa.Value,
 	relPath string,
 	isProceduralEntry bool,
-	queries map[ValueWithPath]bool) {
+	queries map[ValueWithAccessPath]bool) {
 
-	val := ValueWithPath{v, i, "", isProceduralEntry}
+	val := ValueWithAccessPath{v, i, "", isProceduralEntry}
 	if queries[val] || v == nil {
 		return
 	}
@@ -273,8 +274,8 @@ func (state *IntraAnalysisState) getValueAliasesRec(values *[]ValueWithPath, i s
 }
 
 //gocyclo:ignore
-func (state *IntraAnalysisState) referrerAliases(values *[]ValueWithPath, i ssa.Instruction, v ssa.Value,
-	path string, referrer ssa.Instruction, queries map[ValueWithPath]bool) {
+func (state *IntraAnalysisState) referrerAliases(values *[]ValueWithAccessPath, i ssa.Instruction, v ssa.Value,
+	path string, referrer ssa.Instruction, queries map[ValueWithAccessPath]bool) {
 	switch refInstr := referrer.(type) {
 	case *ssa.Send:
 		// marks on a Value sent on a channel transfer to channel

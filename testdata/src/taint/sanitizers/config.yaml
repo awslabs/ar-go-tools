@@ -1,4 +1,3 @@
-report-summaries: true
 # The package regex matches all possible ways the package name might appear depending on how the program is loaded
 taint-tracking-problems:
   -
@@ -15,5 +14,6 @@ taint-tracking-problems:
     sanitizers:
       - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         method: ".*(s|S)anitize[1-9]?"
-
-
+options:
+  report-summaries: true
+  field-sensitive: true

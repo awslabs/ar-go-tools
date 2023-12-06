@@ -14,3 +14,4 @@ taint-tracking-problems:
 
 options:
    report-paths: true
+   field-sensitive: true

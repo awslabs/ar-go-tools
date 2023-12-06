@@ -31,13 +31,14 @@ type FlowInformation struct {
 	// user provided configuration identifying specific dataflow nodes to track and other settings (e.g. verbosity)
 	Config *config.Config
 
-	Marks           map[Mark]*Mark
-	NumBlocks       int
-	NumValues       int
-	NumInstructions int
-	ValueId         map[ssa.Value]int
-	InstrId         map[ssa.Instruction]int
-	values          []ssa.Value
+	Marks                 map[Mark]*Mark
+	NumBlocks             int
+	NumValues             int
+	NumInstructions       int
+	ValueId               map[ssa.Value]int
+	InstrId               map[ssa.Instruction]int
+	values                []ssa.Value
+	pathSensitivityFilter []bool
 
 	// MarkedValues maps instructions to abstract states, i.e. a map from values to their abstract Value, which is a
 	// set of marks
@@ -78,18 +79,24 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 		}
 	})
 
+	pathSensitivityFilter := make([]bool, numValues)
+	for i := range pathSensitivityFilter {
+		pathSensitivityFilter[i] = cfg.PathSensitive
+	}
+
 	return &FlowInformation{
-		Function:        f,
-		Config:          cfg,
-		Marks:           make(map[Mark]*Mark),
-		NumBlocks:       len(f.Blocks),
-		NumValues:       numValues,
-		NumInstructions: numInstructions,
-		ValueId:         valueId,
-		InstrId:         instrId,
-		values:          values,
-		MarkedValues:    make([]*AbstractValue, numValues*numInstructions),
-		LocSet:          make(map[*Mark]map[ssa.Instruction]bool, numValues),
+		Function:              f,
+		Config:                cfg,
+		Marks:                 make(map[Mark]*Mark),
+		NumBlocks:             len(f.Blocks),
+		NumValues:             numValues,
+		NumInstructions:       numInstructions,
+		ValueId:               valueId,
+		InstrId:               instrId,
+		values:                values,
+		pathSensitivityFilter: pathSensitivityFilter,
+		MarkedValues:          make([]*AbstractValue, numValues*numInstructions),
+		LocSet:                make(map[*Mark]map[ssa.Instruction]bool, numValues),
 	}
 }
 
@@ -161,7 +168,8 @@ func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, path string
 // AddMark adds a mark to the tracking info structure and returns true if new information has been inserted.
 // If false, then "fi" has not changed.
 // In both cases, "fi" will have the mark "s" on ssa value "value" with "path" at instruction "i".
-func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value, path string, s *Mark) bool {
+func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value,
+	path string, s *Mark) bool {
 	index := fi.GetPos(i, value)
 	if index < 0 { // this is not a value in the function
 		return false
@@ -174,7 +182,7 @@ func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value, path stri
 			return true
 		}
 	} else {
-		as := NewAbstractValue(value)
+		as := NewAbstractValue(value, fi.pathSensitivityFilter[fi.ValueId[value]])
 		as.add(path, s)
 		fi.MarkedValues[index] = as
 		return true
