@@ -341,7 +341,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	for _, ts := range c.Config.TaintTrackingProblems {
 		c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(&ts),
 			func(node ssa.Node) bool {
-				return taint.IsSourceNode(&ts, node)
+				return taint.IsSourceNode(&ts, c.PointerAnalysis, node)
 			},
 			nil)
 	}
@@ -370,7 +370,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 		visitor := &backtrace.Visitor{}
 		visitor.SlicingSpec = &ps
 		c.FlowGraph.RunVisitorOnEntryPoints(visitor, func(node ssa.Node) bool {
-			return backtrace.IsInterProceduralEntryPoint(&ps, node)
+			return backtrace.IsInterProceduralEntryPoint(c, &ps, node)
 		}, nil)
 
 		traces = append(traces, visitor.Traces...)

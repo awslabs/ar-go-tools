@@ -108,6 +108,14 @@ func TestCrossFunctionClosuresFlowPrecise_SummarizeOnDemand(t *testing.T) {
 	runTest(t, "closures_flowprecise", []string{"helpers.go"}, true, noErrorExpected)
 }
 
+func TestCrossFunctionClosuresPaper(t *testing.T) {
+	runTest(t, "closures_paper", []string{"helpers.go"}, false, noErrorExpected)
+}
+
+func TestCrossFunctionClosuresPaper_SummarizeOnDemand(t *testing.T) {
+	runTest(t, "closures_paper", []string{"helpers.go"}, true, noErrorExpected)
+}
+
 func TestCrossFunctionInterfaceSummaries(t *testing.T) {
 	runTest(t, "interface-summaries", []string{"helpers.go"}, false, noErrorExpected)
 }

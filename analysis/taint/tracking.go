@@ -23,77 +23,58 @@ import (
 
 // Flows stores information about where the data coming from specific instructions flows to.
 type Flows struct {
-	// Sinks maps the sink instructions to the source instruction from which the data flows
+	// Sinks maps the sink nodes to the source node from which the data flows
 	// More precisely, Sinks[sink][source] <== data from source flows to sink
-	Sinks map[ssa.Instruction]map[ssa.Instruction]bool
+	Sinks map[FlowNode]map[FlowNode]bool
 
 	// Escapes maps the instructions where data escapes, coming from the source instruction it maps to.
 	// More precisely, Escapes[instr][source] <== data from source escapes the thread at instr
 	Escapes map[ssa.Instruction]map[ssa.Instruction]bool
 }
 
-type PositionSetMap = map[token.Position]map[token.Position]bool
+// FlowNode represents a node in Flows.Sinks.
+// This is very similar to dataflow.NodeWithTrace, except it is more easily comparable.
+type FlowNode struct {
+	// Instr is the SSA instruction of the node.
+	Instr ssa.Instruction
+	// Trace is a string representation of the trace of the node.
+	Trace string
+}
 
 // NewFlows returns a new object to track taint flows and flows from source to escape locations
 func NewFlows() *Flows {
 	return &Flows{
-		Sinks:   map[ssa.Instruction]map[ssa.Instruction]bool{},
+		Sinks:   map[FlowNode]map[FlowNode]bool{},
 		Escapes: map[ssa.Instruction]map[ssa.Instruction]bool{},
 	}
 }
 
-// addNewPathCandidate adds a new path between a source and a sink to paths using the information in elt
-// returns true if it adds a new path.
-// @requires elt.Node.IsSink()
-func (m *Flows) addNewPathCandidate(source df.GraphNode, sink df.GraphNode) bool {
-	var sourceInstr ssa.Instruction
-	var sinkInstr ssa.CallInstruction
-
-	// The source instruction depends on the type of the source: a call node or synthetic node are directly
-	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
-	// parent call node.
-	switch node := source.(type) {
-	case *df.CallNode:
-		sourceInstr = node.CallSite()
-	case *df.CallNodeArg:
-		sourceInstr = node.ParentNode().CallSite()
-	case *df.SyntheticNode:
-		sourceInstr = node.Instr()
+// NewFlowNode returns a new FlowNode from node's SSA instruction and trace.
+func NewFlowNode(node df.NodeWithTrace) FlowNode {
+	return FlowNode{
+		Instr: df.Instr(node.Node),
+		Trace: node.Trace.SummaryString(),
 	}
-
-	// Similar thing for the sink. Synthetic nodes are currently not used as potential sinks.
-	switch node := sink.(type) {
-	case *df.CallNode:
-		sinkInstr = node.CallSite()
-	case *df.CallNodeArg:
-		sinkInstr = node.ParentNode().CallSite()
-	}
-
-	if sinkInstr != nil && sourceInstr != nil {
-		if _, ok := m.Sinks[sinkInstr.(ssa.Instruction)]; !ok {
-			m.Sinks[sinkInstr.(ssa.Instruction)] = make(map[ssa.Instruction]bool)
-		}
-		m.Sinks[sinkInstr.(ssa.Instruction)][sourceInstr] = true
-		return true
-	}
-	return false
 }
 
-func (m *Flows) addNewEscape(source df.GraphNode, escapeInstr ssa.Instruction) {
-	var sourceInstr ssa.Instruction
-
-	// The source instruction depends on the type of the source: a call node or synthetic node are directly
-	// related to an instruction, whereas the instruction of a call node argument is the instruction of its
-	// parent call node.
-	switch node := source.(type) {
-	case *df.CallNode:
-		sourceInstr = node.CallSite()
-	case *df.CallNodeArg:
-		sourceInstr = node.ParentNode().CallSite()
-	case *df.SyntheticNode:
-		sourceInstr = node.Instr()
+// addNewPathCandidate adds a new path between a source and a sink if a path
+// does not exist already.
+// Returns true if it adds a new path.
+func (m *Flows) addNewPathCandidate(source FlowNode, sink FlowNode) bool {
+	if source.Instr == nil || sink.Instr == nil {
+		return false
 	}
 
+	if _, ok := m.Sinks[sink]; !ok {
+		m.Sinks[sink] = make(map[FlowNode]bool)
+	}
+
+	m.Sinks[sink][source] = true
+	return true
+}
+
+func (m *Flows) addNewEscape(source df.NodeWithTrace, escapeInstr ssa.Instruction) {
+	sourceInstr := df.Instr(source.Node)
 	if escapeInstr != nil && sourceInstr != nil {
 		if _, ok := m.Escapes[escapeInstr.(ssa.Instruction)]; !ok {
 			m.Escapes[escapeInstr.(ssa.Instruction)] = make(map[ssa.Instruction]bool)
@@ -102,14 +83,14 @@ func (m *Flows) addNewEscape(source df.GraphNode, escapeInstr ssa.Instruction) {
 	}
 }
 
-// Merge merges the flows from b into a.
+// Merge merges the flows from b into m.
 //
-// requires a != nil
+// requires m.Sinks != nil && m.Escapes != nil
 func (m *Flows) Merge(b *Flows) {
 	for x, yb := range b.Sinks {
 		ya, ina := m.Sinks[x]
 		if ina {
-			m.Sinks[x] = unionPaths(ya, yb)
+			m.Sinks[x] = unionNodes(ya, yb)
 		} else {
 			m.Sinks[x] = yb
 		}
@@ -117,15 +98,15 @@ func (m *Flows) Merge(b *Flows) {
 	for x, yb := range b.Escapes {
 		ya, ina := m.Escapes[x]
 		if ina {
-			m.Escapes[x] = unionPaths(ya, yb)
+			m.Escapes[x] = unionInstrs(ya, yb)
 		} else {
 			m.Escapes[x] = yb
 		}
 	}
 }
 
-// unionPaths is a utility function to merge two sets of instructions.
-func unionPaths(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[ssa.Instruction]bool {
+// unionNodes is a utility function to merge two sets of nodes.
+func unionNodes(p1 map[FlowNode]bool, p2 map[FlowNode]bool) map[FlowNode]bool {
 	for x, yb := range p2 {
 		ya, ina := p1[x]
 		if ina {
@@ -137,30 +118,29 @@ func unionPaths(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[ss
 	return p1
 }
 
-// ToPositions translates Flows into two sets of position maps, the first set being the set of sinks positions reached
-// by source positions, and the second set being the set of escaped positions reached by source positions.
-func (m *Flows) ToPositions(prog *ssa.Program) (PositionSetMap, PositionSetMap) {
-	return instrPSetToPositionSetMap(prog, m.Sinks), instrPSetToPositionSetMap(prog, m.Escapes)
-}
-
-// instrPSetToPositionSetMap converts the map of sets of instructions to a map of sets of positions using the program
-// prog to resolve the positions
-func instrPSetToPositionSetMap(p *ssa.Program, iMap map[ssa.Instruction]map[ssa.Instruction]bool) PositionSetMap {
-	pMap := make(PositionSetMap)
-
-	for sinkNode, sourceNodes := range iMap {
-		sinkPos := sinkNode.Pos()
-		sinkFile := p.Fset.File(sinkPos)
-		if sinkPos != token.NoPos && sinkFile != nil {
-			pMap[sinkFile.Position(sinkPos)] = map[token.Position]bool{}
-			for sourceNode := range sourceNodes {
-				sourcePos := sourceNode.Pos()
-				sourceFile := p.Fset.File(sourcePos)
-				if sinkPos != token.NoPos && sourceFile != nil {
-					pMap[sinkFile.Position(sinkPos)][sourceFile.Position(sourcePos)] = true
-				}
-			}
+// unionInstrs is a utility function to merge two sets of instructions.
+func unionInstrs(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[ssa.Instruction]bool {
+	// NOTE this is a duplicate of unionNodes because the ssa.Instruction
+	// interface does not implement the comparable constraint
+	for x, yb := range p2 {
+		ya, ina := p1[x]
+		if ina {
+			p1[x] = yb || ya
+		} else {
+			p1[x] = yb
 		}
 	}
-	return pMap
+	return p1
+}
+
+// position returns the position of instr in program p and true if the position is valid.
+// Returns an empty position and false if invalid.
+func position(p *ssa.Program, instr ssa.Instruction) (token.Position, bool) {
+	pos := instr.Pos()
+	file := p.Fset.File(pos)
+	if pos != token.NoPos && file != nil {
+		return file.Position(pos), true
+	}
+
+	return token.Position{}, false
 }

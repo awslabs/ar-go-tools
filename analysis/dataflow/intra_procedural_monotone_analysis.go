@@ -66,7 +66,7 @@ type IntraAnalysisState struct {
 	freeVarAliases map[ssa.Value]map[*ssa.FreeVar]bool
 
 	// shouldTrack returns true if dataflow from the ssa node should be tracked
-	shouldTrack func(*config.Config, ssa.Node) bool
+	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool
 
 	// postBlockCallback is called after each block if it is non-nil. Useful for debugging purposes.
 	postBlockCallback func(*IntraAnalysisState)
@@ -324,7 +324,7 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
-	if state.shouldTrack(state.parentAnalyzerState.Config, asNode) {
+	if state.shouldTrack(state.parentAnalyzerState.Config, state.parentAnalyzerState.PointerAnalysis, asNode) {
 		s := NewMark(asNode, Synthetic+DefaultMark, "", nil, -1)
 		state.markValue(asInstr, asValue, s)
 	}
@@ -340,7 +340,9 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 	}
 	// Check if node is source according to config
 	markType := CallReturn
-	if state.shouldTrack(state.flowInfo.Config, instr.(ssa.Node)) { // type cast cannot fail
+	if state.shouldTrack(state.parentAnalyzerState.Config,
+		state.parentAnalyzerState.PointerAnalysis,
+		instr.(ssa.Node)) {
 		markType += DefaultMark
 	}
 	// Mark call, one mark per returned value

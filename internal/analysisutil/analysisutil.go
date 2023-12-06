@@ -25,7 +25,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	. "github.com/awslabs/ar-go-tools/internal/funcutil"
-
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -92,6 +92,24 @@ func FindSafeCalleePkg(n *ssa.CallCommon) Optional[string] {
 	return Some(n.StaticCallee().Pkg.Pkg.Path())
 }
 
+// FindValuePackage finds the package of n.
+// Returns None if no package was found.
+func FindValuePackage(n ssa.Value) Optional[string] {
+	switch node := n.(type) {
+	case *ssa.Function:
+		pkg := node.Package()
+		if node.Signature.Recv() != nil {
+			// the package of a method is the package of its receiver
+			pkg = node.Params[0].Parent().Package()
+		}
+		if pkg != nil {
+			return Some(pkg.String())
+		}
+		return None[string]()
+	}
+	return None[string]()
+}
+
 // FieldAddrFieldName finds the name of a field access in ssa.FieldAddr
 // if it cannot find a proper field name, returns "?"
 func FieldAddrFieldName(fieldAddr *ssa.FieldAddr) string {
@@ -121,13 +139,14 @@ func getFieldNameFromType(t types.Type, i int) string {
 }
 
 // IsEntrypointNode returns true if n is an entrypoint to the analysis according to f.
-func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
+func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered entry points
 	case *ssa.Call:
 		if node == nil {
 			return false // inits cannot be entry points
 		}
+
 		parent := node.Parent()
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
@@ -142,14 +161,8 @@ func IsEntrypointNode(n ssa.Node, f func(config.CodeIdentifier) bool) bool {
 						Receiver: receiver})
 			}
 			return false
-		} else {
-			funcValue := node.Call.Value.Name()
-			calleePkg := FindSafeCalleePkg(node.Common())
-			if calleePkg.IsSome() {
-				return f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue})
-			}
-			return false
 		}
+		return isFuncEntrypoint(node, parent, f) || isAliasEntrypoint(pointer, node, f)
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:
@@ -216,4 +229,33 @@ func ReceiverStr(t types.Type) string {
 	typ = strings.Replace(typ, "*", "", -1)
 	split := strings.Split(typ, ".")
 	return split[len(split)-1]
+}
+
+// isFuncEntrypoint returns true if the actual function called matches an entrypoint.
+func isFuncEntrypoint(node *ssa.Call, parent *ssa.Function, f func(config.CodeIdentifier) bool) bool {
+	funcValue := node.Call.Value.Name()
+	calleePkg := FindSafeCalleePkg(node.Common())
+	if calleePkg.IsSome() {
+		return f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue})
+	}
+	return false
+}
+
+// isAliasEntrypoint returns true if any alias to node matches an entrypoint.
+func isAliasEntrypoint(pointer *pointer.Result, node *ssa.Call, f func(config.CodeIdentifier) bool) bool {
+	if pointer == nil {
+		return false
+	}
+	ptr, hasAliases := pointer.Queries[node.Call.Value]
+	if !hasAliases {
+		return false
+	}
+	for _, label := range ptr.PointsTo().Labels() {
+		funcValue := label.Value().Name()
+		funcPackage := FindValuePackage(label.Value())
+		if funcPackage.IsSome() && f(config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}) {
+			return true
+		}
+	}
+	return false
 }

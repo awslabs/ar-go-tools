@@ -540,6 +540,7 @@ func TestAnalyze_Taint(t *testing.T) {
 		{"stdlib", []string{"helpers.go"}},
 		{"selects", []string{"helpers.go"}},
 		{"panics", []string{}},
+		{"closures_paper", []string{"helpers.go"}},
 	}
 
 	skip := map[string]bool{
@@ -568,9 +569,13 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 		t.Fatal(err)
 	}
 
-	expected, _ := analysistest.GetExpectSourceToTargets(dir, ".")
+	expected, _ := analysistest.GetExpectedTargetToSources(dir, ".")
 	if len(expected) == 0 {
 		t.Fatal("expected sources and sinks to be present")
+	}
+	hasMeta := expected.HasMetadata()
+	if hasMeta {
+		t.Log("Test file has annotation metadata")
 	}
 
 	program, cfg := analysistest.LoadTest(t, dir, test.files)
@@ -614,7 +619,7 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 				seen[posSink] = map[analysistest.LPos]bool{}
 			}
 			posSource := analysistest.RemoveColumn(source)
-			if _, ok := expected[posSink]; ok && expected[posSink][posSource] {
+			if isExpected(expected, posSource, posSink) {
 				seen[posSink][posSource] = true
 			} else if !strings.HasPrefix(posSink.Filename, dir) {
 				// TODO: check that the on-demand summarization is consistent with the not on-demand when analyzing
@@ -626,28 +631,50 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 		}
 	}
 
-	for sinkLine, sources := range expected {
-		for sourceLine := range sources {
-			if skip[filepath.Base(sourceLine.Filename)] || skip[filepath.Base(sinkLine.Filename)] {
+	for expectSink, expectSources := range expected {
+		for expectSource := range expectSources {
+			if skip[filepath.Base(expectSource.Pos.Filename)] || skip[filepath.Base(expectSink.Pos.Filename)] {
+				continue
+			}
+			if expectSource.Meta != "" {
+				t.Logf("WARN: failed to detect that:\n%s\nflows to\n%s\n", expectSource, expectSink)
 				continue
 			}
 
-			if !seen[sinkLine][sourceLine] {
+			if !seen[expectSink.Pos][expectSource.Pos] {
 				// Remaining entries have not been detected!
-				t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", sourceLine, sinkLine)
+				t.Errorf("ERROR: failed to detect that:\n%s\nflows to\n%s\n", expectSource, expectSink)
 			}
 		}
 	}
 }
 
+func isExpected(expected analysistest.TargetToSources, sourcePos analysistest.LPos, sinkPos analysistest.LPos) bool {
+	for sink, sources := range expected {
+		if sink.Pos == sinkPos {
+			for source := range sources {
+				if source.Pos == sourcePos {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
 // reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func reachedSinkPositions(prog *ssa.Program, cfg *config.Config, traces []backtrace.Trace) map[token.Position]map[token.Position]bool {
+func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
+	traces []backtrace.Trace) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 	for _, trace := range traces {
 		// sink is always the last node in the trace because it's the analysis entrypoint
 		sink := trace[len(trace)-1]
-		si := sinkInstr(sink.GraphNode)
+		si := dataflow.Instr(sink.GraphNode)
+		if si == nil {
+			continue
+		}
 		sinkPos := si.Pos()
 		sinkFile := prog.Fset.File(sinkPos)
 		if sinkPos == token.NoPos || sinkFile == nil {
@@ -660,11 +687,8 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config, traces []backtr
 		}
 
 		for _, node := range trace {
-			if strings.Contains(node.GraphNode.String(), "invoke stringProducer.source() in fetchAndPut") {
-				fmt.Println()
-			}
-			instr, ok := sourceInstr(node.GraphNode)
-			if !ok {
+			instr := dataflow.Instr(node.GraphNode)
+			if instr == nil {
 				continue
 			}
 
@@ -707,20 +731,7 @@ func isSourceNode(cfg *config.Config, source ssa.Node) bool {
 		}
 	}
 
-	return taint.IsSomeSourceNode(cfg, source)
-}
-
-func sourceInstr(source dataflow.GraphNode) (ssa.Instruction, bool) {
-	switch node := source.(type) {
-	case *dataflow.CallNode:
-		return node.CallSite(), true
-	case *dataflow.CallNodeArg:
-		return node.ParentNode().CallSite(), true
-	case *dataflow.SyntheticNode:
-		return node.Instr(), true
-	default:
-		return nil, false
-	}
+	return taint.IsSomeSourceNode(cfg, nil, source)
 }
 
 func sourceNode(source dataflow.GraphNode) ssa.Node {
@@ -733,17 +744,6 @@ func sourceNode(source dataflow.GraphNode) ssa.Node {
 		return node.Instr().(ssa.Node)
 	default:
 		panic(fmt.Errorf("invalid source: %T", source))
-	}
-}
-
-func sinkInstr(sink dataflow.GraphNode) ssa.Instruction {
-	switch node := sink.(type) {
-	case *dataflow.CallNode:
-		return node.CallSite()
-	case *dataflow.CallNodeArg:
-		return node.ParentNode().CallSite()
-	default:
-		panic(fmt.Errorf("invalid sink node: %T", sink))
 	}
 }
 

@@ -21,17 +21,18 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
 // IsSomeSourceNode returns true if n matches the code identifier of some source in the config
-func IsSomeSourceNode(cfg *config.Config, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(n, cfg.IsSomeSource)
+func IsSomeSourceNode(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(p, n, cfg.IsSomeSource)
 }
 
 // IsSourceNode returns true if n matches the code identifier of a source node in the taint specification
-func IsSourceNode(ts *config.TaintSpec, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(n, ts.IsSource)
+func IsSourceNode(ts *config.TaintSpec, p *pointer.Result, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(p, n, ts.IsSource)
 }
 
 func isSink(ts *config.TaintSpec, n dataflow.GraphNode) bool {
@@ -97,7 +98,23 @@ func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.
 		return false
 	case *dataflow.CallNodeArg:
 		// A call node argument is a sink if the callee is a sink
-		return isMatchingCodeId(codeIdOracle, n.ParentNode())
+		if isMatchingCodeId(codeIdOracle, n.ParentNode()) {
+			return true
+		}
+
+		// The matching parameter node could be a sink
+		callSite := n.ParentNode()
+		if callSite == nil {
+			return false
+		}
+		if callSite.CalleeSummary == nil {
+			return false
+		}
+		param := callSite.CalleeSummary.Parent.Params[n.Index()]
+		if param == nil {
+			return false
+		}
+		return isMatchingCodeIdWithCallee(codeIdOracle, callSite.CalleeSummary.Parent, param.Parent())
 	case *dataflow.CallNode:
 		return isMatchingCodeIdWithCallee(codeIdOracle, n.Callee(), n.CallSite().(ssa.Node))
 	case *dataflow.SyntheticNode:
@@ -160,6 +177,11 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 			}
 		}
 		return false
+	case *ssa.Function:
+		return codeIdOracle(config.CodeIdentifier{
+			Package: lang.PackageNameFromFunction(node),
+			Method:  node.Name(),
+		})
 	// We will likely extend the functionality to other types of sanitizers
 	default:
 		return false

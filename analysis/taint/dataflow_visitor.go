@@ -122,9 +122,10 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
-			if v.taints.addNewPathCandidate(v.currentSource.Node, cur.Node) {
+			if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
 				numAlarms++
 				reportTaintFlow(s, v.currentSource, cur)
+
 				// Stop if there is a limit on number of alarms, and it has been reached.
 				if s.Config.MaxAlarms > 0 && numAlarms >= s.Config.MaxAlarms {
 					return
@@ -407,6 +408,19 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					ClosureTrace: cur.ClosureTrace,
 				}
 				que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, edgeInfo)
+			}
+
+			// If the call is a source node, the actual source node may be one of its arguments
+			// See the closures_paper test for an example
+			if graphNode == source.Node {
+				for _, arg := range graphNode.Args() {
+					nextNodeWithTrace := df.NodeWithTrace{
+						Node:         arg,
+						Trace:        trace,
+						ClosureTrace: cur.ClosureTrace,
+					}
+					que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, df.ObjectPath{})
+				}
 			}
 
 		// Tainting a bound variable node means that the free variable in a closure will be tainted.
@@ -769,7 +783,7 @@ func (v *Visitor) checkEscape(s *df.AnalyzerState, node df.GraphNode, escapeInfo
 		_, isCall := instr.(ssa.CallInstruction)
 		isLocal, isTracked := escapeInfo.InstructionLocality[instr]
 		if !isCall && !isLocal && isTracked {
-			v.taints.addNewEscape(v.currentSource.Node, instr)
+			v.taints.addNewEscape(v.currentSource, instr)
 			v.raiseAlarm(s, instr.Pos(),
 				fmt.Sprintf("instruction %s in %s is not local!\n\tPosition: %s",
 					instr, node.Graph().Parent, s.Program.Fset.Position(instr.Pos())))
