@@ -28,8 +28,8 @@ func (state *IntraAnalysisState) NewBlock(block *ssa.BasicBlock) {
 	state.changeFlag = false
 	state.curBlock = block
 	// If the block has not been visited yet, declare that information has changed.
-	if !state.blocksSeen[block] {
-		state.blocksSeen[block] = true
+	if !state.blocksSeen[block.Index] {
+		state.blocksSeen[block.Index] = true
 		state.changeFlag = true
 	}
 }

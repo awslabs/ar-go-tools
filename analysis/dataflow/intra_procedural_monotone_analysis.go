@@ -26,11 +26,6 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-type IVKey struct {
-	I ssa.Instruction
-	V ssa.Value
-}
-
 // IntraAnalysisState contains the information used by the intra-procedural dataflow analysis.
 type IntraAnalysisState struct {
 	// the data flow information for the analysis
@@ -45,8 +40,8 @@ type IntraAnalysisState struct {
 	// curBlock keeps track of the curren block
 	curBlock *ssa.BasicBlock
 
-	// blocksSeen is a map to keep track of blocks seen during the analysis
-	blocksSeen map[*ssa.BasicBlock]bool
+	// blocksSeen is a slice mapping block indexes to a boolean indicating if the block was seen
+	blocksSeen []bool
 
 	// errors stores the errors met during the analysis. We don't panic during the analysis, but accumulate errors and
 	// the client is responsible for proper handling of the errors

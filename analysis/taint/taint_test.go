@@ -212,6 +212,10 @@ func TestField(t *testing.T) {
 	runTest(t, "fields", []string{}, false, noErrorExpected)
 }
 
+func TestBenchmark(t *testing.T) {
+	runTest(t, "benchmark", []string{}, false, noErrorExpected)
+}
+
 func TestPlayground(t *testing.T) {
 	runTest(t, "playground", []string{}, false, noErrorExpected)
 }

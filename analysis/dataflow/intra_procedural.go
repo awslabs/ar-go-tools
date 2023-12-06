@@ -95,7 +95,7 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 		flowInfo:            flowInfo,
 		parentAnalyzerState: a,
 		changeFlag:          true,
-		blocksSeen:          map[*ssa.BasicBlock]bool{},
+		blocksSeen:          make([]bool, flowInfo.NumBlocks),
 		errors:              map[ssa.Node]error{},
 		summary:             sm,
 		deferStacks:         defers.AnalyzeFunction(sm.Parent, a.Logger),
