@@ -32,11 +32,16 @@ type MarkWithAccessPath struct {
 	AccessPath string
 }
 
-type ValueWithAccessPath struct {
+type InstructionValueWithAccessPath struct {
 	Value         ssa.Value
 	Instruction   ssa.Instruction
 	Path          string
 	FromProcEntry bool
+}
+
+type ValueWithAccessPath struct {
+	Value ssa.Value
+	Path  string
 }
 
 type AbstractValue struct {
@@ -266,6 +271,10 @@ func pathAppendIndexing(path string) string {
 	return path + "[*]"
 }
 
+// pathMatchField checks whether path starts with the field fieldName.
+// For example, pathMatchField(".field1.field2", "field1") is ".field2", true
+// and pathMatchField(".field2.field1", "field1") is "field2.field1", false.
+// / If path is empty, always returns true.
 func pathMatchField(path string, fieldName string) (string, bool) {
 	if path == "" {
 		return "", true
@@ -273,6 +282,9 @@ func pathMatchField(path string, fieldName string) (string, bool) {
 	return strings.CutPrefix(path, "."+fieldName)
 }
 
+// pathMatchIndex checks whether path start with some indexing and returns the suffix
+// and true if it does start with indexing. Otherwise, the entire path is returned with
+// false.
 func pathMatchIndex(path string) (string, bool) {
 	if path == "" {
 		return "", true
