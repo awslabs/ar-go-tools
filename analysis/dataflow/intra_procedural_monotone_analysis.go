@@ -60,13 +60,16 @@ type IntraAnalysisState struct {
 	// transfer the abstract state in the flowInfo of an instruction to the next instruction
 	instrPrev []map[int]bool
 
-	// paramAliases maps values to the function to the parameter it aliases
+	// paramAliases maps values ids  (ids stored in flowInfo.ValueId)  to the function to the parameter it aliases
 	paramAliases []map[*ssa.Parameter]bool
 
-	// freeVarAliases maps values to the free variable it aliases
+	// freeVarAliases maps values ids (ids stored in flowInfo.ValueId) to the free variable it aliases
 	freeVarAliases []map[*ssa.FreeVar]bool
 
-	valueAliases [][]InstructionValueWithAccessPath
+	// transitiveMarks maps value ids (ids stored in flowInfo.ValueId) to a list of values with access paths and
+	// instruction this means that for a value v with id vid, transitiveMarks[vid] lists all the values whose marks
+	// flow to the value v
+	transitiveMarks [][]InstructionValueWithAccessPath
 
 	// shouldTrack returns true if dataflow from the ssa node should be tracked
 	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool
@@ -208,10 +211,10 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 	isProceduralEntry bool, ignorePath bool) []MarkWithAccessPath {
 	index := state.flowInfo.GetPos(i, v)
 	var origins []MarkWithAccessPath
-	values := state.valueAliases[index]
+	values := state.transitiveMarks[index]
 	if values == nil {
-		values = state.getValueAliases(i, v, isProceduralEntry)
-		state.valueAliases[index] = values
+		values = state.collectTransitiveValueMarking(i, v, isProceduralEntry)
+		state.transitiveMarks[index] = values
 	}
 
 	for _, alias := range values {
@@ -235,13 +238,14 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 	return origins
 }
 
-func (state *IntraAnalysisState) getValueAliases(i ssa.Instruction, v ssa.Value, p bool) []InstructionValueWithAccessPath {
+func (state *IntraAnalysisState) collectTransitiveValueMarking(i ssa.Instruction, v ssa.Value,
+	p bool) []InstructionValueWithAccessPath {
 	var computedValues []InstructionValueWithAccessPath
-	state.getValueAliasesRec(&computedValues, i, v, "", p, map[InstructionValueWithAccessPath]bool{})
+	state.collectValueMarkingRec(&computedValues, i, v, "", p, map[InstructionValueWithAccessPath]bool{})
 	return computedValues
 }
 
-func (state *IntraAnalysisState) getValueAliasesRec(values *[]InstructionValueWithAccessPath,
+func (state *IntraAnalysisState) collectValueMarkingRec(values *[]InstructionValueWithAccessPath,
 	i ssa.Instruction, v ssa.Value,
 	relPath string,
 	isProceduralEntry bool,
@@ -259,7 +263,7 @@ func (state *IntraAnalysisState) getValueAliasesRec(values *[]InstructionValueWi
 			// If any of the aliases of the value is marked, add the marks
 			for _, ptr := range state.findAllPointers(v) {
 				for _, label := range ptr.PointsTo().Labels() {
-					state.getValueAliasesRec(values, i, label.Value(), relPath, true, queries)
+					state.collectValueMarkingRec(values, i, label.Value(), relPath, true, queries)
 				}
 			}
 
@@ -267,7 +271,7 @@ func (state *IntraAnalysisState) getValueAliasesRec(values *[]InstructionValueWi
 			referrers := v.Referrers()
 			if referrers != nil {
 				for _, referrer := range *(v.Referrers()) {
-					state.referrerAliases(values, i, v, relPath, referrer, queries)
+					state.collectReferrerValueMarking(values, i, v, relPath, referrer, queries)
 				}
 			}
 		}
@@ -275,37 +279,39 @@ func (state *IntraAnalysisState) getValueAliasesRec(values *[]InstructionValueWi
 }
 
 //gocyclo:ignore
-func (state *IntraAnalysisState) referrerAliases(values *[]InstructionValueWithAccessPath, i ssa.Instruction, v ssa.Value,
+func (state *IntraAnalysisState) collectReferrerValueMarking(values *[]InstructionValueWithAccessPath,
+	i ssa.Instruction, v ssa.Value,
 	path string, referrer ssa.Instruction, queries map[InstructionValueWithAccessPath]bool) {
 	switch refInstr := referrer.(type) {
 	case *ssa.Send:
 		// marks on a Value sent on a channel transfer to channel
 		if v == refInstr.Chan && lang.IsNillableType(refInstr.X.Type()) {
-			state.getValueAliasesRec(values, i, refInstr.X, path, true, queries)
+			state.collectValueMarkingRec(values, i, refInstr.X, path, true, queries)
 			return
 		}
 	case *ssa.FieldAddr:
 		// refInstr is "y = &v.name"
 		// the Value is the struct, collect the marks on the field address. We are not field sensitive, so if the
 		// field address has marks, then the struct itself has marks.
-		state.getValueAliasesRec(values, i, refInstr, pathAppendField(path, analysisutil.FieldAddrFieldName(refInstr)), true, queries)
+		state.collectValueMarkingRec(values, i, refInstr,
+			pathAppendField(path, analysisutil.FieldAddrFieldName(refInstr)), true, queries)
 		return
 	case *ssa.IndexAddr:
 		// the marks on an index address transfer to the slice (but not the marks on the index)
 		if v != refInstr.Index {
-			state.getValueAliasesRec(values, i, refInstr, pathAppendIndexing(path), true, queries)
+			state.collectValueMarkingRec(values, i, refInstr, pathAppendIndexing(path), true, queries)
 			return
 		}
 	case *ssa.Slice:
 		// the marks of a slice of the Value are also marks of the Value
 		if v == refInstr.X {
-			state.getValueAliasesRec(values, i, refInstr, path, true, queries)
+			state.collectValueMarkingRec(values, i, refInstr, path, true, queries)
 			return
 		}
 	case *ssa.Store:
 		// is a Value is stored, and that Value is pointer like, the marks transfer to the address
 		if v == refInstr.Addr && lang.IsNillableType(refInstr.Val.Type()) {
-			state.getValueAliasesRec(values, i, refInstr.Val, path, true, queries)
+			state.collectValueMarkingRec(values, i, refInstr.Val, path, true, queries)
 			return
 		}
 	case *ssa.MapUpdate:
@@ -319,14 +325,16 @@ func (state *IntraAnalysisState) referrerAliases(values *[]InstructionValueWithA
 			if lang.IsNillableType(refInstr.Value.Type()) {
 				flowRef = i
 			}
-			state.getValueAliasesRec(values, flowRef, refInstr.Value, pathAppendIndexing(path), true, queries)
+			state.collectValueMarkingRec(values, flowRef, refInstr.Value,
+				pathAppendIndexing(path), true, queries)
 
 			// Key
 			flowRef = (ssa.Instruction)(refInstr)
 			if lang.IsNillableType(refInstr.Key.Type()) {
 				flowRef = i
 			}
-			state.getValueAliasesRec(values, flowRef, refInstr.Key, pathAppendIndexing(path), true, queries)
+			state.collectValueMarkingRec(values, flowRef, refInstr.Key,
+				pathAppendIndexing(path), true, queries)
 			return
 		}
 	}

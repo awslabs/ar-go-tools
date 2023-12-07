@@ -28,7 +28,10 @@ import (
 )
 
 // checkTaint checks that actual matches the expected target->sink annotation ids from the test.
-func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSources, actual map[FlowNode]map[FlowNode]bool) {
+//
+//gocyclo:ignore
+func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSources,
+	actual map[FlowNode]map[FlowNode]bool) {
 	type seenSource struct {
 		Pos   analysistest.LPos
 		Trace string

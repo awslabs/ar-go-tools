@@ -31,13 +31,28 @@ type FlowInformation struct {
 	// user provided configuration identifying specific dataflow nodes to track and other settings (e.g. verbosity)
 	Config *config.Config
 
-	Marks                 map[Mark]*Mark
-	NumBlocks             int
-	NumValues             int
-	NumInstructions       int
-	ValueId               map[ssa.Value]int
-	InstrId               map[ssa.Instruction]int
-	values                []ssa.Value
+	// marks maps mark values to the pointer representing them
+	marks map[Mark]*Mark
+
+	// NumBlocks is the number of blocks in the function
+	NumBlocks int
+
+	// NumValues is the number of values used in the function (values defined + used)
+	NumValues int
+
+	// NumInstructions is the number of instructions in the function
+	NumInstructions int
+
+	// ValueId maps ssa.Value to value id
+	ValueId map[ssa.Value]int
+
+	// InstrId maps ssa.Instruction to instruction id
+	InstrId map[ssa.Instruction]int
+
+	// values maps value ids to ssa.Value
+	values []ssa.Value
+
+	// pathSensitivityFilter masks values that need to be handled in a field-sensitive manner
 	pathSensitivityFilter []bool
 
 	// MarkedValues maps instructions to abstract states, i.e. a map from values to their abstract Value, which is a
@@ -87,7 +102,7 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 	return &FlowInformation{
 		Function:              f,
 		Config:                cfg,
-		Marks:                 make(map[Mark]*Mark),
+		marks:                 make(map[Mark]*Mark),
 		NumBlocks:             len(f.Blocks),
 		NumValues:             numValues,
 		NumInstructions:       numInstructions,
@@ -100,6 +115,7 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 	}
 }
 
+// GetPos returns the position of the abstract value at instruction i in the slice-based representation
 func (fi *FlowInformation) GetPos(i ssa.Instruction, v ssa.Value) int {
 	iId, ok := fi.InstrId[i]
 	if !ok {
@@ -112,16 +128,19 @@ func (fi *FlowInformation) GetPos(i ssa.Instruction, v ssa.Value) int {
 	return iId*fi.NumValues + vId
 }
 
+// GetInstrPos returns the position of the instruction in the slice-based representations
 func (fi *FlowInformation) GetInstrPos(i ssa.Instruction) int {
 	return fi.InstrId[i] * fi.NumValues
 }
 
+// GetNewMark returns a pointer to the mark with the provided arguments. Internally checks whether the mark object
+// representing this mark already exists.
 func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int) *Mark {
 	m := NewMark(node, typ, qualifier, index)
-	if m0, ok := fi.Marks[m]; ok {
+	if m0, ok := fi.marks[m]; ok {
 		return m0
 	} else {
-		fi.Marks[m] = &m
+		fi.marks[m] = &m
 		return &m
 	}
 }

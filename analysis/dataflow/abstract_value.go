@@ -32,6 +32,8 @@ type MarkWithAccessPath struct {
 	AccessPath string
 }
 
+// InstructionValueWithAccessPath represents a value at an instruction with a specific access path. The boolean
+// FromProcEntry is used by some functions to differentiate how the value was collected.
 type InstructionValueWithAccessPath struct {
 	Value         ssa.Value
 	Instruction   ssa.Instruction
@@ -39,6 +41,8 @@ type InstructionValueWithAccessPath struct {
 	FromProcEntry bool
 }
 
+// A ValueWithAccessPath is a value with an access path, e.g. a value "x" with an access path ".field1" represents
+// member field1 of the struct x.
 type ValueWithAccessPath struct {
 	Value ssa.Value
 	Path  string
@@ -51,6 +55,8 @@ type AbstractValue struct {
 	accessMarks     map[string]map[*Mark]bool
 }
 
+// NewAbstractValue returns a new abstract value v. If pathSensitive is true, then the abstract value is represented
+// in an access path sensitive manner (marks on the value are different depending on the access path).
 func NewAbstractValue(v ssa.Value, pathSensitive bool) *AbstractValue {
 	if pathSensitive {
 		return &AbstractValue{
@@ -69,6 +75,8 @@ func NewAbstractValue(v ssa.Value, pathSensitive bool) *AbstractValue {
 	}
 }
 
+// PathMappings returns a map from access path to set of marks. If the abstract value is no access-path (or field)
+// sensitive, then the only access path is "".
 func (a *AbstractValue) PathMappings() map[string]map[*Mark]bool {
 	if a.isPathSensitive {
 		return a.accessMarks
@@ -77,10 +85,12 @@ func (a *AbstractValue) PathMappings() map[string]map[*Mark]bool {
 	}
 }
 
+// GetValue returns the ssa value of the abstract value.
 func (a *AbstractValue) GetValue() ssa.Value {
 	return a.value
 }
 
+// add adds a mark relative to a certain path (ignored if the abstract value is not access-path sensitive).
 func (a *AbstractValue) add(path string, mark *Mark) {
 	if a.isPathSensitive {
 		if _, ok := a.accessMarks[path]; !ok {
@@ -118,6 +128,7 @@ func (a *AbstractValue) MarksAt(path string) []MarkWithAccessPath {
 	return marks
 }
 
+// AllMarks returns all the marks on the abstract value, ignoring their access path.
 func (a *AbstractValue) AllMarks() []MarkWithAccessPath {
 	if a == nil {
 		return []MarkWithAccessPath{}
@@ -137,6 +148,10 @@ func (a *AbstractValue) AllMarks() []MarkWithAccessPath {
 	return x
 }
 
+// mergeInto merges the information in a into b.
+// a is not modified, and the boolean returned indicates whether b has been modified or not.
+//
+//gocyclo:ignore
 func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
 	if a == nil {
 		return false
@@ -224,10 +239,12 @@ func (a *AbstractValue) Show(w io.Writer) {
 	}
 }
 
+// pathLen returns the length of the path in terms of object "accesses"
 func pathLen(path string) int {
 	return 1 + strings.Count(path, "[*]") + strings.Count(path, ".")
 }
 
+// pathTrimLast removes the last element of the path
 func pathTrimLast(path string) string {
 	if path == "" {
 		return ""
@@ -243,6 +260,7 @@ func pathTrimLast(path string) string {
 	}
 }
 
+// pathPrependField prefixes the path with a field access
 func pathPrependField(path string, fieldName string) string {
 	if pathLen(path) > maxAccessPathLength {
 		path = pathTrimLast(path)
@@ -250,6 +268,7 @@ func pathPrependField(path string, fieldName string) string {
 	return "." + fieldName + path
 }
 
+// pathPrependIndexing prefixes the path with an indexing operation
 func pathPrependIndexing(path string) string {
 	if pathLen(path) > maxAccessPathLength {
 		path = pathTrimLast(path)
@@ -257,6 +276,7 @@ func pathPrependIndexing(path string) string {
 	return "[*]" + path
 }
 
+// pathAppendField appends a field access to the path
 func pathAppendField(path string, fieldName string) string {
 	if pathLen(path) > maxAccessPathLength {
 		return path
@@ -264,6 +284,7 @@ func pathAppendField(path string, fieldName string) string {
 	return path + "." + fieldName
 }
 
+// pathAppendIndexing appends an indexing operation to the path
 func pathAppendIndexing(path string) string {
 	if pathLen(path) > maxAccessPathLength {
 		return path
