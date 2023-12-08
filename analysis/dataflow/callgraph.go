@@ -139,6 +139,9 @@ func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map
 					method := set.At(i)
 					// Get the function implementation
 					methodValue := p.MethodValue(method)
+					if methodValue == nil {
+						continue
+					}
 					// Get the interface method being implemented
 					matchingInterfaceMethod := interfaceMethods[methodValue.Name()]
 					if methodValue != nil && matchingInterfaceMethod != nil {
@@ -169,7 +172,7 @@ func computeErrorBuiltinImplementations(p *ssa.Program, implementations map[stri
 			method := set.At(i)
 			// Get the function implementation
 			methodValue := p.MethodValue(method)
-			if methodValue.Name() != "Error" || len(methodValue.Params) > 1 {
+			if methodValue == nil || methodValue.Name() != "Error" || len(methodValue.Params) > 1 {
 				continue
 			}
 			results := methodValue.Signature.Results()

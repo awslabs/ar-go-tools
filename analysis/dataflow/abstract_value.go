@@ -17,9 +17,9 @@ package dataflow
 import (
 	"fmt"
 	"io"
-	"maps"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/internal/shims"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -163,7 +163,7 @@ func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
 			// paths need to be transferred
 			for path, aMarks := range a.accessMarks {
 				if bMarks, ok := b.accessMarks[path]; !ok {
-					b.accessMarks[path] = maps.Clone(aMarks)
+					b.accessMarks[path] = shims.Clone(aMarks)
 					modified = true
 				} else {
 					for m := range aMarks {

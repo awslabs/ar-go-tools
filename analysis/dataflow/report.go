@@ -17,11 +17,11 @@ package dataflow
 import (
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/shims"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -151,7 +151,7 @@ func reportFlowInformation(state *AnalyzerState, fi *FlowInformation) {
 				mVals = append(mVals, val.value)
 			}
 		}
-		slices.SortFunc(mVals, func(a, b ssa.Value) int {
+		shims.SortFunc(mVals, func(a, b ssa.Value) int {
 			var s1, s2 string
 			setStr(a, &s1)
 			setStr(a, &s2)
