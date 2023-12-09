@@ -454,7 +454,7 @@ func showReferrers(tt *term.Terminal, val ssa.Value) {
 func showPointer(tt *term.Terminal, ptr pointer.Pointer) {
 	var entries []displayElement
 	for _, label := range ptr.PointsTo().Labels() {
-		if label.Value() != nil {
+		if label.Value() != nil && label.Value().Parent() != nil {
 			f := ""
 			if label.Value().Parent() != state.CurrentFunction {
 				f = fmt.Sprintf(" in %s", label.Value().Parent().Name())

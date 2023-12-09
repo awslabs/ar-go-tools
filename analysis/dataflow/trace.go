@@ -94,6 +94,20 @@ func (n *NodeTree[T]) String() string {
 	return strings.Join(s, "_")
 }
 
+// SummaryString returns a short summary of n.
+func (n *NodeTree[T]) SummaryString() string {
+	if n == nil || n.height == 0 {
+		return ""
+	}
+	s := make([]string, n.height)
+	for cur := n; cur != nil; cur = cur.Parent {
+		if cur.height >= 1 {
+			s[cur.height-1] = shortNodeSummary(cur.Label)
+		}
+	}
+	return strings.Join(s, "->") // -> is more readable for shorter nodes than _
+}
+
 // Len returns the height of the node tree (length of a path from the root to the current node
 func (n *NodeTree[T]) Len() int {
 	if n == nil {

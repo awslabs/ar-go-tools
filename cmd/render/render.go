@@ -31,6 +31,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
 )
@@ -94,7 +95,7 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, progra
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		IsEntrypoint:       func(*config.Config, ssa.Node) bool { return true },
+		IsEntrypoint:       func(*config.Config, *pointer.Result, ssa.Node) bool { return true },
 	})
 
 	state, err = render.BuildCrossFunctionGraph(state)

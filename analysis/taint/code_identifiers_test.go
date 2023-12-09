@@ -25,6 +25,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -32,7 +33,7 @@ type functionToNode map[*ssa.Function][]ssa.Node
 
 type PackageToNodes map[*ssa.Package]functionToNode
 
-type nodeIdFunction func(*config.Config, ssa.Node) bool
+type nodeIdFunction func(*config.Config, *pointer.Result, ssa.Node) bool
 
 func NewPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIdFunction) PackageToNodes {
 	packageMap := make(PackageToNodes)
@@ -61,7 +62,7 @@ func populateFunctionMap(config *config.Config, fMap functionToNode, current *ss
 	for _, b := range current.Blocks {
 		for _, instr := range b.Instrs {
 			// An instruction should always be a Node too.
-			if n := instr.(ssa.Node); f(config, n) {
+			if n := instr.(ssa.Node); f(config, nil, n) {
 				sources = append(sources, n)
 			}
 		}
@@ -86,7 +87,7 @@ func newSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
 // newSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
 func newSinkMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
 	return NewPackagesMap(c, pkgs,
-		func(cfg *config.Config, node ssa.Node) bool {
+		func(cfg *config.Config, p *pointer.Result, node ssa.Node) bool {
 			return isMatchingCodeIdWithCallee(cfg.IsSomeSink, nil, node)
 		})
 }
