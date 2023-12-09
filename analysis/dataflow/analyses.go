@@ -56,7 +56,7 @@ type EscapeAnalysisState interface {
 	// possible concrete callee; see `EscapeCallsiteInfo.Resolve()`. Only calls to non-builtins are
 	// available in `callsiteInfo`.
 	ComputeInstructionLocalityAndCallsites(f *ssa.Function, ctx EscapeCallContext) (
-		instructionLocality map[ssa.Instruction]bool,
+		instructionLocality map[ssa.Instruction]*EscapeRationale,
 		callsiteInfo map[*ssa.Call]EscapeCallsiteInfo)
 }
 
@@ -79,4 +79,18 @@ type EscapeCallContext interface {
 // callee. EscapeCallsiteInfo objects are immutable.
 type EscapeCallsiteInfo interface {
 	Resolve(callee *ssa.Function) EscapeCallContext
+}
+
+type EscapeRationale struct {
+	Reason string
+	// For more informative rationales, this can include a trace showing the steps along the way.
+	// For now, we just store the ultimate "base" reason why something leaks (global, function, go, etc).
+}
+
+func (r *EscapeRationale) String() string {
+	return r.Reason
+}
+
+func NewBaseRationale(reason string) *EscapeRationale {
+	return &EscapeRationale{Reason: reason}
 }
