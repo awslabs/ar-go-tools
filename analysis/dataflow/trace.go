@@ -18,7 +18,7 @@ import (
 	"strings"
 )
 
-// KeyType is a Value type to represents keys
+// KeyType is a value type to represents keys
 type KeyType = string
 
 // NodeWithTrace represents a GraphNode with two traces, a Trace for the call stack at the node and a ClosureTrace for
@@ -29,9 +29,9 @@ type NodeWithTrace struct {
 	ClosureTrace *NodeTree[*ClosureNode]
 }
 
-// Key generates an object of type KeyType whose *Value* identifies the Value of g uniquely.
+// Key generates an object of type KeyType whose *value* identifies the value of g uniquely.
 // If two NodeWithTrace objects represent the same node with the same call and closure traces, the Key() method
-// will return the same Value
+// will return the same value
 func (g NodeWithTrace) Key() KeyType {
 	s := g.Node.LongID() + "!" + g.Trace.Key() + "!" + g.ClosureTrace.Key()
 	return s
@@ -117,7 +117,7 @@ func (n *NodeTree[T]) Len() int {
 	}
 }
 
-// ToSlice returns a slice of the nodes on the Path from the root to the current node. The elements are ordered with
+// ToSlice returns a slice of the nodes on the path from the root to the current node. The elements are ordered with
 // the root first and the current node last.
 func (n *NodeTree[T]) ToSlice() []T {
 	if n == nil {
@@ -132,7 +132,7 @@ func (n *NodeTree[T]) ToSlice() []T {
 	return s
 }
 
-// GetLassoHandle checks if the trace (Path from root to node) is more than one node long and the current node has the same
+// GetLassoHandle checks if the trace (path from root to node) is more than one node long and the current node has the same
 // call as the last node. If the trace is a lasso, the end of the handle is returned. Otherwise, the function returns
 // nil.
 //
@@ -193,7 +193,7 @@ func (n *NodeTree[T]) Append(tree *NodeTree[T]) *NodeTree[T] {
 	return cur
 }
 
-// PathContains returns true if n has c on the Path from the root
+// PathContains returns true if n has c on the path from the root
 func PathContains(n *NodeTree[*CallNode], c *CallNode) bool {
 	if n == nil || n.height == 0 {
 		return false

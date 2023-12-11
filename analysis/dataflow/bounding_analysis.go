@@ -52,8 +52,8 @@ func (b BindingInfo) Type() types.Type {
 	return bv.Type()
 }
 
-// BoundingMap maps values to the binding infos that reference the closures that captured the Value.
-// In other words, for a Value v and BoundingMap X, if X[v] is non-empty, then v is captured by some closure. For each
+// BoundingMap maps values to the binding infos that reference the closures that captured the value.
+// In other words, for a value v and BoundingMap X, if X[v] is non-empty, then v is captured by some closure. For each
 // y in X[v], y.MakeClosure is the instruction that captures it and y.BoundIndex is the bound variable that aliases v.
 type BoundingMap map[ssa.Value]map[*BindingInfo]bool
 

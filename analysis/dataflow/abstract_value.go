@@ -48,11 +48,23 @@ type ValueWithAccessPath struct {
 	Path  string
 }
 
+// An AbstractValue represents an abstract value in the dataflow computation algorithm: an abstract value is an SSA
+// value with a set of marks.
+// If the value is represented in an (access-)path sensitive manner, then isPathSensitive must be true and the
+// maps of accessMarks is in use.
+// If the value is not (access-)path sensitive, the marks maps is the set of marks of that value.
 type AbstractValue struct {
-	value           ssa.Value
+	// value is the SSA value represented by that abstract value
+	value ssa.Value
+
+	// isPathSensitive indicates whether that value is represented in a path sensitive manner
 	isPathSensitive bool
-	marks           map[*Mark]bool
-	accessMarks     map[string]map[*Mark]bool
+
+	// marks is the set of marks of the value when !isPathSensitive
+	marks map[*Mark]bool
+
+	// accessMarks is the set of marks with the relative path when isPathSensitive
+	accessMarks map[string]map[*Mark]bool
 }
 
 // NewAbstractValue returns a new abstract value v. If pathSensitive is true, then the abstract value is represented
@@ -102,10 +114,17 @@ func (a *AbstractValue) add(path string, mark *Mark) {
 	}
 }
 
-// MarksAt returns all the marks on the abstract value for a certain path. For example, if the value is marked at
-// ".field" by [m] and at "[*]" by [m'] then MarksAt(".field") will return "[m]" and MarksAt("[*]") will return "[m']".
-// MarksAt("") will return [m,m']
-// if the value is marked at "", by m”, then MarksAt(".field") will return "[m,m”]"
+// MarksAt returns all the marks with relative paths on the abstract value for a certain path.
+// For example, if the value x is marked at  ".field" by [m] and at "[*]" by [m'] then x.MarksAt(".field") will return
+// "[{m,""}]"  and x.MarksAt("[*]") will return "[{m',""}]". x.MarksAt("") will return [{m,".field"},{m',"[*]"}]
+//
+// - If the value is marked at "", by "m”, then MarksAt(".field") will return "[{m, ""},{"m'”,""}]".
+//
+// - if the value z is marked at ".f.g" by "o", then z.MarksAt(".f") will return [{m, ".g"}]
+//
+// If the value is not path sensitive, then MarkAt simply returns AllMarks(), the path is ignored.
+//
+// TODO: the implementation of access paths will change, and we will provide a more complete documentation then.
 func (a *AbstractValue) MarksAt(path string) []MarkWithAccessPath {
 	if path == "" || !a.isPathSensitive {
 		return a.AllMarks()
