@@ -18,8 +18,6 @@ package shims
 
 import (
 	"strings"
-
-	"golang.org/x/exp/slices"
 )
 
 // CutPrefix is the CutPrefix function from go >1.20
@@ -30,7 +28,7 @@ func CutPrefix(s, prefix string) (after string, found bool) {
 	return s[len(prefix):], true
 }
 
-// Clone is the map
+// Clone is the maps.Clone function available in versions of Go >1.21
 func Clone[M ~map[K]V, K comparable, V any](m M) M {
 	// Preserve nil in case it matters.
 	if m == nil {
@@ -41,10 +39,4 @@ func Clone[M ~map[K]V, K comparable, V any](m M) M {
 		r[k] = v
 	}
 	return r
-}
-
-func SortFunc[S ~[]E, E any](x S, cmp func(a, b E) int) {
-	slices.SortFunc(x, func(a, b E) bool {
-		return cmp(a, b) >= 0
-	})
 }
