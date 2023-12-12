@@ -203,6 +203,10 @@ type Options struct {
 	// If provided MaxDepth is <= 0, then it is ignored.
 	MaxDepth int `xml:"max-depth,attr" yaml:"max-depth"`
 
+	// PathSensitive is a boolean indicating whether the analysis should be run with path sensitivity on
+	// (will change to include more filtering in the future)
+	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive"`
+
 	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
 	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
 	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms"`
@@ -239,6 +243,7 @@ func NewDefault() *Config {
 			SilenceWarn:         false,
 			SourceTaintsArgs:    false,
 			IgnoreNonSummarized: false,
+			PathSensitive:       false,
 		},
 	}
 }

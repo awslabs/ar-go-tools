@@ -118,7 +118,7 @@ func sanitizerExample6() {
 		X: len(source1()), // @Source(ex6f1)
 		Y: source1(),      // @Source(ex6f2)
 	}
-	sink1(strconv.Itoa(a1.X)) // @Sink(ex6f1, ex6f2)
+	sink1(strconv.Itoa(a1.X)) // @Sink(ex6f1)
 	a2 := Sanitize2(a1)
 	i, _ := strconv.Atoi(a2.Y)
 	sink1(i)

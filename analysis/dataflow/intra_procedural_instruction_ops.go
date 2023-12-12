@@ -28,8 +28,8 @@ func (state *IntraAnalysisState) NewBlock(block *ssa.BasicBlock) {
 	state.changeFlag = false
 	state.curBlock = block
 	// If the block has not been visited yet, declare that information has changed.
-	if !state.blocksSeen[block] {
-		state.blocksSeen[block] = true
+	if !state.blocksSeen[block.Index] {
+		state.blocksSeen[block.Index] = true
 		state.changeFlag = true
 	}
 }
@@ -60,26 +60,30 @@ func (state *IntraAnalysisState) DoDebugRef(*ssa.DebugRef) {
 }
 
 func (state *IntraAnalysisState) DoUnOp(x *ssa.UnOp) {
-	if x.Op == token.ARROW {
+	switch x.Op {
+	case token.ARROW:
 		state.optionalSyntheticNode(x, x, x)
+	case token.MUL:
+		transferCopy(state, x, x.X, x)
 	}
+
 	simpleTransfer(state, x, x.X, x)
 }
 
 func (state *IntraAnalysisState) DoBinOp(binop *ssa.BinOp) {
-	// If either operand is tainted, taint the value.
+	// If either operand is tainted, taint the Value.
 	// We might want more precision later.
 	simpleTransfer(state, binop, binop.X, binop)
 	simpleTransfer(state, binop, binop.Y, binop)
 }
 
 func (state *IntraAnalysisState) DoChangeInterface(x *ssa.ChangeInterface) {
-	simpleTransfer(state, x, x.X, x)
+	transferCopy(state, x, x.X, x)
 }
 
 func (state *IntraAnalysisState) DoChangeType(x *ssa.ChangeType) {
 	// Changing type doesn't change taint
-	simpleTransfer(state, x, x.X, x)
+	transferCopy(state, x, x.X, x)
 }
 
 func (state *IntraAnalysisState) DoConvert(x *ssa.Convert) {
@@ -91,7 +95,7 @@ func (state *IntraAnalysisState) DoSliceArrayToPointer(x *ssa.SliceToArrayPointe
 }
 
 func (state *IntraAnalysisState) DoMakeInterface(x *ssa.MakeInterface) {
-	simpleTransfer(state, x, x.X, x)
+	transferCopy(state, x, x.X, x)
 }
 
 func (state *IntraAnalysisState) DoExtract(x *ssa.Extract) {
@@ -120,12 +124,12 @@ func (state *IntraAnalysisState) DoPanic(x *ssa.Panic) {
 }
 
 func (state *IntraAnalysisState) DoSend(x *ssa.Send) {
-	// Sending a tainted value over the channel taints the whole channel
+	// Sending a tainted Value over the channel taints the whole channel
 	simpleTransfer(state, x, x.X, x.Chan)
 }
 
 func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
-	transfer(state, x, x.Val, x.Addr, "*", -1)
+	transfer(state, x, x.Val, x.Addr, "", -1)
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
@@ -135,7 +139,7 @@ func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 
 func (state *IntraAnalysisState) DoIf(*ssa.If) {
 	// Do nothing
-	// TODO: do we want to add path sensitivity, i.e. conditional on tainted value taints all values in condition?
+	// TODO: do we want to add Path sensitivity, i.e. conditional on tainted Value taints all values in condition?
 }
 
 func (state *IntraAnalysisState) DoJump(*ssa.Jump) {
@@ -147,8 +151,8 @@ func (state *IntraAnalysisState) DoMakeChan(*ssa.MakeChan) {
 }
 
 func (state *IntraAnalysisState) DoAlloc(x *ssa.Alloc) {
-	if state.shouldTrack(state.parentAnalyzerState.Config, state.parentAnalyzerState.PointerAnalysis, x) {
-		state.markValue(x, x, NewMark(x, DefaultMark, "", nil, -1))
+	if state.shouldTrack(state.flowInfo.Config, state.parentAnalyzerState.PointerAnalysis, x) {
+		state.markValue(x, x, "", state.flowInfo.GetNewMark(x, DefaultMark, nil, -1))
 	}
 	// An allocation may be a mark
 	state.optionalSyntheticNode(x, x, x)
@@ -163,7 +167,7 @@ func (state *IntraAnalysisState) DoMakeMap(*ssa.MakeMap) {
 }
 
 func (state *IntraAnalysisState) DoRange(x *ssa.Range) {
-	// An iterator over a tainted value is tainted
+	// An iterator over a tainted Value is tainted
 	simpleTransfer(state, x, x.X, x)
 }
 
@@ -185,8 +189,11 @@ func (state *IntraAnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 			field = structTyp.Field(x.Field).Name()
 		}
 	}
-	// Taint is propagated if field of struct is tainted
-	transfer(state, x, x.X, x, field, -1)
+	path := ""
+	if field != "" {
+		path = "." + field
+	}
+	transfer(state, x, x.X, x, path, -1)
 }
 
 func (state *IntraAnalysisState) DoField(x *ssa.Field) {
@@ -194,26 +201,29 @@ func (state *IntraAnalysisState) DoField(x *ssa.Field) {
 	state.optionalSyntheticNode(x, x, x)
 
 	// Propagate taint with field sensitivity
-	field := "*" // over-approximation
+	field := "" // over-approximation
 	// Try to get precise field name to be field sensitive
 	xTyp := x.X.Type().Underlying()
 	if structTyp, ok := xTyp.(*types.Struct); ok {
 		field = structTyp.Field(x.Field).Name()
 	}
-	// Taint is propagated if field of struct is tainted
-	transfer(state, x, x.X, x, field, -1)
+	path := ""
+	if field != "" {
+		path = "." + field
+	}
+	transfer(state, x, x.X, x, path, -1)
 }
 
 func (state *IntraAnalysisState) DoIndexAddr(x *ssa.IndexAddr) {
-	// An indexing taints the value if either index or the indexed value is tainted
+	// An indexing taints the Value if either index or the indexed Value is tainted
 	simpleTransfer(state, x, x.Index, x)
-	simpleTransfer(state, x, x.X, x)
+	transfer(state, x, x.X, x, "[*]", -1)
 }
 
 func (state *IntraAnalysisState) DoIndex(x *ssa.Index) {
-	// An indexing taints the value if either index or array is tainted
+	// An indexing taints the Value if either index or array is tainted
 	simpleTransfer(state, x, x.Index, x)
-	simpleTransfer(state, x, x.X, x)
+	transfer(state, x, x.X, x, "[*]", -1)
 }
 
 func (state *IntraAnalysisState) DoLookup(x *ssa.Lookup) {
@@ -222,7 +232,7 @@ func (state *IntraAnalysisState) DoLookup(x *ssa.Lookup) {
 }
 
 func (state *IntraAnalysisState) DoMapUpdate(x *ssa.MapUpdate) {
-	// Adding a tainted key or value in a map taints the whole map
+	// Adding a tainted key or Value in a map taints the whole map
 	simpleTransfer(state, x, x.Key, x.Map)
 	simpleTransfer(state, x, x.Value, x.Map)
 }

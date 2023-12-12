@@ -17,3 +17,4 @@ taint-tracking-problems:
 
 options:
     verbose: true
+    field-sensitive: true

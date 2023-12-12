@@ -23,14 +23,14 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Condition hold information about a conditional path. If Positive, then the branch is the then-branch where
+// Condition hold information about a conditional Path. If Positive, then the branch is the then-branch where
 // the condition is the Value. If it is not Positive, then this refers to the else-branch
 type Condition struct {
 	// IsPositive indicates whether the branch is the then- or -else branch, i.e. the condition must be taken positively
 	// or negatively
 	IsPositive bool
 
-	// Value refers to the value of the condition in the branching
+	// Value refers to the Value of the condition in the branching
 	Value ssa.Value
 }
 
@@ -62,10 +62,10 @@ func (c Condition) IsPredicateTo(v ssa.Value) bool {
 }
 
 // isValuePredicateTo is helper function for IsPredicateTo and has the same functionality, except that it operates
-// directly on the ssa value of the predicate
+// directly on the ssa Value of the predicate
 // for example
 // f(x) != nil predicates x, x.someField and extract x #0. The logic on the val is in lang.ValuesWthSameData
-// f(x) == nil also predicates x or a value with same data
+// f(x) == nil also predicates x or a Value with same data
 // !f(x) and f(x) predicates x
 func isValuePredicateTo(predicate ssa.Value, val ssa.Value) bool {
 	switch x := predicate.(type) {
@@ -141,7 +141,7 @@ func (c ConditionInfo) String() string {
 	return "satisfiable"
 }
 
-// AsPredicateTo filters the conditions in c that relate to the value v.
+// AsPredicateTo filters the conditions in c that relate to the Value v.
 // The returned ConditionInfo is weaker than the input.
 func (c ConditionInfo) AsPredicateTo(v ssa.Value) ConditionInfo {
 	c2 := ConditionInfo{
@@ -156,14 +156,14 @@ func (c ConditionInfo) AsPredicateTo(v ssa.Value) ConditionInfo {
 	return c2
 }
 
-// PathInformation contains information about a path in the program. The object reflects a path in the program only if
+// PathInformation contains information about a Path in the program. The object reflects a Path in the program only if
 // ConditionInfo.Satisfiable is true.
 type PathInformation struct {
-	// Blocks is the list of basic blocks in the path
+	// Blocks is the list of basic blocks in the Path
 	Blocks []*ssa.BasicBlock
 
-	// Cond is a summary of some conditions that must be satisfied along the path. If the PathInformation refers to a
-	// path that does not exist, then Cond.Satisfiable will be false.
+	// Cond is a summary of some conditions that must be satisfied along the Path. If the PathInformation refers to a
+	// Path that does not exist, then Cond.Satisfiable will be false.
 	Cond ConditionInfo
 }
 
@@ -171,8 +171,8 @@ func NewImpossiblePath() PathInformation {
 	return PathInformation{Cond: ConditionInfo{Satisfiable: false}}
 }
 
-// FindIntraProceduralPath returns a path between the begin and end instructions.
-// Returns nil if there is no path between being and end inside the function.
+// FindIntraProceduralPath returns a Path between the begin and end instructions.
+// Returns nil if there is no Path between being and end inside the function.
 func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) PathInformation {
 	// Return nil if the parent functions of begin and end are different
 	if begin.Parent() != end.Parent() {
@@ -191,8 +191,8 @@ func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) PathInf
 	}
 }
 
-// SimplePathCondition returns the ConditionInfo that aggregates all conditions encountered on the path represented by
-// the list of basic blocks. The input list of basic block must represent a program path (i.e. each basic block is
+// SimplePathCondition returns the ConditionInfo that aggregates all conditions encountered on the Path represented by
+// the list of basic blocks. The input list of basic block must represent a program Path (i.e. each basic block is
 // one of the Succs of its predecessor).
 func SimplePathCondition(path []*ssa.BasicBlock) ConditionInfo {
 	var conditions []Condition
@@ -235,8 +235,8 @@ func InstructionsBetween(block *ssa.BasicBlock, begin ssa.Instruction, end ssa.I
 	return nil
 }
 
-// FindPathBetweenBlocks is a BFS of the blocks successor graph returns a list of block indexes representing a path
-// from begin to end. Returns nil iff there is no such path.
+// FindPathBetweenBlocks is a BFS of the blocks successor graph returns a list of block indexes representing a Path
+// from begin to end. Returns nil iff there is no such Path.
 func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.BasicBlock {
 	visited := make(map[*ssa.BasicBlock]int)
 	t := &lang.BlockTree{Block: begin, Parent: nil, Children: []*lang.BlockTree{}}

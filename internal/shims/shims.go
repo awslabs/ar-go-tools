@@ -16,7 +16,9 @@
 // standard library.
 package shims
 
-import "strings"
+import (
+	"strings"
+)
 
 // CutPrefix is the CutPrefix function from go >1.20
 func CutPrefix(s, prefix string) (after string, found bool) {
@@ -24,4 +26,17 @@ func CutPrefix(s, prefix string) (after string, found bool) {
 		return s, false
 	}
 	return s[len(prefix):], true
+}
+
+// Clone is the maps.Clone function available in versions of Go >1.21
+func Clone[M ~map[K]V, K comparable, V any](m M) M {
+	// Preserve nil in case it matters.
+	if m == nil {
+		return nil
+	}
+	r := make(M, len(m))
+	for k, v := range m {
+		r[k] = v
+	}
+	return r
 }

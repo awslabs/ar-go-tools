@@ -10,3 +10,5 @@ errors.txt
 large-tests
 taint-report*
 *-report
+.emacs.desktop
+.idea

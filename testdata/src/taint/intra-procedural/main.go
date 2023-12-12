@@ -130,7 +130,7 @@ func testFieldSensitivity() {
 	x := mkSomeStruct()
 	x.DataField = fmt.Sprintf("tainted") // @Source(xdata2)
 	x.OtherData = "1"
-	sink1(x.OtherData) // @Sink(xdata2) TODO: field sensitivity
+	sink1(x.OtherData)
 	sink1(x.DataField) // @Sink(xdata2)
 }
 
@@ -216,8 +216,8 @@ func testNestedStructAliasing() {
 	barex := example{&foo[0]}
 	n := nestedStruct{Ex: barex, A: "b"}
 	foo[0] = fmt.Sprintf("tainted") // @Source(aliasing0)
-	sink3(n.A)                      // @Sink(aliasing0) TODO: field sensitivity
-	sink3(*n.Ex.ptr)                // @Sink(aliasing0)
+	sink3(n.A)
+	sink3(*n.Ex.ptr) // @Sink(aliasing0)
 }
 
 func testMap() {
@@ -287,7 +287,7 @@ func testMapAndField2() {
 	x.DataField = fmt.Sprintf("tainted-testMapAndField2") // @Source(xdata)
 	x.OtherData = "b"
 	a[0] = x.OtherData // not tainted
-	sink1(a[0])        // @Sink(xdata) TODO: field sensitivity
+	sink1(a[0])
 	a[1] = x.DataField // tainted
 	sink1(a[1])        // @Sink(xdata)
 }

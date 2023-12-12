@@ -2,6 +2,8 @@
 taint-tracking-problems:
   -
     sources:
+      - package: (main|command-line-arguments)
+        field: Source
       - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         # Sources can be source1, source2, etc.
         method: "source[1-9]?"
@@ -11,5 +13,5 @@ taint-tracking-problems:
         method: "sink[1-9]?"
 
 options:
-    verbose: true
-    field-sensitive: true
+    report-paths: true
+    log-level: 4

@@ -79,7 +79,7 @@ type SummaryGraph struct {
 	// the nodes accessing global information
 	AccessGlobalNodes map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode
 
-	// the return instructions are linked to ReturnNode, one per value in a tuple returned
+	// the return instructions are linked to ReturnNode, one per Value in a tuple returned
 	Returns map[ssa.Instruction][]*ReturnValNode
 
 	// errors can be used to accumulate errors that were encountered while building the summary graph
@@ -99,7 +99,7 @@ type SummaryGraph struct {
 }
 
 // NewSummaryGraph builds a new summary graph given a function and its corresponding node.
-// Returns a non-nil value if and only if f is non-nil.
+// Returns a non-nil Value if and only if f is non-nil.
 // If s is nil, this will not populate the callees of the summary.
 // If non-nil, the returned summary graph is marked as not constructed.
 func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
@@ -360,7 +360,7 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 // @requires g != nil
 func (g *SummaryGraph) addReturn(instr ssa.Instruction, node *ReturnValNode) {
 	n := g.Parent.Signature.Results().Len()
-	// No value is returned
+	// No Value is returned
 	if n <= 0 {
 		return
 	}
@@ -455,7 +455,7 @@ func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.L
 	}
 }
 
-func (g *SummaryGraph) addSyntheticEdge(mark Mark, info *ConditionInfo, instr ssa.Instruction, _ string) {
+func (g *SummaryGraph) addSyntheticEdge(mark *Mark, info *ConditionInfo, instr ssa.Instruction, _ string) {
 
 	node, ok := g.SyntheticNodes[instr]
 	if !ok {
@@ -464,7 +464,7 @@ func (g *SummaryGraph) addSyntheticEdge(mark Mark, info *ConditionInfo, instr ss
 	g.addEdge(mark, node, info)
 }
 
-func (g *SummaryGraph) addBoundLabelEdge(mark Mark, info *ConditionInfo,
+func (g *SummaryGraph) addBoundLabelEdge(mark *Mark, info *ConditionInfo,
 	instr ssa.Instruction) {
 	node, ok := g.BoundLabelNodes[instr]
 	if !ok {
@@ -561,14 +561,14 @@ func (g *SummaryGraph) selectNodesFromMark(m Mark) []GraphNode {
 // @requires g != nil
 //
 //gocyclo:ignore
-func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo) {
+func (g *SummaryGraph) addEdge(source *Mark, dest GraphNode, info *ConditionInfo) {
 	// This function's goal is to define how the source of an edge is obtained in the summary given a Mark that
 	// is produced in the intra-procedural analysis.
 
 	if source.IsParameter() {
 		if sourceArgNode, ok := g.Params[source.Node]; ok && sourceArgNode != dest {
-			sourceArgNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-			addInEdge(dest, sourceArgNode, ObjectPath{source.RegionPath, source.Index, info})
+			sourceArgNode.out[dest] = ObjectPath{"", source.Index, info}
+			addInEdge(dest, sourceArgNode, ObjectPath{"", source.Index, info})
 		}
 	}
 
@@ -580,8 +580,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 			for _, sourceNode := range sourceNodes {
 				sourceCallArgNode := sourceNode.FindArg(source.Qualifier)
 				if sourceCallArgNode != nil && sourceCallArgNode != dest {
-					sourceCallArgNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-					addInEdge(dest, sourceCallArgNode, ObjectPath{source.RegionPath, source.Index, info})
+					sourceCallArgNode.out[dest] = ObjectPath{"", source.Index, info}
+					addInEdge(dest, sourceCallArgNode, ObjectPath{"", source.Index, info})
 				}
 			}
 		}
@@ -593,8 +593,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		if sourceNodes, ok := g.Callees[sourceCallInstr]; ok {
 			for _, sourceNode := range sourceNodes {
 				if sourceNode != dest {
-					sourceNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-					addInEdge(dest, sourceNode, ObjectPath{source.RegionPath, source.Index, info})
+					sourceNode.out[dest] = ObjectPath{"", source.Index, info}
+					addInEdge(dest, sourceNode, ObjectPath{"", source.Index, info})
 				}
 			}
 
@@ -603,8 +603,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 
 	if source.IsFreeVar() {
 		if sourceFreeVarNode, ok := g.FreeVars[source.Node]; ok && sourceFreeVarNode != dest {
-			sourceFreeVarNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-			addInEdge(dest, sourceFreeVarNode, ObjectPath{source.RegionPath, source.Index, info})
+			sourceFreeVarNode.out[dest] = ObjectPath{"", source.Index, info}
+			addInEdge(dest, sourceFreeVarNode, ObjectPath{"", source.Index, info})
 		}
 	}
 
@@ -614,8 +614,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		if cNode, ok := g.CreatedClosures[sourceClosure]; ok {
 			bvNode := cNode.FindBoundVar(source.Qualifier)
 			if bvNode != nil && bvNode != dest {
-				bvNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-				addInEdge(dest, bvNode, ObjectPath{source.RegionPath, source.Index, info})
+				bvNode.out[dest] = ObjectPath{"", source.Index, info}
+				addInEdge(dest, bvNode, ObjectPath{"", source.Index, info})
 			}
 		}
 	}
@@ -624,8 +624,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		sourceClosure := source.Node.(ssa.Instruction)
 		if cNode, ok := g.CreatedClosures[sourceClosure]; ok {
 			if cNode != dest {
-				cNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-				addInEdge(dest, cNode, ObjectPath{source.RegionPath, source.Index, info})
+				cNode.out[dest] = ObjectPath{"", source.Index, info}
+				addInEdge(dest, cNode, ObjectPath{"", source.Index, info})
 			}
 		}
 	}
@@ -635,8 +635,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		sourceInstr := source.Node.(ssa.Instruction)
 		if sourceNode, ok := g.SyntheticNodes[sourceInstr]; ok {
 			if sourceNode != dest {
-				sourceNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-				addInEdge(dest, sourceNode, ObjectPath{source.RegionPath, source.Index, info})
+				sourceNode.out[dest] = ObjectPath{"", source.Index, info}
+				addInEdge(dest, sourceNode, ObjectPath{"", source.Index, info})
 			}
 		}
 	}
@@ -645,8 +645,8 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 		sourceInstr := source.Node.(ssa.Instruction)
 		if group, ok := g.AccessGlobalNodes[sourceInstr]; ok {
 			if sourceNode, ok := group[source.Qualifier]; ok {
-				sourceNode.out[dest] = ObjectPath{source.RegionPath, source.Index, info}
-				addInEdge(dest, sourceNode, ObjectPath{source.RegionPath, source.Index, info})
+				sourceNode.out[dest] = ObjectPath{"", source.Index, info}
+				addInEdge(dest, sourceNode, ObjectPath{"", source.Index, info})
 			}
 		}
 	}
@@ -654,7 +654,7 @@ func (g *SummaryGraph) addEdge(source Mark, dest GraphNode, info *ConditionInfo)
 
 // addCallArgEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
-func (g *SummaryGraph) addCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction, arg ssa.Value) {
+func (g *SummaryGraph) addCallArgEdge(mark *Mark, cond *ConditionInfo, call ssa.CallInstruction, arg ssa.Value) {
 	callNodes := g.Callees[call]
 	if callNodes == nil {
 		return
@@ -671,7 +671,7 @@ func (g *SummaryGraph) addCallArgEdge(mark Mark, cond *ConditionInfo, call ssa.C
 }
 
 // addCallEdge adds an edge that flows to a call node.
-func (g *SummaryGraph) addCallEdge(mark Mark, cond *ConditionInfo, call ssa.CallInstruction) {
+func (g *SummaryGraph) addCallEdge(mark *Mark, cond *ConditionInfo, call ssa.CallInstruction) {
 
 	callNodes := g.Callees[call]
 	if callNodes == nil {
@@ -684,7 +684,7 @@ func (g *SummaryGraph) addCallEdge(mark Mark, cond *ConditionInfo, call ssa.Call
 
 // addBoundVarEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
-func (g *SummaryGraph) addBoundVarEdge(mark Mark, cond *ConditionInfo, closure *ssa.MakeClosure, v ssa.Value) {
+func (g *SummaryGraph) addBoundVarEdge(mark *Mark, cond *ConditionInfo, closure *ssa.MakeClosure, v ssa.Value) {
 
 	closureNode := g.CreatedClosures[closure]
 	if closureNode == nil {
@@ -703,7 +703,7 @@ func (g *SummaryGraph) addBoundVarEdge(mark Mark, cond *ConditionInfo, closure *
 
 // addReturnEdge adds an edge in the summary from the mark to a return instruction
 // @requires g != nil
-func (g *SummaryGraph) addReturnEdge(mark Mark, cond *ConditionInfo, retInstr ssa.Instruction, tupleIndex int) {
+func (g *SummaryGraph) addReturnEdge(mark *Mark, cond *ConditionInfo, retInstr ssa.Instruction, tupleIndex int) {
 
 	if tupleIndex < 0 || tupleIndex > len(g.Returns) {
 		return
@@ -720,7 +720,7 @@ func (g *SummaryGraph) addReturnEdge(mark Mark, cond *ConditionInfo, retInstr ss
 }
 
 // addParamEdge adds an edge in the summary from the mark to a parameter of the function
-func (g *SummaryGraph) addParamEdge(mark Mark, cond *ConditionInfo, param ssa.Node) {
+func (g *SummaryGraph) addParamEdge(mark *Mark, cond *ConditionInfo, param ssa.Node) {
 	paramNode := g.Params[param]
 
 	if paramNode == nil {
@@ -731,7 +731,7 @@ func (g *SummaryGraph) addParamEdge(mark Mark, cond *ConditionInfo, param ssa.No
 }
 
 // addGlobalEdge adds an edge from a mark to a GlobalNode
-func (g *SummaryGraph) addGlobalEdge(mark Mark, cond *ConditionInfo, loc ssa.Instruction, v *ssa.Global) {
+func (g *SummaryGraph) addGlobalEdge(mark *Mark, cond *ConditionInfo, loc ssa.Instruction, v *ssa.Global) {
 
 	node := g.AccessGlobalNodes[loc][v]
 
@@ -748,7 +748,7 @@ func (g *SummaryGraph) addGlobalEdge(mark Mark, cond *ConditionInfo, loc ssa.Ins
 }
 
 // addFreeVarEdge adds an edge in the summary from the mark to a bound variable of a closure
-func (g *SummaryGraph) addFreeVarEdge(mark Mark, cond *ConditionInfo, freeVar ssa.Node) {
+func (g *SummaryGraph) addFreeVarEdge(mark *Mark, cond *ConditionInfo, freeVar ssa.Node) {
 	freeVarNode := g.FreeVars[freeVar]
 	if freeVarNode == nil {
 		g.addError(fmt.Errorf("attempting to set free var edge but no free var node"))
@@ -1089,7 +1089,7 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 
 	for _, retTuple := range g.Returns {
 		for _, r := range retTuple {
-			// a return node can be nil if its value is constant
+			// a return node can be nil if its Value is constant
 			if r == nil {
 				continue
 			}
@@ -1150,7 +1150,7 @@ func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer) {
 		fmt.Fprintf(w, "Empty graph!\n")
 		return
 	}
-	fmt.Fprintf(w, "Summary of %s:\n", g.Parent.Name())
+	fmt.Fprintf(w, "%s %s:\n", ftu.Yellow("Summary of"), ftu.Italic(ftu.Purple(g.Parent.Name())))
 	for _, a := range g.Params {
 		ppNodes("Parameter", w, a, outEdgesOnly)
 	}

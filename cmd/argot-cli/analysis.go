@@ -30,6 +30,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
+	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
@@ -395,7 +396,7 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 	if summary.IsInterfaceContract {
 		writeFmt(tt, "  (is interface contract)\n")
 	}
-	writeFmt(tt, "Nodes:\n")
+	writeFmt(tt, "%s:\n", ftu.Yellow("Nodes"))
 	summary.ForAllNodes(func(n dataflow.GraphNode) { writeFmt(tt, "\t %s\n", n) })
 	summary.PrettyPrint(true, tt)
 }

@@ -190,7 +190,7 @@ func TestFunctionSummaries(t *testing.T) {
 						}
 					}
 
-					// s2 has one incoming edge because its value is only
+					// s2 has one incoming edge because its Value is only
 					// modified once in Foo:
 					// `*s2 = obj.f(a[9])`
 					if len(paramNode.In()) != 1 {

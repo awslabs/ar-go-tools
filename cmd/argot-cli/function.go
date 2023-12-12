@@ -22,6 +22,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/exp/slices"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/pointer"
@@ -264,11 +265,11 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 
 func printAliases(tt *term.Terminal, c *dataflow.AnalyzerState, v2 ssa.Value, ptr pointer.Pointer) {
 	if ptr2, ptrExists := c.PointerAnalysis.IndirectQueries[v2]; ptrExists && ptr2.MayAlias(ptr) {
-		writeFmt(tt, "     [indirect] %s (%s)\n", v2.Name(), v2)
+		writeFmt(tt, "     [indirect] %s (%s) -> %s\n", v2.Name(), v2, ptr2)
 	}
 
 	if ptr2, ptrExists := c.PointerAnalysis.Queries[v2]; ptrExists && ptr2.MayAlias(ptr) {
-		writeFmt(tt, "     [direct]   %s (%s)\n", v2.Name(), v2)
+		writeFmt(tt, "     [direct]   %s (%s) -> %s\n", v2.Name(), v2, ptr2)
 	}
 }
 
@@ -505,16 +506,14 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			c.Program.Fset.Position(i.Pos()))
 		// sort and print value -> marks
 		var mVals []ssa.Value
-		for val := range fi.MarkedValues[i] {
-			mVals = append(mVals, val)
+		iId := fi.InstrId[i]
+		index := iId * fi.NumValues
+		for _, val := range fi.MarkedValues[index : index+fi.NumValues] {
+			if val != nil {
+				mVals = append(mVals, val.GetValue())
+			}
 		}
-		slices.SortFunc(mVals, func(a ssa.Value, b ssa.Value) bool {
-			if a == nil {
-				return true
-			}
-			if b == nil {
-				return false
-			}
+		slices.SortFunc(mVals, func(a, b ssa.Value) bool {
 
 			var s1, s2 string
 			setStr(a, &s1)
@@ -522,10 +521,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			return s1 < s2
 		})
 		for _, val := range mVals {
-			if val == nil {
-				continue
-			}
-			marks := fi.MarkedValues[i][val]
+			marks := fi.MarkedValues[index+fi.ValueId[val]]
 			var x, vStr, vName string
 			setStr(val, &vStr)
 			setName(val, &vName)
@@ -535,13 +531,15 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			} else if vStr != vName {
 				x = vName + "=" + vStr
 			}
-			writeFmt(tt, "   %s%-30s%s marked by ", tt.Escape.Magenta, x, tt.Escape.Reset)
-			var markStrings []string
-			for mark := range marks {
-				markStrings = append(markStrings,
-					fmt.Sprintf("%s%s%s", tt.Escape.Red, mark.String(), tt.Escape.Reset))
+			for path, markSet := range marks.PathMappings() {
+				var markStrings []string
+				for mark := range markSet {
+					markStrings = append(markStrings, formatutil.Red(mark.String()))
+				}
+				writeFmt(tt, "   %s%-30s%s %s%-10s%s marked by ", tt.Escape.Magenta, x, tt.Escape.Reset,
+					tt.Escape.Cyan, path, tt.Escape.Reset)
+				writeFmt(tt, "%s\n", strings.Join(markStrings, " & "))
 			}
-			writeFmt(tt, "%s\n", strings.Join(markStrings, " & "))
 		}
 	})
 }

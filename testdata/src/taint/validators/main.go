@@ -155,10 +155,10 @@ func validatorExample6() {
 		X: len(source1()), // @Source(ex6f1)
 		Y: source1(),      // @Source(ex6f2)
 	}
-	sink1(strconv.Itoa(a1.X)) // @Sink(ex6f1,ex6f2)
+	sink1(strconv.Itoa(a1.X)) // @Sink(ex6f1)
 	if Validate2(a1) {
 		i, _ := strconv.Atoi(a1.Y)
-		sink1(i) // @Sink(ex6f1,ex6f2) TODO: do we need flow-sensitive validation?
+		sink1(i) // @Sink(ex6f2) TODO: do we need flow-sensitive validation?
 	}
 }
 
