@@ -42,9 +42,15 @@ func LoadGlobal() (*Config, error) {
 	return Load(configFile)
 }
 
+const (
+	EscapeBehaviorSummarize = "summarize"
+	EscapeBehaviorNoop      = "noop"
+	EscapeBehaviorUnknown   = "unknown"
+)
+
 type EscapeConfig struct {
 
-	// Function behavior override, keyed by .String() (e.g. command-line-arguments.main,
+	// Functions controls behavior override, keyed by .String() (e.g. command-line-arguments.main,
 	// (*package.Type).Method, etc). A value of "summarize" means process normally, "unknown" is
 	// treat as unanalyzed, and "noop" means calls are assumed to have no escape effect (and return
 	// nil if they have a pointer-like return).
@@ -309,7 +315,7 @@ func Load(filename string) (*Config, error) {
 	}
 
 	for funcName, summaryType := range cfg.EscapeConfig.Functions {
-		if !(summaryType == "unknown" || summaryType == "noop" || summaryType == "summarize") {
+		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop || summaryType == EscapeBehaviorSummarize) {
 			return nil, fmt.Errorf("escape summary type for function %s is not recognized: %s", funcName, summaryType)
 		}
 	}

@@ -1031,7 +1031,7 @@ var instructionMonoCheckData map[ssa.Instruction][]cachedGraphMonotonicity = map
 var checkMonotonicityEveryInstruction = false
 
 func (ea *functionAnalysisState) HasSummaryGraph() bool {
-	return ea != nil && (ea.summaryType == "summarize" && !ea.overflow) || ea.summaryType == "noop"
+	return ea != nil && (ea.summaryType == config.EscapeBehaviorSummarize && !ea.overflow) || ea.summaryType == config.EscapeBehaviorNoop
 }
 
 func (ea *functionAnalysisState) RecordUse(useLocation summaryUse) {
@@ -1166,7 +1166,7 @@ func EscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 		nil,
 		false,
 	}
-	analysis := newFunctionAnalysisState(f, prog, "summarize")
+	analysis := newFunctionAnalysisState(f, prog, config.EscapeBehaviorSummarize)
 	analysis.Resummarize()
 	return analysis.finalGraph
 }
@@ -1191,9 +1191,9 @@ func getSummaryType(ec *config.EscapeConfig, f *ssa.Function) string {
 	}
 	pkg := lang.PackageTypeFromFunction(f)
 	if pkg == nil || ec.MatchPkgFilter(pkg.Path()) {
-		return "summarize"
+		return config.EscapeBehaviorSummarize
 	}
-	return "unknown"
+	return config.EscapeBehaviorUnknown
 }
 
 // getFunctionAnalysisSummary gets or creates a summary for the given function, and returns it. The
@@ -1209,9 +1209,9 @@ func (prog *ProgramAnalysisState) getFunctionAnalysisSummary(f *ssa.Function) *f
 	prog.summaries[f] = state
 	// This function has requested summary, but is added after the worklist is built. This would
 	// result in a soundness issue.
-	if prog.builtWorklist && state.summaryType == "summarize" {
+	if prog.builtWorklist && state.summaryType == config.EscapeBehaviorSummarize {
 		prog.logger.Warnf("Asking to summarize %s after worklist creation; only fixed summaries supported for such functions\n", f.String())
-		state.summaryType = "unknown"
+		state.summaryType = config.EscapeBehaviorUnknown
 	}
 	return state
 }
@@ -1220,7 +1220,7 @@ func (prog *ProgramAnalysisState) getFunctionAnalysisSummary(f *ssa.Function) *f
 // monotone framework loop and update the finalGraph. Returns true if the finalGraph
 // changed from its prior version.
 func (ea *functionAnalysisState) Resummarize() (changed bool) {
-	if ea.summaryType != "summarize" {
+	if ea.summaryType != config.EscapeBehaviorSummarize {
 		return false
 	}
 
@@ -1292,7 +1292,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	nodesToAnalyze := map[*ssa.Function]bool{}
 	for f, node := range state.PointerAnalysis.CallGraph.Nodes {
 		state := prog.getFunctionAnalysisSummary(f)
-		if state.summaryType == "summarize" {
+		if state.summaryType == config.EscapeBehaviorSummarize {
 			nodes = append(nodes, node)
 			nodesToAnalyze[f] = true
 		}
@@ -1531,7 +1531,8 @@ type escapeCallsiteInfoImpl struct {
 	prog     *ProgramAnalysisState
 }
 
-// Does the work of computing instruction locality for a function. See wrapper `ComputeInstructionLocality`.
+// computeInstructionLocality does the work of computing instruction locality for a function. See
+// wrapper `ComputeInstructionLocality` for details.
 func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]*dataflow.EscapeRationale, callsiteInfo map[*ssa.Call]escapeCallsiteInfoImpl) {
 	inContextEA := &functionAnalysisState{
 		function:     ea.function,
@@ -1540,7 +1541,7 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 		nodes:        ea.nodes,
 		blockEnd:     make(map[*ssa.BasicBlock]*EscapeGraph),
 		worklist:     []*ssa.BasicBlock{ea.function.Blocks[0]},
-		summaryType:  "summarize",
+		summaryType:  config.EscapeBehaviorSummarize,
 	}
 	inContextEA.Resummarize()
 	locality = map[ssa.Instruction]*dataflow.EscapeRationale{}
