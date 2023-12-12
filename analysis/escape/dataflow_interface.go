@@ -38,11 +38,13 @@ var _ dataflow.EscapeCallContext = (*escapeContextImpl)(nil)
 
 func (*escapeAnalysisImpl) IsEscapeAnalysisState() bool { return true }
 
-func (e *escapeAnalysisImpl) IsSummarized(f *ssa.Function) bool { return e.summaries[f] != nil }
+func (e *escapeAnalysisImpl) IsSummarized(f *ssa.Function) bool {
+	return e.summaries[f] != nil && e.summaries[f].summaryType == "summarize"
+}
 
 func (e *escapeAnalysisImpl) ComputeArbitraryContext(f *ssa.Function) dataflow.EscapeCallContext {
 	if !e.IsSummarized(f) {
-		panic(fmt.Errorf("Computing context for un-summarized function %s", f.String()))
+		panic(fmt.Errorf("computing context for un-summarized function %s", f.String()))
 	}
 	return &escapeContextImpl{e.summaries[f].initialGraph.Clone(), f}
 }

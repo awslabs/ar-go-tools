@@ -73,9 +73,10 @@ func unsimplifiedEscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 		newGlobalNodeGroup(),
 		config.NewLogGroup(config.NewDefault()),
 		nil,
+		false,
 	}
-	analysis := newFunctionAnalysisState(f, prog)
-	resummarize(analysis)
+	analysis := newFunctionAnalysisState(f, prog, "summarize")
+	analysis.Resummarize()
 	returnResult := NewEmptyEscapeGraph(analysis.nodes)
 	for block, blockEndState := range analysis.blockEnd {
 		if len(block.Instrs) > 0 {
