@@ -295,15 +295,13 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	bounds := state.isCapturedBy(x.Addr)
 	if len(bounds) > 0 {
-		for _, origin := range state.getMarks(x, x.Addr, "", false, false) {
-			for _, label := range bounds {
-				if label.Value() != nil {
-					for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
-						state.summary.addBoundLabelNode(x, label, *target)
-						state.summary.addBoundLabelEdge(origin.Mark, nil, x)
-					}
-				}
+		for _, label := range bounds {
+			for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
+				state.summary.addBoundLabelNode(x, label, *target)
 			}
+		}
+		for _, origin := range state.getMarks(x, x.Addr, "", false, false) {
+			state.summary.addBoundLabelEdge(origin.Mark, nil, x)
 		}
 	}
 }
@@ -414,6 +412,7 @@ func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruc
 
 // isCapturedBy checks the bounding analysis to query whether the value is captured by some closure, in which case an
 // edge will need to be added
+// Guarantees that all label values in the slice of pointer labels returned are non-nil.
 func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label {
 	var maps []*pointer.Label
 	if ptr, ok := state.parentAnalyzerState.PointerAnalysis.Queries[value]; ok {
