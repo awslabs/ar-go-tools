@@ -162,17 +162,26 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 		}
 	}
 
+	// Writes the summaries to file if the option is set
+	if summariesFile != nil {
+		// Read-only operation on summaries
+		go func() {
+			for _, summary := range g.Summaries {
+				if summary == nil {
+					continue
+				}
+				_, _ = summariesFile.WriteString(fmt.Sprintf("%s:\n", summary.Parent.String()))
+				summary.Print(false, summariesFile)
+				_, _ = summariesFile.WriteString("\n")
+			}
+		}()
+	}
+
 	// STEP 3: link all the summaries together
 	for _, summary := range g.Summaries {
 		if summary == nil {
 			continue
 		}
-		if summariesFile != nil {
-			_, _ = summariesFile.WriteString(fmt.Sprintf("%s:\n", summary.Parent.String()))
-			summary.Print(false, summariesFile)
-			_, _ = summariesFile.WriteString("\n")
-		}
-
 		// Interprocedural edges: callers to callees
 		for _, callNodes := range summary.Callees {
 			for _, node := range callNodes {

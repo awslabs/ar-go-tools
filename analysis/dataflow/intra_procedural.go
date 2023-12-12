@@ -100,7 +100,7 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 		summary:             sm,
 		deferStacks:         defers.AnalyzeFunction(sm.Parent, a.Logger),
 		paths:               make([]*ConditionInfo, flowInfo.NumBlocks*flowInfo.NumBlocks),
-		instrPrev:           make([]map[int]bool, flowInfo.NumInstructions),
+		instrPrev:           make([]map[IndexT]bool, flowInfo.NumInstructions),
 		paramAliases:        make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
 		freeVarAliases:      make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
 		transitiveMarks:     make([][]InstructionValueWithAccessPath, flowInfo.NumValues*flowInfo.NumInstructions),
@@ -199,7 +199,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 				// Add the condition only if it is a predicate on the argument, i.e. there are boolean functions
 				// that apply to the destination Value
 				state.summary.addCallArgEdge(mark.Mark, applicableCond, callInstr, arg)
-				argId := state.flowInfo.GetValueId(arg)
+				argId := state.flowInfo.ValueId[arg] // base argument value is guaranteed to be indexed
 				// Add edges to parameters if the call may modify caller's arguments
 				for x := range state.paramAliases[argId] {
 					if lang.IsNillableType(x.Type()) {
@@ -235,7 +235,10 @@ func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 				continue // avoid spurious edges from closure to its own bound variables
 			}
 			state.summary.addBoundVarEdge(mark, nil, x, boundVar)
-			boundVarId := state.flowInfo.GetValueId(boundVar)
+			boundVarId, ok := state.flowInfo.GetValueId(boundVar)
+			if !ok {
+				continue
+			}
 			for y := range state.paramAliases[boundVarId] {
 				state.summary.addParamEdge(mark, nil, y)
 			}
@@ -264,8 +267,8 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			// Check the state of the analysis at the final return to see which parameters or free variables might
 			// have been modified by the function
 			for _, mark := range abstractValue.AllMarks() {
-				markedValueId := state.flowInfo.GetValueId(markedValue)
-				if markedValueId >= 0 && lang.IsNillableType(val.Type()) {
+				markedValueId, ok := state.flowInfo.GetValueId(markedValue)
+				if ok && lang.IsNillableType(val.Type()) {
 					for aliasedParam := range state.paramAliases[markedValueId] {
 						state.summary.addParamEdge(mark.Mark, nil, aliasedParam)
 					}
@@ -295,15 +298,13 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	bounds := state.isCapturedBy(x.Addr)
 	if len(bounds) > 0 {
-		for _, origin := range state.getMarks(x, x.Addr, "", false, false) {
-			for _, label := range bounds {
-				if label.Value() != nil {
-					for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
-						state.summary.addBoundLabelNode(x, label, *target)
-						state.summary.addBoundLabelEdge(origin.Mark, nil, x)
-					}
-				}
+		for _, label := range bounds {
+			for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
+				state.summary.addBoundLabelNode(x, label, *target)
 			}
+		}
+		for _, origin := range state.getMarks(x, x.Addr, "", false, false) {
+			state.summary.addBoundLabelEdge(origin.Mark, nil, x)
 		}
 	}
 }
@@ -402,7 +403,7 @@ func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruc
 		return ConditionInfo{Satisfiable: true}
 	}
 
-	pos := source.Block().Index*state.flowInfo.NumBlocks + dest.Block().Index
+	pos := IndexT(source.Block().Index)*state.flowInfo.NumBlocks + IndexT(dest.Block().Index)
 	if c := state.paths[pos]; c != nil {
 		return *c
 	} else {
@@ -414,6 +415,7 @@ func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruc
 
 // isCapturedBy checks the bounding analysis to query whether the value is captured by some closure, in which case an
 // edge will need to be added
+// Guarantees that all label values in the slice of pointer labels returned are non-nil.
 func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label {
 	var maps []*pointer.Label
 	if ptr, ok := state.parentAnalyzerState.PointerAnalysis.Queries[value]; ok {
