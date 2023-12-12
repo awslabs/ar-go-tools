@@ -1427,7 +1427,7 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) *dataflow.Escape
 		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Chan))
 	case *ssa.Range:
 		if _, ok := instrType.X.Type().Underlying().(*types.Map); ok {
-			derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
+			return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
 		} else {
 			// must be a string type
 			return nil
