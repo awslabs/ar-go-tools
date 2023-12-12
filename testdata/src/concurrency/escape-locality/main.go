@@ -45,6 +45,8 @@ func main() {
 	testClosureNonPointerFreeVar()
 	testBoundMethod()
 	testInterfaceMethodCall()
+	testRationaleBasic()
+	testRationaleUnknownReturn()
 }
 
 func testLocality2() {
@@ -505,4 +507,26 @@ func innerCallMethod(i Inter) {
 func testInterfaceMethodCall() {
 	i := &InterImpl2{}
 	innerCallMethod(i)
+}
+
+// Tests that the rationales are correct. The test ensures the rationale has the given substring
+func testRationaleBasic() {
+	x := &Node{}
+	globalNode.next = x
+	_ = x.next // NONLOCAL global *globalNode
+
+	y := &Node{}
+	go dontLeakNode(y)
+	y.next = nil // NONLOCAL argument to go
+}
+
+// The config should prevent the analysis from seeing the body of this function, so the return value
+// will be an "unknown node"
+func unknownFunc() *Node {
+	return &Node{}
+}
+
+func testRationaleUnknownReturn() {
+	x := unknownFunc()
+	_ = x.next // NONLOCAL unknown return of command-line-arguments.unknownFunc
 }

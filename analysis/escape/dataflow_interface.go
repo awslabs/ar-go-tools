@@ -38,17 +38,19 @@ var _ dataflow.EscapeCallContext = (*escapeContextImpl)(nil)
 
 func (*escapeAnalysisImpl) IsEscapeAnalysisState() bool { return true }
 
-func (e *escapeAnalysisImpl) IsSummarized(f *ssa.Function) bool { return e.summaries[f] != nil }
+func (e *escapeAnalysisImpl) IsSummarized(f *ssa.Function) bool {
+	return e.summaries[f] != nil && e.summaries[f].summaryType == "summarize"
+}
 
 func (e *escapeAnalysisImpl) ComputeArbitraryContext(f *ssa.Function) dataflow.EscapeCallContext {
 	if !e.IsSummarized(f) {
-		panic(fmt.Errorf("Computing context for un-summarized function %s", f.String()))
+		panic(fmt.Errorf("computing context for un-summarized function %s", f.String()))
 	}
 	return &escapeContextImpl{e.summaries[f].initialGraph.Clone(), f}
 }
 
 func (e *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Function, ctx dataflow.EscapeCallContext) (
-	instructionLocality map[ssa.Instruction]bool,
+	instructionLocality map[ssa.Instruction]*dataflow.EscapeRationale,
 	callsiteInfo map[*ssa.Call]dataflow.EscapeCallsiteInfo) {
 	c, ok := ctx.(*escapeContextImpl)
 	if !ok {
@@ -61,7 +63,7 @@ func (e *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Funct
 		panic(fmt.Sprintf("Cannot compute locality of function that is not summarized %v", f.String()))
 	}
 	if len(f.Blocks) == 0 {
-		return map[ssa.Instruction]bool{}, map[*ssa.Call]dataflow.EscapeCallsiteInfo{}
+		return map[ssa.Instruction]*dataflow.EscapeRationale{}, map[*ssa.Call]dataflow.EscapeCallsiteInfo{}
 	}
 	locality, callsites := computeInstructionLocality(e.summaries[f], c.g)
 	callsiteInfo = map[*ssa.Call]dataflow.EscapeCallsiteInfo{}
@@ -88,6 +90,9 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 	// will be the same exact Nodes.
 	mapNode = func(callerNode *Node, inner *Node) {
 		g.status[inner] = c.g.status[callerNode]
+		if c.g.status[callerNode] == Leaked {
+			g.rationales[inner] = c.g.rationales[callerNode]
+		}
 		for _, e := range c.g.Edges(callerNode, nil, EdgeAll) {
 			pointee := e.dest
 			nodes.AddForeignNode(pointee)

@@ -84,6 +84,7 @@ func main() {
 	testInterfaces()
 	testInterfaces2()
 	testInterfaces3()
+	testMockDocument()
 }
 
 func (n *Node) loopMethod(iters int) *Node {
@@ -863,4 +864,38 @@ func testInterfaces3() {
 	if asA := doer.(*DoerA); asA != nil {
 		assertSameAliases(N, asA.a)
 	}
+}
+
+type Document struct {
+	name        awsString
+	description awsString
+	envVars     map[awsString]awsString
+	commands    []awsString
+	cwd         awsString
+}
+
+type str struct {
+	v string
+}
+type awsString = *str
+
+func sub(v awsString, params map[awsString]awsString) awsString {
+	for p, arg := range params {
+		if v.v == p.v {
+			return arg
+		}
+	}
+	return v
+}
+func SubstituteParams(d *Document, params map[awsString]awsString) {
+	for env, value := range d.envVars {
+		d.envVars[env] = sub(value, params)
+	}
+	for i := range d.commands {
+		d.commands[i] = sub(d.commands[i], params)
+	}
+}
+func testMockDocument() {
+	d := &Document{&str{"test"}, &str{"test desc"}, map[awsString]awsString{}, []awsString{}, &str{"$HOME"}}
+	SubstituteParams(d, map[awsString]awsString{})
 }

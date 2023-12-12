@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -95,9 +96,10 @@ func (n *Node) IntrinsicEscape() EscapeStatus {
 // on escape graphs are to AddEdge()s, (plus composite operations like Load, WeakAssign), Merge(),
 // and compare with Matches().
 type EscapeGraph struct {
-	edges  map[*Node]map[*Node]edgeFlags
-	status map[*Node]EscapeStatus
-	nodes  *NodeGroup
+	edges      map[*Node]map[*Node]edgeFlags
+	status     map[*Node]EscapeStatus
+	rationales map[*Node]*dataflow.EscapeRationale
+	nodes      *NodeGroup
 }
 
 // Represents a single atomic edge within the escape graph. Nodes connected by more than one kind of
@@ -115,6 +117,7 @@ func NewEmptyEscapeGraph(nodes *NodeGroup) *EscapeGraph {
 	gg := &EscapeGraph{
 		make(map[*Node]map[*Node]edgeFlags),
 		make(map[*Node]EscapeStatus),
+		make(map[*Node]*dataflow.EscapeRationale),
 		nodes,
 	}
 	return gg
@@ -132,6 +135,9 @@ func (g *EscapeGraph) Clone() *EscapeGraph {
 	}
 	for k, v := range g.status {
 		gg.status[k] = v
+	}
+	for k, v := range g.rationales {
+		gg.rationales[k] = v
 	}
 	return gg
 }
@@ -169,6 +175,11 @@ func (g *EscapeGraph) CloneReachable(roots []*Node) *EscapeGraph {
 	for node, st := range g.status {
 		if reachable[node] {
 			gg.status[node] = st
+		}
+	}
+	for node, st := range g.rationales {
+		if reachable[node] {
+			gg.rationales[node] = st
 		}
 	}
 	return gg
@@ -286,9 +297,9 @@ func (g *EscapeGraph) Graphviz() string {
 		extra := ""
 		extraFont := ""
 		if t, ok := g.nodes.globalNodes.types[n]; ok {
-			typeName := t.String()
-			escaped := strings.ReplaceAll(strings.ReplaceAll(typeName, "\\", "\\\\"), "\"", "\\\"")
-			extra = fmt.Sprintf("%s TOOLTIP=\"%s\" HREF=\"\"", extra, escaped)
+			tooltip := fmt.Sprintf("%d tp %s", n.number, t.String())
+			escapedTooltip := strings.ReplaceAll(strings.ReplaceAll(tooltip, "\\", "\\\\"), "\"", "\\\"")
+			extra = fmt.Sprintf("%s TOOLTIP=\"%s\" HREF=\"\"", extra, escapedTooltip)
 		} else {
 			extra = extra + " COLOR=\"#FF0000\""
 		}
@@ -341,8 +352,7 @@ func (g *EscapeGraph) Graphviz() string {
 		t += `</TABLE>`
 		return t
 	}
-	var renderNode func(n *Node, root bool)
-	renderNode = func(n *Node, root bool) {
+	var renderNode func(n *Node, root bool) = func(n *Node, root bool) {
 		// Subnodes are rendered with their parent.
 		// TODO: this should only be for field subnodes
 		if g.IsSubnode(n) && root {
@@ -435,7 +445,14 @@ func (g *EscapeGraph) AddEdge(src *Node, dest *Node, newFlag edgeFlags) (changed
 func (g *EscapeGraph) AddNode(n *Node) (changed bool) {
 	if _, ok := g.status[n]; !ok {
 		g.edges[n] = map[*Node]edgeFlags{}
-		g.status[n] = n.IntrinsicEscape()
+		status := n.IntrinsicEscape()
+		g.status[n] = status
+		if n.kind == KindGlobal {
+			g.rationales[n] = dataflow.NewBaseRationale(fmt.Sprintf("global %s", n.debugInfo))
+		}
+		if n.kind == KindUnknown {
+			g.rationales[n] = dataflow.NewBaseRationale(fmt.Sprintf("unknown node %s", n.debugInfo))
+		}
 		return true
 	}
 	return false
@@ -461,18 +478,28 @@ func (g *EscapeGraph) FieldSubnode(base *Node, field string, tp types.Type) *Nod
 	if subnodes, ok := g.nodes.globalNodes.subnodes[base]; ok {
 		if nodeData, ok := subnodes[reason]; ok {
 			g.AddEdge(base, nodeData.node, EdgeSubnode)
+			if g.rationales[base] != nil {
+				g.rationales[nodeData.node] = g.rationales[base]
+			}
 			return nodeData.node
 		}
+		// TODO: don't repeat the following block and the (nearly but not quite) identical one below)
 		f := g.nodes.NewNode(base.kind, field, tp)
 		subnodes[reason] = nodeWithData{f, tp}
 		g.nodes.globalNodes.parent[f] = nodeWithData{base, reason}
 		g.AddEdge(base, f, EdgeSubnode)
+		if g.rationales[base] != nil {
+			g.rationales[f] = g.rationales[base]
+		}
 		return f
 	}
 	f := g.nodes.NewNode(base.kind, field, tp)
 	g.nodes.globalNodes.subnodes[base] = map[any]nodeWithData{reason: {f, tp}}
 	g.nodes.globalNodes.parent[f] = nodeWithData{base, reason}
 	g.AddEdge(base, f, EdgeSubnode)
+	if g.rationales[base] != nil {
+		g.rationales[f] = g.rationales[base]
+	}
 	return f
 }
 
@@ -548,6 +575,11 @@ func (g *EscapeGraph) AnalogousSubnode(base *Node, subnode *Node) *Node {
 func (g *EscapeGraph) computeEdgeClosure(a, b *Node) {
 	if g.status[a] > g.status[b] {
 		g.status[b] = g.status[a]
+		if g.status[a] == Leaked {
+			if _, ok := g.rationales[b]; !ok {
+				g.rationales[b] = g.rationales[a]
+			}
+		}
 	} else {
 		return
 	}
@@ -559,6 +591,11 @@ func (g *EscapeGraph) computeEdgeClosure(a, b *Node) {
 		for succ := range g.edges[node] {
 			if nodeStatus > g.status[succ] {
 				g.status[succ] = nodeStatus
+				if nodeStatus == Leaked {
+					if _, ok := g.rationales[succ]; !ok {
+						g.rationales[succ] = g.rationales[node]
+					}
+				}
 				worklist = append(worklist, succ)
 			}
 		}
@@ -567,9 +604,12 @@ func (g *EscapeGraph) computeEdgeClosure(a, b *Node) {
 
 // MergeNodeStatus sets the status of n to at least s. Doesn't modify the status if the current
 // status is greater equal to s. Modifies g.
-func (g *EscapeGraph) MergeNodeStatus(n *Node, s EscapeStatus) {
+func (g *EscapeGraph) MergeNodeStatus(n *Node, s EscapeStatus, rationale *dataflow.EscapeRationale) {
 	if oldStatus, ok := g.status[n]; !ok || s > oldStatus {
 		g.status[n] = s
+		if s == Leaked {
+			g.rationales[n] = rationale
+		}
 	} else {
 		return
 	}
@@ -709,7 +749,7 @@ func (g *EscapeGraph) Merge(h *EscapeGraph) {
 	}
 	for node, s := range h.status {
 		g.AddNode(node)
-		g.MergeNodeStatus(node, s)
+		g.MergeNodeStatus(node, s, h.rationales[node])
 	}
 }
 
@@ -1007,9 +1047,7 @@ func (g *EscapeGraph) Call(pre *EscapeGraph, receiver *Node, args []*Node, freeV
 		// that could have escaped to the heap, and just things that are parameters/loads from the callee's
 		// perspective. This means that we propagate "leaked" along u edges but not "escaped."
 		if callee.status[base] == Leaked {
-			if g.status[rep] < Leaked {
-				g.MergeNodeStatus(rep, Leaked)
-			}
+			g.MergeNodeStatus(rep, Leaked, callee.rationales[base])
 		}
 	}
 }
@@ -1018,14 +1056,15 @@ func (g *EscapeGraph) Call(pre *EscapeGraph, receiver *Node, args []*Node, freeV
 // on its allowed semantics. This means that the arguments are assumed to leak, and the return value
 // is treated similarly to a load node, except it can never be resolved with arguments like loads
 // can be.
-func (g *EscapeGraph) CallUnknown(args []*Node, rets []*Node) {
+func (g *EscapeGraph) CallUnknown(args []*Node, rets []*Node, funcName string) {
 	for _, arg := range args {
 		for n := range g.Pointees(arg) {
-			g.MergeNodeStatus(n, Leaked)
+			r := dataflow.NewBaseRationale(fmt.Sprintf("argument to %s", funcName))
+			g.MergeNodeStatus(n, Leaked, r)
 		}
 	}
 	for _, ret := range rets {
-		g.AddEdge(ret, g.nodes.UnknownReturnNode(), EdgeInternal)
+		g.AddEdge(ret, g.nodes.UnknownReturnNode(funcName), EdgeInternal)
 	}
 }
 
@@ -1266,13 +1305,12 @@ func (g *NodeGroup) UnusedNode() *Node {
 // different from the return of a function that doesn't have a summary yet; this is
 // for functions that will never be summarized. This should be fairly rare, as it is
 // very conservative for soundness; functions should either be analyzed or have a
-// manual summary written for them. It is safe to use the same node for all calls to
-// unknown functions as long as the graph edges remain untyped.
-func (g *NodeGroup) UnknownReturnNode() *Node {
+// manual summary written for them.
+func (g *NodeGroup) UnknownReturnNode(funcName string) *Node {
 	if g.unknownReturn != nil {
 		return g.unknownReturn
 	}
-	node := &Node{KindUnknown, g.globalNodes.getNewID(), "unknown"}
+	node := &Node{KindUnknown, g.globalNodes.getNewID(), fmt.Sprintf("unknown return of %s", funcName)}
 	g.unknownReturn = node
 	return node
 }

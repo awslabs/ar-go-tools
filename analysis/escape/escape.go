@@ -167,10 +167,10 @@ func IsEscapeTracked(t types.Type) bool {
 // getCallees wraps ResolveCallee from the analyzer state, giving an error if it fails or doesn't exist.
 func (ea *functionAnalysisState) getCallees(instr ssa.CallInstruction) (map[*ssa.Function]dataflow.CalleeInfo, error) {
 	if ea.prog.state == nil {
-		return nil, fmt.Errorf("No analyzer state")
+		return nil, fmt.Errorf("no analyzer state")
 	}
 	if callees, err := ea.prog.state.ResolveCallee(instr, false); err != nil {
-		return nil, fmt.Errorf("Analyzer state could not resolve callee %v", err)
+		return nil, fmt.Errorf("analyzer state could not resolve callee %v", err)
 	} else {
 		return callees, nil
 	}
@@ -392,7 +392,7 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		}
 		return
 	case *ssa.Panic:
-		g.CallUnknown([]*Node{nodes.ValueNode(instr.X)}, []*Node{})
+		g.CallUnknown([]*Node{nodes.ValueNode(instr.X)}, []*Node{}, "panic")
 		return
 	case *ssa.Call:
 		// Build the argument array, consisting of the nodes that are the concrete arguments
@@ -459,7 +459,7 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		default:
 			panic(fmt.Sprintf("Go statment of unknown value type %s", reflect.TypeOf(instr.Call.Value.String())))
 		}
-		g.CallUnknown(args, []*Node{})
+		g.CallUnknown(args, []*Node{}, fmt.Sprintf("go at %v", instr.Parent().Prog.Fset.Position(instr.Pos())))
 		return
 	case *ssa.Defer:
 
@@ -604,10 +604,10 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
 	// Handle calls where we know the callee
 	callee := instrType.Call.StaticCallee()
-	summary := ea.prog.summaries[callee]
-	if summary != nil && !summary.overflow {
+	summary := ea.prog.getFunctionAnalysisSummary(callee)
+	if summary.HasSummaryGraph() {
 		// We can use the finalGraph pointer freely as it will never change after it is created
-		summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
+		summary.RecordUse(summaryUse{ea, instrType})
 		if ea.prog.logger.LogsTrace() {
 			ea.prog.logger.Tracef("Call at %v: %v %v %v\n", instrType.Parent().Prog.Fset.Position(instrType.Pos()),
 				summary.function.String(), args, summary.finalGraph.nodes.formals)
@@ -633,7 +633,7 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 			ea.prog.logger.Debugf("Warning, %v is not a summarized function: treating as unknown call\n",
 				callee.String())
 		}
-		g.CallUnknown(args, rets)
+		g.CallUnknown(args, rets, callee.String())
 	}
 }
 
@@ -660,10 +660,10 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 		if g.status[closureNode] == Local {
 			// Find the corresponding ssa.Function, and perform the invoke
 			if concreteCallee, ok := ea.nodes.globalNodes.function[closureNode]; ok {
-				summary := ea.prog.summaries[concreteCallee]
-				if summary != nil && !summary.overflow {
+				summary := ea.prog.getFunctionAnalysisSummary(concreteCallee)
+				if summary.HasSummaryGraph() {
 					// Record our use of this summary for recursion-covergence purposes
-					summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
+					summary.RecordUse(summaryUse{ea, instrType})
 
 					// Free vars should be a list of the possible alloc nodes that
 					// hold each free var.
@@ -679,7 +679,7 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 					}
 					g.Call(pre, nil, args, freeVars, rets, summary.finalGraph)
 				} else {
-					g.CallUnknown(args, rets)
+					g.CallUnknown(args, rets, concreteCallee.String())
 				}
 				if err := wellFormedEscapeGraph(g); err != nil {
 					panic(err)
@@ -696,10 +696,10 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 		if callees, err := ea.getCallees(instrType); err == nil {
 			pre := g.Clone()
 			for concreteCallee := range callees {
-				summary := ea.prog.summaries[concreteCallee]
-				if summary != nil && !summary.overflow {
+				summary := ea.prog.getFunctionAnalysisSummary(concreteCallee)
+				if summary.HasSummaryGraph() {
 					// Record our use of this summary for recursion-covergence purposes
-					summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
+					summary.RecordUse(summaryUse{ea, instrType})
 
 					for closureNode := range g.Pointees(calleeNode) {
 						if tp, ok := g.nodes.globalNodes.types[closureNode]; ok {
@@ -740,12 +740,12 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 						}
 					}
 				} else {
-					g.CallUnknown(args, rets)
+					g.CallUnknown(args, rets, concreteCallee.String())
 				}
 			}
 		} else {
 			ea.prog.logger.Debugf("Warning, can't resolve indirect of %v, treating as unknown call\n", instrType)
-			g.CallUnknown(args, rets)
+			g.CallUnknown(args, rets, fmt.Sprintf("unknown callee at %v", instrType.Parent().Prog.Fset.Position(instrType.Pos())))
 		}
 	}
 	if ea.prog.logger.LogsTrace() {
@@ -762,10 +762,10 @@ func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *Esca
 	if callees, err := ea.getCallees(instrType); err == nil {
 		pre := g.Clone()
 		for callee := range callees {
-			summary := ea.prog.summaries[callee]
-			if summary != nil && !summary.overflow {
+			summary := ea.prog.getFunctionAnalysisSummary(callee)
+			if summary.HasSummaryGraph() {
 				// Record our use of this summary for recursion-covergence purposes
-				summary.summaryUses[summaryUse{ea, instrType}] = summary.finalGraph
+				summary.RecordUse(summaryUse{ea, instrType})
 				if lang.IsNillableType(callee.Params[0].Type()) {
 					// The receiver has pointer type, so we're good
 					g.Call(pre, receiverNode, append([]*Node{receiverNode}, args...), nil, rets, summary.finalGraph)
@@ -779,12 +779,13 @@ func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *Esca
 					g.Call(pre, nil, append([]*Node{nil}, args...), nil, rets, summary.finalGraph)
 				}
 			} else {
-				g.CallUnknown(append([]*Node{receiverNode}, args...), rets)
+				g.CallUnknown(append([]*Node{receiverNode}, args...), rets, callee.String())
 			}
 		}
 	} else {
 		ea.prog.logger.Debugf("Warning, %v invoke did not find callees, treating as unknown call (err: %v)\n", instrType, err)
-		g.CallUnknown(append([]*Node{receiverNode}, args...), rets)
+		callString := fmt.Sprintf("uknown callee at %v", instrType.Parent().Prog.Fset.Position(instrType.Pos()))
+		g.CallUnknown(append([]*Node{receiverNode}, args...), rets, callString)
 	}
 	if ea.prog.logger.LogsTrace() {
 		ea.prog.logger.Tracef("After invoke call:\n%v", g.Graphviz())
@@ -817,7 +818,7 @@ func transferCallBuiltin(g *EscapeGraph, instr ssa.Instruction, builtin *ssa.Bui
 	case "println": // No-op, as does not leak and no return value
 		return nil
 	case "recover": // We don't track panic values, so treat like an unknown call
-		g.CallUnknown(args, rets)
+		g.CallUnknown(args, rets, "recover")
 		return nil
 	case "ssa:wrapnilchk": // treat as identity fucntion
 		g.WeakAssign(rets[0], args[0])
@@ -875,9 +876,9 @@ func transferCallBuiltin(g *EscapeGraph, instr ssa.Instruction, builtin *ssa.Bui
 		g.WeakAssign(rets[0], args[0])
 		return nil
 	case "StringData", "Add":
-		return fmt.Errorf("unsafe operation %v\n", builtin.Name())
+		return fmt.Errorf("unsafe operation %v", builtin.Name())
 	default:
-		return fmt.Errorf("unhandled: %v\n", builtin.Name())
+		return fmt.Errorf("unhandled: %v", builtin.Name())
 	}
 }
 
@@ -896,6 +897,9 @@ type functionAnalysisState struct {
 
 	// records uses of this summary in other functions, used to trigger re-analysis
 	summaryUses map[summaryUse]*EscapeGraph
+
+	// Gives the type of the summary ("unknown", "summarize", "noop", specific hardcoded summary, etc)
+	summaryType string
 
 	overflow          bool
 	reportedTypeError bool
@@ -946,7 +950,7 @@ func addGlobalObjectNodes(f *ssa.Function, initialGraph *EscapeGraph) {
 }
 
 // newFunctionAnalysisState creates a new function analysis for the given function, tied to the given whole program analysis
-func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *functionAnalysisState) {
+func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState, summaryType string) (ea *functionAnalysisState) {
 	nodes := NewNodeGroup(prog.globalNodes)
 	initialGraph := NewEmptyEscapeGraph(nodes)
 	for i, p := range f.Params {
@@ -970,7 +974,7 @@ func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *
 		} else if IsEscapeTracked(p.Type()) {
 			formalNode = nodes.ValueNode(p)
 			initialGraph.AddNode(formalNode)
-			initialGraph.MergeNodeStatus(formalNode, Escaped)
+			initialGraph.MergeNodeStatus(formalNode, Escaped, nil)
 		}
 		nodes.formals = append(nodes.formals, formalNode)
 	}
@@ -991,7 +995,7 @@ func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *
 		} else if IsEscapeTracked(p.Type()) {
 			freeVarNode = nodes.ValueNode(p)
 			initialGraph.AddNode(freeVarNode)
-			initialGraph.MergeNodeStatus(freeVarNode, Escaped)
+			initialGraph.MergeNodeStatus(freeVarNode, Escaped, nil)
 		}
 		nodes.freevars = append(nodes.freevars, freeVarNode)
 	}
@@ -1010,6 +1014,7 @@ func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState) (ea *
 		NewEmptyEscapeGraph(nodes),
 		worklist,
 		map[summaryUse]*EscapeGraph{},
+		summaryType,
 		false,
 		false,
 	}
@@ -1024,6 +1029,14 @@ type cachedGraphMonotonicity struct {
 
 var instructionMonoCheckData map[ssa.Instruction][]cachedGraphMonotonicity = map[ssa.Instruction][]cachedGraphMonotonicity{}
 var checkMonotonicityEveryInstruction = false
+
+func (ea *functionAnalysisState) HasSummaryGraph() bool {
+	return ea != nil && (ea.summaryType == config.EscapeBehaviorSummarize && !ea.overflow) || ea.summaryType == config.EscapeBehaviorNoop
+}
+
+func (ea *functionAnalysisState) RecordUse(useLocation summaryUse) {
+	ea.summaryUses[useLocation] = ea.finalGraph
+}
 
 // ProcessBlock performs the monotone transfer function for a particular block, and returns
 // whether the end graph changed. This function computes the merge of the predecessors,
@@ -1132,7 +1145,7 @@ func (ea *functionAnalysisState) RunForwardIterative() error {
 			for _, s := range items {
 				stats += fmt.Sprintf("; %d - %s", s.c, s.s)
 			}
-			return fmt.Errorf("Intermediate graph too large: %s", stats)
+			return fmt.Errorf("intermediate graph too large: %s", stats)
 		}
 		if ea.ProcessBlock(block) {
 			for _, nextBlock := range block.Succs {
@@ -1151,9 +1164,10 @@ func EscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 		newGlobalNodeGroup(),
 		config.NewLogGroup(config.NewDefault()),
 		nil,
+		false,
 	}
-	analysis := newFunctionAnalysisState(f, prog)
-	resummarize(analysis)
+	analysis := newFunctionAnalysisState(f, prog, config.EscapeBehaviorSummarize)
+	analysis.Resummarize()
 	return analysis.finalGraph
 }
 
@@ -1161,16 +1175,55 @@ func EscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 // wrapper around a map of function to analysis results, but it will likely need to expand
 // to work with the taint analysis.
 type ProgramAnalysisState struct {
-	summaries   map[*ssa.Function]*functionAnalysisState
-	globalNodes *globalNodeGroup
-	logger      *config.LogGroup
-	state       *dataflow.AnalyzerState
+	summaries     map[*ssa.Function]*functionAnalysisState
+	globalNodes   *globalNodeGroup
+	logger        *config.LogGroup
+	state         *dataflow.AnalyzerState
+	builtWorklist bool
+}
+
+// getSummaryType returns the kind of summary that f should have under the given configuration. This
+// takes into account function and package level directives.
+func getSummaryType(ec *config.EscapeConfig, f *ssa.Function) string {
+	functionStatus, ok := ec.Functions[f.String()]
+	if ok {
+		return functionStatus
+	}
+	pkg := lang.PackageTypeFromFunction(f)
+	if pkg == nil || ec.MatchPkgFilter(pkg.Path()) {
+		return config.EscapeBehaviorSummarize
+	}
+	return config.EscapeBehaviorUnknown
+}
+
+// getFunctionAnalysisSummary gets or creates a summary for the given function, and returns it. The
+// summary is configured according to the EscapeConfig in the state that was used to build this
+// ProgramAnalysisState. Functions that must be summarized may only be correctly handled if they are
+// discovered during initialization; if they are discovered later because e.g. they aren't part of
+// the initial callgraph, then they must be set to "unknown"
+func (prog *ProgramAnalysisState) getFunctionAnalysisSummary(f *ssa.Function) *functionAnalysisState {
+	if r, ok := prog.summaries[f]; ok {
+		return r
+	}
+	state := newFunctionAnalysisState(f, prog, getSummaryType(prog.state.Config.EscapeConfig, f))
+	prog.summaries[f] = state
+	// This function has requested summary, but is added after the worklist is built. This would
+	// result in a soundness issue.
+	if prog.builtWorklist && state.summaryType == config.EscapeBehaviorSummarize {
+		prog.logger.Warnf("Asking to summarize %s after worklist creation; only fixed summaries supported for such functions\n", f.String())
+		state.summaryType = config.EscapeBehaviorUnknown
+	}
+	return state
 }
 
 // (Re)-compute the escape summary for a single function. This will re-run the analysis
 // monotone framework loop and update the finalGraph. Returns true if the finalGraph
 // changed from its prior version.
-func resummarize(ea *functionAnalysisState) (changed bool) {
+func (ea *functionAnalysisState) Resummarize() (changed bool) {
+	if ea.summaryType != config.EscapeBehaviorSummarize {
+		return false
+	}
+
 	err := ea.RunForwardIterative()
 	returnResult := NewEmptyEscapeGraph(ea.nodes)
 	// Use an empty summary (else branch) if we get an error from the convergence loop
@@ -1223,27 +1276,6 @@ func resummarize(ea *functionAnalysisState) (changed bool) {
 	return !same
 }
 
-var emptySummaryFunctions = map[string]bool{
-	"sync/atomic.CompareAndSwapUintptr": true,
-	"sync/atomic.CompareAndSwapInt32":   true,
-	"sync/atomic.CompareAndSwapUint64":  true,
-	"sync/atomic.LoadUint64":            true,
-	"sync/atomic.AddInt32":              true,
-	"sync.runtime_SemacquireMutex":      true,
-	"internal/poll.runtime_Semrelease":  true,
-	"internal/poll.runtime_Semacquire":  true,
-	"sync.throw":                        true,
-}
-
-func handlePresummarizedFunction(f *ssa.Function, prog *ProgramAnalysisState) {
-	if emptySummaryFunctions[f.String()] {
-		prog.logger.Debugf("Using empty summary for: %s\n", f.String())
-		prog.summaries[f] = newFunctionAnalysisState(f, prog)
-		return
-	}
-	prog.logger.Debugf("No summary for: %s\n", formatutil.SanitizeRepr(f))
-}
-
 // EscapeAnalysis computes the bottom-up escape summaries of functions matching the package filter.
 //
 //gocyclo:ignore
@@ -1257,34 +1289,18 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 
 	// Find all the nodes that are in the main package, and thus treat everything else as not summarized
 	nodes := []*callgraph.Node{}
+	nodesToAnalyze := map[*ssa.Function]bool{}
 	for f, node := range state.PointerAnalysis.CallGraph.Nodes {
-		// No blocks means external, so must use presummary if available
-		if len(f.Blocks) == 0 {
-			handlePresummarizedFunction(f, prog)
-			continue
-		}
-		// If individual function is explicitly allowed or denied, respect that config
-		allowListStatus, ok := state.Config.EscapeConfig.Functions[f.String()]
-		if ok && allowListStatus {
-			prog.summaries[f] = newFunctionAnalysisState(f, prog)
+		state := prog.getFunctionAnalysisSummary(f)
+		if state.summaryType == config.EscapeBehaviorSummarize {
 			nodes = append(nodes, node)
-			continue
-		} else if ok && !allowListStatus {
-			handlePresummarizedFunction(f, prog)
-			continue
+			nodesToAnalyze[f] = true
 		}
-
-		// Check function against package filter
-		pkg := lang.PackageTypeFromFunction(f)
-		if pkg == nil || state.Config.EscapeConfig.MatchPkgFilter(pkg.Path()) {
-			prog.summaries[f] = newFunctionAnalysisState(f, prog)
-			nodes = append(nodes, node)
-			continue
-		}
-
-		// Default to not summarized
-		handlePresummarizedFunction(f, prog)
 	}
+	// Mark the worklist as complete. If there are any other functions added after this point, they
+	// won't be analyzed soundly.
+	prog.builtWorklist = true
+
 	if prog.logger.LogsTrace() {
 		prog.logger.Tracef("Have a total of %d nodes", len(nodes))
 	}
@@ -1303,20 +1319,21 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	// SCC. If we tracked the worklist by SCC, we could make this even more efficient
 	// by putting the node not at top of the stack but at the bottom of the current
 	// SCC so that other members of the SCC are analyzed first.
-	worklist := make([]*functionAnalysisState, len(nodes))
-	nextIndex := len(worklist) - 1
+	// (We first build the worklist in normal order, then reverse it, as prepending to a slice is
+	// not efficient.)
+	worklist := make([]*functionAnalysisState, 0)
 	sccOfFunc := map[*functionAnalysisState]int{}
 	for sccIndex, scc := range graphutil.StronglyConnectedComponents(nodes, succ) {
 		for _, n := range scc {
-			if summary, ok := prog.summaries[n.Func]; ok && len(summary.function.Blocks) > 0 {
+			if summary, ok := prog.summaries[n.Func]; ok && nodesToAnalyze[n.Func] {
 				sccOfFunc[summary] = sccIndex
-				worklist[nextIndex] = summary
-				nextIndex -= 1
+				worklist = append(worklist, summary)
 			}
 		}
 	}
-	if nextIndex != -1 {
-		panic("expected reverse to be complete")
+	// Reverse the worklist
+	for i, j := 0, len(worklist)-1; i < j; i, j = i+1, j-1 {
+		worklist[i], worklist[j] = worklist[j], worklist[i]
 	}
 	// The main worklist algorithm. Reanalyze each function, putting any function(s) that need to be reanalyzed back on
 	// the list
@@ -1325,7 +1342,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		worklist = worklist[:len(worklist)-1]
 
 		prog.logger.Infof("Computing escape summary for %s (%d to go)\n", formatutil.SanitizeRepr(summary.function), len(worklist))
-		changed := resummarize(summary)
+		changed := summary.Resummarize()
 		if !changed {
 			continue
 		}
@@ -1366,22 +1383,32 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 	return prog, nil
 }
 
-// derefsAreLocal returns true if all of the nodes pointed to by `ptr` are local, i.e.
-// not escaped or leaked. Ignores the status of `ptr` itself.
-func derefsAreLocal(g *EscapeGraph, ptr *Node) bool {
+// derefsAreLocal returns nil if all of the nodes pointed to by `ptr` are local, i.e.
+// not escaped or leaked. Ignores the status of `ptr` itself. Otherwise, returns a non-nil rationale
+// for why a pointee is non-local
+func derefsAreLocal(g *EscapeGraph, ptr *Node) *dataflow.EscapeRationale {
 	for n := range g.Pointees(ptr) {
 		g.AddNode(n) // Ensure n's status is correct for .IntrinsicStatus nodes() (e.g. globals)
 		if g.status[n] != Local {
-			return false
+			if rat, ok := g.rationales[n]; ok && rat != nil {
+				return rat
+			} else {
+				if g.status[n] == Leaked {
+					return dataflow.NewBaseRationale("missing rationale")
+				} else {
+					return dataflow.NewBaseRationale("escaped but not leaked")
+				}
+			}
 		}
 	}
-	return true
+	return nil
 }
 
-// instructionLocality returns true if the given instruction is local w.r.t. the given escape graph.
+// instructionLocality returns nil if the given instruction is local w.r.t. the given escape graph.
+// Otherwise, it returns a non-nil EscapeRationale.
 //
 //gocyclo:ignore
-func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
+func instructionLocality(instr ssa.Instruction, g *EscapeGraph) *dataflow.EscapeRationale {
 	switch instrType := instr.(type) {
 	case *ssa.Store:
 		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Addr))
@@ -1394,63 +1421,70 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 			return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
 		} else {
 			// arithmetic is local
-			return true
+			return nil
 		}
 	case *ssa.Send:
 		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Chan))
 	case *ssa.Range:
-		return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
+		if _, ok := instrType.X.Type().Underlying().(*types.Map); ok {
+			return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
+		} else {
+			// must be a string type
+			return nil
+		}
 	case *ssa.Next:
 		if instrType.IsString {
-			return true
+			return nil
 		}
 		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Iter))
 	case *ssa.Select:
-		local := true
 		for _, state := range instrType.States {
-			local = local && derefsAreLocal(g, g.nodes.ValueNode(state.Chan))
+			chanRationale := derefsAreLocal(g, g.nodes.ValueNode(state.Chan))
+			if chanRationale != nil {
+				return chanRationale
+			}
 		}
-		return local
+		return nil
 	case *ssa.BinOp:
-		return true // arithmetic is local
+		return nil // arithmetic is local
 	case *ssa.Go:
-		return false // go func is clearly non-local
+		return nil // go func is clearly non-local
 	case *ssa.Call:
-		return false // functions require special handling
+		return nil // functions require special handling
 	case *ssa.MakeClosure:
 		// Making a closure is a local operation. The resulting closure may close over external
 		// objects, or may itself leak immediately, but the creation is semantically equivalent
 		// to writing some fields in a hidden struct type
-		return true
+		return nil
 	case *ssa.Defer, *ssa.RunDefers:
 		// Defers and rundefers are local, as they in principle just access the stack of defered funcs.
 		// Execution of the defered closures, or the process of creating the closures, may be non-local
 		// but those are handled elsewhere
-		return true
+		return nil
 	case *ssa.Alloc, *ssa.MakeMap, *ssa.MakeChan, *ssa.MakeSlice:
 		// All alloc-like operations are local
-		return true
+		return nil
 	case *ssa.FieldAddr, *ssa.IndexAddr:
 		// address calculations don't involve loads
 		// TODO: what about ssa.IndexAddr with arrays?
-		return true
+		return nil
 	case *ssa.Field, *ssa.Index:
 		// Field/Index is always applied to a value type, so it does not access memory.
-		return true
+		return nil
 	case *ssa.Slice, *ssa.SliceToArrayPointer:
-		return true // taking sub-slices is an array operation
+		return nil // taking sub-slices is an array operation
 	case *ssa.MakeInterface, *ssa.Convert,
 		*ssa.ChangeInterface, *ssa.ChangeType, *ssa.Phi, *ssa.Extract:
 		// conversions and ssa specific things don't access memory
-		return true
+		return nil
 	case *ssa.TypeAssert:
 		return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
 	case *ssa.Return, *ssa.Jump, *ssa.If:
 		// control flow (at least the operation itself, if not the computation of the argument(s)) is local
-		return true
+		return nil
 	case *ssa.Panic:
 		// Panicing does not itself leak, although it may of course trigger executions that are non-local
-		return true
+		return nil
 	case *ssa.MapUpdate:
 		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Map))
 	case *ssa.Lookup:
@@ -1459,13 +1493,13 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) bool {
 		// fallthrough to the unhandled case below.
 		// Some operation can fallthrough as well, because they might not (yet) handle all forms of their instruction type.
 	}
-	return false
+	return dataflow.NewBaseRationale("instruction locality unknown")
 }
 
 // basicBlockInstructionLocality fills in the locality map with the locality information
 // of the instructions in the given basic block.
 func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock,
-	locality map[ssa.Instruction]bool, callsites map[*ssa.Call]escapeCallsiteInfoImpl) error {
+	locality map[ssa.Instruction]*dataflow.EscapeRationale, callsites map[*ssa.Call]escapeCallsiteInfoImpl) error {
 	g := NewEmptyEscapeGraph(ea.nodes)
 	if len(bb.Preds) == 0 {
 		// Entry block uses the function-wide initial graph
@@ -1497,8 +1531,9 @@ type escapeCallsiteInfoImpl struct {
 	prog     *ProgramAnalysisState
 }
 
-// Does the work of computing instruction locality for a function. See wrapper `ComputeInstructionLocality`.
-func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]bool, callsiteInfo map[*ssa.Call]escapeCallsiteInfoImpl) {
+// computeInstructionLocality does the work of computing instruction locality for a function. See
+// wrapper `ComputeInstructionLocality` for details.
+func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]*dataflow.EscapeRationale, callsiteInfo map[*ssa.Call]escapeCallsiteInfoImpl) {
 	inContextEA := &functionAnalysisState{
 		function:     ea.function,
 		prog:         ea.prog,
@@ -1506,9 +1541,10 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 		nodes:        ea.nodes,
 		blockEnd:     make(map[*ssa.BasicBlock]*EscapeGraph),
 		worklist:     []*ssa.BasicBlock{ea.function.Blocks[0]},
+		summaryType:  config.EscapeBehaviorSummarize,
 	}
-	resummarize(inContextEA)
-	locality = map[ssa.Instruction]bool{}
+	inContextEA.Resummarize()
+	locality = map[ssa.Instruction]*dataflow.EscapeRationale{}
 	callsites := map[*ssa.Call]escapeCallsiteInfoImpl{}
 	for _, block := range ea.function.Blocks {
 		basicBlockInstructionLocality(inContextEA, block, locality, callsites)
@@ -1571,7 +1607,7 @@ func TypecheckEscapeGraph(g *EscapeGraph) error {
 			continue
 		}
 		if tpN.String() == "invalid type" {
-			return fmt.Errorf("Can't have node with invalid type %v:%v", n, tpN)
+			return fmt.Errorf("can't have node with invalid type %v:%v", n, tpN)
 		}
 		realType := tpN.Underlying()
 		if n.kind == KindGlobal && !g.IsSubnode(n) {
@@ -1588,7 +1624,7 @@ func TypecheckEscapeGraph(g *EscapeGraph) error {
 					destType = NillableDerefType(destType)
 				}
 				if !CanPointTo(tp, destType) {
-					return fmt.Errorf("Can't have edge between %v:%v --> %v:%v", n, tpN, e.dest, destType)
+					return fmt.Errorf("can't have edge between %v:%v --> %v:%v", n, tpN, e.dest, destType)
 				}
 			}
 		case *types.Struct:

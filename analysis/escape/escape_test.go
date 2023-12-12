@@ -73,9 +73,10 @@ func unsimplifiedEscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 		newGlobalNodeGroup(),
 		config.NewLogGroup(config.NewDefault()),
 		nil,
+		false,
 	}
-	analysis := newFunctionAnalysisState(f, prog)
-	resummarize(analysis)
+	analysis := newFunctionAnalysisState(f, prog, "summarize")
+	analysis.Resummarize()
 	returnResult := NewEmptyEscapeGraph(analysis.nodes)
 	for block, blockEndState := range analysis.blockEnd {
 		if len(block.Instrs) > 0 {
@@ -481,7 +482,7 @@ func TestStdlibEscape(t *testing.T) {
 type callgraphVisitNode struct {
 	context  dataflow.EscapeCallContext
 	fun      *ssa.Function
-	locality map[ssa.Instruction]bool
+	locality map[ssa.Instruction]*dataflow.EscapeRationale
 	// we don't explicitly keep track of the children here.
 }
 
@@ -497,7 +498,7 @@ func computeNodes(state dataflow.EscapeAnalysisState, root *ssa.Function) []*cal
 		added := false
 		if n, ok := currentNode[f]; !ok {
 			// haven't visited this node with the current context
-			node = &callgraphVisitNode{ctx, f, make(map[ssa.Instruction]bool)}
+			node = &callgraphVisitNode{ctx, f, make(map[ssa.Instruction]*dataflow.EscapeRationale)}
 			currentNode[f] = node
 			allNodes = append(allNodes, node)
 			added = true
@@ -553,7 +554,7 @@ func groupNodesByFunc(nodes []*callgraphVisitNode) [][]*callgraphVisitNode {
 //     In at least one context, acts like LOCAL. In at least one context, acts like
 //     NONLOCAL. Because we don't have a way to identify the contexts, this annotation
 //     is weaker than it could theoretically be.
-func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]string) error {
+func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]Anno) error {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -565,7 +566,7 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]string
 	}
 	funcStart := f.Prog.Fset.Position(f.Pos())
 	funcEnd := f.Prog.Fset.Position(f.Syntax().End())
-	fAnnos := map[int]string{}
+	fAnnos := map[int]Anno{}
 	fAnnosCovered := map[int]map[*callgraphVisitNode]bool{}
 	for lpos, kind := range annos {
 		if lpos.Filename == funcStart.Filename && funcStart.Line <= lpos.Line && lpos.Line <= funcEnd.Line {
@@ -588,12 +589,12 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]string
 	for _, node := range nodes {
 		for _, bb := range f.Blocks {
 			for _, ins := range bb.Instrs {
-				if node.locality[ins] {
+				if rationale := node.locality[ins]; rationale == nil {
 					// ins is local, so do nothing.
 				} else {
 					pos := f.Prog.Fset.Position(ins.Pos())
-					if kind, ok := fAnnos[pos.Line]; ok {
-						switch kind {
+					if anno, ok := fAnnos[pos.Line]; ok {
+						switch anno.kind {
 						case "LOCAL":
 							// All instructions for a local line must be local
 							return fmt.Errorf("Instruction %v on line %v was expected to be local", ins, pos.Line)
@@ -601,25 +602,29 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]string
 							fallthrough
 						case "BOTH":
 							// In NONLOCAL/BOTH, we don't have enough information to determine if there is an error
-							fAnnosCovered[pos.Line][node] = true
+							if anno.argument == "" || strings.Contains(rationale.String(), anno.argument) {
+								fAnnosCovered[pos.Line][node] = true
+							} else {
+								fmt.Printf("Rationale %s ignored because it doesn't contain %s\n", rationale.String(), anno.argument)
+							}
 						}
 					}
 				}
 			}
 		}
 		// For each context/node, check that NONLOCAL lines are satisfied
-		for line, kind := range fAnnos {
-			if kind == "NONLOCAL" {
+		for line, anno := range fAnnos {
+			if anno.kind == "NONLOCAL" {
 				if !fAnnosCovered[line][node] {
-					return fmt.Errorf("Line %v was expected to have at least one non-local instruction", line)
+					return fmt.Errorf("Line %v was expected to have at least one non-local instruction (with rationale: %s)", line, anno.argument)
 				}
 			}
 		}
 	}
 
 	// Check that BOTH lines are satisfied
-	for line, kind := range fAnnos {
-		if kind == "BOTH" {
+	for line, anno := range fAnnos {
+		if anno.kind == "BOTH" {
 			seenLocal, seenNonlocal := false, false
 			for _, n := range nodes {
 				if fAnnosCovered[line][n] {
@@ -638,11 +643,15 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]string
 
 // Logic for parsing comments copied from taint_utils_test.go
 // Match annotations of the form // LOCAL, // NONLOCAL, and // BOTH
-var annoRegex = regexp.MustCompile(`// *(LOCAL|NONLOCAL|BOTH) *$`)
+var annoRegex = regexp.MustCompile(`// *(LOCAL|NONLOCAL|BOTH) *([^ ].+)?$`)
 
 type LPos struct {
 	Filename string
 	Line     int
+}
+type Anno struct {
+	kind     string
+	argument string
 }
 
 func (p LPos) String() string {
@@ -655,10 +664,10 @@ func RelPos(pos token.Position, reldir string) LPos {
 }
 
 // getExpectSourceToTargets analyzes the files in dir and looks for comments // LOCAL // NONLOCAL etc
-func getAnnotations(reldir string, dir string) map[LPos]string {
+func getAnnotations(reldir string, dir string) map[LPos]Anno {
 	var err error
 	d := make(map[string]*ast.Package)
-	annos := make(map[LPos]string)
+	annos := make(map[LPos]Anno)
 	fset := token.NewFileSet() // positions are relative to fset
 
 	err = filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
@@ -683,9 +692,17 @@ func getAnnotations(reldir string, dir string) map[LPos]string {
 					pos := fset.Position(c1.Pos())
 					// Match a "@Source(id1, id2, id3)"
 					a := annoRegex.FindStringSubmatch(c1.Text)
-					if len(a) == 2 {
-						annos[RelPos(pos, reldir)] = a[1]
+					if a == nil {
+						continue
 					}
+					anno := Anno{"", ""}
+					if len(a) > 1 {
+						anno.kind = a[1]
+					}
+					if len(a) > 2 {
+						anno.argument = a[2]
+					}
+					annos[RelPos(pos, reldir)] = anno
 				}
 			}
 		}
@@ -723,6 +740,8 @@ func TestLocalityComputation(t *testing.T) {
 		"testClosureNonPointerFreeVar",
 		"testBoundMethod",
 		"testInterfaceMethodCall",
+		"testRationaleBasic",
+		"testRationaleUnknownReturn",
 	}
 	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {

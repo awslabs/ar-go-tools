@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -28,7 +29,7 @@ import (
 )
 
 type EscapeInfo struct {
-	InstructionLocality map[ssa.Instruction]bool
+	InstructionLocality map[ssa.Instruction]*dataflow.EscapeRationale
 	CallSiteInfo        map[*ssa.Call]df.EscapeCallsiteInfo
 }
 
@@ -781,12 +782,12 @@ func (v *Visitor) checkEscape(s *df.AnalyzerState, node df.GraphNode, escapeInfo
 	}
 	for instr := range node.Marks() {
 		_, isCall := instr.(ssa.CallInstruction)
-		isLocal, isTracked := escapeInfo.InstructionLocality[instr]
-		if !isCall && !isLocal && isTracked {
+		rationale, isTracked := escapeInfo.InstructionLocality[instr]
+		if !isCall && rationale != nil && isTracked {
 			v.taints.addNewEscape(v.currentSource, instr)
 			v.raiseAlarm(s, instr.Pos(),
-				fmt.Sprintf("instruction %s in %s is not local!\n\tPosition: %s",
-					instr, node.Graph().Parent, s.Program.Fset.Position(instr.Pos())))
+				fmt.Sprintf("instruction %s in %s is not local because %s!\n\tPosition: %s",
+					instr, node.Graph().Parent, rationale.String(), s.Program.Fset.Position(instr.Pos())))
 		}
 	}
 }
