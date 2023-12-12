@@ -23,6 +23,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+type IndexT = uint32
+
 // FlowInformation contains the dataflow information necessary for the analysis and function summary building.
 type FlowInformation struct {
 	// Function is the function being analyzed
@@ -35,19 +37,19 @@ type FlowInformation struct {
 	marks map[Mark]*Mark
 
 	// NumBlocks is the number of blocks in the function
-	NumBlocks int
+	NumBlocks IndexT
 
 	// NumValues is the number of values used in the function (values defined + used)
-	NumValues int
+	NumValues IndexT
 
 	// NumInstructions is the number of instructions in the function
-	NumInstructions int
+	NumInstructions IndexT
 
 	// ValueId maps ssa.Value to value id
-	ValueId map[ssa.Value]int
+	ValueId map[ssa.Value]IndexT
 
 	// InstrId maps ssa.Instruction to instruction id
-	InstrId map[ssa.Instruction]int
+	InstrId map[ssa.Instruction]IndexT
 
 	// values maps value ids to ssa.Value
 	values []ssa.Value
@@ -67,8 +69,8 @@ type FlowInformation struct {
 
 // NewFlowInfo returns a new FlowInformation with all maps initialized.
 func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
-	valueId := map[ssa.Value]int{}
-	numValues := 0
+	valueId := map[ssa.Value]IndexT{}
+	numValues := IndexT(0)
 	lang.IterateValues(f, func(_ int, v ssa.Value) {
 		if v == nil {
 			return
@@ -84,8 +86,8 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 		values[x] = v
 	}
 
-	numInstructions := 0
-	instrId := map[ssa.Instruction]int{}
+	numInstructions := IndexT(0)
+	instrId := map[ssa.Instruction]IndexT{}
 	lang.IterateInstructions(f, func(_ int, i ssa.Instruction) {
 		_, ok := instrId[i]
 		if !ok {
@@ -103,7 +105,7 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 		Function:              f,
 		Config:                cfg,
 		marks:                 make(map[Mark]*Mark),
-		NumBlocks:             len(f.Blocks),
+		NumBlocks:             IndexT(len(f.Blocks)),
 		NumValues:             numValues,
 		NumInstructions:       numInstructions,
 		ValueId:               valueId,
@@ -115,21 +117,26 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 	}
 }
 
-// GetPos returns the position of the abstract value at instruction i in the slice-based representation
-func (fi *FlowInformation) GetPos(i ssa.Instruction, v ssa.Value) int {
+// GetPos returns the position of the abstract value at instruction i in the slice-based representation (the ValueId
+// and InstrId map values and instructions to some ids, but a value in an instruction has a position in the
+// MarkedValues slice that is calculated by (instruction id) * (number of instructions) + (value id)
+// Returns the IndexT (positive integer) and a boolean indicating whether the position exists.
+func (fi *FlowInformation) GetPos(i ssa.Instruction, v ssa.Value) (IndexT, bool) {
 	iId, ok := fi.InstrId[i]
 	if !ok {
-		return -1
+		return 0, false
 	}
 	vId, ok := fi.ValueId[v]
 	if !ok {
-		return -1
+		return 0, false
 	}
-	return iId*fi.NumValues + vId
+	return iId*fi.NumValues + vId, true
 }
 
 // GetInstrPos returns the position of the instruction in the slice-based representations
-func (fi *FlowInformation) GetInstrPos(i ssa.Instruction) int {
+// The instruction must be present in the array of InstrId. This is in general true if you have initialized the
+// FlowInformation properly and you are working in the same function.
+func (fi *FlowInformation) GetInstrPos(i ssa.Instruction) IndexT {
 	return fi.InstrId[i] * fi.NumValues
 }
 
@@ -145,13 +152,14 @@ func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa
 	}
 }
 
-// GetValueId returns the id of v if v in the FlowInformation, otherwise -1
-func (fi *FlowInformation) GetValueId(v ssa.Value) int {
+// GetValueId returns the id of v if v in the FlowInformation and true, otherwise returns 0 and false if v is not
+// tracked in the FLowInformation
+func (fi *FlowInformation) GetValueId(v ssa.Value) (IndexT, bool) {
 	vId, ok := fi.ValueId[v]
 	if !ok {
-		return -1
+		return 0, false
 	}
-	return vId
+	return vId, true
 }
 
 // Show prints the abstract states at each instruction in the function.
@@ -176,11 +184,11 @@ func (fi *FlowInformation) ShowAt(w io.Writer, i ssa.Instruction) {
 // HasMarkAt returns true if the Value v has an abstract state at instruction i, and this abstract state contains the
 // mark s.
 func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, path string, s *Mark) bool {
-	index := fi.GetPos(i, v)
-	if index < 0 {
+	pos, ok := fi.GetPos(i, v)
+	if !ok {
 		return false
 	}
-	marks := fi.MarkedValues[fi.GetPos(i, v)]
+	marks := fi.MarkedValues[pos]
 	return marks != nil && marks.HasMarkAt(path, s)
 }
 
@@ -189,11 +197,11 @@ func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, path string
 // In both cases, "fi" will have the mark "s" on ssa value "value" with "path" at instruction "i".
 func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value,
 	path string, s *Mark) bool {
-	index := fi.GetPos(i, value)
-	if index < 0 { // this is not a value in the function
+	pos, ok := fi.GetPos(i, value)
+	if !ok { // this is not a value in the function
 		return false
 	}
-	if abstractState := fi.MarkedValues[index]; abstractState != nil {
+	if abstractState := fi.MarkedValues[pos]; abstractState != nil {
 		if abstractState.HasMarkAt(path, s) {
 			return false
 		} else {
@@ -203,7 +211,7 @@ func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value,
 	} else {
 		as := NewAbstractValue(value, fi.pathSensitivityFilter[fi.ValueId[value]])
 		as.add(path, s)
-		fi.MarkedValues[index] = as
+		fi.MarkedValues[pos] = as
 		return true
 	}
 }
