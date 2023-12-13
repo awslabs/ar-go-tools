@@ -32,6 +32,7 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
           go install github.com/gordonklaus/ineffassign@latest
+          go install golang.org/x/lint/golint@latest
       - name: Run basic analyses
         run: |
           go vet ./...
