@@ -506,8 +506,8 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			c.Program.Fset.Position(i.Pos()))
 		// sort and print value -> marks
 		var mVals []ssa.Value
-		iId := fi.InstrId[i]
-		index := iId * fi.NumValues
+		iID := fi.InstrID[i]
+		index := iID * fi.NumValues
 		for _, val := range fi.MarkedValues[index : index+fi.NumValues] {
 			if val != nil {
 				mVals = append(mVals, val.GetValue())
@@ -521,7 +521,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 			return s1 < s2
 		})
 		for _, val := range mVals {
-			marks := fi.MarkedValues[index+fi.ValueId[val]]
+			marks := fi.MarkedValues[index+fi.ValueID[val]]
 			var x, vStr, vName string
 			setStr(val, &vStr)
 			setName(val, &vName)

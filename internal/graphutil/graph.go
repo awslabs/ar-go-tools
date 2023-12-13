@@ -129,6 +129,7 @@ func (c CGraph) Node(v int) graph.Node {
 	return c.IDMap[int64(v)]
 }
 
+// Nodes returns the set of nodes in the graph
 func (c CGraph) Nodes() graph.Nodes {
 	keys := make([]int64, len(c.IDMap))
 
@@ -144,6 +145,7 @@ func (c CGraph) Nodes() graph.Nodes {
 	}
 }
 
+// From returns the set of nodes reachable from the id
 func (c CGraph) From(id int64) graph.Nodes {
 	var keys []int64
 
@@ -157,12 +159,14 @@ func (c CGraph) From(id int64) graph.Nodes {
 	}
 }
 
+// HasEdgeBetween returns a boolean indicating whether an edge exists between the two node identifiers
 func (c CGraph) HasEdgeBetween(xid, yid int64) bool {
 	xe := c.Edges[xid]
 	ye := c.Edges[yid]
 	return xe[yid] || ye[xid]
 }
 
+// Edge returns the edge between the two identifiers (nil if none exists)
 func (c CGraph) Edge(uid, vid int64) graph.Edge {
 	ue := c.Edges[uid]
 	if ue != nil {
@@ -180,6 +184,7 @@ type CNode struct {
 	Node *callgraph.Node
 }
 
+// ID returns the id of the node
 func (n CNode) ID() int64 {
 	return int64(n.Node.ID)
 }
@@ -205,23 +210,27 @@ type NodeSet struct {
 	cur int
 }
 
+// Next moves the current node to the next, and returns true if such a node exists. Otherwise, returns false
+// and the current node has not changed.
 func (ns *NodeSet) Next() bool {
 	if ns.cur < len(ns.ids)-1 {
 		ns.cur++
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
+// Len returns the length of the node set
 func (ns *NodeSet) Len() int {
 	return len(ns.ids)
 }
 
+// Reset resets the id of the current node in the set
 func (ns *NodeSet) Reset() {
 	ns.cur = 0
 }
 
+// Node return the current node in the set
 func (ns *NodeSet) Node() graph.Node {
 	return ns.nodes[ns.ids[ns.cur]]
 }
@@ -234,14 +243,17 @@ type CEdge struct {
 	to   CNode
 }
 
+// From returns the origin of the edge
 func (e CEdge) From() graph.Node {
 	return e.from
 }
 
+// To returns the destination of the edge
 func (e CEdge) To() graph.Node {
 	return e.to
 }
 
+// ReversedEdge returns a new value representing the reversed edge
 func (e CEdge) ReversedEdge() graph.Edge {
 	return CEdge{from: e.to, to: e.from}
 }

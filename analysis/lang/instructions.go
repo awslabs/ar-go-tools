@@ -17,7 +17,7 @@
 package lang
 
 import (
-	. "github.com/awslabs/ar-go-tools/internal/funcutil"
+	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -154,9 +154,8 @@ func InstrSwitch(visitor InstrOp, instr ssa.Instruction) {
 func LastInstr(block *ssa.BasicBlock) ssa.Instruction {
 	if len(block.Instrs) == 0 {
 		return nil
-	} else {
-		return block.Instrs[len(block.Instrs)-1]
 	}
+	return block.Instrs[len(block.Instrs)-1]
 }
 
 // FirstInstr returns the first instruction in a block. There is always a first instruction for a reachable block.
@@ -164,9 +163,8 @@ func LastInstr(block *ssa.BasicBlock) ssa.Instruction {
 func FirstInstr(block *ssa.BasicBlock) ssa.Instruction {
 	if len(block.Instrs) == 0 {
 		return nil
-	} else {
-		return block.Instrs[0]
 	}
+	return block.Instrs[0]
 }
 
 // GetArgs returns the arguments of a function call including the receiver when the function called is a method.
@@ -184,14 +182,14 @@ func GetArgs(instr ssa.CallInstruction) []ssa.Value {
 // calls a method from an interface
 // Returns an optional value
 // TODO: this may not be idiomatic but I'm testing this "Optional" implementation
-func InstrMethodKey(instr ssa.CallInstruction) Optional[string] {
+func InstrMethodKey(instr ssa.CallInstruction) fn.Optional[string] {
 	methodFunc := instr.Common().Method
 	if methodFunc != nil {
 		methodKey := instr.Common().Value.Type().String() + "." + methodFunc.Name()
-		return Some(methodKey)
+		return fn.Some(methodKey)
 	}
 
-	return None[string]()
+	return fn.None[string]()
 }
 
 // FnHasGlobal returns true if fn has a global value.

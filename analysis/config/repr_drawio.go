@@ -19,6 +19,7 @@ import (
 	"strings"
 )
 
+// MxFile is the toplevel file representation in a draio diagram
 type MxFile struct {
 	Object   []Object `xml:"diagram>mxGraphModel>root>object"`
 	Cells    []mxCell `xml:"diagram>mxGraphModel>root>mxCell"`
@@ -26,8 +27,9 @@ type MxFile struct {
 	Host     string   `xml:"host,attr"`
 }
 
+// Object represents an object in the drawio diagram
 type Object struct {
-	Id string `xml:"id,attr"`
+	ID string `xml:"id,attr"`
 	CodeIdentifier
 	Options
 	Forbidden     bool   `xml:"forbidden,attr"`
@@ -40,8 +42,9 @@ type Object struct {
 	Filters       string `xml:"filters,attr"`
 }
 
+// mxCell represents a cell in the drawio diagram
 type mxCell struct {
-	Id        string `xml:"id,attr"`
+	ID        string `xml:"id,attr"`
 	Vertex    bool   `xml:"vertex,attr"`
 	Edge      bool   `xml:"edge,attr"`
 	Source    string `xml:"source,attr"`
@@ -49,9 +52,9 @@ type mxCell struct {
 	Forbidden bool   `xml:"forbidden,attr"`
 }
 
-// ParseXmlConfigFormat parses the bytes as xml, expecting a drawio file representing a diagram of dataflow problems
+// ParseXMLConfigFormat parses the bytes as xml, expecting a drawio file representing a diagram of dataflow problems
 // where the options of the config are specified in the metadata.
-func ParseXmlConfigFormat(c *Config, b []byte) error {
+func ParseXMLConfigFormat(c *Config, b []byte) error {
 	x := &MxFile{}
 	err := xml.Unmarshal(b, x)
 	if err != nil {
@@ -65,7 +68,7 @@ func ParseXmlConfigFormat(c *Config, b []byte) error {
 
 	for _, obj := range x.Object {
 		// Object 0 should contain settings
-		if obj.Id == "0" && !obj.Cell.Vertex && !obj.Cell.Edge {
+		if obj.ID == "0" && !obj.Cell.Vertex && !obj.Cell.Edge {
 			if obj.DataflowSpecs != "" {
 				specs := strings.Split(obj.DataflowSpecs, ",")
 				c.DataflowSpecs = specs
@@ -78,13 +81,13 @@ func ParseXmlConfigFormat(c *Config, b []byte) error {
 			cid := obj.CodeIdentifier
 
 			if obj.IsSink {
-				sinks[obj.Id] = cid
+				sinks[obj.ID] = cid
 			} else if obj.IsSource {
-				sources[obj.Id] = cid
+				sources[obj.ID] = cid
 			} else if obj.IsSanitizer {
-				sanitizers[obj.Id] = cid
+				sanitizers[obj.ID] = cid
 			} else if obj.IsValidator {
-				validators[obj.Id] = cid
+				validators[obj.ID] = cid
 			}
 		}
 	}

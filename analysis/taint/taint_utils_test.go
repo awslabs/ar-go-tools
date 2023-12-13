@@ -44,14 +44,14 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 		t.Log("Test file has annotation metadata")
 	}
 	seenTaintFlow := make(map[seenSink]map[seenSource]bool)
-	cmpSink := func(actual seenSink) func(analysistest.AnnotationId) bool {
-		return func(expect analysistest.AnnotationId) bool {
+	cmpSink := func(actual seenSink) func(analysistest.AnnotationID) bool {
+		return func(expect analysistest.AnnotationID) bool {
 			// sinks don't have metadata
 			return actual.Pos == expect.Pos
 		}
 	}
-	cmpSource := func(actual seenSource) func(analysistest.AnnotationId) bool {
-		return func(expect analysistest.AnnotationId) bool {
+	cmpSource := func(actual seenSource) func(analysistest.AnnotationID) bool {
+		return func(expect analysistest.AnnotationID) bool {
 			return actual.Pos == expect.Pos && actual.Trace == expect.Meta
 		}
 	}
@@ -82,7 +82,7 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 			actualSource := seenSource{Trace: trace, Pos: analysistest.RemoveColumn(posSource)}
 			seen := false
 			if expectSources := findExpectSourceIds(expect, cmpSink(actualSink)); len(expectSources) > 0 {
-				if _, ok := findExpectSourceId(expectSources, cmpSource(actualSource)); ok {
+				if _, ok := findExpectSourceID(expectSources, cmpSource(actualSource)); ok {
 					seenTaintFlow[actualSink][actualSource] = true
 					seen = true
 				}
@@ -99,14 +99,14 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 		}
 	}
 
-	for expectSinkId, expectSourceIds := range expect {
-		sSink := seenSink{Pos: expectSinkId.Pos}
-		for expectSourceId := range expectSourceIds {
-			sSource := seenSource{Pos: expectSourceId.Pos, Trace: expectSourceId.Meta}
+	for expectSinkID, expectSourceIds := range expect {
+		sSink := seenSink{Pos: expectSinkID.Pos}
+		for expectSourceID := range expectSourceIds {
+			sSource := seenSource{Pos: expectSourceID.Pos, Trace: expectSourceID.Meta}
 			if !seenTaintFlow[sSink][sSource] {
 				// Remaining entries have not been detected!
 				t.Errorf("failed to detect that source %s:\n%s\nwith trace: %s\nflows to\n%s\n",
-					expectSourceId.Id, expectSourceId.Pos, expectSourceId.Meta, expectSinkId.Pos)
+					expectSourceID.ID, expectSourceID.Pos, expectSourceID.Meta, expectSinkID.Pos)
 				// List possible sources for debugging
 				t.Logf("Possible sources:\n")
 				for source := range seenTaintFlow[sSink] {
@@ -120,8 +120,8 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 func checkEscape(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSources, actual map[ssa.Instruction]map[ssa.Instruction]bool) {
 
 	seenEscapeFlow := make(map[analysistest.LPos]map[analysistest.LPos]bool)
-	cmpPos := func(pos analysistest.LPos) func(analysistest.AnnotationId) bool {
-		return func(expectId analysistest.AnnotationId) bool {
+	cmpPos := func(pos analysistest.LPos) func(analysistest.AnnotationID) bool {
+		return func(expectId analysistest.AnnotationID) bool {
 			// just compare the positions
 			return expectId.Pos == pos
 		}
@@ -146,7 +146,7 @@ func checkEscape(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSo
 			posSource := analysistest.RemoveColumn(sourcePos)
 			seen := false
 			if expectSources := findExpectSourceIds(expect, cmpPos(posEscape)); len(expectSources) > 0 {
-				if _, ok := findExpectSourceId(expectSources, cmpPos(posSource)); ok {
+				if _, ok := findExpectSourceID(expectSources, cmpPos(posSource)); ok {
 					seenEscapeFlow[posEscape][posSource] = true
 					seen = true
 				}
@@ -157,19 +157,19 @@ func checkEscape(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSo
 		}
 	}
 
-	for sinkId, sources := range expect {
-		for sourceId := range sources {
-			if !seenEscapeFlow[sinkId.Pos][sourceId.Pos] {
+	for sinkID, sources := range expect {
+		for sourceID := range sources {
+			if !seenEscapeFlow[sinkID.Pos][sourceID.Pos] {
 				// Remaining entries have not been detected!
-				t.Errorf("failed to detect that:\n%s\nescapes at\n%s\n", sourceId.Pos, sinkId.Pos)
+				t.Errorf("failed to detect that:\n%s\nescapes at\n%s\n", sourceID.Pos, sinkID.Pos)
 			}
 		}
 	}
 }
 
 // findExpectSourceIds returns all the source ids that match the target according to cmp.
-func findExpectSourceIds(targetToSources analysistest.TargetToSources, cmp func(analysistest.AnnotationId) bool) map[analysistest.AnnotationId]bool {
-	res := make(map[analysistest.AnnotationId]bool)
+func findExpectSourceIds(targetToSources analysistest.TargetToSources, cmp func(analysistest.AnnotationID) bool) map[analysistest.AnnotationID]bool {
+	res := make(map[analysistest.AnnotationID]bool)
 	for target, sources := range targetToSources {
 		if cmp(target) {
 			for source := range sources {
@@ -181,14 +181,14 @@ func findExpectSourceIds(targetToSources analysistest.TargetToSources, cmp func(
 	return res
 }
 
-func findExpectSourceId(sources map[analysistest.AnnotationId]bool, cmp func(analysistest.AnnotationId) bool) (analysistest.AnnotationId, bool) {
+func findExpectSourceID(sources map[analysistest.AnnotationID]bool, cmp func(analysistest.AnnotationID) bool) (analysistest.AnnotationID, bool) {
 	for source := range sources {
 		if cmp(source) {
 			return source, true
 		}
 	}
 
-	return analysistest.AnnotationId{}, false
+	return analysistest.AnnotationID{}, false
 }
 
 func checkExpectedPositions(t *testing.T, p *ssa.Program, flows *Flows, expectTaint analysistest.TargetToSources, expectEscapes analysistest.TargetToSources) {

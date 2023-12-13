@@ -197,9 +197,8 @@ func printSSAValue(pv *ssa.Value) string {
 		intVal, isInt := checkIfConst(pv)
 		if !isInt {
 			return "Constant"
-		} else {
-			return "ConstInt" + strconv.Itoa(int(intVal))
 		}
+		return "ConstInt" + strconv.Itoa(int(intVal))
 	case *ssa.Global:
 		pkgName := vt.Pkg.Pkg.Name()
 		return getQualifiedNameGlobal(pkgName, v.Name())
@@ -207,9 +206,9 @@ func printSSAValue(pv *ssa.Value) string {
 
 	if v.Parent() != nil { // local
 		return getQualifiedName(getFuncName(v.Parent()), v.Name())
-	} else { // TODO: what to do here
-		return v.Name()
 	}
+	// TODO: what to do here
+	return v.Name()
 }
 
 // getFuncName returns a qualified name for a function by prefixing the enclosing package name.

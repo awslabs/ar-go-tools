@@ -16,6 +16,7 @@ package lang
 
 import "golang.org/x/tools/go/ssa"
 
+// BlockTree is a tree of ssa.BasicBlock
 type BlockTree struct {
 	Block    *ssa.BasicBlock
 	Parent   *BlockTree

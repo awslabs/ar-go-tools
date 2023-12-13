@@ -33,9 +33,9 @@ type functionToNode map[*ssa.Function][]ssa.Node
 
 type PackageToNodes map[*ssa.Package]functionToNode
 
-type nodeIdFunction func(*config.Config, *pointer.Result, ssa.Node) bool
+type nodeIDFunction func(*config.Config, *pointer.Result, ssa.Node) bool
 
-func NewPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIdFunction) PackageToNodes {
+func NewPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIDFunction) PackageToNodes {
 	packageMap := make(PackageToNodes)
 	for _, pkg := range pkgs {
 		pkgMap := newPackageMap(c, pkg, f)
@@ -46,7 +46,7 @@ func NewPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIdFunction) Pac
 	return packageMap
 }
 
-func newPackageMap(c *config.Config, pkg *ssa.Package, f nodeIdFunction) functionToNode {
+func newPackageMap(c *config.Config, pkg *ssa.Package, f nodeIDFunction) functionToNode {
 	fMap := make(functionToNode)
 	for _, mem := range pkg.Members {
 		switch fn := mem.(type) {
@@ -57,7 +57,7 @@ func newPackageMap(c *config.Config, pkg *ssa.Package, f nodeIdFunction) functio
 	return fMap
 }
 
-func populateFunctionMap(config *config.Config, fMap functionToNode, current *ssa.Function, f nodeIdFunction) {
+func populateFunctionMap(config *config.Config, fMap functionToNode, current *ssa.Function, f nodeIDFunction) {
 	var sources []ssa.Node
 	for _, b := range current.Blocks {
 		for _, instr := range b.Instrs {
@@ -88,7 +88,7 @@ func newSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
 func newSinkMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
 	return NewPackagesMap(c, pkgs,
 		func(cfg *config.Config, p *pointer.Result, node ssa.Node) bool {
-			return isMatchingCodeIdWithCallee(cfg.IsSomeSink, nil, node)
+			return isMatchingCodeIDWithCallee(cfg.IsSomeSink, nil, node)
 		})
 }
 

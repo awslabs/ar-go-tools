@@ -47,9 +47,8 @@ func findSingleNode(t *testing.T, g *EscapeGraph, name string) *Node {
 			if node != nil {
 				t.Errorf("Duplicate node found for %s\n", name)
 				return nil
-			} else {
-				node = n
 			}
+			node = n
 		}
 	}
 	if node == nil {

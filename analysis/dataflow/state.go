@@ -165,10 +165,20 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 	return state, nil
 }
 
+// Size returns the number of method implementations collected
 func (s *AnalyzerState) Size() int {
 	return len(s.ImplementationsByType)
 }
 
+// PrintImplementations prints out all of the implementations that the
+// AnalyzerState has collected, organized by type. For each type, it prints
+// the type name followed by each implemented function name.
+//
+// The implementations are printed to the given io.Writer. Typically this
+// would be os.Stdout to print to the standard output.
+//
+// This can be useful for debugging the implementations collected during
+// analysis or for displaying final results.
 func (s *AnalyzerState) PrintImplementations(w io.Writer) {
 	for typString, implems := range s.ImplementationsByType {
 		fmt.Fprintf(w, "KEY: %s\n", typString)
@@ -255,7 +265,7 @@ func (s *AnalyzerState) PopulateGlobals() {
 		for _, member := range pkg.Members {
 			glob, ok := member.(*ssa.Global)
 			if ok {
-				s.Globals[glob] = NewGlobalNode(glob)
+				s.Globals[glob] = newGlobalNode(glob)
 			}
 		}
 	}
@@ -282,12 +292,11 @@ func (s *AnalyzerState) PopulateBoundingInformation(verbose bool) error {
 		}
 		s.AddError("bounding analysis", err)
 		return err
-	} else {
-		s.BoundingInfo = boundingInfo
-		s.Logger.Debugf("Pointer binding analysis terminated, added %d items (%.2f s)",
-			len(s.BoundingInfo), time.Since(start).Seconds())
-		return nil
 	}
+	s.BoundingInfo = boundingInfo
+	s.Logger.Debugf("Pointer binding analysis terminated, added %d items (%.2f s)",
+		len(s.BoundingInfo), time.Since(start).Seconds())
+	return nil
 }
 
 // Functions to retrieve results from the information stored in the analyzer state
@@ -322,12 +331,18 @@ func (s *AnalyzerState) IsReachableFunction(f *ssa.Function) bool {
 type CalleeType int
 
 const (
+	// Static indicates the callee is a statically defined function
 	Static CalleeType = 1 << iota
+	// CallGraph indicates the callee is a function obtained from the call graph
 	CallGraph
+	// InterfaceContract indicates the callee is obtained from an interface contract (one particular instance
+	// of an interface method to stand for all methods)
 	InterfaceContract
+	// InterfaceMethod indicates the calle is an interface method
 	InterfaceMethod
 )
 
+// Code returns a short string representation of the type of callee
 func (t CalleeType) Code() string {
 	switch t {
 	case Static:
@@ -423,7 +438,7 @@ func (s *AnalyzerState) linkContracts(allContracts []Contract) {
 	// DataFlowContracts map of the analyzer state.
 	for f := range s.ReachableFunctions(false, false) {
 		if _, hasContract := s.DataFlowContracts[f.String()]; hasContract {
-			s.DataFlowContracts[f.String()] = NewSummaryGraph(nil, f, GetUniqueFunctionId(), nil, nil)
+			s.DataFlowContracts[f.String()] = NewSummaryGraph(nil, f, GetUniqueFunctionID(), nil, nil)
 		}
 	}
 
@@ -431,7 +446,7 @@ func (s *AnalyzerState) linkContracts(allContracts []Contract) {
 	for _, contract := range allContracts {
 		for method, methodSummary := range contract.Methods {
 			s.DataFlowContracts[contract.Key(method)].
-				PopulateGraphFromSummary(methodSummary, contract.InterfaceId != "")
+				PopulateGraphFromSummary(methodSummary, contract.InterfaceID != "")
 		}
 	}
 }

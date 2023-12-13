@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /*
-The dataflow package implements the core of the dataflow analysis. In order to run the taint or the backwards
+Package dataflow  implements the core of the dataflow analysis. In order to run the taint or the backwards
 analysis, you should first run the steps to build the inter-procedural dataflow graph.
 
 The first object to build is an instance of the [AnalyzerState] with some basic analyses's results already computed.

@@ -388,7 +388,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 	}
 
 	if calleeSummary == nil {
-		if calleeSummary = NewPredefinedSummary(node.Callee(), GetUniqueFunctionId()); calleeSummary != nil {
+		if calleeSummary = NewPredefinedSummary(node.Callee(), GetUniqueFunctionID()); calleeSummary != nil {
 			logger.Debugf("Loaded %s from summaries.\n", formatutil.SanitizeRepr(node.Callee()))
 			g.Summaries[node.Callee()] = calleeSummary
 		}
@@ -464,9 +464,9 @@ func (g *InterProceduralFlowGraph) findClosureSummary(instr *ssa.MakeClosure) *S
 	case *ssa.Function:
 		if summary, ok := g.Summaries[funcValue]; ok {
 			return summary
-		} else {
-			return nil
 		}
+		return nil
+
 	default:
 		return nil
 	}
@@ -572,7 +572,7 @@ func BuildSummary(s *AnalyzerState, function *ssa.Function) *SummaryGraph {
 		return summary
 	}
 	if summary == nil {
-		id := GetUniqueFunctionId()
+		id := GetUniqueFunctionID()
 		summary = NewPredefinedSummary(function, id)
 		s.FlowGraph.Summaries[function] = summary
 	}

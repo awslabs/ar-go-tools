@@ -114,6 +114,7 @@ func main() {
 	Report(program, result)
 }
 
+// Report logs the taint analysis result
 func Report(program *ssa.Program, result taint.AnalysisResult) {
 	// Prints location of sinks and sources in the SSA
 	for sink, sources := range result.TaintFlows.Sinks {

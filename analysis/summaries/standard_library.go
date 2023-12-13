@@ -18,133 +18,133 @@ package summaries
 // This also serves as a reference to use for ignoring packages.
 // Each of the maps in stdPackages map the function string (function.String()) to the summary.
 var stdPackages = map[string]map[string]Summary{
-	"archive/tar":                 SummaryArchiveTar,
-	"archive/zip":                 SummaryArchiveZip,
-	"bufio":                       SummaryBufIo,
-	"builtin":                     SummaryBuiltin,
-	"bytes":                       SummaryBytes,
-	"compress/bzip2":              SummaryCompressBzip2,
-	"compress/flate":              SummaryCompressFlate,
-	"compress/gzip":               SummaryCompressGzip,
-	"compress/lzw":                SummaryCompressLzw,
-	"compress/zlib":               SummaryCompressZlib,
-	"container":                   SummaryContainer,
-	"container/heap":              SummaryContainer,
-	"container/list":              SummaryContainer,
-	"context":                     SummaryContext,
-	"crypto":                      SummaryCrypto,
-	"crypto/aes":                  SummaryCrypto,
-	"crypto/cipher":               SummaryCrypto,
-	"crypto/des":                  SummaryCrypto,
-	"crypto/ecdsa":                SummaryCrypto,
-	"crypto/elliptic":             SummaryCrypto,
-	"crypto/internal":             SummaryCrypto,
-	"crypto/internal/boring":      SummaryCrypto,
-	"crypto/internal/nistec":      SummaryCrypto,
-	"crypto/internal/nistec/fiat": SummaryCrypto,
-	"crypto/rand":                 SummaryCrypto,
-	"crypto/rsa":                  SummaryCrypto,
-	"crypto/sha1":                 SummaryCrypto,
-	"crypto/tls":                  SummaryCrypto,
-	"crypto/x509":                 SummaryCrypto,
-	"database":                    SummaryDatabase,
-	"debug":                       SummaryDebug,
-	"embed":                       SummaryEmbed,
-	"encoding":                    SummaryEncoding,
-	"encoding/asn1":               SummaryEncoding,
-	"encoding/gob":                SummaryEncoding,
-	"encoding/binary":             SummaryEncoding,
-	"encoding/json":               SummaryEncoding,
-	"encoding/xml":                SummaryEncoding,
-	"errors":                      SummaryErrors,
-	"expvar":                      SummaryExpVar,
-	"flag":                        SummaryFlag,
-	"fmt":                         SummaryFmt,
-	"go":                          SummaryGo,
-	"hash":                        SummaryHash,
-	"html":                        SummaryHtml,
-	"image":                       SummaryImage,
-	"image/color":                 SummaryImage,
-	"index":                       SummaryIndex,
-	"io":                          SummaryIo,
-	"io/fs":                       SummaryIo,
-	"io/ioutil":                   SummaryIo,
-	"log":                         SummaryLog,
-	"maps":                        SummaryMaps,
-	"math":                        SummaryMath,
-	"math/big":                    SummaryMath,
-	"math/bits":                   SummaryMath,
-	"math/cmplx":                  SummaryMath,
-	"math/rand":                   SummaryMath,
-	"mime":                        SummaryMime,
-	"net":                         SummaryNet,
-	"net/http":                    SummaryNet,
-	"net/netip":                   SummaryNet,
-	"net/textproto":               SummaryNet,
-	"net/url":                     SummaryNet,
-	"os":                          SummaryOs,
-	"os/exec":                     SummaryOs,
-	"path":                        SummaryPath,
-	"path/filepath":               SummaryPath,
-	"plugin":                      SummaryPlugin,
-	"reflect":                     SummaryReflect,
-	"regexp":                      SummaryRegexp,
-	"regexp/syntax":               SummaryRegexp,
-	"runtime":                     SummaryRuntime,
-	"runtime/debug":               SummaryRuntime,
-	"sort":                        SummarySort,
-	"strconv":                     SummaryStrConv,
-	"strings":                     SummaryStrings,
-	"sync":                        SummarySync,
-	"sync/atomic":                 SummarySync,
-	"syscall":                     SummarySyscall,
-	"syscall/js":                  SummarySyscall,
-	"testing":                     SummaryTesting,
-	"text":                        SummaryText,
-	"time":                        SummaryTime,
-	"unicode":                     SummaryUnicode,
-	"unicode/utf8":                SummaryUnicode,
-	"unsafe":                      SummaryUnsafe,
+	"archive/tar":                 summaryArchiveTar,
+	"archive/zip":                 summaryArchiveZip,
+	"bufio":                       summaryBufIo,
+	"builtin":                     summaryBuiltin,
+	"bytes":                       summaryBytes,
+	"compress/bzip2":              summaryCompressBzip2,
+	"compress/flate":              summaryCompressFlate,
+	"compress/gzip":               summaryCompressGzip,
+	"compress/lzw":                summaryCompressLzw,
+	"compress/zlib":               summaryCompressZlib,
+	"container":                   summaryContainer,
+	"container/heap":              summaryContainer,
+	"container/list":              summaryContainer,
+	"context":                     summaryContext,
+	"crypto":                      summaryCrypto,
+	"crypto/aes":                  summaryCrypto,
+	"crypto/cipher":               summaryCrypto,
+	"crypto/des":                  summaryCrypto,
+	"crypto/ecdsa":                summaryCrypto,
+	"crypto/elliptic":             summaryCrypto,
+	"crypto/internal":             summaryCrypto,
+	"crypto/internal/boring":      summaryCrypto,
+	"crypto/internal/nistec":      summaryCrypto,
+	"crypto/internal/nistec/fiat": summaryCrypto,
+	"crypto/rand":                 summaryCrypto,
+	"crypto/rsa":                  summaryCrypto,
+	"crypto/sha1":                 summaryCrypto,
+	"crypto/tls":                  summaryCrypto,
+	"crypto/x509":                 summaryCrypto,
+	"database":                    summaryDatabase,
+	"debug":                       summaryDebug,
+	"embed":                       summaryEmbed,
+	"encoding":                    summaryEncoding,
+	"encoding/asn1":               summaryEncoding,
+	"encoding/gob":                summaryEncoding,
+	"encoding/binary":             summaryEncoding,
+	"encoding/json":               summaryEncoding,
+	"encoding/xml":                summaryEncoding,
+	"errors":                      summaryErrors,
+	"expvar":                      summaryExpVar,
+	"flag":                        summaryFlag,
+	"fmt":                         summaryFmt,
+	"go":                          summaryGo,
+	"hash":                        summaryHash,
+	"html":                        summaryHtml,
+	"image":                       summaryImage,
+	"image/color":                 summaryImage,
+	"index":                       summaryIndex,
+	"io":                          summaryIo,
+	"io/fs":                       summaryIo,
+	"io/ioutil":                   summaryIo,
+	"log":                         summaryLog,
+	"maps":                        summaryMaps,
+	"math":                        summaryMath,
+	"math/big":                    summaryMath,
+	"math/bits":                   summaryMath,
+	"math/cmplx":                  summaryMath,
+	"math/rand":                   summaryMath,
+	"mime":                        summaryMime,
+	"net":                         summaryNet,
+	"net/http":                    summaryNet,
+	"net/netip":                   summaryNet,
+	"net/textproto":               summaryNet,
+	"net/url":                     summaryNet,
+	"os":                          summaryOs,
+	"os/exec":                     summaryOs,
+	"path":                        summaryPath,
+	"path/filepath":               summaryPath,
+	"plugin":                      summaryPlugin,
+	"reflect":                     summaryReflect,
+	"regexp":                      summaryRegexp,
+	"regexp/syntax":               summaryRegexp,
+	"runtime":                     summaryRuntime,
+	"runtime/debug":               summaryRuntime,
+	"sort":                        summarySort,
+	"strconv":                     summaryStrConv,
+	"strings":                     summaryStrings,
+	"sync":                        summarySync,
+	"sync/atomic":                 summarySync,
+	"syscall":                     summarySyscall,
+	"syscall/js":                  summarySyscall,
+	"testing":                     summaryTesting,
+	"text":                        summaryText,
+	"time":                        summaryTime,
+	"unicode":                     summaryUnicode,
+	"unicode/utf8":                summaryUnicode,
+	"unsafe":                      summaryUnsafe,
 
 	// Internal
 
-	"internal":                 SummaryInternal,
-	"internal/abi":             SummaryInternal,
-	"internal/buildcfg":        SummaryInternal,
-	"internal/bytealg":         SummaryInternal,
-	"internal/cfg":             SummaryInternal,
-	"internal/cpu":             SummaryInternal,
-	"internal/diff":            SummaryInternal,
-	"internal/fmtsort":         SummaryInternal,
-	"internal/fuzz":            SummaryInternal,
-	"internal/goarch":          SummaryInternal,
-	"internal/godebug":         SummaryInternal,
-	"internal/goexperiment":    SummaryInternal,
-	"internal/goos":            SummaryInternal,
-	"internal/goroot":          SummaryInternal,
-	"internal/intern":          SummaryInternal,
-	"internal/itoa":            SummaryInternal,
-	"internal/lazyregexp":      SummaryInternal,
-	"internal/lazytemplate":    SummaryInternal,
-	"internal/nettrace":        SummaryInternal,
-	"internal/obscuretestdata": SummaryInternal,
-	"internal/oserror":         SummaryInternal,
-	"internal/poll":            SummaryInternal,
-	"internal/race":            SummaryInternal,
-	"internal/reflectlite":     SummaryInternal,
-	"internal/syscall":         SummaryInternal,
-	"internal/syscall/execenv": SummaryInternal,
-	"internal/syscall/unix":    SummaryInternal,
-	"internal/syscall/windows": SummaryInternal,
-	"internal/testlog":         SummaryInternal,
-	"internal/unsafeheader":    SummaryInternal,
+	"internal":                 summaryInternal,
+	"internal/abi":             summaryInternal,
+	"internal/buildcfg":        summaryInternal,
+	"internal/bytealg":         summaryInternal,
+	"internal/cfg":             summaryInternal,
+	"internal/cpu":             summaryInternal,
+	"internal/diff":            summaryInternal,
+	"internal/fmtsort":         summaryInternal,
+	"internal/fuzz":            summaryInternal,
+	"internal/goarch":          summaryInternal,
+	"internal/godebug":         summaryInternal,
+	"internal/goexperiment":    summaryInternal,
+	"internal/goos":            summaryInternal,
+	"internal/goroot":          summaryInternal,
+	"internal/intern":          summaryInternal,
+	"internal/itoa":            summaryInternal,
+	"internal/lazyregexp":      summaryInternal,
+	"internal/lazytemplate":    summaryInternal,
+	"internal/nettrace":        summaryInternal,
+	"internal/obscuretestdata": summaryInternal,
+	"internal/oserror":         summaryInternal,
+	"internal/poll":            summaryInternal,
+	"internal/race":            summaryInternal,
+	"internal/reflectlite":     summaryInternal,
+	"internal/syscall":         summaryInternal,
+	"internal/syscall/execenv": summaryInternal,
+	"internal/syscall/unix":    summaryInternal,
+	"internal/syscall/windows": summaryInternal,
+	"internal/testlog":         summaryInternal,
+	"internal/unsafeheader":    summaryInternal,
 }
 
-var SummaryArchiveTar = map[string]Summary{}
+var summaryArchiveTar = map[string]Summary{}
 
-var SummaryArchiveZip = map[string]Summary{}
+var summaryArchiveZip = map[string]Summary{}
 
-var SummaryBufIo = map[string]Summary{
+var summaryBufIo = map[string]Summary{
 	"bufio.NewReader":           SingleVarArgPropagation,
 	"bufio.NewReaderSize":       TwoArgPropagation,
 	"bufio.NewScanner":          SingleVarArgPropagation,
@@ -157,9 +157,9 @@ var SummaryBufIo = map[string]Summary{
 	"(*bufio.Scanner).Text":  SingleVarArgPropagation,
 }
 
-var SummaryBuiltin = map[string]Summary{}
+var summaryBuiltin = map[string]Summary{}
 
-var SummaryBytes = map[string]Summary{
+var summaryBytes = map[string]Summary{
 	// func Equal(a, b []byte) bool {
 	"bytes.Equal": TwoArgPropagation,
 	// func NewBuffer(buf []byte) *Buffer
@@ -221,21 +221,21 @@ var SummaryBytes = map[string]Summary{
 	},
 }
 
-var SummaryCompressBzip2 = map[string]Summary{}
+var summaryCompressBzip2 = map[string]Summary{}
 
-var SummaryCompressFlate = map[string]Summary{}
+var summaryCompressFlate = map[string]Summary{}
 
-var SummaryCompressGzip = map[string]Summary{}
+var summaryCompressGzip = map[string]Summary{}
 
-var SummaryCompressLzw = map[string]Summary{}
+var summaryCompressLzw = map[string]Summary{}
 
-var SummaryCompressZlib = map[string]Summary{}
+var summaryCompressZlib = map[string]Summary{}
 
-var SummaryContainer = map[string]Summary{}
+var summaryContainer = map[string]Summary{}
 
-var SummaryContext = map[string]Summary{}
+var summaryContext = map[string]Summary{}
 
-var SummaryCrypto = map[string]Summary{
+var summaryCrypto = map[string]Summary{
 	"crypto/aes.NewCipher":             SingleVarArgPropagation,
 	"crypto/cipher.NewGCM":             SingleVarArgPropagation,
 	"crypto/tls.X509KeyPair":           TwoArgPropagation,
@@ -256,13 +256,13 @@ var SummaryCrypto = map[string]Summary{
 	},
 }
 
-var SummaryDatabase = map[string]Summary{}
+var summaryDatabase = map[string]Summary{}
 
-var SummaryDebug = map[string]Summary{}
+var summaryDebug = map[string]Summary{}
 
-var SummaryEmbed = map[string]Summary{}
+var summaryEmbed = map[string]Summary{}
 
-var SummaryEncoding = map[string]Summary{
+var summaryEncoding = map[string]Summary{
 	"encoding/json.init": NoDataFlowPropagation,
 	// func Indent(dst *bytes.Buffer, src []byte, prefix, indent string) error
 	"encoding/json.Indent": {
@@ -322,13 +322,13 @@ var SummaryEncoding = map[string]Summary{
 	},
 }
 
-var SummaryErrors = map[string]Summary{
+var summaryErrors = map[string]Summary{
 	"errors.New": SingleVarArgPropagation,
 }
 
-var SummaryExpVar = map[string]Summary{}
+var summaryExpVar = map[string]Summary{}
 
-var SummaryFlag = map[string]Summary{
+var summaryFlag = map[string]Summary{
 	//func Arg(i int) string"
 	// Does not propagate data flow, unless marked as source
 	"flag.Arg": NoDataFlowPropagation,
@@ -427,7 +427,7 @@ var SummaryFlag = map[string]Summary{
 	//func VisitAll(fn func(*Flag))
 }
 
-var SummaryFmt = map[string]Summary{
+var summaryFmt = map[string]Summary{
 	"fmt.init":       NoDataFlowPropagation,
 	"fmt.newPrinter": NoDataFlowPropagation,
 	// func Println(a ...any) (n int, err error) {
@@ -460,17 +460,17 @@ var SummaryFmt = map[string]Summary{
 	"fmt.Printf": FormatterPropagation,
 }
 
-var SummaryGo = map[string]Summary{}
+var summaryGo = map[string]Summary{}
 
-var SummaryHash = map[string]Summary{}
+var summaryHash = map[string]Summary{}
 
-var SummaryHtml = map[string]Summary{}
+var summaryHtml = map[string]Summary{}
 
-var SummaryImage = map[string]Summary{}
+var summaryImage = map[string]Summary{}
 
-var SummaryIndex = map[string]Summary{}
+var summaryIndex = map[string]Summary{}
 
-var SummaryIo = map[string]Summary{
+var summaryIo = map[string]Summary{
 	// func Copy(dst Writer, src Reader) (written int64, err error)
 	"io.Copy": {
 		[][]int{{0}, {0, 1}},
@@ -539,7 +539,7 @@ var SummaryIo = map[string]Summary{
 	},
 }
 
-var SummaryLog = map[string]Summary{
+var summaryLog = map[string]Summary{
 	"log.Debugf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	"log.Printf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	// func (l *Logger) Printf(v ...any)
@@ -559,11 +559,11 @@ var SummaryLog = map[string]Summary{
 	},
 }
 
-var SummaryMaps = map[string]Summary{
+var summaryMaps = map[string]Summary{
 	"maps.clone": SingleVarArgPropagation,
 }
 
-var SummaryMath = map[string]Summary{
+var summaryMath = map[string]Summary{
 	"math.init":                    NoDataFlowPropagation,
 	"math.Abs":                     SingleVarArgPropagation,
 	"math.IsNaN":                   SingleVarArgPropagation,
@@ -598,9 +598,9 @@ var SummaryMath = map[string]Summary{
 	"(*math/rand.Rand).Int63n":     NoDataFlowPropagation,
 }
 
-var SummaryMime = map[string]Summary{}
+var summaryMime = map[string]Summary{}
 
-var SummaryNet = map[string]Summary{
+var summaryNet = map[string]Summary{
 	// func Dial(network, address string) (Conn, error) {
 	"net.Dial": {
 		[][]int{{}, {}},
@@ -664,7 +664,7 @@ var SummaryNet = map[string]Summary{
 	},
 }
 
-var SummaryOs = map[string]Summary{
+var summaryOs = map[string]Summary{
 	"os/exec.Command":       TwoArgPropagation,
 	"(*os/exec.Cmd).Output": SingleVarArgPropagation,
 	// func (*exec.Cmd).Start() error
@@ -746,7 +746,7 @@ var SummaryOs = map[string]Summary{
 	},
 }
 
-var SummaryPath = map[string]Summary{
+var summaryPath = map[string]Summary{
 	// func Join(elem ...string) string
 	"path.Join":           SingleVarArgPropagation,
 	"path.Base":           SingleVarArgPropagation,
@@ -763,9 +763,9 @@ var SummaryPath = map[string]Summary{
 	"path/filepath.Rel": {[][]int{{0}, {1}}, [][]int{{0}, {0}}},
 }
 
-var SummaryPlugin = map[string]Summary{}
+var summaryPlugin = map[string]Summary{}
 
-var SummaryReflect = map[string]Summary{
+var summaryReflect = map[string]Summary{
 	"reflect.DeepEqual": {
 		[][]int{{0}, {1}},
 		[][]int{{0}, {0}},
@@ -861,7 +861,7 @@ var SummaryReflect = map[string]Summary{
 	},
 }
 
-var SummaryRegexp = map[string]Summary{
+var summaryRegexp = map[string]Summary{
 	"regexp.Compile": SingleVarArgPropagation,
 	// matching regexp doesn't taint arguments but either taints return
 	"regexp.MatchString": {[][]int{}, [][]int{{0}, {0}}},
@@ -903,7 +903,7 @@ var SummaryRegexp = map[string]Summary{
 	},
 }
 
-var SummaryRuntime = map[string]Summary{
+var summaryRuntime = map[string]Summary{
 	"runtime.NumCPU": NoDataFlowPropagation,
 	"runtime.Caller": NoDataFlowPropagation,
 	// func runtime.FuncForPC(pc uintptr) *runtime.Func
@@ -916,7 +916,7 @@ var SummaryRuntime = map[string]Summary{
 	"runtime.clone":        SingleVarArgPropagation,
 }
 
-var SummarySort = map[string]Summary{
+var summarySort = map[string]Summary{
 	// func Strings(x []string)
 	"sort.Strings": {
 		[][]int{{0}},
@@ -924,7 +924,7 @@ var SummarySort = map[string]Summary{
 	},
 }
 
-var SummaryStrConv = map[string]Summary{
+var summaryStrConv = map[string]Summary{
 	"strconv.init": NoDataFlowPropagation,
 	"strconv.Atoi": {[][]int{{0}}, [][]int{{0}}},
 	// func AppendFloat(dst []byte, f float64, fmt byte, prec, bitSize int) []byte
@@ -951,7 +951,7 @@ var SummaryStrConv = map[string]Summary{
 	},
 }
 
-var SummaryStrings = map[string]Summary{
+var summaryStrings = map[string]Summary{
 	// func Contains(s, substr string) bool {
 	"strings.Contains": {
 		[][]int{{}, {}},
@@ -1080,7 +1080,7 @@ var SummaryStrings = map[string]Summary{
 	},
 }
 
-var SummarySync = map[string]Summary{
+var summarySync = map[string]Summary{
 	"sync/atomic.LoadUint32": {
 		[][]int{{0}},
 		[][]int{{0}},
@@ -1156,15 +1156,15 @@ var SummarySync = map[string]Summary{
 	"(*sync.WaitGroup).Wait": NoDataFlowPropagation,
 }
 
-var SummarySyscall = map[string]Summary{
+var summarySyscall = map[string]Summary{
 	"syscall.Getuid": NoDataFlowPropagation,
 }
 
-var SummaryTesting = map[string]Summary{}
+var summaryTesting = map[string]Summary{}
 
-var SummaryText = map[string]Summary{}
+var summaryText = map[string]Summary{}
 
-var SummaryTime = map[string]Summary{
+var summaryTime = map[string]Summary{
 	"time.After":  SingleVarArgPropagation,
 	"time.Before": SingleVarArgPropagation,
 	// func Parse(layout, value string) (Time, error)
@@ -1224,11 +1224,11 @@ var SummaryTime = map[string]Summary{
 	"(*time.Timer).Stop": SingleVarArgPropagation,
 }
 
-var SummaryUnicode = map[string]Summary{
+var summaryUnicode = map[string]Summary{
 	"unicode.IsSpace":          SingleVarArgPropagation,
 	"unicode/utf8.ValidString": SingleVarArgPropagation,
 }
 
-var SummaryUnsafe = map[string]Summary{}
+var summaryUnsafe = map[string]Summary{}
 
-var SummaryInternal = map[string]Summary{}
+var summaryInternal = map[string]Summary{}

@@ -130,7 +130,7 @@ func runSingleFunctionJob(job singleFunctionJob,
 	targetName := lang.PackageNameFromFunction(job.function) + "." + job.function.Name()
 	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
 	result, err := dataflow.IntraProceduralAnalysis(job.analyzerState, job.function,
-		job.shouldBuildSummary, dataflow.GetUniqueFunctionId(), isEntrypoint, job.postBlockCallback)
+		job.shouldBuildSummary, dataflow.GetUniqueFunctionID(), isEntrypoint, job.postBlockCallback)
 
 	if err != nil {
 		job.analyzerState.Logger.Errorf("error while analyzing %q:\n\t%v\n", job.function.Name(), err)

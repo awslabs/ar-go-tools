@@ -36,6 +36,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// An AnalysisResult from the backtrace analysis contains a constructed a Graph representing the inter-procedural graph
+// along with the traces found by the backtrace analysis in Traces
 type AnalysisResult struct {
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
@@ -121,6 +123,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: Traces(state, traces)}, nil
 }
 
+// Traces extracts a slice of Trace from the slice of slices of GraphNodes, in the context of an AnalyzerState
 func Traces(s *df.AnalyzerState, traces [][]df.GraphNode) []Trace {
 	res := make([]Trace, 0, len(traces))
 	for _, tr := range traces {
@@ -134,6 +137,8 @@ func Traces(s *df.AnalyzerState, traces [][]df.GraphNode) []Trace {
 	return res
 }
 
+// Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the
+// SlicingSpec as well as the set of traces.
 type Visitor struct {
 	SlicingSpec *config.SlicingSpec
 	Traces      [][]df.GraphNode
@@ -272,7 +277,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 						// the callee summary may not have been created yet
 						if callSite.CalleeSummary == nil {
-							callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionId(),
+							callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionID(),
 								isSomeIntraProceduralEntryPoint, nil)
 						}
 					} else {

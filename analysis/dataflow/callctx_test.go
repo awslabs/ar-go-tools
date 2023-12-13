@@ -35,7 +35,7 @@ func TestComputeCtxts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error building state: %s", err)
 	}
-	ci, err := dataflow.ComputeCtxts(state, 5)
+	ci, err := dataflow.ComputeContexts(state, 5)
 	if err != nil {
 		t.Fatalf("error computing contexts: %s", err)
 	}

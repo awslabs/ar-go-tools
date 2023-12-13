@@ -208,15 +208,14 @@ func interpret(tt *term.Terminal, c *dataflow.AnalyzerState, command string) boo
 
 	if f, ok := commands[cmd.Name]; ok {
 		return f(tt, c, cmd)
-	} else {
-		if cmd.Name == cmdHelpName {
-			cmdHelp(tt, c, cmd)
-		} else {
-			WriteErr(tt, "Command name %q not recognized.", cmd.Name)
-			cmdHelp(tt, c, cmd)
-		}
-		return false
 	}
+	if cmd.Name == cmdHelpName {
+		cmdHelp(tt, c, cmd)
+	} else {
+		WriteErr(tt, "Command name %q not recognized.", cmd.Name)
+		cmdHelp(tt, c, cmd)
+	}
+	return false
 }
 
 func exitOnReceive(c chan os.Signal, tt *term.Terminal, oldState *term.State) {

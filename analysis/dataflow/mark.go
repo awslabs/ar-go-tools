@@ -27,15 +27,24 @@ import (
 type MarkType int
 
 const (
-	Parameter   MarkType = 1 << iota // A Parameter is a function parameter.
-	FreeVar                          // A FreeVar is a free variable in a closure.
-	DefaultMark                      // A DefaultMark is a Value with a mark.
-	CallSiteArg                      // A CallSiteArg is a call site argument.
-	CallReturn                       // A CallReturn is a call site return.
-	Closure                          // A Closure is a closure creation site
-	BoundVar                         // A BoundVar is a variable bound by a closure
-	Global                           // A Global is package global
-	Synthetic                        // A Synthetic node type for any other node.
+	// Parameter is a function parameter.
+	Parameter MarkType = 1 << iota
+	// FreeVar is a free variable in a closure.
+	FreeVar
+	// DefaultMark is a Value with a mark.
+	DefaultMark
+	// CallSiteArg is a call site argument.
+	CallSiteArg
+	// CallReturn is a call site return.
+	CallReturn
+	// Closure is a closure creation site
+	Closure
+	// BoundVar is a variable bound by a closure
+	BoundVar
+	// Global is package global
+	Global
+	// Synthetic node type for any other node.
+	Synthetic
 )
 
 func (m MarkType) String() string {
@@ -91,7 +100,7 @@ func NewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int) Mark {
 	}
 }
 
-func (m Mark) WithIndex(index int) Mark {
+func (m Mark) withIndex(index int) Mark {
 	return Mark{
 		Node:      m.Node,
 		Type:      m.Type,

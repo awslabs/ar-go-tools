@@ -24,6 +24,7 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
+// Analyzer is the analyzer for non-static commands
 var Analyzer = &analysis.Analyzer{
 	Name:     "nonstaticcommands",
 	Doc:      "reports os.Exec commands that are not static",

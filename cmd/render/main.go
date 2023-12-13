@@ -120,9 +120,8 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, formatutil.Red("Could not compute callgraph: %v", err))
 			return
-		} else {
-			fmt.Fprintf(os.Stderr, formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 		}
+		fmt.Fprintf(os.Stderr, formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	}
 
 	if *cgOut != "" {
@@ -137,7 +136,7 @@ func main() {
 
 	if *htmlOut != "" {
 		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing call graph in "+*htmlOut+"\n"))
-		err = WriteHtmlCallgraph(program, cg, *htmlOut)
+		err = WriteHTMLCallgrph(program, cg, *htmlOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not print callgraph:\n%v\n", err)
 		}

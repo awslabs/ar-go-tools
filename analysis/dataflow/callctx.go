@@ -19,11 +19,12 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/awslabs/ar-go-tools/internal/funcutil"
-	. "github.com/awslabs/ar-go-tools/internal/graphutil"
+	funcs "github.com/awslabs/ar-go-tools/internal/funcutil"
+	graphs "github.com/awslabs/ar-go-tools/internal/graphutil"
 	cg "golang.org/x/tools/go/callgraph"
 )
 
+// GetAllCallingContexts returns all the possible loop-free calling contexts of a CallNode in the state
 func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
 	if s.PointerAnalysis == nil {
 		return nil
@@ -67,11 +68,13 @@ func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
 
 // Following functions are experimental: our analyses are not context-sensitive for the time being!
 
+// CallCtxInfo holds information about a calling context of a function
 type CallCtxInfo struct {
 	Contexts map[string]bool
 	Ids      map[int]*cg.Node
 }
 
+// KeyToNodes returns the list of nodes matching the dot-separated string used as key in a context
 func (c CallCtxInfo) KeyToNodes(key string) []*cg.Node {
 	var nodes []*cg.Node
 	ids := strings.Split(key, ".")
@@ -85,10 +88,12 @@ func (c CallCtxInfo) KeyToNodes(key string) []*cg.Node {
 }
 
 func callCtxKey(calls []*cg.Node) string {
-	return strings.Join(Map(calls, func(c *cg.Node) string { return strconv.Itoa(c.ID) }), ".")
+	return strings.Join(funcs.Map(calls, func(c *cg.Node) string { return strconv.Itoa(c.ID) }), ".")
 }
 
-func ComputeCtxts(c *AnalyzerState, n int) (CallCtxInfo, error) {
+// ComputeContexts computes all calling contexts of size at most n
+// (the callgraph used is in c.PointerAnalysis.Callgraph.Root)
+func ComputeContexts(c *AnalyzerState, n int) (CallCtxInfo, error) {
 	ci := CallCtxInfo{
 		Contexts: map[string]bool{},
 		Ids:      map[int]*cg.Node{},
@@ -99,7 +104,7 @@ func ComputeCtxts(c *AnalyzerState, n int) (CallCtxInfo, error) {
 	if root == nil {
 		return ci, fmt.Errorf("nil root")
 	}
-	que := []*Tree[*cg.Node]{NewTree(root)}
+	que := []*graphs.Tree[*cg.Node]{graphs.NewTree(root)}
 
 	for len(que) > 0 {
 		cur := que[0]
@@ -109,7 +114,7 @@ func ComputeCtxts(c *AnalyzerState, n int) (CallCtxInfo, error) {
 			continue
 		}
 		ci.Ids[cur.Label.ID] = cur.Label
-		key := callCtxKey(Map(cur.Ancestors(n), Label[*cg.Node]))
+		key := callCtxKey(funcs.Map(cur.Ancestors(n), graphs.Label[*cg.Node]))
 		if !ci.Contexts[key] {
 			ci.Contexts[key] = true
 			for _, e := range cur.Label.Out {

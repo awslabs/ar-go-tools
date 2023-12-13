@@ -18,6 +18,7 @@ import (
 	"fmt"
 )
 
+// An Optional holds a value or none. If it has a value, the IsSome returns true and IsNone returns false.
 type Optional[T any] interface {
 	// ValueOr returns the value of the optional if it is some value, otherwise the default value if it is none
 	ValueOr(defaultVal T) T
@@ -42,6 +43,7 @@ func (s some[T]) IsSome() bool   { return true }
 func (s some[T]) IsNone() bool   { return false }
 func (s some[T]) String() string { return fmt.Sprintf("%v", s.value) }
 
+// Some creates an optional value with some value in it.
 func Some[T any](x T) Optional[T] {
 	return some[T]{x}
 }
@@ -54,30 +56,31 @@ func (s none[T]) IsSome() bool           { return false }
 func (s none[T]) IsNone() bool           { return true }
 func (s none[T]) String() string         { return "none" }
 
+// None creates an optional value with no value in it
 func None[T any]() Optional[T] {
 	return none[T]{}
 }
 
+// MapOption is the map monadic operation on optional values
 func MapOption[T any, S any](x Optional[T], f func(T) S) Optional[S] {
 	if v, ok := x.(some[T]); ok {
 		return some[S]{f(v.value)}
-	} else {
-		return none[S]{}
 	}
+	return none[S]{}
 }
 
+// MaybeOr returns the first optional that is some. If both are none, then the returned value is none
 func MaybeOr[T any](x Optional[T], s Optional[T]) Optional[T] {
 	if _, ok := x.(some[T]); ok {
 		return x
-	} else {
-		return s
 	}
+	return s
 }
 
+// BindOption is the monadic bind operation on optional values
 func BindOption[T any, S any](x Optional[T], f func(T) Optional[S]) Optional[S] {
 	if v, ok := x.(some[T]); ok {
 		return f(v.value)
-	} else {
-		return none[S]{}
 	}
+	return none[S]{}
 }

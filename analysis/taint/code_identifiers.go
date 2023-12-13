@@ -36,11 +36,11 @@ func IsSourceNode(ts *config.TaintSpec, p *pointer.Result, n ssa.Node) bool {
 }
 
 func isSink(ts *config.TaintSpec, n dataflow.GraphNode) bool {
-	return isMatchingCodeId(ts.IsSink, n)
+	return isMatchingCodeID(ts.IsSink, n)
 }
 
 func isSanitizer(ts *config.TaintSpec, n dataflow.GraphNode) bool {
-	return isMatchingCodeId(ts.IsSanitizer, n)
+	return isMatchingCodeID(ts.IsSanitizer, n)
 }
 
 // isValidatorCondition checks whether v is a validator condition according to the validators stored in the config
@@ -49,7 +49,7 @@ func isValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bo
 	switch val := v.(type) {
 	// Direct boolean check?
 	case *ssa.Call:
-		return isPositive && isMatchingCodeIdWithCallee(ts.IsValidator, nil, val)
+		return isPositive && isMatchingCodeIDWithCallee(ts.IsValidator, nil, val)
 	// Nil error check?
 	case *ssa.BinOp:
 		vNilChecked, isEqCheck := lang.MatchNilCheck(val)
@@ -91,14 +91,14 @@ func isFiltered(ts *config.TaintSpec, n dataflow.GraphNode) bool {
 	return false
 }
 
-func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.GraphNode) bool {
+func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n dataflow.GraphNode) bool {
 	switch n := n.(type) {
 	case *dataflow.ParamNode, *dataflow.FreeVarNode:
 		// A these nodes are never a sink; the sink will be identified at the call site, not the callee definition.
 		return false
 	case *dataflow.CallNodeArg:
 		// A call node argument is a sink if the callee is a sink
-		if isMatchingCodeId(codeIdOracle, n.ParentNode()) {
+		if isMatchingCodeID(codeIDOracle, n.ParentNode()) {
 			return true
 		}
 
@@ -114,11 +114,11 @@ func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.
 		if param == nil {
 			return false
 		}
-		return isMatchingCodeIdWithCallee(codeIdOracle, callSite.CalleeSummary.Parent, param.Parent())
+		return isMatchingCodeIDWithCallee(codeIDOracle, callSite.CalleeSummary.Parent, param.Parent())
 	case *dataflow.CallNode:
-		return isMatchingCodeIdWithCallee(codeIdOracle, n.Callee(), n.CallSite().(ssa.Node))
+		return isMatchingCodeIDWithCallee(codeIDOracle, n.Callee(), n.CallSite().(ssa.Node))
 	case *dataflow.SyntheticNode:
-		return isMatchingCodeIdWithCallee(codeIdOracle, nil, n.Instr().(ssa.Node)) // safe type conversion
+		return isMatchingCodeIDWithCallee(codeIDOracle, nil, n.Instr().(ssa.Node)) // safe type conversion
 	case *dataflow.ReturnValNode, *dataflow.ClosureNode, *dataflow.BoundVarNode:
 		return false
 	default:
@@ -128,7 +128,7 @@ func isMatchingCodeId(codeIdOracle func(config.CodeIdentifier) bool, n dataflow.
 
 // isMatchingCodeIdWIthCallee returns true when the codeIdOracle returns true for a code identifier matching the node
 // n in the context where callee is the callee
-func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
+func isMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered sinks
 	case *ssa.Call, *ssa.Go, *ssa.Defer:
@@ -143,13 +143,13 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 					cid := config.CodeIdentifier{
 						Package: maybePkg.Value(), Method: methodName, Receiver: receiverType,
 					}
-					return codeIdOracle(cid)
+					return codeIDOracle(cid)
 				} else if callee != nil {
 					pkgName := lang.PackageNameFromFunction(callee)
 					cid := config.CodeIdentifier{
 						Package: pkgName, Method: methodName, Receiver: receiverType,
 					}
-					return codeIdOracle(cid)
+					return codeIDOracle(cid)
 				} else {
 					return false
 				}
@@ -164,13 +164,13 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 					cid := config.CodeIdentifier{
 						Package: maybePkg.Value(), Method: funcName, Receiver: receiverType,
 					}
-					return codeIdOracle(cid)
+					return codeIDOracle(cid)
 				} else if callee != nil {
 					pkgName := lang.PackageNameFromFunction(callee)
 					cid := config.CodeIdentifier{
 						Package: pkgName, Method: funcName, Receiver: receiverType,
 					}
-					return codeIdOracle(cid)
+					return codeIDOracle(cid)
 				} else {
 					return false
 				}
@@ -178,7 +178,7 @@ func isMatchingCodeIdWithCallee(codeIdOracle func(config.CodeIdentifier) bool, c
 		}
 		return false
 	case *ssa.Function:
-		return codeIdOracle(config.CodeIdentifier{
+		return codeIDOracle(config.CodeIdentifier{
 			Package: lang.PackageNameFromFunction(node),
 			Method:  node.Name(),
 		})

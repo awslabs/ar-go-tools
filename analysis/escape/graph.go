@@ -27,43 +27,59 @@ import (
 )
 
 // Effectively an enum of the types of node.
-type NodeKind int
+type nodeKind int
 
 const (
-	KindAlloc     NodeKind = iota // Cells of allocations that happen locally
-	KindParam                     // Pointees of initial pointer-like parameters
-	KindLoad                      // Represent the object loaded from a pointer/field of an external object
-	KindGlobal                    // The memory location of a global/package level variable (pointee of ssa.Global)
-	KindGlobalVar                 // Pointer to the location of a heap object (represents the ssa.Global itself)
-	KindVar                       // A local variable, i.e. SSA var
-	KindParamVar                  // A parameter variable (both formals and free variables/method receiver)
-	KindReturn                    // The return value of the current function
-	KindUnknown                   // A return value from an unanalyzed method without a summary
+	// KindAlloc cells of allocations that happen locally
+	KindAlloc nodeKind = iota
+	// KindParam Pointees of initial pointer-like parameters
+	KindParam
+	// KindLoad Represent the object loaded from a pointer/field of an external object
+	KindLoad
+	// KindGlobal The memory location of a global/package level variable (pointee of ssa.Global)
+	KindGlobal
+	// KindGlobalVar Pointer to the location of a heap object (represents the ssa.Global itself)
+	KindGlobalVar
+	// KindVar A local variable, i.e. SSA var
+	KindVar
+	// KindParamVar A parameter variable (both formals and free variables/method receiver)
+	KindParamVar
+	// KindReturn The return value of the current function
+	KindReturn
+	// KindUnknown A return value from an unanalyzed method without a summary
+	KindUnknown
 )
 
 // EscapeStatus represents whether a node is Local, Escaped, or Leaked
 type EscapeStatus uint8
 
 const (
-	Local   EscapeStatus = 0
+	// Local status indicates the value has not escaped
+	Local EscapeStatus = 0
+	// Escaped status indicates the value has escaped
 	Escaped EscapeStatus = 1
-	Leaked  EscapeStatus = 2
+	// Leaked status indicates the value has leaked
+	Leaked EscapeStatus = 2
 )
 
 // edgeFlags are used when representing an edge, as we can pack multiple edges into the same byte
 type edgeFlags uint8
 
 const (
+	// EdgeInternal flags internal edges
 	EdgeInternal edgeFlags = 1 << iota
+	// EdgeExternal flags external edges
 	EdgeExternal
+	// EdgeSubnode flags subnodes
 	EdgeSubnode
+	// EdgeAll is the conjunction of all types of edges
 	EdgeAll = EdgeInternal | EdgeExternal | EdgeSubnode
 )
 
-// A node represents the objects tracked by the escape analysis. Nodes represent local variables,
+// A Node represents the objects tracked by the escape analysis. Nodes represent local variables,
 // globals, parameters, and heap cells of various kinds (maps, slices, arrays, structs)
 type Node struct {
-	kind      NodeKind
+	kind      nodeKind
 	number    int    // For unambiguous debug printing
 	debugInfo string // where this node comes from
 }
@@ -87,7 +103,7 @@ func (n *Node) IntrinsicEscape() EscapeStatus {
 	}
 }
 
-// The escape graph is the element of the monotone framework and the primary focus of the escape
+// EscapeGraph is the element of the monotone framework and the primary focus of the escape
 // analysis. The graph represents edges as src -> dest -> isInternal. The final bool is semantically
 // significant: the edges are labeled as internal or external. Escaped is a set of nodes that are
 // not known to be local in the current context; they are treated differently on load operations.
@@ -102,7 +118,7 @@ type EscapeGraph struct {
 	nodes      *NodeGroup
 }
 
-// Represents a single atomic edge within the escape graph. Nodes connected by more than one kind of
+// Edge Represents a single atomic edge within the escape graph. Nodes connected by more than one kind of
 // edge will produce multiple Edge's when queried.
 type Edge struct {
 	src        *Node
@@ -123,7 +139,7 @@ func NewEmptyEscapeGraph(nodes *NodeGroup) *EscapeGraph {
 	return gg
 }
 
-// Clones a graph, preserving node identities between the two graphs.
+// Clone clones a graph, preserving node identities between the two graphs.
 func (g *EscapeGraph) Clone() *EscapeGraph {
 	gg := NewEmptyEscapeGraph(g.nodes)
 	for src, outEdges := range g.edges {
@@ -185,7 +201,7 @@ func (g *EscapeGraph) CloneReachable(roots []*Node) *EscapeGraph {
 	return gg
 }
 
-// Edges(s, d, mask) finds all the edges from s to d that match the bitflags in mask.
+// Edges (s, d, mask) finds all the edges from s to d that match the bitflags in mask.
 // Either or s or d may be nil, in which case they act as a wild card. To find all the edges from
 // src to all nodes via only internal edges, do:
 //
@@ -806,7 +822,7 @@ func IsAbstractType(tp types.Type) (r bool) {
 		return false
 	}
 }
-func IsAbstractNode(g *EscapeGraph, n *Node) bool {
+func isAbstractNode(g *EscapeGraph, n *Node) bool {
 	if tp, ok := g.nodes.globalNodes.types[n]; ok {
 		return IsAbstractType(tp)
 	}
@@ -835,7 +851,7 @@ func (g *EscapeGraph) Call(pre *EscapeGraph, receiver *Node, args []*Node, freeV
 	addUEdge := func(x, y *Node) {
 		// Redirect u edges that would be from a concrete node in the callee to an abstract node in
 		// the caller, so that they point at the implementation subnode of the correct type.
-		if tp, ok := g.nodes.globalNodes.types[x]; ok && IsAbstractNode(pre, y) && !IsAbstractNode(g, x) {
+		if tp, ok := g.nodes.globalNodes.types[x]; ok && isAbstractNode(pre, y) && !isAbstractNode(g, x) {
 			y = g.ImplementationSubnode(y, tp)
 		}
 		e := uEdge{x, y}
@@ -1091,9 +1107,9 @@ func (g *EscapeGraph) LessEqual(h *EscapeGraph) (isLessEq bool, reason string) {
 			return false, fmt.Sprintf("missing edge %v -> %v (internal: %v)", gEdge.src, gEdge.dest, gEdge.isInternal)
 		}
 	}
-	for node, g_status := range g.status {
-		if h_status, ok := h.status[node]; ok {
-			if g_status > h_status {
+	for node, gStatus := range g.status {
+		if hStatus, ok := h.status[node]; ok {
+			if gStatus > hStatus {
 				return false, "mode status is not leq"
 			}
 		} else {
@@ -1137,11 +1153,11 @@ func newGlobalNodeGroup() *globalNodeGroup {
 // nodes that is deterministic (as long as node creation is deterministic).
 func (gn *globalNodeGroup) getNewID() int {
 	i := gn.nextNode
-	gn.nextNode += 1
+	gn.nextNode++
 	return i
 }
 
-// A node group stores the identity of nodes within a current function context, and ensures
+// A NodeGroup stores the identity of nodes within a current function context, and ensures
 // that e.g. a single load node is shared between all invocations of a load instruction, or
 // all allocations in a particular function.
 type NodeGroup struct {
@@ -1253,7 +1269,7 @@ func (g *NodeGroup) ValueNode(variable ssa.Value) *Node {
 }
 
 // NewNode returns an entirely new node with the defined fields, and the given type hint
-func (g *NodeGroup) NewNode(kind NodeKind, debug string, tp types.Type) *Node {
+func (g *NodeGroup) NewNode(kind nodeKind, debug string, tp types.Type) *Node {
 	node := &Node{kind, g.globalNodes.getNewID(), debug}
 	g.globalNodes.types[node] = tp
 	return node
@@ -1364,27 +1380,27 @@ func (g *NodeGroup) AddForeignNode(n *Node) (changed bool) {
 
 // GlobalNode returns the global node representing the target (storage location) of a global
 // variable. It is pointed at by a corresponding KindGlobalVar.
-func (g *globalNodeGroup) GlobalNode(global *ssa.Global) *Node {
-	node, ok := g.globals[global]
+func (gn *globalNodeGroup) GlobalNode(global *ssa.Global) *Node {
+	node, ok := gn.globals[global]
 	if ok {
 		return node
 	}
-	node = &Node{KindGlobal, g.getNewID(), fmt.Sprintf("*%s %v", global.Name(), NillableDerefType(global.Type()))}
-	g.globals[global] = node
-	g.types[node] = NillableDerefType(global.Type())
+	node = &Node{KindGlobal, gn.getNewID(), fmt.Sprintf("*%s %v", global.Name(), NillableDerefType(global.Type()))}
+	gn.globals[global] = node
+	gn.types[node] = NillableDerefType(global.Type())
 	return node
 }
 
 // StaticFunctionNode returns the global node representing a static function, so that it can be the
 // pointee of a closure. This allows a closure object that represents taking a pointer to a static function.
-func (g *globalNodeGroup) StaticFunctionNode(f *ssa.Function) *Node {
-	node, ok := g.staticFunctions[f]
+func (gn *globalNodeGroup) StaticFunctionNode(f *ssa.Function) *Node {
+	node, ok := gn.staticFunctions[f]
 	if ok {
 		return node
 	}
-	node = &Node{KindGlobal, g.getNewID(), fmt.Sprintf("static func %v", f.Name())}
-	g.staticFunctions[f] = node
-	g.types[node] = &FunctionImplType{f.Signature, f}
-	g.function[node] = f
+	node = &Node{KindGlobal, gn.getNewID(), fmt.Sprintf("static func %v", f.Name())}
+	gn.staticFunctions[f] = node
+	gn.types[node] = &FunctionImplType{f.Signature, f}
+	gn.function[node] = f
 	return node
 }

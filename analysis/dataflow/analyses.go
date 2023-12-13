@@ -81,6 +81,7 @@ type EscapeCallsiteInfo interface {
 	Resolve(callee *ssa.Function) EscapeCallContext
 }
 
+// EscapeRationale holds information on the rationale of why a value may escape
 type EscapeRationale struct {
 	Reason string
 	// For more informative rationales, this can include a trace showing the steps along the way.
@@ -91,6 +92,7 @@ func (r *EscapeRationale) String() string {
 	return r.Reason
 }
 
+// NewBaseRationale returns a new escape rationale with the reason provided as argument
 func NewBaseRationale(reason string) *EscapeRationale {
 	return &EscapeRationale{Reason: reason}
 }

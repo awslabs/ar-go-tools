@@ -58,8 +58,9 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *con
 
 // TargetToSources is a mapping from a target annotation (e.g. ex in @Sink(ex, ex2))
 // to a source annotation (e.g. ex in @Source(ex, ex2)).
-type TargetToSources map[AnnotationId]map[AnnotationId]bool
+type TargetToSources map[AnnotationID]map[AnnotationID]bool
 
+// HasMetadata returns true if the TargetToSources mapping contains metadata
 func (t TargetToSources) HasMetadata() bool {
 	for _, sources := range t {
 		for source := range sources {
@@ -68,16 +69,15 @@ func (t TargetToSources) HasMetadata() bool {
 			}
 		}
 	}
-
 	return false
 }
 
-// AnnotationId represents an identifier in an annotation.
-type AnnotationId struct {
-	// Id is the value of an annotation id.
+// AnnotationID represents an identifier in an annotation.
+type AnnotationID struct {
+	// ID is the value of an annotation id.
 	// e.g. @Source(id)
 	//              ^^
-	Id string
+	ID string
 	// Meta is the identifier of the second portion of an annotation id.
 	// This represents an annotation id metadata, usually for trace information.
 	// e.g. @Source(id call:example1->call:helper)
@@ -89,8 +89,8 @@ type AnnotationId struct {
 	Pos LPos
 }
 
-func (id AnnotationId) String() string {
-	return fmt.Sprintf("Id %s:%s at %s", id.Id, id.Meta, id.Pos.String())
+func (id AnnotationID) String() string {
+	return fmt.Sprintf("Id %s:%s at %s", id.ID, id.Meta, id.Pos.String())
 }
 
 // SourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
@@ -104,15 +104,19 @@ var SinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
 // EscapeRegex matches annotations of the form "@Escape(id1, id2, id3)"
 var EscapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
 
+// LPos is a line position
 type LPos struct {
+	// Filename is the file name of the position
 	Filename string
-	Line     int
+	// Line is the line number in the file
+	Line int
 }
 
 func (p LPos) String() string {
 	return fmt.Sprintf("%s:%d", p.Filename, p.Line)
 }
 
+// RemoveColumn transforms a token.Position into a LPos by removing the column information
 func RemoveColumn(pos token.Position) LPos {
 	return LPos{Line: pos.Line, Filename: pos.Filename}
 }
@@ -146,7 +150,7 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 		meta string
 		pos  token.Position
 	}
-	sourceIdToSource := map[string]sourceInfo{}
+	sourceIDToSource := map[string]sourceInfo{}
 	fset := token.NewFileSet() // positions are relative to fset
 
 	if err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
@@ -179,7 +183,7 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 					sourceIdent = split[0]
 					meta = split[1]
 				}
-				sourceIdToSource[sourceIdent] = sourceInfo{meta: meta, pos: pos}
+				sourceIDToSource[sourceIdent] = sourceInfo{meta: meta, pos: pos}
 			}
 		}
 	})
@@ -192,15 +196,15 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 		if len(a) > 1 {
 			for _, ident := range strings.Split(a[1], ",") {
 				sinkIdent := strings.TrimSpace(ident)
-				if sourcePos, ok := sourceIdToSource[sinkIdent]; ok {
+				if sourcePos, ok := sourceIDToSource[sinkIdent]; ok {
 					relSink := RelPos(sinkPos, reldir)
 					// sinks do not have metadata
-					sinkAnnotation := AnnotationId{Id: sinkIdent, Meta: "", Pos: relSink}
+					sinkAnnotation := AnnotationID{ID: sinkIdent, Meta: "", Pos: relSink}
 					if _, ok := sink2source[sinkAnnotation]; !ok {
-						sink2source[sinkAnnotation] = make(map[AnnotationId]bool)
+						sink2source[sinkAnnotation] = make(map[AnnotationID]bool)
 					}
 					// sinkIdent is the same as sourceIdent in this branch
-					sourceAnnotation := AnnotationId{Id: sinkIdent, Meta: sourcePos.meta, Pos: RelPos(sourcePos.pos, reldir)}
+					sourceAnnotation := AnnotationID{ID: sinkIdent, Meta: sourcePos.meta, Pos: RelPos(sourcePos.pos, reldir)}
 					sink2source[sinkAnnotation][sourceAnnotation] = true
 				}
 			}
@@ -215,15 +219,15 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 		if len(a) > 1 {
 			for _, ident := range strings.Split(a[1], ",") {
 				escapeIdent := strings.TrimSpace(ident)
-				if sourcePos, ok := sourceIdToSource[escapeIdent]; ok {
+				if sourcePos, ok := sourceIDToSource[escapeIdent]; ok {
 					relEscape := RelPos(escapePos, reldir)
 					// escapes do not have metadata
-					escapeAnnotation := AnnotationId{Id: escapeIdent, Meta: "", Pos: relEscape}
+					escapeAnnotation := AnnotationID{ID: escapeIdent, Meta: "", Pos: relEscape}
 					if _, ok := escape2source[escapeAnnotation]; !ok {
-						escape2source[escapeAnnotation] = make(map[AnnotationId]bool)
+						escape2source[escapeAnnotation] = make(map[AnnotationID]bool)
 					}
 					// escapeIdent is the same as sourceIdent in this branch
-					sourceAnnotation := AnnotationId{Id: escapeIdent, Meta: sourcePos.meta, Pos: RelPos(sourcePos.pos, reldir)}
+					sourceAnnotation := AnnotationID{ID: escapeIdent, Meta: sourcePos.meta, Pos: RelPos(sourcePos.pos, reldir)}
 					escape2source[escapeAnnotation][sourceAnnotation] = true
 				}
 			}

@@ -16,6 +16,7 @@ package dataflow
 
 import "strconv"
 
+// A VisitorKind should be either DefaultTracing or ClosureTracing and defines the behaviour of the Visitor
 type VisitorKind = int
 
 const (
@@ -25,14 +26,15 @@ const (
 	ClosureTracing
 )
 
-type ClosureTracingInfo struct {
-	prev                *ClosureTracingInfo
+type closureTracingInfo struct {
+	prev                *closureTracingInfo
 	Index               int
 	ClosureSummaryGraph *SummaryGraph
 }
 
-func (c *ClosureTracingInfo) Next(summary *SummaryGraph, index int) *ClosureTracingInfo {
-	return &ClosureTracingInfo{
+// Next implements iteration
+func (c *closureTracingInfo) Next(summary *SummaryGraph, index int) *closureTracingInfo {
+	return &closureTracingInfo{
 		prev:                c,
 		Index:               index,
 		ClosureSummaryGraph: summary,
@@ -44,9 +46,10 @@ func (c *ClosureTracingInfo) Next(summary *SummaryGraph, index int) *ClosureTrac
 // the bound variable that needs to be traced to a closure call.
 type VisitorNodeStatus struct {
 	Kind        VisitorKind
-	TracingInfo *ClosureTracingInfo
+	TracingInfo *closureTracingInfo
 }
 
+// CurrentClosure returns the closure being currently traces by the node status
 func (v VisitorNodeStatus) CurrentClosure() *SummaryGraph {
 	if v.TracingInfo == nil {
 		return nil
@@ -54,6 +57,7 @@ func (v VisitorNodeStatus) CurrentClosure() *SummaryGraph {
 	return v.TracingInfo.ClosureSummaryGraph
 }
 
+// PopClosure pops the current closure from the stack of closures being traces
 func (v VisitorNodeStatus) PopClosure() VisitorNodeStatus {
 	switch v.Kind {
 	case DefaultTracing:
@@ -71,11 +75,10 @@ func (v VisitorNodeStatus) PopClosure() VisitorNodeStatus {
 				Kind:        DefaultTracing,
 				TracingInfo: nil,
 			}
-		} else {
-			return VisitorNodeStatus{
-				Kind:        ClosureTracing,
-				TracingInfo: prevTracingInfo,
-			}
+		}
+		return VisitorNodeStatus{
+			Kind:        ClosureTracing,
+			TracingInfo: prevTracingInfo,
 		}
 	}
 	return VisitorNodeStatus{
@@ -93,10 +96,12 @@ type VisitorNode struct {
 	children []*VisitorNode
 }
 
+// Key returns a unique string representation for the node with its trace
 func (v *VisitorNode) Key() KeyType {
 	return v.NodeWithTrace.Key() + "_" + strconv.Itoa(v.Status.Kind)
 }
 
+// AddChild adds a child to the node
 func (v *VisitorNode) AddChild(c *VisitorNode) {
 	v.children = append(v.children, c)
 }
@@ -116,9 +121,8 @@ func (ps *ParamStack) Add(p *ParamNode) *ParamStack {
 func (ps *ParamStack) Parent() *ParamStack {
 	if ps == nil {
 		return nil
-	} else {
-		return ps.Prev
 	}
+	return ps.Prev
 }
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the

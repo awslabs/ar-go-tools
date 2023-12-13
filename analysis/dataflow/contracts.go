@@ -36,7 +36,7 @@ import (
 //
 // objectPath and interfaceId should not be both specified.
 type Contract struct {
-	InterfaceId string
+	InterfaceID string
 	ObjectPath  string
 	Methods     map[string]summaries.Summary
 }
@@ -44,8 +44,8 @@ type Contract struct {
 // Key returns a string identifying the method or function in the given contract.
 // This can be used to store method information consistently across different usages
 func (c Contract) Key(method string) string {
-	if c.InterfaceId != "" {
-		return c.InterfaceId + "." + method
+	if c.InterfaceID != "" {
+		return c.InterfaceID + "." + method
 	} else if c.ObjectPath != "" {
 		return c.ObjectPath + "." + method
 	} else {
@@ -85,12 +85,12 @@ func LoadDefinitions(fileName string) ([]Contract, error) {
 		return nil, err
 	}
 	for _, contract := range data {
-		// only one of InterfaceId and ObjectPath should be given
-		if contract.InterfaceId == "" && contract.ObjectPath == "" {
-			return data, fmt.Errorf("InterfaceId and ObjectPath should not be both empty")
+		// only one of InterfaceID and ObjectPath should be given
+		if contract.InterfaceID == "" && contract.ObjectPath == "" {
+			return data, fmt.Errorf("InterfaceID and ObjectPath should not be both empty")
 		}
-		if contract.InterfaceId != "" && contract.ObjectPath != "" {
-			return data, fmt.Errorf("InterfaceId and ObjectPath should not be both specified")
+		if contract.InterfaceID != "" && contract.ObjectPath != "" {
+			return data, fmt.Errorf("InterfaceID and ObjectPath should not be both specified")
 		}
 	}
 
