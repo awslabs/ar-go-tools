@@ -53,11 +53,26 @@ func SSAStatistics(functions *map[*ssa.Function]bool, exclude []string) Result {
 	return result
 }
 
+// DeferStat is a statistic for a single function
+type DeferStat struct {
+	NumDefers    int
+	NumRunDefers int
+}
+
+// DeferStatsResult holds the information gathered by DeferStats on defers
+type DeferStatsResult struct {
+	NumFunctionsWithDefers  int
+	NumDefers               int
+	NumRunDefers            int
+	FunctionsWithManyDefers map[string]DeferStat
+}
+
 // DeferStats logs information about the number of defers in each functions in the map
-func DeferStats(log *log.Logger, functions *map[*ssa.Function]bool) {
+func DeferStats(functions *map[*ssa.Function]bool) DeferStatsResult {
 	num := 0
 	sumDefers := 0
 	sumRunDefers := 0
+	functionsWithManyDefers := map[string]DeferStat{}
 	for f := range *functions {
 		defers := 0
 		rundefers := 0
@@ -73,8 +88,7 @@ func DeferStats(log *log.Logger, functions *map[*ssa.Function]bool) {
 			}
 		}
 		if defers > 1 {
-			log.Printf("%s has %d defers and %d rundefers\n",
-				lang.PackageNameFromFunction(f)+"."+f.Name(), defers, rundefers)
+			functionsWithManyDefers[lang.PackageNameFromFunction(f)+"."+f.Name()] = DeferStat{defers, rundefers}
 		}
 		sumDefers += defers
 		if defers > 0 {
@@ -82,10 +96,12 @@ func DeferStats(log *log.Logger, functions *map[*ssa.Function]bool) {
 			sumRunDefers += rundefers
 		}
 	}
-	log.Printf("%d functions had defers\n", num)
-	log.Printf("%d total defers (%f/func)\n", sumDefers, float32(sumDefers)/float32(num))
-	log.Printf("%d total rundefers (%f/func)\n", sumRunDefers, float32(sumRunDefers)/float32(num))
-
+	return DeferStatsResult{
+		NumFunctionsWithDefers:  num,
+		NumDefers:               sumDefers,
+		NumRunDefers:            sumRunDefers,
+		FunctionsWithManyDefers: functionsWithManyDefers,
+	}
 }
 
 // ClosureLocationsStats logs information about the number of closures in each function in the map, focusing on those functions

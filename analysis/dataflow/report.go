@@ -16,36 +16,10 @@ package dataflow
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"golang.org/x/tools/go/ssa"
 )
-
-func (s *AnalyzerState) reportNoCallee(instr ssa.CallInstruction) {
-	pos := s.Program.Fset.Position(instr.Pos())
-
-	if s.Config.ReportNoCalleeSites {
-		f, err := os.OpenFile(s.Config.ReportNoCalleeFile(), os.O_APPEND, 0644)
-		if err == nil {
-			s.Logger.Errorf("Could not open %q\n", s.Config.ReportNoCalleeFile())
-		}
-		defer f.Close()
-		f.WriteString(fmt.Sprintf("\"%s\", %s", formatutil.SanitizeRepr(instr), pos))
-	}
-
-	s.Logger.Warnf("No callee found for %s.\n", formatutil.SanitizeRepr(instr))
-	s.Logger.Warnf("Location: %s.\n", pos)
-	if instr.Value() != nil {
-		s.Logger.Warnf("Value: %s\n", formatutil.SanitizeRepr(instr.Value()))
-		s.Logger.Warnf("Type: %s\n", formatutil.SanitizeRepr(instr.Value().Type()))
-	} else {
-		s.Logger.Warnf("Type: %s\n", formatutil.SanitizeRepr(instr.Common().Value.Type()))
-	}
-
-	s.Logger.Warnf("Method: %s\n", formatutil.SanitizeRepr(instr.Common().Method))
-}
 
 // ReportMissingOrNotConstructedSummary prints a missing summary message to the cache's logger.
 func (s *AnalyzerState) ReportMissingOrNotConstructedSummary(callSite *CallNode) {

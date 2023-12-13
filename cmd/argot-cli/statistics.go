@@ -37,6 +37,8 @@ func cmdStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 		writeFmt(tt, "\t    help : print help message\n")
 		writeFmt(tt, "\t    all : print general and closure stats\n")
 		writeFmt(tt, "\t    general  : print general stats about the SSA program\n")
+		writeFmt(tt, "\t    defers  : print general stats about defers\n")
+		writeFmt(tt, "\t         -A to print functions with more than one defer\n")
 		writeFmt(tt, "\t    closures : print stats about closures with additional options for verbose output:\n")
 		writeFmt(tt, "\t        --filter to filter output\n")
 		writeFmt(tt, "\t         -U to print unclassified closures locations\n")
@@ -53,6 +55,11 @@ func cmdStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 	// general ssa stats
 	if all || funcutil.Contains(command.Args, "general") || len(command.Args) == 0 {
 		doGeneralStats(tt, c, command)
+	}
+
+	// general ssa stats
+	if all || funcutil.Contains(command.Args, "defers") || len(command.Args) == 0 {
+		doDeferStats(tt, c, command)
 	}
 
 	// stats about closures
@@ -72,6 +79,21 @@ func doGeneralStats(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) {
 	writeFmt(tt, " # nonempty functions          %d\n", result.NumberOfNonemptyFunctions)
 	writeFmt(tt, " # blocks                      %d\n", result.NumberOfBlocks)
 	writeFmt(tt, " # instructions                %d\n", result.NumberOfInstructions)
+}
+
+func doDeferStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) {
+	allFunctions := ssautil.AllFunctions(c.Program)
+	results := analysis.DeferStats(&allFunctions)
+	writeFmt(tt, "%d functions had defers\n", results.NumFunctionsWithDefers)
+	writeFmt(tt, "%d total defers (%f/func)\n", results.NumDefers,
+		float32(results.NumDefers)/float32(results.NumFunctionsWithDefers))
+	writeFmt(tt, "%d total `rundefers` (%f/func)\n", results.NumRunDefers,
+		float32(results.NumRunDefers)/float32(results.NumFunctionsWithDefers))
+	if command.Flags["A"] {
+		for name, stat := range results.FunctionsWithManyDefers {
+			writeFmt(tt, "%s has %d defers and %d rundefers\n", name, stat.NumDefers, stat.NumRunDefers)
+		}
+	}
 }
 
 func doClosureStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) {

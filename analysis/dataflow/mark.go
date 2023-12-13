@@ -100,15 +100,6 @@ func NewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int) Mark {
 	}
 }
 
-func (m Mark) withIndex(index int) Mark {
-	return Mark{
-		Node:      m.Node,
-		Type:      m.Type,
-		Qualifier: m.Qualifier,
-		Index:     index,
-	}
-}
-
 // IsDefault returns true if the source is a taint source.
 func (m Mark) IsDefault() bool {
 	return m.Type&DefaultMark != 0

@@ -45,10 +45,6 @@ func isDependency(f *ssa.Function) (bool, string) {
 	return false, packagePath
 }
 
-func isRuntime(f *ssa.Function) bool {
-	return false
-}
-
 func calculateLocs(f *ssa.Function) uint {
 
 	var numberOfInstructions uint = 0

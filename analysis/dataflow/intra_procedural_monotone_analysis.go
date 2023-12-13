@@ -439,21 +439,6 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 // added.
 // TODO: think about moving those functions to the edge building phase
 
-// checkCopyIntoArgs checks whether the mark in is copying or writing into a Value that aliases with
-// one of the function's parameters. This keeps tracks of data flows to the function parameters that a
-// caller might see.
-func (state *IntraAnalysisState) checkCopyIntoArgs(in *Mark, out ssa.Value) {
-	vid, ok := state.flowInfo.GetValueID(out)
-	if ok && lang.IsNillableType(out.Type()) {
-		for aliasedParam := range state.paramAliases[vid] {
-			state.summary.addParamEdge(in, nil, aliasedParam)
-		}
-		for aliasedFreeVar := range state.freeVarAliases[vid] {
-			state.summary.addFreeVarEdge(in, nil, aliasedFreeVar)
-		}
-	}
-}
-
 // checkFlowIntoGlobal checks whether the origin is data flowing into a global variable
 func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, out ssa.Value) {
 	glob, isGlob := out.(*ssa.Global)

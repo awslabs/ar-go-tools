@@ -704,15 +704,3 @@ func allCallers(state *df.AnalyzerState, entry *ssa.Function) []*callgraph.Edge 
 
 	return res
 }
-
-// isConst returns true if node represents a constant value.
-// This is only implemented for CallNodeArg for now.
-func isConst(node df.GraphNode) bool {
-	switch n := node.(type) {
-	case *df.CallNodeArg:
-		_, ok := n.Value().(*ssa.Const)
-		return ok
-	default:
-		return false
-	}
-}
