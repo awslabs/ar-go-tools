@@ -118,7 +118,7 @@ type EscapeGraph struct {
 	nodes      *NodeGroup
 }
 
-// Edge Represents a single atomic edge within the escape graph. Nodes connected by more than one kind of
+// Edge represents a single atomic edge within the escape graph. Nodes connected by more than one kind of
 // edge will produce multiple Edge's when queried.
 type Edge struct {
 	src        *Node

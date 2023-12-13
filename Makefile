@@ -5,9 +5,15 @@
 #endif
 
 
-all: maypanic statistics reachability dependencies static-commands render taint compare defer packagescan backtrace argot-cli racerg setup-precommit
+all: lint maypanic statistics reachability dependencies static-commands render taint compare defer packagescan backtrace argot-cli racerg setup-precommit
 
 install: taint_install cli_install
+
+lint: **/*.go
+	go vet ./...
+	gocyclo -ignore test -over 15 .
+	ineffassign ./...
+	golint -set_exit_status -min_confidence 0.9 ./...
 
 test: **/*.go
 	go vet ./...
