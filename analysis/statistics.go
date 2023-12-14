@@ -24,6 +24,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// Result contains the simple statistics returned by running the SSAStatistics function
 type Result struct {
 	NumberOfFunctions         uint
 	NumberOfNonemptyFunctions uint
@@ -160,16 +161,27 @@ func ofInterest(name string, include3P bool, interestPrefix string) bool {
 	return true
 }
 
+// ClosureUsageStatistics is a simple record that contains information about usage of closures in a program
 type ClosureUsageStatistics struct {
-	AnonsCapturingChannels    map[*ssa.Function]bool
-	TotalAnonCalls            int
-	TotalAnonFunctions        int
-	TotalMakeClosures         int
-	ClosuresCalled            map[ssa.CallInstruction]ssa.Instruction
+	// AnonsCapturingChannels is the set of anonymous functions capturing channels
+	AnonsCapturingChannels map[*ssa.Function]bool
+	// TotalAnonCalls is the total number of anonymous functions called
+	TotalAnonCalls int
+	// TotalAnonFunctions is the total number of anonymous functions defined
+	TotalAnonFunctions int
+	// TotalMakeClosures is the total number of closure creations
+	TotalMakeClosures int
+	// ClosuresCalled maps call instructions to the instruction where the closure is created
+	ClosuresCalled map[ssa.CallInstruction]ssa.Instruction
+	// ClosuresImmediatelyCalled is the set of instructions where a closure is immediately called
 	ClosuresImmediatelyCalled map[ssa.Instruction]bool
-	ClosuresNoClass           map[ssa.Instruction]bool
-	ClosuresPassedAsArgs      map[ssa.CallInstruction]ssa.Instruction
-	ClosuresReturned          map[ssa.Instruction]bool
+	// ClosuresNoClass is the set of closures that have not been classified in ClosuresImmediatelyCalled,
+	// ClosuresPassedAsArgs or ClosuresReturned
+	ClosuresNoClass map[ssa.Instruction]bool
+	// ClosuresPassedAsArgs is the set of call instructions where a closure is passed as an argument
+	ClosuresPassedAsArgs map[ssa.CallInstruction]ssa.Instruction
+	// ClosuresReturned is the set of instructions where a closure is being returned by a function
+	ClosuresReturned map[ssa.Instruction]bool
 }
 
 // ComputeClosureUsageStats computes statistics about the usage of closures in the program contained in the state. This
@@ -197,11 +209,11 @@ func (s *ClosureUsageStatistics) doFunction(state *dataflow.AnalyzerState, funct
 
 	if function.Parent() == nil { // not an anonymous function
 		return
-	} else {
-		s.TotalAnonFunctions += 1
-		if node := state.PointerAnalysis.CallGraph.Nodes[function]; node != nil {
-			s.TotalAnonCalls += len(node.In)
-		}
+	}
+
+	s.TotalAnonFunctions++
+	if node := state.PointerAnalysis.CallGraph.Nodes[function]; node != nil {
+		s.TotalAnonCalls += len(node.In)
 	}
 
 	for _, fv := range function.FreeVars {
@@ -218,7 +230,7 @@ func (s *ClosureUsageStatistics) doFunction(state *dataflow.AnalyzerState, funct
 func (s *ClosureUsageStatistics) doInstruction(index int, i ssa.Instruction) {
 	if makeClosure, isMakeClosure := i.(*ssa.MakeClosure); isMakeClosure {
 		classified := false
-		s.TotalMakeClosures += 1
+		s.TotalMakeClosures++
 		// Is that closure immediately called in a go, defer or call?
 		block := i.Block()
 		if block != nil {

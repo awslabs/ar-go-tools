@@ -89,7 +89,7 @@ func nillableDerefType(t types.Type, pretty types.Type) types.Type {
 	}
 }
 
-// Represents the pointee of a function pointer
+// FunctionImplType represents the pointee of a function pointer
 type FunctionImplType struct {
 	tp  types.Type
 	fun *ssa.Function // may be nil to represent an unknown closure type
@@ -102,11 +102,12 @@ func (t *FunctionImplType) String() string {
 	return fmt.Sprintf("closure %s of %s", t.fun.String(), t.tp.String())
 }
 
+// Underlying returns the underlying type of the function implementation type
 func (t *FunctionImplType) Underlying() types.Type {
 	return t
 }
 
-// Represents the pointee of a map, channel, or interface
+// ImplType represents the pointee of a map, channel, or interface
 type ImplType struct {
 	tp types.Type
 }
@@ -114,6 +115,8 @@ type ImplType struct {
 func (t *ImplType) String() string {
 	return fmt.Sprintf("impl of %s", t.tp.String())
 }
+
+// Underlying returns the underlying type of the implementation type
 func (t *ImplType) Underlying() types.Type {
 	return t
 }
@@ -169,11 +172,11 @@ func (ea *functionAnalysisState) getCallees(instr ssa.CallInstruction) (map[*ssa
 	if ea.prog.state == nil {
 		return nil, fmt.Errorf("no analyzer state")
 	}
-	if callees, err := ea.prog.state.ResolveCallee(instr, false); err != nil {
+	callees, err := ea.prog.state.ResolveCallee(instr, false)
+	if err != nil {
 		return nil, fmt.Errorf("analyzer state could not resolve callee %v", err)
-	} else {
-		return callees, nil
 	}
+	return callees, nil
 }
 
 // Location structs that enable generating unique load nodes based on a particular instruction
@@ -380,7 +383,7 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 					loadOp := selectRecvLoad{instr, recvIndex}
 					g.LoadField(dest, nodes.ValueNode(st.Chan), loadOp, channelContentsField, contentsType)
 				}
-				recvIndex += 1
+				recvIndex++
 			} else if st.Dir == types.SendOnly {
 				if IsEscapeTracked(st.Send.Type()) {
 					// Send on channel is a write to the contents "field" of the channel
@@ -1129,7 +1132,7 @@ func (ea *functionAnalysisState) RunForwardIterative() error {
 			stats := ""
 			counts := map[string]int{}
 			for n := range g.status {
-				counts[n.debugInfo] += 1
+				counts[n.debugInfo]++
 			}
 			items := []struct {
 				s string
@@ -1171,7 +1174,7 @@ func EscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 	return analysis.finalGraph
 }
 
-// Contains the summaries for the entire program. Currently, this is just a simple
+// ProgramAnalysisState contains the summaries for the entire program. Currently, this is just a simple
 // wrapper around a map of function to analysis results, but it will likely need to expand
 // to work with the taint analysis.
 type ProgramAnalysisState struct {
@@ -1392,13 +1395,11 @@ func derefsAreLocal(g *EscapeGraph, ptr *Node) *dataflow.EscapeRationale {
 		if g.status[n] != Local {
 			if rat, ok := g.rationales[n]; ok && rat != nil {
 				return rat
-			} else {
-				if g.status[n] == Leaked {
-					return dataflow.NewBaseRationale("missing rationale")
-				} else {
-					return dataflow.NewBaseRationale("escaped but not leaked")
-				}
 			}
+			if g.status[n] == Leaked {
+				return dataflow.NewBaseRationale("missing rationale")
+			}
+			return dataflow.NewBaseRationale("escaped but not leaked")
 		}
 	}
 	return nil
@@ -1419,19 +1420,17 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) *dataflow.Escape
 		} else if _, ok := instrType.X.Type().(*types.Chan); ok && instrType.Op == token.ARROW {
 			// recv on channel
 			return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
-		} else {
-			// arithmetic is local
-			return nil
 		}
+		// arithmetic is local
+		return nil
 	case *ssa.Send:
 		return derefsAreLocal(g, g.nodes.ValueNode(instrType.Chan))
 	case *ssa.Range:
 		if _, ok := instrType.X.Type().Underlying().(*types.Map); ok {
 			return derefsAreLocal(g, g.nodes.ValueNode(instrType.X))
-		} else {
-			// must be a string type
-			return nil
 		}
+		// must be a string type
+		return nil
 	case *ssa.Next:
 		if instrType.IsString {
 			return nil

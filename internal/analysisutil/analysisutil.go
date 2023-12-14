@@ -24,7 +24,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	. "github.com/awslabs/ar-go-tools/internal/funcutil"
+	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -43,14 +43,12 @@ func FindEltTypePackage(t types.Type, preform string) (string, string, error) {
 			pkg := obj.Pkg()
 			if pkg != nil {
 				return pkg.Name(), fmt.Sprintf(preform, obj.Name()), nil
-			} else {
-				// obj is in Universe
-				return "", obj.Name(), nil
 			}
+			// obj is in Universe
+			return "", obj.Name(), nil
 
-		} else {
-			return "", "", fmt.Errorf("could not get name")
 		}
+		return "", "", fmt.Errorf("could not get name")
 
 	case *types.Array:
 		n := typ.Len()
@@ -75,26 +73,27 @@ func FindEltTypePackage(t types.Type, preform string) (string, string, error) {
 	}
 }
 
-func FindSafeCalleePkg(n *ssa.CallCommon) Optional[string] {
+// FindSafeCalleePkg finds the packages of the callee in the ssa.CallCommon without panicking
+func FindSafeCalleePkg(n *ssa.CallCommon) fn.Optional[string] {
 	if n == nil {
-		return None[string]()
+		return fn.None[string]()
 	}
 	if n.IsInvoke() && n.Method != nil {
 		if pkg := n.Method.Pkg(); pkg != nil {
-			return Some(pkg.Path())
+			return fn.Some(pkg.Path())
 		}
-		return None[string]()
+		return fn.None[string]()
 	}
 	if n.StaticCallee() == nil || n.StaticCallee().Pkg == nil {
-		return None[string]()
+		return fn.None[string]()
 	}
 
-	return Some(n.StaticCallee().Pkg.Pkg.Path())
+	return fn.Some(n.StaticCallee().Pkg.Pkg.Path())
 }
 
 // FindValuePackage finds the package of n.
 // Returns None if no package was found.
-func FindValuePackage(n ssa.Value) Optional[string] {
+func FindValuePackage(n ssa.Value) fn.Optional[string] {
 	switch node := n.(type) {
 	case *ssa.Function:
 		pkg := node.Package()
@@ -103,11 +102,11 @@ func FindValuePackage(n ssa.Value) Optional[string] {
 			pkg = node.Params[0].Parent().Package()
 		}
 		if pkg != nil {
-			return Some(pkg.String())
+			return fn.Some(pkg.String())
 		}
-		return None[string]()
+		return fn.None[string]()
 	}
-	return None[string]()
+	return fn.None[string]()
 }
 
 // FieldAddrFieldName finds the name of a field access in ssa.FieldAddr

@@ -36,22 +36,19 @@ func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {
 		case "copy":
 			if len(instruction.Common().Args) == 2 {
 				return true
-			} else {
-				return false
 			}
+			return false
 
 		default:
 			// Special case: the call to Error() of the builtin error interface
 			if instruction.Common().IsInvoke() && instruction.Common().Method.Name() == "Error" &&
 				len(instruction.Common().Args) == 0 {
 				return true
-			} else {
-				return false
 			}
+			return false
 		}
-	} else {
-		return false
 	}
+	return false
 }
 
 // doBuiltinCall returns true if the call is a builtin that is handled by default, otherwise false.
@@ -79,9 +76,8 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 				simpleTransfer(t, instruction, sliceV, callValue)
 				simpleTransfer(t, instruction, dataV, callValue)
 				return true
-			} else {
-				return false
 			}
+			return false
 
 		case "copy":
 			if len(callCommon.Args) == 2 {
@@ -90,9 +86,8 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 				// copy transfers from source to destination
 				simpleTransfer(t, instruction, src, dst)
 				return true
-			} else {
-				return false
 			}
+			return false
 
 		case "cap":
 			// taking the capacity does not propagate taint
@@ -105,9 +100,8 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 				simpleTransfer(t, instruction, f1, callValue)
 				simpleTransfer(t, instruction, f2, callValue)
 				return true
-			} else {
-				return false
 			}
+			return false
 
 		// for len, imag, real we also propagate the taint. This may not be necessary
 		case "len", "imag", "real":
@@ -136,11 +130,9 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 				len(callCommon.Args) == 0 {
 				simpleTransfer(t, instruction, callCommon.Value, callValue)
 				return true
-			} else {
-				return false
 			}
+			return false
 		}
-	} else {
-		return false
 	}
+	return false
 }

@@ -118,6 +118,7 @@ func newStructTypeExpr(t *types.Struct) (dst.Expr, error) {
 	return res, nil
 }
 
+// NewBinOp constructs a new binary expression
 func NewBinOp(op token.Token, x, y dst.Expr) *dst.BinaryExpr {
 	return &dst.BinaryExpr{
 		X:    x,
@@ -127,6 +128,7 @@ func NewBinOp(op token.Token, x, y dst.Expr) *dst.BinaryExpr {
 	}
 }
 
+// NewUnOp construct a new unary expression
 func NewUnOp(op token.Token, x dst.Expr) *dst.UnaryExpr {
 	return &dst.UnaryExpr{
 		Op:   op,
@@ -135,6 +137,7 @@ func NewUnOp(op token.Token, x dst.Expr) *dst.UnaryExpr {
 	}
 }
 
+// NewFuncDecl constructs a new function declaration
 func NewFuncDecl(name string, signature *dst.FuncType, body *dst.BlockStmt) *dst.FuncDecl {
 	f := &dst.FuncDecl{
 		Recv: nil,

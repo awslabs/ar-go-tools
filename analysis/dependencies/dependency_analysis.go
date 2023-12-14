@@ -38,13 +38,11 @@ func isDependency(f *ssa.Function) (bool, string) {
 		if strings.Index(split[0], ".") == -1 {
 			// no dot in the first component, e.g., "runtime"
 			return false, packagePath
-		} else {
-			// dot found, e.g. github.com
-			return true, split[0] + "/" + split[1] + "/" + split[2]
 		}
-	} else {
-		return false, packagePath
+		// dot found, e.g. github.com
+		return true, split[0] + "/" + split[1] + "/" + split[2]
 	}
+	return false, packagePath
 }
 
 func isRuntime(f *ssa.Function) bool {
@@ -135,6 +133,8 @@ func emitCoverageLine(file io.Writer, program *ssa.Program, f *ssa.Function, nam
 
 }
 
+// DependencyAnalysis runs the dependency analysis on all the functions in the ssa.Program
+// Writes a coverage file in covFile indicating which functions are reachable.
 func DependencyAnalysis(program *ssa.Program, jsonFlag bool, includeStdlib bool, covFile io.Writer, graph bool) reachability.DependencyGraph {
 
 	// all functions we have got

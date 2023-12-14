@@ -21,7 +21,7 @@ import (
 
 	"golang.org/x/tools/go/ssa"
 
-	. "github.com/awslabs/ar-go-tools/internal/funcutil"
+	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
 // at this point, the f.String contains something like this:
@@ -112,10 +112,10 @@ var DummyPos = token.Position{
 	Column:   -1,
 }
 
-func SafeFunctionPos(function *ssa.Function) Optional[token.Position] {
+// SafeFunctionPos returns the position of the function without panicking
+func SafeFunctionPos(function *ssa.Function) fn.Optional[token.Position] {
 	if function.Prog != nil && function.Prog.Fset != nil {
-		return Some(function.Prog.Fset.Position(function.Pos()))
-	} else {
-		return None[token.Position]()
+		return fn.Some(function.Prog.Fset.Position(function.Pos()))
 	}
+	return fn.None[token.Position]()
 }

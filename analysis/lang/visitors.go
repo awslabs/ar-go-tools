@@ -50,17 +50,16 @@ func RunDFS(op InstrOp, function *ssa.Function) {
 		// Set the current Block if there is one
 		if len(d.nextBlocks) == 0 {
 			return
-		} else {
-			d.block = d.nextBlocks[len(d.nextBlocks)-1]       // LIFO
-			d.nextBlocks = d.nextBlocks[:len(d.nextBlocks)-1] // LIFO
-			d.visited[d.block] = true
-			// Iterate through instructions.
-			for _, instr := range d.block.Instrs {
-				InstrSwitch(op, instr)
-			}
-			for _, block := range d.block.Succs {
-				d.addNext(block)
-			}
+		}
+		d.block = d.nextBlocks[len(d.nextBlocks)-1]       // LIFO
+		d.nextBlocks = d.nextBlocks[:len(d.nextBlocks)-1] // LIFO
+		d.visited[d.block] = true
+		// Iterate through instructions.
+		for _, instr := range d.block.Instrs {
+			InstrSwitch(op, instr)
+		}
+		for _, block := range d.block.Succs {
+			d.addNext(block)
 		}
 	}
 }
@@ -82,17 +81,16 @@ func RunBFS(op InstrOp, function *ssa.Function) {
 		// Set the current Block if there is one
 		if len(d.nextBlocks) == 0 {
 			return
-		} else {
-			d.block = d.nextBlocks[0]
-			d.nextBlocks = d.nextBlocks[1:]
-			d.visited[d.block] = true
-			// Iterate through instructions.
-			for _, instr := range d.block.Instrs {
-				InstrSwitch(op, instr)
-			}
-			for _, block := range d.block.Succs {
-				d.addNext(block)
-			}
+		}
+		d.block = d.nextBlocks[0]
+		d.nextBlocks = d.nextBlocks[1:]
+		d.visited[d.block] = true
+		// Iterate through instructions.
+		for _, instr := range d.block.Instrs {
+			InstrSwitch(op, instr)
+		}
+		for _, block := range d.block.Succs {
+			d.addNext(block)
 		}
 	}
 }
@@ -106,6 +104,7 @@ type PathSensitiveInstrOp interface {
 	NewBlock(*ssa.BasicBlock) // Called when a new Block is entered on a path.
 }
 
+// LastInstrIsReturn returns true when the last instruction of the block is a return instruction
 func LastInstrIsReturn(block *ssa.BasicBlock) bool {
 	n := len(block.Instrs)
 	if n == 0 {
@@ -133,30 +132,29 @@ func RunAllPaths(op PathSensitiveInstrOp, function *ssa.Function) {
 	for {
 		if len(nextBlocks) == 0 {
 			return
-		} else {
-			// Pop
-			cur := nextBlocks[len(nextBlocks)-1]
-			nextBlocks = nextBlocks[:len(nextBlocks)-1] // LIFO
-			added := false
-			for _, block := range cur.Block.Succs {
-				// If Block has not been visited more than once on that path
-				if cur.CountPathOccurrences(block) <= 1 {
-					child := cur.AddChild(block)
-					nextBlocks = append(nextBlocks, child)
-					added = true
+		}
+		// Pop
+		cur := nextBlocks[len(nextBlocks)-1]
+		nextBlocks = nextBlocks[:len(nextBlocks)-1] // LIFO
+		added := false
+		for _, block := range cur.Block.Succs {
+			// If Block has not been visited more than once on that path
+			if cur.CountPathOccurrences(block) <= 1 {
+				child := cur.AddChild(block)
+				nextBlocks = append(nextBlocks, child)
+				added = true
+			}
+		}
+		// Nothing added - this is a leaf node - execute operation on path if last Block returns
+		if !added && LastInstrIsReturn(cur.Block) {
+			op.NewPath()
+			for _, block := range cur.PathToLeaf().ToBlocks() {
+				op.NewBlock(block)
+				for _, instruction := range block.Instrs {
+					InstrSwitch(op, instruction)
 				}
 			}
-			// Nothing added - this is a leaf node - execute operation on path if last Block returns
-			if !added && LastInstrIsReturn(cur.Block) {
-				op.NewPath()
-				for _, block := range cur.PathToLeaf().ToBlocks() {
-					op.NewBlock(block)
-					for _, instruction := range block.Instrs {
-						InstrSwitch(op, instruction)
-					}
-				}
-				op.EndPath()
-			}
+			op.EndPath()
 		}
 	}
 }
@@ -190,25 +188,25 @@ func RunForwardIterative(op IterativeAnalysis, function *ssa.Function) {
 		// Set the current Block if there is one
 		if len(worklist) == 0 {
 			return
-		} else {
-			block := worklist[0]
-			worklist = worklist[1:]
-			// Iterate through instructions.
-			op.NewBlock(block)
-			for _, instr := range block.Instrs {
-				op.Pre(instr)
-				InstrSwitch(op, instr)
-				op.Post(instr)
-			}
-			if op.ChangedOnEndBlock() {
-				for _, nextBlock := range function.Blocks {
-					if HasPathTo(block, nextBlock, pathMem) {
-						if !funcutil.Contains(worklist, nextBlock) {
-							worklist = append(worklist, nextBlock)
-						}
+		}
+		block := worklist[0]
+		worklist = worklist[1:]
+		// Iterate through instructions.
+		op.NewBlock(block)
+		for _, instr := range block.Instrs {
+			op.Pre(instr)
+			InstrSwitch(op, instr)
+			op.Post(instr)
+		}
+		if op.ChangedOnEndBlock() {
+			for _, nextBlock := range function.Blocks {
+				if HasPathTo(block, nextBlock, pathMem) {
+					if !funcutil.Contains(worklist, nextBlock) {
+						worklist = append(worklist, nextBlock)
 					}
 				}
 			}
 		}
+
 	}
 }

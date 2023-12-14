@@ -43,11 +43,15 @@ func LoadGlobal() (*Config, error) {
 }
 
 const (
+	// EscapeBehaviorSummarize specifies that the function should be summarized in the escape analysis
 	EscapeBehaviorSummarize = "summarize"
-	EscapeBehaviorNoop      = "noop"
-	EscapeBehaviorUnknown   = "unknown"
+	// EscapeBehaviorNoop specifies that the function is a noop in the escape analysis
+	EscapeBehaviorNoop = "noop"
+	// EscapeBehaviorUnknown specifies that the function is "unknown" in the escape analysis
+	EscapeBehaviorUnknown = "unknown"
 )
 
+// EscapeConfig holds the options relative to the escape analysis configuration
 type EscapeConfig struct {
 
 	// Functions controls behavior override, keyed by .String() (e.g. command-line-arguments.main,
@@ -68,6 +72,7 @@ type EscapeConfig struct {
 	pkgFilterRegex *regexp.Regexp
 }
 
+// NewEscapeConfig returns a new escape config with a preset summary maximum size and initialized Functions map.
 func NewEscapeConfig() *EscapeConfig {
 	return &EscapeConfig{
 		Functions:          map[string]string{},
@@ -76,6 +81,8 @@ func NewEscapeConfig() *EscapeConfig {
 	}
 }
 
+// MatchPkgFilter matches a package name against a configuration.
+// Returns true if the package name matches the filter.
 func (c *EscapeConfig) MatchPkgFilter(pkgname string) bool {
 	if c.pkgFilterRegex != nil {
 		return c.pkgFilterRegex.MatchString(pkgname)
@@ -155,6 +162,7 @@ type StaticCommandsSpec struct {
 	StaticCommands []CodeIdentifier `yaml:"static-commands"`
 }
 
+// Options holds the global options for analyses
 type Options struct {
 	// ReportsDir is the directory where all the reports will be stored. If the yaml config file this config struct has
 	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
@@ -266,10 +274,10 @@ func Load(filename string) (*Config, error) {
 	}
 	errYaml := yaml.Unmarshal(b, cfg)
 	if errYaml != nil {
-		errXml := ParseXmlConfigFormat(cfg, b)
-		if errXml != nil {
+		errXML := ParseXMLConfigFormat(cfg, b)
+		if errXML != nil {
 			return nil, fmt.Errorf("could not unmarshal config file, not as yaml: %w, not as xml: %v",
-				errYaml, errXml)
+				errYaml, errXML)
 		}
 	}
 
@@ -495,6 +503,7 @@ func (scs StaticCommandsSpec) IsStaticCommand(cid CodeIdentifier) bool {
 	return ExistsCid(scs.StaticCommands, cid.equalOnNonEmptyFields)
 }
 
+// IsBacktracePoint returns true if the code identifier matches a backtrace point according to the SlicingSpec
 func (ss SlicingSpec) IsBacktracePoint(cid CodeIdentifier) bool {
 	return ExistsCid(ss.BacktracePoints, cid.equalOnNonEmptyFields)
 }
@@ -507,9 +516,5 @@ func (c Config) Verbose() bool {
 // ExceedsMaxDepth returns true if the input exceeds the maximum depth parameter of the configuration.
 // (this implements the logic for using maximum depth; if the configuration setting is < 0, then this returns false)
 func (c Config) ExceedsMaxDepth(d int) bool {
-	if c.MaxDepth <= 0 {
-		return false
-	} else {
-		return d > c.MaxDepth
-	}
+	return !(c.MaxDepth <= 0) && d > c.MaxDepth
 }

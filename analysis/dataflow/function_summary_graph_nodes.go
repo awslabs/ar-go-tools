@@ -26,6 +26,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// LocSet is a set of locations; here, a set of instructions
 type LocSet = map[ssa.Instruction]bool
 
 // ObjectPath contains information relative to the object pointed to.
@@ -90,6 +91,8 @@ type GraphNode interface {
 	Equal(GraphNode) bool
 }
 
+// An IndexedGraphNode is a graph node with additional information abouts its index in a parent node (e.g. argument
+// in a call)
 type IndexedGraphNode interface {
 	// ParentNode returns the parent graph node of and indexed graph node, e.g. the CallNode of a call argument
 	// or the ClosureNode of a bound variable. Returns itself for a ParamNode
@@ -116,6 +119,7 @@ func Instr(node GraphNode) ssa.Instruction {
 	return nil
 }
 
+// NodeKind returns a short string representation of the node kind
 func NodeKind(g GraphNode) string {
 	switch g.(type) {
 	case *ParamNode:
@@ -142,6 +146,7 @@ func NodeKind(g GraphNode) string {
 	return ""
 }
 
+// NodeSummary returns a string summary of the node
 func NodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
@@ -206,27 +211,44 @@ type ParamNode struct {
 	marks   LocSet
 }
 
-func (a *ParamNode) ID() uint32                    { return a.id }
-func (a *ParamNode) Graph() *SummaryGraph          { return a.parent }
+// ID returns the integer id of the node in its parent graph
+func (a *ParamNode) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node
+func (a *ParamNode) Graph() *SummaryGraph { return a.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *ParamNode) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *ParamNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *ParamNode) SsaNode() *ssa.Parameter       { return a.ssaNode }
-func (a *ParamNode) Type() types.Type              { return a.ssaNode.Type() }
-func (a *ParamNode) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *ParamNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// SsaNode returns the ssa.Node the graph node models
+func (a *ParamNode) SsaNode() *ssa.Parameter { return a.ssaNode }
+
+// Type returns the type of the ssa node associated to the graph node
+func (a *ParamNode) Type() types.Type { return a.ssaNode.Type() }
+
+// Marks returns the location information of the node
+func (a *ParamNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *ParamNode) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
+
+// Position returns the estimated position of the node in the source
 func (a *ParamNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *ParamNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*ParamNode); ok {
 		return a == a2
@@ -237,16 +259,18 @@ func (a *ParamNode) Equal(node GraphNode) bool {
 // Index returns the parameter position of the node in the function's signature
 func (a *ParamNode) Index() int { return a.argPos }
 
+// ParentNode returns the node itself
 func (a *ParamNode) ParentNode() GraphNode { return a }
 
+// ParentName returns the name of the parent function
 func (a *ParamNode) ParentName() string {
 	if a.parent != nil && a.parent.Parent != nil {
 		return a.parent.Parent.Name()
-	} else {
-		return "ParamNode"
 	}
+	return "ParamNode"
 }
 
+// LongID returns a string identifier for the node
 func (a *ParamNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
@@ -262,28 +286,44 @@ type FreeVarNode struct {
 	marks   LocSet
 }
 
-func (a *FreeVarNode) ID() uint32                    { return a.id }
-func (a *FreeVarNode) Graph() *SummaryGraph          { return a.parent }
+// ID returns the integer id of the node in its parent graph
+func (a *FreeVarNode) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node
+func (a *FreeVarNode) Graph() *SummaryGraph { return a.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *FreeVarNode) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *FreeVarNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *FreeVarNode) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *FreeVarNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the location information of the node
+func (a *FreeVarNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *FreeVarNode) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
-func (a *FreeVarNode) SsaNode() *ssa.FreeVar { return a.ssaNode }
-func (a *FreeVarNode) Type() types.Type      { return a.ssaNode.Type() }
 
+// SsaNode returns the ssa.Node the graph node models
+func (a *FreeVarNode) SsaNode() *ssa.FreeVar { return a.ssaNode }
+
+// Type returns the type of the ssa node associated to the graph node
+func (a *FreeVarNode) Type() types.Type { return a.ssaNode.Type() }
+
+// Position returns the estimated position of the node in the source
 func (a *FreeVarNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *FreeVarNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*FreeVarNode); ok {
 		return a == a2
@@ -294,14 +334,15 @@ func (a *FreeVarNode) Equal(node GraphNode) bool {
 // Index returns the free variable position in the function's signature
 func (a *FreeVarNode) Index() int { return a.fvPos }
 
+// ParentName returns the name of the parent closure
 func (a *FreeVarNode) ParentName() string {
 	if a.parent != nil && a.parent.Parent != nil {
 		return a.parent.Parent.Name()
-	} else {
-		return "ParamNode"
 	}
+	return "ParamNode"
 }
 
+// LongID returns a string identifier for the node
 func (a *FreeVarNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
@@ -317,27 +358,41 @@ type CallNodeArg struct {
 	marks    LocSet
 }
 
-func (a *CallNodeArg) ID() uint32                    { return a.id }
-func (a *CallNodeArg) Graph() *SummaryGraph          { return a.parent.parent }
+// ID returns the integer id of the node in its parent graph
+func (a *CallNodeArg) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node
+func (a *CallNodeArg) Graph() *SummaryGraph { return a.parent.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *CallNodeArg) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *CallNodeArg) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *CallNodeArg) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *CallNodeArg) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the location information of the node
+func (a *CallNodeArg) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *CallNodeArg) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
+
+// Type returns the type of the ssa node associated to the graph node
 func (a *CallNodeArg) Type() types.Type { return a.ssaValue.Type() }
 
+// Position returns the estimated position of the node in the source
 func (a *CallNodeArg) Position(c *AnalyzerState) token.Position {
 	if a.parent != nil {
 		return a.parent.Position(c)
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *CallNodeArg) Equal(node GraphNode) bool {
 	if a2, ok := node.(*CallNodeArg); ok {
 		return a == a2
@@ -351,18 +406,20 @@ func (a *CallNodeArg) ParentNode() *CallNode { return a.parent }
 // Index returns the argument's position in the parent call node
 func (a *CallNodeArg) Index() int { return a.argPos }
 
+// ParentName returns the name of the parent function (not the parent call node)
 func (a *CallNodeArg) ParentName() string {
 	if a.parent != nil && a.parent.parent != nil && a.parent.parent.Parent != nil {
 		return a.parent.parent.Parent.Name()
-	} else {
-		return "CallNodeArg"
 	}
+	return "CallNodeArg"
 }
 
+// LongID returns a string identifier for the node
 func (a *CallNodeArg) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
 
+// Value returns the ssa value of the call argument
 func (a *CallNodeArg) Value() ssa.Value {
 	return a.ssaValue
 }
@@ -381,17 +438,30 @@ type CallNode struct {
 	marks         LocSet
 }
 
-func (a *CallNode) ID() uint32                    { return a.id }
-func (a *CallNode) Graph() *SummaryGraph          { return a.parent }
+// ID returns the integer id of the node in its parent graph
+func (a *CallNode) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node
+func (a *CallNode) Graph() *SummaryGraph { return a.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *CallNode) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *CallNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *CallNode) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *CallNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the location information of the node
+func (a *CallNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *CallNode) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
+
+// Type returns the type of the call site (the type of the returned value, not the signature of the function called)
 func (a *CallNode) Type() types.Type {
 	if call, ok := a.callSite.(*ssa.Call); ok {
 		return call.Type()
@@ -399,14 +469,15 @@ func (a *CallNode) Type() types.Type {
 	return nil
 }
 
+// Position returns the estimated position of the node in the source
 func (a *CallNode) Position(c *AnalyzerState) token.Position {
 	if a.callSite != nil && a.callSite.Common() != nil && a.callSite.Common().Value != nil {
 		return c.Program.Fset.Position(a.callSite.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *CallNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*CallNode); ok {
 		return a == a2
@@ -414,18 +485,20 @@ func (a *CallNode) Equal(node GraphNode) bool {
 	return false
 }
 
+// LongID returns a string identifier for the node
 func (a *CallNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
 
+// ParentName returns the name of the parent function
 func (a *CallNode) ParentName() string {
 	if a.parent != nil && a.parent.Parent != nil {
 		return a.parent.Parent.Name()
-	} else {
-		return "CallNode"
 	}
+	return "CallNode"
 }
 
+// FindArg fins the node corresponding to the value v as an argument of the call
 func (a *CallNode) FindArg(v ssa.Value) *CallNodeArg {
 	for _, argNode := range a.args {
 		if argNode.ssaValue == v {
@@ -445,6 +518,7 @@ func (a *CallNode) Callee() *ssa.Function {
 	return a.callee.Callee
 }
 
+// Args returns the list of arguments of the call
 func (a *CallNode) Args() []*CallNodeArg {
 	return a.args
 }
@@ -455,12 +529,10 @@ func (a *CallNode) FuncName() string {
 	if a.callSite != nil {
 		if a.callSite.Common().IsInvoke() {
 			return a.callSite.Common().Method.Name()
-		} else {
-			return a.callSite.Common().Value.Name()
 		}
-	} else {
-		return "<CallNode with nil callSite>"
+		return a.callSite.Common().Value.Name()
 	}
+	return "<CallNode with nil callSite>"
 }
 
 // FuncString returns the string identified of the function being called. It can be either the method string or a
@@ -470,12 +542,11 @@ func (a *CallNode) FuncString() string {
 	if a.callSite != nil {
 		if a.callSite.Common().IsInvoke() {
 			return a.callSite.Common().Method.String()
-		} else {
-			return a.callSite.Common().Value.String()
 		}
-	} else {
-		return "<CallNode with nil callSite>"
+		return a.callSite.Common().Value.String()
 	}
+	return "<CallNode with nil callSite>"
+
 }
 
 // A ReturnValNode is a node that represents a Value returned by a function
@@ -486,22 +557,39 @@ type ReturnValNode struct {
 	in     map[GraphNode]ObjectPath
 }
 
-func (a *ReturnValNode) Graph() *SummaryGraph          { return a.parent }
+// Graph returns the parent summary graph of the node
+func (a *ReturnValNode) Graph() *SummaryGraph { return a.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *ReturnValNode) Out() map[GraphNode]ObjectPath { return nil }
-func (a *ReturnValNode) ID() uint32                    { return a.id }
-func (a *ReturnValNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *ReturnValNode) Marks() LocSet                 { return nil }
-func (a *ReturnValNode) SetLocs(_ LocSet)              {}
-func (a *ReturnValNode) Index() int                    { return a.index }
-func (a *ReturnValNode) Type() types.Type              { return a.parent.ReturnType() }
+
+// ID returns the integer id of the node in its parent graph
+func (a *ReturnValNode) ID() uint32 { return a.id }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *ReturnValNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the location information of the node
+func (a *ReturnValNode) Marks() LocSet { return nil }
+
+// SetLocs sets the locations information of the node
+func (a *ReturnValNode) SetLocs(_ LocSet) {}
+
+// Index returns the tuple index of the return node
+func (a *ReturnValNode) Index() int { return a.index }
+
+// Type returns the return type of the parent function
+func (a *ReturnValNode) Type() types.Type { return a.parent.ReturnType() }
+
+// Position returns the estimated position of the node in the source
 func (a *ReturnValNode) Position(c *AnalyzerState) token.Position {
 	if a.parent != nil && a.parent.Parent != nil {
 		return c.Program.Fset.Position(a.parent.Parent.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *ReturnValNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*ReturnValNode); ok {
 		return a == a2
@@ -509,18 +597,20 @@ func (a *ReturnValNode) Equal(node GraphNode) bool {
 	return false
 }
 
+// ParentName return the name of the parent function
 func (a *ReturnValNode) ParentName() string {
 	if a.parent != nil && a.parent.Parent != nil {
 		return a.parent.Parent.Name()
-	} else {
-		return "ReturnNode"
 	}
+	return "ReturnNode"
 }
 
+// LongID returns a string identifier for the node
 func (a *ReturnValNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
 
+// ClosureNode represents a makeClosure instruction in the dataflow graph
 type ClosureNode struct {
 	id uint32
 
@@ -540,29 +630,41 @@ type ClosureNode struct {
 	marks     LocSet
 }
 
+// ID returns the integer id of the node in its parent graph
 func (a *ClosureNode) ID() uint32 { return a.id }
 
 // Graph is the parent of a closure node is the summary of the function in which the closure is created.
-func (a *ClosureNode) Graph() *SummaryGraph          { return a.parent }
+func (a *ClosureNode) Graph() *SummaryGraph { return a.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *ClosureNode) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *ClosureNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *ClosureNode) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *ClosureNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the set of instructions through which data from the node flows
+func (a *ClosureNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *ClosureNode) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
+
+// Type returns the type of the makeClosure instruction (the signature of the closure)
 func (a *ClosureNode) Type() types.Type { return a.instr.Type() }
 
+// Position returns the estimated position of the node in the source
 func (a *ClosureNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *ClosureNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*ClosureNode); ok {
 		return a == a2
@@ -570,6 +672,7 @@ func (a *ClosureNode) Equal(node GraphNode) bool {
 	return false
 }
 
+// LongID returns a string identifier for the node
 func (a *ClosureNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
@@ -579,18 +682,20 @@ func (a *ClosureNode) Instr() *ssa.MakeClosure {
 	return a.instr
 }
 
+// ParentName returns the name of the function where the closure is created
 func (a *ClosureNode) ParentName() string {
 	if a.parent != nil && a.parent.Parent != nil {
 		return a.parent.Parent.Name()
-	} else {
-		return "CallNode"
 	}
+	return "CallNode"
 }
 
+// BoundVars returns the list of variables bound by the closure
 func (a *ClosureNode) BoundVars() []*BoundVarNode {
 	return a.boundVars
 }
 
+// FindBoundVar returns the BoundVarNode matching the input value v, if v is a bound variable of the closure
 func (a *ClosureNode) FindBoundVar(v ssa.Value) *BoundVarNode {
 	for _, bv := range a.boundVars {
 		if bv.ssaValue == v {
@@ -617,28 +722,44 @@ type BoundVarNode struct {
 	marks LocSet
 }
 
-func (a *BoundVarNode) ID() uint32                    { return a.id }
-func (a *BoundVarNode) Graph() *SummaryGraph          { return a.parent.parent }
+// ID returns the integer id of the node in its parent graph
+func (a *BoundVarNode) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node
+func (a *BoundVarNode) Graph() *SummaryGraph { return a.parent.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *BoundVarNode) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *BoundVarNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *BoundVarNode) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *BoundVarNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the location information of the node
+func (a *BoundVarNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *BoundVarNode) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
+
+// Type returns the type of the bound variable
 func (a *BoundVarNode) Type() types.Type { return a.ssaValue.Type() }
+
+// Value returns the ssa value of the bound variable
 func (a *BoundVarNode) Value() ssa.Value { return a.ssaValue }
 
+// Position returns the estimated position of the node in the source
 func (a *BoundVarNode) Position(c *AnalyzerState) token.Position {
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *BoundVarNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*BoundVarNode); ok {
 		return a == a2
@@ -653,14 +774,15 @@ func (a *BoundVarNode) Index() int { return a.bPos }
 // ParentNode returns the closure node corresponding to the bound variable
 func (a *BoundVarNode) ParentNode() *ClosureNode { return a.parent }
 
+// ParentName returns the name of the parent function (not the parent closure node)
 func (a *BoundVarNode) ParentName() string {
 	if a.parent != nil && a.parent.parent != nil && a.parent.parent.Parent != nil {
 		return a.parent.parent.Parent.Name()
-	} else {
-		return "BoundVarNode"
 	}
+	return "BoundVarNode"
 }
 
+// LongID returns a string identifier for the node
 func (a *BoundVarNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
@@ -678,27 +800,41 @@ type AccessGlobalNode struct {
 	marks   LocSet
 }
 
-func (a *AccessGlobalNode) ID() uint32                    { return a.id }
-func (a *AccessGlobalNode) Graph() *SummaryGraph          { return a.graph }
+// ID returns the integer id of the node in its parent graph
+func (a *AccessGlobalNode) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node
+func (a *AccessGlobalNode) Graph() *SummaryGraph { return a.graph }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *AccessGlobalNode) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *AccessGlobalNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *AccessGlobalNode) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *AccessGlobalNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the location information of the node
+func (a *AccessGlobalNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *AccessGlobalNode) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
+
+// Type returns the type of the
 func (a *AccessGlobalNode) Type() types.Type { return a.Global.Type() }
 
+// Position returns the estimated position of the node in the source
 func (a *AccessGlobalNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *AccessGlobalNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*AccessGlobalNode); ok {
 		return a == a2
@@ -706,8 +842,10 @@ func (a *AccessGlobalNode) Equal(node GraphNode) bool {
 	return false
 }
 
+// Instr returns the instruction that accesses the global
 func (a *AccessGlobalNode) Instr() ssa.Instruction { return a.instr }
 
+// ParentName returns the name of the function where the global is accessed
 func (a *AccessGlobalNode) ParentName() string {
 	if a.instr != nil {
 		return a.instr.Parent().Name()
@@ -715,6 +853,7 @@ func (a *AccessGlobalNode) ParentName() string {
 	return ""
 }
 
+// LongID returns a string identifier for the node
 func (a *AccessGlobalNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.graph.ID)) + "." + strconv.Itoa(int(a.id))
 }
@@ -730,17 +869,30 @@ type SyntheticNode struct {
 	marks  LocSet
 }
 
-func (a *SyntheticNode) ID() uint32                    { return a.id }
-func (a *SyntheticNode) Graph() *SummaryGraph          { return a.parent }
+// ID returns the integer id of the node in its parent graph
+func (a *SyntheticNode) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node
+func (a *SyntheticNode) Graph() *SummaryGraph { return a.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *SyntheticNode) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *SyntheticNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *SyntheticNode) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *SyntheticNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the location information of the node
+func (a *SyntheticNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *SyntheticNode) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
+
+// Type returns the type of the value the synthetic node abstracts
 func (a *SyntheticNode) Type() types.Type {
 	if val, ok := a.instr.(ssa.Value); ok {
 		return val.Type()
@@ -748,14 +900,15 @@ func (a *SyntheticNode) Type() types.Type {
 	return nil
 }
 
+// Position returns the estimated position of the node in the source
 func (a *SyntheticNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements comparison for graph nodes
 func (a *SyntheticNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*SyntheticNode); ok {
 		return a == a2
@@ -766,6 +919,7 @@ func (a *SyntheticNode) Equal(node GraphNode) bool {
 // Instr correspond to the instruction matching that synthetic node
 func (a *SyntheticNode) Instr() ssa.Instruction { return a.instr }
 
+// ParentName returns the name of the parent function of the synthetic node
 func (a *SyntheticNode) ParentName() string {
 	if a.instr != nil {
 		return a.instr.Parent().Name()
@@ -773,6 +927,7 @@ func (a *SyntheticNode) ParentName() string {
 	return ""
 }
 
+// LongID returns a string identifier for the node
 func (a *SyntheticNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
@@ -790,27 +945,41 @@ type BoundLabelNode struct {
 	marks      LocSet
 }
 
-func (a *BoundLabelNode) ID() uint32                    { return a.id }
-func (a *BoundLabelNode) Graph() *SummaryGraph          { return a.parent }
+// ID returns the integer id of the node in its parent graph
+func (a *BoundLabelNode) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node
+func (a *BoundLabelNode) Graph() *SummaryGraph { return a.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
 func (a *BoundLabelNode) Out() map[GraphNode]ObjectPath { return a.out }
-func (a *BoundLabelNode) In() map[GraphNode]ObjectPath  { return a.in }
-func (a *BoundLabelNode) Marks() LocSet                 { return a.marks }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (a *BoundLabelNode) In() map[GraphNode]ObjectPath { return a.in }
+
+// Marks returns the location information of the node
+func (a *BoundLabelNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node
 func (a *BoundLabelNode) SetLocs(set LocSet) {
 	if a.marks == nil {
 		a.marks = map[ssa.Instruction]bool{}
 	}
 	funcutil.Merge(a.marks, set, funcutil.First[bool])
 }
+
+// Type returns the type of the bound label
 func (a *BoundLabelNode) Type() types.Type { return a.targetInfo.Type() }
 
+// Position returns the position of the bound label
 func (a *BoundLabelNode) Position(c *AnalyzerState) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
-	} else {
-		return lang.DummyPos
 	}
+	return lang.DummyPos
 }
 
+// Equal implements equality checking between bound label nodes
 func (a *BoundLabelNode) Equal(node GraphNode) bool {
 	if a2, ok := node.(*BoundLabelNode); ok {
 		return a == a2
@@ -821,14 +990,19 @@ func (a *BoundLabelNode) Equal(node GraphNode) bool {
 // Instr correspond to the instruction matching that synthetic node
 func (a *BoundLabelNode) Instr() ssa.Instruction { return a.instr }
 
+// DestInfo returns the information of the target bound variable
 func (a *BoundLabelNode) DestInfo() BindingInfo { return a.targetInfo }
 
+// Index returns the index of the bound variable in the closure
 func (a *BoundLabelNode) Index() int { return a.targetInfo.BoundIndex }
 
+// DestClosure returns the closure that binds the node
 func (a *BoundLabelNode) DestClosure() *SummaryGraph { return a.targetAnon }
 
+// SetDestClosure sets the closure that binds the node
 func (a *BoundLabelNode) SetDestClosure(g *SummaryGraph) { a.targetAnon = g }
 
+// ParentName returns the parent name of the bound label (its parent function)
 func (a *BoundLabelNode) ParentName() string {
 	if a.instr != nil {
 		return a.instr.Parent().Name()
@@ -836,6 +1010,7 @@ func (a *BoundLabelNode) ParentName() string {
 	return ""
 }
 
+// LongID returns a string identifier for the node
 func (a *BoundLabelNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }

@@ -151,6 +151,14 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 	}
 }
 
+// FindReachable traverses the call graph starting from the given entry
+// points to find all reachable functions.
+//
+// It takes a program, a flag for whether to exclude the main function, a
+// flag for whether to exclude init functions, and an optional dependency
+// graph to record cross-package function calls.
+//
+// The return value is a map from reachable *ssa.Function values to true.
 func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, graph DependencyGraph) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(program)
@@ -190,6 +198,8 @@ func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, gra
 	return reachable
 }
 
+// ReachableFunctionsAnalysis runs the reachable function analysis. Main and Init can be excluded using the
+// boolean flags. The analysis prints the reachable functions on standard output.
 func ReachableFunctionsAnalysis(program *ssa.Program, excludeMain bool, excludeInit bool, jsonFlag bool) {
 
 	reachable := FindReachable(program, excludeMain, excludeInit, nil)

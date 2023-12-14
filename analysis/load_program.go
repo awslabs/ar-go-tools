@@ -24,6 +24,7 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
+// PkgLoadMode is the default loading mode in the analyses. We load all possible information
 const PkgLoadMode = packages.NeedName |
 	packages.NeedFiles |
 	packages.NeedCompiledGoFiles |
@@ -36,6 +37,8 @@ const PkgLoadMode = packages.NeedName |
 	packages.NeedTypesSizes |
 	packages.NeedModule
 
+// LoadProgram loads a program on platform "platform" using the buildmode provided and the args.
+// To understand how to specify the args, look at the documentation of packages.Load.
 func LoadProgram(config *packages.Config,
 	platform string,
 	buildmode ssa.BuilderMode,
@@ -81,6 +84,7 @@ func LoadProgram(config *packages.Config,
 	return program, nil
 }
 
+// AllPackages returns the slice of all packages the set of functions provided as argument belong to.
 func AllPackages(funcs map[*ssa.Function]bool) []*ssa.Package {
 	pkgs := make(map[*ssa.Package]bool)
 	for f := range funcs {

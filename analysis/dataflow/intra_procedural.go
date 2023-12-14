@@ -199,7 +199,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 				// Add the condition only if it is a predicate on the argument, i.e. there are boolean functions
 				// that apply to the destination Value
 				state.summary.addCallArgEdge(mark.Mark, applicableCond, callInstr, arg)
-				argId := state.flowInfo.ValueId[arg] // base argument value is guaranteed to be indexed
+				argId := state.flowInfo.ValueID[arg] // base argument value is guaranteed to be indexed
 				// Add edges to parameters if the call may modify caller's arguments
 				for x := range state.paramAliases[argId] {
 					if lang.IsNillableType(x.Type()) {
@@ -235,15 +235,15 @@ func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 				continue // avoid spurious edges from closure to its own bound variables
 			}
 			state.summary.addBoundVarEdge(mark, nil, x, boundVar)
-			boundVarId, ok := state.flowInfo.GetValueId(boundVar)
+			boundVarID, ok := state.flowInfo.GetValueID(boundVar)
 			if !ok {
 				continue
 			}
-			for y := range state.paramAliases[boundVarId] {
+			for y := range state.paramAliases[boundVarID] {
 				state.summary.addParamEdge(mark, nil, y)
 			}
 
-			for y := range state.freeVarAliases[boundVarId] {
+			for y := range state.freeVarAliases[boundVarID] {
 				state.summary.addFreeVarEdge(mark, nil, y)
 			}
 		}
@@ -253,8 +253,8 @@ func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 // makeEdgesAtReturn creates all the edges to the return node
 func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 	n := state.flowInfo.NumValues
-	iId := state.flowInfo.GetInstrPos(x)
-	for _, abstractValue := range state.flowInfo.MarkedValues[iId : iId+n] {
+	iID := state.flowInfo.GetInstrPos(x)
+	for _, abstractValue := range state.flowInfo.MarkedValues[iID : iID+n] {
 		if abstractValue == nil {
 			continue
 		}
@@ -267,12 +267,12 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			// Check the state of the analysis at the final return to see which parameters or free variables might
 			// have been modified by the function
 			for _, mark := range abstractValue.AllMarks() {
-				markedValueId, ok := state.flowInfo.GetValueId(markedValue)
+				markedValueID, ok := state.flowInfo.GetValueID(markedValue)
 				if ok && lang.IsNillableType(val.Type()) {
-					for aliasedParam := range state.paramAliases[markedValueId] {
+					for aliasedParam := range state.paramAliases[markedValueID] {
 						state.summary.addParamEdge(mark.Mark, nil, aliasedParam)
 					}
-					for aliasedFreeVar := range state.freeVarAliases[markedValueId] {
+					for aliasedFreeVar := range state.freeVarAliases[markedValueID] {
 						state.summary.addFreeVarEdge(mark.Mark, nil, aliasedFreeVar)
 					}
 				}
@@ -366,23 +366,22 @@ func (state *IntraAnalysisState) checkFlow(source *Mark, dest ssa.Instruction, d
 	if _, isDefer := dest.(*ssa.Defer); isDefer {
 		if lang.IsNillableType(destVal.Type()) {
 			return ConditionInfo{Satisfiable: true}
-		} else {
-			return state.checkPathBetweenInstructions(sourceInstr, dest)
-		}
-	} else {
-		if asVal, isVal := dest.(ssa.Value); isVal {
-			// If the destination is a value of function type, then there is a flow when the source occurs before
-			// any instruction that refers to the function (e.g. the function is returned, or called)
-			// This is often the case when there is a flow through a closure that binds variables by reference, and
-			// the variable is tainted after the closure is created.
-			if _, isFunc := asVal.Type().Underlying().(*types.Signature); isFunc {
-				return funcutil.FindMap(*asVal.Referrers(),
-					func(i ssa.Instruction) ConditionInfo { return state.checkPathBetweenInstructions(sourceInstr, i) },
-					func(c ConditionInfo) bool { return c.Satisfiable }).ValueOr(ConditionInfo{Satisfiable: false})
-			}
 		}
 		return state.checkPathBetweenInstructions(sourceInstr, dest)
 	}
+	if asVal, isVal := dest.(ssa.Value); isVal {
+		// If the destination is a value of function type, then there is a flow when the source occurs before
+		// any instruction that refers to the function (e.g. the function is returned, or called)
+		// This is often the case when there is a flow through a closure that binds variables by reference, and
+		// the variable is tainted after the closure is created.
+		if _, isFunc := asVal.Type().Underlying().(*types.Signature); isFunc {
+			return funcutil.FindMap(*asVal.Referrers(),
+				func(i ssa.Instruction) ConditionInfo { return state.checkPathBetweenInstructions(sourceInstr, i) },
+				func(c ConditionInfo) bool { return c.Satisfiable }).ValueOr(ConditionInfo{Satisfiable: false})
+		}
+	}
+	return state.checkPathBetweenInstructions(sourceInstr, dest)
+
 }
 
 func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruction,
@@ -398,7 +397,7 @@ func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruc
 	}
 
 	if source.Block().Index == dest.Block().Index && sourceIndex < destIndex {
-		n := NewImpossiblePath()
+		n := newImpossiblePath()
 		n.Cond.Satisfiable = true
 		return ConditionInfo{Satisfiable: true}
 	}
@@ -406,11 +405,10 @@ func (state *IntraAnalysisState) checkPathBetweenInstructions(source ssa.Instruc
 	pos := IndexT(source.Block().Index)*state.flowInfo.NumBlocks + IndexT(dest.Block().Index)
 	if c := state.paths[pos]; c != nil {
 		return *c
-	} else {
-		b := FindIntraProceduralPath(source, dest)
-		state.paths[pos] = &b.Cond
-		return b.Cond
 	}
+	b := FindIntraProceduralPath(source, dest)
+	state.paths[pos] = &b.Cond
+	return b.Cond
 }
 
 // isCapturedBy checks the bounding analysis to query whether the value is captured by some closure, in which case an
@@ -459,8 +457,7 @@ func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
 	if state.Config != nil && state.Config.PkgFilter != "" {
 		pkgKey := pkg.Pkg.Path()
 		return state.Config.MatchPkgFilter(pkgKey) || pkgKey == "command-line-arguments"
-	} else {
-		// Check package summaries
-		return !(summaries.PkgHasSummaries(pkg) || state.HasExternalContractSummary(function))
 	}
+	// Check package summaries
+	return !(summaries.PkgHasSummaries(pkg) || state.HasExternalContractSummary(function))
 }

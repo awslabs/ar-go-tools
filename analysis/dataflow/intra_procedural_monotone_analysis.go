@@ -60,13 +60,13 @@ type IntraAnalysisState struct {
 	// transfer the abstract state in the flowInfo of an instruction to the next instruction
 	instrPrev []map[IndexT]bool
 
-	// paramAliases maps values ids  (ids stored in flowInfo.ValueId)  to the function to the parameter it aliases
+	// paramAliases maps values ids  (ids stored in flowInfo.ValueID)  to the function to the parameter it aliases
 	paramAliases []map[*ssa.Parameter]bool
 
-	// freeVarAliases maps values ids (ids stored in flowInfo.ValueId) to the free variable it aliases
+	// freeVarAliases maps values ids (ids stored in flowInfo.ValueID) to the free variable it aliases
 	freeVarAliases []map[*ssa.FreeVar]bool
 
-	// transitiveMarks maps value ids (ids stored in flowInfo.ValueId) to a list of values with access paths and
+	// transitiveMarks maps value ids (ids stored in flowInfo.ValueID) to a list of values with access paths and
 	// instruction this means that for a value v with id vid, transitiveMarks[vid] lists all the values whose marks
 	// flow to the value v
 	transitiveMarks [][]InstructionValueWithAccessPath
@@ -95,7 +95,7 @@ func (state *IntraAnalysisState) initialize() {
 	populateInstrPrevMap(state, firstInstr, function)
 
 	// Initialize alias maps
-	for _, id := range state.flowInfo.ValueId {
+	for _, id := range state.flowInfo.ValueID {
 		state.paramAliases[id] = map[*ssa.Parameter]bool{}
 		state.freeVarAliases[id] = map[*ssa.FreeVar]bool{}
 	}
@@ -117,7 +117,7 @@ func (state *IntraAnalysisState) initialize() {
 			if load, ok := i.(*ssa.UnOp); ok && load.Op == token.MUL {
 				for _, fv := range function.FreeVars {
 					if fv == load.X {
-						state.freeVarAliases[state.flowInfo.ValueId[load]][fv] = true
+						state.freeVarAliases[state.flowInfo.ValueID[load]][fv] = true
 					}
 				}
 			}
@@ -133,24 +133,24 @@ func (state *IntraAnalysisState) initialize() {
 // (and not a [ssa.Defer]!) can be a preceding instruction. This over-approximates program executions where any instruction
 // can panic.
 func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruction, function *ssa.Function) {
-	firstId := intraState.flowInfo.InstrId[firstInstr]
-	intraState.instrPrev[firstId] = map[IndexT]bool{firstId: true}
+	firstID := intraState.flowInfo.InstrID[firstInstr]
+	intraState.instrPrev[firstID] = map[IndexT]bool{firstID: true}
 	var prevInstr ssa.Instruction
 	for _, block := range function.Blocks {
 		for j, instr := range block.Instrs {
-			instrId := intraState.flowInfo.InstrId[instr]
-			intraState.instrPrev[instrId] = map[IndexT]bool{}
+			instrID := intraState.flowInfo.InstrID[instr]
+			intraState.instrPrev[instrID] = map[IndexT]bool{}
 			if j == 0 {
 				for _, pred := range block.Preds {
 					if pred != nil && len(pred.Instrs) > 0 {
 						last := pred.Instrs[len(pred.Instrs)-1]
-						lastId := intraState.flowInfo.InstrId[last]
-						intraState.instrPrev[instrId][lastId] = true
+						lastID := intraState.flowInfo.InstrID[last]
+						intraState.instrPrev[instrID][lastID] = true
 					}
 				}
 			} else if prevInstr != nil {
-				prevId := intraState.flowInfo.InstrId[prevInstr]
-				intraState.instrPrev[instrId][prevId] = true
+				prevId := intraState.flowInfo.InstrID[prevInstr]
+				intraState.instrPrev[instrID][prevId] = true
 			}
 			prevInstr = instr
 		}
@@ -162,10 +162,10 @@ func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruc
 		if _, ok := instr.(*ssa.RunDefers); ok {
 			for _, block := range function.Blocks {
 				for _, i := range block.Instrs {
-					iId := intraState.flowInfo.InstrId[i]
+					iId := intraState.flowInfo.InstrID[i]
 					if intraState.checkPathBetweenInstructions(i, instr).Satisfiable {
-						instrId := intraState.flowInfo.InstrId[instr]
-						intraState.instrPrev[iId][instrId] = true
+						instrID := intraState.flowInfo.InstrID[instr]
+						intraState.instrPrev[iId][instrID] = true
 					}
 				}
 			}
@@ -179,7 +179,7 @@ func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruc
 func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
 	ix := state.flowInfo.GetInstrPos(ins)
 	n := state.flowInfo.NumValues
-	for pIndex := range state.instrPrev[state.flowInfo.InstrId[ins]] {
+	for pIndex := range state.instrPrev[state.flowInfo.InstrID[ins]] {
 		for valueNum, previousAbstractValue := range state.flowInfo.MarkedValues[pIndex*n : pIndex*n+n] {
 			vNum := IndexT(valueNum)
 			curAbstractValue := state.flowInfo.MarkedValues[ix+vNum]
@@ -443,7 +443,7 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 // one of the function's parameters. This keeps tracks of data flows to the function parameters that a
 // caller might see.
 func (state *IntraAnalysisState) checkCopyIntoArgs(in *Mark, out ssa.Value) {
-	vid, ok := state.flowInfo.GetValueId(out)
+	vid, ok := state.flowInfo.GetValueID(out)
 	if ok && lang.IsNillableType(out.Type()) {
 		for aliasedParam := range state.paramAliases[vid] {
 			state.summary.addParamEdge(in, nil, aliasedParam)
@@ -661,26 +661,28 @@ func addAliases[T comparable](x T, f *ssa.Function, ptr *pointer.Pointer, aliase
 
 // addParamAliases collects information about the Value-aliases of the parameters
 func (state *IntraAnalysisState) addParamAliases(x *ssa.Parameter) {
-	state.paramAliases[state.flowInfo.ValueId[x]][x] = true // x is guaranteed to be in flowInfo.ValueId
+	state.paramAliases[state.flowInfo.ValueID[x]][x] = true // x is guaranteed to be in flowInfo.ValueID
 	addAliases(x, state.summary.Parent, state.getPointer(x),
-		state.paramAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueId)
+		state.paramAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
 	addAliases(x, state.summary.Parent, state.getIndirectPointer(x),
-		state.paramAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueId)
+		state.paramAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
 }
 
 // addFreeVarAliases collects information about the Value-aliases of the free variables
 func (state *IntraAnalysisState) addFreeVarAliases(x *ssa.FreeVar) {
-	state.freeVarAliases[state.flowInfo.ValueId[x]][x] = true // x is guaranteed to be in flowInfo.ValueId
+	state.freeVarAliases[state.flowInfo.ValueID[x]][x] = true // x is guaranteed to be in flowInfo.ValueID
 	addAliases(x, state.summary.Parent, state.getPointer(x),
-		state.freeVarAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueId)
+		state.freeVarAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
 	addAliases(x, state.summary.Parent, state.getIndirectPointer(x),
-		state.freeVarAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueId)
+		state.freeVarAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
 }
 
+// FlowInfo returns the flow information of the state
 func (state *IntraAnalysisState) FlowInfo() *FlowInformation {
 	return state.flowInfo
 }
 
+// Block returns the current block of the analyzer state
 func (state *IntraAnalysisState) Block() *ssa.BasicBlock {
 	return state.curBlock
 }

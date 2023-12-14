@@ -27,6 +27,7 @@ import (
 // this value does not affect soundness
 const maxAccessPathLength = 4
 
+// A MarkWithAccessPath is a mark with an access path
 type MarkWithAccessPath struct {
 	Mark       *Mark
 	AccessPath string
@@ -77,13 +78,12 @@ func NewAbstractValue(v ssa.Value, pathSensitive bool) *AbstractValue {
 			marks:           nil,
 			isPathSensitive: true,
 		}
-	} else {
-		return &AbstractValue{
-			value:           v,
-			accessMarks:     nil,
-			marks:           map[*Mark]bool{},
-			isPathSensitive: false,
-		}
+	}
+	return &AbstractValue{
+		value:           v,
+		accessMarks:     nil,
+		marks:           map[*Mark]bool{},
+		isPathSensitive: false,
 	}
 }
 
@@ -92,9 +92,8 @@ func NewAbstractValue(v ssa.Value, pathSensitive bool) *AbstractValue {
 func (a *AbstractValue) PathMappings() map[string]map[*Mark]bool {
 	if a.isPathSensitive {
 		return a.accessMarks
-	} else {
-		return map[string]map[*Mark]bool{"": a.marks}
 	}
+	return map[string]map[*Mark]bool{"": a.marks}
 }
 
 // GetValue returns the ssa value of the abstract value.
@@ -231,14 +230,13 @@ func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
 func (a *AbstractValue) HasMarkAt(path string, m *Mark) bool {
 	if !a.isPathSensitive {
 		return a.marks[m]
-	} else {
-		for _, m2 := range a.MarksAt(path) {
-			if m2.Mark == m {
-				return true
-			}
-		}
-		return false
 	}
+	for _, m2 := range a.MarksAt(path) {
+		if m2.Mark == m {
+			return true
+		}
+	}
+	return false
 }
 
 // Show writes information about the value on the writer
@@ -274,9 +272,8 @@ func pathTrimLast(path string) string {
 	n := strings.LastIndex(path, ".")
 	if n > 0 {
 		return path[n:]
-	} else {
-		return path
 	}
+	return path
 }
 
 // pathPrependField prefixes the path with a field access

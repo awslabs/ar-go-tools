@@ -22,6 +22,7 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
 
+// LogLevel represents a logging level
 type LogLevel int
 
 const (
@@ -43,6 +44,7 @@ const (
 	TraceLevel
 )
 
+// LogGroup holds a set of loggers that will be called depending on the logging kind
 type LogGroup struct {
 	Level        LogLevel
 	suppressWarn bool

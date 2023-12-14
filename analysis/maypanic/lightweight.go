@@ -233,6 +233,7 @@ func allowListed(path string) bool {
 	return false
 }
 
+// MayPanicAnalyzer runs a lightweight may panic analysis on the program
 func MayPanicAnalyzer(program *ssa.Program, exclude []string, jsonFlag bool) {
 
 	// Get all the functions

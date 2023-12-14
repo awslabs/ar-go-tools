@@ -21,6 +21,8 @@ import (
 	"sort"
 )
 
+// Entry is an entry of a dependency graph, containing the name of the package along with the packages its depends on
+// and the packages that depend on it.
 type Entry struct {
 	name         string
 	dependsOn    []*Entry
@@ -29,8 +31,10 @@ type Entry struct {
 	done         bool
 }
 
+// A DependencyGraph records package dependencies
 type DependencyGraph map[string]*Entry
 
+// NewDependencyGraph returns a new DependencyGraph
 func NewDependencyGraph() DependencyGraph {
 	return make(DependencyGraph)
 }
@@ -44,6 +48,7 @@ func contains(list []*Entry, e *Entry) bool {
 	return false
 }
 
+// Add adds a dependency to the graph
 func (dg DependencyGraph) Add(depender string, dependee string) {
 	// get the entry for the depender. if none, add one
 	e, ok := dg[depender]
@@ -68,6 +73,7 @@ func (dg DependencyGraph) Add(depender string, dependee string) {
 	d.dependedOnBy = append(d.dependedOnBy, e)
 }
 
+// Cycles returns a boolean indicating whether there is a cycle in the graph or not
 func (dg DependencyGraph) Cycles() bool {
 	for _, e := range dg {
 		if len(e.dependedOnBy) != 0 {
@@ -99,6 +105,7 @@ func (dg DependencyGraph) findCycles(e *Entry) bool {
 	return false
 }
 
+// DumpAsGraphviz dumps the graph in its graphviz format in the file with the name provided
 func (dg DependencyGraph) DumpAsGraphviz(filename string, includeStdlib bool) {
 
 	sum := 0

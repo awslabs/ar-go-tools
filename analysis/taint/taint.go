@@ -29,6 +29,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// An AnalysisResult from the taint analysis contains the tainted flows in TaintFLows and the analyzer state at the
+// end of the analysis in State. Optionally, an explicit inter-procedural graph is constructed.
 type AnalysisResult struct {
 	// TaintFlows contains all the data flows from the sources to the sinks detected during the analysis
 	TaintFlows *Flows

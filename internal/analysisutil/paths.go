@@ -21,6 +21,16 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// MakeAbsolute takes a slice of relative file paths and converts them to absolute paths.
+// It prepends the current working directory to any non-absolute file paths.
+//
+// excludeRelative is a slice of relative or absolute file paths to convert.
+//
+// It returns a new slice containing the absolute paths.
+// Any paths that were already absolute are passed through unchanged.
+//
+// It returns an error if it cannot determine the current working directory.
+// The result slice may have a different capacity and length than the input.
 func MakeAbsolute(excludeRelative []string) []string {
 	result := make([]string, 0, len(excludeRelative))
 
@@ -53,6 +63,7 @@ func isExcludedOne(program *ssa.Program, f *ssa.Function, exclude string) bool {
 	}
 }
 
+// IsExcluded scans the exclude slices to find out whether f is excluded
 func IsExcluded(program *ssa.Program, f *ssa.Function, exclude []string) bool {
 	for _, e := range exclude {
 		if isExcludedOne(program, f, e) {

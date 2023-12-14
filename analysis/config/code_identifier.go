@@ -138,16 +138,15 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 			((cidRef.computedRegexs.fieldRegex.MatchString(cid.Field)) || (cidRef.Field == "")) &&
 			(cidRef.computedRegexs.typeRegex.MatchString(cid.Type) || (cidRef.Type == "")) &&
 			(cidRef.Kind == cid.Kind)
-	} else {
-		return ((cid.Context == cidRef.Context) || (cidRef.Context == "")) &&
-			((cid.Package == cidRef.Package) || (cidRef.Package == "")) &&
-			((cid.Package == cidRef.Interface) || (cidRef.Interface == "")) &&
-			((cid.Method == cidRef.Method) || (cidRef.Method == "")) &&
-			((cid.Receiver == cidRef.Receiver) || (cidRef.Receiver == "")) &&
-			((cid.Field == cidRef.Field) || (cidRef.Field == "")) &&
-			((cid.Type == cidRef.Type) || (cidRef.Type == "")) &&
-			(cidRef.Kind == cid.Kind)
 	}
+	return ((cid.Context == cidRef.Context) || (cidRef.Context == "")) &&
+		((cid.Package == cidRef.Package) || (cidRef.Package == "")) &&
+		((cid.Package == cidRef.Interface) || (cidRef.Interface == "")) &&
+		((cid.Method == cidRef.Method) || (cidRef.Method == "")) &&
+		((cid.Receiver == cidRef.Receiver) || (cidRef.Receiver == "")) &&
+		((cid.Field == cidRef.Field) || (cidRef.Field == "")) &&
+		((cid.Type == cidRef.Type) || (cidRef.Type == "")) &&
+		(cidRef.Kind == cid.Kind)
 }
 
 // ExistsCid is true if there is some x in a such that f(x) is true.
@@ -205,6 +204,8 @@ func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
 	return cid.Method == f.Name() && cid.Package == pkg
 }
 
+// MatchInterface matches a function to a code identifier by looking whether that function implements an interface's
+// method, and using that method information to match against the code identifier
 func (cid *CodeIdentifier) MatchInterface(f *ssa.Function) bool {
 	if cid == nil {
 		return false

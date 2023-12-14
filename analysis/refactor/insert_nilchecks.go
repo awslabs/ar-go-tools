@@ -183,7 +183,7 @@ func declReturnsErrorLast(fd *dst.FuncDecl) bool {
 	if lastRes.Type == nil {
 		return false
 	}
-	if id, isId := lastRes.Type.(*dst.Ident); isId {
+	if id, isID := lastRes.Type.(*dst.Ident); isID {
 		if id.Name == "error" {
 			return true
 		}
@@ -199,7 +199,7 @@ func generateReturnOnlyError(fi *lang.FuncInfo, msg string) ([]dst.Expr, error) 
 
 	var results []dst.Expr
 	for _, resultType := range fd.Type.Results.List {
-		if id, isId := resultType.Type.(*dst.Ident); isId && id.Name == "error" {
+		if id, isID := resultType.Type.(*dst.Ident); isID && id.Name == "error" {
 			// e is fmt.Errorf(msg)
 			e := &dst.CallExpr{
 				Fun: &dst.Ident{

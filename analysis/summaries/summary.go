@@ -66,6 +66,7 @@ func IsStdPackage(pkg *ssa.Package) bool {
 	return IsStdPackageName(pkgPath)
 }
 
+// IsStdPackageName returns true if the package name is a package of the standard library
 func IsStdPackageName(name string) bool {
 	_, ok := stdPackages[name]
 	return ok || strings.HasPrefix(name, "runtime")

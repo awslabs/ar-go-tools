@@ -21,7 +21,7 @@ import (
 	"github.com/dave/dst/dstutil"
 )
 
-type Transform func(*lang.FuncInfo, *dstutil.Cursor) bool
+type transform func(*lang.FuncInfo, *dstutil.Cursor) bool
 
 // buildScopeTree collects information about the AST and links children nodes to parent nodes in the funcInfo.NodeMap
 func buildScopeTree(funcInfo *lang.FuncInfo, c *dstutil.Cursor) bool {
@@ -39,7 +39,7 @@ func buildScopeTree(funcInfo *lang.FuncInfo, c *dstutil.Cursor) bool {
 // WithScope applies the transform post to packages as a post operation in Apply. It first runs the function
 // that builds information necessary to have access to closest scopes within a function.
 // The post transform can use the FuncInfo's various scope operations
-func WithScope(packages []*decorator.Package, post Transform) {
+func WithScope(packages []*decorator.Package, post transform) {
 	for _, pack := range packages {
 		for _, dstFile := range pack.Syntax {
 			// Create a new decorator, which will track the mapping between ast and dst nodes

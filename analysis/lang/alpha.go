@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The lang package contains functions to help manipulate different objects representing elements of the Go language
+// Package lang contains functions to help manipulate different objects representing elements of the Go language
 // and the ssa.
 package lang
 
@@ -25,9 +25,10 @@ import (
 	"github.com/dave/dst/decorator"
 )
 
-// This file contains function to manage variable names within the scope of an existing program
+// This file contains functions to manage variable names within the scope of an existing program
 // To create a new variable with name in the same scope as node n, use NewName(n, name).
 
+// NodeTree is a tree of dst.Nodes
 type NodeTree struct {
 	Parent *NodeTree
 	Label  dst.Node
@@ -138,7 +139,6 @@ func isInSomeParentScope(scope *types.Scope, s string) bool {
 	_, o := scope.LookupParent(s, token.NoPos)
 	if o != nil {
 		return true
-	} else {
-		return false
 	}
+	return false
 }

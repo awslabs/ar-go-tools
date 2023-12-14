@@ -26,12 +26,12 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 )
 
-func anonLhsOfTuple(t *types.Tuple, errId *dst.Ident) []dst.Expr {
+func anonLhsOfTuple(t *types.Tuple, errID *dst.Ident) []dst.Expr {
 	var s []dst.Expr
 	for i := 0; i < t.Len()-1; i++ {
 		s = append(s, dst.NewIdent("_"))
 	}
-	s = append(s, errId)
+	s = append(s, errID)
 	return s
 }
 

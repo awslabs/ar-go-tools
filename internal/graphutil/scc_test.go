@@ -29,20 +29,20 @@ func isToposorted(m intGraph, sccs [][]int) error {
 		for _, x := range scc {
 			// Ensure every node from the graph appears at most once
 			if covered[x] {
-				return fmt.Errorf("Repeated value %v\nin:%v\n", x, m)
+				return fmt.Errorf("repeated value %v\nin:%v", x, m)
 			}
 			covered[x] = true
 			// Ensure that every x reaches every other y of the SCC.
 			// This ensures it is strongly connected, but not necessarily maximal.
 			for _, y := range scc {
 				if x != y && !reaches(m, x, y) {
-					return fmt.Errorf("SCC nodes are not reachable: %v %v\nin:%v\n", x, y, m)
+					return fmt.Errorf("the SCC nodes are not reachable: %v %v\nin:%v", x, y, m)
 				}
 			}
 			for j := i + 1; j < len(sccs); j++ {
 				for _, y := range sccs[j] {
 					if reaches(m, x, y) {
-						return fmt.Errorf("Node %v appears before reachable node %v\nin:%v\n", x, y, m)
+						return fmt.Errorf("node %v appears before reachable node %v\nin:%v", x, y, m)
 					}
 				}
 			}
@@ -52,7 +52,7 @@ func isToposorted(m intGraph, sccs [][]int) error {
 		// Ensure every node appears at least once. Combined with above, ensures it appears
 		// exactly once
 		if !covered[n] {
-			return fmt.Errorf("Missing node %v\nin:%v\n", n, m)
+			return fmt.Errorf("missing node %v\nin:%v", n, m)
 		}
 	}
 	return nil

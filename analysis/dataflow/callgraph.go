@@ -29,28 +29,36 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
+// SsaInfo is holds all the information from a built ssa program with main packages
 type SsaInfo struct {
 	Prog     *ssa.Program
 	Packages []*ssa.Package
 	Mains    []*ssa.Package
 }
 
+// CallgraphAnalysisMode is either PointerAnalysis, StaticAnalysis, ClassHierarchyAnalysis, RapidTypeAnalysis or
+// VariableTypeAnalysis for calling ComputeCallGraph
 type CallgraphAnalysisMode uint64
 
 const (
-	PointerAnalysis        CallgraphAnalysisMode = iota // PointerAnalysis is over-approximating (slow)
-	StaticAnalysis                                      // StaticAnalysis is under-approximating (fast)
-	ClassHierarchyAnalysis                              // ClassHierarchyAnalysis is a coarse over-approximation (fast)
-	RapidTypeAnalysis                                   // RapidTypeAnalysis TODO: review
-	VariableTypeAnalysis                                // VariableTypeAnalysis TODO: review
+	// PointerAnalysis is over-approximating (slow)
+	PointerAnalysis CallgraphAnalysisMode = iota
+	// StaticAnalysis is under-approximating (fast)
+	StaticAnalysis
+	// ClassHierarchyAnalysis is a coarse over-approximation (fast)
+	ClassHierarchyAnalysis
+	// RapidTypeAnalysis TODO: review
+	RapidTypeAnalysis
+	// VariableTypeAnalysis TODO: review
+	VariableTypeAnalysis
 )
 
-// This global variable should only be read and modified through GetUniqueFunctionId
-var uniqueFunctionIdCounter uint32 = 0
+// This global variable should only be read and modified through GetUniqueFunctionID
+var uniqueFunctionIDCounter uint32 = 0
 
-// GetUniqueFunctionId increments and returns the Value of the global used to give unique function ids.
-func GetUniqueFunctionId() uint32 {
-	x := atomic.AddUint32(&uniqueFunctionIdCounter, 1)
+// GetUniqueFunctionID increments and returns the Value of the global used to give unique function ids.
+func GetUniqueFunctionID() uint32 {
+	x := atomic.AddUint32(&uniqueFunctionIDCounter, 1)
 	return x
 }
 
@@ -148,7 +156,7 @@ func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map
 						key := matchingInterfaceMethod.Recv().String() + "." + methodValue.Name()
 						keys[methodValue.String()] = key
 						addImplementation(implementations, key, methodValue)
-						addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionId())
+						addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionID())
 					}
 				}
 			}
@@ -187,7 +195,7 @@ func computeErrorBuiltinImplementations(p *ssa.Program, implementations map[stri
 			keys[methodValue.String()] = key
 			// Get the interface method being implemented
 			addImplementation(implementations, key, methodValue)
-			addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionId())
+			addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionID())
 		}
 	}
 }
@@ -207,14 +215,14 @@ func addImplementation(implementationMap map[string]map[*ssa.Function]bool, key 
 // addContractSummaryGraph sets the Value of contract[methodId] to a new summary of function if the methodId key
 // is present in contracts but the associated Value is nil
 // Does nothing if contracts is nil.
-func addContractSummaryGraph(contracts map[string]*SummaryGraph, methodId string, function *ssa.Function, id uint32) {
+func addContractSummaryGraph(contracts map[string]*SummaryGraph, methodID string, function *ssa.Function, id uint32) {
 	if contracts == nil || function == nil {
 		return
 	}
 	// Entry must be present
-	if curSummary, ok := contracts[methodId]; ok {
+	if curSummary, ok := contracts[methodID]; ok {
 		if curSummary == nil {
-			contracts[methodId] = NewSummaryGraph(nil, function, id, nil, nil)
+			contracts[methodID] = NewSummaryGraph(nil, function, id, nil, nil)
 		}
 	}
 }

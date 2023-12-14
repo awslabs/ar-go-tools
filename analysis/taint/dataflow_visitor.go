@@ -28,6 +28,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// EscapeInfo contains information relative to the escape analysis
 type EscapeInfo struct {
 	InstructionLocality map[ssa.Instruction]*dataflow.EscapeRationale
 	CallSiteInfo        map[*ssa.Call]df.EscapeCallsiteInfo
@@ -77,6 +78,7 @@ func NewVisitor(ts *config.TaintSpec) *Visitor {
 	}
 }
 
+// Reset resets the visitor by clearing the set of seen nodes
 func (v *Visitor) Reset() {
 	v.seen = make(map[df.KeyType]bool)
 }

@@ -16,12 +16,14 @@ package graphutil
 
 import "github.com/awslabs/ar-go-tools/internal/funcutil"
 
+// Tree is a simple generic implementation of a tree
 type Tree[T any] struct {
 	Parent   *Tree[T]
 	Children []*Tree[T]
 	Label    T
 }
 
+// NewTree returns a new tree with the labels of the type provided
 func NewTree[T any](rootLabel T) *Tree[T] {
 	return &Tree[T]{
 		Parent:   nil,
@@ -58,7 +60,7 @@ func (t *Tree[T]) Ancestors(n int) []*Tree[T] {
 	for cur != nil && (i < n || n < 0) {
 		ans = append(ans, cur)
 		cur = cur.Parent
-		i += 1
+		i++
 	}
 	funcutil.Reverse(ans)
 	return ans

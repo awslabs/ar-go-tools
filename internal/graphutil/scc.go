@@ -14,7 +14,8 @@
 
 package graphutil
 
-// Implementation of Tarjan's strongly connected component (SCC) algorithm for generic nodes T.
+// StronglyConnectedComponents is an implementation of Tarjan's strongly connected component (SCC) algorithm
+// for generic nodes T.
 // Successors returns a slice containing the targets of directed edges out from the given node.
 // sccs is a slice of slices containing the nodes in each SCC. The order within the SCC is arbitrary.
 // The order of SCCs is toposorted so that successors appear first; i.e. if the graph is a tree then
@@ -35,7 +36,7 @@ func StronglyConnectedComponents[T comparable](nodes []T, successors func(T) []T
 		lowlink[v] = nextIndex
 		stack = append(stack, v)
 		onStack[v] = true
-		nextIndex += 1
+		nextIndex++
 		for _, w := range successors(v) {
 			if _, ok := index[w]; !ok {
 				visit(w)

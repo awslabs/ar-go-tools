@@ -22,7 +22,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func NewGlobalNode(g *ssa.Global) *GlobalNode {
+func newGlobalNode(g *ssa.Global) *GlobalNode {
 	return &GlobalNode{
 		mutex:          &sync.Mutex{},
 		value:          g,
@@ -31,6 +31,8 @@ func NewGlobalNode(g *ssa.Global) *GlobalNode {
 	}
 }
 
+// GlobalNode represents a global in the dataflow analysis. Operating on globals requires locking when analyzing
+// functions in parallel
 type GlobalNode struct {
 	mutex          *sync.Mutex
 	value          *ssa.Global
@@ -38,13 +40,13 @@ type GlobalNode struct {
 	ReadLocations  map[GraphNode]bool
 }
 
-func (g *GlobalNode) AddWriteLoc(n GraphNode) {
+func (g *GlobalNode) addWriteLoc(n GraphNode) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 	g.WriteLocations[n] = true
 }
 
-func (g *GlobalNode) AddReadLoc(n GraphNode) {
+func (g *GlobalNode) addReadLoc(n GraphNode) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 	g.ReadLocations[n] = true
@@ -56,6 +58,7 @@ func (g *GlobalNode) String() string {
 	return fmt.Sprintf("\"defglobal: %s\"", g.value.String())
 }
 
+// Type returns the type of the global
 func (g *GlobalNode) Type() types.Type {
 	if g == nil || g.value == nil {
 		return nil
@@ -63,6 +66,7 @@ func (g *GlobalNode) Type() types.Type {
 	return g.value.Type()
 }
 
+// Value returns the ssa value of the node
 func (g *GlobalNode) Value() ssa.Value {
 	return g.value
 }

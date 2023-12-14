@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	. "github.com/awslabs/ar-go-tools/internal/funcutil"
+	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -40,9 +40,8 @@ func (c Condition) String() string {
 	}
 	if c.IsPositive {
 		return c.Value.String()
-	} else {
-		return "!(" + c.Value.String() + ")"
 	}
+	return "!(" + c.Value.String() + ")"
 }
 
 // IsPredicateTo returns true when the condition is a predicate that applies to v
@@ -136,7 +135,7 @@ func (c ConditionInfo) String() string {
 		return "false"
 	}
 	if len(c.Conditions) > 0 {
-		return "cond: " + strings.Join(Map(c.Conditions, func(c Condition) string { return c.String() }), " && ")
+		return "cond: " + strings.Join(fn.Map(c.Conditions, func(c Condition) string { return c.String() }), " && ")
 	}
 	return "satisfiable"
 }
@@ -156,38 +155,37 @@ func (c ConditionInfo) AsPredicateTo(v ssa.Value) ConditionInfo {
 	return c2
 }
 
-// PathInformation contains information about a Path in the program. The object reflects a Path in the program only if
+// pathInformation contains information about a Path in the program. The object reflects a Path in the program only if
 // ConditionInfo.Satisfiable is true.
-type PathInformation struct {
+type pathInformation struct {
 	// Blocks is the list of basic blocks in the Path
 	Blocks []*ssa.BasicBlock
 
-	// Cond is a summary of some conditions that must be satisfied along the Path. If the PathInformation refers to a
+	// Cond is a summary of some conditions that must be satisfied along the Path. If the pathInformation refers to a
 	// Path that does not exist, then Cond.Satisfiable will be false.
 	Cond ConditionInfo
 }
 
-func NewImpossiblePath() PathInformation {
-	return PathInformation{Cond: ConditionInfo{Satisfiable: false}}
+func newImpossiblePath() pathInformation {
+	return pathInformation{Cond: ConditionInfo{Satisfiable: false}}
 }
 
 // FindIntraProceduralPath returns a Path between the begin and end instructions.
 // Returns nil if there is no Path between being and end inside the function.
-func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) PathInformation {
+func FindIntraProceduralPath(begin ssa.Instruction, end ssa.Instruction) pathInformation {
 	// Return nil if the parent functions of begin and end are different
 	if begin.Parent() != end.Parent() {
-		return NewImpossiblePath()
+		return newImpossiblePath()
 	}
 
 	blockPath := FindPathBetweenBlocks(begin.Block(), end.Block())
 
 	if blockPath == nil {
-		return NewImpossiblePath()
-	} else {
-		return PathInformation{
-			Blocks: blockPath,
-			Cond:   SimplePathCondition(blockPath),
-		}
+		return newImpossiblePath()
+	}
+	return pathInformation{
+		Blocks: blockPath,
+		Cond:   SimplePathCondition(blockPath),
 	}
 }
 
@@ -249,18 +247,17 @@ func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.Ba
 	for {
 		if len(queue) == 0 {
 			return nil
-		} else {
-			cur := queue[len(queue)-1]
-			queue = queue[:len(queue)-1]
-			visited[cur.Block] = 1
-			if cur.Block == end {
-				return cur.PathToLeaf().ToBlocks()
-			}
-			for _, block := range cur.Block.Succs {
-				if _, ok := visited[block]; !ok {
-					child := cur.AddChild(block)
-					queue = append(queue, child)
-				}
+		}
+		cur := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		visited[cur.Block] = 1
+		if cur.Block == end {
+			return cur.PathToLeaf().ToBlocks()
+		}
+		for _, block := range cur.Block.Succs {
+			if _, ok := visited[block]; !ok {
+				child := cur.AddChild(block)
+				queue = append(queue, child)
 			}
 		}
 	}

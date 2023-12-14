@@ -142,7 +142,7 @@ func header(s string, present bool) string {
 func sortedListFromMapKeys[V any](m map[string]V) []string {
 	ret := make([]string, 0, len(m))
 
-	for k, _ := range m {
+	for k := range m {
 		ret = append(ret, k)
 	}
 

@@ -63,15 +63,14 @@ func pkgString(node *callgraph.Node) string {
 func fnName(node *callgraph.Node) string {
 	if node != nil && node.Func != nil {
 		return node.Func.Name()
-	} else {
-		return ""
 	}
+	return ""
 }
 
-var ExcludedNodes = []string{"String", "GoString", "init", "Error", "Code", "Message", "Err", "OrigErr"}
+var excludedNodes = []string{"String", "GoString", "init", "Error", "Code", "Message", "Err", "OrigErr"}
 
 func filterFn(edge *callgraph.Edge) bool {
-	for _, name := range ExcludedNodes {
+	for _, name := range excludedNodes {
 		if fnName(edge.Callee) == name || fnName(edge.Caller) == name {
 			return false
 		}
@@ -141,6 +140,7 @@ func WriteGraphviz(config *config.Config, cg *callgraph.Graph, w io.Writer) erro
 	return nil
 }
 
+// GraphvizToFile writes the callgraph in Graphviz format to the filename provided as last argument
 func GraphvizToFile(config *config.Config, cg *callgraph.Graph, filename string) error {
 	var err error
 	f, err := os.Create(filename)
@@ -236,8 +236,8 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 	}
 }
 
-func WriteHtmlCallgraph(program *ssa.Program, cg *callgraph.Graph, outPath string) error {
-	// fmt.Fprint(os.Stderr, "Starting writeCallgraph\n")
+// WriteHTMLCallgrph writes the callgraph in html format to the outpath provided
+func WriteHTMLCallgrph(program *ssa.Program, cg *callgraph.Graph, outPath string) error {
 	reachable := dataflow.CallGraphReachable(cg, false, false)
 	htmlOut, err := os.Create(outPath)
 	if err != nil {

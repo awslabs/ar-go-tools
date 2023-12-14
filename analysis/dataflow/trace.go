@@ -37,6 +37,8 @@ func (g NodeWithTrace) Key() KeyType {
 	return s
 }
 
+// CallStack represents call stacks as trees of call nodes
+// One can point at a specific node in the tree and extract the call stack above
 type CallStack = NodeTree[*CallNode]
 
 // NodeTree is a data structure to represent node trees built during the traversal of the interprocedural data flow
@@ -53,12 +55,13 @@ type NodeTree[T GraphNode] struct {
 
 	Children []*NodeTree[T]
 
-	// len memoizes the height of the tree
+	// height memorizes the height of the tree
 	height int
 
 	key string
 }
 
+// NewNodeTree returns a new node tree with the initial node label provided
 func NewNodeTree[T GraphNode](initNode T) *NodeTree[T] {
 	origin := &NodeTree[T]{
 		Label:  initNode,
@@ -112,9 +115,8 @@ func (n *NodeTree[T]) SummaryString() string {
 func (n *NodeTree[T]) Len() int {
 	if n == nil {
 		return 0
-	} else {
-		return n.height
 	}
+	return n.height
 }
 
 // ToSlice returns a slice of the nodes on the path from the root to the current node. The elements are ordered with

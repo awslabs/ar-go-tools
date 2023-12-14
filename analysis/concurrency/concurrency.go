@@ -60,21 +60,21 @@ func Analyze(logger *config.LogGroup, config *config.Config, program *ssa.Progra
 //
 // - a second pass to mark function with the all the `go ...` instructions they may be called from
 func RunAnalysis(state *dataflow.AnalyzerState) (AnalysisResult, error) {
-	var callId uint32
+	var callID uint32
 
-	// goCalls maps from a goroutine instruction to a callId
+	// goCalls maps from a goroutine instruction to a callID
 	goCalls := make(map[*ssa.Go]uint32)
 
 	// ids[0] represents the absence of a goroutine on top. For all others i > 0, ids[i] will point to a goroutine
 	ids := []*ssa.Go{nil}
-	callId = 1
+	callID = 1
 	for function := range state.ReachableFunctions(false, false) {
 		lang.IterateInstructions(function,
 			func(_ int, i ssa.Instruction) {
 				if goCall, isGo := i.(*ssa.Go); isGo {
-					goCalls[goCall] = callId
+					goCalls[goCall] = callID
 					ids = append(ids, goCall)
-					callId++
+					callID++
 					printGoCallInformation(state, goCall)
 				}
 			})

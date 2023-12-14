@@ -85,8 +85,8 @@ type SummaryGraph struct {
 	// errors can be used to accumulate errors that were encountered while building the summary graph
 	errors map[error]bool
 
-	// lastNodeId is used to track the number of nodes in the graph
-	lastNodeId *uint32
+	// lastNodeID is used to track the number of nodes in the graph
+	lastNodeID *uint32
 
 	// Below is some information related to how the summary was built. This allows us to restart building the summary
 	// if it has not been constructed.
@@ -115,8 +115,8 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
 		return nil
 	}
 
-	var lastNodeId uint32
-	lastNodeId = 0
+	var lastNodeID uint32
+	lastNodeID = 0
 
 	g := &SummaryGraph{
 		ID:                    id,
@@ -134,7 +134,7 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
 		SyntheticNodes:        make(map[ssa.Instruction]*SyntheticNode),
 		BoundLabelNodes:       make(map[ssa.Instruction]*BoundLabelNode),
 		errors:                map[error]bool{},
-		lastNodeId:            &lastNodeId,
+		lastNodeID:            &lastNodeID,
 		shouldTrack:           shouldTrack,
 		postBlockCallBack:     postBlockCallBack,
 	}
@@ -153,7 +153,7 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
 	n := f.Signature.Results().Len()
 	returnNodes := make([]*ReturnValNode, n)
 	for i := 0; i < n; i++ {
-		returnNodes[i] = &ReturnValNode{parent: g, id: g.newNodeId(), index: i, in: make(map[GraphNode]ObjectPath)}
+		returnNodes[i] = &ReturnValNode{parent: g, id: g.newNodeID(), index: i, in: make(map[GraphNode]ObjectPath)}
 	}
 
 	// Adding return nodes
@@ -180,8 +180,8 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
 	return g
 }
 
-func (g *SummaryGraph) newNodeId() uint32 {
-	return atomic.AddUint32(g.lastNodeId, 1)
+func (g *SummaryGraph) newNodeID() uint32 {
+	return atomic.AddUint32(g.lastNodeID, 1)
 }
 
 func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState, shouldTrack func(*config.Config,
@@ -222,6 +222,7 @@ func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState, shouldTrack func(*
 	}
 }
 
+// ReturnType returns the return type of the function summarized
 func (g *SummaryGraph) ReturnType() *types.Tuple {
 	if sig, ok := g.Parent.Type().Underlying().(*types.Signature); ok {
 		return sig.Results()
@@ -236,9 +237,9 @@ func (g *SummaryGraph) SyncGlobals() {
 	for _, nodeSet := range g.AccessGlobalNodes {
 		for _, node := range nodeSet {
 			if node.IsWrite {
-				node.Global.AddWriteLoc(node)
+				node.Global.addWriteLoc(node)
 			} else if len(node.out) > 0 {
-				node.Global.AddReadLoc(node)
+				node.Global.addReadLoc(node)
 			}
 		}
 	}
@@ -250,6 +251,7 @@ func (g *SummaryGraph) addError(e error) {
 	g.errors[e] = true
 }
 
+// ShowAndClearErrors writes the errors in the graph to the writer and clears them
 func (g *SummaryGraph) ShowAndClearErrors(w io.Writer) {
 	for err := range g.errors {
 		w.Write([]byte(err.Error() + "\n"))
@@ -267,7 +269,7 @@ func (g *SummaryGraph) addParam(param *ssa.Parameter, pos int) {
 	}
 
 	g.Params[param] = &ParamNode{
-		id:      g.newNodeId(),
+		id:      g.newNodeID(),
 		parent:  g,
 		ssaNode: param,
 		out:     make(map[GraphNode]ObjectPath),
@@ -284,7 +286,7 @@ func (g *SummaryGraph) addFreeVar(fv *ssa.FreeVar, pos int) {
 	}
 
 	g.FreeVars[fv] = &FreeVarNode{
-		id:      g.newNodeId(),
+		id:      g.newNodeID(),
 		parent:  g,
 		ssaNode: fv,
 		out:     make(map[GraphNode]ObjectPath),
@@ -332,7 +334,7 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 	// Add each callee as a node for this call instruction
 	for _, callee := range callees {
 		node := &CallNode{
-			id:       g.newNodeId(),
+			id:       g.newNodeID(),
 			parent:   g,
 			callee:   callee,
 			args:     make([]*CallNodeArg, len(args)),
@@ -343,7 +345,7 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 
 		for pos, arg := range args {
 			argNode := &CallNodeArg{
-				id:       g.newNodeId(),
+				id:       g.newNodeID(),
 				parent:   node,
 				ssaValue: arg,
 				argPos:   pos,
@@ -378,7 +380,7 @@ func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
 	}
 
 	node := &ClosureNode{
-		id:             g.newNodeId(),
+		id:             g.newNodeID(),
 		parent:         g,
 		ClosureSummary: nil,
 		instr:          x,
@@ -391,7 +393,7 @@ func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
 
 	for pos, binding := range x.Bindings {
 		bindingNode := &BoundVarNode{
-			id:       g.newNodeId(),
+			id:       g.newNodeID(),
 			parent:   node,
 			ssaValue: binding,
 			bPos:     pos,
@@ -410,7 +412,7 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 	}
 	if _, ok := g.AccessGlobalNodes[instr][global.value]; !ok {
 		node := &AccessGlobalNode{
-			id:      g.newNodeId(),
+			id:      g.newNodeID(),
 			IsWrite: false,
 			graph:   g,
 			instr:   instr,
@@ -429,7 +431,7 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 func (g *SummaryGraph) addSyntheticNode(instr ssa.Instruction, label string) {
 	if _, ok := g.SyntheticNodes[instr]; !ok {
 		node := &SyntheticNode{
-			id:     g.newNodeId(),
+			id:     g.newNodeID(),
 			parent: g,
 			instr:  instr,
 			label:  label,
@@ -443,7 +445,7 @@ func (g *SummaryGraph) addSyntheticNode(instr ssa.Instruction, label string) {
 func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.Label, target BindingInfo) {
 	if _, ok := g.BoundLabelNodes[instr]; !ok {
 		node := &BoundLabelNode{
-			id:         g.newNodeId(),
+			id:         g.newNodeID(),
 			parent:     g,
 			instr:      instr,
 			label:      label,
@@ -739,11 +741,9 @@ func (g *SummaryGraph) addGlobalEdge(mark *Mark, cond *ConditionInfo, loc ssa.In
 		// TODO: debug this
 		//g.addError(fmt.Errorf("attempting to set global edge but no global node"))
 		return
-	} else {
-		// Set node to written
-		node.IsWrite = true
 	}
-
+	// Set node to written
+	node.IsWrite = true
 	g.addEdge(mark, node, cond)
 }
 
@@ -890,6 +890,8 @@ func NewPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
 	return summaryBase
 }
 
+// PopulateGraphFromSummary populates the summary from a predefined summary provided as argument.
+// isInterface indicates whether this predefined summary comes from an interface contract.
 func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summary, isInterface bool) {
 	if g == nil {
 		return
@@ -922,14 +924,13 @@ func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summary, isInt
 func (a *ParamNode) String() string {
 	if a == nil {
 		return ""
-	} else {
-		fname := ""
-		if a.parent.Parent != nil {
-			fname = ftu.Sanitize(a.parent.Parent.Name())
-		}
-		return fmt.Sprintf("\"[#%d.%d] %s of %s [%d]\"",
-			a.parent.ID, a.ID(), ftu.SanitizeRepr(a.SsaNode()), fname, a.Index())
 	}
+	fname := ""
+	if a.parent.Parent != nil {
+		fname = ftu.Sanitize(a.parent.Parent.Name())
+	}
+	return fmt.Sprintf("\"[#%d.%d] %s of %s [%d]\"",
+		a.parent.ID, a.ID(), ftu.SanitizeRepr(a.SsaNode()), fname, a.Index())
 }
 
 func (a *CallNodeArg) String() string {
@@ -1282,12 +1283,14 @@ func (g *SummaryGraph) ForAllNodes(f func(n GraphNode)) {
 	}
 }
 
+// PrintNodes writes all the nodes in the graph to the writer
 func (g *SummaryGraph) PrintNodes(w io.Writer) {
 	g.ForAllNodes(func(n GraphNode) {
 		fmt.Fprintf(w, "%s\n", n.String())
 	})
 }
 
+// FullString returns a long string representation of the CallNode
 func (a *CallNode) FullString() string {
 	var elt []string
 

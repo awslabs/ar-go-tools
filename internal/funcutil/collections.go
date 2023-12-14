@@ -156,6 +156,7 @@ func SetToOrderedSlice[T constraints.Ordered](set map[T]bool) []T {
 	return s
 }
 
+// Reverse returns the reversed slice
 func Reverse[T any](a []T) {
 	for i, j := 0, len(a)-1; i < j; i, j = i+1, j-1 {
 		a[i], a[j] = a[j], a[i]

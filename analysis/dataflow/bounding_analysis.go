@@ -41,6 +41,7 @@ func (b BindingInfo) String() string {
 	return b.MakeClosure.String() + "@" + strconv.Itoa(b.BoundIndex)
 }
 
+// Type returns the types.Type of the binding
 func (b BindingInfo) Type() types.Type {
 	if b.MakeClosure == nil || b.BoundIndex < 0 || b.BoundIndex >= len(b.MakeClosure.Bindings) {
 		return nil
