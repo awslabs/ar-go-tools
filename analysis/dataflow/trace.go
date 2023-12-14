@@ -195,19 +195,6 @@ func (n *NodeTree[T]) Append(tree *NodeTree[T]) *NodeTree[T] {
 	return cur
 }
 
-// PathContains returns true if n has c on the path from the root
-func PathContains(n *NodeTree[*CallNode], c *CallNode) bool {
-	if n == nil || n.height == 0 {
-		return false
-	}
-	for cur := n; cur != nil; cur = cur.Parent {
-		if cur.Label == c {
-			return true
-		}
-	}
-	return false
-}
-
 // FuncNames returns a string that contains all the function names in the current trace (from root to leaf)
 func FuncNames(n *NodeTree[*CallNode]) string {
 	if n == nil || n.height == 0 {
@@ -217,20 +204,6 @@ func FuncNames(n *NodeTree[*CallNode]) string {
 	for cur := n; cur != nil; cur = cur.Parent {
 		if cur.height >= 1 {
 			s[cur.height-1] = "(" + cur.Label.LongID() + ")" + cur.Label.FuncName()
-		}
-	}
-	return strings.Join(s, "->")
-}
-
-// ClosureNames returns a string that contains all the closure names in the current trace
-func ClosureNames(n *NodeTree[*ClosureNode]) string {
-	if n == nil || n.height == 0 {
-		return ""
-	}
-	s := make([]string, n.height)
-	for cur := n; cur != nil; cur = cur.Parent {
-		if cur.height >= 1 {
-			s[cur.height-1] = cur.Label.Instr().Fn.Name()
 		}
 	}
 	return strings.Join(s, "->")

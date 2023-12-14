@@ -213,26 +213,6 @@ func SimplePathCondition(path []*ssa.BasicBlock) ConditionInfo {
 	return ConditionInfo{Satisfiable: true, Conditions: conditions}
 }
 
-// InstructionsBetween returns the instructions between begin and end in the block.
-// If begin and end are not two instructions that appear in the same block and being appears before end, then
-// the function returns nil.
-func InstructionsBetween(block *ssa.BasicBlock, begin ssa.Instruction, end ssa.Instruction) []ssa.Instruction {
-	flag := false
-	var path []ssa.Instruction
-	for _, instr := range block.Instrs {
-		if instr == begin {
-			flag = true
-		}
-		if flag {
-			path = append(path, instr) // type cast cannot fail
-		}
-		if flag && instr == end {
-			return path
-		}
-	}
-	return nil
-}
-
 // FindPathBetweenBlocks is a BFS of the blocks successor graph returns a list of block indexes representing a Path
 // from begin to end. Returns nil iff there is no such Path.
 func FindPathBetweenBlocks(begin *ssa.BasicBlock, end *ssa.BasicBlock) []*ssa.BasicBlock {

@@ -30,7 +30,7 @@ import (
 )
 
 func tmpPrintTest(r *decorator.Restorer, dir string, dstFile *dst.File) error {
-	tmpFile := path.Join(dir, dstFile.Name.Name+"_tmp.go")
+	tmpFile := path.Join(dir, dstFile.Name.Name+"_tmp_generated.go")
 	file, err := os.OpenFile(tmpFile, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return err
@@ -67,7 +67,10 @@ func TestInsertNilChecks(t *testing.T) {
 
 	for _, pack := range loadedPackages {
 		for _, dstFile := range pack.Syntax {
-			r.Print(dstFile)
+			err := tmpPrintTest(r, dir, dstFile)
+			if err != nil {
+				t.Fail()
+			}
 		}
 	}
 }
