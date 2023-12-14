@@ -44,7 +44,7 @@ func main() {
 
 	docState, err := messaging.ParseSendCommandMessage(context.Background(), msg, "tmp", "mds")
 	_ = err
-	sink(fmt.Errorf(""))
+	sink(fmt.Errorf(""))  // aliasing in DebugRef instructions might cause this to appear as a sink
 	logger.Info(docState) // @Sink(msg)
 	logData(logger, docState)
 }

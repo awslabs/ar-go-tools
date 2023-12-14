@@ -134,9 +134,6 @@ func (state *IntraAnalysisState) initialize() {
 // can panic.
 func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruction, function *ssa.Function) {
 	firstID := intraState.flowInfo.InstrID[firstInstr]
-	if isInstrIgnored(firstInstr) {
-		panic("Boo")
-	}
 	intraState.instrPrev[firstID] = map[IndexT]bool{firstID: true}
 	for _, block := range function.Blocks {
 		var prevInstr ssa.Instruction
@@ -150,10 +147,7 @@ func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruc
 				for _, pred := range block.Preds {
 					if pred != nil && len(pred.Instrs) > 0 {
 						last := pred.Instrs[len(pred.Instrs)-1]
-						lastID, ok := intraState.flowInfo.InstrID[last]
-						if !ok {
-							panic("oob")
-						}
+						lastID, _ := intraState.flowInfo.InstrID[last]
 						intraState.instrPrev[instrID][lastID] = true
 					}
 				}
@@ -240,10 +234,10 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 		}
 		aliasPos, inFunc := state.flowInfo.GetPos(alias.Instruction, alias.Value)
 		if !inFunc {
-			continue // this ia not a value inside the function
+			continue // this is not a value inside the function
 		}
 		abstractVal := state.flowInfo.MarkedValues[aliasPos]
-		if abstractVal == nil {
+		if abstractVal == nil { // abstractVal should be nil only for non-tracked values
 			continue
 		}
 		if ignorePath {
