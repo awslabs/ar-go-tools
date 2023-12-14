@@ -30,6 +30,8 @@ func source(id int) string {
 	return fmt.Sprintf("tainted-payload-%d", id)
 }
 
+func sink(_ any) {}
+
 func main() {
 	logger := log.DefaultImpl{}
 	msg := datastructs.InstanceMessage{
@@ -40,7 +42,9 @@ func main() {
 		Topic:       "bar",
 	}
 
-	docState, _ := messaging.ParseSendCommandMessage(context.Background(), msg, "tmp", "mds")
+	docState, err := messaging.ParseSendCommandMessage(context.Background(), msg, "tmp", "mds")
+	_ = err
+	sink(fmt.Errorf(""))
 	logger.Info(docState) // @Sink(msg)
 	logData(logger, docState)
 }

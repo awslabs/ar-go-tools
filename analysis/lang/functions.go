@@ -25,7 +25,7 @@ func IsExternal(function *ssa.Function) bool {
 }
 
 // IterateInstructions iterates through all the instructions in the function, in no specific order.
-// It ignores the order in which blocks should be executed.
+// It ignores the order in which blocks should be executed, but always starts with the first block.
 func IterateInstructions(function *ssa.Function, f func(index int, instruction ssa.Instruction)) {
 	// If this is an external function, return.
 	if function.Blocks == nil {

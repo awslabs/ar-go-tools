@@ -46,6 +46,9 @@ type FlowInformation struct {
 	// NumInstructions is the number of instructions in the function
 	NumInstructions IndexT
 
+	// FirstInstr is the first non-ignored instruction in the function
+	FirstInstr ssa.Instruction
+
 	// ValueID maps ssa.Value to value id
 	ValueID map[ssa.Value]IndexT
 
@@ -89,9 +92,17 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 
 	numInstructions := IndexT(0)
 	instrID := map[ssa.Instruction]IndexT{}
+	var firstInstr ssa.Instruction
 	lang.IterateInstructions(f, func(_ int, i ssa.Instruction) {
+		if isInstrIgnored(i) {
+			// we do not track debug ref in the analysis
+			return
+		}
 		_, ok := instrID[i]
 		if !ok {
+			if firstInstr == nil {
+				firstInstr = i
+			}
 			instrID[i] = numInstructions
 			numInstructions++
 		}
@@ -111,6 +122,7 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 		NumInstructions:       numInstructions,
 		ValueID:               valueID,
 		InstrID:               instrID,
+		FirstInstr:            firstInstr,
 		values:                values,
 		pathSensitivityFilter: pathSensitivityFilter,
 		MarkedValues:          make([]*AbstractValue, numValues*numInstructions),
@@ -221,4 +233,10 @@ func (fi *FlowInformation) SetLoc(mark *Mark, instr ssa.Instruction) {
 		fi.LocSet[mark] = map[ssa.Instruction]bool{}
 	}
 	fi.LocSet[mark][instr] = true
+}
+
+// isInstrIgnored returns true is the instruction should be ignored in the analysis
+func isInstrIgnored(i ssa.Instruction) bool {
+	_, isDebugRef := i.(*ssa.DebugRef)
+	return isDebugRef
 }
