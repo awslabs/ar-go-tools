@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/capabilities"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -66,6 +67,9 @@ type AnalyzerState struct {
 	// BoundingInfo is a map from pointer labels to the closures that bind them. The bounding analysis produces such
 	// a map
 	BoundingInfo BoundingMap
+
+	// Classifier is the capabilities classifier.
+	Classifier *capabilities.DefaultClassifier
 
 	reachableFunctions map[*ssa.Function]bool
 

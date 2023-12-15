@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/capabilities"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
@@ -73,6 +74,7 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		WriteErr(tt, "state is left unchanged")
 		return false
 	}
+	newState.Classifier = capabilities.NewDefaultClassifier(lp.Packages)
 	// Optional step: running the escape analysis
 	if c.Config.UseEscapeAnalysis {
 		err := escape.InitializeEscapeAnalysisState(newState)

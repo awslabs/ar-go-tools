@@ -1,0 +1,16 @@
+taint-tracking-problems:
+  - sources:
+      - capability: "CAPABILITY_NETWORK"
+      -
+        context: "capabilities/exec"
+        capability: "CAPABILITY_RUNTIME"
+    sinks:
+      - capability: "CAPABILITY_FILES"
+      - capability: "CAPABILITY_OPERATING_SYSTEM"
+      - capability: "CAPABILITY_MODIFY_SYSTEM_STATE"
+      -
+        context: "capabilities/extern"
+        capability: "CAPABILITY_EXEC"
+
+options:
+  log-level: 5

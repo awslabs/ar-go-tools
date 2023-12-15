@@ -109,7 +109,29 @@ taint-tracking-problems:
 ```
 This implies that any method whose receiver implements the `mypackage.interfaceName` interface will be seen as a sink.
 
-> The specifications for sources can be function calls, types, channel receives or field reads. The specifications for sinks, sanitizers and validators can only be functions (method and package) or interfaces (interface name and package).
+The taint analysis additionally supports specifying **Capabilities** as sources and sinks. Say that you want to prove that no data coming from the network can be written to a file:
+```yaml
+taint-tracking-problems:
+  - sources:
+      - capability: "CAPABILITY_NETWORK"
+  - sinks:
+      - capability: "CAPABILITY_FILES"
+        context: "mypackage"
+```
+This implies that any function that has the "network" capability will be seen as a source.
+Additionally, any interface method invocation (e.g. `(io.Writer).Write`) that has a concrete method implementation that has the "network" capability (e.g. `(*net.UnixConn).Write`) will be seen as a source as well.
+This is done to preserve soundness: when the analysis cannot determine the concrete type, it needs to consider all possible methods that could be called in case one of them has the specified capability.
+
+To increase the precision and usefulness of these capability classifications, we only classify the capabilities of functions that are "above" a certain "boundary".
+Right now, we only support classifying the capabilities of functions that are called in user-defined or library code, i.e. the "boundary" is defined as the Go standard library. We might make the "boundary" configurable in the future.
+
+The `context` field for capabilities differs from the usual use of `context`.
+It is used to filter any packages that should not be analyzed for capabilities.
+In this case, it indicates that the taint analysis should not mark any function calls inside of package `mypackage` as sinks.
+
+The capabilities analysis uses Google's [capslock analysis](https://github.com/google/capslock/tree/main) under the hood. See their [documentation](https://github.com/google/capslock/blob/main/docs/capabilities.md) for more details and a list of supported capabilities.
+
+> The specifications for sources can be function calls, types, channel receives, field reads, or capabilities. The specifications for sinks, sanitizers and validators can only be functions (method and package), interfaces (interface name and package), or capabilities.
 
 ### Controlling The Data Flow Search
 

@@ -25,6 +25,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/render"
@@ -33,6 +34,7 @@ import (
 	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/term"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -252,7 +254,9 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		}
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			IsEntrypoint:       taint.IsSomeSourceNode,
+			IsEntrypoint: func(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
+				return taint.IsSomeSourceNode(cfg, p, c.Classifier, c.ImplementationsByType, n)
+			},
 		})
 		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
@@ -283,7 +287,9 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 		// Run the analysis with the filter.
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			IsEntrypoint:       taint.IsSomeSourceNode,
+			IsEntrypoint: func(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
+				return taint.IsSomeSourceNode(cfg, p, c.Classifier, c.ImplementationsByType, n)
+			},
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 
@@ -342,7 +348,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	for _, ts := range c.Config.TaintTrackingProblems {
 		c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(&ts),
 			func(node ssa.Node) bool {
-				return taint.IsSourceNode(&ts, c.PointerAnalysis, node)
+				return taint.IsSourceNode(&ts, c.PointerAnalysis, c.Classifier, c.ImplementationsByType, node)
 			},
 			nil)
 	}

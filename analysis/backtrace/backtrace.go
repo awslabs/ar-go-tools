@@ -647,15 +647,23 @@ func IsInterProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec
 }
 
 func isSomeIntraProceduralEntryPoint(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(p, n, func(cid config.CodeIdentifier) bool {
-		return cfg.IsSomeBacktracePoint(cid)
-	})
+	params := analysisutil.EntrypointParams{
+		Pointer: p,
+		CodeIDOracle: func(cid config.CodeIdentifier) bool {
+			return cfg.IsSomeBacktracePoint(cid)
+		},
+	}
+	return analysisutil.IsEntrypointNode(params, n)
 }
 
 func isIntraProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, func(cid config.CodeIdentifier) bool {
-		return ss.IsBacktracePoint(cid)
-	})
+	params := analysisutil.EntrypointParams{
+		Pointer: state.PointerAnalysis,
+		CodeIDOracle: func(cid config.CodeIdentifier) bool {
+			return ss.IsBacktracePoint(cid)
+		},
+	}
+	return analysisutil.IsEntrypointNode(params, n)
 }
 
 func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {

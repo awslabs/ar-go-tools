@@ -27,6 +27,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -49,7 +50,9 @@ func TestFunctionSummaries(t *testing.T) {
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		IsEntrypoint:       taint.IsSomeSourceNode,
+		IsEntrypoint: func(cfg *config.Config, result *pointer.Result, node ssa.Node) bool {
+			return taint.IsSomeSourceNode(cfg, result, nil, state.ImplementationsByType, node)
+		},
 	})
 
 	if len(state.FlowGraph.Summaries) == 0 {

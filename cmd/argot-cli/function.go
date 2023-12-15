@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
@@ -343,7 +344,9 @@ func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 	}
 
 	_, err := dataflow.IntraProceduralAnalysis(c, state.CurrentFunction, true, 0,
-		taint.IsSomeSourceNode, post)
+		func(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
+			return taint.IsSomeSourceNode(cfg, p, nil, c.ImplementationsByType, n)
+		}, post)
 	if err != nil {
 		WriteErr(tt, "Error while analyzing.")
 		return false

@@ -449,6 +449,11 @@ func (c Config) isSomeTaintSpecCid(cid CodeIdentifier, f func(t TaintSpec, cid C
 
 // IsSomeSource returns true if the code identifier matches any source in the config
 func (c Config) IsSomeSource(cid CodeIdentifier) bool {
+	if cid.Capability != "" {
+		return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool {
+			return t.IsSource(cid2)
+		})
+	}
 	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSource(cid2) })
 }
 
@@ -479,13 +484,30 @@ func (c Config) IsSomeBacktracePoint(cid CodeIdentifier) bool {
 
 // IsSource returns true if the code identifier matches a source specification in the config file
 func (ts TaintSpec) IsSource(cid CodeIdentifier) bool {
-	b := ExistsCid(ts.Sources, cid.equalOnNonEmptyFields)
-	return b
+	if cid.Capability != "" {
+		return ExistsCid(ts.Sources, func(id CodeIdentifier) bool {
+			return cmpCapabilities(cid, id)
+		})
+	}
+
+	return ExistsCid(ts.Sources, cid.equalOnNonEmptyFields)
 }
 
 // IsSink returns true if the code identifier matches a sink specification in the config file
 func (ts TaintSpec) IsSink(cid CodeIdentifier) bool {
+	if cid.Capability != "" {
+		return ExistsCid(ts.Sinks, func(id CodeIdentifier) bool {
+			return cmpCapabilities(cid, id)
+		})
+	}
+
 	return ExistsCid(ts.Sinks, cid.equalOnNonEmptyFields)
+}
+
+func cmpCapabilities(cid, id CodeIdentifier) bool {
+	// if the contexts are unspecified, don't compare them
+	// id.Context refers to the caller's package and cid.Context refers to the caller package that the user wants to ignore
+	return cid.Capability == id.Capability && ((id.Context == "" && cid.Context == "") || cid.Context != id.Context)
 }
 
 // IsSanitizer returns true if the code identifier matches a sanitizer specification in the config file
@@ -517,4 +539,22 @@ func (c Config) Verbose() bool {
 // (this implements the logic for using maximum depth; if the configuration setting is < 0, then this returns false)
 func (c Config) ExceedsMaxDepth(d int) bool {
 	return !(c.MaxDepth <= 0) && d > c.MaxDepth
+}
+
+// HasCapabilities returns true if one or more of the taint tracking problems specifies a capability.
+func (c Config) HasCapabilities() bool {
+	for _, tp := range c.TaintTrackingProblems {
+		for _, source := range tp.Sources {
+			if source.Capability != "" {
+				return true
+			}
+		}
+		for _, sink := range tp.Sinks {
+			if sink.Capability != "" {
+				return true
+			}
+		}
+	}
+
+	return false
 }

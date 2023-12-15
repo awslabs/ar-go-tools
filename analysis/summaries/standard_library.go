@@ -110,6 +110,7 @@ var stdPackages = map[string]map[string]Summary{
 
 	"internal":                 summaryInternal,
 	"internal/abi":             summaryInternal,
+	"internal/bisect":          summaryInternal,
 	"internal/buildcfg":        summaryInternal,
 	"internal/bytealg":         summaryInternal,
 	"internal/cfg":             summaryInternal,
@@ -542,6 +543,7 @@ var summaryIo = map[string]Summary{
 var summaryLog = map[string]Summary{
 	"log.Debugf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	"log.Printf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
+	"log.Fatal":  {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	// func (l *Logger) Printf(v ...any)
 	"(*log.Logger).Print": {
 		[][]int{{0}},
@@ -601,8 +603,18 @@ var summaryMath = map[string]Summary{
 var summaryMime = map[string]Summary{}
 
 var summaryNet = map[string]Summary{
+	"net.init": NoDataFlowPropagation,
+	"net.Close": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
 	// func Dial(network, address string) (Conn, error) {
 	"net.Dial": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
+	// func Listen(network, address string) (Listener, error)
+	"net.Listen": {
 		[][]int{{}, {}},
 		[][]int{{0}, {0}},
 	},
@@ -610,6 +622,48 @@ var summaryNet = map[string]Summary{
 	"net.SplitHostPort": {
 		[][]int{{0}},
 		[][]int{{0}},
+	},
+	// func (l *UnixListener) Accept() (Conn, error)
+	"(*net.UnixListener).Accept": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	// func (l *UnixListener) Close() error
+	"(*net.UnixListener).Close": {
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	"(*net.netFD).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.conn).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.conn).Close": {
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	// func (c *UnixConn) Read(b []byte) (int, error)
+	"(*net.UnixConn).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	// func (l *TCPListener) Accept() (Conn, error)
+	"(*net.TCPListener).Accept": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	// func (l *TCPListener) Close() error
+	"(*net.TCPListener).Close": {
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	// func (c *TCPConn) Read(b []byte) (int, error)
+	"(*net.TCPConn).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
 	},
 	// func NewRequest(method string, url string, body io.Reader) (*Request, error)
 	"net/http.NewRequest": {

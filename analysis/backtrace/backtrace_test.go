@@ -735,7 +735,7 @@ func isSourceNode(cfg *config.Config, source ssa.Node) bool {
 		}
 	}
 
-	return taint.IsSomeSourceNode(cfg, nil, source)
+	return taint.IsSomeSourceNode(cfg, nil, nil, nil, source)
 }
 
 func sourceNode(source dataflow.GraphNode) ssa.Node {

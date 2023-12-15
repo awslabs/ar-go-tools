@@ -124,7 +124,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		traceNode(s, cur)
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
-		if isSink(v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
+		if isSink(s.Classifier, s.ImplementationsByType, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
 			if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
 				numAlarms++
 				reportTaintFlow(s, v.currentSource, cur)
@@ -706,6 +706,13 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 		Prev:          cur,
 		Depth:         cur.Depth + 1,
 	}
+
+	s.Logger.Tracef("Adding %v at %v\n", nextVisitorNode.Node, nextVisitorNode.Node.Position(s))
+	s.Logger.Tracef("\ttrace: %v\n", nextVisitorNode.Trace)
+	s.Logger.Tracef("\tclosure-trace: %v\n", nextVisitorNode.ClosureTrace)
+	s.Logger.Tracef("\tseen? %v\n", v.seen[nextVisitorNode.Key()])
+	s.Logger.Tracef("\tlasso? %v\n", nextVisitorNode.Trace.GetLassoHandle() != nil)
+	s.Logger.Tracef("\tdepth: %v\n", cur.Depth)
 
 	// First set of stop conditions: node has already been seen, or depth exceeds limit
 	if v.seen[nextVisitorNode.Key()] || s.Config.ExceedsMaxDepth(cur.Depth) {

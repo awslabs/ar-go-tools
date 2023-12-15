@@ -21,10 +21,12 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/capabilities"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -72,17 +74,24 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 	if err != nil {
 		return AnalysisResult{}, err
 	}
+	logger := state.Logger
 
 	// Add interface implementations as sinks
 	populateConfigInterfaces(state)
 
+	var classifier *capabilities.DefaultClassifier
+	if cfg.HasCapabilities() {
+		classifier = capabilities.NewDefaultClassifier(lp.Packages)
+		state.Classifier = classifier
+	}
+
 	// Optional step: running the escape analysis
 	if cfg.UseEscapeAnalysis {
-		state.Logger.Infof("Starting escape bottom-up analysis ...")
+		logger.Infof("Starting escape bottom-up analysis ...")
 		start := time.Now()
 
 		err := escape.InitializeEscapeAnalysisState(state)
-		state.Logger.Infof("Escape bottom-up pass done (%.2f s).", time.Since(start).Seconds())
+		logger.Infof("Escape bottom-up pass done (%.2f s).", time.Since(start).Seconds())
 
 		if err != nil {
 			return AnalysisResult{}, err
@@ -101,7 +110,9 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 		analysis.IntraAnalysisParams{
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
 			// For the intra-procedural pass, all source nodes of all problems are marked
-			IsEntrypoint: IsSomeSourceNode,
+			IsEntrypoint: func(c *config.Config, result *pointer.Result, node ssa.Node) bool {
+				return IsSomeSourceNode(c, result, classifier, state.ImplementationsByType, node)
+			},
 		})
 
 	// ** Third step **
@@ -110,12 +121,13 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 	// that is reachable from a source, for every taint tracking problem defined by the config.
 
 	taintFlows := NewFlows()
-
 	for _, taintSpec := range cfg.TaintTrackingProblems {
 		visitor := NewVisitor(&taintSpec)
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
-			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(&taintSpec, state.PointerAnalysis, node) },
+			IsEntrypoint: func(node ssa.Node) bool {
+				return IsSourceNode(&taintSpec, state.PointerAnalysis, classifier, state.ImplementationsByType, node)
+			},
 		})
 
 		taintFlows.Merge(visitor.taints)

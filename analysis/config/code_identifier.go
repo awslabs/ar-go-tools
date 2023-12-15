@@ -59,6 +59,10 @@ type CodeIdentifier struct {
 	// to tag a code identifier as a specific "channel receive"
 	Kind string `xml:"kind,attr"`
 
+	// Capability identifies the capability of the code identifier.
+	// See the capslock and capabilities packages for more details.
+	Capability string `xml:"capability,attr"`
+
 	// computedRegexs is not part of the yaml config, but contains the compiled regex version of the code identifier
 	// elements that are parsed as regexes.
 	computedRegexs *codeIdentifierRegex
@@ -129,6 +133,10 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 //
 //gocyclo:ignore
 func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
+	if cidRef.Capability != "" {
+		return cidRef.Capability == cid.Capability
+	}
+
 	if cidRef.computedRegexs != nil {
 		return ((cidRef.computedRegexs.contextRegex.MatchString(cid.Context)) || (cidRef.Context == "")) &&
 			((cidRef.computedRegexs.packageRegex.MatchString(cid.Package)) || (cidRef.Package == "")) &&

@@ -219,3 +219,7 @@ func TestBenchmark(t *testing.T) {
 func TestPlayground(t *testing.T) {
 	runTest(t, "playground", []string{}, false, noErrorExpected)
 }
+
+func TestCapabilities(t *testing.T) {
+	runTest(t, "capabilities", []string{}, false, noErrorExpected)
+}
