@@ -25,7 +25,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -185,7 +184,7 @@ func interfaceImplMethodIdent(impl *ssa.Function) config.CodeIdentifier {
 	// should always be true
 	if len(impl.Params) > 0 {
 		receiver := impl.Params[0]
-		recvStr := analysisutil.ReceiverStr(receiver.Type())
+		recvStr := lang.ReceiverStr(receiver.Type())
 		return config.NewCodeIdentifier(config.CodeIdentifier{
 			Package:  lang.PackageNameFromFunction(impl),
 			Receiver: recvStr,

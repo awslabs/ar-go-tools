@@ -21,7 +21,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -298,7 +297,7 @@ func (state *IntraAnalysisState) collectReferrerValueMarking(values *[]Instructi
 		// the Value is the struct, collect the marks on the field address. We are not field sensitive, so if the
 		// field address has marks, then the struct itself has marks.
 		state.collectValueMarkingRec(values, i, refInstr,
-			pathAppendField(path, analysisutil.FieldAddrFieldName(refInstr)), true, queries)
+			pathAppendField(path, lang.FieldAddrFieldName(refInstr)), true, queries)
 		return
 	case *ssa.IndexAddr:
 		// the marks on an index address transfer to the slice (but not the marks on the index)
@@ -484,9 +483,9 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	case *ssa.Index:
 		state.markValue(i, miVal.X, pathPrependIndexing(path), mark)
 	case *ssa.Field:
-		state.markValue(i, miVal.X, pathPrependField(path, analysisutil.FieldFieldName(miVal)), mark)
+		state.markValue(i, miVal.X, pathPrependField(path, lang.FieldFieldName(miVal)), mark)
 	case *ssa.FieldAddr:
-		state.markValue(i, miVal.X, pathPrependField(path, analysisutil.FieldAddrFieldName(miVal)), mark)
+		state.markValue(i, miVal.X, pathPrependField(path, lang.FieldAddrFieldName(miVal)), mark)
 	}
 
 	// Propagate to select referrers
@@ -515,7 +514,7 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 		}
 	case *ssa.FieldAddr:
 		// this referrer accesses the marked value's field
-		path2, ok := pathMatchField(path, analysisutil.FieldAddrFieldName(referrer))
+		path2, ok := pathMatchField(path, lang.FieldAddrFieldName(referrer))
 		if referrer.X == v && ok {
 			state.markValue(i, referrer, path2, mark)
 		}

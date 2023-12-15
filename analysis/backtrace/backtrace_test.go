@@ -27,9 +27,9 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -719,7 +719,7 @@ func isSourceNode(cfg *config.Config, source ssa.Node) bool {
 		if node.Call.IsInvoke() {
 			receiver := node.Call.Value.Name()
 			methodName := node.Call.Method.Name()
-			calleePkg := analysisutil.FindSafeCalleePkg(node.Common())
+			calleePkg := lang.FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
 				return config.Config.IsSomeSource(*cfg,
 					config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})

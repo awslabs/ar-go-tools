@@ -138,7 +138,7 @@ func isMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 			if callCommon.IsInvoke() {
 				receiverType := callCommon.Value.Type().String()
 				methodName := callCommon.Method.Name()
-				maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
+				maybePkg := lang.FindSafeCalleePkg(callCommon)
 				if maybePkg.IsSome() {
 					cid := config.CodeIdentifier{
 						Package: maybePkg.Value(), Method: methodName, Receiver: receiverType,
@@ -157,9 +157,9 @@ func isMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 				funcName := callCommon.Value.Name()
 				receiverType := ""
 				if callCommon.Signature() != nil && callCommon.Signature().Recv() != nil {
-					receiverType = analysisutil.ReceiverStr(callCommon.Signature().Recv().Type())
+					receiverType = lang.ReceiverStr(callCommon.Signature().Recv().Type())
 				}
-				maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
+				maybePkg := lang.FindSafeCalleePkg(callCommon)
 				if maybePkg.IsSome() {
 					cid := config.CodeIdentifier{
 						Package: maybePkg.Value(), Method: funcName, Receiver: receiverType,

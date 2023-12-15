@@ -18,7 +18,7 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -151,7 +151,7 @@ func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
-		transfer(state, x, x.Val, addr.X, analysisutil.FieldAddrFieldName(addr), -1)
+		transfer(state, x, x.Val, addr.X, lang.FieldAddrFieldName(addr), -1)
 	}
 }
 
