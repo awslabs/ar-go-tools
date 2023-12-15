@@ -33,9 +33,15 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// LoadedTestProgram represents a loaded test program.
+type LoadedTestProgram struct {
+	analysis.LoadedProgram
+	Config *config.Config
+}
+
 // LoadTest loads the program in the directory dir, looking for a main.go and a config.yaml. If additional files
 // are specified as extraFiles, the program will be loaded using those files too.
-func LoadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *config.Config) {
+func LoadTest(t *testing.T, dir string, extraFiles []string) LoadedTestProgram {
 	var err error
 	// Load config; in command, should be set using some flag
 	configFile := filepath.Join(dir, "config.yaml")
@@ -45,7 +51,7 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *con
 		files = append(files, filepath.Join(dir, extraFile))
 	}
 
-	pkgs, err := analysis.LoadProgram(nil, "", ssa.InstantiateGenerics|ssa.GlobalDebug, files)
+	prog, err := analysis.LoadProgram(nil, "", ssa.InstantiateGenerics|ssa.GlobalDebug, files)
 	if err != nil {
 		t.Fatalf("error loading packages.")
 	}
@@ -53,7 +59,13 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *con
 	if err != nil {
 		t.Fatalf("error loading global config.")
 	}
-	return pkgs, cfg
+	return LoadedTestProgram{
+		Config: cfg,
+		LoadedProgram: analysis.LoadedProgram{
+			Program:  prog.Program,
+			Packages: prog.Packages,
+		},
+	}
 }
 
 // TargetToSources is a mapping from a target annotation (e.g. ex in @Sink(ex, ex2))

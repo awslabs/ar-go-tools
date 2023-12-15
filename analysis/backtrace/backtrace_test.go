@@ -24,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -38,10 +39,11 @@ func TestAnalyze(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
-	program, cfg := analysistest.LoadTest(t, dir, []string{})
+	lp := analysistest.LoadTest(t, dir, []string{})
+	cfg := lp.Config
 	defer os.Remove(cfg.ReportsDir)
 
-	testAnalyze(t, cfg, program)
+	testAnalyze(t, cfg, lp.LoadedProgram)
 
 	// TODO fix the false positives
 	// if len(tests) != len(res.Traces) {
@@ -62,19 +64,19 @@ func TestAnalyze_OnDemand(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
-	program, cfg := analysistest.LoadTest(t, dir, []string{})
+	lp := analysistest.LoadTest(t, dir, []string{})
+	cfg := lp.Config
 	defer os.Remove(cfg.ReportsDir)
 
 	cfg.SummarizeOnDemand = true
-	testAnalyze(t, cfg, program)
+	testAnalyze(t, cfg, lp.LoadedProgram)
 }
 
 var ignoreMatch = match{-1, nil, -1}
 
-func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
+func testAnalyze(t *testing.T, cfg *config.Config, lp analysis.LoadedProgram) {
 	cfg.LogLevel = int(config.InfoLevel)
-	lg := config.NewLogGroup(cfg)
-	res, err := backtrace.Analyze(lg, cfg, program)
+	res, err := backtrace.Analyze(cfg, lp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,27 +360,28 @@ func TestAnalyze_Closures(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
-	program, cfg := analysistest.LoadTest(t, dir, []string{"helpers.go"})
+	lp := analysistest.LoadTest(t, dir, []string{"helpers.go"})
+	cfg := lp.Config
 	defer os.Remove(cfg.ReportsDir)
 
-	testAnalyzeClosures(t, cfg, program)
+	testAnalyzeClosures(t, cfg, lp.LoadedProgram)
 }
 
 func TestAnalyze_Closures_OnDemand(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
-	program, cfg := analysistest.LoadTest(t, dir, []string{"helpers.go"})
+	lp := analysistest.LoadTest(t, dir, []string{"helpers.go"})
+	cfg := lp.Config
 	defer os.Remove(cfg.ReportsDir)
 
 	cfg.SummarizeOnDemand = true
-	testAnalyzeClosures(t, cfg, program)
+	testAnalyzeClosures(t, cfg, lp.LoadedProgram)
 }
 
-func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program) {
+func testAnalyzeClosures(t *testing.T, cfg *config.Config, lp analysis.LoadedProgram) {
 	cfg.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
-	lg := config.NewLogGroup(cfg)
-	res, err := backtrace.Analyze(lg, cfg, program)
+	res, err := backtrace.Analyze(cfg, lp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +581,9 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 		t.Log("Test file has annotation metadata")
 	}
 
-	program, cfg := analysistest.LoadTest(t, dir, test.files)
+	lp := analysistest.LoadTest(t, dir, test.files)
+	program := lp.Program
+	cfg := lp.Config
 	defer os.Remove(cfg.ReportsDir)
 
 	if len(cfg.TaintTrackingProblems) < 1 {
@@ -587,8 +592,7 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 	cfg.SlicingProblems = []config.SlicingSpec{{BacktracePoints: cfg.TaintTrackingProblems[0].Sinks}}
 	cfg.SummarizeOnDemand = isOnDemand
 	cfg.LogLevel = int(config.DebugLevel)
-	lg := config.NewLogGroup(cfg)
-	res, err := backtrace.Analyze(lg, cfg, program)
+	res, err := backtrace.Analyze(cfg, lp.LoadedProgram)
 	if err != nil {
 		t.Fatal(err)
 	}

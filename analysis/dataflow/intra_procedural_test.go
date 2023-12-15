@@ -35,7 +35,9 @@ func TestFunctionSummaries(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
 	// Loading the program for testdata/src/dataflow/summaries/main.go
-	program, cfg := analysistest.LoadTest(t, dir, []string{})
+	lp := analysistest.LoadTest(t, dir, []string{})
+	program := lp.Program
+	cfg := lp.Config
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Fatalf("failed to build analyzer state: %v", err)

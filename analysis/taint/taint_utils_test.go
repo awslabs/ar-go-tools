@@ -213,10 +213,12 @@ func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand boo
 
 	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder, so we can
 	// load an entire module with subpackages
-	program, cfg := analysistest.LoadTest(t, ".", files)
+	lp := analysistest.LoadTest(t, ".", files)
+	program := lp.Program
+	cfg := lp.Config
 	cfg.LogLevel = int(config.InfoLevel)
 	cfg.SummarizeOnDemand = summarizeOnDemand
-	result, err := Analyze(cfg, program)
+	result, err := Analyze(cfg, lp.LoadedProgram)
 	if err != nil {
 		for errs := result.State.CheckError(); len(errs) > 0; errs = result.State.CheckError() {
 			if !errorExpected(errs[0]) {
@@ -228,7 +230,9 @@ func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand boo
 	expectSinkToSources, expectEscapeToSources := analysistest.GetExpectedTargetToSources(dir, ".")
 	checkExpectedPositions(t, program, result.TaintFlows, expectSinkToSources, expectEscapeToSources)
 	// Remove reports - comment if you want to inspect
-	os.RemoveAll(cfg.ReportsDir)
+	if err := os.RemoveAll(cfg.ReportsDir); err != nil {
+		t.Fatalf("failed to remove dir %v: %v", cfg.ReportsDir, err)
+	}
 }
 
 func TestAll(t *testing.T) {

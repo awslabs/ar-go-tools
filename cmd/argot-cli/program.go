@@ -53,11 +53,12 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 
 	writeFmt(tt, "Reading sources\n")
 	// Load the program
-	program, err := analysis.LoadProgram(nil, "", buildmode, state.Args)
+	lp, err := analysis.LoadProgram(nil, "", buildmode, state.Args)
 	if err != nil {
 		WriteErr(tt, "could not load program:\n%s\n", err)
 		return false
 	}
+	program := lp.Program
 	// Keep ast in state separately for now
 	p := &packages.Config{
 		Mode:  analysis.PkgLoadMode,

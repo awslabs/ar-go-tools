@@ -24,7 +24,7 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// PkgLoadMode is the default loading mode in the analyses. We load all possible information
+// PkgLoadMode is the default loading mode in the analyses. We load all possible information.
 const PkgLoadMode = packages.NeedName |
 	packages.NeedFiles |
 	packages.NeedCompiledGoFiles |
@@ -37,12 +37,18 @@ const PkgLoadMode = packages.NeedName |
 	packages.NeedTypesSizes |
 	packages.NeedModule
 
+// LoadedProgram represents a loaded program.
+type LoadedProgram struct {
+	Program  *ssa.Program
+	Packages []*packages.Package
+}
+
 // LoadProgram loads a program on platform "platform" using the buildmode provided and the args.
 // To understand how to specify the args, look at the documentation of packages.Load.
 func LoadProgram(config *packages.Config,
 	platform string,
 	buildmode ssa.BuilderMode,
-	args []string) (*ssa.Program, error) {
+	args []string) (LoadedProgram, error) {
 
 	if config == nil {
 		config = &packages.Config{
@@ -58,15 +64,15 @@ func LoadProgram(config *packages.Config,
 	// load, parse and type check the given packages
 	initialPackages, err := packages.Load(config, args...)
 	if err != nil {
-		return nil, err
+		return LoadedProgram{}, err
 	}
 
 	if len(initialPackages) == 0 {
-		return nil, fmt.Errorf("no packages")
+		return LoadedProgram{}, fmt.Errorf("no packages")
 	}
 
 	if packages.PrintErrors(initialPackages) > 0 {
-		return nil, fmt.Errorf("errors found, exiting")
+		return LoadedProgram{}, fmt.Errorf("errors found, exiting")
 	}
 
 	// Construct SSA for all the packages we have loaded
@@ -74,14 +80,14 @@ func LoadProgram(config *packages.Config,
 
 	for i, p := range ssaPackages {
 		if p == nil {
-			return nil, fmt.Errorf("cannot build SSA for package %s", initialPackages[i])
+			return LoadedProgram{}, fmt.Errorf("cannot build SSA for package %s", initialPackages[i])
 		}
 	}
 
 	// Build SSA for entire program
 	program.Build()
 
-	return program, nil
+	return LoadedProgram{Program: program, Packages: initialPackages}, nil
 }
 
 // AllPackages returns the slice of all packages the set of functions provided as argument belong to.

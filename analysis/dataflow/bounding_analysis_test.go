@@ -23,7 +23,9 @@ import (
 )
 
 func TestRunBoundingAnalysis(t *testing.T) {
-	program, cfg := analysistest.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
+	lp := analysistest.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
+	program := lp.Program
+	cfg := lp.Config
 	c, err := NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Errorf("error building state: %q", err)

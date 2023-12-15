@@ -32,7 +32,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/analysis/testutils"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
@@ -102,7 +101,8 @@ func TestSimpleEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, _ := analysistest.LoadTest(t, ".", []string{})
+	lp := analysistest.LoadTest(t, ".", []string{})
+	program := lp.Program
 	result, _ := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
 
 	getGraph := func(f string) *EscapeGraph {
@@ -267,7 +267,9 @@ func TestInterproceduralEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, cfg := analysistest.LoadTest(t, ".", []string{})
+	lp := analysistest.LoadTest(t, ".", []string{})
+	program := lp.Program
+	cfg := lp.Config
 	cfg.LogLevel = int(config.TraceLevel)
 	// Compute the summaries for everything in the main package
 	state, _ := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
@@ -338,7 +340,9 @@ func TestBuiltinsEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, cfg := analysistest.LoadTest(t, ".", []string{})
+	lp := analysistest.LoadTest(t, ".", []string{})
+	program := lp.Program
+	cfg := lp.Config
 	cfg.LogLevel = int(config.TraceLevel)
 	// Compute the summaries for everything in the main package
 	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
@@ -435,7 +439,9 @@ func TestStdlibEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, cfg := analysistest.LoadTest(t, ".", []string{})
+	lp := analysistest.LoadTest(t, ".", []string{})
+	program := lp.Program
+	cfg := lp.Config
 	cfg.LogLevel = int(config.DebugLevel)
 	// Compute the summaries for everything in the main package
 	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
@@ -716,7 +722,9 @@ func TestLocalityComputation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
-	program, cfg := testutils.LoadTest(t, ".", []string{})
+	lp := analysistest.LoadTest(t, ".", []string{})
+	program := lp.Program
+	cfg := lp.Config
 	cfg.LogLevel = int(config.DebugLevel)
 	// Compute the summaries for everything in the main package
 	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)

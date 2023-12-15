@@ -78,14 +78,14 @@ func main() {
 
 	logger.Printf(formatutil.Faint("Reading backtrace entrypoints") + "\n")
 
-	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	lp, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return
 	}
 
 	start := time.Now()
-	analysisInfo, err := backtrace.Analyze(config.NewLogGroup(cfg), cfg, program)
+	analysisInfo, err := backtrace.Analyze(cfg, lp)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)

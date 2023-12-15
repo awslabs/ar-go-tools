@@ -91,11 +91,12 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	lp, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not load program: %v", err)
 		return
 	}
+	program := lp.Program
 
 	var cg *callgraph.Graph
 

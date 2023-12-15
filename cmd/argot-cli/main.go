@@ -139,11 +139,12 @@ func main() {
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 	state.Args = flag.Args()
 	// Load the program
-	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	lp, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return
 	}
+	program := lp.Program
 	// Keep ast in state separately for now
 	p := &packages.Config{
 		Mode:  analysis.PkgLoadMode,

@@ -82,13 +82,15 @@ func (n TraceNode) String() string {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
+func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
 		numRoutines = 1
 	}
 
+	prog := lp.Program
+	logger := config.NewLogGroup(cfg)
 	state, err := df.NewInitializedAnalyzerState(logger, cfg, prog)
 	if err != nil {
 		return AnalysisResult{}, err

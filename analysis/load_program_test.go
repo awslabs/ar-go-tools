@@ -33,11 +33,12 @@ func programLoadTest(t *testing.T, files []string) {
 		return
 	}
 
-	pkgs, err := LoadProgram(nil, "", ssa.BuilderMode(0), files)
+	lp, err := LoadProgram(nil, "", ssa.BuilderMode(0), files)
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}
-	for _, pkg := range pkgs.AllPackages() {
+	pkgs := lp.Packages
+	for _, pkg := range pkgs {
 		t.Logf("%s loaded\n", pkg.String())
 	}
 }
