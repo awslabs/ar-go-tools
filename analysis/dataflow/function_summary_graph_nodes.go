@@ -156,7 +156,7 @@ func NodeSummary(g GraphNode) string {
 	case *CallNodeArg:
 		return fmt.Sprintf("Argument %v in call to %q", x.Index(), x.ParentNode().Callee().Name())
 	case *ReturnValNode:
-		return fmt.Sprintf("Return value of %q", x.ParentName())
+		return fmt.Sprintf("Return value %d of %q", x.Index(), x.ParentName())
 	case *ClosureNode:
 		return fmt.Sprintf("Closure")
 	case *BoundLabelNode:
@@ -183,7 +183,7 @@ func shortNodeSummary(g GraphNode) string {
 	case *CallNodeArg:
 		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().Callee().Name())
 	case *ReturnValNode:
-		return fmt.Sprintf("ret:%s", x.ParentName())
+		return fmt.Sprintf("ret#%d:%s", x.Index(), x.ParentName())
 	case *ClosureNode:
 		return "closure"
 	case *BoundLabelNode:

@@ -3,8 +3,10 @@ taint-tracking-problems:
     - method: "source"
       package: "((main)|(command-line-arguments)|(agent-example))"
    sinks:
-    - package: "agent-example/log"
+    - package: "log"
       interface: "Logger"
+    - method: "sink"
+      package: "((main)|(command-line-arguments)|(agent-example))"
 
 options:
     log-level: 4

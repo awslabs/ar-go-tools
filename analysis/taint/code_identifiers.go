@@ -133,50 +133,53 @@ func isMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 	// Look for callees to functions that are considered sinks
 	case *ssa.Call, *ssa.Go, *ssa.Defer:
 		// This condition should always be true
-		if callNode, ok := node.(ssa.CallInstruction); ok {
-			callCommon := callNode.Common()
-			if callCommon.IsInvoke() {
-				receiverType := callCommon.Value.Type().String()
-				methodName := callCommon.Method.Name()
-				maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
-				if maybePkg.IsSome() {
-					cid := config.CodeIdentifier{
-						Package: maybePkg.Value(), Method: methodName, Receiver: receiverType,
-					}
-					return codeIDOracle(cid)
-				} else if callee != nil {
-					pkgName := lang.PackageNameFromFunction(callee)
-					cid := config.CodeIdentifier{
-						Package: pkgName, Method: methodName, Receiver: receiverType,
-					}
-					return codeIDOracle(cid)
-				} else {
-					return false
+		callNode, ok := node.(ssa.CallInstruction)
+		if !ok {
+			return false
+		}
+		callCommon := callNode.Common()
+		// Handling interfaces
+		if callCommon.IsInvoke() {
+			receiverType := callCommon.Value.Type().String()
+			methodName := callCommon.Method.Name()
+			maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
+			if maybePkg.IsSome() {
+				cid := config.CodeIdentifier{
+					Package: maybePkg.Value(), Method: methodName, Receiver: receiverType,
 				}
-			} else {
-				funcName := callCommon.Value.Name()
-				receiverType := ""
-				if callCommon.Signature() != nil && callCommon.Signature().Recv() != nil {
-					receiverType = analysisutil.ReceiverStr(callCommon.Signature().Recv().Type())
-				}
-				maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
-				if maybePkg.IsSome() {
-					cid := config.CodeIdentifier{
-						Package: maybePkg.Value(), Method: funcName, Receiver: receiverType,
-					}
-					return codeIDOracle(cid)
-				} else if callee != nil {
-					pkgName := lang.PackageNameFromFunction(callee)
-					cid := config.CodeIdentifier{
-						Package: pkgName, Method: funcName, Receiver: receiverType,
-					}
-					return codeIDOracle(cid)
-				} else {
-					return false
-				}
+				return codeIDOracle(cid)
 			}
+			if callee != nil {
+				pkgName := lang.PackageNameFromFunction(callee)
+				cid := config.CodeIdentifier{
+					Package: pkgName, Method: methodName, Receiver: receiverType,
+				}
+				return codeIDOracle(cid)
+			}
+			return false
+		}
+
+		funcName := callCommon.Value.Name()
+		receiverType := ""
+		if callCommon.Signature() != nil && callCommon.Signature().Recv() != nil {
+			receiverType = analysisutil.ReceiverStr(callCommon.Signature().Recv().Type())
+		}
+		maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
+		if maybePkg.IsSome() {
+			cid := config.CodeIdentifier{
+				Package: maybePkg.Value(), Method: funcName, Receiver: receiverType,
+			}
+			return codeIDOracle(cid)
+		}
+		if callee != nil {
+			pkgName := lang.PackageNameFromFunction(callee)
+			cid := config.CodeIdentifier{
+				Package: pkgName, Method: funcName, Receiver: receiverType,
+			}
+			return codeIDOracle(cid)
 		}
 		return false
+
 	case *ssa.Function:
 		return codeIDOracle(config.CodeIdentifier{
 			Package: lang.PackageNameFromFunction(node),

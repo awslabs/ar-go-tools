@@ -73,22 +73,10 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 		return AnalysisResult{}, err
 	}
 
-	// Add interface implementations as sinks
-	populateConfigInterfaces(state)
-
-	// Optional step: running the escape analysis
-	if cfg.UseEscapeAnalysis {
-		state.Logger.Infof("Starting escape bottom-up analysis ...")
-		start := time.Now()
-
-		err := escape.InitializeEscapeAnalysisState(state)
-		state.Logger.Infof("Escape bottom-up pass done (%.2f s).", time.Since(start).Seconds())
-
-		if err != nil {
-			return AnalysisResult{}, err
-		}
+	preambleErr := AnalysisPreamble(state)
+	if preambleErr != nil {
+		return AnalysisResult{}, preambleErr
 	}
-
 	// ** Second step **
 	// The intra-procedural analysis is run on every function `f` such that `ignoreInFirstPass(f)` is
 	// false. A dummy summary is inserted for every function that is not analyzed. If that dummy summary is needed
@@ -129,6 +117,27 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 		err = fmt.Errorf("analysis returned errors, check AnalysisResult.State for more details")
 	}
 	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
+}
+
+// AnalysisPreamble groups different minor analyses that need to run before the intra-procedural step of the taint
+// analysis.
+func AnalysisPreamble(state *dataflow.AnalyzerState) error {
+	// Add interface implementations as sinks
+	populateConfigInterfaces(state)
+
+	// Optional step: running the escape analysis
+	if state.Config.UseEscapeAnalysis {
+		state.Logger.Infof("Starting escape bottom-up analysis ...")
+		start := time.Now()
+
+		err := escape.InitializeEscapeAnalysisState(state)
+		state.Logger.Infof("Escape bottom-up pass done (%.2f s).", time.Since(start).Seconds())
+
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // populateConfigInterfaces adds all the interface implementations for sinks to s.Config.TaintTrackingProblems.
