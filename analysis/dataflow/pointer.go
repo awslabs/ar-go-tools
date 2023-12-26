@@ -76,6 +76,10 @@ func addInstructionQuery(cfg *pointer.Config, instruction ssa.Instruction) {
 	if instruction == nil {
 		return
 	}
+	// DebugRefs are ignored because they may cause spurious aliasing
+	if _, isDebugRef := instruction.(*ssa.DebugRef); isDebugRef {
+		return
+	}
 
 	for _, operand := range instruction.Operands([]*ssa.Value{}) {
 		if *operand != nil && (*operand).Type() != nil {

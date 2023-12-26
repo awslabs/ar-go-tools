@@ -90,7 +90,7 @@ func (state *IntraAnalysisState) initialize() {
 		return
 	}
 
-	firstInstr := function.Blocks[0].Instrs[0]
+	firstInstr := state.flowInfo.FirstInstr
 	populateInstrPrevMap(state, firstInstr, function)
 
 	// Initialize alias maps
@@ -134,24 +134,28 @@ func (state *IntraAnalysisState) initialize() {
 func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruction, function *ssa.Function) {
 	firstID := intraState.flowInfo.InstrID[firstInstr]
 	intraState.instrPrev[firstID] = map[IndexT]bool{firstID: true}
-	var prevInstr ssa.Instruction
 	for _, block := range function.Blocks {
-		for j, instr := range block.Instrs {
-			instrID := intraState.flowInfo.InstrID[instr]
+		var prevInstr ssa.Instruction
+		for _, instr := range block.Instrs {
+			instrID, ok := intraState.flowInfo.InstrID[instr]
+			if !ok {
+				continue
+			}
 			intraState.instrPrev[instrID] = map[IndexT]bool{}
-			if j == 0 {
+			if prevInstr == nil {
 				for _, pred := range block.Preds {
 					if pred != nil && len(pred.Instrs) > 0 {
 						last := pred.Instrs[len(pred.Instrs)-1]
-						lastID := intraState.flowInfo.InstrID[last]
+						lastID, _ := intraState.flowInfo.InstrID[last]
 						intraState.instrPrev[instrID][lastID] = true
 					}
 				}
-			} else if prevInstr != nil {
+				prevInstr = instr
+			} else {
 				prevId := intraState.flowInfo.InstrID[prevInstr]
 				intraState.instrPrev[instrID][prevId] = true
+				prevInstr = instr
 			}
-			prevInstr = instr
 		}
 	}
 
@@ -162,7 +166,7 @@ func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruc
 			for _, block := range function.Blocks {
 				for _, i := range block.Instrs {
 					iId := intraState.flowInfo.InstrID[i]
-					if intraState.checkPathBetweenInstructions(i, instr).Satisfiable {
+					if !isInstrIgnored(i) && intraState.checkPathBetweenInstructions(i, instr).Satisfiable {
 						instrID := intraState.flowInfo.InstrID[instr]
 						intraState.instrPrev[iId][instrID] = true
 					}
@@ -176,6 +180,9 @@ func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruc
 // values of the previous instruction to the current instruction;
 // Pre ensures that the analysis is a monotone analysis.
 func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
+	if isInstrIgnored(ins) {
+		return
+	}
 	ix := state.flowInfo.GetInstrPos(ins)
 	n := state.flowInfo.NumValues
 	for pIndex := range state.instrPrev[state.flowInfo.InstrID[ins]] {
@@ -226,7 +233,11 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 		}
 		aliasPos, inFunc := state.flowInfo.GetPos(alias.Instruction, alias.Value)
 		if !inFunc {
-			continue // this ia not a value inside the function
+			continue // this is not a value inside the function
+		}
+		abstractVal := state.flowInfo.MarkedValues[aliasPos]
+		if abstractVal == nil { // abstractVal should be nil only for non-tracked values
+			continue
 		}
 		if ignorePath {
 			for _, mark := range state.flowInfo.MarkedValues[aliasPos].AllMarks() {

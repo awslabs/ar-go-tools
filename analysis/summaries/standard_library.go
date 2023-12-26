@@ -439,7 +439,7 @@ var summaryFmt = map[string]Summary{
 		[][]int{{0, 1}, {0, 1}},
 	},
 	// func Errorf(format string, a ...interface{}) error
-	"fmt.Errorf": NoDataFlowPropagation,
+	"fmt.Errorf": FormatterPropagation,
 	"fmt.Fprint": {
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {0}},

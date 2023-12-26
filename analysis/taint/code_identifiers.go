@@ -146,46 +146,50 @@ func isMatchingCodeIDWithCallee(classifier *capabilities.DefaultClassifier, impl
 	// Look for callees to functions that are considered sinks
 	case *ssa.Call, *ssa.Go, *ssa.Defer:
 		// This condition should always be true
-		if callNode, ok := node.(ssa.CallInstruction); ok {
-			callCommon := callNode.Common()
-			if callCommon.IsInvoke() {
-				return isInterfaceEntrypoint(classifier, implsByType, callCommon, callee, codeIDOracle)
-			}
-
-			funcName := callCommon.Value.Name()
-			receiverType := ""
-			if callCommon.Signature() != nil && callCommon.Signature().Recv() != nil {
-				receiverType = lang.ReceiverStr(callCommon.Signature().Recv().Type())
-			}
-			maybePkg := lang.FindSafeCalleePkg(callCommon)
-			if maybePkg.IsSome() {
-				cpb := ""
-				context := ""
-				if classifier != nil && classifier.CanClassify(n.Parent()) {
-					cpb = classifier.ClassifyFunc(callCommon.StaticCallee(), maybePkg.Value()).String()
-					callerPkg := lang.PackageNameFromFunction(n.Parent())
-					context = callerPkg
-				}
-				cid := config.CodeIdentifier{
-					Package: maybePkg.Value(), Method: funcName, Receiver: receiverType, Capability: cpb, Context: context,
-				}
-				return codeIDOracle(cid)
-			} else if callee != nil {
-				pkgName := lang.PackageNameFromFunction(callee)
-				cpb := ""
-				context := ""
-				if classifier != nil && classifier.CanClassify(n.Parent()) {
-					cpb = classifier.ClassifyFunc(callee, pkgName).String()
-					callerPkg := lang.PackageNameFromFunction(n.Parent())
-					context = callerPkg
-				}
-				cid := config.CodeIdentifier{
-					Package: pkgName, Method: funcName, Receiver: receiverType, Capability: cpb, Context: context,
-				}
-				return codeIDOracle(cid)
-			}
+		callNode, ok := node.(ssa.CallInstruction)
+		if !ok {
+			return false
 		}
+		callCommon := callNode.Common()
+		if callCommon.IsInvoke() {
+			return isInterfaceEntrypoint(classifier, implsByType, callCommon, callee, codeIDOracle)
+		}
+
+		funcName := callCommon.Value.Name()
+		receiverType := ""
+		if callCommon.Signature() != nil && callCommon.Signature().Recv() != nil {
+			receiverType = lang.ReceiverStr(callCommon.Signature().Recv().Type())
+		}
+		maybePkg := lang.FindSafeCalleePkg(callCommon)
+		if maybePkg.IsSome() {
+			cpb := ""
+			context := ""
+			if classifier != nil && classifier.CanClassify(n.Parent()) {
+				cpb = classifier.ClassifyFunc(callCommon.StaticCallee(), maybePkg.Value()).String()
+				callerPkg := lang.PackageNameFromFunction(n.Parent())
+				context = callerPkg
+			}
+			cid := config.CodeIdentifier{
+				Package: maybePkg.Value(), Method: funcName, Receiver: receiverType, Capability: cpb, Context: context,
+			}
+			return codeIDOracle(cid)
+		} else if callee != nil {
+			pkgName := lang.PackageNameFromFunction(callee)
+			cpb := ""
+			context := ""
+			if classifier != nil && classifier.CanClassify(n.Parent()) {
+				cpb = classifier.ClassifyFunc(callee, pkgName).String()
+				callerPkg := lang.PackageNameFromFunction(n.Parent())
+				context = callerPkg
+			}
+			cid := config.CodeIdentifier{
+				Package: pkgName, Method: funcName, Receiver: receiverType, Capability: cpb, Context: context,
+			}
+			return codeIDOracle(cid)
+		}
+
 		return false
+
 	case *ssa.Function:
 		return codeIDOracle(config.CodeIdentifier{
 			Package: lang.PackageNameFromFunction(node),

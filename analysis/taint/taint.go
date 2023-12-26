@@ -26,6 +26,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -74,28 +75,10 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 	if err != nil {
 		return AnalysisResult{}, err
 	}
-	logger := state.Logger
 
-	// Add interface implementations as sinks
-	populateConfigInterfaces(state)
-
-	var classifier *capabilities.DefaultClassifier
-	if cfg.HasCapabilities() {
-		classifier = capabilities.NewDefaultClassifier(lp.Packages)
-		state.Classifier = classifier
-	}
-
-	// Optional step: running the escape analysis
-	if cfg.UseEscapeAnalysis {
-		logger.Infof("Starting escape bottom-up analysis ...")
-		start := time.Now()
-
-		err := escape.InitializeEscapeAnalysisState(state)
-		logger.Infof("Escape bottom-up pass done (%.2f s).", time.Since(start).Seconds())
-
-		if err != nil {
-			return AnalysisResult{}, err
-		}
+	preambleErr := AnalysisPreamble(state, lp.Packages)
+	if preambleErr != nil {
+		return AnalysisResult{}, preambleErr
 	}
 
 	// ** Second step **
@@ -111,7 +94,7 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
 			// For the intra-procedural pass, all source nodes of all problems are marked
 			IsEntrypoint: func(c *config.Config, result *pointer.Result, node ssa.Node) bool {
-				return IsSomeSourceNode(c, result, classifier, state.ImplementationsByType, node)
+				return IsSomeSourceNode(c, result, state.Classifier, state.ImplementationsByType, node)
 			},
 		})
 
@@ -126,7 +109,7 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 			IsEntrypoint: func(node ssa.Node) bool {
-				return IsSourceNode(&taintSpec, state.PointerAnalysis, classifier, state.ImplementationsByType, node)
+				return IsSourceNode(&taintSpec, state.PointerAnalysis, state.Classifier, state.ImplementationsByType, node)
 			},
 		})
 
@@ -141,6 +124,32 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 		err = fmt.Errorf("analysis returned errors, check AnalysisResult.State for more details")
 	}
 	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
+}
+
+// AnalysisPreamble groups different minor analyses that need to run before the intra-procedural step of the taint
+// analysis.
+func AnalysisPreamble(state *dataflow.AnalyzerState, pkgs []*packages.Package) error {
+	// Add interface implementations as sinks
+	populateConfigInterfaces(state)
+
+	if state.Config.HasCapabilities() {
+		classifier := capabilities.NewDefaultClassifier(pkgs)
+		state.Classifier = classifier
+	}
+
+	// Optional step: running the escape analysis
+	if state.Config.UseEscapeAnalysis {
+		state.Logger.Infof("Starting escape bottom-up analysis ...")
+		start := time.Now()
+
+		err := escape.InitializeEscapeAnalysisState(state)
+		state.Logger.Infof("Escape bottom-up pass done (%.2f s).", time.Since(start).Seconds())
+
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // populateConfigInterfaces adds all the interface implementations for sinks to s.Config.TaintTrackingProblems.

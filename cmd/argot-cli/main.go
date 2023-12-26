@@ -26,7 +26,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/escape"
+	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
@@ -159,11 +159,12 @@ func main() {
 		panic(err)
 	}
 
-	// Optional step: running the escape analysis
-	if pConfig.UseEscapeAnalysis {
-		err := escape.InitializeEscapeAnalysisState(state)
+	// Optional step: running the preamble of the taint analysis
+	if pConfig.UseEscapeAnalysis || len(pConfig.TaintTrackingProblems) > 0 {
+		err := taint.AnalysisPreamble(state, lp.Packages)
 		if err != nil {
-			panic(err)
+			fmt.Fprintf(os.Stderr, "Error while running the taint analysis preamble: %v", err)
+			os.Exit(1)
 		}
 	}
 	// Start the command line tool with the state containing all the information

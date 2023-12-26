@@ -85,7 +85,7 @@ type codeIdentifierRegex struct {
 
 // compileRegexes compiles the strings in the code identifier into regexes. It compiles all identifiers into regexes
 // or none.
-// @ensures cid.computedRegexs != null || cid.computedRegexs.(*) != null
+// @ensures cid.computedRegexs == null || cid.computedRegexs.(*) != null
 // TODO improve error handling
 func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	contextRegex, err := regexp.Compile(cid.Context)
@@ -114,7 +114,7 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	}
 	receiverRegex, err := regexp.Compile(cid.Receiver)
 	if err != nil {
-		fmt.Printf("[WARN] failed to compile reciever regex %v: %v\n", cid.Receiver, err)
+		fmt.Printf("[WARN] failed to compile receiver regex %v: %v\n", cid.Receiver, err)
 	}
 	cid.computedRegexs = &codeIdentifierRegex{
 		contextRegex,
