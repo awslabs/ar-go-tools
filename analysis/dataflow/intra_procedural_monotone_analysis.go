@@ -102,12 +102,26 @@ func (state *IntraAnalysisState) initialize() {
 
 	// The free variables of the function are marked
 	for _, fv := range function.FreeVars {
-		state.flowInfo.AddMark(firstInstr, fv, "", state.flowInfo.GetNewMark(fv, FreeVar, nil, -1))
+		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[fv]] {
+			for _, path := range AccessPathsOfType(fv.Type()) {
+				state.flowInfo.AddMark(firstInstr, fv, path,
+					state.flowInfo.GetNewLabelledMark(fv, FreeVar, nil, -1, path))
+			}
+		}
+		state.flowInfo.AddMark(firstInstr, fv, "",
+			state.flowInfo.GetNewMark(fv, FreeVar, nil, -1))
 		state.addFreeVarAliases(fv)
 	}
 	// The parameters of the function are marked as Parameter
 	for _, param := range function.Params {
-		state.flowInfo.AddMark(firstInstr, param, "", state.flowInfo.GetNewMark(param, Parameter, nil, -1))
+		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[param]] {
+			for _, path := range AccessPathsOfType(param.Type()) {
+				state.flowInfo.AddMark(firstInstr, param, path,
+					state.flowInfo.GetNewLabelledMark(param, Parameter, nil, -1, path))
+			}
+		}
+		state.flowInfo.AddMark(firstInstr, param, "",
+			state.flowInfo.GetNewMark(param, Parameter, nil, -1))
 		state.addParamAliases(param)
 	}
 

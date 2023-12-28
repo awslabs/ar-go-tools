@@ -87,16 +87,21 @@ type Mark struct {
 	// Index specifies an index of the tuple element referred to by this mark. Node's type must be a tuple.
 	// A Value of -1 indicates this can be ignored
 	Index int
+
+	// Label holds additional information about the mark, for example the original access path relative to the
+	// parameter the mark is tracking
+	Label string
 }
 
 // NewMark creates a source with a single type. Using this as constructor enforces that users provide an explicit
 // Value for index, whose default Value has a meaning that might not be intended
-func NewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int) Mark {
+func NewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int, label string) Mark {
 	return Mark{
 		Node:      node,
 		Type:      typ,
 		Qualifier: qualifier,
 		Index:     index,
+		Label:     label,
 	}
 }
 
