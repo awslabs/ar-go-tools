@@ -309,12 +309,12 @@ func (state *IntraAnalysisState) collectReferrerValueMarking(values *[]Instructi
 		// the Value is the struct, collect the marks on the field address. We are not field sensitive, so if the
 		// field address has marks, then the struct itself has marks.
 		state.collectValueMarkingRec(values, i, refInstr,
-			pathAppendField(path, analysisutil.FieldAddrFieldName(refInstr)), true, queries)
+			accessPathAppendField(path, analysisutil.FieldAddrFieldName(refInstr)), true, queries)
 		return
 	case *ssa.IndexAddr:
 		// the marks on an index address transfer to the slice (but not the marks on the index)
 		if v != refInstr.Index {
-			state.collectValueMarkingRec(values, i, refInstr, pathAppendIndexing(path), true, queries)
+			state.collectValueMarkingRec(values, i, refInstr, accessPathAppendIndexing(path), true, queries)
 			return
 		}
 	case *ssa.Slice:
@@ -341,7 +341,7 @@ func (state *IntraAnalysisState) collectReferrerValueMarking(values *[]Instructi
 				flowRef = i
 			}
 			state.collectValueMarkingRec(values, flowRef, refInstr.Value,
-				pathAppendIndexing(path), true, queries)
+				accessPathAppendIndexing(path), true, queries)
 
 			// Key
 			flowRef = (ssa.Instruction)(refInstr)
@@ -349,7 +349,7 @@ func (state *IntraAnalysisState) collectReferrerValueMarking(values *[]Instructi
 				flowRef = i
 			}
 			state.collectValueMarkingRec(values, flowRef, refInstr.Key,
-				pathAppendIndexing(path), true, queries)
+				accessPathAppendIndexing(path), true, queries)
 			return
 		}
 	}
@@ -491,13 +491,13 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 			state.markValue(i, miVal.X, path, mark)
 		}
 	case *ssa.IndexAddr:
-		state.markValue(i, miVal.X, pathPrependIndexing(path), mark)
+		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Index:
-		state.markValue(i, miVal.X, pathPrependIndexing(path), mark)
+		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Field:
-		state.markValue(i, miVal.X, pathPrependField(path, analysisutil.FieldFieldName(miVal)), mark)
+		state.markValue(i, miVal.X, accessPathPrependField(path, analysisutil.FieldFieldName(miVal)), mark)
 	case *ssa.FieldAddr:
-		state.markValue(i, miVal.X, pathPrependField(path, analysisutil.FieldAddrFieldName(miVal)), mark)
+		state.markValue(i, miVal.X, accessPathPrependField(path, analysisutil.FieldAddrFieldName(miVal)), mark)
 	}
 
 	// Propagate to select referrers
@@ -520,13 +520,13 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 		}
 	case *ssa.IndexAddr:
 		// this referrer accesses the marked value's index
-		path2, ok := pathMatchIndex(path)
+		path2, ok := accessPathMatchIndex(path)
 		if ok && referrer.X == v {
 			state.markValue(i, referrer, path2, mark)
 		}
 	case *ssa.FieldAddr:
 		// this referrer accesses the marked value's field
-		path2, ok := pathMatchField(path, analysisutil.FieldAddrFieldName(referrer))
+		path2, ok := accessPathMatchField(path, analysisutil.FieldAddrFieldName(referrer))
 		if referrer.X == v && ok {
 			state.markValue(i, referrer, path2, mark)
 		}

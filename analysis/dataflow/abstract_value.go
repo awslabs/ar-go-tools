@@ -16,6 +16,7 @@ package dataflow
 
 import (
 	"fmt"
+	"go/types"
 	"io"
 	"strings"
 
@@ -25,7 +26,7 @@ import (
 
 // maxAccessPathLength bound the maximum length of an access path TODO: make this a config option
 // this value does not affect soundness
-const maxAccessPathLength = 4
+const maxAccessPathLength = 2
 
 // A MarkWithAccessPath is a mark with an access path
 type MarkWithAccessPath struct {
@@ -256,8 +257,62 @@ func (a *AbstractValue) Show(w io.Writer) {
 	}
 }
 
-// pathLen returns the length of the path in terms of object "accesses"
-func pathLen(path string) int {
+// AccessPathsOfType returns a slice of all the possible access paths that can be used on a value of type t.
+// For example, on a value of type struct{A: map[T]S, B: string} the possible access paths are
+// ".A", ".B", ".A[*]"
+func AccessPathsOfType(t types.Type) []string {
+	return boundedAccessPathsOfType(t, maxAccessPathLength)
+}
+
+func boundedAccessPathsOfType(t types.Type, n int) []string {
+	if n <= 0 {
+		return []string{}
+	}
+	switch actualType := t.(type) {
+	case *types.Named:
+		return boundedAccessPathsOfType(actualType.Underlying(), n)
+	case *types.Array:
+		accessPaths := boundedAccessPathsOfType(actualType.Elem(), n-1)
+		for i, aPath := range accessPaths {
+			accessPaths[i] = accessPathPrependIndexing(aPath)
+		}
+		accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		return accessPaths
+	case *types.Slice:
+		accessPaths := boundedAccessPathsOfType(actualType.Elem(), n-1)
+		for i, aPath := range accessPaths {
+			accessPaths[i] = accessPathPrependIndexing(aPath)
+		}
+		accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		return accessPaths
+	case *types.Map:
+		accessPaths := boundedAccessPathsOfType(actualType.Elem(), n-1)
+		for i, aPath := range accessPaths {
+			accessPaths[i] = accessPathPrependIndexing(aPath)
+		}
+		accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		return accessPaths
+	case *types.Struct:
+		var accessPaths []string
+		for fieldNum := 0; fieldNum < actualType.NumFields(); fieldNum++ {
+			field := actualType.Field(fieldNum)
+			fieldAccessPaths := boundedAccessPathsOfType(field.Type(), n-1)
+			if len(fieldAccessPaths) > 0 {
+				for i, aPath := range fieldAccessPaths {
+					fieldAccessPaths[i] = accessPathPrependField(aPath, field.Name())
+				}
+				accessPaths = append(accessPaths, fieldAccessPaths...)
+			}
+			accessPaths = append(accessPaths, accessPathPrependField("", field.Name()))
+
+		}
+		return accessPaths
+	}
+	return []string{}
+}
+
+// accessPathLen returns the length of the path in terms of object "accesses"
+func accessPathLen(path string) int {
 	return 1 + strings.Count(path, "[*]") + strings.Count(path, ".")
 }
 
@@ -276,53 +331,53 @@ func pathTrimLast(path string) string {
 	return path
 }
 
-// pathPrependField prefixes the path with a field access
-func pathPrependField(path string, fieldName string) string {
-	if pathLen(path) > maxAccessPathLength {
+// accessPathPrependField prefixes the path with a field access
+func accessPathPrependField(path string, fieldName string) string {
+	if accessPathLen(path) > maxAccessPathLength {
 		path = pathTrimLast(path)
 	}
 	return "." + fieldName + path
 }
 
-// pathPrependIndexing prefixes the path with an indexing operation
-func pathPrependIndexing(path string) string {
-	if pathLen(path) > maxAccessPathLength {
+// accessPathPrependIndexing prefixes the path with an indexing operation
+func accessPathPrependIndexing(path string) string {
+	if accessPathLen(path) > maxAccessPathLength {
 		path = pathTrimLast(path)
 	}
 	return "[*]" + path
 }
 
-// pathAppendField appends a field access to the path
-func pathAppendField(path string, fieldName string) string {
-	if pathLen(path) > maxAccessPathLength {
+// accessPathAppendField appends a field access to the path
+func accessPathAppendField(path string, fieldName string) string {
+	if accessPathLen(path) > maxAccessPathLength {
 		return path
 	}
 	return path + "." + fieldName
 }
 
-// pathAppendIndexing appends an indexing operation to the path
-func pathAppendIndexing(path string) string {
-	if pathLen(path) > maxAccessPathLength {
+// accessPathAppendIndexing appends an indexing operation to the path
+func accessPathAppendIndexing(path string) string {
+	if accessPathLen(path) > maxAccessPathLength {
 		return path
 	}
 	return path + "[*]"
 }
 
-// pathMatchField checks whether path starts with the field fieldName.
-// For example, pathMatchField(".field1.field2", "field1") is ".field2", true
-// and pathMatchField(".field2.field1", "field1") is "field2.field1", false.
+// accessPathMatchField checks whether path starts with the field fieldName.
+// For example, accessPathMatchField(".field1.field2", "field1") is ".field2", true
+// and accessPathMatchField(".field2.field1", "field1") is "field2.field1", false.
 // / If path is empty, always returns true.
-func pathMatchField(path string, fieldName string) (string, bool) {
+func accessPathMatchField(path string, fieldName string) (string, bool) {
 	if path == "" {
 		return "", true
 	}
 	return strings.CutPrefix(path, "."+fieldName)
 }
 
-// pathMatchIndex checks whether path start with some indexing and returns the suffix
+// accessPathMatchIndex checks whether path start with some indexing and returns the suffix
 // and true if it does start with indexing. Otherwise, the entire path is returned with
 // false.
-func pathMatchIndex(path string) (string, bool) {
+func accessPathMatchIndex(path string) (string, bool) {
 	if path == "" {
 		return "", true
 	}
