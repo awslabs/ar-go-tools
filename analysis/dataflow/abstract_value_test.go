@@ -138,6 +138,8 @@ func Test_boundedAccessPathsOfType(t *testing.T) {
 	fieldD := types.NewField(0, nil, "D", tInt, false)
 	fieldE := types.NewField(0, nil, "E", tMapSI, false)
 	tStructCDE := types.NewStruct([]*types.Var{fieldC, fieldD, fieldE}, nil)
+	fieldX := types.NewField(0, nil, "X", tNamedS, true)
+	tStructDXEmbed := types.NewStruct([]*types.Var{fieldD, fieldX}, nil)
 	tMapStringToS := types.NewMap(tString, tNamedS)
 	tSliceS := types.NewSlice(tNamedS)
 	tests := []struct {
@@ -183,17 +185,22 @@ func Test_boundedAccessPathsOfType(t *testing.T) {
 		{
 			name: "struct{C:structAB,D:int,E:map[string]int}",
 			args: args{t: tStructCDE, n: 2},
-			want: []string{".C.A", ".C.B", ".C", ".D", ".E[*]", ".E"},
+			want: []string{".C.A", ".C.B", ".D", ".E[*]"},
+		},
+		{
+			name: "struct{,D:int,X:structABt}",
+			args: args{t: tStructDXEmbed, n: 2},
+			want: []string{".D", ".X.A", ".X.B"},
 		},
 		{
 			name: "map[string]structAB",
 			args: args{t: tMapStringToS, n: 2},
-			want: []string{"[*].A", "[*].B", "[*]"},
+			want: []string{"[*].A", "[*].B"},
 		},
 		{
 			name: "[]structAB",
 			args: args{t: tSliceS, n: 2},
-			want: []string{"[*].A", "[*].B", "[*]"},
+			want: []string{"[*].A", "[*].B"},
 		},
 	}
 	for _, tt := range tests {

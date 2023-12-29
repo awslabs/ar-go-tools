@@ -158,6 +158,23 @@ func testFieldAndSliceSink(a []*Node) {
 	}
 }
 
+func testInterProceduralFieldSensitivity() {
+	x := newStruct()
+	s := &x.A
+	x.A = source() // @Source(testSimpleFieldInter_A)
+	x.B = "ok"
+	x.C = source() // @Source(testSimpleFieldInter_C)
+	b := make([]string, 10)
+	b[0] = *s
+	testInterProceduralFieldSensitivityCallee(x)
+}
+
+func testInterProceduralFieldSensitivityCallee(x *nestedStruct) {
+	sink(x.B)
+	sink(x.A) // @Sink(testSimpleFieldInter_A)
+	sink(x.C) // @Sink(testSimpleFieldInter_C)
+}
+
 func main() {
 	testSimpleField1()
 	testSimpleField2()
@@ -166,4 +183,5 @@ func main() {
 	testFieldEmbedded2()
 	testFromFunctionTaintingField()
 	testFieldAndSlice()
+	testInterProceduralFieldSensitivity()
 }

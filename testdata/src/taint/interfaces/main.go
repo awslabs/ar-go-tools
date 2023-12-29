@@ -51,7 +51,8 @@ func sink(x string) {
 }
 
 func runInterface(x Interface) {
-	sink(x.F()) // this sink will be reached if x is tainted @Sink(A,C)
+	sink(x.F()) // this sink will be reached if x is tainted @Sink(A)
+	// Source C does not reach this, because F returns Field2 which is not tainted.
 }
 
 // Example 2

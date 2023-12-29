@@ -471,7 +471,7 @@ func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, ou
 		return
 	}
 	for _, origin := range state.getMarks(loc, in, "", true, true) {
-		state.summary.addGlobalEdge(origin.Mark, nil, loc, glob)
+		state.summary.addGlobalEdge(origin, nil, loc, glob)
 	}
 }
 

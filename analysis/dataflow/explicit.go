@@ -90,10 +90,11 @@ func (v VisitorNodeStatus) PopClosure() VisitorNodeStatus {
 // VisitorNode represents a node in the inter-procedural dataflow graph to be visited.
 type VisitorNode struct {
 	NodeWithTrace
-	Prev     *VisitorNode
-	Depth    int
-	Status   VisitorNodeStatus
-	children []*VisitorNode
+	Prev        *VisitorNode
+	Depth       int
+	AccessPaths []string
+	Status      VisitorNodeStatus
+	children    []*VisitorNode
 }
 
 // Key returns a unique string representation for the node with its trace

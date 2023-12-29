@@ -160,5 +160,8 @@ func (m Mark) String() string {
 	if m.Index >= 0 {
 		str += " #" + strconv.Itoa(m.Index)
 	}
+	if m.Label != "" {
+		str += "(" + m.Label + ")"
+	}
 	return "🏷 " + str
 }

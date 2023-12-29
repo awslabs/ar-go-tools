@@ -26,7 +26,7 @@ import (
 
 // maxAccessPathLength bound the maximum length of an access path TODO: make this a config option
 // this value does not affect soundness
-const maxAccessPathLength = 2
+const maxAccessPathLength = 3
 
 // A MarkWithAccessPath is a mark with an access path
 type MarkWithAccessPath struct {
@@ -264,11 +264,14 @@ func AccessPathsOfType(t types.Type) []string {
 	return boundedAccessPathsOfType(t, maxAccessPathLength)
 }
 
+//gocyclo:ignore
 func boundedAccessPathsOfType(t types.Type, n int) []string {
 	if n <= 0 {
 		return []string{}
 	}
 	switch actualType := t.(type) {
+	case *types.Pointer:
+		return boundedAccessPathsOfType(actualType.Elem(), n)
 	case *types.Named:
 		return boundedAccessPathsOfType(actualType.Underlying(), n)
 	case *types.Array:
@@ -276,21 +279,27 @@ func boundedAccessPathsOfType(t types.Type, n int) []string {
 		for i, aPath := range accessPaths {
 			accessPaths[i] = accessPathPrependIndexing(aPath)
 		}
-		accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		if len(accessPaths) == 0 {
+			accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		}
 		return accessPaths
 	case *types.Slice:
 		accessPaths := boundedAccessPathsOfType(actualType.Elem(), n-1)
 		for i, aPath := range accessPaths {
 			accessPaths[i] = accessPathPrependIndexing(aPath)
 		}
-		accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		if len(accessPaths) == 0 {
+			accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		}
 		return accessPaths
 	case *types.Map:
 		accessPaths := boundedAccessPathsOfType(actualType.Elem(), n-1)
 		for i, aPath := range accessPaths {
 			accessPaths[i] = accessPathPrependIndexing(aPath)
 		}
-		accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		if len(accessPaths) == 0 {
+			accessPaths = append(accessPaths, accessPathPrependIndexing(""))
+		}
 		return accessPaths
 	case *types.Struct:
 		var accessPaths []string
@@ -303,7 +312,9 @@ func boundedAccessPathsOfType(t types.Type, n int) []string {
 				}
 				accessPaths = append(accessPaths, fieldAccessPaths...)
 			}
-			accessPaths = append(accessPaths, accessPathPrependField("", field.Name()))
+			if len(fieldAccessPaths) == 0 {
+				accessPaths = append(accessPaths, accessPathPrependField("", field.Name()))
+			}
 
 		}
 		return accessPaths
