@@ -186,8 +186,8 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(callInstr, argInstr)
 		}
-
-		for _, mark := range state.getMarks(callInstr, arg, "", true, false) {
+		marks := state.getMarks(callInstr, arg, "", false, false)
+		for _, mark := range marks {
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
 			c := state.checkFlow(mark.Mark, callInstr, arg)
 			if c.Satisfiable {

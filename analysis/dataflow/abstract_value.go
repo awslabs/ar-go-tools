@@ -337,7 +337,7 @@ func pathTrimLast(path string) string {
 	}
 	n := strings.LastIndex(path, ".")
 	if n > 0 {
-		return path[n:]
+		return path[:n]
 	}
 	return path
 }

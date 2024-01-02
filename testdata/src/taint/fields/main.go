@@ -177,6 +177,53 @@ func testInterProceduralFieldSensitivityCallee(x *nestedStruct) {
 	sink(x.C) // @Sink(testSimpleFieldInter_C)
 }
 
+func testInterProceduralFieldSensitivityTwoDeep() {
+	x := newStruct()
+	b := source() // @Source(testSimpleFieldInter_ExPtr)
+	x.Ex.ptr = &b
+	x.B = "ok"
+	testInterProceduralFieldSensitivityCalleeTwoDeep(x)
+}
+
+func testInterProceduralFieldSensitivityCalleeTwoDeep(x *nestedStruct) {
+	sink(x.B)
+	sink(x.A)
+	sink(*x.Ex.ptr) // @Sink(testSimpleFieldInter_ExPtr)
+}
+
+func testInterProceduralFieldSensitivityMultiCall() {
+	x := newStruct()
+	b := source() // @Source(testSimpleFieldInter_Multi)
+	x.Ex.ptr = &b
+	x.B = "ok"
+	testInterProceduralFieldSensitivityMultiOne(x)
+}
+
+func testInterProceduralFieldSensitivityMultiOne(x *nestedStruct) {
+	sink(x.B)
+	sink(x.A)
+	testInterProceduralFieldSensitivityMultiTwo(x.Ex)
+}
+
+func testInterProceduralFieldSensitivityMultiTwo(x example) {
+	sink(*x.ptr) // @Sink(testSimpleFieldInter_Multi)
+}
+
+func testDeepNodeSound() {
+	z := &Node{label: source()} // @Source(deepNode)
+	y := &Node{label: "ok", next: z}
+	x := &Node{label: "ok", next: y}
+	a := &Node{label: "ok", next: x}
+	b := &Node{label: "ok", next: a}
+	deepNodeCall(b)
+}
+
+func deepNodeCall(x *Node) {
+	sink(x.next.label)
+	// b.a.x.y.z
+	sink(x.next.next.next.next.label) // @Sink(deepNode)
+}
+
 func main() {
 	testSimpleField1()
 	testSimpleField2()
@@ -186,4 +233,7 @@ func main() {
 	testFromFunctionTaintingField()
 	testFieldAndSlice()
 	testInterProceduralFieldSensitivity()
+	testInterProceduralFieldSensitivityTwoDeep()
+	testInterProceduralFieldSensitivityMultiCall()
+	testDeepNodeSound()
 }

@@ -704,15 +704,13 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	if len(cur.AccessPaths) == 0 {
 		panic("access paths should always at least be the empty string")
 	}
-	fmt.Printf("Node access check.\n")
+
 	nextNodeAccessPaths := []string{}
 	for inPath, outPaths := range edgeInfo.RelPath {
 		for outPath := range outPaths {
 			// Logic for matching paths
 			for _, ap := range cur.AccessPaths {
-				fmt.Printf("Access: %s -. %s?\n", ap, inPath)
 				if strings.HasPrefix(inPath, ap) {
-					fmt.Printf("Add %s\n", outPath)
 					nextNodeAccessPaths = append(nextNodeAccessPaths, outPath)
 				}
 			}
@@ -734,7 +732,6 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 		Prev:          cur,
 		Depth:         cur.Depth + 1,
 	}
-	fmt.Printf("Next vis node %s\n", nextVisitorNode.Key())
 
 	// First set of stop conditions: node has already been seen, or depth exceeds limit
 	if v.seen[nextVisitorNode.Key()] || s.Config.ExceedsMaxDepth(cur.Depth) {

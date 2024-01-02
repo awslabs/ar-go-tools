@@ -553,6 +553,7 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	}
 }
 
+//gocyclo:ignore
 func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.Instruction, v ssa.Value, mark *Mark,
 	path string) {
 	switch referrer := ref.(type) {
@@ -583,6 +584,14 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 			state.markValue(i, referrer, path, mark)
 		} else if referrer.Op == token.ARROW {
 			state.markValue(i, referrer, path, mark)
+		}
+	case *ssa.Send:
+		if referrer.X == v && lang.IsNillableType(referrer.X.Type()) {
+			state.markValue(i, referrer.Chan, path, mark)
+		}
+	case *ssa.MapUpdate:
+		if referrer.Value == v && lang.IsNillableType(referrer.Value.Type()) {
+			state.markValue(i, referrer.Map, path, mark)
 		}
 	}
 }
