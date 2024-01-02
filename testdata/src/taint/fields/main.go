@@ -86,8 +86,9 @@ func testSimpleField1() {
 }
 
 func testSimpleField2() {
+	fmt.Println("testSimpleField2")
 	x := newStruct()
-	s := &x.A
+	s := &(x.A)
 	x.A = source() // @Source(testSimpleField_2)
 	x.B = "ok"
 	x.C = source() // @Source(testSimpleField_3)
@@ -101,6 +102,7 @@ func testSimpleField2() {
 }
 
 func testAllStructTainted() {
+	fmt.Println("testAllStructTainted")
 	x := source2() // @Source(testAllStructTainted)
 	x.B = "ok"
 	sink(x.B) // @Sink(testAllStructTainted)

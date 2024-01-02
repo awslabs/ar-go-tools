@@ -308,12 +308,12 @@ func boundedAccessPathsOfType(t types.Type, n int) []string {
 			fieldAccessPaths := boundedAccessPathsOfType(field.Type(), n-1)
 			if len(fieldAccessPaths) > 0 {
 				for i, aPath := range fieldAccessPaths {
-					fieldAccessPaths[i] = accessPathPrependField(aPath, field.Name())
+					fieldAccessPaths[i] = accessPathPrependField(aPath, field.Name(), field.Embedded())
 				}
 				accessPaths = append(accessPaths, fieldAccessPaths...)
 			}
 			if len(fieldAccessPaths) == 0 {
-				accessPaths = append(accessPaths, accessPathPrependField("", field.Name()))
+				accessPaths = append(accessPaths, accessPathPrependField("", field.Name(), field.Embedded()))
 			}
 
 		}
@@ -343,7 +343,12 @@ func pathTrimLast(path string) string {
 }
 
 // accessPathPrependField prefixes the path with a field access
-func accessPathPrependField(path string, fieldName string) string {
+func accessPathPrependField(path string, fieldName string, embedded bool) string {
+	if fieldName == "" || embedded {
+		// ignore empty or embedded fields in path tracking. The data will never be accessed with the embedded field in
+		// the path
+		return path
+	}
 	if accessPathLen(path) > maxAccessPathLength {
 		path = pathTrimLast(path)
 	}
@@ -359,7 +364,12 @@ func accessPathPrependIndexing(path string) string {
 }
 
 // accessPathAppendField appends a field access to the path
-func accessPathAppendField(path string, fieldName string) string {
+func accessPathAppendField(path string, fieldName string, embedded bool) string {
+	if fieldName == "" || embedded {
+		// ignore empty or embedded fields in path tracking. The data will never be accessed with the embedded field in
+		// the path
+		return path
+	}
 	if accessPathLen(path) > maxAccessPathLength {
 		return path
 	}

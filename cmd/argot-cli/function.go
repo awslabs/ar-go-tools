@@ -258,6 +258,7 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 				}
 			})
 		}
+
 	}
 
 	return false

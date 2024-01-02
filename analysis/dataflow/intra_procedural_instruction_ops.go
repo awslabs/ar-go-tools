@@ -123,7 +123,7 @@ func (state *IntraAnalysisState) DoSlice(x *ssa.Slice) {
 }
 
 // DoReturn is a no-op
-func (state *IntraAnalysisState) DoReturn(r *ssa.Return) {
+func (state *IntraAnalysisState) DoReturn(_ *ssa.Return) {
 	// At a return instruction, nothing happens (there is no mark to propagate)
 }
 
@@ -136,7 +136,7 @@ func (state *IntraAnalysisState) DoRunDefers(r *ssa.RunDefers) {
 }
 
 // DoPanic is a no-op; panic are handled separately
-func (state *IntraAnalysisState) DoPanic(x *ssa.Panic) {
+func (state *IntraAnalysisState) DoPanic(_ *ssa.Panic) {
 }
 
 // DoSend analyzes a send operation on a channel. This does not take concurrency into account
@@ -151,7 +151,12 @@ func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
-		transfer(state, x, x.Val, addr.X, analysisutil.FieldAddrFieldName(addr), -1)
+		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(addr)
+		if isEmbedded {
+			transfer(state, x, x.Val, addr.X, "", -1)
+		} else {
+			transfer(state, x, x.Val, addr.X, fieldName, -1)
+		}
 	}
 }
 

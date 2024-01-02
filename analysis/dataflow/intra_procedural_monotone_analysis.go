@@ -322,8 +322,9 @@ func (state *IntraAnalysisState) collectReferrerValueMarking(values *[]Instructi
 		// refInstr is "y = &v.name"
 		// the Value is the struct, collect the marks on the field address. We are not field sensitive, so if the
 		// field address has marks, then the struct itself has marks.
+		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(refInstr)
 		state.collectValueMarkingRec(values, i, refInstr,
-			accessPathAppendField(path, analysisutil.FieldAddrFieldName(refInstr)), true, queries)
+			accessPathAppendField(path, fieldName, isEmbedded), true, queries)
 		return
 	case *ssa.IndexAddr:
 		// the marks on an index address transfer to the slice (but not the marks on the index)
@@ -397,6 +398,11 @@ func transfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out 
 func transferCopy(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
 	pos, ok := t.flowInfo.GetPos(loc, in)
 	if !ok {
+		return
+	}
+	// skip constants (constants cannot be marked)
+	// if we want to mark constants, this will need to be changed
+	if _, isConst := in.(*ssa.Const); isConst {
 		return
 	}
 	aState := t.flowInfo.MarkedValues[pos]
@@ -509,9 +515,13 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	case *ssa.Index:
 		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Field:
-		state.markValue(i, miVal.X, accessPathPrependField(path, analysisutil.FieldFieldName(miVal)), mark)
+		fieldName, isEmbedded := analysisutil.FieldFieldInfo(miVal)
+		newAccessPath := accessPathPrependField(path, fieldName, isEmbedded)
+		state.markValue(i, miVal.X, newAccessPath, mark)
 	case *ssa.FieldAddr:
-		state.markValue(i, miVal.X, accessPathPrependField(path, analysisutil.FieldAddrFieldName(miVal)), mark)
+		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(miVal)
+		newAccessPath := accessPathPrependField(path, fieldName, isEmbedded)
+		state.markValue(i, miVal.X, newAccessPath, mark)
 	}
 
 	// Propagate to select referrers
@@ -540,7 +550,12 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 		}
 	case *ssa.FieldAddr:
 		// this referrer accesses the marked value's field
-		path2, ok := accessPathMatchField(path, analysisutil.FieldAddrFieldName(referrer))
+		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(referrer)
+		path2 := path
+		ok := true
+		if !isEmbedded {
+			path2, ok = accessPathMatchField(path, fieldName)
+		}
 		if referrer.X == v && ok {
 			state.markValue(i, referrer, path2, mark)
 		}
@@ -568,13 +583,6 @@ func (state *IntraAnalysisState) findAllPointers(v ssa.Value) []pointer.Pointer 
 
 // markAllAliases marks all the aliases of the pointer set using mark.
 func (state *IntraAnalysisState) markPtrAliases(i ssa.Instruction, mark *Mark, path string, ptr pointer.Pointer) {
-	// Look at every Value in the points-to set.
-	for _, label := range ptr.PointsTo().Labels() {
-		if label != nil && label.Value() != nil {
-			state.flowInfo.AddMark(i, label.Value(), label.Path()+path, mark)
-		}
-	}
-
 	// Iterate over all values in the function, scanning for aliases of ptr, and mark the values that match
 	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
 		for _, ptr2 := range state.findAllPointers(value) {

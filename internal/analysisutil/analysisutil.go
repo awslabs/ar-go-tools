@@ -109,32 +109,35 @@ func FindValuePackage(n ssa.Value) fn.Optional[string] {
 	return fn.None[string]()
 }
 
-// FieldAddrFieldName finds the name of a field access in ssa.FieldAddr
-// if it cannot find a proper field name, returns "?"
-func FieldAddrFieldName(fieldAddr *ssa.FieldAddr) string {
-	return GetFieldNameFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
+// FieldAddrFieldInfo finds the name of a field access in ssa.FieldAddr
+// if it cannot find a proper field name, returns "?".
+// The boolean indicates whether this field is embedded or not.
+func FieldAddrFieldInfo(fieldAddr *ssa.FieldAddr) (string, bool) {
+	return GetFieldInfoFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
 }
 
-// FieldFieldName finds the name of a field access in ssa.Field
-// if it cannot find a proper field name, returns "?"
-func FieldFieldName(fieldAddr *ssa.Field) string {
-	return GetFieldNameFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
+// FieldFieldInfo finds the name of a field access in ssa.Field
+// if it cannot find a proper field name, returns "?".
+// The boolean indicates whether this field is embedded or not.
+func FieldFieldInfo(fieldAddr *ssa.Field) (string, bool) {
+	return GetFieldInfoFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
 }
 
-// GetFieldNameFromType returns the name of field i if t is a struct or pointer to a struct
-func GetFieldNameFromType(t types.Type, i int) string {
+// GetFieldInfoFromType returns the name of field i if t is a struct or pointer to a struct.
+// The boolean indicates whether this field is embedded or not.
+func GetFieldInfoFromType(t types.Type, i int) (string, bool) {
 	switch typ := t.(type) {
 	case *types.Pointer:
-		return GetFieldNameFromType(typ.Elem().Underlying(), i) // recursive call
+		return GetFieldInfoFromType(typ.Elem().Underlying(), i) // recursive call
 	case *types.Struct:
 		// Get the field name given its index
-		fieldName := "?"
 		if 0 <= i && i < typ.NumFields() {
-			fieldName = typ.Field(i).Name()
+			field := typ.Field(i)
+			return field.Name(), field.Embedded()
 		}
-		return fieldName
+		return "?", false
 	default:
-		return "?"
+		return "?", false
 	}
 }
 
@@ -166,7 +169,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:
-		fieldName := FieldFieldName(node)
+		fieldName, _ := FieldFieldInfo(node)
 		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
 			return false
@@ -178,7 +181,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIde
 			Type:    typeName})
 
 	case *ssa.FieldAddr:
-		fieldName := FieldAddrFieldName(node)
+		fieldName, _ := FieldAddrFieldInfo(node)
 		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
 			return false
