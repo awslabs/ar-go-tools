@@ -594,6 +594,10 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]Anno) 
 	for _, node := range nodes {
 		for _, bb := range f.Blocks {
 			for _, ins := range bb.Instrs {
+				// Skip DebugRef
+				if _, ok := ins.(*ssa.DebugRef); ok {
+					continue
+				}
 				if rationale := node.locality[ins]; rationale == nil {
 					// ins is local, so do nothing.
 				} else {

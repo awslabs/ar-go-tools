@@ -1240,7 +1240,12 @@ func (g *NodeGroup) ValueNode(variable ssa.Value) *Node {
 		if c.IsNil() {
 			return g.NilNode()
 		}
-		panic("Non-nil constant not supported" + fmt.Sprintf("%v", variable))
+		// This case is the "zero" value of a struct. A type-correct way to represent this would use
+		// a seperate node per struct type.
+		if c.Value == nil {
+			return g.NilNode()
+		}
+		panic("Non-nil constant not supported " + fmt.Sprintf("%v", variable))
 	}
 
 	node, ok := g.variables[variable]
