@@ -292,7 +292,8 @@ func (state *IntraAnalysisState) collectValueMarkingRec(values *[]InstructionVal
 			// If any of the aliases of the value is marked, add the marks
 			for _, ptr := range state.findAllPointers(v) {
 				for _, label := range ptr.PointsTo().Labels() {
-					state.collectValueMarkingRec(values, i, label.Value(), relPath, true, queries)
+					newPath := accessPathAppend(relPath, label.Path())
+					state.collectValueMarkingRec(values, i, label.Value(), newPath, true, queries)
 				}
 			}
 
@@ -433,31 +434,48 @@ func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInst
 // instruction and common are the same object (x = Value = instr and common = x.Common()) but for Go and Defers
 // this varies.
 func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstruction, common *ssa.CallCommon) {
-	// Special cases
+	// Special case: builtins are handled separately
 	if doBuiltinCall(state, value, common, instr) {
 		return
 	}
-	// Check if node is source according to config
 	markType := CallReturn
-	if state.shouldTrack(state.parentAnalyzerState.Config,
-		state.parentAnalyzerState.PointerAnalysis,
-		instr.(ssa.Node)) {
-		markType += DefaultMark
-	}
 	// Mark call, one mark per returned Value
 	res := common.Signature().Results()
+
+	trackingMarks := []MarkWithAccessPath{}
 	if res.Len() > 0 {
 		for i := 0; i < res.Len(); i++ {
-			state.markValue(instr, value, "", state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, i))
+			if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[value]] {
+				for _, path := range AccessPathsOfType(value.Type()) {
+					m := MarkWithAccessPath{
+						Mark:       state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), markType, nil, i, path),
+						AccessPath: path,
+					}
+					trackingMarks = append(trackingMarks, m)
+				}
+			}
+			m := MarkWithAccessPath{state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, i), ""}
+			trackingMarks = append(trackingMarks, m)
 		}
 	} else {
-		state.markValue(instr, value, "", state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, -1))
+		m := MarkWithAccessPath{state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, -1), ""}
+		trackingMarks = append(trackingMarks, m)
+	}
+
+	for _, mark := range trackingMarks {
+		state.markValue(instr, value, mark.AccessPath, mark.Mark)
 	}
 
 	args := lang.GetArgs(instr)
 	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
 		// Mark call argument
+		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[arg]] {
+			for _, path := range AccessPathsOfType(arg.Type()) {
+				state.flowInfo.AddMark(instr, arg, path,
+					state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, nil, -1, path))
+			}
+		}
 		newMark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, -1)
 		state.markValue(instr, arg, "", newMark)
 	}

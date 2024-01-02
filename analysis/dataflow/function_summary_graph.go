@@ -648,9 +648,14 @@ func (g *SummaryGraph) addEdge(source MarkWithAccessPath, dest GraphNode, cond *
 
 func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionInfo, sourceNode GraphNode) {
 	outMap := sourceNode.Out()
-	relPath := map[string]string{source.Mark.Label: source.AccessPath}
+	relPath := map[string]map[string]bool{source.Mark.Label: {source.AccessPath: true}}
 	if _, edgePresent := outMap[dest]; edgePresent {
-		outMap[dest].RelPath[source.Mark.Label] = source.AccessPath
+		if _, ok := outMap[dest].RelPath[source.Mark.Label]; ok {
+			outMap[dest].RelPath[source.Mark.Label][source.AccessPath] = true
+		} else {
+			outMap[dest].RelPath[source.Mark.Label] = map[string]bool{source.AccessPath: true}
+		}
+
 	} else {
 		outMap[dest] = EdgeInfo{relPath, source.Mark.Index, info}
 	}
@@ -810,12 +815,12 @@ func (g *SummaryGraph) addParamEdgeByPos(src int, dest int) bool {
 
 	if srcArg, ok := g.Params[srcNode]; ok {
 		if destArg, ok := g.Params[destNode]; ok {
-			srcArg.out[destArg] = EdgeInfo{map[string]string{}, 0, nil}
+			srcArg.out[destArg] = EdgeInfo{map[string]map[string]bool{}, 0, nil}
 
 			if destArg.in == nil {
 				destArg.in = make(map[GraphNode]EdgeInfo)
 			}
-			destArg.in[srcArg] = EdgeInfo{map[string]string{}, 0, nil}
+			destArg.in[srcArg] = EdgeInfo{map[string]map[string]bool{}, 0, nil}
 			return true
 		}
 	}
@@ -838,11 +843,11 @@ func (g *SummaryGraph) addReturnEdgeByPos(src int, pos int) bool {
 			if pos >= len(retNode) || retNode[pos] == nil {
 				continue
 			}
-			srcArg.out[retNode[pos]] = EdgeInfo{map[string]string{}, pos, nil}
+			srcArg.out[retNode[pos]] = EdgeInfo{map[string]map[string]bool{}, pos, nil}
 			if retNode[pos].in == nil {
 				retNode[pos].in = make(map[GraphNode]EdgeInfo)
 			}
-			retNode[pos].in[srcArg] = EdgeInfo{map[string]string{}, pos, nil}
+			retNode[pos].in[srcArg] = EdgeInfo{map[string]map[string]bool{}, pos, nil}
 			return true
 		}
 	}
@@ -1201,8 +1206,10 @@ func ppEdge(w io.Writer, n GraphNode, c EdgeInfo, arrow string) {
 	}
 	if len(c.RelPath) > 0 {
 		prefix += "@"
-		for inPath, outPath := range c.RelPath {
-			prefix += fmt.Sprintf("<%s,%s>", inPath, outPath)
+		for inPath, outPaths := range c.RelPath {
+			for outPath := range outPaths {
+				prefix += fmt.Sprintf("<%s,%s>", inPath, outPath)
+			}
 		}
 	}
 	if len(prefix) > 0 {

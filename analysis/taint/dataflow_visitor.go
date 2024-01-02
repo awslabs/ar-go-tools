@@ -706,17 +706,19 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	}
 	fmt.Printf("Node access check.\n")
 	nextNodeAccessPaths := []string{}
-	for inPath, outPath := range edgeInfo.RelPath {
-		// Logic for matching paths
-		for _, ap := range cur.AccessPaths {
-			fmt.Printf("Access: %s -. %s?\n", ap, inPath)
-			if strings.HasPrefix(inPath, ap) {
-				fmt.Printf("Add %s\n", outPath)
-				nextNodeAccessPaths = append(nextNodeAccessPaths, outPath)
+	for inPath, outPaths := range edgeInfo.RelPath {
+		for outPath := range outPaths {
+			// Logic for matching paths
+			for _, ap := range cur.AccessPaths {
+				fmt.Printf("Access: %s -. %s?\n", ap, inPath)
+				if strings.HasPrefix(inPath, ap) {
+					fmt.Printf("Add %s\n", outPath)
+					nextNodeAccessPaths = append(nextNodeAccessPaths, outPath)
+				}
 			}
 		}
 	}
-	if len(edgeInfo.RelPath) == 0 || (len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""] == "") {
+	if len(edgeInfo.RelPath) == 0 || (len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""][""]) {
 		nextNodeAccessPaths = cur.AccessPaths
 	}
 	// No matching access paths for this edge

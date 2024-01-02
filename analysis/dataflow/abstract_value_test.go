@@ -190,7 +190,7 @@ func Test_boundedAccessPathsOfType(t *testing.T) {
 		{
 			name: "struct{,D:int,X:structABt}",
 			args: args{t: tStructDXEmbed, n: 2},
-			want: []string{".D", ".X.A", ".X.B"},
+			want: []string{".D", ".A", ".B"}, // embedding is skipped
 		},
 		{
 			name: "map[string]structAB",

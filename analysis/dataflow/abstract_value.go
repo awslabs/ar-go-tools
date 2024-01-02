@@ -342,6 +342,13 @@ func pathTrimLast(path string) string {
 	return path
 }
 
+func accessPathPrepend(path string, element string) string {
+	if accessPathLen(path) > maxAccessPathLength {
+		path = pathTrimLast(path)
+	}
+	return element + path
+}
+
 // accessPathPrependField prefixes the path with a field access
 func accessPathPrependField(path string, fieldName string, embedded bool) string {
 	if fieldName == "" || embedded {
@@ -349,18 +356,19 @@ func accessPathPrependField(path string, fieldName string, embedded bool) string
 		// the path
 		return path
 	}
-	if accessPathLen(path) > maxAccessPathLength {
-		path = pathTrimLast(path)
-	}
-	return "." + fieldName + path
+	return accessPathPrepend(path, "."+fieldName)
 }
 
 // accessPathPrependIndexing prefixes the path with an indexing operation
 func accessPathPrependIndexing(path string) string {
+	return accessPathPrepend(path, "[*]")
+}
+
+func accessPathAppend(path string, element string) string {
 	if accessPathLen(path) > maxAccessPathLength {
-		path = pathTrimLast(path)
+		return path
 	}
-	return "[*]" + path
+	return path + element
 }
 
 // accessPathAppendField appends a field access to the path
@@ -370,18 +378,12 @@ func accessPathAppendField(path string, fieldName string, embedded bool) string 
 		// the path
 		return path
 	}
-	if accessPathLen(path) > maxAccessPathLength {
-		return path
-	}
-	return path + "." + fieldName
+	return accessPathAppend(path, "."+fieldName)
 }
 
 // accessPathAppendIndexing appends an indexing operation to the path
 func accessPathAppendIndexing(path string) string {
-	if accessPathLen(path) > maxAccessPathLength {
-		return path
-	}
-	return path + "[*]"
+	return accessPathAppend(path, "[*]")
 }
 
 // accessPathMatchField checks whether path starts with the field fieldName.

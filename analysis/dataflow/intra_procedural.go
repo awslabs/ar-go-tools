@@ -169,9 +169,8 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 		// TODO: ignore path until we have field sensitivity in inter-procedural analysis
 		for _, mark := range state.getMarks(callInstr, callInstr.Common().Value, "", false, true) {
 			state.summary.addCallEdge(mark, nil, callInstr)
-			switch x := mark.Mark.Node.(type) {
-			case *ssa.MakeClosure:
-				state.updateBoundVarEdges(callInstr, x)
+			if closure, isMakeClosure := mark.Mark.Node.(*ssa.MakeClosure); isMakeClosure {
+				state.updateBoundVarEdges(callInstr, closure)
 			}
 		}
 	}

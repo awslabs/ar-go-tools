@@ -32,7 +32,7 @@ type LocSet = map[ssa.Instruction]bool
 // EdgeInfo contains information relative to the object pointed to.
 type EdgeInfo struct {
 	// RelPath is the relative output object access path, e.g. ".A" for field A
-	RelPath map[string]string
+	RelPath map[string]map[string]bool
 
 	// Index is the relative tuple element reference by this Path
 	// if < 0, this means it is not used
