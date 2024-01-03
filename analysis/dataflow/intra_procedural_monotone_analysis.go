@@ -66,11 +66,6 @@ type IntraAnalysisState struct {
 	// freeVarAliases maps values ids (ids stored in flowInfo.ValueID) to the free variable it aliases
 	freeVarAliases []map[*ssa.FreeVar]bool
 
-	// transitiveMarks maps value ids (ids stored in flowInfo.ValueID) to a list of values with access paths and
-	// instruction this means that for a value v with id vid, transitiveMarks[vid] lists all the values whose marks
-	// flow to the value v
-	transitiveMarks [][]InstructionValueWithAccessPath
-
 	// shouldTrack returns true if dataflow from the ssa node should be tracked
 	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool
 
@@ -231,56 +226,26 @@ func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 // over-approximates.
 func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path string,
 	ignorePath bool) []MarkWithAccessPath {
-	pos, ok := state.flowInfo.GetPos(i, v)
 	var origins []MarkWithAccessPath
-	if !ok {
+
+	aliasPos, inFunc := state.flowInfo.GetPos(i, v)
+	if !inFunc {
 		return origins
 	}
-	values := state.transitiveMarks[pos]
-	if values == nil {
-		values = state.collectTransitiveValueMarking(i, v)
-		state.transitiveMarks[pos] = values
+	abstractVal := state.flowInfo.MarkedValues[aliasPos]
+	if abstractVal == nil { // abstractVal should be nil only for non-tracked values
+		return origins
 	}
-
-	for _, alias := range values {
-		aliasPos, inFunc := state.flowInfo.GetPos(alias.Instruction, alias.Value)
-		if !inFunc {
-			continue // this is not a value inside the function
+	if ignorePath {
+		for _, mark := range state.flowInfo.MarkedValues[aliasPos].AllMarks() {
+			origins = append(origins, mark)
 		}
-		abstractVal := state.flowInfo.MarkedValues[aliasPos]
-		if abstractVal == nil { // abstractVal should be nil only for non-tracked values
-			continue
-		}
-		if ignorePath {
-			for _, mark := range state.flowInfo.MarkedValues[aliasPos].AllMarks() {
-				origins = append(origins, mark)
-			}
-		} else {
-			for _, mark := range state.flowInfo.MarkedValues[aliasPos].MarksAt(path) {
-				origins = append(origins, mark)
-			}
+	} else {
+		for _, mark := range state.flowInfo.MarkedValues[aliasPos].MarksAt(path) {
+			origins = append(origins, mark)
 		}
 	}
 	return origins
-}
-
-func (state *IntraAnalysisState) collectTransitiveValueMarking(i ssa.Instruction,
-	v ssa.Value) []InstructionValueWithAccessPath {
-	var computedValues []InstructionValueWithAccessPath
-	state.collectValueMarkingRec(&computedValues, i, v, map[InstructionValueWithAccessPath]bool{})
-	return computedValues
-}
-
-func (state *IntraAnalysisState) collectValueMarkingRec(values *[]InstructionValueWithAccessPath,
-	i ssa.Instruction, v ssa.Value,
-	queries map[InstructionValueWithAccessPath]bool) {
-
-	val := InstructionValueWithAccessPath{v, i, ""}
-	if queries[val] || v == nil {
-		return
-	}
-	*values = append(*values, val)
-	queries[val] = true
 }
 
 // simpleTransfer  propagates all the marks from in to out, ignoring Path and tuple indexes
@@ -433,32 +398,43 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 
 	switch miVal := v.(type) {
 	case *ssa.Slice:
+		// if the element marked is a slice, then the underlying object needs to be marked
 		state.markValue(i, miVal.X, path, mark)
 	case *ssa.MakeInterface:
+		// if the element marked is an interface, then the original object needs to be marked
 		state.markValue(i, miVal.X, path, mark)
 	case *ssa.IndexAddr:
+		// if the element marked results from indexing some object, then that object is marked with indexing
 		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Index:
+		// if the element marked results from indexing some object, then that object is marked with indexing
 		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Field:
+		// if the element marked results from accessing a field of some object, then that object is marked at that field
 		fieldName, isEmbedded := analysisutil.FieldFieldInfo(miVal)
 		newAccessPath := accessPathPrependField(path, fieldName, isEmbedded)
 		state.markValue(i, miVal.X, newAccessPath, mark)
 	case *ssa.FieldAddr:
+		// if the element marked results from accessing a field of some object, then that object is marked at that field
 		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(miVal)
 		newAccessPath := accessPathPrependField(path, fieldName, isEmbedded)
 		state.markValue(i, miVal.X, newAccessPath, mark)
 	case *ssa.UnOp:
+		// if the element marked was loaded from a pointer-like object, that pointer-like object is now marked
 		if miVal.Op == token.MUL && lang.IsNillableType(miVal.X.Type()) {
 			state.markValue(i, miVal.X, path, mark)
 		}
 	case *ssa.Next:
+		// if the element marked is the result of next on an iterator, then the iterator is marked to ensure the mark
+		// propagates to the object being iterated on
 		if !miVal.IsString {
 			state.markValue(i, miVal.Iter, accessPathPrependIndexing(path), mark)
 		}
 	case *ssa.Range:
+		// if the iterator is marked then the underlying map needs to be marked
 		state.markValue(i, miVal.X, path, mark)
 	case *ssa.Extract:
+		// if an extracted object of pointer-like type is marked, then the tuple is marked at that index
 		if lang.IsNillableType(miVal.Type()) {
 			state.markValue(i, miVal.Tuple, path,
 				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, miVal.Index))
@@ -466,7 +442,7 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 
 	}
 
-	// Propagate to select referrers
+	// Propagate to select referrers if the valye is a true value (i.e. it is not a Call that doesn't return anything)
 	_, isCall := v.(*ssa.Call)
 	if !isCall || lang.IsValueReturningCall(v) {
 		referrers := v.Referrers()
@@ -478,6 +454,10 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	}
 }
 
+// propagateToReferrer propagates the marks to referrer of the value v at instruction ref.
+// Instruction i can be different from instruction ref, indicating the mark needs to be propagated at a different
+// location in the program.
+//
 //gocyclo:ignore
 func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.Instruction, v ssa.Value, mark *Mark,
 	path string) {
@@ -511,22 +491,27 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 			state.markValue(i, referrer, path, mark)
 		}
 	case *ssa.Send:
+		// the value being marked is sent to a channel somewhere. That channel should be marked.
 		if referrer.X == v && lang.IsNillableType(referrer.X.Type()) {
 			state.markValue(i, referrer.Chan, path, mark)
 		}
 	case *ssa.MapUpdate:
+		// propagate to map
 		if referrer.Value == v && lang.IsNillableType(referrer.Value.Type()) {
 			state.markValue(i, referrer.Map, path, mark)
 		}
 	case *ssa.Next:
+		// propagate to iterator
 		if !referrer.IsString {
 			state.markValue(i, referrer.Iter, path, mark)
 		}
 	case *ssa.Range:
+		// propagate to map
 		if referrer.X == v {
 			state.markValue(i, referrer.X, path, mark)
 		}
 	case *ssa.Extract:
+		// propagate to tuple
 		if referrer.Tuple == v && lang.IsNillableType(referrer.Type()) {
 			state.markValue(i, referrer.Tuple, path,
 				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, referrer.Index))
@@ -534,6 +519,7 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 	}
 }
 
+// findAllPointers returns all the pointers that point to v
 func (state *IntraAnalysisState) findAllPointers(v ssa.Value) []pointer.Pointer {
 	var allptr []pointer.Pointer
 	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[v]; ptrExists {
@@ -560,6 +546,8 @@ func (state *IntraAnalysisState) markPtrAliases(i ssa.Instruction, mark *Mark, p
 
 // --- Defers analysis ---
 
+// getInstr returns the instruction in block number blockNum and instruction instrNum in the block in the function
+// being analyzed by the state.
 func (state *IntraAnalysisState) getInstr(blockNum int, instrNum int) (ssa.Instruction, error) {
 	block := state.summary.Parent.Blocks[blockNum]
 	if block == nil {
@@ -596,7 +584,7 @@ func (state *IntraAnalysisState) doDefersStackSimulation(r *ssa.RunDefers) error
 
 // --- Pointer analysis querying ---
 
-// getAnyPointer returns the pointer to x according to the pointer analysis
+// getPointer returns the pointer to x according to the pointer analysis
 func (state *IntraAnalysisState) getPointer(x ssa.Value) *pointer.Pointer {
 	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[x]; ptrExists {
 		return &ptr
@@ -604,7 +592,7 @@ func (state *IntraAnalysisState) getPointer(x ssa.Value) *pointer.Pointer {
 	return nil
 }
 
-// getAnyPointer returns the pointer to x according to the pointer analysis
+// getIndirectPointer returns the pointer to x according to the pointer analysis
 func (state *IntraAnalysisState) getIndirectPointer(x ssa.Value) *pointer.Pointer {
 	// Check indirect queries
 	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[x]; ptrExists {

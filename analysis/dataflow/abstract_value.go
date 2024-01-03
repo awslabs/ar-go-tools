@@ -28,6 +28,8 @@ import (
 // this value does not affect soundness
 var maxAccessPathLength = 3
 
+// SetMaxAccessPathLength sets the maximum access path length for field sensitivity. This should only be set once,
+// changing this value while the analysis is running may lead to unpredictable results.
 func SetMaxAccessPathLength(n int) {
 	maxAccessPathLength = n
 }
@@ -365,28 +367,6 @@ func accessPathPrependField(path string, fieldName string, embedded bool) string
 // accessPathPrependIndexing prefixes the path with an indexing operation
 func accessPathPrependIndexing(path string) string {
 	return accessPathPrepend(path, "[*]")
-}
-
-func accessPathAppend(path string, element string) string {
-	if accessPathLen(path) > maxAccessPathLength {
-		return path
-	}
-	return path + element
-}
-
-// accessPathAppendField appends a field access to the path
-func accessPathAppendField(path string, fieldName string, embedded bool) string {
-	if fieldName == "" || embedded {
-		// ignore empty or embedded fields in path tracking. The data will never be accessed with the embedded field in
-		// the path
-		return path
-	}
-	return accessPathAppend(path, "."+fieldName)
-}
-
-// accessPathAppendIndexing appends an indexing operation to the path
-func accessPathAppendIndexing(path string) string {
-	return accessPathAppend(path, "[*]")
 }
 
 // accessPathMatchField checks whether path starts with the field fieldName.
