@@ -26,7 +26,11 @@ import (
 
 // maxAccessPathLength bound the maximum length of an access path TODO: make this a config option
 // this value does not affect soundness
-const maxAccessPathLength = 3
+var maxAccessPathLength = 3
+
+func SetMaxAccessPathLength(n int) {
+	maxAccessPathLength = n
+}
 
 // A MarkWithAccessPath is a mark with an access path
 type MarkWithAccessPath struct {

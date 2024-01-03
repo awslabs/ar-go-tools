@@ -122,6 +122,7 @@ func Test_boundedAccessPathsOfType(t *testing.T) {
 		t types.Type
 		n int
 	}
+	SetMaxAccessPathLength(3)
 
 	tInt := types.Typ[types.Int]
 	tBool := types.Typ[types.Bool]
