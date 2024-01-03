@@ -16,6 +16,8 @@ package lang
 
 import (
 	"go/types"
+
+	"golang.org/x/tools/go/ssa"
 )
 
 // IsNillableType returns true if t is a type that can have the nil value.
@@ -84,6 +86,24 @@ func IsChannelEnclosingType(t types.Type) bool {
 		}
 	}
 	return false
+}
+
+// IsReturningFunctionType returns true if typ is the type of a function that returns values
+func IsReturningFunctionType(typ types.Type) bool {
+	sig, isSig := typ.(*types.Signature)
+	if !isSig {
+		return false
+	}
+	return sig.Results() != nil
+}
+
+// IsValueReturningCall returns true if value is a call that returns some value
+func IsValueReturningCall(value ssa.Value) bool {
+	call, isCall := value.(*ssa.Call)
+	if !isCall || call == nil {
+		return false
+	}
+	return IsReturningFunctionType(call.Common().Signature())
 }
 
 // IsPredicateFunctionType returns true if f is a function that can be interpreted as a predicate

@@ -33,6 +33,7 @@ var (
 	// Flags
 	configPath = flag.String("config", "", "Config file path for taint analysis")
 	verbose    = flag.Bool("verbose", false, "Verbose printing on standard output")
+	maxDepth   = flag.Int("max-depth", -1, "Override max depth in config")
 	// Other constants
 	buildmode = ssa.InstantiateGenerics // necessary for reachability
 	version   = "unknown"
@@ -75,6 +76,10 @@ func main() {
 	if *verbose {
 		taintConfig.LogLevel = int(config.DebugLevel)
 	}
+	if *maxDepth > 0 {
+		taintConfig.MaxDepth = *maxDepth
+	}
+
 	logger.Printf(formatutil.Faint("Argot taint tool - build " + version))
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 

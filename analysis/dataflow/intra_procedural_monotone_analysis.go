@@ -452,10 +452,23 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 		if miVal.Op == token.MUL && lang.IsNillableType(miVal.X.Type()) {
 			state.markValue(i, miVal.X, path, mark)
 		}
+	case *ssa.Next:
+		if !miVal.IsString {
+			state.markValue(i, miVal.Iter, accessPathPrependIndexing(path), mark)
+		}
+	case *ssa.Range:
+		state.markValue(i, miVal.X, path, mark)
+	case *ssa.Extract:
+		if lang.IsNillableType(miVal.Type()) {
+			state.markValue(i, miVal.Tuple, path,
+				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, miVal.Index))
+		}
+
 	}
 
 	// Propagate to select referrers
-	if _, isCall := v.(*ssa.Call); !isCall {
+	_, isCall := v.(*ssa.Call)
+	if !isCall || lang.IsValueReturningCall(v) {
 		referrers := v.Referrers()
 		if referrers != nil {
 			for _, referrer := range *referrers {
@@ -504,6 +517,19 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 	case *ssa.MapUpdate:
 		if referrer.Value == v && lang.IsNillableType(referrer.Value.Type()) {
 			state.markValue(i, referrer.Map, path, mark)
+		}
+	case *ssa.Next:
+		if !referrer.IsString {
+			state.markValue(i, referrer.Iter, path, mark)
+		}
+	case *ssa.Range:
+		if referrer.X == v {
+			state.markValue(i, referrer.X, path, mark)
+		}
+	case *ssa.Extract:
+		if referrer.Tuple == v && lang.IsNillableType(referrer.Type()) {
+			state.markValue(i, referrer.Tuple, path,
+				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, referrer.Index))
 		}
 	}
 }

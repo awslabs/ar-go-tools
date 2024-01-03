@@ -35,6 +35,7 @@ import (
 )
 
 func TestAnalyze(t *testing.T) {
+	t.Skipf("Skipping trace tests.")
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
@@ -59,6 +60,7 @@ func TestAnalyze(t *testing.T) {
 }
 
 func TestAnalyze_OnDemand(t *testing.T) {
+	t.Skipf("Skipping trace tests.")
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go

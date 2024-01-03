@@ -160,6 +160,47 @@ func testFieldAndSliceSink(a []*Node) {
 	}
 }
 
+func testFieldAndMap() {
+	fmt.Println("testFieldAndMap")
+	s := source() // @Source(testFieldAndMap)
+	s2 := s + "ok"
+	a := make(map[string]*Node, 10)
+	x := &Node{label: s2}
+	a["0"] = &Node{label: "ok"}
+	a["1"] = &Node{label: "fine"}
+	a["0"].next = a["1"]
+	a["1"].next = x // a[0] -> a[1] -> x (tainted)
+	testFieldAndMapSink(a)
+}
+
+func testFieldAndMapSink(a map[string]*Node) {
+	for _, x := range a {
+		if x != nil {
+			sink(x.label) // @Sink(testFieldAndMap)
+		}
+	}
+}
+
+func testFieldAndMapRev() {
+	fmt.Println("testFieldAndMapRev")
+	a := make(map[string]*Node, 10)
+	x := &Node{label: "ok"}
+	a["1"] = &Node{label: "fine"}
+	a["0"] = &Node{label: "fine"}
+	a["0"].next = a["1"]
+	a["1"].next = x // a[0] -> a[1] -> x (tainted)
+	testFieldAndMapSource(a)
+	sink("rev-" + a["0"].label) // @Sink(testFieldAndMapSource)
+}
+
+func testFieldAndMapSource(a map[string]*Node) {
+	for _, x := range a {
+		if x != nil {
+			x.label = source() // @Source(testFieldAndMapSource)
+		}
+	}
+}
+
 func testInterProceduralFieldSensitivity() {
 	x := newStruct()
 	s := &x.A
@@ -294,12 +335,34 @@ func testMethodTaintReceiverPointer() {
 func testMethodInterface() {
 	fmt.Println("testMethodInterface")
 	x := NewMyStruct()
-	testMethodInterfaceTaintThroughInvoke(x)
-	sink(x.GetAllData()) // @Sink(testMethodInterface)
+	testMethodInterfaceTaintThroughInvoke(x) // this taints x.SubE.label
+	sink(x.GetAllData())                     // @Sink(testMethodInterface)
 }
 
 func testMethodInterfaceTaintThroughInvoke(x MyInterface) {
 	x.SetLabel(source()) //@Source(testMethodInterface)
+}
+
+func testRecursion() {
+	x := NewMyStruct()
+	x.MySub.next = &Node{
+		label: "",
+		next:  nil,
+	}
+	taintWithRecursion(x.MySub, 3)
+	sink(x.MySub.next.label) //@Sink(inRecursion)
+}
+
+func taintWithRecursion(x *Node, n int) {
+	if n <= 0 || x == nil {
+		return
+	}
+	if n >= 3 {
+		x.label = source() //@Source(inRecursion)
+	}
+	if x.next != nil {
+		taintWithRecursion(x.next, n-1)
+	}
 }
 
 func main() {
@@ -310,6 +373,8 @@ func main() {
 	testFieldEmbedded2()
 	testFromFunctionTaintingField()
 	testFieldAndSlice()
+	testFieldAndMap()
+	testFieldAndMapRev()
 	testInterProceduralFieldSensitivity()
 	testInterProceduralFieldSensitivityTwoDeep()
 	testInterProceduralFieldSensitivityMultiCall()
@@ -317,4 +382,5 @@ func main() {
 	testMethodTaintReceiver()
 	testMethodTaintReceiverPointer()
 	testMethodInterface()
+	testRecursion()
 }

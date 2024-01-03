@@ -198,7 +198,7 @@ func (state *IntraAnalysisState) DoMakeMap(*ssa.MakeMap) {
 // DoRange analyzes the range by simply transferring marks from the input of the range to the iterator
 func (state *IntraAnalysisState) DoRange(x *ssa.Range) {
 	// An iterator over a tainted Value is tainted
-	simpleTransfer(state, x, x.X, x)
+	transfer(state, x, x.X, x, "[*]", -1)
 }
 
 // DoNext transfers marks from the input of next to the output
