@@ -19,13 +19,13 @@ package callorder
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"fromlevee/core"
 )
 
-func TestTaintedColocatedArgumentDoesNotReachSinkThatPrecedesColocation(w io.Writer) {
+func TestTaintedColocatedArgumentDoesNotReachSinkThatPrecedesColocation() {
+	w := os.Stdout
 	src := core.Source()
 	if true {
 		core.Sink(w)
@@ -33,14 +33,16 @@ func TestTaintedColocatedArgumentDoesNotReachSinkThatPrecedesColocation(w io.Wri
 	fmt.Fprint(w, src)
 }
 
-func TestTaintedColocatedArgumentReachesSinkThatFollowsColocation(w io.Writer) {
+func TestTaintedColocatedArgumentReachesSinkThatFollowsColocation() {
+	w := os.Stdout
 	src := core.Source() // @Source(co1)
 	if _, err := fmt.Fprint(w, src); err != nil {
 		core.Sink(w) // @Sink(co1)
 	}
 }
 
-func TestAvoidingIncorrectPropagationFromColocationDoesNotPreventCorrectReport(w io.Writer) {
+func TestAvoidingIncorrectPropagationFromColocationDoesNotPreventCorrectReport() {
+	w := os.Stdout
 	src := core.Source() // @Source(co2)
 	_, err := fmt.Fprint(w, src)
 	if err != nil {
@@ -53,7 +55,7 @@ func TestAvoidingIncorrectPropagationFromColocationDoesNotPreventCorrectReport(w
 }
 
 func TestAllColocation() {
-	TestTaintedColocatedArgumentReachesSinkThatFollowsColocation(os.Stdout)
-	TestTaintedColocatedArgumentDoesNotReachSinkThatPrecedesColocation(os.Stdout)
-	TestAvoidingIncorrectPropagationFromColocationDoesNotPreventCorrectReport(os.Stdout)
+	TestTaintedColocatedArgumentReachesSinkThatFollowsColocation()
+	TestTaintedColocatedArgumentDoesNotReachSinkThatPrecedesColocation()
+	TestAvoidingIncorrectPropagationFromColocationDoesNotPreventCorrectReport()
 }

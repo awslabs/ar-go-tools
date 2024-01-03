@@ -265,9 +265,12 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 		default:
 			// Check the state of the analysis at the final return to see which parameters or free variables might
 			// have been modified by the function
-			for _, mark := range abstractValue.AllMarks() {
-				markedValueID, ok := state.flowInfo.GetValueID(markedValue)
-				if ok && lang.IsNillableType(val.Type()) {
+			if lang.IsNillableType(val.Type()) {
+				for _, mark := range abstractValue.AllMarks() {
+					markedValueID, ok := state.flowInfo.GetValueID(markedValue)
+					if !ok {
+						continue
+					}
 					for aliasedParam := range state.paramAliases[markedValueID] {
 						state.summary.addParamEdge(mark, nil, aliasedParam)
 					}

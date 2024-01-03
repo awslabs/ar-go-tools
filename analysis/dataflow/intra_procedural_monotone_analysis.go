@@ -494,7 +494,7 @@ func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, ou
 	if !isGlob {
 		return
 	}
-	for _, origin := range state.getMarks(loc, in, "", true, true) {
+	for _, origin := range state.getMarks(loc, in, "", false, true) {
 		state.summary.addGlobalEdge(origin, nil, loc, glob)
 	}
 }
@@ -506,6 +506,8 @@ func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, ou
 // markValue marks the Value v and all values that propagate from v.
 // If the Value was not marked, it changes the changeFlag to true to indicate
 // that the mark information has changed for the current pass.
+//
+//gocyclo:ignore
 func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path string, mark *Mark) {
 	if state.flowInfo.HasMarkAt(i, v, path, mark) {
 		return
@@ -521,13 +523,7 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	case *ssa.Slice:
 		state.markValue(i, miVal.X, path, mark)
 	case *ssa.MakeInterface:
-		// SPECIAL CASE: Value is result of make any <- v', mark v'
-		// handles cases where a function f(_ any...) is called on some argument of concrete type
-		// conversion to any or interface{}
-		typStr := miVal.Type().String()
-		if typStr == "any" || typStr == "interface{}" {
-			state.markValue(i, miVal.X, path, mark)
-		}
+		state.markValue(i, miVal.X, path, mark)
 	case *ssa.IndexAddr:
 		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Index:
@@ -540,6 +536,10 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(miVal)
 		newAccessPath := accessPathPrependField(path, fieldName, isEmbedded)
 		state.markValue(i, miVal.X, newAccessPath, mark)
+	case *ssa.UnOp:
+		if miVal.Op == token.MUL && lang.IsNillableType(miVal.X.Type()) {
+			state.markValue(i, miVal.X, path, mark)
+		}
 	}
 
 	// Propagate to select referrers
@@ -705,21 +705,39 @@ func addAliases[T comparable](x T, f *ssa.Function, ptr *pointer.Pointer, aliase
 }
 
 // addParamAliases collects information about the Value-aliases of the parameters
-func (state *IntraAnalysisState) addParamAliases(x *ssa.Parameter) {
-	state.paramAliases[state.flowInfo.ValueID[x]][x] = true // x is guaranteed to be in flowInfo.ValueID
-	addAliases(x, state.summary.Parent, state.getPointer(x),
-		state.paramAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
-	addAliases(x, state.summary.Parent, state.getIndirectPointer(x),
-		state.paramAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
+func (state *IntraAnalysisState) addParamAliases(p *ssa.Parameter) {
+	values := []ssa.Value{p}
+	// Find the local copy of the argument, if any
+	lang.IterateValues(state.summary.Parent, func(index int, value ssa.Value) {
+		if alloc, ok := value.(*ssa.Alloc); ok && alloc.Comment == p.Name() && lang.IsNillableType(alloc.Type()) {
+			values = append(values, alloc)
+		}
+	})
+	for _, x := range values {
+		state.paramAliases[state.flowInfo.ValueID[x]][p] = true // x is guaranteed to be in flowInfo.ValueID
+		addAliases(p, state.summary.Parent, state.getPointer(x),
+			state.paramAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
+		addAliases(p, state.summary.Parent, state.getIndirectPointer(x),
+			state.paramAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
+	}
 }
 
 // addFreeVarAliases collects information about the Value-aliases of the free variables
-func (state *IntraAnalysisState) addFreeVarAliases(x *ssa.FreeVar) {
-	state.freeVarAliases[state.flowInfo.ValueID[x]][x] = true // x is guaranteed to be in flowInfo.ValueID
-	addAliases(x, state.summary.Parent, state.getPointer(x),
-		state.freeVarAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
-	addAliases(x, state.summary.Parent, state.getIndirectPointer(x),
-		state.freeVarAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
+func (state *IntraAnalysisState) addFreeVarAliases(v *ssa.FreeVar) {
+	values := []ssa.Value{v}
+	// Find the local copy of the argument, if any
+	lang.IterateValues(state.summary.Parent, func(index int, value ssa.Value) {
+		if alloc, ok := value.(*ssa.Alloc); ok && alloc.Comment == v.Name() && lang.IsNillableType(alloc.Type()) {
+			values = append(values, alloc)
+		}
+	})
+	for _, x := range values {
+		state.freeVarAliases[state.flowInfo.ValueID[x]][v] = true // x is guaranteed to be in flowInfo.ValueID
+		addAliases(v, state.summary.Parent, state.getPointer(x),
+			state.freeVarAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
+		addAliases(v, state.summary.Parent, state.getIndirectPointer(x),
+			state.freeVarAliases, state.getPointer, state.getIndirectPointer, state.flowInfo.GetValueID)
+	}
 }
 
 // FlowInfo returns the flow information of the state

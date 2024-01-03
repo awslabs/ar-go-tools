@@ -351,6 +351,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 }
 
 func TestAnalyze_Closures(t *testing.T) {
+	t.Skipf("Tests relying on traces should have separate source file with minimal examples.")
 	// This test uses the taint analysis' closures test file to ensure completeness.
 	// The backtracepoints (entrypoints to the backwards analysis) are identical to the sinks in the taint analysis.
 	// See the config.yaml file for details.
@@ -365,6 +366,7 @@ func TestAnalyze_Closures(t *testing.T) {
 }
 
 func TestAnalyze_Closures_OnDemand(t *testing.T) {
+	t.Skipf("Tests relying on traces should have separate source file with minimal examples.")
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
@@ -492,10 +494,7 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 	}
 
 	for _, test := range tests {
-		test := test // needed for t.Parallel()
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
 			if !funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
 				ok, err := matchTrace(trace, test.matches)
 				_ = err

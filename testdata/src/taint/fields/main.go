@@ -224,6 +224,84 @@ func deepNodeCall(x *Node) {
 	sink(x.next.next.next.next.label) // @Sink(deepNode)
 }
 
+type MyInterface interface {
+	SetLabel(string)
+	GetAllData() string
+}
+
+type MyStruct struct {
+	MyData string
+	MySub  *Node
+}
+
+func NewMyStruct() MyStruct {
+	return MyStruct{
+		MyData: "default-data",
+		MySub: &Node{
+			label: "default-label",
+			next:  nil,
+		},
+	}
+}
+
+func (m MyStruct) SetLabel(s string) {
+	m.MySub.label = s
+}
+
+func (m MyStruct) GetAllData() string {
+	return m.MyData + "_" + m.MySub.label
+}
+
+func testMethodTaintReceiver() {
+	fmt.Println("testMethodTaintReceiver")
+	x := NewMyStruct()
+	x.SetLabel(source()) // @Source(methodTaintReceiver)
+	s := x.GetAllData()
+	sink(s) // @Sink(methodTaintReceiver)
+}
+
+type MyStructBis struct {
+	MyDataBis string
+	MySubBis  *Node
+}
+
+func NewMyStructBis() MyStructBis {
+	return MyStructBis{
+		MyDataBis: "default-data",
+		MySubBis: &Node{
+			label: "default-label",
+			next:  nil,
+		},
+	}
+}
+
+func (m *MyStructBis) SetLabel(s string) {
+	m.MySubBis.label = s
+}
+
+func (m *MyStructBis) GetAllData() string {
+	return m.MyDataBis + "_" + m.MySubBis.label
+}
+
+func testMethodTaintReceiverPointer() {
+	fmt.Println("testMethodTaintReceiverPointer")
+	x := NewMyStructBis()
+	x.SetLabel(source()) // @Source(methodTaintReceiverPointer)
+	s := x.GetAllData()
+	sink(s) // @Sink(methodTaintReceiverPointer)
+}
+
+func testMethodInterface() {
+	fmt.Println("testMethodInterface")
+	x := NewMyStruct()
+	testMethodInterfaceTaintThroughInvoke(x)
+	sink(x.GetAllData()) // @Sink(testMethodInterface)
+}
+
+func testMethodInterfaceTaintThroughInvoke(x MyInterface) {
+	x.SetLabel(source()) //@Source(testMethodInterface)
+}
+
 func main() {
 	testSimpleField1()
 	testSimpleField2()
@@ -236,4 +314,7 @@ func main() {
 	testInterProceduralFieldSensitivityTwoDeep()
 	testInterProceduralFieldSensitivityMultiCall()
 	testDeepNodeSound()
+	testMethodTaintReceiver()
+	testMethodTaintReceiverPointer()
+	testMethodInterface()
 }

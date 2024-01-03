@@ -20,13 +20,13 @@ package callorder
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"fromlevee/core"
 )
 
-func TestSinkInIfBeforeTaint(w io.Writer) {
+func TestSinkInIfBeforeTaint() {
+	w := os.Stdout
 	s := core.Source()
 	if true {
 		core.Sink(w)
@@ -34,7 +34,8 @@ func TestSinkInIfBeforeTaint(w io.Writer) {
 	fmt.Fprintf(w, "%v", s)
 }
 
-func TestTaintInIfBeforeSink(w io.Writer) {
+func TestTaintInIfBeforeSink() {
+	w := os.Stdout
 	s := core.Source() // @Source(mb1)
 	if true {
 		fmt.Fprintf(w, "%v", s)
@@ -42,7 +43,8 @@ func TestTaintInIfBeforeSink(w io.Writer) {
 	core.Sink(w) // @Sink(mb1)
 }
 
-func TestSinkAndTaintInDifferentIfBranches(w io.Writer) {
+func TestSinkAndTaintInDifferentIfBranches() {
+	w := os.Stdout
 	s := core.Source()
 	if true {
 		fmt.Fprintf(w, "%v", s)
@@ -51,7 +53,8 @@ func TestSinkAndTaintInDifferentIfBranches(w io.Writer) {
 	}
 }
 
-func TestSinkInIfBeforeTaintInIf(w io.Writer) {
+func TestSinkInIfBeforeTaintInIf() {
+	w := os.Stdout
 	s := core.Source()
 	if true {
 		core.Sink(w)
@@ -61,7 +64,8 @@ func TestSinkInIfBeforeTaintInIf(w io.Writer) {
 	}
 }
 
-func TestTaintInIfBeforeSinkInIf(w io.Writer) {
+func TestTaintInIfBeforeSinkInIf() {
+	w := os.Stdout
 	s := core.Source() // @Source(mb2)
 	if true {
 		fmt.Fprintf(w, "%v", s)
@@ -71,7 +75,8 @@ func TestTaintInIfBeforeSinkInIf(w io.Writer) {
 	}
 }
 
-func TestSinkBeforeTaintInSameIfBlock(w io.Writer) {
+func TestSinkBeforeTaintInSameIfBlock() {
+	w := os.Stdout
 	s := core.Source1()
 	if true {
 		core.Sink(w)
@@ -79,7 +84,8 @@ func TestSinkBeforeTaintInSameIfBlock(w io.Writer) {
 	}
 }
 
-func TestTaintBeforeSinkInSameIfBlock(w io.Writer) {
+func TestTaintBeforeSinkInSameIfBlock() {
+	w := os.Stdout
 	s := core.Source() // @Source(mb3)
 	if true {
 		fmt.Fprintf(w, "%v", s)
@@ -87,7 +93,8 @@ func TestTaintBeforeSinkInSameIfBlock(w io.Writer) {
 	}
 }
 
-func TestSinkInNestedIfBeforeTaint(w io.Writer) {
+func TestSinkInNestedIfBeforeTaint() {
+	w := os.Stdout
 	s := core.Source()
 	if true {
 		if true {
@@ -97,7 +104,8 @@ func TestSinkInNestedIfBeforeTaint(w io.Writer) {
 	fmt.Fprintf(w, "%v", s)
 }
 
-func TestTaintInNestedIfBeforeSink(w io.Writer) {
+func TestTaintInNestedIfBeforeSink() {
+	w := os.Stdout
 	s := core.Source() // @Source(mb40, mb41, mb42)
 	if true {
 		if true {
@@ -109,7 +117,8 @@ func TestTaintInNestedIfBeforeSink(w io.Writer) {
 	core.Sink(w) // @Sink(mb42)
 }
 
-func TestSinkAndTaintInSeparateSwitchCases(w io.Writer) {
+func TestSinkAndTaintInSeparateSwitchCases() {
+	w := os.Stdout
 	s := core.Source()
 	switch "true" {
 	case "true":
@@ -119,7 +128,8 @@ func TestSinkAndTaintInSeparateSwitchCases(w io.Writer) {
 	}
 }
 
-func TestSinkAfterTaintInSwitch(w io.Writer) {
+func TestSinkAfterTaintInSwitch() {
+	w := os.Stdout
 	s := core.Source() // @Source(mb5)
 	switch "true" {
 	case "true":
@@ -128,7 +138,8 @@ func TestSinkAfterTaintInSwitch(w io.Writer) {
 	core.Sink(w) // @Sink(mb5)
 }
 
-func TestSinkAfterTaintInFor(w io.Writer) {
+func TestSinkAfterTaintInFor() {
+	w := os.Stdout
 	sources := make([]string, 10)
 	for i := range sources {
 		sources[i] = core.Source() // @Source(mb6)
@@ -141,16 +152,16 @@ func TestSinkAfterTaintInFor(w io.Writer) {
 }
 
 func TestAllMultiBlock() {
-	TestSinkInIfBeforeTaint(os.Stdout)
-	TestTaintInIfBeforeSink(os.Stdout)
-	TestSinkAndTaintInDifferentIfBranches(os.Stdout)
-	TestSinkInIfBeforeTaintInIf(os.Stdout)
-	TestTaintInIfBeforeSinkInIf(os.Stdout)
-	TestSinkBeforeTaintInSameIfBlock(os.Stdout)
-	TestTaintBeforeSinkInSameIfBlock(os.Stdout)
-	TestSinkInNestedIfBeforeTaint(os.Stdout)
-	TestTaintInNestedIfBeforeSink(os.Stdout)
-	TestSinkAndTaintInSeparateSwitchCases(os.Stdout)
-	TestSinkAfterTaintInSwitch(os.Stdout)
-	TestSinkAfterTaintInFor(os.Stdout)
+	TestSinkInIfBeforeTaint()
+	TestTaintInIfBeforeSink()
+	TestSinkAndTaintInDifferentIfBranches()
+	TestSinkInIfBeforeTaintInIf()
+	TestTaintInIfBeforeSinkInIf()
+	TestSinkBeforeTaintInSameIfBlock()
+	TestTaintBeforeSinkInSameIfBlock()
+	TestSinkInNestedIfBeforeTaint()
+	TestTaintInNestedIfBeforeSink()
+	TestSinkAndTaintInSeparateSwitchCases()
+	TestSinkAfterTaintInSwitch()
+	TestSinkAfterTaintInFor()
 }
