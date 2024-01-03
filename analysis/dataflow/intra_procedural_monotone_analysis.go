@@ -230,7 +230,7 @@ func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 // The Path parameter enables Path-sensitivity. If Path is "*", any Path is accepted and the analysis
 // over-approximates.
 func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path string,
-	isProceduralEntry bool, ignorePath bool) []MarkWithAccessPath {
+	ignorePath bool) []MarkWithAccessPath {
 	pos, ok := state.flowInfo.GetPos(i, v)
 	var origins []MarkWithAccessPath
 	if !ok {
@@ -238,14 +238,11 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 	}
 	values := state.transitiveMarks[pos]
 	if values == nil {
-		values = state.collectTransitiveValueMarking(i, v, isProceduralEntry)
+		values = state.collectTransitiveValueMarking(i, v)
 		state.transitiveMarks[pos] = values
 	}
 
 	for _, alias := range values {
-		if alias.FromProcEntry && !isProceduralEntry {
-			continue
-		}
 		aliasPos, inFunc := state.flowInfo.GetPos(alias.Instruction, alias.Value)
 		if !inFunc {
 			continue // this is not a value inside the function
@@ -267,108 +264,23 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 	return origins
 }
 
-func (state *IntraAnalysisState) collectTransitiveValueMarking(i ssa.Instruction, v ssa.Value,
-	p bool) []InstructionValueWithAccessPath {
+func (state *IntraAnalysisState) collectTransitiveValueMarking(i ssa.Instruction,
+	v ssa.Value) []InstructionValueWithAccessPath {
 	var computedValues []InstructionValueWithAccessPath
-	state.collectValueMarkingRec(&computedValues, i, v, "", p, map[InstructionValueWithAccessPath]bool{})
+	state.collectValueMarkingRec(&computedValues, i, v, map[InstructionValueWithAccessPath]bool{})
 	return computedValues
 }
 
 func (state *IntraAnalysisState) collectValueMarkingRec(values *[]InstructionValueWithAccessPath,
 	i ssa.Instruction, v ssa.Value,
-	relPath string,
-	isProceduralEntry bool,
 	queries map[InstructionValueWithAccessPath]bool) {
 
-	val := InstructionValueWithAccessPath{v, i, "", isProceduralEntry}
+	val := InstructionValueWithAccessPath{v, i, ""}
 	if queries[val] || v == nil {
 		return
 	}
 	*values = append(*values, val)
 	queries[val] = true
-
-	if isProceduralEntry {
-		if _, isCall := v.(*ssa.Call); !isCall {
-			// If any of the aliases of the value is marked, add the marks
-			for _, ptr := range state.findAllPointers(v) {
-				for _, label := range ptr.PointsTo().Labels() {
-					newPath := accessPathAppend(relPath, label.Path())
-					state.collectValueMarkingRec(values, i, label.Value(), newPath, true, queries)
-				}
-			}
-
-			// inspect specific referrer to see if they are marked
-			referrers := v.Referrers()
-			if referrers != nil {
-				for _, referrer := range *(v.Referrers()) {
-					state.collectReferrerValueMarking(values, i, v, relPath, referrer, queries)
-				}
-			}
-		}
-	}
-}
-
-//gocyclo:ignore
-func (state *IntraAnalysisState) collectReferrerValueMarking(values *[]InstructionValueWithAccessPath,
-	i ssa.Instruction, v ssa.Value,
-	path string, referrer ssa.Instruction, queries map[InstructionValueWithAccessPath]bool) {
-	switch refInstr := referrer.(type) {
-	case *ssa.Send:
-		// marks on a Value sent on a channel transfer to channel
-		if v == refInstr.Chan && lang.IsNillableType(refInstr.X.Type()) {
-			state.collectValueMarkingRec(values, i, refInstr.X, path, true, queries)
-			return
-		}
-	case *ssa.FieldAddr:
-		// refInstr is "y = &v.name"
-		// the Value is the struct, collect the marks on the field address. We are not field sensitive, so if the
-		// field address has marks, then the struct itself has marks.
-		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(refInstr)
-		state.collectValueMarkingRec(values, i, refInstr,
-			accessPathAppendField(path, fieldName, isEmbedded), true, queries)
-		return
-	case *ssa.IndexAddr:
-		// the marks on an index address transfer to the slice (but not the marks on the index)
-		if v != refInstr.Index {
-			state.collectValueMarkingRec(values, i, refInstr, accessPathAppendIndexing(path), true, queries)
-			return
-		}
-	case *ssa.Slice:
-		// the marks of a slice of the Value are also marks of the Value
-		if v == refInstr.X {
-			state.collectValueMarkingRec(values, i, refInstr, path, true, queries)
-			return
-		}
-	case *ssa.Store:
-		// is a Value is stored, and that Value is pointer like, the marks transfer to the address
-		if v == refInstr.Addr && lang.IsNillableType(refInstr.Val.Type()) {
-			state.collectValueMarkingRec(values, i, refInstr.Val, path, true, queries)
-			return
-		}
-	case *ssa.MapUpdate:
-		// inspect marks of referrers, but only when the referred Value is the map (the Value or key does not flow
-		// to the adjacent Value/key).
-		// The location of the mark transfer (flowRef) depends on whether the object written to the map is pointer
-		// like or not, like in Store
-		if v != refInstr.Value && v != refInstr.Key {
-			// Value
-			flowRef := (ssa.Instruction)(refInstr)
-			if lang.IsNillableType(refInstr.Value.Type()) {
-				flowRef = i
-			}
-			state.collectValueMarkingRec(values, flowRef, refInstr.Value,
-				accessPathAppendIndexing(path), true, queries)
-
-			// Key
-			flowRef = (ssa.Instruction)(refInstr)
-			if lang.IsNillableType(refInstr.Key.Type()) {
-				flowRef = i
-			}
-			state.collectValueMarkingRec(values, flowRef, refInstr.Key,
-				accessPathAppendIndexing(path), true, queries)
-			return
-		}
-	}
 }
 
 // simpleTransfer  propagates all the marks from in to out, ignoring Path and tuple indexes
@@ -383,7 +295,7 @@ func transfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out 
 		state.markValue(loc, out, "", state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index))
 	}
 
-	for _, origin := range state.getMarks(loc, in, path, false, false) {
+	for _, origin := range state.getMarks(loc, in, path, false) {
 		state.flowInfo.SetLoc(origin.Mark, loc)
 		newOrigin := origin.Mark
 		if index >= 0 {
@@ -494,7 +406,7 @@ func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, ou
 	if !isGlob {
 		return
 	}
-	for _, origin := range state.getMarks(loc, in, "", false, true) {
+	for _, origin := range state.getMarks(loc, in, "", true) {
 		state.summary.addGlobalEdge(origin, nil, loc, glob)
 	}
 }

@@ -167,7 +167,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 	// add call node edges for call instructions whose Value corresponds to a function (i.e. the Method is nil)
 	if callInstr.Common().Method == nil {
 		// TODO: ignore path until we have field sensitivity in inter-procedural analysis
-		for _, mark := range state.getMarks(callInstr, callInstr.Common().Value, "", false, true) {
+		for _, mark := range state.getMarks(callInstr, callInstr.Common().Value, "", true) {
 			state.summary.addCallEdge(mark, nil, callInstr)
 			if closure, isMakeClosure := mark.Mark.Node.(*ssa.MakeClosure); isMakeClosure {
 				state.updateBoundVarEdges(callInstr, closure)
@@ -186,7 +186,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(callInstr, argInstr)
 		}
-		marks := state.getMarks(callInstr, arg, "", false, false)
+		marks := state.getMarks(callInstr, arg, "", false)
 		for _, mark := range marks {
 			// Add any necessary edge in the summary flow graph (incoming edges at call site)
 			c := state.checkFlow(mark.Mark, callInstr, arg)
@@ -218,7 +218,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 // updateBoundVarEdges updates the edges to bound variables.
 func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
-		for _, boundVarMark := range state.getMarks(instr, boundVar, "", false, false) {
+		for _, boundVarMark := range state.getMarks(instr, boundVar, "", false) {
 			state.summary.addBoundVarEdge(boundVarMark, &ConditionInfo{Satisfiable: true}, x, boundVar)
 		}
 	}
@@ -228,7 +228,7 @@ func (state *IntraAnalysisState) updateBoundVarEdges(instr ssa.Instruction, x *s
 // to parameters and free variables.
 func (state *IntraAnalysisState) makeEdgesAtClosure(x *ssa.MakeClosure) {
 	for _, boundVar := range x.Bindings {
-		for _, markWithPath := range state.getMarks(x, boundVar, "", false, false) {
+		for _, markWithPath := range state.getMarks(x, boundVar, "", false) {
 			mark := markWithPath.Mark
 			if mark.IsClosure() && mark.Node == x {
 				continue // avoid spurious edges from closure to its own bound variables
@@ -288,7 +288,7 @@ func (state *IntraAnalysisState) makeEdgesAtReturn(x *ssa.Return) {
 			state.updateBoundVarEdges(x, r)
 		}
 
-		for _, origin := range state.getMarks(x, result, "", true, true) {
+		for _, origin := range state.getMarks(x, result, "", true) {
 			state.summary.addReturnEdge(origin, nil, x, tupleIndex)
 		}
 	}
@@ -305,7 +305,7 @@ func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 				state.summary.addBoundLabelNode(x, label, *target)
 			}
 		}
-		for _, origin := range state.getMarks(x, x.Addr, "", false, false) {
+		for _, origin := range state.getMarks(x, x.Addr, "", false) {
 			state.summary.addBoundLabelEdge(origin, nil, x)
 		}
 	}
@@ -316,7 +316,7 @@ func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) 
 	aState := state.parentAnalyzerState
 	if asValue, ok := instr.(ssa.Value); ok &&
 		state.shouldTrack(aState.Config, aState.PointerAnalysis, instr.(ssa.Node)) {
-		for _, origin := range state.getMarks(instr, asValue, "", false, false) {
+		for _, origin := range state.getMarks(instr, asValue, "", false) {
 			_, isField := instr.(*ssa.Field)
 			_, isFieldAddr := instr.(*ssa.FieldAddr)
 			// check flow to avoid duplicate edges between synthetic nodes

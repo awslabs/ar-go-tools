@@ -37,10 +37,9 @@ type MarkWithAccessPath struct {
 // InstructionValueWithAccessPath represents a value at an instruction with a specific access path. The boolean
 // FromProcEntry is used by some functions to differentiate how the value was collected.
 type InstructionValueWithAccessPath struct {
-	Value         ssa.Value
-	Instruction   ssa.Instruction
-	Path          string
-	FromProcEntry bool
+	Value       ssa.Value
+	Instruction ssa.Instruction
+	Path        string
 }
 
 // A ValueWithAccessPath is a value with an access path, e.g. a value "x" with an access path ".field1" represents
