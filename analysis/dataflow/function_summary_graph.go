@@ -568,7 +568,7 @@ func (g *SummaryGraph) addEdge(source MarkWithAccessPath, dest GraphNode, cond *
 	// is produced in the intra-procedural analysis.
 
 	if source.Mark.IsParameter() {
-		if sourceArgNode, ok := g.Params[source.Mark.Node]; ok && sourceArgNode != dest {
+		if sourceArgNode, ok := g.Params[source.Mark.Node]; ok && isDiffNode(source, sourceArgNode, dest) {
 			updateEdgeInfo(source, dest, cond, sourceArgNode)
 		}
 	}
@@ -601,7 +601,7 @@ func (g *SummaryGraph) addEdge(source MarkWithAccessPath, dest GraphNode, cond *
 	}
 
 	if source.Mark.IsFreeVar() {
-		if sourceFreeVarNode, ok := g.FreeVars[source.Mark.Node]; ok && sourceFreeVarNode != dest {
+		if sourceFreeVarNode, ok := g.FreeVars[source.Mark.Node]; ok && isDiffNode(source, sourceFreeVarNode, dest) {
 			updateEdgeInfo(source, dest, cond, sourceFreeVarNode)
 		}
 	}
@@ -644,6 +644,10 @@ func (g *SummaryGraph) addEdge(source MarkWithAccessPath, dest GraphNode, cond *
 			}
 		}
 	}
+}
+
+func isDiffNode(mark MarkWithAccessPath, source GraphNode, dest GraphNode) bool {
+	return source != dest || mark.Mark.Label != mark.AccessPath
 }
 
 func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionInfo, sourceNode GraphNode) {

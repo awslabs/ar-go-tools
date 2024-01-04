@@ -334,9 +334,6 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 			m := MarkWithAccessPath{state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, i), ""}
 			trackingMarks = append(trackingMarks, m)
 		}
-	} else {
-		m := MarkWithAccessPath{state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, -1), ""}
-		trackingMarks = append(trackingMarks, m)
 	}
 
 	for _, mark := range trackingMarks {
@@ -350,7 +347,7 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[arg]] {
 			for _, path := range AccessPathsOfType(arg.Type()) {
 				state.flowInfo.AddMark(instr, arg, path,
-					state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, nil, -1, path))
+					state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, arg, -1, path))
 			}
 		}
 		newMark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, -1)

@@ -365,6 +365,17 @@ func taintWithRecursion(x *Node, n int) {
 	}
 }
 
+func (m *MyStructBis) Move() {
+	m.MySubBis.label = m.MyDataBis
+}
+
+func testMoveTaintBetweenFields() {
+	x := NewMyStructBis()
+	x.MyDataBis = source() // @Source(testMoveTaintBetweenFields)
+	x.Move()
+	sink(x.MySubBis.label) // @Sink(testMoveTaintBetweenFields)
+}
+
 func main() {
 	testSimpleField1()
 	testSimpleField2()
@@ -383,4 +394,5 @@ func main() {
 	testMethodTaintReceiverPointer()
 	testMethodInterface()
 	testRecursion()
+	testMoveTaintBetweenFields()
 }
