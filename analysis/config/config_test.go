@@ -240,8 +240,8 @@ func TestLoadFullConfig(t *testing.T) {
 	if !config.SourceTaintsArgs {
 		t.Error("full config should have source-taints-args set")
 	}
-	if config.SilenceWarn {
-		t.Error("full config should have warn set to true")
+	if !config.SilenceWarn {
+		t.Error("full config should have silence-warn set to true")
 	}
 	if !config.IgnoreNonSummarized {
 		t.Errorf("full config should have set ignorenonsummarized")
@@ -267,6 +267,16 @@ func TestLoadMisc(t *testing.T) {
 			[]CodeIdentifier{{"", "a", "", "b", "", "", "", "", "", nil}},
 			[]CodeIdentifier{{"", "c", "", "d", "", "", "", "", "", nil}},
 			[]CodeIdentifier{},
+		),
+	)
+	//
+	testLoadOneFile(t,
+		"config2.json",
+		mkConfig(
+			[]CodeIdentifier{{"", "x", "", "a", "", "b", "", "", "", nil}},
+			[]CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", nil}},
+			[]CodeIdentifier{{"", "p", "", "a", "", "", "", "", "", nil},
+				{"", "p2", "", "a", "", "", "", "", "", nil}},
 		),
 	)
 	//

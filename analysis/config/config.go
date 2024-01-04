@@ -107,7 +107,7 @@ type Config struct {
 
 	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the dataflow
 	// analyses
-	DataflowSpecs []string `yaml:"dataflow-specs"`
+	DataflowSpecs []string `yaml:"dataflow-specs" json:"dataflow-specs"`
 
 	// if the PkgFilter is specified
 	pkgFilterRegex *regexp.Regexp
@@ -118,13 +118,13 @@ type Config struct {
 	EscapeConfig *EscapeConfig
 
 	// TaintTrackingProblems lists the taint tracking specifications
-	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking-problems"`
+	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking-problems" json:"taint-tracking-problems"`
 
 	// SlicingProblems lists the program slicing specifications
-	SlicingProblems []SlicingSpec `yaml:"slicing-problems"`
+	SlicingProblems []SlicingSpec `yaml:"slicing-problems" json:"slicing-problems"`
 
 	// StaticCommandsProblems lists the static commands problems
-	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems"`
+	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems" json:"static-commands-problems"`
 }
 
 // TaintSpec contains code identifiers that identify a specific taint tracking problem
@@ -159,7 +159,7 @@ type SlicingSpec struct {
 type StaticCommandsSpec struct {
 	// StaticCommands is the list of identifiers to be considered as command execution for the static commands analysis
 	// (not used)
-	StaticCommands []CodeIdentifier `yaml:"static-commands"`
+	StaticCommands []CodeIdentifier `yaml:"static-commands" json:"static-commands"`
 }
 
 // Options holds the global options for analyses
@@ -167,70 +167,72 @@ type Options struct {
 	// ReportsDir is the directory where all the reports will be stored. If the yaml config file this config struct has
 	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
 	// in the folder the binary is called.
-	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir"`
+	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir" json:"reports-dir"`
 
 	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
 	// prefix
-	PkgFilter string `xml:"pkg-filter,attr" yaml:"pkg-filter"`
+	PkgFilter string `xml:"pkg-filter,attr" yaml:"pkg-filter" json:"pkg-filter"`
 
 	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
-	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis"`
+	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis" json:"use-escape-analysis"`
 
 	// Path to a JSON file that has the escape configuration (allow/blocklist)
-	EscapeConfigFile string `xml:"escape-config,attr" yaml:"escape-config"`
+	EscapeConfigFile string `xml:"escape-config,attr" yaml:"escape-config" json:"escape-config"`
 
 	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
-	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural"`
+	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural" json:"skip-interprocedural"`
 
 	// CoverageFilter can be used to filter which packages will be reported in the coverage. If non-empty,
 	// coverage will only for those packages that match CoverageFilter
-	CoverageFilter string `xml:"coverage-filter,attr" yaml:"coverage-filter"`
+	CoverageFilter string `xml:"coverage-filter,attr" yaml:"coverage-filter" json:"coverage-filter"`
 
 	// ReportSummaries can be set to true, in which case summaries will be reported in a file names summaries-*.out in
 	// the reports directory
-	ReportSummaries bool `xml:"report-summaries,attr" yaml:"report-summaries"`
+	ReportSummaries bool `xml:"report-summaries,attr" yaml:"report-summaries" json:"report-summaries"`
 
 	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
-	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand"`
+	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand" json:"summarize-on-demand"`
 
 	// IgnoreNonSummarized allows the analysis to ignore when the summary of a function has not been built in the first
 	// analysis phase. This is only for experimentation, since the results may be unsound.
 	// This has no effect when SummarizeOnDemand is true
-	IgnoreNonSummarized bool `xml:"ignoreNonSummarized,attr" yaml:"ignore-non-summarized"`
+	IgnoreNonSummarized bool `xml:"ignoreNonSummarized,attr" yaml:"ignore-non-summarized" json:"ignore-non-summarized"`
 
 	// SourceTaintsArgs specifies whether calls to a source function also taints the argument. This is usually not
 	// the case, but might be useful for some users or for source functions that do not return anything.
-	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args"`
+	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args" json:"source-taints-args"`
 
 	// ReportPaths specifies whether the taint flows should be reported in separate files. For each taint flow, a new
 	// file named taint-*.out will be generated with the trace from source to sink
-	ReportPaths bool `xml:"report-paths,attr" yaml:"report-paths"`
+	ReportPaths bool `xml:"report-paths,attr" yaml:"report-paths" json:"report-paths"`
 
 	// ReportCoverage specifies whether coverage should be reported. If true, then a file names coverage-*.out will
 	// be created in the report directory, containing the coverage data generated by the analysis
-	ReportCoverage bool `xml:"report-coverage,attr" yaml:"report-coverage"`
+	ReportCoverage bool `xml:"report-coverage,attr" yaml:"report-coverage" json:"report-coverage"`
 
 	// ReportNoCalleeSites specifies whether the tool should report where it does not find any callee.
-	ReportNoCalleeSites bool `xml:"report-no-callee-sites,attr" yaml:"report-no-callee-sites"`
+	ReportNoCalleeSites bool `xml:"report-no-callee-sites,attr" yaml:"report-no-callee-sites" json:"report-no-callee-sites"`
 
 	// MaxDepth sets a limit for the number of function call depth explored during the analysis
 	// Default is -1.
 	// If provided MaxDepth is <= 0, then it is ignored.
-	MaxDepth int `xml:"max-depth,attr" yaml:"max-depth"`
+	MaxDepth int `xml:"max-depth,attr" yaml:"max-depth" json:"max-depth"`
 
-	// PathSensitive is a boolean indicating whether the analysis should be run with path sensitivity on
+	// PathSensitive is a boolean indicating whether the analysis should be run with access path sensitivity on
 	// (will change to include more filtering in the future)
-	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive"`
+	// Note that the configuration option name is "field-sensitive" because this is the name that will be more
+	// recognizable for users.
+	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive" json:"field-sensitive"`
 
 	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
 	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
-	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms"`
+	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms" json:"max-alarms"`
 
 	// Loglevel controls the verbosity of the tool
-	LogLevel int `xml:"log-level,attr" yaml:"log-level"`
+	LogLevel int `xml:"log-level,attr" yaml:"log-level" json:"log-level"`
 
 	// Suppress warnings
-	SilenceWarn bool `xml:"silence-warn,attr"`
+	SilenceWarn bool `xml:"silence-warn,attr" json:"silence-warn" yaml:"silence-warn"`
 }
 
 // NewDefault returns an empty default config.
@@ -263,6 +265,23 @@ func NewDefault() *Config {
 	}
 }
 
+func unmarshalConfig(b []byte, cfg *Config) error {
+	errYaml := yaml.Unmarshal(b, cfg)
+	if errYaml == nil {
+		return nil
+	}
+	errXML := ParseXMLConfigFormat(cfg, b)
+	if errXML == nil {
+		return nil
+	}
+	errJson := json.Unmarshal(b, cfg)
+	if errJson == nil {
+		return errJson
+	}
+	return fmt.Errorf("could not unmarshal config file, not as yaml: %w, not as xml: %v, not as json: %v",
+		errYaml, errXML, errJson)
+}
+
 // Load reads a configuration from a file
 //
 //gocyclo:ignore
@@ -272,15 +291,10 @@ func Load(filename string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not read config file: %w", err)
 	}
-	errYaml := yaml.Unmarshal(b, cfg)
-	if errYaml != nil {
-		errXML := ParseXMLConfigFormat(cfg, b)
-		if errXML != nil {
-			return nil, fmt.Errorf("could not unmarshal config file, not as yaml: %w, not as xml: %v",
-				errYaml, errXML)
-		}
+	unmarshallingError := unmarshalConfig(b, cfg)
+	if unmarshallingError != nil {
+		return nil, unmarshallingError
 	}
-
 	cfg.sourceFile = filename
 
 	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
