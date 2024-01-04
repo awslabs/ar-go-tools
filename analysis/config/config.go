@@ -121,7 +121,7 @@ type Config struct {
 	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking-problems" json:"taint-tracking-problems"`
 
 	// SlicingProblems lists the program slicing specifications
-	SlicingProblems []SlicingSpec `yaml:"slicing-problems" json:"slicing_problems"`
+	SlicingProblems []SlicingSpec `yaml:"slicing-problems" json:"slicing-problems"`
 
 	// StaticCommandsProblems lists the static commands problems
 	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems" json:"static-commands-problems"`
