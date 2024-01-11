@@ -14,7 +14,10 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 type example struct {
 	ptr *string
@@ -376,6 +379,46 @@ func testMoveTaintBetweenFields() {
 	sink(x.MySubBis.label) // @Sink(testMoveTaintBetweenFields)
 }
 
+type ValueStructInner struct {
+	id int
+}
+
+type ValueStruct struct {
+	inner   ValueStructInner
+	content string
+}
+
+func testTaintStructAsValue() {
+	v := ValueStructInner{id: len(source())} // @Source(testTaintStructAsValue)
+	x := ValueStruct{inner: v, content: "ok"}
+	callsSink(x)
+}
+
+func callsSink(x ValueStruct) {
+	sink(x.content)
+	sink(strconv.Itoa(x.inner.id)) // @Sink(testTaintStructAsValue)
+}
+
+type t struct {
+	f func() string
+	g func() string
+}
+
+func testStructWithFuncs() {
+	data := source() // @Source(testStructWithFuncs)
+	val := t{
+		f: func() string {
+			return data
+		},
+		g: func() string {
+			return "safe"
+		},
+	}
+
+	sink(val.f()) // @Sink(testStructWithFuncs)
+	sink(val.g()) // safe
+}
+
 func main() {
 	testSimpleField1()
 	testSimpleField2()
@@ -395,4 +438,6 @@ func main() {
 	testMethodInterface()
 	testRecursion()
 	testMoveTaintBetweenFields()
+	testTaintStructAsValue()
+	testStructWithFuncs()
 }
