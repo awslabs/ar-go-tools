@@ -18,202 +18,136 @@ import (
 	"testing"
 )
 
-func TestCrossFunctionExample0(t *testing.T) {
-	runTest(t, "example0", []string{}, false, noErrorExpected)
-}
+func TestTaint(t *testing.T) {
+	type args struct {
+		dirName     string
+		extraFiles  []string
+		expectError func(error) bool
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "example 0",
+			args: args{"example0", []string{}, noErrorExpected},
+		},
+		{
+			name: "intra-procedural",
+			args: args{"intra-procedural", []string{}, noErrorExpected},
+		},
+		{
+			name: "basic",
+			args: args{"basic",
+				[]string{
+					"bar.go",
+					"example.go",
+					"example2.go",
+					"example3.go",
+					"fields.go",
+					"sanitizers.go",
+					"memory.go",
+					"channels.go"},
+				noErrorExpected},
+		},
+		{
+			name: "builtins",
+			args: args{"builtins", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "stdlib",
+			args: args{"stdlib", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "selects",
+			args: args{"selects", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "tuples",
+			args: args{"tuples", []string{}, noErrorExpected},
+		},
+		{
+			name: "panics",
+			args: args{"panics", []string{}, noErrorExpected},
+		},
+		{
+			name: "interfaces",
+			args: args{"interfaces", []string{}, noErrorExpected},
+		},
+		{
+			name: "interfaces with summaries",
+			args: args{"interface-summaries", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "parameters",
+			args: args{"parameters", []string{}, noErrorExpected},
+		},
+		{
+			name: "example1",
+			args: args{"example1", []string{}, noErrorExpected},
+		},
+		{
+			name: "example2",
+			args: args{"example2", []string{}, noErrorExpected},
+		},
+		{
+			name: "closures",
+			args: args{"closures", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "closures (precise flow)",
+			args: args{"closures_flowprecise", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "closures (from paper)",
+			args: args{"closures_paper", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "sanitizers",
+			args: args{"sanitizers", []string{}, noErrorExpected},
+		},
+		{
+			name: "validators",
+			args: args{"validators", []string{"values.go"}, noErrorExpected},
+		},
+		{
+			name: "taint with filters",
+			args: args{"filters", []string{}, noErrorExpected},
+		},
+		{
+			name: "sources with context",
+			args: args{"with-context", []string{}, noErrorExpected},
+		},
+		{
+			name: "with field sensitivity",
+			args: args{"fields", []string{}, noErrorExpected},
+		},
+		{
+			name: "fromlevee",
+			args: args{"fromlevee", []string{}, noErrorExpected},
+		},
+		{
+			name: "globals",
+			args: args{"globals", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "complex functionality example",
+			args: args{"agent-example", []string{}, noErrorExpected},
+		},
+		{
+			name: "benchmarking example",
+			args: args{"benchmark", []string{}, noErrorExpected},
+		},
+	}
 
-func TestCrossFunctionExample0_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "example0", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionIntra(t *testing.T) {
-	runTest(t, "intra-procedural", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionIntra_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "intra-procedural", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionBasic(t *testing.T) {
-	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
-		"sanitizers.go", "memory.go", "channels.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionBasic_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
-		"sanitizers.go", "memory.go", "channels.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionBuiltins(t *testing.T) {
-	runTest(t, "builtins", []string{"helpers.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionBuiltins_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "builtins", []string{"helpers.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionInterfaces(t *testing.T) {
-	runTest(t, "interfaces", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionInterfaces_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "interfaces", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionParameters(t *testing.T) {
-	runTest(t, "parameters", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionParameters_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "parameters", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionExample1(t *testing.T) {
-	runTest(t, "example1", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionExample1_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "example1", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionExample2(t *testing.T) {
-	runTest(t, "example2", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionExample2_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "example2", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionDefers(t *testing.T) {
-	runTest(t, "defers", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionDefers_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "defers", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionClosures(t *testing.T) {
-	runTest(t, "closures", []string{"helpers.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionClosures_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "closures", []string{"helpers.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionClosuresFlowPrecise(t *testing.T) {
-	runTest(t, "closures_flowprecise", []string{"helpers.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionClosuresFlowPrecise_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "closures_flowprecise", []string{"helpers.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionClosuresPaper(t *testing.T) {
-	runTest(t, "closures_paper", []string{"helpers.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionClosuresPaper_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "closures_paper", []string{"helpers.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionInterfaceSummaries(t *testing.T) {
-	runTest(t, "interface-summaries", []string{"helpers.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionInterfaceSummaries_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "interface-summaries", []string{"helpers.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionSanitizers(t *testing.T) {
-	runTest(t, "sanitizers", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionSanitizers_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "sanitizers", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionValidators(t *testing.T) {
-	runTest(t, "validators", []string{"values.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionValidators_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "validators", []string{"values.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionExamplesFromLevee(t *testing.T) {
-	runTest(t, "fromlevee", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionExamplesFromLevee_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "fromlevee", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionGlobals(t *testing.T) {
-	runTest(t, "globals", []string{"helpers.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionGlobals_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "globals", []string{"helpers.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionStdlib(t *testing.T) {
-	runTest(t, "stdlib", []string{"helpers.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionStdlib_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "stdlib", []string{"helpers.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionSelects(t *testing.T) {
-	runTest(t, "selects", []string{"helpers.go"}, false, noErrorExpected)
-}
-
-func TestCrossFunctionSelects_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "selects", []string{"helpers.go"}, true, noErrorExpected)
-}
-
-func TestCrossFunctionTuples(t *testing.T) {
-	runTest(t, "tuples", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionTuples_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "tuples", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionPanics(t *testing.T) {
-	runTest(t, "panics", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionPanics_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "panics", []string{}, true, noErrorExpected)
-}
-
-func TestCrossFunctionFilters(t *testing.T) {
-	runTest(t, "filters", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionFilters_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "filters", []string{}, true, noErrorExpected)
-}
-
-func TestComplexExample(t *testing.T) {
-	runTest(t, "agent-example", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionWithContext(t *testing.T) {
-	runTest(t, "with-context", []string{}, false, noErrorExpected)
-}
-
-func TestCrossFunctionWithContext_SummarizeOnDemand(t *testing.T) {
-	runTest(t, "with-context", []string{}, true, noErrorExpected)
-}
-
-func TestField(t *testing.T) {
-	runTest(t, "fields", []string{}, false, noErrorExpected)
-}
-
-func TestBenchmark(t *testing.T) {
-	runTest(t, "benchmark", []string{}, false, noErrorExpected)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runTest(t, tt.args.dirName, tt.args.extraFiles, false, tt.args.expectError)
+		})
+		t.Run(tt.name+"-on-demand", func(t *testing.T) {
+			runTest(t, tt.args.dirName, tt.args.extraFiles, true, tt.args.expectError)
+		})
+	}
 }
 
 func TestPlayground(t *testing.T) {

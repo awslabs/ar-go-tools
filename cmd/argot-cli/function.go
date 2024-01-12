@@ -258,6 +258,7 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 				}
 			})
 		}
+
 	}
 
 	return false
@@ -460,9 +461,16 @@ func showPointer(tt *term.Terminal, ptr pointer.Pointer) {
 			if label.Value().Parent() != state.CurrentFunction {
 				f = fmt.Sprintf(" in %s", label.Value().Parent().Name())
 			}
-			entries = append(entries,
-				displayElement{content: "[" + label.Value().Name() + " (" + label.Value().String() + f + ")]",
-					escape: tt.Escape.Yellow})
+			var dElt displayElement
+			if label.Path() != "" {
+				dElt = displayElement{
+					content: "[" + label.Value().Name() + " @" + label.Path() + " (" + label.Value().String() + f + ")]",
+					escape:  tt.Escape.Yellow}
+			} else {
+				dElt = displayElement{content: "[" + label.Value().Name() + " (" + label.Value().String() + f + ")]",
+					escape: tt.Escape.Yellow}
+			}
+			entries = append(entries, dElt)
 		} else {
 			entries = append(entries,
 				displayElement{content: "[" + label.String() + "]", escape: tt.Escape.White})

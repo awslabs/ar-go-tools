@@ -106,29 +106,9 @@ func main() {
 		return
 	}
 
-	pConfig := &config.Config{} // empty default config
-	if *configPath != "" {
-		config.SetGlobalConfig(*configPath)
-		pConfig, err = config.LoadGlobal()
-		state.ConfigPath = *configPath
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "could not load config %q\n", *configPath)
-			return
-		}
-	} else if len(flag.Args()) == 1 && strings.HasSuffix(flag.Args()[0], ".go") {
-		// Special case: look for config in .go 's folder
-		dir := path.Dir(flag.Args()[0])
-		configfile := path.Join(dir, "config.yaml")
-		config.SetGlobalConfig(configfile)
-		tmpConfig, err := config.LoadGlobal()
-		if err != nil {
-			// Reset and ignore
-			config.SetGlobalConfig("")
-		} else {
-			pConfig = tmpConfig
-			state.ConfigPath = configfile
-
-		}
+	pConfig, done, _ := seekConfig()
+	if done {
+		return
 	}
 
 	// Override config parameters with command-line parameters
@@ -168,6 +148,43 @@ func main() {
 	}
 	// Start the command line tool with the state containing all the information
 	run(state)
+}
+
+func seekConfig() (*config.Config, bool, error) {
+	var err error
+	pConfig := &config.Config{} // empty default config
+	if *configPath != "" {
+		config.SetGlobalConfig(*configPath)
+		pConfig, err = config.LoadGlobal()
+		state.ConfigPath = *configPath
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not load config %q\n", *configPath)
+			return nil, true, nil
+		}
+	} else if len(flag.Args()) == 1 && strings.HasSuffix(flag.Args()[0], ".go") {
+		// Special case: look for config in .go 's folder
+		dir := path.Dir(flag.Args()[0])
+		pConfig, err = attemptSettingConfig(pConfig, dir, "config.yaml")
+		if err == nil {
+			return pConfig, false, nil
+		}
+		pConfig, err = attemptSettingConfig(pConfig, dir, "config.json")
+	}
+	return pConfig, false, err
+}
+
+func attemptSettingConfig(pConfig *config.Config, dir string, filename string) (*config.Config, error) {
+	configfile := path.Join(dir, filename)
+	config.SetGlobalConfig(configfile)
+	tmpConfig, err := config.LoadGlobal()
+	if err != nil {
+		// Reset and ignore
+		config.SetGlobalConfig("")
+		return nil, err
+	}
+	pConfig = tmpConfig
+	state.ConfigPath = configfile
+	return pConfig, nil
 }
 
 // run implements the command line tool, calling interpret for each command until the exit command is input

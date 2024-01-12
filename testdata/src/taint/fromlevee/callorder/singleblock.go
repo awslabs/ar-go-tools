@@ -20,25 +20,28 @@ package callorder
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"fromlevee/core"
 )
 
-func TestTaintBeforeSinking(w io.Writer) {
+func TestTaintBeforeSinking() {
+	w := os.Stdout
 	s := core.Source() // @Source(sb1)
 	_, _ = fmt.Fprintf(w, "%v", s)
 	core.Sink(w) // @Sink(sb1)
 }
 
-func TestSinkBeforeTainting(w io.Writer) {
+func TestSinkBeforeTainting() {
+	w := os.Stdout
+	w = os.Stdout
 	s := core.Source()
 	core.Sink(w)
 	_, _ = fmt.Fprintf(w, "%v", s)
 }
 
-func TestSinkBeforeAndAfterTainting(w io.Writer) {
+func TestSinkBeforeAndAfterTainting() {
+	w := os.Stdout
 	s := core.Source() // @Source(sb2)
 	core.Sink(w)
 	_, _ = fmt.Fprintf(w, "%v", s)
@@ -46,7 +49,7 @@ func TestSinkBeforeAndAfterTainting(w io.Writer) {
 }
 
 func TestAllSingleBlock() {
-	TestTaintBeforeSinking(os.Stdout)
-	TestSinkBeforeTainting(os.Stdout)
-	TestSinkBeforeAndAfterTainting(os.Stdout)
+	TestTaintBeforeSinking()
+	TestSinkBeforeTainting()
+	TestSinkBeforeAndAfterTainting()
 }

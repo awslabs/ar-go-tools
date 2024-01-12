@@ -74,6 +74,7 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 				sliceV := callCommon.Args[0]
 				dataV := callCommon.Args[1]
 				simpleTransfer(t, instruction, sliceV, callValue)
+				simpleTransfer(t, instruction, dataV, sliceV)
 				simpleTransfer(t, instruction, dataV, callValue)
 				return true
 			}

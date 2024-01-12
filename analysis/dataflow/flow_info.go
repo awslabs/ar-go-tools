@@ -156,7 +156,19 @@ func (fi *FlowInformation) GetInstrPos(i ssa.Instruction) IndexT {
 // GetNewMark returns a pointer to the mark with the provided arguments. Internally checks whether the mark object
 // representing this mark already exists.
 func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int) *Mark {
-	m := NewMark(node, typ, qualifier, index)
+	m := NewMark(node, typ, qualifier, index, "")
+	if m0, ok := fi.marks[m]; ok {
+		return m0
+	}
+	fi.marks[m] = &m
+	return &m
+}
+
+// GetNewLabelledMark returns a pointer to the labelled mark with the provided arguments. Internally checks whether
+// the mark object representing this mark already exists.
+func (fi *FlowInformation) GetNewLabelledMark(node ssa.Node, typ MarkType,
+	qualifier ssa.Value, index int, label string) *Mark {
+	m := NewMark(node, typ, qualifier, index, label)
 	if m0, ok := fi.marks[m]; ok {
 		return m0
 	}

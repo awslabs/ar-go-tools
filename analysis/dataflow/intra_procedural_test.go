@@ -193,15 +193,15 @@ func TestFunctionSummaries(t *testing.T) {
 					// s2 has one incoming edge because its Value is only
 					// modified once in Foo:
 					// `*s2 = obj.f(a[9])`
-					if len(paramNode.In()) != 1 {
-						t.Errorf("in Foo, param s2 should have one incoming edge, but got: %v", paramNode.In())
+					if len(paramNode.In()) != 2 {
+						t.Errorf("in Foo, param s2 should have two incoming edges, but got: %v", paramNode.In())
 					}
 					for in := range paramNode.In() {
 						if call, ok := in.(*dataflow.CallNode); ok {
 							if call.FuncString() != "(command-line-arguments.A).f" {
 								t.Errorf("in Foo, incoming edge of param s2 is not a call to (A).f, but got: %s", call.FuncName())
 							}
-						} else {
+						} else if _, ok := in.(*dataflow.CallNodeArg); !ok {
 							t.Errorf("in Foo, incoming edge of param s2 should be a call node, but got: %T", in)
 						}
 					}
@@ -409,8 +409,8 @@ func TestFunctionSummaries(t *testing.T) {
 					for _, arg := range callee.Args() {
 						name := callee.FuncString()
 						if name == "command-line-arguments.Sink" {
-							if len(arg.Out()) != 0 {
-								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
+							if len(arg.Out()) >= 2 {
+								t.Errorf("in Baz, all callee args to %s should less than 2 outgoing edges, but got: %v", name, arg.Out())
 							}
 
 							if len(arg.In()) < 1 {
@@ -426,8 +426,8 @@ func TestFunctionSummaries(t *testing.T) {
 								t.Errorf("in Baz, callee arg to %s should have an incoming edge that is a call node, but got: %v", name, arg.In())
 							}
 						} else if strings.HasPrefix(name, "make closure Baz$1") {
-							if len(arg.Out()) != 0 {
-								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
+							if len(arg.Out()) != 2 {
+								t.Errorf("in Baz, callee arg to %s should have 2 outgoing edges, but got: %v", name, arg.Out())
 							}
 
 							if len(arg.In()) != 1 {
@@ -490,9 +490,8 @@ func TestFunctionSummaries(t *testing.T) {
 						hasReturnOut = true
 					}
 				}
-				if freevar.SsaNode().Name() == "s1" && len(freevar.In()) != 0 {
-					// technically it does, but this is a intra-procedural analysis (even for closures)
-					t.Errorf("in Baz, closure freevar %s should have no incoming edges, but got: %v",
+				if freevar.SsaNode().Name() == "s1" && len(freevar.In()) != 1 {
+					t.Errorf("in Baz, closure freevar %s should have 1 incoming edge, but got: %v",
 						freevar.String(), freevar.In())
 				}
 				if freevar.SsaNode().Name() != "s1" && len(freevar.In()) != 0 {

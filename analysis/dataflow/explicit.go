@@ -14,7 +14,10 @@
 
 package dataflow
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // A VisitorKind should be either DefaultTracing or ClosureTracing and defines the behaviour of the Visitor
 type VisitorKind = int
@@ -90,15 +93,16 @@ func (v VisitorNodeStatus) PopClosure() VisitorNodeStatus {
 // VisitorNode represents a node in the inter-procedural dataflow graph to be visited.
 type VisitorNode struct {
 	NodeWithTrace
-	Prev     *VisitorNode
-	Depth    int
-	Status   VisitorNodeStatus
-	children []*VisitorNode
+	Prev        *VisitorNode
+	Depth       int
+	AccessPaths []string
+	Status      VisitorNodeStatus
+	children    []*VisitorNode
 }
 
 // Key returns a unique string representation for the node with its trace
 func (v *VisitorNode) Key() KeyType {
-	return v.NodeWithTrace.Key() + "_" + strconv.Itoa(v.Status.Kind)
+	return v.NodeWithTrace.Key() + "_" + strconv.Itoa(v.Status.Kind) + "." + strings.Join(v.AccessPaths, "|")
 }
 
 // AddChild adds a child to the node

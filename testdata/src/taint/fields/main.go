@@ -14,7 +14,10 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 type example struct {
 	ptr *string
@@ -86,8 +89,9 @@ func testSimpleField1() {
 }
 
 func testSimpleField2() {
+	fmt.Println("testSimpleField2")
 	x := newStruct()
-	s := &x.A
+	s := &(x.A)
 	x.A = source() // @Source(testSimpleField_2)
 	x.B = "ok"
 	x.C = source() // @Source(testSimpleField_3)
@@ -101,6 +105,7 @@ func testSimpleField2() {
 }
 
 func testAllStructTainted() {
+	fmt.Println("testAllStructTainted")
 	x := source2() // @Source(testAllStructTainted)
 	x.B = "ok"
 	sink(x.B) // @Sink(testAllStructTainted)
@@ -158,6 +163,262 @@ func testFieldAndSliceSink(a []*Node) {
 	}
 }
 
+func testFieldAndMap() {
+	fmt.Println("testFieldAndMap")
+	s := source() // @Source(testFieldAndMap)
+	s2 := s + "ok"
+	a := make(map[string]*Node, 10)
+	x := &Node{label: s2}
+	a["0"] = &Node{label: "ok"}
+	a["1"] = &Node{label: "fine"}
+	a["0"].next = a["1"]
+	a["1"].next = x // a[0] -> a[1] -> x (tainted)
+	testFieldAndMapSink(a)
+}
+
+func testFieldAndMapSink(a map[string]*Node) {
+	for _, x := range a {
+		if x != nil {
+			sink(x.label) // @Sink(testFieldAndMap)
+		}
+	}
+}
+
+func testFieldAndMapRev() {
+	fmt.Println("testFieldAndMapRev")
+	a := make(map[string]*Node, 10)
+	x := &Node{label: "ok"}
+	a["1"] = &Node{label: "fine"}
+	a["0"] = &Node{label: "fine"}
+	a["0"].next = a["1"]
+	a["1"].next = x // a[0] -> a[1] -> x (tainted)
+	testFieldAndMapSource(a)
+	sink("rev-" + a["0"].label) // @Sink(testFieldAndMapSource)
+}
+
+func testFieldAndMapSource(a map[string]*Node) {
+	for _, x := range a {
+		if x != nil {
+			x.label = source() // @Source(testFieldAndMapSource)
+		}
+	}
+}
+
+func testInterProceduralFieldSensitivity() {
+	x := newStruct()
+	s := &x.A
+	x.A = source() // @Source(testSimpleFieldInter_A)
+	x.B = "ok"
+	x.C = source() // @Source(testSimpleFieldInter_C)
+	b := make([]string, 10)
+	b[0] = *s
+	testInterProceduralFieldSensitivityCallee(x)
+}
+
+func testInterProceduralFieldSensitivityCallee(x *nestedStruct) {
+	sink(x.B)
+	sink(x.A) // @Sink(testSimpleFieldInter_A)
+	sink(x.C) // @Sink(testSimpleFieldInter_C)
+}
+
+func testInterProceduralFieldSensitivityTwoDeep() {
+	x := newStruct()
+	b := source() // @Source(testSimpleFieldInter_ExPtr)
+	x.Ex.ptr = &b
+	x.B = "ok"
+	testInterProceduralFieldSensitivityCalleeTwoDeep(x)
+}
+
+func testInterProceduralFieldSensitivityCalleeTwoDeep(x *nestedStruct) {
+	sink(x.B)
+	sink(x.A)
+	sink(*x.Ex.ptr) // @Sink(testSimpleFieldInter_ExPtr)
+}
+
+func testInterProceduralFieldSensitivityMultiCall() {
+	x := newStruct()
+	b := source() // @Source(testSimpleFieldInter_Multi)
+	x.Ex.ptr = &b
+	x.B = "ok"
+	testInterProceduralFieldSensitivityMultiOne(x)
+}
+
+func testInterProceduralFieldSensitivityMultiOne(x *nestedStruct) {
+	sink(x.B)
+	sink(x.A)
+	testInterProceduralFieldSensitivityMultiTwo(x.Ex)
+}
+
+func testInterProceduralFieldSensitivityMultiTwo(x example) {
+	sink(*x.ptr) // @Sink(testSimpleFieldInter_Multi)
+}
+
+func testDeepNodeSound() {
+	z := &Node{label: source()} // @Source(deepNode)
+	y := &Node{label: "ok", next: z}
+	x := &Node{label: "ok", next: y}
+	a := &Node{label: "ok", next: x}
+	b := &Node{label: "ok", next: a}
+	deepNodeCall(b)
+}
+
+func deepNodeCall(x *Node) {
+	sink(x.next.label)
+	// b.a.x.y.z
+	sink(x.next.next.next.next.label) // @Sink(deepNode)
+}
+
+type MyInterface interface {
+	SetLabel(string)
+	GetAllData() string
+}
+
+type MyStruct struct {
+	MyData string
+	MySub  *Node
+}
+
+func NewMyStruct() MyStruct {
+	return MyStruct{
+		MyData: "default-data",
+		MySub: &Node{
+			label: "default-label",
+			next:  nil,
+		},
+	}
+}
+
+func (m MyStruct) SetLabel(s string) {
+	m.MySub.label = s
+}
+
+func (m MyStruct) GetAllData() string {
+	return m.MyData + "_" + m.MySub.label
+}
+
+func testMethodTaintReceiver() {
+	fmt.Println("testMethodTaintReceiver")
+	x := NewMyStruct()
+	x.SetLabel(source()) // @Source(methodTaintReceiver)
+	s := x.GetAllData()
+	sink(s) // @Sink(methodTaintReceiver)
+}
+
+type MyStructBis struct {
+	MyDataBis string
+	MySubBis  *Node
+}
+
+func NewMyStructBis() MyStructBis {
+	return MyStructBis{
+		MyDataBis: "default-data",
+		MySubBis: &Node{
+			label: "default-label",
+			next:  nil,
+		},
+	}
+}
+
+func (m *MyStructBis) SetLabel(s string) {
+	m.MySubBis.label = s
+}
+
+func (m *MyStructBis) GetAllData() string {
+	return m.MyDataBis + "_" + m.MySubBis.label
+}
+
+func testMethodTaintReceiverPointer() {
+	fmt.Println("testMethodTaintReceiverPointer")
+	x := NewMyStructBis()
+	x.SetLabel(source()) // @Source(methodTaintReceiverPointer)
+	s := x.GetAllData()
+	sink(s) // @Sink(methodTaintReceiverPointer)
+}
+
+func testMethodInterface() {
+	fmt.Println("testMethodInterface")
+	x := NewMyStruct()
+	testMethodInterfaceTaintThroughInvoke(x) // this taints x.SubE.label
+	sink(x.GetAllData())                     // @Sink(testMethodInterface)
+}
+
+func testMethodInterfaceTaintThroughInvoke(x MyInterface) {
+	x.SetLabel(source()) //@Source(testMethodInterface)
+}
+
+func testRecursion() {
+	x := NewMyStruct()
+	x.MySub.next = &Node{
+		label: "",
+		next:  nil,
+	}
+	taintWithRecursion(x.MySub, 3)
+	sink(x.MySub.next.label) //@Sink(inRecursion)
+}
+
+func taintWithRecursion(x *Node, n int) {
+	if n <= 0 || x == nil {
+		return
+	}
+	if n >= 3 {
+		x.label = source() //@Source(inRecursion)
+	}
+	if x.next != nil {
+		taintWithRecursion(x.next, n-1)
+	}
+}
+
+func (m *MyStructBis) Move() {
+	m.MySubBis.label = m.MyDataBis
+}
+
+func testMoveTaintBetweenFields() {
+	x := NewMyStructBis()
+	x.MyDataBis = source() // @Source(testMoveTaintBetweenFields)
+	x.Move()
+	sink(x.MySubBis.label) // @Sink(testMoveTaintBetweenFields)
+}
+
+type ValueStructInner struct {
+	id int
+}
+
+type ValueStruct struct {
+	inner   ValueStructInner
+	content string
+}
+
+func testTaintStructAsValue() {
+	v := ValueStructInner{id: len(source())} // @Source(testTaintStructAsValue)
+	x := ValueStruct{inner: v, content: "ok"}
+	callsSink(x)
+}
+
+func callsSink(x ValueStruct) {
+	sink(x.content)
+	sink(strconv.Itoa(x.inner.id)) // @Sink(testTaintStructAsValue)
+}
+
+type t struct {
+	f func() string
+	g func() string
+}
+
+func testStructWithFuncs() {
+	data := source() // @Source(testStructWithFuncs)
+	val := t{
+		f: func() string {
+			return data
+		},
+		g: func() string {
+			return "safe"
+		},
+	}
+
+	sink(val.f()) // @Sink(testStructWithFuncs)
+	sink(val.g()) // safe
+}
+
 func main() {
 	testSimpleField1()
 	testSimpleField2()
@@ -166,4 +427,17 @@ func main() {
 	testFieldEmbedded2()
 	testFromFunctionTaintingField()
 	testFieldAndSlice()
+	testFieldAndMap()
+	testFieldAndMapRev()
+	testInterProceduralFieldSensitivity()
+	testInterProceduralFieldSensitivityTwoDeep()
+	testInterProceduralFieldSensitivityMultiCall()
+	testDeepNodeSound()
+	testMethodTaintReceiver()
+	testMethodTaintReceiverPointer()
+	testMethodInterface()
+	testRecursion()
+	testMoveTaintBetweenFields()
+	testTaintStructAsValue()
+	testStructWithFuncs()
 }
