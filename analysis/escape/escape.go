@@ -212,16 +212,25 @@ const mapValuesField = "values[*]"
 // also to label the node with a line number/pretty printed type.
 // tp is the struct type being copied, and field is the parent fields that have already been copied,
 // so that recursive struct types get appropriate structAssignLoad locations.
-func (g *EscapeGraph) copyStruct(dest *Node, src *Node, instr ssa.Instruction, field string, tp *types.Struct) {
+func (g *EscapeGraph) copyStruct(dest *Node, src *Node, instr ssa.Instruction, field string, originalTp types.Type) {
+	var tp *types.Struct
+	var isReflectValue = false
+	if tpNamed, ok := originalTp.(*types.Named); ok {
+		isReflectValue = tpNamed.String() == "reflect.Value"
+		if tp, ok = tpNamed.Underlying().(*types.Struct); !ok {
+			panic(fmt.Errorf("expected to copy struct type, not %v", originalTp))
+		}
+	} else if tp, ok = originalTp.(*types.Struct); !ok {
+		panic(fmt.Errorf("expected to copy struct type, not %v", originalTp))
+	}
 	for i := 0; i < tp.NumFields(); i++ {
 		fieldName, fieldType := tp.Field(i).Name(), tp.Field(i).Type()
-		if lang.IsNillableType(fieldType) {
+		if lang.IsNillableType(fieldType) || (isReflectValue && fieldType.String() == "unsafe.Pointer") {
 			fieldNode := g.FieldSubnode(src, fieldName, fieldType)
 			g.EnsureLoadNode(structAssignLoad{instr, field + "." + fieldName}, NillableDerefType(fieldType), fieldNode)
 			g.WeakAssign(g.FieldSubnode(dest, fieldName, fieldType), fieldNode)
 		} else if IsEscapeTracked(fieldType) {
-			fieldStructType := fieldType.Underlying().(*types.Struct)
-			g.copyStruct(g.FieldSubnode(dest, fieldName, fieldType), g.FieldSubnode(src, fieldName, fieldType), instr, field+"."+fieldName, fieldStructType)
+			g.copyStruct(g.FieldSubnode(dest, fieldName, fieldType), g.FieldSubnode(src, fieldName, fieldType), instr, field+"."+fieldName, fieldType)
 		}
 	}
 }
@@ -300,13 +309,12 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		if lang.IsNillableType(instr.Val.Type()) {
 			g.StoreField(nodes.ValueNode(instr.Addr), nodes.ValueNode(instr.Val), "", nil)
 		} else if IsEscapeTracked(instr.Val.Type()) {
-			t, ok := instr.Val.Type().Underlying().(*types.Struct)
-			if !ok {
+			if _, ok := instr.Val.Type().Underlying().(*types.Struct); !ok {
 				panic("Store of non-nilable, non-struct type not supported")
 			}
 			src := nodes.ValueNode(instr.Val)
 			for x := range g.Pointees(nodes.ValueNode(instr.Addr)) {
-				g.copyStruct(x, src, instr, "", t)
+				g.copyStruct(x, src, instr, "", instr.Val.Type())
 			}
 		}
 		return
@@ -317,9 +325,8 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), instr, "", NillableDerefType(instr.Type()))
 			} else if IsEscapeTracked(instr.Type()) {
 				// Load of struct. Use copy struct to get the fields correctly handled
-				t := instr.Type().Underlying().(*types.Struct)
 				for x := range g.Pointees(nodes.ValueNode(instr.X)) {
-					g.copyStruct(nodes.ValueNode(instr), x, instr, "", t)
+					g.copyStruct(nodes.ValueNode(instr), x, instr, "", instr.Type())
 				}
 			}
 			return
@@ -625,6 +632,15 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 			}
 		}
 		g.Call(g.Clone(), nil, args, freeVars, rets, summary.finalGraph)
+	} else if summary.summaryType == "reflect:ValueOf" {
+		unsafePtrTp := summary.function.Signature.Results().At(0).Type().Underlying().(*types.Struct).Field(1).Type()
+		g.WeakAssign(g.FieldSubnode(rets[0], "ptr", unsafePtrTp), args[0])
+	} else if summary.summaryType == "reflect:(Value).Interface" {
+		g.WeakAssign(rets[0], g.FieldSubnode(args[0], "ptr", nil))
+	} else if summary.summaryType == "reflect:JsonMarshal" {
+		ea.jsonMarshal(instrType, g, args, rets)
+	} else if summary.summaryType == "reflect:JsonUnmarshal" {
+		ea.jsonUnmarshal(instrType, g, args, rets)
 	} else {
 		// If we didn't find a summary or didn't know the callee, use the arbitrary function assumption.
 		// Crucially, this is different from a function that will have a summary but we just haven't
@@ -637,6 +653,184 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 				callee.String())
 		}
 		g.CallUnknown(args, rets, callee.String())
+	}
+}
+
+// findTypeByName finds the given type from the given package, if it exists. Otherwise, returns nil
+func findTypeByName(prog *ssa.Program, pkg string, tpName string) types.Type {
+	ssaPkg := prog.ImportedPackage(pkg)
+	if ssaPkg == nil {
+		return nil
+	}
+	tpObj := ssaPkg.Pkg.Scope().Lookup(tpName)
+	if tpObj == nil {
+		return nil
+	}
+	return tpObj.Type()
+}
+
+// isAnyType tests whether the type is equivalent to the `any` type
+func isAnyType(tp types.Type) bool {
+	if inter, ok := tp.Underlying().(*types.Interface); ok {
+		return inter.Empty()
+	}
+	return false
+}
+
+// getPackageOfType finds the type.Package for a type. Does not require any ssa.* objects
+func getPackageOfType(tp types.Type) *types.Package {
+	if obj, ok := tp.(types.Object); ok {
+		return obj.Pkg()
+	} else if named, ok := tp.(*types.Named); ok {
+		return named.Obj().Pkg()
+	}
+	return nil
+}
+
+// jsonMarshal implements the effect of a marshalling operation. This is essentially to call the
+// MarshalJSON method on all the reachable types from the argument node.
+func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
+	prog := instrType.Parent().Pkg.Prog
+	marshalerInterface := findTypeByName(prog, "encoding/json", "Marshaler")
+	reachable := map[*Node]bool{}
+	worklist := []*Node{args[0]}
+	for len(worklist) > 0 {
+		node := worklist[0]
+		worklist = worklist[:len(worklist)-1]
+		for n := range g.Pointees(node) {
+			if !reachable[n] {
+				reachable[n] = true
+				worklist = append(worklist, n)
+			}
+		}
+	}
+	for receiverNode := range reachable {
+		if tp, ok := g.nodes.globalNodes.types[receiverNode]; ok {
+			var marshalJsonMethod *ssa.Function
+			if types.AssignableTo(tp, marshalerInterface) {
+				pkg := getPackageOfType(tp)
+				marshalJsonMethod = prog.LookupMethod(tp, pkg, "MarshalJSON")
+			} else if types.AssignableTo(types.NewPointer(tp), marshalerInterface) {
+				pkg := getPackageOfType(tp)
+				marshalJsonMethod = prog.LookupMethod(types.NewPointer(tp), pkg, "MarshalJSON")
+			} else {
+				continue
+			}
+			ea.invokeMethodDirectly(instrType, g, marshalJsonMethod, receiverNode, []*Node{}, rets)
+		}
+	}
+}
+
+// jsonUnmarshal computes the effect of calling json.Unmarshal(_, x). This considers the types of
+// the pointees and computes which other types are reachable from those fields. It also handles the
+// case of unmarshaling into the "any" type, which causes the marshalling code to generate some
+// fixed types (map[string]any, []any, string, float64, etc.).
+func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
+	prog := instrType.Parent().Pkg.Prog
+	marshalerInterface := findTypeByName(prog, "encoding/json", "Unmarshaler")
+
+	// Find some fixed types for strings, map[string]any, and []any
+	stringTp := types.Universe.Lookup("string").Type()
+	var mapStringAnyTp = types.NewMap(stringTp, types.NewInterfaceType([]*types.Func{}, []types.Type{}))
+	var sliceAnyTp = types.NewSlice(types.NewInterfaceType([]*types.Func{}, []types.Type{}))
+
+	// Fill will fill the fields of a struct or other object as necessary. Alloc creates new nodes,
+	// caching the results to ensure we create a cyclic structure instead of creating infinite nodes.
+	var fill func(n *Node, tp types.Type)
+	var alloc func(tp types.Type) *Node
+	fresh := map[*Node]bool{}
+
+	alloc = func(tp types.Type) *Node {
+		node := g.nodes.IndexedAllocNode(instrType, tp.String(), tp)
+		if !fresh[node] {
+			fresh[node] = true
+			fill(node, tp)
+		}
+		return node
+	}
+
+	fill = func(n *Node, tp types.Type) {
+		if isAnyType(tp) {
+			// handle `any`, which gets filled with maps, slices, and individual allocations
+			g.AddEdge(n, alloc(NillableDerefType(mapStringAnyTp)), EdgeInternal)
+			g.AddEdge(n, alloc(sliceAnyTp), EdgeInternal)
+			g.AddEdge(n, alloc(stringTp), EdgeInternal)
+		} else if impl, ok := tp.(*ImplType); ok {
+			// Handle the implict values[*] field on map implementation nodes
+			if mapTp, ok := impl.tp.Underlying().(*types.Map); ok {
+				fill(g.FieldSubnode(n, mapValuesField, mapTp.Elem()), mapTp.Elem())
+			}
+		} else if array, ok := tp.Underlying().(*types.Array); ok {
+			// Arrays (including the pointee of slices) are filled at the same node, which is
+			// required because they don't have a "contents" psuedo-field like maps do.
+			fill(n, array.Elem())
+		} else if lang.IsNillableType(tp) {
+			// nillable types get a new node for their type
+			g.AddEdge(n, alloc(NillableDerefType(tp)), EdgeInternal)
+		} else if IsEscapeTracked(tp) {
+			// handle struct typed nodes
+			var unmarshalJsonMethod *ssa.Function
+			if types.AssignableTo(tp, marshalerInterface) {
+				pkg := getPackageOfType(tp)
+				unmarshalJsonMethod = prog.LookupMethod(tp, pkg, "UnmarshalJSON")
+			} else if types.AssignableTo(types.NewPointer(tp), marshalerInterface) {
+				pkg := getPackageOfType(tp)
+				unmarshalJsonMethod = prog.LookupMethod(types.NewPointer(tp), pkg, "UnmarshalJSON")
+			}
+			if unmarshalJsonMethod != nil {
+				// Handle custom unmarshaling methods
+				ea.invokeMethodDirectly(instrType, g, unmarshalJsonMethod, n, []*Node{args[0]}, rets)
+			} else {
+				structType := tp.Underlying().(*types.Struct)
+				// Handle structs default
+				for i := 0; i < structType.NumFields(); i++ {
+					field := structType.Field(i)
+					if field.Exported() && IsEscapeTracked(field.Type()) {
+						// the field needs to be handled
+						subnode := g.FieldSubnode(n, field.Name(), field.Type())
+						fill(subnode, field.Type())
+					}
+				}
+			}
+		}
+	}
+
+	// Go through the arguments of UnmarshalJSON and fill in their fields. These objects are not
+	// allocated, only filled
+	for p := range g.Pointees(args[1]) {
+		if tp, ok := g.nodes.globalNodes.types[p]; ok {
+			fill(p, tp)
+		}
+	}
+
+}
+
+// invokeMethodDirectly is a helper method that applies the specific method identified in callee
+// with the given receiver node. This is useful for the json(Un)marshal methods as they need to
+// invoke the effects of custom marshal/unmarshaling functions (UnmarshalJSON, etc).s
+func (ea *functionAnalysisState) invokeMethodDirectly(instr *ssa.Call, g *EscapeGraph, callee *ssa.Function, receiver *Node, args []*Node, rets []*Node) {
+	summary := ea.prog.getFunctionAnalysisSummary(callee)
+	args = []*Node{args[0]}
+	if summary.HasSummaryGraph() {
+		// Record our use of this summary for recursion-covergence purposes
+		summary.RecordUse(summaryUse{ea, instr})
+		if lang.IsNillableType(callee.Params[0].Type()) {
+			// Add indirection for pointer types
+			tmp := g.nodes.NewNode(KindVar, "tmp", types.NewPointer(callee.Params[0].Type()))
+			g.AddEdge(tmp, receiver, EdgeInternal)
+			pre := g.Clone()
+			g.Call(pre, tmp, append([]*Node{tmp}, args...), nil, rets, summary.finalGraph)
+		} else if IsEscapeTracked(callee.Params[0].Type()) {
+			pre := g.Clone()
+			// The receiver has struct type, so use receiver node directly
+			g.Call(pre, receiver, append([]*Node{receiver}, args...), nil, rets, summary.finalGraph)
+		} else {
+			pre := g.Clone()
+			// The receiver has primitive type, so use a nil receiver
+			g.Call(pre, nil, append([]*Node{nil}, args...), nil, rets, summary.finalGraph)
+		}
+	} else {
+		g.CallUnknown(append([]*Node{receiver}, args...), rets, callee.String())
 	}
 }
 
