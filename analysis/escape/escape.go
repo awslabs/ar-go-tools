@@ -687,6 +687,17 @@ func getPackageOfType(tp types.Type) *types.Package {
 	return nil
 }
 
+func findImplMethod(prog *ssa.Program, tp types.Type, iface types.Type, methodName string) (method *ssa.Function, pointerRequired bool) {
+	if types.AssignableTo(tp, iface) {
+		pkg := getPackageOfType(tp)
+		return prog.LookupMethod(tp, pkg, methodName), false
+	} else if types.AssignableTo(types.NewPointer(tp), iface) {
+		pkg := getPackageOfType(tp)
+		return prog.LookupMethod(types.NewPointer(tp), pkg, methodName), true
+	}
+	return nil, false
+}
+
 // jsonMarshal implements the effect of a marshalling operation. This is essentially to call the
 // MarshalJSON method on all the reachable types from the argument node.
 func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
@@ -706,17 +717,10 @@ func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph
 	}
 	for receiverNode := range reachable {
 		if tp, ok := g.nodes.globalNodes.types[receiverNode]; ok {
-			var marshalJsonMethod *ssa.Function
-			if types.AssignableTo(tp, marshalerInterface) {
-				pkg := getPackageOfType(tp)
-				marshalJsonMethod = prog.LookupMethod(tp, pkg, "MarshalJSON")
-			} else if types.AssignableTo(types.NewPointer(tp), marshalerInterface) {
-				pkg := getPackageOfType(tp)
-				marshalJsonMethod = prog.LookupMethod(types.NewPointer(tp), pkg, "MarshalJSON")
-			} else {
-				continue
+			marshalJsonMethod, _ := findImplMethod(prog, tp, marshalerInterface, "MarshalJSON")
+			if marshalJsonMethod != nil {
+				ea.invokeMethodDirectly(instrType, g, marshalJsonMethod, receiverNode, []*Node{}, rets)
 			}
-			ea.invokeMethodDirectly(instrType, g, marshalJsonMethod, receiverNode, []*Node{}, rets)
 		}
 	}
 }
@@ -769,14 +773,7 @@ func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGra
 			g.AddEdge(n, alloc(NillableDerefType(tp)), EdgeInternal)
 		} else if IsEscapeTracked(tp) {
 			// handle struct typed nodes
-			var unmarshalJsonMethod *ssa.Function
-			if types.AssignableTo(tp, marshalerInterface) {
-				pkg := getPackageOfType(tp)
-				unmarshalJsonMethod = prog.LookupMethod(tp, pkg, "UnmarshalJSON")
-			} else if types.AssignableTo(types.NewPointer(tp), marshalerInterface) {
-				pkg := getPackageOfType(tp)
-				unmarshalJsonMethod = prog.LookupMethod(types.NewPointer(tp), pkg, "UnmarshalJSON")
-			}
+			unmarshalJsonMethod, _ := findImplMethod(prog, tp, marshalerInterface, "UnmarshalJSON")
 			if unmarshalJsonMethod != nil {
 				// Handle custom unmarshaling methods
 				ea.invokeMethodDirectly(instrType, g, unmarshalJsonMethod, n, []*Node{args[0]}, rets)
@@ -810,7 +807,6 @@ func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGra
 // invoke the effects of custom marshal/unmarshaling functions (UnmarshalJSON, etc).s
 func (ea *functionAnalysisState) invokeMethodDirectly(instr *ssa.Call, g *EscapeGraph, callee *ssa.Function, receiver *Node, args []*Node, rets []*Node) {
 	summary := ea.prog.getFunctionAnalysisSummary(callee)
-	args = []*Node{args[0]}
 	if summary.HasSummaryGraph() {
 		// Record our use of this summary for recursion-covergence purposes
 		summary.RecordUse(summaryUse{ea, instr})
