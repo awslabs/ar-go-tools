@@ -133,7 +133,7 @@ func FindTypeByName(prog *ssa.Program, pkg string, tpName string) types.Type {
 	return tpObj.Type()
 }
 
-// isAnyType tests whether the type is equivalent to the `any` type
+// IsAnyType tests whether the type is equivalent to the `any` type
 func IsAnyType(tp types.Type) bool {
 	if inter, ok := tp.Underlying().(*types.Interface); ok {
 		return inter.Empty()
