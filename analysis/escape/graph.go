@@ -1157,12 +1157,17 @@ func (gn *globalNodeGroup) getNewID() int {
 	return i
 }
 
+type instructionIndex struct {
+	instr ssa.Instruction
+	index string
+}
+
 // A NodeGroup stores the identity of nodes within a current function context, and ensures
 // that e.g. a single load node is shared between all invocations of a load instruction, or
 // all allocations in a particular function.
 type NodeGroup struct {
 	variables     map[ssa.Value]*Node
-	allocs        map[ssa.Instruction]*Node
+	allocs        map[instructionIndex]*Node
 	loads         map[any]*Node
 	loadOps       map[*Node]map[any]bool
 	loadBase      map[*Node]*Node
@@ -1186,7 +1191,7 @@ type NodeGroup struct {
 func NewNodeGroup(globalNodes *globalNodeGroup) *NodeGroup {
 	return &NodeGroup{
 		make(map[ssa.Value]*Node),
-		make(map[ssa.Instruction]*Node),
+		make(map[instructionIndex]*Node),
 		make(map[any]*Node),
 		make(map[*Node]map[any]bool),
 		make(map[*Node]*Node),
@@ -1208,7 +1213,7 @@ func NewNodeGroup(globalNodes *globalNodeGroup) *NodeGroup {
 // AllocNode creates a node that represents an allocation, such as &S{}, make([]int, 3),
 // map[int]int{}, etc.
 func (g *NodeGroup) AllocNode(instr ssa.Instruction, t types.Type) *Node {
-	node, ok := g.allocs[instr]
+	node, ok := g.allocs[instructionIndex{instr, ""}]
 	if ok {
 		return node
 	}
@@ -1219,7 +1224,26 @@ func (g *NodeGroup) AllocNode(instr ssa.Instruction, t types.Type) *Node {
 	shortTypeName := types.TypeString(t, qualifier)
 	node = &Node{KindAlloc, g.globalNodes.getNewID(), fmt.Sprintf("new %s L:%d", shortTypeName,
 		instr.Parent().Prog.Fset.Position(instr.Pos()).Line)}
-	g.allocs[instr] = node
+	g.allocs[instructionIndex{instr, ""}] = node
+	g.globalNodes.types[node] = t
+	return node
+}
+
+// IndexedAllocNode creates a node that represents an allocation. It is similar to AllocNode, but
+// allows more than one allocated node per instruction, keyed by an additional index string.
+func (g *NodeGroup) IndexedAllocNode(instr ssa.Instruction, index string, t types.Type) *Node {
+	node, ok := g.allocs[instructionIndex{instr, index}]
+	if ok {
+		return node
+	}
+	var qualifier types.Qualifier
+	if instr.Parent().Package() != nil {
+		qualifier = types.RelativeTo(instr.Parent().Package().Pkg)
+	}
+	shortTypeName := types.TypeString(t, qualifier)
+	node = &Node{KindAlloc, g.globalNodes.getNewID(), fmt.Sprintf("new %s L:%d", shortTypeName,
+		instr.Parent().Prog.Fset.Position(instr.Pos()).Line)}
+	g.allocs[instructionIndex{instr, index}] = node
 	g.globalNodes.types[node] = t
 	return node
 }

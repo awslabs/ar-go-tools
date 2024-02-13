@@ -228,7 +228,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 			if !reflect.DeepEqual(g.Pointees(a), g.Pointees(b)) {
 				if !(len(g.edges[a]) == 0 && len(g.edges[b]) == 0) {
 					// TODO: figure out why deepequal is returning false for two empty maps
-					return fmt.Errorf("Arguments do not have the same set of edges %v != %v", a, b)
+					return fmt.Errorf("Arguments do not have the same set of edges %v != %v in \n%s", a, b, g.Graphviz())
 				}
 			}
 		} else if isCall(instr, "assertAllLeaked") {
@@ -250,8 +250,18 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 			a := ea.nodes.ValueNode(args[0])
 			for _, e := range g.Edges(a, nil, EdgeAll) {
 				if g.status[e.dest] != Local {
-					return fmt.Errorf("%v has escaped in:\n%v", e.dest, g.Graphviz())
+					return fmt.Errorf("%v has escaped (because %v) in:\n%v", e.dest, g.rationales[e.dest], g.Graphviz())
 				}
+			}
+		} else if isCall(instr, "assertNotNil") {
+			args := instr.(*ssa.Call).Call.Args
+			if len(args) != 1 {
+				return fmt.Errorf("Expected 1 arguments to special assertion")
+			}
+			a := ea.nodes.ValueNode(args[0])
+
+			if len(g.Edges(a, nil, EdgeAll)) == 0 {
+				return fmt.Errorf("%v has no pointees in:\n%s", a, g.Graphviz())
 			}
 		}
 		ea.transferFunction(instr, g)
@@ -278,27 +288,10 @@ func TestInterproceduralEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	funcsToTest := []string{
-		"testAlias",
-		"inverseAlias",
-		"inverseLeaked",
-		"inverseLocal",
-		"inverseLocalEscapedOnly",
-		"testTraverseList",
-		"testTraverseListRecur",
-		"testStepLargeList",
-		"testMultiReturnValues",
-		"testConsume",
-		"testFresh",
-		"testIdent",
-		"testExternal",
-		"testChain",
-		"testStickyErrorReader",
-		"testMutualInterfaceRecursion",
-		"testFunctionPointerReturn",
-		"testOrdinaryFunction",
-		"testBoundMethodFuncPointer",
-		"testAbstractFunction",
+	mainFunc := findFunction(program, "main")
+	funcsToTest := []string{}
+	for _, elem := range state.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
+		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -346,55 +339,10 @@ func TestBuiltinsEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	funcsToTest := []string{
-		"testMethod",
-		"testVarargs",
-		"testNilArg",
-		"testVariousBuiltins",
-		"testGo",
-		"testAppend",
-		"testIndexArray",
-		"testChannel",
-		"testChannelEscape",
-		"testSelect",
-		"testConvertStringToSlice",
-		"testImmediateClosure1",
-		"testImmediateClosure2",
-		"testLocalVarClosure1",
-		"testLocalVarClosure2",
-		"testLocalVarClosure3",
-		"testLeakOfFunc",
-		"testCalleeClosure1",
-		"testCalleeClosure2",
-		"testGlobalFunc1",
-		"testGlobalFunc2",
-		"testGlobalFunc3",
-		"testMethodOfLocal",
-		"testBoundMethodOfLocal1",
-		"testBoundMethodOfLocal2",
-		"testBoundMethodOfLocal3",
-		"testMethodNonPointer1",
-		"testMethodNonPointer2",
-		"testFuncStruct",
-		"testFuncStructArg",
-		"testMethodOnNonTracked1",
-		"testMethodOnNonTracked2",
-		"testNonPointerFreeVar",
-		"testMultipleBoundVars",
-		"testSiblingClosure",
-		"testInterfaceDirectStruct",
-		"testFieldSensitivity",
-		"testTupleSensitivity",
-		"testParameterPointerToField",
-		"testStructSelfPointerToField",
-		"testNestedStruct",
-		"testForRange",
-		"testTypeCorrectness",
-		"testGoReceiver",
-		"testMultiChannelSelect",
-		"testInterfaces",
-		"testInterfaces2",
-		"testInterfaces3",
+	mainFunc := findFunction(program, "main")
+	funcsToTest := []string{}
+	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
+		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -443,9 +391,10 @@ func TestStdlibEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	funcsToTest := []string{
-		// "testPrintf", // skip for now
-		// "testReflect", // skip for now
+	mainFunc := findFunction(program, "main")
+	funcsToTest := []string{}
+	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
+		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -724,23 +673,10 @@ func TestLocalityComputation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	funcsToTest := []string{
-		"testLocality",
-		"testLocality2",
-		"failInterproceduralLocality1",
-		"testInterproceduralLocality1",
-		"failInterproceduralLocality2",
-		"testDiamond",
-		"testRecursion",
-		"testAllInstructions",
-		"testExampleEscape7",
-		"testClosureFreeVar",
-		"testClosureFreeVar2",
-		"testClosureNonPointerFreeVar",
-		"testBoundMethod",
-		"testInterfaceMethodCall",
-		"testRationaleBasic",
-		"testRationaleUnknownReturn",
+	mainFunc := findFunction(program, "main")
+	funcsToTest := []string{}
+	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
+		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
 	}
 	annos := getAnnotations(dir, ".")
 	for _, funcName := range funcsToTest {

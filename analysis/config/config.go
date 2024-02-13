@@ -342,7 +342,7 @@ func Load(filename string) (*Config, error) {
 	}
 
 	for funcName, summaryType := range cfg.EscapeConfig.Functions {
-		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop || summaryType == EscapeBehaviorSummarize) {
+		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop || summaryType == EscapeBehaviorSummarize || strings.HasPrefix(summaryType, "reflect:")) {
 			return nil, fmt.Errorf("escape summary type for function %s is not recognized: %s", funcName, summaryType)
 		}
 	}

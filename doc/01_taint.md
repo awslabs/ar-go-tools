@@ -447,3 +447,43 @@ you should see some output similar to:
 Indicating that no taint flow was detected, but tainted data escapes the thread it was generated in, which is a threat
 to the soundness of the analysis. In this case, the data may indeed flow to a sink! In general, always sanitize the
 data before interacting with other goroutines to avoid such cases.
+
+### Reflection support
+
+The escape analysis includes limited support for reflection-based features, particularly to support
+JSON serialization/deserialization. General reflection is not supported, and will instead
+conservatively assume reflected values have "leaked" to other goroutines (the same behavior that
+occurs when reflection support is disabled). The support includes fixed
+summaries for key reflection and reflection-using functions such as `reflect.ValueOf`,
+`json.Marshal`, etc. 
+
+Reflection support is enabled
+by assigning summaries as the function escape summary type in `escape-config.json`:
+
+```json
+{
+    "functions": {
+        "encoding/json.Marshal": "reflect:JsonMarshal",
+        "encoding/json.Unmarshal": "reflect:JsonUnmarshal",
+        "reflect.ValueOf": "reflect:ValueOf"
+    }
+}
+```
+
+`escape-config.json` must be enabled from the main config file using:
+
+```yaml
+options:
+    escape-config: "escape-config.json"
+```
+
+Note that the functions are identified by their fully qualified names. The full set of fixed summaries is:
+
+- `reflect:ValueOf`
+- `reflect:(Value).Interface`
+- `reflect:JsonMarshal`
+- `reflect:JsonUnmarshal`
+
+The full set of fixed summary assignments, which includes sound noop assignments for some reflection
+functions without side effects, is available in
+`testdata/src/concurrency/stdlib-escape/escape-config.json`.
