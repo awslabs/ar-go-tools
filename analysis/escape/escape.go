@@ -656,53 +656,15 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 	}
 }
 
-// findTypeByName finds the given type from the given package, if it exists. Otherwise, returns nil
-func findTypeByName(prog *ssa.Program, pkg string, tpName string) types.Type {
-	ssaPkg := prog.ImportedPackage(pkg)
-	if ssaPkg == nil {
-		return nil
-	}
-	tpObj := ssaPkg.Pkg.Scope().Lookup(tpName)
-	if tpObj == nil {
-		return nil
-	}
-	return tpObj.Type()
-}
-
-// isAnyType tests whether the type is equivalent to the `any` type
-func isAnyType(tp types.Type) bool {
-	if inter, ok := tp.Underlying().(*types.Interface); ok {
-		return inter.Empty()
-	}
-	return false
-}
-
-// getPackageOfType finds the type.Package for a type. Does not require any ssa.* objects
-func getPackageOfType(tp types.Type) *types.Package {
-	if obj, ok := tp.(types.Object); ok {
-		return obj.Pkg()
-	} else if named, ok := tp.(*types.Named); ok {
-		return named.Obj().Pkg()
-	}
-	return nil
-}
-
-func findImplMethod(prog *ssa.Program, tp types.Type, iface types.Type, methodName string) (method *ssa.Function, pointerRequired bool) {
-	if types.AssignableTo(tp, iface) {
-		pkg := getPackageOfType(tp)
-		return prog.LookupMethod(tp, pkg, methodName), false
-	} else if types.AssignableTo(types.NewPointer(tp), iface) {
-		pkg := getPackageOfType(tp)
-		return prog.LookupMethod(types.NewPointer(tp), pkg, methodName), true
-	}
-	return nil, false
-}
-
 // jsonMarshal implements the effect of a marshalling operation. This is essentially to call the
 // MarshalJSON method on all the reachable types from the argument node.
 func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
 	prog := instrType.Parent().Pkg.Prog
-	marshalerInterface := findTypeByName(prog, "encoding/json", "Marshaler")
+	marshalerInterface := lang.FindTypeByName(prog, "encoding/json", "Marshaler")
+	if marshalerInterface == nil {
+		ea.prog.logger.Errorf("Found function with reflect:JsonMarshal escape summary, but program does not import encoding/json")
+		return
+	}
 	reachable := map[*Node]bool{}
 	worklist := []*Node{args[0]}
 	for len(worklist) > 0 {
@@ -717,7 +679,7 @@ func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph
 	}
 	for receiverNode := range reachable {
 		if tp, ok := g.nodes.globalNodes.types[receiverNode]; ok {
-			marshalJsonMethod, _ := findImplMethod(prog, tp, marshalerInterface, "MarshalJSON")
+			marshalJsonMethod, _ := lang.FindImplementationMethod(prog, tp, marshalerInterface, "MarshalJSON")
 			if marshalJsonMethod != nil {
 				ea.invokeMethodDirectly(instrType, g, marshalJsonMethod, receiverNode, []*Node{}, rets)
 			}
@@ -731,8 +693,11 @@ func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph
 // fixed types (map[string]any, []any, string, float64, etc.).
 func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
 	prog := instrType.Parent().Pkg.Prog
-	marshalerInterface := findTypeByName(prog, "encoding/json", "Unmarshaler")
-
+	marshalerInterface := lang.FindTypeByName(prog, "encoding/json", "Unmarshaler")
+	if marshalerInterface == nil {
+		ea.prog.logger.Errorf("Found function with reflect:JsonUnmarshal escape summary, but program does not import encoding/json")
+		return
+	}
 	// Find some fixed types for strings, map[string]any, and []any
 	stringTp := types.Universe.Lookup("string").Type()
 	var mapStringAnyTp = types.NewMap(stringTp, types.NewInterfaceType([]*types.Func{}, []types.Type{}))
@@ -754,7 +719,7 @@ func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGra
 	}
 
 	fill = func(n *Node, tp types.Type) {
-		if isAnyType(tp) {
+		if lang.IsAnyType(tp) {
 			// handle `any`, which gets filled with maps, slices, and individual allocations
 			g.AddEdge(n, alloc(NillableDerefType(mapStringAnyTp)), EdgeInternal)
 			g.AddEdge(n, alloc(sliceAnyTp), EdgeInternal)
@@ -773,7 +738,7 @@ func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGra
 			g.AddEdge(n, alloc(NillableDerefType(tp)), EdgeInternal)
 		} else if IsEscapeTracked(tp) {
 			// handle struct typed nodes
-			unmarshalJsonMethod, _ := findImplMethod(prog, tp, marshalerInterface, "UnmarshalJSON")
+			unmarshalJsonMethod, _ := lang.FindImplementationMethod(prog, tp, marshalerInterface, "UnmarshalJSON")
 			if unmarshalJsonMethod != nil {
 				// Handle custom unmarshaling methods
 				ea.invokeMethodDirectly(instrType, g, unmarshalJsonMethod, n, []*Node{args[0]}, rets)

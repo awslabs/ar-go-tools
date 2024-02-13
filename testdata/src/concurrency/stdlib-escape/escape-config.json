@@ -83,7 +83,7 @@
         "(reflect.Value).String": "noop",
         "(reflect.Value).TryRecv": "unknown",
         "(reflect.Value).TrySend": "unknown",
-        "(reflect.Value).Type": "reflect:(Value).Type",
+        "(reflect.Value).Type": "unknown",
         "(reflect.Value).Uint": "noop",
         "(reflect.Value).UnsafePointer": "unknown",
         "(reflect.Value).UnsafeAddr": "unknown"
