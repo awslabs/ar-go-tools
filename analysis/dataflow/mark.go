@@ -45,6 +45,8 @@ const (
 	Global
 	// Synthetic node type for any other node.
 	Synthetic
+	// If is an if statement.
+	If
 )
 
 func (m MarkType) String() string {
@@ -67,6 +69,8 @@ func (m MarkType) String() string {
 		return "global"
 	case Synthetic:
 		return "synthetic"
+	case If:
+		return "if"
 	default:
 		return "multiple"
 	}
@@ -149,6 +153,11 @@ func (m Mark) IsCallReturn() bool {
 // IsSynthetic returns true if the source is synthetic.
 func (m Mark) IsSynthetic() bool {
 	return m.Type&Synthetic != 0
+}
+
+// IsIf returns true if the source is an if condition.
+func (m Mark) IsIf() bool {
+	return m.Type&If != 0
 }
 
 func (m Mark) String() string {

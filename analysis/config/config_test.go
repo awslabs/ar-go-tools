@@ -304,6 +304,7 @@ func TestLoadMisc(t *testing.T) {
 						{"", "some/other/package", "", "", "", "OneField", "ThatStruct", "", "", nil},
 						{"", "some/other/package", "Interface", "", "", "", "", "", "", nil},
 					},
+					ExplicitFlowOnly: true,
 				},
 			},
 			Options: Options{

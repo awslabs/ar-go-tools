@@ -30,6 +30,7 @@ func TestSlices(s core.SourceT) {
 
 func TestRangeOverSlice() {
 	sources := []core.SourceT{core.Source2()} // @Source(sl2)
+	// loop over tainted data
 	for i, s := range sources {
 		core.Sink(s) // @Sink(sl2)
 		core.Sink(i)
@@ -37,6 +38,7 @@ func TestRangeOverSlice() {
 }
 
 func TestRangeOverInterfaceSlice() {
+	// loop over tainted data
 	for i, s := range []interface{}{core.Source2()} { // @Source(sl3)
 		core.Sink(s) // @Sink(sl3)
 		core.Sink(i)

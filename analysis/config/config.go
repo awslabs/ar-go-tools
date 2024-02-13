@@ -143,6 +143,10 @@ type TaintSpec struct {
 
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
+
+	// ExplicitFlowOnly indicates whether the taint analysis should only consider explicit data flows.
+	// This should be set to true when proving a data flow property instead of an information flow property.
+	ExplicitFlowOnly bool `yaml:"explicit-flow-only" json:"explicit-flow-only"`
 }
 
 // SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.

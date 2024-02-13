@@ -11,6 +11,7 @@ taint-tracking-problems:
       - package: "(main)|(command-line-arguments)"
         # Similarly, sinks are sink1 sink2 sink2 ...
         method: "sink[1-9]?"
+    explicit-flow-only: true
 
 options:
    report-paths: true

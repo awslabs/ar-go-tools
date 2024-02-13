@@ -38,7 +38,8 @@ func TestTaint(t *testing.T) {
 		},
 		{
 			name: "basic",
-			args: args{"basic",
+			args: args{
+				"basic",
 				[]string{
 					"bar.go",
 					"example.go",
@@ -47,8 +48,10 @@ func TestTaint(t *testing.T) {
 					"fields.go",
 					"sanitizers.go",
 					"memory.go",
-					"channels.go"},
-				noErrorExpected},
+					"channels.go",
+				},
+				noErrorExpected,
+			},
 		},
 		{
 			name: "builtins",
@@ -84,11 +87,19 @@ func TestTaint(t *testing.T) {
 		},
 		{
 			name: "example1",
-			args: args{"example1", []string{}, noErrorExpected},
+			args: args{
+				"example1",
+				[]string{},
+				expectTaintedCondInFuncs("source"),
+			},
 		},
 		{
 			name: "example2",
-			args: args{"example2", []string{}, noErrorExpected},
+			args: args{
+				"example2",
+				[]string{},
+				expectTaintedCondInFuncs("rec", "extract", "main"),
+			},
 		},
 		{
 			name: "closures",
@@ -108,7 +119,11 @@ func TestTaint(t *testing.T) {
 		},
 		{
 			name: "validators",
-			args: args{"validators", []string{"values.go"}, noErrorExpected},
+			args: args{
+				"validators",
+				[]string{"values.go"},
+				expectTaintedCondInFuncs("validatorExample4", "Validate2"),
+			},
 		},
 		{
 			name: "taint with filters",
@@ -124,7 +139,18 @@ func TestTaint(t *testing.T) {
 		},
 		{
 			name: "fromlevee",
-			args: args{"fromlevee", []string{}, noErrorExpected},
+			args: args{
+				"fromlevee",
+				[]string{},
+				expectTaintedCondInFuncs(
+					"TestRangeOverMapWithSourceAsKey",
+					"TestRangeOverMapWithSourceAsValue",
+					"TestSinkAfterTaintInFor",
+					"TestRangeOverChan",
+					"TestRangeOverSlice",
+					"TestRangeOverInterfaceSlice",
+				),
+			},
 		},
 		{
 			name: "globals",
@@ -132,11 +158,27 @@ func TestTaint(t *testing.T) {
 		},
 		{
 			name: "complex functionality example",
-			args: args{"agent-example", []string{}, noErrorExpected},
+			args: args{
+				"agent-example",
+				[]string{},
+				noErrorExpected, // config specifies explicit flow only
+			},
 		},
 		{
 			name: "benchmarking example",
-			args: args{"benchmark", []string{}, noErrorExpected},
+			args: args{
+				"benchmark",
+				[]string{},
+				noErrorExpected, // config specifies explicit flow only
+			},
+		},
+		{
+			name: "implicit flow",
+			args: args{
+				"implicit-flow",
+				[]string{},
+				expectTaintedCondInFuncs("example1", "example2", "switchByte"),
+			},
 		},
 	}
 

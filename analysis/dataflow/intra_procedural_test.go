@@ -67,7 +67,7 @@ func TestFunctionSummaries(t *testing.T) {
 		if function.Name() == "main" {
 			ok := len(summary.Returns) == 0 // main does not return any data
 			ok = ok && len(summary.Params) == 0
-			ok = ok && len(summary.Callees) == 7 // 6 regular function calls + 1 closure
+			ok = ok && len(summary.Callees) == 8 // 7 regular function calls + 1 closure
 			if !ok {
 				t.Errorf("main graph is not as expected")
 			}
@@ -506,6 +506,40 @@ func TestFunctionSummaries(t *testing.T) {
 				t.Errorf("in Baz, a closure freevar outgoing edge should be a return")
 			}
 		}
+
+		if function.Name() == "ImplicitFlow" {
+			for _, callee := range summary.Callees {
+				for _, call := range callee {
+					if call.FuncName() == "Source" {
+						hasIf := false
+						for out := range call.Out() {
+							if _, ok := out.(*dataflow.IfNode); ok {
+								hasIf = true
+							}
+						}
+						if !hasIf {
+							t.Errorf("in ImplicitFlow, a call to Source() outgoing edge should be an if node")
+						}
+					}
+				}
+			}
+
+			for _, ifn := range summary.Ifs {
+				hasCallNodeIn := false
+				for in := range ifn.In() {
+					if call, ok := in.(*dataflow.CallNode); ok {
+						hasCallNodeIn = call.FuncName() == "Source"
+					}
+				}
+				if !hasCallNodeIn {
+					t.Errorf("in ImplicitFlow, an if incoming edge should be a call to Source()")
+				}
+
+				if len(ifn.Out()) != 0 {
+					t.Errorf("in ImplicitFlow, an if node should have no outgoing edges")
+				}
+			}
+		}
 	}
 }
 
@@ -534,4 +568,6 @@ func TestStringNilSafety(t *testing.T) {
 	_ = g.String()
 	var c *dataflow.ClosureNode
 	_ = c.String()
+	var i *dataflow.IfNode
+	_ = i.String()
 }

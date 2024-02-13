@@ -73,6 +73,7 @@ func TestMapUpdateWithTaintedKeyDoesNotTaintTheValue(key core.SourceT, value str
 
 func TestRangeOverMapWithSourceAsValue() {
 	m := map[string]core.SourceT{"secret": core.Source2()} // @Source(map8)
+	// loop over tainted data
 	for k, s := range m {
 		core.Sink(s) // @Sink(map8)
 		core.Sink(k) // @Sink(map8) TODO: our analysis is not sensitive to key/values, but levee is
@@ -81,6 +82,7 @@ func TestRangeOverMapWithSourceAsValue() {
 
 func TestRangeOverMapWithSourceAsKey() {
 	m := map[core.SourceT]string{core.Source2(): "don't sink me"} // @Source(map9)
+	// branch over tainted data
 	for src, str := range m {
 		core.Sink(src) // @Sink(map9)
 		core.Sink(str) // @Sink(map9) TODO: our analysis is not sensitive to key/values, but levee is

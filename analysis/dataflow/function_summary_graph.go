@@ -82,6 +82,9 @@ type SummaryGraph struct {
 	// the return instructions are linked to ReturnNode, one per Value in a tuple returned
 	Returns map[ssa.Instruction][]*ReturnValNode
 
+	// the if statements of the function
+	Ifs map[ssa.Instruction]*IfNode
+
 	// errors can be used to accumulate errors that were encountered while building the summary graph
 	errors map[error]bool
 
@@ -133,6 +136,7 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
 		AccessGlobalNodes:     make(map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode),
 		SyntheticNodes:        make(map[ssa.Instruction]*SyntheticNode),
 		BoundLabelNodes:       make(map[ssa.Instruction]*BoundLabelNode),
+		Ifs:                   make(map[ssa.Instruction]*IfNode),
 		errors:                map[error]bool{},
 		lastNodeID:            &lastNodeID,
 		shouldTrack:           shouldTrack,
@@ -195,6 +199,8 @@ func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState, shouldTrack func(*
 			}
 		case *ssa.MakeClosure:
 			g.addClosure(x)
+		case *ssa.If:
+			g.addIfNode(x)
 
 		// Other types of sources that may be used in config
 		case *ssa.Alloc, *ssa.FieldAddr, *ssa.Field, *ssa.UnOp:
@@ -457,6 +463,19 @@ func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.L
 	}
 }
 
+func (g *SummaryGraph) addIfNode(x *ssa.If) {
+	if _, ok := g.Ifs[x]; !ok {
+		node := &IfNode{
+			id:      g.newNodeID(),
+			parent:  g,
+			ssaNode: x,
+			out:     make(map[GraphNode]EdgeInfo),
+			in:      make(map[GraphNode]EdgeInfo),
+		}
+		g.Ifs[x] = node
+	}
+}
+
 func (g *SummaryGraph) addSyntheticEdge(mark MarkWithAccessPath, info *ConditionInfo, instr ssa.Instruction, _ string) {
 
 	node, ok := g.SyntheticNodes[instr]
@@ -469,6 +488,14 @@ func (g *SummaryGraph) addSyntheticEdge(mark MarkWithAccessPath, info *Condition
 func (g *SummaryGraph) addBoundLabelEdge(mark MarkWithAccessPath, info *ConditionInfo,
 	instr ssa.Instruction) {
 	node, ok := g.BoundLabelNodes[instr]
+	if !ok {
+		return
+	}
+	g.addEdge(mark, node, info)
+}
+
+func (g *SummaryGraph) addIfEdge(mark MarkWithAccessPath, info *ConditionInfo, n *ssa.If) {
+	node, ok := g.Ifs[n]
 	if !ok {
 		return
 	}
@@ -644,6 +671,15 @@ func (g *SummaryGraph) addEdge(source MarkWithAccessPath, dest GraphNode, cond *
 			}
 		}
 	}
+
+	if source.Mark.IsIf() {
+		sourceInstr := source.Mark.Node.(ssa.Instruction)
+		if sourceNode, ok := g.Ifs[sourceInstr]; ok {
+			if sourceNode != dest {
+				updateEdgeInfo(source, dest, cond, sourceNode)
+			}
+		}
+	}
 }
 
 func isDiffNode(mark MarkWithAccessPath, source GraphNode, dest GraphNode) bool {
@@ -793,6 +829,8 @@ func addInEdge(dest GraphNode, source GraphNode, path EdgeInfo) {
 	case *BoundVarNode:
 		node.in[source] = path
 	case *BoundLabelNode:
+		node.in[source] = path
+	case *IfNode:
 		node.in[source] = path
 	default:
 		panic(fmt.Sprintf("invalid dest node type: %T", dest))
@@ -994,6 +1032,14 @@ func (a *BoundLabelNode) String() string {
 		ftu.SanitizeRepr(a.instr),
 		ftu.SanitizeRepr(a.targetInfo.MakeClosure),
 		a.targetInfo.BoundIndex)
+}
+
+func (a *IfNode) String() string {
+	if a == nil {
+		return ""
+	}
+
+	return fmt.Sprintf("\"[#%d] %s\"", a.id, ftu.SanitizeRepr(a.ssaNode))
 }
 
 // Print the summary graph to w in the graphviz format.

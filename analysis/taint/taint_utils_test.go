@@ -15,6 +15,7 @@
 package taint
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -213,6 +214,27 @@ func noErrorExpected(_ error) bool {
 	return false
 }
 
+// expectTaintCondInFuncs returns a function that returns true when the supplied
+// CondError's callee is in funcNames.
+//
+// Note: the tests are implemented this way because *ssa.If does not store any position data
+func expectTaintedCondInFuncs(funcNames ...string) func(error) bool {
+	return func(err error) bool {
+		var e *CondError
+		if !errors.As(err, &e) {
+			return false
+		}
+
+		for _, calleeName := range funcNames {
+			if e.ParentName == calleeName {
+				return true
+			}
+		}
+
+		return false
+	}
+}
+
 // runTest runs a test instance by building the program from all the files in files plus a file "main.go", relative
 // to the directory dirName
 func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) {
@@ -231,9 +253,9 @@ func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand boo
 	cfg.SummarizeOnDemand = summarizeOnDemand
 	result, err := Analyze(cfg, program)
 	if err != nil {
-		for errs := result.State.CheckError(); len(errs) > 0; errs = result.State.CheckError() {
-			if !errorExpected(errs[0]) {
-				t.Fatalf("taint analysis returned error: %v", errs[0])
+		for _, err := range result.State.CheckError() {
+			if !errorExpected(err) {
+				t.Errorf("taint analysis returned error: %v", err)
 			}
 		}
 	}

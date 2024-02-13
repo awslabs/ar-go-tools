@@ -161,7 +161,7 @@ func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 }
 
 // DoIf is a no-op
-func (state *IntraAnalysisState) DoIf(*ssa.If) {
+func (state *IntraAnalysisState) DoIf(x *ssa.If) {
 
 }
 

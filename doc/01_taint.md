@@ -113,7 +113,17 @@ This implies that any method whose receiver implements the `mypackage.interfaceN
 
 ### Controlling The Data Flow Search
 
-The configuration contains some specific fields that allow users to tune how the analysis searches for data flows. Those options, if not set to their default value, will cause the analysis to possible ignore some tainted flows. However, this can be useful when the analysis reports false positives and the user wants to trade soundness for precision.
+The configuration contains some specific fields that allow users to tune how the analysis searches for data flows. Those options, if not set to their default value, will cause the analysis to possibly ignore some tainted flows. However, this can be useful when the analysis reports false positives and the user wants to trade soundness for precision.
+
+#### Implicit flows
+Some flows can be implicit: for example, branching on tainted data. See the `implicit-flow` test for an example.
+By default, the taint analysis will produce an error if tainted data is branched on.
+If the tool should only track explicit taint flows, set the `explicit-flow-only` option to `true`:
+```yaml
+taint-tracking-problems:
+    -
+      explicit-flow-only: true
+```
 
 #### Filters
 By default, the analysis considers that any type can carry tainted data. In some cases, this can be excessive, as one might not see boolean values as tainted data (for example, a boolean cannot store a user's password). In order to ignore flows that pass through variables of certain types, one add filters. Filters are either a *type* or a *method*, optionally within a *package*. A type filter will cause the tool to ignore data flows through objects of that type, and a method filter will cause the tool to ignore data flows through that method (or function).
@@ -249,6 +259,35 @@ The taint analysis tool can detect such flows with many intermediate calls.
 
 > 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `max-depth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some taint flows. In the previous example, the trace would not be reported if the configuration file sets `maxdepth: 2`.
 
+### Implicit Information Flow
+
+Consider the following example:
+
+```go
+func main() {
+    data := source()
+    newData := make([]byte, len(data))
+    // loop over tainted data
+    for i, b := range data {
+        switch b {
+        case 0x62: // 'b'
+            newData[i] = 0x62
+        case 0x61: // 'a'
+            newData[i] = 0x61
+        case 0x64: // 'd'
+            newData[i] = 0x64
+        default:
+            newData[i] = 0x0
+        }
+    }
+
+    sink(newData)
+}
+```
+
+There is an "information leak" from `source` to `sink` because the individual bytes from `data` are copied over to `newData` without explicitly assigning any data from `data` to `newData`. To detect such implicit information flows, the taint analysis logs a warning when tainted data flows to a branch statement (`if`, `switch`, `select`, etc.) or loop (which involves a branch in SSA form). The analysis also returns an error.
+
+> 📝 The taint analysis is unsound in the presence of other types of implicit data flows called [side channels](https://en.wikipedia.org/wiki/Side-channel_attack).
 
 ### Field Sensitivity
 

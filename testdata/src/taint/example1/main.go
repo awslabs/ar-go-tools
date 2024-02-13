@@ -35,6 +35,7 @@ type fooProducer struct {
 }
 
 func (f fooProducer) source() wrappedString {
+	// branch on tainted data
 	if f.I > 0 && f.I < 10 {
 		return wrappedString{Content: strings.Repeat("x", f.I)}
 	} else {

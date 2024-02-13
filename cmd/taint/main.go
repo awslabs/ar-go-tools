@@ -93,7 +93,10 @@ func main() {
 	result, err := taint.Analyze(taintConfig, program)
 	duration := time.Since(start)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "analysis failed:\n")
+		for _, err := range result.State.CheckError() {
+			fmt.Fprintf(os.Stderr, "\t%v\n", err)
+		}
 		return
 	}
 	result.State.Logger.Infof("")
