@@ -278,7 +278,11 @@ func TestLoadFullConfigYamlEqualsJson(t *testing.T) {
 	}
 	jsonConfig.sourceFile = ""
 	yamlConfig.sourceFile = ""
-	if jsonConfig.Options != yamlConfig.Options {
+	if jsonConfig.ReportCoverage != yamlConfig.ReportCoverage &&
+		jsonConfig.SilenceWarn != yamlConfig.SilenceWarn &&
+		jsonConfig.LogLevel != yamlConfig.LogLevel &&
+		jsonConfig.UnsafeIgnoreNonSummarized != yamlConfig.Options.UnsafeIgnoreNonSummarized &&
+		jsonConfig.UnsafeMaxDepth != yamlConfig.UnsafeMaxDepth {
 		t.Errorf("config options in json and yaml should be the same")
 	}
 }

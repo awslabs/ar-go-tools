@@ -109,8 +109,14 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 	})
 
 	pathSensitivityFilter := make([]bool, numValues)
-	for i := range pathSensitivityFilter {
-		pathSensitivityFilter[i] = cfg.PathSensitive
+	pathSensitive := cfg.PathSensitive
+	if !pathSensitive && f != nil {
+		if cfg.IsPathSensitiveFunc(f.String()) {
+			pathSensitive = true
+		}
+	}
+	for i := range values {
+		pathSensitivityFilter[i] = pathSensitive
 	}
 
 	return &FlowInformation{
