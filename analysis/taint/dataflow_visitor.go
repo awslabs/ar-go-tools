@@ -20,6 +20,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -51,6 +52,7 @@ func (e *EscapeInfo) String() string {
 // It implements the [pkg/github.com/awslabs/ar-go-tools/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
 	taintSpec      *config.TaintSpec
+	directives     analysis.Directives
 	currentSource  df.NodeWithTrace
 	roots          map[df.NodeWithTrace]*df.VisitorNode
 	visited        map[*df.CallStack]bool
@@ -64,9 +66,10 @@ type Visitor struct {
 // NewVisitor returns a Visitor that can be used with
 // [pkg/github.com/awslabs/ar-go-tools/analysis/dataflow.BuildAndRunVisitor] to run the taint analysis
 // independently of the  [Analyze] function
-func NewVisitor(ts *config.TaintSpec) *Visitor {
+func NewVisitor(ts *config.TaintSpec, directives analysis.Directives) *Visitor {
 	return &Visitor{
 		taintSpec:      ts,
+		directives:     directives,
 		currentSource:  df.NodeWithTrace{},
 		taints:         NewFlows(),
 		coverageWriter: nil,
@@ -138,6 +141,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
+			// If there is an ignore directive anywhere in the node's trace, don't report a taint flow
+			if pos, ok := v.shouldIgnore(s, cur.NodeWithTrace); ok {
+				logger.Infof("Node has an ignore directive in its trace at %s: skipping...", pos)
+				continue
+			}
+
 			if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
 				numAlarms++
 				reportTaintFlow(s, v.currentSource, cur)
@@ -506,10 +515,19 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				}
 				if graphNode.Index() < len(bvs) {
 					bv := bvs[graphNode.Index()]
-					nextNodeWithTrace := df.NodeWithTrace{
-						Node:         bv,
-						Trace:        cur.Trace.Parent,
-						ClosureTrace: cur.ClosureTrace.Parent,
+					var nextNodeWithTrace df.NodeWithTrace
+					if cur.Trace == nil {
+						nextNodeWithTrace = df.NodeWithTrace{
+							Node:         bv,
+							Trace:        nil,
+							ClosureTrace: cur.ClosureTrace.Parent,
+						}
+					} else {
+						nextNodeWithTrace = df.NodeWithTrace{
+							Node:         bv,
+							Trace:        cur.Trace.Parent,
+							ClosureTrace: cur.ClosureTrace.Parent,
+						}
 					}
 					que = v.addNext(s, que, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
 				} else {
@@ -647,6 +665,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				break
 			}
 
+			// If there is an ignore directive anywhere in the node's trace, don't report a taint flow
+			if pos, ok := v.shouldIgnore(s, cur.NodeWithTrace); ok {
+				logger.Infof("IfNode has an ignore directive in its trace at %s. Skipping...", pos)
+				break
+			}
+
 			// taint is expected to flow to validators
 			if isValidatorCondition(v.taintSpec, graphNode.SsaNode().Cond, true) {
 				break
@@ -781,6 +805,13 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 		return que
 	}
 
+	s.Logger.Tracef("Adding %v at %v\n", nextVisitorNode.Node, nextVisitorNode.Node.Position(s))
+	s.Logger.Tracef("\ttrace: %v\n", nextVisitorNode.Trace)
+	s.Logger.Tracef("\tclosure-trace: %v\n", nextVisitorNode.ClosureTrace)
+	s.Logger.Tracef("\tseen? %v\n", v.seen[nextVisitorNode.Key()])
+	s.Logger.Tracef("\tlasso? %v\n", nextVisitorNode.Trace.GetLassoHandle() != nil)
+	s.Logger.Tracef("\tdepth: %v\n", cur.Depth)
+
 	cur.AddChild(nextVisitorNode)
 	que = append(que, nextVisitorNode)
 	v.seen[nextVisitorNode.Key()] = true
@@ -906,4 +937,48 @@ func (v *Visitor) raiseAlarm(s *df.AnalyzerState, pos token.Pos, msg string) {
 		s.Logger.Warnf(msg)
 		v.alarms[pos] = msg
 	}
+}
+
+// shouldIgnore returns the position of the ignore directive in node's trace or
+// closure trace.
+// Returns an empty token.Position and false if there is no ignore directive.
+func (v *Visitor) shouldIgnore(s *df.AnalyzerState, node df.NodeWithTrace) (token.Position, bool) {
+	isIgnore := func(n df.GraphNode) bool {
+		pos := n.Position(s)
+		dpos := analysis.NewDirectivePos(pos)
+		if d, ok := v.directives[dpos]; ok && d.Kind == analysis.DirectiveIgnore {
+			return true
+		}
+		// sometimes the filename can get truncated
+		hasDirective := false
+		for d := range v.directives {
+			if strings.HasSuffix(dpos.Filename, d.Filename) && d.Line == dpos.Line {
+				hasDirective = true
+			}
+		}
+
+		return hasDirective
+	}
+
+	if isIgnore(node.Node) {
+		return node.Node.Position(s), true
+	}
+
+	if node.Trace != nil {
+		for _, call := range node.Trace.ToSlice() {
+			if isIgnore(call) {
+				return call.Position(s), true
+			}
+		}
+	}
+
+	if node.ClosureTrace != nil {
+		for _, closure := range node.ClosureTrace.ToSlice() {
+			if isIgnore(closure) {
+				return closure.Position(s), true
+			}
+		}
+	}
+
+	return token.Position{}, false
 }

@@ -16,9 +16,14 @@ package analysis
 
 import (
 	"fmt"
+	"go/ast"
+	"go/token"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -39,8 +44,12 @@ const PkgLoadMode = packages.NeedName |
 
 // LoadedProgram represents a loaded program.
 type LoadedProgram struct {
-	Program  *ssa.Program
+	// Program is the SSA version of the program.
+	Program *ssa.Program
+	// Packages is a list of all packages in the program.
 	Packages []*packages.Package
+	// Directives is a map from the directive's position in the program to the relevant directive comment.
+	Directives Directives
 }
 
 // LoadProgram loads a program on platform "platform" using the buildmode provided and the args.
@@ -50,10 +59,12 @@ func LoadProgram(config *packages.Config,
 	buildmode ssa.BuilderMode,
 	args []string) (LoadedProgram, error) {
 
+	fset := token.NewFileSet()
 	if config == nil {
 		config = &packages.Config{
 			Mode:  PkgLoadMode,
 			Tests: false,
+			Fset:  fset,
 		}
 	}
 
@@ -64,7 +75,7 @@ func LoadProgram(config *packages.Config,
 	// load, parse and type check the given packages
 	initialPackages, err := packages.Load(config, args...)
 	if err != nil {
-		return LoadedProgram{}, err
+		return LoadedProgram{}, fmt.Errorf("failed to load packages: %v", err)
 	}
 
 	if len(initialPackages) == 0 {
@@ -87,7 +98,18 @@ func LoadProgram(config *packages.Config,
 	// Build SSA for entire program
 	program.Build()
 
-	return LoadedProgram{Program: program, Packages: initialPackages}, nil
+	dir := "."
+	if len(args) > 0 {
+		dir = filepath.Dir(args[0])
+	}
+	astPkgs, err := lang.AstPackages(dir, program.Fset)
+	if err != nil {
+		return LoadedProgram{}, fmt.Errorf("failed to get AST packages: %v", err)
+	}
+
+	directives := findDirectives(astPkgs, program.Fset)
+
+	return LoadedProgram{Program: program, Packages: nil, Directives: directives}, nil
 }
 
 // AllPackages returns the slice of all packages the set of functions provided as argument belong to.
@@ -106,4 +128,73 @@ func AllPackages(funcs map[*ssa.Function]bool) []*ssa.Package {
 		return pkglist[i].Pkg.Path() < pkglist[j].Pkg.Path()
 	})
 	return pkglist
+}
+
+// Directives represents a map of directive position to directive.
+type Directives map[DirectivePos]Directive
+
+// Directive represents an instruction to Argot in the source code being analyzed.
+// It is a comment in the form: `//argot:x`, where x is a valid DirectiveKind.
+type Directive struct {
+	Kind    DirectiveKind
+	Comment *ast.Comment
+}
+
+// DirectivePos represents the position of a directive within a program.
+type DirectivePos struct {
+	Filename string
+	Line     int
+}
+
+// NewDirectivePos creates a DirectivePos from a token.Position.
+func NewDirectivePos(pos token.Position) DirectivePos {
+	return DirectivePos{
+		Filename: pos.Filename,
+		Line:     pos.Line,
+	}
+}
+
+// DirectiveKind represents the kind of directive.
+type DirectiveKind string
+
+const (
+	// DirectiveIgnore represents a directive for Argot to ignore a particular line.
+	DirectiveIgnore DirectiveKind = "ignore"
+)
+
+// NewDirective returns the directive for c and true if c is a valid
+// directive comment.
+func NewDirective(c *ast.Comment) (Directive, bool) {
+	_, after, found := strings.Cut(c.Text, "argot:")
+	if !found {
+		return Directive{}, false
+	}
+
+	switch k := DirectiveKind(after); k {
+	case DirectiveIgnore:
+		return Directive{Kind: k, Comment: c}, true
+	default:
+		return Directive{}, false
+	}
+}
+
+// findDirectives returns all the directives in pkgs.
+func findDirectives(pkgs map[string]*ast.Package, fset *token.FileSet) Directives {
+	res := make(Directives)
+	lang.MapComments(pkgs, func(c *ast.Comment) {
+		pos := fset.Position(c.Pos())
+		if !pos.IsValid() {
+			return
+		}
+
+		d, ok := NewDirective(c)
+		if !ok {
+			return
+		}
+
+		dpos := NewDirectivePos(pos)
+		res[dpos] = d
+	})
+
+	return res
 }

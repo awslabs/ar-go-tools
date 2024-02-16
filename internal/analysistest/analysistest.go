@@ -18,9 +18,7 @@ package analysistest
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"io/fs"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -29,7 +27,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -53,7 +51,7 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) LoadedTestProgram {
 
 	prog, err := analysis.LoadProgram(nil, "", ssa.InstantiateGenerics|ssa.GlobalDebug, files)
 	if err != nil {
-		t.Fatalf("error loading packages.")
+		t.Fatalf("error loading packages: %v", err)
 	}
 	cfg, err := config.LoadGlobal()
 	if err != nil {
@@ -62,8 +60,9 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) LoadedTestProgram {
 	return LoadedTestProgram{
 		Config: cfg,
 		LoadedProgram: analysis.LoadedProgram{
-			Program:  prog.Program,
-			Packages: prog.Packages,
+			Program:    prog.Program,
+			Packages:   prog.Packages,
+			Directives: prog.Directives,
 		},
 	}
 }
@@ -138,24 +137,11 @@ func RelPos(pos token.Position, reldir string) LPos {
 	return LPos{Line: pos.Line, Filename: path.Join(reldir, pos.Filename)}
 }
 
-func mapComments(packages map[string]*ast.Package, fmap func(*ast.Comment)) {
-	for _, f := range packages {
-		for _, f := range f.Files {
-			for _, c := range f.Comments {
-				for _, c1 := range c.List {
-					fmap(c1)
-				}
-			}
-		}
-	}
-}
-
 // GetExpectedTargetToSources analyzes the files in dir and looks for comments @Source(id) and @Sink(id) to construct
 // expected flows from targets to sources in the form of two maps from:
 // - from sink positions to all the source position that reach that sink.
 // - from escape positions to the source of data that escapes.
 func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, TargetToSources) {
-	d := make(map[string]*ast.Package)
 	sink2source := make(TargetToSources)
 	escape2source := make(TargetToSources)
 	type sourceInfo struct {
@@ -164,24 +150,13 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	}
 	sourceIDToSource := map[string]sourceInfo{}
 	fset := token.NewFileSet() // positions are relative to fset
-
-	if err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			d0, err := parser.ParseDir(fset, info.Name(), nil, parser.ParseComments)
-			funcutil.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
-			return err
-		}
-		return nil
-	}); err != nil {
-		fmt.Println(err)
-		return nil, nil
+	d, err := lang.AstPackages(dir, fset)
+	if err != nil {
+		panic(fmt.Errorf("failed to get AST packages: %v", err))
 	}
 
 	// Get all the source positions with their identifiers
-	mapComments(d, func(c1 *ast.Comment) {
+	lang.MapComments(d, func(c1 *ast.Comment) {
 		pos := fset.Position(c1.Pos())
 		// Match a "@Source(id1, id2, id3 meta)"
 		a := SourceRegex.FindStringSubmatch(c1.Text)
@@ -201,7 +176,7 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	})
 
 	// Get all the sink positions
-	mapComments(d, func(c1 *ast.Comment) {
+	lang.MapComments(d, func(c1 *ast.Comment) {
 		sinkPos := fset.Position(c1.Pos())
 		// Match a "@Sink(id1, id2, id3)"
 		a := SinkRegex.FindStringSubmatch(c1.Text)
@@ -224,7 +199,7 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	})
 
 	// Get all the escape positions
-	mapComments(d, func(c1 *ast.Comment) {
+	lang.MapComments(d, func(c1 *ast.Comment) {
 		escapePos := fset.Position(c1.Pos())
 		// Match a "@Escape(id1, id2, id3)"
 		a := EscapeRegex.FindStringSubmatch(c1.Text)
