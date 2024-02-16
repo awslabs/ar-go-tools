@@ -4,7 +4,7 @@ options:
   - .*diodon-agent/datachannel.*
   - .*diodon-agent/sessionplugin.*
 taint-tracking-problems:
-- explicit-flow-only: true
+-
   sanitizers:
   - method: sanitizeStr
     package: datachannel

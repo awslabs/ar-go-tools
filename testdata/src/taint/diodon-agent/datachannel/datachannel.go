@@ -54,14 +54,16 @@ func (dc *DataChannel) initialize(logReaderId string) error {
 	}
 	dc.kms = kms
 	agentLTKeyARN, logLTPk, err := getInitialValues(kms)
-	dc.secrets.agentLTKeyARN = agentLTKeyARN
+	dc.secrets.agentLTKeyARN = agentLTKeyARN // @Source(s1)
 	dc.logLTPk = logLTPk
 	dc.logReaderId = logReaderId
 	return nil
 }
 
 func (dc *DataChannel) PerformHandshake() {
-	dc.kms.Sign([]byte(sanitizeStr(dc.secrets.agentLTKeyARN)), []byte(sanitizeStr("message")))
+	dc.kms.Sign([]byte(sanitizeStr(dc.secrets.agentLTKeyARN)), []byte(sanitizeStr("message"))) // @Source(s2)
+	// unexpected I/O operation on secret caught by the taint analysis
+	fmt.Println(dc.secrets.agentLTKeyARN) // @Source(s3) @Sink(s1, s2, s3)
 }
 
 func (dc *DataChannel) LogReaderId() string {

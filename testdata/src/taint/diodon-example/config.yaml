@@ -6,7 +6,6 @@ taint-tracking-problems:
 - sanitizers:
   - method: san
     package: core
-  explicit-flow-only: true
   sources:
     - field: psk
       package: core
