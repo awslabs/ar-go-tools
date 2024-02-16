@@ -36,7 +36,8 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
 	// Loading the program for testdata/src/dataflow/summaries/main.go
-	program, _ := analysistest.LoadTest(t, dir, []string{})
+	lp := analysistest.LoadTest(t, dir, []string{})
+	program := lp.Program
 	cfg := config.NewDefault()
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {

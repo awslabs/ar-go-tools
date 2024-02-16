@@ -79,10 +79,11 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
+	lp, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
+	program := lp.Program
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 

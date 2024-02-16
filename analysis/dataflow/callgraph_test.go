@@ -49,7 +49,8 @@ func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name strin
 func TestPointerCallgraph(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callgraph")
-	program, _ := analysistest.LoadTest(t, dir, []string{})
+	lp := analysistest.LoadTest(t, dir, []string{})
+	program := lp.Program
 	callgraph, err := df.PointerAnalysis.ComputeCallgraph(program)
 	if err != nil {
 		t.Fatalf("error computing callgraph: %s", err)
