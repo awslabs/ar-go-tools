@@ -217,6 +217,8 @@ type Options struct {
 	//
 	// Note that the configuration option name is "field-sensitive" because this is the name that will be more
 	// recognizable for users.
+	//
+	// TODO deprecate since this case is covered by `"field-sensitive-funcs": [".*"]`?
 	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive" json:"field-sensitive"`
 
 	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
@@ -242,6 +244,13 @@ type Options struct {
 	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
 	// in the folder the binary is called.
 	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir" json:"reports-dir"`
+
+	// PathSensitiveFuncs is a list of regexes indicating which functions should be path-sensitive.
+	// This allows the analysis to scale yet still maintain a degree of precision where it matters.
+	PathSensitiveFuncs []string `xml:"field-sensitive-funcs" yaml:"field-sensitive-funcs" json:"field-sensitive-funcs"`
+
+	// pathSensitiveFuncsRegexes is a list of compiled regexes corresponding to PathSensitiveFuncs
+	pathSensitiveFuncsRegexes []*regexp.Regexp
 
 	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
 	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural" json:"skip-interprocedural"`
@@ -301,6 +310,8 @@ func NewDefault() *Config {
 			SourceTaintsArgs:          false,
 			UnsafeIgnoreNonSummarized: false,
 			PathSensitive:             false,
+			PathSensitiveFuncs:        []string{},
+			pathSensitiveFuncsRegexes: nil,
 		},
 	}
 }
@@ -403,6 +414,20 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 		if err == nil {
 			cfg.coverageFilterRegex = r
 		}
+	}
+
+	if len(cfg.Options.PathSensitiveFuncs) > 0 {
+		psRegexes := make([]*regexp.Regexp, 0, len(cfg.Options.PathSensitiveFuncs))
+		for _, pf := range cfg.Options.PathSensitiveFuncs {
+			r, err := regexp.Compile(pf)
+			if err != nil {
+				continue
+			}
+			psRegexes = append(psRegexes, r)
+		}
+		cfg.Options.pathSensitiveFuncsRegexes = psRegexes
+	} else {
+		cfg.Options.PathSensitiveFuncs = []string{}
 	}
 
 	for _, tSpec := range cfg.TaintTrackingProblems {
@@ -516,6 +541,20 @@ func (c Config) MatchCoverageFilter(filename string) bool {
 	} else {
 		return true
 	}
+}
+
+// IsPathSensitiveFunc returns true if funcName matches any regex in c.Options.PathSensitiveFuncs.
+func (c Config) IsPathSensitiveFunc(funcName string) bool {
+	for _, psfr := range c.Options.pathSensitiveFuncsRegexes {
+		if psfr == nil {
+			continue
+		}
+		if psfr.MatchString(funcName) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Below are functions used to query the configuration on specific facts

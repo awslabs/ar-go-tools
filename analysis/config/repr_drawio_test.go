@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"golang.org/x/exp/slices"
@@ -27,7 +28,7 @@ func TestSimpleFlowWithOption(t *testing.T) {
 	if config == nil || err != nil || config2 == nil || err2 != nil {
 		t.Fatalf("error: %v, %v", err, err2)
 	}
-	if config.Options != config2.Options {
+	if !reflect.DeepEqual(config.Options, config2.Options) {
 		fmt.Printf("Config options:\n.yml: %+v\n", config2.Options)
 		fmt.Printf(".xml: %+v\n", config.Options)
 		t.Fatalf("configs from xml and yaml differ in global options")
