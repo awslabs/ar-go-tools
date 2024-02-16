@@ -85,13 +85,14 @@ func (v *Visitor) Reset() {
 
 // CondError represents an error where taint flows to a conditional statement.
 type CondError struct {
-	Cond       *ssa.If // Cond is the conditional statement
-	ParentName string  // ParentName is the name of the function in which the conditional statement occurs
-	Trace      string  // Trace is a string representing the taint trace
+	Cond       *ssa.If        // Cond is the conditional statement
+	ParentName string         // ParentName is the name of the function in which the conditional statement occurs
+	Trace      string         // Trace is a string representing the taint trace
+	Pos        token.Position // Pos is the position
 }
 
 func (e *CondError) Error() string {
-	return fmt.Sprintf("taint flows to conditional statement %v in function %v: %v", e.Cond, e.ParentName, e.Trace)
+	return fmt.Sprintf("taint flows to conditional statement %v in function %v: %v\n\tat %v", e.Cond, e.ParentName, e.Trace, e.Pos)
 }
 
 // Visit runs an inter-procedural analysis to add any detected taint flow from currentSource to a sink. This implements
@@ -651,7 +652,9 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				break
 			}
 
-			err := &CondError{Cond: graphNode.SsaNode(), ParentName: cur.Node.ParentName(), Trace: cur.Trace.SummaryString()}
+			cond := graphNode.SsaNode()
+			pos := graphNode.Position(s)
+			err := &CondError{Cond: cond, ParentName: cur.Node.ParentName(), Trace: cur.Trace.SummaryString(), Pos: pos}
 			logger.Warnf("%v\n", err)
 			s.AddError("cond", err)
 		}

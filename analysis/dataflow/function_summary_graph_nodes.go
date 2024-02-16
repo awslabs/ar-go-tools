@@ -1055,10 +1055,17 @@ func (a *IfNode) Type() types.Type { return a.ssaNode.Cond.Type() }
 
 // Position returns the position of the node.
 func (a *IfNode) Position(c *AnalyzerState) token.Position {
-	if a.ssaNode != nil {
-		return c.Program.Fset.Position(a.ssaNode.Pos())
+	cond := a.ssaNode
+	if cond == nil {
+		return lang.DummyPos
 	}
-	return lang.DummyPos
+
+	pos := c.Program.Fset.Position(cond.Pos())
+	if !pos.IsValid() {
+		pos = c.Program.Fset.Position(cond.Cond.Pos())
+	}
+
+	return pos
 }
 
 // Equal implements equality checking between nodes.
