@@ -226,7 +226,16 @@ type Options struct {
 	// (will change to include more filtering in the future)
 	// Note that the configuration option name is "field-sensitive" because this is the name that will be more
 	// recognizable for users.
+	//
+	// TODO deprecate since this case is covered by `"field-sensitive-funcs": [".*"]`?
 	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive" json:"field-sensitive"`
+
+	// PathSensitiveFuncs is a list of regexes indicating which functions should be path-sensitive.
+	// This allows the analysis to scale yet still maintain a degree of precision where it matters.
+	PathSensitiveFuncs []string `xml:"field-sensitive-funcs" yaml:"field-sensitive-funcs" json:"field-sensitive-funcs"`
+
+	// pathSensitiveFuncsRegexes is a list of compiled regexes corresponding to PathSensitiveFuncs
+	pathSensitiveFuncsRegexes []*regexp.Regexp
 
 	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
 	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
@@ -250,21 +259,23 @@ func NewDefault() *Config {
 		DataflowSpecs:          []string{},
 		EscapeConfig:           NewEscapeConfig(),
 		Options: Options{
-			ReportsDir:          "",
-			PkgFilter:           "",
-			SkipInterprocedural: false,
-			CoverageFilter:      "",
-			ReportSummaries:     false,
-			ReportPaths:         false,
-			ReportCoverage:      false,
-			ReportNoCalleeSites: false,
-			MaxDepth:            DefaultMaxCallDepth,
-			MaxAlarms:           0,
-			LogLevel:            int(InfoLevel),
-			SilenceWarn:         false,
-			SourceTaintsArgs:    false,
-			IgnoreNonSummarized: false,
-			PathSensitive:       false,
+			ReportsDir:                "",
+			PkgFilter:                 "",
+			SkipInterprocedural:       false,
+			CoverageFilter:            "",
+			ReportSummaries:           false,
+			ReportPaths:               false,
+			ReportCoverage:            false,
+			ReportNoCalleeSites:       false,
+			MaxDepth:                  DefaultMaxCallDepth,
+			MaxAlarms:                 0,
+			LogLevel:                  int(InfoLevel),
+			SilenceWarn:               false,
+			SourceTaintsArgs:          false,
+			IgnoreNonSummarized:       false,
+			PathSensitive:             false,
+			PathSensitiveFuncs:        []string{},
+			pathSensitiveFuncsRegexes: nil,
 		},
 	}
 }
@@ -349,6 +360,20 @@ func Load(filename string) (*Config, error) {
 		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop || summaryType == EscapeBehaviorSummarize || strings.HasPrefix(summaryType, "reflect:")) {
 			return nil, fmt.Errorf("escape summary type for function %s is not recognized: %s", funcName, summaryType)
 		}
+	}
+
+	if len(cfg.Options.PathSensitiveFuncs) > 0 {
+		psRegexes := make([]*regexp.Regexp, 0, len(cfg.Options.PathSensitiveFuncs))
+		for _, pf := range cfg.Options.PathSensitiveFuncs {
+			r, err := regexp.Compile(pf)
+			if err != nil {
+				continue
+			}
+			psRegexes = append(psRegexes, r)
+		}
+		cfg.Options.pathSensitiveFuncsRegexes = psRegexes
+	} else {
+		cfg.Options.PathSensitiveFuncs = []string{}
 	}
 
 	for _, tSpec := range cfg.TaintTrackingProblems {
@@ -452,6 +477,20 @@ func (c Config) MatchCoverageFilter(filename string) bool {
 	} else {
 		return true
 	}
+}
+
+// IsPathSensitiveFunc returns true if funcName matches any regex in c.Options.PathSensitiveFuncs.
+func (c Config) IsPathSensitiveFunc(funcName string) bool {
+	for _, psfr := range c.Options.pathSensitiveFuncsRegexes {
+		if psfr == nil {
+			continue
+		}
+		if psfr.MatchString(funcName) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Below are functions used to query the configuration on specific facts
