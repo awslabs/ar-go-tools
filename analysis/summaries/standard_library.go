@@ -38,6 +38,7 @@ var stdPackages = map[string]map[string]Summary{
 	"crypto/des":                  summaryCrypto,
 	"crypto/ecdsa":                summaryCrypto,
 	"crypto/elliptic":             summaryCrypto,
+	"crypto/hmac":                 summaryCrypto,
 	"crypto/internal":             summaryCrypto,
 	"crypto/internal/boring":      summaryCrypto,
 	"crypto/internal/nistec":      summaryCrypto,
@@ -110,6 +111,7 @@ var stdPackages = map[string]map[string]Summary{
 
 	"internal":                 summaryInternal,
 	"internal/abi":             summaryInternal,
+	"internal/bisect":          summaryInternal,
 	"internal/buildcfg":        summaryInternal,
 	"internal/bytealg":         summaryInternal,
 	"internal/cfg":             summaryInternal,
@@ -238,6 +240,9 @@ var summaryContext = map[string]Summary{}
 var summaryCrypto = map[string]Summary{
 	"crypto/aes.NewCipher":             SingleVarArgPropagation,
 	"crypto/cipher.NewGCM":             SingleVarArgPropagation,
+	"crypto/hmac.New":                  TwoArgPropagation,
+	"(*crypto/hmac.hmac).Sum":          SingleVarArgPropagation,
+	"crypto/sha256.New":                SingleVarArgPropagation,
 	"crypto/tls.X509KeyPair":           TwoArgPropagation,
 	"crypto/x509.NewCertPool":          NoDataFlowPropagation,
 	"crypto/x509.MarshalPKIXPublicKey": SingleVarArgPropagation,
@@ -462,7 +467,9 @@ var summaryFmt = map[string]Summary{
 
 var summaryGo = map[string]Summary{}
 
-var summaryHash = map[string]Summary{}
+var summaryHash = map[string]Summary{
+	"hash/Hash.Sum": TwoArgPropagation,
+}
 
 var summaryHtml = map[string]Summary{}
 
@@ -542,6 +549,7 @@ var summaryIo = map[string]Summary{
 var summaryLog = map[string]Summary{
 	"log.Debugf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	"log.Printf": {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
+	"log.Fatal":  {[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	// func (l *Logger) Printf(v ...any)
 	"(*log.Logger).Print": {
 		[][]int{{0}},
@@ -601,8 +609,18 @@ var summaryMath = map[string]Summary{
 var summaryMime = map[string]Summary{}
 
 var summaryNet = map[string]Summary{
+	"net.init": NoDataFlowPropagation,
+	"net.Close": {
+		[][]int{{0}},
+		[][]int{{0}},
+	},
 	// func Dial(network, address string) (Conn, error) {
 	"net.Dial": {
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
+	// func Listen(network, address string) (Listener, error)
+	"net.Listen": {
 		[][]int{{}, {}},
 		[][]int{{0}, {0}},
 	},
@@ -610,6 +628,68 @@ var summaryNet = map[string]Summary{
 	"net.SplitHostPort": {
 		[][]int{{0}},
 		[][]int{{0}},
+	},
+	// func (l *UnixListener) Accept() (Conn, error)
+	"(*net.UnixListener).Accept": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	// func (l *UnixListener) Close() error
+	"(*net.UnixListener).Close": {
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	"(*net.netFD).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.conn).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.conn).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*net.conn).Close": {
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	// func (c *UnixConn) Read(b []byte) (int, error)
+	"(*net.UnixConn).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.UnixConn).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	// func (l *TCPListener) Accept() (Conn, error)
+	"(*net.TCPListener).Accept": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	// func (l *TCPListener) Close() error
+	"(*net.TCPListener).Close": {
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	// func (c *TCPConn) Read(b []byte) (int, error)
+	"(*net.TCPConn).Read": {
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.TCPConn).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*net.UDPConn).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*net.IPConn).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
 	},
 	// func NewRequest(method string, url string, body io.Reader) (*Request, error)
 	"net/http.NewRequest": {
