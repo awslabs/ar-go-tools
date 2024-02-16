@@ -195,3 +195,11 @@ func TestTaint(t *testing.T) {
 func TestPlayground(t *testing.T) {
 	runTest(t, "playground", []string{}, false, noErrorExpected)
 }
+
+func TestDiodon_Example(t *testing.T) {
+	runTest(t, "diodon-example", []string{}, false, noErrorExpected)
+}
+
+func TestDiodon_Agent(t *testing.T) {
+	runTest(t, "diodon-agent", []string{}, false, noErrorExpected)
+}

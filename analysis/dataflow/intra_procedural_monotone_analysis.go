@@ -570,7 +570,13 @@ func (state *IntraAnalysisState) doDefersStackSimulation(r *ssa.RunDefers) error
 				return err
 			}
 			if d, ok := instr.(*ssa.Defer); ok {
-				state.callCommonMark(d.Value(), d, d.Common())
+				var value ssa.Value
+				if d.Value() != nil {
+					value = d.Value()
+				} else {
+					value = d.Call.Value
+				}
+				state.callCommonMark(value, d, d.Common())
 			} else {
 				return fmt.Errorf("defer stacks should only contain defers")
 			}
