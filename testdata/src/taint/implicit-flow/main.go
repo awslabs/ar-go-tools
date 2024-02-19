@@ -49,6 +49,19 @@ func example2() {
 	sink(newData)
 }
 
+func example3() {
+	c1 := make(chan []byte)
+	c1 <- source()
+	c2 := make(chan []byte)
+	// select tainted channel
+	select {
+	case <-c1:
+		fmt.Println("tainted channel")
+	case <-c2:
+		fmt.Println("safe channel")
+	}
+}
+
 func switchByte(b byte, newData []byte, i int) {
 	// branch on tainted data
 	switch b {
@@ -66,6 +79,7 @@ func switchByte(b byte, newData []byte, i int) {
 func main() {
 	example1()
 	example2()
+	example3()
 }
 
 func source() []byte {

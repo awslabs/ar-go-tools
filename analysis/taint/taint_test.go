@@ -177,7 +177,7 @@ func TestTaint(t *testing.T) {
 			args: args{
 				"implicit-flow",
 				[]string{},
-				expectTaintedCondInFuncs("example1", "example2", "switchByte"),
+				expectTaintedCondInFuncs("example1", "example2", "example3", "switchByte"),
 			},
 		},
 	}
