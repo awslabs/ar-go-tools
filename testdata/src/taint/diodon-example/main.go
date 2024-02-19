@@ -34,9 +34,9 @@ func main() {
 		time.Sleep(1 * time.Second)
 		msg = []byte("bye world")
 	}()
-	Send(c, msg /*@ ,1 @*/) // @Escape(msg)
-	fmt.Printf("%v", c)     // @Sink(secret, secret2)
-	fmt.Printf("%v", c.Safe)
+	Send(c, msg /*@ ,1 @*/)  // @Escape(msg)
+	fmt.Printf("%v", c)      // @Sink(secret, secret2)
+	fmt.Printf("%v", c.Safe) // @Escape(secret, secret2)
 }
 
 func message() []byte {

@@ -1,4 +1,5 @@
 options:
+  use-escape-analysis: true
   field-sensitive-funcs:
   - .*diodon-example/core.*
   - .*main.*

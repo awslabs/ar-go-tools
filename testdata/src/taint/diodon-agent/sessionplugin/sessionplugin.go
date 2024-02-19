@@ -26,7 +26,10 @@ func ExecuteSessionPlugin() {
 	if err != nil { //argot:ignore
 		fmt.Println(err)
 	}
-	dc.PerformHandshake()
+	err = dc.PerformHandshake()
+	if err != nil { //argot:ignore
+		fmt.Println(err)
+	}
 	fmt.Println(dc.LogReaderId())
 }
 

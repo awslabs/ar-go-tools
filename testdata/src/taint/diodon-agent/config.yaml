@@ -1,4 +1,5 @@
 options:
+  use-escape-analysis: false # TODO change to true
   field-sensitive-funcs:
   - .*diodon-agent/crypto.*
   - .*diodon-agent/datachannel.*

@@ -22,9 +22,10 @@ func NewKMS() (*KMS, error) {
 	return &KMS{}, nil
 }
 
-func (k *KMS) Sign(key []byte, msg []byte) {
+func (k *KMS) Sign(key []byte, msg []byte) error {
 	data := append(key, msg...)
 	fmt.Println(data)
+	return fmt.Errorf("failed to sign data: %v", data)
 }
 
 func (k *KMS) GetKey() []byte {

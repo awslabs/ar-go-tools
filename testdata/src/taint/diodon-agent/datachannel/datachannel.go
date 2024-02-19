@@ -23,7 +23,7 @@ import (
 )
 
 type IDataChannel interface {
-	PerformHandshake()
+	PerformHandshake() error
 	LogReaderId() string
 }
 
@@ -60,10 +60,13 @@ func (dc *DataChannel) initialize(logReaderId string) error {
 	return nil
 }
 
-func (dc *DataChannel) PerformHandshake() {
-	dc.kms.Sign([]byte(sanitizeStr(dc.secrets.agentLTKeyARN)), []byte(sanitizeStr("message"))) // @Source(s2)
+func (dc *DataChannel) PerformHandshake() error {
+	if err := dc.kms.Sign([]byte(sanitizeStr(dc.secrets.agentLTKeyARN)), []byte(sanitizeStr("message"))); err != nil { // @Source(s2)
+		return fmt.Errorf("failed to sign key: %v", err)
+	}
 	// unexpected I/O operation on secret caught by the taint analysis
 	fmt.Println(dc.secrets.agentLTKeyARN) // @Source(s3) @Sink(s1, s2, s3)
+	return nil
 }
 
 func (dc *DataChannel) LogReaderId() string {
