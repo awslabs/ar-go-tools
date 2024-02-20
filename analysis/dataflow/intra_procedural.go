@@ -152,6 +152,8 @@ func (state *IntraAnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruc
 		state.makeEdgesAtReturn(typedInstr)
 	case *ssa.Store:
 		state.makeEdgesAtStoreInCapturedLabel(typedInstr)
+	case *ssa.If:
+		state.makeEdgesAtIf(typedInstr)
 	}
 	// Always check if it's a synthetic node
 	state.makeEdgesSyntheticNodes(instr)
@@ -307,6 +309,12 @@ func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 		for _, origin := range state.getMarks(x, x.Addr, "", false) {
 			state.summary.addBoundLabelEdge(origin, nil, x)
 		}
+	}
+}
+
+func (state *IntraAnalysisState) makeEdgesAtIf(x *ssa.If) {
+	for _, origin := range state.getMarks(x, x.Cond, "", false) {
+		state.summary.addIfEdge(origin, nil, x)
 	}
 }
 

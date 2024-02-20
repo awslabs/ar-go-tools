@@ -22,3 +22,5 @@ taint-tracking-problems:
           field: OneField
         - package: some/other/package
           interface: Interface
+
+      explicit-flow-only: true

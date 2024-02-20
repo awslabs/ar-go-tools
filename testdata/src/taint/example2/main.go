@@ -20,6 +20,7 @@ import (
 )
 
 func extract(name string) string {
+	// branch on tainted data
 	if !strings.HasSuffix(name, ").Error") {
 		return ""
 	}
@@ -47,6 +48,7 @@ func sink1(x any) {
 }
 
 func rec(x string) string {
+	// branch on tainted data
 	switch x {
 	case "":
 		return rec("b")
@@ -64,6 +66,7 @@ func rec(x string) string {
 func main() {
 	x := fmt.Sprintf("%s", rec(rec(source1()))) // @Source(source1)
 	y := extract(x)
+	// branch on tainted data
 	if len(y) > 2 {
 		return
 	}

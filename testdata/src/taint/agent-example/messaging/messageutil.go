@@ -73,8 +73,8 @@ func ParseSendCommandMessage(context context.Context, msg InstanceMessage, messa
 	logger := log.Default()
 	commandID, _ := GetCommandID(msg.MessageId)
 
-	logger.Printf("Processing send command message ", msg.MessageId)
-	logger.Printf("Processing send command payload:  ", msg.Payload)
+	logger.Printf("Processing send command message: %v\n", msg.MessageId)
+	logger.Printf("Processing send command payload: %v\n", msg.Payload)
 
 	// parse message to retrieve parameters
 	var parsedMessage SendCommandPayload

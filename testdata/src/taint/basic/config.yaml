@@ -16,6 +16,7 @@ taint-tracking-problems:
   sanitizers:
     - package: "(main)|(command-line-arguments)"
       method: ".*(s|S)anitize[1-9]?"
+  explicit-flow-only: true
 
 options:
     verbose: true

@@ -83,6 +83,18 @@ func (v *Visitor) Reset() {
 	v.seen = make(map[df.KeyType]bool)
 }
 
+// CondError represents an error where taint flows to a conditional statement.
+type CondError struct {
+	Cond       *ssa.If        // Cond is the conditional statement
+	ParentName string         // ParentName is the name of the function in which the conditional statement occurs
+	Trace      string         // Trace is a string representing the taint trace
+	Pos        token.Position // Pos is the position
+}
+
+func (e *CondError) Error() string {
+	return fmt.Sprintf("taint flows to conditional statement %v in function %v: %v\n\tat %v", e.Cond, e.ParentName, e.Trace, e.Pos)
+}
+
 // Visit runs an inter-procedural analysis to add any detected taint flow from currentSource to a sink. This implements
 // the visitor interface of the dataflow package.
 //
@@ -628,6 +640,23 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					TracingInfo: cur.Status.TracingInfo.Next(closureNode.ClosureSummary, graphNode.Index()),
 				},
 				df.EdgeInfo{})
+		case *df.IfNode:
+			// If only explicit taint flows should be tracked,
+			// then don't track flow inside of conditionals (information flow)
+			if v.taintSpec.ExplicitFlowOnly {
+				break
+			}
+
+			// taint is expected to flow to validators
+			if isValidatorCondition(v.taintSpec, graphNode.SsaNode().Cond, true) {
+				break
+			}
+
+			cond := graphNode.SsaNode()
+			pos := graphNode.Position(s)
+			err := &CondError{Cond: cond, ParentName: cur.Node.ParentName(), Trace: cur.Trace.SummaryString(), Pos: pos}
+			logger.Warnf("%v\n", err)
+			s.AddError("cond", err)
 		}
 	}
 

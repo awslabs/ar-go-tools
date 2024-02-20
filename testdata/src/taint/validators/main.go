@@ -118,6 +118,7 @@ func pass(i int, x string) (bool, string) {
 func validatorExample4() {
 	a := source1() // @Source(ex4)
 	ok, b := pass(2, a)
+	// branch on tainted data TODO: validators on part of the argument
 	if ok {
 		sink1(b) // @Sink(ex4) TODO: validators on part of the argument
 	}
@@ -147,6 +148,7 @@ type A struct {
 }
 
 func Validate2(a A) bool {
+	// branch on tainted data
 	return a.X > 0 && Validate(a.Y)
 }
 

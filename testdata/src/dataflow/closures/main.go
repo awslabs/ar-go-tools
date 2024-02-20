@@ -366,6 +366,7 @@ func example17() {
 	data := "ok"
 	a := func() { data = "ok" }
 	b := func() { data = source() } // @Source(example17)
+	// loop over tainted data
 	for _, f := range []func(){b, a} {
 		f()
 	}

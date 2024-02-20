@@ -42,6 +42,7 @@ func TestChannelIsNoLongerTaintedWhenNilledOut(sources chan core.SourceT) {
 }
 
 func TestRangeOverChan(sources chan core.SourceT) {
+	// loop over tainted channel
 	for s := range sources {
 		core.Sink(s) // @Sink(c)
 	}

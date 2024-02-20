@@ -8,6 +8,7 @@ taint-tracking-problems:
     sinks:
       - package: "((main)|(command-line-arguments))"
         method: sink[1-9]
+    explicit-flow-only: true
 
 options:
     skip-interprocedural: false

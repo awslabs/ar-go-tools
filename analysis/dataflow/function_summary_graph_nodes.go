@@ -113,6 +113,8 @@ func Instr(node GraphNode) ssa.Instruction {
 		return node.ParentNode().CallSite()
 	case *SyntheticNode:
 		return node.Instr()
+	case *IfNode:
+		return node.SsaNode()
 	}
 
 	return nil
@@ -1011,5 +1013,81 @@ func (a *BoundLabelNode) ParentName() string {
 
 // LongID returns a string identifier for the node
 func (a *BoundLabelNode) LongID() string {
+	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
+// IfNode is used to track dataflow to if-statements (includes all types of branching).
+// For now, this just contains the value that is being branched on (the if-condition).
+type IfNode struct {
+	id      uint32
+	parent  *SummaryGraph          // the parent of an IfNode is the summary of the function in which it appears
+	ssaNode *ssa.If                // an IfNode must correspond to a specific instruction
+	out     map[GraphNode]EdgeInfo // the out maps the node to other nodes to which data flows
+	in      map[GraphNode]EdgeInfo // the in maps the node to other nodes from which data flows
+	marks   LocSet
+}
+
+// ID returns the integer id of the node in its parent graph.
+func (a *IfNode) ID() uint32 { return a.id }
+
+// Graph returns the parent summary graph of the node.
+func (a *IfNode) Graph() *SummaryGraph { return a.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path.
+func (a *IfNode) Out() map[GraphNode]EdgeInfo { return a.out }
+
+// In returns the nodes with incoming edges to the current node, with their object path.
+func (a *IfNode) In() map[GraphNode]EdgeInfo { return a.in }
+
+// Marks returns the location information of the node.
+func (a *IfNode) Marks() LocSet { return a.marks }
+
+// SetLocs sets the locations information of the node.
+func (a *IfNode) SetLocs(set LocSet) {
+	if a.marks == nil {
+		a.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(a.marks, set, funcutil.First[bool])
+}
+
+// Type returns the type of the value in the if-condition.
+func (a *IfNode) Type() types.Type { return a.ssaNode.Cond.Type() }
+
+// Position returns the position of the node.
+func (a *IfNode) Position(c *AnalyzerState) token.Position {
+	cond := a.ssaNode
+	if cond == nil {
+		return lang.DummyPos
+	}
+
+	pos := c.Program.Fset.Position(cond.Pos())
+	if !pos.IsValid() {
+		pos = c.Program.Fset.Position(cond.Cond.Pos())
+	}
+
+	return pos
+}
+
+// Equal implements equality checking between nodes.
+func (a *IfNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*IfNode); ok {
+		return a == a2
+	}
+	return false
+}
+
+// SsaNode returns the if-instruction.
+func (a *IfNode) SsaNode() *ssa.If { return a.ssaNode }
+
+// ParentName returns the name of the parent function.
+func (a *IfNode) ParentName() string {
+	if a.parent != nil && a.parent.Parent != nil {
+		return a.parent.Parent.Name()
+	}
+	return "IfNode"
+}
+
+// LongID returns a string identifier for the node.
+func (a *IfNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }

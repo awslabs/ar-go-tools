@@ -25,10 +25,6 @@ type nestedStruct struct {
 	A  string
 }
 
-func source() string {
-	return "tainted data"
-}
-
 func source2() nestedStruct {
 	return nestedStruct{
 		Ex: example{},

@@ -145,6 +145,7 @@ func TestSinkAfterTaintInFor() {
 		sources[i] = core.Source() // @Source(mb6)
 	}
 
+	// branch on tainted data
 	for i := 0; i < len(sources); i++ {
 		fmt.Fprintf(w, "%v", sources[i])
 	}

@@ -90,6 +90,13 @@ func Baz(x string) {
 	Sink(s5)
 }
 
+func ImplicitFlow() {
+	s := Source()
+	if len(s) == 0 {
+		Sink("")
+	}
+}
+
 func main() {
 	s := fmt.Sprintf("bad-%s", "data")
 	s2 := "example2"
@@ -102,4 +109,5 @@ func main() {
 	go ChannelConsumer(c)
 	x := Source()
 	Baz(x)
+	ImplicitFlow()
 }
