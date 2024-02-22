@@ -57,6 +57,7 @@ const (
 	cmdUnfocusName      = "unfocus"
 	cmdWhereName        = "where"
 	cmdBacktraceName    = "backtrace"
+	cmdIoFuncsName      = "iofuncs"
 	// Other constants
 
 	// Summarize threshold puts a maximum size above which summary building filters are used

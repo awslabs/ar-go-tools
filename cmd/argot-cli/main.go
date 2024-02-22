@@ -76,6 +76,7 @@ var (
 		cmdUnfocusName:      cmdUnfocus,
 		cmdWhereName:        cmdWhere,
 		cmdBacktraceName:    cmdBacktrace,
+		cmdIoFuncsName:      cmdIoFuncs,
 	}
 )
 

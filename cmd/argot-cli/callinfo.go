@@ -16,10 +16,12 @@ package main
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // cmdCallers shows the callers of a given summarized function
@@ -54,6 +56,17 @@ func cmdCallees(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) b
 		usePtr = true
 	}
 	return displayCallInfo(tt, c, command, usePtr, true, false)
+}
+
+// cmdIoFuncs shows the callers of all the I/O functions.
+// Only uses the pointer analysis for now.
+func cmdIoFuncs(tt *term.Terminal, s *dataflow.AnalyzerState, command Command) bool {
+	if s == nil {
+		writeFmt(tt, "\t- %s%s%s: shows the callers of all the I/O functions.\n",
+			tt.Escape.Blue, cmdCallersName, tt.Escape.Reset)
+		return false
+	}
+	return displayIOFuncs(s, tt)
 }
 
 // displayCallInfo displays callers or/and callee information for a specific command.
@@ -157,4 +170,189 @@ func displayCallInfoWithoutSummary(s *dataflow.AnalyzerState, tt *term.Terminal,
 			}
 		}
 	}
+}
+
+func displayIOFuncs(s *dataflow.AnalyzerState, tt *term.Terminal) bool {
+	io := ioFuncs(s)
+	targetFilter := func(call ssa.CallInstruction) bool {
+		pos := s.Program.Fset.Position(call.Pos())
+		if !pos.IsValid() {
+			return false
+		}
+
+		// filter out unwanted callsites
+		fname := pos.Filename
+		// NOTE hardcoded for the agent for now
+		return strings.Contains(fname, "amazon-ssm-agent/agent") && !strings.Contains(fname, "test")
+	}
+
+	n := 0
+	for _, f := range io {
+		if node, ok := s.PointerAnalysis.CallGraph.Nodes[f]; ok {
+			WriteSuccess(tt, "Callers of %s:", f.String())
+			for _, in := range node.In {
+				if in.Caller != nil && targetFilter(in.Site) {
+					if in.Site != nil {
+						writeFmt(tt, "\tAt SSA instruction %s:\n", in.Site.String())
+						writeFmt(tt, "\t - position: %s\n", s.Program.Fset.Position(in.Site.Pos()))
+					}
+					writeFmt(tt, "\t - %s\n", in.Caller.Func.String())
+					n++
+				}
+			}
+		}
+	}
+	writeFmt(tt, "%d total I/O funcs in program\n", n)
+
+	return false
+}
+
+func ioFuncs(s *dataflow.AnalyzerState) []*ssa.Function {
+	fns := ssautil.AllFunctions(s.Program)
+	res := []*ssa.Function{}
+	for f := range fns {
+		if _, ok := ioFuncNames[f.String()]; !ok {
+			for name := range ioFuncNames {
+				if strings.Contains(f.String(), name) {
+					break
+				}
+			}
+
+			continue
+		}
+
+		res = append(res, f)
+	}
+
+	return res
+}
+
+var ioFuncNames = map[string]struct{}{
+	"log.SetFlags":                      {},
+	"log.SetOutput":                     {},
+	"net.Dial":                          {},
+	"net.DialIP":                        {},
+	"net.DialTCP":                       {},
+	"net.DialTimeout":                   {},
+	"net.DialUDP":                       {},
+	"net.DialUnix":                      {},
+	"net.FileConn":                      {},
+	"net.FileListener":                  {},
+	"net.FilePacketConn":                {},
+	"net.Listen":                        {},
+	"net.ListenIP":                      {},
+	"net.ListenMulticastUDP":            {},
+	"net.ListenPacket":                  {},
+	"net.ListenTCP":                     {},
+	"net.ListenUDP":                     {},
+	"net.ListenUnix":                    {},
+	"net.ListenUnixgram":                {},
+	"net.LookupAddr":                    {},
+	"net.LookupCNAME":                   {},
+	"net.LookupHost":                    {},
+	"net.LookupIP":                      {},
+	"net.LookupMX":                      {},
+	"net.LookupNS":                      {},
+	"net.LookupPort":                    {},
+	"net.LookupSRV":                     {},
+	"net.LookupTXT":                     {},
+	"net.ResolveIPAddr":                 {},
+	"net.ResolveTCPAddr":                {},
+	"net.ResolveUDPAddr":                {},
+	"net.ResolveUnixAddr":               {},
+	"os.Chdir":                          {},
+	"os.Chmod":                          {},
+	"os.Chown":                          {},
+	"os.Chtimes":                        {},
+	"os.Clearenv":                       {},
+	"os.Create":                         {},
+	"os.CreateTemp":                     {},
+	"os.DirFS":                          {},
+	"os.Lchown":                         {},
+	"os.Link":                           {},
+	"os.Lstat":                          {},
+	"os.Mkdir":                          {},
+	"os.MkdirAll":                       {},
+	"os.MkdirTemp":                      {},
+	"os.NewFile":                        {},
+	"os.Open":                           {},
+	"os.OpenFile":                       {},
+	"os.Pipe":                           {},
+	"os.ReadDir":                        {},
+	"os.ReadFile":                       {},
+	"os.Readlink":                       {},
+	"os.Remove":                         {},
+	"os.RemoveAll":                      {},
+	"os.Rename":                         {},
+	"os.SameFile":                       {},
+	"os.Setenv":                         {},
+	"os.Stat":                           {},
+	"os.Symlink":                        {},
+	"os.Truncate":                       {},
+	"os.Unsetenv":                       {},
+	"os.WriteFile":                      {},
+	"(*os.File).Chdir":                  {},
+	"(*os.File).Chmod":                  {},
+	"(*os.File).Chown":                  {},
+	"(*os.File).Close":                  {},
+	"(*os.File).Fd":                     {},
+	"(*os.File).Name":                   {},
+	"(*os.File).Read":                   {},
+	"(*os.File).ReadAt":                 {},
+	"(*os.File).ReadDir":                {},
+	"(*os.File).ReadFrom":               {},
+	"(*os.File).Readdir":                {},
+	"(*os.File).Readdirnames":           {},
+	"(*os.File).Seek":                   {},
+	"(*os.File).SetDeadline":            {},
+	"(*os.File).SetReadDeadline":        {},
+	"(*os.File).SetWriteDeadline":       {},
+	"(*os.File).Stat":                   {},
+	"(*os.File).Sync":                   {},
+	"(*os.File).SyscallConn":            {},
+	"(*os.File).Truncate":               {},
+	"(*os.File).Write":                  {},
+	"(*os.File).WriteAt":                {},
+	"(*os.File).WriteString":            {},
+	"(*os.fileStat).IsDir":              {},
+	"(*os.fileStat).ModTime":            {},
+	"(*os.fileStat).Mode":               {},
+	"(*os.fileStat).Name":               {},
+	"(*os.fileStat).Size":               {},
+	"(*os.fileStat).Sys":                {},
+	"(*os.unixDirent).Name":             {},
+	"os/exec.LookPath":                  {},
+	"plugin.Open":                       {},
+	"runtime.Breakpoint":                {},
+	"runtime.CPUProfile":                {},
+	"runtime.Goexit":                    {},
+	"runtime.SetCgoTraceback":           {},
+	"runtime.UnlockOSThread":            {},
+	"runtime/debug.SetGCPercent":        {},
+	"runtime/debug.SetMaxStack":         {},
+	"runtime/debug.SetMaxThreads":       {},
+	"runtime/debug.SetPanicOnFault":     {},
+	"runtime/debug.WriteHeapDump":       {},
+	"runtime/metrics.Read":              {},
+	"runtime.SetFinalizer":              {},
+	"internal/syscall/unix":             {},
+	"internal/syscall/windows":          {},
+	"internal/syscall/windows/registry": {},
+	"os":                                {},
+	"os/exec":                           {},
+	"os/signal":                         {},
+	"reflect":                           {},
+	"runtime":                           {},
+	"runtime/cgo":                       {},
+	"runtime/debug":                     {},
+	"runtime/internal/syscall":          {},
+	"runtime/pprof":                     {},
+	"syscall":                           {},
+	"net":                               {},
+	"net/http":                          {},
+	"unsafe":                            {},
+	"golang.org/x/sys/unix":             {},
+	"fmt.Print":                         {},
+	"fmt.Printf":                        {},
+	"fmt.Println":                       {},
 }
