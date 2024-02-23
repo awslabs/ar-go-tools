@@ -678,6 +678,15 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 			cond := graphNode.SsaNode()
 			pos := graphNode.Position(s)
+			if !pos.IsValid() {
+				break
+			}
+
+			// ignore errors in Go standard library or dependencies
+			if strings.Contains(pos.Filename, "golang/src") || strings.Contains(pos.Filename, "vendor") {
+				break
+			}
+
 			err := &CondError{Cond: cond, ParentName: cur.Node.ParentName(), Trace: cur.Trace.SummaryString(), Pos: pos}
 			logger.Warnf("%v\n", err)
 			s.AddError("cond", err)
