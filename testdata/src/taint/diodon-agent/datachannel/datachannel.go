@@ -18,8 +18,10 @@ package datachannel
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"diodon-agent/crypto"
+	"errors"
 	"fmt"
+
+	"diodon-agent/crypto"
 )
 
 type IDataChannel interface {
@@ -28,10 +30,11 @@ type IDataChannel interface {
 }
 
 type DataChannel struct {
-	kms         *crypto.KMS
-	logLTPk     *rsa.PublicKey
-	logReaderId string
-	secrets     agentSecrets
+	kms               *crypto.KMS
+	logLTPk           *rsa.PublicKey
+	logReaderId       string
+	streamDataHandler func([]byte) error
+	secrets           agentSecrets
 }
 
 func NewDataChannel(logReaderId string) (IDataChannel, error) {
@@ -39,11 +42,20 @@ func NewDataChannel(logReaderId string) (IDataChannel, error) {
 	if err := dc.initialize(logReaderId); err != nil {
 		return nil, fmt.Errorf("failed to initialize data channel: %v", err)
 	}
+	dc.streamDataHandler = func(streamData []byte) error {
+		return dc.handleHandshakeResponse(streamData)
+	}
 
 	return dc, nil
 }
 
 type agentSecrets struct {
+	agentSecret   []byte
+	sharedSecret  []byte
+	sessionID     []byte
+	agentWriteKey []byte
+	agentReadKey  []byte
+	// agentLTKeyARN is the ARN for the KMS long-term-key used to sign and verify the handshake
 	agentLTKeyARN string
 }
 
@@ -54,18 +66,40 @@ func (dc *DataChannel) initialize(logReaderId string) error {
 	}
 	dc.kms = kms
 	agentLTKeyARN, logLTPk, err := getInitialValues(kms)
-	dc.secrets.agentLTKeyARN = agentLTKeyARN // @Source(s1)
+	if err != nil {
+		return fmt.Errorf("failed to get initial values")
+	}
+	dc.secrets.agentLTKeyARN = agentLTKeyARN
 	dc.logLTPk = logLTPk
 	dc.logReaderId = logReaderId
 	return nil
 }
 
 func (dc *DataChannel) PerformHandshake() error {
-	if err := dc.kms.Sign([]byte(sanitizeStr(dc.secrets.agentLTKeyARN)), []byte(sanitizeStr("message"))); err != nil { // @Source(s2)
+	if err := dc.kms.Sign([]byte(sanitizeStr(dc.secrets.agentLTKeyARN)), []byte(sanitizeStr("message"))); err != nil {
 		return fmt.Errorf("failed to sign key: %v", err)
 	}
+
+	// simulate handling message from network
+	if err := dc.streamDataHandler([]byte("message")); err != nil {
+		return err
+	}
+
 	// unexpected I/O operation on secret caught by the taint analysis
-	fmt.Println(dc.secrets.agentLTKeyARN) // @Source(s3) @Sink(s1, s2, s3)
+	fmt.Println(dc.secrets.sharedSecret) // @Sink(secret)
+
+	return nil
+}
+
+func (dc *DataChannel) handleHandshakeResponse(streamDataMessage []byte) error {
+	clientShare := string(streamDataMessage)                                               // simulate parsing
+	sharedSecret, err := unmarshalAndCheckClientShare(clientShare, dc.secrets.agentSecret) // @Source(sharedSecret)
+	if err != nil {                                                                        //argot:ignore
+		return errors.New("failed")
+	}
+
+	dc.secrets.sessionID = computeSHA384(sharedSecret) // @Source(sessionId)
+
 	return nil
 }
 
@@ -86,6 +120,14 @@ func getInitialValues(kms *crypto.KMS) (string, *rsa.PublicKey, error) {
 
 	logLTPk := &sk.PublicKey
 	return agentLtkARN, logLTPk, nil
+}
+
+func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte) ([]byte, error) {
+	return append([]byte(clientShare), agentSecret...), nil
+}
+
+func computeSHA384(secret []byte) []byte {
+	return secret
 }
 
 func sanitizeStr(s string) string {

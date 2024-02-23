@@ -6,13 +6,21 @@ options:
   - .*diodon-agent/sessionplugin.*
 taint-tracking-problems:
 -
+  filters:
+    - type: error$
   sanitizers:
   - method: sanitizeStr
     package: datachannel
+
   sources:
-    - field: secrets
-      package: datachannel
-      type: DataChannel
+    - package: .*
+      method: computeKdf
+    # shared secret
+    - package: .*
+      method: unmarshalAndCheckClientShare
+    # session ID
+    - package: .*
+      method: computeSHA384
   sinks:
   - method: SetFlags$
     package: log
