@@ -95,7 +95,12 @@ func main() {
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed:\n")
+		// deduplicate error messages
+		errMsgs := map[string]struct{}{}
 		for _, err := range result.State.CheckError() {
+			errMsgs[err.Error()] = struct{}{}
+		}
+		for err := range errMsgs {
 			fmt.Fprintf(os.Stderr, "\t%v\n", err)
 		}
 		return
