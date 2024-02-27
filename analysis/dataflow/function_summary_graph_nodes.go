@@ -580,7 +580,11 @@ func (a *ReturnValNode) SetLocs(_ LocSet) {}
 func (a *ReturnValNode) Index() int { return a.index }
 
 // Type returns the return type of the parent function
-func (a *ReturnValNode) Type() types.Type { return a.parent.ReturnType() }
+func (a *ReturnValNode) Type() types.Type {
+	tuple := a.parent.ReturnType()
+	v := tuple.At(a.index)
+	return v.Type()
+}
 
 // Position returns the estimated position of the node in the source
 func (a *ReturnValNode) Position(c *AnalyzerState) token.Position {
