@@ -594,7 +594,7 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 	}
 	cfg.SlicingProblems = []config.SlicingSpec{{BacktracePoints: cfg.TaintTrackingProblems[0].Sinks}}
 	cfg.SummarizeOnDemand = isOnDemand
-	cfg.LogLevel = int(config.DebugLevel)
+	cfg.LogLevel = int(config.InfoLevel)
 	res, err := backtrace.Analyze(cfg, lp.LoadedProgram)
 	if err != nil {
 		t.Fatal(err)

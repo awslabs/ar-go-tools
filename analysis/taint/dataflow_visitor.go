@@ -55,7 +55,6 @@ type Visitor struct {
 	directives     analysis.Directives
 	currentSource  df.NodeWithTrace
 	roots          map[df.NodeWithTrace]*df.VisitorNode
-	visited        map[*df.CallStack]bool
 	escapeGraphs   map[*ssa.Function]map[df.KeyType]*EscapeInfo
 	taints         *Flows
 	coverageWriter io.StringWriter
@@ -74,7 +73,6 @@ func NewVisitor(ts *config.TaintSpec, directives analysis.Directives) *Visitor {
 		taints:         NewFlows(),
 		coverageWriter: nil,
 		roots:          map[df.NodeWithTrace]*df.VisitorNode{},
-		visited:        map[*df.CallStack]bool{},
 		escapeGraphs:   map[*ssa.Function]map[df.KeyType]*EscapeInfo{},
 		alarms:         map[token.Pos]string{},
 		seen:           make(map[df.KeyType]bool),
@@ -313,7 +311,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				nextNode := callSite.CalleeSummary.Params[param]
 
 				newCallStack := cur.Trace.Add(callSite)
-				v.visited[newCallStack] = true
 				nextNodeWithTrace := df.NodeWithTrace{
 					Node:         nextNode,
 					Trace:        newCallStack,
