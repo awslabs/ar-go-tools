@@ -91,6 +91,10 @@ func (dc *DataChannel) PerformHandshake() error {
 	return nil
 }
 
+func (dc *DataChannel) SetSessionId(id []byte) {
+	dc.secrets.sessionID = id
+}
+
 func (dc *DataChannel) handleHandshakeResponse(streamDataMessage []byte) error {
 	clientShare := string(streamDataMessage)                                               // simulate parsing
 	sharedSecret, err := unmarshalAndCheckClientShare(clientShare, dc.secrets.agentSecret) // @Source(sharedSecret)

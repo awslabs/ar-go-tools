@@ -3,6 +3,14 @@ options:
   field-sensitive-funcs:
   - .*diodon-example/core.*
   - .*main.*
+slicing-problems:
+  - backtracepoints:
+      - package: core
+        method: Send
+    filters:
+      - package: core
+        method: .*
+      - type: error$
 taint-tracking-problems:
 - sanitizers:
   - method: san

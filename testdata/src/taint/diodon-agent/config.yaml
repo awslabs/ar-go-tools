@@ -244,3 +244,15 @@ taint-tracking-problems:
     package: unsafe
   - method: Print.*
     package: fmt
+
+slicing-problems:
+-
+  backtracepoints:
+    - package: datachannel
+      method: PerformHandshake
+  filters:
+    # - package: datachannel
+    #   method: .*
+    # - package: crypto
+    #   method: .*
+    - type: error$
