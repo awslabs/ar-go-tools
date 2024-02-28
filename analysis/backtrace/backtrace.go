@@ -118,7 +118,24 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 				return IsInterProceduralEntryPoint(state, visitor.SlicingSpec, node)
 			},
 		})
-		traces = append(traces, visitor.Traces...)
+		// filter unwanted nodes
+		vTraces := [][]df.GraphNode{}
+		for _, trace := range visitor.Traces {
+			vTrace := []df.GraphNode{}
+			for _, node := range trace {
+				if isFiltered(visitor.SlicingSpec, node) {
+					fmt.Printf("FILTERED: %v\n", node)
+					fmt.Printf("\t%v\n", vTrace)
+					vTrace = nil
+					break
+				}
+				vTrace = append(vTrace, node)
+			}
+			if len(vTrace) > 0 {
+				vTraces = append(vTraces, vTrace)
+			}
+		}
+		traces = append(traces, vTraces...)
 	}
 
 	logger.Infof(formatutil.Green("Found %d traces.\n"), len(traces))
@@ -503,7 +520,13 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			closureNode := graphNode.ParentNode()
 
 			if s.Config.SummarizeOnDemand && closureNode.ClosureSummary == nil {
-				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
+				closureSummary := df.NewSummaryGraph(s, closureNode.Instr().Fn.(*ssa.Function), df.GetUniqueFunctionID(),
+					isSomeIntraProceduralEntryPoint, nil)
+				if _, err := df.RunIntraProcedural(s, closureSummary); err != nil {
+					panic(fmt.Errorf("failed to run intra-procedural analysis for %v: %v", closureSummary.Parent, err))
+				}
+				closureNode.ClosureSummary = closureSummary
+				//closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
 				//s.FlowGraph.BuildGraph(IsInterProceduralEntryPoint)
 				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 			}
@@ -687,26 +710,37 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 
 	// First set of stop conditions: node has already been seen, or depth exceeds limit
 	if seen[nextVisitorNode.Key()] || s.Config.ExceedsMaxDepth(cur.Depth) {
+		s.Logger.Tracef("Will not add %v\n", nextNodeWithTrace.Node.String())
+		s.Logger.Tracef("\tseen? %v, depth %v\n", seen[nextVisitorNode.Key()], cur.Depth)
 		return stack
 	}
 
-	// Second set of stop conditions: node has already been seen and trace/closure trace is a lasso
-	if seen[nextVisitorNode.Key()] || nextVisitorNode.Trace.GetLassoHandle() != nil || nextVisitorNode.ClosureTrace.GetLassoHandle() != nil {
+	// Second set of stop conditions: trace or closure trace is a lasso
+	if nextVisitorNode.Trace.GetLassoHandle() != nil || nextVisitorNode.ClosureTrace.GetLassoHandle() != nil {
+		s.Logger.Tracef("Will not add %v\n", cur.Node.String())
+		s.Logger.Tracef("\tcall trace: %v\n", nextVisitorNode.Trace)
+		s.Logger.Tracef("\tcall lasso? %v\n", nextVisitorNode.Trace.GetLassoHandle() != nil)
+		s.Logger.Tracef("\tclosure-trace: %v\n", nextVisitorNode.ClosureTrace)
+		s.Logger.Tracef("\tclosure lasso? %v\n", nextVisitorNode.ClosureTrace.GetLassoHandle() != nil)
 		return stack
 	}
 
 	s.Logger.Tracef("Adding %v at %v\n", nextVisitorNode.Node, nextVisitorNode.Node.Position(s))
-	s.Logger.Tracef("\ttrace: %v\n", nextVisitorNode.Trace)
-	s.Logger.Tracef("\tclosure-trace: %v\n", nextVisitorNode.ClosureTrace)
-	s.Logger.Tracef("\tseen? %v\n", seen[nextVisitorNode.Key()])
-	s.Logger.Tracef("\tlasso? %v\n", nextVisitorNode.Trace.GetLassoHandle() != nil)
-	s.Logger.Tracef("\tdepth: %v\n", cur.Depth)
 
 	cur.AddChild(nextVisitorNode)
 	stack = append(stack, nextVisitorNode)
 	seen[nextVisitorNode.Key()] = true
 	return stack
 }
+
+// _, isParam := node.(*df.ParamNode) // param may have intra-procedural incoming edges
+// _, isCall := node.(*df.CallNode)   // call may have inter-procedural edges
+// // call argument may have inter-procedural edges only if it is nillable
+// isCallArg := false
+// if arg, ok := node.(*df.CallNodeArg); ok {
+// 	isCallArg = lang.IsNillableType(arg.Type())
+// }
+// // hasIntraIncomingEdges = hasIntraIncomingEdges && !isCallArg
 
 // isBaseCase returns true if the analysis should not analyze node any further.
 func isBaseCase(node df.GraphNode, cfg *config.Config) bool {
@@ -843,4 +877,29 @@ func traceNode(s *df.AnalyzerState, node *df.VisitorNode) {
 	logger.Tracef("Element trace: %s\n", node.Trace.String())
 	logger.Tracef("Element closure trace: %s\n", node.ClosureTrace.String())
 	logger.Tracef("Element backtrace: %v\n", findTrace(node))
+}
+
+func isFiltered(ss *config.SlicingSpec, n df.GraphNode) bool {
+	var f *ssa.Function
+	switch node := n.(type) {
+	case *df.CallNode:
+		f = node.CallSite().Parent()
+	case *df.CallNodeArg:
+		f = node.ParentNode().CallSite().Parent()
+	}
+	typ := n.Type()
+
+	for _, filter := range ss.Filters {
+		if filter.Type != "" {
+			if filter.MatchType(typ) {
+				return true
+			}
+		}
+		if f != nil && filter.Method != "" && filter.Package != "" {
+			if filter.MatchPackageAndMethod(f) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -259,6 +259,8 @@ var summaryCrypto = map[string]Summary{
 		[][]int{{0}},
 		[][]int{{0}},
 	},
+	// func GenerateKey(random io.Reader, bits int) (*PrivateKey, error)
+	"crypto/rsa.GenerateKey": TwoArgPropagation,
 }
 
 var summaryDatabase = map[string]Summary{}
@@ -812,7 +814,8 @@ var summaryOs = map[string]Summary{
 		[][]int{{0}, {0}, {0}},
 	},
 	// func ReadDir(name string) ([]DirEntry, error)
-	"os.ReadDir": SingleVarArgPropagation,
+	"os.ReadDir":  SingleVarArgPropagation,
+	"os.ReadFile": SingleVarArgPropagation,
 	// func Remove(name string) error {
 	"os.Remove":           SingleVarArgPropagation,
 	"os.RemoveAll":        SingleVarArgPropagation,

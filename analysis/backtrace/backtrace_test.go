@@ -36,7 +36,7 @@ import (
 )
 
 func TestAnalyze(t *testing.T) {
-	t.Skipf("Skipping trace tests.")
+	//t.Skipf("Skipping trace tests.")
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
@@ -62,7 +62,7 @@ func TestAnalyze(t *testing.T) {
 }
 
 func TestAnalyze_OnDemand(t *testing.T) {
-	t.Skipf("Skipping trace tests.")
+	//t.Skipf("Skipping trace tests.")
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
@@ -564,6 +564,52 @@ func TestAnalyze_Taint(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) { taintTest(t, test, isOnDemand, skip) })
 		}
+	}
+}
+
+func TestDiodon_Example(t *testing.T) {
+	// Change directory to the testdata folder to be able to load packages
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Join(path.Dir(filename), "..", "..", "testdata", "src", "taint", "diodon-example")
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	lp := analysistest.LoadTest(t, dir, []string{})
+	cfg := lp.Config
+	defer os.Remove(cfg.ReportsDir)
+
+	cfg.SummarizeOnDemand = true
+	cfg.LogLevel = int(config.TraceLevel)
+	res, err := backtrace.Analyze(cfg, lp.LoadedProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tr := range res.Traces {
+		t.Log(tr)
+	}
+}
+
+func TestDiodon_Agent(t *testing.T) {
+	// Change directory to the testdata folder to be able to load packages
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Join(path.Dir(filename), "..", "..", "testdata", "src", "taint", "diodon-agent")
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	lp := analysistest.LoadTest(t, dir, []string{})
+	cfg := lp.Config
+	defer os.Remove(cfg.ReportsDir)
+
+	cfg.SummarizeOnDemand = true
+	cfg.LogLevel = int(config.TraceLevel)
+	res, err := backtrace.Analyze(cfg, lp.LoadedProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tr := range res.Traces {
+		t.Log(tr)
 	}
 }
 
