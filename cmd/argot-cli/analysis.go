@@ -366,7 +366,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 
 	// TODO this technically needs summaries that are built with backtrace.IsEntrypoint,
 	// not taint.IsSourceNode
-	var traces [][]dataflow.GraphNode
+	var traces []backtrace.Trace
 	for _, ps := range c.Config.SlicingProblems {
 		visitor := &backtrace.Visitor{}
 		visitor.SlicingSpec = &ps
@@ -378,7 +378,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 	}
 
 	writeFmt(tt, "Traces:\n")
-	for _, trace := range backtrace.Traces(c, traces) {
+	for _, trace := range traces {
 		writeFmt(tt, "%v\n", trace)
 	}
 

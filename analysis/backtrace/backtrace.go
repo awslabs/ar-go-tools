@@ -57,22 +57,34 @@ type AnalysisResult struct {
 type Trace []TraceNode
 
 func (t Trace) String() string {
-	return "Trace:\n" + strings.Join(funcutil.Map(t, func(n TraceNode) string { return "\t" + n.String() }), "\n")
+	return "\n" + strings.Join(funcutil.Map(t, func(n TraceNode) string { return "\t" + n.String() }), "\n")
+}
+
+func (t Trace) Key() df.KeyType {
+	keys := make([]string, 0, len(t))
+	for _, node := range t {
+		keys = append(keys, node.Node.LongID())
+	}
+
+	return strings.Join(keys, "_")
 }
 
 // TraceNode represents a node in the trace.
 type TraceNode struct {
-	df.GraphNode
+	*df.VisitorNode
 	Pos    token.Position
 	Values []string // TODO maybe
 }
 
 func (n TraceNode) String() string {
-	if n.GraphNode == nil {
+	if n.VisitorNode == nil {
+		return ""
+	}
+	if n.VisitorNode.Node == nil {
 		return ""
 	}
 
-	return fmt.Sprintf("%v at %v", n.GraphNode.String(), n.Pos)
+	return fmt.Sprintf("%v at %v", n.VisitorNode.Node.String(), n.Pos)
 }
 
 // Analyze runs the analysis on the program prog with the user-provided configuration config.
@@ -107,8 +119,7 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 		})
 	}
 
-	traces := [][]df.GraphNode{}
-
+	traces := []Trace{}
 	for _, ps := range cfg.SlicingProblems {
 		visitor := &Visitor{
 			SlicingSpec: &ps,
@@ -119,13 +130,13 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 			},
 		})
 		// filter unwanted nodes
-		vTraces := [][]df.GraphNode{}
+		vTraces := []Trace{}
 		for _, trace := range visitor.Traces {
-			vTrace := []df.GraphNode{}
+			vTrace := Trace{}
 			for _, node := range trace {
-				if isFiltered(visitor.SlicingSpec, node) {
-					fmt.Printf("FILTERED: %v\n", node)
-					fmt.Printf("\t%v\n", vTrace)
+				if isFiltered(visitor.SlicingSpec, node.Node) {
+					logger.Tracef("FILTERED: %v\n", node)
+					logger.Tracef("\t%v\n", vTrace)
 					vTrace = nil
 					break
 				}
@@ -140,28 +151,14 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram) (AnalysisResult, err
 
 	logger.Infof(formatutil.Green("Found %d traces.\n"), len(traces))
 
-	return AnalysisResult{Graph: *state.FlowGraph, Traces: Traces(state, traces)}, nil
-}
-
-// Traces extracts a slice of Trace from the slice of slices of GraphNodes, in the context of an AnalyzerState
-func Traces(s *df.AnalyzerState, traces [][]df.GraphNode) []Trace {
-	res := make([]Trace, 0, len(traces))
-	for _, tr := range traces {
-		trace := make([]TraceNode, 0, len(tr))
-		for _, node := range tr {
-			trace = append(trace, TraceNode{GraphNode: node, Pos: node.Position(s)})
-		}
-		res = append(res, trace)
-	}
-
-	return res
+	return AnalysisResult{Graph: *state.FlowGraph, Traces: traces}, nil
 }
 
 // Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the
 // SlicingSpec as well as the set of traces.
 type Visitor struct {
 	SlicingSpec *config.SlicingSpec
-	Traces      [][]df.GraphNode
+	Traces      []Trace
 }
 
 // Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
@@ -237,7 +234,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
 		if isBaseCase(cur.Node, s.Config) {
-			t := findTrace(cur)
+			t := findTrace(s, cur)
 			v.Traces = append(v.Traces, t)
 
 			logger.Tracef("Base case reached...")
@@ -282,11 +279,10 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			}
 
 			// No context: the value must always flow back to all call sites
-			callSites := graphNode.Graph().Callsites
 			for _, callSite := range callSites {
 				if err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
-					panic("no arg")
+					panic("[No Context] no arg at call site")
 				} else {
 					arg := callSite.Args()[graphNode.Index()]
 					nextNodeWithTrace := df.NodeWithTrace{
@@ -390,7 +386,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// - value is not bound, and
 			// - no more incoming edges from the arg
 			if prevStackLen == len(stack) {
-				t := findTrace(cur)
+				t := findTrace(s, cur)
 				v.Traces = append(v.Traces, t)
 				logger.Tracef("CallNodeArg base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
@@ -455,7 +451,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// - no new (non-visited) matching return, and
 			// - no more incoming edges from the call
 			if prevStackLen == len(stack) {
-				t := findTrace(cur)
+				t := findTrace(s, cur)
 				v.Traces = append(v.Traces, t)
 				logger.Tracef("CallNode base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
@@ -619,7 +615,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// Free var base case:
 			// - no new matching bound variables
 			if prevStackLen == len(stack) {
-				t := findTrace(cur)
+				t := findTrace(s, cur)
 				v.Traces = append(v.Traces, t)
 				logger.Tracef("Free var base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
@@ -768,15 +764,20 @@ func isBaseCase(node df.GraphNode, cfg *config.Config) bool {
 }
 
 // findTrace returns a slice of all the nodes in the trace starting from end.
-func findTrace(end *df.VisitorNode) []df.GraphNode {
-	nodes := []df.GraphNode{}
+func findTrace(s *df.AnalyzerState, end *df.VisitorNode) Trace {
+	trace := Trace{}
 	cur := end
 	for cur != nil {
-		nodes = append(nodes, cur.Node)
+		node := TraceNode{
+			VisitorNode: cur,
+			Pos:         cur.Node.Position(s),
+			Values:      nil,
+		}
+		trace = append(trace, node)
 		cur = cur.Prev
 	}
 
-	return nodes
+	return trace
 }
 
 // IsStatic returns true if node is a constant value.
@@ -876,7 +877,7 @@ func traceNode(s *df.AnalyzerState, node *df.VisitorNode) {
 	logger.Tracef("Visiting %T node: %v\n\tat %v\n", node.Node, node.Node, node.Node.Position(s))
 	logger.Tracef("Element trace: %s\n", node.Trace.String())
 	logger.Tracef("Element closure trace: %s\n", node.ClosureTrace.String())
-	logger.Tracef("Element backtrace: %v\n", findTrace(node))
+	logger.Tracef("Element backtrace: %v\n", findTrace(s, node))
 }
 
 func isFiltered(ss *config.SlicingSpec, n df.GraphNode) bool {

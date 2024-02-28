@@ -342,7 +342,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, lp analysis.LoadedProgram) {
 
 	t.Run(`trace to bar("x") should not exist`, func(t *testing.T) {
 		if funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
-			arg, ok := trace[0].GraphNode.(*dataflow.CallNodeArg)
+			arg, ok := trace[0].VisitorNode.Node.(*dataflow.CallNodeArg)
 			if !ok {
 				return false
 			}
@@ -724,7 +724,7 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
 	for _, trace := range traces {
 		// sink is always the last node in the trace because it's the analysis entrypoint
 		sink := trace[len(trace)-1]
-		si := dataflow.Instr(sink.GraphNode)
+		si := dataflow.Instr(sink.VisitorNode.Node)
 		if si == nil {
 			continue
 		}
@@ -740,12 +740,12 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
 		}
 
 		for _, node := range trace {
-			instr := dataflow.Instr(node.GraphNode)
+			instr := dataflow.Instr(node.VisitorNode.Node)
 			if instr == nil {
 				continue
 			}
 
-			sn := sourceNode(node.GraphNode)
+			sn := sourceNode(node.VisitorNode.Node)
 			if isSourceNode(cfg, sn) {
 				sourcePos := instr.Pos()
 				sourceFile := prog.Fset.File(sourcePos)
@@ -858,7 +858,7 @@ func matchTrace(trace backtrace.Trace, matches []match) (bool, error) {
 
 //gocyclo:ignore
 func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
-	switch node := tnode.GraphNode.(type) {
+	switch node := tnode.VisitorNode.Node.(type) {
 	case *dataflow.CallNodeArg:
 		mval := m.val.(argval)
 		val := mval.val == node.Value().Name() || (mval.val == nil && !backtrace.IsStatic(node))
