@@ -533,7 +533,7 @@ func TestAnalyze_Taint(t *testing.T) {
 		// TODO backtrace needs updating
 		//{"interfaces", []string{}},
 		// TODO backtrace needs updating
-		//{"parameters", []string{}},
+		{"parameters", []string{}},
 		{"example1", []string{}},
 		{"example2", []string{}},
 		{"defers", []string{}},
@@ -546,6 +546,7 @@ func TestAnalyze_Taint(t *testing.T) {
 		{"stdlib", []string{"helpers.go"}},
 		{"selects", []string{"helpers.go"}},
 		{"panics", []string{}},
+		{"tuples", []string{}},
 		{"closures_paper", []string{"helpers.go"}},
 	}
 
@@ -640,7 +641,7 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 	}
 	cfg.SlicingProblems = []config.SlicingSpec{{BacktracePoints: cfg.TaintTrackingProblems[0].Sinks}}
 	cfg.SummarizeOnDemand = isOnDemand
-	cfg.LogLevel = int(config.InfoLevel)
+	cfg.LogLevel = int(config.TraceLevel)
 	res, err := backtrace.Analyze(cfg, lp.LoadedProgram)
 	if err != nil {
 		t.Fatal(err)

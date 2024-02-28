@@ -223,6 +223,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				err := df.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site")
 				if err != nil {
 					s.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
+					panic("[Unwinding callstack] no arg at call site")
 				} else {
 					// Follow taint on matching argument at call site
 					nextNodeArg := callSite.Args()[graphNode.Index()]
@@ -241,6 +242,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
 					if err != nil {
 						s.AddError("argument at call site "+graphNode.String(), err)
+						panic("[No Context] no arg at call site")
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						if !callSiteArg.Graph().Constructed && !ignoreNonSummarized {

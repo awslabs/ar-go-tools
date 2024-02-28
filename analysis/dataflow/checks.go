@@ -25,8 +25,8 @@ import (
 func CheckIndex(c *AnalyzerState, node IndexedGraphNode, callSite *CallNode, msg string) error {
 	if node.Index() >= len(callSite.Args()) {
 		pos := c.Program.Fset.Position(callSite.CallSite().Value().Pos())
-		c.Logger.Debugf("%s: trying to access index %d of %s, which has"+
-			" only %d elements\nSee: %s\n", msg, node.Index(), callSite, len(callSite.Args()),
+		c.Logger.Debugf("%s: trying to access arg %d of %s, which has"+
+			" only %d args\nSee: %s\n", msg, node.Index(), callSite, len(callSite.Args()),
 			pos)
 		return fmt.Errorf("bad index %d at %s", node.Index(), pos)
 	}
