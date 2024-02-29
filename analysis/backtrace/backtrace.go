@@ -228,9 +228,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 
 			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
 			// built summary
-			if _, err := df.RunIntraProcedural(s, cur.Node.Graph()); err != nil {
-				panic(fmt.Errorf("failed to run the intra-procedural analysis: %v", err))
-			}
+			v.onDemandIntraProcedural(s, cur.Node.Graph())
 		}
 
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
@@ -315,7 +313,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 							logger.Tracef("Callee summary has not been created")
 							callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionID(),
 								isSomeIntraProceduralEntryPoint, nil)
-							df.RunIntraProcedural(s, callSite.CalleeSummary)
+							v.onDemandIntraProcedural(s, callSite.CalleeSummary)
 						}
 					} else {
 						s.ReportMissingOrNotConstructedSummary(callSite)
@@ -663,6 +661,18 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		default:
 			panic(fmt.Errorf("unhandled graph node type: %T", graphNode))
 		}
+	}
+}
+
+// onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
+// This panics when the analysis fails, because it is expected that an error will cause any further result
+// to be invalid.
+func (v *Visitor) onDemandIntraProcedural(s *df.AnalyzerState, summary *df.SummaryGraph) {
+	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
+	elapsed, err := df.RunIntraProcedural(s, summary)
+	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
+	if err != nil {
+		panic(fmt.Sprintf("failed to run intra-procedural analysis : %v", err))
 	}
 }
 
