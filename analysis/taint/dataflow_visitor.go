@@ -494,7 +494,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// The data flows to a free variable inside a closure body from a bound variable inside a closure definition.
 		// (see the example for BoundVarNode)
-		// The date can also flow from the function body to the free var node, in which case it implies the bound
+		// The taint can also flow from the function body to the free var node, in which case it implies the bound
 		// variable (in the caller) is tainted after the function returns.
 		case *df.FreeVarNode:
 			// Flows inside the function

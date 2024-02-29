@@ -15,12 +15,13 @@
 package dataflow
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
 
 // A VisitorKind should be either DefaultTracing or ClosureTracing and defines the behaviour of the Visitor
-type VisitorKind = int
+type VisitorKind int
 
 const (
 	// DefaultTracing is for the default dataflow analysis mode
@@ -28,6 +29,17 @@ const (
 	// ClosureTracing denotes the mode where the visitor is used to follow a closure
 	ClosureTracing
 )
+
+func (v VisitorKind) String() string {
+	switch v {
+	case DefaultTracing:
+		return "default-tracing"
+	case ClosureTracing:
+		return "closure-tracing"
+	default:
+		panic(fmt.Errorf("unexpected visitor kind: %v", v))
+	}
+}
 
 type closureTracingInfo struct {
 	prev                *closureTracingInfo
@@ -102,7 +114,7 @@ type VisitorNode struct {
 
 // Key returns a unique string representation for the node with its trace
 func (v *VisitorNode) Key() KeyType {
-	return v.NodeWithTrace.Key() + "_" + strconv.Itoa(v.Status.Kind) + "." + strings.Join(v.AccessPaths, "|")
+	return v.NodeWithTrace.Key() + "_" + strconv.Itoa(int(v.Status.Kind)) + "." + strings.Join(v.AccessPaths, "|")
 }
 
 // AddChild adds a child to the node
