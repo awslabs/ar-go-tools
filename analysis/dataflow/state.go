@@ -326,7 +326,7 @@ func (s *AnalyzerState) ReachableFunctions(excludeMain bool, excludeInit bool) m
 	if s.reachableFunctions == nil {
 		s.reachableFunctions = make(map[*ssa.Function]bool)
 		if s.PointerAnalysis != nil {
-			s.reachableFunctions = CallGraphReachable(s.PointerAnalysis.CallGraph, excludeMain, excludeInit)
+			s.reachableFunctions = lang.CallGraphReachable(s.PointerAnalysis.CallGraph, excludeMain, excludeInit)
 
 		}
 	}

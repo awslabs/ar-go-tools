@@ -32,6 +32,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
@@ -133,7 +134,7 @@ func main() {
 
 func doCompareSymbols(program *ssa.Program, cg *callgraph.Graph, symbols map[string]bool) {
 	callgraphReachable := make(map[string]bool)
-	for entry := range dataflow.CallGraphReachable(cg, false, false) {
+	for entry := range lang.CallGraphReachable(cg, false, false) {
 		callgraphReachable[entry.String()] = true
 	}
 	fmt.Fprintf(os.Stderr, "Callgraph reachability reports %d reachable nodes out of %v total\n",
@@ -342,7 +343,7 @@ func visitStaticReachableEdges(program *ssa.Program, root *ssa.Function, remaini
 //
 //gocyclo:ignore
 func reportUncoveredDynamicEdges(program *ssa.Program, static *callgraph.Graph, dyn map[dynamicEdge]bool) {
-	reachable := dataflow.CallGraphReachable(static, false, false)
+	reachable := lang.CallGraphReachable(static, false, false)
 	remainingCalledges := make(map[dynamicEdge]bool)
 	for k, v := range dyn {
 		remainingCalledges[k] = v

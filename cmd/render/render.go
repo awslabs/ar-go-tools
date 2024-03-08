@@ -29,6 +29,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/pointer"
@@ -238,7 +239,7 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 
 // WriteHTMLCallgrph writes the callgraph in html format to the outpath provided
 func WriteHTMLCallgrph(program *ssa.Program, cg *callgraph.Graph, outPath string) error {
-	reachable := dataflow.CallGraphReachable(cg, false, false)
+	reachable := lang.CallGraphReachable(cg, false, false)
 	htmlOut, err := os.Create(outPath)
 	if err != nil {
 		return err

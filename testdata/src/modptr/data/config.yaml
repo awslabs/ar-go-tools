@@ -1,0 +1,10 @@
+modification-tracking-problems:
+  -
+    values:
+      -
+        package: "((main)|(command-line-arguments))"
+        method: "track.*"
+        label: 0 # argument value to track
+
+options:
+  log-level: 5

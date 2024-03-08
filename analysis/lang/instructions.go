@@ -17,6 +17,8 @@
 package lang
 
 import (
+	"fmt"
+
 	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -206,52 +208,11 @@ func FnHasGlobal(fn *ssa.Function) bool {
 }
 
 // FnReadsFrom returns true if an instruction in fn reads from val.
-//
-//gocyclo:ignore
 func FnReadsFrom(fn *ssa.Function, val ssa.Value) bool {
 	for _, blk := range fn.Blocks {
 		for _, instr := range blk.Instrs {
-			switch instr := instr.(type) {
-			case *ssa.UnOp:
-				if instr.X == val {
-					return true
-				}
-			case *ssa.BinOp:
-				if instr.X == val || instr.Y == val {
-					return true
-				}
-			case *ssa.Store:
-				// Special store
-				switch addr := instr.Addr.(type) {
-				case *ssa.FieldAddr:
-					if addr.X == val {
-						return true
-					}
-				}
-
-				if instr.Val == val {
-					return true
-				}
-			case *ssa.MapUpdate:
-				if instr.Value == val {
-					return true
-				}
-			case *ssa.Send:
-				if instr.X == val {
-					return true
-				}
-			case *ssa.Field:
-				if instr.X == val {
-					return true
-				}
-			case *ssa.FieldAddr:
-				if instr.X == val {
-					return true
-				}
-			case *ssa.Convert:
-				if instr.X == val {
-					return true
-				}
+			if _, ok := InstrReadsInto(instr, val); ok {
+				return true
 			}
 		}
 	}
@@ -259,26 +220,139 @@ func FnReadsFrom(fn *ssa.Function, val ssa.Value) bool {
 	return false
 }
 
+// InstrReadsInto returns true and the value val is read into (LHS of read) if instr reads from val.
+func InstrReadsInto(instr ssa.Instruction, val ssa.Value) (ssa.Value, bool) {
+	switch instr := instr.(type) {
+	case *ssa.UnOp:
+		if instr.X == val {
+			return instr, true
+		}
+	case *ssa.BinOp:
+		if instr.X == val || instr.Y == val {
+			return instr, true
+		}
+	case *ssa.Store:
+		// a store "aliases" val to instr.Addr
+		switch addr := instr.Addr.(type) {
+		// Special store
+		case *ssa.FieldAddr:
+			if addr.X == val {
+				// e.g. *struct.Field = val
+				// value read into is *struct which is addr.X
+				return addr.X, true
+			}
+		}
+
+		if instr.Val == val {
+			return instr.Addr, true
+		}
+	case *ssa.Field:
+		if instr.X == val {
+			return instr, true
+		}
+	case *ssa.FieldAddr:
+		if instr.X == val {
+			return instr, true
+		}
+		// special case: FieldAddr writes to itself?
+		if fa, ok := val.(*ssa.FieldAddr); ok {
+			if instr.X == fa.X && instr.Field == fa.Field {
+				return instr, true
+			}
+		}
+	case *ssa.Convert:
+		if instr.X == val {
+			return instr, true
+		}
+	case *ssa.Call:
+		if instr.Call.Value == val {
+			return instr, true
+		}
+
+		for _, arg := range GetArgs(instr) {
+			if arg == val {
+				return instr, true
+			}
+		}
+	}
+
+	return val, false
+}
+
 // FnWritesTo returns true if an instruction in fn writes to val.
 func FnWritesTo(fn *ssa.Function, val ssa.Value) bool {
 	for _, blk := range fn.Blocks {
 		for _, instr := range blk.Instrs {
-			switch instr := instr.(type) {
-			case *ssa.Store:
-				if instr.Addr == val {
-					return true
-				}
-			case *ssa.MapUpdate:
-				if instr.Map == val {
-					return true
-				}
-			case *ssa.Send:
-				if instr.Chan == val {
-					return true
-				}
+			if _, ok := InstrWritesToVal(instr, val); ok {
+				return true
 			}
 		}
 	}
 
 	return false
+}
+
+// InstrWritesToVal returns the value written (RHS) and true if instr writes to val.
+func InstrWritesToVal(instr ssa.Instruction, val ssa.Value) (ssa.Value, bool) {
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		if instr.Addr == val {
+			return instr.Val, true
+		}
+	case *ssa.MapUpdate:
+		if instr.Map == val {
+			return instr.Value, true
+		}
+	case *ssa.Send:
+		if instr.Chan == val {
+			return instr.X, true
+		}
+	}
+
+	return nil, false
+}
+
+// InstrWritesTo return true if val is the lvalue of write instruction instr.
+func InstrWritesTo(instr ssa.Instruction, val ssa.Value) bool {
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		return instr.Addr == val
+	case *ssa.MapUpdate:
+		return instr.Map == val
+	case *ssa.Send:
+		return instr.Chan == val
+	// case ssa.Value:
+	// 	return instr == val
+	default:
+		return false
+	}
+}
+
+// InstrWritesFrom returns the value written (RHS) and true if instr is a write instruction.
+func InstrWritesFrom(instr ssa.Instruction) (ssa.Value, bool) {
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		return instr.Val, true
+	case *ssa.MapUpdate:
+		return instr.Value, true
+	case *ssa.Send:
+		return instr.X, true
+	default:
+		return nil, false
+	}
+}
+
+// FmtInstr returns a string formatting instr to show the instruction type and operands.
+// This is used mostly for debugging.
+func FmtInstr(instr ssa.Instruction) string {
+	switch instr := instr.(type) {
+	case *ssa.FieldAddr:
+		return fmt.Sprintf("[%v = %v (%T)]", instr.Name(), instr, instr)
+	case *ssa.Store:
+		return fmt.Sprintf("[*%v = %v (%T)]", instr.Addr.Name(), instr.Val.Name(), instr)
+	case *ssa.UnOp:
+		return fmt.Sprintf("[%v = %v%v (%T)]", instr.Name(), instr.Op, instr.X.Name(), instr)
+	default:
+		return fmt.Sprintf("[%v (%T)]", instr.String(), instr)
+	}
 }

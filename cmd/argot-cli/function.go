@@ -122,7 +122,9 @@ func cmdUnfocus(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	return false
 }
 
-// cmdSsaValue prints the ssa values matching a regex in the state.CurrentFunction
+// cmdSsaValue prints the ssa values matching a regex in the state.CurrentFunction.
+// Alias information is returned directly from the pointer analysis (can be
+// either intra- or inter-procedural alias information).
 func cmdSsaValue(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		if state.CurrentFunction != nil {
@@ -206,7 +208,8 @@ func cmdSsaInstr(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 	return false
 }
 
-// cmdMayAlias prints whether matches values may alias according to the pointer analysis
+// cmdMayAlias prints whether matches values may alias according to the pointer analysis.
+// This is intra-procedural.
 func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool {
 	if c == nil {
 		if state.CurrentFunction != nil {
@@ -241,23 +244,33 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 		}
 	})
 
+	allValues := lang.AllValues(c.Program)
 	for v1 := range values1 {
-		if ptr, ptrExists := c.PointerAnalysis.Queries[v1]; ptrExists {
-			writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
-			lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
-				if value != nil {
-					printAliases(tt, c, value, ptr)
-				}
-			})
+		ptrs := lang.FindTransitivePointers(c.PointerAnalysis, v1)
+		for ptr := range ptrs {
+			allAliases := lang.FindAllMayAliases(c.PointerAnalysis, allValues, ptr)
+			writeFmt(tt, "%s may alias with:\n", v1.Name())
+			for alias := range allAliases {
+				writeFmt(tt, "\t%s (%s) in %s\n", alias.Name(), alias, alias.Parent())
+			}
 		}
-		if ptr, ptrExists := c.PointerAnalysis.IndirectQueries[v1]; ptrExists {
-			writeFmt(tt, "[indirect] %s may alias with:\n", v1.Name())
-			lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
-				if value != nil {
-					printAliases(tt, c, value, ptr)
-				}
-			})
-		}
+
+		// if ptr, ptrExists := c.PointerAnalysis.Queries[v1]; ptrExists {
+		// 	writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
+		// 	lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+		// 		if value != nil {
+		// 			printAliases(tt, c, value, ptr)
+		// 		}
+		// 	})
+		// }
+		// if ptr, ptrExists := c.PointerAnalysis.IndirectQueries[v1]; ptrExists {
+		// 	writeFmt(tt, "[indirect] %s may alias with:\n", v1.Name())
+		// 	lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+		// 		if value != nil {
+		// 			printAliases(tt, c, value, ptr)
+		// 		}
+		// 	})
+		// }
 
 	}
 
@@ -435,14 +448,22 @@ func showValue(tt *term.Terminal, c *dataflow.AnalyzerState, val ssa.Value) {
 		writeFmt(tt, "  indirect aliases:\n")
 		showPointer(tt, c.PointerAnalysis.IndirectQueries[val])
 	}
+	allPtrs := lang.FindTransitivePointers(c.PointerAnalysis, val)
+	if len(allPtrs) > 0 {
+		writeFmt(tt, "  all aliases:\n")
+		for ptr := range allPtrs {
+			showPointer(tt, ptr)
+		}
+	}
 }
 
 func showReferrers(tt *term.Terminal, val ssa.Value) {
 	var entries []displayElement
 	referrers := val.Referrers()
-	for _, label := range *referrers {
+	for _, ref := range *referrers {
+		content := lang.FmtInstr(ref)
 		entries = append(entries, displayElement{
-			content: "[" + label.String() + "]",
+			content: content,
 			escape:  tt.Escape.Blue,
 		})
 	}

@@ -389,7 +389,7 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	// v was not marked before
 	state.changeFlag = state.flowInfo.AddMark(i, v, path, mark)
 	// Propagate to any other Value that is an alias of v
-	for _, ptr := range state.findAllPointers(v) {
+	for _, ptr := range lang.FindAllPointers(state.parentAnalyzerState.PointerAnalysis, v) {
 		state.markPtrAliases(i, mark, path, ptr)
 	}
 
@@ -516,24 +516,11 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 	}
 }
 
-// findAllPointers returns all the pointers that point to v
-func (state *IntraAnalysisState) findAllPointers(v ssa.Value) []pointer.Pointer {
-	var allptr []pointer.Pointer
-	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.Queries[v]; ptrExists {
-		allptr = append(allptr, ptr)
-	}
-	// By indirect query
-	if ptr, ptrExists := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[v]; ptrExists {
-		allptr = append(allptr, ptr)
-	}
-	return allptr
-}
-
 // markAllAliases marks all the aliases of the pointer set using mark.
 func (state *IntraAnalysisState) markPtrAliases(i ssa.Instruction, mark *Mark, path string, ptr pointer.Pointer) {
 	// Iterate over all values in the function, scanning for aliases of ptr, and mark the values that match
 	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
-		for _, ptr2 := range state.findAllPointers(value) {
+		for _, ptr2 := range lang.FindAllPointers(state.parentAnalyzerState.PointerAnalysis, value) {
 			if ptr2.MayAlias(ptr) {
 				state.markValue(i, value, path, mark)
 			}

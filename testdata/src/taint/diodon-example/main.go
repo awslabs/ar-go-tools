@@ -34,10 +34,18 @@ func main() {
 		time.Sleep(1 * time.Second)
 		msg = []byte("bye world")
 	}()
-	//c = &Chan{}
-	Send(c, msg /*@ ,1 @*/)  // @Escape(msg)
-	fmt.Printf("%v", c)      // @Sink(secret, secret2)
-	fmt.Printf("%v", c.Safe) // @Escape(secret, secret2)
+	d := &Chan{}
+	dsafe := &d.Safe
+	dsafe = &c.Safe
+	invalidate(dsafe)
+	c.Safe[0] = 0x0         // @Mod(channel)
+	Send(c, msg /*@ ,1 @*/) // @Source(channel) // @Escape(msg) // @ModSource(channel)
+	// fmt.Printf("%v", c)      // @Sink(secret, secret2)
+	// fmt.Printf("%v", c.Safe) // @Escape(secret, secret2)
+}
+
+func invalidate(b *[]byte) {
+	(*b)[0] = 0x0 // @Mod(channel)
 }
 
 func message() []byte {

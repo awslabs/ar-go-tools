@@ -256,3 +256,8 @@ slicing-problems:
     # - package: crypto
     #   method: .*
     - type: error$
+modification-tracking-problems:
+  - values:
+    - package: datachannel
+      method: PerformHandshake
+      label: 0 # argument value to track

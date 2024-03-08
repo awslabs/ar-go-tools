@@ -31,7 +31,7 @@ type Chan struct {
 // NewChannel initializes a new channel with secret.
 // @ ens Inv(c)
 func NewChannel(secret []byte) (c *Chan) {
-	c = &Chan{psk: secret, Safe: make([]byte, 1)} // @Source(secret)
+	c = &Chan{psk: secret, Safe: make([]byte, 1)} // @Source(secret) // @Mod(channel)
 	return c
 }
 

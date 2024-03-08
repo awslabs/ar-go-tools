@@ -26,7 +26,7 @@ import (
 
 type IDataChannel interface {
 	PerformHandshake() error
-	LogReaderId() string
+	LogReaderId() *string
 }
 
 type DataChannel struct {
@@ -107,8 +107,8 @@ func (dc *DataChannel) handleHandshakeResponse(streamDataMessage []byte) error {
 	return nil
 }
 
-func (dc *DataChannel) LogReaderId() string {
-	return dc.logReaderId
+func (dc *DataChannel) LogReaderId() *string {
+	return &dc.logReaderId
 }
 
 func getInitialValues(kms *crypto.KMS) (string, *rsa.PublicKey, error) {

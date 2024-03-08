@@ -3,6 +3,12 @@ options:
   field-sensitive-funcs:
   - .*diodon-example/core.*
   - .*main.*
+  log-level: 5
+modification-tracking-problems:
+  - values:
+    - package: core
+      method: Send
+      label: 0 # argument value to track
 slicing-problems:
   - backtracepoints:
       - package: core

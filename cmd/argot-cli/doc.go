@@ -102,11 +102,11 @@ about that function:
 
 	mayalias "value" 	show all the aliases of the values matching value
 
-	ssaval "value"	 	show information about all the values matching value in the function
+	ssaval "value"	 	show information about all the values matching value in the function TODO update doc
 
 	ssainstr "instr" 	show information about all the instructions matching instr in the function
 
-	pkg                 print the name of the focuse function's package
+	pkg                 print the name of the focused function's package
 
 The commands showssa, summary and where can be used without an argument in focused mode, in which case the function
 defaults to the currently focused function.

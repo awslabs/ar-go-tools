@@ -55,7 +55,7 @@ func LoadTest(t *testing.T, dir string, extraFiles []string) LoadedTestProgram {
 	}
 	cfg, err := config.LoadGlobal()
 	if err != nil {
-		t.Fatalf("error loading global config.")
+		t.Fatalf("error loading global config: %v", err)
 	}
 	return LoadedTestProgram{
 		Config: cfg,
@@ -82,6 +82,8 @@ func (t TargetToSources) HasMetadata() bool {
 	}
 	return false
 }
+
+type SourceToTargets map[AnnotationID]map[AnnotationID]bool
 
 // AnnotationID represents an identifier in an annotation.
 type AnnotationID struct {
@@ -114,6 +116,12 @@ var SinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
 
 // EscapeRegex matches annotations of the form "@Escape(id1, id2, id3)"
 var EscapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
+
+// ModSourceRegex matches annotations of the form "@ModSource(id1, id2, id3)".
+var ModSourceRegex = regexp.MustCompile(`//.*@ModSource\(((?:\s*\w\s*,?)+)\)`)
+
+// ModRegex matches annotations of the form "@Mod(id1, id2, id3)"
+var ModRegex = regexp.MustCompile(`//.*@Mod\(((?:\s*\w\s*,?)+)\)`)
 
 // LPos is a line position
 type LPos struct {
@@ -222,4 +230,53 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	})
 
 	return sink2source, escape2source
+}
+
+func GetExpectedMods(reldir string, dir string) SourceToTargets {
+	fset := token.NewFileSet() // positions are relative to fset
+	pkgs, err := lang.AstPackages(dir, fset)
+	if err != nil {
+		panic(fmt.Errorf("failed to get AST packages: %v", err))
+	}
+
+	source2mod := make(SourceToTargets)
+	sourceIDToSourcePos := make(map[string]token.Position)
+
+	// Get all the source positions with their identifiers
+	lang.MapComments(pkgs, func(c1 *ast.Comment) {
+		pos := fset.Position(c1.Pos())
+		// Match a "@ModSource(id1, id2, id3)"
+		a := ModSourceRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sourceIdent := strings.TrimSpace(ident)
+				sourceIDToSourcePos[sourceIdent] = pos
+			}
+		}
+	})
+
+	lang.MapComments(pkgs, func(c1 *ast.Comment) {
+		modPos := fset.Position(c1.Pos())
+		// Match a "@Mod(id1, id2, id3)"
+		a := ModRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				modIdent := strings.TrimSpace(ident)
+				sourcePos, ok := sourceIDToSourcePos[modIdent]
+				if !ok {
+					continue
+				}
+				sourceId := AnnotationID{ID: modIdent, Meta: "", Pos: RelPos(sourcePos, reldir)}
+				if _, ok := source2mod[sourceId]; !ok {
+					source2mod[sourceId] = make(map[AnnotationID]bool)
+				}
+
+				relMod := RelPos(modPos, reldir)
+				modId := AnnotationID{ID: modIdent, Meta: "", Pos: relMod}
+				source2mod[sourceId][modId] = true
+			}
+		}
+	})
+
+	return source2mod
 }

@@ -123,6 +123,9 @@ type Config struct {
 	// SlicingProblems lists the program slicing specifications
 	SlicingProblems []SlicingSpec `yaml:"slicing-problems" json:"slicing-problems"`
 
+	// ModificationTrackingProblems lists the modification tracking specifications.
+	ModificationTrackingProblems []ModValSpec `yaml:"modification-tracking-problems" json:"modification-tracking-problems"`
+
 	// StaticCommandsProblems lists the static commands problems
 	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems" json:"static-commands-problems"`
 }
@@ -164,6 +167,13 @@ type StaticCommandsSpec struct {
 	// StaticCommands is the list of identifiers to be considered as command execution for the static commands analysis
 	// (not used)
 	StaticCommands []CodeIdentifier `yaml:"static-commands" json:"static-commands"`
+}
+
+// ModValSpec contains code identifiers for the modification tracking analysis.
+type ModValSpec struct {
+	// Values is the list of identifiers representing which values whose
+	// modifications should be reported.
+	Values []CodeIdentifier
 }
 
 // Options holds the global options for analyses
@@ -389,6 +399,10 @@ func Load(filename string) (*Config, error) {
 		funcutil.Iter(sSpec.Filters, compileRegexes)
 	}
 
+	for _, mSpec := range cfg.ModificationTrackingProblems {
+		funcutil.Iter(mSpec.Values, compileRegexes)
+	}
+
 	for _, stSpec := range cfg.StaticCommandsProblems {
 		funcutil.Iter(stSpec.StaticCommands, compileRegexes)
 	}
@@ -563,6 +577,12 @@ func (scs StaticCommandsSpec) IsStaticCommand(cid CodeIdentifier) bool {
 // IsBacktracePoint returns true if the code identifier matches a backtrace point according to the SlicingSpec
 func (ss SlicingSpec) IsBacktracePoint(cid CodeIdentifier) bool {
 	return ExistsCid(ss.BacktracePoints, cid.equalOnNonEmptyFields)
+}
+
+// IsValue returns true if the code identifier cid matches a value according to spec s.
+// Does not compare Label values.
+func (s ModValSpec) IsValue(cid CodeIdentifier) bool {
+	return ExistsCid(s.Values, cid.equalOnNonEmptyFields)
 }
 
 // Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)
