@@ -165,6 +165,25 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 	return state, nil
 }
 
+// CopyTo copies pointers in receiver into argument (shallow copy of everything except mutex).
+// Do not use two copies in separate routines.
+func (s *AnalyzerState) CopyTo(b *AnalyzerState) {
+	b.BoundingInfo = s.BoundingInfo
+	b.Config = s.Config
+	b.EscapeAnalysisState = s.EscapeAnalysisState
+	b.FlowGraph = s.FlowGraph
+	b.Globals = s.Globals
+	b.ImplementationsByType = s.ImplementationsByType
+	b.Logger = s.Logger
+	b.PointerAnalysis = s.PointerAnalysis
+	b.errors = s.errors
+	b.Program = s.Program
+	b.keys = s.keys
+	b.reachableFunctions = s.reachableFunctions
+	// copy everything except mutex
+
+}
+
 // Size returns the number of method implementations collected
 func (s *AnalyzerState) Size() int {
 	return len(s.ImplementationsByType)

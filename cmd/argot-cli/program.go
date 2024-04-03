@@ -64,7 +64,6 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		Tests: false,
 	}
 	initialPackages, _ := packages.Load(p, flag.Args()...)
-	state.InitialPackages = initialPackages
 	// Build the newState with all analyses
 	newState, err := dataflow.NewInitializedAnalyzerState(c.Logger, c.Config, program)
 	if err != nil {
@@ -82,7 +81,10 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 		}
 	}
 	// Reassign state elements
-	c = newState
+	newState.CopyTo(c)
+	state.CurrentFunction = nil
+	state.CurrentDataflowInformation = nil
+	state.InitialPackages = initialPackages
 	return false
 }
 
