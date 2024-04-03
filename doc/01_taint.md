@@ -3,18 +3,18 @@
 
 The taint analysis tool `taint` performs a whole program, interprocedural taint analysis on the input program that is given. It is not necessary to understand those terms in order to use the tool, but you should be able to understand what problem it solves. A detailed explanation of taint analysis, or [taint checking](https://en.wikipedia.org/wiki/Taint_checking), is out of scope for this user guide. We refer the reader to the many useful resources available online. Note that our analysis is entirely "offline", i.e. static, as opposed to dynamic analyses that run the program and observe its behaviour. Our analysis constructs an internal representation that allows it to simulate all possible executions, without ever actually executing the program. As such, we are able to give strong guarantees about the results, under certain conditions. More precisely, we can state some [soundness](https://blog.sigplan.org/2019/08/07/what-does-it-mean-for-a-program-analysis-to-be-sound/) properties; *soundness* here means that if the analysis does not report any error, then there is no possible execution of the program that leads to an error. In our case (taint analysis), an error means that tainted data from a source flows to a sink.
 
-> ⚠ The taint analysis is **sound** in the absence of concurrency (e.g. goroutines), in the absence of usage of the `unsafe` and `reflect` packages of the Go library, and under certain configuration settings (see [Taint Analysis Configuration](#taint-analysis-configuration)). We explain later how to obtain reliable results for programs that use any of those features.
+> ⚠ The taint analysis is **sound** in the absence of concurrency (e.g. goroutines), in the absence of usage of the `unsafe` and `reflect` packages of the Go library, and under certain configuration settings (see [Taint Analysis Configuration](#taint-analysis-configuration)). We explain later how to obtain reliable results for programs that use those features.
 
-In this section we focus on explaining the user interface of the taint tool and give examples of what it can analyze. To understand how the taint analysis works, the reader should refer to the technical report (work in progress). Here we explain *how to use the taint analysis tool* through a set of examples (in [Taint Analysis Examples](#taint-analysis-examples)).
+In this section we focus on explaining the user interface of the taint tool and give examples of what it can analyze. We explain *how to use the taint analysis tool* through a set of examples (in [Taint Analysis Examples](#taint-analysis-examples)).
 
 The tool will report flows from taint **sources** to **sinks**, taking in account **sanitizers** and **validators**. Those components are specified in the configuration file by the user (see [Taint Analysis Configuration](#taint-analysis-configuration)). The tool will output traces for each of the traces detected (and additional information if specified in the configuration file) (see [Taint Analysis Output](#taint-analysis-output)).
 
 
 
 ## Taint Analysis Configuration
-Along the configuration options listed in the common fields, the user can specify taint analysis specific problems. Those problems are a list of specifications under the option `taint-tracking-problems`. Each problem must set some core components, which are the sources and sinks for the taint tracking problem, and optionally the sanitizers and validators. The *sources* identify the functions that return sensitive data, and this data should never reach any of the *sinks*. The *sanitizers* are functions that clear the data of its sensitive nature, i.e. those are functions that when receiving sensitive data, will return data that does not contain any sensitive information. *Validators* have a similar role, but do not return the data. When the value returned by a validator is a boolean and is true, then the data passed to the validator is considered to be taint-free in the branch where the boolean is true. When the value returned by a validator is an error, then the data is considered taint-free in the branch where the error is `nil`.
+Along the configuration options listed in the common fields, the user can specify taint analysis specific problems. Those problems are a list of specifications under the option `taint-tracking-problems`. Each problem specification must define the sources and the sinks for the taint tracking problem. Optionally, the user can define sanitizers and validators. The *sources* identify the functions that return sensitive data, and this data should never reach any of the *sinks*. The *sanitizers* are functions that clear the data of its sensitive nature, i.e. functions that when receiving sensitive data, will return data that does not contain any sensitive information. *Validators* have a similar role, but do not return the data. When the value returned by a validator is a boolean and is true, then the data passed to the validator is considered to be taint-free in the branch where the boolean is true. When the value returned by a validator is an error, then the data is considered taint-free in the branch where the error is `nil`.
 
-It is the user's responsibility to properly specify those functions to match their intent, and the tool does not try to automatically discover possible sources of tainted data, instead completely relying on the user's specification.
+> ⚠ It is the user's responsibility to properly specify those functions to match their intent, and the tool does not try to automatically discover possible sources of tainted data, instead completely relying on the user's specification.
 
 Below is an example of a config file containing a basic taint analysis specification. One can specify several problems in `taint-tracking-problems`. The following specifies exactly one problem:
 ```yaml
@@ -24,7 +24,7 @@ taint-tracking-problems:
         - package: "example1"
           method: "GetSensitiveData"
     
-    sinks:                          # A list of sinks that should not be reached by senstive data
+    sinks:                          # A list of sinks that should not be reached by sensitive data
         - package: "example2"
           method: "LogDataPublicly"
         - package: "example2"
@@ -38,29 +38,34 @@ taint-tracking-problems:
         - package: "example3"
           method: "Validator"
 ```
-In this configuration file, the user is trying to detect whether data coming from calls to some function `GetSensitiveData` in a package matching `example1` is flowing to a "sink". A sink is a function that is either called `LogDataPublicly` in a package `example2` or any method whose receiver implements the `example2.Logger` interface. If the data passes through a function `Sanitize` in the `example1` package, then it is santized. If the data is validated by the function `Validator` in package `example3`, then it is also taint-free.
+In this configuration file, the user is trying to detect whether data coming from calls to some function `GetSensitiveData` in a package matching `example1` is flowing to a "sink". A sink is a function that is either called `LogDataPublicly` in a package `example2` or any method whose receiver implements the `example2.Logger` interface. If the data passes through a function `Sanitize` in the `example1` package, then it is sanitized. If the data is validated by the function `Validator` in package `example3`, then it is also taint-free.
 
 > 📝 Note that all strings in the `package` and `method` fields are parsed as regexes; for example, to match `Sanitizer` precisely, one should write `"^Sanitizer$"`; the `"Sanitizer"` specification will match any function name containing `Sanitizer`.
 
-An advanced feature of the taint analysis is that you can specify dataflow summaries yourself:
+An advanced feature of the taint analysis lets you specify dataflow summaries yourself:
 ```yaml
-dataflow-specs:                  # A list of dataflow specifications, where each element is a json file containing
+dataflow-specs:                  # A list of dataflow
+  # specifications, where each element is a json file containing
     - "specs-mylib.json"        # dataflow specifications.
-
 ```
 We explain in more detail how to write [dataflow specifications](#dataflow-specifications) later, and why the user should write dataflow specifications in some cases.
 
 There are additional options for the outputs:
 ```yaml
 options:
-  report-summaries: true    # the dataflow summaries built by the analysis will be printed in a file in the reports directory
+  report-summaries: true    # the dataflow summaries built by 
+  # the analysis will be printed in a file in the reports directory
 
-  report-paths: true        # all the paths from sources to sinks that have been discovered will be printed in individual files in the reports directory
+  report-paths: true        # all the paths from sources to sinks 
+  # that have been discovered will be printed in individual files
+  # in the reports directory
 ```
 And some other options:
 ```yaml
 options:
-  source-taints-args: false  # by default, the result of a call to a source function is tainted. In some cases a user might want to consider all arguments of a source function to be tainted
+  source-taints-args: false  # by default, the result of a call to
+    # a source function is tainted. In some cases a user might want
+    # to consider all arguments of a source function to be tainted
 ```
 ### Specifying code locations
 
@@ -71,7 +76,7 @@ taint-tracking-problems:
         - package: "example1"
           method: "GetSensitiveData"
 ```
-specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `source-taints-args` option is set to true). There are also other possible code identifers, for example one can view any object of a given type as sources:
+specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `source-taints-args` option is set to true). There are other possible code identifiers, for example one can view any object of a given type as sources:
 ```yaml
 taint-tracking-problems:
     - sources:
@@ -162,6 +167,7 @@ Indicating that this step has terminated. For large program, this step can take 
 After that, the tool will link together the dataflow summaries in an inter-procedural pass:
 ```
 [INFO]  Starting inter-procedural pass...
+[INFO]  Scanning for entry points ...
 [INFO]  --- # of analysis entrypoints: 8 ---
 ```
 Once the inter-procedural dataflow graph has been built, the number of entry points discovered are listed. Those are all the source locations matching the source specifications given in the configuration file. If that number is not as expected, the user should check that the configuration correctly specifies the code elements that should be sources.
@@ -176,19 +182,19 @@ Indicating the source location. If any flow of tainted data from that source loc
 [INFO]  💀 Sink reached at /somedir/main.go:50:12
 [INFO]  Add new path from "[#467.2] (SA)call: GetSensitiveData in loadUserData" to "[#23371.15] @arg 0:t20 in [#23371.14] (SA)call: LogDataPublicly(t22) in Log " <==
 ```
-And if the logging level is set to debug (`log-level: 4` in configuration file), a trace is printed:
+And if the option to print paths is set (`report-paths: true` in configuration file options), a trace is printed:
 ```
-[DEBUG] Report in taint-report/flow-2507865943.out
-[DEBUG] TRACE: [] /somedir/example.go:50:17
-[DEBUG] TRACE: [] /somedir/example.go:12:4
-[DEBUG] TRACE: [processData] /somedir/processing.go:120:3
-[DEBUG] TRACE: [processData] /somedir/processing.go:180:23
-[DEBUG] TRACE: [processData->t52] /somedir/main.go:324:32
-[DEBUG] TRACE: [processData->t52] /somedir/main.go:34:43
-[DEBUG] SINK: /somedir/main.go:142:3
+[INFO] Report in taint-report/flow-2507865943.out
+[INFO] TRACE - Result of call to "GetSensitiveData"
+[INFO]       - Call  [(#13432.8)GetSensitiveData] /somedir/example.go:50:17
+[INFO] TRACE - Parameter "name" of "process" 
+[INFO]       - Param [(#23242.3)process] /somedir/processing.go:120:3
+[INFO] TRACE - Argument 0 in call to "processData"
+[INFO]       - CallArg [] /somedir/processing.go:180:23
+...
 ```
-The first lines indicate that a flow of tainted data has been found, and it reports a representation of the instructions where the source and sinks have been found. If the configuration specifies `reportpaths : true` then the next line shows where the report is stored.
-Each subsequent line starting with `TRACE` shows an approximate trace from the source to the sink, with the locations at the end and the function calls between brackets. The user can inspect those locations to see whether this trace is a false alarm, or it is a path that can occur in some execution of the program.
+The first line shows where the report is stored.
+Each subsequent line starting with `TRACE` shows an approximate trace from the source to the sink, with the locations and some information about the type of location. The user can inspect those locations to see whether this trace is a false alarm, or it is a path that can occur in some execution of the program.
 Finally, the tool prints the location of the sink. In some cases, the precise locations will not be available and the user will see a dash `-` printed instead of the location.
 
 > ⚠ The tool will report important warnings during this analysis step. This indicates that some unsupported feature of Go has been encountered, and the final result is not guaranteed to be correct if no taint flow is reported. However, when taint flows are reported, the information provided by the tool still indicates that there is probably a taint flow. In other words, the presence of non-supported features only threatens the correctness of a result that says "no taint flows have been detected".
@@ -291,7 +297,7 @@ There is an "information leak" from `source` to `sink` because the individual by
 
 ### Field Sensitivity
 
-The taint analysis is not *field-sensitive*: if a field from a structure is tainted, then the entire object is tainted. This means that the tool may raise false alarms, as illustrated in the following example:
+The taint analysis is not *field-sensitive* by default: if a field from a structure is tainted, then the entire object is tainted. This means that the tool may raise false alarms, as illustrated in the following example:
 ```go
 func main() {
     a := A{}
@@ -301,9 +307,15 @@ func main() {
     example2.LogDataPublicly(a.Data) // an alarm is raised here at the sink
 }
 ```
-In this example, with the configuration used previsouly, an alarm is raised: the data flows from the call to `GetSensitiveData` to the call to `LogDataPublicly`. When the `Secret` field is assigned tainted data, the entire structure `a` is considered tainted. This means that `a.Data` is considered tainted in the call to the sink function.
+In this example, with the configuration used previously, an alarm is raised: the data flows from the call to `GetSensitiveData` to the call to `LogDataPublicly`. When the `Secret` field is assigned tainted data, the entire structure `a` is considered tainted. This means that `a.Data` is considered tainted in the call to the sink function.
 If the analysis was field-sensitive, it would not raise an alarm.
 
+Field sensitivity can be turned on with the option:
+```yaml
+options:
+  field-sensitive: true
+```
+Which turns on field-sensitivity for all. This will increase analysis time, but eliminate some false positive. 
 
 ### Tuple Sensitivity
 
@@ -421,7 +433,7 @@ Dataflow specifications allow the user to specify dataflows for functions in the
 - for an interface method summary, the specified data flows subsumes any possible data flow, for any possible implementation
 
 There are two reasons a user may want to specify a data flow summary:
-- for performance: the analysis of some functions can take a lot of time, even though the flows of data can be summarized very succintly. This is the case for functions that have complex control flow and manipulate many data structures. It is also useful to summarize simple interfaces because this reduces the complexity of the call graph: a set of calls to every implementation of the interface is replaced by a single call to the summary for interface methods that are summarized by the user.
+- for performance: the analysis of some functions can take a lot of time, even though the flows of data can be summarized very succinctly. This is the case for functions that have complex control flow and manipulate many data structures. It is also useful to summarize simple interfaces because this reduces the complexity of the call graph: a set of calls to every implementation of the interface is replaced by a single call to the summary for interface methods that are summarized by the user.
 - for soundness: the analysis does not support reflection and some uses of the unsafe package. If a function uses those packages, then it should be summarized by the user. The analysis will raise alarms whenever some unsupported feature of the language is encountered during the analysis.
 
 Dataflow specifications are json files that contain a list of specifications. Each specification is a structure that contains either an `"InterfaceId"` or an `"ObjectPath"`, along with a dictionary `"Methods"`. If an interface id is specified, then the dataflow specifications for each of the methods are interpreted as specifications for the interface methods, i.e. they specify every possible implementation of the interface. For example, consider the following dataflow specifications:

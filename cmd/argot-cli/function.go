@@ -310,12 +310,6 @@ func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 			tt.Escape.Blue, cmdIntraName, tt.Escape.Reset)
 		writeFmt(tt, "\t    -v    print the intermediate result every time a block is analyzed\n")
 		writeFmt(tt, "\t    -h    print this help message\n")
-
-		if state.CurrentFunction == nil {
-			WriteErr(tt, "You must first focus on a function to run this command!")
-			WriteErr(tt, "Example: > focus command-line-arguments.main")
-		}
-
 		return false
 	}
 
@@ -324,9 +318,11 @@ func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 	}
 
 	if state.CurrentFunction == nil {
-		WriteErr(tt, "You must first focus on a function to run the intraprocedural analysis.")
+		WriteErr(tt, "You must first focus on a function to run this command!")
+		WriteErr(tt, "Example: > focus command-line-arguments.main")
 		return false
 	}
+
 	var flowInfo *dataflow.FlowInformation
 
 	// This is the function that will be called after each block

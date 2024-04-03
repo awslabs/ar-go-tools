@@ -13,7 +13,7 @@ We need analyses that ensure the [soundness](https://cacm.acm.org/blogs/blog-cac
 
 ## Solution
 
-The Automated Reasoning Go Tools (Argot) is a program analysis tool set, which at its core implements a whole-program [dataflow analysis](https://en.wikipedia.org/wiki/Data-flow_analysis) upon which other analyses are built. The main feature of this tool set is a tool for [**taint analysis**](https://en.wikipedia.org/wiki/Taint_checking), which is an approach to verifying that no sensitive data coming from a source reaches a function that should not handle such sensitive data. The tool set also contains functionality to analyze dependency imports, reachable functions or apply a backward dataflow analysis, among others.
+The Automated Reasoning Go Tools (Argot) is an experimental program analysis tool set, which at its core implements a whole-program [dataflow analysis](https://en.wikipedia.org/wiki/Data-flow_analysis) upon which other analyses are built. The main feature of this tool set is a tool for [**taint analysis**](https://en.wikipedia.org/wiki/Taint_checking), which is an approach to verifying that no sensitive data coming from a source reaches a function that should not handle such sensitive data. The tool set also contains functionality to analyze dependency imports, reachable functions or apply a backward dataflow analysis, among others.
 
 
 
@@ -23,10 +23,10 @@ The Automated Reasoning Go Tools (Argot) is a program analysis tool set, which a
 ### Tools in Argot
 
 The following tools are included in Argot:
-- the `taint` tool allows you to perform taint analysis in your program (see [Taint Analysis](01_taint.md#taint-analysis))
-- the `backtrace` tool allows you to find all the backwards data flows from a function call (see [Backtrace Analysis](02_backtrace.md#backtrace-analysis))
+- the `taint` tool allows you to perform taint analysis in your program (see [Taint Analysis](01_taint.md#taint-analysis)).
+- the `backtrace` tool allows you to find all the backwards data flows from a function call (see [Backtrace Analysis](02_backtrace.md#backtrace-analysis)).
 - the `argot-cli` is an interactive analysis tool, which lets the user run multiple analyses on the program and inspect various levels of debugging information (see [Argot CLI](03_argotcli.md#argot-cli)). This tool is intended for the advanced user who understands the underlying program representations more in detail.
-- the `compare` tool, which can be used to compare the results of different reachability analyses together, on different platforms. This is useful for the user who wants to make sure the results given by some of the analyses are consistent with their assumptions, or the user that is trying to eliminate unneeded functions or dependencies (see [Compare Tool](04_compare.md#compare-tool))
+- the `compare` tool, which can be used to compare the results of different reachability analyses together, on different platforms. This is useful for the user who wants to make sure the results given by some of the analyses are consistent with their assumptions, or the user that is trying to eliminate unneeded functions or dependencies (see [Compare Tool](04_compare.md#compare-tool)).
 - the `defer` tool runs an analysis that computes the possible deferred functions that can run at each return point of a function (see [Defer Analysis](05_defer.md#defer-analysis)).
 - the `dependencies` tool scans for the input package's dependencies and returns the list of dependencies along with the count of reachable functions within each dependency (see [Dependencies](06_dependencies.md#dependency-scanner)).
 - the `maypanic` tool inspects the input packages to find goroutines with unrecovered panics (see [May Panic Analysis](07_maypanic.md#may-panic-analysis)).
@@ -34,7 +34,7 @@ The following tools are included in Argot:
 - the `reachability` tool inspects the code to find which functions are reachable, and which are not (see [Reachability Tool](09_reachability.md#reachability-tool)).
 - the `render` tool can be used to render various representations of the code, such as its [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single-assignment_form) (SSA) form or its callgraph (see [Render Tool](10_render.md#render-tool)).
 - the `static-commands` tool analyzes the code to find usages of `os/exec.Command` that are defined statically.
-- the `racerg` tool, an experimental tool for data race detection (See [RacerG](11_racerg.md#racerg-sound-and-scalable-static-data-race-detector-for-go))
+- the `racerg` tool, an experimental tool for data race detection (See [RacerG](11_racerg.md#racerg-sound-and-scalable-static-data-race-detector-for-go)).
 
 These tools can be used by developers to better understand their code, through the analysis of higher-level representations. For example, one can understand how the code is organized by looking at the callgraph, which abstract away the code and retains only the caller/callee information. In general, we do not state guarantees about the correctness of these tools, except for the dataflow analyses (see [taint analysis](01_taint.md#taint-analysis) and [backtrace](02_backtrace.md#backtrace-analysis))). However, we believe the representations obtained for each of these tools are useful enough to aid programmers.
 
