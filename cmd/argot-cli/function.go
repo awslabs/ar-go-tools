@@ -244,11 +244,14 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 		}
 	})
 
+	reachable := c.ReachableFunctions(false, false)
 	allValues := lang.AllValues(c.Program)
 	for v1 := range values1 {
-		ptrs := lang.FindTransitivePointers(c.PointerAnalysis, v1)
+		ptrs := make(map[pointer.Pointer]struct{})
+		lang.FindTransitivePointers(c.PointerAnalysis, reachable, v1, ptrs)
 		for ptr := range ptrs {
-			allAliases := lang.FindAllMayAliases(c.PointerAnalysis, allValues, ptr)
+			allAliases := make(map[ssa.Value]struct{})
+			lang.FindAllMayAliases(c.PointerAnalysis, reachable, allValues, ptr, allAliases)
 			writeFmt(tt, "%s may alias with:\n", v1.Name())
 			for alias := range allAliases {
 				writeFmt(tt, "\t%s (%s) in %s\n", alias.Name(), alias, alias.Parent())
@@ -448,7 +451,8 @@ func showValue(tt *term.Terminal, c *dataflow.AnalyzerState, val ssa.Value) {
 		writeFmt(tt, "  indirect aliases:\n")
 		showPointer(tt, c.PointerAnalysis.IndirectQueries[val])
 	}
-	allPtrs := lang.FindTransitivePointers(c.PointerAnalysis, val)
+	allPtrs := make(map[pointer.Pointer]struct{})
+	lang.FindTransitivePointers(c.PointerAnalysis, c.ReachableFunctions(false, false), val, allPtrs)
 	if len(allPtrs) > 0 {
 		writeFmt(tt, "  all aliases:\n")
 		for ptr := range allPtrs {

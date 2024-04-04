@@ -54,6 +54,9 @@ packagescan: go.mod cmd/packagescan/*.go analysis/*.go
 backtrace: go.mod cmd/backtrace/*.go analysis/*.go analysis/backtrace/*.go
 	go build -o bin/backtrace cmd/backtrace/*.go
 
+modptr: go.mod cmd/modptr/*.go analysis/*.go analysis/modptr/*.go
+	go build -o bin/modptr cmd/modptr/*.go
+
 argot-cli: go.mod cmd/argot-cli/*.go
 	go build -o bin/argot-cli cmd/argot-cli/*.go
 
