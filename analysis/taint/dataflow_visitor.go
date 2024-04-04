@@ -139,9 +139,9 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
-			// If there is an ignore directive anywhere in the node's trace, don't report a taint flow
-			if pos, ok := v.shouldIgnore(s, cur.NodeWithTrace); ok {
-				logger.Infof("Node has an ignore directive in its trace at %s: skipping...", pos)
+			// If the sink has an ignore directive, don't report a taint flow
+			if v.shouldIgnore(s, cur.NodeWithTrace) {
+				logger.Debugf("Node has an ignore directive at %s: skipping...", cur.Node.Position(s))
 				continue
 			}
 
@@ -664,9 +664,9 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				break
 			}
 
-			// If there is an ignore directive anywhere in the node's trace, don't report a taint flow
-			if pos, ok := v.shouldIgnore(s, cur.NodeWithTrace); ok {
-				logger.Infof("IfNode has an ignore directive in its trace at %s. Skipping...", pos)
+			// If there is an ignore directive, don't report a taint flow
+			if v.shouldIgnore(s, cur.NodeWithTrace) {
+				logger.Debugf("IfNode has an ignore directive at %s. Skipping...", cur.Node.Position(s))
 				break
 			}
 
@@ -947,10 +947,13 @@ func (v *Visitor) raiseAlarm(s *df.AnalyzerState, pos token.Pos, msg string) {
 	}
 }
 
-// shouldIgnore returns the position of the ignore directive in node's trace or
-// closure trace.
-// Returns an empty token.Position and false if there is no ignore directive.
-func (v *Visitor) shouldIgnore(s *df.AnalyzerState, node df.NodeWithTrace) (token.Position, bool) {
+// shouldIgnore returns true if node has an ignore directive and is not a sink.
+// Returns false if there is no ignore directive.
+func (v *Visitor) shouldIgnore(s *df.AnalyzerState, node df.NodeWithTrace) bool {
+	if isSink(v.taintSpec, node.Node) {
+		return false
+	}
+
 	isIgnore := func(n df.GraphNode) bool {
 		pos := n.Position(s)
 		dpos := analysis.NewDirectivePos(pos)
@@ -969,24 +972,8 @@ func (v *Visitor) shouldIgnore(s *df.AnalyzerState, node df.NodeWithTrace) (toke
 	}
 
 	if isIgnore(node.Node) {
-		return node.Node.Position(s), true
+		return true
 	}
 
-	if node.Trace != nil {
-		for _, call := range node.Trace.ToSlice() {
-			if isIgnore(call) {
-				return call.Position(s), true
-			}
-		}
-	}
-
-	if node.ClosureTrace != nil {
-		for _, closure := range node.ClosureTrace.ToSlice() {
-			if isIgnore(closure) {
-				return closure.Position(s), true
-			}
-		}
-	}
-
-	return token.Position{}, false
+	return false
 }
