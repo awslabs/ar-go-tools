@@ -245,19 +245,8 @@ taint-tracking-problems:
   - method: Print.*
     package: fmt
 
-slicing-problems:
--
-  backtracepoints:
-    - package: datachannel
-      method: PerformHandshake
-  filters:
-    # - package: datachannel
-    #   method: .*
-    # - package: crypto
-    #   method: .*
-    - type: error$
 modification-tracking-problems:
   - values:
-    - package: datachannel
+    - package: .*
       method: PerformHandshake
       label: 0 # argument value to track
