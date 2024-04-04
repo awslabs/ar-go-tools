@@ -135,6 +135,23 @@ func exModStructFieldVal() {
 	trackT(&v)   // @ModSource(exModStructFieldVal) // prints 2
 }
 
+type tracker interface {
+	track()
+}
+
+type toTrack struct {
+	x *int
+}
+
+func (t *toTrack) track() {
+	fmt.Println(t.x)
+}
+
+func exTrackInterface() {
+	var v tracker = &toTrack{} // @Mod(exTrackInterface)
+	v.track()                  // @ModSource(exTrackInterface)
+}
+
 func mod(x *int) {
 	*x++ // @Mod(exModInter, exModStructAliasInter, exModStructFieldRefInter, exModStructRefInter, exModStructInter, exModStructFieldRefAliasInter)
 }
@@ -172,6 +189,8 @@ func main() {
 	exModStructFieldRefAliasInter()
 	fmt.Println("exModStructFieldVal")
 	exModStructFieldVal()
+	fmt.Println("exTrackInterface")
+	exTrackInterface()
 }
 
 type t struct {

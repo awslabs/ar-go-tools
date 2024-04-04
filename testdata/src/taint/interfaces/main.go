@@ -28,6 +28,7 @@ func main() {
 	test4()
 	testInterfacesAndEmbedding()
 	testImportedPrivateEmbeddingPublic()
+	testInterfaceMethodAsSource()
 }
 
 type Interface interface {
@@ -180,4 +181,20 @@ func testImportedPrivateEmbeddingPublic() {
 	t2 := sub.NewPrivateType2("ok")
 	sink(runCommonFunc(t1)) // @Sink(test6)
 	sink(runCommonFunc(t2))
+}
+
+type Sourcer interface {
+	source() string
+}
+
+type sourceT struct{}
+
+func (s sourceT) source() string {
+	return "a"
+}
+
+func testInterfaceMethodAsSource() {
+	s := sourceT{}
+	tainted := s.source() // @Source(testInterfaceMethodAsSource)
+	sink(tainted)         // @Sink(testInterfaceMethodAsSource)
 }

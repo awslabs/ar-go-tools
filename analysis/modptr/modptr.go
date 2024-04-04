@@ -65,7 +65,7 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, res *pointer.Result)
 		}
 	}
 
-	entrypoints := findEntrypoints(prog, cfg, res)
+	entrypoints := findEntrypoints(prog, reachable, cfg, res)
 	for entry := range entrypoints {
 		val := entry.Val
 		if !lang.IsNillableType(val.Type()) {
@@ -73,7 +73,7 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, res *pointer.Result)
 			continue
 		}
 
-		log.Debugf("ENTRY: %v in %v at %v\n", val, val.Parent(), entry.Pos)
+		log.Infof("ENTRY: %v in %v at %v\n", val, val.Parent(), entry.Pos)
 		s := &state{
 			prog:           prog,
 			ptrRes:         res,
@@ -128,6 +128,12 @@ func (s *state) findWritesToAliases(aliases map[pointer.Pointer]struct{}) {
 	for ptr := range aliases {
 		allAliases := make(map[ssa.Value]struct{})
 		lang.FindAllMayAliases(s.ptrRes, s.reachableFuncs, s.allValues, ptr, allAliases)
+		for alias := range allAliases {
+			// special case: *ssa.MakeInterface aliases rvalue
+			if mi, ok := alias.(*ssa.MakeInterface); ok {
+				allAliases[mi.X] = struct{}{}
+			}
+		}
 		for alias := range allAliases {
 			s.addTransitiveMayAliases(alias, allAliases)
 		}
@@ -201,10 +207,13 @@ func allProgramInstrs(prog *ssa.Program) map[ssa.Instruction]struct{} {
 	return res
 }
 
-func findEntrypoints(prog *ssa.Program, cfg *config.Config, ptrRes *pointer.Result) map[Entrypoint]struct{} {
+func findEntrypoints(prog *ssa.Program, reachable map[*ssa.Function]bool, cfg *config.Config, ptrRes *pointer.Result) map[Entrypoint]struct{} {
 	entrypoints := make(map[Entrypoint]struct{})
 	for fn, node := range ptrRes.CallGraph.Nodes {
 		if fn == nil {
+			continue
+		}
+		if _, ok := reachable[fn]; !ok {
 			continue
 		}
 
@@ -256,7 +265,7 @@ func findEntrypoint(prog *ssa.Program, ptrRes *pointer.Result, spec config.ModVa
 		}
 
 		args := lang.GetArgs(call)
-		if len(args) < int(idx) {
+		if len(args) < idx {
 			fmt.Printf("arg index: %v < want %v\n", len(args), idx)
 			return Entrypoint{}, false
 		}
