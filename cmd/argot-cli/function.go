@@ -454,7 +454,7 @@ func showValue(tt *term.Terminal, c *dataflow.AnalyzerState, val ssa.Value) {
 	allPtrs := make(map[pointer.Pointer]struct{})
 	lang.FindTransitivePointers(c.PointerAnalysis, c.ReachableFunctions(false, false), val, allPtrs)
 	if len(allPtrs) > 0 {
-		writeFmt(tt, "  all aliases:\n")
+		writeFmt(tt, "  transitive pointers:\n")
 		for ptr := range allPtrs {
 			showPointer(tt, ptr)
 		}

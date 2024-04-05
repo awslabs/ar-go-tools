@@ -39,33 +39,76 @@ type Result struct {
 }
 
 // Analyze runs the analysis on prog.
-func Analyze(cfg *config.Config, lp analysis.LoadedProgram, res *pointer.Result) (Result, error) {
+func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Result) (Result, error) {
 	modifications := map[Entrypoint]map[ssa.Instruction]struct{}{}
 	prog := lp.Program
-	errs := []error{}
 	log := config.NewLogGroup(cfg)
-	allInstrs := allProgramInstrs(prog)
-	allVals := lang.AllValues(prog)
-	reachable := lang.CallGraphReachable(res.CallGraph, false, false)
+
+	reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false)
 	goroot := runtime.GOROOT()
-	// filter all stdlib values, instructions, and functions
+	// by default, all stdlib/dependency values, instructions, and functions are "unreachable"
+	// so that they are not analyzed
 	for f := range reachable {
-		if isStdlib(prog, goroot, f) {
+		if isDefaultFiltered(prog, goroot, f) {
 			delete(reachable, f)
 		}
 	}
+	shouldFilter := func(f *ssa.Function) bool {
+		_, isReachable := reachable[f]
+		return f == nil || !isReachable
+	}
+	allInstrs := allProgramInstrs(prog)
 	for instr := range allInstrs {
-		if instr.Parent() == nil || isStdlib(prog, goroot, instr.Parent()) {
+		if shouldFilter(instr.Parent()) {
 			delete(allInstrs, instr)
 		}
 	}
+	allVals := lang.AllValues(prog)
 	for val := range allVals {
-		if val == nil || val.Parent() == nil || isStdlib(prog, goroot, val.Parent()) {
+		if val == nil || shouldFilter(val.Parent()) {
 			delete(allVals, val)
 		}
 	}
+	pv := progVals{
+		prog:           prog,
+		ptrRes:         ptrRes,
+		allInstrs:      allInstrs,
+		allValues:      allVals,
+		reachableFuncs: reachable,
+	}
 
-	entrypoints := findEntrypoints(prog, reachable, cfg, res)
+	errs := []error{}
+	for _, spec := range cfg.ModificationTrackingProblems {
+		if err := analyze(log, spec, pv, modifications); err != nil {
+			errs = append(errs, fmt.Errorf("analysis failed for spec %v: %v", spec, err))
+		}
+	}
+
+	return Result{
+		Modifications: modifications,
+	}, errors.Join(errs...)
+}
+
+// progVals contains all the usable SSA instructions/values in the program used
+// for the analysis.
+type progVals struct {
+	prog           *ssa.Program
+	ptrRes         *pointer.Result
+	allInstrs      map[ssa.Instruction]struct{}
+	allValues      map[ssa.Value]struct{}
+	reachableFuncs map[*ssa.Function]bool
+}
+
+func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
+	reachable := pv.reachableFuncs
+	prog := pv.prog
+	ptrRes := pv.ptrRes
+	shouldFilter := func(spec config.ModValSpec, val ssa.Value) bool {
+		return val == nil || isConfigFiltered(spec, val.Parent())
+	}
+
+	errs := []error{}
+	entrypoints := findEntrypoints(prog, reachable, spec, ptrRes)
 	for entry := range entrypoints {
 		val := entry.Val
 		if !lang.IsNillableType(val.Type()) {
@@ -75,17 +118,14 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, res *pointer.Result)
 
 		log.Infof("ENTRY: %v in %v at %v\n", val, val.Parent(), entry.Pos)
 		s := &state{
-			prog:           prog,
-			ptrRes:         res,
-			log:            log,
-			writesToAlias:  make(map[ssa.Value]map[ssa.Instruction]struct{}),
-			allInstrs:      allInstrs,
-			allValues:      allVals,
-			reachableFuncs: reachable,
-			isFiltered:     instrIsInCore,
+			progVals:      pv,
+			log:           log,
+			spec:          spec,
+			writesToAlias: make(map[ssa.Value]map[ssa.Instruction]struct{}),
+			filterValue:   shouldFilter,
 		}
 		aliases := make(map[pointer.Pointer]struct{})
-		lang.FindTransitivePointers(s.ptrRes, reachable, val, aliases)
+		lang.FindTransitivePointers(ptrRes, reachable, val, aliases)
 		s.findWritesToAliases(aliases)
 		for _, instrs := range s.writesToAlias {
 			for instr := range instrs {
@@ -98,37 +138,35 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, res *pointer.Result)
 		}
 	}
 
-	return Result{
-		Modifications: modifications,
-	}, errors.Join(errs...)
+	return errors.Join(errs...)
 }
 
 // state represents the analysis state.
 // This tracks writes to a single value.
 type state struct {
-	prog   *ssa.Program
-	ptrRes *pointer.Result
-	log    *config.LogGroup
-	// allInstrs stores all the instructions in prog.
-	allInstrs map[ssa.Instruction]struct{}
-	// allValues stores all the values in prog.
-	allValues map[ssa.Value]struct{}
-	// reachableFuncs stores all the reachable functions in prog.
-	reachableFuncs map[*ssa.Function]bool
+	progVals
+	log  *config.LogGroup
+	spec config.ModValSpec
 
+	// filterValue returns true if the value should be filtered
+	// according to the spec.
+	filterValue func(config.ModValSpec, ssa.Value) bool
 	// writesToAlias stores the set of instructions that write to an alias
 	// (SSA value).
 	writesToAlias map[ssa.Value]map[ssa.Instruction]struct{}
-	// isFiltered returns true if the instruction should not be visited.
-	isFiltered func(ssa.Instruction) bool
 }
 
 // findWritesToAliases adds all write instructions to transitive aliases of aliases to s.writesToAlias.
 func (s *state) findWritesToAliases(aliases map[pointer.Pointer]struct{}) {
+	log := s.log
 	for ptr := range aliases {
 		allAliases := make(map[ssa.Value]struct{})
 		lang.FindAllMayAliases(s.ptrRes, s.reachableFuncs, s.allValues, ptr, allAliases)
 		for alias := range allAliases {
+			if s.filterValue(s.spec, alias) {
+				log.Tracef("alias %v filtered by spec\n", alias)
+				delete(allAliases, alias)
+			}
 			// special case: *ssa.MakeInterface aliases rvalue
 			if mi, ok := alias.(*ssa.MakeInterface); ok {
 				allAliases[mi.X] = struct{}{}
@@ -139,7 +177,7 @@ func (s *state) findWritesToAliases(aliases map[pointer.Pointer]struct{}) {
 		}
 
 		for alias := range allAliases {
-			s.log.Tracef("Alias %v: %v in %v\n", alias.Name(), alias, alias.Parent())
+			log.Tracef("Alias %v: %v in %v\n", alias.Name(), alias, alias.Parent())
 			if _, ok := s.writesToAlias[alias]; !ok {
 				s.writesToAlias[alias] = make(map[ssa.Instruction]struct{})
 			}
@@ -151,7 +189,7 @@ func (s *state) findWritesToAliases(aliases map[pointer.Pointer]struct{}) {
 				}
 
 				if _, ok := lang.InstrWritesToVal(instr, alias); ok || allocs {
-					s.log.Tracef("Instr %v writes to alias %v\n", instr, alias)
+					log.Tracef("Instr %v writes to alias %v\n", instr, alias)
 					s.writesToAlias[alias][instr] = struct{}{}
 				}
 			}
@@ -180,7 +218,7 @@ func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Valu
 		newAliases := make(map[ssa.Value]struct{})
 		lang.FindAllMayAliases(s.ptrRes, s.reachableFuncs, s.allValues, cur, newAliases)
 		for a := range newAliases {
-			if _, ok := allAliases[a]; ok {
+			if _, ok := allAliases[a]; ok || s.filterValue(s.spec, a) {
 				continue
 			}
 
@@ -207,7 +245,7 @@ func allProgramInstrs(prog *ssa.Program) map[ssa.Instruction]struct{} {
 	return res
 }
 
-func findEntrypoints(prog *ssa.Program, reachable map[*ssa.Function]bool, cfg *config.Config, ptrRes *pointer.Result) map[Entrypoint]struct{} {
+func findEntrypoints(prog *ssa.Program, reachable map[*ssa.Function]bool, spec config.ModValSpec, ptrRes *pointer.Result) map[Entrypoint]struct{} {
 	entrypoints := make(map[Entrypoint]struct{})
 	for fn, node := range ptrRes.CallGraph.Nodes {
 		if fn == nil {
@@ -222,14 +260,12 @@ func findEntrypoints(prog *ssa.Program, reachable map[*ssa.Function]bool, cfg *c
 				continue
 			}
 
-			for _, spec := range cfg.ModificationTrackingProblems {
-				entry, ok := findEntrypoint(prog, ptrRes, spec, inEdge.Site.Value())
-				if !ok {
-					continue
-				}
-
-				entrypoints[entry] = struct{}{}
+			entry, ok := findEntrypoint(prog, ptrRes, spec, inEdge.Site.Value())
+			if !ok {
+				continue
 			}
+
+			entrypoints[entry] = struct{}{}
 		}
 	}
 
@@ -277,20 +313,22 @@ func findEntrypoint(prog *ssa.Program, ptrRes *pointer.Result, spec config.ModVa
 	return Entrypoint{}, false
 }
 
-func instrIsInCore(instr ssa.Instruction) bool {
-	if _, ok := instr.(*ssa.DebugRef); ok {
-		return true
-	}
-
-	parent := instr.Parent()
-	if parent == nil {
-		return false
-	}
-
-	return parent.Pkg.Pkg.Name() == "core"
-}
-
-func isStdlib(prog *ssa.Program, goroot string, f *ssa.Function) bool {
+// isDefaultFiltered returns true if f is in a vendored dependency or
+// the Go standard library.
+func isDefaultFiltered(prog *ssa.Program, goroot string, f *ssa.Function) bool {
 	pos := prog.Fset.Position(f.Pos())
 	return strings.Contains(pos.Filename, "vendor") || strings.Contains(pos.Filename, goroot)
+}
+
+// isConfigFiltered returns true if f should be filtered according to spec.
+func isConfigFiltered(spec config.ModValSpec, f *ssa.Function) bool {
+	for _, filter := range spec.Filters {
+		if f != nil && filter.Method != "" && filter.Package != "" {
+			if filter.MatchPackageAndMethod(f) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

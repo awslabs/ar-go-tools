@@ -9,6 +9,9 @@ modification-tracking-problems:
     - package: core
       method: Send
       label: 0 # argument value to track
+    filters:
+      - package: core
+        method: .*
 slicing-problems:
   - backtracepoints:
       - package: core

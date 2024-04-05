@@ -174,6 +174,9 @@ type ModValSpec struct {
 	// Values is the list of identifiers representing which values whose
 	// modifications should be reported.
 	Values []CodeIdentifier
+
+	// Filters contains a list of filters that prevents some identifiers from being analyzed.
+	Filters []CodeIdentifier
 }
 
 // Options holds the global options for analyses
@@ -401,6 +404,7 @@ func Load(filename string) (*Config, error) {
 
 	for _, mSpec := range cfg.ModificationTrackingProblems {
 		funcutil.Iter(mSpec.Values, compileRegexes)
+		funcutil.Iter(mSpec.Filters, compileRegexes)
 	}
 
 	for _, stSpec := range cfg.StaticCommandsProblems {
