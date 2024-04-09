@@ -70,7 +70,7 @@ cli_install: argot-cli
 	go install ./cmd/argot-cli
 
 setup-precommit:
-	cp ./copyrights.sh .git/hooks/pre-commit
+	cp ./copyrights.sh $$(git rev-parse --git-path hooks)/pre-commit
 
 clean:
 	rm -rf bin
