@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"go/token"
 	"io"
+	"runtime"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -105,6 +106,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
+	goroot := runtime.GOROOT()
 	v.currentSource = source
 	logger := s.Logger
 	logger.Infof("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
@@ -682,7 +684,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			}
 
 			// ignore errors in Go standard library or dependencies
-			if strings.Contains(pos.Filename, "golang/src") || strings.Contains(pos.Filename, "vendor") {
+			if strings.Contains(pos.Filename, goroot) || strings.Contains(pos.Filename, "vendor") {
 				break
 			}
 
