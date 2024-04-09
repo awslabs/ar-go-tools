@@ -94,7 +94,7 @@ func main() {
 	result, err := taint.Analyze(taintConfig, lp)
 	duration := time.Since(start)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "analysis failed:\n")
+		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
 		// deduplicate error messages
 		errMsgs := map[string]struct{}{}
 		for _, err := range result.State.CheckError() {
