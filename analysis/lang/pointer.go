@@ -61,6 +61,7 @@ func FindTransitivePointers(res *pointer.Result, reachable map[*ssa.Function]boo
 	}
 }
 
+// AllValues returns all the values in prog.
 func AllValues(prog *ssa.Program) map[ssa.Value]struct{} {
 	vals := make(map[ssa.Value]struct{})
 	fns := ssautil.AllFunctions(prog)
@@ -73,6 +74,7 @@ func AllValues(prog *ssa.Program) map[ssa.Value]struct{} {
 	return vals
 }
 
+// FindAllMayAliases populates aliases with all the values that may-alias ptr.
 func FindAllMayAliases(res *pointer.Result, reachable map[*ssa.Function]bool, allValues map[ssa.Value]struct{}, ptr pointer.Pointer, aliases map[ssa.Value]struct{}) {
 	for val := range allValues {
 		if _, ok := aliases[val]; ok {

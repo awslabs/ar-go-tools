@@ -60,6 +60,7 @@ func (t Trace) String() string {
 	return "\n" + strings.Join(funcutil.Map(t, func(n TraceNode) string { return "\t" + n.String() }), "\n")
 }
 
+// Key returns the key of t consisting of its nodes' long ids.
 func (t Trace) Key() df.KeyType {
 	keys := make([]string, 0, len(t))
 	for _, node := range t {

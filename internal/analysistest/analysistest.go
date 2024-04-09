@@ -83,6 +83,7 @@ func (t TargetToSources) HasMetadata() bool {
 	return false
 }
 
+// SourceToTargets is a mapping from a source annotation to a target annotation.
 type SourceToTargets map[AnnotationID]map[AnnotationID]bool
 
 // AnnotationID represents an identifier in an annotation.
@@ -232,6 +233,9 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	return sink2source, escape2source
 }
 
+// GetExpectedMods analyzes the files in dir and looks for comments
+// @ModSource(id) and @Mod(id) to construct a mapping from modification sources
+// to modifications.
 func GetExpectedMods(reldir string, dir string) SourceToTargets {
 	fset := token.NewFileSet() // positions are relative to fset
 	pkgs, err := lang.AstPackages(dir, fset)

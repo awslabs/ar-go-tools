@@ -37,7 +37,7 @@ func (v VisitorKind) String() string {
 	case ClosureTracing:
 		return "closure-tracing"
 	default:
-		panic(fmt.Errorf("unexpected visitor kind: %v", v))
+		panic(fmt.Errorf("unexpected visitor kind: %T", v))
 	}
 }
 

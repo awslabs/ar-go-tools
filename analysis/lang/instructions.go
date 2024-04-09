@@ -221,6 +221,8 @@ func FnReadsFrom(fn *ssa.Function, val ssa.Value) bool {
 }
 
 // InstrReadsInto returns true and the value val is read into (LHS of read) if instr reads from val.
+//
+//gocyclo:ignore
 func InstrReadsInto(instr ssa.Instruction, val ssa.Value) (ssa.Value, bool) {
 	switch instr := instr.(type) {
 	case *ssa.UnOp:
