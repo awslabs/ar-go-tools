@@ -1,14 +1,14 @@
 options:
   use-escape-analysis: true
   field-sensitive-funcs:
-  - .*diodon-example/core.*
-  - .*main.*
-  log-level: 5
+    - .*diodon-example/core.*
+    - .*main.*
+  log-level: 3
 modification-tracking-problems:
   - values:
-    - package: core
-      method: Send
-      label: 0 # argument value to track
+      - package: core
+        method: Send
+        label: 0 # argument value to track
     filters:
       - package: core
         method: .*
@@ -21,235 +21,235 @@ slicing-problems:
         method: .*
       - type: error$
 taint-tracking-problems:
-- sanitizers:
-  - method: san
-    package: core
-  sources:
-    - field: psk
-      package: core
-      type: Chan
-    - method: message
-      package: (main)|(command-line-arguments)$
-  sinks:
-  - method: SetFlags$
-    package: log
-  - method: SetOutput$
-    package: log
-  - method: Dial$
-    package: net
-  - method: DialIP$
-    package: net
-  - method: DialTCP$
-    package: net
-  - method: DialTimeout$
-    package: net
-  - method: DialUDP$
-    package: net
-  - method: DialUnix$
-    package: net
-  - method: FileConn$
-    package: net
-  - method: FileListener$
-    package: net
-  - method: FilePacketConn$
-    package: net
-  - method: Listen$
-    package: net
-  - method: ListenIP$
-    package: net
-  - method: ListenMulticastUDP$
-    package: net
-  - method: ListenPacket$
-    package: net
-  - method: ListenTCP$
-    package: net
-  - method: ListenUDP$
-    package: net
-  - method: ListenUnix$
-    package: net
-  - method: ListenUnixgram$
-    package: net
-  - method: LookupAddr$
-    package: net
-  - method: LookupCNAME$
-    package: net
-  - method: LookupHost$
-    package: net
-  - method: LookupIP$
-    package: net
-  - method: LookupMX$
-    package: net
-  - method: LookupNS$
-    package: net
-  - method: LookupPort$
-    package: net
-  - method: LookupSRV$
-    package: net
-  - method: LookupTXT$
-    package: net
-  - method: ResolveIPAddr$
-    package: net
-  - method: ResolveTCPAddr$
-    package: net
-  - method: ResolveUDPAddr$
-    package: net
-  - method: ResolveUnixAddr$
-    package: net
-  - method: Chdir$
-    package: os
-  - method: Chmod$
-    package: os
-  - method: Chown$
-    package: os
-  - method: Chtimes$
-    package: os
-  - method: Clearenv$
-    package: os
-  - method: Create$
-    package: os
-  - method: CreateTemp$
-    package: os
-  - method: DirFS$
-    package: os
-  - method: Lchown$
-    package: os
-  - method: Link$
-    package: os
-  - method: Lstat$
-    package: os
-  - method: Mkdir$
-    package: os
-  - method: MkdirAll$
-    package: os
-  - method: MkdirTemp$
-    package: os
-  - method: NewFile$
-    package: os
-  - method: Open$
-    package: os
-  - method: OpenFile$
-    package: os
-  - method: Pipe$
-    package: os
-  - method: ReadDir$
-    package: os
-  - method: ReadFile$
-    package: os
-  - method: Readlink$
-    package: os
-  - method: Remove$
-    package: os
-  - method: RemoveAll$
-    package: os
-  - method: Rename$
-    package: os
-  - method: SameFile$
-    package: os
-  - method: Setenv$
-    package: os
-  - method: Stat$
-    package: os
-  - method: Symlink$
-    package: os
-  - method: Truncate$
-    package: os
-  - method: Unsetenv$
-    package: os
-  - method: WriteFile$
-    package: os
-  - method: Close$
-    package: os
-  - method: Fd$
-    package: os
-  - method: Name$
-    package: os
-  - method: Read$
-    package: os
-  - method: ReadAt$
-    package: os
-  - method: ReadFrom$
-    package: os
-  - method: Readdir$
-    package: os
-  - method: Readdirnames$
-    package: os
-  - method: Seek$
-    package: os
-  - method: SetDeadline$
-    package: os
-  - method: SetReadDeadline$
-    package: os
-  - method: SetWriteDeadline$
-    package: os
-  - method: Sync$
-    package: os
-  - method: SyscallConn$
-    package: os
-  - method: Write$
-    package: os
-  - method: WriteAt$
-    package: os
-  - method: WriteString$
-    package: os
-  - method: IsDir$
-    package: os
-  - method: ModTime$
-    package: os
-  - method: Mode$
-    package: os
-  - method: Size$
-    package: os
-  - method: Sys$
-    package: os
-  - method: LookPath$
-    package: os/exec
-  - method: Open$
-    package: plugin
-  - method: Breakpoint$
-    package: runtime
-  - method: CPUProfile$
-    package: runtime
-  - method: Goexit$
-    package: runtime
-  - method: SetCgoTraceback$
-    package: runtime
-  - method: UnlockOSThread$
-    package: runtime
-  - method: SetGCPercent$
-    package: runtime/debug
-  - method: SetMaxStack$
-    package: runtime/debug
-  - method: SetMaxThreads$
-    package: runtime/debug
-  - method: SetPanicOnFault$
-    package: runtime/debug
-  - method: WriteHeapDump$
-    package: runtime/debug
-  - method: Read$
-    package: runtime/metrics
-  - method: SetFinalizer$
-    package: runtime
-  - method: .*
-    package: os
-  - method: .*
-    package: os/exec
-  - method: .*
-    package: os/signal
-  - method: .*
-    package: reflect
-  - method: .*
-    package: runtime
-  - method: .*
-    package: runtime/cgo
-  - method: .*
-    package: runtime/debug
-  - method: .*
-    package: runtime/pprof
-  - method: .*
-    package: net
-  - method: .*
-    package: net/http
-  - method: .*
-    package: unsafe
-  - method: Print.*
-    package: fmt
+  - sanitizers:
+      - method: san
+        package: core
+    sources:
+      - field: psk
+        package: core
+        type: Chan
+      - method: message
+        package: (main)|(command-line-arguments)$
+    sinks:
+      - method: SetFlags$
+        package: log
+      - method: SetOutput$
+        package: log
+      - method: Dial$
+        package: net
+      - method: DialIP$
+        package: net
+      - method: DialTCP$
+        package: net
+      - method: DialTimeout$
+        package: net
+      - method: DialUDP$
+        package: net
+      - method: DialUnix$
+        package: net
+      - method: FileConn$
+        package: net
+      - method: FileListener$
+        package: net
+      - method: FilePacketConn$
+        package: net
+      - method: Listen$
+        package: net
+      - method: ListenIP$
+        package: net
+      - method: ListenMulticastUDP$
+        package: net
+      - method: ListenPacket$
+        package: net
+      - method: ListenTCP$
+        package: net
+      - method: ListenUDP$
+        package: net
+      - method: ListenUnix$
+        package: net
+      - method: ListenUnixgram$
+        package: net
+      - method: LookupAddr$
+        package: net
+      - method: LookupCNAME$
+        package: net
+      - method: LookupHost$
+        package: net
+      - method: LookupIP$
+        package: net
+      - method: LookupMX$
+        package: net
+      - method: LookupNS$
+        package: net
+      - method: LookupPort$
+        package: net
+      - method: LookupSRV$
+        package: net
+      - method: LookupTXT$
+        package: net
+      - method: ResolveIPAddr$
+        package: net
+      - method: ResolveTCPAddr$
+        package: net
+      - method: ResolveUDPAddr$
+        package: net
+      - method: ResolveUnixAddr$
+        package: net
+      - method: Chdir$
+        package: os
+      - method: Chmod$
+        package: os
+      - method: Chown$
+        package: os
+      - method: Chtimes$
+        package: os
+      - method: Clearenv$
+        package: os
+      - method: Create$
+        package: os
+      - method: CreateTemp$
+        package: os
+      - method: DirFS$
+        package: os
+      - method: Lchown$
+        package: os
+      - method: Link$
+        package: os
+      - method: Lstat$
+        package: os
+      - method: Mkdir$
+        package: os
+      - method: MkdirAll$
+        package: os
+      - method: MkdirTemp$
+        package: os
+      - method: NewFile$
+        package: os
+      - method: Open$
+        package: os
+      - method: OpenFile$
+        package: os
+      - method: Pipe$
+        package: os
+      - method: ReadDir$
+        package: os
+      - method: ReadFile$
+        package: os
+      - method: Readlink$
+        package: os
+      - method: Remove$
+        package: os
+      - method: RemoveAll$
+        package: os
+      - method: Rename$
+        package: os
+      - method: SameFile$
+        package: os
+      - method: Setenv$
+        package: os
+      - method: Stat$
+        package: os
+      - method: Symlink$
+        package: os
+      - method: Truncate$
+        package: os
+      - method: Unsetenv$
+        package: os
+      - method: WriteFile$
+        package: os
+      - method: Close$
+        package: os
+      - method: Fd$
+        package: os
+      - method: Name$
+        package: os
+      - method: Read$
+        package: os
+      - method: ReadAt$
+        package: os
+      - method: ReadFrom$
+        package: os
+      - method: Readdir$
+        package: os
+      - method: Readdirnames$
+        package: os
+      - method: Seek$
+        package: os
+      - method: SetDeadline$
+        package: os
+      - method: SetReadDeadline$
+        package: os
+      - method: SetWriteDeadline$
+        package: os
+      - method: Sync$
+        package: os
+      - method: SyscallConn$
+        package: os
+      - method: Write$
+        package: os
+      - method: WriteAt$
+        package: os
+      - method: WriteString$
+        package: os
+      - method: IsDir$
+        package: os
+      - method: ModTime$
+        package: os
+      - method: Mode$
+        package: os
+      - method: Size$
+        package: os
+      - method: Sys$
+        package: os
+      - method: LookPath$
+        package: os/exec
+      - method: Open$
+        package: plugin
+      - method: Breakpoint$
+        package: runtime
+      - method: CPUProfile$
+        package: runtime
+      - method: Goexit$
+        package: runtime
+      - method: SetCgoTraceback$
+        package: runtime
+      - method: UnlockOSThread$
+        package: runtime
+      - method: SetGCPercent$
+        package: runtime/debug
+      - method: SetMaxStack$
+        package: runtime/debug
+      - method: SetMaxThreads$
+        package: runtime/debug
+      - method: SetPanicOnFault$
+        package: runtime/debug
+      - method: WriteHeapDump$
+        package: runtime/debug
+      - method: Read$
+        package: runtime/metrics
+      - method: SetFinalizer$
+        package: runtime
+      - method: .*
+        package: os
+      - method: .*
+        package: os/exec
+      - method: .*
+        package: os/signal
+      - method: .*
+        package: reflect
+      - method: .*
+        package: runtime
+      - method: .*
+        package: runtime/cgo
+      - method: .*
+        package: runtime/debug
+      - method: .*
+        package: runtime/pprof
+      - method: .*
+        package: net
+      - method: .*
+        package: net/http
+      - method: .*
+        package: unsafe
+      - method: Print.*
+        package: fmt

@@ -153,7 +153,7 @@ func logMods(t *testing.T, prog *ssa.Program, res modptr.Result) {
 		t.Logf("VAL: %v (%v) in %v at %v\n", val, val.Name(), val.Parent(), entry.Pos)
 		for instr := range instrs {
 			pos := prog.Fset.Position(instr.Pos())
-			t.Logf("\tMOD: %v at %v\n", lang.FmtInstr(instr), pos)
+			t.Logf("\tMOD: %v in %v at %v\n", lang.FmtInstr(instr), instr.Parent(), pos)
 		}
 	}
 }

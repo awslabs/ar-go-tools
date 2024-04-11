@@ -4,7 +4,7 @@ options:
     - .*diodon-agent/crypto.*
     - .*diodon-agent/datachannel.*
     - .*diodon-agent/sessionplugin.*
-  log-level: 5
+  log-level: 3
 
 modification-tracking-problems:
   - values:
@@ -12,9 +12,9 @@ modification-tracking-problems:
         method: PerformHandshake
         label: 0 # argument value to track
     # filter all methods in the datachannel package
-    # filters:
-    # - package: datachannel
-    #   method: .*
+    filters:
+      - package: datachannel
+        method: .*
 
 taint-tracking-problems:
   - filters:
