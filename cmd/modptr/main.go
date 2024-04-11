@@ -110,7 +110,7 @@ func main() {
 	logger.Printf("")
 	if len(result.Modifications) == 0 {
 		logger.Printf(
-			"RESULT:\n\t\t%s", formatutil.Green("No modifications detected ✓")) // safe %s
+			"RESULT:\n\t\t%s", formatutil.Green("No modifications detected")) // safe %s
 	} else {
 		logger.Printf(
 			"RESULT:\n\t\t%s", formatutil.Red("Modifications detected!")) // safe %s

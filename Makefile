@@ -5,7 +5,7 @@
 #endif
 
 
-all: lint maypanic statistics reachability dependencies static-commands render taint compare defer packagescan backtrace argot-cli racerg setup-precommit
+all: lint maypanic statistics reachability dependencies static-commands render taint modptr compare defer packagescan backtrace argot-cli racerg setup-precommit
 
 install: taint_install cli_install
 

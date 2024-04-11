@@ -38,13 +38,22 @@ type Result struct {
 	Modifications map[Entrypoint]map[ssa.Instruction]struct{}
 }
 
+// Entrypoint represents an Entrypoint.
+type Entrypoint struct {
+	// Val is the argument value.
+	Val ssa.Value
+	// Pos is the position of the callsite, not the argument value itself.
+	Pos token.Position
+}
+
 // Analyze runs the analysis on prog.
 func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Result) (Result, error) {
 	modifications := map[Entrypoint]map[ssa.Instruction]struct{}{}
 	prog := lp.Program
 	log := config.NewLogGroup(cfg)
 
-	reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false)
+	reachable := ssautil.AllFunctions(prog)
+	// reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false)
 	goroot := runtime.GOROOT()
 	// by default, all stdlib/dependency values, instructions, and functions are "unreachable"
 	// so that they are not analyzed
@@ -99,6 +108,7 @@ type progVals struct {
 	reachableFuncs map[*ssa.Function]bool
 }
 
+// analyze runs the analysis for a single spec and adds the write instructions to modifications.
 func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
 	reachable := pv.reachableFuncs
 	prog := pv.prog
@@ -270,14 +280,6 @@ func findEntrypoints(prog *ssa.Program, reachable map[*ssa.Function]bool, spec c
 	}
 
 	return entrypoints
-}
-
-// Entrypoint represents an Entrypoint.
-type Entrypoint struct {
-	// Val is the argument value.
-	Val ssa.Value
-	// Pos is the position of the callsite, not the argument value itself.
-	Pos token.Position
 }
 
 func findEntrypoint(prog *ssa.Program, ptrRes *pointer.Result, spec config.ModValSpec, call *ssa.Call) (Entrypoint, bool) {
