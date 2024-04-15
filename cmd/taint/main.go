@@ -68,7 +68,7 @@ func main() {
 		taintConfig, err = config.LoadGlobal()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not load config %q\n", *configPath)
-			return
+			os.Exit(1)
 		}
 	}
 
@@ -86,7 +86,7 @@ func main() {
 	lp, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
-		return
+		os.Exit(1)
 	}
 	program := lp.Program
 
@@ -103,7 +103,7 @@ func main() {
 		for err := range errMsgs {
 			fmt.Fprintf(os.Stderr, "\t%v\n", err)
 		}
-		return
+		os.Exit(1)
 	}
 	result.State.Logger.Infof("")
 	result.State.Logger.Infof(strings.Repeat("*", 80))
@@ -164,5 +164,9 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 				sourcePos.String(), // safe %s (position string)
 			)
 		}
+	}
+
+	if len(result.TaintFlows.Sinks) > 0 || len(result.TaintFlows.Escapes) > 0 {
+		os.Exit(1)
 	}
 }
