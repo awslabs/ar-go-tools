@@ -90,15 +90,15 @@ func exModStructFieldRef() {
 	trackTr(&v)    // @ModSource(exModStructFieldRef) // prints 2
 }
 
-func trackTr(v *tr) {
-	fmt.Println(*v.x)
-}
-
 func exModStructFieldRefInter() {
 	x := 1         // @Mod(exModStructFieldRefInter)
 	v := tr{x: &x} // @Mod(exModStructFieldRefInter)
 	mod(&x)
-	trackInt(v.x) // @ModSource(exModStructFieldRefInter) // prints 2
+	trackTr(&v) // @ModSource(exModStructFieldRefInter) // prints 2
+}
+
+func trackTr(v *tr) {
+	fmt.Println(*v.x)
 }
 
 func exNoModStructFieldRefAlias() {

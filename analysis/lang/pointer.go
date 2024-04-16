@@ -18,7 +18,6 @@ import (
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // FindAllPointers returns all the pointers that point to v.
@@ -35,15 +34,17 @@ func FindAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
 }
 
 // FindTransitivePointers adds all transitive pointers of v to ptrs.
-func FindTransitivePointers(res *pointer.Result, reachable map[*ssa.Function]bool, v ssa.Value, ptrs map[pointer.Pointer]struct{}) {
-	stack := FindAllPointers(res, v)
+func FindTransitivePointers(ptrRes *pointer.Result, reachable map[*ssa.Function]bool, v ssa.Value) []pointer.Pointer {
+	stack := FindAllPointers(ptrRes, v)
+	seen := make(map[pointer.Pointer]struct{})
+	var res []pointer.Pointer
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
 		stack = stack[0 : len(stack)-1]
-		if _, ok := ptrs[cur]; ok {
+		if _, ok := seen[cur]; ok {
 			continue
 		}
-		ptrs[cur] = struct{}{}
+		seen[cur] = struct{}{}
 
 		for _, label := range cur.PointsTo().Labels() {
 			val := label.Value()
@@ -55,23 +56,15 @@ func FindTransitivePointers(res *pointer.Result, reachable map[*ssa.Function]boo
 				continue
 			}
 
-			ptrs := FindAllPointers(res, val)
+			ptrs := FindAllPointers(ptrRes, val)
 			stack = append(stack, ptrs...)
+			for _, ptr := range ptrs {
+				res = append(res, ptr)
+			}
 		}
 	}
-}
 
-// AllValues returns all the values in prog.
-func AllValues(prog *ssa.Program) map[ssa.Value]struct{} {
-	vals := make(map[ssa.Value]struct{})
-	fns := ssautil.AllFunctions(prog)
-	for fn := range fns {
-		IterateValues(fn, func(_ int, val ssa.Value) {
-			vals[val] = struct{}{}
-		})
-	}
-
-	return vals
+	return res
 }
 
 // FindAllMayAliases populates aliases with all the values that may-alias ptr.
@@ -81,9 +74,8 @@ func FindAllMayAliases(res *pointer.Result, reachable map[*ssa.Function]bool, al
 			continue
 		}
 
-		ptrs := make(map[pointer.Pointer]struct{})
-		FindTransitivePointers(res, reachable, val, ptrs)
-		for valPtr := range ptrs {
+		ptrs := FindTransitivePointers(res, reachable, val)
+		for _, valPtr := range ptrs {
 			if valPtr.MayAlias(ptr) {
 				aliases[val] = struct{}{}
 			}

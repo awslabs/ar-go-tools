@@ -244,36 +244,36 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 		}
 	})
 
-	reachable := c.ReachableFunctions(false, false)
-	allValues := lang.AllValues(c.Program)
+	// reachable := c.ReachableFunctions(false, false)
+	// allValues := lang.AllValues(c.Program)
 	for v1 := range values1 {
-		ptrs := make(map[pointer.Pointer]struct{})
-		lang.FindTransitivePointers(c.PointerAnalysis, reachable, v1, ptrs)
-		for ptr := range ptrs {
-			allAliases := make(map[ssa.Value]struct{})
-			lang.FindAllMayAliases(c.PointerAnalysis, reachable, allValues, ptr, allAliases)
-			writeFmt(tt, "%s may alias with:\n", v1.Name())
-			for alias := range allAliases {
-				writeFmt(tt, "\t%s (%s) in %s\n", alias.Name(), alias, alias.Parent())
-			}
-		}
+		// ptrs := make(map[pointer.Pointer]struct{})
+		// lang.FindTransitivePointers(c.PointerAnalysis, reachable, v1, ptrs)
+		// for ptr := range ptrs {
+		// 	allAliases := make(map[ssa.Value]struct{})
+		// 	lang.FindAllMayAliases(c.PointerAnalysis, reachable, allValues, ptr, allAliases)
+		// 	writeFmt(tt, "%s may alias with:\n", v1.Name())
+		// 	for alias := range allAliases {
+		// 		writeFmt(tt, "\t%s (%s) in %s\n", alias.Name(), alias, alias.Parent())
+		// 	}
+		// }
 
-		// if ptr, ptrExists := c.PointerAnalysis.Queries[v1]; ptrExists {
-		// 	writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
-		// 	lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
-		// 		if value != nil {
-		// 			printAliases(tt, c, value, ptr)
-		// 		}
-		// 	})
-		// }
-		// if ptr, ptrExists := c.PointerAnalysis.IndirectQueries[v1]; ptrExists {
-		// 	writeFmt(tt, "[indirect] %s may alias with:\n", v1.Name())
-		// 	lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
-		// 		if value != nil {
-		// 			printAliases(tt, c, value, ptr)
-		// 		}
-		// 	})
-		// }
+		if ptr, ptrExists := c.PointerAnalysis.Queries[v1]; ptrExists {
+			writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
+			lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+				if value != nil {
+					printAliases(tt, c, value, ptr)
+				}
+			})
+		}
+		if ptr, ptrExists := c.PointerAnalysis.IndirectQueries[v1]; ptrExists {
+			writeFmt(tt, "[indirect] %s may alias with:\n", v1.Name())
+			lang.IterateValues(state.CurrentFunction, func(_ int, value ssa.Value) {
+				if value != nil {
+					printAliases(tt, c, value, ptr)
+				}
+			})
+		}
 
 	}
 
@@ -451,11 +451,10 @@ func showValue(tt *term.Terminal, c *dataflow.AnalyzerState, val ssa.Value) {
 		writeFmt(tt, "  indirect aliases:\n")
 		showPointer(tt, c.PointerAnalysis.IndirectQueries[val])
 	}
-	allPtrs := make(map[pointer.Pointer]struct{})
-	lang.FindTransitivePointers(c.PointerAnalysis, c.ReachableFunctions(false, false), val, allPtrs)
+	allPtrs := lang.FindTransitivePointers(c.PointerAnalysis, c.ReachableFunctions(false, false), val)
 	if len(allPtrs) > 0 {
 		writeFmt(tt, "  transitive pointers:\n")
-		for ptr := range allPtrs {
+		for _, ptr := range allPtrs {
 			showPointer(tt, ptr)
 		}
 	}

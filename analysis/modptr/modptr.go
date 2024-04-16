@@ -19,9 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"go/token"
-	"runtime"
 	"strconv"
-	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -54,36 +52,16 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 
 	reachable := ssautil.AllFunctions(prog)
 	// reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false)
-	goroot := runtime.GOROOT()
-	// by default, all stdlib/dependency values, instructions, and functions are "unreachable"
-	// so that they are not analyzed
-	for f := range reachable {
-		if isDefaultFiltered(prog, goroot, f) {
-			delete(reachable, f)
-		}
-	}
-	shouldFilter := func(f *ssa.Function) bool {
-		_, isReachable := reachable[f]
-		return f == nil || !isReachable
-	}
-	allInstrs := allProgramInstrs(prog)
-	for instr := range allInstrs {
-		if shouldFilter(instr.Parent()) {
-			delete(allInstrs, instr)
-		}
-	}
-	allVals := lang.AllValues(prog)
-	for val := range allVals {
-		if val == nil || shouldFilter(val.Parent()) {
-			delete(allVals, val)
-		}
-	}
+	allInstrs := allProgramInstrs(reachable)
+	allVals := allProgramValues(reachable)
 	pv := progVals{
-		prog:           prog,
-		ptrRes:         ptrRes,
-		allInstrs:      allInstrs,
-		allValues:      allVals,
-		reachableFuncs: reachable,
+		prog:             prog,
+		ptrRes:           ptrRes,
+		allInstrs:        allInstrs,
+		allValues:        allVals,
+		reachableFuncs:   reachable,
+		transitivePtrsTo: make(map[ssa.Value][]pointer.Pointer, len(allVals)),
+		aliasesOf:        make(map[pointer.Pointer]map[ssa.Value]struct{}),
 	}
 
 	errs := []error{}
@@ -96,16 +74,6 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 	return Result{
 		Modifications: modifications,
 	}, errors.Join(errs...)
-}
-
-// progVals contains all the usable SSA instructions/values in the program used
-// for the analysis.
-type progVals struct {
-	prog           *ssa.Program
-	ptrRes         *pointer.Result
-	allInstrs      map[ssa.Instruction]struct{}
-	allValues      map[ssa.Value]struct{}
-	reachableFuncs map[*ssa.Function]bool
 }
 
 // analyze runs the analysis for a single spec and adds the write instructions to modifications.
@@ -121,8 +89,8 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 	entrypoints := findEntrypoints(prog, reachable, spec, ptrRes)
 	for entry := range entrypoints {
 		val := entry.Val
-		if !lang.IsNillableType(val.Type()) {
-			errs = append(errs, fmt.Errorf("invalid entrypoint type: %v", val.Type()))
+		if !pointer.CanPoint(val.Type()) {
+			errs = append(errs, fmt.Errorf("entrypoint is a non-pointer type: %v", val.Type()))
 			continue
 		}
 
@@ -134,8 +102,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 			writesToAlias: make(map[ssa.Value]map[ssa.Instruction]struct{}),
 			filterValue:   shouldFilter,
 		}
-		aliases := make(map[pointer.Pointer]struct{})
-		lang.FindTransitivePointers(ptrRes, reachable, val, aliases)
+		aliases := s.progVals.transitivePointersTo(val)
 		s.findWritesToAliases(aliases)
 		for _, instrs := range s.writesToAlias {
 			for instr := range instrs {
@@ -167,11 +134,11 @@ type state struct {
 }
 
 // findWritesToAliases adds all write instructions to transitive aliases of aliases to s.writesToAlias.
-func (s *state) findWritesToAliases(aliases map[pointer.Pointer]struct{}) {
+func (s *state) findWritesToAliases(aliases []pointer.Pointer) {
 	log := s.log
-	for ptr := range aliases {
+	for _, ptr := range aliases {
 		allAliases := make(map[ssa.Value]struct{})
-		lang.FindAllMayAliases(s.ptrRes, s.reachableFuncs, s.allValues, ptr, allAliases)
+		s.progVals.allAliasesOf(ptr, allAliases)
 		for alias := range allAliases {
 			if s.filterValue(s.spec, alias) {
 				log.Tracef("alias %v filtered by spec\n", alias)
@@ -209,24 +176,18 @@ func (s *state) findWritesToAliases(aliases map[pointer.Pointer]struct{}) {
 
 // addTransitiveMayAliases adds all transitive aliases of alias to allAliases.
 func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Value]struct{}) {
-	visit := make(map[pointer.Pointer]struct{})
-	lang.FindTransitivePointers(s.ptrRes, s.reachableFuncs, alias, visit)
+	visit := s.progVals.transitivePointersTo(alias)
 	seen := make(map[pointer.Pointer]struct{})
 	for len(visit) > 0 {
-		var cur pointer.Pointer
-		for v := range visit {
-			// pick any value from the map
-			cur = v
-			break
-		}
-		delete(visit, cur)
+		cur := visit[len(visit)-1]
+		visit = visit[0 : len(visit)-1]
 		if _, ok := seen[cur]; ok {
 			continue
 		}
 		seen[cur] = struct{}{}
 
 		newAliases := make(map[ssa.Value]struct{})
-		lang.FindAllMayAliases(s.ptrRes, s.reachableFuncs, s.allValues, cur, newAliases)
+		s.progVals.allAliasesOf(cur, newAliases)
 		for a := range newAliases {
 			if _, ok := allAliases[a]; ok || s.filterValue(s.spec, a) {
 				continue
@@ -234,13 +195,51 @@ func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Valu
 
 			allAliases[a] = struct{}{}
 			s.log.Tracef("found transitive alias of %v: %v (%v) in %v\n", alias, a, a.Name(), a.Parent())
-			lang.FindTransitivePointers(s.ptrRes, s.reachableFuncs, a, visit)
+			for _, next := range s.progVals.transitivePointersTo(a) {
+				visit = append(visit, next)
+			}
 		}
 	}
 }
 
-func allProgramInstrs(prog *ssa.Program) map[ssa.Instruction]struct{} {
-	fns := ssautil.AllFunctions(prog)
+// progVals contains all the usable SSA instructions/values in the program used
+// for the analysis.
+type progVals struct {
+	prog           *ssa.Program
+	ptrRes         *pointer.Result
+	allInstrs      map[ssa.Instruction]struct{}
+	allValues      map[ssa.Value]struct{}
+	reachableFuncs map[*ssa.Function]bool
+	// transitivePtrsTo stores the set of transitive pointers to a value.
+	transitivePtrsTo map[ssa.Value][]pointer.Pointer
+	// aliasesOf stores the set of values that are in the points-to set of a pointer.
+	aliasesOf map[pointer.Pointer]map[ssa.Value]struct{}
+}
+
+func (pv *progVals) transitivePointersTo(val ssa.Value) []pointer.Pointer {
+	// if p, ok := pv.transitivePtrsTo[val]; ok && len(p) > 0 {
+	// 	return p
+	// }
+
+	ptrs := lang.FindTransitivePointers(pv.ptrRes, pv.reachableFuncs, val)
+	// pv.transitivePtrsTo[val] = ptrs
+	return ptrs
+}
+
+func (pv *progVals) allAliasesOf(ptr pointer.Pointer, aliases map[ssa.Value]struct{}) {
+	if a, ok := pv.aliasesOf[ptr]; ok && len(a) > 0 {
+		for v := range a {
+			aliases[v] = struct{}{}
+		}
+
+		return
+	}
+
+	lang.FindAllMayAliases(pv.ptrRes, pv.reachableFuncs, pv.allValues, ptr, aliases)
+	pv.aliasesOf[ptr] = aliases
+}
+
+func allProgramInstrs(fns map[*ssa.Function]bool) map[ssa.Instruction]struct{} {
 	res := make(map[ssa.Instruction]struct{})
 	for fn := range fns {
 		if fn == nil {
@@ -249,6 +248,21 @@ func allProgramInstrs(prog *ssa.Program) map[ssa.Instruction]struct{} {
 
 		lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
 			res[instr] = struct{}{}
+		})
+	}
+
+	return res
+}
+
+func allProgramValues(fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
+	res := make(map[ssa.Value]struct{})
+	for fn := range fns {
+		if fn == nil {
+			continue
+		}
+
+		lang.IterateValues(fn, func(_ int, val ssa.Value) {
+			res[val] = struct{}{}
 		})
 	}
 
@@ -313,13 +327,6 @@ func findEntrypoint(prog *ssa.Program, ptrRes *pointer.Result, spec config.ModVa
 	}
 
 	return Entrypoint{}, false
-}
-
-// isDefaultFiltered returns true if f is in a vendored dependency or
-// the Go standard library.
-func isDefaultFiltered(prog *ssa.Program, goroot string, f *ssa.Function) bool {
-	pos := prog.Fset.Position(f.Pos())
-	return strings.Contains(pos.Filename, "vendor") || strings.Contains(pos.Filename, goroot)
 }
 
 // isConfigFiltered returns true if f should be filtered according to spec.
