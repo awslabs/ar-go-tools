@@ -40,6 +40,8 @@ type Result struct {
 type Entrypoint struct {
 	// Val is the argument value.
 	Val ssa.Value
+	// Call is the call instruction containing the argument.
+	Call ssa.CallInstruction
 	// Pos is the position of the callsite, not the argument value itself.
 	Pos token.Position
 }
@@ -107,8 +109,8 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 		reachableVals := allValues(reachableFns)
 		reachableInstrs := allInstrs(reachableFns)
 
-		log.Infof("ENTRY: %v in %v at %v\n", val, val.Parent(), entry.Pos)
-		log.Tracef("\tnumber of reachable vals: %v\n", len(reachableVals))
+		log.Infof("ENTRY: %v of %v in %v at %v\n", val.Name(), entry.Call, val.Parent(), entry.Pos)
+		log.Debugf("\tnumber of reachable vals: %v\n", len(reachableVals))
 		s := &state{
 			progVals:                 pv,
 			log:                      log,
@@ -351,7 +353,7 @@ func findEntrypoint(prog *ssa.Program, ptrRes *pointer.Result, spec config.ModVa
 		}
 
 		val := args[idx]
-		return Entrypoint{Val: val, Pos: callPos}, true
+		return Entrypoint{Val: val, Call: call, Pos: callPos}, true
 	}
 
 	return Entrypoint{}, false

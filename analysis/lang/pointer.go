@@ -102,7 +102,6 @@ func reachable(cg *callgraph.Graph, entryPoints []*callgraph.Node, filter func(*
 	reachable := make(map[*ssa.Function]bool, len(cg.Nodes))
 	frontier := make([]*callgraph.Node, 0)
 	for _, node := range entryPoints {
-		//	node := cg.Root
 		reachable[node.Func] = true
 		frontier = append(frontier, node)
 	}
