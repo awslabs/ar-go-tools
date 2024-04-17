@@ -152,8 +152,26 @@ func exTrackInterface() {
 	v.track()                  // @ModSource(exTrackInterface)
 }
 
+func exModClosure() {
+	x := new(int) // @Mod(exModClosure)
+	f := func() {
+		*x = 1 // @Mod(exModClosure)
+	}
+	f()
+	trackInt(x) // @ModSource(exModClosure) // prints 1
+}
+
+func exModClosureInter() {
+	x := new(int) // @Mod(exModClosureInter)
+	f := func() {
+		mod(x)
+	}
+	f()
+	trackInt(x) // @ModSource(exModClosureInter) // prints 1
+}
+
 func mod(x *int) {
-	*x++ // @Mod(exModInter, exModStructAliasInter, exModStructFieldRefInter, exModStructRefInter, exModStructInter, exModStructFieldRefAliasInter)
+	*x++ // @Mod(exModInter, exModStructAliasInter, exModStructFieldRefInter, exModStructRefInter, exModStructInter, exModStructFieldRefAliasInter, exModClosureInter)
 }
 
 func main() {
@@ -191,6 +209,10 @@ func main() {
 	exModStructFieldVal()
 	fmt.Println("exTrackInterface")
 	exTrackInterface()
+	fmt.Println("exModClosure")
+	exModClosure()
+	fmt.Println("exModClosureInter")
+	exModClosureInter()
 }
 
 type t struct {
