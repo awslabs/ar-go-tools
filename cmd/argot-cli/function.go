@@ -244,35 +244,18 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 		}
 	})
 
-<<<<<<< HEAD
-	// reachable := c.ReachableFunctions(false, false)
-	// allValues := lang.AllValues(c.Program)
-	for v1 := range values1 {
-		// ptrs := make(map[pointer.Pointer]struct{})
-		// lang.FindTransitivePointers(c.PointerAnalysis, reachable, v1, ptrs)
-		// for ptr := range ptrs {
-		// 	allAliases := make(map[ssa.Value]struct{})
-		// 	lang.FindAllMayAliases(c.PointerAnalysis, reachable, allValues, ptr, allAliases)
-		// 	writeFmt(tt, "%s may alias with:\n", v1.Name())
-		// 	for alias := range allAliases {
-		// 		writeFmt(tt, "\t%s (%s) in %s\n", alias.Name(), alias, alias.Parent())
-		// 	}
-		// }
-=======
 	reachable := c.ReachableFunctions(false, false)
 	allVals := allValues(reachable)
 	for v1 := range values1 {
-		ptrs := make(map[pointer.Pointer]struct{})
-		lang.FindTransitivePointers(c.PointerAnalysis, ptrs)
-		for ptr := range ptrs {
+		ptrs := lang.FindTransitivePointers(c.PointerAnalysis, v1)
+		for _, ptr := range ptrs {
 			allAliases := make(map[ssa.Value]struct{})
 			lang.FindAllMayAliases(c.PointerAnalysis, allVals, ptr, allAliases)
-			writeFmt(tt, "%s may alias with:\n", v1.Name())
+			writeFmt(tt, "[inter]    %s may alias with:\n", v1.Name())
 			for alias := range allAliases {
 				writeFmt(tt, "\t%s (%s) in %s\n", alias.Name(), alias, alias.Parent())
 			}
 		}
->>>>>>> diodon-wip
 
 		if ptr, ptrExists := c.PointerAnalysis.Queries[v1]; ptrExists {
 			writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
@@ -478,12 +461,7 @@ func showValue(tt *term.Terminal, c *dataflow.AnalyzerState, val ssa.Value) {
 		writeFmt(tt, "  indirect aliases:\n")
 		showPointer(tt, c.PointerAnalysis.IndirectQueries[val])
 	}
-<<<<<<< HEAD
 	allPtrs := lang.FindTransitivePointers(c.PointerAnalysis, val)
-=======
-	allPtrs := make(map[pointer.Pointer]struct{})
-	lang.FindTransitivePointers(c.PointerAnalysis, allPtrs)
->>>>>>> diodon-wip
 	if len(allPtrs) > 0 {
 		writeFmt(tt, "  transitive pointers:\n")
 		for _, ptr := range allPtrs {
