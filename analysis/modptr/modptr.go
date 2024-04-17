@@ -85,11 +85,11 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 		return val == nil || isConfigFiltered(spec, val.Parent())
 	}
 	filterFn := func(fn *ssa.Function) bool {
-		res := isConfigFiltered(spec, fn)
-		if res {
-			log.Infof("FILTERED: %v\n", fn)
+		if isPure(fn) {
+			return true
 		}
-		return res
+
+		return isConfigFiltered(spec, fn)
 	}
 
 	var errs []error
@@ -101,35 +101,22 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 			continue
 		}
 		parent := val.Parent()
+		// only analyze the functions that are reachable from the function that
+		// calls the entrypoint and are not pure.
 		reachableFns := lang.ReachableFrom(ptrRes.CallGraph, parent, filterFn)
-		// prune search space by filtering functions that do not need to be
-		// analyzed
-		for fn := range reachableFns {
-			if fn == parent {
-				continue
-			}
-
-			if cannotModify(fn) {
-				log.Infof("FILTERED: %v\n", fn)
-				delete(reachableFns, fn)
-			}
-		}
-		for fn := range reachableFns {
-			log.Infof("REACHABLE: %v\n", fn)
-		}
 		reachableVals := allValues(reachableFns)
 		reachableInstrs := allInstrs(reachableFns)
 
 		log.Infof("ENTRY: %v in %v at %v\n", val, val.Parent(), entry.Pos)
-		log.Infof("\tnumber of reachable vals: %v\n", len(reachableVals))
+		log.Tracef("\tnumber of reachable vals: %v\n", len(reachableVals))
 		s := &state{
-			progVals:        pv,
-			log:             log,
-			spec:            spec,
-			writesToAlias:   make(map[ssa.Value]map[ssa.Instruction]struct{}),
-			filterValue:     shouldFilter,
-			reachableVals:   reachableVals,
-			reachableInstrs: reachableInstrs,
+			progVals:                 pv,
+			log:                      log,
+			spec:                     spec,
+			writesToAlias:            make(map[ssa.Value]map[ssa.Instruction]struct{}),
+			filterValue:              shouldFilter,
+			valsReachableFromEntry:   reachableVals,
+			instrsReachableFromEntry: reachableInstrs,
 		}
 		aliases := s.progVals.transitivePointersTo(val)
 		s.findWritesToAliases(aliases)
@@ -154,8 +141,8 @@ type state struct {
 	log  *config.LogGroup
 	spec config.ModValSpec
 
-	reachableInstrs map[ssa.Instruction]struct{}
-	reachableVals   map[ssa.Value]struct{}
+	instrsReachableFromEntry map[ssa.Instruction]struct{}
+	valsReachableFromEntry   map[ssa.Value]struct{}
 	// filterValue returns true if the value should be filtered
 	// according to the spec.
 	filterValue func(config.ModValSpec, ssa.Value) bool
@@ -171,7 +158,7 @@ func (s *state) findWritesToAliases(aliases []pointer.Pointer) {
 		allAliases := make(map[ssa.Value]struct{})
 		s.progVals.allAliasesOf(ptr, allAliases)
 		for alias := range allAliases {
-			if _, ok := s.reachableVals[alias]; !ok {
+			if _, ok := s.valsReachableFromEntry[alias]; !ok {
 				delete(allAliases, alias)
 			}
 			if s.filterValue(s.spec, alias) {
@@ -188,19 +175,19 @@ func (s *state) findWritesToAliases(aliases []pointer.Pointer) {
 		}
 
 		for alias := range allAliases {
-			log.Tracef("Alias %v: %v in %v\n", alias.Name(), alias, alias.Parent())
+			log.Tracef("alias %v: %v in %v\n", alias.Name(), alias, alias.Parent())
 			if _, ok := s.writesToAlias[alias]; !ok {
 				s.writesToAlias[alias] = make(map[ssa.Instruction]struct{})
 			}
 
-			for instr := range s.reachableInstrs {
+			for instr := range s.instrsReachableFromEntry {
 				allocs := false
 				if alloc, ok := instr.(*ssa.Alloc); ok {
 					allocs = alloc == alias
 				}
 
 				if _, ok := lang.InstrWritesToVal(instr, alias); ok || allocs {
-					log.Tracef("Instr %v writes to alias %v\n", instr, alias)
+					log.Tracef("instr %v writes to alias %v\n", instr, alias)
 					s.writesToAlias[alias][instr] = struct{}{}
 				}
 			}
@@ -226,7 +213,7 @@ func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Valu
 			if _, ok := allAliases[a]; ok || s.filterValue(s.spec, a) {
 				continue
 			}
-			if _, ok := s.reachableVals[a]; !ok {
+			if _, ok := s.valsReachableFromEntry[a]; !ok {
 				continue
 			}
 
@@ -254,12 +241,12 @@ type progVals struct {
 }
 
 func (pv *progVals) transitivePointersTo(val ssa.Value) []pointer.Pointer {
-	// if p, ok := pv.transitivePtrsTo[val]; ok && len(p) > 0 {
-	// 	return p
-	// }
+	if p, ok := pv.transitivePtrsTo[val]; ok && len(p) > 0 {
+		return p
+	}
 
-	ptrs := lang.FindTransitivePointers(pv.ptrRes, pv.reachableFuncs, val)
-	// pv.transitivePtrsTo[val] = ptrs
+	ptrs := lang.FindTransitivePointers(pv.ptrRes, val)
+	pv.transitivePtrsTo[val] = ptrs
 	return ptrs
 }
 
@@ -272,7 +259,7 @@ func (pv *progVals) allAliasesOf(ptr pointer.Pointer, aliases map[ssa.Value]stru
 		return
 	}
 
-	lang.FindAllMayAliases(pv.ptrRes, pv.reachableFuncs, pv.allValues, ptr, aliases)
+	lang.FindAllMayAliases(pv.ptrRes, pv.allValues, ptr, aliases)
 	pv.aliasesOf[ptr] = aliases
 }
 
@@ -370,12 +357,16 @@ func findEntrypoint(prog *ssa.Program, ptrRes *pointer.Result, spec config.ModVa
 	return Entrypoint{}, false
 }
 
-// cannotModify returns true if no instruction in the body of the function can
+// isPure returns true if no instruction in the body of the function can
 // modify a value outside the function body, or the function does not return a
 // pointer.
 //
 // We assume that the analysis is not tracking modifications to a global value.
-func cannotModify(f *ssa.Function) bool {
+func isPure(f *ssa.Function) bool {
+	if _, ok := pureFunctions[f.String()]; ok {
+		return true
+	}
+
 	for _, param := range f.Params {
 		if pointer.CanPoint(param.Type()) {
 			return false
@@ -410,4 +401,16 @@ func isConfigFiltered(spec config.ModValSpec, f *ssa.Function) bool {
 	}
 
 	return false
+}
+
+// pureFunctions represents all the functions that do not modify external state.
+//
+// This assumes that the arguments' String() methods are also pure, which is the
+// same assumption that the dataflow analysis makes.
+var pureFunctions = map[string]struct{}{
+	"print":       {},
+	"println":     {},
+	"fmt.Print":   {},
+	"fmt.Printf":  {},
+	"fmt.Println": {},
 }

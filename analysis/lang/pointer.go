@@ -34,7 +34,7 @@ func FindAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
 }
 
 // FindTransitivePointers adds all transitive pointers of v to ptrs.
-func FindTransitivePointers(ptrRes *pointer.Result, reachable map[*ssa.Function]bool, v ssa.Value) []pointer.Pointer {
+func FindTransitivePointers(ptrRes *pointer.Result, v ssa.Value) []pointer.Pointer {
 	stack := FindAllPointers(ptrRes, v)
 	seen := make(map[pointer.Pointer]struct{})
 	var res []pointer.Pointer
@@ -64,13 +64,13 @@ func FindTransitivePointers(ptrRes *pointer.Result, reachable map[*ssa.Function]
 }
 
 // FindAllMayAliases populates aliases with all the values that may-alias ptr.
-func FindAllMayAliases(res *pointer.Result, reachable map[*ssa.Function]bool, allValues map[ssa.Value]struct{}, ptr pointer.Pointer, aliases map[ssa.Value]struct{}) {
+func FindAllMayAliases(res *pointer.Result, allValues map[ssa.Value]struct{}, ptr pointer.Pointer, aliases map[ssa.Value]struct{}) {
 	for val := range allValues {
 		if _, ok := aliases[val]; ok {
 			continue
 		}
 
-		ptrs := FindTransitivePointers(res, reachable, val)
+		ptrs := FindTransitivePointers(res, val)
 		for _, valPtr := range ptrs {
 			if valPtr.MayAlias(ptr) {
 				aliases[val] = struct{}{}
