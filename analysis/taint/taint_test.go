@@ -197,9 +197,9 @@ func TestPlayground(t *testing.T) {
 }
 
 func TestDiodon_Example(t *testing.T) {
-	runTest(t, "diodon-example", []string{}, false, noErrorExpected)
+	runTest(t, "../diodon/diodon-example", []string{}, false, noErrorExpected)
 }
 
 func TestDiodon_Agent(t *testing.T) {
-	runTest(t, "diodon-agent", []string{}, false, noErrorExpected)
+	runTest(t, "../diodon/diodon-agent", []string{}, false, noErrorExpected)
 }

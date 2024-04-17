@@ -34,6 +34,7 @@ func main() {
 		time.Sleep(1 * time.Second)
 		msg = []byte("bye world")
 	}()
+	c.Safe = append(c.Safe, 0x0) // @Mod(channel)
 	invalidate(&c.Safe)
 	Send(c, msg /*@ ,1 @*/)  // @Source(channel) // @Escape(msg) // @ModSource(channel)
 	fmt.Printf("%v", c)      // @Sink(secret, secret2)

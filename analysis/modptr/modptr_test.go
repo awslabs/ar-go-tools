@@ -52,7 +52,7 @@ func TestAnalyze_DiodonExample(t *testing.T) {
 	// Change directory to the testdata folder to be able to load packages
 	dirName := "diodon-example"
 	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", dirName)
+	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "diodon", dirName)
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)
@@ -65,7 +65,7 @@ func TestAnalyze_DiodonAgent(t *testing.T) {
 	// Change directory to the testdata folder to be able to load packages
 	dirName := "diodon-agent"
 	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", dirName)
+	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "diodon", dirName)
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)
