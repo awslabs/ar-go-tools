@@ -244,6 +244,7 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 		}
 	})
 
+<<<<<<< HEAD
 	// reachable := c.ReachableFunctions(false, false)
 	// allValues := lang.AllValues(c.Program)
 	for v1 := range values1 {
@@ -257,6 +258,21 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 		// 		writeFmt(tt, "\t%s (%s) in %s\n", alias.Name(), alias, alias.Parent())
 		// 	}
 		// }
+=======
+	reachable := c.ReachableFunctions(false, false)
+	allVals := allValues(reachable)
+	for v1 := range values1 {
+		ptrs := make(map[pointer.Pointer]struct{})
+		lang.FindTransitivePointers(c.PointerAnalysis, ptrs)
+		for ptr := range ptrs {
+			allAliases := make(map[ssa.Value]struct{})
+			lang.FindAllMayAliases(c.PointerAnalysis, allVals, ptr, allAliases)
+			writeFmt(tt, "%s may alias with:\n", v1.Name())
+			for alias := range allAliases {
+				writeFmt(tt, "\t%s (%s) in %s\n", alias.Name(), alias, alias.Parent())
+			}
+		}
+>>>>>>> diodon-wip
 
 		if ptr, ptrExists := c.PointerAnalysis.Queries[v1]; ptrExists {
 			writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
@@ -278,6 +294,17 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 	}
 
 	return false
+}
+
+func allValues(fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
+	res := make(map[ssa.Value]struct{})
+	for fn := range fns {
+		lang.IterateValues(fn, func(_ int, val ssa.Value) {
+			res[val] = struct{}{}
+		})
+	}
+
+	return res
 }
 
 func printAliases(tt *term.Terminal, c *dataflow.AnalyzerState, v2 ssa.Value, ptr pointer.Pointer) {
@@ -451,7 +478,12 @@ func showValue(tt *term.Terminal, c *dataflow.AnalyzerState, val ssa.Value) {
 		writeFmt(tt, "  indirect aliases:\n")
 		showPointer(tt, c.PointerAnalysis.IndirectQueries[val])
 	}
-	allPtrs := lang.FindTransitivePointers(c.PointerAnalysis, c.ReachableFunctions(false, false), val)
+<<<<<<< HEAD
+	allPtrs := lang.FindTransitivePointers(c.PointerAnalysis, val)
+=======
+	allPtrs := make(map[pointer.Pointer]struct{})
+	lang.FindTransitivePointers(c.PointerAnalysis, allPtrs)
+>>>>>>> diodon-wip
 	if len(allPtrs) > 0 {
 		writeFmt(tt, "  transitive pointers:\n")
 		for _, ptr := range allPtrs {

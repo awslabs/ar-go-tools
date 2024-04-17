@@ -52,8 +52,8 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 
 	reachable := ssautil.AllFunctions(prog)
 	// reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false)
-	allInstrs := allProgramInstrs(reachable)
-	allVals := allProgramValues(reachable)
+	allInstrs := allInstrs(reachable)
+	allVals := allValues(reachable)
 	pv := progVals{
 		prog:             prog,
 		ptrRes:           ptrRes,
@@ -64,7 +64,7 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 		aliasesOf:        make(map[pointer.Pointer]map[ssa.Value]struct{}),
 	}
 
-	errs := []error{}
+	var errs []error
 	for _, spec := range cfg.ModificationTrackingProblems {
 		if err := analyze(log, spec, pv, modifications); err != nil {
 			errs = append(errs, fmt.Errorf("analysis failed for spec %v: %v", spec, err))
@@ -84,8 +84,15 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 	shouldFilter := func(spec config.ModValSpec, val ssa.Value) bool {
 		return val == nil || isConfigFiltered(spec, val.Parent())
 	}
+	filterFn := func(fn *ssa.Function) bool {
+		res := isConfigFiltered(spec, fn)
+		if res {
+			log.Infof("FILTERED: %v\n", fn)
+		}
+		return res
+	}
 
-	errs := []error{}
+	var errs []error
 	entrypoints := findEntrypoints(prog, reachable, spec, ptrRes)
 	for entry := range entrypoints {
 		val := entry.Val
@@ -93,14 +100,36 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 			errs = append(errs, fmt.Errorf("entrypoint is a non-pointer type: %v", val.Type()))
 			continue
 		}
+		parent := val.Parent()
+		reachableFns := lang.ReachableFrom(ptrRes.CallGraph, parent, filterFn)
+		// prune search space by filtering functions that do not need to be
+		// analyzed
+		for fn := range reachableFns {
+			if fn == parent {
+				continue
+			}
+
+			if cannotModify(fn) {
+				log.Infof("FILTERED: %v\n", fn)
+				delete(reachableFns, fn)
+			}
+		}
+		for fn := range reachableFns {
+			log.Infof("REACHABLE: %v\n", fn)
+		}
+		reachableVals := allValues(reachableFns)
+		reachableInstrs := allInstrs(reachableFns)
 
 		log.Infof("ENTRY: %v in %v at %v\n", val, val.Parent(), entry.Pos)
+		log.Infof("\tnumber of reachable vals: %v\n", len(reachableVals))
 		s := &state{
-			progVals:      pv,
-			log:           log,
-			spec:          spec,
-			writesToAlias: make(map[ssa.Value]map[ssa.Instruction]struct{}),
-			filterValue:   shouldFilter,
+			progVals:        pv,
+			log:             log,
+			spec:            spec,
+			writesToAlias:   make(map[ssa.Value]map[ssa.Instruction]struct{}),
+			filterValue:     shouldFilter,
+			reachableVals:   reachableVals,
+			reachableInstrs: reachableInstrs,
 		}
 		aliases := s.progVals.transitivePointersTo(val)
 		s.findWritesToAliases(aliases)
@@ -119,12 +148,14 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 }
 
 // state represents the analysis state.
-// This tracks writes to a single value.
+// This tracks writes to a single value (entrypoint).
 type state struct {
 	progVals
 	log  *config.LogGroup
 	spec config.ModValSpec
 
+	reachableInstrs map[ssa.Instruction]struct{}
+	reachableVals   map[ssa.Value]struct{}
 	// filterValue returns true if the value should be filtered
 	// according to the spec.
 	filterValue func(config.ModValSpec, ssa.Value) bool
@@ -140,6 +171,9 @@ func (s *state) findWritesToAliases(aliases []pointer.Pointer) {
 		allAliases := make(map[ssa.Value]struct{})
 		s.progVals.allAliasesOf(ptr, allAliases)
 		for alias := range allAliases {
+			if _, ok := s.reachableVals[alias]; !ok {
+				delete(allAliases, alias)
+			}
 			if s.filterValue(s.spec, alias) {
 				log.Tracef("alias %v filtered by spec\n", alias)
 				delete(allAliases, alias)
@@ -159,7 +193,7 @@ func (s *state) findWritesToAliases(aliases []pointer.Pointer) {
 				s.writesToAlias[alias] = make(map[ssa.Instruction]struct{})
 			}
 
-			for instr := range s.allInstrs {
+			for instr := range s.reachableInstrs {
 				allocs := false
 				if alloc, ok := instr.(*ssa.Alloc); ok {
 					allocs = alloc == alias
@@ -190,6 +224,9 @@ func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Valu
 		s.progVals.allAliasesOf(cur, newAliases)
 		for a := range newAliases {
 			if _, ok := allAliases[a]; ok || s.filterValue(s.spec, a) {
+				continue
+			}
+			if _, ok := s.reachableVals[a]; !ok {
 				continue
 			}
 
@@ -239,14 +276,14 @@ func (pv *progVals) allAliasesOf(ptr pointer.Pointer, aliases map[ssa.Value]stru
 	pv.aliasesOf[ptr] = aliases
 }
 
-func allProgramInstrs(fns map[*ssa.Function]bool) map[ssa.Instruction]struct{} {
+func allInstrs(fns map[*ssa.Function]bool) map[ssa.Instruction]struct{} {
 	res := make(map[ssa.Instruction]struct{})
 	for fn := range fns {
-		if fn == nil {
-			continue
-		}
-
 		lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
+			if instr == nil || instr.Parent() == nil {
+				return
+			}
+
 			res[instr] = struct{}{}
 		})
 	}
@@ -254,7 +291,7 @@ func allProgramInstrs(fns map[*ssa.Function]bool) map[ssa.Instruction]struct{} {
 	return res
 }
 
-func allProgramValues(fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
+func allValues(fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
 	res := make(map[ssa.Value]struct{})
 	for fn := range fns {
 		if fn == nil {
@@ -262,6 +299,10 @@ func allProgramValues(fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
 		}
 
 		lang.IterateValues(fn, func(_ int, val ssa.Value) {
+			if val == nil || val.Parent() == nil {
+				return
+			}
+
 			res[val] = struct{}{}
 		})
 	}
@@ -327,6 +368,35 @@ func findEntrypoint(prog *ssa.Program, ptrRes *pointer.Result, spec config.ModVa
 	}
 
 	return Entrypoint{}, false
+}
+
+// cannotModify returns true if no instruction in the body of the function can
+// modify a value outside the function body, or the function does not return a
+// pointer.
+//
+// We assume that the analysis is not tracking modifications to a global value.
+func cannotModify(f *ssa.Function) bool {
+	for _, param := range f.Params {
+		if pointer.CanPoint(param.Type()) {
+			return false
+		}
+	}
+
+	for _, fv := range f.FreeVars {
+		if pointer.CanPoint(fv.Type()) {
+			return false
+		}
+	}
+
+	results := f.Signature.Results()
+	for i := 0; i < results.Len(); i++ {
+		ret := results.At(i)
+		if pointer.CanPoint(ret.Type()) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // isConfigFiltered returns true if f should be filtered according to spec.

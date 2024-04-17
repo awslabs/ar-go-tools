@@ -51,10 +51,6 @@ func FindTransitivePointers(ptrRes *pointer.Result, reachable map[*ssa.Function]
 			if val == nil || val.Parent() == nil {
 				continue
 			}
-			if _, ok := reachable[val.Parent()]; !ok {
-				// skip unreachable values
-				continue
-			}
 
 			ptrs := FindAllPointers(ptrRes, val)
 			stack = append(stack, ptrs...)
@@ -83,14 +79,28 @@ func FindAllMayAliases(res *pointer.Result, reachable map[*ssa.Function]bool, al
 	}
 }
 
+// ReachableFrom returns the functions reachable from from
+// according to cg.
+func ReachableFrom(cg *callgraph.Graph, from *ssa.Function, filter func(*ssa.Function) bool) map[*ssa.Function]bool {
+	var nodes []*callgraph.Node
+	for f, node := range cg.Nodes {
+		if f == from {
+			nodes = append(nodes, node)
+		}
+	}
+
+	return reachable(cg, nodes, filter)
+}
+
 // CallGraphReachable returns a map where each entry is a reachable function
 func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
 	entryPoints := findCallgraphEntryPoints(cg, excludeMain, excludeInit)
+	return reachable(cg, entryPoints, func(*ssa.Function) bool { return false })
+}
 
+func reachable(cg *callgraph.Graph, entryPoints []*callgraph.Node, filter func(*ssa.Function) bool) map[*ssa.Function]bool {
 	reachable := make(map[*ssa.Function]bool, len(cg.Nodes))
-
 	frontier := make([]*callgraph.Node, 0)
-
 	for _, node := range entryPoints {
 		//	node := cg.Root
 		reachable[node.Func] = true
@@ -101,6 +111,9 @@ func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool)
 		node := frontier[len(frontier)-1]
 		frontier = frontier[:len(frontier)-1]
 		for _, edge := range node.Out {
+			if filter(edge.Callee.Func) {
+				continue
+			}
 			if !reachable[edge.Callee.Func] {
 				reachable[edge.Callee.Func] = true
 				frontier = append(frontier, edge.Callee)
