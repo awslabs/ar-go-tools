@@ -18,7 +18,6 @@ import (
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // FindAllPointers returns all the pointers that point to v.
@@ -35,7 +34,7 @@ func FindAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
 }
 
 // FindTransitivePointers adds all transitive pointers of v to ptrs.
-func FindTransitivePointers(res *pointer.Result, reachable map[*ssa.Function]bool, v ssa.Value, ptrs map[pointer.Pointer]struct{}) {
+func FindTransitivePointers(res *pointer.Result, v ssa.Value, ptrs map[pointer.Pointer]struct{}) {
 	stack := FindAllPointers(res, v)
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
@@ -50,10 +49,6 @@ func FindTransitivePointers(res *pointer.Result, reachable map[*ssa.Function]boo
 			if val == nil || val.Parent() == nil {
 				continue
 			}
-			if _, ok := reachable[val.Parent()]; !ok {
-				// skip unreachable values
-				continue
-			}
 
 			ptrs := FindAllPointers(res, val)
 			stack = append(stack, ptrs...)
@@ -62,9 +57,8 @@ func FindTransitivePointers(res *pointer.Result, reachable map[*ssa.Function]boo
 }
 
 // AllValues returns all the values in prog.
-func AllValues(prog *ssa.Program) map[ssa.Value]struct{} {
+func AllValues(fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
 	vals := make(map[ssa.Value]struct{})
-	fns := ssautil.AllFunctions(prog)
 	for fn := range fns {
 		IterateValues(fn, func(_ int, val ssa.Value) {
 			vals[val] = struct{}{}
@@ -75,14 +69,14 @@ func AllValues(prog *ssa.Program) map[ssa.Value]struct{} {
 }
 
 // FindAllMayAliases populates aliases with all the values that may-alias ptr.
-func FindAllMayAliases(res *pointer.Result, reachable map[*ssa.Function]bool, allValues map[ssa.Value]struct{}, ptr pointer.Pointer, aliases map[ssa.Value]struct{}) {
+func FindAllMayAliases(res *pointer.Result, allValues map[ssa.Value]struct{}, ptr pointer.Pointer, aliases map[ssa.Value]struct{}) {
 	for val := range allValues {
 		if _, ok := aliases[val]; ok {
 			continue
 		}
 
 		ptrs := make(map[pointer.Pointer]struct{})
-		FindTransitivePointers(res, reachable, val, ptrs)
+		FindTransitivePointers(res, val, ptrs)
 		for valPtr := range ptrs {
 			if valPtr.MayAlias(ptr) {
 				aliases[val] = struct{}{}
@@ -91,14 +85,28 @@ func FindAllMayAliases(res *pointer.Result, reachable map[*ssa.Function]bool, al
 	}
 }
 
+// ReachableFrom returns the functions reachable from from
+// according to cg.
+func ReachableFrom(cg *callgraph.Graph, from *ssa.Function, filter func(*ssa.Function) bool) map[*ssa.Function]bool {
+	var nodes []*callgraph.Node
+	for f, node := range cg.Nodes {
+		if f == from {
+			nodes = append(nodes, node)
+		}
+	}
+
+	return reachable(cg, nodes, filter)
+}
+
 // CallGraphReachable returns a map where each entry is a reachable function
 func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
 	entryPoints := findCallgraphEntryPoints(cg, excludeMain, excludeInit)
+	return reachable(cg, entryPoints, func(*ssa.Function) bool { return false })
+}
 
+func reachable(cg *callgraph.Graph, entryPoints []*callgraph.Node, filter func(*ssa.Function) bool) map[*ssa.Function]bool {
 	reachable := make(map[*ssa.Function]bool, len(cg.Nodes))
-
 	frontier := make([]*callgraph.Node, 0)
-
 	for _, node := range entryPoints {
 		//	node := cg.Root
 		reachable[node.Func] = true
@@ -109,6 +117,9 @@ func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool)
 		node := frontier[len(frontier)-1]
 		frontier = frontier[:len(frontier)-1]
 		for _, edge := range node.Out {
+			if filter(edge.Callee.Func) {
+				continue
+			}
 			if !reachable[edge.Callee.Func] {
 				reachable[edge.Callee.Func] = true
 				frontier = append(frontier, edge.Callee)
