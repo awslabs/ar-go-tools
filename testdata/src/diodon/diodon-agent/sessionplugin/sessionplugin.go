@@ -25,12 +25,14 @@ func ExecuteSessionPlugin() {
 	dc, err := getDataChannel()
 	if err != nil { //argot:ignore
 		fmt.Println(err)
+		return
 	}
 	id := dc.LogReaderId()
 	*id = ""                    // @Mod(dc)
 	err = dc.PerformHandshake() // @ModSource(dc)
 	if err != nil {             //argot:ignore
 		fmt.Println(err)
+		return
 	}
 	fmt.Println(dc.LogReaderId())
 }

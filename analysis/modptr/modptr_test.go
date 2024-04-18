@@ -86,6 +86,9 @@ func runTest(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatalf("failed to run analysis: %v", err)
 	}
+	if len(res.Modifications) == 0 {
+		t.Error("no modifications detected")
+	}
 
 	expectedMods := analysistest.GetExpectedMods(dir, ".")
 	checkExpectedPositions(t, prog, res, expectedMods)
