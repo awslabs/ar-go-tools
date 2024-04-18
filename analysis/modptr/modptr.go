@@ -120,8 +120,8 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv progVals, modifica
 			valsReachableFromEntry:   reachableVals,
 			instrsReachableFromEntry: reachableInstrs,
 		}
-		aliases := s.progVals.transitivePointersTo(val)
-		s.findWritesToAliases(aliases)
+		ptrs := s.progVals.transitivePointersTo(val)
+		s.findWritesToAliases(ptrs)
 		for _, instrs := range s.writesToAlias {
 			for instr := range instrs {
 				if _, ok := modifications[entry]; !ok {
@@ -153,10 +153,24 @@ type state struct {
 	writesToAlias map[ssa.Value]map[ssa.Instruction]struct{}
 }
 
-// findWritesToAliases adds all write instructions to transitive aliases of aliases to s.writesToAlias.
-func (s *state) findWritesToAliases(aliases []pointer.Pointer) {
+// findWritesToAliases adds all write instructions to transitive aliases of
+// ptrs to s.writesToAlias.
+//
+// Algorithm:
+//  1. Compute all values that transitively may-alias ptrs, considering every
+//     value in the program, not just the values reachable from ptrs.
+//     We need to compute *all* the possible aliases because some pointers will
+//     not be reachable from an entrypoint, but one of the pointers that point
+//     to it may be.
+//     This initializes the global may-alias cache.
+//  2. Filter all may-aliased values that are not reachable from the entrypoint
+//     or are not needed because of the spec.
+//  3. For every instruction reachable from the entrypoint, if the lvalue is an
+//     alias, or the instruction allocates a value to an alias, then the alias
+//     has been "modified".
+func (s *state) findWritesToAliases(ptrs []pointer.Pointer) {
 	log := s.log
-	for _, ptr := range aliases {
+	for _, ptr := range ptrs {
 		allAliases := make(map[ssa.Value]struct{})
 		s.progVals.allAliasesOf(ptr, allAliases)
 		for alias := range allAliases {
@@ -243,11 +257,35 @@ type progVals struct {
 }
 
 func (pv *progVals) transitivePointersTo(val ssa.Value) []pointer.Pointer {
-	if p, ok := pv.transitivePtrsTo[val]; ok && len(p) > 0 {
+	if p, ok := pv.transitivePtrsTo[val]; ok {
 		return p
 	}
 
-	ptrs := lang.FindTransitivePointers(pv.ptrRes, val)
+	stack := lang.FindAllPointers(pv.ptrRes, val)
+	seen := make(map[pointer.Pointer]struct{})
+	var ptrs []pointer.Pointer
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[0 : len(stack)-1]
+		if _, ok := seen[cur]; ok {
+			continue
+		}
+		seen[cur] = struct{}{}
+
+		for _, label := range cur.PointsTo().Labels() {
+			val := label.Value()
+			if val == nil || val.Parent() == nil {
+				continue
+			}
+
+			labelPtrs := lang.FindAllPointers(pv.ptrRes, val)
+			stack = append(stack, labelPtrs...)
+			for _, ptr := range labelPtrs {
+				ptrs = append(ptrs, ptr)
+			}
+		}
+	}
+
 	pv.transitivePtrsTo[val] = ptrs
 	return ptrs
 }
@@ -261,7 +299,19 @@ func (pv *progVals) allAliasesOf(ptr pointer.Pointer, aliases map[ssa.Value]stru
 		return
 	}
 
-	lang.FindAllMayAliases(pv.ptrRes, pv.allValues, ptr, aliases)
+	for val := range pv.allValues {
+		if _, ok := aliases[val]; ok {
+			continue
+		}
+
+		ptrs := pv.transitivePointersTo(val)
+		for _, valPtr := range ptrs {
+			if valPtr.MayAlias(ptr) {
+				aliases[val] = struct{}{}
+			}
+		}
+	}
+
 	pv.aliasesOf[ptr] = aliases
 }
 
@@ -359,9 +409,8 @@ func findEntrypoint(prog *ssa.Program, ptrRes *pointer.Result, spec config.ModVa
 	return Entrypoint{}, false
 }
 
-// isPure returns true if no instruction in the body of the function can
-// modify a value outside the function body, or the function does not return a
-// pointer.
+// isPure returns true if no instruction in the body of function f can modify an
+// outside value, or the function does not return a pointer.
 //
 // We assume that the analysis is not tracking modifications to a global value.
 func isPure(f *ssa.Function) bool {
