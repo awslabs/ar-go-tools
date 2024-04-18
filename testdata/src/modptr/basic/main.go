@@ -137,10 +137,15 @@ func exModStructFieldVal() {
 
 type tracker interface {
 	track()
+	getX() *int
 }
 
 type toTrack struct {
-	x *int
+	x int
+}
+
+func (t *toTrack) getX() *int {
+	return &t.x
 }
 
 func (t *toTrack) track() {
@@ -149,7 +154,14 @@ func (t *toTrack) track() {
 
 func exTrackInterface() {
 	var v tracker = &toTrack{} // @Mod(exTrackInterface)
-	v.track()                  // @ModSource(exTrackInterface)
+	v.track()                  // @ModSource(exTrackInterface) // prints 0
+}
+
+func exModTrackInterface() {
+	var v tracker = &toTrack{} // @Mod(exModTrackInterface)
+	x := v.getX()
+	*x = 1    // @Mod(exModTrackInterface)
+	v.track() // @ModSource(exModTrackInterface) // prints 1
 }
 
 func exModClosure() {
@@ -209,6 +221,8 @@ func main() {
 	exModStructFieldVal()
 	fmt.Println("exTrackInterface")
 	exTrackInterface()
+	fmt.Println("exModTrackInterface")
+	exModTrackInterface()
 	fmt.Println("exModClosure")
 	exModClosure()
 	fmt.Println("exModClosureInter")
