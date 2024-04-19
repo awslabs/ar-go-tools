@@ -55,13 +55,16 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 	log := config.NewLogGroup(cfg)
 
 	reachable := ssautil.AllFunctions(prog)
-	// reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false)
+	// pre-allocate maps for speed
+	numVals := len(allValues(reachable))
+	numPtrs := len(ptrRes.Queries) + len(ptrRes.IndirectQueries)
+	// reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false) // TODO enable
 	pv := &progVals{
 		prog:                prog,
 		ptrRes:              ptrRes,
 		reachableFuncs:      reachable,
-		globalPtrsTo:        make(map[ssa.Value][]pointer.Pointer),
-		globalValsThatAlias: make(map[pointer.Pointer]map[ssa.Value]struct{}),
+		globalPtrsTo:        make(map[ssa.Value][]pointer.Pointer, numVals),
+		globalValsThatAlias: make(map[pointer.Pointer]map[ssa.Value]struct{}, numPtrs),
 	}
 
 	var errs []error
@@ -92,11 +95,13 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modific
 
 		// Only analyze the functions that are reachable from the function that
 		// calls the entrypoint and are not "pure".
+		//
 		// Crucially, "reachable" functions do not exclude functions that are
 		// filtered by the config. This is because filtered functions may
 		// produce intermediate pointers that may alias pointers used in
 		// unfiltered functions.
-		reachableFns := lang.ReachableFrom(ptrRes.CallGraph, parent, isFnPure)
+		filter := isFnPure
+		reachableFns := lang.ReachableFrom(ptrRes.CallGraph, parent, filter)
 		reachableVals := allValues(reachableFns)
 		reachableInstrs := allInstrs(reachableFns)
 
@@ -110,6 +115,18 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modific
 			valsReachableFromEntry:   reachableVals,
 			instrsReachableFromEntry: reachableInstrs,
 		}
+
+		// report functions with a high number of SSA values for debugging purposes
+		if log.LogsDebug() {
+			fns := mostExpensiveFns(reachableFns)
+			if len(fns) > 0 {
+				log.Debugf("\tmost expensive functions (name signature: number of values):\n")
+				for fn, numValues := range fns {
+					log.Debugf("\t\t%v %v: %v\n", fn.String(), fn.Signature, numValues)
+				}
+			}
+		}
+
 		ptrs := s.transitivePointersTo(val)
 		s.findWritesToAliases(ptrs)
 		for _, instrs := range s.writesToAlias {
@@ -126,7 +143,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modific
 	return errors.Join(errs...)
 }
 
-// progVals contains all the usable SSA instructions/values in the program used
+// progVals contains all the reachable SSA instructions/values in the program used
 // for the analysis.
 //
 // This is also used as a "global" cache for transitive pointers and aliases.
@@ -306,8 +323,8 @@ func (s *state) shouldFilterValue(val ssa.Value) bool {
 }
 
 func (s *state) transitivePointersTo(val ssa.Value) []pointer.Pointer {
-	if p, ok := s.progVals.globalPtrsTo[val]; ok {
-		return p
+	if ptrs, ok := s.progVals.globalPtrsTo[val]; ok {
+		return ptrs
 	}
 
 	stack := lang.FindAllPointers(s.progVals.ptrRes, val)
@@ -406,24 +423,33 @@ func allValues(fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
 			continue
 		}
 
-		lang.IterateValues(fn, func(_ int, val ssa.Value) {
-			if val == nil || val.Parent() == nil {
-				return
-			}
-
-			res[val] = struct{}{}
-		})
+		addValuesOfFn(fn, res)
 	}
 
 	return res
 }
 
+func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
+	lang.IterateValues(fn, func(_ int, val ssa.Value) {
+		if val == nil || val.Parent() == nil {
+			return
+		}
+
+		vals[val] = struct{}{}
+	})
+}
+
 // isFnPure returns true if no instruction in the body of function f can modify an
 // outside value, or the function does not return a pointer.
 //
-// We assume that the analysis is not tracking modifications to a global value.
+// We assume that:
+// - the analysis is not tracking modifications to a global value
+// - Error() methods do not modify external state
 func isFnPure(f *ssa.Function) bool {
 	if _, ok := pureFunctions[f.String()]; ok {
+		return true
+	}
+	if _, ok := purePackages[lang.PackageNameFromFunction(f)]; ok {
 		return true
 	}
 
@@ -442,12 +468,55 @@ func isFnPure(f *ssa.Function) bool {
 	results := f.Signature.Results()
 	for i := 0; i < results.Len(); i++ {
 		ret := results.At(i)
-		if pointer.CanPoint(ret.Type()) {
+		// errors are interface types which are pointers, but they are
+		// idiomatically used as values
+		if pointer.CanPoint(ret.Type()) && ret.Type().String() != "error" {
 			return false
 		}
 	}
 
 	return true
+}
+
+// pureFunctions represents all the functions that do not modify external state.
+//
+// This assumes that the arguments' String() methods are also pure, which is the
+// same assumption that the dataflow analysis makes.
+var pureFunctions = map[string]struct{}{
+	"print":       {},
+	"println":     {},
+	"fmt.Print":   {},
+	"fmt.Printf":  {},
+	"fmt.Println": {},
+	"fmt.Errorf":  {},
+}
+
+// purePackages represents all the packages that do not contain any functions
+// that modify external state.
+var purePackages = map[string]struct{}{
+	"math/big":                {},
+	"strconv":                 {},
+	"reflect":                 {},
+	"internal/reflectlite":    {},
+	"strings":                 {},
+	"regexp":                  {},
+	"github.com/cihub/seelog": {},
+}
+
+func mostExpensiveFns(fns map[*ssa.Function]bool) map[*ssa.Function]int {
+	const threshold = 100
+
+	res := make(map[*ssa.Function]int)
+	for fn := range fns {
+		vals := make(map[ssa.Value]struct{})
+		addValuesOfFn(fn, vals)
+		numVals := len(vals)
+		if numVals > threshold {
+			res[fn] = numVals
+		}
+	}
+
+	return res
 }
 
 // doesConfigFilterFn returns true if f should be filtered according to spec.
@@ -461,16 +530,4 @@ func doesConfigFilterFn(spec config.ModValSpec, f *ssa.Function) bool {
 	}
 
 	return false
-}
-
-// pureFunctions represents all the functions that do not modify external state.
-//
-// This assumes that the arguments' String() methods are also pure, which is the
-// same assumption that the dataflow analysis makes.
-var pureFunctions = map[string]struct{}{
-	"print":       {},
-	"println":     {},
-	"fmt.Print":   {},
-	"fmt.Printf":  {},
-	"fmt.Println": {},
 }
