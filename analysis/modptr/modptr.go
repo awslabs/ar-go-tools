@@ -19,12 +19,14 @@ import (
 	"errors"
 	"fmt"
 	"go/token"
+	"go/types"
 	"strconv"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"golang.org/x/exp/slices"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -56,14 +58,13 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 
 	reachable := ssautil.AllFunctions(prog)
 	// pre-allocate maps for speed
-	numVals := len(allValues(reachable))
 	numPtrs := len(ptrRes.Queries) + len(ptrRes.IndirectQueries)
 	// reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false) // TODO enable
 	pv := &progVals{
 		prog:                prog,
 		ptrRes:              ptrRes,
 		reachableFuncs:      reachable,
-		globalPtrsTo:        make(map[ssa.Value][]pointer.Pointer, numVals),
+		globalPtrsTo:        make(map[ssa.Value][]pointer.Pointer),
 		globalValsThatAlias: make(map[pointer.Pointer]map[ssa.Value]struct{}, numPtrs),
 	}
 
@@ -82,11 +83,16 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 // analyze runs the analysis for a single spec and adds the write instructions to modifications.
 func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
 	ptrRes := pv.ptrRes
+	progTypes := pv.prog.RuntimeTypes()
 
 	var errs []error
 	entrypoints := pv.findEntrypoints(spec)
 	for entry := range entrypoints {
 		val := entry.Val
+		if val.Type() == nil {
+			errs = append(errs, fmt.Errorf("entrypoint %v type is nil: %T\n", val, val))
+			continue
+		}
 		if !pointer.CanPoint(val.Type()) {
 			errs = append(errs, fmt.Errorf("entrypoint is a non-pointer type: %v", val.Type()))
 			continue
@@ -94,19 +100,22 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modific
 		parent := val.Parent()
 
 		// Only analyze the functions that are reachable from the function that
-		// calls the entrypoint and are not "pure".
+		// calls the entrypoint and can modify the entrypoint.
 		//
 		// Crucially, "reachable" functions do not exclude functions that are
 		// filtered by the config. This is because filtered functions may
 		// produce intermediate pointers that may alias pointers used in
 		// unfiltered functions.
-		filter := isFnPure
+		entryTypes := allTypes(progTypes, val.Type())
+		filter := func(f *ssa.Function) bool {
+			return isFnPure(progTypes, entryTypes, f)
+		}
 		reachableFns := lang.ReachableFrom(ptrRes.CallGraph, parent, filter)
-		reachableVals := allValues(reachableFns)
+		reachableVals := allValues(progTypes, entryTypes, reachableFns)
 		reachableInstrs := allInstrs(reachableFns)
 
 		log.Infof("ENTRY: %v of %v in %v at %v\n", val.Name(), entry.Call, val.Parent(), entry.Pos)
-		log.Debugf("\tnumber of reachable vals from function %v: %v\n", len(reachableVals), parent)
+		log.Debugf("\tnumber of reachable vals from function %v: %v\n", parent, len(reachableVals))
 		s := &state{
 			progVals:                 pv,
 			log:                      log,
@@ -118,11 +127,11 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modific
 
 		// report functions with a high number of SSA values for debugging purposes
 		if log.LogsDebug() {
-			fns := mostExpensiveFns(reachableFns)
+			fns := mostExpensiveFns(progTypes, entryTypes, reachableFns)
 			if len(fns) > 0 {
-				log.Debugf("\tmost expensive functions (name signature: number of values):\n")
-				for fn, numValues := range fns {
-					log.Debugf("\t\t%v %v: %v\n", fn.String(), fn.Signature, numValues)
+				log.Debugf("\tmost expensive functions (name | signature | number of values):\n")
+				for _, ef := range fns {
+					log.Debugf("\t\t%v | %v | %v\n", ef.fn.String(), ef.fn.Signature, ef.numVals)
 				}
 			}
 		}
@@ -416,22 +425,33 @@ func allInstrs(fns map[*ssa.Function]bool) map[ssa.Instruction]struct{} {
 	return res
 }
 
-func allValues(fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
+func allValues(progTypes []types.Type, ttypes []types.Type, fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
 	res := make(map[ssa.Value]struct{})
 	for fn := range fns {
 		if fn == nil {
 			continue
 		}
 
-		addValuesOfFn(fn, res)
+		addValuesOfFn(progTypes, ttypes, fn, res)
 	}
 
 	return res
 }
 
-func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
+func addValuesOfFn(progTypes []types.Type, ttypes []types.Type, fn *ssa.Function, vals map[ssa.Value]struct{}) {
 	lang.IterateValues(fn, func(_ int, val ssa.Value) {
-		if val == nil || val.Parent() == nil {
+		if _, ok := val.(*ssa.Range); ok {
+			// Range really isn't a value
+			// Panics on *ssa.opaqueType: see https://github.com/golang/go/issues/19670
+			return
+		}
+
+		if val == nil || val.Parent() == nil || val.Type() == nil {
+			return
+		}
+
+		// only include values that can alias an entrypoint type
+		if !canTypeAlias(progTypes, ttypes, val.Type()) {
 			return
 		}
 
@@ -442,10 +462,10 @@ func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
 // isFnPure returns true if no instruction in the body of function f can modify an
 // outside value, or the function does not return a pointer.
 //
-// We assume that:
+// Assumptions:
 // - the analysis is not tracking modifications to a global value
 // - Error() methods do not modify external state
-func isFnPure(f *ssa.Function) bool {
+func isFnPure(progTypes []types.Type, valTypes []types.Type, f *ssa.Function) bool {
 	if _, ok := pureFunctions[f.String()]; ok {
 		return true
 	}
@@ -454,13 +474,13 @@ func isFnPure(f *ssa.Function) bool {
 	}
 
 	for _, param := range f.Params {
-		if pointer.CanPoint(param.Type()) {
+		if pointer.CanPoint(param.Type()) && canTypeAlias(progTypes, valTypes, param.Type()) {
 			return false
 		}
 	}
 
 	for _, fv := range f.FreeVars {
-		if pointer.CanPoint(fv.Type()) {
+		if pointer.CanPoint(fv.Type()) && canTypeAlias(progTypes, valTypes, fv.Type()) {
 			return false
 		}
 	}
@@ -470,7 +490,7 @@ func isFnPure(f *ssa.Function) bool {
 		ret := results.At(i)
 		// errors are interface types which are pointers, but they are
 		// idiomatically used as values
-		if pointer.CanPoint(ret.Type()) && ret.Type().String() != "error" {
+		if (pointer.CanPoint(ret.Type()) && canTypeAlias(progTypes, valTypes, ret.Type())) && ret.Type().String() != "error" {
 			return false
 		}
 	}
@@ -480,8 +500,8 @@ func isFnPure(f *ssa.Function) bool {
 
 // pureFunctions represents all the functions that do not modify external state.
 //
-// This assumes that the arguments' String() methods are also pure, which is the
-// same assumption that the dataflow analysis makes.
+// This assumes that the arguments' String(), Error(), etc. methods are also
+// pure, which is the same assumption that the dataflow analysis makes.
 var pureFunctions = map[string]struct{}{
 	"print":       {},
 	"println":     {},
@@ -492,29 +512,40 @@ var pureFunctions = map[string]struct{}{
 }
 
 // purePackages represents all the packages that do not contain any functions
-// that modify external state.
+// that modify external state. Assumptions are the same as pureFunctions.
 var purePackages = map[string]struct{}{
 	"math/big":                {},
 	"strconv":                 {},
 	"reflect":                 {},
 	"internal/reflectlite":    {},
 	"strings":                 {},
+	"errors":                  {},
 	"regexp":                  {},
 	"github.com/cihub/seelog": {},
 }
 
-func mostExpensiveFns(fns map[*ssa.Function]bool) map[*ssa.Function]int {
+type expensiveFn struct {
+	fn      *ssa.Function
+	numVals int
+}
+
+func mostExpensiveFns(progTypes []types.Type, ttypes []types.Type, fns map[*ssa.Function]bool) []expensiveFn {
 	const threshold = 100
 
-	res := make(map[*ssa.Function]int)
+	var res []expensiveFn
 	for fn := range fns {
 		vals := make(map[ssa.Value]struct{})
-		addValuesOfFn(fn, vals)
+		addValuesOfFn(progTypes, ttypes, fn, vals)
 		numVals := len(vals)
 		if numVals > threshold {
-			res[fn] = numVals
+			res = append(res, expensiveFn{fn: fn, numVals: numVals})
 		}
 	}
+
+	slices.SortFunc(res, func(a, b expensiveFn) bool {
+		// sort high -> low
+		return b.numVals < a.numVals
+	})
 
 	return res
 }
@@ -530,4 +561,97 @@ func doesConfigFilterFn(spec config.ModValSpec, f *ssa.Function) bool {
 	}
 
 	return false
+}
+
+// canTypeAlias returns true if v can be an alias of types ttypes.
+//
+// v's type can be an alias of t if:
+// - the types are the same
+// - v's type is a struct and any of v's fields can alias t
+// - t's type is a struct and any of t's fields can alias v
+func canTypeAlias(progTypes []types.Type, ttypes []types.Type, v types.Type) bool {
+	vtypes := allTypes(progTypes, v)
+
+	for _, tt := range ttypes {
+		for _, vt := range vtypes {
+			if types.AssignableTo(tt, vt) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// allTypes returns all the types that t contains.
+func allTypes(progTypes []types.Type, t types.Type) []types.Type {
+	// BFS should be faster because structs tend to have many fields
+	// but few of those fields themselves will be structs
+	queue := []types.Type{t}
+	seen := make(map[types.Type]struct{})
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur == nil {
+			continue
+		}
+		if _, ok := seen[cur]; ok {
+			continue
+		}
+		seen[cur] = struct{}{}
+
+		switch cur := cur.(type) {
+		case *types.Basic, *types.Tuple, *types.Signature:
+			// do nothing
+		case *types.Array:
+			et := cur.Elem()
+			queue = append(queue, et)
+		case *types.Slice:
+			et := cur.Elem()
+			queue = append(queue, et)
+		case *types.Chan:
+			et := cur.Elem()
+			queue = append(queue, et)
+		case *types.Map:
+			et := cur.Elem()
+			queue = append(queue, et)
+			kt := cur.Key()
+			queue = append(queue, kt)
+		case *types.Named:
+			ut := cur.Underlying()
+			queue = append(queue, ut)
+		case *types.Interface:
+			ts := interfaceTypes(progTypes, cur)
+			queue = append(queue, ts...)
+		case *types.Pointer:
+			et := cur.Elem()
+			queue = append(queue, et)
+		case *types.Struct:
+			for i := 0; i < cur.NumFields(); i++ {
+				ft := cur.Field(i).Type()
+				queue = append(queue, ft)
+			}
+		default:
+			panic(fmt.Errorf("unhandled type: %T", cur))
+		}
+	}
+
+	res := make([]types.Type, 0, len(seen))
+	for t := range seen {
+		res = append(res, t)
+	}
+
+	return res
+}
+
+// interfaceTypes returns all the types in progTypes that implement i.
+func interfaceTypes(progTypes []types.Type, i *types.Interface) []types.Type {
+	var res []types.Type
+	for _, rt := range progTypes {
+		if types.Implements(rt.Underlying(), i) {
+			res = append(res, rt.Underlying())
+		}
+	}
+
+	return res
 }
