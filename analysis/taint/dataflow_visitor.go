@@ -142,12 +142,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
 			// If the sink has an ignore directive, don't report a taint flow
-			if v.shouldIgnore(s, cur.NodeWithTrace) {
+			if v.shouldIgnore(s, cur.Node) {
 				logger.Debugf("Node has an ignore directive at %s: skipping...", cur.Node.Position(s))
 				continue
 			}
 
-			if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
+			if cur.NodeWithTrace != v.currentSource && v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
 				numAlarms++
 				reportTaintFlow(s, v.currentSource, cur)
 
@@ -667,7 +667,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			}
 
 			// If there is an ignore directive, don't report a taint flow
-			if v.shouldIgnore(s, cur.NodeWithTrace) {
+			if v.shouldIgnore(s, cur.Node) {
 				logger.Debugf("IfNode has an ignore directive at %s. Skipping...", cur.Node.Position(s))
 				break
 			}
@@ -951,31 +951,19 @@ func (v *Visitor) raiseAlarm(s *df.AnalyzerState, pos token.Pos, msg string) {
 
 // shouldIgnore returns true if node has an ignore directive and is not a sink.
 // Returns false if there is no ignore directive.
-func (v *Visitor) shouldIgnore(s *df.AnalyzerState, node df.NodeWithTrace) bool {
-	if isSink(v.taintSpec, node.Node) {
-		return false
-	}
-
-	isIgnore := func(n df.GraphNode) bool {
-		pos := n.Position(s)
-		dpos := analysis.NewDirectivePos(pos)
-		if d, ok := v.directives[dpos]; ok && d.Kind == analysis.DirectiveIgnore {
-			return true
-		}
-		// sometimes the filename can get truncated
-		hasDirective := false
-		for d := range v.directives {
-			if strings.HasSuffix(dpos.Filename, d.Filename) && d.Line == dpos.Line {
-				hasDirective = true
-			}
-		}
-
-		return hasDirective
-	}
-
-	if isIgnore(node.Node) {
+func (v *Visitor) shouldIgnore(s *df.AnalyzerState, n df.GraphNode) bool {
+	pos := n.Position(s)
+	dpos := analysis.NewDirectivePos(pos)
+	if d, ok := v.directives[dpos]; ok && d.Kind == analysis.DirectiveIgnore {
 		return true
 	}
+	// sometimes the filename can get truncated
+	hasDirective := false
+	for d := range v.directives {
+		if strings.HasSuffix(dpos.Filename, d.Filename) && d.Line == dpos.Line {
+			hasDirective = true
+		}
+	}
 
-	return false
+	return hasDirective
 }

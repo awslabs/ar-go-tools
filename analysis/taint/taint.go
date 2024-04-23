@@ -153,12 +153,12 @@ func populateConfigInterfaces(s *dataflow.AnalyzerState) {
 
 			for interfaceMethodName, impls := range interfaceToImpls {
 				iid := interfaceMethodIdent(interfaceMethodName)
-				s.Logger.Infof("Adding interface method to config sinks: %+v\n", iid)
+				s.Logger.Debugf("Adding interface method to config sinks: %+v\n", iid)
 				// add the interface method
 				taintSpec.Sinks = append(taintSpec.Sinks, iid)
 				for impl := range impls {
 					fid := interfaceImplMethodIdent(impl)
-					s.Logger.Infof("\tAdding interface implementation method to config sinks: %+v\n", fid)
+					s.Logger.Debugf("\tAdding interface implementation method to config sinks: %+v\n", fid)
 					taintSpec.Sinks = append(taintSpec.Sinks, fid)
 				}
 			}
