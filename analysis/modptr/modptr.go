@@ -21,6 +21,7 @@ import (
 	"go/token"
 	"go/types"
 	"strconv"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -60,17 +61,29 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 	// pre-allocate maps for speed
 	numPtrs := len(ptrRes.Queries) + len(ptrRes.IndirectQueries)
 	// reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false) // TODO enable
-	pv := &progVals{
-		prog:                prog,
-		ptrRes:              ptrRes,
-		reachableFuncs:      reachable,
-		globalPtrsTo:        make(map[ssa.Value][]pointer.Pointer),
-		globalValsThatAlias: make(map[pointer.Pointer]map[ssa.Value]struct{}, numPtrs),
+	ac := &aliasCache{
+		prog:                         prog,
+		ptrRes:                       ptrRes,
+		reachableFuncs:               reachable,
+		globalPtrsTo:                 make(map[ssa.Value][]pointer.Pointer),
+		globalValsThatAlias:          make(map[pointer.Pointer]map[ssa.Value]struct{}, numPtrs),
+		computedAliasedValuesForFunc: make(map[pointer.Pointer]map[*ssa.Function]struct{}),
+		computedTransitiveAliases:    make(map[ssa.Value]struct{}),
+	}
+	progTypes := prog.RuntimeTypes()
+	tc := &typeCache{
+		progTypes:  progTypes,
+		implements: make(map[*types.Interface][]types.Type),
+		basic:      make(map[types.Type][]*types.Basic),
+	}
+	c := &cache{
+		aliasCache: ac,
+		typeCache:  tc,
 	}
 
 	var errs []error
 	for _, spec := range cfg.ModificationTrackingProblems {
-		if err := analyze(log, spec, pv, modifications); err != nil {
+		if err := analyze(log, spec, c, modifications); err != nil {
 			errs = append(errs, fmt.Errorf("analysis failed for spec %v: %v", spec, err))
 		}
 	}
@@ -81,12 +94,11 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 }
 
 // analyze runs the analysis for a single spec and adds the write instructions to modifications.
-func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
-	ptrRes := pv.ptrRes
-	progTypes := pv.prog.RuntimeTypes()
+func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
+	ptrRes := c.ptrRes
 
 	var errs []error
-	entrypoints := pv.findEntrypoints(spec)
+	entrypoints := c.findEntrypoints(spec)
 	for entry := range entrypoints {
 		val := entry.Val
 		if val.Type() == nil {
@@ -98,6 +110,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modific
 			continue
 		}
 		parent := val.Parent()
+		log.Infof("ENTRY: %v of %v in %v at %v\n", val.Name(), entry.Call, val.Parent(), entry.Pos)
 
 		// Only analyze the functions that are reachable from the function that
 		// calls the entrypoint and can modify the entrypoint.
@@ -106,28 +119,53 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modific
 		// filtered by the config. This is because filtered functions may
 		// produce intermediate pointers that may alias pointers used in
 		// unfiltered functions.
-		entryTypes := allTypes(progTypes, val.Type())
+		entryTypes := c.typeCache.allBasicTypes(val.Type())
+		log.Debugf("\tentrypoint types: %v\n", entryTypes)
 		filter := func(f *ssa.Function) bool {
-			return isFnPure(progTypes, entryTypes, f)
+			return isFnPure(c.typeCache, entryTypes, f)
 		}
 		reachableFns := lang.ReachableFrom(ptrRes.CallGraph, parent, filter)
-		reachableVals := allValues(progTypes, entryTypes, reachableFns)
-		reachableInstrs := allInstrs(reachableFns)
+		log.Debugf("\tnumber of reachable functions from function %v: %v\n", parent, len(reachableFns))
+		reachableFuncs := make(map[*ssa.Function]*reachableFunc, len(reachableFns))
+		numReachableVals := 0
+		numReachableInstrs := 0
+		for fn := range reachableFns {
+			vals := make(map[ssa.Value]struct{})
+			addValuesOfFn(c.typeCache, entryTypes, fn, vals)
+			numReachableVals += len(vals)
+			instrs := make(map[ssa.Instruction]struct{})
+			lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
+				if instr == nil || instr.Parent() == nil {
+					return
+				}
 
-		log.Infof("ENTRY: %v of %v in %v at %v\n", val.Name(), entry.Call, val.Parent(), entry.Pos)
-		log.Debugf("\tnumber of reachable vals from function %v: %v\n", parent, len(reachableVals))
+				switch instr.(type) {
+				case *ssa.Alloc, *ssa.Store, *ssa.MapUpdate, *ssa.Send:
+					instrs[instr] = struct{}{}
+					numReachableInstrs++
+				}
+			})
+
+			reachableFuncs[fn] = &reachableFunc{
+				vals:   vals,
+				instrs: instrs,
+			}
+		}
+		// reachableVals := allValues(c.typeCache, entryTypes, reachableFns)
+		log.Debugf("\tnumber of reachable vals from function %v: %v\n", parent, numReachableVals)
+		log.Debugf("\tnumber of reachable write instructions from function %v: %v\n", parent, numReachableInstrs)
+
 		s := &state{
-			progVals:                 pv,
-			log:                      log,
-			spec:                     spec,
-			writesToAlias:            make(map[ssa.Value]map[ssa.Instruction]struct{}),
-			valsReachableFromEntry:   reachableVals,
-			instrsReachableFromEntry: reachableInstrs,
+			cache:          c,
+			log:            log,
+			spec:           spec,
+			writesToAlias:  make(map[ssa.Value]map[ssa.Instruction]struct{}),
+			reachableFuncs: reachableFuncs,
 		}
 
 		// report functions with a high number of SSA values for debugging purposes
 		if log.LogsDebug() {
-			fns := mostExpensiveFns(progTypes, entryTypes, reachableFns)
+			fns := mostExpensiveFns(c.typeCache, entryTypes, reachableFns)
 			if len(fns) > 0 {
 				log.Debugf("\tmost expensive functions (name | signature | number of values):\n")
 				for _, ef := range fns {
@@ -152,94 +190,19 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, pv *progVals, modific
 	return errors.Join(errs...)
 }
 
-// progVals contains all the reachable SSA instructions/values in the program used
-// for the analysis.
-//
-// This is also used as a "global" cache for transitive pointers and aliases.
-// The analysis only searches for pointers and aliases that are reachable from a
-// single entrypoint, but this cache helps if there are multiple entrypoints
-// that need alias information computed from previous entrypoints.
-type progVals struct {
-	prog           *ssa.Program
-	ptrRes         *pointer.Result
-	reachableFuncs map[*ssa.Function]bool
-	// globalPtrsTo stores the set of program-wide transitive pointers to a value.
-	globalPtrsTo map[ssa.Value][]pointer.Pointer
-	// globalValsThatAlias stores the program-wide set of values that are in the
-	// points-to set of a pointer that may alias an entrypoint.
-	globalValsThatAlias map[pointer.Pointer]map[ssa.Value]struct{}
-}
-
-// findEntrypoints returns all the analysis entrypoints specified by spec.
-func (pv *progVals) findEntrypoints(spec config.ModValSpec) map[Entrypoint]struct{} {
-	entrypoints := make(map[Entrypoint]struct{})
-	for fn, node := range pv.ptrRes.CallGraph.Nodes {
-		if fn == nil {
-			continue
-		}
-		if _, ok := pv.reachableFuncs[fn]; !ok {
-			continue
-		}
-
-		for _, inEdge := range node.In {
-			if inEdge == nil || inEdge.Site == nil {
-				continue
-			}
-
-			entry, ok := pv.findEntrypoint(spec, inEdge.Site.Value())
-			if !ok {
-				continue
-			}
-
-			entrypoints[entry] = struct{}{}
-		}
-	}
-
-	return entrypoints
-}
-
-func (pv *progVals) findEntrypoint(spec config.ModValSpec, call *ssa.Call) (Entrypoint, bool) {
-	// use analysisutil entrypoint logic to take care of function aliases and
-	// other edge-cases
-	if !analysisutil.IsEntrypointNode(pv.ptrRes, call, spec.IsValue) {
-		return Entrypoint{}, false
-	}
-
-	callPos := pv.prog.Fset.Position(call.Pos())
-	for _, cid := range spec.Values {
-		// TODO parse label beforehand to prevent panics
-		idx, err := strconv.Atoi(cid.Label)
-		if err != nil {
-			err := fmt.Errorf("cid label is not a valid argument index: %v", err)
-			panic(err)
-		}
-		if idx < 0 {
-			err := fmt.Errorf("cid label is not a valid argument index: %v < 0", idx)
-			panic(err)
-		}
-
-		args := lang.GetArgs(call)
-		if len(args) < idx {
-			fmt.Printf("arg index: %v < want %v\n", len(args), idx)
-			return Entrypoint{}, false
-		}
-
-		val := args[idx]
-		return Entrypoint{Val: val, Call: call, Pos: callPos}, true
-	}
-
-	return Entrypoint{}, false
+type reachableFunc struct {
+	instrs map[ssa.Instruction]struct{}
+	vals   map[ssa.Value]struct{}
 }
 
 // state represents the analysis state.
 // This tracks writes to a single value (entrypoint).
 type state struct {
-	*progVals
+	*cache
 	log  *config.LogGroup
 	spec config.ModValSpec
 
-	instrsReachableFromEntry map[ssa.Instruction]struct{}
-	valsReachableFromEntry   map[ssa.Value]struct{}
+	reachableFuncs map[*ssa.Function]*reachableFunc
 	// writesToAlias stores the set of instructions that write to an alias
 	// (SSA value).
 	writesToAlias map[ssa.Value]map[ssa.Instruction]struct{}
@@ -280,15 +243,17 @@ func (s *state) findWritesToAliases(ptrs []pointer.Pointer) {
 				s.writesToAlias[alias] = make(map[ssa.Instruction]struct{})
 			}
 
-			for instr := range s.instrsReachableFromEntry {
-				allocs := false
-				if alloc, ok := instr.(*ssa.Alloc); ok {
-					allocs = alloc == alias
-				}
+			for _, rfn := range s.reachableFuncs {
+				for instr := range rfn.instrs {
+					allocs := false
+					if alloc, ok := instr.(*ssa.Alloc); ok {
+						allocs = alloc == alias
+					}
 
-				if _, ok := lang.InstrWritesToVal(instr, alias); ok || allocs {
-					log.Tracef("instr %v writes to alias %v\n", instr, alias)
-					s.writesToAlias[alias][instr] = struct{}{}
+					if _, ok := lang.InstrWritesToVal(instr, alias); ok || allocs {
+						log.Tracef("instr %v writes to alias %v\n", instr, alias)
+						s.writesToAlias[alias][instr] = struct{}{}
+					}
 				}
 			}
 		}
@@ -297,6 +262,10 @@ func (s *state) findWritesToAliases(ptrs []pointer.Pointer) {
 
 // addTransitiveMayAliases adds all transitive aliases of alias to allAliases.
 func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Value]struct{}) {
+	if _, ok := s.computedTransitiveAliases[alias]; ok {
+		return
+	}
+
 	visit := s.transitivePointersTo(alias)
 	seen := make(map[pointer.Pointer]struct{})
 	for len(visit) > 0 {
@@ -312,9 +281,6 @@ func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Valu
 			if _, ok := allAliases[a]; ok || s.shouldFilterValue(a) {
 				continue
 			}
-			if _, ok := s.valsReachableFromEntry[a]; !ok {
-				continue
-			}
 
 			allAliases[a] = struct{}{}
 			s.log.Tracef("found transitive alias of %v: %v (%v) in %v\n", alias, a, a.Name(), a.Parent())
@@ -323,6 +289,8 @@ func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Valu
 			}
 		}
 	}
+
+	s.computedTransitiveAliases[alias] = struct{}{}
 }
 
 // shouldFilterValue returns true if the value should be filtered
@@ -332,11 +300,11 @@ func (s *state) shouldFilterValue(val ssa.Value) bool {
 }
 
 func (s *state) transitivePointersTo(val ssa.Value) []pointer.Pointer {
-	if ptrs, ok := s.progVals.globalPtrsTo[val]; ok {
+	if ptrs, ok := s.aliasCache.globalPtrsTo[val]; ok {
 		return ptrs
 	}
 
-	stack := lang.FindAllPointers(s.progVals.ptrRes, val)
+	stack := lang.FindAllPointers(s.aliasCache.ptrRes, val)
 	seen := make(map[pointer.Pointer]struct{})
 	var ptrs []pointer.Pointer
 	for len(stack) > 0 {
@@ -353,7 +321,7 @@ func (s *state) transitivePointersTo(val ssa.Value) []pointer.Pointer {
 				continue
 			}
 
-			labelPtrs := lang.FindAllPointers(s.progVals.ptrRes, val)
+			labelPtrs := lang.FindAllPointers(s.aliasCache.ptrRes, val)
 			stack = append(stack, labelPtrs...)
 			for _, ptr := range labelPtrs {
 				ptrs = append(ptrs, ptr)
@@ -361,7 +329,7 @@ func (s *state) transitivePointersTo(val ssa.Value) []pointer.Pointer {
 		}
 	}
 
-	s.progVals.globalPtrsTo[val] = ptrs
+	s.aliasCache.globalPtrsTo[val] = ptrs
 	return ptrs
 }
 
@@ -374,11 +342,11 @@ func (s *state) allAliasesOf(ptr pointer.Pointer) map[ssa.Value]struct{} {
 	// therefore the rest need to be analyzed.
 	// This is a global cache so some aliased values may not be reachable from the entrypoint
 	// and therefore those values do not need to be analyzed.
-	cachedAliases, hasCachedAliases := s.progVals.globalValsThatAlias[ptr]
+	cachedAliases, hasCachedAliases := s.aliasCache.globalValsThatAlias[ptr]
 	aliases := make(map[ssa.Value]struct{}, len(cachedAliases))
 	if hasCachedAliases && len(cachedAliases) > 0 {
 		for v := range cachedAliases {
-			if _, ok := s.valsReachableFromEntry[v]; !ok {
+			if _, ok := s.reachableFuncs[v.Parent()]; !ok {
 				continue
 			}
 
@@ -386,31 +354,317 @@ func (s *state) allAliasesOf(ptr pointer.Pointer) map[ssa.Value]struct{} {
 		}
 	}
 
-	for val := range s.valsReachableFromEntry {
-		if _, ok := aliases[val]; ok {
+	for fn, rfn := range s.reachableFuncs {
+		if _, ok := s.computedAliasedValuesForFunc[ptr][fn]; ok {
+			// skip if we already analyzed the function's aliased values
 			continue
 		}
 
-		ptrs := s.transitivePointersTo(val)
-		for _, valPtr := range ptrs {
-			if valPtr.MayAlias(ptr) {
-				aliases[val] = struct{}{}
+		for val := range rfn.vals {
+			if _, ok := aliases[val]; ok {
+				continue
+			}
+
+			ptrs := s.transitivePointersTo(val)
+			for _, valPtr := range ptrs {
+				if valPtr.MayAlias(ptr) {
+					aliases[val] = struct{}{}
+					break
+				}
 			}
 		}
+
+		if _, ok := s.computedAliasedValuesForFunc[ptr]; !ok {
+			s.computedAliasedValuesForFunc[ptr] = make(map[*ssa.Function]struct{})
+		}
+		s.computedAliasedValuesForFunc[ptr][fn] = struct{}{}
 	}
 
 	// update the global cache with the newly-computed aliases
 	if !hasCachedAliases {
-		s.progVals.globalValsThatAlias[ptr] = make(map[ssa.Value]struct{}, len(aliases))
+		s.aliasCache.globalValsThatAlias[ptr] = make(map[ssa.Value]struct{}, len(aliases))
 	}
 	for val := range aliases {
-		s.progVals.globalValsThatAlias[ptr][val] = struct{}{}
+		s.aliasCache.globalValsThatAlias[ptr][val] = struct{}{}
 	}
 
 	return aliases
 }
 
-func allInstrs(fns map[*ssa.Function]bool) map[ssa.Instruction]struct{} {
+// cache represents a "global" cache for the analysis.
+type cache struct {
+	*aliasCache
+	*typeCache
+}
+
+// aliasCache represents a "global" cache for transitive pointers and aliases.
+//
+// The analysis only searches for pointers and aliases that are reachable from a
+// single entrypoint, but this cache helps if there are multiple entrypoints
+// that need alias information computed from previous entrypoints.
+type aliasCache struct {
+	prog           *ssa.Program
+	ptrRes         *pointer.Result
+	reachableFuncs map[*ssa.Function]bool
+	// globalPtrsTo stores the set of program-wide transitive pointers to a value.
+	globalPtrsTo map[ssa.Value][]pointer.Pointer
+	// globalValsThatAlias stores the program-wide set of values that are in the
+	// points-to set of a pointer that may alias an entrypoint.
+	globalValsThatAlias          map[pointer.Pointer]map[ssa.Value]struct{}
+	computedAliasedValuesForFunc map[pointer.Pointer]map[*ssa.Function]struct{}
+	computedTransitiveAliases    map[ssa.Value]struct{}
+}
+
+// findEntrypoints returns all the analysis entrypoints specified by spec.
+func (ac *aliasCache) findEntrypoints(spec config.ModValSpec) map[Entrypoint]struct{} {
+	entrypoints := make(map[Entrypoint]struct{})
+	for fn, node := range ac.ptrRes.CallGraph.Nodes {
+		if fn == nil {
+			continue
+		}
+		if _, ok := ac.reachableFuncs[fn]; !ok {
+			continue
+		}
+
+		for _, inEdge := range node.In {
+			if inEdge == nil || inEdge.Site == nil {
+				continue
+			}
+
+			entry, ok := ac.findEntrypoint(spec, inEdge.Site.Value())
+			if !ok {
+				continue
+			}
+
+			entrypoints[entry] = struct{}{}
+		}
+	}
+
+	return entrypoints
+}
+
+func (ac *aliasCache) findEntrypoint(spec config.ModValSpec, call *ssa.Call) (Entrypoint, bool) {
+	// use analysisutil entrypoint logic to take care of function aliases and
+	// other edge-cases
+	if !analysisutil.IsEntrypointNode(ac.ptrRes, call, spec.IsValue) {
+		return Entrypoint{}, false
+	}
+
+	callPos := ac.prog.Fset.Position(call.Pos())
+	for _, cid := range spec.Values {
+		// TODO parse label beforehand to prevent panics
+		idx, err := strconv.Atoi(cid.Label)
+		if err != nil {
+			err := fmt.Errorf("cid label is not a valid argument index: %v", err)
+			panic(err)
+		}
+		if idx < 0 {
+			err := fmt.Errorf("cid label is not a valid argument index: %v < 0", idx)
+			panic(err)
+		}
+
+		args := lang.GetArgs(call)
+		if len(args) < idx {
+			fmt.Printf("arg index: %v < want %v\n", len(args), idx)
+			return Entrypoint{}, false
+		}
+
+		val := args[idx]
+		return Entrypoint{Val: val, Call: call, Pos: callPos}, true
+	}
+
+	return Entrypoint{}, false
+}
+
+// typeCache represents a "global" cache for type information.
+type typeCache struct {
+	// progTypes is all the runtime types in the program.
+	progTypes []types.Type
+	// implements is a mapping from an interface to all the types that implement
+	// the interface.
+	implements map[*types.Interface][]types.Type
+	// basic is a mapping from a type to all the basic types that it contains.
+	basic map[types.Type][]*types.Basic
+}
+
+// canTypeAlias returns true if v can be an alias of types ttypes.
+//
+// v's type can be an alias of t (a type in ttypes) if:
+// - the types are the same
+// - v's type is a struct and any of v's fields can alias t
+// - t's type is a struct and any of t's fields can alias v
+func (tc *typeCache) canTypeAlias(ttypes []*types.Basic, v types.Type) bool {
+	vtypes := tc.allBasicTypes(v)
+	for _, tt := range ttypes {
+		for _, vt := range vtypes {
+			if types.AssignableTo(tt, vt) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// allBasicTypes returns all the basic types that t contains.
+//
+// TODO does not yet handle generics
+// (but is still sound because it panics on unhandled types)
+//
+//gocyclo:ignore
+func (tc *typeCache) allBasicTypes(t types.Type) []*types.Basic {
+	if res, ok := tc.basic[t]; ok {
+		return res
+	}
+
+	// BFS should be faster because structs tend to have many fields
+	// but few of those fields themselves will be structs
+	queue := []types.Type{t}
+	seen := make(map[types.Type]struct{})
+	var res []*types.Basic
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur == nil {
+			continue
+		}
+		if _, ok := seen[cur]; ok {
+			continue
+		}
+		seen[cur] = struct{}{}
+
+		switch typ := cur.(type) {
+		case *types.Basic:
+			// we assume that unsafe is not used to modify or create aliases
+			if typ.String() == "unsafe.Pointer" {
+				continue
+			}
+
+			res = append(res, typ)
+		case *types.Signature:
+			params := typ.Params()
+			queue = append(queue, params)
+			recv := typ.Recv()
+			if recv != nil {
+				queue = append(queue, recv.Type())
+			}
+		case *types.Tuple:
+			for i := 0; i < typ.Len(); i++ {
+				et := typ.At(i).Type()
+				queue = append(queue, et)
+			}
+		case *types.Array:
+			et := typ.Elem()
+			queue = append(queue, et)
+		case *types.Slice:
+			et := typ.Elem()
+			queue = append(queue, et)
+		case *types.Chan:
+			et := typ.Elem()
+			queue = append(queue, et)
+		case *types.Map:
+			et := typ.Elem()
+			queue = append(queue, et)
+			kt := typ.Key()
+			queue = append(queue, kt)
+		case *types.Named:
+			ut := typ.Underlying()
+			queue = append(queue, ut)
+		case *types.Interface:
+			ts := tc.interfaceTypes(typ)
+			queue = append(queue, ts...)
+		case *types.Pointer:
+			et := typ.Elem()
+			queue = append(queue, et)
+		case *types.Struct:
+			for i := 0; i < typ.NumFields(); i++ {
+				ft := typ.Field(i).Type()
+				queue = append(queue, ft)
+			}
+		default:
+			panic(fmt.Errorf("unhandled type: %T", typ))
+		}
+	}
+
+	tc.basic[t] = res
+
+	return res
+}
+
+// interfaceTypes returns all the types in progTypes that implement the
+// interface, if it is not pure.
+func (tc *typeCache) interfaceTypes(in *types.Interface) []types.Type {
+	if res, ok := tc.implements[in]; ok {
+		return res
+	}
+
+	var res []types.Type
+	for _, rt := range tc.progTypes {
+		t := rt.Underlying()
+		if isSafeType(t) {
+			continue
+		}
+		// if strings.Contains(t.String(), "mock") {
+		// 	// skip mock types, which should not be reachable at runtime
+		// 	panic(fmt.Errorf("mock type should be unreachable: %v", t.String()))
+		// }
+
+		if types.Implements(t, in) {
+			res = append(res, t)
+		}
+	}
+	tc.implements[in] = res
+
+	return res
+}
+
+func isSafeType(t types.Type) bool {
+	if ptr, ok := t.(*types.Pointer); ok {
+		// remove * prefix for pointer types
+		t = ptr.Elem()
+	}
+
+	// fast path avoiding string comparisons
+	tpkg := typePackage(t)
+	if tpkg != nil {
+		if _, ok := purePackages[tpkg.Path()]; ok {
+			return true
+		}
+	}
+
+	for name := range purePackages {
+		if strings.HasPrefix(t.String(), name) {
+			return true
+		}
+	}
+	// if _, ok := purePackages[t.String()]; ok {
+	// 	return true
+	// }
+
+	// fmt.Printf("unsafe type: %v\n", t)
+	return false
+}
+
+// typePackage finds the type.Package for a type.
+//
+// Implementation modified from lang.GetPackageOfType
+func typePackage(tp types.Type) *types.Package {
+	if ptr, ok := tp.(*types.Pointer); ok {
+		tp = ptr.Elem()
+	} else if s, ok := tp.(*types.Struct); ok && s.NumFields() == 1 {
+		tp = s.Field(0).Type()
+	}
+
+	if obj, ok := tp.(interface{ Pkg() *types.Package }); ok {
+		return obj.Pkg()
+	} else if named, ok := tp.(*types.Named); ok {
+		return named.Obj().Pkg()
+	}
+
+	return nil
+}
+
+func allWriteInstrs(fns map[*ssa.Function]bool) map[ssa.Instruction]struct{} {
 	res := make(map[ssa.Instruction]struct{})
 	for fn := range fns {
 		lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
@@ -418,27 +672,30 @@ func allInstrs(fns map[*ssa.Function]bool) map[ssa.Instruction]struct{} {
 				return
 			}
 
-			res[instr] = struct{}{}
+			switch instr.(type) {
+			case *ssa.Alloc, *ssa.Store, *ssa.MapUpdate, *ssa.Send:
+				res[instr] = struct{}{}
+			}
 		})
 	}
 
 	return res
 }
 
-func allValues(progTypes []types.Type, ttypes []types.Type, fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
+func allValues(tc *typeCache, ttypes []*types.Basic, fns map[*ssa.Function]bool) map[ssa.Value]struct{} {
 	res := make(map[ssa.Value]struct{})
 	for fn := range fns {
 		if fn == nil {
 			continue
 		}
 
-		addValuesOfFn(progTypes, ttypes, fn, res)
+		addValuesOfFn(tc, ttypes, fn, res)
 	}
 
 	return res
 }
 
-func addValuesOfFn(progTypes []types.Type, ttypes []types.Type, fn *ssa.Function, vals map[ssa.Value]struct{}) {
+func addValuesOfFn(tc *typeCache, ttypes []*types.Basic, fn *ssa.Function, vals map[ssa.Value]struct{}) {
 	lang.IterateValues(fn, func(_ int, val ssa.Value) {
 		if _, ok := val.(*ssa.Range); ok {
 			// Range really isn't a value
@@ -451,7 +708,7 @@ func addValuesOfFn(progTypes []types.Type, ttypes []types.Type, fn *ssa.Function
 		}
 
 		// only include values that can alias an entrypoint type
-		if !canTypeAlias(progTypes, ttypes, val.Type()) {
+		if !tc.canTypeAlias(ttypes, val.Type()) {
 			return
 		}
 
@@ -465,7 +722,7 @@ func addValuesOfFn(progTypes []types.Type, ttypes []types.Type, fn *ssa.Function
 // Assumptions:
 // - the analysis is not tracking modifications to a global value
 // - Error() methods do not modify external state
-func isFnPure(progTypes []types.Type, valTypes []types.Type, f *ssa.Function) bool {
+func isFnPure(tc *typeCache, valTypes []*types.Basic, f *ssa.Function) bool {
 	if _, ok := pureFunctions[f.String()]; ok {
 		return true
 	}
@@ -474,13 +731,13 @@ func isFnPure(progTypes []types.Type, valTypes []types.Type, f *ssa.Function) bo
 	}
 
 	for _, param := range f.Params {
-		if pointer.CanPoint(param.Type()) && canTypeAlias(progTypes, valTypes, param.Type()) {
+		if pointer.CanPoint(param.Type()) && tc.canTypeAlias(valTypes, param.Type()) {
 			return false
 		}
 	}
 
 	for _, fv := range f.FreeVars {
-		if pointer.CanPoint(fv.Type()) && canTypeAlias(progTypes, valTypes, fv.Type()) {
+		if pointer.CanPoint(fv.Type()) && tc.canTypeAlias(valTypes, fv.Type()) {
 			return false
 		}
 	}
@@ -490,7 +747,7 @@ func isFnPure(progTypes []types.Type, valTypes []types.Type, f *ssa.Function) bo
 		ret := results.At(i)
 		// errors are interface types which are pointers, but they are
 		// idiomatically used as values
-		if (pointer.CanPoint(ret.Type()) && canTypeAlias(progTypes, valTypes, ret.Type())) && ret.Type().String() != "error" {
+		if (pointer.CanPoint(ret.Type()) && tc.canTypeAlias(valTypes, ret.Type())) && !lang.IsErrorType(ret.Type()) {
 			return false
 		}
 	}
@@ -498,7 +755,7 @@ func isFnPure(progTypes []types.Type, valTypes []types.Type, f *ssa.Function) bo
 	return true
 }
 
-// pureFunctions represents all the functions that do not modify external state.
+// pureFunctions represents all the functions that cannot modify external aliases.
 //
 // This assumes that the arguments' String(), Error(), etc. methods are also
 // pure, which is the same assumption that the dataflow analysis makes.
@@ -512,16 +769,34 @@ var pureFunctions = map[string]struct{}{
 }
 
 // purePackages represents all the packages that do not contain any functions
-// that modify external state. Assumptions are the same as pureFunctions.
+// that modify external aliases. Assumptions are the same as pureFunctions.
 var purePackages = map[string]struct{}{
-	"math/big":                {},
-	"strconv":                 {},
-	"reflect":                 {},
-	"internal/reflectlite":    {},
-	"strings":                 {},
-	"errors":                  {},
-	"regexp":                  {},
-	"github.com/cihub/seelog": {},
+	// stdlib
+	"crypto/internal/edwards25519": {},
+	"crypto/internal/nistec":       {},
+	"crypto/internal/nistec/fiat":  {},
+	"errors":                       {},
+	"fmt":                          {},
+	"internal":                     {},
+	"math/big":                     {},
+	"reflect":                      {}, // we assume that reflection is not used to modify aliases
+	"regexp":                       {},
+	"runtime":                      {},
+	"strconv":                      {},
+	"strings":                      {},
+	"sync":                         {},
+	"syscall":                      {},
+	"time":                         {},
+	"unsafe":                       {}, // we assume that unsafe is not used to modify aliases
+	// dependencies
+	"github.com/cihub/seelog":          {},
+	"github.com/stretchr/testify/mock": {},
+	"github.com/jmespath/go-jmespath":  {},
+	"gopkg.in/yaml.v2":                 {},
+	"github.com/davecgh/go-spew/spew":  {},
+	// agent code
+	"github.com/aws/amazon-ssm-agent/common/identity/mocks":         {},
+	"github.com/aws/amazon-ssm-agent/agent/plugins/dockercontainer": {},
 }
 
 type expensiveFn struct {
@@ -529,13 +804,13 @@ type expensiveFn struct {
 	numVals int
 }
 
-func mostExpensiveFns(progTypes []types.Type, ttypes []types.Type, fns map[*ssa.Function]bool) []expensiveFn {
+func mostExpensiveFns(tc *typeCache, ttypes []*types.Basic, fns map[*ssa.Function]bool) []expensiveFn {
 	const threshold = 100
 
 	var res []expensiveFn
 	for fn := range fns {
 		vals := make(map[ssa.Value]struct{})
-		addValuesOfFn(progTypes, ttypes, fn, vals)
+		addValuesOfFn(tc, ttypes, fn, vals)
 		numVals := len(vals)
 		if numVals > threshold {
 			res = append(res, expensiveFn{fn: fn, numVals: numVals})
@@ -561,97 +836,4 @@ func doesConfigFilterFn(spec config.ModValSpec, f *ssa.Function) bool {
 	}
 
 	return false
-}
-
-// canTypeAlias returns true if v can be an alias of types ttypes.
-//
-// v's type can be an alias of t if:
-// - the types are the same
-// - v's type is a struct and any of v's fields can alias t
-// - t's type is a struct and any of t's fields can alias v
-func canTypeAlias(progTypes []types.Type, ttypes []types.Type, v types.Type) bool {
-	vtypes := allTypes(progTypes, v)
-
-	for _, tt := range ttypes {
-		for _, vt := range vtypes {
-			if types.AssignableTo(tt, vt) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// allTypes returns all the types that t contains.
-func allTypes(progTypes []types.Type, t types.Type) []types.Type {
-	// BFS should be faster because structs tend to have many fields
-	// but few of those fields themselves will be structs
-	queue := []types.Type{t}
-	seen := make(map[types.Type]struct{})
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		if cur == nil {
-			continue
-		}
-		if _, ok := seen[cur]; ok {
-			continue
-		}
-		seen[cur] = struct{}{}
-
-		switch cur := cur.(type) {
-		case *types.Basic, *types.Tuple, *types.Signature:
-			// do nothing
-		case *types.Array:
-			et := cur.Elem()
-			queue = append(queue, et)
-		case *types.Slice:
-			et := cur.Elem()
-			queue = append(queue, et)
-		case *types.Chan:
-			et := cur.Elem()
-			queue = append(queue, et)
-		case *types.Map:
-			et := cur.Elem()
-			queue = append(queue, et)
-			kt := cur.Key()
-			queue = append(queue, kt)
-		case *types.Named:
-			ut := cur.Underlying()
-			queue = append(queue, ut)
-		case *types.Interface:
-			ts := interfaceTypes(progTypes, cur)
-			queue = append(queue, ts...)
-		case *types.Pointer:
-			et := cur.Elem()
-			queue = append(queue, et)
-		case *types.Struct:
-			for i := 0; i < cur.NumFields(); i++ {
-				ft := cur.Field(i).Type()
-				queue = append(queue, ft)
-			}
-		default:
-			panic(fmt.Errorf("unhandled type: %T", cur))
-		}
-	}
-
-	res := make([]types.Type, 0, len(seen))
-	for t := range seen {
-		res = append(res, t)
-	}
-
-	return res
-}
-
-// interfaceTypes returns all the types in progTypes that implement i.
-func interfaceTypes(progTypes []types.Type, i *types.Interface) []types.Type {
-	var res []types.Type
-	for _, rt := range progTypes {
-		if types.Implements(rt.Underlying(), i) {
-			res = append(res, rt.Underlying())
-		}
-	}
-
-	return res
 }
