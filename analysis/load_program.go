@@ -100,7 +100,7 @@ func LoadProgram(config *packages.Config,
 
 	dir := "."
 	if len(args) > 0 {
-		dir = filepath.Dir(args[0])
+		dir = filepath.Dir(args[0]) + "/../../../../.." // HACK get to root implementation/agent/ directory
 	}
 	astPkgs, err := lang.AstPackages(dir, program.Fset)
 	if err != nil {
