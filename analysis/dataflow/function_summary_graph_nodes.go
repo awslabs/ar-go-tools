@@ -151,13 +151,13 @@ func NodeKind(g GraphNode) string {
 func NodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
-		return fmt.Sprintf("Parameter %q of %q", x.ssaNode.Name(), x.parent.Parent.Name())
+		return fmt.Sprintf("Parameter %q of %q", x.ssaNode.Name(), x.parent.Parent.String())
 	case *CallNode:
-		return fmt.Sprintf("Result of call to %q", x.Callee().Name())
+		return fmt.Sprintf("Result of call to %q", x.Callee().String())
 	case *CallNodeArg:
-		return fmt.Sprintf("Argument %v in call to %q", x.Index(), x.ParentNode().Callee().Name())
+		return fmt.Sprintf("Argument %v in call to %q", x.Index(), x.ParentNode().Callee().String())
 	case *ReturnValNode:
-		return fmt.Sprintf("Return value %d of %q", x.Index(), x.ParentName())
+		return fmt.Sprintf("Return value %d of %q", x.Index(), x.parent.Parent.String())
 	case *ClosureNode:
 		return fmt.Sprintf("Closure")
 	case *BoundLabelNode:

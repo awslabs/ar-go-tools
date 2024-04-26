@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"go/token"
 	"io"
-	"runtime"
+	"os"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -106,7 +106,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
-	goroot := runtime.GOROOT()
 	v.currentSource = source
 	logger := s.Logger
 	logger.Infof("\n%s NEW SOURCE %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
@@ -149,7 +148,20 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 			if cur.NodeWithTrace != v.currentSource && v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
 				numAlarms++
-				reportTaintFlow(s, v.currentSource, cur)
+
+				if s.Config.ReportPaths {
+					tmp, err := os.CreateTemp(s.Config.ReportsDir, "flow-*.out")
+					if err != nil {
+						logger.Errorf("Could not write report.")
+					}
+					defer tmp.Close()
+					logger.Infof("Report in %s\n", tmp.Name())
+					reportTaintFlow(s, tmp, v.currentSource, cur)
+				} else {
+					w := &strings.Builder{}
+					reportTaintFlow(s, w, v.currentSource, cur)
+					logger.Infof(w.String())
+				}
 
 				// Stop if there is a limit on number of alarms, and it has been reached.
 				if s.Config.MaxAlarms > 0 && numAlarms >= s.Config.MaxAlarms {
@@ -680,11 +692,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			cond := graphNode.SsaNode()
 			pos := graphNode.Position(s)
 			if !pos.IsValid() {
-				break
-			}
-
-			// ignore errors in Go standard library or dependencies
-			if strings.Contains(pos.Filename, goroot) || strings.Contains(pos.Filename, "vendor") {
 				break
 			}
 

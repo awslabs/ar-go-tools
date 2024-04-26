@@ -17,7 +17,6 @@ package taint
 import (
 	"fmt"
 	"io"
-	"os"
 	"sort"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -77,7 +76,7 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 
 // reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger
-func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
+func reportTaintFlow(c *dataflow.AnalyzerState, w io.StringWriter, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
 	c.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(c)))
 	c.Logger.Infof(" Add new path from %s to %s <== \n",
 		formatutil.Green(source.Node.String()), formatutil.Red(sink.Node.String()))
@@ -85,41 +84,33 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 	if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
 		sinkPos = callArg.ParentNode().Position(c)
 	}
-	if c.Config.ReportPaths {
-		tmp, err := os.CreateTemp(c.Config.ReportsDir, "flow-*.out")
-		if err != nil {
-			c.Logger.Errorf("Could not write report.")
-		}
-		defer tmp.Close()
-		c.Logger.Infof("Report in %s\n", tmp.Name())
 
-		tmp.WriteString(fmt.Sprintf("Source: %s\n", source.Node.String()))
-		tmp.WriteString(fmt.Sprintf("At: %s\n", source.Node.Position(c)))
-		tmp.WriteString(fmt.Sprintf("Sink: %s\n", sink.Node.String()))
-		tmp.WriteString(fmt.Sprintf("At: %s\n", sinkPos))
+	w.WriteString(fmt.Sprintf("Source: %s\n", source.Node.String()))
+	w.WriteString(fmt.Sprintf("At: %s\n", source.Node.Position(c)))
+	w.WriteString(fmt.Sprintf("Sink: %s\n", sink.Node.String()))
+	w.WriteString(fmt.Sprintf("At: %s\n", sinkPos))
 
-		nodes := []*dataflow.VisitorNode{}
-		cur := sink
-		for cur != nil {
-			nodes = append(nodes, cur)
-			cur = cur.Prev
-		}
-
-		tmp.WriteString(fmt.Sprintf("Trace:\n"))
-		for i := len(nodes) - 1; i >= 0; i-- {
-			if nodes[i].Status.Kind != dataflow.DefaultTracing {
-				continue
-			}
-			tmp.WriteString(fmt.Sprintf("%s\n", nodes[i].Node.Position(c).String()))
-			c.Logger.Infof("%s - %s",
-				formatutil.Purple("TRACE"),
-				dataflow.NodeSummary(nodes[i].Node))
-			c.Logger.Infof("%s - %s [%s] %s\n",
-				"     ",
-				dataflow.NodeKind(nodes[i].Node),
-				dataflow.FuncNames(nodes[i].Trace),
-				nodes[i].Node.Position(c).String())
-		}
-		c.Logger.Infof("-- SINK: %s\n", sinkPos.String())
+	nodes := []*dataflow.VisitorNode{}
+	cur := sink
+	for cur != nil {
+		nodes = append(nodes, cur)
+		cur = cur.Prev
 	}
+
+	w.WriteString(fmt.Sprintf("Trace:\n"))
+	for i := len(nodes) - 1; i >= 0; i-- {
+		if nodes[i].Status.Kind != dataflow.DefaultTracing {
+			continue
+		}
+		w.WriteString(fmt.Sprintf("%s\n", nodes[i].Node.Position(c).String()))
+		c.Logger.Infof("%s - %s",
+			formatutil.Purple("TRACE"),
+			dataflow.NodeSummary(nodes[i].Node))
+		c.Logger.Infof("%s - %s [%s] %s\n",
+			"     ",
+			dataflow.NodeKind(nodes[i].Node),
+			dataflow.FuncNames(nodes[i].Trace),
+			nodes[i].Node.Position(c).String())
+	}
+	c.Logger.Infof("-- SINK: %s\n", sinkPos.String())
 }
