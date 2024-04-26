@@ -30,7 +30,6 @@ import (
 	"golang.org/x/exp/slices"
 	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // Result represents the result of the analysis.
@@ -57,10 +56,9 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 	prog := lp.Program
 	log := config.NewLogGroup(cfg)
 
-	reachable := ssautil.AllFunctions(prog)
 	// pre-allocate maps for speed
 	numPtrs := len(ptrRes.Queries) + len(ptrRes.IndirectQueries)
-	// reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false) // TODO enable
+	reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false)
 	ac := &aliasCache{
 		prog:                         prog,
 		ptrRes:                       ptrRes,
@@ -95,8 +93,6 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 
 // analyze runs the analysis for a single spec and adds the write instructions to modifications.
 func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
-	ptrRes := c.ptrRes
-
 	var errs []error
 	entrypoints := c.findEntrypoints(spec)
 	for entry := range entrypoints {
@@ -109,11 +105,9 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 			errs = append(errs, fmt.Errorf("entrypoint is a non-pointer type: %v", val.Type()))
 			continue
 		}
-		parent := val.Parent()
 		log.Infof("ENTRY: %v of %v in %v at %v\n", val.Name(), entry.Call, val.Parent(), entry.Pos)
 
-		// Only analyze the functions that are reachable from the function that
-		// calls the entrypoint and can modify the entrypoint.
+		// Only analyze the functions can modify the entrypoint.
 		//
 		// Crucially, "reachable" functions do not exclude functions that are
 		// filtered by the config. This is because filtered functions may
@@ -121,51 +115,37 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 		// unfiltered functions.
 		entryTypes := c.typeCache.allBasicTypes(val.Type())
 		log.Debugf("\tentrypoint types: %v\n", entryTypes)
-		filter := func(f *ssa.Function) bool {
-			return isFnPure(c.typeCache, entryTypes, f)
-		}
-		reachableFns := lang.ReachableFrom(ptrRes.CallGraph, parent, filter)
-		log.Debugf("\tnumber of reachable functions from function %v: %v\n", parent, len(reachableFns))
-		reachableFuncs := make(map[*ssa.Function]*reachableFunc, len(reachableFns))
-		numReachableVals := 0
-		numReachableInstrs := 0
-		for fn := range reachableFns {
-			vals := make(map[ssa.Value]struct{})
-			addValuesOfFn(c.typeCache, entryTypes, fn, vals)
-			numReachableVals += len(vals)
-			instrs := make(map[ssa.Instruction]struct{})
-			lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
-				if instr == nil || instr.Parent() == nil {
-					return
-				}
-
-				switch instr.(type) {
-				case *ssa.Alloc, *ssa.Store, *ssa.MapUpdate, *ssa.Send:
-					instrs[instr] = struct{}{}
-					numReachableInstrs++
-				}
-			})
-
-			reachableFuncs[fn] = &reachableFunc{
-				vals:   vals,
-				instrs: instrs,
+		fnsToAnalyze := make(map[*ssa.Function]bool)
+		fnsToAnalyze[val.Parent()] = true
+		for fn := range c.reachableFuncs {
+			if !isFnPure(c.typeCache, entryTypes, fn) {
+				fnsToAnalyze[fn] = true
 			}
 		}
-		// reachableVals := allValues(c.typeCache, entryTypes, reachableFns)
-		log.Debugf("\tnumber of reachable vals from function %v: %v\n", parent, numReachableVals)
-		log.Debugf("\tnumber of reachable write instructions from function %v: %v\n", parent, numReachableInstrs)
+		log.Debugf("\tnumber of functions to analyze: %v\n", len(fnsToAnalyze))
+		toAnalyze := make(map[*ssa.Function]*funcToAnalyze, len(fnsToAnalyze))
+		numVals := 0
+		numInstrs := 0
+		for fn := range fnsToAnalyze {
+			af := newFuncToAnalyze(c.typeCache, entryTypes, fn)
+			toAnalyze[fn] = af
+			numVals += len(af.vals)
+			numInstrs += len(af.instrs)
+		}
+		log.Debugf("\tnumber of vals to analyze: %v\n", numVals)
+		log.Debugf("\tnumber of write instructions to analyze: %v\n", numInstrs)
 
 		s := &state{
 			cache:          c,
 			log:            log,
 			spec:           spec,
 			writesToAlias:  make(map[ssa.Value]map[ssa.Instruction]struct{}),
-			reachableFuncs: reachableFuncs,
+			funcsToAnalyze: toAnalyze,
 		}
 
 		// report functions with a high number of SSA values for debugging purposes
 		if log.LogsDebug() {
-			fns := mostExpensiveFns(c.typeCache, entryTypes, reachableFns)
+			fns := mostExpensiveFns(c.typeCache, entryTypes, fnsToAnalyze)
 			if len(fns) > 0 {
 				log.Debugf("\tmost expensive functions (name | signature | number of values):\n")
 				for _, ef := range fns {
@@ -190,11 +170,6 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 	return errors.Join(errs...)
 }
 
-type reachableFunc struct {
-	instrs map[ssa.Instruction]struct{}
-	vals   map[ssa.Value]struct{}
-}
-
 // state represents the analysis state.
 // This tracks writes to a single value (entrypoint).
 type state struct {
@@ -202,7 +177,7 @@ type state struct {
 	log  *config.LogGroup
 	spec config.ModValSpec
 
-	reachableFuncs map[*ssa.Function]*reachableFunc
+	funcsToAnalyze map[*ssa.Function]*funcToAnalyze
 	// writesToAlias stores the set of instructions that write to an alias
 	// (SSA value).
 	writesToAlias map[ssa.Value]map[ssa.Instruction]struct{}
@@ -243,7 +218,7 @@ func (s *state) findWritesToAliases(ptrs []pointer.Pointer) {
 				s.writesToAlias[alias] = make(map[ssa.Instruction]struct{})
 			}
 
-			for _, rfn := range s.reachableFuncs {
+			for _, rfn := range s.funcsToAnalyze {
 				for instr := range rfn.instrs {
 					allocs := false
 					if alloc, ok := instr.(*ssa.Alloc); ok {
@@ -346,7 +321,7 @@ func (s *state) allAliasesOf(ptr pointer.Pointer) map[ssa.Value]struct{} {
 	aliases := make(map[ssa.Value]struct{}, len(cachedAliases))
 	if hasCachedAliases && len(cachedAliases) > 0 {
 		for v := range cachedAliases {
-			if _, ok := s.reachableFuncs[v.Parent()]; !ok {
+			if _, ok := s.funcsToAnalyze[v.Parent()]; !ok {
 				continue
 			}
 
@@ -354,7 +329,7 @@ func (s *state) allAliasesOf(ptr pointer.Pointer) map[ssa.Value]struct{} {
 		}
 	}
 
-	for fn, rfn := range s.reachableFuncs {
+	for fn, rfn := range s.funcsToAnalyze {
 		if _, ok := s.computedAliasedValuesForFunc[ptr][fn]; ok {
 			// skip if we already analyzed the function's aliased values
 			continue
@@ -643,6 +618,32 @@ func isSafeType(t types.Type) bool {
 
 	// fmt.Printf("unsafe type: %v\n", t)
 	return false
+}
+
+type funcToAnalyze struct {
+	instrs map[ssa.Instruction]struct{}
+	vals   map[ssa.Value]struct{}
+}
+
+func newFuncToAnalyze(tc *typeCache, entryTypes []*types.Basic, fn *ssa.Function) *funcToAnalyze {
+	vals := make(map[ssa.Value]struct{})
+	addValuesOfFn(tc, entryTypes, fn, vals)
+	instrs := make(map[ssa.Instruction]struct{})
+	lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
+		if instr == nil || instr.Parent() == nil {
+			return
+		}
+
+		switch instr.(type) {
+		case *ssa.Alloc, *ssa.Store, *ssa.MapUpdate, *ssa.Send:
+			instrs[instr] = struct{}{}
+		}
+	})
+
+	return &funcToAnalyze{
+		vals:   vals,
+		instrs: instrs,
+	}
 }
 
 // typePackage finds the type.Package for a type.
