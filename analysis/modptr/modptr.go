@@ -116,7 +116,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 		entryTypes := c.typeCache.allBasicTypes(val.Type())
 		log.Debugf("\tentrypoint types: %v\n", entryTypes)
 		fnsToAnalyze := make(map[*ssa.Function]bool)
-		fnsToAnalyze[val.Parent()] = true
+		fnsToAnalyze[val.Parent()] = true // always analyze the entrypoint function
 		for fn := range c.reachableFuncs {
 			if !isFnPure(c.typeCache, entryTypes, fn) {
 				fnsToAnalyze[fn] = true
@@ -195,39 +195,30 @@ type state struct {
 //     alias, or the instruction allocates a value to an alias, then the alias
 //     has been "modified".
 func (s *state) findWritesToAliases(ptrs []pointer.Pointer) {
-	log := s.log
-	for _, ptr := range ptrs {
-		allAliases := s.allAliasesOf(ptr)
-		for alias := range allAliases {
-			if s.shouldFilterValue(alias) {
-				log.Tracef("alias %v filtered by spec\n", alias)
-				delete(allAliases, alias)
-			}
-			// special case: *ssa.MakeInterface aliases rvalue
-			if mi, ok := alias.(*ssa.MakeInterface); ok {
-				allAliases[mi.X] = struct{}{}
-			}
-		}
-		for alias := range allAliases {
-			s.addTransitiveMayAliases(alias, allAliases)
-		}
-
-		for alias := range allAliases {
-			log.Tracef("alias %v: %v in %v\n", alias.Name(), alias, alias.Parent())
-			if _, ok := s.writesToAlias[alias]; !ok {
-				s.writesToAlias[alias] = make(map[ssa.Instruction]struct{})
+	//log := s.log
+	for _, fna := range s.funcsToAnalyze {
+		for instr := range fna.instrs {
+			var val ssa.Value
+			switch instr := instr.(type) {
+			case *ssa.Alloc:
+				val = instr
+			case *ssa.Store:
+				val = instr.Addr
+			case *ssa.MapUpdate:
+				val = instr.Map
+			case *ssa.Send:
+				val = instr.Chan
+			default:
+				panic("invalid write instruction")
 			}
 
-			for _, rfn := range s.funcsToAnalyze {
-				for instr := range rfn.instrs {
-					allocs := false
-					if alloc, ok := instr.(*ssa.Alloc); ok {
-						allocs = alloc == alias
-					}
-
-					if _, ok := lang.InstrWritesToVal(instr, alias); ok || allocs {
-						log.Tracef("instr %v writes to alias %v\n", instr, alias)
-						s.writesToAlias[alias][instr] = struct{}{}
+			for _, valPtr := range s.transitivePointersTo(val) {
+				for _, ptr := range ptrs {
+					if valPtr.MayAlias(ptr) {
+						if _, ok := s.writesToAlias[val]; !ok {
+							s.writesToAlias[val] = make(map[ssa.Instruction]struct{})
+						}
+						s.writesToAlias[val][instr] = struct{}{}
 					}
 				}
 			}
@@ -250,7 +241,6 @@ func (s *state) addTransitiveMayAliases(alias ssa.Value, allAliases map[ssa.Valu
 			continue
 		}
 		seen[cur] = struct{}{}
-
 		newAliases := s.allAliasesOf(cur)
 		for a := range newAliases {
 			if _, ok := allAliases[a]; ok || s.shouldFilterValue(a) {
@@ -295,11 +285,19 @@ func (s *state) transitivePointersTo(val ssa.Value) []pointer.Pointer {
 			if val == nil || val.Parent() == nil {
 				continue
 			}
+			vals := []ssa.Value{val}
+			for _, ref := range *val.Referrers() {
+				if v, ok := ref.(ssa.Value); ok {
+					vals = append(vals, v)
+				}
+			}
 
-			labelPtrs := lang.FindAllPointers(s.aliasCache.ptrRes, val)
-			stack = append(stack, labelPtrs...)
-			for _, ptr := range labelPtrs {
-				ptrs = append(ptrs, ptr)
+			for _, v := range vals {
+				labelPtrs := lang.FindAllPointers(s.aliasCache.ptrRes, v)
+				//stack = append(stack, labelPtrs...)
+				for _, ptr := range labelPtrs {
+					ptrs = append(ptrs, ptr)
+				}
 			}
 		}
 	}
@@ -773,22 +771,22 @@ var pureFunctions = map[string]struct{}{
 // that modify external aliases. Assumptions are the same as pureFunctions.
 var purePackages = map[string]struct{}{
 	// stdlib
-	"crypto/internal/edwards25519": {},
-	"crypto/internal/nistec":       {},
-	"crypto/internal/nistec/fiat":  {},
-	"errors":                       {},
-	"fmt":                          {},
-	"internal":                     {},
-	"math/big":                     {},
-	"reflect":                      {}, // we assume that reflection is not used to modify aliases
-	"regexp":                       {},
-	"runtime":                      {},
-	"strconv":                      {},
-	"strings":                      {},
-	"sync":                         {},
-	"syscall":                      {},
-	"time":                         {},
-	"unsafe":                       {}, // we assume that unsafe is not used to modify aliases
+	// "crypto/internal/edwards25519": {},
+	// "crypto/internal/nistec":       {},
+	// "crypto/internal/nistec/fiat":  {},
+	"errors":   {},
+	"fmt":      {},
+	"internal": {},
+	"math/big": {},
+	"reflect":  {}, // we assume that reflection is not used to modify aliases
+	"regexp":   {},
+	"runtime":  {},
+	"strconv":  {},
+	"strings":  {},
+	"sync":     {},
+	"syscall":  {},
+	"time":     {},
+	"unsafe":   {}, // we assume that unsafe is not used to modify aliases
 	// dependencies
 	"github.com/cihub/seelog":          {},
 	"github.com/stretchr/testify/mock": {},
