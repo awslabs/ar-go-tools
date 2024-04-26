@@ -53,6 +53,7 @@ var stdPackages = map[string]map[string]Summary{
 	"embed":                       summaryEmbed,
 	"encoding":                    summaryEncoding,
 	"encoding/asn1":               summaryEncoding,
+	"encoding/base64":             summaryEncoding,
 	"encoding/gob":                summaryEncoding,
 	"encoding/binary":             summaryEncoding,
 	"encoding/json":               summaryEncoding,
@@ -261,6 +262,16 @@ var summaryCrypto = map[string]Summary{
 	},
 	// func GenerateKey(random io.Reader, bits int) (*PrivateKey, error)
 	"crypto/rsa.GenerateKey": TwoArgPropagation,
+	// func GenerateKey(curve Curve, rand io.Reader) (priv []byte, x, y *big.Int, err error)
+	"crypto/elliptic.GenerateKey": {
+		[][]int{{0}, {0}},
+		[][]int{{0, 1, 2}, {0, 1, 2}},
+	},
+	// func elliptic.MarshalCompressed(curve elliptic.Curve, x *big.Int, y *big.Int) []byte
+	"crypto/elliptic.MarshalCompressed": {
+		[][]int{{0}},
+		[][]int{{0}, {0}, {0}},
+	},
 }
 
 var summaryDatabase = map[string]Summary{}
@@ -327,6 +338,8 @@ var summaryEncoding = map[string]Summary{
 		[][]int{{0, 1}, {}},
 		[][]int{{0}, {0}},
 	},
+	// func (*base64.Encoding).EncodeToString(src []byte) string
+	"(*encoding/base64.Encoding).EncodeToString": TwoArgPropagation,
 }
 
 var summaryErrors = map[string]Summary{
