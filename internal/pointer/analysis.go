@@ -81,6 +81,7 @@ func (o *Object) Data() interface{} {
 	return o.data
 }
 
+// NodeID returns the object's node id or 0 if not found.
 func (o *Object) NodeID() NodeID {
 	if o.cgn == nil {
 		return NodeID(0)

@@ -275,6 +275,7 @@ func (p Pointer) Node() *Node {
 	return p.a.nodes[p.n]
 }
 
+// NodeID returns the pointer's node id.
 func (p Pointer) NodeID() NodeID {
 	return p.n
 }

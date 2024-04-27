@@ -92,13 +92,18 @@ func main() {
 	program := lp.Program
 
 	start := time.Now()
-	ptrRes, err := dataflow.DoPointerAnalysis(program, func(*ssa.Function) bool { return true }, true)
+	goPtrRes, err := dataflow.DoPointerAnalysis(program, func(*ssa.Function) bool { return true }, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not compute pointer analysis: %v\n", err)
 		return
 	}
+	ptrRes, err := modptr.DoPointerAnalysis(program, func(*ssa.Function) bool { return true }, true)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not compute (modified) pointer analysis: %v\n", err)
+		return
+	}
 
-	result, err := modptr.Analyze(cfg, lp, ptrRes)
+	result, err := modptr.Analyze(cfg, lp, ptrRes, goPtrRes)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
