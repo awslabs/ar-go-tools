@@ -99,7 +99,7 @@ func LoadProgram(config *packages.Config,
 	program.Build()
 
 	dir := "."
-	if len(args) > 0 {
+	if len(args) > 0 && strings.Contains(args[0], "implementation") {
 		dir = filepath.Dir(args[0]) + "/../../../../.." // HACK get to root implementation/agent/ directory
 	}
 	astPkgs, err := lang.AstPackages(dir, program.Fset)
