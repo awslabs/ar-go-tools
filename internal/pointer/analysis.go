@@ -81,10 +81,36 @@ func (o *Object) Data() interface{} {
 	return o.data
 }
 
-// Context returns the call-graph node corresponding to the context
-// in which the object was created.
-func (o *Object) Context() {
+func (o *Object) NodeID() NodeID {
+	if o.cgn == nil {
+		return NodeID(0)
+	}
 
+	return o.cgn.obj
+}
+
+// NodeIDs returns all the node ids in the object.
+func (o *Object) NodeIDs() []NodeID {
+	if o.cgn == nil {
+		return nil
+	}
+
+	ids := make([]NodeID, 0, o.size)
+	start := uint32(o.cgn.obj)
+	for i := uint32(0); i < o.size; i++ {
+		ids = append(ids, NodeID(start+i))
+	}
+
+	return ids
+}
+
+func (o *Object) String() string {
+	id := "<none>"
+	if o.cgn != nil {
+		id = o.cgn.obj.String()
+	}
+
+	return fmt.Sprintf("data: %v, nodeid: %v, ctx: %v", o.data, id, o.cgn)
 }
 
 // NodeID denotes a node.

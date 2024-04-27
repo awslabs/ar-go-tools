@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
+	"golang.org/x/tools/container/intsets"
 	goPointer "golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
@@ -134,11 +135,12 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 		log.Debugf("\tnumber of write instructions to analyze: %v\n", numInstrs)
 
 		s := &state{
-			cache:          c,
-			log:            log,
-			spec:           spec,
-			writesToAlias:  make(map[ssa.Value]map[ssa.Instruction]struct{}),
-			funcsToAnalyze: toAnalyze,
+			cache:            c,
+			log:              log,
+			spec:             spec,
+			writesToAlias:    make(map[ssa.Value]map[ssa.Instruction]struct{}),
+			funcsToAnalyze:   toAnalyze,
+			entryPointsToSet: &intsets.Sparse{},
 		}
 
 		// report functions with a high number of SSA values for debugging purposes
@@ -153,9 +155,16 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 		}
 
 		objs := objects(s.ptrRes, val)
+		// initialize points-to-set of entrypoint
+		fmt.Println("initializing entry points-to set")
 		for _, obj := range objs {
-			log.Infof("\tobj %+v\n", obj)
+			fmt.Printf("\tobject: %v\n", obj)
+			for _, id := range obj.NodeIDs() {
+				fmt.Printf("\t\tid: %v\n", id)
+				s.entryPointsToSet.Insert(int(id))
+			}
 		}
+
 		s.findWritesToAliases(objs)
 		for _, instrs := range s.writesToAlias {
 			for instr := range instrs {
@@ -182,6 +191,9 @@ type state struct {
 	// writesToAlias stores the set of instructions that write to an alias
 	// (SSA value).
 	writesToAlias map[ssa.Value]map[ssa.Instruction]struct{}
+	// entryPointsToSet is the set of node ids in the objects that the
+	// entrypoint points to.
+	entryPointsToSet *intsets.Sparse
 }
 
 // cache represents a "global" cache for the analysis.
@@ -220,15 +232,13 @@ func (s *state) findWritesToAliases(objs []*pointer.Object) {
 				panic("invalid write instruction")
 			}
 
-			mObjs := objects(s.ptrRes, mval)
-			for _, mobj := range mObjs {
-				for _, obj := range objs {
-					if mobj == obj {
-						if _, ok := s.writesToAlias[mval]; !ok {
-							s.writesToAlias[mval] = make(map[ssa.Instruction]struct{})
-						}
-						s.writesToAlias[mval][instr] = struct{}{}
+			mobjs := objects(s.ptrRes, mval)
+			for _, mobj := range mobjs {
+				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
+					if _, ok := s.writesToAlias[mval]; !ok {
+						s.writesToAlias[mval] = make(map[ssa.Instruction]struct{})
 					}
+					s.writesToAlias[mval][instr] = struct{}{}
 				}
 			}
 		}
@@ -241,6 +251,11 @@ func (s *state) findWritesToAliases(objs []*pointer.Object) {
 
 // objects returns all the unique objects that val points to.
 func objects(ptrRes *pointer.Result, val ssa.Value) []*pointer.Object {
+	if mi, ok := val.(*ssa.MakeInterface); ok {
+		// if val is an interface, the object is the concrete struct
+		val = mi.X
+	}
+
 	var res []*pointer.Object
 	seen := make(map[*pointer.Object]struct{})
 	ptrs := findAllPointers(ptrRes, val)

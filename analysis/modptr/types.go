@@ -43,6 +43,10 @@ type typeCache struct {
 // - v's type is a struct and any of v's fields can alias t
 // - t's type is a struct and any of t's fields can alias v
 func (tc *typeCache) canTypeAlias(ttypes []*types.Basic, v types.Type) bool {
+	if tc == nil {
+		return true
+	}
+
 	vtypes := tc.allBasicTypes(v)
 	for _, tt := range ttypes {
 		for _, vt := range vtypes {

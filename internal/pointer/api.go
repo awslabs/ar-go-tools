@@ -275,6 +275,10 @@ func (p Pointer) Node() *Node {
 	return p.a.nodes[p.n]
 }
 
+func (p Pointer) NodeID() NodeID {
+	return p.n
+}
+
 // Obj returns the enclosing object that the pointer points into.
 func (p Pointer) Obj() *Object {
 	id := p.a.enclosingObj(p.n)
