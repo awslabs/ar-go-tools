@@ -54,18 +54,21 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 	prog := lp.Program
 	log := config.NewLogGroup(cfg)
 
-	// pre-allocate maps for speed
-	numPtrs := len(ptrRes.Queries) + len(ptrRes.IndirectQueries)
 	reachable := lang.CallGraphReachable(ptrRes.CallGraph, false, false)
+	numVals := 0
+	for fn := range reachable {
+		lang.IterateValues(fn, func(_ int, val ssa.Value) {
+			if val != nil {
+				numVals++
+			}
+		})
+	}
 	ac := &aliasCache{
-		prog:                         prog,
-		ptrRes:                       ptrRes,
-		goPtrRes:                     goPtrRes,
-		reachableFuncs:               reachable,
-		globalPtrsTo:                 make(map[ssa.Value][]pointer.Pointer),
-		globalValsThatAlias:          make(map[pointer.Pointer]map[ssa.Value]struct{}, numPtrs),
-		computedAliasedValuesForFunc: make(map[pointer.Pointer]map[*ssa.Function]struct{}),
-		computedTransitiveAliases:    make(map[ssa.Value]struct{}),
+		prog:           prog,
+		ptrRes:         ptrRes,
+		goPtrRes:       goPtrRes,
+		reachableFuncs: reachable,
+		objectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}, numVals), // preallocate for speed
 	}
 	progTypes := prog.RuntimeTypes()
 	tc := &typeCache{
@@ -154,18 +157,15 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 			}
 		}
 
-		objs := objects(s.ptrRes, val)
+		objs := c.objects(val)
 		// initialize points-to-set of entrypoint
-		fmt.Println("initializing entry points-to set")
-		for _, obj := range objs {
-			fmt.Printf("\tobject: %v\n", obj)
+		for obj := range objs {
 			for _, id := range obj.NodeIDs() {
-				fmt.Printf("\t\tid: %v\n", id)
 				s.entryPointsToSet.Insert(int(id))
 			}
 		}
 
-		s.findWritesToAliases(objs)
+		s.findWritesToAliases()
 		for _, instrs := range s.writesToAlias {
 			for instr := range instrs {
 				if _, ok := modifications[entry]; !ok {
@@ -202,19 +202,15 @@ type cache struct {
 	*typeCache
 }
 
-// findWritesToAliases adds all write instructions to transitive aliases of
-// ptrs to s.writesToAlias.
+// findWritesToAliases adds all write instructions to a member of the entrypoint's
+// points-to-set to s.writesToAlias.
 //
 // Algorithm:
-//  1. Compute all values reachable from the entrypoint that transitively
-//     may-alias ptrs. This initializes the global may-alias cache.
-//  2. Filter all may-aliased values that do not need to be considered as
-//     aliases of the entrypoint because of the configuraton spec.
-//  3. For every instruction reachable from the entrypoint, if the lvalue is an
-//     alias, or the instruction allocates a value to an alias, then the alias
-//     has been "modified".
-func (s *state) findWritesToAliases(objs []*pointer.Object) {
-	//log := s.log
+//  1. For each write instruction (including alloc), compute the objects that
+//     the value can point to.
+//  2. For each object, if the object is a member of the entrypoint's points-to-set,
+//     then add the instruction to s.writesToAlias
+func (s *state) findWritesToAliases() {
 	for _, fna := range s.funcsToAnalyze {
 		for instr := range fna.instrs {
 			// mX is short for modifiedX
@@ -229,51 +225,49 @@ func (s *state) findWritesToAliases(objs []*pointer.Object) {
 			case *ssa.Send:
 				mval = instr.Chan
 			default:
-				panic("invalid write instruction")
+				panic(fmt.Errorf("invalid write instruction: %v (%T)", instr, instr))
+			}
+			if s.shouldFilterValue(mval) {
+				continue
 			}
 
-			mobjs := objects(s.ptrRes, mval)
-			for _, mobj := range mobjs {
+			mobjs := s.objects(mval)
+			for mobj := range mobjs {
 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
 					if _, ok := s.writesToAlias[mval]; !ok {
 						s.writesToAlias[mval] = make(map[ssa.Instruction]struct{})
 					}
 					s.writesToAlias[mval][instr] = struct{}{}
+					break
 				}
 			}
 		}
 	}
 }
 
-// Idea:
-// Find all (single?) objects that the entrypoint value points to
-// For every write instruction, if the value written to is a node in an entrypoint object, then it can modify the entrypoint
-
 // objects returns all the unique objects that val points to.
-func objects(ptrRes *pointer.Result, val ssa.Value) []*pointer.Object {
+func (ac *aliasCache) objects(val ssa.Value) map[*pointer.Object]struct{} {
 	if mi, ok := val.(*ssa.MakeInterface); ok {
 		// if val is an interface, the object is the concrete struct
 		val = mi.X
 	}
+	if res, ok := ac.objectPointees[val]; ok && len(res) > 0 {
+		return res
+	}
 
-	var res []*pointer.Object
-	seen := make(map[*pointer.Object]struct{})
-	ptrs := findAllPointers(ptrRes, val)
+	res := make(map[*pointer.Object]struct{})
+	ptrs := findAllPointers(ac.ptrRes, val)
 	for _, ptr := range ptrs {
 		for _, label := range ptr.PointsTo().Labels() {
 			obj := label.Obj()
 			if obj == nil {
 				continue
 			}
-			if _, ok := seen[obj]; ok {
-				continue
-			}
-
-			res = append(res, obj)
-			seen[obj] = struct{}{}
+			res[obj] = struct{}{}
 		}
 	}
 
+	ac.objectPointees[val] = res
 	return res
 }
 
@@ -281,98 +275,6 @@ func objects(ptrRes *pointer.Result, val ssa.Value) []*pointer.Object {
 // according to the spec.
 func (s *state) shouldFilterValue(val ssa.Value) bool {
 	return val == nil || doesConfigFilterFn(s.spec, val.Parent())
-}
-
-func (s *state) transitivePointersTo(val ssa.Value) []pointer.Pointer {
-	if ptrs, ok := s.aliasCache.globalPtrsTo[val]; ok {
-		return ptrs
-	}
-
-	stack := findAllPointers(s.aliasCache.ptrRes, val)
-	seen := make(map[pointer.Pointer]struct{})
-	var ptrs []pointer.Pointer
-	for len(stack) > 0 {
-		cur := stack[len(stack)-1]
-		stack = stack[0 : len(stack)-1]
-		if _, ok := seen[cur]; ok {
-			continue
-		}
-		seen[cur] = struct{}{}
-
-		for _, label := range cur.PointsTo().Labels() {
-			val := label.Value()
-			if val == nil || val.Parent() == nil {
-				continue
-			}
-
-			labelPtrs := findAllPointers(s.aliasCache.ptrRes, val)
-			//stack = append(stack, labelPtrs...)
-			for _, ptr := range labelPtrs {
-				ptrs = append(ptrs, ptr)
-			}
-		}
-	}
-
-	s.aliasCache.globalPtrsTo[val] = ptrs
-	return ptrs
-}
-
-// allAliasesOf computes all the values that are in the points-to set of a
-// pointer that transitively may-alias ptr.
-// This function only analyzes the values reachable from a single analysis
-// entrypoint.
-func (s *state) allAliasesOf(ptr pointer.Pointer) map[ssa.Value]struct{} {
-	// Even if the aliases of ptr are cached, the cache may have missed some,
-	// therefore the rest need to be analyzed.
-	// This is a global cache so some aliased values may not be reachable from the entrypoint
-	// and therefore those values do not need to be analyzed.
-	cachedAliases, hasCachedAliases := s.aliasCache.globalValsThatAlias[ptr]
-	aliases := make(map[ssa.Value]struct{}, len(cachedAliases))
-	if hasCachedAliases && len(cachedAliases) > 0 {
-		for v := range cachedAliases {
-			if _, ok := s.funcsToAnalyze[v.Parent()]; !ok {
-				continue
-			}
-
-			aliases[v] = struct{}{}
-		}
-	}
-
-	for fn, rfn := range s.funcsToAnalyze {
-		if _, ok := s.computedAliasedValuesForFunc[ptr][fn]; ok {
-			// skip if we already analyzed the function's aliased values
-			continue
-		}
-
-		for val := range rfn.vals {
-			if _, ok := aliases[val]; ok {
-				continue
-			}
-
-			ptrs := s.transitivePointersTo(val)
-			for _, valPtr := range ptrs {
-				if valPtr.MayAlias(ptr) {
-					aliases[val] = struct{}{}
-					break
-				}
-			}
-		}
-
-		if _, ok := s.computedAliasedValuesForFunc[ptr]; !ok {
-			s.computedAliasedValuesForFunc[ptr] = make(map[*ssa.Function]struct{})
-		}
-		s.computedAliasedValuesForFunc[ptr][fn] = struct{}{}
-	}
-
-	// update the global cache with the newly-computed aliases
-	if !hasCachedAliases {
-		s.aliasCache.globalValsThatAlias[ptr] = make(map[ssa.Value]struct{}, len(aliases))
-	}
-	for val := range aliases {
-		s.aliasCache.globalValsThatAlias[ptr][val] = struct{}{}
-	}
-
-	return aliases
 }
 
 type funcToAnalyze struct {

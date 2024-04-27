@@ -39,13 +39,7 @@ type aliasCache struct {
 	// goPtrRes is needed for functions that only work with the x/tools pointer analysis types.
 	goPtrRes       *goPointer.Result
 	reachableFuncs map[*ssa.Function]bool
-	// globalPtrsTo stores the set of program-wide transitive pointers to a value.
-	globalPtrsTo map[ssa.Value][]pointer.Pointer
-	// globalValsThatAlias stores the program-wide set of values that are in the
-	// points-to set of a pointer that may alias an entrypoint.
-	globalValsThatAlias          map[pointer.Pointer]map[ssa.Value]struct{}
-	computedAliasedValuesForFunc map[pointer.Pointer]map[*ssa.Function]struct{}
-	computedTransitiveAliases    map[ssa.Value]struct{}
+	objectPointees map[ssa.Value]map[*pointer.Object]struct{}
 }
 
 // findEntrypoints returns all the analysis entrypoints specified by spec.
