@@ -25,6 +25,7 @@ FILES=$(
     find . -type f -name "*.go"                       \
         -not -path "./testdata/src/taint/fromlevee/*" \
         -not -path "./internal/pointer/*" \
+        -not -path "./internal/typeparams/*" \
         -print
 )
 

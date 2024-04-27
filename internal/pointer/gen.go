@@ -16,9 +16,9 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/internal/typeparams"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/internal/typeparams"
 )
 
 var (

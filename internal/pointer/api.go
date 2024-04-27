@@ -157,6 +157,7 @@ func (c *Config) prog() *ssa.Program {
 	panic("empty scope")
 }
 
+// A Warning is a pointer analysis warning.
 type Warning struct {
 	Pos     token.Pos
 	Message string
@@ -203,7 +204,7 @@ func (s PointsToSet) String() string {
 	return buf.String()
 }
 
-// PointsTo returns the set of labels that this points-to set
+// Labels returns the set of labels that this points-to set
 // contains.
 func (s PointsToSet) Labels() []*Label {
 	var labels []*Label
@@ -216,6 +217,8 @@ func (s PointsToSet) Labels() []*Label {
 	return labels
 }
 
+// DynamicTypes returns the dynamic types of s.
+//
 // If this PointsToSet came from a Pointer of interface kind
 // or a reflect.Value, DynamicTypes returns the set of dynamic
 // types that it may contain.  (For an interface, they will
