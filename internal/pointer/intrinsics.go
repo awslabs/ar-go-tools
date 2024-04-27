@@ -230,16 +230,16 @@ func ext۰NotYetImplemented(a *analysis, cgn *cgnode) {
 
 // runtime.SetFinalizer(x, f)
 type runtimeSetFinalizerConstraint struct {
-	targets nodeid // (indirect)
-	f       nodeid // (ptr)
-	x       nodeid
+	targets NodeID // (indirect)
+	f       NodeID // (ptr)
+	x       NodeID
 }
 
-func (c *runtimeSetFinalizerConstraint) ptr() nodeid { return c.f }
+func (c *runtimeSetFinalizerConstraint) ptr() NodeID { return c.f }
 func (c *runtimeSetFinalizerConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.targets), "SetFinalizer.targets")
 }
-func (c *runtimeSetFinalizerConstraint) renumber(mapping []nodeid) {
+func (c *runtimeSetFinalizerConstraint) renumber(mapping []NodeID) {
 	c.targets = mapping[c.targets]
 	c.f = mapping[c.f]
 	c.x = mapping[c.x]
@@ -251,7 +251,7 @@ func (c *runtimeSetFinalizerConstraint) String() string {
 
 func (c *runtimeSetFinalizerConstraint) solve(a *analysis, delta *nodeset) {
 	for _, fObj := range delta.AppendTo(a.deltaSpace) {
-		tDyn, f, indirect := a.taggedValue(nodeid(fObj))
+		tDyn, f, indirect := a.taggedValue(NodeID(fObj))
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
 			// when we start creating indirect tagged objects.
@@ -300,15 +300,15 @@ func ext۰runtime۰SetFinalizer(a *analysis, cgn *cgnode) {
 
 // time.StartTimer(t)
 type timeStartTimerConstraint struct {
-	targets nodeid // (indirect)
-	t       nodeid // (ptr)
+	targets NodeID // (indirect)
+	t       NodeID // (ptr)
 }
 
-func (c *timeStartTimerConstraint) ptr() nodeid { return c.t }
+func (c *timeStartTimerConstraint) ptr() NodeID { return c.t }
 func (c *timeStartTimerConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.targets), "StartTimer.targets")
 }
-func (c *timeStartTimerConstraint) renumber(mapping []nodeid) {
+func (c *timeStartTimerConstraint) renumber(mapping []NodeID) {
 	c.targets = mapping[c.targets]
 	c.t = mapping[c.t]
 }
@@ -319,7 +319,7 @@ func (c *timeStartTimerConstraint) String() string {
 
 func (c *timeStartTimerConstraint) solve(a *analysis, delta *nodeset) {
 	for _, tObj := range delta.AppendTo(a.deltaSpace) {
-		t := nodeid(tObj)
+		t := NodeID(tObj)
 
 		// We model startTimer as if it was defined thus:
 		// 	func startTimer(t *runtimeTimer) { t.f(t.arg) }

@@ -145,7 +145,7 @@ ordering enables a very cheap way to group related nodes together.  For
 example, passing n parameters consists of generating n parallel
 constraints from caller+i to callee+i for 0<=i<n.
 
-The zero nodeid means "not a pointer".  For simplicity, we generate flow
+The zero NodeID means "not a pointer".  For simplicity, we generate flow
 constraints even for non-pointer types such as int.  The pointer
 equivalence (PE) presolver optimization detects which variables cannot
 point to anything; this includes not only all variables of non-pointer
@@ -239,7 +239,7 @@ that p points to s.x.  If we ignored such object fields, we could only
 say that p points somewhere within s.
 
 All other basic types are ignored.  Expressions of these types have
-zero nodeid, and fields of these types within aggregate other types
+zero NodeID, and fields of these types within aggregate other types
 are omitted.
 
 unsafe.Pointers are not modelled as pointers, so a conversion of an

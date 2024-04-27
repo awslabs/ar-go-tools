@@ -37,7 +37,7 @@ func (a *analysis) solve() {
 		if !a.work.TakeMin(&x) {
 			break // empty
 		}
-		id := nodeid(x)
+		id := NodeID(x)
 		if a.log != nil {
 			fmt.Fprintf(a.log, "\tnode n%d\n", id)
 		}
@@ -116,7 +116,7 @@ func (a *analysis) processNewConstraints() {
 	// Attach simple (copy) and complex constraints to nodes.
 	var stale nodeset
 	for _, c := range constraints {
-		var id nodeid
+		var id NodeID
 		switch c := c.(type) {
 		case *addrConstraint:
 			// base constraints handled in previous loop
@@ -142,7 +142,7 @@ func (a *analysis) processNewConstraints() {
 	// Apply new constraints to pre-existing PTS labels.
 	var space [50]int
 	for _, id := range stale.AppendTo(space[:0]) {
-		n := a.nodes[nodeid(id)]
+		n := a.nodes[NodeID(id)]
 		a.solveConstraints(n, &n.solve.prevPTS)
 	}
 }
@@ -150,7 +150,7 @@ func (a *analysis) processNewConstraints() {
 // solveConstraints applies each resolution rule attached to node n to
 // the set of labels delta.  It may generate new constraints in
 // a.constraints.
-func (a *analysis) solveConstraints(n *node, delta *nodeset) {
+func (a *analysis) solveConstraints(n *Node, delta *nodeset) {
 	if delta.IsEmpty() {
 		return
 	}
@@ -166,7 +166,7 @@ func (a *analysis) solveConstraints(n *node, delta *nodeset) {
 	// Process copy constraints.
 	var copySeen nodeset
 	for _, x := range n.solve.copyTo.AppendTo(a.deltaSpace) {
-		mid := nodeid(x)
+		mid := NodeID(x)
 		if copySeen.add(mid) {
 			if a.nodes[mid].solve.pts.addAll(delta) {
 				a.addWork(mid)
@@ -176,7 +176,7 @@ func (a *analysis) solveConstraints(n *node, delta *nodeset) {
 }
 
 // addLabel adds label to the points-to set of ptr and reports whether the set grew.
-func (a *analysis) addLabel(ptr, label nodeid) bool {
+func (a *analysis) addLabel(ptr, label NodeID) bool {
 	b := a.nodes[ptr].solve.pts.add(label)
 	if b && a.log != nil {
 		fmt.Fprintf(a.log, "\t\tpts(n%d) += n%d\n", ptr, label)
@@ -184,7 +184,7 @@ func (a *analysis) addLabel(ptr, label nodeid) bool {
 	return b
 }
 
-func (a *analysis) addWork(id nodeid) {
+func (a *analysis) addWork(id NodeID) {
 	a.work.Insert(int(id))
 	if a.log != nil {
 		fmt.Fprintf(a.log, "\t\twork: n%d\n", id)
@@ -197,7 +197,7 @@ func (a *analysis) addWork(id nodeid) {
 //
 // The size of the copy is implicitly 1.
 // It returns true if pts(dst) changed.
-func (a *analysis) onlineCopy(dst, src nodeid) bool {
+func (a *analysis) onlineCopy(dst, src NodeID) bool {
 	if dst != src {
 		if nsrc := a.nodes[src]; nsrc.solve.copyTo.add(dst) {
 			if a.log != nil {
@@ -218,7 +218,7 @@ func (a *analysis) onlineCopy(dst, src nodeid) bool {
 //
 // TODO(adonovan): now that we support a.copy() during solving, we
 // could eliminate onlineCopyN, but it's much slower.  Investigate.
-func (a *analysis) onlineCopyN(dst, src nodeid, sizeof uint32) uint32 {
+func (a *analysis) onlineCopyN(dst, src NodeID, sizeof uint32) uint32 {
 	for i := uint32(0); i < sizeof; i++ {
 		if a.onlineCopy(dst, src) {
 			a.addWork(dst)
@@ -232,8 +232,8 @@ func (a *analysis) onlineCopyN(dst, src nodeid, sizeof uint32) uint32 {
 func (c *loadConstraint) solve(a *analysis, delta *nodeset) {
 	var changed bool
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		k := nodeid(x)
-		koff := k + nodeid(c.offset)
+		k := NodeID(x)
+		koff := k + NodeID(c.offset)
 		if a.onlineCopy(c.dst, koff) {
 			changed = true
 		}
@@ -245,8 +245,8 @@ func (c *loadConstraint) solve(a *analysis, delta *nodeset) {
 
 func (c *storeConstraint) solve(a *analysis, delta *nodeset) {
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		k := nodeid(x)
-		koff := k + nodeid(c.offset)
+		k := NodeID(x)
+		koff := k + NodeID(c.offset)
 		if a.onlineCopy(koff, c.src) {
 			a.addWork(koff)
 		}
@@ -256,8 +256,8 @@ func (c *storeConstraint) solve(a *analysis, delta *nodeset) {
 func (c *offsetAddrConstraint) solve(a *analysis, delta *nodeset) {
 	dst := a.nodes[c.dst]
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		k := nodeid(x)
-		if dst.solve.pts.add(k + nodeid(c.offset)) {
+		k := NodeID(x)
+		if dst.solve.pts.add(k + NodeID(c.offset)) {
 			a.addWork(c.dst)
 		}
 	}
@@ -265,7 +265,7 @@ func (c *offsetAddrConstraint) solve(a *analysis, delta *nodeset) {
 
 func (c *typeFilterConstraint) solve(a *analysis, delta *nodeset) {
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		ifaceObj := nodeid(x)
+		ifaceObj := NodeID(x)
 		tDyn, _, indirect := a.taggedValue(ifaceObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -287,7 +287,7 @@ func (c *untagConstraint) solve(a *analysis, delta *nodeset) {
 		predicate = types.Identical
 	}
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		ifaceObj := nodeid(x)
+		ifaceObj := NodeID(x)
 		tDyn, v, indirect := a.taggedValue(ifaceObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -309,7 +309,7 @@ func (c *untagConstraint) solve(a *analysis, delta *nodeset) {
 
 func (c *invokeConstraint) solve(a *analysis, delta *nodeset) {
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		ifaceObj := nodeid(x)
+		ifaceObj := NodeID(x)
 		tDyn, v, indirect := a.taggedValue(ifaceObj)
 		if indirect {
 			// TODO(adonovan): we may need to implement this if
@@ -343,13 +343,13 @@ func (c *invokeConstraint) solve(a *analysis, delta *nodeset) {
 		a.onlineCopyN(arg0, v, recvSize)
 
 		src := c.params + 1 // skip past identity
-		dst := arg0 + nodeid(recvSize)
+		dst := arg0 + NodeID(recvSize)
 
 		// Copy caller's argument block to method formal parameters.
 		paramsSize := a.sizeof(sig.Params())
 		a.onlineCopyN(dst, src, paramsSize)
-		src += nodeid(paramsSize)
-		dst += nodeid(paramsSize)
+		src += NodeID(paramsSize)
+		dst += NodeID(paramsSize)
 
 		// Copy method results to caller's result block.
 		resultsSize := a.sizeof(sig.Results())

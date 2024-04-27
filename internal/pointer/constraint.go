@@ -7,12 +7,12 @@ package pointer
 import "go/types"
 
 type constraint interface {
-	// For a complex constraint, returns the nodeid of the pointer
+	// For a complex constraint, returns the NodeID of the pointer
 	// to which it is attached.   For addr and copy, returns dst.
-	ptr() nodeid
+	ptr() NodeID
 
-	// renumber replaces each nodeid n in the constraint by mapping[n].
-	renumber(mapping []nodeid)
+	// renumber replaces each NodeID n in the constraint by mapping[n].
+	renumber(mapping []NodeID)
 
 	// presolve is a hook for constraint-specific behaviour during
 	// pre-solver optimization.  Typical implementations mark as
@@ -31,12 +31,12 @@ type constraint interface {
 // pts(dst) ⊇ {src}
 // A base constraint used to initialize the solver's pt sets
 type addrConstraint struct {
-	dst nodeid // (ptr)
-	src nodeid
+	dst NodeID // (ptr)
+	src NodeID
 }
 
-func (c *addrConstraint) ptr() nodeid { return c.dst }
-func (c *addrConstraint) renumber(mapping []nodeid) {
+func (c *addrConstraint) ptr() NodeID { return c.dst }
+func (c *addrConstraint) renumber(mapping []NodeID) {
 	c.dst = mapping[c.dst]
 	c.src = mapping[c.src]
 }
@@ -44,12 +44,12 @@ func (c *addrConstraint) renumber(mapping []nodeid) {
 // dst = src
 // A simple constraint represented directly as a copyTo graph edge.
 type copyConstraint struct {
-	dst nodeid // (ptr)
-	src nodeid
+	dst NodeID // (ptr)
+	src NodeID
 }
 
-func (c *copyConstraint) ptr() nodeid { return c.dst }
-func (c *copyConstraint) renumber(mapping []nodeid) {
+func (c *copyConstraint) ptr() NodeID { return c.dst }
+func (c *copyConstraint) renumber(mapping []NodeID) {
 	c.dst = mapping[c.dst]
 	c.src = mapping[c.src]
 }
@@ -58,12 +58,12 @@ func (c *copyConstraint) renumber(mapping []nodeid) {
 // A complex constraint attached to src (the pointer)
 type loadConstraint struct {
 	offset uint32
-	dst    nodeid
-	src    nodeid // (ptr)
+	dst    NodeID
+	src    NodeID // (ptr)
 }
 
-func (c *loadConstraint) ptr() nodeid { return c.src }
-func (c *loadConstraint) renumber(mapping []nodeid) {
+func (c *loadConstraint) ptr() NodeID { return c.src }
+func (c *loadConstraint) renumber(mapping []NodeID) {
 	c.dst = mapping[c.dst]
 	c.src = mapping[c.src]
 }
@@ -72,12 +72,12 @@ func (c *loadConstraint) renumber(mapping []nodeid) {
 // A complex constraint attached to dst (the pointer)
 type storeConstraint struct {
 	offset uint32
-	dst    nodeid // (ptr)
-	src    nodeid
+	dst    NodeID // (ptr)
+	src    NodeID
 }
 
-func (c *storeConstraint) ptr() nodeid { return c.dst }
-func (c *storeConstraint) renumber(mapping []nodeid) {
+func (c *storeConstraint) ptr() NodeID { return c.dst }
+func (c *storeConstraint) renumber(mapping []NodeID) {
 	c.dst = mapping[c.dst]
 	c.src = mapping[c.src]
 }
@@ -86,12 +86,12 @@ func (c *storeConstraint) renumber(mapping []nodeid) {
 // A complex constraint attached to dst (the pointer)
 type offsetAddrConstraint struct {
 	offset uint32
-	dst    nodeid
-	src    nodeid // (ptr)
+	dst    NodeID
+	src    NodeID // (ptr)
 }
 
-func (c *offsetAddrConstraint) ptr() nodeid { return c.src }
-func (c *offsetAddrConstraint) renumber(mapping []nodeid) {
+func (c *offsetAddrConstraint) ptr() NodeID { return c.src }
+func (c *offsetAddrConstraint) renumber(mapping []NodeID) {
 	c.dst = mapping[c.dst]
 	c.src = mapping[c.src]
 }
@@ -101,12 +101,12 @@ func (c *offsetAddrConstraint) renumber(mapping []nodeid) {
 // No representation change: pts(dst) and pts(src) contains tagged objects.
 type typeFilterConstraint struct {
 	typ types.Type // an interface type
-	dst nodeid
-	src nodeid // (ptr)
+	dst NodeID
+	src NodeID // (ptr)
 }
 
-func (c *typeFilterConstraint) ptr() nodeid { return c.src }
-func (c *typeFilterConstraint) renumber(mapping []nodeid) {
+func (c *typeFilterConstraint) ptr() NodeID { return c.src }
+func (c *typeFilterConstraint) renumber(mapping []NodeID) {
 	c.dst = mapping[c.dst]
 	c.src = mapping[c.src]
 }
@@ -123,13 +123,13 @@ func (c *typeFilterConstraint) renumber(mapping []nodeid) {
 // pts(dst) contains their payloads.
 type untagConstraint struct {
 	typ   types.Type // a concrete type
-	dst   nodeid
-	src   nodeid // (ptr)
+	dst   NodeID
+	src   NodeID // (ptr)
 	exact bool
 }
 
-func (c *untagConstraint) ptr() nodeid { return c.src }
-func (c *untagConstraint) renumber(mapping []nodeid) {
+func (c *untagConstraint) ptr() NodeID { return c.src }
+func (c *untagConstraint) renumber(mapping []NodeID) {
 	c.dst = mapping[c.dst]
 	c.src = mapping[c.src]
 }
@@ -138,12 +138,12 @@ func (c *untagConstraint) renumber(mapping []nodeid) {
 // A complex constraint attached to iface.
 type invokeConstraint struct {
 	method *types.Func // the abstract method
-	iface  nodeid      // (ptr) the interface
-	params nodeid      // the start of the identity/params/results block
+	iface  NodeID      // (ptr) the interface
+	params NodeID      // the start of the identity/params/results block
 }
 
-func (c *invokeConstraint) ptr() nodeid { return c.iface }
-func (c *invokeConstraint) renumber(mapping []nodeid) {
+func (c *invokeConstraint) ptr() NodeID { return c.iface }
+func (c *invokeConstraint) renumber(mapping []NodeID) {
 	c.iface = mapping[c.iface]
 	c.params = mapping[c.params]
 }

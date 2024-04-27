@@ -179,7 +179,7 @@ type Result struct {
 // types may alias the same object.
 type Pointer struct {
 	a *analysis
-	n nodeid
+	n NodeID
 }
 
 // A PointsToSet is a set of labels (locations or allocations).
@@ -197,7 +197,7 @@ func (s PointsToSet) String() string {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			buf.WriteString(s.a.labelFor(nodeid(l)).String())
+			buf.WriteString(s.a.labelFor(NodeID(l)).String())
 		}
 	}
 	buf.WriteByte(']')
@@ -211,7 +211,7 @@ func (s PointsToSet) Labels() []*Label {
 	if s.pts != nil {
 		var space [50]int
 		for _, l := range s.pts.AppendTo(space[:0]) {
-			labels = append(labels, s.a.labelFor(nodeid(l)))
+			labels = append(labels, s.a.labelFor(NodeID(l)))
 		}
 	}
 	return labels
@@ -235,7 +235,7 @@ func (s PointsToSet) DynamicTypes() *typeutil.Map {
 	if s.pts != nil {
 		var space [50]int
 		for _, x := range s.pts.AppendTo(space[:0]) {
-			ifaceObjID := nodeid(x)
+			ifaceObjID := NodeID(x)
 			if !s.a.isTaggedObject(ifaceObjID) {
 				continue // !CanHaveDynamicTypes(tDyn)
 			}
@@ -268,6 +268,22 @@ func (s PointsToSet) Intersects(y PointsToSet) bool {
 
 func (p Pointer) String() string {
 	return fmt.Sprintf("n%d", p.n)
+}
+
+// Node returns the pointer's node.
+func (p Pointer) Node() *Node {
+	return p.a.nodes[p.n]
+}
+
+// Obj returns the enclosing object that the pointer points into.
+func (p Pointer) Obj() *Object {
+	id := p.a.enclosingObj(p.n)
+	node := p.a.nodes[id]
+	if node == nil {
+		return nil
+	}
+
+	return node.obj
 }
 
 // PointsTo returns the points-to set of this pointer.

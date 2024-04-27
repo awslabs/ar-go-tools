@@ -168,13 +168,13 @@ func destructuringOps(typ types.Type, expr ast.Expr) ([]interface{}, types.Type,
 	}
 }
 
-func (a *analysis) evalExtendedQuery(t types.Type, id nodeid, ops []interface{}) (types.Type, nodeid) {
+func (a *analysis) evalExtendedQuery(t types.Type, id NodeID, ops []interface{}) (types.Type, NodeID) {
 	pid := id
 	// TODO(dh): we're allocating intermediary nodes each time
 	// evalExtendedQuery is called. We should probably only generate
 	// them once per (v, ops) pair.
 	for i := 1; i < len(ops); i++ {
-		var nid nodeid
+		var nid NodeID
 		switch ops[i] {
 		case "recv":
 			t = t.(*types.Chan).Elem().Underlying()
@@ -187,7 +187,7 @@ func (a *analysis) evalExtendedQuery(t types.Type, id nodeid, ops []interface{})
 			offset := a.offsetOf(t, idx)
 			t = tt.Field(idx).Type().Underlying()
 			nid = a.addNodes(t, "query.extended")
-			a.copy(nid, pid+nodeid(offset), a.sizeof(t))
+			a.copy(nid, pid+NodeID(offset), a.sizeof(t))
 		case "arrayelem":
 			t = t.(*types.Array).Elem().Underlying()
 			nid = a.addNodes(t, "query.extended")
@@ -209,7 +209,7 @@ func (a *analysis) evalExtendedQuery(t types.Type, id nodeid, ops []interface{})
 			idx := ops[i].(int)
 			t = tt.At(idx).Type().Underlying()
 			nid = a.addNodes(t, "query.extended")
-			a.copy(nid, pid+nodeid(idx), a.sizeof(t))
+			a.copy(nid, pid+NodeID(idx), a.sizeof(t))
 		case "load":
 			t = t.(*types.Pointer).Elem().Underlying()
 			nid = a.addNodes(t, "query.extended")

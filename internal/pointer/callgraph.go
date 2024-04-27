@@ -15,7 +15,7 @@ import (
 
 type cgnode struct {
 	fn         *ssa.Function
-	obj        nodeid      // start of this contour's object block
+	obj        NodeID      // start of this contour's object block
 	sites      []*callsite // ordered list of callsites within this function
 	callersite *callsite   // where called from, if known; nil for shared contours
 }
@@ -40,7 +40,7 @@ func (n *cgnode) String() string {
 // callsites never represent calls to built-ins;
 // they are handled as intrinsics.
 type callsite struct {
-	targets nodeid              // pts(·) contains objects for dynamically called functions
+	targets NodeID              // pts(·) contains objects for dynamically called functions
 	instr   ssa.CallInstruction // the call instruction; nil for synthetic/intrinsic
 }
 

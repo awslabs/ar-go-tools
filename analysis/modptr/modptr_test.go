@@ -77,12 +77,16 @@ func TestAnalyze_DiodonAgent(t *testing.T) {
 func runTest(t *testing.T, dir string) {
 	lp := analysistest.LoadTest(t, ".", []string{})
 	prog := lp.Program
-	ptr, err := dataflow.DoPointerAnalysis(prog, func(*ssa.Function) bool { return true }, true)
+	goPtrRes, err := dataflow.DoPointerAnalysis(prog, func(*ssa.Function) bool { return true }, true)
+	if err != nil {
+		t.Fatalf("failed to run pointer analysis: %v", err)
+	}
+	ptrRes, err := modptr.DoPointerAnalysis(prog, func(*ssa.Function) bool { return true }, true)
 	if err != nil {
 		t.Fatalf("failed to run pointer analysis: %v", err)
 	}
 
-	res, err := modptr.Analyze(lp.Config, lp.LoadedProgram, ptr)
+	res, err := modptr.Analyze(lp.Config, lp.LoadedProgram, ptrRes, goPtrRes)
 	if err != nil {
 		t.Fatalf("failed to run analysis: %v", err)
 	}
