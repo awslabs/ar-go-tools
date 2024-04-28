@@ -584,9 +584,9 @@ func (ss SlicingSpec) IsBacktracePoint(cid CodeIdentifier) bool {
 }
 
 // IsValue returns true if the code identifier cid matches a value according to spec s.
-// Does not compare Label values.
+// Does not compare Label or Type values because they have different meanings.
 func (s ModValSpec) IsValue(cid CodeIdentifier) bool {
-	return ExistsCid(s.Values, cid.equalOnNonEmptyFields)
+	return ExistsCid(s.Values, cid.equalOnNonEmptyFieldsExceptType)
 }
 
 // Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)

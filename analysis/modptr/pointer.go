@@ -97,6 +97,10 @@ func (ac *aliasCache) findEntrypoint(spec config.ModValSpec, call *ssa.Call) (En
 		}
 
 		val := args[idx]
+		if cid.Type != "" && !cid.MatchType(val.Type()) {
+			continue
+		}
+
 		return Entrypoint{Val: val, Call: call, Pos: callPos}, true
 	}
 

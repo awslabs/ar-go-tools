@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"go/token"
-	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -70,20 +69,10 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 		reachableFuncs: reachable,
 		objectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}, numVals), // preallocate for speed
 	}
-	progTypes := prog.RuntimeTypes()
-	tc := &typeCache{
-		progTypes:  progTypes,
-		implements: make(map[*types.Interface][]types.Type),
-		basic:      make(map[types.Type][]*types.Basic),
-	}
-	c := &cache{
-		aliasCache: ac,
-		typeCache:  tc,
-	}
 
 	var errs []error
 	for _, spec := range cfg.ModificationTrackingProblems {
-		if err := analyze(log, spec, c, modifications); err != nil {
+		if err := analyze(log, spec, ac, modifications); err != nil {
 			errs = append(errs, fmt.Errorf("analysis failed for spec %v: %v", spec, err))
 		}
 	}
@@ -94,9 +83,13 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 }
 
 // analyze runs the analysis for a single spec and adds the write instructions to modifications.
-func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
+func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
 	var errs []error
 	entrypoints := c.findEntrypoints(spec)
+	if len(entrypoints) == 0 {
+		return fmt.Errorf("no entrypoints found")
+	}
+
 	for entry := range entrypoints {
 		val := entry.Val
 		if val.Type() == nil {
@@ -109,52 +102,26 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 		}
 		log.Infof("ENTRY: %v of %v in %v at %v\n", val.Name(), entry.Call, val.Parent(), entry.Pos)
 
-		// Only analyze the functions can modify the entrypoint.
-		//
-		// Crucially, "reachable" functions do not exclude functions that are
-		// filtered by the config. This is because filtered functions may
-		// produce intermediate pointers that may alias pointers used in
-		// unfiltered functions.
-		entryTypes := c.typeCache.allBasicTypes(val.Type())
-		log.Debugf("\tentrypoint types: %v\n", entryTypes)
-		fnsToAnalyze := make(map[*ssa.Function]bool)
-		fnsToAnalyze[val.Parent()] = true // always analyze the entrypoint function
-		for fn := range c.reachableFuncs {
-			if !isFnPure(c.typeCache, entryTypes, fn) {
-				fnsToAnalyze[fn] = true
-			}
-		}
+		fnsToAnalyze := c.reachableFuncs
 		log.Debugf("\tnumber of functions to analyze: %v\n", len(fnsToAnalyze))
 		toAnalyze := make(map[*ssa.Function]*funcToAnalyze, len(fnsToAnalyze))
 		numVals := 0
 		numInstrs := 0
 		for fn := range fnsToAnalyze {
-			af := newFuncToAnalyze(c.typeCache, entryTypes, fn)
+			af := newFuncToAnalyze(fn)
 			toAnalyze[fn] = af
 			numVals += len(af.vals)
 			numInstrs += len(af.instrs)
 		}
-		log.Debugf("\tnumber of vals to analyze: %v\n", numVals)
 		log.Debugf("\tnumber of write instructions to analyze: %v\n", numInstrs)
 
 		s := &state{
-			cache:            c,
+			aliasCache:       c,
 			log:              log,
 			spec:             spec,
 			writesToAlias:    make(map[ssa.Value]map[ssa.Instruction]struct{}),
 			funcsToAnalyze:   toAnalyze,
 			entryPointsToSet: &intsets.Sparse{},
-		}
-
-		// report functions with a high number of SSA values for debugging purposes
-		if log.LogsDebug() {
-			fns := mostExpensiveFns(c.typeCache, entryTypes, fnsToAnalyze)
-			if len(fns) > 0 {
-				log.Debugf("\tmost expensive functions (name | signature | number of values):\n")
-				for _, ef := range fns {
-					log.Debugf("\t\t%v | %v | %v\n", ef.fn.String(), ef.fn.Signature, ef.numVals)
-				}
-			}
 		}
 
 		objs := c.objects(val)
@@ -183,7 +150,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *cache, modificatio
 // state represents the analysis state.
 // This tracks writes to a single value (entrypoint).
 type state struct {
-	*cache
+	*aliasCache
 	log  *config.LogGroup
 	spec config.ModValSpec
 
@@ -196,18 +163,12 @@ type state struct {
 	entryPointsToSet *intsets.Sparse
 }
 
-// cache represents a "global" cache for the analysis.
-type cache struct {
-	*aliasCache
-	*typeCache
-}
-
 // findWritesToAliases adds all write instructions to a member of the entrypoint's
 // points-to-set to s.writesToAlias.
 //
 // Algorithm:
 //  1. For each write instruction (including alloc), compute the objects that
-//     the value can point to.
+//     the value written to can point to.
 //  2. For each object, if the object is a member of the entrypoint's points-to-set,
 //     then add the instruction to s.writesToAlias
 func (s *state) findWritesToAliases() {
@@ -238,6 +199,7 @@ func (s *state) findWritesToAliases() {
 						s.writesToAlias[mval] = make(map[ssa.Instruction]struct{})
 					}
 					s.writesToAlias[mval][instr] = struct{}{}
+					// s.log.Infof("modification callctx: %v\n", mobj.CallCtx())
 					break
 				}
 			}
@@ -255,8 +217,8 @@ func (ac *aliasCache) objects(val ssa.Value) map[*pointer.Object]struct{} {
 		return res
 	}
 
-	res := make(map[*pointer.Object]struct{})
 	ptrs := findAllPointers(ac.ptrRes, val)
+	res := make(map[*pointer.Object]struct{}, len(ptrs))
 	for _, ptr := range ptrs {
 		for _, label := range ptr.PointsTo().Labels() {
 			obj := label.Obj()
@@ -282,12 +244,12 @@ type funcToAnalyze struct {
 	vals   map[ssa.Value]struct{}
 }
 
-func newFuncToAnalyze(tc *typeCache, entryTypes []*types.Basic, fn *ssa.Function) *funcToAnalyze {
+func newFuncToAnalyze(fn *ssa.Function) *funcToAnalyze {
 	vals := make(map[ssa.Value]struct{})
-	addValuesOfFn(tc, entryTypes, fn, vals)
+	addValuesOfFn(fn, vals)
 	instrs := make(map[ssa.Instruction]struct{})
 	lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
-		if instr == nil || instr.Parent() == nil {
+		if instr == nil || instr.Parent() == nil || !instr.Pos().IsValid() {
 			return
 		}
 
@@ -314,4 +276,13 @@ func doesConfigFilterFn(spec config.ModValSpec, f *ssa.Function) bool {
 	}
 
 	return false
+}
+
+func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
+	lang.IterateValues(fn, func(_ int, val ssa.Value) {
+		if val == nil || val.Parent() == nil {
+			return
+		}
+		vals[val] = struct{}{}
+	})
 }

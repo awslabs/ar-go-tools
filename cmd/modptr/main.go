@@ -134,12 +134,16 @@ func Report(logger *log.Logger, program *ssa.Program, result modptr.Result) {
 			entryPos := entry.Pos
 			modPos := program.Fset.Position(modInstr.Pos())
 			logger.Printf(
-				"%s in function %s:\n\tS: [SSA] %s\n\t\t%s\n\tModification: [SSA] %s\n\t\t%s\n",
-				formatutil.Red("Value has been modified"),
-				entryVal.Parent().Name(),
+				"%s of arg %s of call %s in %s:\n\tS: [SSA] %s in function %s\n\t\t%s\n\tModification: [SSA] %s in function %s\n\t\t%s\n",
+				formatutil.Red("Memory has been modified"),
+				entry.Val.Name(),
+				entry.Call.String(),
+				entry.Val.Parent().String(),
 				formatutil.SanitizeRepr(entryVal),
+				entryVal.Parent().String(),
 				entryPos.String(), // safe %s (position string)
 				formatutil.SanitizeRepr(modInstr),
+				modInstr.Parent().String(),
 				modPos.String(), // safe %s (position string)
 			)
 		}

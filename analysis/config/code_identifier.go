@@ -149,6 +149,30 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 		(cidRef.Kind == cid.Kind)
 }
 
+// equalOnNonEmptyFields returns true if each of the receiver's fields (except
+// the type) are either equal to the corresponding argument's field, or the
+// argument's field is empty.
+//
+//gocyclo:ignore
+func (cid *CodeIdentifier) equalOnNonEmptyFieldsExceptType(cidRef CodeIdentifier) bool {
+	if cidRef.computedRegexs != nil {
+		return ((cidRef.computedRegexs.contextRegex.MatchString(cid.Context)) || (cidRef.Context == "")) &&
+			((cidRef.computedRegexs.packageRegex.MatchString(cid.Package)) || (cidRef.Package == "")) &&
+			((cidRef.computedRegexs.packageRegex.MatchString(cid.Interface)) || (cidRef.Interface == "")) &&
+			((cidRef.computedRegexs.methodRegex.MatchString(cid.Method)) || (cidRef.Method == "")) &&
+			((cidRef.computedRegexs.receiverRegex.MatchString(cid.Receiver)) || (cidRef.Receiver == "")) &&
+			((cidRef.computedRegexs.fieldRegex.MatchString(cid.Field)) || (cidRef.Field == "")) &&
+			(cidRef.Kind == cid.Kind)
+	}
+	return ((cid.Context == cidRef.Context) || (cidRef.Context == "")) &&
+		((cid.Package == cidRef.Package) || (cidRef.Package == "")) &&
+		((cid.Package == cidRef.Interface) || (cidRef.Interface == "")) &&
+		((cid.Method == cidRef.Method) || (cidRef.Method == "")) &&
+		((cid.Receiver == cidRef.Receiver) || (cidRef.Receiver == "")) &&
+		((cid.Field == cidRef.Field) || (cidRef.Field == "")) &&
+		(cidRef.Kind == cid.Kind)
+}
+
 // ExistsCid is true if there is some x in a such that f(x) is true.
 // O(len(a))
 func ExistsCid(a []CodeIdentifier, f func(identifier CodeIdentifier) bool) bool {
