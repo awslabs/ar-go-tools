@@ -140,7 +140,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifi
 			}
 		}
 
-		s.findWritesToAliases()
+		s.findModifications()
 
 		for _, instrs := range s.entryWrites {
 			for instr := range instrs {
@@ -180,58 +180,57 @@ type state struct {
 	entryPointsToSet *intsets.Sparse
 }
 
-// findWritesToAliases adds all write instructions to a member of the entrypoint's
-// points-to-set to s.writesToAlias.
+// findModifications adds all write instructions to a member of the entrypoint's
+// points-to-set to s.entryWrites, and adds all instructions that allocate an
+// alias of the entrypoint to s.entryAllocs.
 //
 // Algorithm:
-//  1. For each write instruction (including alloc), compute the objects that
-//     the value written to can point to.
+//  1. For each write instruction, compute the objects that the value written to
+//     can point to.
 //  2. For each object, if the object is a member of the entrypoint's points-to-set,
-//     then add the instruction to s.writesToAlias
-func (s *state) findWritesToAliases() {
+//     then add the instruction to s.entryWrites
+//  3. For each allocation instruction, compute the objects that the resulting
+//     value can point to.
+//  4. For each object, if the object is a member of the entrypoint's points-to-set,
+//     then add the instruction to s.entryAllocs
+func (s *state) findModifications() {
+	log := s.log
 	for _, fna := range s.funcsToAnalyze {
 		for instr := range fna.writeInstrs {
-			// mX is short for modifiedX
-			var mval ssa.Value
-			switch instr := instr.(type) {
-			case *ssa.Store:
-				mval = instr.Addr
-			case *ssa.MapUpdate:
-				mval = instr.Map
-			case *ssa.Send:
-				mval = instr.Chan
-			default:
-				panic(fmt.Errorf("invalid write instruction: %v (%T)", instr, instr))
+			lval, ok := isWriteToScalar(instr)
+			if !ok {
+				continue
 			}
-			if s.shouldFilterValue(mval) {
+			if s.shouldFilterValue(lval) {
+				log.Tracef("lvalue %v of write instruction %v filtered by spec: skipping...", lval, instr)
 				continue
 			}
 
-			mobjs := s.objects(mval)
+			mobjs := s.objects(lval)
 			for mobj := range mobjs {
 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-					if _, ok := s.entryWrites[mval]; !ok {
-						s.entryWrites[mval] = make(map[ssa.Instruction]struct{})
+					if _, ok := s.entryWrites[lval]; !ok {
+						s.entryWrites[lval] = make(map[ssa.Instruction]struct{})
 					}
-					s.entryWrites[mval][instr] = struct{}{}
+					s.entryWrites[lval][instr] = struct{}{}
 					break
 				}
 			}
 		}
 
 		for instr := range fna.allocInstrs {
-			mval := instr.(ssa.Value)
-			if s.shouldFilterValue(mval) {
+			val := instr.(ssa.Value)
+			if s.shouldFilterValue(val) {
 				continue
 			}
 
-			mobjs := s.objects(mval)
+			mobjs := s.objects(val)
 			for mobj := range mobjs {
 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-					if _, ok := s.entryAllocs[mval]; !ok {
-						s.entryAllocs[mval] = make(map[ssa.Instruction]struct{})
+					if _, ok := s.entryAllocs[val]; !ok {
+						s.entryAllocs[val] = make(map[ssa.Instruction]struct{})
 					}
-					s.entryAllocs[mval][instr] = struct{}{}
+					s.entryAllocs[val][instr] = struct{}{}
 					break
 				}
 			}
@@ -322,4 +321,46 @@ func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
 		}
 		vals[val] = struct{}{}
 	})
+}
+
+func isWriteToScalar(instr ssa.Instruction) (ssa.Value, bool) {
+	var lval ssa.Value
+	var rval ssa.Value
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		lval = instr.Addr
+		rval = instr.Val
+	case *ssa.MapUpdate:
+		lval = instr.Map
+		rval = instr.Value
+	case *ssa.Send:
+		lval = instr.Chan
+		rval = instr.X
+	default:
+		panic(fmt.Errorf("invalid write instruction: %v (%T)", instr, instr))
+	}
+
+	if instr.Parent() == nil {
+		return nil, false
+	}
+	pkg := instr.Parent().Pkg
+	// we assume that errors are never used as pointer values
+	if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
+		return nil, false
+	}
+
+	if !pointer.CanPoint(rval.Type()) {
+		return lval, true
+	}
+
+	// calls to append builtin function modify
+	if call, ok := rval.(*ssa.Call); ok {
+		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
+			if builtin.Object().Name() == "append" {
+				return lval, true
+			}
+		}
+	}
+
+	return nil, false
 }
