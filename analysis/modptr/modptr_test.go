@@ -100,19 +100,25 @@ func runTest(t *testing.T, dir string) {
 	logMods(t, prog, res)
 }
 
-func checkExpectedPositions(t *testing.T, prog *ssa.Program, res modptr.Result, expect analysistest.SourceToTargets) {
+func checkExpectedPositions(t *testing.T, prog *ssa.Program, res modptr.Result, expect map[analysistest.AnnotationID]analysistest.ExpectedMods) {
 	mods := res.Modifications
-	// seenMod is a map from source position to mod positions
-	seenMod := make(map[analysistest.LPos]map[analysistest.LPos]bool)
+	// seenWrite is a map from source position to write positions
+	seenWrite := make(map[analysistest.LPos]map[analysistest.LPos]bool)
+	// seenAlloc is a map from source position to alloc positions
+	seenAlloc := make(map[analysistest.LPos]map[analysistest.LPos]bool)
 
-	for source, writes := range mods {
+	for source, sourceMods := range mods {
+		writes := sourceMods.Writes
 		sourcePos := source.Pos
 		if !sourcePos.IsValid() {
 			continue
 		}
 		sourceLPos := analysistest.RemoveColumn(sourcePos)
-		if _, ok := seenMod[sourceLPos]; !ok {
-			seenMod[sourceLPos] = make(map[analysistest.LPos]bool)
+		if _, ok := seenWrite[sourceLPos]; !ok {
+			seenWrite[sourceLPos] = make(map[analysistest.LPos]bool)
+		}
+		if _, ok := seenAlloc[sourceLPos]; !ok {
+			seenAlloc[sourceLPos] = make(map[analysistest.LPos]bool)
 		}
 
 		for write := range writes {
@@ -128,39 +134,79 @@ func checkExpectedPositions(t *testing.T, prog *ssa.Program, res modptr.Result, 
 					continue
 				}
 
-				for expectMod := range expectMods {
-					if writeLPos != expectMod.Pos {
+				for expectWrite := range expectMods.Writes {
+					if writeLPos != expectWrite.Pos {
 						continue
 					}
 
-					seenMod[sourceLPos][writeLPos] = true
+					seenWrite[sourceLPos][writeLPos] = true
 					seen = true
 				}
 			}
 
 			if !seen {
 				// TODO false positives are not errors for now
-				t.Logf("false positive: instruction %v at %v modifies source %v at %v\n", write, writePos, source.Val, sourcePos)
+				t.Logf("false positive: instruction %v at %v writes to source %v at %v\n", write, writePos, source.Val, sourcePos)
+			}
+		}
+
+		allocs := sourceMods.Allocs
+		for alloc := range allocs {
+			allocPos := prog.Fset.Position(alloc.Pos())
+			if !allocPos.IsValid() {
+				continue
+			}
+
+			allocLPos := analysistest.RemoveColumn(allocPos)
+			seen := false
+			for expectSource, expectMods := range expect {
+				if sourceLPos != expectSource.Pos {
+					continue
+				}
+
+				for expectAlloc := range expectMods.Allocs {
+					if allocLPos != expectAlloc.Pos {
+						continue
+					}
+
+					seenAlloc[sourceLPos][allocLPos] = true
+					seen = true
+				}
+			}
+
+			if !seen {
+				// TODO false positives are not errors for now
+				t.Logf("false positive: instruction %v at %v allocates an alias to source data %v at %v\n", alloc, allocPos, source.Val, sourcePos)
 			}
 		}
 	}
 
-	for expectSourceID, expectModIDs := range expect {
-		for expectModID := range expectModIDs {
-			if !seenMod[expectSourceID.Pos][expectModID.Pos] {
-				t.Errorf("failed to detect that source %v is modified at %v\n", expectSourceID.ID, expectModID.Pos)
+	for expectSourceID, expectMods := range expect {
+		for expectWriteID := range expectMods.Writes {
+			if !seenWrite[expectSourceID.Pos][expectWriteID.Pos] {
+				t.Errorf("failed to detect that source %v is written to at %v\n", expectSourceID.ID, expectWriteID.Pos)
+			}
+		}
+
+		for expectAllocID := range expectMods.Allocs {
+			if !seenAlloc[expectSourceID.Pos][expectAllocID.Pos] {
+				t.Errorf("failed to detect that an alias to source %v is allocated at %v\n", expectSourceID.ID, expectAllocID.Pos)
 			}
 		}
 	}
 }
 
 func logMods(t *testing.T, prog *ssa.Program, res modptr.Result) {
-	for entry, instrs := range res.Modifications {
+	for entry, mods := range res.Modifications {
 		val := entry.Val
-		t.Logf("VAL: %v (%v) in %v at %v\n", val, val.Name(), val.Parent(), entry.Pos)
-		for instr := range instrs {
+		t.Logf("Source: %v (%v) in %v at %v\n", val, val.Name(), val.Parent(), entry.Pos)
+		for instr := range mods.Writes {
 			pos := prog.Fset.Position(instr.Pos())
-			t.Logf("\tMOD: %v in %v at %v\n", lang.FmtInstr(instr), instr.Parent(), pos)
+			t.Logf("\twrite: %v in %v at %v\n", lang.FmtInstr(instr), instr.Parent(), pos)
+		}
+		for instr := range mods.Allocs {
+			pos := prog.Fset.Position(instr.Pos())
+			t.Logf("\talloc: %v in %v at %v\n", lang.FmtInstr(instr), instr.Parent(), pos)
 		}
 	}
 }

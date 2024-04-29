@@ -19,49 +19,49 @@ import (
 )
 
 func exNoMod() {
-	x := new(int) // @Mod(exNoMod)
+	x := new(int) // @Alloc(exNoMod)
 	*x = 1        // @Mod(exNoMod)
 	trackInt(x)   // @ModSource(exNoMod) // prints 1
 }
 
 func exModAlias() {
-	x := 1 // @Mod(exModAlias)
+	x := 1 // @Alloc(exModAlias) @Mod(exModAlias)
 	y := &x
 	*y = 2       // @Mod(exModAlias)
 	trackInt(&x) // @ModSource(exModAlias) // prints 2
 }
 
 func exModInter() {
-	x := 1 // @Mod(exModInter)
+	x := 1 // @Alloc(exModInter) // @Mod(exModInter)
 	mod(&x)
 	trackInt(&x) // @ModSource(exModInter) // prints 2
 }
 
 func exNoModStructInit() {
-	x := t{}   // @Mod(exNoModStructInit) TODO flag all struct allocations as write
+	x := t{}   // @Alloc(exNoModStructInit)
 	trackT(&x) // @ModSource(exNoModStructInit) // prints 0
 }
 
 func exNoModStructInitField() {
-	x := t{}       // @Mod(exNoModStructInitField)
+	x := t{}       // @Alloc(exNoModStructInitField)
 	trackInt(&x.x) // @ModSource(exNoModStructInitField) // prints 0
 }
 
 func exNoModStruct() {
-	x := t{}   // @Mod(exNoModStruct)
+	x := t{}   // @Alloc(exNoModStruct)
 	x.x = 1    // @Mod(exNoModStruct)
 	trackT(&x) // @ModSource(exNoModStruct) // prints 1
 }
 
 func exModStructAlias() {
-	x := t{x: 1} // @Mod(exModStructAlias)
+	x := t{x: 1} // @Alloc(exModStructAlias) @Mod(exModStructAlias)
 	y := &x
 	y.x = 2    // @Mod(exModStructAlias)
 	trackT(&x) // @ModSource(exModStructAlias) // prints 2
 }
 
 func exModStructInter() {
-	x := t{x: 1} // @Mod(exModStructInter)
+	x := t{x: 1} // @Alloc(exModStructInter) @Mod(exModStructInter)
 	mod(&x.x)
 	trackT(&x) // @ModSource(exModStructInter) // prints 2
 }
@@ -84,15 +84,15 @@ func exModStructAliasInter() {
 }
 
 func exModStructFieldRef() {
-	x := 1         // @Mod(exModStructFieldRef)
-	v := tr{x: &x} // @Mod(exModStructFieldRef)
+	x := 1         // @Alloc(exModStructFieldRef) @Mod(exModStructFieldRef)
+	v := tr{x: &x} // @Alloc(exModStructFieldRef) @Mod(exModStructFieldRef)
 	x++            // @Mod(exModStructFieldRef)
 	trackTr(&v)    // @ModSource(exModStructFieldRef) // prints 2
 }
 
 func exModStructFieldRefInter() {
-	x := 1         // @Mod(exModStructFieldRefInter)
-	v := tr{x: &x} // @Mod(exModStructFieldRefInter)
+	x := 1         // @Alloc(exModStructFieldRefInter) // @Mod(exModStructFieldRefInter)
+	v := tr{x: &x} // @Alloc(exModStructFieldRefInter) @Mod(exModStructFieldRefInter)
 	mod(&x)
 	trackTr(&v) // @ModSource(exModStructFieldRefInter) // prints 2
 }
@@ -102,35 +102,35 @@ func trackTr(v *tr) {
 }
 
 func exNoModStructFieldRefAlias() {
-	x := 2           // @Mod(exNoModStructFieldRefAlias) // TODO false positive - flow insensitive
-	v1 := tr{x: &x}  // @Mod(exNoModStructFieldRefAlias) // TODO ^
-	v2 := tr{x: nil} // @Mod(exNoModStructFieldRefAlias) // TODO ^
+	x := 2           // @Alloc(exNoModStructFieldRefAlias) @Mod(exNoModStructFieldRefAlias) // TODO false positive - flow insensitive
+	v1 := tr{x: &x}  // @Alloc(exNoModStructFieldRefAlias) @Mod(exNoModStructFieldRefAlias) // TODO ^
+	v2 := tr{x: nil} // @Alloc(exNoModStructFieldRefAlias) @Mod(exNoModStructFieldRefAlias) // TODO ^
 	v2.x = v1.x      // @Mod(exNoModStructFieldRefAlias) // TODO ^
-	y := 1           // @Mod(exNoModStructFieldRefAlias)
+	y := 1           // @Alloc(exNoModStructFieldRefAlias) @Mod(exNoModStructFieldRefAlias)
 	v2.x = &y        // @Mod(exNoModStructFieldRefAlias)    // v2 no longer aliases v1's memory
 	trackInt(v2.x)   // @ModSource(exNoModStructFieldRefAlias) // prints 1
 }
 
 func exModStructFieldRefAlias() {
-	x := 1           // @Mod(exModStructFieldRefAlias)
-	v1 := tr{x: &x}  // @Mod(exModStructFieldRefAlias)
-	v2 := tr{x: nil} // @Mod(exModStructFieldRefAlias)
+	x := 1           // @Alloc(exModStructFieldRefAlias) @Mod(exModStructFieldRefAlias)
+	v1 := tr{x: &x}  // @Alloc(exModStructFieldRefAlias) @Mod(exModStructFieldRefAlias)
+	v2 := tr{x: nil} // @Alloc(exModStructFieldRefAlias) @Mod(exModStructFieldRefAlias)
 	v2.x = v1.x      // @Mod(exModStructFieldRefAlias)
 	x++              // @Mod(exModStructFieldRefAlias)
 	trackInt(v2.x)   // @ModSource(exModStructFieldRefAlias) prints 2
 }
 
 func exModStructFieldRefAliasInter() {
-	x := 1           // @Mod(exModStructFieldRefAliasInter)
-	v1 := tr{x: &x}  // @Mod(exModStructFieldRefAliasInter)
-	v2 := tr{x: nil} // @Mod(exModStructFieldRefAliasInter)
+	x := 1           // @Alloc(exModStructFieldRefAliasInter) @Mod(exModStructFieldRefAliasInter)
+	v1 := tr{x: &x}  // @Alloc(exModStructFieldRefAliasInter) @Mod(exModStructFieldRefAliasInter)
+	v2 := tr{x: nil} // @Alloc(exModStructFieldRefAliasInter) @Mod(exModStructFieldRefAliasInter)
 	v2.x = v1.x      // @Mod(exModStructFieldRefAliasInter)
 	mod(&x)
 	trackInt(v2.x) // @ModSource(exModStructFieldRefAliasInter) // prints 2
 }
 
 func exModStructFieldVal() {
-	v := t{x: 1} // @Mod(exModStructFieldVal)
+	v := t{x: 1} // @Alloc(exModStructFieldVal) // @Mod(exModStructFieldVal)
 	v.x++        // @Mod(exModStructFieldVal)
 	trackT(&v)   // @ModSource(exModStructFieldVal) // prints 2
 }
@@ -153,19 +153,19 @@ func (t *toTrack) track() {
 }
 
 func exTrackInterface() {
-	var v tracker = &toTrack{} // @Mod(exTrackInterface)
+	var v tracker = &toTrack{} // @Alloc(exTrackInterface)
 	v.track()                  // @ModSource(exTrackInterface) // prints 0
 }
 
 func exModTrackInterface() {
-	var v tracker = &toTrack{} // @Mod(exModTrackInterface)
+	var v tracker = &toTrack{} // @Alloc(exModTrackInterface)
 	x := v.getX()
 	*x = 1    // @Mod(exModTrackInterface)
 	v.track() // @ModSource(exModTrackInterface) // prints 1
 }
 
 func exModClosure() {
-	x := new(int) // @Mod(exModClosure)
+	x := new(int) // @Alloc(exModClosure) @Mod(exModClosure)
 	f := func() {
 		*x = 1 // @Mod(exModClosure)
 	}
@@ -174,7 +174,7 @@ func exModClosure() {
 }
 
 func exModClosureInter() {
-	x := new(int) // @Mod(exModClosureInter)
+	x := new(int) // @Alloc(exModClosureInter) @Mod(exModClosureInter)
 	f := func() {
 		mod(x)
 	}
@@ -234,7 +234,7 @@ type t struct {
 }
 
 func newT(x int) *t {
-	return &t{x: x} // @Mod(exModStructAliasInter, exModStructRefInter)
+	return &t{x: x} // @Alloc(exModStructAliasInter, exModStructRefInter) @Mod(exModStructAliasInter, exModStructRefInter)
 }
 
 type tr struct {

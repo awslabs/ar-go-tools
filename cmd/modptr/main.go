@@ -126,22 +126,33 @@ func main() {
 
 // Report logs the taint analysis result
 func Report(logger *log.Logger, program *ssa.Program, result modptr.Result) {
-	// Prints location of sinks and sources in the SSA
-	for entry, instrs := range result.Modifications {
-		for instr := range instrs {
-			entryVal := entry.Val
+	// Prints location of modifications in the SSA
+	for entry, mods := range result.Modifications {
+		entryVal := entry.Val
+		entryPos := entry.Pos
+		logger.Printf(
+			"%s of arg %s of call %s in %s: [SSA] %s at %s\n",
+			formatutil.Red("Source memory has been modified"),
+			entry.Val.Name(),
+			entry.Call.String(),
+			entry.Val.Parent().String(),
+			formatutil.SanitizeRepr(entryVal),
+			entryPos.String()) // safe %s (position string)
+		for instr := range mods.Writes {
 			modInstr := instr
-			entryPos := entry.Pos
 			modPos := program.Fset.Position(modInstr.Pos())
 			logger.Printf(
-				"%s of arg %s of call %s in %s:\n\tS: [SSA] %s in function %s\n\t\t%s\n\tModification: [SSA] %s in function %s\n\t\t%s\n",
-				formatutil.Red("Memory has been modified"),
-				entry.Val.Name(),
-				entry.Call.String(),
-				entry.Val.Parent().String(),
-				formatutil.SanitizeRepr(entryVal),
-				entryVal.Parent().String(),
-				entryPos.String(), // safe %s (position string)
+				"\tWrite: [SSA] %s in function %s\n\t\t%s\n",
+				formatutil.SanitizeRepr(modInstr),
+				modInstr.Parent().String(),
+				modPos.String(), // safe %s (position string)
+			)
+		}
+		for instr := range mods.Allocs {
+			modInstr := instr
+			modPos := program.Fset.Position(modInstr.Pos())
+			logger.Printf(
+				"\tAlloc: [SSA] %s in function %s\n\t\t%s\n",
 				formatutil.SanitizeRepr(modInstr),
 				modInstr.Parent().String(),
 				modPos.String(), // safe %s (position string)

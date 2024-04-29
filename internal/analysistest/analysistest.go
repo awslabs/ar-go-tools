@@ -124,6 +124,9 @@ var ModSourceRegex = regexp.MustCompile(`//.*@ModSource\(((?:\s*\w\s*,?)+)\)`)
 // ModRegex matches annotations of the form "@Mod(id1, id2, id3)"
 var ModRegex = regexp.MustCompile(`//.*@Mod\(((?:\s*\w\s*,?)+)\)`)
 
+// ModAllocRegex matches annotations of the form "@Alloc(id1, id2, id3)"
+var ModAllocRegex = regexp.MustCompile(`//.*@Alloc\(((?:\s*\w\s*,?)+)\)`)
+
 // LPos is a line position
 type LPos struct {
 	// Filename is the file name of the position
@@ -233,17 +236,22 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	return sink2source, escape2source
 }
 
+type ExpectedMods struct {
+	Writes map[AnnotationID]struct{}
+	Allocs map[AnnotationID]struct{}
+}
+
 // GetExpectedMods analyzes the files in dir and looks for comments
 // @ModSource(id) and @Mod(id) to construct a mapping from modification sources
 // to modifications.
-func GetExpectedMods(reldir string, dir string) SourceToTargets {
+func GetExpectedMods(reldir string, dir string) map[AnnotationID]ExpectedMods {
 	fset := token.NewFileSet() // positions are relative to fset
 	pkgs, err := lang.AstPackages(dir, fset)
 	if err != nil {
 		panic(fmt.Errorf("failed to get AST packages: %v", err))
 	}
 
-	source2mod := make(SourceToTargets)
+	expected := make(map[AnnotationID]ExpectedMods)
 	sourceIDToSourcePos := make(map[string]token.Position)
 
 	// Get all the source positions with their identifiers
@@ -271,16 +279,42 @@ func GetExpectedMods(reldir string, dir string) SourceToTargets {
 					continue
 				}
 				sourceId := AnnotationID{ID: modIdent, Meta: "", Pos: RelPos(sourcePos, reldir)}
-				if _, ok := source2mod[sourceId]; !ok {
-					source2mod[sourceId] = make(map[AnnotationID]bool)
+				if _, ok := expected[sourceId]; !ok {
+					expected[sourceId] = ExpectedMods{
+						Writes: make(map[AnnotationID]struct{}),
+						Allocs: make(map[AnnotationID]struct{}),
+					}
 				}
 
 				relMod := RelPos(modPos, reldir)
 				modId := AnnotationID{ID: modIdent, Meta: "", Pos: relMod}
-				source2mod[sourceId][modId] = true
+				expected[sourceId].Writes[modId] = struct{}{}
+			}
+		}
+
+		// Match a "@Alloc(id1, id2, id3)"
+		m := ModAllocRegex.FindStringSubmatch(c1.Text)
+		if len(m) > 1 {
+			for _, ident := range strings.Split(m[1], ",") {
+				allocIdent := strings.TrimSpace(ident)
+				sourcePos, ok := sourceIDToSourcePos[allocIdent]
+				if !ok {
+					continue
+				}
+				sourceId := AnnotationID{ID: allocIdent, Meta: "", Pos: RelPos(sourcePos, reldir)}
+				if _, ok := expected[sourceId]; !ok {
+					expected[sourceId] = ExpectedMods{
+						Writes: make(map[AnnotationID]struct{}),
+						Allocs: make(map[AnnotationID]struct{}),
+					}
+				}
+
+				relAlloc := RelPos(modPos, reldir)
+				allocId := AnnotationID{ID: allocIdent, Meta: "", Pos: relAlloc}
+				expected[sourceId].Allocs[allocId] = struct{}{}
 			}
 		}
 	})
 
-	return source2mod
+	return expected
 }

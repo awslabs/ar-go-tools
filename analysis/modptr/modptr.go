@@ -32,7 +32,7 @@ import (
 // Result represents the result of the analysis.
 type Result struct {
 	// Modifications represents the instructions that modify the entrypoint.
-	Modifications map[Entrypoint]map[ssa.Instruction]struct{}
+	Modifications map[Entrypoint]Modifications
 }
 
 // Entrypoint represents an Entrypoint to the analysis.
@@ -47,9 +47,15 @@ type Entrypoint struct {
 	Pos token.Position
 }
 
+// Modifications represents the instructions that can modify an entrypoint.
+type Modifications struct {
+	Writes map[ssa.Instruction]struct{}
+	Allocs map[ssa.Instruction]struct{}
+}
+
 // Analyze runs the analysis on lp.
 func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Result, goPtrRes *goPointer.Result) (Result, error) {
-	modifications := map[Entrypoint]map[ssa.Instruction]struct{}{}
+	modifications := make(map[Entrypoint]Modifications)
 	prog := lp.Program
 	log := config.NewLogGroup(cfg)
 
@@ -83,7 +89,7 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 }
 
 // analyze runs the analysis for a single spec and adds the write instructions to modifications.
-func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifications map[Entrypoint]map[ssa.Instruction]struct{}) error {
+func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifications map[Entrypoint]Modifications) error {
 	var errs []error
 	entrypoints := c.findEntrypoints(spec)
 	if len(entrypoints) == 0 {
@@ -91,6 +97,10 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifi
 	}
 
 	for entry := range entrypoints {
+		modifications[entry] = Modifications{
+			Writes: make(map[ssa.Instruction]struct{}),
+			Allocs: make(map[ssa.Instruction]struct{}),
+		}
 		val := entry.Val
 		if val.Type() == nil {
 			errs = append(errs, fmt.Errorf("entrypoint %v type is nil: %T\n", val, val))
@@ -106,20 +116,18 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifi
 		log.Debugf("\tnumber of functions to analyze: %v\n", len(fnsToAnalyze))
 		toAnalyze := make(map[*ssa.Function]*funcToAnalyze, len(fnsToAnalyze))
 		numVals := 0
-		numInstrs := 0
 		for fn := range fnsToAnalyze {
 			af := newFuncToAnalyze(fn)
 			toAnalyze[fn] = af
 			numVals += len(af.vals)
-			numInstrs += len(af.instrs)
 		}
-		log.Debugf("\tnumber of write instructions to analyze: %v\n", numInstrs)
 
 		s := &state{
 			aliasCache:       c,
 			log:              log,
 			spec:             spec,
-			writesToAlias:    make(map[ssa.Value]map[ssa.Instruction]struct{}),
+			entryWrites:      make(map[ssa.Value]map[ssa.Instruction]struct{}, numVals),
+			entryAllocs:      make(map[ssa.Value]map[ssa.Instruction]struct{}, numVals),
 			funcsToAnalyze:   toAnalyze,
 			entryPointsToSet: &intsets.Sparse{},
 		}
@@ -133,13 +141,16 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifi
 		}
 
 		s.findWritesToAliases()
-		for _, instrs := range s.writesToAlias {
-			for instr := range instrs {
-				if _, ok := modifications[entry]; !ok {
-					modifications[entry] = make(map[ssa.Instruction]struct{})
-				}
 
-				modifications[entry][instr] = struct{}{}
+		for _, instrs := range s.entryWrites {
+			for instr := range instrs {
+				modifications[entry].Writes[instr] = struct{}{}
+			}
+		}
+
+		for _, instrs := range s.entryAllocs {
+			for instr := range instrs {
+				modifications[entry].Allocs[instr] = struct{}{}
 			}
 		}
 	}
@@ -155,9 +166,15 @@ type state struct {
 	spec config.ModValSpec
 
 	funcsToAnalyze map[*ssa.Function]*funcToAnalyze
-	// writesToAlias stores the set of instructions that write to an alias
+
+	// entryWrites stores the set of instructions that write to an entrypoint
 	// (SSA value).
-	writesToAlias map[ssa.Value]map[ssa.Instruction]struct{}
+	entryWrites map[ssa.Value]map[ssa.Instruction]struct{}
+
+	// entryAllocs stores the set of instructions that allocate memory that
+	// aliases an entrypoint.
+	entryAllocs map[ssa.Value]map[ssa.Instruction]struct{}
+
 	// entryPointsToSet is the set of node ids in the objects that the
 	// entrypoint points to.
 	entryPointsToSet *intsets.Sparse
@@ -173,12 +190,10 @@ type state struct {
 //     then add the instruction to s.writesToAlias
 func (s *state) findWritesToAliases() {
 	for _, fna := range s.funcsToAnalyze {
-		for instr := range fna.instrs {
+		for instr := range fna.writeInstrs {
 			// mX is short for modifiedX
 			var mval ssa.Value
 			switch instr := instr.(type) {
-			case *ssa.Alloc:
-				mval = instr
 			case *ssa.Store:
 				mval = instr.Addr
 			case *ssa.MapUpdate:
@@ -195,11 +210,28 @@ func (s *state) findWritesToAliases() {
 			mobjs := s.objects(mval)
 			for mobj := range mobjs {
 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-					if _, ok := s.writesToAlias[mval]; !ok {
-						s.writesToAlias[mval] = make(map[ssa.Instruction]struct{})
+					if _, ok := s.entryWrites[mval]; !ok {
+						s.entryWrites[mval] = make(map[ssa.Instruction]struct{})
 					}
-					s.writesToAlias[mval][instr] = struct{}{}
-					// s.log.Infof("modification callctx: %v\n", mobj.CallCtx())
+					s.entryWrites[mval][instr] = struct{}{}
+					break
+				}
+			}
+		}
+
+		for instr := range fna.allocInstrs {
+			mval := instr.(ssa.Value)
+			if s.shouldFilterValue(mval) {
+				continue
+			}
+
+			mobjs := s.objects(mval)
+			for mobj := range mobjs {
+				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
+					if _, ok := s.entryAllocs[mval]; !ok {
+						s.entryAllocs[mval] = make(map[ssa.Instruction]struct{})
+					}
+					s.entryAllocs[mval][instr] = struct{}{}
 					break
 				}
 			}
@@ -240,28 +272,33 @@ func (s *state) shouldFilterValue(val ssa.Value) bool {
 }
 
 type funcToAnalyze struct {
-	instrs map[ssa.Instruction]struct{}
-	vals   map[ssa.Value]struct{}
+	writeInstrs map[ssa.Instruction]struct{}
+	allocInstrs map[ssa.Instruction]struct{}
+	vals        map[ssa.Value]struct{}
 }
 
 func newFuncToAnalyze(fn *ssa.Function) *funcToAnalyze {
 	vals := make(map[ssa.Value]struct{})
 	addValuesOfFn(fn, vals)
-	instrs := make(map[ssa.Instruction]struct{})
+	writeInstrs := make(map[ssa.Instruction]struct{})
+	allocInstrs := make(map[ssa.Instruction]struct{})
 	lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
 		if instr == nil || instr.Parent() == nil || !instr.Pos().IsValid() {
 			return
 		}
 
 		switch instr.(type) {
-		case *ssa.Alloc, *ssa.Store, *ssa.MapUpdate, *ssa.Send:
-			instrs[instr] = struct{}{}
+		case *ssa.Store, *ssa.MapUpdate, *ssa.Send:
+			writeInstrs[instr] = struct{}{}
+		case *ssa.Alloc, *ssa.MakeInterface, *ssa.MakeChan, *ssa.MakeSlice:
+			allocInstrs[instr] = struct{}{}
 		}
 	})
 
 	return &funcToAnalyze{
-		vals:   vals,
-		instrs: instrs,
+		vals:        vals,
+		writeInstrs: writeInstrs,
+		allocInstrs: allocInstrs,
 	}
 }
 
