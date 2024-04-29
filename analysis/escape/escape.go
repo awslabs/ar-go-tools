@@ -337,7 +337,9 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 				loadOp := generalizedFieldLoad{instr, channelContentsField}
 				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), loadOp, channelContentsField, contentsType)
 			} else if IsEscapeTracked(instr.Type()) {
-				ea.prog.logger.Warnf("Channel of struct %s unhandled", instr.Type().String())
+				for x := range g.Pointees(nodes.ValueNode(instr.X)) {
+					g.copyStruct(nodes.ValueNode(instr), x, instr, channelContentsField, instr.Type())
+				}
 			}
 			return
 		} else {
@@ -679,6 +681,9 @@ func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph
 	}
 	for receiverNode := range reachable {
 		if tp, ok := g.nodes.globalNodes.types[receiverNode]; ok {
+			if _, ok := tp.(*ImplType); ok {
+				continue
+			}
 			marshalJsonMethod, _ := lang.FindImplementationMethod(prog, tp, marshalerInterface, "MarshalJSON")
 			if marshalJsonMethod != nil {
 				ea.invokeMethodDirectly(instrType, g, marshalJsonMethod, receiverNode, []*Node{}, rets)
@@ -1653,7 +1658,7 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) *dataflow.Escape
 // basicBlockInstructionLocality fills in the locality map with the locality information
 // of the instructions in the given basic block.
 func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock,
-	locality map[ssa.Instruction]*dataflow.EscapeRationale, callsites map[*ssa.Call]escapeCallsiteInfoImpl) error {
+	locality map[ssa.Instruction]*dataflow.EscapeRationale, callsites map[ssa.CallInstruction]escapeCallsiteInfoImpl) error {
 	g := NewEmptyEscapeGraph(ea.nodes)
 	if len(bb.Preds) == 0 {
 		// Entry block uses the function-wide initial graph
@@ -1672,6 +1677,8 @@ func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock
 		if cl, ok := instr.(*ssa.Call); ok {
 			// We need to copy g because it is about to be clobbered by the transfer function
 			callsites[cl] = escapeCallsiteInfoImpl{g.Clone(), cl, ea.nodes, ea.prog}
+		} else if go_, ok := instr.(*ssa.Go); ok {
+			callsites[go_] = escapeCallsiteInfoImpl{g.Clone(), go_, ea.nodes, ea.prog}
 		}
 		ea.transferFunction(instr, g)
 	}
@@ -1680,14 +1687,14 @@ func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock
 
 type escapeCallsiteInfoImpl struct {
 	g        *EscapeGraph
-	callsite *ssa.Call
+	callsite ssa.CallInstruction
 	nodes    *NodeGroup
 	prog     *ProgramAnalysisState
 }
 
 // computeInstructionLocality does the work of computing instruction locality for a function. See
 // wrapper `ComputeInstructionLocality` for details.
-func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]*dataflow.EscapeRationale, callsiteInfo map[*ssa.Call]escapeCallsiteInfoImpl) {
+func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]*dataflow.EscapeRationale, callsiteInfo map[ssa.CallInstruction]escapeCallsiteInfoImpl) {
 	inContextEA := &functionAnalysisState{
 		function:     ea.function,
 		prog:         ea.prog,
@@ -1699,7 +1706,7 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 	}
 	inContextEA.Resummarize()
 	locality = map[ssa.Instruction]*dataflow.EscapeRationale{}
-	callsites := map[*ssa.Call]escapeCallsiteInfoImpl{}
+	callsites := map[ssa.CallInstruction]escapeCallsiteInfoImpl{}
 	for _, block := range ea.function.Blocks {
 		basicBlockInstructionLocality(inContextEA, block, locality, callsites)
 	}

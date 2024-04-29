@@ -57,7 +57,7 @@ type EscapeAnalysisState interface {
 	// available in `callsiteInfo`.
 	ComputeInstructionLocalityAndCallsites(f *ssa.Function, ctx EscapeCallContext) (
 		instructionLocality map[ssa.Instruction]*EscapeRationale,
-		callsiteInfo map[*ssa.Call]EscapeCallsiteInfo)
+		callsiteInfo map[ssa.CallInstruction]EscapeCallsiteInfo)
 }
 
 // EscapeCallContext represents the escape-relevant context for a particular `ssa.Function`.
@@ -71,6 +71,8 @@ type EscapeCallContext interface {
 	Merge(other EscapeCallContext) (changed bool, merged EscapeCallContext)
 	// Matches returns true if the two calling contexts are semantically equivalent.
 	Matches(EscapeCallContext) bool
+	// ParameterEscape returns whether each parameter has escaped, via a non-nil EscapeRationale
+	ParameterEscape() []*EscapeRationale
 }
 
 // EscapeCallsiteInfo represents a call context, but from the caller's perspective at a particular
@@ -79,6 +81,8 @@ type EscapeCallContext interface {
 // callee. EscapeCallsiteInfo objects are immutable.
 type EscapeCallsiteInfo interface {
 	Resolve(callee *ssa.Function) EscapeCallContext
+	// Graph returns the graphviz of the callsite escape graph
+	Graph() string
 }
 
 // EscapeRationale holds information on the rationale of why a value may escape
