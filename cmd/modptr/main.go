@@ -115,10 +115,11 @@ func main() {
 	logger.Printf("")
 	if len(result.Modifications) == 0 {
 		logger.Printf(
-			"RESULT:\n\t\t%s", formatutil.Green("No modifications detected")) // safe %s
+			"RESULT:\n\t\t%s", formatutil.Red("No results detected")) // safe %s
+		os.Exit(1)
 	} else {
 		logger.Printf(
-			"RESULT:\n\t\t%s", formatutil.Red("Modifications detected!")) // safe %s
+			"RESULT:\n\t\t%s", formatutil.Green("Potential writes and/or aliases detected")) // safe %s
 	}
 
 	Report(logger, program, result)
@@ -127,12 +128,18 @@ func main() {
 // Report logs the taint analysis result
 func Report(logger *log.Logger, program *ssa.Program, result modptr.Result) {
 	// Prints location of modifications in the SSA
+	fail := false
 	for entry, mods := range result.Modifications {
 		entryVal := entry.Val
 		entryPos := entry.Pos
+		msg := formatutil.Green("No writes to source memory detected")
+		if len(mods.Writes) > 0 {
+			msg = formatutil.Red("Source memory has been modified")
+			fail = true
+		}
 		logger.Printf(
 			"%s of arg %s of call %s in %s: [SSA] %s at %s\n",
-			formatutil.Red("Source memory has been modified"),
+			msg,
 			entry.Val.Name(),
 			entry.Call.String(),
 			entry.Val.Parent().String(),
@@ -158,5 +165,9 @@ func Report(logger *log.Logger, program *ssa.Program, result modptr.Result) {
 				modPos.String(), // safe %s (position string)
 			)
 		}
+	}
+
+	if fail {
+		os.Exit(1)
 	}
 }
