@@ -46,12 +46,22 @@ func (e *escapeAnalysisImpl) ComputeArbitraryContext(f *ssa.Function) dataflow.E
 	if !e.IsSummarized(f) {
 		panic(fmt.Errorf("computing context for un-summarized function %s", f.String()))
 	}
-	return &escapeContextImpl{e.summaries[f].initialGraph.Clone(), f}
+	// Add more specific escape rationales
+	g := e.summaries[f].initialGraph.Clone()
+	for _, p := range f.Params {
+		g.status[g.nodes.ParamNode(p)] = Leaked
+		g.rationales[g.nodes.ParamNode(p)] = dataflow.NewBaseRationale(fmt.Sprintf("arbitrary argument %s to %s", p.String(), f.String()))
+	}
+	for _, fv := range f.FreeVars {
+		g.status[g.nodes.ParamNode(fv)] = Leaked
+		g.rationales[g.nodes.ParamNode(fv)] = dataflow.NewBaseRationale(fmt.Sprintf("arbitrary free var %s to %s", fv.String(), f.String()))
+	}
+	return &escapeContextImpl{g, f}
 }
 
 func (e *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Function, ctx dataflow.EscapeCallContext) (
 	instructionLocality map[ssa.Instruction]*dataflow.EscapeRationale,
-	callsiteInfo map[*ssa.Call]dataflow.EscapeCallsiteInfo) {
+	callsiteInfo map[ssa.CallInstruction]dataflow.EscapeCallsiteInfo) {
 	c, ok := ctx.(*escapeContextImpl)
 	if !ok {
 		panic("You should not have implemented the EscapeCallContext interface for another type.")
@@ -63,10 +73,10 @@ func (e *escapeAnalysisImpl) ComputeInstructionLocalityAndCallsites(f *ssa.Funct
 		panic(fmt.Sprintf("Cannot compute locality of function that is not summarized %v", f.String()))
 	}
 	if len(f.Blocks) == 0 {
-		return map[ssa.Instruction]*dataflow.EscapeRationale{}, map[*ssa.Call]dataflow.EscapeCallsiteInfo{}
+		return map[ssa.Instruction]*dataflow.EscapeRationale{}, map[ssa.CallInstruction]dataflow.EscapeCallsiteInfo{}
 	}
 	locality, callsites := computeInstructionLocality(e.summaries[f], c.g)
-	callsiteInfo = map[*ssa.Call]dataflow.EscapeCallsiteInfo{}
+	callsiteInfo = map[ssa.CallInstruction]dataflow.EscapeCallsiteInfo{}
 	for k, v := range callsites {
 		callsiteInfo[k] = &escapeCallsiteInfoImpl{v.g, v.callsite, v.nodes, v.prog}
 	}
@@ -103,35 +113,39 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 			}
 		}
 	}
+	if _, ok := c.callsite.(*ssa.Go); ok {
+		return c.prog.state.EscapeAnalysisState.ComputeArbitraryContext(callee)
+	}
 
-	if c.callsite.Call.IsInvoke() {
+	call := c.callsite.Common()
+	if call.IsInvoke() {
 		// An invoke, e.g. t3.Method(t5)
 		// The callsite parameters do not include the receiver, but the callee Params do
 		// We need to map those two correctly and then offset the rest of the args
-		mapNode(c.nodes.ValueNode(c.callsite.Call.Value), nodes.ValueNode(callee.Params[0]))
-		for i, arg := range c.callsite.Call.Args {
+		mapNode(c.nodes.ValueNode(call.Value), nodes.ValueNode(callee.Params[0]))
+		for i, arg := range call.Args {
 			if lang.IsNillableType(arg.Type()) {
 				mapNode(c.nodes.ValueNode(arg), nodes.ValueNode(callee.Params[i+1]))
 			}
 		}
 	} else {
-		if len(callee.Params) != len(c.callsite.Call.Args) {
-			panic(fmt.Sprintf("Argument mismatch %s params %v args %v", callee.String(), callee.Params, c.callsite.Call.Args))
+		if len(callee.Params) != len(call.Args) {
+			panic(fmt.Sprintf("Argument mismatch %s params %v args %v", callee.String(), callee.Params, call.Args))
 		}
-		if c.callsite.Call.StaticCallee() == nil {
+		if call.StaticCallee() == nil {
 			// An indirect function call, e.g. t3(t5)
 			for _, freeVar := range callee.FreeVars {
 				if lang.IsNillableType(freeVar.Type()) {
-					for closureNode := range c.g.Pointees(c.nodes.ValueNode(c.callsite.Call.Value)) {
+					for closureNode := range c.g.Pointees(c.nodes.ValueNode(call.Value)) {
 						mapNode(c.g.FieldSubnode(closureNode, freeVar.Name(), freeVar.Type()), nodes.ValueNode(freeVar))
 					}
 				}
 			}
-		} else if _, ok := c.callsite.Call.Value.(*ssa.MakeClosure); ok {
+		} else if _, ok := call.Value.(*ssa.MakeClosure); ok {
 			// A immediately invoked function, i.e. t3(t5) where t3 = MakeClosure...
 			for _, freeVar := range callee.FreeVars {
 				if lang.IsNillableType(freeVar.Type()) {
-					for closureNode := range c.g.Pointees(c.nodes.ValueNode(c.callsite.Call.Value)) {
+					for closureNode := range c.g.Pointees(c.nodes.ValueNode(call.Value)) {
 						mapNode(c.g.FieldSubnode(closureNode, freeVar.Name(), freeVar.Type()), nodes.ValueNode(freeVar))
 					}
 				}
@@ -140,13 +154,16 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 			// this is static callee and the target isn't a closure, so no special handling
 		}
 		// Now do the args, for all case except invoke
-		for i, arg := range c.callsite.Call.Args {
+		for i, arg := range call.Args {
 			if lang.IsNillableType(arg.Type()) {
 				mapNode(c.nodes.ValueNode(arg), nodes.ValueNode(callee.Params[i]))
 			}
 		}
 	}
 	return &escapeContextImpl{g, callee}
+}
+func (c *escapeCallsiteInfoImpl) Graph() string {
+	return c.g.Graphviz()
 }
 
 func (e *escapeContextImpl) Matches(other dataflow.EscapeCallContext) bool {
@@ -174,6 +191,13 @@ func (e *escapeContextImpl) Merge(other dataflow.EscapeCallContext) (changed boo
 		return false, e
 	}
 	return true, &escapeContextImpl{g, e.f}
+}
+func (e *escapeContextImpl) ParameterEscape() []*dataflow.EscapeRationale {
+	rationales := []*dataflow.EscapeRationale{}
+	for _, p := range e.f.Params {
+		rationales = append(rationales, derefsAreLocal(e.g, e.g.nodes.ValueNode(p)))
+	}
+	return rationales
 }
 
 // InitializeEscapeAnalysisState initializes the escape analysis' state inside the dataflow state

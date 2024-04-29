@@ -57,6 +57,9 @@ backtrace: go.mod cmd/backtrace/*.go analysis/*.go analysis/backtrace/*.go
 modptr: go.mod cmd/modptr/*.go analysis/*.go analysis/modptr/*.go
 	go build -o bin/modptr cmd/modptr/*.go
 
+goro-check: go.mod cmd/goro-check/*.go analysis/*.go
+	go build -o bin/goro-check cmd/goro-check/*.go
+
 argot-cli: go.mod cmd/argot-cli/*.go
 	go build -o bin/argot-cli cmd/argot-cli/*.go
 
