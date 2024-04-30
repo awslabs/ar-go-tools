@@ -133,9 +133,9 @@ func unionInstrs(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[s
 	return p1
 }
 
-// position returns the position of instr in program p and true if the position is valid.
+// Position returns the position of instr in program p and true if the position is valid.
 // Returns an empty position and false if invalid.
-func position(p *ssa.Program, instr ssa.Instruction) (token.Position, bool) {
+func Position(p *ssa.Program, instr ssa.Instruction) (token.Position, bool) {
 	pos := instr.Pos()
 	file := p.Fset.File(pos)
 	if pos != token.NoPos && file != nil {

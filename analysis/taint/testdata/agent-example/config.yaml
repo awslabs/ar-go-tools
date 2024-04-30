@@ -1,0 +1,10 @@
+taint-tracking-problems:
+ - sources:
+    - method: "source"
+      package: "((main)|(command-line-arguments)|(agent-example))"
+   sinks:
+    - package: "log"
+      interface: "Logger"
+    - method: "sink"
+      package: "((main)|(command-line-arguments)|(agent-example))"
+   explicit-flow-only: true

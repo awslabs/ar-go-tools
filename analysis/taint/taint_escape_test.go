@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package taint
+package taint_test
 
 import (
 	"testing"
 )
 
 func TestEscapeIntegration(t *testing.T) {
+	t.Parallel()
 	runTest(t, "escape-integration", []string{}, false,
 		noErrorExpected)
 }

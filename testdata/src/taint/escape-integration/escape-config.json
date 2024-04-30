@@ -1,6 +1,0 @@
-{
-    "functions": {
-        "command-line-arguments.otherFunction1": "unknown"
-    },
-    "pkg-filter": "command-line-arguments"
-}

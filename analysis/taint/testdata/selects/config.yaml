@@ -1,0 +1,10 @@
+# The package regex matches all possible ways the package name might appear depending on how the program is loaded
+taint-tracking-problems:
+  -
+    sources:
+      - package: "(selects)|(main)|(command-line-arguments)|(selects-test[[:graph:]]*)$"
+        # Sources can be source1, source2, etc.
+        method: "source[1-9]?"
+    sinks:
+      - method: "sink[1-9]?"
+    explicit-flow-only: true

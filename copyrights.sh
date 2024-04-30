@@ -24,6 +24,7 @@ EOF
 FILES=$(
     find . -type f -name "*.go"                       \
         -not -path "./testdata/src/taint/fromlevee/*" \
+        -not -path "./analysis/taint/testdata/fromlevee/*" \
         -print
 )
 

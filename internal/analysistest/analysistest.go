@@ -18,42 +18,106 @@ package analysistest
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"io/fs"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
+
+// LoadedTestProgram represents a loaded test program.
+type LoadedTestProgram struct {
+	Prog   *ssa.Program
+	Config *config.Config
+	Pkgs   []*packages.Package
+}
+
+// ReadFileDirFS represents a filesystem that can read both directories and files.
+type ReadFileDirFS interface {
+	fs.ReadDirFS
+	fs.ReadFileFS
+}
 
 // LoadTest loads the program in the directory dir, looking for a main.go and a config.yaml. If additional files
 // are specified as extraFiles, the program will be loaded using those files too.
-func LoadTest(t *testing.T, dir string, extraFiles []string) (*ssa.Program, *config.Config) {
-	var err error
-	// Load config; in command, should be set using some flag
-	configFile := filepath.Join(dir, "config.yaml")
-	config.SetGlobalConfig(configFile)
-	files := []string{filepath.Join(dir, "./main.go")}
-	for _, extraFile := range extraFiles {
-		files = append(files, filepath.Join(dir, extraFile))
+//
+// NOTE
+// If the Analysis function runs without error but no analysis entrypoints are detected, that may
+// mean that the config's code id's package names do not patch the package name of the SSA program.
+// Try changing the package name to the test directory name to fix the issue.
+func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestProgram, error) {
+	var filePaths []string
+	if len(extraFiles) == 0 {
+		_ = fs.WalkDir(fsys, dir, func(path string, entry fs.DirEntry, _ error) error {
+			if entry != nil && !entry.IsDir() && filepath.Ext(path) == ".go" {
+				extraFiles = append(extraFiles, entry.Name())
+				filePaths = append(filePaths, path)
+			}
+			return nil
+		})
+	} else {
+		extraFiles = append(extraFiles, "main.go")
+		for _, fileName := range extraFiles {
+			filePaths = append(filePaths, filepath.Join(dir, fileName))
+		}
+	}
+	overlay := make(map[string][]byte)
+	for i, path := range filePaths {
+		b, err := fsys.ReadFile(path)
+		if err != nil {
+			return LoadedTestProgram{}, fmt.Errorf("failed to read file %s: %w", path, err)
+		}
+		if len(b) == 0 {
+			return LoadedTestProgram{}, fmt.Errorf("empty file at path %s", path)
+		}
+
+		name := extraFiles[i]
+		overlay[name] = b
 	}
 
-	pkgs, err := analysis.LoadProgram(nil, "", ssa.InstantiateGenerics|ssa.GlobalDebug, files)
-	if err != nil {
-		t.Fatalf("error loading packages.")
+	mode := packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedDeps | packages.NeedTypesInfo
+	pcfg := packages.Config{
+		Mode:    mode,
+		Overlay: overlay,
 	}
-	cfg, err := config.LoadGlobal()
-	if err != nil {
-		t.Fatalf("error loading global config.")
+	var patterns []string
+	for _, fp := range filePaths {
+		patterns = append(patterns, fmt.Sprintf("file=%s", fp))
 	}
-	return pkgs, cfg
+	pkgs, err := packages.Load(&pcfg, patterns...)
+	if err != nil {
+		return LoadedTestProgram{}, fmt.Errorf("failed to load packages: %w", err)
+	}
+	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.GlobalDebug|ssa.SanityCheckFunctions)
+
+	configFileName := filepath.Join(dir, "config.yaml")
+	cf, err := fsys.ReadFile(configFileName)
+	if err != nil {
+		return LoadedTestProgram{Pkgs: pkgs},
+			fmt.Errorf("failed to read config file %v: %v", configFileName, err)
+	}
+	cfg, err := config.Load(configFileName, cf)
+	if err != nil {
+		return LoadedTestProgram{Prog: program, Pkgs: pkgs},
+			fmt.Errorf("failed to load config file %v: %v", configFileName, err)
+	}
+	if cfg.EscapeConfigFile != "" {
+		escConfigFileName := cfg.RelPath(cfg.EscapeConfigFile)
+		ecf, err := fsys.ReadFile(escConfigFileName)
+		if err != nil {
+			return LoadedTestProgram{}, fmt.Errorf("failed to read escape config file %v: %v", escConfigFileName, err)
+		}
+		if err := config.LoadEscape(cfg, ecf); err != nil {
+			return LoadedTestProgram{}, fmt.Errorf("failed to load escape config file %v: %v", escConfigFileName, err)
+		}
+	}
+
+	return LoadedTestProgram{Prog: program, Config: cfg, Pkgs: pkgs}, nil
 }
 
 // TargetToSources is a mapping from a target annotation (e.g. ex in @Sink(ex, ex2))
@@ -104,6 +168,11 @@ var SinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
 // EscapeRegex matches annotations of the form "@Escape(id1, id2, id3)"
 var EscapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
 
+// NewLPos constructs an LPos from pos.
+func NewLPos(pos token.Position) LPos {
+	return LPos{Line: pos.Line, Filename: pos.Filename}
+}
+
 // LPos is a line position
 type LPos struct {
 	// Filename is the file name of the position
@@ -121,29 +190,25 @@ func RemoveColumn(pos token.Position) LPos {
 	return LPos{Line: pos.Line, Filename: pos.Filename}
 }
 
-// RelPos drops the column of the position and prepends reldir to the filename of the position
-func RelPos(pos token.Position, reldir string) LPos {
-	return LPos{Line: pos.Line, Filename: path.Join(reldir, pos.Filename)}
-}
-
-func mapComments(packages map[string]*ast.Package, fmap func(*ast.Comment)) {
-	for _, f := range packages {
-		for _, f := range f.Files {
-			for _, c := range f.Comments {
-				for _, c1 := range c.List {
-					fmap(c1)
-				}
-			}
+// AstFiles returns all the ast files in pkgs.
+func AstFiles(pkgs []*packages.Package) []*ast.File {
+	var res []*ast.File
+	for _, pkg := range pkgs {
+		files := pkg.Syntax
+		for _, file := range files {
+			res = append(res, file)
 		}
 	}
+
+	return res
 }
 
-// GetExpectedTargetToSources analyzes the files in dir and looks for comments @Source(id) and @Sink(id) to construct
+// ExpectedTaintTargetToSources analyzes the files in astFiles
+// and looks for comments @Source(id) and @Sink(id) to construct
 // expected flows from targets to sources in the form of two maps from:
 // - from sink positions to all the source position that reach that sink.
 // - from escape positions to the source of data that escapes.
-func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, TargetToSources) {
-	d := make(map[string]*ast.Package)
+func ExpectedTaintTargetToSources(fset *token.FileSet, astFiles []*ast.File) (TargetToSources, TargetToSources) {
 	sink2source := make(TargetToSources)
 	escape2source := make(TargetToSources)
 	type sourceInfo struct {
@@ -151,25 +216,9 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 		pos  token.Position
 	}
 	sourceIDToSource := map[string]sourceInfo{}
-	fset := token.NewFileSet() // positions are relative to fset
-
-	if err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			d0, err := parser.ParseDir(fset, info.Name(), nil, parser.ParseComments)
-			funcutil.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
-			return err
-		}
-		return nil
-	}); err != nil {
-		fmt.Println(err)
-		return nil, nil
-	}
 
 	// Get all the source positions with their identifiers
-	mapComments(d, func(c1 *ast.Comment) {
+	mapComments(astFiles, func(c1 *ast.Comment) {
 		pos := fset.Position(c1.Pos())
 		// Match a "@Source(id1, id2, id3 meta)"
 		a := SourceRegex.FindStringSubmatch(c1.Text)
@@ -189,7 +238,7 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	})
 
 	// Get all the sink positions
-	mapComments(d, func(c1 *ast.Comment) {
+	mapComments(astFiles, func(c1 *ast.Comment) {
 		sinkPos := fset.Position(c1.Pos())
 		// Match a "@Sink(id1, id2, id3)"
 		a := SinkRegex.FindStringSubmatch(c1.Text)
@@ -197,14 +246,14 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 			for _, ident := range strings.Split(a[1], ",") {
 				sinkIdent := strings.TrimSpace(ident)
 				if sourcePos, ok := sourceIDToSource[sinkIdent]; ok {
-					relSink := RelPos(sinkPos, reldir)
+					relSink := NewLPos(sinkPos)
 					// sinks do not have metadata
 					sinkAnnotation := AnnotationID{ID: sinkIdent, Meta: "", Pos: relSink}
 					if _, ok := sink2source[sinkAnnotation]; !ok {
 						sink2source[sinkAnnotation] = make(map[AnnotationID]bool)
 					}
 					// sinkIdent is the same as sourceIdent in this branch
-					sourceAnnotation := AnnotationID{ID: sinkIdent, Meta: sourcePos.meta, Pos: RelPos(sourcePos.pos, reldir)}
+					sourceAnnotation := AnnotationID{ID: sinkIdent, Meta: sourcePos.meta, Pos: NewLPos(sourcePos.pos)}
 					sink2source[sinkAnnotation][sourceAnnotation] = true
 				}
 			}
@@ -212,7 +261,7 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	})
 
 	// Get all the escape positions
-	mapComments(d, func(c1 *ast.Comment) {
+	mapComments(astFiles, func(c1 *ast.Comment) {
 		escapePos := fset.Position(c1.Pos())
 		// Match a "@Escape(id1, id2, id3)"
 		a := EscapeRegex.FindStringSubmatch(c1.Text)
@@ -220,14 +269,14 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 			for _, ident := range strings.Split(a[1], ",") {
 				escapeIdent := strings.TrimSpace(ident)
 				if sourcePos, ok := sourceIDToSource[escapeIdent]; ok {
-					relEscape := RelPos(escapePos, reldir)
+					relEscape := NewLPos(escapePos)
 					// escapes do not have metadata
 					escapeAnnotation := AnnotationID{ID: escapeIdent, Meta: "", Pos: relEscape}
 					if _, ok := escape2source[escapeAnnotation]; !ok {
 						escape2source[escapeAnnotation] = make(map[AnnotationID]bool)
 					}
 					// escapeIdent is the same as sourceIdent in this branch
-					sourceAnnotation := AnnotationID{ID: escapeIdent, Meta: sourcePos.meta, Pos: RelPos(sourcePos.pos, reldir)}
+					sourceAnnotation := AnnotationID{ID: escapeIdent, Meta: sourcePos.meta, Pos: NewLPos(sourcePos.pos)}
 					escape2source[escapeAnnotation][sourceAnnotation] = true
 				}
 			}
@@ -235,4 +284,14 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	})
 
 	return sink2source, escape2source
+}
+
+func mapComments(fs []*ast.File, fmap func(*ast.Comment)) {
+	for _, f := range fs {
+		for _, c := range f.Comments {
+			for _, c1 := range c.List {
+				fmap(c1)
+			}
+		}
+	}
 }

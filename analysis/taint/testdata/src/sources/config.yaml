@@ -1,0 +1,12 @@
+taint-tracking-problems:
+  -
+    sources:
+      - package: "fmt"
+        method: Sprintf
+      - package: "(main)|(command-line-arguments)|(sources)$"
+        method: zoo
+      - package: "(main)|(command-line-arguments)|(sources)$"
+        type: Bar
+      - type: SomeStruct
+        field: DataField
+      - field: Pickles

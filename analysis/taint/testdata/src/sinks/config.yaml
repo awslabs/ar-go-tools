@@ -1,0 +1,5 @@
+taint-tracking-problems:
+  -
+    sinks:
+      - package: "((main)|(sinks))"
+        method: sinkFunction

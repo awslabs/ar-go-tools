@@ -16,6 +16,7 @@ package main
 
 import (
 	"flag"
+	"os"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -107,7 +108,13 @@ func cmdReconfig(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 	} else {
 		// Argument specified: set state.ConfigPath to the new config file's path, if the file exists
 		filename := strings.TrimSpace(command.Args[0])
-		newConfig, err = config.Load(filename)
+		cfgBytes, err := os.ReadFile(filename)
+		if err != nil {
+			WriteErr(tt, "Error reading config file.")
+			WriteErr(tt, "%s", err)
+			return false
+		}
+		newConfig, err = config.Load(filename, cfgBytes)
 		if err == nil {
 			config.SetGlobalConfig(filename)
 			state.ConfigPath = filename
