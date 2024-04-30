@@ -257,9 +257,9 @@ Once we are in focused mode, the [`intra`](#intra) command will run the analysis
 ```
 test2 > intra
 [function test2]
-• instruction local fooProducer (w) @ /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:65:2:
+• instruction local fooProducer (w) @ /Users/user/repos/argot/testdata/src/taint/example1/main.go:65:2:
 <additional output>
-• instruction sink(t6) @ /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:68:6:
+• instruction sink(t6) @ /Users/user/repos/argot/testdata/src/taint/example1/main.go:68:6:
    "ok":string                    marked by 🏷 arg: "ok":string in f(t5, "ok":string)
    t2=local wrappedString (s)     marked by 🏷 multiple: (fooProducer).source(t3) #0
    t3=*t0                         marked by 🏷 arg: t3 in (fooProducer).source(t3)
@@ -295,7 +295,7 @@ The state of the analysis can also be printed every time the analyzer has finish
 The [`taint`](#taint) command has the same functionality as the [taint analysis tool](01_taint.md#taint-analysis): it runs a taint analysis using the source, sink and sanitizer definitions that are given in the configuration file. For more information about how to use that command, refer to the guide for the [taint tool](taint.md). In the context of the CLI, you should make sure you have run `summarize` and `buildgraph` before running `taint`.
 In our running example, running `> taint` will identify four different paths from source to sink. When data from a source reaches a sink, a message of the following form will be printed:
 ```
- 💀 Sink reached at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:58:7
+ 💀 Sink reached at /Users/user/repos/argot/testdata/src/taint/example1/main.go:58:7
  Add new path from "[#744.2] (CG)call: invoke stringProducer.source() in fetchAndPut" to "[#626.4] @arg 0:t6 in [#626.3] (SA)call: sink(t6) in main " <==
 ```
 Indicating a path from `stringProducer.source()` to `sink` here. If the options in the configuration file have been set, this path will be reported in more detail in the report folder.
@@ -310,8 +310,8 @@ The node ids are for example`#846.1`, `#846.2`, `#846.3` (note that the exact id
 [INFO]     
 ****************************** NEW SOURCE ******************************
 [INFO]  ==> Source: "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
-[INFO]  Found at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:67:9
-[INFO]   💀 Sink reached at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:67:8
+[INFO]  Found at /Users/user/repos/argot/testdata/src/taint/example1/main.go:67:9
+[INFO]   💀 Sink reached at /Users/user/repos/argot/testdata/src/taint/example1/main.go:67:8
 [INFO]   Add new path from "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 " to "[#846.6] @arg 0:t6 in [#846.5] (SA)call: sink(t6) in test2 " <== 
 ```
 Adding the `-t` option will print all the intermediate states encountered during the traversal. In this case, a sink is reached
