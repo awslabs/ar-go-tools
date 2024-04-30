@@ -5,7 +5,7 @@
 #endif
 
 
-all: lint maypanic statistics reachability dependencies static-commands render taint modptr compare defer packagescan backtrace argot-cli racerg setup-precommit
+all: lint maypanic statistics reachability dependencies static-commands render taint modptr argalias compare defer packagescan backtrace argot-cli racerg setup-precommit
 
 install: taint_install cli_install
 
@@ -59,6 +59,9 @@ modptr: go.mod cmd/modptr/*.go analysis/*.go analysis/modptr/*.go
 
 goro-check: go.mod cmd/goro-check/*.go analysis/*.go
 	go build -o bin/goro-check cmd/goro-check/*.go
+
+argalias: go.mod cmd/argalias/*.go analysis/*.go analysis/argalias/*.go
+	go build -o bin/argalias cmd/argalias/*.go
 
 argot-cli: go.mod cmd/argot-cli/*.go
 	go build -o bin/argot-cli cmd/argot-cli/*.go
