@@ -68,12 +68,12 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 			}
 		})
 	}
-	ac := &aliasCache{
-		prog:           prog,
-		ptrRes:         ptrRes,
-		goPtrRes:       goPtrRes,
-		reachableFuncs: reachable,
-		objectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}, numVals), // preallocate for speed
+	ac := &AliasCache{
+		Prog:           prog,
+		PtrRes:         ptrRes,
+		GoPtrRes:       goPtrRes,
+		ReachableFuncs: reachable,
+		ObjectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}, numVals), // preallocate for speed
 	}
 
 	var errs []error
@@ -89,7 +89,7 @@ func Analyze(cfg *config.Config, lp analysis.LoadedProgram, ptrRes *pointer.Resu
 }
 
 // analyze runs the analysis for a single spec and adds the write instructions to modifications.
-func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifications map[Entrypoint]Modifications) error {
+func analyze(log *config.LogGroup, spec config.ModValSpec, c *AliasCache, modifications map[Entrypoint]Modifications) error {
 	var errs []error
 	entrypoints := c.findEntrypoints(spec)
 	if len(entrypoints) == 0 {
@@ -112,7 +112,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifi
 		}
 		log.Infof("ENTRY: %v of %v in %v at %v\n", val.Name(), entry.Call, val.Parent(), entry.Pos)
 
-		fnsToAnalyze := c.reachableFuncs
+		fnsToAnalyze := c.ReachableFuncs
 		log.Debugf("\tnumber of functions to analyze: %v\n", len(fnsToAnalyze))
 		toAnalyze := make(map[*ssa.Function]*funcToAnalyze, len(fnsToAnalyze))
 		numVals := 0
@@ -123,7 +123,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifi
 		}
 
 		s := &state{
-			aliasCache:       c,
+			AliasCache:       c,
 			log:              log,
 			spec:             spec,
 			entryWrites:      make(map[ssa.Value]map[ssa.Instruction]struct{}, numVals),
@@ -132,7 +132,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifi
 			entryPointsToSet: &intsets.Sparse{},
 		}
 
-		objs := c.objects(val)
+		objs := c.Objects(val)
 		// initialize points-to-set of entrypoint
 		for obj := range objs {
 			for _, id := range obj.NodeIDs() {
@@ -161,7 +161,7 @@ func analyze(log *config.LogGroup, spec config.ModValSpec, c *aliasCache, modifi
 // state represents the analysis state.
 // This tracks writes to a single value (entrypoint).
 type state struct {
-	*aliasCache
+	*AliasCache
 	log  *config.LogGroup
 	spec config.ModValSpec
 
@@ -206,7 +206,7 @@ func (s *state) findModifications() {
 				continue
 			}
 
-			mobjs := s.objects(lval)
+			mobjs := s.Objects(lval)
 			for mobj := range mobjs {
 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
 					if _, ok := s.entryWrites[lval]; !ok {
@@ -224,7 +224,7 @@ func (s *state) findModifications() {
 				continue
 			}
 
-			mobjs := s.objects(val)
+			mobjs := s.Objects(val)
 			for mobj := range mobjs {
 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
 					if _, ok := s.entryAllocs[val]; !ok {
@@ -236,32 +236,6 @@ func (s *state) findModifications() {
 			}
 		}
 	}
-}
-
-// objects returns all the unique objects that val points to.
-func (ac *aliasCache) objects(val ssa.Value) map[*pointer.Object]struct{} {
-	if mi, ok := val.(*ssa.MakeInterface); ok {
-		// if val is an interface, the object is the concrete struct
-		val = mi.X
-	}
-	if res, ok := ac.objectPointees[val]; ok && len(res) > 0 {
-		return res
-	}
-
-	ptrs := findAllPointers(ac.ptrRes, val)
-	res := make(map[*pointer.Object]struct{}, len(ptrs))
-	for _, ptr := range ptrs {
-		for _, label := range ptr.PointsTo().Labels() {
-			obj := label.Obj()
-			if obj == nil {
-				continue
-			}
-			res[obj] = struct{}{}
-		}
-	}
-
-	ac.objectPointees[val] = res
-	return res
 }
 
 // shouldFilterValue returns true if the value should be filtered

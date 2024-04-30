@@ -17,7 +17,6 @@ package modptr
 import (
 	"fmt"
 	"go/types"
-	"golang.org/x/tools/go/ssa/ssautil"
 	"strconv"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -26,30 +25,57 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	goPointer "golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// aliasCache represents a "global" cache for transitive pointers and aliases.
+// AliasCache represents a "global" cache for transitive pointers and aliases.
 //
 // The analysis only searches for pointers and aliases that are reachable from a
 // single entrypoint, but this cache helps if there are multiple entrypoints
 // that need alias information computed from previous entrypoints.
-type aliasCache struct {
-	prog   *ssa.Program
-	ptrRes *pointer.Result
-	// goPtrRes is needed for functions that only work with the x/tools pointer analysis types.
-	goPtrRes       *goPointer.Result
-	reachableFuncs map[*ssa.Function]bool
-	objectPointees map[ssa.Value]map[*pointer.Object]struct{}
+type AliasCache struct {
+	Prog   *ssa.Program
+	PtrRes *pointer.Result
+	// GoPtrRes is needed for functions that only work with the x/tools pointer analysis types.
+	GoPtrRes       *goPointer.Result
+	ReachableFuncs map[*ssa.Function]bool
+	ObjectPointees map[ssa.Value]map[*pointer.Object]struct{}
+}
+
+// Objects returns all the unique Objects that val points to.
+func (ac *AliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
+	if mi, ok := val.(*ssa.MakeInterface); ok {
+		// if val is an interface, the object is the concrete struct
+		val = mi.X
+	}
+	if res, ok := ac.ObjectPointees[val]; ok && len(res) > 0 {
+		return res
+	}
+
+	ptrs := FindAllPointers(ac.PtrRes, val)
+	res := make(map[*pointer.Object]struct{}, len(ptrs))
+	for _, ptr := range ptrs {
+		for _, label := range ptr.PointsTo().Labels() {
+			obj := label.Obj()
+			if obj == nil {
+				continue
+			}
+			res[obj] = struct{}{}
+		}
+	}
+
+	ac.ObjectPointees[val] = res
+	return res
 }
 
 // findEntrypoints returns all the analysis entrypoints specified by spec.
-func (ac *aliasCache) findEntrypoints(spec config.ModValSpec) map[Entrypoint]struct{} {
+func (ac *AliasCache) findEntrypoints(spec config.ModValSpec) map[Entrypoint]struct{} {
 	entrypoints := make(map[Entrypoint]struct{})
-	for fn, node := range ac.ptrRes.CallGraph.Nodes {
+	for fn, node := range ac.PtrRes.CallGraph.Nodes {
 		if fn == nil {
 			continue
 		}
-		if _, ok := ac.reachableFuncs[fn]; !ok {
+		if _, ok := ac.ReachableFuncs[fn]; !ok {
 			continue
 		}
 
@@ -70,14 +96,14 @@ func (ac *aliasCache) findEntrypoints(spec config.ModValSpec) map[Entrypoint]str
 	return entrypoints
 }
 
-func (ac *aliasCache) findEntrypoint(spec config.ModValSpec, call *ssa.Call) (Entrypoint, bool) {
+func (ac *AliasCache) findEntrypoint(spec config.ModValSpec, call *ssa.Call) (Entrypoint, bool) {
 	// use analysisutil entrypoint logic to take care of function aliases and
 	// other edge-cases
-	if !analysisutil.IsEntrypointNode(ac.goPtrRes, call, spec.IsValue) {
+	if !analysisutil.IsEntrypointNode(ac.GoPtrRes, call, spec.IsValue) {
 		return Entrypoint{}, false
 	}
 
-	callPos := ac.prog.Fset.Position(call.Pos())
+	callPos := ac.Prog.Fset.Position(call.Pos())
 	for _, cid := range spec.Values {
 		// TODO parse label beforehand to prevent panics
 		idx, err := strconv.Atoi(cid.Label)
@@ -107,10 +133,10 @@ func (ac *aliasCache) findEntrypoint(spec config.ModValSpec, call *ssa.Call) (En
 	return Entrypoint{}, false
 }
 
-// findAllPointers returns all the pointers that point to v.
+// FindAllPointers returns all the pointers that point to v.
 //
 // Copied from analysis/lang package.
-func findAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
+func FindAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
 	var allptr []pointer.Pointer
 	if ptr, ptrExists := res.Queries[v]; ptrExists {
 		allptr = append(allptr, ptr)
