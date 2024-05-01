@@ -1677,8 +1677,8 @@ func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock
 		if cl, ok := instr.(*ssa.Call); ok {
 			// We need to copy g because it is about to be clobbered by the transfer function
 			callsites[cl] = escapeCallsiteInfoImpl{g.Clone(), cl, ea.nodes, ea.prog}
-		} else if go_, ok := instr.(*ssa.Go); ok {
-			callsites[go_] = escapeCallsiteInfoImpl{g.Clone(), go_, ea.nodes, ea.prog}
+		} else if goInstr, ok := instr.(*ssa.Go); ok {
+			callsites[goInstr] = escapeCallsiteInfoImpl{g.Clone(), goInstr, ea.nodes, ea.prog}
 		}
 		ea.transferFunction(instr, g)
 	}

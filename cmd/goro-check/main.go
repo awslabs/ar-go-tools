@@ -91,7 +91,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		os.Exit(1)
 	}
-	// program := lp.Program
 
 	start := time.Now()
 
@@ -102,11 +101,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Initialization failed: %v\n", err)
 		os.Exit(1)
 	}
-	// for f, node := range state.PointerAnalysis.CallGraph.Nodes {
-	// 	for _, incoming := range node.In {
-	// 		fmt.Printf("%v called by %v\n", f, incoming.Caller.Func)
-	// 	}
-	// }
 
 	criticalFuncs := []*ssa.Function{}
 	for f := range state.PointerAnalysis.CallGraph.Nodes {
@@ -128,15 +122,32 @@ func main() {
 	}
 
 	logger.Printf(formatutil.Faint("Beginning top-down phase") + "\n")
-
-	// mainFunc := findFunction(lp.Program, "main")
 	visitNodes := topDown(state, state.EscapeAnalysisState, roots, reachable)
+	success := topDownPhase(cfg, visitNodes)
+
+	duration := time.Since(start)
+	state.Logger.Infof("")
+	state.Logger.Infof(strings.Repeat("*", 80))
+	state.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
+	state.Logger.Infof("")
+
+	if !success {
+		os.Exit(1)
+	}
+
+	// Report(program, result)
+}
+
+func topDownPhase(cfg *config.Config, visitNodes []*callgraphVisitNode) bool {
+	success := true
+	// mainFunc := findFunction(lp.Program, "main")
 	for _, node := range visitNodes {
 		if isCriticalFunc(cfg, node.fun) {
 			fmt.Printf("Checking %v\n", node.fun)
 			for i, reason := range node.context.ParameterEscape() {
 				if reason != nil {
 					fmt.Printf("[ERROR] Parameter %d of %v has escaped: %v\n", i, node.fun, reason)
+					success = false
 					n := node
 					for n != nil {
 						fmt.Printf("at: %v\n", n.fun)
@@ -147,13 +158,7 @@ func main() {
 		}
 	}
 
-	duration := time.Since(start)
-	state.Logger.Infof("")
-	state.Logger.Infof(strings.Repeat("*", 80))
-	state.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
-	state.Logger.Infof("")
-
-	// Report(program, result)
+	return success
 }
 
 func isCriticalFunc(cfg *config.Config, f *ssa.Function) bool {

@@ -33,7 +33,7 @@ import (
 // EscapeInfo contains information relative to the escape analysis
 type EscapeInfo struct {
 	InstructionLocality map[ssa.Instruction]*dataflow.EscapeRationale
-	CallSiteInfo        map[*ssa.Call]df.EscapeCallsiteInfo
+	CallSiteInfo        map[ssa.CallInstruction]df.EscapeCallsiteInfo
 }
 
 func (e *EscapeInfo) String() string {

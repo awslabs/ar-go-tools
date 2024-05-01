@@ -236,6 +236,7 @@ func GetExpectedTargetToSources(reldir string, dir string) (TargetToSources, Tar
 	return sink2source, escape2source
 }
 
+// ExpectedMods tracks expected modptr results.
 type ExpectedMods struct {
 	Writes map[AnnotationID]struct{}
 	Allocs map[AnnotationID]struct{}
