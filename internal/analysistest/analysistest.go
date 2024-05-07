@@ -21,9 +21,8 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
-	"regexp"
-	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -93,7 +92,8 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestPr
 	if err != nil {
 		return LoadedTestProgram{}, fmt.Errorf("failed to load packages: %w", err)
 	}
-	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.GlobalDebug|ssa.SanityCheckFunctions)
+	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
+	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
 
 	configFileName := filepath.Join(dir, "config.yaml")
 	cf, err := fsys.ReadFile(configFileName)
@@ -117,7 +117,45 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestPr
 		}
 	}
 
+	program.Build()
 	return LoadedTestProgram{Prog: program, Config: cfg, Pkgs: pkgs}, nil
+}
+
+// LoadTestFromDisk loads the program in the directory dir, looking for a main.go and a config.yaml
+// using the OS file system.
+// If additional files are specified as extraFiles, the program will be loaded using those files too.
+func LoadTestFromDisk(dir string, extraFiles []string) (LoadedTestProgram, error) {
+	configFile := filepath.Join(dir, "config.yaml")
+	config.SetGlobalConfig(configFile)
+	files := []string{filepath.Join(dir, "./main.go")}
+	for _, extraFile := range extraFiles {
+		files = append(files, filepath.Join(dir, extraFile))
+	}
+	var patterns []string
+	for _, fileName := range files {
+		patterns = append(patterns, fmt.Sprintf("file=%s", fileName))
+	}
+	mode := packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedDeps | packages.NeedTypesInfo
+	pcfg := packages.Config{Mode: mode}
+	pkgs, err := packages.Load(&pcfg, patterns...)
+	if err != nil {
+		return LoadedTestProgram{}, fmt.Errorf("failed to load packages: %w", err)
+	}
+
+	prog, err := analysis.LoadProgram(nil, "", ssa.InstantiateGenerics, files)
+	if err != nil {
+		return LoadedTestProgram{Pkgs: pkgs}, fmt.Errorf("error loading packages: %v", err)
+	}
+	cfg, err := config.LoadGlobal()
+	if err != nil {
+		return LoadedTestProgram{Prog: prog, Pkgs: pkgs}, fmt.Errorf("failed to load global config: %v", err)
+	}
+
+	return LoadedTestProgram{
+		Prog:   prog,
+		Config: cfg,
+		Pkgs:   pkgs,
+	}, nil
 }
 
 // TargetToSources is a mapping from a target annotation (e.g. ex in @Sink(ex, ex2))
@@ -157,17 +195,6 @@ func (id AnnotationID) String() string {
 	return fmt.Sprintf("Id %s:%s at %s", id.ID, id.Meta, id.Pos.String())
 }
 
-// SourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
-// where the "argument" is either an identifier (e.g. id) or an identifier with
-// associated "metadata" (e.g. id call:example1->call:helper->call:example1$1).
-var SourceRegex = regexp.MustCompile(`//.*@Source\(((?:\s*(\w|(\w\s+[a-zA-Z0-9$:\->]+\s*))\s*,?)+)\)`)
-
-// SinkRegex matches annotations of the form "@Sink(id1, id2, id3)"
-var SinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
-
-// EscapeRegex matches annotations of the form "@Escape(id1, id2, id3)"
-var EscapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
-
 // NewLPos constructs an LPos from pos.
 func NewLPos(pos token.Position) LPos {
 	return LPos{Line: pos.Line, Filename: pos.Filename}
@@ -203,90 +230,8 @@ func AstFiles(pkgs []*packages.Package) []*ast.File {
 	return res
 }
 
-// ExpectedTaintTargetToSources analyzes the files in astFiles
-// and looks for comments @Source(id) and @Sink(id) to construct
-// expected flows from targets to sources in the form of two maps from:
-// - from sink positions to all the source position that reach that sink.
-// - from escape positions to the source of data that escapes.
-func ExpectedTaintTargetToSources(fset *token.FileSet, astFiles []*ast.File) (TargetToSources, TargetToSources) {
-	sink2source := make(TargetToSources)
-	escape2source := make(TargetToSources)
-	type sourceInfo struct {
-		meta string
-		pos  token.Position
-	}
-	sourceIDToSource := map[string]sourceInfo{}
-
-	// Get all the source positions with their identifiers
-	mapComments(astFiles, func(c1 *ast.Comment) {
-		pos := fset.Position(c1.Pos())
-		// Match a "@Source(id1, id2, id3 meta)"
-		a := SourceRegex.FindStringSubmatch(c1.Text)
-		if len(a) > 1 {
-			for _, ident := range strings.Split(a[1], ",") {
-				sourceIdent := strings.TrimSpace(ident)
-				split := strings.Split(sourceIdent, " ")
-				meta := ""
-				// If id has metadata as in @Source(id meta), then sourceIdent is id and meta is "meta"
-				if len(split) == 2 {
-					sourceIdent = split[0]
-					meta = split[1]
-				}
-				sourceIDToSource[sourceIdent] = sourceInfo{meta: meta, pos: pos}
-			}
-		}
-	})
-
-	// Get all the sink positions
-	mapComments(astFiles, func(c1 *ast.Comment) {
-		sinkPos := fset.Position(c1.Pos())
-		// Match a "@Sink(id1, id2, id3)"
-		a := SinkRegex.FindStringSubmatch(c1.Text)
-		if len(a) > 1 {
-			for _, ident := range strings.Split(a[1], ",") {
-				sinkIdent := strings.TrimSpace(ident)
-				if sourcePos, ok := sourceIDToSource[sinkIdent]; ok {
-					relSink := NewLPos(sinkPos)
-					// sinks do not have metadata
-					sinkAnnotation := AnnotationID{ID: sinkIdent, Meta: "", Pos: relSink}
-					if _, ok := sink2source[sinkAnnotation]; !ok {
-						sink2source[sinkAnnotation] = make(map[AnnotationID]bool)
-					}
-					// sinkIdent is the same as sourceIdent in this branch
-					sourceAnnotation := AnnotationID{ID: sinkIdent, Meta: sourcePos.meta, Pos: NewLPos(sourcePos.pos)}
-					sink2source[sinkAnnotation][sourceAnnotation] = true
-				}
-			}
-		}
-	})
-
-	// Get all the escape positions
-	mapComments(astFiles, func(c1 *ast.Comment) {
-		escapePos := fset.Position(c1.Pos())
-		// Match a "@Escape(id1, id2, id3)"
-		a := EscapeRegex.FindStringSubmatch(c1.Text)
-		if len(a) > 1 {
-			for _, ident := range strings.Split(a[1], ",") {
-				escapeIdent := strings.TrimSpace(ident)
-				if sourcePos, ok := sourceIDToSource[escapeIdent]; ok {
-					relEscape := NewLPos(escapePos)
-					// escapes do not have metadata
-					escapeAnnotation := AnnotationID{ID: escapeIdent, Meta: "", Pos: relEscape}
-					if _, ok := escape2source[escapeAnnotation]; !ok {
-						escape2source[escapeAnnotation] = make(map[AnnotationID]bool)
-					}
-					// escapeIdent is the same as sourceIdent in this branch
-					sourceAnnotation := AnnotationID{ID: escapeIdent, Meta: sourcePos.meta, Pos: NewLPos(sourcePos.pos)}
-					escape2source[escapeAnnotation][sourceAnnotation] = true
-				}
-			}
-		}
-	})
-
-	return sink2source, escape2source
-}
-
-func mapComments(fs []*ast.File, fmap func(*ast.Comment)) {
+// MapComments runs fmap on every comment in fs.
+func MapComments(fs []*ast.File, fmap func(*ast.Comment)) {
 	for _, f := range fs {
 		for _, c := range f.Comments {
 			for _, c1 := range c.List {

@@ -1499,7 +1499,7 @@ func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*Progr
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 
-		prog.logger.Infof("Computing escape summary for %s (%d to go)\n", formatutil.SanitizeRepr(summary.function), len(worklist))
+		prog.logger.Debugf("Computing escape summary for %s (%d to go)\n", formatutil.SanitizeRepr(summary.function), len(worklist))
 		changed := summary.Resummarize()
 		if !changed {
 			continue

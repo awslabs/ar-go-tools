@@ -100,7 +100,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool, skip map[stri
 	cfg := lp.Config
 
 	astFiles := analysistest.AstFiles(lp.Pkgs)
-	expected, _ := analysistest.ExpectedTaintTargetToSources(lp.Prog.Fset, astFiles)
+	expected, _ := expectedTaintTargetToSources(lp.Prog.Fset, astFiles)
 	if len(expected) == 0 {
 		t.Fatal("expected sources and sinks to be present")
 	}

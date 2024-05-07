@@ -12,38 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package concurrency
+package concurrency_test
 
 import (
-	"os"
-	"path"
-	"runtime"
+	"embed"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/concurrency"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
-func loadConcurrencyTestResult(t *testing.T, subDir string) AnalysisResult {
-	// Change directory to the testdata folder to be able to load packages
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/", subDir)
-	err := os.Chdir(dir)
+//go:embed testdata
+var testfsys embed.FS
+
+func loadConcurrencyTestResult(t *testing.T, subDir string) concurrency.AnalysisResult {
+	// only works for "trivial" for now because that's the only dir that's embedded in testfsys
+	dirName := filepath.Join("./testdata", subDir)
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{})
 	if err != nil {
-		panic(err)
+		t.Fatalf("failed to load test: %v", err)
 	}
 
-	program, cfg := analysistest.LoadTest(t, ".", []string{})
+	cfg := lp.Config
+	program := lp.Prog
 	lg := config.NewLogGroup(cfg)
-	ar, err := Analyze(lg, cfg, program)
+	ar, err := concurrency.Analyze(lg, cfg, program)
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
-	// Remove reports - comment if you want to inspect
-	os.RemoveAll(cfg.ReportsDir)
 	return ar
 }
 

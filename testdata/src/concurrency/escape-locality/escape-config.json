@@ -1,5 +1,0 @@
-{
-    "functions": {"command-line-arguments.unknownFunc": "unknown"},
-    "pkg-filter" : "command-line-arguments",
-    "default-summarize": false
-}

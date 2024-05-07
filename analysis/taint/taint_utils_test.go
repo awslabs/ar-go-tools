@@ -17,8 +17,12 @@ package taint_test
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -249,7 +253,7 @@ func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand boo
 	}
 
 	astFs := analysistest.AstFiles(lp.Pkgs)
-	expectSinkToSources, expectEscapeToSources := analysistest.ExpectedTaintTargetToSources(lp.Prog.Fset, astFs)
+	expectSinkToSources, expectEscapeToSources := expectedTaintTargetToSources(lp.Prog.Fset, astFs)
 
 	if len(expectSinkToSources) == 0 {
 		t.Fatal("no expected taint flows found")
@@ -303,4 +307,106 @@ func setupConfig(cfg *config.Config, summarizeOnDemand bool) {
 	cfg.Options.ReportsDir = ""
 	cfg.LogLevel = int(config.ErrLevel) // change this as needed for debugging
 	cfg.SummarizeOnDemand = summarizeOnDemand
+}
+
+// sourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
+// where the "argument" is either an identifier (e.g. id) or an identifier with
+// associated "metadata" (e.g. id call:example1->call:helper->call:example1$1).
+var sourceRegex = regexp.MustCompile(`//.*@Source\(((?:\s*(\w|(\w\s+[a-zA-Z0-9$:\->]+\s*))\s*,?)+)\)`)
+
+// sinkRegex matches annotations of the form "@Sink(id1, id2, id3)"
+var sinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
+
+// escapeRegex matches annotations of the form "@Escape(id1, id2, id3)"
+var escapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
+
+// expectedTaintTargetToSources analyzes the files in astFiles
+// and looks for comments @Source(id) and @Sink(id) to construct
+// expected flows from targets to sources in the form of two maps from:
+// - from sink positions to all the source position that reach that sink.
+// - from escape positions to the source of data that escapes.
+func expectedTaintTargetToSources(fset *token.FileSet, astFiles []*ast.File) (analysistest.TargetToSources, analysistest.TargetToSources) {
+	sink2source := make(analysistest.TargetToSources)
+	escape2source := make(analysistest.TargetToSources)
+	type sourceInfo struct {
+		meta string
+		pos  token.Position
+	}
+	sourceIDToSource := map[string]sourceInfo{}
+
+	// Get all the source positions with their identifiers
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		pos := fset.Position(c1.Pos())
+		// Match a "@Source(id1, id2, id3 meta)"
+		a := sourceRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sourceIdent := strings.TrimSpace(ident)
+				split := strings.Split(sourceIdent, " ")
+				meta := ""
+				// If id has metadata as in @Source(id meta), then sourceIdent is id and meta is "meta"
+				if len(split) == 2 {
+					sourceIdent = split[0]
+					meta = split[1]
+				}
+				sourceIDToSource[sourceIdent] = sourceInfo{meta: meta, pos: pos}
+			}
+		}
+	})
+
+	// Get all the sink positions
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		sinkPos := fset.Position(c1.Pos())
+		// Match a "@Sink(id1, id2, id3)"
+		a := sinkRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sinkIdent := strings.TrimSpace(ident)
+				if sourcePos, ok := sourceIDToSource[sinkIdent]; ok {
+					relSink := analysistest.NewLPos(sinkPos)
+					// sinks do not have metadata
+					sinkAnnotation := analysistest.AnnotationID{ID: sinkIdent, Meta: "", Pos: relSink}
+					if _, ok := sink2source[sinkAnnotation]; !ok {
+						sink2source[sinkAnnotation] = make(map[analysistest.AnnotationID]bool)
+					}
+					// sinkIdent is the same as sourceIdent in this branch
+					sourceAnnotation := analysistest.AnnotationID{
+						ID:   sinkIdent,
+						Meta: sourcePos.meta,
+						Pos:  analysistest.NewLPos(sourcePos.pos),
+					}
+					sink2source[sinkAnnotation][sourceAnnotation] = true
+				}
+			}
+		}
+	})
+
+	// Get all the escape positions
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		escapePos := fset.Position(c1.Pos())
+		// Match a "@Escape(id1, id2, id3)"
+		a := escapeRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				escapeIdent := strings.TrimSpace(ident)
+				if sourcePos, ok := sourceIDToSource[escapeIdent]; ok {
+					relEscape := analysistest.NewLPos(escapePos)
+					// escapes do not have metadata
+					escapeAnnotation := analysistest.AnnotationID{ID: escapeIdent, Meta: "", Pos: relEscape}
+					if _, ok := escape2source[escapeAnnotation]; !ok {
+						escape2source[escapeAnnotation] = make(map[analysistest.AnnotationID]bool)
+					}
+					// escapeIdent is the same as sourceIdent in this branch
+					sourceAnnotation := analysistest.AnnotationID{
+						ID:   escapeIdent,
+						Meta: sourcePos.meta,
+						Pos:  analysistest.NewLPos(sourcePos.pos),
+					}
+					escape2source[escapeAnnotation][sourceAnnotation] = true
+				}
+			}
+		}
+	})
+
+	return sink2source, escape2source
 }
