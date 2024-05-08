@@ -15,8 +15,8 @@
 package dataflow_test
 
 import (
-	"path"
-	"runtime"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -25,7 +25,14 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// methodTest runs the test.
+//
+// HACK sometimes the package name is not command-line-arguments so this was manually patched using string substitutions.
+// There may be a more elegant way to do this.
 func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name string, expect map[string]bool) {
+	if _, ok := impl[name]; !ok {
+		name = strings.ReplaceAll(name, "command-line-arguments", "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/callgraph")
+	}
 	implementsName := impl[name]
 	if implementsName == nil {
 		t.Fatalf("interface method %s undefined", name)
@@ -39,7 +46,11 @@ func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name strin
 			if f == nil {
 				t.Fatalf("method %s has a nil implementations", name)
 			}
-			if !expect[f.String()] {
+			fs := f.String()
+			if !strings.Contains(fs, "command-line-arguments") {
+				fs = strings.ReplaceAll(fs, "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/callgraph", "command-line-arguments")
+			}
+			if !expect[fs] {
 				t.Fatalf("method %s has an unexpected implementation %s", name, f.String())
 			}
 		}
@@ -47,9 +58,12 @@ func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name strin
 }
 
 func TestPointerCallgraph(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callgraph")
-	program, _ := analysistest.LoadTest(t, dir, []string{})
+	dir := filepath.Join("testdata", "callgraph")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	if err != nil {
+		t.Fatalf("failed to load test: %v", err)
+	}
+	program := lp.Prog
 	callgraph, err := df.PointerAnalysis.ComputeCallgraph(program)
 	if err != nil {
 		t.Fatalf("error computing callgraph: %s", err)

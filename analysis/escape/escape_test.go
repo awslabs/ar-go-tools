@@ -315,9 +315,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	// are satisfied by the computed summaries (technically, the summary at particular
 	// program points)
 	for _, funcName := range funcsToTest {
-		funcName := funcName
 		t.Run(funcName, func(t *testing.T) {
-			t.Parallel()
 			f := findFunction(program, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
@@ -373,9 +371,7 @@ func TestBuiltinsEscape(t *testing.T) {
 	// are satisfied by the computed summaries (technically, the summary at particular
 	// program points)
 	for _, funcName := range funcsToTest {
-		funcName := funcName
 		t.Run(funcName, func(t *testing.T) {
-			t.Parallel()
 			f := findFunction(program, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
@@ -433,9 +429,7 @@ func TestStdlibEscape(t *testing.T) {
 	// are satisfied by the computed summaries (technically, the summary at particular
 	// program points)
 	for _, funcName := range funcsToTest {
-		funcName := funcName
 		t.Run(funcName, func(t *testing.T) {
-			t.Parallel()
 			f := findFunction(program, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
@@ -665,9 +659,7 @@ func TestLocalityComputation(t *testing.T) {
 	astFiles := analysistest.AstFiles(lp.Pkgs)
 	annos := annotations(lp.Prog.Fset, astFiles)
 	for _, funcName := range funcsToTest {
-		funcName := funcName
 		t.Run(funcName, func(t *testing.T) {
-			t.Parallel()
 			f := findFunction(program, funcName)
 			if f == nil {
 				t.Fatalf("Couldn't find function %v", funcName)

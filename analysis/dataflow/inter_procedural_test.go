@@ -16,7 +16,7 @@ package dataflow_test
 
 import (
 	"fmt"
-	"path"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -33,10 +33,12 @@ import (
 
 //gocyclo:ignore
 func TestCrossFunctionFlowGraph(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
-	// Loading the program for testdata/src/dataflow/summaries/main.go
-	program, _ := analysistest.LoadTest(t, dir, []string{})
+	dir := filepath.Join("testdata", "summaries")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	if err != nil {
+		t.Fatalf("failed to load test: %v", err)
+	}
+	program := lp.Prog
 	cfg := config.NewDefault()
 	cfg.MaxDepth = 1 // limit context of each source to avoid timeouts
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)

@@ -15,9 +15,8 @@
 package graphutil_test
 
 import (
-	"os"
-	"path"
-	"runtime"
+	"embed"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,16 +32,16 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-func TestFindAllElementaryCycles(t *testing.T) {
-	// Change directory to the testdata folder to be able to load packages
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/graph-ops/trivial")
-	err := os.Chdir(dir)
-	if err != nil {
-		panic(err)
-	}
+//go:embed testdata
+var testfsys embed.FS
 
-	program, _ := analysistest.LoadTest(t, ".", []string{})
+func TestFindAllElementaryCycles(t *testing.T) {
+	dir := filepath.Join("testdata", "trivial")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	if err != nil {
+		t.Fatalf("failed to load test: %v", err)
+	}
+	program := lp.Prog
 
 	pCfg := &pointer.Config{
 		Mains:           ssautil.MainPackages(program.AllPackages()),

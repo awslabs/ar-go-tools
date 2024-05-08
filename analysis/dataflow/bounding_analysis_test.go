@@ -15,6 +15,8 @@
 package dataflow_test
 
 import (
+	"embed"
+	"path/filepath"
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -22,8 +24,17 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 )
 
+//go:embed testdata
+var testfsys embed.FS
+
 func TestRunBoundingAnalysis(t *testing.T) {
-	program, cfg := analysistest.LoadTest(t, "../../testdata/src/taint/closures", []string{"helpers.go"})
+	dir := filepath.Join("testdata", "bounding-analysis")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{"helpers.go"})
+	if err != nil {
+		t.Fatalf("failed to load test: %v", err)
+	}
+	cfg := lp.Config
+	program := lp.Prog
 	c, err := NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Errorf("error building state: %q", err)

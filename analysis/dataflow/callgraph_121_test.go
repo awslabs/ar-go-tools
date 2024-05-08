@@ -17,8 +17,7 @@
 package dataflow_test
 
 import (
-	"path"
-	"runtime"
+	"path/filepath"
 	"testing"
 
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -27,14 +26,16 @@ import (
 )
 
 func TestComputeMethodImplementationsGo121(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callgraph")
-	program, _ := analysistest.LoadTest(t, dir, []string{})
+	dir := filepath.Join("testdata", "callgraph")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	if err != nil {
+		t.Fatalf("failed to load test: %v", err)
+	}
+	program := lp.Prog
 	implementations := map[string]map[*ssa.Function]bool{}
 	contracts := map[string]*df.SummaryGraph{}
 	keys := map[string]string{}
-	err := df.ComputeMethodImplementations(program, implementations, contracts, keys)
-	if err != nil {
+	if err := df.ComputeMethodImplementations(program, implementations, contracts, keys); err != nil {
 		t.Fatalf("Error computing method implementations: %s", err)
 	}
 	methodTest(t, implementations, "command-line-arguments.I.f", map[string]bool{
