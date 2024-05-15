@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"go/token"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -37,7 +36,12 @@ import (
 func TestAnalyze(t *testing.T) {
 	t.Skipf("Skipping trace tests.")
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
+	d := filepath.Dir(filename)
+	fdir, err := filepath.EvalSymlinks(d)
+	if err != nil {
+		t.Fatalf("failed to eval symlinks for dir: %v", d)
+	}
+	dir := filepath.Join(fdir, "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
 	program, cfg := analysistest.LoadTest(t, dir, []string{})
 	defer os.Remove(cfg.ReportsDir)
@@ -62,7 +66,12 @@ func TestAnalyze(t *testing.T) {
 func TestAnalyze_OnDemand(t *testing.T) {
 	t.Skipf("Skipping trace tests.")
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/backtrace")
+	d := filepath.Dir(filename)
+	fdir, err := filepath.EvalSymlinks(d)
+	if err != nil {
+		t.Fatalf("failed to eval symlinks for dir: %v", d)
+	}
+	dir := filepath.Join(fdir, "../../testdata/src/backtrace")
 	// Loading the program for testdata/src/backtrace/main.go
 	program, cfg := analysistest.LoadTest(t, dir, []string{})
 	defer os.Remove(cfg.ReportsDir)
@@ -357,9 +366,14 @@ func TestAnalyze_Closures(t *testing.T) {
 	// This test uses the taint analysis' closures test file to ensure completeness.
 	// The backtracepoints (entrypoints to the backwards analysis) are identical to the sinks in the taint analysis.
 	// See the config.yaml file for details.
-	//t.Skipf("Skip until tests are fixed so they do not depend on a specific output format.")
+	// t.Skipf("Skip until tests are fixed so they do not depend on a specific output format.")
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/closures")
+	d := filepath.Dir(filename)
+	fdir, err := filepath.EvalSymlinks(d)
+	if err != nil {
+		t.Fatalf("failed to eval symlinks for dir: %v", d)
+	}
+	dir := filepath.Join(fdir, "../../testdata/src/dataflow/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
 	program, cfg := analysistest.LoadTest(t, dir, []string{"helpers.go"})
 	defer os.Remove(cfg.ReportsDir)
@@ -370,7 +384,12 @@ func TestAnalyze_Closures(t *testing.T) {
 func TestAnalyze_Closures_OnDemand(t *testing.T) {
 	t.Skipf("Tests relying on traces should have separate source file with minimal examples.")
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/closures")
+	d := filepath.Dir(filename)
+	fdir, err := filepath.EvalSymlinks(d)
+	if err != nil {
+		t.Fatalf("failed to eval symlinks for dir: %v", d)
+	}
+	dir := filepath.Join(fdir, "../../testdata/src/dataflow/closures")
 	// Loading the program for testdata/src/taint/closures/main.go
 	program, cfg := analysistest.LoadTest(t, dir, []string{"helpers.go"})
 	defer os.Remove(cfg.ReportsDir)
@@ -528,9 +547,9 @@ func TestAnalyze_Taint(t *testing.T) {
 			"sanitizers.go", "memory.go", "channels.go"}},
 		{"builtins", []string{"helpers.go"}},
 		// TODO backtrace needs updating
-		//{"interfaces", []string{}},
+		// {"interfaces", []string{}},
 		// TODO backtrace needs updating
-		//{"parameters", []string{}},
+		// {"parameters", []string{}},
 		{"example1", []string{}},
 		{"example2", []string{}},
 		{"defers", []string{}},
@@ -567,7 +586,12 @@ func TestAnalyze_Taint(t *testing.T) {
 func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool) {
 	// Change directory to the testdata folder to be able to load packages
 	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(path.Dir(filename), "..", "..", "testdata", "src", "taint", test.name)
+	d := filepath.Dir(filename)
+	fdir, err := filepath.EvalSymlinks(d)
+	if err != nil {
+		t.Fatalf("failed to eval symlinks for dir: %v", d)
+	}
+	dir := filepath.Join(fdir, "..", "..", "testdata", "src", "taint", test.name)
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +651,7 @@ func taintTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool
 			} else if !strings.HasPrefix(posSink.Filename, dir) {
 				// TODO: check that the on-demand summarization is consistent with the not on-demand when analyzing
 				// the standard library
-				t.Log("WARNING: detected path outside of test repository.")
+				t.Logf("WARNING: detected path outside of test repository: %v, dir: %v\n", posSink.Filename, dir)
 			} else {
 				t.Errorf("ERROR in main.go: false positive:\n\t%s\n flows to\n\t%s\n", posSource, posSink)
 			}

@@ -240,9 +240,13 @@ func expectTaintedCondInFuncs(funcNames ...string) func(error) bool {
 func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) {
 	// Change directory to the testdata folder to be able to load packages
 	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", dirName)
-	err := os.Chdir(dir)
+	d := filepath.Dir(filename)
+	fdir, err := filepath.EvalSymlinks(d) // prevents test failures caused by differences in filepaths due to symlinks
 	if err != nil {
+		t.Fatalf("failed to eval symlinks for dir: %v", d)
+	}
+	dir := filepath.Join(fdir, "..", "..", "testdata", "src", "taint", dirName)
+	if err := os.Chdir(dir); err != nil {
 		panic(err)
 	}
 
