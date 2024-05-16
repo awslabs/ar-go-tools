@@ -31,7 +31,6 @@ func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
 	}
 
 	var que []*CallStack
-	visited := map[*CallNode]bool{}
 
 	for _, e := range s.PointerAnalysis.CallGraph.Root.Out {
 		summary := s.FlowGraph.Summaries[e.Callee.Func]
@@ -51,11 +50,10 @@ func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
 		if elt.Label == n {
 			results = append(results, elt)
 		}
-		visited[elt.Label] = true
 		if elt.Label.CalleeSummary != nil {
 			for _, callNodeSet := range elt.Label.CalleeSummary.Callees {
 				for _, callNode := range callNodeSet {
-					if !visited[callNode] {
+					if !isRecursive(elt, callNode) {
 						que = append(que, elt.Add(callNode))
 					}
 				}
@@ -64,6 +62,16 @@ func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
 	}
 
 	return results
+}
+
+func isRecursive(stack *CallStack, call *CallNode) bool {
+	for stack != nil {
+		if stack.Label == call {
+			return true
+		}
+		stack = stack.Parent
+	}
+	return false
 }
 
 // Following functions are experimental: our analyses are not context-sensitive for the time being!
