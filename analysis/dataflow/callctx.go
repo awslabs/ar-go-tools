@@ -24,41 +24,67 @@ import (
 	cg "golang.org/x/tools/go/callgraph"
 )
 
+type ReversedCallStack = CallStack
+
 // GetAllCallingContexts returns all the possible loop-free calling contexts of a CallNode in the state
 func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
 	if s.PointerAnalysis == nil {
 		return nil
 	}
 
-	var que []*CallStack
+	entryPoints := map[*CallNode]bool{}
 
 	for _, e := range s.PointerAnalysis.CallGraph.Root.Out {
 		summary := s.FlowGraph.Summaries[e.Callee.Func]
 		if summary != nil {
 			for _, callNodeSet := range summary.Callees {
 				for _, callNode := range callNodeSet {
-					que = append(que, NewNodeTree(callNode))
+					entryPoints[callNode] = true
 				}
 			}
 		}
 	}
-	var results []*CallStack
+
+	// backward analysis from n to an entry point
+	type ReversedCallStackKey = string
+	var que []*ReversedCallStack
+	/** keeps track of which reverse call stacks we have already inserted into the queue at some point */
+	queInserted := map[ReversedCallStackKey]bool{}
+	initElem := NewNodeTree(n)
+	que = append(que, initElem)
+	queInserted[initElem.key] = true
+	var reversedResults []*ReversedCallStack
 
 	for len(que) > 0 {
 		elt := que[0]
 		que = que[1:]
-		if elt.Label == n {
-			results = append(results, elt)
-		}
-		if elt.Label.CalleeSummary != nil {
-			for _, callNodeSet := range elt.Label.CalleeSummary.Callees {
-				for _, callNode := range callNodeSet {
+		if entryPoints[elt.Label] {
+			reversedResults = append(reversedResults, elt)
+		} else if !hasReachedContextLimit(elt, s.Config.MaxDepth) {
+			summary := elt.Label.parent
+			if summary != nil {
+				for _, callNode := range summary.Callsites {
 					if !isRecursive(elt, callNode) {
-						que = append(que, elt.Add(callNode))
+						newElt := elt.Add(callNode)
+						if !queInserted[newElt.key] {
+							que = append(que, newElt)
+							queInserted[newElt.key] = true
+						}
 					}
 				}
 			}
+		} else {
+			// we have reached the context limit and, thus, could not find out whether this (partial) reversed call stack
+			// is actually reachable from an entry point. For soundness, we treat this partial reversed call stack as
+			// potentially being reachable:
+			reversedResults = append(reversedResults, elt)
 		}
+	}
+
+	// convert from reversed call stacks to regular call stacks
+	results := make([]*CallStack, len(reversedResults))
+	for i := range reversedResults {
+		results[i] = reverseCallStack(reversedResults[i])
 	}
 
 	return results
@@ -72,6 +98,33 @@ func isRecursive(stack *CallStack, call *CallNode) bool {
 		stack = stack.Parent
 	}
 	return false
+}
+
+func hasReachedContextLimit(stack *CallStack, limit int) bool {
+	if limit <= 0 {
+		// ignore limit
+		return false
+	}
+	counter := 0
+	for stack != nil {
+		counter++
+		if counter >= limit {
+			return true
+		}
+		stack = stack.Parent
+	}
+	return false
+}
+
+func reverseCallStack(s *ReversedCallStack) *CallStack {
+	if s == nil {
+		return nil
+	}
+	res := NewNodeTree(s.Label)
+	for cur := s.Parent; cur != nil; cur = cur.Parent {
+		res = res.Add(cur.Label)
+	}
+	return res
 }
 
 // Following functions are experimental: our analyses are not context-sensitive for the time being!

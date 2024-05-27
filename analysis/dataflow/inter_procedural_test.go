@@ -38,6 +38,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 	// Loading the program for testdata/src/dataflow/summaries/main.go
 	program, _ := analysistest.LoadTest(t, dir, []string{})
 	cfg := config.NewDefault()
+	cfg.MaxDepth = 1 // limit context of each source to avoid timeouts
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Fatalf("failed to build program analysis state: %v", err)
