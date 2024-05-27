@@ -24,7 +24,8 @@ import (
 	cg "golang.org/x/tools/go/callgraph"
 )
 
-type ReversedCallStack = CallStack
+// reversedCallStack is a unary tree that roots at a particular call and stores the next call in the call stack as its child
+type reversedCallStack = CallStack
 
 // GetAllCallingContexts returns all the possible loop-free calling contexts of a CallNode in the state
 func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
@@ -46,14 +47,14 @@ func GetAllCallingContexts(s *AnalyzerState, n *CallNode) []*CallStack {
 	}
 
 	// backward analysis from n to an entry point
-	type ReversedCallStackKey = string
-	var que []*ReversedCallStack
+	type reversedCallStackKey = string
+	var que []*reversedCallStack
 	/** keeps track of which reverse call stacks we have already inserted into the queue at some point */
-	queInserted := map[ReversedCallStackKey]bool{}
+	queInserted := map[reversedCallStackKey]bool{}
 	initElem := NewNodeTree(n)
 	que = append(que, initElem)
 	queInserted[initElem.key] = true
-	var reversedResults []*ReversedCallStack
+	var reversedResults []*reversedCallStack
 
 	for len(que) > 0 {
 		elt := que[0]
@@ -116,7 +117,7 @@ func hasReachedContextLimit(stack *CallStack, limit int) bool {
 	return false
 }
 
-func reverseCallStack(s *ReversedCallStack) *CallStack {
+func reverseCallStack(s *reversedCallStack) *CallStack {
 	if s == nil {
 		return nil
 	}
