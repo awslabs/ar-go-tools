@@ -449,7 +449,14 @@ func (g *SummaryGraph) addSyntheticNode(instr ssa.Instruction, label string) {
 }
 
 func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.Label, target BindingInfo) {
-	if _, ok := g.BoundLabelNodes[instr]; !ok {
+	instrAndTargetExists := false
+	if instrEntry, instrExists := g.BoundLabelNodes[instr]; instrExists {
+		_, instrAndTargetExists = instrEntry[target]
+	} else {
+		g.BoundLabelNodes[instr] = make(map[BindingInfo]*BoundLabelNode)
+	}
+
+	if !instrAndTargetExists {
 		node := &BoundLabelNode{
 			id:         g.newNodeID(),
 			parent:     g,
@@ -459,11 +466,8 @@ func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.L
 			out:        make(map[GraphNode]EdgeInfo),
 			in:         make(map[GraphNode]EdgeInfo),
 		}
-		if labelEntry := g.BoundLabelNodes[instr][target]; labelEntry != nil {
-			g.BoundLabelNodes[instr][target] = node
-		} else {
-			g.BoundLabelNodes[instr] = map[BindingInfo]*BoundLabelNode{target: node}
-		}
+
+		g.BoundLabelNodes[instr][target] = node
 	}
 }
 

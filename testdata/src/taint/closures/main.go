@@ -407,6 +407,31 @@ func example18() {
 	sink(x2)
 }
 
+// example19: case with two "bound labels" with different targets on the same instruction
+func example19() {
+	y := []string{source()} // @Source(ex19p1)
+	z := []string{"ok"}
+	f := func(x []string, y []string) string {
+		return x[1] + y[0]
+	}
+	h := &z
+	example19use(func(x []string) string { return f(x, y) })
+	(*h)[0] = source() //@Source(ex19label2)
+	example19use2(func(x []string) string { return f(x, z) })
+}
+
+func example19use(f func([]string) string) {
+	x := []string{""}
+	x = append(x, source()) // @Source(ex19p2)
+	sink(f(x))              // @Sink(ex19p1, ex19p2)
+}
+
+func example19use2(f func([]string) string) {
+	x := []string{""}
+	x = append(x, source()) // @Source(ex19p3)
+	sink(f(x))              // @Sink(ex19p3, ex19label2)
+}
+
 func main() {
 	example1()
 	example1bis()
@@ -429,4 +454,5 @@ func main() {
 	example16()
 	example17()
 	example18()
+	example19()
 }
