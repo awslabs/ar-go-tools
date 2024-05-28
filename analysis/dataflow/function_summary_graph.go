@@ -74,7 +74,7 @@ type SummaryGraph struct {
 	SyntheticNodes map[ssa.Instruction]*SyntheticNode
 
 	// the label nodes of the function
-	BoundLabelNodes map[ssa.Instruction]*BoundLabelNode
+	BoundLabelNodes map[ssa.Instruction]map[BindingInfo]*BoundLabelNode
 
 	// the nodes accessing global information
 	AccessGlobalNodes map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode
@@ -135,7 +135,7 @@ func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
 		ReferringMakeClosures: make(map[ssa.Instruction]*ClosureNode),
 		AccessGlobalNodes:     make(map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode),
 		SyntheticNodes:        make(map[ssa.Instruction]*SyntheticNode),
-		BoundLabelNodes:       make(map[ssa.Instruction]*BoundLabelNode),
+		BoundLabelNodes:       make(map[ssa.Instruction]map[BindingInfo]*BoundLabelNode),
 		Ifs:                   make(map[ssa.Instruction]*IfNode),
 		errors:                map[error]bool{},
 		lastNodeID:            &lastNodeID,
@@ -459,7 +459,11 @@ func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.L
 			out:        make(map[GraphNode]EdgeInfo),
 			in:         make(map[GraphNode]EdgeInfo),
 		}
-		g.BoundLabelNodes[instr] = node
+		if labelEntry := g.BoundLabelNodes[instr][target]; labelEntry != nil {
+			g.BoundLabelNodes[instr][target] = node
+		} else {
+			g.BoundLabelNodes[instr] = map[BindingInfo]*BoundLabelNode{target: node}
+		}
 	}
 }
 
@@ -487,11 +491,13 @@ func (g *SummaryGraph) addSyntheticEdge(mark MarkWithAccessPath, info *Condition
 
 func (g *SummaryGraph) addBoundLabelEdge(mark MarkWithAccessPath, info *ConditionInfo,
 	instr ssa.Instruction) {
-	node, ok := g.BoundLabelNodes[instr]
+	nodes, ok := g.BoundLabelNodes[instr]
 	if !ok {
 		return
 	}
-	g.addEdge(mark, node, info)
+	for _, node := range nodes {
+		g.addEdge(mark, node, info)
+	}
 }
 
 func (g *SummaryGraph) addIfEdge(mark MarkWithAccessPath, info *ConditionInfo, n *ssa.If) {
@@ -1147,13 +1153,15 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 		}
 	}
 
-	for _, s := range g.BoundLabelNodes {
-		for n := range s.Out() {
-			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
-		}
-		if !outEdgesOnly {
-			for n := range s.In() {
+	for _, group := range g.BoundLabelNodes {
+		for _, s := range group {
+			for n := range s.Out() {
 				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
+			}
+			if !outEdgesOnly {
+				for n := range s.In() {
+					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
+				}
 			}
 		}
 	}
@@ -1217,8 +1225,10 @@ func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer) {
 		ppNodes("Synthetic", w, s, outEdgesOnly)
 	}
 
-	for _, s := range g.BoundLabelNodes {
-		ppNodes("Bound by label", w, s, outEdgesOnly)
+	for _, group := range g.BoundLabelNodes {
+		for _, s := range group {
+			ppNodes("Bound by label", w, s, outEdgesOnly)
+		}
 	}
 
 	for _, group := range g.AccessGlobalNodes {
@@ -1311,8 +1321,10 @@ func (g *SummaryGraph) ForAllNodes(f func(n GraphNode)) {
 		f(s)
 	}
 
-	for _, s := range g.BoundLabelNodes {
-		f(s)
+	for _, group := range g.BoundLabelNodes {
+		for _, s := range group {
+			f(s)
+		}
 	}
 
 	for _, group := range g.AccessGlobalNodes {

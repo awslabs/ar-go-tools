@@ -389,10 +389,12 @@ func TestFunctionSummaries(t *testing.T) {
 				t.Errorf("in Baz, summary should have exactly 1 bound label node")
 			} else {
 				hasSynthIn := false
-				for _, boundlb := range summary.BoundLabelNodes {
-					for out := range boundlb.In() {
-						if _, ok := out.(*dataflow.SyntheticNode); ok {
-							hasSynthIn = true
+				for _, boundLabelGroup := range summary.BoundLabelNodes {
+					for _, boundlb := range boundLabelGroup {
+						for out := range boundlb.In() {
+							if _, ok := out.(*dataflow.SyntheticNode); ok {
+								hasSynthIn = true
+							}
 						}
 					}
 				}
