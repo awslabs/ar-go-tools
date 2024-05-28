@@ -21,7 +21,6 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -97,7 +96,7 @@ func unsimplifiedEscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 //gocyclo:ignore
 func TestSimpleEscape(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/simple-escape")
+	dir := filepath.Join(filepath.Dir(filename), "../../testdata/src/concurrency/simple-escape")
 	err := os.Chdir(dir)
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
@@ -272,7 +271,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 // Check the escape results in the interprocedural case
 func TestInterproceduralEscape(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/interprocedural-escape")
+	dir := filepath.Join(filepath.Dir(filename), "../../testdata/src/concurrency/interprocedural-escape")
 	err := os.Chdir(dir)
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
@@ -326,7 +325,7 @@ func TestInterproceduralEscape(t *testing.T) {
 // Check the escape results in the interprocedural case
 func TestBuiltinsEscape(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/builtins-escape")
+	dir := filepath.Join(filepath.Dir(filename), "../../testdata/src/concurrency/builtins-escape")
 	err := os.Chdir(dir)
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
@@ -378,7 +377,7 @@ func TestBuiltinsEscape(t *testing.T) {
 // Check the escape results in the interprocedural case
 func TestStdlibEscape(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/stdlib-escape")
+	dir := filepath.Join(filepath.Dir(filename), "../../testdata/src/concurrency/stdlib-escape")
 	err := os.Chdir(dir)
 	if err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
@@ -608,7 +607,7 @@ func (p LPos) String() string {
 
 // RelPos drops the column of the position and prepends reldir to the filename of the position
 func RelPos(pos token.Position, reldir string) LPos {
-	return LPos{Line: pos.Line, Filename: path.Join(reldir, pos.Filename)}
+	return LPos{Line: pos.Line, Filename: filepath.Join(reldir, pos.Filename)}
 }
 
 // getExpectSourceToTargets analyzes the files in dir and looks for comments // LOCAL // NONLOCAL etc
@@ -660,9 +659,13 @@ func getAnnotations(reldir string, dir string) map[LPos]Anno {
 
 func TestLocalityComputation(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/concurrency/escape-locality")
-	err := os.Chdir(dir)
+	d := filepath.Dir(filename)
+	fdir, err := filepath.EvalSymlinks(d)
 	if err != nil {
+		t.Fatalf("failed to eval symlinks for dir: %v", d)
+	}
+	dir := filepath.Join(fdir, "../../testdata/src/concurrency/escape-locality")
+	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("failed to switch to dir %v: %v", dir, err)
 	}
 	program, cfg := testutils.LoadTest(t, ".", []string{})
