@@ -278,7 +278,7 @@ func (g *SummaryGraph) addParam(param *ssa.Parameter, pos int) {
 		id:      g.newNodeID(),
 		parent:  g,
 		ssaNode: param,
-		out:     make(map[GraphNode]EdgeInfo),
+		out:     make(map[GraphNode][]EdgeInfo),
 		in:      make(map[GraphNode]EdgeInfo),
 		argPos:  pos,
 	}
@@ -295,7 +295,7 @@ func (g *SummaryGraph) addFreeVar(fv *ssa.FreeVar, pos int) {
 		id:      g.newNodeID(),
 		parent:  g,
 		ssaNode: fv,
-		out:     make(map[GraphNode]EdgeInfo),
+		out:     make(map[GraphNode][]EdgeInfo),
 		in:      make(map[GraphNode]EdgeInfo),
 		fvPos:   pos,
 	}
@@ -345,7 +345,7 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 			callee:   callee,
 			args:     make([]*CallNodeArg, len(args)),
 			callSite: instr,
-			out:      make(map[GraphNode]EdgeInfo),
+			out:      make(map[GraphNode][]EdgeInfo),
 			in:       make(map[GraphNode]EdgeInfo),
 		}
 
@@ -355,7 +355,7 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 				parent:   node,
 				ssaValue: arg,
 				argPos:   pos,
-				out:      make(map[GraphNode]EdgeInfo),
+				out:      make(map[GraphNode][]EdgeInfo),
 				in:       make(map[GraphNode]EdgeInfo),
 			}
 			node.args[pos] = argNode
@@ -391,7 +391,7 @@ func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
 		ClosureSummary: nil,
 		instr:          x,
 		boundVars:      []*BoundVarNode{},
-		out:            make(map[GraphNode]EdgeInfo),
+		out:            make(map[GraphNode][]EdgeInfo),
 		in:             make(map[GraphNode]EdgeInfo),
 	}
 
@@ -403,7 +403,7 @@ func (g *SummaryGraph) addClosure(x *ssa.MakeClosure) {
 			parent:   node,
 			ssaValue: binding,
 			bPos:     pos,
-			out:      make(map[GraphNode]EdgeInfo),
+			out:      make(map[GraphNode][]EdgeInfo),
 			in:       make(map[GraphNode]EdgeInfo),
 		}
 		node.boundVars = append(node.boundVars, bindingNode)
@@ -423,7 +423,7 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 			graph:   g,
 			instr:   instr,
 			Global:  global,
-			out:     make(map[GraphNode]EdgeInfo),
+			out:     make(map[GraphNode][]EdgeInfo),
 			in:      make(map[GraphNode]EdgeInfo),
 		}
 		g.AccessGlobalNodes[instr][global.value] = node
@@ -441,7 +441,7 @@ func (g *SummaryGraph) addSyntheticNode(instr ssa.Instruction, label string) {
 			parent: g,
 			instr:  instr,
 			label:  label,
-			out:    make(map[GraphNode]EdgeInfo),
+			out:    make(map[GraphNode][]EdgeInfo),
 			in:     make(map[GraphNode]EdgeInfo),
 		}
 		g.SyntheticNodes[instr] = node
@@ -456,7 +456,7 @@ func (g *SummaryGraph) addBoundLabelNode(instr ssa.Instruction, label *pointer.L
 			instr:      instr,
 			label:      label,
 			targetInfo: target,
-			out:        make(map[GraphNode]EdgeInfo),
+			out:        make(map[GraphNode][]EdgeInfo),
 			in:         make(map[GraphNode]EdgeInfo),
 		}
 		g.BoundLabelNodes[instr] = node
@@ -469,7 +469,7 @@ func (g *SummaryGraph) addIfNode(x *ssa.If) {
 			id:      g.newNodeID(),
 			parent:  g,
 			ssaNode: x,
-			out:     make(map[GraphNode]EdgeInfo),
+			out:     make(map[GraphNode][]EdgeInfo),
 			in:      make(map[GraphNode]EdgeInfo),
 		}
 		g.Ifs[x] = node
@@ -688,18 +688,29 @@ func isDiffNode(mark MarkWithAccessPath, source GraphNode, dest GraphNode) bool 
 
 func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionInfo, sourceNode GraphNode) {
 	outMap := sourceNode.Out()
+	index := source.Mark.Index
 	relPath := map[string]map[string]bool{source.Mark.Label: {source.AccessPath: true}}
-	if _, edgePresent := outMap[dest]; edgePresent {
-		if _, ok := outMap[dest].RelPath[source.Mark.Label]; ok {
-			outMap[dest].RelPath[source.Mark.Label][source.AccessPath] = true
-		} else {
-			outMap[dest].RelPath[source.Mark.Label] = map[string]bool{source.AccessPath: true}
-		}
-
-	} else {
-		outMap[dest] = EdgeInfo{relPath, source.Mark.Index, info}
+	edgeInfos, destPresent := outMap[dest]
+	if !destPresent {
+		edgeInfos = make([]EdgeInfo, 0, 1)
 	}
-	addInEdge(dest, sourceNode, EdgeInfo{relPath, source.Mark.Index, info})
+	edgeInfoFound := false
+	for _, edgeInfo := range edgeInfos {
+		// add the access path to each edge with matching index
+		if edgeInfo.Index == index {
+			edgeInfoFound = true
+			if _, ok := edgeInfo.RelPath[source.Mark.Label]; ok {
+				edgeInfo.RelPath[source.Mark.Label][source.AccessPath] = true
+			} else {
+				edgeInfo.RelPath[source.Mark.Label] = map[string]bool{source.AccessPath: true}
+			}
+		}
+	}
+	if !edgeInfoFound {
+		outMap[dest] = append(edgeInfos, EdgeInfo{relPath, index, info})
+	}
+
+	addInEdge(dest, sourceNode, EdgeInfo{relPath, index, info})
 }
 
 // addCallArgEdge adds an edge in the summary from a mark to a function call argument.
@@ -857,7 +868,11 @@ func (g *SummaryGraph) addParamEdgeByPos(src int, dest int) bool {
 
 	if srcArg, ok := g.Params[srcNode]; ok {
 		if destArg, ok := g.Params[destNode]; ok {
-			srcArg.out[destArg] = EdgeInfo{map[string]map[string]bool{}, 0, nil}
+			outEdges := srcArg.out[destArg]
+			if outEdges == nil {
+				outEdges = make([]EdgeInfo, 0, 1)
+			}
+			srcArg.out[destArg] = append(outEdges, EdgeInfo{map[string]map[string]bool{}, 0, nil})
 
 			if destArg.in == nil {
 				destArg.in = make(map[GraphNode]EdgeInfo)
@@ -885,7 +900,13 @@ func (g *SummaryGraph) addReturnEdgeByPos(src int, pos int) bool {
 			if pos >= len(retNode) || retNode[pos] == nil {
 				continue
 			}
-			srcArg.out[retNode[pos]] = EdgeInfo{map[string]map[string]bool{}, pos, nil}
+
+			outEdges := srcArg.out[retNode[pos]]
+			if outEdges == nil {
+				outEdges = make([]EdgeInfo, 0, 1)
+			}
+			srcArg.out[retNode[pos]] = append(outEdges, EdgeInfo{map[string]map[string]bool{}, pos, nil})
+
 			if retNode[pos].in == nil {
 				retNode[pos].in = make(map[GraphNode]EdgeInfo)
 			}
@@ -1077,8 +1098,10 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 
 	for _, callNodes := range g.Callees {
 		for _, callN := range callNodes {
-			for n, obj := range callN.Out() {
-				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(callN.String()), obj.Index, escapeString(n.String()))
+			for n, edgeInfos := range callN.Out() {
+				for _, obj := range edgeInfos {
+					fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(callN.String()), obj.Index, escapeString(n.String()))
+				}
 			}
 			if !outEdgesOnly {
 				for n := range callN.In() {
@@ -1125,8 +1148,10 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 			if r == nil {
 				continue
 			}
-			for n, obj := range r.Out() {
-				fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(r.String()), obj.Index, escapeString(n.String()))
+			for n, edgeInfos := range r.Out() {
+				for _, obj := range edgeInfos {
+					fmt.Fprintf(w, "\t%s.%d -> %s;\n", escapeString(r.String()), obj.Index, escapeString(n.String()))
+				}
 			}
 			if !outEdgesOnly {
 				for n, obj := range r.In() {
@@ -1232,9 +1257,11 @@ func ppNodes(prefix string, w io.Writer, a GraphNode, outEdgesOnly bool) {
 	if len(a.Out()) > 0 {
 		fmt.Fprintf(w, "  %s %s:\n", prefix, a.String())
 	}
-	for n, c := range a.Out() {
-		if c.Cond == nil || c.Cond.Satisfiable {
-			ppEdge(w, n, c, "->")
+	for n, edgeInfos := range a.Out() {
+		for _, c := range edgeInfos {
+			if c.Cond == nil || c.Cond.Satisfiable {
+				ppEdge(w, n, c, "->")
+			}
 		}
 	}
 	if !outEdgesOnly {

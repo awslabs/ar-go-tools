@@ -59,7 +59,7 @@ type GraphNode interface {
 
 	// Out returns the outgoing edges from the node. The DataflowEdge specifies a possible "object Path", e.g. a field
 	// or a slice index, which refines the dataflow information
-	Out() map[GraphNode]EdgeInfo
+	Out() map[GraphNode][]EdgeInfo
 
 	// In returns the incoming edges from the node. The DataflowEdge specifies a possible "object Path", e.g. a field
 	// or a slice index, which refines the dataflow information (currently not in use, "" or "*" means everything in
@@ -207,7 +207,7 @@ type ParamNode struct {
 	parent  *SummaryGraph
 	ssaNode *ssa.Parameter
 	argPos  int
-	out     map[GraphNode]EdgeInfo
+	out     map[GraphNode][]EdgeInfo
 	in      map[GraphNode]EdgeInfo
 	marks   LocSet
 }
@@ -219,7 +219,7 @@ func (a *ParamNode) ID() uint32 { return a.id }
 func (a *ParamNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *ParamNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *ParamNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *ParamNode) In() map[GraphNode]EdgeInfo { return a.in }
@@ -282,7 +282,7 @@ type FreeVarNode struct {
 	parent  *SummaryGraph
 	ssaNode *ssa.FreeVar
 	fvPos   int
-	out     map[GraphNode]EdgeInfo
+	out     map[GraphNode][]EdgeInfo
 	in      map[GraphNode]EdgeInfo
 	marks   LocSet
 }
@@ -294,7 +294,7 @@ func (a *FreeVarNode) ID() uint32 { return a.id }
 func (a *FreeVarNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *FreeVarNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *FreeVarNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *FreeVarNode) In() map[GraphNode]EdgeInfo { return a.in }
@@ -354,7 +354,7 @@ type CallNodeArg struct {
 	parent   *CallNode
 	ssaValue ssa.Value
 	argPos   int
-	out      map[GraphNode]EdgeInfo
+	out      map[GraphNode][]EdgeInfo
 	in       map[GraphNode]EdgeInfo
 	marks    LocSet
 }
@@ -366,7 +366,7 @@ func (a *CallNodeArg) ID() uint32 { return a.id }
 func (a *CallNodeArg) Graph() *SummaryGraph { return a.parent.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *CallNodeArg) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *CallNodeArg) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *CallNodeArg) In() map[GraphNode]EdgeInfo { return a.in }
@@ -434,7 +434,7 @@ type CallNode struct {
 	callee        CalleeInfo
 	CalleeSummary *SummaryGraph
 	args          []*CallNodeArg
-	out           map[GraphNode]EdgeInfo
+	out           map[GraphNode][]EdgeInfo
 	in            map[GraphNode]EdgeInfo
 	marks         LocSet
 }
@@ -446,7 +446,7 @@ func (a *CallNode) ID() uint32 { return a.id }
 func (a *CallNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *CallNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *CallNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *CallNode) In() map[GraphNode]EdgeInfo { return a.in }
@@ -562,7 +562,7 @@ type ReturnValNode struct {
 func (a *ReturnValNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *ReturnValNode) Out() map[GraphNode]EdgeInfo { return nil }
+func (a *ReturnValNode) Out() map[GraphNode][]EdgeInfo { return nil }
 
 // ID returns the integer id of the node in its parent graph
 func (a *ReturnValNode) ID() uint32 { return a.id }
@@ -626,7 +626,7 @@ type ClosureNode struct {
 
 	// the nodes corresponding to the bound variables
 	boundVars []*BoundVarNode
-	out       map[GraphNode]EdgeInfo
+	out       map[GraphNode][]EdgeInfo
 	in        map[GraphNode]EdgeInfo
 	marks     LocSet
 }
@@ -638,7 +638,7 @@ func (a *ClosureNode) ID() uint32 { return a.id }
 func (a *ClosureNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *ClosureNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *ClosureNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *ClosureNode) In() map[GraphNode]EdgeInfo { return a.in }
@@ -718,7 +718,7 @@ type BoundVarNode struct {
 	// bPos is the position of the bound variable, and correspond to fvPos is the closure's summary
 	bPos int
 
-	out   map[GraphNode]EdgeInfo
+	out   map[GraphNode][]EdgeInfo
 	in    map[GraphNode]EdgeInfo
 	marks LocSet
 }
@@ -730,7 +730,7 @@ func (a *BoundVarNode) ID() uint32 { return a.id }
 func (a *BoundVarNode) Graph() *SummaryGraph { return a.parent.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *BoundVarNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *BoundVarNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *BoundVarNode) In() map[GraphNode]EdgeInfo { return a.in }
@@ -796,7 +796,7 @@ type AccessGlobalNode struct {
 	graph   *SummaryGraph   // the parent graph in which the read/write occurs
 	instr   ssa.Instruction // the instruction where the global is read/written to
 	Global  *GlobalNode     // the corresponding global node
-	out     map[GraphNode]EdgeInfo
+	out     map[GraphNode][]EdgeInfo
 	in      map[GraphNode]EdgeInfo
 	marks   LocSet
 }
@@ -808,7 +808,7 @@ func (a *AccessGlobalNode) ID() uint32 { return a.id }
 func (a *AccessGlobalNode) Graph() *SummaryGraph { return a.graph }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *AccessGlobalNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *AccessGlobalNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *AccessGlobalNode) In() map[GraphNode]EdgeInfo { return a.in }
@@ -862,11 +862,11 @@ func (a *AccessGlobalNode) LongID() string {
 // A SyntheticNode can be used to represent any other type of node.
 type SyntheticNode struct {
 	id     uint32
-	parent *SummaryGraph          // the parent of a SyntheticNode is the summary of the function in which it appears
-	instr  ssa.Instruction        // a SyntheticNode must correspond to a specific instruction
-	label  string                 // the label can be used to record information about synthetic nodes
-	out    map[GraphNode]EdgeInfo // the out maps the node to other nodes to which data flows
-	in     map[GraphNode]EdgeInfo // the in maps the node to other nodes from which data flows
+	parent *SummaryGraph            // the parent of a SyntheticNode is the summary of the function in which it appears
+	instr  ssa.Instruction          // a SyntheticNode must correspond to a specific instruction
+	label  string                   // the label can be used to record information about synthetic nodes
+	out    map[GraphNode][]EdgeInfo // the out maps the node to other nodes to which data flows
+	in     map[GraphNode]EdgeInfo   // the in maps the node to other nodes from which data flows
 	marks  LocSet
 }
 
@@ -877,7 +877,7 @@ func (a *SyntheticNode) ID() uint32 { return a.id }
 func (a *SyntheticNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *SyntheticNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *SyntheticNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *SyntheticNode) In() map[GraphNode]EdgeInfo { return a.in }
@@ -941,8 +941,8 @@ type BoundLabelNode struct {
 	targetInfo BindingInfo     // the targetInfo may be point to another function
 	targetAnon *SummaryGraph   // the targetAnon should be the anonymous function designated by the targetInfo
 	label      *pointer.Label
-	out        map[GraphNode]EdgeInfo // the out maps the node to other nodes to which data flows
-	in         map[GraphNode]EdgeInfo // the in maps the node to other nodes from which data flows
+	out        map[GraphNode][]EdgeInfo // the out maps the node to other nodes to which data flows
+	in         map[GraphNode]EdgeInfo   // the in maps the node to other nodes from which data flows
 	marks      LocSet
 }
 
@@ -953,7 +953,7 @@ func (a *BoundLabelNode) ID() uint32 { return a.id }
 func (a *BoundLabelNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *BoundLabelNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *BoundLabelNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path
 func (a *BoundLabelNode) In() map[GraphNode]EdgeInfo { return a.in }
@@ -1020,10 +1020,10 @@ func (a *BoundLabelNode) LongID() string {
 // For now, this just contains the value that is being branched on (the if-condition).
 type IfNode struct {
 	id      uint32
-	parent  *SummaryGraph          // the parent of an IfNode is the summary of the function in which it appears
-	ssaNode *ssa.If                // an IfNode must correspond to a specific instruction
-	out     map[GraphNode]EdgeInfo // the out maps the node to other nodes to which data flows
-	in      map[GraphNode]EdgeInfo // the in maps the node to other nodes from which data flows
+	parent  *SummaryGraph            // the parent of an IfNode is the summary of the function in which it appears
+	ssaNode *ssa.If                  // an IfNode must correspond to a specific instruction
+	out     map[GraphNode][]EdgeInfo // the out maps the node to other nodes to which data flows
+	in      map[GraphNode]EdgeInfo   // the in maps the node to other nodes from which data flows
 	marks   LocSet
 }
 
@@ -1034,7 +1034,7 @@ func (a *IfNode) ID() uint32 { return a.id }
 func (a *IfNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path.
-func (a *IfNode) Out() map[GraphNode]EdgeInfo { return a.out }
+func (a *IfNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // In returns the nodes with incoming edges to the current node, with their object path.
 func (a *IfNode) In() map[GraphNode]EdgeInfo { return a.in }
