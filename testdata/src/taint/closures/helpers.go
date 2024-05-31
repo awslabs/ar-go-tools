@@ -23,3 +23,7 @@ func sink(a ...string) {
 func source() string {
 	return "-tainted-"
 }
+
+func fresh() string {
+	return "-clean-"
+}

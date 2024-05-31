@@ -234,9 +234,13 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				}
 			}
 
+			// when the previous is a bound label or var, we have lost context
+			// this can be remediated once we implement the same closure-tracking mechanism as in the taint analysis.
+			_, isFromBoundLabel := elt.prev.Node.(*df.BoundLabelNode)
+			_, isFromBoundVar := elt.prev.Node.(*df.BoundVarNode)
 			// If the parameter was visited from an inter-procedural edge (i.e. from a call argument node), then data
 			// must flow back to that argument.
-			if elt.Trace.Len() > 0 && elt.Trace.Label != nil {
+			if elt.Trace.Len() > 0 && elt.Trace.Label != nil && !isFromBoundLabel && !isFromBoundVar {
 				callSite := elt.Trace.Label
 				if err := df.CheckIndex(s, graphNode, callSite, "[Context] No argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)

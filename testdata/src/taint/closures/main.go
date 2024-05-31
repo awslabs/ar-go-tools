@@ -432,6 +432,75 @@ func example19use2(f func([]string) string) {
 	sink(f(x))              // @Sink(ex19p3, ex19label2)
 }
 
+// example 20
+
+type Ex20 struct {
+	Count   int
+	Handler func(int, *string) string
+}
+
+func (e Ex20) Run(s *string) string {
+	e.Count += 1
+	return e.Handler(e.Count, s)
+}
+
+func load20(s *string) {
+	if random.Int() > 0 {
+		*s += source() // @Source(ex20)
+	} else {
+		*s += fresh()
+	}
+}
+
+func example20() {
+	e := Ex20{
+		Count: 0,
+		Handler: func(i int, s *string) string {
+			load20(s)
+			return strconv.Itoa(i) + *s
+		},
+	}
+	s := "ok"
+	sink(e.Run(&s)) // @Sink(ex20)
+}
+
+func makeHandler21(a *string, x *string, y *string) func(int, *string) string {
+	return func(i int, s *string) string {
+		return *a + strconv.Itoa(i) + *s + *x + *y
+	}
+}
+
+func example21() {
+	x := "ok"
+	e := Ex20{
+		Count:   0,
+		Handler: makeHandler21(&x, &x, &x),
+	}
+	var y string
+	var z string
+	if random.Int() > 3 {
+		y = source() // @Source(ex21a)
+		z = source() // @Source(ex21b)
+	} else {
+		y = fresh()
+		z = fresh()
+	}
+	e2 := Ex20{
+		Count:   0,
+		Handler: makeHandler21(&z, &y, &x),
+	}
+	s := "ok"
+	callHandler21(e2, &s)
+	newY := &s
+	*newY += fresh()
+	callHandler21(e, newY)
+}
+
+func callHandler21(handlerWrapper Ex20, data *string) {
+	// ex20 flows here too because of context insensitivity
+	sink(handlerWrapper.Run(data)) // @Sink(ex21a, ex21b, ex20)
+}
+
 func main() {
 	example1()
 	example1bis()
@@ -455,4 +524,6 @@ func main() {
 	example17()
 	example18()
 	example19()
+	example20()
+	example21()
 }
