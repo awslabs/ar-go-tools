@@ -14,7 +14,9 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type example struct {
 	ptr *string
