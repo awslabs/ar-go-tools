@@ -38,25 +38,9 @@ func SetGlobalConfig(filename string) {
 
 // LoadGlobal loads the config file that has been set by SetGlobalConfig
 func LoadGlobal() (*Config, error) {
-	b, err := os.ReadFile(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read global config file %v: %v", configFile, err)
-	}
-
-	cfg, err := Load(configFile, b)
+	cfg, err := LoadFromFiles(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load global config file %v: %v", configFile, err)
-	}
-
-	if cfg.EscapeConfigFile != "" {
-		name := cfg.RelPath(cfg.EscapeConfigFile)
-		eb, err := os.ReadFile(name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read global escape config file %v: %v", name, err)
-		}
-		if err := LoadEscape(cfg, eb); err != nil {
-			return nil, err
-		}
 	}
 
 	return cfg, err
@@ -304,6 +288,37 @@ func unmarshalConfig(b []byte, cfg *Config) error {
 	}
 	return fmt.Errorf("could not unmarshal config file, not as yaml: %w, not as xml: %v, not as json: %v",
 		errYaml, errXML, errJson)
+}
+
+// LoadFromFiles loads a full config from configFileName and the config file's
+// specified escape config file name, reading the files from disk.
+// If the escape config file name is empty, there will be no escape configuration.
+func LoadFromFiles(configFileName string) (*Config, error) {
+	cfgBytes, err := os.ReadFile(configFileName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file %s: %v", configFileName, err)
+	}
+
+	cfg, err := Load(configFileName, cfgBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create config file: %v", err)
+	}
+
+	if len(cfg.EscapeConfigFile) == 0 {
+		return cfg, nil
+	}
+
+	escFileName := cfg.RelPath(cfg.EscapeConfigFile)
+	escBytes, err := os.ReadFile(escFileName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read escape config file %s: %v", escFileName, err)
+	}
+
+	if err := LoadEscape(cfg, escBytes); err != nil {
+		return nil, fmt.Errorf("failed to initialize escape config: %v", err)
+	}
+
+	return cfg, nil
 }
 
 // Load constructs a configuration from a byte slice representing the config file.
