@@ -11,6 +11,7 @@ taint-tracking-problems:
       - package: "(example0)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         # Similarly, sinks are sink1 sink2 sink2 ...
         method: "sink[1-9]?"
+    fail-on-implicit-flow: true
 
 options:
     report-paths: true

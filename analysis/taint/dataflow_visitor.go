@@ -643,7 +643,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		case *df.IfNode:
 			// If only explicit taint flows should be tracked,
 			// then don't track flow inside of conditionals (information flow)
-			if v.taintSpec.ExplicitFlowOnly {
+			if !v.taintSpec.FailOnImplicitFlow {
 				break
 			}
 

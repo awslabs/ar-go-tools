@@ -6,3 +6,4 @@ taint-tracking-problems:
     sinks:
       - package: "(main|command-line-arguments)"
         method: "sink"
+    fail-on-implicit-flow: true

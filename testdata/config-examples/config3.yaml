@@ -23,4 +23,4 @@ taint-tracking-problems:
         - package: some/other/package
           interface: Interface
 
-      explicit-flow-only: true
+      fail-on-implicit-flow: false
