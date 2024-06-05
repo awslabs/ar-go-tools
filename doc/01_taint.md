@@ -122,12 +122,12 @@ The configuration contains some specific fields that allow users to tune how the
 
 #### Implicit flows
 Some flows can be implicit: for example, branching on tainted data. See the `implicit-flow` test for an example.
-By default, the taint analysis will produce an error if tainted data is branched on.
-If the tool should only track explicit taint flows, set the `explicit-flow-only` option to `true`:
+By default, the taint analysis will not produce an error if tainted data is branched on.
+If the tool should fail when control flow depends on tainted data, set the `explicit-flow-only` option to `true`:
 ```yaml
 taint-tracking-problems:
     -
-      fail-on-implicit-flow: false
+      fail-on-implicit-flow: true
 ```
 
 #### Filters
