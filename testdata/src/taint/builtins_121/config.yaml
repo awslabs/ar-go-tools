@@ -7,6 +7,7 @@ taint-tracking-problems:
         method: "source[1-9]?"
     sinks:
       - method: "sink[1-9]?"
+    fail-on-implicit-flow: true
 
 options:
     report-summaries: true

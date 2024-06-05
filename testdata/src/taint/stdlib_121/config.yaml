@@ -12,7 +12,6 @@ taint-tracking-problems:
     sanitizers:
       - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         method: ".*(s|S)anitize[1-9]?"
-    explicit-flow-only: true
 
 options:
     verbose: true

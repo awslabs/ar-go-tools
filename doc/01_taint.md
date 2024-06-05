@@ -127,7 +127,7 @@ If the tool should only track explicit taint flows, set the `explicit-flow-only`
 ```yaml
 taint-tracking-problems:
     -
-      explicit-flow-only: true
+      fail-on-implicit-flow: false
 ```
 
 #### Filters

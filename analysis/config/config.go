@@ -144,9 +144,10 @@ type TaintSpec struct {
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
 
-	// ExplicitFlowOnly indicates whether the taint analysis should only consider explicit data flows.
-	// This should be set to true when proving a data flow property instead of an information flow property.
-	ExplicitFlowOnly bool `yaml:"explicit-flow-only" json:"explicit-flow-only"`
+	// FailOnImplicitFlow indicates whether the taint analysis should fail when tainted data implicitly changes
+	// the control flow of a program. This should be set to false when proving a data flow property,
+	// and set to true when proving an information flow property.
+	FailOnImplicitFlow bool `yaml:"fail-on-implicit-flow" json:"fail-on-implicit-flow"`
 }
 
 // SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
@@ -346,7 +347,8 @@ func Load(filename string) (*Config, error) {
 	}
 
 	for funcName, summaryType := range cfg.EscapeConfig.Functions {
-		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop || summaryType == EscapeBehaviorSummarize || strings.HasPrefix(summaryType, "reflect:")) {
+		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop ||
+			summaryType == EscapeBehaviorSummarize || strings.HasPrefix(summaryType, "reflect:")) {
 			return nil, fmt.Errorf("escape summary type for function %s is not recognized: %s", funcName, summaryType)
 		}
 	}

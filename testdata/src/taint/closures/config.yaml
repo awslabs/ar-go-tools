@@ -9,7 +9,6 @@ taint-tracking-problems:
       - package: "(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         # Similarly, sinks are sink1 sink2 sink2 ...
         method: "sink[1-9]?"
-    explicit-flow-only: true
 
 
 # Same as sinks
