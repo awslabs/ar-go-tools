@@ -1,9 +1,3 @@
-#!/usr/bin/env sh
-
-# Adds the copyright header to any Go files that do not have one.
-
-COPYRIGHT=$(
-    cat <<EOF
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,25 +11,37 @@ COPYRIGHT=$(
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-EOF
-)
 
-# Find all Go files
-FILES=$(
-    find . -type f -name "*.go"                       \
-        -not -path "./analysis/taint/testdata/fromlevee/*" \
-        -not -path "./analysis/backtrace/testdata/fromlevee/*" \
-        -print
-)
+package sub
 
-for f in $FILES; do
-    HEAD=$(head -n 13 "$f")
-    if [ "$HEAD" != "$COPYRIGHT" ]; then
-        echo "File $f does not have a copyright header... adding"
-        echo "0a
-$COPYRIGHT
+type PublicType struct {
+	Data string
+}
 
-.
-w" | ed "$f"
-    fi
-done
+type privateType1 struct {
+	PublicType
+	id string
+}
+
+type privateType2 struct {
+	PublicType
+	name string
+}
+
+func NewPrivateType1(data string) *privateType1 {
+	return &privateType1{
+		PublicType: PublicType{Data: data},
+		id:         "private",
+	}
+}
+
+func NewPrivateType2(data string) *privateType2 {
+	return &privateType2{
+		PublicType: PublicType{Data: data},
+		name:       "private",
+	}
+}
+
+func (p *PublicType) CommonFunc() string {
+	return p.Data
+}

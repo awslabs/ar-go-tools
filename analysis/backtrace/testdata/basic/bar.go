@@ -1,9 +1,3 @@
-#!/usr/bin/env sh
-
-# Adds the copyright header to any Go files that do not have one.
-
-COPYRIGHT=$(
-    cat <<EOF
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,25 +11,39 @@ COPYRIGHT=$(
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-EOF
-)
 
-# Find all Go files
-FILES=$(
-    find . -type f -name "*.go"                       \
-        -not -path "./analysis/taint/testdata/fromlevee/*" \
-        -not -path "./analysis/backtrace/testdata/fromlevee/*" \
-        -print
-)
+package main
 
-for f in $FILES; do
-    HEAD=$(head -n 13 "$f")
-    if [ "$HEAD" != "$COPYRIGHT" ]; then
-        echo "File $f does not have a copyright header... adding"
-        echo "0a
-$COPYRIGHT
+import "fmt"
 
-.
-w" | ed "$f"
-    fi
-done
+func source2(x int) string {
+	s := ""
+	for i := 0; i < x; i++ {
+		s += "a"
+	}
+	return s
+}
+
+func producer(x chan string) {
+	x <- source2(10) // @Source(line14)
+}
+
+func producerCaller(b chan string) {
+	b <- "ok"
+	producer(b)
+}
+
+func consumer(b chan string) {
+	sink2(<-b) // want "reached by tainting call on line 14" @Sink(line14)
+}
+
+func test1() {
+	b := make(chan string, 3)
+	producerCaller(b)
+	fmt.Printf("Example: %s, %s", <-b, "ok")
+	consumer(b)
+}
+
+func sink2(s string) {
+	fmt.Printf("Log: %s", s)
+}

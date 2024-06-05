@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package taint_test
+package backtrace_test
 
 import (
 	"fmt"
+	"go/ast"
 	"go/token"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -36,8 +38,7 @@ import (
 // the expected source must exist somewhere in the trace.
 func TestBacktraceTaint(t *testing.T) {
 	tests := []testDef{
-		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "fields.go",
-			"sanitizers.go", "memory.go", "channels.go"}},
+		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "memory.go"}},
 		{"builtins", []string{"helpers.go"}},
 		// TODO backtrace needs updating
 		//{"interfaces", []string{}},
@@ -58,12 +59,6 @@ func TestBacktraceTaint(t *testing.T) {
 		{"closures_paper", []string{"helpers.go"}},
 	}
 
-	skip := map[string]bool{
-		"fields.go":     true, // struct fields as backtracepoints are not supported yet
-		"sanitizers.go": true, // backtrace does not consider sanitizers - that is a taint-analysis-specific feature
-		"channels.go":   true, // backtrace doesn't trace channel reads as sources
-	}
-
 	for _, test := range tests {
 		test := test
 		for _, isOnDemand := range []bool{false, true} {
@@ -71,7 +66,7 @@ func TestBacktraceTaint(t *testing.T) {
 			if isOnDemand {
 				name += "_OnDemand"
 			}
-			t.Run(name, func(t *testing.T) { runBacktraceTest(t, test, isOnDemand, skip) })
+			t.Run(name, func(t *testing.T) { runBacktraceTest(t, test, isOnDemand) })
 		}
 	}
 }
@@ -81,7 +76,7 @@ type testDef struct {
 	files []string
 }
 
-func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool, skip map[string]bool) {
+func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// Note: this is how you run the test via the OS file system, instead of using the embedded file system
 	// _, filename, _, _ := runtime.Caller(0)
 	// dir := filepath.Join(path.Dir(filename))
@@ -100,7 +95,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool, skip map[stri
 	cfg := lp.Config
 
 	astFiles := analysistest.AstFiles(lp.Pkgs)
-	expected, _ := expectedTaintTargetToSources(lp.Prog.Fset, astFiles)
+	expected := expectedTaintTargetToSources(lp.Prog.Fset, astFiles)
 	if len(expected) == 0 {
 		t.Fatal("expected sources and sinks to be present")
 	}
@@ -138,10 +133,6 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool, skip map[stri
 	seen := make(map[analysistest.LPos]map[analysistest.LPos]bool)
 	for sink, sources := range reached {
 		for source := range sources {
-			if skip[filepath.Base(source.Filename)] || skip[filepath.Base(sink.Filename)] {
-				continue
-			}
-
 			posSink := analysistest.RemoveColumn(sink)
 			if _, ok := seen[posSink]; !ok {
 				seen[posSink] = map[analysistest.LPos]bool{}
@@ -161,9 +152,6 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool, skip map[stri
 
 	for expectSink, expectSources := range expected {
 		for expectSource := range expectSources {
-			if skip[filepath.Base(expectSource.Pos.Filename)] || skip[filepath.Base(expectSink.Pos.Filename)] {
-				continue
-			}
 			if expectSource.Meta != "" {
 				t.Logf("WARN: failed to detect that:\n%s\nflows to\n%s\n", expectSource, expectSink)
 				continue
@@ -273,4 +261,76 @@ func sourceNode(source dataflow.GraphNode) ssa.Node {
 	default:
 		panic(fmt.Errorf("invalid source: %T", source))
 	}
+}
+
+// The following code is copied from taint_utils_test.go
+
+// sourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
+// where the "argument" is either an identifier (e.g. id) or an identifier with
+// associated "metadata" (e.g. id call:example1->call:helper->call:example1$1).
+var sourceRegex = regexp.MustCompile(`//.*@Source\(((?:\s*(\w|(\w\s+[a-zA-Z0-9$:\->]+\s*))\s*,?)+)\)`)
+
+// sinkRegex matches annotations of the form "@Sink(id1, id2, id3)"
+var sinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
+
+// expectedTaintTargetToSources analyzes the files in astFiles
+// and looks for comments @Source(id) and @Sink(id) to construct
+// expected flows from targets to sources in the form of a map of
+// sink positions to all the source positions that reach that sink.
+func expectedTaintTargetToSources(fset *token.FileSet, astFiles []*ast.File) analysistest.TargetToSources {
+	sink2source := make(analysistest.TargetToSources)
+	type sourceInfo struct {
+		meta string
+		pos  token.Position
+	}
+	sourceIDToSource := map[string]sourceInfo{}
+
+	// Get all the source positions with their identifiers
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		pos := fset.Position(c1.Pos())
+		// Match a "@Source(id1, id2, id3 meta)"
+		a := sourceRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sourceIdent := strings.TrimSpace(ident)
+				split := strings.Split(sourceIdent, " ")
+				meta := ""
+				// If id has metadata as in @Source(id meta), then sourceIdent is id and meta is "meta"
+				if len(split) == 2 {
+					sourceIdent = split[0]
+					meta = split[1]
+				}
+				sourceIDToSource[sourceIdent] = sourceInfo{meta: meta, pos: pos}
+			}
+		}
+	})
+
+	// Get all the sink positions
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		sinkPos := fset.Position(c1.Pos())
+		// Match a "@Sink(id1, id2, id3)"
+		a := sinkRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sinkIdent := strings.TrimSpace(ident)
+				if sourcePos, ok := sourceIDToSource[sinkIdent]; ok {
+					relSink := analysistest.NewLPos(sinkPos)
+					// sinks do not have metadata
+					sinkAnnotation := analysistest.AnnotationID{ID: sinkIdent, Meta: "", Pos: relSink}
+					if _, ok := sink2source[sinkAnnotation]; !ok {
+						sink2source[sinkAnnotation] = make(map[analysistest.AnnotationID]bool)
+					}
+					// sinkIdent is the same as sourceIdent in this branch
+					sourceAnnotation := analysistest.AnnotationID{
+						ID:   sinkIdent,
+						Meta: sourcePos.meta,
+						Pos:  analysistest.NewLPos(sourcePos.pos),
+					}
+					sink2source[sinkAnnotation][sourceAnnotation] = true
+				}
+			}
+		}
+	})
+
+	return sink2source
 }

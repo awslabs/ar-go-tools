@@ -1,9 +1,3 @@
-#!/usr/bin/env sh
-
-# Adds the copyright header to any Go files that do not have one.
-
-COPYRIGHT=$(
-    cat <<EOF
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,25 +11,43 @@ COPYRIGHT=$(
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-EOF
+
+package main
+
+import (
+	"math/rand"
+	"strconv"
 )
 
-# Find all Go files
-FILES=$(
-    find . -type f -name "*.go"                       \
-        -not -path "./analysis/taint/testdata/fromlevee/*" \
-        -not -path "./analysis/backtrace/testdata/fromlevee/*" \
-        -print
-)
+type T struct {
+	Data  string
+	Other string
+}
 
-for f in $FILES; do
-    HEAD=$(head -n 13 "$f")
-    if [ "$HEAD" != "$COPYRIGHT" ]; then
-        echo "File $f does not have a copyright header... adding"
-        echo "0a
-$COPYRIGHT
+type R string
 
-.
-w" | ed "$f"
-    fi
-done
+func genStr() string {
+	return strconv.Itoa(rand.Int()) + "1234"
+}
+
+func genT() T {
+	return T{
+		Data:  genStr(),
+		Other: genStr() + "ok",
+	}
+}
+
+func source1() T {
+	return T{
+		Data:  strconv.Itoa(rand.Int()) + "tainted",
+		Other: "ok",
+	}
+}
+
+func source2() R {
+	return R(strconv.Itoa(rand.Int()) + "tainted")
+}
+
+func sink(_ ...any) {
+
+}

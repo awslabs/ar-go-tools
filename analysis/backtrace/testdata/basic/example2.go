@@ -1,9 +1,3 @@
-#!/usr/bin/env sh
-
-# Adds the copyright header to any Go files that do not have one.
-
-COPYRIGHT=$(
-    cat <<EOF
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,25 +11,32 @@ COPYRIGHT=$(
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-EOF
+
+package main
+
+import (
+	"fmt"
+	random "math/rand"
+	"strconv"
 )
 
-# Find all Go files
-FILES=$(
-    find . -type f -name "*.go"                       \
-        -not -path "./analysis/taint/testdata/fromlevee/*" \
-        -not -path "./analysis/backtrace/testdata/fromlevee/*" \
-        -print
-)
+func genString() string {
+	n := random.Int() % 10
+	s := ""
+	for i := 0; i < n; i++ {
+		s += fmt.Sprintf("-%d", i)
+	}
+	return s
+}
 
-for f in $FILES; do
-    HEAD=$(head -n 13 "$f")
-    if [ "$HEAD" != "$COPYRIGHT" ]; then
-        echo "File $f does not have a copyright header... adding"
-        echo "0a
-$COPYRIGHT
-
-.
-w" | ed "$f"
-    fi
-done
+func test4() {
+	s1 := genString()
+	sink1(s1)
+	s1 = source3() // @Source(example2)
+	sink1(s1)      // this sink is reached by a tainted data @Sink(example2)
+	var s []string
+	for _, c := range s1 {
+		s = append(s, strconv.Itoa(int(c)))
+	}
+	sink2(s[0]) // this sink is also reached @Sink(example2)
+}

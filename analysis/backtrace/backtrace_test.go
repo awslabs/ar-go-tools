@@ -15,10 +15,9 @@
 package backtrace_test
 
 import (
+	"embed"
 	"fmt"
-	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -30,22 +29,17 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+//go:embed testdata
+var testfsys embed.FS
+
 func TestAnalyze(t *testing.T) {
-	t.Skipf("Skipping trace tests.")
-	_, filename, _, _ := runtime.Caller(0)
-	d := filepath.Dir(filename)
-	fdir, err := filepath.EvalSymlinks(d)
-	if err != nil {
-		t.Fatalf("failed to eval symlinks for dir: %v", d)
-	}
-	dir := filepath.Join(fdir, "../../testdata/src/backtrace")
-	fsys := os.DirFS(dir)
-	// Loading the program for testdata/src/backtrace/main.go
-	lp, err := analysistest.LoadTest(fsys.(analysistest.ReadFileDirFS), dir, []string{})
+	dir := filepath.Join("./testdata", "backtrace")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg := lp.Config
+	setupConfig(cfg, false)
 	program := lp.Prog
 
 	testAnalyze(t, cfg, program)
@@ -66,24 +60,15 @@ func TestAnalyze(t *testing.T) {
 }
 
 func TestAnalyze_OnDemand(t *testing.T) {
-	t.Skipf("Skipping trace tests.")
-	_, filename, _, _ := runtime.Caller(0)
-	d := filepath.Dir(filename)
-	fdir, err := filepath.EvalSymlinks(d)
-	if err != nil {
-		t.Fatalf("failed to eval symlinks for dir: %v", d)
-	}
-	dir := filepath.Join(fdir, "../../testdata/src/backtrace")
-	fsys := os.DirFS(dir)
-	// Loading the program for testdata/src/backtrace/main.go
-	lp, err := analysistest.LoadTest(fsys.(analysistest.ReadFileDirFS), dir, []string{})
+	dir := filepath.Join("./testdata", "backtrace")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg := lp.Config
+	setupConfig(cfg, true)
 	program := lp.Prog
 
-	cfg.SummarizeOnDemand = true
 	testAnalyze(t, cfg, program)
 }
 
@@ -373,20 +358,14 @@ func TestAnalyze_Closures(t *testing.T) {
 	// This test uses the taint analysis' closures test file to ensure completeness.
 	// The backtracepoints (entrypoints to the backwards analysis) are identical to the sinks in the taint analysis.
 	// See the config.yaml file for details.
-	// t.Skipf("Skip until tests are fixed so they do not depend on a specific output format.")
-	_, filename, _, _ := runtime.Caller(0)
-	d := filepath.Dir(filename)
-	fdir, err := filepath.EvalSymlinks(d)
-	if err != nil {
-		t.Fatalf("failed to eval symlinks for dir: %v", d)
-	}
-	fsys := os.DirFS(fdir)
-	lp, err := analysistest.LoadTest(fsys.(analysistest.ReadFileDirFS), fdir, []string{})
+
+	dir := filepath.Join("./testdata", "closures")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	cfg := lp.Config
+	setupConfig(cfg, false)
 	program := lp.Prog
 
 	testAnalyzeClosures(t, cfg, program)
@@ -394,19 +373,14 @@ func TestAnalyze_Closures(t *testing.T) {
 
 func TestAnalyze_Closures_OnDemand(t *testing.T) {
 	t.Skipf("Tests relying on traces should have separate source file with minimal examples.")
-	_, filename, _, _ := runtime.Caller(0)
-	d := filepath.Dir(filename)
-	fdir, err := filepath.EvalSymlinks(d)
-	if err != nil {
-		t.Fatalf("failed to eval symlinks for dir: %v", d)
-	}
-	fsys := os.DirFS(fdir)
-	lp, err := analysistest.LoadTest(fsys.(analysistest.ReadFileDirFS), fdir, []string{})
+
+	dir := filepath.Join("./testdata", "closures")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	cfg := lp.Config
+	setupConfig(cfg, false)
 	program := lp.Prog
 
 	cfg.SummarizeOnDemand = true
@@ -655,4 +629,15 @@ func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
 	}
 
 	return false, fmt.Errorf("no match: %+v, node: %+v", m, tnode)
+}
+
+// The following code is copied from taint_utils_test.go
+
+func setupConfig(cfg *config.Config, summarizeOnDemand bool) {
+	cfg.Options.ReportCoverage = false
+	cfg.Options.ReportPaths = false
+	cfg.Options.ReportSummaries = false
+	cfg.Options.ReportsDir = ""
+	cfg.LogLevel = int(config.ErrLevel) // change this as needed for debugging
+	cfg.SummarizeOnDemand = summarizeOnDemand
 }
