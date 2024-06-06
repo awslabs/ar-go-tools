@@ -49,7 +49,7 @@ func tmpPrintTest(r *decorator.Restorer, dir string, dstFile *dst.File) error {
 
 func TestInsertNilChecks(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/refactor/insertnil")
+	dir := path.Join(path.Dir(filename), "testdata/src/refactor/insertnil")
 
 	config := &packages.Config{
 		Mode:  analysis.PkgLoadMode,

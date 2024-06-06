@@ -30,7 +30,7 @@ import (
 
 func TestInsertErrorAssignment(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/refactor/errors")
+	dir := path.Join(path.Dir(filename), "testdata/src/refactor/errors")
 
 	config := &packages.Config{
 		Mode:  analysis.PkgLoadMode,
