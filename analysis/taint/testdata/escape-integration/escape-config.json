@@ -1,0 +1,7 @@
+{
+    "functions": {
+        "github.com/awslabs/ar-go-tools/analysis/taint/testdata/escape-integration.otherFunction1": "unknown",
+        "command-line-arguments.otherFunction1": "unknown"
+    },
+    "pkg-filter": "(command-line-arguments)|(escape-integration)"
+}

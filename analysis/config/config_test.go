@@ -15,12 +15,17 @@
 package config
 
 import (
+	"embed"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+//go:embed testdata
+var testfsys embed.FS
 
 func checkEqualOnNonEmptyFields(t *testing.T, cid1 CodeIdentifier, cid2 CodeIdentifier) {
 	cid2c := compileRegexes(cid2)
@@ -83,15 +88,17 @@ func mkConfig(sanitizers []CodeIdentifier, sinks []CodeIdentifier, sources []Cod
 	return *c
 }
 
-func loadFromTestDir(t *testing.T, filename string) (string, *Config, error) {
-	wd, err := os.Getwd()
+func loadFromTestDir(filename string) (string, *Config, error) {
+	filename = filepath.Join("testdata", filename)
+	b, err := testfsys.ReadFile(filename)
 	if err != nil {
-		t.Fatalf("Failed to get wd: %s", err)
+		return "", nil, fmt.Errorf("failed to read file %v: %v", filename, err)
 	}
-	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
-	configFileName := filepath.Join(filepath.Join(testdata, "config-examples"), filename)
-	config, err := Load(configFileName)
-	return configFileName, config, err
+	config, err := Load(filename, b)
+	if err != nil {
+		return filename, nil, fmt.Errorf("failed to load file %v: %v", filename, err)
+	}
+	return filename, config, err
 }
 
 func testLoadOneFile(t *testing.T, filename string, expected Config) {
@@ -99,7 +106,7 @@ func testLoadOneFile(t *testing.T, filename string, expected Config) {
 	if expected.LogLevel == 0 {
 		expected.LogLevel = int(InfoLevel)
 	}
-	configFileName, config, err := loadFromTestDir(t, filename)
+	configFileName, config, err := loadFromTestDir(filename)
 	if err != nil {
 		t.Errorf("Error loading %q: %v", configFileName, err)
 	}
@@ -128,21 +135,24 @@ func TestNewDefault(t *testing.T) {
 }
 
 func TestLoadNonExistentFileReturnsError(t *testing.T) {
-	c, err := Load("someconfig.yaml")
+	name := filepath.Join("testdata", "bad_format.yaml")
+	b, err := testfsys.ReadFile(name)
+	if err != nil {
+		t.Fatalf("failed to read file %v: %v", name, err)
+	}
+	c, err := Load(name, b)
 	if c != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load non existent file.")
 	}
 }
 
 func TestLoadBadFormatFileReturnsError(t *testing.T) {
-	wd, err := os.Getwd()
+	name := filepath.Join("testdata", "bad_format.yaml")
+	b, err := testfsys.ReadFile(name)
 	if err != nil {
-		t.Fatalf("Failed to get wd: %s", err)
+		t.Fatalf("failed to read file %v: %v", name, err)
 	}
-	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
-	configFileName := filepath.Join(filepath.Join(testdata, "config-examples"), "bad_format.yaml")
-	config, err := Load(configFileName)
-
+	config, err := Load(name, b)
 	if config != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load a badly formatted file.")
 	}
@@ -160,7 +170,7 @@ func TestLoadWithReports(t *testing.T) {
 }
 
 func TestLoadWithReportNoDirReturnsError(t *testing.T) {
-	_, config, err := loadFromTestDir(t, "config_with_reports_bad_dir.yaml")
+	_, config, err := loadFromTestDir("config_with_reports_bad_dir.yaml")
 	if config != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load config with a report dir that has a non-existing" +
 			"directory name")
@@ -168,7 +178,7 @@ func TestLoadWithReportNoDirReturnsError(t *testing.T) {
 }
 
 func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
-	fileName, config, err := loadFromTestDir(t, "config_with_reports_no_dir_spec.yaml")
+	fileName, config, err := loadFromTestDir("config_with_reports_no_dir_spec.yaml")
 	if config == nil || err != nil {
 		t.Errorf("Could not load %q", fileName)
 		return
@@ -189,7 +199,7 @@ func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
 
 //gocyclo:ignore
 func TestLoadFullConfig(t *testing.T) {
-	fileName, config, err := loadFromTestDir(t, "full-config.yaml")
+	fileName, config, err := loadFromTestDir("full-config.yaml")
 	if config == nil || err != nil {
 		t.Errorf("Could not load %s", fileName)
 		return

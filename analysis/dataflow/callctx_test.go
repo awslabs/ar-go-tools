@@ -16,8 +16,7 @@ package dataflow_test
 
 import (
 	"fmt"
-	"path"
-	"runtime"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,9 +27,14 @@ import (
 )
 
 func TestComputeCtxts(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callctx")
-	program, cfg := analysistest.LoadTest(t, dir, []string{})
+	dir := filepath.Join("testdata", "callctx")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	if err != nil {
+		t.Fatalf("failed to load test: %v", err)
+	}
+	cfg := lp.Config
+	program := lp.Prog
+
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Fatalf("error building state: %s", err)

@@ -1,0 +1,28 @@
+[ {
+    "InterfaceId": "command-line-arguments.A",
+    "Methods": {
+      "Code": { "Args": [ [ 0 ] ], "Rets": [ [ ] ] },
+      "Error": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+      "Message": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] },
+      "OrigErr": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] }
+    }
+  },
+  {
+    "InterfaceId": "command-line-arguments.B",
+    "Methods": {
+      "Out": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] }
+    }
+  },
+  {
+    "InterfaceId": "error",
+    "Methods": {
+      "Error": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] }
+    }
+  },
+  {
+    "InterfaceId": "runtime.stringer",
+    "Methods": {
+      "String": { "Args": [ [ 0 ] ], "Rets": [ [ 0 ] ] }
+    }
+  }
+]

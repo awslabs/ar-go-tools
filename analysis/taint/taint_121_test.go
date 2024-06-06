@@ -14,22 +14,26 @@
 
 //go:build go1.21
 
-package taint
+package taint_test
 
 import "testing"
 
 func TestCrossFunctionBuiltins121(t *testing.T) {
+	t.Parallel()
 	runTest(t, "builtins_121", []string{"helpers.go"}, false, noErrorExpected)
 }
 
 func TestCrossFunctionBuiltins121_SummarizeOnDemand(t *testing.T) {
+	t.Parallel()
 	runTest(t, "builtins_121", []string{"helpers.go"}, true, noErrorExpected)
 }
 
 func TestCrossFunctionStdlib121(t *testing.T) {
+	t.Parallel()
 	runTest(t, "stdlib_121", []string{"helpers.go"}, false, noErrorExpected)
 }
 
 func TestCrossFunctionStdlib121_SummarizeOnDemand(t *testing.T) {
+	t.Parallel()
 	runTest(t, "stdlib_121", []string{"helpers.go"}, true, noErrorExpected)
 }

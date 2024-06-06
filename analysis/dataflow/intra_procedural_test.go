@@ -16,7 +16,7 @@ package dataflow_test
 
 import (
 	"os"
-	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -32,10 +32,13 @@ import (
 
 //gocyclo:ignore
 func TestFunctionSummaries(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/summaries")
-	// Loading the program for testdata/src/dataflow/summaries/main.go
-	program, cfg := analysistest.LoadTest(t, dir, []string{})
+	dir := filepath.Join("testdata", "summaries")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	if err != nil {
+		t.Fatalf("failed to load test: %v", err)
+	}
+	program := lp.Prog
+	cfg := lp.Config
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Fatalf("failed to build analyzer state: %v", err)
@@ -174,7 +177,7 @@ func TestFunctionSummaries(t *testing.T) {
 							}
 							// statement `*s2 = obj.f(a[9])` comes before the call to `Bar(*s2)`
 							if call, ok := in.(*dataflow.CallNode); ok {
-								if call.FuncString() != "(command-line-arguments.A).f" {
+								if call.FuncString() != "(command-line-arguments.A).f" && call.FuncString() != "(github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.A).f" {
 									t.Errorf(
 										"in Foo, an incoming edge of the outgoing edge of param s2 is not a call to (A).f, but got: %s",
 										call.FuncString())
@@ -198,8 +201,8 @@ func TestFunctionSummaries(t *testing.T) {
 					}
 					for in := range paramNode.In() {
 						if call, ok := in.(*dataflow.CallNode); ok {
-							if call.FuncString() != "(command-line-arguments.A).f" {
-								t.Errorf("in Foo, incoming edge of param s2 is not a call to (A).f, but got: %s", call.FuncName())
+							if call.FuncString() != "(command-line-arguments.A).f" && call.FuncString() != "(github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.A).f" {
+								t.Errorf("in Foo, incoming edge of param s2 is not a call to (A).f, but got: %s", call.FuncString())
 							}
 						} else if _, ok := in.(*dataflow.CallNodeArg); !ok {
 							t.Errorf("in Foo, incoming edge of param s2 should be a call node, but got: %T", in)
@@ -224,7 +227,7 @@ func TestFunctionSummaries(t *testing.T) {
 					}
 					for in := range ret.In() {
 						if call, ok := in.(*dataflow.CallNode); ok {
-							if call.FuncString() != "command-line-arguments.Bar" {
+							if call.FuncString() != "command-line-arguments.Bar" && call.FuncString() != "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Bar" {
 								t.Errorf("in Foo, incoming edge of return is not a call to Bar, but got: %s",
 									call.FuncString())
 							}
@@ -410,7 +413,7 @@ func TestFunctionSummaries(t *testing.T) {
 				for _, callee := range callees {
 					for _, arg := range callee.Args() {
 						name := callee.FuncString()
-						if name == "command-line-arguments.Sink" {
+						if name == "command-line-arguments.Sink" || name == "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Sink" {
 							if len(arg.Out()) >= 2 {
 								t.Errorf("in Baz, all callee args to %s should less than 2 outgoing edges, but got: %v", name, arg.Out())
 							}
@@ -484,7 +487,7 @@ func TestFunctionSummaries(t *testing.T) {
 				}
 				for out := range freevar.Out() {
 					if arg, ok := out.(*dataflow.CallNodeArg); ok {
-						if arg.ParentNode().FuncString() == "command-line-arguments.Sink" {
+						if arg.ParentNode().FuncString() == "command-line-arguments.Sink" || arg.ParentNode().FuncString() == "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Sink" {
 							hasCallNodeArgOut = true
 						}
 					}

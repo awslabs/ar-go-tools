@@ -17,7 +17,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"regexp"
@@ -39,7 +38,12 @@ func SetGlobalConfig(filename string) {
 
 // LoadGlobal loads the config file that has been set by SetGlobalConfig
 func LoadGlobal() (*Config, error) {
-	return Load(configFile)
+	cfg, err := LoadFromFiles(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load global config file %v: %v", configFile, err)
+	}
+
+	return cfg, err
 }
 
 const (
@@ -287,25 +291,51 @@ func unmarshalConfig(b []byte, cfg *Config) error {
 		errYaml, errXML, errJson)
 }
 
-// Load reads a configuration from a file
+// LoadFromFiles loads a full config from configFileName and the config file's
+// specified escape config file name, reading the files from disk.
+// If the escape config file name is empty, there will be no escape configuration.
+func LoadFromFiles(configFileName string) (*Config, error) {
+	cfgBytes, err := os.ReadFile(configFileName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file %s: %v", configFileName, err)
+	}
+
+	cfg, err := Load(configFileName, cfgBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create config file: %v", err)
+	}
+
+	if len(cfg.EscapeConfigFile) == 0 {
+		return cfg, nil
+	}
+
+	escFileName := cfg.RelPath(cfg.EscapeConfigFile)
+	escBytes, err := os.ReadFile(escFileName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read escape config file %s: %v", escFileName, err)
+	}
+
+	if err := LoadEscape(cfg, escBytes); err != nil {
+		return nil, fmt.Errorf("failed to initialize escape config: %v", err)
+	}
+
+	return cfg, nil
+}
+
+// Load constructs a configuration from a byte slice representing the config file.
 //
 //gocyclo:ignore
-func Load(filename string) (*Config, error) {
+func Load(filename string, configBytes []byte) (*Config, error) {
 	cfg := NewDefault()
-	b, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("could not read config file: %w", err)
-	}
-	unmarshallingError := unmarshalConfig(b, cfg)
+	unmarshallingError := unmarshalConfig(configBytes, cfg)
 	if unmarshallingError != nil {
 		return nil, unmarshallingError
 	}
 	cfg.sourceFile = filename
 
 	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
-		err = setReportsDir(cfg, filename)
-		if err != nil {
-			return nil, err
+		if err := setReportsDir(cfg, filename); err != nil {
+			return nil, fmt.Errorf("failed to set reports dir of config with filename %v: %v", filename, err)
 		}
 	}
 
@@ -333,26 +363,6 @@ func Load(filename string) (*Config, error) {
 		}
 	}
 
-	if cfg.EscapeConfigFile != "" {
-		if err := loadEscapeConfig(cfg); err != nil {
-			return nil, err
-		}
-	}
-
-	if cfg.EscapeConfig.PkgFilter != "" {
-		r, err := regexp.Compile(cfg.EscapeConfig.PkgFilter)
-		if err == nil {
-			cfg.EscapeConfig.pkgFilterRegex = r
-		}
-	}
-
-	for funcName, summaryType := range cfg.EscapeConfig.Functions {
-		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop ||
-			summaryType == EscapeBehaviorSummarize || strings.HasPrefix(summaryType, "reflect:")) {
-			return nil, fmt.Errorf("escape summary type for function %s is not recognized: %s", funcName, summaryType)
-		}
-	}
-
 	for _, tSpec := range cfg.TaintTrackingProblems {
 		funcutil.Iter(tSpec.Sanitizers, compileRegexes)
 		funcutil.Iter(tSpec.Sinks, compileRegexes)
@@ -371,6 +381,32 @@ func Load(filename string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// LoadEscape adds the escape configuration settings from escapeConfigBytes into c.
+func LoadEscape(c *Config, escapeConfigBytes []byte) error {
+	data := NewEscapeConfig()
+	if c.EscapeConfigFile != "" {
+		if err := json.Unmarshal(escapeConfigBytes, &data); err != nil {
+			return fmt.Errorf("failed to unmarshal escape config json: %v", err)
+		}
+	}
+	c.EscapeConfig = data
+
+	if c.EscapeConfig.PkgFilter != "" {
+		r, err := regexp.Compile(c.EscapeConfig.PkgFilter)
+		if err == nil {
+			c.EscapeConfig.pkgFilterRegex = r
+		}
+	}
+
+	for funcName, summaryType := range c.EscapeConfig.Functions {
+		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop || summaryType == EscapeBehaviorSummarize || strings.HasPrefix(summaryType, "reflect:")) {
+			return fmt.Errorf("escape summary type for function %s is not recognized: %s", funcName, summaryType)
+		}
+	}
+
+	return nil
 }
 
 func setReportsDir(c *Config, filename string) error {
@@ -397,27 +433,6 @@ func setReportsDir(c *Config, filename string) error {
 			}
 		}
 	}
-	return nil
-}
-
-func loadEscapeConfig(c *Config) error {
-	data := NewEscapeConfig()
-	if c.EscapeConfigFile != "" {
-		file, err := os.Open(c.RelPath(c.EscapeConfigFile))
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-		content, err := io.ReadAll(file)
-		if err != nil {
-			return err
-		}
-		err = json.Unmarshal(content, &data)
-		if err != nil {
-			return err
-		}
-	}
-	c.EscapeConfig = data
 	return nil
 }
 

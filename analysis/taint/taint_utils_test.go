@@ -12,19 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package taint
+package taint_test
 
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/token"
 	"os"
 	"path/filepath"
-	"runtime"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -32,7 +35,7 @@ import (
 //
 //gocyclo:ignore
 func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSources,
-	actual map[FlowNode]map[FlowNode]bool) {
+	actual map[taint.FlowNode]map[taint.FlowNode]bool) {
 	type seenSource struct {
 		Pos   analysistest.LPos
 		Trace string
@@ -59,7 +62,7 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 
 	for sink, sources := range actual {
 		sinkInstr := sink.Instr
-		posSink, ok := position(prog, sinkInstr)
+		posSink, ok := taint.Position(prog, sinkInstr)
 		if !ok {
 			// skip invalid positions
 			continue
@@ -71,7 +74,7 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 			}
 
 			sourceInstr := source.Instr
-			posSource, ok := position(prog, sourceInstr)
+			posSource, ok := taint.Position(prog, sourceInstr)
 			if !ok {
 				continue
 			}
@@ -139,7 +142,7 @@ func checkEscape(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSo
 	}
 
 	for escape, sources := range actual {
-		escapePos, ok := position(prog, escape)
+		escapePos, ok := taint.Position(prog, escape)
 		if !ok {
 			// skip invalid positions
 			continue
@@ -149,7 +152,7 @@ func checkEscape(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSo
 			seenEscapeFlow[posEscape] = map[analysistest.LPos]bool{}
 		}
 		for source := range sources {
-			sourcePos, ok := position(prog, source)
+			sourcePos, ok := taint.Position(prog, source)
 			if !ok {
 				// skip invalid positions
 				continue
@@ -204,7 +207,7 @@ func findExpectSourceID(sources map[analysistest.AnnotationID]bool,
 	return analysistest.AnnotationID{}, false
 }
 
-func checkExpectedPositions(t *testing.T, p *ssa.Program, flows *Flows, expectTaint analysistest.TargetToSources,
+func checkExpectedPositions(t *testing.T, p *ssa.Program, flows *taint.Flows, expectTaint analysistest.TargetToSources,
 	expectEscapes analysistest.TargetToSources) {
 	checkTaint(t, p, expectTaint, flows.Sinks)
 	checkEscape(t, p, expectEscapes, flows.Escapes)
@@ -220,7 +223,7 @@ func noErrorExpected(_ error) bool {
 // Note: the tests are implemented this way because *ssa.If does not store any position data
 func expectTaintedCondInFuncs(funcNames ...string) func(error) bool {
 	return func(err error) bool {
-		var e *CondError
+		var e *taint.CondError
 		if !errors.As(err, &e) {
 			return false
 		}
@@ -236,51 +239,174 @@ func expectTaintedCondInFuncs(funcNames ...string) func(error) bool {
 }
 
 // runTest runs a test instance by building the program from all the files in files plus a file "main.go", relative
-// to the directory dirName
+// to the test directory dirName.
 func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) {
-	// Change directory to the testdata folder to be able to load packages
-	_, filename, _, _ := runtime.Caller(0)
-	d := filepath.Dir(filename)
-	fdir, err := filepath.EvalSymlinks(d) // prevents test failures caused by differences in filepaths due to symlinks
-	if err != nil {
-		t.Fatalf("failed to eval symlinks for dir: %v", d)
+	res := runTestWithoutCheck(t, dirName, files, summarizeOnDemand, errorExpected)
+	lp := res.lp
+	result := res.res
+
+	if result.TaintFlows == nil {
+		t.Fatal("no result taint flows found")
 	}
-	dir := filepath.Join(fdir, "..", "..", "testdata", "src", "taint", dirName)
-	if err := os.Chdir(dir); err != nil {
-		panic(err)
+	if len(result.TaintFlows.Sinks) == 0 {
+		t.Fatal("no taint flows to sinks found")
 	}
 
-	// The LoadTest function is relative to the testdata/src/taint-tracking-inter folder, so we can
-	// load an entire module with subpackages
-	program, cfg := analysistest.LoadTest(t, ".", files)
-	cfg.LogLevel = int(config.InfoLevel)
-	cfg.SummarizeOnDemand = summarizeOnDemand
-	result, err := Analyze(cfg, program)
+	astFs := analysistest.AstFiles(lp.Pkgs)
+	expectSinkToSources, expectEscapeToSources := expectedTaintTargetToSources(lp.Prog.Fset, astFs)
+
+	if len(expectSinkToSources) == 0 {
+		t.Fatal("no expected taint flows found")
+	}
+
+	checkExpectedPositions(t, lp.Prog, result.TaintFlows, expectSinkToSources, expectEscapeToSources)
+	// Remove reports - comment if you want to inspect
+	os.RemoveAll(lp.Config.ReportsDir)
+}
+
+type runTestResult struct {
+	lp  analysistest.LoadedTestProgram
+	res taint.AnalysisResult
+}
+
+// runTestWithoutCheck runs the test without checking expected flows.
+func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) runTestResult {
+	dirName = filepath.Join("./testdata", dirName)
+	lp, err := analysistest.LoadTest(testfsys, dirName, files)
 	if err != nil {
-		for _, err := range result.State.CheckError() {
-			if !errorExpected(err) {
-				t.Errorf("taint analysis returned error: %v", err)
+		t.Fatalf("failed to load test: %v", err)
+	}
+
+	program := lp.Prog
+	cfg := lp.Config
+	lp.Config = cfg
+	setupConfig(cfg, summarizeOnDemand)
+
+	result, err := taint.Analyze(cfg, program)
+	if err != nil {
+		// t.Logf("taint analysis failed: %v", err) // use for debugging: sometimes errors are expected
+		if result.State != nil {
+			for _, err := range result.State.CheckError() {
+				if !errorExpected(err) {
+					t.Errorf("taint analysis returned error: %v", err)
+				}
 			}
 		}
 	}
 
-	expectSinkToSources, expectEscapeToSources := analysistest.GetExpectedTargetToSources(dir, ".")
-	checkExpectedPositions(t, program, result.TaintFlows, expectSinkToSources, expectEscapeToSources)
-	// Remove reports - comment if you want to inspect
-	os.RemoveAll(cfg.ReportsDir)
+	return runTestResult{
+		lp:  lp,
+		res: result,
+	}
 }
 
-func TestAll(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "src", "taint", "basic")
-	err := os.Chdir(dir)
-	if err != nil {
-		panic(err)
+func setupConfig(cfg *config.Config, summarizeOnDemand bool) {
+	cfg.Options.ReportCoverage = false
+	cfg.Options.ReportPaths = false
+	cfg.Options.ReportSummaries = false
+	cfg.Options.ReportsDir = ""
+	cfg.LogLevel = int(config.ErrLevel) // change this as needed for debugging
+	cfg.SummarizeOnDemand = summarizeOnDemand
+}
+
+// sourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
+// where the "argument" is either an identifier (e.g. id) or an identifier with
+// associated "metadata" (e.g. id call:example1->call:helper->call:example1$1).
+var sourceRegex = regexp.MustCompile(`//.*@Source\(((?:\s*(\w|(\w\s+[a-zA-Z0-9$:\->]+\s*))\s*,?)+)\)`)
+
+// sinkRegex matches annotations of the form "@Sink(id1, id2, id3)"
+var sinkRegex = regexp.MustCompile(`//.*@Sink\(((?:\s*\w\s*,?)+)\)`)
+
+// escapeRegex matches annotations of the form "@Escape(id1, id2, id3)"
+var escapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
+
+// expectedTaintTargetToSources analyzes the files in astFiles
+// and looks for comments @Source(id) and @Sink(id) to construct
+// expected flows from targets to sources in the form of two maps from:
+// - from sink positions to all the source position that reach that sink.
+// - from escape positions to the source of data that escapes.
+func expectedTaintTargetToSources(fset *token.FileSet, astFiles []*ast.File) (analysistest.TargetToSources, analysistest.TargetToSources) {
+	sink2source := make(analysistest.TargetToSources)
+	escape2source := make(analysistest.TargetToSources)
+	type sourceInfo struct {
+		meta string
+		pos  token.Position
 	}
-	sink2source, _ := analysistest.GetExpectedTargetToSources(dir, ".")
-	for sink, sources := range sink2source {
-		for source := range sources {
-			fmt.Printf("Source %s -> sink %s\n", formatutil.SanitizeRepr(source), formatutil.SanitizeRepr(sink))
+	sourceIDToSource := map[string]sourceInfo{}
+
+	// Get all the source positions with their identifiers
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		pos := fset.Position(c1.Pos())
+		// Match a "@Source(id1, id2, id3 meta)"
+		a := sourceRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sourceIdent := strings.TrimSpace(ident)
+				split := strings.Split(sourceIdent, " ")
+				meta := ""
+				// If id has metadata as in @Source(id meta), then sourceIdent is id and meta is "meta"
+				if len(split) == 2 {
+					sourceIdent = split[0]
+					meta = split[1]
+				}
+				sourceIDToSource[sourceIdent] = sourceInfo{meta: meta, pos: pos}
+			}
 		}
-	}
+	})
+
+	// Get all the sink positions
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		sinkPos := fset.Position(c1.Pos())
+		// Match a "@Sink(id1, id2, id3)"
+		a := sinkRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				sinkIdent := strings.TrimSpace(ident)
+				if sourcePos, ok := sourceIDToSource[sinkIdent]; ok {
+					relSink := analysistest.NewLPos(sinkPos)
+					// sinks do not have metadata
+					sinkAnnotation := analysistest.AnnotationID{ID: sinkIdent, Meta: "", Pos: relSink}
+					if _, ok := sink2source[sinkAnnotation]; !ok {
+						sink2source[sinkAnnotation] = make(map[analysistest.AnnotationID]bool)
+					}
+					// sinkIdent is the same as sourceIdent in this branch
+					sourceAnnotation := analysistest.AnnotationID{
+						ID:   sinkIdent,
+						Meta: sourcePos.meta,
+						Pos:  analysistest.NewLPos(sourcePos.pos),
+					}
+					sink2source[sinkAnnotation][sourceAnnotation] = true
+				}
+			}
+		}
+	})
+
+	// Get all the escape positions
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		escapePos := fset.Position(c1.Pos())
+		// Match a "@Escape(id1, id2, id3)"
+		a := escapeRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			for _, ident := range strings.Split(a[1], ",") {
+				escapeIdent := strings.TrimSpace(ident)
+				if sourcePos, ok := sourceIDToSource[escapeIdent]; ok {
+					relEscape := analysistest.NewLPos(escapePos)
+					// escapes do not have metadata
+					escapeAnnotation := analysistest.AnnotationID{ID: escapeIdent, Meta: "", Pos: relEscape}
+					if _, ok := escape2source[escapeAnnotation]; !ok {
+						escape2source[escapeAnnotation] = make(map[analysistest.AnnotationID]bool)
+					}
+					// escapeIdent is the same as sourceIdent in this branch
+					sourceAnnotation := analysistest.AnnotationID{
+						ID:   escapeIdent,
+						Meta: sourcePos.meta,
+						Pos:  analysistest.NewLPos(sourcePos.pos),
+					}
+					escape2source[escapeAnnotation][sourceAnnotation] = true
+				}
+			}
+		}
+	})
+
+	return sink2source, escape2source
 }

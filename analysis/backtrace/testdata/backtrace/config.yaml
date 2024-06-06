@@ -1,0 +1,7 @@
+slicing-problems:
+  - backtracepoints:
+      - package: "os/exec"
+        method: "^Command$"
+
+options:
+  log-level: 3 # info logging
