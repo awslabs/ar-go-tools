@@ -7,4 +7,3 @@ taint-tracking-problems:
         method: "source[1-9]?"
     sinks:
       - method: "sink[1-9]?"
-    explicit-flow-only: true

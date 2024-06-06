@@ -7,4 +7,3 @@ taint-tracking-problems:
       interface: "Logger"
     - method: "sink"
       package: "((main)|(command-line-arguments)|(agent-example))"
-   explicit-flow-only: true

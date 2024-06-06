@@ -14,6 +14,7 @@ taint-tracking-problems:
     validators:
       - package: "(validators)|(main)|(command-line-arguments)$"
         method: ".*Validate[1-9]?"
+    fail-on-implicit-flow: true
 
 options:
     field-sensitive: true

@@ -122,12 +122,12 @@ The configuration contains some specific fields that allow users to tune how the
 
 #### Implicit flows
 Some flows can be implicit: for example, branching on tainted data. See the `implicit-flow` test for an example.
-By default, the taint analysis will produce an error if tainted data is branched on.
-If the tool should only track explicit taint flows, set the `explicit-flow-only` option to `true`:
+By default, the taint analysis will not produce an error if tainted data is branched on.
+If the tool should fail when control flow depends on tainted data, set the `fail-on-implicit-flow` option to `true`:
 ```yaml
 taint-tracking-problems:
     -
-      explicit-flow-only: true
+      fail-on-implicit-flow: true
 ```
 
 #### Filters
@@ -291,7 +291,7 @@ func main() {
 }
 ```
 
-There is an "information leak" from `source` to `sink` because the individual bytes from `data` are copied over to `newData` without explicitly assigning any data from `data` to `newData`. To detect such implicit information flows, the taint analysis logs a warning when tainted data flows to a branch statement (`if`, `switch`, `select`, etc.) or loop (which involves a branch in SSA form). The analysis also returns an error.
+There is an "information leak" from `source` to `sink` because the individual bytes from `data` are copied over to `newData` without explicitly assigning any data from `data` to `newData`. When the `fail-on-implicit-flow` option of an analysis problem is set to true, the taint analysis logs a warning when tainted data flows to a branch statement (`if`, `switch`, `select`, etc.) or loop (which involves a branch in SSA form). The analysis also returns an error.
 
 > 📝 The taint analysis is unsound in the presence of other types of implicit data flows called [side channels](https://en.wikipedia.org/wiki/Side-channel_attack).
 

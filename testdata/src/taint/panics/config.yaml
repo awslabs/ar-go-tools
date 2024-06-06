@@ -2,8 +2,8 @@ taint-tracking-problems:
   -
     sources:
       - method: "source"
-        package: "(panics)|(main|command-line-arguments)"
+        package: "(main|command-line-arguments)"
     sinks:
-      - package: "(panics)|(main|command-line-arguments)"
+      - package: "(main|command-line-arguments)"
         method: "sink"
     fail-on-implicit-flow: true
