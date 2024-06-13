@@ -31,8 +31,8 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 

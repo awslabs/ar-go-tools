@@ -25,9 +25,9 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/graphutil"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"github.com/yourbasic/graph"
 	"golang.org/x/exp/slices"
-	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
