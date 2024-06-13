@@ -18,7 +18,7 @@ import (
 	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"golang.org/x/tools/go/pointer"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
