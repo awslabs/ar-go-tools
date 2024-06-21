@@ -40,7 +40,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 	}
 	program := lp.Prog
 	cfg := config.NewDefault()
-	cfg.MaxDepth = 1 // limit context of each source to avoid timeouts
+	cfg.MaxContext = 1 // limit context of each source to avoid timeouts
 	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	if err != nil {
 		t.Fatalf("failed to build program analysis state: %v", err)

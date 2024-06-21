@@ -77,7 +77,7 @@ func main() {
 		taintConfig.LogLevel = int(config.DebugLevel)
 	}
 	if *maxDepth > 0 {
-		taintConfig.MaxDepth = *maxDepth
+		taintConfig.UnsafeMaxDepth = *maxDepth
 	}
 
 	logger.Printf(formatutil.Faint("Argot taint tool - build " + version))

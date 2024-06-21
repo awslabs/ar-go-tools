@@ -1,0 +1,31 @@
+{
+  "options": {
+    "log-level": 5,
+    "reports-dir": "example-dir",
+    "report-coverage": true,
+    "report-paths": true,
+    "report-no-callee-sites": true,
+    "coverage-filter": "argot.*",
+    "report-summaries": true,
+    "pkg-filter": "analysis.*",
+    "max-alarms": 16,
+    "max-context": 20,
+    "silence-warn": true,
+    "source-taints-args": true,
+    "unsafe-max-depth": 42,
+    "unsafe-ignore-non-summarized": true,
+    "use-escape-analysis": true,
+    "summarize-on-demand": true,
+    "skip-interprocedural": true,
+    "field-sensitive": true
+  },
+  "dataflow-specs": ["example.json", "example2.json"],
+  "taint-tracking-problems": [
+    {
+      "validators": [{"method": "Validate", "package": "x"}],
+      "sinks": [{"method": "Sink", "package":  "sensitiveDataManipulation"}],
+      "sources": [{"type": "Data", "field":  "UserProvided"}],
+      "sanitizers": [{"method": "Sanitize"}]
+    }
+  ]
+}

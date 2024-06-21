@@ -15,6 +15,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -45,15 +46,6 @@ func LoadGlobal() (*Config, error) {
 
 	return cfg, err
 }
-
-const (
-	// EscapeBehaviorSummarize specifies that the function should be summarized in the escape analysis
-	EscapeBehaviorSummarize = "summarize"
-	// EscapeBehaviorNoop specifies that the function is a noop in the escape analysis
-	EscapeBehaviorNoop = "noop"
-	// EscapeBehaviorUnknown specifies that the function is "unknown" in the escape analysis
-	EscapeBehaviorUnknown = "unknown"
-)
 
 // EscapeConfig holds the options relative to the escape analysis configuration
 type EscapeConfig struct {
@@ -173,47 +165,41 @@ type StaticCommandsSpec struct {
 
 // Options holds the global options for analyses
 type Options struct {
-	// ReportsDir is the directory where all the reports will be stored. If the yaml config file this config struct has
-	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
-	// in the folder the binary is called.
-	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir" json:"reports-dir"`
-
-	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
-	// prefix
-	PkgFilter string `xml:"pkg-filter,attr" yaml:"pkg-filter" json:"pkg-filter"`
-
-	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
-	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis" json:"use-escape-analysis"`
-
 	// Path to a JSON file that has the escape configuration (allow/blocklist)
 	EscapeConfigFile string `xml:"escape-config,attr" yaml:"escape-config" json:"escape-config"`
-
-	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
-	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural" json:"skip-interprocedural"`
 
 	// CoverageFilter can be used to filter which packages will be reported in the coverage. If non-empty,
 	// coverage will only for those packages that match CoverageFilter
 	CoverageFilter string `xml:"coverage-filter,attr" yaml:"coverage-filter" json:"coverage-filter"`
 
-	// ReportSummaries can be set to true, in which case summaries will be reported in a file names summaries-*.out in
-	// the reports directory
-	ReportSummaries bool `xml:"report-summaries,attr" yaml:"report-summaries" json:"report-summaries"`
+	// Loglevel controls the verbosity of the tool
+	LogLevel int `xml:"log-level,attr" yaml:"log-level" json:"log-level"`
 
-	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
-	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand" json:"summarize-on-demand"`
+	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
+	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
+	//
+	// This setting does not affect soundness, since event with max-alarms:1, at least one path will be reported if
+	// there is some potential alarm-causing result.
+	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms" json:"max-alarms"`
 
-	// IgnoreNonSummarized allows the analysis to ignore when the summary of a function has not been built in the first
-	// analysis phase. This is only for experimentation, since the results may be unsound.
-	// This has no effect when SummarizeOnDemand is true
-	IgnoreNonSummarized bool `xml:"ignoreNonSummarized,attr" yaml:"ignore-non-summarized" json:"ignore-non-summarized"`
+	// MaxContext sets the maximum context (call stack) size used when searching for entry points with context.
+	// This only impacts precision of the returned results.
+	//
+	// If MaxContext is < 0, it is ignored.
+	// If MaxContext is 0 is specified by the user, the value is ignored, and a default internal value is used.
+	// If MaxContext is > 0, then the limit in the callstack size for the context is used.
+	MaxContext int `xml:"max-context,attr" yaml:"max-context" json:"max-context"`
 
-	// SourceTaintsArgs specifies whether calls to a source function also taints the argument. This is usually not
-	// the case, but might be useful for some users or for source functions that do not return anything.
-	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args" json:"source-taints-args"`
+	// PathSensitive is a boolean indicating whether the analysis should be run with access path sensitivity on
+	// (will change to include more filtering in the future)
+	//
+	// Note that the configuration option name is "field-sensitive" because this is the name that will be more
+	// recognizable for users.
+	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive" json:"field-sensitive"`
 
-	// ReportPaths specifies whether the taint flows should be reported in separate files. For each taint flow, a new
-	// file named taint-*.out will be generated with the trace from source to sink
-	ReportPaths bool `xml:"report-paths,attr" yaml:"report-paths" json:"report-paths"`
+	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
+	// prefix. This is a global option because it is used during the first intra-procedural passes of the analysis.
+	PkgFilter string `xml:"pkg-filter,attr" yaml:"pkg-filter" json:"pkg-filter"`
 
 	// ReportCoverage specifies whether coverage should be reported. If true, then a file names coverage-*.out will
 	// be created in the report directory, containing the coverage data generated by the analysis
@@ -222,26 +208,47 @@ type Options struct {
 	// ReportNoCalleeSites specifies whether the tool should report where it does not find any callee.
 	ReportNoCalleeSites bool `xml:"report-no-callee-sites,attr" yaml:"report-no-callee-sites" json:"report-no-callee-sites"`
 
-	// MaxDepth sets a limit for the number of function call depth explored during the analysis
-	// Default is -1.
-	// If provided MaxDepth is <= 0, then it is ignored.
-	MaxDepth int `xml:"max-depth,attr" yaml:"max-depth" json:"max-depth"`
+	// ReportPaths specifies whether the taint flows should be reported in separate files. For each taint flow, a new
+	// file named taint-*.out will be generated with the trace from source to sink
+	ReportPaths bool `xml:"report-paths,attr" yaml:"report-paths" json:"report-paths"`
 
-	// PathSensitive is a boolean indicating whether the analysis should be run with access path sensitivity on
-	// (will change to include more filtering in the future)
-	// Note that the configuration option name is "field-sensitive" because this is the name that will be more
-	// recognizable for users.
-	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive" json:"field-sensitive"`
+	// ReportSummaries can be set to true, in which case summaries will be reported in a file names summaries-*.out in
+	// the reports directory
+	ReportSummaries bool `xml:"report-summaries,attr" yaml:"report-summaries" json:"report-summaries"`
 
-	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
-	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
-	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms" json:"max-alarms"`
+	// ReportsDir is the directory where all the reports will be stored. If the yaml config file this config struct has
+	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
+	// in the folder the binary is called.
+	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir" json:"reports-dir"`
 
-	// Loglevel controls the verbosity of the tool
-	LogLevel int `xml:"log-level,attr" yaml:"log-level" json:"log-level"`
+	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
+	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural" json:"skip-interprocedural"`
 
 	// Suppress warnings
 	SilenceWarn bool `xml:"silence-warn,attr" json:"silence-warn" yaml:"silence-warn"`
+
+	// SourceTaintsArgs specifies whether calls to a source function also taints the argument. This is usually not
+	// the case, but might be useful for some users or for source functions that do not return anything.
+	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args" json:"source-taints-args"`
+
+	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
+	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand" json:"summarize-on-demand"`
+
+	// UnsafeMaxDepth sets a limit for the number of function call depth explored during the analysis.
+	// The default is -1, and any value less or equal than 0 is safe: the analysis will be sound and explore call depth
+	// without bounds.
+	//
+	// Setting UnsafeMaxDepth to a limit larger than 0 will yield unsound results, but can be useful to use the tool
+	// as a checking mechanism. Limiting the call depth will usually yield fewer false positives.
+	UnsafeMaxDepth int `xml:"unsafe-max-depth,attr" yaml:"unsafe-max-depth" json:"unsafe-max-depth"`
+
+	// UnsafeIgnoreNonSummarized allows the analysis to ignore when the summary of a function has not been built in
+	// the first analysis phase. This is only for experimentation, since the results may be unsound.
+	// This has no effect when SummarizeOnDemand is true.
+	UnsafeIgnoreNonSummarized bool `xml:"unsafeIgnoreNonSummarized,attr" yaml:"unsafe-ignore-non-summarized" json:"unsafe-ignore-non-summarized"`
+
+	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
+	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis" json:"use-escape-analysis"`
 }
 
 // NewDefault returns an empty default config.
@@ -255,27 +262,31 @@ func NewDefault() *Config {
 		DataflowSpecs:          []string{},
 		EscapeConfig:           NewEscapeConfig(),
 		Options: Options{
-			ReportsDir:          "",
-			PkgFilter:           "",
-			SkipInterprocedural: false,
-			CoverageFilter:      "",
-			ReportSummaries:     false,
-			ReportPaths:         false,
-			ReportCoverage:      false,
-			ReportNoCalleeSites: false,
-			MaxDepth:            DefaultMaxCallDepth,
-			MaxAlarms:           0,
-			LogLevel:            int(InfoLevel),
-			SilenceWarn:         false,
-			SourceTaintsArgs:    false,
-			IgnoreNonSummarized: false,
-			PathSensitive:       false,
+			ReportsDir:                "",
+			PkgFilter:                 "",
+			SkipInterprocedural:       false,
+			CoverageFilter:            "",
+			ReportSummaries:           false,
+			ReportPaths:               false,
+			ReportCoverage:            false,
+			ReportNoCalleeSites:       false,
+			UnsafeMaxDepth:            DefaultSafeMaxDepth,
+			MaxAlarms:                 0,
+			MaxContext:                DefaultSafeMaxContext,
+			LogLevel:                  int(InfoLevel),
+			SilenceWarn:               false,
+			SourceTaintsArgs:          false,
+			UnsafeIgnoreNonSummarized: false,
+			PathSensitive:             false,
 		},
 	}
 }
 
 func unmarshalConfig(b []byte, cfg *Config) error {
-	errYaml := yaml.Unmarshal(b, cfg)
+	// Strict decoding for json config files: will warn user of misconfiguration
+	yamlDecoder := yaml.NewDecoder(bytes.NewReader(b))
+	yamlDecoder.KnownFields(true)
+	errYaml := yamlDecoder.Decode(cfg)
 	if errYaml == nil {
 		return nil
 	}
@@ -283,7 +294,10 @@ func unmarshalConfig(b []byte, cfg *Config) error {
 	if errXML == nil {
 		return nil
 	}
-	errJson := json.Unmarshal(b, cfg)
+	// Strict decoding for json config files: will warn user of misconfiguration
+	jsonDecoder := json.NewDecoder(bytes.NewReader(b))
+	jsonDecoder.DisallowUnknownFields()
+	errJson := jsonDecoder.Decode(cfg)
 	if errJson == nil {
 		return errJson
 	}
@@ -344,9 +358,14 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 		cfg.LogLevel = int(InfoLevel)
 	}
 
-	// Set the MaxDepth default if it is <= 0
-	if cfg.MaxDepth <= 0 {
-		cfg.MaxDepth = DefaultMaxCallDepth
+	// Set the UnsafeMaxDepth default if it is <= 0
+	if cfg.UnsafeMaxDepth <= 0 {
+		cfg.UnsafeMaxDepth = DefaultSafeMaxDepth
+	}
+
+	// a value of 0 indicating the user did not specify
+	if cfg.MaxContext == 0 {
+		cfg.MaxContext = DefaultSafeMaxContext
 	}
 
 	if cfg.PkgFilter != "" {
@@ -401,7 +420,8 @@ func LoadEscape(c *Config, escapeConfigBytes []byte) error {
 	}
 
 	for funcName, summaryType := range c.EscapeConfig.Functions {
-		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop || summaryType == EscapeBehaviorSummarize || strings.HasPrefix(summaryType, "reflect:")) {
+		if !(summaryType == EscapeBehaviorUnknown || summaryType == EscapeBehaviorNoop ||
+			summaryType == EscapeBehaviorSummarize || strings.HasPrefix(summaryType, "reflect:")) {
 			return fmt.Errorf("escape summary type for function %s is not recognized: %s", funcName, summaryType)
 		}
 	}
@@ -551,5 +571,5 @@ func (c Config) Verbose() bool {
 // ExceedsMaxDepth returns true if the input exceeds the maximum depth parameter of the configuration.
 // (this implements the logic for using maximum depth; if the configuration setting is < 0, then this returns false)
 func (c Config) ExceedsMaxDepth(d int) bool {
-	return !(c.MaxDepth <= 0) && d > c.MaxDepth
+	return !(c.UnsafeMaxDepth <= 0) && d > c.UnsafeMaxDepth
 }

@@ -8,9 +8,8 @@ taint-tracking-problems:
     sinks:
       - package: "(intra-procedural)|(main)|(command-line-arguments)"
         method: sink[1-9]
-    explicit-flow-only: true
+    fail-on-implicit-flow: false
 
 options:
     skip-interprocedural: false
-    verbose: true
     field-sensitive: true

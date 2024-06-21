@@ -100,7 +100,7 @@ func (e *CondError) Error() string {
 //
 //gocyclo:ignore
 func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
-	ignoreNonSummarized := !s.Config.SummarizeOnDemand && s.Config.IgnoreNonSummarized
+	ignoreNonSummarized := !s.Config.SummarizeOnDemand && s.Config.UnsafeIgnoreNonSummarized
 	coverage := make(map[string]bool)
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
