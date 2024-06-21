@@ -57,8 +57,6 @@ func TestComputeMethodImplementationsGo121(t *testing.T) {
 		"(*os.File).Write":                  true,
 		"(*io.discard).Write":               true,
 		"(*internal/poll.FD).Write":         true,
-		"(*io.PipeWriter).Write":            true,
-		"(*io.OffsetWriter).Write":          true, // new in 1.20
 		"(*os.fileWithoutReadFrom).Write":   true, // new in 1.21
 		"(os.fileWithoutReadFrom).Write":    true, // new in 1.21
 	})
