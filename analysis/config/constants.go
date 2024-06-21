@@ -18,8 +18,8 @@ const (
 	// DefaultSafeMaxDepth is the default maximum call stack value that will be considered by the analyses using it
 	// -1 means that depth limit is ignored
 	DefaultSafeMaxDepth = -1
-	// DefaultSafeMaxContext sets a context depth value that is usually safe in terms of algorithm performance.
-	DefaultSafeMaxContext = 5
+	// DefaultSafeMaxEntrypointContextSize sets a context depth value that is usually safe in terms of algorithm performance.
+	DefaultSafeMaxEntrypointContextSize = 5
 	// EscapeBehaviorSummarize specifies that the function should be summarized in the escape analysis
 	EscapeBehaviorSummarize = "summarize"
 	// EscapeBehaviorNoop specifies that the function is a noop in the escape analysis

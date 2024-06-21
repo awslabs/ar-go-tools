@@ -182,13 +182,13 @@ type Options struct {
 	// there is some potential alarm-causing result.
 	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms" json:"max-alarms"`
 
-	// MaxContext sets the maximum context (call stack) size used when searching for entry points with context.
+	// MaxEntrypointContextSize sets the maximum context (call stack) size used when searching for entry points with context.
 	// This only impacts precision of the returned results.
 	//
-	// If MaxContext is < 0, it is ignored.
-	// If MaxContext is 0 is specified by the user, the value is ignored, and a default internal value is used.
-	// If MaxContext is > 0, then the limit in the callstack size for the context is used.
-	MaxContext int `xml:"max-context,attr" yaml:"max-context" json:"max-context"`
+	// If MaxEntrypointContextSize is < 0, it is ignored.
+	// If MaxEntrypointContextSize is 0 is specified by the user, the value is ignored, and a default internal value is used.
+	// If MaxEntrypointContextSize is > 0, then the limit in the callstack size for the context is used.
+	MaxEntrypointContextSize int `xml:"max-entrypoint-context-size,attr" yaml:"max-entrypoint-context-size" json:"max-entrypoint-context-size"`
 
 	// PathSensitive is a boolean indicating whether the analysis should be run with access path sensitivity on
 	// (will change to include more filtering in the future)
@@ -272,7 +272,7 @@ func NewDefault() *Config {
 			ReportNoCalleeSites:       false,
 			UnsafeMaxDepth:            DefaultSafeMaxDepth,
 			MaxAlarms:                 0,
-			MaxContext:                DefaultSafeMaxContext,
+			MaxEntrypointContextSize:  DefaultSafeMaxEntrypointContextSize,
 			LogLevel:                  int(InfoLevel),
 			SilenceWarn:               false,
 			SourceTaintsArgs:          false,
@@ -364,8 +364,8 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	}
 
 	// a value of 0 indicating the user did not specify
-	if cfg.MaxContext == 0 {
-		cfg.MaxContext = DefaultSafeMaxContext
+	if cfg.MaxEntrypointContextSize == 0 {
+		cfg.MaxEntrypointContextSize = DefaultSafeMaxEntrypointContextSize
 	}
 
 	if cfg.PkgFilter != "" {

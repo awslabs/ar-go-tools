@@ -159,6 +159,7 @@ func seekConfig() (*config.Config, bool, error) {
 		state.ConfigPath = *configPath
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not load config %q\n", *configPath)
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			return nil, true, nil
 		}
 	} else if len(flag.Args()) == 1 && strings.HasSuffix(flag.Args()[0], ".go") {
