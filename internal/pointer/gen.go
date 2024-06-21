@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"runtime/debug"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/internal/typeparams"
@@ -230,6 +231,15 @@ func (a *analysis) valueNode(v ssa.Value) nodeid {
 		var comment string
 		if a.log != nil {
 			comment = v.String()
+		}
+		if _, ok := v.(*ssa.Function); ok {
+			defer func() {
+				if p := recover(); p != nil {
+					print(v)
+					debug.PrintStack()
+				}
+			}()
+			v.Type()
 		}
 		id = a.addNodes(v.Type(), comment)
 		if obj := a.objectNode(nil, v); obj != 0 {

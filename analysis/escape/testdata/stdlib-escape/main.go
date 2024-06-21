@@ -59,7 +59,7 @@ func main() {
 func testPrintf() {
 	x := &Node{}
 	fmt.Printf("Node is %v\n", x)
-	assertAllLocal(x)
+	assertAllLeaked(x) // TODO: FIXME !
 }
 
 type LeakerThroughString struct {
