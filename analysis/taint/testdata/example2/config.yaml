@@ -1,7 +1,7 @@
 # The package regex matches all possible ways the package name might appear depending on how the program is loaded
 taint-tracking-problems:
   -
-    explicit-flow-only: true
+    fail-on-implicit-flow: false
     sources:
       - package: "(example2)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         # Sources can be source1, source2, etc.

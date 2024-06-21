@@ -83,7 +83,6 @@ func mkConfig(sanitizers []CodeIdentifier, sinks []CodeIdentifier, sources []Cod
 	ts.Sanitizers = sanitizers
 	ts.Sinks = sinks
 	ts.Sources = sources
-	c.MaxDepth = DefaultMaxCallDepth
 	c.TaintTrackingProblems = []TaintSpec{ts}
 	return *c
 }
@@ -198,7 +197,7 @@ func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
 }
 
 //gocyclo:ignore
-func TestLoadFullConfig(t *testing.T) {
+func TestLoadFullConfigYaml(t *testing.T) {
 	fileName, config, err := loadFromTestDir("full-config.yaml")
 	if config == nil || err != nil {
 		t.Errorf("Could not load %s", fileName)
@@ -225,7 +224,7 @@ func TestLoadFullConfig(t *testing.T) {
 	if len(config.DataflowSpecs) != 2 {
 		t.Error("full config should specify two dataflow spec files")
 	}
-	if config.MaxDepth != 42 {
+	if config.UnsafeMaxDepth != 42 {
 		t.Error("full config should set max-depth to 42")
 	}
 	if config.MaxAlarms != 16 {
@@ -253,8 +252,8 @@ func TestLoadFullConfig(t *testing.T) {
 	if !config.SilenceWarn {
 		t.Error("full config should have silence-warn set to true")
 	}
-	if !config.IgnoreNonSummarized {
-		t.Errorf("full config should have set ignorenonsummarized")
+	if !config.UnsafeIgnoreNonSummarized {
+		t.Errorf("full config should have set unsafeignorenonsummarized")
 	}
 	if !config.UseEscapeAnalysis {
 		t.Errorf("full config should have set useescapeaanalysis")
@@ -266,6 +265,22 @@ func TestLoadFullConfig(t *testing.T) {
 	// Remove temporary files
 	os.Remove(config.nocalleereportfile)
 	os.Remove(config.ReportsDir)
+}
+
+func TestLoadFullConfigYamlEqualsJson(t *testing.T) {
+	_, yamlConfig, yamlErr := loadFromTestDir("full-config.yaml")
+	_, jsonConfig, jsonErr := loadFromTestDir("full-config.json")
+	if jsonErr != nil {
+		t.Errorf("failed to load json config")
+	}
+	if yamlErr != nil {
+		t.Errorf("failed to load yaml config")
+	}
+	jsonConfig.sourceFile = ""
+	yamlConfig.sourceFile = ""
+	if jsonConfig.Options != yamlConfig.Options {
+		t.Errorf("config options in json and yaml should be the same")
+	}
 }
 
 func TestLoadMisc(t *testing.T) {
@@ -318,9 +333,10 @@ func TestLoadMisc(t *testing.T) {
 				},
 			},
 			Options: Options{
-				PkgFilter:   "a",
-				MaxDepth:    DefaultMaxCallDepth,
-				SilenceWarn: false,
+				PkgFilter:      "a",
+				UnsafeMaxDepth: DefaultSafeMaxDepth,
+				MaxContext:     DefaultSafeMaxContext,
+				SilenceWarn:    false,
 			},
 			EscapeConfig: NewEscapeConfig(),
 		},

@@ -11,5 +11,4 @@ taint-tracking-problems:
 
 options:
     skip-interprocedural: false
-    verbose: true
     field-sensitive: true
