@@ -43,7 +43,7 @@ options:
 
   # this can be used to limit the size of the callstack when searching for contexts under which a function can be
   # called.
-  max-context: 20
+  max-entrypoint-context-size: 20
 
   # this can be set to suppress warnings. Errors (i.e. taint detected will be reported)
   silence-warn: true

@@ -9,7 +9,7 @@
     "report-summaries": true,
     "pkg-filter": "analysis.*",
     "max-alarms": 16,
-    "max-context": 20,
+    "max-entrypoint-context-size": 20,
     "silence-warn": true,
     "source-taints-args": true,
     "unsafe-max-depth": 42,

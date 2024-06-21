@@ -181,7 +181,6 @@ func (s *AnalyzerState) CopyTo(b *AnalyzerState) {
 	b.keys = s.keys
 	b.reachableFunctions = s.reachableFunctions
 	// copy everything except mutex
-
 }
 
 // Size returns the number of method implementations collected
@@ -189,11 +188,11 @@ func (s *AnalyzerState) Size() int {
 	return len(s.ImplementationsByType)
 }
 
-// PrintImplementations prints out all of the implementations that the
+// PrintImplementations prints out all the implementations that the
 // AnalyzerState has collected, organized by type. For each type, it prints
 // the type name followed by each implemented function name.
 //
-// The implementations are printed to the given io.Writer. Typically this
+// The implementations are printed to the given io.Writer. Typically, this
 // would be os.Stdout to print to the standard output.
 //
 // This can be useful for debugging the implementations collected during
