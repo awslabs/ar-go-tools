@@ -160,7 +160,7 @@ func printInstrsWithParent[T any](tt *term.Terminal, c *dataflow.AnalyzerState, 
 		}
 		fnames = append(fnames, x)
 	}
-	slices.SortFunc(fnames, func(x NameAndLoc, y NameAndLoc) bool { return strings.Compare(x.name, y.name) > 0 })
+	slices.SortFunc(fnames, func(x NameAndLoc, y NameAndLoc) int { return strings.Compare(x.name, y.name) })
 	for _, x := range fnames {
 		if target.MatchString(x.name) {
 			writeFmt(tt, "  Parent function %s\n", x.name)

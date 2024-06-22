@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !go1.21
+//go:build go1.22
 
 package dataflow_test
 
@@ -25,7 +25,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func TestComputeMethodImplementationsGo121(t *testing.T) {
+func TestComputeMethodImplementationsGo122(t *testing.T) {
 	dir := filepath.Join("testdata", "callgraph")
 	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
 	if err != nil {
@@ -59,5 +59,7 @@ func TestComputeMethodImplementationsGo121(t *testing.T) {
 		"(*internal/poll.FD).Write":         true,
 		"(*os.fileWithoutReadFrom).Write":   true, // new in 1.21
 		"(os.fileWithoutReadFrom).Write":    true, // new in 1.21
+		"(os.fileWithoutWriteTo).Write":     true, // new in 1.22
+		"(*os.fileWithoutWriteTo).Write":    true, // new in 1.22
 	})
 }

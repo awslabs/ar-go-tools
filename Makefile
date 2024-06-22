@@ -3,7 +3,10 @@
 #ifneq ("$(wildcard $(BUILDFILE_PATH))","")
 #	include ${BUILDFILE_PATH}
 #endif
-
+# Install deadcode with:    go install golang.org/x/tools/cmd/deadcode@latest
+# Install gocyclo with:     go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+# Install ineffassign with: go install github.com/gordonklaus/ineffassign@latest
+# Install golint with:      go install golang.org/x/lint/golint@latest
 
 all: lint maypanic statistics reachability dependencies static-commands render taint compare defer packagescan backtrace argot-cli racerg setup-precommit
 

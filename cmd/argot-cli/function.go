@@ -517,12 +517,11 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 				mVals = append(mVals, val.GetValue())
 			}
 		}
-		slices.SortFunc(mVals, func(a, b ssa.Value) bool {
-
+		slices.SortFunc(mVals, func(a, b ssa.Value) int {
 			var s1, s2 string
 			setStr(a, &s1)
 			setStr(a, &s2)
-			return s1 < s2
+			return strings.Compare(s1, s2)
 		})
 		for _, val := range mVals {
 			marks := fi.MarkedValues[index+fi.ValueID[val]]
