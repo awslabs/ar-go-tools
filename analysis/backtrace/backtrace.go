@@ -415,7 +415,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			} else {
 				if s.Config.SummarizeOnDemand {
 					logger.Tracef("Global %v SSA instruction: %v\n", graphNode, graphNode.Instr())
-					for f := range s.ReachableFunctions(false, false) {
+					for f := range s.ReachableFunctions() {
 						if lang.FnWritesTo(f, graphNode.Global.Value()) {
 							logger.Tracef("Global %v written in function: %v\n", graphNode, f)
 							df.BuildSummary(s, f)
@@ -663,7 +663,7 @@ func isIntraProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec
 func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {
 	cfg := state.Config
 	entryFuncs := []*ssa.Function{}
-	for f := range state.ReachableFunctions(false, false) {
+	for f := range state.ReachableFunctions() {
 		pkg := ""
 		if f.Package() != nil {
 			pkg = f.Package().String()

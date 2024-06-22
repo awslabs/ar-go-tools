@@ -23,11 +23,12 @@ import (
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // flags
@@ -96,10 +97,15 @@ func doMain() error {
 
 	// get absolute paths for 'exclude'
 	excludeAbsolute := analysisutil.MakeAbsolute(exclude)
-
-	allFunctions := ssautil.AllFunctions(program)
-
-	result := analysis.SSAStatistics(&allFunctions, excludeAbsolute)
+	defaultConfig := config.NewDefault()
+	logGroup := config.NewLogGroup(defaultConfig)
+	analyzer, err := dataflow.NewAnalyzerState(program, logGroup, defaultConfig, nil)
+	if err != nil {
+		logGroup.Errorf("Failed to initialize state ...")
+		return nil
+	}
+	reachableFunctions := analyzer.ReachableFunctions()
+	result := analysis.SSAStatistics(&reachableFunctions, excludeAbsolute)
 	if jsonFlag {
 		buf, _ := json.Marshal(result)
 		fmt.Println(string(buf))
@@ -111,7 +117,7 @@ func doMain() error {
 	}
 
 	//analysis.DeferStats(&allFunctions)
-	analysis.ClosureLocationsStats(log.Default(), &allFunctions, prefix)
+	analysis.ClosureLocationsStats(log.Default(), &reachableFunctions, prefix)
 
 	return nil
 }

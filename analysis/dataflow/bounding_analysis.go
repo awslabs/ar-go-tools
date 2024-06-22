@@ -65,7 +65,7 @@ func RunBoundingAnalysis(state *AnalyzerState) (BoundingMap, error) {
 		return nil, fmt.Errorf("pointer analysis should run before bounding analysis")
 	}
 	bindMap := map[ssa.Value]map[*BindingInfo]bool{}
-	for function := range state.ReachableFunctions(false, false) {
+	for function := range state.ReachableFunctions() {
 		lang.IterateInstructions(function, func(_ int, instr ssa.Instruction) {
 			InspectInstruction(state, bindMap, instr)
 		})

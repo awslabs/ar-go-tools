@@ -24,10 +24,10 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // flags
@@ -107,14 +107,18 @@ func doMain() error {
 	// todo -- technically we could run these in parallel...
 	// (though tbf, the LoadProgram does exploit multiple cores already)
 	for _, platform := range platforms {
-		program, err := analysis.LoadProgram(nil, platform, mode, flag.Args())
-		if err != nil {
-			return err
+		program, loadingErr := analysis.LoadProgram(nil, platform, mode, flag.Args())
+		if loadingErr != nil {
+			return loadingErr
+		}
+		analyzer, analyzerErr := dataflow.NewDefaultAnalyzer(program)
+		if analyzerErr != nil {
+			return analyzerErr
 		}
 
 		fmt.Fprintln(os.Stderr, formatutil.Faint("Analyzing for "+platform))
 
-		allPkgs := analysis.AllPackages(ssautil.AllFunctions(program))
+		allPkgs := analysis.AllPackages(analyzer.ReachableFunctions())
 
 		pkgs := FindImporters(allPkgs, pkg, !inexact, rawFile)
 		results[platform] = pkgs

@@ -548,7 +548,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 }
 
 // showBlock pretty prints the block on the terminal
-func showBlock(tt *term.Terminal, c *dataflow.AnalyzerState, block *ssa.BasicBlock) {
+func showBlock(tt *term.Terminal, _ *dataflow.AnalyzerState, block *ssa.BasicBlock) {
 	writeFmt(tt, "block %d:\n", block.Index)
 	writeFmt(tt, "%s P:%d S:%d\n", block.Comment, len(block.Preds), len(block.Succs))
 

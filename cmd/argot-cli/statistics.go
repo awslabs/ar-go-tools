@@ -25,7 +25,6 @@ import (
 	"golang.org/x/exp/slices"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // cmdStats prints statistics about the program
@@ -71,8 +70,8 @@ func cmdStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) boo
 }
 
 func doGeneralStats(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) {
-	allFunctions := ssautil.AllFunctions(c.Program)
-	result := analysis.SSAStatistics(&allFunctions, []string{})
+	reachableFunctions := c.ReachableFunctions()
+	result := analysis.SSAStatistics(&reachableFunctions, []string{})
 
 	WriteSuccess(tt, "SSA stats:")
 	writeFmt(tt, " # functions                   %d\n", result.NumberOfFunctions)
@@ -82,7 +81,7 @@ func doGeneralStats(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) {
 }
 
 func doDeferStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) {
-	allFunctions := ssautil.AllFunctions(c.Program)
+	allFunctions := c.ReachableFunctions()
 	results := analysis.DeferStats(&allFunctions)
 	writeFmt(tt, "%d functions had defers\n", results.NumFunctionsWithDefers)
 	writeFmt(tt, "%d total defers (%f/func)\n", results.NumDefers,

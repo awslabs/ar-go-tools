@@ -93,7 +93,7 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestPr
 		return LoadedTestProgram{}, fmt.Errorf("failed to load packages: %w", err)
 	}
 	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
-	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
+	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.BuildSerially)
 
 	configFileName := filepath.Join(dir, "config.yaml")
 	cfg, err := config.LoadFromFiles(configFileName)
