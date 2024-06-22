@@ -81,8 +81,8 @@ func doGeneralStats(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) {
 }
 
 func doDeferStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) {
-	allFunctions := c.ReachableFunctions()
-	results := analysis.DeferStats(&allFunctions)
+	reachableFunctions := c.ReachableFunctions()
+	results := analysis.DeferStats(&reachableFunctions)
 	writeFmt(tt, "%d functions had defers\n", results.NumFunctionsWithDefers)
 	writeFmt(tt, "%d total defers (%f/func)\n", results.NumDefers,
 		float32(results.NumDefers)/float32(results.NumFunctionsWithDefers))

@@ -158,15 +158,6 @@ func LastInstr(block *ssa.BasicBlock) ssa.Instruction {
 	return block.Instrs[len(block.Instrs)-1]
 }
 
-// FirstInstr returns the first instruction in a block. There is always a first instruction for a reachable block.
-// Returns nil for an empty block (a block can be empty if it is non-reachable)
-func FirstInstr(block *ssa.BasicBlock) ssa.Instruction {
-	if len(block.Instrs) == 0 {
-		return nil
-	}
-	return block.Instrs[0]
-}
-
 // GetArgs returns the arguments of a function call including the receiver when the function called is a method.
 // More precisely, it returns instr.Common().Args, but prepends instr.Common().Value if the call is "invoke" mode.
 func GetArgs(instr ssa.CallInstruction) []ssa.Value {
@@ -190,19 +181,6 @@ func InstrMethodKey(instr ssa.CallInstruction) fn.Optional[string] {
 	}
 
 	return fn.None[string]()
-}
-
-// FnHasGlobal returns true if fn has a global value.
-func FnHasGlobal(fn *ssa.Function) bool {
-	res := false
-	IterateValues(fn, func(_ int, value ssa.Value) {
-		if _, ok := value.(*ssa.Global); ok {
-			res = true
-			return
-		}
-	})
-
-	return res
 }
 
 // FnReadsFrom returns true if an instruction in fn reads from val.

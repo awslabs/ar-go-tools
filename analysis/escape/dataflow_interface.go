@@ -136,9 +136,9 @@ func (c *escapeCallsiteInfoImpl) Resolve(callee *ssa.Function) dataflow.EscapeCa
 					}
 				}
 			}
-		} else {
-			// this is static callee and the target isn't a closure, so no special handling
 		}
+		// this is static callee and the target isn't a closure, so no special handling in else case
+
 		// Now do the args, for all case except invoke
 		for i, arg := range c.callsite.Call.Args {
 			if lang.IsNillableType(arg.Type()) {

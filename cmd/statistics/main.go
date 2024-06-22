@@ -116,7 +116,6 @@ func doMain() error {
 		fmt.Printf("Number of instructions: %d\n", result.NumberOfInstructions)
 	}
 
-	//analysis.DeferStats(&allFunctions)
 	analysis.ClosureLocationsStats(log.Default(), &reachableFunctions, prefix)
 
 	return nil

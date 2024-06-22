@@ -64,37 +64,6 @@ func RunDFS(op InstrOp, function *ssa.Function) {
 	}
 }
 
-// RunBFS visits the blocks in the function in a breadth-first search, running the instruction operation on every
-// instruction in each Block.
-func RunBFS(op InstrOp, function *ssa.Function) {
-	if len(function.Blocks) == 0 {
-		return
-	}
-	d := simpleDriver{
-		block: function.Blocks[0],
-		// Queue is at most as long as there are blocks in the function
-		nextBlocks: make([]*ssa.BasicBlock, 0, len(function.Blocks)),
-		visited:    make(map[*ssa.BasicBlock]bool),
-	}
-	d.addNext(d.block)
-	for {
-		// Set the current Block if there is one
-		if len(d.nextBlocks) == 0 {
-			return
-		}
-		d.block = d.nextBlocks[0]
-		d.nextBlocks = d.nextBlocks[1:]
-		d.visited[d.block] = true
-		// Iterate through instructions.
-		for _, instr := range d.block.Instrs {
-			InstrSwitch(op, instr)
-		}
-		for _, block := range d.block.Succs {
-			d.addNext(block)
-		}
-	}
-}
-
 // PathSensitiveInstrOp is an InstrOp with additional functionality to indicate that the operation is running on
 // a different path
 type PathSensitiveInstrOp interface {
