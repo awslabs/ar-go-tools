@@ -9,7 +9,7 @@ require (
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/sys v0.21.0
 	golang.org/x/term v0.15.0
-	golang.org/x/tools v0.21.0
+	golang.org/x/tools v0.22.0
 	gonum.org/v1/gonum v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
 )

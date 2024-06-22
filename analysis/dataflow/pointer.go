@@ -46,7 +46,7 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 		Queries:         make(map[ssa.Value]struct{}),
 		IndirectQueries: make(map[ssa.Value]struct{}),
 	}
-
+	
 	for function := range ssautil.AllFunctions(p) {
 		// If the function is a user-defined function (it can be from a dependency) then every Value that can
 		// can potentially alias is marked for querying.
