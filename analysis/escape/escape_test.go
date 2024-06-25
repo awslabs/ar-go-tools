@@ -29,6 +29,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -101,7 +102,8 @@ func TestSimpleEscape(t *testing.T) {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	program := lp.Prog
-	result, err := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
+	reachableFunctions := dataflow.CallGraphReachable(cha.CallGraph(program), false, false)
+	result, err := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, reachableFunctions)
 	if err != nil {
 		t.Fatalf("failed to do pointer analysis: %v", err)
 	}

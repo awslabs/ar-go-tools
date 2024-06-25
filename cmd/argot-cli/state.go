@@ -22,7 +22,6 @@ import (
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // serverState stores state information about the terminal. Not used to store information about the program
@@ -74,7 +73,7 @@ func cmdState(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	writeFmt(tt, "Config path       : %s\n", state.ConfigPath)
 	writeFmt(tt, "Working dir       : %s\n", wd)
 	writeFmt(tt, "Focused function  : %s\n", fName)
-	writeFmt(tt, "# functions       : %d\n", len(ssautil.AllFunctions(c.Program)))
+	writeFmt(tt, "# functions       : %d\n", len(c.ReachableFunctions()))
 	writeFmt(tt, "# summaries built : %d\n", len(c.FlowGraph.Summaries))
 	writeFmt(tt, "flow graph built? : %t\n", c.FlowGraph.IsBuilt())
 	return false
@@ -102,7 +101,7 @@ func cmdList(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) bool
 		return false
 	}
 
-	reachable := c.ReachableFunctions(false, false)
+	reachable := c.ReachableFunctions()
 
 	WriteSuccess(tt, "Found %d matching functions:", len(funcs))
 	WriteSuccess(tt, "[summarized?][reachable?] function name")

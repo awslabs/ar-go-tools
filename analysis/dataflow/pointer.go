@@ -33,21 +33,21 @@ import (
 //
 // - functionFilter determines whether to add the values of the function in the Queries or IndirectQueries of the result
 //
-// - buildCallGraph determines whether the analysis must also build the callgraph of the program
+// - functionSet is the set of functions that will be queried.
 //
 // If error != nil, the *pointer.Result is such that every Value in the functions f such that functionFilter(f) is true
 // will be in the Queries or IndirectQueries of the pointer.Result
-func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, buildCallGraph bool) (*pointer.Result,
+func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, functionSet map[*ssa.Function]bool) (*pointer.Result,
 	error) {
 	pCfg := &pointer.Config{
 		Mains:           ssautil.MainPackages(p.AllPackages()),
 		Reflection:      false,
-		BuildCallGraph:  buildCallGraph,
+		BuildCallGraph:  true,
 		Queries:         make(map[ssa.Value]struct{}),
 		IndirectQueries: make(map[ssa.Value]struct{}),
 	}
 
-	for function := range ssautil.AllFunctions(p) {
+	for function := range functionSet {
 		// If the function is a user-defined function (it can be from a dependency) then every Value that can
 		// can potentially alias is marked for querying.
 		if functionFilter(function) {

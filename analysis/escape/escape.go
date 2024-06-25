@@ -1814,7 +1814,7 @@ func wellFormedEscapeGraph(g *EscapeGraph) error {
 // simplifySummary removes irrelevant load nodes from a given function summary graph. "Irrelevant"
 // nodes are load nodes that don't have any leaks or incoming/outgoing internal edges (and also
 // doesn't point to any nodes that need to be kept). Modifies g in-place.
-func simplifySummary(g *EscapeGraph, logger *config.LogGroup) {
+func simplifySummary(g *EscapeGraph, _ *config.LogGroup) {
 	// The set of nodes to be removed
 	candidatesForRemoval := map[*Node]struct{}{}
 	// Find all load nodes that are escaped and not leaked, without any outgoing internal edges

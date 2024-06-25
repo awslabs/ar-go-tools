@@ -577,7 +577,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		case *df.AccessGlobalNode:
 			if graphNode.IsWrite {
 				if !ignoreNonSummarized {
-					for f := range s.ReachableFunctions(false, false) {
+					for f := range s.ReachableFunctions() {
 						if lang.FnReadsFrom(f, graphNode.Global.Value()) {
 							logger.Tracef("Global %v read in function: %v\n", graphNode, f)
 							df.BuildSummary(s, f)

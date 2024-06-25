@@ -231,6 +231,11 @@ func (a *analysis) valueNode(v ssa.Value) nodeid {
 		if a.log != nil {
 			comment = v.String()
 		}
+		if xv, ok := v.(*ssa.Function); ok {
+			if xv == nil || xv.Signature == nil {
+				v.Type()
+			}
+		}
 		id = a.addNodes(v.Type(), comment)
 		if obj := a.objectNode(nil, v); obj != 0 {
 			a.addressOf(v.Type(), id, obj)
@@ -1294,11 +1299,13 @@ func (a *analysis) genMethodsOf(T types.Type) {
 	mset := a.prog.MethodSets.MethodSet(T)
 	for i, n := 0, mset.Len(); i < n; i++ {
 		m := a.prog.MethodValue(mset.At(i))
-		a.valueNode(m)
+		if m != nil {
+			a.valueNode(m)
 
-		if !itf {
-			// Methods of concrete types are address-taken functions.
-			a.atFuncs[m] = true
+			if !itf {
+				// Methods of concrete types are address-taken functions.
+				a.atFuncs[m] = true
+			}
 		}
 	}
 }

@@ -59,7 +59,7 @@ func RunIntraProceduralPass(state *dataflow.AnalyzerState, numRoutines int, args
 	}
 
 	var jobs []singleFunctionJob
-	for function := range state.ReachableFunctions(false, false) {
+	for function := range state.ReachableFunctions() {
 		jobs = append(jobs, singleFunctionJob{
 			function:      function,
 			analyzerState: state,

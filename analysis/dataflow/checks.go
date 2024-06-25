@@ -35,10 +35,7 @@ func CheckIndex(c *AnalyzerState, node IndexedGraphNode, callSite *CallNode, msg
 
 // CheckClosureReturns returns true if returnNode's summary is the same as closureNode's.
 func CheckClosureReturns(returnNode *ReturnValNode, closureNode *ClosureNode) bool {
-	if returnNode.Graph() == closureNode.ClosureSummary {
-		return true
-	}
-	return false
+	return returnNode.Graph() == closureNode.ClosureSummary
 }
 
 // CheckNoGoRoutine logs a message if node's callsite is a goroutine.

@@ -93,30 +93,14 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestPr
 		return LoadedTestProgram{}, fmt.Errorf("failed to load packages: %w", err)
 	}
 	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
-	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
+	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.BuildSerially)
 
 	configFileName := filepath.Join(dir, "config.yaml")
-	cf, err := fsys.ReadFile(configFileName)
+	cfg, err := config.LoadFromFiles(configFileName)
 	if err != nil {
 		return LoadedTestProgram{Pkgs: pkgs},
 			fmt.Errorf("failed to read config file %v: %v", configFileName, err)
 	}
-	cfg, err := config.Load(configFileName, cf)
-	if err != nil {
-		return LoadedTestProgram{Prog: program, Pkgs: pkgs},
-			fmt.Errorf("failed to load config file %v: %v", configFileName, err)
-	}
-	if cfg.EscapeConfigFile != "" {
-		escConfigFileName := cfg.RelPath(cfg.EscapeConfigFile)
-		ecf, err := fsys.ReadFile(escConfigFileName)
-		if err != nil {
-			return LoadedTestProgram{}, fmt.Errorf("failed to read escape config file %v: %v", escConfigFileName, err)
-		}
-		if err := config.LoadEscape(cfg, ecf); err != nil {
-			return LoadedTestProgram{}, fmt.Errorf("failed to load escape config file %v: %v", escConfigFileName, err)
-		}
-	}
-
 	program.Build()
 	return LoadedTestProgram{Prog: program, Config: cfg, Pkgs: pkgs}, nil
 }
