@@ -466,7 +466,6 @@ In the specification for the `Reader` method, the first argument's data flows to
 
 >⚠️ Dataflow contracts have precedence over function contracts. This means that if for some function call the tool has the choice between picking the function's contract or the dataflow contract, it will pick the dataflow contract.
 
-
 ## Using Escape Analysis (experimental)
 
 The dataflow analysis does not support concurrency by default, meaning that it is unsound in the presence of concurrent
@@ -538,3 +537,18 @@ Note that the functions are identified by their fully qualified names. The full 
 The full set of fixed summary assignments, which includes sound noop assignments for some reflection
 functions without side effects, is available in
 `testdata/src/concurrency/stdlib-escape/escape-config.json`.
+
+
+## Pointer Analysis: Soundness and Precision Tradeoffs
+
+The configuration file allows the user to specify some functions they want explicitly ignored in the pointer analysis so that fewer false positives appear during the taint analysis. For example, with default parameters the result of the context-insensitive pointer analysis we are using will result in all outputs of `fmt.Errorf` being aliases of each other in Go programs. This will result in many false positives if the taint ever reaches the input of `fmt.Errorf`!
+
+To solve that, the user can specify that the `fmt.Errorf` function should not generate any constraints during the pointer analysis:
+```yaml
+pointer-config:
+  unsafe-no-effect-functions:
+    - "fmt.Errorf"
+```
+All the functions whose full name (the name returned by `(*ssa.Function).String()`) matches one of the names provided by the user in the list of `unsafe-no-effect-functions` will be skipped during the pointer analysis (generating no constraints). If the user can prove that this is the case (i.e. no aliases are created by this function), then this is sound.
+
+>⚠️ Soundness of the analysis when `unsafe-no-effect-functions` are specified is the user's responsibility. One many also want to trade soundness for precision and specify effect-free functions for testing code properties.

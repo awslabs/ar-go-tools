@@ -38,7 +38,7 @@ import (
 )
 
 func init() {
-	for name, fn := range map[string]intrinsic{
+	for name, fn := range map[string]constraintGenerator{
 		// reflect.Value methods.
 		"(reflect.Value).Addr":            ext۰reflect۰Value۰Addr,
 		"(reflect.Value).Bool":            ext۰NoEffect,

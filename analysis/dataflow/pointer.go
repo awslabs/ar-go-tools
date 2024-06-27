@@ -17,6 +17,7 @@ package dataflow
 import (
 	"go/types"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -37,14 +38,20 @@ import (
 //
 // If error != nil, the *pointer.Result is such that every Value in the functions f such that functionFilter(f) is true
 // will be in the Queries or IndirectQueries of the pointer.Result
-func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, functionSet map[*ssa.Function]bool) (*pointer.Result,
-	error) {
+func DoPointerAnalysis(c *config.Config, p *ssa.Program,
+	functionFilter func(*ssa.Function) bool,
+	functionSet map[*ssa.Function]bool) (*pointer.Result, error) {
+	doReflection := false
+	if c != nil {
+		doReflection = c.PointerConfig.Reflection
+	}
 	pCfg := &pointer.Config{
-		Mains:           ssautil.MainPackages(p.AllPackages()),
-		Reflection:      false,
-		BuildCallGraph:  true,
-		Queries:         make(map[ssa.Value]struct{}),
-		IndirectQueries: make(map[ssa.Value]struct{}),
+		Mains:             ssautil.MainPackages(p.AllPackages()),
+		Reflection:        doReflection,
+		BuildCallGraph:    true,
+		Queries:           make(map[ssa.Value]struct{}),
+		IndirectQueries:   make(map[ssa.Value]struct{}),
+		NoEffectFunctions: make(map[string]bool),
 	}
 
 	for function := range functionSet {
@@ -63,6 +70,12 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 			lang.IterateInstructions(function, func(_ int, instruction ssa.Instruction) {
 				addInstructionQuery(pCfg, instruction)
 			})
+		}
+	}
+
+	if c != nil {
+		for _, functionName := range c.PointerConfig.UnsafeNoEffectFunctions {
+			pCfg.AddNoEffectFunction(functionName)
 		}
 	}
 

@@ -19,6 +19,13 @@
     "skip-interprocedural": true,
     "field-sensitive": true
   },
+  "pointer-config": {
+    "reflection": true,
+    "unsafe-no-effect-functions": [
+      "fmt.Errorf",
+      "fmt.Printf"
+    ]
+  },
   "dataflow-specs": ["example.json", "example2.json"],
   "taint-tracking-problems": [
     {

@@ -287,7 +287,7 @@ func (s *AnalyzerState) PopulateImplementations() {
 //
 // The analyzer state contains the result of the pointer analysis, or an error that can be inspected by CheckError
 func (s *AnalyzerState) PopulatePointerAnalysisResult(functionFilter func(*ssa.Function) bool) {
-	ptrResult, err := DoPointerAnalysis(s.Program, functionFilter, s.ReachableFunctions())
+	ptrResult, err := DoPointerAnalysis(s.Config, s.Program, functionFilter, s.ReachableFunctions())
 	if err != nil {
 		s.AddError("pointeranalysis", err)
 	}

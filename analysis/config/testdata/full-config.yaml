@@ -75,6 +75,13 @@ dataflow-specs:
   - "example.json"
   - "example2.json"
 
+# Configuration elements specific to the pointer analysis
+pointer-config:
+  reflection: true
+  unsafe-no-effect-functions:
+    - "fmt.Errorf"
+    - "fmt.Printf"
+
 taint-tracking-problems:
   - validators:
       - method: "Validate"

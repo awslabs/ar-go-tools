@@ -15,35 +15,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"sync"
 )
-
-func TestJsonUnmarshal() {
-	x := source1() // @Source(TestJsonUnmarshal)
-	s := "{\"Data\": \"x\", \"Other\":" + x.Other + "}"
-	y := T{}
-	json.Unmarshal([]byte(s), &y)
-	sink1(y.Data) // @Sink(TestJsonUnmarshal)
-}
-
-func TestJsonMarshal() {
-	x := source1() // @Source(TestJsonMarshal)
-	s, err := json.Marshal(x)
-	if err != nil {
-		return
-	}
-	sink1(string(s)) // @Sink(TestJsonMarshal)
-}
-
-func TestSyncDoOnce() {
-	o := &sync.Once{}
-	x := source1() // @Source(TestSyncDoOnce)
-	o.Do(func() {
-		sink2(x) // @Sink(TestSyncDoOnce)
-	})
-}
 
 func TestFmtErrorf() {
 	x := source3() // @Source(TestFmtErrorf)
@@ -51,13 +24,9 @@ func TestFmtErrorf() {
 	sink2(eTainted) // @Sink(TestFmtErrorf)
 	y := genStr()
 	eNotTainted := fmt.Errorf("error: %s", y)
-	sink2(eNotTainted) // @Sink(TestFmtErrorf) -> false positive because all fmt.Errorf output are spuriously aliased!
-	// see stdlib-no-effect-constraint test suite for a (possibly unsound) option to avoid that!
+	sink2(eNotTainted) //  no false positive because of no-effect-functions include fmt.Errorf
 }
 
 func main() {
-	TestJsonUnmarshal()
-	TestJsonMarshal()
-	TestSyncDoOnce()
 	TestFmtErrorf()
 }
