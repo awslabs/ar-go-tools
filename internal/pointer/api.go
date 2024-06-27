@@ -46,6 +46,10 @@ type Config struct {
 	// If enabled, the graph will be available in Result.CallGraph.
 	BuildCallGraph bool
 
+	// NoEffectFunctions allows the user to define a set of function that don't generate
+	// any constraints.
+	NoEffectFunctions map[string]bool
+
 	// The client populates Queries[v] or IndirectQueries[v]
 	// for each ssa.Value v of interest, to request that the
 	// points-to sets pts(v) or pts(*v) be computed.  If the
@@ -148,6 +152,11 @@ func (c *Config) AddExtendedQuery(v ssa.Value, query string) (*Pointer, error) {
 	ptr := &Pointer{}
 	c.extendedQueries[v] = append(c.extendedQueries[v], &extendedQuery{ops: ops, ptr: ptr})
 	return ptr, nil
+}
+
+// AddNoEffectFunction adds the function name in the set of function that do not generate constraints.
+func (c *Config) AddNoEffectFunction(functionName string) {
+	c.NoEffectFunctions[functionName] = true
 }
 
 func (c *Config) prog() *ssa.Program {

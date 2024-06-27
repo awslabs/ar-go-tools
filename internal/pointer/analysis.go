@@ -106,27 +106,28 @@ type node struct {
 
 // An analysis instance holds the state of a single pointer analysis problem.
 type analysis struct {
-	config      *Config                     // the client's control/observer interface
-	prog        *ssa.Program                // the program being analyzed
-	log         io.Writer                   // log stream; nil to disable
-	panicNode   nodeid                      // sink for panic, source for recover
-	nodes       []*node                     // indexed by nodeid
-	flattenMemo map[types.Type][]*fieldInfo // memoization of flatten()
-	trackTypes  map[types.Type]bool         // memoization of shouldTrack()
-	constraints []constraint                // set of constraints
-	cgnodes     []*cgnode                   // all cgnodes
-	genq        []*cgnode                   // queue of functions to generate constraints for
-	intrinsics  map[*ssa.Function]intrinsic // non-nil values are summaries for intrinsic fns
-	globalval   map[ssa.Value]nodeid        // node for each global ssa.Value
-	globalobj   map[ssa.Value]nodeid        // maps v to sole member of pts(v), if singleton
-	localval    map[ssa.Value]nodeid        // node for each local ssa.Value
-	localobj    map[ssa.Value]nodeid        // maps v to sole member of pts(v), if singleton
-	atFuncs     map[*ssa.Function]bool      // address-taken functions (for presolver)
-	mapValues   []nodeid                    // values of makemap objects (indirect in HVN)
-	work        nodeset                     // solver's worklist
-	result      *Result                     // results of the analysis
-	track       track                       // pointerlike types whose aliasing we track
-	deltaSpace  []int                       // working space for iterating over PTS deltas
+	config      *Config                               // the client's control/observer interface
+	prog        *ssa.Program                          // the program being analyzed
+	log         io.Writer                             // log stream; nil to disable
+	panicNode   nodeid                                // sink for panic, source for recover
+	nodes       []*node                               // indexed by nodeid
+	flattenMemo map[types.Type][]*fieldInfo           // memoization of flatten()
+	trackTypes  map[types.Type]bool                   // memoization of shouldTrack()
+	constraints []constraint                          // set of constraints
+	cgnodes     []*cgnode                             // all cgnodes
+	genq        []*cgnode                             // queue of functions to generate constraints for
+	intrinsics  map[*ssa.Function]constraintGenerator // non-nil values are summaries for intrinsic fns
+	summarized  map[*ssa.Function]constraintGenerator // non-nil values are summaries for user-defined functions
+	globalval   map[ssa.Value]nodeid                  // node for each global ssa.Value
+	globalobj   map[ssa.Value]nodeid                  // maps v to sole member of pts(v), if singleton
+	localval    map[ssa.Value]nodeid                  // node for each local ssa.Value
+	localobj    map[ssa.Value]nodeid                  // maps v to sole member of pts(v), if singleton
+	atFuncs     map[*ssa.Function]bool                // address-taken functions (for presolver)
+	mapValues   []nodeid                              // values of makemap objects (indirect in HVN)
+	work        nodeset                               // solver's worklist
+	result      *Result                               // results of the analysis
+	track       track                                 // pointerlike types whose aliasing we track
+	deltaSpace  []int                                 // working space for iterating over PTS deltas
 
 	// Reflection & intrinsics:
 	hasher              typeutil.Hasher // cache of type hashes
@@ -236,7 +237,7 @@ func Analyze(config *Config) (result *Result, err error) {
 		trackTypes:  make(map[types.Type]bool),
 		atFuncs:     make(map[*ssa.Function]bool),
 		hasher:      typeutil.MakeHasher(),
-		intrinsics:  make(map[*ssa.Function]intrinsic),
+		intrinsics:  make(map[*ssa.Function]constraintGenerator),
 		result: &Result{
 			Queries:         make(map[ssa.Value]Pointer),
 			IndirectQueries: make(map[ssa.Value]Pointer),

@@ -12,49 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package pointer
 
-import (
-	"fmt"
-	"math/rand"
-	"strconv"
-)
+import "golang.org/x/tools/go/ssa"
 
-type T struct {
-	Data  string
-	Other string
-}
-
-type R string
-
-func genStr() string {
-	return strconv.Itoa(rand.Int()) + "1234"
-}
-
-func genT() T {
-	return T{
-		Data:  genStr(),
-		Other: genStr() + "ok",
+// findSummary returns a non-nil constraintGenerator when the function has been summarized by the user.
+// Currently, the only user-definable summaries are through the list of no-effect function of the config.
+func (a *analysis) findSummary(fn *ssa.Function) constraintGenerator {
+	impl, ok := a.summarized[fn]
+	if !ok {
+		if a.config.NoEffectFunctions[fn.String()] {
+			impl = ext۰NoEffect
+		} else {
+			return nil
+		}
+		a.intrinsics[fn] = impl
 	}
-}
-
-func source1() T {
-	return T{
-		Data:  strconv.Itoa(rand.Int()) + "tainted",
-		Other: "ok",
-	}
-}
-
-func source2() R {
-	return R(strconv.Itoa(rand.Int()) + "tainted")
-}
-
-func source3() string {
-	return "i'm taint #" + strconv.Itoa(rand.Int())
-}
-
-func sink2(_ ...any) {}
-
-func sink1(s string) {
-	fmt.Printf("Sink: %s\n", s)
+	return impl
 }

@@ -544,8 +544,8 @@ func (a *analysis) genBuiltinCall(instr ssa.CallInstruction, cgn *cgnode) {
 // for intrinsics and accessor methods (actually: short, single-block,
 // call-free functions).  This is just a starting point.
 func (a *analysis) shouldUseContext(fn *ssa.Function) bool {
-	if a.findIntrinsic(fn) != nil {
-		return true // treat intrinsics context-sensitively
+	if a.findIntrinsic(fn) != nil || a.findSummary(fn) != nil {
+		return true // treat intrinsics and summaries context-sensitively
 	}
 	if len(fn.Blocks) != 1 {
 		return false // too expensive
@@ -1185,12 +1185,16 @@ func (a *analysis) genRootCalls() *cgnode {
 func (a *analysis) genFunc(cgn *cgnode) {
 	fn := cgn.fn
 
+	// Find intrinsic or summary
 	impl := a.findIntrinsic(fn)
+	if impl == nil {
+		impl = a.findSummary(fn)
+	}
 
 	if a.log != nil {
 		fmt.Fprintf(a.log, "\n\n==== Generating constraints for %s, %s\n", cgn, cgn.contour())
 
-		// Hack: don't display body if intrinsic.
+		// Hack: don't display body if intrinsic or summarized.
 		if impl != nil {
 			fn2 := *cgn.fn // copy
 			fn2.Locals = nil

@@ -77,6 +77,12 @@ func NewEscapeConfig() *EscapeConfig {
 	}
 }
 
+// NewPointerConfig returns a new escape config with default parameters:
+// - the filter of no-effect functions is nil.
+func NewPointerConfig() *PointerConfig {
+	return &PointerConfig{UnsafeNoEffectFunctions: nil}
+}
+
 // MatchPkgFilter matches a package name against a configuration.
 // Returns true if the package name matches the filter.
 func (c *EscapeConfig) MatchPkgFilter(pkgname string) bool {
@@ -111,7 +117,11 @@ type Config struct {
 	// if the CoverageFilter is specified
 	coverageFilterRegex *regexp.Regexp
 
+	// EscapeConfig contains the escape-analysis specific configuration parameters
 	EscapeConfig *EscapeConfig
+
+	// PointerConfig contains the pointer-analysis specific configuration parameters
+	PointerConfig *PointerConfig `yaml:"pointer-config" json:"pointer-config"`
 
 	// TaintTrackingProblems lists the taint tracking specifications
 	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking-problems" json:"taint-tracking-problems"`
@@ -121,6 +131,18 @@ type Config struct {
 
 	// StaticCommandsProblems lists the static commands problems
 	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems" json:"static-commands-problems"`
+}
+
+// PointerConfig is the pointer analysis specific configuration.
+type PointerConfig struct {
+	// UnsafeNoEffectFunctions is a list of function names that produce no constraints in the pointer analysis.
+	// Use at your own risk: using this option *may* make the analysis unsound. However, if you are confident
+	// that the listed function does not have any effect on aliasing, adding it here may reduce false positives.
+	UnsafeNoEffectFunctions []string `yaml:"unsafe-no-effect-functions" json:"unsafe-no-effect-functions"`
+
+	// Reflection is the reflection option of the pointer analysis: when true, reflection aperators are handled
+	// soundly, but analysis time will increase dramatically.
+	Reflection bool
 }
 
 // TaintSpec contains code identifiers that identify a specific taint tracking problem
@@ -261,6 +283,7 @@ func NewDefault() *Config {
 		StaticCommandsProblems: nil,
 		DataflowSpecs:          []string{},
 		EscapeConfig:           NewEscapeConfig(),
+		PointerConfig:          NewPointerConfig(),
 		Options: Options{
 			ReportsDir:                "",
 			PkgFilter:                 "",
@@ -397,6 +420,10 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 
 	for _, stSpec := range cfg.StaticCommandsProblems {
 		funcutil.Iter(stSpec.StaticCommands, compileRegexes)
+	}
+
+	if cfg.PointerConfig == nil {
+		cfg.PointerConfig = NewPointerConfig()
 	}
 
 	return cfg, nil

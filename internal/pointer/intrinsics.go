@@ -22,21 +22,21 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Instances of 'intrinsic' generate analysis constraints for calls to
+// Instances of 'constraintGenerator' generate analysis constraints for calls to
 // intrinsic functions.
 // Implementations may exploit information from the calling site
 // via cgn.callersite; for shared contours this is nil.
-type intrinsic func(a *analysis, cgn *cgnode)
+type constraintGenerator func(a *analysis, cgn *cgnode)
 
 // Initialized in explicit init() to defeat (spurious) initialization
 // cycle error.
-var intrinsicsByName = make(map[string]intrinsic)
+var intrinsicsByName = make(map[string]constraintGenerator)
 
 func init() {
 	// Key strings are from Function.String().
 	// That little dot ۰ is an Arabic zero numeral (U+06F0),
 	// categories [Nd].
-	for name, fn := range map[string]intrinsic{
+	for name, fn := range map[string]constraintGenerator{
 		// Other packages.
 		"bytes.Equal":                  ext۰NoEffect,
 		"bytes.IndexByte":              ext۰NoEffect,
@@ -159,7 +159,7 @@ func init() {
 
 // findIntrinsic returns the constraint generation function for an
 // intrinsic function fn, or nil if the function should be handled normally.
-func (a *analysis) findIntrinsic(fn *ssa.Function) intrinsic {
+func (a *analysis) findIntrinsic(fn *ssa.Function) constraintGenerator {
 	// Consult the *Function-keyed cache.
 	// A cached nil indicates a normal non-intrinsic function.
 	impl, ok := a.intrinsics[fn]

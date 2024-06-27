@@ -70,7 +70,7 @@ func (mode CallgraphAnalysisMode) ComputeCallgraph(prog *ssa.Program) (*callgrap
 		// callgraph, and not the entire pointer analysis result.
 		// Pointer analysis is using Andersen's analysis. The documentation claims that
 		// the analysis is sound if the program does not use reflection or unsafe Go.
-		result, err := DoPointerAnalysis(prog, func(_ *ssa.Function) bool { return false }, ssautil.AllFunctions(prog))
+		result, err := DoPointerAnalysis(nil, prog, func(_ *ssa.Function) bool { return false }, ssautil.AllFunctions(prog))
 		if err != nil { // not a user-input problem if it fails, see Analyze doc.
 			return nil, fmt.Errorf("pointer analysis failed: %w", err)
 		}

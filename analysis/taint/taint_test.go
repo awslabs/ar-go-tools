@@ -71,6 +71,10 @@ func TestTaint(t *testing.T) {
 			args: args{"stdlib", []string{"helpers.go"}, noErrorExpected},
 		},
 		{
+			name: "stdlib with no-effect constraints",
+			args: args{"stdlib-no-effect-constraint", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
 			name: "selects",
 			args: args{"selects", []string{"helpers.go"}, noErrorExpected},
 		},

@@ -338,7 +338,8 @@ func TestLoadMisc(t *testing.T) {
 				MaxEntrypointContextSize: DefaultSafeMaxEntrypointContextSize,
 				SilenceWarn:              false,
 			},
-			EscapeConfig: NewEscapeConfig(),
+			EscapeConfig:  NewEscapeConfig(),
+			PointerConfig: NewPointerConfig(),
 		},
 	)
 	// Test configuration file for static-commands

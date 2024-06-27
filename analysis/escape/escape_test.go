@@ -103,7 +103,8 @@ func TestSimpleEscape(t *testing.T) {
 	}
 	program := lp.Prog
 	reachableFunctions := dataflow.CallGraphReachable(cha.CallGraph(program), false, false)
-	result, err := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, reachableFunctions)
+	result, err := dataflow.DoPointerAnalysis(nil, program,
+		func(_ *ssa.Function) bool { return true }, reachableFunctions)
 	if err != nil {
 		t.Fatalf("failed to do pointer analysis: %v", err)
 	}
