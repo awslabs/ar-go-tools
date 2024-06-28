@@ -551,4 +551,4 @@ pointer-config:
 ```
 All the functions whose full name (the name returned by `(*ssa.Function).String()`) matches one of the names provided by the user in the list of `unsafe-no-effect-functions` will be skipped during the pointer analysis (generating no constraints). If the user can prove that this is the case (i.e. no aliases are created by this function), then this is sound.
 
->⚠️ Soundness of the analysis when `unsafe-no-effect-functions` are specified is the user's responsibility. One many also want to trade soundness for precision and specify effect-free functions for testing code properties.
+>⚠️ Soundness of the analysis when `unsafe-no-effect-functions` are specified is the user's responsibility. It is worth noting that Argot can be useful even when the analysis is unsound, e.g. simply for *testing* dataflow properties of the program, as opposed to proving them. 
