@@ -75,7 +75,6 @@ func TestAnalyze_OnDemand(t *testing.T) {
 var ignoreMatch = match{-1, nil, -1}
 
 func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	cfg.LogLevel = int(config.InfoLevel)
 	lg := config.NewLogGroup(cfg)
 	res, err := backtrace.Analyze(lg, cfg, program)
 	if err != nil {
@@ -314,10 +313,11 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(res.Traces))
 	}
 
-	t.Log("TRACES:")
-	for _, trace := range res.Traces {
-		t.Log(trace)
-	}
+	// // NOTE Uncomment to debug
+	// t.Log("TRACES:")
+	// for _, trace := range res.Traces {
+	// 	t.Log(trace)
+	// }
 
 	for _, test := range tests {
 		test := test // needed for t.Parallel()
@@ -341,7 +341,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 
 	t.Run(`trace to bar("x") should not exist`, func(t *testing.T) {
 		if funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
-			arg, ok := trace[0].GraphNode.(*dataflow.CallNodeArg)
+			arg, ok := trace[0].Node.(*dataflow.CallNodeArg)
 			if !ok {
 				return false
 			}
@@ -579,7 +579,7 @@ func matchTrace(trace backtrace.Trace, matches []match) (bool, error) {
 
 //gocyclo:ignore
 func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
-	switch node := tnode.GraphNode.(type) {
+	switch node := tnode.Node.(type) {
 	case *dataflow.CallNodeArg:
 		mval := m.val.(argval)
 		val := mval.val == node.Value().Name() || (mval.val == nil && !backtrace.IsStatic(node))
