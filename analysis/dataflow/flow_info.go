@@ -155,8 +155,22 @@ func (fi *FlowInformation) GetInstrPos(i ssa.Instruction) IndexT {
 
 // GetNewMark returns a pointer to the mark with the provided arguments. Internally checks whether the mark object
 // representing this mark already exists.
-func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int) *Mark {
-	m := NewMark(node, typ, qualifier, index, "")
+func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, mi MarkIndex) *Mark {
+	// Validate mark
+	switch typ {
+	case CallReturn:
+		i, isCall := node.(*ssa.Call)
+		if isCall && mi.Kind == ReturnedTupleIndex {
+			ctyp := i.Common().Signature().Results()
+			if ctyp != nil {
+				if ctyp.Len() <= mi.Value {
+					panic(fmt.Sprintf("Malformed constraint: a tuple %v but index %d out of bounds",
+						typ, mi.Value))
+				}
+			}
+		}
+	}
+	m := NewMark(node, typ, qualifier, mi, "")
 	if m0, ok := fi.marks[m]; ok {
 		return m0
 	}
@@ -167,8 +181,8 @@ func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa
 // GetNewLabelledMark returns a pointer to the labelled mark with the provided arguments. Internally checks whether
 // the mark object representing this mark already exists.
 func (fi *FlowInformation) GetNewLabelledMark(node ssa.Node, typ MarkType,
-	qualifier ssa.Value, index int, label string) *Mark {
-	m := NewMark(node, typ, qualifier, index, label)
+	qualifier ssa.Value, mi MarkIndex, label string) *Mark {
+	m := NewMark(node, typ, qualifier, mi, label)
 	if m0, ok := fi.marks[m]; ok {
 		return m0
 	}

@@ -106,14 +106,30 @@ func (state *IntraAnalysisState) DoSliceArrayToPointer(x *ssa.SliceToArrayPointe
 	simpleTransfer(state, x, x.X, x)
 }
 
-// DoMakeInterface analyzers a ssa.MakeInterface (a transferCopy)
+// DoMakeInterface analyzes a ssa.MakeInterface (a transferCopy)
 func (state *IntraAnalysisState) DoMakeInterface(x *ssa.MakeInterface) {
 	transferCopy(state, x, x.X, x)
 }
 
-// DoExtract analyzers a ssa.Extract (a transfer with path "")
+// DoExtract analyzes a ssa.Extract (a transfer with path "")
 func (state *IntraAnalysisState) DoExtract(x *ssa.Extract) {
-	transfer(state, x, x.Tuple, x, "", x.Index)
+	// tuples store intermediate results from:
+	// - call returns
+	// - next instructions
+	// - select instructions
+	// - lookup instructions
+	// Since next, select, lookup instructions are not nodes in the graph, we have to be careful about
+	// how extract interacts with them.
+	isUntrackedTuple := false
+	switch x.Tuple.(type) {
+	case *ssa.Next, *ssa.Select, *ssa.Lookup:
+		isUntrackedTuple = true
+	}
+	if isUntrackedTuple {
+		transfer(state, x, x.Tuple, x, "", NonIndexMark)
+	} else {
+		transfer(state, x, x.Tuple, x, "", NewIndex(x.Index))
+	}
 }
 
 // DoSlice analyzes slicing operations
@@ -147,15 +163,15 @@ func (state *IntraAnalysisState) DoSend(x *ssa.Send) {
 
 // DoStore analyzes store operations
 func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
-	transfer(state, x, x.Val, x.Addr, "", -1)
+	transfer(state, x, x.Val, x.Addr, "", NonIndexMark)
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
 		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(addr)
 		if isEmbedded {
-			transfer(state, x, x.Val, addr.X, "", -1)
+			transfer(state, x, x.Val, addr.X, "", NonIndexMark)
 		} else {
-			transfer(state, x, x.Val, addr.X, fieldName, -1)
+			transfer(state, x, x.Val, addr.X, fieldName, NonIndexMark)
 		}
 	}
 }
@@ -179,7 +195,7 @@ func (state *IntraAnalysisState) DoMakeChan(*ssa.MakeChan) {
 // the config)
 func (state *IntraAnalysisState) DoAlloc(x *ssa.Alloc) {
 	if state.shouldTrack(state.flowInfo.Config, state.parentAnalyzerState.PointerAnalysis, x) {
-		state.markValue(x, x, "", state.flowInfo.GetNewMark(x, DefaultMark, nil, -1))
+		state.markValue(x, x, "", state.flowInfo.GetNewMark(x, DefaultMark, nil, NonIndexMark))
 	}
 	// An allocation may be a mark
 	state.optionalSyntheticNode(x, x, x)
@@ -198,7 +214,7 @@ func (state *IntraAnalysisState) DoMakeMap(*ssa.MakeMap) {
 // DoRange analyzes the range by simply transferring marks from the input of the range to the iterator
 func (state *IntraAnalysisState) DoRange(x *ssa.Range) {
 	// An iterator over a tainted Value is tainted
-	transfer(state, x, x.X, x, "[*]", -1)
+	transfer(state, x, x.X, x, "[*]", NonIndexMark)
 }
 
 // DoNext transfers marks from the input of next to the output
@@ -225,7 +241,7 @@ func (state *IntraAnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 	if field != "" {
 		path = "." + field
 	}
-	transfer(state, x, x.X, x, path, -1)
+	transfer(state, x, x.X, x, path, NonIndexMark)
 }
 
 // DoField analyzes field operations, with field-sensitivity
@@ -244,21 +260,21 @@ func (state *IntraAnalysisState) DoField(x *ssa.Field) {
 	if field != "" {
 		path = "." + field
 	}
-	transfer(state, x, x.X, x, path, -1)
+	transfer(state, x, x.X, x, path, NonIndexMark)
 }
 
 // DoIndexAddr analyzers operation where the address of an index is taken, with indexing sensitivity
 func (state *IntraAnalysisState) DoIndexAddr(x *ssa.IndexAddr) {
 	// An indexing taints the Value if either index or the indexed Value is tainted
 	simpleTransfer(state, x, x.Index, x)
-	transfer(state, x, x.X, x, "[*]", -1)
+	transfer(state, x, x.X, x, "[*]", NonIndexMark)
 }
 
 // DoIndex analyzes indexing with indexing sensitivity
 func (state *IntraAnalysisState) DoIndex(x *ssa.Index) {
 	// An indexing taints the Value if either index or array is tainted
 	simpleTransfer(state, x, x.Index, x)
-	transfer(state, x, x.X, x, "[*]", -1)
+	transfer(state, x, x.X, x, "[*]", NonIndexMark)
 }
 
 // DoLookup analyzes lookups without indexing sensitivity
@@ -270,8 +286,8 @@ func (state *IntraAnalysisState) DoLookup(x *ssa.Lookup) {
 // DoMapUpdate analyzes map updates without indexing sensitivity
 func (state *IntraAnalysisState) DoMapUpdate(x *ssa.MapUpdate) {
 	// Adding a tainted key or Value in a map taints the whole map
-	simpleTransfer(state, x, x.Key, x.Map)
-	simpleTransfer(state, x, x.Value, x.Map)
+	transferPre(state, x, x.Key, x.Map, "", NonIndexMark, true)
+	transferPre(state, x, x.Value, x.Map, "", NonIndexMark, true)
 }
 
 // DoTypeAssert views type assertions as a simple transfer of marks

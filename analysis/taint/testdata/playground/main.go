@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 )
 
 type example struct {
@@ -38,7 +39,19 @@ func source() string {
 	return "!taint!"
 }
 
-func newStruct() *nestedStruct {
+func newStruct() ([]*nestedStruct, error) {
+	if rand.Int() > 2 {
+		return []*nestedStruct{{
+			Ex: example{},
+			A:  "initial-A",
+			B:  "initial-B",
+		}}, nil
+	} else {
+		return nil, fmt.Errorf("bad")
+	}
+}
+
+func newStructB() *nestedStruct {
 	return &nestedStruct{
 		Ex: example{},
 		A:  "initial-A",
@@ -56,7 +69,7 @@ type S struct {
 }
 
 func testSimpleField1() {
-	x := newStruct()
+	x := newStructB()
 	x.A = source() // @Source(testSimpleField_1)
 	x.B = "ok"
 	sink(x.B)
@@ -64,6 +77,28 @@ func testSimpleField1() {
 	sink(x.C)
 }
 
+func testFieldAndMapX() {
+	fmt.Println("testFieldAndMap")
+	s := source() // @Source(testFieldAndMap)
+	s2 := s + "ok"
+	a := make(map[string]*Node, 10)
+	x := &Node{label: s2}
+	a["0"] = &Node{label: "ok"}
+	a["1"] = &Node{label: "fine"}
+	a["0"].next = a["1"]
+	a["1"].next = x // a[0] -> a[1] -> x (tainted)
+	testFieldAndMapSink(a)
+}
+
+func testFieldAndMapSink(a map[string]*Node) {
+	for _, x := range a {
+		if x != nil {
+			sink(x.label) // @Sink(testFieldAndMap)
+		}
+	}
+}
+
 func main() {
+	testFieldAndMapX()
 	testSimpleField1()
 }

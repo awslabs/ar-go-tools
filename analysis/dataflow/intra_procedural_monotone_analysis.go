@@ -100,11 +100,11 @@ func (state *IntraAnalysisState) initialize() {
 		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[fv]] {
 			for _, path := range AccessPathsOfType(fv.Type()) {
 				state.flowInfo.AddMark(firstInstr, fv, path,
-					state.flowInfo.GetNewLabelledMark(fv, FreeVar, nil, -1, path))
+					state.flowInfo.GetNewLabelledMark(fv, FreeVar, nil, NonIndexMark, path))
 			}
 		}
 		state.flowInfo.AddMark(firstInstr, fv, "",
-			state.flowInfo.GetNewMark(fv, FreeVar, nil, -1))
+			state.flowInfo.GetNewMark(fv, FreeVar, nil, NonIndexMark))
 		state.addFreeVarAliases(fv)
 	}
 	// The parameters of the function are marked as Parameter
@@ -112,11 +112,11 @@ func (state *IntraAnalysisState) initialize() {
 		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[param]] {
 			for _, path := range AccessPathsOfType(param.Type()) {
 				state.flowInfo.AddMark(firstInstr, param, path,
-					state.flowInfo.GetNewLabelledMark(param, Parameter, nil, -1, path))
+					state.flowInfo.GetNewLabelledMark(param, Parameter, nil, NonIndexMark, path))
 			}
 		}
 		state.flowInfo.AddMark(firstInstr, param, "",
-			state.flowInfo.GetNewMark(param, Parameter, nil, -1))
+			state.flowInfo.GetNewMark(param, Parameter, nil, NonIndexMark))
 		state.addParamAliases(param)
 	}
 
@@ -222,7 +222,7 @@ func (state *IntraAnalysisState) Post(_ ssa.Instruction) {
 // Uses both the direct taint information in the taint tracking info, and the pointer taint information, i.e:
 // - A Value is marked if it is directly marked
 // - A Value is marked if it is a pointer and some alias is marked.
-// The Path parameter enables Path-sensitivity. If Path is "*", any Path is accepted and the analysis
+// The Path parameter enables Path-sensitivity. If Path is "", any Path is accepted and the analysis
 // over-approximates.
 func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path string,
 	ignorePath bool) []MarkWithAccessPath {
@@ -250,23 +250,34 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 
 // simpleTransfer  propagates all the marks from in to out, ignoring Path and tuple indexes
 func simpleTransfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
-	transfer(state, loc, in, out, "", -1)
+	transfer(state, loc, in, out, "", NonIndexMark)
 }
 
 // transfer propagates all the marks from in to out with the object Path string
 // an index >= 0 indicates that element index of the tuple in is accessed
-func transfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index int) {
+func transfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index MarkIndex) {
+	transferPre(state, loc, in, out, path, index, false)
+}
+
+// transferPre propagates all the marks from in to out with the object Path string
+// an index >= 0 indicates that element index of the tuple in is accessed
+// a value of true for pre indicates that field-sensitive value a prepended with indexing
+func transferPre(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string,
+	index MarkIndex, pre bool) {
 	if glob, ok := in.(*ssa.Global); ok {
 		state.markValue(loc, out, "", state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index))
 	}
-
+	isFieldSensitive := state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[out]]
 	for _, origin := range state.getMarks(loc, in, path, false) {
 		state.flowInfo.SetLoc(origin.Mark, loc)
-		newOrigin := origin.Mark
-		if index >= 0 {
-			newOrigin = state.flowInfo.GetNewMark(origin.Mark.Node, origin.Mark.Type, origin.Mark.Qualifier, index)
+
+		if origin.Mark.Index.Kind == NonIndex || index.Kind == NonIndex || index.Value == origin.Mark.Index.Value {
+			newPath := origin.AccessPath
+			if isFieldSensitive && pre {
+				newPath = accessPathPrependIndexing(newPath)
+			}
+			state.markValue(loc, out, newPath, origin.Mark)
 		}
-		state.markValue(loc, out, origin.AccessPath, newOrigin)
 	}
 
 	state.checkFlowIntoGlobal(loc, in, out)
@@ -292,9 +303,9 @@ func transferCopy(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out 
 // markClosureNode adds a closure node to the graph, and all the related sources and edges.
 // The closure Value is tracked like any other Value.
 func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
-	state.markValue(x, x, "", state.flowInfo.GetNewMark(x, Closure, nil, -1))
+	state.markValue(x, x, "", state.flowInfo.GetNewMark(x, Closure, nil, NonIndexMark))
 	for _, boundVar := range x.Bindings {
-		mark := state.flowInfo.GetNewMark(x, BoundVar, boundVar, -1)
+		mark := state.flowInfo.GetNewMark(x, BoundVar, boundVar, NonIndexMark)
 		state.markValue(x, boundVar, "", mark)
 	}
 }
@@ -302,7 +313,7 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
 	if state.shouldTrack(state.parentAnalyzerState.Config, state.parentAnalyzerState.PointerAnalysis, asNode) {
-		s := state.flowInfo.GetNewMark(asNode, Synthetic+DefaultMark, nil, -1)
+		s := state.flowInfo.GetNewMark(asNode, Synthetic+DefaultMark, nil, NonIndexMark)
 		state.markValue(asInstr, asValue, "", s)
 	}
 }
@@ -315,23 +326,23 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 	if doBuiltinCall(state, value, common, instr) {
 		return
 	}
-	markType := CallReturn
+
 	// Mark call, one mark per returned Value
 	res := common.Signature().Results()
 
 	trackingMarks := []MarkWithAccessPath{}
-	if res.Len() > 0 {
+	if res != nil {
 		for i := 0; i < res.Len(); i++ {
 			if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[value]] {
 				for _, path := range AccessPathsOfType(value.Type()) {
 					m := MarkWithAccessPath{
-						Mark:       state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), markType, nil, i, path),
+						Mark:       state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallReturn, nil, NewIndex(i), path),
 						AccessPath: path,
 					}
 					trackingMarks = append(trackingMarks, m)
 				}
 			}
-			m := MarkWithAccessPath{state.flowInfo.GetNewMark(instr.(ssa.Node), markType, nil, i), ""}
+			m := MarkWithAccessPath{state.flowInfo.GetNewMark(instr.(ssa.Node), CallReturn, nil, NewIndex(i)), ""}
 			trackingMarks = append(trackingMarks, m)
 		}
 	}
@@ -347,10 +358,10 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[arg]] {
 			for _, path := range AccessPathsOfType(arg.Type()) {
 				state.flowInfo.AddMark(instr, arg, path,
-					state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, arg, -1, path))
+					state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark, path))
 			}
 		}
-		newMark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, -1)
+		newMark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark)
 		state.markValue(instr, arg, "", newMark)
 	}
 }
@@ -433,10 +444,8 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	case *ssa.Extract:
 		// if an extracted object of pointer-like type is marked, then the tuple is marked at that index
 		if lang.IsNillableType(miVal.Type()) {
-			state.markValue(i, miVal.Tuple, path,
-				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, miVal.Index))
+			state.markValue(i, miVal.Tuple, path, mark)
 		}
-
 	}
 
 	// Propagate to select referrers if the valye is a true value (i.e. it is not a Call that doesn't return anything)
@@ -511,7 +520,7 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 		// propagate to tuple
 		if referrer.Tuple == v && lang.IsNillableType(referrer.Type()) {
 			state.markValue(i, referrer.Tuple, path,
-				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, referrer.Index))
+				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, mark.Index))
 		}
 	}
 }

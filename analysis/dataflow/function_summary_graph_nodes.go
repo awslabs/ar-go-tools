@@ -151,13 +151,13 @@ func NodeKind(g GraphNode) string {
 func NodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
-		return fmt.Sprintf("Parameter %q of %q", x.ssaNode.Name(), x.parent.Parent.Name())
+		return fmt.Sprintf("Parameter %q:%q of %q", x.ssaNode.Name(), x.Type().String(), x.parent.Parent.Name())
 	case *CallNode:
-		return fmt.Sprintf("Result of call to %q", x.Callee().Name())
+		return fmt.Sprintf("Result of call to %q:%q", x.Callee().Name(), x.Type().String())
 	case *CallNodeArg:
-		return fmt.Sprintf("Argument %v in call to %q", x.Index(), x.ParentNode().Callee().Name())
+		return fmt.Sprintf("Argument %v:%q in call to %q", x.Index(), x.Type().String(), x.ParentNode().Callee().Name())
 	case *ReturnValNode:
-		return fmt.Sprintf("Return value %d of %q", x.Index(), x.ParentName())
+		return fmt.Sprintf("Return value %d:%q of %q", x.Index(), x.Type().String(), x.ParentName())
 	case *ClosureNode:
 		return fmt.Sprintf("Closure")
 	case *BoundLabelNode:
@@ -580,7 +580,9 @@ func (a *ReturnValNode) SetLocs(_ LocSet) {}
 func (a *ReturnValNode) Index() int { return a.index }
 
 // Type returns the return type of the parent function
-func (a *ReturnValNode) Type() types.Type { return a.parent.ReturnType() }
+func (a *ReturnValNode) Type() types.Type {
+	return lang.TryTupleIndexType(a.parent.ReturnType(), a.index)
+}
 
 // Position returns the estimated position of the node in the source
 func (a *ReturnValNode) Position(c *AnalyzerState) token.Position {

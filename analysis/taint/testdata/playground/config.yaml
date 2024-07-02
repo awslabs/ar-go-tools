@@ -14,3 +14,4 @@ taint-tracking-problems:
 options:
     use-escape-analysis: false
     field-sensitive: true
+    summarize-on-demand: true

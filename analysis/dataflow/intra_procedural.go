@@ -167,7 +167,6 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 	}
 	// add call node edges for call instructions whose Value corresponds to a function (i.e. the Method is nil)
 	if callInstr.Common().Method == nil {
-		// TODO: ignore path until we have field sensitivity in inter-procedural analysis
 		for _, mark := range state.getMarks(callInstr, callInstr.Common().Value, "", true) {
 			state.summary.addCallEdge(mark, nil, callInstr)
 			if closure, isMakeClosure := mark.Mark.Node.(*ssa.MakeClosure); isMakeClosure {
@@ -182,7 +181,7 @@ func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstructi
 		// Special case: a global is received directly as an argument
 		switch argInstr := arg.(type) {
 		case *ssa.Global:
-			tmpSrc := state.flowInfo.GetNewMark(callInstr.(ssa.Node), Global, argInstr, -1)
+			tmpSrc := state.flowInfo.GetNewMark(callInstr.(ssa.Node), Global, argInstr, NonIndexMark)
 			state.summary.addCallArgEdge(MarkWithAccessPath{tmpSrc, ""}, nil, callInstr, argInstr)
 		case *ssa.MakeClosure:
 			state.updateBoundVarEdges(callInstr, argInstr)

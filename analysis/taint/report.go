@@ -120,6 +120,6 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 				dataflow.FuncNames(nodes[i].Trace),
 				nodes[i].Node.Position(c).String())
 		}
-		c.Logger.Infof("-- SINK: %s\n", sinkPos.String())
+		c.Logger.Infof("-- ENDS WITH SINK: %s\n", sinkPos.String())
 	}
 }
