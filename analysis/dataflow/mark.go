@@ -49,6 +49,17 @@ const (
 	If
 )
 
+// IndexKind qualifies the kind of index of mark. It is either the index on a value returned by a function,
+// or not an actual index.
+type IndexKind int
+
+const (
+	// ReturnedTupleIndex is  index on a tuple returned by a functoin
+	ReturnedTupleIndex IndexKind = iota
+	// NonIndex is a non-index
+	NonIndex
+)
+
 func (m MarkType) String() string {
 	switch m {
 	case Parameter:
@@ -76,6 +87,22 @@ func (m MarkType) String() string {
 	}
 }
 
+// MarkIndex wraps an index kind and the index value together
+type MarkIndex struct {
+	// Kind is the kind of index (currently, either a real index or not)
+	Kind IndexKind
+	// Value is the integer value of the index
+	Value int
+}
+
+// NonIndexMark is the instance of the non-index of type MarkIndex
+var NonIndexMark = MarkIndex{Kind: NonIndex, Value: -1}
+
+// NewIndex returns a new MarkIndex of type ReturnedTupleIndex and with the value provided.
+func NewIndex(index int) MarkIndex {
+	return MarkIndex{Kind: ReturnedTupleIndex, Value: index}
+}
+
 // Mark is a node with additional information about its type and region Path (matching the paths in pointer analysis).
 // This is used to mark dataflow between nodes.
 type Mark struct {
@@ -90,7 +117,7 @@ type Mark struct {
 
 	// Index specifies an index of the tuple element referred to by this mark. Node's type must be a tuple.
 	// A Value of -1 indicates this can be ignored
-	Index int
+	Index MarkIndex
 
 	// Label holds additional information about the mark, for example the original access path relative to the
 	// parameter the mark is tracking
@@ -99,7 +126,7 @@ type Mark struct {
 
 // NewMark creates a source with a single type. Using this as constructor enforces that users provide an explicit
 // Value for index, whose default Value has a meaning that might not be intended
-func NewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index int, label string) Mark {
+func NewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, index MarkIndex, label string) Mark {
 	return Mark{
 		Node:      node,
 		Type:      typ,
@@ -166,8 +193,8 @@ func (m Mark) String() string {
 		str += m.Qualifier.Name() + " in "
 	}
 	str += m.Node.String()
-	if m.Index >= 0 {
-		str += " #" + strconv.Itoa(m.Index)
+	if m.Index.Kind == ReturnedTupleIndex {
+		str += " #" + strconv.Itoa(m.Index.Value)
 	}
 	if m.Label != "" {
 		str += "(" + m.Label + ")"

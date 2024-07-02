@@ -633,7 +633,6 @@ func (g *SummaryGraph) addEdge(source MarkWithAccessPath, dest GraphNode, cond *
 					updateEdgeInfo(source, dest, cond, sourceNode)
 				}
 			}
-
 		}
 	}
 
@@ -698,7 +697,6 @@ func isDiffNode(mark MarkWithAccessPath, source GraphNode, dest GraphNode) bool 
 
 func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionInfo, sourceNode GraphNode) {
 	outMap := sourceNode.Out()
-	index := source.Mark.Index
 	relPath := map[string]map[string]bool{source.Mark.Label: {source.AccessPath: true}}
 	edgeInfos, destPresent := outMap[dest]
 	if !destPresent {
@@ -707,7 +705,7 @@ func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionIn
 	edgeInfoFound := false
 	for _, edgeInfo := range edgeInfos {
 		// add the access path to each edge with matching index
-		if edgeInfo.Index == index {
+		if edgeInfo.Index == source.Mark.Index.Value {
 			edgeInfoFound = true
 			if _, ok := edgeInfo.RelPath[source.Mark.Label]; ok {
 				edgeInfo.RelPath[source.Mark.Label][source.AccessPath] = true
@@ -717,10 +715,10 @@ func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionIn
 		}
 	}
 	if !edgeInfoFound {
-		outMap[dest] = append(edgeInfos, EdgeInfo{relPath, index, info})
+		outMap[dest] = append(edgeInfos, EdgeInfo{relPath, source.Mark.Index.Value, info})
 	}
 
-	addInEdge(dest, sourceNode, EdgeInfo{relPath, index, info})
+	addInEdge(dest, sourceNode, EdgeInfo{relPath, source.Mark.Index.Value, info})
 }
 
 // addCallArgEdge adds an edge in the summary from a mark to a function call argument.
@@ -735,8 +733,7 @@ func (g *SummaryGraph) addCallArgEdge(mark MarkWithAccessPath, cond *ConditionIn
 	for _, callNode := range callNodes {
 		callNodeArg := callNode.FindArg(arg)
 		if callNodeArg == nil {
-			g.addError(fmt.Errorf("attempting to set call arg edge but no call arg node"))
-			return
+			panic("attempting to set call arg edge but no call arg node")
 		}
 		g.addEdge(mark, callNodeArg, cond)
 	}
@@ -1295,10 +1292,14 @@ func ppEdge(w io.Writer, n GraphNode, c EdgeInfo, arrow string) {
 	if c.Index >= 0 {
 		prefix += "#" + strconv.Itoa(c.Index)
 	}
-	if len(c.RelPath) > 0 {
-		prefix += "@"
-		for inPath, outPaths := range c.RelPath {
-			for outPath := range outPaths {
+	prefixed := false
+	for inPath, outPaths := range c.RelPath {
+		for outPath := range outPaths {
+			if inPath != "" || outPath != "" {
+				if !prefixed {
+					prefix += "@"
+					prefixed = true
+				}
 				prefix += fmt.Sprintf("<%s,%s>", inPath, outPath)
 			}
 		}

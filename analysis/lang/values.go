@@ -16,6 +16,7 @@ package lang
 
 import (
 	"go/token"
+	"go/types"
 
 	"golang.org/x/tools/go/ssa"
 )
@@ -225,4 +226,13 @@ func MatchNegation(x ssa.Value) ssa.Value {
 		return v.X
 	}
 	return nil
+}
+
+// TryTupleIndexType extract the type of element i in tuple type, or returns the type if it's not a tuple type
+func TryTupleIndexType(v types.Type, i int) types.Type {
+	tupleType, ok := v.(*types.Tuple)
+	if !ok {
+		return v
+	}
+	return tupleType.At(i).Type()
 }

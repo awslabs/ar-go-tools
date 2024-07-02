@@ -42,7 +42,7 @@ func DoPointerAnalysis(c *config.Config, p *ssa.Program,
 	functionFilter func(*ssa.Function) bool,
 	functionSet map[*ssa.Function]bool) (*pointer.Result, error) {
 	doReflection := false
-	if c != nil {
+	if c != nil && c.PointerConfig != nil {
 		doReflection = c.PointerConfig.Reflection
 	}
 	pCfg := &pointer.Config{
@@ -73,7 +73,7 @@ func DoPointerAnalysis(c *config.Config, p *ssa.Program,
 		}
 	}
 
-	if c != nil {
+	if c != nil && c.PointerConfig != nil {
 		for _, functionName := range c.PointerConfig.UnsafeNoEffectFunctions {
 			pCfg.AddNoEffectFunction(functionName)
 		}
