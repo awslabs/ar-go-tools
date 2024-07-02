@@ -41,22 +41,22 @@ func TestBacktraceTaint(t *testing.T) {
 		{"basic", []string{"bar.go", "example.go", "example2.go", "example3.go", "memory.go"}},
 		{"builtins", []string{"helpers.go"}},
 		// TODO backtrace needs updating
-		//{"interfaces", []string{}},
-		// TODO backtrace needs updating
-		//{"parameters", []string{}},
+		{"interfaces", []string{}},
+		{"parameters", []string{}},
 		{"example1", []string{}},
 		{"example2", []string{}},
 		{"defers", []string{}},
 		{"closures", []string{"helpers.go"}},
 		// TODO: fix false positives
 		// {"closures_flowprecise", []string{"helpers.go"}},
+		{"closures_paper", []string{"helpers.go"}},
 		// TODO fix false positives
 		// {"fromlevee", []string{}},
 		{"globals", []string{"helpers.go"}},
 		{"stdlib", []string{"helpers.go"}},
 		{"selects", []string{"helpers.go"}},
+		{"tuples", []string{}},
 		{"panics", []string{}},
-		{"closures_paper", []string{"helpers.go"}},
 	}
 
 	for _, test := range tests {
@@ -187,7 +187,7 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
 	for _, trace := range traces {
 		// sink is always the last node in the trace because it's the analysis entrypoint
 		sink := trace[len(trace)-1]
-		si := dataflow.Instr(sink.GraphNode)
+		si := dataflow.Instr(sink.Node)
 		if si == nil {
 			continue
 		}
@@ -203,12 +203,12 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
 		}
 
 		for _, node := range trace {
-			instr := dataflow.Instr(node.GraphNode)
+			instr := dataflow.Instr(node.Node)
 			if instr == nil {
 				continue
 			}
 
-			sn := sourceNode(node.GraphNode)
+			sn := sourceNode(node.Node)
 			if isSourceNode(cfg, sn) {
 				sourcePos := instr.Pos()
 				sourceFile := prog.Fset.File(sourcePos)

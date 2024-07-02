@@ -103,6 +103,6 @@ func main() {
 	}
 
 	for _, trace := range analysisInfo.Traces {
-		logger.Printf("%v\n", trace)
+		logger.Printf("%v\n\n", trace)
 	}
 }
