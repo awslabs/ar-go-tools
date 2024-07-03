@@ -185,12 +185,12 @@ Indicating the source location. If any flow of tainted data from that source loc
 And if the option to print paths is set (`report-paths: true` in configuration file options), a trace is printed:
 ```
 [INFO] Report in taint-report/flow-2507865943.out
-[INFO] TRACE - Result of call to "GetSensitiveData"
-[INFO]       - Call  [(#13432.8)GetSensitiveData] /somedir/example.go:50:17
-[INFO] TRACE - Parameter "name" of "process" 
-[INFO]       - Param [(#23242.3)process] /somedir/processing.go:120:3
-[INFO] TRACE - Argument 0 in call to "processData"
-[INFO]       - CallArg [] /somedir/processing.go:180:23
+[INFO] TRACE - Result of call to "GetSensitiveData" (type *DataStorage)
+[INFO]       - Context [(#13432.8)GetSensitiveData] Pos: /somedir/example.go:50:17
+[INFO] TRACE - Parameter "name" (type string) of "process" 
+[INFO]       - Context [(#23242.3)process] Pos: /somedir/processing.go:120:3
+[INFO] TRACE - Argument 0 (type string) in call to "processData"
+[INFO]       - Context [] Pos: /somedir/processing.go:180:23
 ...
 ```
 The first line shows where the report is stored.
@@ -203,11 +203,11 @@ Once the analysis has terminated, the tool will print a final message followed b
 ```
 [ERROR] RESULT:
      Taint flows detected!
-[WARN]  A source has reached a sink in function test2:
-        Sink: [SSA] sink(t6)
-                /somedir/main.go:68:6
+[WARN]  Data from a source has reached a sink
         Source: [SSA] (fooProducer).source(t3)
                 /somedir/main.go:66:15     
+        Sink: [SSA] sink(t6)
+                /somedir/main.go:68:6
 ```
 If there are no taint flows detected, then the success message will be printed:
 ```
@@ -488,7 +488,7 @@ you should see some output similar to:
 [ERROR] ESCAPE ANALYSIS RESULT:
                 Tainted data escapes origin thread!
 [WARN]  Data escapes thread in function main:
-        S: [SSA] *t18 = t0
+        Sink: [SSA] *t18 = t0
                 argot/testdata/src/taint/sample-escape/main.go:45:15
         Source: [SSA] source1()
                 argot/testdata/src/taint/sample-escape/main.go:41:14

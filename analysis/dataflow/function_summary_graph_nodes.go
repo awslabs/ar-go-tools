@@ -151,25 +151,27 @@ func NodeKind(g GraphNode) string {
 func NodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
-		return fmt.Sprintf("Parameter %q:%q of %q", x.ssaNode.Name(), x.Type().String(), x.parent.Parent.Name())
+		return fmt.Sprintf("Parameter %q (type %q) of %q",
+			x.ssaNode.Name(), x.Type().String(), x.parent.Parent.Name())
 	case *CallNode:
-		return fmt.Sprintf("Result of call to %q:%q", x.Callee().Name(), x.Type().String())
+		return fmt.Sprintf("Result of call to %q (type %q)", x.Callee().Name(), x.Type().String())
 	case *CallNodeArg:
-		return fmt.Sprintf("Argument %v:%q in call to %q", x.Index(), x.Type().String(), x.ParentNode().Callee().Name())
+		return fmt.Sprintf("Argument %v (type %q) in call to %q",
+			x.Index(), x.Type().String(), x.ParentNode().Callee().Name())
 	case *ReturnValNode:
-		return fmt.Sprintf("Return value %d:%q of %q", x.Index(), x.Type().String(), x.ParentName())
+		return fmt.Sprintf("Return value %d (type %q) of %q", x.Index(), x.Type().String(), x.ParentName())
 	case *ClosureNode:
 		return fmt.Sprintf("Closure")
 	case *BoundLabelNode:
-		return fmt.Sprintf("Bound label")
+		return fmt.Sprintf("Bound label of type %q", x.targetInfo.Type().String())
 	case *SyntheticNode:
 		return fmt.Sprintf("Synthetic node")
 	case *BoundVarNode:
 		return "Bound variable"
 	case *FreeVarNode:
-		return "Free variable"
+		return fmt.Sprintf("Free variable %d of %q", x.fvPos, x.ssaNode.Parent().String())
 	case *AccessGlobalNode:
-		return "Global "
+		return fmt.Sprintf("Global variable %q", x.Global.String())
 	}
 	return ""
 }
