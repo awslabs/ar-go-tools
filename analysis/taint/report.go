@@ -114,10 +114,11 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 			c.Logger.Infof("%s - %s",
 				formatutil.Purple("TRACE"),
 				dataflow.NodeSummary(nodes[i].Node))
-			c.Logger.Infof("%s - %s [%s] %s\n",
+			// - Context [<calling context string>] Pos: <position in source code>
+			c.Logger.Infof("%s - Context [%s] %s %s\n",
 				"     ",
-				dataflow.NodeKind(nodes[i].Node),
 				dataflow.FuncNames(nodes[i].Trace),
+				formatutil.Yellow("Pos:"),
 				nodes[i].Node.Position(c).String())
 		}
 		c.Logger.Infof("-- ENDS WITH SINK: %s\n", sinkPos.String())

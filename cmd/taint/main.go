@@ -36,7 +36,6 @@ var (
 	maxDepth   = flag.Int("max-depth", -1, "Override max depth in config")
 	// Other constants
 	buildmode = ssa.InstantiateGenerics // necessary for reachability
-	version   = "unknown"
 )
 
 func init() {
@@ -81,7 +80,7 @@ func main() {
 		taintConfig.UnsafeMaxDepth = *maxDepth
 	}
 
-	logger.Printf(formatutil.Faint("Argot taint tool - build " + version))
+	logger.Printf(formatutil.Faint("Argot taint tool - " + analysis.Version))
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 
 	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
@@ -133,13 +132,13 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 			sourcePos := program.Fset.File(sourceInstr.Pos()).Position(sourceInstr.Pos())
 			sinkPos := program.Fset.File(sinkInstr.Pos()).Position(sinkInstr.Pos())
 			result.State.Logger.Warnf(
-				"%s in function %s:\n\tS: [SSA] %s\n\t\t%s\n\tSource: [SSA] %s\n\t\t%s\n",
-				formatutil.Red("A source has reached a sink"),
-				sinkInstr.Parent().Name(),
-				formatutil.SanitizeRepr(sinkInstr),
-				sinkPos.String(), // safe %s (position string)
+				"%s in function %s:\n\tSource: [SSA] %s\n\t\t%s\n\tSink: [SSA] %s\n\t\t%s\n",
+				formatutil.Red("Data from a source has reached a sink"),
+				sourceInstr.Parent().Name(),
 				formatutil.SanitizeRepr(sourceInstr),
 				sourcePos.String(), // safe %s (position string)
+				formatutil.SanitizeRepr(sinkInstr),
+				sinkPos.String(), // safe %s (position string)
 			)
 		}
 	}
