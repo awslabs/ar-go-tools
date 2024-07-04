@@ -94,12 +94,20 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestPr
 	}
 	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
 	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.BuildSerially)
-
+	// Look for a yaml config file first
 	configFileName := filepath.Join(dir, "config.yaml")
 	cfg, err := config.LoadFromFiles(configFileName)
 	if err != nil {
-		return LoadedTestProgram{Pkgs: pkgs},
-			fmt.Errorf("failed to read config file %v: %v", configFileName, err)
+		// Look for a json config file if the yaml couldn't be loaded
+		configFileNameJson := filepath.Join(dir, "config.json")
+		cfgJson, errJson := config.LoadFromFiles(configFileNameJson)
+		if errJson != nil {
+			return LoadedTestProgram{Pkgs: pkgs},
+				fmt.Errorf("failed to read config file %v (%v) and %v (%v)",
+					configFileNameJson, errJson,
+					configFileName, err)
+		}
+		cfg = cfgJson
 	}
 	program.Build()
 	return LoadedTestProgram{Prog: program, Config: cfg, Pkgs: pkgs}, nil

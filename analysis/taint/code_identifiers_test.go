@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
-	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
@@ -34,12 +34,12 @@ type functionToNode map[*ssa.Function][]ssa.Node
 
 type PackageToNodes map[*ssa.Package]functionToNode
 
-type nodeIDFunction func(*config.Config, *pointer.Result, ssa.Node) bool
+type nodeIDFunction func(*dataflow.AnalyzerState, ssa.Node) bool
 
-func NewPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIDFunction) PackageToNodes {
+func NewPackagesMap(s *dataflow.AnalyzerState, f nodeIDFunction) PackageToNodes {
 	packageMap := make(PackageToNodes)
-	for _, pkg := range pkgs {
-		pkgMap := newPackageMap(c, pkg, f)
+	for _, pkg := range s.Program.AllPackages() {
+		pkgMap := newPackageMap(s, pkg, f)
 		if len(pkgMap) > 0 {
 			packageMap[pkg] = pkgMap
 		}
@@ -47,23 +47,23 @@ func NewPackagesMap(c *config.Config, pkgs []*ssa.Package, f nodeIDFunction) Pac
 	return packageMap
 }
 
-func newPackageMap(c *config.Config, pkg *ssa.Package, f nodeIDFunction) functionToNode {
+func newPackageMap(s *dataflow.AnalyzerState, pkg *ssa.Package, f nodeIDFunction) functionToNode {
 	fMap := make(functionToNode)
 	for _, mem := range pkg.Members {
 		switch fn := mem.(type) {
 		case *ssa.Function:
-			populateFunctionMap(c, fMap, fn, f)
+			populateFunctionMap(s, fMap, fn, f)
 		}
 	}
 	return fMap
 }
 
-func populateFunctionMap(config *config.Config, fMap functionToNode, current *ssa.Function, f nodeIDFunction) {
+func populateFunctionMap(s *dataflow.AnalyzerState, fMap functionToNode, current *ssa.Function, f nodeIDFunction) {
 	var sources []ssa.Node
 	for _, b := range current.Blocks {
 		for _, instr := range b.Instrs {
 			// An instruction should always be a Node too.
-			if n := instr.(ssa.Node); f(config, nil, n) {
+			if n := instr.(ssa.Node); f(s, n) {
 				sources = append(sources, n)
 			}
 		}
@@ -81,15 +81,15 @@ var taintSourcesAnalyzer = &analysis.Analyzer{
 }
 
 // newSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
-func newSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
-	return NewPackagesMap(c, pkgs, taint.IsSomeSourceNode)
+func newSourceMap(s *dataflow.AnalyzerState) PackageToNodes {
+	return NewPackagesMap(s, taint.IsSomeSourceNode)
 }
 
 // newSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
-func newSinkMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
-	return NewPackagesMap(c, pkgs,
-		func(cfg *config.Config, p *pointer.Result, node ssa.Node) bool {
-			return taint.IsMatchingCodeIDWithCallee(cfg.IsSomeSink, nil, node)
+func newSinkMap(s *dataflow.AnalyzerState) PackageToNodes {
+	return NewPackagesMap(s,
+		func(s *dataflow.AnalyzerState, node ssa.Node) bool {
+			return taint.IsMatchingCodeIDWithCallee(s.Config.IsSomeSink, nil, node)
 		})
 }
 
@@ -99,7 +99,12 @@ func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {
 		return nil, fmt.Errorf("could not load config: %w", err)
 	}
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
-	sourceMap := newSourceMap(testConfig, []*ssa.Package{ssaInfo.Pkg})
+	s, err := dataflow.NewAnalyzerState(ssaInfo.Pkg.Prog, config.NewLogGroup(testConfig), testConfig,
+		[]func(state *dataflow.AnalyzerState){})
+	if err != nil {
+		return nil, err
+	}
+	sourceMap := newSourceMap(s)
 	for _, fnMap := range sourceMap {
 		for _, instructions := range fnMap {
 			for _, instruction := range instructions {
@@ -141,7 +146,12 @@ func runSinkAnalysis(pass *analysis.Pass) (interface{}, error) {
 		return nil, fmt.Errorf("could not load config: %w", err)
 	}
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
-	sourceMap := newSinkMap(testConfig, []*ssa.Package{ssaInfo.Pkg})
+	s, err := dataflow.NewAnalyzerState(ssaInfo.Pkg.Prog, config.NewLogGroup(testConfig), testConfig,
+		[]func(state *dataflow.AnalyzerState){})
+	if err != nil {
+		return nil, err
+	}
+	sourceMap := newSinkMap(s)
 	for _, fnMap := range sourceMap {
 		for _, instrs := range fnMap {
 			for _, instruction := range instrs {

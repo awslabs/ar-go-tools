@@ -19,7 +19,6 @@ import (
 	"go/types"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -50,7 +49,7 @@ func IntraProceduralAnalysis(state *AnalyzerState,
 	function *ssa.Function,
 	buildSummary bool,
 	id uint32,
-	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool,
+	shouldTrack func(*AnalyzerState, ssa.Node) bool,
 	postBlockCallback func(*IntraAnalysisState)) (IntraProceduralResult, error) {
 	var err error
 	var sm *SummaryGraph
@@ -321,7 +320,7 @@ func (state *IntraAnalysisState) makeEdgesAtIf(x *ssa.If) {
 func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
 	aState := state.parentAnalyzerState
 	if asValue, ok := instr.(ssa.Value); ok &&
-		state.shouldTrack(aState.Config, aState.PointerAnalysis, instr.(ssa.Node)) {
+		state.shouldTrack(aState, instr.(ssa.Node)) {
 		for _, origin := range state.getMarks(instr, asValue, "", false) {
 			_, isField := instr.(*ssa.Field)
 			_, isFieldAddr := instr.(*ssa.FieldAddr)

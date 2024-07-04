@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/annotations"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -32,6 +33,9 @@ import (
 // AnalyzerState holds information that might need to be used during program analysis, and represents the state of
 // the analyzer. Different steps of the analysis will populate the fields of this structure.
 type AnalyzerState struct {
+	// Annotations contains all the annotations of the program
+	Annotations annotations.ProgramAnnotations
+
 	// The logger used during the analysis (can be used to control output.
 	Logger *config.LogGroup
 
@@ -109,8 +113,16 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 	steps []func(*AnalyzerState)) (*AnalyzerState, error) {
 	var allContracts []Contract
 
+	// Load annotations
+	pa, err := annotations.LoadAnnotations(l, p.AllPackages())
+	if err != nil {
+		return nil, err
+	}
+	l.Infof("Loaded %d annotations from program\n", pa.Count())
+
 	// New state with initial cha callgraph
 	state := &AnalyzerState{
+		Annotations:           pa,
 		Logger:                l,
 		Config:                c,
 		Program:               p,
