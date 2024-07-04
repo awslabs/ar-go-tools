@@ -33,7 +33,7 @@ func programLoadTest(t *testing.T, files []string) {
 		return
 	}
 
-	pkgs, err := LoadProgram(nil, "", ssa.BuilderMode(0), files)
+	pkgs, _, err := LoadProgram(nil, "", ssa.BuilderMode(0), files)
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}

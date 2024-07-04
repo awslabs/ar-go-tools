@@ -230,7 +230,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 		if isCall(instr, "assertSameAliases") {
 			args := instr.(*ssa.Call).Call.Args
 			if len(args) != 2 {
-				return fmt.Errorf("Expected 2 arguments to special assertion")
+				return fmt.Errorf("expected 2 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
 			b := ea.nodes.ValueNode(args[1])
@@ -243,7 +243,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 		} else if isCall(instr, "assertAllLeaked") {
 			args := instr.(*ssa.Call).Call.Args
 			if len(args) != 1 {
-				return fmt.Errorf("Expected 1 arguments to special assertion")
+				return fmt.Errorf("expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
 			for _, e := range g.Edges(a, nil, EdgeAll) {
@@ -254,7 +254,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 		} else if isCall(instr, "assertAllLocal") {
 			args := instr.(*ssa.Call).Call.Args
 			if len(args) != 1 {
-				return fmt.Errorf("Expected 1 arguments to special assertion")
+				return fmt.Errorf("expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
 			for _, e := range g.Edges(a, nil, EdgeAll) {
@@ -265,7 +265,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 		} else if isCall(instr, "assertNotNil") {
 			args := instr.(*ssa.Call).Call.Args
 			if len(args) != 1 {
-				return fmt.Errorf("Expected 1 arguments to special assertion")
+				return fmt.Errorf("expected 1 arguments to special assertion")
 			}
 			a := ea.nodes.ValueNode(args[0])
 
@@ -287,11 +287,9 @@ func TestInterproceduralEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	program := lp.Prog
-	cfg := lp.Config
-	cfg.LogLevel = int(config.ErrLevel)
+	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	state, err := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
+	state, err := dataflow.NewAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config,
 		[]func(*dataflow.AnalyzerState){
 			func(s *dataflow.AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		})
@@ -303,7 +301,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	mainFunc := findFunction(program, "main")
+	mainFunc := findFunction(lp.Prog, "main")
 	if mainFunc == nil {
 		t.Fatalf("failed to find main function")
 	}
@@ -319,7 +317,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	// program points)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
-			f := findFunction(program, funcName)
+			f := findFunction(lp.Prog, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
 			}
@@ -353,16 +351,14 @@ func TestBuiltinsEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	program := lp.Prog
-	cfg := lp.Config
-	cfg.LogLevel = int(config.ErrLevel)
+	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	cache, _ := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	mainFunc := findFunction(program, "main")
+	mainFunc := findFunction(lp.Prog, "main")
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
@@ -375,7 +371,7 @@ func TestBuiltinsEscape(t *testing.T) {
 	// program points)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
-			f := findFunction(program, funcName)
+			f := findFunction(lp.Prog, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
 			}
@@ -410,17 +406,14 @@ func TestStdlibEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	program := lp.Prog
-	cfg := lp.Config
-	cfg.LogLevel = int(config.ErrLevel)
-
+	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	cache, _ := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	mainFunc := findFunction(program, "main")
+	mainFunc := findFunction(lp.Prog, "main")
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
@@ -433,7 +426,7 @@ func TestStdlibEscape(t *testing.T) {
 	// program points)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
-			f := findFunction(program, funcName)
+			f := findFunction(lp.Prog, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
 			}
@@ -596,7 +589,7 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistes
 		for line, anno := range fAnnos {
 			if anno.ID == "NONLOCAL" {
 				if !fAnnosCovered[line][node] {
-					return fmt.Errorf("Line %v was expected to have at least one non-local instruction (with rationale: %s)", line, anno.Meta)
+					return fmt.Errorf("line %v was expected to have at least one non-local instruction (with rationale: %s)", line, anno.Meta)
 				}
 			}
 		}
@@ -614,7 +607,7 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistes
 				}
 			}
 			if !seenLocal || !seenNonlocal {
-				return fmt.Errorf("Line %v was expected to be local in some contexts and non-local in others (local: %v, non-local: %v)", line, seenLocal, seenNonlocal)
+				return fmt.Errorf("line %v was expected to be local in some contexts and non-local in others (local: %v, non-local: %v)", line, seenLocal, seenNonlocal)
 			}
 		}
 	}
@@ -638,11 +631,9 @@ func TestLocalityComputation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	program := lp.Prog
-	cfg := lp.Config
-	cfg.LogLevel = int(config.ErrLevel)
+	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	cache, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer state: %v", err)
 	}
@@ -650,7 +641,7 @@ func TestLocalityComputation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	mainFunc := findFunction(program, "main")
+	mainFunc := findFunction(lp.Prog, "main")
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
@@ -663,7 +654,7 @@ func TestLocalityComputation(t *testing.T) {
 	annos := annotations(lp.Prog.Fset, astFiles)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
-			f := findFunction(program, funcName)
+			f := findFunction(lp.Prog, funcName)
 			if f == nil {
 				t.Fatalf("Couldn't find function %v", funcName)
 			}

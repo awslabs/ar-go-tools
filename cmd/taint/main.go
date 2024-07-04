@@ -83,14 +83,14 @@ func main() {
 	logger.Printf(formatutil.Faint("Argot taint tool - " + analysis.Version))
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 
-	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return
 	}
 
 	start := time.Now()
-	result, err := taint.Analyze(taintConfig, program)
+	result, err := taint.Analyze(taintConfig, program, pkgs)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed:\n")

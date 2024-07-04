@@ -99,7 +99,7 @@ func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {
 		return nil, fmt.Errorf("could not load config: %w", err)
 	}
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
-	s, err := dataflow.NewAnalyzerState(ssaInfo.Pkg.Prog, config.NewLogGroup(testConfig), testConfig,
+	s, err := dataflow.NewAnalyzerState(ssaInfo.Pkg.Prog, nil, config.NewLogGroup(testConfig), testConfig,
 		[]func(state *dataflow.AnalyzerState){})
 	if err != nil {
 		return nil, err
@@ -146,7 +146,7 @@ func runSinkAnalysis(pass *analysis.Pass) (interface{}, error) {
 		return nil, fmt.Errorf("could not load config: %w", err)
 	}
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
-	s, err := dataflow.NewAnalyzerState(ssaInfo.Pkg.Prog, config.NewLogGroup(testConfig), testConfig,
+	s, err := dataflow.NewAnalyzerState(ssaInfo.Pkg.Prog, nil, config.NewLogGroup(testConfig), testConfig,
 		[]func(state *dataflow.AnalyzerState){})
 	if err != nil {
 		return nil, err

@@ -26,7 +26,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // LoadedTestProgram represents a loaded test program.
@@ -88,12 +87,11 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestPr
 	for _, fp := range filePaths {
 		patterns = append(patterns, fmt.Sprintf("file=%s", fp))
 	}
-	pkgs, err := packages.Load(&pcfg, patterns...)
-	if err != nil {
-		return LoadedTestProgram{}, fmt.Errorf("failed to load packages: %w", err)
-	}
 	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
-	program, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics|ssa.BuildSerially)
+	program, pkgs, err := analysis.LoadProgram(&pcfg, "", ssa.InstantiateGenerics|ssa.BuildSerially, patterns)
+	if err != nil {
+		return LoadedTestProgram{}, err
+	}
 	// Look for a yaml config file first
 	configFileName := filepath.Join(dir, "config.yaml")
 	cfg, err := config.LoadFromFiles(configFileName)
@@ -129,12 +127,7 @@ func LoadTestFromDisk(dir string, extraFiles []string) (LoadedTestProgram, error
 	}
 	mode := packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedDeps | packages.NeedTypesInfo
 	pcfg := packages.Config{Mode: mode}
-	pkgs, err := packages.Load(&pcfg, patterns...)
-	if err != nil {
-		return LoadedTestProgram{}, fmt.Errorf("failed to load packages: %w", err)
-	}
-
-	prog, err := analysis.LoadProgram(nil, "", ssa.InstantiateGenerics, files)
+	prog, pkgs, err := analysis.LoadProgram(&pcfg, "", ssa.InstantiateGenerics, files)
 	if err != nil {
 		return LoadedTestProgram{Pkgs: pkgs}, fmt.Errorf("error loading packages: %v", err)
 	}

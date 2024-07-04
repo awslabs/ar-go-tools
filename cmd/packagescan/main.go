@@ -107,11 +107,11 @@ func doMain() error {
 	// todo -- technically we could run these in parallel...
 	// (though tbf, the LoadProgram does exploit multiple cores already)
 	for _, platform := range platforms {
-		program, loadingErr := analysis.LoadProgram(nil, platform, mode, flag.Args())
+		program, pkgs, loadingErr := analysis.LoadProgram(nil, platform, mode, flag.Args())
 		if loadingErr != nil {
 			return loadingErr
 		}
-		analyzer, analyzerErr := dataflow.NewDefaultAnalyzer(program)
+		analyzer, analyzerErr := dataflow.NewDefaultAnalyzer(program, pkgs)
 		if analyzerErr != nil {
 			return analyzerErr
 		}
@@ -119,9 +119,7 @@ func doMain() error {
 		fmt.Fprintln(os.Stderr, formatutil.Faint("Analyzing for "+platform))
 
 		allPkgs := analysis.AllPackages(analyzer.ReachableFunctions())
-
-		pkgs := FindImporters(allPkgs, pkg, !inexact, rawFile)
-		results[platform] = pkgs
+		results[platform] = FindImporters(allPkgs, pkg, !inexact, rawFile)
 	}
 
 	DumpResultsByOS(results)

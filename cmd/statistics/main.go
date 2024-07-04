@@ -88,7 +88,7 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func doMain() error {
 	excludeAbsolute := analysisutil.MakeAbsolute(exclude)
 	defaultConfig := config.NewDefault()
 	logGroup := config.NewLogGroup(defaultConfig)
-	analyzer, err := dataflow.NewAnalyzerState(program, logGroup, defaultConfig, nil)
+	analyzer, err := dataflow.NewAnalyzerState(program, pkgs, logGroup, defaultConfig, nil)
 	if err != nil {
 		logGroup.Errorf("Failed to initialize state ...")
 		return nil

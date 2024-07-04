@@ -29,7 +29,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/term"
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -119,21 +118,13 @@ func main() {
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 	state.Args = flag.Args()
 	// Load the program
-	program, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return
 	}
-	// Keep ast in state separately for now
-	p := &packages.Config{
-		Mode:  analysis.PkgLoadMode,
-		Tests: false,
-	}
-	initialPackages, _ := packages.Load(p, flag.Args()...)
-	state.InitialPackages = initialPackages
-
 	// Initialize an analyzer state
-	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(pConfig), pConfig, program)
+	state, err := dataflow.NewInitializedAnalyzerState(program, pkgs, config.NewLogGroup(pConfig), pConfig)
 	if err != nil {
 		panic(err)
 	}

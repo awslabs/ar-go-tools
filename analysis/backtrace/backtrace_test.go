@@ -26,7 +26,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"golang.org/x/tools/go/ssa"
 )
 
 //go:embed testdata
@@ -38,11 +37,8 @@ func TestAnalyze(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := lp.Config
-	setupConfig(cfg, false)
-	program := lp.Prog
-
-	testAnalyze(t, cfg, program)
+	setupConfig(lp.Config, false)
+	testAnalyze(t, lp)
 
 	// TODO fix the false positives
 	// if len(tests) != len(res.Traces) {
@@ -65,18 +61,15 @@ func TestAnalyze_OnDemand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := lp.Config
-	setupConfig(cfg, true)
-	program := lp.Prog
-
-	testAnalyze(t, cfg, program)
+	setupConfig(lp.Config, true)
+	testAnalyze(t, lp)
 }
 
 var ignoreMatch = match{-1, nil, -1}
 
-func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	lg := config.NewLogGroup(cfg)
-	res, err := backtrace.Analyze(lg, cfg, program)
+func testAnalyze(t *testing.T, lp analysistest.LoadedTestProgram) {
+	lg := config.NewLogGroup(lp.Config)
+	res, err := backtrace.Analyze(lg, lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,11 +358,8 @@ func TestAnalyze_Closures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := lp.Config
-	setupConfig(cfg, false)
-	program := lp.Prog
-
-	testAnalyzeClosures(t, cfg, program)
+	setupConfig(lp.Config, false)
+	testAnalyzeClosures(t, lp)
 }
 
 func TestAnalyze_Closures_OnDemand(t *testing.T) {
@@ -380,18 +370,14 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := lp.Config
-	setupConfig(cfg, false)
-	program := lp.Prog
-
-	cfg.SummarizeOnDemand = true
-	testAnalyzeClosures(t, cfg, program)
+	lp.Config.SummarizeOnDemand = true
+	testAnalyzeClosures(t, lp)
 }
 
-func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program) {
-	cfg.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
-	lg := config.NewLogGroup(cfg)
-	res, err := backtrace.Analyze(lg, cfg, program)
+func testAnalyzeClosures(t *testing.T, lp analysistest.LoadedTestProgram) {
+	lp.Config.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
+	lg := config.NewLogGroup(lp.Config)
+	res, err := backtrace.Analyze(lg, lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatal(err)
 	}

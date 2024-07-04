@@ -27,6 +27,7 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -41,6 +42,9 @@ type AnalyzerState struct {
 
 	// The configuration file for the analysis
 	Config *config.Config
+
+	// Packages store the packages initially loaded. Can be used to seek syntactic information
+	Packages []*packages.Package
 
 	// The program to be analyzed. It should be a complete buildable program (e.g. loaded by LoadProgram).
 	Program *ssa.Program
@@ -91,10 +95,10 @@ type AnalyzerState struct {
 //   - computing a map from interface types to the implementations of their methods
 //   - scanning the usage of globals in the program
 //   - linking aliases of bound variables to the closure that binds them
-func NewInitializedAnalyzerState(logger *config.LogGroup, config *config.Config,
-	program *ssa.Program) (*AnalyzerState, error) {
+func NewInitializedAnalyzerState(program *ssa.Program, pkgs []*packages.Package,
+	logger *config.LogGroup, config *config.Config) (*AnalyzerState, error) {
 	program.Build()
-	state, err := NewAnalyzerState(program, logger, config, []func(*AnalyzerState){
+	state, err := NewAnalyzerState(program, pkgs, logger, config, []func(*AnalyzerState){
 		func(s *AnalyzerState) { s.PopulateImplementations() },
 		func(s *AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		func(s *AnalyzerState) { s.PopulateGlobalsVerbose() },
@@ -110,12 +114,16 @@ func NewInitializedAnalyzerState(logger *config.LogGroup, config *config.Config,
 }
 
 // NewAnalyzerState returns a properly initialized analyzer state by running essential steps in parallel.
-func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
+func NewAnalyzerState(p *ssa.Program, pkgs []*packages.Package, l *config.LogGroup, c *config.Config,
 	steps []func(*AnalyzerState)) (*AnalyzerState, error) {
 	var allContracts []Contract
 
 	// Load annotations
 	pa, err := annotations.LoadAnnotations(l, p.AllPackages())
+	if pkgs != nil {
+		pa.CompleteFromSyntax(pkgs)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +134,7 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 		Annotations:           pa,
 		Logger:                l,
 		Config:                c,
+		Packages:              pkgs,
 		Program:               p,
 		ImplementationsByType: map[string]map[*ssa.Function]bool{},
 		DataFlowContracts:     map[string]*SummaryGraph{},
@@ -197,10 +206,10 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 // NewDefaultAnalyzer returns a new analyzer with a default config and a default log group.
 // This is useful if you only need the basic functionality, for example callgraph construction
 // and pointer analysis.
-func NewDefaultAnalyzer(p *ssa.Program) (*AnalyzerState, error) {
+func NewDefaultAnalyzer(p *ssa.Program, pkgs []*packages.Package) (*AnalyzerState, error) {
 	defaultConfig := config.NewDefault()
 	defaultLogGroup := config.NewLogGroup(defaultConfig)
-	return NewAnalyzerState(p, defaultLogGroup, defaultConfig, nil)
+	return NewAnalyzerState(p, pkgs, defaultLogGroup, defaultConfig, nil)
 }
 
 // CopyTo copies pointers in receiver into argument (shallow copy of everything except mutex).

@@ -86,7 +86,7 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, err := analysis.LoadProgram(nil, "", mode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func doMain() error {
 			return fmt.Errorf("failed to load config %s: %s", configFilename, err)
 		}
 	}
-	state, err := dataflow.NewAnalyzerState(program,
+	state, err := dataflow.NewAnalyzerState(program, pkgs,
 		config.NewLogGroup(cfg), cfg, []func(state *dataflow.AnalyzerState){})
 	if err != nil {
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)

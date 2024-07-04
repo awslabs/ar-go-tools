@@ -32,10 +32,7 @@ func TestComputeCtxts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	cfg := lp.Config
-	program := lp.Prog
-
-	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	state, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	if err != nil {
 		t.Fatalf("error building state: %s", err)
 	}
