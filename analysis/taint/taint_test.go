@@ -189,6 +189,10 @@ func TestTaint(t *testing.T) {
 				expectTaintedCondInFuncs("example1", "example2", "example3", "switchByte"),
 			},
 		},
+		{
+			name: "annotations",
+			args: args{"annotations", []string{}, noErrorExpected},
+		},
 	}
 
 	for _, tt := range tests {

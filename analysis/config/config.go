@@ -145,7 +145,8 @@ type PointerConfig struct {
 	Reflection bool
 }
 
-// TaintSpec contains code identifiers that identify a specific taint tracking problem
+// TaintSpec contains code identifiers that identify a specific taint tracking problem, or contains a code that
+// can differentiate groups of annotations
 type TaintSpec struct {
 	// Sanitizers is the list of sanitizers for the taint analysis
 	Sanitizers []CodeIdentifier
@@ -161,6 +162,9 @@ type TaintSpec struct {
 
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
+
+	// Tag identifies a group of annotations when used with annotations
+	Tag string
 
 	// FailOnImplicitFlow indicates whether the taint analysis should fail when tainted data implicitly changes
 	// the control flow of a program. This should be set to false when proving a data flow property,
@@ -431,20 +435,20 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	}
 
 	for _, tSpec := range cfg.TaintTrackingProblems {
-		funcutil.Iter(tSpec.Sanitizers, compileRegexes)
-		funcutil.Iter(tSpec.Sinks, compileRegexes)
-		funcutil.Iter(tSpec.Sources, compileRegexes)
-		funcutil.Iter(tSpec.Validators, compileRegexes)
-		funcutil.Iter(tSpec.Filters, compileRegexes)
+		funcutil.MapInPlace(tSpec.Sanitizers, compileRegexes)
+		funcutil.MapInPlace(tSpec.Sinks, compileRegexes)
+		funcutil.MapInPlace(tSpec.Sources, compileRegexes)
+		funcutil.MapInPlace(tSpec.Validators, compileRegexes)
+		funcutil.MapInPlace(tSpec.Filters, compileRegexes)
 	}
 
 	for _, sSpec := range cfg.SlicingProblems {
-		funcutil.Iter(sSpec.BacktracePoints, compileRegexes)
-		funcutil.Iter(sSpec.Filters, compileRegexes)
+		funcutil.MapInPlace(sSpec.BacktracePoints, compileRegexes)
+		funcutil.MapInPlace(sSpec.Filters, compileRegexes)
 	}
 
 	for _, stSpec := range cfg.StaticCommandsProblems {
-		funcutil.Iter(stSpec.StaticCommands, compileRegexes)
+		funcutil.MapInPlace(stSpec.StaticCommands, compileRegexes)
 	}
 
 	if cfg.PointerConfig == nil {

@@ -137,7 +137,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		traceNode(s, cur)
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
-		if isSink(v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
+		if isSink(s, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
 			if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
 				numAlarms++
 				reportTaintFlow(s, v.currentSource, cur)
@@ -154,14 +154,14 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// If node is sanitizer, we don't want to propagate further
 		// The validators will be checked in the addNext function
-		if isSanitizer(v.taintSpec, cur.Node) {
+		if isSanitizer(s, v.taintSpec, cur.Node) {
 			logger.Infof("Sanitizer encountered: %s\n", cur.Node.String())
 			logger.Infof("At: %s\n", cur.Node.Position(s))
 			continue
 		}
 
 		// If the node is filtered out, we don't inspect children
-		if isFiltered(v.taintSpec, cur.Node) {
+		if isFiltered(s, v.taintSpec, cur.Node) {
 			continue
 		}
 

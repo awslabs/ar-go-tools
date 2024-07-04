@@ -42,31 +42,31 @@ func TestLoadAnnotations(t *testing.T) {
 	for ssaFunc, functionAnnotation := range a.Funcs {
 		switch ssaFunc.Name() {
 		case "superSensitiveFunction":
-			if !testHasAnnotation(functionAnnotation.Mains, annotations.Sink, "_") {
+			if !testHasAnnotation(functionAnnotation.Mains(), annotations.Sink, "_") {
 				t.Errorf("superSensitiveFunction should be annotated with @Sink(_)")
 			}
 		case "sanitizerOfIo":
-			if !testHasAnnotation(functionAnnotation.Mains, annotations.Sanitizer, "io") {
+			if !testHasAnnotation(functionAnnotation.Mains(), annotations.Sanitizer, "io") {
 				t.Errorf("sanitizerOfIo should be annotated with @Sanitizer(io)")
 			}
 		case "bar":
-			if !testHasAnnotation(functionAnnotation.Mains, annotations.Source, "bar") {
+			if !testHasAnnotation(functionAnnotation.Mains(), annotations.Source, "bar") {
 				t.Errorf("bar should be annotated with @Source(bar)")
 			}
-			if !testHasAnnotation(functionAnnotation.Mains, annotations.Sink, "html") {
+			if !testHasAnnotation(functionAnnotation.Mains(), annotations.Sink, "html") {
 				t.Errorf("bar should be annotated with @Sink(html)")
 			}
-			for param, paramAnnotations := range functionAnnotation.Params {
+			for param, paramAnnotations := range functionAnnotation.Params() {
 				if param.Name() == "x" && !testHasAnnotation(paramAnnotations, annotations.Sink, "io") {
 					t.Errorf("parameter x of bar should be annotated with @Sink(io)")
 				}
 			}
 		case "foo":
-			if !testHasAnnotation(functionAnnotation.Mains, annotations.Source, "io") {
+			if !testHasAnnotation(functionAnnotation.Mains(), annotations.Source, "io") {
 				t.Errorf("foo should be annotated with @Source(io)")
 			}
 		default:
-			if len(functionAnnotation.Mains) > 0 {
+			if len(functionAnnotation.Mains()) > 0 {
 				t.Errorf("unexpected annotations on %s", ssaFunc.Name())
 			}
 		}
@@ -80,7 +80,7 @@ func testHasAnnotation(l []annotations.Annotation, kind annotations.AnnotationKi
 				return false
 			}
 			for i, content := range contents {
-				if a.Contents[i] != content {
+				if a.Tags[i] != content {
 					return false
 				}
 			}
