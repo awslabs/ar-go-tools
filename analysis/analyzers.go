@@ -22,12 +22,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -38,7 +36,7 @@ type IntraAnalysisParams struct {
 
 	// IsEntrypoint is a function that returns true if the node should be an entrypoint to the analysis.
 	// The entrypoint node is treated as a "source" of data.
-	IsEntrypoint func(*config.Config, *pointer.Result, ssa.Node) bool
+	IsEntrypoint func(*dataflow.AnalyzerState, ssa.Node) bool
 
 	// PostBlockCallback will be called each time a block is analyzed if the analysis is running on a single core
 	// This is useful for debugging purposes
@@ -79,7 +77,7 @@ func RunIntraProceduralPass(state *dataflow.AnalyzerState, numRoutines int, args
 
 // runJobs runs the intra-procedural analysis on each job in jobs in parallel and returns a slice with all the results.
 func runJobs(jobs []singleFunctionJob, numRoutines int,
-	isEntrypoint func(*config.Config, *pointer.Result, ssa.Node) bool) []dataflow.IntraProceduralResult {
+	isEntrypoint func(*dataflow.AnalyzerState, ssa.Node) bool) []dataflow.IntraProceduralResult {
 	f := func(job singleFunctionJob) dataflow.IntraProceduralResult {
 		return runSingleFunctionJob(job, isEntrypoint)
 	}
@@ -126,7 +124,7 @@ type singleFunctionJob struct {
 // runSingleFunctionJob runs the intra-procedural analysis with the information in job
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
-	isEntrypoint func(*config.Config, *pointer.Result, ssa.Node) bool) dataflow.IntraProceduralResult {
+	isEntrypoint func(*dataflow.AnalyzerState, ssa.Node) bool) dataflow.IntraProceduralResult {
 	targetName := lang.PackageNameFromFunction(job.function) + "." + job.function.Name()
 	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
 	result, err := dataflow.IntraProceduralAnalysis(job.analyzerState, job.function,

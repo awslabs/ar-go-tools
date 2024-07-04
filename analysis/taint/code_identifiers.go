@@ -26,8 +26,8 @@ import (
 )
 
 // IsSomeSourceNode returns true if n matches the code identifier of some source in the config
-func IsSomeSourceNode(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(p, n, cfg.IsSomeSource)
+func IsSomeSourceNode(s *dataflow.AnalyzerState, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(s.PointerAnalysis, n, s.Config.IsSomeSource)
 }
 
 // IsSourceNode returns true if n matches the code identifier of a source node in the taint specification

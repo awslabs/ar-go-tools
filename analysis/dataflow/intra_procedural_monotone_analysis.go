@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"go/token"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
@@ -67,7 +66,7 @@ type IntraAnalysisState struct {
 	freeVarAliases []map[*ssa.FreeVar]bool
 
 	// shouldTrack returns true if dataflow from the ssa node should be tracked
-	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool
+	shouldTrack func(*AnalyzerState, ssa.Node) bool
 
 	// postBlockCallback is called after each block if it is non-nil. Useful for debugging purposes.
 	postBlockCallback func(*IntraAnalysisState)
@@ -312,7 +311,7 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 
 // optionalSyntheticNode tracks the flow of data from a synthetic node.
 func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
-	if state.shouldTrack(state.parentAnalyzerState.Config, state.parentAnalyzerState.PointerAnalysis, asNode) {
+	if state.shouldTrack(state.parentAnalyzerState, asNode) {
 		s := state.flowInfo.GetNewMark(asNode, Synthetic+DefaultMark, nil, NonIndexMark)
 		state.markValue(asInstr, asValue, "", s)
 	}

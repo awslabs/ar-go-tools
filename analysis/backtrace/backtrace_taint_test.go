@@ -119,9 +119,12 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// for _, trace := range res.Traces {
 	// 	t.Log(trace)
 	// }
-
+	s, err := dataflow.NewInitializedAnalyzerState(log, cfg, program)
+	if err != nil {
+		t.Fatalf("failed to create state for result inspection: %s", err)
+	}
 	traces := mergeTraces(res) // TODO use entrypoint info to match sinks?
-	reached := reachedSinkPositions(program, cfg, traces)
+	reached := reachedSinkPositions(s, traces)
 	if len(reached) == 0 {
 		t.Fatal("expected reached sink positions to be present")
 	}
@@ -182,7 +185,7 @@ func isExpected(expected analysistest.TargetToSources, sourcePos analysistest.LP
 
 // reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
+func reachedSinkPositions(s *dataflow.AnalyzerState,
 	traces []backtrace.Trace) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 	for _, trace := range traces {
@@ -193,7 +196,7 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
 			continue
 		}
 		sinkPos := si.Pos()
-		sinkFile := prog.Fset.File(sinkPos)
+		sinkFile := s.Program.Fset.File(sinkPos)
 		if sinkPos == token.NoPos || sinkFile == nil {
 			continue
 		}
@@ -210,9 +213,9 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
 			}
 
 			sn := sourceNode(node.Node)
-			if isSourceNode(cfg, sn) {
+			if isSourceNode(s, sn) {
 				sourcePos := instr.Pos()
-				sourceFile := prog.Fset.File(sourcePos)
+				sourceFile := s.Program.Fset.File(sourcePos)
 				if sourcePos == token.NoPos || sourceFile == nil {
 					continue
 				}
@@ -226,7 +229,7 @@ func reachedSinkPositions(prog *ssa.Program, cfg *config.Config,
 	return positions
 }
 
-func isSourceNode(cfg *config.Config, source ssa.Node) bool {
+func isSourceNode(s *dataflow.AnalyzerState, source ssa.Node) bool {
 	if node, ok := source.(*ssa.Call); ok {
 		if node == nil {
 			return false
@@ -238,17 +241,17 @@ func isSourceNode(cfg *config.Config, source ssa.Node) bool {
 			methodName := node.Call.Method.Name()
 			calleePkg := analysisutil.FindSafeCalleePkg(node.Common())
 			if calleePkg.IsSome() {
-				return config.Config.IsSomeSource(*cfg,
+				return config.Config.IsSomeSource(*s.Config,
 					config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
 			} else {
 				// HACK this is needed because "invoked" functions sometimes don't have a callee package
-				return config.Config.IsSomeSource(*cfg,
+				return config.Config.IsSomeSource(*s.Config,
 					config.CodeIdentifier{Package: "command-line-arguments", Method: methodName, Receiver: receiver})
 			}
 		}
 	}
 
-	return taint.IsSomeSourceNode(cfg, nil, source)
+	return taint.IsSomeSourceNode(s, source)
 }
 
 func sourceNode(source dataflow.GraphNode) ssa.Node {

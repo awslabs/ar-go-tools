@@ -32,7 +32,6 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -871,9 +870,9 @@ func IsInterProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec
 	return isIntraProceduralEntryPoint(state, ss, n)
 }
 
-func isSomeIntraProceduralEntryPoint(cfg *config.Config, p *pointer.Result, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(p, n, func(cid config.CodeIdentifier) bool {
-		return cfg.IsSomeBacktracePoint(cid)
+func isSomeIntraProceduralEntryPoint(state *df.AnalyzerState, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, func(cid config.CodeIdentifier) bool {
+		return state.Config.IsSomeBacktracePoint(cid)
 	})
 }
 

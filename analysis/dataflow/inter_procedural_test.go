@@ -27,7 +27,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
-	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -52,7 +51,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		IsEntrypoint:       func(*config.Config, *pointer.Result, ssa.Node) bool { return true },
+		IsEntrypoint:       func(*dataflow.AnalyzerState, ssa.Node) bool { return true },
 	})
 
 	state, err = render.BuildCrossFunctionGraph(state)

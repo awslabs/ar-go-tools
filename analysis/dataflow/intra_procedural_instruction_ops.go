@@ -194,7 +194,7 @@ func (state *IntraAnalysisState) DoMakeChan(*ssa.MakeChan) {
 // DoAlloc is a no-op, unless that specific allocation needs to be tracked (the information will be deduced from
 // the config)
 func (state *IntraAnalysisState) DoAlloc(x *ssa.Alloc) {
-	if state.shouldTrack(state.flowInfo.Config, state.parentAnalyzerState.PointerAnalysis, x) {
+	if state.shouldTrack(state.parentAnalyzerState, x) {
 		state.markValue(x, x, "", state.flowInfo.GetNewMark(x, DefaultMark, nil, NonIndexMark))
 	}
 	// An allocation may be a mark

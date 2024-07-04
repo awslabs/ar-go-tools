@@ -22,7 +22,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -95,7 +94,7 @@ type SummaryGraph struct {
 	// if it has not been constructed.
 
 	// shouldTrack is the function used to identify specific nodes that have been tracked to build that graph.
-	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool
+	shouldTrack func(*AnalyzerState, ssa.Node) bool
 
 	// postBlockCallBack is the function that has been used after a block is completed to adjust the state
 	postBlockCallBack func(state *IntraAnalysisState)
@@ -106,7 +105,7 @@ type SummaryGraph struct {
 // If s is nil, this will not populate the callees of the summary.
 // If non-nil, the returned summary graph is marked as not constructed.
 func NewSummaryGraph(s *AnalyzerState, f *ssa.Function, id uint32,
-	shouldTrack func(*config.Config, *pointer.Result, ssa.Node) bool,
+	shouldTrack func(*AnalyzerState, ssa.Node) bool,
 	postBlockCallBack func(state *IntraAnalysisState)) *SummaryGraph {
 	if s != nil {
 		if summary, ok := s.FlowGraph.Summaries[f]; ok {
@@ -188,8 +187,8 @@ func (g *SummaryGraph) newNodeID() uint32 {
 	return atomic.AddUint32(g.lastNodeID, 1)
 }
 
-func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState, shouldTrack func(*config.Config,
-	*pointer.Result, ssa.Node) bool) {
+func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState,
+	shouldTrack func(*AnalyzerState, ssa.Node) bool) {
 	// Add all call instructions
 	lang.IterateInstructions(g.Parent, func(_ int, instruction ssa.Instruction) {
 		switch x := instruction.(type) {
@@ -204,7 +203,7 @@ func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState, shouldTrack func(*
 
 		// Other types of sources that may be used in config
 		case *ssa.Alloc, *ssa.FieldAddr, *ssa.Field, *ssa.UnOp:
-			if shouldTrack != nil && shouldTrack(s.Config, s.PointerAnalysis, x.(ssa.Node)) {
+			if shouldTrack != nil && shouldTrack(s, x.(ssa.Node)) {
 				g.addSyntheticNode(x, "source")
 			}
 		}
