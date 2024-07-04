@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"strings"
 )
 
 // bar
@@ -32,14 +33,27 @@ func sink(s string) {
 	fmt.Print(s)
 }
 
+//argot:function Sanitizer(ex1)
+func sanitizer(s string) string {
+	return strings.ReplaceAll(s, "%", "_")
+}
+
 //argot:param unsafe Sink(ex2)
 func sinkOnSecondArg(safe string, unsafe string) {
 	fmt.Println(unsafe + safe)
 }
 
+//argot:param clean Sanitizer(_)
+func sanitizeSecondArg(safe string, clean string) string {
+	return clean + safe
+}
+
 func main() {
-	s := bar()               // @Source(ex1,ex2)
-	sink(s)                  //  @Sink(ex1)
-	sinkOnSecondArg(s, "ok") // only second argument of this is a sink
-	sinkOnSecondArg("ok", s) // @Sink(ex2)
+	s := bar()                       // @Source(ex1,ex2)
+	sink(s)                          //  @Sink(ex1)
+	sinkOnSecondArg(s, "ok")         // only second argument of this is a sink
+	sinkOnSecondArg("ok", s)         // @Sink(ex2)
+	sink(sanitizeSecondArg(s, "ok")) // @Sink(ex1)
+	sink(sanitizeSecondArg("ok", s))
+	sink(sanitizer(s))
 }
