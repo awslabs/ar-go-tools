@@ -342,7 +342,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	for _, ts := range c.Config.TaintTrackingProblems {
 		c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(&ts),
 			func(node ssa.Node) bool {
-				return taint.IsSourceNode(&ts, c.PointerAnalysis, node)
+				return taint.IsSourceNode(c, &ts, node)
 			},
 			nil)
 	}

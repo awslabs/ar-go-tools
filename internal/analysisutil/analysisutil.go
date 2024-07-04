@@ -141,8 +141,9 @@ func GetFieldInfoFromType(t types.Type, i int) (string, bool) {
 	}
 }
 
-// IsEntrypointNode returns true if n is an entrypoint to the analysis according to f.
-func IsEntrypointNode(pointer *pointer.Result, n ssa.Node, f func(config.CodeIdentifier) bool) bool {
+// IsEntrypointNode returns true if n is an entrypoint to the analysis according to f or the annotations
+func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
+	f func(config.CodeIdentifier) bool) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered entry points
 	case *ssa.Call:

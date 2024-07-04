@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/annotations"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
@@ -95,7 +96,20 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// ** Third step **
 	// the inter-procedural analysis is run over the entire program, which has been summarized in the
 	// previous step by building function summaries. This analysis consists in checking whether there exists a sink
-	// that is reachable from a source, for every taint tracking problem defined by the config.
+	// that is reachable from a source, for every taint tracking problem defined by the config and the annotations.
+
+	// capture the annotation-defined problems
+	tags := map[string]bool{}
+	state.Annotations.Iter(func(a annotations.Annotation) {
+		if a.Kind == annotations.Source {
+			for _, key := range a.Tags {
+				if tagged := tags[key]; !tagged {
+					cfg.TaintTrackingProblems = append(cfg.TaintTrackingProblems, config.TaintSpec{Tag: key})
+					tags[key] = true
+				}
+			}
+		}
+	})
 
 	taintFlows := NewFlows()
 
@@ -103,9 +117,8 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 		visitor := NewVisitor(&taintSpec)
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
-			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(&taintSpec, state.PointerAnalysis, node) },
+			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(state, &taintSpec, node) },
 		})
-
 		taintFlows.Merge(visitor.taints)
 	}
 

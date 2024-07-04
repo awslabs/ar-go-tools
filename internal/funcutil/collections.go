@@ -44,7 +44,14 @@ func Union[T comparable](a map[T]bool, b map[T]bool) map[T]bool {
 }
 
 // Iter iterates over all elements in the slice and call the function on that element.
-func Iter[T any](a []T, f func(T) T) {
+func Iter[T any](a []T, f func(T)) {
+	for _, x := range a {
+		f(x)
+	}
+}
+
+// MapInPlace iterates over all elements in the slice and call the function on that element to update it.
+func MapInPlace[T any](a []T, f func(T) T) {
 	for i, x := range a {
 		a[i] = f(x)
 	}

@@ -17,12 +17,12 @@ package main
 import "fmt"
 
 // sink and source annotation are relative to data categories (e.g. in this example bar, io and html)
-// @Sink(_) means it is always a sink
+// Sink(_) means it is always a sink
 
 // bar is a func
 //
-//argot:function @Source(bar) @Sink(html) (an annotation documenting this is a source for bar data and a sink of html)
-//argot:param x @Sink(io) (the parameter x alone is a sink for io data)
+//argot:function Source(bar) Sink(html) (an annotation documenting this is a source for bar data and a sink of html)
+//argot:param x Sink(io) (the parameter x alone is a sink for io data)
 func bar(x string) string {
 	return "ok " + x
 }
@@ -36,14 +36,14 @@ func foo() string {
 
 // superSensitiveFunction
 //
-//argot:function @Sink(_)
+//argot:function Sink(_)
 func superSensitiveFunction(iWillPrintYouUnencrypted string) {
 	fmt.Println(iWillPrintYouUnencrypted)
 }
 
 // sanitizerOfIo
 //
-//argot:function @Sanitizer(io)
+//argot:function Sanitizer(io)
 func sanitizerOfIo(s string) string {
 	return s
 }

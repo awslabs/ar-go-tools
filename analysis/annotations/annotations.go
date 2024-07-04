@@ -21,6 +21,8 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"golang.org/x/exp/slices"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -41,13 +43,13 @@ const (
 // sourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
 // where the "argument" is either an identifier (e.g. id) or an identifier with
 // associated "metadata" (e.g. id call:example1->call:helper->call:example1$1).
-var sourceRegex = regexp.MustCompile(`.*@Source\(((?:\s*(\w|(\w\s+[a-zA-Z0-9$:\->]+\s*))\s*,?)+)\)`)
+var sourceRegex = regexp.MustCompile(`.*Source\(((?:\s*(\w|(\w\s+[a-zA-Z0-9$:\->]+\s*))\s*,?)+)\)`)
 
 // sinkRegex matches annotations of the form @Sink(id1, id2, id3)"
-var sinkRegex = regexp.MustCompile(`.*@Sink\(((?:\s*\w\s*,?)+)\)`)
+var sinkRegex = regexp.MustCompile(`.*Sink\(((?:\s*\w\s*,?)+)\)`)
 
 // sanitizerRegex matches annotations of the form @Sanitizer(id1, id2, id3)"
-var sanitizerRegex = regexp.MustCompile(`.*@Sanitizer\(((?:\s*\w\s*,?)+)\)`)
+var sanitizerRegex = regexp.MustCompile(`.*Sanitizer\(((?:\s*\w\s*,?)+)\)`)
 
 var annotationKindParsers = map[AnnotationKind]*regexp.Regexp{
 	Sink:      sinkRegex,
@@ -60,15 +62,55 @@ var annotationKindParsers = map[AnnotationKind]*regexp.Regexp{
 type Annotation struct {
 	// Kind of the annotation
 	Kind AnnotationKind
-	// Contents of the annotation (usually parsed from a comma-separated list of strings
-	Contents []string
+	// Tags of the annotation (usually parsed from a comma-separated list of strings)
+	Tags []string
+}
+
+// IsMatchingAnnotation returns true when the annotation matches the kind and tag provided.
+// Returns true when the kinds are equal and either:
+// - the tag provided is _
+// - the annotation has a tag _
+// - the annotation's tags contains the provided tag
+func (a Annotation) IsMatchingAnnotation(kind AnnotationKind, tag string) bool {
+	return a.Kind == kind && (tag == "_" || (len(a.Tags) > 0 && a.Tags[0] == "_") || slices.Contains(a.Tags, tag))
 }
 
 // A FunctionAnnotation groups the annotations relative to a function into main annotations for the entire function
 // and parameter annotations for each parameter
 type FunctionAnnotation struct {
-	Mains  []Annotation
-	Params map[*ssa.Parameter][]Annotation
+	mains       []Annotation
+	params      map[*ssa.Parameter][]Annotation
+	contentKeys map[string]bool
+}
+
+func (fa FunctionAnnotation) collectContentKeys() {
+	for _, mainAnnot := range fa.mains {
+		for _, key := range mainAnnot.Tags {
+			fa.contentKeys[key] = true
+		}
+	}
+	for _, paramAnnot := range fa.params {
+		for _, annots := range paramAnnot {
+			for _, key := range annots.Tags {
+				fa.contentKeys[key] = true
+			}
+		}
+	}
+}
+
+// ContentKeys returns the content keys in the annotations
+func (fa FunctionAnnotation) ContentKeys() map[string]bool {
+	return fa.contentKeys
+}
+
+// Mains returns the main annotations of the function
+func (fa FunctionAnnotation) Mains() []Annotation {
+	return fa.mains
+}
+
+// Params returns the map of parameters to annotations in the function
+func (fa FunctionAnnotation) Params() map[*ssa.Parameter][]Annotation {
+	return fa.params
 }
 
 // ProgramAnnotations groups all the program annotations together. Members of packages can be annotated:
@@ -90,22 +132,27 @@ type ProgramAnnotations struct {
 // Count returns the total number of annotations in the program
 func (pa ProgramAnnotations) Count() int {
 	c := 0
+	pa.Iter(func(_ Annotation) { c += 1 })
+	return c
+}
+
+// Iter iterates over all annotations in the program.
+func (pa ProgramAnnotations) Iter(fx func(a Annotation)) {
 	for _, f := range pa.Funcs {
-		c += len(f.Mains)
-		for _, p := range f.Params {
-			c += len(p)
+		funcutil.Iter(f.mains, fx)
+		for _, p := range f.params {
+			funcutil.Iter(p, fx)
 		}
 	}
 	for _, cst := range pa.Consts {
-		c += len(cst)
+		funcutil.Iter(cst, fx)
 	}
 	for _, cst := range pa.Types {
-		c += len(cst)
+		funcutil.Iter(cst, fx)
 	}
 	for _, cst := range pa.Globals {
-		c += len(cst)
+		funcutil.Iter(cst, fx)
 	}
-	return c
 }
 
 // LoadAnnotations loads annotations from a list of packages by inspecting the syntax of each element in the
@@ -129,7 +176,9 @@ func LoadAnnotations(logger *config.LogGroup, packages []*ssa.Package) (ProgramA
 				if err != nil {
 					return annotations, err
 				}
-				annotations.Funcs[member] = functionAnnotation
+				if len(functionAnnotation.contentKeys) > 0 {
+					annotations.Funcs[member] = functionAnnotation
+				}
 			}
 		}
 	}
@@ -148,8 +197,9 @@ func parseFunctionAnnotations(looger *config.LogGroup, function *ssa.Function) (
 	}
 
 	annotations := FunctionAnnotation{
-		Mains:  []Annotation{},
-		Params: map[*ssa.Parameter][]Annotation{},
+		mains:       []Annotation{},
+		params:      map[*ssa.Parameter][]Annotation{},
+		contentKeys: map[string]bool{},
 	}
 	for _, comment := range doc.List {
 		if strings.HasPrefix(comment.Text, annotationPrefix) {
@@ -168,13 +218,14 @@ func parseFunctionAnnotations(looger *config.LogGroup, function *ssa.Function) (
 				if err != nil {
 					return annotations, err
 				}
-				annotations.Mains = append(annotations.Mains, annotationGroup...)
+				annotations.mains = append(annotations.mains, annotationGroup...)
 			}
 		} else if strings.Contains(comment.Text, "argot") {
 			looger.Warnf("possible annotation mistake: %s has \"argot\" but doesn't start with //argot:",
 				comment.Text)
 		}
 	}
+	annotations.collectContentKeys()
 	return annotations, nil
 }
 
@@ -185,14 +236,14 @@ func parseParamAnnotation(function *ssa.Function, annotationContent []string,
 	for _, param := range function.Params {
 		if param.Name() == paramName {
 			foundParam = true
-			if _, ok := annotations.Params[param]; !ok {
-				annotations.Params[param] = []Annotation{}
+			if _, ok := annotations.params[param]; !ok {
+				annotations.params[param] = []Annotation{}
 			}
 			paramAnnotations, err := parseAnnotationContent(annotationContent)
 			if err != nil {
 				return err
 			}
-			annotations.Params[param] = append(annotations.Params[param], paramAnnotations...)
+			annotations.params[param] = append(annotations.params[param], paramAnnotations...)
 		}
 	}
 	if !foundParam {
@@ -208,7 +259,7 @@ func parseAnnotationContent(annotationContent []string) ([]Annotation, error) {
 	for kind, kindRegexp := range annotationKindParsers {
 		idents := kindRegexp.FindStringSubmatch(contents)
 		if len(idents) > 1 {
-			parsedAnnotations = append(parsedAnnotations, Annotation{Kind: kind, Contents: parseAnnotationArgs(idents)})
+			parsedAnnotations = append(parsedAnnotations, Annotation{Kind: kind, Tags: parseAnnotationArgs(idents)})
 		}
 	}
 	return parsedAnnotations, nil

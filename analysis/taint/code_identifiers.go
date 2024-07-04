@@ -17,30 +17,32 @@ package taint
 import (
 	"go/token"
 
+	"github.com/awslabs/ar-go-tools/analysis/annotations"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
-	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
 // IsSomeSourceNode returns true if n matches the code identifier of some source in the config
 func IsSomeSourceNode(s *dataflow.AnalyzerState, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(s.PointerAnalysis, n, s.Config.IsSomeSource)
+	return analysisutil.IsEntrypointNode(s.PointerAnalysis, n, s.Config.IsSomeSource) ||
+		s.ResolveSsaNode(annotations.Source, "_", n)
 }
 
 // IsSourceNode returns true if n matches the code identifier of a source node in the taint specification
-func IsSourceNode(ts *config.TaintSpec, p *pointer.Result, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(p, n, ts.IsSource)
+func IsSourceNode(state *dataflow.AnalyzerState, ts *config.TaintSpec, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, ts.IsSource) ||
+		state.ResolveSsaNode(annotations.Source, ts.Tag, n)
 }
 
-func isSink(ts *config.TaintSpec, n dataflow.GraphNode) bool {
-	return isMatchingCodeID(ts.IsSink, n)
+func isSink(state *dataflow.AnalyzerState, ts *config.TaintSpec, n dataflow.GraphNode) bool {
+	return isMatchingCodeID(ts.IsSink, n) || state.ResolveGraphNode(annotations.Sink, ts.Tag, n)
 }
 
-func isSanitizer(ts *config.TaintSpec, n dataflow.GraphNode) bool {
-	return isMatchingCodeID(ts.IsSanitizer, n)
+func isSanitizer(state *dataflow.AnalyzerState, ts *config.TaintSpec, n dataflow.GraphNode) bool {
+	return isMatchingCodeID(ts.IsSanitizer, n) || state.ResolveGraphNode(annotations.Sanitizer, ts.Tag, n)
 }
 
 // isValidatorCondition checks whether v is a validator condition according to the validators stored in the config
@@ -68,7 +70,7 @@ func isValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bo
 	return false
 }
 
-func isFiltered(ts *config.TaintSpec, n dataflow.GraphNode) bool {
+func isFiltered(s *dataflow.AnalyzerState, ts *config.TaintSpec, n dataflow.GraphNode) bool {
 	for _, filter := range ts.Filters {
 		if filter.Type != "" {
 			if filter.MatchType(n.Type()) {
