@@ -61,14 +61,14 @@ func (s *AnalyzerState) ResolveGraphNode(kind annotations.AnnotationKind, tag st
 		}
 	case *CallNodeArg:
 		argCallee := n.ParentNode().Callee()
-		if argCallee != nil && kind == annotations.Sink {
+		if argCallee != nil && (kind == annotations.Sink || kind == annotations.Sanitizer) {
 			if fa, isAnnotated := s.Annotations.Funcs[argCallee]; isAnnotated {
 				if funcutil.Exists(fa.Mains(), func(a annotations.Annotation) bool {
 					return a.IsMatchingAnnotation(kind, tag)
 				}) {
 					return true
 				}
-				// scanning with arguments: can track specific arguments as sinks
+				// scanning with arguments: can track specific arguments as sinks/sanitized
 				if n.argPos < len(argCallee.Params) {
 					param := argCallee.Params[n.argPos]
 					if paramAnnot, isAnnot := fa.Params()[param]; isAnnot {

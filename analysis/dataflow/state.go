@@ -86,6 +86,7 @@ type AnalyzerState struct {
 
 // NewInitializedAnalyzerState runs NewAnalyzerState, and any additional steps that are commonly used in analyses.
 // This consists in:
+//   - building the ssa program
 //   - running pointer analysis
 //   - computing a map from interface types to the implementations of their methods
 //   - scanning the usage of globals in the program
