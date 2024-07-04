@@ -43,7 +43,7 @@ type AnalysisResult struct {
 // Analyze runs all the concurrency specific analyses on the program with the configuration provided.
 func Analyze(logger *config.LogGroup, config *config.Config, program *ssa.Program) (AnalysisResult, error) {
 
-	state, err := dataflow.NewInitializedAnalyzerState(logger, config, program)
+	state, err := dataflow.NewInitializedAnalyzerState(program, nil, logger, config)
 	if err != nil {
 		return AnalysisResult{}, err
 	}

@@ -15,7 +15,6 @@
 package main
 
 import (
-	"flag"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -23,7 +22,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"golang.org/x/term"
-	"golang.org/x/tools/go/packages"
 )
 
 // cmdLoad implements the "load" command that loads a program into the tool.
@@ -53,19 +51,13 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 
 	writeFmt(tt, "Reading sources\n")
 	// Load the program
-	program, err := analysis.LoadProgram(nil, "", buildmode, state.Args)
+	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, state.Args)
 	if err != nil {
 		WriteErr(tt, "could not load program:\n%s\n", err)
 		return false
 	}
-	// Keep ast in state separately for now
-	p := &packages.Config{
-		Mode:  analysis.PkgLoadMode,
-		Tests: false,
-	}
-	initialPackages, _ := packages.Load(p, flag.Args()...)
 	// Build the newState with all analyses
-	newState, err := dataflow.NewInitializedAnalyzerState(c.Logger, c.Config, program)
+	newState, err := dataflow.NewInitializedAnalyzerState(program, pkgs, c.Logger, c.Config)
 	if err != nil {
 		WriteErr(tt, "error building analyzer state: %s", err)
 		WriteErr(tt, "state is left unchanged")
@@ -84,7 +76,7 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool {
 	newState.CopyTo(c)
 	state.CurrentFunction = nil
 	state.CurrentDataflowInformation = nil
-	state.InitialPackages = initialPackages
+	state.InitialPackages = pkgs
 	return false
 }
 

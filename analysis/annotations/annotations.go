@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/exp/slices"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -155,6 +156,16 @@ func (pa ProgramAnnotations) Iter(fx func(a Annotation)) {
 	}
 }
 
+// CompleteFromSyntax takes a set of program annotations and adds additional non-ssa linked annotations
+// to the annotations
+func (pa ProgramAnnotations) CompleteFromSyntax(pkgs []*packages.Package) {
+	for _, pkg := range pkgs {
+		for _, astFile := range pkg.Syntax {
+			pa.loadPackageDocAnnotations(astFile.Doc)
+		}
+	}
+}
+
 // LoadAnnotations loads annotations from a list of packages by inspecting the syntax of each element in the
 // packages. If syntax is not provided, no annotation will be loaded (you should build the program with the syntax
 // for the annotations to work).
@@ -227,6 +238,10 @@ func parseFunctionAnnotations(looger *config.LogGroup, function *ssa.Function) (
 	}
 	annotations.collectContentKeys()
 	return annotations, nil
+}
+
+func (pa ProgramAnnotations) loadPackageDocAnnotations(doc *ast.CommentGroup) {
+	// TODO: implementation
 }
 
 func parseParamAnnotation(function *ssa.Function, annotationContent []string,

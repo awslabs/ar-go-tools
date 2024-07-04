@@ -276,13 +276,8 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-
-	program := lp.Prog
-	cfg := lp.Config
-	lp.Config = cfg
-	setupConfig(cfg, summarizeOnDemand)
-
-	result, err := taint.Analyze(cfg, program)
+	setupConfig(lp.Config, summarizeOnDemand)
+	result, err := taint.Analyze(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		// t.Logf("taint analysis failed: %v", err) // use for debugging: sometimes errors are expected
 		if result.State != nil {

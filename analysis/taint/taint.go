@@ -27,6 +27,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -56,7 +57,7 @@ type AnalysisResult struct {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
+func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -69,7 +70,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// or from the standard library that is called in the program should be summarized in the summaries package.
 	// - Running the type analysis to map functions to their type
 
-	state, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, prog)
+	state, err := dataflow.NewInitializedAnalyzerState(prog, pkgs, config.NewLogGroup(cfg), cfg)
 	if err != nil {
 		return AnalysisResult{}, err
 	}

@@ -42,7 +42,7 @@ const PkgLoadMode = packages.NeedName |
 func LoadProgram(config *packages.Config,
 	platform string,
 	buildmode ssa.BuilderMode,
-	args []string) (*ssa.Program, error) {
+	args []string) (*ssa.Program, []*packages.Package, error) {
 
 	if config == nil {
 		config = &packages.Config{
@@ -58,15 +58,15 @@ func LoadProgram(config *packages.Config,
 	// load, parse and type check the given packages
 	initialPackages, err := packages.Load(config, args...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(initialPackages) == 0 {
-		return nil, fmt.Errorf("no packages")
+		return nil, nil, fmt.Errorf("no packages")
 	}
 
 	if packages.PrintErrors(initialPackages) > 0 {
-		return nil, fmt.Errorf("errors found, exiting")
+		return nil, nil, fmt.Errorf("errors found, exiting")
 	}
 
 	// Construct SSA for all the packages we have loaded
@@ -74,14 +74,14 @@ func LoadProgram(config *packages.Config,
 
 	for i, p := range ssaPackages {
 		if p == nil {
-			return nil, fmt.Errorf("cannot build SSA for package %s", initialPackages[i])
+			return nil, nil, fmt.Errorf("cannot build SSA for package %s", initialPackages[i])
 		}
 	}
 
 	// Build SSA for entire program
 	program.Build()
 
-	return program, nil
+	return program, initialPackages, nil
 }
 
 // AllPackages returns the slice of all packages the set of functions provided as argument belong to.

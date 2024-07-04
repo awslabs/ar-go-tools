@@ -33,9 +33,7 @@ func TestRunBoundingAnalysis(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	cfg := lp.Config
-	program := lp.Prog
-	c, err := NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	c, err := NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	if err != nil {
 		t.Errorf("error building state: %q", err)
 	}

@@ -81,7 +81,7 @@ func filterFn(edge *callgraph.Edge) bool {
 func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, program *ssa.Program, w io.Writer) error {
 	// every function should be included in the graph
 	// building the graph doesn't require souce/sink logic
-	state, err := dataflow.NewInitializedAnalyzerState(logger, cfg, program)
+	state, err := dataflow.NewInitializedAnalyzerState(program, nil, logger, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to build analyzer state: %w", err)
 	}
