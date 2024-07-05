@@ -1,0 +1,8 @@
+{
+    "functions": {
+        "command-line-arguments.unknownFunc": "unknown",
+        "github.com/awslabs/ar-go-tools/analysis/escape/testdata/escape-locality.unknownFunc": "unknown"
+    },
+    "pkg-filter" : "(escape-locality)|(command-line-arguments)",
+    "default-summarize": false
+}

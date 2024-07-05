@@ -15,12 +15,17 @@
 package config
 
 import (
+	"embed"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+//go:embed testdata
+var testfsys embed.FS
 
 func checkEqualOnNonEmptyFields(t *testing.T, cid1 CodeIdentifier, cid2 CodeIdentifier) {
 	cid2c := compileRegexes(cid2)
@@ -78,20 +83,21 @@ func mkConfig(sanitizers []CodeIdentifier, sinks []CodeIdentifier, sources []Cod
 	ts.Sanitizers = sanitizers
 	ts.Sinks = sinks
 	ts.Sources = sources
-	c.MaxDepth = DefaultMaxCallDepth
 	c.TaintTrackingProblems = []TaintSpec{ts}
 	return *c
 }
 
-func loadFromTestDir(t *testing.T, filename string) (string, *Config, error) {
-	wd, err := os.Getwd()
+func loadFromTestDir(filename string) (string, *Config, error) {
+	filename = filepath.Join("testdata", filename)
+	b, err := testfsys.ReadFile(filename)
 	if err != nil {
-		t.Fatalf("Failed to get wd: %s", err)
+		return "", nil, fmt.Errorf("failed to read file %v: %v", filename, err)
 	}
-	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
-	configFileName := filepath.Join(filepath.Join(testdata, "config-examples"), filename)
-	config, err := Load(configFileName)
-	return configFileName, config, err
+	config, err := Load(filename, b)
+	if err != nil {
+		return filename, nil, fmt.Errorf("failed to load file %v: %v", filename, err)
+	}
+	return filename, config, err
 }
 
 func testLoadOneFile(t *testing.T, filename string, expected Config) {
@@ -99,7 +105,7 @@ func testLoadOneFile(t *testing.T, filename string, expected Config) {
 	if expected.LogLevel == 0 {
 		expected.LogLevel = int(InfoLevel)
 	}
-	configFileName, config, err := loadFromTestDir(t, filename)
+	configFileName, config, err := loadFromTestDir(filename)
 	if err != nil {
 		t.Errorf("Error loading %q: %v", configFileName, err)
 	}
@@ -128,21 +134,24 @@ func TestNewDefault(t *testing.T) {
 }
 
 func TestLoadNonExistentFileReturnsError(t *testing.T) {
-	c, err := Load("someconfig.yaml")
+	name := filepath.Join("testdata", "bad_format.yaml")
+	b, err := testfsys.ReadFile(name)
+	if err != nil {
+		t.Fatalf("failed to read file %v: %v", name, err)
+	}
+	c, err := Load(name, b)
 	if c != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load non existent file.")
 	}
 }
 
 func TestLoadBadFormatFileReturnsError(t *testing.T) {
-	wd, err := os.Getwd()
+	name := filepath.Join("testdata", "bad_format.yaml")
+	b, err := testfsys.ReadFile(name)
 	if err != nil {
-		t.Fatalf("Failed to get wd: %s", err)
+		t.Fatalf("failed to read file %v: %v", name, err)
 	}
-	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
-	configFileName := filepath.Join(filepath.Join(testdata, "config-examples"), "bad_format.yaml")
-	config, err := Load(configFileName)
-
+	config, err := Load(name, b)
 	if config != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load a badly formatted file.")
 	}
@@ -160,7 +169,7 @@ func TestLoadWithReports(t *testing.T) {
 }
 
 func TestLoadWithReportNoDirReturnsError(t *testing.T) {
-	_, config, err := loadFromTestDir(t, "config_with_reports_bad_dir.yaml")
+	_, config, err := loadFromTestDir("config_with_reports_bad_dir.yaml")
 	if config != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load config with a report dir that has a non-existing" +
 			"directory name")
@@ -168,7 +177,7 @@ func TestLoadWithReportNoDirReturnsError(t *testing.T) {
 }
 
 func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
-	fileName, config, err := loadFromTestDir(t, "config_with_reports_no_dir_spec.yaml")
+	fileName, config, err := loadFromTestDir("config_with_reports_no_dir_spec.yaml")
 	if config == nil || err != nil {
 		t.Errorf("Could not load %q", fileName)
 		return
@@ -188,8 +197,8 @@ func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
 }
 
 //gocyclo:ignore
-func TestLoadFullConfig(t *testing.T) {
-	fileName, config, err := loadFromTestDir(t, "full-config.yaml")
+func TestLoadFullConfigYaml(t *testing.T) {
+	fileName, config, err := loadFromTestDir("full-config.yaml")
 	if config == nil || err != nil {
 		t.Errorf("Could not load %s", fileName)
 		return
@@ -215,7 +224,7 @@ func TestLoadFullConfig(t *testing.T) {
 	if len(config.DataflowSpecs) != 2 {
 		t.Error("full config should specify two dataflow spec files")
 	}
-	if config.MaxDepth != 42 {
+	if config.UnsafeMaxDepth != 42 {
 		t.Error("full config should set max-depth to 42")
 	}
 	if config.MaxAlarms != 16 {
@@ -243,8 +252,8 @@ func TestLoadFullConfig(t *testing.T) {
 	if !config.SilenceWarn {
 		t.Error("full config should have silence-warn set to true")
 	}
-	if !config.IgnoreNonSummarized {
-		t.Errorf("full config should have set ignorenonsummarized")
+	if !config.UnsafeIgnoreNonSummarized {
+		t.Errorf("full config should have set unsafeignorenonsummarized")
 	}
 	if !config.UseEscapeAnalysis {
 		t.Errorf("full config should have set useescapeaanalysis")
@@ -256,6 +265,22 @@ func TestLoadFullConfig(t *testing.T) {
 	// Remove temporary files
 	os.Remove(config.nocalleereportfile)
 	os.Remove(config.ReportsDir)
+}
+
+func TestLoadFullConfigYamlEqualsJson(t *testing.T) {
+	_, yamlConfig, yamlErr := loadFromTestDir("full-config.yaml")
+	_, jsonConfig, jsonErr := loadFromTestDir("full-config.json")
+	if jsonErr != nil {
+		t.Errorf("failed to load json config")
+	}
+	if yamlErr != nil {
+		t.Errorf("failed to load yaml config")
+	}
+	jsonConfig.sourceFile = ""
+	yamlConfig.sourceFile = ""
+	if jsonConfig.Options != yamlConfig.Options {
+		t.Errorf("config options in json and yaml should be the same")
+	}
 }
 
 func TestLoadMisc(t *testing.T) {
@@ -304,15 +329,17 @@ func TestLoadMisc(t *testing.T) {
 						{"", "some/other/package", "", "", "", "OneField", "ThatStruct", "", "", nil},
 						{"", "some/other/package", "Interface", "", "", "", "", "", "", nil},
 					},
-					ExplicitFlowOnly: true,
+					FailOnImplicitFlow: false,
 				},
 			},
 			Options: Options{
-				PkgFilter:   "a",
-				MaxDepth:    DefaultMaxCallDepth,
-				SilenceWarn: false,
+				PkgFilter:                "a",
+				UnsafeMaxDepth:           DefaultSafeMaxDepth,
+				MaxEntrypointContextSize: DefaultSafeMaxEntrypointContextSize,
+				SilenceWarn:              false,
 			},
-			EscapeConfig: NewEscapeConfig(),
+			EscapeConfig:  NewEscapeConfig(),
+			PointerConfig: NewPointerConfig(),
 		},
 	)
 	// Test configuration file for static-commands

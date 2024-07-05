@@ -65,6 +65,9 @@ func writeEntries(tt *term.Terminal, entries []displayElement, prefix string) {
 
 	maxLen = maxLen + 3 // padding
 	cols := state.TermWidth / maxLen
+	if cols <= 0 {
+		cols = 1
+	}
 	lines := len(entries)/cols + 1
 	for line := 0; line < lines; line++ {
 		writeFmt(tt, prefix)

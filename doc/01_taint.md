@@ -122,12 +122,12 @@ The configuration contains some specific fields that allow users to tune how the
 
 #### Implicit flows
 Some flows can be implicit: for example, branching on tainted data. See the `implicit-flow` test for an example.
-By default, the taint analysis will produce an error if tainted data is branched on.
-If the tool should only track explicit taint flows, set the `explicit-flow-only` option to `true`:
+By default, the taint analysis will not produce an error if tainted data is branched on.
+If the tool should fail when control flow depends on tainted data, set the `fail-on-implicit-flow` option to `true`:
 ```yaml
 taint-tracking-problems:
     -
-      explicit-flow-only: true
+      fail-on-implicit-flow: true
 ```
 
 #### Filters
@@ -291,7 +291,7 @@ func main() {
 }
 ```
 
-There is an "information leak" from `source` to `sink` because the individual bytes from `data` are copied over to `newData` without explicitly assigning any data from `data` to `newData`. To detect such implicit information flows, the taint analysis logs a warning when tainted data flows to a branch statement (`if`, `switch`, `select`, etc.) or loop (which involves a branch in SSA form). The analysis also returns an error.
+There is an "information leak" from `source` to `sink` because the individual bytes from `data` are copied over to `newData` without explicitly assigning any data from `data` to `newData`. When the `fail-on-implicit-flow` option of an analysis problem is set to true, the taint analysis logs a warning when tainted data flows to a branch statement (`if`, `switch`, `select`, etc.) or loop (which involves a branch in SSA form). The analysis also returns an error.
 
 > 📝 The taint analysis is unsound in the presence of other types of implicit data flows called [side channels](https://en.wikipedia.org/wiki/Side-channel_attack).
 
@@ -466,7 +466,6 @@ In the specification for the `Reader` method, the first argument's data flows to
 
 >⚠️ Dataflow contracts have precedence over function contracts. This means that if for some function call the tool has the choice between picking the function's contract or the dataflow contract, it will pick the dataflow contract.
 
-
 ## Using Escape Analysis (experimental)
 
 The dataflow analysis does not support concurrency by default, meaning that it is unsound in the presence of concurrent
@@ -538,3 +537,18 @@ Note that the functions are identified by their fully qualified names. The full 
 The full set of fixed summary assignments, which includes sound noop assignments for some reflection
 functions without side effects, is available in
 `testdata/src/concurrency/stdlib-escape/escape-config.json`.
+
+
+## Pointer Analysis: Soundness and Precision Tradeoffs
+
+The configuration file allows the user to specify some functions they want explicitly ignored in the pointer analysis so that fewer false positives appear during the taint analysis. For example, with default parameters the result of the context-insensitive pointer analysis we are using will result in all outputs of `fmt.Errorf` being aliases of each other in Go programs. This will result in many false positives if the taint ever reaches the input of `fmt.Errorf`!
+
+To solve that, the user can specify that the `fmt.Errorf` function should not generate any constraints during the pointer analysis:
+```yaml
+pointer-config:
+  unsafe-no-effect-functions:
+    - "fmt.Errorf"
+```
+All the functions whose full name (the name returned by `(*ssa.Function).String()`) matches one of the names provided by the user in the list of `unsafe-no-effect-functions` will be skipped during the pointer analysis (generating no constraints). If the user can prove that this is the case (i.e. no aliases are created by this function), then this is sound.
+
+>⚠️ Soundness of the analysis when `unsafe-no-effect-functions` are specified is the user's responsibility. It is worth noting that Argot can be useful even when the analysis is unsound, e.g. simply for *testing* dataflow properties of the program, as opposed to proving them. 

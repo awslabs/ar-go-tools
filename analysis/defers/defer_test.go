@@ -46,7 +46,7 @@ func loadProgram(file string) (*ssa.Program, error) {
 // Test that the functions in defer/basic.go compute the given set(s) of defers
 func TestBasic(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../../testdata/src/defer/")
+	dir := path.Join(path.Dir(filename), "testdata/src/defer/")
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)

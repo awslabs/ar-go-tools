@@ -67,6 +67,7 @@ func main() {
 		cfg, err = config.LoadGlobal()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not load config %s\n", *configPath)
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			return
 		}
 	}
@@ -102,6 +103,6 @@ func main() {
 	}
 
 	for _, trace := range analysisInfo.Traces {
-		logger.Printf("%v\n", trace)
+		logger.Printf("%v\n\n", trace)
 	}
 }

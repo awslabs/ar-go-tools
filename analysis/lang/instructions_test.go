@@ -130,7 +130,7 @@ func TestAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get wd: %s", err)
 	}
-	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
+	testdata := filepath.Join(wd, "testdata")
 
 	analysistest.Run(t, testdata, taintSourcesAnalyzer, "ssavisitor")
 }

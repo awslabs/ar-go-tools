@@ -23,9 +23,9 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/exp/slices"
 	"golang.org/x/term"
-	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -517,12 +517,11 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 				mVals = append(mVals, val.GetValue())
 			}
 		}
-		slices.SortFunc(mVals, func(a, b ssa.Value) bool {
-
+		slices.SortFunc(mVals, func(a, b ssa.Value) int {
 			var s1, s2 string
 			setStr(a, &s1)
 			setStr(a, &s2)
-			return s1 < s2
+			return strings.Compare(s1, s2)
 		})
 		for _, val := range mVals {
 			marks := fi.MarkedValues[index+fi.ValueID[val]]
@@ -549,7 +548,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 }
 
 // showBlock pretty prints the block on the terminal
-func showBlock(tt *term.Terminal, c *dataflow.AnalyzerState, block *ssa.BasicBlock) {
+func showBlock(tt *term.Terminal, _ *dataflow.AnalyzerState, block *ssa.BasicBlock) {
 	writeFmt(tt, "block %d:\n", block.Index)
 	writeFmt(tt, "%s P:%d S:%d\n", block.Comment, len(block.Preds), len(block.Succs))
 

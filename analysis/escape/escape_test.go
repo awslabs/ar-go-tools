@@ -15,27 +15,26 @@
 package escape
 
 import (
+	"embed"
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/analysis/testutils"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/ssa"
 )
+
+//go:embed testdata
+var testfsys embed.FS
 
 // Look for a single node by its name prefix. Errors if there is not
 // exactly one match
@@ -95,14 +94,21 @@ func unsimplifiedEscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
 //
 //gocyclo:ignore
 func TestSimpleEscape(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "../../testdata/src/concurrency/simple-escape")
-	err := os.Chdir(dir)
+	t.Parallel()
+
+	dirName := filepath.Join("./testdata", "simple-escape")
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{})
 	if err != nil {
-		t.Fatalf("failed to switch to dir %v: %v", dir, err)
+		t.Fatalf("failed to load test: %v", err)
 	}
-	program, _ := analysistest.LoadTest(t, ".", []string{})
-	result, _ := dataflow.DoPointerAnalysis(program, func(_ *ssa.Function) bool { return true }, true)
+	program := lp.Prog
+	reachableFunctions := dataflow.CallGraphReachable(cha.CallGraph(program), false, false)
+	result, err := dataflow.DoPointerAnalysis(nil, program,
+		func(_ *ssa.Function) bool { return true }, reachableFunctions)
+	if err != nil {
+		t.Fatalf("failed to do pointer analysis: %v", err)
+	}
+	pkgName := program.AllPackages()[0].Pkg.Path()
 
 	getGraph := func(f string) *EscapeGraph {
 		fn := findFunction(program, f)
@@ -126,7 +132,7 @@ func TestSimpleEscape(t *testing.T) {
 		g := findSingleNode(t, graph, "*globalS")
 		s := findSingleNode(t, graph, "new S")
 		b := findSingleNode(t, graph, "new B")
-		l := findSingleNode(t, graph, "command-line-arguments.S load")
+		l := findSingleNode(t, graph, fmt.Sprintf("%v.S load", pkgName))
 		r := findSingleNode(t, graph, "return")
 		assertEdge(t, graph, g, s)
 		assertEdge(t, graph, g, l)
@@ -183,7 +189,11 @@ func TestSimpleEscape(t *testing.T) {
 func findFunction(program *ssa.Program, name string) *ssa.Function {
 	for _, pkg := range program.AllPackages() {
 		if pkg.Pkg.Name() == "main" {
-			return pkg.Func(name)
+			f := pkg.Func(name)
+			if f == nil {
+				panic(fmt.Errorf("failed to find function %s", name))
+			}
+			return f
 		}
 	}
 	return nil
@@ -270,27 +280,39 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 
 // Check the escape results in the interprocedural case
 func TestInterproceduralEscape(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "../../testdata/src/concurrency/interprocedural-escape")
-	err := os.Chdir(dir)
+	t.Parallel()
+
+	dirName := filepath.Join("./testdata", "interprocedural-escape")
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{})
 	if err != nil {
-		t.Fatalf("failed to switch to dir %v: %v", dir, err)
+		t.Fatalf("failed to load test: %v", err)
 	}
-	program, cfg := analysistest.LoadTest(t, ".", []string{})
-	cfg.LogLevel = int(config.TraceLevel)
+	program := lp.Prog
+	cfg := lp.Config
+	cfg.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	state, _ := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
+	state, err := dataflow.NewAnalyzerState(program, config.NewLogGroup(cfg), cfg,
 		[]func(*dataflow.AnalyzerState){
 			func(s *dataflow.AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		})
+	if err != nil {
+		t.Fatalf("failed to initialize analyzer state: %v", err)
+	}
+
 	escapeWholeProgram, err := EscapeAnalysis(state, state.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
 	mainFunc := findFunction(program, "main")
+	if mainFunc == nil {
+		t.Fatalf("failed to find main function")
+	}
 	funcsToTest := []string{}
 	for _, elem := range state.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
+	}
+	if len(funcsToTest) == 0 {
+		t.Fatal("no test functions found")
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -324,14 +346,16 @@ func TestInterproceduralEscape(t *testing.T) {
 
 // Check the escape results in the interprocedural case
 func TestBuiltinsEscape(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "../../testdata/src/concurrency/builtins-escape")
-	err := os.Chdir(dir)
+	t.Parallel()
+
+	dirName := filepath.Join("./testdata", "builtins-escape")
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{})
 	if err != nil {
-		t.Fatalf("failed to switch to dir %v: %v", dir, err)
+		t.Fatalf("failed to load test: %v", err)
 	}
-	program, cfg := analysistest.LoadTest(t, ".", []string{})
-	cfg.LogLevel = int(config.TraceLevel)
+	program := lp.Prog
+	cfg := lp.Config
+	cfg.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
 	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
@@ -342,6 +366,9 @@ func TestBuiltinsEscape(t *testing.T) {
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
+	}
+	if len(funcsToTest) == 0 {
+		t.Fatal("no test functions found")
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -374,16 +401,19 @@ func TestBuiltinsEscape(t *testing.T) {
 	}
 }
 
-// Check the escape results in the interprocedural case
+// Check the escape results in the standard library case
 func TestStdlibEscape(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "../../testdata/src/concurrency/stdlib-escape")
-	err := os.Chdir(dir)
+	t.Parallel()
+
+	dirName := filepath.Join("./testdata", "stdlib-escape")
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{})
 	if err != nil {
-		t.Fatalf("failed to switch to dir %v: %v", dir, err)
+		t.Fatalf("failed to load test: %v", err)
 	}
-	program, cfg := analysistest.LoadTest(t, ".", []string{})
-	cfg.LogLevel = int(config.DebugLevel)
+	program := lp.Prog
+	cfg := lp.Config
+	cfg.LogLevel = int(config.ErrLevel)
+
 	// Compute the summaries for everything in the main package
 	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
@@ -394,6 +424,9 @@ func TestStdlibEscape(t *testing.T) {
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
+	}
+	if len(funcsToTest) == 0 {
+		t.Fatal("no test functions found")
 	}
 	// For each of these distinguished functions, check that the assert*() functions
 	// are satisfied by the computed summaries (technically, the summary at particular
@@ -501,7 +534,7 @@ func groupNodesByFunc(nodes []*callgraphVisitNode) [][]*callgraphVisitNode {
 //     In at least one context, acts like LOCAL. In at least one context, acts like
 //     NONLOCAL. Because we don't have a way to identify the contexts, this annotation
 //     is weaker than it could theoretically be.
-func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]Anno) error {
+func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistest.LPos]analysistest.AnnotationID) error {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -513,7 +546,7 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]Anno) 
 	}
 	funcStart := f.Prog.Fset.Position(f.Pos())
 	funcEnd := f.Prog.Fset.Position(f.Syntax().End())
-	fAnnos := map[int]Anno{}
+	fAnnos := map[int]analysistest.AnnotationID{}
 	fAnnosCovered := map[int]map[*callgraphVisitNode]bool{}
 	for lpos, kind := range annos {
 		if lpos.Filename == funcStart.Filename && funcStart.Line <= lpos.Line && lpos.Line <= funcEnd.Line {
@@ -541,18 +574,18 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]Anno) 
 				} else {
 					pos := f.Prog.Fset.Position(ins.Pos())
 					if anno, ok := fAnnos[pos.Line]; ok {
-						switch anno.kind {
+						switch anno.ID {
 						case "LOCAL":
 							// All instructions for a local line must be local
-							return fmt.Errorf("Instruction %v on line %v was expected to be local", ins, pos.Line)
+							return fmt.Errorf("instruction %v on line %v was expected to be local", ins, pos.Line)
 						case "NONLOCAL":
 							fallthrough
 						case "BOTH":
 							// In NONLOCAL/BOTH, we don't have enough information to determine if there is an error
-							if anno.argument == "" || strings.Contains(rationale.String(), anno.argument) {
+							if anno.Meta == "" || strings.Contains(rationale.String(), anno.Meta) {
 								fAnnosCovered[pos.Line][node] = true
 							} else {
-								fmt.Printf("Rationale %s ignored because it doesn't contain %s\n", rationale.String(), anno.argument)
+								fmt.Printf("Rationale %s ignored because it doesn't contain %s\n", rationale.String(), anno.Meta)
 							}
 						}
 					}
@@ -561,9 +594,9 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]Anno) 
 		}
 		// For each context/node, check that NONLOCAL lines are satisfied
 		for line, anno := range fAnnos {
-			if anno.kind == "NONLOCAL" {
+			if anno.ID == "NONLOCAL" {
 				if !fAnnosCovered[line][node] {
-					return fmt.Errorf("Line %v was expected to have at least one non-local instruction (with rationale: %s)", line, anno.argument)
+					return fmt.Errorf("Line %v was expected to have at least one non-local instruction (with rationale: %s)", line, anno.Meta)
 				}
 			}
 		}
@@ -571,7 +604,7 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]Anno) 
 
 	// Check that BOTH lines are satisfied
 	for line, anno := range fAnnos {
-		if anno.kind == "BOTH" {
+		if anno.ID == "BOTH" {
 			seenLocal, seenNonlocal := false, false
 			for _, n := range nodes {
 				if fAnnosCovered[line][n] {
@@ -588,90 +621,31 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[LPos]Anno) 
 	return nil
 }
 
-// Logic for parsing comments copied from taint_utils_test.go
-// Match annotations of the form // LOCAL, // NONLOCAL, and // BOTH
-var annoRegex = regexp.MustCompile(`// *(LOCAL|NONLOCAL|BOTH) *([^ ].+)?$`)
-
-type LPos struct {
-	Filename string
-	Line     int
-}
-type Anno struct {
-	kind     string
-	argument string
-}
-
-func (p LPos) String() string {
-	return fmt.Sprintf("%s:%d", p.Filename, p.Line)
-}
-
-// RelPos drops the column of the position and prepends reldir to the filename of the position
-func RelPos(pos token.Position, reldir string) LPos {
-	return LPos{Line: pos.Line, Filename: filepath.Join(reldir, pos.Filename)}
-}
-
-// getExpectSourceToTargets analyzes the files in dir and looks for comments // LOCAL // NONLOCAL etc
-func getAnnotations(reldir string, dir string) map[LPos]Anno {
-	var err error
-	d := make(map[string]*ast.Package)
-	annos := make(map[LPos]Anno)
-	fset := token.NewFileSet() // positions are relative to fset
-
-	err = filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			d0, err := parser.ParseDir(fset, info.Name(), nil, parser.ParseComments)
-			funcutil.Merge(d, d0, func(x *ast.Package, _ *ast.Package) *ast.Package { return x })
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
-	for _, f := range d {
-		for _, f := range f.Files {
-			for _, c := range f.Comments {
-				for _, c1 := range c.List {
-					pos := fset.Position(c1.Pos())
-					// Match a "@Source(id1, id2, id3)"
-					a := annoRegex.FindStringSubmatch(c1.Text)
-					if a == nil {
-						continue
-					}
-					anno := Anno{"", ""}
-					if len(a) > 1 {
-						anno.kind = a[1]
-					}
-					if len(a) > 2 {
-						anno.argument = a[2]
-					}
-					annos[RelPos(pos, reldir)] = anno
-				}
-			}
-		}
-	}
-	return annos
-}
-
 func TestLocalityComputation(t *testing.T) {
-	_, filename, _, _ := runtime.Caller(0)
-	d := filepath.Dir(filename)
-	fdir, err := filepath.EvalSymlinks(d)
+	t.Parallel()
+
+	// Note: old code to load test from disk instead of embedded file
+	// _, filename, _, _ := runtime.Caller(0)
+	// dir := path.Join(path.Dir(filename), "testdata/escape-locality")
+	// err := os.Chdir(dir)
+	// if err != nil {
+	// 	t.Fatalf("failed to switch to dir %v: %v", dir, err)
+	// }
+	// lp, err := analysistest.LoadTestFromDisk(".", []string{})
+
+	dir := filepath.Join("./testdata", "escape-locality")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
 	if err != nil {
-		t.Fatalf("failed to eval symlinks for dir: %v", d)
+		t.Fatalf("failed to load test: %v", err)
 	}
-	dir := filepath.Join(fdir, "../../testdata/src/concurrency/escape-locality")
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("failed to switch to dir %v: %v", dir, err)
-	}
-	program, cfg := testutils.LoadTest(t, ".", []string{})
-	cfg.LogLevel = int(config.DebugLevel)
+	program := lp.Prog
+	cfg := lp.Config
+	cfg.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	cache, err := dataflow.NewInitializedAnalyzerState(config.NewLogGroup(cfg), cfg, program)
+	if err != nil {
+		t.Fatalf("failed to initialize analyzer state: %v", err)
+	}
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
@@ -681,7 +655,12 @@ func TestLocalityComputation(t *testing.T) {
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
 	}
-	annos := getAnnotations(dir, ".")
+	if len(funcsToTest) == 0 {
+		t.Fatal("no test functions found")
+	}
+
+	astFiles := analysistest.AstFiles(lp.Pkgs)
+	annos := annotations(lp.Prog.Fset, astFiles)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
 			f := findFunction(program, funcName)
@@ -709,4 +688,67 @@ func TestLocalityComputation(t *testing.T) {
 			t.Logf("Completed %v\n", funcName)
 		})
 	}
+}
+
+var localRegex = regexp.MustCompile(`// *(LOCAL) *([^ ].+)?$`)
+var nonlocalRegex = regexp.MustCompile(`// *(NONLOCAL) *([^ ].+)?$`)
+var bothRegex = regexp.MustCompile(`// *(BOTH) *([^ ].+)?$`)
+
+func annotations(fset *token.FileSet, astFiles []*ast.File) map[analysistest.LPos]analysistest.AnnotationID {
+	res := make(map[analysistest.LPos]analysistest.AnnotationID)
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		pos := fset.Position(c1.Pos())
+		// Match a "// LOCAL"
+		a := localRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			rationale := ""
+			if len(a) > 2 {
+				rationale = a[2]
+			}
+			relPos := analysistest.NewLPos(pos)
+			res[relPos] = analysistest.AnnotationID{
+				ID:   "LOCAL",
+				Meta: rationale,
+				Pos:  relPos,
+			}
+		}
+	})
+
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		pos := fset.Position(c1.Pos())
+		// Match a "// NONLOCAL"
+		a := nonlocalRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			rationale := ""
+			if len(a) > 2 {
+				rationale = a[2]
+			}
+			relPos := analysistest.NewLPos(pos)
+			res[relPos] = analysistest.AnnotationID{
+				ID:   "NONLOCAL",
+				Meta: rationale,
+				Pos:  relPos,
+			}
+		}
+	})
+
+	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
+		pos := fset.Position(c1.Pos())
+		// Match a "// BOTH"
+		a := bothRegex.FindStringSubmatch(c1.Text)
+		if len(a) > 1 {
+			rationale := ""
+			if len(a) > 2 {
+				rationale = a[2]
+			}
+			relPos := analysistest.NewLPos(pos)
+			res[relPos] = analysistest.AnnotationID{
+				ID:   "BOTH",
+				Meta: rationale,
+				Pos:  relPos,
+			}
+		}
+	})
+
+	return res
 }

@@ -29,6 +29,6 @@ func TestAll(t *testing.T) {
 		t.Fatalf("Failed to get wd: %s", err)
 	}
 
-	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
+	testdata := filepath.Join(wd, "testdata")
 	analysistest.Run(t, testdata, staticcommands.Analyzer, "static-commands")
 }

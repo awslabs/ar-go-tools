@@ -70,7 +70,7 @@ func (mode CallgraphAnalysisMode) ComputeCallgraph(prog *ssa.Program) (*callgrap
 		// callgraph, and not the entire pointer analysis result.
 		// Pointer analysis is using Andersen's analysis. The documentation claims that
 		// the analysis is sound if the program does not use reflection or unsafe Go.
-		result, err := DoPointerAnalysis(prog, func(_ *ssa.Function) bool { return false }, true)
+		result, err := DoPointerAnalysis(nil, prog, func(_ *ssa.Function) bool { return false }, ssautil.AllFunctions(prog))
 		if err != nil { // not a user-input problem if it fails, see Analyze doc.
 			return nil, fmt.Errorf("pointer analysis failed: %w", err)
 		}
@@ -152,7 +152,7 @@ func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map
 					}
 					// Get the interface method being implemented
 					matchingInterfaceMethod := interfaceMethods[methodValue.Name()]
-					if methodValue != nil && matchingInterfaceMethod != nil {
+					if matchingInterfaceMethod != nil {
 						key := matchingInterfaceMethod.Recv().String() + "." + methodValue.Name()
 						keys[methodValue.String()] = key
 						addImplementation(implementations, key, methodValue)
@@ -267,9 +267,9 @@ func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool)
 func findCallgraphEntryPoints(cg *callgraph.Graph, excludeMain bool, excludeInit bool) []*callgraph.Node {
 	entryPoints := make([]*callgraph.Node, 0)
 	for f, node := range cg.Nodes {
-
-		if (!excludeMain && f.Name() == "main" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") ||
-			(!excludeInit && f.Name() == "init" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") {
+		if (node.ID != 0) &&
+			((!excludeMain && f.Name() == "main" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") ||
+				(!excludeInit && f.Name() == "init" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main")) {
 			entryPoints = append(entryPoints, node)
 		}
 	}

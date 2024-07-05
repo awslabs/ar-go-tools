@@ -23,7 +23,10 @@ EOF
 # Find all Go files
 FILES=$(
     find . -type f -name "*.go"                       \
-        -not -path "./testdata/src/taint/fromlevee/*" \
+        -not -path "./analysis/taint/testdata/fromlevee/*" \
+        -not -path "./analysis/backtrace/testdata/fromlevee/*" \
+        -not -path "./internal/pointer/*" \
+        -not -path "./internal/typeparams/*" \
         -print
 )
 

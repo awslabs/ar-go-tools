@@ -12,13 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package taint
+package taint_test
 
 import (
+	"embed"
 	"testing"
 )
 
+// NOTE go:embed does not include any directories with go.mod files.
+// It also does not allow embedding files outside the current directory
+// which is why the testdata directory is located here.
+
+//go:embed testdata
+var testfsys embed.FS
+
 func TestTaint(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		dirName     string
 		extraFiles  []string
@@ -60,6 +69,10 @@ func TestTaint(t *testing.T) {
 		{
 			name: "stdlib",
 			args: args{"stdlib", []string{"helpers.go"}, noErrorExpected},
+		},
+		{
+			name: "stdlib with no-effect constraints",
+			args: args{"stdlib-no-effect-constraint", []string{"helpers.go"}, noErrorExpected},
 		},
 		{
 			name: "selects",
@@ -114,6 +127,10 @@ func TestTaint(t *testing.T) {
 			args: args{"closures_paper", []string{"helpers.go"}, noErrorExpected},
 		},
 		{
+			name: "defers",
+			args: args{"defers", []string{}, noErrorExpected},
+		},
+		{
 			name: "sanitizers",
 			args: args{"sanitizers", []string{}, noErrorExpected},
 		},
@@ -154,20 +171,12 @@ func TestTaint(t *testing.T) {
 		},
 		{
 			name: "globals",
-			args: args{"globals", []string{"helpers.go"}, noErrorExpected},
+			args: args{"globals", []string{"helpers.go", "foo/foo.go"}, noErrorExpected},
 		},
 		{
 			name: "complex functionality example",
 			args: args{
 				"agent-example",
-				[]string{},
-				noErrorExpected, // config specifies explicit flow only
-			},
-		},
-		{
-			name: "benchmarking example",
-			args: args{
-				"benchmark",
 				[]string{},
 				noErrorExpected, // config specifies explicit flow only
 			},
@@ -183,15 +192,31 @@ func TestTaint(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			runTest(t, tt.args.dirName, tt.args.extraFiles, false, tt.args.expectError)
 		})
 		t.Run(tt.name+"-on-demand", func(t *testing.T) {
+			t.Parallel()
 			runTest(t, tt.args.dirName, tt.args.extraFiles, true, tt.args.expectError)
 		})
 	}
 }
 
 func TestPlayground(t *testing.T) {
+	t.Parallel()
 	runTest(t, "playground", []string{}, false, noErrorExpected)
+}
+
+func TestBenchmark(t *testing.T) {
+	t.Parallel()
+	t.Run("benchmark", func(t *testing.T) {
+		t.Parallel()
+		runTestWithoutCheck(t, "benchmark", []string{}, false, noErrorExpected)
+	})
+	t.Run("benchmark-on-demand", func(t *testing.T) {
+		t.Parallel()
+		runTestWithoutCheck(t, "benchmark", []string{}, true, noErrorExpected)
+	})
 }

@@ -23,7 +23,9 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"golang.org/x/tools/go/pointer"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
+	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -69,6 +71,10 @@ type AnalyzerState struct {
 
 	reachableFunctions map[*ssa.Function]bool
 
+	// a callgraph computed using the cha analysis. Useful to boostrap the reachable functions
+	chaCallgraph      *callgraph.Graph
+	isReachabilityCha bool
+
 	// Stored errors
 	errors     map[string][]error
 	errorMutex sync.Mutex
@@ -103,6 +109,7 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 	steps []func(*AnalyzerState)) (*AnalyzerState, error) {
 	var allContracts []Contract
 
+	// New state with initial cha callgraph
 	state := &AnalyzerState{
 		Logger:                l,
 		Config:                c,
@@ -119,7 +126,9 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 			Globals:       map[*GlobalNode]map[*AccessGlobalNode]bool{},
 			AnalyzerState: nil,
 		},
-		errors: map[string][]error{},
+		chaCallgraph:      cha.CallGraph(p),
+		isReachabilityCha: false,
+		errors:            map[string][]error{},
 	}
 	// Link summaries to parent analyzer state
 	state.FlowGraph.AnalyzerState = state
@@ -144,6 +153,13 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 		}
 	}
 
+	// if no steps are provided, there is no additional information to compute here.
+	// link contracts (using the reachable functions from the cha analysis)
+	if steps == nil {
+		state.linkContracts(allContracts)
+		return state, nil
+	}
+
 	wg := &sync.WaitGroup{}
 	for _, step := range steps {
 		step := step
@@ -165,6 +181,15 @@ func NewAnalyzerState(p *ssa.Program, l *config.LogGroup, c *config.Config,
 	return state, nil
 }
 
+// NewDefaultAnalyzer returns a new analyzer with a default config and a default log group.
+// This is useful if you only need the basic functionality, for example callgraph construction
+// and pointer analysis.
+func NewDefaultAnalyzer(p *ssa.Program) (*AnalyzerState, error) {
+	defaultConfig := config.NewDefault()
+	defaultLogGroup := config.NewLogGroup(defaultConfig)
+	return NewAnalyzerState(p, defaultLogGroup, defaultConfig, nil)
+}
+
 // CopyTo copies pointers in receiver into argument (shallow copy of everything except mutex).
 // Do not use two copies in separate routines.
 func (s *AnalyzerState) CopyTo(b *AnalyzerState) {
@@ -181,7 +206,6 @@ func (s *AnalyzerState) CopyTo(b *AnalyzerState) {
 	b.keys = s.keys
 	b.reachableFunctions = s.reachableFunctions
 	// copy everything except mutex
-
 }
 
 // Size returns the number of method implementations collected
@@ -189,11 +213,11 @@ func (s *AnalyzerState) Size() int {
 	return len(s.ImplementationsByType)
 }
 
-// PrintImplementations prints out all of the implementations that the
+// PrintImplementations prints out all the implementations that the
 // AnalyzerState has collected, organized by type. For each type, it prints
 // the type name followed by each implemented function name.
 //
-// The implementations are printed to the given io.Writer. Typically this
+// The implementations are printed to the given io.Writer. Typically, this
 // would be os.Stdout to print to the standard output.
 //
 // This can be useful for debugging the implementations collected during
@@ -263,7 +287,7 @@ func (s *AnalyzerState) PopulateImplementations() {
 //
 // The analyzer state contains the result of the pointer analysis, or an error that can be inspected by CheckError
 func (s *AnalyzerState) PopulatePointerAnalysisResult(functionFilter func(*ssa.Function) bool) {
-	ptrResult, err := DoPointerAnalysis(s.Program, functionFilter, true)
+	ptrResult, err := DoPointerAnalysis(s.Config, s.Program, functionFilter, s.ReachableFunctions())
 	if err != nil {
 		s.AddError("pointeranalysis", err)
 	}
@@ -320,15 +344,30 @@ func (s *AnalyzerState) PopulateBoundingInformation(verbose bool) error {
 
 // Functions to retrieve results from the information stored in the analyzer state
 
-// ReachableFunctions returns the set of reachable functions according to the pointer analysis
-// If the pointer analysis hasn't been run, then returns an empty map.
-func (s *AnalyzerState) ReachableFunctions(excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
+// ReachableFunctions returns the set of reachable functions from main and init according to:
+// - the pointer analysis if it has been computed, otherwise
+// - the cha analysis if it has been computed, oterhwise
+// - an empty map.
+// To compute reachable functions without main or init, use the CallGraphReachable function with
+// the appropriate callgraph information.
+func (s *AnalyzerState) ReachableFunctions() map[*ssa.Function]bool {
+	// Create reachability information using best available callgraph
 	if s.reachableFunctions == nil {
 		s.reachableFunctions = make(map[*ssa.Function]bool)
 		if s.PointerAnalysis != nil {
-			s.reachableFunctions = CallGraphReachable(s.PointerAnalysis.CallGraph, excludeMain, excludeInit)
-
+			s.reachableFunctions = CallGraphReachable(s.PointerAnalysis.CallGraph, false, false)
+			s.isReachabilityCha = false
+			return s.reachableFunctions
 		}
+		if s.chaCallgraph != nil {
+			s.reachableFunctions = CallGraphReachable(s.chaCallgraph, false, false)
+			s.isReachabilityCha = true
+			return s.reachableFunctions
+		}
+	}
+	// Attempt update of reachability information
+	if s.isReachabilityCha && s.PointerAnalysis != nil {
+		s.reachableFunctions = CallGraphReachable(s.PointerAnalysis.CallGraph, false, false)
 	}
 	return s.reachableFunctions
 }
@@ -455,7 +494,7 @@ func (s *AnalyzerState) ResolveCallee(instr ssa.CallInstruction, useContracts bo
 func (s *AnalyzerState) linkContracts(allContracts []Contract) {
 	// This links the function contracts to their implementation by storing an empty summary graph in the
 	// DataFlowContracts map of the analyzer state.
-	for f := range s.ReachableFunctions(false, false) {
+	for f := range s.ReachableFunctions() {
 		if _, hasContract := s.DataFlowContracts[f.String()]; hasContract {
 			s.DataFlowContracts[f.String()] = NewSummaryGraph(nil, f, GetUniqueFunctionID(), nil, nil)
 		}

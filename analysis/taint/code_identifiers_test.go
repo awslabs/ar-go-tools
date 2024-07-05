@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package taint
+package taint_test
 
 import (
 	"fmt"
@@ -22,10 +22,11 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/taint"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
-	"golang.org/x/tools/go/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -81,14 +82,14 @@ var taintSourcesAnalyzer = &analysis.Analyzer{
 
 // newSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
 func newSourceMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
-	return NewPackagesMap(c, pkgs, IsSomeSourceNode)
+	return NewPackagesMap(c, pkgs, taint.IsSomeSourceNode)
 }
 
 // newSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
 func newSinkMap(c *config.Config, pkgs []*ssa.Package) PackageToNodes {
 	return NewPackagesMap(c, pkgs,
 		func(cfg *config.Config, p *pointer.Result, node ssa.Node) bool {
-			return isMatchingCodeIDWithCallee(cfg.IsSomeSink, nil, node)
+			return taint.IsMatchingCodeIDWithCallee(cfg.IsSomeSink, nil, node)
 		})
 }
 
@@ -113,20 +114,16 @@ func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {
 }
 
 func TestAllSources(t *testing.T) {
-	var err error
 	// TaintFlows
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get wd: %s", err)
 	}
-	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
-	// Load config; in command, should be set using some flag
-	configFile := filepath.Join(testdata, "src/taint/sources/config.yaml")
+	testdata := filepath.Join(wd, "testdata")
+	// Load config
+	configFile := filepath.Join(testdata, "src/sources/config.yaml")
 	config.SetGlobalConfig(configFile)
-	if err != nil {
-		t.Errorf("could not set config file: %v", err)
-	}
-	analysistest.Run(t, testdata, taintSourcesAnalyzer, "taint/sources")
+	analysistest.Run(t, testdata, taintSourcesAnalyzer, "sources")
 }
 
 // For testing purposes only: an analyzer that identifies where sources are
@@ -159,18 +156,14 @@ func runSinkAnalysis(pass *analysis.Pass) (interface{}, error) {
 }
 
 func TestAllSinks(t *testing.T) {
-	var err error
 	// TaintFlows
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get wd: %s", err)
 	}
-	testdata := filepath.Join(filepath.Dir(filepath.Dir(wd)), "testdata")
+	testdata := filepath.Join(wd, "testdata")
 	// Load config
-	configFile := filepath.Join(testdata, "src/taint/sinks/config.yaml")
+	configFile := filepath.Join(testdata, "src/sinks/config.yaml")
 	config.SetGlobalConfig(configFile)
-	if err != nil {
-		t.Errorf("could not set config file: %v", err)
-	}
-	analysistest.Run(t, testdata, taintSinksAnalyzer, "taint/sinks")
+	analysistest.Run(t, testdata, taintSinksAnalyzer, "sinks")
 }

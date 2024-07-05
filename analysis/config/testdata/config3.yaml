@@ -1,0 +1,26 @@
+# Comment
+options:
+    pkg-filter: "a"
+
+taint-tracking-problems:
+    - sinks:
+      - package: y
+        method: b
+      - package: x
+        receiver: Obj1
+
+      sanitizers:
+        - package: pkg1
+          method: Foo
+          receiver: Obj
+
+      sources:
+        - package: some/package
+          method: SuperMethod
+        - package: some/other/package
+          type: ThatStruct
+          field: OneField
+        - package: some/other/package
+          interface: Interface
+
+      fail-on-implicit-flow: false

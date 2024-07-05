@@ -1,0 +1,9 @@
+# The package regex matches all possible ways the package name might appear depending on how the program is loaded
+taint-tracking-problems:
+  -
+    sources:
+      - package: "(.*)core"
+        method: "Source[1-9]?"
+    sinks:
+      - package: "(.*)core"
+        method: "Sink[1-9]?"

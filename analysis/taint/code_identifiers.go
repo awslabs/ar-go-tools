@@ -21,7 +21,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
-	"golang.org/x/tools/go/pointer"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -49,7 +49,7 @@ func isValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bo
 	switch val := v.(type) {
 	// Direct boolean check?
 	case *ssa.Call:
-		return isPositive && isMatchingCodeIDWithCallee(ts.IsValidator, nil, val)
+		return isPositive && IsMatchingCodeIDWithCallee(ts.IsValidator, nil, val)
 	// Nil error check?
 	case *ssa.BinOp:
 		vNilChecked, isEqCheck := lang.MatchNilCheck(val)
@@ -114,11 +114,11 @@ func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n dataflow.
 		if param == nil {
 			return false
 		}
-		return isMatchingCodeIDWithCallee(codeIDOracle, callSite.CalleeSummary.Parent, param.Parent())
+		return IsMatchingCodeIDWithCallee(codeIDOracle, callSite.CalleeSummary.Parent, param.Parent())
 	case *dataflow.CallNode:
-		return isMatchingCodeIDWithCallee(codeIDOracle, n.Callee(), n.CallSite().(ssa.Node))
+		return IsMatchingCodeIDWithCallee(codeIDOracle, n.Callee(), n.CallSite().(ssa.Node))
 	case *dataflow.SyntheticNode:
-		return isMatchingCodeIDWithCallee(codeIDOracle, nil, n.Instr().(ssa.Node)) // safe type conversion
+		return IsMatchingCodeIDWithCallee(codeIDOracle, nil, n.Instr().(ssa.Node)) // safe type conversion
 	case *dataflow.ReturnValNode, *dataflow.ClosureNode, *dataflow.BoundVarNode:
 		return false
 	default:
@@ -126,9 +126,9 @@ func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n dataflow.
 	}
 }
 
-// isMatchingCodeIdWIthCallee returns true when the codeIdOracle returns true for a code identifier matching the node
-// n in the context where callee is the callee
-func isMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
+// IsMatchingCodeIDWithCallee returns true when the codeIdOracle returns true for a code identifier matching the node
+// n in the context where callee is the callee.
+func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered sinks
 	case *ssa.Call, *ssa.Go, *ssa.Defer:

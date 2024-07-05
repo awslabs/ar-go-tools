@@ -68,7 +68,7 @@ func RunAnalysis(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 	// ids[0] represents the absence of a goroutine on top. For all others i > 0, ids[i] will point to a goroutine
 	ids := []*ssa.Go{nil}
 	callID = 1
-	for function := range state.ReachableFunctions(false, false) {
+	for function := range state.ReachableFunctions() {
 		lang.IterateInstructions(function,
 			func(_ int, i ssa.Instruction) {
 				if goCall, isGo := i.(*ssa.Go); isGo {

@@ -15,7 +15,7 @@
 package taint
 
 import (
-	"fmt"
+	"errors"
 	"runtime"
 	"strings"
 	"time"
@@ -114,7 +114,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program) (AnalysisResult, error) {
 	// result after the fact, and some other analyses can be used to prune false alarms.
 
 	if state.HasErrors() {
-		err = fmt.Errorf("analysis returned errors, check AnalysisResult.State for more details")
+		err = errors.Join(state.CheckError()...)
 	}
 	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
 }

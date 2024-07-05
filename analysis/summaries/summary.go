@@ -54,18 +54,6 @@ var TwoArgPropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}
 // and this will taint the returned value (for example: an error, a string with Sprintf).
 var FormatterPropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}
 
-// IsStdPackage returns true if the input package is in the standard library or the runtime. The standard library
-// is defined internally as the list of packages in summaries.stdPackages
-//
-// Return false if the input is nil.
-func IsStdPackage(pkg *ssa.Package) bool {
-	if pkg == nil {
-		return false
-	}
-	pkgPath := pkg.Pkg.Path()
-	return IsStdPackageName(pkgPath)
-}
-
 // IsStdPackageName returns true if the package name is a package of the standard library
 func IsStdPackageName(name string) bool {
 	_, ok := stdPackages[name]

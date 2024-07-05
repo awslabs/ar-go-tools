@@ -100,7 +100,7 @@ func (e *CondError) Error() string {
 //
 //gocyclo:ignore
 func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
-	ignoreNonSummarized := !s.Config.SummarizeOnDemand && s.Config.IgnoreNonSummarized
+	ignoreNonSummarized := !s.Config.SummarizeOnDemand && s.Config.UnsafeIgnoreNonSummarized
 	coverage := make(map[string]bool)
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
@@ -599,7 +599,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		case *df.AccessGlobalNode:
 			if graphNode.IsWrite {
 				if !ignoreNonSummarized {
-					for f := range s.ReachableFunctions(false, false) {
+					for f := range s.ReachableFunctions() {
 						if lang.FnReadsFrom(f, graphNode.Global.Value()) {
 							logger.Tracef("Global %v read in function: %v\n", graphNode, f)
 							df.BuildSummary(s, f)
@@ -667,7 +667,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		case *df.IfNode:
 			// If only explicit taint flows should be tracked,
 			// then don't track flow inside of conditionals (information flow)
-			if v.taintSpec.ExplicitFlowOnly {
+			if !v.taintSpec.FailOnImplicitFlow {
 				break
 			}
 

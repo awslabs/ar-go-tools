@@ -17,8 +17,9 @@ package dataflow
 import (
 	"go/types"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"golang.org/x/tools/go/pointer"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -33,21 +34,27 @@ import (
 //
 // - functionFilter determines whether to add the values of the function in the Queries or IndirectQueries of the result
 //
-// - buildCallGraph determines whether the analysis must also build the callgraph of the program
+// - functionSet is the set of functions that will be queried.
 //
 // If error != nil, the *pointer.Result is such that every Value in the functions f such that functionFilter(f) is true
 // will be in the Queries or IndirectQueries of the pointer.Result
-func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, buildCallGraph bool) (*pointer.Result,
-	error) {
+func DoPointerAnalysis(c *config.Config, p *ssa.Program,
+	functionFilter func(*ssa.Function) bool,
+	functionSet map[*ssa.Function]bool) (*pointer.Result, error) {
+	doReflection := false
+	if c != nil {
+		doReflection = c.PointerConfig.Reflection
+	}
 	pCfg := &pointer.Config{
-		Mains:           ssautil.MainPackages(p.AllPackages()),
-		Reflection:      false,
-		BuildCallGraph:  buildCallGraph,
-		Queries:         make(map[ssa.Value]struct{}),
-		IndirectQueries: make(map[ssa.Value]struct{}),
+		Mains:             ssautil.MainPackages(p.AllPackages()),
+		Reflection:        doReflection,
+		BuildCallGraph:    true,
+		Queries:           make(map[ssa.Value]struct{}),
+		IndirectQueries:   make(map[ssa.Value]struct{}),
+		NoEffectFunctions: make(map[string]bool),
 	}
 
-	for function := range ssautil.AllFunctions(p) {
+	for function := range functionSet {
 		// If the function is a user-defined function (it can be from a dependency) then every Value that can
 		// can potentially alias is marked for querying.
 		if functionFilter(function) {
@@ -63,6 +70,12 @@ func DoPointerAnalysis(p *ssa.Program, functionFilter func(*ssa.Function) bool, 
 			lang.IterateInstructions(function, func(_ int, instruction ssa.Instruction) {
 				addInstructionQuery(pCfg, instruction)
 			})
+		}
+	}
+
+	if c != nil {
+		for _, functionName := range c.PointerConfig.UnsafeNoEffectFunctions {
+			pCfg.AddNoEffectFunction(functionName)
 		}
 	}
 

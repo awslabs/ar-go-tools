@@ -205,10 +205,12 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 		}
 
 		// Interprocedural edges: bound variable to capturing anonymous function
-		for _, boundLabelNode := range summary.BoundLabelNodes {
-			if boundLabelNode.targetInfo.MakeClosure != nil {
-				closureSummary := g.findClosureSummary(boundLabelNode.targetInfo.MakeClosure)
-				boundLabelNode.targetAnon = closureSummary // nil is safe
+		for _, boundLabelNodeGroup := range summary.BoundLabelNodes {
+			for _, boundLabelNode := range boundLabelNodeGroup {
+				if boundLabelNode.targetInfo.MakeClosure != nil {
+					closureSummary := g.findClosureSummary(boundLabelNode.targetInfo.MakeClosure)
+					boundLabelNode.targetAnon = closureSummary // nil is safe
+				}
 			}
 		}
 	}
@@ -241,10 +243,12 @@ func (g *InterProceduralFlowGraph) Sync() {
 		}
 
 		// Interprocedural edges: bound variable to capturing anonymous function
-		for _, boundLabelNode := range summary.BoundLabelNodes {
-			if boundLabelNode.targetInfo.MakeClosure != nil {
-				closureSummary := g.findClosureSummary(boundLabelNode.targetInfo.MakeClosure)
-				boundLabelNode.targetAnon = closureSummary // nil is safe
+		for _, boundLabelNodeGroup := range summary.BoundLabelNodes {
+			for _, boundLabelNode := range boundLabelNodeGroup {
+				if boundLabelNode.targetInfo.MakeClosure != nil {
+					closureSummary := g.findClosureSummary(boundLabelNode.targetInfo.MakeClosure)
+					boundLabelNode.targetAnon = closureSummary // nil is safe
+				}
 			}
 		}
 	}

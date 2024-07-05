@@ -564,6 +564,9 @@ func (g *EscapeGraph) IsSubnode(n *Node) bool {
 func (g *EscapeGraph) AnalogousSubnode(base *Node, subnode *Node) *Node {
 	for reason, nodeData := range g.nodes.globalNodes.subnodes[g.nodes.globalNodes.parent[subnode].node] {
 		if r, ok := reason.(fieldSubnodeReason); ok && nodeData.node == subnode {
+			if nodeData.data == nil {
+				return g.FieldSubnode(base, r.field, nil)
+			}
 			return g.FieldSubnode(base, r.field, nodeData.data.(types.Type))
 		} else if _, ok := reason.(implementationSubnodeReason); ok && nodeData.node == subnode {
 			subnodeType := nodeData.data.(types.Type)
@@ -898,6 +901,7 @@ func (g *EscapeGraph) Call(pre *EscapeGraph, receiver *Node, args []*Node, freeV
 	}
 	for i, formal := range callee.nodes.formals {
 		if (args[i] == nil) != (formal == nil) {
+			print(i)
 			panic("Incorrect nil-ness of corresponding parameter nodes")
 		}
 		if formal != nil {
@@ -1264,7 +1268,10 @@ func (g *NodeGroup) ValueNode(variable ssa.Value) *Node {
 		if c.IsNil() {
 			return g.NilNode()
 		}
-		panic("Non-nil constant not supported" + fmt.Sprintf("%v", variable))
+		// since x/tools v0.9 struct constants appear as values.
+		if _, isStruct := c.Type().Underlying().(*types.Struct); !isStruct {
+			panic("Non-nil constant not supported" + fmt.Sprintf("%v", variable))
+		}
 	}
 
 	node, ok := g.variables[variable]

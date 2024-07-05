@@ -107,7 +107,7 @@ func cmdReconfig(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) 
 	} else {
 		// Argument specified: set state.ConfigPath to the new config file's path, if the file exists
 		filename := strings.TrimSpace(command.Args[0])
-		newConfig, err = config.Load(filename)
+		newConfig, err = config.LoadFromFiles(filename)
 		if err == nil {
 			config.SetGlobalConfig(filename)
 			state.ConfigPath = filename

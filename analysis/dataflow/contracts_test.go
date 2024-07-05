@@ -12,19 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dataflow
+package dataflow_test
 
 import (
 	"path"
 	"runtime"
 	"testing"
+
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 )
 
 func TestAll(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	file := path.Join(path.Dir(filename), "../../testdata/src/taint/interface-summaries/dataflows.json")
-	_, err := LoadDefinitions(file)
+	file := path.Join(path.Dir(filename), "./testdata/summaries/dataflows.json")
+	_, err := dataflow.LoadDefinitions(file)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 }

@@ -1,0 +1,14 @@
+taint-tracking-problems:
+  -
+    sources:
+      - package: fmt
+        method: Sprintf
+      - package: "(intra-procedural)|(main)|(command-line-arguments)"
+        method: zoo
+    sinks:
+      - package: "(intra-procedural)|(main)|(command-line-arguments)"
+        method: sink[1-9]
+
+options:
+    skip-interprocedural: false
+    field-sensitive: true

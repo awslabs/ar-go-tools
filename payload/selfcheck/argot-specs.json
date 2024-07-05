@@ -1,6 +1,6 @@
 [
   {
-    "InterfaceId": "golang.org/x/tools/go/pointer.constraint",
+    "InterfaceId": "github.com/awslabs/ar-go-tools/internal/pointer.constraint",
     "Methods": {
       "ptr": {"Args": [[0]], "Rets": [[0]]},
       "solve": {"Args": [[0],[1],[2]], "Rets": [[0],[0],[0]]},

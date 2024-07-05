@@ -214,7 +214,7 @@ func ComputeClosureUsageStats(state *dataflow.AnalyzerState) (ClosureUsageStatis
 		ClosuresPassedAsArgs:      map[ssa.CallInstruction]ssa.Instruction{},
 		ClosuresCalled:            map[ssa.CallInstruction]ssa.Instruction{},
 	}
-	for function := range state.ReachableFunctions(false, false) {
+	for function := range state.ReachableFunctions() {
 		stats.doFunction(state, function)
 	}
 	return *stats, nil
