@@ -41,16 +41,16 @@ const (
 	Sanitizer AnnotationKind = iota
 )
 
-// sourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
-// where the "argument" is either an identifier (e.g. id) or an identifier with
-// associated "metadata" (e.g. id call:example1->call:helper->call:example1$1).
-var sourceRegex = regexp.MustCompile(`.*Source\(((?:\s*(\w|(\w\s+[a-zA-Z0-9$:\->]+\s*))\s*,?)+)\)`)
+const AnyTag = "_"
+
+// sourceRegex matches an annotation of the form @Source(id1, id2 meta-2, ...)
+var sourceRegex = regexp.MustCompile(`.*Source\(((?:\s*[\w\-]\s*,?)+)\)`)
 
 // sinkRegex matches annotations of the form @Sink(id1, id2, id3)"
-var sinkRegex = regexp.MustCompile(`.*Sink\(((?:\s*\w\s*,?)+)\)`)
+var sinkRegex = regexp.MustCompile(`.*Sink\(((?:\s*[\w\-]\s*,?)+)\)`)
 
 // sanitizerRegex matches annotations of the form @Sanitizer(id1, id2, id3)"
-var sanitizerRegex = regexp.MustCompile(`.*Sanitizer\(((?:\s*\w\s*,?)+)\)`)
+var sanitizerRegex = regexp.MustCompile(`.*Sanitizer\(((?:\s*[\w\-]\s*,?)+)\)`)
 
 var annotationKindParsers = map[AnnotationKind]*regexp.Regexp{
 	Sink:      sinkRegex,
@@ -73,7 +73,7 @@ type Annotation struct {
 // - the annotation has a tag _
 // - the annotation's tags contains the provided tag
 func (a Annotation) IsMatchingAnnotation(kind AnnotationKind, tag string) bool {
-	return a.Kind == kind && (tag == "_" || (len(a.Tags) > 0 && a.Tags[0] == "_") || slices.Contains(a.Tags, tag))
+	return a.Kind == kind && (tag == AnyTag || (len(a.Tags) > 0 && a.Tags[0] == AnyTag) || slices.Contains(a.Tags, tag))
 }
 
 // A FunctionAnnotation groups the annotations relative to a function into main annotations for the entire function
@@ -281,5 +281,5 @@ func parseAnnotationContent(annotationContent []string) ([]Annotation, error) {
 }
 
 func parseAnnotationArgs(a []string) []string {
-	return strings.Split(a[1], ",")
+	return funcutil.Map(strings.Split(a[1], ","), func(s string) string { return strings.TrimSpace(s) })
 }

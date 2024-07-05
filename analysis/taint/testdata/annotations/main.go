@@ -22,8 +22,10 @@ import (
 )
 
 // bar
+// It is also a source for the problem hybridDef also defined in the config.json
+// The sink for that problem is fmt.Println
 //
-//argot:function Source(ex1,ex2)
+//argot:function Source(ex1, ex2, hybridDef)
 func bar() string {
 	return strconv.Itoa(rand.Int()) + "-taint"
 }
@@ -40,7 +42,7 @@ func sanitizer(s string) string {
 
 //argot:param unsafe Sink(ex2)
 func sinkOnSecondArg(safe string, unsafe string) {
-	fmt.Println(unsafe + safe)
+	fmt.Println(unsafe + safe) // @Sink(hybridDef)
 }
 
 //argot:param clean Sanitizer(_)
@@ -49,11 +51,12 @@ func sanitizeSecondArg(safe string, clean string) string {
 }
 
 func main() {
-	s := bar()                       // @Source(ex1,ex2)
+	s := bar()                       // @Source(ex1,ex2,hybridDef)
 	sink(s)                          //  @Sink(ex1)
 	sinkOnSecondArg(s, "ok")         // only second argument of this is a sink
 	sinkOnSecondArg("ok", s)         // @Sink(ex2)
 	sink(sanitizeSecondArg(s, "ok")) // @Sink(ex1)
 	sink(sanitizeSecondArg("ok", s))
 	sink(sanitizer(s))
+	fmt.Println(s) // @Sink(hybridDef)
 }

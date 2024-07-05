@@ -27,6 +27,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
@@ -102,10 +103,16 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 	// capture the annotation-defined problems
 	tags := map[string]bool{}
 	state.Annotations.Iter(func(a annotations.Annotation) {
+		// scan the source annotations for all the tags, if there is no problem with that tag add it to the
+		// config's TaintTrackingProblems
 		if a.Kind == annotations.Source {
 			for _, key := range a.Tags {
 				if tagged := tags[key]; !tagged {
-					cfg.TaintTrackingProblems = append(cfg.TaintTrackingProblems, config.TaintSpec{Tag: key})
+					if !funcutil.Exists(cfg.TaintTrackingProblems, func(spec config.TaintSpec) bool {
+						return spec.Tag == key
+					}) {
+						cfg.TaintTrackingProblems = append(cfg.TaintTrackingProblems, config.TaintSpec{Tag: key})
+					}
 					tags[key] = true
 				}
 			}

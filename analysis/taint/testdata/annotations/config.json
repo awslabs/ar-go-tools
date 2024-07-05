@@ -1,5 +1,13 @@
 {
   "options": {
     "log-level": 3
-  }
+  },
+  "taint-tracking-problems": [
+    {
+      "tag": "hybridDef",
+      "sinks": [
+        {"package":  "fmt", "method": "Println"}
+      ]
+    }
+  ]
 }
