@@ -21,6 +21,9 @@ import (
 	"strings"
 )
 
+// Specific problem-level config options can be set in annotations
+//argot:config lim SetOptions(max-alarms=2,unsafe-max-depth=2)
+
 // bar
 // It is also a source for the problem hybridDef also defined in the config.json
 // The sink for that problem is fmt.Println
@@ -30,9 +33,30 @@ func bar() string {
 	return strconv.Itoa(rand.Int()) + "-taint"
 }
 
-//argot:function Sink(ex1)
+//argot:function Sink(ex1,lim)
 func sink(s string) {
 	fmt.Print(s)
+}
+
+//argot:function Source(lim)
+func source() string {
+	return strconv.Itoa(rand.Int()) + "tainted"
+}
+
+func justPassing(s string) string {
+	return fmt.Sprintf("wrap(%s)", s)
+}
+
+func passingThrough(s string) string {
+	return justPassing(s)
+}
+
+func amending(s string) string {
+	return passingThrough(s) + strconv.Itoa(rand.Int())
+}
+
+func amending2(s string) string {
+	return amending(s) + strconv.Itoa(rand.Int())
 }
 
 //argot:function Sanitizer(ex1)
@@ -58,5 +82,6 @@ func main() {
 	sink(sanitizeSecondArg(s, "ok")) // @Sink(ex1)
 	sink(sanitizeSecondArg("ok", s))
 	sink(sanitizer(s))
-	fmt.Println(s) // @Sink(hybridDef)
+	fmt.Println(s)            // @Sink(hybridDef)
+	sink(amending2(source())) // no alarm because of the unsafe config option set to 2 for the lim problem
 }

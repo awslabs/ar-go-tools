@@ -108,10 +108,11 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 		if a.Kind == annotations.Source {
 			for _, key := range a.Tags {
 				if tagged := tags[key]; !tagged {
-					if !funcutil.Exists(cfg.TaintTrackingProblems, func(spec config.TaintSpec) bool {
+					if !funcutil.Exists(state.Config.TaintTrackingProblems, func(spec config.TaintSpec) bool {
 						return spec.Tag == key
 					}) {
-						cfg.TaintTrackingProblems = append(cfg.TaintTrackingProblems, config.TaintSpec{Tag: key})
+						state.Config.TaintTrackingProblems = append(state.Config.TaintTrackingProblems,
+							config.TaintSpec{Tag: key})
 					}
 					tags[key] = true
 				}
@@ -121,13 +122,28 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 
 	taintFlows := NewFlows()
 
-	for _, taintSpec := range cfg.TaintTrackingProblems {
+	for _, taintSpec := range state.Config.TaintTrackingProblems {
+		// Set problem-specific options
+		prevOptions := map[string]string{}
+		for optionName, optionValue := range state.Annotations.Configs[taintSpec.Tag] {
+			prevValue, err := config.SetOption(state.Config, optionName, optionValue)
+			if err != nil {
+				state.Logger.Warnf("ignoring option %s setting to %s in annotations because not a valid option",
+					optionName, optionValue)
+			} else {
+				prevOptions[optionName] = prevValue
+			}
+		}
 		visitor := NewVisitor(&taintSpec)
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(state, &taintSpec, node) },
 		})
 		taintFlows.Merge(visitor.taints)
+		// Restore global options
+		for optionName, optionValue := range prevOptions {
+			_, _ = config.SetOption(state.Config, optionName, optionValue)
+		}
 	}
 
 	// ** Fourth step **

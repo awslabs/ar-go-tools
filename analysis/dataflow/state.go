@@ -121,7 +121,7 @@ func NewAnalyzerState(p *ssa.Program, pkgs []*packages.Package, l *config.LogGro
 	// Load annotations
 	pa, err := annotations.LoadAnnotations(l, p.AllPackages())
 	if pkgs != nil {
-		pa.CompleteFromSyntax(pkgs)
+		pa.CompleteFromSyntax(l, pkgs)
 	}
 
 	if err != nil {
