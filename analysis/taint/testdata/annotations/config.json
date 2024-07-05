@@ -1,6 +1,6 @@
 {
   "options": {
-    "log-level": 3
+    "log-level": 4
   },
   "taint-tracking-problems": [
     {

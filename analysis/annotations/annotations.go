@@ -33,33 +33,55 @@ const annotationPrefix = "//argot:"
 type AnnotationKind = int
 
 const (
-	// Sink is the kind of @Sink(...) annotations.
+	// Sink is the kind of Sink(...) annotations.
 	Sink AnnotationKind = iota
-	// Source is the kind of @Source(...) annotations
-	Source AnnotationKind = iota
-	// Sanitizer is the kind of @Sanitizer(...) annotations
-	Sanitizer AnnotationKind = iota
+	// Source is the kind of Source(...) annotations
+	Source
+	// Sanitizer is the kind of Sanitizer(...) annotations
+	Sanitizer
+	// SetOptions is the kind of SetOptions(...) annotations
+	SetOptions
 )
 
+// AnyTag is the special tag used to match any other tag
 const AnyTag = "_"
 
+// TargetSpecifier is the type of target specifiers in the annotations: an annotation is of the shape
+// "//argot:<target specifier> <target specifier arguments>* <annotations>
+type TargetSpecifier = string
+
+const (
+	// ParamTarget is the specifier for function parameter targets
+	ParamTarget TargetSpecifier = "param"
+	// FunctionTarget is the specifier for function targets
+	FunctionTarget TargetSpecifier = "function"
+	// IgnoreTarget is the specifier for ignore targets
+	IgnoreTarget TargetSpecifier = "ignore"
+	// ConfigTarget is the specifier for config targets
+	ConfigTarget TargetSpecifier = "config"
+)
+
 // sourceRegex matches an annotation of the form @Source(id1, id2 meta-2, ...)
-var sourceRegex = regexp.MustCompile(`.*Source\(((?:\s*[\w\-]\s*,?)+)\)`)
+var sourceRegex = regexp.MustCompile(`.*Source\(((?:\s*[\w\-]+\s*,?)+)\)`)
 
 // sinkRegex matches annotations of the form @Sink(id1, id2, id3)"
-var sinkRegex = regexp.MustCompile(`.*Sink\(((?:\s*[\w\-]\s*,?)+)\)`)
+var sinkRegex = regexp.MustCompile(`.*Sink\(((?:\s*[\w\-]+\s*,?)+)\)`)
 
 // sanitizerRegex matches annotations of the form @Sanitizer(id1, id2, id3)"
-var sanitizerRegex = regexp.MustCompile(`.*Sanitizer\(((?:\s*[\w\-]\s*,?)+)\)`)
+var sanitizerRegex = regexp.MustCompile(`.*Sanitizer\(((?:\s*[\w\-]+\s*,?)+)\)`)
+
+// setOptionsRegex matches annotations of the form @Sanitizer(id1, id2, id3)"
+var setOptionsRegex = regexp.MustCompile(`.*SetOptions\(((?:\s*[\w\-]+=[\w\-]+\s*,?)+)\)`)
 
 var annotationKindParsers = map[AnnotationKind]*regexp.Regexp{
-	Sink:      sinkRegex,
-	Source:    sourceRegex,
-	Sanitizer: sanitizerRegex,
+	Sink:       sinkRegex,
+	Source:     sourceRegex,
+	Sanitizer:  sanitizerRegex,
+	SetOptions: setOptionsRegex,
 }
 
 // Annotation contains the parsed content from an annotation component: the kind of the annotation and its arguments
-// The syntax of an annotation is usually @<Kind>(<Comma separated contents).
+// The syntax of an annotation is usually <Kind>(<Comma separated contents>).
 type Annotation struct {
 	// Kind of the annotation
 	Kind AnnotationKind
@@ -120,6 +142,8 @@ func (fa FunctionAnnotation) Params() map[*ssa.Parameter][]Annotation {
 // - constants annotations are in Consts
 // - global variable annotations are in Globals
 type ProgramAnnotations struct {
+	// Configs is the map of configuration annotations, mapping problem tags to config settings
+	Configs map[string]map[string]string
 	// Funcs is the map of function annotations
 	Funcs map[*ssa.Function]FunctionAnnotation
 	// Types is the map of type annotations (TODO: implementation)
@@ -158,10 +182,17 @@ func (pa ProgramAnnotations) Iter(fx func(a Annotation)) {
 
 // CompleteFromSyntax takes a set of program annotations and adds additional non-ssa linked annotations
 // to the annotations
-func (pa ProgramAnnotations) CompleteFromSyntax(pkgs []*packages.Package) {
+func (pa ProgramAnnotations) CompleteFromSyntax(logger *config.LogGroup, pkgs []*packages.Package) {
 	for _, pkg := range pkgs {
 		for _, astFile := range pkg.Syntax {
 			pa.loadPackageDocAnnotations(astFile.Doc)
+			for _, comments := range astFile.Comments {
+				for _, comment := range comments.List {
+					if annotationContents := extractAnnotation(comment); annotationContents != nil {
+						pa.loadFileAnnotations(logger, annotationContents, pkg.Fset.Position(comment.Pos()).String())
+					}
+				}
+			}
 		}
 	}
 }
@@ -174,6 +205,7 @@ func (pa ProgramAnnotations) CompleteFromSyntax(pkgs []*packages.Package) {
 // will also print warnings when some syntactic components of the comments look like they should be an annotation.
 func LoadAnnotations(logger *config.LogGroup, packages []*ssa.Package) (ProgramAnnotations, error) {
 	annotations := ProgramAnnotations{
+		Configs: map[string]map[string]string{},
 		Funcs:   map[*ssa.Function]FunctionAnnotation{},
 		Types:   map[*ssa.Type][]Annotation{},
 		Consts:  map[*ssa.NamedConst][]Annotation{},
@@ -196,7 +228,14 @@ func LoadAnnotations(logger *config.LogGroup, packages []*ssa.Package) (ProgramA
 	return annotations, nil
 }
 
-func parseFunctionAnnotations(looger *config.LogGroup, function *ssa.Function) (FunctionAnnotation, error) {
+func extractAnnotation(comment *ast.Comment) []string {
+	if strings.HasPrefix(comment.Text, annotationPrefix) {
+		return strings.Split(strings.TrimSpace(strings.TrimPrefix(comment.Text, annotationPrefix)), " ")
+	}
+	return nil
+}
+
+func parseFunctionAnnotations(logger *config.LogGroup, function *ssa.Function) (FunctionAnnotation, error) {
 	var doc *ast.CommentGroup
 	declSyntax, isDeclSyntax := function.Syntax().(*ast.FuncDecl)
 	if isDeclSyntax {
@@ -213,26 +252,27 @@ func parseFunctionAnnotations(looger *config.LogGroup, function *ssa.Function) (
 		contentKeys: map[string]bool{},
 	}
 	for _, comment := range doc.List {
-		if strings.HasPrefix(comment.Text, annotationPrefix) {
-			annotationContent := strings.Split(strings.TrimSpace(strings.TrimPrefix(comment.Text, annotationPrefix)), " ")
+		if annotationContent := extractAnnotation(comment); annotationContent != nil {
 			if len(annotationContent) <= 1 {
 				continue
 			}
 			switch annotationContent[0] {
-			case "param":
+			case ParamTarget:
 				err := parseParamAnnotation(function, annotationContent, &annotations, comment)
 				if err != nil {
 					return annotations, err
 				}
-			case "function":
+			case FunctionTarget:
 				annotationGroup, err := parseAnnotationContent(annotationContent)
 				if err != nil {
 					return annotations, err
 				}
 				annotations.mains = append(annotations.mains, annotationGroup...)
+			case IgnoreTarget:
+				logger.Warnf("argot:ignore has no effect as function annotation.")
 			}
 		} else if strings.Contains(comment.Text, "argot") {
-			looger.Warnf("possible annotation mistake: %s has \"argot\" but doesn't start with //argot:",
+			logger.Warnf("possible annotation mistake: %s has \"argot\" but doesn't start with //argot:",
 				comment.Text)
 		}
 	}
@@ -244,28 +284,78 @@ func (pa ProgramAnnotations) loadPackageDocAnnotations(doc *ast.CommentGroup) {
 	// TODO: implementation
 }
 
+// loadFileAnnotations loads the annotation that are not tied to a specific ssa node. This includes:
+// - config annotations
+// - positional annotations
+func (pa ProgramAnnotations) loadFileAnnotations(logger *config.LogGroup, annotationContents []string, position string) {
+	if len(annotationContents) <= 1 {
+		logger.Warnf("ignoring argot annotation with no arguments at %s", position)
+		return
+	}
+	switch annotationContents[0] {
+	case ConfigTarget:
+		pa.loadConfigTargetAnnotation(logger, annotationContents, position)
+	}
+}
+
+// loadConfigTargetAnnotation loads a config annotation. Config annotations look like
+// "//argot:config tag SetOptions(option-name-1=value1,option-name-2=value2)" and are always linked to a specific problem
+// tag.
+func (pa ProgramAnnotations) loadConfigTargetAnnotation(logger *config.LogGroup, annotationContents []string, position string) {
+	if len(annotationContents) <= 2 {
+		logger.Warnf("argot:config expects a target tag and one or more SetOptions")
+		logger.Warnf("a comment is likely missing something at %s", position)
+		return
+	}
+	targetTag := annotationContents[1]
+	if _, present := pa.Configs[targetTag]; !present {
+		pa.Configs[targetTag] = map[string]string{}
+	}
+	idents := setOptionsRegex.FindStringSubmatch(strings.Join(annotationContents[2:], " "))
+	if len(idents) > 1 {
+		for _, arg := range parseAnnotationArgs(idents) {
+			// split something that should be option-name=option-value
+			argc := strings.Split(arg, "=")
+			if len(argc) < 2 {
+				logger.Warnf(
+					"argot:config comment ignored because SetOptions argument is not option-name=value at %s",
+					position)
+				return
+			}
+			if prevValue, isSet := pa.Configs[targetTag][argc[0]]; isSet {
+				logger.Warnf("argot:config option for %q already set to %q, ignoring annotation at %s",
+					argc[0], prevValue, position)
+			} else {
+				pa.Configs[targetTag][argc[0]] = argc[1]
+				logger.Debugf("set option %q to %q for problem tagged %q (annotation at %s)",
+					argc[0], argc[1], targetTag, position)
+			}
+		}
+	} else {
+		logger.Warnf("argot:config annotation encountered without matching SetOptions at %s", position)
+	}
+	return
+}
+
 func parseParamAnnotation(function *ssa.Function, annotationContent []string,
 	annotations *FunctionAnnotation, comment *ast.Comment) error {
 	paramName := annotationContent[1]
-	foundParam := false
 	for _, param := range function.Params {
 		if param.Name() == paramName {
-			foundParam = true
 			if _, ok := annotations.params[param]; !ok {
 				annotations.params[param] = []Annotation{}
 			}
-			paramAnnotations, err := parseAnnotationContent(annotationContent)
-			if err != nil {
-				return err
+			paramAnnotations, parseErr := parseAnnotationContent(annotationContent)
+			if parseErr != nil {
+				return parseErr
 			}
 			annotations.params[param] = append(annotations.params[param], paramAnnotations...)
+			return nil
 		}
 	}
-	if !foundParam {
-		return fmt.Errorf("could not find parameter %s in function %s for annotation %s",
-			paramName, function.String(), comment.Text)
-	}
-	return nil
+	// If the parameter hasn't been found, that's a mistake and the used should know
+	return fmt.Errorf("could not find parameter %q in function %q for annotation %q",
+		paramName, function.String(), comment.Text)
 }
 
 func parseAnnotationContent(annotationContent []string) ([]Annotation, error) {
@@ -281,5 +371,8 @@ func parseAnnotationContent(annotationContent []string) ([]Annotation, error) {
 }
 
 func parseAnnotationArgs(a []string) []string {
+	if len(a) < 2 {
+		return []string{}
+	}
 	return funcutil.Map(strings.Split(a[1], ","), func(s string) string { return strings.TrimSpace(s) })
 }

@@ -21,6 +21,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -642,4 +643,40 @@ func (c Config) Verbose() bool {
 // (this implements the logic for using maximum depth; if the configuration setting is < 0, then this returns false)
 func (c Config) ExceedsMaxDepth(d int) bool {
 	return !(c.UnsafeMaxDepth <= 0) && d > c.UnsafeMaxDepth
+}
+
+// SetOption sets config option value using a string name for the option and a string value.
+// Returns the value (as a string) of the previous setting, or an error.
+// Settings that can be set using this function:
+// - max-alarms
+// - unsafe-max-depth
+// - max-entrypoint-context-size
+func SetOption(c *Config, name, value string) (string, error) {
+	switch name {
+	case "max-alarms":
+		intValue, err := strconv.Atoi(value)
+		if err != nil {
+			return "", fmt.Errorf("max-alarms should be an int: %s", value)
+		}
+		prev := strconv.Itoa(c.MaxAlarms)
+		c.MaxAlarms = intValue
+		return prev, nil
+	case "unsafe-max-depth":
+		intValue, err := strconv.Atoi(value)
+		if err != nil {
+			return "", fmt.Errorf("unsafe-max-depth should be an int: %s", value)
+		}
+		prev := strconv.Itoa(c.UnsafeMaxDepth)
+		c.UnsafeMaxDepth = intValue
+		return prev, nil
+	case "max-entrypoint-context-size":
+		intValue, err := strconv.Atoi(value)
+		if err != nil {
+			return "", fmt.Errorf("max-entrypoint-context-size should be an int: %s", value)
+		}
+		prev := strconv.Itoa(c.MaxEntrypointContextSize)
+		c.MaxEntrypointContextSize = intValue
+		return prev, nil
+	}
+	return "", fmt.Errorf("%s cannot be set by name", name)
 }
