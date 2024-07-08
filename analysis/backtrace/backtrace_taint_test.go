@@ -111,7 +111,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	log := config.NewLogGroup(cfg)
 	res, err := backtrace.Analyze(log, cfg, program)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to run analysis: %v", err)
 	}
 
 	// Uncomment for debugging
