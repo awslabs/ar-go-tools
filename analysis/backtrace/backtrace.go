@@ -166,12 +166,17 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 // Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the
 // SlicingSpec as well as the set of traces.
 type Visitor struct {
-	SlicingSpec *config.SlicingSpec
-	Traces      []Trace
+	SlicingSpec   *config.SlicingSpec
+	Traces        []Trace
+	prevEdgeInfos map[*df.CallNodeArg][]df.EdgeInfo
 }
 
 // Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
 func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
+	if v.prevEdgeInfos == nil {
+		v.prevEdgeInfos = make(map[*df.CallNodeArg][]df.EdgeInfo)
+	}
+
 	// this is needed because for some reason isBacktracePoint returns true for
 	// some synthetic nodes
 	call, ok := entrypoint.Node.(*df.CallNode)
@@ -217,7 +222,6 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		Status:        df.VisitorNodeStatus{Kind: df.DefaultTracing},
 	}
 	stack := []*df.VisitorNode{root}
-	var prevEdgeInfo *df.EdgeInfo // store edge info between nodes
 
 	for len(stack) != 0 {
 		cur := stack[len(stack)-1]
@@ -262,7 +266,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 				}
 			}
 
@@ -276,7 +280,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				callSite := cur.Trace.Label
 				if err := df.CheckIndex(s, graphNode, callSite, "[Context] No argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
-					panic("[Context] no arg at call site")
+					panic(fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err))
 				}
 
 				nextNodeArg := callSite.Args()[graphNode.Index()]
@@ -286,7 +290,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 				}
 			} else {
 				callSites := graphNode.Graph().Callsites
@@ -294,7 +298,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				for _, callSite := range callSites {
 					if err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
 						s.AddError("argument at call site "+graphNode.String(), err)
-						panic("[No Context] no arg at call site")
+						panic(fmt.Errorf("[No Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err))
 					}
 					callSiteArg := callSite.Args()[graphNode.Index()]
 					if !callSiteArg.Graph().Constructed && !s.Config.UnsafeIgnoreNonSummarized {
@@ -305,7 +309,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 				}
 			}
 
@@ -319,7 +323,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				if callSite.CalleeSummary == nil || !callSite.CalleeSummary.Constructed { // this function has not been summarized
 					if s.Config.SummarizeOnDemand {
 						if callSite.Callee() == nil {
-							panic("callsite has no callee")
+							panic(fmt.Errorf("callsite %v has no callee", callSite))
 						}
 
 						// the callee summary may not have been created yet
@@ -349,7 +353,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Trace:        cur.Trace.Add(callSite),
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 				} else {
 					s.AddError(
 						fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
@@ -361,20 +365,20 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// If the arg value is bound, make sure to visit all of its outgoing values
 			// because they are all part of the dataflow in the trace
 			//
-			// See Examples 5 and 16 in argot/testdata/src/taint/closures/main.go
+			// See Examples 5 and 16 in ./testdata/closures/main.go
 			if _, ok := s.BoundingInfo[graphNode.Value()]; ok {
-				for nextNode, edgeInfo := range graphNode.Out() {
-					nextNodeWithTrace := df.NodeWithTrace{
-						Node:         nextNode,
-						Trace:        cur.Trace,
-						ClosureTrace: cur.ClosureTrace,
-					}
-					var added bool
-					stack, added = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
-					if added {
-						prevEdgeInfo = &edgeInfo
-					} else {
-						prevEdgeInfo = nil
+				for nextNode, edgeInfos := range graphNode.Out() {
+					for _, edgeInfo := range edgeInfos {
+						nextNodeWithTrace := df.NodeWithTrace{
+							Node:         nextNode,
+							Trace:        cur.Trace,
+							ClosureTrace: cur.ClosureTrace,
+						}
+						var added bool
+						stack, added = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
+						if added {
+							v.prevEdgeInfos[graphNode] = append(v.prevEdgeInfos[graphNode], edgeInfo)
+						}
 					}
 				}
 			}
@@ -401,11 +405,9 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						ClosureTrace: cur.ClosureTrace,
 					}
 					var added bool
-					stack, added = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+					stack, added = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 					if added {
-						prevEdgeInfo = &edgeInfo
-					} else {
-						prevEdgeInfo = nil
+						v.prevEdgeInfos[graphNode] = append(v.prevEdgeInfos[graphNode], edgeInfo)
 					}
 				}
 			}
@@ -429,7 +431,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					Trace:        cur.Trace,
 					ClosureTrace: cur.ClosureTrace,
 				}
-				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 			}
 
 		// Data flows from the function call to the called function's return statement.
@@ -464,9 +466,24 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Trace:        cur.Trace.Add(graphNode),
 						ClosureTrace: cur.ClosureTrace,
 					}
-					// Use edgeInfo from call node arg: this is needed to visit the correct
-					// return node index if it is a tuple
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, prevEdgeInfo, seen)
+
+					var prevEdges []df.EdgeInfo
+					if cur.Prev != nil && cur.Prev.Node != nil {
+						if arg, ok := cur.Prev.Node.(*df.CallNodeArg); ok {
+							if infos, ok := v.prevEdgeInfos[arg]; ok {
+								prevEdges = infos
+							}
+						}
+					}
+					if len(prevEdges) > 0 {
+						// Use edgeInfos from call node arg: this is needed to visit the correct
+						// return node index if it is a tuple
+						for _, edgeInfo := range prevEdges {
+							stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, edgeInfo, seen)
+						}
+					} else {
+						stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
+					}
 				}
 			}
 
@@ -476,7 +493,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					Trace:        cur.Trace,
 					ClosureTrace: cur.ClosureTrace,
 				}
-				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 			}
 
 			// Call node base case:
@@ -497,7 +514,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					Trace:        cur.Trace,
 					ClosureTrace: cur.ClosureTrace,
 				}
-				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 			}
 
 		// From a global write node, data flows backwards intra-procedurally.
@@ -510,7 +527,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 				}
 			} else {
 				if s.Config.SummarizeOnDemand {
@@ -529,7 +546,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Trace:        nil,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 				}
 			}
 
@@ -542,7 +559,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					Trace:        cur.Trace,
 					ClosureTrace: cur.ClosureTrace,
 				}
-				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 			}
 
 			closureNode := graphNode.ParentNode()
@@ -564,7 +581,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				Trace:        cur.Trace,
 				ClosureTrace: cur.ClosureTrace.Add(closureNode),
 			}
-			stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+			stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 
 		case *df.FreeVarNode:
 			prevStackLen := len(stack)
@@ -577,7 +594,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 				}
 			} else if cur.ClosureTrace != nil {
 				// Flow to the matching bound variables at the make closure site from the closure trace
@@ -596,7 +613,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 						Kind:        df.ClosureTracing,
 						TracingInfo: cur.Status.TracingInfo.Next(cur.ClosureTrace.Label.ClosureSummary, graphNode.Index()),
 					}
-					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, status, nil, seen)
+					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, status, df.EdgeInfo{}, seen)
 				} else {
 					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d",
 						cur.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
@@ -605,9 +622,11 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
 					// Summarize the free variable's closure's parent function if there is one
 					f := graphNode.Graph().Parent.Parent()
-					if f != nil {
-						df.BuildSummary(s, f)
+					if f == nil {
+						panic(fmt.Errorf("closure's parent function does not exist for free variable: %v", graphNode))
 					}
+					summary := df.BuildSummary(s, f)
+					v.onDemandIntraProcedural(s, summary)
 					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.BuildGraph()
 				}
@@ -627,7 +646,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 							Trace:        cur.Trace,
 							ClosureTrace: nil,
 						}
-						stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+						stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 					} else {
 						panic(fmt.Errorf("[No Context] no bound variable matching free variable in %s at position %d",
 							makeClosureSite.ClosureSummary.Parent.String(), graphNode.Index()))
@@ -653,7 +672,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					Trace:        cur.Trace,
 					ClosureTrace: cur.ClosureTrace,
 				}
-				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 			}
 
 		case *df.BoundLabelNode:
@@ -663,7 +682,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 					Trace:        cur.Trace,
 					ClosureTrace: cur.ClosureTrace,
 				}
-				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, nil, seen)
+				stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 			}
 
 		default:
@@ -704,7 +723,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	cur *df.VisitorNode,
 	nextNodeWithTrace df.NodeWithTrace,
 	nextStatus df.VisitorNodeStatus,
-	edgeInfo *df.EdgeInfo,
+	edgeInfo df.EdgeInfo,
 	seen map[df.KeyType]bool) ([]*df.VisitorNode, bool) {
 
 	// Adding the next node with trace in a visitor node to the queue, and recording the "execution" tree
@@ -718,8 +737,8 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 
 	// Tuple sensitivity: check edge info
 	if ret, ok := nextNodeWithTrace.Node.(*df.ReturnValNode); ok {
-		if edgeInfo != nil {
-			hasEdgeInfo := edgeInfo.Index >= 0
+		if arg, ok := cur.Prev.Node.(*df.CallNodeArg); ok {
+			_, hasEdgeInfo := v.prevEdgeInfos[arg]
 			if hasEdgeInfo && ret.Index() != edgeInfo.Index {
 				s.Logger.Tracef("Return node index %d != edgeInfo index %d\n", ret.Index(), edgeInfo.Index)
 				return stack, false
