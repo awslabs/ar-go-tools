@@ -54,10 +54,10 @@ const (
 type IndexKind int
 
 const (
-	// ReturnedTupleIndex is  index on a tuple returned by a functoin
-	ReturnedTupleIndex IndexKind = iota
-	// NonIndex is a non-index
-	NonIndex
+	// NonIndex is the kind of non-indices
+	NonIndex IndexKind = iota
+	// ReturnedTupleIndex is the kind of indices on tuples returned by functions
+	ReturnedTupleIndex
 )
 
 func (m MarkType) String() string {
