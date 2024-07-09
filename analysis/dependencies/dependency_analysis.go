@@ -21,6 +21,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
 	"golang.org/x/tools/go/ssa"
@@ -62,18 +64,17 @@ func calculateLocs(f *ssa.Function) uint {
 // but that doesn't appear to be exposed in SSA.
 // we could probably be a bit more efficient by computing the prefix and caching it,
 // but this seems to be the most general approach for now.
-func computePath(filepath string, pkg string) string {
-
-	verbose := strings.HasSuffix(filepath, "agent.go")
+func computePath(cfg *config.Config, logger *config.LogGroup, filepath string, pkg string) string {
+	verbose := cfg.PkgFilter != "" && strings.Contains(pkg, cfg.PkgFilter) || cfg.PkgFilter == "*"
 	if verbose {
-		fmt.Printf("computePath(%q,%q)=", filepath, pkg)
+		logger.Debugf("computePath(%q,%q)=", filepath, pkg)
 	}
 	// if the full package name appears in the filepath, then just chop off the prefix
 	// and return the full packagename with the path within the package.
 	offset := strings.Index(filepath, pkg)
 	if offset >= 0 {
 		if verbose {
-			fmt.Println("1", filepath[offset:])
+			logger.Debugf("1: %s", filepath[offset:])
 		}
 		return filepath[offset:]
 	}
@@ -90,7 +91,7 @@ func computePath(filepath string, pkg string) string {
 		newsplit := strings.Index(pkg[split:], "/")
 		if newsplit == -1 {
 			if verbose {
-				fmt.Println(filepath)
+				logger.Debugf(filepath)
 			}
 			return filepath // bail
 		}
@@ -98,7 +99,7 @@ func computePath(filepath string, pkg string) string {
 		offset = strings.Index(filepath, pkg[split:])
 		if offset >= 0 {
 			if verbose {
-				fmt.Println(pkg[:split] + filepath[offset:])
+				logger.Debugf(pkg[:split] + filepath[offset:])
 			}
 			return pkg[:split] + filepath[offset:]
 		}
@@ -106,16 +107,19 @@ func computePath(filepath string, pkg string) string {
 	}
 }
 
-func emitCoverageLine(file io.Writer, program *ssa.Program, f *ssa.Function, name string, reachable bool, locs uint) {
+func emitCoverageLine(state *dataflow.AnalyzerState, dest io.Writer, f *ssa.Function, reachable bool, locs uint) {
+	if f == nil || f.Package() == nil {
+		return
+	}
 	syn := f.Syntax()
 	if syn == nil {
 		return
 	}
 
-	start := program.Fset.Position(syn.Pos())
-	end := program.Fset.Position(syn.End())
+	start := state.Program.Fset.Position(syn.Pos())
+	end := state.Program.Fset.Position(syn.End())
 
-	newname := computePath(start.Filename, f.Package().Pkg.Path())
+	newname := computePath(state.Config, state.Logger, start.Filename, f.Package().Pkg.Path())
 
 	reachval := 0
 	if reachable {
@@ -125,24 +129,41 @@ func emitCoverageLine(file io.Writer, program *ssa.Program, f *ssa.Function, nam
 	str := fmt.Sprintf("%s:%d.%d,%d.%d %d %d\n", newname, start.Line, start.Column,
 		end.Line, end.Column, locs, reachval)
 
-	file.Write([]byte(str[:]))
+	dest.Write([]byte(str[:]))
 
+}
+
+// DependencyConfigs contains output settings for the dependency analysis.
+type DependencyConfigs struct {
+	// JsonFlag indicates whether the output should be Json-formatted (TODO).
+	JsonFlag bool
+	// IncludeStdlib indicates whether the standard library should be included in the analysis.
+	IncludeStdlib bool
+	// CoverageFile is a writer that will contain the coverage data if non-nil.
+	CoverageFile io.Writer
+	// CsvFile is a writer that will contain the list of dependency usage if non-nil.
+	CsvFile io.Writer
+	// UsageThreshold is a dependency usage percentage threshold below which a warning is produced.
+	UsageThreshold float64
+	// ComputeGraph indicates whether the dependency graph should be computed.
+	ComputeGraph bool
 }
 
 // DependencyAnalysis runs the dependency analysis on all the functions in the ssa.Program
 // Writes a coverage file in covFile indicating which functions are reachable.
-func DependencyAnalysis(program *ssa.Program, jsonFlag bool, includeStdlib bool, covFile io.Writer, graph bool) reachability.DependencyGraph {
+func DependencyAnalysis(state *dataflow.AnalyzerState,
+	dc DependencyConfigs) reachability.DependencyGraph {
 
 	// all functions we have got
-	allFunctions := ssautil.AllFunctions(program)
+	allFunctions := ssautil.AllFunctions(state.Program)
 
 	var dependencyGraph reachability.DependencyGraph = nil
-	if graph {
+	if dc.ComputeGraph {
 		dependencyGraph = reachability.NewDependencyGraph()
 	}
 
 	// functions known to be reachable
-	reachable := reachability.FindReachable(program, false, false, dependencyGraph)
+	reachable := reachability.FindReachable(state.Program, false, false, dependencyGraph)
 
 	// count reachable and unreachable LOCs, per dependency
 	type dependency struct {
@@ -154,20 +175,20 @@ func DependencyAnalysis(program *ssa.Program, jsonFlag bool, includeStdlib bool,
 
 	for f := range allFunctions {
 		ok, id := isDependency(f)
-		if ok || includeStdlib {
+		if ok || dc.IncludeStdlib {
 			//fmt.Println(f.Pkg.Pkg.Path())
 			entry := dependencyMap[id]
 			locs := calculateLocs(f)
 
 			// is it reachable?
-			_, ok := reachable[f]
-			if ok {
+			_, isReachable := reachable[f]
+			if isReachable {
 				entry.reachableLocs += locs
 			} else {
 				entry.unreachableLocs += locs
 			}
-			if covFile != nil {
-				emitCoverageLine(covFile, program, f, id, ok, locs)
+			if dc.CoverageFile != nil {
+				emitCoverageLine(state, dc.CoverageFile, f, isReachable, locs)
 			}
 
 			dependencyMap[id] = entry
@@ -189,7 +210,17 @@ func DependencyAnalysis(program *ssa.Program, jsonFlag bool, includeStdlib bool,
 	for _, dependencyName := range dependencyNames {
 		entry := dependencyMap[dependencyName]
 		total := entry.reachableLocs + entry.unreachableLocs
-		fmt.Printf("%q %d %d\n", dependencyName, entry.reachableLocs, total)
+		percentage := (100.0 * float64(entry.reachableLocs)) / float64(total)
+		if percentage < dc.UsageThreshold {
+			state.Logger.Warnf("Dependency usage below %3.1f %%: %q %d %d (%3.1f %%)\n",
+				dc.UsageThreshold, dependencyName, entry.reachableLocs, total, percentage)
+		} else {
+			state.Logger.Infof("%q %d %d\n", dependencyName, entry.reachableLocs, total)
+		}
+		if dc.CsvFile != nil {
+			dc.CsvFile.Write([]byte(fmt.Sprintf("%s,%d,%d,%3.2f\n",
+				dependencyName, entry.reachableLocs, total, percentage)))
+		}
 	}
 
 	return dependencyGraph

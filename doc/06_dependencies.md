@@ -16,3 +16,13 @@ The dependency tool supports a `stdlib` flag to instruct it to suppress output o
 The dependency tool allows the buildmode and tags to be controlled with command line arguments, as per all the other AR-Go-tools.  [cf: common docs].  This may be deprecated.
 
 If invoked with the -graph option, the dependency tool will generate a directed graph of which packages depend on other packages.  It will emit a sorted list of packages as standard output, and emit a graphviz-compatible file format with the complete output.  This can be quite large and too much for graphviz to render, but searching the file for specific package names will provide useful data about how a particular package is being imported.  This is similar to the "go mod why" function, but that will show you every potential dependency of every package, whereas this tool will limit its output to only those dependencies that are actually used in the program being analyzed. 
+
+## Options
+The `dependency` tool accepts the following options:
+- `-help` prints a list of options.
+- `-config <filename>` allows the user to specify a config file (see [intro doc](./00_intro.md)). The options used are the `log-level` option and the `pkg-filter` option, which in this application controls for which packages some additional debug statements are printed.
+- `-cover <filename>` instructs the dependencies tool to print coverage information in `<filename>`.
+- `-graph <filename>` instructs the tool to output a dependency graph in the `<filename>` file.
+- `-csv <filename>` instructs the tool to print a summary of the dependencies and their usage ratio in `<filename>`.
+- `-stdlib` instructs the tool to suppress output of standard library packages (see details above)
+- `-usage` sets a threshold usage percentage under which a dependency's usage is reported with a warning (by default, 10%).
