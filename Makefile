@@ -10,7 +10,7 @@
 
 all: lint maypanic statistics reachability dependencies static-commands render taint compare defer packagescan backtrace argot-cli racerg setup-precommit
 
-install: taint_install cli_install
+install: taint_install backtrace_install cli_install
 
 lint: **/*.go
 	deadcode -test -filter ar-go-tools/analysis ./...
@@ -65,6 +65,9 @@ racerg: go.mod cmd/racerg/*.go
 
 taint_install: taint
 	go install ./cmd/taint/...
+
+backtrace_install: backtrace
+	go install ./cmd/backtrace/...
 
 cli_install: argot-cli
 	go install ./cmd/argot-cli

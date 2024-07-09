@@ -19,6 +19,7 @@
 package backtrace
 
 import (
+	"errors"
 	"fmt"
 	"go/token"
 	"runtime"
@@ -44,7 +45,7 @@ type AnalysisResult struct {
 	Graph df.InterProceduralFlowGraph
 
 	// Traces represents all the paths where data flows out from the analysis entry points.
-	Traces []Trace
+	Traces map[df.GraphNode][]Trace
 }
 
 // Trace represents a dataflow path (sequence of nodes) out of an analysis
@@ -128,10 +129,12 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 		})
 	}
 
-	traces := []Trace{}
+	var errs []error
+	resTraces := make(map[df.GraphNode][]Trace)
 	for _, ps := range cfg.SlicingProblems {
 		visitor := &Visitor{
 			SlicingSpec: &ps,
+			Traces:      make(map[df.GraphNode][]Trace),
 		}
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			IsEntrypoint: func(node ssa.Node) bool {
@@ -139,35 +142,40 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program) (An
 			},
 		})
 		// filter unwanted nodes
-		vTraces := []Trace{}
-		for _, trace := range visitor.Traces {
-			vTrace := Trace{}
-			for _, node := range trace {
-				if isFiltered(visitor.SlicingSpec, node.Node) {
-					logger.Tracef("FILTERED: %v\n", node)
-					logger.Tracef("\t%v\n", vTrace)
-					vTrace = nil
-					break
+		for entry, traces := range visitor.Traces {
+			for _, trace := range traces {
+				vTrace := Trace{}
+				for _, node := range trace {
+					if isFiltered(visitor.SlicingSpec, node.Node) {
+						logger.Tracef("FILTERED: %v\n", node)
+						logger.Tracef("\t%v\n", vTrace)
+						vTrace = nil
+						break
+					}
+					vTrace = append(vTrace, node)
 				}
-				vTrace = append(vTrace, node)
-			}
-			if len(vTrace) > 0 {
-				vTraces = append(vTraces, vTrace)
+				if len(vTrace) > 0 {
+					resTraces[entry] = append(resTraces[entry], vTrace)
+				}
 			}
 		}
-		traces = append(traces, vTraces...)
+
+		if len(visitor.Errs) > 0 {
+			errs = append(errs, visitor.Errs...)
+		}
 	}
 
-	logger.Infof(formatutil.Green("Found %d traces.\n"), len(traces))
+	logger.Infof(formatutil.Green("Found %d traces.\n"), len(resTraces))
 
-	return AnalysisResult{Graph: *state.FlowGraph, Traces: traces}, nil
+	return AnalysisResult{Graph: *state.FlowGraph, Traces: resTraces}, errors.Join(errs...)
 }
 
 // Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the
 // SlicingSpec as well as the set of traces.
 type Visitor struct {
 	SlicingSpec   *config.SlicingSpec
-	Traces        []Trace
+	Traces        map[df.GraphNode][]Trace
+	Errs          []error
 	prevEdgeInfos map[*df.CallNodeArg][]df.EdgeInfo
 }
 
@@ -187,28 +195,47 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 	// the analysis operates on data originating from every argument in every
 	// call to an entrypoint
 	for _, arg := range call.Args() {
-		v.visit(s, arg)
+		if err := v.visit(s, arg); err != nil {
+			v.Errs = append(v.Errs, err)
+		}
+
+		// report traces from entrypoint:
+		logger := s.Logger
+		traces := v.Traces[arg]
+		for i, trace := range traces {
+			logger.Infof("%v\n\n", trace)
+
+			// Stop if there is a limit on number of alarms (representing number of traces to report), and it has been reached.
+			if s.Config.MaxAlarms > 0 && i >= s.Config.MaxAlarms {
+				break
+			}
+
+			if err := validateTrace(trace); err != nil {
+				panic(fmt.Errorf("invalid trace: %v", err))
+			}
+		}
 	}
 }
 
 //gocyclo:ignore
-func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
+func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) (err error) {
+	logger := s.Logger
+
 	pos := entrypoint.Position(s)
 	if !pos.IsValid() {
 		pos = entrypoint.ParentNode().Position(s)
 	}
 
-	logger := s.Logger
-	logger.Infof("\n%s ENTRYPOINT %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Infof("==> Node: %s\n", formatutil.Purple(entrypoint.String()))
-	logger.Infof("%s %s\n", formatutil.Green("Found at"), pos)
-
 	// Skip entrypoint if it is in a dependency or in the Go standard library/runtime
 	// TODO make this an option in the config
 	if strings.Contains(pos.Filename, "vendor") || strings.Contains(pos.Filename, runtime.GOROOT()) {
-		logger.Infof("%s\n", formatutil.Red("Skipping..."))
+		logger.Debugf("%s %v\n", formatutil.Red("Skipping entrypoint"), entrypoint.String())
 		return
 	}
+
+	logger.Infof("\n%s ENTRYPOINT %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
+	logger.Infof("==> Node: %s\n", formatutil.Purple(entrypoint.String()))
+	logger.Infof("%s %s\n", formatutil.Green("Found at"), pos)
 
 	var trace *df.NodeTree[*df.CallNode]
 	entry := df.NodeWithTrace{Node: entrypoint, Trace: trace}
@@ -246,7 +273,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
 		if isBaseCase(cur.Node, s.Config) {
 			t := findTrace(s, cur)
-			v.Traces = append(v.Traces, t)
+			v.Traces[entrypoint] = append(v.Traces[entrypoint], t)
 
 			logger.Tracef("Base case reached...")
 			logger.Tracef("Adding trace: %v\n", t)
@@ -280,7 +307,9 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 				callSite := cur.Trace.Label
 				if err := df.CheckIndex(s, graphNode, callSite, "[Context] No argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
-					panic(fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err))
+					// TODO fix bug that leads to panic
+					return fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err)
+					// panic(fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err))
 				}
 
 				nextNodeArg := callSite.Args()[graphNode.Index()]
@@ -418,7 +447,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// - no more incoming edges from the arg
 			if prevStackLen == len(stack) {
 				t := findTrace(s, cur)
-				v.Traces = append(v.Traces, t)
+				v.Traces[entrypoint] = append(v.Traces[entrypoint], t)
 				logger.Tracef("CallNodeArg base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
 			}
@@ -501,7 +530,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// - no more incoming edges from the call
 			if prevStackLen == len(stack) {
 				t := findTrace(s, cur)
-				v.Traces = append(v.Traces, t)
+				v.Traces[entrypoint] = append(v.Traces[entrypoint], t)
 				logger.Tracef("CallNode base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
 			}
@@ -658,7 +687,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			// - no new matching bound variables
 			if prevStackLen == len(stack) {
 				t := findTrace(s, cur)
-				v.Traces = append(v.Traces, t)
+				v.Traces[entrypoint] = append(v.Traces[entrypoint], t)
 				logger.Tracef("Free var base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
 			}
@@ -689,6 +718,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) {
 			panic(fmt.Errorf("unhandled graph node type: %T", graphNode))
 		}
 	}
+
+	return nil
 }
 
 // onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
@@ -938,4 +969,29 @@ func isFiltered(ss *config.SlicingSpec, n df.GraphNode) bool {
 		}
 	}
 	return false
+}
+
+// validateTrace validates trace.
+// TODO implement more checks
+func validateTrace(trace Trace) error {
+	for i, cur := range trace {
+		j := i + 1
+		if j == len(trace) {
+			continue
+		}
+		next := trace[j]
+
+		switch cur := cur.Node.(type) {
+		case *df.CallNodeArg:
+			if arg, ok := next.Node.(*df.CallNodeArg); ok && arg.ParentName() != cur.ParentName() {
+				return fmt.Errorf("two interprocedural call args in a row: %v -> %v", cur, next.Node)
+			}
+		case *df.ParamNode:
+			if param, ok := next.Node.(*df.ParamNode); ok && param.ParentName() != cur.ParentName() {
+				return fmt.Errorf("two interprocedural params in a row: %v -> %v", cur, next.Node)
+			}
+		}
+	}
+
+	return nil
 }

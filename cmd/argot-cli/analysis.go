@@ -374,7 +374,9 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) bool 
 			return backtrace.IsInterProceduralEntryPoint(c, &ps, node)
 		}, nil)
 
-		traces = append(traces, visitor.Traces...)
+		for _, tr := range visitor.Traces {
+			traces = append(traces, tr...)
+		}
 	}
 
 	writeFmt(tt, "Traces:\n")

@@ -120,7 +120,8 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// 	t.Log(trace)
 	// }
 
-	reached := reachedSinkPositions(program, cfg, res.Traces)
+	traces := mergeTraces(res) // TODO use entrypoint info to match sinks?
+	reached := reachedSinkPositions(program, cfg, traces)
 	if len(reached) == 0 {
 		t.Fatal("expected reached sink positions to be present")
 	}
@@ -333,4 +334,13 @@ func expectedTaintTargetToSources(fset *token.FileSet, astFiles []*ast.File) ana
 	})
 
 	return sink2source
+}
+
+func mergeTraces(result backtrace.AnalysisResult) []backtrace.Trace {
+	var res []backtrace.Trace
+	for _, traces := range result.Traces {
+		res = append(res, traces...)
+	}
+
+	return res
 }

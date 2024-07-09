@@ -86,7 +86,7 @@ func main() {
 	}
 
 	start := time.Now()
-	analysisInfo, err := backtrace.Analyze(config.NewLogGroup(cfg), cfg, program)
+	result, err := backtrace.Analyze(config.NewLogGroup(cfg), cfg, program)
 	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
@@ -94,15 +94,6 @@ func main() {
 	}
 	logger.Printf("")
 	logger.Printf("-%s", strings.Repeat("*", 80))
-	logger.Printf("Analysis took %3.4f s", duration.Seconds())
-	logger.Printf("")
-	if len(analysisInfo.Traces) == 0 {
-		logger.Printf("RESULT:\n\t\t%s", formatutil.Red("No traces detected"))
-	} else {
-		logger.Printf("RESULT:\n\t\t%s", formatutil.Green("Backtraces detected!"))
-	}
-
-	for _, trace := range analysisInfo.Traces {
-		logger.Printf("%v\n\n", trace)
-	}
+	logger.Printf("Analysis took %3.4f s\n", duration.Seconds())
+	logger.Printf("Found traces for %d entrypoints\n", len(result.Traces))
 }

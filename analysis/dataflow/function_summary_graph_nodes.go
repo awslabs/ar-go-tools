@@ -268,7 +268,7 @@ func (a *ParamNode) ParentNode() GraphNode { return a }
 // ParentName returns the name of the parent function
 func (a *ParamNode) ParentName() string {
 	if a.parent != nil && a.parent.Parent != nil {
-		return a.parent.Parent.Name()
+		return a.parent.Parent.String()
 	}
 	return "ParamNode"
 }
@@ -412,7 +412,7 @@ func (a *CallNodeArg) Index() int { return a.argPos }
 // ParentName returns the name of the parent function (not the parent call node)
 func (a *CallNodeArg) ParentName() string {
 	if a.parent != nil && a.parent.parent != nil && a.parent.parent.Parent != nil {
-		return a.parent.parent.Parent.Name()
+		return a.parent.parent.Parent.String()
 	}
 	return "CallNodeArg"
 }
