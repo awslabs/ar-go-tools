@@ -309,8 +309,9 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 		},
 	}
 
-	if len(res.Traces) < len(tests) {
-		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(res.Traces))
+	traces := mergeTraces(res)
+	if len(traces) < len(tests) {
+		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(traces))
 	}
 
 	// // NOTE Uncomment to debug
@@ -324,7 +325,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			if !funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
+			if !funcutil.Exists(traces, func(trace backtrace.Trace) bool {
 				ok, err := matchTrace(trace, test.matches)
 				_ = err
 				// // NOTE commented out for debugging
@@ -340,7 +341,7 @@ func testAnalyze(t *testing.T, cfg *config.Config, program *ssa.Program) {
 	}
 
 	t.Run(`trace to bar("x") should not exist`, func(t *testing.T) {
-		if funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
+		if funcutil.Exists(traces, func(trace backtrace.Trace) bool {
 			arg, ok := trace[0].Node.(*dataflow.CallNodeArg)
 			if !ok {
 				return false
@@ -494,18 +495,19 @@ func testAnalyzeClosures(t *testing.T, cfg *config.Config, program *ssa.Program)
 		},
 	}
 
-	if len(res.Traces) < len(tests) {
-		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(res.Traces))
+	traces := mergeTraces(res)
+	if len(traces) < len(tests) {
+		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(traces))
 	}
 
 	t.Log("TRACES:")
-	for _, trace := range res.Traces {
+	for _, trace := range traces {
 		t.Log(trace)
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if !funcutil.Exists(res.Traces, func(trace backtrace.Trace) bool {
+			if !funcutil.Exists(traces, func(trace backtrace.Trace) bool {
 				ok, err := matchTrace(trace, test.matches)
 				_ = err
 				// // NOTE commented out for debugging
