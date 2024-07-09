@@ -87,11 +87,11 @@ func main() {
 
 	start := time.Now()
 	result, err := backtrace.Analyze(config.NewLogGroup(cfg), cfg, program, pkgs)
-	duration := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
-		return
+		os.Exit(1)
 	}
+	duration := time.Since(start)
 	logger.Printf("")
 	logger.Printf("-%s", strings.Repeat("*", 80))
 	logger.Printf("Analysis took %3.4f s\n", duration.Seconds())

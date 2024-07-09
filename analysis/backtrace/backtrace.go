@@ -31,7 +31,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -68,14 +67,34 @@ func (t Trace) String() string {
 		rest = t[1:]
 	}
 
-	return first + strings.Join(funcutil.Map(rest, func(n TraceNode) string { return "\t" + n.String() }), "\n")
+	b := &strings.Builder{}
+	if _, err := b.WriteString(first); err != nil {
+		panic(fmt.Errorf("failed to write first node to trace string: %v", err))
+	}
+	for i, tn := range rest {
+		if _, err := b.WriteString("\t"); err != nil {
+			panic(fmt.Errorf("failed to write to trace string: %v", err))
+		}
+		if _, err := b.WriteString(tn.String()); err != nil {
+			panic(fmt.Errorf("failed to write trace node %v to string: %v", tn, err))
+		}
+
+		if i == len(rest)-1 {
+			continue
+		}
+		if _, err := b.WriteString("\n"); err != nil {
+			panic(fmt.Errorf("failed to write to trace string: %v", err))
+		}
+	}
+
+	return b.String()
 }
 
 // Key generates a unique key for trace t.
 func (t Trace) Key() df.KeyType {
 	keys := make([]string, 0, len(t))
 	for _, node := range t {
-		keys = append(keys, node.Node.LongID())
+		keys = append(keys, node.LongID())
 	}
 
 	return strings.Join(keys, "_")
@@ -83,20 +102,16 @@ func (t Trace) Key() df.KeyType {
 
 // TraceNode represents a node in the trace.
 type TraceNode struct {
-	*df.VisitorNode
-	Pos    token.Position
-	Values []string // TODO maybe
+	df.GraphNode
+	Pos token.Position
 }
 
 func (n TraceNode) String() string {
-	if n.VisitorNode == nil {
-		return ""
-	}
-	if n.VisitorNode.Node == nil {
+	if n.GraphNode == nil {
 		return ""
 	}
 
-	return fmt.Sprintf("%v at %v", n.VisitorNode.Node.String(), n.Pos)
+	return fmt.Sprintf("%v at %v", n.GraphNode.String(), n.Pos)
 }
 
 // Analyze runs the analysis on the program prog with the user-provided configuration config.
@@ -146,7 +161,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 			for _, trace := range traces {
 				vTrace := Trace{}
 				for _, node := range trace {
-					if isFiltered(visitor.SlicingSpec, node.Node) {
+					if isFiltered(visitor.SlicingSpec, node.GraphNode) {
 						logger.Tracef("FILTERED: %v\n", node)
 						logger.Tracef("\t%v\n", vTrace)
 						vTrace = nil
@@ -161,11 +176,14 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 		}
 
 		if len(visitor.Errs) > 0 {
-			errs = append(errs, visitor.Errs...)
+			vErrs := make([]error, 0, len(visitor.Errs))
+			for _, err := range visitor.Errs {
+				vErr := fmt.Errorf("%v %v\n", formatutil.Red("error"), err)
+				vErrs = append(vErrs, vErr)
+			}
+			errs = append(errs, vErrs...)
 		}
 	}
-
-	logger.Infof(formatutil.Green("Found %d traces.\n"), len(resTraces))
 
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: resTraces}, errors.Join(errs...)
 }
@@ -203,7 +221,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 		logger := s.Logger
 		traces := v.Traces[arg]
 		for i, trace := range traces {
-			logger.Infof("%v\n\n", trace)
+			logger.Infof("%v\n", trace.String())
 
 			// Stop if there is a limit on number of alarms (representing number of traces to report), and it has been reached.
 			if s.Config.MaxAlarms > 0 && i >= s.Config.MaxAlarms {
@@ -218,7 +236,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 }
 
 //gocyclo:ignore
-func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) (err error) {
+func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) error {
 	logger := s.Logger
 
 	pos := entrypoint.Position(s)
@@ -230,7 +248,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) (err er
 	// TODO make this an option in the config
 	if strings.Contains(pos.Filename, "vendor") || strings.Contains(pos.Filename, runtime.GOROOT()) {
 		logger.Debugf("%s %v\n", formatutil.Red("Skipping entrypoint"), entrypoint.String())
-		return
+		return nil
 	}
 
 	logger.Infof("\n%s ENTRYPOINT %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
@@ -273,7 +291,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) (err er
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
 		if isBaseCase(cur.Node, s.Config) {
 			t := findTrace(s, cur)
-			v.Traces[entrypoint] = append(v.Traces[entrypoint], t)
+			addTrace(v, entrypoint, t)
 
 			logger.Tracef("Base case reached...")
 			logger.Tracef("Adding trace: %v\n", t)
@@ -308,7 +326,9 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) (err er
 				if err := df.CheckIndex(s, graphNode, callSite, "[Context] No argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
 					// TODO fix bug that leads to panic
-					return fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err)
+					// report trace in the error as well
+					t := findTrace(s, cur)
+					return fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v\n\t%v", callSite, graphNode, err, t)
 					// panic(fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err))
 				}
 
@@ -447,7 +467,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) (err er
 			// - no more incoming edges from the arg
 			if prevStackLen == len(stack) {
 				t := findTrace(s, cur)
-				v.Traces[entrypoint] = append(v.Traces[entrypoint], t)
+				addTrace(v, entrypoint, t)
 				logger.Tracef("CallNodeArg base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
 			}
@@ -530,7 +550,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) (err er
 			// - no more incoming edges from the call
 			if prevStackLen == len(stack) {
 				t := findTrace(s, cur)
-				v.Traces[entrypoint] = append(v.Traces[entrypoint], t)
+				addTrace(v, entrypoint, t)
 				logger.Tracef("CallNode base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
 			}
@@ -687,7 +707,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) (err er
 			// - no new matching bound variables
 			if prevStackLen == len(stack) {
 				t := findTrace(s, cur)
-				v.Traces[entrypoint] = append(v.Traces[entrypoint], t)
+				addTrace(v, entrypoint, t)
 				logger.Tracef("Free var base case reached...")
 				logger.Tracef("Adding trace: %v\n", t)
 			}
@@ -834,15 +854,35 @@ func findTrace(s *df.AnalyzerState, end *df.VisitorNode) Trace {
 	cur := end
 	for cur != nil {
 		node := TraceNode{
-			VisitorNode: cur,
-			Pos:         cur.Node.Position(s),
-			Values:      nil,
+			GraphNode: cur.Node,
+			Pos:       cur.Node.Position(s),
 		}
 		trace = append(trace, node)
 		cur = cur.Prev
 	}
 
 	return trace
+}
+
+func addTrace(v *Visitor, entrypoint *df.CallNodeArg, trace Trace) {
+	// don't add trace if it's already in v.Traces
+	for _, t := range v.Traces[entrypoint] {
+		// need this more complex logic because you can't compare slices directly
+		if len(t) == len(trace) {
+			same := true
+			for i, tn := range t {
+				if tn != trace[i] {
+					same = false
+					break
+				}
+			}
+			if same {
+				return
+			}
+		}
+	}
+
+	v.Traces[entrypoint] = append(v.Traces[entrypoint], trace)
 }
 
 // IsStatic returns true if node is a constant value.
@@ -981,14 +1021,14 @@ func validateTrace(trace Trace) error {
 		}
 		next := trace[j]
 
-		switch cur := cur.Node.(type) {
+		switch cur := cur.GraphNode.(type) {
 		case *df.CallNodeArg:
-			if arg, ok := next.Node.(*df.CallNodeArg); ok && arg.ParentName() != cur.ParentName() {
-				return fmt.Errorf("two interprocedural call args in a row: %v -> %v", cur, next.Node)
+			if arg, ok := next.GraphNode.(*df.CallNodeArg); ok && arg.ParentName() != cur.ParentName() {
+				return fmt.Errorf("two interprocedural call args in a row: %v -> %v", cur, next.GraphNode)
 			}
 		case *df.ParamNode:
-			if param, ok := next.Node.(*df.ParamNode); ok && param.ParentName() != cur.ParentName() {
-				return fmt.Errorf("two interprocedural params in a row: %v -> %v", cur, next.Node)
+			if param, ok := next.GraphNode.(*df.ParamNode); ok && param.ParentName() != cur.ParentName() {
+				return fmt.Errorf("two interprocedural params in a row: %v -> %v", cur, next.GraphNode)
 			}
 		}
 	}
