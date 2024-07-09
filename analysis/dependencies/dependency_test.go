@@ -22,11 +22,16 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/tools/go/ssa"
 )
 
+var cfg = config.NewDefault()
+var logger = config.NewLogGroup(cfg)
+
 func TestComputePath(t *testing.T) {
-	x := computePath("/Users/exampleUser/repoRoot/src/ARG-GoAnalyzer/repo/samplePackage/packageX/packageY/foo.go",
+	x := computePath(cfg, logger, "/Users/exampleUser/repoRoot/src/ARG-GoAnalyzer/repo/samplePackage/packageX/packageY/foo.go",
 		"github.com/aws/repo/samplePackage/packageX/packageY")
 	if x != "github.com/aws/repo/samplePackage/packageX/packageY/foo.go" {
 		t.Errorf("error")
@@ -40,7 +45,7 @@ func TestComputePath(t *testing.T) {
 // until we find a match.
 
 func TestComputePath2(t *testing.T) {
-	x := computePath("/Users/exampleUser/reference/repo/samplePackage/samplePackage/samplePackage.go",
+	x := computePath(cfg, logger, "/Users/exampleUser/reference/repo/samplePackage/samplePackage/samplePackage.go",
 		"github.com/aws/repo/samplePackage/samplePackage")
 	if x != "github.com/aws/repo/samplePackage/samplePackage/samplePackage.go" {
 		t.Errorf("error")
@@ -65,11 +70,21 @@ func TestSamplePackageWorkerDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}
+	state, err := dataflow.NewAnalyzerState(program, logger, cfg, []func(state *dataflow.AnalyzerState){})
+	if err != nil {
+		t.Fatalf("error starting state: %s", err)
+	}
 
-	dependencyGraph := DependencyAnalysis(program, false, true, nil, false)
+	dependencyGraph := DependencyAnalysis(state, DependencyConfigs{
+		JsonFlag:       false,
+		IncludeStdlib:  true,
+		CoverageFile:   nil,
+		CsvFile:        nil,
+		UsageThreshold: 0,
+		ComputeGraph:   false,
+	})
 
 	if dependencyGraph != nil {
-		//fmt.Println("Checking cycles in dependency graph")
 		if dependencyGraph.Cycles() {
 			t.Errorf("found cycles in the dependency graph")
 		}

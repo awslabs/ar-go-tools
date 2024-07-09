@@ -23,6 +23,8 @@ import (
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/dependencies"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
@@ -32,18 +34,24 @@ import (
 // flags
 
 var (
-	jsonFlag      = false
-	stdlib        = false
-	mode          = ssa.BuilderMode(0)
-	covFilename   = ""
-	graphFilename = ""
+	jsonFlag       = false
+	stdlib         = false
+	mode           = ssa.BuilderMode(0)
+	covFilename    = ""
+	graphFilename  = ""
+	configFilename = ""
+	csvFilename    = ""
+	usageThreshold = 10.0
 )
 
 func init() {
+	flag.StringVar(&configFilename, "config", "", "configuration file")
 	flag.StringVar(&covFilename, "cover", "", "output coverage file")
 	flag.StringVar(&graphFilename, "graph", "", "output graphviz file")
+	flag.StringVar(&csvFilename, "csv", "", "output results in csv")
 	flag.BoolVar(&jsonFlag, "json", false, "output results as JSON")
 	flag.BoolVar(&stdlib, "stdlib", false, "include standard library packages")
+	flag.Float64Var(&usageThreshold, "usage", 10.0, "usage threshold below which warning produced")
 	flag.Var(&mode, "build", ssa.BuilderModeDoc)
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 }
@@ -83,30 +91,67 @@ func doMain() error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
+	var cfg *config.Config
+	if configFilename == "" {
+		cfg = config.NewDefault()
+	} else {
+		cfg, err = config.LoadFromFiles(configFilename)
+		if err != nil {
+			return fmt.Errorf("failed to load config %s: %s", configFilename, err)
+		}
+	}
+	state, err := dataflow.NewAnalyzerState(program,
+		config.NewLogGroup(cfg), cfg, []func(state *dataflow.AnalyzerState){})
+	if err != nil {
+		return fmt.Errorf("failed to initialize analyzer state: %s", err)
+	}
 
-	var outfile io.WriteCloser
+	state.Logger.Infof(formatutil.Faint("Analyzing"))
+
+	var coverageWriter io.WriteCloser
+	var csvWriter io.WriteCloser
 
 	if covFilename != "" {
-		outfile, err = os.OpenFile(covFilename, os.O_APPEND|os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+		coverageWriter, err = os.OpenFile(covFilename, os.O_APPEND|os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer outfile.Close()
+		defer coverageWriter.Close()
 
-		outfile.Write([]byte("mode: set\n"))
+		coverageWriter.Write([]byte("mode: set\n"))
 	}
 
-	dependencyGraph := dependencies.DependencyAnalysis(program, jsonFlag, stdlib, outfile, graphFilename != "")
+	if csvFilename != "" {
+		csvWriter, err = os.OpenFile(csvFilename, os.O_APPEND|os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer csvWriter.Close()
+		csvWriter.Write([]byte("dependency,loc used,loc total,% used\n"))
+	}
+
+	dependencyGraph := dependencies.DependencyAnalysis(state, dependencies.DependencyConfigs{
+		JsonFlag:       jsonFlag,
+		IncludeStdlib:  stdlib,
+		CoverageFile:   coverageWriter,
+		CsvFile:        csvWriter,
+		UsageThreshold: usageThreshold,
+		ComputeGraph:   false,
+	})
+
+	if covFilename != "" {
+		state.Logger.Infof("Coverage written in: %s", covFilename)
+	}
 
 	if dependencyGraph != nil {
-		//fmt.Println("Checking cycles in dependency graph")
+		state.Logger.Debugf("Checking cycles in dependency graph")
 		if dependencyGraph.Cycles() {
-			fmt.Println("FOUND CYCLES IN THE DEPENDENCY GRAPH")
+			state.Logger.Errorf("FOUND CYCLES IN THE DEPENDENCY GRAPH")
 		}
 	}
 
 	if graphFilename != "" {
+		state.Logger.Infof("Writing Graphviz in: %s", graphFilename)
 		dependencyGraph.DumpAsGraphviz(graphFilename, stdlib)
 	}
 
