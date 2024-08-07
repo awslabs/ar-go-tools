@@ -147,14 +147,20 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 			maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
 			if maybePkg.IsSome() {
 				cid := config.CodeIdentifier{
-					Package: maybePkg.Value(), Method: methodName, Receiver: receiverType,
+					Context:  node.Parent().String(),
+					Package:  maybePkg.Value(),
+					Method:   methodName,
+					Receiver: receiverType,
 				}
 				return codeIDOracle(cid)
 			}
 			if callee != nil {
 				pkgName := lang.PackageNameFromFunction(callee)
 				cid := config.CodeIdentifier{
-					Package: pkgName, Method: methodName, Receiver: receiverType,
+					Context:  node.Parent().String(),
+					Package:  pkgName,
+					Method:   methodName,
+					Receiver: receiverType,
 				}
 				return codeIDOracle(cid)
 			}
@@ -169,14 +175,20 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 		maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
 		if maybePkg.IsSome() {
 			cid := config.CodeIdentifier{
-				Package: maybePkg.Value(), Method: funcName, Receiver: receiverType,
+				Context:  node.Parent().String(),
+				Package:  maybePkg.Value(),
+				Method:   funcName,
+				Receiver: receiverType,
 			}
 			return codeIDOracle(cid)
 		}
 		if callee != nil {
 			pkgName := lang.PackageNameFromFunction(callee)
 			cid := config.CodeIdentifier{
-				Package: pkgName, Method: funcName, Receiver: receiverType,
+				Context:  node.Parent().String(),
+				Package:  pkgName,
+				Method:   funcName,
+				Receiver: receiverType,
 			}
 			return codeIDOracle(cid)
 		}

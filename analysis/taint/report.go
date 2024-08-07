@@ -78,6 +78,7 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 // reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger
 func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
+	c.Logger.Infof(" !!!! TAINT FLOW !!!!")
 	c.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(c)))
 	c.Logger.Infof(" Add new path from %s to %s <== \n",
 		formatutil.Green(source.Node.String()), formatutil.Red(sink.Node.String()))
@@ -115,12 +116,16 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 				formatutil.Purple("TRACE"),
 				dataflow.NodeSummary(nodes[i].Node))
 			// - Context [<calling context string>] Pos: <position in source code>
-			c.Logger.Infof("%s - Context [%s] %s %s\n",
+			c.Logger.Infof("%s - Context [%s]\n",
 				"     ",
-				dataflow.FuncNames(nodes[i].Trace),
-				formatutil.Yellow("Pos:"),
+				dataflow.FuncNames(nodes[i].Trace, c.Logger.LogsDebug()))
+			c.Logger.Infof("%s - %s %s\n",
+				"     ",
+				formatutil.Yellow("At"),
 				nodes[i].Node.Position(c).String())
 		}
 		c.Logger.Infof("-- ENDS WITH SINK: %s\n", sinkPos.String())
+		c.Logger.Infof("---- END FLOW ----")
+		c.Logger.Infof(" ")
 	}
 }

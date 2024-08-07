@@ -236,3 +236,20 @@ func TryTupleIndexType(v types.Type, i int) types.Type {
 	}
 	return tupleType.At(i).Type()
 }
+
+// CanType checks some properties to ensure calling the Type() method on the value won't cause a sefgfault.
+// This seems to be a problem in the SSA.
+func CanType(v ssa.Value) (res bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			res = false
+		}
+	}()
+	if v == nil {
+		res = false
+	} else {
+		typ := v.Type()
+		res = typ != nil
+	}
+	return res
+}
