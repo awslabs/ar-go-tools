@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/annotations"
@@ -84,6 +85,7 @@ type AnalyzerState struct {
 	isReachabilityCha bool
 
 	// Stored errors
+	numAlarms  atomic.Int32
 	errors     map[string][]error
 	errorMutex sync.Mutex
 }
@@ -285,6 +287,18 @@ func (s *AnalyzerState) HasErrors() bool {
 		}
 	}
 	return false
+}
+
+// IncrementAndTestAlarms increments the alarm counter in the state, and returns false if the count is larger
+// than the MaxAlarms setting in the config.
+func (s *AnalyzerState) IncrementAndTestAlarms() bool {
+	s.numAlarms.Add(1)
+	return s.TestAlarmCount()
+}
+
+// TestAlarmCount tests whether the alarm count is smaller than the maximum number of alarms allowed by the configuration.
+func (s *AnalyzerState) TestAlarmCount() bool {
+	return s.Config.MaxAlarms <= 0 || s.numAlarms.Load() < int32(s.Config.MaxAlarms)
 }
 
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations

@@ -196,14 +196,19 @@ func (n *NodeTree[T]) Append(tree *NodeTree[T]) *NodeTree[T] {
 }
 
 // FuncNames returns a string that contains all the function names in the current trace (from root to leaf)
-func FuncNames(n *NodeTree[*CallNode]) string {
+func FuncNames(n *NodeTree[*CallNode], debug bool) string {
 	if n == nil || n.height == 0 {
 		return ""
 	}
 	s := make([]string, n.height)
 	for cur := n; cur != nil; cur = cur.Parent {
 		if cur.height >= 1 {
-			s[cur.height-1] = "(" + cur.Label.LongID() + ")" + cur.Label.FuncName()
+			// if debug is set, add the internal id
+			if debug {
+				s[cur.height-1] = "(" + cur.Label.LongID() + ")" + cur.Label.FuncName()
+			} else {
+				s[cur.height-1] = cur.Label.FuncName()
+			}
 		}
 	}
 	return strings.Join(s, "->")

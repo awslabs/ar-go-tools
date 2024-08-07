@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -147,31 +148,43 @@ func NodeKind(g GraphNode) string {
 	return ""
 }
 
-// NodeSummary returns a string summary of the node
+// NodeSummary returns a string summary of the node, highlighting with terminal colors
+// green indicates a relative index/argument name,
+// magenta is used for function names,
+// italic is used for types.
 func NodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
-		return fmt.Sprintf("Parameter %q (type %q) of %q",
-			x.ssaNode.Name(), x.Type().String(), x.parent.Parent.Name())
+		return fmt.Sprintf("Parameter %s (type %s) of %q",
+			formatutil.Green(x.ssaNode.Name()),
+			formatutil.Italic(x.Type().String()),
+			formatutil.Magenta(x.parent.Parent.Name()))
 	case *CallNode:
-		return fmt.Sprintf("Result of call to %q (type %q)", x.Callee().Name(), x.Type().String())
+		return fmt.Sprintf("Result of call to %s (type %s)",
+			formatutil.Magenta(x.Callee().Name()),
+			formatutil.Italic(x.Type().String()))
 	case *CallNodeArg:
-		return fmt.Sprintf("Argument %v (type %q) in call to %q",
-			x.Index(), x.Type().String(), x.ParentNode().Callee().Name())
+		return fmt.Sprintf("Argument #%s (type %s) in call to %s",
+			formatutil.Green(x.Index()),
+			formatutil.Italic(x.Type().String()),
+			formatutil.Magenta(x.ParentNode().Callee().Name()))
 	case *ReturnValNode:
-		return fmt.Sprintf("Return value %d (type %q) of %q", x.Index(), x.Type().String(), x.ParentName())
+		return fmt.Sprintf("Return value %s (type %s) of %s",
+			formatutil.Green(x.Index()),
+			formatutil.Italic(x.Type().String()),
+			formatutil.Magenta(x.ParentName()))
 	case *ClosureNode:
 		return fmt.Sprintf("Closure")
 	case *BoundLabelNode:
-		return fmt.Sprintf("Bound label of type %q", x.targetInfo.Type().String())
+		return fmt.Sprintf("Bound label of type %s", formatutil.Italic(x.targetInfo.Type().String()))
 	case *SyntheticNode:
 		return fmt.Sprintf("Synthetic node")
 	case *BoundVarNode:
 		return "Bound variable"
 	case *FreeVarNode:
-		return fmt.Sprintf("Free variable %d of %q", x.fvPos, x.ssaNode.Parent().String())
+		return fmt.Sprintf("Free variable #%s of %q", formatutil.Green(x.fvPos), x.ssaNode.Parent().String())
 	case *AccessGlobalNode:
-		return fmt.Sprintf("Global variable %q", x.Global.String())
+		return fmt.Sprintf("Global variable %q", formatutil.Red(x.Global.String()))
 	}
 	return ""
 }

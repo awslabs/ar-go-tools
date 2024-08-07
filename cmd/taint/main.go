@@ -93,9 +93,11 @@ func main() {
 	result, err := taint.Analyze(taintConfig, program, pkgs)
 	duration := time.Since(start)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "analysis failed:\n")
-		for _, err := range result.State.CheckError() {
-			fmt.Fprintf(os.Stderr, "\t%v\n", err)
+		fmt.Fprintf(os.Stderr, "analysis failed: %q\n", err)
+		if result.State != nil {
+			for _, err := range result.State.CheckError() {
+				fmt.Fprintf(os.Stderr, "\t%v\n", err)
+			}
 		}
 		return
 	}
@@ -134,7 +136,7 @@ func Report(program *ssa.Program, result taint.AnalysisResult) {
 			result.State.Logger.Warnf(
 				"%s in function %s:\n\tSource: [SSA] %s\n\t\t%s\n\tSink: [SSA] %s\n\t\t%s\n",
 				formatutil.Red("Data from a source has reached a sink"),
-				sourceInstr.Parent().Name(),
+				sinkInstr.Parent().Name(),
 				formatutil.SanitizeRepr(sourceInstr),
 				sourcePos.String(), // safe %s (position string)
 				formatutil.SanitizeRepr(sinkInstr),

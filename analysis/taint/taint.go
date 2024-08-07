@@ -78,7 +78,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 
 	preambleErr := AnalysisPreamble(state)
 	if preambleErr != nil {
-		return AnalysisResult{}, preambleErr
+		return AnalysisResult{State: state}, preambleErr
 	}
 	// ** Second step **
 	// The intra-procedural analysis is run on every function `f` such that `ignoreInFirstPass(f)` is
@@ -123,6 +123,11 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 	taintFlows := NewFlows()
 
 	for _, taintSpec := range state.Config.TaintTrackingProblems {
+		// Stop early if we have reached the maximum number of alarms.
+		if !state.TestAlarmCount() {
+			state.Logger.Warnf("Stopping analysis, maximum number of alarms reached.")
+			break
+		}
 		// Set problem-specific options
 		prevOptions := map[string]string{}
 		for optionName, optionValue := range state.Annotations.Configs[taintSpec.Tag] {
