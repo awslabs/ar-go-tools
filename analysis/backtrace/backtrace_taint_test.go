@@ -119,12 +119,12 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// for _, trace := range res.Traces {
 	// 	t.Log(trace)
 	// }
+
 	s, err := dataflow.NewInitializedAnalyzerState(program, lp.Pkgs, log, cfg)
 	if err != nil {
 		t.Fatalf("failed to create state for result inspection: %s", err)
 	}
-	traces := mergeTraces(res) // TODO use entrypoint info to match sinks?
-	reached := reachedSinkPositions(s, traces)
+	reached := reachedSinkPositions(s, res)
 	if len(reached) == 0 {
 		t.Fatal("expected reached sink positions to be present")
 	}
@@ -185,18 +185,17 @@ func isExpected(expected analysistest.TargetToSources, sourcePos analysistest.LP
 
 // reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func reachedSinkPositions(s *dataflow.AnalyzerState,
-	traces []backtrace.Trace) map[token.Position]map[token.Position]bool {
+func reachedSinkPositions(s *dataflow.AnalyzerState, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
-	for _, trace := range traces {
-		// sink is always the last node in the trace because it's the analysis entrypoint
-		sink := trace[len(trace)-1]
-		si := dataflow.Instr(sink.Node)
+	prog := s.Program
+	for sink, traces := range res.Traces {
+		// sink is the analysis entrypoint
+		si := dataflow.Instr(sink)
 		if si == nil {
 			continue
 		}
 		sinkPos := si.Pos()
-		sinkFile := s.Program.Fset.File(sinkPos)
+		sinkFile := prog.Fset.File(sinkPos)
 		if sinkPos == token.NoPos || sinkFile == nil {
 			continue
 		}
@@ -206,22 +205,24 @@ func reachedSinkPositions(s *dataflow.AnalyzerState,
 			positions[sinkP] = map[token.Position]bool{}
 		}
 
-		for _, node := range trace {
-			instr := dataflow.Instr(node.Node)
-			if instr == nil {
-				continue
-			}
-
-			sn := sourceNode(node.Node)
-			if isSourceNode(s, sn) {
-				sourcePos := instr.Pos()
-				sourceFile := s.Program.Fset.File(sourcePos)
-				if sourcePos == token.NoPos || sourceFile == nil {
+		for _, trace := range traces {
+			for _, node := range trace {
+				instr := dataflow.Instr(node.GraphNode)
+				if instr == nil {
 					continue
 				}
 
-				sourceP := sourceFile.Position(sourcePos)
-				positions[sinkP][sourceP] = true
+				sn := sourceNode(node.GraphNode)
+				if isSourceNode(s, sn) {
+					sourcePos := instr.Pos()
+					sourceFile := prog.Fset.File(sourcePos)
+					if sourcePos == token.NoPos || sourceFile == nil {
+						continue
+					}
+
+					sourceP := sourceFile.Position(sourcePos)
+					positions[sinkP][sourceP] = true
+				}
 			}
 		}
 	}
@@ -340,7 +341,11 @@ func expectedTaintTargetToSources(fset *token.FileSet, astFiles []*ast.File) ana
 }
 
 func mergeTraces(result backtrace.AnalysisResult) []backtrace.Trace {
-	var res []backtrace.Trace
+	n := 0
+	for _, traces := range result.Traces {
+		n += len(traces)
+	}
+	res := make([]backtrace.Trace, 0, n)
 	for _, traces := range result.Traces {
 		res = append(res, traces...)
 	}

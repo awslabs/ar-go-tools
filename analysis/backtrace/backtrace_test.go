@@ -335,7 +335,7 @@ func testAnalyze(t *testing.T, lp analysistest.LoadedTestProgram) {
 
 	t.Run(`trace to bar("x") should not exist`, func(t *testing.T) {
 		if funcutil.Exists(traces, func(trace backtrace.Trace) bool {
-			arg, ok := trace[0].Node.(*dataflow.CallNodeArg)
+			arg, ok := trace[0].GraphNode.(*dataflow.CallNodeArg)
 			if !ok {
 				return false
 			}
@@ -567,7 +567,7 @@ func matchTrace(trace backtrace.Trace, matches []match) (bool, error) {
 
 //gocyclo:ignore
 func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
-	switch node := tnode.Node.(type) {
+	switch node := tnode.GraphNode.(type) {
 	case *dataflow.CallNodeArg:
 		mval := m.val.(argval)
 		val := mval.val == node.Value().Name() || (mval.val == nil && !backtrace.IsStatic(node))
