@@ -18,9 +18,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/types"
-	"os"
 	"sort"
 
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
@@ -39,7 +39,6 @@ func findEntryPoints(allFunctions map[*ssa.Function]bool, excludeMain bool, excl
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "findEntryPoints found %d entry points\n", len(entryPoints))
 	return entryPoints
 }
 
@@ -159,16 +158,17 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 // graph to record cross-package function calls.
 //
 // The return value is a map from reachable *ssa.Function values to true.
-func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, graph DependencyGraph) map[*ssa.Function]bool {
+func FindReachable(state *dataflow.AnalyzerState, excludeMain bool, excludeInit bool, graph DependencyGraph) map[*ssa.Function]bool {
 
-	allFunctions := ssautil.AllFunctions(program)
-	fmt.Fprintf(os.Stderr, "allFunctions contains %d total\n", len(allFunctions))
+	allFunctions := ssautil.AllFunctions(state.Program)
+	state.Logger.Infof("allFunctions contains %d total\n", len(allFunctions))
 
 	reachable := make(map[*ssa.Function]bool, len(allFunctions))
 
 	frontier := make([]*ssa.Function, 0)
 
 	entryPoints := findEntryPoints(allFunctions, excludeMain, excludeInit)
+	state.Logger.Infof("findEntryPoints found %d entry points\n", len(entryPoints))
 	for _, f := range entryPoints {
 		reachable[f] = true
 		frontier = append(frontier, f)
@@ -178,7 +178,7 @@ func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, gra
 	for len(frontier) != 0 {
 		f := frontier[len(frontier)-1]
 		frontier = frontier[:len(frontier)-1]
-		findCallees(program, f, func(fnext *ssa.Function) {
+		findCallees(state.Program, f, func(fnext *ssa.Function) {
 			if graph != nil {
 				from := lang.PackageNameFromFunction(f)
 				to := lang.PackageNameFromFunction(fnext)
@@ -193,17 +193,16 @@ func FindReachable(program *ssa.Program, excludeMain bool, excludeInit bool, gra
 			}
 		})
 	}
-	fmt.Fprintf(os.Stderr, "FindReachable reports %d reachable functions\n", len(reachable))
+	state.Logger.Infof("FindReachable reports %d reachable functions\n", len(reachable))
 
 	return reachable
 }
 
 // ReachableFunctionsAnalysis runs the reachable function analysis. Main and Init can be excluded using the
 // boolean flags. The analysis prints the reachable functions on standard output.
-func ReachableFunctionsAnalysis(program *ssa.Program, excludeMain bool, excludeInit bool, jsonFlag bool) {
-
-	reachable := FindReachable(program, excludeMain, excludeInit, nil)
-	fmt.Fprintln(os.Stderr, len(reachable), "reachable functions")
+func ReachableFunctionsAnalysis(state *dataflow.AnalyzerState, excludeMain bool, excludeInit bool, jsonFlag bool) {
+	reachable := FindReachable(state, excludeMain, excludeInit, nil)
+	state.Logger.Infof("%d rechable functions", len(reachable))
 
 	functionNames := make([]string, 0, len(reachable))
 

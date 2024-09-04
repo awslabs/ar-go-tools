@@ -136,7 +136,7 @@ func doMain() error {
 		CoverageFile:   coverageWriter,
 		CsvFile:        csvWriter,
 		UsageThreshold: usageThreshold,
-		ComputeGraph:   false,
+		ComputeGraph:   true,
 	})
 
 	if covFilename != "" {
