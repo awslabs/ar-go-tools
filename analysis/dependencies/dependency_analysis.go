@@ -252,7 +252,7 @@ func DependencyAnalysis(state *dataflow.AnalyzerState, dc DependencyConfigs) rea
 
 		if dc.CsvFile != nil {
 			dc.CsvFile.Write([]byte(fmt.Sprintf("%s,%v,%d,%d,%3.2f\n",
-				dependencyName, entry.isIndirect, entry.reachableLocs, total, percentage)))
+				dependencyName, !entry.isIndirect, entry.reachableLocs, total, percentage)))
 		}
 	}
 
