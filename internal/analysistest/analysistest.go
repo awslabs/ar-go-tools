@@ -88,7 +88,8 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestPr
 		patterns = append(patterns, fmt.Sprintf("file=%s", fp))
 	}
 	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
-	program, pkgs, err := analysis.LoadProgram(&pcfg, "", ssa.InstantiateGenerics|ssa.BuildSerially, patterns)
+	program, pkgs, err := analysis.LoadProgram(
+		&pcfg, "", ssa.InstantiateGenerics|ssa.BuildSerially, false, patterns)
 	if err != nil {
 		return LoadedTestProgram{}, err
 	}
@@ -127,7 +128,7 @@ func LoadTestFromDisk(dir string, extraFiles []string) (LoadedTestProgram, error
 	}
 	mode := packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedDeps | packages.NeedTypesInfo
 	pcfg := packages.Config{Mode: mode}
-	prog, pkgs, err := analysis.LoadProgram(&pcfg, "", ssa.InstantiateGenerics, files)
+	prog, pkgs, err := analysis.LoadProgram(&pcfg, "", ssa.InstantiateGenerics, false, files)
 	if err != nil {
 		return LoadedTestProgram{Pkgs: pkgs}, fmt.Errorf("error loading packages: %v", err)
 	}

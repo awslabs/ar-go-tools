@@ -32,6 +32,7 @@ import (
 var (
 	configPath = flag.String("config", "", "Config file path for backtrace analysis")
 	verbose    = flag.Bool("verbose", false, "Verbose printing on standard output")
+	withTest   = flag.Bool("with-test", false, "load tests during backtrace analysis")
 )
 
 func init() {
@@ -79,7 +80,7 @@ func main() {
 
 	logger.Printf(formatutil.Faint("Reading backtrace entrypoints") + "\n")
 
-	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, *withTest, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return

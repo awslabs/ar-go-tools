@@ -46,6 +46,7 @@ var (
 	dynBinary       = flag.String("dynbinary", "", "Load dynamic callgraph corresponding to the given binary")
 	dynCallgraphDir = flag.String("callgraphs", "", "Directory to get dynamic callgraph from")
 	configFilename  = flag.String("config", "", "Configuration file.")
+	withTest        = flag.Bool("with-test", false, "load test for comparison")
 )
 
 func init() {
@@ -98,7 +99,7 @@ func main() {
 		return
 	}
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-	state, loadingErr := analysis.LoadAnalyzerState(nil, "", buildmode, flag.Args(), cfg)
+	state, loadingErr := analysis.LoadAnalyzerState(nil, "", buildmode, *withTest, flag.Args(), cfg)
 	if loadingErr != nil {
 		fmt.Fprintf(os.Stderr, "failed to load program: %s", loadingErr)
 		return

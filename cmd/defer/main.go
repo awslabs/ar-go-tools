@@ -76,7 +76,7 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, _, err := analysis.LoadProgram(nil, "", mode, flag.Args())
+	program, _, err := analysis.LoadProgram(nil, "", mode, false, flag.Args())
 	if err != nil {
 		return err
 	}

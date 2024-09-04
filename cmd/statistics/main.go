@@ -35,10 +35,11 @@ import (
 type excludeFlags []string
 
 var (
-	jsonFlag              = false
-	mode                  = ssa.BuilderMode(0)
-	exclude  excludeFlags = []string{}
-	prefix                = ""
+	jsonFlag               = false
+	mode                   = ssa.BuilderMode(0)
+	exclude   excludeFlags = []string{}
+	prefix                 = ""
+	withTests              = false
 )
 
 func (exclude *excludeFlags) String() string {
@@ -55,6 +56,7 @@ func init() {
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 	flag.Var(&exclude, "exclude", "path to exclude from analysis")
 	flag.StringVar(&prefix, "prefix", "", "prefix of packages to print statistics for")
+	flag.BoolVar(&withTests, "withTests", false, "also load tests for statistics")
 }
 
 const usage = `Analyze your Go packages.
@@ -88,7 +90,7 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, pkgs, err := analysis.LoadProgram(nil, "", mode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", mode, withTests, flag.Args())
 	if err != nil {
 		return err
 	}
