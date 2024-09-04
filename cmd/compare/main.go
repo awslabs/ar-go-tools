@@ -45,6 +45,7 @@ var (
 	binary          = flag.String("binary", "", "Pull the symbol table from specified binary file")
 	dynBinary       = flag.String("dynbinary", "", "Load dynamic callgraph corresponding to the given binary")
 	dynCallgraphDir = flag.String("callgraphs", "", "Directory to get dynamic callgraph from")
+	configFilename  = flag.String("config", "", "Configuration file.")
 )
 
 func init() {
@@ -89,27 +90,26 @@ func main() {
 		os.Exit(2)
 	}
 
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-
-	program, _, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	var err error
+	var cfg *config.Config
+	err = setConfig(&cfg, err)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not load program: %v", err)
+		fmt.Fprintf(os.Stderr, "error setting config: %s", err)
 		return
 	}
-
-	var cg *callgraph.Graph
+	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
+	state, loadingErr := analysis.LoadAnalyzerState(nil, "", buildmode, flag.Args(), cfg)
+	if loadingErr != nil {
+		fmt.Fprintf(os.Stderr, "failed to load program: %s", loadingErr)
+		return
+	}
 
 	// Compute the call graph
-	fmt.Fprintln(os.Stderr, formatutil.Faint("Computing call graph"))
-	start := time.Now()
-	cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
-	cgComputeDuration := time.Since(start).Seconds()
+	cg, err := doComputeCallgraph(state, callgraphAnalysisMode)
 	if err != nil {
-		fmt.Fprint(os.Stderr, formatutil.Red("Could not compute callgraph: %v\n", err))
+		fmt.Fprintf(os.Stderr, "failed to compute callgraph, exiting")
 		return
 	}
-	fmt.Fprint(os.Stderr, formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
-
 	//Load the binary
 	var symbols map[string]bool = nil
 	if *binary != "" {
@@ -121,25 +121,49 @@ func main() {
 	}
 
 	if *compareSymbols {
-		doCompareSymbols(program, cg, symbols)
+		doCompareSymbols(state, cg, symbols)
 	}
 
 	if *dynBinary != "" && *dynCallgraphDir != "" {
 		callsites := loadDynamicCallgraph(*dynCallgraphDir, *dynBinary)
-		reportUncoveredDynamicEdges(program, cg, callsites)
+		reportUncoveredDynamicEdges(state.Program, cg, callsites)
 	}
 }
 
-func doCompareSymbols(program *ssa.Program, cg *callgraph.Graph, symbols map[string]bool) {
+func setConfig(cfg **config.Config, err error) error {
+	if *configFilename == "" {
+		*cfg = config.NewDefault()
+	}
+	*cfg, err = config.LoadFromFiles(*configFilename)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func doComputeCallgraph(state *dataflow.AnalyzerState, mode dataflow.CallgraphAnalysisMode) (*callgraph.Graph, error) {
+	fmt.Fprintln(os.Stderr, formatutil.Faint("Computing call graph"))
+	start := time.Now()
+	cg, err := mode.ComputeCallgraph(state.Program)
+	cgComputeDuration := time.Since(start).Seconds()
+	if err != nil {
+		return nil, fmt.Errorf("could not compute callgraph: %w", err)
+	}
+	state.Logger.Infof(formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+	return cg, nil
+}
+
+func doCompareSymbols(state *dataflow.AnalyzerState, cg *callgraph.Graph, symbols map[string]bool) {
 	callgraphReachable := make(map[string]bool)
 	for entry := range dataflow.CallGraphReachable(cg, false, false) {
 		callgraphReachable[entry.String()] = true
 	}
-	fmt.Fprintf(os.Stderr, "Callgraph reachability reports %d reachable nodes out of %v total\n",
+
+	state.Logger.Infof("Callgraph reachability reports %d reachable nodes out of %v total\n",
 		len(callgraphReachable), len(cg.Nodes))
 
-	reachable := findReachableNames(program)
-	allfuncs := findAllFunctionNames(program)
+	reachable := findReachableNames(state)
+	allfuncs := findAllFunctionNames(state.Program)
 
 	stripAllParens(callgraphReachable)
 	stripAllParens(reachable)
@@ -170,11 +194,11 @@ func doCompareSymbols(program *ssa.Program, cg *callgraph.Graph, symbols map[str
 		return stripLeadingAsterisk(allsorted[i]) < stripLeadingAsterisk(allsorted[j])
 	})
 	for _, f := range allsorted {
-		fmt.Printf("%c %c %c %c %s\n", ch(allfuncs[f], 'A'), ch(reachable[f], 'r'), ch(callgraphReachable[f], 'c'),
+		state.Logger.Infof("%c %c %c %c %s\n", ch(allfuncs[f], 'A'), ch(reachable[f], 'r'), ch(callgraphReachable[f], 'c'),
 			ch(symbols[f], 's'), formatutil.Sanitize(f)) // function name f is safe to print
 	}
-	fmt.Printf("%d total functions\n", len(all))
-	fmt.Printf("Missing %d from allfuncs, %d from callgraph, %d from reachability, %d from binary\n",
+	state.Logger.Infof("%d total functions\n", len(all))
+	state.Logger.Infof("Missing %d from allfuncs, %d from callgraph, %d from reachability, %d from binary\n",
 		len(all)-len(allfuncs), len(all)-len(callgraphReachable), len(all)-len(reachable), len(all)-len(symbols))
 }
 
@@ -219,8 +243,8 @@ func funcsToStrings(funcs map[*ssa.Function]bool) map[string]bool {
 	return names
 }
 
-func findReachableNames(program *ssa.Program) map[string]bool {
-	funcs := reachability.FindReachable(program, false, false, nil)
+func findReachableNames(state *dataflow.AnalyzerState) map[string]bool {
+	funcs := reachability.FindReachable(state, false, false, nil)
 	return funcsToStrings(funcs)
 }
 

@@ -151,8 +151,7 @@ type DependencyConfigs struct {
 
 // DependencyAnalysis runs the dependency analysis on all the functions in the ssa.Program
 // Writes a coverage file in covFile indicating which functions are reachable.
-func DependencyAnalysis(state *dataflow.AnalyzerState,
-	dc DependencyConfigs) reachability.DependencyGraph {
+func DependencyAnalysis(state *dataflow.AnalyzerState, dc DependencyConfigs) reachability.DependencyGraph {
 
 	// all functions we have got
 	allFunctions := ssautil.AllFunctions(state.Program)
@@ -163,20 +162,19 @@ func DependencyAnalysis(state *dataflow.AnalyzerState,
 	}
 
 	// functions known to be reachable
-	reachable := reachability.FindReachable(state.Program, false, false, dependencyGraph)
+	reachable := reachability.FindReachable(state, false, false, dependencyGraph)
 
 	// count reachable and unreachable LOCs, per dependency
-	type dependency struct {
+	type dependencyStats struct {
 		reachableLocs   uint
 		unreachableLocs uint
 	}
 
-	dependencyMap := make(map[string]dependency)
+	dependencyMap := make(map[string]dependencyStats)
 
 	for f := range allFunctions {
 		ok, id := isDependency(f)
 		if ok || dc.IncludeStdlib {
-			//fmt.Println(f.Pkg.Pkg.Path())
 			entry := dependencyMap[id]
 			locs := calculateLocs(f)
 
@@ -197,6 +195,15 @@ func DependencyAnalysis(state *dataflow.AnalyzerState,
 
 	// order alphabetically
 	dependencyNames := make([]string, 0, len(dependencyMap))
+	for _, pack := range state.Packages {
+		if pack != nil {
+			if pack.Module != nil {
+				state.Logger.Infof("Package %s is %v indirect\n", pack.PkgPath, pack.Module.Indirect)
+			} else {
+				state.Logger.Infof("Package %s has no \"module\"\n", pack.PkgPath)
+			}
+		}
+	}
 
 	for key := range dependencyMap {
 		dependencyNames = append(dependencyNames, key)

@@ -19,6 +19,8 @@ import (
 	"os"
 	"sort"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -82,6 +84,24 @@ func LoadProgram(config *packages.Config,
 	program.Build()
 
 	return program, initialPackages, nil
+}
+
+// LoadAnalyzerState is like LoadProgram but additionally wraps the loaded program in a simple analyzer state.
+// Does not run pointer analysis for example.
+func LoadAnalyzerState(pkgConfig *packages.Config,
+	platform string,
+	buildmode ssa.BuilderMode,
+	args []string, cfg *config.Config) (*dataflow.AnalyzerState, error) {
+	program, pkgs, err := LoadProgram(pkgConfig, platform, buildmode, args)
+	if err != nil {
+		return nil, fmt.Errorf("could not load program: %v", err)
+	}
+	state, err := dataflow.NewAnalyzerState(program, pkgs,
+		config.NewLogGroup(cfg), cfg, []func(state *dataflow.AnalyzerState){})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize analyzer state: %s", err)
+	}
+	return state, nil
 }
 
 // AllPackages returns the slice of all packages the set of functions provided as argument belong to.

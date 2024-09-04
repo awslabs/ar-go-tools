@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
@@ -31,13 +32,15 @@ import (
 type excludeFlags []string
 
 var (
-	jsonFlag    = false
-	excludeMain = false
-	excludeInit = false
-	mode        = ssa.InstantiateGenerics
+	jsonFlag       = false
+	excludeMain    = false
+	excludeInit    = false
+	mode           = ssa.InstantiateGenerics
+	configFilename = ""
 )
 
 func init() {
+	flag.StringVar(&configFilename, "config", "", "configuration file")
 	flag.BoolVar(&jsonFlag, "json", false, "output results as JSON")
 	flag.BoolVar(&excludeMain, "nomain", false, "exclude main() as a starting point")
 	flag.BoolVar(&excludeInit, "noinit", false, "exclude init() as a starting point")
@@ -77,9 +80,22 @@ func doMain() error {
 		os.Exit(1)
 	}
 
+	var err error
+	var cfg *config.Config
+	if configFilename == "" {
+		cfg = config.NewDefault()
+	} else {
+		cfg, err = config.LoadFromFiles(configFilename)
+		if err != nil {
+			return fmt.Errorf("failed to load config %s: %s", configFilename, err)
+		}
+	}
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
+	state, err := analysis.LoadAnalyzerState(nil, "", mode, flag.Args(), cfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize analyzer state: %s", err)
+	}
 
-	program, _, err := analysis.LoadProgram(nil, "", mode, flag.Args())
 	if err != nil {
 		return err
 	}
@@ -87,7 +103,7 @@ func doMain() error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
-	reachability.ReachableFunctionsAnalysis(program, excludeMain, excludeInit, jsonFlag)
+	reachability.ReachableFunctionsAnalysis(state, excludeMain, excludeInit, jsonFlag)
 
 	return nil
 }
