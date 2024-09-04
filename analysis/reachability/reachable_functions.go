@@ -161,14 +161,14 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 func FindReachable(state *dataflow.AnalyzerState, excludeMain bool, excludeInit bool, graph DependencyGraph) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(state.Program)
-	state.Logger.Infof("allFunctions contains %d total\n", len(allFunctions))
+	state.Logger.Infof("%d SSA functions\n", len(allFunctions))
 
 	reachable := make(map[*ssa.Function]bool, len(allFunctions))
 
 	frontier := make([]*ssa.Function, 0)
 
 	entryPoints := findEntryPoints(allFunctions, excludeMain, excludeInit)
-	state.Logger.Infof("findEntryPoints found %d entry points\n", len(entryPoints))
+	state.Logger.Infof("%d entrypoints\n", len(entryPoints))
 	for _, f := range entryPoints {
 		reachable[f] = true
 		frontier = append(frontier, f)
@@ -193,7 +193,7 @@ func FindReachable(state *dataflow.AnalyzerState, excludeMain bool, excludeInit 
 			}
 		})
 	}
-	state.Logger.Infof("FindReachable reports %d reachable functions\n", len(reachable))
+	state.Logger.Infof("%d reachable functions\n", len(reachable))
 
 	return reachable
 }
@@ -202,7 +202,6 @@ func FindReachable(state *dataflow.AnalyzerState, excludeMain bool, excludeInit 
 // boolean flags. The analysis prints the reachable functions on standard output.
 func ReachableFunctionsAnalysis(state *dataflow.AnalyzerState, excludeMain bool, excludeInit bool, jsonFlag bool) {
 	reachable := FindReachable(state, excludeMain, excludeInit, nil)
-	state.Logger.Infof("%d rechable functions", len(reachable))
 
 	functionNames := make([]string, 0, len(reachable))
 

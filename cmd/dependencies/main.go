@@ -131,7 +131,7 @@ func doMain() error {
 			log.Fatal(err)
 		}
 		defer csvWriter.Close()
-		csvWriter.Write([]byte("dependency,is direct, loc used,loc total,% used\n"))
+		csvWriter.Write([]byte("dependency,direct?, loc used,loc total,% used\n"))
 	}
 
 	dependencyGraph := dependencies.DependencyAnalysis(state, dependencies.DependencyConfigs{
