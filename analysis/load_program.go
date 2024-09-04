@@ -44,12 +44,13 @@ const PkgLoadMode = packages.NeedName |
 func LoadProgram(config *packages.Config,
 	platform string,
 	buildmode ssa.BuilderMode,
+	loadTests bool,
 	args []string) (*ssa.Program, []*packages.Package, error) {
 
 	if config == nil {
 		config = &packages.Config{
 			Mode:  PkgLoadMode,
-			Tests: false,
+			Tests: loadTests,
 		}
 	}
 
@@ -91,8 +92,9 @@ func LoadProgram(config *packages.Config,
 func LoadAnalyzerState(pkgConfig *packages.Config,
 	platform string,
 	buildmode ssa.BuilderMode,
+	loadTests bool,
 	args []string, cfg *config.Config) (*dataflow.AnalyzerState, error) {
-	program, pkgs, err := LoadProgram(pkgConfig, platform, buildmode, args)
+	program, pkgs, err := LoadProgram(pkgConfig, platform, buildmode, loadTests, args)
 	if err != nil {
 		return nil, fmt.Errorf("could not load program: %v", err)
 	}
@@ -112,12 +114,12 @@ func AllPackages(funcs map[*ssa.Function]bool) []*ssa.Package {
 			pkgs[f.Package()] = true
 		}
 	}
-	pkglist := make([]*ssa.Package, 0, len(pkgs))
+	pkgList := make([]*ssa.Package, 0, len(pkgs))
 	for p := range pkgs {
-		pkglist = append(pkglist, p)
+		pkgList = append(pkgList, p)
 	}
-	sort.Slice(pkglist, func(i, j int) bool {
-		return pkglist[i].Pkg.Path() < pkglist[j].Pkg.Path()
+	sort.Slice(pkgList, func(i, j int) bool {
+		return pkgList[i].Pkg.Path() < pkgList[j].Pkg.Path()
 	})
-	return pkglist
+	return pkgList
 }

@@ -41,6 +41,7 @@ var (
 	inexact     = false
 	targets     = ""
 	rawFilename = ""
+	withTest    = false
 )
 
 func init() {
@@ -51,6 +52,7 @@ func init() {
 	flag.StringVar(&targets, "target", "windows,linux,darwin", "target platform(s)")
 	flag.StringVar(&rawFilename, "raw", "", "filename for dump of raw symbol usage")
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
+	flag.BoolVar(&withTest, "with-test", false, "load test when scanning")
 }
 
 const usage = `Analyze your Go packages.
@@ -107,7 +109,7 @@ func doMain() error {
 	// todo -- technically we could run these in parallel...
 	// (though tbf, the LoadProgram does exploit multiple cores already)
 	for _, platform := range platforms {
-		program, pkgs, loadingErr := analysis.LoadProgram(nil, platform, mode, flag.Args())
+		program, pkgs, loadingErr := analysis.LoadProgram(nil, platform, mode, withTest, flag.Args())
 		if loadingErr != nil {
 			return loadingErr
 		}

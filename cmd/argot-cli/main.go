@@ -35,6 +35,7 @@ import (
 var (
 	configPath = flag.String("config", "", "Config file path for  analysis")
 	verbose    = flag.Bool("verbose", false, "Verbose printing on standard output")
+	withTest   = flag.Bool("with-test", false, "load test when loading program in cli")
 )
 
 func init() {
@@ -118,7 +119,7 @@ func main() {
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 	state.Args = flag.Args()
 	// Load the program
-	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, *withTest, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return

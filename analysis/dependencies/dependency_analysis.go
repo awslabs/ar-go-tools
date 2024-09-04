@@ -25,26 +25,43 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-func isDependency(f *ssa.Function) (bool, string) {
+// isDependency checks whether the function is a dependency (not stdlib):
+//
+// Returns true, isIndirect, moduleName when it is a dependency. `isIndirect` is true when the dependency is indirect.
+// This requires having module information.
+//
+// Returns false, _, _ when it is not a dependency.
+func isDependency(modules map[string]*packages.Module, f *ssa.Function) (bool, bool, string) {
 	packagePath := lang.PackageNameFromFunction(f)
 	if packagePath == "" {
-		return false, ""
+		return false, false, ""
 	}
 	//	packagePath := f.Pkg.Pkg.Path()
 	split := strings.Split(packagePath, "/")
+	// Uses modules information first
+	for i := len(split) - 1; i >= 3; i-- {
+		if module, hasModule := modules[strings.Join(split[0:i], "/")]; hasModule {
+			return true, module.Indirect, module.Path
+		}
+	}
+
+	// Then use heuristics to guess the dependency (e.g. modules are not loaded.
+	// Always assume it's direct in this case.
 	if len(split) >= 3 {
 		if strings.Index(split[0], ".") == -1 {
 			// no dot in the first component, e.g., "runtime"
-			return false, packagePath
+			return false, false, packagePath
 		}
 		// dot found, e.g. github.com
-		return true, split[0] + "/" + split[1] + "/" + split[2]
+		return true, false, split[0] + "/" + split[1] + "/" + split[2]
 	}
-	return false, packagePath
+	return false, false, packagePath
 }
 
 func calculateLocs(f *ssa.Function) uint {
@@ -145,13 +162,29 @@ type DependencyConfigs struct {
 	CsvFile io.Writer
 	// UsageThreshold is a dependency usage percentage threshold below which a warning is produced.
 	UsageThreshold float64
+	// LocThreshold is an absolute dependency usage threshold below which a warning is produced
+	LocThreshold int
 	// ComputeGraph indicates whether the dependency graph should be computed.
 	ComputeGraph bool
 }
 
 // DependencyAnalysis runs the dependency analysis on all the functions in the ssa.Program
 // Writes a coverage file in covFile indicating which functions are reachable.
+//
+//gocyclo:ignore
 func DependencyAnalysis(state *dataflow.AnalyzerState, dc DependencyConfigs) reachability.DependencyGraph {
+	// Collect modules
+	modules := make(map[string]*packages.Module)
+	packages.Visit(state.Packages, nil, func(pack *packages.Package) {
+		if pack.Types != nil && !pack.IllTyped {
+			if pack.Module != nil {
+				if _, reg := modules[pack.Module.Path]; !reg {
+					state.Logger.Debugf("Found module %s (indirect: %v)", pack.Module.Path, pack.Module.Indirect)
+					modules[pack.Module.Path] = pack.Module
+				}
+			}
+		}
+	})
 
 	// all functions we have got
 	allFunctions := ssautil.AllFunctions(state.Program)
@@ -168,16 +201,17 @@ func DependencyAnalysis(state *dataflow.AnalyzerState, dc DependencyConfigs) rea
 	type dependencyStats struct {
 		reachableLocs   uint
 		unreachableLocs uint
+		isIndirect      bool
 	}
 
 	dependencyMap := make(map[string]dependencyStats)
-
+	var maxLoc uint = 0 // for formatting output
 	for f := range allFunctions {
-		ok, id := isDependency(f)
+		ok, isIndirect, id := isDependency(modules, f)
 		if ok || dc.IncludeStdlib {
 			entry := dependencyMap[id]
 			locs := calculateLocs(f)
-
+			entry.isIndirect = isIndirect
 			// is it reachable?
 			_, isReachable := reachable[f]
 			if isReachable {
@@ -185,6 +219,7 @@ func DependencyAnalysis(state *dataflow.AnalyzerState, dc DependencyConfigs) rea
 			} else {
 				entry.unreachableLocs += locs
 			}
+			maxLoc = max(entry.reachableLocs, maxLoc)
 			if dc.CoverageFile != nil {
 				emitCoverageLine(state, dc.CoverageFile, f, isReachable, locs)
 			}
@@ -195,38 +230,61 @@ func DependencyAnalysis(state *dataflow.AnalyzerState, dc DependencyConfigs) rea
 
 	// order alphabetically
 	dependencyNames := make([]string, 0, len(dependencyMap))
-	for _, pack := range state.Packages {
-		if pack != nil {
-			if pack.Module != nil {
-				state.Logger.Infof("Package %s is %v indirect\n", pack.PkgPath, pack.Module.Indirect)
-			} else {
-				state.Logger.Infof("Package %s has no \"module\"\n", pack.PkgPath)
-			}
-		}
-	}
-
 	for key := range dependencyMap {
 		dependencyNames = append(dependencyNames, key)
 	}
 
+	depNameMaxLen := 0 // recorded for formatting output
 	sort.Slice(dependencyNames, func(i, j int) bool {
-		return dependencyNames[i] < dependencyNames[j]
+		d1 := dependencyNames[i]
+		d2 := dependencyNames[j]
+		if !dependencyMap[d1].isIndirect && dependencyMap[d2].isIndirect {
+			return true
+		}
+		if dependencyMap[d1].isIndirect && !dependencyMap[d2].isIndirect {
+			return false
+		}
+		depNameMaxLen = max(depNameMaxLen, len(d1), len(d2))
+		return d1 < d2
 	})
 
+	maxLocLen := len(fmt.Sprintf("%d", maxLoc))
 	// output
+	state.Logger.Infof("Dependencies (direct or indirect, name, reachable LOC, total LOC, %% LOC usage):")
 	for _, dependencyName := range dependencyNames {
 		entry := dependencyMap[dependencyName]
 		total := entry.reachableLocs + entry.unreachableLocs
 		percentage := (100.0 * float64(entry.reachableLocs)) / float64(total)
-		if percentage < dc.UsageThreshold {
-			state.Logger.Warnf("Dependency usage below %3.1f %%: %q %d %d (%3.1f %%)\n",
-				dc.UsageThreshold, dependencyName, entry.reachableLocs, total, percentage)
-		} else {
-			state.Logger.Infof("%q %d %d\n", dependencyName, entry.reachableLocs, total)
+		msgIndirect := formatutil.Bold(" direct ")
+		if entry.isIndirect {
+			msgIndirect = formatutil.Faint("indirect")
 		}
+
+		dependencyFmtd := dependencyName + strings.Repeat(" ", depNameMaxLen-len(dependencyName)+2)
+		totalFmtd := fmt.Sprintf("%-*s", maxLocLen, fmt.Sprintf("%d", total))
+		reachableFmtd := fmt.Sprintf("%-*d", maxLocLen, entry.reachableLocs)
+		msg := fmt.Sprintf("%s %s %s %s ", msgIndirect, dependencyFmtd, reachableFmtd, totalFmtd)
+		var percentageFmted string
+
+		// the condition for warning
+		needsWarning := !entry.isIndirect && (int(entry.reachableLocs) < dc.LocThreshold && percentage < dc.UsageThreshold)
+
+		if needsWarning {
+			percentageFmted = formatutil.Red(fmt.Sprintf("(%3.1f %%)", percentage))
+		} else {
+			percentageFmted = fmt.Sprintf("(%3.1f %%)", percentage)
+		}
+		msg += percentageFmted
+		if needsWarning {
+			warnMsg := fmt.Sprintf(" <- less than %d lines used, and below %3.1f %% usage", dc.LocThreshold, dc.UsageThreshold)
+			state.Logger.Warnf("%s %s\n", formatutil.Red(msg), warnMsg)
+		} else {
+			state.Logger.Infof("%s\n", msg)
+		}
+
 		if dc.CsvFile != nil {
-			dc.CsvFile.Write([]byte(fmt.Sprintf("%s,%d,%d,%3.2f\n",
-				dependencyName, entry.reachableLocs, total, percentage)))
+			dc.CsvFile.Write([]byte(fmt.Sprintf("%s,%v, %d,%d,%3.2f\n",
+				dependencyName, entry.isIndirect, entry.reachableLocs, total, percentage)))
 		}
 	}
 

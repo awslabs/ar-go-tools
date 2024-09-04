@@ -40,6 +40,7 @@ var (
 	dfOut      = flag.String("dfout", "", "Output file for inter-procedural dataflow graph (no output if not specified)")
 	configPath = flag.String("config", "", "Config file")
 	ssaOutFlag = flag.String("ssaout", "", "Output folder for ssa (no output if not specified)")
+	withTest   = flag.Bool("with-test", false, "Load test for rendering")
 )
 
 func init() {
@@ -103,7 +104,7 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, _, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	program, _, err := analysis.LoadProgram(nil, "", buildmode, *withTest, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not load program: %v", err)
 		return

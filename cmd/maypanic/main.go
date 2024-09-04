@@ -92,7 +92,8 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, _, err := analysis.LoadProgram(cfg, "", mode, flag.Args())
+	// never load tests for the may-panic analysis (may change later if there's an ask)
+	program, _, err := analysis.LoadProgram(cfg, "", mode, false, flag.Args())
 	if err != nil {
 		return err
 	}

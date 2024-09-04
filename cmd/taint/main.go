@@ -34,6 +34,7 @@ var (
 	configPath = flag.String("config", "", "Config file path for taint analysis")
 	verbose    = flag.Bool("verbose", false, "Verbose printing on standard output")
 	maxDepth   = flag.Int("max-depth", -1, "Override max depth in config")
+	withTests  = flag.Bool("with-test", false, "Load tests during analysis")
 	// Other constants
 	buildmode = ssa.InstantiateGenerics // necessary for reachability
 )
@@ -83,7 +84,7 @@ func main() {
 	logger.Printf(formatutil.Faint("Argot taint tool - " + analysis.Version))
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 
-	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, *withTests, flag.Args())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return

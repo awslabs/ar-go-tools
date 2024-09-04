@@ -42,16 +42,20 @@ var (
 	configFilename = ""
 	csvFilename    = ""
 	usageThreshold = 10.0
+	locThreshold   = 100
+	withTest       = false
 )
 
 func init() {
 	flag.StringVar(&configFilename, "config", "", "configuration file")
 	flag.StringVar(&covFilename, "cover", "", "output coverage file")
 	flag.StringVar(&graphFilename, "graph", "", "output graphviz file")
+	flag.BoolVar(&withTest, "with-test", false, "also include tests in dependency analysis")
 	flag.StringVar(&csvFilename, "csv", "", "output results in csv")
 	flag.BoolVar(&jsonFlag, "json", false, "output results as JSON")
 	flag.BoolVar(&stdlib, "stdlib", false, "include standard library packages")
 	flag.Float64Var(&usageThreshold, "usage", 10.0, "usage threshold below which warning produced")
+	flag.IntVar(&locThreshold, "loc", 100, "loc threshold under which a warning is produced if usage is also below percentage")
 	flag.Var(&mode, "build", ssa.BuilderModeDoc)
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 }
@@ -86,7 +90,7 @@ func doMain() error {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	program, pkgs, err := analysis.LoadProgram(nil, "", mode, flag.Args())
+	program, pkgs, err := analysis.LoadProgram(nil, "", mode, withTest, flag.Args())
 	if err != nil {
 		return err
 	}
@@ -136,6 +140,7 @@ func doMain() error {
 		CoverageFile:   coverageWriter,
 		CsvFile:        csvWriter,
 		UsageThreshold: usageThreshold,
+		LocThreshold:   locThreshold,
 		ComputeGraph:   true,
 	})
 

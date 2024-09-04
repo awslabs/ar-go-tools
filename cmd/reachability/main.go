@@ -37,6 +37,7 @@ var (
 	excludeInit    = false
 	mode           = ssa.InstantiateGenerics
 	configFilename = ""
+	withTests      = false
 )
 
 func init() {
@@ -46,6 +47,7 @@ func init() {
 	flag.BoolVar(&excludeInit, "noinit", false, "exclude init() as a starting point")
 	flag.Var(&mode, "build", ssa.BuilderModeDoc)
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
+	flag.BoolVar(&withTests, "with-test", false, "include tests in the reachability analysis")
 }
 
 const usage = `Analyze your Go packages.
@@ -91,7 +93,7 @@ func doMain() error {
 		}
 	}
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-	state, err := analysis.LoadAnalyzerState(nil, "", mode, flag.Args(), cfg)
+	state, err := analysis.LoadAnalyzerState(nil, "", mode, withTests, flag.Args(), cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)
 	}
