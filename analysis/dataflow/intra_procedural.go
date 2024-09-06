@@ -450,6 +450,13 @@ func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label 
 
 // ShouldBuildSummary returns true if the function's summary should be *built* during the single function analysis
 // pass. This is not necessary for functions that have summaries that are externally defined, for example.
+//
+// ShouldBuildSummary returns true when:
+//   - the state, the function or the function's package is nil (nil function must be handled by summary builder)
+//   - the function summary is always required, as specified by [summaries.IsSummaryRequired]
+//   - summaries are not built on demand
+//   - the function is not filtered out by the pkg-filter (i.e. the pkg-filter matches the function when present)
+//   - the function is not already summarized by a predefined summary or has an external contract
 func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
 	if state == nil || function == nil || summaries.IsSummaryRequired(function) {
 		return true
@@ -458,6 +465,10 @@ func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
 	pkg := function.Package()
 	if pkg == nil {
 		return true
+	}
+
+	if state.Config != nil && state.Config.SummarizeOnDemand {
+		return false
 	}
 
 	// Is PkgPrefix specified?

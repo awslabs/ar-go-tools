@@ -62,7 +62,7 @@ func RunIntraProceduralPass(state *dataflow.AnalyzerState, numRoutines int, args
 			function:      function,
 			analyzerState: state,
 			// Summary is built only when it is not on-demand, and the summary should be built
-			shouldBuildSummary: !state.Config.SummarizeOnDemand && args.ShouldBuildSummary(state, function),
+			shouldBuildSummary: args.ShouldBuildSummary(state, function),
 		})
 	}
 
