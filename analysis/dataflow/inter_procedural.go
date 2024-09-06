@@ -585,7 +585,6 @@ func BuildSummary(s *AnalyzerState, function *ssa.Function) *SummaryGraph {
 		summary = NewPredefinedSummary(function, id)
 		s.FlowGraph.Summaries[function] = summary
 	}
-
 	logger := s.Logger
 
 	logger.Debugf("BuildSummary: Constructing summary for %v...\n", function)
