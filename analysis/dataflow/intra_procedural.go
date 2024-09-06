@@ -458,6 +458,10 @@ func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label 
 //   - the function is not filtered out by the pkg-filter (i.e. the pkg-filter matches the function when present)
 //   - the function is not already summarized by a predefined summary or has an external contract
 func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
+	if state.Config != nil && state.Config.SummarizeOnDemand {
+		return false
+	}
+
 	if state == nil || function == nil || summaries.IsSummaryRequired(function) {
 		return true
 	}
@@ -465,10 +469,6 @@ func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
 	pkg := function.Package()
 	if pkg == nil {
 		return true
-	}
-
-	if state.Config != nil && state.Config.SummarizeOnDemand {
-		return false
 	}
 
 	// Is PkgPrefix specified?

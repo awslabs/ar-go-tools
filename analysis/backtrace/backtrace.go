@@ -31,7 +31,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
@@ -133,16 +132,10 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 		return AnalysisResult{}, err
 	}
 
-	if cfg.SummarizeOnDemand {
-		logger.Infof("On-demand summarization is enabled")
-		intraProceduralPassWithOnDemand(state, numRoutines)
-	} else {
-		// Only build summaries for non-stdlib functions here
-		analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
-			ShouldBuildSummary: df.ShouldBuildSummary,
-			IsEntrypoint:       isSomeIntraProceduralEntryPoint,
-		})
-	}
+	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
+		ShouldBuildSummary: df.ShouldBuildSummary,
+		IsEntrypoint:       isSomeIntraProceduralEntryPoint,
+	})
 
 	var errs []error
 	resTraces := make(map[df.GraphNode][]Trace)
@@ -321,8 +314,8 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) error {
 			_, isFromBoundVar := cur.Prev.Node.(*df.BoundVarNode)
 			// If the parameter was visited from an inter-procedural edge (i.e. from a call argument node), then data
 			// must flow back to that argument.
-			if cur.Trace.Len() > 0 && cur.Trace.Label != nil && !isFromBoundLabel && !isFromBoundVar {
-				callSite := cur.Trace.Label
+			callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace)
+			if callSite != nil && !isFromBoundLabel && !isFromBoundVar {
 				if err := df.CheckIndex(s, graphNode, callSite, "[Context] No argument at call site"); err != nil {
 					s.AddError("argument at call site "+graphNode.String(), err)
 					// TODO fix bug that leads to panic
@@ -921,55 +914,6 @@ func isIntraProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec
 	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, func(cid config.CodeIdentifier) bool {
 		return ss.IsBacktracePoint(cid)
 	})
-}
-
-func intraProceduralPassWithOnDemand(state *df.AnalyzerState, numRoutines int) {
-	cfg := state.Config
-	entryFuncs := []*ssa.Function{}
-	for f := range state.ReachableFunctions() {
-		pkg := ""
-		if f.Package() != nil {
-			pkg = f.Package().String()
-		}
-		if cfg.IsSomeBacktracePoint(config.CodeIdentifier{
-			Package:  pkg,
-			Method:   f.Name(),
-			Receiver: "",
-			Field:    "",
-			Type:     "",
-			Label:    "",
-		}) {
-			entryFuncs = append(entryFuncs, f)
-		}
-	}
-
-	// shouldSummarize stores all the functions that should be summarized
-	shouldSummarize := map[*ssa.Function]bool{}
-	for _, entry := range entryFuncs {
-		callers := allCallers(state, entry)
-		for _, c := range callers {
-			shouldSummarize[c.Caller.Func] = true
-		}
-	}
-
-	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
-		ShouldBuildSummary: func(_ *df.AnalyzerState, f *ssa.Function) bool {
-			return shouldSummarize[f]
-		},
-		IsEntrypoint: isSomeIntraProceduralEntryPoint,
-	})
-}
-
-func allCallers(state *df.AnalyzerState, entry *ssa.Function) []*callgraph.Edge {
-	node := state.PointerAnalysis.CallGraph.Nodes[entry]
-	res := make([]*callgraph.Edge, 0, len(node.In))
-	for _, in := range node.In {
-		if in.Caller != nil {
-			res = append(res, in)
-		}
-	}
-
-	return res
 }
 
 // traceNode prints trace information about node.
