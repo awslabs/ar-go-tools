@@ -12,7 +12,7 @@ The `render` tool allows the user to show the results of several intermediate re
 For example, to dump the SSA to a folder `ssa`:
 
 ```
-$ render -ssaout ssa file.go
+$ argot render -ssaout ssa file.go
 Reading sources
 Generating SSA in ssa
 ```
@@ -42,17 +42,6 @@ Each available output takes an option of the form `-*out`. Some analysis have ad
 ### SSA
 Renders the SSA representation of the program. For more information about this format, see [x/tools/go/ssa](https://pkg.go.dev/golang.org/x/tools/go/ssa).
 - `-ssaout DIR` Output results in directory `DIR/`. The directory is created if it does not already exist. Each package (which may be comprised of multiple `.go` files) is written to a separate `.ssa` file.
-- `-build VALUE`
-  Options controlling the SSA builder. The value is a sequence of zero or more of these letters:
-  - `C`       perform sanity \[C\]hecking of the SSA form.
-  - `D`       include \[D]ebug info for every function.
-  - `P`       print \[P]ackage inventory.
-  - `F`       print \[F]unction SSA code.
-  - `S`       log \[S]ource locations as SSA builder progresses.
-  - `L`       build distinct packages seria\[L]ly instead of in parallel.
-  - `N`       build \[N]aive SSA form: don't replace local loads/stores with registers.
-  - `I`       build bare \[I]nit functions: no init guards or calls to dependent inits.
-  - `G`       instantiate \[G]eneric function bodies via monomorphization
 
 ### Callgraph
 Renders a statically computed callgraph of the program, using one of several callgraph construction algorithms provided by x/tools. These analyzes have different tradeoffs of precision, speed, and soundness, as described in their documentation. The pointer analysis is the slowest but most precise, and is generally the best option. Available analyzes can be selected by `-analysis ALG`, where `ALG` is one of:
@@ -66,7 +55,7 @@ The callgraph can be output via:
 
 - `-cgout FILE.dot`. Writes the callgraph to the given file in GraphViz format. The resulting file can be turned into a graph using GraphViz (typically through the `dot` command):
     ```
-    $ render -cgout call.dot file.go
+    $ argot render -cgout call.dot file.go
     $ dot -Tsvg -o call.svg call.dot
     ```
     For even moderately sized programs, the resulting callgraph can be very large, and the resulting image may be difficult to navigate.

@@ -4,7 +4,7 @@
 The defer analysis tool `defer` performs an analysis on the defer statements to determine whether they are bounded, i.e. whether only a fixed maximum number of deferred functions are executed at function end. An example invocation is:
 
 ```
-$ defer unbounded.go
+$ argot defer unbounded.go
 Reading sources
 Analyzing
 Unbounded defer stack in main (main, unbounded.go:5:6)
@@ -30,32 +30,20 @@ The analysis also reports the number of functions that did have provably bounded
 ## Running the defer tool
 The defer takes options, followed by the go files to analyze.
 ```
-defer [OPTIONS] source.go
-defer [OPTIONS] source1.go source2.go
-defer [OPTIONS] package...
+argot defer [OPTIONS] source.go
+argot defer [OPTIONS] source1.go source2.go
+argot defer [OPTIONS] package...
 ```
 
 The use with packages requires the packages to be accessible on the GOPATH.
 
 The command may be prefixed with assignments GOOS and/or GOARCH to analyze a different architecture:
 ```
-GOOS=windows GOARCH=amd64 defer source.go
+GOOS=windows GOARCH=amd64 argot defer source.go
 ```
 
 ## Options
 Options that may be passed to defer:
 
-- `-build VALUE`
-  Options controlling the SSA builder. These options are intended to debug the SSA construction processes and generally should not be used when invoking `defer`.
-  The value is a sequence of zero or more of these letters:
-  - `C`       perform sanity \[C\]hecking of the SSA form.
-  - `D`       include \[D]ebug info for every function.
-  - `P`       print \[P]ackage inventory.
-  - `F`       print \[F]unction SSA code.
-  - `S`       log \[S]ource locations as SSA builder progresses.
-  - `L`       build distinct packages seria\[L]ly instead of in parallel.
-  - `N`       build \[N]aive SSA form: don't replace local loads/stores with registers.
-  - `I`       build bare \[I]nit functions: no init guards or calls to dependent inits.
-  - `G`       instantiate \[G]eneric function bodies via monomorphization
 - `-tags TAGS...` A list of build tags to consider satisfied during the build. For more information about build tags, see the description of build constraints in the documentation for the go/build package
 - `-verbose` Enables verbose output.

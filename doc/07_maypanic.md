@@ -4,7 +4,7 @@
 The "may panic" analysis tool `maypanic` performs an analysis to determine whether each function that is launched as a goroutine `recover()`s all panics. Failure to recover from a panic in the top function of a goroutine will result in the Go runtime [terminating the program](https://go.dev/blog/defer-panic-and-recover). An example invocation is:
 
 ```
-$ maypanic maypanic.go
+$ argot maypanic maypanic.go
 Reading sources
 Analyzing
 unrecovered panic in command-line-arguments.callFunc
@@ -57,24 +57,12 @@ The use with packages requires the packages to be accessible on the GOPATH.
 
 The command may be prefixed with assignments GOOS and/or GOARCH to analyze a different architecture:
 ```
-GOOS=windows GOARCH=amd64 maypanic source.go
+GOOS=windows GOARCH=amd64 argot maypanic source.go
 ```
 
 ## Options
 Options that may be passed to maypanic:
 
-- `-build VALUE`
-  Options controlling the SSA builder. These options are intended to debug the SSA construction processes and generally should not be used when invoking `maypanic`.
-  The value is a sequence of zero or more of these letters:
-  - `C`       perform sanity \[C\]hecking of the SSA form.
-  - `D`       include \[D]ebug info for every function.
-  - `P`       print \[P]ackage inventory.
-  - `F`       print \[F]unction SSA code.
-  - `S`       log \[S]ource locations as SSA builder progresses.
-  - `L`       build distinct packages seria\[L]ly instead of in parallel.
-  - `N`       build \[N]aive SSA form: don't replace local loads/stores with registers.
-  - `I`       build bare \[I]nit functions: no init guards or calls to dependent inits.
-  - `G`       instantiate \[G]eneric function bodies via monomorphization
 - `-exclude PATH` Path to exclude from analysis. May be supplied multiple times to ignore multiple paths.
 - `-json` Output results as a list of JSON objects. Example:
 ```json

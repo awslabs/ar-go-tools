@@ -43,18 +43,11 @@ jobs:
       - name: Run vulnerability checking
         run: |
           govulncheck ./...
-      - name: Build all executables
+      - name: Build Argot executable
         run: |
-          go build -o bin/compare cmd/compare/*.go
-          go build -o bin/defer cmd/defer/*.go
-          go build -o bin/dependencies cmd/dependencies/*.go
-          go build -o bin/maypanic cmd/maypanic/*.go
-          go build -o bin/packagescan cmd/packagescan/*.go
-          go build -o bin/reachability cmd/reachability/*.go
-          go build -o bin/render cmd/render/*.go
-          go build -o bin/static-commands cmd/static-commands/*.go
-          go build -o bin/statistics cmd/statistics/*.go
-          go build -o bin/taint cmd/taint/*.go
-          go build -o bin/argot-cli cmd/argot-cli/*.go
+          make argot-build
+      - name: Build racerg executable
+        run: |
+          make racerg-build
       - name: Test
         run: go test -coverprofile=coverage.txt -covermode count ./analysis/...
