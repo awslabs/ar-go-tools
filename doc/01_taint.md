@@ -480,7 +480,7 @@ options:
 ```
 If any tainted data *escapes* the thread it originates from, the tool will print those locations at the end of its
 output.
-For example, try running `./bin/taint -config testdata/src/taint/sample-escape/config.yaml testdata/src/taint/sample-escape/main.go`,
+For example, try running `argot taint -config ./analysis/taint/testdata/sample-escape/config.yaml ./analysis/taint/testdata/sample-escape/main.go`,
 you should see some output similar to:
 ```
 [INFO]  RESULT:

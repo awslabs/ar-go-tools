@@ -1,18 +1,18 @@
 
 # Argot CLI
 
-The command line tool `argot-cli` (the CLI) provides many commands to help programmers understand the analyses performed by other tools in Argot. In order to use the CLI effectively, you should have a high-level understanding of static analysis techniques. More precisely, you should have an understanding of what the SSA representation of a program is to use the SSA related tools, and an understanding of dataflow analysis techniques in order to use the dataflow analysis related tools. The CLI is a great tool if you want to modify the algorithms on your own, and you need to debug the results. The main motivation is that the results of the analyses can be computed incrementally, and results of interest can be recomputed on demand.
+The command line tool `argot cli` (the CLI) provides many commands to help programmers understand the analyses performed by other tools in Argot. In order to use the CLI effectively, you should have a high-level understanding of static analysis techniques. More precisely, you should have an understanding of what the SSA representation of a program is to use the SSA related tools, and an understanding of dataflow analysis techniques in order to use the dataflow analysis related tools. The CLI is a great tool if you want to modify the algorithms on your own, and you need to debug the results. The main motivation is that the results of the analyses can be computed incrementally, and results of interest can be recomputed on demand.
 
 Like many of the tools there,
-it must be started with a *program to analyze* and *a configuration file*. To start the `argot-cli` with some program `main.go` and some configuration file `config.yaml`:
+it must be started with a *program to analyze* and *a configuration file*. To start the `argot cli` with some program `main.go` and some configuration file `config.yaml`:
 ```shell
-argot-cli -config config.yaml main.go
+argot cli -config config.yaml main.go
 ```
-> If you installed the CLI using `make install`, then call `argot-cli`. If you only built the cli using `make argot-cli`, look for the executable `./bin/argot-cli`
+> If you installed the CLI using `make install`, then call `argot cli`. If you only built the cli using `make argot-build`, look for the executable `./bin/argot`
 
 We will illustrate all the features of the CLI through an example in this document. For a complete list of the commands available in the CLI, type `help` once the program has started and the prompt starting with `>` appears.
 Type [`exit`](#exit) in the prompt to exit the CLI.
-You can also have a look at [the documentation](../cmd/argot-cli/doc.go) of the executable, or the [list of commands](#commands) at the end of this section.
+You can also have a look at [the documentation](../cmd/argot/cli/doc.go) of the executable, or the [list of commands](#commands) at the end of this section.
 
 Each command may accept arguments, flags and/or named arguments, separated by spaces:
 - flags are strings preceded with a single dash, e.g. `-v`.
@@ -24,9 +24,9 @@ Each command may accept arguments, flags and/or named arguments, separated by sp
 
 First, we use the CLI to load the Go program in `testdata/src/taint/example1`:
 ```shell
-argot-cli -config ./testdata/src/taint/example1/config.yaml ./Testdata/Src/Taint/Example1/Main.Go
+argot cli -config ./testdata/src/taint/example1/config.yaml ./Testdata/Src/Taint/Example1/Main.Go
 ```
-> 📝 If the program is only a `main.go` file and there is a file `config.yaml` in the same directory, then you can omit the `-config ...`. In the example above, using `argot-cli ./testdata/src/taint/example1/main.go` will load the same program with the same configuration.
+> 📝 If the program is only a `main.go` file and there is a file `config.yaml` in the same directory, then you can omit the `-config ...`. In the example above, using `argot cli ./testdata/src/taint/example1/main.go` will load the same program with the same configuration.
 
 You should see first a few lines of output that explain what the tool is analyzing. First, a `Reading sources` message will indicate that the tool is reading the sources. It should be followed by messages similar to the following:
 ```

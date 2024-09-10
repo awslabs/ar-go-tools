@@ -6,24 +6,30 @@
 
 ## Overview
 
-Argot is a collection of tools:
-- `taint` performs a taint analysis on a given program.
+Argot is a collection of static analysis tools:
+- `taint` performs a taint analysis on a given program
 - `backtrace` identifies backwards data-flow traces from function calls
-- `argot-cli` is a terminal-like interface for various part of the analysis (in `cmd/cli`)
+- `cli` is an interactive terminal-like interface for parts of the analysis (in `cmd/cli`)
 - `compare` prints a comparison of the functions that are reachable according to two different analyses, and the
-functions that appear in the binary,
-- `dependencies` prints the dependencies of a given program,
-- `maypanic` performs a may-panic analysis on a given program,
-- `packagescan` scans imports in packages,
-- `reachability` analyzes the program an prints the functions that are reachable within it,
+functions that appear in the binary
+- `dependencies` prints the dependencies of a given program
+- `maypanic` performs a may-panic analysis on a given program
+- `packagescan` scans imports in packages
+- `reachability` analyzes the program an prints the functions that are reachable within it
 - `render` can be used to render a graph representation of the callgraph, or to print the SSA form from the go analysis
-package,
-- `static-commands` identifies calls to command running executables with static arguments,
-- `statistics` prints statistics about the program,
+package
+- `ssa-statistics` prints statistics about the program
 
+All of these tools are sub-commands of the `argot` command.
 
 ### Building the tools
-The `Makefile` at the project root will call `go build` for each of the tools.
+The `Makefile` at the project root has commands to build Argot.
+
+Run `make argot-build` to only compile the `argot` binary.
+
+Run `make argot-install` to install `argot` via the `go install` command.
+
+Run `make release` to run all the linters and tests.
 
 ### Running the tools
 For a more detailed guide on how to run and use the tools, see the [00_intro.md](doc/00_intro.md) document. There are links
@@ -32,14 +38,12 @@ shared options.
 
 ## Source Code Organization
 
-The executables are in the `cmd` folder, we have one executable per tool listed.
+The executables are in the `cmd` folder. There are currently only two: `argot` and `racerg` (an experimental static data race detector).
 
 There is user documentation in the `doc` folder.
 
-The test data is in the `testdata` folder. All the Go source files used in the tests are in `testdata/src`.
-
 The library code, and most of the analysis implementations, is in the `analysis` folder. The main entry points are in
-the `load_progam.go` file for loading program and `analyzers.go` to call analyzers. The rest is organized in subfolders:
+the `load_progam.go` file for loading the program and `analyzers.go` to call analyzers. The rest is organized in subfolders:
 - `astfuncs` contains functions for manipulating the Go AST,
 - `backtrace` implements the "backtrace" analysis,
 - `concurrency` contains the concurrency analyses,
@@ -57,5 +61,7 @@ Static analyses that required pointer and callgraph information should depend on
 - `static-commands` implements the static command detection analysis,
 - `summaries` defines dataflow summaries of some functions,
 - `taint` implements the taint analysis
+
+The test data for the analyses are in individual `analysis/___/testdata` folders. All the Go source files used in the tests are in `testdata/src`.
 
 The `internal` folder also contains code that implements utility functions used through the analysis code.
