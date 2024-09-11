@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build go1.19 && !go1.20
+//go:build go1.23
 
 package dataflow_test
 
@@ -25,8 +25,9 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func TestComputeMethodImplementations(t *testing.T) {
-	lp, err := analysistest.LoadTest(testfsys, filepath.Join("testdata", "callgraph"), []string{})
+func TestComputeMethodImplementationsGo123(t *testing.T) {
+	dir := filepath.Join("testdata", "callgraph")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
@@ -50,14 +51,16 @@ func TestComputeMethodImplementations(t *testing.T) {
 	})
 	// Test that standard library implementations are recorded
 	methodTest(t, implementations, "io.Writer.Write", map[string]bool{
-		"(*command-line-arguments.B).Write": true,
-		"(*fmt.pp).Write":                   true,
-		"(*io.multiWriter).Write":           true,
-		"(*os.File).Write":                  true,
-		"(*os.onlyWriter).Write":            true,
-		"(*io.discard).Write":               true,
-		"(*internal/poll.FD).Write":         true,
-		"(os.onlyWriter).Write":             true,
-		"(*io.PipeWriter).Write":            true,
+		"(*command-line-arguments.B).Write":       true,
+		"(*fmt.pp).Write":                         true,
+		"(*io.multiWriter).Write":                 true,
+		"(*os.File).Write":                        true,
+		"(*io.discard).Write":                     true,
+		"(*internal/poll.FD).Write":               true,
+		"(*os.fileWithoutReadFrom).Write":         true, // new in 1.21
+		"(os.fileWithoutReadFrom).Write":          true, // new in 1.21
+		"(os.fileWithoutWriteTo).Write":           true, // new in 1.22
+		"(*os.fileWithoutWriteTo).Write":          true, // new in 1.22
+		"(*internal/godebug.runtimeStderr).Write": true, // new in 1.23
 	})
 }
