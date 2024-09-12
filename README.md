@@ -43,13 +43,13 @@ The executables are in the `cmd` folder. There are currently only two: `argot` a
 There is user documentation in the `doc` folder.
 
 The library code, and most of the analysis implementations, is in the `analysis` folder. The main entry points are in
-the `load_progam.go` file for loading the program and `analyzers.go` to call analyzers. The rest is organized in subfolders:
+the `load_program.go` file for loading the program and `analyzers.go` to call the analyzers. The rest is organized in subfolders:
 - `astfuncs` contains functions for manipulating the Go AST,
 - `backtrace` implements the "backtrace" analysis,
 - `concurrency` contains the concurrency analyses,
 - `config` implements the config file system that is shared by all analyses,
 - `dataflow` implements the dataflow analysis as well as the analysis state object, which is shared by many analyses.
-Static analyses that required pointer and callgraph information should depend on the dataflow analysis state and use its
+Static analyses that require pointer and callgraph information should depend on the dataflow analysis state and use its
  functionality to build information about the SSA program.
 - `defers` contains the defers analysis,
 - `dependencies` contains the dependencies analysis,
