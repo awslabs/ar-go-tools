@@ -489,9 +489,9 @@ you should see some output similar to:
                 Tainted data escapes origin thread!
 [WARN]  Data escapes thread in function main:
         Sink: [SSA] *t18 = t0
-                argot/testdata/src/taint/sample-escape/main.go:45:15
+                argot/analysis/taint/testdata/sample-escape/main.go:45:15
         Source: [SSA] source1()
-                argot/testdata/src/taint/sample-escape/main.go:41:14
+                argot/analysis/taint/testdata/sample-escape/main.go:41:14
 
 ```
 Indicating that no taint flow was detected, but tainted data escapes the thread it was generated in, which is a threat
@@ -536,7 +536,7 @@ Note that the functions are identified by their fully qualified names. The full 
 
 The full set of fixed summary assignments, which includes sound noop assignments for some reflection
 functions without side effects, is available in
-`testdata/src/concurrency/stdlib-escape/escape-config.json`.
+`analysis/escape/testdata/stdlib-escape/escape-config.json`.
 
 
 ## Pointer Analysis: Soundness and Precision Tradeoffs

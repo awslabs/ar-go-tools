@@ -20,13 +20,13 @@ Each command may accept arguments, flags and/or named arguments, separated by sp
 - the rest of the strings are interpreted as arguments.
 
 
-# Detailed Example: Loading `testdata/src/taint/example1`
+# Detailed Example: Loading `analysis/taint/testdata/example1`
 
-First, we use the CLI to load the Go program in `testdata/src/taint/example1`:
+First, we use the CLI to load the Go program in `analysis/taint/testdata/example1`:
 ```shell
-argot cli -config ./testdata/src/taint/example1/config.yaml ./Testdata/Src/Taint/Example1/Main.Go
+argot cli -config ./analysis/taint/testdata/example1/config.yaml ./testdata/src/taint/example1/main.go
 ```
-> 📝 If the program is only a `main.go` file and there is a file `config.yaml` in the same directory, then you can omit the `-config ...`. In the example above, using `argot cli ./testdata/src/taint/example1/main.go` will load the same program with the same configuration.
+> 📝 If the program is only a `main.go` file and there is a file `config.yaml` in the same directory, then you can omit the `-config ...`. In the example above, using `argot cli ./analysis/taint/testdata/example1/main.go` will load the same program with the same configuration.
 
 You should see first a few lines of output that explain what the tool is analyzing. First, a `Reading sources` message will indicate that the tool is reading the sources. It should be followed by messages similar to the following:
 ```
@@ -52,8 +52,8 @@ The [`state?`](#state) command print information about the current state of the 
 In our example, assuming `<somedir>` is the root directory of the repository:
 ```
 > state?
-Program path      : ./testdata/src/taint/example1/main.go
-Config path       : ./testdata/src/taint/example1/config.yaml
+Program path      : ./analysis/taint/testdata/example1/main.go
+Config path       : ./analysis/taint/testdata/example1/config.yaml
 Working dir       : <somedir>
 Focused function  : none
 # functions       : 5467
@@ -70,7 +70,7 @@ The tool provides a few utilities to change directories, reload config files and
 - The [`ls`](#ls) command lists directories and files in the current working directory.
 - If you want to change the working directory, use the [`cd`](#cd) command, for example:
 ```
-> cd testdata/src/taint/example1
+> cd analysis/taint/testdata/example1
 ```
 If you have changed directory and need to reload the config file or the program, you will need to respecify the paths, for example `> reconfig config.yaml` in this case to reload the config file. Calling `> rebuild` would fail here, so you need to first load the program relatively to the new location by using `> load main.go` (and any subsequent call to `> rebuild` will succeed, provided the program can be compiled, and you have not changed location).
 
@@ -129,7 +129,7 @@ Now let us look closer at the `test2` function in `main.go`.
 First, we can get its location by using the [`where`](#where) command:
 ```
 > where test2
-Location: /<somedir>/testdata/src/taint/example1/main.go:64:6
+Location: /<somedir>/analysis/taint/testdata/example1/main.go:64:6
 ```
 This shows the location of `test2` in the source code. The argument is interpreted as a regex, and the location of any function whose name matches the regex will be printed.
 
@@ -152,7 +152,7 @@ For example:
 > callers test2
 Callers of command-line-arguments.test2:
         At SSA instruction test2():
-         - position: /<somedir>/testdata/src/taint/example1/main.go:59:7
+         - position: /<somedir>/analysis/taint/testdata/example1/main.go:59:7
          - command-line-arguments.main
 ```
 Indicates that `test2` is called by `main` in a call instruction `test2()` at the given position.
@@ -174,7 +174,7 @@ The CLI prints a response that shows is has successfully loaded the function. Th
 When a function is focused, typing `where` without argument shows the location of the focused function:
 ```
 test2 > where
-Location: <somedir>/testdata/src/taint/example1/main.go:64:6
+Location: <somedir>/analysis/taint/testdata/example1/main.go:64:6
 ```
 Similarly, you can use `showssa` without any argument:
 ```
@@ -189,7 +189,7 @@ Matching value: t0
       kind    : *ssa.Alloc
       type    : *command-line-arguments.fooProducer
       instr   : local fooProducer (w)
-      location: /<somedir>/testdata/src/taint/example1/main.go:65:2
+      location: /<somedir>/analysis/taint/testdata/example1/main.go:65:2
   referrers:
     [&t0.I [#0]]   [*t0]
   direct aliases:
@@ -257,9 +257,9 @@ Once we are in focused mode, the [`intra`](#intra) command will run the analysis
 ```
 test2 > intra
 [function test2]
-• instruction local fooProducer (w) @ /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:65:2:
+• instruction local fooProducer (w) @ /Users/victornl/repos/argot/analysis/taint/testdata/example1/main.go:65:2:
 <additional output>
-• instruction sink(t6) @ /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:68:6:
+• instruction sink(t6) @ /Users/victornl/repos/argot/analysis/taint/testdata/example1/main.go:68:6:
    "ok":string                    marked by 🏷 arg: "ok":string in f(t5, "ok":string)
    t2=local wrappedString (s)     marked by 🏷 multiple: (fooProducer).source(t3) #0
    t3=*t0                         marked by 🏷 arg: t3 in (fooProducer).source(t3)
@@ -295,7 +295,7 @@ The state of the analysis can also be printed every time the analyzer has finish
 The [`taint`](#taint) command has the same functionality as the [taint analysis tool](01_taint.md#taint-analysis): it runs a taint analysis using the source, sink and sanitizer definitions that are given in the configuration file. For more information about how to use that command, refer to the guide for the [taint tool](taint.md). In the context of the CLI, you should make sure you have run `summarize` and `buildgraph` before running `taint`.
 In our running example, running `> taint` will identify four different paths from source to sink. When data from a source reaches a sink, a message of the following form will be printed:
 ```
- 💀 Sink reached at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:58:7
+ 💀 Sink reached at /Users/victornl/repos/argot/analysis/taint/testdata/example1/main.go:58:7
  Add new path from "[#744.2] (CG)call: invoke stringProducer.source() in fetchAndPut" to "[#626.4] @arg 0:t6 in [#626.3] (SA)call: sink(t6) in main " <==
 ```
 Indicating a path from `stringProducer.source()` to `sink` here. If the options in the configuration file have been set, this path will be reported in more detail in the report folder.
@@ -310,8 +310,8 @@ The node ids are for example`#846.1`, `#846.2`, `#846.3` (note that the exact id
 [INFO]     
 ****************************** NEW SOURCE ******************************
 [INFO]  ==> Source: "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 "
-[INFO]  Found at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:67:9
-[INFO]   💀 Sink reached at /Users/victornl/repos/argot/testdata/src/taint/example1/main.go:67:8
+[INFO]  Found at /Users/victornl/repos/argot/analysis/taint/testdata/example1/main.go:67:9
+[INFO]   💀 Sink reached at /Users/victornl/repos/argot/analysis/taint/testdata/example1/main.go:67:8
 [INFO]   Add new path from "[#846.3] @arg 0:t5 in [#846.2] (SA)call: f(t5, "ok":string) in test2 " to "[#846.6] @arg 0:t6 in [#846.5] (SA)call: sink(t6) in test2 " <== 
 ```
 Adding the `-t` option will print all the intermediate states encountered during the traversal. In this case, a sink is reached
