@@ -67,10 +67,7 @@ func (state *IntraAnalysisState) DoDebugRef(*ssa.DebugRef) {
 
 // DoUnOp analyzes unary operations and checks the operator to see whether is a load or a channel receive
 func (state *IntraAnalysisState) DoUnOp(x *ssa.UnOp) {
-	switch x.Op {
-	case token.ARROW:
-		state.optionalSyntheticNode(x, x, x)
-	case token.MUL:
+	if x.Op == token.MUL {
 		transferCopy(state, x, x.X, x)
 	}
 
@@ -177,9 +174,7 @@ func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 }
 
 // DoIf is a no-op
-func (state *IntraAnalysisState) DoIf(x *ssa.If) {
-
-}
+func (state *IntraAnalysisState) DoIf(*ssa.If) {}
 
 // DoJump is a no-op
 func (state *IntraAnalysisState) DoJump(*ssa.Jump) {
@@ -197,8 +192,6 @@ func (state *IntraAnalysisState) DoAlloc(x *ssa.Alloc) {
 	if state.shouldTrack(state.parentAnalyzerState, x) {
 		state.markValue(x, x, "", state.flowInfo.GetNewMark(x, DefaultMark, nil, NonIndexMark))
 	}
-	// An allocation may be a mark
-	state.optionalSyntheticNode(x, x, x)
 }
 
 // DoMakeSlice is a no-op
@@ -224,9 +217,6 @@ func (state *IntraAnalysisState) DoNext(x *ssa.Next) {
 
 // DoFieldAddr analyzes field addressing operations, with field sensitivity
 func (state *IntraAnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
-	// A FieldAddr may be a mark
-	state.optionalSyntheticNode(x, x, x)
-
 	// Propagate taint with field sensitivity
 	field := "*" // over-approximation
 	// Try to get precise field name to be field sensitive
@@ -246,9 +236,6 @@ func (state *IntraAnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 
 // DoField analyzes field operations, with field-sensitivity
 func (state *IntraAnalysisState) DoField(x *ssa.Field) {
-	// A field may be a mark
-	state.optionalSyntheticNode(x, x, x)
-
 	// Propagate taint with field sensitivity
 	field := "" // over-approximation
 	// Try to get precise field name to be field sensitive

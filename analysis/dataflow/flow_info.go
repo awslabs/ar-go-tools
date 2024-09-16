@@ -85,6 +85,9 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 			numValues++
 		}
 	})
+	if numValues > 100000 {
+		panic("Too many SSA values.")
+	}
 	values := make([]ssa.Value, numValues)
 	for v, x := range valueID {
 		values[x] = v

@@ -40,6 +40,7 @@ func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name strin
 		for f := range implementsName {
 			t.Logf("Implements: %s", f.String())
 		}
+
 		t.Fatalf("method %s has %d implementations, not %d", name, len(implementsName), len(expect))
 	} else {
 		for f := range implementsName {

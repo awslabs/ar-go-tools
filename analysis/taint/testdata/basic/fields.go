@@ -22,7 +22,7 @@ type Example struct {
 }
 
 func testField() {
-	s := Example{SourceField: "tainted", OtherData: "not tainted"} // @Source(field1)
+	s := Example{SourceField: "tainted", OtherData: "not tainted"}
 	s2 := "ok"
 	s3 := passing(s.SourceField, s2) // @Source(field2) is the closest to the sink
 	s4 := fmt.Sprintf("%s", s3)

@@ -16,11 +16,14 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"os/exec"
+	"strconv"
 )
 
 type A struct {
 	Field string
+	token string
 }
 
 func main() {
@@ -30,6 +33,7 @@ func main() {
 	test3()
 	test4()
 	test5()
+	testReadFieldTaint()
 }
 
 // This set of examples tests taint tracking across function calls that appear as parameters of other functions
@@ -130,4 +134,19 @@ func recursiveShifterResets(a, b, c, d, e, f string) {
 		sink(f) // never reached
 	}
 	recursiveShifter(b, c, d, e, f, "ok")
+}
+
+func testReadFieldTaint() {
+	x := &A{Field: "value", token: "dsofihwofn49"}
+	b := "sd"
+	readToken(x, &b)
+	sink(x.Field)
+	x.Field = x.token //  @Source(readFieldTaint)
+	sink(x.Field)     // @Sink(readFieldTaint)
+}
+
+func readToken(a *A, b *string) {
+	if a.token == "ok" {
+		*b = "f" + strconv.Itoa(rand.Int())
+	}
 }
