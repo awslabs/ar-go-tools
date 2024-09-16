@@ -22,6 +22,7 @@ lint: **/*.go
 test: **/*.go
 	go clean -testcache
 	go test ./analysis/...
+	go test ./internal/...
 
 argot-build: go.mod cmd/argot/**/*.go
 	go build -o bin/argot ./cmd/argot/main.go

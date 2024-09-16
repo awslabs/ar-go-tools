@@ -232,11 +232,6 @@ func (a *analysis) valueNode(v ssa.Value) nodeid {
 		if a.log != nil {
 			comment = v.String()
 		}
-		if xv, ok := v.(*ssa.Function); ok {
-			if xv == nil || xv.Signature == nil {
-				v.Type()
-			}
-		}
 		id = a.addNodes(v.Type(), comment)
 		if obj := a.objectNode(nil, v); obj != 0 {
 			a.addressOf(v.Type(), id, obj)
@@ -533,7 +528,7 @@ func (a *analysis) genBuiltinCall(instr ssa.CallInstruction, cgn *cgnode) {
 		a.copy(a.valueNode(instr.Value()), a.valueNode(call.Args[0]), 1)
 
 	default:
-		// No-ops: close len cap real imag complex print println delete.
+		// No-ops: close len cap real imag complex print println delete min max (clear?).
 	}
 }
 
@@ -925,6 +920,26 @@ func (a *analysis) genStore(cgn *cgnode, ptr ssa.Value, val nodeid, offset, size
 	} else {
 		a.store(a.valueNode(ptr), val, offset, sizeof)
 	}
+}
+
+func (a *analysis) isReflectValueType(typ types.Type) bool {
+	switch unwrapped := typ.(type) {
+	case *types.Named:
+		if a.reflectValueObj == unwrapped.Obj() {
+			return true
+		}
+		ut := unwrapped.Underlying()
+		if ut != typ {
+			return a.isReflectValueType(ut)
+		}
+
+	case *types.Struct:
+		// struct{reflect.Value} is the same as a reflect.Value
+		if unwrapped.NumFields() == 1 && unwrapped.Field(0).Embedded() {
+			return a.isReflectValueType(unwrapped.Field(0).Type())
+		}
+	}
+	return false
 }
 
 // genInstr generates constraints for instruction instr in context cgn.

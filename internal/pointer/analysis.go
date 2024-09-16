@@ -156,7 +156,10 @@ func (a *analysis) enclosingObj(id nodeid) nodeid {
 			return i
 		}
 	}
-	panic("node has no enclosing object")
+	panic(fmt.Sprintf("node %v (%s, %s) has no enclosing object", id,
+		a.nodes[id].typ.Underlying().String(),
+		a.nodes[id].subelement.path(),
+	))
 }
 
 // labelFor returns the Label for node id.

@@ -182,7 +182,7 @@ func FindReachable(state *dataflow.AnalyzerState, excludeMain bool, excludeInit 
 			if graph != nil {
 				from := lang.PackageNameFromFunction(f)
 				to := lang.PackageNameFromFunction(fnext)
-				if from != to {
+				if from != to && from != "" {
 					graph.Add(from, to)
 				}
 			}
