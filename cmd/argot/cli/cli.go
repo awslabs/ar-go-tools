@@ -118,7 +118,7 @@ func Run(flags tools.CommonFlags) {
 
 func seekConfig(configPath string, args []string) (*config.Config, bool, error) {
 	var err error
-	pConfig := &config.Config{} // empty default config
+	pConfig := config.NewDefault()
 	if configPath != "" {
 		config.SetGlobalConfig(configPath)
 		pConfig, err = config.LoadGlobal()
@@ -129,29 +129,28 @@ func seekConfig(configPath string, args []string) (*config.Config, bool, error) 
 			return nil, true, nil
 		}
 	} else if len(args) == 1 && strings.HasSuffix(args[0], ".go") {
-		// Special case: look for config in .go 's folder
+		// Special case: look for config in .go 's folder, if found then set it
 		dir := path.Dir(args[0])
-		pConfig, err = attemptSettingConfig(pConfig, dir, "config.yaml")
-		if err == nil {
+		if attemptSettingConfig(&pConfig, dir, "config.yaml") == nil {
 			return pConfig, false, nil
 		}
-		pConfig, err = attemptSettingConfig(pConfig, dir, "config.json")
+		err = attemptSettingConfig(&pConfig, dir, "config.json")
 	}
 	return pConfig, false, err
 }
 
-func attemptSettingConfig(pConfig *config.Config, dir string, filename string) (*config.Config, error) {
-	configfile := path.Join(dir, filename)
-	config.SetGlobalConfig(configfile)
+func attemptSettingConfig(pConfig **config.Config, dir string, filename string) error {
+	configFile := path.Join(dir, filename)
+	config.SetGlobalConfig(configFile)
 	tmpConfig, err := config.LoadGlobal()
 	if err != nil {
 		// Reset and ignore
 		config.SetGlobalConfig("")
-		return nil, err
+		return err
 	}
-	pConfig = tmpConfig
-	state.ConfigPath = configfile
-	return pConfig, nil
+	*pConfig = tmpConfig
+	state.ConfigPath = configFile
+	return nil
 }
 
 // run implements the command line tool, calling interpret for each command until the exit command is input
