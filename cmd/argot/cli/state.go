@@ -109,7 +109,7 @@ func cmdList(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, with
 	numSummarized := 0
 	numReachable := 0
 	for _, fun := range funcs {
-		_, hasSummary := c.FlowGraph.Summaries[fun]
+		summary, hasSummary := c.FlowGraph.Summaries[fun]
 		isReachable := reachable[fun]
 		reachStr := "_"
 		if isReachable {
@@ -119,7 +119,7 @@ func cmdList(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, with
 			// -r means print only reachable functions
 			continue
 		}
-		if hasSummary {
+		if hasSummary && summary.Constructed {
 			writeFmt(tt, "%s[x][%s] %s%s\n", tt.Escape.Cyan, reachStr, fun.String(), tt.Escape.Reset)
 			numSummarized++
 		} else if isReachable && !command.Flags["s"] {
