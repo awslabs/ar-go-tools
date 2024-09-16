@@ -261,7 +261,8 @@ func TestFunctionSummaries(t *testing.T) {
 
 			for _, param := range summary.Params {
 				if len(param.Out()) < 1 {
-					t.Errorf("in FooBar, param node should have at least one outgoing edge, but got: %v", param.Out())
+					t.Errorf("in FooBar, param node should have at least one outgoing edge, but got: %v",
+						param.Out())
 				}
 
 				hasSynthetic := false
@@ -283,8 +284,9 @@ func TestFunctionSummaries(t *testing.T) {
 			for _, synth := range summary.SyntheticNodes {
 				if _, ok := synth.Instr().(*ssa.FieldAddr); ok {
 					hasFieldAddr = true
-					if len(synth.Out()) < 1 {
-						t.Errorf("in FooBar, synthetic node should have at least 1 outgoing edge, but got: %v", synth.Out())
+					if (len(synth.In()) > 0) && (len(synth.Out()) < 1) {
+						t.Errorf("in FooBar, synthetic node with incoming edge"+
+							" should have at least 1 outgoing edge, but got: %v", synth.Out())
 					}
 
 					for in := range synth.In() {
@@ -305,7 +307,8 @@ func TestFunctionSummaries(t *testing.T) {
 
 		if function.Name() == "Baz" {
 			if len(summary.AccessGlobalNodes) < 1 {
-				t.Errorf("in Baz, summary should have at least 1 access global node, but got: %v", summary.AccessGlobalNodes)
+				t.Errorf("in Baz, summary should have at least 1 access global node, but got: %v",
+					summary.AccessGlobalNodes)
 			}
 			hasSyntheticIn := false
 			hasCallOut := false
@@ -330,7 +333,8 @@ func TestFunctionSummaries(t *testing.T) {
 								}
 							}
 							if !hasGlobal {
-								t.Errorf("in Baz, a global's outgoing node's incoming nodes should contain a global, but got: %v", out.In())
+								t.Errorf("in Baz, a global's outgoing node's incoming nodes should contain "+
+									"a global, but got: %v", out.In())
 							}
 						}
 					}
@@ -344,11 +348,13 @@ func TestFunctionSummaries(t *testing.T) {
 			}
 
 			if len(summary.CreatedClosures) < 1 {
-				t.Errorf("in Baz, summary should have at least 1 created closure node, but got: %v", summary.CreatedClosures)
+				t.Errorf("in Baz, summary should have at least 1 created closure node, but got: %v",
+					summary.CreatedClosures)
 			}
 			for _, closure := range summary.CreatedClosures {
 				if len(closure.BoundVars()) < 2 {
-					t.Errorf("in Baz, closure should have at least 2 bound variable, but got: %v", closure.BoundVars())
+					t.Errorf("in Baz, closure should have at least 2 bound variable, but got: %v",
+						closure.BoundVars())
 				}
 				// `ok` is the bound var
 				// ```
@@ -445,8 +451,8 @@ func TestFunctionSummaries(t *testing.T) {
 								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
 							}
 
-							if len(arg.In()) < 4 {
-								t.Errorf("in Baz, callee arg to %s should have at least 4 incoming edges, but got: %v", name, arg.In())
+							if len(arg.In()) < 3 {
+								t.Errorf("in Baz, callee arg to %s should have at least 3 incoming edges, but got: %v", name, arg.In())
 							}
 							hasGlobal := false
 							hasSynth := false

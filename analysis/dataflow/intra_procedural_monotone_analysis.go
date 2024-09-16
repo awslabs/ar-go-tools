@@ -129,7 +129,32 @@ func (state *IntraAnalysisState) initialize() {
 					}
 				}
 			}
+			// Also mark synthetic nodes here
+			state.captureSyntheticNode(i)
 		})
+}
+
+func (state *IntraAnalysisState) captureSyntheticNode(i ssa.Instruction) {
+	if state.shouldTrack(state.parentAnalyzerState, i.(ssa.Node)) {
+		mark := state.flowInfo.GetNewMark(i.(ssa.Node), Synthetic+DefaultMark, nil, NonIndexMark)
+		switch instr := i.(type) {
+		case *ssa.UnOp:
+			// Receiving from a channel can be a source
+			if instr.Op == token.ARROW {
+				state.flowInfo.AddMark(i, instr, "", mark)
+			}
+		case *ssa.Alloc:
+			// Allocating a value of a certain type can be a source
+			state.flowInfo.AddMark(i, instr, "", mark)
+		case *ssa.FieldAddr:
+			// Accessing a field can be a source
+			state.flowInfo.AddMark(i, instr, "", mark)
+		case *ssa.Field:
+			// Reading from a field can be a source
+			state.flowInfo.AddMark(i, instr, "", mark)
+		}
+
+	}
 }
 
 // populateInstrPrevMap populates the instrPrev map in the intra analysis state. Once this function has been called,
@@ -309,13 +334,13 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 	}
 }
 
-// optionalSyntheticNode tracks the flow of data from a synthetic node.
-func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
-	if state.shouldTrack(state.parentAnalyzerState, asNode) {
-		s := state.flowInfo.GetNewMark(asNode, Synthetic+DefaultMark, nil, NonIndexMark)
-		state.markValue(asInstr, asValue, "", s)
-	}
-}
+//// optionalSyntheticNode tracks the flow of data from a synthetic node.
+//func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
+//	if state.shouldTrack(state.parentAnalyzerState, asNode) { //dfdsf
+//		s := state.flowInfo.GetNewMark(asNode, Synthetic+DefaultMark, nil, NonIndexMark)
+//		state.markValue(asInstr, asValue, "", s)
+//	}
+//}
 
 // callCommonMark can be used for Call and Go instructions that wrap a CallCommon. For a function call, the Value,
 // instruction and common are the same object (x = Value = instr and common = x.Common()) but for Go and Defers

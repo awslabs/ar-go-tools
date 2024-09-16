@@ -155,10 +155,10 @@ func NodeKind(g GraphNode) string {
 func NodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
-		return fmt.Sprintf("Parameter %s (type %s) of %q",
+		return fmt.Sprintf("Parameter %s (type %s) of %s",
 			formatutil.Green(x.ssaNode.Name()),
 			formatutil.Italic(x.Type().String()),
-			formatutil.Magenta(x.parent.Parent.Name()))
+			formatutil.Magenta(fmt.Sprintf("%q", x.parent.Parent.Name())))
 	case *CallNode:
 		return fmt.Sprintf("Result of call to %s (type %s)",
 			formatutil.Magenta(x.Callee().Name()),
