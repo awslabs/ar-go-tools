@@ -718,6 +718,9 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) error {
 			}
 
 		case *df.BoundLabelNode:
+			if v.SlicingSpec.SkipBoundLabels {
+				break
+			}
 			for nextNode := range graphNode.In() {
 				nextNodeWithTrace := df.NodeWithTrace{
 					Node:         nextNode,
