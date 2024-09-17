@@ -5,6 +5,8 @@ taint-tracking-problems:
       - package: "(parameters)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         # Sources can be source1, source2, etc.
         method: "source[1-9]?"
+
+        # Reading field token from struct A is a source.
       - type: "A"
         field: "token"
     sinks:
@@ -14,7 +16,8 @@ taint-tracking-problems:
       - method: "Start"
     fail-on-implicit-flow: false
 options:
+  # Treat those a field-sensitive
   field-sensitive-funcs: [
-      # "readToken",
+      "readToken",
       "testReadFieldTaint"
   ]

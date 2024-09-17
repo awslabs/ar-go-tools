@@ -631,6 +631,9 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// A BoundLabel flows to the body of the closure that captures it.
 		case *df.BoundLabelNode:
+			if v.taintSpec.SkipBoundLabels {
+				break
+			}
 			destClosureSummary := graphNode.DestClosure()
 			if !ignoreNonSummarized {
 				if destClosureSummary == nil {
