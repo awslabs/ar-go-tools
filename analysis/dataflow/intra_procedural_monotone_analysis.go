@@ -334,14 +334,6 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 	}
 }
 
-//// optionalSyntheticNode tracks the flow of data from a synthetic node.
-//func (state *IntraAnalysisState) optionalSyntheticNode(asValue ssa.Value, asInstr ssa.Instruction, asNode ssa.Node) {
-//	if state.shouldTrack(state.parentAnalyzerState, asNode) { //dfdsf
-//		s := state.flowInfo.GetNewMark(asNode, Synthetic+DefaultMark, nil, NonIndexMark)
-//		state.markValue(asInstr, asValue, "", s)
-//	}
-//}
-
 // callCommonMark can be used for Call and Go instructions that wrap a CallCommon. For a function call, the Value,
 // instruction and common are the same object (x = Value = instr and common = x.Common()) but for Go and Defers
 // this varies.

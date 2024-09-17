@@ -171,6 +171,10 @@ type TaintSpec struct {
 	// the control flow of a program. This should be set to false when proving a data flow property,
 	// and set to true when proving an information flow property.
 	FailOnImplicitFlow bool `yaml:"fail-on-implicit-flow" json:"fail-on-implicit-flow"`
+
+	// SkipBoundLabels indicates whether to skip flows that go through "bound labels", i.e. aliases of the variables
+	// bound by a closure. This can be useful to test data flows because bound labels generate a lot of false positives.
+	SkipBoundLabels bool `yaml:"unsafe-skip-bound-labels" json:"unsafe-skip-bound-labels"`
 }
 
 // SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
