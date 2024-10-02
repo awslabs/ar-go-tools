@@ -26,7 +26,7 @@ import (
 )
 
 func TestComputeMethodImplementations(t *testing.T) {
-	lp, err := analysistest.LoadTest(testfsys, filepath.Join("testdata", "callgraph"), []string{})
+	lp, err := analysistest.LoadTest(testfsys, filepath.Join("testdata", "callgraph"), []string{}, false)
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

@@ -33,7 +33,7 @@ var testfsys embed.FS
 func loadConcurrencyTestResult(t *testing.T, subDir string) concurrency.AnalysisResult {
 	// only works for "trivial" for now because that's the only dir that's embedded in testfsys
 	dirName := filepath.Join("./testdata", subDir)
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, true)
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

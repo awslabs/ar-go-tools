@@ -112,9 +112,15 @@ func Run(flags Flags) error {
 
 	// todo -- technically we could run these in parallel...
 	// (though tbf, the LoadProgram does exploit multiple cores already)
-	mode := ssa.InstantiateGenerics
 	for _, platform := range platforms {
-		program, pkgs, err := analysis.LoadProgram(nil, platform, mode, flags.withTest, flags.flagSet.Args())
+		loadOptions := analysis.LoadProgramOptions{
+			Platform:      platform,
+			PackageConfig: nil,
+			BuildMode:     ssa.InstantiateGenerics,
+			LoadTests:     flags.withTest,
+			ApplyRewrites: true,
+		}
+		program, pkgs, err := analysis.LoadProgram(loadOptions, flags.flagSet.Args())
 		if err != nil {
 			return fmt.Errorf("failed to load program: %v", err)
 		}

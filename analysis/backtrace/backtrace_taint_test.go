@@ -86,7 +86,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// lp, err := analysistest.LoadTest(fsys.(analysistest.ReadFileDirFS), filepath.Join("testdata", test.name), test.files)
 
 	dir := filepath.Join("./testdata", test.name)
-	lp, err := analysistest.LoadTest(testfsys, dir, test.files)
+	lp, err := analysistest.LoadTest(testfsys, dir, test.files, true)
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

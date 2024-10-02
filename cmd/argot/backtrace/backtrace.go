@@ -51,8 +51,13 @@ func Run(flags tools.CommonFlags) error {
 
 	logger.Printf(formatutil.Faint("Reading backtrace entrypoints") + "\n")
 
-	buildmode := ssa.InstantiateGenerics
-	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, flags.WithTest, flags.FlagSet.Args())
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+	}
+	program, pkgs, err := analysis.LoadProgram(loadOptions, flags.FlagSet.Args())
 	if err != nil {
 		return fmt.Errorf("could not load program: %v", err)
 	}

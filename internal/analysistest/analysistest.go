@@ -48,7 +48,7 @@ type ReadFileDirFS interface {
 // If the Analysis function runs without error but no analysis entrypoints are detected, that may
 // mean that the config's code id's package names do not patch the package name of the SSA program.
 // Try changing the package name to the test directory name to fix the issue.
-func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestProgram, error) {
+func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string, inline bool) (LoadedTestProgram, error) {
 	var filePaths []string
 	if len(extraFiles) == 0 {
 		_ = fs.WalkDir(fsys, dir, func(path string, entry fs.DirEntry, _ error) error {
@@ -88,8 +88,14 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string) (LoadedTestPr
 		patterns = append(patterns, fmt.Sprintf("file=%s", fp))
 	}
 	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
-	program, pkgs, err := analysis.LoadProgram(
-		&pcfg, "", ssa.InstantiateGenerics|ssa.BuildSerially, false, patterns)
+	loadOptions := analysis.LoadProgramOptions{
+		BuildMode:     ssa.InstantiateGenerics | ssa.BuildSerially,
+		LoadTests:     false,
+		ApplyRewrites: inline,
+		Platform:      "",
+		PackageConfig: &pcfg,
+	}
+	program, pkgs, err := analysis.LoadProgram(loadOptions, patterns)
 	if err != nil {
 		return LoadedTestProgram{}, err
 	}
@@ -128,7 +134,14 @@ func LoadTestFromDisk(dir string, extraFiles []string) (LoadedTestProgram, error
 	}
 	mode := packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedDeps | packages.NeedTypesInfo
 	pcfg := packages.Config{Mode: mode}
-	prog, pkgs, err := analysis.LoadProgram(&pcfg, "", ssa.InstantiateGenerics, false, files)
+	loadOptions := analysis.LoadProgramOptions{
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     false,
+		ApplyRewrites: true,
+		Platform:      "",
+		PackageConfig: &pcfg,
+	}
+	prog, pkgs, err := analysis.LoadProgram(loadOptions, patterns)
 	if err != nil {
 		return LoadedTestProgram{Pkgs: pkgs}, fmt.Errorf("error loading packages: %v", err)
 	}

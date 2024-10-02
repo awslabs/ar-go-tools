@@ -83,8 +83,13 @@ func Run(flags Flags) error {
 	logger.Printf(formatutil.Faint("Argot taint tool - " + analysis.Version))
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 
-	buildMode := ssa.InstantiateGenerics
-	program, pkgs, err := analysis.LoadProgram(nil, "", buildMode, flags.WithTest, flags.FlagSet.Args())
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+	}
+	program, pkgs, err := analysis.LoadProgram(loadOptions, flags.FlagSet.Args())
 	if err != nil {
 		return fmt.Errorf("could not load program: %v", err)
 	}

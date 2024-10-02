@@ -113,8 +113,13 @@ func Run(flags Flags) error {
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	buildMode := ssa.InstantiateGenerics
-	program, _, err := analysis.LoadProgram(nil, "", buildMode, flags.WithTest, flags.FlagSet.Args())
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+	}
+	program, _, err := analysis.LoadProgram(loadOptions, flags.FlagSet.Args())
 	if err != nil {
 		return fmt.Errorf("could not load program: %v", err)
 	}

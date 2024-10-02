@@ -381,9 +381,13 @@ func (s *AnalyzerState) PopulateBoundingInformation(verbose bool) error {
 // Functions to retrieve results from the information stored in the analyzer state
 
 // ReachableFunctions returns the set of reachable functions from main and init according to:
+//
 // - the pointer analysis if it has been computed, otherwise
+//
 // - the cha analysis if it has been computed, oterhwise
+//
 // - an empty map.
+//
 // To compute reachable functions without main or init, use the CallGraphReachable function with
 // the appropriate callgraph information.
 func (s *AnalyzerState) ReachableFunctions() map[*ssa.Function]bool {

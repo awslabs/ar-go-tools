@@ -66,7 +66,14 @@ func TestSamplePackageWorkerDependencies(t *testing.T) {
 	files := []string{"samplePackage/samplePackage.go",
 		"samplePackage/samplePackage_parser.go",
 		"samplePackage/samplePackage_unix.go"}
-	program, pkgs, err := analysis.LoadProgram(nil, "", ssa.BuilderMode(0), false, files)
+	loadOptions := analysis.LoadProgramOptions{
+		BuildMode:     ssa.BuilderMode(0),
+		LoadTests:     false,
+		ApplyRewrites: true,
+		Platform:      "",
+		PackageConfig: nil,
+	}
+	program, pkgs, err := analysis.LoadProgram(loadOptions, files)
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}

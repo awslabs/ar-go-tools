@@ -80,8 +80,13 @@ func NewFlags(args []string) (Flags, error) {
 func Run(flags Flags) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	mode := ssa.InstantiateGenerics
-	program, pkgs, err := analysis.LoadProgram(nil, "", mode, flags.WithTest, flags.FlagSet.Args())
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+	}
+	program, pkgs, err := analysis.LoadProgram(loadOptions, flags.FlagSet.Args())
 	if err != nil {
 		return err
 	}

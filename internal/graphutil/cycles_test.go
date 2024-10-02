@@ -37,7 +37,7 @@ var testfsys embed.FS
 
 func TestFindAllElementaryCycles(t *testing.T) {
 	dir := filepath.Join("testdata", "trivial")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, true)
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

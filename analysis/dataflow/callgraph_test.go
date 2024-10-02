@@ -59,7 +59,7 @@ func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name strin
 
 func TestPointerCallgraph(t *testing.T) {
 	dir := filepath.Join("testdata", "callgraph")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, false)
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

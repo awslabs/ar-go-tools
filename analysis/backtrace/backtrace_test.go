@@ -33,7 +33,7 @@ var testfsys embed.FS
 
 func TestAnalyze(t *testing.T) {
 	dir := filepath.Join("./testdata", "backtrace")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestAnalyze(t *testing.T) {
 
 func TestAnalyze_OnDemand(t *testing.T) {
 	dir := filepath.Join("./testdata", "backtrace")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ func TestAnalyze_Closures(t *testing.T) {
 	// See the config.yaml file for details.
 
 	dir := filepath.Join("./testdata", "closures")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 	t.Skipf("Tests relying on traces should have separate source file with minimal examples.")
 
 	dir := filepath.Join("./testdata", "closures")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

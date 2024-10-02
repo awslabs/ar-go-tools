@@ -29,7 +29,7 @@ import (
 func TestComputeMethodImplementationsGo120(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../testdata/src/dataflow/callgraph")
-	program, _ := analysistest.LoadTest(t, dir, []string{})
+	program, _ := analysistest.LoadTest(t, dir, []string{}, false)
 	implementations := map[string]map[*ssa.Function]bool{}
 	contracts := map[string]*df.SummaryGraph{}
 	keys := map[string]string{}
