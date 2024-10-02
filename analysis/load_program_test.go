@@ -32,8 +32,14 @@ func programLoadTest(t *testing.T, files []string) {
 		t.Logf("could not change to agent dir: %s", err)
 		return
 	}
-
-	pkgs, _, err := LoadProgram(nil, "", ssa.BuilderMode(0), false, files)
+	loadOptions := LoadProgramOptions{
+		BuildMode:     ssa.BuilderMode(0),
+		LoadTests:     false,
+		ApplyRewrites: true,
+		Platform:      "",
+		PackageConfig: nil,
+	}
+	pkgs, _, err := LoadProgram(loadOptions, files)
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}

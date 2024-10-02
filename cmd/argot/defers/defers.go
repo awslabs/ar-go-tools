@@ -48,8 +48,14 @@ $ argot defer hello.go
 // Run runs the defer analysis with args.
 func Run(args []string, verbose bool) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-	mode := ssa.InstantiateGenerics
-	program, _, err := analysis.LoadProgram(nil, "", mode, false, args)
+
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     false,
+		ApplyRewrites: true,
+	}
+	program, _, err := analysis.LoadProgram(loadOptions, args)
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}

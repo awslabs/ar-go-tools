@@ -21,6 +21,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/refactor/rewrite"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -39,27 +40,39 @@ const PkgLoadMode = packages.NeedName |
 	packages.NeedTypesSizes |
 	packages.NeedModule
 
+// LoadProgramOptions combines all the options that are used when loading programs.
+type LoadProgramOptions struct {
+	// BuildMode is the mode used when creating the SSA from the packages.
+	BuildMode ssa.BuilderMode
+	// LoadTests is a flag indicating whether tests should be loaded with the program.
+	LoadTests bool
+	// ApplyRewrites is a flag indicating whether the standard source rewrites should be applied.
+	ApplyRewrites bool
+	// Platform indicates which platform the analysis is being performed on (sets GOOS in env).
+	Platform string
+	// PackageConfig is the options passed to packages.Load.
+	// The GOOS  in the Env of the packageConfig is overridden by the Platform when Platform is set.
+	PackageConfig *packages.Config
+}
+
 // LoadProgram loads a program on platform "platform" using the buildmode provided and the args.
 // To understand how to specify the args, look at the documentation of packages.Load.
-func LoadProgram(config *packages.Config,
-	platform string,
-	buildmode ssa.BuilderMode,
-	loadTests bool,
-	args []string) (*ssa.Program, []*packages.Package, error) {
+func LoadProgram(options LoadProgramOptions, args []string) (*ssa.Program, []*packages.Package, error) {
 
-	if config == nil {
-		config = &packages.Config{
+	packageConfig := options.PackageConfig
+	if packageConfig == nil {
+		packageConfig = &packages.Config{
 			Mode:  PkgLoadMode,
-			Tests: loadTests,
+			Tests: options.LoadTests,
 		}
 	}
 
-	if platform != "" {
-		config.Env = append(os.Environ(), fmt.Sprintf("GOOS=%s", platform))
+	if options.Platform != "" {
+		packageConfig.Env = append(os.Environ(), fmt.Sprintf("GOOS=%s", options.Platform))
 	}
 
 	// load, parse and type check the given packages
-	initialPackages, err := packages.Load(config, args...)
+	initialPackages, err := packages.Load(packageConfig, args...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -68,12 +81,17 @@ func LoadProgram(config *packages.Config,
 		return nil, nil, fmt.Errorf("no packages")
 	}
 
+	if options.ApplyRewrites {
+		// Apply rewrites improving precision
+		rewrite.ApplyRewrites(initialPackages)
+	}
+
 	if packages.PrintErrors(initialPackages) > 0 {
 		return nil, nil, fmt.Errorf("errors found, exiting")
 	}
 
 	// Construct SSA for all the packages we have loaded
-	program, ssaPackages := ssautil.AllPackages(initialPackages, buildmode)
+	program, ssaPackages := ssautil.AllPackages(initialPackages, options.BuildMode)
 
 	for i, p := range ssaPackages {
 		if p == nil {
@@ -89,12 +107,9 @@ func LoadProgram(config *packages.Config,
 
 // LoadAnalyzerState is like LoadProgram but additionally wraps the loaded program in a simple analyzer state.
 // Does not run pointer analysis for example.
-func LoadAnalyzerState(pkgConfig *packages.Config,
-	platform string,
-	buildmode ssa.BuilderMode,
-	loadTests bool,
+func LoadAnalyzerState(options LoadProgramOptions,
 	args []string, cfg *config.Config) (*dataflow.AnalyzerState, error) {
-	program, pkgs, err := LoadProgram(pkgConfig, platform, buildmode, loadTests, args)
+	program, pkgs, err := LoadProgram(options, args)
 	if err != nil {
 		return nil, fmt.Errorf("could not load program: %v", err)
 	}

@@ -52,8 +52,13 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, withTes
 
 	writeFmt(tt, "Reading sources\n")
 	// Load the program
-	buildmode := ssa.InstantiateGenerics
-	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, withTest, state.Args)
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     withTest,
+		ApplyRewrites: true,
+	}
+	program, pkgs, err := analysis.LoadProgram(loadOptions, state.Args)
 	if err != nil {
 		WriteErr(tt, "could not load program:\n%s\n", err)
 		return false

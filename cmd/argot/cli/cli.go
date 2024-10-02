@@ -92,8 +92,13 @@ func Run(flags tools.CommonFlags) {
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 	state.Args = flags.FlagSet.Args()
 	// Load the program
-	buildmode := ssa.InstantiateGenerics
-	program, pkgs, err := analysis.LoadProgram(nil, "", buildmode, flags.WithTest, state.Args)
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+	}
+	program, pkgs, err := analysis.LoadProgram(loadOptions, state.Args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return

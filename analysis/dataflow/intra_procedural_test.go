@@ -33,7 +33,7 @@ import (
 //gocyclo:ignore
 func TestFunctionSummaries(t *testing.T) {
 	dir := filepath.Join("testdata", "summaries")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, true)
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

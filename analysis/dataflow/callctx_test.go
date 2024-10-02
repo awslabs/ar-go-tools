@@ -28,7 +28,7 @@ import (
 
 func TestComputeCtxts(t *testing.T) {
 	dir := filepath.Join("testdata", "callctx")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, false)
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

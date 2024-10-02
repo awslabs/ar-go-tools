@@ -87,8 +87,13 @@ func Run(flags Flags) error {
 		}
 	}
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-	mode := ssa.InstantiateGenerics
-	state, err := analysis.LoadAnalyzerState(nil, "", mode, flags.WithTest, flags.FlagSet.Args(), cfg)
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+	}
+	state, err := analysis.LoadAnalyzerState(loadOptions, flags.FlagSet.Args(), cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)
 	}

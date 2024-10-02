@@ -82,8 +82,13 @@ func Run(flags Flags) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	// never load tests for the may-panic analysis (may change later if there's an ask)
-	mode := ssa.InstantiateGenerics
-	program, _, err := analysis.LoadProgram(cfg, "", mode, false, flags.flagSet.Args())
+	loadOptions := analysis.LoadProgramOptions{
+		PackageConfig: cfg,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     false,
+		ApplyRewrites: true,
+	}
+	program, _, err := analysis.LoadProgram(loadOptions, flags.flagSet.Args())
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}

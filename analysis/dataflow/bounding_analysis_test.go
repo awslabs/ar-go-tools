@@ -29,7 +29,7 @@ var testfsys embed.FS
 
 func TestRunBoundingAnalysis(t *testing.T) {
 	dir := filepath.Join("testdata", "bounding-analysis")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{"helpers.go"})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{"helpers.go"}, true)
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
