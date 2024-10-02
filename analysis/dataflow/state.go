@@ -384,7 +384,7 @@ func (s *AnalyzerState) PopulateBoundingInformation(verbose bool) error {
 //
 // - the pointer analysis if it has been computed, otherwise
 //
-// - the cha analysis if it has been computed, oterhwise
+// - the cha analysis if it has been computed, otherwise
 //
 // - an empty map.
 //

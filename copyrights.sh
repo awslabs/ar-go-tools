@@ -26,6 +26,7 @@ FILES=$(
         -not -path "./analysis/taint/testdata/fromlevee/*" \
         -not -path "./analysis/backtrace/testdata/fromlevee/*" \
         -not -path "./internal/pointer/*" \
+        -not -path "./internal/rewrite/*" \
         -not -path "./internal/typeparams/*" \
         -print
 )
