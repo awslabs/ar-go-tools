@@ -1,11 +1,14 @@
 {
-  "comment": "This configuration is for running the taint tool against Argot itself, e.g. from the root: `./bin/taint -config payload/selfcheck/config.json cmd/statistics/main.go`",
+
 
   "options": {
-    "log-level": 4,
+    "log-level": 3,
     "pkg-filter": "ar-go-tools",
     "max-alarms": 2,
-    "max-depth": 10
+    "unsafe-max-depth": 10,
+    "max-entrypoint-context-size": 2,
+    "summarize-on-demand": true,
+    "report-paths": true,
   },
   "dataflow-specs": [
     "argot-specs.json",
@@ -22,6 +25,7 @@
       ],
       "sinks": [
         {
+          "context": "ar-go-tools/analysis",
           "package": "fmt",
           "method": "((Printf)|(Fprintf))"
         },
