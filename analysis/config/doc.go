@@ -19,16 +19,22 @@ Use [Load](filename) to load a configuration from a specific filename.
 
 Use [SetGlobalConfig](filename) to set filename as the global config, and then [LoadGlobal]() to load the global config.
 
-A config file should be in yaml format. The top-level fields can be any of the fields defined in the Config struct
-type. The other fields  are defined by the types of the fields of [Config] and nested struct types.
+A config file should be in yaml or json format. The top-level fields can be any of the fields defined in the Config
+struct type. The other fields  are defined by the types of the fields of [Config] and nested struct types.
 For example, a valid config file is as follows:
+options:
 
-	sinks:
-	  - package: fmt
-	    method: Printf
+	log-level: 5
 
-	sources:
-	  - method: Read
+taint-tracking-problems:
+
+	    -
+		  sinks:
+		    - package: fmt
+	          method: Printf
+
+		  sources:
+		     - method: Read
 
 # Identifying code elements
 
@@ -36,5 +42,10 @@ The config uses [CodeIdentifier] to identify specific code entities. For example
 which identifies specific functions in specific packages, or types, etc..
 An important feature of the code identifiers is that the string specifications are seen as regexes if they can be
 compiled to regexes, otherwise they are strings.
+
+# Unsafe options
+
+All the options that might affect the soundness of the results are prefixed by `unsafe-`, except for the configuration
+options where the user provides function summaries (where it is assumed the user have soundly summarized the functions).
 */
 package config

@@ -1368,7 +1368,7 @@ func (prog *ProgramAnalysisState) getFunctionAnalysisSummary(f *ssa.Function) *f
 	// This function has requested summary, but is added after the worklist is built. This would
 	// result in a soundness issue.
 	if prog.builtWorklist && state.summaryType == config.EscapeBehaviorSummarize {
-		prog.logger.Warnf("Asking to summarize %s after worklist creation; only fixed summaries supported for such functions\n", f.String())
+		prog.logger.Warnf("Asking to summarize %q after worklist creation; only fixed summaries supported for such functions\n", f.String())
 		state.summaryType = config.EscapeBehaviorUnknown
 	}
 	return state

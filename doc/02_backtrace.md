@@ -29,7 +29,7 @@ options:
     - "specs-mylib.json"        # dataflow specifications.
 
 ```
-We explain in more detail how to write [dataflow specifications](#dataflow-specifications) later, and why the user should write dataflow specifications in some cases.
+We explain in more detail how to write [dataflow specifications](01_taint.md#dataflow-specifications) in the `taint` tool documentation, and why the user should write dataflow specifications in some cases. The `backtrace` tool uses dataflow specifications in the same way the `taint` tool does.
 
 There are additional options for the outputs:
 ```yaml
@@ -41,22 +41,22 @@ options:
 
 The `backtrace` tool will first print messages indicating that it finished some of the preliminary analyses before starting the first pass of the dataflow analysis. In this first pass the tool analyzes each function individually and builds a summary of how the data flows through the function. The user should see a message of the sort:
 ```
-Starting intra-procedural analysis ...
-intra-procedural pass done (0.00 s).
+[INFO] Starting intra-procedural analysis ...
+[INFO] intra-procedural pass done (0.00 s).
 ```
 Indicating that this step has terminated.
 After that, the tool will link together the dataflow summaries in an inter-procedural pass:
 ```
-Starting inter-procedural pass...
-Building inter-procedural flow graph...
---- # of analysis entrypoints: 8 ---
+[INFO] Starting inter-procedural pass...
+[INFO] Building inter-procedural flow graph...
+[INFO] --- # of analysis entrypoints: 8 ---
 ```
 Once the inter-procedural dataflow graph has been built, the number of entry points discovered are listed. Those are all the arguments to the function calls matching the backtrace-points specifications given in the configuration file. If that number is not as expected, the user should check that the configuration correctly specifies the code elements that should be backtrace-points.
 For each source, the tool will print a message of the form:
 ```
-****************************** ENTRYPOINT ******************************
- ==> Node: "[#584.4] @arg 0:name in [#584.3] (SA)call: os/exec.Command(name, args...) in runcmd "
-Found at /somedir/example.go:50:17
+[INFO] ****************************** ENTRYPOINT ******************************
+[INFO] ==> Node: "[#584.4] @arg 0:name in [#584.3] (SA)call: os/exec.Command(name, args...) in runcmd "
+[INFO] Found at /somedir/example.go:50:17
 ```
 Indicating the entrypoint.
 
@@ -64,22 +64,22 @@ Indicating the entrypoint.
 
 Once the analysis has terminated, the tool will print a final message:
 ```
-RESULT:
-     Backtraces detected!
+[INFO] RESULT:
+[INFO]     Backtraces detected!
 ```
 followed by list of traces, or:
 ```
-RESULT:
-    No traces detected
+[INFO] RESULT:
+[INFO]    No traces detected
 ```
 Meaning that the input program does have any data flows backwards from any of the backtrace-points. This likely means that the analysis was misconfigured and the backtrace-points are not present in the input program.
 
 If any backwards flow of data from an entrypoint is found, then the tool will print traces showing that flow, for example:
 ```
-Trace:
-	"[#576.1] @arg 0:"ls4":string in [#576.0] (SA)call: runcmd("ls4":string, nil:[]string...) in foo " at -
-	"[#584.0] parameter name : string of runcmd [0]" at /somedir/example.go:71:13
-	"[#584.4] @arg 0:name in [#584.3] (SA)call: os/exec.Command(name, args...) in runcmd " at /somedir/example.go:50:17
+[INFO] Trace:
+[INFO]	"[#576.1] @arg 0:"ls4":string in [#576.0] (SA)call: runcmd("ls4":string, nil:[]string...) in foo " at -
+[INFO]	"[#584.0] parameter name : string of runcmd [0]" at /somedir/example.go:71:13
+[INFO]	"[#584.4] @arg 0:name in [#584.3] (SA)call: os/exec.Command(name, args...) in runcmd " at /somedir/example.go:50:17
 ```
 The first line of the trace represents the "source" of the data flow to the backtrace analysis entrypoint. In this example, data flows from the string literal `"ls4"` supplied as an argument to the function call `runcmd("ls4", nil)` in function `foo`. The function call argument then flows to the parameter `name` in the function definition of `runcmd`. Finally, the parameter `name` is used to call the backtrace entrypoint `os/exec.Command`.
 
@@ -127,7 +127,7 @@ The `backtrace` tool will report traces given the configuration example given pr
 
 The backtrace analysis tool can detect such flows with many intermediate calls.
 
-> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `max-depth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some traces. In the previous example, one trace would not be reported if the configuration file sets `maxdepth: 2`.
+> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `unsafe-max-depth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some traces. In the previous example, one trace would not be reported if the configuration file sets `unsafe-max-depth: 2`.
 
 
 ### Closures
@@ -172,42 +172,3 @@ func main() {
 }
 ```
 In general, we do not know where the data written to a global may be read from. In this example, the statements `y = a` and `y = s` will appear in every trace from `example2.LogDataPublicly(y)` because the analysis must consider every data flow from the global read of `y` in `example2.LogDataPublicly(y)` to the statements that write to `y`.
-
-
-## Dataflow Specifications
-
-Dataflow specifications allow the user to specify data flows for functions in their program. The analysis tool will skip analyzing those functions, loading the dataflow specified by the user instead. There are two kinds of user-specified dataflow summaries: summaries for functions, which specify the flow of data through a single function, and summaries for interface methods, which specify the flow of data through any of the interface method's implementation. The user must make sure that:
-- in the case of a single function summary, the specified data flows subsumes any possible data flow in the function implementation
-- for an interface method summary, the specified data flows subsumes any possible data flow, for any possible implementation
-
-There are two reasons a user may want to specify a data flow summary:
-- for performance: the analysis of some functions can take a lot of time, even though the flows of data can be summarized very succinctly. This is the case for functions that have complex control flow and manipulate many data structures. It is also useful to summarize simple interfaces because this reduces the complexity of the call graph: a set of calls to every implementation of the interface is replaced by a single call to the summary for interface methods that are summarized by the user.
-- for soundness: the analysis does not support reflection and some uses of the unsafe package. If a function uses those packages, then it should be summarized by the user. The analysis will raise alarms whenever some unsupported feature of the language is encountered during the analysis.
-
-Dataflow specifications are json files that contain a list of specifications. Each specification is a structure that contains either an `"InterfaceId"` or an `"ObjectPath"`, along with a dictionary `"Methods"`. If an interface id is specified, then the dataflow specifications for each of the methods are interpreted as specifications for the interface methods, i.e. they specify every possible implementation of the interface. For example, consider the following dataflow specifications:
-```json
-[
-    {
-        "ObjectPath": "gopkg.in/yaml.v2",
-        "Methods": {
-            "Unmarshal": { "Args": [[0,1], [1]], "Rets": [[0],[0]] },
-            "Marshal": { "Args": [ [ 0 ] ], "Rets": [ [ 0, 1 ] ] }
-        }
-    },
-    {
-        "InterfaceId": "io.Reader",
-        "Methods": {
-            "Read": { "Args": [ [ 0, 1 ], [ 0 ] ], "Rets": [ [ 0, 1 ], [ ] ] }
-        }
-    }
-]
-```
-The first specification gives a dataflow summary for the functions `Unmarshal` and `Marshal` in the package `gopkg.in/yaml.v2`. The second specification gives a dataflow summary for the `Read` method of the `io.Reader` interface. That means that every implementation of `Read` will be replaced in the taint analysis by the dataflow summary specified in this file.
-
-Each dataflow summary is of the form `{"Args":[...], "Rets": [...]}` where each list `[...]` is a list of lists of integers, and its length is the number of arguments of the function being summarized. In the "Args" list, the i-th list indicates that the data of the i-th argument flows to each argument index in the list. In the "Rets" list, this indicates that the i-th argument flows to each value index in the list. When nothing is returned, each list must be empty. When there is only one element returned (not a tuple), each list is [] or [0].
-
-In the example, this means that the summary `"Marshal": { "Args": [ [ 0 ] ], "Rets": [ [ 0, 1 ] ] }` indicates that the data in the only argument of `Marshal` flows to itself (the `[0]` in "Args") and to both of the returned values (the `[0,1]` in "Rets").
-In the specification for the `Reader` method, the first argument's data flows to both itself and the second argument, as specified by `[0,1]` in the first list, and the second argument only flows to itself, as specified by `[0]` in the second list.
-
-
->⚠️ Correct specification of the summaries is currently the user's responsibility, but we are working on tools to check the correctness of the summaries when the functions summarized are supported by the analysis.

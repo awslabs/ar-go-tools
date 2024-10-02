@@ -116,6 +116,19 @@ This implies that any method whose receiver implements the `mypackage.interfaceN
 
 > The specifications for sources can be function calls, types, channel receives or field reads. The specifications for sinks, sanitizers and validators can only be functions (method and package) or interfaces (interface name and package).
 
+#### Code locations in a specific context
+
+Code locations can additionally be restricted to match a specific "context". Adding `context: "some-string"` to a code location specification specifies that the code locations are matched only when they appear inside a function whose full name (package + function) matches the regex `some-string`. The user can therefore restrict the context to a particular module, package or function.
+For example, the following config:
+```shell
+taint-tracking-problems:
+   - sinks:
+      - context: 'github.com/ar-go-tools/analysis'
+        package: 'fmt'
+        method: 'Errorf'
+```
+Specifies that the sinks are the calls to `fmt.Errorf` in the package `analysis` of Argot (and not in the internal packages for example). 
+
 ### Controlling The Data Flow Search
 
 The configuration contains some specific fields that allow users to tune how the analysis searches for data flows. Those options, if not set to their default value, will cause the analysis to possibly ignore some tainted flows. However, this can be useful when the analysis reports false positives and the user wants to trade soundness for precision.
@@ -144,17 +157,42 @@ taint-tracking-problems:
 With the configuration setting above, the tool will not follow data flows through `bool` and `error` types, and not through calls to the function `myFunc` in package `myPackage`. 
 
 #### Search Depth
-The `max-depth` parameter controls how deep the dataflow paths can be. By default, or if it is set to any value <= 0, the limit is ignored and the tool will search for paths of any lengths. Setting the depth parameter can be useful to filter out some long paths when you have alarms, so that you can focus on solving problems for the shorter paths. This can also be useful if you have a strong confidence in a limit of how long the paths can be between your source and sinks. Note that the path length is counted in the terms of number of nodes; nodes are the function calls, parameters, returns, closure creation and free variables. If this is set to any positive value, the analysis is not sound.
+The `unsafe-max-depth` parameter controls how deep the dataflow paths can be. By default, or if it is set to any value <= 0, the limit is ignored and the tool will search for paths of any lengths. Setting the depth parameter can be useful to filter out some long paths when you have alarms, so that you can focus on solving problems for the shorter paths. This can also be useful if you have a strong confidence in a limit of how long the paths can be between your source and sinks. Note that the path length is counted in the terms of number of nodes; nodes are the function calls, parameters, returns, closure creation and free variables. 
+
+If this is set to **any positive value**, the analysis is **unsound**. However, it is recommended to first experiment with some low value when scanning for new data flows.
+
+This is a global option, for example:
+```yaml
+options:
+    unsafe-max-depth: 10
+```
 
 #### Number of Alarms
 
 The `max-alarms` setting lets you limit the number of alarms the tool reports. This is useful when many paths are reported, and you want to only focus on a few reported problems. Setting this parameter has no effect on the soundness of the analysis; any value <= 0 will cause the limit to be ignored. The default value is 0.
 
+This is a global option, for example:
+```yaml
+options:
+    max-alarms: 2
+```
+
 #### Warning Suppression 
 The use can set the setting `warn: false` to suppress warnings during the analysis. This means that if the analysis encounters program constructs that make it unsound, those will not be reported. This setting does not affect the soundness of the analysis, but it will cause the tool to not report when your program falls beyond the soundness guarantees.
 
+This is a global option:
+```yaml
+options:
+    warn: false
+```
+
 #### Package Filtering
 The `pkgfilter` setting lets you choose for which packages functions representations are pre-computed. For example, with `pkgfilter: "(mymodule/.*|deps.*)"`, the tool will first summarize the functions in the packages that match this regex. This does not change the soundness of the analysis, but this has an effect on performance of the tool. 
+
+The package filter is a global option, as opposed to the filters:
+```yaml
+pkg-filter: "(mymodule/.*|deps*)"
+```
 
 ## Taint Analysis Output
 
@@ -163,7 +201,7 @@ The `taint` tool will first print messages indicating that it finished some of t
 [INFO]  Starting intra-procedural analysis ...
 [INFO]  Intra-procedural pass done (0.01 s).
 ```
-Indicating that this step has terminated. For large program, this step can take from several minutes up to an hour. The functions analyzed in this pass are all the functions that are not in the standard library, not filtered out by the `pkgfilter` option of the configuration file, and not summarize in one of the dataflow specifications file provided in the configuration.
+Indicating that this step has terminated. For large programs, when the option `summarize-on-demand` is false, this step can take from several minutes up to an hour. The functions analyzed in this pass are all the functions that are not in the standard library, not filtered out by the `pkgfilter` option of the configuration file, and not summarize in one of the dataflow specifications file provided in the configuration.
 After that, the tool will link together the dataflow summaries in an inter-procedural pass:
 ```
 [INFO]  Starting inter-procedural pass...
@@ -179,18 +217,22 @@ For each source, the tool will print a message of the form:
 ```
 Indicating the source location. If any flow of tainted data from that source location to a sink location is found, then the tool will print traces showing that flow, for example:
 ```
+[INFO]  !!!! TAINT FLOW !!!!
 [INFO]  💀 Sink reached at /somedir/main.go:50:12
 [INFO]  Add new path from "[#467.2] (SA)call: GetSensitiveData in loadUserData" to "[#23371.15] @arg 0:t20 in [#23371.14] (SA)call: LogDataPublicly(t22) in Log " <==
 ```
 And if the option to print paths is set (`report-paths: true` in configuration file options), a trace is printed:
 ```
 [INFO] Report in taint-report/flow-2507865943.out
-[INFO] TRACE - Result of call to "GetSensitiveData" (type *DataStorage)
-[INFO]       - Context [(#13432.8)GetSensitiveData] Pos: /somedir/example.go:50:17
+[INFO] TRACE - Result of call to GetSensitiveData (type *DataStorage)
+[INFO]       - Context [GetSensitiveData] 
+[INFO]       - At: /somedir/example.go:50:17
 [INFO] TRACE - Parameter "name" (type string) of "process" 
-[INFO]       - Context [(#23242.3)process] Pos: /somedir/processing.go:120:3
-[INFO] TRACE - Argument 0 (type string) in call to "processData"
-[INFO]       - Context [] Pos: /somedir/processing.go:180:23
+[INFO]       - Context [(#23242.3)process] 
+[INFO]       - At: /somedir/processing.go:120:3
+[INFO] TRACE - Argument #0 (type string) in call to "processData"
+[INFO]       - Context [] 
+[INFO]       - At: /somedir/processing.go:180:23
 ...
 ```
 The first line shows where the report is stored.
@@ -263,7 +305,7 @@ The `taint` tool will report taint flows given the configuration example given p
 
 The taint analysis tool can detect such flows with many intermediate calls.
 
-> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `max-depth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some taint flows. In the previous example, the trace would not be reported if the configuration file sets `maxdepth: 2`.
+> 📝 To limit the size of the traces reported by the tool, one can limit how many functions deep the trace can be using the `unsafe-max-depth: [some integer]` option in the configuration file. Note that if this option is used, then the tool may not report some taint flows. In the previous example, the trace would not be reported if the configuration file sets `unsafe-max-depth: 2`.
 
 ### Implicit Information Flow
 

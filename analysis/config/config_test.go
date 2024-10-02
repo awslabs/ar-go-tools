@@ -225,7 +225,7 @@ func TestLoadFullConfigYaml(t *testing.T) {
 		t.Error("full config should specify two dataflow spec files")
 	}
 	if config.UnsafeMaxDepth != 42 {
-		t.Error("full config should set max-depth to 42")
+		t.Error("full config should set unsafe-max-depth to 42")
 	}
 	if config.MaxAlarms != 16 {
 		t.Error("full config should set MaxAlarms to 16")
