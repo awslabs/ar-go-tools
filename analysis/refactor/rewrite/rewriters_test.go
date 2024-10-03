@@ -31,7 +31,7 @@ var testFSys embed.FS
 
 func TestWithInlining(t *testing.T) {
 	dirName := filepath.Join("./testdata", "simple")
-	lp, err := analysistest.LoadTest(testFSys, dirName, []string{}, true)
+	lp, err := analysistest.LoadTest(testFSys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
 	if err != nil {
 		t.Fatalf("Failed to load program: %s", err)
 	}
@@ -49,14 +49,14 @@ func TestWithInlining(t *testing.T) {
 	}
 	for i, r := range state.ReachableFunctions() {
 		if i.Name() == "main" && r {
-			checkCalls(t, state, i, []string{"main$1", "main$2"}, []string{"sort.Slice", "(*sync.Once).Do"})
+			checkCalls(t, state, i, 2, []string{"main$1", "main$2"}, []string{"sort.Slice", "(*sync.Once).Do"})
 		}
 	}
 }
 
 func TestWithoutInlining(t *testing.T) {
 	dirName := filepath.Join("./testdata", "simple")
-	lp, err := analysistest.LoadTest(testFSys, dirName, []string{}, false)
+	lp, err := analysistest.LoadTest(testFSys, dirName, []string{}, analysistest.LoadTestOptions{})
 	if err != nil {
 		t.Fatalf("Failed to load program: %s", err)
 	}
@@ -74,7 +74,7 @@ func TestWithoutInlining(t *testing.T) {
 	}
 	for i, r := range state.ReachableFunctions() {
 		if i.Name() == "main" && r {
-			checkCalls(t, state, i, []string{"sort.Slice", "(*sync.Once).Do"}, []string{"main$1", "main$2"})
+			checkCalls(t, state, i, 2, []string{"sort.Slice", "(*sync.Once).Do"}, []string{"main$1", "main$2"})
 		}
 	}
 }
@@ -82,6 +82,7 @@ func TestWithoutInlining(t *testing.T) {
 func checkCalls(t *testing.T,
 	state *dataflow.AnalyzerState,
 	i *ssa.Function,
+	n int,
 	expected []string,
 	unexpected []string) {
 
@@ -89,6 +90,10 @@ func checkCalls(t *testing.T,
 
 	for _, y := range expected {
 		seen[y] = false
+	}
+
+	if n0 := len(state.PointerAnalysis.CallGraph.Nodes[i].Out); n0 < n {
+		t.Fatalf("Expected more than %d calls, got %d", n, n0)
 	}
 
 	for _, d := range state.PointerAnalysis.CallGraph.Nodes[i].Out {

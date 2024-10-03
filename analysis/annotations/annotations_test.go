@@ -28,7 +28,8 @@ import (
 var testFileSystem embed.FS
 
 func TestLoadAnnotations(t *testing.T) {
-	testProgram, err := analysistest.LoadTest(testFileSystem, "./testdata", []string{"main.go"}, true)
+	testProgram, err := analysistest.LoadTest(
+		testFileSystem, "./testdata", []string{"main.go"}, analysistest.LoadTestOptions{ApplyRewrite: true})
 	if err != nil {
 		t.Errorf("Error loading test program: %s", err)
 	}
