@@ -272,7 +272,7 @@ type runTestResult struct {
 // runTestWithoutCheck runs the test without checking expected flows.
 func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) runTestResult {
 	dirName = filepath.Join("./testdata", dirName)
-	lp, err := analysistest.LoadTest(testfsys, dirName, files, false)
+	lp, err := analysistest.LoadTest(testfsys, dirName, files, analysistest.LoadTestOptions{ApplyRewrite: false})
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

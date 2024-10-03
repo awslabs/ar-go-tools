@@ -97,7 +97,7 @@ func TestSimpleEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "simple-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, true)
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "interprocedural-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, true)
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestBuiltinsEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "builtins-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, true)
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestStdlibEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "stdlib-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, true)
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestLocalityComputation(t *testing.T) {
 	// lp, err := analysistest.LoadTestFromDisk(".", []string{})
 
 	dir := filepath.Join("./testdata", "escape-locality")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, true)
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

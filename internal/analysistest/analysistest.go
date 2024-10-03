@@ -41,6 +41,14 @@ type ReadFileDirFS interface {
 	fs.ReadFileFS
 }
 
+// LoadTestOptions groups the options of the LoadTest function together.
+type LoadTestOptions struct {
+	// Whether to apply the rewriting steps before analyzing the program
+	ApplyRewrite bool
+	// Which platform
+	Platform string
+}
+
 // LoadTest loads the program in the directory dir, looking for a main.go and a config.yaml. If additional files
 // are specified as extraFiles, the program will be loaded using those files too.
 //
@@ -48,7 +56,11 @@ type ReadFileDirFS interface {
 // If the Analysis function runs without error but no analysis entrypoints are detected, that may
 // mean that the config's code id's package names do not patch the package name of the SSA program.
 // Try changing the package name to the test directory name to fix the issue.
-func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string, inline bool) (LoadedTestProgram, error) {
+func LoadTest(
+	fsys ReadFileDirFS,
+	dir string,
+	extraFiles []string,
+	options LoadTestOptions) (LoadedTestProgram, error) {
 	var filePaths []string
 	if len(extraFiles) == 0 {
 		_ = fs.WalkDir(fsys, dir, func(path string, entry fs.DirEntry, _ error) error {
@@ -91,8 +103,8 @@ func LoadTest(fsys ReadFileDirFS, dir string, extraFiles []string, inline bool) 
 	loadOptions := analysis.LoadProgramOptions{
 		BuildMode:     ssa.InstantiateGenerics | ssa.BuildSerially,
 		LoadTests:     false,
-		ApplyRewrites: inline,
-		Platform:      "",
+		ApplyRewrites: options.ApplyRewrite,
+		Platform:      options.Platform,
 		PackageConfig: &pcfg,
 	}
 	program, pkgs, err := analysis.LoadProgram(loadOptions, patterns)
