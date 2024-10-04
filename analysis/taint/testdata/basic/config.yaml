@@ -9,6 +9,9 @@ taint-tracking-problems:
     - package: "(basic)|(main)|(command-line-arguments)"
       type: "(chan \\*_S)|(chan _S)"
       kind: "channel receive"
+    - package: "(basic)|(main)|(command-line-arguments)"
+      type: "\\*Sample"
+      field: "Secret"
   sinks:
     - package: "(basic)|(main)|(command-line-arguments)"
       # Similarly, sinks are sink1 sink2 sink2 ...

@@ -16,9 +16,12 @@ package dataflow
 
 import (
 	"fmt"
+	"go/token"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"golang.org/x/tools/go/ssa"
 )
 
 // ReportMissingOrNotConstructedSummary prints a missing summary message to the cache's logger.
@@ -105,4 +108,103 @@ func (s *AnalyzerState) ReportSummaryNotConstructed(callSite *CallNode) {
 				formatutil.Sanitize(methodKey.ValueOr("?"))))
 		}
 	}
+}
+
+type unsoundFeaturesMap struct {
+	Recovers      map[token.Position]bool
+	UnsafeUsages  map[token.Position]string
+	ReflectUsages map[token.Position]string
+}
+
+// reportUnsoundFeatures logs warning messages when unsound features are used in a function. Those include:
+//
+// - call to recover builtin
+//
+// - unsafe
+//
+// - reflect
+//
+// Usages of those features are logged at WARN level with the position of where the feature is used.
+func reportUnsoundFeatures(state *AnalyzerState, f *ssa.Function) {
+	unsoundFeatures := FindUnsoundFeatures(f)
+	if len(unsoundFeatures.Recovers) > 0 ||
+		len(unsoundFeatures.UnsafeUsages) > 0 ||
+		len(unsoundFeatures.ReflectUsages) > 0 {
+		msg := fmt.Sprintf("Function %s is using features that may make the analysis unsound.\n", f.String())
+
+		if len(unsoundFeatures.Recovers) > 0 {
+			msg += "    Using recover at position:\n"
+		}
+		for pos := range unsoundFeatures.Recovers {
+			msg += "\t  " + pos.String() + "\n"
+		}
+
+		if len(unsoundFeatures.UnsafeUsages) > 0 {
+			msg += "    Usages of unsafe:\n"
+		}
+
+		for pos, usageMsg := range unsoundFeatures.UnsafeUsages {
+			msg += "      At " + pos.String() + " : " + usageMsg + "\n"
+		}
+
+		if len(unsoundFeatures.ReflectUsages) > 0 {
+			msg += "    Usages of reflection:\n"
+		}
+
+		for pos, usageMsg := range unsoundFeatures.ReflectUsages {
+			msg += "      At " + pos.String() + " : " + usageMsg + "\n"
+		}
+		msg += "    Adding a predefined summary might help avoid soundness issues.\n"
+
+		state.Logger.Warnf(msg)
+	}
+}
+func FindUnsoundFeatures(f *ssa.Function) unsoundFeaturesMap {
+	unsafeUsages := map[token.Position]string{}
+	recovers := map[token.Position]bool{}
+	reflectUsages := map[token.Position]string{}
+	lang.IterateInstructions(f, func(index int, instrI ssa.Instruction) {
+		iPos := instrI.Parent().Prog.Fset.Position(instrI.Pos())
+		switch instr := instrI.(type) {
+		case ssa.CallInstruction:
+			callCommon := instr.Common()
+			if callCommon.Value == nil {
+				return
+			}
+			if callCommon.Value.Name() == "recover" {
+				recovers[iPos] = true
+				return
+			}
+			if callCommon.IsInvoke() {
+				// Only warn for implementations.
+				return
+			}
+			typStr := callCommon.Value.Type().String()
+			if strings.Contains(typStr, "unsafe") {
+				unsafeUsages[iPos] = fmt.Sprintf("Calling %s from unsafe package.", callCommon.Value.Name())
+				return
+			}
+			if strings.Contains(typStr, "reflect") {
+				reflectUsages[iPos] = fmt.Sprintf("Calling %s from reflect package.", callCommon.Value.Name())
+				return
+			}
+
+		case *ssa.Alloc:
+			typ := instr.Type().Underlying()
+			if strings.HasPrefix(typ.String(), "unsafe") {
+				unsafeUsages[iPos] = fmt.Sprintf("Allocating object of type %s", typ.String())
+				return
+			}
+			if strings.HasPrefix(typ.String(), "reflect") {
+				reflectUsages[iPos] = fmt.Sprintf("Allocating object of type %s", typ.String())
+				return
+			}
+		case *ssa.Convert:
+			typStr := instr.Type().String()
+			if strings.Contains(typStr, "unsafe") {
+				unsafeUsages[iPos] = "Converting data to an unsafe pointer."
+			}
+		}
+	})
+	return unsoundFeaturesMap{recovers, unsafeUsages, reflectUsages}
 }

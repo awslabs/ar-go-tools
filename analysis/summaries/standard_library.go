@@ -791,7 +791,12 @@ var summaryReflect = map[string]Summary{
 		[][]int{{0}, {1}},
 		[][]int{{0}, {0}},
 	},
-	"(reflect.Value).Bool":  SingleVarArgPropagation,
+	"(reflect.Value).Bool": SingleVarArgPropagation,
+	// Over-approximation for Call: it is assumed the function being called fully propagates data
+	"(reflect.Value).Call": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
 	"(reflect.Value).Float": SingleVarArgPropagation,
 	"(reflect.Value).Int":   SingleVarArgPropagation,
 	// func (v Value) Elem() Value
@@ -829,6 +834,11 @@ var summaryReflect = map[string]Summary{
 	"(reflect.Value).Kind": SingleVarArgPropagation,
 	// func (v Value) Len() int
 	"(reflect.Value).Len": SingleVarArgPropagation,
+	// func (v Value) MethodByName(name string) Value
+	"(reflect.Value).MethodByName": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
 	// func (v Value) NumField() int
 	"(reflect.Value).NumField": SingleVarArgPropagation,
 	// func (v Value) MapKeys() []Value
