@@ -110,9 +110,13 @@ func (s *AnalyzerState) ReportSummaryNotConstructed(callSite *CallNode) {
 	}
 }
 
-type unsoundFeaturesMap struct {
-	Recovers      map[token.Position]bool
-	UnsafeUsages  map[token.Position]string
+// UnsoundFeaturesMap maps positions (in a function) to explanations of the unsound features used.
+type UnsoundFeaturesMap struct {
+	// Recovers records the locations where a recover is used.
+	Recovers map[token.Position]bool
+	// UnsafeUsages records the locations where `unsafe` is used, with a short explanation.
+	UnsafeUsages map[token.Position]string
+	// ReflectUsages records the locations where 'reflect' is used, with a short explanation.
 	ReflectUsages map[token.Position]string
 }
 
@@ -159,7 +163,9 @@ func reportUnsoundFeatures(state *AnalyzerState, f *ssa.Function) {
 		state.Logger.Warnf(msg)
 	}
 }
-func FindUnsoundFeatures(f *ssa.Function) unsoundFeaturesMap {
+
+// FindUnsoundFeatures returns a record of the unsound features used by a function, if any.
+func FindUnsoundFeatures(f *ssa.Function) UnsoundFeaturesMap {
 	unsafeUsages := map[token.Position]string{}
 	recovers := map[token.Position]bool{}
 	reflectUsages := map[token.Position]string{}
@@ -206,5 +212,5 @@ func FindUnsoundFeatures(f *ssa.Function) unsoundFeaturesMap {
 			}
 		}
 	})
-	return unsoundFeaturesMap{recovers, unsafeUsages, reflectUsages}
+	return UnsoundFeaturesMap{recovers, unsafeUsages, reflectUsages}
 }
