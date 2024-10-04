@@ -17,6 +17,7 @@ package cli
 import (
 	"go/token"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -88,7 +89,9 @@ func funcsMatchingCommand(tt *term.Terminal, c *dataflow.AnalyzerState, command 
 		regexErr(tt, rString, err)
 		return []*ssa.Function{}
 	}
-	return findFunc(c, r)
+	s := findFunc(c, r)
+	slices.SortFunc(s, func(a, b *ssa.Function) int { return strings.Compare(a.String(), b.String()) })
+	return s
 }
 
 func findFunc(c *dataflow.AnalyzerState, target *regexp.Regexp) []*ssa.Function {

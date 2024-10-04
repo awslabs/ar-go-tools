@@ -1,0 +1,15 @@
+taint-tracking-problems:
+  - sources:
+      - package: main
+        method: Source
+      - package: command-line-arguments
+        method: Source
+      - package: (main|command-line-arguments)
+        field: Source
+    sinks:
+      - package: command-line-arguments
+        method: Sink
+      - package: main
+        method: Sink
+options:
+  summarize-on-demand: true

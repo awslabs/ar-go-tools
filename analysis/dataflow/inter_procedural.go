@@ -150,7 +150,7 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 					externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node)
 					if externalContractSummary != nil {
 						logger.Debugf("Loaded %s from external contracts.\n",
-							formatutil.SanitizeRepr(node.CallSite().Common()))
+							formatutil.SanitizeRepr(node.Callee()))
 						g.Summaries[node.Callee()] = externalContractSummary
 						node.CalleeSummary = externalContractSummary
 						if x := externalContractSummary.Callsites[node.CallSite()]; x == nil {

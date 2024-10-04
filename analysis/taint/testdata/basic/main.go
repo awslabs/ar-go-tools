@@ -65,6 +65,7 @@ func main() {
 	test5()                   // see example3.go
 	testField()               // see fields.go
 	testFieldEmbedded()       // see fields.go
+	testField2()              // see fields.go
 	runSanitizerExamples()    // see sanitizers.go
 	testAliasingTransitive()  // see memory.go
 	testChannelReadAsSource() // see channels.go

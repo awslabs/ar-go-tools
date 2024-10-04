@@ -14,7 +14,13 @@
 
 package main
 
-import "fmt"
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+)
 
 type Example struct {
 	SourceField string
@@ -27,6 +33,40 @@ func testField() {
 	s3 := passing(s.SourceField, s2) // @Source(field2) is the closest to the sink
 	s4 := fmt.Sprintf("%s", s3)
 	sink1(s4) // tainted data reaches this @Sink(field1,field2)
+}
+
+type Sample struct {
+	Secret    string
+	OtherData string
+}
+
+func testField2() {
+	var payload Sample
+	err := json.Unmarshal([]byte("{\"Secret\":\"sdfds\"}"), &payload)
+	if err != nil {
+		return
+	}
+
+	decodedAESKey, err := base64.StdEncoding.DecodeString(payload.OtherData)
+	if err != nil {
+		return
+	}
+
+	newCipher, err := aes.NewCipher(decodedAESKey)
+	if err != nil {
+		return
+	}
+
+	gcm, err := cipher.NewGCM(newCipher)
+	if err != nil {
+		return
+	}
+	nonceSize := gcm.NonceSize()
+	creds, err := base64.StdEncoding.DecodeString(payload.Secret) // @Source(secret)
+	if err != nil {
+		return
+	}
+	sink2(fmt.Sprintf("%s-%d", creds, nonceSize)) // @Sink(secret)
 }
 
 type SourceStruct struct {

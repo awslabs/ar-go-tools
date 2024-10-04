@@ -106,6 +106,8 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 		postBlockCallback:   sm.postBlockCallBack,
 	}
 
+	reportUnsoundFeatures(a, sm.Parent)
+
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
 		a.Logger.Warnf("Defer stack unbounded in %s: %s",
