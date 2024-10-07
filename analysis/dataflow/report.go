@@ -185,24 +185,32 @@ func FindUnsoundFeatures(f *ssa.Function) UnsoundFeaturesMap {
 				// Only warn for implementations.
 				return
 			}
-			typStr := callCommon.Value.Type().String()
-			if strings.Contains(typStr, "unsafe") {
+
+			var pkg string
+			if f, okF := callCommon.Value.(*ssa.Function); okF {
+				pkg = lang.PackageNameFromFunction(f)
+			}
+			if strings.HasPrefix(pkg, "unsafe") {
 				unsafeUsages[iPos] = fmt.Sprintf("Calling %s from unsafe package.", callCommon.Value.Name())
 				return
 			}
-			if strings.Contains(typStr, "reflect") {
+			if strings.HasPrefix(pkg, "reflect") {
 				reflectUsages[iPos] = fmt.Sprintf("Calling %s from reflect package.", callCommon.Value.Name())
 				return
 			}
 
 		case *ssa.Alloc:
-			typ := instr.Type().Underlying()
-			if strings.HasPrefix(typ.String(), "unsafe") {
-				unsafeUsages[iPos] = fmt.Sprintf("Allocating object of type %s", typ.String())
+			valTyp := instr.Type().Underlying()
+			pkg := lang.GetPackageOfType(valTyp)
+			if pkg == nil {
 				return
 			}
-			if strings.HasPrefix(typ.String(), "reflect") {
-				reflectUsages[iPos] = fmt.Sprintf("Allocating object of type %s", typ.String())
+			if strings.HasPrefix(pkg.Name(), "unsafe") {
+				unsafeUsages[iPos] = fmt.Sprintf("Allocating object of type %s", valTyp.String())
+				return
+			}
+			if strings.HasPrefix(pkg.Name(), "reflect") {
+				reflectUsages[iPos] = fmt.Sprintf("Allocating object of type %s", valTyp.String())
 				return
 			}
 		case *ssa.Convert:
