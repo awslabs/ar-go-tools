@@ -164,6 +164,10 @@ func main() {
 }
 
 func errExit(err error) {
-	fmt.Fprintf(os.Stderr, "error: %v", err)
+	fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	hint := tools.HintForErrorMessage(err.Error())
+	if hint != "" {
+		fmt.Fprintf(os.Stderr, "Hint: %s\n", hint)
+	}
 	os.Exit(2)
 }
