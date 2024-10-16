@@ -1,0 +1,41 @@
+options:
+  log-level: 3
+  max-alarms: 10
+  unsafe-max-depth: 6
+  reports-dir: "payload/selfcheck/taint-report"
+  max-entrypoint-context-size: 2
+  summarize-on-demand: true
+  report-paths: true
+  field-sensitive-funcs:
+    - "AnalyzerState"
+
+dataflow-specs:
+  - "argot-specs.json"
+  - "std-specs.json"
+
+# Define the analysis problems
+
+taint-tracking-problems:
+  # Tracking the data that flows from the client code being analyzed to location where we might log strings from
+  # that code. For example, if a (*ssa.Function).String() is logged in a log.Warnf call.
+  # Data should be Sanitized using the formatutil.Santitize function.
+  - sources:
+      - package: "ssa"
+        method: "String" # any String method from the ssa package, includes function.String etc.
+        context: "ar-go-tools" # Only sources in our code, i.e. in ar-go-tools
+    sinks:
+      - context: "ar-go-tools"
+        package: "fmt"
+        method: "((Printf)|(Fprintf))"
+      - package: "config"
+        method: "((Warnf)|(Debugf)|(Infof)|(Errorf))" # the logging functions in our implementation
+    sanitizers:
+      - package: "formatutil"
+        method: "Sanitize"
+    filters:
+      - type: "LogGroup" # log group cannot be really tainted by the data, but taint tracking will mark it
+      # because formatters are deemed tainted by their arguments. This is a very restrictive assumption.
+      - type: "io.Writer"
+      - type: "^int$" # not enough data in an int to do terminal injection
+      - type: "^bool$" # same for bool
+

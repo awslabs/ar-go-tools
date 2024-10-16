@@ -30,6 +30,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/render"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
@@ -220,7 +221,7 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 			b.WriteTo(w)
 			b.Reset()
 		case *ssa.Global:
-			fmt.Fprintf(w, "%q\n", pkgM.String())
+			fmt.Fprintf(w, "%s\n", formatutil.Sanitize(pkgM.String()))
 		case *ssa.Type:
 			methods := typeutil.IntuitiveMethodSet(pkgM.Type(), &p.MethodSets)
 			for _, sel := range methods {

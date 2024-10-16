@@ -20,6 +20,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/shims"
 	"golang.org/x/tools/go/ssa"
 )
@@ -249,7 +250,8 @@ func (a *AbstractValue) HasMarkAt(path string, m *Mark) bool {
 func (a *AbstractValue) Show(w io.Writer) {
 	if !a.isPathSensitive {
 		for mark := range a.marks {
-			fmt.Fprintf(w, "   %s = %s marked by <%s>", a.value.Name(), a.value, mark.String())
+			fmt.Fprintf(w, "   %s = %s marked by <%s>", a.value.Name(), a.value,
+				formatutil.Sanitize(mark.String()))
 		}
 	} else {
 		for path, marks := range a.accessMarks {

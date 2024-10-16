@@ -17,6 +17,7 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/typeparams"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -63,7 +64,7 @@ func (a *analysis) addOneNode(typ types.Type, comment string, subelement *fieldI
 	a.nodes = append(a.nodes, &node{typ: typ, subelement: subelement, solve: new(solverState)})
 	if a.log != nil {
 		fmt.Fprintf(a.log, "\tcreate n%d %s for %s%s\n",
-			id, typ, comment, subelement.path())
+			id, typ, formatutil.Sanitize(comment), subelement.path())
 	}
 	return id
 }
@@ -151,7 +152,7 @@ func (a *analysis) endObject(obj nodeid, cgn *cgnode, data interface{}) *object 
 // callsite; for shared contours, caller is nil.
 func (a *analysis) makeFunctionObject(fn *ssa.Function, callersite *callsite) nodeid {
 	if a.log != nil {
-		fmt.Fprintf(a.log, "\t---- makeFunctionObject %s\n", fn)
+		fmt.Fprintf(a.log, "\t---- makeFunctionObject %s\n", formatutil.Sanitize(fn.String()))
 	}
 
 	// obj is the function object (identity, params, results).

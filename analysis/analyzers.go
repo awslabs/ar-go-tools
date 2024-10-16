@@ -125,7 +125,7 @@ type singleFunctionJob struct {
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
 	isEntrypoint func(*dataflow.AnalyzerState, ssa.Node) bool) dataflow.IntraProceduralResult {
-	targetName := lang.PackageNameFromFunction(job.function) + "." + job.function.Name()
+	targetName := formatutil.Sanitize(lang.PackageNameFromFunction(job.function) + "." + job.function.Name())
 	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
 	result, err := dataflow.IntraProceduralAnalysis(job.analyzerState, job.function,
 		job.shouldBuildSummary, dataflow.GetUniqueFunctionID(), isEntrypoint, job.postBlockCallback)

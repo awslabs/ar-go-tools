@@ -73,13 +73,55 @@
   {
     "ObjectPath":"(*github.com/awslabs/ar-go-tools/analysis/taint.Visitor)",
     "Methods": {
-      "Visit": {"Args": [[0],[0,1], [0,1,2]],"Rets": [[0],[0],[0]], "Comment": "This spec ignores all the calls inside, but this method is too expensive too analyze for our usage."}
+      "Visit": {
+        "Args": [[0],[0,1], [0,1,2]],
+        "Rets": [[0],[0],[0]],
+        "Comment": "This spec ignores all the calls inside, but this method is too expensive too analyze for our usage."
+      }
+    }
+  },
+  {
+    "ObjectPath":"(github.com/awslabs/ar-go-tools/analysis/render.CrossFunctionGraphVisitor)",
+    "Methods": {
+      "Visit": {
+        "Args": [[0],[0,1], [0,1,2]],
+        "Rets": [[0],[0],[0]],
+        "Comment": "This spec ignores all the calls inside, but this method is too expensive too analyze for our usage."
+      }
+    }
+  },
+  {
+    "ObjectPath":"(*github.com/awslabs/ar-go-tools/analysis/backtrace.Visitor)",
+    "Methods": {
+      "visit": {
+        "Args": [[0],[0,1], [0,1,2]],
+        "Rets": [[0],[0],[0]],
+        "Comment": "This spec ignores all the calls inside, but this method is too expensive too analyze for our usage."
+      }
     }
   },
   {
     "ObjectPath": "github.com/awslabs/ar-go-tools/analysis/summaries",
     "Methods": {
       "init": {"Args": [[]], "Rets": [[]]}
+    }
+  },
+  {
+    "ObjectPath": "(*go/types.unifier)",
+    "Methods": {
+      "nify": {
+        "Args": [[0],[1],[2],[3]],
+        "Rets": [[0],[0],[0],[0]]
+      }
+    }
+  },
+  {
+    "ObjectPath": "(*go/types.Checker)",
+    "Methods": {
+      "builtin": {
+        "Args": [[0],[1],[2]],
+        "Rets": [[0],[0],[0]]
+      }
     }
   }
 ]

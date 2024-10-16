@@ -135,6 +135,17 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		traceNode(s, cur)
 
+		// If the node is filtered out, we don't inspect children.
+		// Test this before checking for sink in case this is a filtered argument in a sink call (this is common when
+		// you are tracking flows to logging but don't care about integers and booleans for example).
+		if isFiltered(s, v.taintSpec, cur.Node) {
+			if _, isIf := cur.Node.(*df.IfNode); !isIf || v.taintSpec.FailOnImplicitFlow {
+				logger.Infof("Filtered value: %s\n", cur.Node.String())
+				logger.Infof("At: %s\n", cur.Node.Position(s))
+			}
+			continue
+		}
+
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(s, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
 			if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
@@ -155,11 +166,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		if isSanitizer(s, v.taintSpec, cur.Node) {
 			logger.Infof("Sanitizer encountered: %s\n", cur.Node.String())
 			logger.Infof("At: %s\n", cur.Node.Position(s))
-			continue
-		}
-
-		// If the node is filtered out, we don't inspect children
-		if isFiltered(s, v.taintSpec, cur.Node) {
 			continue
 		}
 

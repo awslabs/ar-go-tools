@@ -40,12 +40,14 @@ Examples:
 type Flags struct {
 	tools.CommonFlags
 	maxDepth int
+	dryRun   bool
 }
 
 // NewFlags returns the parsed flags for the taint analysis with args.
 func NewFlags(args []string) (Flags, error) {
 	flags := tools.NewUnparsedCommonFlags("taint")
 	maxDepth := flags.FlagSet.Int("unsafe-df-max-depth", -1, "override dataflow max depth in config: unsafe!")
+	dryRun := flags.FlagSet.Bool("dry-run", false, "analysis dry-run: only identify code locations")
 	tools.SetUsage(flags.FlagSet, usage)
 	if err := flags.FlagSet.Parse(args); err != nil {
 		return Flags{}, fmt.Errorf("failed to parse command taint with args %v: %v", args, err)
@@ -59,6 +61,7 @@ func NewFlags(args []string) (Flags, error) {
 			WithTest:   *flags.WithTest,
 		},
 		maxDepth: *maxDepth,
+		dryRun:   *dryRun,
 	}, nil
 }
 
@@ -73,16 +76,27 @@ func Run(flags Flags) error {
 
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
+		logger.Printf("%s %d\n",
+			formatutil.Green("[INFO] verbose command line flag overrides config file log-level"),
+			taintConfig.LogLevel)
 		taintConfig.LogLevel = int(config.DebugLevel)
 	}
 	if flags.maxDepth > 0 {
 		taintConfig.UnsafeMaxDepth = flags.maxDepth
-		logger.Printf("%s %d\n", formatutil.Red("[WARNING] UNSAFE config max data-flow depth set to:"), flags.maxDepth)
+		logger.Printf("%s %d\n", formatutil.Red("[WARNING] UNSAFE config max data-flow depth set to:"),
+			flags.maxDepth)
+	}
+	if flags.dryRun {
+		logger.Printf("%s\n",
+			formatutil.Green("[INFO] dry-run command line flag sets on demand summarization to true"))
+		taintConfig.SummarizeOnDemand = true
 	}
 
 	logger.Printf(formatutil.Faint("Argot taint tool - " + analysis.Version))
-	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 
+	// Loading the program
+	startLoad := time.Now()
+	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 	loadOptions := analysis.LoadProgramOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
@@ -91,9 +105,12 @@ func Run(flags Flags) error {
 	}
 	program, pkgs, err := analysis.LoadProgram(loadOptions, flags.FlagSet.Args())
 	if err != nil {
-		return fmt.Errorf("could not load program: %v", err)
+		return fmt.Errorf("could not load program:\n %v", err)
 	}
+	loadDuration := time.Since(startLoad)
+	logger.Printf("Loaded program in %3.4f s", loadDuration.Seconds())
 
+	// Starting the analysis
 	start := time.Now()
 	result, err := taint.Analyze(taintConfig, program, pkgs)
 	duration := time.Since(start)
@@ -105,6 +122,8 @@ func Run(flags Flags) error {
 		}
 		return fmt.Errorf("taint analysis failed: %v", err)
 	}
+
+	// Printing final results
 	result.State.Logger.Infof("")
 	result.State.Logger.Infof(strings.Repeat("*", 80))
 	result.State.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
@@ -126,7 +145,11 @@ func Run(flags Flags) error {
 	}
 
 	Report(program, result)
-
+	// If some taint flows have been found, or some taint flow escapes, the analysis should return an error.
+	// Scripts that use the taint analysis can then rely on the boolean fail/success state of the analysis terminating.
+	if len(result.TaintFlows.Sinks) > 0 || len(result.TaintFlows.Escapes) > 0 {
+		return fmt.Errorf("taint analysis found problems, inspect logs for more information")
+	}
 	return nil
 }
 

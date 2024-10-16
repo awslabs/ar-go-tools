@@ -10,6 +10,8 @@ import (
 	"go/types"
 	"os"
 	"strings"
+
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
 
 //go:generate go run copytermlist.go
@@ -132,7 +134,7 @@ func computeTermSetInternal(t types.Type, seen map[types.Type]*termSet, depth in
 	}
 
 	if debug {
-		indentf(depth, "%s", t.String())
+		indentf(depth, "%s", formatutil.Sanitize(t.String()))
 		defer func() {
 			if err != nil {
 				indentf(depth, "=> %s", err)
