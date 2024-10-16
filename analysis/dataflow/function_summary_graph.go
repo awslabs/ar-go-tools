@@ -325,7 +325,7 @@ func (g *SummaryGraph) addCallInstr(c *AnalyzerState, instr ssa.CallInstruction)
 	callees, err := c.ResolveCallee(instr, true)
 	if err != nil {
 		c.Logger.Errorf("missing information in state (%s), could not resolve callee in instruction %s", err,
-			instr.String())
+			ftu.Sanitize(instr.String()))
 		panic("critical information missing in analysis")
 	}
 

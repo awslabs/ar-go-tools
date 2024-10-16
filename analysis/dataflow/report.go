@@ -45,7 +45,8 @@ func (s *AnalyzerState) ReportMissingOrNotConstructedSummary(callSite *CallNode)
 			callSite.String(), typeString)))
 	}
 	if callSite.Callee() != nil && callSite.CallSite() != nil {
-		s.Logger.Debugf(fmt.Sprintf("| Please add %q to summaries", callSite.Callee().String()))
+		s.Logger.Debugf(fmt.Sprintf("| Please add %s to summaries",
+			formatutil.Sanitize(callSite.Callee().String())))
 
 		pos := callSite.Position(s)
 		if pos != lang.DummyPos {
@@ -134,7 +135,8 @@ func reportUnsoundFeatures(state *AnalyzerState, f *ssa.Function) {
 	if len(unsoundFeatures.Recovers) > 0 ||
 		len(unsoundFeatures.UnsafeUsages) > 0 ||
 		len(unsoundFeatures.ReflectUsages) > 0 {
-		msg := fmt.Sprintf("Function %s is using features that may make the analysis unsound.\n", f.String())
+		msg := fmt.Sprintf("Function %s is using features that may make the analysis unsound.\n",
+			formatutil.Sanitize(f.String()))
 
 		if len(unsoundFeatures.Recovers) > 0 {
 			msg += "    Using recover at position:\n"

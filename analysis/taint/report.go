@@ -92,7 +92,7 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 			c.Logger.Errorf("Could not write report.")
 		}
 		defer tmp.Close()
-		c.Logger.Infof("Report in %s\n", tmp.Name())
+		c.Logger.Infof("Report in %s\n", formatutil.Sanitize(tmp.Name()))
 
 		tmp.WriteString(fmt.Sprintf("Source: %s\n", source.Node.String()))
 		tmp.WriteString(fmt.Sprintf("At: %s\n", source.Node.Position(c)))

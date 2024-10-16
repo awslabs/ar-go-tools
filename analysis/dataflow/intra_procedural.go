@@ -111,7 +111,7 @@ func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, erro
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
 		a.Logger.Warnf("Defer stack unbounded in %s: %s",
-			sm.Parent.String(), formatutil.Yellow("analysis unsound!"))
+			formatutil.Sanitize(sm.Parent.String()), formatutil.Yellow("analysis unsound!"))
 	}
 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
 	state.initialize()
