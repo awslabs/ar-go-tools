@@ -26,8 +26,10 @@ taint-tracking-problems:
     sinks:
       - context: "ar-go-tools"
         package: "fmt"
+        value-match: ".*%s.*" # we only care about string formats. %q is fine to use
         method: "((Printf)|(Fprintf))"
       - package: "config"
+        value-match: ".*%s.*" # we only care about string formats. %q is fine to use
         method: "((Warnf)|(Debugf)|(Infof)|(Errorf))" # the logging functions in our implementation
     sanitizers:
       - package: "formatutil"
@@ -38,4 +40,5 @@ taint-tracking-problems:
       - type: "io.Writer"
       - type: "^int$" # not enough data in an int to do terminal injection
       - type: "^bool$" # same for bool
+      - type: "^float" # same for floats
 
