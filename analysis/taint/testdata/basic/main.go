@@ -69,6 +69,7 @@ func main() {
 	runSanitizerExamples()    // see sanitizers.go
 	testAliasingTransitive()  // see memory.go
 	testChannelReadAsSource() // see channels.go
+	testValueMatch()          // see valuematch.go
 }
 
 type Data struct {

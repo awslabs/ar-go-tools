@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,34 +16,11 @@ package main
 
 import "fmt"
 
-func source2(x int) string {
-	s := ""
-	for i := 0; i < x; i++ {
-		s += "a"
-	}
-	return s
-}
-
-func producer(x chan string) {
-	x <- source2(10) // @Source(line14)
-}
-
-func producerCaller(b chan string) {
-	b <- "ok"
-	producer(b)
-}
-
-func consumer(b chan string) {
-	sink2(<-b) // want "reached by tainting call on line 14" @Sink(line14)
-}
-
-func test1() {
-	b := make(chan string, 3)
-	producerCaller(b)
-	fmt.Printf("Example: %q, %q", <-b, "ok")
-	consumer(b)
-}
-
-func sink2(s string) {
-	fmt.Printf("Log: %s", s)
+func testValueMatch() {
+	// In the config file, fmt.Printf is marked as a sink with an additional constraint on value matching:
+	// it is a sink only when the value of the call matches the string provided 9in this case checks that the format
+	// argument contains a %s).
+	taintedString := source1() // @Source(testValueMatch)
+	fmt.Printf("printing with %q is ok", taintedString)
+	fmt.Printf("printing with %s is not ok", taintedString) // @Sink(testValueMatch)
 }

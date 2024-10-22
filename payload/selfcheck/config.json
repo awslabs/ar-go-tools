@@ -1,14 +1,13 @@
 {
-
-
   "options": {
     "log-level": 3,
     "pkg-filter": "ar-go-tools",
     "max-alarms": 2,
-    "unsafe-max-depth": 10,
+    "unsafe-max-depth": 6,
     "max-entrypoint-context-size": 2,
     "summarize-on-demand": true,
     "report-paths": true,
+    "reports-dir": "payload/selfcheck/taint-report"
   },
   "dataflow-specs": [
     "argot-specs.json",
@@ -27,11 +26,33 @@
         {
           "context": "ar-go-tools/analysis",
           "package": "fmt",
+          "value-match": ".*%s.*",
           "method": "((Printf)|(Fprintf))"
         },
         {
           "package": "config",
+          "value-match": ".*%s.*",
           "method": "((Warnf)|(Debugf)|(Infof)|(Errorf))"
+        }
+      ],
+      "sanitizers": [
+        {
+          "package": "formatutil",
+          "method": "Sanitize"
+        }
+      ],
+      "filters": [
+        {
+          "type": "LogGroup"
+        },
+        {
+          "type": "^int$"
+        },
+        {
+          "type": "^bool$"
+        },
+        {
+          "type": "^float"
         }
       ]
     }

@@ -59,6 +59,10 @@ type CodeIdentifier struct {
 	// to tag a code identifier as a specific "channel receive"
 	Kind string `xml:"kind,attr"`
 
+	// ValueMatch can be used to match specific calls to a function. This is useful to match specific calls to
+	// formatting functions.
+	ValueMatch string `xml:"value-match,attr" yaml:"value-match" json:"value-match"`
+
 	// computedRegexs is not part of the yaml config, but contains the compiled regex version of the code identifier
 	// elements that are parsed as regexes.
 	computedRegexs *codeIdentifierRegex
@@ -70,13 +74,14 @@ func NewCodeIdentifier(cid CodeIdentifier) CodeIdentifier {
 }
 
 type codeIdentifierRegex struct {
-	contextRegex   *regexp.Regexp
-	packageRegex   *regexp.Regexp
-	interfaceRegex *regexp.Regexp
-	typeRegex      *regexp.Regexp
-	methodRegex    *regexp.Regexp
-	fieldRegex     *regexp.Regexp
-	receiverRegex  *regexp.Regexp
+	contextRegex    *regexp.Regexp
+	packageRegex    *regexp.Regexp
+	interfaceRegex  *regexp.Regexp
+	typeRegex       *regexp.Regexp
+	methodRegex     *regexp.Regexp
+	fieldRegex      *regexp.Regexp
+	receiverRegex   *regexp.Regexp
+	valueMatchRegex *regexp.Regexp
 }
 
 // compileRegexes compiles the strings in the code identifier into regexes. It compiles all identifiers into regexes
@@ -112,6 +117,10 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	if err != nil {
 		fmt.Printf("[WARN] failed to compile receiver regex %v: %v\n", cid.Receiver, err)
 	}
+	valueMatchRegex, err := regexp.Compile(cid.ValueMatch)
+	if err != nil {
+		fmt.Printf("[WARN] failed to compile value match regex %v: %v\n", cid.ValueMatch, err)
+	}
 	cid.computedRegexs = &codeIdentifierRegex{
 		contextRegex,
 		packageRegex,
@@ -120,6 +129,7 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 		methodRegex,
 		fieldRegex,
 		receiverRegex,
+		valueMatchRegex,
 	}
 	return cid
 }
@@ -136,7 +146,8 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 			((cidRef.computedRegexs.methodRegex.MatchString(cid.Method)) || (cidRef.Method == "")) &&
 			((cidRef.computedRegexs.receiverRegex.MatchString(cid.Receiver)) || (cidRef.Receiver == "")) &&
 			((cidRef.computedRegexs.fieldRegex.MatchString(cid.Field)) || (cidRef.Field == "")) &&
-			(cidRef.computedRegexs.typeRegex.MatchString(cid.Type) || (cidRef.Type == "")) &&
+			(cidRef.computedRegexs.typeRegex.MatchString(cid.Type) || cidRef.Type == "") &&
+			(cidRef.computedRegexs.valueMatchRegex.MatchString(cid.ValueMatch) || cidRef.ValueMatch == "") &&
 			(cidRef.Kind == cid.Kind)
 	}
 	return ((cid.Context == cidRef.Context) || (cidRef.Context == "")) &&
@@ -146,6 +157,7 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 		((cid.Receiver == cidRef.Receiver) || (cidRef.Receiver == "")) &&
 		((cid.Field == cidRef.Field) || (cidRef.Field == "")) &&
 		((cid.Type == cidRef.Type) || (cidRef.Type == "")) &&
+		((cid.ValueMatch == cidRef.ValueMatch) || (cidRef.ValueMatch == "")) &&
 		(cidRef.Kind == cid.Kind)
 }
 
