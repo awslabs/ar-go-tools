@@ -120,7 +120,7 @@ This implies that any method whose receiver implements the `mypackage.interfaceN
 
 Code locations can additionally be restricted to match a specific "context". Adding `context: "some-string"` to a code location specification specifies that the code locations are matched only when they appear inside a function whose full name (package + function) matches the regex `some-string`. The user can therefore restrict the context to a particular module, package or function.
 For example, the following config:
-```shell
+```yaml
 taint-tracking-problems:
    - sinks:
       - context: 'github.com/ar-go-tools/analysis'
@@ -128,6 +128,20 @@ taint-tracking-problems:
         method: 'Errorf'
 ```
 Specifies that the sinks are the calls to `fmt.Errorf` in the package `analysis` of Argot (and not in the internal packages for example). 
+
+#### Code locations with specific arguments
+
+Code locations can additionally be restricted to match a specific regular expression. Currently, this is enforced only for function calls. By adding the `value-match: "myregex"` constraint to a code location, you specify that when matching that code location, the taint analyzer must check that the string representation of the location must match the regex `myRegex`. 
+
+This is particularly useful for functions that take constant arguments, for example formatting functions:
+```yaml
+taint-tracking-problems:
+  - sinks:
+      - package: "fmt"
+        method: "Printf"
+        value-match: ".*%s.*"
+```
+This will match calls to `fmt.Printf` where the format (or any constant argument) contains the format specifier `%s` in the string. Calls to `fmt.Printf` that just print numbers will be ignored for example.
 
 ### Controlling The Data Flow Search
 
