@@ -147,20 +147,22 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 			maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
 			if maybePkg.IsSome() {
 				cid := config.CodeIdentifier{
-					Context:  node.Parent().String(),
-					Package:  maybePkg.Value(),
-					Method:   methodName,
-					Receiver: receiverType,
+					Context:    node.Parent().String(),
+					Package:    maybePkg.Value(),
+					Method:     methodName,
+					Receiver:   receiverType,
+					ValueMatch: n.String(),
 				}
 				return codeIDOracle(cid)
 			}
 			if callee != nil {
 				pkgName := lang.PackageNameFromFunction(callee)
 				cid := config.CodeIdentifier{
-					Context:  node.Parent().String(),
-					Package:  pkgName,
-					Method:   methodName,
-					Receiver: receiverType,
+					Context:    node.Parent().String(),
+					Package:    pkgName,
+					Method:     methodName,
+					Receiver:   receiverType,
+					ValueMatch: n.String(),
 				}
 				return codeIDOracle(cid)
 			}
@@ -175,20 +177,22 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 		maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
 		if maybePkg.IsSome() {
 			cid := config.CodeIdentifier{
-				Context:  node.Parent().String(),
-				Package:  maybePkg.Value(),
-				Method:   funcName,
-				Receiver: receiverType,
+				Context:    node.Parent().String(),
+				Package:    maybePkg.Value(),
+				Method:     funcName,
+				Receiver:   receiverType,
+				ValueMatch: n.String(),
 			}
 			return codeIDOracle(cid)
 		}
 		if callee != nil {
 			pkgName := lang.PackageNameFromFunction(callee)
 			cid := config.CodeIdentifier{
-				Context:  node.Parent().String(),
-				Package:  pkgName,
-				Method:   funcName,
-				Receiver: receiverType,
+				Context:    node.Parent().String(),
+				Package:    pkgName,
+				Method:     funcName,
+				Receiver:   receiverType,
+				ValueMatch: n.String(),
 			}
 			return codeIDOracle(cid)
 		}
@@ -196,8 +200,9 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 
 	case *ssa.Function:
 		return codeIDOracle(config.CodeIdentifier{
-			Package: lang.PackageNameFromFunction(node),
-			Method:  node.Name(),
+			Package:    lang.PackageNameFromFunction(node),
+			Method:     node.Name(),
+			ValueMatch: n.String(),
 		})
 	// We will likely extend the functionality to other types of sanitizers
 	default:

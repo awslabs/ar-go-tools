@@ -878,7 +878,8 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 	} else {
 		// The function doesn't have an escape graph explicitly, but we got here because of taint.
 		// Thus, we might be missing taint escape. Ideally, this should be fixed by adjusting the allowlist.
-		s.Logger.Warnf("Function %s has no escape information, but does have taint flow", f.String())
+		s.Logger.Warnf("Function %s has no escape information, but does have taint flow",
+			formatutil.Sanitize(f.String()))
 	}
 	return update
 }

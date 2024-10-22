@@ -16,6 +16,9 @@ taint-tracking-problems:
     - package: "(basic)|(main)|(command-line-arguments)"
       # Similarly, sinks are sink1 sink2 sink2 ...
       method: ".*(s|S)ink[1-9]"
+    - package: "fmt"
+      method: "Printf"
+      value-match: ".*%s.*"
   sanitizers:
     - package: "(basic)|(main)|(command-line-arguments)"
       method: ".*(s|S)anitize[1-9]?"
