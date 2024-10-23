@@ -134,7 +134,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: df.ShouldBuildSummary,
-		IsEntrypoint:       isSomeIntraProceduralEntryPoint,
+		ShouldTrack:        isSomeIntraProceduralEntryPoint,
 	})
 
 	var errs []error

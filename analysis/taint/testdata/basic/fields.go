@@ -84,3 +84,15 @@ func testFieldEmbedded() {
 	s4 := fmt.Sprintf("%s", s3)
 	sink1(s4) // @Sink(embedded1,embedded2)
 }
+
+type ExampleData struct {
+	SinkField string
+	OtherData string
+}
+
+func testStoreTaintedDataInField() {
+	x := source1() // @Source(storeTaintedData)
+	s := ExampleData{OtherData: "not tainted", SinkField: "not tainted"}
+	s.SinkField = x // @Sink(storeTaintedData)
+	println(s.SinkField)
+}

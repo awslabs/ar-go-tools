@@ -92,7 +92,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 		analysis.IntraAnalysisParams{
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
 			// For the intra-procedural pass, all source nodes of all problems are marked
-			IsEntrypoint: IsSomeSourceNode,
+			ShouldTrack: IsNodeOfInterest,
 		})
 
 	// ** Third step **

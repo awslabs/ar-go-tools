@@ -94,7 +94,7 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, progra
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		IsEntrypoint:       func(*dataflow.AnalyzerState, ssa.Node) bool { return true },
+		ShouldTrack:        func(*dataflow.AnalyzerState, ssa.Node) bool { return true },
 	})
 
 	state, err = render.BuildCrossFunctionGraph(state)

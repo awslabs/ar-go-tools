@@ -321,8 +321,10 @@ func (state *IntraAnalysisState) makeEdgesAtIf(x *ssa.If) {
 // makeEdgesSyntheticNodes analyzes the synthetic
 func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
 	aState := state.parentAnalyzerState
-	if asValue, ok := instr.(ssa.Value); ok &&
-		state.shouldTrack(aState, instr.(ssa.Node)) {
+	if !state.shouldTrack(aState, instr.(ssa.Node)) {
+		return
+	}
+	if asValue, ok := instr.(ssa.Value); ok {
 		for _, origin := range state.getMarks(instr, asValue, "", false) {
 			_, isField := instr.(*ssa.Field)
 			_, isFieldAddr := instr.(*ssa.FieldAddr)
@@ -330,6 +332,10 @@ func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) 
 			if isField || isFieldAddr {
 				state.summary.addSyntheticEdge(origin, nil, instr, "")
 			}
+		}
+	} else if storeInstr, isStore := instr.(*ssa.Store); isStore {
+		for _, origin := range state.getMarks(instr, storeInstr.Val, "", false) {
+			state.summary.addSyntheticEdge(origin, nil, instr, "")
 		}
 	}
 }

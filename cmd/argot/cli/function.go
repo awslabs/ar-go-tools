@@ -340,7 +340,7 @@ func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, wit
 	}
 
 	_, err := dataflow.IntraProceduralAnalysis(c, state.CurrentFunction, true, 0,
-		taint.IsSomeSourceNode, post)
+		taint.IsNodeOfInterest, post)
 	if err != nil {
 		WriteErr(tt, "Error while analyzing.")
 		return false

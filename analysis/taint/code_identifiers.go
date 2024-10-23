@@ -25,6 +25,14 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// IsNodeOfInterest returns true when the node should appear in the dataflow graph.
+func IsNodeOfInterest(state *dataflow.AnalyzerState, n ssa.Node) bool {
+	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
+		analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSink) ||
+		state.ResolveSsaNode(annotations.Source, "_", n) ||
+		state.ResolveSsaNode(annotations.Sink, "_", n)
+}
+
 // IsSomeSourceNode returns true if n matches the code identifier of some source in the config
 func IsSomeSourceNode(s *dataflow.AnalyzerState, n ssa.Node) bool {
 	return analysisutil.IsEntrypointNode(s.PointerAnalysis, n, s.Config.IsSomeSource) ||
@@ -197,6 +205,10 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 			return codeIDOracle(cid)
 		}
 		return false
+
+		// Stores in struct fields
+	case *ssa.Store:
+		return analysisutil.IsEntrypointNode(nil, node, codeIDOracle)
 
 	case *ssa.Function:
 		return codeIDOracle(config.CodeIdentifier{

@@ -252,7 +252,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command,
 		}
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			IsEntrypoint:       taint.IsSomeSourceNode,
+			ShouldTrack:        taint.IsNodeOfInterest,
 		})
 		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
@@ -283,7 +283,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command,
 		// Run the analysis with the filter.
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			IsEntrypoint:       taint.IsSomeSourceNode,
+			ShouldTrack:        taint.IsNodeOfInterest,
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 

@@ -34,9 +34,9 @@ type IntraAnalysisParams struct {
 	// ShouldBuildSummary indicates whether the summary should be built when it is created
 	ShouldBuildSummary func(*dataflow.AnalyzerState, *ssa.Function) bool
 
-	// IsEntrypoint is a function that returns true if the node should be an entrypoint to the analysis.
+	// ShouldTrack is a function that returns true if the node should be an entrypoint to the analysis.
 	// The entrypoint node is treated as a "source" of data.
-	IsEntrypoint func(*dataflow.AnalyzerState, ssa.Node) bool
+	ShouldTrack func(*dataflow.AnalyzerState, ssa.Node) bool
 
 	// PostBlockCallback will be called each time a block is analyzed if the analysis is running on a single core
 	// This is useful for debugging purposes
@@ -67,7 +67,7 @@ func RunIntraProceduralPass(state *dataflow.AnalyzerState, numRoutines int, args
 	}
 
 	// Start the single function summary building routines
-	results := runJobs(jobs, numRoutines, args.IsEntrypoint)
+	results := runJobs(jobs, numRoutines, args.ShouldTrack)
 	collectResults(results, &fg, state)
 
 	state.Logger.Infof("Intra-procedural pass done (%.2f s).", time.Since(start).Seconds())
@@ -77,9 +77,9 @@ func RunIntraProceduralPass(state *dataflow.AnalyzerState, numRoutines int, args
 
 // runJobs runs the intra-procedural analysis on each job in jobs in parallel and returns a slice with all the results.
 func runJobs(jobs []singleFunctionJob, numRoutines int,
-	isEntrypoint func(*dataflow.AnalyzerState, ssa.Node) bool) []dataflow.IntraProceduralResult {
+	shouldTrack func(*dataflow.AnalyzerState, ssa.Node) bool) []dataflow.IntraProceduralResult {
 	f := func(job singleFunctionJob) dataflow.IntraProceduralResult {
-		return runSingleFunctionJob(job, isEntrypoint)
+		return runSingleFunctionJob(job, shouldTrack)
 	}
 
 	return funcutil.MapParallel(jobs, f, numRoutines)
@@ -124,11 +124,11 @@ type singleFunctionJob struct {
 // runSingleFunctionJob runs the intra-procedural analysis with the information in job
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
-	isEntrypoint func(*dataflow.AnalyzerState, ssa.Node) bool) dataflow.IntraProceduralResult {
+	shouldTrack func(*dataflow.AnalyzerState, ssa.Node) bool) dataflow.IntraProceduralResult {
 	targetName := formatutil.Sanitize(lang.PackageNameFromFunction(job.function) + "." + job.function.Name())
 	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
 	result, err := dataflow.IntraProceduralAnalysis(job.analyzerState, job.function,
-		job.shouldBuildSummary, dataflow.GetUniqueFunctionID(), isEntrypoint, job.postBlockCallback)
+		job.shouldBuildSummary, dataflow.GetUniqueFunctionID(), shouldTrack, job.postBlockCallback)
 
 	if err != nil {
 		job.analyzerState.Logger.Errorf("error while analyzing %q:\n\t%v\n", job.function.Name(), err)
