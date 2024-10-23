@@ -20,6 +20,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"strconv"
 )
 
 type Example struct {
@@ -94,5 +96,21 @@ func testStoreTaintedDataInField() {
 	x := source1() // @Source(storeTaintedData)
 	s := ExampleData{OtherData: "not tainted", SinkField: "not tainted"}
 	s.SinkField = x // @Sink(storeTaintedData)
+	println(s.SinkField)
+}
+
+func genExample() Example {
+	s := "tainted" + strconv.Itoa(rand.Int())
+	o := "ok"
+	return Example{
+		SourceField: s,
+		OtherData:   o,
+	}
+}
+
+func testSourceFieldInSinkField() {
+	x := genExample()
+	s := ExampleData{OtherData: "not tainted", SinkField: "not tainted"}
+	s.SinkField = x.SourceField // @Source(sourceFieldInSinkField) @Sink(sourceFieldInSinkField)
 	println(s.SinkField)
 }

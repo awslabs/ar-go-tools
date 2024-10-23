@@ -66,6 +66,7 @@ func main() {
 	testField()                   // see fields.go
 	testFieldEmbedded()           // see fields.go
 	testStoreTaintedDataInField() // see fields.go
+	testSourceFieldInSinkField()  // see fields.go
 	testField2()                  // see fields.go
 	runSanitizerExamples()        // see sanitizers.go
 	testAliasingTransitive()      // see memory.go

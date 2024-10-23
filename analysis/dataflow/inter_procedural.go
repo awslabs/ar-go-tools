@@ -337,6 +337,7 @@ func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterPr
 		}
 
 		// special cases for each SSA node type supported
+		// TODO: try to factor out the special cases in the isEntryPointGraphNode functions
 		switch node := n.(type) {
 		case *SyntheticNode:
 			if _, isStore := node.instr.(*ssa.Store); !isStore {
