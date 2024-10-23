@@ -204,6 +204,23 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			Package: packageName,
 			Type:    typeName})
 
+	// Storing into a specific struct field
+	case *ssa.Store:
+		if fieldAddr, isFieldAddr := node.Addr.(*ssa.FieldAddr); isFieldAddr {
+			fieldName, _ := FieldAddrFieldInfo(fieldAddr)
+			packageName, typeName, err := FindEltTypePackage(fieldAddr.X.Type(), "%s")
+			if err != nil {
+				return false
+			}
+			return f(config.CodeIdentifier{
+				Context: node.Parent().String(),
+				Package: packageName,
+				Field:   fieldName,
+				Type:    typeName,
+				Kind:    "store"})
+		}
+		return false
+
 	// Channel receives can be sources
 	case *ssa.UnOp:
 		if node.Op == token.ARROW {

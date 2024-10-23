@@ -202,9 +202,9 @@ func (g *SummaryGraph) initializeInnerNodes(s *AnalyzerState,
 			g.addIfNode(x)
 
 		// Other types of sources that may be used in config
-		case *ssa.Alloc, *ssa.FieldAddr, *ssa.Field, *ssa.UnOp:
+		case *ssa.Alloc, *ssa.FieldAddr, *ssa.Field, *ssa.UnOp, *ssa.Store:
 			if shouldTrack != nil && shouldTrack(s, x.(ssa.Node)) {
-				g.addSyntheticNode(x, "source")
+				g.addSyntheticNode(x, "synthetic")
 			}
 		}
 	})
@@ -1014,8 +1014,13 @@ func (a *SyntheticNode) String() string {
 	if a == nil {
 		return ""
 	}
-	return fmt.Sprintf("\"[#%d.%d] synthetic: %s = %s\"",
-		a.parent.ID, a.id, ftu.Sanitize(a.instr.(ssa.Value).Name()), ftu.SanitizeRepr(a.instr))
+	if _, isSsaValue := a.instr.(ssa.Value); isSsaValue {
+		return fmt.Sprintf("\"[#%d.%d] synthetic: %s = %s\"",
+			a.parent.ID, a.id, ftu.Sanitize(a.instr.(ssa.Value).Name()), ftu.SanitizeRepr(a.instr))
+	} else {
+		return fmt.Sprintf("\"[#%d.%d] synthetic: %s\"",
+			a.parent.ID, a.id, ftu.SanitizeRepr(a.instr))
+	}
 }
 
 func (a *FreeVarNode) String() string {

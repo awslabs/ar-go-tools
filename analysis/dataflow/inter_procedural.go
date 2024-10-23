@@ -339,9 +339,12 @@ func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterPr
 		// special cases for each SSA node type supported
 		switch node := n.(type) {
 		case *SyntheticNode:
-			// all synthetic nodes are entry points
-			entry := NodeWithTrace{Node: node}
-			entryPoints[entry.Key()] = entry
+			if _, isStore := node.instr.(*ssa.Store); !isStore {
+				// all other non-store synthetic nodes are entry points.
+				// WARNING: revise when this changes!
+				entry := NodeWithTrace{Node: node}
+				entryPoints[entry.Key()] = entry
+			}
 		case *CallNodeArg:
 			if g.AnalyzerState.Config.SourceTaintsArgs &&
 				isEntryPointSsa(node.parent.CallSite().Value()) {

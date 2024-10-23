@@ -19,6 +19,9 @@ taint-tracking-problems:
     - package: "fmt"
       method: "Printf"
       value-match: ".*%s.*"
+    - type: "ExampleData"
+      field: "SinkField"
+      kind: "store"
   sanitizers:
     - package: "(basic)|(main)|(command-line-arguments)"
       method: ".*(s|S)anitize[1-9]?"

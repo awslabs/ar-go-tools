@@ -82,7 +82,7 @@ var taintSourcesAnalyzer = &analysis.Analyzer{
 
 // newSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
 func newSourceMap(s *dataflow.AnalyzerState) PackageToNodes {
-	return NewPackagesMap(s, taint.IsSomeSourceNode)
+	return NewPackagesMap(s, taint.IsNodeOfInterest)
 }
 
 // newSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
