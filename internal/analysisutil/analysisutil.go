@@ -142,6 +142,8 @@ func GetFieldInfoFromType(t types.Type, i int) (string, bool) {
 }
 
 // IsEntrypointNode returns true if n is an entrypoint to the analysis according to f or the annotations
+//
+//gocyclo:ignore
 func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 	f func(config.CodeIdentifier) bool) bool {
 	switch node := (n).(type) {
@@ -152,21 +154,23 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		}
 
 		parent := node.Parent()
-		if node.Call.IsInvoke() {
-			receiver := node.Call.Value.Name()
-			methodName := node.Call.Method.Name()
-			calleePkg := FindSafeCalleePkg(node.Common())
-			if calleePkg.IsSome() {
-				return f(
-					config.CodeIdentifier{
-						Context:  parent.String(),
-						Package:  calleePkg.Value(),
-						Method:   methodName,
-						Receiver: receiver})
-			}
-			return false
+		if !node.Call.IsInvoke() {
+			return isFuncEntrypoint(node, parent, f) || isAliasEntrypoint(pointer, node, f)
 		}
-		return isFuncEntrypoint(node, parent, f) || isAliasEntrypoint(pointer, node, f)
+
+		// For invoke also populate the receiver
+		receiver := node.Call.Value.Name()
+		methodName := node.Call.Method.Name()
+		calleePkg := FindSafeCalleePkg(node.Common())
+		if calleePkg.IsSome() {
+			return f(
+				config.CodeIdentifier{
+					Context:  parent.String(),
+					Package:  calleePkg.Value(),
+					Method:   methodName,
+					Receiver: receiver})
+		}
+		return false
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:

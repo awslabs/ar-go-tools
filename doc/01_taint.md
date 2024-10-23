@@ -105,6 +105,17 @@ taint-tracking-problems:
 ```
 This implies that any access to the field `taintedMember` of a struct of type `structA` in package `mypackage` will be seen as a source of tainted data.
 
+**Field writes** are of the form:
+```yaml
+taint-tracking-problems:
+    - sinks:
+        - package: "mypackage"
+          type: "structA"
+          field: "sensitiveStore"
+          kind: "store"
+```
+This implies that writing data to the field `sensitiveStore` of a struct of type `structA` defined in package `mypackage` will be seen as a sink for tainted data.
+
 **Interfaces** are of the form:
 ```yaml
 taint-tracking-problems:
@@ -114,7 +125,7 @@ taint-tracking-problems:
 ```
 This implies that any method whose receiver implements the `mypackage.interfaceName` interface will be seen as a sink.
 
-> The specifications for sources can be function calls, types, channel receives or field reads. The specifications for sinks, sanitizers and validators can only be functions (method and package) or interfaces (interface name and package).
+> The specifications for sources can be function calls, types, channel receives or field reads. The specifications sanitizers and validators can only be functions (method and package) or interfaces (interface name and package). The specifications for sinks can be functions calls and field writes.
 
 #### Code locations in a specific context
 

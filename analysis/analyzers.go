@@ -35,7 +35,9 @@ type IntraAnalysisParams struct {
 	ShouldBuildSummary func(*dataflow.AnalyzerState, *ssa.Function) bool
 
 	// ShouldTrack is a function that returns true if the node should be an entrypoint to the analysis.
-	// The entrypoint node is treated as a "source" of data.
+	// The node may be an entrypoint or an endpoint of an analysis.
+	// In particular, ShouldTrack identifies the special nodes that must be tracked but are not callgraph
+	// related nodes.
 	ShouldTrack func(*dataflow.AnalyzerState, ssa.Node) bool
 
 	// PostBlockCallback will be called each time a block is analyzed if the analysis is running on a single core

@@ -26,6 +26,13 @@ import (
 )
 
 // IsNodeOfInterest returns true when the node should appear in the dataflow graph.
+// This is usually automatically the case for all the callgraph nodes (calls, returns, parameters, arguments) but not
+// the case for all the synthetic nodes.
+// This function is usually used in the intra-procedural analysis as the function to identify what SSA nodes to add.
+// It should identify all the "synthetic" nodes, i.e.:
+// - reading from struct fields that are marked as sources.
+// - reading from channels marked as source
+// - writing in struct fields that are marked as sinks.
 func IsNodeOfInterest(state *dataflow.AnalyzerState, n ssa.Node) bool {
 	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
 		analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSink) ||
@@ -33,14 +40,14 @@ func IsNodeOfInterest(state *dataflow.AnalyzerState, n ssa.Node) bool {
 		state.ResolveSsaNode(annotations.Sink, "_", n)
 }
 
-// IsSomeSourceNode returns true if n matches the code identifier of some source in the config
-func IsSomeSourceNode(s *dataflow.AnalyzerState, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(s.PointerAnalysis, n, s.Config.IsSomeSource) ||
-		s.ResolveSsaNode(annotations.Source, "_", n)
-}
-
-// IsSourceNode returns true if n matches the code identifier of a source node in the taint specification
+// IsSourceNode returns true if n matches the code identifier of a source node in the taint specification.
+// If the taint specification is nil, then it will look whether the node can be any source node in the
+// config.
 func IsSourceNode(state *dataflow.AnalyzerState, ts *config.TaintSpec, n ssa.Node) bool {
+	if ts == nil {
+		return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
+			state.ResolveSsaNode(annotations.Source, "_", n)
+	}
 	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, ts.IsSource) ||
 		state.ResolveSsaNode(annotations.Source, ts.Tag, n)
 }

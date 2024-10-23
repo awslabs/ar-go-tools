@@ -252,7 +252,7 @@ func isSourceNode(s *dataflow.AnalyzerState, source ssa.Node) bool {
 		}
 	}
 
-	return taint.IsSomeSourceNode(s, source)
+	return taint.IsSourceNode(s, nil, source)
 }
 
 func sourceNode(source dataflow.GraphNode) ssa.Node {
