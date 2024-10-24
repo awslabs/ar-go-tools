@@ -102,6 +102,7 @@ func (a Annotation) IsMatchingAnnotation(kind AnnotationKind, tag string) bool {
 	return a.Kind == kind && (tag == AnyTag || (len(a.Tags) > 0 && a.Tags[0] == AnyTag) || slices.Contains(a.Tags, tag))
 }
 
+// LinePos is a simple line-file position indicator.
 type LinePos struct {
 	Line int
 	File string
