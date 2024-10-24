@@ -16,6 +16,8 @@ package main
 
 import "fmt"
 
+//argot:config _ @SetOptions(log-level=3) configures log-level for all problems
+
 // sink and source annotation are relative to data categories (e.g. in this example bar, io and html)
 // Sink(_) means it is always a sink
 
@@ -38,7 +40,7 @@ func foo() string {
 //
 //argot:function Sink(_)
 func superSensitiveFunction(iWillPrintYouUnencrypted string) {
-	fmt.Println(iWillPrintYouUnencrypted)
+	fmt.Println(iWillPrintYouUnencrypted) //argot:ignore _
 }
 
 // sanitizerOfIo

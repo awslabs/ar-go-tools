@@ -140,6 +140,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 			}
 		}
 		visitor := NewVisitor(&taintSpec)
+		state.Logger.Infof("Analyzing taint-tracking problem %s", taintSpec.Tag)
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(state, &taintSpec, node) },

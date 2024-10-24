@@ -38,7 +38,7 @@ type AnalyzerState struct {
 	// Annotations contains all the annotations of the program
 	Annotations annotations.ProgramAnnotations
 
-	// The logger used during the analysis (can be used to control output.
+	// The logger used during the analysis (can be used to control output).
 	Logger *config.LogGroup
 
 	// The configuration file for the analysis
@@ -217,6 +217,7 @@ func NewDefaultAnalyzer(p *ssa.Program, pkgs []*packages.Package) (*AnalyzerStat
 // CopyTo copies pointers in receiver into argument (shallow copy of everything except mutex).
 // Do not use two copies in separate routines.
 func (s *AnalyzerState) CopyTo(b *AnalyzerState) {
+	b.Annotations = s.Annotations
 	b.BoundingInfo = s.BoundingInfo
 	b.Config = s.Config
 	b.EscapeAnalysisState = s.EscapeAnalysisState

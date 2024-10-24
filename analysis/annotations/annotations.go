@@ -17,7 +17,9 @@ package annotations
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -41,6 +43,8 @@ const (
 	Sanitizer
 	// SetOptions is the kind of SetOptions(...) annotations
 	SetOptions
+	// Ignore is an empty annotation for a line
+	Ignore
 )
 
 // AnyTag is the special tag used to match any other tag
@@ -98,6 +102,23 @@ func (a Annotation) IsMatchingAnnotation(kind AnnotationKind, tag string) bool {
 	return a.Kind == kind && (tag == AnyTag || (len(a.Tags) > 0 && a.Tags[0] == AnyTag) || slices.Contains(a.Tags, tag))
 }
 
+type LinePos struct {
+	Line int
+	File string
+}
+
+// NewLinePos returns a LinePos from a token position. The column and offset are abstracted away.
+func NewLinePos(pos token.Position) LinePos {
+	return LinePos{
+		Line: pos.Line,
+		File: pos.Filename,
+	}
+}
+
+func (l LinePos) String() string {
+	return l.File + ":" + strconv.Itoa(l.Line)
+}
+
 // A FunctionAnnotation groups the annotations relative to a function into main annotations for the entire function
 // and parameter annotations for each parameter
 type FunctionAnnotation struct {
@@ -152,6 +173,17 @@ type ProgramAnnotations struct {
 	Consts map[*ssa.NamedConst][]Annotation
 	// Globals is the map of global variable annotations (TODO: implementation)
 	Globals map[*ssa.Global][]Annotation
+	// Positional is the map of line-file location to annotations that are not attached to a specific construct.
+	// There can be only one annotation per line.
+	Positional map[LinePos]Annotation
+}
+
+// IsIgnoredPos returns true when the given position is on the same line as an //argot:ignore annotation.
+func (pa ProgramAnnotations) IsIgnoredPos(pos token.Position, tag string) bool {
+	if posAnnot, hasPosAnnot := pa.Positional[NewLinePos(pos)]; hasPosAnnot {
+		return posAnnot.Kind == Ignore && (posAnnot.Tags[0] == tag || posAnnot.Tags[0] == AnyTag)
+	}
+	return false
 }
 
 // Count returns the total number of annotations in the program
@@ -189,7 +221,7 @@ func (pa ProgramAnnotations) CompleteFromSyntax(logger *config.LogGroup, pkgs []
 			for _, comments := range astFile.Comments {
 				for _, comment := range comments.List {
 					if annotationContents := extractAnnotation(comment); annotationContents != nil {
-						pa.loadFileAnnotations(logger, annotationContents, pkg.Fset.Position(comment.Pos()).String())
+						pa.loadFileAnnotations(logger, annotationContents, pkg.Fset.Position(comment.Pos()))
 					}
 				}
 			}
@@ -205,11 +237,12 @@ func (pa ProgramAnnotations) CompleteFromSyntax(logger *config.LogGroup, pkgs []
 // will also print warnings when some syntactic components of the comments look like they should be an annotation.
 func LoadAnnotations(logger *config.LogGroup, packages []*ssa.Package) (ProgramAnnotations, error) {
 	annotations := ProgramAnnotations{
-		Configs: map[string]map[string]string{},
-		Funcs:   map[*ssa.Function]FunctionAnnotation{},
-		Types:   map[*ssa.Type][]Annotation{},
-		Consts:  map[*ssa.NamedConst][]Annotation{},
-		Globals: map[*ssa.Global][]Annotation{},
+		Configs:    map[string]map[string]string{},
+		Funcs:      map[*ssa.Function]FunctionAnnotation{},
+		Types:      map[*ssa.Type][]Annotation{},
+		Consts:     map[*ssa.NamedConst][]Annotation{},
+		Globals:    map[*ssa.Global][]Annotation{},
+		Positional: map[LinePos]Annotation{},
 	}
 	for _, pkg := range packages {
 		for _, m := range pkg.Members {
@@ -287,7 +320,7 @@ func (pa ProgramAnnotations) loadPackageDocAnnotations(doc *ast.CommentGroup) {
 // loadFileAnnotations loads the annotation that are not tied to a specific ssa node. This includes:
 // - config annotations
 // - positional annotations
-func (pa ProgramAnnotations) loadFileAnnotations(logger *config.LogGroup, annotationContents []string, position string) {
+func (pa ProgramAnnotations) loadFileAnnotations(logger *config.LogGroup, annotationContents []string, position token.Position) {
 	if len(annotationContents) <= 1 {
 		logger.Warnf("ignoring argot annotation with no arguments at %s", position)
 		return
@@ -295,13 +328,23 @@ func (pa ProgramAnnotations) loadFileAnnotations(logger *config.LogGroup, annota
 	switch annotationContents[0] {
 	case ConfigTarget:
 		pa.loadConfigTargetAnnotation(logger, annotationContents, position)
+	case IgnoreTarget:
+		pa.addIgnoreLineAnnotation(position, annotationContents)
+	}
+}
+
+// addIgnoreLineAnnotation adds a Ignore annotation at the position's line
+func (pa ProgramAnnotations) addIgnoreLineAnnotation(position token.Position, annotationContents []string) {
+	pa.Positional[NewLinePos(position)] = Annotation{
+		Kind: Ignore,
+		Tags: []string{annotationContents[1]}, // only the tag is used
 	}
 }
 
 // loadConfigTargetAnnotation loads a config annotation. Config annotations look like
 // "//argot:config tag SetOptions(option-name-1=value1,option-name-2=value2)" and are always linked to a specific problem
 // tag.
-func (pa ProgramAnnotations) loadConfigTargetAnnotation(logger *config.LogGroup, annotationContents []string, position string) {
+func (pa ProgramAnnotations) loadConfigTargetAnnotation(logger *config.LogGroup, annotationContents []string, position token.Position) {
 	if len(annotationContents) <= 2 {
 		logger.Warnf("argot:config expects a target tag and one or more SetOptions")
 		logger.Warnf("a comment is likely missing something at %s", position)

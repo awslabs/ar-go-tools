@@ -134,6 +134,16 @@ func Exists[T any](a []T, f func(T) bool) bool {
 	return false
 }
 
+// ExistsInMap returns true when there exists some k,x in map a such that f(k,x), otherwise false.
+func ExistsInMap[K comparable, T any](a map[K]T, f func(K, T) bool) bool {
+	for k, x := range a {
+		if f(k, x) {
+			return true
+		}
+	}
+	return false
+}
+
 // FindMap returns Some(f(x)) when there exists some x in slice a such that p(f(x)), otherwise None.
 func FindMap[T any, R any](a []T, f func(T) R, p func(R) bool) Optional[R] {
 	for _, x := range a {
