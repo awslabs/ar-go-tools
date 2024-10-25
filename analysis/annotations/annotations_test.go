@@ -36,9 +36,35 @@ func TestLoadAnnotations(t *testing.T) {
 	testProgram.Prog.Build()
 	logger := config.NewLogGroup(testProgram.Config)
 	a, err := annotations.LoadAnnotations(logger, testProgram.Prog.AllPackages())
+	a.CompleteFromSyntax(logger, testProgram.Pkgs[0])
 	if err != nil {
 		t.Errorf("error loading annotations: %s", err)
 	}
+
+	// Positional annotations like //argot:ignore
+	t.Logf("%d positional annotations", len(a.Positional))
+	if !funcutil.ExistsInMap(a.Positional, func(k annotations.LinePos, _ annotations.Annotation) bool {
+		return k.Line == 43
+	}) {
+		t.Errorf("Expected annotation at line 43.")
+	}
+
+	for pos, annot := range a.Positional {
+		if pos.Line == 43 && (annot.Kind != annotations.Ignore || !funcutil.Contains(annot.Tags, "_")) {
+			t.Errorf("Expected annotation at line 43 to be //argot:ignore _ but its %v", annot)
+		}
+	}
+
+	// Config annotations like //argot:config
+	t.Logf("%d config annotations", len(a.Configs))
+	if _, hasOpt := a.Configs["_"]; !hasOpt {
+		t.Errorf("expected a config option for _")
+	}
+	if a.Configs["_"]["log-level"] != "3" {
+		t.Errorf("Expected config option log-level set to 3 by annotation.")
+	}
+
+	// Function annotations like //argot:function and //argot:param
 	t.Logf("%d functions scanned", len(a.Funcs))
 	for ssaFunc, functionAnnotation := range a.Funcs {
 		switch ssaFunc.Name() {

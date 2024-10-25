@@ -202,6 +202,17 @@ options:
     max-alarms: 2
 ```
 
+#### Finding Suppression
+
+You may encounter false positives in the taint analysis, some of which cannot be easily resolved by making the configuration more precise or by changing the code.
+When you are confident the finding is a false positive, you can suppress the findings of the taint analysis on a specific line by using the `//argot:ignore problem-tag` annotation. 
+For example:
+```go
+...
+   callSink(notReaalyTaintedData) //argot:ignore _ 
+```
+Will suppress findings for all taint problems. Taint problems can be associated with a `tag: tagName` in the configuration, and you can suppress findings specifically for `tagName` by using `//argot:ignore tagName`. 
+
 #### Warning Suppression 
 The use can set the setting `warn: false` to suppress warnings during the analysis. This means that if the analysis encounters program constructs that make it unsound, those will not be reported. This setting does not affect the soundness of the analysis, but it will cause the tool to not report when your program falls beyond the soundness guarantees.
 

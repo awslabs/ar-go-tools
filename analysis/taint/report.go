@@ -76,7 +76,8 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 }
 
 // reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
-// and writing in the logger
+// and writing in the logger.
+// The function checks the annotations to suppress reports where there are //argot:ignore annotations.
 func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
 	c.Logger.Infof(" !!!! TAINT FLOW !!!!")
 	c.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(c)))

@@ -312,12 +312,15 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 	// entrypoints at once, but this would require a finer context-tracking mechanism than what the NodeWithCallStack
 	// implements.
 	// If the maximum number of alarms has been reached, stop early.
+	i := 0
 	for _, entry := range entryPoints {
 		if !g.AnalyzerState.TestAlarmCount() {
-			g.AnalyzerState.Logger.Warnf("Some entrypoints are skipped, max number of alarms reached.")
+			g.AnalyzerState.Logger.Warnf("%d entrypoints are skipped, max number of alarms reached.",
+				len(entryPoints)-i)
 			return
 		}
 		visitor.Visit(g.AnalyzerState, entry)
+		i++
 	}
 }
 

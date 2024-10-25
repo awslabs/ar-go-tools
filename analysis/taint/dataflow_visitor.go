@@ -140,21 +140,28 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// you are tracking flows to logging but don't care about integers and booleans for example).
 		if isFiltered(s, v.taintSpec, cur.Node) {
 			if _, isIf := cur.Node.(*df.IfNode); !isIf || v.taintSpec.FailOnImplicitFlow {
-				logger.Infof("Filtered value: %s\n", cur.Node.String())
-				logger.Infof("At: %s\n", cur.Node.Position(s))
+				// Filtered values logged at debug level -- there can be many of those.
+				logger.Debugf("Filtered value: %s\n", cur.Node.String())
+				logger.Debugf("At: %s\n", cur.Node.Position(s))
 			}
 			continue
 		}
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
 		if isSink(s, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
-			if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
-				reportTaintFlow(s, v.currentSource, cur)
-			}
-			// Stop if there is a limit on number of alarms, and it has been reached.
-			if !s.IncrementAndTestAlarms() {
-				logger.Warnf("Reached the limit of %d alarms.", s.Config.MaxAlarms)
-				return
+			// Don't report taint flow if the sink location is annotated with //argot:ignore
+			if s.Annotations.IsIgnoredPos(cur.Node.Position(s), v.taintSpec.Tag) {
+				s.Logger.Infof("//argot:ignore taint flow to %s",
+					cur.Node.Position(s))
+			} else {
+				if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
+					reportTaintFlow(s, v.currentSource, cur)
+				}
+				// Stop if there is a limit on number of alarms, and it has been reached.
+				if !s.IncrementAndTestAlarms() {
+					logger.Warnf("Reached the limit of %d alarms.", s.Config.MaxAlarms)
+					return
+				}
 			}
 			// A sink does not have successors in the taint flow analysis (but other sinks can be reached
 			// as there are still values flowing).

@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
@@ -38,7 +39,7 @@ type AnalyzerState struct {
 	// Annotations contains all the annotations of the program
 	Annotations annotations.ProgramAnnotations
 
-	// The logger used during the analysis (can be used to control output.
+	// The logger used during the analysis (can be used to control output).
 	Logger *config.LogGroup
 
 	// The configuration file for the analysis
@@ -120,10 +121,20 @@ func NewAnalyzerState(p *ssa.Program, pkgs []*packages.Package, l *config.LogGro
 	steps []func(*AnalyzerState)) (*AnalyzerState, error) {
 	var allContracts []Contract
 
-	// Load annotations
+	// Load annotations byt scanning all package's syntax
 	pa, err := annotations.LoadAnnotations(l, p.AllPackages())
 	if pkgs != nil {
-		pa.CompleteFromSyntax(l, pkgs)
+		for _, pkg := range pkgs {
+			analysisutil.VisitPackages(pkg, func(p *packages.Package) bool {
+				// Don't scan stdlib for annotations!
+				if summaries.IsStdPackageName(p.Name) {
+					return false
+				}
+				l.Debugf("Scan %s for annotations.\n", p.PkgPath)
+				pa.CompleteFromSyntax(l, p)
+				return true
+			})
+		}
 	}
 
 	if err != nil {
@@ -217,6 +228,7 @@ func NewDefaultAnalyzer(p *ssa.Program, pkgs []*packages.Package) (*AnalyzerStat
 // CopyTo copies pointers in receiver into argument (shallow copy of everything except mutex).
 // Do not use two copies in separate routines.
 func (s *AnalyzerState) CopyTo(b *AnalyzerState) {
+	b.Annotations = s.Annotations
 	b.BoundingInfo = s.BoundingInfo
 	b.Config = s.Config
 	b.EscapeAnalysisState = s.EscapeAnalysisState

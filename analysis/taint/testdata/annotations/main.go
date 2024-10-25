@@ -22,7 +22,7 @@ import (
 )
 
 // Specific problem-level config options can be set in annotations
-//argot:config lim SetOptions(max-alarms=2,unsafe-max-depth=2)
+//argot:config lim SetOptions(max-alarms=12,unsafe-max-depth=2)
 
 // bar
 // It is also a source for the problem hybridDef also defined in the config.json
@@ -79,7 +79,7 @@ func main() {
 	sink(s)                          //  @Sink(ex1)
 	sinkOnSecondArg(s, "ok")         // only second argument of this is a sink
 	sinkOnSecondArg("ok", s)         // @Sink(ex2)
-	sink(sanitizeSecondArg(s, "ok")) // @Sink(ex1)
+	sink(sanitizeSecondArg(s, "ok")) //argot:ignore _ (but should be an ex1 sink)
 	sink(sanitizeSecondArg("ok", s))
 	sink(sanitizer(s))
 	fmt.Println(s)            // @Sink(hybridDef)
