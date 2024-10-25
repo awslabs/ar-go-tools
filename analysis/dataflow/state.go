@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
@@ -120,10 +121,23 @@ func NewAnalyzerState(p *ssa.Program, pkgs []*packages.Package, l *config.LogGro
 	steps []func(*AnalyzerState)) (*AnalyzerState, error) {
 	var allContracts []Contract
 
-	// Load annotations
+	// Load annotations by scanning all packages' syntax
 	pa, err := annotations.LoadAnnotations(l, p.AllPackages())
+
 	if pkgs != nil {
-		pa.CompleteFromSyntax(l, pkgs)
+		for _, pkg := range pkgs {
+			analysisutil.VisitPackages(pkg, func(p *packages.Package) bool {
+				// Don't scan stdlib for annotations!
+				if summaries.IsStdPackageName(p.Name) {
+					return false
+				}
+				// TODO: find a way to not scan dependencies if there is demand. Currently, it is unlikely that some
+				// dependencies will contain argot annotations.
+				l.Debugf("Scan %s for annotations.\n", p.PkgPath)
+				pa.CompleteFromSyntax(l, p)
+				return true
+			})
+		}
 	}
 
 	if err != nil {

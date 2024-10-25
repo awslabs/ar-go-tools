@@ -36,7 +36,7 @@ func TestLoadAnnotations(t *testing.T) {
 	testProgram.Prog.Build()
 	logger := config.NewLogGroup(testProgram.Config)
 	a, err := annotations.LoadAnnotations(logger, testProgram.Prog.AllPackages())
-	a.CompleteFromSyntax(logger, testProgram.Pkgs)
+	a.CompleteFromSyntax(logger, testProgram.Pkgs[0])
 	if err != nil {
 		t.Errorf("error loading annotations: %s", err)
 	}

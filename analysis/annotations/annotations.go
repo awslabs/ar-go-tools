@@ -211,19 +211,20 @@ func (pa ProgramAnnotations) Iter(fx func(a Annotation)) {
 	for _, cst := range pa.Globals {
 		funcutil.Iter(cst, fx)
 	}
+	for _, cst := range pa.Positional {
+		fx(cst)
+	}
 }
 
 // CompleteFromSyntax takes a set of program annotations and adds additional non-ssa linked annotations
 // to the annotations
-func (pa ProgramAnnotations) CompleteFromSyntax(logger *config.LogGroup, pkgs []*packages.Package) {
-	for _, pkg := range pkgs {
-		for _, astFile := range pkg.Syntax {
-			pa.loadPackageDocAnnotations(astFile.Doc)
-			for _, comments := range astFile.Comments {
-				for _, comment := range comments.List {
-					if annotationContents := extractAnnotation(comment); annotationContents != nil {
-						pa.loadFileAnnotations(logger, annotationContents, pkg.Fset.Position(comment.Pos()))
-					}
+func (pa ProgramAnnotations) CompleteFromSyntax(logger *config.LogGroup, pkg *packages.Package) {
+	for _, astFile := range pkg.Syntax {
+		pa.loadPackageDocAnnotations(astFile.Doc)
+		for _, comments := range astFile.Comments {
+			for _, comment := range comments.List {
+				if annotationContents := extractAnnotation(comment); annotationContents != nil {
+					pa.loadFileAnnotations(logger, annotationContents, pkg.Fset.Position(comment.Pos()))
 				}
 			}
 		}
