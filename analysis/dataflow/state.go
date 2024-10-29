@@ -304,6 +304,11 @@ func (s *AnalyzerState) HasErrors() bool {
 	return false
 }
 
+// ResetAlarms resets the number of alarms to 0
+func (s *AnalyzerState) ResetAlarms() {
+	s.numAlarms.Store(0)
+}
+
 // IncrementAndTestAlarms increments the alarm counter in the state, and returns false if the count is larger
 // than the MaxAlarms setting in the config.
 func (s *AnalyzerState) IncrementAndTestAlarms() bool {

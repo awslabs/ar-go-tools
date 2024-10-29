@@ -37,28 +37,11 @@ options:
   # packages that do not match the regex will not be analyzed
   pkg-filter: "analysis.*"
 
-  # this can be set to limit the number of alarms raised by an analysis if you only care about the truth value of
-  # the output, or only want to analyze a few results
-  max-alarms: 16
-
-  # this can be used to limit the size of the callstack when searching for contexts under which a function can be
-  # called.
-  max-entrypoint-context-size: 20
-
   # this can be set to suppress warnings. Errors (i.e. taint detected will be reported)
   silence-warn: true
 
   # this can be set so that source function are also tainting their arguments
   source-taints-args: true
-
-  # this option makes analyzes unsound, but can be useful in exploration. This ignores when functions have not
-  # been summarized during the inter-procedural step
-  unsafe-ignore-non-summarized: true
-
-  # For context-sensitive graph reachability based analysis this parameter can be used to limit the callstack depth
-  # that can be considered during the analysis. This can be used for debugging, or to artifically only filter
-  # short traces
-  unsafe-max-depth: 42
 
   # this options ensures that the escape analysis is run in parallel with the dataflow analysis
   use-escape-analysis: true
@@ -68,6 +51,20 @@ options:
 
   # This setting sets whether the analysis is field sensitive
   field-sensitive: true
+
+  analysis-options:
+    # For context-sensitive graph reachability based analysis this parameter can be used to limit the callstack depth
+    # that can be considered during the analysis. This can be used for debugging, or to artifically only filter
+    # short traces
+    unsafe-max-depth: 42
+
+    # this can be set to limit the number of alarms raised by an analysis if you only care about the truth value of
+    # the output, or only want to analyze a few results
+    max-alarms: 16
+
+    # this can be used to limit the size of the callstack when searching for contexts under which a function can be
+    # called.
+    max-entrypoint-context-size: 20
 
 # For any dataflow analysis, you can specify summaries for specific functions and interfaces. The analysis will
 # use each of those files as a reference for the functions specified
@@ -97,3 +94,6 @@ taint-tracking-problems:
 
     sanitizers:
       - method: "Sanitize"
+
+    analysis-options:
+      unsafe-max-depth: 1

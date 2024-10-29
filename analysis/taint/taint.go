@@ -123,33 +123,38 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 	taintFlows := NewFlows()
 
 	for _, taintSpec := range state.Config.TaintTrackingProblems {
-		// Stop early if we have reached the maximum number of alarms.
-		if !state.TestAlarmCount() {
-			state.Logger.Warnf("Stopping analysis, maximum number of alarms reached.")
-			break
-		}
+		// Number of alarms is problem specific, not global
+		state.ResetAlarms()
+
+		state.Logger.Infof("Analyzing taint-tracking problem %s", taintSpec.Tag)
 		// Set problem-specific options
-		prevOptions := map[string]string{}
+		var prevOptions config.AnalysisProblemOptions
+		prevOptions = state.Config.AnalysisProblemOptions
+
+		// Overriding options with problem-specific config
+		if taintSpec.AnalysisProblemOptions != nil {
+			config.OverrideWithAnalysisOptions(state.Logger, state.Config, taintSpec.AnalysisProblemOptions)
+		}
+
+		// Overriding options with annotations
 		for optionName, optionValue := range state.Annotations.Configs[taintSpec.Tag] {
 			prevValue, err := config.SetOption(state.Config, optionName, optionValue)
 			if err != nil {
 				state.Logger.Warnf("ignoring option %s setting to %s in annotations because not a valid option",
 					optionName, optionValue)
 			} else {
-				prevOptions[optionName] = prevValue
+				state.Logger.Infof("Overriding %s with %s for option %s with annotation.",
+					prevValue, optionValue, optionName)
 			}
 		}
 		visitor := NewVisitor(&taintSpec)
-		state.Logger.Infof("Analyzing taint-tracking problem %s", taintSpec.Tag)
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 			IsEntrypoint: func(node ssa.Node) bool { return dataflow.IsSourceNode(state, &taintSpec, node) },
 		})
 		taintFlows.Merge(visitor.taints)
 		// Restore global options
-		for optionName, optionValue := range prevOptions {
-			_, _ = config.SetOption(state.Config, optionName, optionValue)
-		}
+		state.Config.AnalysisProblemOptions = prevOptions
 	}
 
 	// ** Fourth step **

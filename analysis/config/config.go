@@ -136,6 +136,32 @@ type Config struct {
 	SyntacticProblems []SyntacticSpecs `yaml:"syntactic-problems" json:"syntactic-problems"`
 }
 
+// AnalysisProblemOptions are the options that are specific to an analysis problem.
+type AnalysisProblemOptions struct {
+	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
+	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
+	//
+	// This setting does not affect soundness, since event with max-alarms:1, at least one path will be reported if
+	// there is some potential alarm-causing result.
+	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms" json:"max-alarms"`
+
+	// UnsafeMaxDepth sets a limit for the number of function call depth explored during the analysis.
+	// The default is -1, and any value less than 0 is safe: the analysis will be sound and explore call depth
+	// without bounds.
+	//
+	// Setting UnsafeMaxDepth to a limit larger than 0 will yield unsound results, but can be useful to use the tool
+	// as a checking mechanism. Limiting the call depth will usually yield fewer false positives.
+	UnsafeMaxDepth int `xml:"unsafe-max-depth,attr" yaml:"unsafe-max-depth" json:"unsafe-max-depth"`
+
+	// MaxEntrypointContextSize sets the maximum context (call stack) size used when searching for entry points with context.
+	// This only impacts precision of the returned results.
+	//
+	// If MaxEntrypointContextSize is < 0, it is ignored.
+	// If MaxEntrypointContextSize is 0 is specified by the user, the value is ignored, and a default internal value is used.
+	// If MaxEntrypointContextSize is > 0, then the limit in the callstack size for the context is used.
+	MaxEntrypointContextSize int `xml:"max-entrypoint-context-size,attr" yaml:"max-entrypoint-context-size" json:"max-entrypoint-context-size"`
+}
+
 // PointerConfig is the pointer analysis specific configuration.
 type PointerConfig struct {
 	// UnsafeNoEffectFunctions is a list of function names that produce no constraints in the pointer analysis.
@@ -151,6 +177,7 @@ type PointerConfig struct {
 // TaintSpec contains code identifiers that identify a specific taint tracking problem, or contains a code that
 // can differentiate groups of annotations
 type TaintSpec struct {
+	*AnalysisProblemOptions `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
 	// Sanitizers is the list of sanitizers for the taint analysis
 	Sanitizers []CodeIdentifier
 
@@ -181,6 +208,7 @@ type TaintSpec struct {
 
 // SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
 type SlicingSpec struct {
+	*AnalysisProblemOptions `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
 	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards
 	// dataflow analysis.
 	BacktracePoints []CodeIdentifier
@@ -227,7 +255,10 @@ type FieldsSetSpec struct {
 }
 
 // Options holds the global options for analyses
+// embeds AnalysisProblemOptions
 type Options struct {
+	AnalysisProblemOptions `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
+
 	// Path to a JSON file that has the escape configuration (allow/blocklist)
 	EscapeConfigFile string `xml:"escape-config,attr" yaml:"escape-config" json:"escape-config"`
 
@@ -237,21 +268,6 @@ type Options struct {
 
 	// Loglevel controls the verbosity of the tool
 	LogLevel int `xml:"log-level,attr" yaml:"log-level" json:"log-level"`
-
-	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
-	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
-	//
-	// This setting does not affect soundness, since event with max-alarms:1, at least one path will be reported if
-	// there is some potential alarm-causing result.
-	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms" json:"max-alarms"`
-
-	// MaxEntrypointContextSize sets the maximum context (call stack) size used when searching for entry points with context.
-	// This only impacts precision of the returned results.
-	//
-	// If MaxEntrypointContextSize is < 0, it is ignored.
-	// If MaxEntrypointContextSize is 0 is specified by the user, the value is ignored, and a default internal value is used.
-	// If MaxEntrypointContextSize is > 0, then the limit in the callstack size for the context is used.
-	MaxEntrypointContextSize int `xml:"max-entrypoint-context-size,attr" yaml:"max-entrypoint-context-size" json:"max-entrypoint-context-size"`
 
 	// PathSensitive is a boolean indicating whether the analysis should be run with access path sensitivity on
 	// (will change to include more filtering in the future)
@@ -306,19 +322,6 @@ type Options struct {
 	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
 	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand" json:"summarize-on-demand"`
 
-	// UnsafeMaxDepth sets a limit for the number of function call depth explored during the analysis.
-	// The default is -1, and any value less or equal than 0 is safe: the analysis will be sound and explore call depth
-	// without bounds.
-	//
-	// Setting UnsafeMaxDepth to a limit larger than 0 will yield unsound results, but can be useful to use the tool
-	// as a checking mechanism. Limiting the call depth will usually yield fewer false positives.
-	UnsafeMaxDepth int `xml:"unsafe-max-depth,attr" yaml:"unsafe-max-depth" json:"unsafe-max-depth"`
-
-	// UnsafeIgnoreNonSummarized allows the analysis to ignore when the summary of a function has not been built in
-	// the first analysis phase. This is only for experimentation, since the results may be unsound.
-	// This has no effect when SummarizeOnDemand is true.
-	UnsafeIgnoreNonSummarized bool `xml:"unsafeIgnoreNonSummarized,attr" yaml:"unsafe-ignore-non-summarized" json:"unsafe-ignore-non-summarized"`
-
 	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
 	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis" json:"use-escape-analysis"`
 }
@@ -335,6 +338,11 @@ func NewDefault() *Config {
 		EscapeConfig:           NewEscapeConfig(),
 		PointerConfig:          NewPointerConfig(),
 		Options: Options{
+			AnalysisProblemOptions: AnalysisProblemOptions{
+				UnsafeMaxDepth:           DefaultSafeMaxDepth,
+				MaxAlarms:                0,
+				MaxEntrypointContextSize: DefaultSafeMaxEntrypointContextSize,
+			},
 			ReportsDir:                "",
 			PkgFilter:                 "",
 			SkipInterprocedural:       false,
@@ -343,13 +351,9 @@ func NewDefault() *Config {
 			ReportPaths:               false,
 			ReportCoverage:            false,
 			ReportNoCalleeSites:       false,
-			UnsafeMaxDepth:            DefaultSafeMaxDepth,
-			MaxAlarms:                 0,
-			MaxEntrypointContextSize:  DefaultSafeMaxEntrypointContextSize,
 			LogLevel:                  int(InfoLevel),
 			SilenceWarn:               false,
 			SourceTaintsArgs:          false,
-			UnsafeIgnoreNonSummarized: false,
 			PathSensitive:             false,
 			PathSensitiveFuncs:        []string{},
 			pathSensitiveFuncsRegexes: nil,
@@ -725,4 +729,23 @@ func SetOption(c *Config, name, value string) (string, error) {
 		return prev, nil
 	}
 	return "", fmt.Errorf("%s cannot be set by name", name)
+}
+
+// OverrideWithAnalysisOptions overwrites the options in the config with the non-default options in the analysis
+// problem options. Overwriting is logged at info level.
+func OverrideWithAnalysisOptions(l *LogGroup, c *Config, o *AnalysisProblemOptions) {
+	if o.MaxAlarms != 0 {
+		l.Infof("Overring max-alarms with %d", o.MaxAlarms)
+		c.MaxAlarms = o.MaxAlarms
+	}
+
+	if o.UnsafeMaxDepth != 0 {
+		l.Infof("Overring unsafe-max-depth with %d", o.UnsafeMaxDepth)
+		c.UnsafeMaxDepth = o.UnsafeMaxDepth
+	}
+
+	if o.MaxEntrypointContextSize != 0 {
+		l.Infof("Overring max-entrypoint-context-size with %d", o.MaxEntrypointContextSize)
+		c.MaxEntrypointContextSize = o.MaxEntrypointContextSize
+	}
 }

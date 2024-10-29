@@ -249,7 +249,7 @@ func TestLoadSyntacticConfigYaml(t *testing.T) {
 func TestLoadFullConfigYaml(t *testing.T) {
 	fileName, config, err := loadFromTestDir("full-config.yaml")
 	if config == nil || err != nil {
-		t.Errorf("Could not load %s", fileName)
+		t.Errorf("Could not load %s: %s", fileName, err)
 		return
 	}
 	if config.LogLevel != int(TraceLevel) {
@@ -295,14 +295,14 @@ func TestLoadFullConfigYaml(t *testing.T) {
 		len(config.TaintTrackingProblems[0].Sources) != 1 {
 		t.Error("full config should have one element in each of sinks, validators, sanitizers and sources")
 	}
+	if config.TaintTrackingProblems[0].UnsafeMaxDepth != 1 {
+		t.Error("analysis option unsafe-max-depth should be 1 for taint-tracking-problem")
+	}
 	if !config.SourceTaintsArgs {
 		t.Error("full config should have source-taints-args set")
 	}
 	if !config.SilenceWarn {
 		t.Error("full config should have silence-warn set to true")
-	}
-	if !config.UnsafeIgnoreNonSummarized {
-		t.Errorf("full config should have set unsafeignorenonsummarized")
 	}
 	if !config.UseEscapeAnalysis {
 		t.Errorf("full config should have set useescapeaanalysis")
@@ -320,17 +320,17 @@ func TestLoadFullConfigYamlEqualsJson(t *testing.T) {
 	_, yamlConfig, yamlErr := loadFromTestDir("full-config.yaml")
 	_, jsonConfig, jsonErr := loadFromTestDir("full-config.json")
 	if jsonErr != nil {
-		t.Errorf("failed to load json config")
+		t.Fatalf("failed to load json config")
 	}
 	if yamlErr != nil {
-		t.Errorf("failed to load yaml config")
+		t.Fatalf("failed to load yaml config")
 	}
 	jsonConfig.sourceFile = ""
 	yamlConfig.sourceFile = ""
 	if jsonConfig.ReportCoverage != yamlConfig.ReportCoverage &&
 		jsonConfig.SilenceWarn != yamlConfig.SilenceWarn &&
 		jsonConfig.LogLevel != yamlConfig.LogLevel &&
-		jsonConfig.UnsafeIgnoreNonSummarized != yamlConfig.Options.UnsafeIgnoreNonSummarized &&
+		jsonConfig.UnsafeMaxDepth != yamlConfig.Options.UnsafeMaxDepth &&
 		jsonConfig.UnsafeMaxDepth != yamlConfig.UnsafeMaxDepth {
 		t.Errorf("config options in json and yaml should be the same")
 	}
@@ -386,10 +386,12 @@ func TestLoadMisc(t *testing.T) {
 				},
 			},
 			Options: Options{
-				PkgFilter:                "a",
-				UnsafeMaxDepth:           DefaultSafeMaxDepth,
-				MaxEntrypointContextSize: DefaultSafeMaxEntrypointContextSize,
-				SilenceWarn:              false,
+				PkgFilter: "a",
+				AnalysisProblemOptions: AnalysisProblemOptions{
+					UnsafeMaxDepth:           DefaultSafeMaxDepth,
+					MaxEntrypointContextSize: DefaultSafeMaxEntrypointContextSize,
+				},
+				SilenceWarn: false,
 			},
 			EscapeConfig:  NewEscapeConfig(),
 			PointerConfig: NewPointerConfig(),
