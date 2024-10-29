@@ -141,7 +141,7 @@ func GetFieldInfoFromType(t types.Type, i int) (string, bool) {
 	}
 }
 
-// IsEntrypointNode returns true if n is an entrypoint to the analysis according to f or the annotations
+// IsEntrypointNode returns true if n matches a code identifier according to the predicate f
 //
 //gocyclo:ignore
 func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
@@ -165,10 +165,11 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		if calleePkg.IsSome() {
 			return f(
 				config.CodeIdentifier{
-					Context:  parent.String(),
-					Package:  calleePkg.Value(),
-					Method:   methodName,
-					Receiver: receiver})
+					Context:    parent.String(),
+					Package:    calleePkg.Value(),
+					Method:     methodName,
+					Receiver:   receiver,
+					ValueMatch: n.String()})
 		}
 		return false
 
@@ -180,10 +181,11 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			return false
 		}
 		return f(config.CodeIdentifier{
-			Context: node.Parent().String(),
-			Package: packageName,
-			Field:   fieldName,
-			Type:    typeName})
+			Context:    node.Parent().String(),
+			Package:    packageName,
+			Field:      fieldName,
+			Type:       typeName,
+			ValueMatch: n.String()})
 
 	case *ssa.FieldAddr:
 		fieldName, _ := FieldAddrFieldInfo(node)
@@ -192,10 +194,11 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			return false
 		}
 		return f(config.CodeIdentifier{
-			Context: node.Parent().String(),
-			Package: packageName,
-			Field:   fieldName,
-			Type:    typeName})
+			Context:    node.Parent().String(),
+			Package:    packageName,
+			Field:      fieldName,
+			Type:       typeName,
+			ValueMatch: n.String()})
 
 	// Allocations of data of a type that is an entry point
 	case *ssa.Alloc:
@@ -204,9 +207,10 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			return false
 		}
 		return f(config.CodeIdentifier{
-			Context: node.Parent().String(),
-			Package: packageName,
-			Type:    typeName})
+			Context:    node.Parent().String(),
+			Package:    packageName,
+			Type:       typeName,
+			ValueMatch: n.String()})
 
 	// Storing into a specific struct field
 	case *ssa.Store:
@@ -217,11 +221,12 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 				return false
 			}
 			return f(config.CodeIdentifier{
-				Context: node.Parent().String(),
-				Package: packageName,
-				Field:   fieldName,
-				Type:    typeName,
-				Kind:    "store"})
+				Context:    node.Parent().String(),
+				Package:    packageName,
+				Field:      fieldName,
+				Type:       typeName,
+				Kind:       "store",
+				ValueMatch: n.String()})
 		}
 		return false
 
@@ -233,10 +238,11 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 				return false
 			}
 			return f(config.CodeIdentifier{
-				Context: node.Parent().String(),
-				Package: packageName,
-				Type:    typeName,
-				Kind:    "channel receive"})
+				Context:    node.Parent().String(),
+				Package:    packageName,
+				Type:       typeName,
+				Kind:       "channel receive",
+				ValueMatch: n.String()})
 		}
 		return false
 

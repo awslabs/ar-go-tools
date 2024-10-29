@@ -27,7 +27,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -227,31 +226,6 @@ func reachedSinkPositions(s *dataflow.AnalyzerState, res backtrace.AnalysisResul
 	}
 
 	return positions
-}
-
-func isSourceNode(s *dataflow.AnalyzerState, source ssa.Node) bool {
-	if node, ok := source.(*ssa.Call); ok {
-		if node == nil {
-			return false
-		}
-
-		// most of this logic is from analysisutil.IsEntrypointNode
-		if node.Call.IsInvoke() {
-			receiver := node.Call.Value.Name()
-			methodName := node.Call.Method.Name()
-			calleePkg := analysisutil.FindSafeCalleePkg(node.Common())
-			if calleePkg.IsSome() {
-				return config.Config.IsSomeSource(*s.Config,
-					config.CodeIdentifier{Package: calleePkg.Value(), Method: methodName, Receiver: receiver})
-			} else {
-				// HACK this is needed because "invoked" functions sometimes don't have a callee package
-				return config.Config.IsSomeSource(*s.Config,
-					config.CodeIdentifier{Package: "command-line-arguments", Method: methodName, Receiver: receiver})
-			}
-		}
-	}
-
-	return dataflow.IsSourceNode(s, nil, source)
 }
 
 func sourceNode(source dataflow.GraphNode) ssa.Node {
