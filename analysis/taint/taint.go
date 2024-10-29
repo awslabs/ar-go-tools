@@ -128,8 +128,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 
 		state.Logger.Infof("Analyzing taint-tracking problem %s", taintSpec.Tag)
 		// Set problem-specific options
-		var prevOptions config.AnalysisProblemOptions
-		prevOptions = state.Config.AnalysisProblemOptions
+		prevOptions := state.Config.AnalysisProblemOptions
 
 		// Overriding options with problem-specific config
 		if taintSpec.AnalysisProblemOptions != nil {
