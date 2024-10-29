@@ -342,7 +342,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) error {
 						panic(fmt.Errorf("[No Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err))
 					}
 					callSiteArg := callSite.Args()[graphNode.Index()]
-					if !callSiteArg.Graph().Constructed && !s.Config.UnsafeIgnoreNonSummarized {
+					if !callSiteArg.Graph().Constructed {
 						v.onDemandIntraProcedural(s, callSiteArg.Graph())
 					}
 					nextNodeWithTrace := df.NodeWithTrace{

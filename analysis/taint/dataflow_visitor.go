@@ -100,7 +100,6 @@ func (e *CondError) Error() string {
 //
 //gocyclo:ignore
 func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
-	ignoreNonSummarized := !s.Config.SummarizeOnDemand && s.Config.UnsafeIgnoreNonSummarized
 	coverage := make(map[string]bool)
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
@@ -178,15 +177,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// Check that the node does not correspond to a non-constructed summary
 		if !cur.Node.Graph().Constructed {
-			if ignoreNonSummarized {
-				logger.Warnf("%s: summary has not been built for %s.",
-					formatutil.Yellow("WARNING"),
-					formatutil.Yellow(cur.Node.Graph().Parent.Name()))
-
-				// In that case, continue as there is no information on data flow
-				continue
-			}
-
 			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
 			// built summary
 			v.onDemandIntraProcedural(s, cur.Node.Graph())
@@ -249,7 +239,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 						s.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
-						if !callSiteArg.Graph().Constructed && !ignoreNonSummarized {
+						if !callSiteArg.Graph().Constructed {
 							v.onDemandIntraProcedural(s, callSiteArg.Graph())
 						}
 						for nextNode, edgeInfos := range callSiteArg.Out() {
@@ -282,32 +272,21 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					panic("callsite has no callee")
 				}
 				// the callee summary may not have been created yet
-				if ignoreNonSummarized {
-					//
-					s.ReportMissingOrNotConstructedSummary(callSite)
-					break
+				if s.IsReachableFunction(callSite.Callee()) {
+					panic(fmt.Sprintf("unexpected missing callee summary for reachable function %s",
+						callSite.Callee()))
 				} else {
-					if s.IsReachableFunction(callSite.Callee()) {
-						panic(fmt.Sprintf("unexpected missing callee summary for reachable function %s",
-							callSite.Callee()))
-					} else {
-						// Ignore the callee, it is not reachable.
-						// If it was reachable, there should be a summary. If a bug is encountered here, then the
-						// problem should be in the initial reachability computation logic, not here.
-						break
-					}
+					// Ignore the callee, it is not reachable.
+					// If it was reachable, there should be a summary. If a bug is encountered here, then the
+					// problem should be in the initial reachability computation logic, not here.
+					break
 				}
 			}
 			// callSiteFromCallStack.CalleeSummary should be non-nil from now on in this branch.
 
 			// Logic for when the summary has not been constructed
 			if !callSite.CalleeSummary.Constructed {
-				if ignoreNonSummarized {
-					s.ReportMissingOrNotConstructedSummary(callSite)
-					break
-				} else {
-					v.onDemandIntraProcedural(s, callSite.CalleeSummary)
-				}
+				v.onDemandIntraProcedural(s, callSite.CalleeSummary)
 			}
 
 			// Computing context-sensitive information for the analyses
@@ -491,9 +470,6 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			closureNode := graphNode.ParentNode()
 
 			if !closureNode.ClosureSummary.Constructed {
-				if ignoreNonSummarized {
-					break
-				}
 				v.onDemandIntraProcedural(s, closureNode.ClosureSummary)
 				s.FlowGraph.Sync()
 			}
@@ -609,12 +585,10 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		case *df.AccessGlobalNode:
 			if graphNode.IsWrite {
-				if !ignoreNonSummarized {
-					for f := range s.ReachableFunctions() {
-						if lang.FnReadsFrom(f, graphNode.Global.Value()) {
-							logger.Tracef("Global %v read in function: %v\n", graphNode, f)
-							df.BuildSummary(s, f)
-						}
+				for f := range s.ReachableFunctions() {
+					if lang.FnReadsFrom(f, graphNode.Global.Value()) {
+						logger.Tracef("Global %v read in function: %v\n", graphNode, f)
+						df.BuildSummary(s, f)
 					}
 				}
 
@@ -648,12 +622,10 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 				break
 			}
 			destClosureSummary := graphNode.DestClosure()
-			if !ignoreNonSummarized {
-				if destClosureSummary == nil {
-					destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function))
-					graphNode.SetDestClosure(destClosureSummary)
-					s.FlowGraph.Sync()
-				}
+			if destClosureSummary == nil {
+				destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function))
+				graphNode.SetDestClosure(destClosureSummary)
+				s.FlowGraph.Sync()
 			}
 
 			if len(destClosureSummary.ReferringMakeClosures) == 0 {
