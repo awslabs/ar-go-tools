@@ -242,6 +242,9 @@ type SlicingSpec struct {
 	// Filters contains a list of filters that can be used by analyses
 	Filters []CodeIdentifier
 
+	// Tag identifies a group of annotations when used with annotations
+	Tag string
+
 	// SkipBoundLabels indicates whether to skip flows that go through "bound labels", i.e. aliases of the variables
 	// bound by a closure. This can be useful to test data flows because bound labels generate a lot of false positives.
 	SkipBoundLabels bool `yaml:"unsafe-skip-bound-labels" json:"unsafe-skip-bound-labels"`

@@ -139,6 +139,18 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 	var errs []error
 	resTraces := make(map[df.GraphNode][]Trace)
 	for _, ps := range cfg.SlicingProblems {
+		// Number of alarms is problem specific, not global
+		state.ResetAlarms()
+
+		state.Logger.Infof("Analyzing slicing problem %s", ps.Tag)
+		// Set problem-specific options
+		prevOptions := state.Config.AnalysisProblemOptions
+
+		// Overriding options with problem-specific config
+		if ps.AnalysisProblemOptions != nil {
+			config.OverrideWithAnalysisOptions(state.Logger, state.Config, ps.AnalysisProblemOptions)
+		}
+
 		visitor := &Visitor{
 			SlicingSpec: &ps,
 			Traces:      make(map[df.GraphNode][]Trace),
@@ -175,6 +187,8 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 			}
 			errs = append(errs, vErrs...)
 		}
+		// Restore global options
+		state.Config.AnalysisProblemOptions = prevOptions
 	}
 
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: resTraces}, errors.Join(errs...)
