@@ -29,7 +29,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -134,7 +133,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: df.ShouldBuildSummary,
-		ShouldTrack:        isSomeIntraProceduralEntryPoint,
+		ShouldTrack:        df.IsNodeOfInterest,
 	})
 
 	var errs []error
@@ -146,7 +145,7 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 		}
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			IsEntrypoint: func(node ssa.Node) bool {
-				return IsInterProceduralEntryPoint(state, visitor.SlicingSpec, node)
+				return df.IsBacktraceNode(state, visitor.SlicingSpec, node)
 			},
 		})
 		// filter unwanted nodes
@@ -371,8 +370,11 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) error {
 						// the callee summary may not have been created yet
 						if callSite.CalleeSummary == nil {
 							logger.Tracef("Callee summary has not been created")
-							callSite.CalleeSummary = df.NewSummaryGraph(s, callSite.Callee(), df.GetUniqueFunctionID(),
-								isSomeIntraProceduralEntryPoint, nil)
+							callSite.CalleeSummary = df.NewSummaryGraph(s,
+								callSite.Callee(),
+								df.GetUniqueFunctionID(),
+								func(s *df.AnalyzerState, n ssa.Node) bool { return df.IsBacktraceNode(s, nil, n) },
+								nil)
 							v.onDemandIntraProcedural(s, callSite.CalleeSummary)
 						}
 					} else {
@@ -895,28 +897,6 @@ func IsStatic(node df.GraphNode) bool {
 	default:
 		return false
 	}
-}
-
-// IsInterProceduralEntryPoint returns true if cfg identifies n as a backtrace entrypoint.
-func IsInterProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec, n ssa.Node) bool {
-	if f, ok := n.(*ssa.Function); ok {
-		pkg := lang.PackageNameFromFunction(f)
-		return ss.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
-	}
-
-	return isIntraProceduralEntryPoint(state, ss, n)
-}
-
-func isSomeIntraProceduralEntryPoint(state *df.AnalyzerState, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, func(cid config.CodeIdentifier) bool {
-		return state.Config.IsSomeBacktracePoint(cid)
-	})
-}
-
-func isIntraProceduralEntryPoint(state *df.AnalyzerState, ss *config.SlicingSpec, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, func(cid config.CodeIdentifier) bool {
-		return ss.IsBacktracePoint(cid)
-	})
 }
 
 // traceNode prints trace information about node.

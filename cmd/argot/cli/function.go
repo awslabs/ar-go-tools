@@ -21,7 +21,6 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/exp/slices"
@@ -340,7 +339,7 @@ func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, wit
 	}
 
 	_, err := dataflow.IntraProceduralAnalysis(c, state.CurrentFunction, true, 0,
-		taint.IsNodeOfInterest, post)
+		dataflow.IsNodeOfInterest, post)
 	if err != nil {
 		WriteErr(tt, "Error while analyzing.")
 		return false

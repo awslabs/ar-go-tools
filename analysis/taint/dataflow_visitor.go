@@ -138,7 +138,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		// If the node is filtered out, we don't inspect children.
 		// Test this before checking for sink in case this is a filtered argument in a sink call (this is common when
 		// you are tracking flows to logging but don't care about integers and booleans for example).
-		if isFiltered(s, v.taintSpec, cur.Node) {
+		if dataflow.IsFiltered(s, v.taintSpec, cur.Node) {
 			if _, isIf := cur.Node.(*df.IfNode); !isIf || v.taintSpec.FailOnImplicitFlow {
 				// Filtered values logged at debug level -- there can be many of those.
 				logger.Debugf("Filtered value: %s\n", cur.Node.String())
@@ -148,7 +148,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 		}
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
-		if isSink(s, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
+		if dataflow.IsSink(s, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
 			// Don't report taint flow if the sink location is annotated with //argot:ignore
 			if s.Annotations.IsIgnoredPos(cur.Node.Position(s), v.taintSpec.Tag) {
 				s.Logger.Infof("//argot:ignore taint flow to %s",
@@ -170,7 +170,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 		// If node is sanitizer, we don't want to propagate further
 		// The validators will be checked in the addNext function
-		if isSanitizer(s, v.taintSpec, cur.Node) {
+		if dataflow.IsSanitizer(s, v.taintSpec, cur.Node) {
 			logger.Infof("Sanitizer encountered: %s\n", cur.Node.String())
 			logger.Infof("At: %s\n", cur.Node.Position(s))
 			continue
@@ -686,7 +686,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			}
 
 			// taint is expected to flow to validators
-			if isValidatorCondition(v.taintSpec, graphNode.SsaNode().Cond, true) {
+			if dataflow.IsValidatorCondition(v.taintSpec, graphNode.SsaNode().Cond, true) {
 				break
 			}
 
@@ -765,7 +765,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	// Check for validators
 	if edgeInfo.Cond != nil && len(edgeInfo.Cond.Conditions) > 0 {
 		for _, condition := range edgeInfo.Cond.Conditions {
-			if isValidatorCondition(v.taintSpec, condition.Value, condition.IsPositive) {
+			if dataflow.IsValidatorCondition(v.taintSpec, condition.Value, condition.IsPositive) {
 				s.Logger.Debugf("Validated %s.\n", condition)
 				return que
 			}

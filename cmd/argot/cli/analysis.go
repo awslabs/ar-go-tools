@@ -252,7 +252,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command,
 		}
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			ShouldTrack:        taint.IsNodeOfInterest,
+			ShouldTrack:        dataflow.IsNodeOfInterest,
 		})
 		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
 	} else {
@@ -283,7 +283,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.AnalyzerState, command Command,
 		// Run the analysis with the filter.
 		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			ShouldTrack:        taint.IsNodeOfInterest,
+			ShouldTrack:        dataflow.IsNodeOfInterest,
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 
@@ -342,7 +342,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, _ bool) b
 	for _, ts := range c.Config.TaintTrackingProblems {
 		c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(&ts),
 			func(node ssa.Node) bool {
-				return taint.IsSourceNode(c, &ts, node)
+				return dataflow.IsSourceNode(c, &ts, node)
 			},
 			nil)
 	}
@@ -364,14 +364,12 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, _ boo
 		return false
 	}
 
-	// TODO this technically needs summaries that are built with backtrace.IsEntrypoint,
-	// not taint.IsSourceNode
 	var traces []backtrace.Trace
 	for _, ps := range c.Config.SlicingProblems {
 		visitor := &backtrace.Visitor{}
 		visitor.SlicingSpec = &ps
 		c.FlowGraph.RunVisitorOnEntryPoints(visitor, func(node ssa.Node) bool {
-			return backtrace.IsInterProceduralEntryPoint(c, &ps, node)
+			return dataflow.IsBacktraceNode(c, &ps, node)
 		}, nil)
 
 		for _, tr := range visitor.Traces {

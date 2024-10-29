@@ -92,7 +92,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 		analysis.IntraAnalysisParams{
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
 			// For the intra-procedural pass, all source nodes of all problems are marked
-			ShouldTrack: IsNodeOfInterest,
+			ShouldTrack: dataflow.IsNodeOfInterest,
 		})
 
 	// ** Third step **
@@ -143,7 +143,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 		state.Logger.Infof("Analyzing taint-tracking problem %s", taintSpec.Tag)
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
-			IsEntrypoint: func(node ssa.Node) bool { return IsSourceNode(state, &taintSpec, node) },
+			IsEntrypoint: func(node ssa.Node) bool { return dataflow.IsSourceNode(state, &taintSpec, node) },
 		})
 		taintFlows.Merge(visitor.taints)
 		// Restore global options

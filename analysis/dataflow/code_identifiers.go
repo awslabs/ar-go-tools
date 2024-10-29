@@ -1,25 +1,27 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright (c)
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ *   Licensed under the Apache License, Version 2.0 (the "License").
+ *   You may not use this file except in compliance with the License.
+ *   You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *   Unless required by applicable law or agreed to in writing, software
+ *   distributed under the License is distributed on an "AS IS" BASIS,
+ *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *   See the License for the specific language governing permissions and
+ *   limitations under the License.
+ */
 
-package taint
+package dataflow
 
 import (
 	"go/token"
 
 	"github.com/awslabs/ar-go-tools/analysis/annotations"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/ssa"
@@ -33,9 +35,10 @@ import (
 // - reading from struct fields that are marked as sources.
 // - reading from channels marked as source
 // - writing in struct fields that are marked as sinks.
-func IsNodeOfInterest(state *dataflow.AnalyzerState, n ssa.Node) bool {
+func IsNodeOfInterest(state *AnalyzerState, n ssa.Node) bool {
 	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
 		analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSink) ||
+		analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint) ||
 		state.ResolveSsaNode(annotations.Source, "_", n) ||
 		state.ResolveSsaNode(annotations.Sink, "_", n)
 }
@@ -43,7 +46,7 @@ func IsNodeOfInterest(state *dataflow.AnalyzerState, n ssa.Node) bool {
 // IsSourceNode returns true if n matches the code identifier of a source node in the taint specification.
 // If the taint specification is nil, then it will look whether the node can be any source node in the
 // config.
-func IsSourceNode(state *dataflow.AnalyzerState, ts *config.TaintSpec, n ssa.Node) bool {
+func IsSourceNode(state *AnalyzerState, ts *config.TaintSpec, n ssa.Node) bool {
 	if ts == nil {
 		return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
 			state.ResolveSsaNode(annotations.Source, "_", n)
@@ -52,17 +55,34 @@ func IsSourceNode(state *dataflow.AnalyzerState, ts *config.TaintSpec, n ssa.Nod
 		state.ResolveSsaNode(annotations.Source, ts.Tag, n)
 }
 
-func isSink(state *dataflow.AnalyzerState, ts *config.TaintSpec, n dataflow.GraphNode) bool {
+// IsBacktraceNode returns true if slicing spec identifies n as a backtrace entrypoint. If the backtrace specification
+// is nil, then it will look at whether the node can be any backtrace point in the config.
+func IsBacktraceNode(state *AnalyzerState, ss *config.SlicingSpec, n ssa.Node) bool {
+	if f, ok := n.(*ssa.Function); ok {
+		pkg := lang.PackageNameFromFunction(f)
+		return ss.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
+	}
+
+	if ss == nil {
+		return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint)
+	}
+	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, ss.IsBacktracePoint)
+}
+
+// IsSink returns true if the taint spec identifies n as a sink.
+func IsSink(state *AnalyzerState, ts *config.TaintSpec, n GraphNode) bool {
 	return isMatchingCodeID(ts.IsSink, n) || state.ResolveGraphNode(annotations.Sink, ts.Tag, n)
 }
 
-func isSanitizer(state *dataflow.AnalyzerState, ts *config.TaintSpec, n dataflow.GraphNode) bool {
+// IsSanitizer returns true if the taint spec identified n as a sanitizer.
+func IsSanitizer(state *AnalyzerState, ts *config.TaintSpec, n GraphNode) bool {
 	return isMatchingCodeID(ts.IsSanitizer, n) || state.ResolveGraphNode(annotations.Sanitizer, ts.Tag, n)
 }
 
-// isValidatorCondition checks whether v is a validator condition according to the validators stored in the config
+// IsValidatorCondition checks whether v is a validator condition according to the validators stored in the taint
+// analysis specification.
 // This function makes recursive calls on the value if necessary.
-func isValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bool {
+func IsValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bool {
 	switch val := v.(type) {
 	// Direct boolean check?
 	case *ssa.Call:
@@ -72,20 +92,21 @@ func isValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bo
 		vNilChecked, isEqCheck := lang.MatchNilCheck(val)
 		// Validator condition holds on the branch where "not err != nil" or "err == nil"
 		// i.e. if not positive and not isEqCheck or positive and isEqCheck
-		return (isPositive == isEqCheck) && isValidatorCondition(ts, vNilChecked, true)
+		return (isPositive == isEqCheck) && IsValidatorCondition(ts, vNilChecked, true)
 	case *ssa.UnOp:
 		if val.Op == token.NOT {
 			// Validator condition must hold on the negated value, with the negated positive condition
-			return isValidatorCondition(ts, val.X, !isPositive)
+			return IsValidatorCondition(ts, val.X, !isPositive)
 		}
 	case *ssa.Extract:
 		// Validator condition must hold on the tuple result
-		return isValidatorCondition(ts, val.Tuple, isPositive)
+		return IsValidatorCondition(ts, val.Tuple, isPositive)
 	}
 	return false
 }
 
-func isFiltered(s *dataflow.AnalyzerState, ts *config.TaintSpec, n dataflow.GraphNode) bool {
+// IsFiltered returns true if the node is filtered out by the taint analysis.
+func IsFiltered(s *AnalyzerState, ts *config.TaintSpec, n GraphNode) bool {
 	for _, filter := range ts.Filters {
 		if filter.Type != "" {
 			if filter.MatchType(n.Type()) {
@@ -94,9 +115,9 @@ func isFiltered(s *dataflow.AnalyzerState, ts *config.TaintSpec, n dataflow.Grap
 		}
 		var f *ssa.Function
 		switch n2 := n.(type) {
-		case *dataflow.CallNode:
+		case *CallNode:
 			f = n2.Callee()
-		case *dataflow.CallNodeArg:
+		case *CallNodeArg:
 			f = n2.ParentNode().Callee()
 		}
 		if f != nil && filter.Method != "" && filter.Package != "" {
@@ -108,12 +129,12 @@ func isFiltered(s *dataflow.AnalyzerState, ts *config.TaintSpec, n dataflow.Grap
 	return false
 }
 
-func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n dataflow.GraphNode) bool {
+func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n GraphNode) bool {
 	switch n := n.(type) {
-	case *dataflow.ParamNode, *dataflow.FreeVarNode:
+	case *ParamNode, *FreeVarNode:
 		// A these nodes are never a sink; the sink will be identified at the call site, not the callee definition.
 		return false
-	case *dataflow.CallNodeArg:
+	case *CallNodeArg:
 		// A call node argument is a sink if the callee is a sink
 		if isMatchingCodeID(codeIDOracle, n.ParentNode()) {
 			return true
@@ -132,11 +153,11 @@ func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n dataflow.
 			return false
 		}
 		return IsMatchingCodeIDWithCallee(codeIDOracle, callSite.CalleeSummary.Parent, param.Parent())
-	case *dataflow.CallNode:
+	case *CallNode:
 		return IsMatchingCodeIDWithCallee(codeIDOracle, n.Callee(), n.CallSite().(ssa.Node))
-	case *dataflow.SyntheticNode:
+	case *SyntheticNode:
 		return IsMatchingCodeIDWithCallee(codeIDOracle, nil, n.Instr().(ssa.Node)) // safe type conversion
-	case *dataflow.ReturnValNode, *dataflow.ClosureNode, *dataflow.BoundVarNode:
+	case *ReturnValNode, *ClosureNode, *BoundVarNode:
 		return false
 	default:
 		return false

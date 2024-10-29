@@ -26,7 +26,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/ssa"
@@ -213,7 +212,7 @@ func reachedSinkPositions(s *dataflow.AnalyzerState, res backtrace.AnalysisResul
 				}
 
 				sn := sourceNode(node.GraphNode)
-				if isSourceNode(s, sn) {
+				if dataflow.IsSourceNode(s, nil, sn) {
 					sourcePos := instr.Pos()
 					sourceFile := prog.Fset.File(sourcePos)
 					if sourcePos == token.NoPos || sourceFile == nil {
@@ -252,7 +251,7 @@ func isSourceNode(s *dataflow.AnalyzerState, source ssa.Node) bool {
 		}
 	}
 
-	return taint.IsSourceNode(s, nil, source)
+	return dataflow.IsSourceNode(s, nil, source)
 }
 
 func sourceNode(source dataflow.GraphNode) ssa.Node {

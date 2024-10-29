@@ -25,7 +25,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
@@ -48,7 +47,7 @@ func TestFunctionSummaries(t *testing.T) {
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		ShouldTrack:        taint.IsNodeOfInterest,
+		ShouldTrack:        dataflow.IsNodeOfInterest,
 	})
 
 	if len(state.FlowGraph.Summaries) == 0 {
