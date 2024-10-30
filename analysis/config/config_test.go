@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -154,6 +155,25 @@ func TestLoadBadFormatFileReturnsError(t *testing.T) {
 	config, err := Load(name, b)
 	if config != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load a badly formatted file.")
+	}
+}
+
+func TestLoadVersionBefore_v0_3_0_Errors(t *testing.T) {
+	_, config, err := loadFromTestDir("config_before_v0_3_0.yaml")
+	if config != nil || err == nil {
+		t.Fatalf("Expected error and nil value when trying to load config with bad format")
+	}
+	msg1 := "Please consult documentation and update the config file"
+	if !strings.Contains(err.Error(), msg1) {
+		t.Errorf("Error message:\n%s\nshould contain %s", err, msg1)
+	}
+
+	_, configJson, errJson := loadFromTestDir("config_before_v0_3_0.json")
+	if configJson != nil || errJson == nil {
+		t.Fatalf("Expected error and nil value when trying to load config with bad format")
+	}
+	if !strings.Contains(errJson.Error(), msg1) {
+		t.Errorf("Error message:\n%s\nshould contain %s", errJson, msg1)
 	}
 }
 

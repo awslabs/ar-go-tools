@@ -1,6 +1,6 @@
 # The package regex matches all possible ways the package name might appear depending on how the program is loaded
 taint-tracking-problems:
-  -
+  - tag: "taint1"
     sources:
       - package: "(closures_flowprecise)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         # Sources can be source1, source2, etc.
@@ -13,7 +13,7 @@ taint-tracking-problems:
 
 # Same as sinks
 slicing-problems:
-  -
+  - tag: "slicing"
     backtracepoints:
       - package: "(closures_flowprecise)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
         # Similarly, sinks are sink1 sink2 sink2 ...

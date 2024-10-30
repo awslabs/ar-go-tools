@@ -1,0 +1,37 @@
+# This is a complete config file. All fields are mostly optional, unless clearly required by the analysis you
+# are trying to run.
+
+options:
+  log-level: 5
+  field-sensitive: true
+  # Before v0.3.0 below were simple config options
+  unsafe-max-depth: 42
+  max-alarms: 16
+  max-entrypoint-context-size: 20
+
+dataflow-specs:
+  - "example.json"
+  - "example2.json"
+
+pointer-config:
+  reflection: true
+  unsafe-no-effect-functions:
+    - "fmt.Errorf"
+    - "fmt.Printf"
+
+taint-tracking-problems:
+  - validators:
+      - method: "Validate"
+        package: "x"
+
+    sinks:
+      - method: "Sink"
+        package: "sensitiveDataManipulation"
+
+    sources:
+      - type: "Data"
+        field: "UserProvided"
+
+    sanitizers:
+      - method: "Sanitize"
+

@@ -391,7 +391,7 @@ func NewDefault() *Config {
 }
 
 func unmarshalConfig(b []byte, cfg *Config) error {
-	// Strict decoding for json config files: will warn user of misconfiguration
+	// Strict decoding for yaml config files: will warn user of misconfiguration
 	yamlDecoder := yaml.NewDecoder(bytes.NewReader(b))
 	yamlDecoder.KnownFields(true)
 	errYaml := yamlDecoder.Decode(cfg)
@@ -407,9 +407,30 @@ func unmarshalConfig(b []byte, cfg *Config) error {
 	jsonDecoder.DisallowUnknownFields()
 	errJson := jsonDecoder.Decode(cfg)
 	if errJson == nil {
-		return errJson
+		return nil
 	}
-	return fmt.Errorf("could not unmarshal config file, not as yaml: %w, not as xml: %v, not as json: %v",
+	return errorMisconfigurationGracefully(errYaml, errXML, errJson)
+}
+
+func errorMisconfigurationGracefully(errYaml, errXML, errJson error) error {
+	// A list of messages that is likely to appear if the user is using an old configuration file
+	oldConfigFingerprints := []string{
+		"field unsafe-max-depth not found in type config.Options",
+		"field max-alarms not found in type config.Options",
+		"field max-alarms not found in type config.Options",
+	}
+	msgUpgrade := "your config follows an outdated format. Please consult documentation and update the config file"
+	for _, fingerprint := range oldConfigFingerprints {
+		if strings.Contains(errYaml.Error(), fingerprint) {
+			return fmt.Errorf("could not parse config file:\n%w\n%s", errYaml, msgUpgrade)
+		}
+		if strings.Contains(errJson.Error(), fingerprint) {
+			return fmt.Errorf("could not parse config file:\n%w\n%s", errJson, msgUpgrade)
+		}
+	}
+
+	// default behaviour is just to forward the error messages of all unmarshalling attempts
+	return fmt.Errorf("could not parse config file, not as yaml: %w,\nnot as xml: %v,\nnot as json: %v\n",
 		errYaml, errXML, errJson)
 }
 
@@ -535,7 +556,7 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 		cfg.PointerConfig = NewPointerConfig()
 	}
 
-	return cfg, nil
+	return cfg, cfg.Validate()
 }
 
 // LoadEscape adds the escape configuration settings from escapeConfigBytes into c.
@@ -764,17 +785,20 @@ func SetOption(c *Config, name, value string) (string, error) {
 // problem options. Overwriting is logged at info level.
 func OverrideWithAnalysisOptions(l *LogGroup, c *Config, o *AnalysisProblemOptions) {
 	if o.MaxAlarms != 0 {
-		l.Infof("Overring max-alarms with %d", o.MaxAlarms)
+		l.Infof("max-alarms set to %d (using problem's analysis-options)",
+			o.MaxAlarms)
 		c.MaxAlarms = o.MaxAlarms
 	}
 
 	if o.UnsafeMaxDepth != 0 {
-		l.Infof("Overring unsafe-max-depth with %d", o.UnsafeMaxDepth)
+		l.Infof("unsafe-max-depth set to %d (using problem's analysis-options)",
+			o.UnsafeMaxDepth)
 		c.UnsafeMaxDepth = o.UnsafeMaxDepth
 	}
 
 	if o.MaxEntrypointContextSize != 0 {
-		l.Infof("Overring max-entrypoint-context-size with %d", o.MaxEntrypointContextSize)
+		l.Infof("max-entrypoint-context-size set to %d (using problem's analysis-options)",
+			o.MaxEntrypointContextSize)
 		c.MaxEntrypointContextSize = o.MaxEntrypointContextSize
 	}
 }
