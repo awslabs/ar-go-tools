@@ -38,6 +38,10 @@ func sink(s string) {
 	fmt.Print(s)
 }
 
+func sourceFoo() string { return strconv.Itoa(rand.Int()) + "taintedFoo" }
+func sinkFoo(s string)  { fmt.Printf("Foo: Show %s\n", s) }
+func sinkBar(s string)  { fmt.Printf("Bar: Show %s\n", s) }
+
 //argot:function Source(lim)
 func source() string {
 	return strconv.Itoa(rand.Int()) + "tainted"
@@ -74,8 +78,25 @@ func sanitizeSecondArg(safe string, clean string) string {
 	return clean + safe
 }
 
+func call1(s string) {
+	if len(s) > 1 {
+		call2(s)
+	}
+}
+
+func call2(s string) {
+	fmt.Println(s)
+	call3(s)
+}
+
+func call3(s string) {
+	sinkFoo(s) // is never reached because unsafe-max-depth is overriden with 1 in the foo problem
+	sinkBar(s) // @Sink(fooBar) is tainted because problem bar is using the default depth
+}
+
 func main() {
 	s := bar()                       // @Source(ex1,ex2,hybridDef)
+	t := sourceFoo()                 // @Source(foo, fooBar)
 	sink(s)                          //  @Sink(ex1)
 	sinkOnSecondArg(s, "ok")         // only second argument of this is a sink
 	sinkOnSecondArg("ok", s)         // @Sink(ex2)
@@ -84,4 +105,5 @@ func main() {
 	sink(sanitizer(s))
 	fmt.Println(s)            // @Sink(hybridDef)
 	sink(amending2(source())) // no alarm because of the unsafe config option set to 2 for the lim problem
+	call1(t)
 }

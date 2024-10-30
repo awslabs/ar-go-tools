@@ -16,25 +16,25 @@ Along the configuration options listed in the common fields, the user can specif
 
 > ⚠ It is the user's responsibility to properly specify those functions to match their intent, and the tool does not try to automatically discover possible sources of tainted data, instead completely relying on the user's specification.
 
-Below is an example of a config file containing a basic taint analysis specification. One can specify several problems in `taint-tracking-problems`. The following specifies exactly one problem:
+Below is an example of a config file containing a basic taint analysis specification. One can specify several problems in `taint-tracking-problems`. If there are several problem, each problem should have a unique tag. The following specifies exactly one problem:
 ```yaml
 taint-tracking-problems:
-  -
-    sources:                        # A list of sources of tainted/sensitive data
+  - tag: "sensitive-data-not-logged"  # tag to identify the problem
+    sources:                          # A list of sources of tainted/sensitive data
         - package: "example1"
           method: "GetSensitiveData"
     
-    sinks:                          # A list of sinks that should not be reached by sensitive data
+    sinks:                            # A list of sinks that should not be reached by sensitive data
         - package: "example2"
           method: "LogDataPublicly"
         - package: "example2"
           interface: "Logger"
     
-    sanitizers:                     # A list of sanitizers that remove the taint from data
+    sanitizers:                      # A list of sanitizers that remove the taint from data
         - package: "example1"
           method: "Sanitize"
     
-    validators:                     # A list of validators that validates data, and removes taint when valid
+    validators:                      # A list of validators that validates data, and removes taint when valid
         - package: "example3"
           method: "Validator"
 ```
@@ -164,20 +164,20 @@ By default, the taint analysis will not produce an error if tainted data is bran
 If the tool should fail when control flow depends on tainted data, set the `fail-on-implicit-flow` option to `true`:
 ```yaml
 taint-tracking-problems:
-    -
-      fail-on-implicit-flow: true
+  - tag: "foo"
+    fail-on-implicit-flow: true
 ```
 
 #### Filters
 By default, the analysis considers that any type can carry tainted data. In some cases, this can be excessive, as one might not see boolean values as tainted data (for example, a boolean cannot store a user's password). In order to ignore flows that pass through variables of certain types, one add filters. Filters are either a *type* or a *method*, optionally within a *package*. A type filter will cause the tool to ignore data flows through objects of that type, and a method filter will cause the tool to ignore data flows through that method (or function).
 ```yaml
 taint-tracking-problems:
-    -    
-      filters:
-         - type: "bool$"
-         - type: "error$"
-         - method: "myFunc$"
-           package: "myPackage"
+  - tag: "foo"
+    filters:
+      - type: "bool$"
+      - type: "error$"
+      - method: "myFunc$"
+        package: "myPackage"
 ```
 With the configuration setting above, the tool will not follow data flows through `bool` and `error` types, and not through calls to the function `myFunc` in package `myPackage`. 
 
@@ -186,21 +186,37 @@ The `unsafe-max-depth` parameter controls how deep the dataflow paths can be. By
 
 If this is set to **any positive value**, the analysis is **unsound**. However, it is recommended to first experiment with some low value when scanning for new data flows.
 
-This is a global option, for example:
+This is an analysis option, meaning it applies for each analysis problem, for example:
 ```yaml
 options:
+  analysis-options:
     unsafe-max-depth: 10
 ```
+You can also set it for a specific analysis problem:
+```yaml
+taint-tracking-problems:
+    - analysis-options:
+        unsafe-max-depth: 6
+      tag: "foo"
+      filters:
+         - type: "bool$"
+         - type: "error$"
+         - method: "myFunc$"
+           package: "myPackage"
+```
+in which case the top-level setting is overriden when analyzing for problem `"foo"`.
 
 #### Number of Alarms
 
-The `max-alarms` setting lets you limit the number of alarms the tool reports. This is useful when many paths are reported, and you want to only focus on a few reported problems. Setting this parameter has no effect on the soundness of the analysis; any value <= 0 will cause the limit to be ignored. The default value is 0.
+The `max-alarms` setting lets you limit the number of alarms the tool reports per analysis problem. This is useful when many paths are reported, and you want to only focus on a few reported problems. Setting this parameter has no effect on the soundness of the analysis; any value <= 0 will cause the limit to be ignored. The default value is 0.
 
 This is a global option, for example:
 ```yaml
 options:
+  analysis-options:
     max-alarms: 2
 ```
+Similarly, as `unsafe-max-depth`, this can be set specifically for an analysis problem.
 
 #### Finding Suppression
 

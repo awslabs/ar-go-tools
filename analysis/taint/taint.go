@@ -126,7 +126,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 		// Number of alarms is problem specific, not global
 		state.ResetAlarms()
 
-		state.Logger.Infof("Analyzing taint-tracking problem %s", taintSpec.Tag)
+		state.Logger.Infof("====================== NEW PROBLEM: %s =======================", taintSpec.Tag)
 		// Set problem-specific options
 		prevOptions := state.Config.AnalysisProblemOptions
 
@@ -137,15 +137,16 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 
 		// Overriding options with annotations
 		for optionName, optionValue := range state.Annotations.Configs[taintSpec.Tag] {
-			prevValue, err := config.SetOption(state.Config, optionName, optionValue)
-			if err != nil {
+			_, errSetting := config.SetOption(state.Config, optionName, optionValue)
+			if errSetting != nil {
 				state.Logger.Warnf("ignoring option %s setting to %s in annotations because not a valid option",
 					optionName, optionValue)
 			} else {
-				state.Logger.Infof("Overriding %s with %s for option %s with annotation.",
-					prevValue, optionValue, optionName)
+				state.Logger.Infof("%s set to %s (using annotation).",
+					optionName, optionValue)
 			}
 		}
+		state.Logger.Debugf("Options: %+v", state.Config.Options)
 		visitor := NewVisitor(&taintSpec)
 		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
@@ -154,6 +155,7 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 		taintFlows.Merge(visitor.taints)
 		// Restore global options
 		state.Config.AnalysisProblemOptions = prevOptions
+		state.Logger.Infof("Done analyzing %s", taintSpec.Tag)
 	}
 
 	// ** Fourth step **

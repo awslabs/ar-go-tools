@@ -1,11 +1,12 @@
 options:
   log-level: 3
-  max-alarms: 10
-  unsafe-max-depth: 6
   reports-dir: "payload/selfcheck/taint-report"
-  max-entrypoint-context-size: 2
   summarize-on-demand: true
   report-paths: true
+  analysis-options:
+    max-alarms: 10
+    unsafe-max-depth: 6
+    max-entrypoint-context-size: 2
   field-sensitive-funcs:
     - "AnalyzerState"
 
