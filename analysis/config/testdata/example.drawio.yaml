@@ -4,12 +4,13 @@ options:
   pkg-filter: "abc"
   report-summaries: true
 
-taint-tracking-problems:
-  - sources:
-      - package: "(main)|(command-line-arguments)|((.*)ar-go-tools)"
-        method: "source[1-9]"
-    sinks:
-      - package: "(main)|(command-line-arguments)|((.*)ar-go-tools)"
-        method: "(s|S)ink[1-9]"
-    sanitizers:
-      - method: "(s|S)anitize[1-9]?"
+dataflow-problems:
+  taint-tracking:
+    - sources:
+        - package: "(main)|(command-line-arguments)|((.*)ar-go-tools)"
+          method: "source[1-9]"
+      sinks:
+        - package: "(main)|(command-line-arguments)|((.*)ar-go-tools)"
+          method: "(s|S)ink[1-9]"
+      sanitizers:
+        - method: "(s|S)anitize[1-9]?"

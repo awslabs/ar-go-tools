@@ -46,12 +46,6 @@ options:
   # this options ensures that the escape analysis is run in parallel with the dataflow analysis
   use-escape-analysis: true
 
-  # this can be set to use only on-demand summarization
-  summarize-on-demand: true
-
-  # This setting sets whether the analysis is field sensitive
-  field-sensitive: true
-
   analysis-options:
     # For context-sensitive graph reachability based analysis this parameter can be used to limit the callstack depth
     # that can be considered during the analysis. This can be used for debugging, or to artifically only filter
@@ -66,11 +60,6 @@ options:
     # called.
     max-entrypoint-context-size: 20
 
-# For any dataflow analysis, you can specify summaries for specific functions and interfaces. The analysis will
-# use each of those files as a reference for the functions specified
-dataflow-specs:
-  - "example.json"
-  - "example2.json"
 
 # Configuration elements specific to the pointer analysis
 pointer-config:
@@ -79,21 +68,33 @@ pointer-config:
     - "fmt.Errorf"
     - "fmt.Printf"
 
-taint-tracking-problems:
-  - validators:
-      - method: "Validate"
-        package: "x"
+dataflow-problems:
+  # this can be set to use only on-demand summarization
+  summarize-on-demand: true
+  # This setting sets whether the analysis is field sensitive
+  field-sensitive: true
+  # For any dataflow analysis, you can specify summaries for specific functions and interfaces. The analysis will
+  # use each of those files as a reference for the functions specified
+  user-specs:
+    - "example.json"
+    - "example2.json"
 
-    sinks:
-      - method: "Sink"
-        package: "sensitiveDataManipulation"
+  # The taint tracking problems
+  taint-tracking:
+    - validators:
+        - method: "Validate"
+          package: "x"
 
-    sources:
-      - type: "Data"
-        field: "UserProvided"
+      sinks:
+        - method: "Sink"
+          package: "sensitiveDataManipulation"
 
-    sanitizers:
-      - method: "Sanitize"
+      sources:
+        - type: "Data"
+          field: "UserProvided"
 
-    analysis-options:
-      unsafe-max-depth: 1
+      sanitizers:
+        - method: "Sanitize"
+
+      analysis-options:
+        unsafe-max-depth: 1

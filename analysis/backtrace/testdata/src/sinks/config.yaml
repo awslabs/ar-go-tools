@@ -1,5 +1,6 @@
-taint-tracking-problems:
-  -
-    sinks:
-      - package: "((main)|(sinks))"
-        method: sinkFunction
+dataflow-problems:
+  taint-tracking:
+    -
+      sinks:
+        - package: "((main)|(sinks))"
+          method: sinkFunction

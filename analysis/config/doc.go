@@ -26,15 +26,17 @@ options:
 
 	log-level: 5
 
-taint-tracking-problems:
+dataflow-problems:
 
-	    -
-		  sinks:
-		    - package: fmt
-	          method: Printf
+	  taint-tracking:
 
-		  sources:
-		     - method: Read
+		    -
+			  sinks:
+			    - package: fmt
+		          method: Printf
+
+			  sources:
+			     - method: Read
 
 # Identifying code elements
 

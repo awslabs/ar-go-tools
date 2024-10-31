@@ -172,8 +172,8 @@ func NewAnalyzerState(p *ssa.Program, pkgs []*packages.Package, l *config.LogGro
 	state.FlowGraph.AnalyzerState = state
 
 	// Load the dataflow contracts from the specified json files, if any
-	if len(c.DataflowSpecs) > 0 {
-		for _, specFile := range c.DataflowSpecs {
+	if len(c.DataflowProblems.UserSpecs) > 0 {
+		for _, specFile := range c.DataflowProblems.UserSpecs {
 			contractsBatch, err := LoadDefinitions(c.RelPath(specFile))
 			if err != nil {
 				return nil, err

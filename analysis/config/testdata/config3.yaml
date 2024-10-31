@@ -2,7 +2,8 @@
 options:
     pkg-filter: "a"
 
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - sinks:
       - package: y
         method: b

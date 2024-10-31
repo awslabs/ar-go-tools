@@ -1,9 +1,11 @@
-taint-tracking-problems:
- - sources:
-    - method: "source"
-      package: "((main)|(command-line-arguments)|(agent-example))"
-   sinks:
-    - package: "log"
-      interface: "Logger"
-    - method: "sink"
-      package: "((main)|(command-line-arguments)|(agent-example))"
+dataflow-problems:
+  taint-tracking:
+    - tag: "taint1"
+      sources:
+      - method: "source"
+        package: "((main)|(command-line-arguments)|(agent-example))"
+      sinks:
+      - package: "log"
+        interface: "Logger"
+      - method: "sink"
+        package: "((main)|(command-line-arguments)|(agent-example))"

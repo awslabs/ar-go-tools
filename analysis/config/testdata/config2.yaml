@@ -1,4 +1,5 @@
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - sanitizers:
       - package: x
         method: a

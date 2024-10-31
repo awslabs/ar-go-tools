@@ -108,10 +108,6 @@ type Config struct {
 	// nocalleereportfile is a file name in ReportsDir when ReportNoCalleeSites is true
 	nocalleereportfile string
 
-	// DataFlowSpecs is a path to a json file that contains the data flows specs for the interfaces in the dataflow
-	// analyses
-	DataflowSpecs []string `yaml:"dataflow-specs" json:"dataflow-specs"`
-
 	// if the PkgFilter is specified
 	pkgFilterRegex *regexp.Regexp
 
@@ -124,42 +120,13 @@ type Config struct {
 	// PointerConfig contains the pointer-analysis specific configuration parameters
 	PointerConfig *PointerConfig `yaml:"pointer-config" json:"pointer-config"`
 
-	// TaintTrackingProblems lists the taint tracking specifications
-	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking-problems" json:"taint-tracking-problems"`
-
-	// SlicingProblems lists the program slicing specifications
-	SlicingProblems []SlicingSpec `yaml:"slicing-problems" json:"slicing-problems"`
-
 	// StaticCommandsProblems lists the static commands problems
 	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems" json:"static-commands-problems"`
 
 	SyntacticProblems []SyntacticSpecs `yaml:"syntactic-problems" json:"syntactic-problems"`
-}
 
-// AnalysisProblemOptions are the options that are specific to an analysis problem.
-type AnalysisProblemOptions struct {
-	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
-	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
-	//
-	// This setting does not affect soundness, since event with max-alarms:1, at least one path will be reported if
-	// there is some potential alarm-causing result.
-	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms" json:"max-alarms"`
-
-	// UnsafeMaxDepth sets a limit for the number of function call depth explored during the analysis.
-	// The default is -1, and any value less than 0 is safe: the analysis will be sound and explore call depth
-	// without bounds.
-	//
-	// Setting UnsafeMaxDepth to a limit larger than 0 will yield unsound results, but can be useful to use the tool
-	// as a checking mechanism. Limiting the call depth will usually yield fewer false positives.
-	UnsafeMaxDepth int `xml:"unsafe-max-depth,attr" yaml:"unsafe-max-depth" json:"unsafe-max-depth"`
-
-	// MaxEntrypointContextSize sets the maximum context (call stack) size used when searching for entry points with context.
-	// This only impacts precision of the returned results.
-	//
-	// If MaxEntrypointContextSize is < 0, it is ignored.
-	// If MaxEntrypointContextSize is 0 is specified by the user, the value is ignored, and a default internal value is used.
-	// If MaxEntrypointContextSize is > 0, then the limit in the callstack size for the context is used.
-	MaxEntrypointContextSize int `xml:"max-entrypoint-context-size,attr" yaml:"max-entrypoint-context-size" json:"max-entrypoint-context-size"`
+	// DataflowProblems specifies the dataflow problems to solve in the config
+	DataflowProblems `yaml:"dataflow-problems" json:"dataflow-problems"`
 }
 
 // AnalysisProblemOptions are the options that are specific to an analysis problem.
@@ -198,56 +165,6 @@ type PointerConfig struct {
 	// Reflection is the reflection option of the pointer analysis: when true, reflection aperators are handled
 	// soundly, but analysis time will increase dramatically.
 	Reflection bool
-}
-
-// TaintSpec contains code identifiers that identify a specific taint tracking problem, or contains a code that
-// can differentiate groups of annotations
-type TaintSpec struct {
-	*AnalysisProblemOptions `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
-	// Sanitizers is the list of sanitizers for the taint analysis
-	Sanitizers []CodeIdentifier
-
-	// Validators is the list of validators for the dataflow analyses
-	Validators []CodeIdentifier
-
-	// Sinks is the list of sinks for the taint analysis
-	Sinks []CodeIdentifier
-
-	// Sources is the list of sources for the taint analysis
-	Sources []CodeIdentifier
-
-	// Filters contains a list of filters that can be used by analyses
-	Filters []CodeIdentifier
-
-	// Tag identifies a group of annotations when used with annotations
-	Tag string
-
-	// FailOnImplicitFlow indicates whether the taint analysis should fail when tainted data implicitly changes
-	// the control flow of a program. This should be set to false when proving a data flow property,
-	// and set to true when proving an information flow property.
-	FailOnImplicitFlow bool `yaml:"fail-on-implicit-flow" json:"fail-on-implicit-flow"`
-
-	// SkipBoundLabels indicates whether to skip flows that go through "bound labels", i.e. aliases of the variables
-	// bound by a closure. This can be useful to test data flows because bound labels generate a lot of false positives.
-	SkipBoundLabels bool `yaml:"unsafe-skip-bound-labels" json:"unsafe-skip-bound-labels"`
-}
-
-// SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
-type SlicingSpec struct {
-	*AnalysisProblemOptions `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
-	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards
-	// dataflow analysis.
-	BacktracePoints []CodeIdentifier
-
-	// Filters contains a list of filters that can be used by analyses
-	Filters []CodeIdentifier
-
-	// Tag identifies a group of annotations when used with annotations
-	Tag string
-
-	// SkipBoundLabels indicates whether to skip flows that go through "bound labels", i.e. aliases of the variables
-	// bound by a closure. This can be useful to test data flows because bound labels generate a lot of false positives.
-	SkipBoundLabels bool `yaml:"unsafe-skip-bound-labels" json:"unsafe-skip-bound-labels"`
 }
 
 // StaticCommandsSpec contains code identifiers for the problem of identifying which commands are static
@@ -298,15 +215,6 @@ type Options struct {
 	// Loglevel controls the verbosity of the tool
 	LogLevel int `xml:"log-level,attr" yaml:"log-level" json:"log-level"`
 
-	// PathSensitive is a boolean indicating whether the analysis should be run with access path sensitivity on
-	// (will change to include more filtering in the future)
-	//
-	// Note that the configuration option name is "field-sensitive" because this is the name that will be more
-	// recognizable for users.
-	//
-	// TODO deprecate since this case is covered by `"field-sensitive-funcs": [".*"]`?
-	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive" json:"field-sensitive"`
-
 	// PkgFilter is a filter for the taint analysis to build summaries only for the function whose package match the
 	// prefix. This is a global option because it is used during the first intra-procedural passes of the analysis.
 	PkgFilter string `xml:"pkg-filter,attr" yaml:"pkg-filter" json:"pkg-filter"`
@@ -331,13 +239,6 @@ type Options struct {
 	// in the folder the binary is called.
 	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir" json:"reports-dir"`
 
-	// PathSensitiveFuncs is a list of regexes indicating which functions should be path-sensitive.
-	// This allows the analysis to scale yet still maintain a degree of precision where it matters.
-	PathSensitiveFuncs []string `xml:"field-sensitive-funcs" yaml:"field-sensitive-funcs" json:"field-sensitive-funcs"`
-
-	// pathSensitiveFuncsRegexes is a list of compiled regexes corresponding to PathSensitiveFuncs
-	pathSensitiveFuncsRegexes []*regexp.Regexp
-
 	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
 	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural" json:"skip-interprocedural"`
 
@@ -348,9 +249,6 @@ type Options struct {
 	// the case, but might be useful for some users or for source functions that do not return anything.
 	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args" json:"source-taints-args"`
 
-	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
-	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand" json:"summarize-on-demand"`
-
 	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
 	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis" json:"use-escape-analysis"`
 }
@@ -358,12 +256,14 @@ type Options struct {
 // NewDefault returns an empty default config.
 func NewDefault() *Config {
 	return &Config{
-		sourceFile:             "",
-		nocalleereportfile:     "",
-		TaintTrackingProblems:  nil,
-		SlicingProblems:        nil,
+		sourceFile:         "",
+		nocalleereportfile: "",
+		DataflowProblems: DataflowProblems{
+			PathSensitive:             false,
+			PathSensitiveFuncs:        []string{},
+			pathSensitiveFuncsRegexes: nil,
+		},
 		StaticCommandsProblems: nil,
-		DataflowSpecs:          []string{},
 		EscapeConfig:           NewEscapeConfig(),
 		PointerConfig:          NewPointerConfig(),
 		Options: Options{
@@ -372,20 +272,17 @@ func NewDefault() *Config {
 				MaxAlarms:                0,
 				MaxEntrypointContextSize: DefaultSafeMaxEntrypointContextSize,
 			},
-			ReportsDir:                "",
-			PkgFilter:                 "",
-			SkipInterprocedural:       false,
-			CoverageFilter:            "",
-			ReportSummaries:           false,
-			ReportPaths:               false,
-			ReportCoverage:            false,
-			ReportNoCalleeSites:       false,
-			LogLevel:                  int(InfoLevel),
-			SilenceWarn:               false,
-			SourceTaintsArgs:          false,
-			PathSensitive:             false,
-			PathSensitiveFuncs:        []string{},
-			pathSensitiveFuncsRegexes: nil,
+			ReportsDir:          "",
+			PkgFilter:           "",
+			SkipInterprocedural: false,
+			CoverageFilter:      "",
+			ReportSummaries:     false,
+			ReportPaths:         false,
+			ReportCoverage:      false,
+			ReportNoCalleeSites: false,
+			LogLevel:            int(InfoLevel),
+			SilenceWarn:         false,
+			SourceTaintsArgs:    false,
 		},
 	}
 }
@@ -418,6 +315,9 @@ func errorMisconfigurationGracefully(errYaml, errXML, errJson error) error {
 		"field unsafe-max-depth not found in type config.Options",
 		"field max-alarms not found in type config.Options",
 		"field max-alarms not found in type config.Options",
+		"field taint-tracking-problems not found in type config.Config",
+		"field slicing-problems not found in type config.Config",
+		"field dataflow-specs not found in type config.Config",
 	}
 	msgUpgrade := "your config follows an outdated format. Please consult documentation and update the config file"
 	for _, fingerprint := range oldConfigFingerprints {
@@ -511,21 +411,21 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 		}
 	}
 
-	if len(cfg.Options.PathSensitiveFuncs) > 0 {
-		psRegexes := make([]*regexp.Regexp, 0, len(cfg.Options.PathSensitiveFuncs))
-		for _, pf := range cfg.Options.PathSensitiveFuncs {
+	if len(cfg.PathSensitiveFuncs) > 0 {
+		psRegexes := make([]*regexp.Regexp, 0, len(cfg.PathSensitiveFuncs))
+		for _, pf := range cfg.PathSensitiveFuncs {
 			r, err := regexp.Compile(pf)
 			if err != nil {
 				continue
 			}
 			psRegexes = append(psRegexes, r)
 		}
-		cfg.Options.pathSensitiveFuncsRegexes = psRegexes
+		cfg.pathSensitiveFuncsRegexes = psRegexes
 	} else {
-		cfg.Options.PathSensitiveFuncs = []string{}
+		cfg.PathSensitiveFuncs = []string{}
 	}
 
-	for _, tSpec := range cfg.TaintTrackingProblems {
+	for _, tSpec := range cfg.DataflowProblems.TaintTrackingProblems {
 		funcutil.MapInPlace(tSpec.Sanitizers, compileRegexes)
 		funcutil.MapInPlace(tSpec.Sinks, compileRegexes)
 		funcutil.MapInPlace(tSpec.Sources, compileRegexes)
@@ -533,13 +433,9 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 		funcutil.MapInPlace(tSpec.Filters, compileRegexes)
 	}
 
-	for _, sSpec := range cfg.SlicingProblems {
+	for _, sSpec := range cfg.DataflowProblems.SlicingProblems {
 		funcutil.MapInPlace(sSpec.BacktracePoints, compileRegexes)
 		funcutil.MapInPlace(sSpec.Filters, compileRegexes)
-	}
-
-	for _, stSpec := range cfg.StaticCommandsProblems {
-		funcutil.MapInPlace(stSpec.StaticCommands, compileRegexes)
 	}
 
 	for _, spec := range cfg.SyntacticProblems {
@@ -650,7 +546,7 @@ func (c Config) MatchCoverageFilter(filename string) bool {
 
 // IsPathSensitiveFunc returns true if funcName matches any regex in c.Options.PathSensitiveFuncs.
 func (c Config) IsPathSensitiveFunc(funcName string) bool {
-	for _, psfr := range c.Options.pathSensitiveFuncsRegexes {
+	for _, psfr := range c.pathSensitiveFuncsRegexes {
 		if psfr == nil {
 			continue
 		}
@@ -665,7 +561,7 @@ func (c Config) IsPathSensitiveFunc(funcName string) bool {
 // Below are functions used to query the configuration on specific facts
 
 func (c Config) isSomeTaintSpecCid(cid CodeIdentifier, f func(t TaintSpec, cid CodeIdentifier) bool) bool {
-	for _, x := range c.TaintTrackingProblems {
+	for _, x := range c.DataflowProblems.TaintTrackingProblems {
 		if f(x, cid) {
 			return true
 		}
@@ -695,7 +591,7 @@ func (c Config) IsSomeValidator(cid CodeIdentifier) bool {
 
 // IsSomeBacktracePoint returns true if the code identifier matches any backtrace point in the slicing problems
 func (c Config) IsSomeBacktracePoint(cid CodeIdentifier) bool {
-	for _, ss := range c.SlicingProblems {
+	for _, ss := range c.DataflowProblems.SlicingProblems {
 		if ss.IsBacktracePoint(cid) {
 			return true
 		}

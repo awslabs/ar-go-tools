@@ -1,29 +1,31 @@
 {
-  "taint-tracking-problems": [
-    {
-      "sanitizers": [
-        {
-          "package": "x",
-          "method": "a",
-          "field": "b"
-        }
-      ],
-      "sinks": [
-        {
-          "package": "y",
-          "method": "b"
-        }
-      ],
-      "sources": [
-        {
-          "package": "p",
-          "method": "a"
-        },
-        {
-          "package": "p2",
-          "method": "a"
-        }
-      ]
-    }
-  ]
+  "dataflow-problems": {
+    "taint-tracking": [
+      {
+        "sanitizers": [
+          {
+            "package": "x",
+            "method": "a",
+            "field": "b"
+          }
+        ],
+        "sinks": [
+          {
+            "package": "y",
+            "method": "b"
+          }
+        ],
+        "sources": [
+          {
+            "package": "p",
+            "method": "a"
+          },
+          {
+            "package": "p2",
+            "method": "a"
+          }
+        ]
+      }
+    ]
+  }
 }

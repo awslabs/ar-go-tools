@@ -12,31 +12,32 @@ The tool will report flows from taint **sources** to **sinks**, taking in accoun
 
 
 ## Taint Analysis Configuration
-Along the configuration options listed in the common fields, the user can specify taint analysis specific problems. Those problems are a list of specifications under the option `taint-tracking-problems`. Each problem specification must define the sources and the sinks for the taint tracking problem. Optionally, the user can define sanitizers and validators. The *sources* identify the functions that return sensitive data, and this data should never reach any of the *sinks*. The *sanitizers* are functions that clear the data of its sensitive nature, i.e. functions that when receiving sensitive data, will return data that does not contain any sensitive information. *Validators* have a similar role, but do not return the data. When the value returned by a validator is a boolean and is true, then the data passed to the validator is considered to be taint-free in the branch where the boolean is true. When the value returned by a validator is an error, then the data is considered taint-free in the branch where the error is `nil`.
+Along the configuration options listed in the common fields, the user can specify taint analysis specific problems. Those problems are a list of specifications in the `taint-tracking` category of the `dataflow-problems`. Each problem specification must define the sources and the sinks for the taint tracking problem. Optionally, the user can define sanitizers and validators. The *sources* identify the functions that return sensitive data, and this data should never reach any of the *sinks*. The *sanitizers* are functions that clear the data of its sensitive nature, i.e. functions that when receiving sensitive data, will return data that does not contain any sensitive information. *Validators* have a similar role, but do not return the data. When the value returned by a validator is a boolean and is true, then the data passed to the validator is considered to be taint-free in the branch where the boolean is true. When the value returned by a validator is an error, then the data is considered taint-free in the branch where the error is `nil`.
 
 > ⚠ It is the user's responsibility to properly specify those functions to match their intent, and the tool does not try to automatically discover possible sources of tainted data, instead completely relying on the user's specification.
 
-Below is an example of a config file containing a basic taint analysis specification. One can specify several problems in `taint-tracking-problems`. If there are several problem, each problem should have a unique tag. The following specifies exactly one problem:
+Below is an example of a config file containing a basic taint analysis specification. One can specify several problems in `taint-tracking`. If there are several problem, each problem should have a unique tag. The following specifies exactly one problem:
 ```yaml
-taint-tracking-problems:
-  - tag: "sensitive-data-not-logged"  # tag to identify the problem
-    sources:                          # A list of sources of tainted/sensitive data
-        - package: "example1"
-          method: "GetSensitiveData"
-    
-    sinks:                            # A list of sinks that should not be reached by sensitive data
-        - package: "example2"
-          method: "LogDataPublicly"
-        - package: "example2"
-          interface: "Logger"
-    
-    sanitizers:                      # A list of sanitizers that remove the taint from data
-        - package: "example1"
-          method: "Sanitize"
-    
-    validators:                      # A list of validators that validates data, and removes taint when valid
-        - package: "example3"
-          method: "Validator"
+dataflow-problems:
+    taint-tracking:
+      - tag: "sensitive-data-not-logged"  # tag to identify the problem
+        sources:                          # A list of sources of tainted/sensitive data
+            - package: "example1"
+              method: "GetSensitiveData"
+        
+        sinks:                            # A list of sinks that should not be reached by sensitive data
+            - package: "example2"
+              method: "LogDataPublicly"
+            - package: "example2"
+              interface: "Logger"
+        
+        sanitizers:                      # A list of sanitizers that remove the taint from data
+            - package: "example1"
+              method: "Sanitize"
+        
+        validators:                      # A list of validators that validates data, and removes taint when valid
+            - package: "example3"
+              method: "Validator"
 ```
 In this configuration file, the user is trying to detect whether data coming from calls to some function `GetSensitiveData` in a package matching `example1` is flowing to a "sink". A sink is a function that is either called `LogDataPublicly` in a package `example2` or any method whose receiver implements the `example2.Logger` interface. If the data passes through a function `Sanitize` in the `example1` package, then it is sanitized. If the data is validated by the function `Validator` in package `example3`, then it is also taint-free.
 
@@ -71,14 +72,16 @@ options:
 
 In the above example, the user specified code locations for the elements that defines their dataflow problem (sources, sinks, sanitizers and validators). The most common form for these *code identifiers* is the one shown above where a method and a package are specified, e.g.:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - sources:
         - package: "example1"
           method: "GetSensitiveData"
 ```
 specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `source-taints-args` option is set to true). There are other possible code identifiers, for example one can view any object of a given type as sources:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - sources:
         - package: "mypackage"
           type: "taintedDataType"
@@ -87,7 +90,8 @@ This implies that any object of type `taintedDataType` from the package `mypacka
 
 **Channel receives** are of the following form:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - sources:
         - package: "mypackage"
           type: "chan A"
@@ -97,7 +101,8 @@ The difference compared to the previous specification is the `kind` attribute th
 
 **Field reads** are of the form:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - sources:
         - package: "mypackage"
           type: "structA"
@@ -107,7 +112,8 @@ This implies that any access to the field `taintedMember` of a struct of type `s
 
 **Field writes** are of the form:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - sinks:
         - package: "mypackage"
           type: "structA"
@@ -118,7 +124,8 @@ This implies that writing data to the field `sensitiveStore` of a struct of type
 
 **Interfaces** are of the form:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - sinks:
         - package: "mypackage"
           interface: "interfaceName"
@@ -132,7 +139,8 @@ This implies that any method whose receiver implements the `mypackage.interfaceN
 Code locations can additionally be restricted to match a specific "context". Adding `context: "some-string"` to a code location specification specifies that the code locations are matched only when they appear inside a function whose full name (package + function) matches the regex `some-string`. The user can therefore restrict the context to a particular module, package or function.
 For example, the following config:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
    - sinks:
       - context: 'github.com/ar-go-tools/analysis'
         package: 'fmt'
@@ -146,7 +154,8 @@ Code locations can additionally be restricted to match a specific regular expres
 
 This is particularly useful for functions that take constant arguments, for example formatting functions:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
   - sinks:
       - package: "fmt"
         method: "Printf"
@@ -163,7 +172,8 @@ Some flows can be implicit: for example, branching on tainted data. See the `imp
 By default, the taint analysis will not produce an error if tainted data is branched on.
 If the tool should fail when control flow depends on tainted data, set the `fail-on-implicit-flow` option to `true`:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
   - tag: "foo"
     fail-on-implicit-flow: true
 ```
@@ -171,7 +181,8 @@ taint-tracking-problems:
 #### Filters
 By default, the analysis considers that any type can carry tainted data. In some cases, this can be excessive, as one might not see boolean values as tainted data (for example, a boolean cannot store a user's password). In order to ignore flows that pass through variables of certain types, one add filters. Filters are either a *type* or a *method*, optionally within a *package*. A type filter will cause the tool to ignore data flows through objects of that type, and a method filter will cause the tool to ignore data flows through that method (or function).
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
   - tag: "foo"
     filters:
       - type: "bool$"
@@ -194,7 +205,8 @@ options:
 ```
 You can also set it for a specific analysis problem:
 ```yaml
-taint-tracking-problems:
+dataflow-problems:
+  taint-tracking:
     - analysis-options:
         unsafe-max-depth: 6
       tag: "foo"
@@ -404,9 +416,9 @@ func main() {
 In this example, with the configuration used previously, an alarm is raised: the data flows from the call to `GetSensitiveData` to the call to `LogDataPublicly`. When the `Secret` field is assigned tainted data, the entire structure `a` is considered tainted. This means that `a.Data` is considered tainted in the call to the sink function.
 If the analysis was field-sensitive, it would not raise an alarm.
 
-Field sensitivity can be turned on with the option:
+Field sensitivity can be turned on for dataflow problems with the option:
 ```yaml
-options:
+dataflow-problems:
   field-sensitive: true
 ```
 Which turns on field-sensitivity for all. This will increase analysis time, but eliminate some false positive. 

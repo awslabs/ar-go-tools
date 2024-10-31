@@ -1,22 +1,23 @@
-# The package regex matches all possible ways the package name might appear depending on how the program is loaded
-taint-tracking-problems:
-  - tag: "taint1"
-    sources:
-      - package: "(closures_paper)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
-        # Sources can be source1, source2, etc.
-        method: "source[1-9]?"
-    sinks:
-      - package: "(closures_paper)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
-        # Similarly, sinks are sink1 sink2 sink2 ...
-        method: "sink[1-9]?"
+dataflow-problems:
+  # The package regex matches all possible ways the package name might appear depending on how the program is loaded
+  taint-tracking:
+    - tag: "taint1"
+      sources:
+        - package: "(closures_paper)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
+          # Sources can be source1, source2, etc.
+          method: "source[1-9]?"
+      sinks:
+        - package: "(closures_paper)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
+          # Similarly, sinks are sink1 sink2 sink2 ...
+          method: "sink[1-9]?"
 
-# Same as sinks
-slicing-problems:
-  - tag: "slicing1"
-    backtracepoints:
-      - package: "(closures_paper)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
-        # Similarly, sinks are sink1 sink2 sink2 ...
-        method: "sink[1-9]?"
+  # Same as sinks
+  slicing:
+    - tag: "slicing1"
+      backtracepoints:
+        - package: "(closures_paper)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
+          # Similarly, sinks are sink1 sink2 sink2 ...
+          method: "sink[1-9]?"
 
 options:
   analysis-options:

@@ -290,7 +290,7 @@ func TestLoadFullConfigYaml(t *testing.T) {
 	if config.CoverageFilter == "" {
 		t.Error("full config should specify a coverage prefix")
 	}
-	if len(config.DataflowSpecs) != 2 {
+	if len(config.UserSpecs) != 2 {
 		t.Error("full config should specify two dataflow spec files")
 	}
 	if config.UnsafeMaxDepth != 42 {
@@ -391,18 +391,20 @@ func TestLoadMisc(t *testing.T) {
 	testLoadOneFile(t,
 		"config3.yaml",
 		Config{
-			TaintTrackingProblems: []TaintSpec{
-				{
-					Sanitizers: []CodeIdentifier{{"", "pkg1", "", "Foo", "Obj", "", "", "", "", "", "", nil}},
-					Sinks: []CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil},
-						{"", "x", "", "", "Obj1", "", "", "", "", "", "", nil}},
-					Sources: []CodeIdentifier{
-						{"", "some/package", "", "SuperMethod", "", "", "", "", "", "", "", nil},
+			DataflowProblems: DataflowProblems{
+				TaintTrackingProblems: []TaintSpec{
+					{
+						Sanitizers: []CodeIdentifier{{"", "pkg1", "", "Foo", "Obj", "", "", "", "", "", "", nil}},
+						Sinks: []CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil},
+							{"", "x", "", "", "Obj1", "", "", "", "", "", "", nil}},
+						Sources: []CodeIdentifier{
+							{"", "some/package", "", "SuperMethod", "", "", "", "", "", "", "", nil},
 
-						{"", "some/other/package", "", "", "", "OneField", "ThatStruct", "", "", "", "", nil},
-						{"", "some/other/package", "Interface", "", "", "", "", "", "", "", "", nil},
+							{"", "some/other/package", "", "", "", "OneField", "ThatStruct", "", "", "", "", nil},
+							{"", "some/other/package", "Interface", "", "", "", "", "", "", "", "", nil},
+						},
+						FailOnImplicitFlow: false,
 					},
-					FailOnImplicitFlow: false,
 				},
 			},
 			Options: Options{

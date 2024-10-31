@@ -5,33 +5,46 @@
       "unsafe-max-depth": 42
     }
   },
-  "taint-tracking-problems": [
-    {
-      "tag": "hybridDef",
-      "sinks": [
-        {"package":  "fmt", "method": "Println"}
-      ]
-    },
-    {
-      "tag": "foo",
-      "sources": [
-        {"method": "sourceFoo"}
-      ],
-      "sinks": [
-        {"method": "sinkFoo"}
-      ],
-      "analysis-options": {
-        "unsafe-max-depth": 1
+  "dataflow-problems": {
+    "taint-tracking": [
+      {
+        "tag": "hybridDef",
+        "sinks": [
+          {
+            "package": "fmt",
+            "method": "Println"
+          }
+        ]
+      },
+      {
+        "tag": "foo",
+        "sources": [
+          {
+            "method": "sourceFoo"
+          }
+        ],
+        "sinks": [
+          {
+            "method": "sinkFoo"
+          }
+        ],
+        "analysis-options": {
+          "unsafe-max-depth": 1
+        }
+      },
+      {
+        "tag": "bar",
+        "sources": [
+          {
+            "method": "sourceFoo"
+          }
+        ],
+        "sinks": [
+          {
+            "method": "sinkBar"
+          }
+        ]
       }
-    },
-    {
-      "tag": "bar",
-      "sources": [
-        {"method": "sourceFoo"}
-      ],
-      "sinks": [
-        {"method": "sinkBar"}
-      ]
-    }
-  ]
+    ]
+  }
 }

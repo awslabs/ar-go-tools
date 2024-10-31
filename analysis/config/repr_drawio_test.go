@@ -33,7 +33,7 @@ func TestSimpleFlowWithOption(t *testing.T) {
 		fmt.Printf(".xml: %+v\n", config.Options)
 		t.Fatalf("configs from xml and yaml differ in global options")
 	}
-	if !slices.Equal(config.DataflowSpecs, config2.DataflowSpecs) {
+	if !slices.Equal(config.UserSpecs, config2.UserSpecs) {
 		t.Fatalf("configs from xml and yaml do not have the same dataflow specs")
 	}
 	n := len(config2.TaintTrackingProblems)

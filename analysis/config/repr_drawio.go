@@ -71,7 +71,7 @@ func ParseXMLConfigFormat(c *Config, b []byte) error {
 		if obj.ID == "0" && !obj.Cell.Vertex && !obj.Cell.Edge {
 			if obj.DataflowSpecs != "" {
 				specs := strings.Split(obj.DataflowSpecs, ",")
-				c.DataflowSpecs = specs
+				c.DataflowProblems.UserSpecs = specs
 			}
 			c.Options = obj.Options
 		}
