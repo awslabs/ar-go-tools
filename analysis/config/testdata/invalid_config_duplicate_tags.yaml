@@ -1,0 +1,12 @@
+dataflow-problems:
+  taint-tracking:
+    - tag: "x"
+      sources:
+        - method: "foo"
+      sinks:
+        - method: "bar"
+    - tag: "x"
+      sources:
+        - method: "foo"
+      sinks:
+        - method: "bar"

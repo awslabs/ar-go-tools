@@ -1,0 +1,14 @@
+dataflow-problems:
+  taint-tracking:
+    - tag: "x1"
+      severity: "CRITICAL"
+      sources:
+        - method: "foo"
+      sinks:
+        - method: "bar"
+    - tag: "x2"
+      severity: "WHOOPING"
+      sources:
+        - method: "fooB"
+      sinks:
+        - method: "barB"

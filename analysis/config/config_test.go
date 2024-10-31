@@ -158,6 +158,36 @@ func TestLoadBadFormatFileReturnsError(t *testing.T) {
 	}
 }
 
+func TestLoadDuplicateTagsReturnsError(t *testing.T) {
+	name := filepath.Join("testdata", "invalid_config_duplicate_tags.yaml")
+	b, err := testfsys.ReadFile(name)
+	if err != nil {
+		t.Fatalf("failed to read file %v: %v", name, err)
+	}
+	_, err = Load(name, b)
+	if err == nil {
+		t.Fatalf("Expected error and nil value when trying to load a config with duplicate problem tags.")
+	}
+	if !strings.Contains(err.Error(), "used for multiple problems") {
+		t.Errorf("Error message should explain error caused by duplicate, but got %s", err)
+	}
+}
+
+func TestLoadInvalidSeverityReturnsError(t *testing.T) {
+	name := filepath.Join("testdata", "invalid_config_invalid_sev.yaml")
+	b, err := testfsys.ReadFile(name)
+	if err != nil {
+		t.Fatalf("failed to read file %v: %v", name, err)
+	}
+	_, err = Load(name, b)
+	if err == nil {
+		t.Fatalf("Expected error and nil value when trying to load a config with duplicate problem tags.")
+	}
+	if !strings.Contains(err.Error(), "invalid severity") {
+		t.Errorf("Error message should explain error caused by invalid severity label, but got %s", err)
+	}
+}
+
 func TestLoadVersionBefore_v0_3_0_Errors(t *testing.T) {
 	_, config, err := loadFromTestDir("config_before_v0_3_0.yaml")
 	if config != nil || err == nil {
