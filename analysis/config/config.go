@@ -614,13 +614,13 @@ func OverrideWithAnalysisOptions(l *LogGroup, c *Config, o *AnalysisProblemOptio
 	}
 
 	if o.UnsafeMaxDepth != 0 {
-		l.Infof("unsafe-max-depth set to %d (using problem's analysis-options)",
+		l.Infof("unsafe-max-depth set to %d (using problem's override-analysis-options)",
 			o.UnsafeMaxDepth)
 		c.UnsafeMaxDepth = o.UnsafeMaxDepth
 	}
 
 	if o.MaxEntrypointContextSize != 0 {
-		l.Infof("max-entrypoint-context-size set to %d (using problem's analysis-options)",
+		l.Infof("max-entrypoint-context-size set to %d (using problem's override-analysis-options)",
 			o.MaxEntrypointContextSize)
 		c.MaxEntrypointContextSize = o.MaxEntrypointContextSize
 	}

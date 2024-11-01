@@ -51,7 +51,7 @@ type DataflowProblems struct {
 // TaintSpec contains code identifiers that identify a specific taint tracking problem, or contains a code that
 // can differentiate groups of annotations
 type TaintSpec struct {
-	*AnalysisProblemOptions `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
+	*AnalysisProblemOptions `xml:"override-analysis-options,attr" yaml:"override-analysis-options" json:"override-analysis-options"`
 	// Sanitizers is the list of sanitizers for the taint analysis
 	Sanitizers []CodeIdentifier
 
@@ -92,7 +92,7 @@ type TaintSpec struct {
 
 // SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
 type SlicingSpec struct {
-	*AnalysisProblemOptions `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
+	*AnalysisProblemOptions `xml:"override-analysis-options,attr" yaml:"override-analysis-options" json:"override-analysis-options"`
 	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards
 	// dataflow analysis.
 	BacktracePoints []CodeIdentifier

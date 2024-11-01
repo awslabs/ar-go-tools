@@ -107,5 +107,5 @@ dataflow-problems:
       sanitizers:
         - method: "Sanitize"
 
-      analysis-options:
+      override-analysis-options:
         unsafe-max-depth: 1

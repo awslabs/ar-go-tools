@@ -209,7 +209,7 @@ You can also set it for a specific analysis problem:
 ```yaml
 dataflow-problems:
   taint-tracking:
-    - analysis-options:
+    - override-analysis-options:
         unsafe-max-depth: 6
       tag: "foo"
       filters:

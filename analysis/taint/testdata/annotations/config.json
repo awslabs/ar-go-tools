@@ -28,7 +28,7 @@
             "method": "sinkFoo"
           }
         ],
-        "analysis-options": {
+        "override-analysis-options": {
           "unsafe-max-depth": 1
         }
       },
