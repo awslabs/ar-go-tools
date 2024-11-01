@@ -1,6 +1,8 @@
 
 # May Panic Analysis
 
+> This analysis is not supported at the same level as the taint, backtrace and dependencies analyses. It is still included as users may find it useful.
+
 The "may panic" analysis tool `maypanic` performs an analysis to determine whether each function that is launched as a goroutine `recover()`s all panics. Failure to recover from a panic in the top function of a goroutine will result in the Go runtime [terminating the program](https://go.dev/blog/defer-panic-and-recover). An example invocation is:
 
 ```

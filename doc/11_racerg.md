@@ -4,7 +4,7 @@ The `racerg` tool implements a sound and scalable static data race detector for 
 
 ## Dependencies
 
-1. Soufflé Datalog. I compiled a version on Mac with OpenMP support on a Macbook using
+1. Soufflé Datalog. We compiled a version on Mac with OpenMP support on a Macbook using
 
 ```
 brew update

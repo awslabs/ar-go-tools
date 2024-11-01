@@ -421,6 +421,8 @@ The user can additionally provide the following flags:
 
 `summarize` builds the dataflow summaries of the functions matching the regex provided as argument, or all the functions that should be summarized according to the configuration if no argument is provided. For more information about the summarization, refer to the guide for the [taint analysis tool](01_taint.md#taint-analysis).
 
+> When the `dataflow-problems` option `summarize-on-demand` is set to `true`, the `summarize` command does not run the intra-procedural analysis, it only builds the data-structure necessary to summarize the function later.
+
 ### Summary
 
 `summary` displays the dataflow summaries of each function matching the argument provided as regex. If no summaries have been found, then it displays <font color='green'>No summaries found. Consider building summaries (summarize).</font>. If no functions match the regex, then it displays <font color='green'>No matching functions.</font>

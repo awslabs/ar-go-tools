@@ -25,7 +25,7 @@ The Automated Reasoning Go Tools (Argot) is an experimental program analysis too
 The following tools are included in Argot:
 - the `taint` tool allows you to perform taint analysis in your program (see [Taint Analysis](01_taint.md#taint-analysis)).
 - the `backtrace` tool allows you to find all the backwards data flows from a function call (see [Backtrace Analysis](02_backtrace.md#backtrace-analysis)).
-- the `argot-cli` is an interactive analysis tool, which lets the user run multiple analyses on the program and inspect various levels of debugging information (see [Argot CLI](03_argotcli.md#argot-cli)). This tool is intended for the advanced user who understands the underlying program representations more in detail.
+- the `cli` is an interactive analysis tool, which lets the user run multiple analyses on the program and inspect various levels of debugging information (see [Argot CLI](03_argotcli.md#argot-cli)). This tool is intended for the advanced user who understands the underlying program representations more in detail.
 - the `compare` tool, which can be used to compare the results of different reachability analyses together, on different platforms. This is useful for the user who wants to make sure the results given by some of the analyses are consistent with their assumptions, or the user that is trying to eliminate unneeded functions or dependencies (see [Compare Tool](04_compare.md#compare-tool)).
 - the `defer` tool runs an analysis that computes the possible deferred functions that can run at each return point of a function (see [Defer Analysis](05_defer.md#defer-analysis)).
 - the `dependencies` tool scans for the input package's dependencies and returns the list of dependencies along with the count of reachable functions within each dependency (see [Dependencies](06_dependencies.md#dependency-scanner)).
@@ -33,14 +33,13 @@ The following tools are included in Argot:
 - the `packagescan` tool scans the input packages to find usages of specific packages in the code, such as usages of the `unsafe` package (see [Package Scanner](08_packagescan.md#package-scanner)).
 - the `reachability` tool inspects the code to find which functions are reachable, and which are not (see [Reachability Tool](09_reachability.md#reachability-tool)).
 - the `render` tool can be used to render various representations of the code, such as its [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single-assignment_form) (SSA) form or its callgraph (see [Render Tool](10_render.md#render-tool)).
-- the `static-commands` tool analyzes the code to find usages of `os/exec.Command` that are defined statically.
 - the `racerg` tool, an experimental tool for data race detection (See [RacerG](11_racerg.md#racerg-sound-and-scalable-static-data-race-detector-for-go)).
 
 These tools can be used by developers to better understand their code, through the analysis of higher-level representations. For example, one can understand how the code is organized by looking at the callgraph, which abstract away the code and retains only the caller/callee information. In general, we do not state guarantees about the correctness of these tools, except for the dataflow analyses (see [taint analysis](01_taint.md#taint-analysis) and [backtrace](02_backtrace.md#backtrace-analysis))). However, we believe the representations obtained for each of these tools are useful enough to aid programmers.
 
 ### Configuration
 
-The tools that require a configuration file (such as the `taint` and `argot-cli` tools) all use the same input format, which means that your configuration file can be reused across them. The goal is that the user configuration file corresponds to a specific program to analyze, and not a specific tool. The results of the different tools for the same program with the same configuration file will be consistent.
+The tools that require a configuration file (such as the `taint` and `cli` tools) all use the same input format, which means that your configuration file can be reused across them. The goal is that the user configuration file corresponds to a specific program to analyze, and not a specific tool. The results of the different tools for the same program with the same configuration file will be consistent.
 The config file is expected to be in YAML format. All fields are generally optional, unless required by a specific tool.
 Some common optional fields across tools are:
 
@@ -52,8 +51,6 @@ options:
   reports-dir: "some-dir"              # where to store reports
   report-coverage: true                # whether to report coverage, if the analysis supports it (default false)
   report-paths: true                   # whether to report paths, if the analysis reports paths (default false)
-  report-no-callee-sites: true         # whehter to report when callgraph analysis does not find a callee (default false)
-  max-alarms: 10                       # set a maximum for how many alarms are reported (default is 0 which means ignore)
 ```
 
 > 📝 The tool accepts five different settings for the logging level: 1 for error logging, 2 for warnings, 3 for info, 4 for debugging information and 5 for tracing. Tracing should not be used on large programs.
