@@ -114,6 +114,9 @@ type Config struct {
 	// if the CoverageFilter is specified
 	coverageFilterRegex *regexp.Regexp
 
+	// the path to the root folder
+	root string
+
 	// EscapeConfig contains the escape-analysis specific configuration parameters
 	EscapeConfig *EscapeConfig
 
@@ -238,6 +241,10 @@ type Options struct {
 	// been loaded does not specify a ReportsDir but sets any Report* option to true, then ReportsDir will be created
 	// in the folder the binary is called.
 	ReportsDir string `xml:"reports-dir,attr" yaml:"reports-dir" json:"reports-dir"`
+
+	// ProjectRoot specifies the root directory of the project. All other file names specified in the config file are
+	// relative to the root. If not specified, the root is assumed to be the directory of the config file.
+	ProjectRoot string `xml:"project-root,attr" yaml:"project-root" json:"project-root"`
 
 	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
 	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural" json:"skip-interprocedural"`
@@ -376,8 +383,18 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	}
 	cfg.sourceFile = filename
 
+	// If the project root is unspecified, then set to the directory of the config file
+	if cfg.ProjectRoot == "" {
+		cfg.root = path.Dir(filename)
+	} else if !path.IsAbs(cfg.ProjectRoot) {
+		// If it's not an absolute path, compute the absolute path
+		cfg.root = path.Join(path.Dir(filename), cfg.ProjectRoot)
+	} else {
+		cfg.root = cfg.ProjectRoot
+	}
+
 	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
-		if err := setReportsDir(cfg, filename); err != nil {
+		if err := setReportsDir(cfg); err != nil {
 			return nil, fmt.Errorf("failed to set reports dir of config with filename %v: %v", filename, err)
 		}
 	}
@@ -482,9 +499,9 @@ func LoadEscape(c *Config, escapeConfigBytes []byte) error {
 	return nil
 }
 
-func setReportsDir(c *Config, filename string) error {
+func setReportsDir(c *Config) error {
 	if c.ReportsDir == "" {
-		tmpdir, err := os.MkdirTemp(path.Dir(filename), "*-report")
+		tmpdir, err := os.MkdirTemp(c.root, "*-report")
 		if err != nil {
 			return fmt.Errorf("could not create temp dir for reports")
 		}
@@ -514,9 +531,9 @@ func (c Config) ReportNoCalleeFile() string {
 	return c.nocalleereportfile
 }
 
-// RelPath returns filename path relative to the config source file
+// RelPath returns the path of the filename path relative to the root
 func (c Config) RelPath(filename string) string {
-	return path.Join(path.Dir(c.sourceFile), filename)
+	return path.Join(c.root, filename)
 }
 
 // MatchPkgFilter returns true if the package name pkgname matches the package filter set in the config file. If no
@@ -542,92 +559,6 @@ func (c Config) MatchCoverageFilter(filename string) bool {
 	} else {
 		return true
 	}
-}
-
-// IsPathSensitiveFunc returns true if funcName matches any regex in c.Options.PathSensitiveFuncs.
-func (c Config) IsPathSensitiveFunc(funcName string) bool {
-	for _, psfr := range c.pathSensitiveFuncsRegexes {
-		if psfr == nil {
-			continue
-		}
-		if psfr.MatchString(funcName) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// Below are functions used to query the configuration on specific facts
-
-func (c Config) isSomeTaintSpecCid(cid CodeIdentifier, f func(t TaintSpec, cid CodeIdentifier) bool) bool {
-	for _, x := range c.DataflowProblems.TaintTrackingProblems {
-		if f(x, cid) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsSomeSource returns true if the code identifier matches any source in the config
-func (c Config) IsSomeSource(cid CodeIdentifier) bool {
-	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSource(cid2) })
-}
-
-// IsSomeSink returns true if the code identifier matches any sink in the config
-func (c Config) IsSomeSink(cid CodeIdentifier) bool {
-	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSink(cid2) })
-}
-
-// IsSomeSanitizer returns true if the code identifier matches any sanitizer in the config
-func (c Config) IsSomeSanitizer(cid CodeIdentifier) bool {
-	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsSanitizer(cid2) })
-}
-
-// IsSomeValidator returns true if the code identifier matches any validator in the config
-func (c Config) IsSomeValidator(cid CodeIdentifier) bool {
-	return c.isSomeTaintSpecCid(cid, func(t TaintSpec, cid2 CodeIdentifier) bool { return t.IsValidator(cid2) })
-}
-
-// IsSomeBacktracePoint returns true if the code identifier matches any backtrace point in the slicing problems
-func (c Config) IsSomeBacktracePoint(cid CodeIdentifier) bool {
-	for _, ss := range c.DataflowProblems.SlicingProblems {
-		if ss.IsBacktracePoint(cid) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsSource returns true if the code identifier matches a source specification in the config file
-func (ts TaintSpec) IsSource(cid CodeIdentifier) bool {
-	b := ExistsCid(ts.Sources, cid.equalOnNonEmptyFields)
-	return b
-}
-
-// IsSink returns true if the code identifier matches a sink specification in the config file
-func (ts TaintSpec) IsSink(cid CodeIdentifier) bool {
-	return ExistsCid(ts.Sinks, cid.equalOnNonEmptyFields)
-}
-
-// IsSanitizer returns true if the code identifier matches a sanitizer specification in the config file
-func (ts TaintSpec) IsSanitizer(cid CodeIdentifier) bool {
-	return ExistsCid(ts.Sanitizers, cid.equalOnNonEmptyFields)
-}
-
-// IsValidator returns true if the code identifier matches a validator specification in the config file
-func (ts TaintSpec) IsValidator(cid CodeIdentifier) bool {
-	return ExistsCid(ts.Validators, cid.equalOnNonEmptyFields)
-}
-
-// IsStaticCommand returns true if the code identifier matches a static command specification in the config file
-func (scs StaticCommandsSpec) IsStaticCommand(cid CodeIdentifier) bool {
-	return ExistsCid(scs.StaticCommands, cid.equalOnNonEmptyFields)
-}
-
-// IsBacktracePoint returns true if the code identifier matches a backtrace point according to the SlicingSpec
-func (ss SlicingSpec) IsBacktracePoint(cid CodeIdentifier) bool {
-	return ExistsCid(ss.BacktracePoints, cid.equalOnNonEmptyFields)
 }
 
 // Verbose returns true is the configuration verbosity setting is larger than Info (i.e. Debug or Trace)

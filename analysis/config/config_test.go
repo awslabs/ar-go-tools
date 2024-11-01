@@ -188,6 +188,13 @@ func TestLoadInvalidSeverityReturnsError(t *testing.T) {
 	}
 }
 
+func TestLoadWithProjectRoot(t *testing.T) {
+	_, config, err := loadFromTestDir("test_project_root_loading.yaml")
+	if config == nil || err != nil {
+		t.Fatalf("encountered error when loading config with project root specified: %s", err)
+	}
+}
+
 func TestLoadVersionBefore_v0_3_0_Errors(t *testing.T) {
 	_, config, err := loadFromTestDir("config_before_v0_3_0.yaml")
 	if config != nil || err == nil {

@@ -1,0 +1,11 @@
+[
+  {
+    "InterfaceId": "error",
+    "Methods": {
+      "Error": {
+        "Args": [[0]],
+        "Rets": [[0]]
+      }
+    }
+  }
+]

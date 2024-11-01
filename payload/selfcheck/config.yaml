@@ -1,5 +1,6 @@
 options:
   log-level: 3
+  project-root: "../../"
   reports-dir: "payload/selfcheck/taint-report"
   report-paths: true
   analysis-options:
@@ -11,8 +12,8 @@ options:
 dataflow-problems:
   summarize-on-demand: true
   user-specs:
-    - "argot-specs.json"
-    - "std-specs.json"
+    - "payload/selfcheck/argot-specs.json"
+    - "payload/selfcheck/std-specs.json"
   field-sensitive-funcs:
     - "AnalyzerState"
   taint-tracking:

@@ -1,0 +1,8 @@
+options:
+  log-level: 4
+  # the root of the project
+  project-root: "../../../"
+
+dataflow-problems:
+  user-specs:
+    - "analysis/config/testdata/sample-spec.json"

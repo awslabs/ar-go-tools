@@ -17,11 +17,39 @@ package analysis
 import (
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"golang.org/x/tools/go/ssa"
 )
+
+func TestLoadWithProjectRoot(t *testing.T) {
+	configFile := filepath.Join("testdata", "state_load_config.yaml")
+	config, err := tools.LoadConfig(configFile)
+	if err != nil {
+		t.Fatalf("failed to load config")
+	}
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../cmd/argot/")
+	err = os.Chdir(dir)
+	if err != nil {
+		t.Fatalf("could not change to cmd/argot dir: %s", err)
+		return
+	}
+	loadOptions := LoadProgramOptions{
+		BuildMode:     ssa.BuilderMode(0),
+		LoadTests:     false,
+		ApplyRewrites: true,
+		Platform:      "",
+		PackageConfig: nil,
+	}
+	_, err = LoadAnalyzerState(loadOptions, []string{"main.go"}, config)
+	if err != nil {
+		t.Fatalf("error loading state: %s", err)
+	}
+}
 
 func programLoadTest(t *testing.T, files []string) {
 	_, filename, _, _ := runtime.Caller(0)
