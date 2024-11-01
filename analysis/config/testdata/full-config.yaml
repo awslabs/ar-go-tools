@@ -40,9 +40,6 @@ options:
   # this can be set to suppress warnings. Errors (i.e. taint detected will be reported)
   silence-warn: true
 
-  # this can be set so that source function are also tainting their arguments
-  source-taints-args: true
-
   # this options ensures that the escape analysis is run in parallel with the dataflow analysis
   use-escape-analysis: true
 
@@ -93,6 +90,8 @@ dataflow-problems:
   taint-tracking:
     - tag: "taint-tracking-problem-1"
       description: "A taint tracking problem."
+      # this can be set so that source function are also tainting their arguments
+      source-taints-args: true
       validators:
         - method: "Validate"
           package: "x"

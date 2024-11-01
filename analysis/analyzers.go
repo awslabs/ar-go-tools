@@ -87,18 +87,12 @@ func runJobs(jobs []singleFunctionJob, numRoutines int,
 	return funcutil.MapParallel(jobs, f, numRoutines)
 }
 
-// InterProceduralParams represents the arguments to RunInterProcedural.
-type InterProceduralParams struct {
-	// IsEntryPoint is a predicate that defines which ssa nodes are entry points of the analysis.
-	IsEntrypoint func(ssa.Node) bool
-}
-
 // RunInterProcedural runs the inter-procedural analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
-func RunInterProcedural(state *dataflow.AnalyzerState, visitor dataflow.Visitor, params InterProceduralParams) {
+func RunInterProcedural(state *dataflow.AnalyzerState, visitor dataflow.Visitor, spec dataflow.ScanningSpec) {
 	state.Logger.Infof("Starting inter-procedural pass...")
 	start := time.Now()
-	state.FlowGraph.BuildAndRunVisitor(state, visitor, params.IsEntrypoint)
+	state.FlowGraph.BuildAndRunVisitor(state, visitor, spec)
 	state.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
 }
 

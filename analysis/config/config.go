@@ -252,10 +252,6 @@ type Options struct {
 	// Suppress warnings
 	SilenceWarn bool `xml:"silence-warn,attr" json:"silence-warn" yaml:"silence-warn"`
 
-	// SourceTaintsArgs specifies whether calls to a source function also taints the argument. This is usually not
-	// the case, but might be useful for some users or for source functions that do not return anything.
-	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args" json:"source-taints-args"`
-
 	// Run and use the escape analysis for analyses that have the option to use the escape analysis results.
 	UseEscapeAnalysis bool `xml:"use-escape-analysis,attr" yaml:"use-escape-analysis" json:"use-escape-analysis"`
 }
@@ -289,7 +285,6 @@ func NewDefault() *Config {
 			ReportNoCalleeSites: false,
 			LogLevel:            int(InfoLevel),
 			SilenceWarn:         false,
-			SourceTaintsArgs:    false,
 		},
 	}
 }
@@ -325,6 +320,7 @@ func errorMisconfigurationGracefully(errYaml, errXML, errJson error) error {
 		"field taint-tracking-problems not found in type config.Config",
 		"field slicing-problems not found in type config.Config",
 		"field dataflow-specs not found in type config.Config",
+		"field source-taints-args not found in type config.Options",
 	}
 	msgUpgrade := "your config follows an outdated format. Please consult documentation and update the config file"
 	for _, fingerprint := range oldConfigFingerprints {

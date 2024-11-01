@@ -24,7 +24,7 @@ In this configuration file, the user is trying to detect all the possible traces
 
 An advanced feature of the backtrace analysis is that you can specify dataflow summaries yourself:
 ```yaml
-options:
+dataflow-problems:
   dataflow-specs:                  # A list of dataflow specifications, where each element is a json file containing
     - "specs-mylib.json"        # dataflow specifications.
 

@@ -340,11 +340,15 @@ func cmdTaint(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, _ bool) b
 		return false
 	}
 	for _, ts := range c.Config.TaintTrackingProblems {
-		c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(&ts),
-			func(node ssa.Node) bool {
-				return dataflow.IsSourceNode(c, &ts, node)
+		c.FlowGraph.RunVisitorOnEntryPoints(
+			taint.NewVisitor(&ts),
+			dataflow.ScanningSpec{
+				MarkCallArgsLikeCall: ts.SourceTaintsArgs,
+				IsEntryPointSsa: func(node ssa.Node) bool {
+					return dataflow.IsSourceNode(c, &ts, node)
+				},
 			},
-			nil)
+		)
 	}
 	return false
 }
@@ -368,10 +372,12 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, _ boo
 	for _, ps := range c.Config.SlicingProblems {
 		visitor := &backtrace.Visitor{}
 		visitor.SlicingSpec = &ps
-		c.FlowGraph.RunVisitorOnEntryPoints(visitor, func(node ssa.Node) bool {
-			return dataflow.IsBacktraceNode(c, &ps, node)
-		}, nil)
-
+		c.FlowGraph.RunVisitorOnEntryPoints(
+			visitor,
+			dataflow.ScanningSpec{
+				IsEntryPointSsa: func(node ssa.Node) bool {
+					return dataflow.IsBacktraceNode(c, &ps, node)
+				}})
 		for _, tr := range visitor.Traces {
 			traces = append(traces, tr...)
 		}

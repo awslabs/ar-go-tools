@@ -148,9 +148,10 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 		}
 		state.Logger.Debugf("Options: %+v", state.Config.Options)
 		visitor := NewVisitor(&taintSpec)
-		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
+		analysis.RunInterProcedural(state, visitor, dataflow.ScanningSpec{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
-			IsEntrypoint: func(node ssa.Node) bool { return dataflow.IsSourceNode(state, &taintSpec, node) },
+			IsEntryPointSsa:      func(node ssa.Node) bool { return dataflow.IsSourceNode(state, &taintSpec, node) },
+			MarkCallArgsLikeCall: taintSpec.SourceTaintsArgs,
 		})
 		taintFlows.Merge(visitor.taints)
 		// Restore global options

@@ -254,6 +254,20 @@ func (g *InterProceduralFlowGraph) Sync() {
 	}
 }
 
+// ScanningSpec specifies what nodes should be scanned. The caller can use both the ssa node and the graph node
+// predicates to identify graph nodes that are the entry points of the analysis.
+type ScanningSpec struct {
+	// IsEntryPointSsa identifies graph nodes by the ssa node they represent.
+	IsEntryPointSsa func(node ssa.Node) bool
+
+	// IsEntryPointGraph identifies graph nodes directly as entry points.
+	IsEntryPointGraph func(node GraphNode) bool
+
+	// MarkCallArgsLikeCall specifies whether call arguments should be considered entry points when the call is
+	// an entry point.
+	MarkCallArgsLikeCall bool
+}
+
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to
 // build the inter-procedural dataflow graph. Then, it looks for every entry point designated by the isEntryPoint
 // predicate to RunIntraProcedural the visitor on those points (using the [*InterProceduralFlowGraph.RunVisitorOnEntryPoints]
@@ -265,8 +279,7 @@ func (g *InterProceduralFlowGraph) Sync() {
 // This function does nothing if there are no summaries
 // (i.e. `len(g.summaries) == 0`)
 // or if `cfg.SkipInterprocedural` is set to true.
-func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor Visitor,
-	isEntryPoint func(ssa.Node) bool) {
+func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor Visitor, spec ScanningSpec) {
 	// Skip the pass if user configuration demands it
 	if c.Config.SkipInterprocedural || (!c.Config.SummarizeOnDemand && len(g.Summaries) == 0) {
 		c.Logger.Infof("Skipping inter-procedural pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
@@ -284,20 +297,18 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor 
 	}
 
 	// Run the analysis
-	g.RunVisitorOnEntryPoints(visitor, isEntryPoint, nil)
+	g.RunVisitorOnEntryPoints(visitor, spec)
 }
 
 // RunVisitorOnEntryPoints runs the visitor on the entry points designated by either the isEntryPoint function
 // or the isGraphEntryPoint function.
-func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
-	isEntryPointSsa func(ssa.Node) bool,
-	isEntryPointGraphNode func(node GraphNode) bool) {
+func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor, spec ScanningSpec) {
 
 	g.AnalyzerState.Logger.Infof("Scanning for entry points ...\n")
 	entryPoints := make(map[KeyType]NodeWithTrace)
 	for _, summary := range g.Summaries {
 		// Identify the entry points for that function: all the call sites that are entry points
-		summary.ForAllNodes(scanEntryPoints(isEntryPointGraphNode, g, entryPoints, isEntryPointSsa))
+		summary.ForAllNodes(scanEntryPoints(g, spec, entryPoints))
 	}
 
 	g.AnalyzerState.Logger.Infof("--- # of analysis entry points: %d ---\n", len(entryPoints))
@@ -324,10 +335,12 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor,
 	}
 }
 
-func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterProceduralFlowGraph,
-	entryPoints map[KeyType]NodeWithTrace, isEntryPointSsa func(ssa.Node) bool) func(n GraphNode) {
+func scanEntryPoints(
+	g *InterProceduralFlowGraph,
+	spec ScanningSpec,
+	entryPoints map[KeyType]NodeWithTrace) func(n GraphNode) {
 	return func(n GraphNode) {
-		if isEntryPointGraphNode != nil && isEntryPointGraphNode(n) {
+		if spec.IsEntryPointGraph != nil && spec.IsEntryPointGraph(n) {
 			for _, callnode := range n.Graph().Callsites {
 				contexts := GetAllCallingContexts(g.AnalyzerState, callnode)
 				addWithContexts(contexts, n, entryPoints)
@@ -335,7 +348,7 @@ func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterPr
 		}
 
 		// if the isEntryPointSsa function is not specified, skip the special casing
-		if isEntryPointSsa == nil {
+		if spec.IsEntryPointSsa == nil {
 			return
 		}
 
@@ -350,17 +363,17 @@ func scanEntryPoints(isEntryPointGraphNode func(node GraphNode) bool, g *InterPr
 				entryPoints[entry.Key()] = entry
 			}
 		case *CallNodeArg:
-			if g.AnalyzerState.Config.SourceTaintsArgs &&
-				isEntryPointSsa(node.parent.CallSite().Value()) {
+			if spec.MarkCallArgsLikeCall &&
+				spec.IsEntryPointSsa(node.parent.CallSite().Value()) {
 				entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
 				entryPoints[entry.Key()] = entry
 			}
 		case *CallNode:
-			if node.callSite != nil && isEntryPointSsa(node.callSite.Value()) {
+			if node.callSite != nil && spec.IsEntryPointSsa(node.callSite.Value()) {
 				contexts := GetAllCallingContexts(g.AnalyzerState, node)
 				addWithContexts(contexts, node, entryPoints)
 
-				if g.AnalyzerState.Config.SourceTaintsArgs {
+				if spec.MarkCallArgsLikeCall {
 					for _, arg := range node.args {
 						entry := NodeWithTrace{arg, nil, nil}
 						entryPoints[entry.Key()] = entry

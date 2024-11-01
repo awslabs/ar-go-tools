@@ -155,8 +155,8 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 			SlicingSpec: &ps,
 			Traces:      make(map[df.GraphNode][]Trace),
 		}
-		analysis.RunInterProcedural(state, visitor, analysis.InterProceduralParams{
-			IsEntrypoint: func(node ssa.Node) bool {
+		analysis.RunInterProcedural(state, visitor, df.ScanningSpec{
+			IsEntryPointSsa: func(node ssa.Node) bool {
 				return df.IsBacktraceNode(state, visitor.SlicingSpec, node)
 			},
 		})

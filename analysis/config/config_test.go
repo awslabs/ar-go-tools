@@ -356,6 +356,9 @@ func TestLoadFullConfigYaml(t *testing.T) {
 	if config.TaintTrackingProblems[0].UnsafeMaxDepth != 1 {
 		t.Error("analysis option unsafe-max-depth should be 1 for taint-tracking-problem")
 	}
+	if !config.TaintTrackingProblems[0].SourceTaintsArgs {
+		t.Error("analysis option source-taints-args should be true for taint-tracking-problem")
+	}
 	if config.TaintTrackingProblems[0].Description == "taint-tracking-problem-1" {
 		t.Error("tag of taint tracking problem should be taint-tracking-problem-1")
 	}
@@ -374,9 +377,6 @@ func TestLoadFullConfigYaml(t *testing.T) {
 	}
 	if !strings.Contains(config.SlicingProblems[0].Description, "A slicing problem") {
 		t.Error("description should be set for the slicing problem")
-	}
-	if !config.SourceTaintsArgs {
-		t.Error("full config should have source-taints-args set")
 	}
 	if !config.SilenceWarn {
 		t.Error("full config should have silence-warn set to true")

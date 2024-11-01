@@ -9,7 +9,6 @@
     "report-summaries": true,
     "pkg-filter": "analysis.*",
     "silence-warn": true,
-    "source-taints-args": true,
     "use-escape-analysis": true,
     "skip-interprocedural": true,
     "analysis-options": {
@@ -48,6 +47,7 @@
       {
         "tag": "taint-tracking-problem-1",
         "description": "A taint tracking problem.",
+        "source-taints-args": true,
         "validators": [
           {
             "method": "Validate",

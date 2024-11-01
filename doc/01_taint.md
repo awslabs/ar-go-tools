@@ -43,11 +43,12 @@ In this configuration file, the user is trying to detect whether data coming fro
 
 > 📝 Note that all strings in the `package` and `method` fields are parsed as regexes; for example, to match `Sanitizer` precisely, one should write `"^Sanitizer$"`; the `"Sanitizer"` specification will match any function name containing `Sanitizer`.
 
-An advanced feature of the taint analysis lets you specify dataflow summaries yourself:
+An advanced feature of the taint analysis lets you specify dataflow summaries yourself for the dataflow problems:
 ```yaml
-dataflow-specs:                  # A list of dataflow
-  # specifications, where each element is a json file containing
-    - "specs-mylib.json"        # dataflow specifications.
+dataflow-problems:
+    user-specs:                  # A list of dataflow
+      # specifications, where each element is a json file containing
+        - "specs-mylib.json"        # dataflow specifications.
 ```
 We explain in more detail how to write [dataflow specifications](#dataflow-specifications) later, and why the user should write dataflow specifications in some cases.
 
@@ -61,10 +62,11 @@ options:
   # that have been discovered will be printed in individual files
   # in the reports directory
 ```
-And some other options:
+And some other options specific to a taint analysis problem:
 ```yaml
-options:
-  source-taints-args: false  # by default, the result of a call to
+dataflow-problems:
+  taint-tracking:
+    - source-taints-args: false  # by default, the result of a call to
     # a source function is tainted. In some cases a user might want
     # to consider all arguments of a source function to be tainted
 ```

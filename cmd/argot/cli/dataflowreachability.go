@@ -54,9 +54,11 @@ func cmdTrace(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ b
 	if command.Flags["t"] {
 		c.Logger.Level = config.TraceLevel
 	}
-	dummySpec := &config.TaintSpec{}
-	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(dummySpec), nil,
-		func(g dataflow.GraphNode) bool { return r.MatchString(g.LongID()) })
+	dummyTaintSpec := &config.TaintSpec{}
+	scanningSpec := dataflow.ScanningSpec{
+		IsEntryPointGraph: func(g dataflow.GraphNode) bool { return r.MatchString(g.LongID()) },
+	}
+	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(dummyTaintSpec), scanningSpec)
 
 	c.Logger.Level = preLevel
 	return false

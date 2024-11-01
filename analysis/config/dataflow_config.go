@@ -84,6 +84,10 @@ type TaintSpec struct {
 	// SkipBoundLabels indicates whether to skip flows that go through "bound labels", i.e. aliases of the variables
 	// bound by a closure. This can be useful to test data flows because bound labels generate a lot of false positives.
 	SkipBoundLabels bool `yaml:"unsafe-skip-bound-labels" json:"unsafe-skip-bound-labels"`
+
+	// SourceTaintsArgs specifies whether calls to a source function also taints the argument. This is usually not
+	// the case, but might be useful for some users or for source functions that do not return anything.
+	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args" json:"source-taints-args"`
 }
 
 // SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
