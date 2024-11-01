@@ -12,6 +12,4 @@ dataflow-problems:
         - package: "(intra-procedural)|(main)|(command-line-arguments)"
           method: sink[1-9]
 
-options:
-    skip-interprocedural: false
 

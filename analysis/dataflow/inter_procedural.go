@@ -281,9 +281,8 @@ type ScanningSpec struct {
 // or if `cfg.SkipInterprocedural` is set to true.
 func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor Visitor, spec ScanningSpec) {
 	// Skip the pass if user configuration demands it
-	if c.Config.SkipInterprocedural || (!c.Config.SummarizeOnDemand && len(g.Summaries) == 0) {
-		c.Logger.Infof("Skipping inter-procedural pass: config.SkipInterprocedural=%v, len(summaries)=%d\n",
-			c.Config.SkipInterprocedural, len(g.Summaries))
+	if !c.Config.SummarizeOnDemand && len(g.Summaries) == 0 {
+		c.Logger.Infof("Skipping inter-procedural pass: no summaries, and not summarizing on demand.")
 		return
 	}
 

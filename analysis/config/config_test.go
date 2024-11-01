@@ -312,9 +312,6 @@ func TestLoadFullConfigYaml(t *testing.T) {
 	if config.LogLevel != int(TraceLevel) {
 		t.Error("full config should have set trace")
 	}
-	if !config.SkipInterprocedural {
-		t.Error("full config should have set skiipinterprocedural")
-	}
 	if !config.ReportCoverage {
 		t.Error("full config should have set report-coverage")
 	}

@@ -10,7 +10,6 @@
     "pkg-filter": "analysis.*",
     "silence-warn": true,
     "use-escape-analysis": true,
-    "skip-interprocedural": true,
     "analysis-options": {
       "max-alarms": 16,
       "unsafe-max-depth": 42,

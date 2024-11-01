@@ -48,7 +48,6 @@ Some common optional fields across tools are:
 options:
   log-level: 4                         # sets the output of the tool to debug (default is 3 for info)
   pkg-filter: "some-package/.*"        # filter which packages should be analyzed  (a regex matching package name)
-  skip-interprocedural: true            # skip the interprocedural pass if the tool has one (default is false)
   coverage-filter: "other-package/.*"  # filter for which files to report coverage (a regex matching file paths)
   reports-dir: "some-dir"              # where to store reports
   report-coverage: true                # whether to report coverage, if the analysis supports it (default false)

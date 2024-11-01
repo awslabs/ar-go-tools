@@ -29,10 +29,6 @@ options:
   # will be created in the reports directory. This is a report requirement.
   report-summaries: true
 
-  # [taint] skip-interprocedural can be set to true if you only want to run the intra-procedural analysis when running
-  # the taint tool in argot. It is only useful for debugging purposes
-  skip-interprocedural: true
-
   # [taint] this can be set to limit which packages are analyzed during the first phase of the taint analysis.
   # packages that do not match the regex will not be analyzed
   pkg-filter: "analysis.*"

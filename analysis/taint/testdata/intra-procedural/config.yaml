@@ -13,6 +13,4 @@ dataflow-problems:
           method: sink[1-9]
       fail-on-implicit-flow: false
 
-options:
-    skip-interprocedural: false
 

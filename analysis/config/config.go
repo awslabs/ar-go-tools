@@ -246,9 +246,6 @@ type Options struct {
 	// relative to the root. If not specified, the root is assumed to be the directory of the config file.
 	ProjectRoot string `xml:"project-root,attr" yaml:"project-root" json:"project-root"`
 
-	// SkipInterprocedural can be set to true to skip the interprocedural (inter-procedural analysis) step
-	SkipInterprocedural bool `xml:"skip-interprocedural,attr" yaml:"skip-interprocedural" json:"skip-interprocedural"`
-
 	// Suppress warnings
 	SilenceWarn bool `xml:"silence-warn,attr" json:"silence-warn" yaml:"silence-warn"`
 
@@ -276,7 +273,6 @@ func NewDefault() *Config {
 			},
 			ReportsDir:          "",
 			PkgFilter:           "",
-			SkipInterprocedural: false,
 			CoverageFilter:      "",
 			ReportSummaries:     false,
 			ReportPaths:         false,
@@ -320,6 +316,8 @@ func errorMisconfigurationGracefully(errYaml, errXML, errJson error) error {
 		"field slicing-problems not found in type config.Config",
 		"field dataflow-specs not found in type config.Config",
 		"field source-taints-args not found in type config.Options",
+		"field field-sensitive not found in type config.DataflowProblems",
+		"field skip-interprocedural not found in type config.Options",
 	}
 	msgUpgrade := "your config follows an outdated format. Please consult documentation and update the config file"
 	for _, fingerprint := range oldConfigFingerprints {

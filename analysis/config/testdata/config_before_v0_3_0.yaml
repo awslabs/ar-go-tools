@@ -3,8 +3,7 @@
 
 options:
   log-level: 5
-  field-sensitive-funcs:
-    - ".*"
+  field-sensitive: true
   # Before v0.3.0 below were simple config options
   unsafe-max-depth: 42
   max-alarms: 16
