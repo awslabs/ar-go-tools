@@ -30,7 +30,6 @@ import (
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -119,16 +118,11 @@ func (n TraceNode) String() string {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (AnalysisResult, error) {
+func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
 		numRoutines = 1
-	}
-
-	state, err := df.NewInitializedAnalyzerState(prog, pkgs, logger, cfg)
-	if err != nil {
-		return AnalysisResult{}, err
 	}
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
@@ -138,7 +132,11 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 
 	var errs []error
 	resTraces := make(map[df.GraphNode][]Trace)
-	for _, ps := range cfg.SlicingProblems {
+	for _, ps := range state.Config.SlicingProblems {
+		// Check the problem applies to the current target
+		if !config.TargetIncludes(ps.Targets, state.Target) {
+			continue
+		}
 		// Number of alarms is problem specific, not global
 		state.ResetAlarms()
 
@@ -166,8 +164,8 @@ func Analyze(logger *config.LogGroup, cfg *config.Config, prog *ssa.Program, pkg
 				vTrace := Trace{}
 				for _, node := range trace {
 					if isFiltered(visitor.SlicingSpec, node.GraphNode) {
-						logger.Tracef("FILTERED: %v\n", node)
-						logger.Tracef("\t%v\n", vTrace)
+						state.Logger.Tracef("FILTERED: %v\n", node)
+						state.Logger.Tracef("\t%v\n", vTrace)
 						vTrace = nil
 						break
 					}

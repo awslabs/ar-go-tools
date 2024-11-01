@@ -130,6 +130,9 @@ type Config struct {
 
 	// DataflowProblems specifies the dataflow problems to solve in the config
 	DataflowProblems `yaml:"dataflow-problems" json:"dataflow-problems"`
+
+	// Targets specifies the set of targets that may be used in the config
+	Targets []TargetSpec
 }
 
 // AnalysisProblemOptions are the options that are specific to an analysis problem.
@@ -185,6 +188,7 @@ type SyntacticSpecs struct {
 
 // StructInitSpec contains specs for the problem of tracking a specific struct initialization.
 type StructInitSpec struct {
+	Targets []string
 	// Struct is the struct type whose initialization should be tracked.
 	Struct CodeIdentifier
 	// FieldsSet is the list of the fields of Struct that must always be set to a specific value.
@@ -201,6 +205,15 @@ type FieldsSetSpec struct {
 	// Value is the value that Field must always be set to.
 	// We only support static values for now (e.g., constants and static functions).
 	Value CodeIdentifier
+}
+
+// A TargetSpec is a set of files the form a Go program together with a name to identify the target in the configuration
+// file.
+type TargetSpec struct {
+	// Name identifies the target in the rest of the configuration file
+	Name string
+	// Files identifies the target's files
+	Files []string
 }
 
 // Options holds the global options for analyses

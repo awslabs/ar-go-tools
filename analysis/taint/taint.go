@@ -28,7 +28,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -58,22 +57,12 @@ type AnalysisResult struct {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (AnalysisResult, error) {
+func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
+	var err error
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
 		numRoutines = 1
-	}
-
-	// ** First step **
-	// - Running the pointer analysis over the whole program. We will query values only in
-	// the user defined functions since we plan to analyze only user-defined functions. Any function from the runtime
-	// or from the standard library that is called in the program should be summarized in the summaries package.
-	// - Running the type analysis to map functions to their type
-
-	state, err := dataflow.NewInitializedAnalyzerState(prog, pkgs, config.NewLogGroup(cfg), cfg)
-	if err != nil {
-		return AnalysisResult{}, err
 	}
 
 	preambleErr := AnalysisPreamble(state)
@@ -123,6 +112,10 @@ func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (A
 	taintFlows := NewFlows()
 
 	for _, taintSpec := range state.Config.TaintTrackingProblems {
+		// Check the problem applies to the current target
+		if !config.TargetIncludes(taintSpec.Targets, state.Target) {
+			continue
+		}
 		// Number of alarms is problem specific, not global
 		state.ResetAlarms()
 

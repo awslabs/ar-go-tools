@@ -23,6 +23,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -112,7 +113,12 @@ func Run(flags Flags) error {
 
 	// Starting the analysis
 	start := time.Now()
-	result, err := taint.Analyze(taintConfig, program, pkgs)
+	cfgLog := config.NewLogGroup(taintConfig)
+	state, err := dataflow.NewInitializedAnalyzerState(program, pkgs, cfgLog, taintConfig)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %s", err)
+	}
+	result, err := taint.Analyze(state)
 	duration := time.Since(start)
 	if err != nil {
 		if result.State != nil {

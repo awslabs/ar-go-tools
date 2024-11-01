@@ -28,6 +28,9 @@ func (c Config) Validate() error {
 	if err := c.checkSeveritiesAreValid(); err != nil {
 		return err
 	}
+	if err := c.checkTargetsUniqueAndDefined(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -58,6 +61,41 @@ func (c Config) checkSeveritiesAreValid() error {
 			return fmt.Errorf(
 				"invalid severity label %s (not empty, \"CRITICAL\", \"HIGH\", \"MEDIUM\", or \"LOW\")",
 				sev)
+		}
+	}
+	return nil
+}
+
+func (c Config) checkTargetsUniqueAndDefined() error {
+	targets := funcutil.Set(funcutil.Map(c.Targets, func(c TargetSpec) string { return c.Name }))
+	if len(targets) != len(c.Targets) {
+		return fmt.Errorf("duplicate target names")
+	}
+	isDefined := func(s string) bool {
+		_, ok := targets[s]
+		return ok || s == TargetsAll
+	}
+	for _, trackingProblem := range c.TaintTrackingProblems {
+		for _, problemTarget := range trackingProblem.Targets {
+			if !isDefined(problemTarget) {
+				return fmt.Errorf("taint analysis target %s is undefined", problemTarget)
+			}
+		}
+	}
+	for _, slicingProblem := range c.SlicingProblems {
+		for _, problemTarget := range slicingProblem.Targets {
+			if !isDefined(problemTarget) {
+				return fmt.Errorf("backwards dataflow analysis target %s is undefined", problemTarget)
+			}
+		}
+	}
+	for _, sp := range c.SyntacticProblems {
+		for _, structInitProblem := range sp.StructInitProblems {
+			for _, problemTarget := range structInitProblem.Targets {
+				if !isDefined(problemTarget) {
+					return fmt.Errorf("syntactic analysis target %s is undefined", problemTarget)
+				}
+			}
 		}
 	}
 	return nil

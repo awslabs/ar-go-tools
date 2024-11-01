@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
@@ -63,7 +64,12 @@ func Run(flags tools.CommonFlags) error {
 	}
 
 	start := time.Now()
-	result, err := backtrace.Analyze(config.NewLogGroup(cfg), cfg, program, pkgs)
+	cfgLog := config.NewLogGroup(cfg)
+	state, err := df.NewInitializedAnalyzerState(program, pkgs, cfgLog, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %s", err)
+	}
+	result, err := backtrace.Analyze(state)
 	if err != nil {
 		return fmt.Errorf("analysis failed: %v", err)
 	}

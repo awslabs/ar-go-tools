@@ -16,6 +16,22 @@
       "max-entrypoint-context-size": 20
     }
   },
+  "targets": [
+    {
+      "name": "foo",
+      "files": [
+        "cmd/main.go",
+        "cmd/foo.go"
+      ]
+    },
+    {
+      "name": "bar",
+      "files": [
+        "test/main.go",
+        "test/bar.go"
+      ]
+    }
+  ],
   "pointer-config": {
     "reflection": true,
     "unsafe-no-effect-functions": [
@@ -28,12 +44,17 @@
       "example.json",
       "example2.json"
     ],
-    "field-sensitive-funcs": [".*"],
+    "field-sensitive-funcs": [
+      ".*"
+    ],
     "summarize-on-demand": true,
     "slicing": [
       {
         "tag": "slicing-problem-1",
         "description": "A slicing problem",
+        "targets": [
+          "all"
+        ],
         "backtracepoints": [
           {
             "method": "Foo",
@@ -47,6 +68,10 @@
         "tag": "taint-tracking-problem-1",
         "description": "A taint tracking problem.",
         "source-taints-args": true,
+        "targets": [
+          "foo",
+          "bar"
+        ],
         "validators": [
           {
             "method": "Validate",

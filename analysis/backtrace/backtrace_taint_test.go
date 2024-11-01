@@ -107,7 +107,11 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	}
 	cfg.SlicingProblems = []config.SlicingSpec{{BacktracePoints: cfg.TaintTrackingProblems[0].Sinks}}
 	log := config.NewLogGroup(cfg)
-	res, err := backtrace.Analyze(log, cfg, program, lp.Pkgs)
+	state, err := dataflow.NewInitializedAnalyzerState(program, lp.Pkgs, log, cfg)
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	res, err := backtrace.Analyze(state)
 	if err != nil {
 		t.Fatalf("failed to run analysis: %v", err)
 	}

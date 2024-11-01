@@ -36,6 +36,9 @@ import (
 // AnalyzerState holds information that might need to be used during program analysis, and represents the state of
 // the analyzer. Different steps of the analysis will populate the fields of this structure.
 type AnalyzerState struct {
+	// Target identifies the target this state corresponds to
+	Target string
+
 	// Annotations contains all the annotations of the program
 	Annotations annotations.ProgramAnnotations
 

@@ -195,6 +195,16 @@ func TestLoadWithProjectRoot(t *testing.T) {
 	}
 }
 
+func TestLoadWithUndefinedTargetReturnsError(t *testing.T) {
+	_, _, err := loadFromTestDir("config_undefined_target.yaml")
+	if err == nil {
+		t.Fatalf("expected error when loading config with undefined target")
+	}
+	if !strings.Contains(err.Error(), "taint analysis target foo is undefined") {
+		t.Errorf("config with undefined target should have explicit error message")
+	}
+}
+
 func TestLoadVersionBefore_v0_3_0_Errors(t *testing.T) {
 	_, config, err := loadFromTestDir("config_before_v0_3_0.yaml")
 	if config != nil || err == nil {

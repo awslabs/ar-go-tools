@@ -160,6 +160,16 @@ func Contains[T comparable](a []T, x T) bool {
 	return Exists(a, func(y T) bool { return x == y })
 }
 
+// Set takes an array of elements and returns a set of those elements, represented as a map from
+// elements to empty struct
+func Set[T comparable](a []T) map[T]any {
+	set := map[T]any{}
+	for _, x := range a {
+		set[x] = struct{}{}
+	}
+	return set
+}
+
 // SetToOrderedSlice converts a set represented as a map from elements to booleans into a slice.
 // Sorts the result in increasing order
 func SetToOrderedSlice[T constraints.Ordered](set map[T]bool) []T {

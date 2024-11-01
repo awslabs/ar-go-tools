@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
@@ -277,7 +278,11 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 		t.Fatalf("failed to load test: %v", err)
 	}
 	setupConfig(lp.Config, summarizeOnDemand)
-	result, err := taint.Analyze(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	if err != nil {
+		t.Fatalf("failed to initialize state")
+	}
+	result, err := taint.Analyze(state)
 	if err != nil {
 		// t.Logf("taint analysis failed: %v", err) // use for debugging: sometimes errors are expected
 		if result.State != nil {
