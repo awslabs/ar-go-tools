@@ -30,11 +30,6 @@ func (t *BlockTree) AddChild(block *ssa.BasicBlock) *BlockTree {
 	return newT
 }
 
-// IsRoot returns true is the node is a leaf (i.e. no Parent)
-func (t *BlockTree) IsRoot() bool {
-	return t.Parent == nil
-}
-
 // CountPathOccurrences count how many times Block is encountered on the path to the root
 func (t *BlockTree) CountPathOccurrences(block *ssa.BasicBlock) int {
 	c := 0
