@@ -73,6 +73,9 @@ type TaintSpec struct {
 	// Severity assigns a severity to this problem
 	Severity string
 
+	// Description allows the user to add a description to the problem
+	Description string
+
 	// FailOnImplicitFlow indicates whether the taint analysis should fail when tainted data implicitly changes
 	// the control flow of a program. This should be set to false when proving a data flow property,
 	// and set to true when proving an information flow property.
@@ -98,6 +101,9 @@ type SlicingSpec struct {
 
 	// Severity assigns a severity to this problem
 	Severity string
+
+	// Description allows the user to add a description to the problem
+	Description string
 
 	// SkipBoundLabels indicates whether to skip flows that go through "bound labels", i.e. aliases of the variables
 	// bound by a closure. This can be useful to test data flows because bound labels generate a lot of false positives.

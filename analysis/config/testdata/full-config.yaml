@@ -68,6 +68,7 @@ pointer-config:
     - "fmt.Errorf"
     - "fmt.Printf"
 
+# All the dataflow problems and the dataflow-specific problems
 dataflow-problems:
   # this can be set to use only on-demand summarization
   summarize-on-demand: true
@@ -79,9 +80,20 @@ dataflow-problems:
     - "example.json"
     - "example2.json"
 
+# The slicing/backwards dataflow problems
+  slicing:
+    - tag: "slicing-problem-1"
+      description: "A slicing problem"
+      backtracepoints:
+        - method: "Foo"
+          package: "bar"
+
+
   # The taint tracking problems
   taint-tracking:
-    - validators:
+    - tag: "taint-tracking-problem-1"
+      description: "A taint tracking problem."
+      validators:
         - method: "Validate"
           package: "x"
 

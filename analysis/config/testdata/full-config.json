@@ -25,15 +25,29 @@
       "fmt.Printf"
     ]
   },
-  "dataflow-problems" : {
+  "dataflow-problems": {
     "user-specs": [
       "example.json",
       "example2.json"
     ],
     "field-sensitive": true,
     "summarize-on-demand": true,
+    "slicing": [
+      {
+        "tag": "slicing-problem-1",
+        "description": "A slicing problem",
+        "backtracepoints": [
+          {
+            "method": "Foo",
+            "package": "bar"
+          }
+        ]
+      }
+    ],
     "taint-tracking": [
       {
+        "tag": "taint-tracking-problem-1",
+        "description": "A taint tracking problem.",
         "validators": [
           {
             "method": "Validate",

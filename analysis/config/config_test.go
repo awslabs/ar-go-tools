@@ -338,6 +338,7 @@ func TestLoadFullConfigYaml(t *testing.T) {
 	if !config.MatchPkgFilter("argot/analysis/analyzers.go") {
 		t.Error("full config coverage filter should match files in analysis")
 	}
+	// Test taint tracking problems
 	if len(config.TaintTrackingProblems) != 1 ||
 		len(config.TaintTrackingProblems[0].Sinks) != 1 ||
 		len(config.TaintTrackingProblems[0].Validators) != 1 ||
@@ -347,6 +348,25 @@ func TestLoadFullConfigYaml(t *testing.T) {
 	}
 	if config.TaintTrackingProblems[0].UnsafeMaxDepth != 1 {
 		t.Error("analysis option unsafe-max-depth should be 1 for taint-tracking-problem")
+	}
+	if config.TaintTrackingProblems[0].Description == "taint-tracking-problem-1" {
+		t.Error("tag of taint tracking problem should be taint-tracking-problem-1")
+	}
+	if strings.Contains(config.TaintTrackingProblems[0].Tag, "A taint tracking problem") {
+		t.Error("description should be set for taint-tracking-problem")
+	}
+	// Test slicing
+	if len(config.SlicingProblems) != 1 {
+		t.Error("there should be exactly one slicing problem.")
+	}
+	if len(config.SlicingProblems[0].BacktracePoints) != 1 {
+		t.Error("the slicing problem should have exactly one backtrace point.")
+	}
+	if config.SlicingProblems[0].Tag != "slicing-problem-1" {
+		t.Error("the slicing problem should have tag slicing-problem-1")
+	}
+	if !strings.Contains(config.SlicingProblems[0].Description, "A slicing problem") {
+		t.Error("description should be set for the slicing problem")
 	}
 	if !config.SourceTaintsArgs {
 		t.Error("full config should have source-taints-args set")
