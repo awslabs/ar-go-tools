@@ -18,15 +18,6 @@ import "regexp"
 
 // DataflowProblems defines all the dataflow (taint, slicing) problems in a config file.
 type DataflowProblems struct {
-	// PathSensitive is a boolean indicating whether the analysis should be run with access path sensitivity on
-	// (will change to include more filtering in the future)
-	//
-	// Note that the configuration option name is "field-sensitive" because this is the name that will be more
-	// recognizable for users.
-	//
-	// TODO deprecate since this case is covered by `"field-sensitive-funcs": [".*"]`?
-	PathSensitive bool `xml:"field-sensitive" yaml:"field-sensitive" json:"field-sensitive"`
-
 	// PathSensitiveFuncs is a list of regexes indicating which functions should be path-sensitive.
 	// This allows the analysis to scale yet still maintain a degree of precision where it matters.
 	PathSensitiveFuncs []string `xml:"field-sensitive-funcs" yaml:"field-sensitive-funcs" json:"field-sensitive-funcs"`

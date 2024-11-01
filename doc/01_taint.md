@@ -421,9 +421,13 @@ If the analysis was field-sensitive, it would not raise an alarm.
 Field sensitivity can be turned on for dataflow problems with the option:
 ```yaml
 dataflow-problems:
-  field-sensitive: true
+  field-sensitive-funcs: 
+    - "interestingFunctionsRegex"
 ```
-Which turns on field-sensitivity for all. This will increase analysis time, but eliminate some false positive. 
+Which turns on field-sensitivity for all functions  names matching `interestingFunctionsRegex`. 
+This will increase analysis time, but eliminate some false positive.
+You can turn on field sensitivity by just using the pattern `.*`.
+
 
 ### Tuple Sensitivity
 

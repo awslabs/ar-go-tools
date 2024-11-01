@@ -1,5 +1,6 @@
 dataflow-problems:
-  field-sensitive: true
+  field-sensitive-funcs:
+    - ".*"
   taint-tracking:
     -
       sources:

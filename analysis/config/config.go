@@ -262,7 +262,6 @@ func NewDefault() *Config {
 		sourceFile:         "",
 		nocalleereportfile: "",
 		DataflowProblems: DataflowProblems{
-			PathSensitive:             false,
 			PathSensitiveFuncs:        []string{},
 			pathSensitiveFuncsRegexes: nil,
 		},

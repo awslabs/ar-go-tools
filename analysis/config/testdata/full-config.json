@@ -29,7 +29,7 @@
       "example.json",
       "example2.json"
     ],
-    "field-sensitive": true,
+    "field-sensitive-funcs": [".*"],
     "summarize-on-demand": true,
     "slicing": [
       {

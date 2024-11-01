@@ -69,8 +69,9 @@ pointer-config:
 dataflow-problems:
   # this can be set to use only on-demand summarization
   summarize-on-demand: true
-  # This setting sets whether the analysis is field sensitive
-  field-sensitive: true
+  # This setting sets all functions to be analyzed with field sensitivity
+  field-sensitive-funcs:
+    - ".*"
   # For any dataflow analysis, you can specify summaries for specific functions and interfaces. The analysis will
   # use each of those files as a reference for the functions specified
   user-specs:
