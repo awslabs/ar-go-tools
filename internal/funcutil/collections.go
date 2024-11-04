@@ -162,8 +162,8 @@ func Contains[T comparable](a []T, x T) bool {
 
 // Set takes an array of elements and returns a set of those elements, represented as a map from
 // elements to empty struct
-func Set[T comparable](a []T) map[T]any {
-	set := map[T]any{}
+func Set[T comparable](a []T) map[T]struct{} {
+	set := map[T]struct{}{}
 	for _, x := range a {
 		set[x] = struct{}{}
 	}

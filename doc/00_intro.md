@@ -35,7 +35,7 @@ The following tools are included in Argot:
 - the `render` tool can be used to render various representations of the code, such as its [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single-assignment_form) (SSA) form or its callgraph (see [Render Tool](10_render.md#render-tool)).
 - the `racerg` tool, an experimental tool for data race detection (See [RacerG](11_racerg.md#racerg-sound-and-scalable-static-data-race-detector-for-go)).
 
-These tools can be used by developers to better understand their code, through the analysis of higher-level representations. For example, one can understand how the code is organized by looking at the callgraph, which abstract away the code and retains only the caller/callee information. In general, we do not state guarantees about the correctness of these tools, except for the dataflow analyses (see [taint analysis](01_taint.md#taint-analysis) and [backtrace](02_backtrace.md#backtrace-analysis))). However, we believe the representations obtained for each of these tools are useful enough to aid programmers.
+These tools can be used by developers to better understand their code, through the analysis of higher-level representations. For example, one can understand how the code is organized by looking at the callgraph, which abstract away the code and retains only the caller/callee information. In general, we do not state guarantees about the correctness of these tools, except for the dataflow analyses (see [taint analysis](01_taint.md#taint-analysis) and [backtrace](02_backtrace.md#backtrace-analysis)). However, we believe the representations obtained for each of these tools are useful enough to aid programmers.
 
 ### Configuration
 
@@ -54,3 +54,30 @@ options:
 ```
 
 > 📝 The tool accepts five different settings for the logging level: 1 for error logging, 2 for warnings, 3 for info, 4 for debugging information and 5 for tracing. Tracing should not be used on large programs.
+
+
+### Targets
+
+The `taint` and `backtrace` tools of Argot support running against specific targets that can be defined in the config file (as opposed to passed in the command line).
+
+The targets are defined in `targets`, and each target must have a `name` and a set of `files`. The file paths are taken relatively to the directory where the config file is by default, or relatively to the project root when the `option` `project-root` is defined. 
+For example, we can define two targets in the following config file:
+```yaml
+options:
+  project-root: "../"
+targets:
+  - name: "target1"
+    files:
+      - "cmd/target1/main.go"
+  - name: "target2"
+    files:
+      - "cmd/target2/main.go"
+
+```
+This assumes the config file is in a directory next to the `cmd` directory that contains all the executables of the project.
+Analysis problems that can use specific targets will have a `targets: ["target1", "target2"]` option for example. Then each tool can be run with a single argument, the config file.The `"all"` target is a special target that means the problem applies to every target.
+
+If some file paths are specified on the command line, the targets are ignored: all the analysis problems for the tool being called are run against the target provided on the command line.
+
+
+> See for example the config file `payload/selfcheck/config.yaml` which is an example of using the targets to run both taint and backtrace analyses.

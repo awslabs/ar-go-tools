@@ -53,9 +53,12 @@ dataflow-problems:
         - type: "^bool$" # same for bool
         - type: "^float" # same for floats
   slicing:
-    # Check that the arguments of MustCompile are regexes defined entirely statically (i.e. all data flowing to the
-    # arguments of MustCompile comes from constants).
+    # Trace the source of the arguments of MustCompile; all data flowing to the arguments of MustCompile
+    # must come from constants.
     # Run me with: argot backtrace -config path-to-this-file
+    # The tool does not automatically check the origin but only traces the sources; for now, the property
+    # can be checked by verifying (manually) that every trace originates from constants. There are very
+    # few traces in this example.
     - tag: "compile-static-regex"
       description: "Checking that MustCompile is used only with static strings."
       targets: [ "argot", "racerg" ]
