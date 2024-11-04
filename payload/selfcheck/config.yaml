@@ -8,6 +8,14 @@ options:
     unsafe-max-depth: 6
     max-entrypoint-context-size: 2
 
+targets:
+  - name: "argot"
+    files:
+      - "cmd/argot/main.go"
+  - name: "racerg"
+    files:
+      - "cmd/racerg/main.go"
+
 # Define the analysis problems
 dataflow-problems:
   summarize-on-demand: true
@@ -20,7 +28,9 @@ dataflow-problems:
     # Tracking the data that flows from the client code being analyzed to location where we might log strings from
     # that code. For example, if a (*ssa.Function).String() is logged in a log.Warnf call.
     # Data should be Sanitized using the formatutil.Santitize function.
-    - sources:
+    - tag: "source-formats"
+      targets: [ "argot" ]
+      sources:
         - package: "ssa"
           method: "String" # any String method from the ssa package, includes function.String etc.
           context: "ar-go-tools" # Only sources in our code, i.e. in ar-go-tools
@@ -42,4 +52,14 @@ dataflow-problems:
         - type: "^int$" # not enough data in an int to do terminal injection
         - type: "^bool$" # same for bool
         - type: "^float" # same for floats
+  slicing:
+    # Check that the arguments of MustCompile are regexes defined entirely statically (i.e. all data flowing to the
+    # arguments of MustCompile comes from constants).
+    # Run me with: argot backtrace -config path-to-this-file
+    - tag: "compile-static-regex"
+      description: "Checking that MustCompile is used only with static strings."
+      targets: [ "argot", "racerg" ]
+      backtracepoints:
+        - package: "^regexp$"
+          method: "^MustCompile$"
 

@@ -578,6 +578,15 @@ func (c Config) ExceedsMaxDepth(d int) bool {
 	return !(c.UnsafeMaxDepth <= 0) && d > c.UnsafeMaxDepth
 }
 
+// GetTargetMap returns a map from target names to target files
+func (c Config) GetTargetMap() map[string][]string {
+	targets := map[string][]string{}
+	for _, targetSpec := range c.Targets {
+		targets[targetSpec.Name] = targetSpec.Files
+	}
+	return targets
+}
+
 // SetOption sets config option value using a string name for the option and a string value.
 // Returns the value (as a string) of the previous setting, or an error.
 // Settings that can be set using this function:

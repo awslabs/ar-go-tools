@@ -121,3 +121,35 @@ func LoadConfig(configPath string) (*config.Config, error) {
 
 	return cfg, nil
 }
+
+// GetTargets returns the map from target names to target files that are in the config or the arguments
+// and are used by the tool.
+//
+// When args is not empty, only the target "" -> args is returned.
+// When the tool name is not recognized, all the targets in the config file are returned.
+func GetTargets(args []string, c *config.Config, tool string) map[string][]string {
+	if len(args) > 0 {
+		return map[string][]string{"": args}
+	}
+	allTargets := c.GetTargetMap()
+	switch tool {
+	case "taint":
+		taintTargets := map[string][]string{}
+		for _, ttp := range c.TaintTrackingProblems {
+			for _, target := range ttp.Targets {
+				taintTargets[target] = allTargets[target]
+			}
+		}
+		return taintTargets
+	case "backtrace":
+		backtraceTargets := map[string][]string{}
+		for _, ttp := range c.SlicingProblems {
+			for _, target := range ttp.Targets {
+				backtraceTargets[target] = allTargets[target]
+			}
+		}
+		return backtraceTargets
+	default:
+		return allTargets
+	}
+}

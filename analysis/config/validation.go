@@ -78,14 +78,14 @@ func (c Config) checkTargetsUniqueAndDefined() error {
 	for _, trackingProblem := range c.TaintTrackingProblems {
 		for _, problemTarget := range trackingProblem.Targets {
 			if !isDefined(problemTarget) {
-				return fmt.Errorf("taint analysis target %s is undefined", problemTarget)
+				return fmt.Errorf("taint analysis target \"%s\" is undefined", problemTarget)
 			}
 		}
 	}
 	for _, slicingProblem := range c.SlicingProblems {
 		for _, problemTarget := range slicingProblem.Targets {
 			if !isDefined(problemTarget) {
-				return fmt.Errorf("backwards dataflow analysis target %s is undefined", problemTarget)
+				return fmt.Errorf("backwards dataflow analysis target \"%s\" is undefined", problemTarget)
 			}
 		}
 	}
@@ -93,7 +93,7 @@ func (c Config) checkTargetsUniqueAndDefined() error {
 		for _, structInitProblem := range sp.StructInitProblems {
 			for _, problemTarget := range structInitProblem.Targets {
 				if !isDefined(problemTarget) {
-					return fmt.Errorf("syntactic analysis target %s is undefined", problemTarget)
+					return fmt.Errorf("syntactic analysis target \"%s\" is undefined", problemTarget)
 				}
 			}
 		}

@@ -17,8 +17,6 @@ package backtrace
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -42,42 +40,43 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config file: %v", err)
 	}
-
-	logger := log.New(os.Stdout, "", log.Flags())
+	cfgLog := config.NewLogGroup(cfg)
+	cfgLog.Infof(formatutil.Faint("Argot backtrace tool - " + analysis.Version))
 
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
+		cfgLog.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
 		cfg.LogLevel = int(config.DebugLevel)
+		cfgLog = config.NewLogGroup(cfg)
 	}
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, "backtrace") {
+		cfgLog.Infof("Reading backtrace entrypoints")
+		loadOptions := analysis.LoadProgramOptions{
+			PackageConfig: nil,
+			BuildMode:     ssa.InstantiateGenerics,
+			LoadTests:     flags.WithTest,
+			ApplyRewrites: true,
+		}
+		program, pkgs, err := analysis.LoadProgram(loadOptions, targetFiles)
+		if err != nil {
+			return fmt.Errorf("%s could not load program: %v", targetName, err)
+		}
 
-	logger.Printf(formatutil.Faint("Reading backtrace entrypoints") + "\n")
-
-	loadOptions := analysis.LoadProgramOptions{
-		PackageConfig: nil,
-		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     flags.WithTest,
-		ApplyRewrites: true,
+		start := time.Now()
+		state, err := df.NewInitializedAnalyzerState(program, pkgs, cfgLog, cfg)
+		state.Target = targetName
+		if err != nil {
+			return fmt.Errorf("failed to load state: %s", err)
+		}
+		result, err := backtrace.Analyze(state)
+		if err != nil {
+			return fmt.Errorf("analysis failed: %v", err)
+		}
+		duration := time.Since(start)
+		cfgLog.Infof("")
+		cfgLog.Infof("-%s", strings.Repeat("*", 80))
+		cfgLog.Infof("Analysis took %3.4f s\n", duration.Seconds())
+		cfgLog.Infof("Found traces for %d entrypoints\n", len(result.Traces))
 	}
-	program, pkgs, err := analysis.LoadProgram(loadOptions, flags.FlagSet.Args())
-	if err != nil {
-		return fmt.Errorf("could not load program: %v", err)
-	}
-
-	start := time.Now()
-	cfgLog := config.NewLogGroup(cfg)
-	state, err := df.NewInitializedAnalyzerState(program, pkgs, cfgLog, cfg)
-	if err != nil {
-		return fmt.Errorf("failed to load state: %s", err)
-	}
-	result, err := backtrace.Analyze(state)
-	if err != nil {
-		return fmt.Errorf("analysis failed: %v", err)
-	}
-	duration := time.Since(start)
-	logger.Printf("")
-	logger.Printf("-%s", strings.Repeat("*", 80))
-	logger.Printf("Analysis took %3.4f s\n", duration.Seconds())
-	logger.Printf("Found traces for %d entrypoints\n", len(result.Traces))
-
 	return nil
 }

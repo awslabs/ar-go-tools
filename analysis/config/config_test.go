@@ -200,7 +200,7 @@ func TestLoadWithUndefinedTargetReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when loading config with undefined target")
 	}
-	if !strings.Contains(err.Error(), "taint analysis target foo is undefined") {
+	if !strings.Contains(err.Error(), "taint analysis target \"foo\" is undefined") {
 		t.Errorf("config with undefined target should have explicit error message")
 	}
 }
