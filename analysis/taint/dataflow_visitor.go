@@ -155,6 +155,15 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 			} else {
 				if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
 					reportTaintFlow(s, v.currentSource, cur)
+					s.Report.AddEntry(s.Logger, s.Config, config.ReportDesc{
+						Tool:     "taint",
+						Tag:      v.taintSpec.Tag,
+						Severity: v.taintSpec.Severity,
+						Content:  report(s, v.currentSource, cur, v.taintSpec),
+					})
+					if v.taintSpec.Severity == config.Critical {
+						panic(fmt.Sprintf("taint flows to critical location (problem tag %s)", v.taintSpec.Tag))
+					}
 				}
 				// Stop if there is a limit on number of alarms, and it has been reached.
 				if !s.IncrementAndTestAlarms() {

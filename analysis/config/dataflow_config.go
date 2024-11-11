@@ -69,7 +69,7 @@ type TaintSpec struct {
 	Tag string
 
 	// Severity assigns a severity to this problem
-	Severity string
+	Severity Severity
 
 	// Description allows the user to add a description to the problem
 	Description string
@@ -105,7 +105,7 @@ type SlicingSpec struct {
 	Tag string
 
 	// Severity assigns a severity to this problem
-	Severity string
+	Severity Severity
 
 	// Description allows the user to add a description to the problem
 	Description string

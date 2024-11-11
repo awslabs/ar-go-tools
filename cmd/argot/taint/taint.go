@@ -89,18 +89,21 @@ func Run(flags Flags) error {
 	}
 
 	hasFlows := false
+	overallReport := config.NewReport()
 	// Loop over every target of the taint analysis
 	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), taintConfig, "taint") {
-		hasFlows, err = runTarget(flags, targetName, targetFiles, cfgLog, taintConfig)
+		targetHasFlows, report, err := runTarget(flags, targetName, targetFiles, cfgLog, taintConfig)
+		hasFlows = targetHasFlows || hasFlows
 		if err != nil {
 			return err
 		}
+		overallReport.Merge(report)
 	}
 
+	overallReport.Dump(cfgLog, taintConfig)
 	if hasFlows {
 		return fmt.Errorf("taint analysis found problems, inspect logs for more information")
 	}
-
 	return nil
 }
 
@@ -109,7 +112,8 @@ func runTarget(
 	targetName string,
 	targetFiles []string,
 	cfgLog *config.LogGroup,
-	taintConfig *config.Config) (bool, error) {
+	taintConfig *config.Config) (bool, *config.ReportInfo, error) {
+	// Time each target
 	startLoad := time.Now()
 	cfgLog.Infof(formatutil.Faint("Reading sources for target")+" %s\n", targetName)
 	loadOptions := analysis.LoadProgramOptions{
@@ -120,7 +124,7 @@ func runTarget(
 	}
 	program, pkgs, err := analysis.LoadProgram(loadOptions, targetFiles)
 	if err != nil {
-		return false, fmt.Errorf("could not load program:\n %v", err)
+		return false, nil, fmt.Errorf("could not load program:\n %v", err)
 	}
 	loadDuration := time.Since(startLoad)
 	cfgLog.Infof("Loaded program in %3.4f s", loadDuration.Seconds())
@@ -130,7 +134,7 @@ func runTarget(
 	state, err := dataflow.NewInitializedAnalyzerState(program, pkgs, cfgLog, taintConfig)
 	state.Target = targetName
 	if err != nil {
-		return false, fmt.Errorf("failed to load state: %s", err)
+		return false, nil, fmt.Errorf("failed to load state: %s", err)
 	}
 	result, err := taint.Analyze(state)
 	duration := time.Since(start)
@@ -140,7 +144,7 @@ func runTarget(
 				fmt.Fprintf(os.Stderr, "\terror: %v\n", err)
 			}
 		}
-		return false, fmt.Errorf("taint analysis failed: %v", err)
+		return false, nil, fmt.Errorf("taint analysis failed: %v", err)
 	}
 
 	// Printing final results
@@ -179,7 +183,7 @@ func runTarget(
 	Report(program, result)
 	// If some taint flows have been found, or some taint flow escapes, the analysis should return an error.
 	// Scripts that use the taint analysis can then rely on the boolean fail/success state of the analysis terminating.
-	return len(result.TaintFlows.Sinks) > 0 || len(result.TaintFlows.Escapes) > 0, nil
+	return len(result.TaintFlows.Sinks) > 0 || len(result.TaintFlows.Escapes) > 0, result.State.Report, nil
 }
 
 // Report logs the taint analysis result

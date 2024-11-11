@@ -49,6 +49,7 @@ func Run(flags tools.CommonFlags) error {
 		cfg.LogLevel = int(config.DebugLevel)
 		cfgLog = config.NewLogGroup(cfg)
 	}
+	overallReport := config.NewReport()
 	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, "backtrace") {
 		cfgLog.Infof("Reading backtrace entrypoints")
 		loadOptions := analysis.LoadProgramOptions{
@@ -73,10 +74,12 @@ func Run(flags tools.CommonFlags) error {
 			return fmt.Errorf("analysis failed: %v", err)
 		}
 		duration := time.Since(start)
+		overallReport.Merge(state.Report)
 		cfgLog.Infof("")
 		cfgLog.Infof("-%s", strings.Repeat("*", 80))
 		cfgLog.Infof("Analysis took %3.4f s\n", duration.Seconds())
 		cfgLog.Infof("Found traces for %d entrypoints\n", len(result.Traces))
 	}
+	overallReport.Dump(cfgLog, cfg)
 	return nil
 }

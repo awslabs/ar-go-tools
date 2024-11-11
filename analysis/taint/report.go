@@ -17,9 +17,9 @@ package taint
 import (
 	"fmt"
 	"io"
-	"os"
 	"sort"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
@@ -78,28 +78,16 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 // reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
 // and writing in the logger.
 // The function checks the annotations to suppress reports where there are //argot:ignore annotations.
-func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
-	c.Logger.Infof(" !!!! TAINT FLOW !!!!")
-	c.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(c)))
-	c.Logger.Infof(" Add new path from %s to %s <== \n",
+func reportTaintFlow(s *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
+	s.Logger.Infof(" !!!! TAINT FLOW !!!!")
+	s.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(s)))
+	s.Logger.Infof(" Add new path from %s to %s <== \n",
 		formatutil.Green(source.Node.String()), formatutil.Red(sink.Node.String()))
-	sinkPos := sink.Node.Position(c)
+	sinkPos := sink.Node.Position(s)
 	if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
-		sinkPos = callArg.ParentNode().Position(c)
+		sinkPos = callArg.ParentNode().Position(s)
 	}
-	if c.Config.ReportPaths {
-		tmp, err := os.CreateTemp(c.Config.ReportsDir, "flow-*.out")
-		if err != nil {
-			c.Logger.Errorf("Could not write report.")
-		}
-		defer tmp.Close()
-		c.Logger.Infof("Report in %s\n", formatutil.Sanitize(tmp.Name()))
-
-		tmp.WriteString(fmt.Sprintf("Source: %s\n", source.Node.String()))
-		tmp.WriteString(fmt.Sprintf("At: %s\n", source.Node.Position(c)))
-		tmp.WriteString(fmt.Sprintf("Sink: %s\n", sink.Node.String()))
-		tmp.WriteString(fmt.Sprintf("At: %s\n", sinkPos))
-
+	if s.Config.ReportPaths {
 		nodes := []*dataflow.VisitorNode{}
 		cur := sink
 		for cur != nil {
@@ -107,26 +95,66 @@ func reportTaintFlow(c *dataflow.AnalyzerState, source dataflow.NodeWithTrace, s
 			cur = cur.Prev
 		}
 
-		tmp.WriteString(fmt.Sprintf("Trace:\n"))
 		for i := len(nodes) - 1; i >= 0; i-- {
 			if nodes[i].Status.Kind != dataflow.DefaultTracing {
 				continue
 			}
-			tmp.WriteString(fmt.Sprintf("%s\n", nodes[i].Node.Position(c).String()))
-			c.Logger.Infof("%s - %s",
+			s.Logger.Infof("%s - %s",
 				formatutil.Purple("TRACE"),
-				dataflow.NodeSummary(nodes[i].Node))
+				dataflow.TermNodeSummary(nodes[i].Node))
 			// - Context [<calling context string>] Pos: <position in source code>
-			c.Logger.Infof("%s - Context [%s]\n",
+			s.Logger.Infof("%s - Context [%s]\n",
 				"     ",
-				dataflow.FuncNames(nodes[i].Trace, c.Logger.LogsDebug()))
-			c.Logger.Infof("%s - %s %s\n",
+				dataflow.FuncNames(nodes[i].Trace, s.Logger.LogsDebug()))
+			s.Logger.Infof("%s - %s %s\n",
 				"     ",
 				formatutil.Yellow("At"),
-				nodes[i].Node.Position(c).String())
+				nodes[i].Node.Position(s).String())
 		}
-		c.Logger.Infof("-- ENDS WITH SINK: %s\n", sinkPos.String())
-		c.Logger.Infof("---- END FLOW ----")
-		c.Logger.Infof(" ")
+		s.Logger.Infof("-- ENDS WITH SINK: %s\n", sinkPos.String())
+		s.Logger.Infof("---- END FLOW ----")
+		s.Logger.Infof(" ")
+	}
+}
+
+// A FlowReport contains the information we serialize about a taint flow: a tag, the source and the sink, and
+// the trace from source to sink.
+type FlowReport struct {
+	Tag    string
+	Source dataflow.ReportNodeInfo
+	Sink   dataflow.ReportNodeInfo
+	Trace  []dataflow.ReportNodeInfo
+}
+
+// report generates a json report for a specific taint flow
+func report(s *dataflow.AnalyzerState,
+	source dataflow.NodeWithTrace,
+	sink *dataflow.VisitorNode,
+	ts *config.TaintSpec) FlowReport {
+	sinkNode := dataflow.GetReportNodeInfo(sink.NodeWithTrace, s)
+	if callArg, isCallArgSink := sink.Node.(*dataflow.CallNodeArg); isCallArgSink {
+		sinkNode.Position = callArg.ParentNode().Position(s).String()
+	}
+	sourceNode := dataflow.GetReportNodeInfo(source, s)
+
+	var nodes []*dataflow.VisitorNode
+	cur := sink
+	for cur != nil {
+		nodes = append(nodes, cur)
+		cur = cur.Prev
+	}
+
+	var trace []dataflow.ReportNodeInfo
+	for i := len(nodes) - 1; i >= 0; i-- {
+		if nodes[i].Status.Kind == dataflow.DefaultTracing {
+			trace = append(trace, dataflow.GetReportNodeInfo(nodes[i].NodeWithTrace, s))
+		}
+	}
+
+	return FlowReport{
+		Tag:    ts.Tag,
+		Source: sourceNode,
+		Sink:   sinkNode,
+		Trace:  trace,
 	}
 }

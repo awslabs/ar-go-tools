@@ -148,11 +148,49 @@ func NodeKind(g GraphNode) string {
 	return ""
 }
 
-// NodeSummary returns a string summary of the node, highlighting with terminal colors
+// NodeSummary returns a string summary of the node, without using any escape codes.
+func NodeSummary(g GraphNode) string {
+	switch x := g.(type) {
+	case *ParamNode:
+		return fmt.Sprintf("Parameter %s (type %s) of %s",
+			x.ssaNode.Name(),
+			x.Type().String(),
+			fmt.Sprintf("%q", x.parent.Parent.Name()))
+	case *CallNode:
+		return fmt.Sprintf("Result of call to %s (type %s)",
+			x.Callee().Name(),
+			x.Type().String())
+	case *CallNodeArg:
+		return fmt.Sprintf("Argument #%d (type %s) in call to %s",
+			x.Index(),
+			x.Type().String(),
+			x.ParentNode().Callee().Name())
+	case *ReturnValNode:
+		return fmt.Sprintf("Return value %d (type %s) of %s",
+			x.Index(),
+			x.Type().String(),
+			x.ParentName())
+	case *ClosureNode:
+		return fmt.Sprintf("Closure")
+	case *BoundLabelNode:
+		return fmt.Sprintf("Bound label of type %s", x.targetInfo.Type().String())
+	case *SyntheticNode:
+		return fmt.Sprintf("Synthetic node")
+	case *BoundVarNode:
+		return "Bound variable"
+	case *FreeVarNode:
+		return fmt.Sprintf("Free variable #%d of %q", x.fvPos, x.ssaNode.Parent().String())
+	case *AccessGlobalNode:
+		return fmt.Sprintf("Global variable %q", x.Global.String())
+	}
+	return ""
+}
+
+// TermNodeSummary returns a string summary of the node, highlighting with terminal colors
 // green indicates a relative index/argument name,
 // magenta is used for function names,
 // italic is used for types.
-func NodeSummary(g GraphNode) string {
+func TermNodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
 		return fmt.Sprintf("Parameter %s (type %s) of %s",

@@ -54,10 +54,10 @@ func (c Config) checkTagsAreUnique() error {
 }
 
 func (c Config) checkSeveritiesAreValid() error {
-	sevList := funcutil.Map(c.TaintTrackingProblems, func(ts TaintSpec) string { return ts.Severity })
-	sevList = append(sevList, funcutil.Map(c.SlicingProblems, func(ts SlicingSpec) string { return ts.Severity })...)
+	sevList := funcutil.Map(c.TaintTrackingProblems, func(ts TaintSpec) Severity { return ts.Severity })
+	sevList = append(sevList, funcutil.Map(c.SlicingProblems, func(ts SlicingSpec) Severity { return ts.Severity })...)
 	for _, sev := range sevList {
-		if !isValidSeverity(sev) {
+		if !IsValidSeverityStr(sev.ToString()) {
 			return fmt.Errorf(
 				"invalid severity label %s (not empty, \"CRITICAL\", \"HIGH\", \"MEDIUM\", or \"LOW\")",
 				sev)
@@ -99,13 +99,4 @@ func (c Config) checkTargetsUniqueAndDefined() error {
 		}
 	}
 	return nil
-}
-
-func isValidSeverity(s string) bool {
-	switch s {
-	case "", "CRITICAL", "HIGH", "MEDIUM", "LOW":
-		return true
-	default:
-		return false
-	}
 }

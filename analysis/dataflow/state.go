@@ -82,6 +82,9 @@ type AnalyzerState struct {
 	// a map
 	BoundingInfo BoundingMap
 
+	// Report contains the accumulated report information
+	Report *config.ReportInfo
+
 	reachableFunctions map[*ssa.Function]bool
 
 	// a callgraph computed using the cha analysis. Useful to boostrap the reachable functions
@@ -148,6 +151,7 @@ func NewAnalyzerState(p *ssa.Program, pkgs []*packages.Package, l *config.LogGro
 	}
 	l.Infof("Loaded %d annotations from program\n", pa.Count())
 
+	report := config.NewReport()
 	// New state with initial cha callgraph
 	state := &AnalyzerState{
 		Annotations:           pa,
@@ -167,6 +171,7 @@ func NewAnalyzerState(p *ssa.Program, pkgs []*packages.Package, l *config.LogGro
 			Globals:       map[*GlobalNode]map[*AccessGlobalNode]bool{},
 			AnalyzerState: nil,
 		},
+		Report:            &report,
 		chaCallgraph:      cha.CallGraph(p),
 		isReachabilityCha: false,
 		errors:            map[string][]error{},
@@ -245,6 +250,7 @@ func (s *AnalyzerState) CopyTo(b *AnalyzerState) {
 	b.PointerAnalysis = s.PointerAnalysis
 	b.errors = s.errors
 	b.Program = s.Program
+	b.Report = s.Report
 	b.keys = s.keys
 	b.reachableFunctions = s.reachableFunctions
 	// copy everything except mutex

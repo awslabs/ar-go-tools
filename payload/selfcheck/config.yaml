@@ -1,7 +1,7 @@
 options:
   log-level: 3
   project-root: "../../"
-  reports-dir: "payload/selfcheck/taint-report"
+  reports-dir: "payload/selfcheck/all-report"
   report-paths: true
   analysis-options:
     max-alarms: 10
@@ -30,6 +30,7 @@ dataflow-problems:
     # Data should be Sanitized using the formatutil.Santitize function.
     - tag: "source-formats"
       targets: [ "argot" ]
+      severity: "LOW"
       sources:
         - package: "ssa"
           method: "String" # any String method from the ssa package, includes function.String etc.
@@ -62,6 +63,7 @@ dataflow-problems:
     - tag: "compile-static-regex"
       description: "Checking that MustCompile is used only with static strings."
       targets: [ "argot", "racerg" ]
+      severity: "HIGH"
       backtracepoints:
         - package: "^regexp$"
           method: "^MustCompile$"

@@ -24,6 +24,24 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// ReportNodeInfo is the information retained in reports for a dataflow node.
+// A ReportNodeInfo can be serialized on its own.
+type ReportNodeInfo struct {
+	Position    string
+	Context     string
+	Description string
+}
+
+// GetReportNodeInfo converts the information in a NodeWithTrace into a ReportNodeInfo.
+// This involved extracting descriptions for the node, context information and string positions using the state.
+func GetReportNodeInfo(g NodeWithTrace, c *AnalyzerState) ReportNodeInfo {
+	return ReportNodeInfo{
+		Position:    g.Node.Position(c).String(),
+		Context:     FuncNames(g.Trace, false),
+		Description: NodeSummary(g.Node),
+	}
+}
+
 // ReportMissingOrNotConstructedSummary prints a missing summary message to the cache's logger.
 func (s *AnalyzerState) ReportMissingOrNotConstructedSummary(callSite *CallNode) {
 	if !s.Config.Verbose() {
