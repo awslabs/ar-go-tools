@@ -14,7 +14,9 @@
 
 package config
 
-import "github.com/awslabs/ar-go-tools/internal/funcutil"
+import (
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
+)
 
 // Severity is the severity label of an analysis problem
 type Severity string
@@ -48,7 +50,6 @@ func FromString(s string) funcutil.Optional[Severity] {
 	return funcutil.None[Severity]()
 }
 
-// ToString converts the severity to a string type
-func (s Severity) ToString() string {
+func (s Severity) String() string {
 	return string(s)
 }

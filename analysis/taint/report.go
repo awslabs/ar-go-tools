@@ -75,10 +75,8 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 	}
 }
 
-// reportTaintFlow reports a taint flow by writing to a file if the configuration has the ReportPaths flag set,
-// and writing in the logger.
-// The function checks the annotations to suppress reports where there are //argot:ignore annotations.
-func reportTaintFlow(s *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
+// logTaintFlow logs a taint flow on the state's logger.
+func logTaintFlow(s *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
 	s.Logger.Infof(" !!!! TAINT FLOW !!!!")
 	s.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(s)))
 	s.Logger.Infof(" Add new path from %s to %s <== \n",
@@ -126,8 +124,8 @@ type FlowReport struct {
 	Trace  []dataflow.ReportNodeInfo
 }
 
-// report generates a json report for a specific taint flow
-func report(s *dataflow.AnalyzerState,
+// newFlowReport generates a FlowReport for a specific taint flow
+func newFlowReport(s *dataflow.AnalyzerState,
 	source dataflow.NodeWithTrace,
 	sink *dataflow.VisitorNode,
 	ts *config.TaintSpec) FlowReport {

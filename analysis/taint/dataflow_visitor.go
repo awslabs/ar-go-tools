@@ -154,12 +154,12 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 					cur.Node.Position(s))
 			} else {
 				if v.taints.addNewPathCandidate(NewFlowNode(v.currentSource), NewFlowNode(cur.NodeWithTrace)) {
-					reportTaintFlow(s, v.currentSource, cur)
+					logTaintFlow(s, v.currentSource, cur)
 					s.Report.AddEntry(s.Logger, s.Config, config.ReportDesc{
-						Tool:     "taint",
+						Tool:     config.TaintTool,
 						Tag:      v.taintSpec.Tag,
 						Severity: v.taintSpec.Severity,
-						Content:  report(s, v.currentSource, cur, v.taintSpec),
+						Content:  newFlowReport(s, v.currentSource, cur, v.taintSpec),
 					})
 					if v.taintSpec.Severity == config.Critical {
 						panic(fmt.Sprintf("taint flows to critical location (problem tag %s)", v.taintSpec.Tag))

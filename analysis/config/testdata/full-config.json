@@ -67,6 +67,7 @@
       {
         "tag": "taint-tracking-problem-1",
         "description": "A taint tracking problem.",
+        "severity": "HIGH",
         "source-taints-args": true,
         "targets": [
           "foo",

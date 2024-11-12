@@ -31,7 +31,7 @@ type ReportInfo struct {
 
 // A ReportGroup lists the report contents in each details file
 type ReportGroup struct {
-	Tool     string
+	Tool     ToolName
 	Severity Severity
 	Details  []string
 }
@@ -39,14 +39,14 @@ type ReportGroup struct {
 // ReportEntry is one entry in the report, with high-level information about the severity and what tool
 // generated it. Contents of the report should be stored in a separate content file.
 type ReportEntry struct {
-	Tool        string
+	Tool        ToolName
 	ContentFile string
 	Severity    Severity
 }
 
 // A ReportDesc gathers content and metadata about a specific report entry.
 type ReportDesc struct {
-	Tool     string
+	Tool     ToolName
 	Tag      string
 	Severity Severity
 	Content  any
@@ -116,7 +116,7 @@ func (r *ReportInfo) AddEntry(logger *LogGroup, c *Config, report ReportDesc) {
 
 	content, err := json.MarshalIndent(report.Content, "", "  ")
 	if err != nil {
-		logger.Errorf("Error serlializing report: %s", err)
+		logger.Errorf("Error serializing report: %s", err)
 	}
 	_, err = tmp.Write(content)
 	logger.Infof("Write report for tool=%s, tag=%s, severity=%s in %s",
@@ -136,7 +136,7 @@ func (r *ReportInfo) AddEntry(logger *LogGroup, c *Config, report ReportDesc) {
 func (r *ReportInfo) Dump(logger *LogGroup, c *Config) {
 	tmp, err := os.CreateTemp(c.ReportsDir, "overall-report-*.json")
 	if err != nil {
-		logger.Errorf("Could not write final report")
+		logger.Errorf("Could not write final report: %s.", err)
 		return
 	}
 	defer tmp.Close()
@@ -148,7 +148,7 @@ func (r *ReportInfo) Dump(logger *LogGroup, c *Config) {
 	}
 	_, err = tmp.Write(payload)
 	if err != nil {
-		logger.Errorf("Failed to write report, consult logs.")
+		logger.Errorf("Failed to write report: %s. Please consult logs.", err)
 	}
 	logger.Infof("Wrote final report in %s", tmp.Name())
 }

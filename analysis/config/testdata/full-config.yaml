@@ -92,6 +92,7 @@ dataflow-problems:
   # The taint tracking problems
   taint-tracking:
     - tag: "taint-tracking-problem-1"
+      severity: "HIGH"
       description: "A taint tracking problem."
       targets: ["foo", "bar"]
       # this can be set so that source function are also tainting their arguments

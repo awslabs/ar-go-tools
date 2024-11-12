@@ -57,7 +57,7 @@ func (c Config) checkSeveritiesAreValid() error {
 	sevList := funcutil.Map(c.TaintTrackingProblems, func(ts TaintSpec) Severity { return ts.Severity })
 	sevList = append(sevList, funcutil.Map(c.SlicingProblems, func(ts SlicingSpec) Severity { return ts.Severity })...)
 	for _, sev := range sevList {
-		if !IsValidSeverityStr(sev.ToString()) {
+		if !IsValidSeverityStr(sev.String()) {
 			return fmt.Errorf(
 				"invalid severity label %s (not empty, \"CRITICAL\", \"HIGH\", \"MEDIUM\", or \"LOW\")",
 				sev)

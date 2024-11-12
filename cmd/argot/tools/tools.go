@@ -36,8 +36,8 @@ type UnparsedCommonFlags struct {
 // NewUnparsedCommonFlags returns an unparsed flag set with a given name.
 // This is useful for creating sub-commands that have the flags -config,
 // -verbose, -with-test, and -build-tags but need other flags in addition.
-func NewUnparsedCommonFlags(name string) UnparsedCommonFlags {
-	cmd := flag.NewFlagSet(name, flag.ExitOnError)
+func NewUnparsedCommonFlags(name config.ToolName) UnparsedCommonFlags {
+	cmd := flag.NewFlagSet(string(name), flag.ExitOnError)
 	configPath := cmd.String("config", "", "config file path for analysis")
 	verbose := cmd.Bool("verbose", false, "verbose printing on standard output")
 	withTest := cmd.Bool("with-test", false, "load tests during analysis")
@@ -64,7 +64,7 @@ type CommonFlags struct {
 // NewCommonFlags returns a parsed flag set with a given name.
 // Returns an error if args are invalid.
 // Prints cmdUsage along with flag docs as the --help message.
-func NewCommonFlags(name string, args []string, cmdUsage string) (CommonFlags, error) {
+func NewCommonFlags(name config.ToolName, args []string, cmdUsage string) (CommonFlags, error) {
 	flags := NewUnparsedCommonFlags(name)
 	SetUsage(flags.FlagSet, cmdUsage)
 	if err := flags.FlagSet.Parse(args); err != nil {

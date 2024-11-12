@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/cmd/argot/backtrace"
 	"github.com/awslabs/ar-go-tools/cmd/argot/cli"
 	"github.com/awslabs/ar-go-tools/cmd/argot/compare"
@@ -72,22 +73,22 @@ func main() {
 	}
 
 	args := os.Args[2:]
-	switch cmd := os.Args[1]; cmd {
-	case "backtrace":
-		flags, err := tools.NewCommonFlags("backtrace", args, backtrace.Usage)
+	switch cmd := os.Args[1]; config.ToolName(cmd) {
+	case config.BacktraceTool:
+		flags, err := tools.NewCommonFlags(config.BacktraceTool, args, backtrace.Usage)
 		if err != nil {
 			errExit(err)
 		}
 		if err := backtrace.Run(flags); err != nil {
 			errExit(err)
 		}
-	case "cli":
-		flags, err := tools.NewCommonFlags("cli", args, cli.Usage)
+	case config.CliTool:
+		flags, err := tools.NewCommonFlags(config.CliTool, args, cli.Usage)
 		if err != nil {
 			errExit(err)
 		}
 		cli.Run(flags)
-	case "compare":
+	case config.CompareTool:
 		flags, err := compare.NewFlags(args)
 		if err != nil {
 			errExit(err)
@@ -95,15 +96,15 @@ func main() {
 		if err := compare.Run(flags); err != nil {
 			errExit(err)
 		}
-	case "defer":
-		flags, err := tools.NewCommonFlags("defer", args, defers.Usage)
+	case config.DeferTool:
+		flags, err := tools.NewCommonFlags(config.DeferTool, args, defers.Usage)
 		if err != nil {
 			errExit(err)
 		}
 		if err := defers.Run(flags.FlagSet.Args(), flags.Verbose); err != nil {
 			errExit(err)
 		}
-	case "dependencies":
+	case config.DependenciesTool:
 		flags, err := dependencies.NewFlags(args)
 		if err != nil {
 			errExit(err)
@@ -111,14 +112,14 @@ func main() {
 		if err := dependencies.Run(flags); err != nil {
 			errExit(err)
 		}
-	case "maypanic":
+	case config.MayPanicTool:
 		flags, err := maypanic.NewFlags(args)
 		if err != nil {
 			errExit(err)
 		}
 		if err := maypanic.Run(flags); err != nil {
 		}
-	case "packagescan":
+	case config.PackageScanTool:
 		flags, err := packagescan.NewFlags(args)
 		if err != nil {
 			errExit(err)
@@ -126,7 +127,7 @@ func main() {
 		if err := packagescan.Run(flags); err != nil {
 			errExit(err)
 		}
-	case "reachability":
+	case config.ReachabilityTool:
 		flags, err := reachability.NewFlags(args)
 		if err != nil {
 			errExit(err)
@@ -134,7 +135,7 @@ func main() {
 		if err := reachability.Run(flags); err != nil {
 			errExit(err)
 		}
-	case "render":
+	case config.RenderTool:
 		flags, err := render.NewFlags(args)
 		if err != nil {
 			errExit(err)
@@ -142,7 +143,7 @@ func main() {
 		if err := render.Run(flags); err != nil {
 			errExit(err)
 		}
-	case "ssa-statistics":
+	case config.SsaStatisticsTool:
 		flags, err := statistics.NewFlags(args)
 		if err != nil {
 			errExit(err)
@@ -150,15 +151,15 @@ func main() {
 		if err := statistics.Run(flags); err != nil {
 			errExit(err)
 		}
-	case "syntactic":
-		flags, err := tools.NewCommonFlags("syntactic", args, syntactic.Usage)
+	case config.SyntacticTool:
+		flags, err := tools.NewCommonFlags(config.SyntacticTool, args, syntactic.Usage)
 		if err != nil {
 			errExit(err)
 		}
 		if err := syntactic.Run(flags); err != nil {
 			errExit(err)
 		}
-	case "taint":
+	case config.TaintTool:
 		flags, err := taint.NewFlags(args)
 		if err != nil {
 			errExit(err)

@@ -363,6 +363,9 @@ func TestLoadFullConfigYaml(t *testing.T) {
 	if config.TaintTrackingProblems[0].UnsafeMaxDepth != 1 {
 		t.Error("analysis option unsafe-max-depth should be 1 for taint-tracking-problem")
 	}
+	if config.TaintTrackingProblems[0].Severity != High {
+		t.Error("taint-tracking-problem severity should be HIGH")
+	}
 	if !config.TaintTrackingProblems[0].SourceTaintsArgs {
 		t.Error("analysis option source-taints-args should be true for taint-tracking-problem")
 	}

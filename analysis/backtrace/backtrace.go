@@ -109,7 +109,7 @@ func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 						state.Logger,
 						state.Config,
 						config.ReportDesc{
-							Tool:     "backtrace",
+							Tool:     config.BacktraceTool,
 							Tag:      ps.Tag,
 							Severity: ps.Severity,
 							Content:  report(state, entry, vTrace, &ps),
