@@ -163,15 +163,15 @@ func ext۰reflect۰Value۰Addr(a *analysis, cgn *cgnode) {} // TODO(adonovan)
 
 // result = v.Bytes()
 type rVBytesConstraint struct {
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rVBytesConstraint) ptr() nodeid { return c.v }
+func (c *rVBytesConstraint) ptr() NodeID { return c.v }
 func (c *rVBytesConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rVBytes.result")
 }
-func (c *rVBytesConstraint) renumber(mapping []nodeid) {
+func (c *rVBytesConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -183,7 +183,7 @@ func (c *rVBytesConstraint) String() string {
 func (c *rVBytesConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, slice, indirect := a.taggedValue(vObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -215,19 +215,19 @@ func ext۰reflect۰Value۰Bytes(a *analysis, cgn *cgnode) {
 // result = v.Call(in)
 type rVCallConstraint struct {
 	cgn       *cgnode
-	targets   nodeid // (indirect)
-	v         nodeid // (ptr)
-	arg       nodeid // = in[*]
-	result    nodeid // (indirect)
+	targets   NodeID // (indirect)
+	v         NodeID // (ptr)
+	arg       NodeID // = in[*]
+	result    NodeID // (indirect)
 	dotdotdot bool   // interpret last arg as a "..." slice
 }
 
-func (c *rVCallConstraint) ptr() nodeid { return c.v }
+func (c *rVCallConstraint) ptr() NodeID { return c.v }
 func (c *rVCallConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.targets), "rVCall.targets")
 	h.markIndirect(onodeid(c.result), "rVCall.result")
 }
-func (c *rVCallConstraint) renumber(mapping []nodeid) {
+func (c *rVCallConstraint) renumber(mapping []NodeID) {
 	c.targets = mapping[c.targets]
 	c.v = mapping[c.v]
 	c.arg = mapping[c.arg]
@@ -245,7 +245,7 @@ func (c *rVCallConstraint) solve(a *analysis, delta *nodeset) {
 
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, fn, indirect := a.taggedValue(vObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -281,7 +281,7 @@ func (c *rVCallConstraint) solve(a *analysis, delta *nodeset) {
 		for i, n := 0, tParams.Len(); i < n; i++ {
 			T := tParams.At(i).Type()
 			a.typeAssert(T, params, c.arg, false)
-			params += nodeid(a.sizeof(T))
+			params += NodeID(a.sizeof(T))
 		}
 
 		// Use R by tagging and copying each actual result to c.result.
@@ -301,7 +301,7 @@ func (c *rVCallConstraint) solve(a *analysis, delta *nodeset) {
 					changed = true
 				}
 			}
-			results += nodeid(a.sizeof(T))
+			results += NodeID(a.sizeof(T))
 		}
 	}
 	if changed {
@@ -310,7 +310,7 @@ func (c *rVCallConstraint) solve(a *analysis, delta *nodeset) {
 }
 
 // Common code for direct (inlined) and indirect calls to (reflect.Value).Call.
-func reflectCallImpl(a *analysis, cgn *cgnode, site *callsite, recv, arg nodeid, dotdotdot bool) nodeid {
+func reflectCallImpl(a *analysis, cgn *cgnode, site *callsite, recv, arg NodeID, dotdotdot bool) NodeID {
 	// Allocate []reflect.Value array for the result.
 	ret := a.nextNode()
 	a.addNodes(types.NewArray(a.reflectValueObj.Type(), 1), "rVCall.ret")
@@ -365,15 +365,15 @@ func ext۰reflect۰Value۰Convert(a *analysis, cgn *cgnode) {} // TODO(adonovan)
 // result = v.Elem()
 type rVElemConstraint struct {
 	cgn    *cgnode
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rVElemConstraint) ptr() nodeid { return c.v }
+func (c *rVElemConstraint) ptr() NodeID { return c.v }
 func (c *rVElemConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rVElem.result")
 }
-func (c *rVElemConstraint) renumber(mapping []nodeid) {
+func (c *rVElemConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -385,7 +385,7 @@ func (c *rVElemConstraint) String() string {
 func (c *rVElemConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, payload, indirect := a.taggedValue(vObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -430,15 +430,15 @@ func ext۰reflect۰Value۰FieldByNameFunc(a *analysis, cgn *cgnode) {} // TODO(a
 // result = v.Index()
 type rVIndexConstraint struct {
 	cgn    *cgnode
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rVIndexConstraint) ptr() nodeid { return c.v }
+func (c *rVIndexConstraint) ptr() NodeID { return c.v }
 func (c *rVIndexConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rVIndex.result")
 }
-func (c *rVIndexConstraint) renumber(mapping []nodeid) {
+func (c *rVIndexConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -450,7 +450,7 @@ func (c *rVIndexConstraint) String() string {
 func (c *rVIndexConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, payload, indirect := a.taggedValue(vObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -458,7 +458,7 @@ func (c *rVIndexConstraint) solve(a *analysis, delta *nodeset) {
 			panic("indirect tagged object")
 		}
 
-		var res nodeid
+		var res NodeID
 		switch t := tDyn.Underlying().(type) {
 		case *types.Array:
 			res = a.makeTagged(t.Elem(), c.cgn, nil)
@@ -494,15 +494,15 @@ func ext۰reflect۰Value۰Index(a *analysis, cgn *cgnode) {
 
 // result = v.Interface()
 type rVInterfaceConstraint struct {
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rVInterfaceConstraint) ptr() nodeid { return c.v }
+func (c *rVInterfaceConstraint) ptr() NodeID { return c.v }
 func (c *rVInterfaceConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rVInterface.result")
 }
-func (c *rVInterfaceConstraint) renumber(mapping []nodeid) {
+func (c *rVInterfaceConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -514,7 +514,7 @@ func (c *rVInterfaceConstraint) String() string {
 func (c *rVInterfaceConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, payload, indirect := a.taggedValue(vObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -549,15 +549,15 @@ func ext۰reflect۰Value۰Interface(a *analysis, cgn *cgnode) {
 // result = v.MapIndex(_)
 type rVMapIndexConstraint struct {
 	cgn    *cgnode
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rVMapIndexConstraint) ptr() nodeid { return c.v }
+func (c *rVMapIndexConstraint) ptr() NodeID { return c.v }
 func (c *rVMapIndexConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rVMapIndex.result")
 }
-func (c *rVMapIndexConstraint) renumber(mapping []nodeid) {
+func (c *rVMapIndexConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -569,7 +569,7 @@ func (c *rVMapIndexConstraint) String() string {
 func (c *rVMapIndexConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, m, indirect := a.taggedValue(vObj)
 		tMap, _ := tDyn.Underlying().(*types.Map)
 		if tMap == nil {
@@ -605,15 +605,15 @@ func ext۰reflect۰Value۰MapIndex(a *analysis, cgn *cgnode) {
 // result = v.MapKeys()
 type rVMapKeysConstraint struct {
 	cgn    *cgnode
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rVMapKeysConstraint) ptr() nodeid { return c.v }
+func (c *rVMapKeysConstraint) ptr() NodeID { return c.v }
 func (c *rVMapKeysConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rVMapKeys.result")
 }
-func (c *rVMapKeysConstraint) renumber(mapping []nodeid) {
+func (c *rVMapKeysConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -625,7 +625,7 @@ func (c *rVMapKeysConstraint) String() string {
 func (c *rVMapKeysConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, m, indirect := a.taggedValue(vObj)
 		tMap, _ := tDyn.Underlying().(*types.Map)
 		if tMap == nil {
@@ -671,15 +671,15 @@ func ext۰reflect۰Value۰MethodByName(a *analysis, cgn *cgnode) {} // TODO(adon
 // result, _ = v.Recv()
 type rVRecvConstraint struct {
 	cgn    *cgnode
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rVRecvConstraint) ptr() nodeid { return c.v }
+func (c *rVRecvConstraint) ptr() NodeID { return c.v }
 func (c *rVRecvConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rVRecv.result")
 }
-func (c *rVRecvConstraint) renumber(mapping []nodeid) {
+func (c *rVRecvConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -691,7 +691,7 @@ func (c *rVRecvConstraint) String() string {
 func (c *rVRecvConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, ch, indirect := a.taggedValue(vObj)
 		tChan, _ := tDyn.Underlying().(*types.Chan)
 		if tChan == nil {
@@ -728,13 +728,13 @@ func ext۰reflect۰Value۰Recv(a *analysis, cgn *cgnode) {
 // v.Send(x)
 type rVSendConstraint struct {
 	cgn *cgnode
-	v   nodeid // (ptr)
-	x   nodeid
+	v   NodeID // (ptr)
+	x   NodeID
 }
 
-func (c *rVSendConstraint) ptr() nodeid   { return c.v }
+func (c *rVSendConstraint) ptr() NodeID   { return c.v }
 func (c *rVSendConstraint) presolve(*hvn) {}
-func (c *rVSendConstraint) renumber(mapping []nodeid) {
+func (c *rVSendConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.x = mapping[c.x]
 }
@@ -745,7 +745,7 @@ func (c *rVSendConstraint) String() string {
 
 func (c *rVSendConstraint) solve(a *analysis, delta *nodeset) {
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, ch, indirect := a.taggedValue(vObj)
 		tChan, _ := tDyn.Underlying().(*types.Chan)
 		if tChan == nil {
@@ -781,13 +781,13 @@ func ext۰reflect۰Value۰Set(a *analysis, cgn *cgnode) {} // TODO(adonovan)
 // v.SetBytes(x)
 type rVSetBytesConstraint struct {
 	cgn *cgnode
-	v   nodeid // (ptr)
-	x   nodeid
+	v   NodeID // (ptr)
+	x   NodeID
 }
 
-func (c *rVSetBytesConstraint) ptr() nodeid   { return c.v }
+func (c *rVSetBytesConstraint) ptr() NodeID   { return c.v }
 func (c *rVSetBytesConstraint) presolve(*hvn) {}
-func (c *rVSetBytesConstraint) renumber(mapping []nodeid) {
+func (c *rVSetBytesConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.x = mapping[c.x]
 }
@@ -798,7 +798,7 @@ func (c *rVSetBytesConstraint) String() string {
 
 func (c *rVSetBytesConstraint) solve(a *analysis, delta *nodeset) {
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, slice, indirect := a.taggedValue(vObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -829,14 +829,14 @@ func ext۰reflect۰Value۰SetBytes(a *analysis, cgn *cgnode) {
 // v.SetMapIndex(key, val)
 type rVSetMapIndexConstraint struct {
 	cgn *cgnode
-	v   nodeid // (ptr)
-	key nodeid
-	val nodeid
+	v   NodeID // (ptr)
+	key NodeID
+	val NodeID
 }
 
-func (c *rVSetMapIndexConstraint) ptr() nodeid   { return c.v }
+func (c *rVSetMapIndexConstraint) ptr() NodeID   { return c.v }
 func (c *rVSetMapIndexConstraint) presolve(*hvn) {}
-func (c *rVSetMapIndexConstraint) renumber(mapping []nodeid) {
+func (c *rVSetMapIndexConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.key = mapping[c.key]
 	c.val = mapping[c.val]
@@ -848,7 +848,7 @@ func (c *rVSetMapIndexConstraint) String() string {
 
 func (c *rVSetMapIndexConstraint) solve(a *analysis, delta *nodeset) {
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, m, indirect := a.taggedValue(vObj)
 		tMap, _ := tDyn.Underlying().(*types.Map)
 		if tMap == nil {
@@ -891,15 +891,15 @@ func ext۰reflect۰Value۰SetPointer(a *analysis, cgn *cgnode) {} // TODO(adonov
 // result = v.Slice(_, _)
 type rVSliceConstraint struct {
 	cgn    *cgnode
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rVSliceConstraint) ptr() nodeid { return c.v }
+func (c *rVSliceConstraint) ptr() NodeID { return c.v }
 func (c *rVSliceConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rVSlice.result")
 }
-func (c *rVSliceConstraint) renumber(mapping []nodeid) {
+func (c *rVSliceConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -911,7 +911,7 @@ func (c *rVSliceConstraint) String() string {
 func (c *rVSliceConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, payload, indirect := a.taggedValue(vObj)
 		if indirect {
 			// TODO(adonovan): we'll need to implement this
@@ -919,7 +919,7 @@ func (c *rVSliceConstraint) solve(a *analysis, delta *nodeset) {
 			panic("indirect tagged object")
 		}
 
-		var res nodeid
+		var res NodeID
 		switch t := tDyn.Underlying().(type) {
 		case *types.Pointer:
 			if tArr, ok := t.Elem().Underlying().(*types.Array); ok {
@@ -971,16 +971,16 @@ func ext۰reflect۰Copy(a *analysis, cgn *cgnode)        {} // TODO(adonovan)
 // result = ChanOf(dir, t)
 type reflectChanOfConstraint struct {
 	cgn    *cgnode
-	t      nodeid // (ptr)
-	result nodeid // (indirect)
+	t      NodeID // (ptr)
+	result NodeID // (indirect)
 	dirs   []types.ChanDir
 }
 
-func (c *reflectChanOfConstraint) ptr() nodeid { return c.t }
+func (c *reflectChanOfConstraint) ptr() NodeID { return c.t }
 func (c *reflectChanOfConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectChanOf.result")
 }
-func (c *reflectChanOfConstraint) renumber(mapping []nodeid) {
+func (c *reflectChanOfConstraint) renumber(mapping []NodeID) {
 	c.t = mapping[c.t]
 	c.result = mapping[c.result]
 }
@@ -992,7 +992,7 @@ func (c *reflectChanOfConstraint) String() string {
 func (c *reflectChanOfConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		tObj := nodeid(x)
+		tObj := NodeID(x)
 		T := a.rtypeTaggedValue(tObj)
 
 		if typeTooHigh(T) {
@@ -1046,15 +1046,15 @@ func ext۰reflect۰ChanOf(a *analysis, cgn *cgnode) {
 // result = Indirect(v)
 type reflectIndirectConstraint struct {
 	cgn    *cgnode
-	v      nodeid // (ptr)
-	result nodeid // (indirect)
+	v      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectIndirectConstraint) ptr() nodeid { return c.v }
+func (c *reflectIndirectConstraint) ptr() NodeID { return c.v }
 func (c *reflectIndirectConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectIndirect.result")
 }
-func (c *reflectIndirectConstraint) renumber(mapping []nodeid) {
+func (c *reflectIndirectConstraint) renumber(mapping []NodeID) {
 	c.v = mapping[c.v]
 	c.result = mapping[c.result]
 }
@@ -1066,9 +1066,9 @@ func (c *reflectIndirectConstraint) String() string {
 func (c *reflectIndirectConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		vObj := nodeid(x)
+		vObj := NodeID(x)
 		tDyn, _, _ := a.taggedValue(vObj)
-		var res nodeid
+		var res NodeID
 		if tPtr, ok := tDyn.Underlying().(*types.Pointer); ok {
 			// load the payload of the pointer's tagged object
 			// into a new tagged object
@@ -1100,15 +1100,15 @@ func ext۰reflect۰Indirect(a *analysis, cgn *cgnode) {
 // result = MakeChan(typ)
 type reflectMakeChanConstraint struct {
 	cgn    *cgnode
-	typ    nodeid // (ptr)
-	result nodeid // (indirect)
+	typ    NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectMakeChanConstraint) ptr() nodeid { return c.typ }
+func (c *reflectMakeChanConstraint) ptr() NodeID { return c.typ }
 func (c *reflectMakeChanConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectMakeChan.result")
 }
-func (c *reflectMakeChanConstraint) renumber(mapping []nodeid) {
+func (c *reflectMakeChanConstraint) renumber(mapping []NodeID) {
 	c.typ = mapping[c.typ]
 	c.result = mapping[c.result]
 }
@@ -1120,7 +1120,7 @@ func (c *reflectMakeChanConstraint) String() string {
 func (c *reflectMakeChanConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		typObj := nodeid(x)
+		typObj := NodeID(x)
 		T := a.rtypeTaggedValue(typObj)
 		tChan, ok := T.Underlying().(*types.Chan)
 		if !ok || tChan.Dir() != types.SendRecv {
@@ -1160,15 +1160,15 @@ func ext۰reflect۰MakeFunc(a *analysis, cgn *cgnode) {} // TODO(adonovan)
 // result = MakeMap(typ)
 type reflectMakeMapConstraint struct {
 	cgn    *cgnode
-	typ    nodeid // (ptr)
-	result nodeid // (indirect)
+	typ    NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectMakeMapConstraint) ptr() nodeid { return c.typ }
+func (c *reflectMakeMapConstraint) ptr() NodeID { return c.typ }
 func (c *reflectMakeMapConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectMakeMap.result")
 }
-func (c *reflectMakeMapConstraint) renumber(mapping []nodeid) {
+func (c *reflectMakeMapConstraint) renumber(mapping []NodeID) {
 	c.typ = mapping[c.typ]
 	c.result = mapping[c.result]
 }
@@ -1180,7 +1180,7 @@ func (c *reflectMakeMapConstraint) String() string {
 func (c *reflectMakeMapConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		typObj := nodeid(x)
+		typObj := NodeID(x)
 		T := a.rtypeTaggedValue(typObj)
 		tMap, ok := T.Underlying().(*types.Map)
 		if !ok {
@@ -1219,15 +1219,15 @@ func ext۰reflect۰MakeMap(a *analysis, cgn *cgnode) {
 // result = MakeSlice(typ)
 type reflectMakeSliceConstraint struct {
 	cgn    *cgnode
-	typ    nodeid // (ptr)
-	result nodeid // (indirect)
+	typ    NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectMakeSliceConstraint) ptr() nodeid { return c.typ }
+func (c *reflectMakeSliceConstraint) ptr() NodeID { return c.typ }
 func (c *reflectMakeSliceConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectMakeSlice.result")
 }
-func (c *reflectMakeSliceConstraint) renumber(mapping []nodeid) {
+func (c *reflectMakeSliceConstraint) renumber(mapping []NodeID) {
 	c.typ = mapping[c.typ]
 	c.result = mapping[c.result]
 }
@@ -1239,7 +1239,7 @@ func (c *reflectMakeSliceConstraint) String() string {
 func (c *reflectMakeSliceConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		typObj := nodeid(x)
+		typObj := NodeID(x)
 		T := a.rtypeTaggedValue(typObj)
 		if _, ok := T.Underlying().(*types.Slice); !ok {
 			continue // not a slice type
@@ -1278,15 +1278,15 @@ func ext۰reflect۰MapOf(a *analysis, cgn *cgnode) {} // TODO(adonovan)
 // result = New(typ)
 type reflectNewConstraint struct {
 	cgn    *cgnode
-	typ    nodeid // (ptr)
-	result nodeid // (indirect)
+	typ    NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectNewConstraint) ptr() nodeid { return c.typ }
+func (c *reflectNewConstraint) ptr() NodeID { return c.typ }
 func (c *reflectNewConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectNew.result")
 }
-func (c *reflectNewConstraint) renumber(mapping []nodeid) {
+func (c *reflectNewConstraint) renumber(mapping []NodeID) {
 	c.typ = mapping[c.typ]
 	c.result = mapping[c.result]
 }
@@ -1298,7 +1298,7 @@ func (c *reflectNewConstraint) String() string {
 func (c *reflectNewConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		typObj := nodeid(x)
+		typObj := NodeID(x)
 		T := a.rtypeTaggedValue(typObj)
 
 		// allocate new T object
@@ -1342,15 +1342,15 @@ func ext۰reflect۰NewAt(a *analysis, cgn *cgnode) {
 // result = PtrTo(t)
 type reflectPtrToConstraint struct {
 	cgn    *cgnode
-	t      nodeid // (ptr)
-	result nodeid // (indirect)
+	t      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectPtrToConstraint) ptr() nodeid { return c.t }
+func (c *reflectPtrToConstraint) ptr() NodeID { return c.t }
 func (c *reflectPtrToConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectPtrTo.result")
 }
-func (c *reflectPtrToConstraint) renumber(mapping []nodeid) {
+func (c *reflectPtrToConstraint) renumber(mapping []NodeID) {
 	c.t = mapping[c.t]
 	c.result = mapping[c.result]
 }
@@ -1362,7 +1362,7 @@ func (c *reflectPtrToConstraint) String() string {
 func (c *reflectPtrToConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		tObj := nodeid(x)
+		tObj := NodeID(x)
 		T := a.rtypeTaggedValue(tObj)
 
 		if typeTooHigh(T) {
@@ -1393,15 +1393,15 @@ func ext۰reflect۰Select(a *analysis, cgn *cgnode) {} // TODO(adonovan)
 // result = SliceOf(t)
 type reflectSliceOfConstraint struct {
 	cgn    *cgnode
-	t      nodeid // (ptr)
-	result nodeid // (indirect)
+	t      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectSliceOfConstraint) ptr() nodeid { return c.t }
+func (c *reflectSliceOfConstraint) ptr() NodeID { return c.t }
 func (c *reflectSliceOfConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectSliceOf.result")
 }
-func (c *reflectSliceOfConstraint) renumber(mapping []nodeid) {
+func (c *reflectSliceOfConstraint) renumber(mapping []NodeID) {
 	c.t = mapping[c.t]
 	c.result = mapping[c.result]
 }
@@ -1413,7 +1413,7 @@ func (c *reflectSliceOfConstraint) String() string {
 func (c *reflectSliceOfConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		tObj := nodeid(x)
+		tObj := NodeID(x)
 		T := a.rtypeTaggedValue(tObj)
 
 		if typeTooHigh(T) {
@@ -1442,15 +1442,15 @@ func ext۰reflect۰SliceOf(a *analysis, cgn *cgnode) {
 // result = TypeOf(i)
 type reflectTypeOfConstraint struct {
 	cgn    *cgnode
-	i      nodeid // (ptr)
-	result nodeid // (indirect)
+	i      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectTypeOfConstraint) ptr() nodeid { return c.i }
+func (c *reflectTypeOfConstraint) ptr() NodeID { return c.i }
 func (c *reflectTypeOfConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectTypeOf.result")
 }
-func (c *reflectTypeOfConstraint) renumber(mapping []nodeid) {
+func (c *reflectTypeOfConstraint) renumber(mapping []NodeID) {
 	c.i = mapping[c.i]
 	c.result = mapping[c.result]
 }
@@ -1462,7 +1462,7 @@ func (c *reflectTypeOfConstraint) String() string {
 func (c *reflectTypeOfConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		iObj := nodeid(x)
+		iObj := NodeID(x)
 		tDyn, _, _ := a.taggedValue(iObj)
 		if a.addLabel(c.result, a.makeRtype(tDyn)) {
 			changed = true
@@ -1495,15 +1495,15 @@ func ext۰reflect۰ValueOf(a *analysis, cgn *cgnode) {
 // result = Zero(typ)
 type reflectZeroConstraint struct {
 	cgn    *cgnode
-	typ    nodeid // (ptr)
-	result nodeid // (indirect)
+	typ    NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *reflectZeroConstraint) ptr() nodeid { return c.typ }
+func (c *reflectZeroConstraint) ptr() NodeID { return c.typ }
 func (c *reflectZeroConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "reflectZero.result")
 }
-func (c *reflectZeroConstraint) renumber(mapping []nodeid) {
+func (c *reflectZeroConstraint) renumber(mapping []NodeID) {
 	c.typ = mapping[c.typ]
 	c.result = mapping[c.result]
 }
@@ -1515,7 +1515,7 @@ func (c *reflectZeroConstraint) String() string {
 func (c *reflectZeroConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		typObj := nodeid(x)
+		typObj := NodeID(x)
 		T := a.rtypeTaggedValue(typObj)
 
 		// TODO(adonovan): if T is an interface type, we need
@@ -1526,9 +1526,9 @@ func (c *reflectZeroConstraint) solve(a *analysis, delta *nodeset) {
 		// readonly, just like the reflect package does.
 
 		// memoize using a.reflectZeros[T]
-		var id nodeid
+		var id NodeID
 		if z := a.reflectZeros.At(T); false && z != nil {
-			id = z.(nodeid)
+			id = z.(NodeID)
 		} else {
 			id = a.makeTagged(T, c.cgn, nil)
 			a.reflectZeros.Set(T, id)
@@ -1557,15 +1557,15 @@ func ext۰reflect۰Zero(a *analysis, cgn *cgnode) {
 // result = Elem(t)
 type rtypeElemConstraint struct {
 	cgn    *cgnode
-	t      nodeid // (ptr)
-	result nodeid // (indirect)
+	t      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rtypeElemConstraint) ptr() nodeid { return c.t }
+func (c *rtypeElemConstraint) ptr() NodeID { return c.t }
 func (c *rtypeElemConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rtypeElem.result")
 }
-func (c *rtypeElemConstraint) renumber(mapping []nodeid) {
+func (c *rtypeElemConstraint) renumber(mapping []NodeID) {
 	c.t = mapping[c.t]
 	c.result = mapping[c.result]
 }
@@ -1581,7 +1581,7 @@ func (c *rtypeElemConstraint) solve(a *analysis, delta *nodeset) {
 	}
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		tObj := nodeid(x)
+		tObj := NodeID(x)
 		T := a.nodes[tObj].obj.data.(types.Type)
 		if tHasElem, ok := T.Underlying().(hasElem); ok {
 			if a.addLabel(c.result, a.makeRtype(tHasElem.Elem())) {
@@ -1610,15 +1610,15 @@ func ext۰reflect۰rtype۰Elem(a *analysis, cgn *cgnode) {
 type rtypeFieldByNameConstraint struct {
 	cgn    *cgnode
 	name   string // name of field; "" for unknown
-	t      nodeid // (ptr)
-	result nodeid // (indirect)
+	t      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rtypeFieldByNameConstraint) ptr() nodeid { return c.t }
+func (c *rtypeFieldByNameConstraint) ptr() NodeID { return c.t }
 func (c *rtypeFieldByNameConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result+3), "rtypeFieldByName.result.Type")
 }
-func (c *rtypeFieldByNameConstraint) renumber(mapping []nodeid) {
+func (c *rtypeFieldByNameConstraint) renumber(mapping []NodeID) {
 	c.t = mapping[c.t]
 	c.result = mapping[c.result]
 }
@@ -1640,7 +1640,7 @@ func (c *rtypeFieldByNameConstraint) solve(a *analysis, delta *nodeset) {
 	// }
 
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		tObj := nodeid(x)
+		tObj := NodeID(x)
 		T := a.nodes[tObj].obj.data.(types.Type)
 		tStruct, ok := T.Underlying().(*types.Struct)
 		if !ok {
@@ -1699,17 +1699,17 @@ func ext۰reflect۰rtype۰FieldByNameFunc(a *analysis, cgn *cgnode) {} // TODO(a
 // result = In/Out(t, i)
 type rtypeInOutConstraint struct {
 	cgn    *cgnode
-	t      nodeid // (ptr)
-	result nodeid // (indirect)
+	t      NodeID // (ptr)
+	result NodeID // (indirect)
 	out    bool
 	i      int // -ve if not a constant
 }
 
-func (c *rtypeInOutConstraint) ptr() nodeid { return c.t }
+func (c *rtypeInOutConstraint) ptr() NodeID { return c.t }
 func (c *rtypeInOutConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rtypeInOut.result")
 }
-func (c *rtypeInOutConstraint) renumber(mapping []nodeid) {
+func (c *rtypeInOutConstraint) renumber(mapping []NodeID) {
 	c.t = mapping[c.t]
 	c.result = mapping[c.result]
 }
@@ -1721,7 +1721,7 @@ func (c *rtypeInOutConstraint) String() string {
 func (c *rtypeInOutConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		tObj := nodeid(x)
+		tObj := NodeID(x)
 		T := a.nodes[tObj].obj.data.(types.Type)
 		sig, ok := T.Underlying().(*types.Signature)
 		if !ok {
@@ -1777,15 +1777,15 @@ func ext۰reflect۰rtype۰Out(a *analysis, cgn *cgnode) {
 // result = Key(t)
 type rtypeKeyConstraint struct {
 	cgn    *cgnode
-	t      nodeid // (ptr)
-	result nodeid // (indirect)
+	t      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rtypeKeyConstraint) ptr() nodeid { return c.t }
+func (c *rtypeKeyConstraint) ptr() NodeID { return c.t }
 func (c *rtypeKeyConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result), "rtypeKey.result")
 }
-func (c *rtypeKeyConstraint) renumber(mapping []nodeid) {
+func (c *rtypeKeyConstraint) renumber(mapping []NodeID) {
 	c.t = mapping[c.t]
 	c.result = mapping[c.result]
 }
@@ -1797,7 +1797,7 @@ func (c *rtypeKeyConstraint) String() string {
 func (c *rtypeKeyConstraint) solve(a *analysis, delta *nodeset) {
 	changed := false
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		tObj := nodeid(x)
+		tObj := NodeID(x)
 		T := a.nodes[tObj].obj.data.(types.Type)
 		if tMap, ok := T.Underlying().(*types.Map); ok {
 			if a.addLabel(c.result, a.makeRtype(tMap.Key())) {
@@ -1826,16 +1826,16 @@ func ext۰reflect۰rtype۰Key(a *analysis, cgn *cgnode) {
 type rtypeMethodByNameConstraint struct {
 	cgn    *cgnode
 	name   string // name of method; "" for unknown
-	t      nodeid // (ptr)
-	result nodeid // (indirect)
+	t      NodeID // (ptr)
+	result NodeID // (indirect)
 }
 
-func (c *rtypeMethodByNameConstraint) ptr() nodeid { return c.t }
+func (c *rtypeMethodByNameConstraint) ptr() NodeID { return c.t }
 func (c *rtypeMethodByNameConstraint) presolve(h *hvn) {
 	h.markIndirect(onodeid(c.result+3), "rtypeMethodByName.result.Type")
 	h.markIndirect(onodeid(c.result+4), "rtypeMethodByName.result.Func")
 }
-func (c *rtypeMethodByNameConstraint) renumber(mapping []nodeid) {
+func (c *rtypeMethodByNameConstraint) renumber(mapping []NodeID) {
 	c.t = mapping[c.t]
 	c.result = mapping[c.result]
 }
@@ -1858,7 +1858,7 @@ func changeRecv(sig *types.Signature) *types.Signature {
 
 func (c *rtypeMethodByNameConstraint) solve(a *analysis, delta *nodeset) {
 	for _, x := range delta.AppendTo(a.deltaSpace) {
-		tObj := nodeid(x)
+		tObj := NodeID(x)
 		T := a.nodes[tObj].obj.data.(types.Type)
 
 		isIface := isInterface(T)

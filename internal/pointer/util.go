@@ -275,7 +275,7 @@ func (ns *nodeset) String() string {
 	return buf.String()
 }
 
-func (ns *nodeset) add(n nodeid) bool {
+func (ns *nodeset) add(n NodeID) bool {
 	return ns.Sparse.Insert(int(n))
 }
 
