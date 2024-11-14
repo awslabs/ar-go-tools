@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/cmd/argot/compare"
 	"github.com/awslabs/ar-go-tools/cmd/argot/defers"
 	"github.com/awslabs/ar-go-tools/cmd/argot/dependencies"
+	"github.com/awslabs/ar-go-tools/cmd/argot/goroutine"
 	"github.com/awslabs/ar-go-tools/cmd/argot/immutability"
 	"github.com/awslabs/ar-go-tools/cmd/argot/maypanic"
 	"github.com/awslabs/ar-go-tools/cmd/argot/packagescan"
@@ -112,6 +113,14 @@ func main() {
 			errExit(err)
 		}
 		if err := dependencies.Run(flags); err != nil {
+			errExit(err)
+		}
+	case config.GoroutineTool:
+		flags, err := tools.NewCommonFlags(config.GoroutineTool, args, goroutine.Usage)
+		if err != nil {
+			errExit(err)
+		}
+		if err := goroutine.Run(flags); err != nil {
 			errExit(err)
 		}
 	case config.ImmutabilityTool:

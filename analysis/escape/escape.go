@@ -1420,7 +1420,7 @@ func (ea *functionAnalysisState) Resummarize() (changed bool) {
 		roots = append(roots, x)
 	}
 	returnResult = returnResult.CloneReachable(roots)
-	simplifySummary(returnResult, ea.prog.logger)
+	simplifySummary(returnResult)
 	if wellFormedErr := wellFormedEscapeGraph(returnResult); wellFormedErr != nil {
 		panic(wellFormedErr)
 	}
@@ -1677,8 +1677,8 @@ func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock
 		if cl, ok := instr.(*ssa.Call); ok {
 			// We need to copy g because it is about to be clobbered by the transfer function
 			callsites[cl] = escapeCallsiteInfoImpl{g.Clone(), cl, ea.nodes, ea.prog}
-		} else if go_, ok := instr.(*ssa.Go); ok {
-			callsites[go_] = escapeCallsiteInfoImpl{g.Clone(), go_, ea.nodes, ea.prog}
+		} else if goInstr, ok := instr.(*ssa.Go); ok {
+			callsites[goInstr] = escapeCallsiteInfoImpl{g.Clone(), goInstr, ea.nodes, ea.prog}
 		}
 		ea.transferFunction(instr, g)
 	}
@@ -1821,7 +1821,7 @@ func wellFormedEscapeGraph(g *EscapeGraph) error {
 // simplifySummary removes irrelevant load nodes from a given function summary graph. "Irrelevant"
 // nodes are load nodes that don't have any leaks or incoming/outgoing internal edges (and also
 // doesn't point to any nodes that need to be kept). Modifies g in-place.
-func simplifySummary(g *EscapeGraph, _ *config.LogGroup) {
+func simplifySummary(g *EscapeGraph) {
 	// The set of nodes to be removed
 	candidatesForRemoval := map[*Node]struct{}{}
 	// Find all load nodes that are escaped and not leaked, without any outgoing internal edges

@@ -905,7 +905,6 @@ func (g *EscapeGraph) Call(pre *EscapeGraph, receiver *Node, args []*Node, freeV
 	}
 	for i, formal := range callee.nodes.formals {
 		if (args[i] == nil) != (formal == nil) {
-			print(i)
 			panic("Incorrect nil-ness of corresponding parameter nodes")
 		}
 		if formal != nil {
