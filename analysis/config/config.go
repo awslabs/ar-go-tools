@@ -121,6 +121,9 @@ type Config struct {
 	// EscapeConfig contains the escape-analysis specific configuration parameters
 	EscapeConfig *EscapeConfig
 
+	// ImmutabilityProblems lists the immutability analysis problems.
+	ImmutabilityProblems []ImmutabilitySpec `yaml:"immutability-problems" json:"immutability-problems"`
+
 	// PointerConfig contains the pointer-analysis specific configuration parameters
 	PointerConfig *PointerConfig `yaml:"pointer-config" json:"pointer-config"`
 
@@ -172,6 +175,27 @@ type PointerConfig struct {
 	// Reflection is the reflection option of the pointer analysis: when true, reflection aperators are handled
 	// soundly, but analysis time will increase dramatically.
 	Reflection bool
+}
+
+// ImmutabilitySpec contains code identifiers for the immutability analysis.
+type ImmutabilitySpec struct {
+	// Values is the list of identifiers representing which values whose
+	// modifications should be reported.
+	Values []CodeIdentifier
+
+	// Filters contains a list of filters that prevents some identifiers from being analyzed.
+	Filters []CodeIdentifier
+}
+
+// IsValue returns true if the code identifier cid matches a value according to spec s.
+// Ignores the context field because its meaning is overloaded in the immutability analysis.
+func (s ImmutabilitySpec) IsValue(cid CodeIdentifier) bool {
+	cid.Context = ""
+	vals := funcutil.Map(s.Values, func(cid CodeIdentifier) CodeIdentifier {
+		cid.Context = ""
+		return cid
+	})
+	return ExistsCid(vals, cid.equalOnNonEmptyFields)
 }
 
 // StaticCommandsSpec contains code identifiers for the problem of identifying which commands are static
@@ -490,6 +514,11 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	for _, sSpec := range cfg.DataflowProblems.SlicingProblems {
 		funcutil.MapInPlace(sSpec.BacktracePoints, compileRegexes)
 		funcutil.MapInPlace(sSpec.Filters, compileRegexes)
+	}
+
+	for _, spec := range cfg.ImmutabilityProblems {
+		funcutil.MapInPlace(spec.Values, compileRegexes)
+		funcutil.MapInPlace(spec.Filters, compileRegexes)
 	}
 
 	for i, siSpec := range cfg.SyntacticProblems.StructInitProblems {

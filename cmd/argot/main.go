@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/cmd/argot/compare"
 	"github.com/awslabs/ar-go-tools/cmd/argot/defers"
 	"github.com/awslabs/ar-go-tools/cmd/argot/dependencies"
+	"github.com/awslabs/ar-go-tools/cmd/argot/immutability"
 	"github.com/awslabs/ar-go-tools/cmd/argot/maypanic"
 	"github.com/awslabs/ar-go-tools/cmd/argot/packagescan"
 	"github.com/awslabs/ar-go-tools/cmd/argot/reachability"
@@ -113,12 +114,21 @@ func main() {
 		if err := dependencies.Run(flags); err != nil {
 			errExit(err)
 		}
+	case config.ImmutabilityTool:
+		flags, err := tools.NewCommonFlags(config.ImmutabilityTool, args, immutability.Usage)
+		if err != nil {
+			errExit(err)
+		}
+		if err := immutability.Run(flags); err != nil {
+			errExit(err)
+		}
 	case config.MayPanicTool:
 		flags, err := maypanic.NewFlags(args)
 		if err != nil {
 			errExit(err)
 		}
 		if err := maypanic.Run(flags); err != nil {
+			errExit(err)
 		}
 	case config.PackageScanTool:
 		flags, err := packagescan.NewFlags(args)

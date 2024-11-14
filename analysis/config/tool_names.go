@@ -28,6 +28,8 @@ const (
 	DeferTool ToolName = "defer"
 	// DependenciesTool name
 	DependenciesTool ToolName = "dependencies"
+	// ImmutabilityTool name
+	ImmutabilityTool ToolName = "immutability"
 	// MayPanicTool name
 	MayPanicTool ToolName = "maypanic"
 	// PackageScanTool name
