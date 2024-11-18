@@ -39,6 +39,8 @@ type AnalysisResult struct {
 
 // InitInfo is the initialization information for a struct.
 type InitInfo struct {
+	// Tag is the tag of the problem this initinfo corresponds to
+	Tag string
 	// ZeroAllocs is a list of the zero-value allocations of the struct.
 	ZeroAllocs []ZeroAlloc
 	// InvalidWrites is a mapping of the struct field to all the invalid writes
@@ -103,11 +105,18 @@ func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 
 	for _, alloc := range allocs {
 		if isConfiguredZeroAlloc(res, alloc) {
-			logger.Infof("found zero alloc: %v at %v\n", alloc.instr, alloc.pos)
-			za := newZeroAlloc(&alloc, structToNamed)
 			is := res.InitInfos[alloc.typs.named]
+
+			if state.Annotations.IsIgnoredPos(alloc.pos, is.Tag) {
+				logger.Infof("annotation found, ignoring %s: zero alloc at %v\n", is.Tag, alloc.pos)
+				continue
+			}
+
+			logger.Infof("%s: found zero alloc: %v at %v\n", is.Tag, alloc.instr, alloc.pos)
+			za := newZeroAlloc(&alloc, structToNamed)
 			is.ZeroAllocs = append(is.ZeroAllocs, za)
 			res.InitInfos[alloc.typs.named] = is
+
 		}
 	}
 
@@ -125,10 +134,17 @@ func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 				pos := program.Fset.Position(instr.Pos())
 				if write, ok := isInvalidWrite(res, structToNamed, instr, pos); ok {
 					namedType := write.structTypes.named
-					logger.Infof("found invalid write of value %v (wanted %v) to struct field %v.%v at %v\n",
-						write.write.Got, write.write.Want, namedType, write.fieldType.Name(), pos)
-					writes := res.InitInfos[namedType].InvalidWrites[write.fieldType]
-					res.InitInfos[namedType].InvalidWrites[write.fieldType] = append(writes, write.write)
+					is := res.InitInfos[namedType]
+
+					if state.Annotations.IsIgnoredPos(pos, is.Tag) {
+						logger.Infof("annotation found, ignored %s: invalid write to struct field %v.%v at %s\n",
+							is.Tag, namedType, write.fieldType.Name(), pos)
+					} else {
+						logger.Infof("%s: found invalid write of value %v (wanted %v) to struct field %v.%v at %v\n",
+							is.Tag, write.write.Got, write.write.Want, namedType, write.fieldType.Name(), pos)
+						writes := res.InitInfos[namedType].InvalidWrites[write.fieldType]
+						res.InitInfos[namedType].InvalidWrites[write.fieldType] = append(writes, write.write)
+					}
 				}
 			}
 		})
@@ -262,6 +278,7 @@ func newInitInfo(spec config.StructInitSpec, structType *types.Struct, state *da
 	}
 
 	return InitInfo{
+		Tag:                spec.Tag,
 		ZeroAllocs:         []ZeroAlloc{},
 		InvalidWrites:      invalidWrites,
 		fieldExpectedValue: fieldVal,
@@ -548,6 +565,8 @@ func findAllocPosition(fset *token.FileSet, instr ssa.Instruction) token.Positio
 				}
 			}
 		}
+	case *ssa.Alloc:
+		return fset.Position(instr.Pos())
 	default:
 		panic(fmt.Errorf("invalid instruction type: %T", instr))
 	}

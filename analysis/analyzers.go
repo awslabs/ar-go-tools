@@ -48,7 +48,7 @@ type IntraAnalysisParams struct {
 // RunIntraProceduralPass runs an intra-procedural analysis pass of program prog in parallel using numRoutines, using the
 // analyzer state. The args specify the intraprocedural analysis parameters.
 // RunIntraProceduralPass updates the summaries stored in the state's FlowGraph
-func RunIntraProceduralPass(state *dataflow.AnalyzerState, numRoutines int, args IntraAnalysisParams) {
+func RunIntraProceduralPass(state *dataflow.AnalyzerState, numRoutines int, args IntraAnalysisParams) { //argot:ignore df-intra-uses
 	state.Logger.Infof("Starting intra-procedural analysis ...")
 	start := time.Now()
 

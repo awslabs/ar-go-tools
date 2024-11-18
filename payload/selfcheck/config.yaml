@@ -68,3 +68,15 @@ dataflow-problems:
         - package: "^regexp$"
           method: "^MustCompile$"
 
+syntactic-problems:
+  struct-inits:
+    - tag: "df-intra-uses" # search for //argot:ignore df-intra-uses to see where there are different allocations
+      description: "When using RunIntraProceduralPass, initialize with dataflow.IsNodeOfInterest unless you know better."
+      targets: ["argot"]
+      struct:
+        type: "github.com/awslabs/ar-go-tools/analysis.IntraAnalysisParams"
+      fields-set:
+        - field: "ShouldTrack"
+          value:
+            package: "github.com/awslabs/ar-go-tools/analysis/dataflow"
+            method: "IsNodeOfInterest"
