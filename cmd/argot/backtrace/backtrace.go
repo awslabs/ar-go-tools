@@ -47,8 +47,12 @@ func Run(flags tools.CommonFlags) error {
 		cfg.LogLevel = int(config.DebugLevel)
 		cfgLog = config.NewLogGroup(cfg)
 	}
+	if flags.Tag != "" {
+		cfgLog.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+	}
+
 	overallReport := config.NewReport()
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, "backtrace") {
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, "backtrace") {
 		start := time.Now()
 		state, err := analysis.LoadTarget(targetName, targetFiles, cfgLog, cfg, flags.WithTest)
 		if err != nil {

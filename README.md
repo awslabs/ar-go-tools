@@ -10,6 +10,7 @@ Argot is a collection of static analysis tools:
 - `taint` performs a taint analysis on a given program
 - `backtrace` identifies backwards data-flow traces from function calls
 - `cli` is an interactive terminal-like interface for parts of the analysis (in `cmd/cli`)
+- `syntactic` runs syntactic analyses
 - `compare` prints a comparison of the functions that are reachable according to two different analyses, and the
 functions that appear in the binary
 - `dependencies` prints the dependencies of a given program
@@ -58,7 +59,6 @@ Static analyses that require pointer and callgraph information should depend on 
 - `reachability` contains function-reachability analyses
 - `refactor` contains implements refactoring operations,
 - `render` contains various information rendering utilities
-- `static-commands` implements the static command detection analysis,
 - `summaries` defines dataflow summaries of some functions,
 - `taint` implements the taint analysis
 

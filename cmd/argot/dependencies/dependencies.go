@@ -25,12 +25,10 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/dependencies"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
-	"golang.org/x/tools/go/ssa"
 )
 
 const usage = `Analyze your Go packages.
@@ -94,18 +92,7 @@ func NewFlags(args []string) (Flags, error) {
 
 // Run runs the analysis.
 func Run(flags Flags) error {
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-	loadOptions := analysis.LoadProgramOptions{
-		PackageConfig: nil,
-		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     flags.withTest,
-		ApplyRewrites: true,
-	}
-	program, pkgs, err := analysis.LoadProgram(loadOptions, flags.flagSet.Args())
-	if err != nil {
-		return err
-	}
-
+	var err error
 	var cfg *config.Config
 	if flags.configPath == "" {
 		cfg = config.NewDefault()
@@ -115,8 +102,19 @@ func Run(flags Flags) error {
 			return fmt.Errorf("failed to load config %s: %s", flags.configPath, err)
 		}
 	}
-	state, err := dataflow.NewAnalyzerState(program, pkgs,
-		config.NewLogGroup(cfg), cfg, []func(state *dataflow.AnalyzerState){})
+
+	logger := config.NewLogGroup(cfg)
+	for targetName, targetFiles := range tools.GetTargets(flags.flagSet.Args(), "", cfg, config.DependenciesTool) {
+		err = runTarget(targetName, targetFiles, flags, logger, cfg)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runTarget(name string, files []string, flags Flags, logger *config.LogGroup, cfg *config.Config) error {
+	state, err := analysis.LoadTarget(name, files, logger, cfg, flags.withTest)
 	if err != nil {
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)
 	}

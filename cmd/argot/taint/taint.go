@@ -86,11 +86,14 @@ func Run(flags Flags) error {
 		cfgLog.Infof("dry-run command line flag sets on demand summarization to true")
 		taintConfig.SummarizeOnDemand = true
 	}
+	if flags.Tag != "" {
+		cfgLog.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+	}
 
 	hasFlows := false
 	overallReport := config.NewReport()
 	// Loop over every target of the taint analysis
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), taintConfig, config.TaintTool) {
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, taintConfig, config.TaintTool) {
 		targetHasFlows, report, err := runTarget(flags, targetName, targetFiles, cfgLog, taintConfig)
 		hasFlows = targetHasFlows || hasFlows
 		if err != nil {

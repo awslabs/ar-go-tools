@@ -52,9 +52,13 @@ func Run(flags tools.CommonFlags) error {
 		return nil
 	}
 
+	if flags.Tag != "" {
+		logger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+	}
+
 	failCount := 0
 	overallReport := config.NewReport()
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, config.SyntacticTool) {
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.SyntacticTool) {
 		report, err := runTarget(flags, targetName, targetFiles, logger, cfg)
 		if err != nil {
 			logger.Errorf("Analysis for %s failed: %s", targetName, err)

@@ -31,6 +31,7 @@ type UnparsedCommonFlags struct {
 	ConfigPath *string
 	Verbose    *bool
 	WithTest   *bool
+	Tag        *string
 }
 
 // NewUnparsedCommonFlags returns an unparsed flag set with a given name.
@@ -41,12 +42,14 @@ func NewUnparsedCommonFlags(name config.ToolName) UnparsedCommonFlags {
 	configPath := cmd.String("config", "", "config file path for analysis")
 	verbose := cmd.Bool("verbose", false, "verbose printing on standard output")
 	withTest := cmd.Bool("with-test", false, "load tests during analysis")
+	tag := cmd.String("tag", "", "only analyze specific problem with tag")
 	cmd.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "build-tags", buildutil.TagsFlagDoc)
 	return UnparsedCommonFlags{
 		FlagSet:    cmd,
 		ConfigPath: configPath,
 		Verbose:    verbose,
 		WithTest:   withTest,
+		Tag:        tag,
 	}
 }
 
@@ -59,6 +62,7 @@ type CommonFlags struct {
 	ConfigPath string
 	Verbose    bool
 	WithTest   bool
+	Tag        string
 }
 
 // NewCommonFlags returns a parsed flag set with a given name.
@@ -76,6 +80,7 @@ func NewCommonFlags(name config.ToolName, args []string, cmdUsage string) (Commo
 		ConfigPath: *flags.ConfigPath,
 		Verbose:    *flags.Verbose,
 		WithTest:   *flags.WithTest,
+		Tag:        *flags.Tag,
 	}, nil
 }
 
@@ -127,37 +132,31 @@ func LoadConfig(configPath string) (*config.Config, error) {
 //
 // When args is not empty, only the target "" -> args is returned.
 // When the tool name is not recognized, all the targets in the config file are returned.
-func GetTargets(args []string, c *config.Config, tool config.ToolName) map[string][]string {
+func GetTargets(args []string, tag string, c *config.Config, tool config.ToolName) map[string][]string {
 	if len(args) > 0 {
 		return map[string][]string{"": args}
 	}
 	allTargets := c.GetTargetMap()
 	switch tool {
 	case config.TaintTool:
-		taintTargets := map[string][]string{}
-		for _, ttp := range c.TaintTrackingProblems {
-			for _, target := range ttp.Targets {
-				taintTargets[target] = allTargets[target]
-			}
-		}
-		return taintTargets
+		return targets(c.TaintTrackingProblems, allTargets, tag)
 	case config.BacktraceTool:
-		backtraceTargets := map[string][]string{}
-		for _, ttp := range c.SlicingProblems {
-			for _, target := range ttp.Targets {
-				backtraceTargets[target] = allTargets[target]
-			}
-		}
-		return backtraceTargets
+		return targets(c.SlicingProblems, allTargets, tag)
 	case config.SyntacticTool:
-		structInitTargets := map[string][]string{}
-		for _, sis := range c.SyntacticProblems.StructInitProblems {
-			for _, target := range sis.Targets {
-				structInitTargets[target] = allTargets[target]
-			}
-		}
-		return structInitTargets
+		return targets(c.SyntacticProblems.StructInitProblems, allTargets, tag)
 	default:
 		return allTargets
 	}
+}
+
+func targets[T config.TaggedSpec](problems []T, allTargets map[string][]string, tag string) map[string][]string {
+	targets := map[string][]string{}
+	for _, ttp := range problems {
+		if tag == "" || ttp.SpecTag() == tag {
+			for _, target := range ttp.SpecTargets() {
+				targets[target] = allTargets[target]
+			}
+		}
+	}
+	return targets
 }
