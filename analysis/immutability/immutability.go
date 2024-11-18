@@ -102,10 +102,6 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, 
 	}
 
 	for entry := range entrypoints {
-		modifications[entry] = Modifications{
-			Writes: make(map[ssa.Instruction]struct{}),
-			Allocs: make(map[ssa.Instruction]struct{}),
-		}
 		val := entry.Val
 		if val.Type() == nil {
 			errs = append(errs, fmt.Errorf("entrypoint %v type is nil: %T\n", val, val))
@@ -115,6 +111,17 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, 
 			errs = append(errs, fmt.Errorf("entrypoint is a non-pointer type: %v", val.Type()))
 			continue
 		}
+
+		if doesConfigFilterFn(spec, val.Parent()) {
+			log.Infof("Filtered entrypoint: %v (called in function: %v)\n", val, val.Parent())
+			continue
+		}
+
+		modifications[entry] = Modifications{
+			Writes: make(map[ssa.Instruction]struct{}),
+			Allocs: make(map[ssa.Instruction]struct{}),
+		}
+
 		log.Infof("Verifying immutability of: %v of %v in %v at %v\n", val, entry.Call, val.Parent(), entry.Pos)
 
 		fnsToAnalyze := c.ReachableFuncs
