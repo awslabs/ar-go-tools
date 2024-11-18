@@ -75,6 +75,11 @@ func Run(flags tools.CommonFlags) error {
 			return fmt.Errorf("failed to load state: %s", err)
 		}
 
+		// TODO support checking parameters other than the first
+		if err := validateConfig(cfg); err != nil {
+			return fmt.Errorf("invalid config: %v", err)
+		}
+
 		criticalFuncs := []*ssa.Function{}
 		for f := range state.PointerAnalysis.CallGraph.Nodes {
 			if isCriticalFunc(cfg, f) {
@@ -115,10 +120,13 @@ func topDownPhase(logger *config.LogGroup, cfg *config.Config, visitNodes []*cal
 	// mainFunc := findFunction(lp.Program, "main")
 	for _, node := range visitNodes {
 		if isCriticalFunc(cfg, node.fun) {
-			logger.Debugf("Checking %v\n", node.fun)
+			logger.Infof("Checking that parameter %d of %v called in %v does not escape thread\n", 0, node.fun, node.parent.fun)
 			for i, reason := range node.context.ParameterEscape() {
+				if i != 0 {
+					continue
+				}
 				if reason != nil {
-					logger.Errorf("Parameter %d of %v has escaped: %v\n", i, node.fun, reason)
+					logger.Errorf("\tParameter has escaped: %v\n", reason)
 					success = false
 					n := node
 					for n != nil {
@@ -229,4 +237,16 @@ func markReachableTo(funcs []*ssa.Function, callgraph *callgraph.Graph) (reachab
 		}
 	}
 	return reachable, roots
+}
+
+func validateConfig(cfg *config.Config) error {
+	for _, spec := range cfg.ImmutabilityProblems {
+		for _, val := range spec.Values {
+			if val.Context != "0" {
+				return fmt.Errorf("invalid context for value: %v (want %v, got %v)", val, "0", val.Context)
+			}
+		}
+	}
+
+	return nil
 }
