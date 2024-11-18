@@ -355,12 +355,7 @@ func scanEntryPoints(
 		// TODO: try to factor out the special cases in the isEntryPointGraphNode functions
 		switch node := n.(type) {
 		case *SyntheticNode:
-			if _, isStore := node.instr.(*ssa.Store); !isStore {
-				// all other non-store synthetic nodes are entry points.
-				// WARNING: revise when this changes!
-				entry := NodeWithTrace{Node: node}
-				entryPoints[entry.Key()] = entry
-			}
+			addSyntheticNodeEntryPoints(spec, entryPoints, node)
 		case *CallNodeArg:
 			if spec.MarkCallArgsLikeCall &&
 				spec.IsEntryPointSsa(node.parent.CallSite().Value()) {
@@ -380,6 +375,23 @@ func scanEntryPoints(
 				}
 			}
 		}
+	}
+}
+
+func addSyntheticNodeEntryPoints(
+	spec ScanningSpec,
+	entryPoints map[KeyType]NodeWithTrace,
+	node *SyntheticNode) {
+	if spec.IsEntryPointSsa == nil {
+		return
+	}
+	asValue, isValue := node.Instr().(ssa.Node)
+	if !isValue {
+		return
+	}
+	if spec.IsEntryPointSsa(asValue) {
+		entry := NodeWithTrace{Node: node}
+		entryPoints[entry.Key()] = entry
 	}
 }
 
