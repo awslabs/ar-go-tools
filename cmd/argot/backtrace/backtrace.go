@@ -23,10 +23,8 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"golang.org/x/tools/go/ssa"
 )
 
 // Usage for CLI
@@ -51,21 +49,8 @@ func Run(flags tools.CommonFlags) error {
 	}
 	overallReport := config.NewReport()
 	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, "backtrace") {
-		cfgLog.Infof("Reading backtrace entrypoints")
-		loadOptions := analysis.LoadProgramOptions{
-			PackageConfig: nil,
-			BuildMode:     ssa.InstantiateGenerics,
-			LoadTests:     flags.WithTest,
-			ApplyRewrites: true,
-		}
-		program, pkgs, err := analysis.LoadProgram(loadOptions, targetFiles)
-		if err != nil {
-			return fmt.Errorf("%s could not load program: %v", targetName, err)
-		}
-
 		start := time.Now()
-		state, err := df.NewInitializedAnalyzerState(program, pkgs, cfgLog, cfg)
-		state.Target = targetName
+		state, err := analysis.LoadTarget(targetName, targetFiles, cfgLog, cfg, flags.WithTest)
 		if err != nil {
 			return fmt.Errorf("failed to load state: %s", err)
 		}

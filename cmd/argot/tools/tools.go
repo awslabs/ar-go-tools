@@ -127,13 +127,13 @@ func LoadConfig(configPath string) (*config.Config, error) {
 //
 // When args is not empty, only the target "" -> args is returned.
 // When the tool name is not recognized, all the targets in the config file are returned.
-func GetTargets(args []string, c *config.Config, tool string) map[string][]string {
+func GetTargets(args []string, c *config.Config, tool config.ToolName) map[string][]string {
 	if len(args) > 0 {
 		return map[string][]string{"": args}
 	}
 	allTargets := c.GetTargetMap()
 	switch tool {
-	case "taint":
+	case config.TaintTool:
 		taintTargets := map[string][]string{}
 		for _, ttp := range c.TaintTrackingProblems {
 			for _, target := range ttp.Targets {
@@ -141,7 +141,7 @@ func GetTargets(args []string, c *config.Config, tool string) map[string][]strin
 			}
 		}
 		return taintTargets
-	case "backtrace":
+	case config.BacktraceTool:
 		backtraceTargets := map[string][]string{}
 		for _, ttp := range c.SlicingProblems {
 			for _, target := range ttp.Targets {
@@ -149,6 +149,14 @@ func GetTargets(args []string, c *config.Config, tool string) map[string][]strin
 			}
 		}
 		return backtraceTargets
+	case config.SyntacticTool:
+		structInitTargets := map[string][]string{}
+		for _, sis := range c.SyntacticProblems.StructInitProblems {
+			for _, target := range sis.Targets {
+				structInitTargets[target] = allTargets[target]
+			}
+		}
+		return structInitTargets
 	default:
 		return allTargets
 	}

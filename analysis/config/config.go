@@ -126,7 +126,7 @@ type Config struct {
 	// StaticCommandsProblems lists the static commands problems
 	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems" json:"static-commands-problems"`
 
-	SyntacticProblems []SyntacticSpecs `yaml:"syntactic-problems" json:"syntactic-problems"`
+	SyntacticProblems SyntacticSpecs `yaml:"syntactic-problems" json:"syntactic-problems"`
 
 	// DataflowProblems specifies the dataflow problems to solve in the config
 	DataflowProblems `yaml:"dataflow-problems" json:"dataflow-problems"`
@@ -188,13 +188,34 @@ type SyntacticSpecs struct {
 
 // StructInitSpec contains specs for the problem of tracking a specific struct initialization.
 type StructInitSpec struct {
-	Targets []string
+	// Tag is the identifier of the problem
+	Tag string
+	// Severity is the severity of the finding when some struct is not initialized properly
+	Severity Severity
+	// Description is a human-readable description of the problem
+	Description string
+	Targets     []string
 	// Struct is the struct type whose initialization should be tracked.
 	Struct CodeIdentifier
 	// FieldsSet is the list of the fields of Struct that must always be set to a specific value.
 	FieldsSet []FieldsSetSpec `yaml:"fields-set" json:"fields-set"`
 	// Filters is the list of values that the analysis does not track.
 	Filters []CodeIdentifier
+}
+
+// SpecTag returns the struct init specification's tag
+func (si StructInitSpec) SpecTag() string {
+	return si.Tag
+}
+
+// SpecTargets returns the struct init specification's targets
+func (si StructInitSpec) SpecTargets() []string {
+	return si.Targets
+}
+
+// SpecSeverity returns the struct init specification's severity
+func (si StructInitSpec) SpecSeverity() Severity {
+	return si.Severity
 }
 
 // FieldsSetSpec contains the code identifiers for the problem of tracking how a
@@ -461,14 +482,12 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 		funcutil.MapInPlace(sSpec.Filters, compileRegexes)
 	}
 
-	for _, spec := range cfg.SyntacticProblems {
-		for i, siSpec := range spec.StructInitProblems {
-			spec.StructInitProblems[i].Struct = compileRegexes(siSpec.Struct)
-			for j, fSpec := range siSpec.FieldsSet {
-				siSpec.FieldsSet[j].Value = compileRegexes(fSpec.Value)
-			}
-			funcutil.MapInPlace(siSpec.Filters, compileRegexes)
+	for i, siSpec := range cfg.SyntacticProblems.StructInitProblems {
+		cfg.SyntacticProblems.StructInitProblems[i].Struct = compileRegexes(siSpec.Struct)
+		for j, fSpec := range siSpec.FieldsSet {
+			siSpec.FieldsSet[j].Value = compileRegexes(fSpec.Value)
 		}
+		funcutil.MapInPlace(siSpec.Filters, compileRegexes)
 	}
 
 	if cfg.PointerConfig == nil {
@@ -643,4 +662,29 @@ func OverrideWithAnalysisOptions(l *LogGroup, c *Config, o *AnalysisProblemOptio
 			o.MaxEntrypointContextSize)
 		c.MaxEntrypointContextSize = o.MaxEntrypointContextSize
 	}
+}
+
+// A TaggedSpec is a problem specification that has targets, a tag and a severity.
+type TaggedSpec interface {
+	// SpecTag returns the tag of the problem
+	SpecTag() string
+	// SpecTargets returns the targets of the problem
+	SpecTargets() []string
+	// SpecSeverity returns the severity of the problem
+	SpecSeverity() Severity
+}
+
+// GetSpecs returns ALL the problems in the configuration that are tagged specs (i.e. have a tag, severity and targets).
+func (c Config) GetSpecs() []TaggedSpec {
+	var specs []TaggedSpec
+	for _, trackingProblem := range c.TaintTrackingProblems {
+		specs = append(specs, TaggedSpec(trackingProblem))
+	}
+	for _, slicingProblem := range c.SlicingProblems {
+		specs = append(specs, TaggedSpec(slicingProblem))
+	}
+	for _, structInitProblem := range c.SyntacticProblems.StructInitProblems {
+		specs = append(specs, TaggedSpec(structInitProblem))
+	}
+	return specs
 }

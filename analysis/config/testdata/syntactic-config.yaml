@@ -7,11 +7,11 @@ options:
   silence-warn: true
 
 syntactic-problems:
-  - struct-inits:
-      - struct:
-          type: "package/testType"
-        fields-set:
-          - field: "TestField"
-            value:
-              package: "path/testPackage"
-              const: "TestConst"
+  struct-inits:
+    - struct:
+        type: "package/testType"
+      fields-set:
+        - field: "TestField"
+          value:
+            package: "path/testPackage"
+            const: "TestConst"

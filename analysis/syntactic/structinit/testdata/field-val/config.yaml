@@ -1,9 +1,9 @@
 syntactic-problems:
-  - struct-inits:
-      - struct:
-          type: ".*target$"
-        fields-set:
-          - field: "x"
-            value:
-              package: "(field-val)|(main)|(command-line-arguments)"
-              const: "^One$"
+  struct-inits:
+    - struct:
+        type: ".*target$"
+      fields-set:
+        - field: "x"
+          value:
+            package: "(field-val)|(main)|(command-line-arguments)"
+            const: "^One$"

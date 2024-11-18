@@ -200,8 +200,8 @@ func TestLoadWithUndefinedTargetReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when loading config with undefined target")
 	}
-	if !strings.Contains(err.Error(), "taint analysis target \"foo\" is undefined") {
-		t.Errorf("config with undefined target should have explicit error message")
+	if !strings.Contains(err.Error(), "target \"foo\" for problem with tag") {
+		t.Errorf("config with undefined target should have explicit error message not %s", err)
 	}
 }
 
@@ -282,32 +282,29 @@ func TestLoadSyntacticConfigYaml(t *testing.T) {
 		t.Error("syntactic config should have set silence-warn to true")
 	}
 
-	if len(config.SyntacticProblems) == 0 {
-		t.Error("syntactic config should have syntactic problems")
+	if len(config.SyntacticProblems.StructInitProblems) == 0 {
+		t.Error("syntactic config should have struct-init problems")
 	}
-	for _, spec := range config.SyntacticProblems {
-		if len(spec.StructInitProblems) == 0 {
-			t.Error("syntactic config should have struct-init problems")
+
+	for _, sspec := range config.SyntacticProblems.StructInitProblems {
+		if sspec.Struct.Type == "" {
+			t.Error("syntactic config should have a struct-init struct type")
 		}
-		for _, sspec := range spec.StructInitProblems {
-			if sspec.Struct.Type == "" {
-				t.Error("syntactic config should have a struct-init struct type")
+		if len(sspec.FieldsSet) == 0 {
+			t.Error("syntactic config should have a struct-init fields-set list")
+		}
+		for _, fspec := range sspec.FieldsSet {
+			if fspec.Field == "" {
+				t.Error("syntactic config should have a struct-init fields-set field")
 			}
-			if len(sspec.FieldsSet) == 0 {
-				t.Error("syntactic config should have a struct-init fields-set list")
+			if fspec.Value.Package == "" {
+				t.Error("syntactic config should have a struct-init fields-set value package")
 			}
-			for _, fspec := range sspec.FieldsSet {
-				if fspec.Field == "" {
-					t.Error("syntactic config should have a struct-init fields-set field")
-				}
-				if fspec.Value.Package == "" {
-					t.Error("syntactic config should have a struct-init fields-set value package")
-				}
-				if fspec.Value.Const == "" {
-					t.Error("syntactic config should have a struct-init fields-set value const")
-				}
+			if fspec.Value.Const == "" {
+				t.Error("syntactic config should have a struct-init fields-set value const")
 			}
 		}
+
 	}
 	os.Remove(config.ReportsDir)
 }

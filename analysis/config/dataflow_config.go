@@ -91,6 +91,21 @@ type TaintSpec struct {
 	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args" json:"source-taints-args"`
 }
 
+// SpecTag returns the tag of the taint specification
+func (ts TaintSpec) SpecTag() string {
+	return ts.Tag
+}
+
+// SpecTargets returns the targets of the taint specification
+func (ts TaintSpec) SpecTargets() []string {
+	return ts.Targets
+}
+
+// SpecSeverity returns the severity of the taint specification
+func (ts TaintSpec) SpecSeverity() Severity {
+	return ts.Severity
+}
+
 // SlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
 type SlicingSpec struct {
 	*AnalysisProblemOptions `xml:"override-analysis-options,attr" yaml:"override-analysis-options" json:"override-analysis-options"`
@@ -116,6 +131,21 @@ type SlicingSpec struct {
 	// SkipBoundLabels indicates whether to skip flows that go through "bound labels", i.e. aliases of the variables
 	// bound by a closure. This can be useful to test data flows because bound labels generate a lot of false positives.
 	SkipBoundLabels bool `yaml:"unsafe-skip-bound-labels" json:"unsafe-skip-bound-labels"`
+}
+
+// SpecTag returns the tag of the slicing spec
+func (ss SlicingSpec) SpecTag() string {
+	return ss.Tag
+}
+
+// SpecTargets returns the targets of the slicing spec
+func (ss SlicingSpec) SpecTargets() []string {
+	return ss.Targets
+}
+
+// SpecSeverity returns the severity of the slicing spec
+func (ss SlicingSpec) SpecSeverity() Severity {
+	return ss.Severity
 }
 
 // IsPathSensitiveFunc returns true if funcName matches any regex in c.Options.PathSensitiveFuncs.

@@ -16,15 +16,12 @@ package syntactic
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/syntactic/structinit"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"golang.org/x/tools/go/ssa"
 )
 
 // Usage is the usage info for the syntactic analyses.
@@ -37,50 +34,63 @@ Examples:
 
 // Run runs the syntactic analyses.
 func Run(flags tools.CommonFlags) error {
-	logger := log.New(os.Stdout, "", log.Flags())
-
 	cfg, err := tools.LoadConfig(flags.ConfigPath)
 	if err != nil {
 		return err
 	}
+	logger := config.NewLogGroup(cfg)
 
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
+		logger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
 		cfg.LogLevel = int(config.DebugLevel)
-	}
-	logger.Printf(formatutil.Faint("Reading sources") + "\n")
-
-	if len(cfg.SyntacticProblems) == 0 {
-		return fmt.Errorf("no syntactic problems in config file")
+		logger = config.NewLogGroup(cfg)
 	}
 
-	opts := analysis.LoadProgramOptions{
-		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     flags.WithTest,
-		ApplyRewrites: false,
-		Platform:      "",
-		PackageConfig: nil,
-	}
-	prog, pkgs, err := analysis.LoadProgram(opts, flags.FlagSet.Args())
-	if err != nil {
-		return fmt.Errorf("failed to load program: %v", err)
+	if len(cfg.SyntacticProblems.StructInitProblems) == 0 {
+		logger.Warnf("No syntactic problems in config file.")
+		return nil
 	}
 
-	for _, syn := range cfg.SyntacticProblems {
-		if len(syn.StructInitProblems) > 0 {
-			logger.Printf("starting struct init analysis...\n")
-			res, err := structinit.Analyze(cfg, prog, pkgs)
-			if err != nil {
-				return fmt.Errorf("struct init analysis error: %v", err)
-			}
-
-			s, failed := structinit.ReportResults(res)
-			logger.Println(s)
-			if failed {
-				os.Exit(1)
-			}
+	failCount := 0
+	overallReport := config.NewReport()
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, config.SyntacticTool) {
+		report, err := runTarget(flags, targetName, targetFiles, logger, cfg)
+		if err != nil {
+			logger.Errorf("Analysis for %s failed: %s", targetName, err)
+			failCount += 1
 		}
+		overallReport.Merge(report)
+	}
+	overallReport.Dump(logger, cfg)
+	if failCount > 0 {
+		os.Exit(1)
 	}
 
 	return nil
+}
+
+func runTarget(
+	flags tools.CommonFlags,
+	targetName string,
+	targetFiles []string,
+	logger *config.LogGroup,
+	cfg *config.Config,
+) (*config.ReportInfo, error) {
+
+	state, err := analysis.LoadTarget(targetName, targetFiles, logger, cfg, flags.WithTest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load target: %v", err)
+	}
+	logger.Infof("starting struct init analysis...\n")
+	res, err := structinit.Analyze(state)
+	if err != nil {
+		return nil, fmt.Errorf("struct init analysis error: %v", err)
+	}
+	s, failed := structinit.ReportResults(res)
+	logger.Infof(s)
+	if failed {
+		return state.Report, fmt.Errorf("struct init analysis found problems, inspect logs for more information")
+	}
+	return state.Report, nil
 }

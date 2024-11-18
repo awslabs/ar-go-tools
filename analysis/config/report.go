@@ -62,6 +62,9 @@ func NewReport() ReportInfo {
 
 // Merge merges the report elements of other into the receiver
 func (r *ReportInfo) Merge(other *ReportInfo) {
+	if other == nil {
+		return
+	}
 	for sev, count := range other.CountBySeverity {
 		r.IncrementSevCount(sev, count)
 	}

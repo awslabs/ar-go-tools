@@ -37,8 +37,7 @@ func (c Config) Validate() error {
 func (c Config) checkTagsAreUnique() error {
 	hasUnsetTag := false
 	tags := map[string]bool{}
-	tagsList := funcutil.Map(c.TaintTrackingProblems, func(ts TaintSpec) string { return ts.Tag })
-	tagsList = append(tagsList, funcutil.Map(c.SlicingProblems, func(ts SlicingSpec) string { return ts.Tag })...)
+	tagsList := funcutil.Map(c.GetSpecs(), func(tg TaggedSpec) string { return tg.SpecTag() })
 	for _, tag := range tagsList {
 		if tag == "" {
 			if hasUnsetTag {
@@ -54,13 +53,11 @@ func (c Config) checkTagsAreUnique() error {
 }
 
 func (c Config) checkSeveritiesAreValid() error {
-	sevList := funcutil.Map(c.TaintTrackingProblems, func(ts TaintSpec) Severity { return ts.Severity })
-	sevList = append(sevList, funcutil.Map(c.SlicingProblems, func(ts SlicingSpec) Severity { return ts.Severity })...)
-	for _, sev := range sevList {
-		if !IsValidSeverityStr(sev.String()) {
+	for _, taggedSpec := range c.GetSpecs() {
+		if !IsValidSeverityStr(taggedSpec.SpecSeverity().String()) {
 			return fmt.Errorf(
 				"invalid severity label %s (not empty, \"CRITICAL\", \"HIGH\", \"MEDIUM\", or \"LOW\")",
-				sev)
+				taggedSpec.SpecSeverity())
 		}
 	}
 	return nil
@@ -75,26 +72,11 @@ func (c Config) checkTargetsUniqueAndDefined() error {
 		_, ok := targets[s]
 		return ok || s == TargetsAll
 	}
-	for _, trackingProblem := range c.TaintTrackingProblems {
-		for _, problemTarget := range trackingProblem.Targets {
+	for _, taggedSpec := range c.GetSpecs() {
+		for _, problemTarget := range taggedSpec.SpecTargets() {
 			if !isDefined(problemTarget) {
-				return fmt.Errorf("taint analysis target \"%s\" is undefined", problemTarget)
-			}
-		}
-	}
-	for _, slicingProblem := range c.SlicingProblems {
-		for _, problemTarget := range slicingProblem.Targets {
-			if !isDefined(problemTarget) {
-				return fmt.Errorf("backwards dataflow analysis target \"%s\" is undefined", problemTarget)
-			}
-		}
-	}
-	for _, sp := range c.SyntacticProblems {
-		for _, structInitProblem := range sp.StructInitProblems {
-			for _, problemTarget := range structInitProblem.Targets {
-				if !isDefined(problemTarget) {
-					return fmt.Errorf("syntactic analysis target \"%s\" is undefined", problemTarget)
-				}
+				return fmt.Errorf("target \"%s\" for problem with tag %q is undefined", problemTarget,
+					taggedSpec.SpecTag())
 			}
 		}
 	}

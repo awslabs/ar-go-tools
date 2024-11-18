@@ -27,7 +27,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -76,18 +75,13 @@ type InvalidWrite struct {
 }
 
 // Analyze runs the analysis on prog.
-func Analyze(cfg *config.Config, prog *ssa.Program, pkgs []*packages.Package) (AnalysisResult, error) {
-	state, err := dataflow.NewInitializedAnalyzerState(prog, pkgs, config.NewLogGroup(cfg), cfg)
-	if err != nil {
-		return AnalysisResult{}, fmt.Errorf("failed to initialize analyzer state: %v", err)
-	}
-
+func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 	program := state.Program
 	fns := state.ReachableFunctions()
 	if len(fns) == 0 {
 		return AnalysisResult{}, fmt.Errorf("no functions found")
 	}
-	specs := structInitSpecs(cfg)
+	specs := structInitSpecs(state.Config, state.Target)
 	for fn := range fns {
 		if funcutil.Exists(specs, func(s config.StructInitSpec) bool { return isFiltered(s, fn) }) {
 			delete(fns, fn)
@@ -171,10 +165,10 @@ func debug(logger *config.LogGroup, res AnalysisResult, structToNamed map[*types
 	}
 }
 
-func structInitSpecs(cfg *config.Config) []config.StructInitSpec {
+func structInitSpecs(cfg *config.Config, target string) []config.StructInitSpec {
 	var res []config.StructInitSpec
-	for _, sspec := range cfg.SyntacticProblems {
-		for _, stspec := range sspec.StructInitProblems {
+	for _, stspec := range cfg.SyntacticProblems.StructInitProblems {
+		if target == "" || funcutil.Contains(stspec.Targets, target) {
 			res = append(res, stspec)
 		}
 	}
@@ -182,7 +176,10 @@ func structInitSpecs(cfg *config.Config) []config.StructInitSpec {
 	return res
 }
 
-func initInfos(state *dataflow.AnalyzerState, allocs []alloced, specs []config.StructInitSpec) (map[*types.Named]InitInfo, error) {
+func initInfos(
+	state *dataflow.AnalyzerState,
+	allocs []alloced,
+	specs []config.StructInitSpec) (map[*types.Named]InitInfo, error) {
 	infos := make(map[*types.Named]InitInfo)
 	initialized := make(map[config.CodeIdentifier]bool)
 
@@ -207,7 +204,8 @@ func initInfos(state *dataflow.AnalyzerState, allocs []alloced, specs []config.S
 			}
 
 			if _, ok := infos[structTyps.named]; ok {
-				return infos, fmt.Errorf("InitInfo for struct %v should have already been initialized", structTyps.named)
+				return infos,
+					fmt.Errorf("InitInfo for struct %v should have already been initialized", structTyps.named)
 			}
 
 			info, err := newInitInfo(spec, structType, state)
@@ -727,20 +725,6 @@ func ReportResults(res AnalysisResult) (string, bool) {
 	}
 
 	return w.String(), failed
-}
-
-func noInvalidWrites(info InitInfo) bool {
-	if len(info.InvalidWrites) == 0 {
-		return true
-	}
-
-	for _, writes := range info.InvalidWrites {
-		if len(writes) > 0 {
-			return false
-		}
-	}
-
-	return true
 }
 
 // isFiltered returns true if v is filtered according to spec or is in the standard library.

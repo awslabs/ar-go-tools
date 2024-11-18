@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/syntactic/structinit"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -88,7 +89,11 @@ func runAnalysis(t *testing.T, dirName string) (analysistest.LoadedTestProgram, 
 		t.Fatalf("failed to load test: %v", err)
 	}
 	setupConfig(lp.Config)
-	result, err := structinit.Analyze(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	if err != nil {
+		t.Fatalf("failed to initialize analyzer state")
+	}
+	result, err := structinit.Analyze(state)
 	if err != nil {
 		t.Fatalf("struct-init analysis failed: %v", err)
 	}

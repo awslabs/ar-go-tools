@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/rewrite"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -137,4 +139,35 @@ func AllPackages(funcs map[*ssa.Function]bool) []*ssa.Package {
 		return pkgList[i].Pkg.Path() < pkgList[j].Pkg.Path()
 	})
 	return pkgList
+}
+
+// LoadTarget loads the target specified by the list of files provided. Return an analyzer state that has been
+// initialized with the program if successful. The Target of that state will be set to the provided name.
+func LoadTarget(
+	name string,
+	files []string,
+	logger *config.LogGroup,
+	cfg *config.Config,
+	loadTests bool) (*dataflow.AnalyzerState, error) {
+	startLoad := time.Now()
+	logger.Infof(formatutil.Faint("Reading sources for target") + " " + name + "\n")
+	opts := LoadProgramOptions{
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     loadTests,
+		ApplyRewrites: false,
+		Platform:      "",
+		PackageConfig: nil,
+	}
+	prog, pkgs, err := LoadProgram(opts, files)
+	loadDuration := time.Since(startLoad)
+	logger.Infof("Loaded program in %3.4f s", loadDuration.Seconds())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load program: %v", err)
+	}
+	state, err := dataflow.NewInitializedAnalyzerState(prog, pkgs, logger, cfg)
+	state.Target = name
+	if err != nil {
+		return nil, fmt.Errorf("failed to load state: %s", err)
+	}
+	return state, nil
 }

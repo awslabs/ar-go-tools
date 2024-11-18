@@ -22,7 +22,6 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -91,7 +90,7 @@ func Run(flags Flags) error {
 	hasFlows := false
 	overallReport := config.NewReport()
 	// Loop over every target of the taint analysis
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), taintConfig, "taint") {
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), taintConfig, config.TaintTool) {
 		targetHasFlows, report, err := runTarget(flags, targetName, targetFiles, cfgLog, taintConfig)
 		hasFlows = targetHasFlows || hasFlows
 		if err != nil {
@@ -111,28 +110,11 @@ func runTarget(
 	flags Flags,
 	targetName string,
 	targetFiles []string,
-	cfgLog *config.LogGroup,
+	logger *config.LogGroup,
 	taintConfig *config.Config) (bool, *config.ReportInfo, error) {
-	// Time each target
-	startLoad := time.Now()
-	cfgLog.Infof(formatutil.Faint("Reading sources for target")+" %s\n", targetName)
-	loadOptions := analysis.LoadProgramOptions{
-		PackageConfig: nil,
-		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     flags.WithTest,
-		ApplyRewrites: true,
-	}
-	program, pkgs, err := analysis.LoadProgram(loadOptions, targetFiles)
-	if err != nil {
-		return false, nil, fmt.Errorf("could not load program:\n %v", err)
-	}
-	loadDuration := time.Since(startLoad)
-	cfgLog.Infof("Loaded program in %3.4f s", loadDuration.Seconds())
-
 	// Starting the analysis
 	start := time.Now()
-	state, err := dataflow.NewInitializedAnalyzerState(program, pkgs, cfgLog, taintConfig)
-	state.Target = targetName
+	state, err := analysis.LoadTarget(targetName, targetFiles, logger, taintConfig, flags.WithTest)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to load state: %s", err)
 	}
@@ -180,14 +162,14 @@ func runTarget(
 			formatutil.Green("Tainted data does not escape ✓")) // safe %s
 	}
 
-	Report(program, result)
+	LogResult(state.Program, result)
 	// If some taint flows have been found, or some taint flow escapes, the analysis should return an error.
 	// Scripts that use the taint analysis can then rely on the boolean fail/success state of the analysis terminating.
 	return len(result.TaintFlows.Sinks) > 0 || len(result.TaintFlows.Escapes) > 0, result.State.Report, nil
 }
 
-// Report logs the taint analysis result
-func Report(
+// LogResult logs the taint analysis result
+func LogResult(
 	program *ssa.Program, result taint.AnalysisResult) {
 	// Prints location of sinks and sources in the SSA
 	for sink, sources := range result.TaintFlows.Sinks {
