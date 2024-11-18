@@ -58,6 +58,7 @@ func NewFlags(args []string) (Flags, error) {
 			ConfigPath: *flags.ConfigPath,
 			Verbose:    *flags.Verbose,
 			WithTest:   *flags.WithTest,
+			Tag:        *flags.Tag,
 		},
 		maxDepth: *maxDepth,
 		dryRun:   *dryRun,

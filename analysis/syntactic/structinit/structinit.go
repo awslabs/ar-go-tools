@@ -103,23 +103,20 @@ func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 	}
 	debug(logger, res, structToNamed)
 
-	for _, alloc := range allocs {
-		if isConfiguredZeroAlloc(res, alloc) {
-			is := res.InitInfos[alloc.typs.named]
+	runZeroAllocAnalysis(state, allocs, res, structToNamed)
 
-			if state.Annotations.IsIgnoredPos(alloc.pos, is.Tag) {
-				logger.Infof("annotation found, ignoring %s: zero alloc at %v\n", is.Tag, alloc.pos)
-				continue
-			}
+	runInvalidWritesAnalysis(state, fns, res, structToNamed)
 
-			logger.Infof("%s: found zero alloc: %v at %v\n", is.Tag, alloc.instr, alloc.pos)
-			za := newZeroAlloc(&alloc, structToNamed)
-			is.ZeroAllocs = append(is.ZeroAllocs, za)
-			res.InitInfos[alloc.typs.named] = is
+	return res, nil
+}
 
-		}
-	}
-
+func runInvalidWritesAnalysis(
+	state *dataflow.AnalyzerState,
+	fns map[*ssa.Function]bool,
+	res AnalysisResult,
+	structToNamed map[*types.Struct]*types.Named) {
+	program := state.Program
+	logger := state.Logger
 	for fn := range fns {
 		lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
 			if instr == nil || instr.Parent() == nil || !instr.Pos().IsValid() {
@@ -149,8 +146,30 @@ func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 			}
 		})
 	}
+}
 
-	return res, nil
+func runZeroAllocAnalysis(
+	state *dataflow.AnalyzerState,
+	allocs []alloced,
+	res AnalysisResult,
+	structToNamed map[*types.Struct]*types.Named) {
+	logger := state.Logger
+	// Check all zero-allocations
+	for _, alloc := range allocs {
+		if isConfiguredZeroAlloc(res, alloc) {
+			is := res.InitInfos[alloc.typs.named]
+
+			if state.Annotations.IsIgnoredPos(alloc.pos, is.Tag) {
+				logger.Infof("annotation found, ignoring %s: zero alloc at %v\n", is.Tag, alloc.pos)
+				continue
+			}
+
+			logger.Infof("%s: found zero alloc: %v at %v\n", is.Tag, alloc.instr, alloc.pos)
+			za := newZeroAlloc(&alloc, structToNamed)
+			is.ZeroAllocs = append(is.ZeroAllocs, za)
+			res.InitInfos[alloc.typs.named] = is
+		}
+	}
 }
 
 func newZeroAlloc(alloc *alloced, structToNamed map[*types.Struct]*types.Named) ZeroAlloc {
