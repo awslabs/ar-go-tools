@@ -42,18 +42,18 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config file: %v", err)
 	}
-	cfgLog := config.NewLogGroup(cfg)
-	cfgLog.Infof(formatutil.Faint("Argot immutability tool - " + analysis.Version))
+	logger := config.NewLogGroup(cfg)
+	logger.Infof(formatutil.Faint("Argot immutability tool - " + analysis.Version))
 
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
-		cfgLog.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
+		logger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
 		cfg.LogLevel = int(config.DebugLevel)
-		cfgLog = config.NewLogGroup(cfg)
+		logger = config.NewLogGroup(cfg)
 	}
 	overallReport := config.NewReport()
 	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, "immutability") {
-		cfgLog.Infof("Reading immutability analysis entrypoints")
+		logger.Infof("Reading immutability analysis entrypoints")
 		loadOptions := analysis.LoadProgramOptions{
 			PackageConfig: nil,
 			BuildMode:     ssa.InstantiateGenerics,
@@ -66,7 +66,7 @@ func Run(flags tools.CommonFlags) error {
 		}
 
 		start := time.Now()
-		state, err := dataflow.NewAnalyzerState(program, pkgs, cfgLog, cfg, []func(*dataflow.AnalyzerState){
+		state, err := dataflow.NewAnalyzerState(program, pkgs, logger, cfg, []func(*dataflow.AnalyzerState){
 			func(s *dataflow.AnalyzerState) {
 				s.PopulatePointersVerbose(summaries.IsUserDefinedFunction)
 			},
@@ -81,20 +81,20 @@ func Run(flags tools.CommonFlags) error {
 		}
 		duration := time.Since(start)
 		overallReport.Merge(state.Report)
-		cfgLog.Infof("")
-		cfgLog.Infof("-%s", strings.Repeat("*", 80))
-		cfgLog.Infof("Analysis took %3.4f s\n", duration.Seconds())
+		logger.Infof("")
+		logger.Infof("-%s", strings.Repeat("*", 80))
+		logger.Infof("Analysis took %3.4f s\n", duration.Seconds())
 		if len(result.Modifications) == 0 {
-			cfgLog.Infof(
+			logger.Infof(
 				"RESULT:\n\t\t%s", formatutil.Red("No immutability entrypoints detected")) // safe %s
 			os.Exit(1)
 		} else {
-			cfgLog.Infof("RESULT:\n")
+			logger.Infof("RESULT:\n")
 		}
 
-		Report(cfgLog, program, result)
+		Report(logger, program, result)
 	}
-	overallReport.Dump(cfgLog, cfg)
+	overallReport.Dump(logger, cfg)
 	return nil
 }
 
