@@ -401,6 +401,9 @@ type structTypes struct {
 // isStructType returns the named and underlying types of t
 // if it is a struct or pointer to a struct.
 func isStructType(t types.Type) (structTypes, bool) {
+	if t == nil {
+		return structTypes{}, false
+	}
 	if t.Underlying() == nil {
 		return structTypes{}, false
 	}

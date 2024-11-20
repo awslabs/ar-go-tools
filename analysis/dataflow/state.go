@@ -127,6 +127,9 @@ func NewAnalyzerState(p *ssa.Program, pkgs []*packages.Package, l *config.LogGro
 	steps []func(*AnalyzerState)) (*AnalyzerState, error) {
 	var allContracts []Contract
 
+	if c == nil {
+		return nil, fmt.Errorf("cannot create state without config")
+	}
 	// Load annotations by scanning all packages' syntax
 	pa, err := annotations.LoadAnnotations(l, p.AllPackages())
 

@@ -157,11 +157,13 @@ func runTarget(name string, files []string, flags Flags, logger *config.LogGroup
 		state.Logger.Infof("Coverage written in: %s", flags.coverPath)
 	}
 
-	if dependencyGraph != nil {
-		state.Logger.Debugf("Checking cycles in dependency graph")
-		if dependencyGraph.Cycles() {
-			state.Logger.Errorf("FOUND CYCLES IN THE DEPENDENCY GRAPH")
-		}
+	if dependencyGraph == nil {
+		return fmt.Errorf("failed to generate dependency graph")
+	}
+
+	state.Logger.Debugf("Checking cycles in dependency graph")
+	if dependencyGraph.Cycles() {
+		state.Logger.Errorf("FOUND CYCLES IN THE DEPENDENCY GRAPH")
 	}
 
 	if flags.graphPath != "" {

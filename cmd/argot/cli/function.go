@@ -383,6 +383,11 @@ func cmdMark(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, with
 		_ = cmdIntra(tt, c, command, withTest)
 	}
 
+	if state.CurrentDataflowInformation == nil || state.CurrentDataflowInformation.Function != state.CurrentFunction {
+		WriteErr(tt, "Reached an unexpected state. Please restart the CLI.")
+		return false
+	}
+
 	r, err := regexp.Compile(command.Args[0])
 	if err != nil {
 		regexErr(tt, command.Args[0], err)

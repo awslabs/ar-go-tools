@@ -91,12 +91,20 @@ func checkCalls(t *testing.T,
 	for _, y := range expected {
 		seen[y] = false
 	}
+	if state.PointerAnalysis.CallGraph == nil || state.PointerAnalysis.CallGraph.Nodes == nil {
+		state.Logger.Errorf("missing information in pointer analysis")
+		return
+	}
+	ithNode := state.PointerAnalysis.CallGraph.Nodes[i]
+	if ithNode == nil {
+		return
+	}
 
-	if n0 := len(state.PointerAnalysis.CallGraph.Nodes[i].Out); n0 < n {
+	if n0 := len(ithNode.Out); n0 < n {
 		t.Fatalf("Expected more than %d calls, got %d", n, n0)
 	}
 
-	for _, d := range state.PointerAnalysis.CallGraph.Nodes[i].Out {
+	for _, d := range ithNode.Out {
 		for _, x := range unexpected {
 			if strings.Contains(d.String(), x) {
 				t.Fatalf("Incorrect call to %s", x)

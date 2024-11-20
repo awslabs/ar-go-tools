@@ -137,6 +137,10 @@ func Run(flags Flags) error {
 		fmt.Fprintf(os.Stderr, formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	}
 
+	if cg == nil {
+		return fmt.Errorf("no callgraph, check the command arguments")
+	}
+
 	if flags.cgOut != "" {
 		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing call graph in "+flags.cgOut+"\n"))
 

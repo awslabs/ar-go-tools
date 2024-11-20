@@ -7,6 +7,7 @@
 # Install gocyclo with:     go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
 # Install ineffassign with: go install github.com/gordonklaus/ineffassign@latest
 # Install golint with:      go install golang.org/x/lint/golint@latest
+# Install nilaway with:     go install go.uber.org/nilaway/cmd/nilaway@latest
 
 all: setup-precommit lint argot-build racerg-build test
 
@@ -17,6 +18,7 @@ lint: **/*.go
 	go vet ./...
 	gocyclo -ignore "test|internal/pointer|internal/typeparams" -over 15 .
 	ineffassign ./...
+	nilaway --test=false ./cmd/argot/...
 	golint -set_exit_status -min_confidence 0.9 ./...
 
 test: **/*.go

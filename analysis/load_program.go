@@ -76,7 +76,7 @@ func LoadProgram(options LoadProgramOptions, args []string) (*ssa.Program, []*pa
 	// load, parse and type check the given packages
 	initialPackages, err := packages.Load(packageConfig, args...)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to load program: %s", err)
 	}
 
 	if len(initialPackages) == 0 {
@@ -153,7 +153,7 @@ func LoadTarget(
 		// If it's a named target, need to change to project root's directory to properly load the target
 		err := os.Chdir(cfg.Root())
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to change to root dir: %s", err)
 		}
 	}
 	startLoad := time.Now()

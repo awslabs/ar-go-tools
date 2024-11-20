@@ -938,6 +938,9 @@ func NewPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
 		return nil
 	}
 	summaryBase := NewSummaryGraph(nil, f, id, nil, nil)
+	if summaryBase == nil {
+		return nil
+	}
 	summaryBase.PopulateGraphFromSummary(preDef, false)
 	return summaryBase
 }

@@ -100,6 +100,9 @@ func displayCallInfoWithSummary(s *dataflow.AnalyzerState, tt *term.Terminal,
 	f *ssa.Function, summary *dataflow.SummaryGraph,
 	targetFilter func(*ssa.Function) bool,
 	displayCallers bool, displayCallees bool) {
+	if summary == nil {
+		writeFmt(tt, "\t No info for nil summary.\n")
+	}
 
 	if displayCallees {
 		WriteSuccess(tt, "All functions called by %s:", f.String())

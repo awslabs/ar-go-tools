@@ -34,11 +34,13 @@ jobs:
           go install github.com/gordonklaus/ineffassign@latest
           go install golang.org/x/lint/golint@latest
           go install golang.org/x/tools/cmd/deadcode@latest
+          go install go.uber.org/nilaway/cmd/nilaway@latest
       - name: Run basic analyses
         run: |
           go vet ./...
           gocyclo -ignore "test|internal/pointer|internal/typeparams" -over 15 .
           ineffassign ./...
+          nilaway --test=false ./cmd/argot/...
           golint -set_exit_status -min_confidence 0.9 ./...
       - name: Run vulnerability checking
         run: |

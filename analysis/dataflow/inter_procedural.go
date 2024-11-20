@@ -614,7 +614,9 @@ func BuildSummary(s *AnalyzerState, function *ssa.Function) *SummaryGraph {
 	if summary == nil {
 		id := GetUniqueFunctionID()
 		summary = NewPredefinedSummary(function, id)
-		s.FlowGraph.Summaries[function] = summary
+		if summary != nil {
+			s.FlowGraph.Summaries[function] = summary
+		}
 	}
 	logger := s.Logger
 

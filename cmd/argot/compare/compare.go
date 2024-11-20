@@ -124,6 +124,11 @@ func Run(flags Flags) error {
 	if err != nil {
 		return fmt.Errorf("failed to compute callgraph: %v", err)
 	}
+	if cg == nil {
+		return fmt.Errorf("no callgraph")
+	}
+	// cg is non-nil from now on
+
 	// Load the binary
 	var symbols map[string]bool = nil
 	if flags.binary != "" {
@@ -147,6 +152,10 @@ func Run(flags Flags) error {
 }
 
 func setConfig(configPath string, cfg **config.Config) error {
+	// check that the pointer to pointer is non-nil, because we'll dereference it
+	if cfg == nil {
+		return nil
+	}
 	if configPath == "" {
 		fmt.Fprintf(os.Stderr, "config path empty: loading default config")
 		*cfg = config.NewDefault()

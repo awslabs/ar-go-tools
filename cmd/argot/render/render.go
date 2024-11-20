@@ -267,6 +267,9 @@ func WriteHTMLCallgrph(program *ssa.Program, cg *callgraph.Graph, outPath string
 			continue
 		}
 		node := cg.Nodes[fun]
+		if node == nil {
+			continue
+		}
 		includeDisassembly := false
 		fmt.Fprint(htmlOut, "<div class=func id=\"", uintptr(unsafe.Pointer(fun)), "\">func <span class=name>",
 			fun.Name(), "</span>()\n")

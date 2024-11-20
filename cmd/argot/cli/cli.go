@@ -85,6 +85,10 @@ func Run(flags tools.CommonFlags) {
 		return
 	}
 
+	if pConfig == nil {
+		fmt.Fprintf(os.Stderr, "failed to load config")
+		return
+	}
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
 		pConfig.LogLevel = int(config.DebugLevel)

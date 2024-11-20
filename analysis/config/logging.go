@@ -57,6 +57,9 @@ type LogGroup struct {
 
 // NewLogGroup returns a log group that is configured to the logging settings stored inside the config
 func NewLogGroup(config *Config) *LogGroup {
+	if config == nil {
+		return nil
+	}
 	l := &LogGroup{
 		Level:        LogLevel(config.LogLevel),
 		suppressWarn: config.SilenceWarn,

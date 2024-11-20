@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -403,11 +404,14 @@ func LoadFromFiles(configFileName string) (*Config, error) {
 //
 //gocyclo:ignore
 func Load(filename string, configBytes []byte) (*Config, error) {
-	// Get absolute path to config. Other files in config will be relative to where th config is.
+	// Get absolute path to config. Other files in config will be relative to where the config is.
 	pathToConfig := filename
 	if !path.IsAbs(filename) {
-		wd, _ := os.Getwd()
-		pathToConfig = path.Join(wd, pathToConfig)
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to set absolute path to config: %s", err)
+		}
+		pathToConfig = filepath.Join(wd, pathToConfig)
 	}
 	cfg := NewDefault()
 	unmarshallingError := unmarshalConfig(configBytes, cfg)

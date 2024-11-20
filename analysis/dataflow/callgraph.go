@@ -239,6 +239,9 @@ func methodSetToNameMap(methodSet *types.MethodSet) map[string]*types.Selection 
 
 // CallGraphReachable returns a map where each entry is a reachable function
 func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
+	if cg == nil {
+		return nil
+	}
 	entryPoints := findCallgraphEntryPoints(cg, excludeMain, excludeInit)
 
 	reachable := make(map[*ssa.Function]bool, len(cg.Nodes))

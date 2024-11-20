@@ -74,6 +74,9 @@ func (m *Flows) addNewPathCandidate(source FlowNode, sink FlowNode) bool {
 }
 
 func (m *Flows) addNewEscape(source df.NodeWithTrace, escapeInstr ssa.Instruction) {
+	if m.Escapes == nil {
+		return
+	}
 	sourceInstr := df.Instr(source.Node)
 	if escapeInstr != nil && sourceInstr != nil {
 		if _, ok := m.Escapes[escapeInstr.(ssa.Instruction)]; !ok {

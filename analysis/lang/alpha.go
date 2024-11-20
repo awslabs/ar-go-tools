@@ -55,7 +55,10 @@ type FuncInfo struct {
 // FunctionScope returns the scope of the function
 func (f *FuncInfo) FunctionScope() *types.Scope {
 	declType := f.Decorator.Ast.Nodes[f.Decl.Type]
-	return f.Package.TypesInfo.Scopes[declType]
+	if f.Package.TypesInfo != nil {
+		return f.Package.TypesInfo.Scopes[declType]
+	}
+	return nil
 }
 
 // ClosestEnclosingScope returns the closest scope to the node n.
@@ -74,10 +77,14 @@ func (f *FuncInfo) FunctionScope() *types.Scope {
 // the closest scope for node1 is the then-branch scope, for node2 the else-branch scope
 // and for node3 the function scope
 func (f *FuncInfo) ClosestEnclosingScope(n dst.Node) *types.Scope {
+	if f.Package.TypesInfo == nil {
+		return nil
+	}
+	scopes := f.Package.TypesInfo.Scopes
 	if nodeT, ok := f.NodeMap[n]; ok {
 		for cur := nodeT; cur != nil; cur = cur.Parent {
 			curLabel := f.Decorator.Ast.Nodes[cur.Label]
-			if scope, ok := f.Package.TypesInfo.Scopes[curLabel]; ok {
+			if scope, ok := scopes[curLabel]; ok {
 				return scope
 			}
 		}
