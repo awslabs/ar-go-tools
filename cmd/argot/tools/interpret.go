@@ -25,6 +25,9 @@ var namedFilesMustBeGoFiles = regexp.MustCompile("-: named files must be .go fil
 // Captures error in the analysis for steps that require a main program
 var missingMainTestPackages = regexp.MustCompile("no main/test packages to analyze")
 
+// Captures error where the config file references a reports directory that doesn't exist
+var missingReportsDir = regexp.MustCompile("failed to set reports dir .* could not create directory")
+
 // HintForErrorMessage looks for specific error message and returns some other message that might help the user
 // resolve the problem.
 func HintForErrorMessage(errMsg string) string {
@@ -36,6 +39,9 @@ func HintForErrorMessage(errMsg string) string {
 	}
 	if missingMainTestPackages.MatchString(errMsg) {
 		return "this analysis analyzes executables with an entry point; the path should lead to a main package"
+	}
+	if missingReportsDir.MatchString(errMsg) {
+		return "the reports directory referenced in the config file doesn't exist, you have to create it manually"
 	}
 	return ""
 }

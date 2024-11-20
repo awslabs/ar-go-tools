@@ -403,6 +403,12 @@ func LoadFromFiles(configFileName string) (*Config, error) {
 //
 //gocyclo:ignore
 func Load(filename string, configBytes []byte) (*Config, error) {
+	// Get absolute path to config. Other files in config will be relative to where th config is.
+	pathToConfig := filename
+	if !path.IsAbs(filename) {
+		wd, _ := os.Getwd()
+		pathToConfig = path.Join(wd, pathToConfig)
+	}
 	cfg := NewDefault()
 	unmarshallingError := unmarshalConfig(configBytes, cfg)
 	if unmarshallingError != nil {
@@ -412,17 +418,17 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 
 	// If the project root is unspecified, then set to the directory of the config file
 	if cfg.ProjectRoot == "" {
-		cfg.root = path.Dir(filename)
+		cfg.root = path.Dir(pathToConfig)
 	} else if !path.IsAbs(cfg.ProjectRoot) {
 		// If it's not an absolute path, compute the absolute path
-		cfg.root = path.Join(path.Dir(filename), cfg.ProjectRoot)
+		cfg.root = path.Join(path.Dir(pathToConfig), cfg.ProjectRoot)
 	} else {
 		cfg.root = cfg.ProjectRoot
 	}
 
 	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
 		if err := setReportsDir(cfg); err != nil {
-			return nil, fmt.Errorf("failed to set reports dir of config with filename %v: %v", filename, err)
+			return nil, fmt.Errorf("failed to set reports dir of config with filename %v: %v", pathToConfig, err)
 		}
 	}
 
@@ -541,6 +547,7 @@ func setReportsDir(c *Config) error {
 			reportFile.Close() // the file will be reopened as needed
 		}
 	} else {
+		c.ReportsDir = path.Join(c.root, c.ReportsDir)
 		err := os.Mkdir(c.ReportsDir, 0750)
 		if err != nil {
 			if !os.IsExist(err) {
@@ -554,6 +561,11 @@ func setReportsDir(c *Config) error {
 // ReportNoCalleeFile return the file name that will contain the list of locations that have no callee
 func (c Config) ReportNoCalleeFile() string {
 	return c.nocalleereportfile
+}
+
+// Root returns the absolute path to the root directory
+func (c Config) Root() string {
+	return c.root
 }
 
 // RelPath returns the path of the filename path relative to the root

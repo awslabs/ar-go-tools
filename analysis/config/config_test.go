@@ -18,6 +18,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -226,7 +227,8 @@ func TestLoadVersionBefore_v0_3_0_Errors(t *testing.T) {
 
 func TestLoadWithReports(t *testing.T) {
 	c := NewDefault()
-	c.ReportsDir = "example-report"
+	wd, _ := os.Getwd()
+	c.ReportsDir = path.Join(wd, "testdata/example-report")
 	c.ReportPaths = true
 	testLoadOneFile(t, "config_with_reports.yaml", *c)
 	if c.RelPath("example-report") != "example-report" {

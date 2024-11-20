@@ -149,6 +149,13 @@ func LoadTarget(
 	logger *config.LogGroup,
 	cfg *config.Config,
 	loadTests bool) (*dataflow.AnalyzerState, error) {
+	if name != "" {
+		// If it's a named target, need to change to project root's directory to properly load the target
+		err := os.Chdir(cfg.Root())
+		if err != nil {
+			return nil, err
+		}
+	}
 	startLoad := time.Now()
 	logger.Infof(formatutil.Faint("Reading sources for target") + " " + name + "\n")
 	opts := LoadProgramOptions{
@@ -165,9 +172,9 @@ func LoadTarget(
 		return nil, fmt.Errorf("failed to load program: %v", err)
 	}
 	state, err := dataflow.NewInitializedAnalyzerState(prog, pkgs, logger, cfg)
-	state.Target = name
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state: %s", err)
 	}
+	state.Target = name
 	return state, nil
 }

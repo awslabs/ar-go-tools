@@ -65,6 +65,9 @@ func (c Config) checkSeveritiesAreValid() error {
 
 func (c Config) checkTargetsUniqueAndDefined() error {
 	targets := funcutil.Set(funcutil.Map(c.Targets, func(c TargetSpec) string { return c.Name }))
+	if _, hasEmptyTargetName := targets[""]; hasEmptyTargetName {
+		return fmt.Errorf("target names must be non empty")
+	}
 	if len(targets) != len(c.Targets) {
 		return fmt.Errorf("duplicate target names")
 	}
