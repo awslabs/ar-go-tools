@@ -39,8 +39,8 @@ type AnalysisResult struct {
 	// each function appearing in the program and analyzed.
 	Graph df.InterProceduralFlowGraph
 
-	// Traces represents all the paths where data flows out from the analysis entry points.
-	Traces map[df.GraphNode][]Trace
+	// Traces represents all the paths where data flows out from the analysis entry points for each problem tag.
+	Traces map[string]map[df.GraphNode][]Trace
 }
 
 // Analyze runs the analysis on the program prog with the user-provided configuration config.
@@ -63,7 +63,7 @@ func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 	})
 
 	var errs []error
-	resTraces := make(map[df.GraphNode][]Trace)
+	allTraces := make(map[string]map[df.GraphNode][]Trace)
 	for _, ps := range state.Config.SlicingProblems {
 		// Check the problem applies to the current target
 		if !config.TargetIncludes(ps.Targets, state.Target) {
@@ -73,6 +73,9 @@ func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 		state.ResetAlarms()
 
 		state.Logger.Infof("Analyzing slicing problem %s", ps.Tag)
+		if ps.MustBeStatic {
+			state.Logger.Infof("Will check that data flowing to backtrace points is statis.\n")
+		}
 		// Set problem-specific options
 		prevOptions := state.Config.AnalysisProblemOptions
 
@@ -91,6 +94,7 @@ func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 			},
 		})
 		// filter unwanted nodes
+		resTraces := make(map[df.GraphNode][]Trace)
 		for entry, traces := range visitor.Traces {
 			for _, trace := range traces {
 				vTrace := Trace{}
@@ -105,18 +109,23 @@ func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 				}
 				if len(vTrace) > 0 {
 					resTraces[entry] = append(resTraces[entry], vTrace)
-					state.Report.AddEntry(
-						state.Logger,
-						state.Config,
-						config.ReportDesc{
-							Tool:     config.BacktraceTool,
-							Tag:      ps.Tag,
-							Severity: ps.Severity,
-							Content:  report(state, entry, vTrace, &ps),
-						},
-					)
 				}
 			}
+		}
+		allTraces[ps.Tag] = resTraces
+		state.Report.AddEntry(
+			state.Logger,
+			state.Config,
+			config.ReportDesc{
+				Tool:     config.BacktraceTool,
+				Tag:      ps.Tag,
+				Severity: ps.Severity,
+				Content:  report(state, resTraces, &ps),
+			},
+		)
+
+		if visitor.SlicingSpec.MustBeStatic && len(visitor.Traces) > 0 {
+			state.Logger.Errorf("Found flows of non-static data to backtrace points!")
 		}
 
 		if len(visitor.Errs) > 0 {
@@ -131,7 +140,7 @@ func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 		state.Config.AnalysisProblemOptions = prevOptions
 	}
 
-	return AnalysisResult{Graph: *state.FlowGraph, Traces: resTraces}, errors.Join(errs...)
+	return AnalysisResult{Graph: *state.FlowGraph, Traces: allTraces}, errors.Join(errs...)
 }
 
 // Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the
@@ -817,6 +826,11 @@ func findTrace(s *df.AnalyzerState, end *df.VisitorNode) Trace {
 }
 
 func addTrace(v *Visitor, entrypoint *df.CallNodeArg, trace Trace) {
+	end := trace[0]
+	// Don't add traces when the tool is looking for flows that violate must-be-static constraint
+	if v.SlicingSpec.MustBeStatic && IsStatic(end.GraphNode) {
+		return
+	}
 	// don't add trace if it's already in v.Traces
 	for _, t := range v.Traces[entrypoint] {
 		// need this more complex logic because you can't compare slices directly
@@ -846,6 +860,7 @@ func IsStatic(node df.GraphNode) bool {
 		case *ssa.Const:
 			return true
 		default:
+			fmt.Printf("%T \n==>\n %+v\n", node.Value(), node.Value())
 			return false
 		}
 	default:

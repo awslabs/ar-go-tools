@@ -1,0 +1,10 @@
+options:
+  log-level: 3
+
+dataflow-problems:
+  slicing:
+    - tag: "must-compile-constant"
+      must-be-static: true
+      backtracepoints:
+        - package: regexp
+          method: MustCompile

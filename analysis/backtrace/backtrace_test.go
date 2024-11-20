@@ -517,6 +517,33 @@ func testAnalyzeClosures(t *testing.T, lp analysistest.LoadedTestProgram) {
 	}
 }
 
+func TestAnalyze_CheckStatic(t *testing.T) {
+	dir := filepath.Join("./testdata", "check_static")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lp.Config.SummarizeOnDemand = true
+	lp.Config.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
+	lg := config.NewLogGroup(lp.Config)
+	state, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, lg, lp.Config)
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	res, err := backtrace.Analyze(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Traces) != 1 {
+		t.Fatalf("expected a single entry point with a trace for check_static")
+	}
+	for _, traces := range res.Traces {
+		if len(traces) != 1 {
+			t.Fatalf("expected a single trace for check_static")
+		}
+	}
+}
+
 type nodeType int
 
 const (

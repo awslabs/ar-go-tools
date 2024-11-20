@@ -52,6 +52,7 @@ func Run(flags tools.CommonFlags) error {
 	}
 
 	overallReport := config.NewReport()
+	foundTraces := false
 	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, "backtrace") {
 		start := time.Now()
 		state, err := analysis.LoadTarget(targetName, targetFiles, cfgLog, cfg, flags.WithTest)
@@ -67,8 +68,14 @@ func Run(flags tools.CommonFlags) error {
 		cfgLog.Infof("")
 		cfgLog.Infof("-%s", strings.Repeat("*", 80))
 		cfgLog.Infof("Analysis took %3.4f s\n", duration.Seconds())
-		cfgLog.Infof("Found traces for %d entrypoints\n", len(result.Traces))
+		if len(result.Traces) > 0 {
+			foundTraces = true
+			cfgLog.Errorf("Found traces for %d slicing problems\n", len(result.Traces))
+		}
 	}
 	overallReport.Dump(cfgLog, cfg)
+	if foundTraces {
+		return fmt.Errorf("backtrace analysis found traces, inspect logs for more information")
+	}
 	return nil
 }

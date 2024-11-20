@@ -20,29 +20,30 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
-// A FlowReport contains the information we serialize about a taint flow: a tag, the source and the sink, and
+// A FlowReports contains the information we serialize about a taint flow: a tag, the source and the sink, and
 // the trace from source to sink.
-type FlowReport struct {
-	Tag   string
-	Entry dataflow.ReportNodeInfo
-	Trace []dataflow.ReportNodeInfo
+type FlowReports struct {
+	Tag    string
+	Traces map[string][][]dataflow.ReportNodeInfo
 }
 
 // report generates a json report for a specific data flow
-func report(s *dataflow.AnalyzerState,
-	entry dataflow.GraphNode,
-	trace Trace,
-	ss *config.SlicingSpec) FlowReport {
-	entryNode := dataflow.GetReportNodeInfo(dataflow.NodeWithTrace{Node: entry}, s)
+func report(s *dataflow.AnalyzerState, traces map[dataflow.GraphNode][]Trace, ss *config.SlicingSpec) FlowReports {
 
-	reportTrace := funcutil.Map(trace,
-		func(x TraceNode) dataflow.ReportNodeInfo {
-			return dataflow.GetReportNodeInfo(dataflow.NodeWithTrace{Node: x.GraphNode}, s)
-		})
+	traceMap := make(map[string][][]dataflow.ReportNodeInfo)
+	for entryPt, tracesFromEntryPt := range traces {
+		reportTraces :=
+			funcutil.Map(tracesFromEntryPt, func(trace Trace) []dataflow.ReportNodeInfo {
+				return funcutil.Map(trace,
+					func(x TraceNode) dataflow.ReportNodeInfo {
+						return dataflow.GetReportNodeInfo(dataflow.NodeWithTrace{Node: x.GraphNode}, s)
+					})
+			})
+		traceMap[entryPt.String()] = reportTraces
+	}
 
-	return FlowReport{
-		Tag:   ss.Tag,
-		Entry: entryNode,
-		Trace: reportTrace,
+	return FlowReports{
+		Tag:    ss.Tag,
+		Traces: traceMap,
 	}
 }

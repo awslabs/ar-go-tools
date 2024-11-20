@@ -190,7 +190,7 @@ func isExpected(expected analysistest.TargetToSources, sourcePos analysistest.LP
 func reachedSinkPositions(s *dataflow.AnalyzerState, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 	prog := s.Program
-	for sink, traces := range res.Traces {
+	for sink, traces := range res.Traces[""] {
 		// sink is the analysis entrypoint
 		si := dataflow.Instr(sink)
 		if si == nil {
@@ -323,7 +323,7 @@ func mergeTraces(result backtrace.AnalysisResult) []backtrace.Trace {
 		n += len(traces)
 	}
 	res := make([]backtrace.Trace, 0, n)
-	for _, traces := range result.Traces {
+	for _, traces := range result.Traces[""] {
 		res = append(res, traces...)
 	}
 
