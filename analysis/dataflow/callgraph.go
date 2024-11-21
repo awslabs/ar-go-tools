@@ -15,18 +15,10 @@
 package dataflow
 
 import (
-	"fmt"
 	"go/types"
-	"os"
 	"sync/atomic"
 
-	"golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/callgraph/cha"
-	"golang.org/x/tools/go/callgraph/rta"
-	"golang.org/x/tools/go/callgraph/static"
-	"golang.org/x/tools/go/callgraph/vta"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 // SsaInfo is holds all the information from a built ssa program with main packages
@@ -36,23 +28,6 @@ type SsaInfo struct {
 	Mains    []*ssa.Package
 }
 
-// CallgraphAnalysisMode is either PointerAnalysis, StaticAnalysis, ClassHierarchyAnalysis, RapidTypeAnalysis or
-// VariableTypeAnalysis for calling ComputeCallGraph
-type CallgraphAnalysisMode uint64
-
-const (
-	// PointerAnalysis is over-approximating (slow)
-	PointerAnalysis CallgraphAnalysisMode = iota
-	// StaticAnalysis is under-approximating (fast)
-	StaticAnalysis
-	// ClassHierarchyAnalysis is a coarse over-approximation (fast)
-	ClassHierarchyAnalysis
-	// RapidTypeAnalysis TODO: review
-	RapidTypeAnalysis
-	// VariableTypeAnalysis TODO: review
-	VariableTypeAnalysis
-)
-
 // This global variable should only be read and modified through GetUniqueFunctionID
 var uniqueFunctionIDCounter uint32 = 0
 
@@ -60,56 +35,6 @@ var uniqueFunctionIDCounter uint32 = 0
 func GetUniqueFunctionID() uint32 {
 	x := atomic.AddUint32(&uniqueFunctionIDCounter, 1)
 	return x
-}
-
-// ComputeCallgraph computes the call graph of prog using the provided mode.
-func (mode CallgraphAnalysisMode) ComputeCallgraph(prog *ssa.Program) (*callgraph.Graph, error) {
-	switch mode {
-	case PointerAnalysis:
-		// Build the callgraph using the pointer analysis. This function returns only the
-		// callgraph, and not the entire pointer analysis result.
-		// Pointer analysis is using Andersen's analysis. The documentation claims that
-		// the analysis is sound if the program does not use reflection or unsafe Go.
-		result, err := DoPointerAnalysis(nil, prog, func(_ *ssa.Function) bool { return false }, ssautil.AllFunctions(prog))
-		if err != nil { // not a user-input problem if it fails, see Analyze doc.
-			return nil, fmt.Errorf("pointer analysis failed: %w", err)
-		}
-		return result.CallGraph, nil
-	case StaticAnalysis:
-		// Build the callgraph using only static analysis.
-		return static.CallGraph(prog), nil
-	case ClassHierarchyAnalysis:
-		// Build the callgraph using the Class Hierarchy Analysis
-		// See the documentation, and
-		// "Optimization of Object-Oriented Programs Using Static Class Hierarchy Analysis",
-		// J. Dean, D. Grove, and C. Chambers, ECOOP'95.
-		return cha.CallGraph(prog), nil
-	case VariableTypeAnalysis:
-		// Need to review how to use variable type analysis properly
-		roots := make(map[*ssa.Function]bool)
-		mains := ssautil.MainPackages(prog.AllPackages())
-		for _, m := range mains {
-			// Look at all init and main functions in main packages
-			roots[m.Func("init")] = true
-			roots[m.Func("main")] = true
-		}
-		cg := static.CallGraph(prog)
-		return vta.CallGraph(roots, cg), nil
-	case RapidTypeAnalysis:
-		// Build the callgraph using rapid type analysis
-		// See the documentation, and
-		// "Fast Analysis of C++ Virtual Function Calls", D.Bacon & P. Sweeney, OOPSLA'96
-		var roots []*ssa.Function
-		mains := ssautil.MainPackages(prog.AllPackages())
-		for _, m := range mains {
-			// Start at all init and main functions in main packages
-			roots = append(roots, m.Func("init"), m.Func("main"))
-		}
-		return rta.Analyze(roots, true).CallGraph, nil
-	default:
-		fmt.Fprint(os.Stderr, "Unsupported callgraph analysis mode.")
-		return nil, nil
-	}
 }
 
 // ComputeMethodImplementations populates a map from method implementation type string to the different implementations
@@ -235,46 +160,4 @@ func methodSetToNameMap(methodSet *types.MethodSet) map[string]*types.Selection 
 		nameMap[method.Obj().Name()] = method
 	}
 	return nameMap
-}
-
-// CallGraphReachable returns a map where each entry is a reachable function
-func CallGraphReachable(cg *callgraph.Graph, excludeMain bool, excludeInit bool) map[*ssa.Function]bool {
-	if cg == nil {
-		return nil
-	}
-	entryPoints := findCallgraphEntryPoints(cg, excludeMain, excludeInit)
-
-	reachable := make(map[*ssa.Function]bool, len(cg.Nodes))
-
-	frontier := make([]*callgraph.Node, 0)
-
-	for _, node := range entryPoints {
-		//	node := cg.Root
-		reachable[node.Func] = true
-		frontier = append(frontier, node)
-	}
-
-	for len(frontier) != 0 {
-		node := frontier[len(frontier)-1]
-		frontier = frontier[:len(frontier)-1]
-		for _, edge := range node.Out {
-			if !reachable[edge.Callee.Func] {
-				reachable[edge.Callee.Func] = true
-				frontier = append(frontier, edge.Callee)
-			}
-		}
-	}
-	return reachable
-}
-
-func findCallgraphEntryPoints(cg *callgraph.Graph, excludeMain bool, excludeInit bool) []*callgraph.Node {
-	entryPoints := make([]*callgraph.Node, 0)
-	for f, node := range cg.Nodes {
-		if (node.ID != 0) &&
-			((!excludeMain && f.Name() == "main" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main") ||
-				(!excludeInit && f.Name() == "init" && f.Pkg != nil && f.Pkg.Pkg.Name() == "main")) {
-			entryPoints = append(entryPoints, node)
-		}
-	}
-	return entryPoints
 }

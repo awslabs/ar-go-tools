@@ -21,7 +21,7 @@ import (
 	"go/build"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/maypanic"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
@@ -82,13 +82,13 @@ func Run(flags Flags) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	// never load tests for the may-panic analysis (may change later if there's an ask)
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		PackageConfig: cfg,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     false,
 		ApplyRewrites: true,
 	}
-	program, _, err := analysis.LoadProgram(loadOptions, flags.flagSet.Args())
+	program, _, err := loadprogram.Do(loadOptions, flags.flagSet.Args())
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}

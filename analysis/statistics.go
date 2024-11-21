@@ -202,7 +202,7 @@ type ClosureUsageStatistics struct {
 
 // ComputeClosureUsageStats computes statistics about the usage of closures in the program contained in the state. This
 // requires the pointer analysis to have been computed in the state.
-func ComputeClosureUsageStats(state *dataflow.AnalyzerState) (ClosureUsageStatistics, error) {
+func ComputeClosureUsageStats(state *dataflow.FlowState) (ClosureUsageStatistics, error) {
 	if state.PointerAnalysis == nil || state.Program == nil || state.FlowGraph == nil {
 		return ClosureUsageStatistics{}, fmt.Errorf("state should be built to collect stats")
 	}
@@ -220,7 +220,7 @@ func ComputeClosureUsageStats(state *dataflow.AnalyzerState) (ClosureUsageStatis
 	return *stats, nil
 }
 
-func (s *ClosureUsageStatistics) doFunction(state *dataflow.AnalyzerState, function *ssa.Function) {
+func (s *ClosureUsageStatistics) doFunction(state *dataflow.FlowState, function *ssa.Function) {
 	lang.IterateInstructions(function, s.doInstruction)
 
 	if function.Parent() == nil { // not an anonymous function

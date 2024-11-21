@@ -36,7 +36,7 @@ func TestFunctionSummaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	state, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	state, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	if err != nil {
 		t.Fatalf("failed to build analyzer state: %v", err)
 	}

@@ -24,8 +24,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/buildutil"
@@ -110,28 +110,22 @@ func Run(flags Flags) error {
 	platforms := strings.Split(flags.targets, ",")
 	results := make(map[string]map[string]bool)
 
-	// todo -- technically we could run these in parallel...
-	// (though tbf, the LoadProgram does exploit multiple cores already)
 	for _, platform := range platforms {
-		loadOptions := analysis.LoadProgramOptions{
+		cfg := config.NewDefault()
+		logger := config.NewLogGroup(cfg)
+		loadOptions := loadprogram.Options{
 			Platform:      platform,
 			PackageConfig: nil,
 			BuildMode:     ssa.InstantiateGenerics,
 			LoadTests:     flags.withTest,
 			ApplyRewrites: true,
 		}
-		program, pkgs, err := analysis.LoadProgram(loadOptions, flags.flagSet.Args())
+		state, err := loadprogram.LoadTargetWithPointer("", flags.flagSet.Args(), logger, cfg, loadOptions)
 		if err != nil {
 			return fmt.Errorf("failed to load program: %v", err)
 		}
-		analyzer, err := dataflow.NewDefaultAnalyzer(program, pkgs)
-		if err != nil {
-			return fmt.Errorf("failed to create dataflow analyzer: %v", err)
-		}
-
 		fmt.Fprintln(os.Stderr, formatutil.Faint("Analyzing for "+platform))
-
-		allPkgs := analysis.AllPackages(analyzer.ReachableFunctions())
+		allPkgs := loadprogram.AllPackages(state.ReachableFunctions())
 		results[platform] = FindImporters(allPkgs, pkg, !flags.inexact, rawFile)
 	}
 

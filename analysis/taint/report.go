@@ -25,7 +25,7 @@ import (
 )
 
 // traceNodes prints trace information about the cur node.
-func traceNode(s *dataflow.AnalyzerState, cur *dataflow.VisitorNode) {
+func traceNode(s *dataflow.FlowState, cur *dataflow.VisitorNode) {
 	if !s.Logger.LogsTrace() {
 		return
 	}
@@ -35,7 +35,7 @@ func traceNode(s *dataflow.AnalyzerState, cur *dataflow.VisitorNode) {
 }
 
 // panicOnUnexpectedMissingFreeVar **panics**, but adds and error to the state before.
-func panicOnUnexpectedMissingFreeVar(s *dataflow.AnalyzerState,
+func panicOnUnexpectedMissingFreeVar(s *dataflow.FlowState,
 	makeClosureSite *dataflow.ClosureNode, graphNode *dataflow.FreeVarNode) {
 	s.AddError(
 		fmt.Sprintf("no bound variable matching free variable in %s",
@@ -49,7 +49,7 @@ func panicOnUnexpectedMissingFreeVar(s *dataflow.AnalyzerState,
 
 // addCoverage adds an entry to coverage by properly formatting the position of the visitorNode in the context of
 // the analyzer state
-func addCoverage(c *dataflow.AnalyzerState, elt *dataflow.VisitorNode, coverage map[string]bool) {
+func addCoverage(c *dataflow.FlowState, elt *dataflow.VisitorNode, coverage map[string]bool) {
 	pos := elt.Node.Position(c)
 	if coverage != nil {
 		if c.Config.MatchCoverageFilter(pos.Filename) {
@@ -76,7 +76,7 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 }
 
 // logTaintFlow logs a taint flow on the state's logger.
-func logTaintFlow(s *dataflow.AnalyzerState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
+func logTaintFlow(s *dataflow.FlowState, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
 	s.Logger.Infof(" !!!! TAINT FLOW !!!!")
 	s.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(s)))
 	s.Logger.Infof(" Add new path from %s to %s <== \n",
@@ -125,7 +125,7 @@ type FlowReport struct {
 }
 
 // newFlowReport generates a FlowReport for a specific taint flow
-func newFlowReport(s *dataflow.AnalyzerState,
+func newFlowReport(s *dataflow.FlowState,
 	source dataflow.NodeWithTrace,
 	sink *dataflow.VisitorNode,
 	ts *config.TaintSpec) FlowReport {

@@ -278,7 +278,7 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 		t.Fatalf("failed to load test: %v", err)
 	}
 	setupConfig(lp.Config, summarizeOnDemand)
-	state, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	state, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	if err != nil {
 		t.Fatalf("failed to initialize state")
 	}

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package analysis
+package loadprogram
 
 import (
 	"fmt"
@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/rewrite"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/packages"
@@ -42,8 +41,8 @@ const PkgLoadMode = packages.NeedName |
 	packages.NeedTypesSizes |
 	packages.NeedModule
 
-// LoadProgramOptions combines all the options that are used when loading programs.
-type LoadProgramOptions struct {
+// Options combines all the options that are used when loading programs.
+type Options struct {
 	// BuildMode is the mode used when creating the SSA from the packages.
 	BuildMode ssa.BuilderMode
 	// LoadTests is a flag indicating whether tests should be loaded with the program.
@@ -57,9 +56,11 @@ type LoadProgramOptions struct {
 	PackageConfig *packages.Config
 }
 
-// LoadProgram loads a program on platform "platform" using the buildmode provided and the args.
+// Do loads a program on platform "platform" using the buildmode provided and the args.
 // To understand how to specify the args, look at the documentation of packages.Load.
-func LoadProgram(options LoadProgramOptions, args []string) (*ssa.Program, []*packages.Package, error) {
+//
+// The returned program has already been built.
+func Do(options Options, args []string) (*ssa.Program, []*packages.Package, error) {
 
 	packageConfig := options.PackageConfig
 	if packageConfig == nil {
@@ -107,22 +108,6 @@ func LoadProgram(options LoadProgramOptions, args []string) (*ssa.Program, []*pa
 	return program, initialPackages, nil
 }
 
-// LoadAnalyzerState is like LoadProgram but additionally wraps the loaded program in a simple analyzer state.
-// Does not run pointer analysis for example.
-func LoadAnalyzerState(options LoadProgramOptions,
-	args []string, cfg *config.Config) (*dataflow.AnalyzerState, error) {
-	program, pkgs, err := LoadProgram(options, args)
-	if err != nil {
-		return nil, fmt.Errorf("could not load program: %v", err)
-	}
-	state, err := dataflow.NewAnalyzerState(program, pkgs,
-		config.NewLogGroup(cfg), cfg, []func(state *dataflow.AnalyzerState){})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize analyzer state: %s", err)
-	}
-	return state, nil
-}
-
 // AllPackages returns the slice of all packages the set of functions provided as argument belong to.
 func AllPackages(funcs map[*ssa.Function]bool) []*ssa.Package {
 	pkgs := make(map[*ssa.Package]bool)
@@ -148,7 +133,7 @@ func LoadTarget(
 	files []string,
 	logger *config.LogGroup,
 	cfg *config.Config,
-	loadTests bool) (*dataflow.AnalyzerState, error) {
+	options Options) (*WholeProgramState, error) {
 	if name != "" {
 		// If it's a named target, need to change to project root's directory to properly load the target
 		err := os.Chdir(cfg.Root())
@@ -158,23 +143,26 @@ func LoadTarget(
 	}
 	startLoad := time.Now()
 	logger.Infof(formatutil.Faint("Reading sources for target") + " " + name + "\n")
-	opts := LoadProgramOptions{
-		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     loadTests,
-		ApplyRewrites: false,
-		Platform:      "",
-		PackageConfig: nil,
-	}
-	prog, pkgs, err := LoadProgram(opts, files)
+	wholeProgramState, err := NewWholeProgramState(name, options, files, logger, cfg)
 	loadDuration := time.Since(startLoad)
-	logger.Infof("Loaded program in %3.4f s", loadDuration.Seconds())
 	if err != nil {
-		return nil, fmt.Errorf("failed to load program: %v", err)
+		return nil, fmt.Errorf("failed to load whole program: %v", err)
 	}
-	state, err := dataflow.NewInitializedAnalyzerState(prog, pkgs, logger, cfg)
+	logger.Infof("Loaded whole program state in %3.4f s", loadDuration.Seconds())
+	return wholeProgramState, nil
+}
+
+// LoadTargetWithPointer loads the target specified by the list of files provided.
+// Builds the program and then runs the pointer analysis to return a PointerState.
+func LoadTargetWithPointer(
+	name string,
+	files []string,
+	logger *config.LogGroup,
+	cfg *config.Config,
+	options Options) (*PointerState, error) {
+	wp, err := LoadTarget(name, files, logger, cfg, options)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load state: %s", err)
+		return nil, err // context for load target is enough
 	}
-	state.Target = name
-	return state, nil
+	return NewPointerState(wp)
 }

@@ -45,11 +45,11 @@ type IntraProceduralResult struct {
 }
 
 // IntraProceduralAnalysis is the main entry point of the intra procedural analysis.
-func IntraProceduralAnalysis(state *AnalyzerState,
+func IntraProceduralAnalysis(state *FlowState,
 	function *ssa.Function,
 	buildSummary bool,
 	id uint32,
-	shouldTrack func(*AnalyzerState, ssa.Node) bool,
+	shouldTrack func(*FlowState, ssa.Node) bool,
 	postBlockCallback func(*IntraAnalysisState)) (IntraProceduralResult, error) {
 	var err error
 	var sm *SummaryGraph
@@ -86,7 +86,7 @@ func IntraProceduralAnalysis(state *AnalyzerState,
 //
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
-func RunIntraProcedural(a *AnalyzerState, sm *SummaryGraph) (time.Duration, error) {
+func RunIntraProcedural(a *FlowState, sm *SummaryGraph) (time.Duration, error) {
 	start := time.Now()
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
 	// This is the only place an IntraAnalysisState is initialized
@@ -465,7 +465,7 @@ func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label 
 //   - summaries are not built on demand
 //   - the function is not filtered out by the pkg-filter (i.e. the pkg-filter matches the function when present)
 //   - the function is not already summarized by a predefined summary or has an external contract
-func ShouldBuildSummary(state *AnalyzerState, function *ssa.Function) bool {
+func ShouldBuildSummary(state *FlowState, function *ssa.Function) bool {
 	if state.Config != nil && state.Config.SummarizeOnDemand {
 		return false
 	}

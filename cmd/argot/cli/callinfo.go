@@ -23,7 +23,7 @@ import (
 )
 
 // cmdCallers shows the callers of a given summarized function
-func cmdCallers(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ bool) bool {
+func cmdCallers(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: shows the callers of a given summarized function.\n",
 			tt.Escape.Blue, cmdCallersName, tt.Escape.Reset)
@@ -40,7 +40,7 @@ func cmdCallers(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _
 }
 
 // cmdCallees shows the callers of a given summarized function
-func cmdCallees(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ bool) bool {
+func cmdCallees(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: shows the callees of a given summarized function.\n",
 			tt.Escape.Blue, cmdCalleesName, tt.Escape.Reset)
@@ -62,7 +62,7 @@ func cmdCallees(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _
 //
 // If the matching function has a summary, then the summary's info is used.
 // Otherwise, the info contained in the pointer analysis' result is used.
-func displayCallInfo(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, usePtr bool,
+func displayCallInfo(tt *term.Terminal, c *dataflow.FlowState, command Command, usePtr bool,
 	displayCallees bool, displayCallers bool) bool {
 	targetFilter := func(f *ssa.Function) bool { return f != nil }
 
@@ -96,7 +96,7 @@ func displayCallInfo(tt *term.Terminal, c *dataflow.AnalyzerState, command Comma
 	return false
 }
 
-func displayCallInfoWithSummary(s *dataflow.AnalyzerState, tt *term.Terminal,
+func displayCallInfoWithSummary(s *dataflow.FlowState, tt *term.Terminal,
 	f *ssa.Function, summary *dataflow.SummaryGraph,
 	targetFilter func(*ssa.Function) bool,
 	displayCallers bool, displayCallees bool) {
@@ -131,7 +131,7 @@ func displayCallInfoWithSummary(s *dataflow.AnalyzerState, tt *term.Terminal,
 	}
 }
 
-func displayCallInfoWithoutSummary(s *dataflow.AnalyzerState, tt *term.Terminal,
+func displayCallInfoWithoutSummary(s *dataflow.FlowState, tt *term.Terminal,
 	f *ssa.Function, targetFilter func(*ssa.Function) bool,
 	displayCallers bool, displayCallees bool) {
 	if node, ok := s.PointerAnalysis.CallGraph.Nodes[f]; ok {

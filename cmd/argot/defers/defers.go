@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -49,25 +49,25 @@ $ argot defer hello.go
 func Run(args []string, verbose bool) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     false,
 		ApplyRewrites: true,
 	}
-	program, _, err := analysis.LoadProgram(loadOptions, args)
+	cfg := config.NewDefault()
+	if verbose {
+		cfg.LogLevel = int(config.TraceLevel)
+	}
+	logger := config.NewLogGroup(cfg)
+	target, err := loadprogram.LoadTarget("", args, logger, cfg, loadOptions)
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 
-	cfg := config.NewDefault()
-	if verbose {
-		cfg.LogLevel = int(config.TraceLevel)
-	}
-
-	defers.AnalyzeProgram(program, config.NewLogGroup(cfg))
+	defers.AnalyzeProgram(target, config.NewLogGroup(cfg))
 
 	return nil
 }

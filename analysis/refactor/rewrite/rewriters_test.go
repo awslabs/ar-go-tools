@@ -36,8 +36,8 @@ func TestWithInlining(t *testing.T) {
 		t.Fatalf("Failed to load program: %s", err)
 	}
 	state, err := dataflow.NewAnalyzerState(lp.Prog, lp.Pkgs,
-		config.NewLogGroup(lp.Config), lp.Config, []func(*dataflow.AnalyzerState){
-			func(state *dataflow.AnalyzerState) {
+		config.NewLogGroup(lp.Config), lp.Config, []func(*dataflow.FlowState){
+			func(state *dataflow.FlowState) {
 				state.PopulatePointerAnalysisResult(func(function *ssa.Function) bool {
 					return true
 				})
@@ -61,8 +61,8 @@ func TestWithoutInlining(t *testing.T) {
 		t.Fatalf("Failed to load program: %s", err)
 	}
 	state, err := dataflow.NewAnalyzerState(lp.Prog, lp.Pkgs,
-		config.NewLogGroup(lp.Config), lp.Config, []func(*dataflow.AnalyzerState){
-			func(state *dataflow.AnalyzerState) {
+		config.NewLogGroup(lp.Config), lp.Config, []func(*dataflow.FlowState){
+			func(state *dataflow.FlowState) {
 				state.PopulatePointerAnalysisResult(func(function *ssa.Function) bool {
 					return true
 				})
@@ -80,7 +80,7 @@ func TestWithoutInlining(t *testing.T) {
 }
 
 func checkCalls(t *testing.T,
-	state *dataflow.AnalyzerState,
+	state *dataflow.FlowState,
 	i *ssa.Function,
 	n int,
 	expected []string,

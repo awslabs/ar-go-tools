@@ -50,7 +50,7 @@ type AnalysisResult struct {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
+func Analyze(state *df.FlowState) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -155,7 +155,7 @@ type Visitor struct {
 }
 
 // Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
-func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
+func (v *Visitor) Visit(s *df.FlowState, entrypoint df.NodeWithTrace) {
 	if v.prevEdgeInfos == nil {
 		v.prevEdgeInfos = make(map[*df.CallNodeArg][]df.EdgeInfo)
 	}
@@ -193,7 +193,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, entrypoint df.NodeWithTrace) {
 }
 
 //gocyclo:ignore
-func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) error {
+func (v *Visitor) visit(s *df.FlowState, entrypoint *df.CallNodeArg) error {
 	logger := s.Logger
 
 	pos := entrypoint.Position(s)
@@ -338,7 +338,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) error {
 							callSite.CalleeSummary = df.NewSummaryGraph(s,
 								callSite.Callee(),
 								df.GetUniqueFunctionID(),
-								func(s *df.AnalyzerState, n ssa.Node) bool { return df.IsBacktraceNode(s, nil, n) },
+								func(s *df.FlowState, n ssa.Node) bool { return df.IsBacktraceNode(s, nil, n) },
 								nil)
 							v.onDemandIntraProcedural(s, callSite.CalleeSummary)
 						}
@@ -708,7 +708,7 @@ func (v *Visitor) visit(s *df.AnalyzerState, entrypoint *df.CallNodeArg) error {
 // onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
 // This panics when the analysis fails, because it is expected that an error will cause any further result
 // to be invalid.
-func (v *Visitor) onDemandIntraProcedural(s *df.AnalyzerState, summary *df.SummaryGraph) {
+func (v *Visitor) onDemandIntraProcedural(s *df.FlowState, summary *df.SummaryGraph) {
 	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
 	elapsed, err := df.RunIntraProcedural(s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
@@ -732,7 +732,7 @@ func (v *Visitor) onDemandIntraProcedural(s *df.AnalyzerState, summary *df.Summa
 // - edgeInfo is the label of the edge from cur's node to add
 //
 // - seen is the nodes that have been visited
-func (v *Visitor) addNext(s *df.AnalyzerState,
+func (v *Visitor) addNext(s *df.FlowState,
 	stack []*df.VisitorNode,
 	cur *df.VisitorNode,
 	nextNodeWithTrace df.NodeWithTrace,
@@ -812,7 +812,7 @@ func isBaseCase(node df.GraphNode, cfg *config.Config) bool {
 }
 
 // findTrace returns a slice of all the nodes in the trace starting from end.
-func findTrace(s *df.AnalyzerState, end *df.VisitorNode) Trace {
+func findTrace(s *df.FlowState, end *df.VisitorNode) Trace {
 	trace := Trace{}
 	cur := end
 	for cur != nil {
@@ -870,7 +870,7 @@ func IsStatic(node df.GraphNode) bool {
 }
 
 // traceNode prints trace information about node.
-func traceNode(s *df.AnalyzerState, node *df.VisitorNode) {
+func traceNode(s *df.FlowState, node *df.VisitorNode) {
 	logger := s.Logger
 	if !logger.LogsTrace() {
 		return

@@ -99,7 +99,7 @@ func (e *CondError) Error() string {
 // the visitor interface of the dataflow package.
 //
 //gocyclo:ignore
-func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
+func (v *Visitor) Visit(s *df.FlowState, source df.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
@@ -686,7 +686,7 @@ func (v *Visitor) Visit(s *df.AnalyzerState, source df.NodeWithTrace) {
 
 // initEscapeAnalysisInfo initializes the information required by the escape analysis.
 // This consists mainly in storing the escape graph of the function where the source appears
-func (v *Visitor) initEscapeAnalysisInfo(s *df.AnalyzerState, source df.NodeWithTrace) {
+func (v *Visitor) initEscapeAnalysisInfo(s *df.FlowState, source df.NodeWithTrace) {
 	sourceCaller := source.Node.Graph().Parent
 	var rootKey df.KeyType
 	// Resolve the context
@@ -710,7 +710,7 @@ func (v *Visitor) initEscapeAnalysisInfo(s *df.AnalyzerState, source df.NodeWith
 // onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
 // This panics when the analysis fails, because it is expected that an error will cause any further result
 // to be invalid.
-func (v *Visitor) onDemandIntraProcedural(s *df.AnalyzerState, summary *df.SummaryGraph) {
+func (v *Visitor) onDemandIntraProcedural(s *df.FlowState, summary *df.SummaryGraph) {
 	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
 	elapsed, err := df.RunIntraProcedural(s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
@@ -735,7 +735,7 @@ func (v *Visitor) onDemandIntraProcedural(s *df.AnalyzerState, summary *df.Summa
 // - edgeInfo is the label of the edge from cur's node to toAdd
 //
 //gocyclo:ignore
-func (v *Visitor) addNext(s *df.AnalyzerState,
+func (v *Visitor) addNext(s *df.FlowState,
 	que []*df.VisitorNode,
 	cur *df.VisitorNode,
 	intermediateNode df.GraphNode,
@@ -828,7 +828,7 @@ func (v *Visitor) addNext(s *df.AnalyzerState,
 	return que
 }
 
-func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode, nextNode df.GraphNode,
+func (v *Visitor) manageEscapeContexts(s *df.FlowState, cur *df.VisitorNode, nextNode df.GraphNode,
 	nextTrace *df.CallStack) bool {
 	update := false
 
@@ -874,7 +874,7 @@ func (v *Visitor) manageEscapeContexts(s *df.AnalyzerState, cur *df.VisitorNode,
 
 // checkEscape checks that the instructions associated to the node do not involve operations that manipulate data
 // that has escape, in the state s and under the escape context escapeInfo.
-func (v *Visitor) checkEscape(s *df.AnalyzerState, node df.GraphNode, escapeInfo *EscapeInfo) {
+func (v *Visitor) checkEscape(s *df.FlowState, node df.GraphNode, escapeInfo *EscapeInfo) {
 	if escapeInfo == nil { // the escapeInfo must not be nil. A missing escapeInfo means an error in the algorithm.
 		s.AddError("missing escape graph",
 			fmt.Errorf("was missing escape graph for node %s when checking escape", node))
@@ -893,7 +893,7 @@ func (v *Visitor) checkEscape(s *df.AnalyzerState, node df.GraphNode, escapeInfo
 
 // storeEscapeGraph computes the escape graph of callee in the context where it is called with stack. stack.Label should
 // be the caller of callee
-func (v *Visitor) storeEscapeGraph(s *df.AnalyzerState, stack *df.CallStack, callNode *df.CallNode) bool {
+func (v *Visitor) storeEscapeGraph(s *df.FlowState, stack *df.CallStack, callNode *df.CallNode) bool {
 	if callNode == nil {
 		return false
 	}
@@ -931,7 +931,7 @@ func (v *Visitor) storeEscapeGraph(s *df.AnalyzerState, stack *df.CallStack, cal
 	return true
 }
 
-func (v *Visitor) storeEscapeGraphInContext(s *df.AnalyzerState, f *ssa.Function, key df.KeyType,
+func (v *Visitor) storeEscapeGraphInContext(s *df.FlowState, f *ssa.Function, key df.KeyType,
 	ctx df.EscapeCallContext) {
 	if v.escapeGraphs[f] == nil {
 		v.escapeGraphs[f] = map[df.KeyType]*EscapeInfo{}
@@ -943,7 +943,7 @@ func (v *Visitor) storeEscapeGraphInContext(s *df.AnalyzerState, f *ssa.Function
 
 // raiseAlarm raises an alarm (logs a warning message) if that alarm has not already been raised. This avoids repeated
 // warning messages to the user.
-func (v *Visitor) raiseAlarm(s *df.AnalyzerState, pos token.Pos, msg string) {
+func (v *Visitor) raiseAlarm(s *df.FlowState, pos token.Pos, msg string) {
 	if _, alreadyRaised := v.alarms[pos]; !alreadyRaised {
 		s.Logger.Warnf(msg)
 		v.alarms[pos] = msg

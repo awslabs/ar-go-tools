@@ -107,7 +107,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	}
 	cfg.SlicingProblems = []config.SlicingSpec{{BacktracePoints: cfg.TaintTrackingProblems[0].Sinks}}
 	log := config.NewLogGroup(cfg)
-	state, err := dataflow.NewInitializedAnalyzerState(program, lp.Pkgs, log, cfg)
+	state, err := dataflow.NewFlowState(program, lp.Pkgs, log, cfg)
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
@@ -122,7 +122,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// 	t.Log(trace)
 	// }
 
-	s, err := dataflow.NewInitializedAnalyzerState(program, lp.Pkgs, log, cfg)
+	s, err := dataflow.NewFlowState(program, lp.Pkgs, log, cfg)
 	if err != nil {
 		t.Fatalf("failed to create state for result inspection: %s", err)
 	}
@@ -187,7 +187,7 @@ func isExpected(expected analysistest.TargetToSources, sourcePos analysistest.LP
 
 // reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func reachedSinkPositions(s *dataflow.AnalyzerState, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
+func reachedSinkPositions(s *dataflow.FlowState, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 	prog := s.Program
 	for sink, traces := range res.Traces[""] {

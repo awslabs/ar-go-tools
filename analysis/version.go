@@ -15,4 +15,4 @@
 package analysis
 
 // Version is the last tagged version of the analysis tool
-const Version = "v0.3.2"
+const Version = "v0.3.3"

@@ -12,20 +12,64 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dataflow
+package loadprogram
 
 import (
+	"fmt"
 	"go/types"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// This file contains functions for running the pointer analysis on a program. The pointer analysis is implemented in
-// the x/tools/go/pointer package.
+// PointerState extends the WholeProgramState with the pointer analysis information.
+type PointerState struct {
+	*WholeProgramState
+
+	// The pointer analysis result
+	PointerAnalysis *pointer.Result
+
+	// reachableFunctions is redefined for this state
+	reachableFunctions map[*ssa.Function]bool
+}
+
+// NewPointerState returns a pointer state that extends the whole program state passed as argument with pointer analysis
+// information.
+func NewPointerState(w *WholeProgramState) (*PointerState, error) {
+	start := time.Now()
+	ps := &PointerState{
+		WholeProgramState: w,
+		PointerAnalysis:   nil,
+	}
+	ps.Logger.Infof("Gathering values and starting pointer analysis...")
+	reachable, err := w.ReachableFunctions()
+	if err != nil {
+		return nil, fmt.Errorf("error computing initial reachable functions for pointer state: %s", err)
+	}
+	ptrResult, err := DoPointerAnalysis(ps.Config, ps.Program, summaries.IsUserDefinedFunction, reachable)
+	if err != nil {
+		ps.AddError("pointeranalysis", err)
+	}
+	ps.PointerAnalysis = ptrResult
+	ps.Logger.Infof("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
+	return ps, nil
+}
+
+// ReachableFunctions returns the set of reachable functions from main and init according to the pointer analysis
+// callgraph.
+func (s *PointerState) ReachableFunctions() map[*ssa.Function]bool {
+	if s.reachableFunctions == nil {
+		s.reachableFunctions = make(map[*ssa.Function]bool)
+		s.reachableFunctions = lang.CallGraphReachable(s.PointerAnalysis.CallGraph, false, false)
+		return s.reachableFunctions
+	}
+	return s.reachableFunctions
+}
 
 // DoPointerAnalysis runs the pointer analysis on the program p, marking every Value in the functions filtered by
 // functionFilter as potential Value to query for aliasing.

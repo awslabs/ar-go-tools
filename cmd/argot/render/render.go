@@ -29,6 +29,8 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
@@ -79,12 +81,16 @@ func filterFn(edge *callgraph.Edge) bool {
 }
 
 // WriteCrossFunctionGraph writes a graphviz representation of the inter-procedural dataflow graph to w.
-func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, program *ssa.Program, w io.Writer) error {
+func WriteCrossFunctionGraph(wps *loadprogram.WholeProgramState, w io.Writer) error {
 	// every function should be included in the graph
 	// building the graph doesn't require souce/sink logic
-	state, err := dataflow.NewInitializedAnalyzerState(program, nil, logger, cfg)
+	ps, err := loadprogram.NewPointerState(wps)
 	if err != nil {
-		return fmt.Errorf("failed to build analyzer state: %w", err)
+		return fmt.Errorf("failed to build analyzer pointer state: %w", err)
+	}
+	flowState, err := dataflow.NewFlowState(ps)
+	if err != nil {
+		return fmt.Errorf("failed to build analyzer data flow state: %w", err)
 	}
 
 	numRoutines := runtime.NumCPU() - 1
@@ -92,17 +98,17 @@ func WriteCrossFunctionGraph(cfg *config.Config, logger *config.LogGroup, progra
 		numRoutines = 1
 	}
 
-	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
+	analysis.RunIntraProceduralPass(flowState, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		ShouldTrack:        func(*dataflow.AnalyzerState, ssa.Node) bool { return true }, //argot:ignore df-intra-uses
+		ShouldTrack:        func(*dataflow.FlowState, ssa.Node) bool { return true }, //argot:ignore df-intra-uses
 	})
 
-	state, err = render.BuildCrossFunctionGraph(state)
+	flowState, err = render.BuildCrossFunctionGraph(flowState)
 	if err != nil {
 		return fmt.Errorf("failed to build inter-procedural graph: %w", err)
 	}
 
-	state.FlowGraph.Print(w)
+	flowState.FlowGraph.Print(w)
 
 	return nil
 }
@@ -238,7 +244,7 @@ func packageToFile(p *ssa.Program, pkg *ssa.Package, filename string) {
 
 // WriteHTMLCallgrph writes the callgraph in html format to the outpath provided
 func WriteHTMLCallgrph(program *ssa.Program, cg *callgraph.Graph, outPath string) error {
-	reachable := dataflow.CallGraphReachable(cg, false, false)
+	reachable := lang.CallGraphReachable(cg, false, false)
 	htmlOut, err := os.Create(outPath)
 	if err != nil {
 		return err

@@ -22,7 +22,7 @@ import (
 
 // ResolveSsaNode tests whether a pair of annotation kind and tag apply to a specific ssa node.
 // The tag "_" matches anything.
-func (s *AnalyzerState) ResolveSsaNode(kind annotations.AnnotationKind, tag string, node ssa.Node) bool {
+func (s *FlowState) ResolveSsaNode(kind annotations.AnnotationKind, tag string, node ssa.Node) bool {
 	switch n := node.(type) {
 	case *ssa.Call:
 		if n != nil {
@@ -46,7 +46,7 @@ func (s *AnalyzerState) ResolveSsaNode(kind annotations.AnnotationKind, tag stri
 
 // ResolveGraphNode tests whether a pair of annotation kind and tag apply to a specific dataflow graph node.
 // The tag "_" matches anything.
-func (s *AnalyzerState) ResolveGraphNode(kind annotations.AnnotationKind, tag string, node GraphNode) bool {
+func (s *FlowState) ResolveGraphNode(kind annotations.AnnotationKind, tag string, node GraphNode) bool {
 	switch n := node.(type) {
 	case *CallNode:
 		// CallNodes can only be sources

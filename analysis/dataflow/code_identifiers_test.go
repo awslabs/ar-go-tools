@@ -33,9 +33,9 @@ type functionToNode map[*ssa.Function][]ssa.Node
 
 type PackageToNodes map[*ssa.Package]functionToNode
 
-type nodeIDFunction func(*dataflow.AnalyzerState, ssa.Node) bool
+type nodeIDFunction func(*dataflow.FlowState, ssa.Node) bool
 
-func NewPackagesMap(s *dataflow.AnalyzerState, f nodeIDFunction) PackageToNodes {
+func NewPackagesMap(s *dataflow.FlowState, f nodeIDFunction) PackageToNodes {
 	packageMap := make(PackageToNodes)
 	for _, pkg := range s.Program.AllPackages() {
 		pkgMap := newPackageMap(s, pkg, f)
@@ -46,7 +46,7 @@ func NewPackagesMap(s *dataflow.AnalyzerState, f nodeIDFunction) PackageToNodes 
 	return packageMap
 }
 
-func newPackageMap(s *dataflow.AnalyzerState, pkg *ssa.Package, f nodeIDFunction) functionToNode {
+func newPackageMap(s *dataflow.FlowState, pkg *ssa.Package, f nodeIDFunction) functionToNode {
 	fMap := make(functionToNode)
 	for _, mem := range pkg.Members {
 		switch fn := mem.(type) {
@@ -57,7 +57,7 @@ func newPackageMap(s *dataflow.AnalyzerState, pkg *ssa.Package, f nodeIDFunction
 	return fMap
 }
 
-func populateFunctionMap(s *dataflow.AnalyzerState, fMap functionToNode, current *ssa.Function, f nodeIDFunction) {
+func populateFunctionMap(s *dataflow.FlowState, fMap functionToNode, current *ssa.Function, f nodeIDFunction) {
 	var sources []ssa.Node
 	for _, b := range current.Blocks {
 		for _, instr := range b.Instrs {
@@ -80,14 +80,14 @@ var taintSourcesAnalyzer = &analysis.Analyzer{
 }
 
 // newSourceMap builds a SourceMap by inspecting the ssa for each function inside each package.
-func newSourceMap(s *dataflow.AnalyzerState) PackageToNodes {
+func newSourceMap(s *dataflow.FlowState) PackageToNodes {
 	return NewPackagesMap(s, dataflow.IsNodeOfInterest)
 }
 
 // newSinkMap builds a SinkMap by inspecting the ssa for each function inside each package.
-func newSinkMap(s *dataflow.AnalyzerState) PackageToNodes {
+func newSinkMap(s *dataflow.FlowState) PackageToNodes {
 	return NewPackagesMap(s,
-		func(s *dataflow.AnalyzerState, node ssa.Node) bool {
+		func(s *dataflow.FlowState, node ssa.Node) bool {
 			return dataflow.IsMatchingCodeIDWithCallee(s.Config.IsSomeSink, nil, node)
 		})
 }
@@ -99,7 +99,7 @@ func runSourcesAnalysis(pass *analysis.Pass) (interface{}, error) {
 	}
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 	s, err := dataflow.NewAnalyzerState(ssaInfo.Pkg.Prog, nil, config.NewLogGroup(testConfig), testConfig,
-		[]func(state *dataflow.AnalyzerState){})
+		[]func(state *dataflow.FlowState){})
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func runSinkAnalysis(pass *analysis.Pass) (interface{}, error) {
 	}
 	ssaInfo := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 	s, err := dataflow.NewAnalyzerState(ssaInfo.Pkg.Prog, nil, config.NewLogGroup(testConfig), testConfig,
-		[]func(state *dataflow.AnalyzerState){})
+		[]func(state *dataflow.FlowState){})
 	if err != nil {
 		return nil, err
 	}

@@ -29,7 +29,7 @@ import (
 
 // cmdStats prints statistics about the program
 // Command is stats [all|general|closures]
-func cmdStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, withTest bool) bool {
+func cmdStats(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : show stats about program\n", tt.Escape.Blue, cmdStatsName, tt.Escape.Reset)
 		writeFmt(tt, "\t  subcommands:\n")
@@ -69,7 +69,7 @@ func cmdStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, wit
 	return false
 }
 
-func doGeneralStats(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) {
+func doGeneralStats(tt *term.Terminal, c *dataflow.FlowState, _ Command) {
 	reachableFunctions := c.ReachableFunctions()
 	result := analysis.SSAStatistics(&reachableFunctions, []string{})
 
@@ -80,7 +80,7 @@ func doGeneralStats(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command) {
 	writeFmt(tt, " # instructions                %d\n", result.NumberOfInstructions)
 }
 
-func doDeferStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) {
+func doDeferStats(tt *term.Terminal, c *dataflow.FlowState, command Command) {
 	reachableFunctions := c.ReachableFunctions()
 	results := analysis.DeferStats(&reachableFunctions)
 	writeFmt(tt, "%d functions had defers\n", results.NumFunctionsWithDefers)
@@ -95,7 +95,7 @@ func doDeferStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command)
 	}
 }
 
-func doClosureStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) {
+func doClosureStats(tt *term.Terminal, c *dataflow.FlowState, command Command) {
 	stats, err := analysis.ComputeClosureUsageStats(c)
 	if err != nil {
 		WriteErr(tt, "could not compute closure statistics.")
@@ -146,7 +146,7 @@ func doClosureStats(tt *term.Terminal, c *dataflow.AnalyzerState, command Comman
 	}
 }
 
-func printInstrsWithParent[T any](tt *term.Terminal, c *dataflow.AnalyzerState, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
+func printInstrsWithParent[T any](tt *term.Terminal, c *dataflow.FlowState, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
 	var fnames []NameAndLoc
 	for instruction := range instrs {
 		loc := c.Program.Fset.Position(instruction.Parent().Pos())

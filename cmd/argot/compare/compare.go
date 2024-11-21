@@ -29,10 +29,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -86,19 +87,19 @@ func NewFlags(args []string) (Flags, error) {
 // Run runs the compare analysis with flags.
 func Run(flags Flags) error {
 	// The strings constants are used only here
-	var callgraphAnalysisMode dataflow.CallgraphAnalysisMode
+	var callgraphAnalysisMode lang.CallgraphAnalysisMode
 	// cannot be null here
 	switch flags.ptrMode {
 	case "pointer":
-		callgraphAnalysisMode = dataflow.PointerAnalysis
+		callgraphAnalysisMode = lang.PointerAnalysis
 	case "cha":
-		callgraphAnalysisMode = dataflow.ClassHierarchyAnalysis
+		callgraphAnalysisMode = lang.ClassHierarchyAnalysis
 	case "rta":
-		callgraphAnalysisMode = dataflow.RapidTypeAnalysis
+		callgraphAnalysisMode = lang.RapidTypeAnalysis
 	case "vta":
-		callgraphAnalysisMode = dataflow.VariableTypeAnalysis
+		callgraphAnalysisMode = lang.VariableTypeAnalysis
 	case "static":
-		callgraphAnalysisMode = dataflow.StaticAnalysis
+		callgraphAnalysisMode = lang.StaticAnalysis
 	default:
 		return fmt.Errorf("analysis %s not recognized", flags.ptrMode)
 	}
@@ -108,13 +109,14 @@ func Run(flags Flags) error {
 		return fmt.Errorf("error setting config: %v", err)
 	}
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	state, err := analysis.LoadAnalyzerState(loadOptions, flags.FlagSet.Args(), cfg)
+	logger := config.NewLogGroup(cfg)
+	state, err := loadprogram.LoadTarget("", flags.FlagSet.Args(), logger, cfg, loadOptions)
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}
@@ -169,7 +171,7 @@ func setConfig(configPath string, cfg **config.Config) error {
 	return nil
 }
 
-func doComputeCallgraph(state *dataflow.AnalyzerState, mode dataflow.CallgraphAnalysisMode) (*callgraph.Graph, error) {
+func doComputeCallgraph(state *loadprogram.WholeProgramState, mode lang.CallgraphAnalysisMode) (*callgraph.Graph, error) {
 	fmt.Fprintln(os.Stderr, formatutil.Faint("Computing call graph"))
 	start := time.Now()
 	cg, err := mode.ComputeCallgraph(state.Program)
@@ -181,9 +183,9 @@ func doComputeCallgraph(state *dataflow.AnalyzerState, mode dataflow.CallgraphAn
 	return cg, nil
 }
 
-func doCompareSymbols(state *dataflow.AnalyzerState, cg *callgraph.Graph, symbols map[string]bool) {
+func doCompareSymbols(state *loadprogram.WholeProgramState, cg *callgraph.Graph, symbols map[string]bool) {
 	callgraphReachable := make(map[string]bool)
-	for entry := range dataflow.CallGraphReachable(cg, false, false) {
+	for entry := range lang.CallGraphReachable(cg, false, false) {
 		callgraphReachable[entry.String()] = true
 	}
 
@@ -271,7 +273,7 @@ func funcsToStrings(funcs map[*ssa.Function]bool) map[string]bool {
 	return names
 }
 
-func findReachableNames(state *dataflow.AnalyzerState) map[string]bool {
+func findReachableNames(state *loadprogram.WholeProgramState) map[string]bool {
 	funcs := reachability.FindReachable(state, false, false, nil)
 	return funcsToStrings(funcs)
 }

@@ -23,9 +23,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -38,7 +38,7 @@ const Usage = `Interactive CLI for exploring the program and running various ana
 Usage:
   argot cli [options] <package path(s)>`
 
-var commands = map[string]func(tt *term.Terminal, s *dataflow.AnalyzerState, command Command, withTest bool) bool{
+var commands = map[string]func(tt *term.Terminal, s *dataflow.FlowState, command Command, withTest bool) bool{
 	cmdBuildGraphName:   cmdBuildGraph,
 	cmdCallersName:      cmdCallers,
 	cmdCalleesName:      cmdCallees,
@@ -96,19 +96,19 @@ func Run(flags tools.CommonFlags) {
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 	state.Args = flags.FlagSet.Args()
 	// Load the program
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	program, pkgs, err := analysis.LoadProgram(loadOptions, state.Args)
+	program, pkgs, err := loadprogram.Do(loadOptions, state.Args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
 		return
 	}
 	// Initialize an analyzer state
-	state, err := dataflow.NewInitializedAnalyzerState(program, pkgs, config.NewLogGroup(pConfig), pConfig)
+	state, err := dataflow.NewFlowState(program, pkgs, config.NewLogGroup(pConfig), pConfig)
 	if err != nil {
 		panic(err)
 	}
@@ -163,7 +163,7 @@ func attemptSettingConfig(pConfig **config.Config, dir string, filename string) 
 }
 
 // run implements the command line tool, calling interpret for each command until the exit command is input
-func run(c *dataflow.AnalyzerState, withTest bool) {
+func run(c *dataflow.FlowState, withTest bool) {
 	oldState /* const */, err := term.MakeRaw(int(os.Stdin.Fd()))
 	state.TermWidth, _, _ = term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {
@@ -189,7 +189,7 @@ func run(c *dataflow.AnalyzerState, withTest bool) {
 }
 
 // interpret returns true to stop
-func interpret(tt *term.Terminal, c *dataflow.AnalyzerState, command string, withTest bool) bool {
+func interpret(tt *term.Terminal, c *dataflow.FlowState, command string, withTest bool) bool {
 	if command == "" {
 		return false
 	}

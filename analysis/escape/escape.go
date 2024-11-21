@@ -168,7 +168,7 @@ func IsEscapeTracked(t types.Type) bool {
 }
 
 // getCallees wraps ResolveCallee from the analyzer state, giving an error if it fails or doesn't exist.
-func (ea *functionAnalysisState) getCallees(instr ssa.CallInstruction) (map[*ssa.Function]dataflow.CalleeInfo, error) {
+func (ea *functionAnalysisState) getCallees(instr ssa.CallInstruction) (map[*ssa.Function]lang.CalleeInfo, error) {
 	if ea.prog.state == nil {
 		return nil, fmt.Errorf("no analyzer state")
 	}
@@ -1263,7 +1263,7 @@ func (ea *functionAnalysisState) addToBlockWorklist(block *ssa.BasicBlock) {
 	}
 }
 
-func graphTooLarge(state *dataflow.AnalyzerState, g *EscapeGraph) bool {
+func graphTooLarge(state *dataflow.FlowState, g *EscapeGraph) bool {
 	if state == nil || g == nil {
 		return false
 	}
@@ -1336,7 +1336,7 @@ type ProgramAnalysisState struct {
 	summaries     map[*ssa.Function]*functionAnalysisState
 	globalNodes   *globalNodeGroup
 	logger        *config.LogGroup
-	state         *dataflow.AnalyzerState
+	state         *dataflow.FlowState
 	builtWorklist bool
 }
 
@@ -1437,7 +1437,7 @@ func (ea *functionAnalysisState) Resummarize() (changed bool) {
 // EscapeAnalysis computes the bottom-up escape summaries of functions matching the package filter.
 //
 //gocyclo:ignore
-func EscapeAnalysis(state *dataflow.AnalyzerState, root *callgraph.Node) (*ProgramAnalysisState, error) {
+func EscapeAnalysis(state *dataflow.FlowState, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
 		globalNodes: newGlobalNodeGroup(),

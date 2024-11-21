@@ -74,7 +74,7 @@ type NameAndLoc struct {
 // funcsMatchingCommand returns the function matching the argument of the command or all functions if there
 // is no argument
 // Returns an empty list if any error is encountered
-func funcsMatchingCommand(tt *term.Terminal, c *dataflow.AnalyzerState, command Command) []*ssa.Function {
+func funcsMatchingCommand(tt *term.Terminal, c *dataflow.FlowState, command Command) []*ssa.Function {
 	rString := ".*" // default is to match anything
 	if len(command.Args) >= 1 {
 		// otherwise build regex from arguments
@@ -94,7 +94,7 @@ func funcsMatchingCommand(tt *term.Terminal, c *dataflow.AnalyzerState, command 
 	return s
 }
 
-func findFunc(c *dataflow.AnalyzerState, target *regexp.Regexp) []*ssa.Function {
+func findFunc(c *dataflow.FlowState, target *regexp.Regexp) []*ssa.Function {
 	var funcs []*ssa.Function
 	for f := range c.ReachableFunctions() {
 		if target.MatchString(f.String()) {

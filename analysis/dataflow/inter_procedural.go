@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
@@ -27,7 +28,7 @@ import (
 
 // Visitor represents a visitor that runs an inter-procedural analysis from entrypoint.
 type Visitor interface {
-	Visit(s *AnalyzerState, entrypoint NodeWithTrace)
+	Visit(s *FlowState, entrypoint NodeWithTrace)
 }
 
 // InterProceduralFlowGraph represents an inter-procedural data flow graph.
@@ -44,7 +45,7 @@ type InterProceduralFlowGraph struct {
 	Summaries map[*ssa.Function]*SummaryGraph
 
 	// AnalyzerState is a pointer to the analyzer state from which the dataflow graph is computed
-	AnalyzerState *AnalyzerState
+	AnalyzerState *FlowState
 
 	// built indicates whether this graph has been built
 	// this should only be set to true by BuildGraph() and be false by default
@@ -56,7 +57,7 @@ type InterProceduralFlowGraph struct {
 
 // NewInterProceduralFlowGraph returns a new non-built cross function flow graph.
 func NewInterProceduralFlowGraph(summaries map[*ssa.Function]*SummaryGraph,
-	state *AnalyzerState) InterProceduralFlowGraph {
+	state *FlowState) InterProceduralFlowGraph {
 
 	return InterProceduralFlowGraph{
 		Summaries:     summaries,
@@ -279,7 +280,7 @@ type ScanningSpec struct {
 // This function does nothing if there are no summaries
 // (i.e. `len(g.summaries) == 0`)
 // or if `cfg.SkipInterprocedural` is set to true.
-func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *AnalyzerState, visitor Visitor, spec ScanningSpec) {
+func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *FlowState, visitor Visitor, spec ScanningSpec) {
 	// Skip the pass if user configuration demands it
 	if !c.Config.SummarizeOnDemand && len(g.Summaries) == 0 {
 		c.Logger.Infof("Skipping inter-procedural pass: no summaries, and not summarizing on demand.")
@@ -423,7 +424,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 	logger := g.AnalyzerState.Logger
 
 	// If it's not an interface contract, attempt to just find the summary in the dataflow graph's computed summaries
-	if node.callee.Type != InterfaceContract {
+	if node.callee.Type != lang.InterfaceContract {
 		calleeSummary = g.findSummary(node.Callee(), nameAliases)
 	}
 
@@ -531,7 +532,7 @@ func (g *InterProceduralFlowGraph) summaryNotFound(node *CallNode) {
 
 // openCoverage opens the coverage file, if the config requires it.
 // the caller is responsible for closing the file if non-nil
-func openCoverage(c *AnalyzerState) *os.File {
+func openCoverage(c *FlowState) *os.File {
 	var err error
 	var coverage *os.File
 
@@ -551,7 +552,7 @@ func openCoverage(c *AnalyzerState) *os.File {
 
 // openSummaries returns a non-nil opened file if the configuration is set properly
 // the caller is responsible for closing the file if non-nil
-func openSummaries(c *AnalyzerState) *os.File {
+func openSummaries(c *FlowState) *os.File {
 	var err error
 	var summariesFile *os.File
 
@@ -606,7 +607,7 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 // the summary is constructed by running the intra-procedural dataflow analysis.
 // If the summary was not already in the flow graph of the state, it creates a new summary, adds it to the flow graph
 // and then runs the intra-procedural dataflow analysis.
-func BuildSummary(s *AnalyzerState, function *ssa.Function) *SummaryGraph {
+func BuildSummary(s *FlowState, function *ssa.Function) *SummaryGraph {
 	summary := s.FlowGraph.Summaries[function]
 	if summary != nil && summary.Constructed {
 		return summary

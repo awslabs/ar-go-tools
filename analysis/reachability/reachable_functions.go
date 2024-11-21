@@ -20,8 +20,8 @@ import (
 	"go/types"
 	"sort"
 
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -158,7 +158,7 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 // graph to record cross-package function calls.
 //
 // The return value is a map from reachable *ssa.Function values to true.
-func FindReachable(state *dataflow.AnalyzerState, excludeMain bool, excludeInit bool, graph DependencyGraph) map[*ssa.Function]bool {
+func FindReachable(state *loadprogram.WholeProgramState, excludeMain bool, excludeInit bool, graph DependencyGraph) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(state.Program)
 	state.Logger.Infof("%d SSA functions\n", len(allFunctions))
@@ -200,7 +200,9 @@ func FindReachable(state *dataflow.AnalyzerState, excludeMain bool, excludeInit 
 
 // ReachableFunctionsAnalysis runs the reachable function analysis. Main and Init can be excluded using the
 // boolean flags. The analysis prints the reachable functions on standard output.
-func ReachableFunctionsAnalysis(state *dataflow.AnalyzerState, excludeMain bool, excludeInit bool, jsonFlag bool) {
+//
+// TODO: make it parametric on a state with a callgraph interface
+func ReachableFunctionsAnalysis(state *loadprogram.WholeProgramState, excludeMain bool, excludeInit bool, jsonFlag bool) {
 	reachable := FindReachable(state, excludeMain, excludeInit, nil)
 
 	functionNames := make([]string, 0, len(reachable))

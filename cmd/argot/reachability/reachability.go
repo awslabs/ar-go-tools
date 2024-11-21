@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -87,13 +87,14 @@ func Run(flags Flags) error {
 		}
 	}
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	state, err := analysis.LoadAnalyzerState(loadOptions, flags.FlagSet.Args(), cfg)
+	logger := config.NewLogGroup(cfg)
+	state, err := loadprogram.LoadTarget("", flags.FlagSet.Args(), logger, cfg, loadOptions)
 	if err != nil {
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)
 	}

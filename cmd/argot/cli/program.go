@@ -27,7 +27,7 @@ import (
 
 // cmdLoad implements the "load" command that loads a program into the tool.
 // Once it updates the state.Args, it calls the rebuild command to build the program and the state.
-func cmdLoad(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, withTest bool) bool {
+func cmdLoad(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : load new program\n", tt.Escape.Blue, cmdLoadName, tt.Escape.Reset)
 		return false
@@ -43,7 +43,7 @@ func cmdLoad(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, with
 
 // cmdRebuild implements the rebuild command. It reloads the current program and rebuilds the state including the
 // pointer analysis and callgraph information.
-func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, withTest bool) bool {
+func cmdRebuild(tt *term.Terminal, c *dataflow.FlowState, _ Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : rebuild the program being analyzed, including analyzer state.\n",
 			tt.Escape.Blue, cmdRebuildName, tt.Escape.Reset)
@@ -64,7 +64,7 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, withTes
 		return false
 	}
 	// Build the newState with all analyses
-	newState, err := dataflow.NewInitializedAnalyzerState(program, pkgs, c.Logger, c.Config)
+	newState, err := dataflow.NewFlowState(program, pkgs, c.Logger, c.Config)
 	if err != nil {
 		WriteErr(tt, "error building analyzer state: %s", err)
 		WriteErr(tt, "state is left unchanged")
@@ -89,7 +89,7 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, withTes
 
 // cmdReconfig implements the reconfig command and reloads the configuration file. If a new config file is specified,
 // then it will load that new config file.
-func cmdReconfig(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ bool) bool {
+func cmdReconfig(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : load the specified config file\n",
 			tt.Escape.Blue, cmdReconfigName, tt.Escape.Reset)

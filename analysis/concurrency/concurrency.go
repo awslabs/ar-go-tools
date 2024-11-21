@@ -25,7 +25,7 @@ import (
 
 // AnalysisResult contains all the information resulting from the Analyze function
 type AnalysisResult struct {
-	AnalyzerState *dataflow.AnalyzerState
+	AnalyzerState *dataflow.FlowState
 
 	// Ids contains the indices of Go calls. Ids[0] is always nil
 	Ids []*ssa.Go
@@ -43,7 +43,7 @@ type AnalysisResult struct {
 // Analyze runs all the concurrency specific analyses on the program with the configuration provided.
 func Analyze(logger *config.LogGroup, config *config.Config, program *ssa.Program) (AnalysisResult, error) {
 
-	state, err := dataflow.NewInitializedAnalyzerState(program, nil, logger, config)
+	state, err := dataflow.NewFlowState(program, nil, logger, config)
 	if err != nil {
 		return AnalysisResult{}, err
 	}
@@ -59,7 +59,7 @@ func Analyze(logger *config.LogGroup, config *config.Config, program *ssa.Progra
 // - a first pass to collect all occurrences of `go ...` instructions
 //
 // - a second pass to mark function with the all the `go ...` instructions they may be called from
-func RunAnalysis(state *dataflow.AnalyzerState) (AnalysisResult, error) {
+func RunAnalysis(state *dataflow.FlowState) (AnalysisResult, error) {
 	var callID uint32
 
 	// goCalls maps from a goroutine instruction to a callID
@@ -137,7 +137,7 @@ func RunAnalysis(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 	}, nil
 }
 
-func printGoCallInformation(state *dataflow.AnalyzerState, call *ssa.Go) {
+func printGoCallInformation(state *dataflow.FlowState, call *ssa.Go) {
 	if call == nil {
 		return
 	}

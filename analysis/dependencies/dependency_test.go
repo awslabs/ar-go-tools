@@ -77,7 +77,7 @@ func TestSamplePackageWorkerDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}
-	state, err := dataflow.NewAnalyzerState(program, pkgs, logger, cfg, []func(state *dataflow.AnalyzerState){})
+	state, err := dataflow.NewAnalyzerState(program, pkgs, logger, cfg, []func(state *dataflow.FlowState){})
 	if err != nil {
 		t.Fatalf("error starting state: %s", err)
 	}

@@ -31,7 +31,7 @@ type IntraAnalysisState struct {
 	flowInfo *FlowInformation
 
 	// the analysis parentAnalyzerState containing pointer information, callgraph, ...
-	parentAnalyzerState *AnalyzerState
+	parentAnalyzerState *FlowState
 
 	// changeFlag keeps track of changes in the analysis state and is reset each time a new block is visited
 	changeFlag bool
@@ -66,7 +66,7 @@ type IntraAnalysisState struct {
 	freeVarAliases []map[*ssa.FreeVar]bool
 
 	// shouldTrack returns true if dataflow from the ssa node should be tracked
-	shouldTrack func(*AnalyzerState, ssa.Node) bool
+	shouldTrack func(*FlowState, ssa.Node) bool
 
 	// postBlockCallback is called after each block if it is non-nil. Useful for debugging purposes.
 	postBlockCallback func(*IntraAnalysisState)

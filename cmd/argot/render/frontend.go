@@ -23,9 +23,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
@@ -85,18 +85,18 @@ func NewFlags(args []string) (Flags, error) {
 //gocyclo:ignore
 func Run(flags Flags) error {
 	// The strings constants are used only here
-	var callgraphAnalysisMode dataflow.CallgraphAnalysisMode
+	var callgraphAnalysisMode lang.CallgraphAnalysisMode
 	switch flags.cgAnalysis {
 	case "pointer":
-		callgraphAnalysisMode = dataflow.PointerAnalysis
+		callgraphAnalysisMode = lang.PointerAnalysis
 	case "cha":
-		callgraphAnalysisMode = dataflow.ClassHierarchyAnalysis
+		callgraphAnalysisMode = lang.ClassHierarchyAnalysis
 	case "rta":
-		callgraphAnalysisMode = dataflow.RapidTypeAnalysis
+		callgraphAnalysisMode = lang.RapidTypeAnalysis
 	case "vta":
-		callgraphAnalysisMode = dataflow.VariableTypeAnalysis
+		callgraphAnalysisMode = lang.VariableTypeAnalysis
 	case "static":
-		callgraphAnalysisMode = dataflow.StaticAnalysis
+		callgraphAnalysisMode = lang.StaticAnalysis
 	default:
 		return fmt.Errorf("analysis %q not recognized", flags.cgAnalysis)
 	}
@@ -110,16 +110,16 @@ func Run(flags Flags) error {
 			return fmt.Errorf("could not load config %q", flags.ConfigPath)
 		}
 	}
+	logger := config.NewLogGroup(renderConfig)
+	logger.Infof("Reading sources")
 
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	program, _, err := analysis.LoadProgram(loadOptions, flags.FlagSet.Args())
+	wps, err := loadprogram.NewWholeProgramState("", loadOptions, flags.FlagSet.Args(), logger, renderConfig)
 	if err != nil {
 		return fmt.Errorf("could not load program: %v", err)
 	}
@@ -129,7 +129,7 @@ func Run(flags Flags) error {
 	if flags.cgOut != "" || flags.htmlOut != "" {
 		fmt.Fprintf(os.Stderr, formatutil.Faint("Computing call graph")+"\n")
 		start := time.Now()
-		cg, err = callgraphAnalysisMode.ComputeCallgraph(program)
+		cg, err = callgraphAnalysisMode.ComputeCallgraph(wps.Program)
 		cgComputeDuration := time.Since(start).Seconds()
 		if err != nil {
 			return fmt.Errorf("could not compute callgraph: %v", err)
@@ -152,7 +152,7 @@ func Run(flags Flags) error {
 
 	if flags.htmlOut != "" {
 		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing call graph in "+flags.htmlOut+"\n"))
-		err = WriteHTMLCallgrph(program, cg, flags.htmlOut)
+		err = WriteHTMLCallgrph(wps.Program, cg, flags.htmlOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not print callgraph: %v", err)
 		}
@@ -166,14 +166,14 @@ func Run(flags Flags) error {
 			return fmt.Errorf("could not create dataflow graph output file: %v", err)
 		}
 		defer f.Close()
-		if err := WriteCrossFunctionGraph(renderConfig, config.NewLogGroup(renderConfig), program, f); err != nil {
+		if err := WriteCrossFunctionGraph(wps, f); err != nil {
 			return fmt.Errorf("could not generate inter-procedural flow graph: %v", err)
 		}
 	}
 
 	if flags.ssaOut != "" {
 		fmt.Fprintf(os.Stderr, formatutil.Faint("Generating SSA in ")+flags.ssaOut+"\n")
-		err := OutputSsaPackages(program, flags.ssaOut)
+		err := OutputSsaPackages(wps.Program, flags.ssaOut)
 		if err != nil {
 			return fmt.Errorf("could not print ssa form: %v", err)
 		}

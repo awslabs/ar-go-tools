@@ -29,7 +29,7 @@ import (
 )
 
 // cmdFocus puts a given function into focus by setting state.CurrentFunction
-func cmdFocus(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ bool) bool {
+func cmdFocus(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: focus on a specific function.\n", tt.Escape.Blue, cmdFocusName,
 			tt.Escape.Reset)
@@ -67,7 +67,7 @@ func cmdFocus(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ b
 }
 
 // cmdPackage prints information about the package of the current function
-func cmdPackage(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ bool) bool {
+func cmdPackage(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
 	if c == nil {
 		if state.CurrentFunction != nil {
 			writeFmt(tt, "\t- %s%s%s: show package of current function.\n", tt.Escape.Blue, cmdPackageName,
@@ -100,7 +100,7 @@ func cmdPackage(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _
 }
 
 // cmdUnfocus removes the focus on the current function (sets state.CurrentFunction to nil and resets the prompt)
-func cmdUnfocus(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, _ bool) bool {
+func cmdUnfocus(tt *term.Terminal, c *dataflow.FlowState, _ Command, _ bool) bool {
 	if c == nil {
 		if state.CurrentFunction != nil {
 			writeFmt(tt, "\t- %s%s%s: unfocus current function.\n", tt.Escape.Blue,
@@ -122,7 +122,7 @@ func cmdUnfocus(tt *term.Terminal, c *dataflow.AnalyzerState, _ Command, _ bool)
 }
 
 // cmdSsaValue prints the ssa values matching a regex in the state.CurrentFunction
-func cmdSsaValue(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ bool) bool {
+func cmdSsaValue(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
 	if c == nil {
 		if state.CurrentFunction != nil {
 			writeFmt(tt, "\t- %s%s%s: show SSA values matching regex\n", tt.Escape.Blue,
@@ -170,7 +170,7 @@ func cmdSsaValue(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, 
 }
 
 // cmdSsaInstr prints the ssa instructions matching a regex in the state.CurrentFunction
-func cmdSsaInstr(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ bool) bool {
+func cmdSsaInstr(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
 	if c == nil {
 		if state.CurrentFunction != nil {
 			writeFmt(tt, "\t- %s%s%s: show SSA instructions matching regex\n", tt.Escape.Blue,
@@ -206,7 +206,7 @@ func cmdSsaInstr(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, 
 }
 
 // cmdMayAlias prints whether matches values may alias according to the pointer analysis
-func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, _ bool) bool {
+func cmdMayAlias(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
 	if c == nil {
 		if state.CurrentFunction != nil {
 			writeFmt(tt, "\t- %s%s%s: print whether matching values may alias\n", tt.Escape.Blue,
@@ -263,7 +263,7 @@ func cmdMayAlias(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, 
 	return false
 }
 
-func printAliases(tt *term.Terminal, c *dataflow.AnalyzerState, v2 ssa.Value, ptr pointer.Pointer) {
+func printAliases(tt *term.Terminal, c *dataflow.FlowState, v2 ssa.Value, ptr pointer.Pointer) {
 	if ptr2, ptrExists := c.PointerAnalysis.IndirectQueries[v2]; ptrExists && ptr2.MayAlias(ptr) {
 		writeFmt(tt, "     [indirect] %s (%s) -> %s\n", v2.Name(), v2, ptr2)
 	}
@@ -274,7 +274,7 @@ func printAliases(tt *term.Terminal, c *dataflow.AnalyzerState, v2 ssa.Value, pt
 }
 
 // cmdWhere prints the position of a function
-func cmdWhere(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, withTest bool) bool {
+func cmdWhere(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the location of a function declaration.\n",
 			tt.Escape.Blue, cmdWhereName, tt.Escape.Reset)
@@ -303,7 +303,7 @@ func cmdWhere(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, wit
 }
 
 // cmdIntra shows the intermediate result of running the dataflow analysis.
-func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, withTest bool) bool {
+func cmdIntra(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: show the intermediate result of the intraprocedural analysis\n",
 			tt.Escape.Blue, cmdIntraName, tt.Escape.Reset)
@@ -359,7 +359,7 @@ func cmdIntra(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, wit
 }
 
 // cmdMark shows intermediate information about a mark in the dataflow analysis
-func cmdMark(tt *term.Terminal, c *dataflow.AnalyzerState, command Command, withTest bool) bool {
+func cmdMark(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: show information about a mark in the intraprocedural analysis\n",
 			tt.Escape.Blue, cmdMarkName, tt.Escape.Reset)
@@ -419,7 +419,7 @@ func matchInstr(r *regexp.Regexp, instr ssa.Instruction) bool {
 	return r.MatchString(instr.String())
 }
 
-func showValue(tt *term.Terminal, c *dataflow.AnalyzerState, val ssa.Value) {
+func showValue(tt *term.Terminal, c *dataflow.FlowState, val ssa.Value) {
 	writeFmt(tt, "Matching value: %s\n", val.Name())
 	writeFmt(tt, "      kind    : %T\n", val)
 	writeFmt(tt, "      type    : %s\n", val.Type().String())
@@ -479,7 +479,7 @@ func showPointer(tt *term.Terminal, ptr pointer.Pointer) {
 	writeEntries(tt, entries, "    ")
 }
 
-func showInstr(tt *term.Terminal, c *dataflow.AnalyzerState, instr ssa.Instruction) {
+func showInstr(tt *term.Terminal, c *dataflow.FlowState, instr ssa.Instruction) {
 	writeFmt(tt, "Matching instruction: %s\n", instr.String())
 	writeFmt(tt, "            location: %s\n", c.Program.Fset.Position(instr.Pos()))
 }
@@ -504,7 +504,7 @@ func setName(a ssa.Value, s *string) {
 	*s = a.Name()
 }
 
-func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataflow.FlowInformation) {
+func showFlowInformation(tt *term.Terminal, c *dataflow.FlowState, fi *dataflow.FlowInformation) {
 	if fi.Function == nil {
 		return
 	}
@@ -552,7 +552,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.AnalyzerState, fi *dataf
 }
 
 // showBlock pretty prints the block on the terminal
-func showBlock(tt *term.Terminal, _ *dataflow.AnalyzerState, block *ssa.BasicBlock) {
+func showBlock(tt *term.Terminal, _ *dataflow.FlowState, block *ssa.BasicBlock) {
 	writeFmt(tt, "block %d:\n", block.Index)
 	writeFmt(tt, "%s P:%d S:%d\n", block.Comment, len(block.Preds), len(block.Succs))
 

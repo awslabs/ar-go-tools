@@ -290,8 +290,8 @@ func TestInterproceduralEscape(t *testing.T) {
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
 	state, err := dataflow.NewAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config,
-		[]func(*dataflow.AnalyzerState){
-			func(s *dataflow.AnalyzerState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
+		[]func(*dataflow.FlowState){
+			func(s *dataflow.FlowState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
 		})
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer state: %v", err)
@@ -353,7 +353,7 @@ func TestBuiltinsEscape(t *testing.T) {
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	cache, _ := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
@@ -408,7 +408,7 @@ func TestStdlibEscape(t *testing.T) {
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	cache, _ := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
@@ -633,7 +633,7 @@ func TestLocalityComputation(t *testing.T) {
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	cache, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer state: %v", err)
 	}

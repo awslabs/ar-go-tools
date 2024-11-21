@@ -77,7 +77,7 @@ type InvalidWrite struct {
 }
 
 // Analyze runs the analysis on prog.
-func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
+func Analyze(state *dataflow.FlowState) (AnalysisResult, error) {
 	program := state.Program
 	fns := state.ReachableFunctions()
 	if len(fns) == 0 {
@@ -111,7 +111,7 @@ func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 }
 
 func runInvalidWritesAnalysis(
-	state *dataflow.AnalyzerState,
+	state *dataflow.FlowState,
 	fns map[*ssa.Function]bool,
 	res AnalysisResult,
 	structToNamed map[*types.Struct]*types.Named) {
@@ -149,7 +149,7 @@ func runInvalidWritesAnalysis(
 }
 
 func runZeroAllocAnalysis(
-	state *dataflow.AnalyzerState,
+	state *dataflow.FlowState,
 	allocs []alloced,
 	res AnalysisResult,
 	structToNamed map[*types.Struct]*types.Named) {
@@ -212,7 +212,7 @@ func structInitSpecs(cfg *config.Config, target string) []config.StructInitSpec 
 }
 
 func initInfos(
-	state *dataflow.AnalyzerState,
+	state *dataflow.FlowState,
 	allocs []alloced,
 	specs []config.StructInitSpec) (map[*types.Named]InitInfo, error) {
 	infos := make(map[*types.Named]InitInfo)
@@ -256,7 +256,7 @@ func initInfos(
 	return infos, nil
 }
 
-func newInitInfo(spec config.StructInitSpec, structType *types.Struct, state *dataflow.AnalyzerState) (InitInfo, error) {
+func newInitInfo(spec config.StructInitSpec, structType *types.Struct, state *dataflow.FlowState) (InitInfo, error) {
 	invalidWrites := make(map[*types.Var][]InvalidWrite)
 	fieldVal := make(map[*types.Var]ssa.Value)
 	for _, fieldSpec := range spec.FieldsSet {

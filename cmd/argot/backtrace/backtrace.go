@@ -23,8 +23,11 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"golang.org/x/tools/go/ssa"
 )
 
 // Usage for CLI
@@ -55,11 +58,22 @@ func Run(flags tools.CommonFlags) error {
 	foundTraces := false
 	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, "backtrace") {
 		start := time.Now()
-		state, err := analysis.LoadTarget(targetName, targetFiles, cfgLog, cfg, flags.WithTest)
+		loadOptions := loadprogram.Options{
+			Platform:      "",
+			PackageConfig: nil,
+			BuildMode:     ssa.InstantiateGenerics,
+			LoadTests:     flags.WithTest,
+			ApplyRewrites: true,
+		}
+		state, err := loadprogram.LoadTargetWithPointer(targetName, targetFiles, cfgLog, cfg, loadOptions)
 		if err != nil {
 			return fmt.Errorf("failed to load state: %s", err)
 		}
-		result, err := backtrace.Analyze(state)
+		df, err := dataflow.NewFlowState(state)
+		if err != nil {
+			return fmt.Errorf("failed to initialize dataflow state: %s", err)
+		}
+		result, err := backtrace.Analyze(df)
 		if err != nil {
 			return fmt.Errorf("analysis failed: %v", err)
 		}

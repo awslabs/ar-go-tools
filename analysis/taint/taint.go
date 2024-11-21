@@ -38,7 +38,7 @@ type AnalysisResult struct {
 	TaintFlows *Flows
 
 	// State is the state at the end of the analysis, if you need to chain another analysis
-	State *dataflow.AnalyzerState
+	State *dataflow.FlowState
 
 	// Graph is the cross function dataflow graph built by the dataflow analysis. It contains the linked summaries of
 	// each function appearing in the program and analyzed.
@@ -57,7 +57,7 @@ type AnalysisResult struct {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
+func Analyze(state *dataflow.FlowState) (AnalysisResult, error) {
 	var err error
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
@@ -164,7 +164,7 @@ func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
 
 // AnalysisPreamble groups different minor analyses that need to run before the intra-procedural step of the taint
 // analysis.
-func AnalysisPreamble(state *dataflow.AnalyzerState) error {
+func AnalysisPreamble(state *dataflow.FlowState) error {
 	// Add interface implementations as sinks
 	populateConfigInterfaces(state)
 
@@ -184,7 +184,7 @@ func AnalysisPreamble(state *dataflow.AnalyzerState) error {
 }
 
 // populateConfigInterfaces adds all the interface implementations for sinks to s.Config.TaintTrackingProblems.
-func populateConfigInterfaces(s *dataflow.AnalyzerState) {
+func populateConfigInterfaces(s *dataflow.FlowState) {
 	newTaintSpecs := make([]config.TaintSpec, 0, len(s.Config.TaintTrackingProblems))
 	for _, taintSpec := range s.Config.TaintTrackingProblems {
 		for _, ci := range taintSpec.Sinks {
@@ -250,7 +250,7 @@ func interfaceImplMethodIdent(impl *ssa.Function) config.CodeIdentifier {
 
 // findImpls returns a map of the interface method name for ci's interface with all the interface implementations' methods.
 // TODO refactor to avoid string comparisons
-func findImpls(s *dataflow.AnalyzerState, ci config.CodeIdentifier) (map[string]map[*ssa.Function]bool, bool) {
+func findImpls(s *dataflow.FlowState, ci config.CodeIdentifier) (map[string]map[*ssa.Function]bool, bool) {
 	if ci.Interface == "" {
 		return nil, false
 	}

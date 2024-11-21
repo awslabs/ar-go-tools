@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -265,7 +266,8 @@ func AnalyzeFunction(fn *ssa.Function, l *config.LogGroup) Results {
 }
 
 // AnalyzeProgram runs the analysis on an entire program, and report the results to stdout.
-func AnalyzeProgram(program *ssa.Program, l *config.LogGroup) {
+func AnalyzeProgram(target *loadprogram.WholeProgramState, l *config.LogGroup) {
+	program := target.Program
 	functions := ssautil.AllFunctions(program)
 	// Sort the functions so output is consistent between runs.
 	sortedFunctions := []*ssa.Function{}
