@@ -74,7 +74,7 @@ func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 
 		state.Logger.Infof("Analyzing slicing problem %s", ps.Tag)
 		if ps.MustBeStatic {
-			state.Logger.Infof("Will check that data flowing to backtrace points is statis.\n")
+			state.Logger.Infof("Will check that data flowing to backtrace points is static.\n")
 		}
 		// Set problem-specific options
 		prevOptions := state.Config.AnalysisProblemOptions
@@ -112,20 +112,22 @@ func Analyze(state *df.AnalyzerState) (AnalysisResult, error) {
 				}
 			}
 		}
-		allTraces[ps.Tag] = resTraces
-		state.Report.AddEntry(
-			state.Logger,
-			state.Config,
-			config.ReportDesc{
-				Tool:     config.BacktraceTool,
-				Tag:      ps.Tag,
-				Severity: ps.Severity,
-				Content:  report(state, resTraces, &ps),
-			},
-		)
+		if len(resTraces) > 0 {
+			allTraces[ps.Tag] = resTraces
+			state.Report.AddEntry(
+				state.Logger,
+				state.Config,
+				config.ReportDesc{
+					Tool:     config.BacktraceTool,
+					Tag:      ps.Tag,
+					Severity: ps.Severity,
+					Content:  report(state, resTraces, &ps),
+				},
+			)
 
-		if visitor.SlicingSpec.MustBeStatic && len(visitor.Traces) > 0 {
-			state.Logger.Errorf("Found flows of non-static data to backtrace points!")
+			if visitor.SlicingSpec.MustBeStatic {
+				state.Logger.Errorf("Found flows of non-static data to backtrace points!")
+			}
 		}
 
 		if len(visitor.Errs) > 0 {
@@ -860,7 +862,6 @@ func IsStatic(node df.GraphNode) bool {
 		case *ssa.Const:
 			return true
 		default:
-			fmt.Printf("%T \n==>\n %+v\n", node.Value(), node.Value())
 			return false
 		}
 	default:

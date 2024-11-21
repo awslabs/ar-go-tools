@@ -64,6 +64,7 @@ dataflow-problems:
       description: "Checking that MustCompile is used only with static strings."
       targets: [ "argot", "racerg" ]
       severity: "HIGH"
+      must-be-static: true
       backtracepoints:
         - package: "^regexp$"
           method: "^MustCompile$"

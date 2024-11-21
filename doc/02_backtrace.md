@@ -18,7 +18,17 @@ slicing-problems:
         - package: "os/exec"
           method: "Command$"
 ```
-In this configuration file, the user is trying to detect all the possible traces from calls to some function `Command` in a package matching `os/exec`. The tool will treat all the arguments to all the calls to `os/exec.Command` as entry points.
+In this configuration file, the user is trying to detect all the possible traces from calls to some function `Command` in a package matching `os/exec`. The tool will treat all the arguments to all the calls to `os/exec.Command` as entry points, and will report any trace from some data source to the code locations matching some `backtracepoint`.
+
+A slicing problem can also be defined with the `must-be-static` option set to true:
+```yaml
+slicing-problems:  
+  - must-be-static: true
+    backtracepoints:
+      - package: "regexp"
+        method: "MustCompile"
+```
+With that setting, the tool will report any flow of data from a source of data that is not static to the entry points. If there is any flow found, then this is an error; in the example above, the analysis returns an error if `regexp.MustCompile` has an argument that is not entirely statically defined (i.e. constants).
 
 > 📝 Note that all strings in the `package` and `method` fields are parsed as regexes; for example, to match `F` precisely, one should write `"^F"`; the `"backtracepoints"` specification will match any function name containing `F`.
 

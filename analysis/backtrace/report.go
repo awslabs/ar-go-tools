@@ -20,8 +20,8 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
-// A FlowReports contains the information we serialize about a taint flow: a tag, the source and the sink, and
-// the trace from source to sink.
+// A FlowReports contains the information we serialize about backwards data flow traces. Traces are grouped by problem
+// tag. A trace in the report is a list of dataflow.ReportNodeInfo.
 type FlowReports struct {
 	Tag    string
 	Traces map[string][][]dataflow.ReportNodeInfo
