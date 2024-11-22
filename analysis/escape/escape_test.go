@@ -28,7 +28,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/ssa"
@@ -104,7 +104,7 @@ func TestSimpleEscape(t *testing.T) {
 	}
 	program := lp.Prog
 	reachableFunctions := lang.CallGraphReachable(cha.CallGraph(program), false, false)
-	result, err := loadprogram.DoPointerAnalysis(nil, program,
+	result, err := ptr.DoPointerAnalysis(nil, program,
 		func(_ *ssa.Function) bool { return true }, reachableFunctions)
 	if err != nil {
 		t.Fatalf("failed to do pointer analysis: %v", err)

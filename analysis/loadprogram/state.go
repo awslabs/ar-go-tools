@@ -30,9 +30,9 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// A WholeProgramState is the base state for the analyses in Argot. Analyses that do not require whole-program analysis
+// A State is the base state for the analyses in Argot. Analyses that do not require whole-program analysis
 // should be built with the go tools analysis framework.
-type WholeProgramState struct {
+type State struct {
 	*config.State
 	// Annotations contains all the annotations of the program
 	Annotations annotations.ProgramAnnotations
@@ -59,14 +59,14 @@ type WholeProgramState struct {
 	errorMutex sync.Mutex
 }
 
-// NewWholeProgramState construct a whole program state from the provided SSA program and packages, and the config
+// NewState construct a whole program state from the provided SSA program and packages, and the config
 // with its logger. The packages are visited to extract all the annotations in the program.
-func NewWholeProgramState(
+func NewState(
 	c *config.State,
 	targetName string,
 	program *ssa.Program,
 	pkgs []*packages.Package,
-) (*WholeProgramState, error) {
+) (*State, error) {
 	if c == nil || c.Config == nil {
 		return nil, fmt.Errorf("cannot create state without config")
 	}
@@ -95,7 +95,7 @@ func NewWholeProgramState(
 
 	report := config.NewReport()
 
-	return &WholeProgramState{
+	return &State{
 		State:        c,
 		Annotations:  pa,
 		Packages:     pkgs,
@@ -107,7 +107,7 @@ func NewWholeProgramState(
 	}, nil
 }
 
-func (wps *WholeProgramState) ensureCallgraph() error {
+func (wps *State) ensureCallgraph() error {
 	if wps.chaCallgraph == nil {
 		wps.chaCallgraph = cha.CallGraph(wps.Program)
 	}
@@ -120,7 +120,7 @@ func (wps *WholeProgramState) ensureCallgraph() error {
 // Functions to retrieve results from the information stored in the analyzer state
 
 // ReachableFunctions returns the set of reachable functions from main and init according to the CHA analysis.
-func (wps *WholeProgramState) ReachableFunctions() (map[*ssa.Function]bool, error) {
+func (wps *State) ReachableFunctions() (map[*ssa.Function]bool, error) {
 	err := wps.ensureCallgraph()
 	if err != nil {
 		return nil, err
@@ -134,7 +134,7 @@ func (wps *WholeProgramState) ReachableFunctions() (map[*ssa.Function]bool, erro
 
 // ResolveCallee resolves the callee(s) at the call instruction instr.
 // It resolves callees by first looking into static callees, and then the CHA callgraph if no static callee is found.
-func (wps *WholeProgramState) ResolveCallee(instr ssa.CallInstruction) (map[*ssa.Function]lang.CalleeInfo, error) {
+func (wps *State) ResolveCallee(instr ssa.CallInstruction) (map[*ssa.Function]lang.CalleeInfo, error) {
 	// First, check if there is a static callee
 	callee := instr.Common().StaticCallee()
 	if callee != nil {
@@ -165,7 +165,7 @@ func (wps *WholeProgramState) ResolveCallee(instr ssa.CallInstruction) (map[*ssa
 }
 
 // AddError adds an error with key and error e to the state.
-func (wps *WholeProgramState) AddError(key string, e error) {
+func (wps *State) AddError(key string, e error) {
 	wps.errorMutex.Lock()
 	defer wps.errorMutex.Unlock()
 	if e != nil {
@@ -176,7 +176,7 @@ func (wps *WholeProgramState) AddError(key string, e error) {
 // CheckError checks whether there is an error in the state, and if there is, returns the first it encounters and
 // deletes it. The slice returned contains all the errors associated with one single error key (as used in
 // [*AnalyzerState.AddError])
-func (wps *WholeProgramState) CheckError() []error {
+func (wps *State) CheckError() []error {
 	wps.errorMutex.Lock()
 	defer wps.errorMutex.Unlock()
 	for e, errs := range wps.errors {
@@ -187,7 +187,7 @@ func (wps *WholeProgramState) CheckError() []error {
 }
 
 // HasErrors returns true if the state has an error. Unlike [*AnalyzerState.CheckError], this is non-destructive.
-func (wps *WholeProgramState) HasErrors() bool {
+func (wps *State) HasErrors() bool {
 	wps.errorMutex.Lock()
 	defer wps.errorMutex.Unlock()
 	for _, errs := range wps.errors {
@@ -199,18 +199,18 @@ func (wps *WholeProgramState) HasErrors() bool {
 }
 
 // ResetAlarms resets the number of alarms to 0
-func (wps *WholeProgramState) ResetAlarms() {
+func (wps *State) ResetAlarms() {
 	wps.numAlarms.Store(0)
 }
 
 // IncrementAndTestAlarms increments the alarm counter in the state, and returns false if the count is larger
 // than the MaxAlarms setting in the config.
-func (wps *WholeProgramState) IncrementAndTestAlarms() bool {
+func (wps *State) IncrementAndTestAlarms() bool {
 	wps.numAlarms.Add(1)
 	return wps.TestAlarmCount()
 }
 
 // TestAlarmCount tests whether the alarm count is smaller than the maximum number of alarms allowed by the configuration.
-func (wps *WholeProgramState) TestAlarmCount() bool {
+func (wps *State) TestAlarmCount() bool {
 	return wps.Config.MaxAlarms <= 0 || wps.numAlarms.Load() < int32(wps.Config.MaxAlarms)
 }

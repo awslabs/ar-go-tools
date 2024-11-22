@@ -59,7 +59,7 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.State, _ Command, withTest bool) 
 		LoadTests:     withTest,
 		ApplyRewrites: true,
 	}
-	newState, err := analysis.BuildDataFlowTarget(c.State, "", state.Args, loadOptions)
+	newState, err := analysis.BuildDataFlowTarget(c.State.State.State, "", state.Args, loadOptions)
 	if err != nil {
 		WriteErr(tt, "error building analyzer state: %s", err)
 		WriteErr(tt, "state is left unchanged")

@@ -22,6 +22,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
 
@@ -31,7 +32,7 @@ func BuildWholeProgramTarget(
 	c *config.State,
 	name string,
 	patterns []string,
-	options loadprogram.Options) (*loadprogram.WholeProgramState, error) {
+	options loadprogram.Options) (*loadprogram.State, error) {
 	if name != "" {
 		// If it's a named target, need to change to project root's directory to properly load the target
 		err := os.Chdir(c.Config.Root())
@@ -45,7 +46,7 @@ func BuildWholeProgramTarget(
 	if err != nil {
 		return nil, fmt.Errorf("could not load program: %v", err)
 	}
-	wholeProgramState, err := loadprogram.NewWholeProgramState(c, name, program, pkgs)
+	wholeProgramState, err := loadprogram.NewState(c, name, program, pkgs)
 	loadDuration := time.Since(startLoad)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load whole program: %v", err)
@@ -60,12 +61,12 @@ func BuildPointerTarget(
 	c *config.State,
 	name string,
 	files []string,
-	options loadprogram.Options) (*loadprogram.PointerState, error) {
+	options loadprogram.Options) (*ptr.State, error) {
 	wp, err := BuildWholeProgramTarget(c, name, files, options)
 	if err != nil {
 		return nil, err // context for load target is enough
 	}
-	return loadprogram.NewPointerState(wp)
+	return ptr.NewState(wp)
 }
 
 // BuildDataFlowTarget loads the target specified by the list of files provided, runs the pointer analysis

@@ -121,33 +121,6 @@ func Instr(node GraphNode) ssa.Instruction {
 	return nil
 }
 
-// NodeKind returns a short string representation of the node kind
-func NodeKind(g GraphNode) string {
-	switch g.(type) {
-	case *ParamNode:
-		return "Param  "
-	case *CallNode:
-		return "Call   "
-	case *CallNodeArg:
-		return "CallArg"
-	case *ReturnValNode:
-		return "RetVal "
-	case *ClosureNode:
-		return "Closure"
-	case *BoundLabelNode:
-		return "BoundLb"
-	case *SyntheticNode:
-		return "Synth  "
-	case *BoundVarNode:
-		return "BoundV "
-	case *FreeVarNode:
-		return "FreeV  "
-	case *AccessGlobalNode:
-		return "Global "
-	}
-	return ""
-}
-
 // NodeSummary returns a string summary of the node, without using any escape codes.
 func NodeSummary(g GraphNode) string {
 	switch x := g.(type) {

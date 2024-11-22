@@ -124,7 +124,7 @@ func computePath(cfg *config.Config, logger *config.LogGroup, filepath string, p
 	}
 }
 
-func emitCoverageLine(state *loadprogram.WholeProgramState, dest io.Writer, f *ssa.Function, reachable bool, locs uint) {
+func emitCoverageLine(state *loadprogram.State, dest io.Writer, f *ssa.Function, reachable bool, locs uint) {
 	if f == nil || f.Package() == nil {
 		return
 	}
@@ -177,7 +177,7 @@ type dependencyStats struct {
 
 // DependencyAnalysis runs the dependency analysis on all the functions in the ssa.Program
 // Writes a coverage file in covFile indicating which functions are reachable.
-func DependencyAnalysis(state *loadprogram.WholeProgramState, dc DependencyConfigs) reachability.DependencyGraph {
+func DependencyAnalysis(state *loadprogram.State, dc DependencyConfigs) reachability.DependencyGraph {
 	// Collect modules
 	modules := make(map[string]*packages.Module)
 	packages.Visit(state.Packages, nil, func(pack *packages.Package) {
@@ -269,7 +269,7 @@ func compareDeps(d1 string, d2 string, dependencyMap map[string]dependencyStats)
 	return d1 < d2
 }
 
-func printDependencyUsageSummary(state *loadprogram.WholeProgramState, dc DependencyConfigs,
+func printDependencyUsageSummary(state *loadprogram.State, dc DependencyConfigs,
 	dependencyName string, depNameMaxLen int, maxLocLen int, total uint, entry dependencyStats, percentage float64) {
 
 	msgIndirect := formatutil.Bold(" direct ")

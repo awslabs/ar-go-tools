@@ -31,6 +31,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
@@ -81,10 +82,10 @@ func filterFn(edge *callgraph.Edge) bool {
 }
 
 // WriteCrossFunctionGraph writes a graphviz representation of the inter-procedural dataflow graph to w.
-func WriteCrossFunctionGraph(wps *loadprogram.WholeProgramState, w io.Writer) error {
+func WriteCrossFunctionGraph(wps *loadprogram.State, w io.Writer) error {
 	// every function should be included in the graph
 	// building the graph doesn't require souce/sink logic
-	ps, err := loadprogram.NewPointerState(wps)
+	ps, err := ptr.NewState(wps)
 	if err != nil {
 		return fmt.Errorf("failed to build analyzer pointer state: %w", err)
 	}

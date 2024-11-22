@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package loadprogram
+package ptr
 
 import (
 	"fmt"
@@ -21,15 +21,16 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// PointerState extends the WholeProgramState with the pointer analysis information.
-type PointerState struct {
-	*WholeProgramState
+// State extends the WholeProgramState with the pointer analysis information.
+type State struct {
+	*loadprogram.State
 
 	// The pointer analysis result
 	PointerAnalysis *pointer.Result
@@ -38,13 +39,13 @@ type PointerState struct {
 	reachableFunctions map[*ssa.Function]bool
 }
 
-// NewPointerState returns a pointer state that extends the whole program state passed as argument with pointer analysis
+// NewState returns a pointer state that extends the whole program state passed as argument with pointer analysis
 // information.
-func NewPointerState(w *WholeProgramState) (*PointerState, error) {
+func NewState(w *loadprogram.State) (*State, error) {
 	start := time.Now()
-	ps := &PointerState{
-		WholeProgramState: w,
-		PointerAnalysis:   nil,
+	ps := &State{
+		State:           w,
+		PointerAnalysis: nil,
 	}
 	ps.Logger.Infof("Gathering values and starting pointer analysis...")
 	reachable, err := w.ReachableFunctions()
@@ -65,7 +66,7 @@ func NewPointerState(w *WholeProgramState) (*PointerState, error) {
 
 // ReachableFunctions returns the set of reachable functions from main and init according to the pointer analysis
 // callgraph.
-func (s *PointerState) ReachableFunctions() map[*ssa.Function]bool {
+func (s *State) ReachableFunctions() map[*ssa.Function]bool {
 	if s.reachableFunctions == nil {
 		s.reachableFunctions = make(map[*ssa.Function]bool)
 		s.reachableFunctions = lang.CallGraphReachable(s.PointerAnalysis.CallGraph, false, false)

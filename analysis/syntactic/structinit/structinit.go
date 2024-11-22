@@ -23,7 +23,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -77,7 +77,7 @@ type InvalidWrite struct {
 }
 
 // Analyze runs the analysis on prog.
-func Analyze(state *loadprogram.PointerState) (AnalysisResult, error) {
+func Analyze(state *ptr.State) (AnalysisResult, error) {
 	program := state.Program
 	fns := state.ReachableFunctions()
 	if len(fns) == 0 {
@@ -111,7 +111,7 @@ func Analyze(state *loadprogram.PointerState) (AnalysisResult, error) {
 }
 
 func runInvalidWritesAnalysis(
-	state *loadprogram.PointerState,
+	state *ptr.State,
 	fns map[*ssa.Function]bool,
 	res AnalysisResult,
 	structToNamed map[*types.Struct]*types.Named) {
@@ -149,7 +149,7 @@ func runInvalidWritesAnalysis(
 }
 
 func runZeroAllocAnalysis(
-	state *loadprogram.PointerState,
+	state *ptr.State,
 	allocs []alloced,
 	res AnalysisResult,
 	structToNamed map[*types.Struct]*types.Named) {
@@ -212,7 +212,7 @@ func structInitSpecs(cfg *config.Config, target string) []config.StructInitSpec 
 }
 
 func initInfos(
-	state *loadprogram.PointerState,
+	state *ptr.State,
 	allocs []alloced,
 	specs []config.StructInitSpec) (map[*types.Named]InitInfo, error) {
 	infos := make(map[*types.Named]InitInfo)
@@ -256,7 +256,7 @@ func initInfos(
 	return infos, nil
 }
 
-func newInitInfo(state *loadprogram.PointerState, spec config.StructInitSpec, structType *types.Struct) (InitInfo, error) {
+func newInitInfo(state *ptr.State, spec config.StructInitSpec, structType *types.Struct) (InitInfo, error) {
 	invalidWrites := make(map[*types.Var][]InvalidWrite)
 	fieldVal := make(map[*types.Var]ssa.Value)
 	for _, fieldSpec := range spec.FieldsSet {

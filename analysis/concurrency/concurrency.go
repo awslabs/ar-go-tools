@@ -16,7 +16,7 @@ package concurrency
 
 import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -46,7 +46,7 @@ type AnalysisResult struct {
 // - a first pass to collect all occurrences of `go ...` instructions
 //
 // - a second pass to mark function with the all the `go ...` instructions they may be called from
-func Analyze(state *loadprogram.PointerState) (AnalysisResult, error) {
+func Analyze(state *ptr.State) (AnalysisResult, error) {
 	var callID uint32
 
 	// goCalls maps from a goroutine instruction to a callID
@@ -123,7 +123,7 @@ func Analyze(state *loadprogram.PointerState) (AnalysisResult, error) {
 	}, nil
 }
 
-func printGoCallInformation(state *loadprogram.PointerState, call *ssa.Go) {
+func printGoCallInformation(state *ptr.State, call *ssa.Go) {
 	if call == nil {
 		return
 	}

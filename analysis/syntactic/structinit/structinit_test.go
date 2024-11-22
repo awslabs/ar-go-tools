@@ -24,6 +24,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/syntactic/structinit"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -90,11 +91,11 @@ func runAnalysis(t *testing.T, dirName string) (analysistest.LoadedTestProgram, 
 	}
 	setupConfig(lp.Config)
 	c := config.NewState(lp.Config)
-	w, err := loadprogram.NewWholeProgramState(c, "", lp.Prog, lp.Pkgs)
+	w, err := loadprogram.NewState(c, "", lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("failed to build program state")
 	}
-	state, err := loadprogram.NewPointerState(w)
+	state, err := ptr.NewState(w)
 	if err != nil {
 		t.Fatalf("failed to initialize pointer state")
 	}

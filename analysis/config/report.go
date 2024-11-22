@@ -106,26 +106,27 @@ func (r *ReportInfo) addEntry(tag string, entry ReportEntry) {
 
 // AddEntry write the information in the ReportDesc to a new file in the ReportsDir, and adds a new entry into the
 // receiver.
-func (r *ReportInfo) AddEntry(c *State, report ReportDesc) {
+func (r *ReportInfo) AddEntry(c ConfigLogger, report ReportDesc) {
 	r.IncrementSevCount(report.Severity, 1)
-	c.Logger.Debugf("Write report for tool=%s, tag=%s, severity=%s", report.Tool, report.Tag, report.Severity)
-	tmp, err := os.CreateTemp(c.Config.ReportsDir, report.Tag+"-report-*.json")
+	logger := c.GetLogger()
+	logger.Debugf("Write report for tool=%s, tag=%s, severity=%s", report.Tool, report.Tag, report.Severity)
+	tmp, err := os.CreateTemp(c.GetConfig().ReportsDir, report.Tag+"-report-*.json")
 	if err != nil {
-		c.Logger.Errorf("Could not write report for %s (severity %s)", report.Tag, report.Severity)
+		logger.Errorf("Could not write report for %s (severity %s)", report.Tag, report.Severity)
 		return
 	}
 	defer tmp.Close()
-	c.Logger.Infof("Report in %s\n", formatutil.Sanitize(tmp.Name()))
+	logger.Infof("Report in %s\n", formatutil.Sanitize(tmp.Name()))
 
 	content, err := json.MarshalIndent(report.Content, "", "  ")
 	if err != nil {
-		c.Logger.Errorf("Error serializing report: %s", err)
+		logger.Errorf("Error serializing report: %s", err)
 	}
 	_, err = tmp.Write(content)
-	c.Logger.Infof("Write report for tool=%s, tag=%s, severity=%s in %s",
+	logger.Infof("Write report for tool=%s, tag=%s, severity=%s in %s",
 		report.Tool, report.Tag, report.Severity, tmp.Name())
 	if err != nil {
-		c.Logger.Errorf("Error writing report: %s", err)
+		logger.Errorf("Error writing report: %s", err)
 	}
 
 	r.addEntry(report.Tag, ReportEntry{
@@ -136,10 +137,11 @@ func (r *ReportInfo) AddEntry(c *State, report ReportDesc) {
 }
 
 // Dump writes a new report file in the ReportsDir of the config file.
-func (r *ReportInfo) Dump(c *State) {
-	tmp, err := os.CreateTemp(c.Config.ReportsDir, "overall-report-*.json")
+func (r *ReportInfo) Dump(c ConfigLogger) {
+	tmp, err := os.CreateTemp(c.GetConfig().ReportsDir, "overall-report-*.json")
+	logger := c.GetLogger()
 	if err != nil {
-		c.Logger.Errorf("Could not write final report: %s.", err)
+		logger.Errorf("Could not write final report: %s.", err)
 		return
 	}
 	defer tmp.Close()
@@ -151,7 +153,7 @@ func (r *ReportInfo) Dump(c *State) {
 	}
 	_, err = tmp.Write(payload)
 	if err != nil {
-		c.Logger.Errorf("Failed to write report: %s. Please consult logs.", err)
+		logger.Errorf("Failed to write report: %s. Please consult logs.", err)
 	}
-	c.Logger.Infof("Wrote final report in %s", tmp.Name())
+	logger.Infof("Wrote final report in %s", tmp.Name())
 }

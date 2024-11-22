@@ -115,7 +115,7 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 		if len(resTraces) > 0 {
 			allTraces[ps.Tag] = resTraces
 			state.Report.AddEntry(
-				state.State,
+				state,
 				config.ReportDesc{
 					Tool:     config.BacktraceTool,
 					Tag:      ps.Tag,

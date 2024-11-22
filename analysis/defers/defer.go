@@ -266,7 +266,7 @@ func AnalyzeFunction(fn *ssa.Function, l *config.LogGroup) Results {
 }
 
 // AnalyzeProgram runs the analysis on an entire program, and report the results to stdout.
-func AnalyzeProgram(target *loadprogram.WholeProgramState, l *config.LogGroup) {
+func AnalyzeProgram(target *loadprogram.State, l *config.LogGroup) {
 	program := target.Program
 	functions := ssautil.AllFunctions(program)
 	// Sort the functions so output is consistent between runs.

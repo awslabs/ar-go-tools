@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
@@ -30,7 +31,7 @@ import (
 // State holds information that might need to be used during program analysis, and represents the state of
 // the analyzer. Different steps of the analysis will populate the fields of this structure.
 type State struct {
-	*loadprogram.PointerState
+	*ptr.State
 
 	// A map from types to functions implementing that type
 	//
@@ -62,11 +63,11 @@ type State struct {
 
 // NewDefault chains state constructors from the built packages, using default names and options for loggers.
 func NewDefault(c *config.Config, p *ssa.Program, pkgs []*packages.Package) (*State, error) {
-	wp, err := loadprogram.NewWholeProgramState(config.NewState(c), "", p, pkgs)
+	wp, err := loadprogram.NewState(config.NewState(c), "", p, pkgs)
 	if err != nil {
 		return nil, err
 	}
-	pts, err := loadprogram.NewPointerState(wp)
+	pts, err := ptr.NewState(wp)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +82,7 @@ func NewDefault(c *config.Config, p *ssa.Program, pkgs []*packages.Package) (*St
 //   - linking aliases of bound variables to the closure that binds them
 //
 // The State returned *does not* have dataflow information computed yet.
-func NewState(ps *loadprogram.PointerState) (*State, error) {
+func NewState(ps *ptr.State) (*State, error) {
 	state, err := newFlowState(ps, []func(*State){
 		func(s *State) { s.PopulateImplementations() },
 		func(s *State) { s.PopulateGlobalsVerbose() },
@@ -99,11 +100,11 @@ func NewState(ps *loadprogram.PointerState) (*State, error) {
 }
 
 // NewAnalyzerState returns a properly initialized analyzer state by running essential steps in parallel.
-func newFlowState(ps *loadprogram.PointerState, steps []func(*State)) (*State, error) {
+func newFlowState(ps *ptr.State, steps []func(*State)) (*State, error) {
 	var allContracts []Contract
 	// New state with initial cha callgraph
 	state := &State{
-		PointerState:          ps,
+		State:                 ps,
 		ImplementationsByType: map[string]map[*ssa.Function]bool{},
 		DataFlowContracts:     map[string]*SummaryGraph{},
 		MethodKeys:            map[string]string{},
@@ -328,7 +329,7 @@ func (s *State) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map
 /*  Functions specific to dataflow contracts stored in the analyzer state */
 
 // linkContracts implements the step in the analyzer state building function that links every dataflow contract with
-// a specific SSA function. This step should only link function contracts with the SSA function, but it build the
+// a specific SSA function. This step should only link function contracts with the SSA function, but it builds the
 // summaries for all contracts in allContracts.
 func (s *State) linkContracts(allContracts []Contract) {
 	// This links the function contracts to their implementation by storing an empty summary graph in the

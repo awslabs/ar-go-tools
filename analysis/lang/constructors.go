@@ -23,11 +23,6 @@ import (
 	"github.com/dave/dst"
 )
 
-// NewTrue returns a new AST structure that represents the boolean true
-func NewTrue() *dst.BasicLit {
-	return &dst.BasicLit{Value: "true"}
-}
-
 // NewFalse returns a new AST structure that represents the boolean false
 func NewFalse() *dst.BasicLit {
 	return &dst.BasicLit{Value: "false"}
@@ -135,16 +130,4 @@ func NewUnOp(op token.Token, x dst.Expr) *dst.UnaryExpr {
 		X:    x,
 		Decs: dst.UnaryExprDecorations{},
 	}
-}
-
-// NewFuncDecl constructs a new function declaration
-func NewFuncDecl(name string, signature *dst.FuncType, body *dst.BlockStmt) *dst.FuncDecl {
-	f := &dst.FuncDecl{
-		Recv: nil,
-		Name: dst.NewIdent(name),
-		Type: signature,
-		Body: body,
-		Decs: dst.FuncDeclDecorations{},
-	}
-	return f
 }

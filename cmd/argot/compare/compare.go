@@ -171,7 +171,7 @@ func setConfig(configPath string, cfg **config.Config) error {
 	return nil
 }
 
-func doComputeCallgraph(state *loadprogram.WholeProgramState, mode lang.CallgraphAnalysisMode) (*callgraph.Graph, error) {
+func doComputeCallgraph(state *loadprogram.State, mode lang.CallgraphAnalysisMode) (*callgraph.Graph, error) {
 	fmt.Fprintln(os.Stderr, formatutil.Faint("Computing call graph"))
 	start := time.Now()
 	cg, err := mode.ComputeCallgraph(state.Program)
@@ -183,7 +183,7 @@ func doComputeCallgraph(state *loadprogram.WholeProgramState, mode lang.Callgrap
 	return cg, nil
 }
 
-func doCompareSymbols(state *loadprogram.WholeProgramState, cg *callgraph.Graph, symbols map[string]bool) {
+func doCompareSymbols(state *loadprogram.State, cg *callgraph.Graph, symbols map[string]bool) {
 	callgraphReachable := make(map[string]bool)
 	for entry := range lang.CallGraphReachable(cg, false, false) {
 		callgraphReachable[entry.String()] = true
@@ -273,7 +273,7 @@ func funcsToStrings(funcs map[*ssa.Function]bool) map[string]bool {
 	return names
 }
 
-func findReachableNames(state *loadprogram.WholeProgramState) map[string]bool {
+func findReachableNames(state *loadprogram.State) map[string]bool {
 	funcs := reachability.FindReachable(state, false, false, nil)
 	return funcsToStrings(funcs)
 }

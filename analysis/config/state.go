@@ -14,6 +14,12 @@
 
 package config
 
+// ConfigLogger groups a config and a logger. All "state" structs should implement this.
+type ConfigLogger interface {
+	GetConfig() *Config
+	GetLogger() *LogGroup
+}
+
 // A State for config is a config with a logger.
 type State struct {
 	Config *Config
@@ -26,4 +32,14 @@ func NewState(c *Config) *State {
 		Config: c,
 		Logger: NewLogGroup(c),
 	}
+}
+
+// GetConfig returns the config of the state
+func (s *State) GetConfig() *Config {
+	return s.Config
+}
+
+// GetLogger returns the logger of the state
+func (s *State) GetLogger() *LogGroup {
+	return s.Logger
 }

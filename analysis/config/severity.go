@@ -14,10 +14,6 @@
 
 package config
 
-import (
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
-)
-
 // Severity is the severity label of an analysis problem
 type Severity string
 
@@ -40,14 +36,6 @@ func IsValidSeverityStr(s string) bool {
 	default:
 		return false
 	}
-}
-
-// FromString returns some severity when the string is a valid severity, otherwise none
-func FromString(s string) funcutil.Optional[Severity] {
-	if IsValidSeverityStr(s) {
-		return funcutil.Some(Severity(s))
-	}
-	return funcutil.None[Severity]()
 }
 
 func (s Severity) String() string {

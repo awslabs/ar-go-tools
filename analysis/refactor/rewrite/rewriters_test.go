@@ -22,6 +22,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
@@ -35,12 +36,12 @@ func TestWithInlining(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load program: %s", err)
 	}
-	wp, err := loadprogram.NewWholeProgramState(config.NewState(lp.Config), "", lp.Prog, lp.Pkgs)
+	wp, err := loadprogram.NewState(config.NewState(lp.Config), "", lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("Failed to load state: %s", err)
 	}
 
-	state, err := loadprogram.NewPointerState(wp)
+	state, err := ptr.NewState(wp)
 
 	if err != nil {
 		t.Fatalf("Failed to load state: %s", err)
@@ -58,11 +59,11 @@ func TestWithoutInlining(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load program: %s", err)
 	}
-	wp, err := loadprogram.NewWholeProgramState(config.NewState(lp.Config), "", lp.Prog, lp.Pkgs)
+	wp, err := loadprogram.NewState(config.NewState(lp.Config), "", lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("Failed to load state: %s", err)
 	}
-	state, err := loadprogram.NewPointerState(wp)
+	state, err := ptr.NewState(wp)
 	if err != nil {
 		t.Fatalf("Failed to load pointer state: %s", err)
 	}
@@ -74,7 +75,7 @@ func TestWithoutInlining(t *testing.T) {
 }
 
 func checkCalls(t *testing.T,
-	state *loadprogram.PointerState,
+	state *ptr.State,
 	i *ssa.Function,
 	n int,
 	expected []string,
