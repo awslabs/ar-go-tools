@@ -22,7 +22,7 @@ import (
 )
 
 // CheckIndex checks that the indexed graph node is valid in the parent node call site
-func CheckIndex(c *FlowState, node IndexedGraphNode, callSite *CallNode, msg string) error {
+func CheckIndex(c *State, node IndexedGraphNode, callSite *CallNode, msg string) error {
 	if node.Index() >= len(callSite.Args()) {
 		pos := c.Program.Fset.Position(callSite.CallSite().Value().Pos())
 		c.Logger.Debugf("%s: trying to access index %d of %s, which has"+
@@ -39,7 +39,7 @@ func CheckClosureReturns(returnNode *ReturnValNode, closureNode *ClosureNode) bo
 }
 
 // CheckNoGoRoutine logs a message if node's callsite is a goroutine.
-func CheckNoGoRoutine(s *FlowState, reportedLocs map[*ssa.Go]bool, node *CallNode) {
+func CheckNoGoRoutine(s *State, reportedLocs map[*ssa.Go]bool, node *CallNode) {
 	if s.Config.UseEscapeAnalysis {
 		return // escape analysis will handle any unsoundness, so there is no need to report
 	}

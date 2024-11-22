@@ -21,7 +21,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/refactor"
 	"github.com/dave/dst/decorator"
 	"github.com/dave/dst/decorator/resolver/gopackages"
@@ -33,7 +33,7 @@ func TestInsertErrorAssignment(t *testing.T) {
 	dir := path.Join(path.Dir(filename), "testdata/src/refactor/errors")
 
 	config := &packages.Config{
-		Mode:  analysis.PkgLoadMode,
+		Mode:  loadprogram.PkgLoadMode,
 		Tests: false,
 	}
 

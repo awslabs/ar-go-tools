@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/reachability"
@@ -93,8 +94,8 @@ func Run(flags Flags) error {
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	logger := config.NewLogGroup(cfg)
-	state, err := loadprogram.LoadTarget("", flags.FlagSet.Args(), logger, cfg, loadOptions)
+	c := config.NewState(cfg)
+	state, err := analysis.BuildWholeProgramTarget(c, "", flags.FlagSet.Args(), loadOptions)
 	if err != nil {
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)
 	}

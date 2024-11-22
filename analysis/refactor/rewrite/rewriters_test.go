@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
@@ -35,14 +35,12 @@ func TestWithInlining(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load program: %s", err)
 	}
-	state, err := dataflow.NewAnalyzerState(lp.Prog, lp.Pkgs,
-		config.NewLogGroup(lp.Config), lp.Config, []func(*dataflow.FlowState){
-			func(state *dataflow.FlowState) {
-				state.PopulatePointerAnalysisResult(func(function *ssa.Function) bool {
-					return true
-				})
-			},
-		})
+	wp, err := loadprogram.NewWholeProgramState(config.NewState(lp.Config), "", lp.Prog, lp.Pkgs)
+	if err != nil {
+		t.Fatalf("Failed to load state: %s", err)
+	}
+
+	state, err := loadprogram.NewPointerState(wp)
 
 	if err != nil {
 		t.Fatalf("Failed to load state: %s", err)
@@ -60,17 +58,13 @@ func TestWithoutInlining(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load program: %s", err)
 	}
-	state, err := dataflow.NewAnalyzerState(lp.Prog, lp.Pkgs,
-		config.NewLogGroup(lp.Config), lp.Config, []func(*dataflow.FlowState){
-			func(state *dataflow.FlowState) {
-				state.PopulatePointerAnalysisResult(func(function *ssa.Function) bool {
-					return true
-				})
-			},
-		})
-
+	wp, err := loadprogram.NewWholeProgramState(config.NewState(lp.Config), "", lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("Failed to load state: %s", err)
+	}
+	state, err := loadprogram.NewPointerState(wp)
+	if err != nil {
+		t.Fatalf("Failed to load pointer state: %s", err)
 	}
 	for i, r := range state.ReachableFunctions() {
 		if i.Name() == "main" && r {
@@ -80,7 +74,7 @@ func TestWithoutInlining(t *testing.T) {
 }
 
 func checkCalls(t *testing.T,
-	state *dataflow.FlowState,
+	state *loadprogram.PointerState,
 	i *ssa.Function,
 	n int,
 	expected []string,

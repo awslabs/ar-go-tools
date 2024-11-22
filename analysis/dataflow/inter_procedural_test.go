@@ -39,7 +39,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	cfg.MaxEntrypointContextSize = 1 // limit context of each source to avoid timeouts
-	state, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(cfg), cfg)
+	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("failed to build program analysis state: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 
 	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		ShouldTrack:        func(*dataflow.FlowState, ssa.Node) bool { return true },
+		ShouldTrack:        func(*dataflow.State, ssa.Node) bool { return true },
 	})
 
 	state, err = render.BuildCrossFunctionGraph(state)

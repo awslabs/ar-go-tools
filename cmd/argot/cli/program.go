@@ -21,13 +21,14 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
 
 // cmdLoad implements the "load" command that loads a program into the tool.
 // Once it updates the state.Args, it calls the rebuild command to build the program and the state.
-func cmdLoad(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest bool) bool {
+func cmdLoad(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : load new program\n", tt.Escape.Blue, cmdLoadName, tt.Escape.Reset)
 		return false
@@ -43,7 +44,7 @@ func cmdLoad(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest
 
 // cmdRebuild implements the rebuild command. It reloads the current program and rebuilds the state including the
 // pointer analysis and callgraph information.
-func cmdRebuild(tt *term.Terminal, c *dataflow.FlowState, _ Command, withTest bool) bool {
+func cmdRebuild(tt *term.Terminal, c *dataflow.State, _ Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : rebuild the program being analyzed, including analyzer state.\n",
 			tt.Escape.Blue, cmdRebuildName, tt.Escape.Reset)
@@ -52,19 +53,13 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.FlowState, _ Command, withTest bo
 
 	writeFmt(tt, "Reading sources\n")
 	// Load the program
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     withTest,
 		ApplyRewrites: true,
 	}
-	program, pkgs, err := analysis.LoadProgram(loadOptions, state.Args)
-	if err != nil {
-		WriteErr(tt, "could not load program:\n%s\n", err)
-		return false
-	}
-	// Build the newState with all analyses
-	newState, err := dataflow.NewFlowState(program, pkgs, c.Logger, c.Config)
+	newState, err := analysis.BuildDataFlowTarget(c.State, "", state.Args, loadOptions)
 	if err != nil {
 		WriteErr(tt, "error building analyzer state: %s", err)
 		WriteErr(tt, "state is left unchanged")
@@ -80,16 +75,35 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.FlowState, _ Command, withTest bo
 		}
 	}
 	// Reassign state elements
-	newState.CopyTo(c)
+	copyState(newState, c)
 	state.CurrentFunction = nil
 	state.CurrentDataflowInformation = nil
-	state.InitialPackages = pkgs
+	state.InitialPackages = newState.Packages
 	return false
+}
+
+// copyState copies pointers in receiver into argument (shallow copy of everything except mutex).
+// Do not use two copies in separate routines.
+func copyState(from *dataflow.State, into *dataflow.State) {
+	into.State = from.State
+	into.Annotations = from.Annotations
+	into.BoundingInfo = from.BoundingInfo
+	into.Config = from.Config
+	into.EscapeAnalysisState = from.EscapeAnalysisState
+	into.FlowGraph = from.FlowGraph
+	into.Globals = from.Globals
+	into.ImplementationsByType = from.ImplementationsByType
+	into.Logger = from.Logger
+	into.PointerAnalysis = from.PointerAnalysis
+	into.Program = from.Program
+	into.Report = from.Report
+	into.MethodKeys = from.MethodKeys
+	// copy everything except mutex
 }
 
 // cmdReconfig implements the reconfig command and reloads the configuration file. If a new config file is specified,
 // then it will load that new config file.
-func cmdReconfig(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
+func cmdReconfig(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : load the specified config file\n",
 			tt.Escape.Blue, cmdReconfigName, tt.Escape.Reset)

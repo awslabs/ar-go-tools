@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 )
@@ -31,12 +30,12 @@ func TestUnsoundFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	c, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Errorf("error building state: %q", err)
 	}
 	var unsafeChecked, reflectChecked, recoverChecked bool
-	for f := range c.ReachableFunctions() {
+	for f := range state.ReachableFunctions() {
 		if strings.Contains(f.Name(), "usingUnsafe") {
 
 			uf := dataflow.FindUnsoundFeatures(f)

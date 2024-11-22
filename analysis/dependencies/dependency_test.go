@@ -23,7 +23,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -66,18 +66,15 @@ func TestSamplePackageWorkerDependencies(t *testing.T) {
 	files := []string{"samplePackage/samplePackage.go",
 		"samplePackage/samplePackage_parser.go",
 		"samplePackage/samplePackage_unix.go"}
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     false,
 		ApplyRewrites: true,
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	program, pkgs, err := analysis.LoadProgram(loadOptions, files)
-	if err != nil {
-		t.Fatalf("error loading packages: %s", err)
-	}
-	state, err := dataflow.NewAnalyzerState(program, pkgs, logger, cfg, []func(state *dataflow.FlowState){})
+	c := config.NewState(config.NewDefault())
+	state, err := analysis.BuildWholeProgramTarget(c, "", files, loadOptions)
 	if err != nil {
 		t.Fatalf("error starting state: %s", err)
 	}

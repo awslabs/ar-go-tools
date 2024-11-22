@@ -36,12 +36,12 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// Each "command" is a function func(state *dataflow.FlowState, x string) that
+// Each "command" is a function func(state *dataflow.State, x string) that
 // executes the command with state if state is not nil.
 // If state is nil, then it should print its definition on stdout
 
 // cmdShowSsa prints the SSA representation of all the function matching a given regex
-func cmdShowSsa(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest bool) bool {
+func cmdShowSsa(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the ssa representation of a function.\n"+
 			"\t  showssa regex prints the SSA representation of the function matching the regex\n"+
@@ -78,7 +78,7 @@ func cmdShowSsa(tt *term.Terminal, c *dataflow.FlowState, command Command, withT
 }
 
 // cmdShowEscape prints the escape graph of all the function matching a given regex
-func cmdShowEscape(tt *term.Terminal, c *dataflow.FlowState, command Command, withTest bool) bool {
+func cmdShowEscape(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the escape graph of a function.\n"+ // safe %s (position string)
 			"\t  %s regex prints the escape graph of function(s) matching the regex\n"+
@@ -118,7 +118,7 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.FlowState, command Command, wi
 
 // cmdShowDataflow builds and prints the inter-procedural dataflow graph.
 // If on macOS, the command automatically renders an SVG and opens it in Safari.
-func cmdShowDataflow(tt *term.Terminal, c *dataflow.FlowState, _ Command, _ bool) bool {
+func cmdShowDataflow(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : build and print the inter-procedural dataflow graph of a program.\n"+
 			"\t  showdataflow args prints the inter-procedural dataflow graph.\n"+
@@ -172,7 +172,7 @@ func cmdShowDataflow(tt *term.Terminal, c *dataflow.FlowState, _ Command, _ bool
 }
 
 // cmdSummary prints a specific function's summary, if it can be found
-func cmdSummary(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
+func cmdSummary(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the summary of the functions matching a regex\n",
 			tt.Escape.Blue, cmdSummaryName, tt.Escape.Reset)
@@ -219,7 +219,7 @@ func cmdSummary(tt *term.Terminal, c *dataflow.FlowState, command Command, _ boo
 }
 
 // cmdSummarize runs the intra-procedural analysis.
-func cmdSummarize(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
+func cmdSummarize(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : run the intra-procedural analysis. If a function is provided, "+
 			"run only\n", tt.Escape.Blue, cmdSummarizeName, tt.Escape.Reset)
@@ -242,7 +242,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.FlowState, command Command, _ b
 		createCounter := 0
 		buildCounter := 0
 
-		shouldBuildSummary := func(c *dataflow.FlowState, f *ssa.Function) bool {
+		shouldBuildSummary := func(c *dataflow.State, f *ssa.Function) bool {
 			b := isForced || dataflow.ShouldBuildSummary(c, f)
 			if b {
 				buildCounter++
@@ -269,7 +269,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.FlowState, command Command, _ b
 		// If len(funcs) > summarizeThreshold, the filter used is similar to the one used in the taint analysis.
 		buildCounter := 0
 
-		var shouldBuildSummary func(c *dataflow.FlowState, f *ssa.Function) bool
+		var shouldBuildSummary func(c *dataflow.State, f *ssa.Function) bool
 		if len(funcs) > summarizeThreshold {
 			// above a certain threshold, we use the general analysis filters on what to summarize, unless -force has
 			// been specified
@@ -298,10 +298,10 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.FlowState, command Command, _ b
 }
 
 func summarizeWithDefaultParams(tt *term.Terminal, funcs []*ssa.Function, isForced bool,
-	buildCounter *int) func(*dataflow.FlowState, *ssa.Function) bool {
+	buildCounter *int) func(*dataflow.State, *ssa.Function) bool {
 	WriteSuccess(tt, "(more than %d functions matching, other config-defined filters are in use)",
 		summarizeThreshold)
-	shouldBuildSummary := func(c *dataflow.FlowState, f *ssa.Function) bool {
+	shouldBuildSummary := func(c *dataflow.State, f *ssa.Function) bool {
 		b := isForced || (!summaries.IsStdFunction(f) &&
 			summaries.IsUserDefinedFunction(f) &&
 			funcutil.Contains(funcs, f) &&
@@ -314,8 +314,8 @@ func summarizeWithDefaultParams(tt *term.Terminal, funcs []*ssa.Function, isForc
 	return shouldBuildSummary
 }
 
-func alwaysSummarize(funcs []*ssa.Function, buildCounter *int) func(*dataflow.FlowState, *ssa.Function) bool {
-	shouldBuildSummary := func(_ *dataflow.FlowState, f *ssa.Function) bool {
+func alwaysSummarize(funcs []*ssa.Function, buildCounter *int) func(*dataflow.State, *ssa.Function) bool {
+	shouldBuildSummary := func(_ *dataflow.State, f *ssa.Function) bool {
 		b := funcutil.Contains(funcs, f)
 		if b {
 			*buildCounter++
@@ -326,7 +326,7 @@ func alwaysSummarize(funcs []*ssa.Function, buildCounter *int) func(*dataflow.Fl
 }
 
 // cmdTaint runs the taint analysis
-func cmdTaint(tt *term.Terminal, c *dataflow.FlowState, _ Command, _ bool) bool {
+func cmdTaint(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: run the taint analysis with parameters in config.\n",
 			tt.Escape.Blue, cmdTaintName, tt.Escape.Reset)
@@ -354,7 +354,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.FlowState, _ Command, _ bool) bool 
 }
 
 // cmdBacktrace runs the backtrace analysis.
-func cmdBacktrace(tt *term.Terminal, c *dataflow.FlowState, _ Command, _ bool) bool {
+func cmdBacktrace(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: run the backtrace analysis with parameters in config.\n",
 			tt.Escape.Blue, cmdBacktraceName, tt.Escape.Reset)

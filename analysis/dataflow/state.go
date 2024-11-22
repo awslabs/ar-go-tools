@@ -20,14 +20,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
-// FlowState holds information that might need to be used during program analysis, and represents the state of
+// State holds information that might need to be used during program analysis, and represents the state of
 // the analyzer. Different steps of the analysis will populate the fields of this structure.
-type FlowState struct {
+type State struct {
 	*loadprogram.PointerState
 
 	// A map from types to functions implementing that type
@@ -37,7 +39,7 @@ type FlowState struct {
 	//
 	// If t is the signature of a function, then map[t.string()] will return all the functions matching that type.
 	ImplementationsByType map[string]map[*ssa.Function]bool
-	keys                  map[string]string
+	MethodKeys            map[string]string
 
 	// DataFlowContracts are dataflow graphs for interfaces.
 	DataFlowContracts map[string]*SummaryGraph
@@ -58,18 +60,32 @@ type FlowState struct {
 	reachableFunctions map[*ssa.Function]bool
 }
 
-// NewFlowState generates a FlowState from a PointerState
+// NewDefault chains state constructors from the built packages, using default names and options for loggers.
+func NewDefault(c *config.Config, p *ssa.Program, pkgs []*packages.Package) (*State, error) {
+	wp, err := loadprogram.NewWholeProgramState(config.NewState(c), "", p, pkgs)
+	if err != nil {
+		return nil, err
+	}
+	pts, err := loadprogram.NewPointerState(wp)
+	if err != nil {
+		return nil, err
+	}
+	df, err := NewState(pts)
+	return df, err
+}
+
+// NewState generates a State from a PointerState
 // This consists in:
 //   - computing a map from interface types to the implementations of their methods
 //   - scanning the usage of globals in the program
 //   - linking aliases of bound variables to the closure that binds them
 //
-// The FlowState returned *does not* have dataflow information computed yet.
-func NewFlowState(ps *loadprogram.PointerState) (*FlowState, error) {
-	state, err := newFlowState(ps, []func(*FlowState){
-		func(s *FlowState) { s.PopulateImplementations() },
-		func(s *FlowState) { s.PopulateGlobalsVerbose() },
-		func(s *FlowState) {
+// The State returned *does not* have dataflow information computed yet.
+func NewState(ps *loadprogram.PointerState) (*State, error) {
+	state, err := newFlowState(ps, []func(*State){
+		func(s *State) { s.PopulateImplementations() },
+		func(s *State) { s.PopulateGlobalsVerbose() },
+		func(s *State) {
 			err := s.PopulateBoundingInformation(true)
 			if err != nil {
 				ps.Logger.Errorf("error while running bounding analysis: %v", err)
@@ -83,14 +99,14 @@ func NewFlowState(ps *loadprogram.PointerState) (*FlowState, error) {
 }
 
 // NewAnalyzerState returns a properly initialized analyzer state by running essential steps in parallel.
-func newFlowState(ps *loadprogram.PointerState, steps []func(*FlowState)) (*FlowState, error) {
+func newFlowState(ps *loadprogram.PointerState, steps []func(*State)) (*State, error) {
 	var allContracts []Contract
 	// New state with initial cha callgraph
-	state := &FlowState{
+	state := &State{
 		PointerState:          ps,
 		ImplementationsByType: map[string]map[*ssa.Function]bool{},
 		DataFlowContracts:     map[string]*SummaryGraph{},
-		keys:                  map[string]string{},
+		MethodKeys:            map[string]string{},
 		Globals:               map[*ssa.Global]*GlobalNode{},
 		FlowGraph: &InterProceduralFlowGraph{
 			Summaries:     map[*ssa.Function]*SummaryGraph{},
@@ -151,31 +167,13 @@ func newFlowState(ps *loadprogram.PointerState, steps []func(*FlowState)) (*Flow
 	return state, nil
 }
 
-// CopyTo copies pointers in receiver into argument (shallow copy of everything except mutex).
-// Do not use two copies in separate routines.
-func (s *FlowState) CopyTo(b *FlowState) {
-	b.Annotations = s.Annotations
-	b.BoundingInfo = s.BoundingInfo
-	b.Config = s.Config
-	b.EscapeAnalysisState = s.EscapeAnalysisState
-	b.FlowGraph = s.FlowGraph
-	b.Globals = s.Globals
-	b.ImplementationsByType = s.ImplementationsByType
-	b.Logger = s.Logger
-	b.PointerAnalysis = s.PointerAnalysis
-	b.Program = s.Program
-	b.Report = s.Report
-	b.keys = s.keys
-	// copy everything except mutex
-}
-
 // Size returns the number of method implementations collected
-func (s *FlowState) Size() int {
+func (s *State) Size() int {
 	return len(s.ImplementationsByType)
 }
 
 // PrintImplementations prints out all the implementations that the
-// FlowState has collected, organized by type. For each type, it prints
+// State has collected, organized by type. For each type, it prints
 // the type name followed by each implemented function name.
 //
 // The implementations are printed to the given io.Writer. Typically, this
@@ -183,7 +181,7 @@ func (s *FlowState) Size() int {
 //
 // This can be useful for debugging the implementations collected during
 // analysis or for displaying final results.
-func (s *FlowState) PrintImplementations(w io.Writer) {
+func (s *State) PrintImplementations(w io.Writer) {
 	for typString, implems := range s.ImplementationsByType {
 		fmt.Fprintf(w, "KEY: %s\n", typString)
 		for function := range implems {
@@ -193,14 +191,14 @@ func (s *FlowState) PrintImplementations(w io.Writer) {
 }
 
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations
-func (s *FlowState) PopulateTypesToImplementationMap() {
-	if err := ComputeMethodImplementations(s.Program, s.ImplementationsByType, s.DataFlowContracts, s.keys); err != nil {
+func (s *State) PopulateTypesToImplementationMap() {
+	if err := ComputeMethodImplementations(s.Program, s.ImplementationsByType, s.DataFlowContracts, s.MethodKeys); err != nil {
 		s.AddError("implementationsmap", err)
 	}
 }
 
 // PopulateImplementations is a verbose wrapper around PopulateTypesToImplementationsMap.
-func (s *FlowState) PopulateImplementations() {
+func (s *State) PopulateImplementations() {
 	// Load information for analysis and cache it.
 	s.Logger.Infof("Computing information about types and functions for analysis...")
 	start := time.Now()
@@ -210,7 +208,7 @@ func (s *FlowState) PopulateImplementations() {
 }
 
 // PopulateGlobals adds global nodes for every global defined in the program's packages
-func (s *FlowState) PopulateGlobals() {
+func (s *State) PopulateGlobals() {
 	for _, pkg := range s.Program.AllPackages() {
 		for _, member := range pkg.Members {
 			glob, ok := member.(*ssa.Global)
@@ -222,7 +220,7 @@ func (s *FlowState) PopulateGlobals() {
 }
 
 // PopulateGlobalsVerbose is a verbose wrapper around PopulateGlobals
-func (s *FlowState) PopulateGlobalsVerbose() {
+func (s *State) PopulateGlobalsVerbose() {
 	start := time.Now()
 	s.Logger.Infof("Gathering global variable declaration in the program...")
 	s.PopulateGlobals()
@@ -231,7 +229,7 @@ func (s *FlowState) PopulateGlobalsVerbose() {
 }
 
 // PopulateBoundingInformation runs the bounding analysis
-func (s *FlowState) PopulateBoundingInformation(verbose bool) error {
+func (s *State) PopulateBoundingInformation(verbose bool) error {
 	start := time.Now()
 	s.Logger.Debugf("Gathering information about pointer binding in closures")
 	boundingInfo, err := RunBoundingAnalysis(s)
@@ -253,7 +251,7 @@ func (s *FlowState) PopulateBoundingInformation(verbose bool) error {
 
 // IsReachableFunction returns true if f is reachable according to the pointer analysis, or if the pointer analysis
 // and ReachableFunctions has never been called.
-func (s *FlowState) IsReachableFunction(f *ssa.Function) bool {
+func (s *State) IsReachableFunction(f *ssa.Function) bool {
 	if s != nil && s.reachableFunctions != nil {
 		return s.reachableFunctions[f]
 	}
@@ -275,7 +273,7 @@ func (s *FlowState) IsReachableFunction(f *ssa.Function) bool {
 // type of the call variable at the location.
 //
 // Returns a non-nil error if it requires some information in the analyzer state that has not been computed.
-func (s *FlowState) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map[*ssa.Function]lang.CalleeInfo, error) {
+func (s *State) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map[*ssa.Function]lang.CalleeInfo, error) {
 	// First, check if there is a static callee
 	callee := instr.Common().StaticCallee()
 	if callee != nil {
@@ -332,7 +330,7 @@ func (s *FlowState) ResolveCallee(instr ssa.CallInstruction, useContracts bool) 
 // linkContracts implements the step in the analyzer state building function that links every dataflow contract with
 // a specific SSA function. This step should only link function contracts with the SSA function, but it build the
 // summaries for all contracts in allContracts.
-func (s *FlowState) linkContracts(allContracts []Contract) {
+func (s *State) linkContracts(allContracts []Contract) {
 	// This links the function contracts to their implementation by storing an empty summary graph in the
 	// DataFlowContracts map of the analyzer state.
 	for f := range s.ReachableFunctions() {
@@ -352,9 +350,9 @@ func (s *FlowState) linkContracts(allContracts []Contract) {
 
 // HasExternalContractSummary returns true if the function f has a summary has been loaded in the DataFlowContracts
 // of the analyzer state.
-func (s *FlowState) HasExternalContractSummary(f *ssa.Function) bool {
+func (s *State) HasExternalContractSummary(f *ssa.Function) bool {
 	// Indirection: look for interface contract
-	if interfaceMethodKey, ok := s.keys[f.String()]; ok {
+	if interfaceMethodKey, ok := s.MethodKeys[f.String()]; ok {
 		return s.DataFlowContracts[interfaceMethodKey] != nil
 	}
 	// Look for direct contract
@@ -365,7 +363,7 @@ func (s *FlowState) HasExternalContractSummary(f *ssa.Function) bool {
 }
 
 // LoadExternalContractSummary looks for contracts loaded in the DataFlowContracts of the state.
-func (s *FlowState) LoadExternalContractSummary(node *CallNode) *SummaryGraph {
+func (s *State) LoadExternalContractSummary(node *CallNode) *SummaryGraph {
 	if node == nil || node.callee.Callee == nil {
 		return nil
 	}

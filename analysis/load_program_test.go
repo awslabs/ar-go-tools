@@ -21,13 +21,15 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"golang.org/x/tools/go/ssa"
 )
 
 func TestLoadWithProjectRoot(t *testing.T) {
 	configFile := filepath.Join("testdata", "state_load_config.yaml")
-	config, err := tools.LoadConfig(configFile)
+	cfg, err := tools.LoadConfig(configFile)
 	if err != nil {
 		t.Fatalf("failed to load config")
 	}
@@ -38,14 +40,15 @@ func TestLoadWithProjectRoot(t *testing.T) {
 		t.Fatalf("could not change to cmd/argot dir: %s", err)
 		return
 	}
-	loadOptions := LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     false,
 		ApplyRewrites: true,
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	_, err = LoadAnalyzerState(loadOptions, []string{"main.go"}, config)
+	c := config.NewState(cfg)
+	_, err = BuildWholeProgramTarget(c, "", []string{"main.go"}, loadOptions)
 	if err != nil {
 		t.Fatalf("error loading state: %s", err)
 	}
@@ -60,14 +63,14 @@ func programLoadTest(t *testing.T, files []string) {
 		t.Logf("could not change to agent dir: %s", err)
 		return
 	}
-	loadOptions := LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     false,
 		ApplyRewrites: true,
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	pkgs, _, err := LoadProgram(loadOptions, files)
+	pkgs, _, err := loadprogram.Do(files, loadOptions)
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}

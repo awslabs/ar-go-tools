@@ -22,8 +22,8 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
@@ -100,14 +100,14 @@ func LoadTest(
 		patterns = append(patterns, fmt.Sprintf("file=%s", fp))
 	}
 	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		BuildMode:     ssa.InstantiateGenerics | ssa.BuildSerially,
 		LoadTests:     false,
 		ApplyRewrites: options.ApplyRewrite,
 		Platform:      options.Platform,
 		PackageConfig: &pcfg,
 	}
-	program, pkgs, err := analysis.LoadProgram(loadOptions, patterns)
+	program, pkgs, err := loadprogram.Do(patterns, loadOptions)
 	if err != nil {
 		return LoadedTestProgram{}, err
 	}
@@ -126,7 +126,9 @@ func LoadTest(
 		}
 		cfg = cfgJson
 	}
+
 	program.Build()
+
 	return LoadedTestProgram{Prog: program, Config: cfg, Pkgs: pkgs}, nil
 }
 
@@ -146,14 +148,14 @@ func LoadTestFromDisk(dir string, extraFiles []string) (LoadedTestProgram, error
 	}
 	mode := packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedDeps | packages.NeedTypesInfo
 	pcfg := packages.Config{Mode: mode}
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     false,
 		ApplyRewrites: true,
 		Platform:      "",
 		PackageConfig: &pcfg,
 	}
-	prog, pkgs, err := analysis.LoadProgram(loadOptions, patterns)
+	prog, pkgs, err := loadprogram.Do(patterns, loadOptions)
 	if err != nil {
 		return LoadedTestProgram{Pkgs: pkgs}, fmt.Errorf("error loading packages: %v", err)
 	}

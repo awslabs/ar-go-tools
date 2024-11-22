@@ -23,6 +23,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -38,7 +39,7 @@ const Usage = `Interactive CLI for exploring the program and running various ana
 Usage:
   argot cli [options] <package path(s)>`
 
-var commands = map[string]func(tt *term.Terminal, s *dataflow.FlowState, command Command, withTest bool) bool{
+var commands = map[string]func(tt *term.Terminal, s *dataflow.State, command Command, withTest bool) bool{
 	cmdBuildGraphName:   cmdBuildGraph,
 	cmdCallersName:      cmdCallers,
 	cmdCalleesName:      cmdCallees,
@@ -102,27 +103,23 @@ func Run(flags tools.CommonFlags) {
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	program, pkgs, err := loadprogram.Do(loadOptions, state.Args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not load program: %v\n", err)
-		return
-	}
 	// Initialize an analyzer state
-	state, err := dataflow.NewFlowState(program, pkgs, config.NewLogGroup(pConfig), pConfig)
+	cfg := config.NewState(pConfig)
+	dfState, err := analysis.BuildDataFlowTarget(cfg, "", state.Args, loadOptions)
 	if err != nil {
 		panic(err)
 	}
 
 	// Optional step: running the preamble of the taint analysis
 	if pConfig.UseEscapeAnalysis || len(pConfig.TaintTrackingProblems) > 0 {
-		err := taint.AnalysisPreamble(state)
+		err := taint.AnalysisPreamble(dfState)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error while running the taint analysis preamble: %v", err)
 			os.Exit(1)
 		}
 	}
 	// Start the command line tool with the state containing all the information
-	run(state, flags.WithTest)
+	run(dfState, flags.WithTest)
 }
 
 func seekConfig(configPath string, args []string) (*config.Config, bool, error) {
@@ -163,7 +160,7 @@ func attemptSettingConfig(pConfig **config.Config, dir string, filename string) 
 }
 
 // run implements the command line tool, calling interpret for each command until the exit command is input
-func run(c *dataflow.FlowState, withTest bool) {
+func run(c *dataflow.State, withTest bool) {
 	oldState /* const */, err := term.MakeRaw(int(os.Stdin.Fd()))
 	state.TermWidth, _, _ = term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {
@@ -189,7 +186,7 @@ func run(c *dataflow.FlowState, withTest bool) {
 }
 
 // interpret returns true to stop
-func interpret(tt *term.Terminal, c *dataflow.FlowState, command string, withTest bool) bool {
+func interpret(tt *term.Terminal, c *dataflow.State, command string, withTest bool) bool {
 	if command == "" {
 		return false
 	}

@@ -16,11 +16,11 @@
 Package dataflow implements the core of the dataflow analysis. In order to run the taint or the backwards
 analysis, you should first run the steps to build the inter-procedural dataflow graph.
 
-The first object to build is an instance of the [FlowState] with some basic analyses's results already computed.
+The first object to build is an instance of the [State] with some basic analyses's results already computed.
 Assuming you have a program prog, configuration cfg and logger log, you can build an initialized state for your program
-using the [NewFlowState] function:
+using the [NewState] function:
 
-	state, err := dataflow.NewFlowState(log, cfg, prog)
+	state, err := dataflow.NewState(log, cfg, prog)
 
 This initialization runs the pointer analysis on the program, as well as a scanning step for global variables, interface
 method implementations and variable bounding information.

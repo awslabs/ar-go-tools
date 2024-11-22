@@ -22,7 +22,6 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
@@ -69,35 +68,35 @@ func NewFlags(args []string) (Flags, error) {
 
 // Run runs the taint analysis with flags.
 func Run(flags Flags) error {
-	taintConfig, err := tools.LoadConfig(flags.ConfigPath)
+	cfg, err := tools.LoadConfig(flags.ConfigPath)
 	if err != nil {
 		return err
 	}
-	cfgLog := config.NewLogGroup(taintConfig)
-	cfgLog.Infof(formatutil.Faint("Argot taint tool - " + analysis.Version))
+	c := config.NewState(cfg)
+	c.Logger.Infof(formatutil.Faint("Argot taint tool - " + analysis.Version))
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
-		cfgLog.Infof("verbose command line flag overrides config file log-level %d", taintConfig.LogLevel)
-		taintConfig.LogLevel = int(config.DebugLevel)
-		cfgLog = config.NewLogGroup(taintConfig)
+		c.Logger.Infof("verbose command line flag overrides config file log-level %d", c.Config.LogLevel)
+		c.Config.LogLevel = int(config.DebugLevel)
+		c.Logger = config.NewLogGroup(c.Config)
 	}
 	if flags.maxDepth > 0 {
-		taintConfig.UnsafeMaxDepth = flags.maxDepth
-		cfgLog.Warnf("%s %d\n", "UNSAFE config max data-flow depth set to: %s", flags.maxDepth)
+		c.Config.UnsafeMaxDepth = flags.maxDepth
+		c.Logger.Warnf("%s %d\n", "UNSAFE config max data-flow depth set to: %s", flags.maxDepth)
 	}
 	if flags.dryRun {
-		cfgLog.Infof("dry-run command line flag sets on demand summarization to true")
-		taintConfig.SummarizeOnDemand = true
+		c.Logger.Infof("dry-run command line flag sets on demand summarization to true")
+		c.Config.SummarizeOnDemand = true
 	}
 	if flags.Tag != "" {
-		cfgLog.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+		c.Logger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}
 
 	hasFlows := false
 	overallReport := config.NewReport()
 	// Loop over every target of the taint analysis
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, taintConfig, config.TaintTool) {
-		targetHasFlows, report, err := runTarget(flags, targetName, targetFiles, cfgLog, taintConfig)
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, c.Config, config.TaintTool) {
+		targetHasFlows, report, err := runTarget(c, targetName, targetFiles, flags)
 		hasFlows = targetHasFlows || hasFlows
 		if err != nil {
 			return err
@@ -105,7 +104,7 @@ func Run(flags Flags) error {
 		overallReport.Merge(report)
 	}
 
-	overallReport.Dump(cfgLog, taintConfig)
+	overallReport.Dump(c)
 	if hasFlows {
 		return fmt.Errorf("taint analysis found problems, inspect logs for more information")
 	}
@@ -113,11 +112,11 @@ func Run(flags Flags) error {
 }
 
 func runTarget(
-	flags Flags,
+	c *config.State,
 	targetName string,
 	targetFiles []string,
-	logger *config.LogGroup,
-	taintConfig *config.Config) (bool, *config.ReportInfo, error) {
+	flags Flags,
+) (bool, *config.ReportInfo, error) {
 	loadOptions := loadprogram.Options{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
@@ -126,11 +125,7 @@ func runTarget(
 	}
 	// Starting the analysis
 	start := time.Now()
-	ptr, err := loadprogram.LoadTargetWithPointer(targetName, targetFiles, logger, taintConfig, loadOptions)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to load state: %s", err)
-	}
-	df, err := dataflow.NewFlowState(ptr)
+	df, err := analysis.BuildDataFlowTarget(c, targetName, targetFiles, loadOptions)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
@@ -171,7 +166,7 @@ func runTarget(
 			targetStr,
 			formatutil.Red("Tainted data escapes origin thread!")) // safe %s
 
-	} else if taintConfig.UseEscapeAnalysis {
+	} else if c.Config.UseEscapeAnalysis {
 		result.State.Logger.Infof(
 			"%sESCAPE ANALYSIS RESULT:\n\t\t%s",
 			targetStr,

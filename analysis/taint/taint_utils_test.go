@@ -278,13 +278,12 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 		t.Fatalf("failed to load test: %v", err)
 	}
 	setupConfig(lp.Config, summarizeOnDemand)
-	state, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("failed to initialize state")
 	}
 	result, err := taint.Analyze(state)
 	if err != nil {
-		// t.Logf("taint analysis failed: %v", err) // use for debugging: sometimes errors are expected
 		if result.State != nil {
 			for _, err := range result.State.CheckError() {
 				if !errorExpected(err) {

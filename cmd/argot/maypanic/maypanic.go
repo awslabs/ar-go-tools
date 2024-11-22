@@ -88,7 +88,7 @@ func Run(flags Flags) error {
 		LoadTests:     false,
 		ApplyRewrites: true,
 	}
-	program, _, err := loadprogram.Do(loadOptions, flags.flagSet.Args())
+	program, _, err := loadprogram.Do(flags.flagSet.Args(), loadOptions)
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}

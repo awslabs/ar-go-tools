@@ -15,9 +15,8 @@
 package concurrency
 
 import (
-	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -25,8 +24,6 @@ import (
 
 // AnalysisResult contains all the information resulting from the Analyze function
 type AnalysisResult struct {
-	AnalyzerState *dataflow.FlowState
-
 	// Ids contains the indices of Go calls. Ids[0] is always nil
 	Ids []*ssa.Go
 
@@ -40,17 +37,7 @@ type AnalysisResult struct {
 	NodeColors map[*callgraph.Node]map[uint32]bool
 }
 
-// Analyze runs all the concurrency specific analyses on the program with the configuration provided.
-func Analyze(logger *config.LogGroup, config *config.Config, program *ssa.Program) (AnalysisResult, error) {
-
-	state, err := dataflow.NewFlowState(program, nil, logger, config)
-	if err != nil {
-		return AnalysisResult{}, err
-	}
-	return RunAnalysis(state)
-}
-
-// RunAnalysis runs the concurrency analysis on the program contained in the state.
+// Analyze runs the concurrency analysis on the program contained in the state.
 // The dataflow analysis state must contain the program, as well as the results from the callgraph analysis and
 // the pointer analysis
 //
@@ -59,7 +46,7 @@ func Analyze(logger *config.LogGroup, config *config.Config, program *ssa.Progra
 // - a first pass to collect all occurrences of `go ...` instructions
 //
 // - a second pass to mark function with the all the `go ...` instructions they may be called from
-func RunAnalysis(state *dataflow.FlowState) (AnalysisResult, error) {
+func Analyze(state *loadprogram.PointerState) (AnalysisResult, error) {
 	var callID uint32
 
 	// goCalls maps from a goroutine instruction to a callID
@@ -130,14 +117,13 @@ func RunAnalysis(state *dataflow.FlowState) (AnalysisResult, error) {
 	}
 
 	return AnalysisResult{
-		AnalyzerState: state,
-		NodeColors:    vis,
-		GoCalls:       goCalls,
-		Ids:           ids,
+		NodeColors: vis,
+		GoCalls:    goCalls,
+		Ids:        ids,
 	}, nil
 }
 
-func printGoCallInformation(state *dataflow.FlowState, call *ssa.Go) {
+func printGoCallInformation(state *loadprogram.PointerState, call *ssa.Go) {
 	if call == nil {
 		return
 	}

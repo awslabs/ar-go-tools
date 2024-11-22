@@ -18,11 +18,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/rewrite"
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -60,7 +57,7 @@ type Options struct {
 // To understand how to specify the args, look at the documentation of packages.Load.
 //
 // The returned program has already been built.
-func Do(options Options, args []string) (*ssa.Program, []*packages.Package, error) {
+func Do(files []string, options Options) (*ssa.Program, []*packages.Package, error) {
 
 	packageConfig := options.PackageConfig
 	if packageConfig == nil {
@@ -75,7 +72,7 @@ func Do(options Options, args []string) (*ssa.Program, []*packages.Package, erro
 	}
 
 	// load, parse and type check the given packages
-	initialPackages, err := packages.Load(packageConfig, args...)
+	initialPackages, err := packages.Load(packageConfig, files...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load program: %s", err)
 	}
@@ -124,45 +121,4 @@ func AllPackages(funcs map[*ssa.Function]bool) []*ssa.Package {
 		return pkgList[i].Pkg.Path() < pkgList[j].Pkg.Path()
 	})
 	return pkgList
-}
-
-// LoadTarget loads the target specified by the list of files provided. Return an analyzer state that has been
-// initialized with the program if successful. The Target of that state will be set to the provided name.
-func LoadTarget(
-	name string,
-	files []string,
-	logger *config.LogGroup,
-	cfg *config.Config,
-	options Options) (*WholeProgramState, error) {
-	if name != "" {
-		// If it's a named target, need to change to project root's directory to properly load the target
-		err := os.Chdir(cfg.Root())
-		if err != nil {
-			return nil, fmt.Errorf("failed to change to root dir: %s", err)
-		}
-	}
-	startLoad := time.Now()
-	logger.Infof(formatutil.Faint("Reading sources for target") + " " + name + "\n")
-	wholeProgramState, err := NewWholeProgramState(name, options, files, logger, cfg)
-	loadDuration := time.Since(startLoad)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load whole program: %v", err)
-	}
-	logger.Infof("Loaded whole program state in %3.4f s", loadDuration.Seconds())
-	return wholeProgramState, nil
-}
-
-// LoadTargetWithPointer loads the target specified by the list of files provided.
-// Builds the program and then runs the pointer analysis to return a PointerState.
-func LoadTargetWithPointer(
-	name string,
-	files []string,
-	logger *config.LogGroup,
-	cfg *config.Config,
-	options Options) (*PointerState, error) {
-	wp, err := LoadTarget(name, files, logger, cfg, options)
-	if err != nil {
-		return nil, err // context for load target is enough
-	}
-	return NewPointerState(wp)
 }

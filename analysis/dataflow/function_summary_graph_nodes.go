@@ -71,7 +71,7 @@ type GraphNode interface {
 	ParentName() string
 
 	// Position returns the position of the node in the source code.
-	Position(c *FlowState) token.Position
+	Position(c *State) token.Position
 
 	// String prints the string representation of the node.
 	// All strings methods should return sanitized output. That is, the underlying information related to the source
@@ -295,7 +295,7 @@ func (a *ParamNode) SetLocs(set LocSet) {
 }
 
 // Position returns the estimated position of the node in the source
-func (a *ParamNode) Position(c *FlowState) token.Position {
+func (a *ParamNode) Position(c *State) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
 	}
@@ -370,7 +370,7 @@ func (a *FreeVarNode) SsaNode() *ssa.FreeVar { return a.ssaNode }
 func (a *FreeVarNode) Type() types.Type { return a.ssaNode.Type() }
 
 // Position returns the estimated position of the node in the source
-func (a *FreeVarNode) Position(c *FlowState) token.Position {
+func (a *FreeVarNode) Position(c *State) token.Position {
 	if a.ssaNode != nil {
 		return c.Program.Fset.Position(a.ssaNode.Pos())
 	}
@@ -439,7 +439,7 @@ func (a *CallNodeArg) SetLocs(set LocSet) {
 func (a *CallNodeArg) Type() types.Type { return a.ssaValue.Type() }
 
 // Position returns the estimated position of the node in the source
-func (a *CallNodeArg) Position(c *FlowState) token.Position {
+func (a *CallNodeArg) Position(c *State) token.Position {
 	if a.parent != nil {
 		return a.parent.Position(c)
 	}
@@ -524,7 +524,7 @@ func (a *CallNode) Type() types.Type {
 }
 
 // Position returns the estimated position of the node in the source
-func (a *CallNode) Position(c *FlowState) token.Position {
+func (a *CallNode) Position(c *State) token.Position {
 	if a.callSite != nil && a.callSite.Common() != nil && a.callSite.Common().Value != nil {
 		return c.Program.Fset.Position(a.callSite.Pos())
 	}
@@ -638,7 +638,7 @@ func (a *ReturnValNode) Type() types.Type {
 }
 
 // Position returns the estimated position of the node in the source
-func (a *ReturnValNode) Position(c *FlowState) token.Position {
+func (a *ReturnValNode) Position(c *State) token.Position {
 	if a.parent != nil && a.parent.Parent != nil {
 		return c.Program.Fset.Position(a.parent.Parent.Pos())
 	}
@@ -713,7 +713,7 @@ func (a *ClosureNode) SetLocs(set LocSet) {
 func (a *ClosureNode) Type() types.Type { return a.instr.Type() }
 
 // Position returns the estimated position of the node in the source
-func (a *ClosureNode) Position(c *FlowState) token.Position {
+func (a *ClosureNode) Position(c *State) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	}
@@ -808,7 +808,7 @@ func (a *BoundVarNode) Type() types.Type { return a.ssaValue.Type() }
 func (a *BoundVarNode) Value() ssa.Value { return a.ssaValue }
 
 // Position returns the estimated position of the node in the source
-func (a *BoundVarNode) Position(c *FlowState) token.Position {
+func (a *BoundVarNode) Position(c *State) token.Position {
 	if a.ssaValue != nil {
 		return c.Program.Fset.Position(a.ssaValue.Pos())
 	}
@@ -883,7 +883,7 @@ func (a *AccessGlobalNode) SetLocs(set LocSet) {
 func (a *AccessGlobalNode) Type() types.Type { return a.Global.Type() }
 
 // Position returns the estimated position of the node in the source
-func (a *AccessGlobalNode) Position(c *FlowState) token.Position {
+func (a *AccessGlobalNode) Position(c *State) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	}
@@ -957,7 +957,7 @@ func (a *SyntheticNode) Type() types.Type {
 }
 
 // Position returns the estimated position of the node in the source
-func (a *SyntheticNode) Position(c *FlowState) token.Position {
+func (a *SyntheticNode) Position(c *State) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	}
@@ -1028,7 +1028,7 @@ func (a *BoundLabelNode) SetLocs(set LocSet) {
 func (a *BoundLabelNode) Type() types.Type { return a.targetInfo.Type() }
 
 // Position returns the position of the bound label
-func (a *BoundLabelNode) Position(c *FlowState) token.Position {
+func (a *BoundLabelNode) Position(c *State) token.Position {
 	if a.instr != nil {
 		return c.Program.Fset.Position(a.instr.Pos())
 	}
@@ -1109,7 +1109,7 @@ func (a *IfNode) SetLocs(set LocSet) {
 func (a *IfNode) Type() types.Type { return a.ssaNode.Cond.Type() }
 
 // Position returns the position of the node.
-func (a *IfNode) Position(c *FlowState) token.Position {
+func (a *IfNode) Position(c *State) token.Position {
 	cond := a.ssaNode
 	if cond == nil {
 		return lang.DummyPos

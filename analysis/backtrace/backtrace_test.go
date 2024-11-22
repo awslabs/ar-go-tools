@@ -68,8 +68,7 @@ func TestAnalyze_OnDemand(t *testing.T) {
 var ignoreMatch = match{-1, nil, -1}
 
 func testAnalyze(t *testing.T, lp analysistest.LoadedTestProgram) {
-	lg := config.NewLogGroup(lp.Config)
-	state, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, lg, lp.Config)
+	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
@@ -380,8 +379,7 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 
 func testAnalyzeClosures(t *testing.T, lp analysistest.LoadedTestProgram) {
 	lp.Config.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
-	lg := config.NewLogGroup(lp.Config)
-	state, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, lg, lp.Config)
+	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
@@ -525,8 +523,7 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 	}
 	lp.Config.SummarizeOnDemand = true
 	lp.Config.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
-	lg := config.NewLogGroup(lp.Config)
-	state, err := dataflow.NewInitializedAnalyzerState(lp.Prog, lp.Pkgs, lg, lp.Config)
+	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}

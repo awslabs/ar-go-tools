@@ -32,13 +32,13 @@ import (
 // IntraAnalysisParams represents the arguments for RunIntraProcedural.
 type IntraAnalysisParams struct {
 	// ShouldBuildSummary indicates whether the summary should be built when it is created
-	ShouldBuildSummary func(*dataflow.FlowState, *ssa.Function) bool
+	ShouldBuildSummary func(*dataflow.State, *ssa.Function) bool
 
 	// ShouldTrack is a function that returns true if the node should be an entrypoint to the analysis.
 	// The node may be an entrypoint or an endpoint of an analysis.
 	// In particular, ShouldTrack identifies the special nodes that must be tracked but are not callgraph
 	// related nodes.
-	ShouldTrack func(*dataflow.FlowState, ssa.Node) bool
+	ShouldTrack func(*dataflow.State, ssa.Node) bool
 
 	// PostBlockCallback will be called each time a block is analyzed if the analysis is running on a single core
 	// This is useful for debugging purposes
@@ -48,7 +48,7 @@ type IntraAnalysisParams struct {
 // RunIntraProceduralPass runs an intra-procedural analysis pass of program prog in parallel using numRoutines, using the
 // analyzer state. The args specify the intraprocedural analysis parameters.
 // RunIntraProceduralPass updates the summaries stored in the state's FlowGraph
-func RunIntraProceduralPass(state *dataflow.FlowState, numRoutines int, args IntraAnalysisParams) { //argot:ignore df-intra-uses
+func RunIntraProceduralPass(state *dataflow.State, numRoutines int, args IntraAnalysisParams) { //argot:ignore df-intra-uses
 	state.Logger.Infof("Starting intra-procedural analysis ...")
 	start := time.Now()
 
@@ -79,7 +79,7 @@ func RunIntraProceduralPass(state *dataflow.FlowState, numRoutines int, args Int
 
 // runJobs runs the intra-procedural analysis on each job in jobs in parallel and returns a slice with all the results.
 func runJobs(jobs []singleFunctionJob, numRoutines int,
-	shouldTrack func(*dataflow.FlowState, ssa.Node) bool) []dataflow.IntraProceduralResult {
+	shouldTrack func(*dataflow.State, ssa.Node) bool) []dataflow.IntraProceduralResult {
 	f := func(job singleFunctionJob) dataflow.IntraProceduralResult {
 		return runSingleFunctionJob(job, shouldTrack)
 	}
@@ -89,7 +89,7 @@ func runJobs(jobs []singleFunctionJob, numRoutines int,
 
 // RunInterProcedural runs the inter-procedural analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
-func RunInterProcedural(state *dataflow.FlowState, visitor dataflow.Visitor, spec dataflow.ScanningSpec) {
+func RunInterProcedural(state *dataflow.State, visitor dataflow.Visitor, spec dataflow.ScanningSpec) {
 	state.Logger.Infof("Starting inter-procedural pass...")
 	start := time.Now()
 	state.FlowGraph.BuildAndRunVisitor(state, visitor, spec)
@@ -100,7 +100,7 @@ func RunInterProcedural(state *dataflow.FlowState, visitor dataflow.Visitor, spe
 type singleFunctionJob struct {
 	// analyzerState is the state of the global analyzer. It should only be read, except for specific thread-safe
 	// parts. Individual summaries stored in the FlowGraph will not be modified concurrently.
-	analyzerState *dataflow.FlowState
+	analyzerState *dataflow.State
 
 	// function is the function that needs to be summarized
 	function *ssa.Function
@@ -120,7 +120,7 @@ type singleFunctionJob struct {
 // runSingleFunctionJob runs the intra-procedural analysis with the information in job
 // and returns the result of the analysis.
 func runSingleFunctionJob(job singleFunctionJob,
-	shouldTrack func(*dataflow.FlowState, ssa.Node) bool) dataflow.IntraProceduralResult {
+	shouldTrack func(*dataflow.State, ssa.Node) bool) dataflow.IntraProceduralResult {
 	targetName := formatutil.Sanitize(lang.PackageNameFromFunction(job.function) + "." + job.function.Name())
 	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
 	result, err := dataflow.IntraProceduralAnalysis(job.analyzerState, job.function,
@@ -153,7 +153,7 @@ func runSingleFunctionJob(job singleFunctionJob,
 // Operations on graph and candidates are sequential.
 // cleans up done and c channels
 func collectResults(c []dataflow.IntraProceduralResult, graph *dataflow.InterProceduralFlowGraph,
-	state *dataflow.FlowState) {
+	state *dataflow.State) {
 	var f *os.File
 	var err error
 

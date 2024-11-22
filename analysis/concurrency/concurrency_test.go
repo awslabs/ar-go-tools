@@ -23,6 +23,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/concurrency"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	. "github.com/awslabs/ar-go-tools/internal/funcutil"
 )
@@ -30,7 +31,7 @@ import (
 //go:embed testdata
 var testfsys embed.FS
 
-func loadConcurrencyTestResult(t *testing.T, subDir string) concurrency.AnalysisResult {
+func loadConcurrencyTestResult(t *testing.T, subDir string) (concurrency.AnalysisResult, *loadprogram.PointerState) {
 	// only works for "trivial" for now because that's the only dir that's embedded in testfsys
 	dirName := filepath.Join("./testdata", subDir)
 	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
@@ -38,21 +39,27 @@ func loadConcurrencyTestResult(t *testing.T, subDir string) concurrency.Analysis
 		t.Fatalf("failed to load test: %v", err)
 	}
 
-	cfg := lp.Config
-	program := lp.Prog
-	lg := config.NewLogGroup(cfg)
-	ar, err := concurrency.Analyze(lg, cfg, program)
+	c := config.NewState(lp.Config)
+	state1, err := loadprogram.NewWholeProgramState(c, "", lp.Prog, lp.Pkgs)
+	if err != nil {
+		t.Fatalf("failed to program state: %s", err)
+	}
+	state, err := loadprogram.NewPointerState(state1)
+	if err != nil {
+		t.Fatalf("failed to pointer state: %s", err)
+	}
+	ar, err := concurrency.Analyze(state)
 	if err != nil {
 		t.Fatalf("taint analysis returned error %v", err)
 	}
-	return ar
+	return ar, state
 }
 
 func TestTrivial(t *testing.T) {
-	ar := loadConcurrencyTestResult(t, "trivial")
+	ar, state := loadConcurrencyTestResult(t, "trivial")
 
 	for goInstr, id := range ar.GoCalls {
-		t.Logf("%d : %s @ %s", id, goInstr, ar.AnalyzerState.Program.Fset.Position(goInstr.Pos()))
+		t.Logf("%d : %s @ %s", id, goInstr, state.Program.Fset.Position(goInstr.Pos()))
 	}
 
 	res := make(map[string]string, len(ar.NodeColors))

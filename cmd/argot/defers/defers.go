@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -59,8 +60,8 @@ func Run(args []string, verbose bool) error {
 	if verbose {
 		cfg.LogLevel = int(config.TraceLevel)
 	}
-	logger := config.NewLogGroup(cfg)
-	target, err := loadprogram.LoadTarget("", args, logger, cfg, loadOptions)
+	c := config.NewState(cfg)
+	target, err := analysis.BuildWholeProgramTarget(c, "", args, loadOptions)
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}

@@ -23,7 +23,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -80,38 +80,33 @@ func NewFlags(args []string) (Flags, error) {
 func Run(flags Flags) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	loadOptions := analysis.LoadProgramOptions{
+	loadOptions := loadprogram.Options{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	program, pkgs, err := analysis.LoadProgram(loadOptions, flags.FlagSet.Args())
-	if err != nil {
-		return err
-	}
 
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
-
 	// get absolute paths for 'exclude'
 	excludeAbsolute := analysisutil.MakeAbsolute(flags.excludePaths)
 	defaultConfig := config.NewDefault()
-	logGroup := config.NewLogGroup(defaultConfig)
-	analyzer, err := dataflow.NewAnalyzerState(program, pkgs, logGroup, defaultConfig, nil)
+	c := config.NewState(defaultConfig)
+	analyzer, err := analysis.BuildPointerTarget(c, "", flags.FlagSet.Args(), loadOptions)
 	if err != nil {
-		logGroup.Errorf("Failed to initialize state ...")
+		c.Logger.Errorf("Failed to initialize state ...")
 		return nil
 	}
 	reachableFunctions := analyzer.ReachableFunctions()
 	result := analysis.SSAStatistics(&reachableFunctions, excludeAbsolute)
 	if flags.outputJson {
 		buf, _ := json.Marshal(result)
-		fmt.Println(string(buf))
+		c.Logger.Infof(string(buf))
 	} else {
-		fmt.Printf("Number of functions: %d\n", result.NumberOfFunctions)
-		fmt.Printf("Number of nonempty functions: %d\n", result.NumberOfNonemptyFunctions)
-		fmt.Printf("Number of blocks: %d\n", result.NumberOfBlocks)
-		fmt.Printf("Number of instructions: %d\n", result.NumberOfInstructions)
+		c.Logger.Infof("Number of functions: %d\n", result.NumberOfFunctions)
+		c.Logger.Infof("Number of nonempty functions: %d\n", result.NumberOfNonemptyFunctions)
+		c.Logger.Infof("Number of blocks: %d\n", result.NumberOfBlocks)
+		c.Logger.Infof("Number of instructions: %d\n", result.NumberOfInstructions)
 	}
 
 	analysis.ClosureLocationsStats(log.Default(), &reachableFunctions, flags.prefix)

@@ -12,50 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dataflow_test
+package lang_test
 
 import (
+	"embed"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	cg "golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/ssa"
 )
 
-// methodTest runs the test.
-//
-// HACK sometimes the package name is not command-line-arguments so this was manually patched using string substitutions.
-// There may be a more elegant way to do this.
-func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name string, expect map[string]bool) {
-	if _, ok := impl[name]; !ok {
-		name = strings.ReplaceAll(name, "command-line-arguments", "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/callgraph")
-	}
-	implementsName := impl[name]
-	if implementsName == nil {
-		t.Fatalf("interface method %s undefined", name)
-	} else if len(implementsName) != len(expect) {
-		for f := range implementsName {
-			t.Logf("Implements: %s", f.String())
-		}
-		t.Fatalf("method %s has %d implementations, not %d", name, len(implementsName), len(expect))
-	} else {
-		for f := range implementsName {
-			if f == nil {
-				t.Fatalf("method %s has a nil implementations", name)
-			}
-			fs := f.String()
-			if !strings.Contains(fs, "command-line-arguments") {
-				fs = strings.ReplaceAll(fs, "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/callgraph", "command-line-arguments")
-			}
-			if !expect[fs] {
-				t.Fatalf("method %s has an unexpected implementation %s", name, f.String())
-			}
-		}
-	}
-}
+//go:embed testdata
+var testfsys embed.FS
 
 func TestPointerCallgraph(t *testing.T) {
 	dir := filepath.Join("testdata", "callgraph")
@@ -64,7 +34,7 @@ func TestPointerCallgraph(t *testing.T) {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	program := lp.Prog
-	callgraph, err := df.PointerAnalysis.ComputeCallgraph(program)
+	callgraph, err := lang.PointerAnalysis.ComputeCallgraph(program)
 	if err != nil {
 		t.Fatalf("error computing callgraph: %s", err)
 	}

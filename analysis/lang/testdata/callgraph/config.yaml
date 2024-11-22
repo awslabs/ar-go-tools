@@ -1,0 +1,3 @@
+options:
+  analysis-options:
+    max-alarms: 1000

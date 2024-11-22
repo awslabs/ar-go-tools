@@ -28,7 +28,7 @@ type FlowReports struct {
 }
 
 // report generates a json report for a specific data flow
-func report(s *dataflow.FlowState,
+func report(s *dataflow.State,
 	traces map[dataflow.GraphNode][]Trace,
 	ss *config.SlicingSpec) FlowReports {
 	traceMap := make(map[string][][]dataflow.ReportNodeInfo)

@@ -28,7 +28,7 @@ import (
 type reversedCallStack = CallStack
 
 // GetAllCallingContexts returns all the possible loop-free calling contexts of a CallNode in the state
-func GetAllCallingContexts(s *FlowState, n *CallNode) []*CallStack {
+func GetAllCallingContexts(s *State, n *CallNode) []*CallStack {
 	if s.PointerAnalysis == nil {
 		return nil
 	}
@@ -155,7 +155,7 @@ func callCtxKey(calls []*cg.Node) string {
 
 // ComputeContexts computes all calling contexts of size at most n
 // (the callgraph used is in c.PointerAnalysis.Callgraph.Root)
-func ComputeContexts(c *FlowState, n int) (CallCtxInfo, error) {
+func ComputeContexts(c *State, n int) (CallCtxInfo, error) {
 	ci := CallCtxInfo{
 		Contexts: map[string]bool{},
 		Ids:      map[int]*cg.Node{},

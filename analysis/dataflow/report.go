@@ -34,7 +34,7 @@ type ReportNodeInfo struct {
 
 // GetReportNodeInfo converts the information in a NodeWithTrace into a ReportNodeInfo.
 // This involved extracting descriptions for the node, context information and string positions using the state.
-func GetReportNodeInfo(g NodeWithTrace, c *FlowState) ReportNodeInfo {
+func GetReportNodeInfo(g NodeWithTrace, c *State) ReportNodeInfo {
 	return ReportNodeInfo{
 		Position:    g.Node.Position(c).String(),
 		Context:     FuncNames(g.Trace, false),
@@ -43,7 +43,7 @@ func GetReportNodeInfo(g NodeWithTrace, c *FlowState) ReportNodeInfo {
 }
 
 // ReportMissingOrNotConstructedSummary prints a missing summary message to the cache's logger.
-func (s *FlowState) ReportMissingOrNotConstructedSummary(callSite *CallNode) {
+func (s *State) ReportMissingOrNotConstructedSummary(callSite *CallNode) {
 	if !s.Config.Verbose() {
 		return
 	}
@@ -83,7 +83,7 @@ func (s *FlowState) ReportMissingOrNotConstructedSummary(callSite *CallNode) {
 }
 
 // ReportMissingClosureNode prints a missing closure node summary message to the cache's logger.
-func (s *FlowState) ReportMissingClosureNode(closureNode *ClosureNode) {
+func (s *State) ReportMissingClosureNode(closureNode *ClosureNode) {
 	if !s.Config.Verbose() {
 		return
 	}
@@ -104,7 +104,7 @@ func (s *FlowState) ReportMissingClosureNode(closureNode *ClosureNode) {
 }
 
 // ReportSummaryNotConstructed prints a warning message to the cache's logger.
-func (s *FlowState) ReportSummaryNotConstructed(callSite *CallNode) {
+func (s *State) ReportSummaryNotConstructed(callSite *CallNode) {
 	if !s.Config.Verbose() {
 		return
 	}
@@ -148,7 +148,7 @@ type UnsoundFeaturesMap struct {
 // - reflect
 //
 // Usages of those features are logged at WARN level with the position of where the feature is used.
-func reportUnsoundFeatures(state *FlowState, f *ssa.Function) {
+func reportUnsoundFeatures(state *State, f *ssa.Function) {
 	unsoundFeatures := FindUnsoundFeatures(f)
 	if len(unsoundFeatures.Recovers) > 0 ||
 		len(unsoundFeatures.UnsafeUsages) > 0 ||

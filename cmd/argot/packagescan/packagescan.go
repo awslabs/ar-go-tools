@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
@@ -109,10 +110,9 @@ func Run(flags Flags) error {
 
 	platforms := strings.Split(flags.targets, ",")
 	results := make(map[string]map[string]bool)
-
+	cfg := config.NewDefault()
+	c := config.NewState(cfg)
 	for _, platform := range platforms {
-		cfg := config.NewDefault()
-		logger := config.NewLogGroup(cfg)
 		loadOptions := loadprogram.Options{
 			Platform:      platform,
 			PackageConfig: nil,
@@ -120,7 +120,7 @@ func Run(flags Flags) error {
 			LoadTests:     flags.withTest,
 			ApplyRewrites: true,
 		}
-		state, err := loadprogram.LoadTargetWithPointer("", flags.flagSet.Args(), logger, cfg, loadOptions)
+		state, err := analysis.BuildPointerTarget(c, "", flags.flagSet.Args(), loadOptions)
 		if err != nil {
 			return fmt.Errorf("failed to load program: %v", err)
 		}

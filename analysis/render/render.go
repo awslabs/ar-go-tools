@@ -27,7 +27,7 @@ import (
 )
 
 // BuildCrossFunctionGraph builds a full-program (inter-procedural) analysis state from program.
-func BuildCrossFunctionGraph(state *dataflow.FlowState) (*dataflow.FlowState, error) {
+func BuildCrossFunctionGraph(state *dataflow.State) (*dataflow.State, error) {
 	if len(state.FlowGraph.Summaries) == 0 {
 		return nil, fmt.Errorf("state does not contain any summaries")
 	}
@@ -52,7 +52,7 @@ type CrossFunctionGraphVisitor struct{}
 // complete dataflow graph.
 //
 //gocyclo:ignore
-func (v CrossFunctionGraphVisitor) Visit(c *dataflow.FlowState, entrypoint dataflow.NodeWithTrace) {
+func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.NodeWithTrace) {
 	que := []*dataflow.VisitorNode{{NodeWithTrace: entrypoint, Prev: nil, Depth: 0}}
 	seen := make(map[dataflow.NodeWithTrace]bool)
 	goroutines := make(map[*ssa.Go]bool)
@@ -361,7 +361,7 @@ func addEdge(graph *dataflow.InterProceduralFlowGraph, src dataflow.GraphNode, d
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the
 // trace has not been seen before
-func addNext(c *dataflow.FlowState,
+func addNext(c *dataflow.State,
 	que []*dataflow.VisitorNode,
 	seen map[dataflow.NodeWithTrace]bool,
 	cur *dataflow.VisitorNode,

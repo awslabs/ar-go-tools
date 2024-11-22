@@ -32,7 +32,7 @@ import (
 // - reading from struct fields that are marked as sources.
 // - reading from channels marked as source
 // - writing in struct fields that are marked as sinks.
-func IsNodeOfInterest(state *FlowState, n ssa.Node) bool {
+func IsNodeOfInterest(state *State, n ssa.Node) bool {
 	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
 		analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSink) ||
 		analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint) ||
@@ -43,7 +43,7 @@ func IsNodeOfInterest(state *FlowState, n ssa.Node) bool {
 // IsSourceNode returns true if n matches the code identifier of a source node in the taint specification.
 // If the taint specification is nil, then it will look whether the node can be any source node in the
 // config.
-func IsSourceNode(state *FlowState, ts *config.TaintSpec, n ssa.Node) bool {
+func IsSourceNode(state *State, ts *config.TaintSpec, n ssa.Node) bool {
 	if ts == nil {
 		return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
 			state.ResolveSsaNode(annotations.Source, "_", n)
@@ -54,7 +54,7 @@ func IsSourceNode(state *FlowState, ts *config.TaintSpec, n ssa.Node) bool {
 
 // IsBacktraceNode returns true if slicing spec identifies n as a backtrace entrypoint. If the backtrace specification
 // is nil, then it will look at whether the node can be any backtrace point in the config.
-func IsBacktraceNode(state *FlowState, ss *config.SlicingSpec, n ssa.Node) bool {
+func IsBacktraceNode(state *State, ss *config.SlicingSpec, n ssa.Node) bool {
 	if f, ok := n.(*ssa.Function); ok {
 		pkg := lang.PackageNameFromFunction(f)
 		return ss.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
@@ -67,12 +67,12 @@ func IsBacktraceNode(state *FlowState, ss *config.SlicingSpec, n ssa.Node) bool 
 }
 
 // IsSink returns true if the taint spec identifies n as a sink.
-func IsSink(state *FlowState, ts *config.TaintSpec, n GraphNode) bool {
+func IsSink(state *State, ts *config.TaintSpec, n GraphNode) bool {
 	return isMatchingCodeID(ts.IsSink, n) || state.ResolveGraphNode(annotations.Sink, ts.Tag, n)
 }
 
 // IsSanitizer returns true if the taint spec identified n as a sanitizer.
-func IsSanitizer(state *FlowState, ts *config.TaintSpec, n GraphNode) bool {
+func IsSanitizer(state *State, ts *config.TaintSpec, n GraphNode) bool {
 	return isMatchingCodeID(ts.IsSanitizer, n) || state.ResolveGraphNode(annotations.Sanitizer, ts.Tag, n)
 }
 
@@ -103,7 +103,7 @@ func IsValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bo
 }
 
 // IsFiltered returns true if the node is filtered out by the taint analysis.
-func IsFiltered(s *FlowState, ts *config.TaintSpec, n GraphNode) bool {
+func IsFiltered(s *State, ts *config.TaintSpec, n GraphNode) bool {
 	for _, filter := range ts.Filters {
 		if filter.Type != "" {
 			if filter.MatchType(n.Type()) {

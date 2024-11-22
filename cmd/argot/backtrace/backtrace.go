@@ -23,7 +23,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -41,17 +40,17 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config file: %v", err)
 	}
-	cfgLog := config.NewLogGroup(cfg)
-	cfgLog.Infof(formatutil.Faint("Argot backtrace tool - " + analysis.Version))
+	c := config.NewState(cfg)
+	c.Logger.Infof(formatutil.Faint("Argot backtrace tool - " + analysis.Version))
 
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
-		cfgLog.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
-		cfg.LogLevel = int(config.DebugLevel)
-		cfgLog = config.NewLogGroup(cfg)
+		c.Logger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
+		c.Config.LogLevel = int(config.DebugLevel)
+		c.Logger = config.NewLogGroup(cfg)
 	}
 	if flags.Tag != "" {
-		cfgLog.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+		c.Logger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}
 
 	overallReport := config.NewReport()
@@ -65,29 +64,25 @@ func Run(flags tools.CommonFlags) error {
 			LoadTests:     flags.WithTest,
 			ApplyRewrites: true,
 		}
-		state, err := loadprogram.LoadTargetWithPointer(targetName, targetFiles, cfgLog, cfg, loadOptions)
-		if err != nil {
-			return fmt.Errorf("failed to load state: %s", err)
-		}
-		df, err := dataflow.NewFlowState(state)
+		state, err := analysis.BuildDataFlowTarget(c, targetName, targetFiles, loadOptions)
 		if err != nil {
 			return fmt.Errorf("failed to initialize dataflow state: %s", err)
 		}
-		result, err := backtrace.Analyze(df)
+		result, err := backtrace.Analyze(state)
 		if err != nil {
 			return fmt.Errorf("analysis failed: %v", err)
 		}
 		duration := time.Since(start)
 		overallReport.Merge(state.Report)
-		cfgLog.Infof("")
-		cfgLog.Infof("-%s", strings.Repeat("*", 80))
-		cfgLog.Infof("Analysis took %3.4f s\n", duration.Seconds())
+		c.Logger.Infof("")
+		c.Logger.Infof("-%s", strings.Repeat("*", 80))
+		c.Logger.Infof("Analysis took %3.4f s\n", duration.Seconds())
 		if len(result.Traces) > 0 {
 			foundTraces = true
-			cfgLog.Errorf("Found traces for %d slicing problems\n", len(result.Traces))
+			c.Logger.Errorf("Found traces for %d slicing problems\n", len(result.Traces))
 		}
 	}
-	overallReport.Dump(cfgLog, cfg)
+	overallReport.Dump(c)
 	if foundTraces {
 		return fmt.Errorf("backtrace analysis found traces, inspect logs for more information")
 	}

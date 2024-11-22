@@ -60,7 +60,7 @@ type BoundingMap map[ssa.Value]map[*BindingInfo]bool
 
 // RunBoundingAnalysis computes the BoundingMap of the program in the analyzer state by iterating over the instructions
 // of each reachable function.
-func RunBoundingAnalysis(state *FlowState) (BoundingMap, error) {
+func RunBoundingAnalysis(state *State) (BoundingMap, error) {
 	if state.PointerAnalysis == nil {
 		return nil, fmt.Errorf("pointer analysis should run before bounding analysis")
 	}
@@ -75,7 +75,7 @@ func RunBoundingAnalysis(state *FlowState) (BoundingMap, error) {
 
 // InspectInstruction adds information to the bindMap if instruction is a closure and the pointer analysis
 // contains information about where the bound variables are allocated.
-func InspectInstruction(state *FlowState, bindMap BoundingMap, instruction ssa.Instruction) {
+func InspectInstruction(state *State, bindMap BoundingMap, instruction ssa.Instruction) {
 	makeClosure, ok := instruction.(*ssa.MakeClosure)
 	if !ok {
 		return

@@ -25,7 +25,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-func cmdScan(tt *term.Terminal, c *dataflow.FlowState, command Command, _ bool) bool {
+func cmdScan(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : scan the program for usages\n", tt.Escape.Blue, cmdScanName, tt.Escape.Reset)
 		return false

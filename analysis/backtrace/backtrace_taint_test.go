@@ -88,9 +88,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	program := lp.Prog
 	setupConfig(lp.Config, isOnDemand)
-	cfg := lp.Config
 
 	astFiles := analysistest.AstFiles(lp.Pkgs)
 	expected := expectedTaintTargetToSources(lp.Prog.Fset, astFiles)
@@ -102,14 +100,13 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 		t.Log("test file has annotation metadata")
 	}
 
-	if len(cfg.TaintTrackingProblems) < 1 {
+	if len(lp.Config.TaintTrackingProblems) < 1 {
 		t.Fatal("expect at least one taint tracking problem")
 	}
-	cfg.SlicingProblems = []config.SlicingSpec{{BacktracePoints: cfg.TaintTrackingProblems[0].Sinks}}
-	log := config.NewLogGroup(cfg)
-	state, err := dataflow.NewFlowState(program, lp.Pkgs, log, cfg)
+	lp.Config.SlicingProblems = []config.SlicingSpec{{BacktracePoints: lp.Config.TaintTrackingProblems[0].Sinks}}
+	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
-		t.Fatalf("failed to load state: %s", err)
+		t.Fatalf("failed to load datflow state: %s", err)
 	}
 	res, err := backtrace.Analyze(state)
 	if err != nil {
@@ -122,11 +119,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// 	t.Log(trace)
 	// }
 
-	s, err := dataflow.NewFlowState(program, lp.Pkgs, log, cfg)
-	if err != nil {
-		t.Fatalf("failed to create state for result inspection: %s", err)
-	}
-	reached := reachedSinkPositions(s, res)
+	reached := reachedSinkPositions(state, res)
 	if len(reached) == 0 {
 		t.Fatal("expected reached sink positions to be present")
 	}
@@ -187,7 +180,7 @@ func isExpected(expected analysistest.TargetToSources, sourcePos analysistest.LP
 
 // reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func reachedSinkPositions(s *dataflow.FlowState, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
+func reachedSinkPositions(s *dataflow.State, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 	prog := s.Program
 	for sink, traces := range res.Traces[""] {

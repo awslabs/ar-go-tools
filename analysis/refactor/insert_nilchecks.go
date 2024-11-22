@@ -104,7 +104,7 @@ func genInserts(fi *lang.FuncInfo) []*dst.Field {
 		}
 
 		if astParam, ok := fi.Decorator.Ast.Nodes[param].(*ast.Field); b && ok {
-			b = b && checkNillable(fi, astParam, param)
+			b = checkNillable(fi, astParam, param)
 		}
 
 		if b {

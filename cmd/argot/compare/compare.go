@@ -29,8 +29,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -115,8 +115,8 @@ func Run(flags Flags) error {
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	logger := config.NewLogGroup(cfg)
-	state, err := loadprogram.LoadTarget("", flags.FlagSet.Args(), logger, cfg, loadOptions)
+	c := config.NewState(cfg)
+	state, err := analysis.BuildWholeProgramTarget(c, "", flags.FlagSet.Args(), loadOptions)
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}
@@ -395,7 +395,7 @@ func visitStaticReachableEdges(program *ssa.Program, root *ssa.Function, remaini
 //
 //gocyclo:ignore
 func reportUncoveredDynamicEdges(program *ssa.Program, static *callgraph.Graph, dyn map[dynamicEdge]bool) {
-	reachable := dataflow.CallGraphReachable(static, false, false)
+	reachable := lang.CallGraphReachable(static, false, false)
 	remainingCalledges := make(map[dynamicEdge]bool)
 	for k, v := range dyn {
 		remainingCalledges[k] = v

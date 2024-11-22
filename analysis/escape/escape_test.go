@@ -27,7 +27,8 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/ssa"
@@ -102,8 +103,8 @@ func TestSimpleEscape(t *testing.T) {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	program := lp.Prog
-	reachableFunctions := dataflow.CallGraphReachable(cha.CallGraph(program), false, false)
-	result, err := dataflow.DoPointerAnalysis(nil, program,
+	reachableFunctions := lang.CallGraphReachable(cha.CallGraph(program), false, false)
+	result, err := loadprogram.DoPointerAnalysis(nil, program,
 		func(_ *ssa.Function) bool { return true }, reachableFunctions)
 	if err != nil {
 		t.Fatalf("failed to do pointer analysis: %v", err)
@@ -284,20 +285,17 @@ func TestInterproceduralEscape(t *testing.T) {
 
 	dirName := filepath.Join("./testdata", "interprocedural-escape")
 	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	state, err := dataflow.NewAnalyzerState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config,
-		[]func(*dataflow.FlowState){
-			func(s *dataflow.FlowState) { s.PopulatePointersVerbose(summaries.IsUserDefinedFunction) },
-		})
+	df, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer state: %v", err)
 	}
-
-	escapeWholeProgram, err := EscapeAnalysis(state, state.PointerAnalysis.CallGraph.Root)
+	escapeWholeProgram, err := EscapeAnalysis(df, df.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
@@ -306,7 +304,7 @@ func TestInterproceduralEscape(t *testing.T) {
 		t.Fatalf("failed to find main function")
 	}
 	funcsToTest := []string{}
-	for _, elem := range state.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
+	for _, elem := range df.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
 	}
 	if len(funcsToTest) == 0 {
@@ -353,7 +351,7 @@ func TestBuiltinsEscape(t *testing.T) {
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	cache, _ := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
@@ -408,7 +406,7 @@ func TestStdlibEscape(t *testing.T) {
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	cache, _ := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
@@ -633,7 +631,7 @@ func TestLocalityComputation(t *testing.T) {
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, err := dataflow.NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	cache, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer state: %v", err)
 	}

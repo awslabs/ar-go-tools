@@ -1263,7 +1263,7 @@ func (ea *functionAnalysisState) addToBlockWorklist(block *ssa.BasicBlock) {
 	}
 }
 
-func graphTooLarge(state *dataflow.FlowState, g *EscapeGraph) bool {
+func graphTooLarge(state *dataflow.State, g *EscapeGraph) bool {
 	if state == nil || g == nil {
 		return false
 	}
@@ -1336,7 +1336,7 @@ type ProgramAnalysisState struct {
 	summaries     map[*ssa.Function]*functionAnalysisState
 	globalNodes   *globalNodeGroup
 	logger        *config.LogGroup
-	state         *dataflow.FlowState
+	state         *dataflow.State
 	builtWorklist bool
 }
 
@@ -1437,7 +1437,7 @@ func (ea *functionAnalysisState) Resummarize() (changed bool) {
 // EscapeAnalysis computes the bottom-up escape summaries of functions matching the package filter.
 //
 //gocyclo:ignore
-func EscapeAnalysis(state *dataflow.FlowState, root *callgraph.Node) (*ProgramAnalysisState, error) {
+func EscapeAnalysis(state *dataflow.State, root *callgraph.Node) (*ProgramAnalysisState, error) {
 	prog := &ProgramAnalysisState{
 		summaries:   make(map[*ssa.Function]*functionAnalysisState),
 		globalNodes: newGlobalNodeGroup(),

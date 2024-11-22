@@ -88,7 +88,7 @@ func WriteCrossFunctionGraph(wps *loadprogram.WholeProgramState, w io.Writer) er
 	if err != nil {
 		return fmt.Errorf("failed to build analyzer pointer state: %w", err)
 	}
-	flowState, err := dataflow.NewFlowState(ps)
+	flowState, err := dataflow.NewState(ps)
 	if err != nil {
 		return fmt.Errorf("failed to build analyzer data flow state: %w", err)
 	}
@@ -100,7 +100,7 @@ func WriteCrossFunctionGraph(wps *loadprogram.WholeProgramState, w io.Writer) er
 
 	analysis.RunIntraProceduralPass(flowState, numRoutines, analysis.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		ShouldTrack:        func(*dataflow.FlowState, ssa.Node) bool { return true }, //argot:ignore df-intra-uses
+		ShouldTrack:        func(*dataflow.State, ssa.Node) bool { return true }, //argot:ignore df-intra-uses
 	})
 
 	flowState, err = render.BuildCrossFunctionGraph(flowState)

@@ -33,14 +33,9 @@ import (
 // A WholeProgramState is the base state for the analyses in Argot. Analyses that do not require whole-program analysis
 // should be built with the go tools analysis framework.
 type WholeProgramState struct {
+	*config.State
 	// Annotations contains all the annotations of the program
 	Annotations annotations.ProgramAnnotations
-
-	// Config is the configuration file used for the analyses
-	Config *config.Config
-
-	// Logger logs
-	Logger *config.LogGroup
 
 	// Packages store the packages initially loaded. Can be used to seek syntactic information
 	Packages []*packages.Package
@@ -64,24 +59,19 @@ type WholeProgramState struct {
 	errorMutex sync.Mutex
 }
 
+// NewWholeProgramState construct a whole program state from the provided SSA program and packages, and the config
+// with its logger. The packages are visited to extract all the annotations in the program.
 func NewWholeProgramState(
+	c *config.State,
 	targetName string,
-	options Options,
-	args []string,
-	l *config.LogGroup,
-	c *config.Config) (*WholeProgramState, error) {
-	if c == nil {
+	program *ssa.Program,
+	pkgs []*packages.Package,
+) (*WholeProgramState, error) {
+	if c == nil || c.Config == nil {
 		return nil, fmt.Errorf("cannot create state without config")
 	}
-
-	// Load SSA program
-	program, pkgs, err := Do(options, args)
-	if err != nil {
-		return nil, fmt.Errorf("could not load program: %v", err)
-	}
-
 	// Load annotations by scanning all packages' syntax
-	pa, err := annotations.LoadAnnotations(l, program.AllPackages())
+	pa, err := annotations.LoadAnnotations(c.Logger, program.AllPackages())
 
 	if pkgs != nil {
 		for _, pkg := range pkgs {
@@ -92,8 +82,8 @@ func NewWholeProgramState(
 				}
 				// TODO: find a way to not scan dependencies if there is demand. Currently, it is unlikely that some
 				// dependencies will contain argot annotations.
-				l.Debugf("Scan %s for annotations.\n", p.PkgPath)
-				pa.CompleteFromSyntax(l, p)
+				c.Logger.Debugf("Scan %s for annotations.\n", p.PkgPath)
+				pa.CompleteFromSyntax(c.Logger, p)
 				return true
 			})
 		}
@@ -101,14 +91,13 @@ func NewWholeProgramState(
 	if err != nil {
 		return nil, err
 	}
-	l.Infof("Loaded %d annotations from program\n", pa.Count())
+	c.Logger.Infof("Loaded %d annotations from program\n", pa.Count())
 
 	report := config.NewReport()
 
 	return &WholeProgramState{
-		Annotations:  annotations.ProgramAnnotations{},
-		Config:       c,
-		Logger:       l,
+		State:        c,
+		Annotations:  pa,
 		Packages:     pkgs,
 		Program:      program,
 		Report:       &report,

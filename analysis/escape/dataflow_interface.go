@@ -178,7 +178,7 @@ func (e *escapeContextImpl) Merge(other dataflow.EscapeCallContext) (changed boo
 
 // InitializeEscapeAnalysisState initializes the escape analysis' state inside the dataflow state
 // Returns an error if an error is encountered during the escape analysis.
-func InitializeEscapeAnalysisState(state *dataflow.FlowState) error {
+func InitializeEscapeAnalysisState(state *dataflow.State) error {
 	eaState, err := EscapeAnalysis(state, state.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		return err

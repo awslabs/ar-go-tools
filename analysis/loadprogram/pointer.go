@@ -55,6 +55,9 @@ func NewPointerState(w *WholeProgramState) (*PointerState, error) {
 	if err != nil {
 		ps.AddError("pointeranalysis", err)
 	}
+	if ptrResult == nil {
+		return nil, fmt.Errorf("no pointer information, cannot construct pointer state")
+	}
 	ps.PointerAnalysis = ptrResult
 	ps.Logger.Infof("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
 	return ps, nil

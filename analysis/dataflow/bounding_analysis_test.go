@@ -19,7 +19,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	. "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 )
@@ -34,7 +33,7 @@ func TestRunBoundingAnalysis(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	c, err := NewFlowState(lp.Prog, lp.Pkgs, config.NewLogGroup(lp.Config), lp.Config)
+	state, err := NewDefault(lp.Config, lp.Prog, lp.Pkgs)
 	if err != nil {
 		t.Errorf("error building state: %q", err)
 	}
@@ -50,7 +49,7 @@ func TestRunBoundingAnalysis(t *testing.T) {
 		"new string (pre),example10":   "make closure example10pre$1 [t0]",
 	}
 
-	boundingMap, err := RunBoundingAnalysis(c)
+	boundingMap, err := RunBoundingAnalysis(state)
 	if err != nil {
 		t.Errorf("error runnning bounding analysis: %s", err)
 	}
