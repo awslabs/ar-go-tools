@@ -34,6 +34,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
@@ -85,11 +86,7 @@ func filterFn(edge *callgraph.Edge) bool {
 func WriteCrossFunctionGraph(wps *loadprogram.State, w io.Writer) error {
 	// every function should be included in the graph
 	// building the graph doesn't require souce/sink logic
-	ps, err := ptr.NewState(wps)
-	if err != nil {
-		return fmt.Errorf("failed to build analyzer pointer state: %w", err)
-	}
-	flowState, err := dataflow.NewState(ps)
+	flowState, err := result.Bind(ptr.NewState(wps), dataflow.NewState).Value()
 	if err != nil {
 		return fmt.Errorf("failed to build analyzer data flow state: %w", err)
 	}

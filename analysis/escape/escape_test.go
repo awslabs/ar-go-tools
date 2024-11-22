@@ -30,6 +30,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/ssa"
 )
@@ -98,11 +99,11 @@ func TestSimpleEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "simple-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	program := lp.Prog
+	program := lp.Program
 	reachableFunctions := lang.CallGraphReachable(cha.CallGraph(program), false, false)
 	result, err := ptr.DoPointerAnalysis(nil, program,
 		func(_ *ssa.Function) bool { return true }, reachableFunctions)
@@ -284,14 +285,14 @@ func TestInterproceduralEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "interprocedural-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	df, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	df, err := resultMonad.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer state: %v", err)
 	}
@@ -299,7 +300,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	mainFunc := findFunction(lp.Prog, "main")
+	mainFunc := findFunction(lp.Program, "main")
 	if mainFunc == nil {
 		t.Fatalf("failed to find main function")
 	}
@@ -315,7 +316,7 @@ func TestInterproceduralEscape(t *testing.T) {
 	// program points)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
-			f := findFunction(lp.Prog, funcName)
+			f := findFunction(lp.Program, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
 			}
@@ -345,18 +346,18 @@ func TestBuiltinsEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "builtins-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	cache, _ := resultMonad.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	mainFunc := findFunction(lp.Prog, "main")
+	mainFunc := findFunction(lp.Program, "main")
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
@@ -369,7 +370,7 @@ func TestBuiltinsEscape(t *testing.T) {
 	// program points)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
-			f := findFunction(lp.Prog, funcName)
+			f := findFunction(lp.Program, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
 			}
@@ -400,18 +401,18 @@ func TestStdlibEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "stdlib-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, _ := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	cache, _ := resultMonad.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	mainFunc := findFunction(lp.Prog, "main")
+	mainFunc := findFunction(lp.Program, "main")
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
@@ -424,7 +425,7 @@ func TestStdlibEscape(t *testing.T) {
 	// program points)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
-			f := findFunction(lp.Prog, funcName)
+			f := findFunction(lp.Program, funcName)
 			if f == nil {
 				t.Fatalf("Could not find function %v\n", funcName)
 			}
@@ -625,13 +626,13 @@ func TestLocalityComputation(t *testing.T) {
 	// lp, err := analysistest.LoadTestFromDisk(".", []string{})
 
 	dir := filepath.Join("./testdata", "escape-locality")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	lp.Config.LogLevel = int(config.ErrLevel)
 	// Compute the summaries for everything in the main package
-	cache, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	cache, err := resultMonad.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer state: %v", err)
 	}
@@ -639,7 +640,7 @@ func TestLocalityComputation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
-	mainFunc := findFunction(lp.Prog, "main")
+	mainFunc := findFunction(lp.Program, "main")
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
 		funcsToTest = append(funcsToTest, elem.Callee.Func.Name())
@@ -648,11 +649,11 @@ func TestLocalityComputation(t *testing.T) {
 		t.Fatal("no test functions found")
 	}
 
-	astFiles := analysistest.AstFiles(lp.Pkgs)
-	annos := annotations(lp.Prog.Fset, astFiles)
+	astFiles := analysistest.AstFiles(lp.Packages)
+	annos := annotations(lp.Program.Fset, astFiles)
 	for _, funcName := range funcsToTest {
 		t.Run(funcName, func(t *testing.T) {
-			f := findFunction(lp.Prog, funcName)
+			f := findFunction(lp.Program, funcName)
 			if f == nil {
 				t.Fatalf("Couldn't find function %v", funcName)
 			}

@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -50,7 +49,7 @@ $ argot defer hello.go
 func Run(args []string, verbose bool) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     false,
@@ -60,8 +59,8 @@ func Run(args []string, verbose bool) error {
 	if verbose {
 		cfg.LogLevel = int(config.TraceLevel)
 	}
-	c := config.NewState(cfg)
-	target, err := analysis.BuildWholeProgramTarget(c, "", args, loadOptions)
+	c := config.NewState(cfg, "", args, loadOptions)
+	target, err := loadprogram.NewState(c).Value()
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}

@@ -25,21 +25,23 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
 //gocyclo:ignore
 func TestCrossFunctionFlowGraph(t *testing.T) {
 	dir := filepath.Join("testdata", "summaries")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	cfg := config.NewDefault()
 	cfg.MaxEntrypointContextSize = 1 // limit context of each source to avoid timeouts
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := resultMonad.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to build program analysis state: %v", err)
 	}

@@ -29,11 +29,11 @@ var testfsys embed.FS
 
 func TestPointerCallgraph(t *testing.T) {
 	dir := filepath.Join("testdata", "callgraph")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	program := lp.Prog
+	program := lp.Program
 	callgraph, err := lang.PointerAnalysis.ComputeCallgraph(program)
 	if err != nil {
 		t.Fatalf("error computing callgraph: %s", err)

@@ -24,8 +24,11 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 )
 
 //go:embed testdata
@@ -33,7 +36,7 @@ var testfsys embed.FS
 
 func TestAnalyze(t *testing.T) {
 	dir := filepath.Join("./testdata", "backtrace")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +60,7 @@ func TestAnalyze(t *testing.T) {
 
 func TestAnalyze_OnDemand(t *testing.T) {
 	dir := filepath.Join("./testdata", "backtrace")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,8 +70,8 @@ func TestAnalyze_OnDemand(t *testing.T) {
 
 var ignoreMatch = match{-1, nil, -1}
 
-func testAnalyze(t *testing.T, lp analysistest.LoadedTestProgram) {
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+func testAnalyze(t *testing.T, lp *loadprogram.State) {
+	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
@@ -357,7 +360,7 @@ func TestAnalyze_Closures(t *testing.T) {
 	// See the config.yaml file for details.
 
 	dir := filepath.Join("./testdata", "closures")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +372,7 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 	t.Skipf("Tests relying on traces should have separate source file with minimal examples.")
 
 	dir := filepath.Join("./testdata", "closures")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,9 +380,9 @@ func TestAnalyze_Closures_OnDemand(t *testing.T) {
 	testAnalyzeClosures(t, lp)
 }
 
-func testAnalyzeClosures(t *testing.T, lp analysistest.LoadedTestProgram) {
+func testAnalyzeClosures(t *testing.T, lp *loadprogram.State) {
 	lp.Config.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
@@ -517,13 +520,13 @@ func testAnalyzeClosures(t *testing.T, lp analysistest.LoadedTestProgram) {
 
 func TestAnalyze_CheckStatic(t *testing.T) {
 	dir := filepath.Join("./testdata", "check_static")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
 	lp.Config.SummarizeOnDemand = true
 	lp.Config.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}

@@ -26,7 +26,9 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -84,14 +86,14 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// lp, err := analysistest.LoadTest(fsys.(analysistest.ReadFileDirFS), filepath.Join("testdata", test.name), test.files)
 
 	dir := filepath.Join("./testdata", test.name)
-	lp, err := analysistest.LoadTest(testfsys, dir, test.files, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(testfsys, dir, test.files, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	setupConfig(lp.Config, isOnDemand)
 
-	astFiles := analysistest.AstFiles(lp.Pkgs)
-	expected := expectedTaintTargetToSources(lp.Prog.Fset, astFiles)
+	astFiles := analysistest.AstFiles(lp.Packages)
+	expected := expectedTaintTargetToSources(lp.Program.Fset, astFiles)
 	if len(expected) == 0 {
 		t.Fatal("expected sources and sinks to be present")
 	}
@@ -104,9 +106,9 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 		t.Fatal("expect at least one taint tracking problem")
 	}
 	lp.Config.SlicingProblems = []config.SlicingSpec{{BacktracePoints: lp.Config.TaintTrackingProblems[0].Sinks}}
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := resultMonad.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
-		t.Fatalf("failed to load datflow state: %s", err)
+		t.Fatalf("failed to load dataflow state: %s", err)
 	}
 	res, err := backtrace.Analyze(state)
 	if err != nil {

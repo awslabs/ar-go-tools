@@ -21,6 +21,7 @@ import (
 	"go/build"
 	"os"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/maypanic"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
@@ -82,13 +83,14 @@ func Run(flags Flags) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	// never load tests for the may-panic analysis (may change later if there's an ask)
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: cfg,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     false,
 		ApplyRewrites: true,
 	}
-	program, _, err := loadprogram.Do(flags.flagSet.Args(), loadOptions)
+	base := config.NewState(config.NewDefault(), "", flags.flagSet.Args(), loadOptions)
+	state, err := loadprogram.NewState(base).Value()
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}
@@ -98,7 +100,7 @@ func Run(flags Flags) error {
 	// get absolute paths for 'exclude'
 	excludeAbsolute := analysisutil.MakeAbsolute(flags.excludePaths)
 
-	maypanic.MayPanicAnalyzer(program, excludeAbsolute, flags.outputJson)
+	maypanic.MayPanicAnalyzer(state.Program, excludeAbsolute, flags.outputJson)
 
 	return nil
 }

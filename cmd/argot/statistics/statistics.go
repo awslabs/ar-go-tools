@@ -80,7 +80,7 @@ func NewFlags(args []string) (Flags, error) {
 func Run(flags Flags) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
@@ -91,13 +91,16 @@ func Run(flags Flags) error {
 	// get absolute paths for 'exclude'
 	excludeAbsolute := analysisutil.MakeAbsolute(flags.excludePaths)
 	defaultConfig := config.NewDefault()
-	c := config.NewState(defaultConfig)
-	analyzer, err := analysis.BuildPointerTarget(c, "", flags.FlagSet.Args(), loadOptions)
+	c := config.NewState(defaultConfig, "", flags.FlagSet.Args(), loadOptions)
+	analyzer, err := loadprogram.NewState(c).Value()
 	if err != nil {
 		c.Logger.Errorf("Failed to initialize state ...")
 		return nil
 	}
-	reachableFunctions := analyzer.ReachableFunctions()
+	reachableFunctions, err := analyzer.ReachableFunctions()
+	if err != nil {
+		return fmt.Errorf("error computing reachable functions")
+	}
 	result := analysis.SSAStatistics(&reachableFunctions, excludeAbsolute)
 	if flags.outputJson {
 		buf, _ := json.Marshal(result)

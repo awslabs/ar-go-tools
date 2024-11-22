@@ -22,10 +22,13 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -72,31 +75,31 @@ func Run(flags Flags) error {
 	if err != nil {
 		return err
 	}
-	c := config.NewState(cfg)
-	c.Logger.Infof(formatutil.Faint("Argot taint tool - " + analysis.Version))
+	tmpLogger := config.NewLogGroup(cfg)
+	tmpLogger.Infof(formatutil.Faint("Argot taint tool - " + analysis.Version))
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
-		c.Logger.Infof("verbose command line flag overrides config file log-level %d", c.Config.LogLevel)
-		c.Config.LogLevel = int(config.DebugLevel)
-		c.Logger = config.NewLogGroup(c.Config)
+		tmpLogger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
+		cfg.LogLevel = int(config.DebugLevel)
+		tmpLogger = config.NewLogGroup(cfg)
 	}
 	if flags.maxDepth > 0 {
-		c.Config.UnsafeMaxDepth = flags.maxDepth
-		c.Logger.Warnf("%s %d\n", "UNSAFE config max data-flow depth set to: %s", flags.maxDepth)
+		cfg.UnsafeMaxDepth = flags.maxDepth
+		tmpLogger.Warnf("%s %d\n", "UNSAFE config max data-flow depth set to: %s", flags.maxDepth)
 	}
 	if flags.dryRun {
-		c.Logger.Infof("dry-run command line flag sets on demand summarization to true")
-		c.Config.SummarizeOnDemand = true
+		tmpLogger.Infof("dry-run command line flag sets on demand summarization to true")
+		cfg.SummarizeOnDemand = true
 	}
 	if flags.Tag != "" {
-		c.Logger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+		tmpLogger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}
 
 	hasFlows := false
 	overallReport := config.NewReport()
 	// Loop over every target of the taint analysis
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, c.Config, config.TaintTool) {
-		targetHasFlows, report, err := runTarget(c, targetName, targetFiles, flags)
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.TaintTool) {
+		targetHasFlows, report, err := runTarget(cfg, targetName, targetFiles, flags)
 		hasFlows = targetHasFlows || hasFlows
 		if err != nil {
 			return err
@@ -104,7 +107,7 @@ func Run(flags Flags) error {
 		overallReport.Merge(report)
 	}
 
-	overallReport.Dump(c)
+	overallReport.Dump(config.ConfiguredLogger{Config: cfg, Logger: tmpLogger})
 	if hasFlows {
 		return fmt.Errorf("taint analysis found problems, inspect logs for more information")
 	}
@@ -112,12 +115,12 @@ func Run(flags Flags) error {
 }
 
 func runTarget(
-	c *config.State,
+	cfg *config.Config,
 	targetName string,
 	targetFiles []string,
 	flags Flags,
 ) (bool, *config.ReportInfo, error) {
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
@@ -125,7 +128,8 @@ func runTarget(
 	}
 	// Starting the analysis
 	start := time.Now()
-	df, err := analysis.BuildDataFlowTarget(c, targetName, targetFiles, loadOptions)
+	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+	df, err := resultMonad.Bind(resultMonad.Bind(loadprogram.NewState(c), ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
@@ -166,7 +170,7 @@ func runTarget(
 			targetStr,
 			formatutil.Red("Tainted data escapes origin thread!")) // safe %s
 
-	} else if c.Config.UseEscapeAnalysis {
+	} else if cfg.UseEscapeAnalysis {
 		result.State.Logger.Infof(
 			"%sESCAPE ANALYSIS RESULT:\n\t\t%s",
 			targetStr,

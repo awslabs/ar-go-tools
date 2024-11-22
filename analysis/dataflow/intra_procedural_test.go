@@ -23,19 +23,22 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
 //gocyclo:ignore
 func TestFunctionSummaries(t *testing.T) {
 	dir := filepath.Join("testdata", "summaries")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to build analyzer state: %v", err)
 	}

@@ -27,8 +27,11 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -243,7 +246,10 @@ func expectTaintedCondInFuncs(funcNames ...string) func(error) bool {
 // to the test directory dirName.
 func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) {
 	res := runTestWithoutCheck(t, dirName, files, summarizeOnDemand, errorExpected)
-	lp := res.lp
+	lp, err := res.lp.Value()
+	if err != nil {
+		t.Fatalf("failed to run test: %s", err)
+	}
 	result := res.res
 
 	if result.TaintFlows == nil {
@@ -253,32 +259,33 @@ func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand boo
 		t.Fatal("no taint flows to sinks found")
 	}
 
-	astFs := analysistest.AstFiles(lp.Pkgs)
-	expectSinkToSources, expectEscapeToSources := expectedTaintTargetToSources(lp.Prog.Fset, astFs)
+	astFs := analysistest.AstFiles(lp.Packages)
+	expectSinkToSources, expectEscapeToSources := expectedTaintTargetToSources(lp.Program.Fset, astFs)
 
 	if len(expectSinkToSources) == 0 {
 		t.Fatal("no expected taint flows found")
 	}
 
-	checkExpectedPositions(t, lp.Prog, result.TaintFlows, expectSinkToSources, expectEscapeToSources)
+	checkExpectedPositions(t, lp.Program, result.TaintFlows, expectSinkToSources, expectEscapeToSources)
 	// Remove reports - comment if you want to inspect
 	os.RemoveAll(lp.Config.ReportsDir)
 }
 
 type runTestResult struct {
-	lp  analysistest.LoadedTestProgram
+	lp  resultMonad.Result[loadprogram.State]
 	res taint.AnalysisResult
 }
 
 // runTestWithoutCheck runs the test without checking expected flows.
 func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) runTestResult {
 	dirName = filepath.Join("./testdata", dirName)
-	lp, err := analysistest.LoadTest(testfsys, dirName, files, analysistest.LoadTestOptions{ApplyRewrite: false})
-	if err != nil {
-		t.Fatalf("failed to load test: %v", err)
+	lp := analysistest.LoadTest(testfsys, dirName, files, analysistest.LoadTestOptions{ApplyRewrite: false})
+	if lp.IsErr() {
+		t.Fatalf("failed to load test: %v", lp)
 	}
-	setupConfig(lp.Config, summarizeOnDemand)
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	resultMonad.Do(lp, func(lp *loadprogram.State) { setupConfig(lp.Config, summarizeOnDemand) })
+	ptrState := resultMonad.Bind(lp, ptr.NewState)
+	state, err := resultMonad.Bind(ptrState, dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to initialize state")
 	}

@@ -23,9 +23,12 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -40,33 +43,34 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config file: %v", err)
 	}
-	c := config.NewState(cfg)
-	c.Logger.Infof(formatutil.Faint("Argot backtrace tool - " + analysis.Version))
+	tmpLogger := config.NewLogGroup(cfg)
+	tmpLogger.Infof(formatutil.Faint("Argot backtrace tool - " + analysis.Version))
 
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
-		c.Logger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
-		c.Config.LogLevel = int(config.DebugLevel)
-		c.Logger = config.NewLogGroup(cfg)
+		tmpLogger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
+		cfg.LogLevel = int(config.DebugLevel)
 	}
 	if flags.Tag != "" {
-		c.Logger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+		tmpLogger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}
 
 	overallReport := config.NewReport()
 	foundTraces := false
 	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, "backtrace") {
 		start := time.Now()
-		loadOptions := loadprogram.Options{
+		loadOptions := config.LoadOptions{
 			Platform:      "",
 			PackageConfig: nil,
 			BuildMode:     ssa.InstantiateGenerics,
 			LoadTests:     flags.WithTest,
 			ApplyRewrites: true,
 		}
-		state, err := analysis.BuildDataFlowTarget(c, targetName, targetFiles, loadOptions)
+		c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+		ptrState := resultMonad.Bind(loadprogram.NewState(c), ptr.NewState) // build pointer analysis info
+		state, err := resultMonad.Bind(ptrState, dataflow.NewState).Value()
 		if err != nil {
-			return fmt.Errorf("failed to initialize dataflow state: %s", err)
+			return fmt.Errorf("loading failed: %v", err)
 		}
 		result, err := backtrace.Analyze(state)
 		if err != nil {
@@ -82,7 +86,7 @@ func Run(flags tools.CommonFlags) error {
 			c.Logger.Errorf("Found traces for %d slicing problems\n", len(result.Traces))
 		}
 	}
-	overallReport.Dump(c)
+	overallReport.Dump(config.ConfiguredLogger{Config: cfg, Logger: tmpLogger})
 	if foundTraces {
 		return fmt.Errorf("backtrace analysis found traces, inspect logs for more information")
 	}

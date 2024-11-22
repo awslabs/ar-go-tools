@@ -20,17 +20,19 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 )
 
 func TestUnsoundFeatures(t *testing.T) {
 	dir := filepath.Join("testdata", "unsound-features")
 	lp, err := analysistest.LoadTest(testfsys, dir, []string{},
-		analysistest.LoadTestOptions{ApplyRewrite: true})
+		analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Errorf("error building state: %q", err)
 	}

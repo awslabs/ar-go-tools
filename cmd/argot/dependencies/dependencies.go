@@ -23,7 +23,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dependencies"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -105,15 +104,14 @@ func Run(flags Flags) error {
 		}
 	}
 
-	c := config.NewState(cfg)
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.withTest,
 		ApplyRewrites: true,
 	}
 	for targetName, targetFiles := range tools.GetTargets(flags.flagSet.Args(), "", cfg, config.DependenciesTool) {
-		err = runTarget(c, targetName, targetFiles, loadOptions, flags)
+		err = runTarget(cfg, targetName, targetFiles, loadOptions, flags)
 		if err != nil {
 			return err
 		}
@@ -121,8 +119,8 @@ func Run(flags Flags) error {
 	return nil
 }
 
-func runTarget(c *config.State, name string, files []string, options loadprogram.Options, flags Flags) error {
-	state, err := analysis.BuildWholeProgramTarget(c, name, files, options)
+func runTarget(c *config.Config, name string, files []string, options config.LoadOptions, flags Flags) error {
+	state, err := loadprogram.NewState(config.NewState(c, name, files, options)).Value()
 	if err != nil {
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)
 	}

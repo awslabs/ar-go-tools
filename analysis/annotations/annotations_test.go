@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/annotations"
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
@@ -29,18 +28,11 @@ var testFileSystem embed.FS
 
 func TestLoadAnnotations(t *testing.T) {
 	testProgram, err := analysistest.LoadTest(
-		testFileSystem, "./testdata", []string{"main.go"}, analysistest.LoadTestOptions{ApplyRewrite: true})
+		testFileSystem, "./testdata", []string{"main.go"}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Errorf("Error loading test program: %s", err)
 	}
-	testProgram.Prog.Build()
-	logger := config.NewLogGroup(testProgram.Config)
-	a, err := annotations.LoadAnnotations(logger, testProgram.Prog.AllPackages())
-	a.CompleteFromSyntax(logger, testProgram.Pkgs[0])
-	if err != nil {
-		t.Errorf("error loading annotations: %s", err)
-	}
-
+	a := testProgram.Annotations
 	// Positional annotations like //argot:ignore
 	t.Logf("%d positional annotations", len(a.Positional))
 	if !funcutil.ExistsInMap(a.Positional, func(k annotations.LinePos, _ annotations.Annotation) bool {

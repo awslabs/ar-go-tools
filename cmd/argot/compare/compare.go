@@ -29,7 +29,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -109,14 +108,14 @@ func Run(flags Flags) error {
 		return fmt.Errorf("error setting config: %v", err)
 	}
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	c := config.NewState(cfg)
-	state, err := analysis.BuildWholeProgramTarget(c, "", flags.FlagSet.Args(), loadOptions)
+	c := config.NewState(cfg, "", flags.FlagSet.Args(), loadOptions)
+	state, err := loadprogram.NewState(c).Value()
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}

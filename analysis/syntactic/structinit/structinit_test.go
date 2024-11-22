@@ -28,6 +28,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/syntactic/structinit"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 )
 
 //go:embed testdata
@@ -83,27 +84,22 @@ func TestInvalidWrites(t *testing.T) {
 	}
 }
 
-func runAnalysis(t *testing.T, dirName string) (analysistest.LoadedTestProgram, structinit.AnalysisResult) {
+func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, structinit.AnalysisResult) {
 	dirName = filepath.Join("./testdata", dirName)
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false})
+	lpState := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false})
+	lp, err := lpState.Value()
 	if err != nil {
-		t.Fatalf("failed to load test: %v", err)
+		t.Fatalf("failedo load test: %s", err)
 	}
 	setupConfig(lp.Config)
-	c := config.NewState(lp.Config)
-	w, err := loadprogram.NewState(c, "", lp.Prog, lp.Pkgs)
+	state, err := resultMonad.Bind(lpState, ptr.NewState).Value()
 	if err != nil {
-		t.Fatalf("failed to build program state")
-	}
-	state, err := ptr.NewState(w)
-	if err != nil {
-		t.Fatalf("failed to initialize pointer state")
+		t.Fatalf("failed to load : %s", err)
 	}
 	result, err := structinit.Analyze(state)
 	if err != nil {
 		t.Fatalf("struct-init analysis failed: %v", err)
 	}
-
 	return lp, result
 }
 
@@ -230,7 +226,7 @@ var invalidWriteRegex = regexp.MustCompile(`//.*@InvalidWrite\(((?:\s*\w\s*,?)+)
 // multiple.
 // These positions are represented as a map from the struct name to all the
 // zero-alloc positions of that struct.
-func expectedZeroAllocs(lp analysistest.LoadedTestProgram) map[string][]analysistest.LPos {
+func expectedZeroAllocs(lp *loadprogram.State) map[string][]analysistest.LPos {
 	return expectedAnnotations(zeroAllocRegex, lp)
 }
 
@@ -241,13 +237,13 @@ func expectedZeroAllocs(lp analysistest.LoadedTestProgram) map[string][]analysis
 // multiple.
 // These positions are represented as a map from the struct name to all the
 // invalid write operations' positions.
-func expectedInvalidWrites(lp analysistest.LoadedTestProgram) map[string][]analysistest.LPos {
+func expectedInvalidWrites(lp *loadprogram.State) map[string][]analysistest.LPos {
 	return expectedAnnotations(invalidWriteRegex, lp)
 }
 
-func expectedAnnotations(regex *regexp.Regexp, lp analysistest.LoadedTestProgram) map[string][]analysistest.LPos {
-	astFiles := analysistest.AstFiles(lp.Pkgs)
-	fset := lp.Prog.Fset
+func expectedAnnotations(regex *regexp.Regexp, lp *loadprogram.State) map[string][]analysistest.LPos {
+	astFiles := analysistest.AstFiles(lp.Packages)
+	fset := lp.Program.Fset
 	res := make(map[string][]analysistest.LPos)
 
 	analysistest.MapComments(astFiles, func(c *ast.Comment) {

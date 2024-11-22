@@ -20,11 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
-	"golang.org/x/tools/go/packages"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -61,20 +59,6 @@ type State struct {
 	reachableFunctions map[*ssa.Function]bool
 }
 
-// NewDefault chains state constructors from the built packages, using default names and options for loggers.
-func NewDefault(c *config.Config, p *ssa.Program, pkgs []*packages.Package) (*State, error) {
-	wp, err := loadprogram.NewState(config.NewState(c), "", p, pkgs)
-	if err != nil {
-		return nil, err
-	}
-	pts, err := ptr.NewState(wp)
-	if err != nil {
-		return nil, err
-	}
-	df, err := NewState(pts)
-	return df, err
-}
-
 // NewState generates a State from a PointerState
 // This consists in:
 //   - computing a map from interface types to the implementations of their methods
@@ -82,7 +66,7 @@ func NewDefault(c *config.Config, p *ssa.Program, pkgs []*packages.Package) (*St
 //   - linking aliases of bound variables to the closure that binds them
 //
 // The State returned *does not* have dataflow information computed yet.
-func NewState(ps *ptr.State) (*State, error) {
+func NewState(ps *ptr.State) result.Result[State] {
 	state, err := newFlowState(ps, []func(*State){
 		func(s *State) { s.PopulateImplementations() },
 		func(s *State) { s.PopulateGlobalsVerbose() },
@@ -94,9 +78,9 @@ func NewState(ps *ptr.State) (*State, error) {
 		},
 	})
 	if err != nil {
-		return state, fmt.Errorf("error while running parallel steps: %v", err)
+		return result.Err[State](fmt.Errorf("error while running parallel steps: %v", err))
 	}
-	return state, err
+	return result.Ok(state)
 }
 
 // NewAnalyzerState returns a properly initialized analyzer state by running essential steps in parallel.

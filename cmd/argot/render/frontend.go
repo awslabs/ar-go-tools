@@ -23,7 +23,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -111,16 +110,16 @@ func Run(flags Flags) error {
 			return fmt.Errorf("could not load config %q", flags.ConfigPath)
 		}
 	}
-	c := config.NewState(renderConfig)
-	c.Logger.Infof("Reading sources")
 
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
-	wps, err := analysis.BuildWholeProgramTarget(c, "", flags.FlagSet.Args(), loadOptions)
+	c := config.NewState(renderConfig, "", flags.FlagSet.Args(), loadOptions)
+	c.Logger.Infof("Reading sources")
+	wps, err := loadprogram.NewState(c).Value()
 	if err != nil {
 		return fmt.Errorf("could not load program: %v", err)
 	}

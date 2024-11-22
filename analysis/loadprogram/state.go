@@ -24,6 +24,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/packages"
@@ -46,9 +47,6 @@ type State struct {
 	// Report contains the accumulated report information
 	Report *config.ReportInfo
 
-	// Target identifies the target this state corresponds to
-	Target string
-
 	// a callgraph computed using the cha analysis. Useful to boostrap the reachable functions
 	chaCallgraph       *callgraph.Graph
 	reachableFunctions map[*ssa.Function]bool
@@ -61,14 +59,14 @@ type State struct {
 
 // NewState construct a whole program state from the provided SSA program and packages, and the config
 // with its logger. The packages are visited to extract all the annotations in the program.
-func NewState(
-	c *config.State,
-	targetName string,
-	program *ssa.Program,
-	pkgs []*packages.Package,
-) (*State, error) {
+func NewState(c *config.State) result.Result[State] {
 	if c == nil || c.Config == nil {
-		return nil, fmt.Errorf("cannot create state without config")
+		return result.Err[State](fmt.Errorf("cannot create state without config"))
+	}
+
+	program, pkgs, err := do(c.Patterns, c.Options)
+	if err != nil {
+		return result.Err[State](fmt.Errorf("failed to build program: %s", err))
 	}
 	// Load annotations by scanning all packages' syntax
 	pa, err := annotations.LoadAnnotations(c.Logger, program.AllPackages())
@@ -89,22 +87,21 @@ func NewState(
 		}
 	}
 	if err != nil {
-		return nil, err
+		return result.Err[State](err)
 	}
 	c.Logger.Infof("Loaded %d annotations from program\n", pa.Count())
 
 	report := config.NewReport()
 
-	return &State{
+	return result.Ok(&State{
 		State:        c,
 		Annotations:  pa,
 		Packages:     pkgs,
 		Program:      program,
 		Report:       &report,
-		Target:       targetName,
 		chaCallgraph: nil,
 		errors:       map[string][]error{},
-	}, nil
+	})
 }
 
 func (wps *State) ensureCallgraph() error {

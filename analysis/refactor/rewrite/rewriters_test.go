@@ -20,10 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -32,16 +31,8 @@ var testFSys embed.FS
 
 func TestWithInlining(t *testing.T) {
 	dirName := filepath.Join("./testdata", "simple")
-	lp, err := analysistest.LoadTest(testFSys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
-	if err != nil {
-		t.Fatalf("Failed to load program: %s", err)
-	}
-	wp, err := loadprogram.NewState(config.NewState(lp.Config), "", lp.Prog, lp.Pkgs)
-	if err != nil {
-		t.Fatalf("Failed to load state: %s", err)
-	}
-
-	state, err := ptr.NewState(wp)
+	lp := analysistest.LoadTest(testFSys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true})
+	state, err := result.Bind(lp, ptr.NewState).Value()
 
 	if err != nil {
 		t.Fatalf("Failed to load state: %s", err)
@@ -55,15 +46,8 @@ func TestWithInlining(t *testing.T) {
 
 func TestWithoutInlining(t *testing.T) {
 	dirName := filepath.Join("./testdata", "simple")
-	lp, err := analysistest.LoadTest(testFSys, dirName, []string{}, analysistest.LoadTestOptions{})
-	if err != nil {
-		t.Fatalf("Failed to load program: %s", err)
-	}
-	wp, err := loadprogram.NewState(config.NewState(lp.Config), "", lp.Prog, lp.Pkgs)
-	if err != nil {
-		t.Fatalf("Failed to load state: %s", err)
-	}
-	state, err := ptr.NewState(wp)
+	lp := analysistest.LoadTest(testFSys, dirName, []string{}, analysistest.LoadTestOptions{})
+	state, err := result.Bind(lp, ptr.NewState).Value()
 	if err != nil {
 		t.Fatalf("Failed to load pointer state: %s", err)
 	}

@@ -21,17 +21,19 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 )
 
 func TestComputeCtxts(t *testing.T) {
 	dir := filepath.Join("testdata", "callctx")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	state, err := dataflow.NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := resultMonad.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("error building state: %s", err)
 	}

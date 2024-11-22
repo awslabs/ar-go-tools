@@ -24,16 +24,10 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
-
-// LoadedTestProgram represents a loaded test program.
-type LoadedTestProgram struct {
-	Prog   *ssa.Program
-	Config *config.Config
-	Pkgs   []*packages.Package
-}
 
 // ReadFileDirFS represents a filesystem that can read both directories and files.
 type ReadFileDirFS interface {
@@ -52,6 +46,9 @@ type LoadTestOptions struct {
 // LoadTest loads the program in the directory dir, looking for a main.go and a config.yaml. If additional files
 // are specified as extraFiles, the program will be loaded using those files too.
 //
+// LoadTest is a wrapper over loadprogram.NewState that sets all the config options and config file to load
+// the program.
+//
 // NOTE
 // If the Analysis function runs without error but no analysis entrypoints are detected, that may
 // mean that the config's code id's package names do not patch the package name of the SSA program.
@@ -60,7 +57,7 @@ func LoadTest(
 	fsys ReadFileDirFS,
 	dir string,
 	extraFiles []string,
-	options LoadTestOptions) (LoadedTestProgram, error) {
+	options LoadTestOptions) result.Result[loadprogram.State] {
 	var filePaths []string
 	if len(extraFiles) == 0 {
 		_ = fs.WalkDir(fsys, dir, func(path string, entry fs.DirEntry, _ error) error {
@@ -80,10 +77,10 @@ func LoadTest(
 	for i, path := range filePaths {
 		b, err := fsys.ReadFile(path)
 		if err != nil {
-			return LoadedTestProgram{}, fmt.Errorf("failed to read file %s: %w", path, err)
+			return result.Err[loadprogram.State](fmt.Errorf("failed to read file %s: %w", path, err))
 		}
 		if len(b) == 0 {
-			return LoadedTestProgram{}, fmt.Errorf("empty file at path %s", path)
+			return result.Err[loadprogram.State](fmt.Errorf("empty file at path %s", path))
 		}
 
 		name := extraFiles[i]
@@ -100,17 +97,14 @@ func LoadTest(
 		patterns = append(patterns, fmt.Sprintf("file=%s", fp))
 	}
 	// Note: adding other package modes like ssa.GlobalDebug breaks the escape analysis tests
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		BuildMode:     ssa.InstantiateGenerics | ssa.BuildSerially,
 		LoadTests:     false,
 		ApplyRewrites: options.ApplyRewrite,
 		Platform:      options.Platform,
 		PackageConfig: &pcfg,
 	}
-	program, pkgs, err := loadprogram.Do(patterns, loadOptions)
-	if err != nil {
-		return LoadedTestProgram{}, err
-	}
+
 	// Look for a yaml config file first
 	configFileName := filepath.Join(dir, "config.yaml")
 	cfg, err := config.LoadFromFiles(configFileName)
@@ -119,56 +113,16 @@ func LoadTest(
 		configFileNameJson := filepath.Join(dir, "config.json")
 		cfgJson, errJson := config.LoadFromFiles(configFileNameJson)
 		if errJson != nil {
-			return LoadedTestProgram{Pkgs: pkgs},
+			return result.Err[loadprogram.State](
 				fmt.Errorf("failed to read config file %v (%v) and %v (%v)",
 					configFileNameJson, errJson,
-					configFileName, err)
+					configFileName, err))
 		}
 		cfg = cfgJson
 	}
 
-	program.Build()
-
-	return LoadedTestProgram{Prog: program, Config: cfg, Pkgs: pkgs}, nil
-}
-
-// LoadTestFromDisk loads the program in the directory dir, looking for a main.go and a config.yaml
-// using the OS file system.
-// If additional files are specified as extraFiles, the program will be loaded using those files too.
-func LoadTestFromDisk(dir string, extraFiles []string) (LoadedTestProgram, error) {
-	configFile := filepath.Join(dir, "config.yaml")
-	config.SetGlobalConfig(configFile)
-	files := []string{filepath.Join(dir, "./main.go")}
-	for _, extraFile := range extraFiles {
-		files = append(files, filepath.Join(dir, extraFile))
-	}
-	var patterns []string
-	for _, fileName := range files {
-		patterns = append(patterns, fmt.Sprintf("file=%s", fileName))
-	}
-	mode := packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedDeps | packages.NeedTypesInfo
-	pcfg := packages.Config{Mode: mode}
-	loadOptions := loadprogram.Options{
-		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     false,
-		ApplyRewrites: true,
-		Platform:      "",
-		PackageConfig: &pcfg,
-	}
-	prog, pkgs, err := loadprogram.Do(patterns, loadOptions)
-	if err != nil {
-		return LoadedTestProgram{Pkgs: pkgs}, fmt.Errorf("error loading packages: %v", err)
-	}
-	cfg, err := config.LoadGlobal()
-	if err != nil {
-		return LoadedTestProgram{Prog: prog, Pkgs: pkgs}, fmt.Errorf("failed to load global config: %v", err)
-	}
-
-	return LoadedTestProgram{
-		Prog:   prog,
-		Config: cfg,
-		Pkgs:   pkgs,
-	}, nil
+	t := config.NewState(cfg, "", patterns, loadOptions)
+	return result.Bind(result.Ok(t), loadprogram.NewState)
 }
 
 // TargetToSources is a mapping from a target annotation (e.g. ex in @Sink(ex, ex2))

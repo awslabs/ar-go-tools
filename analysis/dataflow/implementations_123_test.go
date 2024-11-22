@@ -27,11 +27,11 @@ import (
 
 func TestComputeMethodImplementationsGo123(t *testing.T) {
 	dir := filepath.Join("testdata", "callgraph")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{})
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	program := lp.Prog
+	program := lp.Program
 	implementations := map[string]map[*ssa.Function]bool{}
 	contracts := map[string]*df.SummaryGraph{}
 	keys := map[string]string{}

@@ -17,11 +17,12 @@ package cli
 import (
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
@@ -53,13 +54,16 @@ func cmdRebuild(tt *term.Terminal, c *dataflow.State, _ Command, withTest bool) 
 
 	writeFmt(tt, "Reading sources\n")
 	// Load the program
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     withTest,
 		ApplyRewrites: true,
 	}
-	newState, err := analysis.BuildDataFlowTarget(c.State.State.State, "", state.Args, loadOptions)
+	cfgs := config.NewState(c.GetConfig(), "", state.Args, loadOptions)
+	pgrm := loadprogram.NewState(cfgs)
+	ptrs := result.Bind(pgrm, ptr.NewState)
+	newState, err := result.Bind(ptrs, dataflow.NewState).Value()
 	if err != nil {
 		WriteErr(tt, "error building analyzer state: %s", err)
 		WriteErr(tt, "state is left unchanged")

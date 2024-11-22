@@ -23,13 +23,14 @@ import (
 	"path"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
@@ -97,15 +98,15 @@ func Run(flags tools.CommonFlags) {
 	logger.Printf(formatutil.Faint("Reading sources") + "\n")
 	state.Args = flags.FlagSet.Args()
 	// Load the program
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 	}
 	// Initialize an analyzer state
-	cfg := config.NewState(pConfig)
-	dfState, err := analysis.BuildDataFlowTarget(cfg, "", state.Args, loadOptions)
+	cfg := config.NewState(pConfig, "", state.Args, loadOptions)
+	dfState, err := result.Bind(result.Bind(loadprogram.NewState(cfg), ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
 		panic(err)
 	}

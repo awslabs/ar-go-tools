@@ -21,7 +21,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"golang.org/x/tools/go/ssa"
@@ -66,15 +65,15 @@ func TestSamplePackageWorkerDependencies(t *testing.T) {
 	files := []string{"samplePackage/samplePackage.go",
 		"samplePackage/samplePackage_parser.go",
 		"samplePackage/samplePackage_unix.go"}
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     false,
 		ApplyRewrites: true,
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	c := config.NewState(config.NewDefault())
-	state, err := analysis.BuildWholeProgramTarget(c, "", files, loadOptions)
+	c := config.NewState(config.NewDefault(), "", files, loadOptions)
+	state, err := loadprogram.NewState(c).Value()
 	if err != nil {
 		t.Fatalf("error starting state: %s", err)
 	}

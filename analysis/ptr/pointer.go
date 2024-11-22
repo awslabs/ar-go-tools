@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -41,7 +42,7 @@ type State struct {
 
 // NewState returns a pointer state that extends the whole program state passed as argument with pointer analysis
 // information.
-func NewState(w *loadprogram.State) (*State, error) {
+func NewState(w *loadprogram.State) result.Result[State] {
 	start := time.Now()
 	ps := &State{
 		State:           w,
@@ -50,18 +51,18 @@ func NewState(w *loadprogram.State) (*State, error) {
 	ps.Logger.Infof("Gathering values and starting pointer analysis...")
 	reachable, err := w.ReachableFunctions()
 	if err != nil {
-		return nil, fmt.Errorf("error computing initial reachable functions for pointer state: %s", err)
+		return result.Err[State](fmt.Errorf("error computing initial reachable functions for pointer state: %s", err))
 	}
 	ptrResult, err := DoPointerAnalysis(ps.Config, ps.Program, summaries.IsUserDefinedFunction, reachable)
 	if err != nil {
 		ps.AddError("pointeranalysis", err)
 	}
 	if ptrResult == nil {
-		return nil, fmt.Errorf("no pointer information, cannot construct pointer state")
+		return result.Err[State](fmt.Errorf("no pointer information, cannot construct pointer state"))
 	}
 	ps.PointerAnalysis = ptrResult
 	ps.Logger.Infof("Pointer analysis terminated (%.2f s)", time.Since(start).Seconds())
-	return ps, nil
+	return result.Ok(ps)
 }
 
 // ReachableFunctions returns the set of reachable functions from main and init according to the pointer analysis

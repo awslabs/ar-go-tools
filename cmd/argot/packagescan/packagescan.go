@@ -24,11 +24,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/buildutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -111,16 +112,16 @@ func Run(flags Flags) error {
 	platforms := strings.Split(flags.targets, ",")
 	results := make(map[string]map[string]bool)
 	cfg := config.NewDefault()
-	c := config.NewState(cfg)
 	for _, platform := range platforms {
-		loadOptions := loadprogram.Options{
+		loadOptions := config.LoadOptions{
 			Platform:      platform,
 			PackageConfig: nil,
 			BuildMode:     ssa.InstantiateGenerics,
 			LoadTests:     flags.withTest,
 			ApplyRewrites: true,
 		}
-		state, err := analysis.BuildPointerTarget(c, "", flags.flagSet.Args(), loadOptions)
+		c := config.NewState(cfg, "", flags.flagSet.Args(), loadOptions)
+		state, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()
 		if err != nil {
 			return fmt.Errorf("failed to load program: %v", err)
 		}

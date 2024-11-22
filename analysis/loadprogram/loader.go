@@ -19,50 +19,23 @@ import (
 	"os"
 	"sort"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/rewrite"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// PkgLoadMode is the default loading mode in the analyses. We load all possible information
-const PkgLoadMode = packages.NeedName |
-	packages.NeedFiles |
-	packages.NeedCompiledGoFiles |
-	packages.NeedImports |
-	packages.NeedDeps |
-	packages.NeedExportFile |
-	packages.NeedTypes |
-	packages.NeedSyntax |
-	packages.NeedTypesInfo |
-	packages.NeedTypesSizes |
-	packages.NeedModule
-
-// Options combines all the options that are used when loading programs.
-type Options struct {
-	// BuildMode is the mode used when creating the SSA from the packages.
-	BuildMode ssa.BuilderMode
-	// LoadTests is a flag indicating whether tests should be loaded with the program.
-	LoadTests bool
-	// ApplyRewrites is a flag indicating whether the standard source rewrites should be applied.
-	ApplyRewrites bool
-	// Platform indicates which platform the analysis is being performed on (sets GOOS in env).
-	Platform string
-	// PackageConfig is the options passed to packages.Load.
-	// The GOOS  in the Env of the packageConfig is overridden by the Platform when Platform is set.
-	PackageConfig *packages.Config
-}
-
 // Do loads a program on platform "platform" using the buildmode provided and the args.
 // To understand how to specify the args, look at the documentation of packages.Load.
 //
 // The returned program has already been built.
-func Do(files []string, options Options) (*ssa.Program, []*packages.Package, error) {
+func do(files []string, options config.LoadOptions) (*ssa.Program, []*packages.Package, error) {
 
 	packageConfig := options.PackageConfig
 	if packageConfig == nil {
 		packageConfig = &packages.Config{
-			Mode:  PkgLoadMode,
+			Mode:  config.PkgLoadMode,
 			Tests: options.LoadTests,
 		}
 	}

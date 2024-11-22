@@ -18,11 +18,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/syntactic/structinit"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -40,35 +41,35 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return err
 	}
-	c := config.NewState(cfg)
+	tmpLogger := config.NewLogGroup(cfg)
 
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
-		c.Logger.Infof("verbose command line flag overrides config file log-level %d", c.Config.LogLevel)
-		c.Config.LogLevel = int(config.DebugLevel)
-		c.Logger = config.NewLogGroup(c.Config)
+		tmpLogger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
+		cfg.LogLevel = int(config.DebugLevel)
+		tmpLogger = config.NewLogGroup(cfg)
 	}
 
-	if len(c.Config.SyntacticProblems.StructInitProblems) == 0 {
-		c.Logger.Warnf("No syntactic problems in config file.")
+	if len(cfg.SyntacticProblems.StructInitProblems) == 0 {
+		tmpLogger.Warnf("No syntactic problems in config file.")
 		return nil
 	}
 
 	if flags.Tag != "" {
-		c.Logger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+		tmpLogger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}
 
 	failCount := 0
 	overallReport := config.NewReport()
 	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.SyntacticTool) {
-		report, err := runTarget(c, targetName, targetFiles, flags)
+		report, err := runTarget(cfg, targetName, targetFiles, flags)
 		if err != nil {
-			c.Logger.Errorf("Analysis for %s failed: %s", targetName, err)
+			tmpLogger.Errorf("Analysis for %s failed: %s", targetName, err)
 			failCount += 1
 		}
 		overallReport.Merge(report)
 	}
-	overallReport.Dump(c)
+	overallReport.Dump(config.ConfiguredLogger{Config: cfg, Logger: tmpLogger})
 	if failCount > 0 {
 		os.Exit(1)
 	}
@@ -77,19 +78,20 @@ func Run(flags tools.CommonFlags) error {
 }
 
 func runTarget(
-	c *config.State,
+	cfg *config.Config,
 	targetName string,
 	targetFiles []string,
 	flags tools.CommonFlags,
 ) (*config.ReportInfo, error) {
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	state, err := analysis.BuildPointerTarget(c, targetName, targetFiles, loadOptions)
+	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+	state, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load target: %v", err)
 	}

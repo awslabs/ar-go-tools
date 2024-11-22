@@ -40,15 +40,15 @@ func TestLoadWithProjectRoot(t *testing.T) {
 		t.Fatalf("could not change to cmd/argot dir: %s", err)
 		return
 	}
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     false,
 		ApplyRewrites: true,
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	c := config.NewState(cfg)
-	_, err = BuildWholeProgramTarget(c, "", []string{"main.go"}, loadOptions)
+	c := config.NewState(cfg, "", []string{"main.go"}, loadOptions)
+	_, err = loadprogram.NewState(c).Value()
 	if err != nil {
 		t.Fatalf("error loading state: %s", err)
 	}
@@ -63,18 +63,19 @@ func programLoadTest(t *testing.T, files []string) {
 		t.Logf("could not change to agent dir: %s", err)
 		return
 	}
-	loadOptions := loadprogram.Options{
+	loadOptions := config.LoadOptions{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     false,
 		ApplyRewrites: true,
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	pkgs, _, err := loadprogram.Do(files, loadOptions)
+	c := config.NewState(config.NewDefault(), "", files, loadOptions)
+	state, err := loadprogram.NewState(c).Value()
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}
-	for _, pkg := range pkgs.AllPackages() {
+	for _, pkg := range state.Program.AllPackages() {
 		t.Logf("%s loaded\n", pkg.String())
 	}
 }

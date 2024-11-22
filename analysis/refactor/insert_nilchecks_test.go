@@ -21,7 +21,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/refactor"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
@@ -52,7 +52,7 @@ func TestInsertNilChecks(t *testing.T) {
 	dir := path.Join(path.Dir(filename), "testdata/src/refactor/insertnil")
 
 	config := &packages.Config{
-		Mode:  loadprogram.PkgLoadMode,
+		Mode:  config.PkgLoadMode,
 		Tests: false,
 	}
 

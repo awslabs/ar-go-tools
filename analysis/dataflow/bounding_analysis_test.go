@@ -20,7 +20,9 @@ import (
 	"testing"
 
 	. "github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 )
 
 //go:embed testdata
@@ -29,11 +31,11 @@ var testfsys embed.FS
 func TestRunBoundingAnalysis(t *testing.T) {
 	dir := filepath.Join("testdata", "bounding-analysis")
 	lp, err := analysistest.LoadTest(testfsys, dir, []string{"helpers.go"},
-		analysistest.LoadTestOptions{ApplyRewrite: true})
+		analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	state, err := NewDefault(lp.Config, lp.Prog, lp.Pkgs)
+	state, err := resultMonad.Bind(ptr.NewState(lp), NewState).Value()
 	if err != nil {
 		t.Errorf("error building state: %q", err)
 	}
