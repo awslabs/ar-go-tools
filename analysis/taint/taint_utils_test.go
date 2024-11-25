@@ -31,7 +31,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
-	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -250,12 +250,12 @@ func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand boo
 	if err != nil {
 		t.Fatalf("failed to run test: %s", err)
 	}
-	result := res.res
+	inner := res.res
 
-	if result.TaintFlows == nil {
+	if inner.TaintFlows == nil {
 		t.Fatal("no result taint flows found")
 	}
-	if len(result.TaintFlows.Sinks) == 0 {
+	if len(inner.TaintFlows.Sinks) == 0 {
 		t.Fatal("no taint flows to sinks found")
 	}
 
@@ -266,13 +266,13 @@ func runTest(t *testing.T, dirName string, files []string, summarizeOnDemand boo
 		t.Fatal("no expected taint flows found")
 	}
 
-	checkExpectedPositions(t, lp.Program, result.TaintFlows, expectSinkToSources, expectEscapeToSources)
+	checkExpectedPositions(t, lp.Program, inner.TaintFlows, expectSinkToSources, expectEscapeToSources)
 	// Remove reports - comment if you want to inspect
 	os.RemoveAll(lp.Config.ReportsDir)
 }
 
 type runTestResult struct {
-	lp  resultMonad.Result[loadprogram.State]
+	lp  result.Result[loadprogram.State]
 	res taint.AnalysisResult
 }
 
@@ -283,16 +283,16 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	if lp.IsErr() {
 		t.Fatalf("failed to load test: %v", lp)
 	}
-	resultMonad.Do(lp, func(lp *loadprogram.State) { setupConfig(lp.Config, summarizeOnDemand) })
-	ptrState := resultMonad.Bind(lp, ptr.NewState)
-	state, err := resultMonad.Bind(ptrState, dataflow.NewState).Value()
+	result.Do(lp, func(lp *loadprogram.State) { setupConfig(lp.Config, summarizeOnDemand) })
+	ptrState := result.Bind(lp, ptr.NewState)
+	state, err := result.Bind(ptrState, dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to initialize state")
 	}
-	result, err := taint.Analyze(state)
+	res, err := taint.Analyze(state)
 	if err != nil {
-		if result.State != nil {
-			for _, err := range result.State.CheckError() {
+		if res.State != nil {
+			for _, err := range res.State.Report.CheckError() {
 				if !errorExpected(err) {
 					t.Errorf("taint analysis returned error: %v", err)
 				}
@@ -302,7 +302,7 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 
 	return runTestResult{
 		lp:  lp,
-		res: result,
+		res: res,
 	}
 }
 

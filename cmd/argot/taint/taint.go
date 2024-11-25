@@ -137,7 +137,7 @@ func runTarget(
 	duration := time.Since(start)
 	if err != nil {
 		if result.State != nil {
-			for _, err := range result.State.CheckError() {
+			for _, err := range result.State.Report.CheckError() {
 				fmt.Fprintf(os.Stderr, "\terror: %v\n", err)
 			}
 		}

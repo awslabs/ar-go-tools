@@ -23,7 +23,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
@@ -250,7 +249,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.State, command Command, _ bool)
 			createCounter++
 			return b
 		}
-		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
+		dataflow.RunIntraProceduralPass(c, numRoutines, dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
 			ShouldTrack:        dataflow.IsNodeOfInterest,
 		})
@@ -281,7 +280,7 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.State, command Command, _ bool)
 		}
 
 		// Run the analysis with the filter.
-		analysis.RunIntraProceduralPass(c, numRoutines, analysis.IntraAnalysisParams{
+		dataflow.RunIntraProceduralPass(c, numRoutines, dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
 			ShouldTrack:        dataflow.IsNodeOfInterest,
 		})

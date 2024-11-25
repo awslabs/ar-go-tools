@@ -37,7 +37,7 @@ func traceNode(s *dataflow.State, cur *dataflow.VisitorNode) {
 // panicOnUnexpectedMissingFreeVar **panics**, but adds and error to the state before.
 func panicOnUnexpectedMissingFreeVar(s *dataflow.State,
 	makeClosureSite *dataflow.ClosureNode, graphNode *dataflow.FreeVarNode) {
-	s.AddError(
+	s.Report.AddError(
 		fmt.Sprintf("no bound variable matching free variable in %s",
 			makeClosureSite.ClosureSummary.Parent.String()),
 		fmt.Errorf("at position %d", graphNode.Index()))

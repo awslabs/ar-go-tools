@@ -99,7 +99,7 @@ func Run(flags Flags) error {
 	}
 	reachableFunctions, err := analyzer.ReachableFunctions()
 	if err != nil {
-		return fmt.Errorf("error computing reachable functions")
+		return fmt.Errorf("error computing reachable functions: %s", err)
 	}
 	result := analysis.SSAStatistics(&reachableFunctions, excludeAbsolute)
 	if flags.outputJson {

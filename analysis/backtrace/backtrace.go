@@ -24,7 +24,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -57,7 +56,7 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 		numRoutines = 1
 	}
 
-	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
+	df.RunIntraProceduralPass(state, numRoutines, df.IntraAnalysisParams{
 		ShouldBuildSummary: df.ShouldBuildSummary,
 		ShouldTrack:        df.IsNodeOfInterest,
 	})
@@ -88,7 +87,7 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 			SlicingSpec: &ps,
 			Traces:      make(map[df.GraphNode][]Trace),
 		}
-		analysis.RunInterProcedural(state, visitor, df.ScanningSpec{
+		df.RunInterProcedural(state, visitor, df.ScanningSpec{
 			IsEntryPointSsa: func(node ssa.Node) bool {
 				return df.IsBacktraceNode(state, visitor.SlicingSpec, node)
 			},
@@ -280,7 +279,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 			callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace)
 			if callSite != nil && !isFromBoundLabel && !isFromBoundVar {
 				if err := df.CheckIndex(s, graphNode, callSite, "[Context] No argument at call site"); err != nil {
-					s.AddError("argument at call site "+graphNode.String(), err)
+					s.Report.AddError("argument at call site "+graphNode.String(), err)
 					// TODO fix bug that leads to panic
 					// report trace in the error as well
 					t := findTrace(s, cur)
@@ -302,7 +301,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 				// No context: the value must always flow back to all call sites
 				for _, callSite := range callSites {
 					if err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
-						s.AddError("argument at call site "+graphNode.String(), err)
+						s.Report.AddError("argument at call site "+graphNode.String(), err)
 						panic(fmt.Errorf("[No Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err))
 					}
 					callSiteArg := callSite.Args()[graphNode.Index()]
@@ -363,7 +362,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 					}
 					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
 				} else {
-					s.AddError(
+					s.Report.AddError(
 						fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
 						fmt.Errorf("position %d", graphNode.Index()))
 					panic("nil param")

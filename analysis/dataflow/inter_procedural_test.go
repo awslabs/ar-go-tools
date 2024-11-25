@@ -22,7 +22,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
@@ -50,7 +49,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 		numRoutines = 1
 	}
 
-	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
+	dataflow.RunIntraProceduralPass(state, numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 		ShouldTrack:        func(*dataflow.State, ssa.Node) bool { return true },
 	})

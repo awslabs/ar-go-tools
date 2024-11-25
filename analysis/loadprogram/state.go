@@ -16,7 +16,6 @@ package loadprogram
 
 import (
 	"fmt"
-	"sync"
 	"sync/atomic"
 
 	"github.com/awslabs/ar-go-tools/analysis/annotations"
@@ -32,9 +31,10 @@ import (
 )
 
 // A State is the base state for the analyses in Argot. Analyses that do not require whole-program analysis
-// should be built with the go tools analysis framework.
+// should be built with the go tools analysis framework (https://pkg.go.dev/golang.org/x/tools/go/analysis)
 type State struct {
-	*config.State
+	config.State
+
 	// Annotations contains all the annotations of the program
 	Annotations annotations.ProgramAnnotations
 
@@ -51,10 +51,7 @@ type State struct {
 	chaCallgraph       *callgraph.Graph
 	reachableFunctions map[*ssa.Function]bool
 
-	// Stored errors
-	numAlarms  atomic.Int32
-	errors     map[string][]error
-	errorMutex sync.Mutex
+	numAlarms atomic.Int32
 }
 
 // NewState construct a whole program state from the provided SSA program and packages, and the config
@@ -94,13 +91,12 @@ func NewState(c *config.State) result.Result[State] {
 	report := config.NewReport()
 
 	return result.Ok(&State{
-		State:        c,
+		State:        *c,
 		Annotations:  pa,
 		Packages:     pkgs,
 		Program:      program,
-		Report:       &report,
+		Report:       report,
 		chaCallgraph: nil,
-		errors:       map[string][]error{},
 	})
 }
 
@@ -159,40 +155,6 @@ func (wps *State) ResolveCallee(instr ssa.CallInstruction) (map[*ssa.Function]la
 	}
 
 	return nil, fmt.Errorf("could not find callees using whole-program-state")
-}
-
-// AddError adds an error with key and error e to the state.
-func (wps *State) AddError(key string, e error) {
-	wps.errorMutex.Lock()
-	defer wps.errorMutex.Unlock()
-	if e != nil {
-		wps.errors[key] = append(wps.errors[key], e)
-	}
-}
-
-// CheckError checks whether there is an error in the state, and if there is, returns the first it encounters and
-// deletes it. The slice returned contains all the errors associated with one single error key (as used in
-// [*AnalyzerState.AddError])
-func (wps *State) CheckError() []error {
-	wps.errorMutex.Lock()
-	defer wps.errorMutex.Unlock()
-	for e, errs := range wps.errors {
-		delete(wps.errors, e)
-		return errs
-	}
-	return nil
-}
-
-// HasErrors returns true if the state has an error. Unlike [*AnalyzerState.CheckError], this is non-destructive.
-func (wps *State) HasErrors() bool {
-	wps.errorMutex.Lock()
-	defer wps.errorMutex.Unlock()
-	for _, errs := range wps.errors {
-		if len(errs) > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 // ResetAlarms resets the number of alarms to 0

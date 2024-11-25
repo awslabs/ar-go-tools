@@ -227,7 +227,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSite != nil {
 				err := df.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site")
 				if err != nil {
-					s.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
+					s.Report.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
 					nextNodeArg := callSite.Args()[graphNode.Index()]
@@ -245,7 +245,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 				for _, callSite := range graphNode.Graph().Callsites {
 					err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
 					if err != nil {
-						s.AddError("argument at call site "+graphNode.String(), err)
+						s.Report.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						if !callSiteArg.Graph().Constructed {
@@ -315,7 +315,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 				}
 				que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
 			} else {
-				s.AddError(
+				s.Report.AddError(
 					fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
 					fmt.Errorf("position %d", graphNode.Index()))
 				panic("nil param")
@@ -416,7 +416,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 
 						que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status.PopClosure(), df.EdgeInfo{})
 					} else {
-						s.AddError(
+						s.Report.AddError(
 							fmt.Sprintf("no free variable matching bound variable in %s",
 								graphNode.CalleeSummary.Parent.String()),
 							fmt.Errorf("at position %d", cur.Status.TracingInfo.Index))
@@ -527,7 +527,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 					}
 					que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
 				} else {
-					s.AddError(
+					s.Report.AddError(
 						fmt.Sprintf("no bound variable matching free variable in %s",
 							cur.ClosureTrace.Label.ClosureSummary.Parent.String()),
 						fmt.Errorf("at position %d", graphNode.Index()))
@@ -675,7 +675,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			pos := graphNode.Position(s)
 			err := &CondError{Cond: cond, ParentName: cur.Node.ParentName(), Trace: cur.Trace.SummaryString(), Pos: pos}
 			logger.Warnf("%v\n", err)
-			s.AddError("cond", err)
+			s.Report.AddError("cond", err)
 		}
 	}
 
@@ -862,7 +862,7 @@ func (v *Visitor) manageEscapeContexts(s *df.State, cur *df.VisitorNode, nextNod
 		e := fmt.Errorf("missing escape for %s in context %s (from %s)", f, nKey, cur.Node)
 		s.Logger.Errorf(e.Error())
 		s.Logger.Debugf("%s has %d contexts", f, len(v.escapeGraphs[f]))
-		s.AddError(e.Error(), e)
+		s.Report.AddError(e.Error(), e)
 	} else {
 		// The function doesn't have an escape graph explicitly, but we got here because of taint.
 		// Thus, we might be missing taint escape. Ideally, this should be fixed by adjusting the allowlist.
@@ -876,8 +876,9 @@ func (v *Visitor) manageEscapeContexts(s *df.State, cur *df.VisitorNode, nextNod
 // that has escape, in the state s and under the escape context escapeInfo.
 func (v *Visitor) checkEscape(s *df.State, node df.GraphNode, escapeInfo *EscapeInfo) {
 	if escapeInfo == nil { // the escapeInfo must not be nil. A missing escapeInfo means an error in the algorithm.
-		s.AddError("missing escape graph",
+		s.Report.AddError("missing escape graph",
 			fmt.Errorf("was missing escape graph for node %s when checking escape", node))
+		return
 	}
 	for instr := range node.Marks() {
 		_, isCall := instr.(ssa.CallInstruction)

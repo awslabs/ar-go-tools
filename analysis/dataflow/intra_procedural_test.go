@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -47,7 +46,7 @@ func TestFunctionSummaries(t *testing.T) {
 		numRoutines = 1
 	}
 
-	analysis.RunIntraProceduralPass(state, numRoutines, analysis.IntraAnalysisParams{
+	dataflow.RunIntraProceduralPass(state, numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 		ShouldTrack:        dataflow.IsNodeOfInterest,
 	})

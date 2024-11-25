@@ -17,9 +17,18 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"sync"
 
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
+
+// Errors contains errors generated during the different steps of the analysis, keyed by some string
+// to reduce the number of duplicates.
+type Errors struct {
+	// Stored errors
+	ErrorMap   map[string][]error
+	errorMutex sync.Mutex
+}
 
 // ReportInfo contains the information in the main report of argot
 type ReportInfo struct {
@@ -27,6 +36,9 @@ type ReportInfo struct {
 
 	// Reports groups entries by tag
 	Reports map[string]ReportGroup
+
+	// Errors contains the errors generated during the analysis
+	Errors Errors
 }
 
 // A ReportGroup lists the report contents in each details file
@@ -53,10 +65,14 @@ type ReportDesc struct {
 }
 
 // NewReport returns a new ReportInfo with initialized maps
-func NewReport() ReportInfo {
-	return ReportInfo{
+func NewReport() *ReportInfo {
+	return &ReportInfo{
 		CountBySeverity: map[Severity]int{},
 		Reports:         map[string]ReportGroup{},
+		Errors: Errors{
+			ErrorMap:   map[string][]error{},
+			errorMutex: sync.Mutex{},
+		},
 	}
 }
 
@@ -156,4 +172,38 @@ func (r *ReportInfo) Dump(c Configurer) {
 		logger.Errorf("Failed to write report: %s. Please consult logs.", err)
 	}
 	logger.Infof("Wrote final report in %s", tmp.Name())
+}
+
+// AddError adds an error with key and error e to the state.
+func (r *ReportInfo) AddError(key string, e error) {
+	r.Errors.errorMutex.Lock()
+	defer r.Errors.errorMutex.Unlock()
+	if e != nil {
+		r.Errors.ErrorMap[key] = append(r.Errors.ErrorMap[key], e)
+	}
+}
+
+// CheckError checks whether there is an error in the state, and if there is, returns the first it encounters and
+// deletes it. The slice returned contains all the errors associated with one single error key (as used in
+// [*AnalyzerState.AddError])
+func (r *ReportInfo) CheckError() []error {
+	r.Errors.errorMutex.Lock()
+	defer r.Errors.errorMutex.Unlock()
+	for e, errs := range r.Errors.ErrorMap {
+		delete(r.Errors.ErrorMap, e)
+		return errs
+	}
+	return nil
+}
+
+// HasErrors returns true if the state has an error. Unlike [*AnalyzerState.CheckError], this is non-destructive.
+func (r *ReportInfo) HasErrors() bool {
+	r.Errors.errorMutex.Lock()
+	defer r.Errors.errorMutex.Unlock()
+	for _, errs := range r.Errors.ErrorMap {
+		if len(errs) > 0 {
+			return true
+		}
+	}
+	return false
 }

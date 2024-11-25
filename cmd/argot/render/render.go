@@ -26,7 +26,6 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -96,7 +95,7 @@ func WriteCrossFunctionGraph(wps *loadprogram.State, w io.Writer) error {
 		numRoutines = 1
 	}
 
-	analysis.RunIntraProceduralPass(flowState, numRoutines, analysis.IntraAnalysisParams{
+	dataflow.RunIntraProceduralPass(flowState, numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 		ShouldTrack:        func(*dataflow.State, ssa.Node) bool { return true }, //argot:ignore df-intra-uses
 	})

@@ -29,7 +29,7 @@ import (
 // State holds information that might need to be used during program analysis, and represents the state of
 // the analyzer. Different steps of the analysis will populate the fields of this structure.
 type State struct {
-	*ptr.State
+	ptr.State
 
 	// A map from types to functions implementing that type
 	//
@@ -67,7 +67,7 @@ type State struct {
 //
 // The State returned *does not* have dataflow information computed yet.
 func NewState(ps *ptr.State) result.Result[State] {
-	state, err := newFlowState(ps, []func(*State){
+	state, err := initializedState(*ps, []func(*State){
 		func(s *State) { s.PopulateImplementations() },
 		func(s *State) { s.PopulateGlobalsVerbose() },
 		func(s *State) {
@@ -83,8 +83,8 @@ func NewState(ps *ptr.State) result.Result[State] {
 	return result.Ok(state)
 }
 
-// NewAnalyzerState returns a properly initialized analyzer state by running essential steps in parallel.
-func newFlowState(ps *ptr.State, steps []func(*State)) (*State, error) {
+// initializedState returns a properly initialized analyzer state by running essential steps in parallel.
+func initializedState(ps ptr.State, steps []func(*State)) (*State, error) {
 	var allContracts []Contract
 	// New state with initial cha callgraph
 	state := &State{
@@ -141,7 +141,7 @@ func newFlowState(ps *ptr.State, steps []func(*State)) (*State, error) {
 		}()
 	}
 	wg.Wait()
-	if errs := state.CheckError(); len(errs) > 0 {
+	if errs := state.Report.CheckError(); len(errs) > 0 {
 		// TODO: use errors.Join when min version of go is 1.20
 		// currently only first error is reported
 		return nil, fmt.Errorf("failed to build analyzer state: %w", errs[0])
@@ -178,7 +178,7 @@ func (s *State) PrintImplementations(w io.Writer) {
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations
 func (s *State) PopulateTypesToImplementationMap() {
 	if err := ComputeMethodImplementations(s.Program, s.ImplementationsByType, s.DataFlowContracts, s.MethodKeys); err != nil {
-		s.AddError("implementationsmap", err)
+		s.Report.AddError("implementationsmap", err)
 	}
 }
 
@@ -223,7 +223,7 @@ func (s *State) PopulateBoundingInformation(verbose bool) error {
 			s.Logger.Errorf("Error running pointer binding analysis:")
 			s.Logger.Errorf("  %s", err)
 		}
-		s.AddError("bounding analysis", err)
+		s.Report.AddError("bounding analysis", err)
 		return err
 	}
 	s.BoundingInfo = boundingInfo

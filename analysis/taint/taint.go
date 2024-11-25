@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/annotations"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -77,8 +76,8 @@ func Analyze(state *dataflow.State) (AnalysisResult, error) {
 	// function being analyzed.
 
 	// Only build summaries for non-stdlib functions here
-	analysis.RunIntraProceduralPass(state, numRoutines,
-		analysis.IntraAnalysisParams{
+	dataflow.RunIntraProceduralPass(state, numRoutines,
+		dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
 			// For the intra-procedural pass, all source nodes of all problems are marked
 			ShouldTrack: dataflow.IsNodeOfInterest,
@@ -141,7 +140,7 @@ func Analyze(state *dataflow.State) (AnalysisResult, error) {
 		}
 		state.Logger.Debugf("Options: %+v", state.Config.Options)
 		visitor := NewVisitor(&taintSpec)
-		analysis.RunInterProcedural(state, visitor, dataflow.ScanningSpec{
+		dataflow.RunInterProcedural(state, visitor, dataflow.ScanningSpec{
 			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 			IsEntryPointSsa:      func(node ssa.Node) bool { return dataflow.IsSourceNode(state, &taintSpec, node) },
 			MarkCallArgsLikeCall: taintSpec.SourceTaintsArgs,
@@ -156,8 +155,8 @@ func Analyze(state *dataflow.State) (AnalysisResult, error) {
 	// Additional analyses are run after the taint analysis has completed. Those analyses check the soundness of the
 	// result after the fact, and some other analyses can be used to prune false alarms.
 
-	if state.HasErrors() {
-		err = errors.Join(state.CheckError()...)
+	if state.Report.HasErrors() {
+		err = errors.Join(state.Report.CheckError()...)
 	}
 	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
 }

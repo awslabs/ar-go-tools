@@ -16,7 +16,7 @@ package result
 
 import "fmt"
 
-// An Result holds a value or an error.
+// A Result holds a value or an error.
 type Result[T any] interface {
 	// Value unwraps the result into a tuple
 	Value() (*T, error)
@@ -68,7 +68,7 @@ func Bind[T any, S any](v Result[T], f func(*T) Result[S]) Result[S] {
 
 }
 
-// Map is like hte map operation for the result monad
+// Map is like the map operation for the result monad
 func Map[T any, S any](v Result[T], f func(*T) *S) Result[S] {
 	if v.IsOk() {
 		actual, _ := v.Value()
@@ -78,7 +78,7 @@ func Map[T any, S any](v Result[T], f func(*T) *S) Result[S] {
 	return Err[S](actualErr)
 }
 
-// Do apply f to the content of the result if the result is ok
+// Do applies f to the content of the result if the result is ok
 func Do[T any](v Result[T], f func(*T)) {
 	if v.IsOk() {
 		actual, _ := v.Value()

@@ -55,7 +55,7 @@ func NewState(w *loadprogram.State) result.Result[State] {
 	}
 	ptrResult, err := DoPointerAnalysis(ps.Config, ps.Program, summaries.IsUserDefinedFunction, reachable)
 	if err != nil {
-		ps.AddError("pointeranalysis", err)
+		ps.Report.AddError("pointeranalysis", err)
 	}
 	if ptrResult == nil {
 		return result.Err[State](fmt.Errorf("no pointer information, cannot construct pointer state"))

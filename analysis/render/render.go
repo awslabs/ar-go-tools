@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
@@ -34,7 +33,7 @@ func BuildCrossFunctionGraph(state *dataflow.State) (*dataflow.State, error) {
 
 	state.Logger.Infof("Building full-program inter-procedural dataflow graph...")
 	start := time.Now()
-	analysis.RunInterProcedural(state, CrossFunctionGraphVisitor{}, dataflow.ScanningSpec{
+	dataflow.RunInterProcedural(state, CrossFunctionGraphVisitor{}, dataflow.ScanningSpec{
 		IsEntryPointSsa: func(ssa.Node) bool { return true },
 	})
 
@@ -99,7 +98,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
 			if callSite := dataflow.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
 				if err := dataflow.CheckIndex(c, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
-					c.AddError("unwinding call stack at "+graphNode.Position(c).String(), err)
+					c.Report.AddError("unwinding call stack at "+graphNode.Position(c).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
 					arg := callSite.Args()[graphNode.Index()]
@@ -112,7 +111,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					if err := dataflow.CheckIndex(c, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
-						c.AddError("argument at call site "+graphNode.String(), err)
+						c.Report.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						for x := range callSiteArg.Out() {
@@ -149,7 +148,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 				que = addNext(c, que, seen, elt, x, elt.Trace.Add(callSite), elt.ClosureTrace)
 				addEdge(c.FlowGraph, graphNode, x)
 			} else {
-				c.AddError(
+				c.Report.AddError(
 					fmt.Sprintf("no parameter matching argument in %s", callSite.CalleeSummary.Parent.String()),
 					fmt.Errorf("position %d", graphNode.Index()))
 			}
@@ -234,7 +233,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 				x := closureNode.ClosureSummary.FreeVars[fv]
 				que = addNext(c, que, seen, elt, x, elt.Trace, elt.ClosureTrace.Add(closureNode))
 			} else {
-				c.AddError(
+				c.Report.AddError(
 					fmt.Sprintf("no free variable matching bound variable in %s",
 						closureNode.ClosureSummary.Parent.String()),
 					fmt.Errorf("at position %d", graphNode.Index()))
@@ -254,7 +253,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 					bv := bvs[graphNode.Index()]
 					que = addNext(c, que, seen, elt, bv, elt.Trace, elt.ClosureTrace.Parent)
 				} else {
-					c.AddError(
+					c.Report.AddError(
 						fmt.Sprintf("no bound variable matching free variable in %s",
 							elt.ClosureTrace.Label.ClosureSummary.Parent.String()),
 						fmt.Errorf("at position %d", graphNode.Index()))
@@ -266,7 +265,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 						bv := bvs[graphNode.Index()]
 						que = addNext(c, que, seen, elt, bv, elt.Trace, nil)
 					} else {
-						c.AddError(
+						c.Report.AddError(
 							fmt.Sprintf("no bound variable matching free variable in %s",
 								makeClosureSite.ClosureSummary.Parent.String()),
 							fmt.Errorf("at position %d", graphNode.Index()))
@@ -338,7 +337,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 				que = addNext(c, que, seen, elt, x, elt.Trace, elt.ClosureTrace.Add(closureNode))
 				addEdge(c.FlowGraph, graphNode, closureNode)
 			} else {
-				c.AddError(
+				c.Report.AddError(
 					fmt.Sprintf("no free variable matching bound variable in %s", closureSummary.Parent.String()),
 					fmt.Errorf("at position %d", graphNode.Index()))
 			}

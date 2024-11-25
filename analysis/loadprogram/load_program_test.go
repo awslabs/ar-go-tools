@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package analysis
+package loadprogram
 
 import (
 	"os"
@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"golang.org/x/tools/go/ssa"
 )
@@ -34,7 +33,7 @@ func TestLoadWithProjectRoot(t *testing.T) {
 		t.Fatalf("failed to load config")
 	}
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../cmd/argot/")
+	dir := path.Join(path.Dir(filename), "../../cmd/argot/")
 	err = os.Chdir(dir)
 	if err != nil {
 		t.Fatalf("could not change to cmd/argot dir: %s", err)
@@ -48,7 +47,10 @@ func TestLoadWithProjectRoot(t *testing.T) {
 		PackageConfig: nil,
 	}
 	c := config.NewState(cfg, "", []string{"main.go"}, loadOptions)
-	_, err = loadprogram.NewState(c).Value()
+	program, err := NewState(c).Value()
+	if err != nil || len(program.Packages) == 0 {
+		t.Fatalf("no packages loaded")
+	}
 	if err != nil {
 		t.Fatalf("error loading state: %s", err)
 	}
@@ -71,7 +73,7 @@ func programLoadTest(t *testing.T, files []string) {
 		PackageConfig: nil,
 	}
 	c := config.NewState(config.NewDefault(), "", files, loadOptions)
-	state, err := loadprogram.NewState(c).Value()
+	state, err := NewState(c).Value()
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)
 	}
