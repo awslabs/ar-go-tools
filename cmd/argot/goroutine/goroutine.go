@@ -26,8 +26,11 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -55,61 +58,75 @@ func Run(flags tools.CommonFlags) error {
 		logger = config.NewLogGroup(cfg)
 	}
 
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, "goroutine") {
-		logger.Infof("Reading goroutine analysis entrypoints")
-		loadOptions := analysis.LoadProgramOptions{
-			PackageConfig: nil,
-			BuildMode:     ssa.InstantiateGenerics,
-			LoadTests:     flags.WithTest,
-			ApplyRewrites: true,
+	failCount := 0
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.GoroutineTool) {
+		if err := runTarget(cfg, targetName, targetFiles, flags); err != nil {
+			logger.Errorf("Analysis for %s failed: %s", targetName, err)
+			failCount += 1
 		}
-		program, pkgs, err := analysis.LoadProgram(loadOptions, targetFiles)
-		if err != nil {
-			return fmt.Errorf("%s could not load program: %v", targetName, err)
+	}
+
+	if failCount > 0 {
+		os.Exit(1)
+	}
+
+	return nil
+}
+
+func runTarget(
+	cfg *config.Config,
+	targetName string,
+	targetFiles []string,
+	flags tools.CommonFlags,
+) error {
+	loadOptions := config.LoadOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+	}
+	start := time.Now()
+
+	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+	state, err := result.Bind(result.Bind(loadprogram.NewState(c), ptr.NewState), dataflow.NewState).Value()
+	if err != nil {
+		return fmt.Errorf("failed to initialize dataflow state: %s", err)
+	}
+	// TODO support checking parameters other than the first
+	if err := validateConfig(cfg); err != nil {
+		return fmt.Errorf("invalid config: %v", err)
+	}
+
+	criticalFuncs := []*ssa.Function{}
+	for f := range state.PointerAnalysis.CallGraph.Nodes {
+		if isCriticalFunc(cfg, f) {
+			criticalFuncs = append(criticalFuncs, f)
 		}
+	}
 
-		start := time.Now()
-		state, err := dataflow.NewInitializedAnalyzerState(program, pkgs, logger, cfg)
-		state.Target = targetName
-		if err != nil {
-			return fmt.Errorf("failed to load state: %s", err)
-		}
+	logger := state.Logger
+	logger.Debugf("Found %d functions to check\n", len(criticalFuncs))
+	reachable, roots := markReachableTo(criticalFuncs, state.PointerAnalysis.CallGraph)
+	logger.Debugf("Found %d functions that may reach checked functions\n", len(reachable))
 
-		// TODO support checking parameters other than the first
-		if err := validateConfig(cfg); err != nil {
-			return fmt.Errorf("invalid config: %v", err)
-		}
+	logger.Infof(formatutil.Faint("Beginning bottom-up phase") + "\n")
+	if err := escape.InitializeEscapeAnalysisState(state); err != nil {
+		logger.Errorf("Analysis failed: %v\n", err)
+		os.Exit(1)
+	}
 
-		criticalFuncs := []*ssa.Function{}
-		for f := range state.PointerAnalysis.CallGraph.Nodes {
-			if isCriticalFunc(cfg, f) {
-				criticalFuncs = append(criticalFuncs, f)
-			}
-		}
+	logger.Infof(formatutil.Faint("Beginning top-down phase") + "\n")
+	visitNodes := topDown(state, state.EscapeAnalysisState, roots, reachable)
+	success := topDownPhase(logger, cfg, visitNodes)
 
-		logger.Debugf("Found %d functions to check\n", len(criticalFuncs))
-		reachable, roots := markReachableTo(criticalFuncs, state.PointerAnalysis.CallGraph)
-		logger.Debugf("Found %d functions that may reach checked functions\n", len(reachable))
+	duration := time.Since(start)
+	state.Logger.Infof("")
+	state.Logger.Infof(strings.Repeat("*", 80))
+	state.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
+	state.Logger.Infof("")
 
-		logger.Infof(formatutil.Faint("Beginning bottom-up phase") + "\n")
-		if err := escape.InitializeEscapeAnalysisState(state); err != nil {
-			logger.Errorf("Analysis failed: %v\n", err)
-			os.Exit(1)
-		}
-
-		logger.Infof(formatutil.Faint("Beginning top-down phase") + "\n")
-		visitNodes := topDown(state, state.EscapeAnalysisState, roots, reachable)
-		success := topDownPhase(logger, cfg, visitNodes)
-
-		duration := time.Since(start)
-		state.Logger.Infof("")
-		state.Logger.Infof(strings.Repeat("*", 80))
-		state.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
-		state.Logger.Infof("")
-
-		if !success {
-			os.Exit(1)
-		}
+	if !success {
+		return fmt.Errorf("goroutine analysis found problems, inspect logs for more information")
 	}
 
 	return nil
@@ -159,7 +176,7 @@ type callgraphVisitNode struct {
 	// we don't explicitly keep track of the children here.
 }
 
-func topDown(state *dataflow.AnalyzerState, escapeState dataflow.EscapeAnalysisState, roots map[*ssa.Function]struct{}, reachable map[*ssa.Function]struct{}) []*callgraphVisitNode {
+func topDown(state *dataflow.State, escapeState dataflow.EscapeAnalysisState, roots map[*ssa.Function]struct{}, reachable map[*ssa.Function]struct{}) []*callgraphVisitNode {
 
 	allNodes := make([]*callgraphVisitNode, 0)
 

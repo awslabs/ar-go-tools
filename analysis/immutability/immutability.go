@@ -19,10 +19,12 @@ import (
 	"errors"
 	"fmt"
 	"go/token"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/container/intsets"
 	"golang.org/x/tools/go/ssa"
@@ -48,12 +50,18 @@ type Entrypoint struct {
 
 // Modifications represents the instructions that can modify an entrypoint.
 type Modifications struct {
-	Writes map[ssa.Instruction]struct{}
-	Allocs map[ssa.Instruction]struct{}
+	Writes map[Instr]struct{}
+	Allocs map[Instr]struct{}
 }
 
-// Analyze runs the analysis on lp.
-func Analyze(state *dataflow.AnalyzerState) (AnalysisResult, error) {
+// Instr is a modification instruction.
+type Instr struct {
+	ssa.Instruction
+	Pos token.Position
+}
+
+// Analyze runs the analysis on state.
+func Analyze(state *ptr.State) (AnalysisResult, error) {
 	modifications := make(map[Entrypoint]Modifications)
 	prog := state.Program
 	log := state.Logger
@@ -118,8 +126,8 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, 
 		}
 
 		modifications[entry] = Modifications{
-			Writes: make(map[ssa.Instruction]struct{}),
-			Allocs: make(map[ssa.Instruction]struct{}),
+			Writes: make(map[Instr]struct{}),
+			Allocs: make(map[Instr]struct{}),
 		}
 
 		log.Infof("Verifying immutability of: %v of %v in %v at %v\n", val, entry.Call, val.Parent(), entry.Pos)
@@ -156,13 +164,13 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, 
 
 		for _, instrs := range s.entryWrites {
 			for instr := range instrs {
-				modifications[entry].Writes[instr] = struct{}{}
+				modifications[entry].Writes[Instr{instr, s.Prog.Fset.Position(instr.Pos())}] = struct{}{}
 			}
 		}
 
 		for _, instrs := range s.entryAllocs {
 			for instr := range instrs {
-				modifications[entry].Allocs[instr] = struct{}{}
+				modifications[entry].Allocs[Instr{instr, s.Prog.Fset.Position(instr.Pos())}] = struct{}{}
 			}
 		}
 	}
@@ -349,4 +357,55 @@ func isWriteToScalar(instr ssa.Instruction) (ssa.Value, bool) {
 	}
 
 	return nil, false
+}
+
+// ReportResults writes res to a string and returns true if the analysis should fail.
+func ReportResults(result AnalysisResult) (string, bool) {
+	failed := false
+
+	w := &strings.Builder{}
+	w.WriteString("\nimmutability analysis results:\n")
+	w.WriteString("-----------------------------\n")
+	for entry, mods := range result.Modifications {
+		entryVal := entry.Val
+		entryPos := entry.Pos
+		msg := formatutil.Green("no writes to source memory detected")
+		if len(mods.Writes) > 0 {
+			msg = formatutil.Red("source memory has been modified")
+			failed = true
+		}
+		w.WriteString(fmt.Sprintf(
+			"%s of arg %s of call %s in %s: [SSA] %s at %s\n", // safe %s (position string)
+			msg,
+			entry.Val.Name(),
+			entry.Call.String(),
+			entry.Val.Parent().String(),
+			formatutil.SanitizeRepr(entryVal),
+			entryPos.String(),
+		))
+		for instr := range mods.Writes {
+			modInstr := instr
+			modPos := modInstr.Pos
+			w.WriteString(fmt.Sprintf(
+				"\twrite: [SSA] %s in function %s\n\t\t%s\n",
+				formatutil.SanitizeRepr(modInstr),
+				modInstr.Parent().String(),
+				modPos.String(), // safe %s (position string)
+			))
+			failed = true
+		}
+		for instr := range mods.Allocs {
+			modInstr := instr
+			modPos := modInstr.Pos
+			w.WriteString(fmt.Sprintf(
+				"\tallocation: [SSA] %s in function %s\n\t\t%s\n",
+				formatutil.SanitizeRepr(modInstr),
+				modInstr.Parent().String(),
+				modPos.String(), // safe %s (position string)
+			))
+			failed = true
+		}
+	}
+
+	return w.String(), failed
 }

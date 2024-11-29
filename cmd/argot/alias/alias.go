@@ -18,16 +18,15 @@ package alias
 import (
 	"fmt"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/alias"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -44,79 +43,63 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config file: %v", err)
 	}
-	cfgLog := config.NewLogGroup(cfg)
-	cfgLog.Infof(formatutil.Faint("Argot alias tool - " + analysis.Version))
+	logger := config.NewLogGroup(cfg)
+	logger.Infof(formatutil.Faint("Argot alias tool - " + analysis.Version))
 
-	// Override config parameters with command-line parameters
-	if flags.Verbose {
-		cfgLog.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
-		cfg.LogLevel = int(config.DebugLevel)
-		cfgLog = config.NewLogGroup(cfg)
+	if len(cfg.ImmutabilityProblems) == 0 {
+		logger.Warnf("no immutability problems for alias analysis in config file")
+		return nil
 	}
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, "immutability") {
-		cfgLog.Infof("Reading immutability analysis entrypoints for alias analysis")
-		loadOptions := analysis.LoadProgramOptions{
-			PackageConfig: nil,
-			BuildMode:     ssa.InstantiateGenerics,
-			LoadTests:     flags.WithTest,
-			ApplyRewrites: true,
-		}
-		program, pkgs, err := analysis.LoadProgram(loadOptions, targetFiles)
-		if err != nil {
-			return fmt.Errorf("%s could not load program: %v", targetName, err)
-		}
 
-		start := time.Now()
-		state, err := dataflow.NewAnalyzerState(program, pkgs, cfgLog, cfg, []func(*dataflow.AnalyzerState){
-			func(s *dataflow.AnalyzerState) {
-				s.PopulatePointersVerbose(summaries.IsUserDefinedFunction)
-			},
-		})
-		state.Target = targetName
-		if err != nil {
-			return fmt.Errorf("failed to load state: %s", err)
-		}
+	if flags.Tag != "" {
+		logger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+	}
 
-		results, err := alias.Analyze(state)
-		duration := time.Since(start)
+	failCount := 0
+	overallReport := config.NewReport()
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.ImmutabilityTool) {
+		report, err := runTarget(cfg, targetName, targetFiles, flags)
 		if err != nil {
-			return fmt.Errorf("alias analysis failed: %v", err)
+			logger.Errorf("Analysis for %s failed: %s", targetName, err)
+			failCount += 1
 		}
-
-		logger := state.Logger
-		logger.Infof("")
-		logger.Infof("-%s", strings.Repeat("*", 80))
-		logger.Infof("Analysis took %3.4f s\n", duration.Seconds())
-		if len(results) == 0 {
-			logger.Infof(
-				"RESULT:\n\t\t%s", formatutil.Green("No potential aliases detected")) // safe %s
-		} else {
-			logger.Infof(
-				"RESULT:\n\t\t%s", formatutil.Red("Potential aliases detected")) // safe %s
-			Report(logger, program, results)
-			os.Exit(1)
-		}
+		overallReport.Merge(report)
+	}
+	overallReport.Dump(config.ConfiguredLogger{Config: cfg, Logger: logger})
+	if failCount > 0 {
+		os.Exit(1)
 	}
 
 	return nil
 }
 
-// Report logs the analysis result
-func Report(logger *config.LogGroup, program *ssa.Program, results []alias.AnalysisResult) {
-	// Prints location of aliases in the SSA
-	for _, result := range results {
-		entry := result.Entrypoint
-		entryPos := entry.Pos
-		for entryArg, aliasedArgs := range result.ArgsAliased {
-			logger.Infof(
-				"Potential aliases of arg %s of call %s in %s: at %s\n",
-				entryArg,
-				entry.Call.String(),
-				entryArg.Parent().String(),
-				entryPos.String()) // safe %s (position string)
-			for _, alias := range aliasedArgs {
-				logger.Infof("\tmay be aliased by arg %s\n", alias)
-			}
-		}
+func runTarget(
+	cfg *config.Config,
+	targetName string,
+	targetFiles []string,
+	flags tools.CommonFlags,
+) (*config.ReportInfo, error) {
+	loadOptions := config.LoadOptions{
+		BuildMode:     ssa.BuilderMode(0),
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+		Platform:      "",
+		PackageConfig: nil,
 	}
+	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+	state, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load target: %v", err)
+	}
+	c.Logger.Infof("starting alias analysis...\n")
+	res, err := alias.Analyze(state)
+	if err != nil {
+		return nil, fmt.Errorf("alias analysis error: %v", err)
+	}
+	s, failed := alias.ReportResults(res)
+	c.Logger.Infof(s)
+	if failed {
+		return state.Report, fmt.Errorf("alias analysis found problems, inspect logs for more information")
+	}
+	return state.Report, nil
 }

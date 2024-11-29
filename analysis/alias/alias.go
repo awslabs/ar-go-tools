@@ -13,17 +13,19 @@
 // limitations under the License.
 
 // Package alias implements a must-not-alias analysis.
+// The analysis only works on function call arguments for now.
 package alias
 
 import (
 	"errors"
 	"fmt"
 	"go/token"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/immutability"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/container/intsets"
@@ -51,7 +53,7 @@ type AnalysisResult struct {
 }
 
 // Analyze runs the analysis on state.
-func Analyze(state *dataflow.AnalyzerState) ([]AnalysisResult, error) {
+func Analyze(state *ptr.State) ([]AnalysisResult, error) {
 	var results []AnalysisResult
 	prog := state.Program
 	cfg := state.Config
@@ -183,4 +185,32 @@ func findEntrypoint(ac *immutability.AliasCache, spec config.ImmutabilitySpec, c
 	}
 
 	return Entrypoint{}, false
+}
+
+// ReportResults writes results to a string and returns true if the analysis should fail.
+func ReportResults(results []AnalysisResult) (string, bool) {
+	failed := false
+
+	w := &strings.Builder{}
+	w.WriteString("\nalias analysis results:\n")
+	w.WriteString("-----------------------------\n")
+	// Prints location of aliases in the SSA
+	for _, result := range results {
+		entry := result.Entrypoint
+		entryPos := entry.Pos
+		for entryArg, aliasedArgs := range result.ArgsAliased {
+			w.WriteString(fmt.Sprintf(
+				"potential aliases of arg %s of call %s in %s: at %s\n",
+				entryArg,
+				entry.Call.String(),
+				entryArg.Parent().String(),
+				entryPos.String())) // safe %s (position string)
+			for _, alias := range aliasedArgs {
+				w.WriteString(fmt.Sprintf("\tmay be aliased by arg %s\n", alias))
+				failed = true
+			}
+		}
+	}
+
+	return w.String(), failed
 }

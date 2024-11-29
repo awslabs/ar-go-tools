@@ -18,16 +18,15 @@ package immutability
 import (
 	"fmt"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/immutability"
-	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -51,96 +50,61 @@ func Run(flags tools.CommonFlags) error {
 		cfg.LogLevel = int(config.DebugLevel)
 		logger = config.NewLogGroup(cfg)
 	}
-	overallReport := config.NewReport()
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), cfg, "immutability") {
-		logger.Infof("Reading immutability analysis entrypoints")
-		loadOptions := analysis.LoadProgramOptions{
-			PackageConfig: nil,
-			BuildMode:     ssa.InstantiateGenerics,
-			LoadTests:     flags.WithTest,
-			ApplyRewrites: true,
-		}
-		program, pkgs, err := analysis.LoadProgram(loadOptions, targetFiles)
-		if err != nil {
-			return fmt.Errorf("%s could not load program: %v", targetName, err)
-		}
 
-		start := time.Now()
-		state, err := dataflow.NewAnalyzerState(program, pkgs, logger, cfg, []func(*dataflow.AnalyzerState){
-			func(s *dataflow.AnalyzerState) {
-				s.PopulatePointersVerbose(summaries.IsUserDefinedFunction)
-			},
-		})
-		state.Target = targetName
-		if err != nil {
-			return fmt.Errorf("failed to load state: %s", err)
-		}
-		result, err := immutability.Analyze(state)
-		if err != nil {
-			return fmt.Errorf("analysis failed: %v", err)
-		}
-		duration := time.Since(start)
-		overallReport.Merge(state.Report)
-		logger.Infof("")
-		logger.Infof("-%s", strings.Repeat("*", 80))
-		logger.Infof("Analysis took %3.4f s\n", duration.Seconds())
-		if len(result.Modifications) == 0 {
-			logger.Infof(
-				"RESULT:\n\t\t%s", formatutil.Red("No immutability entrypoints detected")) // safe %s
-			os.Exit(1)
-		} else {
-			logger.Infof("RESULT:\n")
-		}
-
-		Report(logger, program, result)
+	if len(cfg.ImmutabilityProblems) == 0 {
+		logger.Warnf("No immutability problems in config file.")
+		return nil
 	}
-	overallReport.Dump(logger, cfg)
+
+	if flags.Tag != "" {
+		logger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
+	}
+
+	failCount := 0
+	overallReport := config.NewReport()
+	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.ImmutabilityTool) {
+		report, err := runTarget(cfg, targetName, targetFiles, flags)
+		if err != nil {
+			logger.Errorf("Analysis for %s failed: %s", targetName, err)
+			failCount += 1
+		}
+		overallReport.Merge(report)
+	}
+	overallReport.Dump(config.ConfiguredLogger{Config: cfg, Logger: logger})
+	if failCount > 0 {
+		os.Exit(1)
+	}
+
 	return nil
 }
 
-// Report logs the analysis result.
-func Report(logger *config.LogGroup, program *ssa.Program, result immutability.AnalysisResult) {
-	// Prints location of modifications in the SSA
-	fail := false
-	for entry, mods := range result.Modifications {
-		entryVal := entry.Val
-		entryPos := entry.Pos
-		msg := formatutil.Green("No writes to source memory detected")
-		if len(mods.Writes) > 0 {
-			msg = formatutil.Red("Source memory has been modified")
-			fail = true
-		}
-		logger.Infof(
-			"%s of arg %s of call %s in %s: [SSA] %s at %s\n",
-			msg,
-			entry.Val.Name(),
-			entry.Call.String(),
-			entry.Val.Parent().String(),
-			formatutil.SanitizeRepr(entryVal),
-			entryPos.String()) // safe %s (position string)
-		for instr := range mods.Writes {
-			modInstr := instr
-			modPos := program.Fset.Position(modInstr.Pos())
-			logger.Infof(
-				"\tWrite: [SSA] %s in function %s\n\t\t%s\n",
-				formatutil.SanitizeRepr(modInstr),
-				modInstr.Parent().String(),
-				modPos.String(), // safe %s (position string)
-			)
-		}
-		for instr := range mods.Allocs {
-			modInstr := instr
-			modPos := program.Fset.Position(modInstr.Pos())
-			logger.Infof(
-				"\tAllocation: [SSA] %s in function %s\n\t\t%s\n",
-				formatutil.SanitizeRepr(modInstr),
-				modInstr.Parent().String(),
-				modPos.String(), // safe %s (position string)
-			)
-		}
+func runTarget(
+	cfg *config.Config,
+	targetName string,
+	targetFiles []string,
+	flags tools.CommonFlags,
+) (*config.ReportInfo, error) {
+	loadOptions := config.LoadOptions{
+		BuildMode:     ssa.BuilderMode(0),
+		LoadTests:     flags.WithTest,
+		ApplyRewrites: true,
+		Platform:      "",
+		PackageConfig: nil,
 	}
-
-	if fail {
-		os.Exit(1)
+	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+	state, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load target: %v", err)
 	}
+	c.Logger.Infof("starting immutability analysis...\n")
+	res, err := immutability.Analyze(state)
+	if err != nil {
+		return nil, fmt.Errorf("alias analysis error: %v", err)
+	}
+	s, failed := immutability.ReportResults(res)
+	c.Logger.Infof(s)
+	if failed {
+		return state.Report, fmt.Errorf("alias analysis found problems, inspect logs for more information")
+	}
+	return state.Report, nil
 }

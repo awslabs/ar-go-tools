@@ -24,10 +24,11 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/immutability"
-	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -49,31 +50,26 @@ func TestAnalyze(t *testing.T) {
 		lp, got := runAnalysis(t, test.name)
 		t.Run(test.name+":invalid-writes", func(t *testing.T) {
 			want := wantInvalidWrites(lp)
-			checkWrites(t, lp.Prog, want, got.Modifications)
+			checkWrites(t, lp.Program, want, got.Modifications)
 		})
 		t.Run(test.name+":allocs", func(t *testing.T) {
 			want := wantAllocs(lp)
-			checkAllocs(t, lp.Prog, want, got.Modifications)
+			checkAllocs(t, lp.Program, want, got.Modifications)
 		})
 	}
 }
 
-func runAnalysis(t *testing.T, dirName string) (analysistest.LoadedTestProgram, immutability.AnalysisResult) {
+func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, immutability.AnalysisResult) {
 	dirName = filepath.Join("./testdata", dirName)
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false})
+	lpState := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false})
+	lp, err := lpState.Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	setupConfig(lp.Config)
-	logger := config.NewLogGroup(lp.Config)
-	lp.Prog.Build()
-	state, err := dataflow.NewAnalyzerState(lp.Prog, lp.Pkgs, logger, lp.Config, []func(*dataflow.AnalyzerState){
-		func(s *dataflow.AnalyzerState) {
-			s.PopulatePointersVerbose(summaries.IsUserDefinedFunction)
-		},
-	})
+	state, err := result.Bind(lpState, ptr.NewState).Value()
 	if err != nil {
-		t.Fatalf("failed to initialize analyzer state: %v", err)
+		t.Fatalf("failed to load pointer state: %v", err)
 	}
 	result, err := immutability.Analyze(state)
 	if err != nil {
@@ -83,16 +79,16 @@ func runAnalysis(t *testing.T, dirName string) (analysistest.LoadedTestProgram, 
 	return lp, result
 }
 
-func logMods(t *testing.T, prog *ssa.Program, res immutability.AnalysisResult) {
+func logMods(t *testing.T, res immutability.AnalysisResult) {
 	for entry, mods := range res.Modifications {
 		val := entry.Val
 		t.Logf("Source: %v (%v) in %v at %v\n", val, val.Name(), val.Parent(), entry.Pos)
 		for instr := range mods.Writes {
-			pos := prog.Fset.Position(instr.Pos())
+			pos := instr.Pos
 			t.Logf("\twrite: %v in %v at %v\n", instr, instr.Parent(), pos)
 		}
 		for instr := range mods.Allocs {
-			pos := prog.Fset.Position(instr.Pos())
+			pos := instr.Pos
 			t.Logf("\talloc: %v in %v at %v\n", instr, instr.Parent(), pos)
 		}
 	}
@@ -119,7 +115,7 @@ var allocRegex = regexp.MustCompile(`//.*@Alloc\(((?:\s*\w\s*,?)+)\)`)
 // invalid writes to a pointer.
 // These positions are represented as a map from the argument value matching the
 // id to all the invalid write operations' positions.
-func wantInvalidWrites(lp analysistest.LoadedTestProgram) analysistest.TargetToSources {
+func wantInvalidWrites(lp *loadprogram.State) analysistest.TargetToSources {
 	return wantTargetToSources(lp, immutableArgRegex, invalidWriteRegex)
 }
 
@@ -128,7 +124,7 @@ func wantInvalidWrites(lp analysistest.LoadedTestProgram) analysistest.TargetToS
 // of a pointer.
 // These positions are represented as a map from the argument value matching the
 // id to all the allocations of that pointer.
-func wantAllocs(lp analysistest.LoadedTestProgram) analysistest.TargetToSources {
+func wantAllocs(lp *loadprogram.State) analysistest.TargetToSources {
 	return wantTargetToSources(lp, immutableArgRegex, allocRegex)
 }
 
@@ -136,9 +132,9 @@ func wantAllocs(lp analysistest.LoadedTestProgram) analysistest.TargetToSources 
 // matching sourceRegex and targetRegex to construct expected matches from
 // targets to sources in the form of a map of target positions to all the source
 // positions that reach that target.
-func wantTargetToSources(lp analysistest.LoadedTestProgram, sourceRegex *regexp.Regexp, targetRegex *regexp.Regexp) analysistest.TargetToSources {
-	astFiles := analysistest.AstFiles(lp.Pkgs)
-	fset := lp.Prog.Fset
+func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targetRegex *regexp.Regexp) analysistest.TargetToSources {
+	astFiles := analysistest.AstFiles(lp.Packages)
+	fset := lp.Program.Fset
 	target2sources := make(analysistest.TargetToSources)
 	type sourceInfo struct {
 		meta string
@@ -217,7 +213,7 @@ func checkWrites(t *testing.T, prog *ssa.Program, want analysistest.TargetToSour
 				seenWriteToEntry[gotEntry] = map[seenWrite]bool{}
 			}
 
-			writePos := prog.Fset.Position(writeInstr.Pos())
+			writePos := writeInstr.Pos
 			if !writePos.IsValid() {
 				t.Errorf("invalid write position for: %v", writeInstr)
 				continue
@@ -288,7 +284,7 @@ func checkAllocs(t *testing.T, prog *ssa.Program, want analysistest.TargetToSour
 				seenAllocToEntry[gotEntry] = map[seenAlloc]bool{}
 			}
 
-			allocPos := prog.Fset.Position(allocInstr.Pos())
+			allocPos := allocInstr.Pos
 			if !allocPos.IsValid() {
 				t.Errorf("invalid alloc position for: %v", allocInstr)
 				continue
@@ -332,12 +328,12 @@ func checkAllocs(t *testing.T, prog *ssa.Program, want analysistest.TargetToSour
 	}
 }
 
-func debugWrites(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[immutability.Entrypoint]immutability.Modifications) {
+func debugWrites(t *testing.T, want analysistest.TargetToSources, got map[immutability.Entrypoint]immutability.Modifications) {
 	t.Logf("GOT writes\n")
 	for entry, mods := range got {
 		t.Logf("\tentry: %v\n", entry.Pos)
 		for write := range mods.Writes {
-			t.Logf("\t\twrite: %v\n", prog.Fset.Position(write.Pos()))
+			t.Logf("\t\twrite: %v\n", write.Pos)
 		}
 	}
 
@@ -350,12 +346,12 @@ func debugWrites(t *testing.T, prog *ssa.Program, want analysistest.TargetToSour
 	}
 }
 
-func debugAllocs(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[immutability.Entrypoint]immutability.Modifications) {
+func debugAllocs(t *testing.T, want analysistest.TargetToSources, got map[immutability.Entrypoint]immutability.Modifications) {
 	t.Logf("GOT allocs\n")
 	for entry, mods := range got {
 		t.Logf("\tentry: %v\n", entry.Pos)
 		for alloc := range mods.Allocs {
-			t.Logf("\t\talloc: %v\n", prog.Fset.Position(alloc.Pos()))
+			t.Logf("\t\talloc: %v\n", alloc.Pos)
 		}
 	}
 
