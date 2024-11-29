@@ -20,6 +20,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -31,8 +32,7 @@ import (
 // single entrypoint, but this cache helps if there are multiple entrypoints
 // that need alias information computed from previous entrypoints.
 type AliasCache struct {
-	Prog           *ssa.Program
-	PtrRes         *pointer.Result
+	State          *ptr.State
 	ReachableFuncs map[*ssa.Function]bool
 	ObjectPointees map[ssa.Value]map[*pointer.Object]struct{}
 }
@@ -47,7 +47,7 @@ func (ac *AliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
 		return res
 	}
 
-	ptrs := FindAllPointers(ac.PtrRes, val)
+	ptrs := FindAllPointers(ac.State.PointerAnalysis, val)
 	res := make(map[*pointer.Object]struct{}, len(ptrs))
 	for _, ptr := range ptrs {
 		for _, label := range ptr.PointsTo().Labels() {
@@ -66,7 +66,7 @@ func (ac *AliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
 // findEntrypoints returns all the analysis entrypoints specified by spec.
 func (ac *AliasCache) findEntrypoints(spec config.ImmutabilitySpec) map[Entrypoint]struct{} {
 	entrypoints := make(map[Entrypoint]struct{})
-	for fn, node := range ac.PtrRes.CallGraph.Nodes {
+	for fn, node := range ac.State.PointerAnalysis.CallGraph.Nodes {
 		if fn == nil {
 			continue
 		}
@@ -94,11 +94,11 @@ func (ac *AliasCache) findEntrypoints(spec config.ImmutabilitySpec) map[Entrypoi
 func (ac *AliasCache) findEntrypoint(spec config.ImmutabilitySpec, call *ssa.Call) (Entrypoint, bool) {
 	// use analysisutil entrypoint logic to take care of function aliases and
 	// other edge-cases
-	if !analysisutil.IsEntrypointNode(ac.PtrRes, call, spec.IsValue) {
+	if !analysisutil.IsEntrypointNode(ac.State.PointerAnalysis, call, spec.IsValue) {
 		return Entrypoint{}, false
 	}
 
-	callPos := ac.Prog.Fset.Position(call.Pos())
+	callPos := ac.State.Program.Fset.Position(call.Pos())
 	for _, cid := range spec.Values {
 		// TODO parse context beforehand to prevent panics
 		idx, err := strconv.Atoi(cid.Context)

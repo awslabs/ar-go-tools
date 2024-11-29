@@ -179,6 +179,9 @@ type PointerConfig struct {
 
 // ImmutabilitySpec contains code identifiers for the immutability analysis.
 type ImmutabilitySpec struct {
+	// Tag is the identifier of the problem
+	Tag string
+
 	// Values is the list of identifiers representing which values whose
 	// modifications should be reported.
 	Values []CodeIdentifier

@@ -81,10 +81,8 @@ func Analyze(state *ptr.State) (AnalysisResult, error) {
 		return AnalysisResult{}, fmt.Errorf("no values found in program: %v", prog)
 	}
 
-	ptrRes := state.PointerAnalysis
 	ac := &AliasCache{
-		Prog:           prog,
-		PtrRes:         ptrRes,
+		State:          state,
 		ReachableFuncs: reachable,
 		ObjectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}, numVals), // preallocate for speed
 	}
@@ -164,13 +162,23 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, 
 
 		for _, instrs := range s.entryWrites {
 			for instr := range instrs {
-				modifications[entry].Writes[Instr{instr, s.Prog.Fset.Position(instr.Pos())}] = struct{}{}
+				pos := s.State.Program.Fset.Position(instr.Pos())
+				if s.State.Annotations.IsIgnoredPos(pos, spec.Tag) {
+					log.Infof("//argot:ignore write at %s", pos)
+					continue
+				}
+				modifications[entry].Writes[Instr{instr, pos}] = struct{}{}
 			}
 		}
 
 		for _, instrs := range s.entryAllocs {
 			for instr := range instrs {
-				modifications[entry].Allocs[Instr{instr, s.Prog.Fset.Position(instr.Pos())}] = struct{}{}
+				pos := s.State.Program.Fset.Position(instr.Pos())
+				if s.State.Annotations.IsIgnoredPos(pos, spec.Tag) {
+					log.Infof("//argot:ignore alloc at %s", pos)
+					continue
+				}
+				modifications[entry].Allocs[Instr{instr, pos}] = struct{}{}
 			}
 		}
 	}

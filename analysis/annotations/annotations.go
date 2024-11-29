@@ -224,7 +224,7 @@ func (pa ProgramAnnotations) CompleteFromSyntax(logger *config.LogGroup, pkg *pa
 		for _, comments := range astFile.Comments {
 			for _, comment := range comments.List {
 				if annotationContents := extractAnnotation(comment); annotationContents != nil {
-					pa.loadFileAnnotations(logger, annotationContents, pkg.Fset.Position(comment.Pos()))
+					pa.loadFileAnnotations(logger, comment, annotationContents, pkg.Fset.Position(comment.Pos()))
 				}
 			}
 		}
@@ -322,16 +322,25 @@ func (pa ProgramAnnotations) loadPackageDocAnnotations(doc *ast.CommentGroup) {
 // loadFileAnnotations loads the annotation that are not tied to a specific ssa node. This includes:
 // - config annotations
 // - positional annotations
-func (pa ProgramAnnotations) loadFileAnnotations(logger *config.LogGroup, annotationContents []string, position token.Position) {
-	if len(annotationContents) <= 1 {
-		logger.Warnf("ignoring argot annotation with no arguments at %s", position)
+func (pa ProgramAnnotations) loadFileAnnotations(logger *config.LogGroup, comment *ast.Comment, annotationContents []string, position token.Position) {
+	if len(annotationContents) == 0 {
+		logger.Warnf("ignoring argot annotation: %s at %s: no arguments", comment.Text, position)
 		return
 	}
+
+	if len(annotationContents) == 1 {
+		logger.Warnf("no tag specified in argot annotation: %s at %s", comment.Text, position)
+		// add an empty tag if none are specified
+		annotationContents = append(annotationContents, "")
+	}
+
 	switch annotationContents[0] {
 	case ConfigTarget:
 		pa.loadConfigTargetAnnotation(logger, annotationContents, position)
 	case IgnoreTarget:
 		pa.addIgnoreLineAnnotation(position, annotationContents)
+	default:
+		logger.Warnf("ignoring argot annotation: %s at %s: invalid contents: %v", comment.Text, position, annotationContents)
 	}
 }
 

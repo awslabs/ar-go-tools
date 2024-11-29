@@ -55,15 +55,13 @@ type AnalysisResult struct {
 // Analyze runs the analysis on state.
 func Analyze(state *ptr.State) ([]AnalysisResult, error) {
 	var results []AnalysisResult
-	prog := state.Program
 	cfg := state.Config
 	log := config.NewLogGroup(cfg)
 
 	reachable := state.ReachableFunctions()
 	var errs []error
 	ac := &immutability.AliasCache{
-		PtrRes:         state.PointerAnalysis,
-		Prog:           prog,
+		State:          state,
 		ReachableFuncs: reachable,
 		ObjectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}),
 	}
@@ -141,7 +139,7 @@ func analyze(log *config.LogGroup, ac *immutability.AliasCache, spec config.Immu
 // findEntrypoints returns all the analysis entrypoints specified by spec.
 func findEntrypoints(ac *immutability.AliasCache, spec config.ImmutabilitySpec) []Entrypoint {
 	var entrypoints []Entrypoint
-	for fn, node := range ac.PtrRes.CallGraph.Nodes {
+	for fn, node := range ac.State.PointerAnalysis.CallGraph.Nodes {
 		if fn == nil {
 			continue
 		}
@@ -169,11 +167,11 @@ func findEntrypoints(ac *immutability.AliasCache, spec config.ImmutabilitySpec) 
 func findEntrypoint(ac *immutability.AliasCache, spec config.ImmutabilitySpec, call *ssa.Call) (Entrypoint, bool) {
 	// use analysisutil entrypoint logic to take care of function aliases and
 	// other edge-cases
-	if !analysisutil.IsEntrypointNode(ac.PtrRes, call, spec.IsValue) {
+	if !analysisutil.IsEntrypointNode(ac.State.PointerAnalysis, call, spec.IsValue) {
 		return Entrypoint{}, false
 	}
 
-	callPos := ac.Prog.Fset.Position(call.Pos())
+	callPos := ac.State.Program.Fset.Position(call.Pos())
 	for _, cid := range spec.Values {
 		args := lang.GetArgs(call)
 		val := args[0]
