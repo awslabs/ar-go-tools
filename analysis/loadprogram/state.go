@@ -16,6 +16,11 @@ package loadprogram
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"path/filepath"
 	"sync/atomic"
 
 	"github.com/awslabs/ar-go-tools/analysis/annotations"
@@ -67,25 +72,22 @@ func NewState(c *config.State) result.Result[State] {
 	}
 	// Load annotations by scanning all packages' syntax
 	pa, err := annotations.LoadAnnotations(c.Logger, program.AllPackages())
-
-	if pkgs != nil {
-		for _, pkg := range pkgs {
-			analysisutil.VisitPackages(pkg, func(p *packages.Package) bool {
-				// Don't scan stdlib for annotations!
-				if summaries.IsStdPackageName(p.Name) {
-					return false
-				}
-				// TODO: find a way to not scan dependencies if there is demand. Currently, it is unlikely that some
-				// dependencies will contain argot annotations.
-				c.Logger.Debugf("Scan %s for annotations.\n", p.PkgPath)
-				pa.CompleteFromSyntax(c.Logger, p)
-				return true
-			})
-		}
-	}
 	if err != nil {
-		return result.Err[State](err)
+		return result.Err[State](fmt.Errorf("failed to load annotations from SSA"))
 	}
+
+	dirs := c.Patterns
+	// If the project root is set, parse all Go files inside the root directory (recursively)
+	if root := c.Config.Root(); root != "" {
+		dirs = []string{root}
+	}
+
+	files, err := allAstFiles(dirs, program.Fset, pkgs)
+	if err != nil {
+		return result.Err[State](fmt.Errorf("failed to parse AST files: %v", err))
+	}
+
+	pa.CompleteFromSyntax(c.Logger, program.Fset, files)
 	c.Logger.Infof("Loaded %d annotations from program\n", pa.Count())
 
 	report := config.NewReport()
@@ -172,4 +174,51 @@ func (wps *State) IncrementAndTestAlarms() bool {
 // TestAlarmCount tests whether the alarm count is smaller than the maximum number of alarms allowed by the configuration.
 func (wps *State) TestAlarmCount() bool {
 	return wps.Config.MaxAlarms <= 0 || wps.numAlarms.Load() < int32(wps.Config.MaxAlarms)
+}
+
+func allAstFiles(dirs []string, fset *token.FileSet, pkgs []*packages.Package) ([]*ast.File, error) {
+	var files []*ast.File
+
+	for _, dir := range dirs {
+		if err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			if info.IsDir() {
+				parsedDir, err := parser.ParseDir(fset, path, nil, parser.ParseComments)
+				if err != nil {
+					return fmt.Errorf("failed to parse dir %s: %v", path, err)
+				}
+
+				for _, pkg := range parsedDir {
+					for _, file := range pkg.Files {
+						files = append(files, file)
+					}
+				}
+			}
+
+			return nil
+		}); err != nil {
+			return nil, fmt.Errorf("failed to parse AST: %v", err)
+		}
+	}
+
+	if pkgs != nil {
+		for _, pkg := range pkgs {
+			analysisutil.VisitPackages(pkg, func(p *packages.Package) bool {
+				// Don't scan stdlib for annotations!
+				if summaries.IsStdPackageName(p.Name) {
+					return false
+				}
+
+				// TODO: Remove if there is no need for scanning dependencies
+				files = append(files, p.Syntax...)
+
+				return true
+			})
+		}
+	}
+
+	return files, nil
 }
