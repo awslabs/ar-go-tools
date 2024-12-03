@@ -181,6 +181,12 @@ type PointerConfig struct {
 type ImmutabilitySpec struct {
 	// Tag is the identifier of the problem
 	Tag string
+	// Severity is the severity of the finding
+	Severity Severity
+	// Description is a human-readable description of the problem
+	Description string
+	// Targets are the targets of the analysis
+	Targets []string
 
 	// Values is the list of identifiers representing which values whose
 	// modifications should be reported.
@@ -199,6 +205,21 @@ func (s ImmutabilitySpec) IsValue(cid CodeIdentifier) bool {
 		return cid
 	})
 	return ExistsCid(vals, cid.equalOnNonEmptyFields)
+}
+
+// SpecTag returns the specification's tag
+func (s ImmutabilitySpec) SpecTag() string {
+	return s.Tag
+}
+
+// SpecTargets returns the specification's targets
+func (s ImmutabilitySpec) SpecTargets() []string {
+	return s.Targets
+}
+
+// SpecSeverity returns the specification's severity
+func (s ImmutabilitySpec) SpecSeverity() Severity {
+	return s.Severity
 }
 
 // StaticCommandsSpec contains code identifiers for the problem of identifying which commands are static

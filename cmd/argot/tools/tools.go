@@ -144,6 +144,8 @@ func GetTargets(args []string, tag string, c *config.Config, tool config.ToolNam
 		return targets(c.SlicingProblems, allTargets, tag)
 	case config.SyntacticTool:
 		return targets(c.SyntacticProblems.StructInitProblems, allTargets, tag)
+	case config.ImmutabilityTool:
+		return targets(c.ImmutabilityProblems, allTargets, tag)
 	default:
 		return allTargets
 	}
