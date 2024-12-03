@@ -48,9 +48,16 @@ func TestAnalyze(t *testing.T) {
 		test := test
 
 		lp, got := runAnalysis(t, test.name)
+		// res, _ := immutability.ReportResults(got)
+		// t.Log(res)
+
 		t.Run(test.name+":invalid-writes", func(t *testing.T) {
 			want := wantInvalidWrites(lp)
 			checkWrites(t, lp.Program, want, got.Modifications)
+		})
+		t.Run(test.name+":invalid-reads", func(t *testing.T) {
+			want := wantInvalidReads(lp)
+			checkReads(t, lp.Program, want, got.Modifications)
 		})
 		t.Run(test.name+":allocs", func(t *testing.T) {
 			want := wantAllocs(lp)
@@ -107,6 +114,9 @@ var immutableArgRegex = regexp.MustCompile(`//.*@ImmutableArg\(((?:\s*\w\s*,?)+)
 // invalidWriteRegex matches annotations of the form "@InvalidWrite(id1, id2, id3)"
 var invalidWriteRegex = regexp.MustCompile(`//.*@InvalidWrite\(((?:\s*\w\s*,?)+)\)`)
 
+// invalidReadRegex matches annotations of the form "@InvalidRead(id1, id2, id3)"
+var invalidReadRegex = regexp.MustCompile(`//.*@InvalidRead\(((?:\s*\w\s*,?)+)\)`)
+
 // allocRegex matches annotations of the form "@Alloc(id1, id2, id3)"
 var allocRegex = regexp.MustCompile(`//.*@Alloc\(((?:\s*\w\s*,?)+)\)`)
 
@@ -117,6 +127,15 @@ var allocRegex = regexp.MustCompile(`//.*@Alloc\(((?:\s*\w\s*,?)+)\)`)
 // id to all the invalid write operations' positions.
 func wantInvalidWrites(lp *loadprogram.State) analysistest.TargetToSources {
 	return wantTargetToSources(lp, immutableArgRegex, invalidWriteRegex)
+}
+
+// wantInvalidReads analyzes the files in lp and looks for comments
+// @InvalidRead(id1, id2, ...) to construct the expected positions of the
+// invalid reads to a pointer.
+// These positions are represented as a map from the argument value matching the
+// id to all the invalid read operations' positions.
+func wantInvalidReads(lp *loadprogram.State) analysistest.TargetToSources {
+	return wantTargetToSources(lp, immutableArgRegex, invalidReadRegex)
 }
 
 // wantAllocs analyzes the files in lp and looks for comments
@@ -186,10 +205,12 @@ func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targ
 	return target2sources
 }
 
+// TODO refactor to remove duplicate code
+
 // checkWrites checks that got's writes matches the wanted
 // InvalidWrite->ImmutableArg annotation ids from the test.
 func checkWrites(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[immutability.Entrypoint]immutability.Modifications) {
-	// debugWrites(t, prog, want, got)
+	// debugWrites(t, want, got)
 
 	type seenEntry struct {
 		Pos analysistest.LPos
@@ -249,6 +270,77 @@ func checkWrites(t *testing.T, prog *ssa.Program, want analysistest.TargetToSour
 					// List possible writes for debugging
 					t.Logf("Possible writes:\n")
 					for entry := range seenWriteToEntry[sEntry] {
+						t.Logf("\t%+v\n", entry)
+					}
+				}
+			}
+		}
+	}
+}
+
+// checkReads checks that got's reads matches the wanted
+// InvalidRead->ImmutableArg annotation ids from the test.
+func checkReads(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[immutability.Entrypoint]immutability.Modifications) {
+	// debugReads(t, want, got)
+
+	type seenEntry struct {
+		Pos analysistest.LPos
+	}
+	type seenRead struct {
+		Pos analysistest.LPos
+	}
+	seenReadToEntry := make(map[seenEntry]map[seenRead]bool)
+
+	for entry, mods := range got {
+		entryInstr := entry.Call
+		entryPos := prog.Fset.Position(entryInstr.Pos())
+		if !entryPos.IsValid() {
+			t.Errorf("invalid entrypoint position for: %v", entryInstr)
+			// skip invalid positions
+			continue
+		}
+		gotEntry := seenEntry{Pos: analysistest.RemoveColumn(entryPos)}
+		for readInstr := range mods.Reads {
+			if _, ok := seenReadToEntry[gotEntry]; !ok {
+				seenReadToEntry[gotEntry] = map[seenRead]bool{}
+			}
+
+			readPos := readInstr.Pos
+			if !readPos.IsValid() {
+				t.Errorf("invalid read position for: %v", readInstr)
+				continue
+			}
+			gotRead := seenRead{Pos: analysistest.RemoveColumn(readPos)}
+			seen := false
+			for wantEntryID, wantReadIDs := range want {
+				if gotEntry.Pos == wantEntryID.Pos {
+					for wantReadID := range wantReadIDs {
+						if gotRead.Pos == wantReadID.Pos {
+							seenReadToEntry[seenEntry{wantEntryID.Pos}][seenRead{wantReadID.Pos}] = true
+							seen = true
+							break
+						}
+					}
+				}
+			}
+			if !seen {
+				t.Errorf("false positive: read at %v to immutable argument at %v", gotRead.Pos, gotEntry.Pos)
+			}
+		}
+	}
+
+	for wantEntryID, wantReadIDs := range want {
+		sEntry := seenEntry{Pos: wantEntryID.Pos}
+		for wantReadID := range wantReadIDs {
+			sRead := seenRead{Pos: wantReadID.Pos}
+			if !seenReadToEntry[sEntry][sRead] {
+				// Remaining entries have not been detected!
+				t.Errorf("failed to detect read with id %s:\n%s\nto argument at\n%s\n",
+					wantReadID.ID, wantReadID.Pos, wantEntryID.Pos)
+				if len(seenReadToEntry[sEntry]) > 0 {
+					// List possible reads for debugging
+					t.Logf("Possible reads:\n")
+					for entry := range seenReadToEntry[sEntry] {
 						t.Logf("\t%+v\n", entry)
 					}
 				}
@@ -342,6 +434,24 @@ func debugWrites(t *testing.T, want analysistest.TargetToSources, got map[immuta
 		t.Logf("\tentry: %v\n", entry.Pos)
 		for write := range writes {
 			t.Logf("\t\twrite: %v\n", write.Pos)
+		}
+	}
+}
+
+func debugReads(t *testing.T, want analysistest.TargetToSources, got map[immutability.Entrypoint]immutability.Modifications) {
+	t.Logf("GOT reads\n")
+	for entry, mods := range got {
+		t.Logf("\tentry: %v\n", entry.Pos)
+		for read := range mods.Reads {
+			t.Logf("\t\tread: %v\n", read.Pos)
+		}
+	}
+
+	t.Logf("WANT reads\n")
+	for entry, reads := range want {
+		t.Logf("\tentry: %v\n", entry.Pos)
+		for read := range reads {
+			t.Logf("\t\tread: %v\n", read.Pos)
 		}
 	}
 }

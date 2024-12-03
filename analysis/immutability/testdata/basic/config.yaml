@@ -5,4 +5,4 @@ immutability-problems:
         context: "0" # argument value to track
 
 options:
-  log-level: 3
+  log-level: 1

@@ -48,6 +48,10 @@ func (ac *AliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
 	}
 
 	ptrs := FindAllPointers(ac.State.PointerAnalysis, val)
+	if len(ptrs) == 0 {
+		return nil
+	}
+
 	res := make(map[*pointer.Object]struct{}, len(ptrs))
 	for _, ptr := range ptrs {
 		for _, label := range ptr.PointsTo().Labels() {
