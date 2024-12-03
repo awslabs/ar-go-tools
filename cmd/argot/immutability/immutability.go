@@ -99,12 +99,12 @@ func runTarget(
 	c.Logger.Infof("starting immutability analysis...\n")
 	res, err := immutability.Analyze(state)
 	if err != nil {
-		return nil, fmt.Errorf("alias analysis error: %v", err)
+		return nil, fmt.Errorf("immutability analysis error: %v", err)
 	}
 	s, failed := immutability.ReportResults(res)
 	c.Logger.Infof(s)
 	if failed {
-		return state.Report, fmt.Errorf("alias analysis found problems, inspect logs for more information")
+		return state.Report, fmt.Errorf("immutability analysis found problems, inspect logs for more information")
 	}
 	return state.Report, nil
 }
