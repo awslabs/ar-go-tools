@@ -673,6 +673,13 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 
 			cond := graphNode.SsaNode()
 			pos := graphNode.Position(s)
+
+			// if the node is ignored, don't record an error
+			if s.Annotations.IsIgnoredPos(pos, v.taintSpec.Tag) {
+				s.Logger.Infof("//argot:ignore taint flow to %s", pos)
+				break
+			}
+
 			err := &CondError{Cond: cond, ParentName: cur.Node.ParentName(), Trace: cur.Trace.SummaryString(), Pos: pos}
 			logger.Warnf("%v\n", err)
 			s.Report.AddError("cond", err)
