@@ -513,8 +513,8 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 				logger.Tracef("Adding trace: %v\n", t)
 			}
 
-		// Data flows backwards within the function from the synthetic node.
-		case *df.SyntheticNode:
+		// Data flows backwards within the function from the synthetic node or builtin call node.
+		case *df.SyntheticNode, *df.BuiltinCallNode:
 			for nextNode := range graphNode.In() {
 				nextNodeWithTrace := df.NodeWithTrace{
 					Node:         nextNode,

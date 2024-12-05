@@ -119,9 +119,9 @@ func (state *IntraAnalysisState) initialize() {
 		state.addParamAliases(param)
 	}
 
-	// Special cases: load instructions in closures
 	lang.IterateInstructions(function,
 		func(_ int, i ssa.Instruction) {
+			// Special case: load instructions in closures
 			if load, ok := i.(*ssa.UnOp); ok && load.Op == token.MUL {
 				for _, fv := range function.FreeVars {
 					if fv == load.X {
@@ -130,11 +130,22 @@ func (state *IntraAnalysisState) initialize() {
 				}
 			}
 			// Also mark synthetic nodes here
-			state.captureSyntheticNode(i)
+			state.markInstruction(i)
 		})
 }
 
-func (state *IntraAnalysisState) captureSyntheticNode(i ssa.Instruction) {
+func (state *IntraAnalysisState) markInstruction(i ssa.Instruction) {
+	// Instructions that always require marking the value
+	switch instr := i.(type) {
+	case *ssa.MakeClosure:
+		state.markClosureNode(instr)
+	case *ssa.Call:
+		state.callCommonMark(instr, instr, instr.Common())
+	case *ssa.Go: // Analyze go like a function call, but a dedicated concurrency analysis should be used
+		state.callCommonMark(instr.Value(), instr, instr.Common())
+	}
+
+	// Instructions where marking is optional
 	if state.shouldTrack(state.parentAnalyzerState, i.(ssa.Node)) {
 		mark := state.flowInfo.GetNewMark(i.(ssa.Node), Synthetic+DefaultMark, nil, NonIndexMark)
 		switch instr := i.(type) {
@@ -153,7 +164,6 @@ func (state *IntraAnalysisState) captureSyntheticNode(i ssa.Instruction) {
 			// Reading from a field can be a source
 			state.flowInfo.AddMark(i, instr, "", mark)
 		}
-
 	}
 }
 
@@ -339,31 +349,12 @@ func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
 // this varies.
 func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstruction, common *ssa.CallCommon) {
 	// Special case: builtins are handled separately
-	if doBuiltinCall(state, value, common, instr) {
+	if markBuiltinCall(state, value, common, instr) {
 		return
 	}
 
 	// Mark call, one mark per returned Value
-	res := common.Signature().Results()
-
-	trackingMarks := []MarkWithAccessPath{}
-	if res != nil {
-		for i := 0; i < res.Len(); i++ {
-			if lang.CanType(value) && state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[value]] {
-				for _, path := range AccessPathsOfType(value.Type()) {
-					m := MarkWithAccessPath{
-						Mark:       state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallReturn, nil, NewIndex(i), path),
-						AccessPath: path,
-					}
-					trackingMarks = append(trackingMarks, m)
-				}
-			}
-			m := MarkWithAccessPath{state.flowInfo.GetNewMark(instr.(ssa.Node), CallReturn, nil, NewIndex(i)), ""}
-			trackingMarks = append(trackingMarks, m)
-		}
-	}
-
-	for _, mark := range trackingMarks {
+	for _, mark := range state.marksToAdd(value, instr, common) {
 		state.markValue(instr, value, mark.AccessPath, mark.Mark)
 	}
 
@@ -380,6 +371,38 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 		newMark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark)
 		state.markValue(instr, arg, "", newMark)
 	}
+}
+
+// marksToAdd returns a slice of marks that will need to be added to track the call information passed as argument.
+// Those marks will depend on whether the function is analyzed with field-sensitivity and whether it is a builtin
+// or not.
+func (state *IntraAnalysisState) marksToAdd(
+	value ssa.Value,
+	instr ssa.CallInstruction,
+	common *ssa.CallCommon) []MarkWithAccessPath {
+	res := common.Signature().Results()
+
+	trackingMarks := []MarkWithAccessPath{}
+	if res != nil {
+		for i := 0; i < res.Len(); i++ {
+			if lang.CanType(value) && state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[value]] {
+				for _, path := range AccessPathsOfType(value.Type()) {
+					m := MarkWithAccessPath{
+						Mark: state.flowInfo.GetNewLabelledMark(
+							instr.(ssa.Node), CallReturn, nil, NewIndex(i), path),
+						AccessPath: path,
+					}
+					trackingMarks = append(trackingMarks, m)
+				}
+			}
+			m := MarkWithAccessPath{
+				Mark:       state.flowInfo.GetNewMark(instr.(ssa.Node), CallReturn, nil, NewIndex(i)),
+				AccessPath: "",
+			}
+			trackingMarks = append(trackingMarks, m)
+		}
+	}
+	return trackingMarks
 }
 
 // Checking mark flows into specific locations:

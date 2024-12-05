@@ -63,6 +63,9 @@ type SummaryGraph struct {
 	// the call instructions are linked to CallNode.
 	Callees map[ssa.CallInstruction]map[*ssa.Function]*CallNode
 
+	// the builtin calls in the function
+	BuiltinCalls map[ssa.CallInstruction]*BuiltinCallNode
+
 	// the MakeClosure nodes in the function  are linked to ClosureNode
 	CreatedClosures map[ssa.Instruction]*ClosureNode
 
@@ -129,6 +132,7 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 		FreeVars:              make(map[ssa.Node]*FreeVarNode, len(f.FreeVars)),
 		Callees:               make(map[ssa.CallInstruction]map[*ssa.Function]*CallNode),
 		Callsites:             make(map[ssa.CallInstruction]*CallNode),
+		BuiltinCalls:          make(map[ssa.CallInstruction]*BuiltinCallNode),
 		Returns:               make(map[ssa.Instruction][]*ReturnValNode),
 		CreatedClosures:       make(map[ssa.Instruction]*ClosureNode),
 		ReferringMakeClosures: make(map[ssa.Instruction]*ClosureNode),
@@ -193,8 +197,12 @@ func (g *SummaryGraph) initializeInnerNodes(s *State,
 	lang.IterateInstructions(g.Parent, func(_ int, instruction ssa.Instruction) {
 		switch x := instruction.(type) {
 		case ssa.CallInstruction:
-			if s != nil && !isHandledBuiltinCall(x) {
-				g.addCallInstr(s, x)
+			if s != nil {
+				if isHandledBuiltinCall(x) {
+					g.addBuiltinCallInstr(x)
+				} else {
+					g.addCallInstr(s, x)
+				}
 			}
 		case *ssa.MakeClosure:
 			g.addClosure(x)
@@ -363,6 +371,29 @@ func (g *SummaryGraph) addCallInstr(c *State, instr ssa.CallInstruction) {
 		}
 		g.addCallNode(node)
 	}
+}
+
+// addCallInstr adds a call site to the summary from a call instruction (use when no call graph is available)
+// @requires g != nil
+func (g *SummaryGraph) addBuiltinCallInstr(instr ssa.CallInstruction) {
+	// Already seen this instruction? Multiple calls of this function will not gather more information.
+	if _, ok := g.Callees[instr]; ok {
+		return
+	}
+
+	//_args := lang.GetArgs(instr)
+
+	node := &BuiltinCallNode{
+		id:       g.newNodeID(),
+		parent:   g,
+		callSite: instr,
+		name:     instr.Common().Value.Name(),
+		out:      make(map[GraphNode][]EdgeInfo),
+		in:       make(map[GraphNode]EdgeInfo),
+		marks:    nil,
+	}
+	// Add each callee as a node for this call instruction
+	g.BuiltinCalls[instr] = node
 }
 
 // addReturn adds a return node to the summary
@@ -547,7 +578,10 @@ func (g *SummaryGraph) selectNodesFromMark(m Mark) []GraphNode {
 			for _, callNode := range callNodes {
 				nodes = append(nodes, callNode)
 			}
-
+		}
+		// Can also be a builtin call node
+		if builtinCallNode, ok := g.BuiltinCalls[callInstruction]; ok {
+			nodes = append(nodes, builtinCallNode)
 		}
 	}
 
@@ -628,11 +662,18 @@ func (g *SummaryGraph) addEdge(source MarkWithAccessPath, dest GraphNode, cond *
 	if source.Mark.IsCallReturn() {
 		// A CallReturn source node must be a CallInstruction
 		sourceCallInstr := source.Mark.Node.(ssa.CallInstruction)
+		// either a call node
 		if sourceNodes, ok := g.Callees[sourceCallInstr]; ok {
 			for _, sourceNode := range sourceNodes {
 				if sourceNode != dest {
 					updateEdgeInfo(source, dest, cond, sourceNode)
 				}
+			}
+		}
+		// or a builtin call node
+		if builtinCallNode, ok := g.BuiltinCalls[sourceCallInstr]; ok {
+			if builtinCallNode != dest {
+				updateEdgeInfo(source, dest, cond, builtinCallNode)
 			}
 		}
 	}
@@ -752,6 +793,14 @@ func (g *SummaryGraph) addCallEdge(mark MarkWithAccessPath, cond *ConditionInfo,
 	}
 }
 
+func (g *SummaryGraph) addBuiltinCallEdge(mark MarkWithAccessPath, call ssa.CallInstruction, cond *ConditionInfo) {
+	builtinNode := g.BuiltinCalls[call]
+	if builtinNode == nil {
+		return
+	}
+	g.addEdge(mark, builtinNode, cond)
+}
+
 // addBoundVarEdge adds an edge in the summary from a mark to a function call argument.
 // @requires g != nil
 func (g *SummaryGraph) addBoundVarEdge(mark MarkWithAccessPath, cond *ConditionInfo, closure *ssa.MakeClosure,
@@ -851,6 +900,9 @@ func addInEdge(dest GraphNode, source GraphNode, path EdgeInfo) {
 		node.in[source] = path
 	case *IfNode:
 		node.in[source] = path
+	case *BuiltinCallNode:
+		node.in[source] = path
+
 	default:
 		panic(fmt.Sprintf("invalid dest node type: %T", dest))
 	}
@@ -1070,6 +1122,13 @@ func (a *BoundLabelNode) String() string {
 		a.targetInfo.BoundIndex)
 }
 
+func (b *BuiltinCallNode) String() string {
+	if b == nil {
+		return ""
+	}
+	return fmt.Sprintf("\"[#%d.%d] builtin:%s\"", b.parent.ID, b.id, b.name)
+}
+
 func (a *IfNode) String() string {
 	if a == nil {
 		return ""
@@ -1209,6 +1268,17 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 				for n := range s.In() {
 					fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(s.String()), escapeString(n.String()))
 				}
+			}
+		}
+	}
+
+	for _, builtinCall := range g.BuiltinCalls {
+		for n := range builtinCall.Out() {
+			fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(builtinCall.String()), escapeString(n.String()))
+		}
+		if !outEdgesOnly {
+			for n := range builtinCall.In() {
+				fmt.Fprintf(w, "\t%s -> %s;\n", escapeString(builtinCall.String()), escapeString(n.String()))
 			}
 		}
 	}
@@ -1365,6 +1435,10 @@ func (g *SummaryGraph) ForAllNodes(f func(n GraphNode)) {
 		for _, s := range group {
 			f(s)
 		}
+	}
+
+	for _, b := range g.BuiltinCalls {
+		f(b)
 	}
 
 	for _, group := range g.AccessGlobalNodes {

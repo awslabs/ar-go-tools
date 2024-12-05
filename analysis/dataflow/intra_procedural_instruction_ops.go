@@ -47,7 +47,7 @@ func (state *IntraAnalysisState) ChangedOnEndBlock() bool {
 
 // DoCall analyzes a ssa.Call
 func (state *IntraAnalysisState) DoCall(call *ssa.Call) {
-	state.callCommonMark(call, call, call.Common())
+	doBuiltinCall(state, call, call.Common(), call)
 }
 
 // DoDefer analyzes a ssa.Defer. Does nothing - defers are analyzed separately.
@@ -57,7 +57,7 @@ func (state *IntraAnalysisState) DoDefer(_ *ssa.Defer) {
 
 // DoGo analyses a go call like any function call. Use the escape analysis if you care about concurrency.
 func (state *IntraAnalysisState) DoGo(g *ssa.Go) {
-	state.callCommonMark(g.Value(), g, g.Common())
+	doBuiltinCall(state, g.Value(), g.Common(), g)
 }
 
 // DoDebugRef is a no-op
@@ -283,8 +283,7 @@ func (state *IntraAnalysisState) DoTypeAssert(x *ssa.TypeAssert) {
 }
 
 // DoMakeClosure analyzes closures using markClosureNode
-func (state *IntraAnalysisState) DoMakeClosure(x *ssa.MakeClosure) {
-	state.markClosureNode(x)
+func (state *IntraAnalysisState) DoMakeClosure(_ *ssa.MakeClosure) {
 }
 
 // DoPhi transfers marks from all incoming edges to the phi-value

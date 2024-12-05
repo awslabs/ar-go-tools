@@ -164,6 +164,7 @@ func (state *IntraAnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruc
 // Those are the edges to and from call arguments and to and from the call Value.
 func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
 	if isHandledBuiltinCall(callInstr) {
+		makeEdgesAtBuiltinCall(state, callInstr)
 		return
 	}
 	// add call node edges for call instructions whose Value corresponds to a function (i.e. the Method is nil)
