@@ -63,6 +63,7 @@ func NewFlags(args []string) (Flags, error) {
 			Verbose:    *flags.Verbose,
 			WithTest:   *flags.WithTest,
 			Tag:        *flags.Tag,
+			Targets:    *flags.Targets,
 		},
 		maxDepth: *maxDepth,
 		dryRun:   *dryRun,
@@ -94,11 +95,25 @@ func Run(flags Flags) error {
 	if flags.Tag != "" {
 		tmpLogger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}
+	if flags.Targets != "" {
+		tmpLogger.Infof("target specified on command-line, will analyze only for problems with targets in \"%s\"",
+			flags.Targets)
+	}
 
 	hasFlows := false
 	overallReport := config.NewReport()
+
+	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
+		CmdlineArgs: flags.FlagSet.Args(),
+		Tag:         flags.Tag,
+		Targets:     flags.Targets,
+		Tool:        config.TaintTool,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get taint targets: %s", err)
+	}
 	// Loop over every target of the taint analysis
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.TaintTool) {
+	for targetName, targetFiles := range actualTargets {
 		targetHasFlows, report, err := runTarget(cfg, targetName, targetFiles, flags)
 		hasFlows = targetHasFlows || hasFlows
 		if err != nil {

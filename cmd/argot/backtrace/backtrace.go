@@ -28,7 +28,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -54,10 +54,25 @@ func Run(flags tools.CommonFlags) error {
 	if flags.Tag != "" {
 		tmpLogger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}
+	if flags.Targets != "" {
+		tmpLogger.Infof("target specified on command-line, will analyze only for problems with targets in \"%s\"",
+			flags.Targets)
+	}
 
 	overallReport := config.NewReport()
 	foundTraces := false
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, "backtrace") {
+
+	// Loop over every target of the taint analysis
+	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
+		CmdlineArgs: flags.FlagSet.Args(),
+		Tag:         flags.Tag,
+		Targets:     flags.Targets,
+		Tool:        config.BacktraceTool,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get backtrace targets: %s", err)
+	}
+	for targetName, targetFiles := range actualTargets {
 		start := time.Now()
 		loadOptions := config.LoadOptions{
 			Platform:      "",
@@ -67,12 +82,12 @@ func Run(flags tools.CommonFlags) error {
 			ApplyRewrites: true,
 		}
 		c := config.NewState(cfg, targetName, targetFiles, loadOptions)
-		ptrState := resultMonad.Bind(loadprogram.NewState(c), ptr.NewState) // build pointer analysis info
-		state, err := resultMonad.Bind(ptrState, dataflow.NewState).Value()
+		ptrState := result.Bind(loadprogram.NewState(c), ptr.NewState) // build pointer analysis info
+		state, err := result.Bind(ptrState, dataflow.NewState).Value()
 		if err != nil {
 			return fmt.Errorf("loading failed: %v", err)
 		}
-		result, err := backtrace.Analyze(state)
+		analysisResult, err := backtrace.Analyze(state)
 		if err != nil {
 			return fmt.Errorf("analysis failed: %v", err)
 		}
@@ -81,9 +96,9 @@ func Run(flags tools.CommonFlags) error {
 		c.Logger.Infof("")
 		c.Logger.Infof("-%s", strings.Repeat("*", 80))
 		c.Logger.Infof("Analysis took %3.4f s\n", duration.Seconds())
-		if len(result.Traces) > 0 {
+		if len(analysisResult.Traces) > 0 {
 			foundTraces = true
-			c.Logger.Errorf("Found traces for %d slicing problems\n", len(result.Traces))
+			c.Logger.Errorf("Found traces for %d slicing problems\n", len(analysisResult.Traces))
 		}
 	}
 	overallReport.Dump(config.ConfiguredLogger{Config: cfg, Logger: tmpLogger})

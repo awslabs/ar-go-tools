@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"golang.org/x/exp/constraints"
+	"golang.org/x/exp/maps"
 )
 
 // Merge merges the two maps into the first map.
@@ -188,4 +189,11 @@ func Reverse[T any](a []T) {
 	for i, j := 0, len(a)-1; i < j; i, j = i+1, j-1 {
 		a[i], a[j] = a[j], a[i]
 	}
+}
+
+// Retain removes all the key-value pairs in m where the key is not in keys.
+func Retain[T comparable, R any](m map[T]R, keys []T) {
+	maps.DeleteFunc(m, func(t T, r R) bool {
+		return !Contains(keys, t)
+	})
 }

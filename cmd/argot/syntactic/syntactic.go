@@ -59,9 +59,24 @@ func Run(flags tools.CommonFlags) error {
 		tmpLogger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}
 
+	if flags.Targets != "" {
+		tmpLogger.Infof("target specified on command-line, will analyze only for problems with targets in \"%s\"",
+			flags.Targets)
+	}
+
 	failCount := 0
 	overallReport := config.NewReport()
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.SyntacticTool) {
+
+	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
+		CmdlineArgs: flags.FlagSet.Args(),
+		Tag:         flags.Tag,
+		Targets:     flags.Targets,
+		Tool:        config.SyntacticTool,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get syntactic targets: %s", err)
+	}
+	for targetName, targetFiles := range actualTargets {
 		report, err := runTarget(cfg, targetName, targetFiles, flags)
 		if err != nil {
 			tmpLogger.Errorf("Analysis for %s failed: %s", targetName, err)
