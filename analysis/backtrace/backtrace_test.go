@@ -75,7 +75,7 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state)
+	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ func testAnalyzeClosures(t *testing.T, lp *loadprogram.State) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state)
+	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +530,7 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state)
+	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}

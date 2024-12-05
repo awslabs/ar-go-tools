@@ -87,7 +87,9 @@ func Run(flags tools.CommonFlags) error {
 		if err != nil {
 			return fmt.Errorf("loading failed: %v", err)
 		}
-		analysisResult, err := backtrace.Analyze(state)
+		analysisResult, err := backtrace.Analyze(state, backtrace.AnalysisReqs{
+			Tag: flags.Tag,
+		})
 		if err != nil {
 			return fmt.Errorf("analysis failed: %v", err)
 		}

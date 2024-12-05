@@ -42,6 +42,12 @@ type AnalysisResult struct {
 	Traces map[string]map[df.GraphNode][]Trace
 }
 
+// AnalysisReqs provides constraints on the backtrace analysis to run.
+type AnalysisReqs struct {
+	// Tag is the tag to analyze, ignored if non-empty.
+	Tag string
+}
+
 // Analyze runs the analysis on the program prog with the user-provided configuration config.
 // If the analysis run successfully, an AnalysisResult is returned, containing all the information collected.
 //
@@ -49,7 +55,7 @@ type AnalysisResult struct {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(state *df.State) (AnalysisResult, error) {
+func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -64,6 +70,11 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 	var errs []error
 	allTraces := make(map[string]map[df.GraphNode][]Trace)
 	for _, ps := range state.Config.SlicingProblems {
+		// Check the tag must be analyzed
+		if reqs.Tag != "" && ps.Tag != reqs.Tag {
+			state.Logger.Infof("Ignoring problem tagged %s since tag to analyze is provided.", ps.Tag)
+			continue
+		}
 		// Check the problem applies to the current target
 		if !config.TargetIncludes(ps.Targets, state.Target) {
 			continue
@@ -93,24 +104,7 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 			},
 		})
 		// filter unwanted nodes
-		resTraces := make(map[df.GraphNode][]Trace)
-		for entry, traces := range visitor.Traces {
-			for _, trace := range traces {
-				vTrace := Trace{}
-				for _, node := range trace {
-					if isFiltered(visitor.SlicingSpec, node.GraphNode) {
-						state.Logger.Tracef("FILTERED: %v\n", node)
-						state.Logger.Tracef("\t%v\n", vTrace)
-						vTrace = nil
-						break
-					}
-					vTrace = append(vTrace, node)
-				}
-				if len(vTrace) > 0 {
-					resTraces[entry] = append(resTraces[entry], vTrace)
-				}
-			}
-		}
+		resTraces := filterResultTraces(state, visitor)
 		if len(resTraces) > 0 {
 			allTraces[ps.Tag] = resTraces
 			state.Report.AddEntry(
@@ -141,6 +135,28 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 	}
 
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: allTraces}, errors.Join(errs...)
+}
+
+func filterResultTraces(state *df.State, visitor *Visitor) map[df.GraphNode][]Trace {
+	resTraces := make(map[df.GraphNode][]Trace)
+	for entry, traces := range visitor.Traces {
+		for _, trace := range traces {
+			vTrace := Trace{}
+			for _, node := range trace {
+				if isFiltered(visitor.SlicingSpec, node.GraphNode) {
+					state.Logger.Tracef("FILTERED: %v\n", node)
+					state.Logger.Tracef("\t%v\n", vTrace)
+					vTrace = nil
+					break
+				}
+				vTrace = append(vTrace, node)
+			}
+			if len(vTrace) > 0 {
+				resTraces[entry] = append(resTraces[entry], vTrace)
+			}
+		}
+	}
+	return resTraces
 }
 
 // Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the

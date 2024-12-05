@@ -110,7 +110,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	if err != nil {
 		t.Fatalf("failed to load dataflow state: %s", err)
 	}
-	res, err := backtrace.Analyze(state)
+	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatalf("failed to run analysis: %v", err)
 	}

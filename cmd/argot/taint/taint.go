@@ -148,7 +148,9 @@ func runTarget(
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
-	result, err := taint.Analyze(df)
+	result, err := taint.Analyze(df, taint.AnalysisReqs{
+		Tag: flags.Tag,
+	})
 	duration := time.Since(start)
 	if err != nil {
 		if result.State != nil {

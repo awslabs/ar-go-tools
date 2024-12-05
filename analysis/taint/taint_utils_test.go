@@ -289,7 +289,7 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	if err != nil {
 		t.Fatalf("failed to initialize state")
 	}
-	res, err := taint.Analyze(state)
+	res, err := taint.Analyze(state, taint.AnalysisReqs{})
 	if err != nil {
 		if res.State != nil {
 			for _, err := range res.State.Report.CheckError() {
