@@ -340,6 +340,8 @@ var summaryEncoding = map[string]Summary{
 	},
 	// func (*base64.Encoding).EncodeToString(src []byte) string
 	"(*encoding/base64.Encoding).EncodeToString": TwoArgPropagation,
+	// func (*base64.Encoding) DecodeString(s string) ([]byte, error)
+	"(*encoding/base64.Encoding).DecodeString": TwoArgPropagation,
 }
 
 var summaryErrors = map[string]Summary{
