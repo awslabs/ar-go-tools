@@ -30,6 +30,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// Usage is the CLI help message.
 const Usage = `Perform an alias analysis on your packages.
 Usage:
     argot alias [options] <package path(s)>

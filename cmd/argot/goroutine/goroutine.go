@@ -35,6 +35,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// Usage is the CLI help message.
 const Usage = `Perform goroutine analysis on your packages.
 Usage:
     argot goroutine [options] <package path(s)>
