@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"go/token"
+	"go/types"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -29,6 +30,18 @@ import (
 	"golang.org/x/tools/container/intsets"
 	"golang.org/x/tools/go/ssa"
 )
+
+// ErrNoEntrypoints is the error when no entrypoints are found.
+var ErrNoEntrypoints = errors.New("no entrypoints found")
+
+// ErrEntrypointNil is the error when an entrypoint type is nil.
+var ErrEntrypointNil = errors.New("entrypoint type is nil")
+
+// ErrEntrypointNotPointer is the error when an entrypoint type is not pointer-like.
+var ErrEntrypointNotPointer = errors.New("entrypoint type is not pointer-like")
+
+// ErrEntrypointSelfReferential is the error when an entrypoint type is self-referential.
+var ErrEntrypointSelfReferential = errors.New("entrypoint type is self-referential")
 
 // AnalysisResult represents the result of the analysis.
 type AnalysisResult struct {
@@ -55,15 +68,10 @@ type Write struct {
 	Value  ssa.Value // Value is the value that is written.
 }
 
-// maxReadVals is the maximum number of values that can be read in a single instruction.
-// In practice, it is rare that >maxReadVals values are ever read in a single instruction.
-const maxReadVals = 11
-
 // Read is an instruction that reads from an entrypoint's underlying memory.
 type Read struct {
 	Instr
-	Values [maxReadVals]ssa.Value // Values are the values that are read from.
-	// NOTE Values needs to be a fixed-size array so it can be used as a map key.
+	Values []ssa.Value // Values are the values that are read from.
 }
 
 // Alloc is an instruction that allocates memory that may alias memory that an
@@ -75,9 +83,9 @@ type Alloc struct {
 
 // Modifications represents the instructions that can modify an entrypoint.
 type Modifications struct {
-	Writes map[Write]struct{}
-	Reads  map[Read]struct{}
-	Allocs map[Alloc]struct{}
+	Writes []Write
+	Reads  []Read
+	Allocs []Alloc
 }
 
 // Instr is a modification instruction.
@@ -120,7 +128,7 @@ func Analyze(state *ptr.State) (AnalysisResult, error) {
 	var errs []error
 	for _, spec := range cfg.ImmutabilityProblems {
 		if err := analyze(log, spec, ac, modifications); err != nil {
-			errs = append(errs, fmt.Errorf("analysis failed for spec %+v: %v", spec, err))
+			errs = append(errs, fmt.Errorf("analysis failed for spec %+v: %w", spec, err))
 		}
 	}
 
@@ -136,84 +144,41 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, 
 	var errs []error
 	entrypoints := c.findEntrypoints(spec)
 	if len(entrypoints) == 0 {
-		return fmt.Errorf("no entrypoints found")
+		return ErrNoEntrypoints
 	}
 
 	for entry := range entrypoints {
 		val := entry.Val
 		if val.Type() == nil {
-			errs = append(errs, fmt.Errorf("entrypoint %v type is nil: %T\n", val, val))
+			errs = append(errs, fmt.Errorf("%w: %v type %v", ErrEntrypointNil, val, val.Type()))
 			continue
 		}
 		if !pointer.CanPoint(val.Type()) {
-			errs = append(errs, fmt.Errorf("entrypoint is a non-pointer type: %v", val.Type()))
+			errs = append(errs, fmt.Errorf("%w: %v type %v", ErrEntrypointNotPointer, val, val.Type()))
 			continue
 		}
+
+		if ptr, ok := val.Type().(*types.Pointer); ok {
+			if s, ok := ptr.Elem().Underlying().(*types.Struct); ok && isSelfReferentialStruct(s) {
+				errs = append(errs, fmt.Errorf("%w: %v type %v", ErrEntrypointSelfReferential, val, ptr))
+				continue
+			}
+		}
+
 		if doesConfigFilterFn(spec, val.Parent()) {
 			log.Infof("Filtered entrypoint: %v (called in function: %v)\n", val, val.Parent())
 			continue
 		}
 
-		modifications[entry] = Modifications{
-			Writes: make(map[Write]struct{}),
-			Reads:  make(map[Read]struct{}),
-			Allocs: make(map[Alloc]struct{}),
-		}
-
 		log.Infof("Verifying immutability of: %v of %v in %v at %v\n", val, entry.Call, val.Parent(), entry.Pos)
 
-		fnsToAnalyze := c.ReachableFuncs
-		log.Debugf("\tnumber of functions to analyze: %v\n", len(fnsToAnalyze))
-		toAnalyze := make(map[*ssa.Function]*funcToAnalyze, len(fnsToAnalyze))
-		numVals := 0
-		for fn := range fnsToAnalyze {
-			af := newFuncToAnalyze(fn, c.State.Program.Fset)
-			toAnalyze[fn] = af
-			numVals += len(af.vals)
-		}
-
-		s := &state{
-			AliasCache:       c,
-			log:              log,
-			spec:             spec,
-			entryWrites:      make(map[ssa.Value]map[Write]struct{}, numVals),
-			entryReads:       make(map[ssa.Value]map[Read]struct{}, numVals),
-			entryAllocs:      make(map[ssa.Value]map[Alloc]struct{}, numVals),
-			funcsToAnalyze:   toAnalyze,
-			entryPointsToSet: &intsets.Sparse{},
-		}
-
-		objs := c.Objects(val)
-		// initialize points-to-set of entrypoint
-		for obj := range objs {
-			for _, id := range obj.NodeIDs() {
-				s.entryPointsToSet.Insert(int(id))
-			}
-		}
-
+		s := newState(c, spec, val)
 		s.findModifications()
 
-		for _, instrs := range s.entryWrites {
-			for write := range instrs {
-				modifications[entry].Writes[write] = struct{}{}
-			}
-		}
-
-		for readVal, instrs := range s.entryReads {
-			// entrypoint value does not count as an invalid read
-			if entry.Val == readVal {
-				continue
-			}
-
-			for read := range instrs {
-				modifications[entry].Reads[read] = struct{}{}
-			}
-		}
-
-		for _, instrs := range s.entryAllocs {
-			for alloc := range instrs {
-				modifications[entry].Allocs[alloc] = struct{}{}
-			}
+		modifications[entry] = Modifications{
+			Writes: s.entryWrites,
+			Reads:  s.entryReads,
+			Allocs: s.entryAllocs,
 		}
 	}
 
@@ -221,7 +186,7 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, 
 }
 
 // state represents the analysis state.
-// This tracks writes to a single value (entrypoint).
+// This tracks modifications of a single value (entrypoint).
 type state struct {
 	*AliasCache
 	log  *config.LogGroup
@@ -229,21 +194,72 @@ type state struct {
 
 	funcsToAnalyze map[*ssa.Function]*funcToAnalyze
 
-	// entryWrites stores the set of instructions that write to an entrypoint
-	// (SSA value).
-	entryWrites map[ssa.Value]map[Write]struct{}
+	entry ssa.Value
 
-	// entryReads stores the set of instructions that read from an entrypoint
-	// (SSA value).
-	entryReads map[ssa.Value]map[Read]struct{}
+	// entryWrites stores the set of instructions that write to memory that an
+	// entrypoint (SSA value) points to.
+	entryWrites []Write
+
+	// entryReads stores the set of instructions that read from memory that an
+	// entrypoint (SSA value) points to.
+	entryReads []Read
 
 	// entryAllocs stores the set of instructions that allocate memory that
 	// aliases an entrypoint.
-	entryAllocs map[ssa.Value]map[Alloc]struct{}
+	entryAllocs []Alloc
 
 	// entryPointsToSet is the set of node ids in the objects that the
 	// entrypoint points to.
 	entryPointsToSet *intsets.Sparse
+}
+
+func newState(c *AliasCache, spec config.ImmutabilitySpec, val ssa.Value) *state {
+	fnsToAnalyze := c.ReachableFuncs
+	c.State.Logger.Debugf("\tnumber of functions to analyze: %v\n", len(fnsToAnalyze))
+	toAnalyze := make(map[*ssa.Function]*funcToAnalyze, len(fnsToAnalyze))
+	numVals := 0
+	for fn := range fnsToAnalyze {
+		af := newFuncToAnalyze(fn, c.State.Program.Fset)
+		toAnalyze[fn] = af
+		numVals += len(af.vals)
+	}
+
+	s := &state{
+		AliasCache:       c,
+		log:              c.State.Logger,
+		spec:             spec,
+		entry:            val,
+		entryWrites:      make([]Write, 0, numVals),
+		entryReads:       make([]Read, 0, numVals),
+		entryAllocs:      make([]Alloc, 0, numVals),
+		funcsToAnalyze:   toAnalyze,
+		entryPointsToSet: &intsets.Sparse{},
+	}
+
+	objs := c.Objects(val)
+	// initialize points-to-set of entrypoint
+	for obj := range objs {
+		switch data := obj.Data().(type) {
+		case *ssa.MakeInterface:
+			dataObjs := c.Objects(data.X) // get the objects of the concrete struct
+			for obj := range dataObjs {
+				for _, id := range obj.NodeIDs() {
+					s.entryPointsToSet.Insert(int(id))
+				}
+			}
+		default:
+			ids := obj.NodeIDs()
+			if len(ids) == 1 {
+				s.entryPointsToSet.Insert(int(ids[0]))
+			} else {
+				for _, id := range ids {
+					s.entryPointsToSet.Insert(int(id))
+				}
+			}
+		}
+	}
+
+	return s
 }
 
 // findModifications adds:
@@ -290,10 +306,7 @@ func (s *state) findWrites(fna *funcToAnalyze) {
 		mobjs := s.Objects(write.Target)
 		for mobj := range mobjs {
 			if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-				if _, ok := s.entryWrites[write.Target]; !ok {
-					s.entryWrites[write.Target] = make(map[Write]struct{})
-				}
-				s.entryWrites[write.Target][write] = struct{}{}
+				s.entryWrites = append(s.entryWrites, write)
 				break
 			}
 		}
@@ -312,29 +325,49 @@ func (s *state) findReads(fna *funcToAnalyze) {
 			continue
 		}
 
+		var aliasedReadVals []ssa.Value
 		for _, rval := range read.Values {
 			if s.shouldFilterValue(rval) {
 				s.log.Tracef("rvalue %v of read instruction %v filtered by spec: skipping...", rval, instr)
+				continue
+			}
+			if rval == s.entry {
+				s.log.Tracef("rvalue %v of read instruction %v is the same as entrypoint: skipping...", rval, instr)
 				continue
 			}
 
 			mobjs := s.Objects(rval)
 			for mobj := range mobjs {
 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-					if _, ok := s.entryReads[rval]; !ok {
-						s.entryReads[rval] = make(map[Read]struct{})
+					if val, ok := mobj.Data().(ssa.Value); ok {
+						// HACK Don't add reads to an object of the same type as the entrypoint
+						// This is sound because we validate that an entrypoint
+						// struct never has a field with the same type as it.
+						typ := val.Type().Underlying()
+						_, isInterface := typ.(*types.Interface)
+						_, isStruct := typ.(*types.Struct)
+						if isInterface || isStruct {
+							if typ == s.entry.Type().Underlying() {
+								s.log.Debugf("skipping read of pointer object %v (%v): has the same type as entrypoint: %v\n", mobj, val, typ)
+								continue
+							}
+						}
 					}
-					s.entryReads[rval][read] = struct{}{}
+					aliasedReadVals = append(aliasedReadVals, rval)
 					break
 				}
 			}
+		}
+
+		if len(aliasedReadVals) > 0 {
+			s.entryReads = append(s.entryReads, Read{Instr: read.Instr, Values: aliasedReadVals})
 		}
 	}
 }
 
 func (s *state) findAllocs(fna *funcToAnalyze) {
 	for instr := range fna.allocInstrs {
-		val := instr.Instruction.(ssa.Value)
+		val := instr.Instruction.(ssa.Value) // should not panic
 		if s.shouldFilterValue(val) {
 			s.log.Tracef("lvalue %v of alloc instruction %v filtered by spec: skipping...", val, instr)
 			continue
@@ -348,10 +381,8 @@ func (s *state) findAllocs(fna *funcToAnalyze) {
 		mobjs := s.Objects(val)
 		for mobj := range mobjs {
 			if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-				if _, ok := s.entryAllocs[val]; !ok {
-					s.entryAllocs[val] = make(map[Alloc]struct{})
-				}
-				s.entryAllocs[val][Alloc{Instr: instr, Value: val}] = struct{}{}
+				alloc := Alloc{Instr: instr, Value: val}
+				s.entryAllocs = append(s.entryAllocs, alloc)
 				break
 			}
 		}
@@ -427,6 +458,8 @@ func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
 	})
 }
 
+// ptrWrittenTo returns true if instruction writes a scalar value to a pointer
+// value.
 func ptrWrittenTo(instruction Instr) (Write, bool) {
 	var lval ssa.Value
 	var rval ssa.Value
@@ -454,14 +487,14 @@ func ptrWrittenTo(instruction Instr) (Write, bool) {
 		return Write{}, false
 	}
 
-	if !pointer.CanPoint(rval.Type()) {
+	if !pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
 		return Write{Instr: instruction, Target: lval, Value: rval}, true
 	}
 
 	// calls to append builtin function modify
 	if call, ok := rval.(*ssa.Call); ok {
 		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
-			if builtin.Object().Name() == "append" {
+			if builtin.Object().Name() == "append" && !pointer.CanPoint(rval.Type()) {
 				return Write{Instr: instruction, Target: lval, Value: rval}, true
 			}
 		}
@@ -470,23 +503,20 @@ func ptrWrittenTo(instruction Instr) (Write, bool) {
 	return Write{}, false
 }
 
+// ptrsReadFrom returns a read instruction containing all the pointer values
+// read from instruction.
+//
 //gocyclo:ignore
 func ptrsReadFrom(instruction Instr) (Read, bool) {
-	var rvals [maxReadVals]ssa.Value
+	var rvals []ssa.Value
 	add := func(vs ...ssa.Value) {
-		i := 0
 		for _, v := range vs {
 			if v == nil {
 				continue
 			}
 
-			if i == maxReadVals {
-				panic(fmt.Errorf("too many values read in instr %v: %v", instruction, rvals))
-			}
-
 			if pointer.CanPoint(v.Type()) {
-				rvals[i] = v
-				i++
+				rvals = append(rvals, v)
 			}
 		}
 	}
@@ -530,7 +560,7 @@ func ptrsReadFrom(instruction Instr) (Read, bool) {
 	case *ssa.MakeSlice:
 		add(instr.Len, instr.Cap)
 	case *ssa.MapUpdate:
-		add(instr.Map, instr.Key, instr.Value)
+		add(instr.Key, instr.Value) // map isn't read from
 	case *ssa.MultiConvert:
 		add(instr.X)
 	case *ssa.Next:
@@ -546,13 +576,13 @@ func ptrsReadFrom(instruction Instr) (Read, bool) {
 			add(state.Chan, state.Send)
 		}
 	case *ssa.Send:
-		add(instr.Chan, instr.X)
+		add(instr.X) // channel isn't read from
 	case *ssa.Slice:
 		add(instr.X, instr.Low, instr.High, instr.Max)
 	case *ssa.SliceToArrayPointer:
 		add(instr.X)
 	case *ssa.Store:
-		add(instr.Addr, instr.Val)
+		add(instr.Val) // address written to isn't read from
 	case *ssa.TypeAssert:
 		add(instr.X)
 	case *ssa.UnOp:
@@ -560,10 +590,10 @@ func ptrsReadFrom(instruction Instr) (Read, bool) {
 	}
 
 	if len(rvals) == 0 {
-		return Read{Instr: instruction, Values: [maxReadVals]ssa.Value{}}, false
+		return Read{Instr: instruction, Values: nil}, false
 	}
 
-	return Read{Instr: instruction, Values: [maxReadVals]ssa.Value(rvals)}, true
+	return Read{Instr: instruction, Values: rvals}, true
 }
 
 // ReportResults writes res to a string and returns true if the analysis should fail.
@@ -590,44 +620,44 @@ func ReportResults(result AnalysisResult) (string, bool) {
 			formatutil.SanitizeRepr(entryVal),
 			entryPos.String(),
 		))
-		for instr := range mods.Writes {
+		for _, instr := range mods.Writes {
 			modInstr := instr
 			modPos := modInstr.Pos
 			w.WriteString(fmt.Sprintf(
-				"\twrite: [SSA] %s in function %s\n\t\t%s\n\t\tto: %s\n",
+				"\twrite: [SSA] %s\n\t\t%s\n\t\tto: %s\n",
 				formatutil.SanitizeRepr(modInstr),
-				modInstr.Parent().String(),
 				modPos.String(), // safe %s (position string)
 				modInstr.Target.String(),
 			))
 			failed = true
 		}
-		for instr := range mods.Reads {
+		for _, instr := range mods.Reads {
 			modInstr := instr
 			modPos := modInstr.Pos
 			from := &strings.Builder{}
-			for _, v := range modInstr.Values {
+			for i, v := range modInstr.Values {
 				if v == nil {
 					continue
 				}
 				from.WriteString(v.String())
+				if i != len(modInstr.Values)-1 {
+					from.WriteString(", ")
+				}
 			}
 			w.WriteString(fmt.Sprintf(
-				"\tread: [SSA] %s in function %s\n\t\t%s\n\t\tfrom: %v\n",
+				"\tread: [SSA] %s\n\t\t%s\n\t\tfrom: %v\n",
 				formatutil.SanitizeRepr(modInstr),
-				modInstr.Parent().String(),
 				modPos.String(), // safe %s (position string)
 				from.String(),
 			))
 			failed = true
 		}
-		for instr := range mods.Allocs {
+		for _, instr := range mods.Allocs {
 			modInstr := instr
 			modPos := modInstr.Pos
 			w.WriteString(fmt.Sprintf(
-				"\tallocation: [SSA] %s in function %s\n\t\t%s\n\t\tof: %s\n",
+				"\tallocation: [SSA] %s\n\t\t%s\n\t\tof: %s\n",
 				formatutil.SanitizeRepr(modInstr),
-				modInstr.Parent().String(),
 				modPos.String(), // safe %s (position string)
 				modInstr.Value.String(),
 			))
@@ -636,4 +666,45 @@ func ReportResults(result AnalysisResult) (string, bool) {
 	}
 
 	return w.String(), failed
+}
+
+// isSelfReferentialStruct returns true if the type of any of the fields of t
+// (recursively) is equal to t.
+func isSelfReferentialStruct(t *types.Struct) bool {
+	allTypes := flatten(t)
+	if len(allTypes) <= 1 {
+		return false
+	}
+
+	// first element of allTypes is t
+	for _, ft := range allTypes[1:] {
+		if ft.Underlying() == t.Underlying() {
+			return true
+		}
+	}
+
+	return false
+}
+
+// flatten returns all the types of struct fields of t, recursively.
+// No need to memoize since this is only called once per entrypoint.
+func flatten(t types.Type) []types.Type {
+	var res []types.Type
+	switch t := t.(type) {
+	case *types.Struct:
+		res = append(res, t) // identity
+		for i, n := 0, t.NumFields(); i < n; i++ {
+			f := t.Field(i)
+			for _, fi := range flatten(f.Type()) {
+				res = append(res, fi)
+			}
+		}
+	case *types.Pointer:
+		// for pointers, the flattened type is the element
+		res = append(res, t.Elem())
+	default:
+		res = append(res, t)
+	}
+
+	return res
 }

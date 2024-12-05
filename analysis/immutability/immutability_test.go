@@ -16,6 +16,8 @@ package immutability_test
 
 import (
 	"embed"
+	"errors"
+	"fmt"
 	"go/ast"
 	"go/token"
 	"path/filepath"
@@ -47,7 +49,13 @@ func TestAnalyze(t *testing.T) {
 	for _, test := range tests {
 		test := test
 
-		lp, got := runAnalysis(t, test.name)
+		result, err := runAnalysis(t, test.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		lp := result.lp
+		got := result.result
 		// res, _ := immutability.ReportResults(got)
 		// t.Log(res)
 
@@ -66,7 +74,33 @@ func TestAnalyze(t *testing.T) {
 	}
 }
 
-func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, immutability.AnalysisResult) {
+func TestAnalyze_Invalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+	}{
+		{name: "invalid"},
+	}
+
+	for _, test := range tests {
+		test := test
+		result, err := runAnalysis(t, test.name)
+		if !errors.Is(err, immutability.ErrEntrypointSelfReferential) {
+			t.Errorf("expected analysis to have self-referential entrypoint, got: %v with error: %v", result, err)
+		}
+		if !errors.Is(err, immutability.ErrEntrypointNotPointer) {
+			t.Errorf("expected analysis to have non-pointer-like entrypoint, got: %v with error: %v", result, err)
+		}
+	}
+}
+
+type runResult struct {
+	lp     *loadprogram.State
+	result immutability.AnalysisResult
+}
+
+func runAnalysis(t *testing.T, dirName string) (runResult, error) {
 	dirName = filepath.Join("./testdata", dirName)
 	lpState := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false})
 	lp, err := lpState.Value()
@@ -80,21 +114,21 @@ func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, immutability
 	}
 	result, err := immutability.Analyze(state)
 	if err != nil {
-		t.Fatalf("immutability analysis failed: %v", err)
+		return runResult{}, fmt.Errorf("immutability analysis failed: %w", err)
 	}
 
-	return lp, result
+	return runResult{lp: lp, result: result}, nil
 }
 
 func logMods(t *testing.T, res immutability.AnalysisResult) {
 	for entry, mods := range res.Modifications {
 		val := entry.Val
 		t.Logf("Source: %v (%v) in %v at %v\n", val, val.Name(), val.Parent(), entry.Pos)
-		for instr := range mods.Writes {
+		for _, instr := range mods.Writes {
 			pos := instr.Pos
 			t.Logf("\twrite: %v in %v at %v\n", instr, instr.Parent(), pos)
 		}
-		for instr := range mods.Allocs {
+		for _, instr := range mods.Allocs {
 			pos := instr.Pos
 			t.Logf("\talloc: %v in %v at %v\n", instr, instr.Parent(), pos)
 		}
@@ -229,7 +263,7 @@ func checkWrites(t *testing.T, prog *ssa.Program, want analysistest.TargetToSour
 			continue
 		}
 		gotEntry := seenEntry{Pos: analysistest.RemoveColumn(entryPos)}
-		for writeInstr := range mods.Writes {
+		for _, writeInstr := range mods.Writes {
 			if _, ok := seenWriteToEntry[gotEntry]; !ok {
 				seenWriteToEntry[gotEntry] = map[seenWrite]bool{}
 			}
@@ -253,7 +287,7 @@ func checkWrites(t *testing.T, prog *ssa.Program, want analysistest.TargetToSour
 				}
 			}
 			if !seen {
-				t.Errorf("false positive: write at %v to immutable argument at %v", gotWrite.Pos, gotEntry.Pos)
+				t.Errorf("false positive: write %v to immutable argument at %v", writeInstr, gotEntry.Pos)
 			}
 		}
 	}
@@ -300,7 +334,7 @@ func checkReads(t *testing.T, prog *ssa.Program, want analysistest.TargetToSourc
 			continue
 		}
 		gotEntry := seenEntry{Pos: analysistest.RemoveColumn(entryPos)}
-		for readInstr := range mods.Reads {
+		for _, readInstr := range mods.Reads {
 			if _, ok := seenReadToEntry[gotEntry]; !ok {
 				seenReadToEntry[gotEntry] = map[seenRead]bool{}
 			}
@@ -324,7 +358,7 @@ func checkReads(t *testing.T, prog *ssa.Program, want analysistest.TargetToSourc
 				}
 			}
 			if !seen {
-				t.Errorf("false positive: read at %v to immutable argument at %v", gotRead.Pos, gotEntry.Pos)
+				t.Errorf("false positive: read %v to immutable argument at %v", readInstr, gotEntry.Pos)
 			}
 		}
 	}
@@ -371,7 +405,7 @@ func checkAllocs(t *testing.T, prog *ssa.Program, want analysistest.TargetToSour
 			continue
 		}
 		gotEntry := seenEntry{Pos: analysistest.RemoveColumn(entryPos)}
-		for allocInstr := range mods.Allocs {
+		for _, allocInstr := range mods.Allocs {
 			if _, ok := seenAllocToEntry[gotEntry]; !ok {
 				seenAllocToEntry[gotEntry] = map[seenAlloc]bool{}
 			}
@@ -424,7 +458,7 @@ func debugWrites(t *testing.T, want analysistest.TargetToSources, got map[immuta
 	t.Logf("GOT writes\n")
 	for entry, mods := range got {
 		t.Logf("\tentry: %v\n", entry.Pos)
-		for write := range mods.Writes {
+		for _, write := range mods.Writes {
 			t.Logf("\t\twrite: %v\n", write.Pos)
 		}
 	}
@@ -442,7 +476,7 @@ func debugReads(t *testing.T, want analysistest.TargetToSources, got map[immutab
 	t.Logf("GOT reads\n")
 	for entry, mods := range got {
 		t.Logf("\tentry: %v\n", entry.Pos)
-		for read := range mods.Reads {
+		for _, read := range mods.Reads {
 			t.Logf("\t\tread: %v\n", read.Pos)
 		}
 	}
@@ -460,7 +494,7 @@ func debugAllocs(t *testing.T, want analysistest.TargetToSources, got map[immuta
 	t.Logf("GOT allocs\n")
 	for entry, mods := range got {
 		t.Logf("\tentry: %v\n", entry.Pos)
-		for alloc := range mods.Allocs {
+		for _, alloc := range mods.Allocs {
 			t.Logf("\t\talloc: %v\n", alloc.Pos)
 		}
 	}
