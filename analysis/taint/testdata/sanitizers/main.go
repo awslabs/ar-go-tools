@@ -115,13 +115,18 @@ func Sanitize2(a A) A {
 
 func sanitizerExample6() {
 	a1 := A{
-		X: len(source1()), // @Source(ex6f1)
+		X: len(source1()), // len is a sanitizer
 		Y: source1(),      // @Source(ex6f2)
 	}
-	sink1(strconv.Itoa(a1.X)) // @Sink(ex6f1)
+	sink1(strconv.Itoa(a1.X))
 	a2 := Sanitize2(a1)
 	i, _ := strconv.Atoi(a2.Y)
 	sink1(i)
+}
+
+func sanitizerExampleLen() {
+	x := len(source1()) // len is a sanitizer
+	sink1(strconv.Itoa(x))
 }
 
 func main() {
@@ -132,4 +137,5 @@ func main() {
 	sanitizerExample4()
 	sanitizerExample5()
 	sanitizerExample6()
+	sanitizerExampleLen()
 }

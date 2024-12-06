@@ -19,7 +19,11 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// handledBuiltins is the list of builtin function names that are internally handled by the analysis
+// handledBuiltins is the list of builtin function names that are internally handled by the analysis.
+// You can find a complete list of builtins at:
+// https://pkg.go.dev/builtin
+//
+// Note that new, make and panic are their own SSA instructions.
 var handledBuiltins = []string{
 	"ssa:wrapnilchk",
 	"append",
