@@ -40,7 +40,7 @@ func TestAnalyze(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setupConfig(lp.Config, false)
+	setupConfig(lp, false)
 	testAnalyze(t, lp)
 
 	// TODO fix the false positives
@@ -64,7 +64,7 @@ func TestAnalyze_OnDemand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setupConfig(lp.Config, true)
+	setupConfig(lp, true)
 	testAnalyze(t, lp)
 }
 
@@ -364,7 +364,7 @@ func TestAnalyze_Closures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setupConfig(lp.Config, false)
+	setupConfig(lp, false)
 	testAnalyzeClosures(t, lp)
 }
 
@@ -524,8 +524,7 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lp.Config.SummarizeOnDemand = true
-	lp.Config.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
+	setupConfig(lp, true)
 	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
@@ -656,11 +655,15 @@ func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
 
 // The following code is copied from taint_utils_test.go
 
-func setupConfig(cfg *config.Config, summarizeOnDemand bool) {
+func setupConfig(lp *loadprogram.State, summarizeOnDemand bool) {
+	logLevel := config.ErrLevel // change this as needed for debugging
+	lp.Logger.Level = logLevel
+
+	cfg := lp.Config
 	cfg.Options.ReportCoverage = false
 	cfg.Options.ReportPaths = false
 	cfg.Options.ReportSummaries = false
 	cfg.Options.ReportsDir = ""
-	cfg.LogLevel = int(config.ErrLevel) // change this as needed for debugging
+	cfg.LogLevel = int(logLevel)
 	cfg.SummarizeOnDemand = summarizeOnDemand
 }

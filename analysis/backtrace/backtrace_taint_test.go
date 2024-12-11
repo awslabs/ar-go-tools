@@ -90,7 +90,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	setupConfig(lp.Config, isOnDemand)
+	setupConfig(lp, isOnDemand)
 
 	astFiles := analysistest.AstFiles(lp.Packages)
 	expected := expectedTaintTargetToSources(lp.Program.Fset, astFiles)

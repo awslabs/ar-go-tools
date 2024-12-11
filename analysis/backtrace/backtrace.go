@@ -210,8 +210,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 	logger.Infof("==> Node: %s\n", formatutil.Purple(entrypoint.String()))
 	logger.Infof("%s %s\n", formatutil.Green("Found at"), pos)
 
-	var trace *df.NodeTree[*df.CallNode]
-	entry := df.NodeWithTrace{Node: entrypoint, Trace: trace}
+	entry := df.NodeWithTrace{Node: entrypoint, Trace: &df.NodeTree[*df.CallNode]{}}
 	seen := make(map[df.KeyType]bool)
 	goroutines := make(map[*ssa.Go]bool)
 	root := &df.VisitorNode{
@@ -276,7 +275,10 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 			_, isFromBoundVar := cur.Prev.Node.(*df.BoundVarNode)
 			// If the parameter was visited from an inter-procedural edge (i.e. from a call argument node), then data
 			// must flow back to that argument.
-			callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace)
+			var callSite *df.CallNode
+			if cur.Trace.Len() > 0 {
+				callSite = df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace)
+			}
 			if callSite != nil && !isFromBoundLabel && !isFromBoundVar {
 				if err := df.CheckIndex(s, graphNode, callSite, "[Context] No argument at call site"); err != nil {
 					s.Report.AddError("argument at call site "+graphNode.String(), err)
@@ -392,7 +394,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 
 			// We pop the call from the trace (callstack) when exiting the callee and returning to the caller
 			var tr *df.NodeTree[*df.CallNode]
-			if cur.Trace != nil {
+			if cur.Trace.Len() > 0 {
 				tr = cur.Trace.Parent
 			}
 
@@ -449,22 +451,22 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 			prevStackLen := len(stack)
 
 			if graphNode.Callee() == nil {
-				panic("nil callee")
+				panic(fmt.Errorf("node %v callee is nil", graphNode))
 			}
 
 			// HACK: Make the callsite's callee summary point to the actual function summary, not the "bound" summary
 			// This is needed because "bound" summaries can be incomplete
 			// TODO Is there a better way to identify a "bound" function?
-			if s.Config.SummarizeOnDemand &&
-				(graphNode.CalleeSummary == nil || !graphNode.CalleeSummary.Constructed ||
-					strings.Contains(graphNode.ParentName(), "$bound")) {
-				graphNode.CalleeSummary = df.BuildSummary(s, graphNode.Callee())
+			if graphNode.CalleeSummary == nil ||
+				!graphNode.CalleeSummary.Constructed ||
+				strings.Contains(graphNode.ParentName(), "$bound") {
+
+				v.onDemandIntraProcedural(s, graphNode.CalleeSummary)
 			}
 
-			if graphNode.CalleeSummary == nil {
-				panic(fmt.Errorf("node's callee summary is nil: %v", graphNode))
+			if len(graphNode.CalleeSummary.Returns) == 0 {
+				panic(fmt.Errorf("node %v callee %v summary has no returns: %v", graphNode, graphNode.CalleeSummary.Parent, graphNode.CalleeSummary))
 			}
-
 			for _, rets := range graphNode.CalleeSummary.Returns {
 				for _, ret := range rets {
 					// We add the caller's node to the trace (callstack) when flowing to the callee's return node
@@ -570,9 +572,9 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 			}
 
 			closureNode := graphNode.ParentNode()
-			if closureNode.ClosureSummary == nil {
-				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
-				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
+			if !closureNode.ClosureSummary.Constructed {
+				v.onDemandIntraProcedural(s, closureNode.ClosureSummary)
+				s.FlowGraph.Sync()
 			}
 
 			// Flows to the free variables of the closure
@@ -585,7 +587,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 			nextNode := closureNode.ClosureSummary.FreeVars[fv]
 			nextNodeWithTrace := df.NodeWithTrace{
 				Node:         nextNode,
-				Trace:        cur.Trace,
+				Trace:        df.UnwindCallStackToFunc(cur.Trace, closureNode.Graph().Parent),
 				ClosureTrace: cur.ClosureTrace.Add(closureNode),
 			}
 			stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, cur.Status, df.EdgeInfo{}, seen)
@@ -613,7 +615,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 					bv := bvs[graphNode.Index()]
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         bv,
-						Trace:        trace,
+						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace.Parent,
 					}
 					status := df.VisitorNodeStatus{
@@ -622,8 +624,8 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 					}
 					stack, _ = v.addNext(s, stack, cur, nextNodeWithTrace, status, df.EdgeInfo{}, seen)
 				} else {
-					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d",
-						cur.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
+					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d: %v. bound variables: %v. call trace: %v. closure trace: %v",
+						cur.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index(), graphNode, bvs, cur.Trace, cur.ClosureTrace))
 				}
 			} else {
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
@@ -723,13 +725,11 @@ func (v *Visitor) onDemandIntraProcedural(s *df.State, summary *df.SummaryGraph)
 //
 // - cur is the current visitor node
 //
-// - nextNodeWithTrace is the graph node to add to the queue, with the new call stack trace and closure stack trace
-//
-// - nextMode is the mode for the next node that will be added
+// - nextNodeWithTrace is the graph node to add to the stack, with the new call stack trace and closure stack trace
 //
 // - edgeInfo is the label of the edge from cur's node to add
 //
-// - seen is the nodes that have been visited
+// - seen is the set of nodes that have been visited
 func (v *Visitor) addNext(s *df.State,
 	stack []*df.VisitorNode,
 	cur *df.VisitorNode,
