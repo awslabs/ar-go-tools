@@ -9,7 +9,7 @@ Program analysis tools can help developers safeguard their code against vulnerab
 
 Many analyses have been implemented for the Go language in publicly available tools ([Go vulnerability checking](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck),
 [Go vet](https://pkg.go.dev/cmd/vet), [Go Flow Levee](https://github.com/google/go-flow-levee)), but those analyses have limitations and their use case does not match our goals.
-We need analyses that ensure the [soundness](https://cacm.acm.org/blogs/blog-cacm/236068-soundness-and-completeness-with-precision/fulltext) of their result, that is, they must ensure that if the code contains any error or any vulnerability, then an alarm will be raised. This is not the case for analyses that do only code scanning, which consists only in identifying known patterns in the code.
+We need analyses that ensure the [soundness](https://cacm.acm.org/blogs/blog-cacm/236068-soundness-and-completeness-with-precision/fulltext) of their result, that is, they must ensure that if the code contains any error or any vulnerability, then an alarm will be raised. This is not the case for analyses that do only code scanning, which consists only in identifying known patterns in the code. A lot of analyses in Argot can also be used as simple checks by using some of the `unsafe-` options which usually reduces the number of false positive, as the expense of soundness.
 
 ## Solution
 
@@ -32,6 +32,7 @@ The following tools are included in Argot:
 - the `maypanic` tool inspects the input packages to find goroutines with unrecovered panics (see [May Panic Analysis](07_maypanic.md#may-panic-analysis)).
 - the `packagescan` tool scans the input packages to find usages of specific packages in the code, such as usages of the `unsafe` package (see [Package Scanner](08_packagescan.md#package-scanner)).
 - the `reachability` tool inspects the code to find which functions are reachable, and which are not (see [Reachability Tool](09_reachability.md#reachability-tool)).
+- the `syntactic` tool can be used for various syntactic analyses, for example checking that some type of struct is always initialized with specific values (see [Syntactic Tool](12_syntactic.md#syntactic-tool)),
 - the `render` tool can be used to render various representations of the code, such as its [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single-assignment_form) (SSA) form or its callgraph (see [Render Tool](10_render.md#render-tool)).
 - the `racerg` tool, an experimental tool for data race detection (See [RacerG](11_racerg.md#racerg-sound-and-scalable-static-data-race-detector-for-go)).
 
@@ -79,5 +80,6 @@ Analysis problems that can use specific targets will have a `targets: ["target1"
 
 If some file paths are specified on the command line, the targets are ignored: all the analysis problems for the tool being called are run against the target provided on the command line.
 
+The tools that support targets also have a command line option `-targets target1,target2` that let you specify that only a subset of the targets need to be analyzed.
 
 > See for example the config file `payload/selfcheck/config.yaml` which is an example of using the targets to run both taint and backtrace analyses.
