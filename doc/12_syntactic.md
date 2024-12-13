@@ -4,7 +4,7 @@ The `syntactic` tool runs various syntactic analyses at the SSA level of the cod
 All the syntactic analysis problems are grouped under the `syntactic-problems` category in a config file, and each category of syntactic problems will be listed separately.
 
 ## Struct Inits
-Struct inits are a class of syntactic problem where the user can check that a specific struct type, e.g. your `crypto/tls.Config`, has fields that always have a specific value, for example `MinVersion` should always be `VersionTLS12`.
+Struct inits are a class of syntactic problem where the user can check that a specific struct type, e.g.  `crypto/tls.Config`, has fields that always have a specific value, for example `MinVersion` should always be `VersionTLS12`.
 One would write this analysis by adding in the config the following:
 ```yaml
 syntactic-problems:

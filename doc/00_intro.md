@@ -9,7 +9,7 @@ Program analysis tools can help developers safeguard their code against vulnerab
 
 Many analyses have been implemented for the Go language in publicly available tools ([Go vulnerability checking](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck),
 [Go vet](https://pkg.go.dev/cmd/vet), [Go Flow Levee](https://github.com/google/go-flow-levee)), but those analyses have limitations and their use case does not match our goals.
-We need analyses that ensure the [soundness](https://cacm.acm.org/blogs/blog-cacm/236068-soundness-and-completeness-with-precision/fulltext) of their result, that is, they must ensure that if the code contains any error or any vulnerability, then an alarm will be raised. This is not the case for analyses that do only code scanning, which consists only in identifying known patterns in the code. A lot of analyses in Argot can also be used as simple checks by using some of the `unsafe-` options which usually reduces the number of false positive, as the expense of soundness.
+We need analyses that ensure the [soundness](https://cacm.acm.org/blogs/blog-cacm/236068-soundness-and-completeness-with-precision/fulltext) of their result, that is, they must ensure that if the code contains any error or any vulnerability, then an alarm will be raised. This is not the case for analyses that do only code scanning, which consists only in identifying known patterns in the code. A lot of analyses in Argot can also be used as simple checks by using some of the `unsafe-` options which usually reduces the number of false positives, at the expense of soundness.
 
 ## Solution
 
@@ -83,3 +83,20 @@ If some file paths are specified on the command line, the targets are ignored: a
 The tools that support targets also have a command line option `-targets target1,target2` that let you specify that only a subset of the targets need to be analyzed.
 
 > See for example the config file `payload/selfcheck/config.yaml` which is an example of using the targets to run both taint and backtrace analyses.
+
+
+### Tags
+
+Some analysis problems can be identified by tags (see the [Taint](01_taint.md), [Backtrace](02_backtrace.md) and [Syntactic](12_syntactic.md) tools). Those tags allow you to uniquely identify each problem in a configuration file (the uniqueness of the tags is checked when loading a config).
+The `-tag` option (for the tools that support it) lets you run the analysis for the specific problem corresponding to the tag.
+
+For example, if we have a several taint analysis problems in the config files, such as;
+```yaml
+dataflow-problems:
+  taint-tracking:
+    - tag: problem-1
+      # rest of the fields ..
+    - tag: problem-2
+      # rest of the fields ..
+```
+Then you can run `argot taint -config config.yaml -tag problem-1` to run only the analysis related to "problem1". Combined with the `-targets` options, this lets you run very specific analyses from a configuration file that may contain many without having to duplicate configuration option or targets.
