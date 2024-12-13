@@ -872,12 +872,7 @@ func addTrace(v *Visitor, entrypoint *df.CallNodeArg, trace Trace) {
 func IsStatic(node df.GraphNode) bool {
 	switch node := node.(type) {
 	case *df.CallNodeArg:
-		switch node.Value().(type) {
-		case *ssa.Const:
-			return true
-		default:
-			return false
-		}
+		return lang.IsStaticallyDefinedLocal(node.Value())
 	default:
 		return false
 	}

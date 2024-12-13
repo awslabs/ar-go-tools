@@ -25,6 +25,13 @@ import (
 	"regexp"
 )
 
+const somePredefinedPattern = "[a-zA-Z]+"
+const someOtherPattern = "[0-9]*"
+
+var initPattern = regexp.MustCompile(
+	fmt.Sprintf("{{\\s*((?:%s|%s)[\\w-./]+)\\s*}}", somePredefinedPattern, someOtherPattern),
+)
+
 func makesRegex(s string, s2 string) *regexp.Regexp {
 	regex := fmt.Sprintf("%s+%s", s, s2)
 	return regexp.MustCompile(regex)
@@ -39,9 +46,36 @@ func buildRegexWithNonConstant(s string) *regexp.Regexp {
 	return regexp.MustCompile(rval)
 }
 
+func makeRegexFromConst(s string) *regexp.Regexp {
+	pat := fmt.Sprintf("(%s)%s*", s, somePredefinedPattern)
+	return regexp.MustCompile(pat)
+}
+
+func makeRegexFromStaticArray() *regexp.Regexp {
+	x := [2]string{}
+	x[0] = "ok"
+	x[1] = "[A-Z]+"
+	return regexp.MustCompile(fmt.Sprintf("%s\\.%s", x[0], x[1]))
+}
+
+func makeRegexFromStaticArrayNotStaticData(s string) *regexp.Regexp {
+	a := [1]string{}
+	a[0] = fmt.Sprintf("%s-%d", s, rand.Int())
+	x := [2]string{}
+	x[0] = "ok"
+	x[1] = a[0]
+	return regexp.MustCompile(fmt.Sprintf("%s\\.%s", x[0], x[1]))
+}
+
 func main() {
 	regexp.MustCompile("ok")
 	buildRegex("ok")
 	makesRegex("ok", "good")
 	buildRegexWithNonConstant("bad")
+	makeRegexFromConst("ok")
+	makeRegexFromStaticArray()
+	makeRegexFromStaticArrayNotStaticData("test")
+	if initPattern.MatchString("test") {
+		fmt.Println("ok")
+	}
 }

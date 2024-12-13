@@ -18,6 +18,7 @@ import (
 	"embed"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -537,9 +538,15 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 	if len(res.Traces) != 1 {
 		t.Fatalf("expected a single entry point with a trace for check_static")
 	}
+	expected := regexp.MustCompile("Int.return.0.*math/rand/rand.go")
 	for _, traces := range res.Traces {
-		if len(traces) != 1 {
-			t.Fatalf("expected a single trace for check_static")
+		if len(traces) != 2 {
+			t.Fatalf("expected two traces for the entry point for check_static")
+		}
+		for _, trace := range traces {
+			if !expected.MatchString(trace[0].String()) {
+				t.Fatalf("Origin %s of trace doesn't match the expected %s", trace[0], expected)
+			}
 		}
 	}
 }
