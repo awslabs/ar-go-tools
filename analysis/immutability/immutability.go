@@ -248,13 +248,8 @@ func newState(c *AliasCache, spec config.ImmutabilitySpec, val ssa.Value) *state
 				}
 			}
 		default:
-			ids := obj.NodeIDs()
-			if len(ids) == 1 {
-				s.entryPointsToSet.Insert(int(ids[0]))
-			} else {
-				for _, id := range ids {
-					s.entryPointsToSet.Insert(int(id))
-				}
+			for _, id := range obj.NodeIDs() {
+				s.entryPointsToSet.Insert(int(id))
 			}
 		}
 	}
@@ -392,7 +387,7 @@ func (s *state) findAllocs(fna *funcToAnalyze) {
 // shouldFilterValue returns true if the value should be filtered
 // according to the spec.
 func (s *state) shouldFilterValue(val ssa.Value) bool {
-	return val == nil || doesConfigFilterFn(s.spec, val.Parent())
+	return val == nil || doesConfigFilterVal(s.spec, val) || doesConfigFilterFn(s.spec, val.Parent())
 }
 
 type funcToAnalyze struct {
@@ -441,6 +436,18 @@ func doesConfigFilterFn(spec config.ImmutabilitySpec, f *ssa.Function) bool {
 	for _, filter := range spec.Filters {
 		if f != nil && filter.Method != "" && filter.Package != "" {
 			if filter.MatchPackageAndMethod(f) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func doesConfigFilterVal(spec config.ImmutabilitySpec, val ssa.Value) bool {
+	for _, filter := range spec.Filters {
+		if filter.Package != "" && filter.Type != "" {
+			if filter.MatchType(val.Type()) {
 				return true
 			}
 		}
