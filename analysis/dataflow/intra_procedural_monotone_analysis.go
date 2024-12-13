@@ -17,6 +17,7 @@ package dataflow
 import (
 	"fmt"
 	"go/token"
+	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -386,7 +387,15 @@ func (state *IntraAnalysisState) marksToAdd(
 	if res != nil {
 		for i := 0; i < res.Len(); i++ {
 			if lang.CanType(value) && state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[value]] {
-				for _, path := range AccessPathsOfType(value.Type()) {
+				actualType := value.Type()
+				switch vt := value.Type().(type) {
+				case *types.Tuple:
+					if res.Len() > 1 && vt.Len() <= i {
+						panic("unexpected malformed result type")
+					}
+					actualType = vt.At(i).Type()
+				}
+				for _, path := range AccessPathsOfType(actualType) {
 					m := MarkWithAccessPath{
 						Mark: state.flowInfo.GetNewLabelledMark(
 							instr.(ssa.Node), CallReturn, nil, NewIndex(i), path),

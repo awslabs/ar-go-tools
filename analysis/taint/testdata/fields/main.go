@@ -15,7 +15,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
+	"math/rand"
 	"strconv"
 )
 
@@ -419,6 +422,61 @@ func testStructWithFuncs() {
 	sink(val.g()) // safe
 }
 
+type Payload struct {
+	MessageType string
+	Version     int
+	MessageId   string
+	Payload     []byte
+}
+
+type Content struct {
+	SchemaVersion int
+	JobId         string
+	Content       string
+}
+
+// GenerateAgentJobReplyPayload generates AgentJobReply agent message
+func generatePayload(log *log.Logger, agentMessageUUID string, messageID string, replyPayload string) (*Payload, error) {
+	payloadB, err := json.Marshal(replyPayload)
+	if err != nil {
+		return nil, err
+	}
+	payload := string(payloadB)
+	log.Printf("Sending reply ")
+	if len(payloadB) > 2000 {
+		return nil, fmt.Errorf(
+			"dropping reply message %v because it is too large to send over control channel", agentMessageUUID)
+	}
+	finalReplyContent := Content{
+		SchemaVersion: 1,
+		JobId:         messageID,
+		Content:       payload,
+	}
+
+	finalReplyContentBytes, err := json.Marshal(finalReplyContent)
+	if err != nil {
+		log.Fatalf("Cannot build reply message %v", err)
+		return nil, err
+	}
+
+	repMsg := &Payload{
+		MessageType: "type-foo",
+		Version:     1,
+		MessageId:   agentMessageUUID,
+		Payload:     finalReplyContentBytes,
+	}
+	return repMsg, nil
+}
+
+func testGeneratingPayloadWithTaintedData() {
+	taintedId := source() // @Source(testGenPayload)
+	payload, err := generatePayload(log.Default(), taintedId, "m-12341", "hello")
+	if err != nil {
+		panic("error")
+	}
+	sink(fmt.Sprintf("%s-%s", payload.MessageId, strconv.Itoa(rand.Int()))) // @Sink(testGenPayload)
+}
+
 func main() {
 	testSimpleField1()
 	testSimpleField2()
@@ -440,4 +498,5 @@ func main() {
 	testMoveTaintBetweenFields()
 	testTaintStructAsValue()
 	testStructWithFuncs()
+	testGeneratingPayloadWithTaintedData()
 }
