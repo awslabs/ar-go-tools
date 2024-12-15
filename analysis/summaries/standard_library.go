@@ -243,6 +243,7 @@ var summaryCrypto = map[string]Summary{
 	"crypto/x509.MarshalPKIXPublicKey": SingleVarArgPropagation,
 	"crypto/x509.ParsePKCS1PrivateKey": SingleVarArgPropagation,
 	"crypto/x509.SystemCertPool":       NoDataFlowPropagation,
+	"crypto/sha256.blockGeneric":       NoDataFlowPropagation,
 	"(crypto.Hash).New":                SingleVarArgPropagation,
 	"(*crypto/tls.Config).Clone":       SingleVarArgPropagation,
 	"(*crypto/x509.CertPool).AppendCertsFromPEM": {

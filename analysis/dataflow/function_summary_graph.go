@@ -30,6 +30,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+var allAccessPathFlow = map[string]map[string]bool{"*": {"": true}}
+
 // SummaryGraph is the function dataflow summary graph.
 type SummaryGraph struct {
 	// the unique ID of the summary
@@ -932,12 +934,12 @@ func (g *SummaryGraph) addParamEdgeByPos(src int, dest int) bool {
 			if outEdges == nil {
 				outEdges = make([]EdgeInfo, 0, 1)
 			}
-			srcArg.out[destArg] = append(outEdges, EdgeInfo{map[string]map[string]bool{}, 0, nil})
+			srcArg.out[destArg] = append(outEdges, EdgeInfo{allAccessPathFlow, 0, nil})
 
 			if destArg.in == nil {
 				destArg.in = make(map[GraphNode]EdgeInfo)
 			}
-			destArg.in[srcArg] = EdgeInfo{map[string]map[string]bool{}, 0, nil}
+			destArg.in[srcArg] = EdgeInfo{allAccessPathFlow, 0, nil}
 			return true
 		}
 	}
@@ -965,12 +967,12 @@ func (g *SummaryGraph) addReturnEdgeByPos(src int, pos int) bool {
 			if outEdges == nil {
 				outEdges = make([]EdgeInfo, 0, 1)
 			}
-			srcArg.out[retNode[pos]] = append(outEdges, EdgeInfo{map[string]map[string]bool{}, pos, nil})
+			srcArg.out[retNode[pos]] = append(outEdges, EdgeInfo{allAccessPathFlow, pos, nil})
 
 			if retNode[pos].in == nil {
 				retNode[pos].in = make(map[GraphNode]EdgeInfo)
 			}
-			retNode[pos].in[srcArg] = EdgeInfo{map[string]map[string]bool{}, pos, nil}
+			retNode[pos].in[srcArg] = EdgeInfo{allAccessPathFlow, pos, nil}
 			return true
 		}
 	}

@@ -767,8 +767,11 @@ func (v *Visitor) addNext(s *df.State,
 			}
 		}
 	}
-	if len(edgeInfo.RelPath) == 0 || (len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""][""]) {
+	if len(edgeInfo.RelPath) == 0 || len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""][""] {
 		nextNodeAccessPaths = cur.AccessPaths
+	}
+	if len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath["*"][""] {
+		nextNodeAccessPaths = []string{""}
 	}
 	// No matching access paths for this edge
 	if len(nextNodeAccessPaths) == 0 {

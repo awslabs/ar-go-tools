@@ -477,6 +477,15 @@ func testGeneratingPayloadWithTaintedData() {
 	sink(fmt.Sprintf("%s-%s", payload.MessageId, strconv.Itoa(rand.Int()))) // @Sink(testGenPayload)
 }
 
+func testGeneratingPayloadWithTaintedDataThroughEncoding() {
+	taintedId := source() // @Source(testGenPayloadThroughEnc)
+	payload, err := generatePayload(log.Default(), "m-1423", taintedId, "hello")
+	if err != nil {
+		panic("error")
+	}
+	sink(fmt.Sprintf("%s", string(payload.Payload))) //@Sink(testGenPayloadThroughEnc)
+}
+
 func main() {
 	testSimpleField1()
 	testSimpleField2()
@@ -499,4 +508,5 @@ func main() {
 	testTaintStructAsValue()
 	testStructWithFuncs()
 	testGeneratingPayloadWithTaintedData()
+	testGeneratingPayloadWithTaintedDataThroughEncoding()
 }
