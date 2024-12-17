@@ -197,25 +197,36 @@ func GetTargets(c *config.Config, reqs TargetReqs) (map[string]config.TargetInfo
 		// Retain only the targets in the map
 		funcutil.Retain(allTargets, targetFilter)
 	}
+	targetsToAnalyze := map[string]config.TargetInfo{}
 	switch reqs.Tool {
 	case config.TaintTool:
-		return targets(c.TaintTrackingProblems, allTargets, reqs.Tag, reqs.Platform), nil
+		addTargets(targetsToAnalyze, c.TaintTrackingProblems, allTargets, reqs.Tag, reqs.Platform)
+		break
 	case config.BacktraceTool:
-		return targets(c.SlicingProblems, allTargets, reqs.Tag, reqs.Platform), nil
+		addTargets(targetsToAnalyze, c.SlicingProblems, allTargets, reqs.Tag, reqs.Platform)
+		break
 	case config.SyntacticTool:
-		return targets(c.SyntacticProblems.StructInitProblems, allTargets, reqs.Tag, reqs.Platform), nil
+		addTargets(targetsToAnalyze, c.SyntacticProblems.StructInitProblems, allTargets, reqs.Tag, reqs.Platform)
+		break
+	case config.AutoTool:
+		// AutoTool applies taint, backtrace and syntactic analysis
+		addTargets(targetsToAnalyze, c.TaintTrackingProblems, allTargets, reqs.Tag, reqs.Platform)
+		addTargets(targetsToAnalyze, c.SlicingProblems, allTargets, reqs.Tag, reqs.Platform)
+		addTargets(targetsToAnalyze, c.SyntacticProblems.StructInitProblems, allTargets, reqs.Tag, reqs.Platform)
+		break
 	default:
 		return allTargets, nil
 	}
+	return targetsToAnalyze, nil
 }
 
-func targets[T config.TaggedSpec](
+func addTargets[T config.TaggedSpec](
+	targets map[string]config.TargetInfo,
 	problems []T,
 	allTargets map[string]config.TargetInfo,
 	tag string,
 	platform string,
-) map[string]config.TargetInfo {
-	targets := map[string]config.TargetInfo{}
+) {
 	for _, ttp := range problems {
 		if tag != "" && ttp.SpecTag() != tag {
 			continue
@@ -228,5 +239,4 @@ func targets[T config.TaggedSpec](
 			}
 		}
 	}
-	return targets
 }

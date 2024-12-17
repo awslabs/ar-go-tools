@@ -71,7 +71,7 @@ func Run(flags tools.CommonFlags) error {
 		return fmt.Errorf("failed to get syntactic targets: %s", err)
 	}
 	for targetName, target := range actualTargets {
-		report, err := runTarget(cfg, targetName, target.Files, target.Platform, flags)
+		_, report, err := runTarget(cfg, targetName, target.Files, target.Platform, flags)
 		if err != nil {
 			tmpLogger.Errorf("Analysis for %s failed: %s", targetName, err)
 			failCount += 1
@@ -92,7 +92,7 @@ func runTarget(
 	targetFiles []string,
 	targetPlatform string,
 	flags tools.CommonFlags,
-) (*config.ReportInfo, error) {
+) (bool, *config.ReportInfo, error) {
 	loadOptions := config.LoadOptions{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     flags.WithTest,
@@ -101,10 +101,12 @@ func runTarget(
 		PackageConfig: nil,
 	}
 	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+	c.Logger.Infof("Syntactic analysis of target \"%s\" = %v", targetName, targetFiles)
 	state, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load target: %v", err)
+		return false, nil, fmt.Errorf("failed to load target: %v", err)
 	}
+<<<<<<< HEAD
 	// struct analysis
 	structAnalysisFailed := false
 	if len(cfg.SyntacticProblems.StructInitProblems) > 0 {
@@ -132,6 +134,22 @@ func runTarget(
 	// Failure for all syntactic analyses
 	if structAnalysisFailed || preconditionAnalysisFailed {
 		return state.Report, fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
+=======
+	return RunSyntactic(targetName, state)
+}
+
+// RunSyntactic runs the syntactic analysis on the pointer state
+func RunSyntactic(targetName string, state *ptr.State) (bool, *config.ReportInfo, error) {
+	state.Logger.Infof("starting struct init analysis for %s...\n", targetName)
+	res, err := structinit.Analyze(state)
+	if err != nil {
+		return false, nil, fmt.Errorf("struct init analysis error: %v", err)
 	}
-	return state.Report, nil
+	s, failed := structinit.ReportResults(res)
+	state.Logger.Infof(s)
+	if failed {
+		return false, state.Report, fmt.Errorf("struct init analysis found problems, inspect logs for more information")
+>>>>>>> 344550c (New auto tool + logging with context target,tag,entrypoint.)
+	}
+	return false, state.Report, nil
 }
