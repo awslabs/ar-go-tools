@@ -84,6 +84,8 @@ func Analyze(state *ptr.State) (AnalysisResult, error) {
 		return AnalysisResult{}, fmt.Errorf("no functions found")
 	}
 	specs := structInitSpecs(state.Config, state.Target)
+	state.Logger.Infof("%d struct-init specs to check: %s", len(specs), strings.Join(
+		funcutil.Map(specs, func(ss config.StructInitSpec) string { return ss.Tag }), ","))
 	for fn := range fns {
 		if funcutil.Exists(specs, func(s config.StructInitSpec) bool { return isFiltered(s, fn) }) {
 			delete(fns, fn)

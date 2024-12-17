@@ -77,10 +77,10 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 
 // logTaintFlow logs a taint flow on the state's logger.
 func logTaintFlow(s *dataflow.State, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
-	s.Logger.Infof(" !!!! TAINT FLOW !!!!")
-	s.Logger.Infof(" 💀 Sink reached at %s\n", formatutil.Red(sink.Node.Position(s)))
-	s.Logger.Infof(" Add new path from %s to %s <== \n",
-		formatutil.Green(source.Node.String()), formatutil.Red(sink.Node.String()))
+	s.Logger.Infof(" 💀 Tainted data flows to sink:")
+	s.Logger.Infof("  |- Data from %s (%s)", source.Node.Position(s), formatutil.Green(source.Node.String()))
+	s.Logger.Infof("  |- Reached sink at %s (%s)\n", sink.Node.Position(s), formatutil.Red(sink.Node.String()))
+
 	sinkPos := sink.Node.Position(s)
 	if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
 		sinkPos = callArg.ParentNode().Position(s)
@@ -98,19 +98,18 @@ func logTaintFlow(s *dataflow.State, source dataflow.NodeWithTrace, sink *datafl
 				continue
 			}
 			s.Logger.Infof("%s - %s",
-				formatutil.Purple("TRACE"),
+				formatutil.Purple("  |- TRACE"),
 				dataflow.TermNodeSummary(nodes[i].Node))
 			// - Context [<calling context string>] Pos: <position in source code>
 			s.Logger.Infof("%s - Context [%s]\n",
-				"     ",
+				"  |  ",
 				dataflow.FuncNames(nodes[i].Trace, s.Logger.LogsDebug()))
 			s.Logger.Infof("%s - %s %s\n",
-				"     ",
+				"  |  ",
 				formatutil.Yellow("At"),
 				nodes[i].Node.Position(s).String())
 		}
-		s.Logger.Infof("-- ENDS WITH SINK: %s\n", sinkPos.String())
-		s.Logger.Infof("---- END FLOW ----")
+		s.Logger.Infof("  ⎣ ENDS WITH SINK: %s\n", sinkPos.String())
 		s.Logger.Infof(" ")
 	}
 }

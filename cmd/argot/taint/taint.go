@@ -28,7 +28,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -144,17 +144,23 @@ func runTarget(
 	// Starting the analysis
 	start := time.Now()
 	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
-	df, err := resultMonad.Bind(resultMonad.Bind(loadprogram.NewState(c), ptr.NewState), dataflow.NewState).Value()
+	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetFiles)
+	df, err := result.Bind(result.Bind(loadprogram.NewState(c), ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
-	result, err := taint.Analyze(df, taint.AnalysisReqs{
+	return RunTaint(targetName, flags.CommonFlags, df, start)
+}
+
+// RunTaint runs the taint analysis on the dataflow state
+func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State, start time.Time) (bool, *config.ReportInfo, error) {
+	analysisResult, err := taint.Analyze(df, taint.AnalysisReqs{
 		Tag: flags.Tag,
 	})
 	duration := time.Since(start)
 	if err != nil {
-		if result.State != nil {
-			for _, err := range result.State.Report.CheckError() {
+		if analysisResult.State != nil {
+			for _, err := range analysisResult.State.Report.CheckError() {
 				fmt.Fprintf(os.Stderr, "\terror: %v\n", err)
 			}
 		}
@@ -166,38 +172,38 @@ func runTarget(
 	if targetName != "" {
 		targetStr = "TARGET " + targetName + " "
 	}
-	result.State.Logger.Infof("")
-	result.State.Logger.Infof(strings.Repeat("*", 80))
-	result.State.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
-	result.State.Logger.Infof("")
-	if len(result.TaintFlows.Sinks) == 0 {
-		result.State.Logger.Infof(
+	analysisResult.State.Logger.Infof("")
+	analysisResult.State.Logger.Infof(strings.Repeat("*", 80))
+	analysisResult.State.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
+	analysisResult.State.Logger.Infof("")
+	if len(analysisResult.TaintFlows.Sinks) == 0 {
+		analysisResult.State.Logger.Infof(
 			"%sRESULT:\n\t\t%s",
 			targetStr,
 			formatutil.Green("No taint flows detected ✓")) // safe %s
 	} else {
-		result.State.Logger.Errorf(
+		analysisResult.State.Logger.Errorf(
 			"%sRESULT:\n\t\t%s",
 			targetStr,
 			formatutil.Red("Taint flows detected!")) // safe %s
 	}
-	if len(result.TaintFlows.Escapes) > 0 {
-		result.State.Logger.Errorf(
+	if len(analysisResult.TaintFlows.Escapes) > 0 {
+		analysisResult.State.Logger.Errorf(
 			"%sESCAPE ANALYSIS RESULT:\n\t\t%s",
 			targetStr,
 			formatutil.Red("Tainted data escapes origin thread!")) // safe %s
 
-	} else if cfg.UseEscapeAnalysis {
-		result.State.Logger.Infof(
+	} else if df.Config.UseEscapeAnalysis {
+		analysisResult.State.Logger.Infof(
 			"%sESCAPE ANALYSIS RESULT:\n\t\t%s",
 			targetStr,
 			formatutil.Green("Tainted data does not escape ✓")) // safe %s
 	}
 
-	LogResult(df.Program, result)
+	LogResult(df.Program, analysisResult)
 	// If some taint flows have been found, or some taint flow escapes, the analysis should return an error.
 	// Scripts that use the taint analysis can then rely on the boolean fail/success state of the analysis terminating.
-	return len(result.TaintFlows.Sinks) > 0 || len(result.TaintFlows.Escapes) > 0, result.State.Report, nil
+	return len(analysisResult.TaintFlows.Sinks) > 0 || len(analysisResult.TaintFlows.Escapes) > 0, analysisResult.State.Report, nil
 }
 
 // LogResult logs the taint analysis result

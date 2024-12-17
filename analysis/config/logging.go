@@ -18,6 +18,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
@@ -44,10 +45,13 @@ const (
 	TraceLevel
 )
 
+const contextSepChar = "."
+
 // LogGroup holds a set of loggers that will be called depending on the logging kind
 type LogGroup struct {
 	Level        LogLevel
 	suppressWarn bool
+	contexts     []string
 	trace        *log.Logger
 	debug        *log.Logger
 	info         *log.Logger
@@ -63,13 +67,62 @@ func NewLogGroup(config *Config) *LogGroup {
 	l := &LogGroup{
 		Level:        LogLevel(config.LogLevel),
 		suppressWarn: config.SilenceWarn,
-		trace:        log.New(os.Stdout, formatutil.Faint("[TRACE] "), 0),
-		debug:        log.New(os.Stdout, "[DEBUG] ", 0),
-		info:         log.New(os.Stdout, formatutil.Green("[INFO]  "), 0),
-		warn:         log.New(os.Stdout, formatutil.Yellow("[WARN]  "), 0),
-		err:          log.New(os.Stdout, formatutil.Red("[ERROR] "), 0),
+		contexts:     []string{},
+		trace:        log.New(os.Stdout, formatutil.Faint("[TRACE]")+" ", 0),
+		debug:        log.New(os.Stdout, "[DEBUG]"+" ", 0),
+		info:         log.New(os.Stdout, formatutil.Green("[INFO]")+" ", 0),
+		warn:         log.New(os.Stdout, formatutil.Yellow("[WARN]")+" ", 0),
+		err:          log.New(os.Stdout, formatutil.Red("[ERROR]")+" ", 0),
 	}
 	return l
+}
+
+// PushContext pushes a context string on the prefix of the logger
+func (l *LogGroup) PushContext(s string) {
+	l.contexts = append(l.contexts, s)
+	l.resetLoggingPostPrefix()
+	l.setLoggingPostPrefix(strings.Join(l.contexts, formatutil.Faint(contextSepChar)))
+}
+
+// PopContext pops a context string off the prefix of the logger
+func (l *LogGroup) PopContext() {
+	if len(l.contexts) >= 1 {
+		l.contexts = l.contexts[:len(l.contexts)-1]
+	}
+	l.resetLoggingPostPrefix()
+	l.setLoggingPostPrefix(strings.Join(l.contexts, formatutil.Faint(contextSepChar)))
+}
+
+func formatTargetPrefix(target string) string {
+	return formatutil.Faint(contextSepChar) + target + " "
+}
+
+func setPrefixToTarget(logger *log.Logger, target string) {
+	prefix := logger.Prefix()
+	logger.SetPrefix(strings.TrimSpace(prefix) + formatTargetPrefix(target))
+}
+
+func resetPrefix(logger *log.Logger) {
+	logger.SetPrefix(strings.Split(logger.Prefix(), contextSepChar)[0] + " ")
+}
+
+func (l *LogGroup) setLoggingPostPrefix(target string) {
+	l.resetLoggingPostPrefix()
+	setPrefixToTarget(l.trace, target)
+	setPrefixToTarget(l.debug, target)
+	setPrefixToTarget(l.info, target)
+	setPrefixToTarget(l.warn, target)
+	setPrefixToTarget(l.err, target)
+}
+
+// resetLoggingPostPrefix removes the logging context (using the marker > in the prefix)
+func (l *LogGroup) resetLoggingPostPrefix() {
+	resetPrefix(l.trace)
+	resetPrefix(l.debug)
+	resetPrefix(l.info)
+	resetPrefix(l.warn)
+	resetPrefix(l.err)
+
 }
 
 // SetAllOutput sets all the output writers to the writer provided

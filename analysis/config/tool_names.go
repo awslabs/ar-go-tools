@@ -18,6 +18,8 @@ package config
 type ToolName string
 
 const (
+	// AutoTool name
+	AutoTool ToolName = "auto"
 	// BacktraceTool name
 	BacktraceTool ToolName = "backtrace"
 	// CliTool name

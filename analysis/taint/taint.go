@@ -26,6 +26,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -112,49 +113,7 @@ func Analyze(state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	taintFlows := NewFlows()
 
 	for _, taintSpec := range state.Config.TaintTrackingProblems {
-		// Check the tag must be analyzed
-		if reqs.Tag != "" && taintSpec.Tag != reqs.Tag {
-			state.Logger.Infof("Ignoring problem tagged %s since tag to analyze is provided.", taintSpec.Tag)
-			continue
-		}
-		// Check the problem applies to the current target
-		if !config.TargetIncludes(taintSpec.Targets, state.Target) {
-			continue
-		}
-		// Number of alarms is problem specific, not global
-		state.ResetAlarms()
-
-		state.Logger.Infof("====================== NEW PROBLEM: %s =======================", taintSpec.Tag)
-		// Set problem-specific options
-		prevOptions := state.Config.AnalysisProblemOptions
-
-		// Overriding options with problem-specific config
-		if taintSpec.AnalysisProblemOptions != nil {
-			config.OverrideWithAnalysisOptions(state.Logger, state.Config, taintSpec.AnalysisProblemOptions)
-		}
-
-		// Overriding options with annotations
-		for optionName, optionValue := range state.Annotations.Configs[taintSpec.Tag] {
-			_, errSetting := config.SetOption(state.Config, optionName, optionValue)
-			if errSetting != nil {
-				state.Logger.Warnf("ignoring option %s setting to %s in annotations because not a valid option",
-					optionName, optionValue)
-			} else {
-				state.Logger.Infof("%s set to %s (using annotation).",
-					optionName, optionValue)
-			}
-		}
-		state.Logger.Debugf("Options: %+v", state.Config.Options)
-		visitor := NewVisitor(&taintSpec)
-		dataflow.RunInterProcedural(state, visitor, dataflow.ScanningSpec{
-			// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
-			IsEntryPointSsa:      func(node ssa.Node) bool { return dataflow.IsSourceNode(state, &taintSpec, node) },
-			MarkCallArgsLikeCall: taintSpec.SourceTaintsArgs,
-		})
-		taintFlows.Merge(visitor.taints)
-		// Restore global options
-		state.Config.AnalysisProblemOptions = prevOptions
-		state.Logger.Infof("Done analyzing %s", taintSpec.Tag)
+		runSpec(state, reqs, taintSpec, taintFlows)
 	}
 
 	// ** Fourth step **
@@ -165,6 +124,52 @@ func Analyze(state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
 		err = errors.Join(state.Report.CheckError()...)
 	}
 	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
+}
+
+func runSpec(state *dataflow.State, reqs AnalysisReqs, taintSpec config.TaintSpec, taintFlows *Flows) {
+	state.Logger.PushContext("🏷 " + formatutil.Yellow(taintSpec.Tag))
+	defer state.Logger.PopContext()
+	// Check the tag must be analyzed
+	if reqs.Tag != "" && taintSpec.Tag != reqs.Tag {
+		state.Logger.Infof("Ignoring problem tagged %s since tag to analyze is provided.", taintSpec.Tag)
+		return
+	}
+	// Check the problem applies to the current target
+	if !config.TargetIncludes(taintSpec.Targets, state.Target) {
+		return
+	}
+	// Number of alarms is problem specific, not global
+	state.ResetAlarms()
+	// Set problem-specific options
+	prevOptions := state.Config.AnalysisProblemOptions
+
+	// Overriding options with problem-specific config
+	if taintSpec.AnalysisProblemOptions != nil {
+		config.OverrideWithAnalysisOptions(state.Logger, state.Config, taintSpec.AnalysisProblemOptions)
+	}
+
+	// Overriding options with annotations
+	for optionName, optionValue := range state.Annotations.Configs[taintSpec.Tag] {
+		_, errSetting := config.SetOption(state.Config, optionName, optionValue)
+		if errSetting != nil {
+			state.Logger.Warnf("ignoring option %s setting to %s in annotations because not a valid option",
+				optionName, optionValue)
+		} else {
+			state.Logger.Infof("%s set to %s (using annotation).",
+				optionName, optionValue)
+		}
+	}
+	state.Logger.Debugf("Options: %+v", state.Config.Options)
+	visitor := NewVisitor(&taintSpec)
+	dataflow.RunInterProcedural(state, visitor, dataflow.ScanningSpec{
+		// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
+		IsEntryPointSsa:      func(node ssa.Node) bool { return dataflow.IsSourceNode(state, &taintSpec, node) },
+		MarkCallArgsLikeCall: taintSpec.SourceTaintsArgs,
+	})
+	taintFlows.Merge(visitor.taints)
+	// Restore global options
+	state.Config.AnalysisProblemOptions = prevOptions
+	state.Logger.Infof("Done analyzing %s", taintSpec.Tag)
 }
 
 // AnalysisPreamble groups different minor analyses that need to run before the intra-procedural step of the taint

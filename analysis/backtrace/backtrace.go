@@ -73,73 +73,80 @@ func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	var errs []error
 	allTraces := make(map[string]map[df.GraphNode][]Trace)
 	for _, ps := range state.Config.SlicingProblems {
-		// Check the tag must be analyzed
-		if reqs.Tag != "" && ps.Tag != reqs.Tag {
-			state.Logger.Infof("Ignoring problem tagged %s since tag to analyze is provided.", ps.Tag)
-			continue
-		}
-		// Check the problem applies to the current target
-		if !config.TargetIncludes(ps.Targets, state.Target) {
-			continue
-		}
-		// Number of alarms is problem specific, not global
-		state.ResetAlarms()
-
-		state.Logger.Infof("Analyzing slicing problem %s", ps.Tag)
-		if ps.MustBeStatic {
-			state.Logger.Infof("Will check that data flowing to backtrace points is static.\n")
-		}
-		// Set problem-specific options
-		prevOptions := state.Config.AnalysisProblemOptions
-
-		// Overriding options with problem-specific config
-		if ps.AnalysisProblemOptions != nil {
-			config.OverrideWithAnalysisOptions(state.Logger, state.Config, ps.AnalysisProblemOptions)
-		} else {
-			ps.AnalysisProblemOptions = &config.AnalysisProblemOptions{}
-		}
-
-		visitor := &Visitor{
-			SlicingSpec: &ps,
-			Traces:      make(map[df.GraphNode][]Trace),
-		}
-		df.RunInterProcedural(state, visitor, df.ScanningSpec{
-			IsEntryPointSsa: func(node ssa.Node) bool {
-				return df.IsBacktraceNode(state, visitor.SlicingSpec, node)
-			},
-		})
-		// filter unwanted nodes
-		resTraces := filterResultTraces(state, visitor)
-		if len(resTraces) > 0 {
-			allTraces[ps.Tag] = resTraces
-			state.Report.AddEntry(
-				state,
-				config.ReportDesc{
-					Tool:     config.BacktraceTool,
-					Tag:      ps.Tag,
-					Severity: ps.Severity,
-					Content:  report(state, resTraces, &ps),
-				},
-			)
-
-			if visitor.SlicingSpec.MustBeStatic {
-				state.Logger.Errorf("Found flows of non-static data to backtrace points!")
-			}
-		}
-
-		if len(visitor.Errs) > 0 {
-			vErrs := make([]error, 0, len(visitor.Errs))
-			for _, err := range visitor.Errs {
-				vErr := fmt.Errorf("%v %v\n", formatutil.Red("error"), err)
-				vErrs = append(vErrs, vErr)
-			}
-			errs = append(errs, vErrs...)
-		}
-		// Restore global options
-		state.Config.AnalysisProblemOptions = prevOptions
+		errs = runTag(state, reqs, ps, allTraces, errs)
 	}
 
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: allTraces}, errors.Join(errs...)
+}
+
+func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces map[string]map[df.GraphNode][]Trace, errs []error) []error {
+	state.Logger.PushContext("🏷 " + formatutil.Yellow(ps.Tag))
+	defer state.Logger.PopContext()
+	// Check the tag must be analyzed
+	if reqs.Tag != "" && ps.Tag != reqs.Tag {
+		state.Logger.Infof("Ignoring problem tagged %s since tag to analyze is provided.", ps.Tag)
+		return errs
+	}
+	// Check the problem applies to the current target
+	if !config.TargetIncludes(ps.Targets, state.Target) {
+		return errs
+	}
+	// Number of alarms is problem specific, not global
+	state.ResetAlarms()
+
+	state.Logger.Infof("Analyzing slicing problem %s", ps.Tag)
+	if ps.MustBeStatic {
+		state.Logger.Infof("Will check that data flowing to backtrace points is static.\n")
+	}
+	// Set problem-specific options
+	prevOptions := state.Config.AnalysisProblemOptions
+
+	// Overriding options with problem-specific config
+	if ps.AnalysisProblemOptions != nil {
+		config.OverrideWithAnalysisOptions(state.Logger, state.Config, ps.AnalysisProblemOptions)
+	} else {
+		ps.AnalysisProblemOptions = &config.AnalysisProblemOptions{}
+	}
+
+	visitor := &Visitor{
+		SlicingSpec: &ps,
+		Traces:      make(map[df.GraphNode][]Trace),
+	}
+	df.RunInterProcedural(state, visitor, df.ScanningSpec{
+		IsEntryPointSsa: func(node ssa.Node) bool {
+			return df.IsBacktraceNode(state, visitor.SlicingSpec, node)
+		},
+	})
+	// filter unwanted nodes
+	resTraces := filterResultTraces(state, visitor)
+	if len(resTraces) > 0 {
+		allTraces[ps.Tag] = resTraces
+		state.Report.AddEntry(
+			state,
+			config.ReportDesc{
+				Tool:     config.BacktraceTool,
+				Tag:      ps.Tag,
+				Severity: ps.Severity,
+				Content:  report(state, resTraces, &ps),
+			},
+		)
+
+		if visitor.SlicingSpec.MustBeStatic {
+			state.Logger.Errorf("Found flows of non-static data to backtrace points!")
+		}
+	}
+
+	if len(visitor.Errs) > 0 {
+		vErrs := make([]error, 0, len(visitor.Errs))
+		for _, err := range visitor.Errs {
+			vErr := fmt.Errorf("%v %v\n", formatutil.Red("error"), err)
+			vErrs = append(vErrs, vErr)
+		}
+		errs = append(errs, vErrs...)
+	}
+	// Restore global options
+	state.Config.AnalysisProblemOptions = prevOptions
+	return errs
 }
 
 func filterResultTraces(state *df.State, visitor *Visitor) map[df.GraphNode][]Trace {
@@ -227,10 +234,12 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 		return nil
 	}
 
-	logger.Infof("\n%s ENTRYPOINT %s", strings.Repeat("*", 30), strings.Repeat("*", 30))
-	logger.Infof("==> Node: %s\n", formatutil.Purple(entrypoint.String()))
-	logger.Infof("%s %s\n", formatutil.Green("Found at"), pos)
-
+	logger.Infof("")
+	logger.Infof("🚪 entrypoint: %s\n",
+		formatutil.Purple(entrypoint.String()))
+	logger.Infof("   %s %s\n", formatutil.Green("Found at"), pos)
+	logger.PushContext(formatutil.Faint(entrypoint.LongID()))
+	defer logger.PopContext()
 	var trace *df.NodeTree[*df.CallNode]
 	entry := df.NodeWithTrace{Node: entrypoint, Trace: trace}
 	seen := make(map[df.KeyType]bool)

@@ -76,26 +76,19 @@ func Run(flags tools.CommonFlags) error {
 			Platform:      target.Platform,
 			ApplyRewrites: true,
 		}
+
 		c := config.NewState(cfg, targetName, target.Files, loadOptions)
+		c.Logger.Infof("Backtrace analysis of target \"%s\" = %v", targetName, target.Files)
 		ptrState := result.Bind(loadprogram.NewState(c), ptr.NewState) // build pointer analysis info
 		state, err := result.Bind(ptrState, dataflow.NewState).Value()
 		if err != nil {
 			return fmt.Errorf("loading failed: %v", err)
 		}
-		analysisResult, err := backtrace.Analyze(state, backtrace.AnalysisReqs{
-			Tag: flags.Tag,
-		})
-		if err != nil {
-			return fmt.Errorf("analysis failed: %v", err)
-		}
-		duration := time.Since(start)
-		overallReport.Merge(state.Report)
-		c.Logger.Infof("")
-		c.Logger.Infof("-%s", strings.Repeat("*", 80))
-		c.Logger.Infof("Analysis took %3.4f s\n", duration.Seconds())
-		if len(analysisResult.Traces) > 0 {
-			foundTraces = true
-			c.Logger.Errorf("Found traces for %d slicing problems\n", len(analysisResult.Traces))
+		foundNewTraces, report, err2 := RunBacktrace(flags, state, start)
+		overallReport.Merge(report)
+		foundTraces = foundTraces || foundNewTraces
+		if err2 != nil {
+			return err2
 		}
 	}
 	overallReport.Dump(config.ConfiguredLogger{Config: cfg, Logger: tmpLogger})
@@ -103,4 +96,24 @@ func Run(flags tools.CommonFlags) error {
 		return fmt.Errorf("backtrace analysis found traces, inspect logs for more information")
 	}
 	return nil
+}
+
+// RunBacktrace runs the backtrace analysis on the state
+func RunBacktrace(flags tools.CommonFlags, state *dataflow.State, start time.Time) (bool, *config.ReportInfo, error) {
+	foundTraces := false
+	analysisResult, err := backtrace.Analyze(state, backtrace.AnalysisReqs{
+		Tag: flags.Tag,
+	})
+	if err != nil {
+		return false, nil, fmt.Errorf("analysis failed: %v", err)
+	}
+	duration := time.Since(start)
+	state.Logger.Infof("")
+	state.Logger.Infof("-%s", strings.Repeat("*", 80))
+	state.Logger.Infof("Analysis took %3.4f s\n", duration.Seconds())
+	if len(analysisResult.Traces) > 0 {
+		foundTraces = true
+		state.Logger.Errorf("Found traces for %d slicing problems\n", len(analysisResult.Traces))
+	}
+	return foundTraces, state.Report, nil
 }
