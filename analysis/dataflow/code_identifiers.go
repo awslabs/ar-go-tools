@@ -62,9 +62,11 @@ func IsBacktraceNode(state *State, ss *config.SlicingSpec, n ssa.Node) bool {
 	}
 
 	if ss == nil {
-		return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint)
+		return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint) ||
+			state.ResolveSsaNode(annotations.BacktracePoint, "_", n)
 	}
-	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, ss.IsBacktracePoint)
+	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, ss.IsBacktracePoint) ||
+		state.ResolveSsaNode(annotations.BacktracePoint, ss.Tag, n)
 }
 
 // IsSink returns true if the taint spec identifies n as a sink.
