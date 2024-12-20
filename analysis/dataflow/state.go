@@ -55,8 +55,6 @@ type State struct {
 	// BoundingInfo is a map from pointer labels to the closures that bind them. The bounding analysis produces such
 	// a map
 	BoundingInfo BoundingMap
-
-	reachableFunctions map[*ssa.Function]bool
 }
 
 // NewState generates a State from a PointerState
@@ -237,8 +235,8 @@ func (s *State) PopulateBoundingInformation(verbose bool) error {
 // IsReachableFunction returns true if f is reachable according to the pointer analysis, or if the pointer analysis
 // and ReachableFunctions has never been called.
 func (s *State) IsReachableFunction(f *ssa.Function) bool {
-	if s != nil && s.reachableFunctions != nil {
-		return s.reachableFunctions[f]
+	if s != nil && s.ReachableFunctions() != nil {
+		return s.ReachableFunctions()[f]
 	}
 	// If no reachability information has been computed, assume every function is reachable
 	s.Logger.Debugf("No reachability information has been computed")

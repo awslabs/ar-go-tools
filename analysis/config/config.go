@@ -663,7 +663,7 @@ func (c Config) Verbose() bool {
 // ExceedsMaxDepth returns true if the input exceeds the maximum depth parameter of the configuration.
 // (this implements the logic for using maximum depth; if the configuration setting is < 0, then this returns false)
 func (c Config) ExceedsMaxDepth(d int) bool {
-	return !(c.UnsafeMaxDepth <= 0) && d > c.UnsafeMaxDepth
+	return c.UnsafeMaxDepth > 0 && d > c.UnsafeMaxDepth
 }
 
 // GetTargetMap returns a map from target names to target files

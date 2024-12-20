@@ -1,5 +1,7 @@
 dataflow-problems:
   slicing:
-    - backtracepoints:
+    - override-analysis-options:
+        unsafe-max-depth: 3
+      backtracepoints:
         - package: "os/exec"
           method: "^Command$"

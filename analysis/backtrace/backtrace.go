@@ -42,6 +42,15 @@ type AnalysisResult struct {
 	Traces map[string]map[df.GraphNode][]Trace
 }
 
+// AnalysisReqs provides constraints on the backtrace analysis to run.
+type AnalysisReqs struct {
+	// Tag is the tag to analyze, ignored if non-empty.
+	Tag string
+}
+
+// ErrMaxDepth is the error when the max depth is exceeded.
+var ErrMaxDepth = errors.New("configured max depth exceeded")
+
 // Analyze runs the analysis on the program prog with the user-provided configuration config.
 // If the analysis run successfully, an AnalysisResult is returned, containing all the information collected.
 //
@@ -49,7 +58,7 @@ type AnalysisResult struct {
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(state *df.State) (AnalysisResult, error) {
+func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
@@ -64,6 +73,11 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 	var errs []error
 	allTraces := make(map[string]map[df.GraphNode][]Trace)
 	for _, ps := range state.Config.SlicingProblems {
+		// Check the tag must be analyzed
+		if reqs.Tag != "" && ps.Tag != reqs.Tag {
+			state.Logger.Infof("Ignoring problem tagged %s since tag to analyze is provided.", ps.Tag)
+			continue
+		}
 		// Check the problem applies to the current target
 		if !config.TargetIncludes(ps.Targets, state.Target) {
 			continue
@@ -81,6 +95,8 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 		// Overriding options with problem-specific config
 		if ps.AnalysisProblemOptions != nil {
 			config.OverrideWithAnalysisOptions(state.Logger, state.Config, ps.AnalysisProblemOptions)
+		} else {
+			ps.AnalysisProblemOptions = &config.AnalysisProblemOptions{}
 		}
 
 		visitor := &Visitor{
@@ -93,24 +109,7 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 			},
 		})
 		// filter unwanted nodes
-		resTraces := make(map[df.GraphNode][]Trace)
-		for entry, traces := range visitor.Traces {
-			for _, trace := range traces {
-				vTrace := Trace{}
-				for _, node := range trace {
-					if isFiltered(visitor.SlicingSpec, node.GraphNode) {
-						state.Logger.Tracef("FILTERED: %v\n", node)
-						state.Logger.Tracef("\t%v\n", vTrace)
-						vTrace = nil
-						break
-					}
-					vTrace = append(vTrace, node)
-				}
-				if len(vTrace) > 0 {
-					resTraces[entry] = append(resTraces[entry], vTrace)
-				}
-			}
-		}
+		resTraces := filterResultTraces(state, visitor)
 		if len(resTraces) > 0 {
 			allTraces[ps.Tag] = resTraces
 			state.Report.AddEntry(
@@ -141,6 +140,28 @@ func Analyze(state *df.State) (AnalysisResult, error) {
 	}
 
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: allTraces}, errors.Join(errs...)
+}
+
+func filterResultTraces(state *df.State, visitor *Visitor) map[df.GraphNode][]Trace {
+	resTraces := make(map[df.GraphNode][]Trace)
+	for entry, traces := range visitor.Traces {
+		for _, trace := range traces {
+			vTrace := Trace{}
+			for _, node := range trace {
+				if isFiltered(visitor.SlicingSpec, node.GraphNode) {
+					state.Logger.Tracef("FILTERED: %v\n", node)
+					state.Logger.Tracef("\t%v\n", vTrace)
+					vTrace = nil
+					break
+				}
+				vTrace = append(vTrace, node)
+			}
+			if len(vTrace) > 0 {
+				resTraces[entry] = append(resTraces[entry], vTrace)
+			}
+		}
+	}
+	return resTraces
 }
 
 // Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the
@@ -249,6 +270,15 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 
 			logger.Tracef("Base case reached...")
 			logger.Tracef("Adding trace: %v\n", t)
+			continue
+		}
+
+		if s.Config.ExceedsMaxDepth(cur.Depth) {
+			t := findTrace(s, cur)
+			addTrace(v, entrypoint, t)
+			err := fmt.Errorf("call trace %w: %d", ErrMaxDepth, cur.Depth)
+			s.Report.AddError("max-depth", err)
+			logger.Errorf("%v\n", err)
 			continue
 		}
 
@@ -515,8 +545,8 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 				logger.Tracef("Adding trace: %v\n", t)
 			}
 
-		// Data flows backwards within the function from the synthetic node.
-		case *df.SyntheticNode:
+		// Data flows backwards within the function from the synthetic node or builtin call node.
+		case *df.SyntheticNode, *df.BuiltinCallNode:
 			for nextNode := range graphNode.In() {
 				nextNodeWithTrace := df.NodeWithTrace{
 					Node:         nextNode,
@@ -758,9 +788,9 @@ func (v *Visitor) addNext(s *df.State,
 		}
 	}
 
-	// First set of stop conditions: node has already been seen, or depth exceeds limit
+	// First stop condition: node has already been seen
 	key := nextVisitorNode.Key()
-	if seen[key] || s.Config.ExceedsMaxDepth(cur.Depth) {
+	if seen[key] {
 		s.Logger.Tracef("Will not add %v\n", nextNodeWithTrace.Node.String())
 		s.Logger.Tracef("\tseen? %v, depth %v\n", seen[key], cur.Depth)
 		return stack, false
@@ -856,12 +886,7 @@ func addTrace(v *Visitor, entrypoint *df.CallNodeArg, trace Trace) {
 func IsStatic(node df.GraphNode) bool {
 	switch node := node.(type) {
 	case *df.CallNodeArg:
-		switch node.Value().(type) {
-		case *ssa.Const:
-			return true
-		default:
-			return false
-		}
+		return lang.IsStaticallyDefinedLocal(node.Value())
 	default:
 		return false
 	}

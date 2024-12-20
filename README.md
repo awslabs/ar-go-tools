@@ -55,13 +55,15 @@ Static analyses that require pointer and callgraph information should depend on 
 - `defers` contains the defers analysis,
 - `dependencies` contains the dependencies analysis,
 - `lang` contains function for manipulating the Go SSA form (from the x/tools packages),
+- `loadprogram` contains utilities to load a program with its SSA representation and the annotations of the program,
 - `maypanic` contains the may-panic analysis,
-- `reachability` contains function-reachability analyses
+- `ptr` contains utilities to build an analysis state with the pointer analysis result,
+- `reachability` contains function-reachability analyses,
 - `refactor` contains implements refactoring operations,
 - `render` contains various information rendering utilities
 - `summaries` defines dataflow summaries of some functions,
 - `taint` implements the taint analysis
 
-The test data for the analyses are in individual `analysis/___/testdata` folders. All the Go source files used in the tests are in `testdata/src`.
+The test data for the analyses are in individual `analysis/___/testdata` folders. 
 
 The `internal` folder also contains code that implements utility functions used through the analysis code.

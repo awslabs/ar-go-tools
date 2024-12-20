@@ -580,7 +580,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 		// Synthetic nodes can only be sources and data should only flow from those nodes: we only need to follow the
 		// outgoing edges. This node should only be a start node, unless some functionality is added to the df
 		// graph summaries.
-		case *df.SyntheticNode:
+		case *df.SyntheticNode, *df.BuiltinCallNode:
 			for nextNode, edgeInfos := range graphNode.Out() {
 				for _, edgeInfo := range edgeInfos {
 					nextNodeWithTrace := df.NodeWithTrace{
@@ -774,8 +774,11 @@ func (v *Visitor) addNext(s *df.State,
 			}
 		}
 	}
-	if len(edgeInfo.RelPath) == 0 || (len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""][""]) {
+	if len(edgeInfo.RelPath) == 0 || len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""][""] {
 		nextNodeAccessPaths = cur.AccessPaths
+	}
+	if len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath["*"][""] {
+		nextNodeAccessPaths = []string{""}
 	}
 	// No matching access paths for this edge
 	if len(nextNodeAccessPaths) == 0 {

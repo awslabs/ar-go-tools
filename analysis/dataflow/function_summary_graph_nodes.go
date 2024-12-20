@@ -129,6 +129,8 @@ func NodeSummary(g GraphNode) string {
 			x.ssaNode.Name(),
 			x.Type().String(),
 			fmt.Sprintf("%q", x.parent.Parent.Name()))
+	case *BuiltinCallNode:
+		return fmt.Sprintf("Call to builtin %s", x.name)
 	case *CallNode:
 		return fmt.Sprintf("Result of call to %s (type %s)",
 			x.Callee().Name(),
@@ -1118,4 +1120,76 @@ func (a *IfNode) ParentName() string {
 // LongID returns a string identifier for the node.
 func (a *IfNode) LongID() string {
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
+}
+
+// BuiltinCallNode is a node that represents a call to a builtin function. Builtin functions are handled separately
+// because their data-flows are encoded directly in the analysis: they are not user-configurable summaries, and they
+// are not analyzed.
+// However, having an explicit node allows the dataflow analyses to use them sources, sanitizers or other analysis
+// specific definitions.
+type BuiltinCallNode struct {
+	id       uint32
+	parent   *SummaryGraph
+	callSite ssa.CallInstruction
+	name     string
+	out      map[GraphNode][]EdgeInfo
+	in       map[GraphNode]EdgeInfo
+	marks    LocSet
+}
+
+// ID returns the integer id of the node in its parent graph
+func (b *BuiltinCallNode) ID() uint32 { return b.id }
+
+// LongID returns a string identifier for the node
+func (b *BuiltinCallNode) LongID() string {
+	return "#" + strconv.Itoa(int(b.parent.ID)) + "." + strconv.Itoa(int(b.id))
+}
+
+// Graph returns the parent summary graph of the node
+func (b *BuiltinCallNode) Graph() *SummaryGraph { return b.parent }
+
+// Out returns the nodes the graph node's data flows to, with their object path
+func (b *BuiltinCallNode) Out() map[GraphNode][]EdgeInfo { return b.out }
+
+// In returns the nodes with incoming edges to the current node, with their object path
+func (b *BuiltinCallNode) In() map[GraphNode]EdgeInfo { return b.in }
+
+// Marks returns the location information of the node
+func (b *BuiltinCallNode) Marks() LocSet { return b.marks }
+
+// SetLocs sets the locations information of the node
+func (b *BuiltinCallNode) SetLocs(set LocSet) {
+	if b.marks == nil {
+		b.marks = map[ssa.Instruction]bool{}
+	}
+	funcutil.Merge(b.marks, set, funcutil.First[bool])
+}
+
+// FuncName is the name of the builtin called in the builtin call node
+func (b *BuiltinCallNode) FuncName() string {
+	return b.name
+}
+
+// Type returns the type of the result of the builtin call
+func (b *BuiltinCallNode) Type() types.Type { return b.callSite.Value().Type() }
+
+// Position returns the position of the node.
+func (b *BuiltinCallNode) Position(c *State) token.Position {
+	return c.Program.Fset.Position(b.callSite.Pos())
+}
+
+// Equal implements equality checking between nodes.
+func (b *BuiltinCallNode) Equal(node GraphNode) bool {
+	if a2, ok := node.(*BuiltinCallNode); ok {
+		return b == a2
+	}
+	return false
+}
+
+// ParentName returns the name of the parent function
+func (b *BuiltinCallNode) ParentName() string {
+	if b.parent != nil && b.parent.Parent != nil {
+		return b.parent.Parent.String()
+	}
+	return "BuiltinCallNode"
 }

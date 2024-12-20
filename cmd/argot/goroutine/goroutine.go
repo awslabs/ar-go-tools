@@ -60,7 +60,16 @@ func Run(flags tools.CommonFlags) error {
 	}
 
 	failCount := 0
-	for targetName, targetFiles := range tools.GetTargets(flags.FlagSet.Args(), flags.Tag, cfg, config.GoroutineTool) {
+	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
+		CmdlineArgs: flags.FlagSet.Args(),
+		Tag:         flags.Tag,
+		Targets:     flags.Targets,
+		Tool:        config.GoroutineTool,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get goroutine targets: %s", err)
+	}
+	for targetName, targetFiles := range actualTargets {
 		if err := runTarget(cfg, targetName, targetFiles, flags); err != nil {
 			logger.Errorf("Analysis for %s failed: %s", targetName, err)
 			failCount += 1

@@ -48,15 +48,16 @@ type AnalysisResult struct {
 	Errors []error
 }
 
-// Analyze runs the taint analysis on the program prog with the user-provided configuration config.
-// If the analysis run successfully, a FlowInformation is returned, containing all the information collected.
-// FlowInformation.SinkSources will map all the sinks encountered to the set of sources that reach them.
-//
-// - cfg is the configuration that determines which functions are sources, sinks and sanitizers.
-//
-// - prog is the built ssa representation of the program. The program must contain a main package and include all its
-// dependencies, otherwise the pointer analysis will fail.
-func Analyze(state *dataflow.State) (AnalysisResult, error) {
+// AnalysisReqs provides constraints on the taint analysis to run.
+type AnalysisReqs struct {
+	// Tag is the tag to analyze, ignored if non-empty.
+	Tag string
+}
+
+// Analyze runs the taint analysis on the provided state, which contains the program to analyze as well as the config
+// defining the taint analysis problems.
+// THe reqs arguments provides additional constraints on which problems to analyze.
+func Analyze(state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	var err error
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
@@ -111,6 +112,11 @@ func Analyze(state *dataflow.State) (AnalysisResult, error) {
 	taintFlows := NewFlows()
 
 	for _, taintSpec := range state.Config.TaintTrackingProblems {
+		// Check the tag must be analyzed
+		if reqs.Tag != "" && taintSpec.Tag != reqs.Tag {
+			state.Logger.Infof("Ignoring problem tagged %s since tag to analyze is provided.", taintSpec.Tag)
+			continue
+		}
 		// Check the problem applies to the current target
 		if !config.TargetIncludes(taintSpec.Targets, state.Target) {
 			continue

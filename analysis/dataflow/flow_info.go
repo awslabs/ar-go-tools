@@ -161,8 +161,7 @@ func (fi *FlowInformation) GetInstrPos(i ssa.Instruction) IndexT {
 // representing this mark already exists.
 func (fi *FlowInformation) GetNewMark(node ssa.Node, typ MarkType, qualifier ssa.Value, mi MarkIndex) *Mark {
 	// Validate mark
-	switch typ {
-	case CallReturn:
+	if typ == CallReturn {
 		i, isCall := node.(*ssa.Call)
 		if isCall && mi.Kind == ReturnedTupleIndex {
 			ctyp := i.Common().Signature().Results()

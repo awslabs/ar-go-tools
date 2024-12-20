@@ -80,7 +80,8 @@ dataflow-problems:
         - package: "example1"
           method: "GetSensitiveData"
 ```
-specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `source-taints-args` option is set to true). There are other possible code identifiers, for example one can view any object of a given type as sources:
+specifies that the method `GetSensitiveData` in package `example1` is a source. This means that the result of calling that function is considered tainted data (and the arguments if the `source-taints-args` option is set to true). The `method` field is generally just the function name; for example, you can even have a code identifier `method: "^len$"` that will exactly capture the len builtin, which could be useful if you want to specify that `len` is a sanitizer.
+There are other possible code identifiers, for example one can view any object of a given type as sources:
 ```yaml
 dataflow-problems:
   taint-tracking:

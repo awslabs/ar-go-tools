@@ -171,7 +171,7 @@ func TryTupleIndexType(v types.Type, i int) types.Type {
 	return tupleType.At(i).Type()
 }
 
-// CanType checks some properties to ensure calling the Type() method on the value won't cause a sefgfault.
+// CanType checks some properties to ensure calling the Type() method on the value won't cause a segfault.
 // This seems to be a problem in the SSA.
 func CanType(v ssa.Value) (res bool) {
 	defer func() {
@@ -186,4 +186,100 @@ func CanType(v ssa.Value) (res bool) {
 		res = typ != nil
 	}
 	return res
+}
+
+// IsStaticallyDefinedLocal returns true if the value is statically defined, i.e. its value is entirely defined at
+// compile time.
+// This is the case for:
+// - constants
+// - slices of constants
+// This does not analyze whether the value v is mutated; this function is useful in conjunction with the dataflow
+// analyzes for example, which would track all dataflows to the values being analyzed. For values of nodes that do
+// not have any other incoming edges, this function is sound: the dataflow analysis indirectly guarantees no data
+// is flowing from a parameter of the function, or from being written to by another function being called in the
+// function body.
+//
+// TODO: make this function usable outside of dataflow analysis
+func IsStaticallyDefinedLocal(v ssa.Value) bool {
+	if v == nil {
+		return false
+	}
+	switch value := v.(type) {
+	case *ssa.Const:
+		return true
+	case *ssa.Slice:
+		// A slice is statically defined if the original slice is
+		return IsStaticallyDefinedLocal(value.X)
+	case *ssa.Alloc:
+		// check that the allocation is static in a separate function
+		return isStaticallyDefinedAlloc(value)
+	case *ssa.MakeInterface:
+		// make I <- <statically defined value> is statically define
+		return IsStaticallyDefinedLocal(value.X)
+	case *ssa.MakeSlice:
+		// A make slice is statically defined if it is initialized with a statically defined length and all the elements
+		// stored in it are statically defined
+		return IsStaticallyDefinedLocal(value.Len)
+	case *ssa.UnOp:
+		// When have x = *y, x is statically defined if y is.
+		if value.Op == token.MUL {
+			return IsStaticallyDefinedLocal(value.X)
+		}
+		return false
+	case *ssa.IndexAddr:
+		// &A[I] is statically defined is A and I are (typically, recursive call will check that A was allocated in
+		// the function, is an array and all stores to it are statically defined data.
+		return IsStaticallyDefinedLocal(value.X) && IsStaticallyDefinedLocal(value.Index)
+	default:
+		// By default, consider it non-static
+		return false
+	}
+}
+
+// isStaticallyDefinedAlloc recognizes patterns of allocation that are static. Those are often generated during the SSA
+// translation of static var allocations in the code, where slices must be constructed by adding all elements
+// individually.
+func isStaticallyDefinedAlloc(alloc *ssa.Alloc) bool {
+	if ptrTy, isPtrTy := alloc.Type().(*types.Pointer); isPtrTy {
+		switch ptrTy.Elem().(type) {
+		case *types.Array:
+			// Check all referrers that take references and then store data are storing static data
+			for _, referrer := range *alloc.Referrers() {
+				if isRefTakingReferrer(referrer) && !getsStaticData(referrer) {
+					return false
+				}
+			}
+			// All referrers have been checked
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+func isRefTakingReferrer(instr ssa.Instruction) bool {
+	switch instr.(type) {
+	case *ssa.IndexAddr: // taking the address of the index to store sth
+		return true
+	case *ssa.Index: // taking the index only for reading the value
+		return false
+	default:
+		return true // to be safe, so that we check stores in it
+	}
+}
+
+func getsStaticData(instr ssa.Instruction) bool {
+	asVal, isVal := instr.(ssa.Value)
+	if !isVal {
+		return false
+	}
+	for _, referrer := range *asVal.Referrers() {
+		if storeInstr, isStore := referrer.(*ssa.Store); isStore {
+			if !IsStaticallyDefinedLocal(storeInstr.Val) {
+				return false
+			}
+		}
+	}
+	return true
 }

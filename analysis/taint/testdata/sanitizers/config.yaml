@@ -17,3 +17,4 @@ dataflow-problems:
       sanitizers:
         - package: "(sanitizers)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
           method: ".*(s|S)anitize[1-9]?"
+        - method: "^len$" # len can also work as sanitizer: just don't put a package

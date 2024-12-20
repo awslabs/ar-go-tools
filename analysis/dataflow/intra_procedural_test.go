@@ -520,14 +520,14 @@ func TestFunctionSummaries(t *testing.T) {
 			for _, callee := range summary.Callees {
 				for _, call := range callee {
 					if call.FuncName() == "Source" {
-						hasIf := false
+						flowsToLen := false
 						for out := range call.Out() {
-							if _, ok := out.(*dataflow.IfNode); ok {
-								hasIf = true
+							if _, ok := out.(*dataflow.BuiltinCallNode); ok {
+								flowsToLen = true
 							}
 						}
-						if !hasIf {
-							t.Errorf("in ImplicitFlow, a call to Source() outgoing edge should be an if node")
+						if !flowsToLen {
+							t.Errorf("in ImplicitFlow, a call to Source() outgoing edge should be a bultin")
 						}
 					}
 				}
@@ -536,12 +536,12 @@ func TestFunctionSummaries(t *testing.T) {
 			for _, ifn := range summary.Ifs {
 				hasCallNodeIn := false
 				for in := range ifn.In() {
-					if call, ok := in.(*dataflow.CallNode); ok {
-						hasCallNodeIn = call.FuncName() == "Source"
+					if call, ok := in.(*dataflow.BuiltinCallNode); ok {
+						hasCallNodeIn = call.FuncName() == "len"
 					}
 				}
 				if !hasCallNodeIn {
-					t.Errorf("in ImplicitFlow, an if incoming edge should be a call to Source()")
+					t.Errorf("in ImplicitFlow, an if incoming edge should be a call to len")
 				}
 
 				if len(ifn.Out()) != 0 {

@@ -16,8 +16,10 @@ package backtrace_test
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -68,6 +70,47 @@ func TestAnalyze_OnDemand(t *testing.T) {
 	testAnalyze(t, lp)
 }
 
+// TestAnalyze_MaxDepth tests that the unsafe-max-depth config option results in
+// an error if the max depth is exceeded while computing a trace.
+func TestAnalyze_MaxDepth(t *testing.T) {
+	dir := filepath.Join("./testdata", "max-depth")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp, true)
+
+	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	backtrace.Analyze(state, backtrace.AnalysisReqs{})
+
+	errMap := state.Report.Errors.ErrorMap
+	if len(errMap) != 1 {
+		t.Fatalf("expected only one error type, got: %v", errMap)
+	}
+
+	found := false
+	for key, errs := range errMap {
+		if len(errs) != 1 {
+			t.Errorf("expected only one error for key %v, got %v", key, errs)
+			continue
+		}
+
+		for _, err := range errs {
+			if errors.Is(err, backtrace.ErrMaxDepth) {
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		t.Fatalf("expected ErrMaxDepth in backtrace errors: %v", errMap)
+	}
+}
+
 var ignoreMatch = match{-1, nil, -1}
 
 func testAnalyze(t *testing.T, lp *loadprogram.State) {
@@ -75,7 +118,7 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state)
+	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +429,7 @@ func testAnalyzeClosures(t *testing.T, lp *loadprogram.State) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state)
+	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,16 +572,22 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state)
+	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(res.Traces) != 1 {
 		t.Fatalf("expected a single entry point with a trace for check_static")
 	}
+	expected := regexp.MustCompile("Int.return.0.*math/rand/rand.go")
 	for _, traces := range res.Traces {
-		if len(traces) != 1 {
-			t.Fatalf("expected a single trace for check_static")
+		if len(traces) != 2 {
+			t.Fatalf("expected two traces for the entry point for check_static")
+		}
+		for _, trace := range traces {
+			if !expected.MatchString(trace[0].String()) {
+				t.Fatalf("Origin %s of trace doesn't match the expected %s", trace[0], expected)
+			}
 		}
 	}
 }
@@ -656,14 +705,14 @@ func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
 // The following code is copied from taint_utils_test.go
 
 func setupConfig(lp *loadprogram.State, summarizeOnDemand bool) {
-	logLevel := config.ErrLevel // change this as needed for debugging
-	lp.Logger.Level = logLevel
+	level := config.ErrLevel // change this as needed for debugging
+	lp.Logger.Level = level
 
 	cfg := lp.Config
 	cfg.Options.ReportCoverage = false
 	cfg.Options.ReportPaths = false
 	cfg.Options.ReportSummaries = false
 	cfg.Options.ReportsDir = ""
-	cfg.LogLevel = int(logLevel)
+	cfg.LogLevel = int(level)
 	cfg.SummarizeOnDemand = summarizeOnDemand
 }

@@ -152,6 +152,8 @@ func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n GraphNode
 		return IsMatchingCodeIDWithCallee(codeIDOracle, callSite.CalleeSummary.Parent, param.Parent())
 	case *CallNode:
 		return IsMatchingCodeIDWithCallee(codeIDOracle, n.Callee(), n.CallSite().(ssa.Node))
+	case *BuiltinCallNode:
+		return codeIDOracle(config.CodeIdentifier{Context: n.parent.Parent.String(), Method: n.name})
 	case *SyntheticNode:
 		return analysisutil.IsEntrypointNode(nil, n.Instr().(ssa.Node), codeIDOracle)
 	case *ReturnValNode, *ClosureNode, *BoundVarNode:

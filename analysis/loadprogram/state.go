@@ -179,6 +179,10 @@ func (wps *State) TestAlarmCount() bool {
 func allAstFiles(dirs []string, fset *token.FileSet, pkgs []*packages.Package) ([]*ast.File, error) {
 	var files []*ast.File
 
+	// HACK Ideally, this loop shouldn't be necessary but sometimes
+	// analysisutil.VisitPackages will miss some AST files.
+	// Hopefully there's a better way to get all the AST files in the program
+	// without needing to parse it twice.
 	for _, dir := range dirs {
 		if err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
 			if err != nil {
@@ -186,6 +190,7 @@ func allAstFiles(dirs []string, fset *token.FileSet, pkgs []*packages.Package) (
 			}
 
 			if info.IsDir() {
+				// Parse all files in the directory, making sure to include comments
 				parsedDir, err := parser.ParseDir(fset, path, nil, parser.ParseComments)
 				if err != nil {
 					return fmt.Errorf("failed to parse dir %s: %v", path, err)
@@ -200,7 +205,7 @@ func allAstFiles(dirs []string, fset *token.FileSet, pkgs []*packages.Package) (
 
 			return nil
 		}); err != nil {
-			return nil, fmt.Errorf("failed to parse AST: %v", err)
+			return nil, fmt.Errorf("failed to parse AST files: %v", err)
 		}
 	}
 

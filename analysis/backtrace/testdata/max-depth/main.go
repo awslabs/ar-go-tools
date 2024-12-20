@@ -12,7 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package analysis
+package main
 
-// Version is the last tagged version of the analysis tool
-const Version = "v0.3.5-alpha"
+import (
+	"os/exec"
+)
+
+func main() {
+	source := getSource()
+	cmd := exec.Command(source)
+	cmd.Run()
+}
+
+func getSource() string {
+	return f() + " "
+}
+
+func f() string {
+	return g() + " "
+}
+
+func g() string {
+	return h() + "s"
+}
+
+func h() string {
+	return "l"
+}
