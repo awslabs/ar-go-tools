@@ -42,6 +42,8 @@ const (
 	Sanitizer
 	// SetOptions is the kind of SetOptions(...) annotations
 	SetOptions
+	// BacktracePoint is the kind of BacktracePoint(...) annotations
+	BacktracePoint
 	// Ignore is an empty annotation for a line
 	Ignore
 )
@@ -76,11 +78,15 @@ var sanitizerRegex = regexp.MustCompile(`.*Sanitizer\(((?:\s*[\w\-]+\s*,?)+)\)`)
 // setOptionsRegex matches annotations of the form @Sanitizer(id1, id2, id3)"
 var setOptionsRegex = regexp.MustCompile(`.*SetOptions\(((?:\s*[\w\-]+=[\w\-]+\s*,?)+)\)`)
 
+// backtraceRegex matches annotations of the form @BacktracePoint(id1, id2, id3)"
+var backtraceRegex = regexp.MustCompile(`.*BacktracePoint\(((?:\s*[\w\-]+\s*,?)+)\)`)
+
 var annotationKindParsers = map[AnnotationKind]*regexp.Regexp{
 	Sink:       sinkRegex,
 	Source:     sourceRegex,
 	Sanitizer:  sanitizerRegex,
 	SetOptions: setOptionsRegex,
+	BacktracePoint: backtraceRegex,
 }
 
 // Annotation contains the parsed content from an annotation component: the kind of the annotation and its arguments
