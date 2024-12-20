@@ -239,8 +239,12 @@ var summaryContainer = map[string]Summary{}
 var summaryContext = map[string]Summary{}
 
 var summaryCrypto = map[string]Summary{
-	"crypto/aes.NewCipher":             SingleVarArgPropagation,
-	"crypto/cipher.NewGCM":             SingleVarArgPropagation,
+	"crypto/aes.NewCipher": SingleVarArgPropagation,
+	"crypto/cipher.NewGCM": SingleVarArgPropagation,
+	// func (cipher.AEAD) Seal(dst []byte, nonce []byte, plaintext []byte, additionalData []byte) []byte
+	"(crypto/cipher.AEAD).Seal":        SingleVarArgPropagation,
+	"(*crypto/cipher.gcm).Seal":        SingleVarArgPropagation,
+	"(*crypto/aes.gcmAsm).Seal":        SingleVarArgPropagation,
 	"crypto/hmac.New":                  TwoArgPropagation,
 	"(*crypto/hmac.hmac).Sum":          SingleVarArgPropagation,
 	"crypto/sha256.New":                SingleVarArgPropagation,
