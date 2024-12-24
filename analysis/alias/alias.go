@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/immutability"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
@@ -58,13 +57,8 @@ func Analyze(state *ptr.State) ([]AnalysisResult, error) {
 	cfg := state.Config
 	log := config.NewLogGroup(cfg)
 
-	reachable := state.ReachableFunctions()
 	var errs []error
-	ac := &immutability.AliasCache{
-		State:          state,
-		ReachableFuncs: reachable,
-		ObjectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}),
-	}
+	ac := ptr.NewAliasCache(state)
 	// HACK reuse the existing immutability specs to get the entrypoints
 	for _, spec := range cfg.ImmutabilityProblems {
 		res, err := analyze(log, ac, spec)
@@ -81,7 +75,7 @@ func Analyze(state *ptr.State) ([]AnalysisResult, error) {
 
 // analyze runs the analysis for a single spec and returns a list of results
 // with the aliased arguments.
-func analyze(log *config.LogGroup, ac *immutability.AliasCache, spec config.ImmutabilitySpec) ([]AnalysisResult, error) {
+func analyze(log *config.LogGroup, ac *ptr.AliasCache, spec config.ImmutabilitySpec) ([]AnalysisResult, error) {
 	var errs []error
 	entrypoints := findEntrypoints(ac, spec)
 	if len(entrypoints) == 0 {
@@ -137,9 +131,9 @@ func analyze(log *config.LogGroup, ac *immutability.AliasCache, spec config.Immu
 }
 
 // findEntrypoints returns all the analysis entrypoints specified by spec.
-func findEntrypoints(ac *immutability.AliasCache, spec config.ImmutabilitySpec) []Entrypoint {
+func findEntrypoints(ac *ptr.AliasCache, spec config.ImmutabilitySpec) []Entrypoint {
 	var entrypoints []Entrypoint
-	for fn, node := range ac.State.PointerAnalysis.CallGraph.Nodes {
+	for fn, node := range ac.PtrState.PointerAnalysis.CallGraph.Nodes {
 		if fn == nil {
 			continue
 		}
@@ -164,14 +158,14 @@ func findEntrypoints(ac *immutability.AliasCache, spec config.ImmutabilitySpec) 
 	return entrypoints
 }
 
-func findEntrypoint(ac *immutability.AliasCache, spec config.ImmutabilitySpec, call *ssa.Call) (Entrypoint, bool) {
+func findEntrypoint(ac *ptr.AliasCache, spec config.ImmutabilitySpec, call *ssa.Call) (Entrypoint, bool) {
 	// use analysisutil entrypoint logic to take care of function aliases and
 	// other edge-cases
-	if !analysisutil.IsEntrypointNode(ac.State.PointerAnalysis, call, spec.IsValue) {
+	if !analysisutil.IsEntrypointNode(ac.PtrState.PointerAnalysis, call, spec.IsValue) {
 		return Entrypoint{}, false
 	}
 
-	callPos := ac.State.Program.Fset.Position(call.Pos())
+	callPos := ac.PtrState.Program.Fset.Position(call.Pos())
 	for _, cid := range spec.Values {
 		args := lang.GetArgs(call)
 		val := args[0]

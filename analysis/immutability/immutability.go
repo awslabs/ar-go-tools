@@ -20,11 +20,13 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"strconv"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/container/intsets"
@@ -61,19 +63,6 @@ type Entrypoint struct {
 	Pos token.Position
 }
 
-// Write is an instruction that writes to an entrypoint's underlying memory.
-type Write struct {
-	Instr
-	Target ssa.Value // Target is the value written to.
-	Value  ssa.Value // Value is the value that is written.
-}
-
-// Read is an instruction that reads from an entrypoint's underlying memory.
-type Read struct {
-	Instr
-	Values []ssa.Value // Values are the values that are read from.
-}
-
 // Alloc is an instruction that allocates memory that may alias memory that an
 // entrypoint points to.
 type Alloc struct {
@@ -83,8 +72,8 @@ type Alloc struct {
 
 // Modifications represents the instructions that can modify an entrypoint.
 type Modifications struct {
-	Writes []Write
-	Reads  []Read
+	Writes []ptr.Write
+	Reads  []ptr.Read
 	Allocs []Alloc
 }
 
@@ -119,12 +108,7 @@ func Analyze(state *ptr.State) (AnalysisResult, error) {
 		return AnalysisResult{}, fmt.Errorf("no values found in program: %v", prog)
 	}
 
-	ac := &AliasCache{
-		State:          state,
-		ReachableFuncs: reachable,
-		ObjectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}, numVals), // preallocate for speed
-	}
-
+	ac := ptr.NewAliasCache(state)
 	var errs []error
 	for _, spec := range cfg.ImmutabilityProblems {
 		if err := analyze(log, spec, ac, modifications); err != nil {
@@ -140,9 +124,9 @@ func Analyze(state *ptr.State) (AnalysisResult, error) {
 // analyze runs the analysis for a single spec and adds the write instructions to modifications.
 //
 //gocyclo:ignore
-func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, modifications map[Entrypoint]Modifications) error {
+func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *ptr.AliasCache, modifications map[Entrypoint]Modifications) error {
 	var errs []error
-	entrypoints := c.findEntrypoints(spec)
+	entrypoints := findEntrypoints(c, spec)
 	if len(entrypoints) == 0 {
 		return ErrNoEntrypoints
 	}
@@ -188,7 +172,7 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *AliasCache, 
 // state represents the analysis state.
 // This tracks modifications of a single value (entrypoint).
 type state struct {
-	*AliasCache
+	*ptr.AliasCache
 	log  *config.LogGroup
 	spec config.ImmutabilitySpec
 
@@ -198,11 +182,11 @@ type state struct {
 
 	// entryWrites stores the set of instructions that write to memory that an
 	// entrypoint (SSA value) points to.
-	entryWrites []Write
+	entryWrites []ptr.Write
 
 	// entryReads stores the set of instructions that read from memory that an
 	// entrypoint (SSA value) points to.
-	entryReads []Read
+	entryReads []ptr.Read
 
 	// entryAllocs stores the set of instructions that allocate memory that
 	// aliases an entrypoint.
@@ -213,24 +197,24 @@ type state struct {
 	entryPointsToSet *intsets.Sparse
 }
 
-func newState(c *AliasCache, spec config.ImmutabilitySpec, val ssa.Value) *state {
+func newState(c *ptr.AliasCache, spec config.ImmutabilitySpec, val ssa.Value) *state {
 	fnsToAnalyze := c.ReachableFuncs
-	c.State.Logger.Debugf("\tnumber of functions to analyze: %v\n", len(fnsToAnalyze))
+	c.PtrState.Logger.Debugf("\tnumber of functions to analyze: %v\n", len(fnsToAnalyze))
 	toAnalyze := make(map[*ssa.Function]*funcToAnalyze, len(fnsToAnalyze))
 	numVals := 0
 	for fn := range fnsToAnalyze {
-		af := newFuncToAnalyze(fn, c.State.Program.Fset)
+		af := newFuncToAnalyze(fn, c.PtrState.Program.Fset)
 		toAnalyze[fn] = af
 		numVals += len(af.vals)
 	}
 
 	s := &state{
 		AliasCache:       c,
-		log:              c.State.Logger,
+		log:              c.PtrState.Logger,
 		spec:             spec,
 		entry:            val,
-		entryWrites:      make([]Write, 0, numVals),
-		entryReads:       make([]Read, 0, numVals),
+		entryWrites:      make([]ptr.Write, 0, numVals),
+		entryReads:       make([]ptr.Read, 0, numVals),
 		entryAllocs:      make([]Alloc, 0, numVals),
 		funcsToAnalyze:   toAnalyze,
 		entryPointsToSet: &intsets.Sparse{},
@@ -284,7 +268,7 @@ func (s *state) findModifications() {
 
 func (s *state) findWrites(fna *funcToAnalyze) {
 	for instr := range fna.writeInstrs {
-		write, ok := ptrWrittenTo(instr)
+		write, ok := ptr.PtrWrittenTo(instr.Instruction, instr.Pos)
 		if !ok {
 			continue
 		}
@@ -293,7 +277,7 @@ func (s *state) findWrites(fna *funcToAnalyze) {
 			continue
 		}
 		pos := write.Pos
-		if s.State.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
+		if s.PtrState.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
 			s.log.Tracef("//argot:ignore write at %s", pos)
 			continue
 		}
@@ -310,12 +294,12 @@ func (s *state) findWrites(fna *funcToAnalyze) {
 
 func (s *state) findReads(fna *funcToAnalyze) {
 	for instr := range fna.readInstrs {
-		read, ok := ptrsReadFrom(instr)
+		read, ok := ptr.PtrsReadFrom(instr.Instruction, instr.Pos)
 		if !ok {
 			continue
 		}
 		pos := read.Pos
-		if s.State.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
+		if s.PtrState.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
 			s.log.Tracef("//argot:ignore read at %s", pos)
 			continue
 		}
@@ -355,7 +339,7 @@ func (s *state) findReads(fna *funcToAnalyze) {
 		}
 
 		if len(aliasedReadVals) > 0 {
-			s.entryReads = append(s.entryReads, Read{Instr: read.Instr, Values: aliasedReadVals})
+			s.entryReads = append(s.entryReads, ptr.Read{Instruction: read.Instruction, Values: aliasedReadVals, Pos: read.Pos})
 		}
 	}
 }
@@ -368,7 +352,7 @@ func (s *state) findAllocs(fna *funcToAnalyze) {
 			continue
 		}
 		pos := instr.Pos
-		if s.State.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
+		if s.PtrState.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
 			s.log.Tracef("//argot:ignore alloc at %s", pos)
 			continue
 		}
@@ -388,6 +372,71 @@ func (s *state) findAllocs(fna *funcToAnalyze) {
 // according to the spec.
 func (s *state) shouldFilterValue(val ssa.Value) bool {
 	return val == nil || doesConfigFilterVal(s.spec, val) || doesConfigFilterFn(s.spec, val.Parent())
+}
+
+// findEntrypoints returns all the analysis entrypoints specified by spec.
+func findEntrypoints(ac *ptr.AliasCache, spec config.ImmutabilitySpec) map[Entrypoint]struct{} {
+	entrypoints := make(map[Entrypoint]struct{})
+	for fn, node := range ac.PtrState.PointerAnalysis.CallGraph.Nodes {
+		if fn == nil {
+			continue
+		}
+		if _, ok := ac.ReachableFuncs[fn]; !ok {
+			continue
+		}
+
+		for _, inEdge := range node.In {
+			if inEdge == nil || inEdge.Site == nil {
+				continue
+			}
+
+			entry, ok := findEntrypoint(ac, spec, inEdge.Site.Value())
+			if !ok {
+				continue
+			}
+
+			entrypoints[entry] = struct{}{}
+		}
+	}
+
+	return entrypoints
+}
+
+func findEntrypoint(ac *ptr.AliasCache, spec config.ImmutabilitySpec, call *ssa.Call) (Entrypoint, bool) {
+	// use analysisutil entrypoint logic to take care of function aliases and
+	// other edge-cases
+	if !analysisutil.IsEntrypointNode(ac.PtrState.PointerAnalysis, call, spec.IsValue) {
+		return Entrypoint{}, false
+	}
+
+	callPos := ac.PtrState.Program.Fset.Position(call.Pos())
+	for _, cid := range spec.Values {
+		// TODO parse context beforehand to prevent panics
+		idx, err := strconv.Atoi(cid.Context)
+		if err != nil {
+			err := fmt.Errorf("cid context is not a valid argument index: %v", err)
+			panic(err)
+		}
+		if idx < 0 {
+			err := fmt.Errorf("cid context is not a valid argument index: %v < 0", idx)
+			panic(err)
+		}
+
+		args := lang.GetArgs(call)
+		if len(args) < idx {
+			fmt.Printf("arg index: %v < want %v\n", len(args), idx)
+			return Entrypoint{}, false
+		}
+
+		val := args[idx]
+		if cid.Type != "" && !cid.MatchType(val.Type()) {
+			continue
+		}
+
+		return Entrypoint{Val: val, Call: call, Pos: callPos}, true
+	}
+
+	return Entrypoint{}, false
 }
 
 type funcToAnalyze struct {
@@ -463,144 +512,6 @@ func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
 		}
 		vals[val] = struct{}{}
 	})
-}
-
-// ptrWrittenTo returns true if instruction writes a scalar value to a pointer
-// value.
-func ptrWrittenTo(instruction Instr) (Write, bool) {
-	var lval ssa.Value
-	var rval ssa.Value
-	instr := instruction.Instruction
-	switch instr := instr.(type) {
-	case *ssa.Store:
-		lval = instr.Addr
-		rval = instr.Val
-	case *ssa.MapUpdate:
-		lval = instr.Map
-		rval = instr.Value
-	case *ssa.Send:
-		lval = instr.Chan
-		rval = instr.X
-	default:
-		panic(fmt.Errorf("invalid write instruction: %v (%T)", instr, instr))
-	}
-
-	if instr.Parent() == nil {
-		return Write{}, false
-	}
-	pkg := instr.Parent().Pkg
-	// we assume that errors are never used as pointer values
-	if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
-		return Write{}, false
-	}
-
-	if !pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
-		return Write{Instr: instruction, Target: lval, Value: rval}, true
-	}
-
-	// calls to append builtin function modify
-	if call, ok := rval.(*ssa.Call); ok {
-		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
-			if builtin.Object().Name() == "append" && !pointer.CanPoint(rval.Type()) {
-				return Write{Instr: instruction, Target: lval, Value: rval}, true
-			}
-		}
-	}
-
-	return Write{}, false
-}
-
-// ptrsReadFrom returns a read instruction containing all the pointer values
-// read from instruction.
-//
-//gocyclo:ignore
-func ptrsReadFrom(instruction Instr) (Read, bool) {
-	var rvals []ssa.Value
-	add := func(vs ...ssa.Value) {
-		for _, v := range vs {
-			if v == nil {
-				continue
-			}
-
-			if pointer.CanPoint(v.Type()) {
-				rvals = append(rvals, v)
-			}
-		}
-	}
-
-	instr := instruction.Instruction
-	switch instr := instr.(type) {
-	case *ssa.BinOp:
-		add(instr.X, instr.Y)
-	case *ssa.Call:
-		add(instr.Call.Args...)
-	case *ssa.ChangeInterface:
-		add(instr.X)
-	case *ssa.ChangeType:
-		add(instr.X)
-	case *ssa.Convert:
-		add(instr.X)
-	case *ssa.Extract:
-		add(instr.Tuple)
-	case *ssa.Field:
-		add(instr.X)
-	case *ssa.FieldAddr:
-		add(instr.X)
-	case *ssa.Go:
-		add(instr.Call.Args...)
-	case *ssa.If:
-		add(instr.Cond)
-	case *ssa.Index:
-		add(instr.X, instr.Index)
-	case *ssa.IndexAddr:
-		add(instr.X, instr.Index)
-	case *ssa.Lookup:
-		add(instr.X, instr.Index)
-	case *ssa.MakeChan:
-		add(instr.Size)
-	case *ssa.MakeClosure:
-		add(instr.Bindings...)
-	case *ssa.MakeInterface:
-		add(instr.X)
-	case *ssa.MakeMap:
-		add(instr.Reserve)
-	case *ssa.MakeSlice:
-		add(instr.Len, instr.Cap)
-	case *ssa.MapUpdate:
-		add(instr.Key, instr.Value) // map isn't read from
-	case *ssa.MultiConvert:
-		add(instr.X)
-	case *ssa.Next:
-		add(instr.Iter)
-	case *ssa.Panic:
-		add(instr.X)
-	case *ssa.Phi:
-		add(instr.Edges...)
-	case *ssa.Return:
-		add(instr.Results...)
-	case *ssa.Select:
-		for _, state := range instr.States {
-			add(state.Chan, state.Send)
-		}
-	case *ssa.Send:
-		add(instr.X) // channel isn't read from
-	case *ssa.Slice:
-		add(instr.X, instr.Low, instr.High, instr.Max)
-	case *ssa.SliceToArrayPointer:
-		add(instr.X)
-	case *ssa.Store:
-		add(instr.Val) // address written to isn't read from
-	case *ssa.TypeAssert:
-		add(instr.X)
-	case *ssa.UnOp:
-		add(instr.X)
-	}
-
-	if len(rvals) == 0 {
-		return Read{Instr: instruction, Values: nil}, false
-	}
-
-	return Read{Instr: instruction, Values: rvals}, true
 }
 
 // ReportResults writes res to a string and returns true if the analysis should fail.

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package immutability implements the front-end to the immutability analysis.
-package immutability
+// Package passthru implements the front-end to the Diodon pass-through analysis
+package passthru
 
 import (
 	"fmt"
@@ -21,8 +21,8 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/immutability"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/passthru"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -31,9 +31,9 @@ import (
 )
 
 // Usage for CLI
-const Usage = `Perform an immutability analysis on your packages.
+const Usage = `Perform the Diodon pass-through analysis on your packages.
 Usage:
-  argot immutability [options] <package path(s)>`
+  argot diodon-passthru [options] <package path(s)>`
 
 // Run runs the analysis on flags.
 func Run(flags tools.CommonFlags) error {
@@ -42,7 +42,7 @@ func Run(flags tools.CommonFlags) error {
 		return fmt.Errorf("failed to load config file: %v", err)
 	}
 	logger := config.NewLogGroup(cfg)
-	logger.Infof(formatutil.Faint("Argot immutability tool - " + analysis.Version))
+	logger.Infof(formatutil.Faint("Argot Diodon pass-through tool - " + analysis.Version))
 
 	// Override config parameters with command-line parameters
 	if flags.Verbose {
@@ -66,10 +66,10 @@ func Run(flags tools.CommonFlags) error {
 		CmdlineArgs: flags.FlagSet.Args(),
 		Tag:         flags.Tag,
 		Targets:     flags.Targets,
-		Tool:        config.ImmutabilityTool,
+		Tool:        config.PassThruTool,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get immutability targets: %s", err)
+		return fmt.Errorf("failed to get pass-through targets: %s", err)
 	}
 	for targetName, targetFiles := range actualTargets {
 		report, err := runTarget(cfg, targetName, targetFiles, flags)
@@ -105,15 +105,15 @@ func runTarget(
 	if err != nil {
 		return nil, fmt.Errorf("failed to load target: %v", err)
 	}
-	c.Logger.Infof("starting immutability analysis...\n")
-	res, err := immutability.Analyze(state)
+	c.Logger.Infof("starting pass-through analysis...\n")
+	res, err := passthru.Analyze(state)
 	if err != nil {
-		return nil, fmt.Errorf("immutability analysis error: %v", err)
+		return nil, fmt.Errorf("pass-through analysis error: %v", err)
 	}
-	s, failed := immutability.ReportResults(res)
+	s, failed := passthru.ReportResults(res)
 	c.Logger.Infof(s)
 	if failed {
-		return state.Report, fmt.Errorf("immutability analysis found problems, inspect logs for more information")
+		return state.Report, fmt.Errorf("diodon pass-through analysis found problems, inspect logs for more information")
 	}
 	return state.Report, nil
 }

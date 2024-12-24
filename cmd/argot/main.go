@@ -30,6 +30,7 @@ import (
 	"github.com/awslabs/ar-go-tools/cmd/argot/immutability"
 	"github.com/awslabs/ar-go-tools/cmd/argot/maypanic"
 	"github.com/awslabs/ar-go-tools/cmd/argot/packagescan"
+	"github.com/awslabs/ar-go-tools/cmd/argot/passthru"
 	"github.com/awslabs/ar-go-tools/cmd/argot/reachability"
 	"github.com/awslabs/ar-go-tools/cmd/argot/render"
 	"github.com/awslabs/ar-go-tools/cmd/argot/statistics"
@@ -156,6 +157,14 @@ func main() {
 			errExit(err)
 		}
 		if err := packagescan.Run(flags); err != nil {
+			errExit(err)
+		}
+	case config.PassThruTool:
+		flags, err := tools.NewCommonFlags(config.PassThruTool, args, passthru.Usage)
+		if err != nil {
+			errExit(err)
+		}
+		if err := passthru.Run(flags); err != nil {
 			errExit(err)
 		}
 	case config.ReachabilityTool:

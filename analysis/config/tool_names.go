@@ -38,6 +38,8 @@ const (
 	MayPanicTool ToolName = "maypanic"
 	// PackageScanTool name
 	PackageScanTool ToolName = "packagescan"
+	// PassThruTool name
+	PassThruTool ToolName = "diodon-passthru"
 	// ReachabilityTool name
 	ReachabilityTool ToolName = "reachability"
 	// RenderTool name

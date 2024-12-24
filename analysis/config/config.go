@@ -124,6 +124,9 @@ type Config struct {
 	// ImmutabilityProblems lists the immutability analysis problems.
 	ImmutabilityProblems []ImmutabilitySpec `yaml:"immutability-problems" json:"immutability-problems"`
 
+	// DiodonPassThroughProblems lists the Diodon pass-through analysis problems.
+	DiodonPassThroughProblems []DiodonPassThroughSpec `yaml:"diodon-pass-through-problems" json:"diodon-pass-through-problems"`
+
 	// PointerConfig contains the pointer-analysis specific configuration parameters
 	PointerConfig *PointerConfig `yaml:"pointer-config" json:"pointer-config"`
 
@@ -219,6 +222,51 @@ func (s ImmutabilitySpec) SpecTargets() []string {
 
 // SpecSeverity returns the specification's severity
 func (s ImmutabilitySpec) SpecSeverity() Severity {
+	return s.Severity
+}
+
+// DiodonPassThroughSpec contains code identifiers for the Diodon pass-through analysis.
+type DiodonPassThroughSpec struct {
+	// Tag is the identifier of the problem
+	Tag string
+	// Severity is the severity of the finding
+	Severity Severity
+	// Description is a human-readable description of the problem
+	Description string
+	// Targets are the targets of the analysis
+	Targets []string
+
+	// CoreApiFunctions is the list of identifiers representing which functions
+	// are part of the Core API.
+	CoreApiFunctions []CodeIdentifier `yaml:"core-api-functions" json:"core-api-functions"`
+
+	// Filters contains a list of filters that prevents some identifiers from being analyzed.
+	Filters []CodeIdentifier
+}
+
+// IsValue returns true if the code identifier cid matches a value according to spec s.
+// Ignores the context field because its meaning is overloaded in the immutability analysis.
+func (s DiodonPassThroughSpec) IsValue(cid CodeIdentifier) bool {
+	cid.Context = ""
+	vals := funcutil.Map(s.CoreApiFunctions, func(cid CodeIdentifier) CodeIdentifier {
+		cid.Context = ""
+		return cid
+	})
+	return ExistsCid(vals, cid.equalOnNonEmptyFields)
+}
+
+// SpecTag returns the specification's tag
+func (s DiodonPassThroughSpec) SpecTag() string {
+	return s.Tag
+}
+
+// SpecTargets returns the specification's targets
+func (s DiodonPassThroughSpec) SpecTargets() []string {
+	return s.Targets
+}
+
+// SpecSeverity returns the specification's severity
+func (s DiodonPassThroughSpec) SpecSeverity() Severity {
 	return s.Severity
 }
 
@@ -538,6 +586,11 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	for _, sSpec := range cfg.DataflowProblems.SlicingProblems {
 		funcutil.MapInPlace(sSpec.BacktracePoints, compileRegexes)
 		funcutil.MapInPlace(sSpec.Filters, compileRegexes)
+	}
+
+	for _, spec := range cfg.DiodonPassThroughProblems {
+		funcutil.MapInPlace(spec.CoreApiFunctions, compileRegexes)
+		funcutil.MapInPlace(spec.Filters, compileRegexes)
 	}
 
 	for _, spec := range cfg.ImmutabilityProblems {

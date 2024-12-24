@@ -16,6 +16,7 @@ package ptr
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"time"
 
@@ -74,6 +75,69 @@ func (s *State) ReachableFunctions() map[*ssa.Function]bool {
 		return s.reachableFunctions
 	}
 	return s.reachableFunctions
+}
+
+// AliasCache represents a "global" cache for transitive pointers and aliases.
+//
+// The analysis only searches for pointers and aliases that are reachable from a
+// single entrypoint, but this cache helps if there are multiple entrypoints
+// that need alias information computed from previous entrypoints.
+type AliasCache struct {
+	PtrState       *State
+	ReachableFuncs map[*ssa.Function]bool
+	ObjectPointees map[ssa.Value]map[*pointer.Object]struct{}
+}
+
+// NewAliasCache returns an empty alias cache from state.
+func NewAliasCache(state *State) *AliasCache {
+	return &AliasCache{
+		PtrState:       state,
+		ReachableFuncs: state.ReachableFunctions(),
+		ObjectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}),
+	}
+}
+
+// Objects returns all the unique Objects that val points to.
+func (ac *AliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
+	if mi, ok := val.(*ssa.MakeInterface); ok {
+		// if val is an interface, the object is the concrete struct
+		val = mi.X
+	}
+	if res, ok := ac.ObjectPointees[val]; ok && len(res) > 0 {
+		return res
+	}
+
+	ptrs := findAllPointers(ac.PtrState.PointerAnalysis, val)
+	if len(ptrs) == 0 {
+		return nil
+	}
+
+	res := make(map[*pointer.Object]struct{}, len(ptrs))
+	for _, ptr := range ptrs {
+		for _, label := range ptr.PointsTo().Labels() {
+			obj := label.Obj()
+			if obj == nil {
+				continue
+			}
+			res[obj] = struct{}{}
+		}
+	}
+
+	ac.ObjectPointees[val] = res
+	return res
+}
+
+// findAllPointers returns all the pointers that point to v.
+func findAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
+	var allptr []pointer.Pointer
+	if ptr, ptrExists := res.Queries[v]; ptrExists {
+		allptr = append(allptr, ptr)
+	}
+	// By indirect query
+	if ptr, ptrExists := res.IndirectQueries[v]; ptrExists {
+		allptr = append(allptr, ptr)
+	}
+	return allptr
 }
 
 // DoPointerAnalysis runs the pointer analysis on the program p, marking every Value in the functions filtered by
@@ -178,4 +242,163 @@ func indirectQuery(cfg *pointer.Config, typ types.Type, val ssa.Value) {
 			}
 		}
 	}
+}
+
+// Write is an instruction that writes to an entrypoint's underlying memory.
+type Write struct {
+	ssa.Instruction
+	Target ssa.Value // Target is the value written to.
+	Value  ssa.Value // Value is the value that is written.
+	Pos    token.Position
+}
+
+func (w Write) String() string {
+	return fmt.Sprintf("write to %v with %v at %v", w.Target, w.Value, w.Pos)
+}
+
+// Read is an instruction that reads from an entrypoint's underlying memory.
+type Read struct {
+	ssa.Instruction
+	Values []ssa.Value // Values are the values that are read from.
+	Pos    token.Position
+}
+
+func (r Read) String() string {
+	return fmt.Sprintf("read of %v at %v", r.Values, r.Pos)
+}
+
+// PtrWrittenTo returns true if instruction writes a scalar value to a pointer
+// value.
+func PtrWrittenTo(instr ssa.Instruction, pos token.Position) (Write, bool) {
+	var lval ssa.Value
+	var rval ssa.Value
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		lval = instr.Addr
+		rval = instr.Val
+	case *ssa.MapUpdate:
+		lval = instr.Map
+		rval = instr.Value
+	case *ssa.Send:
+		lval = instr.Chan
+		rval = instr.X
+	default:
+		return Write{}, false
+	}
+
+	if instr.Parent() == nil {
+		return Write{}, false
+	}
+	pkg := instr.Parent().Pkg
+	// we assume that errors are never used as pointer values
+	if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
+		return Write{}, false
+	}
+
+	if !pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
+		return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
+	}
+
+	// calls to append builtin function modify
+	if call, ok := rval.(*ssa.Call); ok {
+		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
+			if builtin.Object().Name() == "append" && !pointer.CanPoint(rval.Type()) {
+				return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
+			}
+		}
+	}
+
+	return Write{}, false
+}
+
+// PtrsReadFrom returns a read instruction containing all the pointer values
+// read from instruction.
+//
+//gocyclo:ignore
+func PtrsReadFrom(instr ssa.Instruction, pos token.Position) (Read, bool) {
+	var rvals []ssa.Value
+	add := func(vs ...ssa.Value) {
+		for _, v := range vs {
+			if v == nil {
+				continue
+			}
+
+			if pointer.CanPoint(v.Type()) {
+				rvals = append(rvals, v)
+			}
+		}
+	}
+
+	switch instr := instr.(type) {
+	case *ssa.BinOp:
+		add(instr.X, instr.Y)
+	case *ssa.Call:
+		add(instr.Call.Args...)
+	case *ssa.ChangeInterface:
+		add(instr.X)
+	case *ssa.ChangeType:
+		add(instr.X)
+	case *ssa.Convert:
+		add(instr.X)
+	case *ssa.Extract:
+		add(instr.Tuple)
+	case *ssa.Field:
+		add(instr.X)
+	case *ssa.FieldAddr:
+		add(instr.X)
+	case *ssa.Go:
+		add(instr.Call.Args...)
+	case *ssa.If:
+		add(instr.Cond)
+	case *ssa.Index:
+		add(instr.X, instr.Index)
+	case *ssa.IndexAddr:
+		add(instr.X, instr.Index)
+	case *ssa.Lookup:
+		add(instr.X, instr.Index)
+	case *ssa.MakeChan:
+		add(instr.Size)
+	case *ssa.MakeClosure:
+		add(instr.Bindings...)
+	case *ssa.MakeInterface:
+		add(instr.X)
+	case *ssa.MakeMap:
+		add(instr.Reserve)
+	case *ssa.MakeSlice:
+		add(instr.Len, instr.Cap)
+	case *ssa.MapUpdate:
+		add(instr.Key, instr.Value) // map isn't read from
+	case *ssa.MultiConvert:
+		add(instr.X)
+	case *ssa.Next:
+		add(instr.Iter)
+	case *ssa.Panic:
+		add(instr.X)
+	case *ssa.Phi:
+		add(instr.Edges...)
+	case *ssa.Return:
+		add(instr.Results...)
+	case *ssa.Select:
+		for _, state := range instr.States {
+			add(state.Chan, state.Send)
+		}
+	case *ssa.Send:
+		add(instr.X) // channel isn't read from
+	case *ssa.Slice:
+		add(instr.X, instr.Low, instr.High, instr.Max)
+	case *ssa.SliceToArrayPointer:
+		add(instr.X)
+	case *ssa.Store:
+		add(instr.Val) // address written to isn't read from
+	case *ssa.TypeAssert:
+		add(instr.X)
+	case *ssa.UnOp:
+		add(instr.X)
+	}
+
+	if len(rvals) == 0 {
+		return Read{Instruction: instr, Values: nil, Pos: pos}, false
+	}
+
+	return Read{Instruction: instr, Values: rvals, Pos: pos}, true
 }
