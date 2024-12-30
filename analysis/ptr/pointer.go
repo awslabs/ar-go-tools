@@ -311,6 +311,50 @@ func PtrWrittenTo(instr ssa.Instruction, pos token.Position) (Write, bool) {
 	return Write{}, false
 }
 
+// PtrWrittenToPtr returns true if instruction writes a pointer value to a pointer
+// value.
+func PtrWrittenToPtr(instr ssa.Instruction, pos token.Position) (Write, bool) {
+	var lval ssa.Value
+	var rval ssa.Value
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		lval = instr.Addr
+		rval = instr.Val
+	case *ssa.MapUpdate:
+		lval = instr.Map
+		rval = instr.Value
+	case *ssa.Send:
+		lval = instr.Chan
+		rval = instr.X
+	default:
+		return Write{}, false
+	}
+
+	if instr.Parent() == nil {
+		return Write{}, false
+	}
+	pkg := instr.Parent().Pkg
+	// we assume that errors are never used as pointer values
+	if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
+		return Write{}, false
+	}
+
+	if pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
+		return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
+	}
+
+	// calls to append builtin function modify
+	if call, ok := rval.(*ssa.Call); ok {
+		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
+			if builtin.Object().Name() == "append" && pointer.CanPoint(rval.Type()) {
+				return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
+			}
+		}
+	}
+
+	return Write{}, false
+}
+
 // PtrsReadFrom returns a read instruction containing all the pointer values
 // read from instruction.
 //

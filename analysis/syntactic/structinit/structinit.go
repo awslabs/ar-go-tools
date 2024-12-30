@@ -216,11 +216,11 @@ func initInfos(
 	allocs []alloced,
 	specs []config.StructInitSpec) (map[*types.Named]InitInfo, error) {
 	infos := make(map[*types.Named]InitInfo)
-	initialized := make(map[config.CodeIdentifier]bool)
+	initialized := make(map[string]bool)
 
 	for _, alloc := range allocs {
 		for _, spec := range specs {
-			if initialized[spec.Struct] {
+			if initialized[spec.Struct.Type] {
 				continue
 			}
 
@@ -249,7 +249,7 @@ func initInfos(
 			}
 
 			infos[structTyps.named] = info
-			initialized[spec.Struct] = true
+			initialized[spec.Struct.Type] = true
 		}
 	}
 
