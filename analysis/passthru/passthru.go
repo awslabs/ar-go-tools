@@ -65,12 +65,17 @@ type AnalysisResult struct {
 type InvalidAccess struct {
 	ssa.Instruction
 	Pos           token.Position
-	EscapedAllocs map[AccessedCoreAlloc][]Escape
+	EscapedAllocs []EscapedCoreAlloc
 }
 
 func (a InvalidAccess) String() string {
 	return fmt.Sprintf("invalid access in App: %v in %v at %v with %d escaped allocs",
 		a.Instruction, a.Instruction.Parent(), a.Pos, len(a.EscapedAllocs))
+}
+
+type EscapedCoreAlloc struct {
+	AccessedCoreAlloc
+	Escapes []Escape
 }
 
 // AccessedCoreAlloc is a pointer allocated in the Core that is accessed
@@ -91,10 +96,35 @@ func (a AccessedCoreAlloc) String() string {
 type Escape struct {
 	ssa.Value
 	Pos token.Position
+	Ctx EscapeContext
 }
 
 func (e Escape) String() string {
-	return fmt.Sprintf("escape via value %v in %v at %v", e.Value, e.Parent().Name(), e.Pos)
+	return fmt.Sprintf("escape (%v) via value %v in %v at %v", e.Ctx, e.Value, e.Parent().Name(), e.Pos)
+}
+
+type EscapeContext int
+
+const (
+	Write = iota + 1
+	FreeVar
+	Arg
+	Return
+)
+
+func (e EscapeContext) String() string {
+	switch e {
+	case Write:
+		return "write"
+	case FreeVar:
+		return "free var"
+	case Arg:
+		return "arg"
+	case Return:
+		return "return"
+	default:
+		panic(fmt.Errorf("invalid escape context: %v", int(e)))
+	}
 }
 
 // Analyze runs the analysis on all pass through problems specified in the
@@ -137,22 +167,35 @@ func analyze(state *state) []InvalidAccess {
 // heap location allocated in the Core that does not pass through the proper
 // return values.
 func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess, bool) {
-	escapes := make(map[AccessedCoreAlloc][]Escape)
+	var escapedAllocs []EscapedCoreAlloc
 	state.logger.Debugf("Validating %v ...\n", acc)
 	for _, alloc := range acc.allocs {
 		state.logger.Debugf("\talloc: %v\n", alloc)
+		var escapes []Escape
+		// Find escapes for every Core function in the alloc's trace
 		for _, coreFunc := range *alloc.trace {
 			escs := findEscapes(state, coreFunc, alloc)
-			escapes[alloc] = escs
+			escapes = append(escapes, escs...)
 		}
+
+		// Alloc is valid if it does not escape
+		if len(escapes) == 0 {
+			continue
+		}
+
+		esc := EscapedCoreAlloc{
+			AccessedCoreAlloc: alloc,
+			Escapes:           escapes,
+		}
+		escapedAllocs = append(escapedAllocs, esc)
 	}
 
 	res := InvalidAccess{
 		Instruction:   acc.Instruction,
 		Pos:           acc.pos,
-		EscapedAllocs: escapes,
+		EscapedAllocs: escapedAllocs,
 	}
-	if len(escapes) == 0 {
+	if len(escapedAllocs) == 0 {
 		return res, false
 	}
 
@@ -173,11 +216,20 @@ func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escap
 		switch instr := instr.(type) {
 		case *ssa.Store, *ssa.MapUpdate, *ssa.Send:
 			if write, ok := ptr.PtrWrittenToPtr(instr, pos); ok {
-				if hasPermissionsOf(cache, write.Value, alloc) {
+				if hasPermissionsOf(cache, write.Target, alloc) {
 					esc := Escape{
-						Value: write.Value,
-						Pos:   pos,
+						Value: write.Target,
+						Pos:   write.Pos,
+						Ctx:   Write,
 					}
+
+					// NOTE needed because of false-positives
+					// It's impossible for an allocated value to be modified on the same line.
+					// This assumes gofmt is applied.
+					if esc.Pos.Line == alloc.Pos.Line {
+						return
+					}
+
 					res = append(res, esc)
 				}
 			}
@@ -190,6 +242,7 @@ func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escap
 					esc := Escape{
 						Value: freeVar,
 						Pos:   pos,
+						Ctx:   FreeVar,
 					}
 					res = append(res, esc)
 				}
@@ -201,6 +254,7 @@ func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escap
 					esc := Escape{
 						Value: arg,
 						Pos:   pos,
+						Ctx:   Arg,
 					}
 					res = append(res, esc)
 				}
@@ -216,6 +270,7 @@ func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escap
 					esc := Escape{
 						Value: r,
 						Pos:   pos,
+						Ctx:   Return,
 					}
 					res = append(res, esc)
 				}
@@ -621,9 +676,9 @@ func ReportResults(res AnalysisResult) (string, bool) {
 	}
 	for _, acc := range res.InvalidAccesses {
 		report.WriteString(fmt.Sprintf("\t%v\n", acc))
-		for alloc, escapes := range acc.EscapedAllocs {
-			report.WriteString(fmt.Sprintf("\t\t%v\n", alloc))
-			for _, escape := range escapes {
+		for _, alloc := range acc.EscapedAllocs {
+			report.WriteString(fmt.Sprintf("\t\t%v\n", alloc.AccessedCoreAlloc))
+			for _, escape := range alloc.Escapes {
 				report.WriteString(fmt.Sprintf("\t\t\t%v\n", escape))
 			}
 		}

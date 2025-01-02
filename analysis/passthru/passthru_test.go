@@ -162,7 +162,7 @@ func checkInvalidAccesses(t *testing.T, prog *ssa.Program, want analysistest.Tar
 		}
 		gotAccessPos := seenAccess{Pos: analysistest.RemoveColumn(accessPos)}
 
-		for gotAlloc := range gotAccess.EscapedAllocs {
+		for _, gotAlloc := range gotAccess.EscapedAllocs {
 			allocPos := gotAlloc.Pos
 			if !allocPos.IsValid() {
 				t.Errorf("invalid position for: %v", gotAlloc)
