@@ -222,14 +222,6 @@ func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escap
 						Pos:   write.Pos,
 						Ctx:   Write,
 					}
-
-					// NOTE needed because of false-positives
-					// It's impossible for an allocated value to be modified on the same line.
-					// This assumes gofmt is applied.
-					if esc.Pos.Line == alloc.Pos.Line {
-						return
-					}
-
 					res = append(res, esc)
 				}
 			}

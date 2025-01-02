@@ -42,7 +42,7 @@ func TestAnalyze(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
-	setupConfig(lp.Config)
+	setupConfig(lp)
 	state, err := result.Bind(lpState, ptr.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load pointer state: %v", err)
@@ -61,10 +61,12 @@ func TestAnalyze(t *testing.T) {
 	checkInvalidAccesses(t, state.Program, want, got)
 }
 
-func setupConfig(cfg *config.Config) {
-	cfg.Options.ReportCoverage = false
-	cfg.Options.ReportsDir = ""
-	cfg.LogLevel = int(config.ErrLevel) // change this as needed for debugging
+func setupConfig(lp *loadprogram.State) {
+	lp.Config.Options.ReportCoverage = false
+	lp.Config.Options.ReportsDir = ""
+	lp.Config.LogLevel = int(config.ErrLevel) // change this as needed for debugging
+
+	lp.Logger = config.NewLogGroup(lp.Config)
 }
 
 // coreAllocRegex matches annotations of the form "@CoreAlloc(id1, id2, id3)"
@@ -143,7 +145,7 @@ func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targ
 // checkWrites checks that got's writes matches the wanted
 // CoreAlloc->InvalidAccess annotation ids from the test.
 func checkInvalidAccesses(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got passthru.AnalysisResult) {
-	debugResult(t, want, got)
+	// debugResult(t, want, got)
 
 	type seenAlloc struct {
 		Pos analysistest.LPos

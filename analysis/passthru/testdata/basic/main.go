@@ -27,6 +27,8 @@ func NewCoreInstance() *CoreInstance {
 }
 
 func (i *CoreInstance) CoreApiOk(b **byte) (**byte, error) {
+	// TODO this is a false-positive because the allocation instruction is also
+	// seen as a write to the allocated pointer, resulting in an escape
 	alloc := new(byte) // @CoreAlloc(exOk)
 	if alloc == nil {
 		return nil, fmt.Errorf("error")
@@ -45,9 +47,9 @@ func (i *CoreInstance) CoreApiLeakGlobal(b **byte) (**byte, error) {
 	return &alloc, nil
 }
 
-func (i *CoreInstance) CoreApiLeakParam(b **byte) (**byte, error) {
+func (i *CoreInstance) CoreApiLeakParam(b ***byte) (**byte, error) {
 	alloc := new(byte) // @CoreAlloc(exParamLeak)
-	*b = alloc
+	*b = &alloc
 	if b == nil {
 		return nil, fmt.Errorf("error")
 	}
@@ -69,7 +71,7 @@ func exOk() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(*msg)
+	fmt.Println(*msg) // @InvalidAccess(exOk) // TODO false-positive
 }
 
 func exGlobalOk() {
@@ -78,7 +80,7 @@ func exGlobalOk() {
 	if err != nil {
 		panic(err)
 	}
-	_ = msg
+	fmt.Println(msg)
 }
 
 func exGlobalLeak() {
@@ -93,8 +95,9 @@ func exGlobalLeak() {
 
 func exParamLeak() {
 	i := NewCoreInstance()
-	b := new(byte)                     // @InvalidAccess(exParamLeak)
-	msg, err := i.CoreApiLeakParam(&b) // @InvalidAccess(exParamLeak)
+	b := new(byte)
+	pb := &b                            // @InvalidAccess(exParamLeak)
+	msg, err := i.CoreApiLeakParam(&pb) // @InvalidAccess(exParamLeak)
 	if err != nil {
 		panic(err)
 	}
