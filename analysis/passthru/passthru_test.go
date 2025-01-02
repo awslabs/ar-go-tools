@@ -17,7 +17,6 @@ package passthru_test
 import (
 	"embed"
 	"go/ast"
-	"go/token"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -83,7 +82,7 @@ var escapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
 // These positions are represented as a map from the invalid access matching the
 // id to all the core allocation ids.
 func wantInvalidAccesses(lp *loadprogram.State) analysistest.TargetToSources {
-	return wantTargetToSources(lp, invalidAccessRegex, coreAllocRegex)
+	return wantTargetToSources(lp, coreAllocRegex, invalidAccessRegex)
 }
 
 // wantTargetToSources analyzes the files in lp and looks for comments
@@ -94,52 +93,44 @@ func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targ
 	astFiles := analysistest.AstFiles(lp.Packages)
 	fset := lp.Program.Fset
 	target2sources := make(analysistest.TargetToSources)
-	type sourceInfo struct {
-		meta string
-		pos  token.Position
-	}
-	sourceIDToSourcePos := map[string]token.Position{}
+	sourceIDToSourcePos := map[string]analysistest.LPos{}
 
 	// Get all the source positions with their identifiers
 	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
-		pos := fset.Position(c1.Pos())
-		// Match a "@InvalidAccess(id1, id2, id3)"
+		// Match a "@CoreAlloc(id1, id2, id3)"
 		a := sourceRegex.FindStringSubmatch(c1.Text)
 		if len(a) > 1 {
+			pos := fset.Position(c1.Pos())
 			for _, ident := range strings.Split(a[1], ",") {
 				sourceIdent := strings.TrimSpace(ident)
-				sourceIDToSourcePos[sourceIdent] = pos
-				relSource := analysistest.NewLPos(pos)
-				id := analysistest.AnnotationID{ID: sourceIdent, Meta: "", Pos: relSource}
-				target2sources[id] = make(map[analysistest.AnnotationID]bool)
+				sourceIDToSourcePos[sourceIdent] = analysistest.NewLPos(pos)
 			}
 		}
 	})
 
 	// Get all the target positions
 	analysistest.MapComments(astFiles, func(c1 *ast.Comment) {
-		targetPos := fset.Position(c1.Pos())
-		// Match a "@CoreAlloc(id1, id2, id3)"
+		// Match a "@InvalidAccess(id1, id2, id3)"
 		a := targetRegex.FindStringSubmatch(c1.Text)
 		if len(a) > 1 {
+			sourcePos := fset.Position(c1.Pos())
 			for _, ident := range strings.Split(a[1], ",") {
 				targetIdent := strings.TrimSpace(ident)
-				sourcePos, ok := sourceIDToSourcePos[targetIdent]
+				targetPos, ok := sourceIDToSourcePos[targetIdent]
 				if !ok {
 					continue
 				}
-				relTarget := analysistest.NewLPos(sourcePos)
-				sourceId := analysistest.AnnotationID{ID: targetIdent, Meta: "", Pos: relTarget}
-				if _, ok := target2sources[sourceId]; !ok {
-					target2sources[sourceId] = make(map[analysistest.AnnotationID]bool)
+				targetId := analysistest.AnnotationID{ID: targetIdent, Meta: "", Pos: targetPos}
+				if _, ok := target2sources[targetId]; !ok {
+					target2sources[targetId] = make(map[analysistest.AnnotationID]bool)
 				}
-				// targetIdent is the same as sourceIdent in this branch
-				targetId := analysistest.AnnotationID{
+				// source's id is the same as targetIdent in this branch
+				sourceId := analysistest.AnnotationID{
 					ID:   targetIdent,
 					Meta: "",
-					Pos:  analysistest.NewLPos(targetPos),
+					Pos:  analysistest.NewLPos(sourcePos),
 				}
-				target2sources[sourceId][targetId] = true
+				target2sources[targetId][sourceId] = true
 			}
 		}
 	})
@@ -150,69 +141,68 @@ func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targ
 // TODO refactor to remove duplicate code
 
 // checkWrites checks that got's writes matches the wanted
-// InvalidAccess->CoreAlloc annotation ids from the test.
+// CoreAlloc->InvalidAccess annotation ids from the test.
 func checkInvalidAccesses(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got passthru.AnalysisResult) {
 	debugResult(t, want, got)
 
-	type seenEntry struct {
-		Pos analysistest.LPos
-	}
 	type seenAlloc struct {
 		Pos analysistest.LPos
 	}
-	seenAllocOfEntry := make(map[seenEntry]map[seenAlloc]bool)
+	type seenAccess struct {
+		Pos analysistest.LPos
+	}
+	seenAccessOfAlloc := make(map[seenAlloc]map[seenAccess]bool)
 
-	for _, access := range got.InvalidAccesses {
-		entryInstr := access.Instruction
-		entryPos := prog.Fset.Position(entryInstr.Pos())
-		if !entryPos.IsValid() {
-			t.Errorf("invalid entrypoint position for: %v", entryInstr)
-			// skip invalid positions
+	for _, gotAccess := range got.InvalidAccesses {
+		accessInstr := gotAccess.Instruction
+		accessPos := prog.Fset.Position(accessInstr.Pos())
+		if !accessPos.IsValid() {
+			t.Errorf("invalid access position for: %v", gotAccess)
 			continue
 		}
-		gotEntry := seenEntry{Pos: analysistest.RemoveColumn(entryPos)}
-		for alloc := range access.EscapedAllocs {
-			if _, ok := seenAllocOfEntry[gotEntry]; !ok {
-				seenAllocOfEntry[gotEntry] = map[seenAlloc]bool{}
-			}
+		gotAccessPos := seenAccess{Pos: analysistest.RemoveColumn(accessPos)}
 
-			allocPos := alloc.Pos
+		for gotAlloc := range gotAccess.EscapedAllocs {
+			allocPos := gotAlloc.Pos
 			if !allocPos.IsValid() {
-				t.Errorf("invalid position for: %v", alloc)
+				t.Errorf("invalid position for: %v", gotAlloc)
 				continue
 			}
-			gotWrite := seenAlloc{Pos: analysistest.RemoveColumn(allocPos)}
+			gotAllocPos := seenAlloc{Pos: analysistest.RemoveColumn(allocPos)}
+			if _, ok := seenAccessOfAlloc[gotAllocPos]; !ok {
+				seenAccessOfAlloc[gotAllocPos] = make(map[seenAccess]bool)
+			}
+
 			seen := false
-			for wantEntryID, wantAllocIDs := range want {
-				if gotEntry.Pos == wantEntryID.Pos {
-					for wantAllocID := range wantAllocIDs {
-						if gotWrite.Pos == wantAllocID.Pos {
-							seenAllocOfEntry[seenEntry{wantEntryID.Pos}][seenAlloc{wantAllocID.Pos}] = true
+			for wantAllocID, wantAccessIDs := range want {
+				if gotAllocPos.Pos == wantAllocID.Pos {
+					for wantSourceID := range wantAccessIDs {
+						if gotAccessPos.Pos == wantSourceID.Pos {
+							seenAccessOfAlloc[gotAllocPos][gotAccessPos] = true
 							seen = true
-							break
 						}
 					}
 				}
 			}
 			if !seen {
-				t.Errorf("false positive: %v from invalid access at %v", alloc, gotEntry.Pos)
+				t.Errorf("false positive: %v -> %v", gotAlloc, gotAccess)
 			}
 		}
 	}
 
-	for wantEntryID, wantAllocIDs := range want {
-		sEntry := seenEntry{Pos: wantEntryID.Pos}
-		for wantAllocID := range wantAllocIDs {
-			sAlloc := seenAlloc{Pos: wantAllocID.Pos}
-			if !seenAllocOfEntry[sEntry][sAlloc] {
+	for wantTargetID, wantSourceIDs := range want {
+		sTarget := seenAlloc{Pos: wantTargetID.Pos}
+		for wantSourceID := range wantSourceIDs {
+			sSource := seenAccess{Pos: wantSourceID.Pos}
+			if !seenAccessOfAlloc[sTarget][sSource] {
 				// Remaining entries have not been detected!
-				t.Errorf("failed to detect core alloc with id %s:\n%s\nfrom invalid access at\n%s\n",
-					wantAllocID.ID, wantAllocID.Pos, wantEntryID.Pos)
-				if len(seenAllocOfEntry[sEntry]) > 0 {
-					// List possible targets for debugging
-					t.Logf("Possible core allocs:\n")
-					for alloc := range seenAllocOfEntry[sEntry] {
-						t.Logf("\t%+v\n", alloc)
+				t.Errorf("failed to detect access with id %s:\n%s\nof alloc at\n%s\n",
+					wantSourceID.ID, wantSourceID.Pos, wantTargetID.Pos)
+				if len(seenAccessOfAlloc[sTarget]) > 0 {
+					// List possible sources for debugging
+					t.Logf("Possible accesses:\n")
+					for source := range seenAccessOfAlloc[sTarget] {
+						t.Logf("\t%v\n", source)
 					}
 				}
 			}
@@ -226,10 +216,10 @@ func debugResult(t *testing.T, want analysistest.TargetToSources, got passthru.A
 	t.Log(str)
 
 	t.Logf("WANT result\n")
-	for entry, allocs := range want {
-		t.Logf("\tinvalid access: %v\n", entry.Pos)
-		for acc := range allocs {
-			t.Logf("\t\tcore alloc: %v\n", acc.Pos)
+	for target, sources := range want {
+		t.Logf("\ttarget: %v\n", target.Pos)
+		for source := range sources {
+			t.Logf("\t\tsource: %v\n", source.Pos)
 		}
 	}
 }

@@ -240,8 +240,15 @@ type DiodonPassThroughSpec struct {
 	// are part of the Core API.
 	CoreApiFunctions []CodeIdentifier `yaml:"core-api-functions" json:"core-api-functions"`
 
-	// Filters contains a list of filters that prevents some identifiers from being analyzed.
-	Filters []CodeIdentifier
+	// AppAccessFilters contains a list of identifiers representing which functions
+	// in the App should not be analyzed for invalid accesses due to
+	// imprecision in the pointer analysis.
+	AppAccessFilters []CodeIdentifier `yaml:"app-access-filters" json:"app-access-filters"`
+
+	// CoreAllocFilters contains a list of identifiers representing which
+	// functions in the Core should not be analyzed for allocation sites due to
+	// imprecision in the pointer analysis.
+	CoreAllocFilters []CodeIdentifier `yaml:"core-alloc-filters" json:"core-alloc-filters"`
 }
 
 // IsValue returns true if the code identifier cid matches a value according to spec s.
@@ -590,7 +597,8 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 
 	for _, spec := range cfg.DiodonPassThroughProblems {
 		funcutil.MapInPlace(spec.CoreApiFunctions, compileRegexes)
-		funcutil.MapInPlace(spec.Filters, compileRegexes)
+		funcutil.MapInPlace(spec.AppAccessFilters, compileRegexes)
+		funcutil.MapInPlace(spec.CoreAllocFilters, compileRegexes)
 	}
 
 	for _, spec := range cfg.ImmutabilityProblems {

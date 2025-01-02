@@ -26,88 +26,88 @@ func NewCoreInstance() *CoreInstance {
 	return &CoreInstance{X: nil}
 }
 
-func (i *CoreInstance) CoreApiOk(b []byte) ([]byte, error) {
-	alloc := make([]byte, 5) // @CoreAlloc(exOk)
-	if len(b) == 0 {
+func (i *CoreInstance) CoreApiOk(b **byte) (**byte, error) {
+	alloc := new(byte) // @CoreAlloc(exOk)
+	if alloc == nil {
 		return nil, fmt.Errorf("error")
 	}
-	return append(alloc, b...), nil
+	return &alloc, nil
 }
 
-var global *byte
+var global **byte
 
-func (i *CoreInstance) CoreApiLeakGlobal(b []byte) ([]byte, error) {
-	alloc := make([]byte, 5) // @CoreAlloc(exGlobalLeak)
-	global = &alloc[0]
-	if len(b) == 0 {
-		return nil, fmt.Errorf("error")
-	}
-	return append(alloc, b...), nil
-}
-
-func (i *CoreInstance) CoreApiLeakParam(b *byte) ([]byte, error) {
-	alloc := make([]byte, 5) // @CoreAlloc(exParamLeak)
-	b = &alloc[0]
+func (i *CoreInstance) CoreApiLeakGlobal(b **byte) (**byte, error) {
+	alloc := new(byte) // @CoreAlloc(exGlobalLeak)
+	*global = alloc
 	if b == nil {
 		return nil, fmt.Errorf("error")
 	}
-	return append(alloc, *b), nil
+	return &alloc, nil
 }
 
-func (i *CoreInstance) CoreApiLeakArg(b []byte) ([]byte, error) {
-	alloc := make([]byte, 5) // @CoreAlloc(exArgLeak)
-	if len(b) == 0 {
+func (i *CoreInstance) CoreApiLeakParam(b **byte) (**byte, error) {
+	alloc := new(byte) // @CoreAlloc(exParamLeak)
+	*b = alloc
+	if b == nil {
 		return nil, fmt.Errorf("error")
 	}
-	fmt.Println(alloc)
-	return append(alloc, b...), nil
+	return &alloc, nil
+}
+
+func (i *CoreInstance) CoreApiLeakArg(b **byte) (**byte, error) {
+	alloc := new(byte) // @CoreAlloc(exArgLeak)
+	if alloc == nil {
+		return nil, fmt.Errorf("error")
+	}
+	println(&alloc)
+	return &alloc, nil
 }
 
 func exOk() {
 	i := NewCoreInstance()
-	b, err := i.CoreApiOk([]byte("test"))
+	msg, err := i.CoreApiOk(nil)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(b)
+	fmt.Println(*msg)
 }
 
 func exGlobalOk() {
 	i := NewCoreInstance()
-	b, err := i.CoreApiLeakGlobal([]byte("test"))
+	msg, err := i.CoreApiLeakGlobal(nil)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(b)
+	_ = msg
 }
 
 func exGlobalLeak() {
 	i := NewCoreInstance()
-	b, err := i.CoreApiLeakGlobal([]byte("test"))
+	msg, err := i.CoreApiLeakGlobal(nil)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(b)
-	fmt.Println(global) // @InvalidAccess(exGlobalLeak)
+	fmt.Println(*msg)    // @InvalidAccess(exGlobalLeak)
+	fmt.Println(*global) // TODO should this be invalid as well?
 }
 
 func exParamLeak() {
 	i := NewCoreInstance()
-	b := byte(0x0)
-	msg, err := i.CoreApiLeakParam(&b)
+	b := new(byte)                     // @InvalidAccess(exParamLeak)
+	msg, err := i.CoreApiLeakParam(&b) // @InvalidAccess(exParamLeak)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(msg)
+	fmt.Println(*msg) // @InvalidAccess(exParamLeak)
 }
 
 func exArgLeak() {
 	i := NewCoreInstance()
-	b, err := i.CoreApiLeakArg([]byte("test"))
+	msg, err := i.CoreApiLeakArg(nil)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(b)
+	fmt.Println(*msg) // @InvalidAccess(exArgLeak)
 }
 
 func main() {

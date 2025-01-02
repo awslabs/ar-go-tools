@@ -96,22 +96,28 @@ func TestFindEscapes(t *testing.T) {
 	}
 }
 
-func runEscapes(state *ptr.State, f *ssa.Function, allocs []CoreAlloc) map[CoreAlloc][]Escape {
+func runEscapes(state *ptr.State, f *ssa.Function, allocs []AccessedCoreAlloc) map[AccessedCoreAlloc][]Escape {
 	cache := ptr.NewAliasCache(state)
-	return findEscapes(cache, f, allocs)
+	s := newState(state, cache, config.DiodonPassThroughSpec{})
+	escapes := make(map[AccessedCoreAlloc][]Escape)
+	for _, alloc := range allocs {
+		escs := findEscapes(s, f, alloc)
+		escapes[alloc] = escs
+	}
+	return escapes
 }
 
-func findAllocs(state *ptr.State, funcName string, wantAllocIDs []analysistest.AnnotationID) (*ssa.Function, []CoreAlloc) {
+func findAllocs(state *ptr.State, funcName string, wantAllocIDs []analysistest.AnnotationID) (*ssa.Function, []AccessedCoreAlloc) {
 	for f := range state.ReachableFunctions() {
 		if f.Name() == funcName {
-			var res []CoreAlloc
+			var res []AccessedCoreAlloc
 			lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
 				switch instr.(type) {
 				case *ssa.Alloc, *ssa.MakeInterface, *ssa.MakeChan, *ssa.MakeSlice:
 					for _, allocID := range wantAllocIDs {
 						pos := state.Program.Fset.Position(instr.Pos())
 						if analysistest.NewLPos(pos) == allocID.Pos {
-							alloc := CoreAlloc{Value: instr.(ssa.Value), Pos: pos, trace: &coreTrace{}}
+							alloc := AccessedCoreAlloc{Value: instr.(ssa.Value), Pos: pos, trace: &coreTrace{}}
 							res = append(res, alloc)
 						}
 					}
@@ -211,7 +217,7 @@ func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targ
 
 // checkWrites checks that got's writes matches the wanted
 // CoreAlloc->Escape annotation ids from the test.
-func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[CoreAlloc][]Escape) {
+func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[AccessedCoreAlloc][]Escape) {
 	// debugEscapes(t, want, got)
 
 	type seenEntry struct {
@@ -280,7 +286,7 @@ func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSou
 	}
 }
 
-func debugEscapes(t *testing.T, want analysistest.TargetToSources, got map[CoreAlloc][]Escape) {
+func debugEscapes(t *testing.T, want analysistest.TargetToSources, got map[AccessedCoreAlloc][]Escape) {
 	t.Logf("GOT escapes\n")
 	for entry, escs := range got {
 		t.Logf("\talloc: %v\n", entry.Pos)
