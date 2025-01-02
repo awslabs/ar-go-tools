@@ -1,0 +1,7 @@
+options:
+  log-level: 3
+
+diodon-pass-through-problems:
+  - core-api-functions:
+      - package: "(basic)|(main)|(command-line-arguments)"
+        method: "CoreApi.*"

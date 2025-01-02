@@ -96,10 +96,9 @@ func TestFindEscapes(t *testing.T) {
 	}
 }
 
-func runEscapes(state *ptr.State, f *ssa.Function, allocs []CoreAlloc) map[CoreAlloc][]escape {
+func runEscapes(state *ptr.State, f *ssa.Function, allocs []CoreAlloc) map[CoreAlloc][]Escape {
 	cache := ptr.NewAliasCache(state)
-	allowedReturns := make(map[*ssa.Return]struct{}) // analyze all returns
-	return findEscapes(cache, f, allocs, allowedReturns)
+	return findEscapes(cache, f, allocs)
 }
 
 func findAllocs(state *ptr.State, funcName string, wantAllocIDs []analysistest.AnnotationID) (*ssa.Function, []CoreAlloc) {
@@ -112,7 +111,7 @@ func findAllocs(state *ptr.State, funcName string, wantAllocIDs []analysistest.A
 					for _, allocID := range wantAllocIDs {
 						pos := state.Program.Fset.Position(instr.Pos())
 						if analysistest.NewLPos(pos) == allocID.Pos {
-							alloc := CoreAlloc{Value: instr.(ssa.Value), Pos: pos}
+							alloc := CoreAlloc{Value: instr.(ssa.Value), Pos: pos, trace: &coreTrace{}}
 							res = append(res, alloc)
 						}
 					}
@@ -212,7 +211,7 @@ func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targ
 
 // checkWrites checks that got's writes matches the wanted
 // CoreAlloc->Escape annotation ids from the test.
-func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[CoreAlloc][]escape) {
+func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[CoreAlloc][]Escape) {
 	// debugEscapes(t, want, got)
 
 	type seenEntry struct {
@@ -281,7 +280,7 @@ func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSou
 	}
 }
 
-func debugEscapes(t *testing.T, want analysistest.TargetToSources, got map[CoreAlloc][]escape) {
+func debugEscapes(t *testing.T, want analysistest.TargetToSources, got map[CoreAlloc][]Escape) {
 	t.Logf("GOT escapes\n")
 	for entry, escs := range got {
 		t.Logf("\talloc: %v\n", entry.Pos)
