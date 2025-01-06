@@ -776,6 +776,15 @@ func (g *EscapeGraph) Merge(h *EscapeGraph) {
 	}
 }
 
+// ReplaceBy sets the state of the graph to a copy of the argument `h`.
+func (g *EscapeGraph) ReplaceBy(h *EscapeGraph) {
+	hh := h.Clone()
+	g.edges = hh.edges
+	g.nodes = hh.nodes
+	g.rationales = hh.rationales
+	g.status = hh.status
+}
+
 // AsImplInterfaceType returns the corresponding interface type, if the input is is an abstract
 // interface implementation type, otherwise it returns nil.
 func AsImplInterfaceType(a types.Type) types.Type {

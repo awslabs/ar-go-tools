@@ -275,7 +275,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				return fmt.Errorf("%v has no pointees in:\n%s", a, g.Graphviz())
 			}
 		}
-		ea.transferFunction(instr, g)
+		ea.transferFunction(instr, g, nil)
 	}
 	return nil
 }
