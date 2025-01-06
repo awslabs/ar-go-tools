@@ -72,7 +72,7 @@ func NewFlags(args []string) (Flags, error) {
 
 // Run runs the taint analysis with flags.
 func Run(flags Flags) error {
-	cfg, err := tools.LoadConfig(flags.ConfigPath)
+	cfg, err := tools.LoadConfig(flags.CommonFlags, false)
 	if err != nil {
 		return err
 	}
@@ -113,9 +113,8 @@ func Run(flags Flags) error {
 		return fmt.Errorf("failed to get targets: %s", err)
 	}
 	// Loop over every target and run the analyses
-	for targetName, targetFiles := range actualTargets {
-
-		targetHasFlows, report, err := runTarget(cfg, targetName, targetFiles, flags)
+	for targetName, target := range actualTargets {
+		targetHasFlows, report, err := runTarget(cfg, targetName, target, flags)
 		hasFlows = targetHasFlows || hasFlows
 		if err != nil {
 			return err
@@ -133,11 +132,12 @@ func Run(flags Flags) error {
 func runTarget(
 	cfg *config.Config,
 	targetName string,
-	targetFiles []string,
+	target config.TargetInfo,
 	flags Flags,
 ) (bool, *config.ReportInfo, error) {
 	reportForTarget := config.NewReport()
 	loadOptions := config.LoadOptions{
+		Platform:      target.Platform,
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
@@ -145,8 +145,8 @@ func runTarget(
 	}
 	// Starting the analysis
 	start := time.Now()
-	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
-	c.Logger.Infof("Analyzing target \"%s\" = %v", targetName, targetFiles)
+	c := config.NewState(cfg, targetName, target.Files, loadOptions)
+	c.Logger.Infof("Analyzing target \"%s\" = %v", targetName, target.Files)
 	c.Logger.PushContext(formatutil.Faint(targetName))
 	defer c.Logger.PopContext()
 	ptrState, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()

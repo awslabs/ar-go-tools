@@ -107,14 +107,13 @@ func runTarget(
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to load target: %v", err)
 	}
-<<<<<<< HEAD
 	// struct analysis
 	structAnalysisFailed := false
 	if len(cfg.SyntacticProblems.StructInitProblems) > 0 {
 		c.Logger.Infof("starting struct init analysis...\n")
 		structInitRes, err := structinit.Analyze(state)
 		if err != nil {
-			return nil, fmt.Errorf("struct init analysis error: %v", err)
+			return false, nil, fmt.Errorf("struct init analysis error: %v", err)
 		}
 		var s string
 		s, structAnalysisFailed = structinit.ReportResults(structInitRes)
@@ -126,7 +125,7 @@ func runTarget(
 		c.Logger.Infof("starting precondition analysis...\n")
 		precondCheckRes, err := preconditions.Analyze(state, preconditions.AnalysisReqs{Tag: flags.Tag})
 		if err != nil {
-			return nil, fmt.Errorf("precondition analysis error: %v", err)
+			return false, nil, fmt.Errorf("precondition analysis error: %v", err)
 		}
 		var s string
 		s, preconditionAnalysisFailed = preconditions.ReportResults(precondCheckRes)
@@ -134,8 +133,8 @@ func runTarget(
 	}
 	// Failure for all syntactic analyses
 	if structAnalysisFailed || preconditionAnalysisFailed {
-		return state.Report, fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
-=======
+		return false, state.Report, fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
+	}
 	return RunSyntactic(targetName, state)
 }
 
@@ -152,7 +151,6 @@ func RunSyntactic(targetName string, state *ptr.State) (bool, *config.ReportInfo
 	state.Logger.Infof(s)
 	if failed {
 		return false, state.Report, fmt.Errorf("struct init analysis found problems, inspect logs for more information")
->>>>>>> 344550c (New auto tool + logging with context target,tag,entrypoint.)
 	}
 	return false, state.Report, nil
 }
