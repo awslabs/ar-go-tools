@@ -1,0 +1,39 @@
+targets:
+  - name: main
+    files:
+      - main.go
+
+dataflow-problems:
+  summarize-on-demand: true
+  taint-tracking:
+    - tag: "taint-01"
+      description: "taint problem"
+      targets:
+        - main
+      sources:
+        - method: Source
+      sinks:
+        - method: Sink
+  slicing:
+    - tag: "slicing-01"
+      description: "slicing problem"
+      targets:
+        - main
+      must-be-static: true
+      backtracepoints:
+        - method: Back
+          package: .*
+
+syntactic-problems:
+  struct-inits:
+    - tag: "struct-init-01"
+      description: "struct init problem"
+      targets:
+        - main
+      struct:
+        type: "MyStruct"
+      fields-set:
+        - field: "MyField"
+          value:
+            package: "main"
+            const: "MyValue"
