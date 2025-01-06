@@ -46,6 +46,10 @@ type CodeIdentifier struct {
 	// Receiver identified the receiver object of a method call
 	Receiver string `xml:"receiver,attr"`
 
+	// ReturnIndices identifies return value indices of a function.
+	// The Package and Method fields must be set as well.
+	ReturnIndices []int `xml:"return-indices,attr" yaml:"return-indices" json:"return-indices"`
+
 	// Field identifies a specific field
 	Field string `xml:"field,attr"`
 

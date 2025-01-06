@@ -2,6 +2,15 @@ options:
   log-level: 3
 
 diodon-pass-through-problems:
-  - core-api-functions:
-      - package: "(basic)|(main)|(command-line-arguments)"
-        method: "CoreApi.*"
+  - app-functions:
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
+        method: ".*"
+    core-functions:
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
+        method: "^Core.*"
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
+        method: "^NewCoreInstance$"
+    core-api-function-returned-values:
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
+        method: "^CoreApi.*"
+        return-indices: [0]

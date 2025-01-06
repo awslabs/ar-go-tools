@@ -236,9 +236,20 @@ type DiodonPassThroughSpec struct {
 	// Targets are the targets of the analysis
 	Targets []string
 
-	// CoreApiFunctions is the list of identifiers representing which functions
-	// are part of the Core API.
-	CoreApiFunctions []CodeIdentifier `yaml:"core-api-functions" json:"core-api-functions"`
+	// AppFunctions is the list of identifiers representing which functions are
+	// part of the App.
+	AppFunctions []CodeIdentifier `yaml:"app-functions" json:"app-functions"`
+
+	// CoreFunctions is the list of identifiers representing which functions are
+	// part of the Core.
+	CoreFunctions []CodeIdentifier `yaml:"core-functions" json:"core-functions"`
+
+	// CoreApiFunctionReturnedValues is the list of identifiers representing
+	// which functions are part of the Core API. The return and/or parameter
+	// fields indicate which return values and/or parameters establish
+	// permissions for heap locations allocated within the context of the Core
+	// API function.
+	CoreApiFunctionReturnedValues []CodeIdentifier `yaml:"core-api-function-returned-values" json:"core-api-function-returned-values"`
 
 	// AppAccessFilters contains a list of identifiers representing which functions
 	// in the App should not be analyzed for invalid accesses due to
@@ -249,17 +260,6 @@ type DiodonPassThroughSpec struct {
 	// functions in the Core should not be analyzed for allocation sites due to
 	// imprecision in the pointer analysis.
 	CoreAllocFilters []CodeIdentifier `yaml:"core-alloc-filters" json:"core-alloc-filters"`
-}
-
-// IsValue returns true if the code identifier cid matches a value according to spec s.
-// Ignores the context field because its meaning is overloaded in the immutability analysis.
-func (s DiodonPassThroughSpec) IsValue(cid CodeIdentifier) bool {
-	cid.Context = ""
-	vals := funcutil.Map(s.CoreApiFunctions, func(cid CodeIdentifier) CodeIdentifier {
-		cid.Context = ""
-		return cid
-	})
-	return ExistsCid(vals, cid.equalOnNonEmptyFields)
 }
 
 // SpecTag returns the specification's tag
@@ -596,7 +596,9 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	}
 
 	for _, spec := range cfg.DiodonPassThroughProblems {
-		funcutil.MapInPlace(spec.CoreApiFunctions, compileRegexes)
+		funcutil.MapInPlace(spec.AppFunctions, compileRegexes)
+		funcutil.MapInPlace(spec.CoreFunctions, compileRegexes)
+		funcutil.MapInPlace(spec.CoreApiFunctionReturnedValues, compileRegexes)
 		funcutil.MapInPlace(spec.AppAccessFilters, compileRegexes)
 		funcutil.MapInPlace(spec.CoreAllocFilters, compileRegexes)
 	}

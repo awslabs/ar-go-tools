@@ -66,16 +66,13 @@ func exFreeLeak() {
 	}()
 }
 
-func exRetLeak() []byte {
-	alloc := make([]byte, 3) // @CoreAlloc(exRetLeak)
-	return alloc             // @Escape(exRetLeak)
-}
-
 var global1 **byte
 
 func exGlobalLeak() {
 	alloc := new(byte) // @CoreAlloc(exGlobalLeak)
-	*global1 = alloc   // @Escape(exGlobalLeak)
+	fmt.Println(alloc) // @Escape(exGlobalLeak)
+	// ^ TODO false-positive: fmt.Println allocates a new slice to which alloc is written
+	*global1 = alloc // @Escape(exGlobalLeak)
 }
 
 var global2 **byte
@@ -92,6 +89,31 @@ func exGlobalFieldLeak() {
 	*global3 = &alloc.f    // @Escape(exGlobalFieldLeak)
 }
 
+func exInterOk() {
+	alloc := make([]byte, 1) // @CoreAlloc(exInterOk)
+	doSafe(&alloc)
+}
+
+func doSafe(alloc *[]byte) {
+	fmt.Println(alloc)
+}
+
+func exInterLeak() {
+	alloc := make([]byte, 1) // @CoreAlloc(exInterLeak)
+	doUnsafeCall(&alloc)
+}
+
+func doUnsafeCall(alloc *[]byte) {
+	doSafe(alloc)
+	doUnsafe(alloc)
+}
+
+var global4 **byte
+
+func doUnsafe(alloc *[]byte) {
+	*global4 = &((*alloc)[0]) // @Escape(exInterLeak)
+}
+
 func main() {
 	var b **byte
 	exParamLeak(b)
@@ -103,11 +125,12 @@ func main() {
 
 	exArgLeak()
 
-	exRetLeak()
-
 	exFreeLeak()
 
 	exGlobalLeak()
 	exGlobalElemLeak()
 	exGlobalFieldLeak()
+
+	exInterOk()
+	exInterLeak()
 }

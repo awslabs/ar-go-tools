@@ -25,14 +25,11 @@
 // - an argument or free variable to any function call or closure in f
 //   - if this is the case, we start an inter-procedural analysis
 //
-// - a return value from f, except if f is a Core api function in whose context the allocation occurs
-//   - if the allocation site does not have a context, then we assume it is
-//     called from all Core api functions that call the function in which the
-//     allocation occurs (to be sound)
-//
 // - any write to memory (includes globals)
 //   - covers writes to parameters, globals, etc.
-//   - if we were to allow this, we would have additional proof obligations to satisfy
+//   - if we were to allow this, we would have additional proof obligations to satisfy:
+//     we can't temporarily store something on the heap because the pointer analysis doesn't
+//     know the lifetime of the allocation
 //
 // Thus, an allocation "escapes" a function f if the allocated pointer may alias
 // any value that is at an "escape point".
@@ -41,6 +38,7 @@ package passthru
 import (
 	"fmt"
 	"go/token"
+	"go/types"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -73,58 +71,20 @@ func (a InvalidAccess) String() string {
 		a.Instruction, a.Instruction.Parent(), a.Pos, len(a.EscapedAllocs))
 }
 
-type EscapedCoreAlloc struct {
-	AccessedCoreAlloc
-	Escapes []Escape
-}
-
 // AccessedCoreAlloc is a pointer allocated in the Core that is accessed
 // (read from/written to) in the App.
+//
+// It must also possibly alias any parameter or return value of a Core API
+// function configured in the spec.
 type AccessedCoreAlloc struct {
 	ssa.Value
 	Pos   token.Position // Pos is the position at which the alloc occured in the Core
-	trace *coreTrace     // trace needs to be a pointer so the type is hashable
+	trace coreTrace
 }
 
 func (a AccessedCoreAlloc) String() string {
 	return fmt.Sprintf("app-accessed alloc in core of %v at %v (trace: %v)",
 		a.Value, a.Pos, a.trace)
-}
-
-// Escape is a value that results in a AccessedCoreAlloc heap permission
-// "escaping" a function.
-type Escape struct {
-	ssa.Value
-	Pos token.Position
-	Ctx EscapeContext
-}
-
-func (e Escape) String() string {
-	return fmt.Sprintf("escape (%v) via value %v in %v at %v", e.Ctx, e.Value, e.Parent().Name(), e.Pos)
-}
-
-type EscapeContext int
-
-const (
-	Write = iota + 1
-	FreeVar
-	Arg
-	Return
-)
-
-func (e EscapeContext) String() string {
-	switch e {
-	case Write:
-		return "write"
-	case FreeVar:
-		return "free var"
-	case Arg:
-		return "arg"
-	case Return:
-		return "return"
-	default:
-		panic(fmt.Errorf("invalid escape context: %v", int(e)))
-	}
 }
 
 // Analyze runs the analysis on all pass through problems specified in the
@@ -143,19 +103,40 @@ func Analyze(s *ptr.State) (AnalysisResult, error) {
 }
 
 func analyze(state *state) []InvalidAccess {
-	addFuncsAndAllocs(state)
+	funcs := categorizeFuncs(state)
+	state.funcs = funcs
+	retIds := returnParamIdsWithPermission(state, state.funcs.app)
+	state.logger.Infof("%d core funcs\n", len(state.funcs.core))
+	state.logger.Infof("%d app funcs\n", len(state.funcs.app))
+	state.logger.Infof("%d ret ids\n", retIds.Len())
+
+	for _, coreFunc := range state.funcs.core {
+		addAllocsInCore(state, retIds, coreFunc.f, coreFunc.trace)
+	}
 
 	var res []InvalidAccess
-	for _, af := range state.appFuncs {
-		if shouldFilterAppAccess(state.spec, af) {
-			state.logger.Debugf("Filtering App function according to spec: %v\n", af)
+	for _, appFunc := range state.funcs.app {
+		if shouldFilterAppAccess(state.spec, appFunc) {
+			state.logger.Debugf("Filtering App function according to spec: %v\n", appFunc)
 			continue
 		}
-		unvalidatedCoreAccesses := findCoreAccesses(state, af)
+		unvalidatedCoreAccesses := findCoreAccesses(state, appFunc)
 		for _, unvalidatedAcc := range unvalidatedCoreAccesses {
+			fmt.Printf("unvalidatedAcc: %v\n", unvalidatedAcc)
 			if acc, ok := isInvalidCoreAccess(state, unvalidatedAcc); ok {
 				state.logger.Infof("Found %v\n", acc)
 				res = append(res, acc)
+
+				args := 0
+				for _, alloc := range acc.EscapedAllocs {
+					for _, esc := range alloc.Escapes {
+						// state.logger.Infof("\tesc: %v\n", esc)
+						if esc.Ctx == Arg {
+							args++
+						}
+					}
+				}
+				state.logger.Infof("\tescaped args: %d\n", args)
 			}
 		}
 	}
@@ -173,10 +154,12 @@ func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess
 		state.logger.Debugf("\talloc: %v\n", alloc)
 		var escapes []Escape
 		// Find escapes for every Core function in the alloc's trace
-		for _, coreFunc := range *alloc.trace {
+		// on the transition from a core func to unknown (stdlib etc), run escape analysis
+		for _, coreFunc := range alloc.trace {
 			escs := findEscapes(state, coreFunc, alloc)
 			escapes = append(escapes, escs...)
 		}
+		fmt.Printf("escapes: %v\n", escapes)
 
 		// Alloc is valid if it does not escape
 		if len(escapes) == 0 {
@@ -202,124 +185,84 @@ func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess
 	return res, true
 }
 
-// findEscapes modifies escapes by adding the values whose permissions are a
-// subset of alloc's permissions, and "escape" the function f.
-//
-// This is a purely intra-procedural analysis.
-//
-//gocyclo:ignore
-func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escape {
-	var res []Escape
-	cache := state.cache
-	lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
-		pos := cache.PtrState.Program.Fset.Position(instr.Pos())
-		switch instr := instr.(type) {
-		case *ssa.Store, *ssa.MapUpdate, *ssa.Send:
-			if write, ok := ptr.PtrWrittenToPtr(instr, pos); ok {
-				if hasPermissionsOf(cache, write.Target, alloc) {
-					esc := Escape{
-						Value: write.Target,
-						Pos:   write.Pos,
-						Ctx:   Write,
+// returnParamIdsWithPermission returns a set of node ids that require
+// separation logic permissions according to state.spec.
+func returnParamIdsWithPermission(state *state, appFuncs []*ssa.Function) *intsets.Sparse {
+	var vals []ssa.Value
+	for _, f := range appFuncs {
+		lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
+			call, ok := instr.(ssa.CallInstruction)
+			if !ok {
+				return
+			}
+
+			callee := call.Common().StaticCallee()
+			if callee == nil {
+				return
+			}
+
+			funcId, ok := isCoreApiFunc(state.spec, callee)
+			if !ok {
+				return
+			}
+
+			for i, arg := range lang.GetArgs(call) {
+				for _, argIdx := range funcId.ParameterIndices {
+					if i == argIdx {
+						vals = append(vals, arg)
 					}
-					res = append(res, esc)
 				}
 			}
-		case *ssa.MakeClosure:
-			for _, freeVar := range instr.Bindings {
-				if hasPermissionsOf(cache, freeVar, alloc) {
-					if !pos.IsValid() {
-						pos = cache.PtrState.Program.Fset.Position(freeVar.Pos())
-					}
-					esc := Escape{
-						Value: freeVar,
-						Pos:   pos,
-						Ctx:   FreeVar,
-					}
-					res = append(res, esc)
-				}
-			}
-		case ssa.CallInstruction:
-			args := lang.GetArgs(instr)
-			for _, arg := range args {
-				if hasPermissionsOf(cache, arg, alloc) {
-					esc := Escape{
-						Value: arg,
-						Pos:   pos,
-						Ctx:   Arg,
-					}
-					res = append(res, esc)
-				}
-			}
-		case *ssa.Return:
-			for _, r := range instr.Results {
-				// skip analyzing if the return is allowed
-				if allowedReturn(instr, state.spec) {
-					continue
+
+			// If the call returns a tuple, add the respective return value
+			// extract instructions to vals, otherwise add the result of the
+			// call
+			isTupleReturn := callee.Signature.Results().Len() > 1
+			if isTupleReturn {
+				if call.Value().Referrers() == nil {
+					panic(fmt.Errorf(
+						"no referrers for Core API function call with multiple returns: %v (signature: %v)",
+						instr, callee.Signature))
 				}
 
-				if hasPermissionsOf(cache, r, alloc) {
-					esc := Escape{
-						Value: r,
-						Pos:   pos,
-						Ctx:   Return,
+				for _, refInstr := range *call.Value().Referrers() {
+					extract, ok := refInstr.(*ssa.Extract)
+					if !ok {
+						continue
 					}
-					res = append(res, esc)
+					for _, retIdx := range funcId.ReturnIndices {
+						if extract.Index == retIdx {
+							vals = append(vals, extract)
+						}
+					}
 				}
+			} else {
+				vals = append(vals, call.Value())
 			}
+		})
+	}
+
+	res := &intsets.Sparse{}
+	for _, val := range vals {
+		objs := state.cache.Objects(val)
+		for obj := range objs {
+			res.Insert(int(obj.NodeID()))
 		}
-	})
+	}
 
 	return res
-}
-
-// allowedReturn returns true if ret's parent function is a Core API function.
-func allowedReturn(ret *ssa.Return, spec config.DiodonPassThroughSpec) bool {
-	for _, cid := range spec.CoreApiFunctions {
-		if cid.MatchPackageAndMethod(ret.Parent()) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// hasPermissionsOf returns true if the separation logic permissions to access
-// all (shallow) objects in val also give permission to access all (shallow)
-// objects allocated in alloc.
-//
-// In Gobra, separation logic permissions are "shallow", so we get the abstract
-// address (pointer analysis node id) of each object in the value or
-// allocation's points-to-set.
-// This ensures that we get the heap addresses of any allocated struct fields,
-// array/slice elements, etc within alloc, but not the underlying data which
-// the pointers point to.
-func hasPermissionsOf(cache *ptr.AliasCache, val ssa.Value, alloc AccessedCoreAlloc) bool {
-	if val.Parent() == nil {
-		return false
-	}
-
-	valObjs := cache.Objects(val)
-	allocObjs := cache.Objects(alloc.Value)
-	for valObj := range valObjs {
-		for allocObj := range allocObjs {
-			if valObj.NodeID() != allocObj.NodeID() {
-				return false
-			}
-		}
-	}
-
-	return true
 }
 
 type state struct {
 	logger       *config.LogGroup
 	spec         config.DiodonPassThroughSpec
 	cache        *ptr.AliasCache
-	appFuncs     []*ssa.Function
+	funcs        funcs
 	coreAllocIds *intsets.Sparse
 	// a single node id can refer to values allocated in multiple calling contexts
 	id2allocs map[pointer.NodeID][]allocInCore
+
+	fset *token.FileSet
 }
 
 func newState(s *ptr.State, cache *ptr.AliasCache, spec config.DiodonPassThroughSpec) *state {
@@ -327,9 +270,10 @@ func newState(s *ptr.State, cache *ptr.AliasCache, spec config.DiodonPassThrough
 		logger:       s.Logger,
 		spec:         spec,
 		cache:        cache,
-		appFuncs:     nil,
+		funcs:        funcs{core: nil, app: nil},
 		coreAllocIds: &intsets.Sparse{},
 		id2allocs:    make(map[pointer.NodeID][]allocInCore),
+		fset:         cache.PtrState.Program.Fset,
 	}
 }
 
@@ -346,13 +290,10 @@ func (ac allocInCore) String() string {
 	return fmt.Sprintf("alloc in core: %v (trace: %v)", ac.Value, ac.trace)
 }
 
-// addAllocsInCore adds values allocated in the core with trace tr to state.
-func addAllocsInCore(state *state, coreFunc *ssa.Function, tr coreTrace) {
-	if shouldFilterCoreAlloc(state.spec, coreFunc) {
-		state.logger.Debugf("Filtering Core function according to spec: %v\n", coreFunc)
-		return
-	}
-
+// addAllocsInCore adds values allocated in the Core with trace tr to state.
+// The values must possibly alias any specified Core API function's return
+// value.
+func addAllocsInCore(state *state, retIds *intsets.Sparse, coreFunc *ssa.Function, tr coreTrace) {
 	if len(tr) == 0 {
 		panic(fmt.Errorf("core func has empty trace: %v", coreFunc))
 	}
@@ -367,23 +308,41 @@ func addAllocsInCore(state *state, coreFunc *ssa.Function, tr coreTrace) {
 			if !alloc.Heap {
 				return
 			}
+
+			// We assume that errors are only used as scalar values
+			if alloc.Type() == nil || isAllocatedErrorType(alloc.Type()) {
+				return
+			}
 		}
 
-		switch instr.(type) {
-		case *ssa.Alloc, *ssa.MakeInterface, *ssa.MakeChan, *ssa.MakeSlice:
-			val := instr.(ssa.Value) // safe conversion
-			objs := state.cache.Objects(val)
+		if val, ok := isAllocInstr(instr); ok {
 			alloc := allocInCore{
 				Value: val,
 				trace: &tr,
 			}
+			objs := state.cache.Objects(val)
 			for obj := range objs {
+				// obj must may-alias a return value
+				if !retIds.Has(int(obj.NodeID())) {
+					continue
+				}
+
+				state.logger.Debugf("At node id %v in %v adding %v at %v\n",
+					obj.NodeID(), val.Parent().String(), alloc, state.fset.Position(alloc.Pos()))
 				state.coreAllocIds.Insert(int(obj.NodeID()))
-				state.logger.Debugf("At node id %v in %v adding %v", obj.NodeID(), val.Parent().String(), alloc)
 				state.id2allocs[obj.NodeID()] = append(state.id2allocs[obj.NodeID()], alloc)
 			}
 		}
 	})
+}
+
+func isAllocInstr(instr ssa.Instruction) (ssa.Value, bool) {
+	switch instr.(type) {
+	case *ssa.Alloc, *ssa.MakeInterface, *ssa.MakeChan, *ssa.MakeSlice, *ssa.MakeClosure:
+		return instr.(ssa.Value), true // safe conversion
+	default:
+		return nil, false
+	}
 }
 
 // coreTrace is the Core function trace from a Core API function to the function
@@ -427,8 +386,7 @@ func findCoreAccesses(state *state, appFunc *ssa.Function) []unvalidatedCoreAcce
 			return
 		}
 
-		prog := state.cache.PtrState.Program
-		pos := prog.Fset.Position(instr.Pos())
+		pos := state.fset.Position(instr.Pos())
 		var accessedVals []ssa.Value
 		if write, ok := ptr.PtrWrittenToPtr(instr, pos); ok {
 			accessedVals = append(accessedVals, write.Target)
@@ -459,8 +417,8 @@ func findCoreAccesses(state *state, appFunc *ssa.Function) []unvalidatedCoreAcce
 						seenAllocs[aic] = struct{}{}
 						alloc := AccessedCoreAlloc{
 							Value: aic.Value,
-							Pos:   prog.Fset.Position(aic.Value.Pos()),
-							trace: aic.trace,
+							Pos:   state.fset.Position(aic.Value.Pos()),
+							trace: *aic.trace,
 						}
 						allocs = append(allocs, alloc)
 					}
@@ -476,17 +434,29 @@ func findCoreAccesses(state *state, appFunc *ssa.Function) []unvalidatedCoreAcce
 	return res
 }
 
-// addFuncsAndAllocs adds Core and App functions to state as well as Core
-// allocations.
+type funcs struct {
+	core []coreFunc
+	app  []*ssa.Function
+}
+
+type coreFunc struct {
+	f     *ssa.Function
+	trace coreTrace
+}
+
+// categorizeFuncs returns the Core and App functions.
 //
 // A function is in the App if it is reachable from the main function
 // (callgraph root) and not from any Core function.
 // A function is in the Core if it is reachable from any Core function.
-func addFuncsAndAllocs(state *state) {
+func categorizeFuncs(state *state) funcs {
+	var coreFuncs []coreFunc
+	var appFuncs []*ssa.Function
+
 	// elt is a node in the callgraph.
 	type elt struct {
 		*callgraph.Node
-		context context // context is the context of the node
+		context funcContext
 	}
 
 	// eltctx is an elt with more context.
@@ -520,28 +490,44 @@ func addFuncsAndAllocs(state *state) {
 		}
 
 		switch cur.context {
+		case unknown:
+			// if the function is not reachable from a Core function, it's in the App
+			if len(cur.coreTrace) == 0 {
+				appFuncs = append(appFuncs, cur.Func)
+				break
+			}
+
+			// otherwise, treat function as Core
+			fallthrough
 		case core:
-			addAllocsInCore(state, cur.Func, cur.coreTrace)
+			if funcDoesNotLeakArgs(cur.Func) {
+				state.logger.Debugf("Skipping because Core function does not leak args: %v\n", cur.Func)
+				break
+			}
+
+			if shouldFilterCoreAlloc(state.spec, cur.Func) {
+				state.logger.Debugf("Filtering Core function according to spec: %v\n", cur.Func)
+				break
+			}
+
+			coreFuncs = append(coreFuncs, coreFunc{cur.Func, cur.coreTrace})
 		case app:
-			state.appFuncs = append(state.appFuncs, cur.Func)
+			appFuncs = append(appFuncs, cur.Func)
 		default:
 			panic(fmt.Errorf("invalid context for callgraph node %v: %v", cur.Node, cur.context))
 		}
 
-		seen[elt{Node: cur.Node, context: cur.context}] = true
+		seen[cur.elt] = true
 
 		for _, edge := range cur.Out {
 			if edge == nil || edge.Callee == nil {
 				continue
 			}
 
-			nextCtx := cur.context
-			// only change the context if it's not in the core
-			if nextCtx != core {
-				nextCtx = contextOf(state.spec, edge.Callee.Func)
-			}
+			nextCtx := contextOf(state.spec, edge.Callee.Func)
+			// calculate the trace for functions reachable from a Core function
 			nextTrace := cur.coreTrace
-			if nextCtx == core {
+			if nextCtx == core || (len(cur.coreTrace) > 0 && nextCtx == unknown) {
 				nextTrace = append(cur.coreTrace, edge.Callee.Func)
 			}
 
@@ -552,6 +538,8 @@ func addFuncsAndAllocs(state *state) {
 			})
 		}
 	}
+
+	return funcs{core: coreFuncs, app: appFuncs}
 }
 
 func isFalsePositive(spec config.DiodonPassThroughSpec, alloc AccessedCoreAlloc) bool {
@@ -566,7 +554,7 @@ func isFalsePositive(spec config.DiodonPassThroughSpec, alloc AccessedCoreAlloc)
 
 func coreApiFuncs(spec config.DiodonPassThroughSpec, coreFuncs map[*ssa.Function]bool) (map[*ssa.Function]bool, error) {
 	funcs := make(map[*ssa.Function]bool)
-	for _, apiFuncId := range spec.CoreApiFunctions {
+	for _, apiFuncId := range spec.CoreApiFunctionReturnedValues {
 		for f := range coreFuncs {
 			if apiFuncId.MatchPackageAndMethod(f) {
 				funcs[f] = true
@@ -575,51 +563,58 @@ func coreApiFuncs(spec config.DiodonPassThroughSpec, coreFuncs map[*ssa.Function
 		}
 	}
 
-	if len(funcs) != len(spec.CoreApiFunctions) {
-		return funcs, fmt.Errorf("missing some core api functions: want %v, got %v", spec.CoreApiFunctions, funcs)
+	if len(funcs) != len(spec.CoreApiFunctionReturnedValues) {
+		return funcs, fmt.Errorf("missing some core api functions: want %v, got %v", spec.CoreApiFunctionReturnedValues, funcs)
 	}
 
 	return funcs, nil
 }
 
-func returnNodes(f *ssa.Function) []*ssa.Return {
-	var rets []*ssa.Return
-	lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
-		if ret, ok := instr.(*ssa.Return); ok {
-			rets = append(rets, ret)
-		}
-	})
-
-	return rets
-}
-
-// appWrite is a write to a pointer allocated in the app.
-type appWrite struct {
-	ptr.Write
-	id pointer.NodeID
-}
-
-type context uint
+type funcContext uint
 
 const (
 	core = iota
 	app
+	unknown
 )
 
-func (c context) String() string {
+func (c funcContext) String() string {
 	switch c {
 	case core:
 		return "Core"
 	case app:
 		return "App"
+	case unknown:
+		return "Unknown"
 	default:
 		panic("invalid context")
 	}
 }
 
-func isCoreApiFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) bool {
-	for _, coreApiFuncId := range spec.CoreApiFunctions {
-		if coreApiFuncId.MatchPackageAndMethod(f) {
+func isCoreApiFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) (config.CodeIdentifier, bool) {
+	for _, funcId := range spec.CoreApiFunctionReturnedValues {
+		if funcId.MatchPackageAndMethod(f) {
+			return funcId, true
+		}
+	}
+
+	return config.CodeIdentifier{}, false
+}
+
+func isCoreFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) bool {
+	for _, funcId := range spec.CoreFunctions {
+		if funcId.MatchPackageAndMethod(f) {
+			return true
+		}
+	}
+
+	_, ok := isCoreApiFunc(spec, f)
+	return ok
+}
+
+func isAppFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) bool {
+	for _, funcId := range spec.AppFunctions {
+		if funcId.MatchPackageAndMethod(f) {
 			return true
 		}
 	}
@@ -627,12 +622,14 @@ func isCoreApiFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) bool {
 	return false
 }
 
-func contextOf(spec config.DiodonPassThroughSpec, f *ssa.Function) context {
-	if isCoreApiFunc(spec, f) {
+func contextOf(spec config.DiodonPassThroughSpec, f *ssa.Function) funcContext {
+	if isCoreFunc(spec, f) {
 		return core
+	} else if isAppFunc(spec, f) {
+		return app
+	} else {
+		return unknown
 	}
-
-	return app
 }
 
 func shouldFilterAppAccess(spec config.DiodonPassThroughSpec, f *ssa.Function) bool {
@@ -653,6 +650,15 @@ func shouldFilterCoreAlloc(spec config.DiodonPassThroughSpec, f *ssa.Function) b
 	}
 
 	return false
+}
+
+func isAllocatedErrorType(t types.Type) bool {
+	typ := t
+	if ptr, ok := typ.(*types.Pointer); ok {
+		typ = ptr.Elem().Underlying()
+	}
+
+	return types.AssignableTo(typ, types.Universe.Lookup("error").Type())
 }
 
 // ReportResults returns res as a formatted string and true if the analysis failed.

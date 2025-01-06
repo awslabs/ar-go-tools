@@ -51,8 +51,8 @@ func Run(flags tools.CommonFlags) error {
 		logger = config.NewLogGroup(cfg)
 	}
 
-	if len(cfg.ImmutabilityProblems) == 0 {
-		logger.Warnf("No immutability problems in config file.")
+	if len(cfg.DiodonPassThroughProblems) == 0 {
+		logger.Warnf("No pass-through problems in config file.")
 		return nil
 	}
 

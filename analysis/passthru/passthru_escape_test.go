@@ -63,10 +63,11 @@ func TestFindEscapes(t *testing.T) {
 		{name: "exParamFieldOk"},
 		{name: "exArgLeak"},
 		{name: "exFreeLeak"},
-		{name: "exRetLeak"},
 		{name: "exGlobalLeak"},
 		{name: "exGlobalElemLeak"},
 		{name: "exGlobalFieldLeak"},
+		{name: "exInterOk"},
+		{name: "exInterLeak"},
 	}
 
 	for _, test := range tests {
@@ -96,14 +97,15 @@ func TestFindEscapes(t *testing.T) {
 	}
 }
 
-func runEscapes(state *ptr.State, f *ssa.Function, allocs []AccessedCoreAlloc) map[AccessedCoreAlloc][]Escape {
+func runEscapes(state *ptr.State, f *ssa.Function, allocs []AccessedCoreAlloc) []EscapedCoreAlloc {
 	cache := ptr.NewAliasCache(state)
 	s := newState(state, cache, config.DiodonPassThroughSpec{})
-	escapes := make(map[AccessedCoreAlloc][]Escape)
+	var escapes []EscapedCoreAlloc
 	for _, alloc := range allocs {
 		escs := findEscapes(s, f, alloc)
-		escapes[alloc] = escs
+		escapes = append(escapes, EscapedCoreAlloc{alloc, escs})
 	}
+
 	return escapes
 }
 
@@ -117,7 +119,7 @@ func findAllocs(state *ptr.State, funcName string, wantAllocIDs []analysistest.A
 					for _, allocID := range wantAllocIDs {
 						pos := state.Program.Fset.Position(instr.Pos())
 						if analysistest.NewLPos(pos) == allocID.Pos {
-							alloc := AccessedCoreAlloc{Value: instr.(ssa.Value), Pos: pos, trace: &coreTrace{}}
+							alloc := AccessedCoreAlloc{Value: instr.(ssa.Value), Pos: pos, trace: coreTrace{}}
 							res = append(res, alloc)
 						}
 					}
@@ -217,7 +219,7 @@ func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targ
 
 // checkWrites checks that got's writes matches the wanted
 // CoreAlloc->Escape annotation ids from the test.
-func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got map[AccessedCoreAlloc][]Escape) {
+func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got []EscapedCoreAlloc) {
 	// debugEscapes(t, want, got)
 
 	type seenEntry struct {
@@ -228,8 +230,8 @@ func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSou
 	}
 	seenEscOfEntry := make(map[seenEntry]map[seenEsc]bool)
 
-	for entry, escapes := range got {
-		entryVal := entry.Value
+	for _, escapedAlloc := range got {
+		entryVal := escapedAlloc.AccessedCoreAlloc.Value
 		entryPos := prog.Fset.Position(entryVal.Pos())
 		if !entryPos.IsValid() {
 			t.Errorf("invalid entrypoint position for: %v", entryVal)
@@ -237,7 +239,7 @@ func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSou
 			continue
 		}
 		gotEntry := seenEntry{Pos: analysistest.RemoveColumn(entryPos)}
-		for _, escape := range escapes {
+		for _, escape := range escapedAlloc.Escapes {
 			if _, ok := seenEscOfEntry[gotEntry]; !ok {
 				seenEscOfEntry[gotEntry] = map[seenEsc]bool{}
 			}
@@ -286,11 +288,11 @@ func checkEscapes(t *testing.T, prog *ssa.Program, want analysistest.TargetToSou
 	}
 }
 
-func debugEscapes(t *testing.T, want analysistest.TargetToSources, got map[AccessedCoreAlloc][]Escape) {
+func debugEscapes(t *testing.T, want analysistest.TargetToSources, got []EscapedCoreAlloc) {
 	t.Logf("GOT escapes\n")
-	for entry, escs := range got {
-		t.Logf("\talloc: %v\n", entry.Pos)
-		for _, escape := range escs {
+	for _, alloc := range got {
+		t.Logf("\talloc: %v\n", alloc.AccessedCoreAlloc.Pos)
+		for _, escape := range alloc.Escapes {
 			t.Logf("\t\tescape: %v\n", escape.Pos)
 		}
 	}
