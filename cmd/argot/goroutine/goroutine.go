@@ -147,21 +147,20 @@ func topDownPhase(logger *config.LogGroup, cfg *config.Config, visitNodes []*cal
 	// mainFunc := findFunction(lp.Program, "main")
 	for _, node := range visitNodes {
 		if isCriticalFunc(cfg, node.fun) {
-			logger.Infof("Checking that parameter %d of %v called in %v does not escape thread\n", 0, node.fun, node.parent.fun)
 			for i, reason := range node.context.ParameterEscape() {
-				if i != 0 {
-					continue
-				}
+				logger.Infof("Checking that parameter %d of %v called in %v does not escape thread\n", i, node.fun, node.parent.fun)
 				if reason != nil {
-					logger.Errorf("\tParameter has escaped: %v\n", reason)
+					logger.Errorf("\tParameter %s of %v has escaped: %v\n", node.fun.Params[i].Name(), node.fun, reason)
 					success = false
 					n := node
 					for n != nil {
-						logger.Errorf("at: %v\n", n.fun)
+						logger.Infof("at: %v\n", n.fun)
 						n = n.parent
 					}
 				}
 			}
+			// run the function summary and then check if the parameters are still local
+
 		}
 	}
 
