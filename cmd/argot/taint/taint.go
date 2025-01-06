@@ -223,16 +223,17 @@ func LogResult(
 	}
 
 	// Prints location of positions where source data escapes in the SSA
-	for escape, sources := range result.TaintFlows.Escapes {
-		for source := range sources {
+	for source, escapes := range result.TaintFlows.Escapes {
+		for escape, rationale := range escapes {
 			sourcePos := program.Fset.File(source.Pos()).Position(source.Pos())
 			escapePos := program.Fset.File(escape.Pos()).Position(escape.Pos())
 			result.State.Logger.Errorf(
-				"%s in function %q:\n\tSink:   [SSA] %q\n\t\t[POSITION] %s\n\tSource: [SSA] %q\n\t\t[POSITION] %s\n",
+				"%s in function %q:\n\tSink:   [SSA] %q\n\t\t[POSITION] %s\n\tLeak:   %q\n\tSource: [SSA] %q\n\t\t[POSITION] %s\n",
 				formatutil.Yellow("Data escapes thread"),
 				escape.Parent().Name(),
 				formatutil.SanitizeRepr(escape),
 				escapePos.String(), // safe %s (position string)
+				formatutil.Sanitize(rationale.String()),
 				formatutil.SanitizeRepr(source),
 				sourcePos.String(), // safe %s (position string)
 			)

@@ -894,7 +894,7 @@ func (v *Visitor) checkEscape(s *df.State, node df.GraphNode, escapeInfo *Escape
 		_, isCall := instr.(ssa.CallInstruction)
 		rationale, isTracked := escapeInfo.InstructionLocality[instr]
 		if !isCall && rationale != nil && isTracked {
-			v.taints.addNewEscape(v.currentSource, instr)
+			v.taints.addNewEscape(v.currentSource, instr, *rationale)
 			v.raiseAlarm(s, instr.Pos(),
 				fmt.Sprintf("instruction %s in %s is not local because %s!\n\tPosition: %s",
 					instr, node.Graph().Parent, rationale.String(), s.Program.Fset.Position(instr.Pos())))

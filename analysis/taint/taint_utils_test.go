@@ -27,6 +27,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
@@ -135,7 +136,7 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 }
 
 func checkEscape(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSources,
-	actual map[ssa.Instruction]map[ssa.Instruction]bool) {
+	actual map[ssa.Instruction]map[ssa.Instruction]df.EscapeRationale) {
 
 	seenEscapeFlow := make(map[analysistest.LPos]map[analysistest.LPos]bool)
 	cmpPos := func(pos analysistest.LPos) func(analysistest.AnnotationID) bool {

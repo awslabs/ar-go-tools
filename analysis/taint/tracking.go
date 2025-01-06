@@ -29,7 +29,7 @@ type Flows struct {
 
 	// Escapes maps the instructions where data escapes, coming from the source instruction it maps to.
 	// More precisely, Escapes[instr][source] <== data from source escapes the thread at instr
-	Escapes map[ssa.Instruction]map[ssa.Instruction]bool
+	Escapes map[ssa.Instruction]map[ssa.Instruction]df.EscapeRationale
 }
 
 // FlowNode represents a node in Flows.Sinks.
@@ -45,7 +45,7 @@ type FlowNode struct {
 func NewFlows() *Flows {
 	return &Flows{
 		Sinks:   map[FlowNode]map[FlowNode]bool{},
-		Escapes: map[ssa.Instruction]map[ssa.Instruction]bool{},
+		Escapes: map[ssa.Instruction]map[ssa.Instruction]df.EscapeRationale{},
 	}
 }
 
@@ -73,16 +73,16 @@ func (m *Flows) addNewPathCandidate(source FlowNode, sink FlowNode) bool {
 	return true
 }
 
-func (m *Flows) addNewEscape(source df.NodeWithTrace, escapeInstr ssa.Instruction) {
+func (m *Flows) addNewEscape(source df.NodeWithTrace, escapeInstr ssa.Instruction, rationale df.EscapeRationale) {
 	if m.Escapes == nil {
 		return
 	}
 	sourceInstr := df.Instr(source.Node)
 	if escapeInstr != nil && sourceInstr != nil {
-		if _, ok := m.Escapes[escapeInstr.(ssa.Instruction)]; !ok {
-			m.Escapes[escapeInstr.(ssa.Instruction)] = make(map[ssa.Instruction]bool)
+		if _, ok := m.Escapes[sourceInstr]; !ok {
+			m.Escapes[sourceInstr] = make(map[ssa.Instruction]df.EscapeRationale)
 		}
-		m.Escapes[escapeInstr.(ssa.Instruction)][sourceInstr] = true
+		m.Escapes[sourceInstr][escapeInstr] = rationale
 	}
 }
 
@@ -122,13 +122,13 @@ func unionNodes(p1 map[FlowNode]bool, p2 map[FlowNode]bool) map[FlowNode]bool {
 }
 
 // unionInstrs is a utility function to merge two sets of instructions.
-func unionInstrs(p1 map[ssa.Instruction]bool, p2 map[ssa.Instruction]bool) map[ssa.Instruction]bool {
+func unionInstrs(p1 map[ssa.Instruction]df.EscapeRationale, p2 map[ssa.Instruction]df.EscapeRationale) map[ssa.Instruction]df.EscapeRationale {
 	// NOTE this is a duplicate of unionNodes because the ssa.Instruction
 	// interface does not implement the comparable constraint
 	for x, yb := range p2 {
 		ya, ina := p1[x]
 		if ina {
-			p1[x] = yb || ya
+			p1[x] = ya // preserve the value in p1
 		} else {
 			p1[x] = yb
 		}
