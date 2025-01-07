@@ -64,7 +64,7 @@ func TestAnalyze(t *testing.T) {
 func setupConfig(lp *loadprogram.State) {
 	lp.Config.Options.ReportCoverage = false
 	lp.Config.Options.ReportsDir = ""
-	lp.Config.LogLevel = int(config.InfoLevel) // change this as needed for debugging
+	lp.Config.LogLevel = int(config.ErrLevel) // change this as needed for debugging
 
 	lp.Logger = config.NewLogGroup(lp.Config)
 }
@@ -145,7 +145,7 @@ func wantTargetToSources(lp *loadprogram.State, sourceRegex *regexp.Regexp, targ
 // checkWrites checks that got's writes matches the wanted
 // CoreAlloc->InvalidAccess annotation ids from the test.
 func checkInvalidAccesses(t *testing.T, prog *ssa.Program, want analysistest.TargetToSources, got passthru.AnalysisResult) {
-	debugResult(t, want, got)
+	// debugResult(t, want, got)
 
 	type seenAlloc struct {
 		Pos analysistest.LPos

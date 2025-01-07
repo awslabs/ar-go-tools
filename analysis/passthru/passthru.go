@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Package passthru implements the Diodon-specific pass-through analysis.
-// It finds all the writes in the Application to a pointer allocated
+// It finds all the accesses in the Application to a pointer allocated
 // in the Core without correct separation logic permissions.
 //
 // We cannot prove that an allocation in the Core must alias a return value
@@ -106,12 +106,13 @@ func analyze(state *state) []InvalidAccess {
 	funcs := categorizeFuncs(state)
 	state.funcs = funcs
 	retIds := returnParamIdsWithPermission(state, state.funcs.app)
-	state.logger.Infof("%d core funcs\n", len(state.funcs.core))
-	state.logger.Infof("%d app funcs\n", len(state.funcs.app))
-	state.logger.Infof("%d ret ids\n", retIds.Len())
 
 	for _, coreFunc := range state.funcs.core {
-		addAllocsInCore(state, retIds, coreFunc.f, coreFunc.trace)
+		addAllocsInCore(state, retIds, coreFunc)
+	}
+
+	if state.coreAllocIds.Len() == 0 {
+		state.logger.Infof("No allocations in the Core found that may leak permissions to a Core API return value")
 	}
 
 	var res []InvalidAccess
@@ -122,21 +123,9 @@ func analyze(state *state) []InvalidAccess {
 		}
 		unvalidatedCoreAccesses := findCoreAccesses(state, appFunc)
 		for _, unvalidatedAcc := range unvalidatedCoreAccesses {
-			fmt.Printf("unvalidatedAcc: %v\n", unvalidatedAcc)
 			if acc, ok := isInvalidCoreAccess(state, unvalidatedAcc); ok {
 				state.logger.Infof("Found %v\n", acc)
 				res = append(res, acc)
-
-				args := 0
-				for _, alloc := range acc.EscapedAllocs {
-					for _, esc := range alloc.Escapes {
-						// state.logger.Infof("\tesc: %v\n", esc)
-						if esc.Ctx == Arg {
-							args++
-						}
-					}
-				}
-				state.logger.Infof("\tescaped args: %d\n", args)
 			}
 		}
 	}
@@ -156,10 +145,17 @@ func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess
 		// Find escapes for every Core function in the alloc's trace
 		// on the transition from a core func to unknown (stdlib etc), run escape analysis
 		for _, coreFunc := range alloc.trace {
-			escs := findEscapes(state, coreFunc, alloc)
+			if funcDoesNotLeakArgs(coreFunc.f) {
+				state.logger.Debugf(
+					"\t\tskipping escape check because Core function does not leak args: %v\n",
+					coreFunc)
+				continue
+			}
+
+			escs := findEscapes(state, coreFunc.f, alloc)
+			state.logger.Debugf("\t\t%v escapes: %v\n", coreFunc, escapes)
 			escapes = append(escapes, escs...)
 		}
-		fmt.Printf("escapes: %v\n", escapes)
 
 		// Alloc is valid if it does not escape
 		if len(escapes) == 0 {
@@ -269,10 +265,11 @@ func newState(s *ptr.State, cache *ptr.AliasCache, spec config.DiodonPassThrough
 	}
 }
 
-// allocInCore is a value allocated in the Core.
+// allocInCore is a value allocated in a function reachable from a Core API
+// function.
 //
 // The allocation can occur in multiple different calling contexts which is why
-// there can be more than one trace.
+// there can be more than one allocInCore for a given SSA value.
 type allocInCore struct {
 	ssa.Value
 	trace *coreTrace
@@ -285,12 +282,13 @@ func (ac allocInCore) String() string {
 // addAllocsInCore adds values allocated in the Core with trace tr to state.
 // The values must possibly alias any specified Core API function's return
 // value.
-func addAllocsInCore(state *state, retIds *intsets.Sparse, coreFunc *ssa.Function, tr coreTrace) {
+func addAllocsInCore(state *state, retIds *intsets.Sparse, coreFunc coreFuncWithTrace) {
+	tr := coreFunc.trace
 	if len(tr) == 0 {
 		panic(fmt.Errorf("core func has empty trace: %v", coreFunc))
 	}
 
-	lang.IterateInstructions(coreFunc, func(_ int, instr ssa.Instruction) {
+	lang.IterateInstructions(coreFunc.f, func(_ int, instr ssa.Instruction) {
 		if !instr.Pos().IsValid() {
 			return
 		}
@@ -341,7 +339,7 @@ func isAllocInstr(instr ssa.Instruction) (ssa.Value, bool) {
 // that allocates a CoreAlloc.
 //
 // This is also the list of functions the CoreAlloc must not "escape" from.
-type coreTrace []*ssa.Function
+type coreTrace []coreFunc
 
 func (t coreTrace) String() string {
 	if len(t) == 0 {
@@ -367,8 +365,8 @@ type unvalidatedCoreAccess struct {
 }
 
 func (ua unvalidatedCoreAccess) String() string {
-	return fmt.Sprintf("(unvalidated) core access: %v in %v at %v of allocs: %v",
-		ua.Instruction, ua.Instruction.Parent(), ua.pos, ua.allocs)
+	return fmt.Sprintf("(unvalidated) core access: %v in %v at %v of %d allocs",
+		ua.Instruction, ua.Instruction.Parent(), ua.pos, len(ua.allocs))
 }
 
 func findCoreAccesses(state *state, appFunc *ssa.Function) []unvalidatedCoreAccess {
@@ -427,13 +425,26 @@ func findCoreAccesses(state *state, appFunc *ssa.Function) []unvalidatedCoreAcce
 }
 
 type funcs struct {
-	core []coreFunc
+	core []coreFuncWithTrace
 	app  []*ssa.Function
 }
 
 type coreFunc struct {
-	f     *ssa.Function
+	f   *ssa.Function
+	ctx funcContext
+}
+
+func (cf coreFunc) String() string {
+	return fmt.Sprintf("%s (in %s)", cf.f.String(), cf.ctx.String())
+}
+
+type coreFuncWithTrace struct {
+	coreFunc
 	trace coreTrace
+}
+
+func (cf coreFuncWithTrace) String() string {
+	return fmt.Sprintf("%s trace: %s", cf.String(), cf.trace.String())
 }
 
 // categorizeFuncs returns the Core and App functions.
@@ -442,13 +453,14 @@ type coreFunc struct {
 // (callgraph root) and not from any Core function.
 // A function is in the Core if it is reachable from any Core function.
 func categorizeFuncs(state *state) funcs {
-	var coreFuncs []coreFunc
+	var coreFuncs []coreFuncWithTrace
 	var appFuncs []*ssa.Function
 
 	// elt is a node in the callgraph.
 	type elt struct {
 		*callgraph.Node
 		context funcContext
+		trace   *[]*ssa.Function
 	}
 
 	// eltctx is an elt with more context.
@@ -461,7 +473,11 @@ func categorizeFuncs(state *state) funcs {
 	// Traverse callgraph with DFS because once a function is called in a Core context,
 	// all of its transitive callees are in the Core context as well.
 	cg := state.cache.PtrState.PointerAnalysis.CallGraph
-	root := eltctx{elt: elt{Node: cg.Root, context: app}, coreTrace: nil, indent: 0}
+	root := eltctx{
+		elt:       elt{Node: cg.Root, context: app, trace: &[]*ssa.Function{}},
+		coreTrace: nil,
+		indent:    0,
+	}
 	stack := []eltctx{root}
 	seen := map[elt]bool{}
 	for len(stack) != 0 {
@@ -470,6 +486,53 @@ func categorizeFuncs(state *state) funcs {
 
 		if seen[cur.elt] {
 			continue
+		}
+
+		switch cur.context {
+		case unknown:
+			if len(cur.coreTrace) > 0 {
+				cf := coreFuncWithTrace{
+					coreFunc{
+						cur.Func,
+						cur.context,
+					},
+					cur.coreTrace,
+				}
+				coreFuncs = append(coreFuncs, cf)
+			} else {
+				appFuncs = append(appFuncs, cur.Func)
+			}
+		case core:
+			// add the current function to the trace
+			cf := coreFunc{
+				f:   cur.Func,
+				ctx: cur.context,
+			}
+			cur.coreTrace = append(cur.coreTrace, cf)
+			cft := coreFuncWithTrace{
+				cf,
+				cur.coreTrace,
+			}
+			coreFuncs = append(coreFuncs, cft)
+		case app:
+			if len(cur.coreTrace) > 0 {
+				// App function called in Core gets Core context
+				// add the current function to the trace
+				cf := coreFunc{
+					f:   cur.Func,
+					ctx: app,
+				}
+				cur.coreTrace = append(cur.coreTrace, cf)
+				cft := coreFuncWithTrace{
+					cf,
+					cur.coreTrace,
+				}
+				coreFuncs = append(coreFuncs, cft)
+			} else {
+				appFuncs = append(appFuncs, cur.Func)
+			}
+		default:
+			panic(fmt.Errorf("invalid context for callgraph node %v: %v", cur.Node, cur.context))
 		}
 
 		if state.logger.LogsTrace() {
@@ -481,34 +544,6 @@ func categorizeFuncs(state *state) funcs {
 				cur.coreTrace)
 		}
 
-		switch cur.context {
-		case unknown:
-			// if the function is not reachable from a Core function, it's in the App
-			if len(cur.coreTrace) == 0 {
-				appFuncs = append(appFuncs, cur.Func)
-				break
-			}
-
-			// otherwise, treat function as Core
-			fallthrough
-		case core:
-			if funcDoesNotLeakArgs(cur.Func) {
-				state.logger.Debugf("Skipping because Core function does not leak args: %v\n", cur.Func)
-				break
-			}
-
-			if shouldFilterCoreAlloc(state.spec, cur.Func) {
-				state.logger.Debugf("Filtering Core function according to spec: %v\n", cur.Func)
-				break
-			}
-
-			coreFuncs = append(coreFuncs, coreFunc{cur.Func, cur.coreTrace})
-		case app:
-			appFuncs = append(appFuncs, cur.Func)
-		default:
-			panic(fmt.Errorf("invalid context for callgraph node %v: %v", cur.Node, cur.context))
-		}
-
 		seen[cur.elt] = true
 
 		for _, edge := range cur.Out {
@@ -517,19 +552,27 @@ func categorizeFuncs(state *state) funcs {
 			}
 
 			nextCtx := contextOf(state.spec, edge.Callee.Func)
-			// calculate the trace for functions reachable from a Core function
-			nextTrace := cur.coreTrace
-			if nextCtx == core || (len(cur.coreTrace) > 0 && nextCtx == unknown) {
-				nextTrace = append(cur.coreTrace, edge.Callee.Func)
-			}
-
 			stack = append(stack, eltctx{
-				elt:       elt{Node: edge.Callee, context: nextCtx},
-				coreTrace: nextTrace,
+				elt: elt{
+					Node:    edge.Callee,
+					context: nextCtx,
+				},
+				coreTrace: cur.coreTrace,
 				indent:    cur.indent + 1,
 			})
 		}
 	}
+
+	// Remove any functions in the App that are also in the Core
+	// appFuncs = slices.DeleteFunc(appFuncs, func(appFunc *ssa.Function) bool {
+	// 	for _, coreFunc := range coreFuncs {
+	// 		if coreFunc.f == appFunc {
+	// 			return true
+	// 		}
+	// 	}
+
+	// 	return false
+	// })
 
 	return funcs{core: coreFuncs, app: appFuncs}
 }
