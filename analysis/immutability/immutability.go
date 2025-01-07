@@ -272,8 +272,12 @@ func (s *state) findWrites(fna *funcToAnalyze) {
 		if !ok {
 			continue
 		}
+		// We assume that errors are only used as values
+		if isAllocatedErrorType(write.Target) {
+			continue
+		}
 		if s.shouldFilterValue(write.Target) {
-			s.log.Tracef("lvalue %v of write instruction %v filtered by spec: skipping...", write.Value, instr)
+			s.log.Tracef("lvalue %v of write instruction %v filtered by spec: skipping...", write.Target, instr)
 			continue
 		}
 		pos := write.Pos
@@ -298,6 +302,7 @@ func (s *state) findReads(fna *funcToAnalyze) {
 		if !ok {
 			continue
 		}
+
 		pos := read.Pos
 		if s.PtrState.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
 			s.log.Tracef("//argot:ignore read at %s", pos)
@@ -306,6 +311,14 @@ func (s *state) findReads(fna *funcToAnalyze) {
 
 		var aliasedReadVals []ssa.Value
 		for _, rval := range read.Values {
+			if !pointer.CanPoint(rval.Type()) {
+				continue
+			}
+			// We assume that errors are only used as values
+			if isAllocatedErrorType(rval) {
+				continue
+			}
+
 			if s.shouldFilterValue(rval) {
 				s.log.Tracef("rvalue %v of read instruction %v filtered by spec: skipping...", rval, instr)
 				continue
@@ -625,4 +638,21 @@ func flatten(t types.Type) []types.Type {
 	}
 
 	return res
+}
+
+func isAllocatedErrorType(val ssa.Value) bool {
+	// catch cases like: change interface any <- error (err)
+	if ci, ok := val.(*ssa.ChangeInterface); ok {
+		val = ci.X
+	}
+
+	typ := val.Type()
+	switch t := typ.(type) {
+	case *types.Pointer:
+		typ = t.Elem().Underlying()
+	case *types.Interface:
+		typ = t.Underlying()
+	}
+
+	return types.AssignableTo(typ, types.Universe.Lookup("error").Type())
 }
