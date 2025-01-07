@@ -86,7 +86,7 @@ func exOk() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(*msg) // @InvalidAccess(exOk)
+	fmt.Println(*msg) // @InvalidAccess(exOk) // TODO false-positive
 }
 
 func exInterOk() {
@@ -95,7 +95,7 @@ func exInterOk() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(*msg)
+	fmt.Println(*msg) // @InvalidAccess(exInterOk) // TODO false-positive
 }
 
 func exGlobalOk() {

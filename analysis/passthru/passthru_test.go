@@ -59,6 +59,9 @@ func TestAnalyze(t *testing.T) {
 	}
 
 	checkInvalidAccesses(t, state.Program, want, got)
+	if t.Failed() {
+		debugResult(t, want, got)
+	}
 }
 
 func setupConfig(lp *loadprogram.State) {

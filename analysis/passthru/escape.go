@@ -87,19 +87,10 @@ func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escap
 					break
 				}
 
-				if hasPermissionsOf(cache, write.Target, alloc.Value) {
-					// if !isValAllocatedOutside(state, write.Target, write.Parent()) {
-					// 	state.logger.Debugf("Skipping analyzing for escapes: %v target allocated inside %v\n", write, write.Parent())
-					// 	break
-					// }
-
-					// if pos.Line == alloc.Pos.Line {
-					// 	break
-					// }
-
+				if hasPermissionsOf(cache, write.Value, alloc.Value) {
 					esc := Escape{
-						Value: write.Target,
-						Pos:   write.Pos,
+						Value: write.Value,
+						Pos:   pos,
 						Ctx:   Write,
 					}
 					res = append(res, esc)
