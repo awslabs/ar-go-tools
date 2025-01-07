@@ -208,7 +208,7 @@ func shortNodeSummary(g GraphNode) string {
 	case *ParamNode:
 		return fmt.Sprintf("param:%s:%s", x.ssaNode.Name(), x.parent.Parent.Name())
 	case *CallNode:
-		return fmt.Sprintf("call:%s", x.Callee().Name())
+		return fmt.Sprintf("call:%s", x.Callee().String())
 	case *CallNodeArg:
 		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().Callee().Name())
 	case *ReturnValNode:
