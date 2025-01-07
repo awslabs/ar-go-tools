@@ -43,7 +43,7 @@ func (i *CoreInstance) CoreApiInterOk(b **byte) (**byte, error) {
 }
 
 func doAlloc() *byte {
-	alloc := new(byte)
+	alloc := new(byte) // @CoreAlloc(exInterOk)
 	return alloc
 }
 
@@ -167,5 +167,7 @@ func main() {
 	exGlobalOk()
 	exGlobalLeak()
 	exParamLeak()
+	exArgInterLeak()
+	exInterOk()
 	exArgInterLeak()
 }

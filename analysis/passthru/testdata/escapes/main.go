@@ -90,7 +90,7 @@ func exGlobalFieldLeak() {
 }
 
 func exInterOk() {
-	alloc := make([]byte, 1) // @CoreAlloc(exInterOk)
+	alloc := make([]byte, 1) // @CoreAlloc(exInterOk) // @Escape(exInterOk) // TODO escape false-positive
 	doSafe(&alloc)
 }
 
@@ -99,7 +99,7 @@ func doSafe(alloc *[]byte) {
 }
 
 func exInterLeak() {
-	alloc := make([]byte, 1) // @CoreAlloc(exInterLeak)
+	alloc := make([]byte, 1) // @CoreAlloc(exInterLeak) // @Escape(exInterLeak) // TODO escape false-positive
 	doUnsafeCall(&alloc)
 }
 

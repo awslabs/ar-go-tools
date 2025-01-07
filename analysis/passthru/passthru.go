@@ -206,14 +206,6 @@ func returnParamIdsWithPermission(state *state, appFuncs []*ssa.Function) *intse
 				return
 			}
 
-			for i, arg := range lang.GetArgs(call) {
-				for _, argIdx := range funcId.ParameterIndices {
-					if i == argIdx {
-						vals = append(vals, arg)
-					}
-				}
-			}
-
 			// If the call returns a tuple, add the respective return value
 			// extract instructions to vals, otherwise add the result of the
 			// call
