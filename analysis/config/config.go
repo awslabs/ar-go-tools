@@ -185,6 +185,9 @@ type StaticCommandsSpec struct {
 type SyntacticSpecs struct {
 	// StructInitSpecs is the list of specs for the struct inititialization problems.
 	StructInitProblems []StructInitSpec `yaml:"struct-inits" json:"struct-inits"`
+
+	// CondCheckSpecs is the list of specs for the condition checking problems.
+	CondCheckSpecs []CondCheckSpec `yaml:"cond-checks" json:"cond-checks"`
 }
 
 // StructInitSpec contains specs for the problem of tracking a specific struct initialization.
@@ -227,6 +230,42 @@ type FieldsSetSpec struct {
 	// Value is the value that Field must always be set to.
 	// We only support static values for now (e.g., constants and static functions).
 	Value CodeIdentifier
+}
+
+type CondCheckSpec struct {
+	// Tag is the identifier of the problem
+	Tag string
+	// Severity is the severity of the finding when some struct is not initialized properly
+	Severity Severity
+	// Description is a human-readable description of the problem
+	Description string
+	// Targets of this problem
+	Targets []string
+	// Call is the call that needs to be guarded
+	Call CodeIdentifier
+	// Requires is the list of conditions that need to be satisfied before making a Call
+	Requires []GuardSpec
+}
+
+// SpecTag returns the struct init specification's tag
+func (cc CondCheckSpec) SpecTag() string {
+	return cc.Tag
+}
+
+// SpecTargets returns the struct init specification's targets
+func (cc CondCheckSpec) SpecTargets() []string {
+	return cc.Targets
+}
+
+// SpecSeverity returns the struct init specification's severity
+func (cc CondCheckSpec) SpecSeverity() Severity {
+	return cc.Severity
+}
+
+// GuardSpec is the specification of a guard or condition
+type GuardSpec struct {
+	// Method is the function that is used in the condition
+	Guard []string
 }
 
 // A TargetSpec is a set of files the form a Go program together with a name to identify the target in the configuration
@@ -500,6 +539,10 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 			siSpec.FieldsSet[j].Value = compileRegexes(fSpec.Value)
 		}
 		funcutil.MapInPlace(siSpec.Filters, compileRegexes)
+	}
+
+	for i, ccSpec := range cfg.SyntacticProblems.CondCheckSpecs {
+		cfg.SyntacticProblems.CondCheckSpecs[i].Call = compileRegexes(ccSpec.Call)
 	}
 
 	if cfg.PointerConfig == nil {
