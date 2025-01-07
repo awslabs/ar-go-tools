@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package analysis
+package lang
 
-// Version is the last tagged version of the analysis tool
-const Version = "v0.3.6-alpha"
+import (
+	"golang.org/x/tools/go/ssa"
+)
+
+type Expression interface {
+	String() string
+	Type() ssa.Type
+}
