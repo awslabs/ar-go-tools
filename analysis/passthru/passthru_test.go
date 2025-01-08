@@ -160,8 +160,7 @@ func checkInvalidAccesses(t *testing.T, prog *ssa.Program, want analysistest.Tar
 	seenAccessOfAlloc := make(map[seenAlloc]map[seenAccess]bool)
 
 	for _, gotAccess := range got.InvalidAccesses {
-		accessInstr := gotAccess.Instruction
-		accessPos := prog.Fset.Position(accessInstr.Pos())
+		accessPos := gotAccess.Pos
 		if !accessPos.IsValid() {
 			t.Errorf("invalid access position for: %v", gotAccess)
 			continue

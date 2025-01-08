@@ -352,11 +352,11 @@ func PtrWrittenToPtr(instr ssa.Instruction, pos token.Position) (Write, bool) {
 
 	if pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
 		switch rval := rval.(type) {
-		case *ssa.MakeInterface:
-			// Special case for: e.g. make interface{} <- string
-			if !pointer.CanPoint(rval.X.Type()) {
-				return Write{}, false
-			}
+		// case *ssa.MakeInterface:
+		// 	// Special case for: e.g. make interface{} <- string
+		// 	if !pointer.CanPoint(rval.X.Type()) {
+		// 		return Write{}, false
+		// 	}
 		case *ssa.ChangeInterface:
 			// Special case for: e.g. change interface interface{} <- error
 			// we assume that errors are never used as pointer values

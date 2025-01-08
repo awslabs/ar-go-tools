@@ -54,8 +54,8 @@ func (e Escape) String() string {
 			e.Ctx, e.Value, e.Value, e.Value.Type(), e.Value.Type(), e.Parent().String(), e.Pos)
 	}
 
-	return fmt.Sprintf("escape (%v) via value %v in %v at %v",
-		e.Ctx, e.Value, e.Parent().String(), e.Pos)
+	return fmt.Sprintf("escape (%v) via value %v (type %v) in %v at %v",
+		e.Ctx, e.Value, e.Value.Type(), e.Parent().String(), e.Pos)
 }
 
 // EscapeContext indicates how a value "escaped" a function.
@@ -109,11 +109,13 @@ func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escap
 		}
 		seen[cur] = true
 
-		if funcDoesNotLeak(state.spec, coreFunc{f: cur, ctx: unknown}) {
+		if funcDoesNotLeak(state.spec, funcWithCtx{f: cur, ctx: unknown}) {
 			state.logger.Debugf(
 				"\t\tskipping escape check because Core function does not leak args: %v\n", cur)
 			continue
 		}
+
+		state.logger.Debugf("checking escapes in function: %v\n", cur)
 
 		lang.IterateInstructions(cur, func(_ int, instr ssa.Instruction) {
 			pos := state.fset.Position(instr.Pos())
@@ -246,7 +248,7 @@ func escapesInCallees(state *state, call ssa.CallInstruction, alloc AccessedCore
 		}
 		seen[cur] = true
 
-		if funcDoesNotLeak(state.spec, coreFunc{f: cur.Func, ctx: unknown}) {
+		if funcDoesNotLeak(state.spec, funcWithCtx{f: cur.Func, ctx: unknown}) {
 			state.logger.Debugf(
 				"\t\tskipping escape check because Core function does not leak args: %v\n", cur.Func)
 			continue
@@ -299,7 +301,7 @@ func callDoesNotLeak(call *ssa.CallCommon) bool {
 }
 
 // funcDoesNotLeak returns true if f does not leak internal allocations.
-func funcDoesNotLeak(spec config.DiodonPassThroughSpec, cf coreFunc) bool {
+func funcDoesNotLeak(spec config.DiodonPassThroughSpec, cf funcWithCtx) bool {
 	// Functions in the App cannot leak
 	// if cf.ctx == app {
 	// 	return true
