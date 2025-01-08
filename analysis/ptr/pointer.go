@@ -119,6 +119,17 @@ func (ac *AliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
 			if obj == nil {
 				continue
 			}
+
+			// Skip allocated context.Context and error objects since we assume
+			// that they are used as values
+			switch data := obj.Data().(type) {
+			case *ssa.Alloc:
+				switch data.Type().String() {
+				case "*error", "*context.Context":
+					continue
+				}
+			}
+
 			res[obj] = struct{}{}
 		}
 	}
@@ -340,6 +351,25 @@ func PtrWrittenToPtr(instr ssa.Instruction, pos token.Position) (Write, bool) {
 	}
 
 	if pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
+		switch rval := rval.(type) {
+		case *ssa.MakeInterface:
+			// Special case for: e.g. make interface{} <- string
+			if !pointer.CanPoint(rval.X.Type()) {
+				return Write{}, false
+			}
+		case *ssa.ChangeInterface:
+			// Special case for: e.g. change interface interface{} <- error
+			// we assume that errors are never used as pointer values
+			if rval.X.Type().String() == "error" {
+				return Write{}, false
+			}
+		case *ssa.Call:
+			// Special case for: e.g. fmt.Errorf(...) where the return type is an error
+			if rval.Type().String() == "error" {
+				return Write{}, false
+			}
+		}
+
 		return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
 	}
 

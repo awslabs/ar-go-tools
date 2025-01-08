@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/passthru"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
@@ -43,9 +44,9 @@ func TestAnalyze(t *testing.T) {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	setupConfig(lp)
-	state, err := result.Bind(lpState, ptr.NewState).Value()
+	state, err := result.Bind(result.Bind(lpState, ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
-		t.Fatalf("failed to load pointer state: %v", err)
+		t.Fatalf("failed to load dataflow state: %v", err)
 	}
 
 	want := wantInvalidAccesses(lp)

@@ -39,9 +39,11 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -80,15 +82,15 @@ type AccessedCoreAlloc struct {
 }
 
 func (a AccessedCoreAlloc) String() string {
-	return fmt.Sprintf("app-accessed alloc in core of %v at %v (trace: %v)",
-		a.Value, a.Pos, a.trace)
+	return fmt.Sprintf("app-accessed core alloc of %v in %v at %v (trace: %v)",
+		a.Value, a.Value.Parent().String(), a.Pos, a.trace)
 }
 
 // Analyze runs the analysis on all pass through problems specified in the
 // config.
-func Analyze(s *ptr.State) (AnalysisResult, error) {
+func Analyze(s *dataflow.State) (AnalysisResult, error) {
 	var res []InvalidAccess
-	cache := ptr.NewAliasCache(s)
+	cache := ptr.NewAliasCache(&s.State)
 
 	for _, spec := range s.Config.DiodonPassThroughProblems {
 		state := newState(s, cache, spec)
@@ -103,6 +105,10 @@ func analyze(state *state) []InvalidAccess {
 	funcs := categorizeFuncs(state)
 	state.funcs = funcs
 	for _, coreFunc := range state.funcs.core {
+		if shouldFilterCoreAlloc(state.spec, coreFunc.f) {
+			continue
+		}
+
 		addAllocsInCore(state, coreFunc)
 	}
 
@@ -119,7 +125,7 @@ func analyze(state *state) []InvalidAccess {
 		unvalidatedCoreAccesses := findCoreAccesses(state, appFunc)
 		for _, unvalidatedAcc := range unvalidatedCoreAccesses {
 			if acc, ok := isInvalidCoreAccess(state, unvalidatedAcc); ok {
-				state.logger.Infof("Found %v\n", acc)
+				state.logger.Debugf("Found %v\n", acc)
 				res = append(res, acc)
 			}
 		}
@@ -138,8 +144,12 @@ func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess
 		state.logger.Debugf("\talloc: %v\n", alloc)
 		var escapes []Escape
 		// Find escapes for every Core function in the alloc's trace
+		//
+		// We need to check all functions reachable from the Core because even
+		// functions verified with Gobra can leak references with 0 permissions,
+		// and any accesses in the App to these references are unsound
 		for _, coreFunc := range alloc.trace {
-			if funcDoesNotLeak(coreFunc.f) {
+			if funcDoesNotLeak(state.spec, coreFunc) {
 				state.logger.Debugf(
 					"\t\tskipping escape check because Core function does not leak args: %v\n",
 					coreFunc)
@@ -178,6 +188,7 @@ func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess
 type state struct {
 	logger       *config.LogGroup
 	spec         config.DiodonPassThroughSpec
+	df           *dataflow.State // df is only used to resolve callees - passthru is not a dataflow analysis
 	cache        *ptr.AliasCache
 	funcs        funcs
 	coreAllocIds *intsets.Sparse
@@ -187,10 +198,11 @@ type state struct {
 	fset *token.FileSet
 }
 
-func newState(s *ptr.State, cache *ptr.AliasCache, spec config.DiodonPassThroughSpec) *state {
+func newState(s *dataflow.State, cache *ptr.AliasCache, spec config.DiodonPassThroughSpec) *state {
 	return &state{
 		logger:       s.Logger,
 		spec:         spec,
+		df:           s,
 		cache:        cache,
 		funcs:        funcs{core: nil, app: nil},
 		coreAllocIds: &intsets.Sparse{},
@@ -443,18 +455,15 @@ func categorizeFuncs(state *state) funcs {
 			coreFuncs = append(coreFuncs, cft)
 		case app:
 			if len(cur.coreTrace) > 0 {
-				// App function called in Core gets Core context
-				// add the current function to the trace
+				// App function called in Core context gets added to the Core trace
+				// It is not added to the list of App functions because an
+				// access to memory inside the function is still in the Core
+				// context (which has permissions), not the App
 				cf := coreFunc{
 					f:   cur.Func,
 					ctx: app,
 				}
 				cur.coreTrace = append(cur.coreTrace, cf)
-				cft := coreFuncWithTrace{
-					cf,
-					cur.coreTrace,
-				}
-				coreFuncs = append(coreFuncs, cft)
 			} else {
 				appFuncs = append(appFuncs, cur.Func)
 			}
@@ -491,15 +500,15 @@ func categorizeFuncs(state *state) funcs {
 	}
 
 	// Remove any functions in the App that are also in the Core
-	// appFuncs = slices.DeleteFunc(appFuncs, func(appFunc *ssa.Function) bool {
-	// 	for _, coreFunc := range coreFuncs {
-	// 		if coreFunc.f == appFunc {
-	// 			return true
-	// 		}
-	// 	}
+	appFuncs = slices.DeleteFunc(appFuncs, func(appFunc *ssa.Function) bool {
+		for _, coreFunc := range coreFuncs {
+			if coreFunc.f == appFunc && coreFunc.ctx == core {
+				return true
+			}
+		}
 
-	// 	return false
-	// })
+		return false
+	})
 
 	return funcs{core: coreFuncs, app: appFuncs}
 }

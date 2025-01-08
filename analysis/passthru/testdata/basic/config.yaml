@@ -6,11 +6,10 @@ diodon-pass-through-problems:
       - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
         method: ".*"
     core-functions:
-      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
-        method: "^Core.*"
-      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
-        method: "^NewCoreInstance$"
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
+        method: ".*"
     core-api-function-returned-values:
-      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
+        method: "NewCoreInstance"
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
         method: "^CoreApi.*"
-        return-indices: [0]

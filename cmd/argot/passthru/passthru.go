@@ -21,6 +21,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/passthru"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
@@ -101,9 +102,9 @@ func runTarget(
 		PackageConfig: nil,
 	}
 	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
-	state, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()
+	state, err := result.Bind(result.Bind(loadprogram.NewState(c), ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load target: %v", err)
+		return nil, fmt.Errorf("failed to initialize dataflow state: %v", err)
 	}
 	c.Logger.Infof("starting pass-through analysis...\n")
 	res, err := passthru.Analyze(state)

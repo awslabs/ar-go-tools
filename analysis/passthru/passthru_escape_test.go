@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
@@ -44,9 +45,9 @@ func TestFindEscapes(t *testing.T) {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	setupConfig(lp.Config)
-	state, err := result.Bind(lpState, ptr.NewState).Value()
+	state, err := result.Bind(result.Bind(lpState, ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
-		t.Fatalf("failed to load pointer state: %v", err)
+		t.Fatalf("failed to load dataflow state: %v", err)
 	}
 	wantFull := wantEscapes(lp)
 	if len(wantFull) == 0 {
@@ -86,7 +87,7 @@ func TestFindEscapes(t *testing.T) {
 			if len(wantAllocIDs) == 0 {
 				t.Fatalf("failed to find any test file annotations with id: %v", test.name)
 			}
-			f, gotAllocs := findAllocs(state, test.name, wantAllocIDs)
+			f, gotAllocs := findAllocs(&state.State, test.name, wantAllocIDs)
 			if len(gotAllocs) == 0 {
 				t.Fatalf("failed to find any core allocations with id: %v", test.name)
 			}
@@ -97,8 +98,8 @@ func TestFindEscapes(t *testing.T) {
 	}
 }
 
-func runEscapes(state *ptr.State, f *ssa.Function, allocs []AccessedCoreAlloc) []EscapedCoreAlloc {
-	cache := ptr.NewAliasCache(state)
+func runEscapes(state *dataflow.State, f *ssa.Function, allocs []AccessedCoreAlloc) []EscapedCoreAlloc {
+	cache := ptr.NewAliasCache(&state.State)
 	s := newState(state, cache, config.DiodonPassThroughSpec{})
 	var escapes []EscapedCoreAlloc
 	for _, alloc := range allocs {

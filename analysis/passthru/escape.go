@@ -19,10 +19,12 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
+	"golang.org/x/exp/maps"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -46,8 +48,14 @@ type Escape struct {
 }
 
 func (e Escape) String() string {
+	const debug = false
+	if debug {
+		return fmt.Sprintf("escape (%v) via value %v (%T of type %v (%T)) in %v at %v",
+			e.Ctx, e.Value, e.Value, e.Value.Type(), e.Value.Type(), e.Parent().String(), e.Pos)
+	}
+
 	return fmt.Sprintf("escape (%v) via value %v in %v at %v",
-		e.Ctx, e.Value, e.Parent().Name(), e.Pos)
+		e.Ctx, e.Value, e.Parent().String(), e.Pos)
 }
 
 // EscapeContext indicates how a value "escaped" a function.
@@ -87,75 +95,95 @@ func (e EscapeContext) String() string {
 func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escape {
 	var res []Escape
 	cache := state.cache
-	lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
-		pos := state.fset.Position(instr.Pos())
-		switch instr := instr.(type) {
-		case *ssa.Store, *ssa.MapUpdate, *ssa.Send:
-			if write, ok := ptr.PtrWrittenToPtr(instr, pos); ok {
-				if alloc, ok := write.Value.(*ssa.Alloc); ok && !alloc.Heap {
-					break
-				}
 
-				if hasPermissionsOf(cache, write.Value, alloc.Value) {
-					esc := Escape{
-						Value: write.Value,
-						Pos:   pos,
-						Ctx:   Write,
+	// Run BFS to converge faster
+	// May have to analyze functions inter-procedurally which is why this is BFS instead of recursion
+	que := []*ssa.Function{f}
+	seen := make(map[*ssa.Function]bool)
+	for len(que) != 0 {
+		cur := que[0]
+		que = que[1:]
+
+		if seen[cur] {
+			continue
+		}
+		seen[cur] = true
+
+		if funcDoesNotLeak(state.spec, coreFunc{f: cur, ctx: unknown}) {
+			state.logger.Debugf(
+				"\t\tskipping escape check because Core function does not leak args: %v\n", cur)
+			continue
+		}
+
+		lang.IterateInstructions(cur, func(_ int, instr ssa.Instruction) {
+			pos := state.fset.Position(instr.Pos())
+			if state.df.Annotations.IsIgnoredPos(pos, state.spec.Tag) {
+				return
+			}
+
+			switch instr := instr.(type) {
+			case *ssa.Store, *ssa.MapUpdate, *ssa.Send:
+				if write, ok := ptr.PtrWrittenToPtr(instr, pos); ok {
+					// value escapes if it is written to any heap location
+					if alloc, ok := write.Value.(*ssa.Alloc); ok && !alloc.Heap {
+						break
 					}
-					res = append(res, esc)
-				}
-			}
-		case *ssa.MakeClosure:
-			for _, freeVar := range instr.Bindings {
-				if hasPermissionsOf(cache, freeVar, alloc.Value) {
-					if !pos.IsValid() {
-						pos = state.fset.Position(freeVar.Pos())
-					}
-					esc := Escape{
-						Value: freeVar,
-						Pos:   pos,
-						Ctx:   FreeVar,
-					}
-					res = append(res, esc)
-				}
-			}
-		case ssa.CallInstruction:
-			if callDoesNotLeak(instr.Common()) {
-				break
-			}
 
-			state.logger.Debugf("call in Core may leak args: %v with signature: %v\n", instr, instr.Common().Signature())
-			args := lang.GetArgs(instr)
-			var escapingArgs []ssa.Value
-			for _, arg := range args {
-				if hasPermissionsOf(cache, arg, alloc.Value) {
-					escapingArgs = append(escapingArgs, arg)
-				}
-			}
-
-			// args are fine if we analyze all transitive callees
-			if len(escapingArgs) > 0 {
-				escs, ok := escapesInCallees(state, instr, alloc)
-				if !ok {
-					break
-				}
-
-				if len(escs) > 0 {
-					res = append(res, escs...)
-				} else {
-					// if no concrete escapes were found, assume the arguments escape
-					for _, arg := range escapingArgs {
+					if hasPermissionsOf(cache, write.Value, alloc.Value) {
 						esc := Escape{
-							Value: arg,
+							Value: write.Value,
 							Pos:   pos,
-							Ctx:   Arg,
+							Ctx:   Write,
 						}
 						res = append(res, esc)
 					}
 				}
+			case *ssa.MakeClosure:
+				for _, freeVar := range instr.Bindings {
+					if hasPermissionsOf(cache, freeVar, alloc.Value) {
+						if !pos.IsValid() {
+							pos = state.fset.Position(freeVar.Pos())
+							if state.df.Annotations.IsIgnoredPos(pos, state.spec.Tag) {
+								return
+							}
+						}
+						esc := Escape{
+							Value: freeVar,
+							Pos:   pos,
+							Ctx:   FreeVar,
+						}
+						res = append(res, esc)
+					}
+				}
+			case ssa.CallInstruction:
+				if callDoesNotLeak(instr.Common()) {
+					break
+				}
+
+				state.logger.Debugf("call in Core may leak args: %v with signature: %v\n", instr, instr.Common().Signature())
+				args := lang.GetArgs(instr)
+				var escapingArgs []ssa.Value
+				for _, arg := range args {
+					if hasPermissionsOf(cache, arg, alloc.Value) {
+						escapingArgs = append(escapingArgs, arg)
+					}
+				}
+
+				if len(escapingArgs) > 0 {
+					possibleCallees, err := state.df.ResolveCallee(instr, true)
+					if err != nil {
+						// If there are no possible callees found, assume that the
+						// called function cannot leak via arguments
+						state.logger.Warnf("no callees found for %v at %v\n", instr, pos)
+						break
+					}
+
+					// Analyze the callee (or multiple if invoked method call) for escapes
+					que = append(que, maps.Keys(possibleCallees)...)
+				}
 			}
-		}
-	})
+		})
+	}
 
 	return res
 }
@@ -191,23 +219,23 @@ func hasPermissionsOf(cache *ptr.AliasCache, val ssa.Value, allocVal ssa.Value) 
 // escapesInCallees returns the first escaped values found in any of call's
 // transitive callees. Returns the escapes and true if any were found.
 func escapesInCallees(state *state, call ssa.CallInstruction, alloc AccessedCoreAlloc) ([]Escape, bool) {
-	if callDoesNotLeak(call.Common()) {
+	cg := state.cache.PtrState.PointerAnalysis.CallGraph
+	callees, err := state.df.ResolveCallee(call, true)
+	if err != nil {
+		state.logger.Warnf("failed to resolve callee for %v: %v\n", call, err)
+		// if the callee cannot be resolved, assume that it does not escape
 		return nil, false
 	}
 
-	f := call.Common().StaticCallee()
-	if f == nil {
-		// TODO
-		panic(fmt.Errorf("non-static callees not handled yet: %v in %v", call.Common(), call.Parent()))
-	}
-
 	// run BFS to converge faster
-	cg := state.cache.PtrState.PointerAnalysis.CallGraph
-	node, ok := cg.Nodes[f]
-	if !ok {
-		return nil, true
+	var que []*callgraph.Node
+	for f := range callees {
+		node, ok := cg.Nodes[f]
+		if !ok {
+			panic(fmt.Errorf("callgraph node not found for function: %v", f))
+		}
+		que = append(que, node)
 	}
-	que := []*callgraph.Node{node}
 	seen := make(map[*callgraph.Node]bool)
 	for len(que) != 0 {
 		cur := que[0]
@@ -216,23 +244,17 @@ func escapesInCallees(state *state, call ssa.CallInstruction, alloc AccessedCore
 		if seen[cur] {
 			continue
 		}
+		seen[cur] = true
 
-		if funcDoesNotLeak(cur.Func) {
-			seen[cur] = true
+		if funcDoesNotLeak(state.spec, coreFunc{f: cur.Func, ctx: unknown}) {
+			state.logger.Debugf(
+				"\t\tskipping escape check because Core function does not leak args: %v\n", cur.Func)
 			continue
 		}
 
 		escs := findEscapes(state, cur.Func, alloc)
 		if len(escs) > 0 {
 			return escs, true
-		}
-		seen[cur] = true
-		for _, edge := range cur.Out {
-			if edge == nil || edge.Callee == nil {
-				continue
-			}
-
-			que = append(que, edge.Callee)
 		}
 	}
 
@@ -273,13 +295,23 @@ func callDoesNotLeak(call *ssa.CallCommon) bool {
 		}
 	}
 
-	return funcDoesNotLeak(call.StaticCallee())
+	return false
 }
 
 // funcDoesNotLeak returns true if f does not leak internal allocations.
-func funcDoesNotLeak(f *ssa.Function) bool {
-	_, hasSummary := summaries.SummaryOfFunc(f)
-	return hasSummary
+func funcDoesNotLeak(spec config.DiodonPassThroughSpec, cf coreFunc) bool {
+	// Functions in the App cannot leak
+	// if cf.ctx == app {
+	// 	return true
+	// }
+
+	for _, cid := range spec.NoLeakFunctions {
+		if cid.MatchPackageAndMethod(cf.f) {
+			return true
+		}
+	}
+
+	return summaries.IsStdFunction(cf.f)
 }
 
 func isShallowPtrType(typ types.Type) bool {
@@ -300,46 +332,4 @@ func isShallowPtrType(typ types.Type) bool {
 	}
 
 	return true
-}
-
-func isValAllocatedOutside(state *state, val ssa.Value, f *ssa.Function) bool {
-	for _, cf := range state.funcs.core {
-		if cf.f == f {
-			continue
-		}
-
-		if isValAllocatedIn(state, val, cf.f) {
-			return true
-		}
-	}
-
-	for _, af := range state.funcs.app {
-		if af == f {
-			continue
-		}
-
-		if isValAllocatedIn(state, val, af) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func isValAllocatedIn(state *state, val ssa.Value, f *ssa.Function) bool {
-	found := false
-	lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
-		if found {
-			return
-		}
-
-		if allocatedVal, ok := isAllocInstr(instr); ok {
-			if hasPermissionsOf(state.cache, val, allocatedVal) {
-				found = true
-				return
-			}
-		}
-	})
-
-	return found
 }

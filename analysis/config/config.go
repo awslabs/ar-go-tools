@@ -260,6 +260,11 @@ type DiodonPassThroughSpec struct {
 	// functions in the Core should not be analyzed for allocation sites due to
 	// imprecision in the pointer analysis.
 	CoreAllocFilters []CodeIdentifier `yaml:"core-alloc-filters" json:"core-alloc-filters"`
+
+	// NoLeakFunctions contains a list of identifiers representing which
+	// functions in the Core cannot leak an allocation except via its return
+	// parameters.
+	NoLeakFunctions []CodeIdentifier `yaml:"no-leak-functions" json:"no-leak-functions"`
 }
 
 // SpecTag returns the specification's tag
@@ -601,6 +606,7 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 		funcutil.MapInPlace(spec.CoreApiFunctionReturnedValues, compileRegexes)
 		funcutil.MapInPlace(spec.AppAccessFilters, compileRegexes)
 		funcutil.MapInPlace(spec.CoreAllocFilters, compileRegexes)
+		funcutil.MapInPlace(spec.NoLeakFunctions, compileRegexes)
 	}
 
 	for _, spec := range cfg.ImmutabilityProblems {
