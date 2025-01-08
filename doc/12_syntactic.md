@@ -39,3 +39,40 @@ initialization information for crypto/tls.Config:
 [INFO]  Wrote final report in ???
 ```
 The analyzer reports that 1) the struct was always allocated with the appropriate setting for the field `MinVersion` and 2) there were no writes that changed the value of that field to some value that is not capture by the constraints in the config file.
+
+
+## Precondition Checks
+Users may want to check that some specific functions are called only when some precondition is satisfied. You can specify a `cond-check` constraint in the config file in the `syntactic-problems` to check for those properties. Currently, the analysis is limited to checking that specific functions are called only when some simple precondition on the output of another function is called. The function calls in the preconditions must be static calls: we currently do not support interfaces.
+
+For example, the following specification lets you check that `FooFunc` of the `func-cond` package is only called when `FooPreCheck(...)` holds, or the first boolean output of `ResourceCheck(...)` is true and the second output (of type `error`) is `nil`. Currently, the syntax is very limited, we use the string representation of the SSA form.
+```yaml
+syntactic-problems:
+  cond-checks:
+    - tag: funcCond
+      # Calling Foo requires FooPreCheck
+      call:
+        - method: ^FooFunc$
+          package: func-cond$
+      preconditions: # either guard must hold when calling the function in call
+        - precondition: ["!(ResourceCheck(...)#1 != nil:error)", "ResourceCheck(...)#0"]
+        - precondition: ["FooPreCheck(...)"]
+```
+- `call` is a list of code identifiers, here only `method` and `package` specifications are supported.
+- `preconditions` is a list of preconditions. The analysis checks that for every call described by one of the identifiers in call, then *one of* the preconditions holds on *all control-flow paths* from the function entry point to the identified call.
+> Currently, each precondition is a list of conjuncts in string format. Each conjunct is a simple expression with function calls where arguments are replaced by ellipsis `f(...)`, tuple-extraction (`#0` is the first element of the tuple) and basic unary and binary operators. We will improve on handling properly expression syntax, and for now we recommend using the output of the analysis with findings to write those conditions. When the path condition of a call does not satisfy some precondition, then its expression is printed on the command line. Break down the expression by separating the conjuncts to get the precondition for the config file.
+
+When some call does not satisfy the preconditions, an error message is printed:
+```
+[ERROR] Preconditions not satisfied in call FooFunc(struct{x int}{}:G)
+[ERROR] Preconditions is: !(FooPreCheck(...))
+[ERROR] Position: /<>/analysis/syntactic/preconditions/testdata/func-cond/main.go:56:9 
+```
+The positions are also printed when the analysis terminates.
+
+If the analysis doesn't detect any invalid calls, you should see the message:
+```
+[INFO]  
+precondition analysis results:
+-----------------------------
+all calls have valid preconditions!
+```

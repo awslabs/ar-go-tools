@@ -232,6 +232,9 @@ type FieldsSetSpec struct {
 	Value CodeIdentifier
 }
 
+// CondCheckSpec is a specification for the precondition analysis. On top of the common fields (Tag, Severity,
+// Description and Targets) it specifies a Call (the call that needs to ge guarded by a precondition) and the
+// Preconditions.
 type CondCheckSpec struct {
 	// Tag is the identifier of the problem
 	Tag string
@@ -241,31 +244,34 @@ type CondCheckSpec struct {
 	Description string
 	// Targets of this problem
 	Targets []string
-	// Call is the call that needs to be guarded
-	Call CodeIdentifier
-	// Requires is the list of conditions that need to be satisfied before making a Call
-	Requires []GuardSpec
+	// Call is the calls that need to be guarded
+	Call []CodeIdentifier
+	// Preconditions is the list of conditions that need to be satisfied before making a Call.
+	// The Call is valid if one of the preconditions is valid on all control-flow paths to the Call.
+	Preconditions []GuardSpec
 }
 
-// SpecTag returns the struct init specification's tag
+// SpecTag returns the precondition check specification's tag
 func (cc CondCheckSpec) SpecTag() string {
 	return cc.Tag
 }
 
-// SpecTargets returns the struct init specification's targets
+// SpecTargets returns the precondition check specification's targets
 func (cc CondCheckSpec) SpecTargets() []string {
 	return cc.Targets
 }
 
-// SpecSeverity returns the struct init specification's severity
+// SpecSeverity returns the precondition check specification's severity
 func (cc CondCheckSpec) SpecSeverity() Severity {
 	return cc.Severity
 }
 
 // GuardSpec is the specification of a guard or condition
+// Currently, it only contains a Precondition which is a list of string represented conjuncts. This makes it at little
+// difficult to specify in a config file, so we will make a more extensible and precise GuardSpec in the future.
 type GuardSpec struct {
-	// Method is the function that is used in the condition
-	Guard []string
+	// Precondition is the function that is used in the condition
+	Precondition []string
 }
 
 // A TargetSpec is a set of files the form a Go program together with a name to identify the target in the configuration
@@ -542,7 +548,9 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	}
 
 	for i, ccSpec := range cfg.SyntacticProblems.CondCheckSpecs {
-		cfg.SyntacticProblems.CondCheckSpecs[i].Call = compileRegexes(ccSpec.Call)
+		for j, callSpec := range ccSpec.Call {
+			cfg.SyntacticProblems.CondCheckSpecs[i].Call[j] = compileRegexes(callSpec)
+		}
 	}
 
 	if cfg.PointerConfig == nil {

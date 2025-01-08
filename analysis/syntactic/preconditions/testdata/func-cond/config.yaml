@@ -1,0 +1,13 @@
+options:
+  log-level: 4
+
+syntactic-problems:
+  cond-checks:
+    - tag: funcCond
+      # Calling Foo requires FooPreCheck
+      call:
+        - method: ^FooFunc$
+      preconditions: # either guard must hold when calling the function in call
+        - precondition: ["!(ResourceCheck(...)#1 != nil:error)", "ResourceCheck(...)#0"]
+        - precondition: ["FooPreCheck(...)"]
+        - precondition: ["Check(...)"]

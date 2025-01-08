@@ -18,6 +18,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// An Expression can be used to manipulate expression for symbolic execution.
+// TODO: implementations
 type Expression interface {
 	String() string
 	Type() ssa.Type

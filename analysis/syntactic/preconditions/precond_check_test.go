@@ -4,14 +4,15 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//      http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package cond_check
+
+package preconditions
 
 import (
 	"embed"
@@ -127,16 +128,13 @@ func checkInvalidCalls(t *testing.T, res AnalysisResult, want map[string][]analy
 	}
 }
 
-// zeroAllocRegex matches annotations of the form "@InvalidCall(id1, id2, id3)"
+// invalidCallRegex matches annotations of the form "@InvalidCall(id1, id2, id3)"
 var invalidCallRegex = regexp.MustCompile(`//.*@InvalidCall\(((?:\s*\w\s*,?)+)\)`)
 
-// expectedZeroAllocs analyzes the files in astFiles and looks for comments
-// @ZeroAlloc(id1, id2, ...) to construct the expected positions of the zero-allocations of
-// a struct.
-// Each id must be the name of the struct that is zero-allocated. There may be
-// multiple.
-// These positions are represented as a map from the struct name to all the
-// zero-alloc positions of that struct.
+// expectedInvalidCalls analyzes the files in astFiles and looks for comments
+// @InvalidCalls(id1, id2, ...) to construct the expected positions of the invalid calls for a tagged problem.
+// These positions are represented as a map from the problem tag to all the invalid calls of the function in that
+// problem.
 func expectedInvalidCalls(lp *loadprogram.State) map[string][]analysistest.LPos {
 	return expectedAnnotations(invalidCallRegex, lp)
 }
