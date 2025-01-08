@@ -216,13 +216,7 @@ func (e *escapeAnalysisImpl) ParameterPostEscape(eiInterface dataflow.EscapeCall
 			rets[i] = nodes.NewNode(KindVar, fmt.Sprintf("ret_%d", i), tp)
 		}
 	}
-	if ei.f.Name() == "SendStreamDataMessage" {
-		fmt.Printf("Pre-call for %v is:\n%v\n", ei.f, state.Graphviz())
-	}
 	state.Call(ei.g, receiver, nodes.formals, nodes.freevars, rets, functionSummary)
-	if ei.f.Name() == "SendStreamDataMessage" {
-		fmt.Printf("Post-call for %v is:\n%v\n", ei.f, state.Graphviz())
-	}
 	for _, p := range nodes.formals {
 		rationales = append(rationales, derefsAreLocal(state, p))
 	}

@@ -148,13 +148,13 @@ func topDownPhase(logger *config.LogGroup, cfg *config.Config, visitNodes []*cal
 	for _, node := range visitNodes {
 		if isCriticalFunc(cfg, node.fun) {
 			for i, reason := range st.ParameterPostEscape(node.context) {
-				logger.Infof("Checking that parameter %d of %v called in %v does not escape thread in post-state\n", i, node.fun, node.parent.fun)
+				logger.Debugf("Checking that parameter %d of %v called in %v does not escape thread in post-state\n", i, node.fun, node.parent.fun)
 				if reason != nil {
 					logger.Errorf("\tParameter %s of %v has escaped: %v\n", node.fun.Params[i].Name(), node.fun, reason)
 					success = false
 					n := node
 					for n != nil {
-						logger.Infof("at: %v\n", n.fun)
+						logger.Debugf("at: %v\n", n.fun)
 						n = n.parent
 					}
 				}
