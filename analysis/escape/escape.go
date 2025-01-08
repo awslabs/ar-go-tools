@@ -350,8 +350,13 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 	case *ssa.Send:
 		if lang.IsNillableType(instr.X.Type()) {
 			// Send on channel
-			contentsType := ChannelContentsType(instr.X.Type())
+			contentsType := ChannelContentsType(instr.Chan.Type())
 			g.StoreField(nodes.ValueNode(instr.Chan), nodes.ValueNode(instr.X), channelContentsField, contentsType)
+		} else if IsEscapeTracked(instr.X.Type()) {
+			contentsType := ChannelContentsType(instr.Chan.Type())
+			for x := range g.Pointees(nodes.ValueNode(instr.Chan)) {
+				g.copyStruct(x, nodes.ValueNode(instr.X), instr, channelContentsField, contentsType)
+			}
 		}
 		return
 	case *ssa.Slice:
