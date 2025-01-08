@@ -199,6 +199,35 @@ func (e *escapeContextImpl) ParameterEscape() []*dataflow.EscapeRationale {
 	}
 	return rationales
 }
+func (e *escapeAnalysisImpl) ParameterPostEscape(eiInterface dataflow.EscapeCallContext) []*dataflow.EscapeRationale {
+	rationales := []*dataflow.EscapeRationale{}
+	ei := eiInterface.(*escapeContextImpl)
+	state := ei.g.Clone()
+	ea := e.summaries[ei.f]
+	functionSummary := ea.finalGraph
+
+	nodes := state.nodes
+	var receiver *Node = nil
+
+	rets := make([]*Node, ei.f.Signature.Results().Len())
+	for i := range len(rets) {
+		tp := ei.f.Signature.Results().At(i).Type()
+		if IsEscapeTracked(ei.f.Signature.Results().At(i).Type()) {
+			rets[i] = nodes.NewNode(KindVar, fmt.Sprintf("ret_%d", i), tp)
+		}
+	}
+	if ei.f.Name() == "SendStreamDataMessage" {
+		fmt.Printf("Pre-call for %v is:\n%v\n", ei.f, state.Graphviz())
+	}
+	state.Call(ei.g, receiver, nodes.formals, nodes.freevars, rets, functionSummary)
+	if ei.f.Name() == "SendStreamDataMessage" {
+		fmt.Printf("Post-call for %v is:\n%v\n", ei.f, state.Graphviz())
+	}
+	for _, p := range nodes.formals {
+		rationales = append(rationales, derefsAreLocal(state, p))
+	}
+	return rationales
+}
 
 // InitializeEscapeAnalysisState initializes the escape analysis' state inside the dataflow state
 // Returns an error if an error is encountered during the escape analysis.

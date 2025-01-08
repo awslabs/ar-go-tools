@@ -127,7 +127,7 @@ func runTarget(
 
 	logger.Infof(formatutil.Faint("Beginning top-down phase") + "\n")
 	visitNodes := topDown(state, state.EscapeAnalysisState, roots, reachable)
-	success := topDownPhase(logger, cfg, visitNodes)
+	success := topDownPhase(logger, cfg, visitNodes, state.EscapeAnalysisState)
 
 	duration := time.Since(start)
 	state.Logger.Infof("")
@@ -142,13 +142,13 @@ func runTarget(
 	return nil
 }
 
-func topDownPhase(logger *config.LogGroup, cfg *config.Config, visitNodes []*callgraphVisitNode) bool {
+func topDownPhase(logger *config.LogGroup, cfg *config.Config, visitNodes []*callgraphVisitNode, st dataflow.EscapeAnalysisState) bool {
 	success := true
 	// mainFunc := findFunction(lp.Program, "main")
 	for _, node := range visitNodes {
 		if isCriticalFunc(cfg, node.fun) {
-			for i, reason := range node.context.ParameterEscape() {
-				logger.Infof("Checking that parameter %d of %v called in %v does not escape thread\n", i, node.fun, node.parent.fun)
+			for i, reason := range st.ParameterPostEscape(node.context) {
+				logger.Infof("Checking that parameter %d of %v called in %v does not escape thread in post-state\n", i, node.fun, node.parent.fun)
 				if reason != nil {
 					logger.Errorf("\tParameter %s of %v has escaped: %v\n", node.fun.Params[i].Name(), node.fun, reason)
 					success = false

@@ -58,6 +58,8 @@ type EscapeAnalysisState interface {
 	ComputeInstructionLocalityAndCallsites(f *ssa.Function, ctx EscapeCallContext) (
 		instructionLocality map[ssa.Instruction]*EscapeRationale,
 		callsiteInfo map[ssa.CallInstruction]EscapeCallsiteInfo)
+
+	ParameterPostEscape(EscapeCallContext) []*EscapeRationale
 }
 
 // EscapeCallContext represents the escape-relevant context for a particular `ssa.Function`.
