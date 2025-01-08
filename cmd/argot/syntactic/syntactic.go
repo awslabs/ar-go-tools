@@ -21,6 +21,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/analysis/syntactic/preconditions"
 	"github.com/awslabs/ar-go-tools/analysis/syntactic/structinit"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
@@ -50,7 +51,7 @@ func Run(flags tools.CommonFlags) error {
 		tmpLogger = config.NewLogGroup(cfg)
 	}
 
-	if len(cfg.SyntacticProblems.StructInitProblems) == 0 {
+	if len(cfg.SyntacticProblems.StructInitProblems) == 0 && len(cfg.SyntacticProblems.CondCheckSpecs) == 0 {
 		tmpLogger.Warnf("No syntactic problems in config file.")
 		return nil
 	}
@@ -110,15 +111,33 @@ func runTarget(
 	if err != nil {
 		return nil, fmt.Errorf("failed to load target: %v", err)
 	}
-	c.Logger.Infof("starting struct init analysis...\n")
-	res, err := structinit.Analyze(state)
-	if err != nil {
-		return nil, fmt.Errorf("struct init analysis error: %v", err)
+	// struct analysis
+	structAnalysisFailed := false
+	if len(cfg.SyntacticProblems.StructInitProblems) > 0 {
+		c.Logger.Infof("starting struct init analysis...\n")
+		structInitRes, err := structinit.Analyze(state)
+		if err != nil {
+			return nil, fmt.Errorf("struct init analysis error: %v", err)
+		}
+		var s string
+		s, structAnalysisFailed = structinit.ReportResults(structInitRes)
+		c.Logger.Infof(s)
 	}
-	s, failed := structinit.ReportResults(res)
-	c.Logger.Infof(s)
-	if failed {
-		return state.Report, fmt.Errorf("struct init analysis found problems, inspect logs for more information")
+	// condition check analysis
+	preconditionAnalysisFailed := false
+	if len(cfg.SyntacticProblems.CondCheckSpecs) > 0 {
+		c.Logger.Infof("starting precondition analysis...\n")
+		precondCheckRes, err := preconditions.Analyze(state, preconditions.AnalysisReqs{Tag: flags.Tag})
+		if err != nil {
+			return nil, fmt.Errorf("precondition analysis error: %v", err)
+		}
+		var s string
+		s, preconditionAnalysisFailed = preconditions.ReportResults(precondCheckRes)
+		c.Logger.Infof(s)
+	}
+	// Failure for all syntactic analyses
+	if structAnalysisFailed || preconditionAnalysisFailed {
+		return state.Report, fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
 	}
 	return state.Report, nil
 }

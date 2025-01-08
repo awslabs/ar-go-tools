@@ -118,7 +118,7 @@ func IsFiltered(s *State, ts *config.TaintSpec, n GraphNode) bool {
 			f = n2.ParentNode().Callee()
 		}
 		if f != nil && filter.Method != "" && filter.Package != "" {
-			if filter.MatchPackageAndMethod(f) {
+			if filter.MatchPackageAndMethod(n.Graph().Parent, f) {
 				return true
 			}
 		}
