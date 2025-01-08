@@ -73,9 +73,6 @@ func (a InvalidAccess) String() string {
 
 // AccessedCoreAlloc is a pointer allocated in the Core that is accessed
 // (read from/written to) in the App.
-//
-// It must also possibly alias any parameter or return value of a Core API
-// function configured in the spec.
 type AccessedCoreAlloc struct {
 	ssa.Value
 	Pos   token.Position // Pos is the position at which the alloc occured in the Core
@@ -105,10 +102,8 @@ func Analyze(s *ptr.State) (AnalysisResult, error) {
 func analyze(state *state) []InvalidAccess {
 	funcs := categorizeFuncs(state)
 	state.funcs = funcs
-	retIds := returnParamIdsWithPermission(state, state.funcs.app)
-
 	for _, coreFunc := range state.funcs.core {
-		addAllocsInCore(state, retIds, coreFunc)
+		addAllocsInCore(state, coreFunc)
 	}
 
 	if state.coreAllocIds.Len() == 0 {
@@ -143,9 +138,8 @@ func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess
 		state.logger.Debugf("\talloc: %v\n", alloc)
 		var escapes []Escape
 		// Find escapes for every Core function in the alloc's trace
-		// on the transition from a core func to unknown (stdlib etc), run escape analysis
 		for _, coreFunc := range alloc.trace {
-			if funcDoesNotLeakArgs(coreFunc.f) {
+			if funcDoesNotLeak(coreFunc.f) {
 				state.logger.Debugf(
 					"\t\tskipping escape check because Core function does not leak args: %v\n",
 					coreFunc)
@@ -179,76 +173,6 @@ func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess
 	}
 
 	return res, true
-}
-
-// returnParamIdsWithPermission returns a set of node ids that require
-// separation logic permissions according to state.spec.
-func returnParamIdsWithPermission(state *state, appFuncs []*ssa.Function) *intsets.Sparse {
-	var vals []ssa.Value
-	for _, f := range appFuncs {
-		lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
-			call, ok := instr.(ssa.CallInstruction)
-			if !ok {
-				return
-			}
-
-			callee := call.Common().StaticCallee()
-			if callee == nil {
-				return
-			}
-
-			funcId, ok := isCoreApiFunc(state.spec, callee)
-			if !ok {
-				return
-			}
-
-			if len(funcId.ReturnIndices) > 0 {
-				rets := cidReturnVals(call, callee, funcId)
-				vals = append(vals, rets...)
-			}
-		})
-	}
-
-	res := &intsets.Sparse{}
-	for _, val := range vals {
-		objs := state.cache.Objects(val)
-		for obj := range objs {
-			res.Insert(int(obj.NodeID()))
-		}
-	}
-
-	return res
-}
-
-func cidReturnVals(call ssa.CallInstruction, callee *ssa.Function, funcId config.CodeIdentifier) []ssa.Value {
-	var vals []ssa.Value
-	// If the call returns a tuple, add the respective return value
-	// extract instructions to vals, otherwise add the result of the
-	// call
-	isTupleReturn := callee.Signature.Results().Len() > 1
-	if isTupleReturn {
-		if call.Value().Referrers() == nil {
-			panic(fmt.Errorf(
-				"no referrers for Core API function call with multiple returns: %v (signature: %v)",
-				call, callee.Signature))
-		}
-
-		for _, refInstr := range *call.Value().Referrers() {
-			extract, ok := refInstr.(*ssa.Extract)
-			if !ok {
-				continue
-			}
-			for _, retIdx := range funcId.ReturnIndices {
-				if extract.Index == retIdx {
-					vals = append(vals, extract)
-				}
-			}
-		}
-	} else {
-		vals = append(vals, call.Value())
-	}
-
-	return vals
 }
 
 type state struct {
@@ -290,9 +214,7 @@ func (ac allocInCore) String() string {
 }
 
 // addAllocsInCore adds values allocated in the Core with trace tr to state.
-// The values must possibly alias any specified Core API function's return
-// value.
-func addAllocsInCore(state *state, retIds *intsets.Sparse, coreFunc coreFuncWithTrace) {
+func addAllocsInCore(state *state, coreFunc coreFuncWithTrace) {
 	tr := coreFunc.trace
 	if len(tr) == 0 {
 		panic(fmt.Errorf("core func has empty trace: %v", coreFunc))
@@ -322,11 +244,6 @@ func addAllocsInCore(state *state, retIds *intsets.Sparse, coreFunc coreFuncWith
 			}
 			objs := state.cache.Objects(val)
 			for obj := range objs {
-				// obj must may-alias a return value
-				if !retIds.Has(int(obj.NodeID())) {
-					continue
-				}
-
 				state.logger.Debugf("At node id %v in %v adding %v at %v\n",
 					obj.NodeID(), val.Parent().String(), alloc, state.fset.Position(alloc.Pos()))
 				state.coreAllocIds.Insert(int(obj.NodeID()))

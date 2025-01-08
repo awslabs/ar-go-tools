@@ -17,10 +17,12 @@ package passthru
 import (
 	"fmt"
 	"go/token"
+	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -118,10 +120,11 @@ func findEscapes(state *state, f *ssa.Function, alloc AccessedCoreAlloc) []Escap
 				}
 			}
 		case ssa.CallInstruction:
-			if callDoesNotLeakArgs(instr.Common()) {
+			if callDoesNotLeak(instr.Common()) {
 				break
 			}
 
+			state.logger.Debugf("call in Core may leak args: %v with signature: %v\n", instr, instr.Common().Signature())
 			args := lang.GetArgs(instr)
 			var escapingArgs []ssa.Value
 			for _, arg := range args {
@@ -188,7 +191,7 @@ func hasPermissionsOf(cache *ptr.AliasCache, val ssa.Value, allocVal ssa.Value) 
 // escapesInCallees returns the first escaped values found in any of call's
 // transitive callees. Returns the escapes and true if any were found.
 func escapesInCallees(state *state, call ssa.CallInstruction, alloc AccessedCoreAlloc) ([]Escape, bool) {
-	if callDoesNotLeakArgs(call.Common()) {
+	if callDoesNotLeak(call.Common()) {
 		return nil, false
 	}
 
@@ -214,7 +217,7 @@ func escapesInCallees(state *state, call ssa.CallInstruction, alloc AccessedCore
 			continue
 		}
 
-		if funcDoesNotLeakArgs(cur.Func) {
+		if funcDoesNotLeak(cur.Func) {
 			seen[cur] = true
 			continue
 		}
@@ -236,10 +239,31 @@ func escapesInCallees(state *state, call ssa.CallInstruction, alloc AccessedCore
 	return nil, false
 }
 
-func callDoesNotLeakArgs(call *ssa.CallCommon) bool {
+// callDoesNotLeak returns true if call cannot leak internal allocations via
+// any of its arguments.
+//
+// A function cannot leak permissions to internal allocations via an argument if
+// the argument is a "shallow" (scalar or pointer to a scalar) type.
+//
+// We assume that any function with a dataflow summary satisfies this property.
+func callDoesNotLeak(call *ssa.CallCommon) bool {
 	if _, ok := call.Value.(*ssa.Builtin); ok {
 		return true
 	}
+
+	allShallow := true
+	params := call.Signature().Params()
+	for i := 0; i < params.Len(); i++ {
+		paramType := params.At(i)
+		if !isShallowPtrType(paramType.Type()) {
+			allShallow = false
+			break
+		}
+	}
+	if allShallow {
+		return true
+	}
+
 	if call.IsInvoke() {
 		switch call.Method.Name() {
 		case "String", "Error":
@@ -249,14 +273,33 @@ func callDoesNotLeakArgs(call *ssa.CallCommon) bool {
 		}
 	}
 
-	return funcDoesNotLeakArgs(call.StaticCallee())
+	return funcDoesNotLeak(call.StaticCallee())
 }
 
-// funcDoesNotLeakArgs returns true if f does not leak any of its arguments.
-// We assume that any function with a dataflow summary satisfies this property.
-func funcDoesNotLeakArgs(f *ssa.Function) bool {
+// funcDoesNotLeak returns true if f does not leak internal allocations.
+func funcDoesNotLeak(f *ssa.Function) bool {
 	_, hasSummary := summaries.SummaryOfFunc(f)
 	return hasSummary
+}
+
+func isShallowPtrType(typ types.Type) bool {
+	switch typ := typ.(type) {
+	case *types.Signature:
+		// closure can leak internal function data
+		return false
+	case *types.Pointer:
+		return !pointer.CanPoint(typ.Elem())
+	case *types.Slice:
+		return !pointer.CanPoint(typ.Elem())
+	case *types.Map:
+		return !pointer.CanPoint(typ.Key()) && !pointer.CanPoint(typ.Elem())
+	case *types.Chan:
+		return !pointer.CanPoint(typ.Elem())
+	case *types.Named:
+		return isShallowPtrType(typ.Underlying())
+	}
+
+	return true
 }
 
 func isValAllocatedOutside(state *state, val ssa.Value, f *ssa.Function) bool {
