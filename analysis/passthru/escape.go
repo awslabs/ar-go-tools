@@ -25,13 +25,18 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// EscapedCoreAlloc is a value allocated in the Core and accessed in the App
+// that has "escaped" the Core.
 type EscapedCoreAlloc struct {
 	AccessedCoreAlloc
 	Escapes []Escape
 }
 
-// Escape is a value that results in a AccessedCoreAlloc heap permission
-// "escaping" a function.
+// Escape is a value that has "escaped" a function.
+//
+// A value "escapes" a function by getting allocated on the heap and there
+// existing any value in the program other than the desired argument or return
+// value having separation logic permissions to access the allocated value.
 type Escape struct {
 	ssa.Value
 	Pos token.Position
@@ -39,16 +44,20 @@ type Escape struct {
 }
 
 func (e Escape) String() string {
-	return fmt.Sprintf("escape (%v) via value %v in %v at %v", e.Ctx, e.Value, e.Parent().Name(), e.Pos)
+	return fmt.Sprintf("escape (%v) via value %v in %v at %v",
+		e.Ctx, e.Value, e.Parent().Name(), e.Pos)
 }
 
+// EscapeContext indicates how a value "escaped" a function.
 type EscapeContext int
 
 const (
+	// Write is any write to memory that results in an escape.
 	Write = iota + 1
+	// FreeVar is any value captured by a closure that results in an escape.
 	FreeVar
+	// Arg is a value passed to a function that results in an escape.
 	Arg
-	Return
 )
 
 func (e EscapeContext) String() string {
@@ -59,8 +68,6 @@ func (e EscapeContext) String() string {
 		return "free var"
 	case Arg:
 		return "arg"
-	case Return:
-		return "return"
 	default:
 		panic(fmt.Errorf("invalid escape context: %v", int(e)))
 	}

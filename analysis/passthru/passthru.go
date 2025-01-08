@@ -202,30 +202,9 @@ func returnParamIdsWithPermission(state *state, appFuncs []*ssa.Function) *intse
 				return
 			}
 
-			// If the call returns a tuple, add the respective return value
-			// extract instructions to vals, otherwise add the result of the
-			// call
-			isTupleReturn := callee.Signature.Results().Len() > 1
-			if isTupleReturn {
-				if call.Value().Referrers() == nil {
-					panic(fmt.Errorf(
-						"no referrers for Core API function call with multiple returns: %v (signature: %v)",
-						instr, callee.Signature))
-				}
-
-				for _, refInstr := range *call.Value().Referrers() {
-					extract, ok := refInstr.(*ssa.Extract)
-					if !ok {
-						continue
-					}
-					for _, retIdx := range funcId.ReturnIndices {
-						if extract.Index == retIdx {
-							vals = append(vals, extract)
-						}
-					}
-				}
-			} else {
-				vals = append(vals, call.Value())
+			if len(funcId.ReturnIndices) > 0 {
+				rets := cidReturnVals(call, callee, funcId)
+				vals = append(vals, rets...)
 			}
 		})
 	}
@@ -239,6 +218,37 @@ func returnParamIdsWithPermission(state *state, appFuncs []*ssa.Function) *intse
 	}
 
 	return res
+}
+
+func cidReturnVals(call ssa.CallInstruction, callee *ssa.Function, funcId config.CodeIdentifier) []ssa.Value {
+	var vals []ssa.Value
+	// If the call returns a tuple, add the respective return value
+	// extract instructions to vals, otherwise add the result of the
+	// call
+	isTupleReturn := callee.Signature.Results().Len() > 1
+	if isTupleReturn {
+		if call.Value().Referrers() == nil {
+			panic(fmt.Errorf(
+				"no referrers for Core API function call with multiple returns: %v (signature: %v)",
+				call, callee.Signature))
+		}
+
+		for _, refInstr := range *call.Value().Referrers() {
+			extract, ok := refInstr.(*ssa.Extract)
+			if !ok {
+				continue
+			}
+			for _, retIdx := range funcId.ReturnIndices {
+				if extract.Index == retIdx {
+					vals = append(vals, extract)
+				}
+			}
+		}
+	} else {
+		vals = append(vals, call.Value())
+	}
+
+	return vals
 }
 
 type state struct {
