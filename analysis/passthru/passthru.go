@@ -559,20 +559,9 @@ func findAppFuncs(state *state, cfs funcToTrace) funcToTrace {
 			f:   cur.Func,
 			ctx: cur.context,
 		}
-		nextTrace := append(cur.trace, af)
-		switch cur.context {
-		case unknown:
-			afs[af] = nextTrace
-		case core:
-			// A Core function must never be analyzed as an App function:
-			// stop searching its callees
-			continue
-		case app:
-			af := funcWithCtx{
-				f:   cur.Func,
-				ctx: app,
-			}
 
+		switch cur.context {
+		case unknown, app:
 			// An App function called in a Core context is not added to the list
 			// of App functions because an access to memory inside the function
 			// is still in the Core context (which has permissions), not the App
@@ -580,7 +569,11 @@ func findAppFuncs(state *state, cfs funcToTrace) funcToTrace {
 				break
 			}
 
-			afs[af] = nextTrace
+			afs[af] = cur.trace
+		case core:
+			// A Core function must never be analyzed as an App function:
+			// stop searching its callees
+			continue
 		default:
 			panic(fmt.Errorf("invalid context for callgraph node %v: %v", cur.Node, cur.context))
 		}
@@ -600,6 +593,11 @@ func findAppFuncs(state *state, cfs funcToTrace) funcToTrace {
 			}
 
 			nextCtx := contextOf(state.spec, edge.Callee.Func)
+			nextAf := funcWithCtx{
+				f:   edge.Callee.Func,
+				ctx: nextCtx,
+			}
+			nextTrace := append(cur.trace, nextAf)
 			stack = append(stack, eltctx{
 				elt: elt{
 					Node:    edge.Callee,
