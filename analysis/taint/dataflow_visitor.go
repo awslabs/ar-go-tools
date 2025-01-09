@@ -859,7 +859,7 @@ func fallbackEscapeContext(f *ssa.Function, s *df.State) df.EscapeCallContext {
 	for len(frontier) != 0 {
 		node := frontier[len(frontier)-1]
 		frontier = frontier[:len(frontier)-1]
-		if len(node.In) == 0 {
+		if len(node.In) == 0 || node.Func.String() == "command-line-arguments.main" {
 			// no in-edges are roots
 			if _, ok := contexts[node]; !ok {
 				contexts[node] = s.EscapeAnalysisState.ComputeArbitraryContext(node.Func)
@@ -886,7 +886,10 @@ func fallbackEscapeContext(f *ssa.Function, s *df.State) df.EscapeCallContext {
 	}
 	// Reachable now has the functions we need to compute the correct context.
 	slices.Reverse(worklist) // we want to go top-down if possible
-
+	s.Logger.Debugf("Worklist is\n")
+	for _, n := range worklist {
+		s.Logger.Debugf(" - %v\n", n.Func)
+	}
 	changed := false
 	for {
 		changed = false
@@ -894,6 +897,7 @@ func fallbackEscapeContext(f *ssa.Function, s *df.State) df.EscapeCallContext {
 			if ctx, ok := contexts[node]; !ok {
 				// There is no context for the current function; wait until a future iteration where we have one
 				changed = true
+				s.Logger.Debugf("No context for %v, spinning loop\n", node.Func)
 			} else {
 				// Compute the contexts for the callsites in node.Func
 				_, callsites := s.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(node.Func, ctx)
