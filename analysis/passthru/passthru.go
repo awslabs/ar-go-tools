@@ -474,6 +474,7 @@ func findCoreFuncs(state *state) funcToTrace {
 			f:   cur.Func,
 			ctx: cur.context,
 		}
+
 		switch cur.context {
 		case unknown:
 			// unknown function called in Core context is a Core function
@@ -509,7 +510,10 @@ func findCoreFuncs(state *state) funcToTrace {
 				f:   edge.Callee.Func,
 				ctx: nextCtx,
 			}
-			nextTrace := append(cur.trace, nextCf)
+			// NOTE need to copy slice to avoid aliasing issues
+			nextTrace := make(funcTrace, len(cur.trace))
+			copy(nextTrace, cur.trace)
+			nextTrace = append(nextTrace, nextCf)
 			stack = append(stack, eltctx{
 				elt: elt{
 					Node:    edge.Callee,
@@ -562,11 +566,22 @@ func findAppFuncs(state *state, cfs funcToTrace) funcToTrace {
 
 		switch cur.context {
 		case unknown, app:
-			// An App function called in a Core context is not added to the list
-			// of App functions because an access to memory inside the function
-			// is still in the Core context (which has permissions), not the App
+			// An App function that has been called in a Core calling context is
+			// not added to the list of App functions because an access to
+			// memory inside the function is still in the Core context (which
+			// has permissions), not the App.
+			//
+			// NOTE this is unsound and only done to reduce false-positives
 			if _, ok := cfs[af]; ok {
 				break
+			}
+
+			// HACK special case for godebugs package: this is only used
+			// internally by the Go compiler for debug info at runtime and
+			// should not be considered part of the accessible heap locations of
+			// the program
+			if lang.PackageNameFromFunction(af.f) == "internal/godebugs" {
+				continue
 			}
 
 			afs[af] = cur.trace
@@ -597,7 +612,10 @@ func findAppFuncs(state *state, cfs funcToTrace) funcToTrace {
 				f:   edge.Callee.Func,
 				ctx: nextCtx,
 			}
-			nextTrace := append(cur.trace, nextAf)
+			// NOTE need to copy slice to avoid aliasing issues
+			nextTrace := make(funcTrace, len(cur.trace))
+			copy(nextTrace, cur.trace)
+			nextTrace = append(nextTrace, nextAf)
 			stack = append(stack, eltctx{
 				elt: elt{
 					Node:    edge.Callee,
