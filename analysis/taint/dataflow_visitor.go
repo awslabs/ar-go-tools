@@ -678,7 +678,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 
 			// if the node is ignored, don't record an error
 			if s.Annotations.IsIgnoredPos(pos, v.taintSpec.Tag) {
-				s.Logger.Infof("//argot:ignore taint flow to %s", pos)
+				s.Logger.Infof("//argot:ignore implicit flow to conditional statement at %s", pos)
 				break
 			}
 
