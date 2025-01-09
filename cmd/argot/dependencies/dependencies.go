@@ -104,12 +104,6 @@ func Run(flags Flags) error {
 		}
 	}
 
-	loadOptions := config.LoadOptions{
-		PackageConfig: nil,
-		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     flags.withTest,
-		ApplyRewrites: true,
-	}
 	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
 		CmdlineArgs: flags.flagSet.Args(),
 		Tool:        config.DependenciesTool,
@@ -117,8 +111,15 @@ func Run(flags Flags) error {
 	if err != nil {
 		return fmt.Errorf("failed to get dependencies targets: %s", err)
 	}
-	for targetName, targetFiles := range actualTargets {
-		err = runTarget(cfg, targetName, targetFiles, loadOptions, flags)
+	for targetName, target := range actualTargets {
+		loadOptions := config.LoadOptions{
+			Platform:      target.Platform,
+			PackageConfig: nil,
+			BuildMode:     ssa.InstantiateGenerics,
+			LoadTests:     flags.withTest,
+			ApplyRewrites: true,
+		}
+		err = runTarget(cfg, targetName, target.Files, loadOptions, flags)
 		if err != nil {
 			return err
 		}

@@ -72,16 +72,16 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to get backtrace targets: %s", err)
 	}
-	for targetName, targetFiles := range actualTargets {
+	for targetName, target := range actualTargets {
 		start := time.Now()
 		loadOptions := config.LoadOptions{
-			Platform:      "",
 			PackageConfig: nil,
 			BuildMode:     ssa.InstantiateGenerics,
 			LoadTests:     flags.WithTest,
+			Platform:      target.Platform,
 			ApplyRewrites: true,
 		}
-		c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+		c := config.NewState(cfg, targetName, target.Files, loadOptions)
 		ptrState := result.Bind(loadprogram.NewState(c), ptr.NewState) // build pointer analysis info
 		state, err := result.Bind(ptrState, dataflow.NewState).Value()
 		if err != nil {
