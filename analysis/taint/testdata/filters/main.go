@@ -31,6 +31,14 @@ func generateWithError() (string, error) {
 	}
 }
 
+func sourceError() (string, error) {
+	if rand.Int() > 20 {
+		return fmt.Sprintf("x-%d", rand.Int()), nil
+	} else {
+		return "ok", fmt.Errorf("generation failure")
+	}
+}
+
 func generateWithFlag() (string, bool) {
 	if rand.Int() > 20 {
 		return source(), false // @Source(gBool)
@@ -53,6 +61,15 @@ func testErrorFiltered() {
 	}
 	s := sanitize(b)
 	sink(s) // sanitized
+}
+
+// the config contains:
+// filters:
+//   - type: "error"
+func testErrorFilteredImmediate() {
+	s, e := sourceError() // @Source(sourceErr)
+	sink(e)               // error is filtered out
+	sink(s)               // @Sink(sourceErr)
 }
 
 // the config contains:
@@ -80,7 +97,7 @@ func doSth2(b bool, s string) {
 func main() {
 	testErrorFiltered()
 	testBoolFiltered()
-
+	testErrorFilteredImmediate()
 }
 
 func sink(_ ...any) {

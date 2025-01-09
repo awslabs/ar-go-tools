@@ -16,6 +16,7 @@ package dataflow
 
 import (
 	"go/token"
+	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/annotations"
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -119,6 +120,18 @@ func IsFiltered(s *State, ts *config.TaintSpec, n GraphNode) bool {
 		}
 		if f != nil && filter.Method != "" && filter.Package != "" {
 			if filter.MatchPackageAndMethod(f) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// IsFilteredType returns true if the type is filtered out by the taint analysis specification.
+func IsFilteredType(ts *config.TaintSpec, t types.Type) bool {
+	for _, filter := range ts.Filters {
+		if filter.Type != "" {
+			if filter.MatchType(t) {
 				return true
 			}
 		}
