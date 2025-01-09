@@ -430,6 +430,11 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			}
 			for nextNode, edgeInfos := range graphNode.Out() {
 				for _, edgeInfo := range edgeInfos {
+					// Filter outgoing edges with a type that is filtered by checking the index of the tuple
+					// The index is an edge property so we can't rely on the node being filtered out.
+					if df.IsFilteredType(v.taintSpec, lang.TryTupleIndexType(graphNode.Type(), edgeInfo.Index)) {
+						continue
+					}
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         nextNode,
 						Trace:        trace,
