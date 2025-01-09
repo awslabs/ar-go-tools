@@ -20,6 +20,12 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
+// A list of supported Platforms. We may want to figure out how to get it programmatically, but this should suffice
+// for now.
+// A list of platforms can be found in src/go/build/syslist.go in your go installation source.
+// Alternatively, run go tool dist list, the output shows 'platforms/architecture' supported by go.
+var supportedPlatforms = []string{"linux", "darwin", "windows", "android", "ios", "freebsd", "netbsd", "openbsd"}
+
 // Validate validates the config and returns an error if there is some invalid setting
 func (c Config) Validate() error {
 	if err := c.checkTagsAreUnique(); err != nil {
@@ -29,6 +35,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	if err := c.checkTargetsUniqueAndDefined(); err != nil {
+		return err
+	}
+	if err := c.checkTargetOsesAreValid(); err != nil {
 		return err
 	}
 	return nil
@@ -58,6 +67,15 @@ func (c Config) checkSeveritiesAreValid() error {
 			return fmt.Errorf(
 				"invalid severity label %s (not empty, \"CRITICAL\", \"HIGH\", \"MEDIUM\", or \"LOW\")",
 				taggedSpec.SpecSeverity())
+		}
+	}
+	return nil
+}
+
+func (c Config) checkTargetOsesAreValid() error {
+	for _, target := range c.Targets {
+		if target.Platform != "" && !funcutil.Contains(supportedPlatforms, target.Platform) {
+			return fmt.Errorf("platform %q in target %q is not supported", target.Platform, target.Name)
 		}
 	}
 	return nil

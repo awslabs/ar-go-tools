@@ -64,6 +64,7 @@ func NewFlags(args []string) (Flags, error) {
 			WithTest:   *flags.WithTest,
 			Tag:        *flags.Tag,
 			Targets:    *flags.Targets,
+			Platform:   *flags.Platform,
 		},
 		maxDepth: *maxDepth,
 		dryRun:   *dryRun,
@@ -107,14 +108,15 @@ func Run(flags Flags) error {
 		CmdlineArgs: flags.FlagSet.Args(),
 		Tag:         flags.Tag,
 		Targets:     flags.Targets,
+		Platform:    flags.Platform,
 		Tool:        config.TaintTool,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get taint targets: %s", err)
 	}
 	// Loop over every target of the taint analysis
-	for targetName, targetFiles := range actualTargets {
-		targetHasFlows, report, err := runTarget(cfg, targetName, targetFiles, flags)
+	for targetName, target := range actualTargets {
+		targetHasFlows, report, err := runTarget(cfg, targetName, target.Files, target.Platform, flags)
 		hasFlows = targetHasFlows || hasFlows
 		if err != nil {
 			return err
@@ -133,12 +135,14 @@ func runTarget(
 	cfg *config.Config,
 	targetName string,
 	targetFiles []string,
+	targetPlatform string,
 	flags Flags,
 ) (bool, *config.ReportInfo, error) {
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
+		Platform:      targetPlatform,
 		ApplyRewrites: true,
 	}
 	// Starting the analysis

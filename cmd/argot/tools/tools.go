@@ -34,6 +34,7 @@ type UnparsedCommonFlags struct {
 	Verbose    *bool
 	WithTest   *bool
 	Tag        *string
+	Platform   *string
 	Targets    *string
 }
 
@@ -47,6 +48,7 @@ func NewUnparsedCommonFlags(name config.ToolName) UnparsedCommonFlags {
 	withTest := cmd.Bool("with-test", false, "load tests during analysis")
 	tag := cmd.String("tag", "", "only analyze specific problem with tag")
 	target := cmd.String("targets", "", "only analyze specific target in config")
+	platform := cmd.String("platform", "", "only analyze specific platform")
 	cmd.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "build-tags", buildutil.TagsFlagDoc)
 	return UnparsedCommonFlags{
 		FlagSet:    cmd,
@@ -54,6 +56,7 @@ func NewUnparsedCommonFlags(name config.ToolName) UnparsedCommonFlags {
 		Verbose:    verbose,
 		WithTest:   withTest,
 		Tag:        tag,
+		Platform:   platform,
 		Targets:    target,
 	}
 }
@@ -69,6 +72,7 @@ type CommonFlags struct {
 	WithTest   bool
 	Tag        string
 	Targets    string
+	Platform   string
 }
 
 // NewCommonFlags returns a parsed flag set with a given name.
@@ -88,6 +92,7 @@ func NewCommonFlags(name config.ToolName, args []string, cmdUsage string) (Commo
 		WithTest:   *flags.WithTest,
 		Tag:        *flags.Tag,
 		Targets:    *flags.Targets,
+		Platform:   *flags.Platform,
 	}, nil
 }
 
@@ -142,6 +147,8 @@ type TargetReqs struct {
 	Tag string
 	// Targets is the options list of targets as a comma-separated string.
 	Targets string
+	// Platform is the optional platform passed to the tool
+	Platform string
 	// Tool is the tool name for this analysis.
 	Tool config.ToolName
 }
@@ -151,9 +158,9 @@ type TargetReqs struct {
 //
 // When args is not empty, only the target "" -> args is returned.
 // When the tool name is not recognized, all the targets in the config file are returned.
-func GetTargets(c *config.Config, reqs TargetReqs) (map[string][]string, error) {
+func GetTargets(c *config.Config, reqs TargetReqs) (map[string]config.TargetInfo, error) {
 	if len(reqs.CmdlineArgs) > 0 {
-		return map[string][]string{"": reqs.CmdlineArgs}, nil
+		return map[string]config.TargetInfo{"": {Files: reqs.CmdlineArgs, Platform: reqs.Platform}}, nil
 	}
 	allTargets := c.GetTargetMap()
 	if reqs.Targets != "" {
@@ -170,25 +177,32 @@ func GetTargets(c *config.Config, reqs TargetReqs) (map[string][]string, error) 
 	}
 	switch reqs.Tool {
 	case config.TaintTool:
-		return targets(c.TaintTrackingProblems, allTargets, reqs.Tag), nil
+		return targets(c.TaintTrackingProblems, allTargets, reqs.Tag, reqs.Platform), nil
 	case config.BacktraceTool:
-		return targets(c.SlicingProblems, allTargets, reqs.Tag), nil
+		return targets(c.SlicingProblems, allTargets, reqs.Tag, reqs.Platform), nil
 	case config.SyntacticTool:
-		return targets(c.SyntacticProblems.StructInitProblems, allTargets, reqs.Tag), nil
+		return targets(c.SyntacticProblems.StructInitProblems, allTargets, reqs.Tag, reqs.Platform), nil
 	default:
 		return allTargets, nil
 	}
 }
 
-func targets[T config.TaggedSpec](problems []T, allTargets map[string][]string, tag string) map[string][]string {
-	targets := map[string][]string{}
+func targets[T config.TaggedSpec](
+	problems []T,
+	allTargets map[string]config.TargetInfo,
+	tag string,
+	platform string,
+) map[string]config.TargetInfo {
+	targets := map[string]config.TargetInfo{}
 	for _, ttp := range problems {
 		if tag != "" && ttp.SpecTag() != tag {
 			continue
 		}
 		for _, target := range ttp.SpecTargets() {
 			if _, ok := allTargets[target]; ok {
-				targets[target] = allTargets[target]
+				if platform == "" || allTargets[target].Platform == platform {
+					targets[target] = allTargets[target]
+				}
 			}
 		}
 	}

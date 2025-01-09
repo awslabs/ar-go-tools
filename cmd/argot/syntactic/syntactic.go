@@ -76,8 +76,8 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to get syntactic targets: %s", err)
 	}
-	for targetName, targetFiles := range actualTargets {
-		report, err := runTarget(cfg, targetName, targetFiles, flags)
+	for targetName, target := range actualTargets {
+		report, err := runTarget(cfg, targetName, target.Files, target.Platform, flags)
 		if err != nil {
 			tmpLogger.Errorf("Analysis for %s failed: %s", targetName, err)
 			failCount += 1
@@ -96,13 +96,14 @@ func runTarget(
 	cfg *config.Config,
 	targetName string,
 	targetFiles []string,
+	targetPlatform string,
 	flags tools.CommonFlags,
 ) (*config.ReportInfo, error) {
 	loadOptions := config.LoadOptions{
 		BuildMode:     ssa.BuilderMode(0),
 		LoadTests:     flags.WithTest,
 		ApplyRewrites: true,
-		Platform:      "",
+		Platform:      targetPlatform,
 		PackageConfig: nil,
 	}
 	c := config.NewState(cfg, targetName, targetFiles, loadOptions)

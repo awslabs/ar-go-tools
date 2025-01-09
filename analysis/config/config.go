@@ -53,7 +53,7 @@ func LoadGlobal() (*Config, error) {
 type EscapeConfig struct {
 
 	// Functions controls behavior override, keyed by .String() (e.g. command-line-arguments.main,
-	// (*package.Type).Method, etc). A value of "summarize" means process normally, "unknown" is
+	// (*package.Type).Method, etc.). A value of "summarize" means process normally, "unknown" is
 	// treat as unanalyzed, and "noop" means calls are assumed to have no escape effect (and return
 	// nil if they have a pointer-like return).
 	Functions map[string]string `json:"functions"`
@@ -236,6 +236,8 @@ type TargetSpec struct {
 	Name string
 	// Files identifies the target's files
 	Files []string
+	// Platform identifies the target's platform
+	Platform string
 }
 
 // Options holds the global options for analyses
@@ -613,11 +615,19 @@ func (c Config) ExceedsMaxDepth(d int) bool {
 	return c.UnsafeMaxDepth > 0 && d > c.UnsafeMaxDepth
 }
 
+// TargetInfo is the information needed to build the target
+type TargetInfo struct {
+	// Files in the target
+	Files []string
+	// Platform of the target
+	Platform string
+}
+
 // GetTargetMap returns a map from target names to target files
-func (c Config) GetTargetMap() map[string][]string {
-	targets := map[string][]string{}
+func (c Config) GetTargetMap() map[string]TargetInfo {
+	targets := map[string]TargetInfo{}
 	for _, targetSpec := range c.Targets {
-		targets[targetSpec.Name] = targetSpec.Files
+		targets[targetSpec.Name] = TargetInfo{Files: targetSpec.Files, Platform: targetSpec.Platform}
 	}
 	return targets
 }
