@@ -62,7 +62,7 @@ type AnalysisResult struct {
 // InvalidAccess is an instruction in the App that accesses a pointer
 // allocated in the Core without separation logic permissions.
 type InvalidAccess struct {
-	Vals          []ssa.Value
+	Vals          []accessedVal
 	Pos           token.Position
 	trace         funcTrace
 	EscapedAllocs []EscapedCoreAlloc
@@ -148,7 +148,7 @@ func analyze(state *state) []InvalidAccess {
 	return res
 }
 
-// isInvalidCoreAccess returns the access and true if acc reads or writes from a
+// isInvalidCoreAccess returns the access and true if acc reads from or writes to a
 // heap location allocated in the Core that does not pass through the proper
 // return values.
 func isInvalidCoreAccess(state *state, acc unvalidatedCoreAccess) (InvalidAccess, bool) {
@@ -232,7 +232,7 @@ func newState(s *dataflow.State, cache *ptr.AliasCache, spec config.DiodonPassTh
 type allocInCore struct {
 	ssa.Value
 	nodeId pointer.NodeID
-	trace  *coreTrace
+	trace  coreTrace
 }
 
 func (ac allocInCore) String() string {
@@ -269,7 +269,7 @@ func addAllocsInCore(state *state, cf funcWithCtx, trace coreTrace) {
 				alloc := allocInCore{
 					Value:  val,
 					nodeId: nodeId,
-					trace:  &trace,
+					trace:  trace,
 				}
 				state.logger.Debugf("Found core alloc: %v at %v\n",
 					alloc, state.fset.Position(alloc.Pos()))
@@ -295,7 +295,7 @@ func isAllocInstr(instr ssa.Instruction) (ssa.Value, bool) {
 // This instruction's separation logic permissions have not yet been validated
 // which is why it's a distinct type.
 type unvalidatedCoreAccess struct {
-	vals     []ssa.Value
+	vals     []accessedVal
 	pos      token.Position
 	allocs   []AccessedCoreAlloc
 	appTrace funcTrace
@@ -310,6 +310,15 @@ func (ua unvalidatedCoreAccess) String() string {
 
 	return fmt.Sprintf("(unvalidated) access in app to core alloc: via values %v in %v at %v of %d allocs (trace: %v)",
 		strings.Join(vals, ", "), parent, ua.pos, len(ua.allocs), ua.appTrace)
+}
+
+type accessedVal struct {
+	ssa.Value
+	nodeId pointer.NodeID
+}
+
+func (av accessedVal) String() string {
+	return fmt.Sprintf("%v (node id: %v)", av.Value, av.nodeId)
 }
 
 type coreTrace funcTrace
@@ -338,21 +347,22 @@ func findCoreAccesses(state *state, appFunc *ssa.Function, appTrace funcTrace) [
 		}
 
 		pos := state.fset.Position(instr.Pos())
-		var accessedVals []ssa.Value
+		var valsAccessed []ssa.Value
 		if write, ok := ptr.PtrWrittenToPtr(instr, pos); ok {
-			accessedVals = append(accessedVals, write.Target)
+			valsAccessed = append(valsAccessed, write.Target)
 		} else if write, ok := ptr.PtrWrittenTo(instr, pos); ok {
-			accessedVals = append(accessedVals, write.Target)
+			valsAccessed = append(valsAccessed, write.Target)
 		} else if read, ok := ptr.PtrsReadFrom(instr, pos); ok {
 			for _, val := range read.Values {
-				accessedVals = append(accessedVals, val)
+				valsAccessed = append(valsAccessed, val)
 			}
 		}
 
 		var allocs []AccessedCoreAlloc
-		seenAllocs := make(map[allocInCore]struct{})
-		for _, accessedVal := range accessedVals {
-			objs := state.cache.Objects(accessedVal)
+		var accessedVals []accessedVal
+		seenAllocs := make(map[*allocInCore]struct{}) // need pointer to allocInCore to be hashable
+		for _, valAccessed := range valsAccessed {
+			objs := state.cache.Objects(valAccessed)
 			for obj := range objs {
 				nodeId := obj.NodeID()
 				if state.coreAllocIds.Has(int(nodeId)) {
@@ -362,18 +372,24 @@ func findCoreAccesses(state *state, appFunc *ssa.Function, appTrace funcTrace) [
 							"failed to find allocs in core for access %v at %v to node id: %v",
 							instr, pos, nodeId))
 					}
+					found := false
 					for _, aic := range aics {
-						if _, ok := seenAllocs[aic]; ok {
+						if _, ok := seenAllocs[&aic]; ok {
 							continue
 						}
-						seenAllocs[aic] = struct{}{}
+						seenAllocs[&aic] = struct{}{}
 						alloc := AccessedCoreAlloc{
 							Value:  aic.Value,
 							Pos:    state.fset.Position(aic.Value.Pos()),
-							trace:  *aic.trace,
+							trace:  aic.trace,
 							nodeId: nodeId,
 						}
 						allocs = append(allocs, alloc)
+						found = true
+					}
+
+					if found {
+						accessedVals = append(accessedVals, accessedVal{valAccessed, nodeId})
 					}
 				}
 			}
