@@ -1,0 +1,28 @@
+{
+  "options": {
+    "log-level": 4,
+    "analysis-options": {
+      "max-depth": 10
+    }
+  },
+  "dataflow-problems": {
+    "backtrace": [
+      {
+        "tag": "test1",
+        "points": [
+          {
+            "method": "sourceValue"
+          }
+        ]
+      },
+      {
+        "tag": "test2",
+        "points": [
+          {
+            "method": "modifyValue"
+          }
+        ]
+      }
+    ]
+  }
+}
