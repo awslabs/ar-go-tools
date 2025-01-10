@@ -145,9 +145,9 @@ func findAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
 		allptr = append(allptr, ptr)
 	}
 	// By indirect query
-	if ptr, ptrExists := res.IndirectQueries[v]; ptrExists {
-		allptr = append(allptr, ptr)
-	}
+	// if ptr, ptrExists := res.IndirectQueries[v]; ptrExists {
+	// 	allptr = append(allptr, ptr)
+	// }
 	return allptr
 }
 
@@ -404,31 +404,24 @@ func PtrsReadFrom(instr ssa.Instruction, pos token.Position) (Read, bool) {
 
 	switch instr := instr.(type) {
 	case *ssa.Call:
-		add(instr.Call.Args...)
-	case *ssa.Extract:
-		add(instr.Tuple)
-	case *ssa.Field:
-		add(instr.X)
-	case *ssa.FieldAddr:
-		add(instr.X)
+		if _, ok := instr.Call.Value.(*ssa.Builtin); ok {
+			add(instr.Call.Args...)
+		}
 	case *ssa.Index:
-		add(instr.X, instr.Index)
-	case *ssa.IndexAddr:
-		add(instr.X, instr.Index)
+		add(instr.X)
 	case *ssa.Lookup:
 		add(instr.X, instr.Index)
-	case *ssa.Next:
-		add(instr.Iter)
-	case *ssa.Panic:
-		add(instr.X)
 	case *ssa.Slice:
-		add(instr.X, instr.Low, instr.High, instr.Max)
-	case *ssa.SliceToArrayPointer:
 		add(instr.X)
-	case *ssa.Store:
-		add(instr.Val) // address written to isn't read from
-	case *ssa.UnOp: // pointer de-reference
-		add(instr.X)
+	case *ssa.UnOp:
+		// Dereference y = *x
+		if instr.Op == token.MUL {
+			add(instr.X)
+		}
+		// Channel receive y <- x
+		if instr.Op == token.ARROW {
+			add(instr.X)
+		}
 	}
 
 	if len(rvals) == 0 {
