@@ -128,7 +128,7 @@ func seekConfig(configPath string, args []string) (*config.Config, bool, error) 
 	pConfig := config.NewDefault()
 	if configPath != "" {
 		config.SetGlobalConfig(configPath)
-		pConfig, err = config.LoadGlobal()
+		pConfig, err = config.LoadGlobal(nil)
 		state.ConfigPath = configPath
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not load config %q\n", configPath)
@@ -149,7 +149,7 @@ func seekConfig(configPath string, args []string) (*config.Config, bool, error) 
 func attemptSettingConfig(pConfig **config.Config, dir string, filename string) error {
 	configFile := path.Join(dir, filename)
 	config.SetGlobalConfig(configFile)
-	tmpConfig, err := config.LoadGlobal()
+	tmpConfig, err := config.LoadGlobal(nil)
 	if err != nil {
 		// Reset and ignore
 		config.SetGlobalConfig("")

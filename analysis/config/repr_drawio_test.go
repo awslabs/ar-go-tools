@@ -23,8 +23,8 @@ import (
 )
 
 func TestSimpleFlowWithOption(t *testing.T) {
-	_, config, err := loadFromTestDir("example.drawio.xml")
-	_, config2, err2 := loadFromTestDir("example.drawio.yaml")
+	_, config, err := loadFromTestDir("example.drawio.xml", nil)
+	_, config2, err2 := loadFromTestDir("example.drawio.yaml", nil)
 	if config == nil || err != nil || config2 == nil || err2 != nil {
 		t.Fatalf("error: %v, %v", err, err2)
 	}

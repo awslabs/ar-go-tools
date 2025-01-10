@@ -40,13 +40,21 @@ func SetGlobalConfig(filename string) {
 }
 
 // LoadGlobal loads the config file that has been set by SetGlobalConfig
-func LoadGlobal() (*Config, error) {
-	cfg, err := LoadFromFiles(configFile)
+func LoadGlobal(overrides *CmdLineOverrides) (*Config, error) {
+	cfg, err := LoadFromFiles(configFile, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load global config file %v: %v", configFile, err)
 	}
 
 	return cfg, err
+}
+
+// CmdLineOverrides groups all the config file options that can be overridden by command line arguments.
+type CmdLineOverrides struct {
+	// LogLevel can be overridden (by setting -verbose for example)
+	LogLevel int
+	// ReportsDir can be overridden (by setting -out <out-folder>)
+	ReportsDir string
 }
 
 // EscapeConfig holds the options relative to the escape analysis configuration
@@ -419,13 +427,13 @@ func errorMisconfigurationGracefully(errYaml, errXML, errJson error) error {
 // LoadFromFiles loads a full config from configFileName and the config file's
 // specified escape config file name, reading the files from disk.
 // If the escape config file name is empty, there will be no escape configuration.
-func LoadFromFiles(configFileName string) (*Config, error) {
+func LoadFromFiles(configFileName string, overrides *CmdLineOverrides) (*Config, error) {
 	cfgBytes, err := os.ReadFile(configFileName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %v", configFileName, err)
 	}
 
-	cfg, err := Load(configFileName, cfgBytes)
+	cfg, err := Load(configFileName, cfgBytes, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config file: %v", err)
 	}
@@ -450,7 +458,7 @@ func LoadFromFiles(configFileName string) (*Config, error) {
 // Load constructs a configuration from a byte slice representing the config file.
 //
 //gocyclo:ignore
-func Load(filename string, configBytes []byte) (*Config, error) {
+func Load(filename string, configBytes []byte, cmdLineOverrides *CmdLineOverrides) (*Config, error) {
 	// Get absolute path to config. Other files in config will be relative to where the config is.
 	pathToConfig := filename
 	if !path.IsAbs(filename) {
@@ -470,15 +478,15 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	// If the project root is unspecified, then set to the directory of the config file
 	if cfg.ProjectRoot == "" {
 		cfg.root = path.Dir(pathToConfig)
-	} else if !path.IsAbs(cfg.ProjectRoot) {
+	} else if !filepath.IsAbs(cfg.ProjectRoot) {
 		// If it's not an absolute path, compute the absolute path
-		cfg.root = path.Join(path.Dir(pathToConfig), cfg.ProjectRoot)
+		cfg.root = filepath.Join(path.Dir(pathToConfig), cfg.ProjectRoot)
 	} else {
 		cfg.root = cfg.ProjectRoot
 	}
 
 	if cfg.ReportPaths || cfg.ReportSummaries || cfg.ReportCoverage || cfg.ReportNoCalleeSites {
-		if err := setReportsDir(cfg); err != nil {
+		if err := setReportsDir(cfg, cmdLineOverrides); err != nil {
 			return nil, fmt.Errorf("failed to set reports dir of config with filename %v: %v", pathToConfig, err)
 		}
 	}
@@ -486,6 +494,11 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 	// If logLevel has not been specified (i.e. it is 0) set the default to Info
 	if cfg.LogLevel == 0 {
 		cfg.LogLevel = int(InfoLevel)
+	}
+
+	// is the log-level is overridden on the cmd line, set it
+	if cmdLineOverrides != nil && cmdLineOverrides.LogLevel > 0 {
+		cfg.LogLevel = cmdLineOverrides.LogLevel
 	}
 
 	// Set the UnsafeMaxDepth default if it is <= 0
@@ -587,7 +600,17 @@ func LoadEscape(c *Config, escapeConfigBytes []byte) error {
 	return nil
 }
 
-func setReportsDir(c *Config) error {
+func setReportsDir(c *Config, cmdLineOverride *CmdLineOverrides) error {
+	if cmdLineOverride != nil && cmdLineOverride.ReportsDir != "" {
+		err := os.Mkdir(cmdLineOverride.ReportsDir, 0750)
+		if err != nil && !os.IsExist(err) {
+			return fmt.Errorf("could not create reports dir passed on commandline, and it doesn't exist")
+		}
+		// no attempt is made to check the path is absolute or needs to be relative to root
+		c.ReportsDir = cmdLineOverride.ReportsDir
+		return nil
+	}
+
 	if c.ReportsDir == "" {
 		tmpdir, err := os.MkdirTemp(c.root, "*-report")
 		if err != nil {
@@ -604,7 +627,7 @@ func setReportsDir(c *Config) error {
 			reportFile.Close() // the file will be reopened as needed
 		}
 	} else {
-		c.ReportsDir = path.Join(c.root, c.ReportsDir)
+		c.ReportsDir = filepath.Join(c.root, c.ReportsDir)
 		err := os.Mkdir(c.ReportsDir, 0750)
 		if err != nil {
 			if !os.IsExist(err) {
@@ -627,7 +650,7 @@ func (c Config) Root() string {
 
 // RelPath returns the path of the filename path relative to the root
 func (c Config) RelPath(filename string) string {
-	return path.Join(c.root, filename)
+	return filepath.Join(c.root, filename)
 }
 
 // MatchPkgFilter returns true if the package name pkgname matches the package filter set in the config file. If no

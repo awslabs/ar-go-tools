@@ -104,8 +104,9 @@ func Run(flags Flags) error {
 	}
 
 	var cfg *config.Config
-	if err := setConfig(flags.ConfigPath, &cfg); err != nil {
-		return fmt.Errorf("error setting config: %v", err)
+	cfg, err := tools.LoadConfig(flags.CommonFlags, true)
+	if err != nil {
+		return fmt.Errorf("error loading config: %v", err)
 	}
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 	loadOptions := config.LoadOptions{
@@ -149,24 +150,6 @@ func Run(flags Flags) error {
 		reportUncoveredDynamicEdges(state.Program, cg, callsites)
 	}
 
-	return nil
-}
-
-func setConfig(configPath string, cfg **config.Config) error {
-	// check that the pointer to pointer is non-nil, because we'll dereference it
-	if cfg == nil {
-		return nil
-	}
-	if configPath == "" {
-		fmt.Fprintf(os.Stderr, "config path empty: loading default config")
-		*cfg = config.NewDefault()
-	} else {
-		var err error
-		*cfg, err = config.LoadFromFiles(configPath)
-		if err != nil {
-			return fmt.Errorf("failed to load config from file %s", configPath)
-		}
-	}
 	return nil
 }
 

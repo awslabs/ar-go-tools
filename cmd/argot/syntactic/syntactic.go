@@ -38,18 +38,11 @@ Examples:
 
 // Run runs the syntactic analyses.
 func Run(flags tools.CommonFlags) error {
-	cfg, err := tools.LoadConfig(flags.ConfigPath)
+	cfg, err := tools.LoadConfig(flags, false)
 	if err != nil {
 		return err
 	}
 	tmpLogger := config.NewLogGroup(cfg)
-
-	// Override config parameters with command-line parameters
-	if flags.Verbose {
-		tmpLogger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
-		cfg.LogLevel = int(config.DebugLevel)
-		tmpLogger = config.NewLogGroup(cfg)
-	}
 
 	if len(cfg.SyntacticProblems.StructInitProblems) == 0 && len(cfg.SyntacticProblems.CondCheckSpecs) == 0 {
 		tmpLogger.Warnf("No syntactic problems in config file.")

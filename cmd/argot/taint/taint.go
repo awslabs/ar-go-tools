@@ -65,6 +65,7 @@ func NewFlags(args []string) (Flags, error) {
 			Tag:        *flags.Tag,
 			Targets:    *flags.Targets,
 			Platform:   *flags.Platform,
+			Out:        *flags.Out,
 		},
 		maxDepth: *maxDepth,
 		dryRun:   *dryRun,
@@ -73,18 +74,13 @@ func NewFlags(args []string) (Flags, error) {
 
 // Run runs the taint analysis with flags.
 func Run(flags Flags) error {
-	cfg, err := tools.LoadConfig(flags.ConfigPath)
+	cfg, err := tools.LoadConfig(flags.CommonFlags, false)
 	if err != nil {
 		return err
 	}
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Infof(formatutil.Faint("Argot taint tool - " + analysis.Version))
 	// Override config parameters with command-line parameters
-	if flags.Verbose {
-		tmpLogger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
-		cfg.LogLevel = int(config.DebugLevel)
-		tmpLogger = config.NewLogGroup(cfg)
-	}
 	if flags.maxDepth > 0 {
 		cfg.UnsafeMaxDepth = flags.maxDepth
 		tmpLogger.Warnf("%s %d\n", "UNSAFE config max data-flow depth set to: %s", flags.maxDepth)

@@ -89,13 +89,13 @@ func mkConfig(sanitizers []CodeIdentifier, sinks []CodeIdentifier, sources []Cod
 	return *c
 }
 
-func loadFromTestDir(filename string) (string, *Config, error) {
+func loadFromTestDir(filename string, overrides *CmdLineOverrides) (string, *Config, error) {
 	filename = filepath.Join("testdata", filename)
 	b, err := testfsys.ReadFile(filename)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to read file %v: %v", filename, err)
 	}
-	config, err := Load(filename, b)
+	config, err := Load(filename, b, overrides)
 	if err != nil {
 		return filename, nil, fmt.Errorf("failed to load file %v: %v", filename, err)
 	}
@@ -107,7 +107,7 @@ func testLoadOneFile(t *testing.T, filename string, expected Config) {
 	if expected.LogLevel == 0 {
 		expected.LogLevel = int(InfoLevel)
 	}
-	configFileName, config, err := loadFromTestDir(filename)
+	configFileName, config, err := loadFromTestDir(filename, nil)
 	if err != nil {
 		t.Errorf("Error loading %q: %v", configFileName, err)
 	}
@@ -141,7 +141,7 @@ func TestLoadNonExistentFileReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read file %v: %v", name, err)
 	}
-	c, err := Load(name, b)
+	c, err := Load(name, b, nil)
 	if c != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load non existent file.")
 	}
@@ -153,7 +153,7 @@ func TestLoadBadFormatFileReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read file %v: %v", name, err)
 	}
-	config, err := Load(name, b)
+	config, err := Load(name, b, nil)
 	if config != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load a badly formatted file.")
 	}
@@ -165,7 +165,7 @@ func TestLoadDuplicateTagsReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read file %v: %v", name, err)
 	}
-	_, err = Load(name, b)
+	_, err = Load(name, b, nil)
 	if err == nil {
 		t.Fatalf("Expected error and nil value when trying to load a config with duplicate problem tags.")
 	}
@@ -180,7 +180,7 @@ func TestLoadInvalidSeverityReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read file %v: %v", name, err)
 	}
-	_, err = Load(name, b)
+	_, err = Load(name, b, nil)
 	if err == nil {
 		t.Fatalf("Expected error and nil value when trying to load a config with duplicate problem tags.")
 	}
@@ -190,14 +190,14 @@ func TestLoadInvalidSeverityReturnsError(t *testing.T) {
 }
 
 func TestLoadWithProjectRoot(t *testing.T) {
-	_, config, err := loadFromTestDir("test_project_root_loading.yaml")
+	_, config, err := loadFromTestDir("test_project_root_loading.yaml", nil)
 	if config == nil || err != nil {
 		t.Fatalf("encountered error when loading config with project root specified: %s", err)
 	}
 }
 
 func TestLoadWithUndefinedTargetReturnsError(t *testing.T) {
-	_, _, err := loadFromTestDir("config_undefined_target.yaml")
+	_, _, err := loadFromTestDir("config_undefined_target.yaml", nil)
 	if err == nil {
 		t.Fatalf("expected error when loading config with undefined target")
 	}
@@ -207,7 +207,7 @@ func TestLoadWithUndefinedTargetReturnsError(t *testing.T) {
 }
 
 func TestLoadVersionBefore_v0_3_0_Errors(t *testing.T) {
-	_, config, err := loadFromTestDir("config_before_v0_3_0.yaml")
+	_, config, err := loadFromTestDir("config_before_v0_3_0.yaml", nil)
 	if config != nil || err == nil {
 		t.Fatalf("Expected error and nil value when trying to load config with bad format")
 	}
@@ -216,7 +216,7 @@ func TestLoadVersionBefore_v0_3_0_Errors(t *testing.T) {
 		t.Errorf("Error message:\n%s\nshould contain %s", err, msg1)
 	}
 
-	_, configJson, errJson := loadFromTestDir("config_before_v0_3_0.json")
+	_, configJson, errJson := loadFromTestDir("config_before_v0_3_0.json", nil)
 	if configJson != nil || errJson == nil {
 		t.Fatalf("Expected error and nil value when trying to load config with bad format")
 	}
@@ -238,7 +238,7 @@ func TestLoadWithReports(t *testing.T) {
 }
 
 func TestLoadWithReportNoDirReturnsError(t *testing.T) {
-	_, config, err := loadFromTestDir("config_with_reports_bad_dir.yaml")
+	_, config, err := loadFromTestDir("config_with_reports_bad_dir.yaml", nil)
 	if config != nil || err == nil {
 		t.Errorf("Expected error and nil value when trying to load config with a report dir that has a non-existing" +
 			"directory name")
@@ -246,7 +246,7 @@ func TestLoadWithReportNoDirReturnsError(t *testing.T) {
 }
 
 func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
-	fileName, config, err := loadFromTestDir("config_with_reports_no_dir_spec.yaml")
+	fileName, config, err := loadFromTestDir("config_with_reports_no_dir_spec.yaml", nil)
 	if config == nil || err != nil {
 		t.Errorf("Could not load %q", fileName)
 		return
@@ -265,8 +265,27 @@ func TestLoadWithNoSpecifiedReportsDir(t *testing.T) {
 	os.Remove(config.ReportsDir)
 }
 
+func TestLoadWithReportsDirOverride(t *testing.T) {
+	reportsDir := "test-cmdline-dir"
+	fileName, config, err := loadFromTestDir("config_with_reports_dir.yaml", &CmdLineOverrides{
+		LogLevel:   0,
+		ReportsDir: reportsDir,
+	})
+	if config == nil || err != nil {
+		t.Errorf("Could not load %q", fileName)
+		return
+	}
+	if config.ReportsDir != reportsDir {
+		t.Errorf("Expected reports-dir to be %s after loading config %q with override, not %s",
+			reportsDir, fileName, config.ReportsDir)
+	}
+	// Remove temporary files
+	os.Remove(config.nocalleereportfile)
+	os.Remove(config.ReportsDir)
+}
+
 func TestLoadSyntacticConfigYaml(t *testing.T) {
-	fileName, config, err := loadFromTestDir("syntactic-config.yaml")
+	fileName, config, err := loadFromTestDir("syntactic-config.yaml", nil)
 	if config == nil || err != nil {
 		t.Errorf("could not load %s", fileName)
 		return
@@ -313,7 +332,7 @@ func TestLoadSyntacticConfigYaml(t *testing.T) {
 
 //gocyclo:ignore
 func TestLoadFullConfigYaml(t *testing.T) {
-	fileName, config, err := loadFromTestDir("full-config.yaml")
+	fileName, config, err := loadFromTestDir("full-config.yaml", nil)
 	if config == nil || err != nil {
 		t.Errorf("Could not load %s: %s", fileName, err)
 		return
@@ -403,8 +422,8 @@ func TestLoadFullConfigYaml(t *testing.T) {
 }
 
 func TestLoadFullConfigYamlEqualsJson(t *testing.T) {
-	_, yamlConfig, yamlErr := loadFromTestDir("full-config.yaml")
-	_, jsonConfig, jsonErr := loadFromTestDir("full-config.json")
+	_, yamlConfig, yamlErr := loadFromTestDir("full-config.yaml", nil)
+	_, jsonConfig, jsonErr := loadFromTestDir("full-config.json", nil)
 	if jsonErr != nil {
 		t.Fatalf("failed to load json config")
 	}
