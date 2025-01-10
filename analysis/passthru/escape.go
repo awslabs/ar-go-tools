@@ -25,7 +25,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/exp/maps"
-	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -216,51 +215,6 @@ func hasPermissionsOf(cache *ptr.AliasCache, val ssa.Value, allocVal ssa.Value) 
 	}
 
 	return true
-}
-
-// escapesInCallees returns the first escaped values found in any of call's
-// transitive callees. Returns the escapes and true if any were found.
-func escapesInCallees(state *state, call ssa.CallInstruction, alloc AccessedCoreAlloc) ([]Escape, bool) {
-	cg := state.cache.PtrState.PointerAnalysis.CallGraph
-	callees, err := state.df.ResolveCallee(call, true)
-	if err != nil {
-		state.logger.Warnf("failed to resolve callee for %v: %v\n", call, err)
-		// if the callee cannot be resolved, assume that it does not escape
-		return nil, false
-	}
-
-	// run BFS to converge faster
-	var que []*callgraph.Node
-	for f := range callees {
-		node, ok := cg.Nodes[f]
-		if !ok {
-			panic(fmt.Errorf("callgraph node not found for function: %v", f))
-		}
-		que = append(que, node)
-	}
-	seen := make(map[*callgraph.Node]bool)
-	for len(que) != 0 {
-		cur := que[0]
-		que = que[1:]
-
-		if seen[cur] {
-			continue
-		}
-		seen[cur] = true
-
-		if funcDoesNotLeak(state.spec, funcWithCtx{f: cur.Func, ctx: unknown}) {
-			state.logger.Debugf(
-				"\t\tskipping escape check because Core function does not leak args: %v\n", cur.Func)
-			continue
-		}
-
-		escs := findEscapes(state, cur.Func, alloc)
-		if len(escs) > 0 {
-			return escs, true
-		}
-	}
-
-	return nil, false
 }
 
 // callDoesNotLeak returns true if call cannot leak internal allocations via

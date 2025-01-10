@@ -773,34 +773,6 @@ func allCoreAllocCalls(state *state) coreAllocCallInfo {
 	return coreAllocCallInfo{calls: calls, callees: coreAllocCallees}
 }
 
-func isFalsePositive(spec config.DiodonPassThroughSpec, alloc AccessedCoreAlloc) bool {
-	for _, filterId := range spec.AppAccessFilters {
-		if filterId.MatchPackageAndMethod(alloc.Parent()) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func coreApiFuncs(spec config.DiodonPassThroughSpec, coreFuncs map[*ssa.Function]bool) (map[*ssa.Function]bool, error) {
-	funcs := make(map[*ssa.Function]bool)
-	for _, apiFuncId := range spec.CoreApiFunctions {
-		for f := range coreFuncs {
-			if apiFuncId.MatchPackageAndMethod(f) {
-				funcs[f] = true
-				break
-			}
-		}
-	}
-
-	if len(funcs) != len(spec.CoreApiFunctions) {
-		return funcs, fmt.Errorf("missing some core api functions: want %v, got %v", spec.CoreApiFunctions, funcs)
-	}
-
-	return funcs, nil
-}
-
 type funcContext uint
 
 const (
@@ -820,10 +792,6 @@ func (c funcContext) String() string {
 	default:
 		panic("invalid context")
 	}
-}
-
-func isCoreAllocFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) bool {
-	return spec.CoreAllocFunction.MatchPackageAndMethod(f)
 }
 
 func isCoreApiFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) (config.CodeIdentifier, bool) {

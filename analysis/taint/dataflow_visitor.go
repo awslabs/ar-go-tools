@@ -843,6 +843,8 @@ func (v *Visitor) addNext(s *df.State,
 // fallbackEscapeContext computes an escape context for function f based on its
 // callers. This is relatively expensive, so we only do it for places where the
 // existing technique fails.
+//
+//gocyclo:ignore
 func fallbackEscapeContext(f *ssa.Function, s *df.State) df.EscapeCallContext {
 	cg := s.PointerAnalysis.CallGraph
 	node := cg.Nodes[f]

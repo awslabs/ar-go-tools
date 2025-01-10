@@ -46,10 +46,6 @@ type CodeIdentifier struct {
 	// Receiver identified the receiver object of a method call
 	Receiver string `xml:"receiver,attr"`
 
-	// ReturnIndices identifies return value indices of a function.
-	// The Package and Method fields must be set as well.
-	ReturnIndices []int `xml:"return-indices,attr" yaml:"return-indices" json:"return-indices"`
-
 	// Field identifies a specific field
 	Field string `xml:"field,attr"`
 
@@ -70,6 +66,10 @@ type CodeIdentifier struct {
 	// ValueMatch can be used to match specific calls to a function. This is useful to match specific calls to
 	// formatting functions.
 	ValueMatch string `xml:"value-match,attr" yaml:"value-match" json:"value-match"`
+
+	// ReturnIndices identifies return value indices of a function.
+	// The Package and Method fields must be set as well.
+	ReturnIndices []int `xml:"return-indices,attr" yaml:"return-indices" json:"return-indices"`
 
 	// computedRegexs is not part of the yaml config, but contains the compiled regex version of the code identifier
 	// elements that are parsed as regexes.

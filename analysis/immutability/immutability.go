@@ -296,6 +296,7 @@ func (s *state) findWrites(fna *funcToAnalyze) {
 	}
 }
 
+//gocyclo:ignore
 func (s *state) findReads(fna *funcToAnalyze) {
 	for instr := range fna.readInstrs {
 		read, ok := ptr.PtrsReadFrom(instr.Instruction, instr.Pos)
