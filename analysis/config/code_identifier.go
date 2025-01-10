@@ -226,15 +226,25 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 	return cid.Type == typ.String()
 }
 
-// MatchPackageAndMethod checks whether the function f matches the code identifier on the package and method fields and
+// MatchPackageAndMethodWithCaller checks whether the function f matches the code identifier on the package and method fields and
 // the context of the caller.
 // It is safe to call with nil values.
-func (cid *CodeIdentifier) MatchPackageAndMethod(caller *ssa.Function, f *ssa.Function) bool {
+func (cid *CodeIdentifier) MatchPackageAndMethodWithCaller(caller *ssa.Function, f *ssa.Function) bool {
 	if cid == nil {
 		return false
 	}
 	if caller != nil && cid.Context != "" &&
 		cid.computedRegexs != nil && !cid.computedRegexs.contextRegex.MatchString(caller.String()) {
+		return false
+	}
+	return cid.MatchPackageAndMethod(f)
+}
+
+// MatchPackageAndMethod checks whether the function f matches the code identifier on the package and method
+// fields.
+// It is safe to call with nil values.
+func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
+	if cid == nil {
 		return false
 	}
 	if f == nil {
