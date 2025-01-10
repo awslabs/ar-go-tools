@@ -28,7 +28,7 @@ import (
 
 func TestLoadWithProjectRoot(t *testing.T) {
 	configFile := filepath.Join("testdata", "state_load_config.yaml")
-	cfg, err := tools.LoadConfig(configFile)
+	cfg, err := tools.LoadConfig(tools.CommonFlags{ConfigPath: configFile}, false)
 	if err != nil {
 		t.Fatalf("failed to load config")
 	}

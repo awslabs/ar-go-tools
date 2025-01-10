@@ -105,7 +105,7 @@ func Run(flags Flags) error {
 	renderConfig := config.NewDefault() // empty default config
 	if flags.ConfigPath != "" {
 		config.SetGlobalConfig(flags.ConfigPath)
-		renderConfig, err = config.LoadGlobal()
+		renderConfig, err = config.LoadGlobal(nil)
 		if err != nil {
 			return fmt.Errorf("could not load config %q", flags.ConfigPath)
 		}

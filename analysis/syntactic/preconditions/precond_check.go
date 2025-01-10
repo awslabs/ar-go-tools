@@ -111,19 +111,30 @@ func analyzeSpec(state *ptr.State, spec config.CondCheckSpec) ([]token.Position,
 	return locs, nil
 }
 
+type resAndGuards struct {
+	res    bool
+	guards [][]string
+}
+
 func analyzeFunc(state *ptr.State, spec config.CondCheckSpec, f *ssa.Function) ([]token.Position, error) {
 	state.Logger.Infof("Checking %s which calls a function matching a call identified in %s",
 		f.Name(), spec.Tag)
 	var locs []token.Position
+
 	for _, blk := range f.Blocks {
-		guardStrs := computeBlockGuards(blk)
-		check := sync.OnceValue(func() bool { return checkGuard(spec, guardStrs) })
+		// Wrap in OnceValue to execute only once, and maybe never if no instruction requires a guard
+		check := sync.OnceValue(func() resAndGuards {
+			guardStrs := computeBlockGuards(blk)
+			res := checkGuard(spec, guardStrs)
+			return resAndGuards{res, guardStrs}
+		})
 		for _, instr := range blk.Instrs {
 			if instrRequiresGuard(state, spec, instr) {
 				state.Logger.Debugf("Check %s", instr)
-				if !check() {
+				c := check()
+				if !c.res {
 					state.Logger.Errorf("Preconditions not satisfied in call %s", instr)
-					state.Logger.Errorf("Preconditions is: %s", guardToString(guardStrs))
+					state.Logger.Errorf("Preconditions is: %s", guardToString(c.guards))
 					state.Logger.Errorf("Position: %s", state.Program.Fset.Position(instr.Pos()))
 					locs = append(locs, state.Program.Fset.Position(instr.Pos()))
 				} else {
@@ -207,6 +218,9 @@ func computePathCond(blocks []*ssa.BasicBlock) []string {
 	for i := 0; i < len(blocks)-1; i++ {
 		maybeCond := blockCond(blocks[i])
 		if maybeCond.IsSome() {
+			// Check which branch the next block corresponds to: if 0, the condition is true, otherwise it is false
+			// This is by construction of the SSA and branching blocks (note that maybeCond being some value guarantees
+			// that the i-th block is a branching block).
 			if blocks[i].Succs[0].Index == blocks[i+1].Index {
 				cond = append(cond, maybeCond.Value())
 			} else {
@@ -237,7 +251,7 @@ func instrRequiresGuard(state *ptr.State, spec config.CondCheckSpec, instr ssa.I
 	}
 	for callee := range callees {
 		if fn.Exists(spec.Call, func(c config.CodeIdentifier) bool {
-			return c.MatchPackageAndMethod(instr.Parent(), callee)
+			return c.MatchPackageAndMethodWithCaller(instr.Parent(), callee)
 		}) {
 			return true
 		}

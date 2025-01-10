@@ -725,7 +725,7 @@ func findMethod(program *ssa.Program, valCi config.CodeIdentifier) (*ssa.Functio
 	for _, pkg := range pkgs {
 		for _, mem := range pkg.Members {
 			if f, ok := mem.(*ssa.Function); ok {
-				if valCi.MatchPackageAndMethod(nil, f) && f != nil {
+				if valCi.MatchPackageAndMethod(f) && f != nil {
 					return f, true
 				}
 			}
@@ -787,7 +787,7 @@ func isFiltered(spec config.StructInitSpec, f *ssa.Function) bool {
 		}
 
 		if filter.Method != "" && filter.Package != "" {
-			if filter.MatchPackageAndMethod(nil, f) {
+			if filter.MatchPackageAndMethod(f) {
 				return true
 			}
 		}

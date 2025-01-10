@@ -81,7 +81,7 @@ func Run(flags Flags) error {
 	if flags.ConfigPath == "" {
 		cfg = config.NewDefault()
 	} else {
-		cfg, err = config.LoadFromFiles(flags.ConfigPath)
+		cfg, err = tools.LoadConfig(flags.CommonFlags, true)
 		if err != nil {
 			return fmt.Errorf("failed to load config %s: %s", flags.ConfigPath, err)
 		}

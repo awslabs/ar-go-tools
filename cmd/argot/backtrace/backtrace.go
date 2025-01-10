@@ -39,18 +39,13 @@ Usage:
 
 // Run runs the backtrace analysis on flags.
 func Run(flags tools.CommonFlags) error {
-	cfg, err := tools.LoadConfig(flags.ConfigPath)
+	cfg, err := tools.LoadConfig(flags, false)
 	if err != nil {
 		return fmt.Errorf("failed to load config file: %v", err)
 	}
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Infof(formatutil.Faint("Argot backtrace tool - " + analysis.Version))
 
-	// Override config parameters with command-line parameters
-	if flags.Verbose {
-		tmpLogger.Infof("verbose command line flag overrides config file log-level %d", cfg.LogLevel)
-		cfg.LogLevel = int(config.DebugLevel)
-	}
 	if flags.Tag != "" {
 		tmpLogger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)
 	}

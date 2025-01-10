@@ -120,11 +120,11 @@ func cmdReconfig(tt *term.Terminal, c *dataflow.State, command Command, _ bool) 
 
 	if len(command.Args) < 1 {
 		// No arguments: reload the current config file.
-		newConfig, err = config.LoadGlobal()
+		newConfig, err = config.LoadGlobal(nil)
 	} else {
 		// Argument specified: set state.ConfigPath to the new config file's path, if the file exists
 		filename := strings.TrimSpace(command.Args[0])
-		newConfig, err = config.LoadFromFiles(filename)
+		newConfig, err = config.LoadFromFiles(filename, nil)
 		if err == nil {
 			config.SetGlobalConfig(filename)
 			state.ConfigPath = filename

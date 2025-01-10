@@ -107,11 +107,11 @@ func LoadTest(
 
 	// Look for a yaml config file first
 	configFileName := filepath.Join(dir, "config.yaml")
-	cfg, err := config.LoadFromFiles(configFileName)
+	cfg, err := config.LoadFromFiles(configFileName, nil)
 	if err != nil {
 		// Look for a json config file if the yaml couldn't be loaded
 		configFileNameJson := filepath.Join(dir, "config.json")
-		cfgJson, errJson := config.LoadFromFiles(configFileNameJson)
+		cfgJson, errJson := config.LoadFromFiles(configFileNameJson, nil)
 		if errJson != nil {
 			return result.Err[loadprogram.State](
 				fmt.Errorf("failed to read config file %v (%v) and %v (%v)",

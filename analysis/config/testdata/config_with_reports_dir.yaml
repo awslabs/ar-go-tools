@@ -1,0 +1,4 @@
+options:
+    reports-dir: test
+    report-paths: true
+    report-no-callee-sites: true

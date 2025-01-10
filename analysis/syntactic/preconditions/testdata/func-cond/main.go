@@ -166,6 +166,84 @@ func callFooWrongCheckInLoop() {
 	}
 }
 
+func callFooCheckInLoopWithContinue() {
+	for i := 0; i < rand.Int(); i++ {
+		b, e := ResourceCheck()
+		if !b || e != nil {
+			continue
+		}
+		FooFunc(G{}) // Fine because of the continue statement
+	}
+}
+
+func callFooCheckInLoopWithBreak() {
+	for i := 0; i < rand.Int(); i++ {
+		b, e := ResourceCheck()
+		if !b || e != nil {
+			break
+		}
+		FooFunc(G{}) // Fine because of the break statement
+	}
+}
+
+func callFooCheckInLoopWithBreakLabelled() {
+OUTERLOOP:
+	for i := 0; i < rand.Int(); i++ {
+		for j := 0; j < rand.Int(); j++ {
+			b, e := ResourceCheck()
+			if !b || e != nil {
+				break OUTERLOOP
+			}
+			FooFunc(G{}) // Breaking out of enclosing loop is also fine
+		}
+		// Some paths don't satisfy the condition here
+		FooFunc(G{}) // @InvalidCall(funcCond)
+	}
+}
+
+func callFooCheckInLoopWithContinueAndBreakWrongCheck() {
+	for i := 0; i < rand.Int(); i++ {
+		b, e := ResourceCheck()
+		if !b {
+			break
+		}
+		if e == nil { // wrong check
+			continue
+		}
+		FooFunc(G{}) // @InvalidCall(funcCond)
+	}
+}
+
+func callFooCheckInLoopWithCrazyGoto() {
+	for i := 0; i < rand.Int(); i++ {
+		b, e := ResourceCheck()
+		if !b {
+			break
+		}
+		if e == nil {
+			goto FINISH
+		}
+	}
+	return
+FINISH:
+	FooFunc(G{})
+}
+
+func callFooCheckInLoopWithCrazyGotoWrongCheck() {
+	for i := 0; i < rand.Int(); i++ {
+		b, e := ResourceCheck()
+		if b {
+			break
+		}
+		if e == nil {
+			goto FINISH
+		}
+	}
+	return
+FINISH:
+	FooFunc(G{}) // @InvalidCall(funcCond)
+}
+
 func callFooInSelect(input1, input2 chan int, done chan bool, timeout time.Duration) {
 	timer := time.NewTimer(timeout)
 
@@ -208,7 +286,13 @@ func main() {
 	callFooCheckedWithInterface(G{})
 	callFooResourceCheckTwoConds()
 	callFooResourceCheckTwoCondsSwap()
+	callFooCheckInLoopWithBreak()
+	callFooCheckInLoopWithBreakLabelled()
+	callFooCheckInLoopWithContinue()
+	callFooCheckInLoopWithContinueAndBreakWrongCheck()
 	callFooResourceCheckTwoCondsRev()
+	callFooCheckInLoopWithCrazyGoto()
+	callFooCheckInLoopWithCrazyGotoWrongCheck()
 	callFooResourceCheckTwoCondsWrong()
 	callFooDoubleChecked()
 	callFooCheckInLoop()

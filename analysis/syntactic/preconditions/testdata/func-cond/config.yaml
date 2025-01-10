@@ -9,5 +9,6 @@ syntactic-problems:
         - method: ^FooFunc$
       preconditions: # either guard must hold when calling the function in call
         - precondition: ["!(ResourceCheck(...)#1 != nil:error)", "ResourceCheck(...)#0"]
+        - precondition: [ "ResourceCheck(...)#1 == nil:error", "ResourceCheck(...)#0"] # this is equivalent to above but we don't reason about atomic props
         - precondition: ["FooPreCheck(...)"]
         - precondition: ["Check(...)"]

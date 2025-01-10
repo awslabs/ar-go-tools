@@ -32,6 +32,7 @@ type UnparsedCommonFlags struct {
 	FlagSet    *flag.FlagSet
 	ConfigPath *string
 	Verbose    *bool
+	Out        *string
 	WithTest   *bool
 	Tag        *string
 	Platform   *string
@@ -49,6 +50,7 @@ func NewUnparsedCommonFlags(name config.ToolName) UnparsedCommonFlags {
 	tag := cmd.String("tag", "", "only analyze specific problem with tag")
 	target := cmd.String("targets", "", "only analyze specific target in config")
 	platform := cmd.String("platform", "", "only analyze specific platform")
+	out := cmd.String("out", "", "override the output folder of the config")
 	cmd.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "build-tags", buildutil.TagsFlagDoc)
 	return UnparsedCommonFlags{
 		FlagSet:    cmd,
@@ -58,13 +60,14 @@ func NewUnparsedCommonFlags(name config.ToolName) UnparsedCommonFlags {
 		Tag:        tag,
 		Platform:   platform,
 		Targets:    target,
+		Out:        out,
 	}
 }
 
 // CommonFlags represents a parsed CLI sub-command flags.
 // E.g., for the command `argot taint ...`, "taint" is the sub-command.
 // This is only for sub-commands that have common flags
-// (config, verbose, with-test, and build-tags).
+// (config, verbose, with-test, out and build-tags).
 type CommonFlags struct {
 	FlagSet    *flag.FlagSet
 	ConfigPath string
@@ -73,6 +76,7 @@ type CommonFlags struct {
 	Tag        string
 	Targets    string
 	Platform   string
+	Out        string
 }
 
 // NewCommonFlags returns a parsed flag set with a given name.
@@ -93,6 +97,7 @@ func NewCommonFlags(name config.ToolName, args []string, cmdUsage string) (Commo
 		Tag:        *flags.Tag,
 		Targets:    *flags.Targets,
 		Platform:   *flags.Platform,
+		Out:        *flags.Out,
 	}, nil
 }
 
@@ -125,15 +130,32 @@ func (e *ExcludePaths) Set(value string) error {
 	return nil
 }
 
-// LoadConfig loads the config file from configPath.
-func LoadConfig(configPath string) (*config.Config, error) {
-	if configPath == "" {
+// LoadConfig loads the config file from the common flags. The flags parameter specifies where the config is and
+// possible overrides on the command line. The returnDefaultIfNoPath parameter signals whether the function should
+// return a "default" config when the path a config file is not specified.
+func LoadConfig(flags CommonFlags, returnDefaultIfNoPath bool) (*config.Config, error) {
+	if flags.ConfigPath == "" {
+		if returnDefaultIfNoPath {
+			fmt.Fprintf(os.Stderr, "config path empty: loading default config")
+			return config.NewDefault(), nil
+		}
 		return nil, fmt.Errorf("file not specified")
 	}
-	config.SetGlobalConfig(configPath)
-	cfg, err := config.LoadGlobal()
+	config.SetGlobalConfig(flags.ConfigPath)
+
+	// Override config parameters with command-line parameters
+	overrides := &config.CmdLineOverrides{
+		LogLevel:   0,
+		ReportsDir: flags.Out,
+	}
+	if flags.Verbose {
+		fmt.Printf("verbose command line flag overrides config file log-level")
+		overrides.LogLevel = int(config.DebugLevel)
+	}
+	cfg, err := config.LoadGlobal(overrides)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config file %s: %v", configPath, err)
+		return nil, fmt.Errorf("failed to load config file %s: %v", flags.ConfigPath, err)
 	}
 
 	return cfg, nil

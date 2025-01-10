@@ -923,7 +923,7 @@ func isFiltered(ss *config.SlicingSpec, n df.GraphNode) bool {
 			}
 		}
 		if f != nil && filter.Method != "" && filter.Package != "" {
-			if filter.MatchPackageAndMethod(nil, f) {
+			if filter.MatchPackageAndMethod(f) {
 				return true
 			}
 		}

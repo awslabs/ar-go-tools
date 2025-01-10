@@ -46,7 +46,7 @@ Examples:
 
 // Flags represents the flags for the dependencies sub-command.
 type Flags struct {
-	configPath     string
+	common         tools.CommonFlags
 	coverPath      string
 	graphPath      string
 	csvPath        string
@@ -54,7 +54,6 @@ type Flags struct {
 	includeStdlib  bool
 	usageThreshold float64
 	locThreshold   int
-	withTest       bool
 	flagSet        *flag.FlagSet
 }
 
@@ -78,7 +77,10 @@ func NewFlags(args []string) (Flags, error) {
 	}
 
 	return Flags{
-		configPath:     *configPath,
+		common: tools.CommonFlags{
+			ConfigPath: *configPath,
+			WithTest:   *withTest,
+		},
 		coverPath:      *coverPath,
 		graphPath:      *graphPath,
 		csvPath:        *csvPath,
@@ -86,22 +88,15 @@ func NewFlags(args []string) (Flags, error) {
 		includeStdlib:  *includeStdlib,
 		usageThreshold: *usageThreshold,
 		locThreshold:   *locThreshold,
-		withTest:       *withTest,
 		flagSet:        cmd,
 	}, nil
 }
 
 // Run runs the analysis.
 func Run(flags Flags) error {
-	var err error
-	var cfg *config.Config
-	if flags.configPath == "" {
-		cfg = config.NewDefault()
-	} else {
-		cfg, err = config.LoadFromFiles(flags.configPath)
-		if err != nil {
-			return fmt.Errorf("failed to load config %s: %s", flags.configPath, err)
-		}
+	cfg, err := tools.LoadConfig(flags.common, true)
+	if err != nil {
+		return fmt.Errorf("failed to load config file: %v", err)
 	}
 
 	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
@@ -116,7 +111,7 @@ func Run(flags Flags) error {
 			Platform:      target.Platform,
 			PackageConfig: nil,
 			BuildMode:     ssa.InstantiateGenerics,
-			LoadTests:     flags.withTest,
+			LoadTests:     flags.common.WithTest,
 			ApplyRewrites: true,
 		}
 		err = runTarget(cfg, targetName, target.Files, loadOptions, flags)
