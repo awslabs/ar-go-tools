@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"strings"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -264,7 +265,7 @@ type Write struct {
 }
 
 func (w Write) String() string {
-	return fmt.Sprintf("write to %v with %v at %v", w.Target, w.Value, w.Pos)
+	return fmt.Sprintf("write to %v (type %v) with %v via %v (%T) at %v", w.Target, w.Target.Type(), w.Value, w.Instruction, w.Instruction, w.Pos)
 }
 
 // Read is an instruction that reads from an entrypoint's underlying memory.
@@ -275,7 +276,11 @@ type Read struct {
 }
 
 func (r Read) String() string {
-	return fmt.Sprintf("read of %v at %v", r.Values, r.Pos)
+	var vals []string
+	for _, val := range r.Values {
+		vals = append(vals, fmt.Sprintf("%v (type %v)", val, val.Type()))
+	}
+	return fmt.Sprintf("read of %v via %v (%T) at %v", strings.Join(vals, ", "), r.Instruction, r.Instruction, r.Pos)
 }
 
 // PtrWrittenTo returns true if instruction writes a scalar value to a pointer

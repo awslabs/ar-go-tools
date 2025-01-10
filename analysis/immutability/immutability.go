@@ -154,7 +154,7 @@ func analyze(log *config.LogGroup, spec config.ImmutabilitySpec, c *ptr.AliasCac
 			continue
 		}
 
-		log.Infof("Verifying immutability of: %v of %v in %v at %v\n", val, entry.Call, val.Parent(), entry.Pos)
+		log.Debugf("Verifying immutability of: %v of %v in %v at %v\n", val, entry.Call, val.Parent(), entry.Pos)
 
 		s := newState(c, spec, val)
 		s.findModifications()
@@ -179,6 +179,9 @@ type state struct {
 	funcsToAnalyze map[*ssa.Function]*funcToAnalyze
 
 	entry ssa.Value
+
+	// entryTypes is the flattened list of all types in entry.
+	entryTypes []types.Type
 
 	// entryWrites stores the set of instructions that write to memory that an
 	// entrypoint (SSA value) points to.
@@ -213,6 +216,7 @@ func newState(c *ptr.AliasCache, spec config.ImmutabilitySpec, val ssa.Value) *s
 		log:              c.PtrState.Logger,
 		spec:             spec,
 		entry:            val,
+		entryTypes:       flatten(val.Type()),
 		entryWrites:      make([]ptr.Write, 0, numVals),
 		entryReads:       make([]ptr.Read, 0, numVals),
 		entryAllocs:      make([]Alloc, 0, numVals),
@@ -225,7 +229,8 @@ func newState(c *ptr.AliasCache, spec config.ImmutabilitySpec, val ssa.Value) *s
 	for obj := range objs {
 		switch data := obj.Data().(type) {
 		case *ssa.MakeInterface:
-			dataObjs := c.Objects(data.X) // get the objects of the concrete struct
+			// get the objects of the concrete struct that the interface "points to"
+			dataObjs := c.Objects(data.X)
 			for obj := range dataObjs {
 				for _, id := range obj.NodeIDs() {
 					s.entryPointsToSet.Insert(int(id))
@@ -272,6 +277,7 @@ func (s *state) findWrites(fna *funcToAnalyze) {
 		if !ok {
 			continue
 		}
+
 		// We assume that errors are only used as values
 		if isAllocatedErrorType(write.Target) {
 			continue
@@ -289,6 +295,12 @@ func (s *state) findWrites(fna *funcToAnalyze) {
 		mobjs := s.Objects(write.Target)
 		for mobj := range mobjs {
 			if s.entryPointsToSet.Has(int(mobj.NodeID())) {
+				// Write target must be a type that is within the entrypoint to be memory-safe
+				if !isValidType(s.entryTypes, write.Target.Type()) {
+					s.log.Infof("detected write %v has invalid type: %v\n", write.Target, write.Target.Type())
+					continue
+				}
+
 				s.entryWrites = append(s.entryWrites, write)
 				break
 			}
@@ -315,6 +327,12 @@ func (s *state) findReads(fna *funcToAnalyze) {
 			if !pointer.CanPoint(rval.Type()) {
 				continue
 			}
+			if alloc, ok := rval.(*ssa.Alloc); ok && !alloc.Heap {
+				// Reads of values that are not on the heap could not have been
+				// from Core instance memory
+				continue
+			}
+
 			// We assume that errors are only used as values
 			if isAllocatedErrorType(rval) {
 				continue
@@ -332,6 +350,11 @@ func (s *state) findReads(fna *funcToAnalyze) {
 			mobjs := s.Objects(rval)
 			for mobj := range mobjs {
 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
+					if !isValidType(s.entryTypes, rval.Type()) {
+						s.log.Infof("detected read %v has invalid type: %v\n", rval, rval.Type())
+						continue
+					}
+
 					if val, ok := mobj.Data().(ssa.Value); ok {
 						// HACK Don't add reads to an object of the same type as the entrypoint
 						// This is sound because we validate that an entrypoint
@@ -374,6 +397,11 @@ func (s *state) findAllocs(fna *funcToAnalyze) {
 		mobjs := s.Objects(val)
 		for mobj := range mobjs {
 			if s.entryPointsToSet.Has(int(mobj.NodeID())) {
+				if !isValidType(s.entryTypes, val.Type()) {
+					s.log.Infof("detected alloc %v has invalid type: %v\n", val, val.Type())
+					continue
+				}
+
 				alloc := Alloc{Instr: instr, Value: val}
 				s.entryAllocs = append(s.entryAllocs, alloc)
 				break
@@ -472,11 +500,15 @@ func newFuncToAnalyze(fn *ssa.Function, fset *token.FileSet) *funcToAnalyze {
 		}
 		pos := fset.Position(instr.Pos())
 
-		switch instr.(type) {
+		switch instr := instr.(type) {
 		case *ssa.Store, *ssa.MapUpdate, *ssa.Send:
 			writeInstrs[Instr{instr, pos}] = struct{}{}
 			readInstrs[Instr{instr, pos}] = struct{}{}
 		case *ssa.Alloc:
+			// only allocations that escape to the heap can be accessed in the App
+			if !instr.Heap {
+				return
+			}
 			allocInstrs[Instr{instr, pos}] = struct{}{}
 		case *ssa.MakeInterface, *ssa.MakeChan, *ssa.MakeSlice:
 			allocInstrs[Instr{instr, pos}] = struct{}{}
@@ -598,6 +630,17 @@ func ReportResults(result AnalysisResult) (string, bool) {
 	}
 
 	return w.String(), failed
+}
+
+// isValidType returns true if typ is assignable to any type within typs.
+func isValidType(typs []types.Type, typ types.Type) bool {
+	for _, t := range typs {
+		if types.AssignableTo(typ, t) || types.AssignableTo(typ, types.NewPointer(t)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isSelfReferentialStruct returns true if the type of any of the fields of t
