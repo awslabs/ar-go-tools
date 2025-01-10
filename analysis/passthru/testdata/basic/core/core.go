@@ -20,8 +20,16 @@ type CoreInstance struct {
 	X []byte
 }
 
-func NewCoreInstance() *CoreInstance {
-	return &CoreInstance{X: nil}
+func NewCoreInstance() (*CoreInstance, error) {
+	return &CoreInstance{X: nil}, fmt.Errorf("error")
+}
+
+var CoreAllocGlobal **byte
+
+func NewCoreInstanceLeak() (*CoreInstance, error) {
+	alloc := make([]byte, 1)
+	*CoreAllocGlobal = &alloc[0]
+	return &CoreInstance{X: alloc}, fmt.Errorf("error")
 }
 
 func (i *CoreInstance) CoreApiOk(b **byte) (**byte, error) {

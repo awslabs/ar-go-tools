@@ -21,7 +21,10 @@ import (
 )
 
 func exOk() {
-	i := core.NewCoreInstance()
+	i, err := core.NewCoreInstance()
+	if err != nil {
+		panic(err)
+	}
 	msg, err := i.CoreApiOk(nil)
 	if err != nil {
 		panic(err)
@@ -30,7 +33,10 @@ func exOk() {
 }
 
 func exInterOk() {
-	i := core.NewCoreInstance()
+	i, err := core.NewCoreInstance()
+	if err != nil {
+		panic(err)
+	}
 	msg, err := i.CoreApiInterOk(nil)
 	if err != nil {
 		panic(err)
@@ -39,7 +45,10 @@ func exInterOk() {
 }
 
 func exGlobalOk() {
-	i := core.NewCoreInstance()
+	i, err := core.NewCoreInstance()
+	if err != nil {
+		panic(err)
+	}
 	msg, err := i.CoreApiLeakGlobal(nil)
 	if err != nil {
 		panic(err)
@@ -48,7 +57,10 @@ func exGlobalOk() {
 }
 
 func exGlobalLeak() {
-	i := core.NewCoreInstance()
+	i, err := core.NewCoreInstance()
+	if err != nil {
+		panic(err)
+	}
 	msg, err := i.CoreApiLeakGlobal(nil)
 	if err != nil {
 		panic(err)
@@ -58,7 +70,10 @@ func exGlobalLeak() {
 }
 
 func exGlobalInterLeak() {
-	i := core.NewCoreInstance()
+	i, err := core.NewCoreInstance()
+	if err != nil {
+		panic(err)
+	}
 	msg, err := i.CoreApiLeakGlobalInter(nil)
 	if err != nil {
 		panic(err)
@@ -68,7 +83,10 @@ func exGlobalInterLeak() {
 }
 
 func exParamLeak() {
-	i := core.NewCoreInstance()
+	i, err := core.NewCoreInstance()
+	if err != nil {
+		panic(err)
+	}
 	b := new(byte)
 	pb := &b                            // @InvalidAccess(exParamLeak)
 	msg, err := i.CoreApiLeakParam(&pb) // @InvalidAccess(exParamLeak)
@@ -76,6 +94,15 @@ func exParamLeak() {
 		panic(err)
 	}
 	fmt.Println(*msg) // @InvalidAccess(exParamLeak)
+}
+
+func exCoreAllocLeak() {
+	i, err := core.NewCoreInstanceLeak() // @CoreAlloc(exCoreAllocLeak) @InvalidAccess(exCoreAllocLeak)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(i)
+	fmt.Println(core.Global)
 }
 
 func main() {
@@ -88,4 +115,6 @@ func main() {
 
 	exInterOk()
 	exGlobalInterLeak()
+
+	exCoreAllocLeak()
 }

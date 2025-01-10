@@ -47,6 +47,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
+	"golang.org/x/exp/maps"
 	"golang.org/x/tools/container/intsets"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
@@ -103,14 +104,27 @@ func Analyze(s *dataflow.State) (AnalysisResult, error) {
 
 	for _, spec := range s.Config.DiodonPassThroughProblems {
 		state := newState(s, cache, spec)
-		invalidAccesses := analyze(state)
+		invalidAccesses, err := analyze(state)
+		if err != nil {
+			return AnalysisResult{}, err
+		}
 		res = append(res, invalidAccesses...)
 	}
 
 	return AnalysisResult{InvalidAccesses: res}, nil
 }
 
-func analyze(state *state) []InvalidAccess {
+func analyze(state *state) ([]InvalidAccess, error) {
+	var res []InvalidAccess
+
+	// check CoreAlloc function first
+	accs, err := analyzeCoreAllocs(state)
+	if err != nil {
+		state.logger.Errorf("%v\n", err)
+	}
+	res = append(res, accs...)
+
+	// next check Core Api functions
 	coreFuncs := findCoreFuncs(state)
 	appFuncs := findAppFuncs(state, coreFuncs)
 
@@ -129,7 +143,6 @@ func analyze(state *state) []InvalidAccess {
 	}
 	state.logger.Debugf("All Core alloc pointer node ids: %v\n", state.coreAllocIds)
 
-	var res []InvalidAccess
 	for af, trace := range appFuncs {
 		if shouldFilterAppAccess(state.spec, af.f) {
 			state.logger.Debugf("Filtering App function according to spec: %v\n", af)
@@ -145,7 +158,7 @@ func analyze(state *state) []InvalidAccess {
 		}
 	}
 
-	return res
+	return res, nil
 }
 
 // isInvalidCoreAccess returns the access and true if acc reads from or writes to a
@@ -470,6 +483,10 @@ func findCoreFuncs(state *state) funcToTrace {
 		}
 		seen[cur.elt] = true
 
+		// if !state.df.IsReachableFunction(cur.Func) {
+		// 	continue
+		// }
+
 		cf := funcWithCtx{
 			f:   cur.Func,
 			ctx: cur.context,
@@ -559,6 +576,10 @@ func findAppFuncs(state *state, cfs funcToTrace) funcToTrace {
 		}
 		seen[cur.elt] = true
 
+		// if !state.df.IsReachableFunction(cur.Func) {
+		// 	continue
+		// }
+
 		af := funcWithCtx{
 			f:   cur.Func,
 			ctx: cur.context,
@@ -630,6 +651,128 @@ func findAppFuncs(state *state, cfs funcToTrace) funcToTrace {
 	return afs
 }
 
+func analyzeCoreAllocs(state *state) ([]InvalidAccess, error) {
+	info := allCoreAllocCalls(state)
+	cid := state.spec.CoreAllocFunction
+	var rets []valWithPos
+	for _, call := range info.calls {
+		vals := returnedVals(state, cid, call)
+		rets = append(rets, vals...)
+	}
+	if len(rets) == 0 {
+		return nil, fmt.Errorf("failed to find any returned values in calls to Core Alloc function: %v", cid)
+	}
+
+	var res []InvalidAccess
+	for _, f := range info.callees {
+		for _, ret := range rets {
+			pos := ret.Pos
+			objs := state.cache.Objects(ret.Value)
+			for obj := range objs {
+				acc := AccessedCoreAlloc{
+					Value:  ret.Value,
+					Pos:    pos,
+					trace:  nil,
+					nodeId: obj.NodeID(),
+				}
+				escs := findEscapes(state, f, acc)
+				if len(escs) > 0 {
+					state.logger.Warnf("Core Instance allocation escaped CoreAlloc function: %v", escs)
+					ia := InvalidAccess{
+						Vals:          []accessedVal{{Value: ret.Value, nodeId: obj.NodeID()}},
+						Pos:           pos,
+						trace:         nil,
+						EscapedAllocs: []EscapedCoreAlloc{{AccessedCoreAlloc: acc, Escapes: escs}},
+					}
+					res = append(res, ia)
+				}
+			}
+		}
+	}
+
+	return res, nil
+}
+
+// valWithPos is needed because ssa.Extract sometimes doesn't have a valid
+// position.
+type valWithPos struct {
+	ssa.Value
+	Pos token.Position
+}
+
+func returnedVals(state *state, funcId config.CodeIdentifier, call ssa.CallInstruction) []valWithPos {
+	var vals []valWithPos
+	// If the call returns a tuple, add the respective return value
+	// extract instructions to vals, otherwise add the result of the
+	// call
+	sig := call.Value().Common().Signature()
+	isTupleReturn := sig.Results().Len() > 1
+	if isTupleReturn {
+		if call.Value().Referrers() == nil {
+			panic(fmt.Errorf(
+				"no referrers for call with multiple returns: %v (signature: %v)",
+				call, sig))
+		}
+
+		for _, refInstr := range *call.Value().Referrers() {
+			extract, ok := refInstr.(*ssa.Extract)
+			if !ok {
+				continue
+			}
+			for _, retIdx := range funcId.ReturnIndices {
+				if extract.Index == retIdx {
+					vals = append(vals, valWithPos{extract, state.fset.Position(call.Pos())})
+				}
+			}
+		}
+	} else {
+		vals = append(vals, valWithPos{call.Value(), state.fset.Position(call.Pos())})
+	}
+
+	return vals
+}
+
+type coreAllocCallInfo struct {
+	calls   []ssa.CallInstruction
+	callees []*ssa.Function
+}
+
+func allCoreAllocCalls(state *state) coreAllocCallInfo {
+	var calls []ssa.CallInstruction
+	var coreAllocCallees []*ssa.Function
+	for f := range state.df.ReachableFunctions() {
+		lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
+			call, ok := instr.(ssa.CallInstruction)
+			if !ok {
+				return
+			}
+
+			callees, err := state.df.ResolveCallee(call, true)
+			if err != nil {
+				panic(fmt.Errorf("failed to resolve callees of function call: %v", call))
+			}
+			if len(callees) == 0 {
+				return
+			}
+
+			// All possible callees must be Core Alloc function
+			allCoreAlloc := true
+			for callee := range callees {
+				allCoreAlloc = allCoreAlloc && state.spec.CoreAllocFunction.MatchPackageAndMethod(callee)
+			}
+			if !allCoreAlloc {
+				return
+			}
+
+			state.logger.Debugf("Found call to Core Alloc function: %v\n", call)
+			calls = append(calls, call)
+			coreAllocCallees = append(coreAllocCallees, maps.Keys(callees)...)
+		})
+	}
+
+	return coreAllocCallInfo{calls: calls, callees: coreAllocCallees}
+}
+
 func isFalsePositive(spec config.DiodonPassThroughSpec, alloc AccessedCoreAlloc) bool {
 	for _, filterId := range spec.AppAccessFilters {
 		if filterId.MatchPackageAndMethod(alloc.Parent()) {
@@ -642,7 +785,7 @@ func isFalsePositive(spec config.DiodonPassThroughSpec, alloc AccessedCoreAlloc)
 
 func coreApiFuncs(spec config.DiodonPassThroughSpec, coreFuncs map[*ssa.Function]bool) (map[*ssa.Function]bool, error) {
 	funcs := make(map[*ssa.Function]bool)
-	for _, apiFuncId := range spec.CoreApiFunctionReturnedValues {
+	for _, apiFuncId := range spec.CoreApiFunctions {
 		for f := range coreFuncs {
 			if apiFuncId.MatchPackageAndMethod(f) {
 				funcs[f] = true
@@ -651,8 +794,8 @@ func coreApiFuncs(spec config.DiodonPassThroughSpec, coreFuncs map[*ssa.Function
 		}
 	}
 
-	if len(funcs) != len(spec.CoreApiFunctionReturnedValues) {
-		return funcs, fmt.Errorf("missing some core api functions: want %v, got %v", spec.CoreApiFunctionReturnedValues, funcs)
+	if len(funcs) != len(spec.CoreApiFunctions) {
+		return funcs, fmt.Errorf("missing some core api functions: want %v, got %v", spec.CoreApiFunctions, funcs)
 	}
 
 	return funcs, nil
@@ -679,8 +822,12 @@ func (c funcContext) String() string {
 	}
 }
 
+func isCoreAllocFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) bool {
+	return spec.CoreAllocFunction.MatchPackageAndMethod(f)
+}
+
 func isCoreApiFunc(spec config.DiodonPassThroughSpec, f *ssa.Function) (config.CodeIdentifier, bool) {
-	for _, funcId := range spec.CoreApiFunctionReturnedValues {
+	for _, funcId := range spec.CoreApiFunctions {
 		if funcId.MatchPackageAndMethod(f) {
 			return funcId, true
 		}

@@ -8,8 +8,12 @@ diodon-pass-through-problems:
     core-functions:
       - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
         method: ".*"
-    core-api-function-returned-values:
+    core-alloc-function:
+      package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
+      method: "NewCoreInstance.*"
+      return-indices: [0]
+    core-api-functions:
       - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
-        method: "NewCoreInstance"
+        method: "NewCoreInstance.*"
       - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
         method: "^CoreApi.*"

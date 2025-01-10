@@ -244,12 +244,14 @@ type DiodonPassThroughSpec struct {
 	// part of the Core.
 	CoreFunctions []CodeIdentifier `yaml:"core-functions" json:"core-functions"`
 
-	// CoreApiFunctionReturnedValues is the list of identifiers representing
-	// which functions are part of the Core API. The return and/or parameter
-	// fields indicate which return values and/or parameters establish
-	// permissions for heap locations allocated within the context of the Core
-	// API function.
-	CoreApiFunctionReturnedValues []CodeIdentifier `yaml:"core-api-function-returned-values" json:"core-api-function-returned-values"`
+	// CoreAllocFunction is the function that allocates the Core instance's memory.
+	CoreAllocFunction CodeIdentifier `yaml:"core-alloc-function" json:"core-alloc-function"`
+
+	// CoreApiFunctions is the list of identifiers representing
+	// which functions are part of the Core API.
+	// The return values and/or parameters establish permissions for heap
+	// locations allocated within the context of the Core API function.
+	CoreApiFunctions []CodeIdentifier `yaml:"core-api-functions" json:"core-api-functions"`
 
 	// AppAccessFilters contains a list of identifiers representing which functions
 	// in the App should not be analyzed for invalid accesses due to
@@ -600,10 +602,11 @@ func Load(filename string, configBytes []byte) (*Config, error) {
 		funcutil.MapInPlace(sSpec.Filters, compileRegexes)
 	}
 
-	for _, spec := range cfg.DiodonPassThroughProblems {
+	for i, spec := range cfg.DiodonPassThroughProblems {
 		funcutil.MapInPlace(spec.AppFunctions, compileRegexes)
 		funcutil.MapInPlace(spec.CoreFunctions, compileRegexes)
-		funcutil.MapInPlace(spec.CoreApiFunctionReturnedValues, compileRegexes)
+		cfg.DiodonPassThroughProblems[i].CoreAllocFunction = compileRegexes(spec.CoreAllocFunction)
+		funcutil.MapInPlace(spec.CoreApiFunctions, compileRegexes)
 		funcutil.MapInPlace(spec.AppAccessFilters, compileRegexes)
 		funcutil.MapInPlace(spec.CoreAllocFilters, compileRegexes)
 		funcutil.MapInPlace(spec.NoLeakFunctions, compileRegexes)
