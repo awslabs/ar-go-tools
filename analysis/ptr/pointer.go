@@ -403,69 +403,31 @@ func PtrsReadFrom(instr ssa.Instruction, pos token.Position) (Read, bool) {
 	}
 
 	switch instr := instr.(type) {
-	case *ssa.BinOp:
-		add(instr.X, instr.Y)
 	case *ssa.Call:
 		add(instr.Call.Args...)
-	case *ssa.ChangeInterface:
-		add(instr.X)
-	case *ssa.ChangeType:
-		add(instr.X)
-	case *ssa.Convert:
-		add(instr.X)
 	case *ssa.Extract:
 		add(instr.Tuple)
 	case *ssa.Field:
 		add(instr.X)
 	case *ssa.FieldAddr:
 		add(instr.X)
-	case *ssa.Go:
-		add(instr.Call.Args...)
-	case *ssa.If:
-		add(instr.Cond)
 	case *ssa.Index:
 		add(instr.X, instr.Index)
 	case *ssa.IndexAddr:
 		add(instr.X, instr.Index)
 	case *ssa.Lookup:
 		add(instr.X, instr.Index)
-	case *ssa.MakeChan:
-		add(instr.Size)
-	case *ssa.MakeClosure:
-		add(instr.Bindings...)
-	case *ssa.MakeInterface:
-		add(instr.X)
-	case *ssa.MakeMap:
-		add(instr.Reserve)
-	case *ssa.MakeSlice:
-		add(instr.Len, instr.Cap)
-	case *ssa.MapUpdate:
-		add(instr.Key, instr.Value) // map isn't read from
-	case *ssa.MultiConvert:
-		add(instr.X)
 	case *ssa.Next:
 		add(instr.Iter)
 	case *ssa.Panic:
 		add(instr.X)
-	case *ssa.Phi:
-		add(instr.Edges...)
-	case *ssa.Return:
-		add(instr.Results...)
-	case *ssa.Select:
-		for _, state := range instr.States {
-			add(state.Chan, state.Send)
-		}
-	case *ssa.Send:
-		add(instr.X) // channel isn't read from
 	case *ssa.Slice:
 		add(instr.X, instr.Low, instr.High, instr.Max)
 	case *ssa.SliceToArrayPointer:
 		add(instr.X)
 	case *ssa.Store:
 		add(instr.Val) // address written to isn't read from
-	case *ssa.TypeAssert:
-		add(instr.X)
-	case *ssa.UnOp:
+	case *ssa.UnOp: // pointer de-reference
 		add(instr.X)
 	}
 
