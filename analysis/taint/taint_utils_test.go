@@ -104,7 +104,7 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 				} else {
 					// TODO false positives are logs for now for tests with metadata until context-sensitivity is
 					// improved
-					t.Logf(msg)
+					t.Logf("ignoring %s", msg)
 				}
 			}
 		}
@@ -284,7 +284,7 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	if lp.IsErr() {
 		t.Fatalf("failed to load test: %v", lp)
 	}
-	result.Do(lp, func(lp *loadprogram.State) { setupConfig(lp.Config, summarizeOnDemand) })
+	result.Do(lp, func(lp *loadprogram.State) { setupConfig(lp, summarizeOnDemand) })
 	ptrState := result.Bind(lp, ptr.NewState)
 	state, err := result.Bind(ptrState, dataflow.NewState).Value()
 	if err != nil {
@@ -307,13 +307,15 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	}
 }
 
-func setupConfig(cfg *config.Config, summarizeOnDemand bool) {
-	cfg.Options.ReportCoverage = false
-	cfg.Options.ReportPaths = false
-	cfg.Options.ReportSummaries = false
-	cfg.Options.ReportsDir = ""
-	cfg.LogLevel = int(config.ErrLevel) // change this as needed for debugging
-	cfg.SummarizeOnDemand = summarizeOnDemand
+func setupConfig(lp *loadprogram.State, summarizeOnDemand bool) {
+	lp.Config.Options.ReportCoverage = false
+	lp.Config.Options.ReportPaths = false
+	lp.Config.Options.ReportSummaries = false
+	lp.Config.Options.ReportsDir = ""
+	lp.Config.LogLevel = int(config.ErrLevel) // change this as needed for debugging
+	lp.Config.SummarizeOnDemand = summarizeOnDemand
+
+	lp.Logger = config.NewLogGroup(lp.Config)
 }
 
 // sourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
