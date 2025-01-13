@@ -44,7 +44,7 @@ func exNoModStructInit() {
 
 func exNoModStructInitField() {
 	x := t{}       // @Alloc(exNoModStructInitField)
-	trackInt(&x.x) // @ImmutableArg(exNoModStructInitField) @InvalidRead(exNoModStructInitField) // prints 0
+	trackInt(&x.x) // @ImmutableArg(exNoModStructInitField) // prints 0
 }
 
 func exNoModStruct() {
@@ -62,15 +62,15 @@ func exModStructAlias() {
 
 func exModStructInter() {
 	x := t{x: 1} // @Alloc(exModStructInter) @InvalidWrite(exModStructInter)
-	mod(&x.x)    // @InvalidRead(exModStructInter)
-	trackT(&x)   // @ImmutableArg(exModStructInter) // prints 2
+	mod(&x.x)
+	trackT(&x) // @ImmutableArg(exModStructInter) // prints 2
 }
 
 func exModStructRefInter() {
 	x := 1
 	v := newT(x)
 	xptr := getXPtr(v)
-	mod(xptr) // @InvalidRead(exModStructRefInter)
+	mod(xptr)
 	trackT(v) // @ImmutableArg(exModStructRefInter) // prints 2
 }
 
@@ -79,22 +79,22 @@ func exModStructAliasInter() {
 	v1 := newT(x)
 	v2 := newT(x)
 	v2 = v1
-	mod(&v2.x) // @InvalidRead(exModStructAliasInter)
+	mod(&v2.x)
 	trackT(v1) // @ImmutableArg(exModStructAliasInter) // prints 2
 }
 
 func exModStructFieldRef() {
 	x := 1         // @Alloc(exModStructFieldRef) @InvalidWrite(exModStructFieldRef)
-	v := tr{x: &x} // @Alloc(exModStructFieldRef) @InvalidRead(exModStructFieldRef)
+	v := tr{x: &x} // @Alloc(exModStructFieldRef)
 	x++            // @InvalidWrite(exModStructFieldRef) @InvalidRead(exModStructFieldRef)
 	trackTr(&v)    // @ImmutableArg(exModStructFieldRef) // prints 2
 }
 
 func exModStructFieldRefInter() {
 	x := 1         // @Alloc(exModStructFieldRefInter) @InvalidWrite(exModStructFieldRefInter)
-	v := tr{x: &x} // @Alloc(exModStructFieldRefInter) @InvalidRead(exModStructFieldRefInter)
-	mod(&x)        // @InvalidRead(exModStructFieldRefInter)
-	trackTr(&v)    // @ImmutableArg(exModStructFieldRefInter) // prints 2
+	v := tr{x: &x} // @Alloc(exModStructFieldRefInter)
+	mod(&x)
+	trackTr(&v) // @ImmutableArg(exModStructFieldRefInter) // prints 2
 }
 
 func trackTr(v *tr) {
@@ -103,29 +103,29 @@ func trackTr(v *tr) {
 
 func exModStructFieldRefGetter() {
 	x := 1         // @Alloc(exModStructFieldRefGetter) @InvalidWrite(exModStructFieldRefGetter)
-	v := tr{x: &x} // @Alloc(exModStructFieldRefGetter) @InvalidRead(exModStructFieldRefGetter)
+	v := tr{x: &x} // @Alloc(exModStructFieldRefGetter)
 	xval := v.X()
 	xptr := v.XPtr()
-	fmt.Println(xval) // @Alloc(exModStructFieldRefGetter) @InvalidRead(exModStructFieldRefGetter) // prints 1
-	fmt.Println(xptr) // @Alloc(exModStructFieldRefGetter) @InvalidRead(exModStructFieldRefGetter) // prints 1
-	mod(&x)           // @InvalidRead(exModStructFieldRefGetter)
-	trackTr(&v)       // @ImmutableArg(exModStructFieldRefGetter) // prints 2
+	fmt.Println(xval) // @Alloc(exModStructFieldRefGetter) // prints 1
+	fmt.Println(xptr) // @Alloc(exModStructFieldRefGetter) // prints 1
+	mod(&x)
+	trackTr(&v) // @ImmutableArg(exModStructFieldRefGetter) // prints 2
 }
 
 func exNoModStructFieldRefAlias() {
 	x := 2           // @Alloc(exNoModStructFieldRefAlias) @InvalidWrite(exNoModStructFieldRefAlias) // TODO false positive - flow insensitive
-	v1 := tr{x: &x}  // @Alloc(exNoModStructFieldRefAlias) @InvalidRead(exNoModStructFieldRefAlias) // TODO ^
-	v2 := tr{x: nil} // @Alloc(exNoModStructFieldRefAlias) @InvalidRead(exNoModStructFieldRefAlias) // TODO ^
+	v1 := tr{x: &x}  // @Alloc(exNoModStructFieldRefAlias)
+	v2 := tr{x: nil} // @Alloc(exNoModStructFieldRefAlias)
 	v2.x = v1.x      // @InvalidRead(exNoModStructFieldRefAlias)
 	y := 1           // @Alloc(exNoModStructFieldRefAlias) @InvalidWrite(exNoModStructFieldRefAlias)
-	v2.x = &y        // @InvalidRead(exNoModStructFieldRefAlias)  // v2 no longer aliases v1's memory
-	trackInt(v2.x)   // @ImmutableArg(exNoModStructFieldRefAlias) @InvalidRead(exNoModStructFieldRefAlias) // prints 1
+	v2.x = &y
+	trackInt(v2.x) // @ImmutableArg(exNoModStructFieldRefAlias) @InvalidRead(exNoModStructFieldRefAlias) // prints 1
 }
 
 func exModStructFieldRefAlias() {
 	x := 1           // @Alloc(exModStructFieldRefAlias) @InvalidWrite(exModStructFieldRefAlias)
-	v1 := tr{x: &x}  // @Alloc(exModStructFieldRefAlias) @InvalidRead(exModStructFieldRefAlias)
-	v2 := tr{x: nil} // @Alloc(exModStructFieldRefAlias) @InvalidRead(exModStructFieldRefAlias) // TODO false-positive: context-insensitivity
+	v1 := tr{x: &x}  // @Alloc(exModStructFieldRefAlias)
+	v2 := tr{x: nil} // @Alloc(exModStructFieldRefAlias) // TODO false-positive: context-insensitivity
 	v2.x = v1.x      // @InvalidRead(exModStructFieldRefAlias)
 	x++              // @InvalidWrite(exModStructFieldRefAlias) @InvalidRead(exModStructFieldRefAlias)
 	trackInt(v2.x)   // @ImmutableArg(exModStructFieldRefAlias) @InvalidRead(exModStructFieldRefAlias) prints 2
@@ -133,11 +133,11 @@ func exModStructFieldRefAlias() {
 
 func exModStructFieldRefAliasInter() {
 	x := 1           // @Alloc(exModStructFieldRefAliasInter) @InvalidWrite(exModStructFieldRefAliasInter)
-	v1 := tr{x: &x}  // @Alloc(exModStructFieldRefAliasInter) @InvalidRead(exModStructFieldRefAliasInter)
-	v2 := tr{x: nil} // @Alloc(exModStructFieldRefAliasInter) @InvalidRead(exModStructFieldRefAliasInter) // TODO false-positive: context-insensitivity
+	v1 := tr{x: &x}  // @Alloc(exModStructFieldRefAliasInter)
+	v2 := tr{x: nil} // @Alloc(exModStructFieldRefAliasInter)
 	v2.x = v1.x      // @InvalidRead(exModStructFieldRefAliasInter)
-	mod(&x)          // @InvalidRead(exModStructFieldRefAliasInter)
-	trackInt(v2.x)   // @ImmutableArg(exModStructFieldRefAliasInter) @InvalidRead(exModStructFieldRefAliasInter) // prints 2
+	mod(&x)
+	trackInt(v2.x) // @ImmutableArg(exModStructFieldRefAliasInter) @InvalidRead(exModStructFieldRefAliasInter) // prints 2
 }
 
 func exModStructFieldVal() {
@@ -156,7 +156,7 @@ type toTrack struct {
 }
 
 func (t *toTrack) getX() *int {
-	return &t.x // @InvalidRead(exModTrackInterface)
+	return &t.x
 }
 
 func (t *toTrack) track() {
@@ -176,7 +176,7 @@ func exModTrackInterface() {
 }
 
 func exModClosure() {
-	x := new(int) // @Alloc(exModClosure) @InvalidRead(exModClosure)
+	x := new(int) // @Alloc(exModClosure)
 	f := func() {
 		*x = 1 // @InvalidWrite(exModClosure) @InvalidRead(exModClosure)
 	}
@@ -185,7 +185,7 @@ func exModClosure() {
 }
 
 func exModClosureInter() {
-	x := new(int) // @Alloc(exModClosureInter) @InvalidRead(exModClosureInter)
+	x := new(int) // @Alloc(exModClosureInter)
 	f := func() {
 		mod(x) // @InvalidRead(exModClosureInter)
 	}
@@ -247,7 +247,7 @@ type t struct {
 }
 
 func newT(x int) *t {
-	return &t{x: x} // @Alloc(exModStructAliasInter, exModStructRefInter) @InvalidWrite(exModStructAliasInter, exModStructRefInter) @InvalidRead(exModStructAliasInter, exModStructRefInter)
+	return &t{x: x} // @Alloc(exModStructAliasInter, exModStructRefInter) @InvalidWrite(exModStructAliasInter, exModStructRefInter)
 }
 
 type tr struct {
@@ -263,7 +263,7 @@ func (v *tr) XPtr() *int {
 }
 
 func getXPtr(v *t) *int {
-	return &v.x // @InvalidRead(exModStructRefInter)
+	return &v.x
 }
 
 func trackInt(x *int) {

@@ -41,7 +41,7 @@ func exInterOk() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(*msg) // @InvalidAccess(exInterOk) // TODO false-positive
+	fmt.Println(*msg)
 }
 
 func exGlobalOk() {
@@ -88,8 +88,8 @@ func exParamLeak() {
 		panic(err)
 	}
 	b := new(byte)
-	pb := &b                            // @InvalidAccess(exParamLeak)
-	msg, err := i.CoreApiLeakParam(&pb) // @InvalidAccess(exParamLeak)
+	pb := &b
+	msg, err := i.CoreApiLeakParam(&pb)
 	if err != nil {
 		panic(err)
 	}
