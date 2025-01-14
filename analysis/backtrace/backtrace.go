@@ -234,10 +234,12 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 		return nil
 	}
 
-	logger.Infof("")
-	logger.Infof("🚪 entrypoint: %s\n",
+	// log entry points at debug level; there can be too many for default info level logging. For most users, it is
+	// sufficient to see that >0 entry points have been detected.
+	logger.Debugf("")
+	logger.Debugf(" entrypoint: %s\n",
 		formatutil.Purple(entrypoint.String()))
-	logger.Infof("   %s %s\n", formatutil.Green("Found at"), pos)
+	logger.Debugf("   %s %s\n", formatutil.Green("Found at"), pos)
 	logger.PushContext(formatutil.Faint(entrypoint.LongID()))
 	defer logger.PopContext()
 	var trace *df.NodeTree[*df.CallNode]

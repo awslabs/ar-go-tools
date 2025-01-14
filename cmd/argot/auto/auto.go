@@ -165,16 +165,17 @@ func runTarget(
 		return false, nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
 	// Run taint analyses
-	taintHasFindings, taintReport, err := taint.RunTaint(targetName, flags.CommonFlags, df, start)
+	taintHasFindings, taintReport, err := taint.RunTaint(targetName, flags.CommonFlags, df)
 	if err != nil {
 		c.Logger.Errorf("Error running taint analysis on %s: %s", targetName, err)
 	}
 	reportForTarget.Merge(taintReport)
 	// Run backtrace analyses
-	backtraceHasFindings, backtraceReport, err := backtrace.RunBacktrace(flags.CommonFlags, df, start)
+	backtraceHasFindings, backtraceReport, err := backtrace.RunBacktrace(flags.CommonFlags, df)
 	if err != nil {
 		c.Logger.Errorf("Error runnning backtrace analysis on %s: %s", targetName, err)
 	}
 	reportForTarget.Merge(backtraceReport)
+	c.Logger.Infof("Finished analyzing target \"%s\" (%.2f s)", targetName, time.Since(start).Seconds())
 	return syntacticHasFindings || backtraceHasFindings || taintHasFindings, reportForTarget, nil
 }

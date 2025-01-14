@@ -68,7 +68,6 @@ func Run(flags tools.CommonFlags) error {
 		return fmt.Errorf("failed to get backtrace targets: %s", err)
 	}
 	for targetName, target := range actualTargets {
-		start := time.Now()
 		loadOptions := config.LoadOptions{
 			PackageConfig: nil,
 			BuildMode:     ssa.InstantiateGenerics,
@@ -84,7 +83,7 @@ func Run(flags tools.CommonFlags) error {
 		if err != nil {
 			return fmt.Errorf("loading failed: %v", err)
 		}
-		foundNewTraces, report, err2 := RunBacktrace(flags, state, start)
+		foundNewTraces, report, err2 := RunBacktrace(flags, state)
 		overallReport.Merge(report)
 		foundTraces = foundTraces || foundNewTraces
 		if err2 != nil {
@@ -99,7 +98,8 @@ func Run(flags tools.CommonFlags) error {
 }
 
 // RunBacktrace runs the backtrace analysis on the state
-func RunBacktrace(flags tools.CommonFlags, state *dataflow.State, start time.Time) (bool, *config.ReportInfo, error) {
+func RunBacktrace(flags tools.CommonFlags, state *dataflow.State) (bool, *config.ReportInfo, error) {
+	start := time.Now()
 	foundTraces := false
 	analysisResult, err := backtrace.Analyze(state, backtrace.AnalysisReqs{
 		Tag: flags.Tag,
@@ -109,11 +109,11 @@ func RunBacktrace(flags tools.CommonFlags, state *dataflow.State, start time.Tim
 	}
 	duration := time.Since(start)
 	state.Logger.Infof("")
-	state.Logger.Infof("-%s", strings.Repeat("*", 80))
-	state.Logger.Infof("Analysis took %3.4f s\n", duration.Seconds())
+	state.Logger.Infof("Backtrace analysis took %3.4f s\n", duration.Seconds())
 	if len(analysisResult.Traces) > 0 {
 		foundTraces = true
 		state.Logger.Errorf("Found traces for %d slicing problems\n", len(analysisResult.Traces))
 	}
+	state.Logger.Infof("-%s", strings.Repeat("*", 80))
 	return foundTraces, state.Report, nil
 }

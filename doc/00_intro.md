@@ -23,6 +23,7 @@ The Automated Reasoning Go Tools (Argot) is an experimental program analysis too
 ### Tools in Argot
 
 The following tools are included in Argot:
+- the `auto` tool uses any of the analyses implemented by the other tools that have problems defined in a configuration file,
 - the `taint` tool allows you to perform taint analysis in your program (see [Taint Analysis](01_taint.md#taint-analysis)).
 - the `backtrace` tool allows you to find all the backwards data flows from a function call (see [Backtrace Analysis](02_backtrace.md#backtrace-analysis)).
 - the `cli` is an interactive analysis tool, which lets the user run multiple analyses on the program and inspect various levels of debugging information (see [Argot CLI](03_argotcli.md#argot-cli)). This tool is intended for the advanced user who understands the underlying program representations more in detail.
@@ -40,8 +41,9 @@ These tools can be used by developers to better understand their code, through t
 
 ### Configuration
 
-The tools that require a configuration file (such as the `taint` and `cli` tools) all use the same input format, which means that your configuration file can be reused across them. The goal is that the user configuration file corresponds to a specific program to analyze, and not a specific tool. The results of the different tools for the same program with the same configuration file will be consistent.
-The config file is expected to be in YAML format. All fields are generally optional, unless required by a specific tool.
+The tools that require a configuration file (such as the `auto`, `taint` and `cli` tools) all use the same input format, which means that your configuration file can be reused across them.
+A configuration file is designed to contain specifications of *analysis problems* (e.g. taint tracking, backwards data flow tracking, syntactic analyses..), set parameters for those analyses, and possibly define which program to analyze with [targets](#targets).
+The config file is expected to be in YAML or Json format. All fields are generally optional, unless required by a specific tool.
 Some common optional fields across tools are:
 
 ```yaml

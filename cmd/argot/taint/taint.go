@@ -142,18 +142,18 @@ func runTarget(
 		ApplyRewrites: true,
 	}
 	// Starting the analysis
-	start := time.Now()
 	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
 	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetFiles)
 	df, err := result.Bind(result.Bind(loadprogram.NewState(c), ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
-	return RunTaint(targetName, flags.CommonFlags, df, start)
+	return RunTaint(targetName, flags.CommonFlags, df)
 }
 
 // RunTaint runs the taint analysis on the dataflow state
-func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State, start time.Time) (bool, *config.ReportInfo, error) {
+func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State) (bool, *config.ReportInfo, error) {
+	start := time.Now()
 	analysisResult, err := taint.Analyze(df, taint.AnalysisReqs{
 		Tag: flags.Tag,
 	})
@@ -173,8 +173,7 @@ func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State, st
 		targetStr = "TARGET " + targetName + " "
 	}
 	analysisResult.State.Logger.Infof("")
-	analysisResult.State.Logger.Infof(strings.Repeat("*", 80))
-	analysisResult.State.Logger.Infof("Analysis took %3.4f s", duration.Seconds())
+	analysisResult.State.Logger.Infof("Taint analysis took %3.4f s", duration.Seconds())
 	analysisResult.State.Logger.Infof("")
 	if len(analysisResult.TaintFlows.Sinks) == 0 {
 		analysisResult.State.Logger.Infof(
@@ -201,6 +200,7 @@ func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State, st
 	}
 
 	LogResult(df.Program, analysisResult)
+	analysisResult.State.Logger.Infof(strings.Repeat("*", 80))
 	// If some taint flows have been found, or some taint flow escapes, the analysis should return an error.
 	// Scripts that use the taint analysis can then rely on the boolean fail/success state of the analysis terminating.
 	return len(analysisResult.TaintFlows.Sinks) > 0 || len(analysisResult.TaintFlows.Escapes) > 0, analysisResult.State.Report, nil

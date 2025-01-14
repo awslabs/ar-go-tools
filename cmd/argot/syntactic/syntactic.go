@@ -17,6 +17,7 @@ package syntactic
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -140,12 +141,14 @@ func runTarget(
 
 // RunSyntactic runs the syntactic analysis on the pointer state
 func RunSyntactic(targetName string, state *ptr.State) (bool, *config.ReportInfo, error) {
+	start := time.Now()
 	state.Logger.Infof("starting struct init analysis for %s...\n", targetName)
 	res, err := structinit.Analyze(state)
 	if err != nil {
 		return false, nil, fmt.Errorf("struct init analysis error: %v", err)
 	}
 	s, failed := structinit.ReportResults(res)
+	state.Logger.Infof("Struct analysis done (%.3f s)", time.Since(start).Seconds())
 	state.Logger.Infof(s)
 	if failed {
 		return false, state.Report, fmt.Errorf("struct init analysis found problems, inspect logs for more information")
