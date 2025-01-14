@@ -105,11 +105,11 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 	goroutines := make(map[*ssa.Go]bool)
 	v.currentSource = source
 	logger := s.Logger
-	logger.Infof("")
-	logger.Infof("🚪 entrypoint: %s\n",
+	logger.Debugf("")
+	logger.Debugf(" entrypoint: %s\n",
 		formatutil.Purple(v.currentSource.Node.String()))
-	logger.Infof("   %s %s\n", formatutil.Green("Found at"), v.currentSource.Node.Position(s))
-	logger.Infof("   Context: %s", dataflow.FuncNames(v.currentSource.Trace, s.Logger.LogsDebug()))
+	logger.Debugf("   %s %s\n", formatutil.Green("Found at"), v.currentSource.Node.Position(s))
+	logger.Debugf("   Context: %s", dataflow.FuncNames(v.currentSource.Trace, s.Logger.LogsDebug()))
 
 	logger.PushContext(formatutil.Faint(v.currentSource.Node.LongID()))
 	defer logger.PopContext()
