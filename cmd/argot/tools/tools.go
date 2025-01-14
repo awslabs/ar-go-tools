@@ -208,12 +208,6 @@ func GetTargets(c *config.Config, reqs TargetReqs) (map[string]config.TargetInfo
 	case config.SyntacticTool:
 		addTargets(targetsToAnalyze, c.SyntacticProblems.StructInitProblems, allTargets, reqs.Tag, reqs.Platform)
 		break
-	case config.AutoTool:
-		// AutoTool applies taint, backtrace and syntactic analysis
-		addTargets(targetsToAnalyze, c.TaintTrackingProblems, allTargets, reqs.Tag, reqs.Platform)
-		addTargets(targetsToAnalyze, c.SlicingProblems, allTargets, reqs.Tag, reqs.Platform)
-		addTargets(targetsToAnalyze, c.SyntacticProblems.StructInitProblems, allTargets, reqs.Tag, reqs.Platform)
-		break
 	default:
 		return allTargets, nil
 	}

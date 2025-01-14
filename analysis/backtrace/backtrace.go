@@ -80,7 +80,7 @@ func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 }
 
 func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces map[string]map[df.GraphNode][]Trace, errs []error) []error {
-	state.Logger.PushContext("🏷 " + formatutil.Yellow(ps.Tag))
+	state.Logger.PushContext(formatutil.Yellow(ps.Tag))
 	defer state.Logger.PopContext()
 	// Check the tag must be analyzed
 	if reqs.Tag != "" && ps.Tag != reqs.Tag {

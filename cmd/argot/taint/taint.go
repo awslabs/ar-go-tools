@@ -143,6 +143,8 @@ func runTarget(
 	}
 	// Starting the analysis
 	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+	c.Logger.PushContext(formatutil.Faint(targetName))
+	defer c.Logger.PopContext()
 	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetFiles)
 	df, err := result.Bind(result.Bind(loadprogram.NewState(c), ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
