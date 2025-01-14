@@ -20,7 +20,6 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/cmd/argot/auto"
 	"github.com/awslabs/ar-go-tools/cmd/argot/backtrace"
 	"github.com/awslabs/ar-go-tools/cmd/argot/cli"
 	"github.com/awslabs/ar-go-tools/cmd/argot/compare"
@@ -167,14 +166,6 @@ func main() {
 			errExit(err)
 		}
 		if err := taint.Run(flags); err != nil {
-			errExit(err)
-		}
-	case config.AutoTool:
-		flags, err := auto.NewFlags(args)
-		if err != nil {
-			errExit(err)
-		}
-		if err := auto.Run(flags); err != nil {
 			errExit(err)
 		}
 	default:

@@ -115,7 +115,7 @@ func (l *LogGroup) setLoggingPostPrefix(target string) {
 	setPrefixToTarget(l.err, target)
 }
 
-// resetLoggingPostPrefix removes the logging context (using the marker > in the prefix)
+// resetLoggingPostPrefix removes the logging context (using the marker contextSepChar in the prefix)
 func (l *LogGroup) resetLoggingPostPrefix() {
 	resetPrefix(l.trace)
 	resetPrefix(l.debug)

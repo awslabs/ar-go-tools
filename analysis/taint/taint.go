@@ -127,7 +127,7 @@ func Analyze(state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
 }
 
 func runSpec(state *dataflow.State, reqs AnalysisReqs, taintSpec config.TaintSpec, taintFlows *Flows) {
-	state.Logger.PushContext("🏷 " + formatutil.Yellow(taintSpec.Tag))
+	state.Logger.PushContext(formatutil.Yellow(taintSpec.Tag))
 	defer state.Logger.PopContext()
 	// Check the tag must be analyzed
 	if reqs.Tag != "" && taintSpec.Tag != reqs.Tag {

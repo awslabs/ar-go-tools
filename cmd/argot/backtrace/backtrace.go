@@ -78,6 +78,7 @@ func Run(flags tools.CommonFlags) error {
 
 		c := config.NewState(cfg, targetName, target.Files, loadOptions)
 		c.Logger.Infof("Backtrace analysis of target \"%s\" = %v", targetName, target.Files)
+		c.Logger.PushContext(formatutil.Faint(targetName))
 		ptrState := result.Bind(loadprogram.NewState(c), ptr.NewState) // build pointer analysis info
 		state, err := result.Bind(ptrState, dataflow.NewState).Value()
 		if err != nil {
@@ -89,6 +90,7 @@ func Run(flags tools.CommonFlags) error {
 		if err2 != nil {
 			return err2
 		}
+		c.Logger.PopContext()
 	}
 	overallReport.Dump(config.ConfiguredLogger{Config: cfg, Logger: tmpLogger})
 	if foundTraces {
