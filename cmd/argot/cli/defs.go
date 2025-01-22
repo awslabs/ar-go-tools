@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 const (
@@ -96,7 +97,7 @@ func funcsMatchingCommand(tt *term.Terminal, c *dataflow.State, command Command)
 
 func findFunc(c *dataflow.State, target *regexp.Regexp) []*ssa.Function {
 	var funcs []*ssa.Function
-	for f := range c.ReachableFunctions() {
+	for f := range ssautil.AllFunctions(c.Program) {
 		if target.MatchString(f.String()) {
 			funcs = append(funcs, f)
 		}
