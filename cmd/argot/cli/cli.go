@@ -60,6 +60,7 @@ var commands = map[string]func(tt *term.Terminal, s *dataflow.State, command Com
 	cmdShowSsaName:      cmdShowSsa,
 	cmdShowEscapeName:   cmdShowEscape,
 	cmdShowDataflowName: cmdShowDataflow,
+	cmdSrcName:          cmdSrc,
 	cmdSsaInstrName:     cmdSsaInstr,
 	cmdSsaValueName:     cmdSsaValue,
 	cmdStateName:        cmdState,
