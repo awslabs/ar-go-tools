@@ -47,6 +47,7 @@ const (
 	cmdShowDataflowName = "showdataflow"
 	cmdShowEscapeName   = "showescape"
 	cmdShowSsaName      = "showssa"
+	cmdSrcName          = "src"
 	cmdSsaInstrName     = "ssainstr"
 	cmdSsaValueName     = "ssaval"
 	cmdStateName        = "state?"

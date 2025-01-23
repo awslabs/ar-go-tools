@@ -17,6 +17,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"go/printer"
 	"os"
 	"os/exec"
 	"regexp"
@@ -29,6 +30,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/render"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/term"
@@ -212,6 +214,58 @@ func cmdSummary(tt *term.Terminal, c *dataflow.State, command Command, _ bool) b
 			WriteSuccess(tt, "No summaries found. Consider building summaries (summarize).")
 		} else {
 			WriteSuccess(tt, "No matching functions.")
+		}
+	}
+	return false
+}
+
+// cmdShowSource prints the source (AST representation) of all the functions matching a given regex
+func cmdSrc(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
+	if c == nil {
+		writeFmt(tt, "\t- %s%s%s : print the source code of a function.\n"+
+			"\t  src regex prints the AST representation of the function matching the regex\n"+
+			"\t  Example:\n", tt.Escape.Blue, cmdSrcName, tt.Escape.Reset)
+		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdSrcName)
+		return false
+	}
+
+	if len(command.Args) < 1 {
+		if state.CurrentFunction != nil {
+			astNode := state.CurrentFunction.Syntax()
+			if astNode == nil {
+				WriteErr(tt, "%s has no syntax.", formatutil.Bold(state.CurrentFunction.String()))
+			} else {
+				WriteSuccess(tt, "<<< Source for %s", formatutil.Bold(state.CurrentFunction.String()))
+				printer.Fprint(tt, c.Program.Fset, astNode)
+				writeFmt(tt, "\n")
+				WriteSuccess(tt, "End of source for %s >>>", state.CurrentFunction.String())
+				writeFmt(tt, "\n")
+			}
+
+		} else {
+			WriteErr(tt, "Need at least one function to show source for.")
+			cmdSrc(tt, nil, command, withTest)
+		}
+
+		return false
+	}
+	target, err := regexp.Compile(command.Args[0])
+	if err != nil {
+		regexErr(tt, command.Args[0], err)
+		return false
+	}
+
+	funcs := findFunc(c, target)
+	for _, f := range funcs {
+		astNode := f.Syntax()
+		if astNode == nil {
+			WriteErr(tt, "%s has no syntax.", formatutil.Bold(f.String()))
+		} else {
+			WriteSuccess(tt, "<<< Source for %s", formatutil.Bold(f.String()))
+			printer.Fprint(tt, c.Program.Fset, astNode)
+			writeFmt(tt, "\n")
+			WriteSuccess(tt, "End of source for %s >>>", f.String())
+			writeFmt(tt, "\n")
 		}
 	}
 	return false
