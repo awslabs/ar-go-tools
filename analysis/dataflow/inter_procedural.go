@@ -607,11 +607,15 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 // the summary is constructed by running the intra-procedural dataflow analysis.
 // If the summary was not already in the flow graph of the state, it creates a new summary, adds it to the flow graph
 // and then runs the intra-procedural dataflow analysis.
+//
+// BuildSummary expects to be called only on reachable functions, because the analyses usually instantiate the summaries
+// only for those functions.
 func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 	summary := s.FlowGraph.Summaries[function]
 	if summary != nil && summary.Constructed {
 		return summary
 	}
+	// nil summaries should only happen for functions that should have an internally defined summary, i.e. standard library.
 	if summary == nil {
 		id := GetUniqueFunctionID()
 		summary = NewPredefinedSummary(function, id)
@@ -619,6 +623,11 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 			s.FlowGraph.Summaries[function] = summary
 		}
 	}
+	// Summary is still nil, we should panic now.
+	if summary == nil {
+		panic(fmt.Errorf("summary for function %v is nil", function))
+	}
+
 	logger := s.Logger
 
 	logger.Debugf("BuildSummary: Constructing summary for %v...\n", function)

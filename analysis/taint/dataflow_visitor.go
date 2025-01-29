@@ -284,7 +284,8 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 				if callSite.Callee() == nil {
 					panic("callsite has no callee")
 				}
-				// the callee summary may not have been created yet
+				// the callee summary may not have been created yet, but if it's reachable then we should panic
+				// because we cannot handle this case soundly.
 				if s.IsReachableFunction(callSite.Callee()) {
 					panic(fmt.Sprintf("unexpected missing callee summary for reachable function %s",
 						callSite.Callee()))
@@ -547,6 +548,12 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
 					// Summarize the free variable's closure's parent function if there is one
 					f := graphNode.Graph().Parent.Parent()
+					if !s.IsReachableFunction(f) {
+						// we're not even in a reachable function, so the data cannot be flowing here
+						// we might have reached this point by moving throught bound variables/global variables
+						// but the function is not actually reachable.
+						break
+					}
 					if f != nil {
 						df.BuildSummary(s, f)
 					}
@@ -641,7 +648,13 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			}
 			destClosureSummary := graphNode.DestClosure()
 			if destClosureSummary == nil {
-				destClosureSummary = df.BuildSummary(s, graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function))
+				closureFn := graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function)
+				// The function that created the closure is not reachable, so it can't be the case
+				// that the data would flow from that closure creation site.
+				if !s.IsReachableFunction(closureFn) {
+					break
+				}
+				destClosureSummary = df.BuildSummary(s, closureFn)
 				graphNode.SetDestClosure(destClosureSummary)
 				s.FlowGraph.Sync()
 			}

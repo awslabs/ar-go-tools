@@ -42,13 +42,21 @@ type Summary struct {
 // sanitized value.
 var NoDataFlowPropagation = Summary{Rets: [][]int{}, Args: [][]int{}}
 
-// SingleVarArgPropagation is a summary for functions that have a single variadic argument (func f(arg ..any) {...})
+// SingleVarArgPropagation is a summary for functions that have a single (possibly variadic) argument (func f(arg ..any) any {...})
 // This will propagate the data flow to the return value.
 var SingleVarArgPropagation = Summary{Args: [][]int{{0}}, Rets: [][]int{{0}}}
+
+// SingleVarArgTwoRetsPropagation is a summary for functions that have a single variadic argument (func f(arg ..any) (any,any) {...})
+// This will propagate the data flow to both return values.
+var SingleVarArgTwoRetsPropagation = Summary{Args: [][]int{{0}}, Rets: [][]int{{0, 1}}}
 
 // TwoArgPropagation is a summary for functions that have two arguments and both propagate their data to the return
 // value, but there is no dataflow between arguments.
 var TwoArgPropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}
+
+// TwoArgReceivePropagation is a summary for functions that have two arguments and both propagate their data to the return
+// value, and the second argument propagates to the first (typically, functions where the first argument is the receiver)
+var TwoArgReceivePropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}
 
 // FormatterPropagation is a summary for functions like Printf where the first and second arguments might be tainted,
 // and this will taint the returned value (for example: an error, a string with Sprintf).
