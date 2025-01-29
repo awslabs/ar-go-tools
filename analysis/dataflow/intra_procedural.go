@@ -87,6 +87,9 @@ func IntraProceduralAnalysis(state *State,
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
 func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
+	if sm == nil {
+		return 0, fmt.Errorf("summary graph is nil")
+	}
 	start := time.Now()
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
 	// This is the only place an IntraAnalysisState is initialized

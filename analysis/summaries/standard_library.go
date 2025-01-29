@@ -287,9 +287,22 @@ var summaryEncoding = map[string]Summary{
 	},
 	// func NewDecoder(r io.Reader) *Decoder
 	"encoding/json.NewDecoder": SingleVarArgPropagation,
+	// func (dec *Decoder) Buffered() io.Reader
+	"(*encoding/json.Decoder).Buffered": SingleVarArgPropagation,
+	// func (dec *Decoder) Decode(v any) error {
 	"(*encoding/json.Decoder).Decode": {
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {0}},
+	},
+	"(*encoding/json.Decoder).DisallowUnknownFields": NoDataFlowPropagation,
+	// func (dec *Decoder) InputOffset() int64 {
+	"(*encoding/json.Decoder).InputOffset": SingleVarArgPropagation,
+	// func (dec *Decoder) More() bool
+	"(*encoding/json.Decoder).More": SingleVarArgPropagation,
+	// func (dec *Decoder) Token() (Token, error)
+	"(*encoding/json.Decoder).Token": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
 	},
 	"(*encoding/json.Decoder).UseNumber": {
 		[][]int{{0}},
@@ -301,6 +314,11 @@ var summaryEncoding = map[string]Summary{
 	"(*encoding/json.Encoder).Encode": {
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {0}},
+	},
+	// func (enc *Encoder) SetEscapeHTML(on bool)
+	"(*encoding/json.Encoder).SetEscapeHTML": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{}, {}},
 	},
 	// func (enc *Encoder) SetIndent(prefix, indent string)
 	"(*encoding/json.Encoder).SetIndent": {
@@ -324,7 +342,27 @@ var summaryEncoding = map[string]Summary{
 }
 
 var summaryErrors = map[string]Summary{
+	// func (e *errorString) Error() string
+	"(*errors.errorString).Error": SingleVarArgPropagation,
+	// func (e *joinError) Error() string
+	"(*errors.joinError).Error": SingleVarArgPropagation,
+	// func (e *joinError) Unwrap() []error
+	"(*errors.joinError).Unwrap": SingleVarArgPropagation,
+	// func (i Code) String() string
+	"(internal/types/errors.Code).String": SingleVarArgPropagation,
+	// func As(err error, target any) bool
+	"errors.As": {
+		[][]int{{0, 1}, {0}},
+		[][]int{{0}, {0}},
+	},
+	// func Is(err, target error) bool
+	"errors.Is": TwoArgPropagation,
+	// func Join(errs ...error) error
+	"errors.Join": SingleVarArgPropagation,
+	// func New(text string) error {
 	"errors.New": SingleVarArgPropagation,
+	// func Unwrap(err error) error
+	"errors.Unwrap": SingleVarArgPropagation,
 }
 
 var summaryExpVar = map[string]Summary{}
@@ -586,6 +624,8 @@ var summaryMath = map[string]Summary{
 	"math/rand.NewSource":          SingleVarArgPropagation,
 	"math/rand.Seed":               NoDataFlowPropagation,
 	"math/rand.Float32":            NoDataFlowPropagation,
+	"(*math/big.Int).Mul":          TwoArgPropagation,
+	"(*math/big.Int).SetInt64":     TwoArgReceivePropagation,
 	"(*math/big.Float).Set":        TwoArgPropagation,
 	"(*math/big.Float).SetFloat64": TwoArgPropagation,
 	"(*math/big.Float).SetInf":     TwoArgPropagation,
@@ -752,6 +792,7 @@ var summaryPath = map[string]Summary{
 	"path.Join":           SingleVarArgPropagation,
 	"path.Base":           SingleVarArgPropagation,
 	"path.Clean":          SingleVarArgPropagation,
+	"path/filepath.Abs":   SingleVarArgTwoRetsPropagation,
 	"path/filepath.Base":  SingleVarArgPropagation,
 	"path/filepath.Clean": SingleVarArgPropagation,
 	"path/filepath.Dir":   SingleVarArgPropagation,
@@ -912,6 +953,16 @@ var summaryRegexp = map[string]Summary{
 		[][]int{{0}, {1}, {2}},
 		[][]int{{0}, {0}, {0}},
 	},
+	// func (re *Regexp).FindAllSubmatchIndex(b []byte, n int) [][]int
+	"(*regexp.Regexp).FindAllSubmatchIndex": {
+		[][]int{{0}, {1}, {2}},
+		[][]int{{0}, {0}, {0}},
+	},
+	// func (re *Regexp).FindAllStringIndex(s string, n int) [][]int
+	"(*regexp.Regexp).FindAllStringIndex": {
+		[][]int{{0}, {1}, {2}},
+		[][]int{{0}, {0}, {0}},
+	},
 }
 
 var summaryRuntime = map[string]Summary{
@@ -1058,6 +1109,19 @@ var summaryStrings = map[string]Summary{
 	"strings.TrimSpace": {
 		[][]int{{0}},
 		[][]int{{0}},
+	},
+	// func (b *Builder) WriteString(s string) (int, error)
+	// WriteString appends the contents of s to b's buffer.
+	// It returns the length of s and a nil error.
+	/* func (b *Builder) WriteString(s string) (int, error) {
+		b.copyCheck()
+		b.buf = append(b.buf, s...)
+		return len(s), nil
+	} */
+	"(*strings.Builder).WriteString": {
+		[][]int{{0}, {1, 0}}, // input taints receiver
+		[][]int{{}, {0}},     // receiver doesn't flow to results,
+		//input flows only to first element of returned tuple
 	},
 	// func (r *Reader) Len() int
 	"(*strings.Reader).Len": {

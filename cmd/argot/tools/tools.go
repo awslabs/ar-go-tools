@@ -149,7 +149,7 @@ func LoadConfig(flags CommonFlags, returnDefaultIfNoPath bool) (*config.Config, 
 		ReportsDir: flags.Out,
 	}
 	if flags.Verbose {
-		fmt.Printf("verbose command line flag overrides config file log-level")
+		fmt.Printf("verbose command line flag overrides config file log-level\n")
 		overrides.LogLevel = int(config.DebugLevel)
 	}
 	cfg, err := config.LoadGlobal(overrides)
