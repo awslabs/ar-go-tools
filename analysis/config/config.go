@@ -291,6 +291,12 @@ type TargetSpec struct {
 	Files []string
 	// Platform identifies the target's platform
 	Platform string
+
+	// UseProgramTransforms indicates that the tool should apply program transformations before running any analysis.
+	// Program transformations can be expensive to apply, but they can eliminate sources of imprecision and sources of
+	// unsoundness.
+	// NOTE: this option may change to let the user choose precisely which program transformations to apply
+	UseProgramTransforms bool `xml:"use-program-transforms" yaml:"use-program-transforms" json:"use-program-transforms"`
 }
 
 // Options holds the global options for analyses
@@ -695,13 +701,19 @@ type TargetInfo struct {
 	Files []string
 	// Platform of the target
 	Platform string
+	// UseProgramTransforms for the target
+	UseProgramTransforms bool
 }
 
 // GetTargetMap returns a map from target names to target files
 func (c Config) GetTargetMap() map[string]TargetInfo {
 	targets := map[string]TargetInfo{}
 	for _, targetSpec := range c.Targets {
-		targets[targetSpec.Name] = TargetInfo{Files: targetSpec.Files, Platform: targetSpec.Platform}
+		targets[targetSpec.Name] = TargetInfo{
+			Files:                targetSpec.Files,
+			Platform:             targetSpec.Platform,
+			UseProgramTransforms: targetSpec.UseProgramTransforms,
+		}
 	}
 	return targets
 }

@@ -46,6 +46,7 @@ const (
 	cmdScanName         = "scan"
 	cmdShowDataflowName = "showdataflow"
 	cmdShowEscapeName   = "showescape"
+	cmdMembersName      = "members"
 	cmdShowSsaName      = "showssa"
 	cmdSrcName          = "src"
 	cmdSsaInstrName     = "ssainstr"

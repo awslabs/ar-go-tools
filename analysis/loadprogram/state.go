@@ -65,8 +65,7 @@ func NewState(c *config.State) result.Result[State] {
 	if c == nil || c.Config == nil {
 		return result.Err[State](fmt.Errorf("cannot create state without config"))
 	}
-
-	program, pkgs, err := do(c.Patterns, c.Options)
+	program, pkgs, err := do(c.Patterns, c.Overlay, c.Options)
 	if err != nil {
 		return result.Err[State](fmt.Errorf("failed to build program: %s", err))
 	}
@@ -209,20 +208,18 @@ func allAstFiles(dirs []string, fset *token.FileSet, pkgs []*packages.Package) (
 		}
 	}
 
-	if pkgs != nil {
-		for _, pkg := range pkgs {
-			analysisutil.VisitPackages(pkg, func(p *packages.Package) bool {
-				// Don't scan stdlib for annotations!
-				if summaries.IsStdPackageName(p.Name) {
-					return false
-				}
+	for _, pkg := range pkgs {
+		analysisutil.VisitPackages(pkg, func(p *packages.Package) bool {
+			// Don't scan stdlib for annotations!
+			if summaries.IsStdPackageName(p.Name) {
+				return false
+			}
 
-				// TODO: Remove if there is no need for scanning dependencies
-				files = append(files, p.Syntax...)
+			// TODO: Remove if there is no need for scanning dependencies
+			files = append(files, p.Syntax...)
 
-				return true
-			})
-		}
+			return true
+		})
 	}
 
 	return files, nil

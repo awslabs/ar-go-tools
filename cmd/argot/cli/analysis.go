@@ -22,6 +22,8 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
@@ -31,7 +33,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
@@ -51,29 +52,65 @@ func cmdShowSsa(tt *term.Terminal, c *dataflow.State, command Command, withTest 
 		return false
 	}
 
-	if len(command.Args) < 1 {
-		if state.CurrentFunction != nil {
-			var b bytes.Buffer
-			ssa.WriteFunction(&b, state.CurrentFunction)
-			_, _ = b.WriteTo(tt)
-			b.Reset()
-		} else {
-			WriteErr(tt, "Need at least one function to show.")
-			cmdShowSsa(tt, nil, command, withTest)
-		}
+	var b bytes.Buffer
+	funcs := listContextFunc(tt, c, command)
+	if len(funcs) == 0 {
+		WriteErr(tt, "Need at least one function to show.")
+		cmdShowSsa(tt, nil, command, withTest)
+	}
+	for _, f := range funcs {
+		ssa.WriteFunction(&b, f)
+		_, _ = b.WriteTo(tt)
+		b.Reset()
+	}
+	return false
+}
+
+// cmdShowFuncType prints the type of all the functions matching a given regex
+func cmdMembers(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
+	if c == nil {
+		writeFmt(tt, "\t- %s%s%s : print the type of a function.\n"+
+			"\t  %s regex prints the type of the function matching the regex\n"+
+			"\t  Example:\n", tt.Escape.Blue, cmdMembersName, tt.Escape.Reset, cmdMembersName)
+		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdMembersName)
 		return false
+	}
+	if len(command.Args) < 1 {
+		WriteErr(tt, "%s expects a package regex", cmdMembersName)
 	}
 	target, err := regexp.Compile(command.Args[0])
 	if err != nil {
 		regexErr(tt, command.Args[0], err)
 		return false
 	}
-	var b bytes.Buffer
-	funcs := findFunc(c, target)
-	for _, f := range funcs {
-		ssa.WriteFunction(&b, f)
-		_, _ = b.WriteTo(tt)
-		b.Reset()
+
+	// Collect and print in alphabetical order
+	members := []ssa.Member{}
+	for _, p := range c.Program.AllPackages() {
+		if target.MatchString(p.String()) {
+			for _, obj := range p.Members {
+				members = append(members, obj)
+			}
+		}
+	}
+	slices.SortFunc(members, func(x ssa.Member, y ssa.Member) int { return strings.Compare(x.String(), y.String()) })
+	for _, m := range members {
+		switch m := m.(type) {
+		case *ssa.Function:
+			writeFmt(tt, "\t- function %s%s%s : %s\n", tt.Escape.Green, m.String(), tt.Escape.Reset, m.Type())
+		case *ssa.Type:
+			writeFmt(tt, "\t- type %s%s%s\n", tt.Escape.Blue, m.String(), tt.Escape.Reset)
+			writeFmt(tt, "\t   | underlying %s\n", m.Type().Underlying())
+			methods := c.Program.MethodSets.MethodSet(m.Type())
+			for i := range methods.Len() {
+				mthd := methods.At(i)
+				writeFmt(tt, "\t   | %s : %s\n", mthd.String(), mthd.Type())
+			}
+		case *ssa.NamedConst:
+			writeFmt(tt, "\t- constant %s%s%s\n", tt.Escape.Yellow, m.String(), tt.Escape.Reset)
+		case *ssa.Global:
+			writeFmt(tt, "\t- global %s%s%s\n", tt.Escape.Magenta, m.String(), tt.Escape.Reset)
+		}
 	}
 	return false
 }
@@ -88,26 +125,12 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.State, command Command, withTe
 		return false
 	}
 
-	if len(command.Args) < 1 {
-		if state.CurrentFunction != nil {
-			var b bytes.Buffer
-			eg := escape.EscapeSummary(state.CurrentFunction)
-			b.WriteString(eg.Graphviz())
-			_, _ = b.WriteTo(tt)
-			b.Reset()
-		} else {
-			WriteErr(tt, "Need at least one function to show.")
-			cmdShowSsa(tt, nil, command, withTest)
-		}
-		return false
-	}
-	target, err := regexp.Compile(command.Args[0])
-	if err != nil {
-		regexErr(tt, command.Args[0], err)
-		return false
-	}
 	var b bytes.Buffer
-	funcs := findFunc(c, target)
+	funcs := listContextFunc(tt, c, command)
+	if len(funcs) == 0 {
+		WriteErr(tt, "Need at least one function to show.")
+		cmdShowSsa(tt, nil, command, withTest)
+	}
 	for _, f := range funcs {
 		eg := escape.EscapeSummary(f)
 		b.WriteString(eg.Graphviz())
@@ -229,33 +252,11 @@ func cmdSrc(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 		return false
 	}
 
-	if len(command.Args) < 1 {
-		if state.CurrentFunction != nil {
-			astNode := state.CurrentFunction.Syntax()
-			if astNode == nil {
-				WriteErr(tt, "%s has no syntax.", formatutil.Bold(state.CurrentFunction.String()))
-			} else {
-				WriteSuccess(tt, "<<< Source for %s", formatutil.Bold(state.CurrentFunction.String()))
-				printer.Fprint(tt, c.Program.Fset, astNode)
-				writeFmt(tt, "\n")
-				WriteSuccess(tt, "End of source for %s >>>", state.CurrentFunction.String())
-				writeFmt(tt, "\n")
-			}
-
-		} else {
-			WriteErr(tt, "Need at least one function to show source for.")
-			cmdSrc(tt, nil, command, withTest)
-		}
-
-		return false
+	funcs := listContextFunc(tt, c, command)
+	if len(funcs) == 0 {
+		WriteErr(tt, "Need at least one function to show source for.")
+		cmdSrc(tt, nil, command, withTest)
 	}
-	target, err := regexp.Compile(command.Args[0])
-	if err != nil {
-		regexErr(tt, command.Args[0], err)
-		return false
-	}
-
-	funcs := findFunc(c, target)
 	for _, f := range funcs {
 		astNode := f.Syntax()
 		if astNode == nil {
@@ -455,7 +456,23 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 	if summary.IsInterfaceContract {
 		writeFmt(tt, "  (is interface contract)\n")
 	}
-	writeFmt(tt, "%s:\n", ftu.Yellow("Nodes"))
+	writeFmt(tt, "%s:\n", formatutil.Yellow("Nodes"))
 	summary.ForAllNodes(func(n dataflow.GraphNode) { writeFmt(tt, "\t %s\n", n) })
 	summary.PrettyPrint(true, tt)
+}
+
+func listContextFunc(tt *term.Terminal, c *dataflow.State, command Command) []*ssa.Function {
+	if len(command.Args) < 1 {
+		if state.CurrentFunction != nil {
+			return []*ssa.Function{state.CurrentFunction}
+		}
+		return []*ssa.Function{}
+	}
+	target, err := regexp.Compile(command.Args[0])
+	if err != nil {
+		regexErr(tt, command.Args[0], err)
+		return []*ssa.Function{}
+	}
+
+	return findFunc(c, target)
 }

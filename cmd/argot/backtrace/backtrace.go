@@ -26,6 +26,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
@@ -77,9 +78,15 @@ func Run(flags tools.CommonFlags) error {
 		}
 
 		c := config.NewState(cfg, targetName, target.Files, loadOptions)
+		var actual result.Result[config.State]
+		if target.UseProgramTransforms {
+			actual = statefulrewrite.StatefulRewritesOverlayTransform(c)
+		} else {
+			actual = result.Ok(c)
+		}
 		c.Logger.Infof("Backtrace analysis of target \"%s\" = %v", targetName, target.Files)
 		c.Logger.PushContext(formatutil.Faint(targetName))
-		ptrState := result.Bind(loadprogram.NewState(c), ptr.NewState) // build pointer analysis info
+		ptrState := result.Bind(result.Bind(actual, loadprogram.NewState), ptr.NewState) // build pointer analysis info
 		state, err := result.Bind(ptrState, dataflow.NewState).Value()
 		if err != nil {
 			return fmt.Errorf("loading failed: %v", err)
