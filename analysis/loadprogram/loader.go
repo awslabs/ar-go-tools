@@ -20,7 +20,7 @@ import (
 	"sort"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/refactor/rewrite"
+	"github.com/awslabs/ar-go-tools/analysis/refactor/statelessrewrite"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -30,13 +30,13 @@ import (
 // To understand how to specify the args, look at the documentation of packages.Load.
 //
 // The returned program has already been built.
-func do(files []string, options config.LoadOptions) (*ssa.Program, []*packages.Package, error) {
-
+func do(files []string, overlay map[string][]byte, options config.LoadOptions) (*ssa.Program, []*packages.Package, error) {
 	packageConfig := options.PackageConfig
 	if packageConfig == nil {
 		packageConfig = &packages.Config{
-			Mode:  config.PkgLoadMode,
-			Tests: options.LoadTests,
+			Mode:    config.PkgLoadMode,
+			Tests:   options.LoadTests,
+			Overlay: overlay,
 		}
 	}
 
@@ -56,7 +56,7 @@ func do(files []string, options config.LoadOptions) (*ssa.Program, []*packages.P
 
 	if options.ApplyRewrites {
 		// Apply rewrites improving precision
-		rewrite.ApplyRewrites(initialPackages)
+		statelessrewrite.ApplyAll(initialPackages)
 	}
 
 	if packages.PrintErrors(initialPackages) > 0 {

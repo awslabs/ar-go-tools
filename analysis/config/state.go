@@ -76,6 +76,7 @@ type State struct {
 	Target   string
 	Patterns []string
 	Options  LoadOptions
+	Overlay  map[string][]byte
 }
 
 // NewState returns a new state from a config by adding a logger built from that config.

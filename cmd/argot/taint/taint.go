@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -112,7 +113,7 @@ func Run(flags Flags) error {
 	}
 	// Loop over every target of the taint analysis
 	for targetName, target := range actualTargets {
-		targetHasFlows, report, err := runTarget(cfg, targetName, target.Files, target.Platform, flags)
+		targetHasFlows, report, err := runTarget(cfg, targetName, target, flags)
 		hasFlows = targetHasFlows || hasFlows
 		if err != nil {
 			return err
@@ -130,23 +131,35 @@ func Run(flags Flags) error {
 func runTarget(
 	cfg *config.Config,
 	targetName string,
-	targetFiles []string,
-	targetPlatform string,
+	targetInfo config.TargetInfo,
 	flags Flags,
 ) (bool, *config.ReportInfo, error) {
+	var err error
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
-		Platform:      targetPlatform,
+		Platform:      targetInfo.Platform,
 		ApplyRewrites: true,
 	}
 	// Starting the analysis
-	c := config.NewState(cfg, targetName, targetFiles, loadOptions)
+	c := config.NewState(cfg, targetName, targetInfo.Files, loadOptions)
 	c.Logger.PushContext(formatutil.Faint(targetName))
 	defer c.Logger.PopContext()
-	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetFiles)
-	df, err := result.Bind(result.Bind(loadprogram.NewState(c), ptr.NewState), dataflow.NewState).Value()
+	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetInfo.Files)
+	var actual result.Result[config.State]
+	if targetInfo.UseProgramTransforms {
+		actual = statefulrewrite.StatefulRewritesOverlayTransform(c)
+	} else {
+		actual = result.Ok(c)
+	}
+	df, err := result.Bind(
+		result.Bind(
+			result.Bind(
+				actual,
+				loadprogram.NewState),
+			ptr.NewState),
+		dataflow.NewState).Value()
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}

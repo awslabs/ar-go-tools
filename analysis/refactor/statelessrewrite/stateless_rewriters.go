@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package rewrite
+package statelessrewrite
 
 import (
 	"github.com/awslabs/ar-go-tools/internal/rewrite"
 	"golang.org/x/tools/go/packages"
 )
 
-// ApplyRewrites applies a series of rewrite steps to the packages and all its dependencies.
+// ApplyAll applies a series of rewrite steps to the packages and all its dependencies.
 // The rewrites are meant to preserve soundness of the analysis, under the condition that the focus points of the
 // analysis are not the entrypoint or endpoints of analyses.
 // The rewrites are:
@@ -27,6 +27,6 @@ import (
 // All the rewrites from the base rewrites used in capslock package:
 // - calls to [sort.Slice] and [sort.SliceStable] are removed and replaced by calls to the functions used in sorting.
 // - calls to (sync.Once).Do are replaced by a call to the method in the sync.Once object.
-func ApplyRewrites(packages []*packages.Package) {
+func ApplyAll(packages []*packages.Package) {
 	rewrite.ApplyBaseRewrites(packages)
 }
