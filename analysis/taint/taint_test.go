@@ -208,6 +208,13 @@ func TestTaint(t *testing.T) {
 	}
 }
 
+// TestHTTP tests that the handler function in an http server is analyzed.
+// FIXME If this is run without on-demand summarization, it runs out of memory.
+func TestHTTP(t *testing.T) {
+	t.Parallel()
+	runTest(t, "http", []string{}, true, noErrorExpected)
+}
+
 func TestPlayground(t *testing.T) {
 	t.Parallel()
 	runTest(t, "playground", []string{}, false, noErrorExpected)
