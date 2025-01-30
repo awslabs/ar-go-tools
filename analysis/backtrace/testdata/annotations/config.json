@@ -2,24 +2,16 @@
   "options": {
     "log-level": 4,
     "analysis-options": {
-      "max-depth": 10
+      "unsafe-max-depth": 10
     }
   },
   "dataflow-problems": {
-    "backtrace": [
+    "slicing": [
       {
         "tag": "test1",
-        "points": [
+        "backtracepoints": [
           {
-            "method": "sourceValue"
-          }
-        ]
-      },
-      {
-        "tag": "test2",
-        "points": [
-          {
-            "method": "modifyValue"
+            "method": "notInSourceOtherMethodsAreAnnotated"
           }
         ]
       }

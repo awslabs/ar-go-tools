@@ -19,12 +19,11 @@ import (
 	"math/rand"
 )
 
-//argot:function BacktracePoint(test1)
-func sourceValue() int {
+func slicingOrigin() int {
 	return rand.Int()
 }
 
-//argot:function BacktracePoint(test2)
+//argot:function BacktracePoint(test1)
 func modifyValue(x int) int {
 	return x * 2
 }
@@ -34,10 +33,9 @@ func processValue(x int) int {
 }
 
 func main() {
-	val := sourceValue()        // @BacktracePoint(test1)
+	val := slicingOrigin()      // @Source(test1)
 	result := processValue(val) // Should backtrace through this
 	fmt.Printf("Result: %d\n", result)
-
-	directVal := modifyValue(42) // @BacktracePoint(test2)
+	directVal := modifyValue(result) // @Sink(test1)
 	fmt.Printf("Direct: %d\n", directVal)
 }

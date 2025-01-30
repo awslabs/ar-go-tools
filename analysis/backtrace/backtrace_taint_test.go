@@ -57,6 +57,7 @@ func TestBacktraceTaint(t *testing.T) {
 		{"selects", []string{"helpers.go"}},
 		{"tuples", []string{}},
 		{"panics", []string{}},
+		{"annotations", []string{}},
 	}
 
 	for _, test := range tests {
@@ -102,10 +103,14 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 		t.Log("test file has annotation metadata")
 	}
 
-	if len(lp.Config.TaintTrackingProblems) < 1 {
-		t.Fatal("expect at least one taint tracking problem")
+	if len(lp.Config.TaintTrackingProblems) > 0 {
+		lp.Config.SlicingProblems = []config.SlicingSpec{{BacktracePoints: lp.Config.TaintTrackingProblems[0].Sinks}}
 	}
-	lp.Config.SlicingProblems = []config.SlicingSpec{{BacktracePoints: lp.Config.TaintTrackingProblems[0].Sinks}}
+
+	if len(lp.Config.SlicingProblems) == 0 {
+		t.Fatal("expected slicing problems to be present, either as taint tracking or directly slicing")
+	}
+
 	state, err := resultMonad.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load dataflow state: %s", err)
@@ -121,7 +126,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// 	t.Log(trace)
 	// }
 
-	reached := reachedSinkPositions(state, res)
+	reached := reachedSinkPositions(t, state, res)
 	if len(reached) == 0 {
 		t.Fatal("expected reached sink positions to be present")
 	}
@@ -182,43 +187,47 @@ func isExpected(expected analysistest.TargetToSources, sourcePos analysistest.LP
 
 // reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func reachedSinkPositions(s *dataflow.State, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
+func reachedSinkPositions(t *testing.T, s *dataflow.State, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 	prog := s.Program
-	for sink, traces := range res.Traces[""] {
-		// sink is the analysis entrypoint
-		si := dataflow.Instr(sink)
-		if si == nil {
-			continue
-		}
-		sinkPos := si.Pos()
-		sinkFile := prog.Fset.File(sinkPos)
-		if sinkPos == token.NoPos || sinkFile == nil {
-			continue
-		}
+	for _, traceSet := range res.Traces {
+		for sink, traces := range traceSet {
+			// sink is the analysis entrypoint
+			si := dataflow.Instr(sink)
+			if si == nil {
+				continue
+			}
+			sinkPos := si.Pos()
+			sinkFile := prog.Fset.File(sinkPos)
+			if sinkPos == token.NoPos || sinkFile == nil {
+				continue
+			}
 
-		sinkP := sinkFile.Position(sinkPos)
-		if _, ok := positions[sinkP]; !ok {
-			positions[sinkP] = map[token.Position]bool{}
-		}
+			sinkP := sinkFile.Position(sinkPos)
+			if _, ok := positions[sinkP]; !ok {
+				positions[sinkP] = map[token.Position]bool{}
+			}
 
-		for _, trace := range traces {
-			for _, node := range trace {
-				instr := dataflow.Instr(node.GraphNode)
-				if instr == nil {
-					continue
-				}
-
-				sn := sourceNode(node.GraphNode)
-				if dataflow.IsSourceNode(s, nil, sn) {
-					sourcePos := instr.Pos()
-					sourceFile := prog.Fset.File(sourcePos)
-					if sourcePos == token.NoPos || sourceFile == nil {
+			for _, trace := range traces {
+				for _, node := range trace {
+					instr := dataflow.Instr(node.GraphNode)
+					if instr == nil {
 						continue
 					}
 
-					sourceP := sourceFile.Position(sourcePos)
-					positions[sinkP][sourceP] = true
+					sn := sourceNode(node.GraphNode)
+
+					// Source nodes are slicing points, and we have a special slicingOrigin to test directly slicing
+					if dataflow.IsSourceNode(s, nil, sn) || strings.Contains(node.String(), "slicingOrigin") {
+						sourcePos := instr.Pos()
+						sourceFile := prog.Fset.File(sourcePos)
+						if sourcePos == token.NoPos || sourceFile == nil {
+							continue
+						}
+
+						sourceP := sourceFile.Position(sourcePos)
+						positions[sinkP][sourceP] = true
+					}
 				}
 			}
 		}
