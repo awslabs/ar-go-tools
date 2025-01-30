@@ -283,7 +283,7 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	if lp.IsErr() {
 		t.Fatalf("failed to load test: %v", lp)
 	}
-	result.Do(lp, func(lp *loadprogram.State) { setupConfig(lp.Config, summarizeOnDemand) })
+	result.Do(lp, func(lp *loadprogram.State) { setupConfig(lp, summarizeOnDemand) })
 	ptrState := result.Bind(lp, ptr.NewState)
 	state, err := result.Bind(ptrState, dataflow.NewState).Value()
 	if err != nil {
@@ -306,13 +306,16 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	}
 }
 
-func setupConfig(cfg *config.Config, summarizeOnDemand bool) {
+func setupConfig(lp *loadprogram.State, summarizeOnDemand bool) {
+	cfg := lp.Config
 	cfg.Options.ReportCoverage = false
 	cfg.Options.ReportPaths = false
 	cfg.Options.ReportSummaries = false
 	cfg.Options.ReportsDir = ""
 	cfg.LogLevel = int(config.ErrLevel) // change this as needed for debugging
 	cfg.SummarizeOnDemand = summarizeOnDemand
+
+	lp.Logger = config.NewLogGroup(cfg)
 }
 
 // sourceRegex matches an annotation of the form @Source(id1, id2 meta2, ...)
