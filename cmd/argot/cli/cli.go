@@ -41,6 +41,7 @@ Usage:
   argot cli [options] <package path(s)>`
 
 var commands = map[string]func(tt *term.Terminal, s *dataflow.State, command Command, withTest bool) bool{
+	cmdAstName:          cmdAst,
 	cmdBuildGraphName:   cmdBuildGraph,
 	cmdCallersName:      cmdCallers,
 	cmdCalleesName:      cmdCallees,

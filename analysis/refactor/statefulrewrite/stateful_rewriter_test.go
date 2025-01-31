@@ -33,5 +33,14 @@ func TestRewriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	statefulrewrite.RewriteCallsToReflectValueCall(lp.Packages)
+	overlay := statefulrewrite.RewriteCallsToReflectValueCall(lp.Program, lp.Packages)
+	for fileName, fileContents := range overlay {
+		t.Logf("overlay %s", fileName)
+		t.Logf("%s", fileContents)
+	}
+	// reload the test in testdata
+	_, err = analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false, ExtraOverlay: overlay}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

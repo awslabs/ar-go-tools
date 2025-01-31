@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	cmdAstName          = "ast"
 	cmdBuildGraphName   = "buildgraph"
 	cmdCalleesName      = "callees"
 	cmdCallersName      = "callers"
