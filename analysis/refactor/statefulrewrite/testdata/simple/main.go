@@ -17,8 +17,69 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"reflect"
+	"strconv"
 )
+
+type context struct {
+	Dummy bool
+}
+
+type Req struct {
+	Ctx   context
+	Input interface{}
+}
+
+func randReq() (string, Req) {
+	var input interface{}
+	var method string
+	switch rand.Intn(3) {
+	case 0:
+		method = "A"
+		input = InputA{
+			ID:      rand.Int(),
+			Content: "A",
+		}
+	case 1:
+		method = "B"
+		input = InputB{
+			ID:      rand.Int(),
+			Content: "B",
+			Origin:  "origin-" + strconv.Itoa(rand.Intn(10)),
+		}
+	case 2:
+		method = "C"
+		input = InputC{
+			ID:      rand.Int(),
+			Content: "C",
+			Target:  "target-" + strconv.Itoa(rand.Intn(10)),
+		}
+	}
+	return method, Req{
+		Ctx: context{
+			Dummy: rand.Int() > 0,
+		},
+		Input: input,
+	}
+}
+
+type InputA struct {
+	ID      int
+	Content string
+}
+
+type InputB struct {
+	ID      int
+	Content string
+	Origin  string
+}
+
+type InputC struct {
+	ID      int
+	Content string
+	Target  string
+}
 
 type MethodGroup struct {
 	dummy bool
@@ -60,10 +121,13 @@ func (c *CallingMachine) populateMethodCache(impl interface{}) error {
 	return nil
 }
 
-// invoke calls the operation that the request is targeting.
-func (c *CallingMachine) invoke(opName string) bool {
+// invoke calls the operation by its name
+func (c *CallingMachine) invoke(opName string, r Req) bool {
 	inputs := make([]reflect.Value, 1, 2)
-
+	inputs[0] = reflect.ValueOf(r.Ctx)
+	if r.Input != nil {
+		inputs = append(inputs, reflect.ValueOf(r.Input))
+	}
 	// Ensure that we have a valid operation to invoke.
 	method, ok := c.MethodCache[opName]
 	if !ok {
@@ -85,5 +149,8 @@ func start(impl interface{}) *CallingMachine {
 func main() {
 	methoder := MethodGroup{}
 	machine := start(methoder)
-	machine.invoke("A")
+	for i := 0; i < 10; i++ {
+		m, r := randReq()
+		machine.invoke(m, r)
+	}
 }

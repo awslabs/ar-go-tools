@@ -41,6 +41,8 @@ type LoadTestOptions struct {
 	ApplyRewrite bool
 	// Which platform
 	Platform string
+	//  Extra overlay
+	ExtraOverlay map[string][]byte
 }
 
 // LoadTest loads the program in the directory dir, looking for a main.go and a config.yaml. If additional files
@@ -85,6 +87,10 @@ func LoadTest(
 
 		name := extraFiles[i]
 		overlay[name] = b
+	}
+	// Extra overlay applied after the overlay from the filesystem
+	for k, v := range options.ExtraOverlay {
+		overlay[k] = v
 	}
 
 	mode := packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedDeps | packages.NeedTypesInfo

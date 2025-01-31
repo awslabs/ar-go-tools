@@ -17,6 +17,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"go/ast"
 	"go/printer"
 	"os"
 	"os/exec"
@@ -266,6 +267,37 @@ func cmdSrc(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 			printer.Fprint(tt, c.Program.Fset, astNode)
 			writeFmt(tt, "\n")
 			WriteSuccess(tt, "End of source for %s >>>", f.String())
+			writeFmt(tt, "\n")
+		}
+	}
+	return false
+}
+
+// cmdAst prints the AST structure of all the functions matching a given regex
+func cmdAst(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
+	if c == nil {
+		writeFmt(tt, "\t- %s%s%s : print the ast of a function.\n"+
+			"\t  src regex prints the AST structure of the function matching the regex\n"+
+			"\t  Example:\n", tt.Escape.Blue, cmdAstName, tt.Escape.Reset)
+		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdAstName)
+		return false
+	}
+
+	funcs := listContextFunc(tt, c, command)
+	if len(funcs) == 0 {
+		WriteErr(tt, "Need at least one function to show the AST for.")
+		cmdSrc(tt, nil, command, withTest)
+	}
+	for _, f := range funcs {
+		astNode := f.Syntax()
+		if astNode == nil {
+			WriteErr(tt, "%s has no AST.", formatutil.Bold(f.String()))
+		} else {
+			WriteSuccess(tt, "<<< AST of %s", formatutil.Bold(f.String()))
+			ast.Fprint(tt, c.Program.Fset, astNode, nil)
+			printer.Fprint(tt, c.Program.Fset, astNode)
+			writeFmt(tt, "\n")
+			WriteSuccess(tt, "End of AST of %s >>>", f.String())
 			writeFmt(tt, "\n")
 		}
 	}

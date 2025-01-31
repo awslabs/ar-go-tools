@@ -6,7 +6,10 @@
 package rewrite
 
 import (
+	"bytes"
 	"go/ast"
+	"go/printer"
+	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/packages"
@@ -276,9 +279,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	return v
 }
 
-// forEachPackageIncludingDependencies calls fn exactly once for each package
+// ForEachPackageIncludingDependencies calls fn exactly once for each package
 // that is in pkgs or in the transitive dependencies of pkgs.
-func forEachPackageIncludingDependencies(pkgs []*packages.Package, fn func(*packages.Package)) {
+func ForEachPackageIncludingDependencies(pkgs []*packages.Package, fn func(*packages.Package)) {
 	visitedPackages := make(map[*packages.Package]struct{})
 	var visit func(p *packages.Package)
 	visit = func(p *packages.Package) {
@@ -294,4 +297,35 @@ func forEachPackageIncludingDependencies(pkgs []*packages.Package, fn func(*pack
 	for _, p := range pkgs {
 		visit(p)
 	}
+}
+
+// AstFileToBytes pretty prints an AST file to a slice of byte.
+func AstFileToBytes(fset *token.FileSet, file *ast.File) ([]byte, error) {
+	var buf []byte
+	bb := bytes.NewBuffer(buf)
+	// ast.Fprint appends to buf.
+	err := printer.Fprint(bb, fset, file)
+	if err != nil {
+		return nil, err
+	}
+	return bb.Bytes(), nil
+}
+
+// Fresh generates a unique identifier name in the given scope based on the provided base name.
+// It appends underscores to the base name until it finds a name that doesn't conflict with
+// any existing identifiers in the scope.
+//
+// Parameters:
+//   - scope: The types.Scope to check for existing identifiers
+//   - base: The base identifier name to start with
+//
+// Returns:
+//   - A unique identifier name that doesn't exist in the scope
+func Fresh(scope *types.Scope, base string) string {
+	existingObj := scope.Lookup(base)
+	for existingObj != nil {
+		base += "_"
+		existingObj = scope.Lookup(base)
+	}
+	return base
 }

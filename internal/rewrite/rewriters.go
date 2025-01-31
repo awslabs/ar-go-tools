@@ -130,7 +130,7 @@ func selectionForMethod(typ types.Type, name string) *types.Selection {
 // For the dataflow analysis, the flows of the rewritten program are the same as the original one since we do not
 // track precisely which element of the slice some data flows to but the entire slice.
 func rewriteCallsToSort(pkgs []*packages.Package) {
-	forEachPackageIncludingDependencies(pkgs, func(p *packages.Package) {
+	ForEachPackageIncludingDependencies(pkgs, func(p *packages.Package) {
 		for _, file := range p.Syntax {
 			for _, node := range file.Decls {
 				var pre astutil.ApplyFunc
@@ -208,7 +208,7 @@ func rewriteCallsToSort(pkgs []*packages.Package) {
 // Calling the function in do once has the same effect as calling the do once. The mutation in the mutex
 // should not affect the library client: they do not have access to the internal pointers.
 func rewriteCallsToOnceDoEtc(pkgs []*packages.Package) {
-	forEachPackageIncludingDependencies(pkgs, func(p *packages.Package) {
+	ForEachPackageIncludingDependencies(pkgs, func(p *packages.Package) {
 		for _, file := range p.Syntax {
 			for _, node := range file.Decls {
 				var pre astutil.ApplyFunc
