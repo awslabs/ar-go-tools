@@ -81,7 +81,7 @@ func zeroValueOfBasicType(t *types.Basic) (dst.Expr, error) {
 //
 // The fields are never given a value.
 func zeroValueOfStruct(t *types.Struct) (dst.Expr, error) {
-	typeExpr, err := NewTypeExpr(t)
+	typeExpr, err := NewDstTypeExpr(t)
 	if err != nil {
 		return nil, err
 	}

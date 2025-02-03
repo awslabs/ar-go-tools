@@ -19,7 +19,9 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/rewrite"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
@@ -27,10 +29,15 @@ import (
 )
 
 type reflectValueSpec struct {
-	methoder types.Object
+	methoder *types.Named
 	lhs      *ast.Ident
 	value    *ast.Ident
 	arg      *ast.Ident
+}
+
+// ReflectValueCallRewriterSpec specifies the code elements the reflect value call rewriter should look for when rewriting.
+type ReflectValueCallRewriterSpec struct {
+	ReceiverType *types.Named
 }
 
 // RewriteCallsToReflectValueCall transforms reflect.Value.Call() invocations into direct method calls.
@@ -53,21 +60,20 @@ type reflectValueSpec struct {
 // Returns:
 //   - A map from filename to rewritten file contents as bytes
 //   - Only files that were modified are included in the map
-func RewriteCallsToReflectValueCall(program *ssa.Program, pkgs []*packages.Package) map[string][]byte {
+func RewriteCallsToReflectValueCall(
+	program *ssa.Program,
+	pkgs []*packages.Package,
+	rspec ReflectValueCallRewriterSpec,
+) map[string][]byte {
 	newOverlayElements := map[string][]byte{}
 	rewrite.ForEachPackageIncludingDependencies(pkgs, func(p *packages.Package) {
 		// Find the methodset of implt
 		if p.Types == nil {
 			return
 		}
-		// Find the "MethodGroup" type
-		obj := p.Types.Scope().Lookup("MethodGroup")
-		if obj != nil {
-			fmt.Printf("Found %s = %v\n", obj.Name(), obj)
-		} else {
+		if rspec.ReceiverType == nil {
 			return
 		}
-		methodSet := program.MethodSets.MethodSet(obj.Type())
 
 		for _, file := range p.Syntax {
 			fileHasChanged := false
@@ -95,12 +101,12 @@ func RewriteCallsToReflectValueCall(program *ssa.Program, pkgs []*packages.Packa
 						return true
 					}
 
-					if vc, ok := isReflectValueCall(p.TypesInfo, c.Node()); ok {
-						vc.methoder = obj
+					if vc, ok := isReflectValueCall(c.Node()); ok {
+						vc.methoder = rspec.ReceiverType
 						for _, stmt := range constructPreface(p, vc) {
 							c.InsertBefore(stmt)
 						}
-						for _, stmt := range constructReflectValueCallReplacements(p, vc, methodSet) {
+						for _, stmt := range constructReflectValueCallReplacements(program, p, vc) {
 							c.InsertAfter(stmt)
 						}
 						c.Delete()
@@ -123,7 +129,7 @@ func RewriteCallsToReflectValueCall(program *ssa.Program, pkgs []*packages.Packa
 	return newOverlayElements
 }
 
-func isReflectValueCall(info *types.Info, node ast.Node) (reflectValueSpec, bool) {
+func isReflectValueCall(node ast.Node) (reflectValueSpec, bool) {
 	// Test expr is of the form  [_ := _]
 	expr, ok := node.(*ast.AssignStmt)
 	if !ok {
@@ -204,19 +210,25 @@ func constructPreface(p *packages.Package, spec reflectValueSpec) []ast.Stmt {
 	return []ast.Stmt{dummyValueUsage, lhsDecl}
 }
 
-func constructReflectValueCallReplacements(p *packages.Package, spec reflectValueSpec, methods *types.MethodSet) []ast.Stmt {
+func constructReflectValueCallReplacements(
+	program *ssa.Program,
+	p *packages.Package,
+	spec reflectValueSpec,
+) []ast.Stmt {
+	methods := program.MethodSets.MethodSet(spec.methoder)
 	clauses := []ast.Stmt{}
 	// Instantiate a receiver with a fresh name
-	receiverName := rewrite.Fresh(p.Types.Scope().Innermost(spec.value.Pos()), spec.value.Name+"_instance")
+	scope := p.Types.Scope().Innermost(spec.value.Pos())
+	receiverVar := rewrite.FreshVar(p.Types, scope, spec.value.Name+"_instance", spec.methoder)
 	ccs := caseClauseSpec{
 		lhs:      spec.lhs.Name,
-		receiver: receiverName,
+		receiver: receiverVar,
 		argument: spec.arg.Name,
 	}
 
 	for i := 0; i < methods.Len(); i++ {
 		method := methods.At(i)
-		clauses = append(clauses, caseClause(method, ccs))
+		clauses = append(clauses, constructSwitchCase(p.Types, scope, method, ccs))
 	}
 	// Generate a switch statement
 	switchStmt := &ast.SwitchStmt{
@@ -228,7 +240,7 @@ func constructReflectValueCallReplacements(p *packages.Package, spec reflectValu
 	// reverse order of statements
 	return []ast.Stmt{
 		switchStmt,
-		genReceiverAssignStmt(receiverName, spec),
+		genReceiverAssignStmt(receiverVar.Name(), spec),
 	}
 }
 
@@ -240,7 +252,7 @@ func genReceiverAssignStmt(receiverName string, spec reflectValueSpec) ast.Stmt 
 		Tok: token.DEFINE,
 		Rhs: []ast.Expr{
 			&ast.CompositeLit{
-				Type: &ast.Ident{Name: spec.methoder.Name()},
+				Type: &ast.Ident{Name: spec.methoder.Obj().Name()},
 				Elts: nil, // empty struct initialization
 			},
 		},
@@ -249,33 +261,65 @@ func genReceiverAssignStmt(receiverName string, spec reflectValueSpec) ast.Stmt 
 
 type caseClauseSpec struct {
 	lhs      string
-	receiver string
+	receiver *types.Var
 	argument string
 }
 
-func caseClause(method *types.Selection, cs caseClauseSpec) *ast.CaseClause {
+func constructSwitchCase(p *types.Package, scope *types.Scope, method *types.Selection, cs caseClauseSpec) *ast.CaseClause {
 	// Get the method type
 	methodType := method.Type().(*types.Signature)
 	// Get the method parameters
 	methodParams := methodType.Params()
+	methodName := method.Obj().Name()
+
 	args := []ast.Expr{}
-	for i := 0; i < methodParams.Len(); i++ {
-		args = append(args,
-			&ast.IndexExpr{
-				X:     &ast.Ident{Name: cs.argument},
-				Index: &ast.BasicLit{Kind: token.INT, Value: fmt.Sprintf("%d", i)},
-			},
-		)
-	}
 	var body []ast.Stmt
+	for i := 0; i < methodParams.Len(); i++ {
+		param := methodParams.At(i)
+		reflectVal := ast.IndexExpr{
+			X:     &ast.Ident{Name: cs.argument},
+			Index: &ast.BasicLit{Kind: token.INT, Value: fmt.Sprintf("%d", i)},
+		}
+		argVar := rewrite.FreshVar(p, scope, param.Name(), param.Type())
+		// Generate the assignment argName := reflectVal.Interface().(param.Type())
+		assignmt := lang.NewSingleAssignDecl(argVar.Name(), &ast.TypeAssertExpr{
+			X: &ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X:   &reflectVal,
+					Sel: &ast.Ident{Name: "Interface"},
+				},
+				Args: []ast.Expr{},
+			},
+			Type: &ast.Ident{Name: param.Type().(*types.Named).Obj().Name()},
+		})
+		arg := &ast.Ident{Name: argVar.Name()}
+		//
+		body = append(body, assignmt)
+		args = append(args, arg)
+	}
+
+	// Declare return values
+	results := methodType.Results()
+	resNames := []string{}
+	for i := 0; i < results.Len(); i++ {
+		rt := results.At(i)
+		rtypobj := rt.Type().(*types.Named).Obj()
+		rtyp := rtypobj.Name() // TODO it is assumed the type is named
+		rx := rewrite.FreshVar(p, scope, strings.ToLower(methodName)+"T"+rtyp, rtypobj.Type())
+
+		resNames = append(resNames, rx.Name())
+		body = append(body, lang.NewVarDecl(rx))
+	}
+
 	// Get the method results
 	methodResults := methodType.Results()
 	if methodResults.Len() == 0 {
-		body = []ast.Stmt{
+		// No result; jsut call the method
+		body = append(body,
 			&ast.ExprStmt{
 				X: &ast.CallExpr{
 					Fun: &ast.SelectorExpr{
-						X: &ast.Ident{Name: cs.receiver},
+						X: &ast.Ident{Name: cs.receiver.Name()},
 						Sel: &ast.Ident{
 							Name: method.Obj().Name(),
 						},
@@ -283,26 +327,46 @@ func caseClause(method *types.Selection, cs caseClauseSpec) *ast.CaseClause {
 					Args: args,
 				},
 			},
-		}
+		)
 	} else {
-		body = []ast.Stmt{
-			&ast.AssignStmt{
+		// There are results, the return values have been declared. Assign a value and
+		// convert back to reflect value.
+		fcall := &ast.CallExpr{
+			Fun: &ast.SelectorExpr{
+				X: &ast.Ident{Name: cs.receiver.Name()},
+				Sel: &ast.Ident{
+					Name: method.Obj().Name(),
+				},
+			},
+			Args: args,
+		}
+		body = append(body, lang.NewMultiAssignDecl(resNames, fcall))
+		// Assign results
+		for i := 0; i < results.Len(); i++ {
+			reflectValueCall := &ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X:   &ast.Ident{Name: "reflect"},
+					Sel: &ast.Ident{Name: "ValueOf"},
+				},
+				Args: []ast.Expr{
+					&ast.Ident{Name: resNames[i]},
+				},
+			}
+			body = append(body, &ast.AssignStmt{
 				Lhs: []ast.Expr{
 					&ast.Ident{Name: cs.lhs},
 				},
 				Tok: token.ASSIGN,
 				Rhs: []ast.Expr{
 					&ast.CallExpr{
-						Fun: &ast.SelectorExpr{
-							X: &ast.Ident{Name: cs.receiver},
-							Sel: &ast.Ident{
-								Name: method.Obj().Name(),
-							},
+						Fun: &ast.Ident{Name: "append"},
+						Args: []ast.Expr{
+							&ast.Ident{Name: cs.lhs},
+							reflectValueCall,
 						},
-						Args: args,
 					},
 				},
-			},
+			})
 		}
 	}
 

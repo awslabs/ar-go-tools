@@ -133,8 +133,7 @@ func rewriteCallsToSort(pkgs []*packages.Package) {
 	ForEachPackageIncludingDependencies(pkgs, func(p *packages.Package) {
 		for _, file := range p.Syntax {
 			for _, node := range file.Decls {
-				var pre astutil.ApplyFunc
-				pre = func(c *astutil.Cursor) bool {
+				pre := func(c *astutil.Cursor) bool {
 					// If the current node, c.Node(), is a call to sort.Sort (or
 					// sort.Stable or sort.IsSorted), replace it with calls to
 					// obj.Less, obj.Swap, and obj.Len, where obj is the argument
@@ -211,8 +210,7 @@ func rewriteCallsToOnceDoEtc(pkgs []*packages.Package) {
 	ForEachPackageIncludingDependencies(pkgs, func(p *packages.Package) {
 		for _, file := range p.Syntax {
 			for _, node := range file.Decls {
-				var pre astutil.ApplyFunc
-				pre = func(c *astutil.Cursor) bool {
+				pre := func(c *astutil.Cursor) bool {
 					obj := isCallToOnceDoEtc(p.TypesInfo, c.Node())
 					if obj == nil {
 						// This was not a call to a relevant function or method.
