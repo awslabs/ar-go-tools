@@ -16,6 +16,7 @@ package lang
 
 import (
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
 	"strconv"
@@ -62,13 +63,13 @@ func NewPanic(args ...dst.Expr) *dst.CallExpr {
 	}
 }
 
-// NewTypeExpr returns an AST expression that represents the type t.
+// NewDstTypeExpr returns an AST expression that represents the type t.
 //
 // For example, the expression that represents a types.Struct will be of the form
 // struct{...}.
 //
 // For an integer, the expression is an identifier 'int'
-func NewTypeExpr(t types.Type) (dst.Expr, error) {
+func NewDstTypeExpr(t types.Type) (dst.Expr, error) {
 	switch t0 := t.(type) {
 	case *types.Basic:
 		return dst.NewIdent(t0.String()), nil
@@ -76,20 +77,20 @@ func NewTypeExpr(t types.Type) (dst.Expr, error) {
 		// TODO: manage imports
 		return dst.NewIdent(t0.String()), nil
 	case *types.Struct:
-		return newStructTypeExpr(t0)
+		return newDstStructTypeExpr(t0)
 	default:
 		panic(fmt.Sprintf("implement NewTypeExpr for %s", t.String()))
 	}
 }
 
-// newStructTypeExpr returns the expression representing a struct type, or an error if it could not create that
+// newDstStructTypeExpr returns the expression representing a struct type, or an error if it could not create that
 // expression.
-func newStructTypeExpr(t *types.Struct) (dst.Expr, error) {
+func newDstStructTypeExpr(t *types.Struct) (dst.Expr, error) {
 	n := t.NumFields()
 	var fields []*dst.Field
 	for i := 0; i < n; i++ {
 		f := t.Field(i)
-		te, err := NewTypeExpr(f.Type())
+		te, err := NewDstTypeExpr(f.Type())
 		if err != nil {
 			return nil, err
 		}
@@ -130,4 +131,101 @@ func NewUnOp(op token.Token, x dst.Expr) *dst.UnaryExpr {
 		X:    x,
 		Decs: dst.UnaryExprDecorations{},
 	}
+}
+
+// NewAstTypeExpr returns an AST expression that represents the type t.
+//
+// For example, the expression that represents a types.Struct will be of the form
+// struct{...}.
+//
+// For an integer, the expression is an identifier 'int'
+func NewAstTypeExpr(t types.Type) (ast.Expr, error) {
+	switch t0 := t.(type) {
+	case *types.Basic:
+		return ast.NewIdent(t0.String()), nil
+	case *types.Named:
+		// TODO: manage imports
+		return ast.NewIdent(t0.Obj().Name()), nil
+	case *types.Struct:
+		return newAstStructTypeExpr(t0)
+	default:
+		panic(fmt.Sprintf("implement NewTypeExpr for %s", t.String()))
+	}
+}
+
+// newAstStructTypeExpr returns the expression representing a struct type, or an error if it could not create that
+// expression.
+func newAstStructTypeExpr(t *types.Struct) (ast.Expr, error) {
+	n := t.NumFields()
+	var fields []*ast.Field
+	for i := 0; i < n; i++ {
+		f := t.Field(i)
+		te, err := NewAstTypeExpr(f.Type())
+		if err != nil {
+			return nil, err
+		}
+		newField := &ast.Field{
+			Names: []*ast.Ident{ast.NewIdent(f.Name())},
+			Type:  te,
+			Tag:   nil,
+		}
+		fields = append(fields, newField)
+	}
+	res := &ast.StructType{
+		Fields: &ast.FieldList{
+			List: fields,
+		},
+		Incomplete: false,
+	}
+	return res, nil
+}
+
+// NewSingleAssignDecl generates an assignment statement where the operator is `:=` and
+// assigns a single variable with the provided name on the left hand side.
+func NewSingleAssignDecl(name string, rhs ast.Expr) *ast.AssignStmt {
+	return &ast.AssignStmt{
+		Lhs: []ast.Expr{
+			&ast.Ident{Name: name},
+		},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{
+			rhs,
+		},
+	}
+}
+
+// NewMultiAssignDecl returns an assignment statement where the operator is `=` and
+// the expression is assigned to a tuple of identifiers with the provided names.
+func NewMultiAssignDecl(names []string, rhs ast.Expr) *ast.AssignStmt {
+	ids := make([]ast.Expr, len(names))
+	for i, name := range names {
+		ids[i] = &ast.Ident{Name: name}
+	}
+	return &ast.AssignStmt{
+		Lhs: ids,
+		Tok: token.ASSIGN,
+		Rhs: []ast.Expr{
+			rhs,
+		},
+	}
+}
+
+// NewVarDecl returns a declaration for the provided var.
+func NewVarDecl(v *types.Var) *ast.DeclStmt {
+	tyExpr, err := NewAstTypeExpr(v.Type())
+	if err != nil {
+		panic(err) // TODO; implementation missing, should ensure this doesn't happen before release
+	}
+	declStmt := &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.VAR,
+			Specs: []ast.Spec{
+				&ast.ValueSpec{
+					Names: []*ast.Ident{ast.NewIdent(v.Name())},
+					Type:  tyExpr,
+				},
+			},
+		},
+	}
+	return declStmt
 }

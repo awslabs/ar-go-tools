@@ -40,3 +40,12 @@ func Clone[M ~map[K]V, K comparable, V any](m M) M {
 	}
 	return r
 }
+
+// Keys returns the set of leys in the map, like the maps.Keys in version of Go >=1.23
+func Keys[K comparable, V any](m map[K]V) []K {
+	r := make([]K, 0, len(m))
+	for k := range m {
+		r = append(r, k)
+	}
+	return r
+}

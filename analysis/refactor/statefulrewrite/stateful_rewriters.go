@@ -18,6 +18,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 )
 
@@ -29,7 +30,12 @@ func StatefulRewritesOverlayTransform(c *config.State) result.Result[config.Stat
 
 	// Build a pointer state
 	state, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()
-	RewriteCallsToReflectValueCall(state.Program, state.Packages)
+	cfg := findReflectValueCallToRewrite(state)
+	if cfg.IsNone() {
+		return result.Ok(c)
+	}
+	RewriteCallsToReflectValueCall(state.Program, state.Packages, cfg.Value())
+
 	if err != nil {
 		return result.Err[config.State](err)
 	}
@@ -39,4 +45,8 @@ func StatefulRewritesOverlayTransform(c *config.State) result.Result[config.Stat
 	}
 
 	return result.Ok(c)
+}
+
+func findReflectValueCallToRewrite(state *ptr.State) funcutil.Optional[ReflectValueCallRewriterSpec] {
+	return funcutil.None[ReflectValueCallRewriterSpec]()
 }

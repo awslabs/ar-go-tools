@@ -11,6 +11,7 @@ import (
 	"go/printer"
 	"go/token"
 	"go/types"
+	"strconv"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -311,21 +312,21 @@ func AstFileToBytes(fset *token.FileSet, file *ast.File) ([]byte, error) {
 	return bb.Bytes(), nil
 }
 
-// Fresh generates a unique identifier name in the given scope based on the provided base name.
-// It appends underscores to the base name until it finds a name that doesn't conflict with
-// any existing identifiers in the scope.
-//
-// Parameters:
-//   - scope: The types.Scope to check for existing identifiers
-//   - base: The base identifier name to start with
-//
-// Returns:
-//   - A unique identifier name that doesn't exist in the scope
-func Fresh(scope *types.Scope, base string) string {
+// FreshVar generates a fresh variable in the given scope, with a base name and a type. If the base name already
+// exists in the scope, then the function attempts to look for names of the form "<base name>_<i>" where i is
+// incremented until the id is not in scope.
+// The function updates the scope when it returns a new `*types.Var`. This ensures that any future calls to
+// FreshVar in the same scope will return a fresh variable again.
+func FreshVar(p *types.Package, scope *types.Scope, base string, t types.Type) *types.Var {
 	existingObj := scope.Lookup(base)
+	i := 0
+	candidate := base
 	for existingObj != nil {
-		base += "_"
-		existingObj = scope.Lookup(base)
+		i += 1
+		candidate = base + "_" + strconv.Itoa(i)
+		existingObj = scope.Lookup(candidate)
 	}
-	return base
+	obj := types.NewVar(token.NoPos, p, candidate, t)
+	scope.Insert(obj) // udpate scope!
+	return obj
 }

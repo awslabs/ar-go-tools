@@ -81,20 +81,40 @@ type InputC struct {
 	Target  string
 }
 
+type OutputA struct {
+	Response string
+}
+
+type OutputB struct {
+	Response string
+}
+
+type OutputC struct {
+	Response string
+}
+
 type MethodGroup struct {
 	dummy bool
 }
 
-func (m MethodGroup) A() {
-
+func (m MethodGroup) A(a InputA) (OutputA, OutputA) {
+	return OutputA{
+			Response: "A-" + strconv.Itoa(a.ID),
+		}, OutputA{
+			Response: "A-" + strconv.Itoa(a.ID),
+		}
 }
 
-func (m MethodGroup) B() {
-
+func (m MethodGroup) B(b InputB) OutputB {
+	return OutputB{
+		Response: "B-" + strconv.Itoa(b.ID) + b.Content,
+	}
 }
 
-func (m MethodGroup) C() {
-
+func (m MethodGroup) C(c InputC) (OutputC, error) {
+	return OutputC{
+		Response: "C-" + strconv.Itoa(c.ID) + c.Target,
+	}, nil
 }
 
 type CallingMachine struct {
