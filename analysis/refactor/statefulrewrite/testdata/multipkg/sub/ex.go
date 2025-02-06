@@ -12,49 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package sub
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"reflect"
-	"strconv"
-)
 
-type context struct {
-	Dummy bool
-}
+	"golang.org/x/exp/rand"
+)
 
 type Req struct {
 	Ctx   context
 	Input interface{}
 }
 
-func randReq() (string, Req) {
+func RandReq() (string, Req) {
 	var input interface{}
 	var method string
+	var content any
+	err := json.Unmarshal([]byte("{\"A\": \"B\"}"), content)
+	if err != nil {
+		panic(err)
+	}
 	switch rand.Intn(3) {
 	case 0:
 		method = "A"
-		input = InputA{
-			ID:      rand.Int(),
-			Content: "A",
-		}
+		input = content
 	case 1:
 		method = "B"
-		input = InputB{
-			ID:      rand.Int(),
-			Content: "B",
-			Origin:  "origin-" + strconv.Itoa(rand.Intn(10)),
-		}
+		input = content
 	case 2:
 		method = "C"
-		input = InputC{
-			ID:      rand.Int(),
-			Content: "C",
-			Target:  "target-" + strconv.Itoa(rand.Intn(10)),
-		}
+		input = content
 	}
 	return method, Req{
 		Ctx: context{
@@ -64,57 +55,8 @@ func randReq() (string, Req) {
 	}
 }
 
-type InputA struct {
-	ID      int
-	Content string
-}
-
-type InputB struct {
-	ID      int
-	Content string
-	Origin  string
-}
-
-type InputC struct {
-	ID      int
-	Content string
-	Target  string
-}
-
-type OutputA struct {
-	Response string
-}
-
-type OutputB struct {
-	Response string
-}
-
-type OutputC struct {
-	Response string
-}
-
-type MethodGroup struct {
-	dummy bool
-}
-
-func (m MethodGroup) A(a InputA) (OutputA, OutputA) {
-	return OutputA{
-			Response: "A-" + strconv.Itoa(a.ID),
-		}, OutputA{
-			Response: "A-" + strconv.Itoa(a.ID),
-		}
-}
-
-func (m MethodGroup) B(b InputB) OutputB {
-	return OutputB{
-		Response: "B-" + strconv.Itoa(b.ID) + b.Content,
-	}
-}
-
-func (m MethodGroup) C(c InputC) (OutputC, error) {
-	return OutputC{
-		Response: "C-" + strconv.Itoa(c.ID) + c.Target,
-	}, nil
+type context struct {
+	Dummy bool
 }
 
 type CallingMachine struct {
@@ -135,6 +77,7 @@ func (c *CallingMachine) populateMethodCache(impl interface{}) error {
 	typ := val.Type()
 	for i := 0; i < typ.NumMethod(); i++ {
 		name := typ.Method(i).Name
+		// amazonq-ignore-next-line
 		c.MethodCache[name] = val.MethodByName(name)
 	}
 
@@ -142,18 +85,21 @@ func (c *CallingMachine) populateMethodCache(impl interface{}) error {
 }
 
 // invoke calls the operation by its name
-func (c *CallingMachine) invoke(opName string, r Req) bool {
+func (c *CallingMachine) Invoke(opName string, r Req) bool {
 	inputs := make([]reflect.Value, 1, 2)
 	inputs[0] = reflect.ValueOf(r.Ctx)
 	if r.Input != nil {
 		inputs = append(inputs, reflect.ValueOf(r.Input))
 	}
 	// Ensure that we have a valid operation to invoke.
+	// Comments
 	method, ok := c.MethodCache[opName]
 	if !ok {
 		return false
 	}
+	// Comments shouldn't break rewrites
 	output := method.Call(inputs)
+	// Comments
 	fmt.Printf("Output: %+v", output)
 	return true
 }
@@ -164,13 +110,4 @@ func Start(impl interface{}) *CallingMachine {
 	}
 	s.populateMethodCache(impl)
 	return s
-}
-
-func main() {
-	methoder := MethodGroup{}
-	machine := Start(methoder)
-	for i := 0; i < 10; i++ {
-		m, r := randReq()
-		machine.invoke(m, r)
-	}
 }

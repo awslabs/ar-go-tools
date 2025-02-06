@@ -297,6 +297,10 @@ type TargetSpec struct {
 	// unsoundness.
 	// NOTE: this option may change to let the user choose precisely which program transformations to apply
 	UseProgramTransforms bool `xml:"use-program-transforms" yaml:"use-program-transforms" json:"use-program-transforms"`
+
+	// ReflectValueCallInstances lists functions that take as argument a class. The program will be transformed to rewrite
+	// (reflect.Value).Call instances that can be statically resolved to the class's method.
+	ReflectValueCallInstances []CodeIdentifier `xml:"reflect-value-call-instances" yaml:"reflect-value-call-instances" json:"reflect-value-call-instances"`
 }
 
 // Options holds the global options for analyses
@@ -703,16 +707,23 @@ type TargetInfo struct {
 	Platform string
 	// UseProgramTransforms for the target
 	UseProgramTransforms bool
+	// ReflectValueCallInstances
+	ReflectValueCallInstances []CodeIdentifier
 }
 
 // GetTargetMap returns a map from target names to target files
 func (c Config) GetTargetMap() map[string]TargetInfo {
 	targets := map[string]TargetInfo{}
 	for _, targetSpec := range c.Targets {
+		reflectValueCallInstances := []CodeIdentifier{}
+		for _, r := range targetSpec.ReflectValueCallInstances {
+			reflectValueCallInstances = append(reflectValueCallInstances, compileRegexes(r))
+		}
 		targets[targetSpec.Name] = TargetInfo{
-			Files:                targetSpec.Files,
-			Platform:             targetSpec.Platform,
-			UseProgramTransforms: targetSpec.UseProgramTransforms,
+			Files:                     targetSpec.Files,
+			Platform:                  targetSpec.Platform,
+			UseProgramTransforms:      targetSpec.UseProgramTransforms,
+			ReflectValueCallInstances: reflectValueCallInstances,
 		}
 	}
 	return targets

@@ -236,6 +236,19 @@ func IsStaticallyDefinedLocal(v ssa.Value) bool {
 	}
 }
 
+// ExtractInterfaceValueArg extracts the value being passed as argument to an interface{} value
+func ExtractInterfaceValueArg(v ssa.Value) ssa.Value {
+	if v == nil {
+		return nil
+	}
+	switch value := v.(type) {
+	case *ssa.MakeInterface:
+		return value.X
+	default:
+		return v
+	}
+}
+
 // isStaticallyDefinedAlloc recognizes patterns of allocation that are static. Those are often generated during the SSA
 // translation of static var allocations in the code, where slices must be constructed by adding all elements
 // individually.

@@ -148,8 +148,11 @@ func runTarget(
 	defer c.Logger.PopContext()
 	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetInfo.Files)
 	var actual result.Result[config.State]
-	if targetInfo.UseProgramTransforms {
-		actual = statefulrewrite.StatefulRewritesOverlayTransform(c)
+	if targetInfo.UseProgramTransforms && len(targetInfo.ReflectValueCallInstances) >= 1 {
+		c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
+		// TODO: handle more rewrites later
+		actual = statefulrewrite.StatefulRewritesOverlayTransform(c,
+			statefulrewrite.StatefulRewritesOverlayTransformSpec{RefelctValueCallInstanceCid: targetInfo.ReflectValueCallInstances[0]})
 	} else {
 		actual = result.Ok(c)
 	}

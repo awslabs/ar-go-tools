@@ -323,10 +323,40 @@ func FreshVar(p *types.Package, scope *types.Scope, base string, t types.Type) *
 	candidate := base
 	for existingObj != nil {
 		i += 1
-		candidate = base + "_" + strconv.Itoa(i)
+		candidate = base + "N" + strconv.Itoa(i)
 		existingObj = scope.Lookup(candidate)
 	}
+
 	obj := types.NewVar(token.NoPos, p, candidate, t)
 	scope.Insert(obj) // udpate scope!
 	return obj
+}
+
+// TypeNameForGeneration recursively decomposes the type to find a type.Named
+// to use for variable name generation.
+func TypeNameForGeneration(t types.Type) string {
+	switch t := t.(type) {
+	case *types.Basic:
+		return t.Name()
+	case *types.Named:
+		return t.Obj().Name()
+	case *types.Pointer:
+		return TypeNameForGeneration(t.Elem())
+	case *types.Array:
+		return TypeNameForGeneration(t.Elem())
+	case *types.Slice:
+		return TypeNameForGeneration(t.Elem())
+	case *types.Map:
+		return TypeNameForGeneration(t.Elem())
+	case *types.Chan:
+		return TypeNameForGeneration(t.Elem())
+	case *types.Signature:
+		return TypeNameForGeneration(t.Params().At(0).Type())
+	case *types.Struct:
+		return TypeNameForGeneration(t.Field(0).Type())
+	case *types.Interface:
+		return TypeNameForGeneration(t.Underlying())
+	default:
+		return t.String()
+	}
 }

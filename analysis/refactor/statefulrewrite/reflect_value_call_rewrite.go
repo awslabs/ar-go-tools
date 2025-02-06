@@ -17,11 +17,15 @@ package statefulrewrite
 import (
 	"fmt"
 	"go/ast"
+	"go/printer"
 	"go/token"
 	"go/types"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/rewrite"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
@@ -29,15 +33,16 @@ import (
 )
 
 type reflectValueSpec struct {
-	methoder *types.Named
-	lhs      *ast.Ident
-	value    *ast.Ident
-	arg      *ast.Ident
+	classLike lang.MaybeRefNamedType
+	lhs       *ast.Ident
+	value     *ast.Ident
+	arg       *ast.Ident
 }
 
 // ReflectValueCallRewriterSpec specifies the code elements the reflect value call rewriter should look for when rewriting.
 type ReflectValueCallRewriterSpec struct {
-	ReceiverType *types.Named
+	Cid          config.CodeIdentifier
+	ReceiverType lang.MaybeRefNamedType
 }
 
 // RewriteCallsToReflectValueCall transforms reflect.Value.Call() invocations into direct method calls.
@@ -61,72 +66,91 @@ type ReflectValueCallRewriterSpec struct {
 //   - A map from filename to rewritten file contents as bytes
 //   - Only files that were modified are included in the map
 func RewriteCallsToReflectValueCall(
-	program *ssa.Program,
-	pkgs []*packages.Package,
+	pts *loadprogram.State,
 	rspec ReflectValueCallRewriterSpec,
 ) map[string][]byte {
 	newOverlayElements := map[string][]byte{}
-	rewrite.ForEachPackageIncludingDependencies(pkgs, func(p *packages.Package) {
+	rewrite.ForEachPackageIncludingDependencies(pts.Packages, func(p *packages.Package) {
 		// Find the methodset of implt
 		if p.Types == nil {
 			return
 		}
-		if rspec.ReceiverType == nil {
+		if rspec.ReceiverType.Named == nil {
 			return
 		}
 
 		for _, file := range p.Syntax {
-			fileHasChanged := false
+			// =====
+			astBuilder := lang.NewAstBuildManager(p, file)
 			for _, node := range file.Decls {
-				pre := func(c *astutil.Cursor) bool {
-					// If the current node, c.Node(), is a call to sort.Sort (or
-					// sort.Stable or sort.IsSorted), replace it with calls to
-					// obj.Less, obj.Swap, and obj.Len, where obj is the argument
-					// that was passed to sort.
-					if _, ok := c.Node().(ast.Stmt); !ok {
-						// c.Node() is not a statement.
-						return true
-					}
-					canRewrite := false
-					switch c.Parent().(type) {
-					case *ast.BlockStmt, *ast.CaseClause, *ast.LabeledStmt:
-						canRewrite = true
-					case *ast.CommClause:
-						canRewrite = c.Index() >= 0
-					}
-					if !canRewrite {
-						// The statement is in a position in the syntax tree where it
-						// can't be replaced with a block or with multiple statements, so
-						// we give up.
-						return true
-					}
 
-					if vc, ok := isReflectValueCall(c.Node()); ok {
-						vc.methoder = rspec.ReceiverType
-						for _, stmt := range constructPreface(p, vc) {
-							c.InsertBefore(stmt)
-						}
-						for _, stmt := range constructReflectValueCallReplacements(program, p, vc) {
-							c.InsertAfter(stmt)
-						}
-						c.Delete()
-						fileHasChanged = true
-					}
-					return true
-				}
-				astutil.Apply(node, pre, nil)
+				astutil.Apply(node, func(c *astutil.Cursor) bool { return nodeTransform(c, pts, rspec, astBuilder) }, nil)
 			}
-			if fileHasChanged {
-				contents, err := rewrite.AstFileToBytes(program.Fset, file)
+
+			// if the file has changed, write the file and add it to the overlay
+			if astBuilder.FileChanged {
+				// Remove all comments to avoid problems
+				file.Comments = []*ast.CommentGroup{}
+				astBuilder.RegisterImports()
+				contents, err := rewrite.AstFileToBytes(pts.Program.Fset, file)
 				if err != nil {
 					panic(err)
 				}
-				newOverlayElements[program.Fset.File(file.FileStart).Name()] = contents
+				newOverlayElements[pts.Program.Fset.File(file.FileStart).Name()] = contents
 			}
 		}
 	})
 
 	return newOverlayElements
+}
+
+func nodeTransform(
+	c *astutil.Cursor,
+	pts *loadprogram.State,
+	rspec ReflectValueCallRewriterSpec,
+	astBuilder *lang.AstBuildManager) bool {
+	// If the current node, c.Node(), is a call to sort.Sort (or
+	// sort.Stable or sort.IsSorted), replace it with calls to
+	// obj.Less, obj.Swap, and obj.Len, where obj is the argument
+	// that was passed to sort.
+	if _, ok := c.Node().(ast.Stmt); !ok {
+		// c.Node() is not a statement.
+		return true
+	}
+	canRewrite := false
+	switch c.Parent().(type) {
+	case *ast.BlockStmt, *ast.CaseClause, *ast.LabeledStmt:
+		canRewrite = true
+	case *ast.CommClause:
+		canRewrite = c.Index() >= 0
+	}
+	if !canRewrite {
+		// The statement is in a position in the syntax tree where it
+		// can't be replaced with a block or with multiple statements, so
+		// we give up.
+		return true
+	}
+
+	if vc, ok := isReflectValueCall(c.Node()); ok {
+		vc.classLike = rspec.ReceiverType
+		// Not necessary for the rewrite: simulate the interface
+		_, interfaceSpec := astBuilder.MakeInterfaceForClass(pts.Program, astBuilder.Package.Types, vc.classLike)
+		strb := strings.Builder{}
+		printer.Fprint(&strb, pts.Program.Fset, interfaceSpec)
+		pts.Logger.Infof("Interface would be: interface %s\n", strb.String())
+		// Now rewrite
+		for _, stmt := range constructPreface(astBuilder, vc) {
+			c.InsertBefore(stmt)
+		}
+		for _, stmt := range constructReflectValueCallReplacements(pts.Program, astBuilder, vc) {
+			c.InsertAfter(stmt)
+		}
+		c.Delete()
+		pts.Logger.Infof("Rewrote reflect.Value.Call() to direct method call in %s\n",
+			pts.Program.Fset.File(astBuilder.File.FileStart).Name())
+		astBuilder.FileChanged = true
+	}
+	return true
 }
 
 func isReflectValueCall(node ast.Node) (reflectValueSpec, bool) {
@@ -187,9 +211,9 @@ func isReflectValueCall(node ast.Node) (reflectValueSpec, bool) {
 	}, true
 }
 
-func constructPreface(p *packages.Package, spec reflectValueSpec) []ast.Stmt {
+func constructPreface(astBuilder *lang.AstBuildManager, spec reflectValueSpec) []ast.Stmt {
 	// need to reintroduce the lhs decl so that it is defined for later usages
-	lhsType := p.TypesInfo.TypeOf(spec.lhs)
+	lhsType := astBuilder.Package.TypesInfo.TypeOf(spec.lhs)
 	lhsDecl := &ast.DeclStmt{
 		Decl: &ast.GenDecl{
 			Tok: token.VAR,
@@ -212,14 +236,14 @@ func constructPreface(p *packages.Package, spec reflectValueSpec) []ast.Stmt {
 
 func constructReflectValueCallReplacements(
 	program *ssa.Program,
-	p *packages.Package,
+	builder *lang.AstBuildManager,
 	spec reflectValueSpec,
 ) []ast.Stmt {
-	methods := program.MethodSets.MethodSet(spec.methoder)
+	methods := program.MethodSets.MethodSet(spec.classLike.Actual)
 	clauses := []ast.Stmt{}
 	// Instantiate a receiver with a fresh name
-	scope := p.Types.Scope().Innermost(spec.value.Pos())
-	receiverVar := rewrite.FreshVar(p.Types, scope, spec.value.Name+"_instance", spec.methoder)
+	scope := builder.Package.Types.Scope().Innermost(spec.value.Pos())
+	receiverVar := rewrite.FreshVar(builder.Package.Types, scope, spec.value.Name+"Instance", spec.classLike.Named)
 	ccs := caseClauseSpec{
 		lhs:      spec.lhs.Name,
 		receiver: receiverVar,
@@ -228,7 +252,7 @@ func constructReflectValueCallReplacements(
 
 	for i := 0; i < methods.Len(); i++ {
 		method := methods.At(i)
-		clauses = append(clauses, constructSwitchCase(p.Types, scope, method, ccs))
+		clauses = append(clauses, constructSwitchCase(builder, scope, method, ccs))
 	}
 	// Generate a switch statement
 	switchStmt := &ast.SwitchStmt{
@@ -240,22 +264,31 @@ func constructReflectValueCallReplacements(
 	// reverse order of statements
 	return []ast.Stmt{
 		switchStmt,
-		genReceiverAssignStmt(receiverVar.Name(), spec),
+		genReceiverAssignStmt(builder, receiverVar.Name(), spec),
 	}
 }
 
-func genReceiverAssignStmt(receiverName string, spec reflectValueSpec) ast.Stmt {
+func genReceiverAssignStmt(builder *lang.AstBuildManager, receiverName string, spec reflectValueSpec) ast.Stmt {
+	structLit := &ast.CompositeLit{
+		Type: builder.NewAstTypeExpr(spec.classLike.Named),
+		Elts: nil, // empty struct initialization
+	}
+	var rhs ast.Expr
+	// If the receiver is a pointer, we need to take the address of the struct
+	if spec.classLike.IsRef {
+		rhs = &ast.UnaryExpr{
+			Op: token.AND,
+			X:  structLit,
+		}
+	} else {
+		rhs = structLit
+	}
 	return &ast.AssignStmt{
 		Lhs: []ast.Expr{
 			&ast.Ident{Name: receiverName},
 		},
 		Tok: token.DEFINE,
-		Rhs: []ast.Expr{
-			&ast.CompositeLit{
-				Type: &ast.Ident{Name: spec.methoder.Obj().Name()},
-				Elts: nil, // empty struct initialization
-			},
-		},
+		Rhs: []ast.Expr{rhs},
 	}
 }
 
@@ -265,7 +298,12 @@ type caseClauseSpec struct {
 	argument string
 }
 
-func constructSwitchCase(p *types.Package, scope *types.Scope, method *types.Selection, cs caseClauseSpec) *ast.CaseClause {
+func constructSwitchCase(
+	builder *lang.AstBuildManager,
+	scope *types.Scope,
+	method *types.Selection,
+	cs caseClauseSpec,
+) *ast.CaseClause {
 	// Get the method type
 	methodType := method.Type().(*types.Signature)
 	// Get the method parameters
@@ -280,7 +318,7 @@ func constructSwitchCase(p *types.Package, scope *types.Scope, method *types.Sel
 			X:     &ast.Ident{Name: cs.argument},
 			Index: &ast.BasicLit{Kind: token.INT, Value: fmt.Sprintf("%d", i)},
 		}
-		argVar := rewrite.FreshVar(p, scope, param.Name(), param.Type())
+		argVar := rewrite.FreshVar(builder.Package.Types, scope, param.Name(), param.Type())
 		// Generate the assignment argName := reflectVal.Interface().(param.Type())
 		assignmt := lang.NewSingleAssignDecl(argVar.Name(), &ast.TypeAssertExpr{
 			X: &ast.CallExpr{
@@ -290,7 +328,7 @@ func constructSwitchCase(p *types.Package, scope *types.Scope, method *types.Sel
 				},
 				Args: []ast.Expr{},
 			},
-			Type: &ast.Ident{Name: param.Type().(*types.Named).Obj().Name()},
+			Type: builder.NewAstTypeExpr(param.Type()),
 		})
 		arg := &ast.Ident{Name: argVar.Name()}
 		//
@@ -303,12 +341,11 @@ func constructSwitchCase(p *types.Package, scope *types.Scope, method *types.Sel
 	resNames := []string{}
 	for i := 0; i < results.Len(); i++ {
 		rt := results.At(i)
-		rtypobj := rt.Type().(*types.Named).Obj()
-		rtyp := rtypobj.Name() // TODO it is assumed the type is named
-		rx := rewrite.FreshVar(p, scope, strings.ToLower(methodName)+"T"+rtyp, rtypobj.Type())
+		rtypName := rewrite.TypeNameForGeneration(rt.Type())
+		rx := rewrite.FreshVar(builder.Package.Types, scope, genName(methodName, rtypName), rt.Type())
 
 		resNames = append(resNames, rx.Name())
-		body = append(body, lang.NewVarDecl(rx))
+		body = append(body, builder.NewVarDecl(rx))
 	}
 
 	// Get the method results
@@ -380,4 +417,9 @@ func constructSwitchCase(p *types.Package, scope *types.Scope, method *types.Sel
 		},
 		Body: body,
 	}
+}
+
+func genName(methodName, typeName string) string {
+	typeSuffix := strings.TrimPrefix(typeName, methodName)
+	return formatutil.LowerFirst(methodName) + formatutil.UpperFirst(typeSuffix) + "V"
 }
