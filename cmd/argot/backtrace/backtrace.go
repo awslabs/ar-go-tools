@@ -79,8 +79,11 @@ func Run(flags tools.CommonFlags) error {
 
 		c := config.NewState(cfg, targetName, target.Files, loadOptions)
 		var actual result.Result[config.State]
-		if target.UseProgramTransforms {
-			actual = statefulrewrite.StatefulRewritesOverlayTransform(c)
+		if target.UseProgramTransforms && len(target.ReflectValueCallInstances) >= 1 {
+			c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
+			// TODO: handle more rewrites later
+			actual = statefulrewrite.StatefulRewritesOverlayTransform(c,
+				statefulrewrite.StatefulRewritesOverlayTransformSpec{RefelctValueCallInstanceCid: target.ReflectValueCallInstances[0]})
 		} else {
 			actual = result.Ok(c)
 		}

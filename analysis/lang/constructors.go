@@ -20,8 +20,13 @@ import (
 	"go/token"
 	"go/types"
 	"strconv"
+	"strings"
 
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/dave/dst"
+	"golang.org/x/tools/go/ast/astutil"
+	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/ssa"
 )
 
 // NewFalse returns a new AST structure that represents the boolean false
@@ -133,21 +138,61 @@ func NewUnOp(op token.Token, x dst.Expr) *dst.UnaryExpr {
 	}
 }
 
+// AstBuildManager is a utility struct to help manage file rewriting. In particular it
+// has functionality that makes managing imports easier.
+type AstBuildManager struct {
+	// fileChanged indicates whether the file has changed
+	FileChanged bool
+	// The package of the current file
+	Package *packages.Package
+	// The current file
+	File *ast.File
+	// The imports required by the generated code
+	NewImports map[string]string
+}
+
+// NewAstBuildManager creates a new AstBuildManager
+func NewAstBuildManager(pkg *packages.Package, file *ast.File) *AstBuildManager {
+	return &AstBuildManager{
+		Package:     pkg,
+		File:        file,
+		NewImports:  make(map[string]string),
+		FileChanged: false,
+	}
+}
+
+// RegisterImports adds the imports in NewImports to the file
+func (a *AstBuildManager) RegisterImports() {
+	// Append to file imports
+	addedAny := false
+	for importPath, importName := range a.NewImports {
+		if importName != "" {
+			addedAny = addedAny || astutil.AddNamedImport(a.Package.Fset, a.File, importName, importPath)
+		} else {
+			addedAny = addedAny || astutil.AddImport(a.Package.Fset, a.File, importPath)
+		}
+	}
+	a.FileChanged = a.FileChanged || addedAny
+}
+
 // NewAstTypeExpr returns an AST expression that represents the type t.
 //
 // For example, the expression that represents a types.Struct will be of the form
 // struct{...}.
 //
 // For an integer, the expression is an identifier 'int'
-func NewAstTypeExpr(t types.Type) (ast.Expr, error) {
+func (a *AstBuildManager) NewAstTypeExpr(t types.Type) ast.Expr {
 	switch t0 := t.(type) {
 	case *types.Basic:
-		return ast.NewIdent(t0.String()), nil
+		return ast.NewIdent(t0.String())
+	case *types.Pointer:
+		return &ast.StarExpr{
+			X: a.NewAstTypeExpr(t0.Elem()),
+		}
 	case *types.Named:
-		// TODO: manage imports
-		return ast.NewIdent(t0.Obj().Name()), nil
+		return a.newPossiblyQualifiedTypeIdent(t0.Obj())
 	case *types.Struct:
-		return newAstStructTypeExpr(t0)
+		return a.newAstStructTypeExpr(t0)
 	default:
 		panic(fmt.Sprintf("implement NewTypeExpr for %s", t.String()))
 	}
@@ -155,18 +200,14 @@ func NewAstTypeExpr(t types.Type) (ast.Expr, error) {
 
 // newAstStructTypeExpr returns the expression representing a struct type, or an error if it could not create that
 // expression.
-func newAstStructTypeExpr(t *types.Struct) (ast.Expr, error) {
+func (a *AstBuildManager) newAstStructTypeExpr(t *types.Struct) ast.Expr {
 	n := t.NumFields()
 	var fields []*ast.Field
 	for i := 0; i < n; i++ {
 		f := t.Field(i)
-		te, err := NewAstTypeExpr(f.Type())
-		if err != nil {
-			return nil, err
-		}
 		newField := &ast.Field{
 			Names: []*ast.Ident{ast.NewIdent(f.Name())},
-			Type:  te,
+			Type:  a.NewAstTypeExpr(f.Type()),
 			Tag:   nil,
 		}
 		fields = append(fields, newField)
@@ -177,7 +218,7 @@ func newAstStructTypeExpr(t *types.Struct) (ast.Expr, error) {
 		},
 		Incomplete: false,
 	}
-	return res, nil
+	return res
 }
 
 // NewSingleAssignDecl generates an assignment statement where the operator is `:=` and
@@ -211,21 +252,160 @@ func NewMultiAssignDecl(names []string, rhs ast.Expr) *ast.AssignStmt {
 }
 
 // NewVarDecl returns a declaration for the provided var.
-func NewVarDecl(v *types.Var) *ast.DeclStmt {
-	tyExpr, err := NewAstTypeExpr(v.Type())
-	if err != nil {
-		panic(err) // TODO; implementation missing, should ensure this doesn't happen before release
-	}
+func (a *AstBuildManager) NewVarDecl(v *types.Var) *ast.DeclStmt {
 	declStmt := &ast.DeclStmt{
 		Decl: &ast.GenDecl{
 			Tok: token.VAR,
 			Specs: []ast.Spec{
 				&ast.ValueSpec{
 					Names: []*ast.Ident{ast.NewIdent(v.Name())},
-					Type:  tyExpr,
+					Type:  a.NewAstTypeExpr(v.Type()),
 				},
 			},
 		},
 	}
 	return declStmt
+}
+
+// NewFieldList returns a list of fields for the given tuple type.
+// This is used to created functions, the tuple can be the tuple of parameters
+// or the tuple of returned types.
+func (a *AstBuildManager) NewFieldList(host *types.Package, tuple *types.Tuple) *ast.FieldList {
+	var fields []*ast.Field
+	for i := 0; i < tuple.Len(); i++ {
+		v := tuple.At(i)
+		field := &ast.Field{
+			Names: []*ast.Ident{ast.NewIdent(v.Name())},
+			Type:  a.NewAstTypeExpr(v.Type()),
+		}
+		fields = append(fields, field)
+	}
+
+	return &ast.FieldList{
+		List: fields,
+	}
+}
+
+// MaybeRefNamedType is a named type or a pointer to a named type.
+type MaybeRefNamedType struct {
+	// Named is the named part of the type
+	Named *types.Named
+	// Actual is the actual type, either a (*types.Named) or (*types.Pointer)
+	Actual types.Type
+	// IsRef indicates whether the type is a pointer to a named type (true) or a named type (false)
+	IsRef bool
+}
+
+// MakeInterfaceForClass generates an interface spec for the named type passed as argument.
+// If the given type does not have any methods, the returns TypeSpec will not have any methods.
+func (a *AstBuildManager) MakeInterfaceForClass(
+	program *ssa.Program,
+	host *types.Package,
+	classLike MaybeRefNamedType,
+) (string, *ast.TypeSpec) {
+	methods := program.MethodSets.MethodSet(classLike.Actual)
+
+	var interfaceMethods []*ast.Field
+	if methods != nil {
+		for i := 0; i < methods.Len(); i++ {
+			method := methods.At(i)
+			methodSig := method.Type().(*types.Signature)
+			methodField := &ast.Field{
+				Names: []*ast.Ident{{Name: method.Obj().Name()}},
+				Type: &ast.FuncType{
+					Params:  a.NewFieldList(host, methodSig.Params()),
+					Results: a.NewFieldList(host, methodSig.Results()),
+				},
+			}
+			interfaceMethods = append(interfaceMethods, methodField)
+		}
+	}
+
+	interfaceName := fmt.Sprintf("%sInterface", classLike.Named.Obj().Name())
+	return interfaceName, &ast.TypeSpec{
+		Name: &ast.Ident{Name: interfaceName},
+		Type: &ast.InterfaceType{
+			Methods: &ast.FieldList{
+				List: interfaceMethods,
+			},
+		},
+	}
+}
+
+// newPossiblyQualifiedTypeIdent returns an identifiers for the given type object.
+//
+// If the type object is not in the targeted host, then the expression returned is a selector expression
+// where the parent is the package of the type. This means the package should be imported somewhere.
+//
+// If the package is the same, or the host or the obj package information is nil, then a simple ast identifier
+// is returned.
+func (a *AstBuildManager) newPossiblyQualifiedTypeIdent(obj types.Object) ast.Expr {
+	host := a.Package.Types
+	if host == nil || obj.Pkg() == nil || host.Path() == obj.Pkg().Path() {
+		return ast.NewIdent(obj.Name())
+	}
+	pkgName := a.managedImportName(obj)
+	return &ast.SelectorExpr{
+		X:   ast.NewIdent(pkgName),
+		Sel: ast.NewIdent(obj.Name()),
+	}
+}
+
+func (a *AstBuildManager) managedImportName(obj types.Object) string {
+	objPkgPath := obj.Pkg().Path()
+	// Check current file imports first
+	for _, importSpec := range a.File.Imports {
+		pathValue := formatutil.Unquote(importSpec.Path.Value)
+		if pathValue == objPkgPath {
+			if importSpec.Name != nil {
+				return importSpec.Name.Name
+			}
+			return extractPkgNameFromPath(pathValue)
+		}
+	}
+	// Check import has already been registered
+	if importName, isImported := a.NewImports[objPkgPath]; isImported {
+		if importName != "" {
+			return importName
+		}
+		return obj.Pkg().Name()
+	}
+
+	pkgName := obj.Pkg().Name()
+	namesInUse := make(map[string]bool)
+	for _, importSpec := range a.File.Imports {
+		pathValue := formatutil.Unquote(importSpec.Path.Value)
+		localPkgName := extractPkgNameFromPath(pathValue)
+		if importSpec.Name != nil {
+			localPkgName = importSpec.Name.Name
+		}
+		namesInUse[localPkgName] = true
+	}
+
+	for pkgPath, name := range a.NewImports {
+		if name != "" {
+			namesInUse[name] = true
+		} else {
+			namesInUse[extractPkgNameFromPath(pkgPath)] = true
+		}
+	}
+
+	for namesInUse[pkgName] {
+		pkgName = "_" + pkgName
+	}
+
+	if pkgName == obj.Pkg().Name() {
+		a.NewImports[objPkgPath] = "" // not a named import
+	} else {
+		a.NewImports[objPkgPath] = pkgName // will be named import
+	}
+	return pkgName
+}
+
+func extractPkgNameFromPath(path string) string {
+	slices := strings.Split(path, "/")
+	if len(slices) > 0 {
+		return slices[len(slices)-1]
+	}
+	return path
 }
