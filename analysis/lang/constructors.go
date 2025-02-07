@@ -20,7 +20,6 @@ import (
 	"go/token"
 	"go/types"
 	"strconv"
-	"strings"
 
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/dave/dst"
@@ -166,11 +165,7 @@ func (a *AstBuildManager) RegisterImports() {
 	// Append to file imports
 	addedAny := false
 	for importPath, importName := range a.NewImports {
-		if importName != "" {
-			addedAny = addedAny || astutil.AddNamedImport(a.Package.Fset, a.File, importName, importPath)
-		} else {
-			addedAny = addedAny || astutil.AddImport(a.Package.Fset, a.File, importPath)
-		}
+		astutil.AddNamedImport(a.Package.Fset, a.File, importName, importPath)
 	}
 	a.FileChanged = a.FileChanged || addedAny
 }
@@ -360,7 +355,7 @@ func (a *AstBuildManager) managedImportName(obj types.Object) string {
 			if importSpec.Name != nil {
 				return importSpec.Name.Name
 			}
-			return extractPkgNameFromPath(pathValue)
+			return ExtractPkgNameFromPath(pathValue)
 		}
 	}
 	// Check import has already been registered
@@ -375,7 +370,7 @@ func (a *AstBuildManager) managedImportName(obj types.Object) string {
 	namesInUse := make(map[string]bool)
 	for _, importSpec := range a.File.Imports {
 		pathValue := formatutil.Unquote(importSpec.Path.Value)
-		localPkgName := extractPkgNameFromPath(pathValue)
+		localPkgName := ExtractPkgNameFromPath(pathValue)
 		if importSpec.Name != nil {
 			localPkgName = importSpec.Name.Name
 		}
@@ -386,7 +381,7 @@ func (a *AstBuildManager) managedImportName(obj types.Object) string {
 		if name != "" {
 			namesInUse[name] = true
 		} else {
-			namesInUse[extractPkgNameFromPath(pkgPath)] = true
+			namesInUse[ExtractPkgNameFromPath(pkgPath)] = true
 		}
 	}
 
@@ -400,12 +395,4 @@ func (a *AstBuildManager) managedImportName(obj types.Object) string {
 		a.NewImports[objPkgPath] = pkgName // will be named import
 	}
 	return pkgName
-}
-
-func extractPkgNameFromPath(path string) string {
-	slices := strings.Split(path, "/")
-	if len(slices) > 0 {
-		return slices[len(slices)-1]
-	}
-	return path
 }

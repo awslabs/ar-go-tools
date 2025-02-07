@@ -15,11 +15,13 @@
 package loadprogram
 
 import (
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os/exec"
 	"path/filepath"
 	"sync/atomic"
 
@@ -39,6 +41,8 @@ import (
 // should be built with the go tools analysis framework (https://pkg.go.dev/golang.org/x/tools/go/analysis)
 type State struct {
 	config.State
+	// GoModInfo is the path to the go.mod file
+	GoModInfo GoModInfo
 
 	// Annotations contains all the annotations of the program
 	Annotations annotations.ProgramAnnotations
@@ -74,6 +78,13 @@ func NewState(c *config.State) result.Result[State] {
 	if err != nil {
 		return result.Err[State](fmt.Errorf("failed to load annotations from SSA"))
 	}
+	// Attempt to get go.mod using the packages. Only consider one of the pattern elements. They
+	// can't be empty at this point, or point to different modulers.
+	goModInfo, err := GetGoModInfo()
+	if err != nil {
+		return result.Err[State](fmt.Errorf("failed to get go.mod info: %v", err))
+	}
+	c.Logger.Infof("Loaded module %s", goModInfo.Path)
 
 	dirs := c.Patterns
 	// If the project root is set, parse all Go files inside the root directory (recursively)
@@ -92,6 +103,7 @@ func NewState(c *config.State) result.Result[State] {
 	report := config.NewReport()
 
 	return result.Ok(&State{
+		GoModInfo:    goModInfo,
 		State:        *c,
 		Annotations:  pa,
 		Packages:     pkgs,
@@ -223,4 +235,26 @@ func allAstFiles(dirs []string, fset *token.FileSet, pkgs []*packages.Package) (
 	}
 
 	return files, nil
+}
+
+// GoModInfo contains the data as returned by the `go list -m -u -json` command
+type GoModInfo struct {
+	Main      bool
+	Dir       string
+	Path      string
+	GoMod     string
+	GoVersion string
+}
+
+// GetGoModInfo returns the module info
+func GetGoModInfo() (GoModInfo, error) {
+	var goModInfo GoModInfo
+	// Execute command 'go list -m -u -json and unmarshal the output into a GoModInfo
+	cmd := exec.Command("go", "list", "-m", "-u", "-json")
+	output, err := cmd.Output()
+	if err != nil {
+		return GoModInfo{}, fmt.Errorf("failed to get go.mod info: %s", err)
+	}
+	json.Unmarshal(output, &goModInfo)
+	return goModInfo, nil
 }

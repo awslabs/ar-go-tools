@@ -39,14 +39,12 @@ func testRewriteAndBuild(t *testing.T, dirName string, files []string) {
 		t.Fatal(err)
 	}
 
-	tys, ok := statefulrewrite.FindImpl(ptrState, config.CodeIdentifier{Method: "Start", Package: ""})
-	if !ok || len(tys) == 0 {
+	spec0 := statefulrewrite.FindImpl(ptrState, config.CodeIdentifier{Method: "Start", Package: ""})
+	if spec0.IsNone() {
 		t.Fatal("no impl found")
 	}
+	spec := spec0.Value().Compile(lp)
 
-	spec := statefulrewrite.ReflectValueCallRewriterSpec{
-		ReceiverType: tys[0],
-	}
 	overlay := statefulrewrite.RewriteCallsToReflectValueCall(ptrState, spec)
 	for fileName, fileContents := range overlay {
 		t.Logf("overlay %s", fileName)

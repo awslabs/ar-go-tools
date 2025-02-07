@@ -18,12 +18,14 @@ import (
 	"fmt"
 	"go/types"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
@@ -1291,80 +1293,80 @@ func (g *SummaryGraph) Print(outEdgesOnly bool, w io.Writer) {
 // PrettyPrint prints the summary graph to w in a readable format.
 //
 //gocyclo:ignore
-func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer) {
+func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer, filter *regexp.Regexp) {
 	if g == nil || g.Parent == nil {
 		fmt.Fprintf(w, "Empty graph!\n")
 		return
 	}
-	fmt.Fprintf(w, "%s %s:\n", ftu.Yellow("Summary of"), ftu.Italic(ftu.Purple(g.Parent.Name())))
+	fmt.Fprintf(w, "%s %s:\n", ftu.Yellow("Summary of"), ftu.Italic(ftu.Blue(g.Parent.Name())))
 	for _, a := range g.Params {
-		ppNodes("Parameter", w, a, outEdgesOnly)
+		ppNodes(formatutil.Cyan("Parameter"), w, a, outEdgesOnly, filter)
 	}
 
 	for _, a := range g.FreeVars {
-		ppNodes("Free var", w, a, outEdgesOnly)
+		ppNodes("Free var", w, a, outEdgesOnly, filter)
 	}
 
 	for _, callNodes := range g.Callees {
 		for _, callN := range callNodes {
-			ppNodes("Call", w, callN, outEdgesOnly)
+			ppNodes(formatutil.Blue("Call"), w, callN, outEdgesOnly, filter)
 			for _, x := range callN.args {
-				ppNodes("Call arg", w, x, outEdgesOnly)
+				ppNodes(formatutil.Cyan("Call arg"), w, x, outEdgesOnly, filter)
 			}
 		}
 	}
 
 	for _, closure := range g.CreatedClosures {
 		for _, boundvar := range closure.boundVars {
-			ppNodes("Bound var", w, boundvar, outEdgesOnly)
+			ppNodes(formatutil.Gray("Bound var"), w, boundvar, outEdgesOnly, filter)
 		}
-		ppNodes("Closure", w, closure, outEdgesOnly)
+		ppNodes(formatutil.Gray("Closure"), w, closure, outEdgesOnly, filter)
 	}
 
 	for _, tup := range g.Returns {
 		for _, r := range tup {
-			ppNodes("Return", w, r, outEdgesOnly)
+			ppNodes(formatutil.Green("Return"), w, r, outEdgesOnly, filter)
 		}
 	}
 
 	for _, s := range g.SyntheticNodes {
-		ppNodes("Synthetic", w, s, outEdgesOnly)
+		ppNodes(formatutil.BgWhite("Synthetic"), w, s, outEdgesOnly, filter)
 	}
 
 	for _, group := range g.BoundLabelNodes {
 		for _, s := range group {
-			ppNodes("Bound by label", w, s, outEdgesOnly)
+			ppNodes(formatutil.Gray("Bound by label"), w, s, outEdgesOnly, filter)
 		}
 	}
 
 	for _, group := range g.AccessGlobalNodes {
 		for _, s := range group {
-			ppNodes("Global", w, s, outEdgesOnly)
+			ppNodes(formatutil.Gray("Global"), w, s, outEdgesOnly, filter)
 		}
 	}
 }
 
-func ppNodes(prefix string, w io.Writer, a GraphNode, outEdgesOnly bool) {
+func ppNodes(prefix string, w io.Writer, a GraphNode, outEdgesOnly bool, filter *regexp.Regexp) {
 	if len(a.Out()) > 0 {
 		fmt.Fprintf(w, "  %s %s:\n", prefix, a.String())
 	}
 	for n, edgeInfos := range a.Out() {
 		for _, c := range edgeInfos {
 			if c.Cond == nil || c.Cond.Satisfiable {
-				ppEdge(w, n, c, "->")
+				ppEdge(w, n, c, "->", filter)
 			}
 		}
 	}
 	if !outEdgesOnly {
 		for n, c := range a.In() {
 			if c.Cond == nil || c.Cond.Satisfiable {
-				ppEdge(w, n, c, "<-")
+				ppEdge(w, n, c, "<-", filter)
 			}
 		}
 	}
 }
 
-func ppEdge(w io.Writer, n GraphNode, c EdgeInfo, arrow string) {
+func ppEdge(w io.Writer, n GraphNode, c EdgeInfo, arrow string, filter *regexp.Regexp) {
 	prefix := ""
 	if c.Cond != nil && len(c.Cond.Conditions) > 0 {
 		prefix += "?" + c.Cond.String()
@@ -1386,6 +1388,9 @@ func ppEdge(w io.Writer, n GraphNode, c EdgeInfo, arrow string) {
 	}
 	if len(prefix) > 0 {
 		prefix = "(" + prefix + ")"
+	}
+	if filter != nil && !filter.MatchString(n.String()) {
+		return
 	}
 	fmt.Fprintf(w, "    %s %s %s\n", prefix, arrow, n.String())
 

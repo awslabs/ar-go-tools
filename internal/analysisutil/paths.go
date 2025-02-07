@@ -15,7 +15,10 @@
 package analysisutil
 
 import (
+	"go/token"
+	"go/types"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/tools/go/ssa"
@@ -72,4 +75,22 @@ func IsExcluded(program *ssa.Program, f *ssa.Function, exclude []string) bool {
 	}
 
 	return false
+}
+
+// PackageDir returns the path to the dir where the package is defined.
+func PackageDir(fset *token.FileSet, pkg *types.Package) string {
+	// the types.Package doesn't have go files directly, it seems we have to retrieve a file
+	// from a position and then use that file name to deduce the package dir
+	nElts := pkg.Scope().Len()
+	// if the package is empty, we can't use the scope to get the file name
+	if nElts == 0 {
+		return ""
+	}
+	// Need to get a child of the package scope to get a valid position. pkg.Scope().Pos()
+	// is not a valid position
+	scopePos := pkg.Scope().Child(0).Pos()
+	if !scopePos.IsValid() {
+		panic("invalid position given")
+	}
+	return filepath.Dir(fset.Position(scopePos).Filename)
 }
