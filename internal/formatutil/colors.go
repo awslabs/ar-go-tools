@@ -24,6 +24,8 @@ import (
 var (
 	// Bold formats the arguments in bold for terminals
 	Bold = Color("\033[1m%s\033[0m")
+	// Underline formats the arguments in underline for terminals
+	Underline = Color("\033[4m%s\033[0m")
 	// Faint format the arguments in faint for terminals
 	Faint = Color("\033[2m%s\033[0m")
 	// Italic formats the arguments in italic for terminals
@@ -34,14 +36,46 @@ var (
 	Green = Color("\033[1;32m%s\033[0m")
 	// Yellow formats the arguments in yellow for terminals
 	Yellow = Color("\033[1;33m%s\033[0m")
-	// Purple formats the arguments in purple for terminals
-	Purple = Color("\033[1;34m%s\033[0m")
+	// Blue formats the arguments in blue for terminals
+	Blue = Color("\033[1;34m%s\033[0m")
 	// Magenta formats the arguments in magenta for terminals
 	Magenta = Color("\033[1;35m%s\033[0m")
 	// Cyan formats the arguments in cyan for terminals
 	Cyan = Color("\033[1;36m%s\033[0m")
 	// White formats the arguments in white for terminals
 	White = Color("\033[1;37m%s\033[0m")
+	// Black formats the arguments in black for terminals
+	Black = Color("\033[1;30m%s\033[0m")
+	// Gray formats the arguments in gray for terminals
+	Gray = Color("\033[1;90m%s\033[0m")
+	// BrightRed formats the arguments in bright red for terminals
+	BrightRed = Color("\033[1;91m%s\033[0m")
+	// BrightGreen formats the arguments in bright green for terminals
+	BrightGreen = Color("\033[1;92m%s\033[0m")
+	// BrightYellow formats the arguments in bright yellow for terminals
+	BrightYellow = Color("\033[1;93m%s\033[0m")
+	// BrightBlue formats the arguments in bright blue for terminals
+	BrightBlue = Color("\033[1;94m%s\033[0m")
+	// BrightMagenta formats the arguments in bright magenta for terminals
+	BrightMagenta = Color("\033[1;95m%s\033[0m")
+	// BrightCyan formats the arguments in bright cyan for terminals
+	BrightCyan = Color("\033[1;96m%s\033[0m")
+	// BrightWhite formats the arguments in bright white for terminals
+	BrightWhite = Color("\033[1;97m%s\033[0m")
+	// BgRed formats the arguments in red background for terminals
+	BgRed = Color("\033[1;41m%s\033[0m")
+	// BgGreen formats the arguments in green background for terminals
+	BgGreen = Color("\033[1;42m%s\033[0m")
+	// BgYellow formats the arguments in yellow background for terminals
+	BgYellow = Color("\033[1;43m%s\033[0m")
+	// BgBlue formats the arguments in blue background for terminals
+	BgBlue = Color("\033[1;44m%s\033[0m")
+	// BgMagenta formats the arguments in magenta background for terminals
+	BgMagenta = Color("\033[1;45m%s\033[0m")
+	// BgCyan formats the arguments in cyan background for terminals
+	BgCyan = Color("\033[1;46m%s\033[0m")
+	// BgWhite formats the arguments in white background for terminals
+	BgWhite = Color("\033[1;47m%s\033[0m")
 )
 
 // Color is a formatter helper that wraps the arguments suing the color string provided.

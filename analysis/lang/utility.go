@@ -38,9 +38,7 @@ func packageFromErrorName(name string) string {
 		return ""
 	}
 	name = name[1:]
-	if strings.HasPrefix(name, "*") {
-		name = name[1:]
-	}
+	name = strings.TrimPrefix(name, "*")
 	i := strings.LastIndex(name, ".")
 	if i < 0 {
 		return ""
@@ -164,4 +162,14 @@ func FindImplementationMethod(prog *ssa.Program, tp types.Type, iface types.Type
 		return prog.LookupMethod(types.NewPointer(tp), pkg, methodName), true
 	}
 	return nil, false
+}
+
+// ExtractPkgNameFromPath extracts the package's name from its package path.
+// Only valid for non-standard library packages.
+func ExtractPkgNameFromPath(path string) string {
+	slices := strings.Split(path, "/")
+	if len(slices) > 0 {
+		return slices[len(slices)-1]
+	}
+	return path
 }

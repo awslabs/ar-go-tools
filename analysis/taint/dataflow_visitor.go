@@ -107,7 +107,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 	logger := s.Logger
 	logger.Debugf("")
 	logger.Debugf(" entrypoint: %s\n",
-		formatutil.Purple(v.currentSource.Node.String()))
+		formatutil.Blue(v.currentSource.Node.String()))
 	logger.Debugf("   %s %s\n", formatutil.Green("Found at"), v.currentSource.Node.Position(s))
 	logger.Debugf("   Context: %s", dataflow.FuncNames(v.currentSource.Trace, s.Logger.LogsDebug()))
 

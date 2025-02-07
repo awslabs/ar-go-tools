@@ -238,7 +238,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 	// sufficient to see that >0 entry points have been detected.
 	logger.Debugf("")
 	logger.Debugf(" entrypoint: %s\n",
-		formatutil.Purple(entrypoint.String()))
+		formatutil.Blue(entrypoint.String()))
 	logger.Debugf("   %s %s\n", formatutil.Green("Found at"), pos)
 	logger.PushContext(formatutil.Faint(entrypoint.LongID()))
 	defer logger.PopContext()

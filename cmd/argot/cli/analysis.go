@@ -277,16 +277,44 @@ func cmdSrc(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 func cmdAst(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : print the ast of a function.\n"+
-			"\t  src regex prints the AST structure of the function matching the regex\n"+
-			"\t  Example:\n", tt.Escape.Blue, cmdAstName, tt.Escape.Reset)
+			"\t  %s regex prints the AST structure of the %sfunction%s matching the regex\n"+
+			"\t  %s -file regex prints the AST structure of the %sfile%s matching the regex\n"+
+			"\t  Example:\n",
+			tt.Escape.Blue, cmdAstName, tt.Escape.Reset,
+			cmdAstName, tt.Escape.Yellow, tt.Escape.Reset,
+			cmdAstName, tt.Escape.Yellow, tt.Escape.Reset)
 		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdAstName)
 		return false
 	}
 
+	// Display the AST of a file?
+	if command.Flags["file"] {
+		files := findFiles(tt, c, command)
+		if len(files) == 0 {
+			WriteErr(tt, "Need at least one file to show the AST for.")
+			cmdAst(tt, nil, command, withTest)
+		} else {
+			for _, f := range files {
+				filePath := c.Program.Fset.Position(f.Pos()).Filename
+				if f == nil {
+					WriteErr(tt, "%s has no AST.", formatutil.Bold(filePath))
+				} else {
+					WriteSuccess(tt, "<<< AST of %s", formatutil.Bold(filePath))
+					ast.Fprint(tt, c.Program.Fset, f, nil)
+					printer.Fprint(tt, c.Program.Fset, f)
+					writeFmt(tt, "\n")
+					WriteSuccess(tt, "End of AST of %s >>>", filePath)
+					writeFmt(tt, "\n")
+				}
+			}
+		}
+		return false
+	}
+	// Display the AST of a function
 	funcs := listContextFunc(tt, c, command)
 	if len(funcs) == 0 {
 		WriteErr(tt, "Need at least one function to show the AST for.")
-		cmdSrc(tt, nil, command, withTest)
+		cmdAst(tt, nil, command, withTest)
 	}
 	for _, f := range funcs {
 		astNode := f.Syntax()
@@ -489,8 +517,22 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 		writeFmt(tt, "  (is interface contract)\n")
 	}
 	writeFmt(tt, "%s:\n", formatutil.Yellow("Nodes"))
-	summary.ForAllNodes(func(n dataflow.GraphNode) { writeFmt(tt, "\t %s\n", n) })
-	summary.PrettyPrint(true, tt)
+	var regexFilter *regexp.Regexp
+	if filter, ok := command.NamedArgs["f"]; ok {
+		var err error
+		regexFilter, err = regexp.Compile(filter)
+		if err != nil {
+			regexErr(tt, filter, err)
+			return
+		}
+	}
+	summary.ForAllNodes(func(n dataflow.GraphNode) {
+		if regexFilter != nil && !regexFilter.MatchString(n.String()) {
+			return
+		}
+		writeFmt(tt, "\t %s\n", n)
+	})
+	summary.PrettyPrint(true, tt, regexFilter)
 }
 
 func listContextFunc(tt *term.Terminal, c *dataflow.State, command Command) []*ssa.Function {
@@ -507,4 +549,30 @@ func listContextFunc(tt *term.Terminal, c *dataflow.State, command Command) []*s
 	}
 
 	return findFunc(c, target)
+}
+
+func findFiles(tt *term.Terminal, c *dataflow.State, command Command) []*ast.File {
+	if len(command.Args) < 1 {
+		WriteErr(tt, "Need a regex to match files.")
+		return []*ast.File{}
+	}
+	target, err := regexp.Compile(command.Args[0])
+	if err != nil {
+		regexErr(tt, command.Args[0], err)
+		return []*ast.File{}
+	}
+	files := []*ast.File{}
+	for _, p := range c.Packages {
+		for _, f := range p.Syntax {
+			fpos := f.Pos()
+			if !fpos.IsValid() {
+				continue
+			}
+			filename := c.Program.Fset.File(fpos).Name()
+			if target.MatchString(filename) {
+				files = append(files, f)
+			}
+		}
+	}
+	return files
 }

@@ -21,12 +21,14 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -109,6 +111,20 @@ func Run(flags tools.CommonFlags) {
 	}
 	// Initialize an analyzer state
 	cfg := config.NewState(pConfig, "", state.Args, loadOptions)
+	// Apply rewrites from config if the target can be recognized
+	for _, targetSpec := range cfg.Config.Targets {
+		if slices.Equal(targetSpec.Files, state.Args) {
+			if targetSpec.UseProgramTransforms && len(targetSpec.ReflectValueCallInstances) >= 1 {
+				cfg.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
+				// TODO: handle more rewrites later
+				cfg, err = statefulrewrite.StatefulRewritesOverlayTransform(cfg,
+					statefulrewrite.StatefulRewritesOverlayTransformSpec{RefelctValueCallInstanceCid: targetSpec.ReflectValueCallInstances[0]}).Value()
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
+	}
 	dfState, err := result.Bind(result.Bind(loadprogram.NewState(cfg), ptr.NewState), dataflow.NewState).Value()
 	if err != nil {
 		panic(err)

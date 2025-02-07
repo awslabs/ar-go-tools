@@ -98,7 +98,7 @@ func logTaintFlow(s *dataflow.State, source dataflow.NodeWithTrace, sink *datafl
 				continue
 			}
 			s.Logger.Infof("%s - %s",
-				formatutil.Purple("  |- TRACE"),
+				formatutil.Blue("  |- TRACE"),
 				dataflow.TermNodeSummary(nodes[i].Node))
 			// - Context [<calling context string>] Pos: <position in source code>
 			s.Logger.Infof("%s - Context [%s]\n",

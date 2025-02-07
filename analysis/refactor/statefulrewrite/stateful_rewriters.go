@@ -20,7 +20,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"github.com/awslabs/ar-go-tools/internal/shims"
 	"golang.org/x/tools/go/ssa"
@@ -42,11 +42,14 @@ func StatefulRewritesOverlayTransform(c *config.State, spec StatefulRewritesOver
 
 	// Build a pointer state
 	state, err := loadprogram.NewState(c).Value()
-	cfg := findReflectValueCallToRewrite(state, spec.RefelctValueCallInstanceCid)
+	if err != nil {
+		return result.Err[config.State](err)
+	}
+	cfg := FindImpl(state, spec.RefelctValueCallInstanceCid)
 	if cfg.IsNone() {
 		return result.Ok(c)
 	}
-	newOverlayElements := RewriteCallsToReflectValueCall(state, cfg.Value())
+	newOverlayElements := RewriteCallsToReflectValueCall(state, cfg.Value().Compile(state))
 	if newOverlayElements == nil {
 		return result.Ok(c)
 	}
@@ -57,7 +60,7 @@ func StatefulRewritesOverlayTransform(c *config.State, spec StatefulRewritesOver
 
 	for fileName, fileContents := range newOverlayElements {
 		c.Logger.Infof("overlay \"%s\"", fileName)
-		c.Logger.Infof("File contents:\n%s", fileContents)
+		c.Logger.Debugf("File contents:\n%s", fileContents)
 	}
 
 	if c.Overlay == nil {
@@ -71,22 +74,11 @@ func StatefulRewritesOverlayTransform(c *config.State, spec StatefulRewritesOver
 	return result.Ok(c)
 }
 
-func findReflectValueCallToRewrite(state *loadprogram.State, ci config.CodeIdentifier) funcutil.Optional[ReflectValueCallRewriterSpec] {
-	implTypes, ok := FindImpl(state, ci)
-	if !ok {
-		state.Logger.Infof("No rewriting strategies applicable.")
-		return funcutil.None[ReflectValueCallRewriterSpec]()
-	}
-	return funcutil.Some[ReflectValueCallRewriterSpec](ReflectValueCallRewriterSpec{
-		Cid:          ci,
-		ReceiverType: implTypes[0],
-	})
-}
-
 // FindImpl returns the types of the arguments of the functions identified by the code identifier. The
 // returned type is either a named type or a pointer to a named type.
-func FindImpl(s *loadprogram.State, ci config.CodeIdentifier) ([]lang.MaybeRefNamedType, bool) {
+func FindImpl(s *loadprogram.State, ci config.CodeIdentifier) fn.Optional[ReflectValueCallRewriterSpec] {
 	seen := make(map[lang.MaybeRefNamedType]struct{})
+	locations := make(map[ssa.Instruction]struct{})
 	for f := range ssautil.AllFunctions(s.Program) {
 		lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
 			call, ok := instr.(ssa.CallInstruction)
@@ -121,14 +113,19 @@ func FindImpl(s *loadprogram.State, ci config.CodeIdentifier) ([]lang.MaybeRefNa
 			}
 			if tNamed, ok := possiblyNamedTy.(*types.Named); ok {
 				seen[lang.MaybeRefNamedType{IsRef: isPtr, Named: tNamed, Actual: actualObjTyp}] = struct{}{}
+				locations[instr] = struct{}{}
 			}
 
 		})
 	}
 
-	if len(seen) == 0 {
-		return nil, false
+	if len(seen) == 0 || len(locations) == 0 {
+		return fn.None[ReflectValueCallRewriterSpec]()
 	}
 
-	return shims.Keys(seen), true
+	return fn.Some(ReflectValueCallRewriterSpec{
+		Cid:          ci,
+		ReceiverType: shims.Keys(seen)[0], // TOOD: support for > 1 Loc
+		Location:     shims.Keys(locations)[0],
+	})
 }

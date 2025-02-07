@@ -20,11 +20,16 @@ import (
 	"go/printer"
 	"go/token"
 	"go/types"
+	"math/rand/v2"
+	"path"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/rewrite"
 	"golang.org/x/tools/go/ast/astutil"
@@ -41,8 +46,105 @@ type reflectValueSpec struct {
 
 // ReflectValueCallRewriterSpec specifies the code elements the reflect value call rewriter should look for when rewriting.
 type ReflectValueCallRewriterSpec struct {
-	Cid          config.CodeIdentifier
+	// The code identifier used to identify the consumer of the class-like type.
+	Cid config.CodeIdentifier
+	// The class-like type
 	ReceiverType lang.MaybeRefNamedType
+	// The location where the consumer was found (a call instruction)
+	Location ssa.Instruction
+}
+
+// Compile a ReflectValueCallRewriterSpec to a RVCRewriterResolvedSpec resolves the paths
+// necessary to move the code of the reflect calling package.
+func (r ReflectValueCallRewriterSpec) Compile(lps *loadprogram.State) RVCRewriterResolvedSpec {
+	parentTypePackage := r.Location.Parent().Pkg.Pkg
+	parentPkgDir := analysisutil.PackageDir(r.Location.Parent().Pkg.Prog.Fset, parentTypePackage)
+	calleePkg := "generated_pkg"
+	calleePkgPath := ""
+	calleePkgDir := ""
+	if callInstr, ok := r.Location.(ssa.CallInstruction); ok {
+		if calleeFunc, ok := callInstr.Common().Value.(*ssa.Function); ok {
+			calleePkgDir = analysisutil.PackageDir(calleeFunc.Prog.Fset, calleeFunc.Pkg.Pkg) + "/"
+			calleePkg = calleeFunc.Pkg.Pkg.Name()
+			calleePkgPath = calleeFunc.Pkg.Pkg.Path()
+		}
+	}
+
+	suffix := calleePkg + strconv.Itoa(rand.IntN(10e4)) + "generated"
+	var prefix string
+	if parentTypePackage.Path() == "command-line-arguments" {
+		additional := strings.TrimPrefix(parentPkgDir, lps.GoModInfo.Dir)
+		prefix = lps.GoModInfo.Path + additional
+	} else {
+		prefix = parentTypePackage.Path()
+	}
+	// amazonq-ignore-next-line
+	newPkg := path.Join(prefix, suffix)
+	newPkgDir := filepath.Join(parentPkgDir, suffix)
+
+	return RVCRewriterResolvedSpec{
+		Cid:                     r.Cid,
+		ReceiverType:            r.ReceiverType,
+		ParentPkg:               parentTypePackage,
+		OldReflecterPackagePath: calleePkgPath,
+		OldReflecterPackageDir:  calleePkgDir,
+		NewPkgName:              suffix,
+		NewReflecterPackagePath: newPkg,
+		NewReflecterPackageDir:  newPkgDir,
+	}
+}
+
+// RVCRewriterResolvedSpec is similar to the ReflectValueCallRewriterSpec but some identifiers have been
+// resolved.
+type RVCRewriterResolvedSpec struct {
+	// The code identifier used to identify the consumer of the class-like type.
+	Cid config.CodeIdentifier
+	// The class-like type
+	ReceiverType lang.MaybeRefNamedType
+	ParentPkg    *types.Package
+	// The new package name
+	NewPkgName string
+	// The new package path: where to move the go imports
+	NewReflecterPackagePath string
+	// The new package directory: where to move the go files
+	NewReflecterPackageDir string
+	// The old package path: where to move the go imports
+	OldReflecterPackagePath string
+	// The old package dir: where to take the files from
+	OldReflecterPackageDir string
+}
+
+// remapFilePath remaps a file path if necessary.
+func (r RVCRewriterResolvedSpec) remapFilePath(path string) string {
+	dir, file := filepath.Split(path)
+	// It is only necessary to remap files that are exactly in the package using reflection.
+	// The remapped files can still use the public methods from the other packages
+	// TODO: not true for internal packages - need to check for it, and reject / support internal by copying
+	if dir != r.OldReflecterPackageDir {
+		return path
+	}
+	return filepath.Join(r.NewReflecterPackageDir, file)
+}
+
+// remapPackagePath remaps a package path.
+func (r RVCRewriterResolvedSpec) remapPackagePath(importPath string) (string, bool) {
+	if after, found := strings.CutPrefix(formatutil.Unquote(importPath)+"/", r.OldReflecterPackagePath+"/"); found {
+		return fmt.Sprintf("%q", r.NewReflecterPackagePath+after), true
+	}
+	return "", false
+}
+
+// remapPackageName returns the new package name and true when the package name of the given
+// file path needs to be changed.
+func (r RVCRewriterResolvedSpec) remapPackageName(path string) (string, bool) {
+	dir, _ := filepath.Split(path)
+	// It is only necessary to remap files that are exactly in the package using reflection.
+	// The remapped files can still use the public methods from the other packages
+	// TODO: not true for internal packages - need to check for it, and reject / support internal by copying
+	if dir != r.OldReflecterPackageDir {
+		return "", false
+	}
+	return r.NewPkgName, true
 }
 
 // RewriteCallsToReflectValueCall transforms reflect.Value.Call() invocations into direct method calls.
@@ -67,7 +169,7 @@ type ReflectValueCallRewriterSpec struct {
 //   - Only files that were modified are included in the map
 func RewriteCallsToReflectValueCall(
 	pts *loadprogram.State,
-	rspec ReflectValueCallRewriterSpec,
+	rspec RVCRewriterResolvedSpec,
 ) map[string][]byte {
 	newOverlayElements := map[string][]byte{}
 	rewrite.ForEachPackageIncludingDependencies(pts.Packages, func(p *packages.Package) {
@@ -80,23 +182,47 @@ func RewriteCallsToReflectValueCall(
 		}
 
 		for _, file := range p.Syntax {
-			// =====
 			astBuilder := lang.NewAstBuildManager(p, file)
 			for _, node := range file.Decls {
-
-				astutil.Apply(node, func(c *astutil.Cursor) bool { return nodeTransform(c, pts, rspec, astBuilder) }, nil)
+				astutil.Apply(node,
+					func(c *astutil.Cursor) bool { return nodeTransform(c, pts, rspec, astBuilder) }, nil)
 			}
-
+			originalFileName := pts.Program.Fset.File(file.FileStart).Name()
 			// if the file has changed, write the file and add it to the overlay
 			if astBuilder.FileChanged {
 				// Remove all comments to avoid problems
 				file.Comments = []*ast.CommentGroup{}
 				astBuilder.RegisterImports()
+			}
+			// Remap imports that have rspec old package prefix to new package prefix
+			for _, imp := range file.Imports {
+				if newImportPath, mapped := rspec.remapPackagePath(imp.Path.Value); mapped {
+					pts.Logger.Infof("In    %s\n"+
+						"      remap %s\n"+
+						"       to   %s", originalFileName, imp.Path.Value, newImportPath)
+					// Use the old name when importing
+					if imp.Name == nil {
+						imp.Name = ast.NewIdent(lang.ExtractPkgNameFromPath(formatutil.Unquote(imp.Path.Value)))
+					}
+					imp.Path.Value = newImportPath
+					astBuilder.FileChanged = true
+				}
+			}
+
+			// The package name needs updating if this is supposed to be part of the new package
+			if newPkgName, mapped := rspec.remapPackageName(originalFileName); mapped {
+				pts.Logger.Infof("Remap package name %s to %s", p.Name, newPkgName)
+				setPkgName(file, newPkgName)
+				astBuilder.FileChanged = true
+			}
+
+			if astBuilder.FileChanged {
+				filePath := rspec.remapFilePath(originalFileName)
 				contents, err := rewrite.AstFileToBytes(pts.Program.Fset, file)
 				if err != nil {
 					panic(err)
 				}
-				newOverlayElements[pts.Program.Fset.File(file.FileStart).Name()] = contents
+				newOverlayElements[filePath] = contents
 			}
 		}
 	})
@@ -107,7 +233,7 @@ func RewriteCallsToReflectValueCall(
 func nodeTransform(
 	c *astutil.Cursor,
 	pts *loadprogram.State,
-	rspec ReflectValueCallRewriterSpec,
+	rspec RVCRewriterResolvedSpec,
 	astBuilder *lang.AstBuildManager) bool {
 	// If the current node, c.Node(), is a call to sort.Sort (or
 	// sort.Stable or sort.IsSorted), replace it with calls to
@@ -137,7 +263,7 @@ func nodeTransform(
 		_, interfaceSpec := astBuilder.MakeInterfaceForClass(pts.Program, astBuilder.Package.Types, vc.classLike)
 		strb := strings.Builder{}
 		printer.Fprint(&strb, pts.Program.Fset, interfaceSpec)
-		pts.Logger.Infof("Interface would be: interface %s\n", strb.String())
+		pts.Logger.Debugf("Interface would be: interface %s\n", strb.String())
 		// Now rewrite
 		for _, stmt := range constructPreface(astBuilder, vc) {
 			c.InsertBefore(stmt)
@@ -422,4 +548,9 @@ func constructSwitchCase(
 func genName(methodName, typeName string) string {
 	typeSuffix := strings.TrimPrefix(typeName, methodName)
 	return formatutil.LowerFirst(methodName) + formatutil.UpperFirst(typeSuffix) + "V"
+}
+
+func setPkgName(f *ast.File, packageName string) {
+	// The package name is the Name field in the file
+	f.Name = &ast.Ident{Name: packageName}
 }
