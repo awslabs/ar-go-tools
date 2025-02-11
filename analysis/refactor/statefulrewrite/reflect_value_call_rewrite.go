@@ -38,7 +38,7 @@ import (
 )
 
 type reflectValueSpec struct {
-	classLike lang.MaybeRefNamedType
+	classLike lang.NamedTypeModuloPointer
 	lhs       *ast.Ident
 	value     *ast.Ident
 	arg       *ast.Ident
@@ -49,7 +49,7 @@ type ReflectValueCallRewriterSpec struct {
 	// The code identifier used to identify the consumer of the class-like type.
 	Cid config.CodeIdentifier
 	// The class-like type
-	ReceiverType lang.MaybeRefNamedType
+	ReceiverType lang.NamedTypeModuloPointer
 	// The location where the consumer was found (a call instruction)
 	Location ssa.Instruction
 }
@@ -67,6 +67,19 @@ func (r ReflectValueCallRewriterSpec) Compile(lps *loadprogram.State) RVCRewrite
 			calleePkgDir = analysisutil.PackageDir(calleeFunc.Prog.Fset, calleeFunc.Pkg.Pkg) + "/"
 			calleePkg = calleeFunc.Pkg.Pkg.Name()
 			calleePkgPath = calleeFunc.Pkg.Pkg.Path()
+		}
+	}
+	// If it's the same package, no need to remap files.
+	if calleePkgDir == parentPkgDir+"/" {
+		return RVCRewriterResolvedSpec{
+			Cid:                     r.Cid,
+			ReceiverType:            r.ReceiverType,
+			ParentPkg:               parentTypePackage,
+			OldReflecterPackagePath: calleePkgPath,
+			OldReflecterPackageDir:  calleePkgDir,
+			NewPkgName:              calleePkg,
+			NewReflecterPackagePath: calleePkgPath,
+			NewReflecterPackageDir:  calleePkgDir,
 		}
 	}
 
@@ -100,7 +113,7 @@ type RVCRewriterResolvedSpec struct {
 	// The code identifier used to identify the consumer of the class-like type.
 	Cid config.CodeIdentifier
 	// The class-like type
-	ReceiverType lang.MaybeRefNamedType
+	ReceiverType lang.NamedTypeModuloPointer
 	ParentPkg    *types.Package
 	// The new package name
 	NewPkgName string
@@ -235,10 +248,6 @@ func nodeTransform(
 	pts *loadprogram.State,
 	rspec RVCRewriterResolvedSpec,
 	astBuilder *lang.AstBuildManager) bool {
-	// If the current node, c.Node(), is a call to sort.Sort (or
-	// sort.Stable or sort.IsSorted), replace it with calls to
-	// obj.Less, obj.Swap, and obj.Len, where obj is the argument
-	// that was passed to sort.
 	if _, ok := c.Node().(ast.Stmt); !ok {
 		// c.Node() is not a statement.
 		return true
@@ -257,7 +266,7 @@ func nodeTransform(
 		return true
 	}
 
-	if vc, ok := isReflectValueCall(c.Node()); ok {
+	if vc, ok := isReflectValueCall(*astBuilder.Package, c.Node()); ok {
 		vc.classLike = rspec.ReceiverType
 		// Not necessary for the rewrite: simulate the interface
 		_, interfaceSpec := astBuilder.MakeInterfaceForClass(pts.Program, astBuilder.Package.Types, vc.classLike)
@@ -279,7 +288,7 @@ func nodeTransform(
 	return true
 }
 
-func isReflectValueCall(node ast.Node) (reflectValueSpec, bool) {
+func isReflectValueCall(p packages.Package, node ast.Node) (reflectValueSpec, bool) {
 	// Test expr is of the form  [_ := _]
 	expr, ok := node.(*ast.AssignStmt)
 	if !ok {
@@ -315,9 +324,10 @@ func isReflectValueCall(node ast.Node) (reflectValueSpec, bool) {
 		// The method is not "Call".
 		return reflectValueSpec{}, false
 	}
-	// Expr is of the form [_ := reflectValueIdent.Call(_)]
+	// Expr is of the form [_ := reflectValueIdent.Call(_)] and reflectValueIdent
+	// has the right type
 	reflectValueIdent, ok := callee.X.(*ast.Ident)
-	if !ok {
+	if !ok && p.TypesInfo.TypeOf(reflectValueIdent).String() == "reflect.Value" {
 		// The left-hand-side of the selection is not a plain identifier.
 		return reflectValueSpec{}, false
 	}
@@ -387,7 +397,11 @@ func constructReflectValueCallReplacements(
 			List: clauses,
 		},
 	}
-	// reverse order of statements
+	// The statements are listed in the reverse order they should appear. The proper order is:
+	// - assign the receiver struct for the method call,
+	// - switch statement over all possible methods this receiver can call.
+	// The statements will be inserted in the reverse order in the ast by the caller, so we put
+	// the switch statement first
 	return []ast.Stmt{
 		switchStmt,
 		genReceiverAssignStmt(builder, receiverVar.Name(), spec),
