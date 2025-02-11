@@ -736,6 +736,16 @@ func (a *ClosureNode) FindBoundVar(v ssa.Value) *BoundVarNode {
 	return nil
 }
 
+// IsReachable indicates whether the closure node is reachable within the context of the
+// provided state.
+func (a *ClosureNode) IsReachable(s *State) bool {
+	if a == nil || a.instr == nil {
+		return false
+	}
+	// Documentation of ssa.MakeClosure guarantees the Fn is a function
+	return s.IsReachableFunction(a.instr.Fn.(*ssa.Function))
+}
+
 // BoundVarNode is a node that represents the bound variable when a closure is created
 type BoundVarNode struct {
 	id uint32

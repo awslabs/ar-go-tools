@@ -488,6 +488,10 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 
 			closureNode := graphNode.ParentNode()
 
+			if !closureNode.IsReachable(s) {
+				break
+			}
+
 			if !closureNode.ClosureSummary.Constructed {
 				v.onDemandIntraProcedural(s, closureNode.ClosureSummary)
 				s.FlowGraph.Sync()
