@@ -250,7 +250,7 @@ type GoModInfo struct {
 func GetGoModInfo() (GoModInfo, error) {
 	var goModInfo GoModInfo
 	// Execute command 'go list -m -u -json and unmarshal the output into a GoModInfo
-	cmd := exec.Command("go", "list", "-m", "-u", "-json")
+	cmd := exec.Command("go", "list", "-m", "-json")
 	output, err := cmd.Output()
 	if err != nil {
 		return GoModInfo{}, fmt.Errorf("failed to get go.mod info: %s", err)

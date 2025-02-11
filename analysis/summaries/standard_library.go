@@ -291,7 +291,7 @@ var summaryEncoding = map[string]Summary{
 	"(*encoding/json.Decoder).Buffered": SingleVarArgPropagation,
 	// func (dec *Decoder) Decode(v any) error {
 	"(*encoding/json.Decoder).Decode": {
-		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {1}},
 		[][]int{{0}, {0}},
 	},
 	"(*encoding/json.Decoder).DisallowUnknownFields": NoDataFlowPropagation,
@@ -605,6 +605,10 @@ var summaryMaps = map[string]Summary{
 var summaryMath = map[string]Summary{
 	"math.init":                    NoDataFlowPropagation,
 	"math.Abs":                     SingleVarArgPropagation,
+	"math.Float32bits":             SingleVarArgPropagation, // uses unsafe
+	"math.Float32frombits":         SingleVarArgPropagation, // uses unsafe
+	"math.Float64bits":             SingleVarArgPropagation, // uses unsafe
+	"math.Float64frombits":         SingleVarArgPropagation, // uses unsafe
 	"math.IsNaN":                   SingleVarArgPropagation,
 	"math.IsInf":                   SingleVarArgPropagation,
 	"math.Log2":                    SingleVarArgPropagation,
