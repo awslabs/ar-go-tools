@@ -176,6 +176,9 @@ func (a *AstBuildManager) RegisterImports() {
 // struct{...}.
 //
 // For an integer, the expression is an identifier 'int'
+//
+// The function will panic for non-suppoted types. Currently, only base, pointer, named
+// and struct types are supported.
 func (a *AstBuildManager) NewAstTypeExpr(t types.Type) ast.Expr {
 	switch t0 := t.(type) {
 	case *types.Basic:
@@ -193,8 +196,8 @@ func (a *AstBuildManager) NewAstTypeExpr(t types.Type) ast.Expr {
 	}
 }
 
-// newAstStructTypeExpr returns the expression representing a struct type, or an error if it could not create that
-// expression.
+// newAstStructTypeExpr returns the expression representing a struct type.
+// The function may panic on unsupported types (see NewAwstTypeExpr).
 func (a *AstBuildManager) newAstStructTypeExpr(t *types.Struct) ast.Expr {
 	n := t.NumFields()
 	var fields []*ast.Field
@@ -281,8 +284,12 @@ func (a *AstBuildManager) NewFieldList(host *types.Package, tuple *types.Tuple) 
 	}
 }
 
-// MaybeRefNamedType is a named type or a pointer to a named type.
-type MaybeRefNamedType struct {
+// NamedTypeModuloPointer is a named type or a pointer to a named type.
+// The Named and Actual fields should both be non-nil.
+// If the actual type is a pointer, then the type of the element is Named and
+// IsRef is true.
+// If the actual type is a named type, then Actual == Named and IsRef is false.
+type NamedTypeModuloPointer struct {
 	// Named is the named part of the type
 	Named *types.Named
 	// Actual is the actual type, either a (*types.Named) or (*types.Pointer)
@@ -296,7 +303,7 @@ type MaybeRefNamedType struct {
 func (a *AstBuildManager) MakeInterfaceForClass(
 	program *ssa.Program,
 	host *types.Package,
-	classLike MaybeRefNamedType,
+	classLike NamedTypeModuloPointer,
 ) (string, *ast.TypeSpec) {
 	methods := program.MethodSets.MethodSet(classLike.Actual)
 

@@ -77,7 +77,7 @@ func StatefulRewritesOverlayTransform(c *config.State, spec StatefulRewritesOver
 // FindImpl returns the types of the arguments of the functions identified by the code identifier. The
 // returned type is either a named type or a pointer to a named type.
 func FindImpl(s *loadprogram.State, ci config.CodeIdentifier) fn.Optional[ReflectValueCallRewriterSpec] {
-	seen := make(map[lang.MaybeRefNamedType]struct{})
+	seen := make(map[lang.NamedTypeModuloPointer]struct{})
 	locations := make(map[ssa.Instruction]struct{})
 	for f := range ssautil.AllFunctions(s.Program) {
 		lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
@@ -112,7 +112,7 @@ func FindImpl(s *loadprogram.State, ci config.CodeIdentifier) fn.Optional[Reflec
 				possiblyNamedTy = ptrTy.Elem()
 			}
 			if tNamed, ok := possiblyNamedTy.(*types.Named); ok {
-				seen[lang.MaybeRefNamedType{IsRef: isPtr, Named: tNamed, Actual: actualObjTyp}] = struct{}{}
+				seen[lang.NamedTypeModuloPointer{IsRef: isPtr, Named: tNamed, Actual: actualObjTyp}] = struct{}{}
 				locations[instr] = struct{}{}
 			}
 

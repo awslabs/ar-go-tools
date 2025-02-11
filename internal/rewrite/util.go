@@ -333,7 +333,12 @@ func FreshVar(p *types.Package, scope *types.Scope, base string, t types.Type) *
 }
 
 // TypeNameForGeneration recursively decomposes the type to find a type.Named
-// to use for variable name generation.
+// to use for variable name generation. This is a heuristic that could potentially
+// generate names that are easier for debugging purposes.
+//
+// This shouldn't be relied on as the sole mechanism to generate variable names. The
+// caller is responsible for checking that the name is not already defined in the scope
+// when a fresh variable name is required.
 func TypeNameForGeneration(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Basic:
@@ -351,6 +356,8 @@ func TypeNameForGeneration(t types.Type) string {
 	case *types.Chan:
 		return TypeNameForGeneration(t.Elem())
 	case *types.Signature:
+		// Only take the first type. We could improve the heuristic to use multiple
+		// types, but we also prefer to have short identifiers.
 		return TypeNameForGeneration(t.Params().At(0).Type())
 	case *types.Struct:
 		return TypeNameForGeneration(t.Field(0).Type())
