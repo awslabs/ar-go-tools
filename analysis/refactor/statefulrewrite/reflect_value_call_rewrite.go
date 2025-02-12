@@ -69,6 +69,7 @@ func (r ReflectValueCallRewriterSpec) Compile(lps *loadprogram.State) RVCRewrite
 			calleePkgPath = calleeFunc.Pkg.Pkg.Path()
 		}
 	}
+
 	// If it's the same package, no need to remap files.
 	if calleePkgDir == parentPkgDir+"/" {
 		return RVCRewriterResolvedSpec{
@@ -324,11 +325,15 @@ func isReflectValueCall(p packages.Package, node ast.Node) (reflectValueSpec, bo
 		// The method is not "Call".
 		return reflectValueSpec{}, false
 	}
-	// Expr is of the form [_ := reflectValueIdent.Call(_)] and reflectValueIdent
-	// has the right type
+	// Expr is of the form [_ := reflectValueIdent.Call(_)]
 	reflectValueIdent, ok := callee.X.(*ast.Ident)
-	if !ok && p.TypesInfo.TypeOf(reflectValueIdent).String() == "reflect.Value" {
+	if !ok {
 		// The left-hand-side of the selection is not a plain identifier.
+		return reflectValueSpec{}, false
+	}
+	// reflectValueIdent must have the right type, i.e. it's a reflect.Value
+	rt := p.TypesInfo.TypeOf(reflectValueIdent)
+	if rt == nil || rt.String() != "reflect.Value" {
 		return reflectValueSpec{}, false
 	}
 	// Expr is of the form [_ := reflectValueIdent.Call(<arg>)]
