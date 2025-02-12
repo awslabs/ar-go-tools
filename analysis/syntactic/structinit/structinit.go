@@ -30,6 +30,12 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// AnalysisReqs groups the options of the analysis together
+type AnalysisReqs struct {
+	// Tag is the tag of the problem to analyze
+	Tag string
+}
+
 // AnalysisResult is the result of the struct-init analysis.
 type AnalysisResult struct {
 	// InitInfos is a mapping from the named struct type to its initialization
@@ -77,15 +83,20 @@ type InvalidWrite struct {
 }
 
 // Analyze runs the analysis on prog.
-func Analyze(state *ptr.State) (AnalysisResult, error) {
+func Analyze(state *ptr.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	program := state.Program
 	fns := state.ReachableFunctions()
 	if len(fns) == 0 {
 		return AnalysisResult{}, fmt.Errorf("no functions found")
 	}
-	specs := structInitSpecs(state.Config, state.Target)
+	specs := structInitSpecs(state.Config, state.Target, reqs.Tag)
 	state.Logger.Infof("%d struct-init specs to check: %s", len(specs), strings.Join(
 		funcutil.Map(specs, func(ss config.StructInitSpec) string { return ss.Tag }), ","))
+	if len(specs) == 0 {
+		// If there is no specs here, it's like because of the tags being filtered out by structInitSpecs
+		state.Logger.Infof("No struct-init specs matching configuration; check the tags if you expected a result")
+		return AnalysisResult{}, nil
+	}
 	for fn := range fns {
 		if funcutil.Exists(specs, func(s config.StructInitSpec) bool { return isFiltered(s, fn) }) {
 			delete(fns, fn)
@@ -202,10 +213,11 @@ func debug(logger *config.LogGroup, res AnalysisResult, structToNamed map[*types
 	}
 }
 
-func structInitSpecs(cfg *config.Config, target string) []config.StructInitSpec {
+func structInitSpecs(cfg *config.Config, target string, tag string) []config.StructInitSpec {
 	var res []config.StructInitSpec
 	for _, stspec := range cfg.SyntacticProblems.StructInitProblems {
-		if target == "" || funcutil.Contains(stspec.Targets, target) {
+		if (target == "" || funcutil.Contains(stspec.Targets, target)) &&
+			(tag == "" || stspec.Tag == tag) {
 			res = append(res, stspec)
 		}
 	}

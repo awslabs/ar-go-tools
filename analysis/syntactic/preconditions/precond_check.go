@@ -31,6 +31,7 @@ import (
 
 // An AnalysisResult of the condition checking analysis returns the list of location where unchecked calls occur.
 type AnalysisResult struct {
+	NumSpecs      int
 	UncheckedLocs map[string][]token.Position
 }
 
@@ -43,10 +44,12 @@ type AnalysisReqs struct {
 // Analyze runs the analysis on the program wrapped in the pointer state.
 func Analyze(state *ptr.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	locs := map[string][]token.Position{}
+	analyzed := 0
 	for _, spec := range state.Config.SyntacticProblems.CondCheckSpecs {
 		// Check if the spec applies (tag and target)
 		if (reqs.Tag == "" || spec.SpecTag() == reqs.Tag) &&
 			(fn.Contains(spec.Targets, state.Target) || state.Target == "") {
+			analyzed += 1
 			state.Logger.Infof("checking tag \"%s\"", formatutil.Bold(spec.Tag))
 			specResult, err := analyzeSpec(state, spec)
 			if err != nil {
@@ -62,11 +65,14 @@ func Analyze(state *ptr.State, reqs AnalysisReqs) (AnalysisResult, error) {
 			})
 		}
 	}
-	return AnalysisResult{UncheckedLocs: locs}, nil
+	return AnalysisResult{NumSpecs: analyzed, UncheckedLocs: locs}, nil
 }
 
 // ReportResults writes res to a string and returns true if the analysis has findings.
 func ReportResults(res AnalysisResult) (string, bool) {
+	if res.NumSpecs == 0 {
+		return "precondition analysis didn't run; check the tags if you expected a result", false
+	}
 	w := &strings.Builder{}
 	w.WriteString("\nprecondition analysis results:\n")
 	w.WriteString("-----------------------------\n")
