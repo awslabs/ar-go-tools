@@ -71,6 +71,10 @@ func Run(flags tools.CommonFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to get syntactic targets: %s", err)
 	}
+	if len(actualTargets) == 0 {
+		tmpLogger.Warnf("No syntactic targets found.")
+		return nil
+	}
 	for targetName, target := range actualTargets {
 		_, report, err := runTarget(cfg, targetName, target.Files, target.Platform, flags)
 		if err != nil {
@@ -110,18 +114,21 @@ func runTarget(
 	// struct analysis
 	structAnalysisFailed := false
 	if len(cfg.SyntacticProblems.StructInitProblems) > 0 {
+		start := time.Now()
 		c.Logger.Infof("starting struct init analysis...\n")
-		structInitRes, err := structinit.Analyze(state)
+		structInitRes, err := structinit.Analyze(state, structinit.AnalysisReqs{Tag: flags.Tag})
 		if err != nil {
 			return false, nil, fmt.Errorf("struct init analysis error: %v", err)
 		}
 		var s string
 		s, structAnalysisFailed = structinit.ReportResults(structInitRes)
+		c.Logger.Infof("Struct analysis done (%.3f s)", time.Since(start).Seconds())
 		c.Logger.Infof(s)
 	}
 	// condition check analysis
 	preconditionAnalysisFailed := false
 	if len(cfg.SyntacticProblems.CondCheckSpecs) > 0 {
+		start := time.Now()
 		c.Logger.Infof("starting precondition analysis...\n")
 		precondCheckRes, err := preconditions.Analyze(state, preconditions.AnalysisReqs{Tag: flags.Tag})
 		if err != nil {
@@ -129,28 +136,12 @@ func runTarget(
 		}
 		var s string
 		s, preconditionAnalysisFailed = preconditions.ReportResults(precondCheckRes)
+		c.Logger.Infof("Precondition analysis done (%.3f s)", time.Since(start).Seconds())
 		c.Logger.Infof(s)
 	}
 	// Failure for all syntactic analyses
 	if structAnalysisFailed || preconditionAnalysisFailed {
 		return false, state.Report, fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
-	}
-	return RunSyntactic(targetName, state)
-}
-
-// RunSyntactic runs the syntactic analysis on the pointer state
-func RunSyntactic(targetName string, state *ptr.State) (bool, *config.ReportInfo, error) {
-	start := time.Now()
-	state.Logger.Infof("starting struct init analysis for %s...\n", targetName)
-	res, err := structinit.Analyze(state)
-	if err != nil {
-		return false, nil, fmt.Errorf("struct init analysis error: %v", err)
-	}
-	s, failed := structinit.ReportResults(res)
-	state.Logger.Infof("Struct analysis done (%.3f s)", time.Since(start).Seconds())
-	state.Logger.Infof(s)
-	if failed {
-		return false, state.Report, fmt.Errorf("struct init analysis found problems, inspect logs for more information")
 	}
 	return false, state.Report, nil
 }

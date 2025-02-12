@@ -96,7 +96,7 @@ func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, structinit.A
 	if err != nil {
 		t.Fatalf("failed to load : %s", err)
 	}
-	result, err := structinit.Analyze(state)
+	result, err := structinit.Analyze(state, structinit.AnalysisReqs{})
 	if err != nil {
 		t.Fatalf("struct-init analysis failed: %v", err)
 	}
