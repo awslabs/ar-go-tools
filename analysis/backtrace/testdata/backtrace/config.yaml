@@ -1,3 +1,6 @@
+options:
+  report-paths: true
+
 dataflow-problems:
   slicing:
     - backtracepoints:

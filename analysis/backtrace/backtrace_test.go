@@ -139,8 +139,6 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 			// "(SA)call: os/exec.Command("ls":string, nil:[]string...) in main [#580.5]: @arg 1:nil:[]string [#580.7]" at -
 			matches: []match{
 				{arg, argval{`nil:[]string`, 1}, 26},
-				{param, `parameter arg : []string`, -1}, // line -1 means ignore position
-				{arg, argval{`nil:[]string`, 1}, 26},
 			},
 		},
 		{
@@ -219,8 +217,6 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 				// TODO detect the mutation inside the function to make this more precise
 				{arg, argval{`nil:[]string`, 1}, 36},
 				{param, `parameter args : []string`, 71},
-				{arg, argval{`nil:[]string`, 1}, 36},
-				{param, `parameter args : []string`, 71},
 				{arg, argval{`args`, 1}, 72},
 			},
 		},
@@ -241,8 +237,6 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 			// "[#582.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			// "(SA)call: os/exec.Command(name, args...) in runcmd [#582.3]: @arg 0:name [#582.4]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:13
 			matches: []match{
-				{arg, argval{`nil:[]string`, 1}, 39},
-				{param, `parameter args : []string`, 71},
 				{arg, argval{`nil:[]string`, 1}, 39},
 				{param, `parameter args : []string`, 71},
 				{arg, argval{`args`, 1}, 72},
@@ -292,8 +286,6 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 			// "[#578.1] parameter args : []string of runcmd [1]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:26
 			// "(SA)call: os/exec.Command(name, args...) in runcmd [#578.3]: @arg 1:args [#578.5]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:71:26
 			matches: []match{
-				{arg, argval{`nil:[]string`, 1}, 55},
-				{param, `parameter args : []string`, 71},
 				{arg, argval{`nil:[]string`, 1}, 55},
 				{param, `parameter args : []string`, 71},
 				{arg, argval{`args`, 1}, 72},
@@ -368,7 +360,7 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 			t.Parallel()
 
 			if !funcutil.Exists(traces, func(trace backtrace.Trace) bool {
-				ok, err := matchTrace(trace, test.matches)
+				ok, err := matchTrace(state, trace, test.matches)
 				_ = err
 				// // NOTE commented out for debugging
 				// if err != nil {
@@ -384,7 +376,7 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 
 	t.Run(`trace to bar("x") should not exist`, func(t *testing.T) {
 		if funcutil.Exists(traces, func(trace backtrace.Trace) bool {
-			arg, ok := trace[0].GraphNode.(*dataflow.CallNodeArg)
+			arg, ok := trace[0].Node.(*dataflow.CallNodeArg)
 			if !ok {
 				return false
 			}
@@ -546,7 +538,7 @@ func testAnalyzeClosures(t *testing.T, lp *loadprogram.State) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if !funcutil.Exists(traces, func(trace backtrace.Trace) bool {
-				ok, err := matchTrace(trace, test.matches)
+				ok, err := matchTrace(state, trace, test.matches)
 				_ = err
 				// // NOTE commented out for debugging
 				// if err != nil {
@@ -567,8 +559,7 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lp.Config.SummarizeOnDemand = true
-	lp.Config.LogLevel = int(config.InfoLevel) // increasing to level > InfoLevel throws off IDE
+	setupConfig(lp, true)
 	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
@@ -580,14 +571,14 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 	if len(res.Traces) != 1 {
 		t.Fatalf("expected a single entry point with a trace for check_static")
 	}
-	expected := regexp.MustCompile("Int.return.0.*math/rand/rand.go")
+	expected := regexp.MustCompile(".*Int.return.0")
 	for _, traces := range res.Traces {
 		if len(traces) != 2 {
 			t.Fatalf("expected two traces for the entry point for check_static")
 		}
 		for _, trace := range traces {
-			if !expected.MatchString(trace[0].String()) {
-				t.Fatalf("Origin %s of trace doesn't match the expected %s", trace[0], expected)
+			if !expected.MatchString(trace[0][0].Node.String()) {
+				t.Fatalf("Origin %s of trace doesn't match the expected %s", trace[0][0].Node, expected)
 			}
 		}
 	}
@@ -618,7 +609,7 @@ type match struct {
 	line int // 0 is invalid, 1+ is valid
 }
 
-func matchTrace(trace backtrace.Trace, matches []match) (bool, error) {
+func matchTrace(state *dataflow.State, trace backtrace.Trace, matches []match) (bool, error) {
 	ignoreCount := 0
 	for _, m := range matches {
 		if m == ignoreMatch {
@@ -636,8 +627,8 @@ func matchTrace(trace backtrace.Trace, matches []match) (bool, error) {
 		}
 
 		// line: -1 means ignore position
-		if (trace[i].Pos.Line != m.line) && (m.line != -1) {
-			return false, fmt.Errorf("wrong line number: want %d, got %d", m.line, trace[i].Pos.Line)
+		if (trace[i].Node.Position(state).Line != m.line) && (m.line != -1) {
+			return false, fmt.Errorf("wrong line number: want %d, got %d", m.line, trace[i].Node.Position(state).Line)
 		}
 
 		ok, err := matchNode(trace[i], m)
@@ -650,8 +641,8 @@ func matchTrace(trace backtrace.Trace, matches []match) (bool, error) {
 }
 
 //gocyclo:ignore
-func matchNode(tnode backtrace.TraceNode, m match) (bool, error) {
-	switch node := tnode.GraphNode.(type) {
+func matchNode(tnode *dataflow.VisitorNode, m match) (bool, error) {
+	switch node := tnode.Node.(type) {
 	case *dataflow.CallNodeArg:
 		mval := m.val.(argval)
 		val := mval.val == node.Value().Name() || (mval.val == nil && !backtrace.IsStatic(node))
@@ -711,7 +702,7 @@ func setupConfig(lp *loadprogram.State, summarizeOnDemand bool) {
 
 	cfg := lp.Config
 	cfg.Options.ReportCoverage = false
-	cfg.Options.ReportPaths = false
+	cfg.Options.ReportPaths = false // change this as needed for debugging
 	cfg.Options.ReportSummaries = false
 	cfg.Options.ReportsDir = ""
 	cfg.LogLevel = int(level)

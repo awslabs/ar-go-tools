@@ -484,8 +484,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool 
 
 	var traces []backtrace.Trace
 	for _, ps := range c.Config.SlicingProblems {
-		visitor := &backtrace.Visitor{}
-		visitor.SlicingSpec = &ps
+		visitor := backtrace.NewVisitor(ps)
 		c.FlowGraph.RunVisitorOnEntryPoints(
 			visitor,
 			dataflow.ScanningSpec{
