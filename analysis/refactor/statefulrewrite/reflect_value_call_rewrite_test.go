@@ -14,6 +14,12 @@
 
 package statefulrewrite_test
 
+// This file contains code examples that show both correct
+// and incorrect uses of reflect.Value with nil interface values.
+//
+// It does not actually test any functionality of the statefulrewrite package
+// but was helpful in implementing it.
+
 import (
 	"fmt"
 	"reflect"
