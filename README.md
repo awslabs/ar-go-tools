@@ -1,8 +1,12 @@
 [![build-analyze-test](https://github.com/awslabs/ar-go-tools/actions/workflows/bat.yml/badge.svg)](https://github.com/awslabs/ar-go-tools/actions/workflows/bat.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-# Argot
 
+| Repository                                                  | Status                                                                                                                                                                                                                 |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Amazon-ssm-agent](https://github.com/aws/amazon-ssm-agent) | [![Amazon-ssm-agent checks](https://github.com/awslabs/ar-go-tools/actions/workflows/amazon-ssm-agent-checking.yml/badge.svg)](https://github.com/awslabs/ar-go-tools/actions/workflows/amazon-ssm-agent-checking.yml) |
+
+# Argot
 
 ## Overview
 
@@ -16,7 +20,7 @@ functions that appear in the binary
 - `dependencies` prints the dependencies of a given program
 - `maypanic` performs a may-panic analysis on a given program
 - `packagescan` scans imports in packages
-- `reachability` analyzes the program an prints the functions that are reachable within it
+- `reachability` analyzes the program and prints the functions that are reachable within it
 - `render` can be used to render a graph representation of the callgraph, or to print the SSA form from the go analysis
 package
 - `ssa-statistics` prints statistics about the program
@@ -64,6 +68,6 @@ Static analyses that require pointer and callgraph information should depend on 
 - `summaries` defines dataflow summaries of some functions,
 - `taint` implements the taint analysis
 
-The test data for the analyses are in individual `analysis/___/testdata` folders. 
+The test data for the analyses are in individual `analysis/___/testdata` folders.
 
 The `internal` folder also contains code that implements utility functions used through the analysis code.
