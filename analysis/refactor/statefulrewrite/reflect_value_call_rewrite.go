@@ -515,7 +515,7 @@ func constructSwitchCase(
 		// See the comment below for more details on why this is necessary.
 		if types.IsInterface(rtyp) {
 			body = append(body,
-				lang.NewMultiAssignDecl([]string{rxRefl.Name()}, newReflectZeroVal(rtyp)))
+				lang.NewMultiAssignDecl([]string{rxRefl.Name()}, newReflectZeroVal(builder, rtyp)))
 		}
 	}
 
@@ -632,7 +632,7 @@ func newReflectValueVar(builder *lang.AstBuildManager, scope *types.Scope, ref *
 // E.g., if t is iface then this function returns:
 //
 //	reflect.Zero(reflect.TypeOf((*iface)(nil)).Elem())
-func newReflectZeroVal(t types.Type) *ast.CallExpr {
+func newReflectZeroVal(builder *lang.AstBuildManager, t types.Type) *ast.CallExpr {
 	return &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   &ast.Ident{Name: "reflect"},
@@ -650,7 +650,7 @@ func newReflectZeroVal(t types.Type) *ast.CallExpr {
 							&ast.CallExpr{
 								Fun: &ast.ParenExpr{
 									X: &ast.StarExpr{
-										X: &ast.Ident{Name: t.String()},
+										X: builder.NewAstTypeExpr(t),
 									},
 								},
 								Args: []ast.Expr{
