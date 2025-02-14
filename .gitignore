@@ -12,3 +12,6 @@ taint-report*
 *-report
 .emacs.desktop
 .idea
+.venv
+# Check targets
+amazon-ssm-agent
