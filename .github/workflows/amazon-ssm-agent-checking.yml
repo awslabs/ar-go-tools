@@ -1,0 +1,21 @@
+name: checking_amazon-ssm-agent
+on:
+  pull_request:
+    branches:
+      - mainline
+  push:
+    branches:
+      - mainline
+  schedule:
+    - cron: '30 15 * * 3'
+jobs:
+  Test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Build docker images
+        run: docker build -t amazon-ssm-agent-check -f payload/amazon-ssm-agent-check/Dockerfile .
+      - name: Run tests
+        run: docker run amazon-ssm-agent-check:latest -c "sh ./payload/amazon-ssm-agent-check/runner.sh"

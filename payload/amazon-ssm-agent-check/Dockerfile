@@ -19,7 +19,7 @@ RUN go install github.com/awslabs/ar-go-tools/cmd/argot
 
 # Install Python dependencies:
 ## Remove any leftover .venv
-RUN rm -r .venv
+RUN rm -rf .venv
 ## Create venv
 RUN python3 -m venv .venv
 ## Get pip deps
@@ -27,7 +27,7 @@ RUN . .venv/bin/activate && \
     pip install -r payload/amazon-ssm-agent-check/requirements.txt
 
 # Clean & Clone the Amazon-ssm-agent
-RUN rm -r amazon-ssm-agent && \
+RUN rm -rf amazon-ssm-agent && \
     git clone https://github.com/aws/amazon-ssm-agent.git && \
     mkdir -p amazon-ssm-agent/logs/argot
 
