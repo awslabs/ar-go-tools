@@ -31,6 +31,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/rewrite"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
@@ -476,27 +477,52 @@ func constructSwitchCase(
 			Type: builder.NewAstTypeExpr(param.Type()),
 		})
 		arg := &ast.Ident{Name: argVar.Name()}
-		//
 		body = append(body, assignmt)
 		args = append(args, arg)
 	}
 
-	// Declare return values
+	// Declare concrete and reflect return values
 	results := methodType.Results()
-	resNames := []string{}
+	resVars := []*types.Var{}
+	reflectVars := []*types.Var{}
 	for i := 0; i < results.Len(); i++ {
 		rt := results.At(i)
-		rtypName := rewrite.TypeNameForGeneration(rt.Type())
-		rx := rewrite.FreshVar(builder.Package.Types, scope, genName(methodName, rtypName), rt.Type())
-
-		resNames = append(resNames, rx.Name())
+		rtyp := rt.Type()
+		rtypName := rewrite.TypeNameForGeneration(rtyp)
+		rx := rewrite.FreshVar(builder.Package.Types, scope,
+			genName(methodName, rtypName), rt.Type())
+		resVars = append(resVars, rx)
+		rxRefl := newReflectValueVar(builder, scope, rx)
+		reflectVars = append(reflectVars, rxRefl)
 		body = append(body, builder.NewVarDecl(rx))
+		// Declare the reflect.Value variable for the actual result variable
+		body = append(body, &ast.DeclStmt{
+			Decl: &ast.GenDecl{
+				Tok: token.VAR,
+				Specs: []ast.Spec{
+					&ast.ValueSpec{
+						Names: []*ast.Ident{ast.NewIdent(rxRefl.Name())},
+						Type: &ast.SelectorExpr{
+							X:   ast.NewIdent("reflect"),
+							Sel: ast.NewIdent("Value"),
+						},
+					},
+				},
+			},
+		})
+		// If the type of the result is an interface, initialize the reflect.Value
+		// variable to the zero value.
+		// See the comment below for more details on why this is necessary.
+		if types.IsInterface(rtyp) {
+			body = append(body,
+				lang.NewMultiAssignDecl([]string{rxRefl.Name()}, newReflectZeroVal(rtyp)))
+		}
 	}
 
 	// Get the method results
 	methodResults := methodType.Results()
 	if methodResults.Len() == 0 {
-		// No result; jsut call the method
+		// No result; just call the method
 		body = append(body,
 			&ast.ExprStmt{
 				X: &ast.CallExpr{
@@ -522,17 +548,41 @@ func constructSwitchCase(
 			},
 			Args: args,
 		}
-		body = append(body, lang.NewMultiAssignDecl(resNames, fcall))
+		body = append(body, lang.NewMultiAssignDecl(
+			funcutil.Map(resVars, func(v *types.Var) string { return v.Name() }),
+			fcall))
 		// Assign results
 		for i := 0; i < results.Len(); i++ {
+			reflectValVarName := reflectVars[i].Name()
 			reflectValueCall := &ast.CallExpr{
 				Fun: &ast.SelectorExpr{
 					X:   &ast.Ident{Name: "reflect"},
 					Sel: &ast.Ident{Name: "ValueOf"},
 				},
 				Args: []ast.Expr{
-					&ast.Ident{Name: resNames[i]},
+					&ast.Ident{Name: resVars[i].Name()},
 				},
+			}
+			// If the type is an interface, only call reflect.ValueOf if it's non-nil.
+			// Otherwise, it remains as the zero value of the interface.
+			// This is important because reflect.ValueOf does not construct a
+			// typed nil value when passed a nil interface value.
+			if types.IsInterface(resVars[i].Type()) {
+				body = append(body, &ast.IfStmt{
+					Cond: &ast.BinaryExpr{
+						X:  &ast.Ident{Name: resVars[i].Name()},
+						Op: token.NEQ,
+						Y:  &ast.Ident{Name: "nil"},
+					},
+					Body: &ast.BlockStmt{
+						List: []ast.Stmt{
+							lang.NewMultiAssignDecl([]string{reflectValVarName}, reflectValueCall),
+						},
+					},
+				})
+			} else {
+				body = append(body, lang.NewMultiAssignDecl(
+					[]string{reflectValVarName}, reflectValueCall))
 			}
 			body = append(body, &ast.AssignStmt{
 				Lhs: []ast.Expr{
@@ -544,7 +594,7 @@ func constructSwitchCase(
 						Fun: &ast.Ident{Name: "append"},
 						Args: []ast.Expr{
 							&ast.Ident{Name: cs.lhs},
-							reflectValueCall,
+							&ast.Ident{Name: reflectValVarName},
 						},
 					},
 				},
@@ -561,6 +611,59 @@ func constructSwitchCase(
 			},
 		},
 		Body: body,
+	}
+}
+
+const reflectValNameSuffix = "ReflectVal"
+
+// newReflectValueVar creates a new variable name to store the reflect.Value value of ref.
+func newReflectValueVar(builder *lang.AstBuildManager, scope *types.Scope, ref *types.Var) *types.Var {
+	return rewrite.FreshVar(
+		builder.Package.Types, scope, ref.Name()+reflectValNameSuffix,
+		ref.Type()) // this type doesn't have to be reflect.Value since it's just used to generate a new name
+}
+
+// newReflectZeroVal constructs the reflect.Zero value of type t.
+// It uses a typed nil pointer to the interface type because otherwise the
+// interface value to reflect.TypeOf is converted to interface{} and loses its
+// concrete type.
+// Source: https://stackoverflow.com/a/68866751
+//
+// E.g., if t is iface then this function returns:
+//
+//	reflect.Zero(reflect.TypeOf((*iface)(nil)).Elem())
+func newReflectZeroVal(t types.Type) *ast.CallExpr {
+	return &ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   &ast.Ident{Name: "reflect"},
+			Sel: &ast.Ident{Name: "Zero"},
+		},
+		Args: []ast.Expr{
+			&ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X: &ast.CallExpr{
+						Fun: &ast.SelectorExpr{
+							X:   &ast.Ident{Name: "reflect"},
+							Sel: &ast.Ident{Name: "TypeOf"},
+						},
+						Args: []ast.Expr{
+							&ast.CallExpr{
+								Fun: &ast.ParenExpr{
+									X: &ast.StarExpr{
+										X: &ast.Ident{Name: t.String()},
+									},
+								},
+								Args: []ast.Expr{
+									&ast.Ident{Name: "nil"},
+								},
+							},
+						},
+					},
+					Sel: &ast.Ident{Name: "Elem"},
+				},
+				Args: []ast.Expr{}, // call to (reflect.Type).Elem takes no arguments
+			},
+		},
 	}
 }
 
