@@ -335,6 +335,10 @@ func (g *SummaryGraph) addCallInstr(c *State, instr ssa.CallInstruction) {
 	}
 
 	args := lang.GetArgs(instr)
+	params := lang.GetParams(instr)
+	if len(params) != len(args) {
+		panic(fmt.Errorf("param len %d != arg len %d: params: %v, args: %v", len(params), len(args), params, args))
+	}
 	callees, err := c.ResolveCallee(instr, true)
 	if err != nil {
 		c.Logger.Errorf("missing information in state (%s), could not resolve callee in instruction %s", err,
@@ -363,12 +367,13 @@ func (g *SummaryGraph) addCallInstr(c *State, instr ssa.CallInstruction) {
 
 		for pos, arg := range args {
 			argNode := &CallNodeArg{
-				id:       g.newNodeID(),
-				parent:   node,
-				ssaValue: arg,
-				argPos:   pos,
-				out:      make(map[GraphNode][]EdgeInfo),
-				in:       make(map[GraphNode]EdgeInfo),
+				id:        g.newNodeID(),
+				parent:    node,
+				ssaValue:  arg,
+				argPos:    pos,
+				out:       make(map[GraphNode][]EdgeInfo),
+				in:        make(map[GraphNode]EdgeInfo),
+				paramName: params[pos].Name(),
 			}
 			node.args[pos] = argNode
 		}
@@ -384,7 +389,7 @@ func (g *SummaryGraph) addBuiltinCallInstr(instr ssa.CallInstruction) {
 		return
 	}
 
-	//_args := lang.GetArgs(instr)
+	// _args := lang.GetArgs(instr)
 
 	node := &BuiltinCallNode{
 		id:       g.newNodeID(),
@@ -861,7 +866,7 @@ func (g *SummaryGraph) addGlobalEdge(mark MarkWithAccessPath, cond *ConditionInf
 
 	if node == nil {
 		// TODO: debug this
-		//g.addError(fmt.Errorf("attempting to set global edge but no global node"))
+		// g.addError(fmt.Errorf("attempting to set global edge but no global node"))
 		return
 	}
 	// Set node to written

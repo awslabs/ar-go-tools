@@ -218,7 +218,7 @@ func reachedSinkPositions(s *dataflow.State, res backtrace.AnalysisResult) map[t
 					sn := sourceNode(node.Node)
 
 					// Source nodes are slicing points, and we have a special slicingOrigin to test directly slicing
-					if dataflow.IsSourceNode(s, nil, sn) || strings.Contains(node.Node.String(), "slicingOrigin") {
+					if _, ok := dataflow.IsSourceNode(s, nil, sn); ok || strings.Contains(node.Node.String(), "slicingOrigin") {
 						sourcePos := instr.Pos()
 						sourceFile := prog.Fset.File(sourcePos)
 						if sourcePos == token.NoPos || sourceFile == nil {

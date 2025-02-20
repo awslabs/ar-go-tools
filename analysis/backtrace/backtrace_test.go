@@ -70,6 +70,56 @@ func TestAnalyze_OnDemand(t *testing.T) {
 	testAnalyze(t, lp)
 }
 
+// TestAnalyze_SpecificObjs tests the new config code identifier format that
+// enables specific objects (e.g. a single argument) to be a backtrace-point
+// instead of all arguments of a call.
+func TestAnalyze_SpecificObjs(t *testing.T) {
+	dir := filepath.Join("./testdata", "trace-specific")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp, true)
+	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []traceTest{
+		{
+			name: `trace to trackSecondArg arg 1 in main from main`,
+			matches: []match{
+				{arg, argval{`"test":string`, 1}, 19},
+			},
+		},
+		{
+			name: `trace to trackSecondAndThirdArg arg 1 in main from main`,
+			matches: []match{
+				{arg, argval{`1:uint`, 1}, 21},
+			},
+		},
+		{
+			name: `trace to trackSecondAndThirdArg arg 2 in main from main`,
+			matches: []match{
+				{arg, argval{`"test2":string`, 2}, 21},
+			},
+		},
+	}
+
+	checkTraces(t, res, tests)
+
+	// Make sure no extra traces are reported by, for example,
+	// analyzing an un-configured entrypoint
+	traces := mergeTraces(res)
+	if len(traces) != len(tests) {
+		t.Errorf("want only %d traces, got %d", len(tests), len(traces))
+	}
+}
+
 // TestAnalyze_MaxDepth tests that the unsafe-max-depth config option results in
 // an error if the max depth is exceeded while computing a trace.
 func TestAnalyze_MaxDepth(t *testing.T) {
@@ -123,10 +173,7 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 		t.Fatal(err)
 	}
 
-	tests := []struct {
-		name    string
-		matches []match
-	}{
+	tests := []traceTest{
 		{
 			name: `trace to os/exec.Command arg 0 in main from os/exec.Command arg 0 in main`,
 			// "(SA)call: os/exec.Command("ls":string, nil:[]string...) in main [#576.5]: @arg 0:"ls":string [#576.6]" at -
@@ -343,37 +390,9 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 		},
 	}
 
+	checkTraces(t, res, tests)
+
 	traces := mergeTraces(res)
-	if len(traces) < len(tests) {
-		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(traces))
-	}
-
-	// // NOTE Uncomment to debug
-	// t.Log("TRACES:")
-	// for _, trace := range res.Traces {
-	// 	t.Log(trace)
-	// }
-
-	for _, test := range tests {
-		test := test // needed for t.Parallel()
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			if !funcutil.Exists(traces, func(trace backtrace.Trace) bool {
-				ok, err := matchTrace(state, trace, test.matches)
-				_ = err
-				// // NOTE commented out for debugging
-				// if err != nil {
-				// 	t.Errorf("failed match: %v in trace: %v", err, trace)
-				// }
-
-				return ok
-			}) {
-				t.Error("no match")
-			}
-		})
-	}
-
 	t.Run(`trace to bar("x") should not exist`, func(t *testing.T) {
 		if funcutil.Exists(traces, func(trace backtrace.Trace) bool {
 			arg, ok := trace[0].Node.(*dataflow.CallNodeArg)
@@ -426,10 +445,7 @@ func testAnalyzeClosures(t *testing.T, lp *loadprogram.State) {
 		t.Fatal(err)
 	}
 
-	tests := []struct {
-		name    string
-		matches []match
-	}{
+	tests := []traceTest{
 		{
 			name: `trace to source in example1 from sink arg 0 in example1`,
 			// "[#471.0] source.return" at /Volumes/workplace/argot/testdata/src/taint/closures/helpers.go:23:6
@@ -525,32 +541,7 @@ func testAnalyzeClosures(t *testing.T, lp *loadprogram.State) {
 		},
 	}
 
-	traces := mergeTraces(res)
-	if len(traces) < len(tests) {
-		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(traces))
-	}
-
-	t.Log("TRACES:")
-	for _, trace := range traces {
-		t.Log(trace)
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if !funcutil.Exists(traces, func(trace backtrace.Trace) bool {
-				ok, err := matchTrace(state, trace, test.matches)
-				_ = err
-				// // NOTE commented out for debugging
-				// if err != nil {
-				// 	t.Errorf("failed match: %v in trace: %v", err, trace)
-				// }
-
-				return ok
-			}) {
-				t.Error("no match")
-			}
-		})
-	}
+	checkTraces(t, res, tests)
 }
 
 func TestAnalyze_CheckStatic(t *testing.T) {
@@ -581,6 +572,44 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 				t.Fatalf("Origin %s of trace doesn't match the expected %s", trace[0][0].Node, expected)
 			}
 		}
+	}
+}
+
+type traceTest struct {
+	name    string
+	matches []match
+}
+
+func checkTraces(t *testing.T, res backtrace.AnalysisResult, tests []traceTest) {
+	traces := mergeTraces(res)
+	if len(traces) < len(tests) {
+		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(traces))
+	}
+
+	// // NOTE Uncomment to debug
+	// t.Log("TRACES:")
+	// for _, trace := range res.Traces {
+	// 	t.Log(trace)
+	// }
+
+	for _, test := range tests {
+		test := test // needed for t.Parallel()
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if !funcutil.Exists(traces, func(trace backtrace.Trace) bool {
+				ok, err := matchTrace(res.Graph.AnalyzerState, trace, test.matches)
+				_ = err
+				// // NOTE commented out for debugging
+				// if err != nil {
+				// 	t.Errorf("failed match: %v in trace: %v", err, trace)
+				// }
+
+				return ok
+			}) {
+				t.Error("no match")
+			}
+		})
 	}
 }
 

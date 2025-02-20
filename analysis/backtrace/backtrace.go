@@ -27,6 +27,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -67,7 +68,12 @@ func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 
 	df.RunIntraProceduralPass(state, numRoutines, df.IntraAnalysisParams{
 		ShouldBuildSummary: df.ShouldBuildSummary,
-		ShouldTrack:        df.IsNodeOfInterest,
+		ShouldTrack: func(state *df.State, n ssa.Node) bool {
+			if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint); ok {
+				return true
+			}
+			return false
+		},
 	})
 
 	var errs []error
@@ -110,9 +116,41 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 
 	visitor := NewVisitor(ps)
 	df.RunInterProcedural(state, visitor, df.ScanningSpec{
-		IsEntryPointSsa: func(node ssa.Node) bool {
+		IsEntryPointGraph: func(node df.GraphNode) (config.CodeIdentifier, bool) {
+			if arg, ok := node.(*df.CallNodeArg); ok {
+				callee := arg.ParentNode().Callee()
+				if callee == nil {
+					return config.CodeIdentifier{}, false
+				}
+				pkg := callee.Package()
+				if pkg == nil {
+					return config.CodeIdentifier{}, false
+				}
+				cid := config.CodeIdentifier{
+					Target: config.Target{
+						Kind:    config.CallKind,
+						Package: callee.Package().Pkg.Path(),
+						Method:  callee.Name(),
+						Objects: []config.TargetObject{
+							{
+								Kind:  config.ArgumentKind,
+								Name:  arg.ParamName(),
+								Index: uint(arg.Index()),
+								Type:  arg.Type().String(),
+							},
+						},
+					},
+				}
+
+				return visitor.SlicingSpec.IsBacktracePoint(cid)
+			}
+
+			return config.CodeIdentifier{}, false
+		},
+		IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
 			return df.IsBacktraceNode(state, &visitor.SlicingSpec, node)
 		},
+		ScanCallArgsOnly: true,
 	})
 	// filter unwanted nodes
 	resTraces := filterResultTraces(state, visitor)
@@ -190,18 +228,30 @@ func NewVisitor(spec config.SlicingSpec) *Visitor {
 
 // Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
 func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
-	// this is needed because for some reason isBacktracePoint returns true for
-	// some synthetic nodes
-	call, ok := entrypoint.Node.(*df.CallNode)
-	if !ok {
-		return
+	if v.prevEdgeInfos == nil {
+		v.prevEdgeInfos = make(map[*df.CallNodeArg][]df.EdgeInfo)
 	}
 
-	// the analysis operates on data originating from every argument in every
-	// call to an entrypoint
-	for _, arg := range call.Args() {
+	switch node := entrypoint.Node.(type) {
+	case *df.CallNode:
+		// The analysis operates on data originating from every argument in every
+		// call to an entrypoint
+		for _, arg := range node.Args() {
+			nt := df.NodeWithTrace{
+				Node:         arg,
+				Trace:        entrypoint.Trace,
+				ClosureTrace: entrypoint.ClosureTrace,
+			}
+			if err := v.visit(s, nt); err != nil {
+				v.Errs = append(v.Errs, err)
+			}
+
+			traces := v.Traces[nt]
+			validateTraces(s, traces)
+		}
+	case *df.CallNodeArg:
 		nt := df.NodeWithTrace{
-			Node:         arg,
+			Node:         node,
 			Trace:        entrypoint.Trace,
 			ClosureTrace: entrypoint.ClosureTrace,
 		}
@@ -209,18 +259,8 @@ func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
 			v.Errs = append(v.Errs, err)
 		}
 
-		// report traces from entrypoint:
 		traces := v.Traces[nt]
-		for i, trace := range traces {
-			// Stop if there is a limit on number of alarms (representing number of traces to report), and it has been reached.
-			if s.Config.MaxAlarms > 0 && i >= s.Config.MaxAlarms {
-				break
-			}
-
-			if err := validateTrace(trace); err != nil {
-				panic(fmt.Errorf("invalid trace: %v", err))
-			}
-		}
+		validateTraces(s, traces)
 	}
 }
 
@@ -383,7 +423,12 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 							callSite.CalleeSummary = df.NewSummaryGraph(s,
 								callSite.Callee(),
 								df.GetUniqueFunctionID(),
-								func(s *df.State, n ssa.Node) bool { return df.IsBacktraceNode(s, nil, n) },
+								func(s *df.State, n ssa.Node) bool {
+									if _, ok := df.IsBacktraceNode(s, nil, n); ok {
+										return true
+									}
+									return false
+								},
 								nil)
 							v.onDemandIntraProcedural(s, callSite.CalleeSummary)
 						}
@@ -949,6 +994,19 @@ func isFiltered(ss config.SlicingSpec, n df.GraphNode) bool {
 		}
 	}
 	return false
+}
+
+func validateTraces(s *df.State, traces []Trace) {
+	for i, trace := range traces {
+		// Stop if there is a limit on number of alarms (representing number of traces to report), and it has been reached.
+		if s.Config.MaxAlarms > 0 && i >= s.Config.MaxAlarms {
+			break
+		}
+
+		if err := validateTrace(trace); err != nil {
+			panic(fmt.Errorf("invalid trace: %v", err))
+		}
+	}
 }
 
 // validateTrace validates trace.

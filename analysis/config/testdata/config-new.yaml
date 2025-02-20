@@ -1,0 +1,29 @@
+dataflow-problems:
+  slicing:
+    - tag: "tag-name"
+      description: "Sample description"
+      backtracepoints:
+        - target:
+            kind: "call"
+            package: "os"
+            method: "Mkdir"
+            objects:
+              - kind: "argument"
+                name: "name"
+                index: 0
+                type: "string"
+          enclosing:
+            package: "package-name"
+            method: "method"
+        - target:
+            kind: "call"
+            package: "os"
+            method: "MkdirAll"
+            objects:
+              - kind: "argument"
+                name: "path"
+                index: 0
+                type: "string"
+          enclosing:
+            package~: "package.*"
+            method~: ".*"

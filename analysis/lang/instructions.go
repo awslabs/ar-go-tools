@@ -17,6 +17,8 @@
 package lang
 
 import (
+	"go/types"
+
 	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -167,6 +169,21 @@ func GetArgs(instr ssa.CallInstruction) []ssa.Value {
 	}
 	args = append(args, instr.Common().Args...)
 	return args
+}
+
+// GetParams returns the callee params of instr.
+func GetParams(instr ssa.CallInstruction) []*types.Var {
+	var params []*types.Var
+	sig := instr.Common().Signature()
+	if sig.Recv() != nil {
+		// The first parameter of a method call is the receiver
+		params = append(params, sig.Recv())
+	}
+	for i := 0; i < sig.Params().Len(); i++ {
+		params = append(params, sig.Params().At(i))
+	}
+
+	return params
 }
 
 // InstrMethodKey return a method key (as used in the analyzer state for indexing interface methods) if the instruction

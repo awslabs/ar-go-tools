@@ -34,39 +34,59 @@ import (
 // - reading from channels marked as source
 // - writing in struct fields that are marked as sinks.
 func IsNodeOfInterest(state *State, n ssa.Node) bool {
-	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
-		analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSink) ||
-		analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint) ||
-		state.ResolveSsaNode(annotations.Source, "_", n) ||
-		state.ResolveSsaNode(annotations.Sink, "_", n)
+	if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource); ok {
+		return true
+	}
+	if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSink); ok {
+		return true
+	}
+	if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint); ok {
+		return true
+	}
+
+	return state.ResolveSsaNode(annotations.Source, "_", n) || state.ResolveSsaNode(annotations.Sink, "_", n)
 }
 
 // IsSourceNode returns true if n matches the code identifier of a source node in the taint specification.
 // If the taint specification is nil, then it will look whether the node can be any source node in the
 // config.
-func IsSourceNode(state *State, ts *config.TaintSpec, n ssa.Node) bool {
+func IsSourceNode(state *State, ts *config.TaintSpec, n ssa.Node) (config.CodeIdentifier, bool) {
 	if ts == nil {
-		return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource) ||
-			state.ResolveSsaNode(annotations.Source, "_", n)
+		if cid, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource); ok {
+			return cid, true
+		}
+		return config.CodeIdentifier{}, state.ResolveSsaNode(annotations.Source, "_", n)
 	}
-	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, ts.IsSource) ||
-		state.ResolveSsaNode(annotations.Source, ts.Tag, n)
+	if cid, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, ts.IsSource); ok {
+		return cid, true
+	}
+	return config.CodeIdentifier{}, state.ResolveSsaNode(annotations.Source, ts.Tag, n)
 }
 
 // IsBacktraceNode returns true if slicing spec identifies n as a backtrace entrypoint. If the backtrace specification
 // is nil, then it will look at whether the node can be any backtrace point in the config.
-func IsBacktraceNode(state *State, ss *config.SlicingSpec, n ssa.Node) bool {
+func IsBacktraceNode(state *State, ss *config.SlicingSpec, n ssa.Node) (config.CodeIdentifier, bool) {
 	if f, ok := n.(*ssa.Function); ok {
 		pkg := lang.PackageNameFromFunction(f)
 		return ss.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 	}
 
 	if ss == nil {
-		return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint) ||
-			state.ResolveSsaNode(annotations.BacktracePoint, "_", n)
+		if cid, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint); ok {
+			return cid, true
+		}
+		return config.CodeIdentifier{}, state.ResolveSsaNode(annotations.BacktracePoint, "_", n)
 	}
-	return analysisutil.IsEntrypointNode(state.PointerAnalysis, n, ss.IsBacktracePoint) ||
-		state.ResolveSsaNode(annotations.BacktracePoint, ss.Tag, n)
+	f := func(cid config.CodeIdentifier) bool {
+		if _, ok := ss.IsBacktracePoint(cid); ok {
+			return true
+		}
+		return false
+	}
+	if cid, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, f); ok {
+		return cid, true
+	}
+	return config.CodeIdentifier{}, state.ResolveSsaNode(annotations.BacktracePoint, ss.Tag, n)
 }
 
 // IsSink returns true if the taint spec identifies n as a sink.
@@ -170,7 +190,10 @@ func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n GraphNode
 	case *BuiltinCallNode:
 		return codeIDOracle(config.CodeIdentifier{Context: n.parent.Parent.String(), Method: n.name})
 	case *SyntheticNode:
-		return analysisutil.IsEntrypointNode(nil, n.Instr().(ssa.Node), codeIDOracle)
+		if _, ok := analysisutil.IsEntrypointNode(nil, n.Instr().(ssa.Node), codeIDOracle); ok {
+			return true
+		}
+		return false
 	case *ReturnValNode, *ClosureNode, *BoundVarNode:
 		return false
 	default:

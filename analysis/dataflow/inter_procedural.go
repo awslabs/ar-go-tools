@@ -20,9 +20,11 @@ import (
 	"io"
 	"os"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -259,14 +261,20 @@ func (g *InterProceduralFlowGraph) Sync() {
 // predicates to identify graph nodes that are the entry points of the analysis.
 type ScanningSpec struct {
 	// IsEntryPointSsa identifies graph nodes by the ssa node they represent.
-	IsEntryPointSsa func(node ssa.Node) bool
+	// It returns the code identifier from the config file if there was a match.
+	IsEntryPointSsa func(node ssa.Node) (config.CodeIdentifier, bool)
 
 	// IsEntryPointGraph identifies graph nodes directly as entry points.
-	IsEntryPointGraph func(node GraphNode) bool
+	// It returns the code identifier from the config file if there was a match.
+	IsEntryPointGraph func(node GraphNode) (config.CodeIdentifier, bool)
 
 	// MarkCallArgsLikeCall specifies whether call arguments should be considered entry points when the call is
 	// an entry point.
 	MarkCallArgsLikeCall bool
+
+	// ScanCallArgsOnly specifies whether only call arguments should be
+	// considered entry points - not the call itself.
+	ScanCallArgsOnly bool
 }
 
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to
@@ -335,18 +343,35 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor, spec
 	}
 }
 
+// TODO this will likely get refactored in the future anyways
+//
+//gocyclo:ignore
 func scanEntryPoints(
 	g *InterProceduralFlowGraph,
 	spec ScanningSpec,
 	entryPoints map[KeyType]NodeWithTrace) func(n GraphNode) {
 	return func(n GraphNode) {
-		if spec.IsEntryPointGraph != nil && spec.IsEntryPointGraph(n) {
-			for _, callnode := range n.Graph().Callsites {
-				contexts := GetAllCallingContexts(g.AnalyzerState, callnode)
-				addWithContexts(contexts, n, entryPoints)
+		if spec.IsEntryPointGraph != nil {
+			if _, ok := spec.IsEntryPointGraph(n); ok {
+				switch node := n.(type) {
+				case *CallNodeArg:
+					contexts := GetAllCallingContexts(g.AnalyzerState, node.ParentNode())
+					nodes := addContexts(contexts, node)
+					for _, nt := range nodes {
+						entryPoints[nt.Key()] = nt
+					}
+					return
+				}
+
+				for _, callnode := range n.Graph().Callsites {
+					contexts := GetAllCallingContexts(g.AnalyzerState, callnode)
+					nodes := addContexts(contexts, n)
+					for _, node := range nodes {
+						entryPoints[node.Key()] = node
+					}
+				}
 			}
 		}
-
 		// if the isEntryPointSsa function is not specified, skip the special casing
 		if spec.IsEntryPointSsa == nil {
 			return
@@ -358,15 +383,30 @@ func scanEntryPoints(
 		case *SyntheticNode:
 			addSyntheticNodeEntryPoints(spec, entryPoints, node)
 		case *CallNodeArg:
-			if spec.MarkCallArgsLikeCall &&
-				spec.IsEntryPointSsa(node.parent.CallSite().Value()) {
-				entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-				entryPoints[entry.Key()] = entry
+			if spec.MarkCallArgsLikeCall {
+				if _, ok := spec.IsEntryPointSsa(node.parent.CallSite().Value()); ok {
+					entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+					entryPoints[entry.Key()] = entry
+				}
 			}
 		case *CallNode:
-			if node.callSite != nil && spec.IsEntryPointSsa(node.callSite.Value()) {
+			if node.callSite == nil {
+				return
+			}
+
+			if cid, ok := spec.IsEntryPointSsa(node.callSite.Value()); ok {
+				if funcutil.Exists(cid.Target.Objects, func(obj config.TargetObject) bool {
+					return obj.Kind == config.ArgumentKind
+				}) {
+					// Matching cid has an argument object which means the call itself is not an entrypoint
+					return
+				}
+
 				contexts := GetAllCallingContexts(g.AnalyzerState, node)
-				addWithContexts(contexts, node, entryPoints)
+				nodes := addContexts(contexts, node)
+				for _, node := range nodes {
+					entryPoints[node.Key()] = node
+				}
 
 				if spec.MarkCallArgsLikeCall {
 					for _, arg := range node.args {
@@ -390,19 +430,20 @@ func addSyntheticNodeEntryPoints(
 	if !isValue {
 		return
 	}
-	if spec.IsEntryPointSsa(asValue) {
+	if _, ok := spec.IsEntryPointSsa(asValue); ok {
 		entry := NodeWithTrace{Node: node}
 		entryPoints[entry.Key()] = entry
 	}
 }
 
-// addWithContexts adds an entry corresponding to node in each of the contexts to the entryPoints
-// if contexts is empty or nil, then the node is added without context
-func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints map[KeyType]NodeWithTrace) {
+// addContexts returns a new NodeWithTrace for each calling context of node.
+// If contexts is empty or nil, then the node is returned without context.
+func addContexts(contexts []*CallStack, node GraphNode) []NodeWithTrace {
+	var res []NodeWithTrace
 	if len(contexts) == 0 {
 		// Default behaviour is to start without context (trace is nil)
-		entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-		entryPoints[entry.Key()] = entry
+		node := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+		res = append(res, node)
 	} else {
 		for _, ctxt := range contexts {
 			n := NodeWithTrace{
@@ -410,9 +451,11 @@ func addWithContexts(contexts []*CallStack, node GraphNode, entryPoints map[KeyT
 				Trace:        ctxt,
 				ClosureTrace: nil,
 			}
-			entryPoints[n.Key()] = n
+			res = append(res, n)
 		}
 	}
+
+	return res
 }
 
 // resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also

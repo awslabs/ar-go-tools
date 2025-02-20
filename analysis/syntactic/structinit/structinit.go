@@ -230,11 +230,12 @@ func initInfos(
 	allocs []alloced,
 	specs []config.StructInitSpec) (map[*types.Named]InitInfo, error) {
 	infos := make(map[*types.Named]InitInfo)
-	initialized := make(map[config.CodeIdentifier]bool)
+	initialized := make(map[structId]bool)
 
 	for _, alloc := range allocs {
 		for _, spec := range specs {
-			if initialized[spec.Struct] {
+			id := newStructId(spec.Struct)
+			if initialized[id] {
 				continue
 			}
 
@@ -263,11 +264,23 @@ func initInfos(
 			}
 
 			infos[structTyps.named] = info
-			initialized[spec.Struct] = true
+			initialized[id] = true
 		}
 	}
 
 	return infos, nil
+}
+
+type structId struct {
+	pkg  string
+	name string
+}
+
+func newStructId(cid config.CodeIdentifier) structId {
+	return structId{
+		pkg:  cid.Package,
+		name: cid.Type,
+	}
 }
 
 func newInitInfo(state *ptr.State, spec config.StructInitSpec, structType *types.Struct) (InitInfo, error) {
