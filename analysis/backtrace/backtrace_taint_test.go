@@ -126,7 +126,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// 	t.Log(trace)
 	// }
 
-	reached := reachedSinkPositions(t, state, res)
+	reached := reachedSinkPositions(state, res)
 	if len(reached) == 0 {
 		t.Fatal("expected reached sink positions to be present")
 	}
@@ -187,13 +187,13 @@ func isExpected(expected analysistest.TargetToSources, sourcePos analysistest.LP
 
 // reachedSinkPositions translates a list of traces in a program to a map from positions to set of positions,
 // where the map associates sink positions to sets of source positions that reach it.
-func reachedSinkPositions(t *testing.T, s *dataflow.State, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
+func reachedSinkPositions(s *dataflow.State, res backtrace.AnalysisResult) map[token.Position]map[token.Position]bool {
 	positions := make(map[token.Position]map[token.Position]bool)
 	prog := s.Program
 	for _, traceSet := range res.Traces {
 		for sink, traces := range traceSet {
 			// sink is the analysis entrypoint
-			si := dataflow.Instr(sink)
+			si := dataflow.Instr(sink.Node)
 			if si == nil {
 				continue
 			}
@@ -210,15 +210,15 @@ func reachedSinkPositions(t *testing.T, s *dataflow.State, res backtrace.Analysi
 
 			for _, trace := range traces {
 				for _, node := range trace {
-					instr := dataflow.Instr(node.GraphNode)
+					instr := dataflow.Instr(node.Node)
 					if instr == nil {
 						continue
 					}
 
-					sn := sourceNode(node.GraphNode)
+					sn := sourceNode(node.Node)
 
 					// Source nodes are slicing points, and we have a special slicingOrigin to test directly slicing
-					if dataflow.IsSourceNode(s, nil, sn) || strings.Contains(node.String(), "slicingOrigin") {
+					if dataflow.IsSourceNode(s, nil, sn) || strings.Contains(node.Node.String(), "slicingOrigin") {
 						sourcePos := instr.Pos()
 						sourceFile := prog.Fset.File(sourcePos)
 						if sourcePos == token.NoPos || sourceFile == nil {

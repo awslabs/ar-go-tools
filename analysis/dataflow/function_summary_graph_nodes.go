@@ -197,7 +197,7 @@ func TermNodeSummary(g GraphNode) string {
 	case *FreeVarNode:
 		return fmt.Sprintf("Free variable #%s of %q", formatutil.Green(x.fvPos), x.ssaNode.Parent().String())
 	case *AccessGlobalNode:
-		return fmt.Sprintf("Global variable %q", formatutil.Red(x.Global.String()))
+		return fmt.Sprintf("Global variable %s", formatutil.Red(x.Global.String()))
 	}
 	return ""
 }

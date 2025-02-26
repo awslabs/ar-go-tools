@@ -39,7 +39,7 @@ type AnalysisResult struct {
 	Graph df.InterProceduralFlowGraph
 
 	// Traces represents all the paths where data flows out from the analysis entry points for each problem tag.
-	Traces map[string]map[df.GraphNode][]Trace
+	Traces map[string]map[df.NodeWithTrace][]Trace
 }
 
 // AnalysisReqs provides constraints on the backtrace analysis to run.
@@ -71,7 +71,7 @@ func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	})
 
 	var errs []error
-	allTraces := make(map[string]map[df.GraphNode][]Trace)
+	allTraces := make(map[string]map[df.NodeWithTrace][]Trace)
 	for _, ps := range state.Config.SlicingProblems {
 		errs = runTag(state, reqs, ps, allTraces, errs)
 	}
@@ -79,7 +79,7 @@ func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: allTraces}, errors.Join(errs...)
 }
 
-func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces map[string]map[df.GraphNode][]Trace, errs []error) []error {
+func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces map[string]map[df.NodeWithTrace][]Trace, errs []error) []error {
 	state.Logger.PushContext(formatutil.Yellow(ps.Tag))
 	defer state.Logger.PopContext()
 	// Check the tag must be analyzed
@@ -108,26 +108,24 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 		ps.AnalysisProblemOptions = &config.AnalysisProblemOptions{}
 	}
 
-	visitor := &Visitor{
-		SlicingSpec: &ps,
-		Traces:      make(map[df.GraphNode][]Trace),
-	}
+	visitor := NewVisitor(ps)
 	df.RunInterProcedural(state, visitor, df.ScanningSpec{
 		IsEntryPointSsa: func(node ssa.Node) bool {
-			return df.IsBacktraceNode(state, visitor.SlicingSpec, node)
+			return df.IsBacktraceNode(state, &visitor.SlicingSpec, node)
 		},
 	})
 	// filter unwanted nodes
 	resTraces := filterResultTraces(state, visitor)
 	if len(resTraces) > 0 {
 		allTraces[ps.Tag] = resTraces
+		logTraces(state, resTraces)
 		state.Report.AddEntry(
 			state,
 			config.ReportDesc{
 				Tool:     config.BacktraceTool,
 				Tag:      ps.Tag,
 				Severity: ps.Severity,
-				Content:  report(state, resTraces, &ps),
+				Content:  report(state, resTraces, ps),
 			},
 		)
 
@@ -149,13 +147,13 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 	return errs
 }
 
-func filterResultTraces(state *df.State, visitor *Visitor) map[df.GraphNode][]Trace {
-	resTraces := make(map[df.GraphNode][]Trace)
+func filterResultTraces(state *df.State, visitor *Visitor) map[df.NodeWithTrace][]Trace {
+	resTraces := make(map[df.NodeWithTrace][]Trace)
 	for entry, traces := range visitor.Traces {
 		for _, trace := range traces {
 			vTrace := Trace{}
 			for _, node := range trace {
-				if isFiltered(visitor.SlicingSpec, node.GraphNode) {
+				if isFiltered(visitor.SlicingSpec, node.Node) {
 					state.Logger.Tracef("FILTERED: %v\n", node)
 					state.Logger.Tracef("\t%v\n", vTrace)
 					vTrace = nil
@@ -174,18 +172,24 @@ func filterResultTraces(state *df.State, visitor *Visitor) map[df.GraphNode][]Tr
 // Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the
 // SlicingSpec as well as the set of traces.
 type Visitor struct {
-	SlicingSpec   *config.SlicingSpec
-	Traces        map[df.GraphNode][]Trace
+	SlicingSpec   config.SlicingSpec
+	Traces        map[df.NodeWithTrace][]Trace
 	Errs          []error
 	prevEdgeInfos map[*df.CallNodeArg][]df.EdgeInfo
 }
 
+// NewVisitor constructs a Visitor from spec.
+func NewVisitor(spec config.SlicingSpec) *Visitor {
+	return &Visitor{
+		SlicingSpec:   spec,
+		Traces:        make(map[df.NodeWithTrace][]Trace),
+		Errs:          nil,
+		prevEdgeInfos: make(map[*df.CallNodeArg][]df.EdgeInfo),
+	}
+}
+
 // Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
 func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
-	if v.prevEdgeInfos == nil {
-		v.prevEdgeInfos = make(map[*df.CallNodeArg][]df.EdgeInfo)
-	}
-
 	// this is needed because for some reason isBacktracePoint returns true for
 	// some synthetic nodes
 	call, ok := entrypoint.Node.(*df.CallNode)
@@ -196,16 +200,18 @@ func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
 	// the analysis operates on data originating from every argument in every
 	// call to an entrypoint
 	for _, arg := range call.Args() {
-		if err := v.visit(s, arg); err != nil {
+		nt := df.NodeWithTrace{
+			Node:         arg,
+			Trace:        entrypoint.Trace,
+			ClosureTrace: entrypoint.ClosureTrace,
+		}
+		if err := v.visit(s, nt); err != nil {
 			v.Errs = append(v.Errs, err)
 		}
 
 		// report traces from entrypoint:
-		logger := s.Logger
-		traces := v.Traces[arg]
+		traces := v.Traces[nt]
 		for i, trace := range traces {
-			logger.Infof("%v\n", trace.String())
-
 			// Stop if there is a limit on number of alarms (representing number of traces to report), and it has been reached.
 			if s.Config.MaxAlarms > 0 && i >= s.Config.MaxAlarms {
 				break
@@ -219,18 +225,19 @@ func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
 }
 
 //gocyclo:ignore
-func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
+func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 	logger := s.Logger
 
-	pos := entrypoint.Position(s)
+	pos := entrypoint.Node.Position(s)
+	entryArg := entrypoint.Node.(*df.CallNodeArg) // should never panic
 	if !pos.IsValid() {
-		pos = entrypoint.ParentNode().Position(s)
+		pos = entryArg.ParentNode().Position(s)
 	}
 
 	// Skip entrypoint if it is in a dependency or in the Go standard library/runtime
 	// TODO make this an option in the config
 	if strings.Contains(pos.Filename, "vendor") || strings.Contains(pos.Filename, runtime.GOROOT()) {
-		logger.Debugf("%s %v\n", formatutil.Red("Skipping entrypoint"), entrypoint.String())
+		logger.Debugf("%s %v\n", formatutil.Red("Skipping entrypoint"), entrypoint.Node.String())
 		return nil
 	}
 
@@ -238,16 +245,14 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 	// sufficient to see that >0 entry points have been detected.
 	logger.Debugf("")
 	logger.Debugf(" entrypoint: %s\n",
-		formatutil.Blue(entrypoint.String()))
+		formatutil.Blue(entrypoint.Node.String()))
 	logger.Debugf("   %s %s\n", formatutil.Green("Found at"), pos)
-	logger.PushContext(formatutil.Faint(entrypoint.LongID()))
+	logger.PushContext(formatutil.Faint(entrypoint.Node.LongID()))
 	defer logger.PopContext()
-	var trace *df.NodeTree[*df.CallNode]
-	entry := df.NodeWithTrace{Node: entrypoint, Trace: trace}
 	seen := make(map[df.KeyType]bool)
 	goroutines := make(map[*ssa.Go]bool)
 	root := &df.VisitorNode{
-		NodeWithTrace: entry,
+		NodeWithTrace: entrypoint,
 		AccessPaths:   []string{""},
 		Prev:          nil,
 		Depth:         0,
@@ -277,16 +282,17 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
 		if isBaseCase(cur.Node, s.Config) {
-			t := findTrace(s, cur)
-			addTrace(v, entrypoint, t)
-
+			t := findTrace(cur)
+			added := addTrace(v, entrypoint, t)
 			logger.Tracef("Base case reached...")
-			logger.Tracef("Adding trace: %v\n", t)
+			if added {
+				logger.Tracef("Adding trace: %v\n", t)
+			}
 			continue
 		}
 
 		if s.Config.ExceedsMaxDepth(cur.Depth) {
-			t := findTrace(s, cur)
+			t := findTrace(cur)
 			addTrace(v, entrypoint, t)
 			err := fmt.Errorf("call trace %w: %d", ErrMaxDepth, cur.Depth)
 			s.Report.AddError("max-depth", err)
@@ -323,7 +329,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 					s.Report.AddError("argument at call site "+graphNode.String(), err)
 					// TODO fix bug that leads to panic
 					// report trace in the error as well
-					t := findTrace(s, cur)
+					t := findTrace(cur)
 					return fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v\n\t%v", callSite, graphNode, err, t)
 					// panic(fmt.Errorf("[Context] no arg at call site %v when visiting node %v: %v", callSite, graphNode, err))
 				}
@@ -465,10 +471,12 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 			// - value is not bound, and
 			// - no more incoming edges from the arg
 			if prevStackLen == len(stack) {
-				t := findTrace(s, cur)
-				addTrace(v, entrypoint, t)
+				t := findTrace(cur)
+				added := addTrace(v, entrypoint, t)
 				logger.Tracef("CallNodeArg base case reached...")
-				logger.Tracef("Adding trace: %v\n", t)
+				if added {
+					logger.Tracef("Adding trace: %v\n", t)
+				}
 			}
 
 		// Data flows backwards within the function from the return statement.
@@ -548,10 +556,12 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 			// - no new (non-visited) matching return, and
 			// - no more incoming edges from the call
 			if prevStackLen == len(stack) {
-				t := findTrace(s, cur)
-				addTrace(v, entrypoint, t)
+				t := findTrace(cur)
+				added := addTrace(v, entrypoint, t)
 				logger.Tracef("CallNode base case reached...")
-				logger.Tracef("Adding trace: %v\n", t)
+				if added {
+					logger.Tracef("Adding trace: %v\n", t)
+				}
 			}
 
 		// Data flows backwards within the function from the synthetic node or builtin call node.
@@ -654,7 +664,7 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 					bv := bvs[graphNode.Index()]
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         bv,
-						Trace:        trace,
+						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace.Parent,
 					}
 					status := df.VisitorNodeStatus{
@@ -705,10 +715,12 @@ func (v *Visitor) visit(s *df.State, entrypoint *df.CallNodeArg) error {
 			// Free var base case:
 			// - no new matching bound variables
 			if prevStackLen == len(stack) {
-				t := findTrace(s, cur)
-				addTrace(v, entrypoint, t)
+				t := findTrace(cur)
+				added := addTrace(v, entrypoint, t)
 				logger.Tracef("Free var base case reached...")
-				logger.Tracef("Adding trace: %v\n", t)
+				if added {
+					logger.Tracef("Adding trace: %v\n", t)
+				}
 			}
 
 		case *df.ClosureNode:
@@ -851,26 +863,22 @@ func isBaseCase(node df.GraphNode, cfg *config.Config) bool {
 }
 
 // findTrace returns a slice of all the nodes in the trace starting from end.
-func findTrace(s *df.State, end *df.VisitorNode) Trace {
+func findTrace(end *df.VisitorNode) Trace {
 	trace := Trace{}
 	cur := end
 	for cur != nil {
-		node := TraceNode{
-			GraphNode: cur.Node,
-			Pos:       cur.Node.Position(s),
-		}
-		trace = append(trace, node)
+		trace = append(trace, cur)
 		cur = cur.Prev
 	}
 
 	return trace
 }
 
-func addTrace(v *Visitor, entrypoint *df.CallNodeArg, trace Trace) {
+func addTrace(v *Visitor, entrypoint df.NodeWithTrace, trace Trace) bool {
 	end := trace[0]
 	// Don't add traces when the tool is looking for flows that violate must-be-static constraint
-	if v.SlicingSpec.MustBeStatic && IsStatic(end.GraphNode) {
-		return
+	if v.SlicingSpec.MustBeStatic && IsStatic(end.Node) {
+		return false
 	}
 	// don't add trace if it's already in v.Traces
 	for _, t := range v.Traces[entrypoint] {
@@ -884,12 +892,13 @@ func addTrace(v *Visitor, entrypoint *df.CallNodeArg, trace Trace) {
 				}
 			}
 			if same {
-				return
+				return false
 			}
 		}
 	}
 
 	v.Traces[entrypoint] = append(v.Traces[entrypoint], trace)
+	return true
 }
 
 // IsStatic returns true if node is a constant value.
@@ -914,10 +923,10 @@ func traceNode(s *df.State, node *df.VisitorNode) {
 	logger.Tracef("Element status: %v\n", node.Status)
 	logger.Tracef("Element trace: %s\n", node.Trace.String())
 	logger.Tracef("Element closure trace: %s\n", node.ClosureTrace.String())
-	logger.Tracef("Element backtrace: %v\n", findTrace(s, node))
+	logger.Tracef("Element backtrace: %v\n", findTrace(node))
 }
 
-func isFiltered(ss *config.SlicingSpec, n df.GraphNode) bool {
+func isFiltered(ss config.SlicingSpec, n df.GraphNode) bool {
 	var f *ssa.Function
 	switch node := n.(type) {
 	case *df.CallNode:
@@ -952,14 +961,14 @@ func validateTrace(trace Trace) error {
 		}
 		next := trace[j]
 
-		switch cur := cur.GraphNode.(type) {
+		switch cur := cur.Node.(type) {
 		case *df.CallNodeArg:
-			if arg, ok := next.GraphNode.(*df.CallNodeArg); ok && arg.ParentName() != cur.ParentName() {
-				return fmt.Errorf("two interprocedural call args in a row: %v -> %v", cur, next.GraphNode)
+			if arg, ok := next.Node.(*df.CallNodeArg); ok && arg.ParentName() != cur.ParentName() {
+				return fmt.Errorf("two interprocedural call args in a row: %v -> %v", cur, next.Node)
 			}
 		case *df.ParamNode:
-			if param, ok := next.GraphNode.(*df.ParamNode); ok && param.ParentName() != cur.ParentName() {
-				return fmt.Errorf("two interprocedural params in a row: %v -> %v", cur, next.GraphNode)
+			if param, ok := next.Node.(*df.ParamNode); ok && param.ParentName() != cur.ParentName() {
+				return fmt.Errorf("two interprocedural params in a row: %v -> %v", cur, next.Node)
 			}
 		}
 	}
