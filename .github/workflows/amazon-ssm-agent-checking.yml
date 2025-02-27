@@ -1,8 +1,5 @@
 name: checking_amazon-ssm-agent
 on:
-  pull_request:
-    branches:
-      - mainline
   push:
     branches:
       - mainline
