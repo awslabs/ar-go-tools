@@ -70,6 +70,7 @@ var stdPackages = map[string]map[string]Summary{
 	"io/fs":                       summaryIo,
 	"io/ioutil":                   summaryIo,
 	"log":                         summaryLog,
+	"log/slog":                    summaryLog,
 	"maps":                        summaryMaps,
 	"math":                        summaryMath,
 	"math/big":                    summaryMath,
@@ -596,6 +597,46 @@ var summaryLog = map[string]Summary{
 		[][]int{{0}, {0, 1}},
 		[][]int{{}, {}},
 	},
+	// func Any(key string, value any) Attr
+	"log/slog.Any": TwoArgPropagation,
+	// func Bool(key string, value bool) Attr
+	"log/slog.Bool": TwoArgPropagation,
+	// func Duration(key string, value time.Duration) Attr
+	"log/slog.Duration": TwoArgPropagation,
+	// func Float64(key string, value float64) Attr
+	"log/slog.Float64": TwoArgPropagation,
+	// func Group(key string, attrs ...Attr) Attr
+	"log/slog.Group": TwoArgPropagation,
+	// func Int(key string, value int) Attr
+	"log/slog.Int": TwoArgPropagation,
+	// func Int64(key string, value int64) Attr
+	"log/slog.Int64": TwoArgPropagation,
+	// func String(key string, value string) Attr
+	"log/slog.String": TwoArgPropagation,
+	// func Time(key string, value time.Time) Attr
+	"log/slog.Time": TwoArgPropagation,
+	// func Uint64(key string, value uint64) Attr
+	"log/slog.Uint64": TwoArgPropagation,
+	// func AnyValue(v any) Value
+	"log/slog.AnyValue": SingleVarArgPropagation,
+	// func BoolValue(b bool) Value
+	"log/slog.BoolValue": SingleVarArgPropagation,
+	// func DurationValue(d time.Duration) Value
+	"log/slog.DurationValue": SingleVarArgPropagation,
+	// func Float64Value(f float64) Value
+	"log/slog.Float64Value": SingleVarArgPropagation,
+	// func GroupValue(a ...Attr) Value
+	"log/slog.GroupValue": SingleVarArgPropagation,
+	// func Int64Value(i int64) Value
+	"log/slog.Int64Value": SingleVarArgPropagation,
+	// func IntValue(i int) Value
+	"log/slog.IntValue": SingleVarArgPropagation,
+	// func StringValue(s string) Value
+	"log/slog.StringValue": SingleVarArgPropagation,
+	// func TimeValue(t time.Time) Value
+	"log/slog.TimeValue": SingleVarArgPropagation,
+	// func Uint64Value(u uint64) Value
+	"log/slog.Uint64Value": SingleVarArgPropagation,
 }
 
 var summaryMaps = map[string]Summary{
