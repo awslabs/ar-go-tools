@@ -24,33 +24,47 @@ import (
 // https://pkg.go.dev/builtin
 //
 // Note that new, make and panic are their own SSA instructions.
-var handledBuiltins = []string{
-	"ssa:wrapnilchk",
-	"append",
-	"len",
-	"close",
-	"delete",
-	"println",
-	"print",
-	"recover",
-	"cap",
-	"complex",
-	"imag",
-	"real",
-	"min",
-	"max",
-	"clear",
-	"copy",
+var handledBuiltins = map[string]bool{
+	"ssa:wrapnilchk": true,
+	"append":         true,
+	"len":            true,
+	"close":          true,
+	"delete":         true,
+	"println":        true,
+	"print":          true,
+	"recover":        true,
+	"cap":            true,
+	"complex":        true,
+	"imag":           true,
+	"real":           true,
+	"min":            true,
+	"max":            true,
+	"clear":          true,
+	"copy":           true,
 }
 
 // markedBuiltins is the subset of builtins that return values that should be tracked in the analysis
 var markedBuiltins = []string{"ssa:wrapnilchk", "append", "complex", "min", "max", "len", "imag", "real"}
 
+// The builtins that are from the unsafe package
+var unsafeBuiltins = map[string]bool{
+	"Alignof":     true,
+	"Offsetof":    true,
+	"Sizeof":      true,
+	"Pointer":     true,
+	"SliceData":   true,
+	"String":      true,
+	"StringData":  true,
+	"Slice":       true,
+	"Add":         true,
+	"IntegerType": true,
+}
+
 // isHandledBuiltinCall returns true if the call is handled internally by the analysis.
 func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {
 	if instruction.Common().Value != nil {
 		name := instruction.Common().Value.Name()
-		if funcutil.Contains(handledBuiltins, name) {
+		if handledBuiltins[name] {
 			return true
 		}
 		// Special case: the call to Error() of the builtin error interface
