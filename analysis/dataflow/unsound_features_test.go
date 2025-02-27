@@ -41,8 +41,8 @@ func TestUnsoundFeatures(t *testing.T) {
 		if strings.Contains(f.Name(), "usingUnsafe") {
 
 			uf := dataflow.FindUnsoundFeatures(f)
-			if len(uf.UnsafeUsages) <= 2 {
-				t.Errorf("Did not detect enough usages of unsage in usingUnsafe")
+			if len(uf.UnsafeUsages) <= 5 {
+				t.Errorf("Did not detect enough usages of unsafe in usingUnsafe")
 			}
 			unsafeChecked = true
 		}

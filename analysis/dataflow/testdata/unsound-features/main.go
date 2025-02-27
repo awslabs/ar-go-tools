@@ -57,6 +57,9 @@ func usingUnsafe() {
 	e := unsafe.Pointer(uintptr(unsafe.Pointer(&x[0])) + i*unsafe.Sizeof(x[0]))
 
 	fmt.Println(e, f)
+
+	y := unsafe.StringData(s.f)
+	fmt.Println(unsafe.String(y, len(s.f)))
 }
 
 func usingReflect() {

@@ -207,16 +207,19 @@ func FindUnsoundFeatures(f *ssa.Function) UnsoundFeaturesMap {
 			}
 
 			var pkg string
-			if f, okF := callCommon.Value.(*ssa.Function); okF {
-				pkg = lang.PackageNameFromFunction(f)
-			}
-			if strings.HasPrefix(pkg, "unsafe") {
-				unsafeUsages[iPos] = fmt.Sprintf("Calling %s from unsafe package.", callCommon.Value.Name())
-				return
-			}
-			if strings.HasPrefix(pkg, "reflect") {
-				reflectUsages[iPos] = fmt.Sprintf("Calling %s from reflect package.", callCommon.Value.Name())
-				return
+			switch callVal := callCommon.Value.(type) {
+			case *ssa.Function:
+				pkg = lang.PackageNameFromFunction(callVal)
+				if strings.HasPrefix(pkg, "unsafe") {
+					unsafeUsages[iPos] = fmt.Sprintf("Calling %s from unsafe package.", callCommon.Value.Name())
+					return
+				}
+				if strings.HasPrefix(pkg, "reflect") {
+					reflectUsages[iPos] = fmt.Sprintf("Calling %s from reflect package.", callCommon.Value.Name())
+					return
+				}
+			case *ssa.Builtin:
+				detectUnsafeBuiltinUsage(callVal, unsafeUsages, iPos)
 			}
 
 		case *ssa.Alloc:
@@ -241,4 +244,19 @@ func FindUnsoundFeatures(f *ssa.Function) UnsoundFeaturesMap {
 		}
 	})
 	return UnsoundFeaturesMap{recovers, unsafeUsages, reflectUsages}
+}
+
+func detectUnsafeBuiltinUsage(callVal *ssa.Builtin, unsafeUsages map[token.Position]string, iPos token.Position) {
+	if handledBuiltins[callVal.Name()] {
+		return
+	}
+	if unsafeBuiltins[callVal.Name()] {
+		// It's a recognized unsafe function that the SSA implements as a builtin
+		unsafeUsages[iPos] = fmt.Sprintf("Calling unsafe function %s.", callVal.Name())
+		return
+	}
+	// It's not a handled builting, but we're not sure it's safe
+	// Report it in the unsafe usages without calling it a function
+	unsafeUsages[iPos] = fmt.Sprintf("Calling builtin %s.", callVal.Name())
+	return
 }
