@@ -42,9 +42,13 @@ var stdPackages = map[string]map[string]Summary{
 	"crypto/internal/boring":      summaryCrypto,
 	"crypto/internal/nistec":      summaryCrypto,
 	"crypto/internal/nistec/fiat": summaryCrypto,
+	"crypto/md5":                  summaryCrypto,
 	"crypto/rand":                 summaryCrypto,
 	"crypto/rsa":                  summaryCrypto,
 	"crypto/sha1":                 summaryCrypto,
+	"crypto/sha3":                 summaryCrypto,
+	"crypto/sha256":               summaryCrypto,
+	"crypto/sha512":               summaryCrypto,
 	"crypto/tls":                  summaryCrypto,
 	"crypto/x509":                 summaryCrypto,
 	"database":                    summaryDatabase,
@@ -52,6 +56,8 @@ var stdPackages = map[string]map[string]Summary{
 	"embed":                       summaryEmbed,
 	"encoding":                    summaryEncoding,
 	"encoding/asn1":               summaryEncoding,
+	"encoding/base64":             summaryEncoding,
+	"encoding/hex":                summaryEncoding,
 	"encoding/gob":                summaryEncoding,
 	"encoding/binary":             summaryEncoding,
 	"encoding/json":               summaryEncoding,
@@ -245,6 +251,17 @@ var summaryCrypto = map[string]Summary{
 	"crypto/x509.ParsePKCS1PrivateKey": SingleVarArgPropagation,
 	"crypto/x509.SystemCertPool":       NoDataFlowPropagation,
 	"crypto/sha256.blockGeneric":       NoDataFlowPropagation,
+	"crypto/sha256.Sum256":             SingleVarArgPropagation,
+	"crypto/sha256.Sum244":             SingleVarArgPropagation,
+	"crypto/sha512.Sum384":             SingleVarArgPropagation,
+	"crypto/sha512.Sum512":             SingleVarArgPropagation,
+	"crypto/sha512.Sum512_224":         SingleVarArgPropagation,
+	"crypto/sha512.Sum512_256":         SingleVarArgPropagation,
+	"crypto/sha3.Sum224":               SingleVarArgPropagation,
+	"crypto/sha3.Sum256":               SingleVarArgPropagation,
+	"crypto/sha3.Sum384":               SingleVarArgPropagation,
+	"crypto/sha3.Sum512":               SingleVarArgPropagation,
+	"crypto/md5.Sum":                   SingleVarArgPropagation,
 	"(crypto.Hash).New":                SingleVarArgPropagation,
 	"(*crypto/tls.Config).Clone":       SingleVarArgPropagation,
 	"(*crypto/x509.CertPool).AppendCertsFromPEM": {
@@ -265,7 +282,46 @@ var summaryDebug = map[string]Summary{}
 var summaryEmbed = map[string]Summary{}
 
 var summaryEncoding = map[string]Summary{
-	"encoding/json.init": NoDataFlowPropagation,
+	// func (enc *Encoding) Encode(dst, src []byte)
+	"(*encoding/base64.Encoding).Encode": {
+		[][]int{{}, {1}, {1, 2}},
+		[][]int{{}, {0}, {0}},
+	},
+	// func (enc *Encoding) AppendDecode(dst, src []byte) ([]byte, error)
+	"(*encoding/base64.Encoding).AppendDecode": {
+		[][]int{{0}, {1}, {1, 2}},
+		[][]int{{}, {0, 1}, {0, 1}},
+	},
+	// func (enc *Encoding) AppendEncode(dst, src []byte) []byte
+	"(*encoding/base64.Encoding).AppendEncode": {
+		[][]int{{}, {1}, {1, 2}},
+		[][]int{{}, {0}, {0}},
+	},
+	// func (enc *Encoding) EncodeToString(src []byte) string
+	"(*encoding/base64.Encoding).EncodeToString": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	// func (enc *Encoding) DecodeString(s string) ([]byte, error)
+	"(*encoding/base64.Encoding).DecodeString": {
+		[][]int{{}, {1}},
+		[][]int{{}, {0, 1}},
+	},
+	// func (enc *Encoding) Decode(dst, src []byte) (n int, err error)
+	"(*encoding/base64.Encoding).Decode": {
+		[][]int{{0}, {1}, {1, 2}},
+		[][]int{{}, {0, 1}, {0, 1}},
+	},
+	// func (enc Encoding) Strict() *Encoding
+	"(encoding/base64).Strict": SingleVarArgPropagation,
+	// func (enc Encoding) WithPadding(padding rune) *Encoding
+	"(encoding/base64).WithPadding": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	// func EncodeToString(src []byte) string
+	"encoding/hex.EncodeToString": SingleVarArgPropagation,
+	"encoding/json.init":          NoDataFlowPropagation,
 	// func Indent(dst *bytes.Buffer, src []byte, prefix, indent string) error
 	"encoding/json.Indent": {
 		[][]int{{0}, {0}, {0}, {0}}, // all args taint the first
