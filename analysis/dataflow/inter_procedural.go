@@ -431,7 +431,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 	if calleeSummary == nil {
 		calleeSummary, err := NewPredefinedSummary(node.Callee(), GetUniqueFunctionID())
 		if err != nil {
-			// An error in the config: we panic!
+			// An error in our own predefined summaries: this should not happen, but panic if we missed something.
 			panic(fmt.Errorf("could not create summary for %s: %s", formatutil.SanitizeRepr(node.Callee()), err))
 		}
 		if calleeSummary != nil {
@@ -625,7 +625,7 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 		id := GetUniqueFunctionID()
 		predef, err := NewPredefinedSummary(function, id)
 		if err != nil {
-			// An error in the config? We panic!
+			// An error in the predefined summaries: this should not happen
 			panic(fmt.Errorf("could not create summary for %v: %v", function, err))
 		}
 		if predef != nil {
