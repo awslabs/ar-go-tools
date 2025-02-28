@@ -51,7 +51,7 @@ func TestParseSummaryNode(t *testing.T) {
 		}
 		reParsed, err := ParseSummaryNode(parsed.String())
 		if err != nil {
-			t.Errorf("Unexpected erro when serializing and reparsing: %v", err)
+			t.Errorf("Unexpected error when serializing and reparsing: %v", err)
 		}
 		if reParsed != parsed {
 			t.Errorf("Expected %v, got %v", tc.structNode, reParsed)

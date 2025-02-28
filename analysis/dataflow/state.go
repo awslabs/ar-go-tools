@@ -145,7 +145,10 @@ func initializedState(ps ptr.State, steps []func(*State)) (*State, error) {
 		return nil, fmt.Errorf("failed to build analyzer state: %w", errs[0])
 	}
 
-	state.linkContracts(allContracts)
+	err := state.linkContracts(allContracts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to link contracts: %w", err)
+	}
 
 	return state, nil
 }
@@ -313,7 +316,7 @@ func (s *State) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map
 // linkContracts implements the step in the analyzer state building function that links every dataflow contract with
 // a specific SSA function. This step should only link function contracts with the SSA function, but it builds the
 // summaries for all contracts in allContracts.
-func (s *State) linkContracts(allContracts []Contract) {
+func (s *State) linkContracts(allContracts []Contract) error {
 	// This links the function contracts to their implementation by storing an empty summary graph in the
 	// DataFlowContracts map of the analyzer state.
 	for f := range s.ReachableFunctions() {
@@ -325,10 +328,14 @@ func (s *State) linkContracts(allContracts []Contract) {
 	// Every summary for the contract in allContracts must be built
 	for _, contract := range allContracts {
 		for method, methodSummary := range contract.Methods {
-			s.DataFlowContracts[contract.Key(method)].
+			err := s.DataFlowContracts[contract.Key(method)].
 				PopulateGraphFromSummary(methodSummary, contract.InterfaceID != "")
+			if err != nil {
+				return fmt.Errorf("inspect config, error while building summary graph for %s: %w", contract.Key(method), err)
+			}
 		}
 	}
+	return nil
 }
 
 // HasExternalContractSummary returns true if the function f has a summary has been loaded in the DataFlowContracts
