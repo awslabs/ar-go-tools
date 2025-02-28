@@ -25,7 +25,6 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
@@ -988,34 +987,45 @@ func (g *SummaryGraph) addReturnEdgeByPos(src int, pos int) bool {
 // If f is nil, or f has no predefined summary, then the function returns nil.
 // If f has a predefined summary, then the returned summary graph is marked as constructed.
 // cg can be nil.
-func NewPredefinedSummary(f *ssa.Function, id uint32) *SummaryGraph {
+func NewPredefinedSummary(f *ssa.Function, id uint32) (*SummaryGraph, error) {
 	preDef, ok := summaries.SummaryOfFunc(f)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	summaryBase := NewSummaryGraph(nil, f, id, nil, nil)
 	if summaryBase == nil {
-		return nil
+		return nil, nil
 	}
-	summaryBase.PopulateGraphFromSummary(preDef, false)
-	return summaryBase
+	err := summaryBase.PopulateGraphFromSummary(preDef, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return summaryBase, nil
 }
 
 // PopulateGraphFromSummary populates the summary from a predefined summary provided as argument.
 // isInterface indicates whether this predefined summary comes from an interface contract.
-func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summary, isInterface bool) {
+func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summarizer, isInterface bool) error {
 	if g == nil {
-		return
+		return nil
 	}
-
+	argFlows, err := summary.GetArgFlows(g.Parent)
+	if err != nil {
+		return fmt.Errorf("cannot populate summary of %s: %s", g.Parent.Name(), err)
+	}
 	// Add edges from parameter to parameter
-	for srcArg, destArgs := range summary.Args {
+	for srcArg, destArgs := range argFlows {
 		for _, destArg := range destArgs {
 			g.addParamEdgeByPos(srcArg, destArg)
 		}
 	}
+	retFlows, err := summary.GetReturnFlows(g.Parent)
 	// Add edges from parameter to return instruction
-	for srcArg, retArray := range summary.Rets {
+	if err != nil {
+		return fmt.Errorf("cannot populate summary of %s: %s", g.Parent.Name(), err)
+	}
+	for srcArg, retArray := range retFlows {
 		for _, retIndex := range retArray {
 			g.addReturnEdgeByPos(srcArg, retIndex)
 		}
@@ -1028,6 +1038,8 @@ func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summary, isInt
 	g.IsInterfaceContract = isInterface
 
 	g.IsPreSummarized = true
+
+	return nil
 }
 
 // Utilities for printing graphs
@@ -1300,7 +1312,7 @@ func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer, filter *regex
 	}
 	fmt.Fprintf(w, "%s %s:\n", ftu.Yellow("Summary of"), ftu.Italic(ftu.Blue(g.Parent.Name())))
 	for _, a := range g.Params {
-		ppNodes(formatutil.Cyan("Parameter"), w, a, outEdgesOnly, filter)
+		ppNodes(ftu.Cyan("Parameter"), w, a, outEdgesOnly, filter)
 	}
 
 	for _, a := range g.FreeVars {
@@ -1309,39 +1321,39 @@ func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer, filter *regex
 
 	for _, callNodes := range g.Callees {
 		for _, callN := range callNodes {
-			ppNodes(formatutil.Blue("Call"), w, callN, outEdgesOnly, filter)
+			ppNodes(ftu.Blue("Call"), w, callN, outEdgesOnly, filter)
 			for _, x := range callN.args {
-				ppNodes(formatutil.Cyan("Call arg"), w, x, outEdgesOnly, filter)
+				ppNodes(ftu.Cyan("Call arg"), w, x, outEdgesOnly, filter)
 			}
 		}
 	}
 
 	for _, closure := range g.CreatedClosures {
 		for _, boundvar := range closure.boundVars {
-			ppNodes(formatutil.Gray("Bound var"), w, boundvar, outEdgesOnly, filter)
+			ppNodes(ftu.Gray("Bound var"), w, boundvar, outEdgesOnly, filter)
 		}
-		ppNodes(formatutil.Gray("Closure"), w, closure, outEdgesOnly, filter)
+		ppNodes(ftu.Gray("Closure"), w, closure, outEdgesOnly, filter)
 	}
 
 	for _, tup := range g.Returns {
 		for _, r := range tup {
-			ppNodes(formatutil.Green("Return"), w, r, outEdgesOnly, filter)
+			ppNodes(ftu.Green("Return"), w, r, outEdgesOnly, filter)
 		}
 	}
 
 	for _, s := range g.SyntheticNodes {
-		ppNodes(formatutil.BgWhite("Synthetic"), w, s, outEdgesOnly, filter)
+		ppNodes(ftu.BgWhite("Synthetic"), w, s, outEdgesOnly, filter)
 	}
 
 	for _, group := range g.BoundLabelNodes {
 		for _, s := range group {
-			ppNodes(formatutil.Gray("Bound by label"), w, s, outEdgesOnly, filter)
+			ppNodes(ftu.Gray("Bound by label"), w, s, outEdgesOnly, filter)
 		}
 	}
 
 	for _, group := range g.AccessGlobalNodes {
 		for _, s := range group {
-			ppNodes(formatutil.Gray("Global"), w, s, outEdgesOnly, filter)
+			ppNodes(ftu.Gray("Global"), w, s, outEdgesOnly, filter)
 		}
 	}
 }

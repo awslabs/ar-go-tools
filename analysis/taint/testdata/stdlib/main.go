@@ -15,8 +15,10 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -45,6 +47,13 @@ func TestSyncDoOnce() {
 	})
 }
 
+func TestCsvReadFromTaintedReader() {
+	x := source1() // @Source(TestCsvReadFromTaintedReader)
+	reader := strings.NewReader(x.Data)
+	r := csv.NewReader(reader)
+	sink2(r.Read()) // @Sink(TestCsvReadFromTaintedReader)
+}
+
 func TestFmtErrorf() {
 	x := source3() // @Source(TestFmtErrorf)
 	eTainted := fmt.Errorf("error: %s", x)
@@ -60,4 +69,5 @@ func main() {
 	TestJsonMarshal()
 	TestSyncDoOnce()
 	TestFmtErrorf()
+	TestCsvReadFromTaintedReader()
 }
