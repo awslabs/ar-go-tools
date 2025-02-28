@@ -68,6 +68,8 @@ var stdPackages = map[string]map[string]Summary{
 	"fmt":                         summaryFmt,
 	"go":                          summaryGo,
 	"hash":                        summaryHash,
+	"hash/adler32":                summaryHash,
+	"hash/cdc32":                  summaryHash,
 	"html":                        summaryHtml,
 	"image":                       summaryImage,
 	"image/color":                 summaryImage,
@@ -558,7 +560,159 @@ var summaryFmt = map[string]Summary{
 
 var summaryGo = map[string]Summary{}
 
-var summaryHash = map[string]Summary{}
+var summaryHash = map[string]Summary{
+	// Functions in adler32
+	// func (d *digest) Reset() : no summary
+	// func (d *digest) Size()
+	// func (d *digest) BlockSize()
+	// func (d *digest) AppendBinary(b []byte) ([]byte, error)
+	"(*hash/adler32.digest).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	// func (d *digest) Sum(in []byte) []byte
+	"(*hash/adler32.digest).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	// func (d *digest) Sum32() uint32
+	"(*hash/adler32.digest).Sum32": SingleVarArgPropagation,
+	// func Checksum(data []byte) unit32
+	"hash/adler32.Checksum": SingleVarArgPropagation,
+	// crc32
+	"(*hash/crc32.digest).MarshalBinary": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	"(*hash/crc32.digest).UnmarshalBinary": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/crc32.digest).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*hash/crc32.digest).Sum32": SingleVarArgPropagation,
+	"(*hash/crc32.digest).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"hash/crc32.ChecksumIEEE": SingleVarArgPropagation,
+	"hash/crc32.Checksum":     SingleVarArgPropagation,
+	// crc64
+	"(*hash/crc64.digest).MarshalBinary": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	"(*hash/crc64.digest).UnmarshalBinary": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/crc64.digest).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*hash/crc64.digest).Sum64": SingleVarArgPropagation,
+	"(*hash/crc64.digest).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"hash/crc64.Checksum": SingleVarArgPropagation,
+	// fnv
+	"(*hash/fnv.digest).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*hash/fnv.sum32).Sum32": SingleVarArgPropagation,
+	"(*hash/fnv.sum64).Sum64": SingleVarArgPropagation,
+	"(*hash/fnv.sum32).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum32a).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum64).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum64a).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum128).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum128a).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum32).MarshalBinary": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	"(*hash/fnv.sum32).UnmarshalBinary": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum32a).MarshalBinary": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	"(*hash/fnv.sum32a).UnmarshalBinary": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum64).MarshalBinary": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	"(*hash/fnv.sum64).UnmarshalBinary": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum64a).MarshalBinary": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	"(*hash/fnv.sum64a).UnmarshalBinary": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum128).MarshalBinary": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	"(*hash/fnv.sum128).UnmarshalBinary": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	"(*hash/fnv.sum128a).MarshalBinary": {
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	"(*hash/fnv.sum128a).UnmarshalBinary": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	// maphash
+	"(*hash/maphash.Hash).WriteString": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	// maphash
+	"(*hash/maphash.Hash).Write": {
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*hash/maphash.Hash).Sum64": SingleVarArgPropagation,
+	"(*hash/maphash.Hash).Sum": {
+		[][]int{{0}, {1}},
+		[][]int{{0}, {0}},
+	},
+}
 
 var summaryHtml = map[string]Summary{}
 
