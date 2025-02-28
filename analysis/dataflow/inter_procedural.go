@@ -429,7 +429,12 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 	}
 
 	if calleeSummary == nil {
-		if calleeSummary = NewPredefinedSummary(node.Callee(), GetUniqueFunctionID()); calleeSummary != nil {
+		calleeSummary, err := NewPredefinedSummary(node.Callee(), GetUniqueFunctionID())
+		if err != nil {
+			// An error in the config: we panic!
+			panic(fmt.Errorf("could not create summary for %s: %s", formatutil.SanitizeRepr(node.Callee()), err))
+		}
+		if calleeSummary != nil {
 			logger.Debugf("Loaded %s from summaries.\n", formatutil.SanitizeRepr(node.Callee()))
 			g.Summaries[node.Callee()] = calleeSummary
 		}
@@ -618,9 +623,14 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 	// nil summaries should only happen for functions that should have an internally defined summary, i.e. standard library.
 	if summary == nil {
 		id := GetUniqueFunctionID()
-		summary = NewPredefinedSummary(function, id)
-		if summary != nil {
-			s.FlowGraph.Summaries[function] = summary
+		predef, err := NewPredefinedSummary(function, id)
+		if err != nil {
+			// An error in the config? We panic!
+			panic(fmt.Errorf("could not create summary for %v: %v", function, err))
+		}
+		if predef != nil {
+			s.FlowGraph.Summaries[function] = predef
+			summary = predef
 		}
 	}
 	// Summary is still nil, we should panic now.
