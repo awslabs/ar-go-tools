@@ -310,12 +310,7 @@ func newCodeIdentifierCall(node *ssa.Call, calleePkg string, methodName string, 
 				Package: calleePkg,
 				Method:  methodName,
 				Objects: []config.TargetObject{
-					{
-						Kind:  config.ArgumentKind,
-						Name:  params[i].Name(),
-						Index: uint(i),
-						Type:  arg.Type().String(),
-					},
+					NewParamTargetObject(params[i], i, arg),
 				},
 			},
 			Enclosing: config.CallingContext{
@@ -327,6 +322,24 @@ func newCodeIdentifierCall(node *ssa.Call, calleePkg string, methodName string, 
 	}
 
 	return res
+}
+
+// NewParamTargetObject returns the config.TargetObject corresponding to the parameter for arg at
+// index idx.
+func NewParamTargetObject(param lang.Param, idx int, arg ssa.Value) config.TargetObject {
+	typ := arg.Type().String()
+	if param.IsVariadic {
+		// If the parameter type is variadic, the SSA form of the argument will be a slice
+		// (`[]type`) instead of the `...type` form.
+		typ = strings.TrimPrefix(typ, "[]")
+		typ = "..." + typ
+	}
+	return config.TargetObject{
+		Kind:  config.ArgumentKind,
+		Name:  param.Var.Name(),
+		Index: uint(idx),
+		Type:  typ,
+	}
 }
 
 // ReceiverStr returns the string receiver name of t.

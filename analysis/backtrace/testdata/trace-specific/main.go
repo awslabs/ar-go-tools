@@ -19,10 +19,15 @@ func main() {
 	trackSecondArg(0, data)
 
 	trackSecondAndThirdArg(0, 1, "test2")
+
+	trackOnlyVariadic(3, "test3", "test4")
 }
 
 func trackSecondArg(x int, y string) {
 }
 
 func trackSecondAndThirdArg(x int, y uint, z string) {
+}
+
+func trackOnlyVariadic(x int, ys ...string) {
 }

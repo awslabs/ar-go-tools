@@ -269,6 +269,7 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 //gocyclo:ignore
 func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 	if isNewFormat(cidRef) {
+		// Returns false if cid is not in the new format as well
 		return cid.equalNewFormat(cidRef)
 	}
 
@@ -301,8 +302,7 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 //
 //gocyclo:ignore
 func (cid *CodeIdentifier) equalNewFormat(cidRef CodeIdentifier) bool {
-	// If cidRef is in the new format, cid will also be in the new format
-	if cidRef.Target.Kind != cid.Target.Kind {
+	if cid == nil || !isNewFormat(*cid) {
 		return false
 	}
 	switch cidRef.Target.Kind {

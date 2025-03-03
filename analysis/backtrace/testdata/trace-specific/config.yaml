@@ -23,3 +23,12 @@ dataflow-problems:
                 name: "z"
                 index: 2
                 type: "string"
+        - target:
+            kind: "call"
+            package: "github.com/awslabs/ar-go-tools/analysis/backtrace/testdata/trace-specific"
+            method: "trackOnlyVariadic"
+            objects:
+              - kind: "argument"
+                name: "ys"
+                index: 1
+                type: "...string"

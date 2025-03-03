@@ -126,18 +126,14 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 				if pkg == nil {
 					return config.CodeIdentifier{}, false
 				}
+				param := lang.GetParams(arg.ParentNode().CallSite())[arg.Index()]
 				cid := config.CodeIdentifier{
 					Target: config.Target{
 						Kind:    config.CallKind,
 						Package: callee.Package().Pkg.Path(),
 						Method:  callee.Name(),
 						Objects: []config.TargetObject{
-							{
-								Kind:  config.ArgumentKind,
-								Name:  arg.ParamName(),
-								Index: uint(arg.Index()),
-								Type:  arg.Type().String(),
-							},
+							analysisutil.NewParamTargetObject(param, arg.Index(), arg.Value()),
 						},
 					},
 				}

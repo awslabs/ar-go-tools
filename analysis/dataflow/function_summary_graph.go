@@ -373,7 +373,7 @@ func (g *SummaryGraph) addCallInstr(c *State, instr ssa.CallInstruction) {
 				argPos:    pos,
 				out:       make(map[GraphNode][]EdgeInfo),
 				in:        make(map[GraphNode]EdgeInfo),
-				paramName: params[pos].Name(),
+				paramName: params[pos].Var.Name(),
 			}
 			node.args[pos] = argNode
 		}

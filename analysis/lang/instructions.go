@@ -171,16 +171,35 @@ func GetArgs(instr ssa.CallInstruction) []ssa.Value {
 	return args
 }
 
+// Param is a parameter of a function.
+type Param struct {
+	Var        *types.Var
+	IsVariadic bool
+}
+
 // GetParams returns the callee params of instr.
-func GetParams(instr ssa.CallInstruction) []*types.Var {
-	var params []*types.Var
+func GetParams(instr ssa.CallInstruction) []Param {
+	var params []Param
 	sig := instr.Common().Signature()
 	if sig.Recv() != nil {
 		// The first parameter of a method call is the receiver
-		params = append(params, sig.Recv())
+		param := Param{
+			Var:        sig.Recv(),
+			IsVariadic: false,
+		}
+		params = append(params, param)
 	}
 	for i := 0; i < sig.Params().Len(); i++ {
-		params = append(params, sig.Params().At(i))
+		p := sig.Params().At(i)
+		isVariadic := false
+		if sig.Variadic() && i == sig.Params().Len()-1 {
+			isVariadic = true
+		}
+		param := Param{
+			Var:        p,
+			IsVariadic: isVariadic,
+		}
+		params = append(params, param)
 	}
 
 	return params

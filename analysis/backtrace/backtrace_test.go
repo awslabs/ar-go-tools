@@ -108,6 +108,12 @@ func TestAnalyze_SpecificObjs(t *testing.T) {
 				{arg, argval{`"test2":string`, 2}, 21},
 			},
 		},
+		{
+			name: `trace to trackOnlyVariadic arg 1 in main from main`,
+			matches: []match{
+				{arg, argval{`t5`, 1}, -1},
+			},
+		},
 	}
 
 	checkTraces(t, res, tests)
