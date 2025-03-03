@@ -47,7 +47,7 @@ func CheckNoGoRoutine(s *State, reportedLocs map[*ssa.Go]bool, node *CallNode) {
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
 		if !reportedLocs[goroutine] {
 			reportedLocs[goroutine] = true
-			s.Logger.Warnf(formatutil.Yellow("Data flows to Go call."))
+			s.Logger.Warn(formatutil.Yellow("Data flows to Go call."))
 			s.Logger.Warnf("-> Position: %s", node.Position(s))
 		}
 	}

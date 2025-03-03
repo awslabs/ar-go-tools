@@ -15,6 +15,7 @@
 package main
 
 import (
+	"archive/tar"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -54,6 +55,23 @@ func TestCsvReadFromTaintedReader() {
 	sink2(r.Read()) // @Sink(TestCsvReadFromTaintedReader)
 }
 
+func TestArchiveTarReadFromTaintedReader() {
+	x := source1() // @Source(TestArchiveTarReadFromTaintedReader)
+	reader := strings.NewReader(x.Data)
+	r := tar.NewReader(reader)
+	h, err := r.Next()
+	if err != nil {
+		return
+	}
+	sink2(h.Name) // @Sink(TestArchiveTarReadFromTaintedReader)
+	buf := make([]byte, 1024)
+	_, err = r.Read(buf)
+	if err != nil {
+		return
+	}
+	sink2(string(buf)) // @Sink(TestArchiveTarReadFromTaintedReader)
+}
+
 func TestFmtErrorf() {
 	x := source3() // @Source(TestFmtErrorf)
 	eTainted := fmt.Errorf("error: %s", x)
@@ -70,4 +88,5 @@ func main() {
 	TestSyncDoOnce()
 	TestFmtErrorf()
 	TestCsvReadFromTaintedReader()
+	TestArchiveTarReadFromTaintedReader()
 }

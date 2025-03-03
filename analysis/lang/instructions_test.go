@@ -51,7 +51,7 @@ func (v *InstructionCountingOp) DoSlice(*ssa.Slice)                             
 // Only the DoReturn reports something in the pass.
 func (v *InstructionCountingOp) DoReturn(ret *ssa.Return) {
 	if v.report && ret.Pos() != 0 {
-		v.pass.Reportf(ret.Pos(), fmt.Sprintf("count %d instructions at return", v.count))
+		v.pass.Reportf(ret.Pos(), "count %d instructions at return", v.count)
 	}
 	v.count++
 }

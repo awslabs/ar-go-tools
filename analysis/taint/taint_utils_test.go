@@ -99,11 +99,11 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 				msg := fmt.Sprintf("false positive:\n%s\nwith trace: %s\nflows to\n%s\n",
 					actualSource.Pos, actualSource.Trace, actualSink.Pos)
 				if !hasMeta {
-					t.Errorf(msg)
+					t.Error(msg)
 				} else {
 					// TODO false positives are logs for now for tests with metadata until context-sensitivity is
 					// improved
-					t.Logf(msg)
+					t.Log(msg)
 				}
 			}
 		}
@@ -287,7 +287,7 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	ptrState := result.Bind(lp, ptr.NewState)
 	state, err := result.Bind(ptrState, dataflow.NewState).Value()
 	if err != nil {
-		t.Fatalf("failed to initialize state")
+		t.Fatalf("failed to initialize state: %s", err)
 	}
 	res, err := taint.Analyze(state, taint.AnalysisReqs{})
 	if err != nil {

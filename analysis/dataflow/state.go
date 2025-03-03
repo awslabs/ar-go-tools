@@ -299,7 +299,7 @@ func (s *State) ResolveCallee(instr ssa.CallInstruction, useContracts bool) (map
 	}
 
 	// Last option is to use the map from type string to implementation
-	if s.ImplementationsByType == nil || len(s.ImplementationsByType) == 0 {
+	if len(s.ImplementationsByType) == 0 {
 		return nil, fmt.Errorf("cannot resolve callee without information about possible implementations")
 	}
 

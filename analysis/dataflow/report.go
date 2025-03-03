@@ -56,14 +56,14 @@ func (s *State) ReportMissingOrNotConstructedSummary(callSite *CallNode) {
 		typeString = formatutil.SanitizeRepr(callSite.Callee().Type())
 	}
 	if callSite.CalleeSummary == nil {
-		s.Logger.Debugf(formatutil.Red(fmt.Sprintf("| %q has not been summarized (call %q).",
+		s.Logger.Debug(formatutil.Red(fmt.Sprintf("| %q has not been summarized (call %q).",
 			callSite.String(), typeString)))
 	} else if !callSite.CalleeSummary.Constructed {
-		s.Logger.Debugf(formatutil.Red(fmt.Sprintf("| %q has not been constructed (call %q).",
+		s.Logger.Debug(formatutil.Red(fmt.Sprintf("| %q has not been constructed (call %q).",
 			callSite.String(), typeString)))
 	}
 	if callSite.Callee() != nil && callSite.CallSite() != nil {
-		s.Logger.Debugf(fmt.Sprintf("| Please add %s to summaries",
+		s.Logger.Debug(fmt.Sprintf("| Please add %s to summaries",
 			formatutil.Sanitize(callSite.Callee().String())))
 
 		pos := callSite.Position(s)
@@ -94,7 +94,7 @@ func (s *State) ReportMissingClosureNode(closureNode *ClosureNode) {
 	} else {
 		instrStr = closureNode.Instr().String()
 	}
-	s.Logger.Debugf(formatutil.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
+	s.Logger.Debug(formatutil.Red(fmt.Sprintf("| %s has not been summarized (closure %s).",
 		closureNode.String(), formatutil.Sanitize(instrStr))))
 	if closureNode.Instr() != nil {
 		s.Logger.Debugf("| Please add closure %s to summaries",
@@ -114,17 +114,17 @@ func (s *State) ReportSummaryNotConstructed(callSite *CallNode) {
 		formatutil.Yellow(callSite.Graph().Parent.Name()))
 	pos := callSite.Position(s)
 	if pos != lang.DummyPos {
-		s.Logger.Debugf(fmt.Sprintf("|_ See call site: %s", pos))
+		s.Logger.Debugf("|_ See call site: %s", pos)
 	} else {
 		opos := lang.SafeFunctionPos(callSite.Graph().Parent)
-		s.Logger.Debugf(fmt.Sprintf("|_ See call site in %s", opos.ValueOr(lang.DummyPos)))
+		s.Logger.Debugf("|_ See call site in %s", opos.ValueOr(lang.DummyPos))
 	}
 
 	if callSite.CallSite() != nil {
 		methodKey := lang.InstrMethodKey(callSite.CallSite())
 		if methodKey.IsSome() {
-			s.Logger.Debugf(fmt.Sprintf("| Or add %s to dataflow contracts",
-				formatutil.Sanitize(methodKey.ValueOr("?"))))
+			s.Logger.Debugf("| Or add %s to dataflow contracts",
+				formatutil.Sanitize(methodKey.ValueOr("?")))
 		}
 	}
 }
@@ -180,7 +180,7 @@ func reportUnsoundFeatures(state *State, f *ssa.Function) {
 		}
 		msg += "    Adding a predefined summary might help avoid soundness issues.\n"
 
-		state.Logger.Warnf(msg)
+		state.Logger.Warn(msg)
 	}
 }
 
@@ -258,5 +258,4 @@ func detectUnsafeBuiltinUsage(callVal *ssa.Builtin, unsafeUsages map[token.Posit
 	// It's not a handled builting, but we're not sure it's safe
 	// Report it in the unsafe usages without calling it a function
 	unsafeUsages[iPos] = fmt.Sprintf("Calling builtin %s.", callVal.Name())
-	return
 }

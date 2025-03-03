@@ -87,10 +87,10 @@ func LoadDefinitions(fileName string) ([]Contract, error) {
 	for _, contract := range data {
 		// only one of InterfaceID and DataflowEdge should be given
 		if contract.InterfaceID == "" && contract.ObjectPath == "" {
-			return data, fmt.Errorf("InterfaceID and DataflowEdge should not be both empty")
+			return data, fmt.Errorf("InterfaceID and ObjectPath should not be both empty")
 		}
 		if contract.InterfaceID != "" && contract.ObjectPath != "" {
-			return data, fmt.Errorf("InterfaceID and DataflowEdge should not be both specified")
+			return data, fmt.Errorf("InterfaceID and ObjectPath should not be both specified")
 		}
 	}
 

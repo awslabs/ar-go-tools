@@ -123,8 +123,7 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 		return nil
 	}
 
-	var lastNodeID uint32
-	lastNodeID = 0
+	var lastNodeID uint32 = 0
 
 	g := &SummaryGraph{
 		ID:                    id,

@@ -146,11 +146,11 @@ func NodeSummary(g GraphNode) string {
 			x.Type().String(),
 			x.ParentName())
 	case *ClosureNode:
-		return fmt.Sprintf("Closure")
+		return "Closure"
 	case *BoundLabelNode:
 		return fmt.Sprintf("Bound label of type %s", x.targetInfo.Type().String())
 	case *SyntheticNode:
-		return fmt.Sprintf("Synthetic node")
+		return "Synthetic node"
 	case *BoundVarNode:
 		return "Bound variable"
 	case *FreeVarNode:
@@ -187,11 +187,11 @@ func TermNodeSummary(g GraphNode) string {
 			formatutil.Italic(x.Type().String()),
 			formatutil.Magenta(x.ParentName()))
 	case *ClosureNode:
-		return fmt.Sprintf("Closure")
+		return "Closure"
 	case *BoundLabelNode:
 		return fmt.Sprintf("Bound label of type %s", formatutil.Italic(x.targetInfo.Type().String()))
 	case *SyntheticNode:
-		return fmt.Sprintf("Synthetic node")
+		return "Synthetic node"
 	case *BoundVarNode:
 		return "Bound variable"
 	case *FreeVarNode:

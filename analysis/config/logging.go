@@ -178,6 +178,41 @@ func (l *LogGroup) Errorf(format string, v ...any) {
 	}
 }
 
+// Trace calls Trace.Print to print to the trace logger. Arguments are handled in the manner of Print
+func (l *LogGroup) Trace(msg string) {
+	if l.Level >= TraceLevel {
+		l.trace.Print(msg)
+	}
+}
+
+// Debug calls Debug.Print to print to the trace logger. Arguments are handled in the manner of Print
+func (l *LogGroup) Debug(msg string) {
+	if l.Level >= DebugLevel {
+		l.debug.Print(msg)
+	}
+}
+
+// Info calls Info.Print to print to the trace logger. Arguments are handled in the manner of Print
+func (l *LogGroup) Info(msg string) {
+	if l.Level >= InfoLevel {
+		l.info.Print(msg)
+	}
+}
+
+// Warn calls Warn.Print to print to the trace logger. Arguments are handled in the manner of Print
+func (l *LogGroup) Warn(msg string) {
+	if l.Level >= WarnLevel && !l.suppressWarn {
+		l.warn.Print(msg)
+	}
+}
+
+// Error calls Error.Print to print to the trace logger. Arguments are handled in the manner of Print
+func (l *LogGroup) Error(msg string) {
+	if l.Level >= ErrLevel {
+		l.err.Print(msg)
+	}
+}
+
 // GetDebug returns the debug level logger, for applications that need a logger as input
 func (l *LogGroup) GetDebug() *log.Logger {
 	return l.debug
