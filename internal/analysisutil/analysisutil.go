@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -145,17 +146,23 @@ func GetFieldInfoFromType(t types.Type, i int) (string, bool) {
 //
 //gocyclo:ignore
 func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
-	f func(config.CodeIdentifier) bool) bool {
+	f func(config.CodeIdentifier) bool) (config.CodeIdentifier, bool) {
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered entry points
 	case *ssa.Call:
 		if node == nil {
-			return false // inits cannot be entry points
+			return config.CodeIdentifier{}, false // inits cannot be entry points
 		}
 
 		parent := node.Parent()
 		if !node.Call.IsInvoke() {
-			return isFuncEntrypoint(node, parent, f) || isAliasEntrypoint(pointer, node, f)
+			if cid, ok := isFuncEntrypoint(node, parent, f); ok {
+				return cid, true
+			}
+			if cid, ok := isAliasEntrypoint(pointer, node, f); ok {
+				return cid, true
+			}
+			return config.CodeIdentifier{}, false
 		}
 
 		// For invoke also populate the receiver
@@ -163,54 +170,80 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		methodName := node.Call.Method.Name()
 		calleePkg := FindSafeCalleePkg(node.Common())
 		if calleePkg.IsSome() {
-			return f(
-				config.CodeIdentifier{
-					Context:    parent.String(),
-					Package:    calleePkg.Value(),
-					Method:     methodName,
-					Receiver:   receiver,
-					ValueMatch: n.String()})
+			cid := config.CodeIdentifier{
+				Context:    parent.String(),
+				Package:    calleePkg.Value(),
+				Method:     methodName,
+				Receiver:   receiver,
+				ValueMatch: n.String(),
+			}
+			if f(cid) {
+				return cid, true
+			}
+
+			// Entrypoint could be one of the arguments: use the new code identifier format
+			cids := newCodeIdentifierCall(node, calleePkg.Value(), methodName, parent)
+			for _, cid := range cids {
+				if f(cid) {
+					return cid, true
+				}
+			}
 		}
-		return false
+		return config.CodeIdentifier{}, false
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:
 		fieldName, _ := FieldFieldInfo(node)
 		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
-			return false
+			return config.CodeIdentifier{}, false
 		}
-		return f(config.CodeIdentifier{
+		cid := config.CodeIdentifier{
 			Context:    node.Parent().String(),
 			Package:    packageName,
 			Field:      fieldName,
 			Type:       typeName,
-			ValueMatch: n.String()})
+			ValueMatch: n.String(),
+		}
+		if f(cid) {
+			return cid, true
+		}
+		return config.CodeIdentifier{}, false
 
 	case *ssa.FieldAddr:
 		fieldName, _ := FieldAddrFieldInfo(node)
 		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
-			return false
+			return config.CodeIdentifier{}, false
 		}
-		return f(config.CodeIdentifier{
+		cid := config.CodeIdentifier{
 			Context:    node.Parent().String(),
 			Package:    packageName,
 			Field:      fieldName,
 			Type:       typeName,
-			ValueMatch: n.String()})
+			ValueMatch: n.String(),
+		}
+		if f(cid) {
+			return cid, true
+		}
+		return config.CodeIdentifier{}, false
 
 	// Allocations of data of a type that is an entry point
 	case *ssa.Alloc:
 		packageName, typeName, err := FindEltTypePackage(node.Type(), "%s")
 		if err != nil {
-			return false
+			return config.CodeIdentifier{}, false
 		}
-		return f(config.CodeIdentifier{
+		cid := config.CodeIdentifier{
 			Context:    node.Parent().String(),
 			Package:    packageName,
 			Type:       typeName,
-			ValueMatch: n.String()})
+			ValueMatch: n.String(),
+		}
+		if f(cid) {
+			return cid, true
+		}
+		return config.CodeIdentifier{}, false
 
 	// Storing into a specific struct field
 	case *ssa.Store:
@@ -218,36 +251,94 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			fieldName, _ := FieldAddrFieldInfo(fieldAddr)
 			packageName, typeName, err := FindEltTypePackage(fieldAddr.X.Type(), "%s")
 			if err != nil {
-				return false
+				return config.CodeIdentifier{}, false
 			}
-			return f(config.CodeIdentifier{
+			cid := config.CodeIdentifier{
 				Context:    node.Parent().String(),
 				Package:    packageName,
 				Field:      fieldName,
 				Type:       typeName,
 				Kind:       "store",
-				ValueMatch: n.String()})
+				ValueMatch: n.String(),
+			}
+			if f(cid) {
+				return cid, true
+			}
+			return config.CodeIdentifier{}, false
 		}
-		return false
+		return config.CodeIdentifier{}, false
 
 	// Channel receives can be sources
 	case *ssa.UnOp:
 		if node.Op == token.ARROW {
 			packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 			if err != nil {
-				return false
+				return config.CodeIdentifier{}, false
 			}
-			return f(config.CodeIdentifier{
+			cid := config.CodeIdentifier{
 				Context:    node.Parent().String(),
 				Package:    packageName,
 				Type:       typeName,
 				Kind:       "channel receive",
-				ValueMatch: n.String()})
+				ValueMatch: n.String(),
+			}
+			if f(cid) {
+				return cid, true
+			}
+			return config.CodeIdentifier{}, false
 		}
-		return false
+		return config.CodeIdentifier{}, false
 
 	default:
-		return false
+		return config.CodeIdentifier{}, false
+	}
+}
+
+// newCodeIdentifierCall returns a code identifier for each possible object in the call.
+func newCodeIdentifierCall(node *ssa.Call, calleePkg string, methodName string, parent *ssa.Function) []config.CodeIdentifier {
+	if parent == nil || parent.Package() == nil {
+		return nil
+	}
+
+	var res []config.CodeIdentifier
+	args := lang.GetArgs(node)
+	params := lang.GetParams(node)
+	for i, arg := range args {
+		cid := config.CodeIdentifier{
+			Target: config.Target{
+				Kind:    config.CallKind,
+				Package: calleePkg,
+				Method:  methodName,
+				Objects: []config.TargetObject{
+					NewParamTargetObject(params[i], i, arg),
+				},
+			},
+			Enclosing: config.CallingContext{
+				Package: parent.Package().Pkg.Path(),
+				Method:  parent.Name(),
+			},
+		}
+		res = append(res, cid)
+	}
+
+	return res
+}
+
+// NewParamTargetObject returns the config.TargetObject corresponding to the parameter for arg at
+// index idx.
+func NewParamTargetObject(param lang.Param, idx int, arg ssa.Value) config.TargetObject {
+	typ := arg.Type().String()
+	if param.IsVariadic {
+		// If the parameter type is variadic, the SSA form of the argument will be a slice
+		// (`[]type`) instead of the `...type` form.
+		typ = strings.TrimPrefix(typ, "[]")
+		typ = "..." + typ
+	}
+	return config.TargetObject{
+		Kind:  config.ArgumentKind,
+		Name:  param.Var.Name(),
+		Index: uint(idx),
+		Type:  typ,
 	}
 }
 
@@ -263,30 +354,50 @@ func ReceiverStr(t types.Type) string {
 }
 
 // isFuncEntrypoint returns true if the actual function called matches an entrypoint.
-func isFuncEntrypoint(node *ssa.Call, parent *ssa.Function, f func(config.CodeIdentifier) bool) bool {
+func isFuncEntrypoint(node *ssa.Call, parent *ssa.Function, f func(config.CodeIdentifier) bool) (config.CodeIdentifier, bool) {
 	funcValue := node.Call.Value.Name()
 	calleePkg := FindSafeCalleePkg(node.Common())
 	if calleePkg.IsSome() {
-		return f(config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue})
+		cid := config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue}
+		if f(cid) {
+			return cid, true
+		}
+		// Entrypoint could be one of the arguments: use the new code identifier format
+		cids := newCodeIdentifierCall(node, calleePkg.Value(), funcValue, parent)
+		for _, cid := range cids {
+			if f(cid) {
+				return cid, true
+			}
+		}
 	}
-	return false
+	return config.CodeIdentifier{}, false
 }
 
 // isAliasEntrypoint returns true if any alias to node matches an entrypoint.
-func isAliasEntrypoint(pointer *pointer.Result, node *ssa.Call, f func(config.CodeIdentifier) bool) bool {
+func isAliasEntrypoint(pointer *pointer.Result, node *ssa.Call, f func(config.CodeIdentifier) bool) (config.CodeIdentifier, bool) {
 	if pointer == nil {
-		return false
+		return config.CodeIdentifier{}, false
 	}
 	ptr, hasAliases := pointer.Queries[node.Call.Value]
 	if !hasAliases {
-		return false
+		return config.CodeIdentifier{}, false
 	}
 	for _, label := range ptr.PointsTo().Labels() {
 		funcValue := label.Value().Name()
 		funcPackage := FindValuePackage(label.Value())
-		if funcPackage.IsSome() && f(config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}) {
-			return true
+		if funcPackage.IsSome() {
+			cid := config.CodeIdentifier{Package: funcPackage.Value(), Method: funcValue}
+			if f(cid) {
+				return cid, true
+			}
+			// Entrypoint could be one of the arguments: use the new code identifier format
+			cids := newCodeIdentifierCall(node, funcPackage.Value(), funcValue, label.Value().Parent())
+			for _, cid := range cids {
+				if f(cid) {
+					return cid, true
+				}
+			}
 		}
 	}
-	return false
+	return config.CodeIdentifier{}, false
 }

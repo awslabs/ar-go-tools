@@ -49,6 +49,9 @@ func main() {
 	runcmd(bar("ls3"))
 
 	runglobal()
+
+	data := "test"
+	trackArg(0, data)
 }
 
 func foo() {
@@ -87,4 +90,7 @@ func write() string {
 		global = baz("hello2")
 	}
 	return global
+}
+
+func trackArg(x int, y string) {
 }

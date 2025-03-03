@@ -70,6 +70,104 @@ type CodeIdentifier struct {
 	// computedRegexs is not part of the yaml config, but contains the compiled regex version of the code identifier
 	// elements that are parsed as regexes.
 	computedRegexs *codeIdentifierRegex
+
+	// --- Fields for the new format: ---
+
+	// Target identifies a program value that the analysis should analyze as an
+	// entrypoint.
+	// It can be "narrowed" further if needed to match specific objects that are
+	// part of the target.
+	Target Target
+
+	// Enclosing specifies the calling context of the target (only for method targets).
+	Enclosing CallingContext
+}
+
+// Target matches a specific program value to be analyzed as an
+// entrypoint.
+type Target struct {
+	// Kind is the kind of target.
+	// Supported kinds:
+	// - "call"
+	Kind TargetKind
+
+	// Package is the name of the package that the method belongs to.
+	Package string
+
+	// Method is the name of the method or function.
+	Method string
+
+	// Objects are the specific objects (values) in the target that the analysis
+	// should analyze as an entrypoints.
+	//
+	// A "target object" can be an argument, return value, etc.
+	// The supported kinds of objects depend on the kind of the target.
+	Objects []TargetObject
+}
+
+// CallingContext matches a function/method that specifies the calling context
+// of the target.
+type CallingContext struct {
+	Package        string
+	PackageRegex   string `xml:"package-regex,attr" yaml:"package~" json:"package~"`
+	Method         string
+	MethodRegex    string `xml:"method-regex,attr" yaml:"method~" json:"method~"`
+	computedRegexs *callingContextRegex
+}
+
+type callingContextRegex struct {
+	packageRegex *regexp.Regexp
+	methodRegex  *regexp.Regexp
+}
+
+// TargetKind is the kind of target.
+type TargetKind string
+
+const (
+	// CallKind indicates a function/method call target.
+	CallKind TargetKind = "call"
+)
+
+// TargetObject is a specific object value in the target that the analysis
+// should analyze as an entrypoint.
+type TargetObject struct {
+	// Kind is the kind of entrypoint.
+	//
+	// Supported Kinds:
+	// - "argument"
+	Kind ObjectKind
+
+	// Name is the (optional) name of the entrypoint.
+	//
+	// For example, if the Kind is an argument, `Name` should be set to the
+	// parameter name in the function.
+	Name string
+
+	// Index is the index of the entrypoint.
+	//
+	// If the Kind is an argument, Index is the argument index.
+	// If the Kind is a return value, Index specifies which returned tuple
+	// element is the entrypoint.
+	Index uint
+
+	// Type is the type of the entrypoint.
+	Type string
+}
+
+// ObjectKind is the kind of entrypoint object.
+type ObjectKind string
+
+const (
+	// ArgumentKind indicates an function call argument entrypoint.
+	ArgumentKind ObjectKind = "argument"
+	// ReturnKind indicates a return value entrypoint.
+	// TODO implement support
+	// ReturnKind ObjectKind = "return"
+)
+
+// isNewFormat returns true if cid is specified using the new format.
+func isNewFormat(cid CodeIdentifier) bool {
+	return cid.Target.Kind != ""
 }
 
 // NewCodeIdentifier properly intializes cid.
@@ -94,6 +192,27 @@ type codeIdentifierRegex struct {
 // @ensures cid.computedRegexs == null || cid.computedRegexs.(*) != null
 // TODO improve error handling
 func compileRegexes(cid CodeIdentifier) CodeIdentifier {
+	if isNewFormat(cid) {
+		// Enclosing is the only object that may contain regexes (for now)
+		cid.Enclosing.computedRegexs = &callingContextRegex{}
+		if cid.Enclosing.PackageRegex != "" {
+			packageRegex, err := regexp.Compile(cid.Enclosing.PackageRegex)
+			if err != nil {
+				fmt.Printf("[WARN] failed to compile enclosing package regex %v: %v\n", cid.Enclosing.PackageRegex, err)
+			}
+			cid.Enclosing.computedRegexs.packageRegex = packageRegex
+		}
+		if cid.Enclosing.MethodRegex != "" {
+			methodRegex, err := regexp.Compile(cid.Enclosing.MethodRegex)
+			if err != nil {
+				fmt.Printf("[WARN] failed to compile enclosing method regex %v: %v\n", cid.Enclosing.MethodRegex, err)
+			}
+			cid.Enclosing.computedRegexs.methodRegex = methodRegex
+		}
+
+		return cid
+	}
+
 	contextRegex, err := regexp.Compile(cid.Context)
 	if err != nil {
 		fmt.Printf("[WARN] failed to compile context regex %v: %v\n", cid.Context, err)
@@ -149,6 +268,11 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 //
 //gocyclo:ignore
 func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
+	if isNewFormat(cidRef) {
+		// Returns false if cid is not in the new format as well
+		return cid.equalNewFormat(cidRef)
+	}
+
 	if cidRef.computedRegexs != nil {
 		return ((cidRef.computedRegexs.contextRegex.MatchString(cid.Context)) || (cidRef.Context == "")) &&
 			((cidRef.computedRegexs.packageRegex.MatchString(cid.Package)) || (cidRef.Package == "")) &&
@@ -171,6 +295,67 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 		((cid.Type == cidRef.Type) || (cidRef.Type == "")) &&
 		((cid.ValueMatch == cidRef.ValueMatch) || (cidRef.ValueMatch == "")) &&
 		(cidRef.Kind == cid.Kind)
+}
+
+// equalNewFormat returns true if cidRef's fields are equal to cid in the new
+// code identifier format.
+//
+//gocyclo:ignore
+func (cid *CodeIdentifier) equalNewFormat(cidRef CodeIdentifier) bool {
+	if cid == nil || !isNewFormat(*cid) {
+		return false
+	}
+	switch cidRef.Target.Kind {
+	case CallKind:
+		// package and method must match
+		if cidRef.Target.Package != cid.Target.Package {
+			return false
+		}
+		if cidRef.Target.Method != cid.Target.Method {
+			return false
+		}
+		// If cidRef (config cid) does not have any objects specified, then don't check them
+		if len(cidRef.Target.Objects) > 0 {
+			// every object in cid must be present in cidRef
+			for _, obj := range cid.Target.Objects {
+				found := false
+				for _, objRef := range cidRef.Target.Objects {
+					if obj.Kind == objRef.Kind && obj.Name == objRef.Name && obj.Type == objRef.Type && obj.Index == objRef.Index {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false
+				}
+			}
+		}
+	}
+	// Enclosing (calling context) does not need to be specified
+	if cidRef.Enclosing.Package != "" {
+		if cidRef.Enclosing.computedRegexs.packageRegex != nil {
+			if !cidRef.Enclosing.computedRegexs.packageRegex.MatchString(cid.Enclosing.Package) {
+				return false
+			}
+		} else {
+			if cidRef.Enclosing.Package != cid.Enclosing.Package {
+				return false
+			}
+		}
+	}
+	if cidRef.Enclosing.Method != "" {
+		if cidRef.Enclosing.computedRegexs.methodRegex != nil {
+			if !cidRef.Enclosing.computedRegexs.methodRegex.MatchString(cid.Enclosing.Method) {
+				return false
+			}
+		} else {
+			if cidRef.Enclosing.Method != cid.Enclosing.Method {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // ExistsCid is true if there is some x in a such that f(x) is true.

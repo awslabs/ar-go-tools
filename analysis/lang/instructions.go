@@ -17,6 +17,8 @@
 package lang
 
 import (
+	"go/types"
+
 	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -167,6 +169,40 @@ func GetArgs(instr ssa.CallInstruction) []ssa.Value {
 	}
 	args = append(args, instr.Common().Args...)
 	return args
+}
+
+// Param is a parameter of a function.
+type Param struct {
+	Var        *types.Var
+	IsVariadic bool
+}
+
+// GetParams returns the callee params of instr.
+func GetParams(instr ssa.CallInstruction) []Param {
+	var params []Param
+	sig := instr.Common().Signature()
+	if sig.Recv() != nil {
+		// The first parameter of a method call is the receiver
+		param := Param{
+			Var:        sig.Recv(),
+			IsVariadic: false,
+		}
+		params = append(params, param)
+	}
+	for i := 0; i < sig.Params().Len(); i++ {
+		p := sig.Params().At(i)
+		isVariadic := false
+		if sig.Variadic() && i == sig.Params().Len()-1 {
+			isVariadic = true
+		}
+		param := Param{
+			Var:        p,
+			IsVariadic: isVariadic,
+		}
+		params = append(params, param)
+	}
+
+	return params
 }
 
 // InstrMethodKey return a method key (as used in the analyzer state for indexing interface methods) if the instruction

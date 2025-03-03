@@ -56,7 +56,9 @@ func cmdTrace(tt *term.Terminal, c *dataflow.State, command Command, _ bool) boo
 	}
 	dummyTaintSpec := &config.TaintSpec{}
 	scanningSpec := dataflow.ScanningSpec{
-		IsEntryPointGraph: func(g dataflow.GraphNode) bool { return r.MatchString(g.LongID()) },
+		IsEntryPointGraph: func(g dataflow.GraphNode) (config.CodeIdentifier, bool) {
+			return config.CodeIdentifier{}, r.MatchString(g.LongID())
+		},
 	}
 	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(dummyTaintSpec), scanningSpec)
 

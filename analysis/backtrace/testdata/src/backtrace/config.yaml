@@ -1,7 +1,16 @@
 slicing-problems:
   - backtracepoints:
-    - package: "os/exec"
-      method: "^Command$"
+      - package: "os/exec"
+        method: "^Command$"
+      - target:
+          kind: "call"
+          package: "command-line-arguments"
+          method: "trackArg"
+          objects:
+            - kind: "argument"
+              name: "y"
+              index: 1
+              type: "string"
 
 options:
-    log-level: 5 # trace logging
+  log-level: 5 # trace logging

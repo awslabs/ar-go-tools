@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
@@ -34,7 +35,7 @@ func BuildCrossFunctionGraph(state *dataflow.State) (*dataflow.State, error) {
 	state.Logger.Infof("Building full-program inter-procedural dataflow graph...")
 	start := time.Now()
 	dataflow.RunInterProcedural(state, CrossFunctionGraphVisitor{}, dataflow.ScanningSpec{
-		IsEntryPointSsa: func(ssa.Node) bool { return true },
+		IsEntryPointSsa: func(ssa.Node) (config.CodeIdentifier, bool) { return config.CodeIdentifier{}, true },
 	})
 
 	state.Logger.Infof("Full-program inter-procedural dataflow graph done (%.2f s).", time.Since(start).Seconds())

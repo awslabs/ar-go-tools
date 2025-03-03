@@ -200,7 +200,7 @@ func (c Config) IsSomeValidator(cid CodeIdentifier) bool {
 // IsSomeBacktracePoint returns true if the code identifier matches any backtrace point in the slicing problems
 func (c Config) IsSomeBacktracePoint(cid CodeIdentifier) bool {
 	for _, ss := range c.DataflowProblems.SlicingProblems {
-		if ss.IsBacktracePoint(cid) {
+		if _, ok := ss.IsBacktracePoint(cid); ok {
 			return true
 		}
 	}
@@ -234,8 +234,12 @@ func (scs StaticCommandsSpec) IsStaticCommand(cid CodeIdentifier) bool {
 }
 
 // IsBacktracePoint returns true if the code identifier matches a backtrace point according to the SlicingSpec
-func (ss SlicingSpec) IsBacktracePoint(cid CodeIdentifier) bool {
-	return ExistsCid(ss.BacktracePoints, cid.equalOnNonEmptyFields)
+func (ss SlicingSpec) IsBacktracePoint(cid CodeIdentifier) (CodeIdentifier, bool) {
+	if ExistsCid(ss.BacktracePoints, cid.equalOnNonEmptyFields) {
+		return cid, true
+	}
+
+	return CodeIdentifier{}, false
 }
 
 // TargetIncludes returns true if the list of targets includes the targets or has the "all" target, or the target

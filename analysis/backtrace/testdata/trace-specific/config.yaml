@@ -1,0 +1,34 @@
+dataflow-problems:
+  slicing:
+    - backtracepoints:
+        - target:
+            kind: "call"
+            package: "github.com/awslabs/ar-go-tools/analysis/backtrace/testdata/trace-specific"
+            method: "trackSecondArg"
+            objects:
+              - kind: "argument"
+                name: "y"
+                index: 1
+                type: "string"
+        - target:
+            kind: "call"
+            package: "github.com/awslabs/ar-go-tools/analysis/backtrace/testdata/trace-specific"
+            method: "trackSecondAndThirdArg"
+            objects:
+              - kind: "argument"
+                name: "y"
+                index: 1
+                type: "uint"
+              - kind: "argument"
+                name: "z"
+                index: 2
+                type: "string"
+        - target:
+            kind: "call"
+            package: "github.com/awslabs/ar-go-tools/analysis/backtrace/testdata/trace-specific"
+            method: "trackOnlyVariadic"
+            objects:
+              - kind: "argument"
+                name: "ys"
+                index: 1
+                type: "...string"

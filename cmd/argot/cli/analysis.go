@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/render"
@@ -458,7 +459,7 @@ func cmdTaint(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
 			taint.NewVisitor(&ts),
 			dataflow.ScanningSpec{
 				MarkCallArgsLikeCall: ts.SourceTaintsArgs,
-				IsEntryPointSsa: func(node ssa.Node) bool {
+				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
 					return dataflow.IsSourceNode(c, &ts, node)
 				},
 			},
@@ -488,7 +489,7 @@ func cmdBacktrace(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool 
 		c.FlowGraph.RunVisitorOnEntryPoints(
 			visitor,
 			dataflow.ScanningSpec{
-				IsEntryPointSsa: func(node ssa.Node) bool {
+				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
 					return dataflow.IsBacktraceNode(c, &ps, node)
 				}})
 		for _, tr := range visitor.Traces {

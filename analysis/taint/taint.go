@@ -163,7 +163,9 @@ func runSpec(state *dataflow.State, reqs AnalysisReqs, taintSpec config.TaintSpe
 	visitor := NewVisitor(&taintSpec)
 	dataflow.RunInterProcedural(state, visitor, dataflow.ScanningSpec{
 		// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
-		IsEntryPointSsa:      func(node ssa.Node) bool { return dataflow.IsSourceNode(state, &taintSpec, node) },
+		IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+			return dataflow.IsSourceNode(state, &taintSpec, node)
+		},
 		MarkCallArgsLikeCall: taintSpec.SourceTaintsArgs,
 	})
 	taintFlows.Merge(visitor.taints)

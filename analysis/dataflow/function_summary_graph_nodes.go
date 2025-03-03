@@ -378,13 +378,14 @@ func (a *FreeVarNode) LongID() string {
 
 // CallNodeArg is a node that represents the argument of a function call
 type CallNodeArg struct {
-	id       uint32
-	parent   *CallNode
-	ssaValue ssa.Value
-	argPos   int
-	out      map[GraphNode][]EdgeInfo
-	in       map[GraphNode]EdgeInfo
-	marks    LocSet
+	id        uint32
+	parent    *CallNode
+	ssaValue  ssa.Value
+	argPos    int
+	out       map[GraphNode][]EdgeInfo
+	in        map[GraphNode]EdgeInfo
+	marks     LocSet
+	paramName string // paramName is the name of the callee's parameter.
 }
 
 // ID returns the integer id of the node in its parent graph
@@ -451,6 +452,11 @@ func (a *CallNodeArg) LongID() string {
 // Value returns the ssa value of the call argument
 func (a *CallNodeArg) Value() ssa.Value {
 	return a.ssaValue
+}
+
+// ParamName returns the name of the callee's corresponding parameter.
+func (a *CallNodeArg) ParamName() string {
+	return a.paramName
 }
 
 // CallNode is a node that represents a function call. It represents the Value returned by the function call
