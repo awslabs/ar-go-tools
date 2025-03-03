@@ -79,10 +79,10 @@ func (m *Flows) addNewEscape(source df.NodeWithTrace, escapeInstr ssa.Instructio
 	}
 	sourceInstr := df.Instr(source.Node)
 	if escapeInstr != nil && sourceInstr != nil {
-		if _, ok := m.Escapes[escapeInstr.(ssa.Instruction)]; !ok {
-			m.Escapes[escapeInstr.(ssa.Instruction)] = make(map[ssa.Instruction]bool)
+		if _, ok := m.Escapes[escapeInstr]; !ok {
+			m.Escapes[escapeInstr] = make(map[ssa.Instruction]bool)
 		}
-		m.Escapes[escapeInstr.(ssa.Instruction)][sourceInstr] = true
+		m.Escapes[escapeInstr][sourceInstr] = true
 	}
 }
 

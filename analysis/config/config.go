@@ -430,7 +430,7 @@ func errorMisconfigurationGracefully(errYaml, errXML, errJson error) error {
 	}
 
 	// default behaviour is just to forward the error messages of all unmarshalling attempts
-	return fmt.Errorf("could not parse config file, not as yaml: %w,\nnot as xml: %v,\nnot as json: %v\n",
+	return fmt.Errorf("could not parse config file, not as yaml: %w,\nnot as xml: %v,\nnot as json: %v",
 		errYaml, errXML, errJson)
 }
 

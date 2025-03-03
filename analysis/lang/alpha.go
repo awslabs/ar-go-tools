@@ -144,8 +144,5 @@ func (f *FuncInfo) NewName(n dst.Node, prefix string) (*types.Scope, string) {
 
 func isInSomeParentScope(scope *types.Scope, s string) bool {
 	_, o := scope.LookupParent(s, token.NoPos)
-	if o != nil {
-		return true
-	}
-	return false
+	return o != nil
 }

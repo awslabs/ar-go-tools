@@ -10,6 +10,8 @@ import (
 
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/callgraph"
+
+	//lint:ignore SA1019 This is part of the pointer package.
 	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -61,6 +63,7 @@ func main() {
 	}
 
 	// Create SSA-form program representation.
+	//lint:ignore SA1019 This is part of the pointer package.
 	prog := ssautil.CreateProgram(iprog, ssa.InstantiateGenerics)
 	mainPkg := prog.Package(iprog.Created[0].Pkg)
 

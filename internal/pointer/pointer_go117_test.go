@@ -11,6 +11,7 @@ package pointer_test
 
 import (
 	"fmt"
+	//lint:ignore SA1019 This is a test for old go versions.
 	"io/ioutil"
 	"os"
 	"path/filepath"

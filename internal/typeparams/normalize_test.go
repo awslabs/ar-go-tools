@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/internal/typeparams"
 	. "github.com/awslabs/ar-go-tools/internal/typeparams"
 )
 
@@ -76,7 +75,7 @@ type T[P interface{ A|B; C }] int
 			if obj == nil {
 				t.Fatal("type T not found")
 			}
-			T := typeparams.ForNamed(obj.Type().(*types.Named)).At(0)
+			T := ForNamed(obj.Type().(*types.Named)).At(0)
 			terms, err := StructuralTerms(T)
 			if test.wantError != "" {
 				if err == nil {

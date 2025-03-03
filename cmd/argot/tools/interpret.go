@@ -17,16 +17,16 @@ package tools
 import "regexp"
 
 // Captures errors happening before any analysis starts (program could not load)
-var regexCouldNotLoad = regexp.MustCompile("could not load program")
+var regexCouldNotLoad = regexp.MustCompile(`could not load program`)
 
 // Captures the kind of error that happen when you put a flag at the end instead of go files
-var namedFilesMustBeGoFiles = regexp.MustCompile("-: named files must be .go files: -(\\w)")
+var namedFilesMustBeGoFiles = regexp.MustCompile(`-: named files must be .go files: -(\w)`)
 
 // Captures error in the analysis for steps that require a main program
-var missingMainTestPackages = regexp.MustCompile("no main/test packages to analyze")
+var missingMainTestPackages = regexp.MustCompile(`no main/test packages to analyze`)
 
 // Captures error where the config file references a reports directory that doesn't exist
-var missingReportsDir = regexp.MustCompile("failed to set reports dir .* could not create directory")
+var missingReportsDir = regexp.MustCompile(`failed to set reports dir .* could not create directory`)
 
 // HintForErrorMessage looks for specific error message and returns some other message that might help the user
 // resolve the problem.

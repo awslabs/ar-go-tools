@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	//lint:ignore SA1019 reason This analysis is not used as standalone
 	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -38,6 +39,7 @@ func loadProgram(file string) (*ssa.Program, error) {
 		return nil, err
 	}
 	//goland:noinspection ALL
+	//lint:ignore SA1019 reason Defers will not be loaded with this.
 	program := ssautil.CreateProgram(prog, 0)
 	program.Build()
 	return program, err

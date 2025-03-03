@@ -8,6 +8,7 @@
 # Install ineffassign with: go install github.com/gordonklaus/ineffassign@latest
 # Install golint with:      go install golang.org/x/lint/golint@latest
 # Install nilaway with:     go install go.uber.org/nilaway/cmd/nilaway@latest
+# Install staticcheck with: go install honnef.co/go/tools/cmd/staticcheck@latest
 
 all: setup-precommit lint argot-build racerg-build test
 
@@ -20,6 +21,7 @@ lint: **/*.go
 	ineffassign ./...
 	nilaway --test=false ./cmd/argot/...
 	golint -set_exit_status -min_confidence 0.9 ./...
+	staticcheck ./...
 
 test: **/*.go
 	go clean -testcache

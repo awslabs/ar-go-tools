@@ -82,10 +82,10 @@ var setOptionsRegex = regexp.MustCompile(`.*SetOptions\(((?:\s*[\w\-]+=[\w\-]+\s
 var backtraceRegex = regexp.MustCompile(`.*BacktracePoint\(((?:\s*[\w\-]+\s*,?)+)\)`)
 
 var annotationKindParsers = map[AnnotationKind]*regexp.Regexp{
-	Sink:       sinkRegex,
-	Source:     sourceRegex,
-	Sanitizer:  sanitizerRegex,
-	SetOptions: setOptionsRegex,
+	Sink:           sinkRegex,
+	Source:         sourceRegex,
+	Sanitizer:      sanitizerRegex,
+	SetOptions:     setOptionsRegex,
 	BacktracePoint: backtraceRegex,
 }
 
@@ -384,7 +384,6 @@ func (pa ProgramAnnotations) loadConfigTargetAnnotation(logger *config.LogGroup,
 	} else {
 		logger.Warnf("argot:config annotation encountered without matching SetOptions at %s", position)
 	}
-	return
 }
 
 func parseParamAnnotation(function *ssa.Function, annotationContent []string,

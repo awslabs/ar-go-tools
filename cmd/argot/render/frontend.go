@@ -127,14 +127,14 @@ func Run(flags Flags) error {
 	// Compute the call graph
 	var cg *callgraph.Graph
 	if flags.cgOut != "" || flags.htmlOut != "" {
-		fmt.Fprintf(os.Stderr, formatutil.Faint("Computing call graph")+"\n")
+		fmt.Fprint(os.Stderr, formatutil.Faint("Computing call graph")+"\n")
 		start := time.Now()
 		cg, err = callgraphAnalysisMode.ComputeCallgraph(wps.Program)
 		cgComputeDuration := time.Since(start).Seconds()
 		if err != nil {
 			return fmt.Errorf("could not compute callgraph: %v", err)
 		}
-		fmt.Fprintf(os.Stderr, formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+		fmt.Fprint(os.Stderr, formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	}
 
 	if cg == nil {
@@ -142,7 +142,7 @@ func Run(flags Flags) error {
 	}
 
 	if flags.cgOut != "" {
-		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing call graph in "+flags.cgOut+"\n"))
+		fmt.Fprint(os.Stderr, formatutil.Faint("Writing call graph in "+flags.cgOut+"\n"))
 
 		err = GraphvizToFile(renderConfig, cg, flags.cgOut)
 		if err != nil {
@@ -151,7 +151,7 @@ func Run(flags Flags) error {
 	}
 
 	if flags.htmlOut != "" {
-		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing call graph in "+flags.htmlOut+"\n"))
+		fmt.Fprint(os.Stderr, formatutil.Faint("Writing call graph in "+flags.htmlOut+"\n"))
 		err = WriteHTMLCallgrph(wps.Program, cg, flags.htmlOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not print callgraph: %v", err)
@@ -159,7 +159,7 @@ func Run(flags Flags) error {
 	}
 
 	if flags.dfOut != "" {
-		fmt.Fprintf(os.Stderr, formatutil.Faint("Writing inter-procedural dataflow graph in "+flags.dfOut+"\n"))
+		fmt.Fprint(os.Stderr, formatutil.Faint("Writing inter-procedural dataflow graph in "+flags.dfOut+"\n"))
 
 		f, err := os.Create(flags.dfOut)
 		if err != nil {
@@ -172,7 +172,7 @@ func Run(flags Flags) error {
 	}
 
 	if flags.ssaOut != "" {
-		fmt.Fprintf(os.Stderr, formatutil.Faint("Generating SSA in ")+flags.ssaOut+"\n")
+		fmt.Fprint(os.Stderr, formatutil.Faint("Generating SSA in ")+flags.ssaOut+"\n")
 		err := OutputSsaPackages(wps.Program, flags.ssaOut)
 		if err != nil {
 			return fmt.Errorf("could not print ssa form: %v", err)

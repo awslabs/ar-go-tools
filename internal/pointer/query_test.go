@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	//lint:ignore SA1019 This is part of the pointer package.
 	"golang.org/x/tools/go/loader"
 )
 
