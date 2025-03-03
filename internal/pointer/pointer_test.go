@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+
+	//lint:ignore SA1019 This is part of the pointer package.
 	"io/ioutil"
 	"os"
 	"path/filepath"

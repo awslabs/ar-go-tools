@@ -148,7 +148,8 @@ type analysis struct {
 // belong to any object.
 func (a *analysis) enclosingObj(id nodeid) nodeid {
 	// Find previous node with obj != nil.
-	for i := id; i >= 0; i-- {
+	i := id
+	for {
 		n := a.nodes[i]
 		if obj := n.obj; obj != nil {
 			if i+nodeid(obj.size) <= id {
@@ -156,6 +157,7 @@ func (a *analysis) enclosingObj(id nodeid) nodeid {
 			}
 			return i
 		}
+		i--
 	}
 	panic(fmt.Sprintf("node %v (%s, %s) has no enclosing object", id,
 		a.nodes[id].typ.Underlying().String(),

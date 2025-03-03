@@ -54,7 +54,7 @@ func isDependency(modules map[string]*packages.Module, f *ssa.Function) (bool, b
 	// Then use heuristics to guess the dependency (e.g. modules are not loaded).
 	// Always assume it's direct in this case.
 	if len(split) >= 3 {
-		if strings.Index(split[0], ".") == -1 {
+		if !strings.Contains(split[0], ".") {
 			// no dot in the first component, e.g., "runtime"
 			return false, false, packagePath
 		}

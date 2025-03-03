@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -30,7 +29,7 @@ import (
 
 // EscapeInfo contains information relative to the escape analysis
 type EscapeInfo struct {
-	InstructionLocality map[ssa.Instruction]*dataflow.EscapeRationale
+	InstructionLocality map[ssa.Instruction]*df.EscapeRationale
 	CallSiteInfo        map[*ssa.Call]df.EscapeCallsiteInfo
 }
 
@@ -109,7 +108,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 	logger.Debugf(" entrypoint: %s\n",
 		formatutil.Blue(v.currentSource.Node.String()))
 	logger.Debugf("   %s %s\n", formatutil.Green("Found at"), v.currentSource.Node.Position(s))
-	logger.Debugf("   Context: %s", dataflow.FuncNames(v.currentSource.Trace, s.Logger.LogsDebug()))
+	logger.Debugf("   Context: %s", df.FuncNames(v.currentSource.Trace, s.Logger.LogsDebug()))
 
 	logger.PushContext(formatutil.Faint(v.currentSource.Node.LongID()))
 	defer logger.PopContext()
@@ -141,7 +140,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 		// If the node is filtered out, we don't inspect children.
 		// Test this before checking for sink in case this is a filtered argument in a sink call (this is common when
 		// you are tracking flows to logging but don't care about integers and booleans for example).
-		if dataflow.IsFiltered(s, v.taintSpec, cur.Node) {
+		if df.IsFiltered(s, v.taintSpec, cur.Node) {
 			if _, isIf := cur.Node.(*df.IfNode); !isIf || v.taintSpec.FailOnImplicitFlow {
 				// Filtered values logged at debug level -- there can be many of those.
 				logger.Debugf("Filtered value: %s\n", cur.Node.String())
@@ -151,7 +150,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 		}
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
-		if dataflow.IsSink(s, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
+		if df.IsSink(s, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
 			// Don't report taint flow if the sink location is annotated with //argot:ignore
 			if s.Annotations.IsIgnoredPos(cur.Node.Position(s), v.taintSpec.Tag) {
 				s.Logger.Infof("//argot:ignore taint flow to %s",
@@ -182,7 +181,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 
 		// If node is sanitizer, we don't want to propagate further
 		// The validators will be checked in the addNext function
-		if dataflow.IsSanitizer(s, v.taintSpec, cur.Node) {
+		if df.IsSanitizer(s, v.taintSpec, cur.Node) {
 			logger.Infof("Sanitizer encountered: %s\n", cur.Node.String())
 			logger.Infof("At: %s\n", cur.Node.Position(s))
 			continue
@@ -693,7 +692,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			}
 
 			// taint is expected to flow to validators
-			if dataflow.IsValidatorCondition(v.taintSpec, graphNode.SsaNode().Cond, true) {
+			if df.IsValidatorCondition(v.taintSpec, graphNode.SsaNode().Cond, true) {
 				break
 			}
 
@@ -772,7 +771,7 @@ func (v *Visitor) addNext(s *df.State,
 	// Check for validators
 	if edgeInfo.Cond != nil && len(edgeInfo.Cond.Conditions) > 0 {
 		for _, condition := range edgeInfo.Cond.Conditions {
-			if dataflow.IsValidatorCondition(v.taintSpec, condition.Value, condition.IsPositive) {
+			if df.IsValidatorCondition(v.taintSpec, condition.Value, condition.IsPositive) {
 				s.Logger.Debugf("Validated %s.\n", condition)
 				return que
 			}
@@ -889,7 +888,7 @@ func (v *Visitor) manageEscapeContexts(s *df.State, cur *df.VisitorNode, nextNod
 		v.checkEscape(s, nextNode, escapeGraph)
 	} else if s.EscapeAnalysisState.IsSummarized(f) {
 		e := fmt.Errorf("missing escape for %s in context %s (from %s)", f, nKey, cur.Node)
-		s.Logger.Errorf(e.Error())
+		s.Logger.Error(e.Error())
 		s.Logger.Debugf("%s has %d contexts", f, len(v.escapeGraphs[f]))
 		s.Report.AddError(e.Error(), e)
 	} else {

@@ -923,26 +923,6 @@ func (a *analysis) genStore(cgn *cgnode, ptr ssa.Value, val nodeid, offset, size
 	}
 }
 
-func (a *analysis) isReflectValueType(typ types.Type) bool {
-	switch unwrapped := typ.(type) {
-	case *types.Named:
-		if a.reflectValueObj == unwrapped.Obj() {
-			return true
-		}
-		ut := unwrapped.Underlying()
-		if ut != typ {
-			return a.isReflectValueType(ut)
-		}
-
-	case *types.Struct:
-		// struct{reflect.Value} is the same as a reflect.Value
-		if unwrapped.NumFields() == 1 && unwrapped.Field(0).Embedded() {
-			return a.isReflectValueType(unwrapped.Field(0).Type())
-		}
-	}
-	return false
-}
-
 // genInstr generates constraints for instruction instr in context cgn.
 func (a *analysis) genInstr(cgn *cgnode, instr ssa.Instruction) {
 	if a.log != nil {

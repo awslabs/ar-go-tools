@@ -54,9 +54,7 @@ func readNMFile(filename string) (map[string]bool, error) {
 			continue
 		}
 
-		if strings.HasSuffix(name, ".abi0") {
-			name = name[:len(name)-5]
-		}
+		name = strings.TrimSuffix(name, ".abi0")
 
 		n := strings.LastIndex(name, ".func")
 		if n != -1 {

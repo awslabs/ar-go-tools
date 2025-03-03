@@ -137,7 +137,7 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 	if len(visitor.Errs) > 0 {
 		vErrs := make([]error, 0, len(visitor.Errs))
 		for _, err := range visitor.Errs {
-			vErr := fmt.Errorf("%v %v\n", formatutil.Red("error"), err)
+			vErr := fmt.Errorf("%v %v", formatutil.Red("error"), err)
 			vErrs = append(vErrs, vErr)
 		}
 		errs = append(errs, vErrs...)

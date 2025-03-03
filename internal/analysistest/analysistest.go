@@ -194,10 +194,7 @@ func RemoveColumn(pos token.Position) LPos {
 func AstFiles(pkgs []*packages.Package) []*ast.File {
 	var res []*ast.File
 	for _, pkg := range pkgs {
-		files := pkg.Syntax
-		for _, file := range files {
-			res = append(res, file)
-		}
+		res = append(res, pkg.Syntax...)
 	}
 
 	return res

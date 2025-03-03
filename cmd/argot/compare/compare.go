@@ -309,7 +309,7 @@ func loadCalledges(edges map[dynamicEdge]bool, file string) {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
-	r := regexp.MustCompile("^(.+):([0-9]+) -> (.+):([0-9]+)\\w*$")
+	r := regexp.MustCompile(`^(.+):([0-9]+) -> (.+):([0-9]+)\w*$`)
 	for scanner.Scan() {
 		if parts := r.FindStringSubmatch(scanner.Text()); len(parts) > 0 {
 			a, err := strconv.Atoi(parts[2])

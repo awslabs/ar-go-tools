@@ -60,15 +60,6 @@ func scanUsages(tt *term.Terminal, p *packages.Package, target *regexp.Regexp) {
 		ast.Inspect(astFile,
 			func(n ast.Node) bool {
 				switch node := n.(type) {
-				case ast.Expr:
-					typ := p.TypesInfo.TypeOf(node)
-					if typ != nil && target.MatchString(typ.String()) {
-						writeFmt(tt, "- of type %s: %s\n", typ.String(), p.Fset.Position(node.Pos()))
-						desc := astutil.NodeDescription(node)
-						writeFmt(tt, "   %s\n", desc)
-					}
-
-					return true
 				case *ast.Ident:
 					if target.MatchString(node.Name) {
 						ks := "unknown"
@@ -78,7 +69,15 @@ func scanUsages(tt *term.Terminal, p *packages.Package, target *regexp.Regexp) {
 						writeFmt(tt, "- ident %s [%s]: %s\n", node.String(), ks, p.Fset.Position(node.Pos()))
 					}
 					return false
+				case ast.Expr:
+					typ := p.TypesInfo.TypeOf(node)
+					if typ != nil && target.MatchString(typ.String()) {
+						writeFmt(tt, "- of type %s: %s\n", typ.String(), p.Fset.Position(node.Pos()))
+						desc := astutil.NodeDescription(node)
+						writeFmt(tt, "   %s\n", desc)
+					}
 
+					return true
 				default:
 					return true
 				}

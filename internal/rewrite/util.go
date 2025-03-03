@@ -176,6 +176,8 @@ func (m *methodMatcher) match(typeInfo *types.Info, call *ast.CallExpr) ast.Expr
 // visitor is passed to ast.Visit, to find AST nodes where
 // unsafe.Pointer values are converted to pointers.
 // It satisfies the ast.Visitor interface.
+//
+//lint:ignore U1000 reason This is WIP.
 type visitor struct {
 	// The sets we are populating.
 	unsafeFunctionNodes map[ast.Node]struct{}
@@ -192,6 +194,8 @@ type visitor struct {
 
 // containsReflectValue returns true if t is reflect.Value, or is a struct
 // or array containing reflect.Value.
+//
+//lint:ignore U1000 reason This is WIP.
 func containsReflectValue(t types.Type) bool {
 	seen := map[types.Type]struct{}{}
 	var rec func(t types.Type) bool
@@ -228,6 +232,8 @@ func containsReflectValue(t types.Type) bool {
 	return rec(t)
 }
 
+//
+//lint:ignore U1000 reason This is WIP.
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	if node == nil {
 		return v // the return value is ignored if node == nil.
