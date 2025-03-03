@@ -153,7 +153,53 @@ var stdPackages = map[string]map[string]Summarizer{
 	"internal/unsafeheader":    summaryInternal,
 }
 
-var summaryArchiveTar = map[string]Summarizer{}
+var summaryArchiveTar = map[string]Summarizer{
+	//  === Reader ===
+
+	// func NewReader(r io.Reader) *Reader
+	"archive/tar.NewReader": RawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0"},
+		},
+	}.MustCompile(),
+	// func (tr *Reader) Next() (*Header, error)
+	"(*archive/tar.Reader).Next": RawSummary{
+		Flows: map[string][]string{"!receiver": {"!ret 0", "!ret 1"}},
+	}.MustCompile(),
+	// func (tr *Reader) Read(b []byte) (int, error)
+	"(*archive/tar.Reader).Read": RawSummary{
+		Flows: map[string][]string{
+			"!receiver": {"!arg 0", "!ret 0", "!ret 1"},
+		},
+	}.MustCompile(),
+
+	// === Writer ===
+
+	// func NewWriter(w io.Writer) *Writer
+	"archive/tar.NewWriter": RawSummary{
+		Flows: map[string][]string{"!arg 0": {"!ret 0"}},
+	}.MustCompile(),
+	// func (tw *Writer) AddFS(fsys fs.FS) error
+	"(*archive/tar.Writer).AddFS": RawSummary{
+		Flows: map[string][]string{"!arg 0": {"!receiver", "!ret 0"}},
+	}.MustCompile(),
+	// func (tw *Writer) Close() error
+	"(*archive/tar.Writer).Close": RawSummary{
+		Flows: map[string][]string{"!receiver": {"!ret 0"}},
+	}.MustCompile(),
+	// func (tw *Writer) Flush() error
+	"(*archive/tar.Writer).Flush": RawSummary{
+		Flows: map[string][]string{"!receiver": {"!ret 0"}},
+	}.MustCompile(),
+	// func (tw *Writer) Write(b []byte) (int, error)
+	"(*archive/tar.Writer).Writer": RawSummary{
+		Flows: map[string][]string{"!arg 0": {"!receiver", "!ret 0", "!ret 1"}},
+	}.MustCompile(),
+	// func (tw *Writer) WriteHeader(hdr *Header) error
+	"(*archive/tar.Writer).WriteHeader": RawSummary{
+		Flows: map[string][]string{"!arg 0": {"!receiver", "!ret 0"}},
+	}.MustCompile(),
+}
 
 var summaryArchiveZip = map[string]Summarizer{}
 

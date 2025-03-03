@@ -166,5 +166,4 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 			}
 		}
 	}
-	return
 }

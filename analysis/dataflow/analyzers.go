@@ -127,9 +127,6 @@ type singleFunctionJob struct {
 	// postBlockCallback will be called after every block during the intra-procedural analysis, with the state of
 	// the intra-procedural analysis at that point
 	postBlockCallback func(*IntraAnalysisState)
-
-	// output is the channel for the summary generated
-	output chan *SummaryGraph
 }
 
 // runSingleFunctionJob runs the intra-procedural analysis with the information in job

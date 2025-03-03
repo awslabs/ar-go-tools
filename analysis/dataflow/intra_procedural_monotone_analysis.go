@@ -191,7 +191,7 @@ func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruc
 				for _, pred := range block.Preds {
 					if pred != nil && len(pred.Instrs) > 0 {
 						last := pred.Instrs[len(pred.Instrs)-1]
-						lastID, _ := intraState.flowInfo.InstrID[last]
+						lastID := intraState.flowInfo.InstrID[last]
 						intraState.instrPrev[instrID][lastID] = true
 					}
 				}
@@ -272,13 +272,9 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 		return origins
 	}
 	if ignorePath {
-		for _, mark := range state.flowInfo.MarkedValues[aliasPos].AllMarks() {
-			origins = append(origins, mark)
-		}
+		origins = append(origins, state.flowInfo.MarkedValues[aliasPos].AllMarks()...)
 	} else {
-		for _, mark := range state.flowInfo.MarkedValues[aliasPos].MarksAt(path) {
-			origins = append(origins, mark)
-		}
+		origins = append(origins, state.flowInfo.MarkedValues[aliasPos].MarksAt(path)...)
 	}
 	return origins
 }
