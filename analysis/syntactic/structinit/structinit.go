@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
@@ -52,6 +53,8 @@ type InitInfo struct {
 	// InvalidWrites is a mapping of the struct field to all the invalid writes
 	// to that field.
 	InvalidWrites map[*types.Var][]InvalidWrite
+	// BadReinits is a list of bad reinitializations
+	BadReinits []BadReinit
 	// fieldExpectedValue is a mapping of the struct field to the concrete value it
 	// should be initialized to according to the spec.
 	//
@@ -78,6 +81,15 @@ type InvalidWrite struct {
 	Want ssa.Value
 	// Instr is the instruction performing the write.
 	Instr ssa.Instruction
+	// Pos is the position of the instruction.
+	Pos token.Position
+}
+
+// BadReinit is a function call resulting in a struct that should have specific
+// fields reinitialized, but it hasn't.
+type BadReinit struct {
+	// Call is the function call instruction.
+	Call ssa.Instruction
 	// Pos is the position of the instruction.
 	Pos token.Position
 }
@@ -118,6 +130,16 @@ func Analyze(state *ptr.State, reqs AnalysisReqs) (AnalysisResult, error) {
 
 	runZeroAllocAnalysis(state, allocs, res, structToNamed)
 
+	// Run the must-reinit checks
+	for sType, findings := range runMustReinitChecks(state, specs, state.ReachableFunctions(), structToNamed) {
+		if iInfo, ok := res.InitInfos[sType]; ok {
+			iInfo.BadReinits = findings
+			res.InitInfos[sType] = iInfo
+		} else {
+			res.InitInfos[sType] = InitInfo{Tag: reqs.Tag, BadReinits: findings}
+		}
+	}
+
 	runInvalidWritesAnalysis(state, fns, res, structToNamed)
 
 	return res, nil
@@ -139,18 +161,17 @@ func runInvalidWritesAnalysis(
 				return
 			}
 
-			switch instr := instr.(type) {
-			case *ssa.Store:
-				pos := program.Fset.Position(instr.Pos())
-				if write, ok := isInvalidWrite(res, structToNamed, instr, pos); ok {
+			if storeInstr, ok := instr.(*ssa.Store); ok {
+				pos := program.Fset.Position(storeInstr.Pos())
+				if write, ok := isInvalidWrite(res, structToNamed, storeInstr, pos); ok {
 					namedType := write.structTypes.named
 					is := res.InitInfos[namedType]
 
 					if state.Annotations.IsIgnoredPos(pos, is.Tag) {
-						logger.Infof("annotation found, ignored %s: invalid write to struct field %v.%v at %s\n",
+						logger.Infof("annotation found, ignored %s: invalid write to struct field %v.%s at %s\n",
 							is.Tag, namedType, write.fieldType.Name(), pos)
 					} else {
-						logger.Infof("%s: found invalid write of value %v (wanted %v) to struct field %v.%v at %v\n",
+						logger.Warnf("%s: found invalid write of value %v (wanted %v) to struct field %v.%v at %v\n",
 							is.Tag, write.write.Got, write.write.Want, namedType, write.fieldType.Name(), pos)
 						writes := res.InitInfos[namedType].InvalidWrites[write.fieldType]
 						res.InitInfos[namedType].InvalidWrites[write.fieldType] = append(writes, write.write)
@@ -762,8 +783,8 @@ func findMethod(program *ssa.Program, valCi config.CodeIdentifier) (*ssa.Functio
 	return nil, false
 }
 
-// ReportResults writes res to a string and returns true if the analysis should fail.
-func ReportResults(res AnalysisResult) (string, bool) {
+// FormattedReport writes res to a string and returns true if the analysis should fail.
+func FormattedReport(res AnalysisResult) (string, bool) {
 	failed := false
 
 	w := &strings.Builder{}
@@ -789,6 +810,16 @@ func ReportResults(res AnalysisResult) (string, bool) {
 				w.WriteString(fmt.Sprintf("\t\t%v (got %v, want %v) at %v\n", write.Instr, write.Got, write.Want, write.Pos))
 				failed = true
 			}
+		}
+
+		if len(info.BadReinits) == 0 {
+			w.WriteString(fmt.Sprintf("\t%v\n", formatutil.Green("all must-reinit constraints satisfied")))
+		} else {
+			w.WriteString(fmt.Sprintf("\t%s\n", formatutil.Red("missing reinitializations (must-reinit not satisfied):")))
+		}
+		for _, badReinit := range info.BadReinits {
+			w.WriteString(fmt.Sprintf("\t   after call %s at %v\n", badReinit.Call.String(), badReinit.Pos))
+			failed = true
 		}
 	}
 
@@ -820,5 +851,141 @@ func isFiltered(spec config.StructInitSpec, f *ssa.Function) bool {
 		}
 	}
 
+	return false
+}
+
+// runMustReinitChecks runs all the must-reinit checks and returns a map from named struct type to
+// a possibly empty list of problems of bad reinitialization of that struct.
+func runMustReinitChecks(
+	state *ptr.State,
+	specs []config.StructInitSpec,
+	fns map[*ssa.Function]bool,
+	structToNamed map[*types.Struct]*types.Named) map[*types.Named][]BadReinit {
+	state.Logger.Infof("Run must-reinit checks.")
+	badReinits := map[*types.Named][]BadReinit{}
+	for fn := range fns {
+		if summaries.IsStdPackageName(lang.PackageNameFromFunction(fn)) {
+			continue
+		}
+		lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
+			if instr == nil || instr.Parent() == nil || !instr.Pos().IsValid() {
+				return
+			}
+
+			if call, isCall := instr.(*ssa.Call); isCall {
+				if !lang.CanType(call) {
+					return
+				}
+				namedType := checkStructTyp(call.Type(), structToNamed)
+				if namedType == nil {
+					return
+				}
+				if maybeBadReinit := checkMustReinitCall(state, specs, call); maybeBadReinit.IsSome() {
+					if _, ok := badReinits[namedType]; !ok {
+						badReinits[namedType] = []BadReinit{}
+					}
+					badReinits[namedType] = append(badReinits[namedType],
+						maybeBadReinit.Value())
+				}
+			}
+		})
+	}
+	return badReinits
+}
+
+// checkStructTyp extracts the types.Named type of a struct type or a pointer to a struct type.
+// This is for checking reintiializations: we only check them for function that returns the proper
+// named struct type.
+func checkStructTyp(typ types.Type, structToNamed map[*types.Struct]*types.Named) *types.Named {
+	var namedType *types.Named
+	if structTyp, ok := typ.(*types.Struct); ok {
+		namedType = structToNamed[structTyp]
+	} else if namedTyp, ok := typ.(*types.Named); ok {
+		namedType = namedTyp
+	} else if ptrTyp, ok := typ.(*types.Pointer); ok {
+		return checkStructTyp(ptrTyp.Elem(), structToNamed)
+	}
+	return namedType
+}
+
+// checkMustReinitCall checks whether the call instructions that are marked as having to
+// reinitialize the fields of their output are actually doing the reinitialization.
+func checkMustReinitCall(
+	state *ptr.State,
+	specs []config.StructInitSpec,
+	callInstr *ssa.Call) funcutil.Optional[BadReinit] {
+	callees, _ := state.ResolveCallee(callInstr)
+	// Does this call need to be checked?
+	mustCheckFor := []config.StructInitSpec{}
+	for _, spec := range specs {
+		for _, callSpec := range spec.MustReinits {
+			for _, callee := range callees {
+				if callSpec.MatchPackageAndMethod(callee.Callee) {
+					mustCheckFor = append(mustCheckFor, spec)
+				}
+			}
+		}
+	}
+
+	if len(mustCheckFor) == 0 {
+		return funcutil.None[BadReinit]() /* Nothing to do */
+	}
+	// For each spec, the statements following directly the call MUST write the fields
+	// that are specified in the spec.
+	block, index := lang.ParentBlockIndex(callInstr)
+	fieldsToReinit := map[string]bool{}
+	for _, spec := range mustCheckFor {
+		for _, fieldSpec := range spec.FieldsSet {
+			fieldsToReinit[fieldSpec.Field] = true
+		}
+	}
+	var callVal ssa.Value
+	callVal = callInstr
+	for i := index + 1; i < len(block.Instrs); i++ {
+		instr := block.Instrs[i]
+		switch instr := instr.(type) {
+		case *ssa.Store:
+			// Check that this is a store to a field that is tracked by the struct-init problem.
+			if checkStore(instr, callVal, fieldsToReinit) {
+				continue
+			}
+			// It can also be a store of the call returned value into another var, in which case we
+			// change the callVal being tracked to properly reflect on the stores
+			if instr.Val == callInstr {
+				callVal = instr.Addr
+				continue
+			}
+		case *ssa.FieldAddr:
+			fieldName, _ := analysisutil.FieldAddrFieldInfo(instr)
+			// Check that this is taking the address of a field that is tracked by the struct-init problem.
+			if _, ok := fieldsToReinit[fieldName]; ok {
+				continue
+			}
+		}
+		// At this point, we have an instr that is not a recognized store or field addr.
+		// Exit the loop to check whether it's ok because we have already reinitialized everything.
+		break
+	}
+	if len(fieldsToReinit) == 0 {
+		state.Logger.Infof("Result of %s properly reinitialized", callInstr)
+		return funcutil.None[BadReinit]() /* All checked! */
+	}
+	// We haven't reinit all fields. This is bad!
+	return funcutil.Some(BadReinit{
+		Call: callInstr,
+		Pos:  state.Program.Fset.Position(callInstr.Pos()),
+	})
+}
+
+func checkStore(instr *ssa.Store, callVal ssa.Value, fieldsToReinit map[string]bool) bool {
+	if field, ok := instr.Addr.(*ssa.FieldAddr); ok {
+		if field.X == callVal {
+			fieldName, _ := analysisutil.FieldAddrFieldInfo(field)
+			if fieldsToReinit[fieldName] {
+				delete(fieldsToReinit, fieldName)
+				return true
+			}
+		}
+	}
 	return false
 }

@@ -12,17 +12,17 @@ syntactic-problems:
     - tag: "check-min-version-is-1.2"
       description: "This checks that the MinVersion in the tls.Config is always 1.2"
       struct: # Defines the struct of interest
-        type: "crypto/tls.Config" # specify the struct type 
+        type: "crypto/tls.Config" # specify the struct type
       fields-set: # Defines the fields of interest, and the value they should be set to
-        - field: "MinVersion" # The field 
+        - field: "MinVersion" # The field
           value: # The value, a code identifier: package + const or package + method
-            package: "crypto/tls" 
+            package: "crypto/tls"
             const: "VersionTLS12"
       filters: # Some function where we don't want reports, typically dependencies
         - package: "some-dep/*"
           method: ".*"
 ```
-Once you have a configuration file, you can run `argot syntactic -config config.yaml ...`. 
+Once you have a configuration file, you can run `argot syntactic -config config.yaml ...`.
 If there are no improper initializations, or improper values being assigned to the fields you are checking, the output should look like:
 ```shell
 [INFO]  Loaded ? annotations from program
@@ -30,7 +30,7 @@ If there are no improper initializations, or improper values being assigned to t
 [INFO]  Pointer analysis terminated (?? s)
 [INFO]  starting struct init analysis...
 [INFO]  Analyzing ???? unfiltered reachable functions...
-[INFO]  
+[INFO]
 struct-init analysis results:
 -----------------------------
 initialization information for crypto/tls.Config:
@@ -40,6 +40,41 @@ initialization information for crypto/tls.Config:
 ```
 The analyzer reports that 1) the struct was always allocated with the appropriate setting for the field `MinVersion` and 2) there were no writes that changed the value of that field to some value that is not capture by the constraints in the config file.
 
+### Must-reinits
+
+Sometimes the bad struct initialization is in a dependency that you cannot modify. To silence the alert, you need to add the dependency's function where the struct is badly initialized to the `filters` of the struct-init problem. However, you have to remember to reinitialize the struct: while Argot would check that all field assignment are correct with respect to the config above, it would not check that the fields have been reassigned. To perform that check, you need to add a `must-reinit` specification:
+```yaml
+syntactic-problems:
+  struct-inits:
+    - tag: "check-min-version-is-1.2"
+      description: "This checks that the MinVersion in the tls.Config is always 1.2"
+      struct: # Defines the struct of interest
+        type: "crypto/tls.Config" # specify the struct type
+      fields-set: # Defines the fields of interest, and the value they should be set to
+        - field: "MinVersion" # The field
+          value: # The value, a code identifier: package + const or package + method
+            package: "crypto/tls"
+            const: "VersionTLS12"
+      filters: # Some function where we don't want reports, typically dependencies
+        - package: "some-dep/.*"
+          method: "generateTlsConfig"
+      must-reinit: # Findings in some function bodies are silenced, but we must check the results are reinitialized
+        - package: "some-dep/.*"
+          method: "generateTlsConfig" # enforce fields of the struct returned by this call are reinitialized
+```
+In the example above, provided `generateTlsConfig` is a function that outputs a struct of type `crypto/tls.Config` (or a pointer to it), then Argot will check that when `generateTlsConfig` is called, then the field `MinVersion` is reassigned immediately after the function is called.
+For example, this code snippet will pass the check:
+```go
+config := dependency.generateTlsConfig()
+config.MinVersion = tls.VersionTLS12
+```
+but this will not pass:
+```go
+config := dependency.generateTlsConfig()
+handleConfig(config)
+config.MinVersion = tls.VersionTLS12
+```
+because the fields MUST be reinitialized in the same block as the call to the function, and immediately after. If any other instruction precedes the field assignment, Argot will generate a finding. In particular, assigning other fields should be done after having assigned the fields that are tracked by the `struct-init` problem for which `must-reinit` is specified.
 
 ## Precondition Checks
 Users may want to check that some specific functions are called only when some precondition is satisfied. You can specify a `cond-check` constraint in the config file in the `syntactic-problems` to check for those properties. Currently, the analysis is limited to checking that specific functions are called only when some simple precondition on the output of another function is called. The function calls in the preconditions must be static calls: we currently do not support interfaces.
@@ -65,13 +100,13 @@ When some call does not satisfy the preconditions, an error message is printed:
 ```
 [ERROR] Preconditions not satisfied in call FooFunc(struct{x int}{}:G)
 [ERROR] Preconditions is: !(FooPreCheck(...))
-[ERROR] Position: /<>/analysis/syntactic/preconditions/testdata/func-cond/main.go:56:9 
+[ERROR] Position: /<>/analysis/syntactic/preconditions/testdata/func-cond/main.go:56:9
 ```
 The positions are also printed when the analysis terminates.
 
 If the analysis doesn't detect any invalid calls, you should see the message:
 ```
-[INFO]  
+[INFO]
 precondition analysis results:
 -----------------------------
 all calls have valid preconditions!

@@ -16,10 +16,12 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 )
 
 type target struct {
-	f func() int
+	f    func() int
+	Flag int
 }
 
 type nested struct {
@@ -36,6 +38,11 @@ func Func() int {
 
 func invalid() int {
 	return 1
+}
+
+func allowedBadInit() target {
+	ex1 := target{f: nil} // ok: this is filtered out
+	return ex1
 }
 
 func testWrites() {
@@ -56,10 +63,10 @@ func testWrites() {
 	fmt.Println(ex5)
 
 	g := invalid
-	ex6 := target{g} // @InvalidWrite(target)
+	ex6 := target{g, 1} // @InvalidWrite(target)
 	fmt.Println(ex6)
 
-	ex7 := target{func() int { return Func() }} // @InvalidWrite(target)
+	ex7 := target{func() int { return Func() }, 1} // @InvalidWrite(target)
 	fmt.Println(ex7)
 }
 
@@ -89,7 +96,51 @@ func testNestedWrites() {
 	fmt.Println(ex8)
 }
 
+func testMustReinit() {
+	// Reinitialized
+	reinitializeMe := allowedBadInit()
+	reinitializeMe.f = Func // ok
+	fmt.Println(reinitializeMe)
+	// Not reinitialized
+	fmt.Print("Some stuff!")
+	badInit := allowedBadInit() // @BadReinit(target)
+	fmt.Println(badInit)
+	if rand.Int() > 0 {
+		// Not reinitialized 2
+		fmt.Print("Some stuff!")
+		badInit2 := allowedBadInit() // @BadReinit(target)
+		badInit2.Flag = 42
+		fmt.Println(badInit2)
+	}
+	if rand.Int() > 0 {
+		fmt.Print("Some stuff!")
+		okInit := allowedBadInit()
+		okInit.f = Func // ok : in same block
+		fmt.Println(okInit)
+	}
+}
+
+func testMustReinit2() {
+	// Reinitialized
+	reinitializeMe := allowedBadInit() // @BadReinit(target)
+	if rand.Float32() > 1.0 {
+		reinitializeMe.f = Func // reinitialized in a different block
+		fmt.Println(reinitializeMe)
+	}
+}
+
+func testMustReinit3() {
+	// Reinitialized
+	reinitializeMe := allowedBadInit() // @BadReinit(target)
+	reinitializeMe.Flag = 0
+	reinitializeMe.f = Func // field that must be reinitialized initialized after another field
+	fmt.Println(reinitializeMe)
+}
+
 func main() {
 	testWrites()
 	testNestedWrites()
+	testMustReinit()
+	testMustReinit2()
+	testMustReinit3()
 }

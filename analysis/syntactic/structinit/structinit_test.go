@@ -52,12 +52,13 @@ func TestZeroAllocs(t *testing.T) {
 			t.Parallel()
 			lp, got := runAnalysis(t, tt.dirName)
 			want := expectedZeroAllocs(lp)
+			checkHasResults(t, got, want)
 			checkAllocs(t, got, want)
 		})
 	}
 }
 
-func TestInvalidWrites(t *testing.T) {
+func TestInvalidWriteAndBadReinits(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -78,8 +79,8 @@ func TestInvalidWrites(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			lp, got := runAnalysis(t, tt.dirName)
-			want := expectedInvalidWrites(lp)
-			checkInvalidWrites(t, got, want)
+			checkInvalidWrites(t, got, expectedInvalidWrites(lp))
+			checkBadReinit(t, got, expectedBadReinits(lp))
 		})
 	}
 }
@@ -89,7 +90,7 @@ func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, structinit.A
 	lpState := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false})
 	lp, err := lpState.Value()
 	if err != nil {
-		t.Fatalf("failedo load test: %s", err)
+		t.Fatalf("failed to load test: %s", err)
 	}
 	setupConfig(lp.Config)
 	state, err := resultMonad.Bind(lpState, ptr.NewState).Value()
@@ -104,13 +105,6 @@ func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, structinit.A
 }
 
 func checkAllocs(t *testing.T, res structinit.AnalysisResult, want map[string][]analysistest.LPos) {
-	if len(res.InitInfos) == 0 {
-		t.Fatalf("no analysis results")
-	}
-	if len(want) == 0 {
-		t.Fatalf("no expected test results")
-	}
-
 	got := make(map[string][]analysistest.LPos)
 	for structType, info := range res.InitInfos {
 		name := structType.Obj().Name()
@@ -120,48 +114,24 @@ func checkAllocs(t *testing.T, res structinit.AnalysisResult, want map[string][]
 		}
 	}
 
+	compareGotWant(t, got, want, "zero-allocs")
+}
+
+func checkBadReinit(t *testing.T, res structinit.AnalysisResult, want map[string][]analysistest.LPos) {
+	got := make(map[string][]analysistest.LPos)
+	for structType, info := range res.InitInfos {
+		name := structType.Obj().Name()
+		for _, badReinit := range info.BadReinits {
+			gotPos := analysistest.NewLPos(badReinit.Pos)
+			got[name] = append(got[name], gotPos)
+		}
+	}
+
 	// make sure got has all the structs and positions in want
-	for wantName, wantPosns := range want {
-		if _, ok := got[wantName]; !ok {
-			t.Errorf("failed to find struct name in analysis results: %v", wantName)
-			continue
-		}
-
-		for _, wantPos := range wantPosns {
-			if !funcutil.Contains(got[wantName], wantPos) {
-				t.Errorf("failed to find zero-allocation position for struct %v in analysis results: %v", wantName, wantPos)
-			}
-		}
-	}
-
-	// make sure want has all the structs and positions in got
-	for gotName, gotPosns := range got {
-		if _, ok := want[gotName]; !ok {
-			t.Errorf("failed to find struct name in test annotations: %v", gotName)
-			continue
-		}
-
-		for _, gotPos := range gotPosns {
-			if !funcutil.Contains(want[gotName], gotPos) {
-				t.Errorf("failed to find zero-allocation position for struct %v in test annotations: %v", gotName, gotPos)
-			}
-		}
-	}
-
-	if t.Failed() {
-		t.Logf("want: %+v\n", want)
-		t.Logf("got: %+v\n", got)
-	}
+	compareGotWant(t, got, want, "bad reinit")
 }
 
 func checkInvalidWrites(t *testing.T, res structinit.AnalysisResult, want map[string][]analysistest.LPos) {
-	if len(res.InitInfos) == 0 {
-		t.Fatalf("no analysis results")
-	}
-	if len(want) == 0 {
-		t.Fatalf("no expected test results")
-	}
-
 	got := make(map[string][]analysistest.LPos)
 	for structType, info := range res.InitInfos {
 		name := structType.Obj().Name()
@@ -173,7 +143,19 @@ func checkInvalidWrites(t *testing.T, res structinit.AnalysisResult, want map[st
 		}
 	}
 
-	// make sure got has all the structs and positions in want
+	compareGotWant(t, got, want, "invalid write")
+}
+
+func checkHasResults(t *testing.T, res structinit.AnalysisResult, want map[string][]analysistest.LPos) {
+	if len(res.InitInfos) == 0 {
+		t.Fatalf("no analysis results")
+	}
+	if len(want) == 0 {
+		t.Fatalf("no expected test results")
+	}
+}
+
+func compareGotWant(t *testing.T, got map[string][]analysistest.LPos, want map[string][]analysistest.LPos, what string) {
 	for wantName, wantPosns := range want {
 		if _, ok := got[wantName]; !ok {
 			t.Errorf("failed to find struct name in analysis results: %v", wantName)
@@ -182,7 +164,7 @@ func checkInvalidWrites(t *testing.T, res structinit.AnalysisResult, want map[st
 
 		for _, wantPos := range wantPosns {
 			if !funcutil.Contains(got[wantName], wantPos) {
-				t.Errorf("failed to find invalid write position for struct %v in analysis results: %v", wantName, wantPos)
+				t.Errorf("failed to find %s position for struct %v in analysis results: %v", what, wantName, wantPos)
 			}
 		}
 	}
@@ -196,7 +178,7 @@ func checkInvalidWrites(t *testing.T, res structinit.AnalysisResult, want map[st
 
 		for _, gotPos := range gotPosns {
 			if !funcutil.Contains(want[gotName], gotPos) {
-				t.Errorf("failed to find invalid write position for struct %v in test annotations: %v", gotName, gotPos)
+				t.Errorf("failed to find %s position for struct %v in test annotations: %v", what, gotName, gotPos)
 			}
 		}
 	}
@@ -219,6 +201,9 @@ var zeroAllocRegex = regexp.MustCompile(`//.*@ZeroAlloc\(((?:\s*\w\s*,?)+)\)`)
 // invalidWriteRegex matches annotations of the form "@InvalidWrite(id1, id2, id3)"
 var invalidWriteRegex = regexp.MustCompile(`//.*@InvalidWrite\(((?:\s*\w\s*,?)+)\)`)
 
+// invalidWriteRegex matches annotations of the form "@InvalidWrite(id1, id2, id3)"
+var badReinitRegex = regexp.MustCompile(`//.*@BadReinit\(((?:\s*\w\s*,?)+)\)`)
+
 // expectedZeroAllocs analyzes the files in astFiles and looks for comments
 // @ZeroAlloc(id1, id2, ...) to construct the expected positions of the zero-allocations of
 // a struct.
@@ -239,6 +224,17 @@ func expectedZeroAllocs(lp *loadprogram.State) map[string][]analysistest.LPos {
 // invalid write operations' positions.
 func expectedInvalidWrites(lp *loadprogram.State) map[string][]analysistest.LPos {
 	return expectedAnnotations(invalidWriteRegex, lp)
+}
+
+// expectedBadReinits analyzes the files in astFiles and looks for comments
+// @BadReinit(id1, id2, ...) to construct the expected positions of the invalid writes to
+// a struct field.
+// Each id must be the name of the struct whose field is written to. There may be
+// multiple.
+// These positions are represented as a map from the struct name to all the
+// invalid write operations' positions.
+func expectedBadReinits(lp *loadprogram.State) map[string][]analysistest.LPos {
+	return expectedAnnotations(badReinitRegex, lp)
 }
 
 func expectedAnnotations(regex *regexp.Regexp, lp *loadprogram.State) map[string][]analysistest.LPos {
