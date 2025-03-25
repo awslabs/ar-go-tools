@@ -68,8 +68,8 @@ func Analyze(state *ptr.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	return AnalysisResult{NumSpecs: analyzed, UncheckedLocs: locs}, nil
 }
 
-// ReportResults writes res to a string and returns true if the analysis has findings.
-func ReportResults(res AnalysisResult) (string, bool) {
+// FormattedReport writes res to a string and returns true if the analysis has findings.
+func FormattedReport(res AnalysisResult) (string, bool) {
 	if res.NumSpecs == 0 {
 		return "precondition analysis didn't run; check the tags if you expected a result", false
 	}

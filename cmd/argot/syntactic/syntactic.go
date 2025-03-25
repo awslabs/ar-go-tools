@@ -121,7 +121,7 @@ func runTarget(
 			return false, nil, fmt.Errorf("struct init analysis error: %v", err)
 		}
 		var s string
-		s, structAnalysisFailed = structinit.ReportResults(structInitRes)
+		s, structAnalysisFailed = structinit.FormattedReport(structInitRes)
 		c.Logger.Infof("Struct analysis done (%.3f s)", time.Since(start).Seconds())
 		c.Logger.Infof(s)
 	}
@@ -135,7 +135,7 @@ func runTarget(
 			return false, nil, fmt.Errorf("precondition analysis error: %v", err)
 		}
 		var s string
-		s, preconditionAnalysisFailed = preconditions.ReportResults(precondCheckRes)
+		s, preconditionAnalysisFailed = preconditions.FormattedReport(precondCheckRes)
 		c.Logger.Infof("Precondition analysis done (%.3f s)", time.Since(start).Seconds())
 		c.Logger.Infof(s)
 	}

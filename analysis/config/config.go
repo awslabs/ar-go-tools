@@ -213,6 +213,9 @@ type StructInitSpec struct {
 	FieldsSet []FieldsSetSpec `yaml:"fields-set" json:"fields-set"`
 	// Filters is the list of values that the analysis does not track.
 	Filters []CodeIdentifier
+	// MustReinits is the list of function calls resulting in the struct that must be
+	// folllowed by a statement reinitializing the struct value
+	MustReinits []CodeIdentifier `yaml:"must-reinit" json:"must-reinit"`
 }
 
 // SpecTag returns the struct init specification's tag
@@ -568,6 +571,7 @@ func Load(filename string, configBytes []byte, cmdLineOverrides *CmdLineOverride
 			siSpec.FieldsSet[j].Value = compileRegexes(fSpec.Value)
 		}
 		funcutil.MapInPlace(siSpec.Filters, compileRegexes)
+		funcutil.MapInPlace(siSpec.MustReinits, compileRegexes)
 	}
 
 	for i, ccSpec := range cfg.SyntacticProblems.CondCheckSpecs {

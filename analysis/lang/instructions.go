@@ -151,6 +151,23 @@ func InstrSwitch(visitor InstrOp, instr ssa.Instruction) {
 
 // Utilities for working with blocks and instructions
 
+// ParentBlockIndex returns the parent block of an instruction with the index of the instruction in it.
+//
+//	If the instruction is nil, or the parent function is nil, then it returns nil.
+func ParentBlockIndex(instr ssa.Instruction) (*ssa.BasicBlock, int) {
+	if instr == nil || instr.Block() == nil {
+		return nil, 0
+	}
+	block := instr.Block()
+	for i, blockInstr := range block.Instrs {
+		if blockInstr == instr {
+			return block, i
+		}
+	}
+	// Not found in own parent?
+	panic("internal SSA representation broken.")
+}
+
 // LastInstr returns the last instruction in a block. There is always a last instruction for a reachable block.
 // Returns nil for an empty block (a block can be empty if it is non-reachable)
 func LastInstr(block *ssa.BasicBlock) ssa.Instruction {

@@ -7,3 +7,9 @@ syntactic-problems:
           value:
             package: "(field-func)|(main)|(command-line-arguments)"
             method: "^Func"
+      filters:
+        - method: "^allowedBadInit$"
+          package: "(field-func)|(main)|(command-line-arguments)"
+      must-reinit:
+        - method: "^allowedBadInit$"
+          package: ".*"
