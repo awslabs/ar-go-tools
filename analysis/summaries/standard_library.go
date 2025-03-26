@@ -18,106 +18,115 @@ package summaries
 // This also serves as a reference to use for ignoring packages.
 // Each of the maps in stdPackages map the function string (function.String()) to the summary.
 var stdPackages = map[string]map[string]Summarizer{
-	"archive/tar":                 summaryArchiveTar,
-	"archive/zip":                 summaryArchiveZip,
-	"bufio":                       summaryBufIo,
-	"builtin":                     summaryBuiltin,
-	"bytes":                       summaryBytes,
-	"compress/bzip2":              summaryCompressBzip2,
-	"compress/flate":              summaryCompressFlate,
-	"compress/gzip":               summaryCompressGzip,
-	"compress/lzw":                summaryCompressLzw,
-	"compress/zlib":               summaryCompressZlib,
-	"container":                   summaryContainer,
-	"container/heap":              summaryContainer,
-	"container/list":              summaryContainer,
-	"context":                     summaryContext,
-	"crypto":                      summaryCrypto,
-	"crypto/aes":                  summaryCrypto,
-	"crypto/cipher":               summaryCrypto,
-	"crypto/des":                  summaryCrypto,
-	"crypto/ecdsa":                summaryCrypto,
-	"crypto/elliptic":             summaryCrypto,
-	"crypto/internal":             summaryCrypto,
-	"crypto/internal/boring":      summaryCrypto,
-	"crypto/internal/nistec":      summaryCrypto,
-	"crypto/internal/nistec/fiat": summaryCrypto,
-	"crypto/md5":                  summaryCrypto,
-	"crypto/rand":                 summaryCrypto,
-	"crypto/rsa":                  summaryCrypto,
-	"crypto/sha1":                 summaryCrypto,
-	"crypto/sha3":                 summaryCrypto,
-	"crypto/sha256":               summaryCrypto,
-	"crypto/sha512":               summaryCrypto,
-	"crypto/tls":                  summaryCrypto,
-	"crypto/x509":                 summaryCrypto,
-	"database":                    summaryDatabase,
-	"debug":                       summaryDebug,
-	"embed":                       summaryEmbed,
-	"encoding":                    summaryEncoding,
-	"encoding/asn1":               summaryEncoding,
-	"encoding/base64":             summaryEncoding,
-	"encoding/csv":                summaryEncodingCsv,
-	"encoding/hex":                summaryEncoding,
-	"encoding/gob":                summaryEncoding,
-	"encoding/binary":             summaryEncoding,
-	"encoding/json":               summaryEncoding,
-	"encoding/xml":                summaryEncoding,
-	"errors":                      summaryErrors,
-	"expvar":                      summaryExpVar,
-	"flag":                        summaryFlag,
-	"fmt":                         summaryFmt,
-	"go":                          summaryGo,
-	"hash":                        summaryHash,
-	"hash/adler32":                summaryHash,
-	"hash/crc32":                  summaryHash,
-	"hash/crc64":                  summaryHash,
-	"hash/fnv":                    summaryHash,
-	"hash/maphash":                summaryHash,
-	"html":                        summaryHtml,
-	"image":                       summaryImage,
-	"image/color":                 summaryImage,
-	"index":                       summaryIndex,
-	"io":                          summaryIo,
-	"io/fs":                       summaryIo,
-	"io/ioutil":                   summaryIo,
-	"log":                         summaryLog,
-	"log/slog":                    summaryLog,
-	"maps":                        summaryMaps,
-	"math":                        summaryMath,
-	"math/big":                    summaryMath,
-	"math/bits":                   summaryMath,
-	"math/cmplx":                  summaryMath,
-	"math/rand":                   summaryMath,
-	"mime":                        summaryMime,
-	"net":                         summaryNet,
-	"net/http":                    summaryNet,
-	"net/netip":                   summaryNet,
-	"net/textproto":               summaryNet,
-	"net/url":                     summaryNet,
-	"os":                          summaryOs,
-	"os/exec":                     summaryOs,
-	"path":                        summaryPath,
-	"path/filepath":               summaryPath,
-	"plugin":                      summaryPlugin,
-	"reflect":                     summaryReflect,
-	"regexp":                      summaryRegexp,
-	"regexp/syntax":               summaryRegexp,
-	"runtime":                     summaryRuntime,
-	"runtime/debug":               summaryRuntime,
-	"sort":                        summarySort,
-	"strconv":                     summaryStrConv,
-	"strings":                     summaryStrings,
-	"sync":                        summarySync,
-	"sync/atomic":                 summarySync,
-	"syscall":                     summarySyscall,
-	"syscall/js":                  summarySyscall,
-	"testing":                     summaryTesting,
-	"text":                        summaryText,
-	"time":                        summaryTime,
-	"unicode":                     summaryUnicode,
-	"unicode/utf8":                summaryUnicode,
-	"unsafe":                      summaryUnsafe,
+	"archive/tar":                    summaryArchiveTar,
+	"archive/zip":                    summaryArchiveZip,
+	"bufio":                          summaryBufIo,
+	"builtin":                        summaryBuiltin,
+	"bytes":                          summaryBytes,
+	"compress/bzip2":                 summaryCompressBzip2,
+	"compress/flate":                 summaryCompressFlate,
+	"compress/gzip":                  summaryCompressGzip,
+	"compress/lzw":                   summaryCompressLzw,
+	"compress/zlib":                  summaryCompressZlib,
+	"container":                      summaryContainer,
+	"container/heap":                 summaryContainer,
+	"container/list":                 summaryContainer,
+	"context":                        summaryContext,
+	"crypto":                         summaryCrypto,
+	"crypto/aes":                     summaryCrypto,
+	"crypto/cipher":                  summaryCrypto,
+	"crypto/des":                     summaryCrypto,
+	"crypto/ecdsa":                   summaryCrypto,
+	"crypto/elliptic":                summaryCrypto,
+	"crypto/internal":                summaryCrypto,
+	"crypto/internal/boring":         summaryCrypto,
+	"crypto/internal/fips140/aes":    summaryCrypto,
+	"crypto/internal/fips140/sha3":   summaryCrypto,
+	"crypto/internal/fips140/sha256": summaryCrypto,
+	"crypto/internal/fips140/sha512": summaryCrypto,
+	"crypto/internal/nistec":         summaryCrypto,
+	"crypto/internal/nistec/fiat":    summaryCrypto,
+	"crypto/md5":                     summaryCrypto,
+	"crypto/hkdf":                    summaryCrypto,
+	"crypto/mlkem":                   summaryCrypto,
+	"crypto/pbkdf2":                  summaryCrypto,
+	"crypto/rand":                    summaryCrypto,
+	"crypto/rsa":                     summaryCrypto,
+	"crypto/sha1":                    summaryCrypto,
+	"crypto/sha3":                    summaryCrypto,
+	"crypto/sha256":                  summaryCrypto,
+	"crypto/sha512":                  summaryCrypto,
+	"crypto/tls":                     summaryCrypto,
+	"crypto/x509":                    summaryCrypto,
+	"database":                       summaryDatabase,
+	"debug":                          summaryDebug,
+	"embed":                          summaryEmbed,
+	"encoding":                       summaryEncoding,
+	"encoding/asn1":                  summaryEncoding,
+	"encoding/base64":                summaryEncoding,
+	"encoding/csv":                   summaryEncodingCsv,
+	"encoding/hex":                   summaryEncoding,
+	"encoding/gob":                   summaryEncoding,
+	"encoding/binary":                summaryEncoding,
+	"encoding/json":                  summaryEncoding,
+	"encoding/xml":                   summaryEncoding,
+	"errors":                         summaryErrors,
+	"expvar":                         summaryExpVar,
+	"flag":                           summaryFlag,
+	"fmt":                            summaryFmt,
+	"go":                             summaryGo,
+	"hash":                           summaryHash,
+	"hash/adler32":                   summaryHash,
+	"hash/crc32":                     summaryHash,
+	"hash/crc64":                     summaryHash,
+	"hash/fnv":                       summaryHash,
+	"hash/maphash":                   summaryHash,
+	"html":                           summaryHtml,
+	"image":                          summaryImage,
+	"image/color":                    summaryImage,
+	"index":                          summaryIndex,
+	"io":                             summaryIo,
+	"io/fs":                          summaryIo,
+	"io/ioutil":                      summaryIo,
+	"log":                            summaryLog,
+	"log/slog":                       summaryLog,
+	"maps":                           summaryMaps,
+	"math":                           summaryMath,
+	"math/big":                       summaryMath,
+	"math/bits":                      summaryMath,
+	"math/cmplx":                     summaryMath,
+	"math/rand":                      summaryMath,
+	"math/rand/v2":                   summaryMath,
+	"mime":                           summaryMime,
+	"net":                            summaryNet,
+	"net/http":                       summaryNet,
+	"net/netip":                      summaryNet,
+	"net/textproto":                  summaryNet,
+	"net/url":                        summaryNet,
+	"os":                             summaryOs,
+	"os/exec":                        summaryOs,
+	"path":                           summaryPath,
+	"path/filepath":                  summaryPath,
+	"plugin":                         summaryPlugin,
+	"reflect":                        summaryReflect,
+	"regexp":                         summaryRegexp,
+	"regexp/syntax":                  summaryRegexp,
+	"runtime":                        summaryRuntime,
+	"runtime/debug":                  summaryRuntime,
+	"sort":                           summarySort,
+	"strconv":                        summaryStrConv,
+	"strings":                        summaryStrings,
+	"sync":                           summarySync,
+	"sync/atomic":                    summarySync,
+	"syscall":                        summarySyscall,
+	"syscall/js":                     summarySyscall,
+	"testing":                        summaryTesting,
+	"text":                           summaryText,
+	"time":                           summaryTime,
+	"unicode":                        summaryUnicode,
+	"unicode/utf8":                   summaryUnicode,
+	"unsafe":                         summaryUnsafe,
+	"weak":                           summaryWeak,
 
 	// Internal
 
@@ -145,6 +154,7 @@ var stdPackages = map[string]map[string]Summarizer{
 	"internal/poll":            summaryInternal,
 	"internal/race":            summaryInternal,
 	"internal/reflectlite":     summaryInternal,
+	"internal/stringslite":     summaryInternal,
 	"internal/syscall":         summaryInternal,
 	"internal/syscall/execenv": summaryInternal,
 	"internal/syscall/unix":    summaryInternal,
@@ -157,48 +167,48 @@ var summaryArchiveTar = map[string]Summarizer{
 	//  === Reader ===
 
 	// func NewReader(r io.Reader) *Reader
-	"archive/tar.NewReader": RawSummary{
+	"archive/tar.NewReader": rawSummary{
 		Flows: map[string][]string{
 			"!arg 0": {"!ret 0"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (tr *Reader) Next() (*Header, error)
-	"(*archive/tar.Reader).Next": RawSummary{
+	"(*archive/tar.Reader).Next": rawSummary{
 		Flows: map[string][]string{"!receiver": {"!ret 0", "!ret 1"}},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (tr *Reader) Read(b []byte) (int, error)
-	"(*archive/tar.Reader).Read": RawSummary{
+	"(*archive/tar.Reader).Read": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!arg 0", "!ret 0", "!ret 1"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 
 	// === Writer ===
 
 	// func NewWriter(w io.Writer) *Writer
-	"archive/tar.NewWriter": RawSummary{
+	"archive/tar.NewWriter": rawSummary{
 		Flows: map[string][]string{"!arg 0": {"!ret 0"}},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (tw *Writer) AddFS(fsys fs.FS) error
-	"(*archive/tar.Writer).AddFS": RawSummary{
+	"(*archive/tar.Writer).AddFS": rawSummary{
 		Flows: map[string][]string{"!arg 0": {"!receiver", "!ret 0"}},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (tw *Writer) Close() error
-	"(*archive/tar.Writer).Close": RawSummary{
+	"(*archive/tar.Writer).Close": rawSummary{
 		Flows: map[string][]string{"!receiver": {"!ret 0"}},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (tw *Writer) Flush() error
-	"(*archive/tar.Writer).Flush": RawSummary{
+	"(*archive/tar.Writer).Flush": rawSummary{
 		Flows: map[string][]string{"!receiver": {"!ret 0"}},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (tw *Writer) Write(b []byte) (int, error)
-	"(*archive/tar.Writer).Writer": RawSummary{
+	"(*archive/tar.Writer).Writer": rawSummary{
 		Flows: map[string][]string{"!arg 0": {"!receiver", "!ret 0", "!ret 1"}},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (tw *Writer) WriteHeader(hdr *Header) error
-	"(*archive/tar.Writer).WriteHeader": RawSummary{
+	"(*archive/tar.Writer).WriteHeader": rawSummary{
 		Flows: map[string][]string{"!arg 0": {"!receiver", "!ret 0"}},
-	}.MustCompile(),
+	}.mustCompile(),
 }
 
 var summaryArchiveZip = map[string]Summarizer{}
@@ -452,75 +462,75 @@ var summaryEncoding = map[string]Summarizer{
 
 var summaryEncodingCsv = map[string]Summarizer{
 	// func NewReader(r io.Reader) *Reader
-	"encoding/csv.NewReader": RawSummary{
+	"encoding/csv.NewReader": rawSummary{
 		Flows: map[string][]string{
 			"!arg <r>": {"!ret"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func NewWriter(r io.Writer) *Writer
-	"encoding/csv.NewWriter": RawSummary{
+	"encoding/csv.NewWriter": rawSummary{
 		Flows: map[string][]string{
 			"!arg <r>": {"!ret"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (e *ParseError) Error() string
-	"(*encoding/csv.ParseError).Error": RawSummary{
+	"(*encoding/csv.ParseError).Error": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!ret"},
 		},
-	}.MustCompile(),
-	"(*encoding/csv.ParseError).Unwrap": RawSummary{
+	}.mustCompile(),
+	"(*encoding/csv.ParseError).Unwrap": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!ret"},
 		},
-	}.MustCompile(),
-	"(*encoding/csv.Reader).FieldPos": RawSummary{
+	}.mustCompile(),
+	"(*encoding/csv.Reader).FieldPos": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!ret 0", "!ret 1"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (r *Reader) InputOffset() int64
-	"(*encoding/csv.Reader).InputOffset": RawSummary{
+	"(*encoding/csv.Reader).InputOffset": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!ret"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (r *Reader) Read() (record []string, err error)
-	"(*encoding/csv.Reader).Read": RawSummary{
+	"(*encoding/csv.Reader).Read": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!ret 0", "!ret 1"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (r *Reader) ReadAll() (records [][]string, err error)
-	"(*encoding/csv.Reader).ReadAll": RawSummary{
+	"(*encoding/csv.Reader).ReadAll": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!ret 0", "!ret 1"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (w *Writer) Error() error
-	"(*encoding/csv.Writer).Error": RawSummary{
+	"(*encoding/csv.Writer).Error": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!ret"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (w *Writer) Flush() error
-	"(*encoding/csv.Writer).Flush": RawSummary{
+	"(*encoding/csv.Writer).Flush": rawSummary{
 		Flows: map[string][]string{
 			"!receiver": {"!ret"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (w *Writer) Write(record []string) error
-	"(*encoding/csv.Writer).Write": RawSummary{
+	"(*encoding/csv.Writer).Write": rawSummary{
 		Flows: map[string][]string{
 			"!arg 0": {"!receiver", "!ret"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 	// func (w *Writer) WriteAll(records [][]string) error
-	"(*encoding/csv.Writer).WriteAll": RawSummary{
+	"(*encoding/csv.Writer).WriteAll": rawSummary{
 		Flows: map[string][]string{
 			"!arg 0": {"!receiver", "!ret"},
 		},
-	}.MustCompile(),
+	}.mustCompile(),
 }
 
 var summaryErrors = map[string]Summarizer{
@@ -1002,6 +1012,7 @@ var summaryMath = map[string]Summarizer{
 	"math/rand.NewSource":          SingleVarArgPropagation,
 	"math/rand.Seed":               NoDataFlowPropagation,
 	"math/rand.Float32":            NoDataFlowPropagation,
+	"math/rand/v2.init":            NoDataFlowPropagation,
 	"(*math/big.Int).Mul":          TwoArgPropagation,
 	"(*math/big.Int).SetInt64":     TwoArgReceivePropagation,
 	"(*math/big.Float).Set":        TwoArgPropagation,
@@ -1685,3 +1696,5 @@ var summaryUnicode = map[string]Summarizer{
 var summaryUnsafe = map[string]Summarizer{}
 
 var summaryInternal = map[string]Summarizer{}
+
+var summaryWeak = map[string]Summarizer{}

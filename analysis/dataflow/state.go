@@ -112,7 +112,7 @@ func initializedState(ps ptr.State, steps []func(*State)) (*State, error) {
 			ps.Logger.Debugf("Loaded %d dataflow contracts from %s\n", len(contractsBatch), specFile)
 			// Initialize all the entries of DataFlowContracts
 			for _, contract := range contractsBatch {
-				for method := range contract.Methods {
+				for method := range contract.Methods() {
 					// contract are initially nil, the calls to ResolveCallee will set them to some non-nil value
 					// when necessary
 					state.DataFlowContracts[contract.Key(method)] = nil
@@ -327,9 +327,9 @@ func (s *State) linkContracts(allContracts []Contract) error {
 
 	// Every summary for the contract in allContracts must be built
 	for _, contract := range allContracts {
-		for method, methodSummary := range contract.Methods {
+		for method, methodSummary := range contract.Methods() {
 			err := s.DataFlowContracts[contract.Key(method)].
-				PopulateGraphFromSummary(methodSummary, contract.InterfaceID != "")
+				PopulateGraphFromSummary(methodSummary, contract.IsInterface())
 			if err != nil {
 				return fmt.Errorf("inspect config, error while building summary graph for %s: %w", contract.Key(method), err)
 			}

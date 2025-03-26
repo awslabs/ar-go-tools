@@ -1,0 +1,48 @@
+dataflow-summaries:
+  - receiver: "Structe" # package must be specced
+    method: "METO"
+    flows:
+      - from: "!arg <a>"
+        to: "!arg <b>"
+  - package: "trypack"
+    interface: "IfaceNoMethod" # only interface, no method
+    flows:
+      - from: "!arg <a>"
+        to: "!arg <b>"
+  - package: "trypack"
+    interface: "Iface"
+    function: "FUNC" # interface have methods not functions
+  - package: "goo"
+    interface: "Iface"
+    method: "FUNC"
+    flows:
+      - from: "x" # wdym x?
+        to: "y"
+  - package: "goo"
+    function: "FUNC"
+    method: "METO" # can't be both!
+    flows:
+      - from: "!arg <a>"
+        to: "!arg <b>"
+  - package: "doe"
+    receiver: "Structe" # No receiver method
+    flows:
+      - from: "!arg <a>"
+        to: "!arg <b>"
+  - package: "doe"
+    receiver: "Structe" # No receiver method
+    method: "METO"
+    flows:
+      - from: "!arg <a>"
+        to: "!arg namesMustBeInAngles" # bad named param format
+  - package: "doe"
+    receiver: "Structe" # No receiver method
+    method: "METO"
+    flows:
+      - from: "!ret 0" # Flow cannot originate from a return node
+        to: "!arg <ok>"
+  - package: "foo"
+    function: "FUNCK"
+    flows:
+      - from: "!receiver" # a receiver is valid only on a method
+        to: "!arg <b>"

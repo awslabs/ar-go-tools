@@ -111,7 +111,7 @@ func (c Config) checkTargetsUniqueAndDefined() error {
 func (c Config) checkUserSpecsAreValid() error {
 	for _, specFileName := range c.DataflowProblems.UserSpecs {
 		// test if specFileName exists
-		if _, err := os.Stat(specFileName); err != nil {
+		if _, err := os.Stat(c.RelPath(specFileName)); err != nil {
 			return fmt.Errorf("user spec file %q in dataflow-problems.user-specs does not exist", specFileName)
 		}
 	}

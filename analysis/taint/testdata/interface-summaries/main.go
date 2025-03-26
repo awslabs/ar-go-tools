@@ -179,7 +179,25 @@ func example2() {
 	sink(string(b)) // @Sink(example2)
 }
 
+type myStruct struct {
+	a string
+	b string
+	c string
+}
+
+func (m *myStruct) XString(x string) string {
+	return m.a + m.b + m.c + x
+}
+
+func example3() {
+	x := source() // @Source(example3)
+	s := myStruct{a: "oo", b: "ooo", c: "ooo"}
+	res := s.XString(x)
+	sink(res) // summary has been specified without flow from x
+}
+
 func main() {
 	example1()
 	example2()
+	example3()
 }

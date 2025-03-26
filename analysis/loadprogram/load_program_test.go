@@ -30,7 +30,7 @@ func TestLoadWithProjectRoot(t *testing.T) {
 	configFile := filepath.Join("testdata", "state_load_config.yaml")
 	cfg, err := tools.LoadConfig(tools.CommonFlags{ConfigPath: configFile}, false)
 	if err != nil {
-		t.Fatalf("failed to load config")
+		t.Fatalf("failed to load config: %s", err)
 	}
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../cmd/argot/")

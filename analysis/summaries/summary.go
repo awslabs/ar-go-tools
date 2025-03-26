@@ -169,20 +169,20 @@ const returnPrefix = "!ret"
 // Parses valid names for parameters
 var validArgNameRegex = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
 
-// RawSummary is a summary of flows for a function where the flow nodes still
+// rawSummary is a summary of flows for a function where the flow nodes still
 // need to be parsed into SummaryNode to form a DetailedSummary.
-// A RawSUmmary is not a Summarizer; it needs to be compiled first.
-type RawSummary struct {
+// A rawSummary is not a Summarizer; it needs to be compiled first.
+type rawSummary struct {
 	Flows map[string][]string
 }
 
-// A DetailedSummary is a more human-friendly and more precise version of a summary.
-type DetailedSummary struct {
+// A detailedSummary is a more human-friendly and more precise version of a summary.
+type detailedSummary struct {
 	Flows map[SummaryNode][]SummaryNode
 }
 
 // GetArgFlows returns the indexed flows from parameters to returns of the detailed summary.
-func (s DetailedSummary) GetArgFlows(f *ssa.Function) ([][]int, error) {
+func (s detailedSummary) GetArgFlows(f *ssa.Function) ([][]int, error) {
 	nArgs := f.Signature.Params().Len()
 	if f.Signature.Recv() != nil {
 		nArgs++
@@ -208,7 +208,7 @@ func (s DetailedSummary) GetArgFlows(f *ssa.Function) ([][]int, error) {
 }
 
 // GetReturnFlows returns the indexed flows from parameter to returns of the detailed summary.
-func (s DetailedSummary) GetReturnFlows(f *ssa.Function) ([][]int, error) {
+func (s detailedSummary) GetReturnFlows(f *ssa.Function) ([][]int, error) {
 	nArgs := f.Signature.Params().Len()
 	if f.Signature.Recv() != nil {
 		nArgs++
@@ -264,30 +264,33 @@ func getParamOrRecvIndex(n SummaryNode, f *ssa.Function) (int, bool, error) {
 	}
 }
 
-// Compile parses the raw summary as a map from string representation of summary
+// compile parses the raw summary as a map from string representation of summary
 // nodes to list of summary nodes to its parsed version using structs.
-func (s RawSummary) Compile() (DetailedSummary, error) {
+func (s rawSummary) compile() (detailedSummary, error) {
 	flows := make(map[SummaryNode][]SummaryNode)
 	for k, vals := range s.Flows {
 		key, err := ParseSummaryNode(k)
 		if err != nil {
-			return DetailedSummary{}, err
+			return detailedSummary{}, err
+		}
+		if _, isReturnNode := key.(ReturnSNode); isReturnNode {
+			return detailedSummary{}, fmt.Errorf("data cannot flow from a return node")
 		}
 		flows[key] = make([]SummaryNode, len(vals))
 		for _, v := range vals {
 			value, err := ParseSummaryNode(v)
 			if err != nil {
-				return DetailedSummary{}, err
+				return detailedSummary{}, err
 			}
 			flows[key] = append(flows[key], value)
 		}
 	}
-	return DetailedSummary{Flows: flows}, nil
+	return detailedSummary{Flows: flows}, nil
 }
 
-// MustCompile is the version of IntoDetailedSummary that panics instead of returning an error.
-func (s RawSummary) MustCompile() DetailedSummary {
-	f, err := s.Compile()
+// mustCompile is the version of IntoDetailedSummary that panics instead of returning an error.
+func (s rawSummary) mustCompile() detailedSummary {
+	f, err := s.compile()
 	if err != nil {
 		panic(err)
 	}
@@ -309,7 +312,7 @@ type SummaryNode interface {
 // A summary node is represented by a string (<base>)objectPath, or <base> where base can be:
 //
 // - !receiver for a receiver,
-// - !arg "name" for an argument selected by name,
+// - !arg <name> for an argument selected by name,
 // - !arg i for an argument selected by index i,
 // - !ret i for a return, where i is the tuple index.
 //

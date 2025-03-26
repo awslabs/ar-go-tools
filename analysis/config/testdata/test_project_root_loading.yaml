@@ -1,6 +1,5 @@
 options:
-  project-root: "../../../../"
-
+  project-root: "../../../"
 dataflow-problems:
   user-specs:
     - "analysis/config/testdata/sample-spec.json"
