@@ -1,15 +1,16 @@
 dataflow-summaries:
   - package: github.com/GoogleCloudPlatform/cloud-run-release-portal/backend
-    method: makeRelease
+    function: makeRelease
     flows:
-      - from: "!arg input .accessPath"
-        to: "!arg record .releaseName"
+      - from: "(!arg <input>).accessPath"
+        to: "(!arg <record>).releaseName"
   - package: github.com/GoogleCloudPlatform/cloud-run-release-portal/frontend
     interface: Stamper
+    method: stamp
     flows:
-      - from: "!arg letter"
+      - from: "!arg <letter>"
         to: "!receiver"
-      - from: "!arg letter"
+      - from: "!arg <letter>"
         to: "!ret 0"
       - from: "!receiver"
         to: "!arg 1"

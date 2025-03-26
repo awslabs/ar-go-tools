@@ -1,0 +1,46 @@
+dataflow-summaries:
+  - package: "command-line-arguments"
+    receiver: "*myStruct"
+    method: "XString"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+        # Missing flow from !arg 0 to return on purpose
+  - package: "github.com/awslabs/ar-go-tools/analysis/taint/testdata/interface-summaries" # another name for the package
+    receiver: "*myStruct"
+    method: "XString"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+        # Missing flow from !arg 0 to return on purpose
+  - package: "context"
+    function: "TODO"
+    # NO FLOWS
+  - package: "net/http"
+    receiver: "*Request"
+    method: "Clone"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 1"
+  - package: "io"
+    interface: "Reader"
+    method: "Read"
+    flows:
+      - from: "!receiver"
+        to: "!arg 0"
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 0"
+  - package: "io"
+    interface: "ReadCloser"
+    method: "Read"
+    flows:
+      - from: "!receiver"
+        to: "!arg 0"
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 0"

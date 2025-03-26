@@ -41,8 +41,8 @@
   },
   "dataflow-problems": {
     "user-specs": [
-      "example.json",
-      "example2.json"
+      "example_spec.json",
+      "example_spec2.json"
     ],
     "field-sensitive-funcs": [
       ".*"
