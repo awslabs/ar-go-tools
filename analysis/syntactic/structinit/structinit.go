@@ -876,7 +876,7 @@ func runMustReinitChecks(
 				if !lang.CanType(call) {
 					return
 				}
-				namedType := checkStructTyp(call.Type(), structToNamed)
+				namedType := namedStructTyp(call.Type(), structToNamed)
 				if namedType == nil {
 					return
 				}
@@ -893,17 +893,17 @@ func runMustReinitChecks(
 	return badReinits
 }
 
-// checkStructTyp extracts the types.Named type of a struct type or a pointer to a struct type.
+// namedStructTyp extracts the types.Named type of a struct type or a pointer to a struct type.
 // This is for checking reintiializations: we only check them for function that returns the proper
 // named struct type.
-func checkStructTyp(typ types.Type, structToNamed map[*types.Struct]*types.Named) *types.Named {
+func namedStructTyp(typ types.Type, structToNamed map[*types.Struct]*types.Named) *types.Named {
 	var namedType *types.Named
 	if structTyp, ok := typ.(*types.Struct); ok {
 		namedType = structToNamed[structTyp]
 	} else if namedTyp, ok := typ.(*types.Named); ok {
 		namedType = namedTyp
 	} else if ptrTyp, ok := typ.(*types.Pointer); ok {
-		return checkStructTyp(ptrTyp.Elem(), structToNamed)
+		return namedStructTyp(ptrTyp.Elem(), structToNamed)
 	}
 	return namedType
 }
@@ -931,8 +931,9 @@ func checkMustReinitCall(
 		return funcutil.None[BadReinit]() /* Nothing to do */
 	}
 	// For each spec, the statements following directly the call MUST write the fields
-	// that are specified in the spec.
-	block, index := lang.ParentBlockIndex(callInstr)
+	// that are specified in the spec. The write statements are in the same block as the
+	// call statement.
+	block, index := lang.IndexInEnclosingBlock(callInstr)
 	fieldsToReinit := map[string]bool{}
 	for _, spec := range mustCheckFor {
 		for _, fieldSpec := range spec.FieldsSet {
