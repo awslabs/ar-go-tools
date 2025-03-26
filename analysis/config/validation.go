@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
@@ -38,6 +39,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	if err := c.checkTargetOsesAreValid(); err != nil {
+		return err
+	}
+	if err := c.checkUserSpecsAreValid(); err != nil {
 		return err
 	}
 	return nil
@@ -99,6 +103,16 @@ func (c Config) checkTargetsUniqueAndDefined() error {
 				return fmt.Errorf("target \"%s\" for problem with tag %q is undefined", problemTarget,
 					taggedSpec.SpecTag())
 			}
+		}
+	}
+	return nil
+}
+
+func (c Config) checkUserSpecsAreValid() error {
+	for _, specFileName := range c.DataflowProblems.UserSpecs {
+		// test if specFileName exists
+		if _, err := os.Stat(specFileName); err != nil {
+			return fmt.Errorf("user spec file %q in dataflow-problems.user-specs does not exist", specFileName)
 		}
 	}
 	return nil
