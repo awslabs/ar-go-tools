@@ -34,11 +34,13 @@ If there are no improper initializations, or improper values being assigned to t
 struct-init analysis results:
 -----------------------------
 initialization information for crypto/tls.Config:
-	no zero-allocations found
+	no incomplete initializations found
 	no invalid writes to field MinVersion
 [INFO]  Wrote final report in ???
 ```
-The analyzer reports that 1) the struct was always allocated with the appropriate setting for the field `MinVersion` and 2) there were no writes that changed the value of that field to some value that is not capture by the constraints in the config file.
+The analyzer reports that 1) the struct was always initialized with the appropriate setting for the field `MinVersion` and 2) there were no writes that changed the value of that field to some value that is not capture by the constraints in the config file.
+
+If the struct was initialized without setting a value for the `MinVersion` field, the analyzer will report it as an "incomplete initialization" because the field is implicitly set to its zero value.
 
 ### Must-reinits
 

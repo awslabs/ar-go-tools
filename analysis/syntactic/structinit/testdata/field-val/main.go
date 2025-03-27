@@ -30,16 +30,21 @@ type nestedTargetPtr struct {
 	x int
 }
 
+type multitarget struct {
+	x int
+	y int
+}
+
 const One = 1
 
 // NOTE print statements ensure the variables aren't erased in SSA form.
 // They also test implicit interface conversions to the `any` type.
 
-func testZeroAlloc() {
+func testIncompleteInit() {
 	var ex1 target
-	fmt.Println(ex1) // @ZeroAlloc(target)
+	fmt.Println(ex1) // @IncompleteInit(target)
 
-	ex2 := &target{} // @ZeroAlloc(target)
+	ex2 := &target{} // @IncompleteInit(target)
 	fmt.Println(ex2)
 
 	ex3 := &target{} // ok because of write
@@ -47,25 +52,28 @@ func testZeroAlloc() {
 	fmt.Println(ex3)
 
 	var ex4 nestedTarget
-	fmt.Println(ex4) // @ZeroAlloc(target)
+	fmt.Println(ex4) // @IncompleteInit(target)
 
 	var ex5 nestedTargetPtr
-	fmt.Println(ex5) // @ZeroAlloc(target)
+	fmt.Println(ex5) // ok: field t *target is nil
 
-	ex6 := nestedTargetPtr{t: &target{}, x: 1} // @ZeroAlloc(target)
+	ex6 := nestedTargetPtr{t: &target{}, x: 1} // @IncompleteInit(target)
 	fmt.Println(ex6)
 
 	ex7 := nestedTargetPtr{}
-	fmt.Println(ex7) // @ZeroAlloc(target)
+	fmt.Println(ex7) // ok: field t *target is nil
 
 	ex8 := nestedTarget{}
-	fmt.Println(ex8) // @ZeroAlloc(target)
+	fmt.Println(ex8) // @IncompleteInit(target)
 
-	ex9 := struct{ x int }(target{}) // @ZeroAlloc(target)
+	ex9 := struct{ x int }(target{}) // @IncompleteInit(target)
 	fmt.Println(ex9)
 
-	ex10 := target(struct{ x int }{}) // @ZeroAlloc(target)
+	ex10 := target(struct{ x int }{}) // @IncompleteInit(target)
 	fmt.Println(ex10)
+
+	ex11 := multitarget{y: 1} // @IncompleteInit(multitarget) // field x is uninitialized
+	fmt.Println(ex11)
 }
 
 func testUntypedConstAlloc() {
@@ -90,10 +98,10 @@ func testUntypedConstAlloc() {
 	ex7 := nestedTargetPtr{t: &target{x: -1}} // @InvalidWrite(target)
 	fmt.Println(ex7)
 
-	ex8 := struct{ x int }(target{x: -1}) // @InvalidWrite(target) // @ZeroAlloc(target) // TODO zero-alloc false positive
+	ex8 := struct{ x int }(target{x: -1}) // @InvalidWrite(target) // @IncompleteInit(target) // TODO incomplete init false positive
 	fmt.Println(ex8)
 
-	ex9 := target(struct{ x int }{x: -1}) // @InvalidWrite(target) // @ZeroAlloc(target) // TODO zero-alloc false positive
+	ex9 := target(struct{ x int }{x: -1}) // @InvalidWrite(target) // @IncompleteInit(target) // TODO incomplete init false positive
 	fmt.Println(ex9)
 }
 
@@ -119,15 +127,15 @@ func testTypedConstAlloc() {
 	ex7 := nestedTargetPtr{t: &target{x: -One}} // @InvalidWrite(target)
 	fmt.Println(ex7)
 
-	ex8 := struct{ x int }(target{x: -One}) // @InvalidWrite(target) // @ZeroAlloc(target) // TODO zero-alloc false positive
+	ex8 := struct{ x int }(target{x: -One}) // @InvalidWrite(target) // @IncompleteInit(target) // TODO incomplete init false positive
 	fmt.Println(ex8)
 
-	ex9 := target(struct{ x int }{x: -One}) // @InvalidWrite(target)// @ZeroAlloc(target) // TODO zero-alloc false positive
+	ex9 := target(struct{ x int }{x: -One}) // @InvalidWrite(target)// @IncompleteInit(target) // TODO incomplete init false positive
 	fmt.Println(ex9)
 }
 
 func main() {
-	testZeroAlloc()
+	testIncompleteInit()
 	testUntypedConstAlloc()
 	testTypedConstAlloc()
 }

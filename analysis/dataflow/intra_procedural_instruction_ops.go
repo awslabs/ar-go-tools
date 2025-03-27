@@ -164,11 +164,11 @@ func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
-		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(addr)
-		if isEmbedded {
+		fieldInfo, ok := analysisutil.FieldAddrFieldInfo(addr)
+		if !ok || fieldInfo.IsEmbedded {
 			transfer(state, x, x.Val, addr.X, "", NonIndexMark)
 		} else {
-			transfer(state, x, x.Val, addr.X, fieldName, NonIndexMark)
+			transfer(state, x, x.Val, addr.X, fieldInfo.FieldName, NonIndexMark)
 		}
 	}
 }
