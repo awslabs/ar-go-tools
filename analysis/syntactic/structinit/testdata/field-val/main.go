@@ -47,19 +47,19 @@ func testZeroAlloc() {
 	fmt.Println(ex3)
 
 	var ex4 nestedTarget
-	fmt.Println(ex4) // @ZeroAlloc(nestedTarget)
+	fmt.Println(ex4) // @ZeroAlloc(target)
 
 	var ex5 nestedTargetPtr
-	fmt.Println(ex5) // ok
+	fmt.Println(ex5) // @ZeroAlloc(target)
 
 	ex6 := nestedTargetPtr{t: &target{}, x: 1} // @ZeroAlloc(target)
 	fmt.Println(ex6)
 
-	ex7 := nestedTargetPtr{} // ok
-	fmt.Println(ex7)
+	ex7 := nestedTargetPtr{}
+	fmt.Println(ex7) // @ZeroAlloc(target)
 
 	ex8 := nestedTarget{}
-	fmt.Println(ex8) // @ZeroAlloc(nestedTarget)
+	fmt.Println(ex8) // @ZeroAlloc(target)
 
 	ex9 := struct{ x int }(target{}) // @ZeroAlloc(target)
 	fmt.Println(ex9)

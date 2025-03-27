@@ -391,6 +391,9 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 		return cid.Type == ""
 	}
 	if named, ok := typ.(*types.Named); ok {
+		if named == nil {
+			return false
+		}
 		if named.Obj() != nil && named.Obj().Pkg() != nil {
 			path := named.Obj().Pkg().Path()
 			name := named.Obj().Name()
