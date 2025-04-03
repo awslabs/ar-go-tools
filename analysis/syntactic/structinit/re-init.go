@@ -66,10 +66,7 @@ func checkMustReinitCall(st *state, callInstr *ssa.Call) funcutil.Optional[BadRe
 				continue
 			}
 		case *ssa.FieldAddr:
-			fieldInfo, ok := analysisutil.FieldAddrFieldInfo(instr)
-			if !ok {
-				continue
-			}
+			fieldInfo := analysisutil.FieldAddrFieldInfo(instr)
 			// Check that this is taking the address of a field that is tracked by the struct-init problem.
 			if _, ok := fieldsToReinit[fieldInfo.FieldName]; ok {
 				continue
@@ -93,10 +90,7 @@ func checkMustReinitCall(st *state, callInstr *ssa.Call) funcutil.Optional[BadRe
 func checkStore(instr *ssa.Store, callVal ssa.Value, fieldsToReinit map[string]bool) bool {
 	if field, ok := instr.Addr.(*ssa.FieldAddr); ok {
 		if field.X == callVal {
-			fieldInfo, ok := analysisutil.FieldAddrFieldInfo(field)
-			if !ok {
-				return false
-			}
+			fieldInfo := analysisutil.FieldAddrFieldInfo(field)
 			if fieldsToReinit[fieldInfo.FieldName] {
 				delete(fieldsToReinit, fieldInfo.FieldName)
 				return true

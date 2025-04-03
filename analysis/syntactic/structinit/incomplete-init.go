@@ -158,10 +158,7 @@ func zeroedFields(st *state, alloc alloced) []string {
 			if !ok {
 				continue
 			}
-			fieldInfo, ok := analysisutil.FieldAddrFieldInfo(fa)
-			if !ok {
-				continue
-			}
+			fieldInfo := analysisutil.FieldAddrFieldInfo(fa)
 			if _, ok := transitiveFieldAddrs[fa]; !ok {
 				continue
 			}

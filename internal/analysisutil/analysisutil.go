@@ -121,20 +121,20 @@ type FieldInfo struct {
 // FieldAddrFieldInfo finds the name of a field access in ssa.FieldAddr
 // if it cannot find a proper field name, returns "?".
 // The boolean indicates whether this field is embedded or not.
-func FieldAddrFieldInfo(fieldAddr *ssa.FieldAddr) (FieldInfo, bool) {
+func FieldAddrFieldInfo(fieldAddr *ssa.FieldAddr) FieldInfo {
 	return GetFieldInfoFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
 }
 
 // FieldFieldInfo finds the name of a field access in ssa.Field
 // if it cannot find a proper field name, returns "?".
 // The boolean indicates whether this field is embedded or not.
-func FieldFieldInfo(fieldAddr *ssa.Field) (FieldInfo, bool) {
+func FieldFieldInfo(fieldAddr *ssa.Field) FieldInfo {
 	return GetFieldInfoFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
 }
 
 // GetFieldInfoFromType returns the name of field i if t is a struct or pointer to a struct.
 // The boolean indicates whether this field is embedded or not.
-func GetFieldInfoFromType(t types.Type, i int) (FieldInfo, bool) {
+func GetFieldInfoFromType(t types.Type, i int) FieldInfo {
 	switch typ := t.(type) {
 	case *types.Pointer:
 		return GetFieldInfoFromType(typ.Elem().Underlying(), i) // recursive call
@@ -147,11 +147,11 @@ func GetFieldInfoFromType(t types.Type, i int) (FieldInfo, bool) {
 				FieldName:  field.Name(),
 				Struct:     typ,
 				IsEmbedded: field.Embedded(),
-			}, true
+			}
 		}
-		return FieldInfo{Struct: typ}, false
+		return FieldInfo{Struct: typ}
 	default:
-		return FieldInfo{}, false
+		return FieldInfo{}
 	}
 }
 
@@ -206,10 +206,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:
-		fieldInfo, ok := FieldFieldInfo(node)
-		if !ok {
-			return config.CodeIdentifier{}, false
-		}
+		fieldInfo := FieldFieldInfo(node)
 		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
 			return config.CodeIdentifier{}, false
@@ -227,10 +224,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		return config.CodeIdentifier{}, false
 
 	case *ssa.FieldAddr:
-		fieldInfo, ok := FieldAddrFieldInfo(node)
-		if !ok {
-			return config.CodeIdentifier{}, false
-		}
+		fieldInfo := FieldAddrFieldInfo(node)
 		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
 			return config.CodeIdentifier{}, false
@@ -267,10 +261,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 	// Storing into a specific struct field
 	case *ssa.Store:
 		if fieldAddr, isFieldAddr := node.Addr.(*ssa.FieldAddr); isFieldAddr {
-			fieldInfo, ok := FieldAddrFieldInfo(fieldAddr)
-			if !ok {
-				return config.CodeIdentifier{}, false
-			}
+			fieldInfo := FieldAddrFieldInfo(fieldAddr)
 			packageName, typeName, err := FindEltTypePackage(fieldAddr.X.Type(), "%s")
 			if err != nil {
 				return config.CodeIdentifier{}, false

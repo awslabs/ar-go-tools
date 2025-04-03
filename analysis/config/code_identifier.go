@@ -393,7 +393,7 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 		return cid.Type == ""
 	}
 	if named, ok := typ.(*types.Named); ok {
-		if named == nil {
+		if named == nil { // extra check is needed because the *types.Named value can be nil, even if typ != nil
 			return false
 		}
 		if named.Obj() != nil && named.Obj().Pkg() != nil {
