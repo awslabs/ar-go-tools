@@ -19,6 +19,7 @@ import (
 	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 )
 
 // structType contains both the named struct type
@@ -65,13 +66,7 @@ func isStructTypeHelper(t types.Type, isField bool) (structType, bool) {
 		return structType{}, false
 	}
 
-	typ := t
-	isPtr := false
-	if ptr, ok := t.Underlying().(*types.Pointer); ok {
-		typ = ptr.Elem()
-		isPtr = true
-	}
-
+	typ, isPtr := lang.TryDerefTyp(t)
 	if n, ok := typ.(*types.Named); ok {
 		if s, ok := n.Underlying().(*types.Struct); ok {
 			return structType{strct: s, named: n, isPtr: isPtr, isField: isField}, true
@@ -86,10 +81,14 @@ func isStructTypeHelper(t types.Type, isField bool) (structType, bool) {
 }
 
 // structTypesThatMatchSpec returns all the struct types in t (transitive: fields can be struct
-// types too) that match the struct specified in spec.
+// types too) that match the struct specified in spec and would be allocated by an allocation of
+// t.
+// For example, allocating struct{t : struct{x : int}} would allocate a struct{x: int}.
+// Allocating a struct{t : *struct{x : int}} would NOT allocate a struct{x: int}.
+// Allocating a struct{t : *struct{t2: struct{ x: int}}} would also not allocate a struct{x: int}.
 func structTypesThatMatchSpec(spec config.StructInitSpec, t types.Type) []structType {
 	var res []structType
-	typs := allStructTypes(t)
+	typs := implicitlyAllocedStructTypes(t)
 	if len(typs) == 0 {
 		return nil
 	}
@@ -105,20 +104,21 @@ func structTypesThatMatchSpec(spec config.StructInitSpec, t types.Type) []struct
 	return res
 }
 
-// allStructTypes returns the all the named and underlying types of t if it is a struct or pointer to a
+// implicitlyAllocedStructTypes returns the all the named and underlying types of t if it is a struct or pointer to a
 // struct.
 // It returns nil if t is not a struct type.
 //
 // A struct can have multiple struct types within it (e.g., a struct containing a field that
 // itself is a struct) so the function returns multiple struct types.
-func allStructTypes(t types.Type) []structType {
-	return allStructTypesHelper(t, nil, false)
+func implicitlyAllocedStructTypes(t types.Type) []structType {
+	return implicitlyAllocedStructTypesHelper(t, nil, false)
 }
 
-func allStructTypesHelper(t types.Type, typs []*types.Struct, isField bool) []structType {
+func implicitlyAllocedStructTypesHelper(t types.Type, typs []*types.Struct, isField bool) []structType {
 	var res []structType
 	st, ok := isStructTypeHelper(t, isField)
 	if !ok {
+		// We only care about allocated structs; other zero values are of no interest to us
 		return nil
 	}
 	// Avoid infinite recursion: don't recurse if the struct type has already been seen
@@ -130,8 +130,14 @@ func allStructTypesHelper(t types.Type, typs []*types.Struct, isField bool) []st
 	typs = append(typs, st.strct)
 
 	res = append(res, st)
-	for i := 0; i < st.strct.NumFields(); i++ {
-		fieldTyps := allStructTypesHelper(st.strct.Field(i).Type(), typs, true) // recursive call
+	for i := range st.strct.NumFields() {
+		filedTyp := st.strct.Field(i).Type()
+		// If the field is a nillable type, its zero value will be nil.
+		if lang.IsNillableType(filedTyp) {
+			continue
+		}
+		// Otherwise the zero value of the type would be "allocated".
+		fieldTyps := implicitlyAllocedStructTypesHelper(st.strct.Field(i).Type(), typs, true) // recursive call
 		res = append(res, fieldTyps...)
 	}
 

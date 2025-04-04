@@ -25,6 +25,16 @@ type nestedTarget struct {
 	x int
 }
 
+type doubleNestedStruct struct {
+	t    nestedTarget
+	name string
+}
+
+type doubleNestedPtrStruct struct {
+	t       *nestedTarget
+	surname string
+}
+
 type nestedTargetPtr struct {
 	t *target
 	x int
@@ -36,6 +46,10 @@ type multitarget struct {
 }
 
 const One = 1
+
+func targetConsume(t target) {
+	fmt.Println(t)
+}
 
 // NOTE print statements ensure the variables aren't erased in SSA form.
 // They also test implicit interface conversions to the `any` type.
@@ -74,6 +88,14 @@ func testIncompleteInit() {
 
 	ex11 := multitarget{y: 1} // @IncompleteInit(multitarget) // field x is uninitialized
 	fmt.Println(ex11)
+
+	ex12 := doubleNestedStruct{} // @IncompleteInit(target)
+	fmt.Println(ex12.name)
+	targetConsume(ex12.t.t)
+
+	ex13 := doubleNestedPtrStruct{}
+	fmt.Println(ex13.surname)
+	targetConsume(ex13.t.t)
 }
 
 func testUntypedConstAlloc() {
