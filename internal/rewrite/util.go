@@ -13,6 +13,7 @@ import (
 	"go/types"
 	"strconv"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -141,12 +142,9 @@ func (m *methodMatcher) match(typeInfo *types.Info, call *ast.CallExpr) ast.Expr
 		// call to foo.
 		return nil
 	}
-	calleeType := typeInfo.TypeOf(sel.X)
+	calleeType, _ := lang.TryDerefTyp(typeInfo.TypeOf(sel.X))
 	if calleeType == nil {
 		return nil
-	}
-	if ptr, ok := calleeType.(*types.Pointer); ok {
-		calleeType = ptr.Elem()
 	}
 	named, ok := calleeType.(*types.Named)
 	if !ok {
