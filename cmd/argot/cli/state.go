@@ -15,37 +15,245 @@
 package cli
 
 import (
+	"fmt"
+	"log"
 	"os"
+	"path"
+	"slices"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
+	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
+	"github.com/awslabs/ar-go-tools/analysis/taint"
+	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// serverState stores state information about the terminal. Not used to store information about the program
-// being analyzed
-type serverState struct {
-	// the args (the path to the program to load
-	Args []string
+// session stores state information about the current cli session
+type session struct {
+	originalFlags tools.CommonFlags
+
+	Args       []string
+	ConfigPath string
 
 	InitialPackages []*packages.Package
-
-	ConfigPath string
 
 	TermWidth int
 
 	CurrentFunction *ssa.Function
 
 	CurrentDataflowInformation *dataflow.FlowInformation
+
+	// Available states
+	CfgState *config.State
+	LPState  *loadprogram.State
+	PtrState *ptr.State
+	DFState  *dataflow.State
 }
 
-var state = serverState{}
+func newSession(flags tools.CommonFlags) *session {
+	s := &session{
+		originalFlags: flags,
+		Args:          flags.FlagSet.Args(),
+		ConfigPath:    flags.ConfigPath,
+	}
+	return s
+}
+
+func (s *session) logger() *config.LogGroup {
+	if s.CfgState != nil {
+		return s.CfgState.Logger
+	}
+	return config.NewLogGroup(nil)
+}
+
+func (s *session) allFunctions() (map[*ssa.Function]bool, error) {
+	if s.LPState == nil {
+		return nil, fmt.Errorf("listing functions requires at least a loaded program")
+	}
+	return ssautil.AllFunctions(s.LPState.Program), nil
+}
+
+func (s *session) reachableFunctions() (map[*ssa.Function]bool, error) {
+	if s.LPState == nil {
+		return nil, fmt.Errorf("listing reachable functions requires at least a loaded program")
+	}
+	if s.DFState != nil {
+		return s.DFState.ReachableFunctions(), nil
+	}
+	if s.PtrState != nil {
+		return s.PtrState.ReachableFunctions(), nil
+	}
+	return s.LPState.ReachableFunctions()
+}
+
+func (s *session) hasSummary(f *ssa.Function) (*dataflow.SummaryGraph, bool) {
+	if s.DFState == nil || s.DFState.FlowGraph == nil {
+		return nil, false
+	}
+	summary, ok := s.DFState.FlowGraph.Summaries[f]
+	if summary == nil {
+		return nil, false
+	}
+	return summary, ok
+}
+
+func (s *session) seekConfig() (*config.Config, bool, error) {
+	var err error
+	pConfig := config.NewDefault()
+	if s.ConfigPath != "" {
+		config.SetGlobalConfig(s.ConfigPath)
+		pConfig, err = config.LoadGlobal(nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not load config %q\n", s.ConfigPath)
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return nil, true, nil
+		}
+	} else if len(s.Args) == 1 && strings.HasSuffix(s.Args[0], ".go") {
+		// Special case: look for config in .go 's folder, if found then set it
+		dir := path.Dir(s.Args[0])
+		if s.attemptSettingConfig(&pConfig, dir, "config.yaml") == nil {
+			return pConfig, false, nil
+		}
+		err = s.attemptSettingConfig(&pConfig, dir, "config.json")
+	}
+	return pConfig, false, err
+}
+
+func (s *session) attemptSettingConfig(pConfig **config.Config, dir string, filename string) error {
+	configFile := path.Join(dir, filename)
+	config.SetGlobalConfig(configFile)
+	tmpConfig, err := config.LoadGlobal(nil)
+	if err != nil {
+		// Reset and ignore
+		config.SetGlobalConfig("")
+		return err
+	}
+	*pConfig = tmpConfig
+	return nil
+}
+
+func (s *session) loadConfig() result.Result[config.State] {
+	logger := log.New(os.Stdout, "", log.Flags())
+	if s.CfgState != nil {
+		return result.Ok(s.CfgState)
+	}
+
+	pConfig, done, _ := s.seekConfig()
+	if done {
+		return result.Err[config.State](fmt.Errorf("failed to load config"))
+	}
+
+	if pConfig == nil {
+		fmt.Fprintf(os.Stderr, "failed to load config")
+		return result.Err[config.State](fmt.Errorf("failed to load config"))
+	}
+	// Override config parameters with command-line parameters
+	if s.originalFlags.Verbose {
+		pConfig.LogLevel = int(config.DebugLevel)
+	}
+	logger.Printf(formatutil.Faint("Reading sources") + "\n")
+	// Load the program
+	loadOptions := config.LoadOptions{
+		PackageConfig: nil,
+		BuildMode:     ssa.InstantiateGenerics,
+		LoadTests:     s.originalFlags.WithTest,
+		ApplyRewrites: true,
+	}
+	s.CfgState = config.NewState(pConfig, "", s.originalFlags.FlagSet.Args(), loadOptions)
+	// Apply rewrites from config if the target can be recognized
+	for _, targetSpec := range s.CfgState.Config.Targets {
+		if slices.Equal(targetSpec.Files, s.Args) {
+			if targetSpec.UseProgramTransforms && len(targetSpec.ReflectValueCallInstances) >= 1 {
+				var err error
+				s.logger().Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
+				// TODO: handle more rewrites later
+				s.CfgState, err = statefulrewrite.StatefulRewritesOverlayTransform(s.CfgState,
+					statefulrewrite.StatefulRewritesOverlayTransformSpec{ReflectValueCallInstanceCid: targetSpec.ReflectValueCallInstances[0]}).Value()
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
+	}
+	return result.Ok(s.CfgState)
+}
+
+func (s *session) loadProgram() result.Result[loadprogram.State] {
+	if s.LPState != nil {
+		return result.Ok(s.LPState)
+	}
+	lpstate := loadprogram.NewState(s.CfgState)
+	if lpstate.IsOk() {
+		s.LPState = lpstate.Unwrap()
+	}
+	return lpstate
+}
+
+func (s *session) loadPtrAnalysis() result.Result[ptr.State] {
+	if s.PtrState != nil {
+		return result.Ok(s.PtrState)
+	}
+	ptrstate := result.Bind(s.loadProgram(), ptr.NewState)
+	if ptrstate.IsOk() {
+		s.PtrState = ptrstate.Unwrap()
+	}
+	return ptrstate
+}
+
+func (s *session) loadDataflowAnalysis() result.Result[dataflow.State] {
+	if s.DFState != nil {
+		return result.Ok(s.DFState)
+	}
+	dfstate := result.Bind(s.loadPtrAnalysis(), dataflow.NewState)
+	if dfstate.IsOk() {
+		s.DFState = dfstate.Unwrap()
+	} else {
+		return dfstate
+	}
+	// Optional step: running the preamble of the taint analysis
+	if s.DFState.Config.UseEscapeAnalysis || len(s.DFState.Config.TaintTrackingProblems) > 0 {
+		err := taint.AnalysisPreamble(s.DFState)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error while running the taint analysis preamble: %v", err)
+			os.Exit(1)
+		}
+	}
+	return result.Ok(s.DFState)
+}
+
+func (s *session) hasProgram() bool {
+	return s.LPState != nil && s.LPState.Program != nil
+}
+
+func (s *session) program() (*ssa.Program, error) {
+	if s.LPState == nil || s.LPState.Program == nil {
+		return nil, fmt.Errorf("no program loaded")
+	}
+	return s.LPState.Program, nil
+}
+
+// programOrPanic is a version of program that panics instead of returning an error.
+// This is useful in a context where you know the program exists.
+func (s *session) programOrPanic() *ssa.Program {
+	program, err := s.program()
+	if err != nil {
+		panic(err)
+	}
+	return program
+}
 
 // Help command
-func cmdHelp(tt *term.Terminal, c *dataflow.State, _ Command, withTest bool) bool {
-	if c == nil {
+func cmdHelp(tt *term.Terminal, s *session, _ Command, withTest bool) bool {
+	if s == nil {
 		writeFmt(tt, "\t- %s%s%s : print help message\t", cmdHelpName, tt.Escape.Blue, tt.Escape.Reset)
 		return false
 	}
@@ -58,30 +266,64 @@ func cmdHelp(tt *term.Terminal, c *dataflow.State, _ Command, withTest bool) boo
 }
 
 // cmdState implements the "state?" command, which prints information about the current state of the tool
-func cmdState(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
-	if c == nil {
-		writeFmt(tt, "\t- %s%s%s : print information about the current state\n",
+func cmdState(tt *term.Terminal, s *session, _ Command, _ bool) bool {
+	if s == nil {
+		writeFmt(tt, "\t- %s%s%s : print information about the current session\n",
 			tt.Escape.Blue, cmdStateName, tt.Escape.Reset)
 		return false
 	}
 	wd, _ := os.Getwd()
 	fName := "none"
-	if state.CurrentFunction != nil {
-		fName = state.CurrentFunction.String()
+	if s.CurrentFunction != nil {
+		fName = s.CurrentFunction.String()
 	}
-	writeFmt(tt, "Program path      : %s\n", strings.Join(state.Args, " "))
-	writeFmt(tt, "Config path       : %s\n", state.ConfigPath)
-	writeFmt(tt, "Working dir       : %s\n", wd)
-	writeFmt(tt, "Focused function  : %s\n", fName)
-	writeFmt(tt, "# functions       : %d\n", len(c.ReachableFunctions()))
-	writeFmt(tt, "# summaries built : %d\n", len(c.FlowGraph.Summaries))
-	writeFmt(tt, "flow graph built? : %t\n", c.FlowGraph.IsBuilt())
+	writeFmt(tt, "Program path          : %s\n", strings.Join(s.Args, " "))
+	writeFmt(tt, "Config path           : %s\n", s.ConfigPath)
+	writeFmt(tt, "Working dir           : %s\n", wd)
+	writeFmt(tt, "Focused function      : %s\n", fName)
+	if s.LPState != nil {
+		writeFmt(tt, "┌────────── SSA ──────")
+		writeFmt(tt, "│ # packages        : %d\n", len(s.LPState.Packages))
+		r, err := s.LPState.ReachableFunctions()
+		if err != nil {
+			writeFmt(tt, "error: %s\n", err)
+			return false
+		}
+		writeFmt(tt, "│ # reachable functions : %d\n", len(r))
+		writeFmt(tt, "└─────────────────────")
+	} else {
+		writeFmt(tt, "┌───────────────────────────┐")
+		writeFmt(tt, "│ ⚠ SSA Program not loaded  │")
+		writeFmt(tt, "└───────────────────────────┘")
+		return false
+	}
+	if s.PtrState != nil {
+		writeFmt(tt, "┌────────── POINTERS ────")
+		writeFmt(tt, "│ # pointers        : %d\n", len(s.PtrState.PointerAnalysis.Queries))
+		writeFmt(tt, "└────────────────────────")
+	} else {
+		writeFmt(tt, "┌──────────────────────────────┐")
+		writeFmt(tt, "│ ⚠ Pointer Analysis not run   │")
+		writeFmt(tt, "└──────────────────────────────┘")
+		return false
+	}
+	if s.DFState != nil {
+		writeFmt(tt, "┌────────── DATAFLOW ───")
+		writeFmt(tt, "│ # functions           : %d\n", len(s.DFState.ReachableFunctions()))
+		writeFmt(tt, "│ # summaries built     : %d\n", len(s.DFState.FlowGraph.Summaries))
+		writeFmt(tt, "│ flow graph built?     : %t\n", s.DFState.FlowGraph.IsBuilt())
+		writeFmt(tt, "└──────────────────────")
+	} else {
+		writeFmt(tt, "┌──────────────────────────────┐")
+		writeFmt(tt, "│ ⚠ Dataflow Analysis not run  │")
+		writeFmt(tt, "└──────────────────────────────┘")
+	}
 	return false
 }
 
 // cmdList shows all functions matching a given regex
-func cmdList(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
-	if c == nil {
+func cmdList(tt *term.Terminal, s *session, command Command, withTest bool) bool {
+	if s == nil {
 		writeFmt(tt, "\t- %s%s%s : list all functions matching provided regexes\n",
 			tt.Escape.Blue, cmdListName, tt.Escape.Reset)
 		writeFmt(tt, "\t  Options:\n")
@@ -95,13 +337,22 @@ func cmdList(tt *term.Terminal, c *dataflow.State, command Command, withTest boo
 		return cmdList(tt, nil, command, withTest)
 	}
 
-	funcs := funcsMatchingCommand(tt, c, command)
+	funcs, err := funcsMatchingCommand(tt, s, command)
+
+	if err != nil {
+		WriteErr(tt, "Error: %s", err)
+		return false
+	}
 	if len(funcs) == 0 {
 		WriteSuccess(tt, "No matching function found.")
 		return false
 	}
 
-	reachable := c.ReachableFunctions()
+	reachable, err := s.reachableFunctions()
+	if err != nil {
+		WriteErr(tt, "Error: %s", err)
+		return false
+	}
 
 	WriteSuccess(tt, "Found %d matching functions:", len(funcs))
 	WriteSuccess(tt, "[summarized?][reachable?] function name")
@@ -109,7 +360,7 @@ func cmdList(tt *term.Terminal, c *dataflow.State, command Command, withTest boo
 	numSummarized := 0
 	numReachable := 0
 	for _, fun := range funcs {
-		summary, hasSummary := c.FlowGraph.Summaries[fun]
+		summary, hasSummary := s.hasSummary(fun)
 		isReachable := reachable[fun]
 		reachStr := "_"
 		if isReachable {

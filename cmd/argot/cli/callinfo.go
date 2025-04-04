@@ -23,8 +23,8 @@ import (
 )
 
 // cmdCallers shows the callers of a given summarized function
-func cmdCallers(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
-	if c == nil {
+func cmdCallers(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: shows the callers of a given summarized function.\n",
 			tt.Escape.Blue, cmdCallersName, tt.Escape.Reset)
 		writeFmt(tt, "\t    %s will only be accurate after `%s%s%s`.\n",
@@ -36,12 +36,12 @@ func cmdCallers(tt *term.Terminal, c *dataflow.State, command Command, _ bool) b
 	if command.Flags["ptr"] {
 		usePtr = true
 	}
-	return displayCallInfo(tt, c, command, usePtr, false, true)
+	return displayCallInfo(tt, sess, command, usePtr, false, true)
 }
 
 // cmdCallees shows the callers of a given summarized function
-func cmdCallees(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
-	if c == nil {
+func cmdCallees(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: shows the callees of a given summarized function.\n",
 			tt.Escape.Blue, cmdCalleesName, tt.Escape.Reset)
 		writeFmt(tt, "\t    %s will only be accurate after `%s%s%s`.\n",
@@ -53,7 +53,7 @@ func cmdCallees(tt *term.Terminal, c *dataflow.State, command Command, _ bool) b
 	if command.Flags["ptr"] {
 		usePtr = true
 	}
-	return displayCallInfo(tt, c, command, usePtr, true, false)
+	return displayCallInfo(tt, sess, command, usePtr, true, false)
 }
 
 // displayCallInfo displays callers or/and callee information for a specific command.
@@ -62,7 +62,7 @@ func cmdCallees(tt *term.Terminal, c *dataflow.State, command Command, _ bool) b
 //
 // If the matching function has a summary, then the summary's info is used.
 // Otherwise, the info contained in the pointer analysis' result is used.
-func displayCallInfo(tt *term.Terminal, c *dataflow.State, command Command, usePtr bool,
+func displayCallInfo(tt *term.Terminal, sess *session, command Command, usePtr bool,
 	displayCallees bool, displayCallers bool) bool {
 	targetFilter := func(f *ssa.Function) bool { return f != nil }
 
@@ -79,18 +79,25 @@ func displayCallInfo(tt *term.Terminal, c *dataflow.State, command Command, useP
 			return filterRegex.MatchString(f.String())
 		}
 	}
-
-	for _, f := range funcsMatchingCommand(tt, c, command) {
-		if summary, hasSummary := c.FlowGraph.Summaries[f]; hasSummary && !usePtr {
+	funcs, err := funcsMatchingCommand(tt, sess, command)
+	if err != nil {
+		return false
+	}
+	for _, f := range funcs {
+		if summary, hasSummary := sess.hasSummary(f); hasSummary && !usePtr && summary != nil {
 			// Strategy 1: the function has a summary, use it to determine callees
 			// the information in a summary should be more complete than callgraph, if the callgraph sometimes
 			// omits static calls
-			displayCallInfoWithSummary(c, tt, f, summary, targetFilter, displayCallers, displayCallees)
+			dfg, _ := sess.loadDataflowAnalysis().Value() // should not fail since we have summary
+			if dfg == nil {
+				panic("internal error")
+			}
+			displayCallInfoWithSummary(dfg, tt, f, summary, targetFilter, displayCallers, displayCallees)
 		} else {
 			// If there is no summary, or usePtr is true, then use the callgraph computed during
 			// the pointer analysis  the state should always contain the pointer analysis,
 			// and it should not be null
-			displayCallInfoWithoutSummary(c, tt, f, targetFilter, displayCallers, displayCallees)
+			displayCallInfoWithoutSummary(sess, tt, f, targetFilter, displayCallers, displayCallees)
 		}
 	}
 	return false
@@ -131,20 +138,25 @@ func displayCallInfoWithSummary(s *dataflow.State, tt *term.Terminal,
 	}
 }
 
-func displayCallInfoWithoutSummary(s *dataflow.State, tt *term.Terminal,
+func displayCallInfoWithoutSummary(s *session, tt *term.Terminal,
 	f *ssa.Function, targetFilter func(*ssa.Function) bool,
 	displayCallers bool, displayCallees bool) {
 	if s == nil || f == nil {
 		return
 	}
-	if node, ok := s.PointerAnalysis.CallGraph.Nodes[f]; ok {
+	ptrAnalysis, err := s.loadPtrAnalysis().Value()
+	if err != nil {
+		writeFmt(tt, "\t%s\n", err)
+		return
+	}
+	if node, ok := ptrAnalysis.PointerAnalysis.CallGraph.Nodes[f]; ok {
 		if displayCallees {
 			WriteSuccess(tt, "All functions called by %s:", f.String())
 			for _, out := range node.Out {
 				if out.Callee != nil && targetFilter(out.Callee.Func) {
 					if out.Site != nil {
 						writeFmt(tt, "\tAt SSA instruction %s:\n", out.Site.String())
-						writeFmt(tt, "\t - position: %s\n", s.Program.Fset.Position(out.Site.Pos()))
+						writeFmt(tt, "\t - position: %s\n", ptrAnalysis.Program.Fset.Position(out.Site.Pos()))
 					}
 					writeFmt(tt, "\t - %s\n", out.Callee.Func.String())
 				}
@@ -156,7 +168,7 @@ func displayCallInfoWithoutSummary(s *dataflow.State, tt *term.Terminal,
 				if in.Caller != nil && targetFilter(in.Caller.Func) {
 					if in.Site != nil {
 						writeFmt(tt, "\tAt SSA instruction %s:\n", in.Site.String())
-						writeFmt(tt, "\t - position: %s\n", s.Program.Fset.Position(in.Site.Pos()))
+						writeFmt(tt, "\t - position: %s\n", ptrAnalysis.Program.Fset.Position(in.Site.Pos()))
 					}
 					writeFmt(tt, "\t - %s\n", in.Caller.Func.String())
 				}

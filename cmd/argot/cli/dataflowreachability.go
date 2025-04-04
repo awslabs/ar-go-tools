@@ -24,8 +24,8 @@ import (
 )
 
 // cmdTrace runs a taint-like analysis, but starting from a custom node
-func cmdTrace(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
-	if c == nil {
+func cmdTrace(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: show information about nodes reachable from another node using data edges.\n",
 			tt.Escape.Blue, cmdTraceName, tt.Escape.Reset)
 		writeFmt(tt, "\t    Argument is a regex matching node ids.\n")
@@ -33,6 +33,13 @@ func cmdTrace(tt *term.Terminal, c *dataflow.State, command Command, _ bool) boo
 
 		return false
 	}
+
+	res := sess.loadDataflowAnalysis()
+	if res.IsErr() {
+		WriteErr(tt, "Failed to load dataflow analysis: %s", res)
+		return false
+	}
+	c := res.Unwrap()
 
 	if !c.FlowGraph.IsBuilt() {
 		WriteErr(tt, "The inter-procedural dataflow graph is not built!")

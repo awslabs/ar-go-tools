@@ -16,12 +16,10 @@ package cli
 
 import (
 	"strings"
-
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 )
 
 // AutoCompleteOfAnalyzerState provides the auto-completion functionality for the command-line interface
-func AutoCompleteOfAnalyzerState(_ *dataflow.State) func(string, int, rune) (string, int, bool) {
+func AutoCompleteOfAnalyzerState(_ *session) func(string, int, rune) (string, int, bool) {
 	f := func(line string, pos int, key rune) (string, int, bool) {
 		if key == '\t' {
 			if len(line) > 1 && pos == len(line) {

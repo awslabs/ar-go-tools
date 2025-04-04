@@ -18,13 +18,12 @@ import (
 	"os"
 	"path"
 
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
 )
 
 // cmdCd implements the "cd" command that lets the user change the current working directory in the tool
-func cmdCd(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
-	if c == nil {
+func cmdCd(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : move to relative directory\n", tt.Escape.Blue, cmdCdName, tt.Escape.Reset)
 		return false
 	}
@@ -46,8 +45,8 @@ func cmdCd(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
 }
 
 // cmdExit implements the exit command to exit the command-line tool.
-func cmdExit(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
-	if c == nil {
+func cmdExit(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : exit the program\n", tt.Escape.Blue, cmdExitName, tt.Escape.Reset)
 		return false
 	}
@@ -57,8 +56,8 @@ func cmdExit(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
 
 // cmdLs prints the entries in the current directory. Useful to navigate the current directory and load a new program
 // or a new configuration file.
-func cmdLs(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
-	if c == nil {
+func cmdLs(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : list files in directory\n", tt.Escape.Blue, cmdLsName, tt.Escape.Reset)
 		return false
 	}
@@ -82,6 +81,6 @@ func cmdLs(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
 				displayElement{content: entry.Name(), escape: tt.Escape.Reset})
 		}
 	}
-	writeEntries(tt, strEntries, "")
+	writeEntries(tt, sess, strEntries, "")
 	return false
 }

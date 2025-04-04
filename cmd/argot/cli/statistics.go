@@ -21,6 +21,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/exp/slices"
 	"golang.org/x/term"
@@ -29,7 +30,7 @@ import (
 
 // cmdStats prints statistics about the program
 // Command is stats [all|general|closures]
-func cmdStats(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
+func cmdStats(tt *term.Terminal, c *session, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : show stats about program\n", tt.Escape.Blue, cmdStatsName, tt.Escape.Reset)
 		writeFmt(tt, "\t  subcommands:\n")
@@ -51,26 +52,44 @@ func cmdStats(tt *term.Terminal, c *dataflow.State, command Command, withTest bo
 	}
 	all := funcutil.Contains(command.Args, "all")
 
-	// general ssa stats
-	if all || funcutil.Contains(command.Args, "general") || len(command.Args) == 0 {
-		doGeneralStats(tt, c, command)
+	if c.LPState == nil {
+		WriteErr(tt, "no program loaded")
+		return false
 	}
 
+	if all || funcutil.Contains(command.Args, "general") || len(command.Args) == 0 {
+
+		// generate ssa stats with reachable from dataflow analysis
+		reachableFunctions, err := c.reachableFunctions()
+		if err != nil {
+			WriteErr(tt, err.Error())
+			return false
+		}
+		doGeneralStats(tt, reachableFunctions, command)
+	}
+
+	if c.PtrState == nil {
+		WriteErr(tt, "no pointer analysis done, nothing else to report")
+		return false
+	}
 	// general ssa stats
 	if all || funcutil.Contains(command.Args, "defers") || len(command.Args) == 0 {
-		doDeferStats(tt, c, command)
+		doDeferStats(tt, c.PtrState, command)
 	}
 
+	if c.DFState == nil {
+		WriteErr(tt, "no dataflow analysis done, nothing else to report")
+		return false
+	}
 	// stats about closures
 	if all || funcutil.Contains(command.Args, "closures") {
-		doClosureStats(tt, c, command)
+		doClosureStats(tt, c.DFState, command)
 	}
 
 	return false
 }
 
-func doGeneralStats(tt *term.Terminal, c *dataflow.State, _ Command) {
-	reachableFunctions := c.ReachableFunctions()
+func doGeneralStats(tt *term.Terminal, reachableFunctions map[*ssa.Function]bool, _ Command) {
 	result := analysis.SSAStatistics(&reachableFunctions, []string{})
 
 	WriteSuccess(tt, "SSA stats:")
@@ -80,7 +99,7 @@ func doGeneralStats(tt *term.Terminal, c *dataflow.State, _ Command) {
 	writeFmt(tt, " # instructions                %d\n", result.NumberOfInstructions)
 }
 
-func doDeferStats(tt *term.Terminal, c *dataflow.State, command Command) {
+func doDeferStats(tt *term.Terminal, c *ptr.State, command Command) {
 	reachableFunctions := c.ReachableFunctions()
 	results := analysis.DeferStats(&reachableFunctions)
 	writeFmt(tt, "%d functions had defers\n", results.NumFunctionsWithDefers)
@@ -136,22 +155,22 @@ func doClosureStats(tt *term.Terminal, c *dataflow.State, command Command) {
 	// Closures that are immediately called
 	if command.Flags["I"] {
 		WriteSuccess(tt, "Closures called immediately at creation:")
-		printInstrsWithParent(tt, c, stats.ClosuresImmediatelyCalled, r)
+		printInstrsWithParent(tt, c.Program, stats.ClosuresImmediatelyCalled, r)
 	}
 
 	// Show unclassified closures uses
 	if command.Flags["U"] {
 		WriteSuccess(tt, "Unclassified closures:")
-		printInstrsWithParent(tt, c, stats.ClosuresNoClass, r)
+		printInstrsWithParent(tt, c.Program, stats.ClosuresNoClass, r)
 	}
 }
 
-func printInstrsWithParent[T any](tt *term.Terminal, c *dataflow.State, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
+func printInstrsWithParent[T any](tt *term.Terminal, p *ssa.Program, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
 	var fnames []NameAndLoc
 	for instruction := range instrs {
-		loc := c.Program.Fset.Position(instruction.Parent().Pos())
+		loc := p.Fset.Position(instruction.Parent().Pos())
 		if instruction.Pos() != token.NoPos {
-			loc = c.Program.Fset.Position(instruction.Pos())
+			loc = p.Fset.Position(instruction.Pos())
 		}
 		x := NameAndLoc{
 			name: instruction.Parent().String(),

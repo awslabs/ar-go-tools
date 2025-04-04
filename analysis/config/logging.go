@@ -62,7 +62,17 @@ type LogGroup struct {
 // NewLogGroup returns a log group that is configured to the logging settings stored inside the config
 func NewLogGroup(config *Config) *LogGroup {
 	if config == nil {
-		return nil
+		// Return a default config with nil arguments
+		return &LogGroup{
+			Level:        InfoLevel,
+			suppressWarn: false,
+			contexts:     []string{},
+			trace:        log.New(os.Stdout, formatutil.Faint("[TRACE]")+" ", 0),
+			debug:        log.New(os.Stdout, "[DEBUG]"+" ", 0),
+			info:         log.New(os.Stdout, formatutil.Green("[INFO]")+" ", 0),
+			warn:         log.New(os.Stdout, formatutil.Yellow("[WARN]")+" ", 0),
+			err:          log.New(os.Stdout, formatutil.Red("[ERROR]")+" ", 0),
+		}
 	}
 	l := &LogGroup{
 		Level:        LogLevel(config.LogLevel),

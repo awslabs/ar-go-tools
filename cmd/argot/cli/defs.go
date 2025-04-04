@@ -20,10 +20,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 const (
@@ -78,7 +76,7 @@ type NameAndLoc struct {
 // funcsMatchingCommand returns the function matching the argument of the command or all functions if there
 // is no argument
 // Returns an empty list if any error is encountered
-func funcsMatchingCommand(tt *term.Terminal, c *dataflow.State, command Command) []*ssa.Function {
+func funcsMatchingCommand(tt *term.Terminal, se *session, command Command) ([]*ssa.Function, error) {
 	rString := ".*" // default is to match anything
 	if len(command.Args) >= 1 {
 		// otherwise build regex from arguments
@@ -91,21 +89,28 @@ func funcsMatchingCommand(tt *term.Terminal, c *dataflow.State, command Command)
 	r, err := regexp.Compile(rString)
 	if err != nil {
 		regexErr(tt, rString, err)
-		return []*ssa.Function{}
+		return []*ssa.Function{}, err
 	}
-	s := findFunc(c, r)
+	s, err := findFunc(se, r)
+	if err != nil {
+		return nil, err
+	}
 	slices.SortFunc(s, func(a, b *ssa.Function) int { return strings.Compare(a.String(), b.String()) })
-	return s
+	return s, nil
 }
 
-func findFunc(c *dataflow.State, target *regexp.Regexp) []*ssa.Function {
+func findFunc(se *session, target *regexp.Regexp) ([]*ssa.Function, error) {
 	var funcs []*ssa.Function
-	for f := range ssautil.AllFunctions(c.Program) {
+	allFuncs, err := se.allFunctions()
+	if err != nil {
+		return nil, err
+	}
+	for f := range allFuncs {
 		if target.MatchString(f.String()) {
 			funcs = append(funcs, f)
 		}
 	}
-	return funcs
+	return funcs, nil
 }
 
 func regexErr(tt *term.Terminal, expr string, err error) {
