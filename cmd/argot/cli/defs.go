@@ -26,6 +26,7 @@ import (
 
 const (
 	cmdAstName          = "ast"
+	cmdBacktraceName    = "backtrace"
 	cmdBuildGraphName   = "buildgraph"
 	cmdCalleesName      = "callees"
 	cmdCallersName      = "callers"
@@ -35,6 +36,7 @@ const (
 	cmdHelpName         = "help"
 	cmdIntraName        = "intra"
 	cmdLoadName         = "load"
+	cmdLoadProgramName  = "load-program"
 	cmdListName         = "list"
 	cmdLsName           = "ls"
 	cmdMarkName         = "mark"
@@ -46,6 +48,8 @@ const (
 	cmdShowDataflowName = "showdataflow"
 	cmdShowEscapeName   = "showescape"
 	cmdMembersName      = "members"
+	cmdRunPointerName   = "run-pointer"
+	cmdRunDataflowName  = "run-dataflow"
 	cmdShowSsaName      = "showssa"
 	cmdSrcName          = "src"
 	cmdSsaInstrName     = "ssainstr"
@@ -58,7 +62,6 @@ const (
 	cmdTraceName        = "trace"
 	cmdUnfocusName      = "unfocus"
 	cmdWhereName        = "where"
-	cmdBacktraceName    = "backtrace"
 	// Other constants
 
 	// Summarize threshold puts a maximum size above which summary building filters are used

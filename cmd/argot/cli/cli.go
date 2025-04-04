@@ -33,6 +33,7 @@ Usage:
 
 var commands = map[string]func(tt *term.Terminal, s *session, command Command, withTest bool) bool{
 	cmdAstName:          cmdAst,
+	cmdBacktraceName:    cmdBacktrace,
 	cmdBuildGraphName:   cmdBuildGraph,
 	cmdCallersName:      cmdCallers,
 	cmdCalleesName:      cmdCallees,
@@ -42,6 +43,7 @@ var commands = map[string]func(tt *term.Terminal, s *session, command Command, w
 	cmdIntraName:        cmdIntra,
 	cmdListName:         cmdList,
 	cmdLoadName:         cmdLoad,
+	cmdLoadProgramName:  cmdLoadWholeProgram,
 	cmdLsName:           cmdLs,
 	cmdMarkName:         cmdMark,
 	cmdMayAliasName:     cmdMayAlias,
@@ -52,6 +54,8 @@ var commands = map[string]func(tt *term.Terminal, s *session, command Command, w
 	cmdShowSsaName:      cmdShowSsa,
 	cmdShowEscapeName:   cmdShowEscape,
 	cmdMembersName:      cmdMembers,
+	cmdRunDataflowName:  cmdRunDataflow,
+	cmdRunPointerName:   cmdRunPointer,
 	cmdShowDataflowName: cmdShowDataflow,
 	cmdSrcName:          cmdSrc,
 	cmdSsaInstrName:     cmdSsaInstr,
@@ -64,7 +68,6 @@ var commands = map[string]func(tt *term.Terminal, s *session, command Command, w
 	cmdTraceName:        cmdTrace,
 	cmdUnfocusName:      cmdUnfocus,
 	cmdWhereName:        cmdWhere,
-	cmdBacktraceName:    cmdBacktrace,
 }
 
 // Run runs a simple CLI-based stdin-stdout server to allow us to explore the code.

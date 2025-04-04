@@ -36,6 +36,54 @@ func cmdLoad(tt *term.Terminal, sess *session, command Command, withTest bool) b
 	return cmdRebuild(tt, sess, command, withTest)
 }
 
+func cmdLoadWholeProgram(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
+		writeFmt(tt, "\t- %s%s%s : laod the arguments as whole program\n", tt.Escape.Blue, cmdLoadName, tt.Escape.Reset)
+		return false
+	}
+
+	lp := sess.loadProgram()
+	if lp.IsErr() {
+		WriteErr(tt, "%s", lp)
+		return false
+	} else {
+		WriteSuccess(tt, "loaded program with path %s", strings.Join(sess.Args, ", "))
+		return false
+	}
+}
+
+func cmdRunPointer(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
+		writeFmt(tt, "\t- %s%s%s : run the pointer analysis\n", tt.Escape.Blue, cmdRunPointerName, tt.Escape.Reset)
+		return false
+	}
+
+	ptr := sess.loadPtrAnalysis()
+	if ptr.IsErr() {
+		WriteErr(tt, "%s", ptr)
+		return false
+	} else {
+		WriteSuccess(tt, "finished pointer analysis")
+		return false
+	}
+}
+
+func cmdRunDataflow(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
+		writeFmt(tt, "\t- %s%s%s : run the dataflow analysis\n", tt.Escape.Blue, cmdRunDataflowName, tt.Escape.Reset)
+		return false
+	}
+
+	df := sess.loadDataflowAnalysis()
+	if df.IsErr() {
+		WriteErr(tt, "%s", df)
+		return false
+	} else {
+		WriteSuccess(tt, "initialized dataflow analysis information")
+		return false
+	}
+}
+
 // cmdRebuild implements the rebuild command. It reloads the current config state and program state.
 // The pointer and dataflow state are cleared.
 func cmdRebuild(tt *term.Terminal, sess *session, _ Command, withTest bool) bool {
