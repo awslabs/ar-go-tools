@@ -55,6 +55,9 @@ func targetConsume(t target) {
 // They also test implicit interface conversions to the `any` type.
 
 func testIncompleteInit() {
+	ex0 := target{} // @IncompleteInit(target)
+	println(ex0.x)
+
 	var ex1 target
 	fmt.Println(ex1) // @IncompleteInit(target)
 
@@ -156,8 +159,14 @@ func testTypedConstAlloc() {
 	fmt.Println(ex9)
 }
 
+func ignore() {
+	ex := target{} // ok: filtered from config
+	println(ex.x)
+}
+
 func main() {
 	testIncompleteInit()
 	testUntypedConstAlloc()
 	testTypedConstAlloc()
+	ignore()
 }
