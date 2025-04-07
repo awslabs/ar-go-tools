@@ -67,6 +67,8 @@ func NewState(w *loadprogram.State) result.Result[State] {
 
 // ReachableFunctions returns the set of reachable functions from main and init according to the pointer analysis
 // callgraph.
+//
+// This returns the underlying cached map: **do not mutate the result!**
 func (s *State) ReachableFunctions() map[*ssa.Function]bool {
 	if s.reachableFunctions == nil {
 		s.reachableFunctions = make(map[*ssa.Function]bool)
