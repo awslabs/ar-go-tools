@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"maps"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -170,16 +171,16 @@ type state struct {
 // newState initializes a new analysis state to analyze all structs in the program that match the
 // struct(s) specified in the spec.
 func newState(spec config.StructInitSpec, st *ptr.State) (*state, error) {
-	fns := st.ReachableFunctions()
+	fns := maps.Clone(st.ReachableFunctions()) // need to clone here since we're going to delete
 	var allocs []alloced
 	for fn := range fns {
 		if isFiltered(spec, fn) {
 			st.Logger.Debugf("Skipping analyzing structs allocated in function: %v\n", fn)
 			delete(fns, fn)
+		} else {
+			as := findAllocsInFn(spec, fn)
+			allocs = append(allocs, as...)
 		}
-
-		as := findAllocsInFn(spec, fn)
-		allocs = append(allocs, as...)
 	}
 	fieldVal := make(map[*types.Named]map[*types.Var]ssa.Value)
 
