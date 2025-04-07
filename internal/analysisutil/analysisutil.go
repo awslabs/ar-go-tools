@@ -110,23 +110,31 @@ func FindValuePackage(n ssa.Value) fn.Optional[string] {
 	return fn.None[string]()
 }
 
+// FieldInfo is information about a struct field.
+type FieldInfo struct {
+	Field      *types.Var
+	FieldName  string
+	Struct     *types.Struct
+	IsEmbedded bool
+}
+
 // FieldAddrFieldInfo finds the name of a field access in ssa.FieldAddr
 // if it cannot find a proper field name, returns "?".
 // The boolean indicates whether this field is embedded or not.
-func FieldAddrFieldInfo(fieldAddr *ssa.FieldAddr) (string, bool) {
+func FieldAddrFieldInfo(fieldAddr *ssa.FieldAddr) FieldInfo {
 	return GetFieldInfoFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
 }
 
 // FieldFieldInfo finds the name of a field access in ssa.Field
 // if it cannot find a proper field name, returns "?".
 // The boolean indicates whether this field is embedded or not.
-func FieldFieldInfo(fieldAddr *ssa.Field) (string, bool) {
+func FieldFieldInfo(fieldAddr *ssa.Field) FieldInfo {
 	return GetFieldInfoFromType(fieldAddr.X.Type().Underlying(), fieldAddr.Field)
 }
 
 // GetFieldInfoFromType returns the name of field i if t is a struct or pointer to a struct.
 // The boolean indicates whether this field is embedded or not.
-func GetFieldInfoFromType(t types.Type, i int) (string, bool) {
+func GetFieldInfoFromType(t types.Type, i int) FieldInfo {
 	switch typ := t.(type) {
 	case *types.Pointer:
 		return GetFieldInfoFromType(typ.Elem().Underlying(), i) // recursive call
@@ -134,11 +142,16 @@ func GetFieldInfoFromType(t types.Type, i int) (string, bool) {
 		// Get the field name given its index
 		if 0 <= i && i < typ.NumFields() {
 			field := typ.Field(i)
-			return field.Name(), field.Embedded()
+			return FieldInfo{
+				Field:      field,
+				FieldName:  field.Name(),
+				Struct:     typ,
+				IsEmbedded: field.Embedded(),
+			}
 		}
-		return "?", false
+		return FieldInfo{Struct: typ}
 	default:
-		return "?", false
+		return FieldInfo{}
 	}
 }
 
@@ -193,7 +206,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 
 	// Field accesses that are considered as entry points
 	case *ssa.Field:
-		fieldName, _ := FieldFieldInfo(node)
+		fieldInfo := FieldFieldInfo(node)
 		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
 			return config.CodeIdentifier{}, false
@@ -201,7 +214,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		cid := config.CodeIdentifier{
 			Context:    node.Parent().String(),
 			Package:    packageName,
-			Field:      fieldName,
+			Field:      fieldInfo.FieldName,
 			Type:       typeName,
 			ValueMatch: n.String(),
 		}
@@ -211,7 +224,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		return config.CodeIdentifier{}, false
 
 	case *ssa.FieldAddr:
-		fieldName, _ := FieldAddrFieldInfo(node)
+		fieldInfo := FieldAddrFieldInfo(node)
 		packageName, typeName, err := FindEltTypePackage(node.X.Type(), "%s")
 		if err != nil {
 			return config.CodeIdentifier{}, false
@@ -219,7 +232,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		cid := config.CodeIdentifier{
 			Context:    node.Parent().String(),
 			Package:    packageName,
-			Field:      fieldName,
+			Field:      fieldInfo.FieldName,
 			Type:       typeName,
 			ValueMatch: n.String(),
 		}
@@ -248,7 +261,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 	// Storing into a specific struct field
 	case *ssa.Store:
 		if fieldAddr, isFieldAddr := node.Addr.(*ssa.FieldAddr); isFieldAddr {
-			fieldName, _ := FieldAddrFieldInfo(fieldAddr)
+			fieldInfo := FieldAddrFieldInfo(fieldAddr)
 			packageName, typeName, err := FindEltTypePackage(fieldAddr.X.Type(), "%s")
 			if err != nil {
 				return config.CodeIdentifier{}, false
@@ -256,7 +269,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			cid := config.CodeIdentifier{
 				Context:    node.Parent().String(),
 				Package:    packageName,
-				Field:      fieldName,
+				Field:      fieldInfo.FieldName,
 				Type:       typeName,
 				Kind:       "store",
 				ValueMatch: n.String(),

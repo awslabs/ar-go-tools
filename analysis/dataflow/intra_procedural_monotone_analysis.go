@@ -463,13 +463,13 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Field:
 		// if the element marked results from accessing a field of some object, then that object is marked at that field
-		fieldName, isEmbedded := analysisutil.FieldFieldInfo(miVal)
-		newAccessPath := accessPathPrependField(path, fieldName, isEmbedded)
+		fieldInfo := analysisutil.FieldFieldInfo(miVal)
+		newAccessPath := accessPathPrependField(path, fieldInfo.FieldName, fieldInfo.IsEmbedded)
 		state.markValue(i, miVal.X, newAccessPath, mark)
 	case *ssa.FieldAddr:
 		// if the element marked results from accessing a field of some object, then that object is marked at that field
-		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(miVal)
-		newAccessPath := accessPathPrependField(path, fieldName, isEmbedded)
+		fieldInfo := analysisutil.FieldAddrFieldInfo(miVal)
+		newAccessPath := accessPathPrependField(path, fieldInfo.FieldName, fieldInfo.IsEmbedded)
 		state.markValue(i, miVal.X, newAccessPath, mark)
 	case *ssa.UnOp:
 		// if the element marked was loaded from a pointer-like object, that pointer-like object is now marked
@@ -524,11 +524,11 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 		}
 	case *ssa.FieldAddr:
 		// this referrer accesses the marked value's field
-		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(referrer)
 		path2 := path
+		fieldInfo := analysisutil.FieldAddrFieldInfo(referrer)
 		ok := true
-		if !isEmbedded {
-			path2, ok = accessPathMatchField(path, fieldName)
+		if !fieldInfo.IsEmbedded {
+			path2, ok = accessPathMatchField(path, fieldInfo.FieldName)
 		}
 		if referrer.X == v && ok {
 			state.markValue(i, referrer, path2, mark)

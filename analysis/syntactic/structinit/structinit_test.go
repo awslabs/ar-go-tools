@@ -34,7 +34,7 @@ import (
 //go:embed testdata
 var testfsys embed.FS
 
-func TestZeroAllocs(t *testing.T) {
+func TestIncompleteInits(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -51,9 +51,9 @@ func TestZeroAllocs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			lp, got := runAnalysis(t, tt.dirName)
-			want := expectedZeroAllocs(lp)
+			want := expectedIncompleteInits(lp)
 			checkHasResults(t, got, want)
-			checkAllocs(t, got, want)
+			checkInits(t, got, want)
 		})
 	}
 }
@@ -92,7 +92,7 @@ func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, structinit.A
 	if err != nil {
 		t.Fatalf("failed to load test: %s", err)
 	}
-	setupConfig(lp.Config)
+	setupConfig(lp)
 	state, err := resultMonad.Bind(lpState, ptr.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load : %s", err)
@@ -104,17 +104,17 @@ func runAnalysis(t *testing.T, dirName string) (*loadprogram.State, structinit.A
 	return lp, result
 }
 
-func checkAllocs(t *testing.T, res structinit.AnalysisResult, want map[string][]analysistest.LPos) {
+func checkInits(t *testing.T, res structinit.AnalysisResult, want map[string][]analysistest.LPos) {
 	got := make(map[string][]analysistest.LPos)
 	for structType, info := range res.InitInfos {
 		name := structType.Obj().Name()
-		for _, zeroAlloc := range info.ZeroAllocs {
-			gotPos := analysistest.NewLPos(zeroAlloc.Pos)
+		for _, alloc := range info.IncompleteInits {
+			gotPos := analysistest.NewLPos(alloc.Pos)
 			got[name] = append(got[name], gotPos)
 		}
 	}
 
-	compareGotWant(t, got, want, "zero-allocs")
+	compareGotWant(t, got, want, "incomplete inits")
 }
 
 func checkBadReinit(t *testing.T, res structinit.AnalysisResult, want map[string][]analysistest.LPos) {
@@ -189,14 +189,17 @@ func compareGotWant(t *testing.T, got map[string][]analysistest.LPos, want map[s
 	}
 }
 
-func setupConfig(cfg *config.Config) {
-	cfg.Options.ReportCoverage = false
-	cfg.Options.ReportsDir = ""
-	cfg.LogLevel = int(config.ErrLevel) // change this as needed for debugging
+func setupConfig(lp *loadprogram.State) {
+	level := config.ErrLevel // change this as needed for debugging
+	lp.Logger.Level = level
+
+	lp.Config.Options.ReportCoverage = false
+	lp.Config.Options.ReportsDir = ""
+	lp.Config.LogLevel = int(level)
 }
 
-// zeroAllocRegex matches annotations of the form "@ZeroAlloc(id1, id2, id3)"
-var zeroAllocRegex = regexp.MustCompile(`//.*@ZeroAlloc\(((?:\s*\w\s*,?)+)\)`)
+// incompleteInitRegex matches annotations of the form "@IncompleteInit(id1, id2, id3)"
+var incompleteInitRegex = regexp.MustCompile(`//.*@IncompleteInit\(((?:\s*\w\s*,?)+)\)`)
 
 // invalidWriteRegex matches annotations of the form "@InvalidWrite(id1, id2, id3)"
 var invalidWriteRegex = regexp.MustCompile(`//.*@InvalidWrite\(((?:\s*\w\s*,?)+)\)`)
@@ -204,15 +207,14 @@ var invalidWriteRegex = regexp.MustCompile(`//.*@InvalidWrite\(((?:\s*\w\s*,?)+)
 // invalidWriteRegex matches annotations of the form "@InvalidWrite(id1, id2, id3)"
 var badReinitRegex = regexp.MustCompile(`//.*@BadReinit\(((?:\s*\w\s*,?)+)\)`)
 
-// expectedZeroAllocs analyzes the files in astFiles and looks for comments
-// @ZeroAlloc(id1, id2, ...) to construct the expected positions of the zero-allocations of
-// a struct.
-// Each id must be the name of the struct that is zero-allocated. There may be
-// multiple.
+// expectedIncompleteInits analyzes the files in astFiles and looks for comments
+// @IncompleteInit(id1, id2, ...) to construct the expected positions of the incomplete
+// initializations of a struct.
+// Each id must be the name of the struct that is not completely initialized. There may be multiple.
 // These positions are represented as a map from the struct name to all the
-// zero-alloc positions of that struct.
-func expectedZeroAllocs(lp *loadprogram.State) map[string][]analysistest.LPos {
-	return expectedAnnotations(zeroAllocRegex, lp)
+// incomplete initialization positions of that struct.
+func expectedIncompleteInits(lp *loadprogram.State) map[string][]analysistest.LPos {
+	return expectedAnnotations(incompleteInitRegex, lp)
 }
 
 // expectedInvalidWrites analyzes the files in astFiles and looks for comments

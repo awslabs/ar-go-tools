@@ -253,8 +253,8 @@ func ExtractInterfaceValueArg(v ssa.Value) ssa.Value {
 // translation of static var allocations in the code, where slices must be constructed by adding all elements
 // individually.
 func isStaticallyDefinedAlloc(alloc *ssa.Alloc) bool {
-	if ptrTy, isPtrTy := alloc.Type().(*types.Pointer); isPtrTy {
-		switch ptrTy.Elem().(type) {
+	if eltTy, isPtrTy := TryDerefTyp(alloc.Type()); isPtrTy {
+		switch eltTy.(type) {
 		case *types.Array:
 			// Check all referrers that take references and then store data are storing static data
 			for _, referrer := range *alloc.Referrers() {

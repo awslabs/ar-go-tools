@@ -383,6 +383,8 @@ func (cid *CodeIdentifier) FullMethodName() string {
 
 // MatchType checks whether the code identifier matches the type represented as a types.Type. It is safe to call with
 // nil values.
+//
+//gocyclo:ignore
 func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 	if cid == nil {
 		return false
@@ -391,6 +393,9 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 		return cid.Type == ""
 	}
 	if named, ok := typ.(*types.Named); ok {
+		if named == nil { // extra check is needed because the *types.Named value can be nil, even if typ != nil
+			return false
+		}
 		if named.Obj() != nil && named.Obj().Pkg() != nil {
 			path := named.Obj().Pkg().Path()
 			name := named.Obj().Name()

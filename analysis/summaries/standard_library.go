@@ -101,6 +101,7 @@ var stdPackages = map[string]map[string]Summarizer{
 	"net":                            summaryNet,
 	"net/http":                       summaryNet,
 	"net/netip":                      summaryNet,
+	"net/smtp":                       summaryNet,
 	"net/textproto":                  summaryNet,
 	"net/url":                        summaryNet,
 	"os":                             summaryOs,

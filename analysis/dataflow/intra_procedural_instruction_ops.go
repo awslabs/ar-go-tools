@@ -18,6 +18,7 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -164,11 +165,11 @@ func (state *IntraAnalysisState) DoStore(x *ssa.Store) {
 	// Special store
 	switch addr := x.Addr.(type) {
 	case *ssa.FieldAddr:
-		fieldName, isEmbedded := analysisutil.FieldAddrFieldInfo(addr)
-		if isEmbedded {
+		fieldInfo := analysisutil.FieldAddrFieldInfo(addr)
+		if fieldInfo.IsEmbedded {
 			transfer(state, x, x.Val, addr.X, "", NonIndexMark)
 		} else {
-			transfer(state, x, x.Val, addr.X, fieldName, NonIndexMark)
+			transfer(state, x, x.Val, addr.X, fieldInfo.FieldName, NonIndexMark)
 		}
 	}
 }
@@ -220,10 +221,8 @@ func (state *IntraAnalysisState) DoFieldAddr(x *ssa.FieldAddr) {
 	// Propagate taint with field sensitivity
 	field := "*" // over-approximation
 	// Try to get precise field name to be field sensitive
-	xTyp := x.X.Type().Underlying()
-	if ptrTyp, ok := xTyp.(*types.Pointer); ok {
-		eltTyp := ptrTyp.Elem().Underlying()
-		if structTyp, ok := eltTyp.(*types.Struct); ok {
+	if eltTyp, ok := lang.TryDerefTyp(x.X.Type()); ok {
+		if structTyp, ok := eltTyp.Underlying().(*types.Struct); ok {
 			field = structTyp.Field(x.Field).Name()
 		}
 	}

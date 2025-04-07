@@ -7,3 +7,6 @@ syntactic-problems:
           value:
             package: "(field-val)|(main)|(command-line-arguments)"
             const: "^One$"
+      filters:
+        - package: "(field-val)|(main)|(command-line-arguments)"
+          method: "ignore"

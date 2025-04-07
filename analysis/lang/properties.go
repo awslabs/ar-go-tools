@@ -131,3 +131,18 @@ func IsPredicateFunctionType(f *types.Signature) bool {
 		return false
 	}
 }
+
+// TryDerefTyp tries to dereference the given value.
+// If the value is a pointer, it returns the value it points to.
+// If the value is not a pointer, it returns the value itself.
+// The boolean indicates whether the input was a pointer.
+func TryDerefTyp(t types.Type) (types.Type, bool) {
+	if t == nil {
+		return nil, false
+	}
+	elt, ok := t.Underlying().(*types.Pointer)
+	if !ok {
+		return t, false
+	}
+	return elt.Elem(), true
+}
