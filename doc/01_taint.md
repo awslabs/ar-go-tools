@@ -24,17 +24,17 @@ dataflow-problems:
         sources:                          # A list of sources of tainted/sensitive data
             - package: "example1"
               method: "GetSensitiveData"
-        
+
         sinks:                            # A list of sinks that should not be reached by sensitive data
             - package: "example2"
               method: "LogDataPublicly"
             - package: "example2"
               interface: "Logger"
-        
+
         sanitizers:                      # A list of sanitizers that remove the taint from data
             - package: "example1"
               method: "Sanitize"
-        
+
         validators:                      # A list of validators that validates data, and removes taint when valid
             - package: "example3"
               method: "Validator"
@@ -55,10 +55,10 @@ We explain in more detail how to write [dataflow specifications](#dataflow-speci
 There are additional options for the outputs:
 ```yaml
 options:
-  report-summaries: true    # the dataflow summaries built by 
+  report-summaries: true    # the dataflow summaries built by
   # the analysis will be printed in a file in the reports directory
 
-  report-paths: true        # all the paths from sources to sinks 
+  report-paths: true        # all the paths from sources to sinks
   # that have been discovered will be printed in individual files
   # in the reports directory
 ```
@@ -149,11 +149,11 @@ dataflow-problems:
         package: 'fmt'
         method: 'Errorf'
 ```
-Specifies that the sinks are the calls to `fmt.Errorf` in the package `analysis` of Argot (and not in the internal packages for example). 
+Specifies that the sinks are the calls to `fmt.Errorf` in the package `analysis` of Argot (and not in the internal packages for example).
 
 #### Code locations with specific arguments
 
-Code locations can additionally be restricted to match a specific regular expression. Currently, this is enforced only for function calls. By adding the `value-match: "myregex"` constraint to a code location, you specify that when matching that code location, the taint analyzer must check that the string representation of the location must match the regex `myRegex`. 
+Code locations can additionally be restricted to match a specific regular expression. Currently, this is enforced only for function calls. By adding the `value-match: "myregex"` constraint to a code location, you specify that when matching that code location, the taint analyzer must check that the string representation of the location must match the regex `myRegex`.
 
 This is particularly useful for functions that take constant arguments, for example formatting functions:
 ```yaml
@@ -193,10 +193,10 @@ dataflow-problems:
       - method: "myFunc$"
         package: "myPackage"
 ```
-With the configuration setting above, the tool will not follow data flows through `bool` and `error` types, and not through calls to the function `myFunc` in package `myPackage`. 
+With the configuration setting above, the tool will not follow data flows through `bool` and `error` types, and not through calls to the function `myFunc` in package `myPackage`.
 
 #### Search Depth
-The `unsafe-max-depth` parameter controls how deep the dataflow paths can be. By default, or if it is set to any value <= 0, the limit is ignored and the tool will search for paths of any lengths. Setting the depth parameter can be useful to filter out some long paths when you have alarms, so that you can focus on solving problems for the shorter paths. This can also be useful if you have a strong confidence in a limit of how long the paths can be between your source and sinks. Note that the path length is counted in the terms of number of nodes; nodes are the function calls, parameters, returns, closure creation and free variables. 
+The `unsafe-max-depth` parameter controls how deep the dataflow paths can be. By default, or if it is set to any value <= 0, the limit is ignored and the tool will search for paths of any lengths. Setting the depth parameter can be useful to filter out some long paths when you have alarms, so that you can focus on solving problems for the shorter paths. This can also be useful if you have a strong confidence in a limit of how long the paths can be between your source and sinks. Note that the path length is counted in the terms of number of nodes; nodes are the function calls, parameters, returns, closure creation and free variables.
 
 If this is set to **any positive value**, the analysis is **unsound**. However, it is recommended to first experiment with some low value when scanning for new data flows.
 
@@ -236,15 +236,15 @@ Similarly, as `unsafe-max-depth`, this can be set specifically for an analysis p
 #### Finding Suppression
 
 You may encounter false positives in the taint analysis, some of which cannot be easily resolved by making the configuration more precise or by changing the code.
-When you are confident the finding is a false positive, you can suppress the findings of the taint analysis on a specific line by using the `//argot:ignore problem-tag` annotation. 
+When you are confident the finding is a false positive, you can suppress the findings of the taint analysis on a specific line by using the `//argot:ignore problem-tag` annotation.
 For example:
 ```go
 ...
-   callSink(notReaalyTaintedData) //argot:ignore _ 
+   callSink(notReaalyTaintedData) //argot:ignore _
 ```
-Will suppress findings for all taint problems. Taint problems can be associated with a `tag: tagName` in the configuration, and you can suppress findings specifically for `tagName` by using `//argot:ignore tagName`. 
+Will suppress findings for all taint problems. Taint problems can be associated with a `tag: tagName` in the configuration, and you can suppress findings specifically for `tagName` by using `//argot:ignore tagName`.
 
-#### Warning Suppression 
+#### Warning Suppression
 The use can set the setting `warn: false` to suppress warnings during the analysis. This means that if the analysis encounters program constructs that make it unsound, those will not be reported. This setting does not affect the soundness of the analysis, but it will cause the tool to not report when your program falls beyond the soundness guarantees.
 
 This is a global option:
@@ -254,7 +254,7 @@ options:
 ```
 
 #### Package Filtering
-The `pkgfilter` setting lets you choose for which packages functions representations are pre-computed. For example, with `pkgfilter: "(mymodule/.*|deps.*)"`, the tool will first summarize the functions in the packages that match this regex. This does not change the soundness of the analysis, but this has an effect on performance of the tool. 
+The `pkgfilter` setting lets you choose for which packages functions representations are pre-computed. For example, with `pkgfilter: "(mymodule/.*|deps.*)"`, the tool will first summarize the functions in the packages that match this regex. This does not change the soundness of the analysis, but this has an effect on performance of the tool.
 
 The package filter is a global option, as opposed to the filters:
 ```yaml
@@ -292,13 +292,13 @@ And if the option to print paths is set (`report-paths: true` in configuration f
 ```
 [INFO] Report in taint-report/flow-2507865943.out
 [INFO] TRACE - Result of call to GetSensitiveData (type *DataStorage)
-[INFO]       - Context [GetSensitiveData] 
+[INFO]       - Context [GetSensitiveData]
 [INFO]       - At: /somedir/example.go:50:17
-[INFO] TRACE - Parameter "name" (type string) of "process" 
-[INFO]       - Context [(#23242.3)process] 
+[INFO] TRACE - Parameter "name" (type string) of "process"
+[INFO]       - Context [(#23242.3)process]
 [INFO]       - At: /somedir/processing.go:120:3
 [INFO] TRACE - Argument #0 (type string) in call to "processData"
-[INFO]       - Context [] 
+[INFO]       - Context []
 [INFO]       - At: /somedir/processing.go:180:23
 ...
 ```
@@ -314,7 +314,7 @@ Once the analysis has terminated, the tool will print a final message followed b
      Taint flows detected!
 [WARN]  Data from a source has reached a sink
         Source: [SSA] (fooProducer).source(t3)
-                /somedir/main.go:66:15     
+                /somedir/main.go:66:15
         Sink: [SSA] sink(t6)
                 /somedir/main.go:68:6
 ```
@@ -422,10 +422,10 @@ If the analysis was field-sensitive, it would not raise an alarm.
 Field sensitivity can be turned on for dataflow problems with the option:
 ```yaml
 dataflow-problems:
-  field-sensitive-funcs: 
+  field-sensitive-funcs:
     - "interestingFunctionsRegex"
 ```
-Which turns on field-sensitivity for all functions  names matching `interestingFunctionsRegex`. 
+Which turns on field-sensitivity for all functions  names matching `interestingFunctionsRegex`.
 This will increase analysis time, but eliminate some false positive.
 You can turn on field sensitivity by just using the pattern `.*`.
 
@@ -549,7 +549,44 @@ There are two reasons a user may want to specify a data flow summary:
 - for performance: the analysis of some functions can take a lot of time, even though the flows of data can be summarized very succinctly. This is the case for functions that have complex control flow and manipulate many data structures. It is also useful to summarize simple interfaces because this reduces the complexity of the call graph: a set of calls to every implementation of the interface is replaced by a single call to the summary for interface methods that are summarized by the user.
 - for soundness: the analysis does not support reflection and some uses of the unsafe package. If a function uses those packages, then it should be summarized by the user. The analysis will raise alarms whenever some unsupported feature of the language is encountered during the analysis.
 
-Dataflow specifications are json files that contain a list of specifications. Each specification is a structure that contains either an `"InterfaceId"` or an `"ObjectPath"`, along with a dictionary `"Methods"`. If an interface id is specified, then the dataflow specifications for each of the methods are interpreted as specifications for the interface methods, i.e. they specify every possible implementation of the interface. For example, consider the following dataflow specifications:
+Dataflow specifications are files that contain a list of specifications.
+
+### Specification Format
+
+A dataflow specification file is a `.yaml` file that contains a list of `dataflow-summaries`. Each of the items in `dataflow-summaries` is a summary of a single function or method, or of an interface method.
+There are two main parts in the summary: the identification of the function or method to which the summary applies to, and a list of flows that indicates where the data flows `to` and `from` specific points in the function.
+
+The format is as follows:
+```yaml
+dataflow-summaries:
+  - package: "<the package name>"
+    function: "<function name>" # only if it is a function, not a method
+    receiver: "<receiver (struct) name>" # only if it is a struct method, and method must be specified
+    interface: "<interface name>" # only if it is an interface method summary, and method must be specified
+    method: "<method name>" # only for struct method or interface method, and not function
+    flows:
+      - from: "<identify origin of data>"
+        to: "<identify destination of data>"
+      - ...
+    ...
+```
+The function or method is identified by the `package`, `function` or `package`, `receiver`, `method` for individual function summaries, or `package`, `interface`, `method` for interface methods.
+
+A flow of data is specified by `from` and `to`. The origin of data can be an argument by position `!arg 0`, by name `!arg <x>` or a receiver `!receiver`. The destination can also be an argument or receiver, or a return value `!ret 1` identified by the position of the value in the returned tuple (and `!ret` is a shortcut for `!ret 0`). A `!receiver` can only be used for methods (interface or struct), and for methods, the argument indexing starts after the receiver. For example, in a method `func (o O) foo(x bar) string`, `x` is identified by `!arg 0` or `!arg <x>` and `o` is identified by `!receiver`. Assuming this function is in package `mypackage`, we can write a summary specifying that `o` flows to the return value, and `x` flows to `o`:
+```yaml
+dataflow-summaries:
+  - package: "mypackage"
+    receiver: "O"
+    method: "foo"
+    flows:
+      - from: "!receiver" # not the same as !arg 0
+        to: "!ret 0" # eqv. !ret
+      - from: "!arg <o>" # eqv. !arg 0
+        to: "!receiver"
+```
+
+### Legacy Format
+Each specification is a JSON structure that contains either an `"InterfaceId"` or an `"ObjectPath"`, along with a dictionary `"Methods"`. If an interface id is specified, then the dataflow specifications for each of the methods are interpreted as specifications for the interface methods, i.e. they specify every possible implementation of the interface. For example, consider the following dataflow specifications:
 ```json
 [
     {
@@ -562,7 +599,7 @@ Dataflow specifications are json files that contain a list of specifications. Ea
     {
         "InterfaceId": "io.Reader",
         "Methods": {
-            "Read": { "Args": [ [ 0, 1 ], [ 0 ] ], "Rets": [ [ 0, 1 ], [ ] ] }
+            "Read": { "Args": [ [ 0, 1 ], [ 1 ] ], "Rets": [ [ 0, 1 ], [ ] ] }
         }
     }
 ]
@@ -572,7 +609,7 @@ The first specification gives a dataflow summary for the functions `Unmarshal` a
 Each dataflow summary is of the form `{"Args":[...], "Rets": [...]}` where each list `[...]` is a list of lists of integers, and its length is the number of arguments of the function being summarized. In the "Args" list, the i-th list indicates that the data of the i-th argument flows to each argument index in the list. In the "Rets" list, this indicates that the i-th argument flows to each value index in the list. When nothing is returned, each list must be empty. When there is only one element returned (not a tuple), each list is [] or [0].
 
 In the example, this means that the summary `"Marshal": { "Args": [ [ 0 ] ], "Rets": [ [ 0, 1 ] ] }` indicates that the data in the only argument of `Marshal` flows to itself (the `[0]` in "Args") and to both of the returned values (the `[0,1]` in "Rets").
-In the specification for the `Reader` method, the first argument's data flows to both itself and the second argument, as specified by `[0,1]` in the first list, and the second argument only flows to itself, as specified by `[0]` in the second list.
+In the specification for the `Reader` method, the first argument's data flows to both itself and the second argument, as specified by `[0,1]` in the first list, and the second argument only flows to itself, as specified by `[1]` in the second list.
 
 
 >⚠️ Correct specification of the summaries is currently the user's responsibility, but we are working on tools to check the correctness of the summaries when the functions summarized are supported by the analysis.
@@ -618,7 +655,7 @@ JSON serialization/deserialization. General reflection is not supported, and wil
 conservatively assume reflected values have "leaked" to other goroutines (the same behavior that
 occurs when reflection support is disabled). The support includes fixed
 summaries for key reflection and reflection-using functions such as `reflect.ValueOf`,
-`json.Marshal`, etc. 
+`json.Marshal`, etc.
 
 Reflection support is enabled
 by assigning summaries as the function escape summary type in `escape-config.json`:
@@ -664,4 +701,4 @@ pointer-config:
 ```
 All the functions whose full name (the name returned by `(*ssa.Function).String()`) matches one of the names provided by the user in the list of `unsafe-no-effect-functions` will be skipped during the pointer analysis (generating no constraints). If the user can prove that this is the case (i.e. no aliases are created by this function), then this is sound.
 
->⚠️ Soundness of the analysis when `unsafe-no-effect-functions` are specified is the user's responsibility. It is worth noting that Argot can be useful even when the analysis is unsound, e.g. simply for *testing* dataflow properties of the program, as opposed to proving them. 
+>⚠️ Soundness of the analysis when `unsafe-no-effect-functions` are specified is the user's responsibility. It is worth noting that Argot can be useful even when the analysis is unsound, e.g. simply for *testing* dataflow properties of the program, as opposed to proving them.

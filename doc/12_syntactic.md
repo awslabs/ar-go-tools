@@ -4,7 +4,7 @@ The `syntactic` tool runs various syntactic analyses at the SSA level of the cod
 All the syntactic analysis problems are grouped under the `syntactic-problems` category in a config file, and each category of syntactic problems will be listed separately.
 
 ## Struct Inits
-Struct inits are a class of syntactic problem where the user can check that a specific struct type, e.g.  `crypto/tls.Config`, has fields that always have a specific value, for example `MinVersion` should always be `VersionTLS12`.
+When you want to check that a specific struct type's fields are always given a specific value, you can specify it in a `struct-inits` problem. For example, if you may want to check that the field `MinVersion` of `crypto/tls.Config` is always set to the constant `VersionTLS12`. Note that we do not have a check to ensure the field's value is always the desired constant; we only check that syntactically, the assignments are valid.
 One would write this analysis by adding in the config the following:
 ```yaml
 syntactic-problems:
@@ -41,6 +41,8 @@ initialization information for crypto/tls.Config:
 The analyzer reports that 1) the struct was always initialized with the appropriate setting for the field `MinVersion` and 2) there were no writes that changed the value of that field to some value that is not capture by the constraints in the config file.
 
 If the struct was initialized without setting a value for the `MinVersion` field, the analyzer will report it as an "incomplete initialization" because the field is implicitly set to its zero value.
+
+> ⚠ The `struct-inits` checks only check that the struct of concern is 1) always initialized with a non-zero value for all the fields specified in `fields` and 2) all writes to the field in `fields` are writing the `value` specified. This is not a check that ensures the field's value is always the value in values.
 
 ### Must-reinits
 
