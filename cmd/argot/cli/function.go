@@ -38,7 +38,7 @@ func cmdFocus(tt *term.Terminal, sess *session, command Command, _ bool) bool {
 		return false
 	}
 
-	funcs, err := funcsMatchingCommand(tt, sess, command)
+	funcs, err := sess.funcsMatchingCommand(tt, command)
 	if err != nil {
 		WriteErr(tt, "Error: %s", err)
 		return false
@@ -74,10 +74,8 @@ func cmdFocus(tt *term.Terminal, sess *session, command Command, _ bool) bool {
 // cmdPackage prints information about the package of the current function
 func cmdPackage(tt *term.Terminal, sess *session, command Command, _ bool) bool {
 	if sess == nil {
-		if sess.CurrentFunction != nil {
-			writeFmt(tt, "\t- %s%s%s: show package of current function.\n", tt.Escape.Blue, cmdPackageName,
-				tt.Escape.Reset)
-		}
+		writeFmt(tt, "\t- %s%s%s: show package of current function.\n", tt.Escape.Blue, cmdPackageName,
+			tt.Escape.Reset)
 		return false
 	}
 
@@ -107,10 +105,8 @@ func cmdPackage(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 // cmdUnfocus removes the focus on the current function (sets state.CurrentFunction to nil and resets the prompt)
 func cmdUnfocus(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 	if sess == nil {
-		if sess.CurrentFunction != nil {
-			writeFmt(tt, "\t- %s%s%s: unfocus current function.\n", tt.Escape.Blue,
-				cmdUnfocusName, tt.Escape.Reset)
-		}
+		writeFmt(tt, "\t- %s%s%s: unfocus current function.\n", tt.Escape.Blue,
+			cmdUnfocusName, tt.Escape.Reset)
 		return false
 	}
 
@@ -129,10 +125,8 @@ func cmdUnfocus(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 // cmdSsaValue prints the ssa values matching a regex in the state.CurrentFunction
 func cmdSsaValue(tt *term.Terminal, sess *session, command Command, _ bool) bool {
 	if sess == nil {
-		if sess.CurrentFunction != nil {
-			writeFmt(tt, "\t- %s%s%s: show SSA values matching regex\n", tt.Escape.Blue,
-				cmdSsaValueName, tt.Escape.Reset)
-		}
+		writeFmt(tt, "\t- %s%s%s: show SSA values matching regex\n", tt.Escape.Blue,
+			cmdSsaValueName, tt.Escape.Reset)
 		return false
 	}
 
@@ -177,10 +171,8 @@ func cmdSsaValue(tt *term.Terminal, sess *session, command Command, _ bool) bool
 // cmdSsaInstr prints the ssa instructions matching a regex in the state.CurrentFunction
 func cmdSsaInstr(tt *term.Terminal, c *session, command Command, _ bool) bool {
 	if c == nil {
-		if c.CurrentFunction != nil {
-			writeFmt(tt, "\t- %s%s%s: show SSA instructions matching regex\n", tt.Escape.Blue,
-				cmdSsaInstrName, tt.Escape.Reset)
-		}
+		writeFmt(tt, "\t- %s%s%s: show SSA instructions matching regex\n", tt.Escape.Blue,
+			cmdSsaInstrName, tt.Escape.Reset)
 		return false
 	}
 
@@ -212,16 +204,15 @@ func cmdSsaInstr(tt *term.Terminal, c *session, command Command, _ bool) bool {
 
 // cmdMayAlias prints whether matches values may alias according to the pointer analysis
 func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
+		writeFmt(tt, "\t- %s%s%s: print whether matching values may alias\n", tt.Escape.Blue,
+			cmdMayAliasName, tt.Escape.Reset)
+		return false
+	}
+
 	ps, err := sess.loadPtrAnalysis().Value()
 	if err != nil {
 		WriteErr(tt, "Error loading pointer analysis: %s", err)
-		return false
-	}
-	if sess == nil {
-		if sess.CurrentFunction != nil {
-			writeFmt(tt, "\t- %s%s%s: print whether matching values may alias\n", tt.Escape.Blue,
-				cmdMayAliasName, tt.Escape.Reset)
-		}
 		return false
 	}
 
@@ -313,7 +304,7 @@ func cmdWhere(tt *term.Terminal, sess *session, command Command, withTest bool) 
 		return false
 	}
 
-	funcs, err := findFunc(sess, target)
+	funcs, err := sess.findFunc(target)
 	if err != nil {
 		WriteErr(tt, "Error: %s", err)
 		return false

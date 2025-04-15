@@ -79,7 +79,7 @@ func displayCallInfo(tt *term.Terminal, sess *session, command Command, usePtr b
 			return filterRegex.MatchString(f.String())
 		}
 	}
-	funcs, err := funcsMatchingCommand(tt, sess, command)
+	funcs, err := sess.funcsMatchingCommand(tt, command)
 	if err != nil {
 		return false
 	}

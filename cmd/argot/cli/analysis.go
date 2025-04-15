@@ -242,7 +242,7 @@ func cmdSummary(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 		return false
 	}
 
-	funcs, err := funcsMatchingCommand(tt, sess, command)
+	funcs, err := sess.funcsMatchingCommand(tt, command)
 	if err != nil {
 		WriteErr(tt, err.Error())
 		return false
@@ -430,7 +430,7 @@ func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) boo
 			regexErr(tt, command.Args[0], err)
 			return false
 		}
-		funcs, err := findFunc(sess, regex)
+		funcs, err := sess.findFunc(regex)
 		if err != nil {
 			WriteErr(tt, err.Error())
 			return false
@@ -619,7 +619,7 @@ func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.
 		return []*ssa.Function{}, nil
 	}
 
-	return findFunc(sess, target)
+	return sess.findFunc(target)
 }
 
 // findFiles finds the ast file in the program loaded.

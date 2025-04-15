@@ -19,6 +19,8 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -31,6 +33,7 @@ import (
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
+	"golang.org/x/exp/maps"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -53,6 +56,9 @@ type session struct {
 	CurrentDataflowInformation *dataflow.FlowInformation
 
 	// Available states
+
+	// Pkgs contains the packages last loaded by a cmdLoadPackages command
+	Pkgs     map[string]*packages.Package
 	CfgState *config.State
 	LPState  *loadprogram.State
 	PtrState *ptr.State
@@ -77,7 +83,7 @@ func (s *session) logger() *config.LogGroup {
 
 func (s *session) allFunctions() (map[*ssa.Function]bool, error) {
 	if s.LPState == nil {
-		return nil, fmt.Errorf("listing functions requires at least a loaded program")
+		return nil, fmt.Errorf("listing functions requires at least a loaded program or package")
 	}
 	return ssautil.AllFunctions(s.LPState.Program), nil
 }
@@ -129,7 +135,7 @@ func (s *session) seekConfig() (*config.Config, bool, error) {
 }
 
 func (s *session) attemptSettingConfig(pConfig **config.Config, dir string, filename string) error {
-	configFile := path.Join(dir, filename)
+	configFile := filepath.Join(dir, filename)
 	config.SetGlobalConfig(configFile)
 	tmpConfig, err := config.LoadGlobal(nil)
 	if err != nil {
@@ -251,6 +257,46 @@ func (s *session) programOrPanic() *ssa.Program {
 	return program
 }
 
+// funcsMatchingCommand returns the function matching the argument of the command or all functions if there
+// is no argument
+// Returns an empty list if any error is encountered
+func (s *session) funcsMatchingCommand(tt *term.Terminal, command Command) ([]*ssa.Function, error) {
+	rString := ".*" // default is to match anything
+	if len(command.Args) >= 1 {
+		// otherwise build regex from arguments
+		var x []string
+		for _, arg := range command.Args {
+			x = append(x, "("+arg+")")
+		}
+		rString = strings.Join(x, "|")
+	}
+	r, err := regexp.Compile(rString)
+	if err != nil {
+		regexErr(tt, rString, err)
+		return []*ssa.Function{}, err
+	}
+	funcs, err := s.findFunc(r)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(funcs, func(a, b *ssa.Function) int { return strings.Compare(a.String(), b.String()) })
+	return funcs, nil
+}
+
+func (s *session) findFunc(target *regexp.Regexp) ([]*ssa.Function, error) {
+	var funcs []*ssa.Function
+	allFuncs, err := s.allFunctions()
+	if err != nil {
+		return nil, err
+	}
+	for f := range allFuncs {
+		if target.MatchString(f.String()) {
+			funcs = append(funcs, f)
+		}
+	}
+	return funcs, nil
+}
+
 // Help command
 func cmdHelp(tt *term.Terminal, s *session, _ Command, withTest bool) bool {
 	if s == nil {
@@ -259,7 +305,10 @@ func cmdHelp(tt *term.Terminal, s *session, _ Command, withTest bool) bool {
 	}
 	writeFmt(tt, "Commands:\n")
 	writeFmt(tt, "\t- %s%s%s : print this message\n", tt.Escape.Blue, cmdHelpName, tt.Escape.Reset)
-	for _, cmd := range commands {
+	keys := maps.Keys(commands)
+	slices.Sort(keys)
+	for _, key := range keys {
+		cmd := commands[key]
 		cmd(tt, nil, Command{}, withTest)
 	}
 	return false
@@ -337,7 +386,7 @@ func cmdList(tt *term.Terminal, s *session, command Command, withTest bool) bool
 		return cmdList(tt, nil, command, withTest)
 	}
 
-	funcs, err := funcsMatchingCommand(tt, s, command)
+	funcs, err := s.funcsMatchingCommand(tt, command)
 
 	if err != nil {
 		WriteErr(tt, "Error: %s", err)

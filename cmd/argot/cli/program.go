@@ -15,9 +15,12 @@
 package cli
 
 import (
+	"slices"
 	"strings"
 
+	"golang.org/x/exp/maps"
 	"golang.org/x/term"
+	"golang.org/x/tools/go/packages"
 )
 
 // cmdLoad implements the "load" command that loads a program into the tool.
@@ -36,9 +39,66 @@ func cmdLoad(tt *term.Terminal, sess *session, command Command, withTest bool) b
 	return cmdRebuild(tt, sess, command, withTest)
 }
 
+func cmdLoadPackages(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
+		writeFmt(tt, "\t- %s%s%s : load packages\n", tt.Escape.Blue, cmdLoadPackagesName, tt.Escape.Reset)
+		writeFmt(tt, "\t  Options:\n")
+		writeFmt(tt, "\t    -t    load packages with types\n")
+		return false
+	}
+
+	if len(command.Args) == 0 {
+		WriteErr(tt, "%s expects at least one argument.", cmdLoadName)
+		return false
+	}
+	config := packages.Config{
+		Mode: packages.NeedName,
+	}
+	if command.Flags["t"] {
+		config.Mode = config.Mode | packages.NeedTypes
+	}
+
+	pkgList, err := packages.Load(&config, command.Args...)
+	if err != nil {
+		WriteErr(tt, "failed to load packages: %s", err)
+		return false
+	}
+	if len(pkgList) == 0 {
+		writeFmt(tt, "%s? no packages loaded%s\n", tt.Escape.Yellow, tt.Escape.Reset)
+		return false
+	}
+
+	WriteSuccess(tt, "✔ loaded %d packages:", len(pkgList))
+	// Print info about the packages that have been loaded
+	pkgMap := make(map[string]*packages.Package)
+	namespan := 0
+	for _, pkg := range pkgList {
+		namespan = max(namespan, len(pkg.Name))
+		pkgMap[pkg.PkgPath] = pkg
+	}
+	// Iterate in sorted path order
+	paths := maps.Keys(pkgMap)
+	slices.Sort(paths)
+	for _, path := range paths {
+		pkg := pkgMap[path]
+		if len(pkg.Errors) > 0 {
+			writeFmt(tt, "\t%s%s%s: %s%s\n",
+				tt.Escape.Red, pkg.Name, tt.Escape.Reset, strings.Repeat(" ", namespan-len(pkg.Name)), path)
+			for _, err := range pkg.Errors {
+				writeFmt(tt, "\t\t%s%s%s\n", tt.Escape.Red, err, tt.Escape.Reset)
+			}
+		} else {
+			writeFmt(tt, "\t%s%s%s: %s%s\n",
+				tt.Escape.Blue, pkg.Name, tt.Escape.Reset, strings.Repeat(" ", namespan-len(pkg.Name)), path)
+		}
+	}
+	sess.Pkgs = pkgMap
+	return false
+}
+
 func cmdLoadWholeProgram(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : laod the arguments as whole program\n", tt.Escape.Blue, cmdLoadName, tt.Escape.Reset)
+		writeFmt(tt, "\t- %s%s%s : laod the arguments as whole program\n", tt.Escape.Blue, cmdLoadWholeProgramName, tt.Escape.Reset)
 		return false
 	}
 
