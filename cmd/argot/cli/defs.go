@@ -42,6 +42,7 @@ const (
 	cmdRebuildName          = "rebuild"
 	cmdReconfigName         = "reconfig"
 	cmdScanName             = "scan"
+	cmdShowPackageName      = "showpkg"
 	cmdShowDataflowName     = "showdataflow"
 	cmdShowEscapeName       = "showescape"
 	cmdMembersName          = "members"

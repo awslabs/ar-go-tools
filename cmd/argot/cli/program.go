@@ -52,7 +52,7 @@ func cmdLoadPackages(tt *term.Terminal, sess *session, command Command, withTest
 		return false
 	}
 	config := packages.Config{
-		Mode: packages.NeedName,
+		Mode: packages.NeedName | packages.NeedCompiledGoFiles | packages.LoadImports | packages.LoadAllSyntax,
 	}
 	if command.Flags["t"] {
 		config.Mode = config.Mode | packages.NeedTypes
@@ -81,6 +81,9 @@ func cmdLoadPackages(tt *term.Terminal, sess *session, command Command, withTest
 	slices.Sort(paths)
 	for _, path := range paths {
 		pkg := pkgMap[path]
+		if pkg == nil {
+			continue
+		}
 		if len(pkg.Errors) > 0 {
 			writeFmt(tt, "\t%s%s%s: %s%s\n",
 				tt.Escape.Red, pkg.Name, tt.Escape.Reset, strings.Repeat(" ", namespan-len(pkg.Name)), path)
@@ -106,10 +109,9 @@ func cmdLoadWholeProgram(tt *term.Terminal, sess *session, command Command, with
 	if lp.IsErr() {
 		WriteErr(tt, "%s", lp)
 		return false
-	} else {
-		WriteSuccess(tt, "loaded program with path %s", strings.Join(sess.Args, ", "))
-		return false
 	}
+	WriteSuccess(tt, "loaded program with path %s", strings.Join(sess.Args, ", "))
+	return false
 }
 
 func cmdRunPointer(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
@@ -122,10 +124,9 @@ func cmdRunPointer(tt *term.Terminal, sess *session, command Command, withTest b
 	if ptr.IsErr() {
 		WriteErr(tt, "%s", ptr)
 		return false
-	} else {
-		WriteSuccess(tt, "finished pointer analysis")
-		return false
 	}
+	WriteSuccess(tt, "finished pointer analysis")
+	return false
 }
 
 func cmdRunDataflow(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
@@ -138,10 +139,9 @@ func cmdRunDataflow(tt *term.Terminal, sess *session, command Command, withTest 
 	if df.IsErr() {
 		WriteErr(tt, "%s", df)
 		return false
-	} else {
-		WriteSuccess(tt, "initialized dataflow analysis information")
-		return false
 	}
+	WriteSuccess(tt, "initialized dataflow analysis information")
+	return false
 }
 
 // cmdRebuild implements the rebuild command. It reloads the current config state and program state.

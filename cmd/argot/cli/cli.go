@@ -52,6 +52,7 @@ var commands = map[string]func(tt *term.Terminal, s *session, command Command, w
 	cmdRebuildName:          cmdRebuild,
 	cmdReconfigName:         cmdReconfig,
 	cmdScanName:             cmdScan,
+	cmdShowPackageName:      cmdShowPackage,
 	cmdShowSsaName:          cmdShowSsa,
 	cmdShowEscapeName:       cmdShowEscape,
 	cmdMembersName:          cmdMembers,
