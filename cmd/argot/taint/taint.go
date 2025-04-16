@@ -143,10 +143,10 @@ func runTarget(
 		ApplyRewrites: true,
 	}
 	// Starting the analysis
-	c := config.NewState(cfg, targetName, targetInfo.Files, loadOptions)
+	c := config.NewState(cfg, targetName, targetInfo.Patterns, loadOptions)
 	c.Logger.PushContext(formatutil.Faint(targetName))
 	defer c.Logger.PopContext()
-	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetInfo.Files)
+	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetInfo.Patterns)
 	var actual result.Result[config.State]
 	if targetInfo.UseProgramTransforms && len(targetInfo.ReflectValueCallInstances) >= 1 {
 		c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")

@@ -196,6 +196,18 @@ func (s *session) loadConfig() result.Result[config.State] {
 			}
 		}
 	}
+		// If the -targets option has been provided the cli should load the target
+	// The -targets option for the cli should only contain one target
+	if s.originalFlags.Targets != "" {
+		if len(strings.Split(s.originalFlags.Targets, ",")) > 1 {
+			return result.Err[config.State](fmt.Errorf("-targets should only have one target in cli"))
+		}
+		targetInfo, ok := s.cfgState.Config.GetTargetMap()[s.originalFlags.Targets]
+		if !ok {
+			return result.Err[config.State](fmt.Errorf("target %s is not in config", s.originalFlags.Targets))
+		}
+		s.cfgState.Patterns = targetInfo.Patterns
+	}
 	return result.Ok(s.cfgState)
 }
 
