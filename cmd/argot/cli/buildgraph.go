@@ -15,17 +15,21 @@
 package cli
 
 import (
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
 )
 
 // cmdBuildGraph builds the inter-procedural flow graph given the current summaries
-func cmdBuildGraph(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
-	if c == nil {
+func cmdBuildGraph(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : build the inter-procedural flow graph.\n",
 			tt.Escape.Blue, cmdBuildGraphName, tt.Escape.Reset)
 		writeFmt(tt, "\t   Summaries must be built first with `%s%s%s`.\n",
 			tt.Escape.Yellow, cmdSummarizeName, tt.Escape.Reset)
+		return false
+	}
+	c, err := sess.loadDataflowAnalysis().Value()
+	if err != nil {
+		WriteErr(tt, err.Error())
 		return false
 	}
 	if len(c.FlowGraph.Summaries) == 0 {

@@ -52,7 +52,7 @@ type displayElement struct {
 	escape  []byte
 }
 
-func writeEntries(tt *term.Terminal, entries []displayElement, prefix string) {
+func writeEntries(tt *term.Terminal, sess *session, entries []displayElement, prefix string) {
 	if len(entries) == 0 {
 		return
 	}
@@ -64,7 +64,7 @@ func writeEntries(tt *term.Terminal, entries []displayElement, prefix string) {
 	}
 
 	maxLen = maxLen + 3 // padding
-	cols := state.TermWidth / maxLen
+	cols := sess.termWidth / maxLen
 	if cols <= 0 {
 		cols = 1
 	}

@@ -19,14 +19,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
 )
 
-func cmdScan(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
-	if c == nil {
+func cmdScan(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : scan the program for usages\n", tt.Escape.Blue, cmdScanName, tt.Escape.Reset)
 		return false
 	}
@@ -48,7 +47,14 @@ func cmdScan(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool
 		return false
 	}
 
-	for _, pack := range state.InitialPackages {
+	// Get the program
+	lp := sess.loadProgram()
+	if lp.IsErr() {
+		WriteErr(tt, "Unable to load program: %s", lp)
+		return false
+	}
+
+	for _, pack := range lp.Unwrap().Packages {
 		scanUsages(tt, pack, target)
 	}
 

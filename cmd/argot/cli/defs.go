@@ -16,51 +16,50 @@ package cli
 
 import (
 	"go/token"
-	"regexp"
-	"slices"
-	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/term"
-	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 const (
-	cmdAstName          = "ast"
-	cmdBuildGraphName   = "buildgraph"
-	cmdCalleesName      = "callees"
-	cmdCallersName      = "callers"
-	cmdCdName           = "cd"
-	cmdExitName         = "exit"
-	cmdFocusName        = "focus"
-	cmdHelpName         = "help"
-	cmdIntraName        = "intra"
-	cmdLoadName         = "load"
-	cmdListName         = "list"
-	cmdLsName           = "ls"
-	cmdMarkName         = "mark"
-	cmdMayAliasName     = "mayalias"
-	cmdPackageName      = "pkg"
-	cmdRebuildName      = "rebuild"
-	cmdReconfigName     = "reconfig"
-	cmdScanName         = "scan"
-	cmdShowDataflowName = "showdataflow"
-	cmdShowEscapeName   = "showescape"
-	cmdMembersName      = "members"
-	cmdShowSsaName      = "showssa"
-	cmdSrcName          = "src"
-	cmdSsaInstrName     = "ssainstr"
-	cmdSsaValueName     = "ssaval"
-	cmdStateName        = "state?"
-	cmdStatsName        = "stats"
-	cmdSummarizeName    = "summarize"
-	cmdSummaryName      = "summary"
-	cmdTaintName        = "taint"
-	cmdTraceName        = "trace"
-	cmdUnfocusName      = "unfocus"
-	cmdWhereName        = "where"
-	cmdBacktraceName    = "backtrace"
+	cmdAstName              = "ast"
+	cmdBacktraceName        = "backtrace"
+	cmdBuildGraphName       = "buildgraph"
+	cmdCalleesName          = "callees"
+	cmdCallersName          = "callers"
+	cmdCdName               = "cd"
+	cmdExitName             = "exit"
+	cmdFocusName            = "focus"
+	cmdHelpName             = "help"
+	cmdIntraName            = "intra"
+	cmdLoadName             = "load" // TODO: deprecate this to make more sense given the other load functions
+	cmdLoadPackagesName     = "load-pkg"
+	cmdLoadWholeProgramName = "load-program"
+	cmdListName             = "list"
+	cmdLsName               = "ls"
+	cmdMarkName             = "mark"
+	cmdMayAliasName         = "mayalias"
+	cmdPackageName          = "pkg"
+	cmdRebuildName          = "rebuild"
+	cmdReconfigName         = "reconfig"
+	cmdScanName             = "scan"
+	cmdShowPackageName      = "showpkg"
+	cmdShowDataflowName     = "showdataflow"
+	cmdShowEscapeName       = "showescape"
+	cmdMembersName          = "members"
+	cmdRunPointerName       = "run-pointer"
+	cmdRunDataflowName      = "run-dataflow"
+	cmdShowSsaName          = "showssa"
+	cmdSrcName              = "src"
+	cmdSsaInstrName         = "ssainstr"
+	cmdSsaValueName         = "ssaval"
+	cmdStateName            = "state?"
+	cmdStatsName            = "stats"
+	cmdSummarizeName        = "summarize"
+	cmdSummaryName          = "summary"
+	cmdTaintName            = "taint"
+	cmdTraceName            = "trace"
+	cmdUnfocusName          = "unfocus"
+	cmdWhereName            = "where"
 	// Other constants
 
 	// Summarize threshold puts a maximum size above which summary building filters are used
@@ -73,39 +72,6 @@ const (
 type NameAndLoc struct {
 	name string
 	loc  token.Position
-}
-
-// funcsMatchingCommand returns the function matching the argument of the command or all functions if there
-// is no argument
-// Returns an empty list if any error is encountered
-func funcsMatchingCommand(tt *term.Terminal, c *dataflow.State, command Command) []*ssa.Function {
-	rString := ".*" // default is to match anything
-	if len(command.Args) >= 1 {
-		// otherwise build regex from arguments
-		var x []string
-		for _, arg := range command.Args {
-			x = append(x, "("+arg+")")
-		}
-		rString = strings.Join(x, "|")
-	}
-	r, err := regexp.Compile(rString)
-	if err != nil {
-		regexErr(tt, rString, err)
-		return []*ssa.Function{}
-	}
-	s := findFunc(c, r)
-	slices.SortFunc(s, func(a, b *ssa.Function) int { return strings.Compare(a.String(), b.String()) })
-	return s
-}
-
-func findFunc(c *dataflow.State, target *regexp.Regexp) []*ssa.Function {
-	var funcs []*ssa.Function
-	for f := range ssautil.AllFunctions(c.Program) {
-		if target.MatchString(f.String()) {
-			funcs = append(funcs, f)
-		}
-	}
-	return funcs
 }
 
 func regexErr(tt *term.Terminal, expr string, err error) {

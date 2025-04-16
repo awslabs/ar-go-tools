@@ -152,7 +152,7 @@ func runTarget(
 		c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
 		// TODO: handle more rewrites later
 		actual = statefulrewrite.StatefulRewritesOverlayTransform(c,
-			statefulrewrite.StatefulRewritesOverlayTransformSpec{RefelctValueCallInstanceCid: targetInfo.ReflectValueCallInstances[0]})
+			statefulrewrite.StatefulRewritesOverlayTransformSpec{ReflectValueCallInstanceCid: targetInfo.ReflectValueCallInstances[0]})
 	} else {
 		actual = result.Ok(c)
 	}

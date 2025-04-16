@@ -45,8 +45,8 @@ import (
 // If state is nil, then it should print its definition on stdout
 
 // cmdShowSsa prints the SSA representation of all the function matching a given regex
-func cmdShowSsa(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
-	if c == nil {
+func cmdShowSsa(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the ssa representation of a function.\n"+
 			"\t  showssa regex prints the SSA representation of the function matching the regex\n"+
 			"\t  Example:\n", tt.Escape.Blue, cmdShowSsaName, tt.Escape.Reset)
@@ -55,7 +55,11 @@ func cmdShowSsa(tt *term.Terminal, c *dataflow.State, command Command, withTest 
 	}
 
 	var b bytes.Buffer
-	funcs := listContextFunc(tt, c, command)
+	funcs, err := listContextFunc(tt, sess, command)
+	if err != nil {
+		WriteErr(tt, err.Error())
+		return false
+	}
 	if len(funcs) == 0 {
 		WriteErr(tt, "Need at least one function to show.")
 		cmdShowSsa(tt, nil, command, withTest)
@@ -69,8 +73,8 @@ func cmdShowSsa(tt *term.Terminal, c *dataflow.State, command Command, withTest 
 }
 
 // cmdShowFuncType prints the type of all the functions matching a given regex
-func cmdMembers(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
-	if c == nil {
+func cmdMembers(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the type of a function.\n"+
 			"\t  %s regex prints the type of the function matching the regex\n"+
 			"\t  Example:\n", tt.Escape.Blue, cmdMembersName, tt.Escape.Reset, cmdMembersName)
@@ -86,9 +90,16 @@ func cmdMembers(tt *term.Terminal, c *dataflow.State, command Command, withTest 
 		return false
 	}
 
+	// members needs a program
+	prog := sess.loadProgram()
+	if prog.IsErr() {
+		WriteErr(tt, "Could not load program: %s", prog)
+		return false
+	}
+
 	// Collect and print in alphabetical order
 	members := []ssa.Member{}
-	for _, p := range c.Program.AllPackages() {
+	for _, p := range prog.Unwrap().Program.AllPackages() {
 		if target.MatchString(p.String()) {
 			for _, obj := range p.Members {
 				members = append(members, obj)
@@ -103,7 +114,7 @@ func cmdMembers(tt *term.Terminal, c *dataflow.State, command Command, withTest 
 		case *ssa.Type:
 			writeFmt(tt, "\t- type %s%s%s\n", tt.Escape.Blue, m.String(), tt.Escape.Reset)
 			writeFmt(tt, "\t   | underlying %s\n", m.Type().Underlying())
-			methods := c.Program.MethodSets.MethodSet(m.Type())
+			methods := prog.Unwrap().Program.MethodSets.MethodSet(m.Type())
 			for i := range methods.Len() {
 				mthd := methods.At(i)
 				writeFmt(tt, "\t   | %s : %s\n", mthd.String(), mthd.Type())
@@ -118,8 +129,8 @@ func cmdMembers(tt *term.Terminal, c *dataflow.State, command Command, withTest 
 }
 
 // cmdShowEscape prints the escape graph of all the function matching a given regex
-func cmdShowEscape(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
-	if c == nil {
+func cmdShowEscape(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the escape graph of a function.\n"+ // safe %s (position string)
 			"\t  %s regex prints the escape graph of function(s) matching the regex\n"+
 			"\t  Example:\n", tt.Escape.Blue, cmdShowEscapeName, tt.Escape.Reset, cmdShowEscapeName)
@@ -128,7 +139,11 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.State, command Command, withTe
 	}
 
 	var b bytes.Buffer
-	funcs := listContextFunc(tt, c, command)
+	funcs, err := listContextFunc(tt, sess, command)
+	if err != nil {
+		WriteErr(tt, err.Error())
+		return false
+	}
 	if len(funcs) == 0 {
 		WriteErr(tt, "Need at least one function to show.")
 		cmdShowSsa(tt, nil, command, withTest)
@@ -144,8 +159,8 @@ func cmdShowEscape(tt *term.Terminal, c *dataflow.State, command Command, withTe
 
 // cmdShowDataflow builds and prints the inter-procedural dataflow graph.
 // If on macOS, the command automatically renders an SVG and opens it in Safari.
-func cmdShowDataflow(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
-	if c == nil {
+func cmdShowDataflow(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : build and print the inter-procedural dataflow graph of a program.\n"+
 			"\t  showdataflow args prints the inter-procedural dataflow graph.\n"+
 			"\t    on macOS, the command also renders an SVG of the graph and opens it in Safari\n"+
@@ -153,6 +168,14 @@ func cmdShowDataflow(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bo
 		writeFmt(tt, "\t  > %s main.go prog.go\n", cmdShowDataflowName)
 		return false
 	}
+
+	// showDataflow needs dataflow state
+	df := sess.loadDataflowAnalysis()
+	if df.IsErr() {
+		WriteErr(tt, "Could not load dataflow: %s", df)
+		return false
+	}
+	c := df.Unwrap()
 
 	// TODO the dataflow graph from the CLI is slightly different from the
 	// `render` tool. This is because some function parameters are not being
@@ -198,20 +221,20 @@ func cmdShowDataflow(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bo
 }
 
 // cmdSummary prints a specific function's summary, if it can be found
-func cmdSummary(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
-	if c == nil {
+func cmdSummary(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the summary of the functions matching a regex\n",
 			tt.Escape.Blue, cmdSummaryName, tt.Escape.Reset)
 		return false
 	}
 
 	if len(command.Args) < 1 {
-		if state.CurrentFunction == nil {
+		if sess.currentFunction == nil {
 			WriteErr(tt, "Not enough arguments, summary expects 1 argument")
 		}
 		// Print summary of focused function
-		summary := c.FlowGraph.Summaries[state.CurrentFunction]
-		if summary != nil {
+		summary, ok := sess.hasSummary(sess.currentFunction)
+		if summary != nil && ok {
 			printSummary(tt, command, summary)
 		} else {
 			WriteErr(tt, "Focused function is not summarized")
@@ -219,13 +242,17 @@ func cmdSummary(tt *term.Terminal, c *dataflow.State, command Command, _ bool) b
 		return false
 	}
 
-	funcs := funcsMatchingCommand(tt, c, command)
+	funcs, err := sess.funcsMatchingCommand(tt, command)
+	if err != nil {
+		WriteErr(tt, err.Error())
+		return false
+	}
 	numSummaries := 0
 	numFuncs := 0
 	for _, fun := range funcs {
 		numFuncs++
-		summary := c.FlowGraph.Summaries[fun]
-		if summary != nil {
+		summary, ok := sess.hasSummary(fun)
+		if summary != nil && ok {
 			numSummaries++
 			printSummary(tt, command, summary)
 		}
@@ -245,8 +272,8 @@ func cmdSummary(tt *term.Terminal, c *dataflow.State, command Command, _ bool) b
 }
 
 // cmdShowSource prints the source (AST representation) of all the functions matching a given regex
-func cmdSrc(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
-	if c == nil {
+func cmdSrc(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the source code of a function.\n"+
 			"\t  src regex prints the AST representation of the function matching the regex\n"+
 			"\t  Example:\n", tt.Escape.Blue, cmdSrcName, tt.Escape.Reset)
@@ -254,7 +281,11 @@ func cmdSrc(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 		return false
 	}
 
-	funcs := listContextFunc(tt, c, command)
+	funcs, err := listContextFunc(tt, sess, command)
+	if err != nil {
+		WriteErr(tt, err.Error())
+		return false
+	}
 	if len(funcs) == 0 {
 		WriteErr(tt, "Need at least one function to show source for.")
 		cmdSrc(tt, nil, command, withTest)
@@ -264,8 +295,12 @@ func cmdSrc(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 		if astNode == nil {
 			WriteErr(tt, "%s has no syntax.", formatutil.Bold(f.String()))
 		} else {
+			program, _ := sess.program() // program should be loaded at this point
+			if program == nil {
+				panic("internal error: program is missing")
+			}
 			WriteSuccess(tt, "<<< Source for %s", formatutil.Bold(f.String()))
-			printer.Fprint(tt, c.Program.Fset, astNode)
+			printer.Fprint(tt, program.Fset, astNode)
 			writeFmt(tt, "\n")
 			WriteSuccess(tt, "End of source for %s >>>", f.String())
 			writeFmt(tt, "\n")
@@ -275,8 +310,8 @@ func cmdSrc(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 }
 
 // cmdAst prints the AST structure of all the functions matching a given regex
-func cmdAst(tt *term.Terminal, c *dataflow.State, command Command, withTest bool) bool {
-	if c == nil {
+func cmdAst(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the ast of a function.\n"+
 			"\t  %s regex prints the AST structure of the %sfunction%s matching the regex\n"+
 			"\t  %s -file regex prints the AST structure of the %sfile%s matching the regex\n"+
@@ -288,21 +323,27 @@ func cmdAst(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 		return false
 	}
 
+	if !sess.hasProgram() {
+		WriteErr(tt, "Need a program to show the AST for.")
+		WriteErr(tt, "You should at least loadprogam")
+		cmdAst(tt, nil, command, withTest)
+	}
+
 	// Display the AST of a file?
 	if command.Flags["file"] {
-		files := findFiles(tt, c, command)
+		files := findFiles(tt, sess, command)
 		if len(files) == 0 {
 			WriteErr(tt, "Need at least one file to show the AST for.")
 			cmdAst(tt, nil, command, withTest)
 		} else {
 			for _, f := range files {
-				filePath := c.Program.Fset.Position(f.Pos()).Filename
+				filePath := sess.programOrPanic().Fset.Position(f.Pos()).Filename
 				if f == nil {
 					WriteErr(tt, "%s has no AST.", formatutil.Bold(filePath))
 				} else {
 					WriteSuccess(tt, "<<< AST of %s", formatutil.Bold(filePath))
-					ast.Fprint(tt, c.Program.Fset, f, nil)
-					printer.Fprint(tt, c.Program.Fset, f)
+					ast.Fprint(tt, sess.programOrPanic().Fset, f, nil)
+					printer.Fprint(tt, sess.programOrPanic().Fset, f)
 					writeFmt(tt, "\n")
 					WriteSuccess(tt, "End of AST of %s >>>", filePath)
 					writeFmt(tt, "\n")
@@ -312,7 +353,11 @@ func cmdAst(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 		return false
 	}
 	// Display the AST of a function
-	funcs := listContextFunc(tt, c, command)
+	funcs, err := listContextFunc(tt, sess, command)
+	if err != nil {
+		WriteErr(tt, err.Error())
+		return false
+	}
 	if len(funcs) == 0 {
 		WriteErr(tt, "Need at least one function to show the AST for.")
 		cmdAst(tt, nil, command, withTest)
@@ -323,8 +368,8 @@ func cmdAst(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 			WriteErr(tt, "%s has no AST.", formatutil.Bold(f.String()))
 		} else {
 			WriteSuccess(tt, "<<< AST of %s", formatutil.Bold(f.String()))
-			ast.Fprint(tt, c.Program.Fset, astNode, nil)
-			printer.Fprint(tt, c.Program.Fset, astNode)
+			ast.Fprint(tt, sess.programOrPanic().Fset, astNode, nil)
+			printer.Fprint(tt, sess.programOrPanic().Fset, astNode)
 			writeFmt(tt, "\n")
 			WriteSuccess(tt, "End of AST of %s >>>", f.String())
 			writeFmt(tt, "\n")
@@ -334,8 +379,8 @@ func cmdAst(tt *term.Terminal, c *dataflow.State, command Command, withTest bool
 }
 
 // cmdSummarize runs the intra-procedural analysis.
-func cmdSummarize(tt *term.Terminal, c *dataflow.State, command Command, _ bool) bool {
-	if c == nil {
+func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : run the intra-procedural analysis. If a function is provided, "+
 			"run only\n", tt.Escape.Blue, cmdSummarizeName, tt.Escape.Reset)
 		writeFmt(tt, "\t   on the provided function\n")
@@ -350,6 +395,14 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.State, command Command, _ bool)
 	}
 
 	isForced := command.Flags["force"]
+
+	// ensure dataflow state
+	res := sess.loadDataflowAnalysis()
+	if res.IsErr() {
+		WriteErr(tt, "Could not load dataflow: %s", res)
+		return false
+	}
+	c := res.Unwrap()
 
 	if len(command.Args) < 1 {
 		// Running the intra-procedural analysis on all functions
@@ -377,7 +430,11 @@ func cmdSummarize(tt *term.Terminal, c *dataflow.State, command Command, _ bool)
 			regexErr(tt, command.Args[0], err)
 			return false
 		}
-		funcs := findFunc(c, regex)
+		funcs, err := sess.findFunc(regex)
+		if err != nil {
+			WriteErr(tt, err.Error())
+			return false
+		}
 		WriteSuccess(tt, "Running intra-procedural analysis on functions matching %s", command.Args[0])
 
 		// Depending on the summaries threshold and the number of matched functions, different filters are used.
@@ -441,26 +498,32 @@ func alwaysSummarize(funcs []*ssa.Function, buildCounter *int) func(*dataflow.St
 }
 
 // cmdTaint runs the taint analysis
-func cmdTaint(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
-	if c == nil {
+func cmdTaint(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: run the taint analysis with parameters in config.\n",
 			tt.Escape.Blue, cmdTaintName, tt.Escape.Reset)
 		writeFmt(tt, "\t   Flow graph must be built first with `%s%s%s`.\n",
 			tt.Escape.Yellow, cmdBuildGraphName, tt.Escape.Reset)
 		return false
 	}
-	if !c.FlowGraph.IsBuilt() {
+	c := sess.loadDataflowAnalysis()
+	if c.IsErr() {
+		WriteErr(tt, "Failed to load dataflow analysis: %v", c)
+		return false
+	}
+	// load dataflow state
+	if !c.Unwrap().FlowGraph.IsBuilt() {
 		WriteErr(tt, "The inter-procedural dataflow graph is not built!")
 		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
 		return false
 	}
-	for _, ts := range c.Config.TaintTrackingProblems {
-		c.FlowGraph.RunVisitorOnEntryPoints(
+	for _, ts := range c.Unwrap().Config.TaintTrackingProblems {
+		c.Unwrap().FlowGraph.RunVisitorOnEntryPoints(
 			taint.NewVisitor(&ts),
 			dataflow.ScanningSpec{
 				MarkCallArgsLikeCall: ts.SourceTaintsArgs,
 				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
-					return dataflow.IsSourceNode(c, &ts, node)
+					return dataflow.IsSourceNode(c.Unwrap(), &ts, node)
 				},
 			},
 		)
@@ -469,14 +532,22 @@ func cmdTaint(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
 }
 
 // cmdBacktrace runs the backtrace analysis.
-func cmdBacktrace(tt *term.Terminal, c *dataflow.State, _ Command, _ bool) bool {
-	if c == nil {
+func cmdBacktrace(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: run the backtrace analysis with parameters in config.\n",
 			tt.Escape.Blue, cmdBacktraceName, tt.Escape.Reset)
 		writeFmt(tt, "\t   Flow graph must be built first with `%s%s%s`.\n",
 			tt.Escape.Yellow, cmdBuildGraphName, tt.Escape.Reset)
 		return false
 	}
+
+	res := sess.loadDataflowAnalysis()
+	if res.IsErr() {
+		WriteErr(tt, "Failed to load dataflow analysis: %v", res)
+		return false
+	}
+	c := res.Unwrap()
+
 	if !c.FlowGraph.IsBuilt() {
 		WriteErr(tt, "The inter-procedural dataflow graph is not built!")
 		WriteErr(tt, "Please run `%s` before calling `backtrace`.", cmdBuildGraphName)
@@ -535,23 +606,29 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 	summary.PrettyPrint(true, tt, regexFilter)
 }
 
-func listContextFunc(tt *term.Terminal, c *dataflow.State, command Command) []*ssa.Function {
+func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.Function, error) {
 	if len(command.Args) < 1 {
-		if state.CurrentFunction != nil {
-			return []*ssa.Function{state.CurrentFunction}
+		if sess.currentFunction != nil {
+			return []*ssa.Function{sess.currentFunction}, nil
 		}
-		return []*ssa.Function{}
+		return []*ssa.Function{}, nil
 	}
 	target, err := regexp.Compile(command.Args[0])
 	if err != nil {
 		regexErr(tt, command.Args[0], err)
-		return []*ssa.Function{}
+		return []*ssa.Function{}, nil
 	}
 
-	return findFunc(c, target)
+	return sess.findFunc(target)
 }
 
-func findFiles(tt *term.Terminal, c *dataflow.State, command Command) []*ast.File {
+// findFiles finds the ast file in the program loaded.
+// You should ensure that the  LPState of the session has been loaded, otherwise
+// this function will just return an empty list.
+func findFiles(tt *term.Terminal, sess *session, command Command) []*ast.File {
+	if sess.lpState == nil {
+		return []*ast.File{}
+	}
 	if len(command.Args) < 1 {
 		WriteErr(tt, "Need a regex to match files.")
 		return []*ast.File{}
@@ -562,13 +639,13 @@ func findFiles(tt *term.Terminal, c *dataflow.State, command Command) []*ast.Fil
 		return []*ast.File{}
 	}
 	files := []*ast.File{}
-	for _, p := range c.Packages {
+	for _, p := range sess.lpState.Packages {
 		for _, f := range p.Syntax {
 			fpos := f.Pos()
 			if !fpos.IsValid() {
 				continue
 			}
-			filename := c.Program.Fset.File(fpos).Name()
+			filename := sess.lpState.Program.Fset.File(fpos).Name()
 			if target.MatchString(filename) {
 				files = append(files, f)
 			}

@@ -31,7 +31,7 @@ import (
 // Currently, the only rewrite the the elimination of (reflect.Value).Call instances given an instance of
 // an actuall struct with methods (class-like object).
 type StatefulRewritesOverlayTransformSpec struct {
-	RefelctValueCallInstanceCid config.CodeIdentifier
+	ReflectValueCallInstanceCid config.CodeIdentifier
 }
 
 // StatefulRewritesOverlayTransform transforms the overlay in the config state by building
@@ -45,7 +45,7 @@ func StatefulRewritesOverlayTransform(c *config.State, spec StatefulRewritesOver
 	if err != nil {
 		return result.Err[config.State](err)
 	}
-	cfg := FindImpl(state, spec.RefelctValueCallInstanceCid)
+	cfg := FindImpl(state, spec.ReflectValueCallInstanceCid)
 	if cfg.IsNone() {
 		return result.Ok(c)
 	}
