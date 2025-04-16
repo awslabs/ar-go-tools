@@ -35,7 +35,7 @@ func cmdLoad(tt *term.Terminal, sess *session, command Command, withTest bool) b
 		WriteErr(tt, "%s expects at least one argument.", cmdLoadName)
 		return false
 	}
-	sess.Args = command.Args
+	sess.args = command.Args
 	return cmdRebuild(tt, sess, command, withTest)
 }
 
@@ -95,7 +95,7 @@ func cmdLoadPackages(tt *term.Terminal, sess *session, command Command, withTest
 				tt.Escape.Blue, pkg.Name, tt.Escape.Reset, strings.Repeat(" ", namespan-len(pkg.Name)), path)
 		}
 	}
-	sess.Pkgs = pkgMap
+	sess.pkgs = pkgMap
 	return false
 }
 
@@ -110,7 +110,7 @@ func cmdLoadWholeProgram(tt *term.Terminal, sess *session, command Command, with
 		WriteErr(tt, "%s", lp)
 		return false
 	}
-	WriteSuccess(tt, "loaded program with path %s", strings.Join(sess.Args, ", "))
+	WriteSuccess(tt, "loaded program with path %s", strings.Join(sess.args, ", "))
 	return false
 }
 
@@ -161,12 +161,12 @@ func cmdRebuild(tt *term.Terminal, sess *session, _ Command, withTest bool) bool
 		return false
 	}
 
-	sess.CurrentFunction = nil
-	sess.CurrentDataflowInformation = nil
-	sess.InitialPackages = nil
-	sess.LPState = nil
-	sess.DFState = nil
-	sess.PtrState = nil
+	sess.currentFunction = nil
+	sess.currentDataflowInformation = nil
+	sess.initialPackages = nil
+	sess.lpState = nil
+	sess.dfState = nil
+	sess.ptrState = nil
 	return false
 }
 
@@ -180,9 +180,9 @@ func cmdReconfig(tt *term.Terminal, sess *session, command Command, _ bool) bool
 		return false
 	}
 
-	sess.ConfigPath = strings.TrimSpace(command.Args[0])
-	oldConfig := sess.CfgState
-	sess.CfgState = nil
+	sess.configPath = strings.TrimSpace(command.Args[0])
+	oldConfig := sess.cfgState
+	sess.cfgState = nil
 	res := sess.loadConfig()
 
 	if res.IsErr() {
@@ -190,9 +190,9 @@ func cmdReconfig(tt *term.Terminal, sess *session, command Command, _ bool) bool
 		WriteErr(tt, "You should reload the cli.")
 		return false
 	}
-	if sess.CfgState == nil {
+	if sess.cfgState == nil {
 		WriteErr(tt, "Resetting to old config.")
-		sess.CfgState = oldConfig
+		sess.cfgState = oldConfig
 		return false
 	}
 

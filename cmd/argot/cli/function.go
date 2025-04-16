@@ -64,7 +64,7 @@ func cmdFocus(tt *term.Terminal, sess *session, command Command, _ bool) bool {
 		return false
 	}
 
-	sess.CurrentFunction = f
+	sess.currentFunction = f
 	WriteSuccess(tt, "Focusing on %s.", f.String())
 	tt.SetPrompt(fmt.Sprintf("%s%s >%s ", tt.Escape.Green, f.Name(), tt.Escape.Reset))
 
@@ -79,14 +79,14 @@ func cmdPackage(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 		return false
 	}
 
-	if sess.CurrentFunction == nil {
+	if sess.currentFunction == nil {
 		WriteErr(tt, "No function is focused.")
 		return false
 	}
 
-	pkgName := lang.PackageNameFromFunction(sess.CurrentFunction)
+	pkgName := lang.PackageNameFromFunction(sess.currentFunction)
 	writeFmt(tt, "Package %s:\n", pkgName)
-	pkg := lang.PackageTypeFromFunction(sess.CurrentFunction)
+	pkg := lang.PackageTypeFromFunction(sess.currentFunction)
 	if pkg == nil {
 		WriteErr(tt, "Could not retrieve package object.")
 		return false
@@ -110,13 +110,13 @@ func cmdUnfocus(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 		return false
 	}
 
-	if sess.CurrentFunction == nil {
+	if sess.currentFunction == nil {
 		WriteErr(tt, "No function is focused.")
 		return false
 	}
 
-	WriteSuccess(tt, "Unfocus %s.", sess.CurrentFunction.Name())
-	sess.CurrentFunction = nil
+	WriteSuccess(tt, "Unfocus %s.", sess.currentFunction.Name())
+	sess.currentFunction = nil
 	tt.SetPrompt("> ")
 
 	return false
@@ -130,7 +130,7 @@ func cmdSsaValue(tt *term.Terminal, sess *session, command Command, _ bool) bool
 		return false
 	}
 
-	if sess.CurrentFunction == nil {
+	if sess.currentFunction == nil {
 		WriteErr(tt, "You must first focus on a function to show an SSA value.")
 		return false
 	}
@@ -146,19 +146,19 @@ func cmdSsaValue(tt *term.Terminal, sess *session, command Command, _ bool) bool
 		return false
 	}
 
-	for _, param := range sess.CurrentFunction.Params {
+	for _, param := range sess.currentFunction.Params {
 		if matchValue(r, param) {
 			showValue(tt, sess, param)
 		}
 	}
 
-	for _, fv := range sess.CurrentFunction.FreeVars {
+	for _, fv := range sess.currentFunction.FreeVars {
 		if matchValue(r, fv) {
 			showValue(tt, sess, fv)
 		}
 	}
 
-	for _, block := range sess.CurrentFunction.Blocks {
+	for _, block := range sess.currentFunction.Blocks {
 		for _, instr := range block.Instrs {
 			if val, isVal := instr.(ssa.Value); isVal && matchValue(r, val) {
 				showValue(tt, sess, val)
@@ -176,7 +176,7 @@ func cmdSsaInstr(tt *term.Terminal, c *session, command Command, _ bool) bool {
 		return false
 	}
 
-	if c.CurrentFunction == nil {
+	if c.currentFunction == nil {
 		WriteErr(tt, "You must first focus on a function to show an SSA instruction.")
 		return false
 	}
@@ -192,7 +192,7 @@ func cmdSsaInstr(tt *term.Terminal, c *session, command Command, _ bool) bool {
 		return false
 	}
 
-	for _, block := range c.CurrentFunction.Blocks {
+	for _, block := range c.currentFunction.Blocks {
 		for _, instr := range block.Instrs {
 			if matchInstr(r, instr) {
 				showInstr(tt, c, instr)
@@ -216,7 +216,7 @@ func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool
 		return false
 	}
 
-	if sess.CurrentFunction == nil {
+	if sess.currentFunction == nil {
 		WriteErr(tt, "You must first focus on a function to query aliasing information.")
 		return false
 	}
@@ -233,7 +233,7 @@ func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool
 	}
 
 	values1 := map[ssa.Value]bool{}
-	lang.IterateValues(sess.CurrentFunction, func(_ int, value ssa.Value) {
+	lang.IterateValues(sess.currentFunction, func(_ int, value ssa.Value) {
 		if value != nil {
 			if r.MatchString(value.Name()) {
 				values1[value] = true
@@ -244,7 +244,7 @@ func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool
 	for v1 := range values1 {
 		if ptr, ptrExists := ps.PointerAnalysis.Queries[v1]; ptrExists {
 			writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
-			lang.IterateValues(sess.CurrentFunction, func(_ int, value ssa.Value) {
+			lang.IterateValues(sess.currentFunction, func(_ int, value ssa.Value) {
 				if value != nil {
 					printAliases(tt, ps, value, ptr)
 				}
@@ -252,7 +252,7 @@ func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool
 		}
 		if ptr, ptrExists := ps.PointerAnalysis.IndirectQueries[v1]; ptrExists {
 			writeFmt(tt, "[indirect] %s may alias with:\n", v1.Name())
-			lang.IterateValues(sess.CurrentFunction, func(_ int, value ssa.Value) {
+			lang.IterateValues(sess.currentFunction, func(_ int, value ssa.Value) {
 				if value != nil {
 					printAliases(tt, ps, value, ptr)
 				}
@@ -290,8 +290,8 @@ func cmdWhere(tt *term.Terminal, sess *session, command Command, withTest bool) 
 	}
 
 	if len(command.Args) < 1 {
-		if sess.CurrentFunction != nil {
-			writeFmt(tt, "Location: %s\n", lp.Program.Fset.Position(sess.CurrentFunction.Pos()))
+		if sess.currentFunction != nil {
+			writeFmt(tt, "Location: %s\n", lp.Program.Fset.Position(sess.currentFunction.Pos()))
 		} else {
 			WriteErr(tt, "Need at least one function to print position for.")
 			cmdWhere(tt, nil, command, withTest)
@@ -329,7 +329,7 @@ func cmdIntra(tt *term.Terminal, sess *session, command Command, withTest bool) 
 		return cmdIntra(tt, nil, command, withTest)
 	}
 
-	if sess.CurrentFunction == nil {
+	if sess.currentFunction == nil {
 		WriteErr(tt, "You must first focus on a function to run this command!")
 		WriteErr(tt, "Example: > focus command-line-arguments.main")
 		return false
@@ -358,14 +358,14 @@ func cmdIntra(tt *term.Terminal, sess *session, command Command, withTest bool) 
 		}
 	}
 
-	_, err = dataflow.IntraProceduralAnalysis(dfs, sess.CurrentFunction, true, 0,
+	_, err = dataflow.IntraProceduralAnalysis(dfs, sess.currentFunction, true, 0,
 		dataflow.IsNodeOfInterest, post)
 	if err != nil {
 		WriteErr(tt, "Error while analyzing.")
 		return false
 	}
 	if flowInfo != nil {
-		sess.CurrentDataflowInformation = flowInfo
+		sess.currentDataflowInformation = flowInfo
 		if command.Flags["v"] {
 			writeFmt(tt, "\n")
 			writeFmt(tt, " ⎏  Final state is ↴\n")
@@ -389,7 +389,7 @@ func cmdMark(tt *term.Terminal, sess *session, command Command, withTest bool) b
 		return false
 	}
 
-	if sess.CurrentFunction == nil {
+	if sess.currentFunction == nil {
 		WriteErr(tt, "You must first focus on a function to run this command!")
 		WriteErr(tt, "Example: > focus command-line-arguments.main")
 	}
@@ -398,12 +398,12 @@ func cmdMark(tt *term.Terminal, sess *session, command Command, withTest bool) b
 		return cmdMark(tt, nil, command, withTest)
 	}
 
-	if sess.CurrentDataflowInformation == nil || sess.CurrentDataflowInformation.Function != sess.CurrentFunction {
+	if sess.currentDataflowInformation == nil || sess.currentDataflowInformation.Function != sess.currentFunction {
 		writeFmt(tt, "Running the intra-procedural dataflow analysis first...\n")
 		_ = cmdIntra(tt, sess, command, withTest)
 	}
 
-	if sess.CurrentDataflowInformation == nil || sess.CurrentDataflowInformation.Function != sess.CurrentFunction {
+	if sess.currentDataflowInformation == nil || sess.currentDataflowInformation.Function != sess.currentFunction {
 		WriteErr(tt, "Reached an unexpected state. Please restart the CLI.")
 		return false
 	}
@@ -415,7 +415,7 @@ func cmdMark(tt *term.Terminal, sess *session, command Command, withTest bool) b
 	}
 
 	foundMatch := false
-	for mark, instructionSet := range sess.CurrentDataflowInformation.LocSet {
+	for mark, instructionSet := range sess.currentDataflowInformation.LocSet {
 		if r.MatchString(mark.String()) {
 			foundMatch = true
 			writeFmt(tt, "Mark %s\n", mark.String())
@@ -451,8 +451,8 @@ func showValue(tt *term.Terminal, sess *session, val ssa.Value) {
 		writeFmt(tt, "  referrers:\n")
 		showReferrers(sess, tt, val)
 	}
-	if sess.PtrState != nil {
-		ps := sess.PtrState
+	if sess.ptrState != nil {
+		ps := sess.ptrState
 		if ptset, ok := ps.PointerAnalysis.Queries[val]; ok && len(ptset.PointsTo().Labels()) > 0 {
 			writeFmt(tt, "  direct aliases:\n")
 			showPointer(tt, sess, ps.PointerAnalysis.Queries[val])
@@ -481,7 +481,7 @@ func showPointer(tt *term.Terminal, sess *session, ptr pointer.Pointer) {
 	for _, label := range ptr.PointsTo().Labels() {
 		if label.Value() != nil && label.Value().Parent() != nil {
 			f := ""
-			if label.Value().Parent() != sess.CurrentFunction {
+			if label.Value().Parent() != sess.currentFunction {
 				f = fmt.Sprintf(" in %s", label.Value().Parent().Name())
 			}
 			var dElt displayElement

@@ -92,7 +92,7 @@ func Run(flags tools.CommonFlags) {
 // run implements the command line tool, calling interpret for each command until the exit command is input
 func run(sess *session, withTest bool) {
 	oldState /* const */, err := term.MakeRaw(int(os.Stdin.Fd()))
-	sess.TermWidth, _, _ = term.GetSize(int(os.Stdin.Fd()))
+	sess.termWidth, _, _ = term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {
 		panic(err)
 	}
@@ -100,7 +100,7 @@ func run(sess *session, withTest bool) {
 	tt := term.NewTerminal(os.Stdin, "> ")
 	sess.logger().SetAllOutput(tt)
 	sess.logger().SetAllFlags(0) // no prefix
-	tt.AutoCompleteCallback = AutoCompleteOfAnalyzerState(sess)
+	tt.AutoCompleteCallback = autoCompleteOfAnalyzerState(sess)
 	// if we get a SIGINT, we exit
 	// Capture ctrl+c and exit by returning
 	captureChan := make(chan os.Signal, 1)

@@ -18,8 +18,8 @@ import (
 	"strings"
 )
 
-// AutoCompleteOfAnalyzerState provides the auto-completion functionality for the command-line interface
-func AutoCompleteOfAnalyzerState(_ *session) func(string, int, rune) (string, int, bool) {
+// autoCompleteOfAnalyzerState provides the auto-completion functionality for the command-line interface
+func autoCompleteOfAnalyzerState(_ *session) func(string, int, rune) (string, int, bool) {
 	f := func(line string, pos int, key rune) (string, int, bool) {
 		if key == '\t' {
 			if len(line) > 1 && pos == len(line) {

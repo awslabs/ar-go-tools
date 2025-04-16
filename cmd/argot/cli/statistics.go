@@ -52,7 +52,7 @@ func cmdStats(tt *term.Terminal, c *session, command Command, withTest bool) boo
 	}
 	all := funcutil.Contains(command.Args, "all")
 
-	if c.LPState == nil {
+	if c.lpState == nil {
 		WriteErr(tt, "no program loaded")
 		return false
 	}
@@ -68,22 +68,22 @@ func cmdStats(tt *term.Terminal, c *session, command Command, withTest bool) boo
 		doGeneralStats(tt, reachableFunctions, command)
 	}
 
-	if c.PtrState == nil {
+	if c.ptrState == nil {
 		WriteErr(tt, "no pointer analysis done, nothing else to report")
 		return false
 	}
 	// general ssa stats
 	if all || funcutil.Contains(command.Args, "defers") || len(command.Args) == 0 {
-		doDeferStats(tt, c.PtrState, command)
+		doDeferStats(tt, c.ptrState, command)
 	}
 
-	if c.DFState == nil {
+	if c.dfState == nil {
 		WriteErr(tt, "no dataflow analysis done, nothing else to report")
 		return false
 	}
 	// stats about closures
 	if all || funcutil.Contains(command.Args, "closures") {
-		doClosureStats(tt, c.DFState, command)
+		doClosureStats(tt, c.dfState, command)
 	}
 
 	return false

@@ -229,11 +229,11 @@ func cmdSummary(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 	}
 
 	if len(command.Args) < 1 {
-		if sess.CurrentFunction == nil {
+		if sess.currentFunction == nil {
 			WriteErr(tt, "Not enough arguments, summary expects 1 argument")
 		}
 		// Print summary of focused function
-		summary, ok := sess.hasSummary(sess.CurrentFunction)
+		summary, ok := sess.hasSummary(sess.currentFunction)
 		if summary != nil && ok {
 			printSummary(tt, command, summary)
 		} else {
@@ -608,8 +608,8 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 
 func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.Function, error) {
 	if len(command.Args) < 1 {
-		if sess.CurrentFunction != nil {
-			return []*ssa.Function{sess.CurrentFunction}, nil
+		if sess.currentFunction != nil {
+			return []*ssa.Function{sess.currentFunction}, nil
 		}
 		return []*ssa.Function{}, nil
 	}
@@ -626,7 +626,7 @@ func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.
 // You should ensure that the  LPState of the session has been loaded, otherwise
 // this function will just return an empty list.
 func findFiles(tt *term.Terminal, sess *session, command Command) []*ast.File {
-	if sess.LPState == nil {
+	if sess.lpState == nil {
 		return []*ast.File{}
 	}
 	if len(command.Args) < 1 {
@@ -639,13 +639,13 @@ func findFiles(tt *term.Terminal, sess *session, command Command) []*ast.File {
 		return []*ast.File{}
 	}
 	files := []*ast.File{}
-	for _, p := range sess.LPState.Packages {
+	for _, p := range sess.lpState.Packages {
 		for _, f := range p.Syntax {
 			fpos := f.Pos()
 			if !fpos.IsValid() {
 				continue
 			}
-			filename := sess.LPState.Program.Fset.File(fpos).Name()
+			filename := sess.lpState.Program.Fset.File(fpos).Name()
 			if target.MatchString(filename) {
 				files = append(files, f)
 			}

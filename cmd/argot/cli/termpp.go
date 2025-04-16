@@ -64,7 +64,7 @@ func writeEntries(tt *term.Terminal, sess *session, entries []displayElement, pr
 	}
 
 	maxLen = maxLen + 3 // padding
-	cols := sess.TermWidth / maxLen
+	cols := sess.termWidth / maxLen
 	if cols <= 0 {
 		cols = 1
 	}

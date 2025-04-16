@@ -54,7 +54,7 @@ func (s err[T]) ValueOr(defaultVal T) T { return defaultVal }
 func (s err[T]) Value() (*T, error)     { return nil, s.value }
 func (s err[T]) IsOk() bool             { return false }
 func (s err[T]) IsErr() bool            { return true }
-func (s err[T]) Unwrap() *T             { panic(s.value) }
+func (s err[T]) Unwrap() *T             { panic(fmt.Sprintf("fatal: tried to unwrap error value %v", s)) }
 func (s err[T]) String() string         { return fmt.Sprintf("error: %s", s.value) }
 
 // Err creates an error value

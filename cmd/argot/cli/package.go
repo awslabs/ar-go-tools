@@ -15,6 +15,7 @@
 package cli
 
 import (
+	"regexp"
 	"strings"
 
 	"golang.org/x/exp/maps"
@@ -29,6 +30,7 @@ func cmdShowPackage(tt *term.Terminal, sess *session, command Command, withTest 
 		writeFmt(tt, "\t   Options:\n")
 		writeFmt(tt, "\t   -f: print files\n")
 		writeFmt(tt, "\t   -i: print imports\n")
+		writeFmt(tt, "\t   -r: find packages by regex matching on path instead of name equality")
 	}
 	if len(command.Args) == 0 {
 		WriteErr(tt, "missing package name")
@@ -38,7 +40,18 @@ func cmdShowPackage(tt *term.Terminal, sess *session, command Command, withTest 
 	printfiles := command.Flags["f"]
 	printimports := command.Flags["i"]
 	// find package
-	pkgs := findPkg(sess, pkgName)
+	var pkgs []*packages.Package
+	if command.Flags["r"] {
+		pathRegex, err := regexp.Compile(pkgName)
+		if err != nil {
+			regexErr(tt, pkgName, err)
+			return false
+		}
+		pkgs = findPkgByPathRegex(sess, pathRegex)
+	} else {
+		pkgs = findPkgByName(sess, pkgName)
+	}
+
 	for _, pkg := range pkgs {
 		writeFmt(tt, "Name: %s\n", pkg.Name)
 		writeFmt(tt, "Path: %s\n", pkg.PkgPath)
@@ -52,10 +65,20 @@ func cmdShowPackage(tt *term.Terminal, sess *session, command Command, withTest 
 	return false
 }
 
-func findPkg(sess *session, name string) []*packages.Package {
+func findPkgByName(sess *session, name string) []*packages.Package {
 	pkgs := []*packages.Package{}
-	for _, pkg := range sess.Pkgs {
+	for _, pkg := range sess.pkgs {
 		if pkg.Name == name {
+			pkgs = append(pkgs, pkg)
+		}
+	}
+	return pkgs
+}
+
+func findPkgByPathRegex(sess *session, rx *regexp.Regexp) []*packages.Package {
+	pkgs := []*packages.Package{}
+	for _, pkg := range sess.pkgs {
+		if rx.MatchString(pkg.PkgPath) {
 			pkgs = append(pkgs, pkg)
 		}
 	}
