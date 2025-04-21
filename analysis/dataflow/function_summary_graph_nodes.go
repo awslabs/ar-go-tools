@@ -161,43 +161,83 @@ func NodeSummary(g GraphNode) string {
 	return ""
 }
 
+// NodeTermLabel returns a string to be printed in terminals for quick identification of a dataflow node
+// in a trace.
+// The returned string prints as a 7-character long string in a terminal.
+func NodeTermLabel(g GraphNode) string {
+	switch g.(type) {
+	case *ParamNode:
+		return formatutil.BgCyan("•PARAM ")
+	case *CallNode:
+		return formatutil.BgMagenta("• CALL ")
+	case *CallNodeArg:
+		return formatutil.BgBlue("• ARG  ")
+	case *ReturnValNode:
+		return formatutil.BgGreen("• RETV ")
+	case *ClosureNode:
+		return formatutil.BgWhite("•CLOSU ")
+	case *BoundLabelNode:
+		return formatutil.BgRed("• BNDL ") // red because it usually yields false positives
+	case *SyntheticNode:
+		return formatutil.BgLightGreen("• SYNT ")
+	case *BoundVarNode:
+		return formatutil.BgLightRed("• BNDV ")
+	case *FreeVarNode:
+		return formatutil.BgOrange("•FREEV ")
+	case *AccessGlobalNode:
+		return formatutil.BgYellow("• GLOB ")
+	}
+	return "  ???  "
+}
+
 // TermNodeSummary returns a string summary of the node, highlighting with terminal colors
 // green indicates a relative index/argument name,
 // magenta is used for function names,
 // italic is used for types.
 func TermNodeSummary(g GraphNode) string {
+	nodeCode := NodeTermLabel(g)
 	switch x := g.(type) {
 	case *ParamNode:
-		return fmt.Sprintf("Parameter %s (type %s) of %s",
+		return fmt.Sprintf("%s Parameter %s (type %s) of %s",
+			nodeCode,
 			formatutil.Green(x.ssaNode.Name()),
-			formatutil.Italic(x.Type().String()),
+			formatutil.Italic(formatutil.FormatLastSplit(x.Type().String(), ".", formatutil.Blue)),
 			formatutil.Magenta(fmt.Sprintf("%q", x.parent.Parent.Name())))
 	case *CallNode:
-		return fmt.Sprintf("Result of call to %s (type %s)",
+		return fmt.Sprintf("%s Result of call to %s (type %s)",
+			nodeCode,
 			formatutil.Magenta(x.Callee().Name()),
-			formatutil.Italic(x.Type().String()))
+			formatutil.Italic(formatutil.FormatLastSplit(x.Type().String(), ".", formatutil.Blue)))
 	case *CallNodeArg:
-		return fmt.Sprintf("Argument #%s (type %s) in call to %s",
+		return fmt.Sprintf("%s Argument #%s (type %s) in call to %s",
+			nodeCode,
 			formatutil.Green(x.Index()),
-			formatutil.Italic(x.Type().String()),
+			formatutil.Italic(formatutil.FormatLastSplit(x.Type().String(), ".", formatutil.Blue)),
 			formatutil.Magenta(x.ParentNode().Callee().Name()))
 	case *ReturnValNode:
-		return fmt.Sprintf("Return value %s (type %s) of %s",
+		return fmt.Sprintf("%s Return value %s (type %s) of %s",
+			nodeCode,
 			formatutil.Green(x.Index()),
-			formatutil.Italic(x.Type().String()),
+			formatutil.Italic(formatutil.FormatLastSplit(x.Type().String(), ".", formatutil.Blue)),
 			formatutil.Magenta(x.ParentName()))
 	case *ClosureNode:
-		return "Closure"
+		return formatutil.BgCyan(nodeCode) + " Closure node (entire function)"
 	case *BoundLabelNode:
-		return fmt.Sprintf("Bound label of type %s", formatutil.Italic(x.targetInfo.Type().String()))
+		return fmt.Sprintf("%s Bound label of type %s",
+			nodeCode,
+			formatutil.Italic(
+				formatutil.FormatLastSplit(x.targetInfo.Type().String(), ".", formatutil.Blue)))
 	case *SyntheticNode:
-		return "Synthetic node"
+		return nodeCode + " Synthetic node"
 	case *BoundVarNode:
-		return "Bound variable"
+		return fmt.Sprintf("%s Bound variable %s", nodeCode, x.String())
 	case *FreeVarNode:
-		return fmt.Sprintf("Free variable #%s of %q", formatutil.Green(x.fvPos), x.ssaNode.Parent().String())
+		return fmt.Sprintf("%s Free variable #%s of %q",
+			nodeCode,
+			formatutil.Green(x.fvPos),
+			x.ssaNode.Parent().String())
 	case *AccessGlobalNode:
-		return fmt.Sprintf("Global variable %s", formatutil.Red(x.Global.String()))
+		return fmt.Sprintf("%s Global variable %s", nodeCode, formatutil.Red(x.Global.String()))
 	}
 	return ""
 }

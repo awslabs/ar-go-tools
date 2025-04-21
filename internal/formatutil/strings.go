@@ -35,3 +35,11 @@ func LowerFirst(s string) string {
 func UpperFirst(s string) string {
 	return strings.ToUpper(s[0:1]) + s[1:]
 }
+
+// FormatLastSplit splits strings s with sep and applies the formatter to the last part of the
+// split string, and then concatenates the strings again before returning it.
+func FormatLastSplit(s string, sep string, formatter func(...any) string) string {
+	sls := strings.Split(s, sep)
+	sls[len(sls)-1] = formatter(sls[len(sls)-1])
+	return strings.Join(sls, sep)
+}

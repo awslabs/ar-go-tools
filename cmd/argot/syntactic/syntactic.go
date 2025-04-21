@@ -141,7 +141,9 @@ func runTarget(
 	}
 	// Failure for all syntactic analyses
 	if structAnalysisFailed || preconditionAnalysisFailed {
-		return false, state.Report, fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
+		return false,
+			state.Report,
+			fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
 	}
 	return false, state.Report, nil
 }

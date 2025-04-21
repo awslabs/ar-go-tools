@@ -110,7 +110,8 @@ func Analyze(state *ptr.State, reqs AnalysisReqs) (AnalysisResult, error) {
 		funcutil.Map(specs, func(ss config.StructInitSpec) string { return ss.Tag }), ","))
 	if len(specs) == 0 {
 		// If there is no specs here, it's like because of the tags being filtered out by structInitSpecs
-		state.Logger.Infof("No struct-init specs matching configuration; check the tags if you expected a result")
+		state.Logger.Infof(
+			"No struct-init specs matching configuration; check the tags if you expected a result")
 		return AnalysisResult{}, nil
 	}
 	res := AnalysisResult{InitInfos: make(map[*types.Named]InitInfo)}
@@ -196,7 +197,8 @@ func newState(spec config.StructInitSpec, st *ptr.State) (*state, error) {
 			for i := 0; i < structTyp.NumFields(); i++ {
 				f := structTyp.Field(i)
 				if fieldSpec.Field == "" {
-					return nil, fmt.Errorf("field name in fields-set spec should not be empty: %+v", fieldSpec)
+					return nil,
+						fmt.Errorf("field name in fields-set spec should not be empty: %+v", fieldSpec)
 				}
 				if fieldSpec.Field == f.Name() {
 					field = f
@@ -205,12 +207,21 @@ func newState(spec config.StructInitSpec, st *ptr.State) (*state, error) {
 			}
 
 			if field == nil {
-				return nil, fmt.Errorf("failed to find field %v in struct %v from spec: %+v", fieldSpec.Field, structTyp, spec)
+				return nil,
+					fmt.Errorf(
+						"failed to find field %v in struct %v from spec: %+v",
+						fieldSpec.Field,
+						structTyp,
+						spec)
 			}
 			if fieldSpec.Value.Const != "" {
 				c, ok := findNamedConst(st.Program, fieldSpec.Value)
 				if !ok {
-					return nil, fmt.Errorf("failed to find a named constant in the program for %v in spec: %+v", fieldSpec.Value, spec)
+					return nil,
+						fmt.Errorf(
+							"failed to find a named constant in the program for %v in spec: %+v",
+							fieldSpec.Value,
+							spec)
 				}
 
 				fieldVal[alloc.typ.named][field] = c.Value
@@ -219,7 +230,10 @@ func newState(spec config.StructInitSpec, st *ptr.State) (*state, error) {
 			if fieldSpec.Value.Method != "" {
 				f, ok := findMethod(st.Program, fieldSpec.Value)
 				if !ok {
-					return nil, fmt.Errorf("failed to find a function in the program for %v in spec: %+v", fieldSpec.Value, spec)
+					return nil,
+						fmt.Errorf("failed to find a function in the program for %v in spec: %+v",
+							fieldSpec.Value,
+							spec)
 				}
 
 				fieldVal[alloc.typ.named][field] = f

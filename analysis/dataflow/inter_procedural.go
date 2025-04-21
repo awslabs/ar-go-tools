@@ -319,7 +319,7 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor, spec
 		summary.ForAllNodes(scanEntryPoints(g, spec, entryPoints))
 	}
 
-	g.AnalyzerState.Logger.Infof("--- # of analysis entry points: %d ---\n", len(entryPoints))
+	g.AnalyzerState.Logger.Infoboxf(" %d analysis entry points", len(entryPoints))
 	if g.AnalyzerState.Logger.LogsDebug() {
 		for _, entryPoint := range entryPoints {
 			g.AnalyzerState.Logger.Debugf("Entry: %s", entryPoint.Node)

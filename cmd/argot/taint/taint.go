@@ -16,6 +16,7 @@ package taint
 
 import (
 	"fmt"
+	"go/token"
 	"os"
 	"strings"
 	"time"
@@ -227,6 +228,10 @@ func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State) (b
 // LogResult logs the taint analysis result
 func LogResult(
 	program *ssa.Program, result taint.AnalysisResult) {
+	seenPairs := map[struct {
+		origin token.Position
+		dest   token.Position
+	}]bool{}
 	// Prints location of sinks and sources in the SSA
 	for sink, sources := range result.TaintFlows.Sinks {
 		for source := range sources {
@@ -234,6 +239,14 @@ func LogResult(
 			sinkInstr := sink.Instr
 			sourcePos := program.Fset.File(sourceInstr.Pos()).Position(sourceInstr.Pos())
 			sinkPos := program.Fset.File(sinkInstr.Pos()).Position(sinkInstr.Pos())
+			posPair := struct {
+				origin token.Position
+				dest   token.Position
+			}{origin: sourcePos, dest: sinkPos}
+			if seenPairs[posPair] {
+				continue
+			}
+			seenPairs[posPair] = true
 			result.State.Logger.Warnf(
 				"%s in function %s:\n\tSource: [SSA] %s\n\t\t%s\n\tSink: [SSA] %s\n\t\t%s\n",
 				formatutil.Red("Data from a source has reached a sink"),

@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
 // Errors contains errors generated during the different steps of the analysis, keyed by some string
@@ -84,11 +85,20 @@ func (r *ReportInfo) Merge(other *ReportInfo) {
 	for sev, count := range other.CountBySeverity {
 		r.IncrementSevCount(sev, count)
 	}
-	for tag, reportGroup := range other.Reports {
-		if thisReportGroup, ok := r.Reports[tag]; ok {
-			thisReportGroup.Details = append(thisReportGroup.Details, r.Reports[tag].Details...)
+	for otherTag, otherReportGroup := range other.Reports {
+		if thisReportGroup, ok := r.Reports[otherTag]; ok {
+			newDetails := thisReportGroup.Details
+			for _, otherDetail := range otherReportGroup.Details {
+				if !funcutil.Contains(thisReportGroup.Details, otherDetail) {
+					newDetails = append(newDetails, otherDetail)
+				}
+			}
+			// Note: reports with same tags should have same severity always,
+			// because the config enforces tag uniqueness, and 1 tag - 1 severity
+			thisReportGroup.Details = newDetails
+			r.Reports[otherTag] = thisReportGroup
 		} else {
-			r.Reports[tag] = reportGroup
+			r.Reports[otherTag] = otherReportGroup
 		}
 	}
 }
@@ -112,7 +122,10 @@ func (r *ReportInfo) addEntry(tag string, entry ReportEntry) {
 		return
 	}
 	group := r.Reports[tag]
-	newDetails := append(group.Details, entry.ContentFile)
+	newDetails := group.Details
+	if !funcutil.Contains(group.Details, entry.ContentFile) {
+		newDetails = append(group.Details, entry.ContentFile)
+	}
 	r.Reports[tag] = ReportGroup{
 		Tool:     entry.Tool,
 		Severity: entry.Severity,
