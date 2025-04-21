@@ -182,7 +182,7 @@ type TargetReqs struct {
 // When the tool name is not recognized, all the targets in the config file are returned.
 func GetTargets(c *config.Config, reqs TargetReqs) (map[string]config.TargetInfo, error) {
 	if len(reqs.CmdlineArgs) > 0 {
-		return map[string]config.TargetInfo{"": {Files: reqs.CmdlineArgs, Platform: reqs.Platform}}, nil
+		return map[string]config.TargetInfo{"": {Patterns: reqs.CmdlineArgs, Platform: reqs.Platform}}, nil
 	}
 	allTargets := c.GetTargetMap()
 	if reqs.Targets != "" {

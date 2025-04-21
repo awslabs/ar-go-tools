@@ -15,6 +15,7 @@
 package config
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -262,4 +263,24 @@ func (l *LogGroup) LogsDebug() bool {
 // LogsTrace returns true if the log group logs trace messages
 func (l *LogGroup) LogsTrace() bool {
 	return l.Level >= TraceLevel
+}
+
+// Infoboxf prints info-level logging in a box.
+func (l *LogGroup) Infoboxf(format string, v ...any) {
+	// Example:
+	// ╭───────────────────────────────╮
+	// │  this is the message to print │
+	// ╰───────────────────────────────╯
+	contents := fmt.Sprintf(format, v...)
+	contentsLines := strings.Split(contents, "\n")
+	n := 0
+	for _, line := range contentsLines {
+		n = max(n, len(line))
+	}
+	bar := strings.Repeat("─", n+2)
+	l.Info("╭" + bar + "╮\n")
+	for _, content := range contentsLines {
+		l.Info("│ " + content + " │\n")
+	}
+	l.Info("╰" + bar + "╯\n")
 }

@@ -705,8 +705,8 @@ func (c Config) ExceedsMaxDepth(d int) bool {
 
 // TargetInfo is the information needed to build the target
 type TargetInfo struct {
-	// Files in the target
-	Files []string
+	// Patterns in the target
+	Patterns []string
 	// Platform of the target
 	Platform string
 	// UseProgramTransforms for the target
@@ -724,7 +724,7 @@ func (c Config) GetTargetMap() map[string]TargetInfo {
 			reflectValueCallInstances = append(reflectValueCallInstances, compileRegexes(r))
 		}
 		targets[targetSpec.Name] = TargetInfo{
-			Files:                     targetSpec.Files,
+			Patterns:                  targetSpec.Files,
 			Platform:                  targetSpec.Platform,
 			UseProgramTransforms:      targetSpec.UseProgramTransforms,
 			ReflectValueCallInstances: reflectValueCallInstances,

@@ -77,7 +77,7 @@ func Run(flags tools.CommonFlags) error {
 			ApplyRewrites: true,
 		}
 
-		c := config.NewState(cfg, targetName, target.Files, loadOptions)
+		c := config.NewState(cfg, targetName, target.Patterns, loadOptions)
 		var actual result.Result[config.State]
 		if target.UseProgramTransforms && len(target.ReflectValueCallInstances) >= 1 {
 			c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
@@ -87,7 +87,7 @@ func Run(flags tools.CommonFlags) error {
 		} else {
 			actual = result.Ok(c)
 		}
-		c.Logger.Infof("Backtrace analysis of target \"%s\" = %v", targetName, target.Files)
+		c.Logger.Infof("Backtrace analysis of target \"%s\" = %v", targetName, target.Patterns)
 		c.Logger.PushContext(formatutil.Faint(targetName))
 		ptrState := result.Bind(result.Bind(actual, loadprogram.NewState), ptr.NewState) // build pointer analysis info
 		state, err := result.Bind(ptrState, dataflow.NewState).Value()

@@ -76,7 +76,7 @@ func Run(flags tools.CommonFlags) error {
 		return nil
 	}
 	for targetName, target := range actualTargets {
-		_, report, err := runTarget(cfg, targetName, target.Files, target.Platform, flags)
+		_, report, err := runTarget(cfg, targetName, target.Patterns, target.Platform, flags)
 		if err != nil {
 			tmpLogger.Errorf("Analysis for %s failed: %s", targetName, err)
 			failCount += 1
@@ -141,7 +141,9 @@ func runTarget(
 	}
 	// Failure for all syntactic analyses
 	if structAnalysisFailed || preconditionAnalysisFailed {
-		return false, state.Report, fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
+		return false,
+			state.Report,
+			fmt.Errorf("syntactic analysis found problems, inspect logs for more information")
 	}
 	return false, state.Report, nil
 }

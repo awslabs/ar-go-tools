@@ -16,6 +16,7 @@ package taint
 
 import (
 	"fmt"
+	"go/token"
 	"os"
 	"strings"
 	"time"
@@ -143,10 +144,10 @@ func runTarget(
 		ApplyRewrites: true,
 	}
 	// Starting the analysis
-	c := config.NewState(cfg, targetName, targetInfo.Files, loadOptions)
+	c := config.NewState(cfg, targetName, targetInfo.Patterns, loadOptions)
 	c.Logger.PushContext(formatutil.Faint(targetName))
 	defer c.Logger.PopContext()
-	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetInfo.Files)
+	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetInfo.Patterns)
 	var actual result.Result[config.State]
 	if targetInfo.UseProgramTransforms && len(targetInfo.ReflectValueCallInstances) >= 1 {
 		c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
@@ -227,6 +228,10 @@ func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State) (b
 // LogResult logs the taint analysis result
 func LogResult(
 	program *ssa.Program, result taint.AnalysisResult) {
+	seenPairs := map[struct {
+		origin token.Position
+		dest   token.Position
+	}]bool{}
 	// Prints location of sinks and sources in the SSA
 	for sink, sources := range result.TaintFlows.Sinks {
 		for source := range sources {
@@ -234,6 +239,14 @@ func LogResult(
 			sinkInstr := sink.Instr
 			sourcePos := program.Fset.File(sourceInstr.Pos()).Position(sourceInstr.Pos())
 			sinkPos := program.Fset.File(sinkInstr.Pos()).Position(sinkInstr.Pos())
+			posPair := struct {
+				origin token.Position
+				dest   token.Position
+			}{origin: sourcePos, dest: sinkPos}
+			if seenPairs[posPair] {
+				continue
+			}
+			seenPairs[posPair] = true
 			result.State.Logger.Warnf(
 				"%s in function %s:\n\tSource: [SSA] %s\n\t\t%s\n\tSink: [SSA] %s\n\t\t%s\n",
 				formatutil.Red("Data from a source has reached a sink"),

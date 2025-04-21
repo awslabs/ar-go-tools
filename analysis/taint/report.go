@@ -77,15 +77,24 @@ func reportCoverage(coverage map[string]bool, coverageWriter io.StringWriter) {
 
 // logTaintFlow logs a taint flow on the state's logger.
 func logTaintFlow(s *dataflow.State, source dataflow.NodeWithTrace, sink *dataflow.VisitorNode) {
-	s.Logger.Infof(" 💀 Tainted data flows to sink:")
-	s.Logger.Infof("  |- Data from %s (%s)", source.Node.Position(s), formatutil.Green(source.Node.String()))
-	s.Logger.Infof("  |- Reached sink at %s (%s)\n", sink.Node.Position(s), formatutil.Red(sink.Node.String()))
-
-	sinkPos := sink.Node.Position(s)
-	if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
-		sinkPos = callArg.ParentNode().Position(s)
-	}
+	s.Logger.Infof("  ┌──────────────────────────────")
+	s.Logger.Infof("  │ 💀 Tainted data flows to sink:")
+	s.Logger.Infof("  │ Data from source %s\n", formatutil.Green(source.Node.String()))
+	s.Logger.Infof("  │   ↳ Position: %s\n", source.Node.Position(s))
+	s.Logger.Infof("  │ Reached sink %s\n", formatutil.Red(sink.Node.String()))
+	s.Logger.Infof("  │   ↳ Position: %s\n", sink.Node.Position(s))
 	if s.Config.ReportPaths {
+		s.Logger.Infof("  ├──────────────────┄")
+	} else {
+		s.Logger.Infof("  └──────────────────┄")
+	}
+
+	if s.Config.ReportPaths {
+		s.Logger.Infof("%s", formatutil.Blue("  ├ TRACE:"))
+		sinkPos := sink.Node.Position(s)
+		if callArg, isCallArgsink := sink.Node.(*dataflow.CallNodeArg); isCallArgsink {
+			sinkPos = callArg.ParentNode().Position(s)
+		}
 		nodes := []*dataflow.VisitorNode{}
 		cur := sink
 		for cur != nil {
@@ -97,19 +106,22 @@ func logTaintFlow(s *dataflow.State, source dataflow.NodeWithTrace, sink *datafl
 			if nodes[i].Status.Kind != dataflow.DefaultTracing {
 				continue
 			}
-			s.Logger.Infof("%s - %s",
-				formatutil.Blue("  |- TRACE"),
+			s.Logger.Infof("%s %s",
+				formatutil.Blue("  ├───┬"),
 				dataflow.TermNodeSummary(nodes[i].Node))
 			// - Context [<calling context string>] Pos: <position in source code>
-			s.Logger.Infof("%s - Context [%s]\n",
-				"  |  ",
+			s.Logger.Infof("%s %s Context [%s]\n",
+				formatutil.Faint("  │  "),
+				formatutil.Blue("╞"),
 				dataflow.FuncNames(nodes[i].Trace, s.Logger.LogsDebug()))
-			s.Logger.Infof("%s - %s %s\n",
-				"  |  ",
+			s.Logger.Infof("%s %s %s %s\n",
+				formatutil.Faint("  │  "),
+				formatutil.Blue("└"),
 				formatutil.Yellow("At"),
 				nodes[i].Node.Position(s).String())
 		}
-		s.Logger.Infof("  ⎣ ENDS WITH SINK: %s\n", sinkPos.String())
+		s.Logger.Infof("  │ ENDS WITH SINK: %s\n", sinkPos.String())
+		s.Logger.Infof("  └──────────────────┄")
 		s.Logger.Infof(" ")
 	}
 }

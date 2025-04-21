@@ -76,13 +76,14 @@ var commands = map[string]func(tt *term.Terminal, s *session, command Command, w
 func Run(flags tools.CommonFlags) {
 	_, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error getting current directory")
+		fmt.Fprintf(os.Stderr, "error getting current directory\n")
 		return
 	}
 	session := newSession(flags)
 	loadedSess := session.loadConfig()
 	if loadedSess.IsErr() {
-		loadedSess.Unwrap() // panic with the error that cause the config load to fail
+		fmt.Fprintf(os.Stderr, "error loading config: %s\n", loadedSess.Error())
+		os.Exit(-1)
 	}
 
 	// Start the command line tool with the state containing all the information

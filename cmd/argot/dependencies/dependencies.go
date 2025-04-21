@@ -114,7 +114,7 @@ func Run(flags Flags) error {
 			LoadTests:     flags.common.WithTest,
 			ApplyRewrites: true,
 		}
-		err = runTarget(cfg, targetName, target.Files, loadOptions, flags)
+		err = runTarget(cfg, targetName, target.Patterns, loadOptions, flags)
 		if err != nil {
 			return err
 		}

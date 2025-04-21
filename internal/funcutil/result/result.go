@@ -29,6 +29,9 @@ type Result[T any] interface {
 
 	// Unwrap returns the value or panics if the result is an error
 	Unwrap() *T
+
+	// Error returns the error or panics if the result is a value
+	Error() error
 }
 
 type ok[T any] struct {
@@ -39,6 +42,7 @@ func (s ok[T]) Value() (*T, error) { return s.value, nil }
 func (s ok[T]) IsOk() bool         { return true }
 func (s ok[T]) IsErr() bool        { return false }
 func (s ok[T]) Unwrap() *T         { return s.value }
+func (s ok[T]) Error() error       { panic("fatal: tried to error an ok value") }
 func (s ok[T]) String() string     { return fmt.Sprintf("%v", s.value) }
 
 // Ok creates a result value
@@ -55,6 +59,7 @@ func (s err[T]) Value() (*T, error)     { return nil, s.value }
 func (s err[T]) IsOk() bool             { return false }
 func (s err[T]) IsErr() bool            { return true }
 func (s err[T]) Unwrap() *T             { panic(fmt.Sprintf("fatal: tried to unwrap error value %v", s)) }
+func (s err[T]) Error() error           { return s.value }
 func (s err[T]) String() string         { return fmt.Sprintf("error: %s", s.value) }
 
 // Err creates an error value

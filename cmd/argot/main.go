@@ -43,7 +43,8 @@ Tools:
   - backtrace: identifies backwards data-flow traces from function calls
   - syntactic: runs some syntactic analyses using the SSA representation
   - cli: interactive terminal-like interface for parts of the analysis
-  - compare: prints a comparison of the functions that are reachable according to two different analyses, and the functions that appear in the binary
+  - compare: prints a comparison of the functions that are reachable according to two different
+              analyses, and the functions that appear in the binary
   - dependencies: prints the dependencies of a given program
   - maypanic: performs a may-panic analysis on a given program
   - packagescan: scans imports in packages
