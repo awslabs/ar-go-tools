@@ -23,11 +23,14 @@ import (
 
 // methodTest runs the test.
 //
-// HACK sometimes the package name is not command-line-arguments so this was manually patched using string substitutions.
-// There may be a more elegant way to do this.
+// HACK sometimes the package name is not command-line-arguments so this was manually patched
+// using string substitutions. There may be a more elegant way to do this.
 func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name string, expect map[string]bool) {
 	if _, ok := impl[name]; !ok {
-		name = strings.ReplaceAll(name, "command-line-arguments", "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/callgraph")
+		name = strings.ReplaceAll(
+			name,
+			"command-line-arguments",
+			"github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/callgraph")
 	}
 	implementsName := impl[name]
 	if implementsName == nil {
@@ -44,7 +47,9 @@ func methodTest(t *testing.T, impl map[string]map[*ssa.Function]bool, name strin
 			}
 			fs := f.String()
 			if !strings.Contains(fs, "command-line-arguments") {
-				fs = strings.ReplaceAll(fs, "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/callgraph", "command-line-arguments")
+				fs = strings.ReplaceAll(fs,
+					"github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/callgraph",
+					"command-line-arguments")
 			}
 			if !expect[fs] {
 				t.Fatalf("method %s has an unexpected implementation %s", name, f.String())

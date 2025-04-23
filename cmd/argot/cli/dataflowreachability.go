@@ -18,8 +18,10 @@ import (
 	"regexp"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/term"
 )
 
@@ -61,12 +63,14 @@ func cmdTrace(tt *term.Terminal, sess *session, command Command, _ bool) bool {
 	if command.Flags["t"] {
 		c.Logger.Level = config.TraceLevel
 	}
-	dummyTaintSpec := &config.TaintSpec{}
-	scanningSpec := dataflow.ScanningSpec{
-		IsEntryPointGraph: func(g dataflow.GraphNode) (config.CodeIdentifier, bool) {
-			return config.CodeIdentifier{}, r.MatchString(g.LongID())
-		},
-	}
+	dummyTaintSpec := &specs.Taint{}
+	scanningSpec := func(_ *pointer.Result, cde scanning.SsaCode) bool {
+		instr := cde.Instr()
+		if instr != nil {
+			return r.MatchString(instr.String())
+		}
+		return false
+	} // TODO: extend trace functionality
 	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(dummyTaintSpec), scanningSpec)
 
 	c.Logger.Level = preLevel

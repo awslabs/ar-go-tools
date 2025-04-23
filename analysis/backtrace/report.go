@@ -15,7 +15,7 @@
 package backtrace
 
 import (
-	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -31,7 +31,8 @@ type FlowReports struct {
 // report generates a json report for a specific data flow
 func report(s *dataflow.State,
 	traces map[dataflow.NodeWithTrace][]Trace,
-	ss config.SlicingSpec) FlowReports {
+	ss specs.Slicing,
+) FlowReports {
 	traceMap := make(map[string][][]dataflow.ReportNodeInfo)
 	for entryPt, tracesFromEntryPt := range traces {
 		reportTraces :=

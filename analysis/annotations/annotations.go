@@ -23,6 +23,9 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/exp/slices"
 	"golang.org/x/tools/go/ssa"
@@ -327,7 +330,11 @@ func (pa ProgramAnnotations) loadPackageDocAnnotations(doc *ast.CommentGroup) {
 // loadFileAnnotations loads the annotation that are not tied to a specific ssa node. This includes:
 // - config annotations
 // - positional annotations
-func (pa ProgramAnnotations) loadFileAnnotations(logger *config.LogGroup, annotationContents []string, position token.Position) {
+func (pa ProgramAnnotations) loadFileAnnotations(
+	logger *config.LogGroup,
+	annotationContents []string,
+	position token.Position,
+) {
 	if len(annotationContents) <= 1 {
 		logger.Warnf("ignoring argot annotation with no arguments at %s", position)
 		return
@@ -349,9 +356,14 @@ func (pa ProgramAnnotations) addIgnoreLineAnnotation(position token.Position, an
 }
 
 // loadConfigTargetAnnotation loads a config annotation. Config annotations look like
-// "//argot:config tag SetOptions(option-name-1=value1,option-name-2=value2)" and are always linked to a specific problem
+// "//argot:config tag SetOptions(option-name-1=value1,option-name-2=value2)" and are
+// always linked to a specific problem
 // tag.
-func (pa ProgramAnnotations) loadConfigTargetAnnotation(logger *config.LogGroup, annotationContents []string, position token.Position) {
+func (pa ProgramAnnotations) loadConfigTargetAnnotation(
+	logger *config.LogGroup,
+	annotationContents []string,
+	position token.Position,
+) {
 	if len(annotationContents) <= 2 {
 		logger.Warnf("argot:config expects a target tag and one or more SetOptions")
 		logger.Warnf("a comment is likely missing something at %s", position)
@@ -424,4 +436,201 @@ func parseAnnotationArgs(a []string) []string {
 		return []string{}
 	}
 	return funcutil.Map(strings.Split(a[1], ","), func(s string) string { return strings.TrimSpace(s) })
+}
+
+// AddToConfig translates annotations into configuration options
+func (pa *ProgramAnnotations) AddToConfig(c *config.Config) {
+	for ssaFunc, funcAnnots := range pa.Funcs {
+		for _, annot := range funcAnnots.mains {
+			addAnnot(c, ssaFunc, annot, nil)
+		}
+		for param, paramAnnot := range funcAnnots.params {
+			for _, annot := range paramAnnot {
+				addAnnot(c, ssaFunc, annot, param)
+			}
+		}
+	}
+}
+
+func addAnnot(c *config.Config, f *ssa.Function, a Annotation, p *ssa.Parameter) {
+	all := funcutil.Contains(a.Tags, AnyTag)
+	anyR := regexp.MustCompile(".*")
+	nothingR := regexp.MustCompile("^$")
+	common := scanning.CommonSpec{
+		// MustCompile should not fail here!
+		Package:        regexp.MustCompile(regexp.QuoteMeta(f.Pkg.Pkg.Path())),
+		ContextPackage: anyR,
+		ContextMethod:  anyR,
+	}
+	sourceCodeSpec := scanning.CallSpec{
+		CommonSpec: common,
+		Interface:  anyR,
+		Method:     regexp.MustCompile(f.Name()),
+	}
+	if f.Signature.Recv() != nil {
+		receiver := regexp.QuoteMeta(f.Signature.Recv().Type().String())
+		sourceCodeSpec.ReceiverType = regexp.MustCompile(receiver)
+	} else {
+		sourceCodeSpec.ReceiverType = nothingR
+	}
+
+	switch a.Kind {
+	case Source:
+		addSource(c, a.Tags, all, sourceCodeSpec, p)
+	case Sink:
+		addSink(c, a.Tags, all, sourceCodeSpec, p)
+	case Sanitizer:
+		addSanitizer(c, a.Tags, all, sourceCodeSpec, p)
+	case BacktracePoint:
+		addBacktracePoint(c, a.Tags, all, sourceCodeSpec, p)
+	}
+}
+
+func addSource(
+	c *config.Config,
+	tags []string,
+	all bool,
+	spec scanning.CallSpec,
+	p *ssa.Parameter) {
+	var sourceCodeSpec scanning.CodeSpec
+	sourceCodeSpec = spec
+	if p != nil {
+		typeR := regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
+		paramIndex := lang.ParamIndex(p)
+		sourceCodeSpec = scanning.CallArgSpec{
+			CallSpec: spec,
+			Type:     typeR,
+			AnyIndex: paramIndex < 0, // overapproximate if wrong index
+			Index:    uint(paramIndex),
+		}
+	}
+	added := map[string]bool{}
+	for i, taintProblem := range c.TaintTrackingProblems {
+		if all || funcutil.Contains(tags, taintProblem.Tag) {
+			added[taintProblem.Tag] = false
+			c.TaintTrackingProblems[i].Sources = append(c.TaintTrackingProblems[i].Sources,
+				sourceCodeSpec)
+		}
+	}
+	for _, tag := range tags {
+		if !added[tag] {
+			newProblem := specs.NewTaintSpec(tag)
+			newProblem.Sources = []scanning.CodeSpec{sourceCodeSpec}
+			c.TaintTrackingProblems = append(c.TaintTrackingProblems, newProblem)
+		}
+	}
+}
+
+func addSink(
+	c *config.Config,
+	tags []string,
+	all bool,
+	spec scanning.CallSpec,
+	p *ssa.Parameter) {
+	paramIndex := -1
+	var typeR *regexp.Regexp
+	if p != nil {
+		typeR = regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
+		paramIndex = lang.ParamIndex(p)
+	}
+	if typeR == nil {
+		typeR = regexp.MustCompile(".*")
+	}
+	sinkCodeSpec := scanning.CallArgSpec{
+		CallSpec: spec,
+		Type:     typeR,
+		AnyIndex: paramIndex < 0,
+		Index:    uint(paramIndex),
+	}
+	added := map[string]bool{}
+	for i, taintProblem := range c.TaintTrackingProblems {
+		if all || funcutil.Contains(tags, taintProblem.Tag) {
+			added[taintProblem.Tag] = true
+			c.TaintTrackingProblems[i].Sinks = append(c.TaintTrackingProblems[i].Sinks,
+				sinkCodeSpec)
+		}
+	}
+	for _, tag := range tags {
+		if !added[tag] {
+			newProblem := specs.NewTaintSpec(tag)
+			newProblem.Sinks = []scanning.CodeSpec{sinkCodeSpec}
+			c.TaintTrackingProblems = append(c.TaintTrackingProblems, newProblem)
+		}
+	}
+}
+
+func addSanitizer(
+	c *config.Config,
+	tags []string,
+	all bool,
+	spec scanning.CallSpec,
+	p *ssa.Parameter) {
+	paramIndex := -1
+	var typeR *regexp.Regexp
+	if p != nil {
+		typeR = regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
+		paramIndex = lang.ParamIndex(p)
+	}
+	if typeR == nil {
+		typeR = regexp.MustCompile(".*")
+	}
+	sanitizerSpec := scanning.CallArgSpec{
+		CallSpec: spec,
+		Type:     typeR,
+		AnyIndex: paramIndex < 0,
+		Index:    uint(paramIndex),
+	}
+	added := map[string]bool{}
+	for i, taintProblem := range c.TaintTrackingProblems {
+		if all || funcutil.Contains(tags, taintProblem.Tag) {
+			added[taintProblem.Tag] = true
+			c.TaintTrackingProblems[i].Sanitizers = append(c.TaintTrackingProblems[i].Sanitizers,
+				sanitizerSpec)
+		}
+	}
+	for _, tag := range tags {
+		if !added[tag] {
+			newProblem := specs.NewTaintSpec(tag)
+			newProblem.Sanitizers = []scanning.CodeSpec{sanitizerSpec}
+			c.TaintTrackingProblems = append(c.TaintTrackingProblems, newProblem)
+		}
+	}
+}
+
+func addBacktracePoint(
+	c *config.Config,
+	tags []string,
+	all bool,
+	spec scanning.CallSpec,
+	p *ssa.Parameter) {
+	var typeR *regexp.Regexp
+	paramIndex := -1
+	if p != nil {
+		typeR = regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
+		paramIndex = lang.ParamIndex(p)
+	}
+	if typeR == nil {
+		typeR = regexp.MustCompile(".*")
+	}
+	backtracePointSpec := scanning.CallArgSpec{
+		CallSpec: spec,
+		Type:     typeR,
+		AnyIndex: paramIndex < 0,
+		Index:    uint(paramIndex),
+	}
+	added := map[string]bool{}
+	for i, slicingProblem := range c.SlicingProblems {
+		if all || funcutil.Contains(tags, slicingProblem.Tag) {
+			added[slicingProblem.Tag] = true
+			c.SlicingProblems[i].BacktracePoints = append(c.SlicingProblems[i].BacktracePoints,
+				backtracePointSpec)
+		}
+	}
+	for _, tag := range tags {
+		if !added[tag] {
+			newProblem := specs.NewSlicingSpec(tag)
+			newProblem.BacktracePoints = []scanning.CodeSpec{backtracePointSpec}
+			c.SlicingProblems = append(c.SlicingProblems, newProblem)
+		}
+	}
 }

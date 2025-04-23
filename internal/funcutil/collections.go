@@ -18,6 +18,8 @@ import (
 	"sort"
 	"sync"
 
+	"slices"
+
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/maps"
 )
@@ -128,12 +130,7 @@ func MapParallel[T any, S any](a []T, f func(T) S, numRoutines int) []S {
 
 // Exists returns true when there exists some x in slice a such that f(x), otherwise false.
 func Exists[T any](a []T, f func(T) bool) bool {
-	for _, x := range a {
-		if f(x) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(a, f)
 }
 
 // ExistsInMap returns true when there exists some k,x in map a such that f(k,x), otherwise false.

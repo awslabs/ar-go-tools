@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/buildutil"
 )
@@ -183,6 +184,8 @@ type TargetReqs struct {
 // When the tool name is not recognized, all the targets in the config file are returned.
 func GetTargets(c *config.Config, reqs TargetReqs) (map[string]config.TargetInfo, error) {
 	if len(reqs.CmdlineArgs) > 0 {
+		c.Targets = append(c.Targets,
+			specs.TargetSpec{Name: "", Files: reqs.CmdlineArgs, Platform: reqs.Platform})
 		return map[string]config.TargetInfo{"": {Patterns: reqs.CmdlineArgs, Platform: reqs.Platform}}, nil
 	}
 	allTargets := c.GetTargetMap()

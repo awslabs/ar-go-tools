@@ -72,7 +72,8 @@ func programLoadTest(t *testing.T, files []string) {
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	c := config.NewState(config.NewDefault(), "", files, loadOptions)
+	c0, _ := config.NewDefault().Compile(nil)
+	c := config.NewState(c0, "", files, loadOptions)
 	state, err := NewState(c).Value()
 	if err != nil {
 		t.Fatalf("error loading packages: %s", err)

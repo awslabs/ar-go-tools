@@ -471,7 +471,12 @@ func labelString(l *pointer.Label, lineMapping map[string]string, prog *ssa.Prog
 	return str
 }
 
-func checkPointsToExpectation(e *expectation, ptss []pointer.PointsToSet, lineMapping map[string]string, prog *ssa.Program) bool {
+func checkPointsToExpectation(
+	e *expectation,
+	ptss []pointer.PointsToSet,
+	lineMapping map[string]string,
+	prog *ssa.Program,
+) bool {
 	expected := make(map[string]int)
 	surplus := make(map[string]int)
 	exact := true
@@ -526,7 +531,9 @@ func checkTypesExpectation(e *expectation, ptss []pointer.PointsToSet, typs []ty
 	}
 
 	if len(typs) != len(ptss) {
-		e.errorf("@types expectation internal error differing number of types(%d) and points to sets (%d)", len(typs), len(ptss))
+		e.errorf(
+			"@types expectation internal error differing number of types(%d) and points to sets (%d)",
+			len(typs), len(ptss))
 		return false
 	}
 

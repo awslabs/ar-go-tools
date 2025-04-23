@@ -230,7 +230,12 @@ func (g *EscapeGraph) copyStruct(dest *Node, src *Node, instr ssa.Instruction, f
 			g.EnsureLoadNode(structAssignLoad{instr, field + "." + fieldName}, NillableDerefType(fieldType), fieldNode)
 			g.WeakAssign(g.FieldSubnode(dest, fieldName, fieldType), fieldNode)
 		} else if IsEscapeTracked(fieldType) {
-			g.copyStruct(g.FieldSubnode(dest, fieldName, fieldType), g.FieldSubnode(src, fieldName, fieldType), instr, field+"."+fieldName, fieldType)
+			g.copyStruct(
+				g.FieldSubnode(dest, fieldName, fieldType),
+				g.FieldSubnode(src, fieldName, fieldType),
+				instr,
+				field+"."+fieldName,
+				fieldType)
 		}
 	}
 }
@@ -423,7 +428,8 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		returnNode := nodes.ValueNode(instr)
 		if nReturns > 1 {
 			for i := 0; i < nReturns; i++ {
-				rets = append(rets, g.FieldSubnode(returnNode, fmt.Sprintf("#%d", i), instr.Call.Signature().Results().At(i).Type()))
+				rets = append(rets,
+					g.FieldSubnode(returnNode, fmt.Sprintf("#%d", i), instr.Call.Signature().Results().At(i).Type()))
 			}
 		} else {
 			rets = append(rets, nodes.ValueNode(instr))
@@ -770,7 +776,13 @@ func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGra
 // invokeMethodDirectly is a helper method that applies the specific method identified in callee
 // with the given receiver node. This is useful for the json(Un)marshal methods as they need to
 // invoke the effects of custom marshal/unmarshaling functions (UnmarshalJSON, etc).s
-func (ea *functionAnalysisState) invokeMethodDirectly(instr *ssa.Call, g *EscapeGraph, callee *ssa.Function, receiver *Node, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) invokeMethodDirectly(
+	instr *ssa.Call,
+	g *EscapeGraph,
+	callee *ssa.Function,
+	receiver *Node,
+	args []*Node,
+	rets []*Node) {
 	summary := ea.prog.getFunctionAnalysisSummary(callee)
 	if summary.HasSummaryGraph() {
 		// Record our use of this summary for recursion-covergence purposes
@@ -903,7 +915,8 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 			}
 		} else {
 			ea.prog.logger.Debugf("Warning, can't resolve indirect of %v, treating as unknown call\n", instrType)
-			g.CallUnknown(args, rets, fmt.Sprintf("unknown callee at %v", instrType.Parent().Prog.Fset.Position(instrType.Pos())))
+			g.CallUnknown(args, rets, fmt.Sprintf("unknown callee at %v",
+				instrType.Parent().Prog.Fset.Position(instrType.Pos())))
 		}
 	}
 	if ea.prog.logger.LogsTrace() {
@@ -957,7 +970,13 @@ func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *Esca
 // be.
 //
 //gocyclo:ignore
-func transferCallBuiltin(g *EscapeGraph, instr ssa.Instruction, builtin *ssa.Builtin, args []*Node, rets []*Node) error {
+func transferCallBuiltin(
+	g *EscapeGraph,
+	instr ssa.Instruction,
+	builtin *ssa.Builtin,
+	args []*Node,
+	rets []*Node,
+) error {
 	switch builtin.Name() {
 	case "len": // No-op, as does not leak and the return value is not pointer-like
 		return nil
@@ -1097,9 +1116,15 @@ func addGlobalObjectNodes(f *ssa.Function, initialGraph *EscapeGraph) {
 			for _, v := range operands {
 				switch vv := (*v).(type) {
 				case *ssa.Global:
-					initialGraph.AddEdge(initialGraph.nodes.ValueNode(vv), initialGraph.nodes.globalNodes.GlobalNode(vv), EdgeExternal)
+					initialGraph.AddEdge(
+						initialGraph.nodes.ValueNode(vv),
+						initialGraph.nodes.globalNodes.GlobalNode(vv),
+						EdgeExternal)
 				case *ssa.Function:
-					initialGraph.AddEdge(initialGraph.nodes.ValueNode(vv), initialGraph.nodes.globalNodes.StaticFunctionNode(vv), EdgeExternal)
+					initialGraph.AddEdge(
+						initialGraph.nodes.ValueNode(vv),
+						initialGraph.nodes.globalNodes.StaticFunctionNode(vv),
+						EdgeExternal)
 				}
 			}
 		}
@@ -1107,8 +1132,13 @@ func addGlobalObjectNodes(f *ssa.Function, initialGraph *EscapeGraph) {
 
 }
 
-// newFunctionAnalysisState creates a new function analysis for the given function, tied to the given whole program analysis
-func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState, summaryType string) (ea *functionAnalysisState) {
+// newFunctionAnalysisState creates a new function analysis for the given function, tied to the
+// given whole program analysis
+func newFunctionAnalysisState(
+	f *ssa.Function,
+	prog *ProgramAnalysisState,
+	summaryType string,
+) (ea *functionAnalysisState) {
 	nodes := NewNodeGroup(prog.globalNodes)
 	initialGraph := NewEmptyEscapeGraph(nodes)
 	for i, p := range f.Params {
@@ -1185,11 +1215,13 @@ type cachedGraphMonotonicity struct {
 	output *EscapeGraph
 }
 
-var instructionMonoCheckData map[ssa.Instruction][]cachedGraphMonotonicity = map[ssa.Instruction][]cachedGraphMonotonicity{}
+var instructionMonoCheckData = map[ssa.Instruction][]cachedGraphMonotonicity{}
 var checkMonotonicityEveryInstruction = false
 
 func (ea *functionAnalysisState) HasSummaryGraph() bool {
-	return ea != nil && (ea.summaryType == config.EscapeBehaviorSummarize && !ea.overflow) || ea.summaryType == config.EscapeBehaviorNoop
+	return ea != nil &&
+		(ea.summaryType == config.EscapeBehaviorSummarize && !ea.overflow) ||
+		ea.summaryType == config.EscapeBehaviorNoop
 }
 
 func (ea *functionAnalysisState) RecordUse(useLocation summaryUse) {
@@ -1226,7 +1258,9 @@ func (ea *functionAnalysisState) ProcessBlock(bb *ssa.BasicBlock) (changed bool)
 					if less, _ := p.input.LessEqual(pre); less {
 						if lessOut, reason := p.output.LessEqual(post); !lessOut {
 							ea.prog.logger.Warnf("Monotonicity violation at %v because %s\n", instr, reason)
-							ea.prog.logger.Warnf("A <= B but !(C <= D)\nA (old pre):\n%v\nB (new pre):\n%v\nC (old post):\n%v\nD (new post):\n%v\n",
+							ea.prog.logger.Warnf(
+								"A <= B but !(C <= D)\nA (old pre):\n%v\n"+
+									"B (new pre):\n%v\nC (old post):\n%v\nD (new post):\n%v\n",
 								p.input.Graphviz(),
 								pre.Graphviz(),
 								p.output.Graphviz(),
@@ -1317,10 +1351,11 @@ func (ea *functionAnalysisState) RunForwardIterative() error {
 // EscapeSummary computes the escape summary for a single function, independently of all other functions.
 // Other functions are treated as arbitrary.
 func EscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
+	cfg, _ := config.NewDefault().Compile(nil)
 	prog := &ProgramAnalysisState{
 		make(map[*ssa.Function]*functionAnalysisState),
 		newGlobalNodeGroup(),
-		config.NewLogGroup(config.NewDefault()),
+		config.NewLogGroup(cfg),
 		nil,
 		false,
 	}
@@ -1368,7 +1403,9 @@ func (prog *ProgramAnalysisState) getFunctionAnalysisSummary(f *ssa.Function) *f
 	// This function has requested summary, but is added after the worklist is built. This would
 	// result in a soundness issue.
 	if prog.builtWorklist && state.summaryType == config.EscapeBehaviorSummarize {
-		prog.logger.Warnf("Asking to summarize %q after worklist creation; only fixed summaries supported for such functions\n", f.String())
+		prog.logger.Warnf(
+			"Asking to summarize %q after worklist creation; only fixed summaries supported for such functions\n",
+			f.String())
 		state.summaryType = config.EscapeBehaviorUnknown
 	}
 	return state
@@ -1499,7 +1536,8 @@ func EscapeAnalysis(state *dataflow.State, root *callgraph.Node) (*ProgramAnalys
 		summary := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 
-		prog.logger.Debugf("Computing escape summary for %s (%d to go)\n", formatutil.SanitizeRepr(summary.function), len(worklist))
+		prog.logger.Debugf("Computing escape summary for %s (%d to go)\n",
+			formatutil.SanitizeRepr(summary.function), len(worklist))
 		changed := summary.Resummarize()
 		if !changed {
 			continue
@@ -1533,7 +1571,10 @@ func EscapeAnalysis(state *dataflow.State, root *callgraph.Node) (*ProgramAnalys
 			summary := prog.summaries[f]
 			if summary != nil && summary.nodes != nil && f.Pkg != nil {
 				if strings.HasSuffix(f.String(), ").Error") {
-					state.Logger.Tracef("Final summary (size %d) for %s is:%s\n", len(summary.finalGraph.status), formatutil.Sanitize(f.String()), summary.finalGraph.Graphviz())
+					state.Logger.Tracef("Final summary (size %d) for %s is:%s\n",
+						len(summary.finalGraph.status),
+						formatutil.Sanitize(f.String()),
+						summary.finalGraph.Graphviz())
 				}
 			}
 		}
@@ -1687,7 +1728,10 @@ type escapeCallsiteInfoImpl struct {
 
 // computeInstructionLocality does the work of computing instruction locality for a function. See
 // wrapper `ComputeInstructionLocality` for details.
-func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]*dataflow.EscapeRationale, callsiteInfo map[*ssa.Call]escapeCallsiteInfoImpl) {
+func computeInstructionLocality(
+	ea *functionAnalysisState,
+	initial *EscapeGraph,
+) (locality map[ssa.Instruction]*dataflow.EscapeRationale, callsiteInfo map[*ssa.Call]escapeCallsiteInfoImpl) {
 	inContextEA := &functionAnalysisState{
 		function:     ea.function,
 		prog:         ea.prog,
@@ -1704,88 +1748,11 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 		basicBlockInstructionLocality(inContextEA, block, locality, callsites)
 	}
 	if ea.prog.logger.LogsTrace() {
-		ea.prog.logger.Tracef("Final graph after computing locality for %s is\n%s\n", ea.function.Name(), inContextEA.finalGraph.Graphviz())
+		ea.prog.logger.Tracef(
+			"Final graph after computing locality for %s is\n%s\n",
+			ea.function.Name(), inContextEA.finalGraph.Graphviz())
 	}
 	return locality, callsites
-}
-
-// CanPointTo determines whether a escape graph node labeled with type a can have
-// a type-correct outedge to a node with type b. The result is conservative in the
-// sense that it defaults to true in the cases where the type system doesn't give
-// enough information, or the types don't yet have a typechecking rule.
-func CanPointTo(a, b types.Type) bool {
-	switch a := a.(type) {
-	case *types.Pointer:
-		pointeeType := NillableDerefType(a)
-		if types.AssignableTo(b.Underlying(), pointeeType.Underlying()) {
-			return true
-		}
-		if arrayType, ok := b.Underlying().(*types.Array); ok {
-			// We allow *T to point to [n]T, or [n][m]T, etc.
-			// recursion is bounded because `b` is always .Elem()'d
-			if CanPointTo(a, arrayType.Elem()) {
-				return true
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
-// TypecheckEscapeGraph determines whether its argument is type-correct. If a problem is found, a
-// non-nil error is returned describing the problem. This function is advisory only; it will be
-// unsound when the program uses e.g. unsafe constructs, and incomplete in that it will not check
-// all possible ill-typed constructs. It is instead intended to aid debugging by isolating type
-// errors to the place(s) where they are first introduced.
-//
-//gocyclo:ignore
-func TypecheckEscapeGraph(g *EscapeGraph) error {
-	typesMap := g.nodes.globalNodes.types
-	for n, succs := range g.edges {
-		if _, ok := g.status[n]; !ok {
-			return fmt.Errorf("Node %v has no status", n)
-		}
-		for s := range succs {
-			if _, ok := g.status[s]; !ok {
-				return fmt.Errorf("Node %v (reachable from %v) has no status", s, n)
-			}
-		}
-	}
-	for n := range g.status {
-		if _, ok := g.edges[n]; !ok {
-			return fmt.Errorf("Node %v has no edges", n)
-		}
-		tpN := typesMap[n]
-		if tpN == nil {
-			continue
-		}
-		if tpN.String() == "invalid type" {
-			return fmt.Errorf("can't have node with invalid type %v:%v", n, tpN)
-		}
-		realType := tpN.Underlying()
-		if n.kind == KindGlobal && !g.IsSubnode(n) {
-			realType = NillableDerefType(realType)
-		}
-		switch tp := realType.(type) {
-		case *types.Pointer:
-			for _, e := range g.Edges(n, nil, EdgeExternal|EdgeInternal) {
-				destType := typesMap[e.dest]
-				if destType == nil {
-					continue
-				}
-				if e.dest.kind == KindGlobal && !g.IsSubnode(e.dest) {
-					destType = NillableDerefType(destType)
-				}
-				if !CanPointTo(tp, destType) {
-					return fmt.Errorf("can't have edge between %v:%v --> %v:%v", n, tpN, e.dest, destType)
-				}
-			}
-		case *types.Struct:
-			// TODO: check fields
-		}
-	}
-	return nil
 }
 
 // wellFormedEscapeGraph checks some basic consistency invariants for an escape graph

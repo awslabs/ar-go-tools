@@ -34,3 +34,12 @@ func Curry2[T any, S any, R any](f func(T, S) R, x T) func(S) R {
 func Curry3[T any, S any, R any, Q any](f func(T, S, R) Q, x T) func(S, R) Q {
 	return func(s S, r R) Q { return f(x, s, r) }
 }
+
+// True is a simple predicate that returns always true
+func True[T any](_ T) bool { return true }
+
+// True2 is a simple predicate that returns always true given two inputs
+func True2[T any, S any](_ T, _ S) bool { return true }
+
+// False is a simple predicate that returns always false
+func False[T any](_ T) bool { return false }

@@ -104,8 +104,8 @@ func DeferStats(functions *map[*ssa.Function]bool) DeferStatsResult {
 	}
 }
 
-// ClosureLocationsStats logs information about the number of closures in each function in the map, focusing on those functions
-// whose package name starts with interestPrefix
+// ClosureLocationsStats logs information about the number of closures in each function in the map,
+// focusing on those functions whose package name starts with interestPrefix
 func ClosureLocationsStats(log *log.Logger, functions *map[*ssa.Function]bool, withPkgPrefix string) {
 	num := 0
 

@@ -134,9 +134,9 @@ func (n *NodeTree[T]) ToSlice() []T {
 	return s
 }
 
-// GetLassoHandle checks if the trace (path from root to node) is more than one node long and the current node has the same
-// call as the last node. If the trace is a lasso, the end of the handle is returned. Otherwise, the function returns
-// nil.
+// GetLassoHandle checks if the trace (path from root to node) is more than one node long and the
+// current node has the same call as the last node. If the trace is a lasso, the end of the handle
+// is returned. Otherwise, the function returns nil.
 //
 // (nil safe)
 func (n *NodeTree[T]) GetLassoHandle() *NodeTree[T] {

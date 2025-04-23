@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
@@ -89,6 +90,9 @@ type GraphNode interface {
 
 	// Equal lifts equality to the interface level
 	Equal(GraphNode) bool
+
+	// SsaCode the corresponding instruction information
+	SsaCode() scanning.SsaCode
 }
 
 // An IndexedGraphNode is a graph node with additional information abouts its index in a parent node (e.g. argument
@@ -280,6 +284,9 @@ type ParamNode struct {
 	marks   LocSet
 }
 
+// SsaCode returns the corresponding ssa code (an ssa.Parameter)
+func (a *ParamNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaNode, false) }
+
 // ID returns the integer id of the node in its parent graph
 func (a *ParamNode) ID() uint32 { return a.id }
 
@@ -355,6 +362,9 @@ type FreeVarNode struct {
 	marks   LocSet
 }
 
+// SsaCode returns the corresponding ssa code (a free variable)
+func (a *FreeVarNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaNode, false) }
+
 // ID returns the integer id of the node in its parent graph
 func (a *FreeVarNode) ID() uint32 { return a.id }
 
@@ -427,6 +437,9 @@ type CallNodeArg struct {
 	marks     LocSet
 	paramName string // paramName is the name of the callee's parameter.
 }
+
+// SsaCode returns the corresponding ssa code (a ssa value)
+func (a *CallNodeArg) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaValue, true) }
 
 // ID returns the integer id of the node in its parent graph
 func (a *CallNodeArg) ID() uint32 { return a.id }
@@ -511,6 +524,11 @@ type CallNode struct {
 	out           map[GraphNode][]EdgeInfo
 	in            map[GraphNode]EdgeInfo
 	marks         LocSet
+}
+
+// SsaCode returns the callsite and callee information
+func (a *CallNode) SsaCode() scanning.SsaCode {
+	return scanning.NewCallInstrCode(a.callSite, &a.callee)
 }
 
 // ID returns the integer id of the node in its parent graph
@@ -632,6 +650,9 @@ type ReturnValNode struct {
 	in     map[GraphNode]EdgeInfo
 }
 
+// SsaCode for a return node returns no information because it doesn't track a specific ssa.Node
+func (a *ReturnValNode) SsaCode() scanning.SsaCode { return scanning.SsaCode{} }
+
 // Graph returns the parent summary graph of the node
 func (a *ReturnValNode) Graph() *SummaryGraph { return a.parent }
 
@@ -706,6 +727,9 @@ type ClosureNode struct {
 	in        map[GraphNode]EdgeInfo
 	marks     LocSet
 }
+
+// SsaCode returns the corresponding ssa code (a makeClosure instruction)
+func (a *ClosureNode) SsaCode() scanning.SsaCode { return scanning.NewInstrCode(a.instr) }
 
 // ID returns the integer id of the node in its parent graph
 func (a *ClosureNode) ID() uint32 { return a.id }
@@ -809,6 +833,9 @@ type BoundVarNode struct {
 	marks LocSet
 }
 
+// SsaCode returns the corresponding ssa code (an ssa value)
+func (a *BoundVarNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaValue, false) }
+
 // ID returns the integer id of the node in its parent graph
 func (a *BoundVarNode) ID() uint32 { return a.id }
 
@@ -887,6 +914,9 @@ type AccessGlobalNode struct {
 	marks   LocSet
 }
 
+// SsaCode returns the corresponding ssa code (an ssa instruction where the global is accessed)
+func (a *AccessGlobalNode) SsaCode() scanning.SsaCode { return scanning.NewInstrCode(a.instr) }
+
 // ID returns the integer id of the node in its parent graph
 func (a *AccessGlobalNode) ID() uint32 { return a.id }
 
@@ -956,6 +986,9 @@ type SyntheticNode struct {
 	marks  LocSet
 }
 
+// SsaCode returns the corresponding ssa code (an ssa instruction)
+func (a *SyntheticNode) SsaCode() scanning.SsaCode { return scanning.NewInstrCode(a.instr) }
+
 // ID returns the integer id of the node in its parent graph
 func (a *SyntheticNode) ID() uint32 { return a.id }
 
@@ -1022,8 +1055,8 @@ func (a *SyntheticNode) LongID() string {
 // A BoundLabelNode is used to track dataflow from modified bound variables to closure bodies
 type BoundLabelNode struct {
 	id         uint32
-	parent     *SummaryGraph   // the parent of a SyntheticNode is the summary of the function in which it appears
-	instr      ssa.Instruction // a SyntheticNode must correspond to a specific instruction
+	parent     *SummaryGraph   // the parent of a BoundLabelNode is the summary of the function in which it appears
+	instr      ssa.Instruction // a BoundLabelNode must correspond to a specific instruction
 	targetInfo BindingInfo     // the targetInfo may be point to another function
 	targetAnon *SummaryGraph   // the targetAnon should be the anonymous function designated by the targetInfo
 	label      *pointer.Label
@@ -1031,6 +1064,9 @@ type BoundLabelNode struct {
 	in         map[GraphNode]EdgeInfo   // the in maps the node to other nodes from which data flows
 	marks      LocSet
 }
+
+// SsaCode returns the corresponding ssa code (an instruction)
+func (a *BoundLabelNode) SsaCode() scanning.SsaCode { return scanning.NewInstrCode(a.instr) }
 
 // ID returns the integer id of the node in its parent graph
 func (a *BoundLabelNode) ID() uint32 { return a.id }
@@ -1113,6 +1149,9 @@ type IfNode struct {
 	marks   LocSet
 }
 
+// SsaCode returns the corresponding ssa code (an if instruction)
+func (a *IfNode) SsaCode() scanning.SsaCode { return scanning.NewInstrCode(a.ssaNode) }
+
 // ID returns the integer id of the node in its parent graph.
 func (a *IfNode) ID() uint32 { return a.id }
 
@@ -1191,6 +1230,11 @@ type BuiltinCallNode struct {
 	out      map[GraphNode][]EdgeInfo
 	in       map[GraphNode]EdgeInfo
 	marks    LocSet
+}
+
+// SsaCode returns the corresponding ssa code (a call instruction)
+func (b *BuiltinCallNode) SsaCode() scanning.SsaCode {
+	return scanning.NewInstrCode(b.callSite)
 }
 
 // ID returns the integer id of the node in its parent graph

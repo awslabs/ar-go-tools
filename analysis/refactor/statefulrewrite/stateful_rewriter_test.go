@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
@@ -48,7 +48,7 @@ func testRewriteAndBuild(t *testing.T, dirName string, files []string, newReacha
 		}
 	}
 
-	spec0 := statefulrewrite.FindImpl(lp, config.CodeIdentifier{Method: "Start", Package: ""})
+	spec0 := statefulrewrite.FindImpl(lp, specs.ParsedCodeIdentifier{Method: "Start", Package: ""})
 	if spec0.IsNone() {
 		t.Fatal("no impl found")
 	}
@@ -60,7 +60,9 @@ func testRewriteAndBuild(t *testing.T, dirName string, files []string, newReacha
 		t.Logf("%s", fileContents)
 	}
 	// reload the test in testdata
-	lpPost := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: false, ExtraOverlay: overlay})
+	lpPost := analysistest.LoadTest(
+		testfsys, dirName, []string{},
+		analysistest.LoadTestOptions{ApplyRewrite: false, ExtraOverlay: overlay})
 	ptrStatePost, err := result.Bind(lpPost, ptr.NewState).Value()
 	if err != nil {
 		t.Fatal(err)

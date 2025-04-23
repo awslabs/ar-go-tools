@@ -69,12 +69,17 @@ func InitializeDocState(
 }
 
 // ParseSendCommandMessage parses send command message
-func ParseSendCommandMessage(context context.Context, msg InstanceMessage, messagesOrchestrationRootDir string, upstreamService string) (*DocumentState, error) {
+func ParseSendCommandMessage(
+	context context.Context,
+	msg InstanceMessage,
+	messagesOrchestrationRootDir string,
+	upstreamService string,
+) (*DocumentState, error) {
 	logger := log.Default()
 	commandID, _ := GetCommandID(msg.MessageId)
 
-	logger.Printf("Processing send command message: %v\n", msg.MessageId)
-	logger.Printf("Processing send command payload: %v\n", msg.Payload)
+	logger.Printf("Processing send command message: %v\n", msg.MessageId) //@Sink(msg)
+	logger.Printf("Processing send command payload: %v\n", msg.Payload)   // @Sink(msg)
 
 	// parse message to retrieve parameters
 	var parsedMessage SendCommandPayload
@@ -113,7 +118,8 @@ func ParseSendCommandMessage(context context.Context, msg InstanceMessage, messa
 		Parameters:    parsedMessage.DocumentContent.Parameters}
 
 	//Data format persisted in Current Folder is defined by the struct - CommandState
-	docState, err := InitializeDocState(context, documentType, docContent, documentInfo, parserInfo, parsedMessage.Parameters)
+	docState, err := InitializeDocState(
+		context, documentType, docContent, documentInfo, parserInfo, parsedMessage.Parameters)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +129,7 @@ func ParseSendCommandMessage(context context.Context, msg InstanceMessage, messa
 	var parsedContentJson Content
 
 	if err = json.Unmarshal(parsedMessageContent, &parsedContentJson); err != nil {
-		logger.Printf("Parsed message is in the wrong json format. Error is ", err)
+		logger.Printf("Parsed message is in the wrong json format. Error is ", err) // @Sink(msg)
 	}
 
 	obj := parsedContentJson.Search()
@@ -134,15 +140,15 @@ func ParseSendCommandMessage(context context.Context, msg InstanceMessage, messa
 		finalLogConfig := fmt.Sprintf(stripConfig)
 
 		if _, err = parsedContentJson.Set(finalLogConfig, "parameters"); err != nil {
-			logger.Printf("Error occurred when setting properties with scrubbed credentials - ", err)
+			logger.Printf("Error occurred when setting properties with scrubbed credentials - ", err) // @Sink(msg)
 		}
 		if _, err = parsedContentJson.Set(finalLogConfig, "cloudWatch"); err != nil {
-			logger.Printf("Error occurred when setting properties with scrubbed credentials - ", err)
+			logger.Printf("Error occurred when setting properties with scrubbed credentials - ", err) // @Sink(msg)
 		}
-		logger.Print("ParsedMessage is ", parsedContentJson)
+		logger.Print("ParsedMessage is ", parsedContentJson) // @Sink(msg)
 	} else {
 		//For plugins that are not aws:cloudwatch
-		logger.Print("ParsedMessage is ", parsedMessageContent)
+		logger.Print("ParsedMessage is ", parsedMessageContent) //@Sink(msg)
 	}
 
 	return &docState, nil

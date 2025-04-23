@@ -26,11 +26,14 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-var cfg = config.NewDefault()
+var cfg, _ = config.NewDefault().Compile(nil)
 var logger = config.NewLogGroup(cfg)
 
 func TestComputePath(t *testing.T) {
-	x := computePath(cfg, logger, "/Users/exampleUser/repoRoot/src/ARG-GoAnalyzer/repo/samplePackage/packageX/packageY/foo.go",
+	x := computePath(
+		cfg,
+		logger,
+		"/Users/exampleUser/repoRoot/src/ARG-GoAnalyzer/repo/samplePackage/packageX/packageY/foo.go",
 		"github.com/aws/repo/samplePackage/packageX/packageY")
 	if x != "github.com/aws/repo/samplePackage/packageX/packageY/foo.go" {
 		t.Errorf("error")
@@ -44,7 +47,10 @@ func TestComputePath(t *testing.T) {
 // until we find a match.
 
 func TestComputePath2(t *testing.T) {
-	x := computePath(cfg, logger, "/Users/exampleUser/reference/repo/samplePackage/samplePackage/samplePackage.go",
+	x := computePath(
+		cfg,
+		logger,
+		"/Users/exampleUser/reference/repo/samplePackage/samplePackage/samplePackage.go",
 		"github.com/aws/repo/samplePackage/samplePackage")
 	if x != "github.com/aws/repo/samplePackage/samplePackage/samplePackage.go" {
 		t.Errorf("error")
@@ -72,7 +78,7 @@ func TestSamplePackageWorkerDependencies(t *testing.T) {
 		Platform:      "",
 		PackageConfig: nil,
 	}
-	c := config.NewState(config.NewDefault(), "", files, loadOptions)
+	c := config.NewState(cfg, "", files, loadOptions)
 	state, err := loadprogram.NewState(c).Value()
 	if err != nil {
 		t.Fatalf("error starting state: %s", err)

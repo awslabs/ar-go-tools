@@ -89,8 +89,12 @@ func call2(s string) {
 	call3(s)
 }
 
-func call3(s string) {
+func xf(s string) {
 	sinkFoo(s) // is never reached because unsafe-max-depth is overriden with 1 in the foo problem
+}
+
+func call3(s string) {
+	xf(fmt.Sprintf("g: %s", s))
 	sinkBar(s) // @Sink(fooBar) is tainted because problem bar is using the default depth
 }
 

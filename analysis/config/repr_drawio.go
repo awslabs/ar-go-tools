@@ -17,6 +17,8 @@ package config
 import (
 	"encoding/xml"
 	"strings"
+
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 )
 
 // MxFile is the toplevel file representation in a draio diagram
@@ -30,7 +32,7 @@ type MxFile struct {
 // Object represents an object in the drawio diagram
 type Object struct {
 	ID string `xml:"id,attr"`
-	CodeIdentifier
+	specs.ParsedCodeIdentifier
 	Options
 	Forbidden     bool   `xml:"forbidden,attr"`
 	Cell          mxCell `xml:"mxCell"`
@@ -54,31 +56,31 @@ type mxCell struct {
 
 // ParseXMLConfigFormat parses the bytes as xml, expecting a drawio file representing a diagram of dataflow problems
 // where the options of the config are specified in the metadata.
-func ParseXMLConfigFormat(c *Config, b []byte) error {
+func ParseXMLConfigFormat(c *parsedConfig, b []byte) error {
 	x := &MxFile{}
 	err := xml.Unmarshal(b, x)
 	if err != nil {
 		return err
 	}
 
-	sources := map[string]CodeIdentifier{}
-	sinks := map[string]CodeIdentifier{}
-	sanitizers := map[string]CodeIdentifier{}
-	validators := map[string]CodeIdentifier{}
+	sources := map[string]specs.ParsedCodeIdentifier{}
+	sinks := map[string]specs.ParsedCodeIdentifier{}
+	sanitizers := map[string]specs.ParsedCodeIdentifier{}
+	validators := map[string]specs.ParsedCodeIdentifier{}
 
 	for _, obj := range x.Object {
 		// Object 0 should contain settings
 		if obj.ID == "0" && !obj.Cell.Vertex && !obj.Cell.Edge {
 			if obj.DataflowSpecs != "" {
 				specs := strings.Split(obj.DataflowSpecs, ",")
-				c.DataflowProblems.UserSpecs = specs
+				c.ParsedDataflowProblems.UserSpecs = specs
 			}
 			c.Options = obj.Options
 		}
 
 		// Vertex objects can be sinks, sources, etc..
 		if obj.Cell.Vertex {
-			cid := obj.CodeIdentifier
+			cid := obj.ParsedCodeIdentifier
 
 			if obj.IsSink {
 				sinks[obj.ID] = cid
@@ -92,19 +94,19 @@ func ParseXMLConfigFormat(c *Config, b []byte) error {
 		}
 	}
 
-	specs := map[string]*TaintSpec{}
+	specs := map[string]*specs.ParsedTaintSpec{}
 
 	setProblems(c, x, sources, sinks, sanitizers, validators, specs)
 
 	return nil
 }
 
-func setProblems(c *Config, x *MxFile,
-	sources map[string]CodeIdentifier,
-	sinks map[string]CodeIdentifier,
-	sanitizers map[string]CodeIdentifier,
-	validators map[string]CodeIdentifier,
-	specs map[string]*TaintSpec) {
+func setProblems(c *parsedConfig, x *MxFile,
+	sources map[string]specs.ParsedCodeIdentifier,
+	sinks map[string]specs.ParsedCodeIdentifier,
+	sanitizers map[string]specs.ParsedCodeIdentifier,
+	validators map[string]specs.ParsedCodeIdentifier,
+	specs map[string]*specs.ParsedTaintSpec) {
 	for _, obj := range x.Object {
 		if obj.Cell.Edge {
 			handleEdge(obj.Cell, obj.Forbidden, sources, sinks, sanitizers, validators, specs)
@@ -122,20 +124,20 @@ func setProblems(c *Config, x *MxFile,
 }
 
 func handleEdge(cell mxCell, forbidden bool,
-	sources map[string]CodeIdentifier,
-	sinks map[string]CodeIdentifier,
-	sanitizers map[string]CodeIdentifier,
-	validators map[string]CodeIdentifier,
-	specs map[string]*TaintSpec) {
+	sources map[string]specs.ParsedCodeIdentifier,
+	sinks map[string]specs.ParsedCodeIdentifier,
+	sanitizers map[string]specs.ParsedCodeIdentifier,
+	validators map[string]specs.ParsedCodeIdentifier,
+	specifications map[string]*specs.ParsedTaintSpec) {
 
 	if forbidden {
 		source, sourceExists := sources[cell.Source]
 		sink, sinkExists := sinks[cell.Target]
 		if sourceExists && sinkExists {
-			ts, ok := specs[cell.Source]
+			ts, ok := specifications[cell.Source]
 			if !ok {
-				ts = &TaintSpec{}
-				specs[cell.Source] = ts
+				ts = &specs.ParsedTaintSpec{}
+				specifications[cell.Source] = ts
 			}
 			ts.Sources = append(ts.Sources, source)
 			ts.Sinks = append(ts.Sinks, sink)
@@ -146,20 +148,20 @@ func handleEdge(cell mxCell, forbidden bool,
 	_, sourceExists := sources[cell.Source]
 	sanitizer, sanitizerExists := sanitizers[cell.Target]
 	if sourceExists && sanitizerExists {
-		ts, ok := specs[cell.Source]
+		ts, ok := specifications[cell.Source]
 		if !ok {
-			ts = &TaintSpec{}
-			specs[cell.Source] = ts
+			ts = &specs.ParsedTaintSpec{}
+			specifications[cell.Source] = ts
 		}
 		ts.Sanitizers = append(ts.Sanitizers, sanitizer)
 	}
 	// Is it a validator?
 	validator, validatorExists := validators[cell.Target]
 	if sourceExists && validatorExists {
-		ts, ok := specs[cell.Source]
+		ts, ok := specifications[cell.Source]
 		if !ok {
-			ts = &TaintSpec{}
-			specs[cell.Source] = ts
+			ts = &specs.ParsedTaintSpec{}
+			specifications[cell.Source] = ts
 		}
 		ts.Validators = append(ts.Validators, validator)
 	}

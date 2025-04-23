@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/escape"
 	"github.com/awslabs/ar-go-tools/analysis/render"
@@ -518,15 +517,7 @@ func cmdTaint(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 		return false
 	}
 	for _, ts := range c.Unwrap().Config.TaintTrackingProblems {
-		c.Unwrap().FlowGraph.RunVisitorOnEntryPoints(
-			taint.NewVisitor(&ts),
-			dataflow.ScanningSpec{
-				MarkCallArgsLikeCall: ts.SourceTaintsArgs,
-				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
-					return dataflow.IsSourceNode(c.Unwrap(), &ts, node)
-				},
-			},
-		)
+		c.Unwrap().FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(&ts), ts.IsSource)
 	}
 	return false
 }
@@ -557,12 +548,7 @@ func cmdBacktrace(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 	var traces []backtrace.Trace
 	for _, ps := range c.Config.SlicingProblems {
 		visitor := backtrace.NewVisitor(ps)
-		c.FlowGraph.RunVisitorOnEntryPoints(
-			visitor,
-			dataflow.ScanningSpec{
-				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
-					return dataflow.IsBacktraceNode(c, &ps, node)
-				}})
+		c.FlowGraph.RunVisitorOnEntryPoints(visitor, c.Config.IsSomeBacktracePoint)
 		for _, tr := range visitor.Traces {
 			traces = append(traces, tr...)
 		}

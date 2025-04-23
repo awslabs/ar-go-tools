@@ -18,6 +18,7 @@ import (
 	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -31,13 +32,16 @@ import (
 // Currently, the only rewrite the the elimination of (reflect.Value).Call instances given an instance of
 // an actuall struct with methods (class-like object).
 type StatefulRewritesOverlayTransformSpec struct {
-	ReflectValueCallInstanceCid config.CodeIdentifier
+	ReflectValueCallInstanceCid specs.ParsedCodeIdentifier
 }
 
 // StatefulRewritesOverlayTransform transforms the overlay in the config state by building
 // the program, computing the necessary stateful rewrites, and setting the overlay in the
 // config state with the appropriate rewritten files.
-func StatefulRewritesOverlayTransform(c *config.State, spec StatefulRewritesOverlayTransformSpec) result.Result[config.State] {
+func StatefulRewritesOverlayTransform(
+	c *config.State,
+	spec StatefulRewritesOverlayTransformSpec,
+) result.Result[config.State] {
 	c.Logger.Infof("Applying rewrites")
 
 	// Build a pointer state
@@ -76,7 +80,7 @@ func StatefulRewritesOverlayTransform(c *config.State, spec StatefulRewritesOver
 
 // FindImpl returns the types of the arguments of the functions identified by the code identifier. The
 // returned type is either a named type or a pointer to a named type.
-func FindImpl(s *loadprogram.State, ci config.CodeIdentifier) fn.Optional[ReflectValueCallRewriterSpec] {
+func FindImpl(s *loadprogram.State, ci specs.ParsedCodeIdentifier) fn.Optional[ReflectValueCallRewriterSpec] {
 	seen := make(map[lang.NamedTypeModuloPointer]struct{})
 	locations := make(map[ssa.Instruction]struct{})
 	for f := range ssautil.AllFunctions(s.Program) {

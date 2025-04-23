@@ -51,7 +51,12 @@ func SetTypeParamConstraint(tparam *TypeParam, constraint types.Type) {
 }
 
 // NewSignatureType calls types.NewSignatureType.
-func NewSignatureType(recv *types.Var, recvTypeParams, typeParams []*TypeParam, params, results *types.Tuple, variadic bool) *types.Signature {
+func NewSignatureType(
+	recv *types.Var,
+	recvTypeParams, typeParams []*TypeParam,
+	params, results *types.Tuple,
+	variadic bool,
+) *types.Signature {
 	return types.NewSignatureType(recv, recvTypeParams, typeParams, params, results, variadic)
 }
 

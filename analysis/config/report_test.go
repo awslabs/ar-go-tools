@@ -17,6 +17,7 @@ package config
 import (
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/config/analysiscfg"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
@@ -26,17 +27,17 @@ func TestMerge(t *testing.T) {
 	report1.addEntry("tag1", ReportEntry{
 		Tool:        SyntacticTool,
 		ContentFile: "example.json",
-		Severity:    High,
+		Severity:    analysiscfg.High,
 	})
 	report2.addEntry("tag1", ReportEntry{
 		Tool:        SyntacticTool,
 		ContentFile: "ex2.json",
-		Severity:    High,
+		Severity:    analysiscfg.High,
 	})
 	report2.addEntry("tag2", ReportEntry{
 		Tool:        SyntacticTool,
 		ContentFile: "example3.json",
-		Severity:    Low,
+		Severity:    analysiscfg.Low,
 	})
 	report1.Merge(report2)
 	if !funcutil.Contains(report1.Reports["tag1"].Details, "ex2.json") {

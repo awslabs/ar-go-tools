@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -110,9 +111,13 @@ type SummaryGraph struct {
 // Returns a non-nil Value if and only if f is non-nil.
 // If s is nil, this will not populate the callees of the summary.
 // If non-nil, the returned summary graph is marked as not constructed.
-func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
+func NewSummaryGraph(
+	s *State,
+	f *ssa.Function,
+	id uint32,
 	shouldTrack func(*State, ssa.Node) bool,
-	postBlockCallBack func(state *IntraAnalysisState)) *SummaryGraph {
+	postBlockCallBack func(state *IntraAnalysisState),
+) *SummaryGraph {
 	if s != nil {
 		if summary, ok := s.FlowGraph.Summaries[f]; ok {
 			return summary
@@ -193,14 +198,13 @@ func (g *SummaryGraph) newNodeID() uint32 {
 	return atomic.AddUint32(g.lastNodeID, 1)
 }
 
-func (g *SummaryGraph) initializeInnerNodes(s *State,
-	shouldTrack func(*State, ssa.Node) bool) {
+func (g *SummaryGraph) initializeInnerNodes(s *State, shouldTrack func(*State, ssa.Node) bool) {
 	// Add all call instructions
 	lang.IterateInstructions(g.Parent, func(_ int, instruction ssa.Instruction) {
 		switch x := instruction.(type) {
 		case ssa.CallInstruction:
 			if s != nil {
-				if isHandledBuiltinCall(x) {
+				if scanning.IsHandledBuiltinCall(x) {
 					g.addBuiltinCallInstr(x)
 				} else {
 					g.addCallInstr(s, x)

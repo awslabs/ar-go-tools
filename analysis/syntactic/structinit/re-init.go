@@ -15,7 +15,7 @@
 package structinit
 
 import (
-	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -27,7 +27,7 @@ import (
 func checkMustReinitCall(st *state, callInstr *ssa.Call) funcutil.Optional[BadReinit] {
 	callees, _ := st.ptrState.ResolveCallee(callInstr)
 	// Does this call need to be checked?
-	mustCheckFor := []config.StructInitSpec{}
+	mustCheckFor := []specs.StructInitSpec{}
 	for _, callSpec := range st.spec.MustReinits {
 		for _, callee := range callees {
 			if callSpec.MatchPackageAndMethod(callee.Callee) {

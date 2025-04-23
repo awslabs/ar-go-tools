@@ -68,7 +68,11 @@ func NewFlags(args []string) (Flags, error) {
 	outputJson := cmd.Bool("json", false, "output results as JSON")
 	includeStdlib := cmd.Bool("stdlib", false, "include standard library packages")
 	usageThreshold := cmd.Float64("usage", 10.0, "usage threshold below which warning produced")
-	locThreshold := cmd.Int("loc", 100, "loc threshold under which a warning is produced if usage is also below percentage")
+	locThreshold := cmd.Int(
+		"loc",
+		100,
+		"loc threshold under which a warning is produced if usage is also below percentage",
+	)
 	withTest := cmd.Bool("with-test", false, "also include tests in dependency analysis")
 	cmd.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 	tools.SetUsage(cmd, usage)

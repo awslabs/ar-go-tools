@@ -103,8 +103,8 @@ func initializedState(ps ptr.State, steps []func(*State)) (*State, error) {
 	state.FlowGraph.AnalyzerState = state
 
 	// Load the dataflow contracts from the specified json files, if any
-	if len(ps.Config.DataflowProblems.UserSpecs) > 0 {
-		for _, specFile := range ps.Config.DataflowProblems.UserSpecs {
+	if len(ps.Config.ParsedDataflowProblems.UserSpecs) > 0 {
+		for _, specFile := range ps.Config.ParsedDataflowProblems.UserSpecs {
 			contractsBatch, err := LoadDefinitions(ps.Config.RelPath(specFile))
 			if err != nil {
 				return nil, err
@@ -178,7 +178,9 @@ func (s *State) PrintImplementations(w io.Writer) {
 
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations
 func (s *State) PopulateTypesToImplementationMap() {
-	if err := ComputeMethodImplementations(s.Program, s.ImplementationsByType, s.DataFlowContracts, s.MethodKeys); err != nil {
+	if err := ComputeMethodImplementations(
+		s.Program, s.ImplementationsByType, s.DataFlowContracts, s.MethodKeys,
+	); err != nil {
 		s.Report.AddError("implementationsmap", err)
 	}
 }

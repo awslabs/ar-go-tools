@@ -143,7 +143,10 @@ func GenericAssignableTo(ctxt *Context, V, T types.Type) bool {
 
 	vtparams := ForNamed(VN)
 	ttparams := ForNamed(TN)
-	if vtparams.Len() == 0 || vtparams.Len() != ttparams.Len() || NamedTypeArgs(VN).Len() != 0 || NamedTypeArgs(TN).Len() != 0 {
+	if vtparams.Len() == 0 ||
+		vtparams.Len() != ttparams.Len() ||
+		NamedTypeArgs(VN).Len() != 0 ||
+		NamedTypeArgs(TN).Len() != 0 {
 		return types.AssignableTo(V, T)
 	}
 

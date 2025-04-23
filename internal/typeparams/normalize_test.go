@@ -38,8 +38,10 @@ func TestStructuralTerms(t *testing.T) {
 		{"package emptyintersection; type T[P interface{ ~int; string }] int", "", "empty type set"},
 
 		{"package embedded0; type T[P interface{ I }] int; type I interface { int }", "int", ""},
-		{"package embedded1; type T[P interface{ I | string }] int; type I interface{ int | ~string }", "int ?\\| ?~string", ""},
-		{"package embedded2; type T[P interface{ I; string }] int; type I interface{ int | ~string }", "string", ""},
+		{"package embedded1; type T[P interface{ I | string }] int;" +
+			" type I interface{ int | ~string }", "int ?\\| ?~string", ""},
+		{"package embedded2; type T[P interface{ I; string }] int; " +
+			"type I interface{ int | ~string }", "string", ""},
 
 		{"package named; type T[P C] int; type C interface{ ~int|int }", "~int", ""},
 		{`// package example is taken from the docstring for StructuralTerms

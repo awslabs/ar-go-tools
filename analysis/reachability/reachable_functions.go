@@ -158,7 +158,12 @@ func findCallees(program *ssa.Program, f *ssa.Function, action func(*ssa.Functio
 // graph to record cross-package function calls.
 //
 // The return value is a map from reachable *ssa.Function values to true.
-func FindReachable(state *loadprogram.State, excludeMain bool, excludeInit bool, graph DependencyGraph) map[*ssa.Function]bool {
+func FindReachable(
+	state *loadprogram.State,
+	excludeMain bool,
+	excludeInit bool,
+	graph DependencyGraph,
+) map[*ssa.Function]bool {
 
 	allFunctions := ssautil.AllFunctions(state.Program)
 	state.Logger.Infof("%d SSA functions\n", len(allFunctions))

@@ -279,7 +279,8 @@ func AnalyzeProgram(target *loadprogram.State, l *config.LogGroup) {
 	for _, f := range sortedFunctions {
 		results := AnalyzeFunction(f, l)
 		if !results.DeferStackBounded {
-			l.Warnf("Unbounded defer stack in %s (%s, %v)\n", f.Name(), f.Pkg.Pkg.Name(), f.Prog.Fset.PositionFor(f.Pos(), false))
+			l.Warnf("Unbounded defer stack in %s (%s, %v)\n",
+				f.Name(), f.Pkg.Pkg.Name(), f.Prog.Fset.PositionFor(f.Pos(), false))
 		} else {
 			boundedFuncCount++
 		}

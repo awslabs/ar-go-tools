@@ -25,7 +25,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config/analysiscfg"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"gopkg.in/yaml.v3"
 )
 
@@ -89,8 +93,8 @@ func NewEscapeConfig() *EscapeConfig {
 
 // NewPointerConfig returns a new escape config with default parameters:
 // - the filter of no-effect functions is nil.
-func NewPointerConfig() *PointerConfig {
-	return &PointerConfig{UnsafeNoEffectFunctions: nil}
+func NewPointerConfig() *analysiscfg.PointerConfig {
+	return &analysiscfg.PointerConfig{UnsafeNoEffectFunctions: nil}
 }
 
 // MatchPkgFilter matches a package name against a configuration.
@@ -105,11 +109,11 @@ func (c *EscapeConfig) MatchPkgFilter(pkgname string) bool {
 	}
 }
 
-// Config contains lists of sanitizers, sinks, sources, static commands to identify ...
+// parsedConfig contains lists of sanitizers, sinks, sources, static commands to identify ...
 // To add elements to a config file, add fields to this struct.
 // If some field is not defined in the config file, it will be empty/zero in the struct.
 // private fields are not populated from a yaml file, but computed after initialization
-type Config struct {
+type parsedConfig struct {
 	Options
 
 	sourceFile string
@@ -117,199 +121,43 @@ type Config struct {
 	// nocalleereportfile is a file name in ReportsDir when ReportNoCalleeSites is true
 	nocalleereportfile string
 
+	// EscapeConfig contains the escape-analysis specific configuration parameters
+	EscapeConfig *EscapeConfig
+
+	// PointerConfig contains the pointer-analysis specific configuration parameters
+	PointerConfig *analysiscfg.PointerConfig `yaml:"pointer-config" json:"pointer-config"`
+
+	// StaticCommandsProblems lists the static commands problems
+	StaticCommandsProblems []specs.StaticCommandsSpec `yaml:"static-commands-problems" json:"static-commands-problems"`
+
+	SyntacticProblems specs.SyntacticSpecs `yaml:"syntactic-problems" json:"syntactic-problems"`
+
+	// DataflowProblems specifies the dataflow problems to solve in the config
+	specs.ParsedDataflowProblems `yaml:"dataflow-problems" json:"dataflow-problems"`
+
+	// Targets specifies the set of targets that may be used in the config
+	Targets []specs.TargetSpec
+}
+
+// Config is a config that has been parsed and partially validated.
+type Config struct {
+	parsedConfig
+
+	specs.DataflowProblems
+
+	root string
+
 	// if the PkgFilter is specified
 	pkgFilterRegex *regexp.Regexp
 
 	// if the CoverageFilter is specified
 	coverageFilterRegex *regexp.Regexp
-
-	// the path to the root folder
-	root string
-
-	// EscapeConfig contains the escape-analysis specific configuration parameters
-	EscapeConfig *EscapeConfig
-
-	// PointerConfig contains the pointer-analysis specific configuration parameters
-	PointerConfig *PointerConfig `yaml:"pointer-config" json:"pointer-config"`
-
-	// StaticCommandsProblems lists the static commands problems
-	StaticCommandsProblems []StaticCommandsSpec `yaml:"static-commands-problems" json:"static-commands-problems"`
-
-	SyntacticProblems SyntacticSpecs `yaml:"syntactic-problems" json:"syntactic-problems"`
-
-	// DataflowProblems specifies the dataflow problems to solve in the config
-	DataflowProblems `yaml:"dataflow-problems" json:"dataflow-problems"`
-
-	// Targets specifies the set of targets that may be used in the config
-	Targets []TargetSpec
-}
-
-// AnalysisProblemOptions are the options that are specific to an analysis problem.
-type AnalysisProblemOptions struct {
-	// MaxAlarms sets a limit for the number of alarms reported by an analysis.  If MaxAlarms > 0, then at most
-	// MaxAlarms will be reported. Otherwise, if MaxAlarms <= 0, it is ignored.
-	//
-	// This setting does not affect soundness, since event with max-alarms:1, at least one path will be reported if
-	// there is some potential alarm-causing result.
-	MaxAlarms int `xml:"max-alarms,attr" yaml:"max-alarms" json:"max-alarms"`
-
-	// UnsafeMaxDepth sets a limit for the number of function call depth explored during the analysis.
-	// The default is -1, and any value less than 0 is safe: the analysis will be sound and explore call depth
-	// without bounds.
-	//
-	// Setting UnsafeMaxDepth to a limit larger than 0 will yield unsound results, but can be useful to use the tool
-	// as a checking mechanism. Limiting the call depth will usually yield fewer false positives.
-	UnsafeMaxDepth int `xml:"unsafe-max-depth,attr" yaml:"unsafe-max-depth" json:"unsafe-max-depth"`
-
-	// MaxEntrypointContextSize sets the maximum context (call stack) size used when searching for entry points with context.
-	// This only impacts precision of the returned results.
-	//
-	// If MaxEntrypointContextSize is < 0, it is ignored.
-	// If MaxEntrypointContextSize is 0 is specified by the user, the value is ignored, and a default internal value is used.
-	// If MaxEntrypointContextSize is > 0, then the limit in the callstack size for the context is used.
-	MaxEntrypointContextSize int `xml:"max-entrypoint-context-size,attr" yaml:"max-entrypoint-context-size" json:"max-entrypoint-context-size"`
-}
-
-// PointerConfig is the pointer analysis specific configuration.
-type PointerConfig struct {
-	// UnsafeNoEffectFunctions is a list of function names that produce no constraints in the pointer analysis.
-	// Use at your own risk: using this option *may* make the analysis unsound. However, if you are confident
-	// that the listed function does not have any effect on aliasing, adding it here may reduce false positives.
-	UnsafeNoEffectFunctions []string `yaml:"unsafe-no-effect-functions" json:"unsafe-no-effect-functions"`
-
-	// Reflection is the reflection option of the pointer analysis: when true, reflection aperators are handled
-	// soundly, but analysis time will increase dramatically.
-	Reflection bool
-}
-
-// StaticCommandsSpec contains code identifiers for the problem of identifying which commands are static
-type StaticCommandsSpec struct {
-	// StaticCommands is the list of identifiers to be considered as command execution for the static commands analysis
-	// (not used)
-	StaticCommands []CodeIdentifier `yaml:"static-commands" json:"static-commands"`
-}
-
-// SyntacticSpecs contains specs for the different syntactic analysis problems.
-type SyntacticSpecs struct {
-	// StructInitSpecs is the list of specs for the struct inititialization problems.
-	StructInitProblems []StructInitSpec `yaml:"struct-inits" json:"struct-inits"`
-
-	// CondCheckSpecs is the list of specs for the condition checking problems.
-	CondCheckSpecs []CondCheckSpec `yaml:"cond-checks" json:"cond-checks"`
-}
-
-// StructInitSpec contains specs for the problem of tracking a specific struct initialization.
-type StructInitSpec struct {
-	// Tag is the identifier of the problem
-	Tag string
-	// Severity is the severity of the finding when some struct is not initialized properly
-	Severity Severity
-	// Description is a human-readable description of the problem
-	Description string
-	Targets     []string
-	// Struct is the struct type whose initialization should be tracked.
-	Struct CodeIdentifier
-	// FieldsSet is the list of the fields of Struct that must always be set to a specific value.
-	FieldsSet []FieldsSetSpec `yaml:"fields-set" json:"fields-set"`
-	// Filters is the list of values that the analysis does not track.
-	Filters []CodeIdentifier
-	// MustReinits is the list of function calls resulting in the struct that must be
-	// folllowed by a statement reinitializing the struct value
-	MustReinits []CodeIdentifier `yaml:"must-reinit" json:"must-reinit"`
-}
-
-// SpecTag returns the struct init specification's tag
-func (si StructInitSpec) SpecTag() string {
-	return si.Tag
-}
-
-// SpecTargets returns the struct init specification's targets
-func (si StructInitSpec) SpecTargets() []string {
-	return si.Targets
-}
-
-// SpecSeverity returns the struct init specification's severity
-func (si StructInitSpec) SpecSeverity() Severity {
-	return si.Severity
-}
-
-// FieldsSetSpec contains the code identifiers for the problem of tracking how a
-// struct's fields are initialized.
-type FieldsSetSpec struct {
-	// Field is the struct field name whose value must be initialized to the Value.
-	Field string
-	// Value is the value that Field must always be set to.
-	// We only support static values for now (e.g., constants and static functions).
-	Value CodeIdentifier
-}
-
-// CondCheckSpec is a specification for the precondition analysis. On top of the common fields (Tag, Severity,
-// Description and Targets) it specifies a Call (the call that needs to ge guarded by a precondition) and the
-// Preconditions.
-type CondCheckSpec struct {
-	// Tag is the identifier of the problem
-	Tag string
-	// Severity is the severity of the finding when some struct is not initialized properly
-	Severity Severity
-	// Description is a human-readable description of the problem
-	Description string
-	// Targets of this problem
-	Targets []string
-	// Call is the calls that need to be guarded
-	Call []CodeIdentifier
-	// Preconditions is the list of conditions that need to be satisfied before making a Call.
-	// The Call is valid if one of the preconditions is valid on all control-flow paths to the Call.
-	Preconditions []GuardSpec
-}
-
-// SpecTag returns the precondition check specification's tag
-func (cc CondCheckSpec) SpecTag() string {
-	return cc.Tag
-}
-
-// SpecTargets returns the precondition check specification's targets
-func (cc CondCheckSpec) SpecTargets() []string {
-	return cc.Targets
-}
-
-// SpecSeverity returns the precondition check specification's severity
-func (cc CondCheckSpec) SpecSeverity() Severity {
-	return cc.Severity
-}
-
-// GuardSpec is the specification of a guard or condition
-// Currently, it only contains a Precondition which is a list of string represented conjuncts. This makes it at little
-// difficult to specify in a config file, so we will make a more extensible and precise GuardSpec in the future.
-type GuardSpec struct {
-	// Precondition is the function that is used in the condition
-	Precondition []string
-}
-
-// A TargetSpec is a set of files the form a Go program together with a name to identify the target in the configuration
-// file.
-type TargetSpec struct {
-	// Name identifies the target in the rest of the configuration file
-	Name string
-	// Files identifies the target's files
-	Files []string
-	// Platform identifies the target's platform
-	Platform string
-
-	// UseProgramTransforms indicates that the tool should apply program transformations before running any analysis.
-	// Program transformations can be expensive to apply, but they can eliminate sources of imprecision and sources of
-	// unsoundness.
-	// NOTE: this option may change to let the user choose precisely which program transformations to apply
-	UseProgramTransforms bool `xml:"use-program-transforms" yaml:"use-program-transforms" json:"use-program-transforms"`
-
-	// ReflectValueCallInstances lists functions that take as argument a class. The program will be transformed to rewrite
-	// (reflect.Value).Call instances that can be statically resolved to the class's method.
-	ReflectValueCallInstances []CodeIdentifier `xml:"reflect-value-call-instances" yaml:"reflect-value-call-instances" json:"reflect-value-call-instances"`
 }
 
 // Options holds the global options for analyses
 // embeds AnalysisProblemOptions
 type Options struct {
-	AnalysisProblemOptions `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
+	analysiscfg.ProblemCfg `xml:"analysis-options,attr" yaml:"analysis-options" json:"analysis-options"`
 
 	// Path to a JSON file that has the escape configuration (allow/blocklist)
 	EscapeConfigFile string `xml:"escape-config,attr" yaml:"escape-config" json:"escape-config"`
@@ -358,18 +206,17 @@ type Options struct {
 
 // NewDefault returns an empty default config.
 func NewDefault() *Config {
-	return &Config{
+	cfg, err := parsedConfig{
 		sourceFile:         "",
 		nocalleereportfile: "",
-		DataflowProblems: DataflowProblems{
-			PathSensitiveFuncs:        []string{},
-			pathSensitiveFuncsRegexes: nil,
+		ParsedDataflowProblems: specs.ParsedDataflowProblems{
+			PathSensitiveFuncs: []string{},
 		},
 		StaticCommandsProblems: nil,
 		EscapeConfig:           NewEscapeConfig(),
 		PointerConfig:          NewPointerConfig(),
 		Options: Options{
-			AnalysisProblemOptions: AnalysisProblemOptions{
+			ProblemCfg: analysiscfg.ProblemCfg{
 				UnsafeMaxDepth:           DefaultSafeMaxDepth,
 				MaxAlarms:                0,
 				MaxEntrypointContextSize: DefaultSafeMaxEntrypointContextSize,
@@ -384,10 +231,14 @@ func NewDefault() *Config {
 			LogLevel:            int(InfoLevel),
 			SilenceWarn:         false,
 		},
+	}.Compile(nil)
+	if err != nil {
+		panic("unexpected error: default config doesn't compile")
 	}
+	return cfg
 }
 
-func unmarshalConfig(b []byte, cfg *Config) error {
+func unmarshalConfig(b []byte, cfg *parsedConfig) error {
 	// Strict decoding for yaml config files: will warn user of misconfiguration
 	yamlDecoder := yaml.NewDecoder(bytes.NewReader(b))
 	yamlDecoder.KnownFields(true)
@@ -469,25 +320,31 @@ func LoadFromFiles(configFileName string, overrides *CmdLineOverrides) (*Config,
 }
 
 // Load constructs a configuration from a byte slice representing the config file.
+func Load(filename string, configBytes []byte, cmdLineOverrides *CmdLineOverrides) (*Config, error) {
+	cfg := &NewDefault().parsedConfig
+	unmarshallingError := unmarshalConfig(configBytes, cfg)
+	if unmarshallingError != nil {
+		return nil, unmarshallingError
+	}
+	cfg.sourceFile = filename
+	return cfg.Compile(cmdLineOverrides)
+}
+
+// Compile the config that was parsed into a config to use in the analyses
 //
 //gocyclo:ignore
-func Load(filename string, configBytes []byte, cmdLineOverrides *CmdLineOverrides) (*Config, error) {
+func (p parsedConfig) Compile(cmdLineOverrides *CmdLineOverrides) (*Config, error) {
 	// Get absolute path to config. Other files in config will be relative to where the config is.
-	pathToConfig := filename
-	if !path.IsAbs(filename) {
+	pathToConfig := p.sourceFile
+	if !path.IsAbs(p.sourceFile) {
 		wd, err := os.Getwd()
 		if err != nil {
 			return nil, fmt.Errorf("failed to set absolute path to config: %s", err)
 		}
 		pathToConfig = filepath.Join(wd, pathToConfig)
 	}
-	cfg := NewDefault()
-	unmarshallingError := unmarshalConfig(configBytes, cfg)
-	if unmarshallingError != nil {
-		return nil, unmarshallingError
-	}
-	cfg.sourceFile = filename
 
+	cfg := &Config{parsedConfig: p}
 	// If the project root is unspecified, then set to the directory of the config file
 	if cfg.ProjectRoot == "" {
 		cfg.root = path.Dir(pathToConfig)
@@ -538,45 +395,37 @@ func Load(filename string, configBytes []byte, cmdLineOverrides *CmdLineOverride
 		}
 	}
 
-	if len(cfg.PathSensitiveFuncs) > 0 {
-		psRegexes := make([]*regexp.Regexp, 0, len(cfg.PathSensitiveFuncs))
-		for _, pf := range cfg.PathSensitiveFuncs {
-			r, err := regexp.Compile(pf)
-			if err != nil {
-				continue
-			}
-			psRegexes = append(psRegexes, r)
-		}
-		cfg.pathSensitiveFuncsRegexes = psRegexes
-	} else {
-		cfg.PathSensitiveFuncs = []string{}
+	dp, err := cfg.ParsedDataflowProblems.Compile()
+	if err != nil {
+		return cfg, err
+	}
+	cfg.DataflowProblems = dp
+
+	for _, tSpec := range cfg.ParsedDataflowProblems.TaintTrackingProblems {
+		funcutil.MapInPlace(tSpec.Sanitizers, specs.CompileRegexes)
+		funcutil.MapInPlace(tSpec.Sinks, specs.CompileRegexes)
+		funcutil.MapInPlace(tSpec.Sources, specs.CompileRegexes)
+		funcutil.MapInPlace(tSpec.Validators, specs.CompileRegexes)
+		funcutil.MapInPlace(tSpec.Filters, specs.CompileRegexes)
 	}
 
-	for _, tSpec := range cfg.DataflowProblems.TaintTrackingProblems {
-		funcutil.MapInPlace(tSpec.Sanitizers, compileRegexes)
-		funcutil.MapInPlace(tSpec.Sinks, compileRegexes)
-		funcutil.MapInPlace(tSpec.Sources, compileRegexes)
-		funcutil.MapInPlace(tSpec.Validators, compileRegexes)
-		funcutil.MapInPlace(tSpec.Filters, compileRegexes)
-	}
-
-	for _, sSpec := range cfg.DataflowProblems.SlicingProblems {
-		funcutil.MapInPlace(sSpec.BacktracePoints, compileRegexes)
-		funcutil.MapInPlace(sSpec.Filters, compileRegexes)
+	for _, sSpec := range cfg.ParsedDataflowProblems.SlicingProblems {
+		funcutil.MapInPlace(sSpec.BacktracePoints, specs.CompileRegexes)
+		funcutil.MapInPlace(sSpec.Filters, specs.CompileRegexes)
 	}
 
 	for i, siSpec := range cfg.SyntacticProblems.StructInitProblems {
-		cfg.SyntacticProblems.StructInitProblems[i].Struct = compileRegexes(siSpec.Struct)
+		cfg.SyntacticProblems.StructInitProblems[i].Struct = specs.CompileRegexes(siSpec.Struct)
 		for j, fSpec := range siSpec.FieldsSet {
-			siSpec.FieldsSet[j].Value = compileRegexes(fSpec.Value)
+			siSpec.FieldsSet[j].Value = specs.CompileRegexes(fSpec.Value)
 		}
-		funcutil.MapInPlace(siSpec.Filters, compileRegexes)
-		funcutil.MapInPlace(siSpec.MustReinits, compileRegexes)
+		funcutil.MapInPlace(siSpec.Filters, specs.CompileRegexes)
+		funcutil.MapInPlace(siSpec.MustReinits, specs.CompileRegexes)
 	}
 
 	for i, ccSpec := range cfg.SyntacticProblems.CondCheckSpecs {
 		for j, callSpec := range ccSpec.Call {
-			cfg.SyntacticProblems.CondCheckSpecs[i].Call[j] = compileRegexes(callSpec)
+			cfg.SyntacticProblems.CondCheckSpecs[i].Call[j] = specs.CompileRegexes(callSpec)
 		}
 	}
 
@@ -640,7 +489,7 @@ func setReportsDir(c *Config, cmdLineOverride *CmdLineOverrides) error {
 			c.nocalleereportfile = reportFile.Name()
 			reportFile.Close() // the file will be reopened as needed
 		}
-	} else {
+	} else if !filepath.IsAbs(c.ReportsDir) {
 		c.ReportsDir = filepath.Join(c.root, c.ReportsDir)
 		err := os.Mkdir(c.ReportsDir, 0750)
 		if err != nil {
@@ -662,7 +511,7 @@ func (c Config) Root() string {
 	return c.root
 }
 
-// RelPath returns the path of the filename path relative to the root
+// RelPath returns the path of the filename joined to the root
 func (c Config) RelPath(filename string) string {
 	return filepath.Join(c.root, filename)
 }
@@ -712,16 +561,16 @@ type TargetInfo struct {
 	// UseProgramTransforms for the target
 	UseProgramTransforms bool
 	// ReflectValueCallInstances
-	ReflectValueCallInstances []CodeIdentifier
+	ReflectValueCallInstances []specs.ParsedCodeIdentifier
 }
 
 // GetTargetMap returns a map from target names to target files
 func (c Config) GetTargetMap() map[string]TargetInfo {
 	targets := map[string]TargetInfo{}
 	for _, targetSpec := range c.Targets {
-		reflectValueCallInstances := []CodeIdentifier{}
+		reflectValueCallInstances := []specs.ParsedCodeIdentifier{}
 		for _, r := range targetSpec.ReflectValueCallInstances {
-			reflectValueCallInstances = append(reflectValueCallInstances, compileRegexes(r))
+			reflectValueCallInstances = append(reflectValueCallInstances, specs.CompileRegexes(r))
 		}
 		targets[targetSpec.Name] = TargetInfo{
 			Patterns:                  targetSpec.Files,
@@ -771,7 +620,7 @@ func SetOption(c *Config, name, value string) (string, error) {
 
 // OverrideWithAnalysisOptions overwrites the options in the config with the non-default options in the analysis
 // problem options. Overwriting is logged at info level.
-func OverrideWithAnalysisOptions(l *LogGroup, c *Config, o *AnalysisProblemOptions) {
+func OverrideWithAnalysisOptions(l *LogGroup, c *Config, o analysiscfg.ProblemCfg) {
 	if o.MaxAlarms != 0 {
 		l.Infof("max-alarms set to %d (using problem's analysis-options)",
 			o.MaxAlarms)
@@ -798,7 +647,7 @@ type TaggedSpec interface {
 	// SpecTargets returns the targets of the problem
 	SpecTargets() []string
 	// SpecSeverity returns the severity of the problem
-	SpecSeverity() Severity
+	SpecSeverity() analysiscfg.Severity
 }
 
 // GetSpecs returns ALL the problems in the configuration that are tagged specs (i.e. have a tag, severity and targets).
@@ -814,4 +663,68 @@ func (c Config) GetSpecs() []TaggedSpec {
 		specs = append(specs, TaggedSpec(structInitProblem))
 	}
 	return specs
+}
+
+// IsPathSensitiveFunc returns true if funcName matches any regex in c.Options.PathSensitiveFuncs.
+func (c Config) IsPathSensitiveFunc(funcName string) bool {
+	for _, psfr := range c.PathSensitiveFuncsRegexes {
+		if psfr == nil {
+			continue
+		}
+		if psfr.MatchString(funcName) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsSomeSource returns true if the code identifier matches any source in the config
+func (c Config) IsSomeSource(p *pointer.Result, code scanning.SsaCode) bool {
+	for _, ttp := range c.DataflowProblems.TaintTrackingProblems {
+		if ttp.IsSource(p, code) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSomeSink returns true if the code identifier matches any sink in the config
+func (c Config) IsSomeSink(p *pointer.Result, code scanning.SsaCode) bool {
+	for _, ttp := range c.DataflowProblems.TaintTrackingProblems {
+		if ttp.IsSink(p, code) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSomeSanitizer returns true if the code identifier matches any sanitizer in the config
+func (c Config) IsSomeSanitizer(p *pointer.Result, code scanning.SsaCode) bool {
+	for _, ttp := range c.DataflowProblems.TaintTrackingProblems {
+		if ttp.IsSanitizer(p, code) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSomeValidator returns true if the code identifier matches any validator in the config
+func (c Config) IsSomeValidator(p *pointer.Result, code scanning.SsaCode) bool {
+	for _, ttp := range c.DataflowProblems.TaintTrackingProblems {
+		if ttp.IsValidator(p, code) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSomeBacktracePoint returns true if the code identifier matches any backtrace point in the slicing problems
+func (c Config) IsSomeBacktracePoint(p *pointer.Result, code scanning.SsaCode) bool {
+	for _, ttp := range c.DataflowProblems.SlicingProblems {
+		if ttp.IsBacktracePoint(p, code) {
+			return true
+		}
+	}
+	return false
 }

@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
@@ -38,6 +39,7 @@ import (
 type Flags struct {
 	config      string
 	target      string
+	tag         string
 	outputJson  bool
 	pkg         string
 	inexact     bool
@@ -53,6 +55,7 @@ func NewFlags(args []string) (Flags, error) {
 	cmd := flag.NewFlagSet("packagescan", flag.ExitOnError)
 	config := cmd.String("c", "", "path to config if using targets")
 	target := cmd.String("t", "", "target name (needs config)")
+	tag := cmd.String("tag", "", "tag of the problem to scan (needs config)")
 	outputJson := cmd.Bool("json", false, "output results as JSON")
 	pkg := cmd.String("p", "unsafe", "package or prefix to scan for")
 	inexact := cmd.Bool("i", false, "inexact match - match all subpackages")
@@ -68,6 +71,9 @@ func NewFlags(args []string) (Flags, error) {
 	if *target != "" && *config == "" {
 		return Flags{}, fmt.Errorf("you should specify a config when specifying a target")
 	}
+	if *tag != "" && *config == "" {
+		return Flags{}, fmt.Errorf("you should specify a config when specifying a tag")
+	}
 	if *target != "" && len(cmd.Args()) > 0 {
 		return Flags{}, fmt.Errorf("you should specify either a target or package patterns, not both")
 	}
@@ -75,6 +81,7 @@ func NewFlags(args []string) (Flags, error) {
 	return Flags{
 		config:      *config,
 		target:      *target,
+		tag:         *tag,
 		outputJson:  *outputJson,
 		pkg:         *pkg,
 		inexact:     *inexact,
@@ -125,13 +132,45 @@ func runTargetMode(flags Flags) error {
 	if err != nil {
 		return fmt.Errorf("failed to load program: %v", err)
 	}
+	// If there is some package usage to scan for, then scan for the usages
 	if flags.pkg != "" {
 		// Scan for package usages
 		pkgScanResults := make(map[string]map[string]bool)
 		analyzePackages(state, flags, state.Options.Platform, pkgScanResults)
 		dumpResultsByOs(pkgScanResults)
 	}
+	// If there is a tag specified, then scan for entry points for that problem
+	for _, spec := range c.Config.GetSpecs() {
+		if spec.SpecTag() == flags.tag {
+			switch specKind := spec.(type) {
+			case *specs.Taint:
+				scanTaintSpec(state, flags, specKind)
+			case *specs.Slicing:
+				scanSlicingSpec(state, flags, specKind)
+			case *specs.CondCheckSpec:
+				scanCondCheckSpec(state, flags, specKind)
+			case *specs.StructInitSpec:
+				scanStructInitSpec(state, flags, specKind)
+			}
+		}
+	}
 	return nil
+}
+
+func scanTaintSpec(state *ptr.State, flags Flags, ts *specs.Taint) {
+	state.Logger.Infof("scanning for taint specs not implemented, skipping")
+}
+
+func scanSlicingSpec(state *ptr.State, flags Flags, ss *specs.Slicing) {
+	state.Logger.Infof("scanning for slicing specs not implemented, skipping")
+}
+
+func scanCondCheckSpec(state *ptr.State, flags Flags, ccs *specs.CondCheckSpec) {
+	state.Logger.Infof("scanning for precondition checking not implemented, skipping)")
+}
+
+func scanStructInitSpec(state *ptr.State, flags Flags, sis *specs.StructInitSpec) {
+	state.Logger.Infof("scanning for struct init specs not implemented, skipping")
 }
 
 func runRawMode(flags Flags) error {

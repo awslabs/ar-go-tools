@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -34,9 +34,7 @@ func BuildCrossFunctionGraph(state *dataflow.State) (*dataflow.State, error) {
 
 	state.Logger.Infof("Building full-program inter-procedural dataflow graph...")
 	start := time.Now()
-	dataflow.RunInterProcedural(state, CrossFunctionGraphVisitor{}, dataflow.ScanningSpec{
-		IsEntryPointSsa: func(ssa.Node) (config.CodeIdentifier, bool) { return config.CodeIdentifier{}, true },
-	})
+	dataflow.RunInterProcedural(state, CrossFunctionGraphVisitor{}, funcutil.True2)
 
 	state.Logger.Infof("Full-program inter-procedural dataflow graph done (%.2f s).", time.Since(start).Seconds())
 	return state, nil
@@ -85,7 +83,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
 		// the function's parameter.
 		case *dataflow.ParamNode:
-			if elt.Prev.Node.Graph() != graphNode.Graph() {
+			if elt.Prev != nil && elt.Prev.Node.Graph() != graphNode.Graph() {
 				// Flows inside the function body. The data propagates to other locations inside the function body
 				for out := range graphNode.Out() {
 					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
@@ -97,8 +95,10 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 			// func f(s string, s2 *string) { *s2 = s }
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
-			if callSite := dataflow.UnwindCallstackFromCallee(graphNode.Graph().Callsites, elt.Trace); callSite != nil {
-				if err := dataflow.CheckIndex(c, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
+			if callSite := dataflow.UnwindCallstackFromCallee(
+				graphNode.Graph().Callsites, elt.Trace); callSite != nil {
+				if err := dataflow.CheckIndex(
+					c, graphNode, callSite, "[Unwinding callstack] Argument at call site"); err != nil {
 					c.Report.AddError("unwinding call stack at "+graphNode.Position(c).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
@@ -111,7 +111,8 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 			} else {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
-					if err := dataflow.CheckIndex(c, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
+					if err := dataflow.CheckIndex(
+						c, graphNode, callSite, "[No Context] Argument at call site"); err != nil {
 						c.Report.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
@@ -244,7 +245,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 		// (see the example for BoundVarNode)
 		case *dataflow.FreeVarNode:
 			// Flows inside the function
-			if elt.Prev.Node.Graph() != graphNode.Graph() {
+			if elt.Prev != nil && elt.Prev.Node.Graph() != graphNode.Graph() {
 				for out := range graphNode.Out() {
 					que = addNext(c, que, seen, elt, out, elt.Trace, elt.ClosureTrace)
 				}

@@ -319,7 +319,9 @@ func (g *EscapeGraph) Graphviz() string {
 		} else {
 			extra = extra + " COLOR=\"#FF0000\""
 		}
-		t := fmt.Sprintf(`<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0"><TR><TD ALIGN="left" %s><FONT %s>%s</FONT></TD></TR>`, extra, extraFont, n.debugInfo)
+		t := fmt.Sprintf(
+			`<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">+<TR><TD ALIGN="left" %s><FONT %s>%s</FONT></TD></TR>`,
+			extra, extraFont, n.debugInfo)
 
 		// Walk over all field subnode children and render them
 		type pair struct {
@@ -748,8 +750,9 @@ func (g *EscapeGraph) LoadField(valNode *Node, addrNode *Node, loadOp any, field
 	// if we only have e.g. instrType.X represented by a local variable (which will never be external).
 }
 
-// StoreField applies the effect of storing the pointer-like value valNode into the field of object(s) pointed to by addrNode. Generalizes
-// to include map updates (m[k] = v), channel sends, and other operations that need to write to a specific "field" of the pointees of addr.
+// StoreField applies the effect of storing the pointer-like value valNode into the field of
+// object(s) pointed to by addrNode. Generalizes to include map updates (m[k] = v), channel sends,
+// and other operations that need to write to a specific "field" of the pointees of addr.
 // If the field is empty (""), writes to the object itself.
 func (g *EscapeGraph) StoreField(addrNode, valNode *Node, field string, tp types.Type) {
 	// Store the value into all the possible aliases of *addr
@@ -761,7 +764,8 @@ func (g *EscapeGraph) StoreField(addrNode, valNode *Node, field string, tp types
 	}
 }
 
-// Merge computes the union of this graph with another, used at e.g. the join-points of a dataflow graph. Modifies g in-place.
+// Merge computes the union of this graph with another, used at e.g. the join-points of a dataflow
+// graph. Modifies g in-place.
 func (g *EscapeGraph) Merge(h *EscapeGraph) {
 	for _, e := range h.Edges(nil, nil, EdgeAll) {
 		g.AddEdge(e.src, e.dest, e.mask)
@@ -838,7 +842,14 @@ func isAbstractNode(g *EscapeGraph, n *Node) bool {
 // pointer-like). callee is the summary of the called function.
 //
 //gocyclo:ignore
-func (g *EscapeGraph) Call(pre *EscapeGraph, receiver *Node, args []*Node, freeVars []*Node, rets []*Node, callee *EscapeGraph) {
+func (g *EscapeGraph) Call(
+	pre *EscapeGraph,
+	receiver *Node,
+	args []*Node,
+	freeVars []*Node,
+	rets []*Node,
+	callee *EscapeGraph,
+) {
 	type uEdge struct {
 		src, dest *Node
 	}
@@ -1034,7 +1045,10 @@ func (g *EscapeGraph) Call(pre *EscapeGraph, receiver *Node, args []*Node, freeV
 		// Rep is required to exist but we don't do anything with it. This makes sure
 		// we only add the alloc node if it will be visible in the caller
 		for _, edge := range callee.Edges(base, nil, EdgeAll) {
-			isInternalToAllocNode := edge.isInternal && (edge.dest.kind == KindAlloc || edge.dest.kind == KindUnknown || edge.dest.kind == KindGlobal)
+			isInternalToAllocNode := edge.isInternal &&
+				(edge.dest.kind == KindAlloc ||
+					edge.dest.kind == KindUnknown ||
+					edge.dest.kind == KindGlobal)
 
 			if isInternalToAllocNode {
 				g.nodes.AddForeignNode(edge.dest)
@@ -1136,9 +1150,11 @@ type globalNodeGroup struct {
 	function        map[*Node]*ssa.Function
 	globals         map[*ssa.Global]*Node
 	staticFunctions map[*ssa.Function]*Node
-	subnodes        map[*Node]map[any]nodeWithData // map from root node to reasons to subnode children
-	parent          map[*Node]nodeWithData         // nodes can only have one parent for now; subnodes form a forest. value has parent + reason
-	types           map[*Node]types.Type
+	// map from root node to reasons to subnode children
+	subnodes map[*Node]map[any]nodeWithData
+	// nodes can only have one parent for now; subnodes form a forest. value has parent + reason
+	parent map[*Node]nodeWithData
+	types  map[*Node]types.Type
 	// TODO: introduce a mutex around nextNode for multithreading
 }
 
@@ -1381,8 +1397,8 @@ func (g *NodeGroup) LoadNode(location any, instr ssa.Instruction, t types.Type) 
 	return node
 }
 
-// ParamNode creates a node for the initial pointee of a parameter/freevar. This is different from the var node of the pointer,
-// which exists for consistency with SSA values
+// ParamNode creates a node for the initial pointee of a parameter/freevar.
+// This is different from the var node of the pointer, which exists for consistency with SSA values
 func (g *NodeGroup) ParamNode(param ssa.Value) *Node {
 	node, ok := g.params[param]
 	if ok {
@@ -1399,8 +1415,9 @@ func (g *NodeGroup) ParamNode(param ssa.Value) *Node {
 	return node
 }
 
-// AddForeignNode adds a foreign node to the node group. This currently just tracks which nodes are added so they can be iterated over.
-// A different design would be to create a new node so that each NodeGroup is self-contained.
+// AddForeignNode adds a foreign node to the node group. This currently just tracks which nodes
+// are added so they can be iterated over. A different design would be to create a new node so that
+// each NodeGroup is self-contained.
 func (g *NodeGroup) AddForeignNode(n *Node) (changed bool) {
 	if _, ok := g.foreign[n]; ok {
 		return false

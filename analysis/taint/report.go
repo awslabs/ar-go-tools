@@ -19,7 +19,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
@@ -136,10 +136,12 @@ type FlowReport struct {
 }
 
 // newFlowReport generates a FlowReport for a specific taint flow
-func newFlowReport(s *dataflow.State,
+func newFlowReport(
+	s *dataflow.State,
 	source dataflow.NodeWithTrace,
 	sink *dataflow.VisitorNode,
-	ts *config.TaintSpec) FlowReport {
+	ts *specs.Taint,
+) FlowReport {
 	sinkNode := dataflow.GetReportNodeInfo(sink.NodeWithTrace, s)
 	if callArg, isCallArgSink := sink.Node.(*dataflow.CallNodeArg); isCallArgSink {
 		sinkNode.Position = callArg.ParentNode().Position(s).String()

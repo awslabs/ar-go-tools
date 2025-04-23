@@ -30,7 +30,11 @@ import (
 // To understand how to specify the args, look at the documentation of packages.Load.
 //
 // The returned program has already been built.
-func do(files []string, overlay map[string][]byte, options config.LoadOptions) (*ssa.Program, []*packages.Package, error) {
+func do(
+	files []string,
+	overlay map[string][]byte,
+	options config.LoadOptions,
+) (*ssa.Program, []*packages.Package, error) {
 	packageConfig := options.PackageConfig
 	if packageConfig == nil {
 		packageConfig = &packages.Config{

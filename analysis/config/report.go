@@ -19,6 +19,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/awslabs/ar-go-tools/analysis/config/analysiscfg"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
@@ -33,7 +34,7 @@ type Errors struct {
 
 // ReportInfo contains the information in the main report of argot
 type ReportInfo struct {
-	CountBySeverity map[Severity]int
+	CountBySeverity map[analysiscfg.Severity]int
 
 	// Reports groups entries by tag
 	Reports map[string]ReportGroup
@@ -45,7 +46,7 @@ type ReportInfo struct {
 // A ReportGroup lists the report contents in each details file
 type ReportGroup struct {
 	Tool     ToolName
-	Severity Severity
+	Severity analysiscfg.Severity
 	Details  []string
 }
 
@@ -54,21 +55,21 @@ type ReportGroup struct {
 type ReportEntry struct {
 	Tool        ToolName
 	ContentFile string
-	Severity    Severity
+	Severity    analysiscfg.Severity
 }
 
 // A ReportDesc gathers content and metadata about a specific report entry.
 type ReportDesc struct {
 	Tool     ToolName
 	Tag      string
-	Severity Severity
+	Severity analysiscfg.Severity
 	Content  any
 }
 
 // NewReport returns a new ReportInfo with initialized maps
 func NewReport() *ReportInfo {
 	return &ReportInfo{
-		CountBySeverity: map[Severity]int{},
+		CountBySeverity: map[analysiscfg.Severity]int{},
 		Reports:         map[string]ReportGroup{},
 		Errors: Errors{
 			ErrorMap:   map[string][]error{},
@@ -104,7 +105,7 @@ func (r *ReportInfo) Merge(other *ReportInfo) {
 }
 
 // IncrementSevCount increments the count of the provided severity label
-func (r *ReportInfo) IncrementSevCount(sev Severity, count int) {
+func (r *ReportInfo) IncrementSevCount(sev analysiscfg.Severity, count int) {
 	if prev, ok := r.CountBySeverity[sev]; ok {
 		r.CountBySeverity[sev] = prev + count
 	} else {

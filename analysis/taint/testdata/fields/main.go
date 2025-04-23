@@ -436,7 +436,12 @@ type Content struct {
 }
 
 // GenerateAgentJobReplyPayload generates AgentJobReply agent message
-func generatePayload(log *log.Logger, agentMessageUUID string, messageID string, replyPayload string) (*Payload, error) {
+func generatePayload(
+	log *log.Logger,
+	agentMessageUUID string,
+	messageID string,
+	replyPayload string,
+) (*Payload, error) {
 	payloadB, err := json.Marshal(replyPayload)
 	if err != nil {
 		return nil, err

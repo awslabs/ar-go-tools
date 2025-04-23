@@ -24,7 +24,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/backtrace"
-	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
@@ -84,7 +84,8 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	// // filesystem root is <...>/analysis/taint
 	// // this is needed to get the proper path names when creating the Go packages
 	// fsys := os.DirFS(dir)
-	// lp, err := analysistest.LoadTest(fsys.(analysistest.ReadFileDirFS), filepath.Join("testdata", test.name), test.files)
+	// lp, err := analysistest.LoadTest(fsys.(analysistest.ReadFileDirFS),
+	//                                    filepath.Join("testdata", test.name), test.files)
 
 	dir := filepath.Join("./testdata", test.name)
 	lp, err := analysistest.LoadTest(testfsys, dir, test.files, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
@@ -104,7 +105,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	}
 
 	if len(lp.Config.TaintTrackingProblems) > 0 {
-		lp.Config.SlicingProblems = []config.SlicingSpec{{BacktracePoints: lp.Config.TaintTrackingProblems[0].Sinks}}
+		lp.Config.SlicingProblems = []specs.Slicing{{BacktracePoints: lp.Config.TaintTrackingProblems[0].Sinks}}
 	}
 
 	if len(lp.Config.SlicingProblems) == 0 {
@@ -218,7 +219,7 @@ func reachedSinkPositions(s *dataflow.State, res backtrace.AnalysisResult) map[t
 					sn := sourceNode(node.Node)
 
 					// Source nodes are slicing points, and we have a special slicingOrigin to test directly slicing
-					if _, ok := dataflow.IsSourceNode(s, nil, sn); ok || strings.Contains(node.Node.String(), "slicingOrigin") {
+					if dataflow.IsSourceNode(s, nil, sn) || strings.Contains(node.Node.String(), "slicingOrigin") {
 						sourcePos := instr.Pos()
 						sourceFile := prog.Fset.File(sourcePos)
 						if sourcePos == token.NoPos || sourceFile == nil {

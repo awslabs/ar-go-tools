@@ -277,7 +277,13 @@ type runTestResult struct {
 }
 
 // runTestWithoutCheck runs the test without checking expected flows.
-func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarizeOnDemand bool, errorExpected func(e error) bool) runTestResult {
+func runTestWithoutCheck(
+	t *testing.T,
+	dirName string,
+	files []string,
+	summarizeOnDemand bool,
+	errorExpected func(e error) bool,
+) runTestResult {
 	dirName = filepath.Join("./testdata", dirName)
 	lp := analysistest.LoadTest(testfsys, dirName, files, analysistest.LoadTestOptions{ApplyRewrite: false})
 	if lp.IsErr() {
@@ -334,7 +340,10 @@ var escapeRegex = regexp.MustCompile(`//.*@Escape\(((?:\s*\w\s*,?)+)\)`)
 // expected flows from targets to sources in the form of two maps from:
 // - from sink positions to all the source position that reach that sink.
 // - from escape positions to the source of data that escapes.
-func expectedTaintTargetToSources(fset *token.FileSet, astFiles []*ast.File) (analysistest.TargetToSources, analysistest.TargetToSources) {
+func expectedTaintTargetToSources(
+	fset *token.FileSet,
+	astFiles []*ast.File,
+) (analysistest.TargetToSources, analysistest.TargetToSources) {
 	sink2source := make(analysistest.TargetToSources)
 	escape2source := make(analysistest.TargetToSources)
 	type sourceInfo struct {

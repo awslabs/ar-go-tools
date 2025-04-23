@@ -165,7 +165,12 @@ func doClosureStats(tt *term.Terminal, c *dataflow.State, command Command) {
 	}
 }
 
-func printInstrsWithParent[T any](tt *term.Terminal, p *ssa.Program, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
+func printInstrsWithParent[T any](
+	tt *term.Terminal,
+	p *ssa.Program,
+	instrs map[ssa.Instruction]T,
+	target *regexp.Regexp,
+) {
 	var fnames []NameAndLoc
 	for instruction := range instrs {
 		loc := p.Fset.Position(instruction.Parent().Pos())

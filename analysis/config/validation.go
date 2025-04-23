@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/awslabs/ar-go-tools/analysis/config/analysiscfg"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
@@ -67,7 +69,7 @@ func (c Config) checkTagsAreUnique() error {
 
 func (c Config) checkSeveritiesAreValid() error {
 	for _, taggedSpec := range c.GetSpecs() {
-		if !IsValidSeverityStr(taggedSpec.SpecSeverity().String()) {
+		if !analysiscfg.IsValidSeverityStr(taggedSpec.SpecSeverity().String()) {
 			return fmt.Errorf(
 				"invalid severity label %s (not empty, \"CRITICAL\", \"HIGH\", \"MEDIUM\", or \"LOW\")",
 				taggedSpec.SpecSeverity())
@@ -86,7 +88,7 @@ func (c Config) checkTargetOsesAreValid() error {
 }
 
 func (c Config) checkTargetsUniqueAndDefined() error {
-	targets := funcutil.Set(funcutil.Map(c.Targets, func(c TargetSpec) string { return c.Name }))
+	targets := funcutil.Set(funcutil.Map(c.Targets, func(c specs.TargetSpec) string { return c.Name }))
 	if _, hasEmptyTargetName := targets[""]; hasEmptyTargetName {
 		return fmt.Errorf("target names must be non empty")
 	}
@@ -95,7 +97,7 @@ func (c Config) checkTargetsUniqueAndDefined() error {
 	}
 	isDefined := func(s string) bool {
 		_, ok := targets[s]
-		return ok || s == TargetsAll
+		return ok || s == specs.TargetsAll
 	}
 	for _, taggedSpec := range c.GetSpecs() {
 		for _, problemTarget := range taggedSpec.SpecTargets() {
@@ -109,7 +111,7 @@ func (c Config) checkTargetsUniqueAndDefined() error {
 }
 
 func (c Config) checkUserSpecsAreValid() error {
-	for _, specFileName := range c.DataflowProblems.UserSpecs {
+	for _, specFileName := range c.ParsedDataflowProblems.UserSpecs {
 		// test if specFileName exists
 		if _, err := os.Stat(c.RelPath(specFileName)); err != nil {
 			return fmt.Errorf("user spec file %q in dataflow-problems.user-specs does not exist", specFileName)

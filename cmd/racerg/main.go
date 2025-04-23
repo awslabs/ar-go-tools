@@ -418,8 +418,14 @@ func processFunction(debugFactWriter io.Writer, ssaWriter io.Writer, f *ssa.Func
 
 	printFact("Function", funcName, len(f.Blocks), funcStartNode, funcReturnNode)
 
-	fmt.Fprintln(debugFactWriter, "// Function", funcName, "num of blocks:", len(f.Blocks), "artificial start loc:", funcStartNode, "artificial return loc:", funcReturnNode)
-	fmt.Fprintln(ssaWriter, "\t\t", funcName, f.Signature.String(), "\n\t\tstart loc:", funcStartNode, "return loc:", funcReturnNode)
+	fmt.Fprintln(debugFactWriter, "// Function", funcName,
+		"num of blocks:", len(f.Blocks),
+		"artificial start loc:", funcStartNode,
+		"artificial return loc:", funcReturnNode)
+	fmt.Fprintln(
+		ssaWriter, "\t\t", f.Signature.String(),
+		"\n\t\tstart loc:", funcStartNode,
+		"return loc:", funcReturnNode)
 
 	// Print facts about each formal parameter of the function
 	for paramInd, param := range f.Params {

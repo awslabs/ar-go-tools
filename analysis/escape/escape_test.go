@@ -30,6 +30,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	resultMonad "github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/ssa"
@@ -67,10 +68,11 @@ func assertEdge(t *testing.T, g *EscapeGraph, a, b *Node) {
 // unsimplifiedEscapeSummary computes the summary of a function without removing redudant nodes,
 // etc., which is required to do some tests that explicitly look for these nodes.
 func unsimplifiedEscapeSummary(f *ssa.Function) (graph *EscapeGraph) {
+	dcfg, _ := config.NewDefault().Compile(nil)
 	prog := &ProgramAnalysisState{
 		make(map[*ssa.Function]*functionAnalysisState),
 		newGlobalNodeGroup(),
-		config.NewLogGroup(config.NewDefault()),
+		config.NewLogGroup(dcfg),
 		nil,
 		false,
 	}
@@ -99,14 +101,15 @@ func TestSimpleEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "simple-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
 	program := lp.Program
 	reachableFunctions := lang.CallGraphReachable(cha.CallGraph(program), false, false)
-	result, err := ptr.DoPointerAnalysis(nil, program,
-		func(_ *ssa.Function) bool { return true }, reachableFunctions)
+	result, err := ptr.DoPointerAnalysis(nil, program, funcutil.True, reachableFunctions)
 	if err != nil {
 		t.Fatalf("failed to do pointer analysis: %v", err)
 	}
@@ -285,7 +288,9 @@ func TestInterproceduralEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "interprocedural-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
@@ -346,7 +351,9 @@ func TestBuiltinsEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "builtins-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
@@ -401,7 +408,9 @@ func TestStdlibEscape(t *testing.T) {
 	t.Parallel()
 
 	dirName := filepath.Join("./testdata", "stdlib-escape")
-	lp, err := analysistest.LoadTest(testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dirName, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}
@@ -526,7 +535,10 @@ func groupNodesByFunc(nodes []*callgraphVisitNode) [][]*callgraphVisitNode {
 //     In at least one context, acts like LOCAL. In at least one context, acts like
 //     NONLOCAL. Because we don't have a way to identify the contexts, this annotation
 //     is weaker than it could theoretically be.
-func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistest.LPos]analysistest.AnnotationID) error {
+func checkLocalityAnnotations(
+	nodes []*callgraphVisitNode,
+	annos map[analysistest.LPos]analysistest.AnnotationID,
+) error {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -541,7 +553,9 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistes
 	fAnnos := map[int]analysistest.AnnotationID{}
 	fAnnosCovered := map[int]map[*callgraphVisitNode]bool{}
 	for lpos, kind := range annos {
-		if lpos.Filename == funcStart.Filename && funcStart.Line <= lpos.Line && lpos.Line <= funcEnd.Line {
+		if lpos.Filename == funcStart.Filename &&
+			funcStart.Line <= lpos.Line &&
+			lpos.Line <= funcEnd.Line {
 			// Ignore annotations inside closures; those will be caught by the closure itself
 			foundClosureContainingAnno := false
 			for _, subfunction := range f.AnonFuncs {
@@ -569,7 +583,8 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistes
 						switch anno.ID {
 						case "LOCAL":
 							// All instructions for a local line must be local
-							return fmt.Errorf("instruction %v on line %v was expected to be local", ins, pos.Line)
+							return fmt.Errorf("instruction %v on line %v was expected to be local",
+								ins, pos.Line)
 						case "NONLOCAL":
 							fallthrough
 						case "BOTH":
@@ -577,7 +592,8 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistes
 							if anno.Meta == "" || strings.Contains(rationale.String(), anno.Meta) {
 								fAnnosCovered[pos.Line][node] = true
 							} else {
-								fmt.Printf("Rationale %s ignored because it doesn't contain %s\n", rationale.String(), anno.Meta)
+								fmt.Printf("Rationale %s ignored because it doesn't contain %s\n",
+									rationale.String(), anno.Meta)
 							}
 						}
 					}
@@ -588,7 +604,9 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistes
 		for line, anno := range fAnnos {
 			if anno.ID == "NONLOCAL" {
 				if !fAnnosCovered[line][node] {
-					return fmt.Errorf("line %v was expected to have at least one non-local instruction (with rationale: %s)", line, anno.Meta)
+					return fmt.Errorf(
+						"line %v was expected to have at least one non-local instruction (with rationale: %s)",
+						line, anno.Meta)
 				}
 			}
 		}
@@ -606,7 +624,10 @@ func checkLocalityAnnotations(nodes []*callgraphVisitNode, annos map[analysistes
 				}
 			}
 			if !seenLocal || !seenNonlocal {
-				return fmt.Errorf("line %v was expected to be local in some contexts and non-local in others (local: %v, non-local: %v)", line, seenLocal, seenNonlocal)
+				return fmt.Errorf(
+					"line %v was expected to be local in some contexts"+
+						" and non-local in others (local: %v, non-local: %v)",
+					line, seenLocal, seenNonlocal)
 			}
 		}
 	}
@@ -626,7 +647,9 @@ func TestLocalityComputation(t *testing.T) {
 	// lp, err := analysistest.LoadTestFromDisk(".", []string{})
 
 	dir := filepath.Join("./testdata", "escape-locality")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 	if err != nil {
 		t.Fatalf("failed to load test: %v", err)
 	}

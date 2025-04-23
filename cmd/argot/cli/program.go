@@ -101,7 +101,8 @@ func cmdLoadPackages(tt *term.Terminal, sess *session, command Command, withTest
 
 func cmdLoadWholeProgram(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : laod the arguments as whole program\n", tt.Escape.Blue, cmdLoadWholeProgramName, tt.Escape.Reset)
+		writeFmt(tt, "\t- %s%s%s : laod the arguments as whole program\n",
+			tt.Escape.Blue, cmdLoadWholeProgramName, tt.Escape.Reset)
 		return false
 	}
 

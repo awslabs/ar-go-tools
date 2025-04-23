@@ -61,7 +61,7 @@ func GetAllCallingContexts(s *State, n *CallNode) []*CallStack {
 		que = que[1:]
 		if entryPoints[elt.Label] {
 			reversedResults = append(reversedResults, elt)
-		} else if !hasReachedContextLimit(elt, s.Config.MaxEntrypointContextSize) {
+		} else if !hasReachedContextLimit(elt, s.Config.ProblemCfg.MaxEntrypointContextSize) {
 			summary := elt.Label.parent
 			if summary != nil {
 				for _, callNode := range summary.Callsites {

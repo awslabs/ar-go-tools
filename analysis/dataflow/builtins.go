@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -60,22 +61,6 @@ var unsafeBuiltins = map[string]bool{
 	"IntegerType": true,
 }
 
-// isHandledBuiltinCall returns true if the call is handled internally by the analysis.
-func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {
-	if instruction.Common().Value != nil {
-		name := instruction.Common().Value.Name()
-		if handledBuiltins[name] {
-			return true
-		}
-		// Special case: the call to Error() of the builtin error interface
-		if instruction.Common().IsInvoke() && instruction.Common().Method.Name() == "Error" &&
-			len(instruction.Common().Args) == 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func makeArgEdges(t *IntraAnalysisState, instruction ssa.CallInstruction, arg ssa.Value) {
 	marks := t.getMarks(instruction, arg, "", false)
 	for _, mark := range marks {
@@ -106,7 +91,7 @@ func makeEdgesAtBuiltinCall(t *IntraAnalysisState, instruction ssa.CallInstructi
 func markBuiltinCall(t *IntraAnalysisState, value ssa.Value, common *ssa.CallCommon,
 	instr ssa.CallInstruction) bool {
 	// For consistency check that the call is handled first.
-	if !isHandledBuiltinCall(instr) {
+	if !scanning.IsHandledBuiltinCall(instr) {
 		return false
 	}
 
@@ -132,7 +117,7 @@ func markBuiltinCall(t *IntraAnalysisState, value ssa.Value, common *ssa.CallCom
 func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.CallCommon,
 	instruction ssa.CallInstruction) {
 	// For consistency check that the call is handled first.
-	if !isHandledBuiltinCall(instruction) {
+	if !scanning.IsHandledBuiltinCall(instruction) {
 		return
 	}
 	// Builtins that have no effect here:

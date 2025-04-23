@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package main contains examples that are adapted from the paper: "Lifting on-demand analysis to higher-order languages"
+// Package main contains examples that are adapted from the paper: "Lifting on-demand analysis
+// to higher-order languages"
 // https://www.amazon.science/publications/lifting-on-demand-analysis-to-higher-order-languages
 package main
 

@@ -20,11 +20,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -259,23 +259,7 @@ func (g *InterProceduralFlowGraph) Sync() {
 
 // ScanningSpec specifies what nodes should be scanned. The caller can use both the ssa node and the graph node
 // predicates to identify graph nodes that are the entry points of the analysis.
-type ScanningSpec struct {
-	// IsEntryPointSsa identifies graph nodes by the ssa node they represent.
-	// It returns the code identifier from the config file if there was a match.
-	IsEntryPointSsa func(node ssa.Node) (config.CodeIdentifier, bool)
-
-	// IsEntryPointGraph identifies graph nodes directly as entry points.
-	// It returns the code identifier from the config file if there was a match.
-	IsEntryPointGraph func(node GraphNode) (config.CodeIdentifier, bool)
-
-	// MarkCallArgsLikeCall specifies whether call arguments should be considered entry points when the call is
-	// an entry point.
-	MarkCallArgsLikeCall bool
-
-	// ScanCallArgsOnly specifies whether only call arguments should be
-	// considered entry points - not the call itself.
-	ScanCallArgsOnly bool
-}
+type ScanningSpec = func(*pointer.Result, scanning.SsaCode) bool
 
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to
 // build the inter-procedural dataflow graph. Then, it looks for every entry point designated by the isEntryPoint
@@ -290,7 +274,7 @@ type ScanningSpec struct {
 // or if `cfg.SkipInterprocedural` is set to true.
 func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *State, visitor Visitor, spec ScanningSpec) {
 	// Skip the pass if user configuration demands it
-	if !c.Config.SummarizeOnDemand && len(g.Summaries) == 0 {
+	if !c.Config.DataflowProblems.SummarizeOnDemand && len(g.Summaries) == 0 {
 		c.Logger.Infof("Skipping inter-procedural pass: no summaries, and not summarizing on demand.")
 		return
 	}
@@ -344,95 +328,23 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor, spec
 }
 
 // TODO this will likely get refactored in the future anyways
-//
-//gocyclo:ignore
 func scanEntryPoints(
 	g *InterProceduralFlowGraph,
 	spec ScanningSpec,
 	entryPoints map[KeyType]NodeWithTrace) func(n GraphNode) {
 	return func(n GraphNode) {
-		if spec.IsEntryPointGraph != nil {
-			if _, ok := spec.IsEntryPointGraph(n); ok {
-				switch node := n.(type) {
-				case *CallNodeArg:
-					contexts := GetAllCallingContexts(g.AnalyzerState, node.ParentNode())
-					nodes := addContexts(contexts, node)
-					for _, nt := range nodes {
-						entryPoints[nt.Key()] = nt
-					}
-					return
-				}
-
-				for _, callnode := range n.Graph().Callsites {
-					contexts := GetAllCallingContexts(g.AnalyzerState, callnode)
-					nodes := addContexts(contexts, n)
-					for _, node := range nodes {
-						entryPoints[node.Key()] = node
-					}
-				}
-			}
-		}
-		// if the isEntryPointSsa function is not specified, skip the special casing
-		if spec.IsEntryPointSsa == nil {
-			return
-		}
-
-		// special cases for each SSA node type supported
-		// TODO: try to factor out the special cases in the isEntryPointGraphNode functions
-		switch node := n.(type) {
-		case *SyntheticNode:
-			addSyntheticNodeEntryPoints(spec, entryPoints, node)
-		case *CallNodeArg:
-			if spec.MarkCallArgsLikeCall {
-				if _, ok := spec.IsEntryPointSsa(node.parent.CallSite().Value()); ok {
-					entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-					entryPoints[entry.Key()] = entry
-				}
-			}
-		case *CallNode:
-			if node.callSite == nil {
-				return
-			}
-
-			if cid, ok := spec.IsEntryPointSsa(node.callSite.Value()); ok {
-				if funcutil.Exists(cid.Target.Objects, func(obj config.TargetObject) bool {
-					return obj.Kind == config.ArgumentKind
-				}) {
-					// Matching cid has an argument object which means the call itself is not an entrypoint
-					return
-				}
-
-				contexts := GetAllCallingContexts(g.AnalyzerState, node)
-				nodes := addContexts(contexts, node)
+		if spec(g.AnalyzerState.PointerAnalysis, n.SsaCode()) {
+			if callNode, isCallNode := n.(*CallNode); isCallNode {
+				contexts := GetAllCallingContexts(g.AnalyzerState, callNode)
+				nodes := addContexts(contexts, n)
 				for _, node := range nodes {
 					entryPoints[node.Key()] = node
 				}
-
-				if spec.MarkCallArgsLikeCall {
-					for _, arg := range node.args {
-						entry := NodeWithTrace{arg, nil, nil}
-						entryPoints[entry.Key()] = entry
-					}
-				}
+			} else {
+				entry := NodeWithTrace{Node: n, Trace: nil, ClosureTrace: nil}
+				entryPoints[entry.Key()] = entry
 			}
 		}
-	}
-}
-
-func addSyntheticNodeEntryPoints(
-	spec ScanningSpec,
-	entryPoints map[KeyType]NodeWithTrace,
-	node *SyntheticNode) {
-	if spec.IsEntryPointSsa == nil {
-		return
-	}
-	asValue, isValue := node.Instr().(ssa.Node)
-	if !isValue {
-		return
-	}
-	if _, ok := spec.IsEntryPointSsa(asValue); ok {
-		entry := NodeWithTrace{Node: node}
-		entryPoints[entry.Key()] = entry
 	}
 }
 

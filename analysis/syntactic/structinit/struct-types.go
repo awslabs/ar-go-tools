@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"go/types"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 )
 
@@ -86,7 +86,7 @@ func isStructTypeHelper(t types.Type, isField bool) (structType, bool) {
 // For example, allocating struct{t : struct{x : int}} would allocate a struct{x: int}.
 // Allocating a struct{t : *struct{x : int}} would NOT allocate a struct{x: int}.
 // Allocating a struct{t : *struct{t2: struct{ x: int}}} would also not allocate a struct{x: int}.
-func structTypesThatMatchSpec(spec config.StructInitSpec, t types.Type) []structType {
+func structTypesThatMatchSpec(spec specs.StructInitSpec, t types.Type) []structType {
 	var res []structType
 	typs := implicitlyAllocedStructTypes(t)
 	if len(typs) == 0 {

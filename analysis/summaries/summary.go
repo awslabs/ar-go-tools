@@ -13,7 +13,8 @@
 // limitations under the License.
 
 // Package summaries defines how data flow information can be summarized for a given function.
-// These summaries are only for pre-determined functions (e.g. standard library functions) and are not computed during the analysis.
+// These summaries are only for pre-determined functions (e.g. standard library functions) and
+// are not computed during the analysis.
 package summaries
 
 import (
@@ -62,28 +63,34 @@ func (s Summary) GetReturnFlows(_ *ssa.Function) ([][]int, error) {
 	return s.Rets, nil
 }
 
-// NoDataFlowPropagation is a summary for functions that do not have a data flow. The return value, if used, is a
+// NoDataFlowPropagation is a summary for functions that do not have a data flow. The return value,
+// if used, is a
 // sanitized value.
 var NoDataFlowPropagation = Summary{Rets: [][]int{}, Args: [][]int{}}
 
-// SingleVarArgPropagation is a summary for functions that have a single (possibly variadic) argument (func f(arg ..any) any {...})
+// SingleVarArgPropagation is a summary for functions that have a single (possibly variadic)
+// argument (func f(arg ..any) any {...})
 // This will propagate the data flow to the return value.
 var SingleVarArgPropagation = Summary{Args: [][]int{{0}}, Rets: [][]int{{0}}}
 
-// SingleVarArgTwoRetsPropagation is a summary for functions that have a single variadic argument (func f(arg ..any) (any,any) {...})
+// SingleVarArgTwoRetsPropagation is a summary for functions that have a single variadic argument
+// (func f(arg ..any) (any,any) {...})
 // This will propagate the data flow to both return values.
 var SingleVarArgTwoRetsPropagation = Summary{Args: [][]int{{0}}, Rets: [][]int{{0, 1}}}
 
-// TwoArgPropagation is a summary for functions that have two arguments and both propagate their data to the return
+// TwoArgPropagation is a summary for functions that have two arguments and both propagate their
+// data to the return
 // value, but there is no dataflow between arguments.
 var TwoArgPropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}
 
-// TwoArgReceivePropagation is a summary for functions that have two arguments and both propagate their data to the return
-// value, and the second argument propagates to the first (typically, functions where the first argument is the receiver)
+// TwoArgReceivePropagation is a summary for functions that have two arguments and both propagate
+// their data to the return value, and the second argument propagates to the first (typically,
+// functions where the first argument is the receiver)
 var TwoArgReceivePropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}
 
-// FormatterPropagation is a summary for functions like Printf where the first and second arguments might be tainted,
-// and this will taint the returned value (for example: an error, a string with Sprintf).
+// FormatterPropagation is a summary for functions like Printf where the first and second arguments
+// might be tainted, and this will taint the returned value (for example: an error, a string with
+// Sprintf).
 var FormatterPropagation = Summary{Args: [][]int{{0}, {1}}, Rets: [][]int{{0}, {0}}}
 
 // IsStdPackageName returns true if the package name is a package of the standard library

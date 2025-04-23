@@ -9,6 +9,7 @@
 # Install golint with:      go install golang.org/x/lint/golint@latest
 # Install nilaway with:     go install go.uber.org/nilaway/cmd/nilaway@latest
 # Install staticcheck with: go install honnef.co/go/tools/cmd/staticcheck@latest
+# Install lll with:         go install github.com/walle/lll/cmd/lll@latest
 
 all: setup-precommit lint argot-build racerg-build test
 
@@ -16,6 +17,7 @@ install: argot-install
 
 lint: **/*.go
 	deadcode -test -filter ar-go-tools/analysis ./...
+	lll --l 120 -s internal/pointer -e "http|TODO|@Source|@Sink" --g .
 	go vet ./...
 	gocyclo -ignore "test|internal/pointer|internal/typeparams" -over 15 .
 	ineffassign ./...

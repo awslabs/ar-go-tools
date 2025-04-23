@@ -12,23 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package config
+package specs
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"regexp"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
 )
 
-// A CodeIdentifier identifies a code element that is a source, sink, sanitizer, etc..
+// A ParsedCodeIdentifier identifies a code element that is a source, sink, sanitizer, etc..
 // A code identifier can be identified from its package, method, receiver, field
 // or type, or any combination of those
 // This is meant to replicate functionality in go-flow-levee and gokart, and can be
 // extended as needed
-type CodeIdentifier struct {
+type ParsedCodeIdentifier struct {
 	// Context stores an additional string that can be used depending on context by analyses. Typically, one can use
 	// Context to match the parent function name when matching a code identifier.
 	Context string `xml:"context,attr"`
@@ -81,6 +86,120 @@ type CodeIdentifier struct {
 
 	// Enclosing specifies the calling context of the target (only for method targets).
 	Enclosing CallingContext
+}
+
+// Compile generates a code specification by compiling a parsed code identifier
+func (cid ParsedCodeIdentifier) Compile() (scanning.CodeSpec, error) {
+	return cid.CompileForceArg(false)
+}
+
+// CompileForceArg generates a code specification by compiling a parsed code identifier
+// the forceArg argument indicates whether a call spec should be forced into a
+// call argument spec. This makes sense for sinks, and because of backwards compatibility
+func (cid ParsedCodeIdentifier) CompileForceArg(forceArg bool) (scanning.CodeSpec, error) {
+	if isNewFormat(cid) {
+		return cid.compileNewFormat()
+	}
+	// First compile the context part
+	common := scanning.CommonSpec{
+		Package:        asRegex(cid.Package),
+		ContextPackage: nil,
+		ContextMethod:  asRegex(cid.Context),
+	}
+
+	// Try to distinguish the cases
+	if cid.Kind == "channel receive" {
+		return &scanning.ChannelRecvSpec{
+			CommonSpec: common,
+			Type:       asRegex(cid.Type),
+			ValueMatch: asRegex(cid.ValueMatch),
+		}, nil
+	}
+
+	if cid.Method != "" &&
+		cid.Package == "" &&
+		scanning.MatchesHandledBuiltinCall(asRegex(cid.Method)) {
+		return &scanning.BuiltinCallSpec{
+			Name: trimStartEndRegex(cid.Method),
+		}, nil
+	}
+
+	// Method or interface indicate this is a call site
+	if cid.Method != "" || cid.Interface != "" || cid.Receiver != "" {
+		// It's a CallSpec
+		callspec := scanning.CallSpec{
+			CommonSpec:   common,
+			Interface:    asRegex(cid.Interface),
+			Method:       asRegex(cid.Method),
+			ReceiverType: asRegex(cid.Receiver),
+			ValueMatch:   asRegex(cid.ValueMatch),
+		}
+
+		if cid.Kind == "arg" || forceArg {
+			return scanning.CallArgSpec{
+				CallSpec: callspec,
+				Type:     asRegex(cid.Type),
+				AnyIndex: true,
+			}, nil
+		}
+		return callspec, nil
+	}
+
+	if cid.Field != "" {
+		return &scanning.StructFieldSpec{
+			CommonSpec: common,
+			Type:       asRegex(cid.Type),
+			Field:      asRegex(cid.Field),
+			Write:      forceArg,
+		}, nil
+	}
+
+	if cid.Type != "" {
+		return &scanning.TypeSpec{
+			CommonSpec: common,
+			Type:       asRegex(cid.Type),
+		}, nil
+	}
+	panic(fmt.Sprintf("TODO: implement translation for %+v", cid))
+}
+
+func (cid ParsedCodeIdentifier) compileNewFormat() (scanning.CodeSpec, error) {
+	var contextPkgRegex *regexp.Regexp
+	var err error
+	if cid.Enclosing.PackageRegex != "" {
+		contextPkgRegex, err = regexp.Compile(cid.Enclosing.PackageRegex)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		contextPkgRegex = asRegex(cid.Enclosing.Package)
+	}
+
+	var contextMethodRegex *regexp.Regexp
+	if cid.Enclosing.MethodRegex != "" {
+		contextMethodRegex, err = regexp.Compile(cid.Enclosing.MethodRegex)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		contextMethodRegex = asRegex(cid.Enclosing.Method)
+	}
+	common := &scanning.CommonSpec{
+		Package:        asRegex(cid.Target.Package),
+		ContextPackage: contextPkgRegex,
+		ContextMethod:  contextMethodRegex,
+	}
+	switch cid.Target.Kind {
+	case CallKind:
+		if len(cid.Target.Objects) == 0 {
+			return scanning.CallSpec{
+				CommonSpec: *common,
+				Method:     asRegex(cid.Target.Method),
+			}, nil
+		}
+		panic("NOT IMPLEMENTED")
+	}
+	return nil, fmt.Errorf("unrecognized code identifier")
 }
 
 // Target matches a specific program value to be analyzed as an
@@ -166,13 +285,8 @@ const (
 )
 
 // isNewFormat returns true if cid is specified using the new format.
-func isNewFormat(cid CodeIdentifier) bool {
+func isNewFormat(cid ParsedCodeIdentifier) bool {
 	return cid.Target.Kind != ""
-}
-
-// NewCodeIdentifier properly intializes cid.
-func NewCodeIdentifier(cid CodeIdentifier) CodeIdentifier {
-	return compileRegexes(cid)
 }
 
 type codeIdentifierRegex struct {
@@ -187,11 +301,11 @@ type codeIdentifierRegex struct {
 	constRegex      *regexp.Regexp
 }
 
-// compileRegexes compiles the strings in the code identifier into regexes. It compiles all identifiers into regexes
+// CompileRegexes compiles the strings in the code identifier into regexes. It compiles all identifiers into regexes
 // or none.
 // @ensures cid.computedRegexs == null || cid.computedRegexs.(*) != null
 // TODO improve error handling
-func compileRegexes(cid CodeIdentifier) CodeIdentifier {
+func CompileRegexes(cid ParsedCodeIdentifier) ParsedCodeIdentifier {
 	if isNewFormat(cid) {
 		// Enclosing is the only object that may contain regexes (for now)
 		cid.Enclosing.computedRegexs = &callingContextRegex{}
@@ -263,11 +377,11 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	return cid
 }
 
-// equalOnNonEmptyFields returns true if each of the receiver's fields are either equal to the corresponding
+// EqualOnNonEmptyFields returns true if each of the receiver's fields are either equal to the corresponding
 // argument's field, or the argument's field is empty
 //
 //gocyclo:ignore
-func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
+func (cid *ParsedCodeIdentifier) EqualOnNonEmptyFields(cidRef ParsedCodeIdentifier) bool {
 	if isNewFormat(cidRef) {
 		// Returns false if cid is not in the new format as well
 		return cid.equalNewFormat(cidRef)
@@ -301,7 +415,7 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 // code identifier format.
 //
 //gocyclo:ignore
-func (cid *CodeIdentifier) equalNewFormat(cidRef CodeIdentifier) bool {
+func (cid *ParsedCodeIdentifier) equalNewFormat(cidRef ParsedCodeIdentifier) bool {
 	if cid == nil || !isNewFormat(*cid) {
 		return false
 	}
@@ -320,7 +434,10 @@ func (cid *CodeIdentifier) equalNewFormat(cidRef CodeIdentifier) bool {
 			for _, obj := range cid.Target.Objects {
 				found := false
 				for _, objRef := range cidRef.Target.Objects {
-					if obj.Kind == objRef.Kind && obj.Name == objRef.Name && obj.Type == objRef.Type && obj.Index == objRef.Index {
+					if obj.Kind == objRef.Kind &&
+						obj.Name == objRef.Name &&
+						obj.Type == objRef.Type &&
+						obj.Index == objRef.Index {
 						found = true
 						break
 					}
@@ -360,7 +477,7 @@ func (cid *CodeIdentifier) equalNewFormat(cidRef CodeIdentifier) bool {
 
 // ExistsCid is true if there is some x in a such that f(x) is true.
 // O(len(a))
-func ExistsCid(a []CodeIdentifier, f func(identifier CodeIdentifier) bool) bool {
+func ExistsCid(a []ParsedCodeIdentifier, f func(identifier ParsedCodeIdentifier) bool) bool {
 	for _, x := range a {
 		if f(x) {
 			return true
@@ -370,7 +487,7 @@ func ExistsCid(a []CodeIdentifier, f func(identifier CodeIdentifier) bool) bool 
 }
 
 // FullMethodName returns the fully qualified name of the code identifier.
-func (cid *CodeIdentifier) FullMethodName() string {
+func (cid *ParsedCodeIdentifier) FullMethodName() string {
 	if cid.Method != "" {
 		return fmt.Sprintf("%v.%v.%v", cid.Package, cid.Receiver, cid.Method)
 	}
@@ -385,7 +502,7 @@ func (cid *CodeIdentifier) FullMethodName() string {
 // nil values.
 //
 //gocyclo:ignore
-func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
+func (cid *ParsedCodeIdentifier) MatchType(typ types.Type) bool {
 	if cid == nil {
 		return false
 	}
@@ -419,7 +536,7 @@ func (cid *CodeIdentifier) MatchType(typ types.Type) bool {
 // MatchPackageAndMethodWithCaller checks whether the function f matches the code identifier on the package and method fields and
 // the context of the caller.
 // It is safe to call with nil values.
-func (cid *CodeIdentifier) MatchPackageAndMethodWithCaller(caller *ssa.Function, f *ssa.Function) bool {
+func (cid *ParsedCodeIdentifier) MatchPackageAndMethodWithCaller(caller *ssa.Function, f *ssa.Function) bool {
 	if cid == nil {
 		return false
 	}
@@ -433,7 +550,7 @@ func (cid *CodeIdentifier) MatchPackageAndMethodWithCaller(caller *ssa.Function,
 // MatchPackageAndMethod checks whether the function f matches the code identifier on the package and method
 // fields.
 // It is safe to call with nil values.
-func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
+func (cid *ParsedCodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
 	if cid == nil {
 		return false
 	}
@@ -450,7 +567,7 @@ func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
 
 // MatchInterface matches a function to a code identifier by looking whether that function implements an interface's
 // method, and using that method information to match against the code identifier
-func (cid *CodeIdentifier) MatchInterface(f *ssa.Function) bool {
+func (cid *ParsedCodeIdentifier) MatchInterface(f *ssa.Function) bool {
 	if cid == nil {
 		return false
 	}
@@ -467,11 +584,316 @@ func (cid *CodeIdentifier) MatchInterface(f *ssa.Function) bool {
 }
 
 // MatchConst matches a named package-level constant to a code identifier.
-func (cid *CodeIdentifier) MatchConst(c *ssa.NamedConst) bool {
+func (cid *ParsedCodeIdentifier) MatchConst(c *ssa.NamedConst) bool {
 	if cid == nil || c == nil {
 		return false
 	}
 
 	pkg := c.Package().String()
 	return cid.computedRegexs.packageRegex.MatchString(pkg) && cid.computedRegexs.constRegex.MatchString(c.Name())
+}
+
+// arRegex tries to compile to a regex, otherwise returns a regex that matches exactly the string
+func asRegex(s string) *regexp.Regexp {
+	r, err := regexp.Compile(s)
+	if err == nil {
+		return r
+	}
+	r, err = regexp.Compile("^" + regexp.QuoteMeta(s) + "$")
+	if err != nil {
+		panic("Unexpected regex compilation error")
+	}
+	return r
+}
+
+// trimStartEndRegex trims ^ and $ at the beginning and end of a string if that string was meant to
+// be a regex with exact matching
+func trimStartEndRegex(s string) string {
+	s1, ok := strings.CutSuffix(s, "$")
+	if !ok {
+		return s
+	}
+	s2, ok := strings.CutPrefix(s1, "^")
+	if !ok {
+		return s
+	}
+	return s2
+}
+
+// MatchAstCode matches an ast that has the same fields that the parsed code identifier
+func (cid ParsedCodeIdentifier) MatchAstCode(a scanning.AstCode) bool {
+	panic("UNIMPLEMENTED")
+}
+
+// MatchSsaCode matches  an ssa code identifier
+func (cid ParsedCodeIdentifier) MatchSsaCode(p *pointer.Result, a scanning.SsaCode) bool {
+	if a.Instr() != nil {
+		_, ok := isEntrypointNode(p, a.Instr(), func(p ParsedCodeIdentifier) bool {
+			return cid.EqualOnNonEmptyFields(p)
+		})
+		return ok
+	}
+	return false
+}
+
+// / IsEntrypointNode returns true if n matches a code identifier according to the predicate f
+//
+//gocyclo:ignore
+func isEntrypointNode(pointer *pointer.Result, n ssa.Instruction,
+	f func(ParsedCodeIdentifier) bool) (ParsedCodeIdentifier, bool) {
+	switch node := (n).(type) {
+	// Look for callees to functions that are considered entry points
+	case *ssa.Call:
+		if node == nil {
+			return ParsedCodeIdentifier{}, false // inits cannot be entry points
+		}
+
+		parent := node.Parent()
+		if !node.Call.IsInvoke() {
+			if cid, ok := isFuncEntrypoint(node, parent, f); ok {
+				return cid, true
+			}
+			if cid, ok := isAliasEntrypoint(pointer, node, f); ok {
+				return cid, true
+			}
+			return ParsedCodeIdentifier{}, false
+		}
+
+		// For invoke also populate the receiver
+		receiver := node.Call.Value.Name()
+		methodName := node.Call.Method.Name()
+		calleePkg := analysisutil.FindSafeCalleePkg(node.Common())
+		if calleePkg.IsSome() {
+			cid := ParsedCodeIdentifier{
+				Context:    parent.String(),
+				Package:    calleePkg.Value(),
+				Method:     methodName,
+				Receiver:   receiver,
+				ValueMatch: n.String(),
+			}
+			if f(cid) {
+				return cid, true
+			}
+
+			// Entrypoint could be one of the arguments: use the new code identifier format
+			cids := newCodeIdentifierCall(node, calleePkg.Value(), methodName, parent)
+			for _, cid := range cids {
+				if f(cid) {
+					return cid, true
+				}
+			}
+		}
+		return ParsedCodeIdentifier{}, false
+
+	// Field accesses that are considered as entry points
+	case *ssa.Field:
+		fieldInfo := analysisutil.FieldFieldInfo(node)
+		packageName, typeName, err := analysisutil.FindEltTypePackage(node.X.Type(), "%s")
+		if err != nil {
+			return ParsedCodeIdentifier{}, false
+		}
+		cid := ParsedCodeIdentifier{
+			Context:    node.Parent().String(),
+			Package:    packageName,
+			Field:      fieldInfo.FieldName,
+			Type:       typeName,
+			ValueMatch: n.String(),
+		}
+		if f(cid) {
+			return cid, true
+		}
+		return ParsedCodeIdentifier{}, false
+
+	case *ssa.FieldAddr:
+		fieldInfo := analysisutil.FieldAddrFieldInfo(node)
+		packageName, typeName, err := analysisutil.FindEltTypePackage(node.X.Type(), "%s")
+		if err != nil {
+			return ParsedCodeIdentifier{}, false
+		}
+		cid := ParsedCodeIdentifier{
+			Context:    node.Parent().String(),
+			Package:    packageName,
+			Field:      fieldInfo.FieldName,
+			Type:       typeName,
+			ValueMatch: n.String(),
+		}
+		if f(cid) {
+			return cid, true
+		}
+		return ParsedCodeIdentifier{}, false
+
+	// Allocations of data of a type that is an entry point
+	case *ssa.Alloc:
+		packageName, typeName, err := analysisutil.FindEltTypePackage(node.Type(), "%s")
+		if err != nil {
+			return ParsedCodeIdentifier{}, false
+		}
+		cid := ParsedCodeIdentifier{
+			Context:    node.Parent().String(),
+			Package:    packageName,
+			Type:       typeName,
+			ValueMatch: n.String(),
+		}
+		if f(cid) {
+			return cid, true
+		}
+		return ParsedCodeIdentifier{}, false
+
+	// Storing into a specific struct field
+	case *ssa.Store:
+		if fieldAddr, isFieldAddr := node.Addr.(*ssa.FieldAddr); isFieldAddr {
+			fieldInfo := analysisutil.FieldAddrFieldInfo(fieldAddr)
+			packageName, typeName, err := analysisutil.FindEltTypePackage(fieldAddr.X.Type(), "%s")
+			if err != nil {
+				return ParsedCodeIdentifier{}, false
+			}
+			cid := ParsedCodeIdentifier{
+				Context:    node.Parent().String(),
+				Package:    packageName,
+				Field:      fieldInfo.FieldName,
+				Type:       typeName,
+				Kind:       "store",
+				ValueMatch: n.String(),
+			}
+			if f(cid) {
+				return cid, true
+			}
+			return ParsedCodeIdentifier{}, false
+		}
+		return ParsedCodeIdentifier{}, false
+
+	// Channel receives can be sources
+	case *ssa.UnOp:
+		if node.Op == token.ARROW {
+			packageName, typeName, err := analysisutil.FindEltTypePackage(node.X.Type(), "%s")
+			if err != nil {
+				return ParsedCodeIdentifier{}, false
+			}
+			cid := ParsedCodeIdentifier{
+				Context:    node.Parent().String(),
+				Package:    packageName,
+				Type:       typeName,
+				Kind:       "channel receive",
+				ValueMatch: n.String(),
+			}
+			if f(cid) {
+				return cid, true
+			}
+			return ParsedCodeIdentifier{}, false
+		}
+		return ParsedCodeIdentifier{}, false
+
+	default:
+		return ParsedCodeIdentifier{}, false
+	}
+}
+
+// newCodeIdentifierCall returns a code identifier for each possible object in the call.
+func newCodeIdentifierCall(
+	node *ssa.Call,
+	calleePkg string,
+	methodName string,
+	parent *ssa.Function,
+) []ParsedCodeIdentifier {
+	if parent == nil || parent.Package() == nil {
+		return nil
+	}
+
+	var res []ParsedCodeIdentifier
+	args := lang.GetArgs(node)
+	params := lang.GetParams(node)
+	for i, arg := range args {
+		cid := ParsedCodeIdentifier{
+			Target: Target{
+				Kind:    CallKind,
+				Package: calleePkg,
+				Method:  methodName,
+				Objects: []TargetObject{
+					NewParamTargetObject(params[i], i, arg),
+				},
+			},
+			Enclosing: CallingContext{
+				Package: parent.Package().Pkg.Path(),
+				Method:  parent.Name(),
+			},
+		}
+		res = append(res, cid)
+	}
+
+	return res
+}
+
+// NewParamTargetObject returns the config.TargetObject corresponding to the parameter for arg at
+// index idx.
+func NewParamTargetObject(param lang.Param, idx int, arg ssa.Value) TargetObject {
+	typ := arg.Type().String()
+	if param.IsVariadic {
+		// If the parameter type is variadic, the SSA form of the argument will be a slice
+		// (`[]type`) instead of the `...type` form.
+		typ = strings.TrimPrefix(typ, "[]")
+		typ = "..." + typ
+	}
+	return TargetObject{
+		Kind:  ArgumentKind,
+		Name:  param.Var.Name(),
+		Index: uint(idx),
+		Type:  typ,
+	}
+}
+
+// isFuncEntrypoint returns true if the actual function called matches an entrypoint.
+func isFuncEntrypoint(
+	node *ssa.Call,
+	parent *ssa.Function,
+	f func(ParsedCodeIdentifier) bool,
+) (ParsedCodeIdentifier, bool) {
+	funcValue := node.Call.Value.Name()
+	calleePkg := analysisutil.FindSafeCalleePkg(node.Common())
+	if calleePkg.IsSome() {
+		cid := ParsedCodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue}
+		if f(cid) {
+			return cid, true
+		}
+		// Entrypoint could be one of the arguments: use the new code identifier format
+		cids := newCodeIdentifierCall(node, calleePkg.Value(), funcValue, parent)
+		for _, cid := range cids {
+			if f(cid) {
+				return cid, true
+			}
+		}
+	}
+	return ParsedCodeIdentifier{}, false
+}
+
+// isAliasEntrypoint returns true if any alias to node matches an entrypoint.
+func isAliasEntrypoint(
+	pointer *pointer.Result,
+	node *ssa.Call,
+	f func(ParsedCodeIdentifier) bool,
+) (ParsedCodeIdentifier, bool) {
+	if pointer == nil {
+		return ParsedCodeIdentifier{}, false
+	}
+	ptr, hasAliases := pointer.Queries[node.Call.Value]
+	if !hasAliases {
+		return ParsedCodeIdentifier{}, false
+	}
+	for _, label := range ptr.PointsTo().Labels() {
+		funcValue := label.Value().Name()
+		funcPackage := analysisutil.FindValuePackage(label.Value())
+		if funcPackage.IsSome() {
+			cid := ParsedCodeIdentifier{Package: funcPackage.Value(), Method: funcValue}
+			if f(cid) {
+				return cid, true
+			}
+			// Entrypoint could be one of the arguments: use the new code identifier format
+			cids := newCodeIdentifierCall(node, funcPackage.Value(), funcValue, label.Value().Parent())
+			for _, cid := range cids {
+				if f(cid) {
+					return cid, true
+				}
+			}
+		}
+	}
+	return ParsedCodeIdentifier{}, false
 }

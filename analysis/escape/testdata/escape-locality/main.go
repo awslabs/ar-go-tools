@@ -528,5 +528,7 @@ func unknownFunc() *Node {
 
 func testRationaleUnknownReturn() {
 	x := unknownFunc()
-	_ = x.next // NONLOCAL unknown return of github.com/awslabs/ar-go-tools/analysis/escape/testdata/escape-locality.unknownFunc
+	_ = x.next // NONLOCAL
+	// unknown return of:
+	// github.com/awslabs/ar-go-tools/analysis/escape/testdata/escape-locality.unknownFunc
 }

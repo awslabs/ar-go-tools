@@ -50,15 +50,18 @@ func TestSimpleFlowWithOption(t *testing.T) {
 		t.Fatalf("configs do not define the same taint tracking problem")
 	}
 
-	if tp1.Sources[0].Package != tp2.Sources[0].Package || tp1.Sources[0].Method != tp2.Sources[0].Method {
+	if tp1.ParsedTaintSpec.Sources[0].Package != tp2.ParsedTaintSpec.Sources[0].Package ||
+		tp1.ParsedTaintSpec.Sources[0].Method != tp2.ParsedTaintSpec.Sources[0].Method {
 		t.Fatalf("sources %v and %v do not match", tp1.Sources[0], tp2.Sources[0])
 	}
 
-	if tp1.Sinks[0].Package != tp2.Sinks[0].Package || tp1.Sinks[0].Method != tp2.Sinks[0].Method {
+	if tp1.ParsedTaintSpec.Sinks[0].Package != tp2.ParsedTaintSpec.Sinks[0].Package ||
+		tp1.ParsedTaintSpec.Sinks[0].Method != tp2.ParsedTaintSpec.Sinks[0].Method {
 		t.Fatalf("sources %v and %v do not match", tp1.Sinks[0], tp2.Sinks[0])
 	}
 
-	if tp1.Sanitizers[0].Package != tp2.Sanitizers[0].Package || tp1.Sanitizers[0].Method != tp2.Sanitizers[0].Method {
+	if tp1.ParsedTaintSpec.Sanitizers[0].Package != tp2.ParsedTaintSpec.Sanitizers[0].Package ||
+		tp1.ParsedTaintSpec.Sanitizers[0].Method != tp2.ParsedTaintSpec.Sanitizers[0].Method {
 		t.Fatalf("sources %v and %v do not match", tp1.Sanitizers[0], tp2.Sanitizers[0])
 	}
 }

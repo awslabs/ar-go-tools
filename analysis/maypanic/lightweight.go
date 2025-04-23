@@ -165,7 +165,10 @@ func doesDeferRecover(f *ssa.Function, recoverFunctions map[*ssa.Function]bool) 
 	return false
 }
 
-func findErroredFunctions(goFunctions map[*ssa.Function][]token.Pos, recoverFunctions map[*ssa.Function]bool) map[*ssa.Function]bool {
+func findErroredFunctions(
+	goFunctions map[*ssa.Function][]token.Pos,
+	recoverFunctions map[*ssa.Function]bool,
+) map[*ssa.Function]bool {
 	result := make(map[*ssa.Function]bool)
 
 	// look for defer + recover

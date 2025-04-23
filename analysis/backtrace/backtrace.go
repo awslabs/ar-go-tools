@@ -25,9 +25,10 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -69,10 +70,7 @@ func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	df.RunIntraProceduralPass(state, numRoutines, df.IntraAnalysisParams{
 		ShouldBuildSummary: df.ShouldBuildSummary,
 		ShouldTrack: func(state *df.State, n ssa.Node) bool {
-			if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint); ok {
-				return true
-			}
-			return false
+			return state.Config.IsSomeBacktracePoint(state.PointerAnalysis, scanning.NewSsaNodeCode(n))
 		},
 	})
 
@@ -85,7 +83,11 @@ func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: allTraces}, errors.Join(errs...)
 }
 
-func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces map[string]map[df.NodeWithTrace][]Trace, errs []error) []error {
+func runTag(
+	state *df.State,
+	reqs AnalysisReqs,
+	ps specs.Slicing,
+	allTraces map[string]map[df.NodeWithTrace][]Trace, errs []error) []error {
 	state.Logger.PushContext(formatutil.Yellow(ps.Tag))
 	defer state.Logger.PopContext()
 	// Check the tag must be analyzed
@@ -94,7 +96,7 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 		return errs
 	}
 	// Check the problem applies to the current target
-	if !config.TargetIncludes(ps.Targets, state.Target) {
+	if !specs.TargetIncludes(ps.Targets, state.Target) {
 		return errs
 	}
 	// Number of alarms is problem specific, not global
@@ -105,49 +107,13 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 		state.Logger.Infof("Will check that data flowing to backtrace points is static.\n")
 	}
 	// Set problem-specific options
-	prevOptions := state.Config.AnalysisProblemOptions
+	prevOptions := state.Config.ProblemCfg
 
 	// Overriding options with problem-specific config
-	if ps.AnalysisProblemOptions != nil {
-		config.OverrideWithAnalysisOptions(state.Logger, state.Config, ps.AnalysisProblemOptions)
-	} else {
-		ps.AnalysisProblemOptions = &config.AnalysisProblemOptions{}
-	}
+	config.OverrideWithAnalysisOptions(state.Logger, state.Config, ps.ProblemCfg)
 
 	visitor := NewVisitor(ps)
-	df.RunInterProcedural(state, visitor, df.ScanningSpec{
-		IsEntryPointGraph: func(node df.GraphNode) (config.CodeIdentifier, bool) {
-			if arg, ok := node.(*df.CallNodeArg); ok {
-				callee := arg.ParentNode().Callee()
-				if callee == nil {
-					return config.CodeIdentifier{}, false
-				}
-				pkg := callee.Package()
-				if pkg == nil {
-					return config.CodeIdentifier{}, false
-				}
-				param := lang.GetParams(arg.ParentNode().CallSite())[arg.Index()]
-				cid := config.CodeIdentifier{
-					Target: config.Target{
-						Kind:    config.CallKind,
-						Package: callee.Package().Pkg.Path(),
-						Method:  callee.Name(),
-						Objects: []config.TargetObject{
-							analysisutil.NewParamTargetObject(param, arg.Index(), arg.Value()),
-						},
-					},
-				}
-
-				return visitor.SlicingSpec.IsBacktracePoint(cid)
-			}
-
-			return config.CodeIdentifier{}, false
-		},
-		IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
-			return df.IsBacktraceNode(state, &visitor.SlicingSpec, node)
-		},
-		ScanCallArgsOnly: true,
-	})
+	df.RunInterProcedural(state, visitor, ps.IsBacktracePoint)
 	// filter unwanted nodes
 	resTraces := filterResultTraces(state, visitor)
 	if len(resTraces) > 0 {
@@ -177,7 +143,7 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 		errs = append(errs, vErrs...)
 	}
 	// Restore global options
-	state.Config.AnalysisProblemOptions = prevOptions
+	state.Config.ProblemCfg = prevOptions
 	return errs
 }
 
@@ -187,7 +153,7 @@ func filterResultTraces(state *df.State, visitor *Visitor) map[df.NodeWithTrace]
 		for _, trace := range traces {
 			vTrace := Trace{}
 			for _, node := range trace {
-				if isFiltered(visitor.SlicingSpec, node.Node) {
+				if visitor.SlicingSpec.IsFiltered(state.PointerAnalysis, node.Node.SsaCode()) {
 					state.Logger.Tracef("FILTERED: %v\n", node)
 					state.Logger.Tracef("\t%v\n", vTrace)
 					vTrace = nil
@@ -206,14 +172,14 @@ func filterResultTraces(state *df.State, visitor *Visitor) map[df.NodeWithTrace]
 // Visitor implements the dataflow.Visitor interface and holds the specification of the problem to solve in the
 // SlicingSpec as well as the set of traces.
 type Visitor struct {
-	SlicingSpec   config.SlicingSpec
+	SlicingSpec   specs.Slicing
 	Traces        map[df.NodeWithTrace][]Trace
 	Errs          []error
 	prevEdgeInfos map[*df.CallNodeArg][]df.EdgeInfo
 }
 
 // NewVisitor constructs a Visitor from spec.
-func NewVisitor(spec config.SlicingSpec) *Visitor {
+func NewVisitor(spec specs.Slicing) *Visitor {
 	return &Visitor{
 		SlicingSpec:   spec,
 		Traces:        make(map[df.NodeWithTrace][]Trace),
@@ -420,10 +386,8 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 								callSite.Callee(),
 								df.GetUniqueFunctionID(),
 								func(s *df.State, n ssa.Node) bool {
-									if _, ok := df.IsBacktraceNode(s, nil, n); ok {
-										return true
-									}
-									return false
+									return v.SlicingSpec.IsBacktracePoint(
+										s.PointerAnalysis, scanning.NewSsaNodeCode(n))
 								},
 								nil)
 							v.onDemandIntraProcedural(s, callSite.CalleeSummary)
@@ -965,31 +929,6 @@ func traceNode(s *df.State, node *df.VisitorNode) {
 	logger.Tracef("Element trace: %s\n", node.Trace.String())
 	logger.Tracef("Element closure trace: %s\n", node.ClosureTrace.String())
 	logger.Tracef("Element backtrace: %v\n", findTrace(node))
-}
-
-func isFiltered(ss config.SlicingSpec, n df.GraphNode) bool {
-	var f *ssa.Function
-	switch node := n.(type) {
-	case *df.CallNode:
-		f = node.CallSite().Parent()
-	case *df.CallNodeArg:
-		f = node.ParentNode().CallSite().Parent()
-	}
-	typ := n.Type()
-
-	for _, filter := range ss.Filters {
-		if filter.Type != "" {
-			if filter.MatchType(typ) {
-				return true
-			}
-		}
-		if f != nil && filter.Method != "" && filter.Package != "" {
-			if filter.MatchPackageAndMethod(f) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func validateTraces(s *df.State, traces []Trace) {

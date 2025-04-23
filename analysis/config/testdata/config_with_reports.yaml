@@ -1,4 +1,3 @@
-
 options:
-    reports-dir: "example-report"
-    report-paths: true
+  reports-dir: "example-report"
+  report-paths: true

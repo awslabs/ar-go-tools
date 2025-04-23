@@ -22,7 +22,7 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -105,17 +105,17 @@ type BadReinit struct {
 
 // Analyze runs the analysis on prog.
 func Analyze(state *ptr.State, reqs AnalysisReqs) (AnalysisResult, error) {
-	specs := structInitSpecs(state.Config, state.Target, reqs.Tag)
-	state.Logger.Infof("%d struct-init specs to check: %s", len(specs), strings.Join(
-		funcutil.Map(specs, func(ss config.StructInitSpec) string { return ss.Tag }), ","))
-	if len(specs) == 0 {
+	configSpecs := structInitSpecs(state.Config, state.Target, reqs.Tag)
+	state.Logger.Infof("%d struct-init specs to check: %s", len(configSpecs), strings.Join(
+		funcutil.Map(configSpecs, func(ss specs.StructInitSpec) string { return ss.Tag }), ","))
+	if len(configSpecs) == 0 {
 		// If there is no specs here, it's like because of the tags being filtered out by structInitSpecs
 		state.Logger.Infof(
 			"No struct-init specs matching configuration; check the tags if you expected a result")
 		return AnalysisResult{}, nil
 	}
 	res := AnalysisResult{InitInfos: make(map[*types.Named]InitInfo)}
-	for _, spec := range specs {
+	for _, spec := range configSpecs {
 		if err := runSpec(state, reqs, spec, res); err != nil {
 			return res, fmt.Errorf("failed to run analysis for spec tag %s: %v", spec.Tag, err)
 		}
@@ -124,7 +124,7 @@ func Analyze(state *ptr.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	return res, nil
 }
 
-func runSpec(st *ptr.State, reqs AnalysisReqs, spec config.StructInitSpec, res AnalysisResult) error {
+func runSpec(st *ptr.State, reqs AnalysisReqs, spec specs.StructInitSpec, res AnalysisResult) error {
 	st.Logger.PushContext(formatutil.Yellow(spec.Tag))
 	defer st.Logger.PopContext()
 
@@ -154,7 +154,7 @@ func runSpec(st *ptr.State, reqs AnalysisReqs, spec config.StructInitSpec, res A
 // A spec can match multiple structs via regexes.
 type state struct {
 	// spec is the spec being analyzed currently.
-	spec config.StructInitSpec
+	spec specs.StructInitSpec
 	// allocs are all the values of the struct(s) to track that were allocated in the program.
 	allocs []alloced
 	// fieldExpectedValue is a mapping of the named spec-matching struct to its fields with the
@@ -171,7 +171,7 @@ type state struct {
 
 // newState initializes a new analysis state to analyze all structs in the program that match the
 // struct(s) specified in the spec.
-func newState(spec config.StructInitSpec, st *ptr.State) (*state, error) {
+func newState(spec specs.StructInitSpec, st *ptr.State) (*state, error) {
 	fns := maps.Clone(st.ReachableFunctions()) // need to clone here since we're going to delete
 	var allocs []alloced
 	for fn := range fns {
@@ -250,7 +250,7 @@ func newState(spec config.StructInitSpec, st *ptr.State) (*state, error) {
 	}, nil
 }
 
-func findNamedConst(program *ssa.Program, valCi config.CodeIdentifier) (*ssa.NamedConst, bool) {
+func findNamedConst(program *ssa.Program, valCi specs.ParsedCodeIdentifier) (*ssa.NamedConst, bool) {
 	pkgs := program.AllPackages()
 	for _, pkg := range pkgs {
 		for _, mem := range pkg.Members {
@@ -265,7 +265,7 @@ func findNamedConst(program *ssa.Program, valCi config.CodeIdentifier) (*ssa.Nam
 	return nil, false
 }
 
-func findMethod(program *ssa.Program, valCi config.CodeIdentifier) (*ssa.Function, bool) {
+func findMethod(program *ssa.Program, valCi specs.ParsedCodeIdentifier) (*ssa.Function, bool) {
 	pkgs := program.AllPackages()
 	for _, pkg := range pkgs {
 		for _, mem := range pkg.Members {
@@ -281,7 +281,7 @@ func findMethod(program *ssa.Program, valCi config.CodeIdentifier) (*ssa.Functio
 }
 
 // isFiltered returns true if v is filtered according to spec or is in the standard library.
-func isFiltered(spec config.StructInitSpec, f *ssa.Function) bool {
+func isFiltered(spec specs.StructInitSpec, f *ssa.Function) bool {
 	if f == nil {
 		return true
 	}

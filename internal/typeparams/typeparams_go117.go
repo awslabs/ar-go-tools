@@ -72,7 +72,12 @@ func SetTypeParamConstraint(tparam *TypeParam, constraint types.Type) {
 
 // NewSignatureType calls types.NewSignature, panicking if recvTypeParams or
 // typeParams is non-empty.
-func NewSignatureType(recv *types.Var, recvTypeParams, typeParams []*TypeParam, params, results *types.Tuple, variadic bool) *types.Signature {
+func NewSignatureType(
+	recv *types.Var,
+	recvTypeParams, typeParams []*TypeParam,
+	params, results *types.Tuple,
+	variadic bool,
+) *types.Signature {
 	if len(recvTypeParams) != 0 || len(typeParams) != 0 {
 		panic("signatures cannot have type parameters at this Go version")
 	}

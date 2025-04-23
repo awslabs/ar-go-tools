@@ -21,6 +21,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/scanning"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -166,7 +167,7 @@ func (state *IntraAnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruc
 // makeEdgesAtCallsite generates all the edges specific to a given call site.
 // Those are the edges to and from call arguments and to and from the call Value.
 func (state *IntraAnalysisState) makeEdgesAtCallSite(callInstr ssa.CallInstruction) {
-	if isHandledBuiltinCall(callInstr) {
+	if scanning.IsHandledBuiltinCall(callInstr) {
 		makeEdgesAtBuiltinCall(state, callInstr)
 		return
 	}

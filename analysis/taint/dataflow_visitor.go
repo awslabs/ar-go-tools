@@ -21,6 +21,8 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/analysiscfg"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -49,7 +51,7 @@ func (e *EscapeInfo) String() string {
 // Visitor represents a taint flow Visitor that tracks taint flows from sources to sinks.
 // It implements the [pkg/github.com/awslabs/ar-go-tools/Analysis/Dataflow.Visitor] interface.
 type Visitor struct {
-	taintSpec      *config.TaintSpec
+	taintSpec      *specs.Taint
 	currentSource  df.NodeWithTrace
 	roots          map[df.NodeWithTrace]*df.VisitorNode
 	visited        map[*df.CallStack]bool
@@ -63,7 +65,7 @@ type Visitor struct {
 // NewVisitor returns a Visitor that can be used with
 // [pkg/github.com/awslabs/ar-go-tools/analysis/dataflow.BuildAndRunVisitor] to run the taint analysis
 // independently of the  [Analyze] function
-func NewVisitor(ts *config.TaintSpec) *Visitor {
+func NewVisitor(ts *specs.Taint) *Visitor {
 	return &Visitor{
 		taintSpec:      ts,
 		currentSource:  df.NodeWithTrace{},
@@ -91,7 +93,9 @@ type CondError struct {
 }
 
 func (e *CondError) Error() string {
-	return fmt.Sprintf("taint flows to conditional statement %v in function %v: %v\n\tat %v", e.Cond, e.ParentName, e.Trace, e.Pos)
+	return fmt.Sprintf(
+		"taint flows to conditional statement %v in function %v: %v\n\tat %v",
+		e.Cond, e.ParentName, e.Trace, e.Pos)
 }
 
 // Visit runs an inter-procedural analysis to add any detected taint flow from currentSource to a sink. This implements
@@ -141,6 +145,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 		// Test this before checking for sink in case this is a filtered argument in a sink call (this is common when
 		// you are tracking flows to logging but don't care about integers and booleans for example).
 		if df.IsFiltered(s, v.taintSpec, cur.Node) {
+			logger.Trace("Node is filtered.")
 			if _, isIf := cur.Node.(*df.IfNode); !isIf || v.taintSpec.FailOnImplicitFlow {
 				// Filtered values logged at debug level -- there can be many of those.
 				logger.Debugf("Filtered value: %s\n", cur.Node.String())
@@ -164,7 +169,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 						Severity: v.taintSpec.Severity,
 						Content:  newFlowReport(s, v.currentSource, cur, v.taintSpec),
 					})
-					if v.taintSpec.Severity == config.Critical {
+					if v.taintSpec.Severity == analysiscfg.Critical {
 						panic(fmt.Sprintf("taint flows to critical location (problem tag %s)", v.taintSpec.Tag))
 					}
 				}
@@ -348,7 +353,9 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 		case *df.ReturnValNode:
 			// Check call stack is empty, and caller is one of the callsites
 			// Caller can be different if value flowed in function through a closure definition
-			if callSiteFromCallStack := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSiteFromCallStack != nil {
+			if callSiteFromCallStack := df.UnwindCallstackFromCallee(
+				graphNode.Graph().Callsites, cur.Trace,
+			); callSiteFromCallStack != nil {
 				logger.Tracef("unwound caller: %v\n", callSiteFromCallStack)
 				if !callSiteFromCallStack.Graph().Constructed {
 					v.onDemandIntraProcedural(s, callSiteFromCallStack.Graph())
@@ -692,7 +699,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			}
 
 			// taint is expected to flow to validators
-			if df.IsValidatorCondition(v.taintSpec, graphNode.SsaNode().Cond, true) {
+			if df.IsValidatorCondition(s, v.taintSpec, graphNode.SsaNode().Cond, true) {
 				break
 			}
 
@@ -771,7 +778,7 @@ func (v *Visitor) addNext(s *df.State,
 	// Check for validators
 	if edgeInfo.Cond != nil && len(edgeInfo.Cond.Conditions) > 0 {
 		for _, condition := range edgeInfo.Cond.Conditions {
-			if df.IsValidatorCondition(v.taintSpec, condition.Value, condition.IsPositive) {
+			if df.IsValidatorCondition(s, v.taintSpec, condition.Value, condition.IsPositive) {
 				s.Logger.Debugf("Validated %s.\n", condition)
 				return que
 			}

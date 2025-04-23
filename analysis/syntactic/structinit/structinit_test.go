@@ -155,7 +155,12 @@ func checkHasResults(t *testing.T, res structinit.AnalysisResult, want map[strin
 	}
 }
 
-func compareGotWant(t *testing.T, got map[string][]analysistest.LPos, want map[string][]analysistest.LPos, what string) {
+func compareGotWant(
+	t *testing.T,
+	got map[string][]analysistest.LPos,
+	want map[string][]analysistest.LPos,
+	what string,
+) {
 	for wantName, wantPosns := range want {
 		if _, ok := got[wantName]; !ok {
 			t.Errorf("failed to find struct name in analysis results: %v", wantName)

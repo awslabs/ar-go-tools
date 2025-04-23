@@ -55,10 +55,26 @@ type Flags struct {
 // NewFlags returns the parsed render sub-command flags from args.
 func NewFlags(args []string) (Flags, error) {
 	flags := tools.NewUnparsedCommonFlags("render")
-	cgAnalysis := flags.FlagSet.String("analysis", "pointer", "type of call graph analysis to run. One of: pointer, cha, rta, static, vta")
-	cgOut := flags.FlagSet.String("cgout", "", "output file for call graph (no output if not specified)")
-	htmlOut := flags.FlagSet.String("htmlout", "", "output file for call graph (no output if not specified)")
-	dfOut := flags.FlagSet.String("dfout", "", "output file for inter-procedural dataflow graph (no output if not specified)")
+	cgAnalysis := flags.FlagSet.String(
+		"analysis",
+		"pointer",
+		"type of call graph analysis to run. One of: pointer, cha, rta, static, vta",
+	)
+	cgOut := flags.FlagSet.String(
+		"cgout",
+		"",
+		"output file for call graph (no output if not specified)",
+	)
+	htmlOut := flags.FlagSet.String(
+		"htmlout",
+		"",
+		"output file for call graph (no output if not specified)",
+	)
+	dfOut := flags.FlagSet.String(
+		"dfout",
+		"",
+		"output file for inter-procedural dataflow graph (no output if not specified)",
+	)
 	ssaOut := flags.FlagSet.String("ssaout", "", "output folder for ssa (no output if not specified)")
 	tools.SetUsage(flags.FlagSet, usage)
 	if err := flags.FlagSet.Parse(args); err != nil {
@@ -102,7 +118,7 @@ func Run(flags Flags) error {
 	}
 
 	var err error
-	renderConfig := config.NewDefault() // empty default config
+	renderConfig, _ := config.NewDefault().Compile(nil) // empty default config
 	if flags.ConfigPath != "" {
 		config.SetGlobalConfig(flags.ConfigPath)
 		renderConfig, err = config.LoadGlobal(nil)

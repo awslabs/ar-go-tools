@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
@@ -45,10 +45,11 @@ type reflectValueSpec struct {
 	arg       *ast.Ident
 }
 
-// ReflectValueCallRewriterSpec specifies the code elements the reflect value call rewriter should look for when rewriting.
+// ReflectValueCallRewriterSpec specifies the code elements the reflect value call rewriter should
+// look for when rewriting.
 type ReflectValueCallRewriterSpec struct {
 	// The code identifier used to identify the consumer of the class-like type.
-	Cid config.CodeIdentifier
+	Cid specs.ParsedCodeIdentifier
 	// The class-like type
 	ReceiverType lang.NamedTypeModuloPointer
 	// The location where the consumer was found (a call instruction)
@@ -113,7 +114,7 @@ func (r ReflectValueCallRewriterSpec) Compile(lps *loadprogram.State) RVCRewrite
 // resolved.
 type RVCRewriterResolvedSpec struct {
 	// The code identifier used to identify the consumer of the class-like type.
-	Cid config.CodeIdentifier
+	Cid specs.ParsedCodeIdentifier
 	// The class-like type
 	ReceiverType lang.NamedTypeModuloPointer
 	ParentPkg    *types.Package

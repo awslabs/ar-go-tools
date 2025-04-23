@@ -102,6 +102,8 @@ func NewState(c *config.State) result.Result[State] {
 
 	report := config.NewReport()
 
+	pa.AddToConfig(c.Config)
+
 	return result.Ok(&State{
 		GoModInfo:    goModInfo,
 		State:        *c,
@@ -182,7 +184,8 @@ func (wps *State) IncrementAndTestAlarms() bool {
 	return wps.TestAlarmCount()
 }
 
-// TestAlarmCount tests whether the alarm count is smaller than the maximum number of alarms allowed by the configuration.
+// TestAlarmCount tests whether the alarm count is smaller than the maximum number of alarms allowed
+// by the configuration.
 func (wps *State) TestAlarmCount() bool {
 	return wps.Config.MaxAlarms <= 0 || wps.numAlarms.Load() < int32(wps.Config.MaxAlarms)
 }

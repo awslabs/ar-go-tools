@@ -59,7 +59,11 @@ type Flags struct {
 // NewFlags creates parsed compare sub-command flags from args.
 func NewFlags(args []string) (Flags, error) {
 	flags := tools.NewUnparsedCommonFlags("compare")
-	modeFlag := flags.FlagSet.String("analysis", "pointer", "Type of analysis to run. One of: pointer, cha, rta, static, vta")
+	modeFlag := flags.FlagSet.String(
+		"analysis",
+		"pointer",
+		"Type of analysis to run. One of: pointer, cha, rta, static, vta",
+	)
 	compareSymbols := flags.FlagSet.Bool("symbols", false, "Compare")
 	binary := flags.FlagSet.String("binary", "", "Pull the symbol table from specified binary file")
 	dynBinary := flags.FlagSet.String("dynbinary", "", "Load dynamic callgraph corresponding to the given binary")
@@ -390,7 +394,11 @@ func reportUncoveredDynamicEdges(program *ssa.Program, static *callgraph.Graph, 
 		if _, ok := reachable[fun]; !ok {
 			continue
 		}
-		deferResults := defers.AnalyzeFunction(fun, config.NewLogGroup(config.NewDefault()))
+		baseCfg, err := config.NewDefault().Compile(nil)
+		if err != nil {
+			panic("unexpected error default config does not compile")
+		}
+		deferResults := defers.AnalyzeFunction(fun, config.NewLogGroup(baseCfg))
 		for _, bb := range fun.Blocks {
 			for insIndex, ins := range bb.Instrs {
 				switch in := ins.(type) {

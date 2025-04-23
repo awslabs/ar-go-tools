@@ -296,3 +296,14 @@ func getsStaticData(instr ssa.Instruction) bool {
 	}
 	return true
 }
+
+// ParamIndex returns the index of the parameter in the parent function
+// If not found, returns -1
+func ParamIndex(p *ssa.Parameter) int {
+	for i, p2 := range p.Parent().Params {
+		if p2 == p {
+			return i
+		}
+	}
+	return -1
+}

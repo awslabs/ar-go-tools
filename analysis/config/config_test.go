@@ -18,74 +18,29 @@ import (
 	"embed"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/awslabs/ar-go-tools/analysis/config/analysiscfg"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"gopkg.in/yaml.v3"
 )
 
 //go:embed testdata
 var testfsys embed.FS
 
-func checkEqualOnNonEmptyFields(t *testing.T, cid1 CodeIdentifier, cid2 CodeIdentifier) {
-	cid2c := compileRegexes(cid2)
-	if !cid1.equalOnNonEmptyFields(cid2c) {
-		t.Errorf("%v should be equal modulo empty fields to %v", cid1, cid2)
-	}
-}
-
-func checkNotEqualOnNonEmptyFields(t *testing.T, cid1 CodeIdentifier, cid2 CodeIdentifier) {
-	cid2c := compileRegexes(cid2)
-	if cid1.equalOnNonEmptyFields(cid2c) {
-		t.Errorf("%v should not be equal modulo empty fields to %v", cid1, cid2)
-	}
-}
-
-func TestCodeIdentifier_equalOnNonEmptyFields_selfEquals(t *testing.T) {
-	cid1 := CodeIdentifier{"", "a", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	checkEqualOnNonEmptyFields(t, cid1, cid1)
-}
-
-func TestCodeIdentifier_equalOnNonEmptyFields_emptyMatchesAny(t *testing.T) {
-	cid1 := CodeIdentifier{"", "a", "b", "i", "c", "d", "e", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid2 := CodeIdentifier{"", "de", "234jbn", "ef", "23kjb", "d", "234", "", "", "", "", nil, Target{}, CallingContext{}}
-	cidEmpty := CodeIdentifier{}
-	checkEqualOnNonEmptyFields(t, cid1, cidEmpty)
-	checkEqualOnNonEmptyFields(t, cid2, cidEmpty)
-}
-
-func TestCodeIdentifier_equalOnNonEmptyFields_oneDiff(t *testing.T) {
-	cid1 := CodeIdentifier{"", "a", "b", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid2 := CodeIdentifier{"", "a", "", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	checkEqualOnNonEmptyFields(t, cid1, cid2)
-	checkNotEqualOnNonEmptyFields(t, cid2, cid1)
-}
-
-func TestCodeIdentifier_equalOnNonEmptyFields_regexes(t *testing.T) {
-	cid1 := CodeIdentifier{"", "main", "b", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid1bis := CodeIdentifier{"", "command-line-arguments", "b", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid2 := CodeIdentifier{"", "(main)|(command-line-arguments)$", "", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	checkEqualOnNonEmptyFields(t, cid1, cid2)
-	checkEqualOnNonEmptyFields(t, cid1bis, cid2)
-}
-
-func TestCodeIdentifier_equalOnNonEmptyFields_regexes_withContexts(t *testing.T) {
-	cid1 := CodeIdentifier{"main-package", "main", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid1bis := CodeIdentifier{"main", "command-line-arguments", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid2 := CodeIdentifier{"mai.*", "(main)|(command-line-arguments)$", "", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	checkEqualOnNonEmptyFields(t, cid1, cid2)
-	checkEqualOnNonEmptyFields(t, cid1bis, cid2)
-}
-
-func mkConfig(sanitizers []CodeIdentifier, sinks []CodeIdentifier, sources []CodeIdentifier) Config {
-	c := NewDefault()
-	ts := TaintSpec{}
+func mkConfig(
+	sanitizers []specs.ParsedCodeIdentifier,
+	sinks []specs.ParsedCodeIdentifier,
+	sources []specs.ParsedCodeIdentifier,
+) parsedConfig {
+	c := &NewDefault().parsedConfig
+	ts := specs.ParsedTaintSpec{}
 	ts.Sanitizers = sanitizers
 	ts.Sinks = sinks
 	ts.Sources = sources
-	c.TaintTrackingProblems = []TaintSpec{ts}
+	c.TaintTrackingProblems = []specs.ParsedTaintSpec{ts}
 	return *c
 }
 
@@ -102,7 +57,7 @@ func loadFromTestDir(filename string, overrides *CmdLineOverrides) (string, *Con
 	return filename, config, err
 }
 
-func testLoadOneFile(t *testing.T, filename string, expected Config) {
+func testLoadOneFile(t *testing.T, filename string, expected parsedConfig) {
 	// set default log level that may not be specified
 	if expected.LogLevel == 0 {
 		expected.LogLevel = int(InfoLevel)
@@ -111,10 +66,10 @@ func testLoadOneFile(t *testing.T, filename string, expected Config) {
 	if err != nil {
 		t.Errorf("Error loading %q: %v", configFileName, err)
 	}
-	c1, err1 := yaml.Marshal(config)
+	c1, err1 := yaml.Marshal(config.parsedConfig)
 	c2, err2 := yaml.Marshal(expected)
 	if err1 != nil {
-		t.Errorf("Error marshalling %v", config)
+		t.Errorf("Error marshalling %v", config.parsedConfig)
 	}
 	if err2 != nil {
 		t.Errorf("Error marshalling %v", expected)
@@ -226,13 +181,18 @@ func TestLoadVersionBefore_v0_3_0_Errors(t *testing.T) {
 }
 
 func TestLoadWithReports(t *testing.T) {
-	c := NewDefault()
+	c := &NewDefault().parsedConfig
 	wd, _ := os.Getwd()
-	c.ReportsDir = path.Join(wd, "testdata/example-report")
+	c.ReportsDir = filepath.Join(wd, "testdata/example-report")
 	c.ReportPaths = true
 	testLoadOneFile(t, "config_with_reports.yaml", *c)
-	if c.RelPath("example-report") != "example-report" {
-		t.Errorf("Reports dir should be relative to config file when specified")
+	cmp, err := c.Compile(nil)
+	if err != nil {
+		t.Fatalf("Error compiling config: %s", err)
+	}
+	if !strings.Contains(cmp.RelPath("test"), "analysis") {
+		t.Errorf("Reports dir should be relative to config file when specified: %s",
+			cmp.RelPath("test"))
 	}
 	os.Remove("example-report")
 }
@@ -381,7 +341,7 @@ func TestLoadFullConfigYaml(t *testing.T) {
 	if config.TaintTrackingProblems[0].UnsafeMaxDepth != 1 {
 		t.Error("analysis option unsafe-max-depth should be 1 for taint-tracking-problem")
 	}
-	if config.TaintTrackingProblems[0].Severity != High {
+	if config.TaintTrackingProblems[0].Severity != analysiscfg.High {
 		t.Error("taint-tracking-problem severity should be HIGH")
 	}
 	if !config.TaintTrackingProblems[0].SourceTaintsArgs {
@@ -447,46 +407,53 @@ func TestLoadMisc(t *testing.T) {
 		t,
 		"config.yaml",
 		mkConfig(
-			[]CodeIdentifier{{"", "a", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "c", "", "d", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{},
+			[]specs.ParsedCodeIdentifier{{Package: "a", Method: "b"}},
+			[]specs.ParsedCodeIdentifier{{Package: "c", Method: "d"}},
+			[]specs.ParsedCodeIdentifier{},
 		),
 	)
 	//
 	testLoadOneFile(t,
 		"config2.json",
 		mkConfig(
-			[]CodeIdentifier{{"", "x", "", "a", "", "b", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "p", "", "a", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
-				{"", "p2", "", "a", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
+			[]specs.ParsedCodeIdentifier{{Package: "x", Method: "a", Field: "b"}},
+			[]specs.ParsedCodeIdentifier{{Package: "y", Method: "b"}},
+			[]specs.ParsedCodeIdentifier{
+				{Package: "p", Method: "a"},
+				{Package: "p2", Method: "a"},
+			},
 		),
 	)
 	//
 	testLoadOneFile(t,
 		"config2.yaml",
 		mkConfig(
-			[]CodeIdentifier{{"", "x", "", "a", "", "b", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "p", "", "a", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
-				{"", "p2", "", "a", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
+			[]specs.ParsedCodeIdentifier{{Package: "x", Method: "a", Field: "b"}},
+			[]specs.ParsedCodeIdentifier{{Package: "y", Method: "b"}},
+			[]specs.ParsedCodeIdentifier{
+				{Package: "p", Method: "a"},
+				{Package: "p2", Method: "a"},
+			},
 		),
 	)
 	//
 	testLoadOneFile(t,
 		"config3.yaml",
-		Config{
-			DataflowProblems: DataflowProblems{
-				TaintTrackingProblems: []TaintSpec{
+		parsedConfig{
+			ParsedDataflowProblems: specs.ParsedDataflowProblems{
+				TaintTrackingProblems: []specs.ParsedTaintSpec{
 					{
-						Sanitizers: []CodeIdentifier{{"", "pkg1", "", "Foo", "Obj", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-						Sinks: []CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
-							{"", "x", "", "", "Obj1", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-						Sources: []CodeIdentifier{
-							{"", "some/package", "", "SuperMethod", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
-
-							{"", "some/other/package", "", "", "", "OneField", "ThatStruct", "", "", "", "", nil, Target{}, CallingContext{}},
-							{"", "some/other/package", "Interface", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
+						Sanitizers: []specs.ParsedCodeIdentifier{
+							{Package: "pkg1", Method: "Foo", Receiver: "Obj"},
+						},
+						Sinks: []specs.ParsedCodeIdentifier{
+							{Package: "y", Method: "b"},
+							{Package: "x", Receiver: "Obj1"},
+						},
+						Sources: []specs.ParsedCodeIdentifier{
+							{Package: "some/package", Method: "SuperMethod"},
+							{Package: "some/other/package", Field: "OneField", Type: "ThatStruct"},
+							{Package: "some/other/package", Interface: "Interface"},
 						},
 						FailOnImplicitFlow: false,
 					},
@@ -494,7 +461,7 @@ func TestLoadMisc(t *testing.T) {
 			},
 			Options: Options{
 				PkgFilter: "a",
-				AnalysisProblemOptions: AnalysisProblemOptions{
+				ProblemCfg: analysiscfg.ProblemCfg{
 					UnsafeMaxDepth:           DefaultSafeMaxDepth,
 					MaxEntrypointContextSize: DefaultSafeMaxEntrypointContextSize,
 				},
@@ -505,55 +472,55 @@ func TestLoadMisc(t *testing.T) {
 		},
 	)
 	// Test configuration file for static-commands
-	osExecCid := CodeIdentifier{"", "os/exec", "", "Command", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cfg := NewDefault()
-	cfg.StaticCommandsProblems = []StaticCommandsSpec{{[]CodeIdentifier{osExecCid}}}
+	osExecCid := specs.ParsedCodeIdentifier{Package: "os/exec", Method: "Command", Target: specs.Target{}, Enclosing: specs.CallingContext{}}
+	cfg := &NewDefault().parsedConfig
+	cfg.StaticCommandsProblems = []specs.StaticCommandsSpec{{StaticCommands: []specs.ParsedCodeIdentifier{osExecCid}}}
 	testLoadOneFile(t, "config-find-osexec.yaml", *cfg)
 }
 
 // TestLoadNew tests loading the new code identifier format.
 func TestLoadNew(t *testing.T) {
-	want := NewDefault()
-	want.DataflowProblems = DataflowProblems{
-		SlicingProblems: []SlicingSpec{
+	want := &NewDefault().parsedConfig
+	want.ParsedDataflowProblems = specs.ParsedDataflowProblems{
+		SlicingProblems: []specs.ParsedSlicingSpec{
 			{
 				Tag:         "tag-name",
 				Description: "Sample description",
-				BacktracePoints: []CodeIdentifier{
+				BacktracePoints: []specs.ParsedCodeIdentifier{
 					{
-						Target: Target{
-							Kind:    CallKind,
+						Target: specs.Target{
+							Kind:    specs.CallKind,
 							Package: "os",
 							Method:  "Mkdir",
-							Objects: []TargetObject{
+							Objects: []specs.TargetObject{
 								{
-									Kind:  ArgumentKind,
+									Kind:  specs.ArgumentKind,
 									Name:  "name",
 									Index: 0,
 									Type:  "string",
 								},
 							},
 						},
-						Enclosing: CallingContext{
+						Enclosing: specs.CallingContext{
 							Package: "package-name",
 							Method:  "method",
 						},
 					},
 					{
-						Target: Target{
-							Kind:    CallKind,
+						Target: specs.Target{
+							Kind:    specs.CallKind,
 							Package: "os",
 							Method:  "MkdirAll",
-							Objects: []TargetObject{
+							Objects: []specs.TargetObject{
 								{
-									Kind:  ArgumentKind,
+									Kind:  specs.ArgumentKind,
 									Name:  "path",
 									Index: 0,
 									Type:  "string",
 								},
 							},
 						},
-						Enclosing: CallingContext{
+						Enclosing: specs.CallingContext{
 							PackageRegex: "package.*",
 							MethodRegex:  ".*",
 						},

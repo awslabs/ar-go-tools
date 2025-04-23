@@ -149,11 +149,16 @@ func GetPackageOfType(tp types.Type) *types.Package {
 	return nil
 }
 
-// FindImplementationMethod looks up the ssa.Function for a reciever value of type tp when called
+// FindImplementationMethod looks up the ssa.Function for a receiver value of type tp when called
 // for the given interface type and method name. This could require adding a pointer indirection if
 // the given tp is e.g. a struct type, so the function also returns a boolean indicating if this is
 // necessary.
-func FindImplementationMethod(prog *ssa.Program, tp types.Type, iface types.Type, methodName string) (method *ssa.Function, pointerRequired bool) {
+func FindImplementationMethod(
+	prog *ssa.Program,
+	tp types.Type,
+	iface types.Type,
+	methodName string,
+) (method *ssa.Function, pointerRequired bool) {
 	if types.AssignableTo(tp, iface) {
 		pkg := GetPackageOfType(tp)
 		return prog.LookupMethod(tp, pkg, methodName), false

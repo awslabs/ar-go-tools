@@ -20,6 +20,7 @@ import (
 	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -71,8 +72,8 @@ func newIncompleteInit(alloc alloced, fields []string, pos token.Position) Incom
 	}
 }
 
-func structInitSpecs(cfg *config.Config, target string, tag string) []config.StructInitSpec {
-	var res []config.StructInitSpec
+func structInitSpecs(cfg *config.Config, target string, tag string) []specs.StructInitSpec {
+	var res []specs.StructInitSpec
 	for _, stspec := range cfg.SyntacticProblems.StructInitProblems {
 		if (target == "" || funcutil.Contains(stspec.Targets, target)) &&
 			(tag == "" || stspec.Tag == tag) {
@@ -115,7 +116,8 @@ func zeroedFields(st *state, alloc alloced) []string {
 	// ex2 := nestedTargetPtr{t: &target{x: 1}}
 	//
 	// Becomes this SSA:
-	// t25 = make any <- nestedTargetPtr (nestedTargetPtr{}:nestedTargetPtr) any // <- this is ex1: field `t *target` is implicitly set to nil
+	// t25 = make any <- nestedTargetPtr (nestedTargetPtr{}:nestedTargetPtr) any
+	//                  // ↑ this is ex1: field `t *target` is implicitly set to nil
 	// ...
 	// t32 = local nestedTargetPtr (ex2)  *nestedTargetPtr // <- don't track field addresses of this struct (ex2)
 	// t33 = &t32.t [#0]                          **target // <- nestedTargetPtr.t is nil
@@ -183,7 +185,7 @@ func zeroedFields(st *state, alloc alloced) []string {
 
 // findAllocsInFn returns all the values of the struct to track according to spec that were
 // allocated in fn.
-func findAllocsInFn(spec config.StructInitSpec, fn *ssa.Function) []alloced {
+func findAllocsInFn(spec specs.StructInitSpec, fn *ssa.Function) []alloced {
 	var allocs []alloced
 
 	lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
@@ -233,7 +235,7 @@ func instrCanAlloc(instr ssa.Instruction) bool {
 // This function may return multiple "allocations" if the struct allocated has multiple fields of
 // type struct that match, or if the instruction itself results in multiple allocations (e.g.,
 // *ssa.ChangeType).
-func allocsInInstr(spec config.StructInitSpec, instr ssa.Instruction) []alloced {
+func allocsInInstr(spec specs.StructInitSpec, instr ssa.Instruction) []alloced {
 	var allocs []alloced
 	addAllocs := func(allocedVal ssa.Value) {
 		typs := structTypesThatMatchSpec(spec, allocedVal.Type())

@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/config/specs"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -96,7 +97,7 @@ func FormattedReport(res AnalysisResult) (string, bool) {
 }
 
 // analyzeSpec analyzes the program in the state with respect to the given precondition checking spec.
-func analyzeSpec(state *ptr.State, spec config.CondCheckSpec) ([]token.Position, error) {
+func analyzeSpec(state *ptr.State, spec specs.CondCheckSpec) ([]token.Position, error) {
 	var locs []token.Position
 	for f := range state.ReachableFunctions() {
 		hasCallRequiringGuard := false
@@ -122,7 +123,7 @@ type resAndGuards struct {
 	guards [][]string
 }
 
-func analyzeFunc(state *ptr.State, spec config.CondCheckSpec, f *ssa.Function) ([]token.Position, error) {
+func analyzeFunc(state *ptr.State, spec specs.CondCheckSpec, f *ssa.Function) ([]token.Position, error) {
 	state.Logger.Infof("Checking %s which calls a function matching a call identified in %s",
 		f.Name(), spec.Tag)
 	var locs []token.Position
@@ -165,7 +166,7 @@ func guardToString(guards [][]string) string {
 
 // checkGuard checks that the pathConditions (the conjunctions of propositions, for each control flow path)
 // satisfy the requirements in the specification.
-func checkGuard(spec config.CondCheckSpec, pathConditions [][]string) bool {
+func checkGuard(spec specs.CondCheckSpec, pathConditions [][]string) bool {
 	// Each "guard" must be valid
 	for _, pathCondition := range pathConditions {
 		guardOk := false
@@ -239,7 +240,7 @@ func computePathCond(blocks []*ssa.BasicBlock) []string {
 
 // instrRequiresGuard is a filter for instructions that require the preconditions, according to the
 // specification given as argument.
-func instrRequiresGuard(state *ptr.State, spec config.CondCheckSpec, instr ssa.Instruction) bool {
+func instrRequiresGuard(state *ptr.State, spec specs.CondCheckSpec, instr ssa.Instruction) bool {
 	if instr == nil {
 		return false
 	}
@@ -256,7 +257,7 @@ func instrRequiresGuard(state *ptr.State, spec config.CondCheckSpec, instr ssa.I
 		return false
 	}
 	for callee := range callees {
-		if fn.Exists(spec.Call, func(c config.CodeIdentifier) bool {
+		if fn.Exists(spec.Call, func(c specs.ParsedCodeIdentifier) bool {
 			return c.MatchPackageAndMethodWithCaller(instr.Parent(), callee)
 		}) {
 			return true

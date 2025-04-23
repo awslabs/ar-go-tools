@@ -174,8 +174,8 @@ func (state *IntraAnalysisState) markInstruction(i ssa.Instruction) {
 // the last instruction of each of the predecessor blocks.
 //
 // We make a special case for instructions in defer statements: we assume that any instruction before a [ssa.RunDefers]
-// (and not a [ssa.Defer]!) can be a preceding instruction. This over-approximates program executions where any instruction
-// can panic.
+// (and not a [ssa.Defer]!) can be a preceding instruction. This over-approximates program executions
+// where any instruction can panic.
 func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruction, function *ssa.Function) {
 	firstID := intraState.flowInfo.InstrID[firstInstr]
 	intraState.instrPrev[firstID] = map[IndexT]bool{firstID: true}
@@ -286,7 +286,14 @@ func simpleTransfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value
 
 // transfer propagates all the marks from in to out with the object Path string
 // an index >= 0 indicates that element index of the tuple in is accessed
-func transfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index MarkIndex) {
+func transfer(
+	state *IntraAnalysisState,
+	loc ssa.Instruction,
+	in ssa.Value,
+	out ssa.Value,
+	path string,
+	index MarkIndex,
+) {
 	transferPre(state, loc, in, out, path, index, false)
 }
 

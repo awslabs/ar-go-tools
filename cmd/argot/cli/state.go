@@ -120,7 +120,10 @@ func (s *session) hasSummary(f *ssa.Function) (*dataflow.SummaryGraph, bool) {
 
 func (s *session) seekConfig() (*config.Config, bool, error) {
 	var err error
-	pConfig := config.NewDefault()
+	pConfig, _ := config.NewDefault().Compile(nil)
+	if pConfig == nil {
+		panic("failed to initialized config")
+	}
 	if s.configPath != "" {
 		config.SetGlobalConfig(s.configPath)
 		pConfig, err = config.LoadGlobal(nil)
@@ -189,14 +192,16 @@ func (s *session) loadConfig() result.Result[config.State] {
 				s.logger().Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
 				// TODO: handle more rewrites later
 				s.cfgState, err = statefulrewrite.StatefulRewritesOverlayTransform(s.cfgState,
-					statefulrewrite.StatefulRewritesOverlayTransformSpec{ReflectValueCallInstanceCid: targetSpec.ReflectValueCallInstances[0]}).Value()
+					statefulrewrite.StatefulRewritesOverlayTransformSpec{
+						ReflectValueCallInstanceCid: targetSpec.ReflectValueCallInstances[0],
+					}).Value()
 				if err != nil {
 					panic(err)
 				}
 			}
 		}
 	}
-		// If the -targets option has been provided the cli should load the target
+	// If the -targets option has been provided the cli should load the target
 	// The -targets option for the cli should only contain one target
 	if s.originalFlags.Targets != "" {
 		if len(strings.Split(s.originalFlags.Targets, ",")) > 1 {

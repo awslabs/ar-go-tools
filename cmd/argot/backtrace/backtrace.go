@@ -83,7 +83,9 @@ func Run(flags tools.CommonFlags) error {
 			c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
 			// TODO: handle more rewrites later
 			actual = statefulrewrite.StatefulRewritesOverlayTransform(c,
-				statefulrewrite.StatefulRewritesOverlayTransformSpec{ReflectValueCallInstanceCid: target.ReflectValueCallInstances[0]})
+				statefulrewrite.StatefulRewritesOverlayTransformSpec{
+					ReflectValueCallInstanceCid: target.ReflectValueCallInstances[0],
+				})
 		} else {
 			actual = result.Ok(c)
 		}
