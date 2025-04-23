@@ -136,15 +136,11 @@ func runTarget(
 	flags Flags,
 ) (bool, *config.ReportInfo, error) {
 	var err error
-	loadOptions := config.LoadOptions{
-		PackageConfig: nil,
-		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     flags.WithTest,
-		Platform:      targetInfo.Platform,
-		ApplyRewrites: true,
-	}
 	// Starting the analysis
-	c := config.NewState(cfg, targetName, targetInfo.Patterns, loadOptions)
+	c, err := config.NewAutoState(cfg, targetName, flags.WithTest)
+	if err != nil {
+		return false, nil, err
+	}
 	c.Logger.PushContext(formatutil.Faint(targetName))
 	defer c.Logger.PopContext()
 	c.Logger.Infof("Taint analysis of target \"%s\" = %v", targetName, targetInfo.Patterns)
@@ -153,7 +149,8 @@ func runTarget(
 		c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
 		// TODO: handle more rewrites later
 		actual = statefulrewrite.StatefulRewritesOverlayTransform(c,
-			statefulrewrite.StatefulRewritesOverlayTransformSpec{ReflectValueCallInstanceCid: targetInfo.ReflectValueCallInstances[0]})
+			statefulrewrite.StatefulRewritesOverlayTransformSpec{
+				ReflectValueCallInstanceCid: targetInfo.ReflectValueCallInstances[0]})
 	} else {
 		actual = result.Ok(c)
 	}

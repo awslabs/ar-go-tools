@@ -36,11 +36,13 @@ import (
 
 // Flags represents the parsed packagescan sub-command flags.
 type Flags struct {
+	config      string
+	target      string
 	outputJson  bool
 	pkg         string
 	inexact     bool
 	all         bool
-	targets     string
+	platforms   string
 	rawFilename string
 	withTest    bool
 	flagSet     *flag.FlagSet
@@ -49,11 +51,13 @@ type Flags struct {
 // NewFlags returns the parsed flags from args.
 func NewFlags(args []string) (Flags, error) {
 	cmd := flag.NewFlagSet("packagescan", flag.ExitOnError)
+	config := cmd.String("c", "", "path to config if using targets")
+	target := cmd.String("t", "", "target name (needs config)")
 	outputJson := cmd.Bool("json", false, "output results as JSON")
 	pkg := cmd.String("p", "unsafe", "package or prefix to scan for")
 	inexact := cmd.Bool("i", false, "inexact match - match all subpackages")
 	all := cmd.Bool("a", false, "dump all the packages that are imported (ignore -i and -p)")
-	targets := cmd.String("target", "windows,linux,darwin", "target platform(s)")
+	platforms := cmd.String("platforms", "windows,linux,darwin", "target platform(s)")
 	rawFilename := cmd.String("raw", "", "filename for dump of raw symbol usage")
 	withTest := cmd.Bool("with-test", false, "load test when scanning")
 	cmd.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
@@ -61,13 +65,21 @@ func NewFlags(args []string) (Flags, error) {
 	if err := cmd.Parse(args); err != nil {
 		return Flags{}, fmt.Errorf("failed to parse command packagescan with args %v: %v", args, err)
 	}
+	if *target != "" && *config == "" {
+		return Flags{}, fmt.Errorf("you should specify a config when specifying a target")
+	}
+	if *target != "" && len(cmd.Args()) > 0 {
+		return Flags{}, fmt.Errorf("you should specify either a target or package patterns, not both")
+	}
 
 	return Flags{
+		config:      *config,
+		target:      *target,
 		outputJson:  *outputJson,
 		pkg:         *pkg,
 		inexact:     *inexact,
 		all:         *all,
-		targets:     *targets,
+		platforms:   *platforms,
 		rawFilename: *rawFilename,
 		withTest:    *withTest,
 		flagSet:     cmd,
@@ -77,7 +89,7 @@ func NewFlags(args []string) (Flags, error) {
 const usage = `Analyze your Go packages.
 
 Usage:
-  argot packagescan -p package [-i] source.go ...
+  argot packagescan [-c config] [-t target] [-p package] [-i] [source.go] ...
 
 Use the -help flag to display the options.
 
@@ -86,31 +98,45 @@ Examples:
   % argot packagescan -p unsafe hello.go
   % argot packagescan -i -p github.com/aws/aws-sdk-go hello.go
   % argot packagescan -a hello.go
+  % argot packagescan -c config.yaml -t sample-target
 `
 
 // Run runs the packagescan analysis with flags.
 func Run(flags Flags) error {
 	fmt.Fprintf(os.Stderr, formatutil.Faint("Scanning sources for package "+flags.pkg)+"\n")
 
-	var rawFile io.WriteCloser
+	if flags.config != "" && flags.target != "" {
+		return runTargetMode(flags)
+	}
+	return runRawMode(flags)
+}
 
-	if flags.rawFilename != "" {
-		rawFile, err := os.OpenFile(flags.rawFilename, os.O_APPEND|os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		defer rawFile.Close()
-
+func runTargetMode(flags Flags) error {
+	cfg, err := config.LoadFromFiles(flags.config, nil)
+	if err != nil {
+		return err
 	}
 
-	pkg := flags.pkg
-	if flags.all {
-		pkg = "" // an empty package list will match everything.
+	c, err := config.NewAutoState(cfg, flags.target, flags.withTest)
+	if err != nil {
+		return fmt.Errorf("error preparing config: %w", err)
 	}
+	state, err := result.Bind(loadprogram.NewState(c), ptr.NewState).Value()
+	if err != nil {
+		return fmt.Errorf("failed to load program: %v", err)
+	}
+	if flags.pkg != "" {
+		// Scan for package usages
+		pkgScanResults := make(map[string]map[string]bool)
+		analyzePackages(state, flags, state.Options.Platform, pkgScanResults)
+		dumpResultsByOs(pkgScanResults)
+	}
+	return nil
+}
 
-	platforms := strings.Split(flags.targets, ",")
-	results := make(map[string]map[string]bool)
+func runRawMode(flags Flags) error {
+	platforms := strings.Split(flags.platforms, ",")
+	pkgScanResults := make(map[string]map[string]bool)
 	cfg := config.NewDefault()
 	for _, platform := range platforms {
 		loadOptions := config.LoadOptions{
@@ -125,14 +151,33 @@ func Run(flags Flags) error {
 		if err != nil {
 			return fmt.Errorf("failed to load program: %v", err)
 		}
-		fmt.Fprintln(os.Stderr, formatutil.Faint("Analyzing for "+platform))
-		allPkgs := loadprogram.AllPackages(state.ReachableFunctions())
-		results[platform] = FindImporters(allPkgs, pkg, !flags.inexact, rawFile)
+		analyzePackages(state, flags, platform, pkgScanResults)
 	}
-
-	DumpResultsByOS(results)
-
+	dumpResultsByOs(pkgScanResults)
 	return nil
+}
+
+func analyzePackages(
+	state *ptr.State,
+	flags Flags,
+	platform string,
+	pkgScanResult map[string]map[string]bool) {
+	var rawFile io.WriteCloser
+	if flags.rawFilename != "" {
+		rawFile, err := os.OpenFile(flags.rawFilename, os.O_APPEND|os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			state.Logger.Errorf("failed to load raw file: %q", err)
+			os.Exit(1)
+		}
+		defer rawFile.Close()
+	}
+	pkg := flags.pkg
+	if flags.all {
+		pkg = "" // an empty package list will match everything.
+	}
+	fmt.Fprintln(os.Stderr, formatutil.Faint("Analyzing for "+platform))
+	allPkgs := loadprogram.AllPackages(state.ReachableFunctions())
+	pkgScanResult[platform] = FindImporters(allPkgs, pkg, !flags.inexact, rawFile)
 }
 
 // header works around the lack of a ternary operator.  If the platform uses a specific
@@ -160,12 +205,12 @@ func sortedListFromMapKeys[V any](m map[string]V) []string {
 	return ret
 }
 
-// DumpResultsByOS creates a tabular representation of the output, printing fixed size columns for
+// dumpResultsByOs creates a tabular representation of the output, printing fixed size columns for
 // the package's presence in each of the target OS's, followed by the name of the package name.
 // We use the platform name rather than 'X' in case the list was long and any headers
 // scrolled off.  We could also have used the first letter of the platform as a mnemonic.
 // results is a map from platform name to a set of packages that import the target on that platform
-func DumpResultsByOS(results map[string]map[string]bool) {
+func dumpResultsByOs(results map[string]map[string]bool) {
 	names := sortedListFromMapKeys(results) // list platforms deterministically
 
 	// all is the Union of the package lists from all three platforms.

@@ -72,6 +72,7 @@ type CommonFlags struct {
 	FlagSet    *flag.FlagSet
 	ConfigPath string
 	Verbose    bool
+	ScanOnly   bool
 	WithTest   bool
 	Tag        string
 	Targets    string

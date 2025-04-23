@@ -15,6 +15,8 @@
 package config
 
 import (
+	"fmt"
+
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
@@ -88,6 +90,33 @@ func NewState(c *Config, target string, patterns []string, options LoadOptions) 
 		Patterns: patterns,
 		Options:  options,
 	}
+}
+
+// NewAutoState construts a state using a config and a target name
+// It uses the target's information to set the patterns and the platform.
+// Other values are set with default options:
+// - the build mode is ssa.InstantiateGenerics
+// - rewrites are always applied (e.g. Sort, do.Once elimination)
+// - the package config is nil
+func NewAutoState(c *Config, target string, loadTests bool) (*State, error) {
+	targetInfo, present := c.GetTargetMap()[target]
+	if !present {
+		return nil, fmt.Errorf("cannot find target %q", target)
+	}
+
+	return &State{
+		Config:   c,
+		Logger:   NewLogGroup(c),
+		Target:   target,
+		Patterns: targetInfo.Patterns,
+		Options: LoadOptions{
+			PackageConfig: nil,
+			BuildMode:     ssa.InstantiateGenerics,
+			Platform:      targetInfo.Platform,
+			ApplyRewrites: true,
+			LoadTests:     loadTests,
+		},
+	}, nil
 }
 
 // GetConfig returns the config of the state

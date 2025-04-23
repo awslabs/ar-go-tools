@@ -157,7 +157,7 @@ func reportUnsoundFeatures(state *State, f *ssa.Function) {
 			formatutil.Sanitize(f.String()))
 
 		if len(unsoundFeatures.Recovers) > 0 {
-			msg += "    Using recover at position:\n"
+			msg += "    Using " + formatutil.Yellow("recover") + " at position:\n"
 		}
 		for pos := range unsoundFeatures.Recovers {
 			msg += "\t  " + pos.String() + "\n"

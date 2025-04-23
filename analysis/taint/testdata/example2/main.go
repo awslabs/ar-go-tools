@@ -15,7 +15,11 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"math/rand/v2"
+	"strconv"
 	"strings"
 )
 
@@ -63,8 +67,98 @@ func rec(x string) string {
 	}
 }
 
-func main() {
-	x := fmt.Sprintf("%s", rec(rec(source1()))) // @Source(source1)
+type PayloadStruct struct {
+	Payload string
+	Id      string
+}
+
+type contentStruct struct {
+	Type  string
+	Value string
+}
+
+type ParsedPayload struct {
+	Id       string
+	Contents contentStruct
+}
+
+func parseMessage(ct context.Context, payload PayloadStruct) (ParsedPayload, error) {
+	if _, ok := ct.Deadline(); ok {
+		var contents *contentStruct
+		err := json.Unmarshal([]byte(payload.Payload), contents)
+		if err != nil {
+			return ParsedPayload{}, err
+		}
+		return ParsedPayload{
+				Contents: *contents,
+				Id:       payload.Id,
+			},
+			nil
+	}
+	return ParsedPayload{}, fmt.Errorf("not enough time")
+}
+
+func sanitizer(contents contentStruct) contentStruct {
+	return contentStruct{
+		Type:  contents.Type,
+		Value: strings.ToLower(contents.Value),
+	}
+}
+
+func sanitizerStr(id string) string {
+	return strings.ToUpper(id)
+}
+
+func parseAndSanitizeMsg(ct context.Context, payload PayloadStruct) (ParsedPayload, error) {
+	if _, ok := ct.Deadline(); ok {
+		var contents *contentStruct
+		err := json.Unmarshal([]byte(payload.Payload), contents)
+		if err != nil {
+			return ParsedPayload{}, err
+		}
+		return ParsedPayload{
+				Contents: sanitizer(*contents),
+				Id:       payload.Id,
+			},
+			nil
+	}
+	return ParsedPayload{}, fmt.Errorf("not enough time")
+}
+
+func parsingProxy(payload PayloadStruct) (ParsedPayload, error) {
+	context := context.Background()
+	return parseMessage(context, payload)
+}
+
+func parsingSanitizingProxy(payload PayloadStruct) (ParsedPayload, error) {
+	context := context.Background()
+	return parseAndSanitizeMsg(context, payload)
+}
+
+func generateAndParseMessage() {
+	payload := fmt.Sprintf("{\"type\":\"json\",\"Value\":\"{\\\"x\\\":\\\"%s\\\"}\"}", source1()) // @Source(source2)
+	messageId := "id-" + strconv.Itoa(rand.Int())
+	payloadStruct := PayloadStruct{Payload: payload, Id: messageId}
+	doc, err := parsingProxy(payloadStruct)
+	if err != nil {
+		panic("error processing doc")
+	}
+	sink1(doc.Contents.Value) // @Sink(source2)
+}
+
+func genParseAndSanitizeMessage() {
+	payload := fmt.Sprintf("{\"type\":\"json\",\"Value\":\"{\\\"x\\\":\\\"%s\\\"}\"}", source1())
+	messageId := "id-" + strconv.Itoa(rand.Int())
+	payloadStruct := PayloadStruct{Payload: payload, Id: messageId}
+	validateDoc, err := parsingSanitizingProxy(payloadStruct)
+	if err != nil {
+		panic("error processing doc")
+	}
+	sink1(validateDoc.Contents.Value)
+}
+
+func extractAndRecurse() {
+	x := fmt.Sprintf("%q", rec(rec(source1()))) // @Source(source1)
 	y := extract(x)
 	// branch on tainted data
 	if len(y) > 2 {
@@ -72,4 +166,10 @@ func main() {
 	}
 	z := extract(extract(y))
 	sink1(z) // @Sink(source1)
+}
+
+func main() {
+	extractAndRecurse()
+	generateAndParseMessage()
+	genParseAndSanitizeMessage()
 }
