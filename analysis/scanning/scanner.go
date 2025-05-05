@@ -100,12 +100,12 @@ type calleeInfo struct {
 	recv   string
 }
 
-func calleeAliases(pointers *pointer.Result, node *ssa.Call) []calleeInfo {
+func calleeAliases(pointers *pointer.Result, node ssa.CallInstruction) []calleeInfo {
 	aliases := []calleeInfo{}
 	if pointers == nil {
 		return aliases
 	}
-	ptr, hasAliases := pointers.Queries[node.Call.Value]
+	ptr, hasAliases := pointers.Queries[node.Common().Value]
 	if !hasAliases {
 		return aliases
 	}

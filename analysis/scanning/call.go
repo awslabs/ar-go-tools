@@ -47,7 +47,7 @@ func (s CallSpec) MatchSsaCode(p *pointer.Result, c SsaCode) bool {
 		return false
 	}
 
-	call, isCall := c.instr.(*ssa.Call)
+	call, isCall := c.instr.(ssa.CallInstruction)
 	if !isCall || call == nil {
 		return false
 	}
@@ -62,15 +62,15 @@ func (s CallSpec) MatchSsaCode(p *pointer.Result, c SsaCode) bool {
 	}
 
 	// Get package, if no information treat as empty package name
-	pkgName := analysisutil.FindSafeCalleePkg(&call.Call).ValueOr("")
+	pkgName := analysisutil.FindSafeCalleePkg(call.Common()).ValueOr("")
 	var methodName string
 	var receiverName string
-	if call.Call.IsInvoke() {
-		methodName = call.Call.Method.Name()
-		receiverName = call.Call.Value.Type().String()
+	if call.Common().IsInvoke() {
+		methodName = call.Common().Method.Name()
+		receiverName = call.Common().Value.Type().String()
 	} else {
-		methodName = call.Call.Value.Name()
-		receiverName = staticReceiver(call.Call)
+		methodName = call.Common().Value.Name()
+		receiverName = staticReceiver(call.Common())
 	}
 
 	allCalleesIds := calleeAliases(p, call)
@@ -86,7 +86,10 @@ func (s CallSpec) MatchSsaCode(p *pointer.Result, c SsaCode) bool {
 	return res
 }
 
-func staticReceiver(call ssa.CallCommon) string {
+func staticReceiver(call *ssa.CallCommon) string {
+	if call == nil {
+		return ""
+	}
 	sig := call.Signature()
 	if sig == nil {
 		return ""

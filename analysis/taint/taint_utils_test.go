@@ -211,7 +211,11 @@ func findExpectSourceID(sources map[analysistest.AnnotationID]bool,
 	return analysistest.AnnotationID{}, false
 }
 
-func checkExpectedPositions(t *testing.T, p *ssa.Program, flows *taint.Flows, expectTaint analysistest.TargetToSources,
+func checkExpectedPositions(
+	t *testing.T,
+	p *ssa.Program,
+	flows *taint.Flows,
+	expectTaint analysistest.TargetToSources,
 	expectEscapes analysistest.TargetToSources) {
 	checkTaint(t, p, expectTaint, flows.Sinks)
 	checkEscape(t, p, expectEscapes, flows.Escapes)
