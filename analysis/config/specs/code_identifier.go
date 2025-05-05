@@ -89,14 +89,14 @@ type ParsedCodeIdentifier struct {
 }
 
 // Compile generates a code specification by compiling a parsed code identifier
-func (cid ParsedCodeIdentifier) Compile() (scanning.CodeSpec, error) {
+func (cid ParsedCodeIdentifier) Compile() ([]scanning.CodeSpec, error) {
 	return cid.CompileForceArg(false)
 }
 
 // CompileForceArg generates a code specification by compiling a parsed code identifier
 // the forceArg argument indicates whether a call spec should be forced into a
 // call argument spec. This makes sense for sinks, and because of backwards compatibility
-func (cid ParsedCodeIdentifier) CompileForceArg(forceArg bool) (scanning.CodeSpec, error) {
+func (cid ParsedCodeIdentifier) CompileForceArg(forceArg bool) ([]scanning.CodeSpec, error) {
 	if isNewFormat(cid) {
 		return cid.compileNewFormat()
 	}
@@ -109,19 +109,19 @@ func (cid ParsedCodeIdentifier) CompileForceArg(forceArg bool) (scanning.CodeSpe
 
 	// Try to distinguish the cases
 	if cid.Kind == "channel receive" {
-		return &scanning.ChannelRecvSpec{
+		return []scanning.CodeSpec{&scanning.ChannelRecvSpec{
 			CommonSpec: common,
 			Type:       asRegex(cid.Type),
 			ValueMatch: asRegex(cid.ValueMatch),
-		}, nil
+		}}, nil
 	}
 
 	if cid.Method != "" &&
 		cid.Package == "" &&
 		scanning.MatchesHandledBuiltinCall(asRegex(cid.Method)) {
-		return &scanning.BuiltinCallSpec{
+		return []scanning.CodeSpec{&scanning.BuiltinCallSpec{
 			Name: trimStartEndRegex(cid.Method),
-		}, nil
+		}}, nil
 	}
 
 	// Method or interface indicate this is a call site
@@ -136,34 +136,34 @@ func (cid ParsedCodeIdentifier) CompileForceArg(forceArg bool) (scanning.CodeSpe
 		}
 
 		if cid.Kind == "arg" || forceArg {
-			return scanning.CallArgSpec{
+			return []scanning.CodeSpec{scanning.CallArgSpec{
 				CallSpec: callspec,
 				Type:     asRegex(cid.Type),
 				AnyIndex: true,
-			}, nil
+			}}, nil
 		}
-		return callspec, nil
+		return []scanning.CodeSpec{callspec}, nil
 	}
 
 	if cid.Field != "" {
-		return &scanning.StructFieldSpec{
+		return []scanning.CodeSpec{&scanning.StructFieldSpec{
 			CommonSpec: common,
 			Type:       asRegex(cid.Type),
 			Field:      asRegex(cid.Field),
 			Write:      forceArg,
-		}, nil
+		}}, nil
 	}
 
 	if cid.Type != "" {
-		return &scanning.TypeSpec{
+		return []scanning.CodeSpec{&scanning.TypeSpec{
 			CommonSpec: common,
 			Type:       asRegex(cid.Type),
-		}, nil
+		}}, nil
 	}
 	panic(fmt.Sprintf("TODO: implement translation for %+v", cid))
 }
 
-func (cid ParsedCodeIdentifier) compileNewFormat() (scanning.CodeSpec, error) {
+func (cid ParsedCodeIdentifier) compileNewFormat() ([]scanning.CodeSpec, error) {
 	var contextPkgRegex *regexp.Regexp
 	var err error
 	if cid.Enclosing.PackageRegex != "" {
@@ -192,12 +192,23 @@ func (cid ParsedCodeIdentifier) compileNewFormat() (scanning.CodeSpec, error) {
 	switch cid.Target.Kind {
 	case CallKind:
 		if len(cid.Target.Objects) == 0 {
-			return scanning.CallSpec{
+			return []scanning.CodeSpec{scanning.CallSpec{
 				CommonSpec: *common,
 				Method:     asRegex(cid.Target.Method),
-			}, nil
+			}}, nil
 		}
-		panic("NOT IMPLEMENTED")
+		specs := []scanning.CodeSpec{}
+		for _, object := range cid.Target.Objects {
+			specs = append(specs, scanning.CallArgSpec{
+				CallSpec: scanning.CallSpec{
+					CommonSpec: *common,
+					Method:     asRegex(cid.Target.Method),
+				},
+				Index: object.Index,
+				Type:  asRegex(object.Type),
+			})
+		}
+		return specs, nil
 	}
 	return nil, fmt.Errorf("unrecognized code identifier")
 }

@@ -37,7 +37,7 @@ func compileCids(cids []ParsedCodeIdentifier, forceArg bool) ([]scanning.CodeSpe
 		if err != nil {
 			return nil, err
 		}
-		codeSpecs = append(codeSpecs, codeSpec)
+		codeSpecs = append(codeSpecs, codeSpec...)
 	}
 	return codeSpecs, nil
 }
