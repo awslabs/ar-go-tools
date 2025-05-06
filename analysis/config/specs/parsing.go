@@ -154,7 +154,8 @@ type ParsedTaintSpec struct {
 	SourceTaintsArgs bool `xml:"source-taints-args,attr" yaml:"source-taints-args" json:"source-taints-args"`
 }
 
-// ParsedSlicingSpec contains code identifiers that identify a specific program slicing / backwards dataflow analysis spec.
+// ParsedSlicingSpec contains code identifiers that identify a specific program slicing / backwards
+// dataflow analysis spec.
 type ParsedSlicingSpec struct {
 	analysiscfg.ProblemCfg `xml:"override-analysis-options,attr" yaml:"override-analysis-options" json:"override-analysis-options"`
 	// BacktracePoints is the list of identifiers to be considered as entrypoint functions for the backwards
@@ -281,15 +282,16 @@ func (cc CondCheckSpec) SpecSeverity() analysiscfg.Severity {
 }
 
 // GuardSpec is the specification of a guard or condition
-// Currently, it only contains a Precondition which is a list of string represented conjuncts. This makes it at little
-// difficult to specify in a config file, so we will make a more extensible and precise GuardSpec in the future.
+// Currently, it only contains a Precondition which is a list of string represented conjuncts. This
+// makes it at little difficult to specify in a config file, so we will make a more extensible and
+// precise GuardSpec in the future.
 type GuardSpec struct {
 	// Precondition is the function that is used in the condition
 	Precondition []string
 }
 
-// A TargetSpec is a set of files the form a Go program together with a name to identify the target in the configuration
-// file.
+// A TargetSpec is a set of files the form a Go program together with a name to identify the target
+// in the configuration file.
 type TargetSpec struct {
 	// Name identifies the target in the rest of the configuration file
 	Name string
@@ -298,23 +300,27 @@ type TargetSpec struct {
 	// Platform identifies the target's platform
 	Platform string
 
-	// UseProgramTransforms indicates that the tool should apply program transformations before running any analysis.
-	// Program transformations can be expensive to apply, but they can eliminate sources of imprecision and sources of
-	// unsoundness.
-	// NOTE: this option may change to let the user choose precisely which program transformations to apply
+	// UseProgramTransforms indicates that the tool should apply program transformations before
+	// running any analysis. Program transformations can be expensive to apply, but they can
+	// eliminate sources of imprecision and sources of unsoundness.
+	// NOTE: this option may change to let the user choose precisely which program transformations
+	// to apply
 	UseProgramTransforms bool `xml:"use-program-transforms" yaml:"use-program-transforms" json:"use-program-transforms"`
 
-	// ReflectValueCallInstances lists functions that take as argument a class. The program will be transformed to rewrite
-	// (reflect.Value).Call instances that can be statically resolved to the class's method.
+	// ReflectValueCallInstances lists functions that take as argument a class. The program will be
+	// transformed to rewrite (reflect.Value).Call instances that can be statically resolved to the
+	// class's method.
 	ReflectValueCallInstances []ParsedCodeIdentifier `xml:"reflect-value-call-instances" yaml:"reflect-value-call-instances" json:"reflect-value-call-instances"`
 }
 
-// IsStaticCommand returns true if the code identifier matches a static command specification in the config file
+// IsStaticCommand returns true if the code identifier matches a static command specification in
+// the config file
 func (scs StaticCommandsSpec) IsStaticCommand(cid ParsedCodeIdentifier) bool {
 	return ExistsCid(scs.StaticCommands, cid.EqualOnNonEmptyFields)
 }
 
-// IsBacktracePoint returns true if the code identifier matches a backtrace point according to the SlicingSpec
+// IsBacktracePoint returns true if the code identifier matches a backtrace point according to the
+// SlicingSpec
 func (ss ParsedSlicingSpec) IsBacktracePoint(cid ParsedCodeIdentifier) (ParsedCodeIdentifier, bool) {
 	if ExistsCid(ss.BacktracePoints, cid.EqualOnNonEmptyFields) {
 		return cid, true
@@ -323,8 +329,8 @@ func (ss ParsedSlicingSpec) IsBacktracePoint(cid ParsedCodeIdentifier) (ParsedCo
 	return ParsedCodeIdentifier{}, false
 }
 
-// TargetIncludes returns true if the list of targets includes the targets or has the "all" target, or the target
-// is empty (the program is passed through the command line)
+// TargetIncludes returns true if the list of targets includes the targets or has the "all" target,
+// or the target is empty (the program is passed through the command line)
 func TargetIncludes(targets []string, sub string) bool {
 	return sub == "" || funcs.Contains(targets, TargetsAll) || funcs.Contains(targets, sub)
 }

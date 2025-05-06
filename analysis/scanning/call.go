@@ -43,7 +43,8 @@ func (s CallSpec) MatchAstCode(a AstCode) bool { panic("UNIMPLEMENTED") }
 // MatchSsaCode returns true when the node provided is a call to a function that matches
 // the spec.
 func (s CallSpec) MatchSsaCode(p *pointer.Result, c SsaCode) bool {
-	if c.instr == nil || c.indirect {
+	// A call is at least an instruction
+	if c.instr == nil || c.parent != nil {
 		return false
 	}
 
@@ -52,12 +53,16 @@ func (s CallSpec) MatchSsaCode(p *pointer.Result, c SsaCode) bool {
 		return false
 	}
 
-	if s.ValueMatch != nil && !s.ValueMatch.MatchString(call.String()) {
+	if s.ValueMatch != nil && call.Value() != nil && !s.ValueMatch.MatchString(call.String()) {
 		return false
 	}
 
-	// Check context
-	if !s.matchEnclosingContext(call.Parent()) {
+	if !lang.SafeUnderlyingCall(call) {
+		return false
+	}
+
+	// Check context.
+	if !s.matchEnclosingContext(c.instr.Parent()) {
 		return false
 	}
 
@@ -106,6 +111,7 @@ type CallArgSpec struct {
 	CommonSpec
 	CallSpec
 	Index    uint
+	Name     *regexp.Regexp
 	AnyIndex bool // AnyIndex indicates that index should be ignored and any arg matches
 	Type     *regexp.Regexp
 }
@@ -113,38 +119,35 @@ type CallArgSpec struct {
 // MatchSsaCode matches call arguments when the call matches the call spec part of the spec and
 // the argument has the same index and type specified in the CallArgSpec.
 func (s CallArgSpec) MatchSsaCode(p *pointer.Result, c SsaCode) bool {
-	if !c.indirect {
+	if c.parent == nil {
 		return false // a call arg is matching indirectly by looking at referrers
 	}
 	if c.value == nil {
 		return false
 	}
-	if c.value.Referrers() == nil {
+
+	callInstr, isCallInstr := c.parent.(ssa.CallInstruction)
+	if !isCallInstr {
 		return false
 	}
-	// The value is an argument if it appears as argument of a call
-	for _, referrer := range *c.value.Referrers() {
-		callInstr, isCallInstr := referrer.(ssa.CallInstruction)
-		if !isCallInstr {
-			continue
-		}
-		// To match a call argument, the call spec must at least match
-		if !s.CallSpec.MatchSsaCode(p, NewInstrCode(callInstr)) {
-			continue
-		}
-		// Find a parameter that matches
-		args := lang.GetArgs(callInstr)
-		params := lang.GetParams(callInstr)
-		for i, arg := range args {
-			if arg != c.value {
-				continue
-			}
-			paramType := analysisutil.ParamTypStr(params[i], i, arg)
-			if (s.Index == uint(i) || s.AnyIndex) && s.Type.MatchString(paramType) {
-				return true
-			}
-		}
+	// To match a call argument, the call spec must at least match
+	if !s.CallSpec.MatchSsaCode(p, NewInstrCode(callInstr)) {
 		return false
+	}
+	// Find the argument that is equal to the value, and check if it matches
+	args := lang.GetArgs(callInstr)
+	params := lang.GetParams(callInstr)
+	for i, arg := range args {
+		if arg != c.value {
+			continue
+		}
+		paramType := analysisutil.ParamTypStr(params[i], i, arg)
+		paramName := params[i].Var.Name()
+		if (s.Index == uint(i) || s.AnyIndex) &&
+			s.Type.MatchString(paramType) &&
+			s.Name.MatchString(paramName) {
+			return true
+		}
 	}
 	return false
 }

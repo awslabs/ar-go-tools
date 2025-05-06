@@ -27,15 +27,17 @@ type ProblemCfg struct {
 	// The default is -1, and any value less than 0 is safe: the analysis will be sound and explore call depth
 	// without bounds.
 	//
-	// Setting UnsafeMaxDepth to a limit larger than 0 will yield unsound results, but can be useful to use the tool
-	// as a checking mechanism. Limiting the call depth will usually yield fewer false positives.
+	// Setting UnsafeMaxDepth to a limit larger than 0 will yield unsound results, but can be useful
+	// to use the tool as a checking mechanism. Limiting the call depth will usually yield fewer false positives.
 	UnsafeMaxDepth int `xml:"unsafe-max-depth,attr" yaml:"unsafe-max-depth" json:"unsafe-max-depth"`
 
-	// MaxEntrypointContextSize sets the maximum context (call stack) size used when searching for entry points with context.
+	// MaxEntrypointContextSize sets the maximum context (call stack) size used when searching for
+	// entry points with context.
 	// This only impacts precision of the returned results.
 	//
 	// If MaxEntrypointContextSize is < 0, it is ignored.
-	// If MaxEntrypointContextSize is 0 is specified by the user, the value is ignored, and a default internal value is used.
+	// If MaxEntrypointContextSize is 0 is specified by the user, the value is ignored, and a default
+	// internal value is used.
 	// If MaxEntrypointContextSize is > 0, then the limit in the callstack size for the context is used.
 	MaxEntrypointContextSize int `xml:"max-entrypoint-context-size,attr" yaml:"max-entrypoint-context-size" json:"max-entrypoint-context-size"`
 }

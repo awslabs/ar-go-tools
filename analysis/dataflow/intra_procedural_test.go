@@ -83,7 +83,8 @@ func TestFunctionSummaries(t *testing.T) {
 			}
 			for _, paramNode := range summary.Params {
 				if len(paramNode.Out()) < 2 {
-					t.Errorf("Bar parameter should only have at least two outgoing edges to a function call argument, but got: %v", paramNode.Out())
+					t.Errorf("Bar parameter should only have at least two outgoing edges to a function call argument,"+
+						" but got: %v", paramNode.Out())
 				}
 				hasCallOrReturn := false
 				for dest := range paramNode.Out() {
@@ -103,11 +104,15 @@ func TestFunctionSummaries(t *testing.T) {
 						}
 					}
 					if !hasParam {
-						t.Errorf("Bar parameter outgoing edge's should have an incoming edge that is a parameter node, but got: %v", dest.In())
+						t.Errorf(
+							"Bar parameter outgoing edge's should have an incoming edge that is a parameter node, "+
+								"but got: %v",
+							dest.In())
 					}
 				}
 				if !hasCallOrReturn {
-					t.Errorf("Bar parameter outgoing edge should have a CallNodeArg or ReturnNode, but got: %v", paramNode.Out())
+					t.Errorf("Bar parameter outgoing edge should have a CallNodeArg or ReturnNode, but got: %v",
+						paramNode.Out())
 				}
 			}
 		}
@@ -131,19 +136,22 @@ func TestFunctionSummaries(t *testing.T) {
 						}
 
 						if len(out.In()) != 1 {
-							t.Errorf("in Foo, the outgoing edge of param s should have one incoming edge, but got: %v", out.In())
+							t.Errorf("in Foo, the outgoing edge of param s should have one incoming edge, but got: %v",
+								out.In())
 						}
 
 						for in := range out.In() {
 							if _, ok := in.(*dataflow.ParamNode); !ok {
 								t.Errorf(
-									"in Foo, the incoming edge of the outgoing edge of param s should be a parameter node, but got: %T",
+									"in Foo, the incoming edge of the outgoing edge of param s should be a parameter "+
+										"node, but got: %T",
 									in)
 							}
 						}
 					}
 					if !hasCall {
-						t.Errorf("in Foo, an outgoing edge of param s should be a call node argument, but got: %v", paramNode.Out())
+						t.Errorf("in Foo, an outgoing edge of param s should be a call node argument, but got: %v",
+							paramNode.Out())
 					}
 
 					// even though there is a statement `a[0] = s` in the
@@ -160,11 +168,14 @@ func TestFunctionSummaries(t *testing.T) {
 					for out := range paramNode.Out() {
 						// statement `l := Bar(*s2)`
 						if _, ok := out.(*dataflow.CallNodeArg); !ok {
-							t.Errorf("in Foo, the outgoing edge of param s2 should be a call node argument, but got: %T", out)
+							t.Errorf(
+								"in Foo, the outgoing edge of param s2 should be a call node argument, but got: %T",
+								out)
 						}
 
 						if len(out.In()) != 2 {
-							t.Errorf("in Foo, the outgoing edge of param s2 should have 2 incoming edges, but got: %v", out.In())
+							t.Errorf("in Foo, the outgoing edge of param s2 should have 2 incoming edges, but got: %v",
+								out.In())
 						}
 
 						hasParam := false
@@ -175,16 +186,20 @@ func TestFunctionSummaries(t *testing.T) {
 							}
 							// statement `*s2 = obj.f(a[9])` comes before the call to `Bar(*s2)`
 							if call, ok := in.(*dataflow.CallNode); ok {
-								if call.FuncString() != "(command-line-arguments.A).f" && call.FuncString() != "(github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.A).f" {
+								if call.FuncString() != "(command-line-arguments.A).f" &&
+									call.FuncString() !=
+										"(github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.A).f" {
 									t.Errorf(
-										"in Foo, an incoming edge of the outgoing edge of param s2 is not a call to (A).f, but got: %s",
+										"in Foo, an incoming edge of the outgoing edge of param s2 is not a call to"+
+											"(A).f, but got: %s",
 										call.FuncString())
 								}
 								hasCall = true
 							}
 						}
 						if !hasParam {
-							t.Errorf("in Foo, 1 incoming edge of the outgoing edge of param s2 should be a parameter node")
+							t.Errorf(
+								"in Foo, 1 incoming edge of the outgoing edge of param s2 should be a parameter node")
 						}
 						if !hasCall {
 							t.Errorf("in Foo, 1 incoming edge of the outgoing edge of param s2 should be a call node")
@@ -199,8 +214,11 @@ func TestFunctionSummaries(t *testing.T) {
 					}
 					for in := range paramNode.In() {
 						if call, ok := in.(*dataflow.CallNode); ok {
-							if call.FuncString() != "(command-line-arguments.A).f" && call.FuncString() != "(github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.A).f" {
-								t.Errorf("in Foo, incoming edge of param s2 is not a call to (A).f, but got: %s", call.FuncString())
+							if call.FuncString() != "(command-line-arguments.A).f" &&
+								call.FuncString() !=
+									"(github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.A).f" {
+								t.Errorf("in Foo, incoming edge of param s2 is not a call to (A).f, but got: %s",
+									call.FuncString())
 							}
 						} else if _, ok := in.(*dataflow.CallNodeArg); !ok {
 							t.Errorf("in Foo, incoming edge of param s2 should be a call node, but got: %T", in)
@@ -225,7 +243,9 @@ func TestFunctionSummaries(t *testing.T) {
 					}
 					for in := range ret.In() {
 						if call, ok := in.(*dataflow.CallNode); ok {
-							if call.FuncString() != "command-line-arguments.Bar" && call.FuncString() != "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Bar" {
+							if call.FuncString() != "command-line-arguments.Bar" &&
+								call.FuncString() !=
+									"github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Bar" {
 								t.Errorf("in Foo, incoming edge of return is not a call to Bar, but got: %s",
 									call.FuncString())
 							}
@@ -417,13 +437,16 @@ func TestFunctionSummaries(t *testing.T) {
 				for _, callee := range callees {
 					for _, arg := range callee.Args() {
 						name := callee.FuncString()
-						if name == "command-line-arguments.Sink" || name == "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Sink" {
+						if name == "command-line-arguments.Sink" ||
+							name == "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Sink" {
 							if len(arg.Out()) >= 2 {
-								t.Errorf("in Baz, all callee args to %s should less than 2 outgoing edges, but got: %v", name, arg.Out())
+								t.Errorf("in Baz, all callee args to %s should less than 2 outgoing edges, but got: %v",
+									name, arg.Out())
 							}
 
 							if len(arg.In()) < 1 {
-								t.Errorf("in Baz, callee arg to %s should have at least one incoming edge, but got: %v", name, arg.In())
+								t.Errorf("in Baz, callee arg to %s should have at least one incoming edge, but got: %v",
+									name, arg.In())
 							}
 							hasCall := false
 							for in := range arg.In() {
@@ -432,15 +455,19 @@ func TestFunctionSummaries(t *testing.T) {
 								}
 							}
 							if !hasCall {
-								t.Errorf("in Baz, callee arg to %s should have an incoming edge that is a call node, but got: %v", name, arg.In())
+								t.Errorf(
+									"in Baz, callee arg to %s should have an incoming edge that is a call node,"+
+										" but got: %v", name, arg.In())
 							}
 						} else if strings.HasPrefix(name, "make closure Baz$1") {
 							if len(arg.Out()) != 2 {
-								t.Errorf("in Baz, callee arg to %s should have 2 outgoing edges, but got: %v", name, arg.Out())
+								t.Errorf("in Baz, callee arg to %s should have 2 outgoing edges, but got: %v",
+									name, arg.Out())
 							}
 
 							if len(arg.In()) != 1 {
-								t.Errorf("in Baz, callee arg to %s should have 1 incoming edges, but got: %v", name, arg.In())
+								t.Errorf("in Baz, callee arg to %s should have 1 incoming edges, but got: %v",
+									name, arg.In())
 							}
 						} else if name == "fmt.Sprintf" {
 							// ignore the first arg to fmt.Sprintf (format string)
@@ -448,11 +475,13 @@ func TestFunctionSummaries(t *testing.T) {
 								continue
 							}
 							if len(arg.Out()) != 0 {
-								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v", name, arg.Out())
+								t.Errorf("in Baz, callee arg to %s should not have any outgoing edges, but got: %v",
+									name, arg.Out())
 							}
 
 							if len(arg.In()) < 3 {
-								t.Errorf("in Baz, callee arg to %s should have at least 3 incoming edges, but got: %v", name, arg.In())
+								t.Errorf("in Baz, callee arg to %s should have at least 3 incoming edges, but got: %v",
+									name, arg.In())
 							}
 							hasGlobal := false
 							hasSynth := false
@@ -465,10 +494,14 @@ func TestFunctionSummaries(t *testing.T) {
 								}
 							}
 							if !hasSynth {
-								t.Errorf("in Baz, callee arg to %s should have a synthetic node incoming edge, but got: %v", name, arg.In())
+								t.Errorf(
+									"in Baz, callee arg to %s should have a synthetic node incoming edge, but got: %v",
+									name, arg.In())
 							}
 							if !hasGlobal {
-								t.Errorf("in Baz, callee arg to %s should have a global node incoming edge, but got: %v", name, arg.In())
+								t.Errorf(
+									"in Baz, callee arg to %s should have a global node incoming edge, but got: %v",
+									name, arg.In())
 							}
 						} else {
 							t.Errorf("in Baz, callee arg to %s is not expected", name)
@@ -487,11 +520,14 @@ func TestFunctionSummaries(t *testing.T) {
 			hasReturnOut := false
 			for _, freevar := range summary.FreeVars {
 				if len(freevar.Out()) < 1 {
-					t.Errorf("in Baz, closure freevar should have at least one outgoing edge, but got: %v", freevar.Out())
+					t.Errorf("in Baz, closure freevar should have at least one outgoing edge, but got: %v",
+						freevar.Out())
 				}
 				for out := range freevar.Out() {
 					if arg, ok := out.(*dataflow.CallNodeArg); ok {
-						if arg.ParentNode().FuncString() == "command-line-arguments.Sink" || arg.ParentNode().FuncString() == "github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Sink" {
+						if arg.ParentNode().FuncString() == "command-line-arguments.Sink" ||
+							arg.ParentNode().FuncString() ==
+								"github.com/awslabs/ar-go-tools/analysis/dataflow/testdata/summaries.Sink" {
 							hasCallNodeArgOut = true
 						}
 					}

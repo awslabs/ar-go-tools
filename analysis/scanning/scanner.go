@@ -33,7 +33,7 @@ type SsaCode struct {
 	instr      ssa.Instruction
 	value      ssa.Value
 	calleeInfo *lang.CalleeInfo
-	indirect   bool // the value is indirectly referencing another one. e.g a call arg
+	parent     ssa.Instruction // the value is indirectly referencing another one. e.g a call arg
 }
 
 // NewCallInstrCode return an ssa code with a instruction can some callee info
@@ -46,6 +46,11 @@ func NewCallInstrCode(i ssa.Instruction, c *lang.CalleeInfo) SsaCode {
 // Instr returns the instruction of the ssacode, which can be nil for value-codes
 func (c SsaCode) Instr() ssa.Instruction {
 	return c.instr
+}
+
+// Value returns the value of the ssacode, which can be nil for value-codes
+func (c SsaCode) Value() ssa.Value {
+	return c.value
 }
 
 // NewSsaNodeCode returns an SsaCode for an ssa.Node
@@ -61,11 +66,11 @@ func NewSsaNodeCode(n ssa.Node) SsaCode {
 }
 
 // NewValueCode returns an ssa code that is just a value
-func NewValueCode(v ssa.Value, indirect bool) SsaCode {
+func NewValueCode(v ssa.Value, parent ssa.Instruction) SsaCode {
 	if instr, isAlsoInstr := v.(ssa.Instruction); isAlsoInstr {
-		return SsaCode{value: v, instr: instr, indirect: indirect}
+		return SsaCode{value: v, instr: instr, parent: parent}
 	}
-	return SsaCode{value: v, indirect: indirect}
+	return SsaCode{value: v, parent: parent}
 }
 
 // NewInstrCode returns an ssa code that is just an instruction

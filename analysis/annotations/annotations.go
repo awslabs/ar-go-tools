@@ -495,14 +495,8 @@ func addSource(
 	var sourceCodeSpec scanning.CodeSpec
 	sourceCodeSpec = spec
 	if p != nil {
-		typeR := regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
-		paramIndex := lang.ParamIndex(p)
-		sourceCodeSpec = scanning.CallArgSpec{
-			CallSpec: spec,
-			Type:     typeR,
-			AnyIndex: paramIndex < 0, // overapproximate if wrong index
-			Index:    uint(paramIndex),
-		}
+		// if p is non nil, it means the argument is the source, not the call
+		sourceCodeSpec = callArgSpecOfParam(spec, p)
 	}
 	added := map[string]bool{}
 	for i, taintProblem := range c.TaintTrackingProblems {
@@ -527,21 +521,7 @@ func addSink(
 	all bool,
 	spec scanning.CallSpec,
 	p *ssa.Parameter) {
-	paramIndex := -1
-	var typeR *regexp.Regexp
-	if p != nil {
-		typeR = regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
-		paramIndex = lang.ParamIndex(p)
-	}
-	if typeR == nil {
-		typeR = regexp.MustCompile(".*")
-	}
-	sinkCodeSpec := scanning.CallArgSpec{
-		CallSpec: spec,
-		Type:     typeR,
-		AnyIndex: paramIndex < 0,
-		Index:    uint(paramIndex),
-	}
+	sinkCodeSpec := callArgSpecOfParam(spec, p)
 	added := map[string]bool{}
 	for i, taintProblem := range c.TaintTrackingProblems {
 		if all || funcutil.Contains(tags, taintProblem.Tag) {
@@ -565,21 +545,7 @@ func addSanitizer(
 	all bool,
 	spec scanning.CallSpec,
 	p *ssa.Parameter) {
-	paramIndex := -1
-	var typeR *regexp.Regexp
-	if p != nil {
-		typeR = regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
-		paramIndex = lang.ParamIndex(p)
-	}
-	if typeR == nil {
-		typeR = regexp.MustCompile(".*")
-	}
-	sanitizerSpec := scanning.CallArgSpec{
-		CallSpec: spec,
-		Type:     typeR,
-		AnyIndex: paramIndex < 0,
-		Index:    uint(paramIndex),
-	}
+	sanitizerSpec := callArgSpecOfParam(spec, p)
 	added := map[string]bool{}
 	for i, taintProblem := range c.TaintTrackingProblems {
 		if all || funcutil.Contains(tags, taintProblem.Tag) {
@@ -603,21 +569,7 @@ func addBacktracePoint(
 	all bool,
 	spec scanning.CallSpec,
 	p *ssa.Parameter) {
-	var typeR *regexp.Regexp
-	paramIndex := -1
-	if p != nil {
-		typeR = regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
-		paramIndex = lang.ParamIndex(p)
-	}
-	if typeR == nil {
-		typeR = regexp.MustCompile(".*")
-	}
-	backtracePointSpec := scanning.CallArgSpec{
-		CallSpec: spec,
-		Type:     typeR,
-		AnyIndex: paramIndex < 0,
-		Index:    uint(paramIndex),
-	}
+	backtracePointSpec := callArgSpecOfParam(spec, p)
 	added := map[string]bool{}
 	for i, slicingProblem := range c.SlicingProblems {
 		if all || funcutil.Contains(tags, slicingProblem.Tag) {
@@ -632,5 +584,27 @@ func addBacktracePoint(
 			newProblem.BacktracePoints = []scanning.CodeSpec{backtracePointSpec}
 			c.SlicingProblems = append(c.SlicingProblems, newProblem)
 		}
+	}
+}
+
+func callArgSpecOfParam(callSpec scanning.CallSpec, p *ssa.Parameter) scanning.CallArgSpec {
+	var typeR *regexp.Regexp
+	var nameR *regexp.Regexp
+	paramIndex := -1
+	if p != nil {
+		typeR = regexp.MustCompile(regexp.QuoteMeta(p.Type().String()))
+		paramIndex = lang.ParamIndex(p)
+		nameR = regexp.MustCompile(regexp.QuoteMeta(p.Name()))
+	} else {
+		all := regexp.MustCompile(".*")
+		typeR = all
+		nameR = all
+	}
+	return scanning.CallArgSpec{
+		CallSpec: callSpec,
+		Type:     typeR,
+		AnyIndex: paramIndex < 0,
+		Index:    uint(paramIndex),
+		Name:     nameR,
 	}
 }

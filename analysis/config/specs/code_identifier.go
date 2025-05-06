@@ -139,6 +139,7 @@ func (cid ParsedCodeIdentifier) CompileForceArg(forceArg bool) ([]scanning.CodeS
 			return []scanning.CodeSpec{scanning.CallArgSpec{
 				CallSpec: callspec,
 				Type:     asRegex(cid.Type),
+				Name:     regexp.MustCompile(".*"),
 				AnyIndex: true,
 			}}, nil
 		}
@@ -166,26 +167,46 @@ func (cid ParsedCodeIdentifier) CompileForceArg(forceArg bool) ([]scanning.CodeS
 func (cid ParsedCodeIdentifier) compileNewFormat() ([]scanning.CodeSpec, error) {
 	var contextPkgRegex *regexp.Regexp
 	var err error
+	emptyMatch := regexp.MustCompile("")
 	if cid.Enclosing.PackageRegex != "" {
 		contextPkgRegex, err = regexp.Compile(cid.Enclosing.PackageRegex)
 		if err != nil {
 			return nil, err
 		}
+	} else if cid.Enclosing.Package != "" {
+		// only exact match when non-empty is specified; it doesn't make sense otherwise
+		contextPkgRegex = asExactMatchRegex(cid.Enclosing.Package)
 	} else {
-		contextPkgRegex = asRegex(cid.Enclosing.Package)
+		contextPkgRegex = emptyMatch
 	}
 
 	var contextMethodRegex *regexp.Regexp
+	var packageRegex *regexp.Regexp
 	if cid.Enclosing.MethodRegex != "" {
 		contextMethodRegex, err = regexp.Compile(cid.Enclosing.MethodRegex)
 		if err != nil {
 			return nil, err
 		}
+	} else if cid.Enclosing.Method != "" {
+		// only exact match when non-empty is specified; it doesn't make sense otherwise
+		contextMethodRegex = asExactMatchRegex(cid.Enclosing.Method)
 	} else {
-		contextMethodRegex = asRegex(cid.Enclosing.Method)
+		contextMethodRegex = emptyMatch
+	}
+	if cid.Target.PackageRegex != "" {
+		packageRegex = asRegex(cid.Target.PackageRegex)
+		if cid.Target.Package != "" {
+			return nil, fmt.Errorf(
+				"should not specify both package regex %q and package %q in target",
+				cid.Target.PackageRegex,
+				cid.Target.Package,
+			)
+		}
+	} else {
+		packageRegex = asExactMatchRegex(cid.Target.Package)
 	}
 	common := &scanning.CommonSpec{
-		Package:        asRegex(cid.Target.Package),
+		Package:        packageRegex,
 		ContextPackage: contextPkgRegex,
 		ContextMethod:  contextMethodRegex,
 	}
@@ -194,19 +215,22 @@ func (cid ParsedCodeIdentifier) compileNewFormat() ([]scanning.CodeSpec, error) 
 		if len(cid.Target.Objects) == 0 {
 			return []scanning.CodeSpec{scanning.CallSpec{
 				CommonSpec: *common,
-				Method:     asRegex(cid.Target.Method),
+				Method:     asExactMatchRegex(cid.Target.Method),
 			}}, nil
 		}
 		specs := []scanning.CodeSpec{}
 		for _, object := range cid.Target.Objects {
-			specs = append(specs, scanning.CallArgSpec{
-				CallSpec: scanning.CallSpec{
-					CommonSpec: *common,
-					Method:     asRegex(cid.Target.Method),
-				},
-				Index: object.Index,
-				Type:  asRegex(object.Type),
-			})
+			if object.Kind == ArgumentKind {
+				specs = append(specs, scanning.CallArgSpec{
+					CallSpec: scanning.CallSpec{
+						CommonSpec: *common,
+						Method:     asRegex(cid.Target.Method),
+					},
+					Index: object.Index,
+					Type:  asExactMatchRegex(object.Type),
+					Name:  asExactMatchRegex(object.Name),
+				})
+			}
 		}
 		return specs, nil
 	}
@@ -223,6 +247,9 @@ type Target struct {
 
 	// Package is the name of the package that the method belongs to.
 	Package string
+
+	// PackageRegex is the regex of the package that the method belongs to.
+	PackageRegex string `xml:"package-regex,attr" yaml:"package~" json:"package~"`
 
 	// Method is the name of the method or function.
 	Method string
@@ -544,8 +571,8 @@ func (cid *ParsedCodeIdentifier) MatchType(typ types.Type) bool {
 	return cid.Type == typ.String()
 }
 
-// MatchPackageAndMethodWithCaller checks whether the function f matches the code identifier on the package and method fields and
-// the context of the caller.
+// MatchPackageAndMethodWithCaller checks whether the function f matches the code identifier on the
+// package and method fields and the context of the caller.
 // It is safe to call with nil values.
 func (cid *ParsedCodeIdentifier) MatchPackageAndMethodWithCaller(caller *ssa.Function, f *ssa.Function) bool {
 	if cid == nil {
@@ -587,8 +614,11 @@ func (cid *ParsedCodeIdentifier) MatchInterface(f *ssa.Function) bool {
 	}
 
 	pkg := lang.PackageNameFromFunction(f)
-	if cid.computedRegexs != nil && cid.computedRegexs.packageRegex != nil && cid.computedRegexs.interfaceRegex != nil {
-		return cid.computedRegexs.packageRegex.MatchString(pkg) && cid.computedRegexs.interfaceRegex.MatchString(f.Type().String())
+	if cid.computedRegexs != nil &&
+		cid.computedRegexs.packageRegex != nil &&
+		cid.computedRegexs.interfaceRegex != nil {
+		return cid.computedRegexs.packageRegex.MatchString(pkg) &&
+			cid.computedRegexs.interfaceRegex.MatchString(f.Type().String())
 	}
 
 	return cid.Package == pkg && cid.Interface == f.Type().String()
@@ -610,7 +640,12 @@ func asRegex(s string) *regexp.Regexp {
 	if err == nil {
 		return r
 	}
-	r, err = regexp.Compile("^" + regexp.QuoteMeta(s) + "$")
+	return asExactMatchRegex(s)
+}
+
+// asExactMatchRegex returns a regexp that matches exactly the string given as argument
+func asExactMatchRegex(s string) *regexp.Regexp {
+	r, err := regexp.Compile("^" + regexp.QuoteMeta(s) + "$")
 	if err != nil {
 		panic("Unexpected regex compilation error")
 	}

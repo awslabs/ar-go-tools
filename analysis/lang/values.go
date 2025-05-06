@@ -307,3 +307,22 @@ func ParamIndex(p *ssa.Parameter) int {
 	}
 	return -1
 }
+
+// SafeUnderlyingCall checks that the underlying struct in the CallInstruction is non-nil. Even
+// when you don't need to know the underlying type, it's necessary to call most methods on the
+// CallInstruction even when the CallInstruction itself is non-nil.
+func SafeUnderlyingCall(c ssa.CallInstruction) bool {
+	if c == nil {
+		return false
+	}
+	switch call := c.(type) {
+	case *ssa.Call:
+		return call != nil
+	case *ssa.Defer:
+		return call != nil
+	case *ssa.Go:
+		return call != nil
+	default:
+		return false
+	}
+}

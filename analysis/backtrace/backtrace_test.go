@@ -38,7 +38,9 @@ var testfsys embed.FS
 
 func TestAnalyze(t *testing.T) {
 	dir := filepath.Join("./testdata", "backtrace")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,15 +56,21 @@ func TestAnalyze(t *testing.T) {
 	// need better context sensitivity for global read
 	// This might be fine?
 	//
-	// "[#578.2] global:os.Args in *os.Args (read)" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:38
-	// "(SA)call: runcmd(t21, t23...) in main [#578.21]: @arg 0:t21 [#578.22]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:43:26
-	// "[#577.0] parameter name : string of runcmd [0]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:85:13
-	// "(SA)call: os/exec.Command(name, args...) in runcmd [#577.3]: @arg 0:name [#577.4]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:85:13
+	// "[#578.2] global:os.Args in *os.Args (read)" at
+	//     /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:38
+	// "(SA)call: runcmd(t21, t23...) in main [#578.21]: @arg 0:t21 [#578.22]" at
+	//     /Volumes/workplace/argot/testdata/src/backtrace/main.go:43:26
+	// "[#577.0] parameter name : string of runcmd [0]" at
+	//     /Volumes/workplace/argot/testdata/src/backtrace/main.go:85:13
+	// "(SA)call: os/exec.Command(name, args...) in runcmd [#577.3]: @arg 0:name [#577.4]" at
+	//     /Volumes/workplace/argot/testdata/src/backtrace/main.go:85:13
 }
 
 func TestAnalyze_OnDemand(t *testing.T) {
 	dir := filepath.Join("./testdata", "backtrace")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +83,9 @@ func TestAnalyze_OnDemand(t *testing.T) {
 // instead of all arguments of a call.
 func TestAnalyze_SpecificObjs(t *testing.T) {
 	dir := filepath.Join("./testdata", "trace-specific")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +122,8 @@ func TestAnalyze_SpecificObjs(t *testing.T) {
 			name: `trace to trackOnlyVariadic arg 1 in main from main`,
 			matches: []match{
 				{arg, argval{`t5`, 1}, -1},
+				{param, "parameter ys : []string", -1},
+				{arg, argval{`t5`, 1}, -1},
 			},
 		},
 	}
@@ -130,7 +142,9 @@ func TestAnalyze_SpecificObjs(t *testing.T) {
 // an error if the max depth is exceeded while computing a trace.
 func TestAnalyze_MaxDepth(t *testing.T) {
 	dir := filepath.Join("./testdata", "max-depth")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true}).Value()
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{ApplyRewrite: true},
+	).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,24 +607,25 @@ func checkTraces(t *testing.T, res backtrace.AnalysisResult, tests []traceTest) 
 	}
 
 	// // NOTE Uncomment to debug
-	// t.Log("TRACES:")
-	// for _, trace := range res.Traces {
-	// 	t.Log(trace)
-	// }
+	/* for k, traceGroup := range res.Traces {
+		t.Logf("%q", k)
+		for k, trace := range traceGroup {
+			t.Logf("%s: %d", k, len(trace))
+		}
+	} */
 
 	for _, test := range tests {
-		test := test // needed for t.Parallel()
-		t.Run(test.name, func(t *testing.T) {
+		localTest := test // needed for t.Parallel()
+		t.Run(localTest.name, func(t *testing.T) {
 			t.Parallel()
 
 			if !funcutil.Exists(traces, func(trace backtrace.Trace) bool {
-				ok, err := matchTrace(res.Graph.AnalyzerState, trace, test.matches)
+				ok, err := matchTrace(res.Graph.AnalyzerState, trace, localTest.matches)
 				_ = err
-				// // NOTE commented out for debugging
-				// if err != nil {
-				// 	t.Errorf("failed match: %v in trace: %v", err, trace)
-				// }
-
+				// NOTE commented out for debugging
+				/* if err != nil {
+					t.Errorf("failed match: %v in trace: %v", err, trace)
+				} */
 				return ok
 			}) {
 				t.Error("no match")
@@ -732,12 +747,12 @@ func matchNode(tnode *dataflow.VisitorNode, m match) (bool, error) {
 // The following code is copied from taint_utils_test.go
 
 func setupConfig(lp *loadprogram.State, summarizeOnDemand bool) {
-	level := config.ErrLevel // change this as needed for debugging
+	level := config.InfoLevel // change this as needed for debugging
 	lp.Logger.Level = level
 
 	cfg := lp.Config
 	cfg.Options.ReportCoverage = false
-	cfg.Options.ReportPaths = false // change this as needed for debugging
+	cfg.Options.ReportPaths = true // change this as needed for debugging
 	cfg.Options.ReportSummaries = false
 	cfg.Options.ReportsDir = ""
 	cfg.LogLevel = int(level)

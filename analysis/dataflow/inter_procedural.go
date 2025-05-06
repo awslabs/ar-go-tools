@@ -263,8 +263,8 @@ type ScanningSpec = func(*pointer.Result, scanning.SsaCode) bool
 
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to
 // build the inter-procedural dataflow graph. Then, it looks for every entry point designated by the isEntryPoint
-// predicate to RunIntraProcedural the visitor on those points (using the [*InterProceduralFlowGraph.RunVisitorOnEntryPoints]
-// function).
+// predicate to RunIntraProcedural the visitor on those points (using the
+// [*InterProceduralFlowGraph.RunVisitorOnEntryPoints] function).
 //
 // Most of the logic of the analysis will be in the visitor's implementation by the client. This function is mostly
 // a driver that sequences the analyses in the right order with small checks.
@@ -568,14 +568,15 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 // If the summary was not already in the flow graph of the state, it creates a new summary, adds it to the flow graph
 // and then runs the intra-procedural dataflow analysis.
 //
-// BuildSummary expects to be called only on reachable functions, because the analyses usually instantiate the summaries
-// only for those functions.
+// BuildSummary expects to be called only on reachable functions, because the analyses usually
+// instantiate the summaries only for those functions.
 func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 	summary := s.FlowGraph.Summaries[function]
 	if summary != nil && summary.Constructed {
 		return summary
 	}
-	// nil summaries should only happen for functions that should have an internally defined summary, i.e. standard library.
+	// nil summaries should only happen for functions that should have an internally defined
+	// summary, i.e. standard library.
 	if summary == nil {
 		id := GetUniqueFunctionID()
 		predef, err := NewPredefinedSummary(function, id)

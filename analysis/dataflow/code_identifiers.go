@@ -82,7 +82,7 @@ func IsValidatorCondition(state *State, ts *specs.Taint, v ssa.Value, isPositive
 	switch val := v.(type) {
 	// Direct boolean check?
 	case *ssa.Call:
-		return isPositive && ts.IsValidator(state.PointerAnalysis, scanning.NewValueCode(v, false))
+		return isPositive && ts.IsValidator(state.PointerAnalysis, scanning.NewValueCode(v, nil))
 	// Nil error check?
 	case *ssa.BinOp:
 		vNilChecked, isEqCheck := lang.MatchNilCheck(val)

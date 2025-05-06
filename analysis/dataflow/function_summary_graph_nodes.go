@@ -285,7 +285,7 @@ type ParamNode struct {
 }
 
 // SsaCode returns the corresponding ssa code (an ssa.Parameter)
-func (a *ParamNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaNode, false) }
+func (a *ParamNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaNode, nil) }
 
 // ID returns the integer id of the node in its parent graph
 func (a *ParamNode) ID() uint32 { return a.id }
@@ -363,7 +363,7 @@ type FreeVarNode struct {
 }
 
 // SsaCode returns the corresponding ssa code (a free variable)
-func (a *FreeVarNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaNode, false) }
+func (a *FreeVarNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaNode, nil) }
 
 // ID returns the integer id of the node in its parent graph
 func (a *FreeVarNode) ID() uint32 { return a.id }
@@ -439,7 +439,9 @@ type CallNodeArg struct {
 }
 
 // SsaCode returns the corresponding ssa code (a ssa value)
-func (a *CallNodeArg) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaValue, true) }
+func (a *CallNodeArg) SsaCode() scanning.SsaCode {
+	return scanning.NewValueCode(a.ssaValue, a.parent.callSite)
+}
 
 // ID returns the integer id of the node in its parent graph
 func (a *CallNodeArg) ID() uint32 { return a.id }
@@ -834,7 +836,7 @@ type BoundVarNode struct {
 }
 
 // SsaCode returns the corresponding ssa code (an ssa value)
-func (a *BoundVarNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaValue, false) }
+func (a *BoundVarNode) SsaCode() scanning.SsaCode { return scanning.NewValueCode(a.ssaValue, nil) }
 
 // ID returns the integer id of the node in its parent graph
 func (a *BoundVarNode) ID() uint32 { return a.id }

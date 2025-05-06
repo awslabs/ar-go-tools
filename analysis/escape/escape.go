@@ -270,7 +270,11 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		g.AddEdge(nodes.ValueNode(instr), closureNode, EdgeInternal)
 		for i, bindingVal := range instr.Bindings {
 			if IsEscapeTracked(bindingVal.Type()) {
-				g.StoreField(nodes.ValueNode(instr), nodes.ValueNode(bindingVal), fn.FreeVars[i].Name(), fn.FreeVars[i].Type())
+				g.StoreField(
+					nodes.ValueNode(instr),
+					nodes.ValueNode(bindingVal),
+					fn.FreeVars[i].Name(),
+					fn.FreeVars[i].Type())
 			}
 		}
 		return
@@ -327,7 +331,12 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		// Check if this is a load operation
 		if _, ok := instr.X.Type().(*types.Pointer); ok && instr.Op == token.MUL {
 			if lang.IsNillableType(instr.Type()) {
-				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), instr, "", NillableDerefType(instr.Type()))
+				g.LoadField(
+					nodes.ValueNode(instr),
+					nodes.ValueNode(instr.X),
+					instr,
+					"",
+					NillableDerefType(instr.Type()))
 			} else if IsEscapeTracked(instr.Type()) {
 				// Load of struct. Use copy struct to get the fields correctly handled
 				for x := range g.Pointees(nodes.ValueNode(instr.X)) {
@@ -399,7 +408,11 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 			} else if st.Dir == types.SendOnly {
 				if IsEscapeTracked(st.Send.Type()) {
 					// Send on channel is a write to the contents "field" of the channel
-					g.StoreField(nodes.ValueNode(st.Chan), nodes.ValueNode(st.Send), channelContentsField, st.Send.Type())
+					g.StoreField(
+						nodes.ValueNode(st.Chan),
+						nodes.ValueNode(st.Send),
+						channelContentsField,
+						st.Send.Type())
 				}
 			} else {
 				panic("Unexpected select send/recv type")
@@ -516,11 +529,21 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 			valueType := instr.Type().Underlying().(*types.Tuple).At(2).Type()
 			if IsEscapeTracked(keyType) {
 				loadOp := generalizedFieldLoad{instr, mapKeysField}
-				g.LoadField(g.FieldSubnode(tupleNode, "#1", keyType), nodes.ValueNode(instr.Iter), loadOp, mapKeysField, keyType)
+				g.LoadField(
+					g.FieldSubnode(tupleNode, "#1", keyType),
+					nodes.ValueNode(instr.Iter),
+					loadOp,
+					mapKeysField,
+					keyType)
 			}
 			if IsEscapeTracked(valueType) {
 				loadOp := generalizedFieldLoad{instr, mapValuesField}
-				g.LoadField(g.FieldSubnode(tupleNode, "#2", valueType), nodes.ValueNode(instr.Iter), loadOp, mapValuesField, valueType)
+				g.LoadField(
+					g.FieldSubnode(tupleNode, "#2", valueType),
+					nodes.ValueNode(instr.Iter),
+					loadOp,
+					mapValuesField,
+					valueType)
 			}
 		}
 		return
@@ -617,7 +640,11 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 	}
 }
 
-func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) transferCallStaticCallee(
+	instrType *ssa.Call,
+	g *EscapeGraph,
+	args []*Node,
+	rets []*Node) {
 	// Handle calls where we know the callee
 	callee := instrType.Call.StaticCallee()
 	summary := ea.prog.getFunctionAnalysisSummary(callee)
@@ -668,7 +695,8 @@ func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph
 	prog := instrType.Parent().Pkg.Prog
 	marshalerInterface := lang.FindTypeByName(prog, "encoding/json", "Marshaler")
 	if marshalerInterface == nil {
-		ea.prog.logger.Errorf("Found function with reflect:JsonMarshal escape summary, but program does not import encoding/json")
+		ea.prog.logger.Errorf(
+			"Found function with reflect:JsonMarshal escape summary, but program does not import encoding/json")
 		return
 	}
 	reachable := map[*Node]bool{}
@@ -701,7 +729,8 @@ func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGra
 	prog := instrType.Parent().Pkg.Prog
 	marshalerInterface := lang.FindTypeByName(prog, "encoding/json", "Unmarshaler")
 	if marshalerInterface == nil {
-		ea.prog.logger.Errorf("Found function with reflect:JsonUnmarshal escape summary, but program does not import encoding/json")
+		ea.prog.logger.Errorf(
+			"Found function with reflect:JsonUnmarshal escape summary, but program does not import encoding/json")
 		return
 	}
 	// Find some fixed types for strings, map[string]any, and []any
@@ -860,9 +889,10 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 		}
 	}
 	if nonlocal {
-		// Either the pointer or a closure object was non-local. Therefore we can't know for certain exactly what function was called
-		// or what data the closure refers to. Therefore, we need to basically do all the logic again, but assuming arbitrary
-		// data could be loaded from e.g. free vars.
+		// Either the pointer or a closure object was non-local. Therefore we can't know for certain
+		// exactly what function was called or what data the closure refers to. Therefore, we need
+		// to basically do all the logic again, but assuming arbitrary data could be loaded from
+		//  e.g. free vars.
 		if callees, err := ea.getCallees(instrType); err == nil {
 			pre := g.Clone()
 			for concreteCallee := range callees {
@@ -874,7 +904,9 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 					for closureNode := range g.Pointees(calleeNode) {
 						if tp, ok := g.nodes.globalNodes.types[closureNode]; ok {
 							if IsAbstractType(tp) {
-								closureNode = g.ImplementationSubnode(closureNode, &FunctionImplType{concreteCallee.Signature, concreteCallee})
+								closureNode = g.ImplementationSubnode(
+									closureNode,
+									&FunctionImplType{concreteCallee.Signature, concreteCallee})
 							} else if funcImpl, ok := tp.(*FunctionImplType); ok && funcImpl.fun != concreteCallee {
 								continue // the closure node is not our concrete callee
 							}
@@ -883,19 +915,24 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 						if err := wellFormedEscapeGraph(g); err != nil {
 							panic(err)
 						}
-						// Check if the closure node itself is non-local (i.e. escaped if it is an argument) and the callee
-						// is a closure. In this case, we need to make sure there is at least one node representing the free
-						// variables of the closure. Failure to create this node will result in the function essentially
-						// assuming the free variables are nil, as there won't be any closure out edges.
+						// Check if the closure node itself is non-local (i.e. escaped if it is an
+						// argument) and the callee is a closure. In this case, we need to make sure
+						// there is at least one node representing the free variables of the closure.
+						// Failure to create this node will result in the function essentially
+						// assuming the free variables are nil, as there won't be any closure out
+						// edges.
 						if g.status[closureNode] != Local {
-							// Add a load node for external closures, to represent the bound variable storage nodes
+							// Add a load node for external closures, to represent the bound variable
+							// storage nodes
 							freeVars := []*Node{}
 							for _, fv := range concreteCallee.FreeVars {
 								if IsEscapeTracked(fv.Type()) {
 									varFieldNode := pre.FieldSubnode(closureNode, fv.Name(), fv.Type())
 									loadOp := closureFreeVarLoad{instrType, fv.Name()}
-									g.EnsureLoadNode(loadOp, NillableDerefType(concreteCallee.FreeVars[0].Type()), varFieldNode)
-									pre.EnsureLoadNode(loadOp, NillableDerefType(concreteCallee.FreeVars[0].Type()), varFieldNode)
+									g.EnsureLoadNode(
+										loadOp, NillableDerefType(concreteCallee.FreeVars[0].Type()), varFieldNode)
+									pre.EnsureLoadNode(
+										loadOp, NillableDerefType(concreteCallee.FreeVars[0].Type()), varFieldNode)
 									freeVars = append(freeVars, varFieldNode)
 								} else {
 									freeVars = append(freeVars, nil)

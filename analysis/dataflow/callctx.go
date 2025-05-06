@@ -24,7 +24,8 @@ import (
 	cg "golang.org/x/tools/go/callgraph"
 )
 
-// reversedCallStack is a unary tree that roots at a particular call and stores the next call in the call stack as its child
+// reversedCallStack is a unary tree that roots at a particular call and stores the next call in
+// the call stack as its child
 type reversedCallStack = CallStack
 
 // GetAllCallingContexts returns all the possible loop-free calling contexts of a CallNode in the state

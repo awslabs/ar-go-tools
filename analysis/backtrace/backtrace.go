@@ -844,6 +844,9 @@ func (v *Visitor) addNext(s *df.State,
 
 // isBaseCase returns true if the analysis should not analyze node any further.
 func isBaseCase(node df.GraphNode, cfg *config.Config) bool {
+	if _, isConst := node.SsaCode().Value().(*ssa.Const); isConst {
+		return true
+	}
 	hasIntraIncomingEdges := len(node.In()) != 0
 	canHaveInterIncomingEdges := func(node df.GraphNode) bool {
 		if global, ok := node.(*df.AccessGlobalNode); ok {
