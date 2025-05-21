@@ -44,37 +44,37 @@ func checkNotEqualOnNonEmptyFields(t *testing.T, cid1 CodeIdentifier, cid2 CodeI
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_selfEquals(t *testing.T) {
-	cid1 := CodeIdentifier{"", "a", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
+	cid1 := CodeIdentifier{"", "a", "", "b", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
 	checkEqualOnNonEmptyFields(t, cid1, cid1)
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_emptyMatchesAny(t *testing.T) {
-	cid1 := CodeIdentifier{"", "a", "b", "i", "c", "d", "e", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid2 := CodeIdentifier{"", "de", "234jbn", "ef", "23kjb", "d", "234", "", "", "", "", nil, Target{}, CallingContext{}}
+	cid1 := CodeIdentifier{"", "a", "b", "i", "c", "d", "e", "", "", "", "", nil, nil, Target{}, CallingContext{}}
+	cid2 := CodeIdentifier{"", "de", "234jbn", "ef", "23kjb", "d", "234", "", "", "", "", nil, nil, Target{}, CallingContext{}}
 	cidEmpty := CodeIdentifier{}
 	checkEqualOnNonEmptyFields(t, cid1, cidEmpty)
 	checkEqualOnNonEmptyFields(t, cid2, cidEmpty)
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_oneDiff(t *testing.T) {
-	cid1 := CodeIdentifier{"", "a", "b", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid2 := CodeIdentifier{"", "a", "", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
+	cid1 := CodeIdentifier{"", "a", "b", "", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
+	cid2 := CodeIdentifier{"", "a", "", "", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
 	checkEqualOnNonEmptyFields(t, cid1, cid2)
 	checkNotEqualOnNonEmptyFields(t, cid2, cid1)
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_regexes(t *testing.T) {
-	cid1 := CodeIdentifier{"", "main", "b", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid1bis := CodeIdentifier{"", "command-line-arguments", "b", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid2 := CodeIdentifier{"", "(main)|(command-line-arguments)$", "", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
+	cid1 := CodeIdentifier{"", "main", "b", "", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
+	cid1bis := CodeIdentifier{"", "command-line-arguments", "b", "", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
+	cid2 := CodeIdentifier{"", "(main)|(command-line-arguments)$", "", "", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
 	checkEqualOnNonEmptyFields(t, cid1, cid2)
 	checkEqualOnNonEmptyFields(t, cid1bis, cid2)
 }
 
 func TestCodeIdentifier_equalOnNonEmptyFields_regexes_withContexts(t *testing.T) {
-	cid1 := CodeIdentifier{"main-package", "main", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid1bis := CodeIdentifier{"main", "command-line-arguments", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
-	cid2 := CodeIdentifier{"mai.*", "(main)|(command-line-arguments)$", "", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
+	cid1 := CodeIdentifier{"main-package", "main", "", "b", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
+	cid1bis := CodeIdentifier{"main", "command-line-arguments", "", "b", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
+	cid2 := CodeIdentifier{"mai.*", "(main)|(command-line-arguments)$", "", "", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
 	checkEqualOnNonEmptyFields(t, cid1, cid2)
 	checkEqualOnNonEmptyFields(t, cid1bis, cid2)
 }
@@ -447,8 +447,8 @@ func TestLoadMisc(t *testing.T) {
 		t,
 		"config.yaml",
 		mkConfig(
-			[]CodeIdentifier{{"", "a", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "c", "", "d", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
+			[]CodeIdentifier{{"", "a", "", "b", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
+			[]CodeIdentifier{{"", "c", "", "d", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
 			[]CodeIdentifier{},
 		),
 	)
@@ -456,20 +456,20 @@ func TestLoadMisc(t *testing.T) {
 	testLoadOneFile(t,
 		"config2.json",
 		mkConfig(
-			[]CodeIdentifier{{"", "x", "", "a", "", "b", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "p", "", "a", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
-				{"", "p2", "", "a", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
+			[]CodeIdentifier{{"", "x", "", "a", "", "b", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
+			[]CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
+			[]CodeIdentifier{{"", "p", "", "a", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}},
+				{"", "p2", "", "a", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
 		),
 	)
 	//
 	testLoadOneFile(t,
 		"config2.yaml",
 		mkConfig(
-			[]CodeIdentifier{{"", "x", "", "a", "", "b", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-			[]CodeIdentifier{{"", "p", "", "a", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
-				{"", "p2", "", "a", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
+			[]CodeIdentifier{{"", "x", "", "a", "", "b", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
+			[]CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
+			[]CodeIdentifier{{"", "p", "", "a", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}},
+				{"", "p2", "", "a", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
 		),
 	)
 	//
@@ -479,14 +479,14 @@ func TestLoadMisc(t *testing.T) {
 			DataflowProblems: DataflowProblems{
 				TaintTrackingProblems: []TaintSpec{
 					{
-						Sanitizers: []CodeIdentifier{{"", "pkg1", "", "Foo", "Obj", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
-						Sinks: []CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
-							{"", "x", "", "", "Obj1", "", "", "", "", "", "", nil, Target{}, CallingContext{}}},
+						Sanitizers: []CodeIdentifier{{"", "pkg1", "", "Foo", "Obj", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
+						Sinks: []CodeIdentifier{{"", "y", "", "b", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}},
+							{"", "x", "", "", "Obj1", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}},
 						Sources: []CodeIdentifier{
-							{"", "some/package", "", "SuperMethod", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
+							{"", "some/package", "", "SuperMethod", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}},
 
-							{"", "some/other/package", "", "", "", "OneField", "ThatStruct", "", "", "", "", nil, Target{}, CallingContext{}},
-							{"", "some/other/package", "Interface", "", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}},
+							{"", "some/other/package", "", "", "", "OneField", "ThatStruct", "", "", "", "", nil, nil, Target{}, CallingContext{}},
+							{"", "some/other/package", "Interface", "", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}},
 						},
 						FailOnImplicitFlow: false,
 					},
@@ -505,7 +505,7 @@ func TestLoadMisc(t *testing.T) {
 		},
 	)
 	// Test configuration file for static-commands
-	osExecCid := CodeIdentifier{"", "os/exec", "", "Command", "", "", "", "", "", "", "", nil, Target{}, CallingContext{}}
+	osExecCid := CodeIdentifier{"", "os/exec", "", "Command", "", "", "", "", "", "", "", nil, nil, Target{}, CallingContext{}}
 	cfg := NewDefault()
 	cfg.StaticCommandsProblems = []StaticCommandsSpec{{[]CodeIdentifier{osExecCid}}}
 	testLoadOneFile(t, "config-find-osexec.yaml", *cfg)

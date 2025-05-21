@@ -129,6 +129,12 @@ type Config struct {
 	// EscapeConfig contains the escape-analysis specific configuration parameters
 	EscapeConfig *EscapeConfig
 
+	// ImmutabilityProblems lists the immutability analysis problems.
+	ImmutabilityProblems []ImmutabilitySpec `yaml:"immutability-problems" json:"immutability-problems"`
+
+	// DiodonPassThroughProblems lists the Diodon pass-through analysis problems.
+	DiodonPassThroughProblems []DiodonPassThroughSpec `yaml:"diodon-pass-through-problems" json:"diodon-pass-through-problems"`
+
 	// PointerConfig contains the pointer-analysis specific configuration parameters
 	PointerConfig *PointerConfig `yaml:"pointer-config" json:"pointer-config"`
 
@@ -180,6 +186,110 @@ type PointerConfig struct {
 	// Reflection is the reflection option of the pointer analysis: when true, reflection aperators are handled
 	// soundly, but analysis time will increase dramatically.
 	Reflection bool
+}
+
+// ImmutabilitySpec contains code identifiers for the immutability analysis.
+type ImmutabilitySpec struct {
+	// Tag is the identifier of the problem
+	Tag string
+	// Severity is the severity of the finding
+	Severity Severity
+	// Description is a human-readable description of the problem
+	Description string
+	// Targets are the targets of the analysis
+	Targets []string
+
+	// Values is the list of identifiers representing which values whose
+	// modifications should be reported.
+	Values []CodeIdentifier
+
+	// Filters contains a list of filters that prevents some identifiers from being analyzed.
+	Filters []CodeIdentifier
+}
+
+// IsValue returns true if the code identifier cid matches a value according to spec s.
+// Ignores the context field because its meaning is overloaded in the immutability analysis.
+func (s ImmutabilitySpec) IsValue(cid CodeIdentifier) bool {
+	cid.Context = ""
+	vals := funcutil.Map(s.Values, func(cid CodeIdentifier) CodeIdentifier {
+		cid.Context = ""
+		return cid
+	})
+	return ExistsCid(vals, cid.equalOnNonEmptyFields)
+}
+
+// SpecTag returns the specification's tag
+func (s ImmutabilitySpec) SpecTag() string {
+	return s.Tag
+}
+
+// SpecTargets returns the specification's targets
+func (s ImmutabilitySpec) SpecTargets() []string {
+	return s.Targets
+}
+
+// SpecSeverity returns the specification's severity
+func (s ImmutabilitySpec) SpecSeverity() Severity {
+	return s.Severity
+}
+
+// DiodonPassThroughSpec contains code identifiers for the Diodon pass-through analysis.
+type DiodonPassThroughSpec struct {
+	// Tag is the identifier of the problem
+	Tag string
+	// Severity is the severity of the finding
+	Severity Severity
+	// Description is a human-readable description of the problem
+	Description string
+	// Targets are the targets of the analysis
+	Targets []string
+
+	// AppFunctions is the list of identifiers representing which functions are
+	// part of the App.
+	AppFunctions []CodeIdentifier `yaml:"app-functions" json:"app-functions"`
+
+	// CoreFunctions is the list of identifiers representing which functions are
+	// part of the Core.
+	CoreFunctions []CodeIdentifier `yaml:"core-functions" json:"core-functions"`
+
+	// CoreAllocFunction is the function that allocates the Core instance's memory.
+	CoreAllocFunction CodeIdentifier `yaml:"core-alloc-function" json:"core-alloc-function"`
+
+	// CoreApiFunctions is the list of identifiers representing
+	// which functions are part of the Core API.
+	// The return values and/or parameters establish permissions for heap
+	// locations allocated within the context of the Core API function.
+	CoreApiFunctions []CodeIdentifier `yaml:"core-api-functions" json:"core-api-functions"`
+
+	// AppAccessFilters contains a list of identifiers representing which functions
+	// in the App should not be analyzed for invalid accesses due to
+	// imprecision in the pointer analysis.
+	AppAccessFilters []CodeIdentifier `yaml:"app-access-filters" json:"app-access-filters"`
+
+	// CoreAllocFilters contains a list of identifiers representing which
+	// functions in the Core should not be analyzed for allocation sites due to
+	// imprecision in the pointer analysis.
+	CoreAllocFilters []CodeIdentifier `yaml:"core-alloc-filters" json:"core-alloc-filters"`
+
+	// NoLeakFunctions contains a list of identifiers representing which
+	// functions in the Core cannot leak an allocation except via its return
+	// parameters.
+	NoLeakFunctions []CodeIdentifier `yaml:"no-leak-functions" json:"no-leak-functions"`
+}
+
+// SpecTag returns the specification's tag
+func (s DiodonPassThroughSpec) SpecTag() string {
+	return s.Tag
+}
+
+// SpecTargets returns the specification's targets
+func (s DiodonPassThroughSpec) SpecTargets() []string {
+	return s.Targets
+}
+
+// SpecSeverity returns the specification's severity
+func (s DiodonPassThroughSpec) SpecSeverity() Severity {
+	return s.Severity
 }
 
 // StaticCommandsSpec contains code identifiers for the problem of identifying which commands are static
@@ -563,6 +673,21 @@ func Load(filename string, configBytes []byte, cmdLineOverrides *CmdLineOverride
 	for _, sSpec := range cfg.DataflowProblems.SlicingProblems {
 		funcutil.MapInPlace(sSpec.BacktracePoints, compileRegexes)
 		funcutil.MapInPlace(sSpec.Filters, compileRegexes)
+	}
+
+	for i, spec := range cfg.DiodonPassThroughProblems {
+		funcutil.MapInPlace(spec.AppFunctions, compileRegexes)
+		funcutil.MapInPlace(spec.CoreFunctions, compileRegexes)
+		cfg.DiodonPassThroughProblems[i].CoreAllocFunction = compileRegexes(spec.CoreAllocFunction)
+		funcutil.MapInPlace(spec.CoreApiFunctions, compileRegexes)
+		funcutil.MapInPlace(spec.AppAccessFilters, compileRegexes)
+		funcutil.MapInPlace(spec.CoreAllocFilters, compileRegexes)
+		funcutil.MapInPlace(spec.NoLeakFunctions, compileRegexes)
+	}
+
+	for _, spec := range cfg.ImmutabilityProblems {
+		funcutil.MapInPlace(spec.Values, compileRegexes)
+		funcutil.MapInPlace(spec.Filters, compileRegexes)
 	}
 
 	for i, siSpec := range cfg.SyntacticProblems.StructInitProblems {

@@ -18,6 +18,8 @@ package config
 type ToolName string
 
 const (
+	// AliasTool name
+	AliasTool ToolName = "alias"
 	// BacktraceTool name
 	BacktraceTool ToolName = "backtrace"
 	// CliTool name
@@ -28,10 +30,16 @@ const (
 	DeferTool ToolName = "defer"
 	// DependenciesTool name
 	DependenciesTool ToolName = "dependencies"
+	// GoroutineTool name
+	GoroutineTool ToolName = "goroutine"
+	// ImmutabilityTool name
+	ImmutabilityTool ToolName = "immutability"
 	// MayPanicTool name
 	MayPanicTool ToolName = "maypanic"
 	// PackageScanTool name
 	PackageScanTool ToolName = "packagescan"
+	// PassThruTool name
+	PassThruTool ToolName = "diodon-passthru"
 	// ReachabilityTool name
 	ReachabilityTool ToolName = "reachability"
 	// RenderTool name

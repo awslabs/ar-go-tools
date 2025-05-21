@@ -44,6 +44,7 @@ func main() {
 	testIndexArray()
 	testChannel()
 	testChannelEscape()
+	testChannelStruct()
 	testSelect()
 	testConvertStringToSlice()
 	testImmediateClosure1()
@@ -212,6 +213,16 @@ func testChannelEscape() {
 	ch <- x
 	go recv(ch)
 	assertAllLeaked(x)
+}
+
+func testChannelStruct() {
+	z := &Node{}
+	x := Node{z}
+	ch := make(chan Node, 1)
+	ch <- x
+	y := <-ch
+	globalVar = y.next
+	assertAllLeaked(z)
 }
 
 func testSelect() {

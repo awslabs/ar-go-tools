@@ -67,6 +67,10 @@ type CodeIdentifier struct {
 	// formatting functions.
 	ValueMatch string `xml:"value-match,attr" yaml:"value-match" json:"value-match"`
 
+	// ReturnIndices identifies return value indices of a function.
+	// The Package and Method fields must be set as well.
+	ReturnIndices []int `xml:"return-indices,attr" yaml:"return-indices" json:"return-indices"`
+
 	// computedRegexs is not part of the yaml config, but contains the compiled regex version of the code identifier
 	// elements that are parsed as regexes.
 	computedRegexs *codeIdentifierRegex

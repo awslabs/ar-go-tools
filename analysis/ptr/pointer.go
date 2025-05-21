@@ -16,6 +16,7 @@ package ptr
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"time"
 
@@ -76,6 +77,80 @@ func (s *State) ReachableFunctions() map[*ssa.Function]bool {
 		return s.reachableFunctions
 	}
 	return s.reachableFunctions
+}
+
+// AliasCache represents a "global" cache for transitive pointers and aliases.
+//
+// The analysis only searches for pointers and aliases that are reachable from a
+// single entrypoint, but this cache helps if there are multiple entrypoints
+// that need alias information computed from previous entrypoints.
+type AliasCache struct {
+	PtrState       *State
+	ReachableFuncs map[*ssa.Function]bool
+	ObjectPointees map[ssa.Value]map[*pointer.Object]struct{}
+}
+
+// NewAliasCache returns an empty alias cache from state.
+func NewAliasCache(state *State) *AliasCache {
+	return &AliasCache{
+		PtrState:       state,
+		ReachableFuncs: state.ReachableFunctions(),
+		ObjectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}),
+	}
+}
+
+// Objects returns all the unique Objects that val points to.
+func (ac *AliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
+	if mi, ok := val.(*ssa.MakeInterface); ok {
+		// if val is an interface, the object is the concrete struct
+		val = mi.X
+	}
+	if res, ok := ac.ObjectPointees[val]; ok && len(res) > 0 {
+		return res
+	}
+
+	ptrs := findAllPointers(ac.PtrState.PointerAnalysis, val)
+	if len(ptrs) == 0 {
+		return nil
+	}
+
+	res := make(map[*pointer.Object]struct{}, len(ptrs))
+	for _, ptr := range ptrs {
+		for _, label := range ptr.PointsTo().Labels() {
+			obj := label.Obj()
+			if obj == nil {
+				continue
+			}
+
+			// Skip allocated context.Context and error objects since we assume
+			// that they are used as values
+			switch data := obj.Data().(type) {
+			case *ssa.Alloc:
+				switch data.Type().String() {
+				case "*error", "*context.Context":
+					continue
+				}
+			}
+
+			res[obj] = struct{}{}
+		}
+	}
+
+	ac.ObjectPointees[val] = res
+	return res
+}
+
+// findAllPointers returns all the pointers that point to v.
+func findAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
+	var allptr []pointer.Pointer
+	if ptr, ptrExists := res.Queries[v]; ptrExists {
+		allptr = append(allptr, ptr)
+	}
+	// By indirect query
+	// if ptr, ptrExists := res.IndirectQueries[v]; ptrExists {
+	// 	allptr = append(allptr, ptr)
+	// }
+	return allptr
 }
 
 // DoPointerAnalysis runs the pointer analysis on the program p, marking every Value in the functions filtered by
@@ -180,4 +255,180 @@ func indirectQuery(cfg *pointer.Config, typ types.Type, val ssa.Value) {
 			}
 		}
 	}
+}
+
+// Write is an instruction that writes to an entrypoint's underlying memory.
+type Write struct {
+	ssa.Instruction
+	Target ssa.Value // Target is the value written to.
+	Value  ssa.Value // Value is the value that is written.
+	Pos    token.Position
+}
+
+func (w Write) String() string {
+	return fmt.Sprintf("write to %v with %v at %v", w.Target, w.Value, w.Pos)
+}
+
+// Read is an instruction that reads from an entrypoint's underlying memory.
+type Read struct {
+	ssa.Instruction
+	Values []ssa.Value // Values are the values that are read from.
+	Pos    token.Position
+}
+
+func (r Read) String() string {
+	return fmt.Sprintf("read of %v at %v", r.Values, r.Pos)
+}
+
+// PtrWrittenTo returns true if instruction writes a scalar value to a pointer
+// value.
+func PtrWrittenTo(instr ssa.Instruction, pos token.Position) (Write, bool) {
+	var lval ssa.Value
+	var rval ssa.Value
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		lval = instr.Addr
+		rval = instr.Val
+	case *ssa.MapUpdate:
+		lval = instr.Map
+		rval = instr.Value
+	case *ssa.Send:
+		lval = instr.Chan
+		rval = instr.X
+	default:
+		return Write{}, false
+	}
+
+	if instr.Parent() == nil {
+		return Write{}, false
+	}
+	pkg := instr.Parent().Pkg
+	// we assume that errors are never used as pointer values
+	if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
+		return Write{}, false
+	}
+
+	if !pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
+		return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
+	}
+
+	// calls to append builtin function modify
+	if call, ok := rval.(*ssa.Call); ok {
+		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
+			if builtin.Object().Name() == "append" && !pointer.CanPoint(rval.Type()) {
+				return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
+			}
+		}
+	}
+
+	return Write{}, false
+}
+
+// PtrWrittenToPtr returns true if instruction writes a pointer value to a pointer
+// value.
+//
+// TODO refactor to reduce duplication
+//
+//gocyclo:ignore
+func PtrWrittenToPtr(instr ssa.Instruction, pos token.Position) (Write, bool) {
+	var lval ssa.Value
+	var rval ssa.Value
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		lval = instr.Addr
+		rval = instr.Val
+	case *ssa.MapUpdate:
+		lval = instr.Map
+		rval = instr.Value
+	case *ssa.Send:
+		lval = instr.Chan
+		rval = instr.X
+	default:
+		return Write{}, false
+	}
+
+	if instr.Parent() == nil {
+		return Write{}, false
+	}
+	pkg := instr.Parent().Pkg
+	// we assume that errors are never used as pointer values
+	if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
+		return Write{}, false
+	}
+
+	if pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
+		switch rval := rval.(type) {
+		case *ssa.ChangeInterface:
+			// Special case for: e.g. change interface interface{} <- error
+			// we assume that errors are never used as pointer values
+			if rval.X.Type().String() == "error" {
+				return Write{}, false
+			}
+		case *ssa.Call:
+			// Special case for: e.g. fmt.Errorf(...) where the return type is an error
+			if rval.Type().String() == "error" {
+				return Write{}, false
+			}
+		}
+
+		return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
+	}
+
+	// calls to append builtin function modify
+	if call, ok := rval.(*ssa.Call); ok {
+		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
+			if builtin.Object().Name() == "append" && pointer.CanPoint(rval.Type()) {
+				return Write{Instruction: instr, Target: lval, Value: rval, Pos: pos}, true
+			}
+		}
+	}
+
+	return Write{}, false
+}
+
+// PtrsReadFrom returns a read instruction containing all the pointer values
+// read from instruction.
+//
+//gocyclo:ignore
+func PtrsReadFrom(instr ssa.Instruction, pos token.Position) (Read, bool) {
+	var rvals []ssa.Value
+	add := func(vs ...ssa.Value) {
+		for _, v := range vs {
+			if v == nil {
+				continue
+			}
+
+			if pointer.CanPoint(v.Type()) {
+				rvals = append(rvals, v)
+			}
+		}
+	}
+
+	switch instr := instr.(type) {
+	case *ssa.Call:
+		if _, ok := instr.Call.Value.(*ssa.Builtin); ok {
+			add(instr.Call.Args...)
+		}
+	case *ssa.Index:
+		add(instr.X)
+	case *ssa.Lookup:
+		add(instr.X, instr.Index)
+	case *ssa.Slice:
+		add(instr.X)
+	case *ssa.UnOp:
+		// Dereference y = *x
+		if instr.Op == token.MUL {
+			add(instr.X)
+		}
+		// Channel receive y <- x
+		if instr.Op == token.ARROW {
+			add(instr.X)
+		}
+	}
+
+	if len(rvals) == 0 {
+		return Read{Instruction: instr, Values: nil, Pos: pos}, false
+	}
+
+	return Read{Instruction: instr, Values: rvals, Pos: pos}, true
 }

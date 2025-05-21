@@ -1,0 +1,19 @@
+options:
+  log-level: 3
+
+diodon-pass-through-problems:
+  - app-functions:
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic)|(basic)|(main)|(command-line-arguments)"
+        method: ".*"
+    core-functions:
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
+        method: ".*"
+    core-alloc-function:
+      package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
+      method: "NewCoreInstance.*"
+      return-indices: [0]
+    core-api-functions:
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
+        method: "NewCoreInstance.*"
+      - package: "(github.com/awslabs/ar-go-tools/analysis/passthru/testdata/basic/core)|(core)"
+        method: "^CoreApi.*"

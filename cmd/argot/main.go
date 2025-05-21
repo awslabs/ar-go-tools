@@ -20,13 +20,17 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/cmd/argot/alias"
 	"github.com/awslabs/ar-go-tools/cmd/argot/backtrace"
 	"github.com/awslabs/ar-go-tools/cmd/argot/cli"
 	"github.com/awslabs/ar-go-tools/cmd/argot/compare"
 	"github.com/awslabs/ar-go-tools/cmd/argot/defers"
 	"github.com/awslabs/ar-go-tools/cmd/argot/dependencies"
+	"github.com/awslabs/ar-go-tools/cmd/argot/goroutine"
+	"github.com/awslabs/ar-go-tools/cmd/argot/immutability"
 	"github.com/awslabs/ar-go-tools/cmd/argot/maypanic"
 	"github.com/awslabs/ar-go-tools/cmd/argot/packagescan"
+	"github.com/awslabs/ar-go-tools/cmd/argot/passthru"
 	"github.com/awslabs/ar-go-tools/cmd/argot/reachability"
 	"github.com/awslabs/ar-go-tools/cmd/argot/render"
 	"github.com/awslabs/ar-go-tools/cmd/argot/statistics"
@@ -39,18 +43,20 @@ const usage = `Argot: Automated Reasoning Go Tools
 Usage:
   argot [tool] [options] <Go file path(s)>
 Tools:
-  - taint: performs a taint analysis on a given program
+  - alias: performs a must-not-alias analysis on pointer values
   - backtrace: identifies backwards data-flow traces from function calls
   - syntactic: runs some syntactic analyses using the SSA representation
   - cli: interactive terminal-like interface for parts of the analysis
   - compare: prints a comparison of the functions that are reachable according to two different
               analyses, and the functions that appear in the binary
   - dependencies: prints the dependencies of a given program
+  - immutability: performs an immutability analysis on pointer values
   - maypanic: performs a may-panic analysis on a given program
   - packagescan: scans imports in packages
   - reachability: analyzes the program an prints the functions that are reachable within it
   - render: renders a graph representation of the callgraph, or prints the program's SSA form
   - ssa-statistics: prints statistics about the SSA representation of the program
+  - taint: performs a taint analysis on a given program
 Examples:
   Run the interactive CLI: argot cli --config=config.yaml main.go
   Run the taint analysis: argot taint --config=config.yaml main.go`
@@ -76,6 +82,14 @@ func main() {
 
 	args := os.Args[2:]
 	switch cmd := os.Args[1]; config.ToolName(cmd) {
+	case config.AliasTool:
+		flags, err := tools.NewCommonFlags(config.AliasTool, args, alias.Usage)
+		if err != nil {
+			errExit(err)
+		}
+		if err := alias.Run(flags); err != nil {
+			errExit(err)
+		}
 	case config.BacktraceTool:
 		flags, err := tools.NewCommonFlags(config.BacktraceTool, args, backtrace.Usage)
 		if err != nil {
@@ -114,12 +128,29 @@ func main() {
 		if err := dependencies.Run(flags); err != nil {
 			errExit(err)
 		}
+	case config.GoroutineTool:
+		flags, err := tools.NewCommonFlags(config.GoroutineTool, args, goroutine.Usage)
+		if err != nil {
+			errExit(err)
+		}
+		if err := goroutine.Run(flags); err != nil {
+			errExit(err)
+		}
+	case config.ImmutabilityTool:
+		flags, err := tools.NewCommonFlags(config.ImmutabilityTool, args, immutability.Usage)
+		if err != nil {
+			errExit(err)
+		}
+		if err := immutability.Run(flags); err != nil {
+			errExit(err)
+		}
 	case config.MayPanicTool:
 		flags, err := maypanic.NewFlags(args)
 		if err != nil {
 			errExit(err)
 		}
 		if err := maypanic.Run(flags); err != nil {
+			errExit(err)
 		}
 	case config.PackageScanTool:
 		flags, err := packagescan.NewFlags(args)
@@ -127,6 +158,14 @@ func main() {
 			errExit(err)
 		}
 		if err := packagescan.Run(flags); err != nil {
+			errExit(err)
+		}
+	case config.PassThruTool:
+		flags, err := tools.NewCommonFlags(config.PassThruTool, args, passthru.Usage)
+		if err != nil {
+			errExit(err)
+		}
+		if err := passthru.Run(flags); err != nil {
 			errExit(err)
 		}
 	case config.ReachabilityTool:

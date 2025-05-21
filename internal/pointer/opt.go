@@ -32,11 +32,11 @@ func (a *analysis) renumber() {
 		fmt.Fprintf(a.log, "\n\n==== Renumbering\n\n")
 	}
 
-	N := nodeid(len(a.nodes))
+	N := NodeID(len(a.nodes))
 	newNodes := make([]*node, N)
-	renumbering := make([]nodeid, N) // maps old to new
+	renumbering := make([]NodeID, N) // maps old to new
 
-	var i, j nodeid
+	var i, j NodeID
 
 	// The zero node is special.
 	newNodes[j] = a.nodes[i]
@@ -52,7 +52,7 @@ func (a *analysis) renumber() {
 			continue
 		}
 
-		end := i + nodeid(obj.size)
+		end := i + NodeID(obj.size)
 		for i < end {
 			newNodes[j] = a.nodes[i]
 			renumbering[i] = j
@@ -66,7 +66,7 @@ func (a *analysis) renumber() {
 	for i = 1; i < N; {
 		obj := a.nodes[i].obj
 		if obj != nil {
-			i += nodeid(obj.size)
+			i += NodeID(obj.size)
 			continue
 		}
 

@@ -133,6 +133,7 @@ var stdPackages = map[string]map[string]Summarizer{
 
 	"internal":                 summaryInternal,
 	"internal/abi":             summaryInternal,
+	"internal/bisect":          summaryInternal,
 	"internal/buildcfg":        summaryInternal,
 	"internal/bytealg":         summaryInternal,
 	"internal/cfg":             summaryInternal,
@@ -306,8 +307,20 @@ var summaryContainer = map[string]Summarizer{}
 var summaryContext = map[string]Summarizer{}
 
 var summaryCrypto = map[string]Summarizer{
-	"crypto/aes.NewCipher":             SingleVarArgPropagation,
-	"crypto/cipher.NewGCM":             SingleVarArgPropagation,
+	"crypto/aes.NewCipher": SingleVarArgPropagation,
+	"crypto/cipher.NewGCM": SingleVarArgPropagation,
+	// func (cipher.AEAD) Seal(dst []byte, nonce []byte, plaintext []byte, additionalData []byte) []byte
+	"(crypto/cipher.AEAD).Seal": SingleVarArgPropagation,
+	"(*crypto/cipher.gcm).Seal": SingleVarArgPropagation,
+	"(*crypto/aes.gcmAsm).Seal": SingleVarArgPropagation,
+	"crypto/hmac.New":           TwoArgPropagation,
+	"(*crypto/hmac.hmac).Sum":   SingleVarArgPropagation,
+	// func (io.Writer) Write(p []byte) (n int, err error)
+	"(*crypto/hmac.hmac).Write": Summary{
+		[][]int{{0}, {0, 1}},
+		[][]int{},
+	},
+	"crypto/sha256.New":                SingleVarArgPropagation,
 	"crypto/tls.X509KeyPair":           TwoArgPropagation,
 	"crypto/x509.NewCertPool":          NoDataFlowPropagation,
 	"crypto/x509.MarshalPKIXPublicKey": SingleVarArgPropagation,
@@ -335,6 +348,18 @@ var summaryCrypto = map[string]Summarizer{
 	"crypto/Rand.Read": Summary{
 		[][]int{{0}},
 		[][]int{{0}},
+	},
+	// func GenerateKey(random io.Reader, bits int) (*PrivateKey, error)
+	"crypto/rsa.GenerateKey": TwoArgPropagation,
+	// func GenerateKey(curve Curve, rand io.Reader) (priv []byte, x, y *big.Int, err error)
+	"crypto/elliptic.GenerateKey": Summary{
+		[][]int{{0}, {0}},
+		[][]int{{0, 1, 2}, {0, 1, 2}},
+	},
+	// func elliptic.MarshalCompressed(curve elliptic.Curve, x *big.Int, y *big.Int) []byte
+	"crypto/elliptic.MarshalCompressed": Summary{
+		[][]int{{0}},
+		[][]int{{0}, {0}, {0}},
 	},
 }
 
@@ -926,6 +951,7 @@ var summaryIo = map[string]Summarizer{
 var summaryLog = map[string]Summarizer{
 	"log.Debugf": Summary{[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	"log.Printf": Summary{[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
+	"log.Fatal":  Summary{[][]int{{}, {0, 1}}, [][]int{{}, {0}}},
 	// func (l *Logger) Printf(v ...any)
 	"(*log.Logger).Print": Summary{
 		[][]int{{0}},
@@ -988,34 +1014,49 @@ var summaryMaps = map[string]Summarizer{
 }
 
 var summaryMath = map[string]Summarizer{
-	"math.init":                    NoDataFlowPropagation,
-	"math.Abs":                     SingleVarArgPropagation,
-	"math.Float32bits":             SingleVarArgPropagation, // uses unsafe
-	"math.Float32frombits":         SingleVarArgPropagation, // uses unsafe
-	"math.Float64bits":             SingleVarArgPropagation, // uses unsafe
-	"math.Float64frombits":         SingleVarArgPropagation, // uses unsafe
-	"math.IsNaN":                   SingleVarArgPropagation,
-	"math.IsInf":                   SingleVarArgPropagation,
-	"math.Log2":                    SingleVarArgPropagation,
-	"math.Max":                     TwoArgPropagation,
-	"math.Min":                     TwoArgPropagation,
-	"math.Mod":                     TwoArgPropagation,
-	"math.Modf":                    SingleVarArgPropagation,
-	"math.Pow":                     TwoArgPropagation,
-	"math.Pow10":                   SingleVarArgPropagation,
-	"math.Round":                   SingleVarArgPropagation,
-	"math.RoundToEven":             SingleVarArgPropagation,
-	"math/big.init":                NoDataFlowPropagation,
-	"math/rand.init":               NoDataFlowPropagation,
-	"math/rand.Int":                NoDataFlowPropagation,
-	"math/rand.Intn":               NoDataFlowPropagation,
-	"math/rand.New":                SingleVarArgPropagation,
-	"math/rand.NewSource":          SingleVarArgPropagation,
-	"math/rand.Seed":               NoDataFlowPropagation,
-	"math/rand.Float32":            NoDataFlowPropagation,
-	"math/rand/v2.init":            NoDataFlowPropagation,
-	"(*math/big.Int).Mul":          TwoArgPropagation,
-	"(*math/big.Int).SetInt64":     TwoArgReceivePropagation,
+	"math.init":                NoDataFlowPropagation,
+	"math.Abs":                 SingleVarArgPropagation,
+	"math.Float32bits":         SingleVarArgPropagation, // uses unsafe
+	"math.Float32frombits":     SingleVarArgPropagation, // uses unsafe
+	"math.Float64bits":         SingleVarArgPropagation, // uses unsafe
+	"math.Float64frombits":     SingleVarArgPropagation, // uses unsafe
+	"math.IsNaN":               SingleVarArgPropagation,
+	"math.IsInf":               SingleVarArgPropagation,
+	"math.Log2":                SingleVarArgPropagation,
+	"math.Max":                 TwoArgPropagation,
+	"math.Min":                 TwoArgPropagation,
+	"math.Mod":                 TwoArgPropagation,
+	"math.Modf":                SingleVarArgPropagation,
+	"math.Pow":                 TwoArgPropagation,
+	"math.Pow10":               SingleVarArgPropagation,
+	"math.Round":               SingleVarArgPropagation,
+	"math.RoundToEven":         SingleVarArgPropagation,
+	"math/big.init":            NoDataFlowPropagation,
+	"math/rand.init":           NoDataFlowPropagation,
+	"math/rand.Int":            NoDataFlowPropagation,
+	"math/rand.Intn":           NoDataFlowPropagation,
+	"math/rand.New":            SingleVarArgPropagation,
+	"math/rand.NewSource":      SingleVarArgPropagation,
+	"math/rand.Seed":           NoDataFlowPropagation,
+	"math/rand.Float32":        NoDataFlowPropagation,
+	"math/rand/v2.init":        NoDataFlowPropagation,
+	"(*math/big.Int).Mul":      TwoArgPropagation,
+	"(*math/big.Int).SetInt64": TwoArgReceivePropagation,
+	// func (z *big.Int) Exp(x *big.Int, y *big.Int, m *big.Int) *big.Int
+	"(*math/big.Int).Exp": Summary{
+		[][]int{{0}, {0, 1}, {0, 2}, {0, 3}},
+		[][]int{{0}, {0}, {0}, {0}},
+	},
+	// func (z *big.Int) SetBytes(buf []byte) *big.Int
+	"(*math/big.Int).SetBytes": Summary{
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
+	// func (x *big.Int) FillBytes(buf []byte) []byte
+	"(*math/big.Int).FillBytes": Summary{
+		[][]int{{0}, {0, 1}},
+		[][]int{{0}, {0}},
+	},
 	"(*math/big.Float).Set":        TwoArgPropagation,
 	"(*math/big.Float).SetFloat64": TwoArgPropagation,
 	"(*math/big.Float).SetInf":     TwoArgPropagation,
@@ -1032,8 +1073,18 @@ var summaryMath = map[string]Summarizer{
 var summaryMime = map[string]Summarizer{}
 
 var summaryNet = map[string]Summarizer{
+	"net.init": NoDataFlowPropagation,
+	"net.Close": Summary{
+		[][]int{{0}},
+		[][]int{{0}},
+	},
 	// func Dial(network, address string) (Conn, error) {
 	"net.Dial": Summary{
+		[][]int{{}, {}},
+		[][]int{{0}, {0}},
+	},
+	// func Listen(network, address string) (Listener, error)
+	"net.Listen": Summary{
 		[][]int{{}, {}},
 		[][]int{{0}, {0}},
 	},
@@ -1041,6 +1092,68 @@ var summaryNet = map[string]Summarizer{
 	"net.SplitHostPort": Summary{
 		[][]int{{0}},
 		[][]int{{0}},
+	},
+	// func (l *UnixListener) Accept() (Conn, error)
+	"(*net.UnixListener).Accept": Summary{
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	// func (l *UnixListener) Close() error
+	"(*net.UnixListener).Close": Summary{
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	"(*net.netFD).Read": Summary{
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.conn).Read": Summary{
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.conn).Write": Summary{
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*net.conn).Close": Summary{
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	// func (c *UnixConn) Read(b []byte) (int, error)
+	"(*net.UnixConn).Read": Summary{
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.UnixConn).Write": Summary{
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	// func (l *TCPListener) Accept() (Conn, error)
+	"(*net.TCPListener).Accept": Summary{
+		[][]int{{0}},
+		[][]int{{0, 1}},
+	},
+	// func (l *TCPListener) Close() error
+	"(*net.TCPListener).Close": Summary{
+		[][]int{{0}},
+		[][]int{{}},
+	},
+	// func (c *TCPConn) Read(b []byte) (int, error)
+	"(*net.TCPConn).Read": Summary{
+		[][]int{{1}, {}}, // receiver taints input
+		[][]int{{0}, {}}, // receiver taints output
+	},
+	"(*net.TCPConn).Write": Summary{
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*net.UDPConn).Write": Summary{
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
+	},
+	"(*net.IPConn).Write": Summary{
+		[][]int{{0}, {0, 1}},
+		[][]int{{0, 1}, {0, 1}},
 	},
 	// func NewRequest(method string, url string, body io.Reader) (*Request, error)
 	"net/http.NewRequest": Summary{
@@ -1163,7 +1276,8 @@ var summaryOs = map[string]Summarizer{
 		[][]int{{0}, {0}, {0}},
 	},
 	// func ReadDir(name string) ([]DirEntry, error)
-	"os.ReadDir": SingleVarArgPropagation,
+	"os.ReadDir":  SingleVarArgPropagation,
+	"os.ReadFile": SingleVarArgPropagation,
 	// func Remove(name string) error {
 	"os.Remove":           SingleVarArgPropagation,
 	"os.RemoveAll":        SingleVarArgPropagation,

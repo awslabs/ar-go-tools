@@ -32,8 +32,8 @@ var (
 // ---------- Node creation ----------
 
 // nextNode returns the index of the next unused node.
-func (a *analysis) nextNode() nodeid {
-	return nodeid(len(a.nodes))
+func (a *analysis) nextNode() NodeID {
+	return NodeID(len(a.nodes))
 }
 
 // addNodes creates nodes for all scalar elements in type typ, and
@@ -41,7 +41,7 @@ func (a *analysis) nextNode() nodeid {
 // analytically uninteresting.
 //
 // comment explains the origin of the nodes, as a debugging aid.
-func (a *analysis) addNodes(typ types.Type, comment string) nodeid {
+func (a *analysis) addNodes(typ types.Type, comment string) NodeID {
 	id := a.nextNode()
 	for _, fi := range a.flatten(typ) {
 		a.addOneNode(fi.typ, comment, fi)
@@ -59,7 +59,7 @@ func (a *analysis) addNodes(typ types.Type, comment string) nodeid {
 //
 // comment explains the origin of the nodes, as a debugging aid.
 // subelement indicates the subelement, e.g. ".a.b[*].c".
-func (a *analysis) addOneNode(typ types.Type, comment string, subelement *fieldInfo) nodeid {
+func (a *analysis) addOneNode(typ types.Type, comment string, subelement *fieldInfo) NodeID {
 	id := a.nextNode()
 	a.nodes = append(a.nodes, &node{typ: typ, subelement: subelement, solve: new(solverState)})
 	if a.log != nil {
@@ -71,7 +71,7 @@ func (a *analysis) addOneNode(typ types.Type, comment string, subelement *fieldI
 
 // setValueNode associates node id with the value v.
 // cgn identifies the context iff v is a local variable.
-func (a *analysis) setValueNode(v ssa.Value, id nodeid, cgn *cgnode) {
+func (a *analysis) setValueNode(v ssa.Value, id NodeID, cgn *cgnode) {
 	if cgn != nil {
 		a.localval[v] = id
 	} else {
@@ -126,7 +126,7 @@ func (a *analysis) setValueNode(v ssa.Value, id nodeid, cgn *cgnode) {
 //
 // obj is the start node of the object, from a prior call to nextNode.
 // Its size, flags and optional data will be updated.
-func (a *analysis) endObject(obj nodeid, cgn *cgnode, data interface{}) *object {
+func (a *analysis) endObject(obj NodeID, cgn *cgnode, data interface{}) *Object {
 	// Ensure object is non-empty by padding;
 	// the pad will be the object node.
 	size := uint32(a.nextNode() - obj)
@@ -134,7 +134,7 @@ func (a *analysis) endObject(obj nodeid, cgn *cgnode, data interface{}) *object 
 		a.addOneNode(tInvalid, "padding", nil)
 	}
 	objNode := a.nodes[obj]
-	o := &object{
+	o := &Object{
 		size: size, // excludes padding
 		cgn:  cgn,
 		data: data,
@@ -150,7 +150,7 @@ func (a *analysis) endObject(obj nodeid, cgn *cgnode, data interface{}) *object 
 //
 // For a context-sensitive contour, callersite identifies the sole
 // callsite; for shared contours, caller is nil.
-func (a *analysis) makeFunctionObject(fn *ssa.Function, callersite *callsite) nodeid {
+func (a *analysis) makeFunctionObject(fn *ssa.Function, callersite *callsite) NodeID {
 	if a.log != nil {
 		fmt.Fprintf(a.log, "\t---- makeFunctionObject %s\n", formatutil.Sanitize(fn.String()))
 	}
@@ -178,7 +178,7 @@ func (a *analysis) makeFunctionObject(fn *ssa.Function, callersite *callsite) no
 }
 
 // makeTagged creates a tagged object of type typ.
-func (a *analysis) makeTagged(typ types.Type, cgn *cgnode, data interface{}) nodeid {
+func (a *analysis) makeTagged(typ types.Type, cgn *cgnode, data interface{}) NodeID {
 	obj := a.addOneNode(typ, "tagged.T", nil) // NB: type may be non-scalar!
 	a.addNodes(typ, "tagged.v")
 	a.endObject(obj, cgn, data).flags |= otTagged
@@ -189,9 +189,9 @@ func (a *analysis) makeTagged(typ types.Type, cgn *cgnode, data interface{}) nod
 // payload points to the sole rtype object for T.
 //
 // TODO(adonovan): move to reflect.go; it's part of the solver really.
-func (a *analysis) makeRtype(T types.Type) nodeid {
+func (a *analysis) makeRtype(T types.Type) NodeID {
 	if v := a.rtypes.At(T); v != nil {
-		return v.(nodeid)
+		return v.(NodeID)
 	}
 
 	// Create the object for the reflect.rtype itself, which is
@@ -209,7 +209,7 @@ func (a *analysis) makeRtype(T types.Type) nodeid {
 }
 
 // rtypeTaggedValue returns the type of the *reflect.rtype-tagged object obj.
-func (a *analysis) rtypeTaggedValue(obj nodeid) types.Type {
+func (a *analysis) rtypeTaggedValue(obj NodeID) types.Type {
 	tDyn, t, _ := a.taggedValue(obj)
 	if tDyn != a.reflectRtypePtr {
 		panic(fmt.Sprintf("not a *reflect.rtype-tagged object: obj=n%d tag=%v payload=n%d", obj, tDyn, t))
@@ -220,7 +220,7 @@ func (a *analysis) rtypeTaggedValue(obj nodeid) types.Type {
 // valueNode returns the id of the value node for v, creating it (and
 // the association) as needed.  It may return zero for uninteresting
 // values containing no pointers.
-func (a *analysis) valueNode(v ssa.Value) nodeid {
+func (a *analysis) valueNode(v ssa.Value) NodeID {
 	// Value nodes for locals are created en masse by genFunc.
 	if id, ok := a.localval[v]; ok {
 		return id
@@ -244,23 +244,23 @@ func (a *analysis) valueNode(v ssa.Value) nodeid {
 
 // valueOffsetNode ascertains the node for tuple/struct value v,
 // then returns the node for its subfield #index.
-func (a *analysis) valueOffsetNode(v ssa.Value, index int) nodeid {
+func (a *analysis) valueOffsetNode(v ssa.Value, index int) NodeID {
 	id := a.valueNode(v)
 	if id == 0 {
 		panic(fmt.Sprintf("cannot offset within n0: %s = %s", v.Name(), v))
 	}
-	return id + nodeid(a.offsetOf(v.Type(), index))
+	return id + NodeID(a.offsetOf(v.Type(), index))
 }
 
 // isTaggedObject reports whether object obj is a tagged object.
-func (a *analysis) isTaggedObject(obj nodeid) bool {
+func (a *analysis) isTaggedObject(obj NodeID) bool {
 	return a.nodes[obj].obj.flags&otTagged != 0
 }
 
 // taggedValue returns the dynamic type tag, the (first node of the)
 // payload, and the indirect flag of the tagged object starting at id.
 // Panic ensues if !isTaggedObject(id).
-func (a *analysis) taggedValue(obj nodeid) (tDyn types.Type, v nodeid, indirect bool) {
+func (a *analysis) taggedValue(obj NodeID) (tDyn types.Type, v NodeID, indirect bool) {
 	n := a.nodes[obj]
 	flags := n.obj.flags
 	if flags&otTagged == 0 {
@@ -271,7 +271,7 @@ func (a *analysis) taggedValue(obj nodeid) (tDyn types.Type, v nodeid, indirect 
 
 // funcParams returns the first node of the params (P) block of the
 // function whose object node (obj.flags&otFunction) is id.
-func (a *analysis) funcParams(id nodeid) nodeid {
+func (a *analysis) funcParams(id NodeID) NodeID {
 	n := a.nodes[id]
 	if n.obj == nil || n.obj.flags&otFunction == 0 {
 		panic(fmt.Sprintf("funcParams(n%d): not a function object block", id))
@@ -281,15 +281,15 @@ func (a *analysis) funcParams(id nodeid) nodeid {
 
 // funcResults returns the first node of the results (R) block of the
 // function whose object node (obj.flags&otFunction) is id.
-func (a *analysis) funcResults(id nodeid) nodeid {
+func (a *analysis) funcResults(id NodeID) NodeID {
 	n := a.nodes[id]
 	if n.obj == nil || n.obj.flags&otFunction == 0 {
 		panic(fmt.Sprintf("funcResults(n%d): not a function object block", id))
 	}
 	sig := n.typ.(*types.Signature)
-	id += 1 + nodeid(a.sizeof(sig.Params()))
+	id += 1 + NodeID(a.sizeof(sig.Params()))
 	if sig.Recv() != nil {
-		id += nodeid(a.sizeof(sig.Recv().Type()))
+		id += NodeID(a.sizeof(sig.Recv().Type()))
 	}
 	return id
 }
@@ -298,7 +298,7 @@ func (a *analysis) funcResults(id nodeid) nodeid {
 
 // copy creates a constraint of the form dst = src.
 // sizeof is the width (in logical fields) of the copied type.
-func (a *analysis) copy(dst, src nodeid, sizeof uint32) {
+func (a *analysis) copy(dst, src NodeID, sizeof uint32) {
 	if src == dst || sizeof == 0 {
 		return // trivial
 	}
@@ -314,7 +314,7 @@ func (a *analysis) copy(dst, src nodeid, sizeof uint32) {
 
 // addressOf creates a constraint of the form id = &obj.
 // T is the type of the address.
-func (a *analysis) addressOf(T types.Type, id, obj nodeid) {
+func (a *analysis) addressOf(T types.Type, id, obj NodeID) {
 	if id == 0 {
 		panic("addressOf: zero id")
 	}
@@ -329,7 +329,7 @@ func (a *analysis) addressOf(T types.Type, id, obj nodeid) {
 // load creates a load constraint of the form dst = src[offset].
 // offset is the pointer offset in logical fields.
 // sizeof is the width (in logical fields) of the loaded type.
-func (a *analysis) load(dst, src nodeid, offset, sizeof uint32) {
+func (a *analysis) load(dst, src NodeID, offset, sizeof uint32) {
 	if dst == 0 {
 		return // load of non-pointerlike value
 	}
@@ -349,7 +349,7 @@ func (a *analysis) load(dst, src nodeid, offset, sizeof uint32) {
 // store creates a store constraint of the form dst[offset] = src.
 // offset is the pointer offset in logical fields.
 // sizeof is the width (in logical fields) of the stored type.
-func (a *analysis) store(dst, src nodeid, offset uint32, sizeof uint32) {
+func (a *analysis) store(dst, src NodeID, offset uint32, sizeof uint32) {
 	if src == 0 {
 		return // store of non-pointerlike value
 	}
@@ -369,7 +369,7 @@ func (a *analysis) store(dst, src nodeid, offset uint32, sizeof uint32) {
 // offsetAddr creates an offsetAddr constraint of the form dst = &src.#offset.
 // offset is the field offset in logical fields.
 // T is the type of the address.
-func (a *analysis) offsetAddr(T types.Type, dst, src nodeid, offset uint32) {
+func (a *analysis) offsetAddr(T types.Type, dst, src NodeID, offset uint32) {
 	if !a.shouldTrack(T) {
 		return
 	}
@@ -387,7 +387,7 @@ func (a *analysis) offsetAddr(T types.Type, dst, src nodeid, offset uint32) {
 // typeAssert creates a typeFilter or untag constraint of the form dst = src.(T):
 // typeFilter for an interface, untag for a concrete type.
 // The exact flag is specified as for untagConstraint.
-func (a *analysis) typeAssert(T types.Type, dst, src nodeid, exact bool) {
+func (a *analysis) typeAssert(T types.Type, dst, src NodeID, exact bool) {
 	if isInterface(T) {
 		a.addConstraint(&typeFilterConstraint{T, dst, src})
 	} else {
@@ -568,7 +568,7 @@ func (a *analysis) shouldUseContext(fn *ssa.Function) bool {
 }
 
 // genStaticCall generates constraints for a statically dispatched function call.
-func (a *analysis) genStaticCall(caller *cgnode, site *callsite, call *ssa.CallCommon, result nodeid) {
+func (a *analysis) genStaticCall(caller *cgnode, site *callsite, call *ssa.CallCommon, result NodeID) {
 	fn := call.StaticCallee()
 
 	// Special cases for inlined intrinsics.
@@ -594,7 +594,7 @@ func (a *analysis) genStaticCall(caller *cgnode, site *callsite, call *ssa.CallC
 	}
 
 	// Ascertain the context (contour/cgnode) for a particular call.
-	var obj nodeid
+	var obj NodeID
 	if a.shouldUseContext(fn) {
 		obj = a.makeFunctionObject(fn, site) // new contour
 	} else {
@@ -610,7 +610,7 @@ func (a *analysis) genStaticCall(caller *cgnode, site *callsite, call *ssa.CallC
 	if sig.Recv() != nil {
 		sz := a.sizeof(sig.Recv().Type())
 		a.copy(params, a.valueNode(args[0]), sz)
-		params += nodeid(sz)
+		params += NodeID(sz)
 		args = args[1:]
 	}
 
@@ -619,7 +619,7 @@ func (a *analysis) genStaticCall(caller *cgnode, site *callsite, call *ssa.CallC
 	for i, arg := range args {
 		sz := a.sizeof(sig.Params().At(i).Type())
 		a.copy(params, a.valueNode(arg), sz)
-		params += nodeid(sz)
+		params += NodeID(sz)
 	}
 
 	// Copy formal results block to actual result.
@@ -629,7 +629,7 @@ func (a *analysis) genStaticCall(caller *cgnode, site *callsite, call *ssa.CallC
 }
 
 // genDynamicCall generates constraints for a dynamic function call.
-func (a *analysis) genDynamicCall(caller *cgnode, site *callsite, call *ssa.CallCommon, result nodeid) {
+func (a *analysis) genDynamicCall(caller *cgnode, site *callsite, call *ssa.CallCommon, result NodeID) {
 	// pts(targets) will be the set of possible call targets.
 	site.targets = a.valueNode(call.Value)
 
@@ -650,7 +650,7 @@ func (a *analysis) genDynamicCall(caller *cgnode, site *callsite, call *ssa.Call
 }
 
 // genInvoke generates constraints for a dynamic method invocation.
-func (a *analysis) genInvoke(caller *cgnode, site *callsite, call *ssa.CallCommon, result nodeid) {
+func (a *analysis) genInvoke(caller *cgnode, site *callsite, call *ssa.CallCommon, result NodeID) {
 	if call.Value.Type() == a.reflectType {
 		a.genInvokeReflectType(caller, site, call, result)
 		return
@@ -669,7 +669,7 @@ func (a *analysis) genInvoke(caller *cgnode, site *callsite, call *ssa.CallCommo
 	for i, n := 0, sig.Params().Len(); i < n; i++ {
 		sz := a.sizeof(sig.Params().At(i).Type())
 		a.copy(p, a.valueNode(call.Args[i]), sz)
-		p += nodeid(sz)
+		p += NodeID(sz)
 	}
 	// Copy the call's results block to the actual results.
 	if result != 0 {
@@ -698,7 +698,7 @@ func (a *analysis) genInvoke(caller *cgnode, site *callsite, call *ssa.CallCommo
 // as this:
 //
 //	rt.(*reflect.rtype).F()
-func (a *analysis) genInvokeReflectType(caller *cgnode, site *callsite, call *ssa.CallCommon, result nodeid) {
+func (a *analysis) genInvokeReflectType(caller *cgnode, site *callsite, call *ssa.CallCommon, result NodeID) {
 	// Unpack receiver into rtype
 	rtype := a.addOneNode(a.reflectRtypePtr, "rtype.recv", nil)
 	recv := a.valueNode(call.Value)
@@ -727,7 +727,7 @@ func (a *analysis) genInvokeReflectType(caller *cgnode, site *callsite, call *ss
 	for i, arg := range call.Args {
 		sz := a.sizeof(sig.Params().At(i).Type())
 		a.copy(params, a.valueNode(arg), sz)
-		params += nodeid(sz)
+		params += NodeID(sz)
 	}
 
 	// Copy formal R-block to actual R-block.
@@ -746,7 +746,7 @@ func (a *analysis) genCall(caller *cgnode, instr ssa.CallInstruction) {
 		return
 	}
 
-	var result nodeid
+	var result NodeID
 	if v := instr.Value(); v != nil {
 		result = a.valueNode(v)
 	}
@@ -786,7 +786,7 @@ func (a *analysis) genCall(caller *cgnode, instr ssa.CallInstruction) {
 //
 // Idempotent.  Objects are created as needed, possibly via recursion
 // down the SSA value graph, e.g IndexAddr(FieldAddr(Alloc))).
-func (a *analysis) objectNode(cgn *cgnode, v ssa.Value) nodeid {
+func (a *analysis) objectNode(cgn *cgnode, v ssa.Value) NodeID {
 	switch v.(type) {
 	case *ssa.Global, *ssa.Function, *ssa.Const, *ssa.FreeVar:
 		// Global object.
@@ -845,7 +845,7 @@ func (a *analysis) objectNode(cgn *cgnode, v ssa.Value) nodeid {
 			// generates store-with-offset constraints which
 			// the presolver can't model, so we must mark
 			// those nodes indirect.
-			for id, end := elem, elem+nodeid(a.sizeof(tmap.Elem())); id < end; id++ {
+			for id, end := elem, elem+NodeID(a.sizeof(tmap.Elem())); id < end; id++ {
 				a.mapValues = append(a.mapValues, id)
 			}
 			a.endObject(obj, cgn, v)
@@ -861,7 +861,7 @@ func (a *analysis) objectNode(cgn *cgnode, v ssa.Value) nodeid {
 
 		case *ssa.FieldAddr:
 			if xobj := a.objectNode(cgn, v.X); xobj != 0 {
-				obj = xobj + nodeid(a.offsetOf(mustDeref(v.X.Type()), v.Field))
+				obj = xobj + NodeID(a.offsetOf(mustDeref(v.X.Type()), v.Field))
 			}
 
 		case *ssa.IndexAddr:
@@ -892,10 +892,10 @@ func (a *analysis) objectNode(cgn *cgnode, v ssa.Value) nodeid {
 }
 
 // genLoad generates constraints for result = *(ptr + val).
-func (a *analysis) genLoad(cgn *cgnode, result nodeid, ptr ssa.Value, offset, sizeof uint32) {
+func (a *analysis) genLoad(cgn *cgnode, result NodeID, ptr ssa.Value, offset, sizeof uint32) {
 	if obj := a.objectNode(cgn, ptr); obj != 0 {
 		// Pre-apply loadConstraint.solve().
-		a.copy(result, obj+nodeid(offset), sizeof)
+		a.copy(result, obj+NodeID(offset), sizeof)
 	} else {
 		a.load(result, a.valueNode(ptr), offset, sizeof)
 	}
@@ -903,7 +903,7 @@ func (a *analysis) genLoad(cgn *cgnode, result nodeid, ptr ssa.Value, offset, si
 
 // genOffsetAddr generates constraints for a 'v=ptr.field' (FieldAddr)
 // or 'v=ptr[*]' (IndexAddr) instruction v.
-func (a *analysis) genOffsetAddr(cgn *cgnode, v ssa.Value, ptr nodeid, offset uint32) {
+func (a *analysis) genOffsetAddr(cgn *cgnode, v ssa.Value, ptr NodeID, offset uint32) {
 	dst := a.valueNode(v)
 	if obj := a.objectNode(cgn, v); obj != 0 {
 		// Pre-apply offsetAddrConstraint.solve().
@@ -914,10 +914,10 @@ func (a *analysis) genOffsetAddr(cgn *cgnode, v ssa.Value, ptr nodeid, offset ui
 }
 
 // genStore generates constraints for *(ptr + offset) = val.
-func (a *analysis) genStore(cgn *cgnode, ptr ssa.Value, val nodeid, offset, sizeof uint32) {
+func (a *analysis) genStore(cgn *cgnode, ptr ssa.Value, val NodeID, offset, sizeof uint32) {
 	if obj := a.objectNode(cgn, ptr); obj != 0 {
 		// Pre-apply storeConstraint.solve().
-		a.copy(obj+nodeid(offset), val, sizeof)
+		a.copy(obj+NodeID(offset), val, sizeof)
 	} else {
 		a.store(a.valueNode(ptr), val, offset, sizeof)
 	}
@@ -994,7 +994,7 @@ func (a *analysis) genInstr(cgn *cgnode, instr ssa.Instruction) {
 			switch st.Dir {
 			case types.RecvOnly:
 				a.genLoad(cgn, recv, st.Chan, 0, elemSize)
-				recv += nodeid(elemSize)
+				recv += NodeID(elemSize)
 
 			case types.SendOnly:
 				a.genStore(cgn, st.Chan, a.valueNode(st.Send), 0, elemSize)
@@ -1006,7 +1006,7 @@ func (a *analysis) genInstr(cgn *cgnode, instr ssa.Instruction) {
 		for _, r := range instr.Results {
 			sz := a.sizeof(r.Type())
 			a.copy(results, a.valueNode(r), sz)
-			results += nodeid(sz)
+			results += NodeID(sz)
 		}
 
 	case *ssa.Send:
@@ -1114,7 +1114,7 @@ func (a *analysis) genInstr(cgn *cgnode, instr ssa.Instruction) {
 				sz += svsize
 			}
 
-			a.genLoad(cgn, a.valueNode(instr)+nodeid(odst), theMap, osrc, sz)
+			a.genLoad(cgn, a.valueNode(instr)+NodeID(odst), theMap, osrc, sz)
 		}
 
 	case *ssa.Lookup:
@@ -1140,7 +1140,7 @@ func (a *analysis) genInstr(cgn *cgnode, instr ssa.Instruction) {
 	}
 }
 
-func (a *analysis) makeCGNode(fn *ssa.Function, obj nodeid, callersite *callsite) *cgnode {
+func (a *analysis) makeCGNode(fn *ssa.Function, obj NodeID, callersite *callsite) *cgnode {
 	cgn := &cgnode{fn: fn, obj: obj, callersite: callersite}
 	a.cgnodes = append(a.cgnodes, cgn)
 	return cgn
@@ -1230,14 +1230,14 @@ func (a *analysis) genFunc(cgn *cgnode) {
 		fmt.Fprintln(a.log, "; Creating nodes for local values")
 	}
 
-	a.localval = make(map[ssa.Value]nodeid)
-	a.localobj = make(map[ssa.Value]nodeid)
+	a.localval = make(map[ssa.Value]NodeID)
+	a.localobj = make(map[ssa.Value]NodeID)
 
 	// The value nodes for the params are in the func object block.
 	params := a.funcParams(cgn.obj)
 	for _, p := range fn.Params {
 		a.setValueNode(p, params, cgn)
-		params += nodeid(a.sizeof(p.Type()))
+		params += NodeID(a.sizeof(p.Type()))
 	}
 
 	// Free variables have global cardinality:

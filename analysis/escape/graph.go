@@ -312,12 +312,16 @@ func (g *EscapeGraph) Graphviz() string {
 	subnodeLabel = func(n *Node) string {
 		extra := ""
 		extraFont := ""
+		escapedRationale := "none"
+		if r, ok := g.rationales[n]; ok && r != nil {
+			escapedRationale = r.String()
+		}
 		if t, ok := g.nodes.globalNodes.types[n]; ok {
-			tooltip := fmt.Sprintf("%d tp %s", n.number, t.String())
+			tooltip := fmt.Sprintf("%d tp %s esc: %s", n.number, t.String(), escapedRationale)
 			escapedTooltip := strings.ReplaceAll(strings.ReplaceAll(tooltip, "\\", "\\\\"), "\"", "\\\"")
 			extra = fmt.Sprintf("%s TOOLTIP=\"%s\" HREF=\"\"", extra, escapedTooltip)
 		} else {
-			extra = extra + " COLOR=\"#FF0000\""
+			extra = fmt.Sprintf("%s COLOR=\"#FF0000\" TOOLTIP=\"tp ? esc: %s\"", extra, escapedRationale)
 		}
 		t := fmt.Sprintf(`<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0"><TR><TD ALIGN="left" %s><FONT %s>%s</FONT></TD></TR>`, extra, extraFont, n.debugInfo)
 
@@ -772,6 +776,15 @@ func (g *EscapeGraph) Merge(h *EscapeGraph) {
 	}
 }
 
+// ReplaceBy sets the state of the graph to a copy of the argument `h`.
+func (g *EscapeGraph) ReplaceBy(h *EscapeGraph) {
+	hh := h.Clone()
+	g.edges = hh.edges
+	g.nodes = hh.nodes
+	g.rationales = hh.rationales
+	g.status = hh.status
+}
+
 // AsImplInterfaceType returns the corresponding interface type, if the input is is an abstract
 // interface implementation type, otherwise it returns nil.
 func AsImplInterfaceType(a types.Type) types.Type {
@@ -901,7 +914,6 @@ func (g *EscapeGraph) Call(pre *EscapeGraph, receiver *Node, args []*Node, freeV
 	}
 	for i, formal := range callee.nodes.formals {
 		if (args[i] == nil) != (formal == nil) {
-			print(i)
 			panic("Incorrect nil-ness of corresponding parameter nodes")
 		}
 		if formal != nil {

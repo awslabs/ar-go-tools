@@ -275,7 +275,7 @@ func checkFunctionCalls(ea *functionAnalysisState, bb *ssa.BasicBlock) error {
 				return fmt.Errorf("%v has no pointees in:\n%s", a, g.Graphviz())
 			}
 		}
-		ea.transferFunction(instr, g)
+		ea.transferFunction(instr, g, nil)
 	}
 	return nil
 }
@@ -636,10 +636,11 @@ func TestLocalityComputation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer state: %v", err)
 	}
-	escapeWholeProgram, err := EscapeAnalysis(cache, cache.PointerAnalysis.CallGraph.Root)
+	err = InitializeEscapeAnalysisState(cache)
 	if err != nil {
 		t.Fatalf("Error: %v\n", err)
 	}
+	escapeWholeProgram := cache.EscapeAnalysisState
 	mainFunc := findFunction(lp.Program, "main")
 	funcsToTest := []string{}
 	for _, elem := range cache.PointerAnalysis.CallGraph.Nodes[mainFunc].Out {
@@ -657,9 +658,8 @@ func TestLocalityComputation(t *testing.T) {
 			if f == nil {
 				t.Fatalf("Couldn't find function %v", funcName)
 			}
-			var state dataflow.EscapeAnalysisState = &escapeAnalysisImpl{*escapeWholeProgram}
 			var anyError error
-			allCallgraphWalkNodes := computeNodes(state, f)
+			allCallgraphWalkNodes := computeNodes(escapeWholeProgram, f)
 			for _, nodes := range groupNodesByFunc(allCallgraphWalkNodes) {
 				if err := checkLocalityAnnotations(nodes, annos); err != nil {
 					anyError = err

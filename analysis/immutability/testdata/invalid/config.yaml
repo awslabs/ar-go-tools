@@ -1,0 +1,8 @@
+immutability-problems:
+  - values:
+      - package: "(invalid)|(main)|(command-line-arguments)"
+        method: "track.*"
+        context: "0" # argument value to track
+
+options:
+  log-level: 1

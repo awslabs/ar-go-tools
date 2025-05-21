@@ -18,19 +18,21 @@ import (
 	"fmt"
 	"go/token"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
 
 // EscapeInfo contains information relative to the escape analysis
 type EscapeInfo struct {
 	InstructionLocality map[ssa.Instruction]*df.EscapeRationale
-	CallSiteInfo        map[*ssa.Call]df.EscapeCallsiteInfo
+	CallSiteInfo        map[ssa.CallInstruction]df.EscapeCallsiteInfo
 }
 
 func (e *EscapeInfo) String() string {
@@ -698,6 +700,13 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 
 			cond := graphNode.SsaNode()
 			pos := graphNode.Position(s)
+
+			// if the node is ignored, don't record an error
+			if s.Annotations.IsIgnoredPos(pos, v.taintSpec.Tag) {
+				s.Logger.Infof("//argot:ignore implicit flow to conditional statement at %s", pos)
+				break
+			}
+
 			err := &CondError{Cond: cond, ParentName: cur.Node.ParentName(), Trace: cur.Trace.SummaryString(), Pos: pos}
 			logger.Warnf("%v\n", err)
 			s.Report.AddError("cond", err)
@@ -856,6 +865,97 @@ func (v *Visitor) addNext(s *df.State,
 	return que
 }
 
+// fallbackEscapeContext computes an escape context for function f based on its
+// callers. This is relatively expensive, so we only do it for places where the
+// existing technique fails.
+//
+//gocyclo:ignore
+func fallbackEscapeContext(f *ssa.Function, s *df.State) df.EscapeCallContext {
+	cg := s.PointerAnalysis.CallGraph
+	node := cg.Nodes[f]
+
+	// State to compute upward reachability from f
+	reachable := make(map[*callgraph.Node]bool, len(cg.Nodes))
+	frontier := []*callgraph.Node{node}
+	reachable[node] = true
+
+	// State to converge the escape context state
+	worklist := []*callgraph.Node{node}
+	contexts := map[*callgraph.Node]df.EscapeCallContext{}
+
+	for len(frontier) != 0 {
+		node := frontier[len(frontier)-1]
+		frontier = frontier[:len(frontier)-1]
+		if len(node.In) == 0 || node.Func.String() == "command-line-arguments.main" {
+			// no in-edges are roots
+			if _, ok := contexts[node]; !ok {
+				contexts[node] = s.EscapeAnalysisState.ComputeArbitraryContext(node.Func)
+			} else {
+				contexts[node].Merge(s.EscapeAnalysisState.ComputeArbitraryContext(node.Func))
+			}
+		}
+		for _, edge := range node.In {
+			if _, ok := edge.Site.(*ssa.Go); ok {
+				// go calls are roots
+				if _, ok := contexts[node]; !ok {
+					contexts[node] = s.EscapeAnalysisState.ComputeArbitraryContext(node.Func)
+				} else {
+					contexts[node].Merge(s.EscapeAnalysisState.ComputeArbitraryContext(node.Func))
+				}
+				continue
+			}
+			if !reachable[edge.Caller] {
+				reachable[edge.Caller] = true
+				frontier = append(frontier, edge.Caller)
+				worklist = append(worklist, edge.Caller)
+			}
+		}
+	}
+	// Reachable now has the functions we need to compute the correct context.
+	slices.Reverse(worklist) // we want to go top-down if possible
+	s.Logger.Debugf("Worklist is\n")
+	for _, n := range worklist {
+		s.Logger.Debugf(" - %v\n", n.Func)
+	}
+	changed := false
+	for {
+		changed = false
+		for _, node := range worklist {
+			if ctx, ok := contexts[node]; !ok {
+				// There is no context for the current function; wait until a future iteration where we have one
+				changed = true
+				s.Logger.Debugf("No context for %v, spinning loop\n", node.Func)
+			} else {
+				// Compute the contexts for the callsites in node.Func
+				_, callsites := s.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(node.Func, ctx)
+				// Propogate the context information to callees
+				for _, edge := range node.Out {
+					// Match up callgraph edges with escape information using the callsite instruction
+					if callsiteInfo, ok := callsites[edge.Site]; ok {
+						// Only propogate for callgraph nodes we care about
+						if reachable[edge.Callee] {
+							newIncomingContext := callsiteInfo.Resolve(edge.Callee.Func)
+							// Check for an existing context, and update or add a new one
+							if existingContext, ok := contexts[edge.Callee]; ok {
+								thisChanged, newContext := existingContext.Merge(newIncomingContext)
+								changed = thisChanged || changed
+								contexts[edge.Callee] = newContext
+							} else {
+								changed = true
+								contexts[edge.Callee] = newIncomingContext
+							}
+						}
+					}
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return contexts[node]
+}
+
 func (v *Visitor) manageEscapeContexts(s *df.State, cur *df.VisitorNode, nextNode df.GraphNode,
 	nextTrace *df.CallStack) bool {
 	update := false
@@ -871,7 +971,7 @@ func (v *Visitor) manageEscapeContexts(s *df.State, cur *df.VisitorNode, nextNod
 		if nextTrace != nil {
 			update = v.storeEscapeGraph(s, nextTrace, nextTrace.Label)
 		} else {
-			update = v.storeEscapeGraph(s, nil, nil)
+			update = v.storeEscapeGraph(s, nil, nil) // this does nothing
 		}
 	}
 
@@ -887,10 +987,12 @@ func (v *Visitor) manageEscapeContexts(s *df.State, cur *df.VisitorNode, nextNod
 	if escapeGraph != nil {
 		v.checkEscape(s, nextNode, escapeGraph)
 	} else if s.EscapeAnalysisState.IsSummarized(f) {
-		e := fmt.Errorf("missing escape for %s in context %s (from %s)", f, nKey, cur.Node)
-		s.Logger.Error(e.Error())
-		s.Logger.Debugf("%s has %d contexts", f, len(v.escapeGraphs[f]))
-		s.Report.AddError(e.Error(), e)
+		s.Logger.Debugf("Using fallback context for function %s, precision may be lower",
+			formatutil.Sanitize(f.String()))
+		escapeNoContext := fallbackEscapeContext(f, s)
+		i, c := s.EscapeAnalysisState.ComputeInstructionLocalityAndCallsites(f, escapeNoContext)
+		escapeInfo := &EscapeInfo{i, c}
+		v.checkEscape(s, nextNode, escapeInfo)
 	} else {
 		// The function doesn't have an escape graph explicitly, but we got here because of taint.
 		// Thus, we might be missing taint escape. Ideally, this should be fixed by adjusting the allowlist.
@@ -912,10 +1014,10 @@ func (v *Visitor) checkEscape(s *df.State, node df.GraphNode, escapeInfo *Escape
 		_, isCall := instr.(ssa.CallInstruction)
 		rationale, isTracked := escapeInfo.InstructionLocality[instr]
 		if !isCall && rationale != nil && isTracked {
-			v.taints.addNewEscape(v.currentSource, instr)
+			v.taints.addNewEscape(v.currentSource, instr, *rationale)
 			v.raiseAlarm(s, instr.Pos(),
-				fmt.Sprintf("instruction %s in %s is not local because %s!\n\tPosition: %s",
-					instr, node.Graph().Parent, rationale.String(), s.Program.Fset.Position(instr.Pos())))
+				fmt.Sprintf("instruction in %s is not local because %s!\n\tPosition: %s",
+					node.Graph().Parent, rationale.String(), s.Program.Fset.Position(instr.Pos())))
 		}
 	}
 }
@@ -955,7 +1057,10 @@ func (v *Visitor) storeEscapeGraph(s *df.State, stack *df.CallStack, callNode *d
 		}
 	}
 
-	escapeNoContext := s.EscapeAnalysisState.ComputeArbitraryContext(callee)
+	s.Logger.Debugf("Storing fallback context for function %s, precision may be lower",
+		formatutil.Sanitize(callee.String()))
+	escapeNoContext := fallbackEscapeContext(callee, s)
+	// escapeNoContext := s.EscapeAnalysisState.ComputeArbitraryContext(callee)
 	v.storeEscapeGraphInContext(s, callee, nextNodeContextKey, escapeNoContext)
 	return true
 }

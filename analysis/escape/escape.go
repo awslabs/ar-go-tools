@@ -33,6 +33,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/graphutil"
@@ -246,7 +247,7 @@ func assertGraphInvariants(g *EscapeGraph) {
 // "Transfer function" is interpreted as in the monotone framework.
 //
 //gocyclo:ignore
-func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g *EscapeGraph) {
+func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g *EscapeGraph, callsites map[ssa.CallInstruction]escapeCallsiteInfoImpl) {
 	// Switch on the instruction to handle each kind of instructions.
 	// Some instructions have sub-kinds depending on their arguments, or have alternate comma-ok forms.
 	// If an instruction is handled, return. Otherwise, fall through to the end of the function to print
@@ -337,7 +338,9 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 				loadOp := generalizedFieldLoad{instr, channelContentsField}
 				g.LoadField(nodes.ValueNode(instr), nodes.ValueNode(instr.X), loadOp, channelContentsField, contentsType)
 			} else if IsEscapeTracked(instr.Type()) {
-				ea.prog.logger.Warnf("Channel of struct %s unhandled", instr.Type().String())
+				for x := range g.Pointees(nodes.ValueNode(instr.X)) {
+					g.copyStruct(nodes.ValueNode(instr), x, instr, channelContentsField, instr.Type())
+				}
 			}
 			return
 		} else {
@@ -347,8 +350,13 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 	case *ssa.Send:
 		if lang.IsNillableType(instr.X.Type()) {
 			// Send on channel
-			contentsType := ChannelContentsType(instr.X.Type())
+			contentsType := ChannelContentsType(instr.Chan.Type())
 			g.StoreField(nodes.ValueNode(instr.Chan), nodes.ValueNode(instr.X), channelContentsField, contentsType)
+		} else if IsEscapeTracked(instr.X.Type()) {
+			contentsType := ChannelContentsType(instr.Chan.Type())
+			for x := range g.Pointees(nodes.ValueNode(instr.Chan)) {
+				g.copyStruct(x, nodes.ValueNode(instr.X), instr, channelContentsField, contentsType)
+			}
 		}
 		return
 	case *ssa.Slice:
@@ -405,6 +413,10 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		g.CallUnknown([]*Node{nodes.ValueNode(instr.X)}, []*Node{}, "panic")
 		return
 	case *ssa.Call:
+		if callsites != nil {
+			// We need to copy g because it is about to be clobbered by the transfer function
+			callsites[instr] = escapeCallsiteInfoImpl{g.Clone(), instr, ea.nodes, ea.prog}
+		}
 		// Build the argument array, consisting of the nodes that are the concrete arguments
 		// Nil nodes are used for things that aren't pointer-like, so that they line up with
 		// the formal parameter definitions.
@@ -452,6 +464,9 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		return
 
 	case *ssa.Go:
+		if callsites != nil {
+			callsites[instr] = escapeCallsiteInfoImpl{g.Clone(), instr, ea.nodes, ea.prog}
+		}
 		// A go call always leaks arguments and receiver/closure. The return value is irrelevant.
 		args := make([]*Node, len(instr.Call.Args))
 		for i, arg := range instr.Call.Args {
@@ -472,7 +487,78 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 		g.CallUnknown(args, []*Node{}, fmt.Sprintf("go at %v", instr.Parent().Prog.Fset.Position(instr.Pos())))
 		return
 	case *ssa.Defer:
+		// Defer itself is a noop because the actual call occurs during a RunDefers
+		return
+	case *ssa.RunDefers:
+		stacks := ea.deferResults.RunDeferSets[instr]
+		finalState := NewEmptyEscapeGraph(ea.nodes)
+		initialState := g
+		for _, stack := range stacks {
+			st := initialState.Clone()
+			for _, indices := range stack {
+				ins := ea.function.Blocks[indices.Block].Instrs[indices.Ins]
+				deferIns, ok := ins.(*ssa.Defer)
+				if !ok {
+					panic("Defer results referred to non-defer instruction")
+				}
+				// execute call
 
+				// record callsite context
+				if callsites != nil {
+					if context, ok := callsites[deferIns]; ok {
+						context.g.Merge(st)
+					} else {
+						callsites[deferIns] = escapeCallsiteInfoImpl{st.Clone(), deferIns, ea.nodes, ea.prog}
+					}
+				}
+				// Build the argument array, consisting of the nodes that are the concrete arguments
+				// Nil nodes are used for things that aren't pointer-like, so that they line up with
+				// the formal parameter definitions.
+				args := make([]*Node, len(deferIns.Call.Args))
+				for i, arg := range deferIns.Call.Args {
+					if IsEscapeTracked(arg.Type()) {
+						args[i] = nodes.ValueNode(arg)
+					}
+				}
+				// For now, we just have one return value that is the merged representation of all of
+				// them. For proper tuple-sensitive results, we would need to make this match the real
+				// number of return values, and find out which extract operations we should assign the
+				// results to.
+				rets := []*Node{}
+				nReturns := deferIns.Call.Signature().Results().Len()
+				returnNode := nodes.UnusedNode()
+				if nReturns > 1 {
+					for i := 0; i < nReturns; i++ {
+						rets = append(rets, st.FieldSubnode(returnNode, fmt.Sprintf("#%d", i), deferIns.Call.Signature().Results().At(i).Type()))
+					}
+				} else {
+					rets = append(rets, nodes.UnusedNode())
+				}
+
+				if builtin, ok := deferIns.Call.Value.(*ssa.Builtin); ok {
+					err := transferCallBuiltin(st, deferIns, builtin, args, rets)
+					if err != nil {
+						ea.prog.logger.Warnf("Warning, escape analysis does not handle builtin: %s", err)
+					}
+				} else if callee := deferIns.Call.StaticCallee(); callee != nil {
+					ea.transferCallStaticCallee(deferIns, st, args, rets)
+				} else if deferIns.Call.IsInvoke() {
+					// If no static callee, either we have an indirect call, e.g. t3(t4) or a method invocation,
+					// e.g. invoke t3.Method(t8, t13).
+					assertGraphInvariants(st)
+					ea.transferCallInvoke(deferIns, st, args, rets)
+					if err := wellFormedEscapeGraph(st); err != nil {
+						panic(err)
+					}
+				} else {
+					//  Indirect call callees can be closures, bound methods, regular named functions, or thunks.
+					ea.transferCallIndirect(deferIns, st, args, rets)
+				}
+			}
+			finalState.Merge(st)
+		}
+		g.ReplaceBy(finalState)
+		return
 	case *ssa.Index:
 		switch tp := instr.X.Type().Underlying().(type) {
 		case *types.Basic:
@@ -611,9 +697,9 @@ func (ea *functionAnalysisState) transferFunction(instruction ssa.Instruction, g
 	}
 }
 
-func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) transferCallStaticCallee(instrType ssa.CallInstruction, g *EscapeGraph, args []*Node, rets []*Node) {
 	// Handle calls where we know the callee
-	callee := instrType.Call.StaticCallee()
+	callee := instrType.Common().StaticCallee()
 	summary := ea.prog.getFunctionAnalysisSummary(callee)
 	if summary.HasSummaryGraph() {
 		// We can use the finalGraph pointer freely as it will never change after it is created
@@ -626,7 +712,7 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 		// For a immediately invoked func, the  value will be a MakeClosure, where we can get the
 		// freevars directly from. In this case, we don't need field sensitivity to align the right
 		// value, as we can directly get the corresponding node.
-		if mkClosure, ok := instrType.Call.Value.(*ssa.MakeClosure); ok {
+		if mkClosure, ok := instrType.Common().Value.(*ssa.MakeClosure); ok {
 			for _, fv := range mkClosure.Bindings {
 				freeVars = append(freeVars, ea.nodes.ValueNode(fv))
 			}
@@ -649,7 +735,7 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 		// will get more and more edges. This case, by contrast, imposes a fixed semantics: leak all the
 		// arguments and return an object which may be arbitrary (and is therefore leaked).
 		if ea.prog.logger.LogsDebug() {
-			ea.prog.logger.Debugf("Warning, %v is not a summarized function: treating as unknown call\n",
+			ea.prog.logger.Debugf("Possible precision loss, %v is not a summarized function: treating as unknown call\n",
 				callee.String())
 		}
 		g.CallUnknown(args, rets, callee.String())
@@ -658,7 +744,7 @@ func (ea *functionAnalysisState) transferCallStaticCallee(instrType *ssa.Call, g
 
 // jsonMarshal implements the effect of a marshalling operation. This is essentially to call the
 // MarshalJSON method on all the reachable types from the argument node.
-func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) jsonMarshal(instrType ssa.CallInstruction, g *EscapeGraph, args []*Node, rets []*Node) {
 	prog := instrType.Parent().Pkg.Prog
 	marshalerInterface := lang.FindTypeByName(prog, "encoding/json", "Marshaler")
 	if marshalerInterface == nil {
@@ -679,6 +765,9 @@ func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph
 	}
 	for receiverNode := range reachable {
 		if tp, ok := g.nodes.globalNodes.types[receiverNode]; ok {
+			if _, ok := tp.(*ImplType); ok {
+				continue
+			}
 			marshalJsonMethod, _ := lang.FindImplementationMethod(prog, tp, marshalerInterface, "MarshalJSON")
 			if marshalJsonMethod != nil {
 				ea.invokeMethodDirectly(instrType, g, marshalJsonMethod, receiverNode, []*Node{}, rets)
@@ -691,7 +780,7 @@ func (ea *functionAnalysisState) jsonMarshal(instrType *ssa.Call, g *EscapeGraph
 // the pointees and computes which other types are reachable from those fields. It also handles the
 // case of unmarshaling into the "any" type, which causes the marshalling code to generate some
 // fixed types (map[string]any, []any, string, float64, etc.).
-func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) jsonUnmarshal(instrType ssa.CallInstruction, g *EscapeGraph, args []*Node, rets []*Node) {
 	prog := instrType.Parent().Pkg.Prog
 	marshalerInterface := lang.FindTypeByName(prog, "encoding/json", "Unmarshaler")
 	if marshalerInterface == nil {
@@ -770,7 +859,7 @@ func (ea *functionAnalysisState) jsonUnmarshal(instrType *ssa.Call, g *EscapeGra
 // invokeMethodDirectly is a helper method that applies the specific method identified in callee
 // with the given receiver node. This is useful for the json(Un)marshal methods as they need to
 // invoke the effects of custom marshal/unmarshaling functions (UnmarshalJSON, etc).s
-func (ea *functionAnalysisState) invokeMethodDirectly(instr *ssa.Call, g *EscapeGraph, callee *ssa.Function, receiver *Node, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) invokeMethodDirectly(instr ssa.CallInstruction, g *EscapeGraph, callee *ssa.Function, receiver *Node, args []*Node, rets []*Node) {
 	summary := ea.prog.getFunctionAnalysisSummary(callee)
 	if summary.HasSummaryGraph() {
 		// Record our use of this summary for recursion-covergence purposes
@@ -801,14 +890,14 @@ type closureFreeVarLoad struct {
 }
 
 //gocyclo:ignore
-func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) transferCallIndirect(instrType ssa.CallInstruction, g *EscapeGraph, args []*Node, rets []*Node) {
 	// Handle indirect calls. The approach is the same for both indirect and invoke:
 	// Loop through all the different out-edges of the func value/receiver. If they are local, we
 	// know which MakeClosure/concrete type was used to create that node, so process the ssa.Function.
 	// If there are any out-edges to an non-local value (either leaked or escaped), then use the pointer
 	// analysis to over-approximate the set of possiblities, and then call each of those.
 	pre := g.Clone()
-	calleeNode := ea.nodes.ValueNode(instrType.Call.Value)
+	calleeNode := ea.nodes.ValueNode(instrType.Common().Value)
 	nonlocal := g.status[calleeNode] != Local
 	for closureNode := range g.Pointees(calleeNode) {
 		// The closure node represents the actual closure object.
@@ -911,12 +1000,12 @@ func (ea *functionAnalysisState) transferCallIndirect(instrType *ssa.Call, g *Es
 	}
 }
 
-func (ea *functionAnalysisState) transferCallInvoke(instrType *ssa.Call, g *EscapeGraph, args []*Node, rets []*Node) {
+func (ea *functionAnalysisState) transferCallInvoke(instrType ssa.CallInstruction, g *EscapeGraph, args []*Node, rets []*Node) {
 	// Find the methods that it could be, according to pointer analysis
 	// Invoke each with each possible receiver
 	// Note: unlike for indirect calls, we do the full cross product of all possible method implementations
 	// with all receivers, even ones that we could deduce aren't possible.
-	receiverNode := ea.nodes.ValueNode(instrType.Call.Value)
+	receiverNode := ea.nodes.ValueNode(instrType.Common().Value)
 	if callees, err := ea.getCallees(instrType); err == nil {
 		pre := g.Clone()
 		for callee := range callees {
@@ -1043,10 +1132,10 @@ func transferCallBuiltin(g *EscapeGraph, instr ssa.Instruction, builtin *ssa.Bui
 type functionAnalysisState struct {
 	function     *ssa.Function
 	prog         *ProgramAnalysisState
+	deferResults *defers.Results
 	initialGraph *EscapeGraph                     // the graph on entry to the function. never mutated.
 	nodes        *NodeGroup                       // the nodes used in these graphs
 	blockEnd     map[*ssa.BasicBlock]*EscapeGraph // the monotone framework result at each basic block end
-
 	// mutability: the finalGraph will never be mutated in place, so saving a reference without Clone() is safe
 	finalGraph *EscapeGraph
 
@@ -1163,9 +1252,11 @@ func newFunctionAnalysisState(f *ssa.Function, prog *ProgramAnalysisState, summa
 	if len(f.Blocks) > 0 {
 		worklist = append(worklist, f.Blocks[0])
 	}
+	defersResults := defers.AnalyzeFunction(f, prog.logger)
 	return &functionAnalysisState{
 		f,
 		prog,
+		&defersResults,
 		initialGraph,
 		nodes,
 		make(map[*ssa.BasicBlock]*EscapeGraph),
@@ -1218,7 +1309,7 @@ func (ea *functionAnalysisState) ProcessBlock(bb *ssa.BasicBlock) (changed bool)
 		// Check the monotonicity of the transfer function.
 		if checkMonotonicityEveryInstruction {
 			pre := g.Clone()
-			ea.transferFunction(instr, g)
+			ea.transferFunction(instr, g, nil)
 			post := g.Clone()
 			if pairs, ok := instructionMonoCheckData[instr]; ok {
 				for _, p := range pairs {
@@ -1237,7 +1328,7 @@ func (ea *functionAnalysisState) ProcessBlock(bb *ssa.BasicBlock) (changed bool)
 			}
 			instructionMonoCheckData[instr] = append(instructionMonoCheckData[instr], cachedGraphMonotonicity{pre, post})
 		} else {
-			ea.transferFunction(instr, g)
+			ea.transferFunction(instr, g, nil)
 		}
 	}
 	if oldGraph, ok := ea.blockEnd[bb]; ok {
@@ -1415,7 +1506,7 @@ func (ea *functionAnalysisState) Resummarize() (changed bool) {
 		roots = append(roots, x)
 	}
 	returnResult = returnResult.CloneReachable(roots)
-	simplifySummary(returnResult, ea.prog.logger)
+	simplifySummary(returnResult)
 	if wellFormedErr := wellFormedEscapeGraph(returnResult); wellFormedErr != nil {
 		panic(wellFormedErr)
 	}
@@ -1653,7 +1744,7 @@ func instructionLocality(instr ssa.Instruction, g *EscapeGraph) *dataflow.Escape
 // basicBlockInstructionLocality fills in the locality map with the locality information
 // of the instructions in the given basic block.
 func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock,
-	locality map[ssa.Instruction]*dataflow.EscapeRationale, callsites map[*ssa.Call]escapeCallsiteInfoImpl) error {
+	locality map[ssa.Instruction]*dataflow.EscapeRationale, callsites map[ssa.CallInstruction]escapeCallsiteInfoImpl) error {
 	g := NewEmptyEscapeGraph(ea.nodes)
 	if len(bb.Preds) == 0 {
 		// Entry block uses the function-wide initial graph
@@ -1669,27 +1760,25 @@ func basicBlockInstructionLocality(ea *functionAnalysisState, bb *ssa.BasicBlock
 	}
 	for _, instr := range bb.Instrs {
 		locality[instr] = instructionLocality(instr, g)
-		if cl, ok := instr.(*ssa.Call); ok {
-			// We need to copy g because it is about to be clobbered by the transfer function
-			callsites[cl] = escapeCallsiteInfoImpl{g.Clone(), cl, ea.nodes, ea.prog}
-		}
-		ea.transferFunction(instr, g)
+		ea.transferFunction(instr, g, callsites)
 	}
 	return nil
 }
 
 type escapeCallsiteInfoImpl struct {
 	g        *EscapeGraph
-	callsite *ssa.Call
+	callsite ssa.CallInstruction
 	nodes    *NodeGroup
 	prog     *ProgramAnalysisState
 }
 
 // computeInstructionLocality does the work of computing instruction locality for a function. See
 // wrapper `ComputeInstructionLocality` for details.
-func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]*dataflow.EscapeRationale, callsiteInfo map[*ssa.Call]escapeCallsiteInfoImpl) {
+func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph) (locality map[ssa.Instruction]*dataflow.EscapeRationale, callsiteInfo map[ssa.CallInstruction]escapeCallsiteInfoImpl) {
+	deferResults := defers.AnalyzeFunction(ea.function, ea.prog.logger)
 	inContextEA := &functionAnalysisState{
 		function:     ea.function,
+		deferResults: &deferResults,
 		prog:         ea.prog,
 		initialGraph: initial,
 		nodes:        ea.nodes,
@@ -1699,7 +1788,7 @@ func computeInstructionLocality(ea *functionAnalysisState, initial *EscapeGraph)
 	}
 	inContextEA.Resummarize()
 	locality = map[ssa.Instruction]*dataflow.EscapeRationale{}
-	callsites := map[*ssa.Call]escapeCallsiteInfoImpl{}
+	callsites := map[ssa.CallInstruction]escapeCallsiteInfoImpl{}
 	for _, block := range ea.function.Blocks {
 		basicBlockInstructionLocality(inContextEA, block, locality, callsites)
 	}
@@ -1814,7 +1903,7 @@ func wellFormedEscapeGraph(g *EscapeGraph) error {
 // simplifySummary removes irrelevant load nodes from a given function summary graph. "Irrelevant"
 // nodes are load nodes that don't have any leaks or incoming/outgoing internal edges (and also
 // doesn't point to any nodes that need to be kept). Modifies g in-place.
-func simplifySummary(g *EscapeGraph, _ *config.LogGroup) {
+func simplifySummary(g *EscapeGraph) {
 	// The set of nodes to be removed
 	candidatesForRemoval := map[*Node]struct{}{}
 	// Find all load nodes that are escaped and not leaked, without any outgoing internal edges

@@ -84,7 +84,7 @@ func IntraProceduralAnalysis(state *State,
 // information contained in the state. It is possible to create a graph first only using NewSummaryGraph and then
 // run RunIntraProcedural to update the edges in the graph.
 //
-// RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
+// RunIntraProcedural does not add any nodes except bound label nodes to the summary graph, it only updates information
 // related to the edges.
 func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
 	if sm == nil {

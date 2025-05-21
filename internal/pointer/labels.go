@@ -34,8 +34,13 @@ import (
 //
 // At most one of Value() or ReflectType() may return non-nil.
 type Label struct {
-	obj        *object    // the addressable memory location containing this label
+	obj        *Object    // the addressable memory location containing this label
 	subelement *fieldInfo // subelement path within obj, e.g. ".a.b[*].c"
+}
+
+// Obj returns the label's object.
+func (l Label) Obj() *Object {
+	return l.obj
 }
 
 // Value returns the ssa.Value that allocated this label's object, if any.
