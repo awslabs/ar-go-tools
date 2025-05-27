@@ -193,6 +193,10 @@ func TestTaint(t *testing.T) {
 			name: "annotations",
 			args: args{"annotations", []string{}, noErrorExpected},
 		},
+		{
+			name: "pointers",
+			args: args{"pointers", []string{}, noErrorExpected},
+		},
 	}
 
 	for _, tt := range tests {
