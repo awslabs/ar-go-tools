@@ -559,16 +559,21 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.State, fi *dataflow.Flow
 			if isFunc {
 				x = "fun " + vName
 			} else if vStr != vName {
-				x = vName + "=" + vStr
+				x = vName + " := " + vStr
 			}
 			for path, markSet := range marks.PathMappings() {
 				var markStrings []string
 				for mark := range markSet {
-					markStrings = append(markStrings, formatutil.Red(mark.String()))
+					markStrings = append(markStrings, mark.String())
 				}
-				writeFmt(tt, "   %s%-30s%s %s%-10s%s marked by ", tt.Escape.Magenta, x, tt.Escape.Reset,
+				slices.Sort(markStrings)
+				writeFmt(tt, "   val %s%s%s (type: %s%s%s) (field: %s%s%s) marked by:\n",
+					tt.Escape.Magenta, x, tt.Escape.Reset,
+					tt.Escape.Cyan, val.Type().String(), tt.Escape.Reset,
 					tt.Escape.Cyan, path, tt.Escape.Reset)
-				writeFmt(tt, "%s\n", strings.Join(markStrings, " & "))
+				for _, mark := range markStrings {
+					writeFmt(tt, "     - %s%s%s\n", tt.Escape.Red, mark, tt.Escape.Reset)
+				}
 			}
 		}
 	})

@@ -197,7 +197,7 @@ func (m Mark) String() string {
 		str += " #" + strconv.Itoa(m.Index.Value)
 	}
 	if m.Label != "" {
-		str += "(" + m.Label + ")"
+		str += " (path: " + m.Label + ")"
 	}
 	return "🏷 " + str
 }
