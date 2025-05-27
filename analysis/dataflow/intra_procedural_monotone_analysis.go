@@ -225,6 +225,9 @@ func populateInstrPrevMap(intraState *IntraAnalysisState, firstInstr ssa.Instruc
 // values of the previous instruction to the current instruction;
 // Pre ensures that the analysis is a monotone analysis.
 func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
+	if ins.String() == "(*idct).setSecret(t5)" {
+		print()
+	}
 	if isInstrIgnored(ins) {
 		return
 	}
@@ -444,7 +447,14 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	// v was not marked before
 	state.changeFlag = state.flowInfo.AddMark(i, v, path, mark)
 	// Propagate to any other Value that is an alias of v
-	for _, ptr := range state.findAllPointers(v) {
+	ptrs := state.findAllPointers(v)
+	if len(ptrs) > 0 {
+		// if i.Parent().Name() == "main" && i.String() == "t16 = make any <- string (t13)" && mark.Label != "" {
+		if i.Parent().Name() == "main" && i.String() == "make any <- string (t12)" {
+			print()
+		}
+	}
+	for _, ptr := range ptrs {
 		state.markPtrAliases(i, mark, path, ptr)
 	}
 
