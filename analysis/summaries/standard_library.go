@@ -1631,7 +1631,7 @@ var summaryText = map[string]Summarizer{}
 
 var summaryTime = map[string]Summarizer{
 	"time.After":  SingleVarArgPropagation,
-	"(time.Time).Before": SingleVarArgPropagation,
+	"time.Before": SingleVarArgPropagation,
 	// func Parse(layout, value string) (Time, error)
 	"time.Parse": Summary{
 		[][]int{{0}, {1}},
