@@ -203,7 +203,7 @@ var summaryArchiveTar = map[string]Summarizer{
 		Flows: map[string][]string{"!receiver": {"!ret 0"}},
 	}.mustCompile(),
 	// func (tw *Writer) Write(b []byte) (int, error)
-	"(*archive/tar.Writer).Writer": rawSummary{
+	"(*archive/tar.Writer).Write": rawSummary{
 		Flows: map[string][]string{"!arg 0": {"!receiver", "!ret 0", "!ret 1"}},
 	}.mustCompile(),
 	// func (tw *Writer) WriteHeader(hdr *Header) error
@@ -315,7 +315,7 @@ var summaryCrypto = map[string]Summarizer{
 	"crypto/x509.SystemCertPool":       NoDataFlowPropagation,
 	"crypto/sha256.blockGeneric":       NoDataFlowPropagation,
 	"crypto/sha256.Sum256":             SingleVarArgPropagation,
-	"crypto/sha256.Sum244":             SingleVarArgPropagation,
+	"crypto/sha256.Sum224":             SingleVarArgPropagation,
 	"crypto/sha512.Sum384":             SingleVarArgPropagation,
 	"crypto/sha512.Sum512":             SingleVarArgPropagation,
 	"crypto/sha512.Sum512_224":         SingleVarArgPropagation,
@@ -376,9 +376,9 @@ var summaryEncoding = map[string]Summarizer{
 		[][]int{{}, {0, 1}, {0, 1}},
 	},
 	// func (enc Encoding) Strict() *Encoding
-	"(encoding/base64).Strict": SingleVarArgPropagation,
+	"(encoding/base64.Encoding).Strict": SingleVarArgPropagation,
 	// func (enc Encoding) WithPadding(padding rune) *Encoding
-	"(encoding/base64).WithPadding": Summary{
+	"(encoding/base64.Encoding).WithPadding": Summary{
 		[][]int{{0}, {1}},
 		[][]int{{0}, {0}},
 	},
@@ -582,7 +582,7 @@ var summaryFlag = map[string]Summarizer{
 		[][]int{{}, {0}, {}},
 	},
 	//func DurationVar(p *time.Duration, name string, value time.Duration, usage string)
-	"flat.DurationVar": Summary{
+	"flag.DurationVar": Summary{
 		[][]int{{0}, {1}, {0, 2}, {3}},
 		[][]int{{0}, {}, {0}, {}},
 	},
@@ -607,7 +607,7 @@ var summaryFlag = map[string]Summarizer{
 		[][]int{{}, {0}, {}},
 	},
 	//func Int64Var(p *int64, name string, value int64, usage string)
-	"flat.Int64Var": Summary{
+	"flag.Int64Var": Summary{
 		[][]int{{0}, {1}, {0, 2}, {3}},
 		[][]int{{0}, {}, {0}, {}},
 	},
@@ -1286,7 +1286,7 @@ var summaryReflect = map[string]Summarizer{
 		[][]int{{}, {}},
 	},
 	// func (v Value) SetMapIndex(key, elem Value)
-	"(reflect.Value).SetMapIndex(key, elem Value)": Summary{
+	"(reflect.Value).SetMapIndex": Summary{
 		[][]int{{0}, {0, 1}, {0, 2}},
 		[][]int{{}, {}, {}},
 	},
@@ -1359,7 +1359,7 @@ var summaryRuntime = map[string]Summarizer{
 	"runtime.NumCPU": NoDataFlowPropagation,
 	"runtime.Caller": NoDataFlowPropagation,
 	// func runtime.FuncForPC(pc uintptr) *runtime.Func
-	"runtime.FuncForPc":   SingleVarArgPropagation,
+	"runtime.FuncForPC":   SingleVarArgPropagation,
 	"runtime/debug.init":  NoDataFlowPropagation,
 	"runtime/debug.Stack": NoDataFlowPropagation,
 	// func (*runtime.Func).Name() string
