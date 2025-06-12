@@ -1,0 +1,13 @@
+options:
+  silence-warn: true
+
+dataflow-problems:
+  field-sensitive-funcs:
+    - .*
+  taint-tracking:
+    - sources:
+        - package: "(pointers)|(command-line-arguments)|(main)"
+          method: "source"
+      sinks:
+        - package: fmt
+          method: Println

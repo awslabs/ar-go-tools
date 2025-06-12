@@ -361,8 +361,8 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 		// Mark call argument
 		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[arg]] {
 			for _, path := range AccessPathsOfType(arg.Type()) {
-				state.flowInfo.AddMark(instr, arg, path,
-					state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark, path))
+				newMark := state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark, path)
+				state.markValue(instr, arg, path, newMark)
 			}
 		}
 		newMark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark)
