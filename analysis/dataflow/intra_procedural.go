@@ -81,10 +81,10 @@ func IntraProceduralAnalysis(state *State,
 	return IntraProceduralResult{Summary: sm, Time: elapsed}, nil
 }
 
-// BuildFullFlowGraph builds a full flow graph where every input parameter flows to every other input parameter
-// and every input parameter flows to every output parameter
-func (g *SummaryGraph) BuildFullFlowGraph() {
-	// Clear all existing edges first
+// BuildEmptyGraph removes all flow edges between nodes in the graph
+// This creates a graph with no dataflows at all
+func (g *SummaryGraph) BuildEmptyGraph() {
+	// Iterate through all nodes in the graph and clear their edges
 	g.ForAllNodes(func(n GraphNode) {
 		// Clear all outgoing edges
 		for dst := range n.Out() {
@@ -119,6 +119,13 @@ func (g *SummaryGraph) BuildFullFlowGraph() {
 			node.in = make(map[GraphNode]EdgeInfo)
 		}
 	})
+}
+
+// BuildFullFlowGraph builds a full flow graph where every input parameter flows to every other input parameter
+// and every input parameter flows to every output parameter
+func (g *SummaryGraph) BuildFullFlowGraph() {
+	// Clear all existing edges first
+	g.BuildEmptyGraph()
 
 	// Collect all input nodes (parameters and free variables)
 	var inputNodes []GraphNode
