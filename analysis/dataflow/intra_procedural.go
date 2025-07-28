@@ -250,59 +250,60 @@ func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
 	}
 }
 
-// runOriginalAnalysis contains the original RunIntraProcedural logic
-func runOriginalAnalysis(a *State, sm *SummaryGraph) error {
-	flowInfo := NewFlowInfo(a.Config, sm.Parent)
-	// This is the only place an IntraAnalysisState is initialized
-	state := &IntraAnalysisState{
-		flowInfo:            flowInfo,
-		parentAnalyzerState: a,
-		changeFlag:          true,
-		blocksSeen:          make([]bool, flowInfo.NumBlocks),
-		errors:              map[ssa.Node]error{},
-		summary:             sm,
-		deferStacks:         defers.AnalyzeFunction(sm.Parent, a.Logger),
-		paths:               make([]*ConditionInfo, flowInfo.NumBlocks*flowInfo.NumBlocks),
-		instrPrev:           make([]map[IndexT]bool, flowInfo.NumInstructions),
-		paramAliases:        make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
-		freeVarAliases:      make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
-		shouldTrack:         sm.shouldTrack,
-		postBlockCallback:   sm.postBlockCallBack,
-	}
+// // runOriginalAnalysis contains the original RunIntraProcedural logic
+// it is temporarily removed by the timing feature
+// func runOriginalAnalysis(a *State, sm *SummaryGraph) error {
+// 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
+// 	// This is the only place an IntraAnalysisState is initialized
+// 	state := &IntraAnalysisState{
+// 		flowInfo:            flowInfo,
+// 		parentAnalyzerState: a,
+// 		changeFlag:          true,
+// 		blocksSeen:          make([]bool, flowInfo.NumBlocks),
+// 		errors:              map[ssa.Node]error{},
+// 		summary:             sm,
+// 		deferStacks:         defers.AnalyzeFunction(sm.Parent, a.Logger),
+// 		paths:               make([]*ConditionInfo, flowInfo.NumBlocks*flowInfo.NumBlocks),
+// 		instrPrev:           make([]map[IndexT]bool, flowInfo.NumInstructions),
+// 		paramAliases:        make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
+// 		freeVarAliases:      make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
+// 		shouldTrack:         sm.shouldTrack,
+// 		postBlockCallback:   sm.postBlockCallBack,
+// 	}
 
-	reportUnsoundFeatures(a, sm.Parent)
+// 	reportUnsoundFeatures(a, sm.Parent)
 
-	// Output warning if defer stack is unbounded
-	if !state.deferStacks.DeferStackBounded {
-		a.Logger.Warnf("Defer stack unbounded in %s: %s",
-			formatutil.Sanitize(sm.Parent.String()), formatutil.Yellow("analysis unsound!"))
-	}
-	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
-	state.initialize()
-	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
-	// defined generally in the lang package, but all the details, including transfer functions, are in the
-	// single_function_monotone_analysis.go file
-	lang.RunForwardIterative(state, sm.Parent)
-	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract Value at
-	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
-	// translated into a dataflow graph, with special attention for closures.
-	// Next, we build the edges of the summary. The functions for edge building are in this file
-	lang.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
-	// Synchronize the edges of global variables
-	sm.SyncGlobals()
-	// Update the locsets / marks of the nodes. The locsets are elements that can be used to check results against
-	// other analyses. Currently, the locsets are the set of instructions that the data represented by a given node
-	// flows to.
-	state.moveLocSetsToSummary()
-	// Mark the summary as constructed
-	sm.Constructed = true
-	// If we have errors, return one. This is sufficient to warn the user that the results are incorrect.
-	// TODO: manage error messages for better debugging
-	for _, err := range state.errors {
-		return fmt.Errorf("error in intraprocedural analysis: %w", err)
-	}
-	return nil
-}
+// 	// Output warning if defer stack is unbounded
+// 	if !state.deferStacks.DeferStackBounded {
+// 		a.Logger.Warnf("Defer stack unbounded in %s: %s",
+// 			formatutil.Sanitize(sm.Parent.String()), formatutil.Yellow("analysis unsound!"))
+// 	}
+// 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
+// 	state.initialize()
+// 	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
+// 	// defined generally in the lang package, but all the details, including transfer functions, are in the
+// 	// single_function_monotone_analysis.go file
+// 	lang.RunForwardIterative(state, sm.Parent)
+// 	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract Value at
+// 	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
+// 	// translated into a dataflow graph, with special attention for closures.
+// 	// Next, we build the edges of the summary. The functions for edge building are in this file
+// 	lang.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
+// 	// Synchronize the edges of global variables
+// 	sm.SyncGlobals()
+// 	// Update the locsets / marks of the nodes. The locsets are elements that can be used to check results against
+// 	// other analyses. Currently, the locsets are the set of instructions that the data represented by a given node
+// 	// flows to.
+// 	state.moveLocSetsToSummary()
+// 	// Mark the summary as constructed
+// 	sm.Constructed = true
+// 	// If we have errors, return one. This is sufficient to warn the user that the results are incorrect.
+// 	// TODO: manage error messages for better debugging
+// 	for _, err := range state.errors {
+// 		return fmt.Errorf("error in intraprocedural analysis: %w", err)
+// 	}
+// 	return nil
+// }
 
 // runOriginalAnalysisWithContext contains the context-aware RunIntraProcedural logic with cancellation support
 func runOriginalAnalysisWithContext(ctx context.Context, a *State, sm *SummaryGraph) error {
