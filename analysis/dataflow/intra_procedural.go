@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"context"
 	"fmt"
 	"go/types"
 	"time"
@@ -80,17 +81,170 @@ func IntraProceduralAnalysis(state *State,
 	return IntraProceduralResult{Summary: sm, Time: elapsed}, nil
 }
 
+// BuildFullFlowGraph builds a full flow graph where every input parameter flows to every other input parameter
+// and every input parameter flows to every output parameter
+func (g *SummaryGraph) BuildFullFlowGraph() {
+	// Clear all existing edges first
+	g.ForAllNodes(func(n GraphNode) {
+		// Clear all outgoing edges
+		for dst := range n.Out() {
+			delete(n.Out(), dst)
+		}
+
+		// Clear incoming edges based on node type
+		switch node := n.(type) {
+		case *ParamNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *CallNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *CallNodeArg:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *FreeVarNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *ReturnValNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *ClosureNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *SyntheticNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *AccessGlobalNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *BoundVarNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *BoundLabelNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *IfNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		case *BuiltinCallNode:
+			node.in = make(map[GraphNode]EdgeInfo)
+		}
+	})
+
+	// Collect all input nodes (parameters and free variables)
+	var inputNodes []GraphNode
+	for _, paramNode := range g.Params {
+		inputNodes = append(inputNodes, paramNode)
+	}
+	for _, freeVarNode := range g.FreeVars {
+		inputNodes = append(inputNodes, freeVarNode)
+	}
+
+	// Collect all output nodes (return values)
+	var outputNodes []GraphNode
+	for _, retTuple := range g.Returns {
+		for _, retNode := range retTuple {
+			if retNode != nil {
+				outputNodes = append(outputNodes, retNode)
+			}
+		}
+	}
+
+	// Create edge info for full flow (all access paths flow)
+	allFlowEdgeInfo := EdgeInfo{
+		RelPath: map[string]map[string]bool{"*": {"": true}},
+		Index:   0,
+		Cond:    nil, // No condition - unconditional flow
+	}
+
+	// Create input-to-input flows: every input parameter flows to every other input parameter
+	for _, srcNode := range inputNodes {
+		for _, dstNode := range inputNodes {
+			// Skip self-edges
+			if srcNode == dstNode {
+				continue
+			}
+
+			// Add outgoing edge from source to destination
+			if srcNode.Out()[dstNode] == nil {
+				srcNode.Out()[dstNode] = make([]EdgeInfo, 0, 1)
+			}
+			srcNode.Out()[dstNode] = append(srcNode.Out()[dstNode], allFlowEdgeInfo)
+
+			// Add incoming edge to destination from source
+			dstNode.In()[srcNode] = allFlowEdgeInfo
+		}
+	}
+
+	// Create input-to-output flows: every input parameter flows to every output parameter
+	for _, srcNode := range inputNodes {
+		for _, dstNode := range outputNodes {
+			// Add outgoing edge from input to output
+			if srcNode.Out()[dstNode] == nil {
+				srcNode.Out()[dstNode] = make([]EdgeInfo, 0, 1)
+			}
+			srcNode.Out()[dstNode] = append(srcNode.Out()[dstNode], allFlowEdgeInfo)
+
+			// Add incoming edge to output from input
+			dstNode.In()[srcNode] = allFlowEdgeInfo
+		}
+	}
+}
+
+// analysisResult holds the result of the intra-procedural analysis when run in a goroutine
+type analysisResult struct {
+	duration time.Duration
+	err      error
+}
+
 // RunIntraProcedural is the core of the intra-procedural analysis. It updates the summary graph *in place* using the
 // information contained in the state. It is possible to create a graph first only using NewSummaryGraph and then
 // run RunIntraProcedural to update the edges in the graph.
 //
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
+//
+// If the analysis takes longer than 10 seconds, it will be cancelled and replaced with a full graph constructed by
+// BuildFullFlowGraph.
 func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
 	if sm == nil {
 		return 0, fmt.Errorf("summary graph is nil")
 	}
-	start := time.Now()
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Use buffered channel to prevent blocking
+	done := make(chan analysisResult, 1)
+
+	// Start analysis goroutine
+	go func() {
+		start := time.Now()
+		err := runOriginalAnalysisWithContext(ctx, a, sm)
+		elapsed := time.Since(start)
+
+		// Try to send result, but don't block if timeout already happened
+		select {
+		case done <- analysisResult{duration: elapsed, err: err}:
+		default:
+			// Analysis was cancelled, ignore result
+		}
+	}()
+
+	// Wait for either completion or timeout
+	select {
+	case result := <-done:
+		// Analysis completed within timeout
+		return result.duration, result.err
+	case <-ctx.Done():
+		// Timeout occurred
+		if a.Logger != nil {
+			a.Logger.Warnf("Function %s is cancelled due to time out",
+				formatutil.Sanitize(sm.Parent.String()))
+		}
+
+		// Build full graph as replacement
+		start := time.Now()
+		sm.BuildFullFlowGraph()
+		sm.Constructed = true
+		elapsed := time.Since(start)
+
+		return elapsed, nil
+	}
+}
+
+// runOriginalAnalysis contains the original RunIntraProcedural logic
+func runOriginalAnalysis(a *State, sm *SummaryGraph) error {
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
 	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{
@@ -138,9 +292,110 @@ func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
 	// If we have errors, return one. This is sufficient to warn the user that the results are incorrect.
 	// TODO: manage error messages for better debugging
 	for _, err := range state.errors {
-		return time.Since(start), fmt.Errorf("error in intraprocedural analysis: %w", err)
+		return fmt.Errorf("error in intraprocedural analysis: %w", err)
 	}
-	return time.Since(start), nil
+	return nil
+}
+
+// runOriginalAnalysisWithContext contains the context-aware RunIntraProcedural logic with cancellation support
+func runOriginalAnalysisWithContext(ctx context.Context, a *State, sm *SummaryGraph) error {
+	// Check for cancellation at the start
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	flowInfo := NewFlowInfo(a.Config, sm.Parent)
+	// This is the only place an IntraAnalysisState is initialized
+	state := &IntraAnalysisState{
+		flowInfo:            flowInfo,
+		parentAnalyzerState: a,
+		changeFlag:          true,
+		blocksSeen:          make([]bool, flowInfo.NumBlocks),
+		errors:              map[ssa.Node]error{},
+		summary:             sm,
+		deferStacks:         defers.AnalyzeFunction(sm.Parent, a.Logger),
+		paths:               make([]*ConditionInfo, flowInfo.NumBlocks*flowInfo.NumBlocks),
+		instrPrev:           make([]map[IndexT]bool, flowInfo.NumInstructions),
+		paramAliases:        make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
+		freeVarAliases:      make([]map[*ssa.FreeVar]bool, flowInfo.NumValues),
+		shouldTrack:         sm.shouldTrack,
+		postBlockCallback:   sm.postBlockCallBack,
+	}
+
+	// Check for cancellation after initialization
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	reportUnsoundFeatures(a, sm.Parent)
+
+	// Output warning if defer stack is unbounded
+	if !state.deferStacks.DeferStackBounded {
+		a.Logger.Warnf("Defer stack unbounded in %s: %s",
+			formatutil.Sanitize(sm.Parent.String()), formatutil.Yellow("analysis unsound!"))
+	}
+
+	// Check for cancellation before heavy computation
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
+	state.initialize()
+
+	// Check for cancellation before the most intensive part
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
+	// defined generally in the lang package, but all the details, including transfer functions, are in the
+	// single_function_monotone_analysis.go file
+	// This is the most time-consuming part of the analysis
+	lang.RunForwardIterative(state, sm.Parent)
+
+	// Check for cancellation after forward iterative analysis
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract Value at
+	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
+	// translated into a dataflow graph, with special attention for closures.
+	// Next, we build the edges of the summary. The functions for edge building are in this file
+	lang.IterateInstructions(sm.Parent, state.makeEdgesAtInstruction)
+
+	// Check for cancellation after edge building
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// Synchronize the edges of global variables
+	sm.SyncGlobals()
+	// Update the locsets / marks of the nodes. The locsets are elements that can be used to check results against
+	// other analyses. Currently, the locsets are the set of instructions that the data represented by a given node
+	// flows to.
+	state.moveLocSetsToSummary()
+	// Mark the summary as constructed
+	sm.Constructed = true
+	// If we have errors, return one. This is sufficient to warn the user that the results are incorrect.
+	// TODO: manage error messages for better debugging
+	for _, err := range state.errors {
+		return fmt.Errorf("error in intraprocedural analysis: %w", err)
+	}
+	return nil
 }
 
 // Dataflow edges in the summary graph are added by the following functions. Those can be called after the iterative

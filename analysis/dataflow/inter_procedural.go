@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -338,8 +339,41 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor, spec
 				len(entryPoints)-i)
 			return
 		}
-		visitor.Visit(g.AnalyzerState, entry)
+
+		// Run visitor with timeout protection
+		g.runVisitorWithTimeout(visitor, entry, i+1, len(entryPoints))
 		i++
+	}
+}
+
+// runVisitorWithTimeout runs the visitor on an entry point with timeout protection
+func (g *InterProceduralFlowGraph) runVisitorWithTimeout(visitor Visitor, entry NodeWithTrace, current, total int) {
+	timeout := 10 * time.Second // Use 10 seconds for inter-procedural entry points
+	done := make(chan bool, 1)
+	cancelled := make(chan bool, 1)
+
+	// Run visitor in separate goroutine
+	go func() {
+		visitor.Visit(g.AnalyzerState, entry)
+		done <- true
+	}()
+
+	// Start timeout monitoring goroutine
+	go func() {
+		time.Sleep(timeout)
+		cancelled <- true
+	}()
+
+	// Race between completion and cancellation
+	select {
+	case <-done:
+		// Visitor completed within timeout
+		return
+	case <-cancelled:
+		// Timeout occurred - log and continue
+		g.AnalyzerState.Logger.Warnf("Entry point %d/%d (%s) cancelled due to time out",
+			current, total, entry.Node.String())
+		return
 	}
 }
 
