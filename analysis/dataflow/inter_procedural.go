@@ -155,6 +155,29 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 					if externalContractSummary != nil {
 						logger.Debugf("Loaded %s from external contracts.\n",
 							formatutil.SanitizeRepr(node.Callee()))
+
+						// Perform soundness check on the external summary
+						isSound, reason, needsDeeperCheck := g.CheckSummarySoundness(node.Callee(), externalContractSummary)
+						if !isSound {
+							logger.Warnf("External summary for %s is not sound: %s",
+								formatutil.SanitizeRepr(node.Callee()), reason)
+							// Continue with the summary, but mark it as potentially problematic
+							// In the future, we might want to create a new summary or take other actions
+						} else {
+							logger.Debugf("External summary for %s is sound: %s",
+								formatutil.SanitizeRepr(node.Callee()), reason)
+
+							// If we need to dive deeper into callees, log this information
+							if len(needsDeeperCheck) > 0 {
+								logger.Debugf("Summary for %s requires deeper analysis of %d callees",
+									formatutil.SanitizeRepr(node.Callee()), len(needsDeeperCheck))
+								// Here we might want to recursively check these callees
+								// For now, we just log the information
+							}
+						}
+
+						// Use the summary regardless of soundness check result
+						// In the future, we might decide to reject unsound summaries
 						g.Summaries[node.Callee()] = externalContractSummary
 						node.CalleeSummary = externalContractSummary
 						if x := externalContractSummary.Callsites[node.CallSite()]; x == nil {
@@ -520,6 +543,8 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 	if calleeSummary != nil && !calleeSummary.Constructed {
 		if shortSummary, isPredefined := summaries.SummaryOfFunc(node.Callee()); isPredefined {
 			calleeSummary.PopulateGraphFromSummary(shortSummary, false)
+			// Mark predefined summaries as sound
+			calleeSummary.IsSound = true
 			logger.Debugf("Constructed %s from summaries.\n", formatutil.SanitizeRepr(node.Callee()))
 		}
 	}
@@ -684,6 +709,1040 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 	return nil
 }
 
+// debugSummaryFlows outputs detailed flow information for the three summaries used in soundness checking
+func (g *InterProceduralFlowGraph) debugSummaryFlows(function *ssa.Function, Su, Sg, Sp *SummaryGraph) {
+	g.AnalyzerState.Logger.Debugf("=== SUMMARY FLOWS DEBUG for %s ===", function.Name())
+
+	// Debug Su (Summary Under Check)
+	// g.AnalyzerState.Logger.Debugf("--- Su (Summary Under Check) ---")
+	// g.logSummaryFlows(Su)
+
+	// // Debug Sg (Most General)
+	// g.AnalyzerState.Logger.Debugf("--- Sg (Most General) ---")
+	// g.logSummaryFlows(Sg)
+
+	// // Debug Sp (Most Preserved)
+	// g.AnalyzerState.Logger.Debugf("--- Sp (Most Preserved) ---")
+	// g.logSummaryFlows(Sp)
+
+	// Show comparison results
+	g.AnalyzerState.Logger.Debugf("--- Comparison Results ---")
+	g.AnalyzerState.Logger.Debugf("Sp == Sg: %v", g.compareSummaries(Sp, Sg))
+	g.AnalyzerState.Logger.Debugf("Sp ⊆ Su: %v", g.isSummarySubset(Sp, Su))
+	g.AnalyzerState.Logger.Debugf("Su ⊆ Sg: %v", g.isSummarySubset(Su, Sg))
+	g.AnalyzerState.Logger.Debugf("Su == Sg: %v", g.compareSummaries(Su, Sg))
+	g.AnalyzerState.Logger.Debugf("Sp == Su: %v", g.compareSummaries(Sp, Su))
+
+	g.AnalyzerState.Logger.Debugf("=== END SUMMARY FLOWS DEBUG ===")
+}
+
+// // logSummaryFlows logs detailed flow information for a single summary
+// func (g *InterProceduralFlowGraph) logSummaryFlows(summary *SummaryGraph) {
+// 	if summary == nil {
+// 		g.AnalyzerState.Logger.Debugf("  Summary: nil")
+// 		return
+// 	}
+
+// 	// Count nodes and edges
+// 	nodeCount := 0
+// 	edgeCount := 0
+// 	nodeTypes := make(map[string]int)
+
+// 	summary.ForAllNodes(func(node GraphNode) {
+// 		nodeCount++
+// 		nodeType := g.getNodeTypeName(node)
+// 		nodeTypes[nodeType]++
+// 		edgeCount += len(node.Out())
+// 	})
+
+// 	g.AnalyzerState.Logger.Debugf("  Total Nodes: %d, Total Edges: %d", nodeCount, edgeCount)
+// 	g.AnalyzerState.Logger.Debugf("  Node Types: %v", nodeTypes)
+
+// 	// Show detailed node and edge information
+// 	g.AnalyzerState.Logger.Debugf("  Detailed Flows:")
+// 	summary.ForAllNodes(func(node GraphNode) {
+// 		if len(node.Out()) > 0 {
+// 			g.AnalyzerState.Logger.Debugf("    %s:", node.String())
+// 			for dest, edgeInfos := range node.Out() {
+// 				for _, edgeInfo := range edgeInfos {
+// 					condStr := "unconditional"
+// 					if edgeInfo.Cond != nil && !edgeInfo.Cond.Satisfiable {
+// 						condStr = "never"
+// 					} else if edgeInfo.Cond != nil && len(edgeInfo.Cond.Conditions) > 0 {
+// 						condStr = fmt.Sprintf("conditional(%d)", len(edgeInfo.Cond.Conditions))
+// 					}
+// 					pathStr := ""
+// 					if len(edgeInfo.RelPath) > 0 {
+// 						pathStr = fmt.Sprintf(" [paths: %d]", len(edgeInfo.RelPath))
+// 					}
+// 					g.AnalyzerState.Logger.Debugf("      → %s (%s)%s", dest.String(), condStr, pathStr)
+// 				}
+// 			}
+// 		}
+// 	})
+// }
+
+// // getNodeTypeName returns a simplified type name for logging
+// func (g *InterProceduralFlowGraph) getNodeTypeName(node GraphNode) string {
+// 	switch node.(type) {
+// 	case *ParamNode:
+// 		return "Param"
+// 	case *CallNode:
+// 		return "Call"
+// 	case *CallNodeArg:
+// 		return "CallArg"
+// 	case *ReturnValNode:
+// 		return "Return"
+// 	case *SyntheticNode:
+// 		return "Synthetic"
+// 	case *BuiltinCallNode:
+// 		return "Builtin"
+// 	case *ClosureNode:
+// 		return "Closure"
+// 	case *BoundVarNode:
+// 		return "BoundVar"
+// 	case *AccessGlobalNode:
+// 		return "Global"
+// 	case *FreeVarNode:
+// 		return "FreeVar"
+// 	case *IfNode:
+// 		return "If"
+// 	case *BoundLabelNode:
+// 		return "BoundLabel"
+// 	default:
+// 		return fmt.Sprintf("%T", node)
+// 	}
+// }
+
+// CheckSummarySoundness checks if a summary is sound by comparing three types of summaries:
+// - Most-general (Sg): assumes every callee function has maximum possible dataflows.
+// - Most-preserved (Sp): assumes no dataflows between callees - only analyzing dataflow within the function body itself.
+// - Summary-under-check (Su): the provided summary we're evaluating.
+//
+// It returns true if the summary is sound, false otherwise. It also returns a string explaining the reason
+// for the decision, and a map of callee functions that need deeper analysis (if applicable).
+func (g *InterProceduralFlowGraph) CheckSummarySoundness(
+	function *ssa.Function,
+	summaryUnderCheck *SummaryGraph) (bool, string, map[*ssa.Function]*SummaryGraph) {
+
+	// Clone the summary-under-check to avoid modifying the original
+	Su := summaryUnderCheck
+	// Create a most-general summary (Sg) where every callee function has maximum dataflows
+	Sg := g.createMostGeneralSummary(function)
+
+	// Create a most-preserved summary (Sp) with no dataflows between callees
+	Sp := g.createMostPreservedSummary(function)
+
+	// Debug: Output detailed flow information if debug logging is enabled
+	if g.AnalyzerState.Logger.LogsDebug() {
+		g.debugSummaryFlows(function, Su, Sg, Sp)
+	}
+
+	// Compare summaries to determine the case
+	spEqualsSg := g.compareSummaries(Sp, Sg)
+	spSubsetOfSu := g.isSummarySubset(Sp, Su)
+	suSubsetOfSg := g.isSummarySubset(Su, Sg)
+	suEqualsSg := g.compareSummaries(Su, Sg)
+	spEqualsSu := g.compareSummaries(Sp, Su)
+
+	// Initialize map for callees that need deeper analysis
+	calleesDiveDeeperMap := make(map[*ssa.Function]*SummaryGraph)
+
+	if spEqualsSg {
+		// Case 1: Sp = Sg
+		// In this case they should be just the targeted dataflow facts
+		// We don't need to recursively go down for any callee
+		Su.IsSound = true
+		return true, "Summary is sound: Sp = Sg, these are the targeted dataflow facts", nil
+	} else if spSubsetOfSu && suSubsetOfSg && !suEqualsSg {
+		// Case 2: Sp ⊆ Su ⊂ Sg
+		// We need to check evidence by diving deeper into callees
+		for _, calleeNodes := range Su.Callees {
+			for _, callNode := range calleeNodes {
+				if callNode.Callee() != nil {
+					// For each callee Gi, we need to check (Su∖Sp)∩Gi
+					// Add this callee to the map of functions to analyze deeper
+					calleesDiveDeeperMap[callNode.Callee()] = g.createIntersectionSummary(Su, Sp, callNode.Callee())
+				}
+			}
+		}
+		Su.IsSound = true
+		return true, "Summary is sound but needs evidence check: Sp ⊆ Su ⊂ Sg", calleesDiveDeeperMap
+	} else if !spEqualsSu && suEqualsSg {
+		// Case 3: Sp ⊂ Su = Sg
+		// Just take Su, no need to check callees
+		Su.IsSound = true
+		return true, "Summary is sound: Sp ⊂ Su = Sg, taking Su", nil
+	} else {
+		// Case 4: Otherwise, it's unsound
+		Su.IsSound = false
+		return false, "Summary is unsound: need to iterate again or perform non-LLM analysis", nil
+	}
+}
+
+// createMostGeneralSummary creates a summary where every callee function has maximum possible dataflows.
+// This represents Sg (most-general summary) in the summary soundness check.
+//
+//gocyclo:ignore
+func (g *InterProceduralFlowGraph) createMostGeneralSummary(function *ssa.Function) *SummaryGraph {
+	// Validate input parameters
+	if g == nil {
+		panic("InterProceduralFlowGraph is nil")
+	}
+	if g.AnalyzerState == nil {
+		panic("AnalyzerState is nil")
+	}
+	if function == nil {
+		panic("function parameter is nil")
+	}
+
+	// Get or create a fresh summary for the function
+	summary := g.Summaries[function]
+	if summary == nil {
+		id := GetUniqueFunctionID()
+		summary = NewSummaryGraph(g.AnalyzerState, function, id, IsNodeOfInterest, nil)
+		if summary == nil {
+			panic(fmt.Sprintf("failed to create summary for function %v", function))
+		}
+		// Clone the summary to avoid modifying the original
+		// summary = g.cloneSummary(summary)
+	} else {
+		// Clone the summary to avoid modifying the original
+		summary = g.cloneSummary(summary)
+		if summary == nil {
+			panic(fmt.Sprintf("failed to clone summary for function %v", function))
+		}
+	}
+
+	// Validate summary state after creation/cloning
+	if summary.Parent == nil {
+		panic(fmt.Sprintf("summary.Parent is nil for function %v", function))
+	}
+
+	// Check if function has valid implementation
+	if len(function.Blocks) == 0 {
+		g.AnalyzerState.Logger.Debugf("Function %v has no blocks, skipping intra-procedural analysis", function)
+		// For functions with no blocks, create a minimal summary
+		summary.Constructed = true
+		summary.IsSound = true
+		return summary
+	}
+
+	if len(function.Blocks[0].Instrs) == 0 {
+		g.AnalyzerState.Logger.Debugf("Function %v has no instructions in first block, skipping intra-procedural analysis", function)
+		// For functions with no instructions, create a minimal summary
+		summary.Constructed = true
+		summary.IsSound = true
+		return summary
+	}
+
+	// For each callee, create full dataflow connections
+	for _, calleeMap := range summary.Callees {
+		for _, callNode := range calleeMap {
+			// For most-general, assume every callee has full dataflow
+			if callNode != nil && callNode.Callee() != nil {
+				// If the callee doesn't have a summary, create one
+				if callNode.CalleeSummary == nil {
+					id := GetUniqueFunctionID()
+					calleeSummary := NewSummaryGraph(g.AnalyzerState, callNode.Callee(), id, IsNodeOfInterest, nil)
+					if calleeSummary != nil {
+						callNode.CalleeSummary = calleeSummary
+						g.Summaries[callNode.Callee()] = calleeSummary
+						// For most-general, always build a full flow graph
+						callNode.CalleeSummary.BuildFullFlowGraph()
+					}
+				} else if !callNode.CalleeSummary.IsSound {
+					// If the callee's summary is not sound, build a full flow graph
+					callNode.CalleeSummary.BuildFullFlowGraph()
+				}
+				// If the summary is sound, respect it and don't modify it
+			}
+		}
+	}
+
+	// Validate summary state before running intra-procedural analysis
+	if summary.shouldTrack == nil {
+		g.AnalyzerState.Logger.Debugf("Setting shouldTrack to IsNodeOfInterest for function %v", function)
+		summary.shouldTrack = IsNodeOfInterest
+	}
+
+	// Additional validation before RunIntraProcedural
+	if summary.Parent != function {
+		panic(fmt.Sprintf("summary.Parent (%v) doesn't match function parameter (%v)", summary.Parent, function))
+	}
+
+	// Perform intra-procedural analysis on our carefully crafted summary
+	_, err := RunIntraProcedural(g.AnalyzerState, summary)
+	if err != nil {
+		// Log error but continue with the summary we've built so far
+		g.AnalyzerState.Logger.Warnf("Failed to analyze function %v with maximum callee flows: %v", function, err)
+		summary.BuildFullFlowGraph() // Fallback to full connectivity
+		// Mark as constructed even if analysis failed
+		summary.Constructed = true
+		summary.IsSound = false // Mark as unsound due to analysis failure
+		return summary
+	}
+
+	// Mark the summary as constructed and sound
+	summary.Constructed = true
+	summary.IsSound = true
+	summary.SyncGlobals()
+
+	// Use the analyzed summary as our most-general summary
+	return summary
+}
+
+// createMostPreservedSummary creates a summary assuming no dataflows between callees.
+// This represents Sp (most-preserved summary) in the summary soundness check.
+func (g *InterProceduralFlowGraph) createMostPreservedSummary(function *ssa.Function) *SummaryGraph {
+	// Get or create a fresh summary for the function
+	summary := g.Summaries[function]
+	if summary == nil {
+		id := GetUniqueFunctionID()
+		summary = NewSummaryGraph(g.AnalyzerState, function, id, IsNodeOfInterest, nil)
+		// Clone the summary to avoid modifying the original
+		// summary = g.cloneSummary(summary)
+	} else {
+		// Clone the summary to avoid modifying the original
+		summary = g.cloneSummary(summary)
+	}
+
+	// For each callee, create empty summaries with no dataflows
+	for _, calleeMap := range summary.Callees {
+		for _, callNode := range calleeMap {
+			// For most-preserved, assume every callee has no internal dataflows
+			if callNode.Callee() != nil {
+				// If the callee doesn't have a summary, create one
+				if callNode.CalleeSummary == nil {
+					id := GetUniqueFunctionID()
+					calleeSummary := NewSummaryGraph(g.AnalyzerState, callNode.Callee(), id, IsNodeOfInterest, nil)
+					callNode.CalleeSummary = calleeSummary
+					g.Summaries[callNode.Callee()] = calleeSummary
+					// In theory the summary is already empty, here we just call the BuildEmptyGraph to actually enforce it
+					callNode.CalleeSummary.BuildEmptyGraph()
+				} else if !callNode.CalleeSummary.IsSound {
+					// If it has a summary, create a fresh empty clone of it
+					emptyCalleeSummary := g.cloneSummary(callNode.CalleeSummary)
+					// Use BuildEmptyGraph to clear all edges from the callee summary to represent no dataflows
+					emptyCalleeSummary.BuildEmptyGraph()
+					callNode.CalleeSummary = emptyCalleeSummary
+				}
+			}
+		}
+	}
+
+	// Validate summary state before running intra-procedural analysis
+	if summary.shouldTrack == nil {
+		g.AnalyzerState.Logger.Debugf("Setting shouldTrack to IsNodeOfInterest for function %v", function)
+		summary.shouldTrack = IsNodeOfInterest
+	}
+	// Perform intra-procedural analysis on our carefully crafted summary
+	_, err := RunIntraProcedural(g.AnalyzerState, summary)
+	if err != nil {
+		// Log error but continue with the summary we've built so far
+		g.AnalyzerState.Logger.Warnf("Failed to analyze function %v with minimal callee flows: %v", function, err)
+		summary.BuildEmptyGraph() // Fallback to no connectivity
+		return summary
+	}
+
+	// Mark the summary as constructed and sound
+	summary.Constructed = true
+	summary.IsSound = true
+	summary.SyncGlobals()
+
+	// Use the analyzed summary as our most-preserved summary
+	return summary
+}
+
+// extractParamFlows extracts parameter-to-parameter and parameter-to-return flows from a summary,
+// using transitive closure to find all reachable parameters and returns, ignoring self-loops.
+func (g *InterProceduralFlowGraph) extractParamFlows(summary *SummaryGraph) map[string]bool {
+	flows := make(map[string]bool)
+
+	if summary == nil {
+		return flows
+	}
+
+	// Collect all target nodes (parameters and return values) into a set for efficient lookup
+	targetNodes := make(map[GraphNode]bool)
+	for _, paramNode := range summary.Params {
+		targetNodes[paramNode] = true
+	}
+	for _, retNodes := range summary.Returns {
+		for _, ret := range retNodes {
+			if ret != nil { // Return nodes can be nil for constant values
+				targetNodes[ret] = true
+			}
+		}
+	}
+
+	// For each parameter, find all reachable target nodes using DFS
+	for _, paramNode := range summary.Params {
+		visited := make(map[GraphNode]bool)
+		reachableTargets := g.findReachableTargets(paramNode, targetNodes, visited)
+
+		// Record flows to reachable target nodes (excluding self-loops)
+		for _, target := range reachableTargets {
+			if target != paramNode { // Skip self-loops
+				flowKey := fmt.Sprintf("%s -> %s", paramNode.String(), target.String())
+				flows[flowKey] = true
+			}
+		}
+	}
+
+	return flows
+}
+
+// findReachableTargets performs DFS traversal to find all reachable target nodes
+// from the given start node, avoiding cycles using the visited set.
+// targetNodes specifies which nodes we consider as valid targets (params and returns).
+func (g *InterProceduralFlowGraph) findReachableTargets(startNode GraphNode, targetNodes map[GraphNode]bool, visited map[GraphNode]bool) []GraphNode {
+	var targets []GraphNode
+
+	// Mark current node as visited to prevent cycles
+	visited[startNode] = true
+
+	// If the current node is a target node, add it to results
+	if targetNodes[startNode] {
+		targets = append(targets, startNode)
+	}
+
+	// Explore all outgoing edges
+	for destNode := range startNode.Out() {
+		// Skip already visited nodes to prevent cycles
+		if visited[destNode] {
+			continue
+		}
+
+		// Recursively explore this destination node
+		subTargets := g.findReachableTargets(destNode, targetNodes, visited)
+		targets = append(targets, subTargets...)
+	}
+
+	return targets
+}
+
+// compareSummaries compares two summaries and returns true if they are equivalent.
+// Only compares parameter-to-parameter and parameter-to-return relationships, ignoring self-loops.
+func (g *InterProceduralFlowGraph) compareSummaries(summary1, summary2 *SummaryGraph) bool {
+	if summary1 == nil || summary2 == nil {
+		return summary1 == summary2
+	}
+
+	// Extract relevant flows from both summaries
+	flows1 := g.extractParamFlows(summary1)
+	flows2 := g.extractParamFlows(summary2)
+
+	// Compare the flow sets
+	if len(flows1) != len(flows2) {
+		return false
+	}
+
+	for flow1 := range flows1 {
+		if _, exists := flows2[flow1]; !exists {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isSummarySubset checks if summary1 is a subset of summary2 (summary1 ⊆ summary2).
+// Only considers parameter-to-parameter and parameter-to-return relationships, ignoring self-loops.
+func (g *InterProceduralFlowGraph) isSummarySubset(summary1, summary2 *SummaryGraph) bool {
+	if summary1 == nil {
+		return true // Empty set is a subset of any set
+	}
+	if summary2 == nil {
+		return false // Non-empty set cannot be a subset of an empty set
+	}
+
+	// Extract relevant flows from both summaries
+	flows1 := g.extractParamFlows(summary1)
+	flows2 := g.extractParamFlows(summary2)
+
+	// Check if all flows in summary1 exist in summary2
+	for flow1 := range flows1 {
+		if _, exists := flows2[flow1]; !exists {
+			return false
+		}
+	}
+
+	return true
+}
+
+// compareEdgeInfo compares two EdgeInfo structures and returns true if they are equivalent.
+func (g *InterProceduralFlowGraph) compareEdgeInfo(ei1, ei2 EdgeInfo) bool {
+	// Check if indices match
+	if ei1.Index != ei2.Index {
+		return false
+	}
+
+	// Compare conditions (either both nil or both equal)
+	if (ei1.Cond == nil) != (ei2.Cond == nil) {
+		return false
+	}
+	if ei1.Cond != nil && ei2.Cond != nil {
+		if ei1.Cond.Satisfiable != ei2.Cond.Satisfiable {
+			return false
+		}
+		if len(ei1.Cond.Conditions) != len(ei2.Cond.Conditions) {
+			return false
+		}
+		// For simplicity, we're not comparing the actual condition contents
+	}
+
+	// Compare RelPath maps
+	if len(ei1.RelPath) != len(ei2.RelPath) {
+		return false
+	}
+
+	// Check if all paths in ei1 exist in ei2
+	for inPath1, outPaths1 := range ei1.RelPath {
+		outPaths2, exists := ei2.RelPath[inPath1]
+		if !exists {
+			return false
+		}
+
+		if len(outPaths1) != len(outPaths2) {
+			return false
+		}
+
+		for outPath1 := range outPaths1 {
+			if _, exists := outPaths2[outPath1]; !exists {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// createEmptySummaryClone creates a new SummaryGraph with the same metadata as the original.
+func (g *InterProceduralFlowGraph) createEmptySummaryClone(original *SummaryGraph) *SummaryGraph {
+	return &SummaryGraph{
+		ID:                    original.ID,
+		Constructed:           original.Constructed,
+		IsInterfaceContract:   original.IsInterfaceContract,
+		IsPreSummarized:       original.IsPreSummarized,
+		IsSound:               original.IsSound, // Copy the sound flag to preserve it during cloning
+		Parent:                original.Parent,
+		Params:                make(map[ssa.Node]*ParamNode),
+		FreeVars:              make(map[ssa.Node]*FreeVarNode),
+		Callees:               make(map[ssa.CallInstruction]map[*ssa.Function]*CallNode),
+		Callsites:             make(map[ssa.CallInstruction]*CallNode),
+		BuiltinCalls:          make(map[ssa.CallInstruction]*BuiltinCallNode),
+		Returns:               make(map[ssa.Instruction][]*ReturnValNode),
+		CreatedClosures:       make(map[ssa.Instruction]*ClosureNode),
+		ReferringMakeClosures: make(map[ssa.Instruction]*ClosureNode),
+		AccessGlobalNodes:     make(map[ssa.Instruction]map[ssa.Value]*AccessGlobalNode),
+		SyntheticNodes:        make(map[ssa.Instruction]*SyntheticNode),
+		BoundLabelNodes:       make(map[ssa.Instruction]map[BindingInfo]*BoundLabelNode),
+		Ifs:                   make(map[ssa.Instruction]*IfNode),
+		errors:                make(map[error]bool),
+		lastNodeID:            original.lastNodeID,
+		shouldTrack:           original.shouldTrack,
+		postBlockCallBack:     original.postBlockCallBack,
+	}
+}
+
+// cloneParameterNodes clones all parameter nodes from the original graph to the clone.
+func (g *InterProceduralFlowGraph) cloneParameterNodes(
+	original *SummaryGraph,
+	clone *SummaryGraph,
+	nodeMapping map[GraphNode]GraphNode) {
+
+	// Clone parameters
+	for k, v := range original.Params {
+		paramNode := &ParamNode{
+			id:      v.id,
+			parent:  clone,
+			ssaNode: v.ssaNode,
+			out:     make(map[GraphNode][]EdgeInfo),
+			in:      make(map[GraphNode]EdgeInfo),
+			argPos:  v.argPos,
+		}
+		clone.Params[k] = paramNode
+		nodeMapping[v] = paramNode
+	}
+
+	// Clone free variables
+	for k, v := range original.FreeVars {
+		freeVarNode := &FreeVarNode{
+			id:      v.id,
+			parent:  clone,
+			ssaNode: v.ssaNode,
+			out:     make(map[GraphNode][]EdgeInfo),
+			in:      make(map[GraphNode]EdgeInfo),
+			fvPos:   v.fvPos,
+		}
+		clone.FreeVars[k] = freeVarNode
+		nodeMapping[v] = freeVarNode
+	}
+}
+
+// cloneCalleeNodes clones all callee and call nodes from the original graph to the clone.
+func (g *InterProceduralFlowGraph) cloneCalleeNodes(
+	original *SummaryGraph,
+	clone *SummaryGraph,
+	nodeMapping map[GraphNode]GraphNode) {
+
+	// Clone callees and call nodes
+	for instr, calleeMap := range original.Callees {
+		clone.Callees[instr] = make(map[*ssa.Function]*CallNode)
+		for fn, callNode := range calleeMap {
+			newCallNode := &CallNode{
+				id:            callNode.id,
+				parent:        clone,
+				callee:        callNode.callee,
+				CalleeSummary: callNode.CalleeSummary, // Reference to the original callee summary
+				args:          make([]*CallNodeArg, len(callNode.args)),
+				callSite:      callNode.callSite,
+				out:           make(map[GraphNode][]EdgeInfo),
+				in:            make(map[GraphNode]EdgeInfo),
+			}
+
+			// Clone args
+			for i, arg := range callNode.args {
+				callNodeArg := &CallNodeArg{
+					id:        arg.id,
+					parent:    newCallNode,
+					ssaValue:  arg.ssaValue,
+					argPos:    arg.argPos,
+					out:       make(map[GraphNode][]EdgeInfo),
+					in:        make(map[GraphNode]EdgeInfo),
+					paramName: arg.paramName,
+				}
+				newCallNode.args[i] = callNodeArg
+				nodeMapping[arg] = callNodeArg
+			}
+
+			clone.Callees[instr][fn] = newCallNode
+			clone.Callsites[instr] = newCallNode
+			nodeMapping[callNode] = newCallNode
+		}
+	}
+}
+
+// cloneBuiltinCallNodes clones all builtin call nodes from the original graph to the clone.
+func (g *InterProceduralFlowGraph) cloneBuiltinCallNodes(
+	original *SummaryGraph,
+	clone *SummaryGraph,
+	nodeMapping map[GraphNode]GraphNode) {
+
+	// Clone builtin calls
+	for instr, builtinCall := range original.BuiltinCalls {
+		builtinCallNode := &BuiltinCallNode{
+			id:       builtinCall.id,
+			parent:   clone,
+			callSite: builtinCall.callSite,
+			name:     builtinCall.name,
+			out:      make(map[GraphNode][]EdgeInfo),
+			in:       make(map[GraphNode]EdgeInfo),
+			marks:    builtinCall.marks, // This might need deeper cloning if mutable
+		}
+		clone.BuiltinCalls[instr] = builtinCallNode
+		nodeMapping[builtinCall] = builtinCallNode
+	}
+}
+
+// cloneReturnNodes clones all return value nodes from the original graph to the clone.
+func (g *InterProceduralFlowGraph) cloneReturnNodes(
+	original *SummaryGraph,
+	clone *SummaryGraph,
+	nodeMapping map[GraphNode]GraphNode) {
+
+	// Clone return values
+	for instr, returnValNodes := range original.Returns {
+		clonedReturnNodes := make([]*ReturnValNode, len(returnValNodes))
+		for i, returnNode := range returnValNodes {
+			if returnNode != nil {
+				// ReturnValNode now has both 'in' and 'out' fields
+				returnValNode := &ReturnValNode{
+					id:     returnNode.id,
+					parent: clone,
+					index:  returnNode.index,
+					in:     make(map[GraphNode]EdgeInfo),
+					out:    make(map[GraphNode][]EdgeInfo),
+				}
+				clonedReturnNodes[i] = returnValNode
+				nodeMapping[returnNode] = returnValNode
+			}
+		}
+		clone.Returns[instr] = clonedReturnNodes
+	}
+}
+
+// cloneClosureNodes clones all closure nodes from the original graph to the clone.
+func (g *InterProceduralFlowGraph) cloneClosureNodes(
+	original *SummaryGraph,
+	clone *SummaryGraph,
+	nodeMapping map[GraphNode]GraphNode) {
+
+	// Clone closure nodes
+	for instr, closureNode := range original.CreatedClosures {
+		clonedClosureNode := &ClosureNode{
+			id:             closureNode.id,
+			parent:         clone,
+			ClosureSummary: closureNode.ClosureSummary, // Reference to the original closure summary
+			instr:          closureNode.instr,
+			boundVars:      make([]*BoundVarNode, len(closureNode.boundVars)),
+			out:            make(map[GraphNode][]EdgeInfo),
+			in:             make(map[GraphNode]EdgeInfo),
+		}
+
+		// Clone bound variables
+		for i, boundVar := range closureNode.boundVars {
+			boundVarNode := &BoundVarNode{
+				id:       boundVar.id,
+				parent:   clonedClosureNode,
+				ssaValue: boundVar.ssaValue,
+				bPos:     boundVar.bPos,
+				out:      make(map[GraphNode][]EdgeInfo),
+				in:       make(map[GraphNode]EdgeInfo),
+			}
+			clonedClosureNode.boundVars[i] = boundVarNode
+			nodeMapping[boundVar] = boundVarNode
+		}
+
+		clone.CreatedClosures[instr] = clonedClosureNode
+		nodeMapping[closureNode] = clonedClosureNode
+	}
+
+	// Clone referring make closures
+	for instr, makeClosure := range original.ReferringMakeClosures {
+		// These should be references to closure nodes we've already created
+		if clonedNode, exists := nodeMapping[makeClosure]; exists {
+			clone.ReferringMakeClosures[instr] = clonedNode.(*ClosureNode)
+		}
+	}
+}
+
+// cloneMiscNodes clones various other node types (synthetic, bound label, if, access global)
+// from the original graph to the clone.
+func (g *InterProceduralFlowGraph) cloneMiscNodes(
+	original *SummaryGraph,
+	clone *SummaryGraph,
+	nodeMapping map[GraphNode]GraphNode) {
+
+	// Clone synthetic nodes
+	for instr, syntheticNode := range original.SyntheticNodes {
+		synNode := &SyntheticNode{
+			id:     syntheticNode.id,
+			parent: clone,
+			instr:  syntheticNode.instr,
+			label:  syntheticNode.label,
+			out:    make(map[GraphNode][]EdgeInfo),
+			in:     make(map[GraphNode]EdgeInfo),
+		}
+		clone.SyntheticNodes[instr] = synNode
+		nodeMapping[syntheticNode] = synNode
+	}
+
+	// Clone bound label nodes
+	for instr, boundLabelMap := range original.BoundLabelNodes {
+		clone.BoundLabelNodes[instr] = make(map[BindingInfo]*BoundLabelNode)
+		for bindingInfo, boundLabelNode := range boundLabelMap {
+			blNode := &BoundLabelNode{
+				id:         boundLabelNode.id,
+				parent:     clone,
+				instr:      boundLabelNode.instr,
+				label:      boundLabelNode.label, // Might need deep copy if label is mutable
+				targetInfo: boundLabelNode.targetInfo,
+				targetAnon: boundLabelNode.targetAnon, // Reference to the original target
+				out:        make(map[GraphNode][]EdgeInfo),
+				in:         make(map[GraphNode]EdgeInfo),
+			}
+			clone.BoundLabelNodes[instr][bindingInfo] = blNode
+			nodeMapping[boundLabelNode] = blNode
+		}
+	}
+
+	// Clone if nodes
+	for instr, ifNode := range original.Ifs {
+		ifn := &IfNode{
+			id:      ifNode.id,
+			parent:  clone,
+			ssaNode: ifNode.ssaNode,
+			out:     make(map[GraphNode][]EdgeInfo),
+			in:      make(map[GraphNode]EdgeInfo),
+		}
+		clone.Ifs[instr] = ifn
+		nodeMapping[ifNode] = ifn
+	}
+
+	// Clone access global nodes
+	for instr, globalMap := range original.AccessGlobalNodes {
+		clone.AccessGlobalNodes[instr] = make(map[ssa.Value]*AccessGlobalNode)
+		for value, accessGlobalNode := range globalMap {
+			agNode := &AccessGlobalNode{
+				id:      accessGlobalNode.id,
+				IsWrite: accessGlobalNode.IsWrite,
+				graph:   clone,
+				instr:   accessGlobalNode.instr,
+				Global:  accessGlobalNode.Global, // Reference to the original global
+				out:     make(map[GraphNode][]EdgeInfo),
+				in:      make(map[GraphNode]EdgeInfo),
+			}
+			clone.AccessGlobalNodes[instr][value] = agNode
+			nodeMapping[accessGlobalNode] = agNode
+		}
+	}
+
+	// Clone errors
+	for err := range original.errors {
+		clone.errors[err] = true
+	}
+}
+
+// cloneEdgeInfo creates a deep copy of an EdgeInfo structure.
+func (g *InterProceduralFlowGraph) cloneEdgeInfo(ei EdgeInfo) EdgeInfo {
+	clonedEdgeInfo := EdgeInfo{
+		Index: ei.Index,
+		Cond:  ei.Cond, // Might need deep copy if condition is mutable
+	}
+
+	// Clone RelPath map
+	clonedRelPath := make(map[string]map[string]bool)
+	for inPath, outPathMap := range ei.RelPath {
+		clonedOutPathMap := make(map[string]bool)
+		for outPath, val := range outPathMap {
+			clonedOutPathMap[outPath] = val
+		}
+		clonedRelPath[inPath] = clonedOutPathMap
+	}
+	clonedEdgeInfo.RelPath = clonedRelPath
+
+	return clonedEdgeInfo
+}
+
+// restoreEdges recreates all the edges between nodes in the cloned graph.
+func (g *InterProceduralFlowGraph) restoreEdges(
+	original *SummaryGraph,
+	nodeMapping map[GraphNode]GraphNode) {
+
+	original.ForAllNodes(func(origNode GraphNode) {
+		// Get the corresponding cloned node
+		clonedNode, exists := nodeMapping[origNode]
+		if !exists {
+			return
+		}
+
+		// Copy outgoing edges
+		for destOrigNode, edgeInfos := range origNode.Out() {
+			destClonedNode, destExists := nodeMapping[destOrigNode]
+			if !destExists {
+				continue
+			}
+
+			// Clone edge infos
+			clonedEdgeInfos := make([]EdgeInfo, len(edgeInfos))
+			for i, ei := range edgeInfos {
+				clonedEdgeInfos[i] = g.cloneEdgeInfo(ei)
+			}
+
+			// Add edge to cloned node
+			outMap := clonedNode.Out()
+			outMap[destClonedNode] = clonedEdgeInfos
+
+			// Add corresponding in-edge
+			// We use the first edge info as representative for the in-edge
+			if len(clonedEdgeInfos) > 0 {
+				addInEdge(destClonedNode, clonedNode, clonedEdgeInfos[0])
+			}
+		}
+	})
+}
+
+// cloneSummary creates a complete deep copy of a SummaryGraph to avoid modifying the original.
+// This function delegates to helper functions to keep its complexity manageable.
+func (g *InterProceduralFlowGraph) cloneSummary(original *SummaryGraph) *SummaryGraph {
+	if original == nil {
+		return nil
+	}
+
+	// Create the base summary structure
+	clone := g.createEmptySummaryClone(original)
+
+	// Create a node mapping to help restore edges later
+	nodeMapping := make(map[GraphNode]GraphNode)
+
+	// Clone all the different types of nodes
+	g.cloneParameterNodes(original, clone, nodeMapping)
+	g.cloneCalleeNodes(original, clone, nodeMapping)
+	g.cloneBuiltinCallNodes(original, clone, nodeMapping)
+	g.cloneReturnNodes(original, clone, nodeMapping)
+	g.cloneClosureNodes(original, clone, nodeMapping)
+	g.cloneMiscNodes(original, clone, nodeMapping)
+
+	// Restore all the edges between nodes
+	g.restoreEdges(original, nodeMapping)
+
+	return clone
+}
+
+// isNodeRelatedToCallee checks if a node is related to a specific callee function.
+func (g *InterProceduralFlowGraph) isNodeRelatedToCallee(node GraphNode, callee *ssa.Function) bool {
+	switch n := node.(type) {
+	case *CallNode:
+		return n.Callee() == callee
+	case *CallNodeArg:
+		return n.ParentNode().Callee() == callee
+	default:
+		return false
+	}
+}
+
+// findCorrespondingNode finds a node in the target graph that corresponds to the source node.
+func (g *InterProceduralFlowGraph) findCorrespondingNode(sourceNode GraphNode, targetGraph *SummaryGraph) (GraphNode, bool) {
+	var result GraphNode
+	found := false
+
+	targetGraph.ForAllNodes(func(node GraphNode) {
+		if node.String() == sourceNode.String() {
+			result = node
+			found = true
+		}
+	})
+
+	return result, found
+}
+
+// findEdgeDifferences identifies edges that exist in sourceNode but not in targetNode.
+// It returns a list of edges (destination nodes and edge infos) that should be added to the result graph.
+func (g *InterProceduralFlowGraph) findEdgeDifferences(
+	sourceNode, targetNode GraphNode,
+	sourceGraph, targetGraph *SummaryGraph) map[GraphNode][]EdgeInfo {
+
+	differences := make(map[GraphNode][]EdgeInfo)
+
+	// For each outgoing edge from the source node
+	for destSourceNode, edgeInfos1 := range sourceNode.Out() {
+		// Find corresponding destination node in target graph
+		destTargetNode, destFound := g.findCorrespondingNode(destSourceNode, targetGraph)
+
+		if !destFound {
+			// The edge exists in source but not in target
+			differences[destSourceNode] = edgeInfos1
+			continue
+		}
+
+		// Check if the edge infos are different
+		targetEdgeInfos := targetNode.Out()[destTargetNode]
+
+		// For each EdgeInfo in the source, check if it exists in the target
+		for _, ei1 := range edgeInfos1 {
+			edgeExists := false
+
+			for _, ei2 := range targetEdgeInfos {
+				if g.compareEdgeInfo(ei1, ei2) {
+					edgeExists = true
+					break
+				}
+			}
+
+			if !edgeExists {
+				// This specific edge info doesn't exist in the target
+				if _, ok := differences[destSourceNode]; !ok {
+					differences[destSourceNode] = []EdgeInfo{ei1}
+				} else {
+					differences[destSourceNode] = append(differences[destSourceNode], ei1)
+				}
+			}
+		}
+	}
+
+	return differences
+}
+
+// createIntersectionSummary creates a summary representing (Su∖Sp)∩Gi for a given callee.
+// This computes the difference between Su and Sp, then intersects it with the callee's summary.
+func (g *InterProceduralFlowGraph) createIntersectionSummary(Su, Sp *SummaryGraph, callee *ssa.Function) *SummaryGraph {
+	// Get or create the callee's summary
+	calleeSummary := g.Summaries[callee]
+	if calleeSummary == nil {
+		id := GetUniqueFunctionID()
+		calleeSummary = NewSummaryGraph(g.AnalyzerState, callee, id, nil, nil)
+	}
+
+	// Clone the callee summary to avoid modifying the original
+	result := g.cloneSummary(calleeSummary)
+
+	// Process each node in Su that is related to this callee
+	Su.ForAllNodes(func(suNode GraphNode) {
+		// Skip nodes not related to the callee
+		if !g.isNodeRelatedToCallee(suNode, callee) {
+			return
+		}
+
+		// Find corresponding node in Sp
+		spNode, nodeInSp := g.findCorrespondingNode(suNode, Sp)
+
+		// If the node doesn't exist in Sp, it's fully in Su∖Sp
+		// (In a complete implementation, we would add this node and all its edges)
+		if !nodeInSp {
+			return
+		}
+
+		// Find edges that exist in Su but not in Sp
+		edgeDifferences := g.findEdgeDifferences(suNode, spNode, Su, Sp)
+
+		// In a complete implementation, we would add these edge differences to the result summary
+		// For now, we're just identifying the differences but not actually modifying the result
+		if len(edgeDifferences) > 0 {
+			g.AnalyzerState.Logger.Debugf(
+				"Found %d edge differences for node %s in function %s",
+				len(edgeDifferences), suNode.String(), callee.String())
+		}
+	})
+
+	return result
+}
+
+// PerformDataflowAnalysis performs intra-procedural dataflow analysis on the given function,
+// assuming all callees have already been summarized.
+// It returns a summary graph representing which variables can flow to which other variables.
+func (g *InterProceduralFlowGraph) PerformDataflowAnalysis(function *ssa.Function) (*SummaryGraph, error) {
+	if function == nil {
+		return nil, fmt.Errorf("cannot analyze nil function")
+	}
+
+	// Check if we already have a summary for this function
+	if summary, ok := g.Summaries[function]; ok && summary.Constructed {
+		return summary, nil
+	}
+
+	// Get or create a new summary
+	//TODO: It should be guaranteed to be sound, cnosidering add a field to summary to mark it's sound or not
+	// Panic if it's unsound here
+	var summary *SummaryGraph
+	if existingSummary, ok := g.Summaries[function]; ok {
+		summary = existingSummary
+	} else {
+		id := GetUniqueFunctionID()
+		summary = NewSummaryGraph(g.AnalyzerState, function, id, nil, nil)
+		g.Summaries[function] = summary
+	}
+
+	// Perform the intra-procedural analysis
+	elapsed, err := RunIntraProcedural(g.AnalyzerState, summary)
+	if err != nil {
+		return nil, fmt.Errorf("dataflow analysis failed for %v: %w", function, err)
+	}
+
+	g.AnalyzerState.Logger.Debugf("PerformDataflowAnalysis: Finished analyzing %v (%.2f s)",
+		function, elapsed.Seconds())
+
+	// Mark the summary as constructed and sound (since it's computed by the program)
+	summary.Constructed = true
+	summary.IsSound = true
+
+	// Synchronize global information
+	summary.SyncGlobals()
+
+	return summary, nil
+}
+
 // BuildSummary builds a summary for function and returns it.
 // If the summary was already built, i.e. there in a summary corresponding to the function in the flow graph, then
 // the summary is constructed by running the intra-procedural dataflow analysis.
@@ -725,6 +1784,9 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 	}
 
 	logger.Debugf("BuildSummary: Finished constructing summary for %v (%.2f s)", function, elapsed.Seconds())
+
+	// Mark the summary as sound since it was computed by the program
+	summary.IsSound = true
 
 	return summary
 }

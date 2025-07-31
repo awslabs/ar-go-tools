@@ -216,6 +216,21 @@ func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
 
 	// Start analysis goroutine
 	go func() {
+		// defer func() {
+		// 	if r := recover(); r != nil {
+		// 		// Handle panic in goroutine
+		// 		funcName := "unknown"
+		// 		if sm != nil && sm.Parent != nil {
+		// 			funcName = formatutil.Sanitize(sm.Parent.String())
+		// 		}
+		// 		a.Logger.Errorf("Panic in intra-procedural analysis for function %s: %v", funcName, r)
+		// 		select {
+		// 		case done <- analysisResult{duration: 0, err: fmt.Errorf("analysis panicked: %v", r)}:
+		// 		default:
+		// 			// Channel might be closed, ignore
+		// 		}
+		// 	}
+		// }()
 		start := time.Now()
 		err := runOriginalAnalysisWithContext(ctx, a, sm)
 		elapsed := time.Since(start)
@@ -236,8 +251,11 @@ func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
 	case <-ctx.Done():
 		// Timeout occurred
 		if a.Logger != nil {
-			a.Logger.Warnf("Function %s is cancelled due to time out",
-				formatutil.Sanitize(sm.Parent.String()))
+			funcName := "unknown"
+			if sm != nil && sm.Parent != nil {
+				funcName = formatutil.Sanitize(sm.Parent.String())
+			}
+			a.Logger.Warnf("Function %s is cancelled due to time out", funcName)
 		}
 
 		// Build full graph as replacement
@@ -314,6 +332,17 @@ func runOriginalAnalysisWithContext(ctx context.Context, a *State, sm *SummaryGr
 	default:
 	}
 
+	// Validate inputs before starting analysis
+	if sm == nil {
+		return fmt.Errorf("summary graph is nil")
+	}
+	if sm.Parent == nil {
+		return fmt.Errorf("function is nil")
+	}
+	if len(sm.Parent.Blocks) == 0 {
+		return fmt.Errorf("function has no blocks")
+	}
+
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
 	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{
@@ -343,8 +372,11 @@ func runOriginalAnalysisWithContext(ctx context.Context, a *State, sm *SummaryGr
 
 	// Output warning if defer stack is unbounded
 	if !state.deferStacks.DeferStackBounded {
-		a.Logger.Warnf("Defer stack unbounded in %s: %s",
-			formatutil.Sanitize(sm.Parent.String()), formatutil.Yellow("analysis unsound!"))
+		funcName := "unknown"
+		if sm != nil && sm.Parent != nil {
+			funcName = formatutil.Sanitize(sm.Parent.String())
+		}
+		a.Logger.Warnf("Defer stack unbounded in %s: %s", funcName, formatutil.Yellow("analysis unsound!"))
 	}
 
 	// Check for cancellation before heavy computation
@@ -700,7 +732,7 @@ func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label 
 	var maps []*pointer.Label
 	if ptr, ok := state.parentAnalyzerState.PointerAnalysis.Queries[value]; ok {
 		for _, label := range ptr.PointsTo().Labels() {
-			if label.Value() == nil {
+			if label == nil || label.Value() == nil {
 				continue
 			}
 			_, isBound := state.parentAnalyzerState.BoundingInfo[label.Value()]
@@ -711,7 +743,7 @@ func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label 
 	}
 	if ptr, ok := state.parentAnalyzerState.PointerAnalysis.IndirectQueries[value]; ok {
 		for _, label := range ptr.PointsTo().Labels() {
-			if label.Value() == nil {
+			if label == nil || label.Value() == nil {
 				continue
 			}
 			_, isBound := state.parentAnalyzerState.BoundingInfo[label.Value()]

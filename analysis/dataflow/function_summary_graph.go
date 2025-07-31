@@ -51,6 +51,12 @@ type SummaryGraph struct {
 	// - loaded from an external summary contract file
 	IsPreSummarized bool
 
+	// true if the summary is sound, meaning it accurately represents the dataflow behavior
+	// A summary is marked sound when:
+	// - It is computed by Argot itself, or
+	// - It passes the CheckSummarySoundness verification
+	IsSound bool
+
 	// the ssa function it summarizes
 	Parent *ssa.Function
 
@@ -146,6 +152,7 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 		lastNodeID:            &lastNodeID,
 		shouldTrack:           shouldTrack,
 		postBlockCallBack:     postBlockCallBack,
+		IsSound:               false,
 	}
 	// Add the parameters
 	for pos, param := range f.Params {

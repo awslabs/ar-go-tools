@@ -630,13 +630,14 @@ type ReturnValNode struct {
 	index  int // when a function returns a tuple, a return node represents a single indexed Value
 	parent *SummaryGraph
 	in     map[GraphNode]EdgeInfo
+	out    map[GraphNode][]EdgeInfo
 }
 
 // Graph returns the parent summary graph of the node
 func (a *ReturnValNode) Graph() *SummaryGraph { return a.parent }
 
 // Out returns the nodes the graph node's data flows to, with their object path
-func (a *ReturnValNode) Out() map[GraphNode][]EdgeInfo { return nil }
+func (a *ReturnValNode) Out() map[GraphNode][]EdgeInfo { return a.out }
 
 // ID returns the integer id of the node in its parent graph
 func (a *ReturnValNode) ID() uint32 { return a.id }
