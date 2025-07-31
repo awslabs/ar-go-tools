@@ -332,16 +332,16 @@ func runOriginalAnalysisWithContext(ctx context.Context, a *State, sm *SummaryGr
 	default:
 	}
 
-	// Validate inputs before starting analysis
-	if sm == nil {
-		return fmt.Errorf("summary graph is nil")
-	}
-	if sm.Parent == nil {
-		return fmt.Errorf("function is nil")
-	}
-	if len(sm.Parent.Blocks) == 0 {
-		return fmt.Errorf("function has no blocks")
-	}
+	// // Validate inputs before starting analysis
+	// if sm == nil {
+	// 	return fmt.Errorf("summary graph is nil")
+	// }
+	// if sm.Parent == nil {
+	// 	return fmt.Errorf("function is nil")
+	// }
+	// if len(sm.Parent.Blocks) == 0 {
+	// 	return fmt.Errorf("function has no blocks")
+	// }
 
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
 	// This is the only place an IntraAnalysisState is initialized
