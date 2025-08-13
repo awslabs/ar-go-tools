@@ -50,8 +50,8 @@ type NodeTree[T GraphNode] struct {
 	// Origin is the root of the node tree
 	Origin *NodeTree[T]
 
-	// Parent is the parent of the current node
-	Parent *NodeTree[T]
+	// parent is the parent of the current node
+	parent *NodeTree[T]
 
 	Children []*NodeTree[T]
 
@@ -64,13 +64,24 @@ type NodeTree[T GraphNode] struct {
 // NewNodeTree returns a new node tree with the initial node label provided
 func NewNodeTree[T GraphNode](initNode T) *NodeTree[T] {
 	origin := &NodeTree[T]{
-		Label:  initNode,
-		Parent: nil, Children: []*NodeTree[T]{},
-		height: 1,
-		key:    initNode.LongID(),
+		Label:    initNode,
+		parent:   nil,
+		Children: []*NodeTree[T]{},
+		height:   1,
+		key:      initNode.LongID(),
 	}
 	origin.Origin = origin
 	return origin
+}
+
+// Parent returns the parent of the node. If the node is nil, returns nil.
+//
+// (nil-safe)
+func (n *NodeTree[T]) Parent() *NodeTree[T] {
+	if n == nil {
+		return nil
+	}
+	return n.parent
 }
 
 // Key returns the key of the node. If the node has been constructed only using NewNodeTree and Add, the key will be
@@ -89,7 +100,7 @@ func (n *NodeTree[T]) String() string {
 		return ""
 	}
 	s := make([]string, n.height)
-	for cur := n; cur != nil; cur = cur.Parent {
+	for cur := n; cur != nil; cur = cur.Parent() {
 		if cur.height >= 1 {
 			s[cur.height-1] = cur.Label.String()
 		}
@@ -103,7 +114,7 @@ func (n *NodeTree[T]) SummaryString() string {
 		return ""
 	}
 	s := make([]string, n.height)
-	for cur := n; cur != nil; cur = cur.Parent {
+	for cur := n; cur != nil; cur = cur.Parent() {
 		if cur.height >= 1 {
 			s[cur.height-1] = shortNodeSummary(cur.Label)
 		}
@@ -127,7 +138,7 @@ func (n *NodeTree[T]) ToSlice() []T {
 	}
 	s := make([]T, n.height)
 	pos := n.height - 1
-	for cur := n; cur != nil; cur = cur.Parent {
+	for cur := n; cur != nil; cur = cur.Parent() {
 		s[pos] = cur.Label
 		pos--
 	}
@@ -144,7 +155,7 @@ func (n *NodeTree[T]) GetLassoHandle() *NodeTree[T] {
 		return nil
 	}
 	last := n
-	for cur := last.Parent; cur != nil; cur = cur.Parent {
+	for cur := last.Parent(); cur != nil; cur = cur.Parent() {
 		if cur.Label.String() == last.Label.String() {
 			return cur
 		}
@@ -167,7 +178,7 @@ func (n *NodeTree[T]) Add(node T) *NodeTree[T] {
 	// A new node needs to be allocated
 	newNode := &NodeTree[T]{
 		Label:    node,
-		Parent:   n,
+		parent:   n,
 		Children: []*NodeTree[T]{},
 		Origin:   n.Origin,
 		height:   n.height + 1,
@@ -201,7 +212,7 @@ func FuncNames(n *NodeTree[*CallNode], debug bool) string {
 		return ""
 	}
 	s := make([]string, n.height)
-	for cur := n; cur != nil; cur = cur.Parent {
+	for cur := n; cur != nil; cur = cur.Parent() {
 		if cur.height >= 1 {
 			// if debug is set, add the internal id
 			if debug {

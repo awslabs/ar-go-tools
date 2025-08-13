@@ -645,7 +645,7 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 		if cur.Label.Callee() == f {
 			return cur
 		}
-		cur = cur.Parent
+		cur = cur.Parent()
 	}
 	return nil
 }

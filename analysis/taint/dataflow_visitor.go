@@ -237,7 +237,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 					if nextNodeArg != nil {
 						nextNodeWithTrace := df.NodeWithTrace{
 							Node:         nextNodeArg,
-							Trace:        cur.Trace.Parent,
+							Trace:        cur.Trace.Parent(),
 							ClosureTrace: cur.ClosureTrace,
 						}
 						que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
@@ -358,7 +358,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 						if !(graphNode.Index() >= 0 && edgeInfo.Index >= 0 && graphNode.Index() != edgeInfo.Index) {
 							nextNodeWithTrace := df.NodeWithTrace{
 								Node:         nextNode,
-								Trace:        cur.Trace.Parent,
+								Trace:        cur.Trace.Parent(),
 								ClosureTrace: cur.ClosureTrace,
 							}
 							que = v.addNext(s, que, cur, callSiteFromCallStack, nextNodeWithTrace, cur.Status, edgeInfo)
@@ -374,7 +374,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 						nextNodeWithTrace := df.NodeWithTrace{
 							Node:         nextNode,
 							Trace:        cur.Trace,
-							ClosureTrace: cur.ClosureTrace.Parent,
+							ClosureTrace: cur.ClosureTrace.Parent(),
 						}
 						que = v.addNext(s, que, cur, cur.ClosureTrace.Label, nextNodeWithTrace, cur.Status, edgeInfo)
 					}
@@ -430,7 +430,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			// We pop the call from the stack and continue inside the caller
 			var trace *df.NodeTree[*df.CallNode]
 			if cur.Trace != nil {
-				trace = cur.Trace.Parent
+				trace = cur.Trace.Parent()
 			}
 			for nextNode, edgeInfos := range graphNode.Out() {
 				for _, edgeInfo := range edgeInfos {
@@ -535,8 +535,8 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 					bv := bvs[graphNode.Index()]
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         bv,
-						Trace:        cur.Trace.Parent,
-						ClosureTrace: cur.ClosureTrace.Parent,
+						Trace:        cur.Trace.Parent(),
+						ClosureTrace: cur.ClosureTrace.Parent(),
 					}
 					que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
 				} else {
@@ -716,7 +716,7 @@ func (v *Visitor) initEscapeAnalysisInfo(s *df.State, source df.NodeWithTrace) {
 	var rootKey df.KeyType
 	// Resolve the context
 	if source.Trace != nil {
-		rootKey = source.Trace.Parent.Key()
+		rootKey = source.Trace.Parent().Key()
 	} else {
 		rootKey = ""
 	}
@@ -934,9 +934,7 @@ func (v *Visitor) storeEscapeGraph(s *df.State, stack *df.CallStack, callNode *d
 
 	key := "" // key corresponding to no context if the function is a root
 	if stack != nil {
-		if stack.Parent != nil {
-			key = stack.Parent.Key()
-		}
+		key = stack.Parent().Key()
 		escapeContext = v.escapeGraphs[callNode.Graph().Parent][key]
 	}
 
