@@ -1227,7 +1227,12 @@ func (b *BuiltinCallNode) FuncName() string {
 }
 
 // Type returns the type of the result of the builtin call
-func (b *BuiltinCallNode) Type() types.Type { return b.callSite.Value().Type() }
+func (b *BuiltinCallNode) Type() types.Type {
+	if b.callSite.Value() != nil {
+		return b.callSite.Value().Type()
+	}
+	return nil
+}
 
 // Position returns the position of the node.
 func (b *BuiltinCallNode) Position(c *State) token.Position {
