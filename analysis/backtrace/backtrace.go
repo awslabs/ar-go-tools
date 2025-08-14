@@ -481,7 +481,7 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 			// We pop the call from the trace (callstack) when exiting the callee and returning to the caller
 			var tr *df.NodeTree[*df.CallNode]
 			if cur.Trace != nil {
-				tr = cur.Trace.Parent
+				tr = cur.Trace.Parent()
 			}
 
 			// Check if the previous node was a parameter coming from the same function (recursive call)
@@ -706,7 +706,7 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         bv,
 						Trace:        cur.Trace,
-						ClosureTrace: cur.ClosureTrace.Parent,
+						ClosureTrace: cur.ClosureTrace.Parent(),
 					}
 					status := df.VisitorNodeStatus{
 						Kind:        df.ClosureTracing,

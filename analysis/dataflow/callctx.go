@@ -96,7 +96,7 @@ func isRecursive(stack *CallStack, call *CallNode) bool {
 		if stack.Label == call {
 			return true
 		}
-		stack = stack.Parent
+		stack = stack.Parent()
 	}
 	return false
 }
@@ -112,7 +112,7 @@ func hasReachedContextLimit(stack *CallStack, limit int) bool {
 		if counter >= limit {
 			return true
 		}
-		stack = stack.Parent
+		stack = stack.Parent()
 	}
 	return false
 }
@@ -122,7 +122,7 @@ func reverseCallStack(s *reversedCallStack) *CallStack {
 		return nil
 	}
 	res := NewNodeTree(s.Label)
-	for cur := s.Parent; cur != nil; cur = cur.Parent {
+	for cur := s.Parent(); cur != nil; cur = cur.Parent() {
 		res = res.Add(cur.Label)
 	}
 	return res

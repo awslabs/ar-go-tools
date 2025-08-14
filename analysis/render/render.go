@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package render provides functions to build a inter-procedural dataflow graph.
+// Package render provides functions to build an inter-procedural dataflow graph.
 // This is used to render the graph in a GraphViz format.
 package render
 
@@ -104,7 +104,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 					// Follow taint on matching argument at call site
 					arg := callSite.Args()[graphNode.Index()]
 					if arg != nil {
-						que = addNext(c, que, seen, elt, arg, elt.Trace.Parent, elt.ClosureTrace)
+						que = addNext(c, que, seen, elt, arg, elt.Trace.Parent(), elt.ClosureTrace)
 						addEdge(c.FlowGraph, arg, graphNode)
 					}
 				}
@@ -174,12 +174,12 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 				// This function was called: the value flows back to the call site only
 				addEdge(c.FlowGraph, graphNode, caller)
 				for x := range caller.Out() {
-					que = addNext(c, que, seen, elt, x, elt.Trace.Parent, elt.ClosureTrace)
+					que = addNext(c, que, seen, elt, x, elt.Trace.Parent(), elt.ClosureTrace)
 				}
 			} else if elt.ClosureTrace != nil && dataflow.CheckClosureReturns(graphNode, elt.ClosureTrace.Label) {
 				addEdge(c.FlowGraph, graphNode, elt.ClosureTrace.Label)
 				for cCall := range elt.ClosureTrace.Label.Out() {
-					que = addNext(c, que, seen, elt, cCall, elt.Trace, elt.ClosureTrace.Parent)
+					que = addNext(c, que, seen, elt, cCall, elt.Trace, elt.ClosureTrace.Parent())
 				}
 			} else if len(graphNode.Graph().Callsites) > 0 {
 				// The value must always flow back to all call sites: we got here without context
@@ -199,7 +199,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 			// We pop the call from the stack and continue inside the caller
 			var trace *dataflow.NodeTree[*dataflow.CallNode]
 			if elt.Trace != nil {
-				trace = elt.Trace.Parent
+				trace = elt.Trace.Parent()
 			}
 			for x := range graphNode.Out() {
 				que = addNext(c, que, seen, elt, x, trace, elt.ClosureTrace)
@@ -252,7 +252,7 @@ func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.
 				bvs := elt.ClosureTrace.Label.BoundVars()
 				if graphNode.Index() < len(bvs) {
 					bv := bvs[graphNode.Index()]
-					que = addNext(c, que, seen, elt, bv, elt.Trace, elt.ClosureTrace.Parent)
+					que = addNext(c, que, seen, elt, bv, elt.Trace, elt.ClosureTrace.Parent())
 				} else {
 					c.Report.AddError(
 						fmt.Sprintf("no bound variable matching free variable in %s",
