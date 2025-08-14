@@ -1,0 +1,3 @@
+options:
+  analysis-options:
+    max-entrypoint-context-size: 5

@@ -120,7 +120,7 @@ func (a *analysis) flatten(t types.Type) []*fieldInfo {
 	fl, ok := a.flattenMemo[t]
 	if !ok {
 		switch t := t.(type) {
-		case *types.Named:
+		case *types.Named, *types.Alias:
 			u := t.Underlying()
 			if isInterface(u) {
 				// Debuggability hack: don't remove
@@ -171,6 +171,10 @@ func (a *analysis) flatten(t types.Type) []*fieldInfo {
 				}
 			}
 
+		case *types.Union:
+			panic(fmt.Sprintf("union type %T not supported", t))
+		case *types.TypeParam:
+			panic(fmt.Sprintf("unexpected type param %T", t))
 		default:
 			panic(fmt.Sprintf("cannot flatten unsupported type %T", t))
 		}

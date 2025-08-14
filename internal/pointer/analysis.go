@@ -230,6 +230,8 @@ func Analyze(config *Config) (result *Result, err error) {
 		if p := recover(); p != nil {
 			err = fmt.Errorf("internal error in pointer analysis: %v (please report this bug)", p)
 			fmt.Fprintln(os.Stderr, "Internal panic in pointer analysis:")
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			fmt.Fprintln(os.Stderr, "Stack:")
 			debug.PrintStack()
 		}
 	}()
