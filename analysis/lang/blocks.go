@@ -18,6 +18,8 @@ import "golang.org/x/tools/go/ssa"
 
 // HasPathTo returns true if there is a control-flow path from b1 to b2. Use mem to amortize cost. If mem is nil,
 // then the algorithm runs without memoization, and no map is allocated.
+//
+//gocyclo:ignore
 func HasPathTo(b1 *ssa.BasicBlock, b2 *ssa.BasicBlock, mem map[*ssa.BasicBlock]map[*ssa.BasicBlock]bool) bool {
 	if mem != nil {
 		if _, ok := mem[b1]; !ok {
@@ -33,11 +35,15 @@ func HasPathTo(b1 *ssa.BasicBlock, b2 *ssa.BasicBlock, mem map[*ssa.BasicBlock]m
 		cur := que[0]
 		if cur == b2 {
 			if mem != nil {
-				mem[b1][b2] = true
+				// mem[b1] cannot be nil because of the first loop, so this will always be true
+				// but nilaway would return a false positive
+				if mem[b1] != nil {
+					mem[b1][b2] = true
+				}
 			}
 			return true
 		}
-		if mem != nil && mem[cur] != nil && mem[cur][b2] {
+		if mem != nil && mem[cur] != nil && mem[cur][b2] && mem[b1] != nil {
 			mem[b1][b2] = true
 			return true
 		}
@@ -49,7 +55,7 @@ func HasPathTo(b1 *ssa.BasicBlock, b2 *ssa.BasicBlock, mem map[*ssa.BasicBlock]m
 			}
 		}
 	}
-	if mem != nil {
+	if mem != nil && mem[b1] != nil {
 		mem[b1][b2] = false
 	}
 	return false

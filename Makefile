@@ -19,7 +19,20 @@ lint: **/*.go
 	go vet ./...
 	gocyclo -ignore "test|internal/pointer|internal/typeparams" -over 15 .
 	ineffassign ./...
-	nilaway --test=false ./cmd/argot/...
+	nilaway --test=false ./cmd/argot/... \
+                         ./analysis/annotations/... \
+                         ./analysis/backtrace/... \
+                         ./analysis/concurrency/... \
+                         ./analysis/config/... \
+                         ./analysis/defers/... \
+                         ./analysis/lang/... \
+                         ./analysis/loadprogram/... \
+                         ./analysis/ptr/... \
+                         ./analysis/refactor/... \
+                         ./analysis/render/... \
+                         ./analysis/syntactic/... \
+                         ./analysis/summaries/... \
+                         ./analysis/taint/...
 	golint -set_exit_status -min_confidence 0.9 ./...
 	staticcheck ./...
 

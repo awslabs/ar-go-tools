@@ -42,7 +42,6 @@ func checkMustReinitCall(st *state, callInstr *ssa.Call) funcutil.Optional[BadRe
 	// For each spec, the statements following directly the call MUST write the fields
 	// that are specified in the spec. The write statements are in the same block as the
 	// call statement.
-	block, index := lang.IndexInEnclosingBlock(callInstr)
 	fieldsToReinit := map[string]bool{}
 	for _, spec := range mustCheckFor {
 		for _, fieldSpec := range spec.FieldsSet {
@@ -51,30 +50,33 @@ func checkMustReinitCall(st *state, callInstr *ssa.Call) funcutil.Optional[BadRe
 	}
 	var callVal ssa.Value
 	callVal = callInstr
-	for i := index + 1; i < len(block.Instrs); i++ {
-		instr := block.Instrs[i]
-		switch instr := instr.(type) {
-		case *ssa.Store:
-			// Check that this is a store to a field that is tracked by the struct-init problem.
-			if checkStore(instr, callVal, fieldsToReinit) {
-				continue
+	block, index := lang.IndexInEnclosingBlock(callInstr)
+	if block != nil {
+		for i := index + 1; i < len(block.Instrs); i++ {
+			instr := block.Instrs[i]
+			switch instr := instr.(type) {
+			case *ssa.Store:
+				// Check that this is a store to a field that is tracked by the struct-init problem.
+				if checkStore(instr, callVal, fieldsToReinit) {
+					continue
+				}
+				// It can also be a store of the call returned value into another var, in which case we
+				// change the callVal being tracked to properly reflect on the stores
+				if instr.Val == callInstr {
+					callVal = instr.Addr
+					continue
+				}
+			case *ssa.FieldAddr:
+				fieldInfo := analysisutil.FieldAddrFieldInfo(instr)
+				// Check that this is taking the address of a field that is tracked by the struct-init problem.
+				if _, ok := fieldsToReinit[fieldInfo.FieldName]; ok {
+					continue
+				}
 			}
-			// It can also be a store of the call returned value into another var, in which case we
-			// change the callVal being tracked to properly reflect on the stores
-			if instr.Val == callInstr {
-				callVal = instr.Addr
-				continue
-			}
-		case *ssa.FieldAddr:
-			fieldInfo := analysisutil.FieldAddrFieldInfo(instr)
-			// Check that this is taking the address of a field that is tracked by the struct-init problem.
-			if _, ok := fieldsToReinit[fieldInfo.FieldName]; ok {
-				continue
-			}
+			// At this point, we have an instr that is not a recognized store or field addr.
+			// Exit the loop to check whether it's ok because we have already reinitialized everything.
+			break
 		}
-		// At this point, we have an instr that is not a recognized store or field addr.
-		// Exit the loop to check whether it's ok because we have already reinitialized everything.
-		break
 	}
 	if len(fieldsToReinit) == 0 {
 		st.ptrState.Logger.Infof("Result of %s properly reinitialized", callInstr)

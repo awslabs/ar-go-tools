@@ -135,39 +135,41 @@ func zeroedFields(st *state, alloc alloced) []string {
 	// struct that is explicitly or implicitly allocated in alloc.
 	transitiveFieldAddrs := make(map[*ssa.FieldAddr]struct{})
 	block, index := lang.IndexInEnclosingBlock(alloc.instr)
-	for _, instr := range block.Instrs[index:] {
-		switch instr := instr.(type) {
-		case *ssa.FieldAddr:
-			// Initialize transitiveFieldAddrs:
-			// The struct of the field that is addressed must be the same as the struct value that
-			// was allocated.
-			if instr.X == alloc.val {
-				transitiveFieldAddrs[instr] = struct{}{}
-				continue
-			}
-			fa, ok := instr.X.(*ssa.FieldAddr)
-			if !ok {
-				continue
-			}
-			if _, ok := transitiveFieldAddrs[fa]; !ok {
-				continue
-			}
-			transitiveFieldAddrs[instr] = struct{}{}
-		case *ssa.Store:
-			fa, ok := instr.Addr.(*ssa.FieldAddr)
-			if !ok {
-				continue
-			}
-			fieldInfo := analysisutil.FieldAddrFieldInfo(fa)
-			if _, ok := transitiveFieldAddrs[fa]; !ok {
-				continue
-			}
-			if typ, ok := isStructType(instr.Val.Type()); ok {
-				if st.spec.Struct.MatchType(typ.named) {
+	if block != nil {
+		for _, instr := range block.Instrs[index:] {
+			switch instr := instr.(type) {
+			case *ssa.FieldAddr:
+				// Initialize transitiveFieldAddrs:
+				// The struct of the field that is addressed must be the same as the struct value that
+				// was allocated.
+				if instr.X == alloc.val {
+					transitiveFieldAddrs[instr] = struct{}{}
 					continue
 				}
+				fa, ok := instr.X.(*ssa.FieldAddr)
+				if !ok {
+					continue
+				}
+				if _, ok := transitiveFieldAddrs[fa]; !ok {
+					continue
+				}
+				transitiveFieldAddrs[instr] = struct{}{}
+			case *ssa.Store:
+				fa, ok := instr.Addr.(*ssa.FieldAddr)
+				if !ok {
+					continue
+				}
+				fieldInfo := analysisutil.FieldAddrFieldInfo(fa)
+				if _, ok := transitiveFieldAddrs[fa]; !ok {
+					continue
+				}
+				if typ, ok := isStructType(instr.Val.Type()); ok {
+					if st.spec.Struct.MatchType(typ.named) {
+						continue
+					}
+				}
+				fieldIsZeroed[fieldInfo.FieldName] = false
 			}
-			fieldIsZeroed[fieldInfo.FieldName] = false
 		}
 	}
 

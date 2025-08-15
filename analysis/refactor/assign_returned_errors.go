@@ -44,7 +44,8 @@ func ReturnsError(signature types.Object) (*types.Tuple, bool) {
 		resultType := sig.Results()
 		if resultType.Len() > 0 {
 			lastRes := resultType.At(resultType.Len() - 1)
-			if lastRes.Type().String() == "error" {
+			lastResTyp := lastRes.Type()
+			if lastResTyp != nil && lastResTyp.String() == "error" {
 				return resultType, true
 			}
 		}
@@ -54,6 +55,9 @@ func ReturnsError(signature types.Object) (*types.Tuple, bool) {
 
 func assignErrorsTransform(funcInfo *lang.FuncInfo, c *dstutil.Cursor) bool {
 	n := c.Node()
+	if n == nil {
+		return true
+	}
 
 	switch x := n.(type) {
 	case *dst.ExprStmt:
@@ -66,6 +70,15 @@ func assignErrorsTransform(funcInfo *lang.FuncInfo, c *dstutil.Cursor) bool {
 			assignmentToken := token.DEFINE
 			callExpr := funcInfo.Decorator.Ast.Nodes[callx].(*ast.CallExpr)
 			if retTuple, hasErr := ReturnsError(typeutil.Callee(funcInfo.Package.TypesInfo, callExpr)); hasErr {
+				decorations := n.Decorations()
+				if decorations == nil {
+					decorations = &dst.NodeDecs{
+						Before: 0,
+						Start:  nil,
+						End:    nil,
+						After:  0,
+					}
+				}
 				// replace f(..) by  ..., err = f()
 				c.Replace(
 					&dst.AssignStmt{
@@ -73,7 +86,7 @@ func assignErrorsTransform(funcInfo *lang.FuncInfo, c *dstutil.Cursor) bool {
 						Lhs: anonLhsOfTuple(retTuple, dst.NewIdent(errIdent)),
 						Rhs: []dst.Expr{callx},
 						Decs: dst.AssignStmtDecorations{
-							NodeDecs: *(n.Decorations()), // copy the existing decorations over
+							NodeDecs: *decorations, // copy the existing decorations over
 							Tok:      nil,
 						},
 					})

@@ -356,13 +356,17 @@ func isReflectValueCall(p packages.Package, node ast.Node) (reflectValueSpec, bo
 func constructPreface(astBuilder *lang.AstBuildManager, spec reflectValueSpec) []ast.Stmt {
 	// need to reintroduce the lhs decl so that it is defined for later usages
 	lhsType := astBuilder.Package.TypesInfo.TypeOf(spec.lhs)
+	lhsTypStr := ""
+	if lhsType != nil {
+		lhsTypStr = lhsType.String()
+	}
 	lhsDecl := &ast.DeclStmt{
 		Decl: &ast.GenDecl{
 			Tok: token.VAR,
 			Specs: []ast.Spec{
 				&ast.ValueSpec{
 					Names: []*ast.Ident{{Name: spec.lhs.Name}},
-					Type:  &ast.Ident{Name: lhsType.String()},
+					Type:  &ast.Ident{Name: lhsTypStr},
 				},
 			},
 		},

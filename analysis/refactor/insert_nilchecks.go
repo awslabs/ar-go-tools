@@ -37,13 +37,19 @@ func InsertNilChecks(packages []*decorator.Package) {
 // nilCheckInsertTransform inserts nil checks at c when c is the toplevel block in a function and the parent function
 // has parameters with comments that contain @nonnil
 func nilCheckInsertTransform(fi *lang.FuncInfo, c *dstutil.Cursor) bool {
+	if fi == nil {
+		return true
+	}
 	blockStmt, ok := c.Node().(*dst.BlockStmt)
 
 	if !ok {
 		return true
 	}
 
-	parent := fi.NodeMap[blockStmt].Parent
+	var parent *lang.NodeTree
+	if n, ok := fi.NodeMap[blockStmt]; ok {
+		parent = n.Parent
+	}
 	if parent == nil {
 		fmt.Printf("Parent nil\n")
 		return true

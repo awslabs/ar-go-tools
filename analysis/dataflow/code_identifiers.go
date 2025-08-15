@@ -203,6 +203,8 @@ func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n GraphNode
 
 // IsMatchingCodeIDWithCallee returns true when the codeIdOracle returns true for a code identifier matching the node
 // n in the context where callee is the callee.
+//
+//gocyclo:ignore
 func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
 	if n == nil {
 		return false
@@ -268,18 +270,18 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 			}
 			return codeIDOracle(cid)
 		}
-		if callee != nil {
-			pkgName := lang.PackageNameFromFunction(callee)
-			cid := config.CodeIdentifier{
-				Context:    node.Parent().String(),
-				Package:    pkgName,
-				Method:     funcName,
-				Receiver:   receiverType,
-				ValueMatch: n.String(),
-			}
-			return codeIDOracle(cid)
+		if callee == nil {
+			return false
 		}
-		return false
+		pkgName := lang.PackageNameFromFunction(callee)
+		cid := config.CodeIdentifier{
+			Context:    node.Parent().String(),
+			Package:    pkgName,
+			Method:     funcName,
+			Receiver:   receiverType,
+			ValueMatch: n.String(),
+		}
+		return codeIDOracle(cid)
 
 	case *ssa.Function:
 		return codeIDOracle(config.CodeIdentifier{

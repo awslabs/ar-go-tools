@@ -133,14 +133,13 @@ func NodeSummary(g GraphNode) string {
 		return fmt.Sprintf("Call to builtin %s", x.name)
 	case *CallNode:
 		typ := x.Type()
-		if typ != nil {
-			return fmt.Sprintf("Result of call to %s (type %s)",
-				x.Callee().Name(),
-				typ.String())
-		} else {
+		if typ == nil {
 			return fmt.Sprintf("Result of call to %s",
 				x.Callee().Name())
 		}
+		return fmt.Sprintf("Result of call to %s (type %s)",
+			x.Callee().Name(),
+			typ.String())
 	case *CallNodeArg:
 		return fmt.Sprintf("Argument #%d (type %s) in call to %s",
 			x.Index(),
@@ -148,25 +147,23 @@ func NodeSummary(g GraphNode) string {
 			x.ParentNode().Callee().Name())
 	case *ReturnValNode:
 		typ := x.Type()
-		if typ != nil {
-			return fmt.Sprintf("Return value %d (type %s) of %s",
-				x.Index(),
-				typ.String(),
-				x.ParentName())
-		} else {
+		if typ == nil {
 			return fmt.Sprintf("Return value %d of %s",
 				x.Index(),
 				x.ParentName())
 		}
+		return fmt.Sprintf("Return value %d (type %s) of %s",
+			x.Index(),
+			typ.String(),
+			x.ParentName())
 	case *ClosureNode:
 		return "Closure"
 	case *BoundLabelNode:
 		typ := x.targetInfo.Type()
-		if typ != nil {
-			return fmt.Sprintf("Bound label of type %s", typ.String())
-		} else {
-			return fmt.Sprintf("Bound label.")
+		if typ == nil {
+			return "Bound label."
 		}
+		return fmt.Sprintf("Bound label of type %s", typ.String())
 	case *SyntheticNode:
 		return "Synthetic node"
 	case *BoundVarNode:

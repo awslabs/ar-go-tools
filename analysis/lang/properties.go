@@ -121,11 +121,15 @@ func IsPredicateFunctionType(f *types.Signature) bool {
 		return false
 	}
 
-	resType := f.Results().At(n - 1)
-	if resType == nil {
+	resTypVar := f.Results().At(n - 1)
+	if resTypVar == nil {
 		return false
 	}
-	switch t := resType.Type().Underlying().(type) {
+	resTyp := resTypVar.Type()
+	if resTyp == nil {
+		return false
+	}
+	switch t := resTyp.Underlying().(type) {
 	case *types.Basic:
 		return t.Kind() == types.Bool
 	case *types.Interface:
