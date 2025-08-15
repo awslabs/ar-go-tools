@@ -78,7 +78,7 @@ func NewFlags(args []string) (Flags, error) {
 
 // Run runs the SSA statistics analysis on args.
 func Run(flags Flags) error {
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
@@ -87,7 +87,7 @@ func Run(flags Flags) error {
 		ApplyRewrites: true,
 	}
 
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 	// get absolute paths for 'exclude'
 	excludeAbsolute := analysisutil.MakeAbsolute(flags.excludePaths)
 	defaultConfig := config.NewDefault()
@@ -104,7 +104,7 @@ func Run(flags Flags) error {
 	result := analysis.SSAStatistics(&reachableFunctions, excludeAbsolute)
 	if flags.outputJson {
 		buf, _ := json.Marshal(result)
-		c.Logger.Infof(string(buf))
+		c.Logger.Info(string(buf))
 	} else {
 		c.Logger.Infof("Number of functions: %d\n", result.NumberOfFunctions)
 		c.Logger.Infof("Number of nonempty functions: %d\n", result.NumberOfNonemptyFunctions)

@@ -86,7 +86,7 @@ func Run(flags Flags) error {
 			return fmt.Errorf("failed to load config %s: %s", flags.ConfigPath, err)
 		}
 	}
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
@@ -99,7 +99,7 @@ func Run(flags Flags) error {
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)
 	}
 
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
 	reachability.ReachableFunctionsAnalysis(state, flags.excludeMain, flags.excludeInit, flags.outputJson)

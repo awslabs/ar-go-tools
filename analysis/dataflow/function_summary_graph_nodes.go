@@ -132,23 +132,38 @@ func NodeSummary(g GraphNode) string {
 	case *BuiltinCallNode:
 		return fmt.Sprintf("Call to builtin %s", x.name)
 	case *CallNode:
+		typ := x.Type()
+		if typ == nil {
+			return fmt.Sprintf("Result of call to %s",
+				x.Callee().Name())
+		}
 		return fmt.Sprintf("Result of call to %s (type %s)",
 			x.Callee().Name(),
-			x.Type().String())
+			typ.String())
 	case *CallNodeArg:
 		return fmt.Sprintf("Argument #%d (type %s) in call to %s",
 			x.Index(),
 			x.Type().String(),
 			x.ParentNode().Callee().Name())
 	case *ReturnValNode:
+		typ := x.Type()
+		if typ == nil {
+			return fmt.Sprintf("Return value %d of %s",
+				x.Index(),
+				x.ParentName())
+		}
 		return fmt.Sprintf("Return value %d (type %s) of %s",
 			x.Index(),
-			x.Type().String(),
+			typ.String(),
 			x.ParentName())
 	case *ClosureNode:
 		return "Closure"
 	case *BoundLabelNode:
-		return fmt.Sprintf("Bound label of type %s", x.targetInfo.Type().String())
+		typ := x.targetInfo.Type()
+		if typ == nil {
+			return "Bound label."
+		}
+		return fmt.Sprintf("Bound label of type %s", typ.String())
 	case *SyntheticNode:
 		return "Synthetic node"
 	case *BoundVarNode:
@@ -204,10 +219,17 @@ func TermNodeSummary(g GraphNode) string {
 			formatutil.Italic(formatutil.FormatLastSplit(x.Type().String(), ".", formatutil.Blue)),
 			formatutil.Magenta(fmt.Sprintf("%q", x.parent.Parent.Name())))
 	case *CallNode:
+		typ := x.Type()
+		if typ == nil {
+			return fmt.Sprintf("%s Result of call to %s",
+				nodeCode,
+				formatutil.Magenta(x.Callee().Name()))
+		}
 		return fmt.Sprintf("%s Result of call to %s (type %s)",
 			nodeCode,
 			formatutil.Magenta(x.Callee().Name()),
-			formatutil.Italic(formatutil.FormatLastSplit(x.Type().String(), ".", formatutil.Blue)))
+			formatutil.Italic(formatutil.FormatLastSplit(typ.String(), ".", formatutil.Blue)))
+
 	case *CallNodeArg:
 		return fmt.Sprintf("%s Argument #%s (type %s) in call to %s",
 			nodeCode,
@@ -215,18 +237,31 @@ func TermNodeSummary(g GraphNode) string {
 			formatutil.Italic(formatutil.FormatLastSplit(x.Type().String(), ".", formatutil.Blue)),
 			formatutil.Magenta(x.ParentNode().Callee().Name()))
 	case *ReturnValNode:
+		typ := x.Type()
+		if typ == nil {
+			return fmt.Sprintf("%s Return value %s of %s",
+				nodeCode,
+				formatutil.Green(x.Index()),
+				formatutil.Magenta(x.ParentName()))
+		}
 		return fmt.Sprintf("%s Return value %s (type %s) of %s",
 			nodeCode,
 			formatutil.Green(x.Index()),
-			formatutil.Italic(formatutil.FormatLastSplit(x.Type().String(), ".", formatutil.Blue)),
+			formatutil.Italic(formatutil.FormatLastSplit(typ.String(), ".", formatutil.Blue)),
 			formatutil.Magenta(x.ParentName()))
+
 	case *ClosureNode:
 		return formatutil.BgCyan(nodeCode) + " Closure node (entire function)"
 	case *BoundLabelNode:
+		typ := x.targetInfo.Type()
+		if typ == nil {
+			return fmt.Sprintf("%s Bound label", nodeCode)
+		}
 		return fmt.Sprintf("%s Bound label of type %s",
 			nodeCode,
 			formatutil.Italic(
-				formatutil.FormatLastSplit(x.targetInfo.Type().String(), ".", formatutil.Blue)))
+				formatutil.FormatLastSplit(typ.String(), ".", formatutil.Blue)))
+
 	case *SyntheticNode:
 		return nodeCode + " Synthetic node"
 	case *BoundVarNode:
@@ -311,10 +346,10 @@ func (a *ParamNode) SetLocs(set LocSet) {
 
 // Position returns the estimated position of the node in the source
 func (a *ParamNode) Position(c *State) token.Position {
-	if a.ssaNode != nil {
-		return c.Program.Fset.Position(a.ssaNode.Pos())
+	if a.ssaNode == nil {
+		return lang.DummyPos
 	}
-	return lang.DummyPos
+	return c.Program.Fset.Position(a.ssaNode.Pos())
 }
 
 // Equal implements comparison for graph nodes
@@ -1227,7 +1262,12 @@ func (b *BuiltinCallNode) FuncName() string {
 }
 
 // Type returns the type of the result of the builtin call
-func (b *BuiltinCallNode) Type() types.Type { return b.callSite.Value().Type() }
+func (b *BuiltinCallNode) Type() types.Type {
+	if b.callSite.Value() != nil {
+		return b.callSite.Value().Type()
+	}
+	return nil
+}
 
 // Position returns the position of the node.
 func (b *BuiltinCallNode) Position(c *State) token.Position {

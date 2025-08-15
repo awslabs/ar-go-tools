@@ -745,8 +745,12 @@ func isDiffNode(mark MarkWithAccessPath, source GraphNode, dest GraphNode) bool 
 }
 
 func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionInfo, sourceNode GraphNode) {
-	outMap := sourceNode.Out()
 	relPath := map[string]map[string]bool{source.Mark.Label: {source.AccessPath: true}}
+	addInEdge(dest, sourceNode, EdgeInfo{relPath, source.Mark.Index.Value, info})
+	outMap := sourceNode.Out()
+	if outMap == nil {
+		return // only nodes that shouldn't have outgoing edges have a nil outMap
+	}
 	edgeInfos, destPresent := outMap[dest]
 	if !destPresent {
 		edgeInfos = make([]EdgeInfo, 0, 1)
@@ -766,8 +770,6 @@ func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionIn
 	if !edgeInfoFound {
 		outMap[dest] = append(edgeInfos, EdgeInfo{relPath, source.Mark.Index.Value, info})
 	}
-
-	addInEdge(dest, sourceNode, EdgeInfo{relPath, source.Mark.Index.Value, info})
 }
 
 // addCallArgEdge adds an edge in the summary from a mark to a function call argument.
@@ -837,8 +839,12 @@ func (g *SummaryGraph) addReturnEdge(mark MarkWithAccessPath, cond *ConditionInf
 		return
 	}
 
-	retNode := g.Returns[retInstr][tupleIndex]
-
+	retInstrInfo := g.Returns[retInstr]
+	if retInstrInfo == nil {
+		g.addError(fmt.Errorf("attempting to set return edge but no return instruction"))
+		return
+	}
+	retNode := retInstrInfo[tupleIndex]
 	if retNode == nil {
 		g.addError(fmt.Errorf("attempting to set return edge but no return node"))
 		return
@@ -884,6 +890,9 @@ func (g *SummaryGraph) addFreeVarEdge(mark MarkWithAccessPath, cond *ConditionIn
 
 //gocyclo:ignore
 func addInEdge(dest GraphNode, source GraphNode, path EdgeInfo) {
+	if dest == nil {
+		return
+	}
 	switch node := dest.(type) {
 	case *ParamNode:
 		node.in[source] = path
@@ -1011,7 +1020,7 @@ func NewPredefinedSummary(f *ssa.Function, id uint32) (*SummaryGraph, error) {
 // PopulateGraphFromSummary populates the summary from a predefined summary provided as argument.
 // isInterface indicates whether this predefined summary comes from an interface contract.
 func (g *SummaryGraph) PopulateGraphFromSummary(summary summaries.Summarizer, isInterface bool) error {
-	if g == nil {
+	if g == nil || summary == nil {
 		return nil
 	}
 	argFlows, err := summary.GetArgFlows(g.Parent)

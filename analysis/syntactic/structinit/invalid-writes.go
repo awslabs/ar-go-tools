@@ -47,7 +47,7 @@ func runInvalidWritesAnalysis(st *state, res AnalysisResult) {
 							is.Tag, namedType, write.fieldType.Name(), pos)
 					} else {
 						report := newInvalidWriteReport(write, namedType, pos)
-						logger.Warnf(report.String())
+						logger.Warn(report.String())
 						st.ptrState.Report.AddEntry(st.ptrState, config.ReportDesc{
 							Tool:     config.SyntacticTool,
 							Tag:      st.spec.Tag,

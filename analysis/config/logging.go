@@ -114,7 +114,10 @@ func setPrefixToTarget(logger *log.Logger, target string) {
 }
 
 func resetPrefix(logger *log.Logger) {
-	logger.SetPrefix(strings.Split(logger.Prefix(), contextSepChar)[0] + " ")
+	split := strings.Split(logger.Prefix(), contextSepChar)
+	if len(split) > 0 {
+		logger.SetPrefix(split[0] + " ")
+	}
 }
 
 func (l *LogGroup) setLoggingPostPrefix(target string) {

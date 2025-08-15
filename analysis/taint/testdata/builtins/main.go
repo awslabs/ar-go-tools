@@ -43,6 +43,14 @@ func TestCopy2() {
 	sink(b[0]) // @Sink(copy2)
 }
 
+func TestGoCopy() {
+	x := source1() // @Source(goCopy)
+	a := []*T{&x}
+	var b []*T
+	go copy(b, a) // tests for a panic
+	sink(b[0])    // @Sink(goCopy)
+}
+
 func TestNew() {
 	a := new(T)
 	b := source1() // @Source(new1)
@@ -138,6 +146,7 @@ func TestReal2() {
 func main() {
 	TestCopy()
 	TestCopy2()
+	TestGoCopy()
 	TestAppend()
 	TestAppend2()
 	TestNew()

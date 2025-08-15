@@ -47,7 +47,7 @@ $ argot defer hello.go
 
 // Run runs the defer analysis with args.
 func Run(args []string, verbose bool) error {
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
@@ -65,7 +65,7 @@ func Run(args []string, verbose bool) error {
 		return fmt.Errorf("failed to load program: %v", err)
 	}
 
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 
 	defers.AnalyzeProgram(target, config.NewLogGroup(cfg))
 

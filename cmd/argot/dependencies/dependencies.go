@@ -128,7 +128,7 @@ func runTarget(c *config.Config, name string, files []string, options config.Loa
 		return fmt.Errorf("failed to initialize analyzer state: %s", err)
 	}
 
-	state.Logger.Infof(formatutil.Faint("Analyzing"))
+	state.Logger.Info(formatutil.Faint("Analyzing"))
 
 	var coverageWriter io.WriteCloser
 	var csvWriter io.WriteCloser

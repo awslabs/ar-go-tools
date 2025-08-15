@@ -70,7 +70,7 @@ func writeEntries(tt *term.Terminal, sess *session, entries []displayElement, pr
 	}
 	lines := len(entries)/cols + 1
 	for line := 0; line < lines; line++ {
-		writeFmt(tt, prefix)
+		writeFmt(tt, "%s", prefix)
 		for col := 0; col < cols; col++ {
 			index := col*lines + line
 			if index < len(entries) {

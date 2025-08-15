@@ -123,7 +123,7 @@ func runTarget(
 		var s string
 		s, structAnalysisFailed = structinit.FormattedReport(structInitRes)
 		c.Logger.Infof("Struct analysis done (%.3f s)", time.Since(start).Seconds())
-		c.Logger.Infof(s)
+		c.Logger.Info(s)
 	}
 	// condition check analysis
 	preconditionAnalysisFailed := false
@@ -137,7 +137,7 @@ func runTarget(
 		var s string
 		s, preconditionAnalysisFailed = preconditions.FormattedReport(precondCheckRes)
 		c.Logger.Infof("Precondition analysis done (%.3f s)", time.Since(start).Seconds())
-		c.Logger.Infof(s)
+		c.Logger.Info(s)
 	}
 	// Failure for all syntactic analyses
 	if structAnalysisFailed || preconditionAnalysisFailed {

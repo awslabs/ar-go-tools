@@ -157,6 +157,9 @@ func ParseSummariesFile(path string) ([]FrontendDataflowSummary, error) {
 func (summaries *rawSummaries) compile() ([]FrontendDataflowSummary, error) {
 	var errs error
 	var summariesFrontend []FrontendDataflowSummary
+	if summaries == nil {
+		return nil, errs
+	}
 	for _, summary := range summaries.DataflowSummaries {
 		fs, structureErr := summary.compile()
 		if structureErr == nil {

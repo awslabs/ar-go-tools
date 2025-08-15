@@ -9,6 +9,7 @@
 # Install golint with:      go install golang.org/x/lint/golint@latest
 # Install nilaway with:     go install go.uber.org/nilaway/cmd/nilaway@latest
 # Install staticcheck with: go install honnef.co/go/tools/cmd/staticcheck@latest
+# (run make install-tools to install them all)
 
 all: setup-precommit lint argot-build racerg-build test
 
@@ -19,7 +20,20 @@ lint: **/*.go
 	go vet ./...
 	gocyclo -ignore "test|internal/pointer|internal/typeparams" -over 15 .
 	ineffassign ./...
-	nilaway --test=false ./cmd/argot/...
+	nilaway --test=false ./cmd/argot/... \
+                         ./analysis/annotations/... \
+                         ./analysis/backtrace/... \
+                         ./analysis/concurrency/... \
+                         ./analysis/config/... \
+                         ./analysis/defers/... \
+                         ./analysis/lang/... \
+                         ./analysis/loadprogram/... \
+                         ./analysis/ptr/... \
+                         ./analysis/refactor/... \
+                         ./analysis/render/... \
+                         ./analysis/syntactic/... \
+                         ./analysis/summaries/... \
+                         ./analysis/taint/...
 	golint -set_exit_status -min_confidence 0.9 ./...
 	staticcheck ./...
 
@@ -44,5 +58,13 @@ setup-precommit:
 clean:
 	rm -rf bin
 	find . -name "*-report" | xargs rm -rf
+
+install-tools:
+	go install golang.org/x/tools/cmd/deadcode@latest
+	go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+	go install github.com/gordonklaus/ineffassign@latest
+	go install golang.org/x/lint/golint@latest
+	go install go.uber.org/nilaway/cmd/nilaway@latest
+	go install honnef.co/go/tools/cmd/staticcheck@latest
 
 release: all

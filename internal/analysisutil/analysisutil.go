@@ -357,6 +357,7 @@ func NewParamTargetObject(param lang.Param, idx int, arg ssa.Value) config.Targe
 
 // ReceiverStr returns the string receiver name of t.
 // e.g. *repo/package.Method -> Method
+// t must not be nil
 // TODO refactor to avoid string operations
 func ReceiverStr(t types.Type) string {
 	typ := t.String()

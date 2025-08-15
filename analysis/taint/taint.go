@@ -250,6 +250,9 @@ func interfaceImplMethodIdent(impl *ssa.Function) config.CodeIdentifier {
 	if len(impl.Params) > 0 {
 		receiver := impl.Params[0]
 		recvStr := analysisutil.ReceiverStr(receiver.Type())
+		if receiver.Type() == nil {
+			return config.CodeIdentifier{}
+		}
 		return config.NewCodeIdentifier(config.CodeIdentifier{
 			Package:  lang.PackageNameFromFunction(impl),
 			Receiver: recvStr,

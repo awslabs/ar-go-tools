@@ -57,7 +57,7 @@ func cmdShowSsa(tt *term.Terminal, sess *session, command Command, withTest bool
 	var b bytes.Buffer
 	funcs, err := listContextFunc(tt, sess, command)
 	if err != nil {
-		WriteErr(tt, err.Error())
+		WriteErr(tt, "%s", err.Error())
 		return false
 	}
 	if len(funcs) == 0 {
@@ -141,7 +141,7 @@ func cmdShowEscape(tt *term.Terminal, sess *session, command Command, withTest b
 	var b bytes.Buffer
 	funcs, err := listContextFunc(tt, sess, command)
 	if err != nil {
-		WriteErr(tt, err.Error())
+		WriteErr(tt, "%s", err.Error())
 		return false
 	}
 	if len(funcs) == 0 {
@@ -244,7 +244,7 @@ func cmdSummary(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 
 	funcs, err := sess.funcsMatchingCommand(tt, command)
 	if err != nil {
-		WriteErr(tt, err.Error())
+		WriteErr(tt, "%s", err.Error())
 		return false
 	}
 	numSummaries := 0
@@ -283,7 +283,7 @@ func cmdSrc(tt *term.Terminal, sess *session, command Command, withTest bool) bo
 
 	funcs, err := listContextFunc(tt, sess, command)
 	if err != nil {
-		WriteErr(tt, err.Error())
+		WriteErr(tt, "%s", err.Error())
 		return false
 	}
 	if len(funcs) == 0 {
@@ -355,7 +355,7 @@ func cmdAst(tt *term.Terminal, sess *session, command Command, withTest bool) bo
 	// Display the AST of a function
 	funcs, err := listContextFunc(tt, sess, command)
 	if err != nil {
-		WriteErr(tt, err.Error())
+		WriteErr(tt, "%s", err.Error())
 		return false
 	}
 	if len(funcs) == 0 {
@@ -432,7 +432,7 @@ func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) boo
 		}
 		funcs, err := sess.findFunc(regex)
 		if err != nil {
-			WriteErr(tt, err.Error())
+			WriteErr(tt, "%s", err.Error())
 			return false
 		}
 		WriteSuccess(tt, "Running intra-procedural analysis on functions matching %s", command.Args[0])

@@ -134,7 +134,11 @@ func (mode CallgraphAnalysisMode) ComputeCallgraph(prog *ssa.Program) (*callgrap
 			// Start at all init and main functions in main packages
 			roots = append(roots, m.Func("init"), m.Func("main"))
 		}
-		return rta.Analyze(roots, true).CallGraph, nil
+		res := rta.Analyze(roots, true)
+		if res == nil {
+			return nil, fmt.Errorf("rapid type analysis failed")
+		}
+		return res.CallGraph, nil
 	default:
 		fmt.Fprint(os.Stderr, "Unsupported callgraph analysis mode.")
 		return nil, nil
