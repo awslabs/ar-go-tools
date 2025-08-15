@@ -15,14 +15,32 @@
 package analysisutil
 
 import (
+	"fmt"
 	"go/token"
 	"go/types"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
+
+// goRootAtInit stores the value of the Go root found at initialization. We need this value for
+// knowing when a file belongs to the standard library or not. Without it, we assume all files
+// are not in the standard library.
+var goRootAtInit = ""
+
+func init() {
+	cmd := exec.Command("go", "env", "GOROOT")
+	out, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	goRootAtInit = strings.TrimSpace(string(out))
+	fmt.Fprint(os.Stderr, formatutil.Faint("Found GOROOT : "+goRootAtInit)+"\n")
+}
 
 // MakeAbsolute takes a slice of relative file paths and converts them to absolute paths.
 // It prepends the current working directory to any non-absolute file paths.
@@ -93,4 +111,10 @@ func PackageDir(fset *token.FileSet, pkg *types.Package) string {
 		panic("invalid position given")
 	}
 	return filepath.Dir(fset.Position(scopePos).Filename)
+}
+
+// IsStandardLibFilename returns true if the given filename belongs to the standard library.
+func IsStandardLibFilename(filename string) bool {
+	// If goRootAtInit was not properly initialized, then this returns true
+	return strings.Contains(filename, goRootAtInit)
 }

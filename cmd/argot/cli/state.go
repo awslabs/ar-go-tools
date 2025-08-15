@@ -172,7 +172,7 @@ func (s *session) loadConfig() result.Result[config.State] {
 	if s.originalFlags.Verbose {
 		pConfig.LogLevel = int(config.DebugLevel)
 	}
-	logger.Printf(formatutil.Faint("Reading sources") + "\n")
+	logger.Print(formatutil.Faint("Reading sources") + "\n")
 	// Load the program
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
@@ -196,7 +196,7 @@ func (s *session) loadConfig() result.Result[config.State] {
 			}
 		}
 	}
-		// If the -targets option has been provided the cli should load the target
+	// If the -targets option has been provided the cli should load the target
 	// The -targets option for the cli should only contain one target
 	if s.originalFlags.Targets != "" {
 		if len(strings.Split(s.originalFlags.Targets, ",")) > 1 {

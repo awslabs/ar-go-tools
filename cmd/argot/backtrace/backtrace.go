@@ -45,7 +45,7 @@ func Run(flags tools.CommonFlags) error {
 		return fmt.Errorf("failed to load config file: %v", err)
 	}
 	tmpLogger := config.NewLogGroup(cfg)
-	tmpLogger.Infof(formatutil.Faint("Argot backtrace tool - " + analysis.Version))
+	tmpLogger.Info(formatutil.Faint("Argot backtrace tool - " + analysis.Version))
 
 	if flags.Tag != "" {
 		tmpLogger.Infof("tag specified on command-line, will analyze only problem with tag \"%s\"", flags.Tag)

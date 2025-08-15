@@ -972,7 +972,7 @@ func (v *Visitor) storeEscapeGraphInContext(s *df.State, f *ssa.Function, key df
 // warning messages to the user.
 func (v *Visitor) raiseAlarm(s *df.State, pos token.Pos, msg string) {
 	if _, alreadyRaised := v.alarms[pos]; !alreadyRaised {
-		s.Logger.Warnf(msg)
+		s.Logger.Warn(msg)
 		v.alarms[pos] = msg
 	}
 }

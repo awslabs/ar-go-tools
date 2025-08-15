@@ -414,7 +414,7 @@ func doOneInput(t *testing.T, input, fpath string) bool {
 			tProbes, err = probesPointToTypes(calls)
 			if err != nil {
 				ok = false
-				e.errorf(err.Error())
+				e.errorf("%s", err.Error())
 				continue
 			}
 		}

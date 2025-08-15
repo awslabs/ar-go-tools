@@ -90,7 +90,7 @@ Examples:
 
 // Run runs the packagescan analysis with flags.
 func Run(flags Flags) error {
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Scanning sources for package "+flags.pkg)+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Scanning sources for package "+flags.pkg)+"\n")
 
 	var rawFile io.WriteCloser
 

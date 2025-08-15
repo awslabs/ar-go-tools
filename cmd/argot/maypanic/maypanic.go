@@ -80,7 +80,7 @@ func Run(flags Flags) error {
 		Tests: false,
 	}
 
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 
 	// never load tests for the may-panic analysis (may change later if there's an ask)
 	loadOptions := config.LoadOptions{
@@ -95,7 +95,7 @@ func Run(flags Flags) error {
 		return fmt.Errorf("failed to load program: %v", err)
 	}
 
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Analyzing")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Analyzing")+"\n")
 
 	// get absolute paths for 'exclude'
 	excludeAbsolute := analysisutil.MakeAbsolute(flags.excludePaths)

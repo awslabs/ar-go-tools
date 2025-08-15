@@ -141,7 +141,7 @@ func interpret(tt *term.Terminal, s *session, command string, withTest bool) boo
 
 func exitOnReceive(c chan os.Signal, tt *term.Terminal, oldState *term.State) {
 	for range c {
-		writeFmt(tt, formatutil.Red("Caught SIGINT, exiting!"))
+		writeFmt(tt, "%s", formatutil.Red("Caught SIGINT, exiting!"))
 		term.Restore(int(os.Stdin.Fd()), oldState)
 		os.Exit(0)
 	}

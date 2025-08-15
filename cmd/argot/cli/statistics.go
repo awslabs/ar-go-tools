@@ -62,7 +62,7 @@ func cmdStats(tt *term.Terminal, c *session, command Command, withTest bool) boo
 		// generate ssa stats with reachable from dataflow analysis
 		reachableFunctions, err := c.reachableFunctions()
 		if err != nil {
-			WriteErr(tt, err.Error())
+			WriteErr(tt, "%s", err.Error())
 			return false
 		}
 		doGeneralStats(tt, reachableFunctions, command)

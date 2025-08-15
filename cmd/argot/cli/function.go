@@ -587,11 +587,11 @@ func showBlock(tt *term.Terminal, _ *session, block *ssa.BasicBlock) {
 			if name := v.Name(); name != "" {
 				writeFmt(tt, "%s = ", name)
 			}
-			writeFmt(tt, instr.String())
+			writeFmt(tt, "%s", instr.String())
 		case nil:
 			writeFmt(tt, "<deleted>")
 		default:
-			writeFmt(tt, instr.String())
+			writeFmt(tt, "%s", instr.String())
 		}
 		writeFmt(tt, "\n")
 	}

@@ -108,7 +108,7 @@ func Run(flags Flags) error {
 	if err != nil {
 		return fmt.Errorf("error loading config: %v", err)
 	}
-	fmt.Fprintf(os.Stderr, formatutil.Faint("Reading sources")+"\n")
+	fmt.Fprint(os.Stderr, formatutil.Faint("Reading sources")+"\n")
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
@@ -161,7 +161,7 @@ func doComputeCallgraph(state *loadprogram.State, mode lang.CallgraphAnalysisMod
 	if err != nil {
 		return nil, fmt.Errorf("could not compute callgraph: %w", err)
 	}
-	state.Logger.Infof(formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
+	state.Logger.Info(formatutil.Faint(fmt.Sprintf("Computed in %.3f s\n", cgComputeDuration)))
 	return cg, nil
 }
 

@@ -272,7 +272,7 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 
 	// Skip entrypoint if it is in a dependency or in the Go standard library/runtime
 	// TODO make this an option in the config
-	if strings.Contains(pos.Filename, "vendor") || strings.Contains(pos.Filename, runtime.GOROOT()) {
+	if strings.Contains(pos.Filename, "vendor") || analysisutil.IsStandardLibFilename(pos.Filename) {
 		logger.Debugf("%s %v\n", formatutil.Red("Skipping entrypoint"), entrypoint.Node.String())
 		return nil
 	}

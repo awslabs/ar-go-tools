@@ -29,7 +29,7 @@ func cmdBuildGraph(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 	}
 	c, err := sess.loadDataflowAnalysis().Value()
 	if err != nil {
-		WriteErr(tt, err.Error())
+		WriteErr(tt, "%s", err.Error())
 		return false
 	}
 	if len(c.FlowGraph.Summaries) == 0 {

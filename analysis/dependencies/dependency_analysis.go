@@ -108,7 +108,7 @@ func computePath(cfg *config.Config, logger *config.LogGroup, filepath string, p
 		newsplit := strings.Index(pkg[split:], "/")
 		if newsplit == -1 {
 			if verbose {
-				logger.Debugf(filepath)
+				logger.Debug(filepath)
 			}
 			return filepath // bail
 		}
@@ -116,7 +116,7 @@ func computePath(cfg *config.Config, logger *config.LogGroup, filepath string, p
 		offset = strings.Index(filepath, pkg[split:])
 		if offset >= 0 {
 			if verbose {
-				logger.Debugf(pkg[:split] + filepath[offset:])
+				logger.Debug(pkg[:split] + filepath[offset:])
 			}
 			return pkg[:split] + filepath[offset:]
 		}
