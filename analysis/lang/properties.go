@@ -26,6 +26,9 @@ func IsNillableType(t types.Type) bool {
 	case *types.Pointer, *types.Interface, *types.Slice, *types.Map, *types.Chan:
 		return true
 	case *types.Named:
+		if t == nil {
+			return false
+		}
 		return IsNillableType(t.Underlying())
 	case *types.Signature:
 		return true

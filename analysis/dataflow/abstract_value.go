@@ -110,8 +110,18 @@ func (a *AbstractValue) GetValue() ssa.Value {
 
 // add adds a mark relative to a certain path (ignored if the abstract value is not access-path sensitive).
 func (a *AbstractValue) add(path string, mark *Mark) {
+	if a == nil {
+		return
+	}
+	// Checking nil, shouldn't happen
+	if a.accessMarks == nil {
+		a.accessMarks = map[string]map[*Mark]bool{}
+	}
+	if a.marks == nil {
+		a.marks = map[*Mark]bool{}
+	}
 	if a.isPathSensitive {
-		if _, ok := a.accessMarks[path]; !ok {
+		if c, ok := a.accessMarks[path]; !ok || c == nil {
 			a.accessMarks[path] = map[*Mark]bool{}
 		}
 		a.accessMarks[path][mark] = true
@@ -178,7 +188,7 @@ func (a *AbstractValue) AllMarks() []MarkWithAccessPath {
 //
 //gocyclo:ignore
 func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
-	if a == nil {
+	if a == nil || b == nil {
 		return false
 	}
 	modified := false

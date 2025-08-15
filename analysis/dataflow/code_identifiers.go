@@ -114,13 +114,13 @@ func IsValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bo
 		// i.e. if not positive and not isEqCheck or positive and isEqCheck
 		return (isPositive == isEqCheck) && IsValidatorCondition(ts, vNilChecked, true)
 	case *ssa.UnOp:
-		if val.Op == token.NOT {
+		if val != nil && val.Op == token.NOT {
 			// Validator condition must hold on the negated value, with the negated positive condition
 			return IsValidatorCondition(ts, val.X, !isPositive)
 		}
 	case *ssa.Extract:
 		// Validator condition must hold on the tuple result
-		return IsValidatorCondition(ts, val.Tuple, isPositive)
+		return val != nil && IsValidatorCondition(ts, val.Tuple, isPositive)
 	}
 	return false
 }
@@ -204,12 +204,15 @@ func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n GraphNode
 // IsMatchingCodeIDWithCallee returns true when the codeIdOracle returns true for a code identifier matching the node
 // n in the context where callee is the callee.
 func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
+	if n == nil {
+		return false
+	}
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered sinks
 	case *ssa.Call, *ssa.Go, *ssa.Defer:
 		// This condition should always be true
 		callNode, ok := node.(ssa.CallInstruction)
-		if !ok {
+		if !ok || node == nil || callNode == nil {
 			return false
 		}
 		callCommon := callNode.Common()
@@ -218,9 +221,14 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 			receiverType := callCommon.Value.Type().String()
 			methodName := callCommon.Method.Name()
 			maybePkg := analysisutil.FindSafeCalleePkg(callCommon)
+			nodep := node.Parent()
+			context := ""
+			if nodep != nil {
+				context = nodep.String()
+			}
 			if maybePkg.IsSome() {
 				cid := config.CodeIdentifier{
-					Context:    node.Parent().String(),
+					Context:    context,
 					Package:    maybePkg.Value(),
 					Method:     methodName,
 					Receiver:   receiverType,
@@ -231,7 +239,7 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 			if callee != nil {
 				pkgName := lang.PackageNameFromFunction(callee)
 				cid := config.CodeIdentifier{
-					Context:    node.Parent().String(),
+					Context:    context,
 					Package:    pkgName,
 					Method:     methodName,
 					Receiver:   receiverType,
@@ -244,7 +252,9 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 
 		funcName := callCommon.Value.Name()
 		receiverType := ""
-		if callCommon.Signature() != nil && callCommon.Signature().Recv() != nil {
+		if callCommon.Signature() != nil &&
+			callCommon.Signature().Recv() != nil &&
+			callCommon.Signature().Recv().Type() != nil {
 			receiverType = analysisutil.ReceiverStr(callCommon.Signature().Recv().Type())
 		}
 		maybePkg := analysisutil.FindSafeCalleePkg(callCommon)

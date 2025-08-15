@@ -154,6 +154,19 @@ func newFlowReport(s *dataflow.State,
 	}
 
 	var trace []dataflow.ReportNodeInfo
+
+	// Shouldn't have an empty trace here, but in case just return a report with an empty
+	// trace.
+	if nodes == nil {
+		s.Logger.Warnf("Unexpected report with an empty trace for tag %s", ts.Tag)
+		return FlowReport{
+			Tag:    ts.Tag,
+			Source: sourceNode,
+			Sink:   sinkNode,
+			Trace:  nil,
+		}
+	}
+
 	for i := len(nodes) - 1; i >= 0; i-- {
 		if nodes[i].Status.Kind == dataflow.DefaultTracing {
 			trace = append(trace, dataflow.GetReportNodeInfo(nodes[i].NodeWithTrace, s))

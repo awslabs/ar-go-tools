@@ -380,33 +380,35 @@ func (state *IntraAnalysisState) marksToAdd(
 	res := common.Signature().Results()
 
 	trackingMarks := []MarkWithAccessPath{}
-	if res != nil {
-		for i := 0; i < res.Len(); i++ {
-			if lang.CanType(value) && state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[value]] {
-				actualType := value.Type()
-				switch vt := value.Type().(type) {
-				case *types.Tuple:
-					if res.Len() > 1 && vt.Len() <= i {
-						panic("unexpected malformed result type")
-					}
-					actualType = vt.At(i).Type()
-				}
-				for _, path := range AccessPathsOfType(actualType) {
-					m := MarkWithAccessPath{
-						Mark: state.flowInfo.GetNewLabelledMark(
-							instr.(ssa.Node), CallReturn, nil, NewIndex(i), path),
-						AccessPath: path,
-					}
-					trackingMarks = append(trackingMarks, m)
-				}
-			}
-			m := MarkWithAccessPath{
-				Mark:       state.flowInfo.GetNewMark(instr.(ssa.Node), CallReturn, nil, NewIndex(i)),
-				AccessPath: "",
-			}
-			trackingMarks = append(trackingMarks, m)
-		}
+	if res == nil {
+		return trackingMarks
 	}
+	for i := 0; i < res.Len(); i++ {
+		if value != nil && lang.CanType(value) && state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[value]] {
+			actualType := value.Type()
+			switch vt := value.Type().(type) {
+			case *types.Tuple:
+				if res.Len() > 1 && vt.Len() <= i {
+					panic("unexpected malformed result type")
+				}
+				actualType = vt.At(i).Type()
+			}
+			for _, path := range AccessPathsOfType(actualType) {
+				m := MarkWithAccessPath{
+					Mark: state.flowInfo.GetNewLabelledMark(
+						instr.(ssa.Node), CallReturn, nil, NewIndex(i), path),
+					AccessPath: path,
+				}
+				trackingMarks = append(trackingMarks, m)
+			}
+		}
+		m := MarkWithAccessPath{
+			Mark:       state.flowInfo.GetNewMark(instr.(ssa.Node), CallReturn, nil, NewIndex(i)),
+			AccessPath: "",
+		}
+		trackingMarks = append(trackingMarks, m)
+	}
+
 	return trackingMarks
 }
 
@@ -446,6 +448,10 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	// Propagate to any other Value that is an alias of v
 	for _, ptr := range state.findAllPointers(v) {
 		state.markPtrAliases(i, mark, path, ptr)
+	}
+
+	if v == nil {
+		return
 	}
 
 	switch miVal := v.(type) {
@@ -623,7 +629,11 @@ func (state *IntraAnalysisState) doDefersStackSimulation(r *ssa.RunDefers) error
 				return err
 			}
 			if d, ok := instr.(*ssa.Defer); ok {
-				state.callCommonMark(d.Value(), d, d.Common())
+				if d.Value() != nil {
+					state.callCommonMark(d.Value(), d, d.Common())
+				} else {
+					state.callCommonMark(nil, d, d.Common())
+				}
 			} else {
 				return fmt.Errorf("defer stacks should only contain defers")
 			}

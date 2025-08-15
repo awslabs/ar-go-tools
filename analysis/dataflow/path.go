@@ -76,7 +76,9 @@ func isValuePredicateTo(predicate ssa.Value, val ssa.Value) bool {
 		} else {
 			sig = x.Call.Value.Type()
 		}
-
+		if sig == nil {
+			return false
+		}
 		signature, ok := sig.Underlying().(*types.Signature)
 		if !ok {
 			return false

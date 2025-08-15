@@ -77,12 +77,17 @@ func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map
 					}
 					// Get the interface method being implemented
 					matchingInterfaceMethod := interfaceMethods[methodValue.Name()]
-					if matchingInterfaceMethod != nil {
-						key := matchingInterfaceMethod.Recv().String() + "." + methodValue.Name()
-						keys[methodValue.String()] = key
-						addImplementation(implementations, key, methodValue)
-						addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionID())
+					if matchingInterfaceMethod == nil {
+						continue
 					}
+					receiver := matchingInterfaceMethod.Recv()
+					if receiver == nil {
+						continue
+					}
+					key := receiver.String() + "." + methodValue.Name()
+					keys[methodValue.String()] = key
+					addImplementation(implementations, key, methodValue)
+					addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionID())
 				}
 			}
 		}
@@ -112,7 +117,11 @@ func computeErrorBuiltinImplementations(p *ssa.Program, implementations map[stri
 			if results.Len() != 1 {
 				continue
 			}
-			expectedString := results.At(0).Type().Underlying()
+			res0typ := results.At(0).Type()
+			if res0typ == nil {
+				continue
+			}
+			expectedString := res0typ.Underlying()
 			if expectedString.String() != "string" {
 				continue
 			}
