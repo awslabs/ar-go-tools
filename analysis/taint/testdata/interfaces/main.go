@@ -28,6 +28,10 @@ func main() {
 	test4()
 	testInterfacesAndEmbedding()
 	testImportedPrivateEmbeddingPublic()
+	testTypeSwitch()
+	testAssertions()
+	testComposition()
+	testMethodValues()
 }
 
 type Interface interface {
