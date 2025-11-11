@@ -1,0 +1,15 @@
+options:
+  log-level: 3
+
+dataflow-problems:
+  summarize-on-demand: true
+  # field-sensitive-funcs:
+  #   - ".*"
+  taint-tracking:
+    - sources:
+        - package: "(main)|(command-line-arguments)"
+          # Sources can be source1, source2, etc.
+          method: "source[1-9]?"
+      sinks:
+        - package: "fmt"
+          method: "Printf"

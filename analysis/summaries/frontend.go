@@ -67,6 +67,11 @@ type IfaceMethodFlowSummary struct {
 	summary detailedSummary
 }
 
+// Name returns the fully-qualified name of the interface this summary corresponds to.
+func (s IfaceMethodFlowSummary) Name() string {
+	return fmt.Sprintf("(%s.%s).%s", s.pkg, s.Interface, s.Method)
+}
+
 // Package reutrns the package this method summary corresponds to
 func (s IfaceMethodFlowSummary) Package() string {
 	return s.pkg
@@ -85,6 +90,11 @@ type FunctionFlowSummary struct {
 	Function string
 	// summary is the dataflow summary
 	summary detailedSummary
+}
+
+// Name returns the fully-qualified name of the function this summary corresponds to.
+func (s FunctionFlowSummary) Name() string {
+	return fmt.Sprintf("%s.%s", s.pkg, s.Function)
 }
 
 // Package returns the package this dataflow summary corresponds to
@@ -109,6 +119,15 @@ type ReceiverMethodFlowSummary struct {
 	summary detailedSummary
 }
 
+// Name returns the fully-qualified name of the method this summary corresponds to.
+func (s ReceiverMethodFlowSummary) Name() string {
+	if strings.HasPrefix(s.Receiver, "*") {
+		return fmt.Sprintf("(*%s.%s).%s", s.pkg, strings.TrimPrefix(s.Receiver, "*"), s.Method)
+	}
+
+	return fmt.Sprintf("(%s.%s).%s", s.pkg, s.Receiver, s.Method)
+}
+
 // Package returns the package this dataflow summary corresponds to
 func (s ReceiverMethodFlowSummary) Package() string {
 	return s.pkg
@@ -119,8 +138,9 @@ func (s ReceiverMethodFlowSummary) Summary() detailedSummary {
 	return s.summary
 }
 
-// A FrontendDataflowSummary reprensetns either a function or a interface method summary
+// A FrontendDataflowSummary represents either a function or a interface method summary
 type FrontendDataflowSummary interface {
+	Name() string
 	Package() string
 	Summary() detailedSummary
 }

@@ -1,0 +1,8 @@
+dataflow-summaries:
+  - package: math
+    function: Max
+    flows:
+      - from: "!arg <x>"
+        to: "!ret"
+      - from: "!arg <y>"
+        to: "!ret"

@@ -1,0 +1,40 @@
+dataflow-summaries:
+  - package: regexp
+    function: Compile
+    flows:
+      - from: "!arg <expr>"
+        to: "!ret 0"
+  - package: math/big
+    receiver: "*Int"
+    method: Exp
+    flows:
+      - from: "!arg <x>"
+        to: "!ret 0"
+      - from: "!arg <x>"
+        to: "!receiver"
+      - from: "!arg <y>"
+        to: "!ret 0"
+      - from: "!arg <y>"
+        to: "!receiver"
+      - from: "!arg <m>"
+        to: "!ret 0"
+      - from: "!arg <m>"
+        to: "!receiver"
+
+  # TODO support interfaces
+  # - package: crypto/elliptic
+  #   interface: Curve
+  #   method: ScalarMult
+  #   flows:
+  #     - from: "!arg <x1>"
+  #       to: "!ret 0"
+  #     - from: "!arg <x1>"
+  #       to: "!ret 1"
+  #     - from: "!arg <y1>"
+  #       to: "!ret 0"
+  #     - from: "!arg <y1>"
+  #       to: "!ret 1"
+  #     - from: "!arg <k>"
+  #       to: "!ret 0"
+  #     - from: "!arg <k>"
+  #       to: "!ret 1"

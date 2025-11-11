@@ -21,6 +21,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/cmd/argot/backtrace"
+	"github.com/awslabs/ar-go-tools/cmd/argot/check"
 	"github.com/awslabs/ar-go-tools/cmd/argot/cli"
 	"github.com/awslabs/ar-go-tools/cmd/argot/compare"
 	"github.com/awslabs/ar-go-tools/cmd/argot/defers"
@@ -51,6 +52,7 @@ Tools:
   - reachability: analyzes the program an prints the functions that are reachable within it
   - render: renders a graph representation of the callgraph, or prints the program's SSA form
   - ssa-statistics: prints statistics about the SSA representation of the program
+  - check: check the soundness of data flow summaries
 Examples:
   Run the interactive CLI: argot cli --config=config.yaml main.go
   Run the taint analysis: argot taint --config=config.yaml main.go`
@@ -82,6 +84,14 @@ func main() {
 			errExit(err)
 		}
 		if err := backtrace.Run(flags); err != nil {
+			errExit(err)
+		}
+	case config.CheckTool:
+		flags, err := check.NewFlags(args)
+		if err != nil {
+			errExit(err)
+		}
+		if err := check.Run(flags); err != nil {
 			errExit(err)
 		}
 	case config.CliTool:
