@@ -16,11 +16,13 @@ package check
 
 import (
 	"fmt"
-	"runtime"
+	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/check"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -32,29 +34,43 @@ import (
 )
 
 // Usage for CLI
-const usage = `Check the soundness of the data flow summaries in a summary file.
+var usage string
+var methods = []check.Method{check.Types, check.Immutability, check.All, check.Naive}
+
+func init() {
+	usage = fmt.Sprintf(`Check the soundness of the data flow summaries in a summary file.
 See the "Dataflow Specifications" section in the taint analysis documentation
 for information on how to write the summary file.
 
 Usage:
-  argot check [options] --summary <summary file path> <package path(s)>`
+  argot check [options] --summary <summary file path> --via <method> <package path(s)>
+
+Where:
+  <method> is one of %s`,
+		methodsString())
+}
 
 // Flags represents the parsed flags for the taint analysis.
 type Flags struct {
 	tools.CommonFlags
 	summaryPath string
+	via         check.Method
 }
 
 // NewFlags returns the parsed flags for the data flow summary checking analysis with args.
 func NewFlags(args []string) (Flags, error) {
 	flags := tools.NewUnparsedCommonFlags(config.CheckTool)
 	summaryPath := flags.FlagSet.String("summary", "", "path to data flow summary file")
+	via := flags.FlagSet.String("via", "all", "how to perform the check")
 	tools.SetUsage(flags.FlagSet, usage)
 	if err := flags.FlagSet.Parse(args); err != nil {
 		return Flags{}, fmt.Errorf("failed to parse command check with args %v: %v", args, err)
 	}
 	if summaryPath == nil || *summaryPath == "" {
 		return Flags{}, fmt.Errorf("must specify a data flow summary file")
+	}
+	if via == nil || !slices.Contains(methods, check.Method(*via)) {
+		return Flags{}, fmt.Errorf("incorrect checking method: want one of %s", methodsString())
 	}
 
 	return Flags{
@@ -69,6 +85,7 @@ func NewFlags(args []string) (Flags, error) {
 			Out:        *flags.Out,
 		},
 		summaryPath: *summaryPath,
+		via:         check.Method(*via),
 	}, nil
 }
 
@@ -76,10 +93,11 @@ func NewFlags(args []string) (Flags, error) {
 func Run(flags Flags) error {
 	cfg := config.NewDefault()
 	cfg.DataflowProblems.SummarizeOnDemand = true
-	cfg.LogLevel = int(config.DebugLevel)
+	cfg.LogLevel = int(config.InfoLevel)
 	cfg.Options.UnsafeMaxDepth = -1
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot check tool - " + analysis.Version))
+	tmpLogger.Infof("Checking method: %s", flags.via)
 
 	parsedSummaries, err := summaries.ParseSummariesFile(flags.summaryPath)
 	if err != nil {
@@ -94,88 +112,42 @@ func Run(flags Flags) error {
 		ApplyRewrites: false,
 	}
 	c := config.NewState(cfg, flags.summaryPath, flags.FlagSet.Args(), loadOptions)
-	ptrState := result.Bind(
-		loadprogram.NewState(c),
-		ptr.NewState)
-	df, err := result.Bind(
-		ptrState,
-		dataflow.NewState).Value()
+	ptrState := result.Bind(loadprogram.NewState(c), ptr.NewState)
+	df, err := result.Bind(ptrState, dataflow.NewState).Value()
 	if err != nil {
 		return fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
-	df.DataFlowContracts = make(map[string]*dataflow.SummaryGraph) // reset data flow contracts
-	dataflow.RunIntraProceduralPass(df, runtime.NumCPU(), dataflow.IntraAnalysisParams{
-		// Don't build any summaries since we're summarizing on-demand
-		ShouldBuildSummary: func(*dataflow.State, *ssa.Function) bool {
-			return false
-		},
-		// No need to track sources, sinks, or synthetic nodes since they don't appear in data flow summaries
-		ShouldTrack: func(s *dataflow.State, n ssa.Node) bool {
-			return false
-		},
-	})
-
-	for _, summary := range parsedSummaries {
-		targetName := summary.Name()
-		c.Logger.PushContext(formatutil.Faint(targetName))
-		err := checkSummary(df, summary)
-		if err != nil {
-			c.Logger.Errorf("failed to check the summary of function %s: %v", targetName, err)
-		}
-		c.Logger.PopContext()
+	if err := checkSummaries(df, parsedSummaries, flags.via); err != nil {
+		return fmt.Errorf("failed to check summaries: %v", err)
 	}
 
 	return nil
 }
 
-func checkSummary(s *dataflow.State, summary summaries.FrontendDataflowSummary) error {
-	var f *ssa.Function
-	for fn := range s.ReachableFunctions() {
-		fname := fn.RelString(nil)
-		if fname == summary.Name() {
-			f = fn
+func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataflowSummary, via check.Method) error {
+	check.InitializeState(s)
+
+	logger := s.Logger
+	for _, summary := range parsedSummaries {
+		targetName := summary.Name()
+		logger.PushContext(formatutil.Faint(targetName))
+		logger.Infof("Checking summary...")
+		soundness, err := check.CheckSummary(s, summary, via)
+		if err != nil {
+			return fmt.Errorf("failed to check the summary of function %s: %v", targetName, err)
 		}
-	}
-	if f == nil {
-		return fmt.Errorf("could not find function (is it reachable from main?)")
-	}
-
-	graph := dataflow.NewSummaryGraph(s, f,
-		dataflow.GetUniqueFunctionID(), func(*dataflow.State, ssa.Node) bool { return true }, nil)
-	_, isInterface := summary.(summaries.IfaceMethodFlowSummary)
-	if isInterface {
-		panic("analysis doesn't handle interfaces yet")
-	}
-
-	// graph.PopulateGraphFromSummary(summary.Summary(), isInterface)
-
-	graph.IsInterfaceContract = false
-	graph.IsPreSummarized = false
-	graph.Constructed = false
-	_, err := dataflow.RunIntraProcedural(s, graph)
-	if err != nil {
-		return fmt.Errorf("failed to run intra-procedural analysis on function")
-	}
-	// sound := dataflow.IsSummarySound(graph, s.FlowGraph)
-	// s.Logger.Infof("data flow summary for function %s is sound: %v", summary.Name(), sound)
-
-	for _, param := range graph.Params {
-		v := dataflow.NewFunctionVisitor()
-		s.Logger = config.NewLogGroup(&config.Config{
-			Options: config.Options{
-				LogLevel:    int(config.TraceLevel),
-				SilenceWarn: true,
-			},
-		})
-		v.Visit(s, dataflow.NodeWithTrace{Node: param})
-	}
-	s.FlowGraph.Sync()
-
-	for fn, completeSummary := range s.FlowGraph.Summaries {
-		if fn == f {
-			completeSummary.PrettyPrint(true, s.Logger.GetDebug().Writer(), nil)
-		}
+		logger.Infof("Summary for function %s:\n", targetName)
+		logger.Infof("\t%s\n", soundness.Got)
+		logger.PopContext()
 	}
 
 	return nil
+}
+
+func methodsString() string {
+	var res []string
+	for _, m := range methods {
+		res = append(res, string(m))
+	}
+	return strings.Join(res, ", ")
 }

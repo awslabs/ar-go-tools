@@ -64,7 +64,7 @@ type IfaceMethodFlowSummary struct {
 	// Method is the method being summarized
 	Method string
 	// summary is the dataflow summary
-	summary detailedSummary
+	summary DetailedSummary
 }
 
 // Name returns the fully-qualified name of the interface this summary corresponds to.
@@ -78,7 +78,7 @@ func (s IfaceMethodFlowSummary) Package() string {
 }
 
 // Summary returns the of data flows in the function or method being summarized
-func (s IfaceMethodFlowSummary) Summary() detailedSummary {
+func (s IfaceMethodFlowSummary) Summary() DetailedSummary {
 	return s.summary
 }
 
@@ -89,7 +89,7 @@ type FunctionFlowSummary struct {
 	// Function is the function being summarized
 	Function string
 	// summary is the dataflow summary
-	summary detailedSummary
+	summary DetailedSummary
 }
 
 // Name returns the fully-qualified name of the function this summary corresponds to.
@@ -103,8 +103,26 @@ func (s FunctionFlowSummary) Package() string {
 }
 
 // Summary returns the data flows in the function or method being summarized
-func (s FunctionFlowSummary) Summary() detailedSummary {
+func (s FunctionFlowSummary) Summary() DetailedSummary {
 	return s.summary
+}
+
+func (s *FunctionFlowSummary) UnmarshalJSON(b []byte) error {
+	var raw rawDataflowSummary
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return fmt.Errorf("failed to unmarshal to raw summary format: %v", err)
+	}
+	res, err := raw.compile()
+	if err != nil {
+		return err
+	}
+	fs, ok := res.(FunctionFlowSummary)
+	if !ok {
+		return fmt.Errorf("want FunctionFlowSummary, got %T", res)
+	}
+
+	*s = fs
+	return nil
 }
 
 // ReceiverMethodFlowSummary is a dataflow summary for a receiver method
@@ -116,7 +134,7 @@ type ReceiverMethodFlowSummary struct {
 	// Method is the method being summarized
 	Method string
 	// summary is the dataflow summary
-	summary detailedSummary
+	summary DetailedSummary
 }
 
 // Name returns the fully-qualified name of the method this summary corresponds to.
@@ -134,7 +152,7 @@ func (s ReceiverMethodFlowSummary) Package() string {
 }
 
 // Summary returns the data flows in the function or method being summarized
-func (s ReceiverMethodFlowSummary) Summary() detailedSummary {
+func (s ReceiverMethodFlowSummary) Summary() DetailedSummary {
 	return s.summary
 }
 
@@ -142,7 +160,7 @@ func (s ReceiverMethodFlowSummary) Summary() detailedSummary {
 type FrontendDataflowSummary interface {
 	Name() string
 	Package() string
-	Summary() detailedSummary
+	Summary() DetailedSummary
 }
 
 // ParseSummariesFile parses a file that represents a Summaries structure. The structure can be
@@ -251,20 +269,20 @@ func (s rawDataflowSummary) compile() (FrontendDataflowSummary, error) {
 	}
 }
 
-func compileSummaryFlows(flows []FlowDesc, canUseReceiver bool) (detailedSummary, error) {
+func compileSummaryFlows(flows []FlowDesc, canUseReceiver bool) (DetailedSummary, error) {
 	rawSummary := rawSummary{Flows: map[string][]string{}}
 	for _, flow := range flows {
 		if flow.From == "" {
-			return detailedSummary{}, fmt.Errorf("flow.From is empty")
+			return DetailedSummary{}, fmt.Errorf("flow.From is empty")
 		}
 		if flow.To == "" {
-			return detailedSummary{}, fmt.Errorf("flow.To is empty")
+			return DetailedSummary{}, fmt.Errorf("flow.To is empty")
 		}
 		if _, ok := rawSummary.Flows[flow.From]; !ok {
 			rawSummary.Flows[flow.From] = []string{}
 		}
 		if !canUseReceiver && (strings.Contains(flow.From, "!receiver") || strings.Contains(flow.To, "!receiver")) {
-			return detailedSummary{}, fmt.Errorf("flow.From or flow.To contains !receiver, but not in a method's flow")
+			return DetailedSummary{}, fmt.Errorf("flow.From or flow.To contains !receiver, but not in a method's flow")
 		}
 		rawSummary.Flows[flow.From] = append(rawSummary.Flows[flow.From], flow.To)
 	}

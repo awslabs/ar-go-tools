@@ -19,27 +19,29 @@ import (
 	"go/token"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
+
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
 
-// FunctionVisitor is a data flow Visitor that computes the data flows from an input to a function
+// FuncInputVisitor is a data flow Visitor that computes the data flows from an input to a function
 // inter-procedurally.
 // The entrypoint is an input (parameter) to the function.
 // If you run the Visit method on every input to the function you want to summarize, then the
 // summary of that function will be complete (sound).
 //
-// FunctionVisitor implements the dataflow.Visitor interface.
-type FunctionVisitor struct {
+// FuncInputVisitor implements the dataflow.Visitor interface.
+type FuncInputVisitor struct {
+	flows   []GraphNode // flows is the data flows from function input to outputs
 	entry   NodeWithTrace
 	visited map[*CallStack]bool
 	alarms  map[token.Pos]string
 	seen    map[KeyType]bool
 }
 
-// NewFunctionVisitor constructs a FunctionVisitor for param.
-func NewFunctionVisitor() *FunctionVisitor {
-	return &FunctionVisitor{
+// NewFuncInputVisitor constructs a visitor to compute data flows from param inside the function.
+func NewFuncInputVisitor() *FuncInputVisitor {
+	return &FuncInputVisitor{
 		entry:   NodeWithTrace{},
 		visited: make(map[*CallStack]bool),
 		alarms:  make(map[token.Pos]string),
@@ -47,8 +49,13 @@ func NewFunctionVisitor() *FunctionVisitor {
 	}
 }
 
+// Flows returns the data flows from function input (entrypoint) to outputs (values).
+func (v *FuncInputVisitor) Flows() []GraphNode {
+	return v.flows
+}
+
 // Visit adds data flow information from entry to the inter-procedural data flow graph.
-func (v *FunctionVisitor) Visit(s *State, entry NodeWithTrace) {
+func (v *FuncInputVisitor) Visit(s *State, entry NodeWithTrace) {
 	entryParam, ok := entry.Node.(*ParamNode)
 	if !ok {
 		s.Report.AddError("", fmt.Errorf("entrypoint to FunctionVisitor is not a ParamNode: %v (%T)", entry.Node, entry.Node))
@@ -156,6 +163,7 @@ func (v *FunctionVisitor) Visit(s *State, entry NodeWithTrace) {
 				// If the callstack is empty and the parameter is the entrypoint, then we stop analyzing further
 				if graphNode == entry.Node {
 					s.Logger.Tracef("no callstack and parameter is entrypoint: dataflow from parameter is complete")
+					v.addFlow(graphNode)
 					continue
 				}
 
@@ -254,6 +262,7 @@ func (v *FunctionVisitor) Visit(s *State, entry NodeWithTrace) {
 			// If the return node is a return of the parameter's function, then stop analyzing further
 			if graphNode.parent.Parent == entryParam.ssaNode.Parent() {
 				s.Logger.Tracef("dataflow from return is complete")
+				v.addFlow(graphNode)
 				continue
 			}
 
@@ -397,6 +406,9 @@ func (v *FunctionVisitor) Visit(s *State, entry NodeWithTrace) {
 				break
 			}
 
+			if closureNode.ClosureSummary == nil {
+				closureNode.ClosureSummary = NewSummaryGraph(s, closureNode.parent.Parent, GetUniqueFunctionID(), nil, nil)
+			}
 			if !closureNode.ClosureSummary.Constructed {
 				v.onDemandIntraProcedural(s, closureNode.ClosureSummary)
 				s.FlowGraph.Sync()
@@ -573,7 +585,7 @@ func (v *FunctionVisitor) Visit(s *State, entry NodeWithTrace) {
 // onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
 // This panics when the analysis fails, because it is expected that an error will cause any further result
 // to be invalid.
-func (v *FunctionVisitor) onDemandIntraProcedural(s *State, summary *SummaryGraph) {
+func (v *FuncInputVisitor) onDemandIntraProcedural(s *State, summary *SummaryGraph) {
 	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
 	elapsed, err := RunIntraProcedural(s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
@@ -598,7 +610,7 @@ func (v *FunctionVisitor) onDemandIntraProcedural(s *State, summary *SummaryGrap
 // - edgeInfo is the label of the edge from cur's node to toAdd
 //
 //gocyclo:ignore
-func (v *FunctionVisitor) addNext(s *State,
+func (v *FuncInputVisitor) addNext(s *State,
 	que []*VisitorNode,
 	cur *VisitorNode,
 	intermediateNode GraphNode,
@@ -679,6 +691,11 @@ func (v *FunctionVisitor) addNext(s *State,
 	v.seen[nodeKey] = true
 
 	return que
+}
+
+// addFlow adds a data flow from function input to function output.
+func (v *FuncInputVisitor) addFlow(to GraphNode) {
+	v.flows = append(v.flows, to)
 }
 
 // traceNodes prints trace information about the cur node.

@@ -176,13 +176,33 @@ type rawSummary struct {
 	Flows map[string][]string
 }
 
-// A detailedSummary is a more human-friendly and more precise version of a summary.
-type detailedSummary struct {
+// A DetailedSummary is a more human-friendly and more precise version of a summary.
+type DetailedSummary struct {
 	Flows map[SummaryNode][]SummaryNode
 }
 
+func (s DetailedSummary) String() string {
+	b := &strings.Builder{}
+	i := 0
+	for input, outputs := range s.Flows {
+		fmt.Fprintf(b, "%s -> ", input)
+		for j, output := range outputs {
+			fmt.Fprintf(b, "%s", output)
+			if j < len(outputs)-1 {
+				fmt.Fprint(b, ", ")
+			}
+		}
+		if i < len(s.Flows)-1 {
+			fmt.Fprint(b, ", ")
+		}
+		i++
+	}
+
+	return b.String()
+}
+
 // GetArgFlows returns the indexed flows from parameters to returns of the detailed summary.
-func (s detailedSummary) GetArgFlows(f *ssa.Function) ([][]int, error) {
+func (s DetailedSummary) GetArgFlows(f *ssa.Function) ([][]int, error) {
 	nArgs := f.Signature.Params().Len()
 	if f.Signature.Recv() != nil {
 		nArgs++
@@ -208,7 +228,7 @@ func (s detailedSummary) GetArgFlows(f *ssa.Function) ([][]int, error) {
 }
 
 // GetReturnFlows returns the indexed flows from parameter to returns of the detailed summary.
-func (s detailedSummary) GetReturnFlows(f *ssa.Function) ([][]int, error) {
+func (s DetailedSummary) GetReturnFlows(f *ssa.Function) ([][]int, error) {
 	nArgs := f.Signature.Params().Len()
 	if f.Signature.Recv() != nil {
 		nArgs++
@@ -266,30 +286,30 @@ func getParamOrRecvIndex(n SummaryNode, f *ssa.Function) (int, bool, error) {
 
 // compile parses the raw summary as a map from string representation of summary
 // nodes to list of summary nodes to its parsed version using structs.
-func (s rawSummary) compile() (detailedSummary, error) {
+func (s rawSummary) compile() (DetailedSummary, error) {
 	flows := make(map[SummaryNode][]SummaryNode)
 	for k, vals := range s.Flows {
 		key, err := ParseSummaryNode(k)
 		if err != nil {
-			return detailedSummary{}, err
+			return DetailedSummary{}, err
 		}
 		if _, isReturnNode := key.(ReturnSNode); isReturnNode {
-			return detailedSummary{}, fmt.Errorf("data cannot flow from a return node")
+			return DetailedSummary{}, fmt.Errorf("data cannot flow from a return node")
 		}
 		flows[key] = make([]SummaryNode, len(vals))
 		for _, v := range vals {
 			value, err := ParseSummaryNode(v)
 			if err != nil {
-				return detailedSummary{}, err
+				return DetailedSummary{}, err
 			}
 			flows[key] = append(flows[key], value)
 		}
 	}
-	return detailedSummary{Flows: flows}, nil
+	return DetailedSummary{Flows: flows}, nil
 }
 
 // mustCompile is the version of IntoDetailedSummary that panics instead of returning an error.
-func (s rawSummary) mustCompile() detailedSummary {
+func (s rawSummary) mustCompile() DetailedSummary {
 	f, err := s.compile()
 	if err != nil {
 		panic(err)
