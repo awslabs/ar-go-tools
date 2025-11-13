@@ -296,7 +296,7 @@ func (s rawSummary) compile() (DetailedSummary, error) {
 		if _, isReturnNode := key.(ReturnSNode); isReturnNode {
 			return DetailedSummary{}, fmt.Errorf("data cannot flow from a return node")
 		}
-		flows[key] = make([]SummaryNode, len(vals))
+		flows[key] = make([]SummaryNode, 0, len(vals))
 		for _, v := range vals {
 			value, err := ParseSummaryNode(v)
 			if err != nil {
