@@ -147,7 +147,7 @@ func (state *IntraAnalysisState) markInstruction(i ssa.Instruction) {
 	}
 
 	// Instructions where marking is optional
-	if state.shouldTrack(state.parentAnalyzerState, i.(ssa.Node)) {
+	if state.shouldTrack != nil && state.shouldTrack(state.parentAnalyzerState, i.(ssa.Node)) {
 		mark := state.flowInfo.GetNewMark(i.(ssa.Node), Synthetic+DefaultMark, nil, NonIndexMark)
 		switch instr := i.(type) {
 		case *ssa.UnOp:

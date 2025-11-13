@@ -325,7 +325,7 @@ func (state *IntraAnalysisState) makeEdgesAtIf(x *ssa.If) {
 // makeEdgesSyntheticNodes analyzes the synthetic
 func (state *IntraAnalysisState) makeEdgesSyntheticNodes(instr ssa.Instruction) {
 	aState := state.parentAnalyzerState
-	if !state.shouldTrack(aState, instr.(ssa.Node)) {
+	if state.shouldTrack != nil && !state.shouldTrack(aState, instr.(ssa.Node)) {
 		return
 	}
 	if asValue, ok := instr.(ssa.Value); ok {
