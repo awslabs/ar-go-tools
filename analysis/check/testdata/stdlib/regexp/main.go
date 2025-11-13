@@ -16,9 +16,19 @@ package main
 
 import (
 	"fmt"
-	"math"
+	"regexp"
 )
 
 func main() {
-	fmt.Println(math.Max(1, 2))
+	// Test regexp.Compile - complex NFA/DFA construction
+	re, err := regexp.Compile(source())
+	if err != nil {
+		fmt.Printf("Regexp error: %v\n", err)
+	} else {
+		fmt.Printf("Regexp compiled: %v\n", re.String())
+	}
+}
+
+func source() string {
+	return `^([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$`
 }

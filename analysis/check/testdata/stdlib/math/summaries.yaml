@@ -1,0 +1,17 @@
+dataflow-summaries:
+  - package: math/big
+    receiver: "*Int"
+    method: Exp
+    flows:
+      - from: "!arg <x>"
+        to: "!ret 0"
+      - from: "!arg <x>"
+        to: "!receiver"
+      - from: "!arg <y>"
+        to: "!ret 0"
+      - from: "!arg <y>"
+        to: "!receiver"
+      - from: "!arg <m>"
+        to: "!ret 0"
+      - from: "!arg <m>"
+        to: "!receiver"

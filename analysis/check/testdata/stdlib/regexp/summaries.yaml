@@ -1,0 +1,6 @@
+dataflow-summaries:
+  - package: regexp
+    function: Compile
+    flows:
+      - from: "!arg <expr>"
+        to: "!ret 0"
