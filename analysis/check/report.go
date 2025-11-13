@@ -15,6 +15,8 @@
 package check
 
 import (
+	"time"
+
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
@@ -26,4 +28,5 @@ type SoundnessResult struct {
 	Got      summaries.DetailedSummary         // Got is the actual summary computed, if any
 	GotGraph *dataflow.SummaryGraph            // GotGraph is the actual summary graph computed, if any
 	IsSound  bool                              // IsSound is true if Want is an overapproximation
+	Time     time.Duration                     // Time is the time spent to calculate the result
 }

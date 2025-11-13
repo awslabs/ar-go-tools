@@ -15,6 +15,7 @@
 package check
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -131,30 +132,40 @@ func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataf
 	check.InitializeState(s)
 
 	logger := s.Logger
+	var errs []error
+	logger.Info("Summaries to check:\n")
+	for _, summary := range parsedSummaries {
+		logger.Infof("\t%s\n", summary.Name())
+	}
 	for _, summary := range parsedSummaries {
 		targetName := summary.Name()
 		logger.PushContext(formatutil.Faint(targetName))
 		logger.Infof("Checking summary...")
 		soundness, err := check.CheckSummary(s, summary, via)
 		if err != nil {
-			return fmt.Errorf("failed to check the summary of function %s: %v", targetName, err)
+			// continue checking the rest of the summaries but return all the errors when finished
+			logger.Errorf("failed to check the summary of function %s in %v seconds: %v", targetName, soundness.Time.Seconds(), err)
+			errs = append(errs, err)
+			continue
 		}
-		logger.Infof("Summary for function %s:\n", targetName)
-		logger.Infof("\t%s\n", soundness.Got)
-		if soundness.GotGraph != nil {
-			logger.Infof("Summary graph:\n")
-			soundness.GotGraph.PrettyPrint(true, logger.GetDebug().Writer(), nil)
-		}
+		logger.Infof("Checked soundness of summary for function %s in %v seconds:\n", targetName, soundness.Time.Seconds())
 		if soundness.IsSound {
 			logger.Infof("Sound!")
 		} else {
 			// TODO proper soundness report
 			logger.Errorf("Unsound!")
 		}
+		if len(soundness.Got.Flows) == 0 {
+			logger.Infof("Computed summary:\n\t%s\n", soundness.Got)
+		}
+		if soundness.GotGraph != nil {
+			logger.Infof("Computed summary graph:\n")
+			soundness.GotGraph.PrettyPrint(true, logger.GetDebug().Writer(), nil)
+		}
 		logger.PopContext()
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func methodsString() string {

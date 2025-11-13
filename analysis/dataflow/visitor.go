@@ -541,7 +541,7 @@ func (v *FuncInputVisitor) Visit(s *State, entry NodeWithTrace) {
 
 		case *AccessGlobalNode:
 			// TODO For now, analyzing a function with globals results in an error
-			s.Report.AddError("", fmt.Errorf("%w in function %v", ErrGlobal, graphNode.ParentName()))
+			s.Report.AddError("", fmt.Errorf("%w in function %v with trace %s", ErrGlobal, graphNode.graph.Parent.String(), cur.Trace.SummaryString()))
 			return
 
 		// A BoundLabel flows to the body of the closure that captures it.

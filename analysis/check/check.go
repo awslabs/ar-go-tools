@@ -17,6 +17,7 @@ package check
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -40,10 +41,11 @@ const (
 
 // CheckSummary checks the soundness of summary.
 func CheckSummary(s *dataflow.State, summary summaries.FrontendDataflowSummary, via Method) (SoundnessResult, error) {
+	start := time.Now()
 	// TODO implement other methods
 	switch via {
 	case Naive:
-		return checkSummaryNaive(s, summary)
+		return checkSummaryNaive(s, summary, start)
 	default:
 		return SoundnessResult{}, fmt.Errorf("unsupported soundness checking method: %v", via)
 	}
@@ -103,7 +105,7 @@ func FullySummarize(s *dataflow.State, f *ssa.Function) (FullSummary, error) {
 	panic("failed to find computed summary in graph")
 }
 
-func checkSummaryNaive(s *dataflow.State, summary summaries.FrontendDataflowSummary) (SoundnessResult, error) {
+func checkSummaryNaive(s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
 	f, err := functionOfSummary(s, summary)
 	if err != nil {
 		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
@@ -111,15 +113,16 @@ func checkSummaryNaive(s *dataflow.State, summary summaries.FrontendDataflowSumm
 
 	gotSummary, err := FullySummarize(s, f)
 	if err != nil {
-		return SoundnessResult{}, fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
+		return SoundnessResult{Time: time.Since(start)}, fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
 	}
-	got := newDetailedSummary(gotSummary.Flows)
 
+	got := newDetailedSummary(gotSummary.Flows)
 	return SoundnessResult{
 		Want:     summary,
 		Got:      got,
 		GotGraph: gotSummary.Graph,
 		IsSound:  false,
+		Time:     time.Since(start),
 	}, nil
 }
 
