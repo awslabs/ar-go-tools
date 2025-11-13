@@ -34,6 +34,26 @@ func twoArgIntraInout(x *int, y *int) {
 	*y = *x
 }
 
+func twoArgInterInout(x *int, y *int) {
+	setmem(y, *x)
+}
+
+func setmem(dst *int, src int) {
+	*dst = src
+}
+
+var global int
+
+func singleArgIntraGlobal(x int) int {
+	global = x
+	return global
+}
+
+func singleArgInterGlobal(x int) int {
+	setmem(&global, x)
+	return global
+}
+
 func testSingleArgIntraOut() {
 	fmt.Println(singleArgIntraOut(1))
 }
@@ -49,8 +69,28 @@ func testTwoArgIntraInout() {
 	fmt.Println(y)
 }
 
+func testTwoArgInterInout() {
+	x := 1
+	y := -1
+	twoArgInterInout(&x, &y)
+	fmt.Println(y)
+}
+
+func testSingleArgIntraGlobal() {
+	fmt.Println(singleArgIntraGlobal(1)) // 1
+	fmt.Println(global)                  // 1
+}
+
+func testSingleArgInterGlobal() {
+	fmt.Println(singleArgInterGlobal(2)) // 2
+	fmt.Println(global)                  // 2
+}
+
 func main() {
 	testSingleArgIntraOut()
 	testSingleArgInterNone()
 	testTwoArgIntraInout()
+	testTwoArgInterInout()
+	testSingleArgIntraGlobal()
+	testSingleArgInterGlobal()
 }

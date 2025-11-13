@@ -15,13 +15,15 @@
 package check
 
 import (
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
 
 // SoundnessResult is the result of checking the soundness of a single data flow summary.
 type SoundnessResult struct {
-	Name    string                            // Name is the name of the summarized function
-	Want    summaries.FrontendDataflowSummary // Want is the summary being checked
-	Got     summaries.DetailedSummary         // Got is the actual summary computed, if any
-	IsSound bool                              // IsSound is true if Want is an overapproximation
+	Name     string                            // Name is the name of the summarized function
+	Want     summaries.FrontendDataflowSummary // Want is the summary being checked
+	Got      summaries.DetailedSummary         // Got is the actual summary computed, if any
+	GotGraph *dataflow.SummaryGraph            // GotGraph is the actual summary graph computed, if any
+	IsSound  bool                              // IsSound is true if Want is an overapproximation
 }

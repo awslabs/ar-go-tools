@@ -55,6 +55,7 @@ type Flags struct {
 	tools.CommonFlags
 	summaryPath string
 	via         check.Method
+	log         int
 }
 
 // NewFlags returns the parsed flags for the data flow summary checking analysis with args.
@@ -62,6 +63,7 @@ func NewFlags(args []string) (Flags, error) {
 	flags := tools.NewUnparsedCommonFlags(config.CheckTool)
 	summaryPath := flags.FlagSet.String("summary", "", "path to data flow summary file")
 	via := flags.FlagSet.String("via", "all", "how to perform the check")
+	level := flags.FlagSet.Int("log", 3, "log level (int)")
 	tools.SetUsage(flags.FlagSet, usage)
 	if err := flags.FlagSet.Parse(args); err != nil {
 		return Flags{}, fmt.Errorf("failed to parse command check with args %v: %v", args, err)
@@ -86,6 +88,7 @@ func NewFlags(args []string) (Flags, error) {
 		},
 		summaryPath: *summaryPath,
 		via:         check.Method(*via),
+		log:         *level,
 	}, nil
 }
 
@@ -93,7 +96,7 @@ func NewFlags(args []string) (Flags, error) {
 func Run(flags Flags) error {
 	cfg := config.NewDefault()
 	cfg.DataflowProblems.SummarizeOnDemand = true
-	cfg.LogLevel = int(config.InfoLevel)
+	cfg.LogLevel = flags.log
 	cfg.Options.UnsafeMaxDepth = -1
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot check tool - " + analysis.Version))
@@ -138,6 +141,16 @@ func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataf
 		}
 		logger.Infof("Summary for function %s:\n", targetName)
 		logger.Infof("\t%s\n", soundness.Got)
+		if soundness.GotGraph != nil {
+			logger.Infof("Summary graph:\n")
+			soundness.GotGraph.PrettyPrint(true, logger.GetDebug().Writer(), nil)
+		}
+		if soundness.IsSound {
+			logger.Infof("Sound!")
+		} else {
+			// TODO proper soundness report
+			logger.Errorf("Unsound!")
+		}
 		logger.PopContext()
 	}
 

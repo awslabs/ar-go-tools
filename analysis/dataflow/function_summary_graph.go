@@ -223,6 +223,7 @@ func (g *SummaryGraph) initializeInnerNodes(s *State,
 
 	// Add global nodes if the state is non-nil
 	if s != nil {
+		addedGlobal := false
 		lang.IterateInstructions(g.Parent,
 			func(_ int, i ssa.Instruction) {
 				var operands []*ssa.Value
@@ -232,10 +233,14 @@ func (g *SummaryGraph) initializeInnerNodes(s *State,
 					if glob, ok := (*operand).(*ssa.Global); ok {
 						if node, ok := s.Globals[glob]; ok {
 							g.AddAccessGlobalNode(i, node)
+							addedGlobal = true
 						}
 					}
 				}
 			})
+		if addedGlobal {
+			g.SyncGlobals()
+		}
 	}
 }
 

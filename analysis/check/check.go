@@ -17,11 +17,9 @@ package check
 import (
 	"errors"
 	"fmt"
-	"runtime"
 
 	"golang.org/x/tools/go/ssa"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
@@ -30,10 +28,14 @@ import (
 type Method string
 
 const (
-	Types        Method = "types"        // Types means use the type analysis
-	Immutability Method = "immutability" // Immutability means use the immutability analysis
-	All          Method = "all"          // All means use all available analyses in the most efficient way
-	Naive        Method = "naive"        // Naive means use the full data flow analysis
+	// Types means use the type analysis
+	Types Method = "types"
+	// Immutability means use the immutability analysis
+	Immutability Method = "immutability"
+	// All means use all available analyses in the most efficient way
+	All Method = "all"
+	// Naive means use the full data flow analysis
+	Naive Method = "naive"
 )
 
 // CheckSummary checks the soundness of summary.
@@ -72,26 +74,29 @@ func FullySummarize(s *dataflow.State, f *ssa.Function) (FullSummary, error) {
 	flows := make(map[dataflow.GraphNode][]dataflow.GraphNode)
 	for _, param := range graph.Params {
 		v := dataflow.NewFuncInputVisitor()
-		s.Logger = config.NewLogGroup(&config.Config{
-			Options: config.Options{
-				LogLevel:    int(config.InfoLevel),
-				SilenceWarn: true,
-			},
-		})
 		v.Visit(s, dataflow.NodeWithTrace{Node: param})
+		// if there are no flows, don't add them
+		if len(v.Flows()) == 0 {
+			continue
+		}
 		flows[param] = v.Flows()
 	}
 	if s.Report.HasErrors() {
 		errs := s.Report.CheckError()
 		return FullSummary{}, fmt.Errorf(
-			"failed to run the inter-procedural data flow analysis: %v",
+			"failed to run the inter-procedural data flow analysis: %w",
 			errors.Join(errs...))
 	}
 	s.FlowGraph.Sync()
 
 	for fn, completeSummary := range s.FlowGraph.Summaries {
 		if fn == f {
-			return FullSummary{Graph: completeSummary, Flows: flows}, nil
+			res := FullSummary{Graph: completeSummary, Flows: flows}
+			// Even if a global node isn't explicitly visited, it may still be in the summary
+			if len(completeSummary.AccessGlobalNodes) > 0 {
+				return res, fmt.Errorf("invalid summary: %w", dataflow.ErrGlobal)
+			}
+			return res, nil
 		}
 	}
 
@@ -106,19 +111,16 @@ func checkSummaryNaive(s *dataflow.State, summary summaries.FrontendDataflowSumm
 
 	gotSummary, err := FullySummarize(s, f)
 	if err != nil {
-		return SoundnessResult{}, fmt.Errorf("failed to fully summarize function %s: %v", f.RelString(nil), err)
+		return SoundnessResult{}, fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
 	}
 	got := newDetailedSummary(gotSummary.Flows)
 
 	return SoundnessResult{
-		Want:    summary,
-		Got:     got,
-		IsSound: false,
+		Want:     summary,
+		Got:      got,
+		GotGraph: gotSummary.Graph,
+		IsSound:  false,
 	}, nil
-}
-
-func isOverapproximation(want summaries.Summarizer, got summaries.DetailedSummary) bool {
-	panic("TODO")
 }
 
 func newDetailedSummary(flows map[dataflow.GraphNode][]dataflow.GraphNode) summaries.DetailedSummary {
@@ -173,16 +175,15 @@ func functionOfSummary(s *dataflow.State, summary summaries.FrontendDataflowSumm
 // InitializeState adds dummy summaries to the data flow graph and builds it.
 // Run this before any another method.
 func InitializeState(s *dataflow.State) {
+	summaries.UnsetStdLibSummaries()                              // HACK removes pre-summarized standard library functions
 	s.DataFlowContracts = make(map[string]*dataflow.SummaryGraph) // reset data flow contracts
-	dataflow.RunIntraProceduralPass(s, runtime.NumCPU(), dataflow.IntraAnalysisParams{
-		// Don't build any summaries since we're summarizing on-demand
-		ShouldBuildSummary: func(*dataflow.State, *ssa.Function) bool {
-			return false
-		},
-		// No need to track sources, sinks, or synthetic nodes since they don't appear in data flow summaries
-		ShouldTrack: func(*dataflow.State, ssa.Node) bool {
-			return false
-		},
-	})
+	fg := dataflow.NewInterProceduralFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, s)
+	if len(s.ReachableFunctions()) == 0 {
+		panic("no reachable functions")
+	}
+	for fn := range s.ReachableFunctions() {
+		fg.Summaries[fn] = dataflow.NewSummaryGraph(s, fn, dataflow.GetUniqueFunctionID(), nil, nil)
+	}
+	*s.FlowGraph = fg
 	s.FlowGraph.BuildGraph()
 }

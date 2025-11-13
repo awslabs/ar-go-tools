@@ -107,6 +107,7 @@ func (s FunctionFlowSummary) Summary() DetailedSummary {
 	return s.summary
 }
 
+// UnmarshalJSON unmarshals a JSON function flow summary to s.
 func (s *FunctionFlowSummary) UnmarshalJSON(b []byte) error {
 	var raw rawDataflowSummary
 	if err := json.Unmarshal(b, &raw); err != nil {

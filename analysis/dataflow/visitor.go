@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"errors"
 	"fmt"
 	"go/token"
 	"strings"
@@ -54,7 +55,12 @@ func (v *FuncInputVisitor) Flows() []GraphNode {
 	return v.flows
 }
 
+// ErrGlobal is the error returned when there is data flow to a global.
+var ErrGlobal = errors.New("data flow to global")
+
 // Visit adds data flow information from entry to the inter-procedural data flow graph.
+//
+//gocyclo:ignore
 func (v *FuncInputVisitor) Visit(s *State, entry NodeWithTrace) {
 	entryParam, ok := entry.Node.(*ParamNode)
 	if !ok {
@@ -160,9 +166,10 @@ func (v *FuncInputVisitor) Visit(s *State, entry NodeWithTrace) {
 					}
 				}
 			} else {
-				// If the callstack is empty and the parameter is the entrypoint, then we stop analyzing further
-				if graphNode == entry.Node {
-					s.Logger.Tracef("no callstack and parameter is entrypoint: dataflow from parameter is complete")
+				// If the callstack is empty and the parameter is of the same function as the entrypoint,
+				// then we stop analyzing further
+				if graphNode.parent.Parent == entryParam.parent.Parent {
+					s.Logger.Tracef("no callstack and parameter is entrypoint: dataflow from parameter is complete\n")
 					v.addFlow(graphNode)
 					continue
 				}
@@ -531,7 +538,7 @@ func (v *FuncInputVisitor) Visit(s *State, entry NodeWithTrace) {
 
 		case *AccessGlobalNode:
 			// TODO For now, analyzing a function with globals results in an error
-			s.Report.AddError("", fmt.Errorf("encountered global variable write in function %v", graphNode.ParentName()))
+			s.Report.AddError("", fmt.Errorf("%w in function %v", ErrGlobal, graphNode.ParentName()))
 			return
 
 		// A BoundLabel flows to the body of the closure that captures it.
