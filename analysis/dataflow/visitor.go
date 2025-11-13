@@ -115,6 +115,9 @@ func (v *FuncInputVisitor) Visit(s *State, entry NodeWithTrace) {
 			// built summary
 			v.onDemandIntraProcedural(s, cur.Node.Graph())
 		}
+		if cur.Node.Graph().IsPreSummarized {
+			panic(fmt.Errorf("pre-summarized summary for node %v", cur))
+		}
 
 		switch graphNode := cur.Node.(type) {
 

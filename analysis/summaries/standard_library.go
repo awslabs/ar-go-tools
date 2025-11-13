@@ -164,6 +164,12 @@ var stdPackages = map[string]map[string]Summarizer{
 	"internal/unsafeheader":    summaryInternal,
 }
 
+// UnsetStdLibSummaries removes all the standard library summaries.
+// WARNING: This is generally a bad idea and only exists to support the `argot check` command.
+func UnsetStdLibSummaries() {
+	stdPackages = make(map[string]map[string]Summarizer)
+}
+
 var summaryArchiveTar = map[string]Summarizer{
 	//  === Reader ===
 

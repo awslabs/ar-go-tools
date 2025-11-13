@@ -135,11 +135,11 @@ func SummaryOfFunc(function *ssa.Function) (Summarizer, bool) {
 	if function == nil {
 		return Summary{}, false
 	}
-	// pkgName := lang.PackageNameFromFunction(function)
-	// if s, ok := stdPackages[pkgName]; ok {
-	// 	summary, ok := s[function.String()]
-	// 	return summary, ok
-	// }
+	pkgName := lang.PackageNameFromFunction(function)
+	if s, ok := stdPackages[pkgName]; ok {
+		summary, ok := s[function.String()]
+		return summary, ok
+	}
 
 	return Summary{}, false
 }
