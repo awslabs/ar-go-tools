@@ -1,0 +1,7 @@
+dataflow-summaries:
+  - package: encoding/base64
+    receiver: "*Encoding"
+    method: EncodeToString
+    flows:
+      - from: "!arg <src>"
+        to: "!ret 0"

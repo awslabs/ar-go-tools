@@ -1,0 +1,13 @@
+options:
+  reports-dir: .
+  log-level: 3
+
+dataflow-problems:
+  summarize-on-demand: true
+  taint-tracking:
+    - sources:
+        - package: "(main)|(command-line-arguments)"
+          method: "source[1-9]?"
+      sinks:
+        - package: "fmt"
+          method: "Printf"

@@ -1,0 +1,6 @@
+dataflow-summaries:
+  - package: crypto/sha512
+    function: Sum512
+    flows:
+      - from: "!arg <data>"
+        to: "!ret 0"

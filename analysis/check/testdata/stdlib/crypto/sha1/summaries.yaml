@@ -1,0 +1,6 @@
+dataflow-summaries:
+  - package: crypto/sha1
+    function: Sum
+    flows:
+      - from: "!arg <data>"
+        to: "!ret 0"

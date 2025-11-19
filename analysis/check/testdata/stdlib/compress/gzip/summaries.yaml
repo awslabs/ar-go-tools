@@ -1,0 +1,14 @@
+dataflow-summaries:
+  - package: compress/gzip
+    function: NewWriter
+    flows:
+      - from: "!arg <w>"
+        to: "!ret 0"
+  - package: compress/gzip
+    receiver: "*Writer"
+    method: Write
+    flows:
+      - from: "!arg <p>"
+        to: "!receiver"
+      - from: "!arg <p>"
+        to: "!ret 0"
