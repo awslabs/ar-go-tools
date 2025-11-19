@@ -15,6 +15,8 @@
 package check
 
 import (
+	"bytes"
+	"encoding/json"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -29,4 +31,39 @@ type SoundnessResult struct {
 	GotGraph *dataflow.SummaryGraph            // GotGraph is the actual summary graph computed, if any
 	IsSound  bool                              // IsSound is true if Want is an overapproximation
 	Time     time.Duration                     // Time is the time spent to calculate the result
+}
+
+func (r SoundnessResult) MarshalJSON() ([]byte, error) {
+	b := &bytes.Buffer{}
+	raw := rawSoundnessResult{
+		Name:        r.Name,
+		Want:        rawFlows(r.Want.Summary().Flows),
+		Got:         rawFlows(r.Got.Flows),
+		IsSound:     r.IsSound,
+		TimeSeconds: time.Duration(r.Time.Seconds()),
+	}
+	enc := json.NewEncoder(b)
+	enc.SetEscapeHTML(false) // don't escape characters like "<"
+	err := enc.Encode(raw)
+	res := b.Bytes()
+	return res, err
+}
+
+type rawSoundnessResult struct {
+	Name        string
+	Want        map[string][]string
+	Got         map[string][]string
+	IsSound     bool
+	TimeSeconds time.Duration
+}
+
+func rawFlows(flows map[summaries.SummaryNode][]summaries.SummaryNode) map[string][]string {
+	res := make(map[string][]string)
+	for k, vs := range flows {
+		res[k.String()] = make([]string, 0, len(vs))
+		for _, v := range vs {
+			res[k.String()] = append(res[k.String()], v.String())
+		}
+	}
+	return res
 }

@@ -15,8 +15,11 @@
 package check
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -95,7 +98,10 @@ func NewFlags(args []string) (Flags, error) {
 
 // Run runs the data flow summary checking analysis.
 func Run(flags Flags) error {
-	cfg := config.NewDefault()
+	cfg, checkErr := tools.LoadConfig(flags.CommonFlags, true)
+	if checkErr != nil {
+		return fmt.Errorf("failed to load config: %v", checkErr)
+	}
 	cfg.DataflowProblems.SummarizeOnDemand = true
 	cfg.LogLevel = flags.log
 	cfg.Options.UnsafeMaxDepth = -1
@@ -103,9 +109,9 @@ func Run(flags Flags) error {
 	tmpLogger.Info(formatutil.Faint("Argot check tool - " + analysis.Version))
 	tmpLogger.Infof("Checking method: %s", flags.via)
 
-	parsedSummaries, err := summaries.ParseSummariesFile(flags.summaryPath)
-	if err != nil {
-		return fmt.Errorf("failed to parse summaries file %s: %v", flags.summaryPath, err)
+	parsedSummaries, checkErr := summaries.ParseSummariesFile(flags.summaryPath)
+	if checkErr != nil {
+		return fmt.Errorf("failed to parse summaries file %s: %v", flags.summaryPath, checkErr)
 	}
 
 	loadOptions := config.LoadOptions{
@@ -117,18 +123,39 @@ func Run(flags Flags) error {
 	}
 	c := config.NewState(cfg, flags.summaryPath, flags.FlagSet.Args(), loadOptions)
 	ptrState := result.Bind(loadprogram.NewState(c), ptr.NewState)
-	df, err := result.Bind(ptrState, dataflow.NewState).Value()
-	if err != nil {
-		return fmt.Errorf("failed to initialize dataflow state: %s", err)
+	df, checkErr := result.Bind(ptrState, dataflow.NewState).Value()
+	if checkErr != nil {
+		return fmt.Errorf("failed to initialize dataflow state: %s", checkErr)
 	}
-	if err := checkSummaries(df, parsedSummaries, flags.via); err != nil {
-		return fmt.Errorf("failed to check summaries: %v", err)
+	results, checkErr := checkSummaries(df, parsedSummaries, flags.via)
+	// write the report before exiting, even if there was an error in checking summaries
+	if err := report(cfg, results); err != nil {
+		return err
+	}
+	if checkErr != nil {
+		return checkErr
 	}
 
 	return nil
 }
 
-func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataflowSummary, via check.Method) error {
+func report(cfg *config.Config, results []check.SoundnessResult) error {
+	if cfg.ReportsDir != "" {
+		reportFile, err := os.Create(filepath.Join(cfg.ReportsDir, "check-report.json"))
+		if err != nil {
+			return fmt.Errorf("failed to create report file: %v", err)
+		}
+		enc := json.NewEncoder(reportFile)
+		enc.SetEscapeHTML(false) // don't escape characters like "<"
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(results); err != nil {
+			return fmt.Errorf("failed to marshal report to json: %v", err)
+		}
+	}
+	return nil
+}
+
+func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataflowSummary, via check.Method) ([]check.SoundnessResult, error) {
 	check.InitializeState(s)
 
 	logger := s.Logger
@@ -137,6 +164,8 @@ func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataf
 	for _, summary := range parsedSummaries {
 		logger.Infof("\t%s\n", summary.Name())
 	}
+
+	results := make([]check.SoundnessResult, 0, len(parsedSummaries))
 	for _, summary := range parsedSummaries {
 		targetName := summary.Name()
 		logger.PushContext(formatutil.Faint(targetName))
@@ -162,10 +191,12 @@ func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataf
 			logger.Infof("Computed summary graph:\n")
 			soundness.GotGraph.PrettyPrint(true, logger.GetDebug().Writer(), nil)
 		}
+
+		results = append(results, soundness)
 		logger.PopContext()
 	}
 
-	return errors.Join(errs...)
+	return results, errors.Join(errs...)
 }
 
 func methodsString() string {

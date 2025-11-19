@@ -136,8 +136,10 @@ func (e *ExcludePaths) Set(value string) error {
 func LoadConfig(flags CommonFlags, returnDefaultIfNoPath bool) (*config.Config, error) {
 	if flags.ConfigPath == "" {
 		if returnDefaultIfNoPath {
-			fmt.Fprintf(os.Stderr, "config path empty: loading default config")
-			return config.NewDefault(), nil
+			c := config.NewDefault()
+			logger := config.NewLogGroup(c)
+			logger.Warn("config path empty: loading default config\n")
+			return c, nil
 		}
 		return nil, fmt.Errorf("file not specified")
 	}

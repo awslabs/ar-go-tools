@@ -10,6 +10,7 @@ errors.txt
 large-tests
 taint-report*
 *-report
+*-report*
 .emacs.desktop
 .idea
 .venv
