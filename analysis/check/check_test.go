@@ -56,36 +56,36 @@ func TestCheckSummary_Basic(t *testing.T) {
 		via  check.Method
 		want any
 	}{
-		// {
-		// 	name: "singleArgIntraOut",
-		// 	via:  check.Naive,
-		// 	want: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-		// },
-		// {
-		// 	name: "singleArgInterNone",
-		// 	via:  check.Naive,
-		// 	want: []string{},
-		// },
-		// {
-		// 	name: "twoArgIntraInout",
-		// 	via:  check.Naive,
-		// 	want: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
-		// },
-		// {
-		// 	name: "twoArgInterInout",
-		// 	via:  check.Naive,
-		// 	want: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
-		// },
-		// {
-		// 	name: "singleArgIntraGlobal",
-		// 	via:  check.Naive,
-		// 	want: dataflow.ErrGlobal,
-		// },
-		// {
-		// 	name: "singleArgInterGlobal",
-		// 	via:  check.Naive,
-		// 	want: dataflow.ErrGlobal,
-		// },
+		{
+			name: "singleArgIntraOut",
+			via:  check.Naive,
+			want: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+		},
+		{
+			name: "singleArgInterNone",
+			via:  check.Naive,
+			want: []string{},
+		},
+		{
+			name: "twoArgIntraInout",
+			via:  check.Naive,
+			want: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
+		},
+		{
+			name: "twoArgInterInout",
+			via:  check.Naive,
+			want: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
+		},
+		{
+			name: "singleArgIntraGlobal",
+			via:  check.Naive,
+			want: dataflow.ErrGlobal,
+		},
+		{
+			name: "singleArgInterGlobal",
+			via:  check.Naive,
+			want: dataflow.ErrGlobal,
+		},
 		{
 			name: "twoArgInterBool",
 			via:  check.Naive,
