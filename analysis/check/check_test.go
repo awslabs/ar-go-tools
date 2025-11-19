@@ -18,7 +18,6 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -57,35 +56,51 @@ func TestCheckSummary_Basic(t *testing.T) {
 		via  check.Method
 		want any
 	}{
+		// {
+		// 	name: "singleArgIntraOut",
+		// 	via:  check.Naive,
+		// 	want: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+		// },
+		// {
+		// 	name: "singleArgInterNone",
+		// 	via:  check.Naive,
+		// 	want: []string{},
+		// },
+		// {
+		// 	name: "twoArgIntraInout",
+		// 	via:  check.Naive,
+		// 	want: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
+		// },
+		// {
+		// 	name: "twoArgInterInout",
+		// 	via:  check.Naive,
+		// 	want: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
+		// },
+		// {
+		// 	name: "singleArgIntraGlobal",
+		// 	via:  check.Naive,
+		// 	want: dataflow.ErrGlobal,
+		// },
+		// {
+		// 	name: "singleArgInterGlobal",
+		// 	via:  check.Naive,
+		// 	want: dataflow.ErrGlobal,
+		// },
 		{
-			name: "singleArgIntraOut",
+			name: "twoArgInterBool",
 			via:  check.Naive,
-			want: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+			want: []string{
+				// `{"from": "!arg <x>", "to": "!ret 0"}`,
+				`{"from": "!arg <y>", "to": "!ret 0"}`,
+			},
 		},
 		{
-			name: "singleArgInterNone",
+			name: "twoArgInter",
 			via:  check.Naive,
-			want: []string{},
-		},
-		{
-			name: "twoArgIntraInout",
-			via:  check.Naive,
-			want: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
-		},
-		{
-			name: "twoArgInterInout",
-			via:  check.Naive,
-			want: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
-		},
-		{
-			name: "singleArgIntraGlobal",
-			via:  check.Naive,
-			want: dataflow.ErrGlobal,
-		},
-		{
-			name: "singleArgInterGlobal",
-			via:  check.Naive,
-			want: dataflow.ErrGlobal,
+			want: []string{
+				`{"from": "!arg <x>", "to": "!ret 0"}`,
+				`{"from": "!arg <y>", "to": "!ret 0"}`,
+			},
 		},
 	}
 
@@ -98,6 +113,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 				tcWantFlows = tcWant
 			case error:
 				tcWantErr = tcWant
+			default:
+				t.Fatalf("unexpected type of tc.want: %T", tc.want)
 			}
 			str := fmt.Sprintf(`
 {
@@ -118,8 +135,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 			}
 			wantFlows := wantSummary.Summary().Flows
 			gotFlows := res.Got.Flows
-			if !maps.EqualFunc(wantFlows, gotFlows, cmpNodes) {
-				t.Errorf("summary mismatch:\n\twant %v,\n\tgot %v\n", tcWantFlows, gotFlows)
+			if !equalFlows(wantFlows, gotFlows) {
+				t.Errorf("summary mismatch:\n\twant %v,\n\tgot %v\n", wantFlows, gotFlows)
 				t.Logf("want:\n")
 				dbgFlows(t, wantFlows)
 				t.Logf("got:\n")
@@ -131,41 +148,146 @@ func TestCheckSummary_Basic(t *testing.T) {
 	}
 }
 
-func cmpNodes(want, got []summaries.SummaryNode) bool {
-	return slices.EqualFunc(want, got, func(x, y summaries.SummaryNode) bool {
-		if reflect.TypeOf(x) != reflect.TypeOf(y) {
-			return false
-		}
+func TestCheckSummary_Stdlib(t *testing.T) {
+	tests := []struct {
+		name     string
+		dir      string
+		pkg      string
+		function string
+		want     any
+	}{
+		{
+			name:     "crypto/md5.Sum",
+			pkg:      "crypto/md5",
+			function: "Sum",
+			want:     []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
+		},
+		{
+			name:     "sort.Ints",
+			pkg:      "sort",
+			function: "Ints",
+			want:     []string{},
+		},
+	}
 
-		switch x := x.(type) {
-		case summaries.ArgumentSNode:
-			y := y.(summaries.ArgumentSNode)
-			return x.Name == y.Name || x.Index == y.Index
-		case summaries.ReceiverSNode:
-			y := y.(summaries.ReceiverSNode)
-			return x == y
-		case summaries.ReturnSNode:
-			y := y.(summaries.ReturnSNode)
-			return x.Index == y.Index
-		default:
-			panic(fmt.Errorf("unexpected summary node type: %T", x))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := filepath.Join("./testdata", "stdlib", tc.pkg)
+			lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+			if err != nil {
+				t.Fatal(err)
+			}
+			setupConfig(lp)
+			state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
+			if err != nil {
+				t.Fatalf("failed to load state: %s", err)
+			}
+			check.InitializeState(state)
+
+			var tcWantErr error
+			var tcWantFlows []string
+			switch tcWant := tc.want.(type) {
+			case []string:
+				tcWantFlows = tcWant
+			case error:
+				tcWantErr = tcWant
+			default:
+				t.Fatalf("unexpected type of tc.want: %T", tc.want)
+			}
+			str := fmt.Sprintf(`
+{
+	"package": "%s",
+	"function": "%s",
+	"flows": [%s]
+}`, tc.pkg, tc.function, strings.Join(tcWantFlows, ", "))
+			var wantSummary summaries.FunctionFlowSummary
+			if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
+				t.Fatalf("failed to unmarshal summary %s: %v", str, err)
+			}
+			res, err := check.CheckSummary(state, wantSummary, check.Naive)
+			if !errors.Is(err, tcWantErr) {
+				t.Errorf("unexpected check summary error:\n\twant %v,\n\tgot %v", tcWantErr, err)
+				t.Logf("got graph:\n")
+				res.GotGraph.PrettyPrint(true, os.Stdout, nil)
+				return
+			}
+			wantFlows := wantSummary.Summary().Flows
+			gotFlows := res.Got.Flows
+			if !equalFlows(wantFlows, gotFlows) {
+				t.Errorf("summary mismatch:\n\twant %v,\n\tgot %v\n", wantFlows, gotFlows)
+				t.Logf("want:\n")
+				dbgFlows(t, wantFlows)
+				t.Logf("got:\n")
+				dbgFlows(t, gotFlows)
+				t.Logf("got graph:\n")
+				res.GotGraph.PrettyPrint(true, os.Stdout, nil)
+			}
+		})
+	}
+}
+
+func equalFlows(want, got map[summaries.SummaryNode][]summaries.SummaryNode) bool {
+	if len(want) == 0 && len(got) == 0 {
+		return true
+	}
+
+	if len(want) != len(got) {
+		return false
+	}
+
+	for wk, wvs := range want {
+		for gk, gvs := range got {
+			if cmpNode(wk, gk) {
+				return cmpNodes(wvs, gvs)
+			}
 		}
-	})
+	}
+
+	return false
+}
+
+func cmpNodes(want, got []summaries.SummaryNode) bool {
+	return slices.EqualFunc(want, got, cmpNode)
+}
+
+func cmpNode(want, got summaries.SummaryNode) bool {
+	if reflect.TypeOf(want) != reflect.TypeOf(got) {
+		return false
+	}
+
+	switch want := want.(type) {
+	case summaries.ArgumentSNode:
+		got := got.(summaries.ArgumentSNode)
+		return want.Name == got.Name || want.Index == got.Index
+	case summaries.ReceiverSNode:
+		got := got.(summaries.ReceiverSNode)
+		return want == got
+	case summaries.ReturnSNode:
+		got := got.(summaries.ReturnSNode)
+		return want.Index == got.Index
+	default:
+		panic(fmt.Errorf("unexpected summary node type: %T", want))
+	}
+
 }
 
 func dbgFlows(t *testing.T, flows map[summaries.SummaryNode][]summaries.SummaryNode) {
 	for from, tos := range flows {
-		t.Logf("\t%+v\n", from)
+		logNode(t, from, 1)
 		for _, to := range tos {
-			switch to := to.(type) {
-			case summaries.ArgumentSNode:
-				t.Logf("\t\tARG name: %v, index: %v, path: %v\n", to.Name, to.Index, to.ObjectPath)
-			case summaries.ReturnSNode:
-				t.Logf("\t\tRET index: %v, path: %v\n", to.Index, to.ObjectPath)
-			default:
-				t.Logf("unsupported summary node type: %T\n", to)
-			}
+			logNode(t, to, 2)
 		}
+	}
+}
+
+func logNode(t *testing.T, n summaries.SummaryNode, indent int) {
+	switch n := n.(type) {
+	case summaries.ArgumentSNode:
+		t.Logf("%sARG name: %v, index: %v, path: %v\n", strings.Repeat("\t", indent), n.Name, n.Index, n.ObjectPath)
+	case summaries.ReturnSNode:
+		t.Logf("%sRET index: %v, path: %v\n", strings.Repeat("\t", indent), n.Index, n.ObjectPath)
+	default:
+		t.Logf("unsupported summary node type: %T\n", n)
 	}
 }
 

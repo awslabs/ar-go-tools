@@ -1,0 +1,8 @@
+dataflow-summaries:
+  - package: strings
+    function: Contains
+    flows:
+      - from: "!arg <s>"
+        to: "!ret 0"
+      - from: "!arg <substr>"
+        to: "!ret 0"

@@ -31,6 +31,8 @@ import (
 // If you run the Visit method on every input to the function you want to summarize, then the
 // summary of that function will be complete (sound).
 //
+// # NOTE This does not track flows to boolean operators that short-circuit.
+//
 // FuncInputVisitor implements the dataflow.Visitor interface.
 type FuncInputVisitor struct {
 	flows   []GraphNode // flows is the data flows from function input to outputs

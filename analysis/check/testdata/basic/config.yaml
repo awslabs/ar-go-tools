@@ -1,2 +1,3 @@
 options:
   log-level: 3
+  reports-dir: .

@@ -118,6 +118,7 @@ func checkSummaryNaive(s *dataflow.State, summary summaries.FrontendDataflowSumm
 
 	got := newDetailedSummary(gotSummary.Flows)
 	return SoundnessResult{
+		Name:     f.String(),
 		Want:     summary,
 		Got:      got,
 		GotGraph: gotSummary.Graph,

@@ -1,0 +1,6 @@
+dataflow-summaries:
+  - package: net/http
+    function: Get
+    flows:
+      - from: "!arg <url>"
+        to: "!ret 0"

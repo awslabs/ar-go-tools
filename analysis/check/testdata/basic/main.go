@@ -86,6 +86,45 @@ func testSingleArgInterGlobal() {
 	fmt.Println(global)                  // 2
 }
 
+func twoArgInterBool(x, y int) bool {
+	return gt(x, y, 0)
+}
+
+func gt(x, y, z int) bool {
+	// NOTE x does not flow to the return value here because it's the condition of an if-statement,
+	// but y does flow to the return value.
+	//
+	// This is a weird artifact of Go's SSA representation:
+	// func gt(x int, y int, z int) bool:
+	// 0:                                                                entry P:0 S:2
+	// 	t0 = x > z                                                         bool
+	// 	if t0 goto 2 else 1
+	// 1:                                                            binop.rhs P:1 S:1
+	// 	t1 = y > z                                                         bool
+	// 	jump 2
+	// 2:                                                           binop.done P:2 S:0
+	// 	t2 = phi [0: true:bool, 1: t1] #||                                 bool
+	// 	return t2
+
+	return x > z || y > z
+}
+
+func testTwoArgInterBool() {
+	fmt.Println(twoArgInterBool(1, 2)) // true
+}
+
+func twoArgInter(x, y int) int {
+	return plus(x, y, 3)
+}
+
+func plus(x, y, z int) int {
+	return x + y + z
+}
+
+func testTwoArgInter() {
+	fmt.Println(twoArgInter(1, 2)) // 6
+}
+
 func main() {
 	testSingleArgIntraOut()
 	testSingleArgInterNone()
@@ -93,4 +132,6 @@ func main() {
 	testTwoArgInterInout()
 	testSingleArgIntraGlobal()
 	testSingleArgInterGlobal()
+	testTwoArgInterBool()
+	testTwoArgInter()
 }

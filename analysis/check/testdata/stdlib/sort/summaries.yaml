@@ -1,0 +1,6 @@
+dataflow-summaries:
+  - package: sort
+    function: Ints
+    flows:
+      - from: "!arg <x>"
+        to: "!arg <x>"

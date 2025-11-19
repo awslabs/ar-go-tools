@@ -1,0 +1,6 @@
+dataflow-summaries:
+  - package: crypto/md5
+    function: Sum
+    flows:
+      - from: "!arg <data>"
+        to: "!ret 0"

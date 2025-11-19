@@ -1,0 +1,25 @@
+dataflow-summaries:
+  - package: "command-line-arguments"
+    function: "singleArgIntraOut"
+    flows:
+      - from: "!arg <x>"
+        to: "!ret 0"
+  - package: "command-line-arguments"
+    function: "singleArgInterNone"
+    flows: []
+  - package: "command-line-arguments"
+    function: "twoArgIntraInout"
+    flows:
+      - from: "!arg <x>"
+        to: "!arg <y>"
+  - package: "command-line-arguments"
+    function: "twoArgInterInout"
+    flows:
+      - from: "!arg <x>"
+        to: "!arg <y>"
+  - package: "command-line-arguments"
+    function: "singleArgIntraGlobal"
+    flows: []
+  - package: "command-line-arguments"
+    function: "singleArgInterGlobal"
+    flows: []
