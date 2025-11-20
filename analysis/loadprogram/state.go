@@ -69,7 +69,7 @@ func NewState(c *config.State) result.Result[State] {
 	if c == nil || c.Config == nil {
 		return result.Err[State](fmt.Errorf("cannot create state without config"))
 	}
-	program, pkgs, err := do(c.Patterns, c.Overlay, c.Options)
+	program, pkgs, err := do(c.Logger, c.Patterns, c.Overlay, c.Options)
 	if err != nil {
 		return result.Err[State](fmt.Errorf("failed to build program: %s", err))
 	}

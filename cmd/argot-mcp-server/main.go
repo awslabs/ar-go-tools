@@ -16,8 +16,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 
@@ -185,18 +187,18 @@ func handleDependencies(id interface{}, args map[string]interface{}) {
 	}
 
 	// Run the analysis
-	result, err := runDependencyAnalysis(paths, locThreshold, usageThreshold)
+	results, err := runDependencyAnalysis(paths, locThreshold, usageThreshold)
 	if err != nil {
 		sendError(id, -32603, fmt.Sprintf("Analysis failed: %v", err))
 		return
 	}
 
 	sendResponse(id, map[string]interface{}{
-		"content": []content{{Type: "text", Text: result}},
+		"content": []content{{Type: "text", Text: fmt.Sprintf("%+v", results)}},
 	})
 }
 
-func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold float64) (string, error) {
+func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold float64) ([]map[string]interface{}, error) {
 	cfg := config.NewDefault()
 
 	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
@@ -204,11 +206,14 @@ func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold floa
 		Tool:        config.DependenciesTool,
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to get targets: %v", err)
+		return nil, fmt.Errorf("failed to get targets: %v", err)
 	}
 
 	var results []map[string]interface{}
 	for targetName, target := range actualTargets {
+		// Create a new buffer for each target
+		var errorBuffer bytes.Buffer
+
 		loadOptions := config.LoadOptions{
 			Platform:      target.Platform,
 			PackageConfig: nil,
@@ -217,9 +222,22 @@ func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold floa
 			ApplyRewrites: true,
 		}
 
-		state, err := loadprogram.NewState(config.NewState(cfg, targetName, target.Patterns, loadOptions)).Value()
+		cfgState := config.NewState(cfg, targetName, target.Patterns, loadOptions)
+		cfgState.Logger.SetAllOutput(io.Discard)
+		cfgState.Logger.SetError(&errorBuffer)
+
+		state, err := loadprogram.NewState(cfgState).Value()
 		if err != nil {
-			return "", fmt.Errorf("failed to initialize analyzer state: %v", err)
+			result := map[string]interface{}{
+				"target":       targetName,
+				"dependencies": nil,
+				"error":        err.Error(),
+			}
+			if errorBuffer.Len() > 0 {
+				result["logs"] = errorBuffer.String()
+			}
+			results = append(results, result)
+			continue
 		}
 
 		_, dependencyMap := dependencies.DependencyAnalysis(state, dependencies.DependencyConfigs{
@@ -252,18 +270,21 @@ func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold floa
 			}
 			deps = append(deps, dep)
 		}
-		results = append(results, map[string]interface{}{
+
+		result := map[string]interface{}{
 			"target":       targetName,
 			"dependencies": deps,
-		})
+		}
+
+		// Only include logs field if there are actual logs
+		if errorBuffer.Len() > 0 {
+			result["logs"] = errorBuffer.String()
+		}
+
+		results = append(results, result)
 	}
 
-	jsonData, err := json.MarshalIndent(results, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal JSON: %v", err)
-	}
-
-	return string(jsonData), nil
+	return results, nil
 }
 
 func sendResponse(id interface{}, result interface{}) {

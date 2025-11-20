@@ -82,7 +82,7 @@ func TestMCPServerDependenciesTool(t *testing.T) {
 		ID:      3,
 		Method:  "tools/call",
 		Params: map[string]interface{}{
-			"name": "dependencies",
+			"name": "go_dependencies",
 			"arguments": map[string]interface{}{
 				"paths": []string{"./testdata/sample.go"},
 				"loc":   50,

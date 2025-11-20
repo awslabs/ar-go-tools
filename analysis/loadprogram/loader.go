@@ -30,7 +30,7 @@ import (
 // To understand how to specify the args, look at the documentation of packages.Load.
 //
 // The returned program has already been built.
-func do(files []string, overlay map[string][]byte, options config.LoadOptions) (*ssa.Program, []*packages.Package, error) {
+func do(logger *config.LogGroup, files []string, overlay map[string][]byte, options config.LoadOptions) (*ssa.Program, []*packages.Package, error) {
 	packageConfig := options.PackageConfig
 	if packageConfig == nil {
 		packageConfig = &packages.Config{
@@ -59,7 +59,7 @@ func do(files []string, overlay map[string][]byte, options config.LoadOptions) (
 		statelessrewrite.ApplyAll(initialPackages)
 	}
 
-	if packages.PrintErrors(initialPackages) > 0 {
+	if PrintErrors(logger, initialPackages) > 0 {
 		return nil, nil, fmt.Errorf("errors found, exiting")
 	}
 
@@ -94,4 +94,27 @@ func AllPackages(funcs map[*ssa.Function]bool) []*ssa.Package {
 		return pkgList[i].Pkg.Path() < pkgList[j].Pkg.Path()
 	})
 	return pkgList
+}
+
+// PrintErrors prints to os.Stderr the accumulated errors of all
+// packages in the import graph rooted at pkgs, dependencies first.
+// PrintErrors returns the number of errors printed.
+func PrintErrors(logger *config.LogGroup, pkgs []*packages.Package) int {
+	var n int
+	errModules := make(map[*packages.Module]bool)
+	packages.Visit(pkgs, nil, func(pkg *packages.Package) {
+		for _, err := range pkg.Errors {
+			logger.Error(err.Msg)
+			n++
+		}
+
+		// Print pkg.Module.Error once if present.
+		mod := pkg.Module
+		if mod != nil && mod.Error != nil && !errModules[mod] {
+			errModules[mod] = true
+			logger.Error(mod.Error.Err)
+			n++
+		}
+	})
+	return n
 }
