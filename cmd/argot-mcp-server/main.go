@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -82,7 +81,7 @@ func main() {
 		case "tools/call":
 			handleToolCall(req)
 		default:
-			sendError(req.ID, -32601, "Method not found")
+			sendError(req.ID, -32601, fmt.Sprintf("Method not found: %s", req.Method))
 		}
 	}
 }
@@ -94,7 +93,7 @@ func handleInitialize(req jsonRPCRequest) {
 			"tools": map[string]interface{}{},
 		},
 		"serverInfo": map[string]interface{}{
-			"name":    "argot-mcp",
+			"name":    "argot-mcp-server",
 			"version": "1.0.0",
 		},
 	}
@@ -298,9 +297,13 @@ func sendResponse(id interface{}, result interface{}) {
 }
 
 func sendError(id interface{}, code int, message string) {
+	niceId := id
+	if id == nil {
+		niceId = 0
+	}
 	resp := jsonRPCResponse{
 		JSONRPC: "2.0",
-		ID:      id,
+		ID:      niceId,
 		Error: map[string]interface{}{
 			"code":    code,
 			"message": message,
@@ -308,5 +311,4 @@ func sendError(id interface{}, code int, message string) {
 	}
 	data, _ := json.Marshal(resp)
 	fmt.Println(string(data))
-	log.Printf("Error: %s", message)
 }
