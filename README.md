@@ -41,6 +41,9 @@ For a more detailed guide on how to run and use the tools, see the [00_intro.md]
 to documents for each of the tools listed above, as well as an explanation on how to configure those tools that have
 shared options.
 
+### MCP Server
+Argot also provides an MCP (Model Context Protocol) server that exposes analysis tools for AI assistants. See [13_mcp_server.md](doc/13_mcp_server.md) for setup and usage instructions.
+
 ## Source Code Organization
 
 The executables are in the `cmd` folder. There are currently only two: `argot` and `racerg` (an experimental static data race detector).

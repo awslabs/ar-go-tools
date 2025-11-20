@@ -78,7 +78,7 @@ func TestSamplePackageWorkerDependencies(t *testing.T) {
 		t.Fatalf("error starting state: %s", err)
 	}
 
-	dependencyGraph := DependencyAnalysis(state, DependencyConfigs{
+	dependencyGraph, _ := DependencyAnalysis(state, DependencyConfigs{
 		JsonFlag:       false,
 		IncludeStdlib:  true,
 		CoverageFile:   nil,
