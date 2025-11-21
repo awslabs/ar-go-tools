@@ -152,7 +152,7 @@ func runTarget(c *config.Config, name string, files []string, options config.Loa
 		csvWriter.Write([]byte("dependency,direct?, loc used,loc total,% used\n"))
 	}
 
-	dependencyGraph := dependencies.DependencyAnalysis(state, dependencies.DependencyConfigs{
+	dependencyGraph, _ := dependencies.DependencyAnalysis(state, dependencies.DependencyConfigs{
 		JsonFlag:       flags.outputJson,
 		IncludeStdlib:  flags.includeStdlib,
 		CoverageFile:   coverageWriter,

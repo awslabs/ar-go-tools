@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package analysis
+package main
 
-// Version is the last tagged version of the analysis tool
-const Version = "v0.4.11"
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, world!")
+}

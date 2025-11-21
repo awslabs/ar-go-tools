@@ -47,10 +47,16 @@ argot-build: go.mod cmd/argot/**/*.go
 argot-install:
 	go install github.com/awslabs/ar-go-tools/cmd/argot
 
+mcp-install:
+	go install github.com/awslabs/ar-go-tools/cmd/argot-mcp-server
+
+mcp-build: go.mod cmd/argot-mcp-server/*.go
+	go build -o bin/argot-mcp-server ./cmd/argot-mcp-server/main.go
+
 racerg-build: go.mod cmd/racerg/*.go
 	go build -o bin/racerg cmd/racerg/*.go
 
-build: argot-build racerg-build
+build: argot-build mcp-build racerg-build
 
 setup-precommit:
 	cp ./copyrights.sh .git/hooks/pre-commit

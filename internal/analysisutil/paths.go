@@ -15,7 +15,6 @@
 package analysisutil
 
 import (
-	"fmt"
 	"go/token"
 	"go/types"
 	"os"
@@ -23,7 +22,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -39,7 +37,6 @@ func init() {
 		return
 	}
 	goRootAtInit = strings.TrimSpace(string(out))
-	fmt.Fprint(os.Stderr, formatutil.Faint("Found GOROOT : "+goRootAtInit)+"\n")
 }
 
 // MakeAbsolute takes a slice of relative file paths and converts them to absolute paths.

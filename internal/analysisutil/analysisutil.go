@@ -67,6 +67,8 @@ func FindEltTypePackage(t types.Type, preform string) (string, string, error) {
 	case *types.Struct:
 		// Anonymous structs
 		return "", "", fmt.Errorf("%q: not a type with a package and name", typ)
+	case *types.Alias:
+		return FindEltTypePackage(typ.Underlying(), preform) // recursive call
 	default:
 		// We should never reach this!
 		fmt.Printf("unexpected type received: %T %v; please report this issue\n", typ, typ)
