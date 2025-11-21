@@ -15,6 +15,7 @@
 package check
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -127,7 +129,16 @@ func Run(flags Flags) error {
 	if checkErr != nil {
 		return fmt.Errorf("failed to initialize dataflow state: %s", checkErr)
 	}
-	results, checkErr := checkSummaries(df, parsedSummaries, flags.via)
+
+	// Create context with timeout from config
+	ctx := context.Background()
+	if timeout := df.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+		defer cancel()
+	}
+
+	results, checkErr := checkSummaries(ctx, df, parsedSummaries, flags.via)
 	// write the report before exiting, even if there was an error in checking summaries
 	if err := report(cfg, results); err != nil {
 		return err
@@ -155,7 +166,7 @@ func report(cfg *config.Config, results []check.SoundnessResult) error {
 	return nil
 }
 
-func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataflowSummary, via check.Method) ([]check.SoundnessResult, error) {
+func checkSummaries(ctx context.Context, s *dataflow.State, parsedSummaries []summaries.FrontendDataflowSummary, via check.Method) ([]check.SoundnessResult, error) {
 	check.InitializeState(s)
 
 	logger := s.Logger
@@ -170,7 +181,7 @@ func checkSummaries(s *dataflow.State, parsedSummaries []summaries.FrontendDataf
 		targetName := summary.Name()
 		logger.PushContext(formatutil.Faint(targetName))
 		logger.Infof("Checking summary...")
-		soundness, err := check.CheckSummary(s, summary, via)
+		soundness, err := check.CheckSummary(ctx, s, summary, via)
 		if err != nil {
 			// continue checking the rest of the summaries but return all the errors when finished
 			logger.Errorf("failed to check the summary of function %s in %v seconds: %v", targetName, soundness.Time.Seconds(), err)

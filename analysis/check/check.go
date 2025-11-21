@@ -15,6 +15,7 @@
 package check
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -40,12 +41,12 @@ const (
 )
 
 // CheckSummary checks the soundness of summary.
-func CheckSummary(s *dataflow.State, summary summaries.FrontendDataflowSummary, via Method) (SoundnessResult, error) {
+func CheckSummary(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, via Method) (SoundnessResult, error) {
 	start := time.Now()
 	// TODO implement other methods
 	switch via {
 	case Naive:
-		return checkSummaryNaive(s, summary, start)
+		return checkSummaryNaive(ctx, s, summary, start)
 	default:
 		return SoundnessResult{}, fmt.Errorf("unsupported soundness checking method: %v", via)
 	}
@@ -59,7 +60,7 @@ type FullSummary struct {
 
 // FullySummarize computes the full data flow summary for function f.
 // This uses both the intra- and inter-procedural data flow analyses.
-func FullySummarize(s *dataflow.State, f *ssa.Function) (FullSummary, error) {
+func FullySummarize(ctx context.Context, s *dataflow.State, f *ssa.Function) (FullSummary, error) {
 	if len(s.FlowGraph.Summaries) == 0 {
 		return FullSummary{}, fmt.Errorf("data flow state is not initialized")
 	}
@@ -68,7 +69,7 @@ func FullySummarize(s *dataflow.State, f *ssa.Function) (FullSummary, error) {
 	graph.IsInterfaceContract = false
 	graph.IsPreSummarized = false
 	graph.Constructed = false
-	_, err := dataflow.RunIntraProcedural(s, graph)
+	_, err := dataflow.RunIntraProcedural(ctx, s, graph)
 	if err != nil {
 		return FullSummary{}, fmt.Errorf("failed to run intra-procedural data flow analysis: %v", err)
 	}
@@ -76,7 +77,7 @@ func FullySummarize(s *dataflow.State, f *ssa.Function) (FullSummary, error) {
 	flows := make(map[dataflow.GraphNode][]dataflow.GraphNode)
 	for _, param := range graph.Params {
 		v := dataflow.NewFuncInputVisitor()
-		v.Visit(s, dataflow.NodeWithTrace{Node: param})
+		v.Visit(ctx, s, dataflow.NodeWithTrace{Node: param})
 		// if there are no flows, don't add them
 		if len(v.Flows()) == 0 {
 			continue
@@ -105,13 +106,13 @@ func FullySummarize(s *dataflow.State, f *ssa.Function) (FullSummary, error) {
 	panic("failed to find computed summary in graph")
 }
 
-func checkSummaryNaive(s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
+func checkSummaryNaive(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
 	f, err := functionOfSummary(s, summary)
 	if err != nil {
 		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
 	}
 
-	gotSummary, err := FullySummarize(s, f)
+	gotSummary, err := FullySummarize(ctx, s, f)
 	if err != nil {
 		return SoundnessResult{Time: time.Since(start)}, fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
 	}

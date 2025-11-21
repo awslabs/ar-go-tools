@@ -418,7 +418,8 @@ func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) boo
 			createCounter++
 			return b
 		}
-		dataflow.RunIntraProceduralPass(c, numRoutines, dataflow.IntraAnalysisParams{
+		ctx := context.Background()
+		dataflow.RunIntraProceduralPass(ctx, c, numRoutines, dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
 			ShouldTrack:        dataflow.IsNodeOfInterest,
 		})
@@ -453,7 +454,8 @@ func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) boo
 		}
 
 		// Run the analysis with the filter.
-		dataflow.RunIntraProceduralPass(c, numRoutines, dataflow.IntraAnalysisParams{
+		ctx := context.Background()
+		dataflow.RunIntraProceduralPass(ctx, c, numRoutines, dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
 			ShouldTrack:        dataflow.IsNodeOfInterest,
 		})
@@ -518,7 +520,9 @@ func cmdTaint(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 		return false
 	}
 	for _, ts := range c.Unwrap().Config.TaintTrackingProblems {
+		ctx := context.Background()
 		c.Unwrap().FlowGraph.RunVisitorOnEntryPoints(
+			ctx,
 			taint.NewVisitor(&ts),
 			dataflow.ScanningSpec{
 				MarkCallArgsLikeCall: ts.SourceTaintsArgs,
@@ -557,7 +561,9 @@ func cmdBacktrace(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 	var traces []backtrace.Trace
 	for _, ps := range c.Config.SlicingProblems {
 		visitor := backtrace.NewVisitor(ps)
+		ctx := context.Background()
 		c.FlowGraph.RunVisitorOnEntryPoints(
+			ctx,
 			visitor,
 			dataflow.ScanningSpec{
 				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {

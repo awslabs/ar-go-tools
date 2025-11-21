@@ -15,9 +15,11 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -358,10 +360,16 @@ func cmdIntra(tt *term.Terminal, sess *session, command Command, withTest bool) 
 		}
 	}
 
-	_, err = dataflow.IntraProceduralAnalysis(dfs, sess.currentFunction, true, 0,
+	ctx := context.Background()
+	if timeout := dfs.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+		defer cancel()
+	}
+	_, err = dataflow.IntraProceduralAnalysis(ctx, dfs, sess.currentFunction, true, 0,
 		dataflow.IsNodeOfInterest, post)
 	if err != nil {
-		WriteErr(tt, "Error while analyzing.")
+		WriteErr(tt, "Error while analyzing: %v\n", err)
 		return false
 	}
 	if flowInfo != nil {

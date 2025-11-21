@@ -19,6 +19,7 @@
 package backtrace
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"runtime"
@@ -59,14 +60,14 @@ var ErrMaxDepth = errors.New("configured max depth exceeded")
 //
 // - prog is the built ssa representation of the program. The program must contain a main package and include all its
 // dependencies, otherwise the pointer analysis will fail.
-func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
+func Analyze(ctx context.Context, state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
 	if numRoutines <= 0 {
 		numRoutines = 1
 	}
 
-	df.RunIntraProceduralPass(state, numRoutines, df.IntraAnalysisParams{
+	df.RunIntraProceduralPass(ctx, state, numRoutines, df.IntraAnalysisParams{
 		ShouldBuildSummary: df.ShouldBuildSummary,
 		ShouldTrack: func(state *df.State, n ssa.Node) bool {
 			if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint); ok {
@@ -79,13 +80,13 @@ func Analyze(state *df.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	var errs []error
 	allTraces := make(map[string]map[df.NodeWithTrace][]Trace)
 	for _, ps := range state.Config.SlicingProblems {
-		errs = runTag(state, reqs, ps, allTraces, errs)
+		errs = runTag(ctx, state, reqs, ps, allTraces, errs)
 	}
 
 	return AnalysisResult{Graph: *state.FlowGraph, Traces: allTraces}, errors.Join(errs...)
 }
 
-func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces map[string]map[df.NodeWithTrace][]Trace, errs []error) []error {
+func runTag(ctx context.Context, state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces map[string]map[df.NodeWithTrace][]Trace, errs []error) []error {
 	state.Logger.PushContext(formatutil.Yellow(ps.Tag))
 	defer state.Logger.PopContext()
 	// Check the tag must be analyzed
@@ -115,7 +116,7 @@ func runTag(state *df.State, reqs AnalysisReqs, ps config.SlicingSpec, allTraces
 	}
 
 	visitor := NewVisitor(ps)
-	df.RunInterProcedural(state, visitor, df.ScanningSpec{
+	df.RunInterProcedural(ctx, state, visitor, df.ScanningSpec{
 		IsEntryPointGraph: func(node df.GraphNode) (config.CodeIdentifier, bool) {
 			if arg, ok := node.(*df.CallNodeArg); ok {
 				callee := arg.ParentNode().Callee()
@@ -223,7 +224,7 @@ func NewVisitor(spec config.SlicingSpec) *Visitor {
 }
 
 // Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
-func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
+func (v *Visitor) Visit(ctx context.Context, s *df.State, entrypoint df.NodeWithTrace) {
 	if v.prevEdgeInfos == nil {
 		v.prevEdgeInfos = make(map[*df.CallNodeArg][]df.EdgeInfo)
 	}
@@ -238,7 +239,7 @@ func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
 				Trace:        entrypoint.Trace,
 				ClosureTrace: entrypoint.ClosureTrace,
 			}
-			if err := v.visit(s, nt); err != nil {
+			if err := v.visit(ctx, s, nt); err != nil {
 				v.Errs = append(v.Errs, err)
 			}
 
@@ -251,7 +252,7 @@ func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
 			Trace:        entrypoint.Trace,
 			ClosureTrace: entrypoint.ClosureTrace,
 		}
-		if err := v.visit(s, nt); err != nil {
+		if err := v.visit(ctx, s, nt); err != nil {
 			v.Errs = append(v.Errs, err)
 		}
 
@@ -261,7 +262,7 @@ func (v *Visitor) Visit(s *df.State, entrypoint df.NodeWithTrace) {
 }
 
 //gocyclo:ignore
-func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
+func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWithTrace) error {
 	logger := s.Logger
 
 	pos := entrypoint.Node.Position(s)
@@ -313,7 +314,7 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 
 			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
 			// built summary
-			v.onDemandIntraProcedural(s, cur.Node.Graph())
+			v.onDemandIntraProcedural(ctx, s, cur.Node.Graph())
 		}
 
 		// Base case: add the trace if there are no more (intra- or inter-procedural) incoming edges from the node
@@ -389,7 +390,7 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 					}
 					callSiteArg := callSite.Args()[graphNode.Index()]
 					if !callSiteArg.Graph().Constructed {
-						v.onDemandIntraProcedural(s, callSiteArg.Graph())
+						v.onDemandIntraProcedural(ctx, s, callSiteArg.Graph())
 					}
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         callSiteArg,
@@ -426,7 +427,7 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 									return false
 								},
 								nil)
-							v.onDemandIntraProcedural(s, callSite.CalleeSummary)
+							v.onDemandIntraProcedural(ctx, s, callSite.CalleeSummary)
 						}
 					} else {
 						s.ReportMissingOrNotConstructedSummary(callSite)
@@ -725,7 +726,7 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 						panic(fmt.Errorf("closure's parent function does not exist for free variable: %v", graphNode))
 					}
 					summary := df.BuildSummary(s, f)
-					v.onDemandIntraProcedural(s, summary)
+					v.onDemandIntraProcedural(ctx, s, summary)
 					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.BuildGraph()
 				}
@@ -800,9 +801,9 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 // onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
 // This panics when the analysis fails, because it is expected that an error will cause any further result
 // to be invalid.
-func (v *Visitor) onDemandIntraProcedural(s *df.State, summary *df.SummaryGraph) {
+func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summary *df.SummaryGraph) {
 	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
-	elapsed, err := df.RunIntraProcedural(s, summary)
+	elapsed, err := df.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
 	if err != nil {
 		panic(fmt.Sprintf("failed to run intra-procedural analysis : %v", err))

@@ -15,6 +15,7 @@
 package backtrace_test
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -115,7 +116,7 @@ func runBacktraceTest(t *testing.T, test testDef, isOnDemand bool) {
 	if err != nil {
 		t.Fatalf("failed to load dataflow state: %s", err)
 	}
-	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
+	res, err := backtrace.Analyze(context.Background(), state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatalf("failed to run analysis: %v", err)
 	}

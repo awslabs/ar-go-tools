@@ -17,6 +17,7 @@ package render
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -95,7 +96,8 @@ func WriteCrossFunctionGraph(wps *loadprogram.State, w io.Writer) error {
 		numRoutines = 1
 	}
 
-	dataflow.RunIntraProceduralPass(flowState, numRoutines, dataflow.IntraAnalysisParams{
+	ctx := context.Background()
+	dataflow.RunIntraProceduralPass(ctx, flowState, numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 		ShouldTrack:        func(*dataflow.State, ssa.Node) bool { return true }, //argot:ignore df-intra-uses
 	})

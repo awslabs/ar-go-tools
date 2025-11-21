@@ -15,6 +15,7 @@
 package dataflow_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -46,7 +47,7 @@ func TestFunctionSummaries(t *testing.T) {
 		numRoutines = 1
 	}
 
-	dataflow.RunIntraProceduralPass(state, numRoutines, dataflow.IntraAnalysisParams{
+	dataflow.RunIntraProceduralPass(context.Background(), state, numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 		ShouldTrack:        dataflow.IsNodeOfInterest,
 	})

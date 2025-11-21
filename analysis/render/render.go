@@ -17,6 +17,7 @@
 package render
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -34,7 +35,7 @@ func BuildCrossFunctionGraph(state *dataflow.State) (*dataflow.State, error) {
 
 	state.Logger.Infof("Building full-program inter-procedural dataflow graph...")
 	start := time.Now()
-	dataflow.RunInterProcedural(state, CrossFunctionGraphVisitor{}, dataflow.ScanningSpec{
+	dataflow.RunInterProcedural(context.Background(), state, CrossFunctionGraphVisitor{}, dataflow.ScanningSpec{
 		IsEntryPointSsa: func(ssa.Node) (config.CodeIdentifier, bool) { return config.CodeIdentifier{}, true },
 	})
 
@@ -52,7 +53,7 @@ type CrossFunctionGraphVisitor struct{}
 // complete dataflow graph.
 //
 //gocyclo:ignore
-func (v CrossFunctionGraphVisitor) Visit(c *dataflow.State, entrypoint dataflow.NodeWithTrace) {
+func (v CrossFunctionGraphVisitor) Visit(ctx context.Context, c *dataflow.State, entrypoint dataflow.NodeWithTrace) {
 	que := []*dataflow.VisitorNode{{NodeWithTrace: entrypoint, Prev: nil, Depth: 0}}
 	seen := make(map[dataflow.NodeWithTrace]bool)
 	goroutines := make(map[*ssa.Go]bool)

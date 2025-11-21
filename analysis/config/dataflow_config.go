@@ -35,6 +35,10 @@ type DataflowProblems struct {
 	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
 	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand" json:"summarize-on-demand"`
 
+	// IntraTimeoutMs specifies the maximum duration for the intra-procedural dataflow analysis in milliseconds.
+	// If 0 (default), no timeout is applied.
+	IntraTimeoutMs int `xml:"intra-timeout-ms,attr" yaml:"intra-timeout-ms" json:"intra-timeout-ms"`
+
 	// UserSpecs is a path to a json file that contains the data flows specs for the interfaces in the dataflow
 	// analyses
 	UserSpecs []string `yaml:"user-specs" json:"user-specs"`

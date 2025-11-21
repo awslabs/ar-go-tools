@@ -15,6 +15,7 @@
 package cli
 
 import (
+	"context"
 	"regexp"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -67,7 +68,8 @@ func cmdTrace(tt *term.Terminal, sess *session, command Command, _ bool) bool {
 			return config.CodeIdentifier{}, r.MatchString(g.LongID())
 		},
 	}
-	c.FlowGraph.RunVisitorOnEntryPoints(taint.NewVisitor(dummyTaintSpec), scanningSpec)
+	ctx := context.Background()
+	c.FlowGraph.RunVisitorOnEntryPoints(ctx, taint.NewVisitor(dummyTaintSpec), scanningSpec)
 
 	c.Logger.Level = preLevel
 	return false

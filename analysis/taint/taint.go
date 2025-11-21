@@ -15,6 +15,7 @@
 package taint
 
 import (
+	"context"
 	"errors"
 	"runtime"
 	"strings"
@@ -58,7 +59,7 @@ type AnalysisReqs struct {
 // Analyze runs the taint analysis on the provided state, which contains the program to analyze as well as the config
 // defining the taint analysis problems.
 // THe reqs arguments provides additional constraints on which problems to analyze.
-func Analyze(state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
+func Analyze(ctx context.Context, state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	var err error
 	// Number of working routines to use in parallel. TODO: make this an option?
 	numRoutines := runtime.NumCPU() - 1
@@ -78,7 +79,7 @@ func Analyze(state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	// function being analyzed.
 
 	// Only build summaries for non-stdlib functions here
-	dataflow.RunIntraProceduralPass(state, numRoutines,
+	dataflow.RunIntraProceduralPass(ctx, state, numRoutines,
 		dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
 			// For the intra-procedural pass, all source nodes of all problems are marked
@@ -113,7 +114,7 @@ func Analyze(state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	taintFlows := NewFlows()
 
 	for _, taintSpec := range state.Config.TaintTrackingProblems {
-		runSpec(state, reqs, taintSpec, taintFlows)
+		runSpec(ctx, state, reqs, taintSpec, taintFlows)
 	}
 
 	// ** Fourth step **
@@ -126,7 +127,7 @@ func Analyze(state *dataflow.State, reqs AnalysisReqs) (AnalysisResult, error) {
 	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
 }
 
-func runSpec(state *dataflow.State, reqs AnalysisReqs, taintSpec config.TaintSpec, taintFlows *Flows) {
+func runSpec(ctx context.Context, state *dataflow.State, reqs AnalysisReqs, taintSpec config.TaintSpec, taintFlows *Flows) {
 	state.Logger.PushContext(formatutil.Yellow(taintSpec.Tag))
 	defer state.Logger.PopContext()
 	// Check the tag must be analyzed
@@ -161,7 +162,7 @@ func runSpec(state *dataflow.State, reqs AnalysisReqs, taintSpec config.TaintSpe
 	}
 	state.Logger.Debugf("Options: %+v", state.Config.Options)
 	visitor := NewVisitor(&taintSpec)
-	dataflow.RunInterProcedural(state, visitor, dataflow.ScanningSpec{
+	dataflow.RunInterProcedural(ctx, state, visitor, dataflow.ScanningSpec{
 		// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 		IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
 			return dataflow.IsSourceNode(state, &taintSpec, node)

@@ -15,10 +15,12 @@
 package taint
 
 import (
+	"context"
 	"fmt"
 	"go/token"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -98,7 +100,7 @@ func (e *CondError) Error() string {
 // the visitor interface of the dataflow package.
 //
 //gocyclo:ignore
-func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
+func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrace) {
 	coverage := make(map[string]bool)
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
@@ -191,7 +193,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 		if !cur.Node.Graph().Constructed {
 			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
 			// built summary
-			v.onDemandIntraProcedural(s, cur.Node.Graph())
+			v.onDemandIntraProcedural(ctx, s, cur.Node.Graph())
 		}
 
 		switch graphNode := cur.Node.(type) {
@@ -252,7 +254,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						if !callSiteArg.Graph().Constructed {
-							v.onDemandIntraProcedural(s, callSiteArg.Graph())
+							v.onDemandIntraProcedural(ctx, s, callSiteArg.Graph())
 						}
 						for nextNode, edgeInfos := range callSiteArg.Out() {
 							for _, edgeInfo := range edgeInfos {
@@ -299,7 +301,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 
 			// Logic for when the summary has not been constructed
 			if !callSite.CalleeSummary.Constructed {
-				v.onDemandIntraProcedural(s, callSite.CalleeSummary)
+				v.onDemandIntraProcedural(ctx, s, callSite.CalleeSummary)
 			}
 
 			// Computing context-sensitive information for the analyses
@@ -351,7 +353,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			if callSiteFromCallStack := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSiteFromCallStack != nil {
 				logger.Tracef("unwound caller: %v\n", callSiteFromCallStack)
 				if !callSiteFromCallStack.Graph().Constructed {
-					v.onDemandIntraProcedural(s, callSiteFromCallStack.Graph())
+					v.onDemandIntraProcedural(ctx, s, callSiteFromCallStack.Graph())
 				}
 				for nextNode, edgeInfos := range callSiteFromCallStack.Out() {
 					for _, edgeInfo := range edgeInfos {
@@ -367,7 +369,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 				}
 			} else if cur.ClosureTrace != nil && df.CheckClosureReturns(graphNode, cur.ClosureTrace.Label) {
 				if !cur.ClosureTrace.Label.Graph().Constructed {
-					v.onDemandIntraProcedural(s, cur.ClosureTrace.Label.Graph())
+					v.onDemandIntraProcedural(ctx, s, cur.ClosureTrace.Label.Graph())
 				}
 				for nextNode, edgeInfos := range cur.ClosureTrace.Label.Out() {
 					for _, edgeInfo := range edgeInfos {
@@ -383,7 +385,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					if !callSite.Graph().Constructed {
-						v.onDemandIntraProcedural(s, callSite.Graph())
+						v.onDemandIntraProcedural(ctx, s, callSite.Graph())
 					}
 					for nextNode, edgeInfos := range callSite.Out() {
 						for _, edgeInfo := range edgeInfos {
@@ -492,7 +494,7 @@ func (v *Visitor) Visit(s *df.State, source df.NodeWithTrace) {
 			}
 
 			if !closureNode.ClosureSummary.Constructed {
-				v.onDemandIntraProcedural(s, closureNode.ClosureSummary)
+				v.onDemandIntraProcedural(ctx, s, closureNode.ClosureSummary)
 				s.FlowGraph.Sync()
 			}
 
@@ -735,9 +737,15 @@ func (v *Visitor) initEscapeAnalysisInfo(s *df.State, source df.NodeWithTrace) {
 // onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
 // This panics when the analysis fails, because it is expected that an error will cause any further result
 // to be invalid.
-func (v *Visitor) onDemandIntraProcedural(s *df.State, summary *df.SummaryGraph) {
+func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summary *df.SummaryGraph) {
 	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
-	elapsed, err := df.RunIntraProcedural(s, summary)
+	if timeout := s.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+		defer cancel()
+	}
+
+	elapsed, err := df.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
 	if err != nil {
 		panic(fmt.Sprintf("failed to run intra-procedural analysis : %v", err))

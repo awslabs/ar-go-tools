@@ -15,6 +15,7 @@
 package taint
 
 import (
+	"context"
 	"fmt"
 	"go/token"
 	"os"
@@ -173,7 +174,9 @@ func runTarget(
 // RunTaint runs the taint analysis on the dataflow state
 func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State) (bool, *config.ReportInfo, error) {
 	start := time.Now()
-	analysisResult, err := taint.Analyze(df, taint.AnalysisReqs{
+
+	ctx := context.Background()
+	analysisResult, err := taint.Analyze(ctx, df, taint.AnalysisReqs{
 		Tag: flags.Tag,
 	})
 	duration := time.Since(start)

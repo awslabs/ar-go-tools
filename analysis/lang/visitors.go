@@ -15,6 +15,8 @@
 package lang
 
 import (
+	"context"
+
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -144,9 +146,9 @@ type IterativeAnalysis interface {
 // All reachable blocks of the function will be visited if the call to ChangedOnBlock is true after each first visit
 // to a given Block (the IterativeAnalysis structure must keep track of previously visited blocks, and ensure
 // termination)
-func RunForwardIterative(op IterativeAnalysis, function *ssa.Function) {
+func RunForwardIterative(ctx context.Context, op IterativeAnalysis, function *ssa.Function) error {
 	if len(function.Blocks) == 0 {
-		return
+		return nil
 	}
 	// Block indexes to visit next
 	var worklist []*ssa.BasicBlock
@@ -154,15 +156,28 @@ func RunForwardIterative(op IterativeAnalysis, function *ssa.Function) {
 	var pathMem map[*ssa.BasicBlock]map[*ssa.BasicBlock]bool
 	worklist = append(worklist, function.Blocks[0])
 	for { // until fixpoint is reached
+		// Check for context cancellation/timeout
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		// Set the current Block if there is one
 		if len(worklist) == 0 {
-			return
+			return nil
 		}
 		block := worklist[0]
 		worklist = worklist[1:]
 		// Iterate through instructions.
 		op.NewBlock(block)
 		for _, instr := range block.Instrs {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
 			op.Pre(instr)
 			InstrSwitch(op, instr)
 			op.Post(instr)

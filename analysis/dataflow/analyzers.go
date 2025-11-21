@@ -32,6 +32,7 @@
 package dataflow
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -63,7 +64,7 @@ type IntraAnalysisParams struct {
 // RunIntraProceduralPass runs an intra-procedural analysis pass of program prog in parallel using numRoutines, using the
 // analyzer state. The args specify the intraprocedural analysis parameters.
 // RunIntraProceduralPass updates the summaries stored in the state's FlowGraph
-func RunIntraProceduralPass(state *State, numRoutines int, args IntraAnalysisParams) { //argot:ignore df-intra-uses
+func RunIntraProceduralPass(ctx context.Context, state *State, numRoutines int, args IntraAnalysisParams) { //argot:ignore df-intra-uses
 	state.Logger.Infof("Starting intra-procedural analysis ...")
 	start := time.Now()
 
@@ -84,7 +85,7 @@ func RunIntraProceduralPass(state *State, numRoutines int, args IntraAnalysisPar
 	}
 
 	// Start the single function summary building routines
-	results := runJobs(jobs, numRoutines, args.ShouldTrack)
+	results := runJobs(ctx, jobs, numRoutines, args.ShouldTrack)
 	collectResults(results, &fg, state)
 
 	state.Logger.Infof("Intra-procedural pass done (%.2f s).", time.Since(start).Seconds())
@@ -93,10 +94,10 @@ func RunIntraProceduralPass(state *State, numRoutines int, args IntraAnalysisPar
 }
 
 // runJobs runs the intra-procedural analysis on each job in jobs in parallel and returns a slice with all the results.
-func runJobs(jobs []singleFunctionJob, numRoutines int,
+func runJobs(ctx context.Context, jobs []singleFunctionJob, numRoutines int,
 	shouldTrack func(*State, ssa.Node) bool) []IntraProceduralResult {
 	f := func(job singleFunctionJob) IntraProceduralResult {
-		return runSingleFunctionJob(job, shouldTrack)
+		return runSingleFunctionJob(ctx, job, shouldTrack)
 	}
 
 	return funcutil.MapParallel(jobs, f, numRoutines)
@@ -104,10 +105,10 @@ func runJobs(jobs []singleFunctionJob, numRoutines int,
 
 // RunInterProcedural runs the inter-procedural analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
-func RunInterProcedural(state *State, visitor Visitor, spec ScanningSpec) {
+func RunInterProcedural(ctx context.Context, state *State, visitor Visitor, spec ScanningSpec) {
 	state.Logger.Infof("Starting inter-procedural pass...")
 	start := time.Now()
-	state.FlowGraph.BuildAndRunVisitor(state, visitor, spec)
+	state.FlowGraph.BuildAndRunVisitor(ctx, state, visitor, spec)
 	state.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
 }
 
@@ -131,11 +132,17 @@ type singleFunctionJob struct {
 
 // runSingleFunctionJob runs the intra-procedural analysis with the information in job
 // and returns the result of the analysis.
-func runSingleFunctionJob(job singleFunctionJob,
+func runSingleFunctionJob(ctx context.Context, job singleFunctionJob,
 	shouldTrack func(*State, ssa.Node) bool) IntraProceduralResult {
+	if timeout := job.analyzerState.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+		defer cancel()
+	}
+
 	targetName := formatutil.Sanitize(lang.PackageNameFromFunction(job.function) + "." + job.function.Name())
 	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
-	result, err := IntraProceduralAnalysis(job.analyzerState, job.function,
+	result, err := IntraProceduralAnalysis(ctx, job.analyzerState, job.function,
 		job.shouldBuildSummary, GetUniqueFunctionID(), shouldTrack, job.postBlockCallback)
 
 	if err != nil {

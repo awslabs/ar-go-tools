@@ -15,6 +15,7 @@
 package backtrace_test
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -84,7 +85,7 @@ func TestAnalyze_SpecificObjs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
+	res, err := backtrace.Analyze(context.Background(), state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +141,7 @@ func TestAnalyze_MaxDepth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	backtrace.Analyze(state, backtrace.AnalysisReqs{})
+	backtrace.Analyze(context.Background(), state, backtrace.AnalysisReqs{})
 
 	errMap := state.Report.Errors.ErrorMap
 	if len(errMap) != 1 {
@@ -174,7 +175,7 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
+	res, err := backtrace.Analyze(context.Background(), state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +447,7 @@ func testAnalyzeClosures(t *testing.T, lp *loadprogram.State) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
+	res, err := backtrace.Analyze(context.Background(), state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +562,7 @@ func TestAnalyze_CheckStatic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	res, err := backtrace.Analyze(state, backtrace.AnalysisReqs{})
+	res, err := backtrace.Analyze(context.Background(), state, backtrace.AnalysisReqs{})
 	if err != nil {
 		t.Fatal(err)
 	}

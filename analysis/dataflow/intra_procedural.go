@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"context"
 	"fmt"
 	"go/types"
 	"time"
@@ -45,7 +46,7 @@ type IntraProceduralResult struct {
 }
 
 // IntraProceduralAnalysis is the main entry point of the intra procedural analysis.
-func IntraProceduralAnalysis(state *State,
+func IntraProceduralAnalysis(ctx context.Context, state *State,
 	function *ssa.Function,
 	buildSummary bool,
 	id uint32,
@@ -71,7 +72,7 @@ func IntraProceduralAnalysis(state *State,
 	elapsed := time.Duration(0)
 	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
 	if buildSummary {
-		elapsed, err = RunIntraProcedural(state, sm)
+		elapsed, err = RunIntraProcedural(ctx, state, sm)
 		if err != nil {
 			return IntraProceduralResult{Summary: sm, Time: elapsed}, err
 		}
@@ -86,7 +87,7 @@ func IntraProceduralAnalysis(state *State,
 //
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
-func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
+func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, error) {
 	if sm == nil {
 		return 0, fmt.Errorf("summary graph is nil")
 	}
@@ -121,7 +122,9 @@ func RunIntraProcedural(a *State, sm *SummaryGraph) (time.Duration, error) {
 	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
 	// defined generally in the lang package, but all the details, including transfer functions, are in the
 	// single_function_monotone_analysis.go file
-	lang.RunForwardIterative(state, sm.Parent)
+	if err := lang.RunForwardIterative(ctx, state, sm.Parent); err != nil {
+		return time.Since(start), err
+	}
 	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract Value at
 	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
 	// translated into a dataflow graph, with special attention for closures.

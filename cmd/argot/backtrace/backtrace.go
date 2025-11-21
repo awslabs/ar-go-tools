@@ -16,6 +16,7 @@
 package backtrace
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -113,7 +114,9 @@ func Run(flags tools.CommonFlags) error {
 func RunBacktrace(flags tools.CommonFlags, state *dataflow.State) (bool, *config.ReportInfo, error) {
 	start := time.Now()
 	foundTraces := false
-	analysisResult, err := backtrace.Analyze(state, backtrace.AnalysisReqs{
+
+	ctx := context.Background()
+	analysisResult, err := backtrace.Analyze(ctx, state, backtrace.AnalysisReqs{
 		Tag: flags.Tag,
 	})
 	if err != nil {

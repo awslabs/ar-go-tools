@@ -16,6 +16,7 @@
 package dataflow
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -30,7 +31,7 @@ import (
 
 // Visitor represents a visitor that runs an inter-procedural analysis from entrypoint.
 type Visitor interface {
-	Visit(s *State, entrypoint NodeWithTrace)
+	Visit(ctx context.Context, s *State, entrypoint NodeWithTrace)
 }
 
 // InterProceduralFlowGraph represents an inter-procedural data flow graph.
@@ -288,7 +289,7 @@ type ScanningSpec struct {
 // This function does nothing if there are no summaries
 // (i.e. `len(g.summaries) == 0`)
 // or if `cfg.SkipInterprocedural` is set to true.
-func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *State, visitor Visitor, spec ScanningSpec) {
+func (g *InterProceduralFlowGraph) BuildAndRunVisitor(ctx context.Context, c *State, visitor Visitor, spec ScanningSpec) {
 	// Skip the pass if user configuration demands it
 	if !c.Config.SummarizeOnDemand && len(g.Summaries) == 0 {
 		c.Logger.Infof("Skipping inter-procedural pass: no summaries, and not summarizing on demand.")
@@ -305,12 +306,12 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(c *State, visitor Visitor,
 	}
 
 	// Run the analysis
-	g.RunVisitorOnEntryPoints(visitor, spec)
+	g.RunVisitorOnEntryPoints(ctx, visitor, spec)
 }
 
 // RunVisitorOnEntryPoints runs the visitor on the entry points designated by either the isEntryPoint function
 // or the isGraphEntryPoint function.
-func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor, spec ScanningSpec) {
+func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(ctx context.Context, visitor Visitor, spec ScanningSpec) {
 
 	g.AnalyzerState.Logger.Infof("Scanning for entry points ...\n")
 	entryPoints := make(map[KeyType]NodeWithTrace)
@@ -338,7 +339,7 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(visitor Visitor, spec
 				len(entryPoints)-i)
 			return
 		}
-		visitor.Visit(g.AnalyzerState, entry)
+		visitor.Visit(ctx, g.AnalyzerState, entry)
 		i++
 	}
 }
@@ -684,7 +685,7 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 	logger := s.Logger
 
 	logger.Debugf("BuildSummary: Constructing summary for %v...\n", function)
-	elapsed, err := RunIntraProcedural(s, summary)
+	elapsed, err := RunIntraProcedural(context.Background(), s, summary)
 
 	if err != nil {
 		panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))

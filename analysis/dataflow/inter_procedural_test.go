@@ -15,6 +15,7 @@
 package dataflow_test
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -49,7 +50,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 		numRoutines = 1
 	}
 
-	dataflow.RunIntraProceduralPass(state, numRoutines, dataflow.IntraAnalysisParams{
+	dataflow.RunIntraProceduralPass(context.Background(), state, numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 		ShouldTrack:        func(*dataflow.State, ssa.Node) bool { return true },
 	})

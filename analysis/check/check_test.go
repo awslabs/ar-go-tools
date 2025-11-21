@@ -15,6 +15,7 @@
 package check_test
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -126,7 +127,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
 				t.Fatalf("failed to unmarshal summary %s: %v", str, err)
 			}
-			res, err := check.CheckSummary(state, wantSummary, tc.via)
+			res, err := check.CheckSummary(context.Background(), state, wantSummary, tc.via)
 			if !errors.Is(err, tcWantErr) {
 				t.Errorf("unexpected check summary error:\n\twant %v,\n\tgot %v", tcWantErr, err)
 				t.Logf("got graph:\n")
@@ -204,7 +205,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 			if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
 				t.Fatalf("failed to unmarshal summary %s: %v", str, err)
 			}
-			res, err := check.CheckSummary(state, wantSummary, check.Naive)
+			res, err := check.CheckSummary(context.Background(), state, wantSummary, check.Naive)
 			if !errors.Is(err, tcWantErr) {
 				t.Errorf("unexpected check summary error:\n\twant %v,\n\tgot %v", tcWantErr, err)
 				t.Logf("got graph:\n")
