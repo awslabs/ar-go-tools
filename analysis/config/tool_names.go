@@ -20,6 +20,8 @@ type ToolName string
 const (
 	// BacktraceTool name
 	BacktraceTool ToolName = "backtrace"
+	// BenchTool name
+	BenchTool ToolName = "bench"
 	// CheckTool name
 	CheckTool ToolName = "check"
 	// CliTool name

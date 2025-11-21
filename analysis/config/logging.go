@@ -88,6 +88,12 @@ func NewLogGroup(config *Config) *LogGroup {
 	return l
 }
 
+// NewLogger returns a logger set to level.
+func NewLogger(level LogLevel) *LogGroup {
+	cfg := &Config{Options: Options{LogLevel: int(level), SilenceWarn: false}}
+	return NewLogGroup(cfg)
+}
+
 // PushContext pushes a context string on the prefix of the logger
 func (l *LogGroup) PushContext(s string) {
 	l.contexts = append(l.contexts, s)

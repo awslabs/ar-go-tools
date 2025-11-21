@@ -21,6 +21,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/cmd/argot/backtrace"
+	"github.com/awslabs/ar-go-tools/cmd/argot/bench"
 	"github.com/awslabs/ar-go-tools/cmd/argot/check"
 	"github.com/awslabs/ar-go-tools/cmd/argot/cli"
 	"github.com/awslabs/ar-go-tools/cmd/argot/compare"
@@ -86,6 +87,15 @@ func main() {
 		if err := backtrace.Run(flags); err != nil {
 			errExit(err)
 		}
+	case config.BenchTool:
+		flags, err := tools.NewCommonFlags(config.BenchTool, args, bench.Usage)
+		if err != nil {
+			errExit(err)
+		}
+		if err := bench.Run(flags); err != nil {
+			errExit(err)
+		}
+
 	case config.CheckTool:
 		flags, err := check.NewFlags(args)
 		if err != nil {

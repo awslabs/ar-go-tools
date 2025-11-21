@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	ftu "github.com/awslabs/ar-go-tools/internal/formatutil"
@@ -104,6 +106,13 @@ type SummaryGraph struct {
 
 	// postBlockCallBack is the function that has been used after a block is completed to adjust the state
 	postBlockCallBack func(state *IntraAnalysisState)
+
+	// unsoundness records potentially unsound features in the function.
+	// Note that this is intra-procedural.
+	unsoundness UnsoundFeaturesMap
+
+	// deferStacks is the results of the defers analysis.
+	deferStacks defers.Results
 }
 
 // NewSummaryGraph builds a new summary graph given a function and its corresponding node.
@@ -124,6 +133,15 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 	}
 
 	var lastNodeID uint32 = 0
+
+	deferRes, unsoundFeatures := FindUnsoundFeatures(f)
+	var logger *config.LogGroup
+	if s != nil && s.Logger != nil {
+		logger = s.Logger
+	} else {
+		logger = config.NewLogger(config.WarnLevel)
+	}
+	reportUnsoundFeatures(deferRes, unsoundFeatures, f, logger)
 
 	g := &SummaryGraph{
 		ID:                    id,
@@ -146,6 +164,8 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 		lastNodeID:            &lastNodeID,
 		shouldTrack:           shouldTrack,
 		postBlockCallBack:     postBlockCallBack,
+		unsoundness:           unsoundFeatures,
+		deferStacks:           deferRes,
 	}
 	// Add the parameters
 	for pos, param := range f.Params {
@@ -1490,6 +1510,10 @@ func (g *SummaryGraph) PrintNodes(w io.Writer) {
 	g.ForAllNodes(func(n GraphNode) {
 		fmt.Fprintf(w, "%s\n", n.String())
 	})
+}
+
+func (g *SummaryGraph) Unsoundness() UnsoundFeaturesMap {
+	return g.unsoundness
 }
 
 // FullString returns a long string representation of the CallNode

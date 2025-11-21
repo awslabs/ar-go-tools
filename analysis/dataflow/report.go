@@ -19,6 +19,8 @@ import (
 	"go/token"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
@@ -137,6 +139,8 @@ type UnsoundFeaturesMap struct {
 	UnsafeUsages map[token.Position]string
 	// ReflectUsages records the locations where 'reflect' is used, with a short explanation.
 	ReflectUsages map[token.Position]string
+	// HasUnboundedDefers indicates if the defers stack is unbounded.
+	HasUnboundedDefers bool
 }
 
 // reportUnsoundFeatures logs warning messages when unsound features are used in a function. Those include:
@@ -148,13 +152,16 @@ type UnsoundFeaturesMap struct {
 // - reflect
 //
 // Usages of those features are logged at WARN level with the position of where the feature is used.
-func reportUnsoundFeatures(state *State, f *ssa.Function) {
-	unsoundFeatures := FindUnsoundFeatures(f)
+func reportUnsoundFeatures(deferRes defers.Results, unsoundFeatures UnsoundFeaturesMap, f *ssa.Function, logger *config.LogGroup) {
 	if len(unsoundFeatures.Recovers) > 0 ||
 		len(unsoundFeatures.UnsafeUsages) > 0 ||
 		len(unsoundFeatures.ReflectUsages) > 0 {
 		msg := fmt.Sprintf("Function %s is using features that may make the analysis unsound.\n",
 			formatutil.Sanitize(f.String()))
+
+		if !deferRes.DeferStackBounded {
+			msg += "    Defer stack unbounded\n"
+		}
 
 		if len(unsoundFeatures.Recovers) > 0 {
 			msg += "    Using recover at position:\n"
@@ -180,12 +187,12 @@ func reportUnsoundFeatures(state *State, f *ssa.Function) {
 		}
 		msg += "    Adding a predefined summary might help avoid soundness issues.\n"
 
-		state.Logger.Warn(msg)
+		logger.Warn(msg)
 	}
 }
 
 // FindUnsoundFeatures returns a record of the unsound features used by a function, if any.
-func FindUnsoundFeatures(f *ssa.Function) UnsoundFeaturesMap {
+func FindUnsoundFeatures(f *ssa.Function) (defers.Results, UnsoundFeaturesMap) {
 	unsafeUsages := map[token.Position]string{}
 	recovers := map[token.Position]bool{}
 	reflectUsages := map[token.Position]string{}
@@ -243,7 +250,14 @@ func FindUnsoundFeatures(f *ssa.Function) UnsoundFeaturesMap {
 			}
 		}
 	})
-	return UnsoundFeaturesMap{recovers, unsafeUsages, reflectUsages}
+
+	// TODO don't hardcode info log level
+	logger := config.NewLogGroup(&config.Config{Options: config.Options{LogLevel: 3}})
+	deferStacks := defers.AnalyzeFunction(f, logger)
+
+	return deferStacks, UnsoundFeaturesMap{
+		recovers, unsafeUsages, reflectUsages, !deferStacks.DeferStackBounded,
+	}
 }
 
 func detectUnsafeBuiltinUsage(callVal *ssa.Builtin, unsafeUsages map[token.Position]string, iPos token.Position) {

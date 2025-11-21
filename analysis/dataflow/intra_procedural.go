@@ -20,10 +20,8 @@ import (
 	"go/types"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/tools/go/ssa"
@@ -101,7 +99,7 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 		blocksSeen:          make([]bool, flowInfo.NumBlocks),
 		errors:              map[ssa.Node]error{},
 		summary:             sm,
-		deferStacks:         defers.AnalyzeFunction(sm.Parent, a.Logger),
+		deferStacks:         sm.deferStacks,
 		paths:               make([]*ConditionInfo, flowInfo.NumBlocks*flowInfo.NumBlocks),
 		instrPrev:           make([]map[IndexT]bool, flowInfo.NumInstructions),
 		paramAliases:        make([]map[*ssa.Parameter]bool, flowInfo.NumValues),
@@ -110,13 +108,6 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 		postBlockCallback:   sm.postBlockCallBack,
 	}
 
-	reportUnsoundFeatures(a, sm.Parent)
-
-	// Output warning if defer stack is unbounded
-	if !state.deferStacks.DeferStackBounded {
-		a.Logger.Warnf("Defer stack unbounded in %s: %s",
-			formatutil.Sanitize(sm.Parent.String()), formatutil.Yellow("analysis unsound!"))
-	}
 	// First, we initialize the state of the monotone framework analysis (see the initialize function for more details)
 	state.initialize()
 	// Once the state is initialized, we call the forward iterative monotone framework analysis. The algorithm is
