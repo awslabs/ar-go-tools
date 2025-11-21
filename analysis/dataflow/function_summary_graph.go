@@ -209,6 +209,25 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 	return g
 }
 
+func MakeMostGeneral(g *SummaryGraph) {
+	for _, input := range g.Params {
+		for _, output := range g.Params {
+			if input == output {
+				continue
+			}
+			if pointer.CanPoint(input.Type()) && pointer.CanPoint(output.Type()) {
+				g.addParamEdgeByPos(input.Index(), output.Index())
+			}
+		}
+		for _, outputs := range g.Returns {
+			for _, output := range outputs {
+				g.addReturnEdgeByPos(input.Index(), output.Index())
+			}
+		}
+	}
+	g.Constructed = true
+}
+
 func (g *SummaryGraph) newNodeID() uint32 {
 	return atomic.AddUint32(g.lastNodeID, 1)
 }

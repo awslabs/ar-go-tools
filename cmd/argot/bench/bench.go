@@ -55,6 +55,10 @@ func Run(flags tools.CommonFlags) error {
 	}
 	// Make sure there are no summary specs
 	cfg.UserSpecs = nil
+	// Unset all pre-defined summaries
+	summaries.UnsetStdLibSummaries()
+	// Hardcode log level for now (TODO make this an option)
+	cfg.LogLevel = int(config.DebugLevel)
 
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot bench tool - " + analysis.Version))
@@ -86,9 +90,6 @@ func Run(flags tools.CommonFlags) error {
 		return fmt.Errorf("no targets to analyze (did you misspell the target?)")
 	}
 
-	// Unset all pre-defined summaries
-	summaries.UnsetStdLibSummaries()
-
 	for targetName, target := range actualTargets {
 		loadOptions := config.LoadOptions{
 			PackageConfig: nil,
@@ -116,7 +117,15 @@ func Run(flags tools.CommonFlags) error {
 			return fmt.Errorf("loading failed: %v", err)
 		}
 
-		report := runBenchAll(state)
+		// TODO make ahead-of-time vs on-demand an option
+		var fullReport report
+		if false {
+			incReports := runBenchAll(state)
+			fullReport = newReportFromIncomplete(state, incReports)
+		} else {
+			reports := runBenchDemand(state)
+			fullReport = newReport(reports)
+		}
 
 		var name string
 		if len(targetName) == 0 {
@@ -132,16 +141,74 @@ func Run(flags tools.CommonFlags) error {
 		enc := json.NewEncoder(file)
 		enc.SetEscapeHTML(false)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(report); err != nil {
+		if err := enc.Encode(fullReport); err != nil {
 			return fmt.Errorf("failed to encode report: %v", err)
 		}
+
 		c.Logger.Infof("wrote benchmark report to file %s\n", name)
 		c.Logger.PopContext()
 	}
 	return nil
 }
 
-func runBenchAll(state *dataflow.State) report {
+const defaultIntraTimeout = 500 * time.Millisecond
+const defaultInterTimeout = 3 * time.Minute
+
+func runBenchDemand(state *dataflow.State) []funcReport {
+	state.Config.DataflowProblems.SummarizeOnDemand = true
+	// clear summaries and dataflow contracts to ensure all summaries are computed from scratch
+	for f := range state.FlowGraph.Summaries {
+		delete(state.FlowGraph.Summaries, f)
+	}
+	for k := range state.DataFlowContracts {
+		delete(state.DataFlowContracts, k)
+	}
+
+	numRoutines := max(1, runtime.NumCPU()-1)
+	// Only build summaries for non-stdlib functions here
+	dataflow.RunIntraProceduralPass(context.Background(), state, numRoutines,
+		dataflow.IntraAnalysisParams{
+			ShouldBuildSummary: func(*dataflow.State, *ssa.Function) bool {
+				// Don't build any summaries: we compute them on-demand
+				return false
+			},
+			// For the intra-procedural pass, all source nodes of all problems are marked
+			ShouldTrack: dataflow.IsNodeOfInterest,
+		})
+
+	var res []funcReport
+	for _, taintSpec := range state.Config.TaintTrackingProblems {
+		// Run modified taint analysis
+		reports := make(chan funcReport)
+		go func() {
+			visitor := NewVisitor(&taintSpec, reports)
+			ctx, cancel := context.WithTimeout(context.Background(), defaultInterTimeout)
+			defer cancel()
+			dataflow.RunInterProcedural(ctx, state, visitor, dataflow.ScanningSpec{
+				// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
+				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+					return dataflow.IsSourceNode(state, &taintSpec, node)
+				},
+				MarkCallArgsLikeCall: taintSpec.SourceTaintsArgs,
+			})
+			close(reports)
+		}()
+
+		done := make(chan struct{})
+		go func() {
+			for report := range reports {
+				res = append(res, report)
+			}
+			done <- struct{}{}
+		}()
+		// Wait until the current spec is finished before continuing to the next one
+		<-done
+	}
+
+	return res
+}
+
+func runBenchAll(state *dataflow.State) []incompleteFuncReport {
 	// clear summaries and dataflow contracts to ensure all summaries are computed from scratch
 	for f := range state.FlowGraph.Summaries {
 		delete(state.FlowGraph.Summaries, f)
@@ -167,22 +234,30 @@ func runBenchAll(state *dataflow.State) report {
 		state.FlowGraph.Summaries[report.Func] = report.summary
 	}
 
+	return incReports
+}
+
+func newReportFromIncomplete(state *dataflow.State, incReports []incompleteFuncReport) report {
 	// Build inter-procedural graph to populate Callsites
 	state.FlowGraph.BuildGraph()
 
 	reports := make([]funcReport, 0, len(incReports))
 	for _, report := range incReports {
-		ctxs := firstFiveCallContexts(state, report.Func)
-		r := funcReport{
-			Name:        report.Func.String(),
-			Unsoundness: report.Unsoundness,
-			IntraTime:   report.IntraTime,
-			CallCtxs:    ctxs,
-		}
+		r := newFuncReport(state, report)
 		reports = append(reports, r)
 	}
 
 	return newReport(reports)
+}
+
+func newFuncReport(state *dataflow.State, report incompleteFuncReport) funcReport {
+	ctxs := firstFiveCallContexts(state, report.Func)
+	return funcReport{
+		Name:        report.Func.String(),
+		Unsoundness: report.Unsoundness,
+		IntraTime:   report.IntraTime,
+		CallCtxs:    ctxs,
+	}
 }
 
 func firstFiveCallContexts(state *dataflow.State, f *ssa.Function) []*dataflow.CallStack {
@@ -197,7 +272,7 @@ Loop:
 				if call.Callee() == f {
 					callStacks := dataflow.GetAllCallingContexts(state, call)
 					res = append(res, callStacks...)
-					if len(res) == 5 {
+					if len(res) >= 5 {
 						break Loop
 					}
 				}
@@ -234,8 +309,6 @@ func summarize(state *dataflow.State, f *ssa.Function) incompleteFuncReport {
 	}
 	return res
 }
-
-const defaultIntraTimeout = 500 * time.Millisecond
 
 type report []funcReport
 
