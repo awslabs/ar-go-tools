@@ -29,6 +29,24 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// jsonRpcVersion is the protocol version used by the server
+const jsonRpcVersion = "2.0"
+
+// The error codes below are defined here: https://www.jsonrpc.org/specification#error_object
+
+// codeParseError : -32700 	Invalid JSON was received by the server.
+const codeParseError = -32700
+
+// codeMethodNotFound : -32601 	Method not found 	The method does not exist / is not available.
+const codeMethodNotFound = -32601
+
+// codeInvalidParams : -32602 	Invalid params 	Invalid method parameter(s).
+const codeInvalidParams = -32602
+
+// codeInternalError : -32603 	Internal error 	Internal JSON-RPC error.
+const codeInternalError = -32603
+
+// jsonRPCRequest is plain struct representing a request sent to the server
 type jsonRPCRequest struct {
 	JSONRPC string      `json:"jsonrpc"`
 	ID      interface{} `json:"id"`
@@ -36,6 +54,7 @@ type jsonRPCRequest struct {
 	Params  interface{} `json:"params,omitempty"`
 }
 
+// jsonRPCResponse is a plain struct representing a response returned by the server
 type jsonRPCResponse struct {
 	JSONRPC string      `json:"jsonrpc"`
 	ID      interface{} `json:"id"`
@@ -43,12 +62,14 @@ type jsonRPCResponse struct {
 	Error   interface{} `json:"error,omitempty"`
 }
 
+// tool is the simple struct returned in the result of a response for a tool description request
 type tool struct {
 	Name        string      `json:"name"`
 	Description string      `json:"description"`
 	InputSchema interface{} `json:"inputSchema"`
 }
 
+// toolCallParams is the structure used by the MCP protocol for all tool cals (tool name, tool arguments)
 type toolCallParams struct {
 	Name      string                 `json:"name"`
 	Arguments map[string]interface{} `json:"arguments"`
@@ -69,7 +90,7 @@ func main() {
 
 		var req jsonRPCRequest
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			sendError(req.ID, -32700, "Parse error")
+			sendError(req.ID, codeParseError, "Parse error")
 			continue
 		}
 
@@ -81,7 +102,7 @@ func main() {
 		case "tools/call":
 			handleToolCall(req)
 		default:
-			sendError(req.ID, -32601, fmt.Sprintf("Method not found: %s", req.Method))
+			sendError(req.ID, codeMethodNotFound, fmt.Sprintf("Method not found: %s", req.Method))
 		}
 	}
 }
@@ -101,7 +122,7 @@ func handleInitialize(req jsonRPCRequest) {
 }
 
 func handleToolsList(req jsonRPCRequest) {
-	tools := []tool{
+	serverTools := []tool{
 		{
 			Name:        "go_dependencies",
 			Description: "Analyzes dependencies of a given Go package, and provides information about how much of each dependency is used by the package being analyzed. For example, this can be used to identify dependencies that have very little use in the code, and therefore could be eliminated.",
@@ -128,7 +149,7 @@ func handleToolsList(req jsonRPCRequest) {
 			},
 		},
 	}
-	sendResponse(req.ID, map[string]interface{}{"tools": tools})
+	sendResponse(req.ID, map[string]interface{}{"serverTools": serverTools})
 }
 
 func handleToolCall(req jsonRPCRequest) {
@@ -141,7 +162,7 @@ func handleToolCall(req jsonRPCRequest) {
 	var toolCall toolCallParams
 	paramBytes, _ := json.Marshal(params)
 	if err := json.Unmarshal(paramBytes, &toolCall); err != nil {
-		sendError(req.ID, -32602, "Invalid tool call params")
+		sendError(req.ID, codeInvalidParams, "Invalid tool call params")
 		return
 	}
 
@@ -149,7 +170,7 @@ func handleToolCall(req jsonRPCRequest) {
 	case "go_dependencies":
 		handleDependencies(req.ID, toolCall.Arguments)
 	default:
-		sendError(req.ID, -32601, "Tool not found")
+		sendError(req.ID, codeMethodNotFound, "Tool not found")
 	}
 }
 
@@ -157,12 +178,12 @@ func handleDependencies(id interface{}, args map[string]interface{}) {
 	// Extract paths
 	pathsInterface, ok := args["paths"]
 	if !ok {
-		sendError(id, -32602, "paths parameter is required")
+		sendError(id, codeInvalidParams, "paths parameter is required")
 		return
 	}
 	pathsSlice, ok := pathsInterface.([]interface{})
 	if !ok {
-		sendError(id, -32602, "paths must be an array")
+		sendError(id, codeInvalidParams, "paths must be an array")
 		return
 	}
 	paths := make([]string, len(pathsSlice))
@@ -188,7 +209,7 @@ func handleDependencies(id interface{}, args map[string]interface{}) {
 	// Run the analysis
 	results, err := runDependencyAnalysis(paths, locThreshold, usageThreshold)
 	if err != nil {
-		sendError(id, -32603, fmt.Sprintf("Analysis failed: %v", err))
+		sendError(id, codeInternalError, fmt.Sprintf("Analysis failed: %v", err))
 		return
 	}
 
@@ -288,7 +309,7 @@ func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold floa
 
 func sendResponse(id interface{}, result interface{}) {
 	resp := jsonRPCResponse{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRpcVersion,
 		ID:      id,
 		Result:  result,
 	}
@@ -302,7 +323,7 @@ func sendError(id interface{}, code int, message string) {
 		niceId = 0
 	}
 	resp := jsonRPCResponse{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRpcVersion,
 		ID:      niceId,
 		Error: map[string]interface{}{
 			"code":    code,

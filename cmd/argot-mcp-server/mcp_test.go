@@ -24,18 +24,17 @@ import (
 )
 
 func TestMCPServerDependenciesTool(t *testing.T) {
+	// We need to start running the MCP server in a separate process.
+	// We will send command on stdin and read from stdout
 	cmd := exec.Command("go", "run", "main.go")
-
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -54,10 +53,8 @@ func TestMCPServerDependenciesTool(t *testing.T) {
 			"clientInfo":      map[string]interface{}{"name": "test", "version": "1.0.0"},
 		},
 	}
-
 	sendRequest(t, stdin, initReq)
 	response := readResponse(t, scanner)
-
 	var initResp jsonRPCResponse
 	if err := json.Unmarshal([]byte(response), &initResp); err != nil {
 		t.Fatal(err)
@@ -70,15 +67,13 @@ func TestMCPServerDependenciesTool(t *testing.T) {
 	toolsReq := jsonRPCRequest{JSONRPC: "2.0", ID: 2, Method: "tools/list", Params: map[string]interface{}{}}
 	sendRequest(t, stdin, toolsReq)
 	response = readResponse(t, scanner)
-	t.Logf("Response: %s", response)
-
-	if !strings.Contains(response, "dependencies") {
-		t.Error("Dependencies tool not found in tools list")
+	if !strings.Contains(response, "go_dependencies") {
+		t.Error("go_dependencies tool not found")
 	}
 
-	// Test dependencies tool
+	// Test valid dependencies call
 	depsReq := jsonRPCRequest{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRpcVersion,
 		ID:      3,
 		Method:  "tools/call",
 		Params: map[string]interface{}{
@@ -90,16 +85,60 @@ func TestMCPServerDependenciesTool(t *testing.T) {
 			},
 		},
 	}
-
 	sendRequest(t, stdin, depsReq)
 	response = readResponse(t, scanner)
-
 	var depsResp jsonRPCResponse
 	if err := json.Unmarshal([]byte(response), &depsResp); err != nil {
 		t.Fatal(err)
 	}
 	if depsResp.Error != nil {
 		t.Fatalf("Dependencies analysis failed: %v", depsResp.Error)
+	}
+
+	// Test invalid method
+	invalidReq := jsonRPCRequest{JSONRPC: jsonRpcVersion, ID: 4, Method: "invalid/method"}
+	sendRequest(t, stdin, invalidReq)
+	response = readResponse(t, scanner)
+	var invalidResp jsonRPCResponse
+	json.Unmarshal([]byte(response), &invalidResp)
+	if invalidResp.Error == nil {
+		t.Error("Expected error for invalid method")
+	}
+
+	// Test missing paths parameter
+	missingParamsReq := jsonRPCRequest{
+		JSONRPC: "2.0",
+		ID:      5,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "go_dependencies",
+			"arguments": map[string]interface{}{},
+		},
+	}
+	sendRequest(t, stdin, missingParamsReq)
+	response = readResponse(t, scanner)
+	var missingResp jsonRPCResponse
+	json.Unmarshal([]byte(response), &missingResp)
+	if missingResp.Error == nil {
+		t.Error("Expected error for missing paths")
+	}
+
+	// Test unknown tool
+	unknownToolReq := jsonRPCRequest{
+		JSONRPC: "2.0",
+		ID:      6,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "unknown_tool",
+			"arguments": map[string]interface{}{},
+		},
+	}
+	sendRequest(t, stdin, unknownToolReq)
+	response = readResponse(t, scanner)
+	var unknownResp jsonRPCResponse
+	json.Unmarshal([]byte(response), &unknownResp)
+	if unknownResp.Error == nil {
+		t.Error("Expected error for unknown tool")
 	}
 }
 
@@ -113,13 +152,11 @@ func sendRequest(t *testing.T, stdin io.WriteCloser, req jsonRPCRequest) {
 }
 
 func readResponse(t *testing.T, scanner *bufio.Scanner) string {
-
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "{") {
 			return line
 		}
 	}
-	//t.Fatal("No JSON response received")
 	return ""
 }
