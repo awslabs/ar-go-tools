@@ -33,6 +33,8 @@ type Method string
 const (
 	// General means compare with the most-general summary.
 	General Method = "general"
+	// Types means use the type signature of the function to filter some impossible data flows.
+	Types Method = "types"
 	// Immutability means use the immutability analysis
 	Immutability Method = "immutability"
 	// All means use all available analyses in the most efficient way
@@ -49,7 +51,9 @@ func CheckSummary(ctx context.Context, s *dataflow.State, summary summaries.Fron
 	case Naive:
 		return checkSummaryNaive(ctx, s, summary, start)
 	case General:
-		return checkSummaryMostGeneral(s, summary, start)
+		return checkSummaryMostGeneral(s, summary, start, false)
+	case Types:
+		return checkSummaryMostGeneral(s, summary, start, true)
 	default:
 		return SoundnessResult{}, fmt.Errorf("unsupported soundness checking method: %v", via)
 	}
@@ -79,8 +83,9 @@ func checkSummaryNaive(ctx context.Context, s *dataflow.State, summary summaries
 
 // checkSummaryMostGeneral checks the soundness of summary by comparing it to the most-general summary.
 // The most-general summary assumes that all function inputs (parameters) flow to all function
-// outputs (pointer-like parameters and all return values).
-func checkSummaryMostGeneral(s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
+// outputs (parameters and all return values).
+// If useTypes is true, then non-pointer-like inputs are not considered to be outputs.
+func checkSummaryMostGeneral(s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time, useTypes bool) (SoundnessResult, error) {
 	f, err := functionOfSummary(s, summary)
 	if err != nil {
 		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
@@ -89,7 +94,7 @@ func checkSummaryMostGeneral(s *dataflow.State, summary summaries.FrontendDatafl
 	return SoundnessResult{
 		Name:     f.String(),
 		Want:     summary,
-		Got:      newMostGeneralDetailedSummary(f),
+		Got:      newMostGeneralDetailedSummary(f, useTypes),
 		GotGraph: nil,
 		IsSound:  false,
 		Time:     time.Since(start),
@@ -97,8 +102,9 @@ func checkSummaryMostGeneral(s *dataflow.State, summary summaries.FrontendDatafl
 }
 
 // newMostGeneralDetailedSummary returns the most-general summary for f.
+// If useTypes is true, then non-pointer-like inputs are not treated as outputs.
 // TODO include free variables as inputs and outputs
-func newMostGeneralDetailedSummary(f *ssa.Function) summaries.DetailedSummary {
+func newMostGeneralDetailedSummary(f *ssa.Function, useTypes bool) summaries.DetailedSummary {
 	flows := make(map[summaries.SummaryNode][]summaries.SummaryNode)
 	for i, input := range f.Params {
 		inputNode := summaries.ArgumentSNode{Name: input.Name(), Index: i, ObjectPath: ""}
@@ -109,10 +115,12 @@ func newMostGeneralDetailedSummary(f *ssa.Function) summaries.DetailedSummary {
 			if input == output {
 				continue
 			}
-			if pointer.CanPoint(input.Type()) && pointer.CanPoint(output.Type()) {
-				outputNode := summaries.ArgumentSNode{Name: output.Name(), Index: j, ObjectPath: ""}
-				flows[inputNode] = append(flows[inputNode], outputNode)
+			// If the types-based analysis is on, then only pointer-like parameters can be outputs
+			if useTypes && !pointer.CanPoint(output.Type()) {
+				continue
 			}
+			outputNode := summaries.ArgumentSNode{Name: output.Name(), Index: j, ObjectPath: ""}
+			flows[inputNode] = append(flows[inputNode], outputNode)
 		}
 		outputs := f.Signature.Results()
 		for i := range outputs.Len() {

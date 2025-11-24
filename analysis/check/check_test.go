@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -60,11 +59,15 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgIntraOut",
 			wants: []checkRes{
 				{
-					via:  check.Naive,
+					via:  check.General,
 					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.General,
+					via:  check.Types,
+					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+				},
+				{
+					via:  check.Naive,
 					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 			},
@@ -73,12 +76,16 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgInterNone",
 			wants: []checkRes{
 				{
-					via:  check.Naive,
-					desc: []string{},
-				},
-				{
 					via:  check.General,
 					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+				},
+				{
+					via:  check.Types,
+					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+				},
+				{
+					via:  check.Naive,
+					desc: []string{},
 				},
 			},
 		},
@@ -86,15 +93,22 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "twoArgIntraInout",
 			wants: []checkRes{
 				{
-					via:  check.Naive,
-					desc: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
-				},
-				{
 					via: check.General,
 					desc: []string{
 						`{"from": "!arg <x>", "to": "!arg <y>"}`,
 						`{"from": "!arg <y>", "to": "!arg <x>"}`,
 					},
+				},
+				{
+					via: check.Types,
+					desc: []string{
+						`{"from": "!arg <x>", "to": "!arg <y>"}`,
+						`{"from": "!arg <y>", "to": "!arg <x>"}`,
+					},
+				},
+				{
+					via:  check.Naive,
+					desc: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
 				},
 			},
 		},
@@ -102,15 +116,22 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "twoArgInterInout",
 			wants: []checkRes{
 				{
-					via:  check.Naive,
-					desc: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
-				},
-				{
 					via: check.General,
 					desc: []string{
 						`{"from": "!arg <x>", "to": "!arg <y>"}`,
 						`{"from": "!arg <y>", "to": "!arg <x>"}`,
 					},
+				},
+				{
+					via: check.Types,
+					desc: []string{
+						`{"from": "!arg <x>", "to": "!arg <y>"}`,
+						`{"from": "!arg <y>", "to": "!arg <x>"}`,
+					},
+				},
+				{
+					via:  check.Naive,
+					desc: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
 				},
 			},
 		},
@@ -118,12 +139,16 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgIntraGlobal",
 			wants: []checkRes{
 				{
-					via:  check.Naive,
-					desc: dataflow.ErrGlobal,
-				},
-				{
 					via:  check.General,
 					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+				},
+				{
+					via:  check.Types,
+					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+				},
+				{
+					via:  check.Naive,
+					desc: dataflow.ErrGlobal,
 				},
 			},
 		},
@@ -131,12 +156,16 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgInterGlobal",
 			wants: []checkRes{
 				{
-					via:  check.Naive,
-					desc: dataflow.ErrGlobal,
-				},
-				{
 					via:  check.General,
 					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+				},
+				{
+					via:  check.Types,
+					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+				},
+				{
+					via:  check.Naive,
+					desc: dataflow.ErrGlobal,
 				},
 			},
 		},
@@ -144,16 +173,25 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "twoArgInterBool",
 			wants: []checkRes{
 				{
-					via: check.Naive,
+					via: check.General,
 					desc: []string{
-						// `{"from": "!arg <x>", "to": "!ret 0"}`,
+						`{"from": "!arg <x>", "to": "!ret 0"}`,
+						`{"from": "!arg <x>", "to": "!arg <y>"}`,
+						`{"from": "!arg <y>", "to": "!ret 0"}`,
+						`{"from": "!arg <y>", "to": "!arg <x>"}`,
+					},
+				},
+				{
+					via: check.Types,
+					desc: []string{
+						`{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
 					},
 				},
 				{
-					via: check.General,
+					via: check.Naive,
 					desc: []string{
-						`{"from": "!arg <x>", "to": "!ret 0"}`,
+						// `{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
 					},
 				},
@@ -163,14 +201,23 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "twoArgInter",
 			wants: []checkRes{
 				{
-					via: check.Naive,
+					via: check.General,
+					desc: []string{
+						`{"from": "!arg <x>", "to": "!ret 0"}`,
+						`{"from": "!arg <x>", "to": "!arg <y>"}`,
+						`{"from": "!arg <y>", "to": "!ret 0"}`,
+						`{"from": "!arg <y>", "to": "!arg <x>"}`,
+					},
+				},
+				{
+					via: check.Types,
 					desc: []string{
 						`{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
 					},
 				},
 				{
-					via: check.General,
+					via: check.Naive,
 					desc: []string{
 						`{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
@@ -184,52 +231,17 @@ func TestCheckSummary_Basic(t *testing.T) {
 		for _, want := range tc.wants {
 			name := fmt.Sprintf("%s_%s", tc.name, want.via)
 			t.Run(name, func(t *testing.T) {
-				var tcWantErr error
-				var tcWantFlows []string
-				switch tcWant := want.desc.(type) {
-				case []string:
-					tcWantFlows = tcWant
-				case error:
-					tcWantErr = tcWant
-				default:
-					t.Fatalf("unexpected type: %T", want.desc)
-				}
-				str := fmt.Sprintf(`
-{
-	"package": "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic",
-	"function": "%s",
-	"flows": [%s]
-}`, tc.name, strings.Join(tcWantFlows, ", "))
-				var wantSummary summaries.FunctionFlowSummary
-				if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
-					t.Fatalf("failed to unmarshal summary %s: %v", str, err)
-				}
-				res, err := check.CheckSummary(context.Background(), state, wantSummary, want.via)
-				if !errors.Is(err, tcWantErr) {
-					t.Errorf("unexpected check summary error:\n\twant %v,\n\tgot %v", tcWantErr, err)
-					t.Logf("got graph:\n")
-					res.GotGraph.PrettyPrint(true, os.Stdout, nil)
-					return
-				}
-				wantFlows := wantSummary.Summary().Flows
-				gotFlows := res.Got.Flows
-				if !equalFlows(wantFlows, gotFlows) {
-					t.Errorf("summary mismatch:\n\twant %v,\n\tgot %v\n", wantFlows, gotFlows)
-					t.Logf("want:\n")
-					dbgFlows(t, wantFlows)
-					t.Logf("got:\n")
-					dbgFlows(t, gotFlows)
-					if res.GotGraph != nil {
-						t.Logf("got graph:\n")
-						res.GotGraph.PrettyPrint(true, os.Stdout, nil)
-					}
-				}
+				checkFlows(t, "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic", tc.name, want, state)
 			})
 		}
 	}
 }
 
 func TestCheckSummary_Stdlib(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test in short mode")
+	}
+
 	tests := []struct {
 		name     string
 		dir      string
@@ -243,11 +255,15 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 			function: "Sum",
 			wants: []checkRes{
 				{
-					via:  check.Naive,
+					via:  check.General,
 					desc: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.General,
+					via:  check.Types,
+					desc: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
+				},
+				{
+					via:  check.Naive,
 					desc: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
 				},
 			},
@@ -258,11 +274,15 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 			function: "Ints",
 			wants: []checkRes{
 				{
-					via:  check.Naive,
+					via:  check.General,
 					desc: []string{},
 				},
 				{
-					via:  check.General,
+					via:  check.Types,
+					desc: []string{},
+				},
+				{
+					via:  check.Naive,
 					desc: []string{},
 				},
 			},
@@ -270,69 +290,71 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		dir := filepath.Join("./testdata", "stdlib", tc.pkg)
+		lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+		if err != nil {
+			t.Fatal(err)
+		}
+		setupConfig(lp)
+		state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
+		if err != nil {
+			t.Fatalf("failed to load state: %s", err)
+		}
+
 		for _, want := range tc.wants {
 			name := fmt.Sprintf("%s_%s", tc.name, want.via)
 			t.Run(name, func(t *testing.T) {
-				dir := filepath.Join("./testdata", "stdlib", tc.pkg)
-				lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
-				if err != nil {
-					t.Fatal(err)
-				}
-				setupConfig(lp)
-				state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
-				if err != nil {
-					t.Fatalf("failed to load state: %s", err)
-				}
 				check.InitializeState(state)
-
-				var tcWantErr error
-				var tcWantFlows []string
-				switch tcWant := want.desc.(type) {
-				case []string:
-					tcWantFlows = tcWant
-				case error:
-					tcWantErr = tcWant
-				default:
-					t.Fatalf("unexpected type: %T", want.desc)
-				}
-				str := fmt.Sprintf(`
-{
-	"package": "%s",
-	"function": "%s",
-	"flows": [%s]
-}`, tc.pkg, tc.function, strings.Join(tcWantFlows, ", "))
-				var wantSummary summaries.FunctionFlowSummary
-				if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
-					t.Fatalf("failed to unmarshal summary %s: %v", str, err)
-				}
-				res, err := check.CheckSummary(context.Background(), state, wantSummary, want.via)
-				if !errors.Is(err, tcWantErr) {
-					t.Errorf("unexpected check summary error:\n\twant %v,\n\tgot %v", tcWantErr, err)
-					if res.GotGraph != nil {
-						t.Logf("got graph:\n")
-						res.GotGraph.PrettyPrint(true, os.Stdout, nil)
-					}
-					return
-				}
-				wantFlows := wantSummary.Summary().Flows
-				gotFlows := res.Got.Flows
-				if !equalFlows(wantFlows, gotFlows) {
-					t.Errorf("summary mismatch:\n\twant %v,\n\tgot %v\n", wantFlows, gotFlows)
-					t.Logf("want:\n")
-					dbgFlows(t, wantFlows)
-					t.Logf("got:\n")
-					dbgFlows(t, gotFlows)
-					if res.GotGraph != nil {
-						t.Logf("got graph:\n")
-						res.GotGraph.PrettyPrint(true, os.Stdout, nil)
-					}
-				}
+				checkFlows(t, tc.pkg, tc.function, want, state)
 			})
 		}
 	}
 }
 
-func equalFlows(want, got map[summaries.SummaryNode][]summaries.SummaryNode) bool {
+func checkFlows(t *testing.T, pkg string, fn string, want checkRes, state *dataflow.State) {
+	var tcWantErr error
+	var tcWantFlows []string
+	switch tcWant := want.desc.(type) {
+	case []string:
+		tcWantFlows = tcWant
+	case error:
+		tcWantErr = tcWant
+	default:
+		t.Fatalf("unexpected type: %T", want.desc)
+	}
+	str := fmt.Sprintf(`
+{
+	"package": "%s",
+	"function": "%s",
+	"flows": [%s]
+}`, pkg, fn, strings.Join(tcWantFlows, ", "))
+	var wantSummary summaries.FunctionFlowSummary
+	if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
+		t.Fatalf("failed to unmarshal summary %s: %v", str, err)
+	}
+	res, err := check.CheckSummary(context.Background(), state, wantSummary, want.via)
+	if !errors.Is(err, tcWantErr) {
+		t.Errorf("unexpected check summary error:\n\twant %v,\n\tgot %v", tcWantErr, err)
+		t.Logf("got graph:\n")
+		res.GotGraph.PrettyPrint(true, os.Stdout, nil)
+		return
+	}
+	wantFlows := wantSummary.Summary().Flows
+	gotFlows := res.Got.Flows
+	if !eqFlows(wantFlows, gotFlows) {
+		t.Errorf("summary mismatch:\n\twant %v,\n\tgot %v\n", wantFlows, gotFlows)
+		t.Logf("want:\n")
+		dbgFlows(t, wantFlows)
+		t.Logf("got:\n")
+		dbgFlows(t, gotFlows)
+		if res.GotGraph != nil {
+			t.Logf("got graph:\n")
+			res.GotGraph.PrettyPrint(true, os.Stdout, nil)
+		}
+	}
+}
+
+func eqFlows(want, got map[summaries.SummaryNode][]summaries.SummaryNode) bool {
 	if len(want) == 0 && len(got) == 0 {
 		return true
 	}
@@ -342,41 +364,59 @@ func equalFlows(want, got map[summaries.SummaryNode][]summaries.SummaryNode) boo
 	}
 
 	for wk, wvs := range want {
-		// sort values naively by string to avoid nondeterminism
-		slices.SortFunc(wvs, cmpNode)
+		found := false
 		for gk, gvs := range got {
-			slices.SortFunc(gvs, cmpNode)
-			if eqNode(wk, gk) {
-				return eqNodes(wvs, gvs)
+			if !eqNode(wk, gk) {
+				continue
 			}
+			if !eqNodes(wvs, gvs) {
+				return false
+			}
+			found = true
+			break
+		}
+		if !found {
+			return false
 		}
 	}
 
-	return false
+	return true
+}
+
+func eqNodes(want, got []summaries.SummaryNode) bool {
+	// need to sort the slices since EqualFunc compares elements in order
+	slices.SortFunc(want, cmpNode)
+	slices.SortFunc(got, cmpNode)
+	return slices.EqualFunc(want, got, eqNode)
 }
 
 func cmpNode(x, y summaries.SummaryNode) int {
 	return strings.Compare(x.String(), y.String())
 }
 
-func eqNodes(want, got []summaries.SummaryNode) bool {
-	return slices.EqualFunc(want, got, eqNode)
-}
-
 func eqNode(want, got summaries.SummaryNode) bool {
-	if reflect.TypeOf(want) != reflect.TypeOf(got) {
-		return false
-	}
-
 	switch want := want.(type) {
 	case summaries.ArgumentSNode:
-		got := got.(summaries.ArgumentSNode)
-		return want.Name == got.Name || want.Index == got.Index
+		got, ok := got.(summaries.ArgumentSNode)
+		if !ok {
+			return false
+		}
+		// If want has a name, match by name; otherwise match by index
+		if want.Name != "" {
+			return want.Name == got.Name
+		}
+		return want.Index == got.Index
 	case summaries.ReceiverSNode:
-		got := got.(summaries.ReceiverSNode)
+		got, ok := got.(summaries.ReceiverSNode)
+		if !ok {
+			return false
+		}
 		return want == got
 	case summaries.ReturnSNode:
-		got := got.(summaries.ReturnSNode)
+		got, ok := got.(summaries.ReturnSNode)
+		if !ok {
+			return false
+		}
 		return want.Index == got.Index
 	default:
 		panic(fmt.Errorf("unexpected summary node type: %T", want))
