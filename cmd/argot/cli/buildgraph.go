@@ -19,7 +19,7 @@ import (
 )
 
 // cmdBuildGraph builds the inter-procedural flow graph given the current summaries
-func cmdBuildGraph(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdBuildGraph(tt *term.Terminal, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : build the inter-procedural flow graph.\n",
 			tt.Escape.Blue, cmdBuildGraphName, tt.Escape.Reset)

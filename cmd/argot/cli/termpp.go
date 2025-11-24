@@ -52,7 +52,7 @@ type displayElement struct {
 	escape  []byte
 }
 
-func writeEntries(tt *term.Terminal, sess *session, entries []displayElement, prefix string) {
+func writeEntries(tt *term.Terminal, sess *Session, entries []displayElement, prefix string) {
 	if len(entries) == 0 {
 		return
 	}

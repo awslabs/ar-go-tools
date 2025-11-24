@@ -40,8 +40,8 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// session stores state information about the current cli session
-type session struct {
+// Session stores state information about the current cli Session
+type Session struct {
 	originalFlags tools.CommonFlags
 
 	args       []string
@@ -65,8 +65,9 @@ type session struct {
 	dfState  *dataflow.State
 }
 
-func newSession(flags tools.CommonFlags) *session {
-	s := &session{
+// NewSession returns a new session with the provided flags.
+func NewSession(flags tools.CommonFlags) *Session {
+	s := &Session{
 		originalFlags: flags,
 		args:          flags.FlagSet.Args(),
 		configPath:    flags.ConfigPath,
@@ -74,21 +75,21 @@ func newSession(flags tools.CommonFlags) *session {
 	return s
 }
 
-func (s *session) logger() *config.LogGroup {
+func (s *Session) logger() *config.LogGroup {
 	if s.cfgState != nil {
 		return s.cfgState.Logger
 	}
 	return config.NewLogGroup(nil)
 }
 
-func (s *session) allFunctions() (map[*ssa.Function]bool, error) {
+func (s *Session) allFunctions() (map[*ssa.Function]bool, error) {
 	if s.lpState == nil {
 		return nil, fmt.Errorf("listing functions requires at least a loaded program or package")
 	}
 	return ssautil.AllFunctions(s.lpState.Program), nil
 }
 
-func (s *session) reachableFunctions() (map[*ssa.Function]bool, error) {
+func (s *Session) reachableFunctions() (map[*ssa.Function]bool, error) {
 	if s.lpState == nil {
 		_, err := s.loadProgram().Value()
 		if err != nil {
@@ -107,7 +108,7 @@ func (s *session) reachableFunctions() (map[*ssa.Function]bool, error) {
 	return s.lpState.ReachableFunctions()
 }
 
-func (s *session) hasSummary(f *ssa.Function) (*dataflow.SummaryGraph, bool) {
+func (s *Session) hasSummary(f *ssa.Function) (*dataflow.SummaryGraph, bool) {
 	if s.dfState == nil || s.dfState.FlowGraph == nil {
 		return nil, false
 	}
@@ -118,7 +119,7 @@ func (s *session) hasSummary(f *ssa.Function) (*dataflow.SummaryGraph, bool) {
 	return summary, ok
 }
 
-func (s *session) seekConfig() (*config.Config, bool, error) {
+func (s *Session) seekConfig() (*config.Config, bool, error) {
 	var err error
 	pConfig := config.NewDefault()
 	if s.configPath != "" {
@@ -140,7 +141,7 @@ func (s *session) seekConfig() (*config.Config, bool, error) {
 	return pConfig, false, err
 }
 
-func (s *session) attemptSettingConfig(pConfig **config.Config, dir string, filename string) error {
+func (s *Session) attemptSettingConfig(pConfig **config.Config, dir string, filename string) error {
 	configFile := filepath.Join(dir, filename)
 	config.SetGlobalConfig(configFile)
 	tmpConfig, err := config.LoadGlobal(nil)
@@ -153,8 +154,10 @@ func (s *session) attemptSettingConfig(pConfig **config.Config, dir string, file
 	return nil
 }
 
-func (s *session) loadConfig() result.Result[config.State] {
+// LoadConfig triggers the config loading for the session.
+func (s *Session) LoadConfig() result.Result[config.State] {
 	logger := log.New(os.Stdout, "", log.Flags())
+	// This also works without a config.
 	if s.cfgState != nil {
 		return result.Ok(s.cfgState)
 	}
@@ -211,7 +214,7 @@ func (s *session) loadConfig() result.Result[config.State] {
 	return result.Ok(s.cfgState)
 }
 
-func (s *session) loadProgram() result.Result[loadprogram.State] {
+func (s *Session) loadProgram() result.Result[loadprogram.State] {
 	if s.lpState != nil {
 		return result.Ok(s.lpState)
 	}
@@ -222,7 +225,7 @@ func (s *session) loadProgram() result.Result[loadprogram.State] {
 	return lpstate
 }
 
-func (s *session) loadPtrAnalysis() result.Result[ptr.State] {
+func (s *Session) loadPtrAnalysis() result.Result[ptr.State] {
 	if s.ptrState != nil {
 		return result.Ok(s.ptrState)
 	}
@@ -233,7 +236,7 @@ func (s *session) loadPtrAnalysis() result.Result[ptr.State] {
 	return ptrstate
 }
 
-func (s *session) loadDataflowAnalysis() result.Result[dataflow.State] {
+func (s *Session) loadDataflowAnalysis() result.Result[dataflow.State] {
 	if s.dfState != nil {
 		return result.Ok(s.dfState)
 	}
@@ -254,11 +257,11 @@ func (s *session) loadDataflowAnalysis() result.Result[dataflow.State] {
 	return result.Ok(s.dfState)
 }
 
-func (s *session) hasProgram() bool {
+func (s *Session) hasProgram() bool {
 	return s.lpState != nil && s.lpState.Program != nil
 }
 
-func (s *session) program() (*ssa.Program, error) {
+func (s *Session) program() (*ssa.Program, error) {
 	if s.lpState == nil || s.lpState.Program == nil {
 		return nil, fmt.Errorf("no program loaded")
 	}
@@ -267,7 +270,7 @@ func (s *session) program() (*ssa.Program, error) {
 
 // programOrPanic is a version of program that panics instead of returning an error.
 // This is useful in a context where you know the program exists.
-func (s *session) programOrPanic() *ssa.Program {
+func (s *Session) programOrPanic() *ssa.Program {
 	program, err := s.program()
 	if err != nil {
 		panic(err)
@@ -278,7 +281,7 @@ func (s *session) programOrPanic() *ssa.Program {
 // funcsMatchingCommand returns the function matching the argument of the command or all functions if there
 // is no argument
 // Returns an empty list if any error is encountered
-func (s *session) funcsMatchingCommand(tt *term.Terminal, command Command) ([]*ssa.Function, error) {
+func (s *Session) funcsMatchingCommand(tt *term.Terminal, command Command) ([]*ssa.Function, error) {
 	rString := ".*" // default is to match anything
 	if len(command.Args) >= 1 {
 		// otherwise build regex from arguments
@@ -301,7 +304,7 @@ func (s *session) funcsMatchingCommand(tt *term.Terminal, command Command) ([]*s
 	return funcs, nil
 }
 
-func (s *session) findFunc(target *regexp.Regexp) ([]*ssa.Function, error) {
+func (s *Session) findFunc(target *regexp.Regexp) ([]*ssa.Function, error) {
 	var funcs []*ssa.Function
 	allFuncs, err := s.allFunctions()
 	if err != nil {
@@ -316,26 +319,26 @@ func (s *session) findFunc(target *regexp.Regexp) ([]*ssa.Function, error) {
 }
 
 // Help command
-func cmdHelp(tt *term.Terminal, s *session, _ Command, withTest bool) bool {
+func cmdHelp(tt *term.Terminal, s *Session, _ Command, withTest bool) bool {
 	if s == nil {
 		writeFmt(tt, "\t- %s%s%s : print help message\t", cmdHelpName, tt.Escape.Blue, tt.Escape.Reset)
 		return false
 	}
 	writeFmt(tt, "Commands:\n")
 	writeFmt(tt, "\t- %s%s%s : print this message\n", tt.Escape.Blue, cmdHelpName, tt.Escape.Reset)
-	keys := maps.Keys(commands)
+	keys := maps.Keys(Commands)
 	slices.Sort(keys)
 	for _, key := range keys {
-		cmd := commands[key]
-		cmd(tt, nil, Command{}, withTest)
+		cmd := Commands[key]
+		cmd.Function(tt, nil, Command{}, withTest)
 	}
 	return false
 }
 
 // cmdState implements the "state?" command, which prints information about the current state of the tool
-func cmdState(tt *term.Terminal, s *session, _ Command, _ bool) bool {
+func cmdState(tt *term.Terminal, s *Session, _ Command, _ bool) bool {
 	if s == nil {
-		writeFmt(tt, "\t- %s%s%s : print information about the current session\n",
+		writeFmt(tt, "\t- %s%s%s : print information about the current Session\n",
 			tt.Escape.Blue, cmdStateName, tt.Escape.Reset)
 		return false
 	}
@@ -389,7 +392,7 @@ func cmdState(tt *term.Terminal, s *session, _ Command, _ bool) bool {
 }
 
 // cmdList shows all functions matching a given regex
-func cmdList(tt *term.Terminal, s *session, command Command, withTest bool) bool {
+func cmdList(tt *term.Terminal, s *Session, command Command, withTest bool) bool {
 	if s == nil {
 		writeFmt(tt, "\t- %s%s%s : list all functions matching provided regexes\n",
 			tt.Escape.Blue, cmdListName, tt.Escape.Reset)

@@ -23,7 +23,7 @@ import (
 )
 
 // cmdCallers shows the callers of a given summarized function
-func cmdCallers(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdCallers(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: shows the callers of a given summarized function.\n",
 			tt.Escape.Blue, cmdCallersName, tt.Escape.Reset)
@@ -40,7 +40,7 @@ func cmdCallers(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 }
 
 // cmdCallees shows the callers of a given summarized function
-func cmdCallees(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdCallees(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: shows the callees of a given summarized function.\n",
 			tt.Escape.Blue, cmdCalleesName, tt.Escape.Reset)
@@ -62,7 +62,7 @@ func cmdCallees(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 //
 // If the matching function has a summary, then the summary's info is used.
 // Otherwise, the info contained in the pointer analysis' result is used.
-func displayCallInfo(tt *term.Terminal, sess *session, command Command, usePtr bool,
+func displayCallInfo(tt *term.Terminal, sess *Session, command Command, usePtr bool,
 	displayCallees bool, displayCallers bool) bool {
 	targetFilter := func(f *ssa.Function) bool { return f != nil }
 
@@ -138,7 +138,7 @@ func displayCallInfoWithSummary(s *dataflow.State, tt *term.Terminal,
 	}
 }
 
-func displayCallInfoWithoutSummary(s *session, tt *term.Terminal,
+func displayCallInfoWithoutSummary(s *Session, tt *term.Terminal,
 	f *ssa.Function, targetFilter func(*ssa.Function) bool,
 	displayCallers bool, displayCallees bool) {
 	if s == nil || f == nil {

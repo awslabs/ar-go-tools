@@ -30,7 +30,7 @@ import (
 
 // cmdStats prints statistics about the program
 // Command is stats [all|general|closures]
-func cmdStats(tt *term.Terminal, c *session, command Command, withTest bool) bool {
+func cmdStats(tt *term.Terminal, c *Session, command Command, withTest bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s : show stats about program\n", tt.Escape.Blue, cmdStatsName, tt.Escape.Reset)
 		writeFmt(tt, "\t  subcommands:\n")

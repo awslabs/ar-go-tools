@@ -24,7 +24,7 @@ import (
 )
 
 // cmdTrace runs a taint-like analysis, but starting from a custom node
-func cmdTrace(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdTrace(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: show information about nodes reachable from another node using data edges.\n",
 			tt.Escape.Blue, cmdTraceName, tt.Escape.Reset)

@@ -66,10 +66,7 @@ func TestMCPServerDependenciesTool(t *testing.T) {
 	// Test tools list
 	toolsReq := jsonRPCRequest{JSONRPC: "2.0", ID: 2, Method: "tools/list", Params: map[string]interface{}{}}
 	sendRequest(t, stdin, toolsReq)
-	response = readResponse(t, scanner)
-	if !strings.Contains(response, "go_dependencies") {
-		t.Error("go_dependencies tool not found")
-	}
+	toolsListResponseCheck(t, readResponse(t, scanner))
 
 	// Test valid dependencies call
 	depsReq := jsonRPCRequest{
@@ -159,4 +156,75 @@ func readResponse(t *testing.T, scanner *bufio.Scanner) string {
 		}
 	}
 	return ""
+}
+
+func toolsListResponseCheck(t *testing.T, response string) {
+	if !strings.Contains(response, "go_dependencies") {
+		t.Error("Expected go_dependencies tool in tools list")
+	}
+	// Deserialize JSON
+	var resp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &resp); err != nil {
+		t.Fatal(err)
+	}
+	// Check if the response is valid
+	if resp.Error != nil {
+		t.Fatalf("Tools list failed: %v", resp.Error)
+	}
+	// Check if the response contains the expected tools list
+	toolsList, ok := resp.Result.(map[string]interface{})["tools"].([]interface{})
+	if !ok {
+		t.Fatal("Expected tools list in response")
+	}
+	for _, tool := range toolsList {
+		mcpTool, ok := tool.(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected tool to be a map not %s", tool)
+		}
+		// has a name
+		if _, ok := mcpTool["name"]; !ok {
+			t.Fatal("expected tool to have a name")
+		}
+		// has a description
+		if _, ok := mcpTool["description"]; !ok {
+			t.Fatal("expected tool to have a description")
+		}
+		// has an inputschema
+		inputSchemaMaybe, ok := mcpTool["inputSchema"]
+		if !ok {
+			t.Fatal("expected tool to have an inputSchema")
+		}
+		// inputSchema is a map
+		inputSchema, ok := inputSchemaMaybe.(map[string]interface{})
+		if !ok {
+			t.Fatal("expected inputSchema to be a map")
+		}
+		if _, ok := inputSchema["required"]; !ok {
+			t.Fatal("expected inputSchema to have a required field")
+		}
+		if _, ok := inputSchema["type"]; !ok {
+			t.Fatal("expected inputSchema to have a type field")
+		}
+		properties, ok := inputSchema["properties"]
+		if !ok {
+			t.Fatal("expected inputSchema to have a properties field")
+		}
+		propertiesMap, ok := properties.(map[string]interface{})
+		if !ok {
+			t.Fatal("expected properties to be a map")
+		}
+		for key, value := range propertiesMap {
+			propertyMap, ok := value.(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected property %s to be a map", key)
+			}
+			if _, ok := propertyMap["description"]; !ok {
+				t.Fatalf("expected property %s to have a description", key)
+			}
+			if _, ok := propertyMap["type"]; !ok {
+				t.Fatalf("expected property %s to have a type", key)
+			}
+		}
+
+	}
 }

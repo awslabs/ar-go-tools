@@ -24,7 +24,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-func cmdScan(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdScan(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : scan the program for usages\n", tt.Escape.Blue, cmdScanName, tt.Escape.Reset)
 		return false

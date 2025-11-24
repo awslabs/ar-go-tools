@@ -30,7 +30,7 @@ import (
 )
 
 // cmdFocus puts a given function into focus by setting state.CurrentFunction
-func cmdFocus(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdFocus(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: focus on a specific function.\n", tt.Escape.Blue, cmdFocusName,
 			tt.Escape.Reset)
@@ -72,7 +72,7 @@ func cmdFocus(tt *term.Terminal, sess *session, command Command, _ bool) bool {
 }
 
 // cmdPackage prints information about the package of the current function
-func cmdPackage(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdPackage(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: show package of current function.\n", tt.Escape.Blue, cmdPackageName,
 			tt.Escape.Reset)
@@ -103,7 +103,7 @@ func cmdPackage(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 }
 
 // cmdUnfocus removes the focus on the current function (sets state.CurrentFunction to nil and resets the prompt)
-func cmdUnfocus(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdUnfocus(tt *term.Terminal, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: unfocus current function.\n", tt.Escape.Blue,
 			cmdUnfocusName, tt.Escape.Reset)
@@ -123,7 +123,7 @@ func cmdUnfocus(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 }
 
 // cmdSsaValue prints the ssa values matching a regex in the state.CurrentFunction
-func cmdSsaValue(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdSsaValue(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: show SSA values matching regex\n", tt.Escape.Blue,
 			cmdSsaValueName, tt.Escape.Reset)
@@ -169,7 +169,7 @@ func cmdSsaValue(tt *term.Terminal, sess *session, command Command, _ bool) bool
 }
 
 // cmdSsaInstr prints the ssa instructions matching a regex in the state.CurrentFunction
-func cmdSsaInstr(tt *term.Terminal, c *session, command Command, _ bool) bool {
+func cmdSsaInstr(tt *term.Terminal, c *Session, command Command, _ bool) bool {
 	if c == nil {
 		writeFmt(tt, "\t- %s%s%s: show SSA instructions matching regex\n", tt.Escape.Blue,
 			cmdSsaInstrName, tt.Escape.Reset)
@@ -203,7 +203,7 @@ func cmdSsaInstr(tt *term.Terminal, c *session, command Command, _ bool) bool {
 }
 
 // cmdMayAlias prints whether matches values may alias according to the pointer analysis
-func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdMayAlias(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: print whether matching values may alias\n", tt.Escape.Blue,
 			cmdMayAliasName, tt.Escape.Reset)
@@ -275,7 +275,7 @@ func printAliases(tt *term.Terminal, ps *ptr.State, v2 ssa.Value, ptr pointer.Po
 }
 
 // cmdWhere prints the position of a function
-func cmdWhere(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdWhere(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the location of a function declaration.\n",
 			tt.Escape.Blue, cmdWhereName, tt.Escape.Reset)
@@ -316,7 +316,7 @@ func cmdWhere(tt *term.Terminal, sess *session, command Command, withTest bool) 
 }
 
 // cmdIntra shows the intermediate result of running the dataflow analysis.
-func cmdIntra(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdIntra(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: show the intermediate result of the intraprocedural analysis\n",
 			tt.Escape.Blue, cmdIntraName, tt.Escape.Reset)
@@ -379,7 +379,7 @@ func cmdIntra(tt *term.Terminal, sess *session, command Command, withTest bool) 
 }
 
 // cmdMark shows intermediate information about a mark in the dataflow analysis
-func cmdMark(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdMark(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: show information about a mark in the intraprocedural analysis\n",
 			tt.Escape.Blue, cmdMarkName, tt.Escape.Reset)
@@ -439,7 +439,7 @@ func matchInstr(r *regexp.Regexp, instr ssa.Instruction) bool {
 	return r.MatchString(instr.String())
 }
 
-func showValue(tt *term.Terminal, sess *session, val ssa.Value) {
+func showValue(tt *term.Terminal, sess *Session, val ssa.Value) {
 	writeFmt(tt, "Matching value: %s\n", val.Name())
 	writeFmt(tt, "      kind    : %T\n", val)
 	writeFmt(tt, "      type    : %s\n", val.Type().String())
@@ -464,7 +464,7 @@ func showValue(tt *term.Terminal, sess *session, val ssa.Value) {
 	}
 }
 
-func showReferrers(sess *session, tt *term.Terminal, val ssa.Value) {
+func showReferrers(sess *Session, tt *term.Terminal, val ssa.Value) {
 	var entries []displayElement
 	referrers := val.Referrers()
 	for _, label := range *referrers {
@@ -476,7 +476,7 @@ func showReferrers(sess *session, tt *term.Terminal, val ssa.Value) {
 	writeEntries(tt, sess, entries, "    ")
 }
 
-func showPointer(tt *term.Terminal, sess *session, ptr pointer.Pointer) {
+func showPointer(tt *term.Terminal, sess *Session, ptr pointer.Pointer) {
 	var entries []displayElement
 	for _, label := range ptr.PointsTo().Labels() {
 		if label.Value() != nil && label.Value().Parent() != nil {
@@ -502,7 +502,7 @@ func showPointer(tt *term.Terminal, sess *session, ptr pointer.Pointer) {
 	writeEntries(tt, sess, entries, "    ")
 }
 
-func showInstr(tt *term.Terminal, c *session, instr ssa.Instruction) {
+func showInstr(tt *term.Terminal, c *Session, instr ssa.Instruction) {
 	writeFmt(tt, "Matching instruction: %s\n", instr.String())
 	writeFmt(tt, "            location: %s\n", c.programOrPanic().Fset.Position(instr.Pos()))
 }
@@ -575,7 +575,7 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.State, fi *dataflow.Flow
 }
 
 // showBlock pretty prints the block on the terminal
-func showBlock(tt *term.Terminal, _ *session, block *ssa.BasicBlock) {
+func showBlock(tt *term.Terminal, _ *Session, block *ssa.BasicBlock) {
 	writeFmt(tt, "block %d:\n", block.Index)
 	writeFmt(tt, "%s P:%d S:%d\n", block.Comment, len(block.Preds), len(block.Succs))
 

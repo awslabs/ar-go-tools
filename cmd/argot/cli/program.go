@@ -25,7 +25,7 @@ import (
 
 // cmdLoad implements the "load" command that loads a program into the tool.
 // Once it updates the state.Args, it calls the rebuild command to build the program and the state.
-func cmdLoad(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdLoad(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : load new program\n", tt.Escape.Blue, cmdLoadName, tt.Escape.Reset)
 		return false
@@ -39,7 +39,7 @@ func cmdLoad(tt *term.Terminal, sess *session, command Command, withTest bool) b
 	return cmdRebuild(tt, sess, command, withTest)
 }
 
-func cmdLoadPackages(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdLoadPackages(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : load packages\n", tt.Escape.Blue, cmdLoadPackagesName, tt.Escape.Reset)
 		writeFmt(tt, "\t  Options:\n")
@@ -99,7 +99,7 @@ func cmdLoadPackages(tt *term.Terminal, sess *session, command Command, withTest
 	return false
 }
 
-func cmdLoadWholeProgram(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdLoadWholeProgram(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : laod the arguments as whole program\n", tt.Escape.Blue, cmdLoadWholeProgramName, tt.Escape.Reset)
 		return false
@@ -114,7 +114,7 @@ func cmdLoadWholeProgram(tt *term.Terminal, sess *session, command Command, with
 	return false
 }
 
-func cmdRunPointer(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdRunPointer(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : run the pointer analysis\n", tt.Escape.Blue, cmdRunPointerName, tt.Escape.Reset)
 		return false
@@ -129,7 +129,7 @@ func cmdRunPointer(tt *term.Terminal, sess *session, command Command, withTest b
 	return false
 }
 
-func cmdRunDataflow(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdRunDataflow(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : run the dataflow analysis\n", tt.Escape.Blue, cmdRunDataflowName, tt.Escape.Reset)
 		return false
@@ -146,14 +146,14 @@ func cmdRunDataflow(tt *term.Terminal, sess *session, command Command, withTest 
 
 // cmdRebuild implements the rebuild command. It reloads the current config state and program state.
 // The pointer and dataflow state are cleared.
-func cmdRebuild(tt *term.Terminal, sess *session, _ Command, withTest bool) bool {
+func cmdRebuild(tt *term.Terminal, sess *Session, _ Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : rebuild the program being analyzed, including analyzer state.\n",
 			tt.Escape.Blue, cmdRebuildName, tt.Escape.Reset)
 		return false
 	}
 
-	res := sess.loadConfig()
+	res := sess.LoadConfig()
 	if res.IsOk() {
 		sess.loadProgram()
 	} else {
@@ -172,7 +172,7 @@ func cmdRebuild(tt *term.Terminal, sess *session, _ Command, withTest bool) bool
 
 // cmdReconfig implements the reconfig command and reloads the configuration file. If a new config file is specified,
 // then it will load that new config file.
-func cmdReconfig(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdReconfig(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : load the specified config file\n",
 			tt.Escape.Blue, cmdReconfigName, tt.Escape.Reset)
@@ -183,7 +183,7 @@ func cmdReconfig(tt *term.Terminal, sess *session, command Command, _ bool) bool
 	sess.configPath = strings.TrimSpace(command.Args[0])
 	oldConfig := sess.cfgState
 	sess.cfgState = nil
-	res := sess.loadConfig()
+	res := sess.LoadConfig()
 
 	if res.IsErr() {
 		WriteErr(tt, "%s", res)

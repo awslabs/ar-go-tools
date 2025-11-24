@@ -45,7 +45,7 @@ import (
 // If state is nil, then it should print its definition on stdout
 
 // cmdShowSsa prints the SSA representation of all the function matching a given regex
-func cmdShowSsa(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdShowSsa(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the ssa representation of a function.\n"+
 			"\t  showssa regex prints the SSA representation of the function matching the regex\n"+
@@ -73,7 +73,7 @@ func cmdShowSsa(tt *term.Terminal, sess *session, command Command, withTest bool
 }
 
 // cmdShowFuncType prints the type of all the functions matching a given regex
-func cmdMembers(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdMembers(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the type of a function.\n"+
 			"\t  %s regex prints the type of the function matching the regex\n"+
@@ -129,7 +129,7 @@ func cmdMembers(tt *term.Terminal, sess *session, command Command, withTest bool
 }
 
 // cmdShowEscape prints the escape graph of all the function matching a given regex
-func cmdShowEscape(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdShowEscape(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the escape graph of a function.\n"+ // safe %s (position string)
 			"\t  %s regex prints the escape graph of function(s) matching the regex\n"+
@@ -159,7 +159,7 @@ func cmdShowEscape(tt *term.Terminal, sess *session, command Command, withTest b
 
 // cmdShowDataflow builds and prints the inter-procedural dataflow graph.
 // If on macOS, the command automatically renders an SVG and opens it in Safari.
-func cmdShowDataflow(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdShowDataflow(tt *term.Terminal, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : build and print the inter-procedural dataflow graph of a program.\n"+
 			"\t  showdataflow args prints the inter-procedural dataflow graph.\n"+
@@ -221,7 +221,7 @@ func cmdShowDataflow(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 }
 
 // cmdSummary prints a specific function's summary, if it can be found
-func cmdSummary(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdSummary(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the summary of the functions matching a regex\n",
 			tt.Escape.Blue, cmdSummaryName, tt.Escape.Reset)
@@ -272,7 +272,7 @@ func cmdSummary(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 }
 
 // cmdShowSource prints the source (AST representation) of all the functions matching a given regex
-func cmdSrc(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdSrc(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the source code of a function.\n"+
 			"\t  src regex prints the AST representation of the function matching the regex\n"+
@@ -310,7 +310,7 @@ func cmdSrc(tt *term.Terminal, sess *session, command Command, withTest bool) bo
 }
 
 // cmdAst prints the AST structure of all the functions matching a given regex
-func cmdAst(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdAst(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : print the ast of a function.\n"+
 			"\t  %s regex prints the AST structure of the %sfunction%s matching the regex\n"+
@@ -379,7 +379,7 @@ func cmdAst(tt *term.Terminal, sess *session, command Command, withTest bool) bo
 }
 
 // cmdSummarize runs the intra-procedural analysis.
-func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdSummarize(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s : run the intra-procedural analysis. If a function is provided, "+
 			"run only\n", tt.Escape.Blue, cmdSummarizeName, tt.Escape.Reset)
@@ -498,7 +498,7 @@ func alwaysSummarize(funcs []*ssa.Function, buildCounter *int) func(*dataflow.St
 }
 
 // cmdTaint runs the taint analysis
-func cmdTaint(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdTaint(tt *term.Terminal, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: run the taint analysis with parameters in config.\n",
 			tt.Escape.Blue, cmdTaintName, tt.Escape.Reset)
@@ -532,7 +532,7 @@ func cmdTaint(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 }
 
 // cmdBacktrace runs the backtrace analysis.
-func cmdBacktrace(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdBacktrace(tt *term.Terminal, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s: run the backtrace analysis with parameters in config.\n",
 			tt.Escape.Blue, cmdBacktraceName, tt.Escape.Reset)
@@ -606,7 +606,7 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 	summary.PrettyPrint(true, tt, regexFilter)
 }
 
-func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.Function, error) {
+func listContextFunc(tt *term.Terminal, sess *Session, command Command) ([]*ssa.Function, error) {
 	if len(command.Args) < 1 {
 		if sess.currentFunction != nil {
 			return []*ssa.Function{sess.currentFunction}, nil
@@ -623,9 +623,9 @@ func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.
 }
 
 // findFiles finds the ast file in the program loaded.
-// You should ensure that the  LPState of the session has been loaded, otherwise
+// You should ensure that the  LPState of the Session has been loaded, otherwise
 // this function will just return an empty list.
-func findFiles(tt *term.Terminal, sess *session, command Command) []*ast.File {
+func findFiles(tt *term.Terminal, sess *Session, command Command) []*ast.File {
 	if sess.lpState == nil {
 		return []*ast.File{}
 	}

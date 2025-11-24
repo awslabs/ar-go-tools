@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dependencies"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/cmd/argot/cli"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"golang.org/x/tools/go/ssa"
 )
@@ -62,13 +63,6 @@ type jsonRPCResponse struct {
 	Error   interface{} `json:"error,omitempty"`
 }
 
-// tool is the simple struct returned in the result of a response for a tool description request
-type tool struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	InputSchema interface{} `json:"inputSchema"`
-}
-
 // toolCallParams is the structure used by the MCP protocol for all tool cals (tool name, tool arguments)
 type toolCallParams struct {
 	Name      string                 `json:"name"`
@@ -101,8 +95,10 @@ func main() {
 			handleToolsList(req)
 		case "tools/call":
 			handleToolCall(req)
+		case "notifications/initialized":
+			handleInitialized(req)
 		default:
-			sendError(req.ID, codeMethodNotFound, fmt.Sprintf("Method not found: %s", req.Method))
+			sendError(req.ID, codeMethodNotFound, fmt.Sprintf("Method %s not found", req.Method))
 		}
 	}
 }
@@ -111,7 +107,9 @@ func handleInitialize(req jsonRPCRequest) {
 	result := map[string]interface{}{
 		"protocolVersion": "2024-11-05",
 		"capabilities": map[string]interface{}{
-			"tools": map[string]interface{}{},
+			"tools": map[string]interface{}{
+				"listChanged": true,
+			},
 		},
 		"serverInfo": map[string]interface{}{
 			"name":    "argot-mcp-server",
@@ -121,14 +119,18 @@ func handleInitialize(req jsonRPCRequest) {
 	sendResponse(req.ID, result)
 }
 
+func handleInitialized(req jsonRPCRequest) {
+	// DO NOTHING
+}
+
 func handleToolsList(req jsonRPCRequest) {
-	serverTools := []tool{
+	serverTools := []tools.MCPTool{
 		{
 			Name:        "go_dependencies",
 			Description: "Analyzes dependencies of a given Go package, and provides information about how much of each dependency is used by the package being analyzed. For example, this can be used to identify dependencies that have very little use in the code, and therefore could be eliminated.",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
+			InputSchema: tools.MCPInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
 					"paths": map[string]interface{}{
 						"type":        "array",
 						"items":       map[string]interface{}{"type": "string"},
@@ -145,11 +147,14 @@ func handleToolsList(req jsonRPCRequest) {
 						"description": "Usage percentage threshold for warnings",
 					},
 				},
-				"required": []string{"paths"},
+				Required: []string{"paths"},
 			},
 		},
 	}
-	sendResponse(req.ID, map[string]interface{}{"serverTools": serverTools})
+	for _, tool := range cli.Commands {
+		serverTools = append(serverTools, tool.ToMCPToolDefinition())
+	}
+	sendResponse(req.ID, map[string]interface{}{"tools": serverTools})
 }
 
 func handleToolCall(req jsonRPCRequest) {

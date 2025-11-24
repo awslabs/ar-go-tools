@@ -23,7 +23,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-func cmdShowPackage(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdShowPackage(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		writeFmt(tt, "\t- %s%s%s <name>: print information about package <name> loaded with load-pkg\n", tt.Escape.Blue,
 			cmdShowPackageName, tt.Escape.Reset)
@@ -65,7 +65,7 @@ func cmdShowPackage(tt *term.Terminal, sess *session, command Command, withTest 
 	return false
 }
 
-func findPkgByName(sess *session, name string) []*packages.Package {
+func findPkgByName(sess *Session, name string) []*packages.Package {
 	pkgs := []*packages.Package{}
 	for _, pkg := range sess.pkgs {
 		if pkg.Name == name {
@@ -75,7 +75,7 @@ func findPkgByName(sess *session, name string) []*packages.Package {
 	return pkgs
 }
 
-func findPkgByPathRegex(sess *session, rx *regexp.Regexp) []*packages.Package {
+func findPkgByPathRegex(sess *Session, rx *regexp.Regexp) []*packages.Package {
 	pkgs := []*packages.Package{}
 	for _, pkg := range sess.pkgs {
 		if rx.MatchString(pkg.PkgPath) {
