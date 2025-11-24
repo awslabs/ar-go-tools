@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"context"
 	"fmt"
 	"go/token"
 	"go/types"
@@ -131,19 +132,20 @@ func (state *IntraAnalysisState) initialize() {
 				}
 			}
 			// Also mark synthetic nodes here
-			state.markInstruction(i)
+			// It's unlikely that this will time out so use a background context here
+			state.markInstruction(context.Background(), i)
 		})
 }
 
-func (state *IntraAnalysisState) markInstruction(i ssa.Instruction) {
+func (state *IntraAnalysisState) markInstruction(ctx context.Context, i ssa.Instruction) {
 	// Instructions that always require marking the value
 	switch instr := i.(type) {
 	case *ssa.MakeClosure:
 		state.markClosureNode(instr)
 	case *ssa.Call:
-		state.callCommonMark(instr, instr, instr.Common())
+		state.callCommonMark(ctx, instr, instr, instr.Common())
 	case *ssa.Go: // Analyze go like a function call, but a dedicated concurrency analysis should be used
-		state.callCommonMark(instr.Value(), instr, instr.Common())
+		state.callCommonMark(ctx, instr.Value(), instr, instr.Common())
 	}
 
 	// Instructions where marking is optional
@@ -280,23 +282,23 @@ func (state *IntraAnalysisState) getMarks(i ssa.Instruction, v ssa.Value, path s
 }
 
 // simpleTransfer  propagates all the marks from in to out, ignoring Path and tuple indexes
-func simpleTransfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
-	transfer(state, loc, in, out, "", NonIndexMark)
+func simpleTransfer(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
+	transfer(ctx, state, loc, in, out, "", NonIndexMark)
 }
 
 // transfer propagates all the marks from in to out with the object Path string
 // an index >= 0 indicates that element index of the tuple in is accessed
-func transfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index MarkIndex) {
-	transferPre(state, loc, in, out, path, index, false)
+func transfer(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string, index MarkIndex) {
+	transferPre(ctx, state, loc, in, out, path, index, false)
 }
 
 // transferPre propagates all the marks from in to out with the object Path string
 // an index >= 0 indicates that element index of the tuple in is accessed
 // a value of true for pre indicates that field-sensitive value a prepended with indexing
-func transferPre(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string,
+func transferPre(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string,
 	index MarkIndex, pre bool) {
 	if glob, ok := in.(*ssa.Global); ok {
-		state.markValue(loc, out, "", state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index))
+		state.markValue(ctx, loc, out, "", state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index))
 	}
 	isFieldSensitive := state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[out]]
 	for _, origin := range state.getMarks(loc, in, path, false) {
@@ -307,7 +309,7 @@ func transferPre(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, o
 			if isFieldSensitive && pre {
 				newPath = accessPathPrependIndexing(newPath)
 			}
-			state.markValue(loc, out, newPath, origin.Mark)
+			state.markValue(ctx, loc, out, newPath, origin.Mark)
 		}
 	}
 
@@ -315,7 +317,7 @@ func transferPre(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, o
 }
 
 // transferCopy propagates the marks for a load, which only requires copying over marks and paths
-func transferCopy(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
+func transferCopy(ctx context.Context, t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
 	pos, ok := t.flowInfo.GetPos(loc, in)
 	if !ok {
 		return
@@ -327,32 +329,32 @@ func transferCopy(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out 
 	}
 	aState := t.flowInfo.MarkedValues[pos]
 	for _, markWithPath := range aState.AllMarks() {
-		t.markValue(loc, out, markWithPath.AccessPath, markWithPath.Mark)
+		t.markValue(ctx, loc, out, markWithPath.AccessPath, markWithPath.Mark)
 	}
 }
 
 // markClosureNode adds a closure node to the graph, and all the related sources and edges.
 // The closure Value is tracked like any other Value.
 func (state *IntraAnalysisState) markClosureNode(x *ssa.MakeClosure) {
-	state.markValue(x, x, "", state.flowInfo.GetNewMark(x, Closure, nil, NonIndexMark))
+	state.markValue(context.Background(), x, x, "", state.flowInfo.GetNewMark(x, Closure, nil, NonIndexMark))
 	for _, boundVar := range x.Bindings {
 		mark := state.flowInfo.GetNewMark(x, BoundVar, boundVar, NonIndexMark)
-		state.markValue(x, boundVar, "", mark)
+		state.markValue(context.Background(), x, boundVar, "", mark)
 	}
 }
 
 // callCommonMark can be used for Call and Go instructions that wrap a CallCommon. For a function call, the Value,
 // instruction and common are the same object (x = Value = instr and common = x.Common()) but for Go and Defers
 // this varies.
-func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallInstruction, common *ssa.CallCommon) {
+func (state *IntraAnalysisState) callCommonMark(ctx context.Context, value ssa.Value, instr ssa.CallInstruction, common *ssa.CallCommon) {
 	// Special case: builtins are handled separately
-	if markBuiltinCall(state, value, common, instr) {
+	if markBuiltinCall(ctx, state, value, common, instr) {
 		return
 	}
 
 	// Mark call, one mark per returned Value
 	for _, mark := range state.marksToAdd(value, instr, common) {
-		state.markValue(instr, value, mark.AccessPath, mark.Mark)
+		state.markValue(ctx, instr, value, mark.AccessPath, mark.Mark)
 	}
 
 	args := lang.GetArgs(instr)
@@ -362,11 +364,11 @@ func (state *IntraAnalysisState) callCommonMark(value ssa.Value, instr ssa.CallI
 		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[arg]] {
 			for _, path := range AccessPathsOfType(arg.Type()) {
 				newMark := state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark, path)
-				state.markValue(instr, arg, path, newMark)
+				state.markValue(ctx, instr, arg, path, newMark)
 			}
 		}
 		newMark := state.flowInfo.GetNewMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark)
-		state.markValue(instr, arg, "", newMark)
+		state.markValue(ctx, instr, arg, "", newMark)
 	}
 }
 
@@ -439,7 +441,7 @@ func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, ou
 // that the mark information has changed for the current pass.
 //
 //gocyclo:ignore
-func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path string, mark *Mark) {
+func (state *IntraAnalysisState) markValue(ctx context.Context, i ssa.Instruction, v ssa.Value, path string, mark *Mark) {
 	if state.flowInfo.HasMarkAt(i, v, path, mark) {
 		return
 	}
@@ -447,7 +449,7 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	state.changeFlag = state.flowInfo.AddMark(i, v, path, mark)
 	// Propagate to any other Value that is an alias of v
 	for _, ptr := range state.findAllPointers(v) {
-		state.markPtrAliases(i, mark, path, ptr)
+		state.markPtrAliases(ctx, i, mark, path, ptr)
 	}
 
 	if v == nil {
@@ -457,44 +459,44 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 	switch miVal := v.(type) {
 	case *ssa.Slice:
 		// if the element marked is a slice, then the underlying object needs to be marked
-		state.markValue(i, miVal.X, path, mark)
+		state.markValue(ctx, i, miVal.X, path, mark)
 	case *ssa.MakeInterface:
 		// if the element marked is an interface, then the original object needs to be marked
-		state.markValue(i, miVal.X, path, mark)
+		state.markValue(ctx, i, miVal.X, path, mark)
 	case *ssa.IndexAddr:
 		// if the element marked results from indexing some object, then that object is marked with indexing
-		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
+		state.markValue(ctx, i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Index:
 		// if the element marked results from indexing some object, then that object is marked with indexing
-		state.markValue(i, miVal.X, accessPathPrependIndexing(path), mark)
+		state.markValue(ctx, i, miVal.X, accessPathPrependIndexing(path), mark)
 	case *ssa.Field:
 		// if the element marked results from accessing a field of some object, then that object is marked at that field
 		fieldInfo := analysisutil.FieldFieldInfo(miVal)
 		newAccessPath := accessPathPrependField(path, fieldInfo.FieldName, fieldInfo.IsEmbedded)
-		state.markValue(i, miVal.X, newAccessPath, mark)
+		state.markValue(ctx, i, miVal.X, newAccessPath, mark)
 	case *ssa.FieldAddr:
 		// if the element marked results from accessing a field of some object, then that object is marked at that field
 		fieldInfo := analysisutil.FieldAddrFieldInfo(miVal)
 		newAccessPath := accessPathPrependField(path, fieldInfo.FieldName, fieldInfo.IsEmbedded)
-		state.markValue(i, miVal.X, newAccessPath, mark)
+		state.markValue(ctx, i, miVal.X, newAccessPath, mark)
 	case *ssa.UnOp:
 		// if the element marked was loaded from a pointer-like object, that pointer-like object is now marked
 		if miVal.Op == token.MUL && lang.IsNillableType(miVal.X.Type()) {
-			state.markValue(i, miVal.X, path, mark)
+			state.markValue(ctx, i, miVal.X, path, mark)
 		}
 	case *ssa.Next:
 		// if the element marked is the result of next on an iterator, then the iterator is marked to ensure the mark
 		// propagates to the object being iterated on
 		if !miVal.IsString {
-			state.markValue(i, miVal.Iter, accessPathPrependIndexing(path), mark)
+			state.markValue(ctx, i, miVal.Iter, accessPathPrependIndexing(path), mark)
 		}
 	case *ssa.Range:
 		// if the iterator is marked then the underlying map needs to be marked
-		state.markValue(i, miVal.X, path, mark)
+		state.markValue(ctx, i, miVal.X, path, mark)
 	case *ssa.Extract:
 		// if an extracted object of pointer-like type is marked, then the tuple is marked at that index
 		if lang.IsNillableType(miVal.Type()) {
-			state.markValue(i, miVal.Tuple, path, mark)
+			state.markValue(ctx, i, miVal.Tuple, path, mark)
 		}
 	}
 
@@ -504,7 +506,7 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 		referrers := v.Referrers()
 		if referrers != nil {
 			for _, referrer := range *referrers {
-				state.propagateToReferrer(i, referrer, v, mark, path)
+				state.propagateToReferrer(ctx, i, referrer, v, mark, path)
 			}
 		}
 	}
@@ -515,18 +517,18 @@ func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path 
 // location in the program.
 //
 //gocyclo:ignore
-func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.Instruction, v ssa.Value, mark *Mark,
+func (state *IntraAnalysisState) propagateToReferrer(ctx context.Context, i ssa.Instruction, ref ssa.Instruction, v ssa.Value, mark *Mark,
 	path string) {
 	switch referrer := ref.(type) {
 	case *ssa.Store:
 		if referrer.Val == v && lang.IsNillableType(referrer.Val.Type()) {
-			state.markValue(i, referrer.Addr, path, mark)
+			state.markValue(ctx, i, referrer.Addr, path, mark)
 		}
 	case *ssa.IndexAddr:
 		// this referrer accesses the marked value's index
 		path2, ok := accessPathMatchIndex(path)
 		if ok && referrer.X == v {
-			state.markValue(i, referrer, path2, mark)
+			state.markValue(ctx, i, referrer, path2, mark)
 		}
 	case *ssa.FieldAddr:
 		// this referrer accesses the marked value's field
@@ -537,39 +539,39 @@ func (state *IntraAnalysisState) propagateToReferrer(i ssa.Instruction, ref ssa.
 			path2, ok = accessPathMatchField(path, fieldInfo.FieldName)
 		}
 		if referrer.X == v && ok {
-			state.markValue(i, referrer, path2, mark)
+			state.markValue(ctx, i, referrer, path2, mark)
 		}
 	case *ssa.UnOp:
 		// this referrer dereferences the marked value
 		if referrer.Op == token.MUL {
-			state.markValue(i, referrer, path, mark)
+			state.markValue(ctx, i, referrer, path, mark)
 		} else if referrer.Op == token.ARROW {
-			state.markValue(i, referrer, path, mark)
+			state.markValue(ctx, i, referrer, path, mark)
 		}
 	case *ssa.Send:
 		// the value being marked is sent to a channel somewhere. That channel should be marked.
 		if referrer.X == v && lang.IsNillableType(referrer.X.Type()) {
-			state.markValue(i, referrer.Chan, path, mark)
+			state.markValue(ctx, i, referrer.Chan, path, mark)
 		}
 	case *ssa.MapUpdate:
 		// propagate to map
 		if referrer.Value == v && lang.IsNillableType(referrer.Value.Type()) {
-			state.markValue(i, referrer.Map, path, mark)
+			state.markValue(ctx, i, referrer.Map, path, mark)
 		}
 	case *ssa.Next:
 		// propagate to iterator
 		if !referrer.IsString {
-			state.markValue(i, referrer.Iter, path, mark)
+			state.markValue(ctx, i, referrer.Iter, path, mark)
 		}
 	case *ssa.Range:
 		// propagate to map
 		if referrer.X == v {
-			state.markValue(i, referrer.X, path, mark)
+			state.markValue(ctx, i, referrer.X, path, mark)
 		}
 	case *ssa.Extract:
 		// propagate to tuple
 		if referrer.Tuple == v && lang.IsNillableType(referrer.Type()) {
-			state.markValue(i, referrer.Tuple, path,
+			state.markValue(ctx, i, referrer.Tuple, path,
 				state.flowInfo.GetNewMark(mark.Node, mark.Type, mark.Qualifier, mark.Index))
 		}
 	}
@@ -589,12 +591,19 @@ func (state *IntraAnalysisState) findAllPointers(v ssa.Value) []pointer.Pointer 
 }
 
 // markAllAliases marks all the aliases of the pointer set using mark.
-func (state *IntraAnalysisState) markPtrAliases(i ssa.Instruction, mark *Mark, path string, ptr pointer.Pointer) {
+func (state *IntraAnalysisState) markPtrAliases(ctx context.Context, i ssa.Instruction, mark *Mark, path string, ptr pointer.Pointer) {
 	// Iterate over all values in the function, scanning for aliases of ptr, and mark the values that match
 	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
+		select {
+		case <-ctx.Done():
+			state.parentAnalyzerState.Logger.Errorf("intra-procedural analysis timed out when marking pointer aliases\n")
+			return
+		default:
+		}
+
 		for _, ptr2 := range state.findAllPointers(value) {
 			if ptr2.MayAlias(ptr) {
-				state.markValue(i, value, path, mark)
+				state.markValue(ctx, i, value, path, mark)
 			}
 		}
 	})
@@ -618,7 +627,7 @@ func (state *IntraAnalysisState) getInstr(blockNum int, instrNum int) (ssa.Instr
 
 // doDefersStackSimulation fetches the possible defers stacks from the analysis and runs the analysis as if those
 // calls happened in order that the RunDefers location
-func (state *IntraAnalysisState) doDefersStackSimulation(r *ssa.RunDefers) error {
+func (state *IntraAnalysisState) doDefersStackSimulation(ctx context.Context, r *ssa.RunDefers) error {
 	stackSet := state.deferStacks.RunDeferSets[r]
 	for _, stack := range stackSet {
 		// Simulate a new block
@@ -630,9 +639,9 @@ func (state *IntraAnalysisState) doDefersStackSimulation(r *ssa.RunDefers) error
 			}
 			if d, ok := instr.(*ssa.Defer); ok {
 				if d.Value() != nil {
-					state.callCommonMark(d.Value(), d, d.Common())
+					state.callCommonMark(ctx, d.Value(), d, d.Common())
 				} else {
-					state.callCommonMark(nil, d, d.Common())
+					state.callCommonMark(ctx, nil, d, d.Common())
 				}
 			} else {
 				return fmt.Errorf("defer stacks should only contain defers")

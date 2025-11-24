@@ -17,6 +17,7 @@
 package lang
 
 import (
+	"context"
 	"go/types"
 
 	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
@@ -29,121 +30,121 @@ import (
 
 // An InstrOp must implement methods for ALL possible SSA instructions
 type InstrOp interface {
-	DoDebugRef(*ssa.DebugRef)
-	DoUnOp(*ssa.UnOp)
-	DoBinOp(*ssa.BinOp)
-	DoCall(*ssa.Call)
-	DoChangeInterface(*ssa.ChangeInterface)
-	DoChangeType(*ssa.ChangeType)
-	DoConvert(*ssa.Convert)
-	DoSliceArrayToPointer(*ssa.SliceToArrayPointer)
-	DoMakeInterface(*ssa.MakeInterface)
-	DoExtract(*ssa.Extract)
-	DoSlice(*ssa.Slice)
-	DoReturn(*ssa.Return)
-	DoRunDefers(*ssa.RunDefers)
-	DoPanic(*ssa.Panic)
-	DoSend(*ssa.Send)
-	DoStore(*ssa.Store)
-	DoIf(*ssa.If)
-	DoJump(*ssa.Jump)
-	DoDefer(*ssa.Defer)
-	DoGo(*ssa.Go)
-	DoMakeChan(*ssa.MakeChan)
-	DoAlloc(*ssa.Alloc)
-	DoMakeSlice(*ssa.MakeSlice)
-	DoMakeMap(*ssa.MakeMap)
-	DoRange(*ssa.Range)
-	DoNext(*ssa.Next)
-	DoFieldAddr(*ssa.FieldAddr)
-	DoField(*ssa.Field)
-	DoIndexAddr(*ssa.IndexAddr)
-	DoIndex(*ssa.Index)
-	DoLookup(*ssa.Lookup)
-	DoMapUpdate(*ssa.MapUpdate)
-	DoTypeAssert(*ssa.TypeAssert)
-	DoMakeClosure(*ssa.MakeClosure)
-	DoPhi(*ssa.Phi)
-	DoSelect(*ssa.Select)
+	DoDebugRef(context.Context, *ssa.DebugRef)
+	DoUnOp(context.Context, *ssa.UnOp)
+	DoBinOp(context.Context, *ssa.BinOp)
+	DoCall(context.Context, *ssa.Call)
+	DoChangeInterface(context.Context, *ssa.ChangeInterface)
+	DoChangeType(context.Context, *ssa.ChangeType)
+	DoConvert(context.Context, *ssa.Convert)
+	DoSliceArrayToPointer(context.Context, *ssa.SliceToArrayPointer)
+	DoMakeInterface(context.Context, *ssa.MakeInterface)
+	DoExtract(context.Context, *ssa.Extract)
+	DoSlice(context.Context, *ssa.Slice)
+	DoReturn(context.Context, *ssa.Return)
+	DoRunDefers(context.Context, *ssa.RunDefers)
+	DoPanic(context.Context, *ssa.Panic)
+	DoSend(context.Context, *ssa.Send)
+	DoStore(context.Context, *ssa.Store)
+	DoIf(context.Context, *ssa.If)
+	DoJump(context.Context, *ssa.Jump)
+	DoDefer(context.Context, *ssa.Defer)
+	DoGo(context.Context, *ssa.Go)
+	DoMakeChan(context.Context, *ssa.MakeChan)
+	DoAlloc(context.Context, *ssa.Alloc)
+	DoMakeSlice(context.Context, *ssa.MakeSlice)
+	DoMakeMap(context.Context, *ssa.MakeMap)
+	DoRange(context.Context, *ssa.Range)
+	DoNext(context.Context, *ssa.Next)
+	DoFieldAddr(context.Context, *ssa.FieldAddr)
+	DoField(context.Context, *ssa.Field)
+	DoIndexAddr(context.Context, *ssa.IndexAddr)
+	DoIndex(context.Context, *ssa.Index)
+	DoLookup(context.Context, *ssa.Lookup)
+	DoMapUpdate(context.Context, *ssa.MapUpdate)
+	DoTypeAssert(context.Context, *ssa.TypeAssert)
+	DoMakeClosure(context.Context, *ssa.MakeClosure)
+	DoPhi(context.Context, *ssa.Phi)
+	DoSelect(context.Context, *ssa.Select)
 }
 
 // InstrSwitch is mainly a map from the different instructions to the methods of the visitor.
 //
 //gocyclo:ignore
-func InstrSwitch(visitor InstrOp, instr ssa.Instruction) {
+func InstrSwitch(ctx context.Context, visitor InstrOp, instr ssa.Instruction) {
 	switch instr := instr.(type) {
 	case *ssa.DebugRef:
 	// no-op
 	case *ssa.UnOp:
-		visitor.DoUnOp(instr)
+		visitor.DoUnOp(ctx, instr)
 	case *ssa.BinOp:
-		visitor.DoBinOp(instr)
+		visitor.DoBinOp(ctx, instr)
 	case *ssa.Call:
-		visitor.DoCall(instr)
+		visitor.DoCall(ctx, instr)
 	case *ssa.ChangeInterface:
-		visitor.DoChangeInterface(instr)
+		visitor.DoChangeInterface(ctx, instr)
 	case *ssa.ChangeType:
-		visitor.DoChangeType(instr)
+		visitor.DoChangeType(ctx, instr)
 	case *ssa.Convert:
-		visitor.DoConvert(instr)
+		visitor.DoConvert(ctx, instr)
 	case *ssa.SliceToArrayPointer:
-		visitor.DoSliceArrayToPointer(instr)
+		visitor.DoSliceArrayToPointer(ctx, instr)
 	case *ssa.Extract:
-		visitor.DoExtract(instr)
+		visitor.DoExtract(ctx, instr)
 	case *ssa.Slice:
-		visitor.DoSlice(instr)
+		visitor.DoSlice(ctx, instr)
 	case *ssa.Return:
-		visitor.DoReturn(instr)
+		visitor.DoReturn(ctx, instr)
 	case *ssa.RunDefers:
-		visitor.DoRunDefers(instr)
+		visitor.DoRunDefers(ctx, instr)
 	case *ssa.Panic:
-		visitor.DoPanic(instr)
+		visitor.DoPanic(ctx, instr)
 	case *ssa.Send:
-		visitor.DoSend(instr)
+		visitor.DoSend(ctx, instr)
 	case *ssa.Store:
-		visitor.DoStore(instr)
+		visitor.DoStore(ctx, instr)
 	case *ssa.If:
-		visitor.DoIf(instr)
+		visitor.DoIf(ctx, instr)
 	case *ssa.Jump:
-		visitor.DoJump(instr)
+		visitor.DoJump(ctx, instr)
 	case *ssa.Defer:
-		visitor.DoDefer(instr)
+		visitor.DoDefer(ctx, instr)
 	case *ssa.Go:
-		visitor.DoGo(instr)
+		visitor.DoGo(ctx, instr)
 	case *ssa.MakeChan:
-		visitor.DoMakeChan(instr)
+		visitor.DoMakeChan(ctx, instr)
 	case *ssa.Alloc:
-		visitor.DoAlloc(instr)
+		visitor.DoAlloc(ctx, instr)
 	case *ssa.MakeSlice:
-		visitor.DoMakeSlice(instr)
+		visitor.DoMakeSlice(ctx, instr)
 	case *ssa.MakeMap:
-		visitor.DoMakeMap(instr)
+		visitor.DoMakeMap(ctx, instr)
 	case *ssa.Range:
-		visitor.DoRange(instr)
+		visitor.DoRange(ctx, instr)
 	case *ssa.Next:
-		visitor.DoNext(instr)
+		visitor.DoNext(ctx, instr)
 	case *ssa.FieldAddr:
-		visitor.DoFieldAddr(instr)
+		visitor.DoFieldAddr(ctx, instr)
 	case *ssa.Field:
-		visitor.DoField(instr)
+		visitor.DoField(ctx, instr)
 	case *ssa.IndexAddr:
-		visitor.DoIndexAddr(instr)
+		visitor.DoIndexAddr(ctx, instr)
 	case *ssa.Index:
-		visitor.DoIndex(instr)
+		visitor.DoIndex(ctx, instr)
 	case *ssa.Lookup:
-		visitor.DoLookup(instr)
+		visitor.DoLookup(ctx, instr)
 	case *ssa.MapUpdate:
-		visitor.DoMapUpdate(instr)
+		visitor.DoMapUpdate(ctx, instr)
 	case *ssa.TypeAssert:
-		visitor.DoTypeAssert(instr)
+		visitor.DoTypeAssert(ctx, instr)
 	case *ssa.MakeClosure:
-		visitor.DoMakeClosure(instr)
+		visitor.DoMakeClosure(ctx, instr)
 	case *ssa.MakeInterface:
-		visitor.DoMakeInterface(instr)
+		visitor.DoMakeInterface(ctx, instr)
 	case *ssa.Phi:
-		visitor.DoPhi(instr)
+		visitor.DoPhi(ctx, instr)
 	case *ssa.Select:
-		visitor.DoSelect(instr)
+		visitor.DoSelect(ctx, instr)
 	default:
 		panic(instr)
 	}

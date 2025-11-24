@@ -37,7 +37,7 @@ func (d *simpleDriver) addNext(block *ssa.BasicBlock) {
 
 // RunDFS visits the blocks in the function in a depth-first search, running the instruction operation on every
 // instruction in each Block.
-func RunDFS(op InstrOp, function *ssa.Function) {
+func RunDFS(ctx context.Context, op InstrOp, function *ssa.Function) {
 	if len(function.Blocks) == 0 {
 		return
 	}
@@ -58,7 +58,7 @@ func RunDFS(op InstrOp, function *ssa.Function) {
 		d.visited[d.block] = true
 		// Iterate through instructions.
 		for _, instr := range d.block.Instrs {
-			InstrSwitch(op, instr)
+			InstrSwitch(ctx, op, instr)
 		}
 		for _, block := range d.block.Succs {
 			d.addNext(block)
@@ -91,7 +91,7 @@ func LastInstrIsReturn(block *ssa.BasicBlock) bool {
 // every time a new path from the initial Block is taken, and NewBlock every time a new Block in a path is entered.
 // The operation op should implement the functionality to keep track of path information, either at the Block level
 // or at the operation level.
-func RunAllPaths(op PathSensitiveInstrOp, function *ssa.Function) {
+func RunAllPaths(ctx context.Context, op PathSensitiveInstrOp, function *ssa.Function) {
 	if len(function.Blocks) == 0 {
 		return
 	}
@@ -122,7 +122,7 @@ func RunAllPaths(op PathSensitiveInstrOp, function *ssa.Function) {
 			for _, block := range cur.PathToLeaf().ToBlocks() {
 				op.NewBlock(block)
 				for _, instruction := range block.Instrs {
-					InstrSwitch(op, instruction)
+					InstrSwitch(ctx, op, instruction)
 				}
 			}
 			op.EndPath()
@@ -179,7 +179,7 @@ func RunForwardIterative(ctx context.Context, op IterativeAnalysis, function *ss
 			}
 
 			op.Pre(instr)
-			InstrSwitch(op, instr)
+			InstrSwitch(ctx, op, instr)
 			op.Post(instr)
 		}
 		if op.ChangedOnEndBlock() {

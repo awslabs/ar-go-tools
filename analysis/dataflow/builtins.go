@@ -15,6 +15,8 @@
 package dataflow
 
 import (
+	"context"
+
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -103,7 +105,7 @@ func makeEdgesAtBuiltinCall(t *IntraAnalysisState, instruction ssa.CallInstructi
 
 // doBuiltinCall returns true if the call is a builtin that is handled by default, otherwise false.
 // If true is returned, the analysis may ignore the call instruction.
-func markBuiltinCall(t *IntraAnalysisState, value ssa.Value, common *ssa.CallCommon,
+func markBuiltinCall(ctx context.Context, t *IntraAnalysisState, value ssa.Value, common *ssa.CallCommon,
 	instr ssa.CallInstruction) bool {
 	// For consistency check that the call is handled first.
 	if !isHandledBuiltinCall(instr) {
@@ -114,14 +116,14 @@ func markBuiltinCall(t *IntraAnalysisState, value ssa.Value, common *ssa.CallCom
 		name := common.Value.Name()
 		if funcutil.Contains(markedBuiltins, name) {
 			for _, mark := range t.marksToAdd(value, instr, common) {
-				t.markValue(instr, value, mark.AccessPath, mark.Mark)
+				t.markValue(ctx, instr, value, mark.AccessPath, mark.Mark)
 			}
 			return true
 		}
 
 		// Special case: the call to Error() of the builtin error interface
 		if common.IsInvoke() && common.Method.Name() == "Error" && len(common.Args) == 0 {
-			simpleTransfer(t, instr, common.Value, value)
+			simpleTransfer(ctx, t, instr, common.Value, value)
 		}
 	}
 	return true
@@ -129,7 +131,7 @@ func markBuiltinCall(t *IntraAnalysisState, value ssa.Value, common *ssa.CallCom
 
 // doBuiltinCall returns true if the call is a builtin that is handled by default, otherwise false.
 // If true is returned, the analysis may ignore the call instruction.
-func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.CallCommon,
+func doBuiltinCall(ctx context.Context, t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.CallCommon,
 	instruction ssa.CallInstruction) {
 	// For consistency check that the call is handled first.
 	if !isHandledBuiltinCall(instruction) {
@@ -142,27 +144,27 @@ func doBuiltinCall(t *IntraAnalysisState, callValue ssa.Value, callCommon *ssa.C
 		// for append, copy we simply propagate the taint like in a binary operator
 		case "ssa:wrapnilchk":
 			for _, arg := range callCommon.Args {
-				simpleTransfer(t, instruction, arg, callValue)
+				simpleTransfer(ctx, t, instruction, arg, callValue)
 			}
 		case "append":
 			if len(callCommon.Args) == 2 {
 				sliceV := callCommon.Args[0]
 				dataV := callCommon.Args[1]
-				simpleTransfer(t, instruction, dataV, sliceV)
+				simpleTransfer(ctx, t, instruction, dataV, sliceV)
 			}
 		case "copy":
 			if len(callCommon.Args) == 2 {
 				src := callCommon.Args[1]
 				dst := callCommon.Args[0]
 				// copy transfers from source to destination
-				simpleTransfer(t, instruction, src, dst)
+				simpleTransfer(ctx, t, instruction, src, dst)
 			}
 		default:
 			// Special case: the call to Error() of the builtin error interface
 			if callCommon.IsInvoke() &&
 				callCommon.Method.Name() == "Error" &&
 				len(callCommon.Args) == 0 {
-				simpleTransfer(t, instruction, callCommon.Value, callValue)
+				simpleTransfer(ctx, t, instruction, callCommon.Value, callValue)
 			}
 		}
 	}
