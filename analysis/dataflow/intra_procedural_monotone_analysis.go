@@ -596,7 +596,7 @@ func (state *IntraAnalysisState) markPtrAliases(ctx context.Context, i ssa.Instr
 	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
 		select {
 		case <-ctx.Done():
-			state.parentAnalyzerState.Logger.Errorf("intra-procedural analysis timed out when marking pointer aliases\n")
+			state.parentAnalyzerState.Logger.Errorf("intra-procedural analysis timed out when marking pointer aliases of %s\n", ptr)
 			return
 		default:
 		}

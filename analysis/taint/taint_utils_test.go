@@ -25,7 +25,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -291,8 +290,7 @@ func runTestWithoutCheck(t *testing.T, dirName string, files []string, summarize
 	if err != nil {
 		t.Fatalf("failed to initialize state: %s", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+	ctx := context.Background()
 	res, err := taint.Analyze(ctx, state, taint.AnalysisReqs{})
 	if err != nil {
 		if res.State != nil {
