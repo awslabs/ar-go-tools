@@ -24,14 +24,15 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
 // Method determines how the tool checks soundness.
 type Method string
 
 const (
-	// Types means use the type analysis
-	Types Method = "types"
+	// General means compare with the most-general summary.
+	General Method = "general"
 	// Immutability means use the immutability analysis
 	Immutability Method = "immutability"
 	// All means use all available analyses in the most efficient way
@@ -47,9 +48,80 @@ func CheckSummary(ctx context.Context, s *dataflow.State, summary summaries.Fron
 	switch via {
 	case Naive:
 		return checkSummaryNaive(ctx, s, summary, start)
+	case General:
+		return checkSummaryMostGeneral(s, summary, start)
 	default:
 		return SoundnessResult{}, fmt.Errorf("unsupported soundness checking method: %v", via)
 	}
+}
+
+func checkSummaryNaive(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
+	f, err := functionOfSummary(s, summary)
+	if err != nil {
+		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
+	}
+
+	gotSummary, err := FullySummarize(ctx, s, f)
+	if err != nil {
+		return SoundnessResult{Time: time.Since(start)}, fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
+	}
+
+	got := newDetailedSummary(gotSummary.Flows)
+	return SoundnessResult{
+		Name:     f.String(),
+		Want:     summary,
+		Got:      got,
+		GotGraph: gotSummary.Graph,
+		IsSound:  false,
+		Time:     time.Since(start),
+	}, nil
+}
+
+// checkSummaryMostGeneral checks the soundness of summary by comparing it to the most-general summary.
+// The most-general summary assumes that all function inputs (parameters) flow to all function
+// outputs (pointer-like parameters and all return values).
+func checkSummaryMostGeneral(s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
+	f, err := functionOfSummary(s, summary)
+	if err != nil {
+		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
+	}
+
+	return SoundnessResult{
+		Name:     f.String(),
+		Want:     summary,
+		Got:      newMostGeneralDetailedSummary(f),
+		GotGraph: nil,
+		IsSound:  false,
+		Time:     time.Since(start),
+	}, nil
+}
+
+// newMostGeneralDetailedSummary returns the most-general summary for f.
+// TODO include free variables as inputs and outputs
+func newMostGeneralDetailedSummary(f *ssa.Function) summaries.DetailedSummary {
+	flows := make(map[summaries.SummaryNode][]summaries.SummaryNode)
+	for i, input := range f.Params {
+		inputNode := summaries.ArgumentSNode{Name: input.Name(), Index: i, ObjectPath: ""}
+		for j, output := range f.Params {
+			// We don't count self-flows (input flows to same input as an output) because the data
+			// flows to and from the parameter when used as an argument at a callsite are part of
+			// the data flow of the caller's summary, not the callee's.
+			if input == output {
+				continue
+			}
+			if pointer.CanPoint(input.Type()) && pointer.CanPoint(output.Type()) {
+				outputNode := summaries.ArgumentSNode{Name: output.Name(), Index: j, ObjectPath: ""}
+				flows[inputNode] = append(flows[inputNode], outputNode)
+			}
+		}
+		outputs := f.Signature.Results()
+		for i := range outputs.Len() {
+			outputNode := summaries.ReturnSNode{Index: i, ObjectPath: ""}
+			flows[inputNode] = append(flows[inputNode], outputNode)
+		}
+	}
+
+	return summaries.DetailedSummary{Flows: flows}
 }
 
 // FullSummary is the full inter-procedurally-generated data flow summary for a function.
@@ -104,28 +176,6 @@ func FullySummarize(ctx context.Context, s *dataflow.State, f *ssa.Function) (Fu
 	}
 
 	panic("failed to find computed summary in graph")
-}
-
-func checkSummaryNaive(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
-	f, err := functionOfSummary(s, summary)
-	if err != nil {
-		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
-	}
-
-	gotSummary, err := FullySummarize(ctx, s, f)
-	if err != nil {
-		return SoundnessResult{Time: time.Since(start)}, fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
-	}
-
-	got := newDetailedSummary(gotSummary.Flows)
-	return SoundnessResult{
-		Name:     f.String(),
-		Want:     summary,
-		Got:      got,
-		GotGraph: gotSummary.Graph,
-		IsSound:  false,
-		Time:     time.Since(start),
-	}, nil
 }
 
 func newDetailedSummary(flows map[dataflow.GraphNode][]dataflow.GraphNode) summaries.DetailedSummary {
