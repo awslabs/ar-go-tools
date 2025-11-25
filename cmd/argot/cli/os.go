@@ -17,48 +17,46 @@ package cli
 import (
 	"os"
 	"path"
-
-	"golang.org/x/term"
 )
 
 // cmdCd implements the "cd" command that lets the user change the current working directory in the tool
-func cmdCd(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
+func cmdCd(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : move to relative directory\n", tt.Escape.Blue, cmdCdName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : move to relative directory\n", o.EscBlue(), CmdCdName, o.EscReset())
 		return false
 	}
 	if len(command.Args) == 1 {
 		wd, err := os.Getwd()
 		if err != nil {
-			WriteErr(tt, "Could not get working directory: %s. Abort.", err)
+			o.WriteErr("Could not get working directory: %s. Abort.", err)
 			return false
 		}
 		dirName := path.Join(wd, command.Args[0])
 		if err := os.Chdir(dirName); err != nil {
-			WriteErr(tt, "Could not change directory: %s", err)
+			o.WriteErr("Could not change directory: %s", err)
 			return false
 		}
 	} else {
-		WriteErr(tt, "cd expects exactly one argument")
+		o.WriteErr("cd expects exactly one argument")
 	}
 	return false
 }
 
 // cmdExit implements the exit command to exit the command-line tool.
-func cmdExit(tt *term.Terminal, sess *Session, _ Command, _ bool) bool {
+func cmdExit(o Outputter, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : exit the program\n", tt.Escape.Blue, cmdExitName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : exit the program\n", o.EscBlue(), CmdExitName, o.EscReset())
 		return false
 	}
-	writelnEscape(tt, tt.Escape.Magenta, "Exiting...")
+	o.Write("%sExiting...%s\n", o.EscMagenta(), o.EscReset())
 	return true
 }
 
 // cmdLs prints the entries in the current directory. Useful to navigate the current directory and load a new program
 // or a new configuration file.
-func cmdLs(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
+func cmdLs(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : list files in directory\n", tt.Escape.Blue, cmdLsName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : list files in directory\n", o.EscBlue(), CmdLsName, o.EscReset())
 		return false
 	}
 	var extraPath string
@@ -68,19 +66,19 @@ func cmdLs(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	wd, _ := os.Getwd()
 	entries, err := os.ReadDir(path.Join(wd, extraPath))
 	if err != nil {
-		WriteErr(tt, "error listing directory %s: %s", wd, err)
+		o.WriteErr("error listing directory %s: %s", wd, err)
 		return false
 	}
 	var strEntries []displayElement
 	for _, entry := range entries {
 		if entry.IsDir() {
 			strEntries = append(strEntries,
-				displayElement{escape: tt.Escape.Cyan, content: entry.Name()})
+				displayElement{escape: o.EscCyan(), content: entry.Name()})
 		} else {
 			strEntries = append(strEntries,
-				displayElement{content: entry.Name(), escape: tt.Escape.Reset})
+				displayElement{content: entry.Name(), escape: o.EscReset()})
 		}
 	}
-	writeEntries(tt, sess, strEntries, "")
+	writeEntries(o, sess, strEntries, "")
 	return false
 }

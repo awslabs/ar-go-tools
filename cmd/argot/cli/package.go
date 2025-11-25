@@ -19,21 +19,20 @@ import (
 	"strings"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 )
 
-func cmdShowPackage(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
+func cmdShowPackage(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s <name>: print information about package <name> loaded with load-pkg\n", tt.Escape.Blue,
-			cmdShowPackageName, tt.Escape.Reset)
-		writeFmt(tt, "\t   Options:\n")
-		writeFmt(tt, "\t   -f: print files\n")
-		writeFmt(tt, "\t   -i: print imports\n")
-		writeFmt(tt, "\t   -r: find packages by regex matching on path instead of name equality")
+		o.Write("\t- %s%s%s <name>: print information about package <name> loaded with load-pkg\n", o.EscBlue(),
+			CmdShowPackageName, o.EscReset())
+		o.Write("\t   Options:\n")
+		o.Write("\t   -f: print files\n")
+		o.Write("\t   -i: print imports\n")
+		o.Write("\t   -r: find packages by regex matching on path instead of name equality")
 	}
 	if len(command.Args) == 0 {
-		WriteErr(tt, "missing package name")
+		o.WriteErr("missing package name")
 		return false
 	}
 	pkgName := command.Args[0]
@@ -44,7 +43,7 @@ func cmdShowPackage(tt *term.Terminal, sess *Session, command Command, withTest 
 	if command.Flags["r"] {
 		pathRegex, err := regexp.Compile(pkgName)
 		if err != nil {
-			regexErr(tt, pkgName, err)
+			regexErr(o, pkgName, err)
 			return false
 		}
 		pkgs = findPkgByPathRegex(sess, pathRegex)
@@ -53,13 +52,13 @@ func cmdShowPackage(tt *term.Terminal, sess *Session, command Command, withTest 
 	}
 
 	for _, pkg := range pkgs {
-		writeFmt(tt, "Name: %s\n", pkg.Name)
-		writeFmt(tt, "Path: %s\n", pkg.PkgPath)
+		o.Write("Name: %s\n", pkg.Name)
+		o.Write("Path: %s\n", pkg.PkgPath)
 		if printfiles {
-			writeFmt(tt, "Files:\n\t%s\n", strings.Join(pkg.GoFiles, "\n\t- "))
+			o.Write("Files:\n\t%s\n", strings.Join(pkg.GoFiles, "\n\t- "))
 		}
 		if printimports {
-			writeFmt(tt, "Imports:\n\t%s\n", strings.Join(maps.Keys(pkg.Imports), "\n\t"))
+			o.Write("Imports:\n\t%s\n", strings.Join(maps.Keys(pkg.Imports), "\n\t"))
 		}
 	}
 	return false

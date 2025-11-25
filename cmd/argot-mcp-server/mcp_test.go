@@ -23,7 +23,9 @@ import (
 	"testing"
 )
 
-func TestMCPServerDependenciesTool(t *testing.T) {
+// TestMCPServer is one big test that calls the tools in the mcp server.
+// Server is started once at the beginning, then tools are tested through stdin/stdout interaction.
+func TestMCPServer(t *testing.T) {
 	// We need to start running the MCP server in a separate process.
 	// We will send command on stdin and read from stdout
 	cmd := exec.Command("go", "run", "main.go")
@@ -137,6 +139,11 @@ func TestMCPServerDependenciesTool(t *testing.T) {
 	if unknownResp.Error == nil {
 		t.Error("Expected error for unknown tool")
 	}
+
+	// Check load program
+	checkLoadProgramTool(t, stdin, scanner)
+	// Check list tools after load program
+	checkListTool(t, stdin, scanner)
 }
 
 func sendRequest(t *testing.T, stdin io.WriteCloser, req jsonRPCRequest) {
@@ -144,6 +151,7 @@ func sendRequest(t *testing.T, stdin io.WriteCloser, req jsonRPCRequest) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("S --> %s", data)
 	stdin.Write(data)
 	stdin.Write([]byte("\n"))
 }
@@ -151,10 +159,12 @@ func sendRequest(t *testing.T, stdin io.WriteCloser, req jsonRPCRequest) {
 func readResponse(t *testing.T, scanner *bufio.Scanner) string {
 	for scanner.Scan() {
 		line := scanner.Text()
+		t.Logf("R <-- %s", line)
 		if strings.HasPrefix(line, "{") {
 			return line
 		}
 	}
+	t.Logf("No reponse")
 	return ""
 }
 
@@ -226,5 +236,53 @@ func toolsListResponseCheck(t *testing.T, response string) {
 			}
 		}
 
+	}
+}
+
+func checkLoadProgramTool(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
+	// Test load program tool
+	loadProgramReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      7,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name": "argot_load",
+			"arguments": map[string]interface{}{
+				"packages": []string{"./testdata/sample.go"},
+			},
+		},
+	}
+	sendRequest(t, stdin, loadProgramReq)
+	response := readResponse(t, scanner)
+	var loadProgramResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &loadProgramResp); err != nil {
+		t.Fatal(err)
+	}
+	if loadProgramResp.Error != nil {
+		t.Fatalf("Load program failed: %v", loadProgramResp.Error)
+	}
+}
+
+func checkListTool(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
+	// Test load program tool
+	loadProgramReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      7,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name": "argot_list_functions",
+			"arguments": map[string]interface{}{
+				"regex": "command-line-arguments",
+			},
+		},
+	}
+	sendRequest(t, stdin, loadProgramReq)
+	response := readResponse(t, scanner)
+	var loadProgramResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &loadProgramResp); err != nil {
+		t.Fatal(err)
+	}
+	if loadProgramResp.Error != nil {
+		t.Fatalf(" List functions failed: %v", loadProgramResp.Error)
 	}
 }

@@ -19,36 +19,36 @@ import (
 	"strings"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 )
 
 // cmdLoad implements the "load" command that loads a program into the tool.
 // Once it updates the state.Args, it calls the rebuild command to build the program and the state.
-func cmdLoad(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
+func cmdLoad(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : load new program\n", tt.Escape.Blue, cmdLoadName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : load new program\n", o.EscBlue(), CmdLoadName, o.EscReset())
 		return false
 	}
 
 	if len(command.Args) == 0 {
-		WriteErr(tt, "%s expects at least one argument.", cmdLoadName)
+		o.WriteErr("%s expects at least one argument.", CmdLoadName)
 		return false
 	}
 	sess.args = command.Args
-	return cmdRebuild(tt, sess, command, withTest)
+	sess.LoadConfig(o, true)
+	return cmdRebuild(o, sess, command, withTest)
 }
 
-func cmdLoadPackages(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
+func cmdLoadPackages(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : load packages\n", tt.Escape.Blue, cmdLoadPackagesName, tt.Escape.Reset)
-		writeFmt(tt, "\t  Options:\n")
-		writeFmt(tt, "\t    -t    load packages with types\n")
+		o.Write("\t- %s%s%s : load packages\n", o.EscBlue(), CmdLoadPackagesName, o.EscReset())
+		o.Write("\t  Options:\n")
+		o.Write("\t    -t    load packages with types\n")
 		return false
 	}
 
 	if len(command.Args) == 0 {
-		WriteErr(tt, "%s expects at least one argument.", cmdLoadName)
+		o.WriteErr("%s expects at least one argument.", CmdLoadName)
 		return false
 	}
 	config := packages.Config{
@@ -60,15 +60,15 @@ func cmdLoadPackages(tt *term.Terminal, sess *Session, command Command, withTest
 
 	pkgList, err := packages.Load(&config, command.Args...)
 	if err != nil {
-		WriteErr(tt, "failed to load packages: %s", err)
+		o.WriteErr("failed to load packages: %s", err)
 		return false
 	}
 	if len(pkgList) == 0 {
-		writeFmt(tt, "%s? no packages loaded%s\n", tt.Escape.Yellow, tt.Escape.Reset)
+		o.Write("%s? no packages loaded%s\n", o.EscYellow(), o.EscReset())
 		return false
 	}
 
-	WriteSuccess(tt, "✔ loaded %d packages:", len(pkgList))
+	o.WriteSuccess("✔ loaded %d packages:", len(pkgList))
 	// Print info about the packages that have been loaded
 	pkgMap := make(map[string]*packages.Package)
 	namespan := 0
@@ -85,121 +85,133 @@ func cmdLoadPackages(tt *term.Terminal, sess *Session, command Command, withTest
 			continue
 		}
 		if len(pkg.Errors) > 0 {
-			writeFmt(tt, "\t%s%s%s: %s%s\n",
-				tt.Escape.Red, pkg.Name, tt.Escape.Reset, strings.Repeat(" ", namespan-len(pkg.Name)), path)
+			o.Write("\t%s%s%s: %s%s\n",
+				o.EscRed(), pkg.Name, o.EscReset(), strings.Repeat(" ", namespan-len(pkg.Name)), path)
 			for _, err := range pkg.Errors {
-				writeFmt(tt, "\t\t%s%s%s\n", tt.Escape.Red, err, tt.Escape.Reset)
+				o.Write("\t\t%s%s%s\n", o.EscRed(), err, o.EscReset())
 			}
 		} else {
-			writeFmt(tt, "\t%s%s%s: %s%s\n",
-				tt.Escape.Blue, pkg.Name, tt.Escape.Reset, strings.Repeat(" ", namespan-len(pkg.Name)), path)
+			o.Write("\t%s%s%s: %s%s\n",
+				o.EscBlue(), pkg.Name, o.EscReset(), strings.Repeat(" ", namespan-len(pkg.Name)), path)
 		}
 	}
 	sess.pkgs = pkgMap
 	return false
 }
 
-func cmdLoadWholeProgram(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
+func cmdLoadWholeProgram(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : laod the arguments as whole program\n", tt.Escape.Blue, cmdLoadWholeProgramName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : load the current session program path arguments as whole program\n",
+			o.EscBlue(), CmdLoadWholeProgramName, o.EscReset())
 		return false
 	}
 
 	lp := sess.loadProgram()
 	if lp.IsErr() {
-		WriteErr(tt, "%s", lp)
+		o.WriteErr("%s", lp)
 		return false
 	}
-	WriteSuccess(tt, "loaded program with path %s", strings.Join(sess.args, ", "))
+	o.WriteSuccess("loaded program with path %s", strings.Join(sess.args, ", "))
 	return false
 }
 
-func cmdRunPointer(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
+func cmdRunPointer(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : run the pointer analysis\n", tt.Escape.Blue, cmdRunPointerName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : run the pointer analysis\n", o.EscBlue(), CmdRunPointerName, o.EscReset())
 		return false
 	}
 
 	ptr := sess.loadPtrAnalysis()
 	if ptr.IsErr() {
-		WriteErr(tt, "%s", ptr)
+		o.WriteErr("%s", ptr)
 		return false
 	}
-	WriteSuccess(tt, "finished pointer analysis")
+	o.WriteSuccess("finished pointer analysis")
 	return false
 }
 
-func cmdRunDataflow(tt *term.Terminal, sess *Session, command Command, withTest bool) bool {
+func cmdRunDataflow(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : run the dataflow analysis\n", tt.Escape.Blue, cmdRunDataflowName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : run the dataflow analysis\n", o.EscBlue(), CmdRunDataflowName, o.EscReset())
 		return false
 	}
 
 	df := sess.loadDataflowAnalysis()
 	if df.IsErr() {
-		WriteErr(tt, "%s", df)
+		o.WriteErr("%s", df)
 		return false
 	}
-	WriteSuccess(tt, "initialized dataflow analysis information")
+	o.WriteSuccess("initialized dataflow analysis information")
 	return false
 }
 
 // cmdRebuild implements the rebuild command. It reloads the current config state and program state.
 // The pointer and dataflow state are cleared.
-func cmdRebuild(tt *term.Terminal, sess *Session, _ Command, withTest bool) bool {
+func cmdRebuild(o Outputter, sess *Session, _ Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : rebuild the program being analyzed, including analyzer state.\n",
-			tt.Escape.Blue, cmdRebuildName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : rebuild the program being analyzed, including analyzer state.\n",
+			o.EscBlue(), CmdRebuildName, o.EscReset())
 		return false
 	}
-
-	res := sess.LoadConfig()
-	if res.IsOk() {
-		sess.loadProgram()
-	} else {
-		WriteErr(tt, "%s", res)
-		return false
-	}
-
+	res := sess.LoadConfig(o, false)
 	sess.currentFunction = nil
+	if o.tt != nil {
+		o.tt.SetPrompt("> ")
+	}
 	sess.currentDataflowInformation = nil
 	sess.initialPackages = nil
 	sess.lpState = nil
 	sess.dfState = nil
 	sess.ptrState = nil
+	if res.IsOk() {
+		sess.loadProgram()
+	} else {
+		o.WriteErr("%s", res)
+		return false
+	}
 	return false
 }
 
 // cmdReconfig implements the reconfig command and reloads the configuration file. If a new config file is specified,
 // then it will load that new config file.
-func cmdReconfig(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
+func cmdReconfig(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : load the specified config file\n",
-			tt.Escape.Blue, cmdReconfigName, tt.Escape.Reset)
-		writeFmt(tt, "\t    Example: %s config.yaml\n", cmdReconfigName)
+		o.Write("\t- %s%s%s : load the specified config file\n",
+			o.EscBlue(), CmdReconfigName, o.EscReset())
+		o.Write("\t    Example: %s config.yaml\n", CmdReconfigName)
+		return false
+	}
+
+	if len(command.Args) == 0 {
+		o.WriteErr("%s expects at least one argument.", CmdReconfigName)
+		return false
+	}
+
+	if len(command.Args) > 1 {
+		o.WriteErr("%s expects at most one argument.", CmdReconfigName)
 		return false
 	}
 
 	sess.configPath = strings.TrimSpace(command.Args[0])
 	oldConfig := sess.cfgState
 	sess.cfgState = nil
-	res := sess.LoadConfig()
+	res := sess.LoadConfig(o, true)
 
 	if res.IsErr() {
-		WriteErr(tt, "%s", res)
-		WriteErr(tt, "You should reload the cli.")
+		o.WriteErr("%s", res)
+		o.WriteErr("You should reload the cli.")
 		return false
 	}
 	if sess.cfgState == nil {
-		WriteErr(tt, "Resetting to old config.")
+		o.WriteErr("Resetting to old config.")
 		sess.cfgState = oldConfig
 		return false
 	}
 
 	if len(command.Args) < 1 {
-		WriteSuccess(tt, "Reloaded config from disk.")
+		o.WriteSuccess("Reloaded config from disk.")
 	} else {
-		WriteSuccess(tt, "Loaded new config!")
+		o.WriteSuccess("Loaded new config!")
 	}
 	return false
 }

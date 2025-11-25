@@ -19,19 +19,18 @@ import (
 	"regexp"
 	"strings"
 
-	"golang.org/x/term"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
 )
 
-func cmdScan(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
+func cmdScan(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : scan the program for usages\n", tt.Escape.Blue, cmdScanName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : scan the program for usages\n", o.EscBlue(), CmdScanName, o.EscReset())
 		return false
 	}
 
 	if len(command.Args) == 0 {
-		WriteErr(tt, "Please specify which usages to scan.")
+		o.WriteErr("Please specify which usages to scan.")
 		return false
 	}
 	// otherwise build regex from arguments
@@ -43,25 +42,25 @@ func cmdScan(tt *term.Terminal, sess *Session, command Command, _ bool) bool {
 	rString := strings.Join(x, "|")
 	target, err := regexp.Compile(rString)
 	if err != nil {
-		regexErr(tt, rString, err)
+		regexErr(o, rString, err)
 		return false
 	}
 
 	// Get the program
 	lp := sess.loadProgram()
 	if lp.IsErr() {
-		WriteErr(tt, "Unable to load program: %s", lp)
+		o.WriteErr("Unable to load program: %s", lp)
 		return false
 	}
 
 	for _, pack := range lp.Unwrap().Packages {
-		scanUsages(tt, pack, target)
+		scanUsages(o, pack, target)
 	}
 
 	return false
 }
 
-func scanUsages(tt *term.Terminal, p *packages.Package, target *regexp.Regexp) {
+func scanUsages(o Outputter, p *packages.Package, target *regexp.Regexp) {
 	for _, astFile := range p.Syntax {
 		ast.Inspect(astFile,
 			func(n ast.Node) bool {
@@ -72,15 +71,15 @@ func scanUsages(tt *term.Terminal, p *packages.Package, target *regexp.Regexp) {
 						if node.Obj != nil {
 							ks = ast.ObjKind.String(node.Obj.Kind)
 						}
-						writeFmt(tt, "- ident %s [%s]: %s\n", node.String(), ks, p.Fset.Position(node.Pos()))
+						o.Write("- ident %s [%s]: %s\n", node.String(), ks, p.Fset.Position(node.Pos()))
 					}
 					return false
 				case ast.Expr:
 					typ := p.TypesInfo.TypeOf(node)
 					if typ != nil && target.MatchString(typ.String()) {
-						writeFmt(tt, "- of type %s: %s\n", typ.String(), p.Fset.Position(node.Pos()))
+						o.Write("- of type %s: %s\n", typ.String(), p.Fset.Position(node.Pos()))
 						desc := astutil.NodeDescription(node)
-						writeFmt(tt, "   %s\n", desc)
+						o.Write("   %s\n", desc)
 					}
 
 					return true

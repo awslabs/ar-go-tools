@@ -17,13 +17,12 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
-	"strings"
-
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/term"
+	"os"
+	"os/signal"
+	"strings"
 )
 
 // Usage for CLI
@@ -39,8 +38,10 @@ type CommandDefinition struct {
 	Description string
 	// InputSchema of the command (for the MCP server)
 	InputSchema tools.MCPInputSchema
+	// SchemaTranslation is the translation from the input schema to the command schema
+	SchemaTranslation func(props map[string]interface{}) (Command, error)
 	// Function to run the command
-	Function func(tt *term.Terminal, s *Session, command Command, withTest bool) bool
+	Function func(o Outputter, s *Session, command Command, withTest bool) bool
 }
 
 // ToMCPToolDefinition returns the MCP tool definition of the command.
@@ -54,9 +55,9 @@ func (c CommandDefinition) ToMCPToolDefinition() tools.MCPTool {
 
 // Commands lists all the commands available in the cli.
 var Commands = map[string]CommandDefinition{
-	cmdAstName: {
-		Name:        cmdAstName,
-		Description: "Print the AST of a function or file",
+	CmdAstName: {
+		Name:        toolAstName,
+		Description: "Print the AST of a function or file (shows detailed AST)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -71,31 +72,61 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"regex"},
 		},
+		// command is ast [-file] regex
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			fileFlag := false
+			if file, ok := props["file"]; ok {
+				fileFlag, ok = file.(bool)
+				if !ok {
+					return Command{}, fmt.Errorf("file must be a boolean")
+				}
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{"file": fileFlag},
+			}, nil
+		},
 		Function: cmdAst,
 	},
-	cmdBacktraceName: {
-		Name:        cmdBacktraceName,
+	CmdBacktraceName: {
+		Name:        toolBacktraceName,
 		Description: "Run the backtrace analysis with parameters in config",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdBacktrace,
 	},
-	cmdBuildGraphName: {
-		Name:        cmdBuildGraphName,
+	CmdBuildGraphName: {
+		Name:        toolBuildGraphName,
 		Description: "Build the inter-procedural dataflow graph",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdBuildGraph,
 	},
-	cmdCallersName: {
-		Name:        cmdCallersName,
-		Description: "Show the callers of a function",
+	CmdCallersName: {
+		Name:        toolCallersName,
+		Description: "Show the callers of a function. Uses the best analysis loaded (e.g. pointer when loaded).",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -105,12 +136,22 @@ var Commands = map[string]CommandDefinition{
 				},
 			},
 			Required: []string{"regex"},
+		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{},
+			}, nil
 		},
 		Function: cmdCallers,
 	},
-	cmdCalleesName: {
-		Name:        cmdCalleesName,
-		Description: "Show callees of a function",
+	CmdCalleesName: {
+		Name:        toolCalleesName,
+		Description: "Show callees of a function. Uses the best analysis loaded (e.g. pointer when loaded).",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -121,11 +162,21 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"regex"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdCallees,
 	},
-	cmdCdName: {
-		Name:        cmdCdName,
-		Description: "Move to relative directory",
+	CmdCdName: {
+		Name:        toolCdName,
+		Description: "Move to relative directory (system command)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -136,21 +187,37 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"directory"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			directory, ok := props["directory"].(string)
+			if !ok {
+				return Command{}, fmt.Errorf("directory must be provided")
+			}
+			return Command{
+				Args:  []string{directory},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdCd,
 	},
-	cmdExitName: {
-		Name:        cmdExitName,
-		Description: "Exit the program",
+	CmdExitName: {
+		Name:        toolExitName,
+		Description: "Exit the program (system command, terminates the server).",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdExit,
 	},
-	cmdFocusName: {
-		Name:        cmdFocusName,
-		Description: "Focus on a specific function",
+	CmdFocusName: {
+		Name:        toolFocusName,
+		Description: "Focus on a specific function, so you can inspect ssa values, instructions, aliases...",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -161,21 +228,38 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"regex"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdFocus,
 	},
-	cmdIntraName: {
-		Name:        cmdIntraName,
-		Description: "Run intra-procedural analysis",
+	CmdIntraName: {
+		Name:        toolIntraName,
+		Description: "Run intra-procedural dataflow analysis (requires focused function)",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdIntra,
 	},
-	cmdListName: {
-		Name:        cmdListName,
-		Description: "List functions matching a regex",
+	CmdListName: {
+		Name: toolListName,
+		Description: "List functions matching a regex (golang), " +
+			"with options on listing reachable and summarized functions.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -183,14 +267,55 @@ var Commands = map[string]CommandDefinition{
 					"type":        "string",
 					"description": "Regex to match function names",
 				},
+				"reachable_only": map[string]interface{}{
+					"type":        "boolean",
+					"description": "List only reachable functions",
+				},
+				"summarized_only": map[string]interface{}{
+					"type":        "boolean",
+					"description": "List only summarized functions",
+				},
 			},
 			Required: []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex := ""
+			if regexObj, ok := props["regex"]; ok {
+				if regexStr, ok := regexObj.(string); ok {
+					regex = regexStr
+				} else {
+					return Command{}, fmt.Errorf("regex must be a string")
+				}
+			}
+			flags := map[string]bool{}
+			if reachableOnly, ok := props["reachable_only"]; ok {
+				if reachableBool, ok := reachableOnly.(bool); ok {
+					flags["r"] = reachableBool
+				} else {
+					return Command{}, fmt.Errorf("reachable_only must be a boolean")
+				}
+			}
+			if summarizedOnly, ok := props["summarized_only"]; ok {
+				if summarizedBool, ok := summarizedOnly.(bool); ok {
+					flags["s"] = summarizedBool
+				} else {
+					return Command{}, fmt.Errorf("summarized_only must be a boolean")
+				}
+			}
+			args := []string{}
+			if regex != "" {
+				args = []string{regex}
+			}
+			return Command{
+				Args:  args,
+				Flags: flags,
+			}, nil
+		},
 		Function: cmdList,
 	},
-	cmdLoadName: {
-		Name:        cmdLoadName,
-		Description: "Load new program",
+	CmdLoadName: {
+		Name:        toolLoadName,
+		Description: "Load new program from package paths. This resets the analysis state (pointer, dataflow, ..)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -202,11 +327,33 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"packages"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			packagesObj, ok := props["packages"]
+			if !ok {
+				return Command{}, fmt.Errorf("packages must be provided")
+			}
+			packages, ok := packagesObj.([]interface{})
+			if !ok {
+				return Command{}, fmt.Errorf("packages must be an array")
+			}
+			args := make([]string, len(packages))
+			for i, pkg := range packages {
+				args[i], ok = pkg.(string)
+				if !ok {
+					return Command{}, fmt.Errorf("package must be a string")
+				}
+			}
+			return Command{
+				Args:  args,
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdLoad,
 	},
-	cmdLoadPackagesName: {
-		Name:        cmdLoadPackagesName,
-		Description: "Load packages",
+	CmdLoadPackagesName: {
+		Name: toolLoadPackagesName,
+		Description: "Load Go packages with optional type information for inspection." +
+			" This is faster than loading a whole program.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -222,21 +369,56 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"packages"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			packagesObj, ok := props["packages"]
+			if !ok {
+				return Command{}, fmt.Errorf("packages must be provided")
+			}
+			packages, ok := packagesObj.([]interface{})
+			if !ok {
+				return Command{}, fmt.Errorf("packages must be an array")
+			}
+			args := make([]string, len(packages))
+			for i, pkg := range packages {
+				args[i], ok = pkg.(string)
+				if !ok {
+					return Command{}, fmt.Errorf("package must be a string")
+				}
+			}
+			flags := map[string]bool{}
+			if withTypes, ok := props["with_types"]; ok {
+				if withTypesBool, ok := withTypes.(bool); ok {
+					flags["t"] = withTypesBool
+				} else {
+					return Command{}, fmt.Errorf("with_types must be a boolean")
+				}
+			}
+			return Command{
+				Args:  args,
+				Flags: flags,
+			}, nil
+		},
 		Function: cmdLoadPackages,
 	},
-	cmdLoadWholeProgramName: {
-		Name:        cmdLoadWholeProgramName,
-		Description: "Load the arguments as whole program",
+	CmdLoadWholeProgramName: {
+		Name:        toolLoadWholeProgramName,
+		Description: "Load and build complete SSA program from the current program path (show the state to see)",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdLoadWholeProgram,
 	},
-	cmdLsName: {
-		Name:        cmdLsName,
-		Description: "List files in directory",
+	CmdLsName: {
+		Name:        toolLsName,
+		Description: "List files in directory (system command)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -247,11 +429,25 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			path := "."
+			if pathObj, ok := props["path"]; ok {
+				if pathStr, ok := pathObj.(string); ok {
+					path = pathStr
+				} else {
+					return Command{}, fmt.Errorf("path must be a string")
+				}
+			}
+			return Command{
+				Args:  []string{path},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdLs,
 	},
-	cmdMarkName: {
-		Name:        cmdMarkName,
-		Description: "Mark functions or values",
+	CmdMarkName: {
+		Name:        toolMarkName,
+		Description: "Show dataflow marks and associated instructions (requires focused function)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -262,26 +458,44 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"regex"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdMark,
 	},
-	cmdMayAliasName: {
-		Name:        cmdMayAliasName,
-		Description: "Check if values may alias",
+	CmdMayAliasName: {
+		Name:        toolMayAliasName,
+		Description: "Check if values may alias (requires focused function)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
 				"values": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Values to check for aliasing",
+					"type":        "string",
+					"description": "Regex matching values to check for aliasing.",
 				},
 			},
 			Required: []string{"values"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			if values, ok := props["values"].(string); ok {
+				return Command{
+					Args:  []string{values},
+					Flags: map[string]bool{},
+				}, nil
+			}
+			return Command{}, fmt.Errorf("values must be a string")
+		},
 		Function: cmdMayAlias,
 	},
-	cmdPackageName: {
-		Name:        cmdPackageName,
+	CmdPackageName: {
+		Name:        toolPackageName,
 		Description: "Show package information",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
@@ -293,11 +507,12 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{},
 		},
+
 		Function: cmdPackage,
 	},
-	cmdRebuildName: {
-		Name:        cmdRebuildName,
-		Description: "Rebuild the program being analyzed",
+	CmdRebuildName: {
+		Name:        toolRebuildName,
+		Description: "Rebuild the program being analyzed. Re-initializes the complex analyses!",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
@@ -305,9 +520,9 @@ var Commands = map[string]CommandDefinition{
 		},
 		Function: cmdRebuild,
 	},
-	cmdReconfigName: {
-		Name:        cmdReconfigName,
-		Description: "Load the specified config file",
+	CmdReconfigName: {
+		Name:        toolReconfigName,
+		Description: "Reload current config or load new configuration file. Re-initializes all the analyses.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -320,9 +535,9 @@ var Commands = map[string]CommandDefinition{
 		},
 		Function: cmdReconfig,
 	},
-	cmdScanName: {
-		Name:        cmdScanName,
-		Description: "Scan for patterns in code",
+	CmdScanName: {
+		Name:        toolScanName,
+		Description: "Scan AST for identifiers and types matching regex patterns.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -335,9 +550,9 @@ var Commands = map[string]CommandDefinition{
 		},
 		Function: cmdScan,
 	},
-	cmdShowPackageName: {
-		Name:        cmdShowPackageName,
-		Description: "Show package details",
+	CmdShowPackageName: {
+		Name:        toolShowPackageName,
+		Description: "Show detailed information about a loaded package including files and imports.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -350,9 +565,9 @@ var Commands = map[string]CommandDefinition{
 		},
 		Function: cmdShowPackage,
 	},
-	cmdShowSsaName: {
-		Name:        cmdShowSsaName,
-		Description: "Print the SSA representation of a function",
+	CmdShowSsaName: {
+		Name:        toolShowSsaName,
+		Description: "Print the SSA representation of a function.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -363,10 +578,20 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdShowSsa,
 	},
-	cmdShowEscapeName: {
-		Name:        cmdShowEscapeName,
+	CmdShowEscapeName: {
+		Name:        toolShowEscapeName,
 		Description: "Print the escape graph of a function",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
@@ -378,11 +603,21 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdShowEscape,
 	},
-	cmdMembersName: {
-		Name:        cmdMembersName,
-		Description: "Print the type of a function",
+	CmdMembersName: {
+		Name:        toolMembersName,
+		Description: "Print package members (functions, types, constants, globals) matching a regex",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -393,41 +628,69 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"regex"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdMembers,
 	},
-	cmdRunDataflowName: {
-		Name:        cmdRunDataflowName,
-		Description: "Run the dataflow analysis",
+	CmdRunDataflowName: {
+		Name:        toolRunDataflowName,
+		Description: "Run the dataflow analysis (advanced analysis)",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
+		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
 		},
 		Function: cmdRunDataflow,
 	},
-	cmdRunPointerName: {
-		Name:        cmdRunPointerName,
-		Description: "Run the pointer analysis",
+	CmdRunPointerName: {
+		Name:        toolRunPointerName,
+		Description: "Run the pointer analysis (advanced analysis, use to get callees)",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
+		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
 		},
 		Function: cmdRunPointer,
 	},
-	cmdShowDataflowName: {
-		Name:        cmdShowDataflowName,
-		Description: "Build and print the inter-procedural dataflow graph",
+	CmdShowDataflowName: {
+		Name:        toolShowDataflowName,
+		Description: "Build and print the inter-procedural dataflow graph (advanced analysis, run summarize first)",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdShowDataflow,
 	},
-	cmdSrcName: {
-		Name:        cmdSrcName,
-		Description: "Print the source code of a function",
+	CmdSrcName: {
+		Name:        toolSrcName,
+		Description: "Print the source code of a function.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -438,11 +701,21 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdSrc,
 	},
-	cmdSsaInstrName: {
-		Name:        cmdSsaInstrName,
-		Description: "Show SSA instruction details",
+	CmdSsaInstrName: {
+		Name:        toolSsaInstrName,
+		Description: "Show SSA instruction details (requires focused function)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -453,11 +726,21 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"instruction"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			instruction, ok := props["instruction"].(string)
+			if !ok || instruction == "" {
+				return Command{}, fmt.Errorf("instruction must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{instruction},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdSsaInstr,
 	},
-	cmdSsaValueName: {
-		Name:        cmdSsaValueName,
-		Description: "Show SSA value details",
+	CmdSsaValueName: {
+		Name:        toolSsaValueName,
+		Description: "Show SSA value details (requires focused function)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -468,31 +751,55 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"value"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			value, ok := props["value"].(string)
+			if !ok || value == "" {
+				return Command{}, fmt.Errorf("value must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{value},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdSsaValue,
 	},
-	cmdStateName: {
-		Name:        cmdStateName,
-		Description: "Show current analysis state",
+	CmdStateName: {
+		Name:        toolStateName,
+		Description: "Show current analysis state.",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
+		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
 		},
 		Function: cmdState,
 	},
-	cmdStatsName: {
-		Name:        cmdStatsName,
-		Description: "Show program statistics",
+	CmdStatsName: {
+		Name:        toolStatsName,
+		Description: "Display comprehensive program statistics including SSA, defers, and closure usage.",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdStats,
 	},
-	cmdSummaryName: {
-		Name:        cmdSummaryName,
-		Description: "Print the internal dataflow summary of functions matching a regex",
+	CmdSummaryName: {
+		Name: toolSummaryName,
+		Description: "Print the internal dataflow summary of functions matching a regex. " +
+			"You should have run summarize on that function first (or on all functions)." +
+			"Running this may be very expensive!",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -505,13 +812,31 @@ var Commands = map[string]CommandDefinition{
 					"description": "Filter for summary display",
 				},
 			},
-			Required: []string{},
+			Required: []string{"regex"},
+		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok || regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			}
+			namedArgs := map[string]string{}
+			filter, ok := props["filter"].(string)
+			if ok {
+				namedArgs["f"] = filter
+			}
+			return Command{
+				Args:      []string{regex, filter},
+				Flags:     map[string]bool{},
+				NamedArgs: namedArgs,
+			}, nil
 		},
 		Function: cmdSummary,
 	},
-	cmdSummarizeName: {
-		Name:        cmdSummarizeName,
-		Description: "Run the intra-procedural dataflow analysis",
+	CmdSummarizeName: {
+		Name: toolSummarizeName,
+		Description: "Build dataflow summaries for functions using intra-procedural analysis." +
+			"Depending on internal parameters, running the tool without arguments may only instantiate " +
+			"the summaries without building them.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -526,21 +851,51 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			forceFlag := false
+			if force, ok := props["force"]; ok {
+				if forceBool, ok := force.(bool); ok {
+					forceFlag = forceBool
+				} else {
+					return Command{}, fmt.Errorf("force flag must be a boolean")
+				}
+			}
+			regex := ""
+			regexObj, ok := props["regex"]
+			if ok {
+				if regexStr, ok := regexObj.(string); ok {
+					regex = regexStr
+				} else {
+					return Command{}, fmt.Errorf("regex must be a string")
+				}
+			}
+			return Command{
+				Args:  []string{regex},
+				Flags: map[string]bool{"force": forceFlag},
+			}, nil
+		},
 		Function: cmdSummarize,
 	},
-	cmdTaintName: {
-		Name:        cmdTaintName,
-		Description: "Run the taint analysis with parameters in config file",
+	CmdTaintName: {
+		Name: toolTaintName,
+		Description: "Run the taint analysis with parameters in config file. Does nothing if no config file has been" +
+			"loaded, or the config file does not define any taint analysis problem.",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdTaint,
 	},
-	cmdTraceName: {
-		Name:        cmdTraceName,
-		Description: "Trace the flow of a specific SSA value in the program",
+	CmdTraceName: {
+		Name:        toolTraceName,
+		Description: "Trace dataflow paths for a specific SSA value through the program (advanced debugging analysis)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -551,21 +906,37 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"target"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			target, ok := props["target"].(string)
+			if !ok || target == "" {
+				return Command{}, fmt.Errorf("target must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{target},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdTrace,
 	},
-	cmdUnfocusName: {
-		Name:        cmdUnfocusName,
-		Description: "Remove focus from current function",
+	CmdUnfocusName: {
+		Name:        toolUnfocusName,
+		Description: "Remove focus from current function (requires focused function)",
 		InputSchema: tools.MCPInputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
 			Required:   []string{},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			return Command{
+				Args:  []string{},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdUnfocus,
 	},
-	cmdWhereName: {
-		Name:        cmdWhereName,
-		Description: "Show location information",
+	CmdWhereName: {
+		Name:        toolWhereName,
+		Description: "Show source file location of functions or current focused function (requires focused function)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -575,6 +946,16 @@ var Commands = map[string]CommandDefinition{
 				},
 			},
 			Required: []string{"target"},
+		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			target, ok := props["target"].(string)
+			if !ok || target == "" {
+				return Command{}, fmt.Errorf("target must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{target},
+				Flags: map[string]bool{},
+			}, nil
 		},
 		Function: cmdWhere,
 	},
@@ -587,45 +968,49 @@ func Run(flags tools.CommonFlags) {
 		fmt.Fprintf(os.Stderr, "error getting current directory\n")
 		return
 	}
-	session := NewSession(flags)
-	loadedSess := session.LoadConfig()
+	tt := term.NewTerminal(os.Stdin, "> ")
+	o := NewTerminalOutputter(tt)
+	session := NewSession(flags, true)
+	oldState /* const */, err := term.MakeRaw(int(os.Stdin.Fd()))
+	session.termWidth, _, _ = term.GetSize(int(os.Stdin.Fd()))
+
+	session.logger().SetAllOutput(tt)
+	session.logger().SetAllFlags(0) // no prefix
+	tt.AutoCompleteCallback = autoCompleteOfAnalyzerState(session)
+	if err != nil {
+		panic(err)
+	}
+	defer term.Restore(int(os.Stdin.Fd()), oldState)
+	loadedSess := session.LoadConfig(o, true)
 	if loadedSess.IsErr() {
 		fmt.Fprintf(os.Stderr, "error loading config: %s\n", loadedSess.Error())
 		os.Exit(-1)
 	}
 
 	// Start the command line tool with the state containing all the information
-	run(session, flags.WithTest)
+	run(o, session, oldState, flags.WithTest)
 }
 
 // run implements the command line tool, calling interpret for each command until the exit command is input
-func run(sess *Session, withTest bool) {
-	oldState /* const */, err := term.MakeRaw(int(os.Stdin.Fd()))
-	sess.termWidth, _, _ = term.GetSize(int(os.Stdin.Fd()))
-	if err != nil {
-		panic(err)
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
-	tt := term.NewTerminal(os.Stdin, "> ")
-	sess.logger().SetAllOutput(tt)
-	sess.logger().SetAllFlags(0) // no prefix
-	tt.AutoCompleteCallback = autoCompleteOfAnalyzerState(sess)
+func run(o Outputter, sess *Session, oldState *term.State, withTest bool) {
 	// if we get a SIGINT, we exit
 	// Capture ctrl+c and exit by returning
 	captureChan := make(chan os.Signal, 1)
 	signal.Notify(captureChan, os.Interrupt)
-	go exitOnReceive(captureChan, tt, oldState)
+	go exitOnReceive(captureChan, o, oldState)
 	// the infinite loop terminates when interpret returns true
 	for {
-		command, _ := tt.ReadLine()
-		if interpret(tt, sess, strings.TrimSpace(command), withTest) {
-			break
+		if o.tt != nil {
+			command, _ := o.tt.ReadLine()
+			if interpret(o, sess, strings.TrimSpace(command), withTest) {
+				break
+			}
 		}
 	}
 }
 
 // interpret returns true to stop
-func interpret(tt *term.Terminal, s *Session, command string, withTest bool) bool {
+func interpret(o Outputter, s *Session, command string, withTest bool) bool {
 	if command == "" {
 		return false
 	}
@@ -636,20 +1021,20 @@ func interpret(tt *term.Terminal, s *Session, command string, withTest bool) boo
 	}
 
 	if cmdDef, ok := Commands[cmd.Name]; ok {
-		return cmdDef.Function(tt, s, cmd, withTest)
+		return cmdDef.Function(o, s, cmd, withTest)
 	}
-	if cmd.Name == cmdHelpName {
-		cmdHelp(tt, s, cmd, withTest)
+	if cmd.Name == CmdHelpName {
+		cmdHelp(o, s, cmd, withTest)
 	} else {
-		WriteErr(tt, "Command name %q not recognized.", cmd.Name)
-		cmdHelp(tt, s, cmd, withTest)
+		o.WriteErr("Command name %q not recognized.", cmd.Name)
+		cmdHelp(o, s, cmd, withTest)
 	}
 	return false
 }
 
-func exitOnReceive(c chan os.Signal, tt *term.Terminal, oldState *term.State) {
+func exitOnReceive(c chan os.Signal, o Outputter, oldState *term.State) {
 	for range c {
-		writeFmt(tt, "%s", formatutil.Red("Caught SIGINT, exiting!"))
+		o.Write("%s", formatutil.Red("Caught SIGINT, exiting!"))
 		term.Restore(int(os.Stdin.Fd()), oldState)
 		os.Exit(0)
 	}

@@ -74,8 +74,54 @@ type content struct {
 	Text string `json:"text"`
 }
 
+var allowedCliTools = map[string]bool{
+	cli.CmdAstName:        true,
+	cli.CmdCalleesName:    true,
+	cli.CmdCallersName:    true,
+	cli.CmdLoadName:       true,
+	cli.CmdListName:       true,
+	cli.CmdFocusName:      true,
+	cli.CmdMayAliasName:   true,
+	cli.CmdPackageName:    true,
+	cli.CmdRebuildName:    true,
+	cli.CmdScanName:       true,
+	cli.CmdMembersName:    true,
+	cli.CmdRunPointerName: true,
+	cli.CmdShowSsaName:    true,
+	cli.CmdSrcName:        true,
+	cli.CmdSsaInstrName:   true,
+	cli.CmdSsaValueName:   true,
+	cli.CmdStateName:      true,
+	cli.CmdStatsName:      true,
+	cli.CmdSummarizeName:  true,
+	cli.CmdSummaryName:    true,
+	cli.CmdUnfocusName:    true,
+}
+
+type serverState struct {
+	cmdOut     *bytes.Buffer
+	cmdErr     *bytes.Buffer
+	outputter  cli.Outputter
+	cliSession *cli.Session
+	tools      map[string]cli.CommandDefinition
+}
+
+func newState(configPath string) *serverState {
+	// We need error and regular output buffers to collect output of commands
+	outputterOut := bytes.NewBuffer(nil)
+	outputterErr := bytes.NewBuffer(nil)
+	return &serverState{
+		cmdOut:     outputterOut,
+		cmdErr:     outputterErr,
+		outputter:  cli.NewOutputter(outputterOut, outputterErr),
+		cliSession: cli.NewSession(tools.CommonFlags{ConfigPath: configPath}, false),
+		tools:      make(map[string]cli.CommandDefinition),
+	}
+}
+
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
+	state := newState("")
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -84,26 +130,33 @@ func main() {
 
 		var req jsonRPCRequest
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			sendError(req.ID, codeParseError, "Parse error")
+			state.sendError(req.ID, codeParseError, "Parse error")
 			continue
 		}
 
 		switch req.Method {
 		case "initialize":
-			handleInitialize(req)
+			state.handleInitialize(req)
 		case "tools/list":
-			handleToolsList(req)
+			state.handleToolsList(req)
 		case "tools/call":
-			handleToolCall(req)
+			state.handleToolCall(req)
 		case "notifications/initialized":
-			handleInitialized(req)
+			state.handleInitialized(req)
 		default:
-			sendError(req.ID, codeMethodNotFound, fmt.Sprintf("Method %s not found", req.Method))
+			state.sendError(req.ID, codeMethodNotFound, fmt.Sprintf("Method %s not found", req.Method))
 		}
 	}
 }
 
-func handleInitialize(req jsonRPCRequest) {
+func (s *serverState) handleInitialize(req jsonRPCRequest) {
+	for commandName, tool := range cli.Commands {
+		if allowedCliTools[commandName] {
+			s.tools[tool.Name] = tool
+		}
+
+	}
+	s.cliSession.LoadConfig(s.outputter, true)
 	result := map[string]interface{}{
 		"protocolVersion": "2024-11-05",
 		"capabilities": map[string]interface{}{
@@ -115,19 +168,26 @@ func handleInitialize(req jsonRPCRequest) {
 			"name":    "argot-mcp-server",
 			"version": "1.0.0",
 		},
+		"instructions": "argot-mcp-server is a Go language analysis tool. Most of the interactions" +
+			"with the argot-mcp-server are stateful: you load a program to analyze, inspect this program," +
+			"run additional analyses. You can show the source code of a function, show the SSA representation and" +
+			"inspect specific values in the SSA representation. More advanced analyses such as taint and backtrace " +
+			"analysis require loading a configuration file.",
 	}
-	sendResponse(req.ID, result)
+	s.sendResponse(req.ID, result)
 }
 
-func handleInitialized(req jsonRPCRequest) {
+func (s *serverState) handleInitialized(req jsonRPCRequest) {
 	// DO NOTHING
 }
 
-func handleToolsList(req jsonRPCRequest) {
+func (s *serverState) handleToolsList(req jsonRPCRequest) {
 	serverTools := []tools.MCPTool{
 		{
-			Name:        "go_dependencies",
-			Description: "Analyzes dependencies of a given Go package, and provides information about how much of each dependency is used by the package being analyzed. For example, this can be used to identify dependencies that have very little use in the code, and therefore could be eliminated.",
+			Name: "go_dependencies",
+			Description: "Analyzes dependencies of a given Go package, and provides information about how much of each" +
+				" dependency is used by the package being analyzed. For example, this can be used to identify " +
+				"dependencies that have very little use in the code, and therefore could be eliminated.",
 			InputSchema: tools.MCPInputSchema{
 				Type: "object",
 				Properties: map[string]interface{}{
@@ -151,44 +211,76 @@ func handleToolsList(req jsonRPCRequest) {
 			},
 		},
 	}
-	for _, tool := range cli.Commands {
-		serverTools = append(serverTools, tool.ToMCPToolDefinition())
+	for commandName, tool := range cli.Commands {
+		if allowedCliTools[commandName] {
+			serverTools = append(serverTools, tool.ToMCPToolDefinition())
+		}
 	}
-	sendResponse(req.ID, map[string]interface{}{"tools": serverTools})
+	s.sendResponse(req.ID, map[string]interface{}{"tools": serverTools})
 }
 
-func handleToolCall(req jsonRPCRequest) {
+func (s *serverState) handleToolCall(req jsonRPCRequest) {
 	params, ok := req.Params.(map[string]interface{})
 	if !ok {
-		sendError(req.ID, -32602, "Invalid params")
+		s.sendError(req.ID, -32602, "Invalid params")
 		return
 	}
 
 	var toolCall toolCallParams
 	paramBytes, _ := json.Marshal(params)
 	if err := json.Unmarshal(paramBytes, &toolCall); err != nil {
-		sendError(req.ID, codeInvalidParams, "Invalid tool call params")
+		s.sendError(req.ID, codeInvalidParams, "Invalid tool call params")
 		return
 	}
 
 	switch toolCall.Name {
 	case "go_dependencies":
-		handleDependencies(req.ID, toolCall.Arguments)
+		s.handleDependencies(req.ID, toolCall.Arguments)
 	default:
-		sendError(req.ID, codeMethodNotFound, "Tool not found")
+		if command, ok := s.tools[toolCall.Name]; ok {
+			s.handleCliCommand(req.ID, toolCall, command)
+		} else {
+			s.sendError(req.ID, codeMethodNotFound, fmt.Sprintf("Tool %s not found", toolCall.Name))
+		}
 	}
 }
 
-func handleDependencies(id interface{}, args map[string]interface{}) {
+func (s *serverState) handleCliCommand(id interface{},
+	toolCall toolCallParams, command cli.CommandDefinition) {
+	defer func() {
+		s.cmdErr.Reset()
+		s.cmdOut.Reset()
+	}()
+	// Extract command name
+	commandArgs, translationError := command.SchemaTranslation(toolCall.Arguments)
+	if translationError != nil {
+		s.sendError(id, codeInvalidParams, translationError.Error())
+		return
+	}
+	// Run the command
+	command.Function(s.outputter, s.cliSession, commandArgs, false)
+	// Collect output
+	errs := s.cmdErr.String()
+	if errs != "" {
+		s.sendError(id, codeInternalError, errs)
+		return
+	}
+	// Send response
+	s.sendResponse(id, map[string]interface{}{
+		"content": []content{{Type: "text", Text: s.cmdOut.String()}},
+	})
+}
+
+func (s *serverState) handleDependencies(id interface{}, args map[string]interface{}) {
 	// Extract paths
 	pathsInterface, ok := args["paths"]
 	if !ok {
-		sendError(id, codeInvalidParams, "paths parameter is required")
+		s.sendError(id, codeInvalidParams, "paths parameter is required")
 		return
 	}
 	pathsSlice, ok := pathsInterface.([]interface{})
 	if !ok {
-		sendError(id, codeInvalidParams, "paths must be an array")
+		s.sendError(id, codeInvalidParams, "paths must be an array")
 		return
 	}
 	paths := make([]string, len(pathsSlice))
@@ -214,17 +306,18 @@ func handleDependencies(id interface{}, args map[string]interface{}) {
 	// Run the analysis
 	results, err := runDependencyAnalysis(paths, locThreshold, usageThreshold)
 	if err != nil {
-		sendError(id, codeInternalError, fmt.Sprintf("Analysis failed: %v", err))
+		s.sendError(id, codeInternalError, fmt.Sprintf("Analysis failed: %v", err))
 		return
 	}
 
-	sendResponse(id, map[string]interface{}{
+	s.sendResponse(id, map[string]interface{}{
 		"content": []content{{Type: "text", Text: fmt.Sprintf("%+v", results)}},
 	})
 }
 
 func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold float64) ([]map[string]interface{}, error) {
 	cfg := config.NewDefault()
+	cfg.SummarizeOnDemand = true
 
 	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
 		CmdlineArgs: paths,
@@ -312,7 +405,7 @@ func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold floa
 	return results, nil
 }
 
-func sendResponse(id interface{}, result interface{}) {
+func (s *serverState) sendResponse(id interface{}, result interface{}) {
 	resp := jsonRPCResponse{
 		JSONRPC: jsonRpcVersion,
 		ID:      id,
@@ -322,7 +415,7 @@ func sendResponse(id interface{}, result interface{}) {
 	fmt.Println(string(data))
 }
 
-func sendError(id interface{}, code int, message string) {
+func (s *serverState) sendError(id interface{}, code int, message string) {
 	niceId := id
 	if id == nil {
 		niceId = 0
