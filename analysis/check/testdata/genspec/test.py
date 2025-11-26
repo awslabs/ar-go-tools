@@ -142,9 +142,6 @@ if s.check() != z3.sat:
 
 m = s.model()
 print("\nDataflow edges:")
-for a in nodes:
-    for b in nodes:
-        if (a, b) in intra or (a, b) in want_summary or a == b:
-            continue
-        if z3.is_true(m.eval(r(a, b))):
-            print(f"  {a} -> {b}")
+for a, b in unknown:
+    if z3.is_true(m.eval(r(a, b))):
+        print(f"  {a} -> {b}")
