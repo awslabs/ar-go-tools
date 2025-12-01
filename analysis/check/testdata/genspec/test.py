@@ -1,147 +1,192 @@
+#!/usr/bin/env python3
+
+
+"""
+For the program:
+
+func f(no *int, a *int, b *int) int {
+    x := g(*a, *a, no)
+    x += g(*a, *b, no)
+    *b = x
+    return x
+}
+
+func g(a int, b int, no *int) int {
+    return a + b
+}
+
+Given intra-procedural dataflow results in `intra` and
+the dataflow summary for function f that we want to check
+in `want_summary`, this script infers what g's implementation
+must be (in terms of dataflow edges) in order to satisfy f's
+summary, while MAXIMIZING the number of must-not-flow edges
+(i.e., finding the most restrictive valid summary of g).
+
+For the summary of f: a->ret, a->b, b->ret,
+the edges in g should be: a->b, b->a, a->ret, b->ret.
+
+In order to satisfy the summary of f, the must-not-flow edges
+for g are: no->a, no->b, no->ret, a->no, b->no.
+
+The maximal must-not-flow edges for f are:
+no->a, no->b, no->ret, a->no, a->ret, b->no, b->a.
+
+It is fine for a to never flow to ret in g because
+f@param_a flows to x via the first call to g, which
+is enough to satisfy f's summary.
+
+It is fine for a and b to flow to each other even though
+this is impossible in practice because it does not change
+the summary of f.
+"""
+
+import itertools
 import z3
 
-# func f(a *int, b *int, c *int) int {
-# 	x := g(*a, *b)
-# 	x += g(*a, *c)
-# 	*c = x
-# 	return x
-# }
 
-# func g(a int, b int) int {
-# 	return a + b
-# }
+def main():
+    # z3.set_param("sat.random_seed", 0)
+    s = z3.Optimize()  # Use optimized solver for MAXSAT
 
-# Define universe
-(
-    Node,
-    (
-        f_param_a,
-        f_param_b,
-        f_param_c,
-        f_call_g0,
-        f_call_g0_arg_0,
-        f_call_g0_arg_1,
-        f_call_g1,
-        f_call_g1_arg_0,
-        f_call_g1_arg_1,
-        f_ret,
-        g_param_a,
-        g_param_b,
-        g_ret,
-    ),
-) = z3.EnumSort(
-    "Node",
-    [
+    # Summary nodes for f (input and output)
+    f_nodes = [
+        "f@param_no",
         "f@param_a",
         "f@param_b",
-        "f@param_c",
-        "f@call_g0",
-        "f@call_g0_arg_0",
-        "f@call_g0_arg_1",
-        "f@call_g1",
-        "f@call_g1_arg_0",
-        "f@call_g1_arg_1",
         "f@ret",
-        "g@param_a",
-        "g@param_b",
-        "g@ret",
-    ],
-)
-r = z3.Function("r", Node, Node, z3.BoolSort())
+    ]
+    # Summary nodes for g (input and output)
+    g_nodes = ["g@param_a", "g@param_b", "g@param_no", "g@ret"]
 
-nodes = [
-    f_param_a,
-    f_param_b,
-    f_param_c,
-    f_call_g0,
-    f_call_g0_arg_0,
-    f_call_g0_arg_1,
-    f_call_g1,
-    f_call_g1_arg_0,
-    f_call_g1_arg_1,
-    f_ret,
-    g_param_a,
-    g_param_b,
-    g_ret,
-]
+    # Intra-procedural edges (known)
+    intra = [
+        ("f@param_a", "f@call_g0_arg_0"),
+        ("f@param_a", "f@call_g0_arg_1"),
+        ("f@param_no", "f@call_g0_arg_2"),
+        ("f@param_a", "f@call_g1_arg_0"),
+        ("f@param_b", "f@call_g1_arg_1"),
+        ("f@param_no", "f@call_g1_arg_2"),
+        ("f@call_g0", "f@param_b"),
+        ("f@call_g1", "f@param_b"),
+        ("f@call_g0", "f@ret"),
+        ("f@call_g1", "f@ret"),
+    ]
+    # Inter-procedural edges (known)
+    inter = [
+        ("f@call_g0_arg_0", "g@param_a"),
+        ("f@call_g0_arg_1", "g@param_b"),
+        ("f@call_g0_arg_2", "g@param_no"),
+        ("f@call_g1_arg_0", "g@param_a"),
+        ("f@call_g1_arg_1", "g@param_b"),
+        ("f@call_g1_arg_2", "g@param_no"),
+        ("g@ret", "f@call_g0"),
+        ("g@ret", "f@call_g1"),
+    ]
+    known = intra + inter
 
-s = z3.Optimize()
+    # Unknown dataflow edges (most-general summary of g):
+    unknown = list(itertools.permutations(g_nodes, 2))
+
+    # Summary we want to check
+    want_summary = {
+        ("f@param_a", "f@ret"),
+        ("f@param_a", "f@param_b"),
+        ("f@param_b", "f@ret"),
+    }
+
+    # Add constraints for known edges
+    for a, b in known:
+        s.add(reach(a, b))
+
+    # Minimize unknown edges (maximize must-not-flow)
+    # Sort for deterministic ordering
+    for a, b in sorted(unknown):
+        s.add_soft(z3.Not(reach(a, b)), weight=1)
+
+    # Add transitivity constraints for all nodes
+    all_nodes = set()
+    for a, b in known + unknown:
+        all_nodes.add(a)
+        all_nodes.add(b)
+
+    for a, b, c in itertools.permutations(all_nodes, 3):
+        s.add(z3.Implies(z3.And(reach(a, b), reach(b, c)), reach(a, c)))
+
+    # Require want_summary edges to be true
+    for a, b in want_summary:
+        s.add(reach(a, b))
+    for a, b in set(itertools.permutations(f_nodes, 2)) - want_summary:
+        s.add(z3.Not(reach(a, b)))
+
+    # For each required summary edge, find all possible paths and require at least one exists
+    for src, dst in want_summary:
+        paths = find_paths_through_unknown(src, dst, known, unknown)
+        if paths:
+            # At least one path must have all its unknown edges present
+            path_constraints = []
+            for path_unknown_edges in paths:
+                if path_unknown_edges:
+                    path_constraints.append(
+                        z3.And(*[reach(u, v) for u, v in path_unknown_edges])
+                    )
+            if path_constraints:
+                s.add(z3.Or(*path_constraints))
+
+    if s.check() != z3.sat:
+        print("model is not sat!")
+        exit(1)
+
+    m = s.model()
+
+    print("Must-not-flow dataflow edges for g:")
+    for a, b in itertools.permutations(g_nodes, 2):
+        if z3.is_false(m.eval(reach(a, b))):
+            print(f"  {a} -/-> {b}")
 
 
-# NOTE cannot encode this with quantifiers since z3 does not support MAXSAT with quantifiers
-def assert_transitive(s, flows):
-    for a, b in flows:
-        for b, c in flows:
-            s.add(z3.Implies(z3.And(r(a, b), r(b, c)), r(a, c)))
+def reach(a, b):
+    return z3.Bool(f"r_{a}->{b}")
 
 
-# Intra-procedural edges
-intra = [
-    (f_param_a, f_call_g0_arg_0),
-    (f_param_b, f_call_g0_arg_1),
-    (f_param_a, f_call_g1_arg_0),
-    (f_param_c, f_call_g1_arg_1),
-    (f_call_g0, f_param_c),
-    (f_call_g1, f_param_c),
-    (f_call_g0, f_ret),
-    (f_call_g1, f_ret),
-    (g_ret, f_call_g0),
-    (g_ret, f_call_g1),
-]
-assert_transitive(s, intra)
+def find_paths_through_unknown(src, dst, known, unknown):
+    """
+    Find all paths from src to dst, returning the unknown edges each path uses.
+    """
+    from collections import deque
 
-# Unknown dataflow edges
-unknown = [
-    (g_param_a, g_ret),
-    (g_param_b, g_ret),
-    (g_param_a, g_param_b),
-    (g_param_b, g_param_a),
-]
-assert_transitive(s, unknown)
+    # Build adjacency lists
+    known_graph = {}
+    unknown_graph = {}
+    for a, b in known:
+        known_graph.setdefault(a, []).append(b)
+    for a, b in unknown:
+        unknown_graph.setdefault(a, []).append(b)
 
-want_summary = [
-    (f_param_a, f_ret),
-    (f_param_a, f_param_c),
-    (f_param_b, f_ret),
-    (f_param_b, f_param_c),
-    (f_param_c, f_ret),
-]
+    # BFS to find all paths, tracking unknown edges used
+    paths = []
+    queue = deque([(src, [], [])])  # (current_node, unknown_edges_used, visited)
 
+    while queue:
+        node, unknown_used, visited = queue.popleft()
 
-def transitive_closure(flows):
-    res = set()
-    for a, b in flows:
-        for b, c in flows:
-            res.add((a, b))
-            res.add((b, c))
-            res.add((a, c))
-    return [(x, y) for x, y in res if x is not y]
-
-
-transitive = transitive_closure(intra + unknown)
-for a in nodes:
-    for b in nodes:
-        if a == b:
+        if node == dst:
+            paths.append(unknown_used)
             continue
-        if (a, b) in intra:
-            s.add(r(a, b))
-        elif (a, b) in unknown:
-            s.add_soft(r(a, b))
-        elif (a, b) in transitive:
+
+        if node in visited:
             continue
-        else:
-            s.add(z3.Not(r(a, b)))
+        visited = visited + [node]
 
-# Compute all edges needed to satisfy want_summary
-for a, b in want_summary:
-    s.add(r(a, b))
+        # Follow known edges
+        for next_node in known_graph.get(node, []):
+            queue.append((next_node, unknown_used, visited))
 
-if s.check() != z3.sat:
-    print("model is not sat!")
-    exit(1)
+        # Follow unknown edges
+        for next_node in unknown_graph.get(node, []):
+            queue.append((next_node, unknown_used + [(node, next_node)], visited))
 
-m = s.model()
-print("\nDataflow edges:")
-for a, b in unknown:
-    if z3.is_true(m.eval(r(a, b))):
-        print(f"  {a} -> {b}")
+    return paths
+
+
+if __name__ == "__main__":
+    main()
