@@ -215,7 +215,7 @@ func cmdMayAlias(o Outputter, sess *Session, command Command, _ bool) bool {
 		return false
 	}
 
-	ps, err := sess.loadPtrAnalysis().Value()
+	ps, err := sess.loadPtrAnalysis(o).Value()
 	if err != nil {
 		o.WriteErr("Error loading pointer analysis: %s", err)
 		return false
@@ -288,7 +288,7 @@ func cmdWhere(o Outputter, sess *Session, command Command, withTest bool) bool {
 	}
 
 	// This command requires loading the program
-	lp, err := sess.loadProgram().Value()
+	lp, err := sess.loadProgram(o).Value()
 	if err != nil {
 		o.WriteErr("Error loading program: %s", err)
 		return false
@@ -341,7 +341,7 @@ func cmdIntra(o Outputter, sess *Session, command Command, withTest bool) bool {
 	}
 
 	// This command requires loading the dataflow state
-	dfs, err := sess.loadDataflowAnalysis().Value()
+	dfs, err := sess.loadDataflowAnalysis(o).Value()
 	if err != nil {
 		o.WriteErr("Error loading dataflow analysis: %s", err)
 		return false

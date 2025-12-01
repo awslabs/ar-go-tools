@@ -59,7 +59,7 @@ func cmdStats(o Outputter, c *Session, command Command, withTest bool) bool {
 	if all || funcutil.Contains(command.Args, "general") || len(command.Args) == 0 {
 
 		// generate ssa stats with reachable from dataflow analysis
-		reachableFunctions, err := c.reachableFunctions()
+		reachableFunctions, err := c.reachableFunctions(o)
 		if err != nil {
 			o.WriteErr("%s", err.Error())
 			return false

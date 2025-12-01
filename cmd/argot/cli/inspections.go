@@ -47,7 +47,7 @@ func cmdScan(o Outputter, sess *Session, command Command, _ bool) bool {
 	}
 
 	// Get the program
-	lp := sess.loadProgram()
+	lp := sess.loadProgram(o)
 	if lp.IsErr() {
 		o.WriteErr("Unable to load program: %s", lp)
 		return false

@@ -94,9 +94,9 @@ func (s *Session) allFunctions() (map[*ssa.Function]bool, error) {
 	return ssautil.AllFunctions(s.lpState.Program), nil
 }
 
-func (s *Session) reachableFunctions() (map[*ssa.Function]bool, error) {
+func (s *Session) reachableFunctions(o Outputter) (map[*ssa.Function]bool, error) {
 	if s.lpState == nil {
-		_, err := s.loadProgram().Value()
+		_, err := s.loadProgram(o).Value()
 		if err != nil {
 			return nil, fmt.Errorf("failed to load program to get reachable functions: %w", err)
 		}
@@ -217,7 +217,7 @@ func (s *Session) LoadConfig(o Outputter, reload bool) result.Result[config.Stat
 	return result.Ok(s.cfgState)
 }
 
-func (s *Session) loadProgram() result.Result[loadprogram.State] {
+func (s *Session) loadProgram(o Outputter) result.Result[loadprogram.State] {
 	if s.lpState != nil {
 		return result.Ok(s.lpState)
 	}
@@ -232,25 +232,32 @@ func (s *Session) loadProgram() result.Result[loadprogram.State] {
 			s.pkgs[pkg.PkgPath] = pkg
 		}
 	}
+	o.WriteSuccess("loaded program with path %s", strings.Join(s.args, ", "))
+	o.WriteSuccess("✔ loaded %d packages", len(s.pkgs))
+	// Attempt to print the main package given current information.
+	// It may fail; it's ok because we don't have the best call graph information yet.
+	if main, err := s.lpState.FindMain(); err == nil {
+		o.WriteSuccess("✔ main package: %s", main.Pkg.String())
+	}
 	return lpstate
 }
 
-func (s *Session) loadPtrAnalysis() result.Result[ptr.State] {
+func (s *Session) loadPtrAnalysis(o Outputter) result.Result[ptr.State] {
 	if s.ptrState != nil {
 		return result.Ok(s.ptrState)
 	}
-	ptrstate := result.Bind(s.loadProgram(), ptr.NewState)
+	ptrstate := result.Bind(s.loadProgram(o), ptr.NewState)
 	if ptrstate.IsOk() {
 		s.ptrState = ptrstate.Unwrap()
 	}
 	return ptrstate
 }
 
-func (s *Session) loadDataflowAnalysis() result.Result[dataflow.State] {
+func (s *Session) loadDataflowAnalysis(o Outputter) result.Result[dataflow.State] {
 	if s.dfState != nil {
 		return result.Ok(s.dfState)
 	}
-	dfstate := result.Bind(s.loadPtrAnalysis(), dataflow.NewState)
+	dfstate := result.Bind(s.loadPtrAnalysis(o), dataflow.NewState)
 	if dfstate.IsOk() {
 		s.dfState = dfstate.Unwrap()
 	} else {
@@ -432,7 +439,7 @@ func cmdList(o Outputter, s *Session, command Command, withTest bool) bool {
 		return false
 	}
 
-	reachable, err := s.reachableFunctions()
+	reachable, err := s.reachableFunctions(o)
 	if err != nil {
 		o.WriteErr("Error: %s", err)
 		return false

@@ -90,7 +90,7 @@ func cmdMembers(o Outputter, sess *Session, command Command, withTest bool) bool
 	}
 
 	// members needs a program
-	prog := sess.loadProgram()
+	prog := sess.loadProgram(o)
 	if prog.IsErr() {
 		o.WriteErr("Could not load program: %s", prog)
 		return false
@@ -169,7 +169,7 @@ func cmdShowDataflow(o Outputter, sess *Session, _ Command, _ bool) bool {
 	}
 
 	// showDataflow needs dataflow state
-	df := sess.loadDataflowAnalysis()
+	df := sess.loadDataflowAnalysis(o)
 	if df.IsErr() {
 		o.WriteErr("Could not load dataflow: %s", df)
 		return false
@@ -396,7 +396,7 @@ func cmdSummarize(o Outputter, sess *Session, command Command, _ bool) bool {
 	isForced := command.Flags["force"]
 
 	// ensure dataflow state
-	res := sess.loadDataflowAnalysis()
+	res := sess.loadDataflowAnalysis(o)
 	if res.IsErr() {
 		o.WriteErr("Could not load dataflow: %s", res)
 		return false
@@ -505,7 +505,7 @@ func cmdTaint(o Outputter, sess *Session, _ Command, _ bool) bool {
 			o.EscYellow(), CmdBuildGraphName, o.EscReset())
 		return false
 	}
-	c := sess.loadDataflowAnalysis()
+	c := sess.loadDataflowAnalysis(o)
 	if c.IsErr() {
 		o.WriteErr("Failed to load dataflow analysis: %v", c)
 		return false
@@ -540,7 +540,7 @@ func cmdBacktrace(o Outputter, sess *Session, _ Command, _ bool) bool {
 		return false
 	}
 
-	res := sess.loadDataflowAnalysis()
+	res := sess.loadDataflowAnalysis(o)
 	if res.IsErr() {
 		o.WriteErr("Failed to load dataflow analysis: %v", res)
 		return false

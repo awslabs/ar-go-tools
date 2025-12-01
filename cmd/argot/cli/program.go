@@ -106,17 +106,10 @@ func cmdLoadWholeProgram(o Outputter, sess *Session, command Command, withTest b
 		return false
 	}
 
-	lp := sess.loadProgram()
+	lp := sess.loadProgram(o)
 	if lp.IsErr() {
 		o.WriteErr("%s", lp)
 		return false
-	}
-	o.WriteSuccess("loaded program with path %s", strings.Join(sess.args, ", "))
-	o.WriteSuccess("✔ loaded %d packages", len(sess.pkgs))
-	// Attempt to print the main package given current information.
-	// It may fail; it's ok because we don't have the best call graph information yet.
-	if main, err := sess.lpState.FindMain(); err == nil {
-		o.WriteSuccess("✔ main package: %s", main.Pkg.String())
 	}
 	return false
 }
@@ -127,7 +120,7 @@ func cmdRunPointer(o Outputter, sess *Session, command Command, withTest bool) b
 		return false
 	}
 
-	ptr := sess.loadPtrAnalysis()
+	ptr := sess.loadPtrAnalysis(o)
 	if ptr.IsErr() {
 		o.WriteErr("%s", ptr)
 		return false
@@ -142,7 +135,7 @@ func cmdRunDataflow(o Outputter, sess *Session, command Command, withTest bool) 
 		return false
 	}
 
-	df := sess.loadDataflowAnalysis()
+	df := sess.loadDataflowAnalysis(o)
 	if df.IsErr() {
 		o.WriteErr("%s", df)
 		return false
@@ -170,7 +163,7 @@ func cmdRebuild(o Outputter, sess *Session, _ Command, withTest bool) bool {
 	sess.dfState = nil
 	sess.ptrState = nil
 	if res.IsOk() {
-		sess.loadProgram()
+		sess.loadProgram(o)
 	} else {
 		o.WriteErr("%s", res)
 		return false

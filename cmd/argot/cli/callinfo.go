@@ -87,7 +87,7 @@ func displayCallInfo(o Outputter, sess *Session, command Command, usePtr bool,
 			// Strategy 1: the function has a summary, use it to determine callees
 			// the information in a summary should be more complete than callgraph, if the callgraph sometimes
 			// omits static calls
-			dfg, _ := sess.loadDataflowAnalysis().Value() // should not fail since we have summary
+			dfg, _ := sess.loadDataflowAnalysis(o).Value() // should not fail since we have summary
 			if dfg == nil {
 				panic("internal error")
 			}
@@ -143,7 +143,7 @@ func displayCallInfoWithoutSummary(s *Session, o Outputter,
 	if s == nil || f == nil {
 		return
 	}
-	ptrAnalysis, err := s.loadPtrAnalysis().Value()
+	ptrAnalysis, err := s.loadPtrAnalysis(o).Value()
 	if err != nil {
 		o.Write("\t%s\n", err)
 		return

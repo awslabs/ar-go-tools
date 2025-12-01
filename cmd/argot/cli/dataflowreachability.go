@@ -33,7 +33,7 @@ func cmdTrace(o Outputter, sess *Session, command Command, _ bool) bool {
 		return false
 	}
 
-	res := sess.loadDataflowAnalysis()
+	res := sess.loadDataflowAnalysis(o)
 	if res.IsErr() {
 		o.WriteErr("Failed to load dataflow analysis: %s", res)
 		return false

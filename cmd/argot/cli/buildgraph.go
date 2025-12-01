@@ -23,7 +23,7 @@ func cmdBuildGraph(o Outputter, sess *Session, _ Command, _ bool) bool {
 			o.EscYellow(), CmdSummarizeName, o.EscReset())
 		return false
 	}
-	c, err := sess.loadDataflowAnalysis().Value()
+	c, err := sess.loadDataflowAnalysis(o).Value()
 	if err != nil {
 		o.WriteErr("%s", err.Error())
 		return false
