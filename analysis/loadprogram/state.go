@@ -20,6 +20,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"golang.org/x/tools/go/ssa/ssautil"
 	"io/fs"
 	"os/exec"
 	"path/filepath"
@@ -136,6 +137,17 @@ func (wps *State) ReachableFunctions() (map[*ssa.Function]bool, error) {
 		return wps.reachableFunctions, nil
 	}
 	return wps.reachableFunctions, nil
+}
+
+// FindMain finds main functions.
+func (wps *State) FindMain() (*ssa.Function, error) {
+	// Find main functions
+	for f := range ssautil.AllFunctions(wps.Program) {
+		if f.Name() == "main" && f.Pkg != nil && f.Pkg.Pkg != nil && f.Pkg.Pkg.Name() == "main" {
+			return f, nil
+		}
+	}
+	return nil, fmt.Errorf("could not find main function")
 }
 
 // ResolveCallee resolves the callee(s) at the call instruction instr.

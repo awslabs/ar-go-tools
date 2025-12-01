@@ -70,6 +70,9 @@ func TestMCPServer(t *testing.T) {
 	sendRequest(t, stdin, toolsReq)
 	toolsListResponseCheck(t, readResponse(t, scanner))
 
+	// Test prompts list and get
+	checkPrompts(t, stdin, scanner)
+
 	// Test valid dependencies call
 	depsReq := jsonRPCRequest{
 		JSONRPC: jsonRpcVersion,
@@ -284,5 +287,98 @@ func checkListTool(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 	}
 	if loadProgramResp.Error != nil {
 		t.Fatalf(" List functions failed: %v", loadProgramResp.Error)
+	}
+}
+
+func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
+	// Test prompts list
+	promptsListReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      7,
+		Method:  "prompts/list",
+		Params:  map[string]interface{}{},
+	}
+	sendRequest(t, stdin, promptsListReq)
+	response := readResponse(t, scanner)
+	var promptsListResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &promptsListResp); err != nil {
+		t.Fatal(err)
+	}
+	if promptsListResp.Error != nil {
+		t.Fatalf("Prompts list failed: %v", promptsListResp.Error)
+	}
+
+	// Check that dataflow-summary-generation prompt is listed
+	result, ok := promptsListResp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected prompts list result to be a map")
+	}
+	prompts, ok := result["prompts"].([]interface{})
+	if !ok {
+		t.Fatal("Expected prompts to be an array")
+	}
+	found := false
+	for _, prompt := range prompts {
+		promptMap, ok := prompt.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if name, ok := promptMap["name"].(string); ok && name == "dataflow-summary-generation" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Expected dataflow-summary-generation prompt in prompts list")
+	}
+
+	// Test prompts get
+	promptsGetReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      8,
+		Method:  "prompts/get",
+		Params: map[string]interface{}{
+			"name": "dataflow-summary-generation",
+		},
+	}
+	sendRequest(t, stdin, promptsGetReq)
+	response = readResponse(t, scanner)
+	var promptsGetResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &promptsGetResp); err != nil {
+		t.Fatal(err)
+	}
+	if promptsGetResp.Error != nil {
+		t.Fatalf("Prompts get failed: %v", promptsGetResp.Error)
+	}
+
+	// Check that prompt content is returned
+	getResult, ok := promptsGetResp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected prompts get result to be a map")
+	}
+	messages, ok := getResult["messages"].([]interface{})
+	if !ok {
+		t.Fatal("Expected messages to be an array")
+	}
+	if len(messages) == 0 {
+		t.Fatal("Expected at least one message")
+	}
+	message, ok := messages[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected message to be a map")
+	}
+	content, ok := message["content"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected content to be a map")
+	}
+	text, ok := content["text"].(string)
+	if !ok {
+		t.Fatal("Expected text to be a string")
+	}
+	if !strings.Contains(text, "Dataflow Summary Generation Task") {
+		t.Error("Expected prompt to contain 'Dataflow Summary Generation Task'")
+	}
+	if !strings.Contains(text, "argot_load") {
+		t.Error("Expected prompt to contain 'argot_load'")
 	}
 }

@@ -259,13 +259,14 @@ var Commands = map[string]CommandDefinition{
 	CmdListName: {
 		Name: toolListName,
 		Description: "List functions matching a regex (golang), " +
-			"with options on listing reachable and summarized functions.",
+			"with options on listing reachable and summarized functions." +
+			"Matches against the full function name (package name + opt. receiver + function name)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
 				"regex": map[string]interface{}{
 					"type":        "string",
-					"description": "Regex to match function names",
+					"description": "Regex to match full function names",
 				},
 				"reachable_only": map[string]interface{}{
 					"type":        "boolean",
@@ -496,7 +497,7 @@ var Commands = map[string]CommandDefinition{
 	},
 	CmdPackageName: {
 		Name:        toolPackageName,
-		Description: "Show package information",
+		Description: "Show package information of focused function (requires focused function)",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -573,7 +574,7 @@ var Commands = map[string]CommandDefinition{
 			Properties: map[string]interface{}{
 				"regex": map[string]interface{}{
 					"type":        "string",
-					"description": "Regex to match function names",
+					"description": "Regex to match full function names",
 				},
 			},
 			Required: []string{},
@@ -598,7 +599,7 @@ var Commands = map[string]CommandDefinition{
 			Properties: map[string]interface{}{
 				"regex": map[string]interface{}{
 					"type":        "string",
-					"description": "Regex to match function names",
+					"description": "Regex to match full function names",
 				},
 			},
 			Required: []string{},
@@ -696,7 +697,7 @@ var Commands = map[string]CommandDefinition{
 			Properties: map[string]interface{}{
 				"regex": map[string]interface{}{
 					"type":        "string",
-					"description": "Regex to match function names",
+					"description": "Regex to match full function names",
 				},
 			},
 			Required: []string{},
@@ -805,7 +806,7 @@ var Commands = map[string]CommandDefinition{
 			Properties: map[string]interface{}{
 				"regex": map[string]interface{}{
 					"type":        "string",
-					"description": "Regex to match function names",
+					"description": "Regex to match full function names",
 				},
 				"filter": map[string]interface{}{
 					"type":        "string",
@@ -842,7 +843,7 @@ var Commands = map[string]CommandDefinition{
 			Properties: map[string]interface{}{
 				"regex": map[string]interface{}{
 					"type":        "string",
-					"description": "Regex to match function names (optional)",
+					"description": "Regex to match full function names (optional)",
 				},
 				"force": map[string]interface{}{
 					"type":        "boolean",

@@ -20,83 +20,83 @@ import (
 
 const (
 	// CmdAstName is the name of the ast command
-	CmdAstName              = "ast"
+	CmdAstName = "ast"
 	// CmdBacktraceName is the name of the backtrace command
-	CmdBacktraceName        = "backtrace"
+	CmdBacktraceName = "backtrace"
 	// CmdBuildGraphName is the name of the buildgraph command
-	CmdBuildGraphName       = "buildgraph"
+	CmdBuildGraphName = "buildgraph"
 	// CmdCalleesName is the name of the callees command
-	CmdCalleesName          = "callees"
+	CmdCalleesName = "callees"
 	// CmdCallersName is the name of the callers command
-	CmdCallersName          = "callers"
+	CmdCallersName = "callers"
 	// CmdCdName is the name of the cd command
-	CmdCdName               = "cd"
+	CmdCdName = "cd"
 	// CmdExitName is the name of the exit command
-	CmdExitName             = "exit"
+	CmdExitName = "exit"
 	// CmdFocusName is the name of the focus command
-	CmdFocusName            = "focus"
+	CmdFocusName = "focus"
 	// CmdHelpName is the name of the help command
-	CmdHelpName             = "help"
+	CmdHelpName = "help"
 	// CmdIntraName is the name of the intra command
-	CmdIntraName            = "intra"
+	CmdIntraName = "intra"
 	// CmdLoadName is the name of the load command
-	CmdLoadName             = "load"
+	CmdLoadName = "load"
 	// CmdLoadPackagesName is the name of the load-pkg command
-	CmdLoadPackagesName     = "load-pkg"
+	CmdLoadPackagesName = "load-pkg"
 	// CmdLoadWholeProgramName is the name of the load-program command
 	CmdLoadWholeProgramName = "load-program"
 	// CmdListName is the name of the list command
-	CmdListName             = "list"
+	CmdListName = "list"
 	// CmdLsName is the name of the ls command
-	CmdLsName               = "ls"
+	CmdLsName = "ls"
 	// CmdMarkName is the name of the mark command
-	CmdMarkName             = "mark"
+	CmdMarkName = "mark"
 	// CmdMayAliasName is the name of the mayalias command
-	CmdMayAliasName         = "mayalias"
-	// CmdPackageName is the name of the pkg command
-	CmdPackageName          = "pkg"
+	CmdMayAliasName = "mayalias"
+	// CmdPackageName is the name of the function-pkg command
+	CmdPackageName = "function-pkg"
 	// CmdRebuildName is the name of the rebuild command
-	CmdRebuildName          = "rebuild"
+	CmdRebuildName = "rebuild"
 	// CmdReconfigName is the name of the reconfig command
-	CmdReconfigName         = "reconfig"
+	CmdReconfigName = "reconfig"
 	// CmdScanName is the name of the scan command
-	CmdScanName             = "scan"
+	CmdScanName = "scan"
 	// CmdShowPackageName is the name of the showpkg command
-	CmdShowPackageName      = "showpkg"
+	CmdShowPackageName = "showpkg"
 	// CmdShowDataflowName is the name of the showdataflow command
-	CmdShowDataflowName     = "showdataflow"
+	CmdShowDataflowName = "showdataflow"
 	// CmdShowEscapeName is the name of the showescape command
-	CmdShowEscapeName       = "showescape"
+	CmdShowEscapeName = "showescape"
 	// CmdMembersName is the name of the members command
-	CmdMembersName          = "members"
+	CmdMembersName = "members"
 	// CmdRunPointerName is the name of the run-pointer command
-	CmdRunPointerName       = "run-pointer"
+	CmdRunPointerName = "run-pointer"
 	// CmdRunDataflowName is the name of the run-dataflow command
-	CmdRunDataflowName      = "run-dataflow"
+	CmdRunDataflowName = "run-dataflow"
 	// CmdShowSsaName is the name of the showssa command
-	CmdShowSsaName          = "showssa"
+	CmdShowSsaName = "showssa"
 	// CmdSrcName is the name of the src command
-	CmdSrcName              = "src"
+	CmdSrcName = "src"
 	// CmdSsaInstrName is the name of the ssainstr command
-	CmdSsaInstrName         = "ssainstr"
+	CmdSsaInstrName = "ssainstr"
 	// CmdSsaValueName is the name of the ssaval command
-	CmdSsaValueName         = "ssaval"
+	CmdSsaValueName = "ssaval"
 	// CmdStateName is the name of the state? command
-	CmdStateName            = "state?"
+	CmdStateName = "state?"
 	// CmdStatsName is the name of the stats command
-	CmdStatsName            = "stats"
+	CmdStatsName = "stats"
 	// CmdSummarizeName is the name of the summarize command
-	CmdSummarizeName        = "summarize"
+	CmdSummarizeName = "summarize"
 	// CmdSummaryName is the name of the summary command
-	CmdSummaryName          = "summary"
+	CmdSummaryName = "summary"
 	// CmdTaintName is the name of the taint command
-	CmdTaintName            = "taint"
+	CmdTaintName = "taint"
 	// CmdTraceName is the name of the trace command
-	CmdTraceName            = "trace"
+	CmdTraceName = "trace"
 	// CmdUnfocusName is the name of the unfocus command
-	CmdUnfocusName          = "unfocus"
+	CmdUnfocusName = "unfocus"
 	// CmdWhereName is the name of the where command
-	CmdWhereName            = "where"
+	CmdWhereName = "where"
 	// Other constants
 
 	// Summarize threshold puts a maximum size above which summary building filters are used
@@ -119,7 +119,7 @@ const (
 	toolLsName               = "argot_system_ls"
 	toolMarkName             = "argot_dataflow_mark"
 	toolMayAliasName         = "argot_focused_mayalias"
-	toolPackageName          = "argot_package"
+	toolPackageName          = "argot_function_package"
 	toolRebuildName          = "argot_program_rebuild"
 	toolReconfigName         = "argot_reload_config"
 	toolScanName             = "argot_scan"

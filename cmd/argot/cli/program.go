@@ -112,6 +112,12 @@ func cmdLoadWholeProgram(o Outputter, sess *Session, command Command, withTest b
 		return false
 	}
 	o.WriteSuccess("loaded program with path %s", strings.Join(sess.args, ", "))
+	o.WriteSuccess("✔ loaded %d packages", len(sess.pkgs))
+	// Attempt to print the main package given current information.
+	// It may fail; it's ok because we don't have the best call graph information yet.
+	if main, err := sess.lpState.FindMain(); err == nil {
+		o.WriteSuccess("✔ main package: %s", main.Pkg.String())
+	}
 	return false
 }
 

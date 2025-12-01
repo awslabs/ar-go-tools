@@ -57,7 +57,7 @@ type Session struct {
 
 	// Available states
 
-	// pkgs contains the packages last loaded by a cmdLoadPackages command
+	// pkgs contains the packages last loaded by a cmdLoadPackages command or by loading the program
 	pkgs     map[string]*packages.Package
 	cfgState *config.State
 	lpState  *loadprogram.State
@@ -224,6 +224,13 @@ func (s *Session) loadProgram() result.Result[loadprogram.State] {
 	lpstate := loadprogram.NewState(s.cfgState)
 	if lpstate.IsOk() {
 		s.lpState = lpstate.Unwrap()
+		// Populate the packages
+		if s.pkgs == nil {
+			s.pkgs = make(map[string]*packages.Package)
+		}
+		for _, pkg := range s.lpState.Packages {
+			s.pkgs[pkg.PkgPath] = pkg
+		}
 	}
 	return lpstate
 }

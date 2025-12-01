@@ -17,6 +17,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,6 +47,9 @@ const codeInvalidParams = -32602
 
 // codeInternalError : -32603 	Internal error 	Internal JSON-RPC error.
 const codeInternalError = -32603
+
+//go:embed dataflow-summary-generation-prompt.txt
+var dataflowPrompt string
 
 // jsonRPCRequest is plain struct representing a request sent to the server
 type jsonRPCRequest struct {
@@ -98,6 +102,18 @@ var allowedCliTools = map[string]bool{
 	cli.CmdUnfocusName:    true,
 }
 
+/*
+*
+serverState is a struct that holds the state of the server. It is passed to all handlers and contains
+the output of the commands and the tools that are available on the server. The serverState struct
+contains the following fields:
+
+- cmdOut: the output of the commands
+- cmdErr: the error output of the commands
+- outputter: the outputter used to write the output of the commands
+- cliSession: the cli session used to execute the commands. Contains all state information relating to program analysis.
+- tools: the tools that are available on the server
+*/
 type serverState struct {
 	cmdOut     *bytes.Buffer
 	cmdErr     *bytes.Buffer
@@ -106,6 +122,12 @@ type serverState struct {
 	tools      map[string]cli.CommandDefinition
 }
 
+/*
+*
+newState creates a new serverState struct and initializes the outputter and cliSession. The
+outputter is used to write the output of the commands and the cliSession is used to execute the
+commands.
+*/
 func newState(configPath string) *serverState {
 	// We need error and regular output buffers to collect output of commands
 	outputterOut := bytes.NewBuffer(nil)
@@ -141,6 +163,10 @@ func main() {
 			state.handleToolsList(req)
 		case "tools/call":
 			state.handleToolCall(req)
+		case "prompts/list":
+			state.handlePromptsList(req)
+		case "prompts/get":
+			state.handlePromptsGet(req)
 		case "notifications/initialized":
 			state.handleInitialized(req)
 		default:
@@ -149,6 +175,17 @@ func main() {
 	}
 }
 
+/*
+*
+handleInitialize is called when the client sends an initialize request. The server responds with a
+serverInfo object that contains information about the server and the capabilities of the server. The
+serverInfo object contains the following fields:
+
+- protocolVersion: the version of the server
+- capabilities: the capabilities of the server
+- serverInfo: the name and version of the server
+- instructions: instructions for the client on how to use the server
+*/
 func (s *serverState) handleInitialize(req jsonRPCRequest) {
 	for commandName, tool := range cli.Commands {
 		if allowedCliTools[commandName] {
@@ -163,6 +200,9 @@ func (s *serverState) handleInitialize(req jsonRPCRequest) {
 			"tools": map[string]interface{}{
 				"listChanged": true,
 			},
+			"prompts": map[string]interface{}{
+				"listChanged": true,
+			},
 		},
 		"serverInfo": map[string]interface{}{
 			"name":    "argot-mcp-server",
@@ -172,15 +212,34 @@ func (s *serverState) handleInitialize(req jsonRPCRequest) {
 			"with the argot-mcp-server are stateful: you load a program to analyze, inspect this program," +
 			"run additional analyses. You can show the source code of a function, show the SSA representation and" +
 			"inspect specific values in the SSA representation. More advanced analyses such as taint and backtrace " +
-			"analysis require loading a configuration file.",
+			"analysis require loading a configuration file. Note: when loading a program, the main package will be" +
+			"called command-line-arguments instead of main.",
 	}
 	s.sendResponse(req.ID, result)
 }
 
+/*
+*
+handleInitialized is called when the client sends a notifications/initialized request. The server
+responds with an empty response.
+*/
 func (s *serverState) handleInitialized(req jsonRPCRequest) {
 	// DO NOTHING
 }
 
+/*
+*
+handleToolsList is called when the client sends a tools/list request. The server responds with a
+list of tools that are available on the server. The list of tools is a list of MCPTool objects. The
+MCPTool object contains the following fields:
+
+- name: the name of the tool
+- description: a description of the tool
+- inputSchema: the input schema of the tool
+- outputSchema: the output schema of the tool, with type, properties and the required args.
+
+Most of the tools are CLI tools defined in the cmd/argot/cli/defs.go
+*/
 func (s *serverState) handleToolsList(req jsonRPCRequest) {
 	serverTools := []tools.MCPTool{
 		{
@@ -219,6 +278,12 @@ func (s *serverState) handleToolsList(req jsonRPCRequest) {
 	s.sendResponse(req.ID, map[string]interface{}{"tools": serverTools})
 }
 
+/*
+*
+handleToolCall is called when the client sends a tools/call request.
+Effectively this is a dispatcher for all tool calls. It is responsible for calling the appropriate
+handler for the tool call.
+*/
 func (s *serverState) handleToolCall(req jsonRPCRequest) {
 	params, ok := req.Params.(map[string]interface{})
 	if !ok {
@@ -233,10 +298,12 @@ func (s *serverState) handleToolCall(req jsonRPCRequest) {
 		return
 	}
 
+	// dispatch depending on tool name
 	switch toolCall.Name {
 	case "go_dependencies":
 		s.handleDependencies(req.ID, toolCall.Arguments)
 	default:
+		// Is this a CLI command?
 		if command, ok := s.tools[toolCall.Name]; ok {
 			s.handleCliCommand(req.ID, toolCall, command)
 		} else {
@@ -245,6 +312,11 @@ func (s *serverState) handleToolCall(req jsonRPCRequest) {
 	}
 }
 
+/*
+*
+handleCliCommand is a method that handles the "tools/call" JSON-RPC method for the CLI tools specifically.
+It is responsible for running the CLI command and sending the response back to the client.
+*/
 func (s *serverState) handleCliCommand(id interface{},
 	toolCall toolCallParams, command cli.CommandDefinition) {
 	defer func() {
@@ -271,6 +343,63 @@ func (s *serverState) handleCliCommand(id interface{},
 	})
 }
 
+/*
+*
+handlePromptsList is a method that handles the "prompts/list" JSON-RPC method.
+It is responsible for returning a list of available prompts.
+*/
+func (s *serverState) handlePromptsList(req jsonRPCRequest) {
+	prompts := []map[string]interface{}{
+		{
+			"name":        "dataflow-summary-generation",
+			"description": "Generate dataflow summaries for Go functions using Argot analysis tools",
+		},
+	}
+	s.sendResponse(req.ID, map[string]interface{}{"prompts": prompts})
+}
+
+/*
+*
+handlePromptsGet is a method that handles the "prompts/get" JSON-RPC method.
+It is responsible for returning the prompt with the given name.
+*/
+func (s *serverState) handlePromptsGet(req jsonRPCRequest) {
+	params, ok := req.Params.(map[string]interface{})
+	if !ok {
+		s.sendError(req.ID, codeInvalidParams, "Invalid params")
+		return
+	}
+
+	name, ok := params["name"].(string)
+	if !ok {
+		s.sendError(req.ID, codeInvalidParams, "name parameter is required")
+		return
+	}
+
+	if name == "dataflow-summary-generation" {
+		result := map[string]interface{}{
+			"description": "Generate dataflow summaries for Go functions using Argot analysis tools",
+			"messages": []map[string]interface{}{
+				{
+					"role": "user",
+					"content": map[string]interface{}{
+						"type": "text",
+						"text": dataflowPrompt,
+					},
+				},
+			},
+		}
+		s.sendResponse(req.ID, result)
+	} else {
+		s.sendError(req.ID, codeMethodNotFound, fmt.Sprintf("Prompt %s not found", name))
+	}
+}
+
+/*
+*
+handleDependencies is a method that handles the "go_dependencies" tool call.
+It is responsible for running the dependency analysis and sending the response back to the client.
+*/
 func (s *serverState) handleDependencies(id interface{}, args map[string]interface{}) {
 	// Extract paths
 	pathsInterface, ok := args["paths"]
@@ -315,6 +444,12 @@ func (s *serverState) handleDependencies(id interface{}, args map[string]interfa
 	})
 }
 
+/*
+*
+runDependencyAnalysis is a method that runs the dependency analysis for the given paths.
+It returns a slice of maps, each containing the analysis results for a target.
+The analysis results include the target name, the dependencies, and any errors or logs.
+*/
 func runDependencyAnalysis(paths []string, locThreshold int, usageThreshold float64) ([]map[string]interface{}, error) {
 	cfg := config.NewDefault()
 	cfg.SummarizeOnDemand = true
