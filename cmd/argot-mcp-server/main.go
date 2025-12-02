@@ -323,15 +323,46 @@ func (s *serverState) handleCliCommand(id interface{},
 		s.cmdErr.Reset()
 		s.cmdOut.Reset()
 	}()
+
+	// Recover from any panic caused by the command; we'd rather reinitialize the cli than crash
+	// the MCP server.
+	defer func() {
+		if r := recover(); r != nil {
+			s.cliSession.LoadConfig(s.outputter, true)
+			s.sendError(id, codeInternalError, "internal panic, reinitialized session")
+		}
+	}()
+
+	// Capture stderr output on those commands, so that it doesn't interfere with the
+	// MCP server's communication
+	var buf bytes.Buffer
+	// Save the original stderr
+	originalStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
 	// Extract command name
 	commandArgs, translationError := command.SchemaTranslation(toolCall.Arguments)
 	if translationError != nil {
 		s.sendError(id, codeInvalidParams, translationError.Error())
 		return
 	}
-	// Run the command
+	// Run the command, catch any resulting panic
 	command.Function(s.outputter, s.cliSession, commandArgs, false)
-	// Collect output
+
+	// Restore the original stderr
+	w.Close()
+	os.Stderr = originalStderr
+	_, err := io.Copy(&buf, r)
+	if err != nil {
+		s.sendError(id, codeInternalError, fmt.Sprintf("Error reading from pipe: %v\n", err))
+		return
+	}
+	// Collect outputs
+	stdErrs := buf.String()
+	if stdErrs != "" {
+		s.sendError(id, codeInternalError, stdErrs)
+		return
+	}
 	errs := s.cmdErr.String()
 	if errs != "" {
 		s.sendError(id, codeInternalError, errs)
