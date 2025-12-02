@@ -58,7 +58,7 @@ func Run(flags tools.CommonFlags) error {
 	// Unset all pre-defined summaries
 	summaries.UnsetStdLibSummaries()
 	// Hardcode log level for now (TODO make this an option)
-	cfg.LogLevel = int(config.DebugLevel)
+	cfg.LogLevel = int(config.TraceLevel)
 
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot bench tool - " + analysis.Version))
@@ -152,7 +152,7 @@ func Run(flags tools.CommonFlags) error {
 }
 
 const defaultIntraTimeout = 500 * time.Millisecond
-const defaultInterTimeout = 3 * time.Minute
+const defaultInterTimeout = 30 * time.Second
 
 func runBenchDemand(state *dataflow.State) []funcReport {
 	state.Config.DataflowProblems.SummarizeOnDemand = true

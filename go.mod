@@ -15,6 +15,7 @@ require (
 )
 
 require (
+	github.com/crillab/gophersat v1.4.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect

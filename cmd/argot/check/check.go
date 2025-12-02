@@ -180,7 +180,7 @@ func checkSummaries(ctx context.Context, s *dataflow.State, parsedSummaries []su
 	for _, summary := range parsedSummaries {
 		targetName := summary.Name()
 		logger.PushContext(formatutil.Faint(targetName))
-		logger.Infof("Checking summary...")
+		logger.Infof("Checking summary via %v...", via)
 		soundness, err := check.CheckSummary(ctx, s, summary, via)
 		if err != nil {
 			// continue checking the rest of the summaries but return all the errors when finished

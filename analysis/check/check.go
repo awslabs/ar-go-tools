@@ -54,9 +54,34 @@ func CheckSummary(ctx context.Context, s *dataflow.State, summary summaries.Fron
 		return checkSummaryMostGeneral(s, summary, start, false)
 	case Types:
 		return checkSummaryMostGeneral(s, summary, start, true)
+	case Immutability:
+		return checkSummaryImmutability(ctx, s, summary, start)
 	default:
 		return SoundnessResult{}, fmt.Errorf("unsupported soundness checking method: %v", via)
 	}
+}
+
+func checkSummaryImmutability(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
+	f, err := functionOfSummary(s, summary)
+	if err != nil {
+		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
+	}
+
+	summ, ok := s.FlowGraph.Summaries[f]
+	if !ok {
+		return SoundnessResult{}, fmt.Errorf("summary has not been created for function %s", f)
+	}
+
+	if !summ.Constructed {
+		if _, err := dataflow.RunIntraProcedural(ctx, s, summ); err != nil {
+			return SoundnessResult{},
+				fmt.Errorf("failed to run intra-procedural analysis for function %s: %v", summ.Parent, err)
+		}
+	}
+
+	edges := findSubspecs(s, summ, summary)
+	fmt.Println(edges)
+	return SoundnessResult{}, nil
 }
 
 func checkSummaryNaive(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {

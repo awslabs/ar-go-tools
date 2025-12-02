@@ -17,6 +17,7 @@ package check
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -29,11 +30,14 @@ type SoundnessResult struct {
 	Want     summaries.FrontendDataflowSummary // Want is the summary being checked
 	Got      summaries.DetailedSummary         // Got is the actual summary computed, if any
 	GotGraph *dataflow.SummaryGraph            // GotGraph is the actual summary graph computed, if any
-	IsSound  bool                              // IsSound is true if Want is an overapproximation
+	IsSound  bool                              // IsSound is true if Want is an overapproximation of Got
 	Time     time.Duration                     // Time is the time spent to calculate the result
 }
 
 func (r SoundnessResult) MarshalJSON() ([]byte, error) {
+	if r.Want == nil {
+		return nil, fmt.Errorf("Want summary is nil for function %s", r.Name)
+	}
 	b := &bytes.Buffer{}
 	raw := rawSoundnessResult{
 		Name:        r.Name,

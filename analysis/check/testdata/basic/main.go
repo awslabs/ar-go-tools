@@ -125,6 +125,23 @@ func testTwoArgInter() {
 	fmt.Println(twoArgInter(1, 2)) // 6
 }
 
+func threeArgInter(no *int, a *int, b *int) int {
+	x := add2(*a, *a, no)
+	x += add2(*a, *b, no)
+	*b = x
+	return x
+}
+
+func add2(a int, b int, no *int) int {
+	return a + b
+}
+
+func testThreeArgInter() {
+	x, y, z := 0, 1, 2
+	res := threeArgInter(&x, &y, &z)
+	fmt.Println(res) // 5
+}
+
 func main() {
 	testSingleArgIntraOut()
 	testSingleArgInterNone()
@@ -134,4 +151,5 @@ func main() {
 	testSingleArgInterGlobal()
 	testTwoArgInterBool()
 	testTwoArgInter()
+	testThreeArgInter()
 }

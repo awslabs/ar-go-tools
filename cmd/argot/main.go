@@ -16,6 +16,8 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -60,6 +62,10 @@ Examples:
 
 //gocyclo:ignore
 func main() {
+	go func() {
+		http.ListenAndServe("localhost:6060", nil)
+	}()
+
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "error: expected subcommand\n%s\n", usage)
 		os.Exit(2)

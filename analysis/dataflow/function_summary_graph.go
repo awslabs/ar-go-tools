@@ -215,7 +215,7 @@ func MakeMostGeneral(g *SummaryGraph) {
 			if input == output {
 				continue
 			}
-			if pointer.CanPoint(input.Type()) && pointer.CanPoint(output.Type()) {
+			if pointer.CanPoint(output.Type()) {
 				g.addParamEdgeByPos(input.Index(), output.Index())
 			}
 		}
