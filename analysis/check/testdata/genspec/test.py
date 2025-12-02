@@ -22,18 +22,12 @@ must be (in terms of dataflow edges) in order to satisfy f's
 summary, while MINIMIZING the number of must-not-flow edges
 (i.e., finding the most general valid summary of g).
 
-For the summary of f: a->ret, a->b, b->ret,
-the edges in g should be: a->b, b->a, a->ret, b->ret.
+In order to satisfy the summary of f, the minimal
+must-not-flow edges for g are:
+no->a, no->b, no->ret.
 
-In order to satisfy the summary of f, the must-not-flow edges
-for g are: no->a, no->b, no->ret, a->no, b->no.
-
-The maximal must-not-flow edges for f are:
-no->a, no->b, no->ret, a->no, a->ret, b->no, b->a.
-
-It is fine for a to never flow to ret in g because
-f@param_a flows to x via the first call to g, which
-is enough to satisfy f's summary.
+This gives g a valid summary of:
+a->b, a->no, a->ret, b->a, b->no, b->ret.
 
 It is fine for a and b to flow to each other even though
 this is impossible in practice because it does not change
@@ -45,21 +39,13 @@ import z3
 
 
 def main():
-    # z3.set_param("sat.random_seed", 0)
     s = z3.Optimize()  # Use optimized solver for MAXSAT
 
     # Summary nodes for f (input and output)
-    f_nodes = [
-        "f@param_no",
-        "f@param_a",
-        "f@param_b",
-        "f@ret",
-    ]
-    # Summary nodes for g (input and output)
-    g_nodes = ["g@param_a", "g@param_b", "g@param_no", "g@ret"]
+    f_nodes = ["f@param_no", "f@param_a", "f@param_b", "f@ret"]
 
-    # Intra-procedural edges (known)
-    intra = [
+    # Intra-procedural edges for f (known)
+    intra_f = [
         ("f@param_a", "f@call_g0_arg_0"),
         ("f@param_a", "f@call_g0_arg_1"),
         ("f@param_no", "f@call_g0_arg_2"),
@@ -73,19 +59,26 @@ def main():
     ]
     # Inter-procedural edges (known)
     inter = [
-        ("f@call_g0_arg_0", "g@param_a"),
-        ("f@call_g0_arg_1", "g@param_b"),
-        ("f@call_g0_arg_2", "g@param_no"),
-        ("f@call_g1_arg_0", "g@param_a"),
-        ("f@call_g1_arg_1", "g@param_b"),
-        ("f@call_g1_arg_2", "g@param_no"),
-        ("g@ret", "f@call_g0"),
-        ("g@ret", "f@call_g1"),
+        ("f@call_g0_arg_0", "g0@param_a"),
+        ("f@call_g0_arg_1", "g0@param_b"),
+        ("f@call_g0_arg_2", "g0@param_no"),
+        ("f@call_g1_arg_0", "g1@param_a"),
+        ("f@call_g1_arg_1", "g1@param_b"),
+        ("f@call_g1_arg_2", "g1@param_no"),
+        ("g0@ret", "f@call_g0"),
+        ("g1@ret", "f@call_g1"),
     ]
-    known = intra + inter
+    known = intra_f + inter
+
+    # Summary nodes for g (input and output)
+    g_nodes = ["g@param_a", "g@param_b", "g@param_no", "g@ret"]
 
     # Unknown dataflow edges (most-general summary of g):
-    unknown = list(itertools.permutations(g_nodes, 2))
+    g0_nodes = map(lambda n: n.replace("g", "g0"), g_nodes)
+    g1_nodes = map(lambda n: n.replace("g", "g1"), g_nodes)
+    intra_g0 = list(itertools.permutations(g0_nodes, 2))
+    intra_g1 = list(itertools.permutations(g1_nodes, 2))
+    unknown = intra_g0 + intra_g1
 
     # Summary we want to check
     want_summary = {
@@ -98,10 +91,15 @@ def main():
     for a, b in known:
         s.add(may_flow(a, b))
 
-    # Minimize must-not-flow unknown edges (maximize must-flow)
-    # Sort for deterministic ordering
-    for a, b in sorted(unknown):
-        s.add_soft(may_flow(a, b), weight=1)
+    # Ensure g0 and g1 have identical summaries (same function)
+    for a, b in intra_g0:
+        a1 = a.replace("g0", "g1")
+        b1 = b.replace("g0", "g1")
+        s.add(may_flow(a, b) == may_flow(a1, b1))
+
+    # Minimize must-not-flow unknown edges (maximize may-flow)
+    for a, b in unknown:
+        s.add_soft(may_flow(a, b))
 
     # Add transitivity constraints for all nodes
     all_nodes = set()
@@ -109,24 +107,25 @@ def main():
         all_nodes.add(a)
         all_nodes.add(b)
 
-    for a, b, c in itertools.permutations(all_nodes, 3):
-        s.add(z3.Implies(z3.And(may_flow(a, b), may_flow(b, c)), may_flow(a, c)))
+    for a, b, c in itertools.product(all_nodes, repeat=3):
+        if a != b and b != c and a != c:
+            s.add(z3.Implies(z3.And(may_flow(a, b), may_flow(b, c)), may_flow(a, c)))
 
     # Require want_summary must-not-flow edges to be true
     for a, b in set(itertools.permutations(f_nodes, 2)) - want_summary:
         s.add(z3.Not(may_flow(a, b)))
 
-    # For each required summary edge, find all possible paths
+    # Compute transitive may-flow edges by enumerating all possible paths
+    # from a summary input node to an output node.
     for src, dst in want_summary:
         paths = find_paths_through_unknown(src, dst, known, unknown)
         if paths:
             # At least one path must have all its unknown edges present
-            # TODO not needed
             path_constraints = []
             for path_unknown_edges in paths:
                 if path_unknown_edges:
                     path_constraints.append(
-                        z3.And(*[may_flow(u, v) for u, v in path_unknown_edges])
+                        z3.And(may_flow(u, v) for u, v in path_unknown_edges)
                     )
             if path_constraints:
                 s.add(z3.Or(*path_constraints))
@@ -136,10 +135,9 @@ def main():
         exit(1)
 
     m = s.model()
-    print(m)
 
-    print("Must-not-flow dataflow edges for g:")
-    for a, b in itertools.permutations(g_nodes, 2):
+    print("Must-not-flow unknown dataflow edges:")
+    for a, b in sorted(unknown):
         if z3.is_false(m.eval(may_flow(a, b))):
             print(f"  {a} -/-> {b}")
 
