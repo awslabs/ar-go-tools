@@ -19,8 +19,8 @@ Given intra-procedural dataflow results in `intra` and
 the dataflow summary for function f that we want to check
 in `want_summary`, this script infers what g's implementation
 must be (in terms of dataflow edges) in order to satisfy f's
-summary, while MAXIMIZING the number of must-not-flow edges
-(i.e., finding the most restrictive valid summary of g).
+summary, while MINIMIZING the number of must-not-flow edges
+(i.e., finding the most general valid summary of g).
 
 For the summary of f: a->ret, a->b, b->ret,
 the edges in g should be: a->b, b->a, a->ret, b->ret.
@@ -96,12 +96,12 @@ def main():
 
     # Add constraints for known edges
     for a, b in known:
-        s.add(reach(a, b))
+        s.add(may_flow(a, b))
 
-    # Minimize unknown edges (maximize must-not-flow)
+    # Minimize must-not-flow unknown edges (maximize must-flow)
     # Sort for deterministic ordering
     for a, b in sorted(unknown):
-        s.add_soft(z3.Not(reach(a, b)), weight=1)
+        s.add_soft(may_flow(a, b), weight=1)
 
     # Add transitivity constraints for all nodes
     all_nodes = set()
@@ -110,24 +110,23 @@ def main():
         all_nodes.add(b)
 
     for a, b, c in itertools.permutations(all_nodes, 3):
-        s.add(z3.Implies(z3.And(reach(a, b), reach(b, c)), reach(a, c)))
+        s.add(z3.Implies(z3.And(may_flow(a, b), may_flow(b, c)), may_flow(a, c)))
 
-    # Require want_summary edges to be true
-    for a, b in want_summary:
-        s.add(reach(a, b))
+    # Require want_summary must-not-flow edges to be true
     for a, b in set(itertools.permutations(f_nodes, 2)) - want_summary:
-        s.add(z3.Not(reach(a, b)))
+        s.add(z3.Not(may_flow(a, b)))
 
-    # For each required summary edge, find all possible paths and require at least one exists
+    # For each required summary edge, find all possible paths
     for src, dst in want_summary:
         paths = find_paths_through_unknown(src, dst, known, unknown)
         if paths:
             # At least one path must have all its unknown edges present
+            # TODO not needed
             path_constraints = []
             for path_unknown_edges in paths:
                 if path_unknown_edges:
                     path_constraints.append(
-                        z3.And(*[reach(u, v) for u, v in path_unknown_edges])
+                        z3.And(*[may_flow(u, v) for u, v in path_unknown_edges])
                     )
             if path_constraints:
                 s.add(z3.Or(*path_constraints))
@@ -137,20 +136,25 @@ def main():
         exit(1)
 
     m = s.model()
+    print(m)
 
     print("Must-not-flow dataflow edges for g:")
     for a, b in itertools.permutations(g_nodes, 2):
-        if z3.is_false(m.eval(reach(a, b))):
+        if z3.is_false(m.eval(may_flow(a, b))):
             print(f"  {a} -/-> {b}")
 
 
-def reach(a, b):
+def may_flow(a, b):
     return z3.Bool(f"r_{a}->{b}")
 
 
 def find_paths_through_unknown(src, dst, known, unknown):
     """
     Find all paths from src to dst, returning the unknown edges each path uses.
+
+    Returns a list of paths, where each path is a list of unknown edges
+    that must be present for that path to exist. Known edges are always
+    present, so they're not included in the returned paths.
     """
     from collections import deque
 
