@@ -168,38 +168,68 @@ def find_paths_through_unknown(src, dst, known, unknown):
     that must be present for that path to exist. Known edges are always
     present, so they're not included in the returned paths.
     """
-    from collections import deque
-
     # Build adjacency lists
     known_graph = {}
     unknown_graph = {}
+
     for a, b in known:
-        known_graph.setdefault(a, []).append(b)
+        if a not in known_graph:
+            known_graph[a] = []
+        known_graph[a].append(b)
+
     for a, b in unknown:
-        unknown_graph.setdefault(a, []).append(b)
+        if a not in unknown_graph:
+            unknown_graph[a] = []
+        unknown_graph[a].append(b)
 
-    # BFS to find all paths, tracking unknown edges used
+    # Iterative DFS with explicit stack
+    # Stack entry: (node, unknown_edges_used, visited_set)
     paths = []
-    queue = deque([(src, [], [])])  # (current_node, unknown_edges_used, visited)
+    stack = [(src, [], set())]
 
-    while queue:
-        node, unknown_used, visited = queue.popleft()
+    while len(stack) > 0:
+        node, unknown_used, visited = stack.pop()
 
+        # Check if we reached destination
         if node == dst:
-            paths.append(unknown_used)
+            path_copy = []
+            for edge in unknown_used:
+                path_copy.append(edge)
+            paths.append(path_copy)
             continue
 
         if node in visited:
             continue
-        visited = visited + [node]
 
-        # Follow known edges
-        for next_node in known_graph.get(node, []):
-            queue.append((next_node, unknown_used, visited))
+        visited_copy = set()
+        for v in visited:
+            visited_copy.add(v)
+        visited_copy.add(node)
 
-        # Follow unknown edges
-        for next_node in unknown_graph.get(node, []):
-            queue.append((next_node, unknown_used + [(node, next_node)], visited))
+        # Get neighbors
+        known_neighbors = known_graph.get(node, [])
+        unknown_neighbors = unknown_graph.get(node, [])
+
+        # Process known edges (in reverse order for DFS)
+        i = len(known_neighbors) - 1
+        while i >= 0:
+            next_node = known_neighbors[i]
+            if next_node not in visited_copy:
+                stack.append((next_node, unknown_used, visited_copy))
+            i = i - 1
+
+        # Process unknown edges (in reverse order for DFS)
+        i = len(unknown_neighbors) - 1
+        while i >= 0:
+            next_node = unknown_neighbors[i]
+            if next_node not in visited_copy:
+                # Add edge to path
+                new_unknown = []
+                for edge in unknown_used:
+                    new_unknown.append(edge)
+                new_unknown.append((node, next_node))
+                stack.append((next_node, new_unknown, visited_copy))
+            i = i - 1
 
     return paths
 
