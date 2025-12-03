@@ -1,0 +1,153 @@
+# Argot Configuration File Generation Task
+
+You are tasked with generating a configuration file for Argot, a static analysis tool for Go programs. The config file defines analysis targets and global options.
+
+## Configuration File Format
+
+Generate configuration files in YAML format with the following structure:
+
+```yaml
+options:
+  project-root: "../../"           # Root directory for relative paths
+  reports-dir: "logs/argot"        # Directory for analysis reports
+  log-level: 3                     # Verbosity (1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
+  report-paths: true               # Generate detailed path reports
+  analysis-options:
+    unsafe-max-depth: 15           # Limit call depth (unsafe if > 0)
+    max-alarms: 30                 # Maximum number of alarms to report
+
+targets:
+  - name: "target-name"
+    files: ["path/to/file1.go", "path/to/file2.go"]
+    platform: "linux"              # Optional: linux, windows, darwin, etc.
+```
+
+## Configuration Sections
+
+### Global Options
+
+The `options` section contains global analysis settings:
+
+- `project-root`: Root directory for resolving relative file paths (default: config file directory)
+- `reports-dir`: Directory where analysis reports will be written (default: current directory)
+- `log-level`: Verbosity level - 1 (Error), 2 (Warn), 3 (Info), 4 (Debug), 5 (Trace)
+- `report-paths`: Whether to generate detailed path reports for dataflow analyses (default: false)
+- `report-coverage`: Whether to report coverage information (default: false)
+- `pkg-filter`: Regex pattern to filter which packages to analyze
+- `coverage-filter`: Regex pattern to filter which files to report coverage for
+
+### Analysis Options
+
+Under `options.analysis-options`:
+
+- `unsafe-max-depth`: Maximum call depth for analysis (0 = unlimited, >0 = unsafe but faster)
+- `max-alarms`: Maximum number of alarms to report before stopping
+
+### Targets
+
+The `targets` section defines analysis targets (sets of files that form a program):
+
+- `name`: Unique identifier for the target (required)
+- `files`: List of Go source files or package paths (required)
+- `platform`: Target platform (optional) - linux, windows, darwin, etc.
+
+File paths are relative to:
+- The config file directory (by default)
+- The `project-root` directory (if specified in options)
+
+### Special Target
+
+The special target name `"all"` can be used in analysis problems to apply to all defined targets.
+
+## Task Instructions
+
+1. **Understand the project structure**: Ask about the Go project layout and main entry points
+2. **Identify targets**: Determine which programs/executables need to be analyzed
+3. **Set appropriate options**: Configure logging, reporting, and analysis parameters
+4. **Use relative paths**: Make paths relative to project-root for portability
+5. **Consider platforms**: Add platform-specific targets if the code has build tags
+
+## Examples
+
+**Single target configuration:**
+```yaml
+options:
+  project-root: "../"
+  reports-dir: "analysis-reports"
+  log-level: 3
+  report-paths: true
+
+targets:
+  - name: "main-service"
+    files:
+      - "cmd/service/main.go"
+```
+
+**Multi-target with platform variants:**
+```yaml
+options:
+  project-root: "../../"
+  reports-dir: "logs/argot"
+  log-level: 4
+  report-paths: true
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 50
+
+targets:
+  - name: "daemon-unix"
+    files:
+      - "core/daemon.go"
+      - "core/daemon_unix.go"
+    platform: "linux"
+  
+  - name: "daemon-windows"
+    files:
+      - "core/daemon.go"
+      - "core/daemon_windows.go"
+    platform: "windows"
+  
+  - name: "cli-tool"
+    files:
+      - "cmd/cli/main.go"
+```
+
+**Minimal configuration:**
+```yaml
+targets:
+  - name: "my-app"
+    files: ["./cmd/"]
+```
+
+## Important Notes
+
+- **File paths**: Use forward slashes (/) even on Windows. Tip: use relative file paths, start with `./` for relative paths to directories.
+- **Relative paths**: Paths are relative to config file location or project-root
+- **Target names**: Must be unique within the configuration
+- **Platform**: Only needed if code has platform-specific build tags and files
+- **Log levels**: Use 3 (Info) for normal use, 4 (Debug) for troubleshooting, 5 (Trace) only for small programs
+- **Unsafe options**: Options prefixed with `unsafe-` may affect soundness of analysis
+
+## Workflow
+
+1. Ask the user about their project structure
+2. Identify the main entry points (main packages, executables)
+3. Determine if there are platform-specific variants
+4. **MANDATORY: Verify each target can be loaded** - For EVERY target you plan to include in the config, you MUST call argot_load with the exact file paths you will put in the config to verify they load successfully. Do NOT skip this step. If a target fails to load, adjust the file paths or target configuration until it loads successfully.
+5. Ask about desired logging and reporting preferences
+6. Generate the YAML configuration file
+
+## Required Information
+
+To generate a configuration file, you need:
+
+1. **Project structure** - Location of Go source files
+2. **Entry points** - Which programs/packages to analyze
+3. **Project root** - Base directory for relative paths (optional)
+4. **Platform variants** - Whether code has platform-specific builds (optional)
+
+## Example Request
+
+"Generate a config file for my Go project. The main service is in `./cmd/server/main.go` and there's a CLI tool in `./cmd/cli/main.go`. The config file will be in a `config/` directory at the project root."
+
+Generate only the YAML configuration file. Include comments to explain the settings. Do not add dataflow-problems, taint-tracking, slicing, or syntactic-problems sections unless explicitly requested.

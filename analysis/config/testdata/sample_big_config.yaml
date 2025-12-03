@@ -1,0 +1,218 @@
+# All the general options of Argot live here
+options:
+  project-root: "../../" # This file is in Tools/src
+  reports-dir: "logs/argot"
+  coverage-filter: "project-name" # in case coverage data is used, only generate coverage for the project-name
+  log-level: 3 # Log level: DEBUG
+  report-paths: true # print paths on stdout
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 30
+pointer-config:
+  # The following function's effect on aliasing is ignored; it creates too many false positives.
+  # Otherwise they may cause most error values to be aliased.
+  unsafe-no-effect-functions:
+    - fmt.Errorf
+    - log.Errorf
+targets:
+  - name: "project-name-unix"
+    files: ["core/daemon.go", "core/daemon_unix.go", "core/daemon_parser.go"]
+  - name: "project-name-windows"
+    files: ["core/daemon.go", "core/daemon_windows.go", "core/daemon_parser.go"]
+    platform: "windows"
+  - name: "daemon-worker-unix"
+    files: ["daemon/daemon.go", "daemon/daemon_unix.go", "daemon/daemon_parser.go"]
+  - name: "daemon-worker-windows"
+    files: ["daemon/daemon.go", "daemon/daemon_windows.go", "daemon/daemon_parser.go"]
+    platform: "windows"
+  - name: "updater-unix"
+    files: ["daemon/update/updater/updater.go", "daemon/update/updater/updater_unix.go"]
+  - name: "toolname-cli"
+    files: ["daemon/cli-main/cli-main.go"]
+  - name: "toolname-document-worker"
+    files: ["daemon/framework/processor/executer/outofproc/worker/main.go"]
+  - name: "toolname-session-logger" # Do not use, but keep here until looger is fully removed
+    files: ["daemon/session/logging/main.go"]
+  - name: "toolname-session-worker"
+    files: ["daemon/framework/processor/executer/outofproc/sessionworker/main.go"]
+  - name: "toolname-setup-cli"
+    files: ["daemon/setupcli/setupcli.go"]
+dataflow-problems:
+  summarize-on-demand: true
+  field-sensitive-funcs: [".*"]
+  user-specs:
+    - "Tools/src/specifications/daemon-specs.json"
+    - "Tools/src/specifications/sdk-specs.json"
+    - "Tools/src/specifications/std-specs.json"
+  # The taint tracking problems
+  taint-tracking:
+    - tag: "credential-logging"
+      description: "Checking that credentials don't get logged."
+      targets:
+        - project-name-unix
+        - project-name-windows
+        - daemon-worker-unix
+        - daemon-worker-windows
+        - updater-unix
+        - toolname-cli
+        - toolname-document-worker
+        - toolname-session-worker
+        - toolname-setup-cli
+      severity: "HIGH" # Credentials should never get logged.
+      unsafe-skip-bound-labels: true
+      sources:
+        - package: ".*"
+          method: "RemoteRetrieve"
+        - package: "credentials"
+          method: "Get"
+      sinks:
+        - context: "project-name"
+          method: "^(Log|Error|Warn|Debug|Info|Print).*"
+        - package: "github.com/aws/project-name/daemon/session/controlchannel"
+          method: "SendMessage"
+      sanitizers:
+        # Signing using the credentials doesn't taint the signed data by definition!
+        - package: ".*signer/v4"
+          method: "Sign"
+        - package: ".*signer/v4"
+          method: "signWithBody"
+        - package: ".*ec2roleprovider"
+          method: "^GetInstanceRegion$"
+      filters:
+        - type: "^error"
+        - type: "^int"
+        - package: "log"
+          type: "T"
+    - tag: "toolname-parameter-logging"
+      description: "Checking that toolname parameters don't get logged."
+      targets:
+        - project-name-unix
+        - project-name-windows
+        - daemon-worker-unix
+        - daemon-worker-windows
+        - updater-unix
+        - toolname-cli
+        - toolname-document-worker
+        - toolname-session-worker
+        - toolname-setup-cli
+      unsafe-skip-bound-labels: true
+      sources:
+        - package: "github.com/aws/project-name/daemon/toolname/toolnameparameterresolver"
+          method: "getParametersFromtoolnameParameterStore" # where the parameters are retrieved
+      sinks:
+        - context: "project-name"
+          method: "^(Log|Error|Warn|Debug|Info|Print).*"
+      sanitizers:
+        - package: "toolnameparameterresolver"
+          method: "(GetName|GetType)" # Allow logging the type and name of the parameter
+      filters:
+        - type: "^error" # Error shouldn't contain data from parameter since fmt.Errorf is a sink
+        - type: "^int" # Allow logging integers derived from data (counts. length,..)
+        - package: "log" # Don't track the log itself
+          type: "T"
+  # Slicing problems are backwards data flow problems: the tool tracks data backwards from a backtrace point,
+  # and the trace generated forms a "slice" of the program that explains how the data was generated.
+  slicing:
+    - tag: "must-compile-must-be-const"
+      description: "Checking that regexp.MustCompile arguments are statically defined to avoid panics."
+      override-analysis-options:
+        unsafe-max-depth: 5 # if we need more than 5 calls to get to the const, it's a red flag!
+      targets:
+        - project-name-unix
+        - project-name-windows
+        - daemon-worker-unix
+        - daemon-worker-windows
+        - updater-unix
+        - toolname-cli
+        - toolname-document-worker
+        - toolname-session-worker
+        - toolname-setup-cli
+      must-be-static: true
+      backtracepoints:
+        - package: "regexp"
+          method: "^MustCompile$"
+syntactic-problems:
+  cond-checks:
+    - tag: "resource-check-availability"
+      description: "daemon must check resource availability before performing changes"
+      targets:
+        - project-name-unix
+        - project-name-windows
+        - daemon-worker-unix
+        - daemon-worker-windows
+        - updater-unix
+        - toolname-cli
+        - toolname-document-worker
+        - toolname-session-worker
+        - toolname-setup-cli
+      call:
+        - method: DownloadUpdater$
+        - method: DownloadManifest
+          context: .*plugins/updatetoolnamedaemon.* # only check calls in this package
+      preconditions:
+        # disk space must be sufficient, and calling the function must not return an error
+        - precondition: ["IsDiskSpaceSufficientForUpdate(...)#0", "!(IsDiskSpaceSufficientForUpdate(...)#1 != nil:error)"]
+  # Check that the tls config field MinVersion is always set to TLS 1.2
+  struct-inits:
+    - tag: "init-tls-v12"
+      description: "Check that the tls.Config is initialized with TLS 1.2"
+      targets:
+        - project-name-unix
+        - project-name-windows
+        - daemon-worker-unix
+        - daemon-worker-windows
+        - updater-unix
+        - toolname-cli
+        - toolname-document-worker
+        - toolname-session-worker
+        - toolname-setup-cli
+      struct:
+        type: "crypto/tls.Config"
+      fields-set:
+        - field: "MinVersion"
+          value:
+            package: "crypto/tls"
+            const: "VersionTLS12"
+      # filter dependency false-positives
+      filters:
+        - package: ".*github.com/aws/aws-sdk-go.*"
+          method: ".*"
+        - package: ".*github.com/go-git.*"
+          method: ".*"
+        - package: ".*github.com/gorilla.*"
+          method: ".*"
+    - tag: "check-http-redirect"
+      struct:
+        type: "net/http.Client"
+      targets:
+        - project-name-unix
+        - project-name-windows
+        - daemon-worker-unix
+        - daemon-worker-windows
+        - updater-unix
+        - toolname-cli
+        - toolname-document-worker
+        - toolname-session-worker
+        - toolname-setup-cli
+      fields-set:
+        - field: "CheckRedirect"
+          value:
+            package: "github.com/aws/project-name/daemon/network"
+            method: "DisableHTTPDowngrade"
+      # filter dependency false-positives
+      filters:
+        - package: ".*github.com/google.*"
+          method: ".*"
+        - package: ".*github.com/go-git.*"
+          method: ".*"
+        # Based on the comment in this function, the below 2 functions are used for http calls too. Hence, it is allowlisted
+        - package: ".*github.com/aws/project-name/daemon/fileutil/artifact"
+          method: "httpDownload"
+        - package: ".*github.com/aws/project-name/daemon/plugins/downloadcontent/httpresource"
+          method: "NewHTTPResource"
+        - package: "golang.org/x/oauth2"
+          method: "NewClient"
+      must-reinit:
+        - package: "golang.org/x/oauth2"
+          method: "NewClient"
+

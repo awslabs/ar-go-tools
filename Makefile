@@ -48,10 +48,12 @@ argot-install:
 	go install github.com/awslabs/ar-go-tools/cmd/argot
 
 mcp-install:
+	cd cmd/argot-mcp-server && go generate
 	go install github.com/awslabs/ar-go-tools/cmd/argot-mcp-server
 
 mcp-build: go.mod cmd/argot-mcp-server/*.go
-	go build -o bin/argot-mcp-server ./cmd/argot-mcp-server/main.go
+	cd cmd/argot-mcp-server && go generate
+	go build -o bin/argot-mcp-server ./cmd/argot-mcp-server
 
 racerg-build: go.mod cmd/racerg/*.go
 	go build -o bin/racerg cmd/racerg/*.go

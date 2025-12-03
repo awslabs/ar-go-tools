@@ -12,31 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cli
+package tools
 
-import (
-	"strings"
-)
+// MCPTool is the simple struct returned in the result of a response for a tool description request
+type MCPTool struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema MCPInputSchema `json:"inputSchema"`
+}
 
-// autoCompleteOfAnalyzerState provides the auto-completion functionality for the command-line interface
-func autoCompleteOfAnalyzerState(_ *Session) func(string, int, rune) (string, int, bool) {
-	f := func(line string, pos int, key rune) (string, int, bool) {
-		if key == '\t' {
-			if len(line) > 1 && pos == len(line) {
-				pc := 0
-				compl := line
-				for cmd := range Commands {
-					if strings.HasPrefix(cmd, line) {
-						pc++
-						compl = cmd
-					}
-				}
-				if pc == 1 {
-					return compl, len(compl), true
-				}
-			}
-		}
-		return "", 0, false
-	}
-	return f
+// An MCPInputSchema describes the input schema of a tool
+type MCPInputSchema struct {
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties"`
+	Required   []string               `json:"required"`
 }

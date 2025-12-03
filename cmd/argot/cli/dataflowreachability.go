@@ -20,40 +20,39 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/taint"
-	"golang.org/x/term"
 )
 
 // cmdTrace runs a taint-like analysis, but starting from a custom node
-func cmdTrace(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdTrace(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: show information about nodes reachable from another node using data edges.\n",
-			tt.Escape.Blue, cmdTraceName, tt.Escape.Reset)
-		writeFmt(tt, "\t    Argument is a regex matching node ids.\n")
-		writeFmt(tt, "\t    -h    print this help message\n")
+		o.Write("\t- %s%s%s: show information about nodes reachable from another node using data edges.\n",
+			o.EscBlue(), CmdTraceName, o.EscReset())
+		o.Write("\t    Argument is a regex matching node ids.\n")
+		o.Write("\t    -h    print this help message\n")
 
 		return false
 	}
 
-	res := sess.loadDataflowAnalysis()
+	res := sess.loadDataflowAnalysis(o)
 	if res.IsErr() {
-		WriteErr(tt, "Failed to load dataflow analysis: %s", res)
+		o.WriteErr("Failed to load dataflow analysis: %s", res)
 		return false
 	}
 	c := res.Unwrap()
 
 	if !c.FlowGraph.IsBuilt() {
-		WriteErr(tt, "The inter-procedural dataflow graph is not built!")
-		WriteErr(tt, "Please run `%s` before calling `trace`.", cmdBuildGraphName)
+		o.WriteErr("The inter-procedural dataflow graph is not built!")
+		o.WriteErr("Please run `%s` before calling `trace`.", CmdBuildGraphName)
 		return false
 	}
 
 	if len(command.Args) < 1 {
-		WriteErr(tt, "Missing one positional argument for %s.", cmdTraceName)
+		o.WriteErr("Missing one positional argument for %s.", CmdTraceName)
 		return false
 	}
 	r, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return false
 	}
 	preLevel := c.Logger.Level

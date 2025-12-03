@@ -36,7 +36,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/taint"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -45,55 +44,55 @@ import (
 // If state is nil, then it should print its definition on stdout
 
 // cmdShowSsa prints the SSA representation of all the function matching a given regex
-func cmdShowSsa(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdShowSsa(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : print the ssa representation of a function.\n"+
+		o.Write("\t- %s%s%s : print the ssa representation of a function.\n"+
 			"\t  showssa regex prints the SSA representation of the function matching the regex\n"+
-			"\t  Example:\n", tt.Escape.Blue, cmdShowSsaName, tt.Escape.Reset)
-		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdShowSsaName)
+			"\t  Example:\n", o.EscBlue(), CmdShowSsaName, o.EscReset())
+		o.Write("\t  > %s command-line-arguments.main\n", CmdShowSsaName)
 		return false
 	}
 
 	var b bytes.Buffer
-	funcs, err := listContextFunc(tt, sess, command)
+	funcs, err := listContextFunc(o, sess, command)
 	if err != nil {
-		WriteErr(tt, "%s", err.Error())
+		o.WriteErr("%s", err.Error())
 		return false
 	}
 	if len(funcs) == 0 {
-		WriteErr(tt, "Need at least one function to show.")
-		cmdShowSsa(tt, nil, command, withTest)
+		o.WriteErr("Need at least one function to show.")
+		cmdShowSsa(o, nil, command, withTest)
 	}
 	for _, f := range funcs {
 		ssa.WriteFunction(&b, f)
-		_, _ = b.WriteTo(tt)
+		_, _ = b.WriteTo(o.Writer())
 		b.Reset()
 	}
 	return false
 }
 
 // cmdShowFuncType prints the type of all the functions matching a given regex
-func cmdMembers(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdMembers(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : print the type of a function.\n"+
+		o.Write("\t- %s%s%s : print the type of a function.\n"+
 			"\t  %s regex prints the type of the function matching the regex\n"+
-			"\t  Example:\n", tt.Escape.Blue, cmdMembersName, tt.Escape.Reset, cmdMembersName)
-		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdMembersName)
+			"\t  Example:\n", o.EscBlue(), CmdMembersName, o.EscReset(), CmdMembersName)
+		o.Write("\t  > %s command-line-arguments.main\n", CmdMembersName)
 		return false
 	}
 	if len(command.Args) < 1 {
-		WriteErr(tt, "%s expects a package regex", cmdMembersName)
+		o.WriteErr("%s expects a package regex", CmdMembersName)
 	}
 	target, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return false
 	}
 
 	// members needs a program
-	prog := sess.loadProgram()
+	prog := sess.loadProgram(o)
 	if prog.IsErr() {
-		WriteErr(tt, "Could not load program: %s", prog)
+		o.WriteErr("Could not load program: %s", prog)
 		return false
 	}
 
@@ -110,48 +109,48 @@ func cmdMembers(tt *term.Terminal, sess *session, command Command, withTest bool
 	for _, m := range members {
 		switch m := m.(type) {
 		case *ssa.Function:
-			writeFmt(tt, "\t- function %s%s%s : %s\n", tt.Escape.Green, m.String(), tt.Escape.Reset, m.Type())
+			o.Write("\t- function %s%s%s : %s\n", o.EscGreen(), m.String(), o.EscReset(), m.Type())
 		case *ssa.Type:
-			writeFmt(tt, "\t- type %s%s%s\n", tt.Escape.Blue, m.String(), tt.Escape.Reset)
-			writeFmt(tt, "\t   | underlying %s\n", m.Type().Underlying())
+			o.Write("\t- type %s%s%s\n", o.EscBlue(), m.String(), o.EscReset())
+			o.Write("\t   | underlying %s\n", m.Type().Underlying())
 			methods := prog.Unwrap().Program.MethodSets.MethodSet(m.Type())
 			for i := range methods.Len() {
 				mthd := methods.At(i)
-				writeFmt(tt, "\t   | %s : %s\n", mthd.String(), mthd.Type())
+				o.Write("\t   | %s : %s\n", mthd.String(), mthd.Type())
 			}
 		case *ssa.NamedConst:
-			writeFmt(tt, "\t- constant %s%s%s\n", tt.Escape.Yellow, m.String(), tt.Escape.Reset)
+			o.Write("\t- constant %s%s%s\n", o.EscYellow(), m.String(), o.EscReset())
 		case *ssa.Global:
-			writeFmt(tt, "\t- global %s%s%s\n", tt.Escape.Magenta, m.String(), tt.Escape.Reset)
+			o.Write("\t- global %s%s%s\n", o.EscMagenta(), m.String(), o.EscReset())
 		}
 	}
 	return false
 }
 
 // cmdShowEscape prints the escape graph of all the function matching a given regex
-func cmdShowEscape(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdShowEscape(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : print the escape graph of a function.\n"+ // safe %s (position string)
+		o.Write("\t- %s%s%s : print the escape graph of a function.\n"+ // safe %s (position string)
 			"\t  %s regex prints the escape graph of function(s) matching the regex\n"+
-			"\t  Example:\n", tt.Escape.Blue, cmdShowEscapeName, tt.Escape.Reset, cmdShowEscapeName)
-		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdShowEscapeName) // safe %s (position string)
+			"\t  Example:\n", o.EscBlue(), CmdShowEscapeName, o.EscReset(), CmdShowEscapeName)
+		o.Write("\t  > %s command-line-arguments.main\n", CmdShowEscapeName) // safe %s (position string)
 		return false
 	}
 
 	var b bytes.Buffer
-	funcs, err := listContextFunc(tt, sess, command)
+	funcs, err := listContextFunc(o, sess, command)
 	if err != nil {
-		WriteErr(tt, "%s", err.Error())
+		o.WriteErr("%s", err.Error())
 		return false
 	}
 	if len(funcs) == 0 {
-		WriteErr(tt, "Need at least one function to show.")
-		cmdShowSsa(tt, nil, command, withTest)
+		o.WriteErr("Need at least one function to show.")
+		cmdShowSsa(o, nil, command, withTest)
 	}
 	for _, f := range funcs {
 		eg := escape.EscapeSummary(f)
 		b.WriteString(eg.Graphviz())
-		_, _ = b.WriteTo(tt)
+		_, _ = b.WriteTo(o.Writer())
 		b.Reset()
 	}
 	return false
@@ -159,20 +158,20 @@ func cmdShowEscape(tt *term.Terminal, sess *session, command Command, withTest b
 
 // cmdShowDataflow builds and prints the inter-procedural dataflow graph.
 // If on macOS, the command automatically renders an SVG and opens it in Safari.
-func cmdShowDataflow(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdShowDataflow(o Outputter, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : build and print the inter-procedural dataflow graph of a program.\n"+
+		o.Write("\t- %s%s%s : build and print the inter-procedural dataflow graph of a program.\n"+
 			"\t  showdataflow args prints the inter-procedural dataflow graph.\n"+
 			"\t    on macOS, the command also renders an SVG of the graph and opens it in Safari\n"+
-			"\t  Example:\n", tt.Escape.Blue, cmdShowDataflowName, tt.Escape.Reset)
-		writeFmt(tt, "\t  > %s main.go prog.go\n", cmdShowDataflowName)
+			"\t  Example:\n", o.EscBlue(), CmdShowDataflowName, o.EscReset())
+		o.Write("\t  > %s main.go prog.go\n", CmdShowDataflowName)
 		return false
 	}
 
 	// showDataflow needs dataflow state
-	df := sess.loadDataflowAnalysis()
+	df := sess.loadDataflowAnalysis(o)
 	if df.IsErr() {
-		WriteErr(tt, "Could not load dataflow: %s", df)
+		o.WriteErr("Could not load dataflow: %s", df)
 		return false
 	}
 	c := df.Unwrap()
@@ -183,20 +182,20 @@ func cmdShowDataflow(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 	var err error
 	c, err = render.BuildCrossFunctionGraph(c)
 	if err != nil {
-		WriteErr(tt, "Failed to build inter-procedural graph: %v\n", err)
+		o.WriteErr("Failed to build inter-procedural graph: %v\n", err)
 		return false
 	}
 	var b bytes.Buffer
 	c.FlowGraph.Print(&b)
 
-	tt.Write(b.Bytes())
+	o.Write(b.String())
 	if runtime.GOOS == "darwin" {
 		dotFile, err := os.CreateTemp(os.TempDir(), "*.dot")
 		if err != nil {
-			WriteErr(tt, "Failed to create temp file: %v\n", dotFile.Name())
+			o.WriteErr("Failed to create temp file: %v\n", dotFile.Name())
 			return false
 		}
-		WriteSuccess(tt, " to file %v", dotFile.Name())
+		o.WriteSuccess(" to file %v", dotFile.Name())
 		dotFile.Write(b.Bytes())
 
 		dotCtx, dotCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -204,7 +203,7 @@ func cmdShowDataflow(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 		svgFileName := dotFile.Name() + ".svg"
 		dotCmd := exec.CommandContext(dotCtx, "dot", "-Tsvg", dotFile.Name(), "-o", svgFileName)
 		if err := dotCmd.Run(); err != nil {
-			WriteErr(tt, "Failed to compile dot inter-procedural graph: %v\n", err)
+			o.WriteErr("Failed to compile dot inter-procedural graph: %v\n", err)
 			return false
 		}
 
@@ -212,7 +211,7 @@ func cmdShowDataflow(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 		defer openCancel()
 		openCmd := exec.CommandContext(openCtx, "open", "-a", "Safari", svgFileName)
 		if err := openCmd.Run(); err != nil {
-			WriteErr(tt, "Failed to open dot inter-procedural graph SVG: %v\n", err)
+			o.WriteErr("Failed to open dot inter-procedural graph SVG: %v\n", err)
 			return false
 		}
 	}
@@ -221,30 +220,30 @@ func cmdShowDataflow(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 }
 
 // cmdSummary prints a specific function's summary, if it can be found
-func cmdSummary(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdSummary(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : print the summary of the functions matching a regex\n",
-			tt.Escape.Blue, cmdSummaryName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : print the summary of the functions matching a regex\n",
+			o.EscBlue(), CmdSummaryName, o.EscReset())
 		return false
 	}
 
 	if len(command.Args) < 1 {
 		if sess.currentFunction == nil {
-			WriteErr(tt, "Not enough arguments, summary expects 1 argument")
+			o.WriteErr("Not enough arguments, summary expects 1 argument")
 		}
 		// Print summary of focused function
 		summary, ok := sess.hasSummary(sess.currentFunction)
 		if summary != nil && ok {
-			printSummary(tt, command, summary)
+			printSummary(o, command, summary)
 		} else {
-			WriteErr(tt, "Focused function is not summarized")
+			o.WriteErr("Focused function is not summarized")
 		}
 		return false
 	}
 
-	funcs, err := sess.funcsMatchingCommand(tt, command)
+	funcs, err := sess.funcsMatchingCommand(o, command)
 	if err != nil {
-		WriteErr(tt, "%s", err.Error())
+		o.WriteErr("%s", err.Error())
 		return false
 	}
 	numSummaries := 0
@@ -254,138 +253,138 @@ func cmdSummary(tt *term.Terminal, sess *session, command Command, _ bool) bool 
 		summary, ok := sess.hasSummary(fun)
 		if summary != nil && ok {
 			numSummaries++
-			printSummary(tt, command, summary)
+			printSummary(o, command, summary)
 		}
 	}
 	if numSummaries > 1 {
-		WriteSuccess(tt, "(%d matching summaries)", numSummaries)
+		o.WriteSuccess("(%d matching summaries)", numSummaries)
 	} else if numSummaries == 1 {
-		WriteSuccess(tt, "(1 matching summary)")
+		o.WriteSuccess("(1 matching summary)")
 	} else {
 		if numFuncs > 0 {
-			WriteSuccess(tt, "No summaries found. Consider building summaries (summarize).")
+			o.WriteSuccess("No summaries found. Consider building summaries (summarize).")
 		} else {
-			WriteSuccess(tt, "No matching functions.")
+			o.WriteSuccess("No matching functions.")
 		}
 	}
 	return false
 }
 
 // cmdShowSource prints the source (AST representation) of all the functions matching a given regex
-func cmdSrc(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdSrc(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : print the source code of a function.\n"+
+		o.Write("\t- %s%s%s : print the source code of a function.\n"+
 			"\t  src regex prints the AST representation of the function matching the regex\n"+
-			"\t  Example:\n", tt.Escape.Blue, cmdSrcName, tt.Escape.Reset)
-		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdSrcName)
+			"\t  Example:\n", o.EscBlue(), CmdSrcName, o.EscReset())
+		o.Write("\t  > %s command-line-arguments.main\n", CmdSrcName)
 		return false
 	}
 
-	funcs, err := listContextFunc(tt, sess, command)
+	funcs, err := listContextFunc(o, sess, command)
 	if err != nil {
-		WriteErr(tt, "%s", err.Error())
+		o.WriteErr("%s", err.Error())
 		return false
 	}
 	if len(funcs) == 0 {
-		WriteErr(tt, "Need at least one function to show source for.")
-		cmdSrc(tt, nil, command, withTest)
+		o.WriteErr("Need at least one function to show source for.")
+		cmdSrc(o, nil, command, withTest)
 	}
 	for _, f := range funcs {
 		astNode := f.Syntax()
 		if astNode == nil {
-			WriteErr(tt, "%s has no syntax.", formatutil.Bold(f.String()))
+			o.WriteErr("%s has no syntax.", formatutil.Bold(f.String()))
 		} else {
 			program, _ := sess.program() // program should be loaded at this point
 			if program == nil {
 				panic("internal error: program is missing")
 			}
-			WriteSuccess(tt, "<<< Source for %s", formatutil.Bold(f.String()))
-			printer.Fprint(tt, program.Fset, astNode)
-			writeFmt(tt, "\n")
-			WriteSuccess(tt, "End of source for %s >>>", f.String())
-			writeFmt(tt, "\n")
+			o.WriteSuccess("<<< Source for %s", formatutil.Bold(f.String()))
+			printer.Fprint(o.Writer(), program.Fset, astNode)
+			o.Write("\n")
+			o.WriteSuccess("End of source for %s >>>", f.String())
+			o.Write("\n")
 		}
 	}
 	return false
 }
 
 // cmdAst prints the AST structure of all the functions matching a given regex
-func cmdAst(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdAst(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : print the ast of a function.\n"+
+		o.Write("\t- %s%s%s : print the ast of a function.\n"+
 			"\t  %s regex prints the AST structure of the %sfunction%s matching the regex\n"+
 			"\t  %s -file regex prints the AST structure of the %sfile%s matching the regex\n"+
 			"\t  Example:\n",
-			tt.Escape.Blue, cmdAstName, tt.Escape.Reset,
-			cmdAstName, tt.Escape.Yellow, tt.Escape.Reset,
-			cmdAstName, tt.Escape.Yellow, tt.Escape.Reset)
-		writeFmt(tt, "\t  > %s command-line-arguments.main\n", cmdAstName)
+			o.EscBlue(), CmdAstName, o.EscReset(),
+			CmdAstName, o.EscYellow(), o.EscReset(),
+			CmdAstName, o.EscYellow(), o.EscReset())
+		o.Write("\t  > %s command-line-arguments.main\n", CmdAstName)
 		return false
 	}
 
 	if !sess.hasProgram() {
-		WriteErr(tt, "Need a program to show the AST for.")
-		WriteErr(tt, "You should at least loadprogam")
-		cmdAst(tt, nil, command, withTest)
+		o.WriteErr("Need a program to show the AST for.")
+		o.WriteErr("You should at least loadprogam")
+		cmdAst(o, nil, command, withTest)
 	}
 
 	// Display the AST of a file?
 	if command.Flags["file"] {
-		files := findFiles(tt, sess, command)
+		files := findFiles(o, sess, command)
 		if len(files) == 0 {
-			WriteErr(tt, "Need at least one file to show the AST for.")
-			cmdAst(tt, nil, command, withTest)
+			o.WriteErr("Need at least one file to show the AST for.")
+			cmdAst(o, nil, command, withTest)
 		} else {
 			for _, f := range files {
 				filePath := sess.programOrPanic().Fset.Position(f.Pos()).Filename
 				if f == nil {
-					WriteErr(tt, "%s has no AST.", formatutil.Bold(filePath))
+					o.WriteErr("%s has no AST.", formatutil.Bold(filePath))
 				} else {
-					WriteSuccess(tt, "<<< AST of %s", formatutil.Bold(filePath))
-					ast.Fprint(tt, sess.programOrPanic().Fset, f, nil)
-					printer.Fprint(tt, sess.programOrPanic().Fset, f)
-					writeFmt(tt, "\n")
-					WriteSuccess(tt, "End of AST of %s >>>", filePath)
-					writeFmt(tt, "\n")
+					o.WriteSuccess("<<< AST of %s", formatutil.Bold(filePath))
+					ast.Fprint(o.Writer(), sess.programOrPanic().Fset, f, nil)
+					printer.Fprint(o.Writer(), sess.programOrPanic().Fset, f)
+					o.Write("\n")
+					o.WriteSuccess("End of AST of %s >>>", filePath)
+					o.Write("\n")
 				}
 			}
 		}
 		return false
 	}
 	// Display the AST of a function
-	funcs, err := listContextFunc(tt, sess, command)
+	funcs, err := listContextFunc(o, sess, command)
 	if err != nil {
-		WriteErr(tt, "%s", err.Error())
+		o.WriteErr("%s", err.Error())
 		return false
 	}
 	if len(funcs) == 0 {
-		WriteErr(tt, "Need at least one function to show the AST for.")
-		cmdAst(tt, nil, command, withTest)
+		o.WriteErr("Need at least one function to show the AST for.")
+		cmdAst(o, nil, command, withTest)
 	}
 	for _, f := range funcs {
 		astNode := f.Syntax()
 		if astNode == nil {
-			WriteErr(tt, "%s has no AST.", formatutil.Bold(f.String()))
+			o.WriteErr("%s has no AST.", formatutil.Bold(f.String()))
 		} else {
-			WriteSuccess(tt, "<<< AST of %s", formatutil.Bold(f.String()))
-			ast.Fprint(tt, sess.programOrPanic().Fset, astNode, nil)
-			printer.Fprint(tt, sess.programOrPanic().Fset, astNode)
-			writeFmt(tt, "\n")
-			WriteSuccess(tt, "End of AST of %s >>>", f.String())
-			writeFmt(tt, "\n")
+			o.WriteSuccess("<<< AST of %s", formatutil.Bold(f.String()))
+			ast.Fprint(o.Writer(), sess.programOrPanic().Fset, astNode, nil)
+			printer.Fprint(o.Writer(), sess.programOrPanic().Fset, astNode)
+			o.Write("\n")
+			o.WriteSuccess("End of AST of %s >>>", f.String())
+			o.Write("\n")
 		}
 	}
 	return false
 }
 
 // cmdSummarize runs the intra-procedural analysis.
-func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdSummarize(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : run the intra-procedural analysis. If a function is provided, "+
-			"run only\n", tt.Escape.Blue, cmdSummarizeName, tt.Escape.Reset)
-		writeFmt(tt, "\t   on the provided function\n")
-		writeFmt(tt, "\t   This will build dataflow summaries for all specified functions.\n")
-		writeFmt(tt, "\t   -force flag will force summarization and bypass filters on reachable functions.\n")
+		o.Write("\t- %s%s%s : run the intra-procedural analysis. If a function is provided, "+
+			"run only\n", o.EscBlue(), CmdSummarizeName, o.EscReset())
+		o.Write("\t   on the provided function\n")
+		o.Write("\t   This will build dataflow summaries for all specified functions.\n")
+		o.Write("\t   -force flag will force summarization and bypass filters on reachable functions.\n")
 		return false
 	}
 
@@ -397,16 +396,16 @@ func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) boo
 	isForced := command.Flags["force"]
 
 	// ensure dataflow state
-	res := sess.loadDataflowAnalysis()
+	res := sess.loadDataflowAnalysis(o)
 	if res.IsErr() {
-		WriteErr(tt, "Could not load dataflow: %s", res)
+		o.WriteErr("Could not load dataflow: %s", res)
 		return false
 	}
 	c := res.Unwrap()
 
 	if len(command.Args) < 1 {
 		// Running the intra-procedural analysis on all functions
-		WriteSuccess(tt, "Running intra-procedural analysis on all functions")
+		o.WriteSuccess("Running intra-procedural analysis on all functions")
 		createCounter := 0
 		buildCounter := 0
 
@@ -422,20 +421,20 @@ func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) boo
 			ShouldBuildSummary: shouldBuildSummary,
 			ShouldTrack:        dataflow.IsNodeOfInterest,
 		})
-		WriteSuccess(tt, "%d summaries created, %d built", createCounter, buildCounter)
+		o.WriteSuccess("%d summaries created, %d built", createCounter, buildCounter)
 	} else {
 		// Running the intra-procedural analysis on a single function, if it can be found
 		regex, err := regexp.Compile(command.Args[0])
 		if err != nil {
-			regexErr(tt, command.Args[0], err)
+			regexErr(o, command.Args[0], err)
 			return false
 		}
 		funcs, err := sess.findFunc(regex)
 		if err != nil {
-			WriteErr(tt, "%s", err.Error())
+			o.WriteErr("%s", err.Error())
 			return false
 		}
-		WriteSuccess(tt, "Running intra-procedural analysis on functions matching %s", command.Args[0])
+		o.WriteSuccess("Running intra-procedural analysis on functions matching %s", command.Args[0])
 
 		// Depending on the summaries threshold and the number of matched functions, different filters are used.
 		// If len(funcs) > summarizeThreshold, the filter used is similar to the one used in the taint analysis.
@@ -445,7 +444,7 @@ func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) boo
 		if len(funcs) > summarizeThreshold {
 			// above a certain threshold, we use the general analysis filters on what to summarize, unless -force has
 			// been specified
-			shouldBuildSummary = summarizeWithDefaultParams(tt, funcs, isForced, &buildCounter)
+			shouldBuildSummary = summarizeWithDefaultParams(o, funcs, isForced, &buildCounter)
 		} else {
 			// below that threshold, all functions that match are summarize.
 			// useful for testing.
@@ -459,19 +458,19 @@ func cmdSummarize(tt *term.Terminal, sess *session, command Command, _ bool) boo
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 
-		WriteSuccess(tt, "%d summaries created, %d built.", len(funcs), buildCounter)
+		o.WriteSuccess("%d summaries created, %d built.", len(funcs), buildCounter)
 		if buildCounter == 0 {
-			WriteSuccess(tt, "The queried functions may not be reachable?")
-			WriteSuccess(tt, "If less than %d functions match the query, then all reachable "+
+			o.WriteSuccess("The queried functions may not be reachable?")
+			o.WriteSuccess("If less than %d functions match the query, then all reachable "+
 				"matching functions will be summarized", summarizeThreshold)
 		}
 	}
 	return false
 }
 
-func summarizeWithDefaultParams(tt *term.Terminal, funcs []*ssa.Function, isForced bool,
+func summarizeWithDefaultParams(o Outputter, funcs []*ssa.Function, isForced bool,
 	buildCounter *int) func(*dataflow.State, *ssa.Function) bool {
-	WriteSuccess(tt, "(more than %d functions matching, other config-defined filters are in use)",
+	o.WriteSuccess("(more than %d functions matching, other config-defined filters are in use)",
 		summarizeThreshold)
 	shouldBuildSummary := func(c *dataflow.State, f *ssa.Function) bool {
 		b := isForced || (!summaries.IsStdFunction(f) &&
@@ -498,23 +497,23 @@ func alwaysSummarize(funcs []*ssa.Function, buildCounter *int) func(*dataflow.St
 }
 
 // cmdTaint runs the taint analysis
-func cmdTaint(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdTaint(o Outputter, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: run the taint analysis with parameters in config.\n",
-			tt.Escape.Blue, cmdTaintName, tt.Escape.Reset)
-		writeFmt(tt, "\t   Flow graph must be built first with `%s%s%s`.\n",
-			tt.Escape.Yellow, cmdBuildGraphName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s: run the taint analysis with parameters in config.\n",
+			o.EscBlue(), CmdTaintName, o.EscReset())
+		o.Write("\t   Flow graph must be built first with `%s%s%s`.\n",
+			o.EscYellow(), CmdBuildGraphName, o.EscReset())
 		return false
 	}
-	c := sess.loadDataflowAnalysis()
+	c := sess.loadDataflowAnalysis(o)
 	if c.IsErr() {
-		WriteErr(tt, "Failed to load dataflow analysis: %v", c)
+		o.WriteErr("Failed to load dataflow analysis: %v", c)
 		return false
 	}
 	// load dataflow state
 	if !c.Unwrap().FlowGraph.IsBuilt() {
-		WriteErr(tt, "The inter-procedural dataflow graph is not built!")
-		WriteErr(tt, "Please run `%s` before calling `taint`.", cmdBuildGraphName)
+		o.WriteErr("The inter-procedural dataflow graph is not built!")
+		o.WriteErr("Please run `%s` before calling `taint`.", CmdBuildGraphName)
 		return false
 	}
 	for _, ts := range c.Unwrap().Config.TaintTrackingProblems {
@@ -532,25 +531,25 @@ func cmdTaint(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 }
 
 // cmdBacktrace runs the backtrace analysis.
-func cmdBacktrace(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdBacktrace(o Outputter, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: run the backtrace analysis with parameters in config.\n",
-			tt.Escape.Blue, cmdBacktraceName, tt.Escape.Reset)
-		writeFmt(tt, "\t   Flow graph must be built first with `%s%s%s`.\n",
-			tt.Escape.Yellow, cmdBuildGraphName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s: run the backtrace analysis with parameters in config.\n",
+			o.EscBlue(), CmdBacktraceName, o.EscReset())
+		o.Write("\t   Flow graph must be built first with `%s%s%s`.\n",
+			o.EscYellow(), CmdBuildGraphName, o.EscReset())
 		return false
 	}
 
-	res := sess.loadDataflowAnalysis()
+	res := sess.loadDataflowAnalysis(o)
 	if res.IsErr() {
-		WriteErr(tt, "Failed to load dataflow analysis: %v", res)
+		o.WriteErr("Failed to load dataflow analysis: %v", res)
 		return false
 	}
 	c := res.Unwrap()
 
 	if !c.FlowGraph.IsBuilt() {
-		WriteErr(tt, "The inter-procedural dataflow graph is not built!")
-		WriteErr(tt, "Please run `%s` before calling `backtrace`.", cmdBuildGraphName)
+		o.WriteErr("The inter-procedural dataflow graph is not built!")
+		o.WriteErr("Please run `%s` before calling `backtrace`.", CmdBuildGraphName)
 		return false
 	}
 
@@ -568,32 +567,32 @@ func cmdBacktrace(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
 		}
 	}
 
-	writeFmt(tt, "Traces:\n")
+	o.Write("Traces:\n")
 	for _, trace := range traces {
-		writeFmt(tt, "%v\n", trace)
+		o.Write("%v\n", trace)
 	}
 
 	return false
 }
 
-func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryGraph) {
+func printSummary(o Outputter, command Command, summary *dataflow.SummaryGraph) {
 	if _, mustFilter := command.NamedArgs["filter"]; mustFilter {
-		WriteErr(tt, "TODO : implement filtering graphs to show only relevant edges.")
+		o.WriteErr("TODO : implement filtering graphs to show only relevant edges.")
 	}
-	WriteSuccess(tt, "Found summary of %s:", summary.Parent.String())
+	o.WriteSuccess("Found summary of %s:", summary.Parent.String())
 	if !summary.Constructed {
-		writeFmt(tt, "  %s(not built)%s\n", tt.Escape.Red, tt.Escape.Reset)
+		o.Write("  %s(not built)%s\n", o.EscRed(), o.EscReset())
 	}
 	if summary.IsInterfaceContract {
-		writeFmt(tt, "  (is interface contract)\n")
+		o.Write("  (is interface contract)\n")
 	}
-	writeFmt(tt, "%s:\n", formatutil.Yellow("Nodes"))
+	o.Write("%s:\n", formatutil.Yellow("Nodes"))
 	var regexFilter *regexp.Regexp
 	if filter, ok := command.NamedArgs["f"]; ok {
 		var err error
 		regexFilter, err = regexp.Compile(filter)
 		if err != nil {
-			regexErr(tt, filter, err)
+			regexErr(o, filter, err)
 			return
 		}
 	}
@@ -601,12 +600,12 @@ func printSummary(tt *term.Terminal, command Command, summary *dataflow.SummaryG
 		if regexFilter != nil && !regexFilter.MatchString(n.String()) {
 			return
 		}
-		writeFmt(tt, "\t %s\n", n)
+		o.Write("\t %s\n", n)
 	})
-	summary.PrettyPrint(true, tt, regexFilter)
+	summary.PrettyPrint(true, o.Writer(), regexFilter)
 }
 
-func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.Function, error) {
+func listContextFunc(o Outputter, sess *Session, command Command) ([]*ssa.Function, error) {
 	if len(command.Args) < 1 {
 		if sess.currentFunction != nil {
 			return []*ssa.Function{sess.currentFunction}, nil
@@ -615,7 +614,7 @@ func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.
 	}
 	target, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return []*ssa.Function{}, nil
 	}
 
@@ -623,19 +622,19 @@ func listContextFunc(tt *term.Terminal, sess *session, command Command) ([]*ssa.
 }
 
 // findFiles finds the ast file in the program loaded.
-// You should ensure that the  LPState of the session has been loaded, otherwise
+// You should ensure that the  LPState of the Session has been loaded, otherwise
 // this function will just return an empty list.
-func findFiles(tt *term.Terminal, sess *session, command Command) []*ast.File {
+func findFiles(o Outputter, sess *Session, command Command) []*ast.File {
 	if sess.lpState == nil {
 		return []*ast.File{}
 	}
 	if len(command.Args) < 1 {
-		WriteErr(tt, "Need a regex to match files.")
+		o.WriteErr("Need a regex to match files.")
 		return []*ast.File{}
 	}
 	target, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return []*ast.File{}
 	}
 	files := []*ast.File{}

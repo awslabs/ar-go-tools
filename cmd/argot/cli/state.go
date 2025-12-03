@@ -16,7 +16,6 @@ package cli
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -34,19 +33,18 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
 	"golang.org/x/exp/maps"
-	"golang.org/x/term"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// session stores state information about the current cli session
-type session struct {
-	originalFlags tools.CommonFlags
-
-	args       []string
-	configPath string
-
+// Session stores state information about the current cli Session
+type Session struct {
+	args            []string
+	target          string
+	configPath      string
+	withTest        bool
+	verbose         bool
 	initialPackages []*packages.Package
 
 	termWidth int
@@ -55,9 +53,11 @@ type session struct {
 
 	currentDataflowInformation *dataflow.FlowInformation
 
+	isTt bool
+
 	// Available states
 
-	// pkgs contains the packages last loaded by a cmdLoadPackages command
+	// pkgs contains the packages last loaded by a cmdLoadPackages command or by loading the program
 	pkgs     map[string]*packages.Package
 	cfgState *config.State
 	lpState  *loadprogram.State
@@ -65,32 +65,38 @@ type session struct {
 	dfState  *dataflow.State
 }
 
-func newSession(flags tools.CommonFlags) *session {
-	s := &session{
-		originalFlags: flags,
-		args:          flags.FlagSet.Args(),
-		configPath:    flags.ConfigPath,
+// NewSession returns a new session with the provided flags.
+func NewSession(flags tools.CommonFlags, isTt bool) *Session {
+	s := &Session{
+		withTest:   flags.WithTest,
+		configPath: flags.ConfigPath,
+		target:     flags.Targets,
+		verbose:    flags.Verbose,
+		isTt:       isTt,
+	}
+	if flags.FlagSet != nil {
+		s.args = flags.FlagSet.Args()
 	}
 	return s
 }
 
-func (s *session) logger() *config.LogGroup {
+func (s *Session) logger() *config.LogGroup {
 	if s.cfgState != nil {
 		return s.cfgState.Logger
 	}
 	return config.NewLogGroup(nil)
 }
 
-func (s *session) allFunctions() (map[*ssa.Function]bool, error) {
+func (s *Session) allFunctions() (map[*ssa.Function]bool, error) {
 	if s.lpState == nil {
 		return nil, fmt.Errorf("listing functions requires at least a loaded program or package")
 	}
 	return ssautil.AllFunctions(s.lpState.Program), nil
 }
 
-func (s *session) reachableFunctions() (map[*ssa.Function]bool, error) {
+func (s *Session) reachableFunctions(o Outputter) (map[*ssa.Function]bool, error) {
 	if s.lpState == nil {
-		_, err := s.loadProgram().Value()
+		_, err := s.loadProgram(o).Value()
 		if err != nil {
 			return nil, fmt.Errorf("failed to load program to get reachable functions: %w", err)
 		}
@@ -107,7 +113,7 @@ func (s *session) reachableFunctions() (map[*ssa.Function]bool, error) {
 	return s.lpState.ReachableFunctions()
 }
 
-func (s *session) hasSummary(f *ssa.Function) (*dataflow.SummaryGraph, bool) {
+func (s *Session) hasSummary(f *ssa.Function) (*dataflow.SummaryGraph, bool) {
 	if s.dfState == nil || s.dfState.FlowGraph == nil {
 		return nil, false
 	}
@@ -118,7 +124,7 @@ func (s *session) hasSummary(f *ssa.Function) (*dataflow.SummaryGraph, bool) {
 	return summary, ok
 }
 
-func (s *session) seekConfig() (*config.Config, bool, error) {
+func (s *Session) seekConfig() (*config.Config, bool, error) {
 	var err error
 	pConfig := config.NewDefault()
 	if s.configPath != "" {
@@ -140,7 +146,7 @@ func (s *session) seekConfig() (*config.Config, bool, error) {
 	return pConfig, false, err
 }
 
-func (s *session) attemptSettingConfig(pConfig **config.Config, dir string, filename string) error {
+func (s *Session) attemptSettingConfig(pConfig **config.Config, dir string, filename string) error {
 	configFile := filepath.Join(dir, filename)
 	config.SetGlobalConfig(configFile)
 	tmpConfig, err := config.LoadGlobal(nil)
@@ -153,9 +159,10 @@ func (s *session) attemptSettingConfig(pConfig **config.Config, dir string, file
 	return nil
 }
 
-func (s *session) loadConfig() result.Result[config.State] {
-	logger := log.New(os.Stdout, "", log.Flags())
-	if s.cfgState != nil {
+// LoadConfig triggers the config loading for the session.
+func (s *Session) LoadConfig(o Outputter, reload bool) result.Result[config.State] {
+	// This also works without a config.
+	if s.cfgState != nil && !reload {
 		return result.Ok(s.cfgState)
 	}
 
@@ -169,18 +176,19 @@ func (s *session) loadConfig() result.Result[config.State] {
 		return result.Err[config.State](fmt.Errorf("failed to load config"))
 	}
 	// Override config parameters with command-line parameters
-	if s.originalFlags.Verbose {
+	if s.verbose {
 		pConfig.LogLevel = int(config.DebugLevel)
 	}
-	logger.Print(formatutil.Faint("Reading sources") + "\n")
+	o.Write(formatutil.Faint("Reading sources") + "\n")
 	// Load the program
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
-		LoadTests:     s.originalFlags.WithTest,
+		LoadTests:     s.withTest,
 		ApplyRewrites: true,
 	}
-	s.cfgState = config.NewState(pConfig, "", s.originalFlags.FlagSet.Args(), loadOptions)
+	s.cfgState = config.NewState(pConfig, "", s.args, loadOptions)
+	s.cfgState.Logger.SetAllOutput(o.Writer())
 	// Apply rewrites from config if the target can be recognized
 	for _, targetSpec := range s.cfgState.Config.Targets {
 		if slices.Equal(targetSpec.Files, s.args) {
@@ -189,7 +197,8 @@ func (s *session) loadConfig() result.Result[config.State] {
 				s.logger().Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
 				// TODO: handle more rewrites later
 				s.cfgState, err = statefulrewrite.StatefulRewritesOverlayTransform(s.cfgState,
-					statefulrewrite.StatefulRewritesOverlayTransformSpec{ReflectValueCallInstanceCid: targetSpec.ReflectValueCallInstances[0]}).Value()
+					statefulrewrite.StatefulRewritesOverlayTransformSpec{
+						ReflectValueCallInstanceCid: targetSpec.ReflectValueCallInstances[0]}).Value()
 				if err != nil {
 					panic(err)
 				}
@@ -198,46 +207,57 @@ func (s *session) loadConfig() result.Result[config.State] {
 	}
 	// If the -targets option has been provided the cli should load the target
 	// The -targets option for the cli should only contain one target
-	if s.originalFlags.Targets != "" {
-		if len(strings.Split(s.originalFlags.Targets, ",")) > 1 {
-			return result.Err[config.State](fmt.Errorf("-targets should only have one target in cli"))
-		}
-		targetInfo, ok := s.cfgState.Config.GetTargetMap()[s.originalFlags.Targets]
+	if s.target != "" {
+		targetInfo, ok := s.cfgState.Config.GetTargetMap()[s.target]
 		if !ok {
-			return result.Err[config.State](fmt.Errorf("target %s is not in config", s.originalFlags.Targets))
+			return result.Err[config.State](fmt.Errorf("target %s is not in config", s.target))
 		}
 		s.cfgState.Patterns = targetInfo.Patterns
 	}
 	return result.Ok(s.cfgState)
 }
 
-func (s *session) loadProgram() result.Result[loadprogram.State] {
+func (s *Session) loadProgram(o Outputter) result.Result[loadprogram.State] {
 	if s.lpState != nil {
 		return result.Ok(s.lpState)
 	}
 	lpstate := loadprogram.NewState(s.cfgState)
 	if lpstate.IsOk() {
 		s.lpState = lpstate.Unwrap()
+		// Populate the packages
+		if s.pkgs == nil {
+			s.pkgs = make(map[string]*packages.Package)
+		}
+		for _, pkg := range s.lpState.Packages {
+			s.pkgs[pkg.PkgPath] = pkg
+		}
+	}
+	o.WriteSuccess("loaded program with path %s", strings.Join(s.args, ", "))
+	o.WriteSuccess("✔ loaded %d packages", len(s.pkgs))
+	// Attempt to print the main package given current information.
+	// It may fail; it's ok because we don't have the best call graph information yet.
+	if main, err := s.lpState.FindMain(); err == nil {
+		o.WriteSuccess("✔ main package: %s", main.Pkg.String())
 	}
 	return lpstate
 }
 
-func (s *session) loadPtrAnalysis() result.Result[ptr.State] {
+func (s *Session) loadPtrAnalysis(o Outputter) result.Result[ptr.State] {
 	if s.ptrState != nil {
 		return result.Ok(s.ptrState)
 	}
-	ptrstate := result.Bind(s.loadProgram(), ptr.NewState)
+	ptrstate := result.Bind(s.loadProgram(o), ptr.NewState)
 	if ptrstate.IsOk() {
 		s.ptrState = ptrstate.Unwrap()
 	}
 	return ptrstate
 }
 
-func (s *session) loadDataflowAnalysis() result.Result[dataflow.State] {
+func (s *Session) loadDataflowAnalysis(o Outputter) result.Result[dataflow.State] {
 	if s.dfState != nil {
 		return result.Ok(s.dfState)
 	}
-	dfstate := result.Bind(s.loadPtrAnalysis(), dataflow.NewState)
+	dfstate := result.Bind(s.loadPtrAnalysis(o), dataflow.NewState)
 	if dfstate.IsOk() {
 		s.dfState = dfstate.Unwrap()
 	} else {
@@ -254,11 +274,11 @@ func (s *session) loadDataflowAnalysis() result.Result[dataflow.State] {
 	return result.Ok(s.dfState)
 }
 
-func (s *session) hasProgram() bool {
+func (s *Session) hasProgram() bool {
 	return s.lpState != nil && s.lpState.Program != nil
 }
 
-func (s *session) program() (*ssa.Program, error) {
+func (s *Session) program() (*ssa.Program, error) {
 	if s.lpState == nil || s.lpState.Program == nil {
 		return nil, fmt.Errorf("no program loaded")
 	}
@@ -267,7 +287,7 @@ func (s *session) program() (*ssa.Program, error) {
 
 // programOrPanic is a version of program that panics instead of returning an error.
 // This is useful in a context where you know the program exists.
-func (s *session) programOrPanic() *ssa.Program {
+func (s *Session) programOrPanic() *ssa.Program {
 	program, err := s.program()
 	if err != nil {
 		panic(err)
@@ -278,7 +298,7 @@ func (s *session) programOrPanic() *ssa.Program {
 // funcsMatchingCommand returns the function matching the argument of the command or all functions if there
 // is no argument
 // Returns an empty list if any error is encountered
-func (s *session) funcsMatchingCommand(tt *term.Terminal, command Command) ([]*ssa.Function, error) {
+func (s *Session) funcsMatchingCommand(o Outputter, command Command) ([]*ssa.Function, error) {
 	rString := ".*" // default is to match anything
 	if len(command.Args) >= 1 {
 		// otherwise build regex from arguments
@@ -290,7 +310,7 @@ func (s *session) funcsMatchingCommand(tt *term.Terminal, command Command) ([]*s
 	}
 	r, err := regexp.Compile(rString)
 	if err != nil {
-		regexErr(tt, rString, err)
+		regexErr(o, rString, err)
 		return []*ssa.Function{}, err
 	}
 	funcs, err := s.findFunc(r)
@@ -301,7 +321,7 @@ func (s *session) funcsMatchingCommand(tt *term.Terminal, command Command) ([]*s
 	return funcs, nil
 }
 
-func (s *session) findFunc(target *regexp.Regexp) ([]*ssa.Function, error) {
+func (s *Session) findFunc(target *regexp.Regexp) ([]*ssa.Function, error) {
 	var funcs []*ssa.Function
 	allFuncs, err := s.allFunctions()
 	if err != nil {
@@ -316,27 +336,27 @@ func (s *session) findFunc(target *regexp.Regexp) ([]*ssa.Function, error) {
 }
 
 // Help command
-func cmdHelp(tt *term.Terminal, s *session, _ Command, withTest bool) bool {
+func cmdHelp(o Outputter, s *Session, _ Command, withTest bool) bool {
 	if s == nil {
-		writeFmt(tt, "\t- %s%s%s : print help message\t", cmdHelpName, tt.Escape.Blue, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : print help message\t", CmdHelpName, o.EscBlue(), o.EscReset())
 		return false
 	}
-	writeFmt(tt, "Commands:\n")
-	writeFmt(tt, "\t- %s%s%s : print this message\n", tt.Escape.Blue, cmdHelpName, tt.Escape.Reset)
-	keys := maps.Keys(commands)
+	o.Write("Commands:\n")
+	o.Write("\t- %s%s%s : print this message\n", o.EscBlue(), CmdHelpName, o.EscReset())
+	keys := maps.Keys(Commands)
 	slices.Sort(keys)
 	for _, key := range keys {
-		cmd := commands[key]
-		cmd(tt, nil, Command{}, withTest)
+		cmd := Commands[key]
+		cmd.Function(o, nil, Command{}, withTest)
 	}
 	return false
 }
 
 // cmdState implements the "state?" command, which prints information about the current state of the tool
-func cmdState(tt *term.Terminal, s *session, _ Command, _ bool) bool {
+func cmdState(o Outputter, s *Session, _ Command, _ bool) bool {
 	if s == nil {
-		writeFmt(tt, "\t- %s%s%s : print information about the current session\n",
-			tt.Escape.Blue, cmdStateName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : print information about the current Session\n",
+			o.EscBlue(), CmdStateName, o.EscReset())
 		return false
 	}
 	wd, _ := os.Getwd()
@@ -344,85 +364,89 @@ func cmdState(tt *term.Terminal, s *session, _ Command, _ bool) bool {
 	if s.currentFunction != nil {
 		fName = s.currentFunction.String()
 	}
-	writeFmt(tt, "Program path          : %s\n", strings.Join(s.args, " "))
-	writeFmt(tt, "Config path           : %s\n", s.configPath)
-	writeFmt(tt, "Working dir           : %s\n", wd)
-	writeFmt(tt, "Focused function      : %s\n", fName)
+	programPath := strings.Join(s.args, " ")
+	if s.cfgState != nil {
+		programPath = strings.Join(s.cfgState.Patterns, " ")
+	}
+	o.Write("Program path          : %s\n", programPath)
+	o.Write("Config path           : %s\n", s.configPath)
+	o.Write("Working dir           : %s\n", wd)
+	o.Write("Focused function      : %s\n", fName)
 	if s.lpState != nil {
-		writeFmt(tt, "┌────────── SSA ──────")
-		writeFmt(tt, "│ # packages        : %d\n", len(s.lpState.Packages))
+		o.Write("┌────────── SSA ──────\n")
+		o.Write("│ # packages        : %d\n", len(s.lpState.Packages))
 		r, err := s.lpState.ReachableFunctions()
 		if err != nil {
-			writeFmt(tt, "error: %s\n", err)
+			o.Write("error: %s\n", err)
 			return false
 		}
-		writeFmt(tt, "│ # reachable functions : %d\n", len(r))
-		writeFmt(tt, "└─────────────────────")
+		o.Write("│ # reachable functions : %d\n", len(r))
+		o.Write("└─────────────────────\n")
 	} else {
-		writeFmt(tt, "┌───────────────────────────┐")
-		writeFmt(tt, "│ ⚠ SSA Program not loaded  │")
-		writeFmt(tt, "└───────────────────────────┘")
+		o.Write("┌───────────────────────────┐\n")
+		o.Write("│ ⚠ SSA Program not loaded  │\n")
+		o.Write("└───────────────────────────┘\n")
 		return false
 	}
 	if s.ptrState != nil {
-		writeFmt(tt, "┌────────── POINTERS ────")
-		writeFmt(tt, "│ # pointers        : %d\n", len(s.ptrState.PointerAnalysis.Queries))
-		writeFmt(tt, "└────────────────────────")
+		o.Write("┌────────── POINTERS ────\n")
+		o.Write("│ # pointers        : %d\n", len(s.ptrState.PointerAnalysis.Queries))
+		o.Write("└────────────────────────\n")
 	} else {
-		writeFmt(tt, "┌──────────────────────────────┐")
-		writeFmt(tt, "│ ⚠ Pointer Analysis not run   │")
-		writeFmt(tt, "└──────────────────────────────┘")
+		o.Write("┌──────────────────────────────┐\n")
+		o.Write("│ ⚠ Pointer Analysis not run   │\n")
+		o.Write("└──────────────────────────────┘\n")
 		return false
 	}
 	if s.dfState != nil {
-		writeFmt(tt, "┌────────── DATAFLOW ───")
-		writeFmt(tt, "│ # functions           : %d\n", len(s.dfState.ReachableFunctions()))
-		writeFmt(tt, "│ # summaries built     : %d\n", len(s.dfState.FlowGraph.Summaries))
-		writeFmt(tt, "│ flow graph built?     : %t\n", s.dfState.FlowGraph.IsBuilt())
-		writeFmt(tt, "└──────────────────────")
+		o.Write("┌────────── DATAFLOW ───\n")
+		o.Write("│ # functions           : %d\n", len(s.dfState.ReachableFunctions()))
+		o.Write("│ # summaries built     : %d\n", len(s.dfState.FlowGraph.Summaries))
+		o.Write("│ flow graph built?     : %t\n", s.dfState.FlowGraph.IsBuilt())
+		o.Write("└──────────────────────\n")
 	} else {
-		writeFmt(tt, "┌──────────────────────────────┐")
-		writeFmt(tt, "│ ⚠ Dataflow Analysis not run  │")
-		writeFmt(tt, "└──────────────────────────────┘")
+		o.Write("┌──────────────────────────────┐\n")
+		o.Write("│ ⚠ Dataflow Analysis not run  │\n")
+		o.Write("└──────────────────────────────┘\n")
 	}
 	return false
 }
 
 // cmdList shows all functions matching a given regex
-func cmdList(tt *term.Terminal, s *session, command Command, withTest bool) bool {
+func cmdList(o Outputter, s *Session, command Command, withTest bool) bool {
 	if s == nil {
-		writeFmt(tt, "\t- %s%s%s : list all functions matching provided regexes\n",
-			tt.Escape.Blue, cmdListName, tt.Escape.Reset)
-		writeFmt(tt, "\t  Options:\n")
-		writeFmt(tt, "\t    -r     list only reachable functions\n")
-		writeFmt(tt, "\t    -s     list only summarized functions\n")
-		writeFmt(tt, "\t    -h     print this help message\n")
+		o.Write("\t- %s%s%s : list all functions matching provided regexes\n",
+			o.EscBlue(), CmdListName, o.EscReset())
+		o.Write("\t  Options:\n")
+		o.Write("\t    -r     list only reachable functions\n")
+		o.Write("\t    -s     list only summarized functions\n")
+		o.Write("\t    -h     print this help message\n")
 		return false
 	}
 
 	if command.Flags["h"] {
-		return cmdList(tt, nil, command, withTest)
+		return cmdList(o, nil, command, withTest)
 	}
 
-	funcs, err := s.funcsMatchingCommand(tt, command)
+	funcs, err := s.funcsMatchingCommand(o, command)
 
 	if err != nil {
-		WriteErr(tt, "Error: %s", err)
+		o.WriteErr("Error: %s", err)
 		return false
 	}
 	if len(funcs) == 0 {
-		WriteSuccess(tt, "No matching function found.")
+		o.WriteSuccess("No matching function found.")
 		return false
 	}
 
-	reachable, err := s.reachableFunctions()
+	reachable, err := s.reachableFunctions(o)
 	if err != nil {
-		WriteErr(tt, "Error: %s", err)
+		o.WriteErr("Error: %s", err)
 		return false
 	}
 
-	WriteSuccess(tt, "Found %d matching functions:", len(funcs))
-	WriteSuccess(tt, "[summarized?][reachable?] function name")
+	o.WriteSuccess("Found %d matching functions:", len(funcs))
+	o.WriteSuccess("[summarized?][reachable?] function name")
 
 	numSummarized := 0
 	numReachable := 0
@@ -438,15 +462,15 @@ func cmdList(tt *term.Terminal, s *session, command Command, withTest bool) bool
 			continue
 		}
 		if hasSummary && summary.Constructed {
-			writeFmt(tt, "%s[x][%s] %s%s\n", tt.Escape.Cyan, reachStr, fun.String(), tt.Escape.Reset)
+			o.Write("%s[x][%s] %s%s\n", o.EscCyan(), reachStr, fun.String(), o.EscReset())
 			numSummarized++
 		} else if isReachable && !command.Flags["s"] {
-			writeFmt(tt, "%s[_][%s] %s%s\n", tt.Escape.Magenta, reachStr, fun.String(), tt.Escape.Reset)
+			o.Write("%s[_][%s] %s%s\n", o.EscMagenta(), reachStr, fun.String(), o.EscReset())
 		} else if !command.Flags["s"] && !command.Flags["r"] {
-			writeFmt(tt, "[_][%s] %s\n", reachStr, fun.String())
+			o.Write("[_][%s] %s\n", reachStr, fun.String())
 		}
 	}
-	WriteSuccess(tt, "(%d matching functions, %d reachable, %d summarized)", len(funcs),
+	o.WriteSuccess("(%d matching functions, %d reachable, %d summarized)", len(funcs),
 		numReachable, numSummarized)
 	return false
 }
