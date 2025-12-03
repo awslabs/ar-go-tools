@@ -308,7 +308,7 @@ func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 		t.Fatalf("Prompts list failed: %v", promptsListResp.Error)
 	}
 
-	// Check that dataflow-summary-generation prompt is listed
+	// Check that both prompts are listed
 	result, ok := promptsListResp.Result.(map[string]interface{})
 	if !ok {
 		t.Fatal("Expected prompts list result to be a map")
@@ -317,22 +317,30 @@ func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 	if !ok {
 		t.Fatal("Expected prompts to be an array")
 	}
-	found := false
+	foundDataflow := false
+	foundConfig := false
 	for _, prompt := range prompts {
 		promptMap, ok := prompt.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		if name, ok := promptMap["name"].(string); ok && name == "dataflow-summary-generation" {
-			found = true
-			break
+		if name, ok := promptMap["name"].(string); ok {
+			if name == "dataflow-summary-generation" {
+				foundDataflow = true
+			}
+			if name == "config-generation" {
+				foundConfig = true
+			}
 		}
 	}
-	if !found {
+	if !foundDataflow {
 		t.Error("Expected dataflow-summary-generation prompt in prompts list")
 	}
+	if !foundConfig {
+		t.Error("Expected config-generation prompt in prompts list")
+	}
 
-	// Test prompts get
+	// Test prompts get for dataflow-summary-generation
 	promptsGetReq := jsonRPCRequest{
 		JSONRPC: jsonRpcVersion,
 		ID:      8,
@@ -380,5 +388,55 @@ func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 	}
 	if !strings.Contains(text, "argot_load") {
 		t.Error("Expected prompt to contain 'argot_load'")
+	}
+
+	// Test prompts get for config-generation
+	configPromptReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      9,
+		Method:  "prompts/get",
+		Params: map[string]interface{}{
+			"name": "config-generation",
+		},
+	}
+	sendRequest(t, stdin, configPromptReq)
+	response = readResponse(t, scanner)
+	var configPromptResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &configPromptResp); err != nil {
+		t.Fatal(err)
+	}
+	if configPromptResp.Error != nil {
+		t.Fatalf("Config prompt get failed: %v", configPromptResp.Error)
+	}
+
+	// Check config prompt content
+	configResult, ok := configPromptResp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected config prompt result to be a map")
+	}
+	configMessages, ok := configResult["messages"].([]interface{})
+	if !ok {
+		t.Fatal("Expected config messages to be an array")
+	}
+	if len(configMessages) == 0 {
+		t.Fatal("Expected at least one config message")
+	}
+	configMessage, ok := configMessages[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected config message to be a map")
+	}
+	configContent, ok := configMessage["content"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected config content to be a map")
+	}
+	configText, ok := configContent["text"].(string)
+	if !ok {
+		t.Fatal("Expected config text to be a string")
+	}
+	if !strings.Contains(configText, "Argot Configuration File Generation Task") {
+		t.Error("Expected config prompt to contain 'Argot Configuration File Generation Task'")
+	}
+	if !strings.Contains(configText, "targets") {
+		t.Error("Expected config prompt to contain 'targets'")
 	}
 }
