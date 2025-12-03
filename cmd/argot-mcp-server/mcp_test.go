@@ -251,7 +251,7 @@ func checkLoadProgramTool(t *testing.T, stdin io.WriteCloser, scanner *bufio.Sca
 		Params: map[string]interface{}{
 			"name": "argot_load",
 			"arguments": map[string]interface{}{
-				"packages": []string{"./testdata/sample.go"},
+				"paths": []string{"./testdata/sample.go"},
 			},
 		},
 	}

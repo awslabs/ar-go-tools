@@ -320,28 +320,28 @@ var Commands = map[string]CommandDefinition{
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"packages": map[string]interface{}{
+				"paths": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Package paths to load",
+					"description": "Paths to load (files or directory)",
 				},
 			},
-			Required: []string{"packages"},
+			Required: []string{"paths"},
 		},
 		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
-			packagesObj, ok := props["packages"]
+			packagesObj, ok := props["paths"]
 			if !ok {
-				return Command{}, fmt.Errorf("packages must be provided")
+				return Command{}, fmt.Errorf("paths must be provided")
 			}
 			packages, ok := packagesObj.([]interface{})
 			if !ok {
-				return Command{}, fmt.Errorf("packages must be an array")
+				return Command{}, fmt.Errorf("paths must be an array")
 			}
 			args := make([]string, len(packages))
 			for i, pkg := range packages {
 				args[i], ok = pkg.(string)
 				if !ok {
-					return Command{}, fmt.Errorf("package must be a string")
+					return Command{}, fmt.Errorf("path must be a string")
 				}
 			}
 			return Command{

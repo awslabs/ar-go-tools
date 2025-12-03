@@ -332,7 +332,7 @@ func (s *serverState) handleCliCommand(id interface{},
 	defer func() {
 		if r := recover(); r != nil {
 			s.cliSession.LoadConfig(s.outputter, true)
-			s.sendError(id, codeInternalError, "internal panic, reinitialized session")
+			s.sendError(id, codeInternalError, fmt.Sprintf("internal panic, reinitialized session: %v", r))
 		}
 	}()
 

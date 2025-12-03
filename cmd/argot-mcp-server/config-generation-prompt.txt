@@ -116,15 +116,15 @@ targets:
 ```yaml
 targets:
   - name: "my-app"
-    files: ["main.go"]
+    files: ["./cmd/"]
 ```
 
 ## Important Notes
 
-- **File paths**: Use forward slashes (/) even on Windows
+- **File paths**: Use forward slashes (/) even on Windows. Tip: use relative file paths, start with `./` for relative paths to directories.
 - **Relative paths**: Paths are relative to config file location or project-root
 - **Target names**: Must be unique within the configuration
-- **Platform**: Only needed if code has platform-specific build tags
+- **Platform**: Only needed if code has platform-specific build tags and files
 - **Log levels**: Use 3 (Info) for normal use, 4 (Debug) for troubleshooting, 5 (Trace) only for small programs
 - **Unsafe options**: Options prefixed with `unsafe-` may affect soundness of analysis
 
@@ -133,8 +133,9 @@ targets:
 1. Ask the user about their project structure
 2. Identify the main entry points (main packages, executables)
 3. Determine if there are platform-specific variants
-4. Ask about desired logging and reporting preferences
-5. Generate the YAML configuration file
+4. **MANDATORY: Verify each target can be loaded** - For EVERY target you plan to include in the config, you MUST call argot_load with the exact file paths you will put in the config to verify they load successfully. Do NOT skip this step. If a target fails to load, adjust the file paths or target configuration until it loads successfully.
+5. Ask about desired logging and reporting preferences
+6. Generate the YAML configuration file
 
 ## Required Information
 
@@ -147,6 +148,6 @@ To generate a configuration file, you need:
 
 ## Example Request
 
-"Generate a config file for my Go project. The main service is in `cmd/server/main.go` and there's a CLI tool in `cmd/cli/main.go`. The config file will be in a `config/` directory at the project root."
+"Generate a config file for my Go project. The main service is in `./cmd/server/main.go` and there's a CLI tool in `./cmd/cli/main.go`. The config file will be in a `config/` directory at the project root."
 
 Generate only the YAML configuration file. Include comments to explain the settings. Do not add dataflow-problems, taint-tracking, slicing, or syntactic-problems sections unless explicitly requested.
