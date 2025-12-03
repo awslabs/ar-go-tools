@@ -72,8 +72,8 @@ func TestFindSubspecs(t *testing.T) {
 	}
 	mustNotFlowEdges := findSubspecs(state, g, wantSummary)
 	t.Log(mustNotFlowEdges)
-	if len(mustNotFlowEdges) != 8 {
-		t.Error("want 8 must not flow edges (TODO actually check edges)")
+	if len(mustNotFlowEdges) != 3 {
+		t.Error("want 3 must not flow edges (TODO actually check edges)")
 	}
 }
 

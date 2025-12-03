@@ -24,26 +24,12 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
 // findSubspecs infers the most restrictive valid dataflow summary for callees
 // using a pure MaxSAT encoding.
 // It returns the must-not-flow edges needed to satisfy wantSummary.
-//
-// Encoding structure:
-// 1. Variables: reach(a,b) for each potential dataflow edge a→b
-// 2. Hard clauses (must be satisfied):
-//   - Unit clauses: reach(a,b) for known edges
-//   - Ternary clauses: ¬reach(a,b) ∨ ¬reach(b,c) ∨ reach(a,c) for transitivity
-//   - Unit clauses: reach(a,b) for required summary edges
-//   - Negative unit clauses: ¬reach(a,b) for forbidden summary edges
-//   - Path existence via Tseitin transformation
-//
-// 3. Soft clauses (maximize satisfied):
-//   - ¬reach(a,b) for each unknown edge (weight=1)
-//
-// The solver maximizes must-not-flow edges (minimizes dataflow) while
-// satisfying all hard constraints.
 //
 // TODO return may-flow instead of must-not-flow
 // Goal is to output a summary which we check recursively
@@ -72,103 +58,12 @@ func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summa
 			unknown = append(unknown, e)
 		}
 	}
+	_ = known
+	fmt.Println("unknown:")
+	dbgEdges(unknown)
 
 	// Build MaxSAT problem
 	var constraints []maxsat.Constr
-
-	// === HARD CLAUSES ===
-
-	// Known edges: unit clauses reach(a,b)
-	for _, e := range known {
-		constraints = append(constraints, maxsat.HardClause(reach(e.from, e.to)))
-	}
-
-	// Collect all nodes
-	allNodes := make(map[dataflow.GraphNode]struct{})
-	for _, e := range append(known, unknown...) {
-		allNodes[e.from] = struct{}{}
-		allNodes[e.to] = struct{}{}
-	}
-
-	// Hard: transitivity (reach(a,b) ∧ reach(b,c)) → reach(a,c)
-	// Converted to CNF: ¬reach(a,b) ∨ ¬reach(b,c) ∨ reach(a,c)
-	for _, abc := range permutations(maps.Keys(allNodes), 3) {
-		a, b, c := abc[0], abc[1], abc[2]
-		constraints = append(constraints,
-			maxsat.HardClause(
-				reach(a, b).Negation(),
-				reach(b, c).Negation(),
-				reach(a, c),
-			))
-	}
-
-	// Required summary edges: unit clauses reach(a,b)
-	// Forbidden summary edges: negative unit clauses ¬reach(a,b)
-	wantFlows := wantSummary.Summary().Flows
-	fNodes := collectFunctionNodes(g)
-
-	for from, tos := range wantFlows {
-		fromNode := findNodeByName(fNodes, from.String())
-		for _, to := range tos {
-			toNode := findNodeByName(fNodes, to.String())
-			if fromNode != nil && toNode != nil {
-				constraints = append(constraints, maxsat.HardClause(reach(fromNode, toNode)))
-			}
-		}
-	}
-	// Forbid all other f-node pairs
-	for _, from := range fNodes {
-		for _, to := range fNodes {
-			if from.String() != to.String() && !hasFlow(wantFlows, from, to) {
-				constraints = append(constraints, maxsat.HardClause(reach(from, to).Negation()))
-			}
-		}
-	}
-
-	// Path existence constraints using Tseitin transformation
-	pathIdx := 0
-	for from, tos := range wantFlows {
-		fromNode := findNodeByName(fNodes, from.String())
-		for _, to := range tos {
-			toNode := findNodeByName(fNodes, to.String())
-			if fromNode != nil && toNode != nil {
-				paths := findPathsThroughUnknown(fromNode, toNode, known, unknown)
-				if len(paths) > 0 {
-					var pathVars []maxsat.Lit
-					for _, pathEdges := range paths {
-						if len(pathEdges) > 0 {
-							pathVar := maxsat.Var(fmt.Sprintf("path_%d", pathIdx))
-							pathIdx++
-							pathVars = append(pathVars, pathVar)
-							// Forward: p → ei becomes ¬p ∨ ei
-							for _, e := range pathEdges {
-								constraints = append(constraints,
-									maxsat.HardClause(pathVar.Negation(), reach(e.from, e.to)))
-							}
-							// Backward: (e1 ∧ ... ∧ en) → p becomes ¬e1 ∨ ... ∨ ¬en ∨ p
-							clause := make([]maxsat.Lit, 0, len(pathEdges)+1)
-							for _, e := range pathEdges {
-								clause = append(clause, reach(e.from, e.to).Negation())
-							}
-							clause = append(clause, pathVar)
-							constraints = append(constraints, maxsat.HardClause(clause...))
-						}
-					}
-					if len(pathVars) > 0 {
-						constraints = append(constraints, maxsat.HardClause(pathVars...))
-					}
-				}
-			}
-		}
-	}
-
-	// === SOFT CLAUSES ===
-
-	// Maximize must-not-flow edges (minimize unknown edges)
-	// Each soft clause ¬reach(a,b) with weight=1
-	for _, e := range unknown {
-		constraints = append(constraints, maxsat.SoftClause(reach(e.from, e.to).Negation()))
-	}
 
 	prob := maxsat.New(constraints...)
 	model, _ := prob.Solve()
@@ -176,20 +71,26 @@ func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summa
 		panic("model is unsatisfiable")
 	}
 
-	// Print must-not-flow edges
-	fmt.Println("Must-not-flow dataflow edges:")
+	// Return must-not-flow (negation of may-flow) edges
+	var res []edge
 	for _, e := range unknown {
-		reachVar := fmt.Sprintf("r_%s->%s", e.from.String(), e.to.String())
-		if val, ok := model[reachVar]; ok && !val {
-			fmt.Printf("  %s -/-> %s\n", e.from.String(), e.to.String())
+		mayFlowVar := mayFlow(e.from, e.to).Var
+		if val, ok := model[mayFlowVar]; ok && !val {
+			res = append(res, e)
 		}
 	}
 
-	return append(known, unknown...)
+	return res
 }
 
-// reach creates a boolean variable representing the dataflow edge from→to
-func reach(from, to dataflow.GraphNode) maxsat.Lit {
+func dbgEdges(edges []edge) {
+	for _, e := range edges {
+		fmt.Printf("\t%+v\n", e)
+	}
+}
+
+// mayFlow creates a boolean variable representing the dataflow edge from→to
+func mayFlow(from, to dataflow.GraphNode) maxsat.Lit {
 	return maxsat.Var(fmt.Sprintf("r_%s->%s", from.String(), to.String()))
 }
 
@@ -396,6 +297,17 @@ func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 					if param.Index() == arg.Index() {
 						res = append(res, edge{from: arg, to: param, known: true})
 						break
+					}
+				}
+			}
+
+			// pointer-like callee param -> call arg
+			for _, param := range calleeSummary.Params {
+				if pointer.CanPoint(param.Type()) {
+					for _, arg := range call.Args() {
+						if param.Index() == arg.Index() {
+							res = append(res, edge{from: param, to: arg, known: true})
+						}
 					}
 				}
 			}
