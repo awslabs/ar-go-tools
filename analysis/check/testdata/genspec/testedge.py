@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Pure MaxSAT encoding for inferring g's dataflow summary.
-
-Same problem as test.py but using standard MaxSAT format where all constraints
-are CNF clauses (disjunctions of literals). This encoding could work with any
-MaxSAT solver that accepts the DIMACS WCNF format.
+Pure MaxSAT encoding for inferring g's dataflow summary with edges.
 """
 
 import itertools
@@ -62,19 +58,30 @@ def main():
         s.add(z3.Or(z3.Not(may_flow(a, b)), may_flow(a1, b1)))
         s.add(z3.Or(z3.Not(may_flow(a1, b1)), may_flow(a, b)))
 
-    # Add constraints for known edges
-    for a, b in known:
-        s.add(may_flow(a, b))
-
-    # Minimize must-not-flow unknown edges (maximize may-flow)
-    for a, b in unknown:
-        s.add_soft(may_flow(a, b))
-
-    # may-flow is transitive for all nodes
     all_nodes = set()
     for a, b in known + unknown:
         all_nodes.add(a)
         all_nodes.add(b)
+    for a, b in itertools.product(all_nodes, all_nodes):
+        if a == b:
+            continue
+        if (a, b) in known:
+            s.add(edge(a, b))
+        elif (a, b) in unknown:
+            s.add_soft(edge(a, b))
+        else:
+            s.add(z3.Not(edge(a, b)))
+
+    # REACHABILITY (may-flow)
+
+    # Edge implies may-flow: edge(a,b) → may_flow(a,b)
+    # Converted to CNF: ¬edge(a,b) ∨ may_flow(a,b)
+    for a, b in itertools.product(all_nodes, all_nodes):
+        if a == b:
+            continue
+        s.add(z3.Or(z3.Not(edge(a, b)), may_flow(a, b)))
+
+    # may-flow is transitive
     # Transitivity: (may_flow(a,b) ∧ may_flow(b,c)) → may_flow(a,c)
     # Converted to CNF: ¬may_flow(a,b) ∨ ¬may_flow(b,c) ∨ may_flow(a,c)
     for a, b, c in itertools.product(all_nodes, repeat=3):
@@ -133,10 +140,6 @@ def main():
             if path_vars:
                 # At least one path must be satisfied: p1 ∨ p2 ∨ ... ∨ pn
                 s.add(z3.Or(*path_vars))
-
-    # Require want_summary must-not-flow edges to be true
-    for a, b in set(most_general_summary(f_nodes)) - want_summary:
-        s.add(z3.Not(may_flow(a, b)))
 
     if s.check() != z3.sat:
         print("model is not sat!")
@@ -235,6 +238,10 @@ def most_general_summary(nodes):
 
 def may_flow(a, b):
     return z3.Bool(f"mayflow_{a}->{b}")
+
+
+def edge(a, b):
+    return z3.Bool(f"edge_{a}->{b}")
 
 
 if __name__ == "__main__":
