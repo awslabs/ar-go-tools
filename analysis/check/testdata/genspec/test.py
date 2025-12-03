@@ -22,12 +22,17 @@ must be (in terms of dataflow edges) in order to satisfy f's
 summary, while MINIMIZING the number of must-not-flow edges
 (i.e., finding the most general valid summary of g).
 
+The summary of f that g needs to satisfy is given as:
+a->ret, a->b, b->ret.
+This means that parameter `no` cannot flow to anything
+and nothing can flow to parameter `no`.
+
 In order to satisfy the summary of f, the minimal
 must-not-flow edges for g are:
 no->a, no->b, no->ret.
 
-This gives g a valid summary of:
-a->b, a->no, a->ret, b->a, b->no, b->ret.
+This gives g a maximal valid summary of:
+a->b, a->ret, b->a, b->ret.
 
 It is fine for a and b to flow to each other even though
 this is impossible in practice because it does not change
@@ -67,6 +72,8 @@ def main():
         ("f@call_g1_arg_2", "g1@param_no"),
         ("g0@ret", "f@call_g0"),
         ("g1@ret", "f@call_g1"),
+        ("g0@param_no", "f@param_no"),  # pointer
+        ("g1@param_no", "f@param_no"),  # pointer
     ]
     known = intra_f + inter
 
@@ -115,8 +122,20 @@ def main():
     for a, b in set(itertools.permutations(f_nodes, 2)) - want_summary:
         s.add(z3.Not(may_flow(a, b)))
 
-    # Compute transitive may-flow edges by enumerating all possible paths
-    # from a summary input node to an output node.
+    # Transitivity requirement is only for the forward direction:
+    #   If may_flow(a,b) and may_flow(b,c) are both true,
+    #   then may_flow(a,c) must be true
+    # It doesn't force may-flow edges to exist because the solver can
+    # satisfy f's summary by directly setting the may_flow variables to true,
+    # without requiring an actual path of edges to exist.
+    #
+    # What we really want is:
+    #   If may_flow(a,c) must be true,
+    #   then there must exist some b where may_flow(a,b) and may_flow(b,c)
+    #
+    # Finding at least one realizable path from an input (src)
+    # node in the summary to an output (dst) node gives a witness
+    # for the existential (b).
     for src, dst in want_summary:
         paths = find_paths_through_unknown(src, dst, known, unknown)
         if paths:
@@ -136,10 +155,19 @@ def main():
 
     m = s.model()
 
-    print("Must-not-flow unknown dataflow edges:")
+    print("Must-not-flow dataflow edges in g:")
     for a, b in sorted(unknown):
+        if a.endswith("ret"):
+            continue
         if z3.is_false(m.eval(may_flow(a, b))):
             print(f"  {a} -/-> {b}")
+
+    print("Inferred summary of g:")
+    for a, b in sorted(unknown):
+        if a.endswith("ret"):
+            continue
+        if z3.is_true(m.eval(may_flow(a, b))):
+            print(f"  {a} -> {b}")
 
 
 def may_flow(a, b):
