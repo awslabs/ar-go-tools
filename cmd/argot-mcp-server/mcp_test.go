@@ -28,7 +28,7 @@ import (
 func TestMCPServer(t *testing.T) {
 	// We need to start running the MCP server in a separate process.
 	// We will send command on stdin and read from stdout
-	cmd := exec.Command("go", "run", "main.go")
+	cmd := exec.Command("go", "run", ".")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -147,6 +147,8 @@ func TestMCPServer(t *testing.T) {
 	checkLoadProgramTool(t, stdin, scanner)
 	// Check list tools after load program
 	checkListTool(t, stdin, scanner)
+	// Check resources
+	checkResources(t, stdin, scanner)
 }
 
 func sendRequest(t *testing.T, stdin io.WriteCloser, req jsonRPCRequest) {
@@ -338,8 +340,8 @@ func checkListTool(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 				Params: map[string]interface{}{
 					"name": "argot_list_functions",
 					"arguments": map[string]interface{}{
-						"regex":   ".*",
-						"_cursor": cursor,
+						"regex":  ".*",
+						"cursor": cursor,
 					},
 				},
 			}
@@ -507,5 +509,80 @@ func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 	}
 	if !strings.Contains(configText, "targets") {
 		t.Error("Expected config prompt to contain 'targets'")
+	}
+}
+
+func checkResources(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
+	// Test resources list
+	resourcesListReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      11,
+		Method:  "resources/list",
+		Params:  map[string]interface{}{},
+	}
+	sendRequest(t, stdin, resourcesListReq)
+	response := readResponse(t, scanner)
+	var resourcesListResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &resourcesListResp); err != nil {
+		t.Fatal(err)
+	}
+	if resourcesListResp.Error != nil {
+		t.Fatalf("Resources list failed: %v", resourcesListResp.Error)
+	}
+
+	// Check that resources are listed
+	result, ok := resourcesListResp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected resources list result to be a map")
+	}
+	resources, ok := result["resources"].([]interface{})
+	if !ok {
+		t.Fatal("Expected resources to be an array")
+	}
+	if len(resources) != 14 {
+		t.Errorf("Expected 14 resources, got %d", len(resources))
+	}
+
+	// Test resources read
+	resourcesReadReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      12,
+		Method:  "resources/read",
+		Params: map[string]interface{}{
+			"uri": "argot://doc/00_intro.md",
+		},
+	}
+	sendRequest(t, stdin, resourcesReadReq)
+	response = readResponse(t, scanner)
+	var resourcesReadResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &resourcesReadResp); err != nil {
+		t.Fatal(err)
+	}
+	if resourcesReadResp.Error != nil {
+		t.Fatalf("Resources read failed: %v", resourcesReadResp.Error)
+	}
+
+	// Check that resource content is returned
+	readResult, ok := resourcesReadResp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected resources read result to be a map")
+	}
+	contents, ok := readResult["contents"].([]interface{})
+	if !ok {
+		t.Fatal("Expected contents to be an array")
+	}
+	if len(contents) == 0 {
+		t.Fatal("Expected at least one content item")
+	}
+	contentItem, ok := contents[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected content item to be a map")
+	}
+	text, ok := contentItem["text"].(string)
+	if !ok {
+		t.Fatal("Expected text to be a string")
+	}
+	if !strings.Contains(text, "ARGOT") {
+		t.Error("Expected intro doc to contain 'ARGOT'")
 	}
 }

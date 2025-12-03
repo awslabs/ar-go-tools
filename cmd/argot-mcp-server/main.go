@@ -182,6 +182,10 @@ func main() {
 			state.handlePromptsList(req)
 		case "prompts/get":
 			state.handlePromptsGet(req)
+		case "resources/list":
+			state.handleResourcesList(req)
+		case "resources/read":
+			state.handleResourcesRead(req)
 		case "notifications/initialized":
 			state.handleInitialized(req)
 		default:
@@ -217,6 +221,9 @@ func (s *serverState) handleInitialize(req jsonRPCRequest) {
 			},
 			"prompts": map[string]interface{}{
 				"listChanged": true,
+			},
+			"resources": map[string]interface{}{
+				"listChanged": false,
 			},
 		},
 		"serverInfo": map[string]interface{}{
@@ -302,7 +309,7 @@ handler for the tool call.
 func (s *serverState) handleToolCall(req jsonRPCRequest) {
 	params, ok := req.Params.(map[string]interface{})
 	if !ok {
-		s.sendError(req.ID, -32602, "Invalid params")
+		s.sendError(req.ID, codeInvalidParams, "Invalid params")
 		return
 	}
 
@@ -385,7 +392,7 @@ func (s *serverState) handleCliCommand(id interface{},
 	}
 
 	// Check if cursor is provided for pagination
-	if cursor, ok := toolCall.Arguments["_cursor"].(string); ok {
+	if cursor, ok := toolCall.Arguments["cursor"].(string); ok {
 		s.handlePaginatedResponse(id, cursor)
 		return
 	}
@@ -397,6 +404,7 @@ func (s *serverState) handleCliCommand(id interface{},
 	} else {
 		s.sendResponse(id, map[string]interface{}{
 			"content": []content{{Type: "text", Text: output}},
+			"isError": false,
 		})
 	}
 }
@@ -518,6 +526,7 @@ func (s *serverState) handleDependencies(id interface{}, args map[string]interfa
 
 	s.sendResponse(id, map[string]interface{}{
 		"content": []content{{Type: "text", Text: fmt.Sprintf("%+v", results)}},
+		"isError": false,
 	})
 }
 
@@ -649,6 +658,7 @@ func (s *serverState) sendPaginatedResponse(id interface{}, output string) {
 	if len(pages) == 0 {
 		s.sendResponse(id, map[string]interface{}{
 			"content": []content{{Type: "text", Text: ""}},
+			"isError": false,
 		})
 		return
 	}
@@ -658,6 +668,7 @@ func (s *serverState) sendPaginatedResponse(id interface{}, output string) {
 
 	result := map[string]interface{}{
 		"content": []content{{Type: "text", Text: pages[0]}},
+		"isError": false,
 	}
 	if len(pages) > 1 {
 		result["nextCursor"] = cursor
@@ -680,6 +691,7 @@ func (s *serverState) handlePaginatedResponse(id interface{}, cursor string) {
 
 	result := map[string]interface{}{
 		"content": []content{{Type: "text", Text: pages[0]}},
+		"isError": false,
 	}
 
 	if len(pages) > 1 {

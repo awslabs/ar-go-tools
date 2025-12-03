@@ -34,6 +34,7 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@latest
       - name: Run basic analyses
         run: |
+          cd cmd/argot-mcp-server && go generate && cd ../../
           go vet ./...
           gocyclo -ignore "test|internal/pointer|internal/typeparams" -over 15 .
           ineffassign ./...
