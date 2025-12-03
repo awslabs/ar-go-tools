@@ -21,9 +21,11 @@ def main():
         ("f@param_a", "f@call_g0_arg_0"),
         ("f@param_a", "f@call_g0_arg_1"),
         ("f@param_no", "f@call_g0_arg_2"),
+        ("f@call_g0_arg_2", "f@param_no"),
         ("f@param_a", "f@call_g1_arg_0"),
         ("f@param_b", "f@call_g1_arg_1"),
         ("f@param_no", "f@call_g1_arg_2"),
+        ("f@call_g1_arg_2", "f@param_no"),
         ("f@call_g0", "f@param_b"),
         ("f@call_g1", "f@param_b"),
         ("f@call_g0", "f@ret"),
@@ -38,8 +40,8 @@ def main():
         ("f@call_g1_arg_2", "g1@param_no"),
         ("g0@ret", "f@call_g0"),
         ("g1@ret", "f@call_g1"),
-        ("g0@param_no", "f@param_no"),  # pointer
-        ("g1@param_no", "f@param_no"),  # pointer
+        ("g0@param_no", "f@call_g0_arg_2"),  # pointer
+        ("g1@param_no", "f@call_g1_arg_2"),  # pointer
     ]
     known = intra_f + inter
 
