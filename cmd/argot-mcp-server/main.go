@@ -17,11 +17,14 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dependencies"
@@ -33,6 +36,12 @@ import (
 
 // jsonRpcVersion is the protocol version used by the server
 const jsonRpcVersion = "2.0"
+
+// paginationThreshold is the character limit before paginating responses
+const paginationThreshold = 50000
+
+// pageSize is the number of characters per page
+const pageSize = 40000
 
 // The error codes below are defined here: https://www.jsonrpc.org/specification#error_object
 
@@ -116,13 +125,15 @@ contains the following fields:
 - outputter: the outputter used to write the output of the commands
 - cliSession: the cli session used to execute the commands. Contains all state information relating to program analysis.
 - tools: the tools that are available on the server
+- paginationStore: stores pages for paginated responses
 */
 type serverState struct {
-	cmdOut     *bytes.Buffer
-	cmdErr     *bytes.Buffer
-	outputter  cli.Outputter
-	cliSession *cli.Session
-	tools      map[string]cli.CommandDefinition
+	cmdOut          *bytes.Buffer
+	cmdErr          *bytes.Buffer
+	outputter       cli.Outputter
+	cliSession      *cli.Session
+	tools           map[string]cli.CommandDefinition
+	paginationStore map[string][]string
 }
 
 /*
@@ -136,11 +147,12 @@ func newState(configPath string) *serverState {
 	outputterOut := bytes.NewBuffer(nil)
 	outputterErr := bytes.NewBuffer(nil)
 	return &serverState{
-		cmdOut:     outputterOut,
-		cmdErr:     outputterErr,
-		outputter:  cli.NewOutputter(outputterOut, outputterErr),
-		cliSession: cli.NewSession(tools.CommonFlags{ConfigPath: configPath}, false),
-		tools:      make(map[string]cli.CommandDefinition),
+		cmdOut:          outputterOut,
+		cmdErr:          outputterErr,
+		outputter:       cli.NewOutputter(outputterOut, outputterErr),
+		cliSession:      cli.NewSession(tools.CommonFlags{ConfigPath: configPath}, false),
+		tools:           make(map[string]cli.CommandDefinition),
+		paginationStore: make(map[string][]string),
 	}
 }
 
@@ -371,10 +383,22 @@ func (s *serverState) handleCliCommand(id interface{},
 		s.sendError(id, codeInternalError, errs)
 		return
 	}
-	// Send response
-	s.sendResponse(id, map[string]interface{}{
-		"content": []content{{Type: "text", Text: s.cmdOut.String()}},
-	})
+
+	// Check if cursor is provided for pagination
+	if cursor, ok := toolCall.Arguments["_cursor"].(string); ok {
+		s.handlePaginatedResponse(id, cursor)
+		return
+	}
+
+	output := s.cmdOut.String()
+	// Check if output needs pagination
+	if len(output) > paginationThreshold {
+		s.sendPaginatedResponse(id, output)
+	} else {
+		s.sendResponse(id, map[string]interface{}{
+			"content": []content{{Type: "text", Text: output}},
+		})
+	}
 }
 
 /*
@@ -618,4 +642,84 @@ func (s *serverState) sendError(id interface{}, code int, message string) {
 	}
 	data, _ := json.Marshal(resp)
 	fmt.Println(string(data))
+}
+
+func (s *serverState) sendPaginatedResponse(id interface{}, output string) {
+	pages := s.splitIntoPages(output)
+	if len(pages) == 0 {
+		s.sendResponse(id, map[string]interface{}{
+			"content": []content{{Type: "text", Text: ""}},
+		})
+		return
+	}
+
+	cursor := s.generateCursor()
+	s.paginationStore[cursor] = pages[1:]
+
+	result := map[string]interface{}{
+		"content": []content{{Type: "text", Text: pages[0]}},
+	}
+	if len(pages) > 1 {
+		result["nextCursor"] = cursor
+	}
+	s.sendResponse(id, result)
+}
+
+func (s *serverState) handlePaginatedResponse(id interface{}, cursor string) {
+	pages, ok := s.paginationStore[cursor]
+	if !ok {
+		s.sendError(id, codeInvalidParams, "Invalid cursor")
+		return
+	}
+
+	if len(pages) == 0 {
+		delete(s.paginationStore, cursor)
+		s.sendError(id, codeInvalidParams, "No more pages")
+		return
+	}
+
+	result := map[string]interface{}{
+		"content": []content{{Type: "text", Text: pages[0]}},
+	}
+
+	if len(pages) > 1 {
+		s.paginationStore[cursor] = pages[1:]
+		result["nextCursor"] = cursor
+	} else {
+		delete(s.paginationStore, cursor)
+	}
+
+	s.sendResponse(id, result)
+}
+
+func (s *serverState) splitIntoPages(output string) []string {
+	if len(output) <= pageSize {
+		return []string{output}
+	}
+
+	var pages []string
+	lines := strings.Split(output, "\n")
+	var currentPage strings.Builder
+	
+	for _, line := range lines {
+		if currentPage.Len()+len(line)+1 > pageSize && currentPage.Len() > 0 {
+			pages = append(pages, currentPage.String())
+			currentPage.Reset()
+		}
+		if currentPage.Len() > 0 {
+			currentPage.WriteString("\n")
+		}
+		currentPage.WriteString(line)
+	}
+	
+	if currentPage.Len() > 0 {
+		pages = append(pages, currentPage.String())
+	}
+	
+	return pages
+}
+
+func (s *serverState) generateCursor() string {
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%d", len(s.paginationStore))))
+	return base64.URLEncoding.EncodeToString(hash[:16])
 }

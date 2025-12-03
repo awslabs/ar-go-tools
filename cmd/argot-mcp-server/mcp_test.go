@@ -288,6 +288,75 @@ func checkListTool(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 	if loadProgramResp.Error != nil {
 		t.Fatalf(" List functions failed: %v", loadProgramResp.Error)
 	}
+
+	// Test pagination: load argot program and list all functions
+	loadArgotReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      8,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name": "argot_load",
+			"arguments": map[string]interface{}{
+				"paths": []string{"./../../cmd/argot"},
+			},
+		},
+	}
+	sendRequest(t, stdin, loadArgotReq)
+	readResponse(t, scanner)
+
+	listAllReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      9,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name": "argot_list_functions",
+			"arguments": map[string]interface{}{
+				"regex": ".*",
+			},
+		},
+	}
+	sendRequest(t, stdin, listAllReq)
+	response = readResponse(t, scanner)
+	var listAllResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &listAllResp); err != nil {
+		t.Fatal(err)
+	}
+	if listAllResp.Error != nil {
+		t.Fatalf("List all functions failed: %v", listAllResp.Error)
+	}
+
+	// Check if pagination was triggered
+	if result, ok := listAllResp.Result.(map[string]interface{}); ok {
+		if cursor, hasCursor := result["nextCursor"].(string); hasCursor {
+			t.Logf("Pagination triggered, cursor: %s", cursor)
+
+			// Request next page
+			nextPageReq := jsonRPCRequest{
+				JSONRPC: jsonRpcVersion,
+				ID:      10,
+				Method:  "tools/call",
+				Params: map[string]interface{}{
+					"name": "argot_list_functions",
+					"arguments": map[string]interface{}{
+						"regex":   ".*",
+						"_cursor": cursor,
+					},
+				},
+			}
+			sendRequest(t, stdin, nextPageReq)
+			response = readResponse(t, scanner)
+			var nextPageResp jsonRPCResponse
+			if err := json.Unmarshal([]byte(response), &nextPageResp); err != nil {
+				t.Fatal(err)
+			}
+			if nextPageResp.Error != nil {
+				t.Fatalf("Next page request failed: %v", nextPageResp.Error)
+			}
+			t.Log("Successfully retrieved page 2")
+		} else {
+			t.Log("Output did not trigger pagination (< 50KB)")
+		}
+	}
 }
 
 func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
