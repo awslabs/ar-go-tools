@@ -49,8 +49,8 @@ def main():
     # Unknown dataflow edges (most-general summary of g):
     g0_nodes = map(lambda n: n.replace("g", "g0"), g_nodes)
     g1_nodes = map(lambda n: n.replace("g", "g1"), g_nodes)
-    intra_g0 = list(itertools.permutations(g0_nodes, 2))
-    intra_g1 = list(itertools.permutations(g1_nodes, 2))
+    intra_g0 = list(most_general_summary(g0_nodes))
+    intra_g1 = list(most_general_summary(g1_nodes))
     unknown = intra_g0 + intra_g1
 
     # Summary we want to check
@@ -91,15 +91,14 @@ def main():
     # Transitivity: (may_flow(a,b) ∧ may_flow(b,c)) → may_flow(a,c)
     # Converted to CNF: ¬may_flow(a,b) ∨ ¬may_flow(b,c) ∨ may_flow(a,c)
     for a, b, c in itertools.product(all_nodes, repeat=3):
-        if a != b and b != c:
+        if a != b and b != c and a != c:
             s.add(z3.Or(z3.Not(may_flow(a, b)), z3.Not(may_flow(b, c)), may_flow(a, c)))
 
-    # Required summary edges
-    for a, b in want_summary:
-        s.add(may_flow(a, b))
-
-    # Forbidden summary edges
-    for a, b in set(itertools.permutations(f_nodes, 2)) - want_summary:
+    # Forbidden summary edges:
+    # Blocks the solver from satisfying flows in f that shouldn't exist,
+    # which forces it to choose flows in g that don't create forbidden
+    # flows via transitivity.
+    for a, b in set(most_general_summary(f_nodes)) - want_summary:
         s.add(z3.Not(may_flow(a, b)))
 
     # Transitivity requirement is only for the forward direction:
@@ -149,15 +148,11 @@ def main():
 
     print("Must-not-flow dataflow edges in g:")
     for a, b in sorted(unknown):
-        if a.endswith("ret"):
-            continue
         if z3.is_false(m.eval(may_flow(a, b))):
             print(f"  {a} -/-> {b}")
 
     print("Inferred summary of g:")
     for a, b in sorted(unknown):
-        if a.endswith("ret"):
-            continue
         if z3.is_true(m.eval(may_flow(a, b))):
             print(f"  {a} -> {b}")
 
@@ -234,6 +229,10 @@ def find_paths_through_unknown(src, dst, known, unknown):
             i = i - 1
 
     return paths
+
+
+def most_general_summary(nodes):
+    return filter(lambda e: not e[0].endswith("ret"), itertools.permutations(nodes, 2))
 
 
 def may_flow(a, b):
