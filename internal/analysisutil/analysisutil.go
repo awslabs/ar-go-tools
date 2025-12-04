@@ -103,7 +103,7 @@ func FindValuePackage(n ssa.Value) fn.Optional[string] {
 			pkg = node.Params[0].Parent().Package()
 		}
 		if pkg != nil {
-			return fn.Some(pkg.String())
+			return fn.Some(pkg.Pkg.Path())
 		}
 		return fn.None[string]()
 	}

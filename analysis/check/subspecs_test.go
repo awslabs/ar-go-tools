@@ -17,7 +17,9 @@ package check
 import (
 	"context"
 	"embed"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -33,67 +35,193 @@ import (
 var testfsys embed.FS
 
 func TestFindSubspecs(t *testing.T) {
-	dir := filepath.Join("./testdata", "genspec")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		fn   summaries.FrontendDataflowSummary
+		want map[string][]summaries.DetailedSummary
+		via  Method
+	}{
+		{
+			fn: summaries.NewFunctionFlowSummary(
+				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
+				"threeArgInter",
+				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+					summaries.ArgumentSNode{Name: "a", Index: 1}: {
+						summaries.ArgumentSNode{Name: "b", Index: 2},
+						summaries.ReturnSNode{Index: 0},
+					},
+					summaries.ArgumentSNode{Name: "b", Index: 2}: {
+						summaries.ReturnSNode{Index: 0},
+					},
+				},
+				},
+			),
+			want: map[string][]summaries.DetailedSummary{
+				"add2": {
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.ArgumentSNode{Name: "a", Index: 0}: {
+								summaries.ArgumentSNode{Name: "b", Index: 1},
+							},
+							summaries.ArgumentSNode{Name: "b", Index: 1}: {
+								summaries.ArgumentSNode{Name: "a", Index: 0},
+							},
+							summaries.ArgumentSNode{Name: "no", Index: 2}: {
+								summaries.ArgumentSNode{Name: "a", Index: 0},
+								summaries.ArgumentSNode{Name: "b", Index: 1},
+							},
+						},
+					},
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.ArgumentSNode{Name: "a", Index: 0}: {
+								summaries.ArgumentSNode{Name: "b", Index: 1},
+								summaries.ReturnSNode{Index: 0},
+							},
+							summaries.ArgumentSNode{Name: "b", Index: 1}: {
+								summaries.ArgumentSNode{Name: "a", Index: 0},
+								summaries.ReturnSNode{Index: 0},
+							},
+						},
+					},
+				},
+			},
+			via: General,
+		}, {
+			fn: summaries.NewFunctionFlowSummary(
+				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
+				"threeArgInter",
+				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+					summaries.ArgumentSNode{Name: "a", Index: 1}: {
+						summaries.ArgumentSNode{Name: "b", Index: 2},
+						summaries.ReturnSNode{Index: 0},
+					},
+					summaries.ArgumentSNode{Name: "b", Index: 2}: {
+						summaries.ReturnSNode{Index: 0},
+					},
+				},
+				},
+			),
+			want: map[string][]summaries.DetailedSummary{
+				"add2": {
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.ArgumentSNode{Name: "a", Index: 0}: {
+								summaries.ReturnSNode{Index: 0},
+							},
+							summaries.ArgumentSNode{Name: "b", Index: 1}: {
+								summaries.ReturnSNode{Index: 0},
+							},
+						},
+					},
+				},
+			},
+			via: Types,
+		},
 	}
-	setupConfig(lp)
-	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
-	if err != nil {
-		t.Fatalf("failed to load state: %s", err)
-	}
-	InitializeState(state)
 
-	str := `
-{
-	"package": "github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
-	"function": "threeArgInter",
-	"flows": [
-		{"from": "!arg <a>", "to": "!arg <b>"},
-		{"from": "!arg <a>", "to": "!ret"},
-		{"from": "!arg <b>", "to": "!ret"}
-	]
-}`
-	var wantSummary summaries.FunctionFlowSummary
-	if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
-		t.Fatalf("failed to unmarshal summary %s: %v", str, err)
-	}
-	f, err := functionOfSummary(state, wantSummary)
-	if err != nil {
-		t.Fatalf("failed to find function for summary %v", wantSummary)
-	}
-	g, ok := state.FlowGraph.Summaries[f]
-	if !ok {
-		t.Fatalf("no summary for function %s", f)
-	}
-	if !g.Constructed {
-		dataflow.RunIntraProcedural(context.Background(), state, g)
-	}
-	mustNotFlowEdges := findSubspecs(state, g, wantSummary)
+	for _, tc := range tests {
+		t.Run(fmt.Sprintf("%s via %s", tc.fn.Name(), tc.via), func(t *testing.T) {
+			dir := filepath.Join("./testdata", "genspec")
+			lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+			if err != nil {
+				t.Fatal(err)
+			}
+			setupConfig(lp)
+			state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
+			if err != nil {
+				t.Fatalf("failed to load state: %s", err)
+			}
+			InitializeState(state)
+			f, err := functionOfSummary(state, tc.fn)
+			if err != nil {
+				t.Fatalf("failed to find function for summary %v", tc.fn)
+			}
+			g, ok := state.FlowGraph.Summaries[f]
+			if !ok {
+				t.Fatalf("no summary for function %s", f)
+			}
+			if !g.Constructed {
+				dataflow.RunIntraProcedural(context.Background(), state, g)
+			}
+			summs := inferCalleeSummaries(state, g, tc.fn, tc.via)
+			if len(summs) == 0 {
+				t.Fatalf("no summaries for function %s via %s", tc.fn, tc.via)
+			}
 
-	wantEdges := map[string]bool{
-		"call:add2(t0, t1, no)_param:a:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2": true,
-		"call:add2(t0, t1, no)_param:a:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":    true,
-		"call:add2(t0, t1, no)_param:b:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2": true,
-		"call:add2(t0, t1, no)_param:b:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":    true,
-		"call:add2(t0, t1, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":   true,
-		"call:add2(t3, t4, no)_param:a:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2": true,
-		"call:add2(t3, t4, no)_param:a:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":    true,
-		"call:add2(t3, t4, no)_param:b:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2": true,
-		"call:add2(t3, t4, no)_param:b:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":    true,
-		"call:add2(t3, t4, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":   true,
-	}
+			for calleeG, inferredSummaries := range summs {
+				calleeName := calleeG.Parent.Name()
+				wantSummaries, ok := tc.want[calleeName]
+				if !ok {
+					t.Errorf("callee not in tc.want: %v", calleeName)
+					continue
+				}
 
-	if len(mustNotFlowEdges) != len(wantEdges) {
-		t.Errorf("want %d must not flow edges, got %d", len(wantEdges), len(mustNotFlowEdges))
-	}
+				// Check exact match: same number of summaries
+				if len(inferredSummaries) != len(wantSummaries) {
+					t.Errorf("number of summaries mismatch for %s: want %d, got %d",
+						calleeName, len(wantSummaries), len(inferredSummaries))
+					t.Logf("want summaries:")
+					for i, ws := range wantSummaries {
+						t.Logf("  [%d]: %+v", i, ws)
+					}
+					t.Logf("got summaries:")
+					for i, gs := range inferredSummaries {
+						t.Logf("  [%d]: %+v", i, gs.Summary())
+					}
+					continue
+				}
 
-	// Verify the edges match expected
-	for _, e := range mustNotFlowEdges {
-		if _, ok := wantEdges[e.String()]; !ok {
-			t.Errorf("unexpected must-not-flow edge: %v", e)
-		}
+				// For each expected summary, check that exactly one inferred summary matches it
+				matchedInferred := make(map[int]bool)
+				for j, wantSumm := range wantSummaries {
+					foundMatch := false
+
+					for i, inferredSumm := range inferredSummaries {
+						if matchedInferred[i] {
+							continue // Already matched to another expected summary
+						}
+
+						got := inferredSumm.Summary()
+						if len(got.Flows) != len(wantSumm.Flows) {
+							continue
+						}
+
+						allFlowsMatch := true
+						for gfrom, gtos := range got.Flows {
+							wtos, ok := wantSumm.Flows[gfrom]
+							if !ok {
+								allFlowsMatch = false
+								break
+							}
+							if len(gtos) != len(wtos) {
+								allFlowsMatch = false
+								break
+							}
+							for _, wto := range wtos {
+								if !slices.Contains(gtos, wto) {
+									allFlowsMatch = false
+									break
+								}
+							}
+							if !allFlowsMatch {
+								break
+							}
+						}
+
+						if allFlowsMatch {
+							foundMatch = true
+							matchedInferred[i] = true
+							break
+						}
+					}
+
+					if !foundMatch {
+						t.Errorf("expected summary [%d] for %s not found in inferred summaries", j, calleeName)
+						t.Logf("want: %+v", wantSumm)
+					}
+				}
+			}
+		})
 	}
 }
 

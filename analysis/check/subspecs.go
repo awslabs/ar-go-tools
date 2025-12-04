@@ -16,21 +16,29 @@ package check
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/crillab/gophersat/maxsat"
+	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
-// findSubspecs infers the most restrictive valid dataflow summary for callees
+// inferCalleeSummaries infers the most general possibly-valid dataflow summary for callees
 // using a pure MaxSAT encoding.
-// It returns the must-not-flow edges needed to satisfy wantSummary.
-//
-// TODO return may-flow instead of must-not-flow
-// Goal is to output a summary which we check recursively
-func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summaries.FrontendDataflowSummary) []edge {
+// It returns all the maximally-general (most flow edges) callee summaries which satisfy
+// wantSummary's must-not-flow requirements.
+func inferCalleeSummaries(
+	s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summaries.FrontendDataflowSummary,
+	via Method,
+) map[*dataflow.SummaryGraph][]summaries.FrontendDataflowSummary {
+	validMethods := []Method{General, Types}
+	if !slices.Contains(validMethods, via) {
+		panic(fmt.Errorf("invalid inference method: want one of %v, got %v", validMethods, via))
+	}
+
 	// Collect known (intra + inter) and unknown edges
 	intraParent := intraEdges(g, nil)
 	inter := interEdges(s, g)
@@ -54,10 +62,15 @@ func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summa
 			edges := intraEdges(calleeG, call)
 			known = append(known, edges...)
 		} else {
-			dataflow.MakeMostGeneralNoPtr(calleeG)
+			switch via {
+			case General:
+				dataflow.MakeMostGeneralNoPtr(calleeG)
+			case Types:
+				dataflow.MakeMostGeneral(calleeG)
+			}
 			edges := intraEdges(calleeG, call)
 			unknown[call] = edges
-			// Reset constructed to false because MakeMostGeneralNoPtr sets it to true
+			// Reset constructed to false because MakeMostGeneral sets it to true
 			calleeG.Constructed = false
 		}
 	}
@@ -68,20 +81,36 @@ func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summa
 	// Callees of the same function must have identical inferred summaries
 	var summaryConstrs []maxsat.Constr
 	for call := range unknown {
-		for otherCall, edges := range unknown {
+		edges := unknown[call]
+		for otherCall := range unknown {
 			if call == otherCall {
 				continue
 			}
-			if call.Callee() == otherCall.Callee() {
-				otherEdges := unknown[otherCall]
-				for i, e := range edges {
+			if call.Callee() != otherCall.Callee() {
+				continue
+			}
+
+			otherEdges := unknown[otherCall]
+
+			// Match edges semantically, not by position
+			// Create a map from edge signature to edge for matching
+			edgeMap := make(map[string]edge)
+			for _, e := range edges {
+				sig := edgeSignature(e)
+				edgeMap[sig] = e
+			}
+
+			for _, otherE := range otherEdges {
+				sig := edgeSignature(otherE)
+				if e, ok := edgeMap[sig]; ok {
+					// These edges correspond semantically
 					constrs := []maxsat.Constr{
 						maxsat.HardClause(
 							mayFlow(e).Negation(),
-							mayFlow(otherEdges[i]),
+							mayFlow(otherE),
 						),
 						maxsat.HardClause(
-							mayFlow(otherEdges[i]).Negation(),
+							mayFlow(otherE).Negation(),
 							mayFlow(e),
 						),
 					}
@@ -91,7 +120,6 @@ func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summa
 		}
 	}
 	constraints = append(constraints, summaryConstrs...)
-	// dbgConstrs("summary constrs:", summaryConstrs)
 
 	// Hard constraints for known edges
 	var knownConstrs []maxsat.Constr
@@ -141,7 +169,7 @@ func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summa
 	// Block must-not-flows in wantSummary
 	// Generate all possible edges between function-level nodes (params and returns only)
 	var fGeneralEdges []edge
-	fNodes := collectFunctionNodes(g)
+	fNodes := summaryNodes(g)
 	for _, from := range fNodes {
 		// Skip edges starting from return nodes
 		if _, isRet := from.(*dataflow.ReturnValNode); isRet {
@@ -149,40 +177,97 @@ func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summa
 		}
 		for _, to := range fNodes {
 			if from != to {
-				fGeneralEdges = append(fGeneralEdges, edge{from: node{n: from, call: nil}, to: node{n: to, call: nil}})
+				fGeneralEdges = append(fGeneralEdges,
+					edge{from: node{n: from, call: nil}, to: node{n: to, call: nil}})
 			}
 		}
 	}
-	fWantEdges := summaryEdges(wantSummary, g)
+	fWantEdges := summaryToEdges(wantSummary, g)
 	for _, e := range fGeneralEdges {
-		want := false
-		for _, we := range fWantEdges {
-			if we == e {
-				want = true
-				break
-			}
-		}
-		if !want {
+		if !slices.Contains(fWantEdges, e) {
 			constr := maxsat.HardClause(mayFlow(e).Negation())
 			constraints = append(constraints, constr)
 		}
 	}
 
 	prob := maxsat.New(constraints...)
-	model, _ := prob.Solve()
+
+	// Find the optimal cost first
+	model, optimalCost := prob.Solve()
 	if model == nil {
 		panic("model is unsatisfiable")
 	}
 
-	// Return must-not-flow (negation of may-flow) edges
-	var res []edge
+	// Collect all models with the optimal cost
+	allOptimalModels := []maxsat.Model{model}
+
+	// Get all unknown edge variable names for blocking
+	unknownVars := make(map[string]bool)
 	for _, edges := range unknown {
-		// TODO merge same calls
 		for _, e := range edges {
-			mayFlowVar := mayFlow(e).Var
-			if val, ok := model[mayFlowVar]; ok && !val {
-				res = append(res, e)
+			unknownVars[mayFlow(e).Var] = true
+		}
+	}
+
+	// Enumerate all other optimal solutions by blocking previous ones
+	// Limit to prevent infinite loops
+	maxSolutions := 100
+	for len(allOptimalModels) < maxSolutions {
+		// Create blocking clause: at least one UNKNOWN variable must differ from current model
+		var blockingLits []maxsat.Lit
+		for varName, val := range model {
+			// Only block unknown edge variables, not all variables
+			if !unknownVars[varName] {
+				continue
 			}
+			lit := maxsat.Var(varName)
+			if !val {
+				lit = lit.Negation()
+			}
+			blockingLits = append(blockingLits, lit.Negation())
+		}
+
+		if len(blockingLits) == 0 {
+			break // No unknown variables to block
+		}
+
+		// Add blocking clause as a hard constraint
+		blockingConstr := maxsat.HardClause(blockingLits...)
+		constraints = append(constraints, blockingConstr)
+
+		// Create new problem with blocking clause
+		prob = maxsat.New(constraints...)
+		newModel, newCost := prob.Solve()
+
+		// Stop if no more models or cost is worse
+		if newModel == nil || newCost != optimalCost {
+			break
+		}
+
+		allOptimalModels = append(allOptimalModels, newModel)
+		model = newModel
+	}
+
+	// Convert all optimal models to summaries
+	res := make(map[*dataflow.SummaryGraph][]summaries.FrontendDataflowSummary)
+
+	for _, optimalModel := range allOptimalModels {
+		// Extract may-flow edges from this model
+		var allMayFlows []edge
+		for _, edges := range unknown {
+			for _, e := range edges {
+				mayFlowVar := mayFlow(e).Var
+				if val, ok := optimalModel[mayFlowVar]; ok && val {
+					allMayFlows = append(allMayFlows, e)
+				}
+			}
+		}
+
+		// Convert edges to summaries
+		calleeToSumm := unknownEdgesToSummaries(allMayFlows)
+		for callee, summ := range calleeToSumm {
+			cg := s.FlowGraph.Summaries[callee]
+			res[cg] = append(res[cg], summ)
 		}
 	}
 
@@ -194,7 +279,7 @@ func mayFlow(e edge) maxsat.Lit {
 	return maxsat.Var(fmt.Sprintf("%s->%s", e.from.String(), e.to.String()))
 }
 
-func collectFunctionNodes(g *dataflow.SummaryGraph) []dataflow.GraphNode {
+func summaryNodes(g *dataflow.SummaryGraph) []dataflow.GraphNode {
 	var nodes []dataflow.GraphNode
 	for _, param := range g.Params {
 		nodes = append(nodes, param)
@@ -280,7 +365,7 @@ func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	return res
 }
 
-func summaryEdges(s summaries.FrontendDataflowSummary, g *dataflow.SummaryGraph) []edge {
+func summaryToEdges(s summaries.FrontendDataflowSummary, g *dataflow.SummaryGraph) []edge {
 	var res []edge
 	for from, tos := range s.Summary().Flows {
 		fromNode := findNode(g, from)
@@ -289,11 +374,43 @@ func summaryEdges(s summaries.FrontendDataflowSummary, g *dataflow.SummaryGraph)
 		}
 		for _, to := range tos {
 			toNode := findNode(g, to)
-			if fromNode == nil {
+			if toNode == nil {
 				panic(fmt.Errorf("failed to find graphnode for %v", to))
 			}
 			res = append(res, edge{from: node{fromNode, nil}, to: node{toNode, nil}})
 		}
+	}
+
+	return res
+}
+
+func unknownEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.FrontendDataflowSummary {
+	calleeFlows := make(map[*ssa.Function]summaries.DetailedSummary)
+	for _, e := range unknown {
+		if e.from.call != e.to.call {
+			panic(fmt.Errorf("invalid unknown edge: %+v", e))
+		}
+
+		callee := e.from.call.Callee()
+		flows, ok := calleeFlows[callee]
+		if !ok {
+			flows = summaries.DetailedSummary{
+				Flows: make(map[summaries.SummaryNode][]summaries.SummaryNode),
+			}
+		}
+		from := newSummaryNode(e.from.n)
+		to := newSummaryNode(e.to.n)
+		if slices.Contains(flows.Flows[from], to) {
+			continue
+		}
+		flows.Flows[from] = append(flows.Flows[from], to)
+		calleeFlows[callee] = flows
+	}
+
+	res := make(map[*ssa.Function]summaries.FrontendDataflowSummary)
+	for callee, flows := range calleeFlows {
+		sm := summaries.NewFrontendDataflowSummary(callee, flows)
+		res[callee] = sm
 	}
 
 	return res
@@ -328,6 +445,24 @@ func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) bool {
 func dbgEdges(edges []edge) {
 	for _, e := range edges {
 		fmt.Printf("\t%+v\n", e)
+	}
+}
+
+// edgeSignature creates a semantic signature for an edge based on node types and indices
+// This allows matching edges across different call sites
+func edgeSignature(e edge) string {
+	return fmt.Sprintf("%s->%s", nodeSignature(e.from.n), nodeSignature(e.to.n))
+}
+
+// nodeSignature creates a semantic signature for a node
+func nodeSignature(n dataflow.GraphNode) string {
+	switch node := n.(type) {
+	case *dataflow.ParamNode:
+		return fmt.Sprintf("param:%d:%s", node.Index(), node.SsaNode().Name())
+	case *dataflow.ReturnValNode:
+		return fmt.Sprintf("ret:%d", node.Index())
+	default:
+		return dataflow.GraphNodeDesc(n)
 	}
 }
 

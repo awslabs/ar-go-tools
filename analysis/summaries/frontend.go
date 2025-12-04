@@ -22,6 +22,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"golang.org/x/tools/go/ssa"
 	"gopkg.in/yaml.v3"
 )
 
@@ -90,6 +92,10 @@ type FunctionFlowSummary struct {
 	Function string
 	// summary is the dataflow summary
 	summary DetailedSummary
+}
+
+func NewFunctionFlowSummary(pkg string, fn string, summary DetailedSummary) FunctionFlowSummary {
+	return FunctionFlowSummary{pkg: pkg, Function: fn, summary: summary}
 }
 
 // Name returns the fully-qualified name of the function this summary corresponds to.
@@ -162,6 +168,28 @@ type FrontendDataflowSummary interface {
 	Name() string
 	Package() string
 	Summary() DetailedSummary
+}
+
+func NewFrontendDataflowSummary(f *ssa.Function, summary DetailedSummary) FrontendDataflowSummary {
+	pkgOpt := analysisutil.FindValuePackage(f)
+	if pkgOpt.IsNone() {
+		return nil
+	}
+
+	if f.Signature.Recv() != nil {
+		return ReceiverMethodFlowSummary{
+			pkg:      pkgOpt.Value(),
+			Receiver: analysisutil.ReceiverStr(f.Type()),
+			Method:   f.Name(),
+			summary:  summary,
+		}
+	}
+
+	return FunctionFlowSummary{
+		pkg:      pkgOpt.Value(),
+		Function: f.Name(),
+		summary:  summary,
+	}
 }
 
 // ParseSummariesFile parses a file that represents a Summaries structure. The structure can be

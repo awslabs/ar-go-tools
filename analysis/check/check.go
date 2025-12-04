@@ -79,7 +79,7 @@ func checkSummaryImmutability(ctx context.Context, s *dataflow.State, summary su
 		}
 	}
 
-	edges := findSubspecs(s, summ, summary)
+	edges := inferCalleeSummaries(s, summ, summary, Types)
 	fmt.Println(edges)
 	return SoundnessResult{}, nil
 }

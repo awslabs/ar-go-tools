@@ -193,7 +193,7 @@ func (s DetailedSummary) String() string {
 			}
 		}
 		if i < len(s.Flows)-1 {
-			fmt.Fprint(b, ", ")
+			fmt.Fprint(b, " | ")
 		}
 		i++
 	}
