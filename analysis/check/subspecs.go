@@ -44,8 +44,72 @@ func inferCalleeSummaries(
 	inter := interEdges(s, g)
 
 	known := append(intraParent, inter...)
-
 	unknown := make(map[*dataflow.CallNode][]edge)
+	calleeGraphs := addCalleeEdges(s, g, via, &known, unknown)
+
+	// Build MaxSAT problem
+	var constraints []maxsat.Constr
+
+	// Callees of the same function must have identical inferred summaries
+	summaryConstrs := buildCalleeSummaryConstrs(unknown)
+	constraints = append(constraints, summaryConstrs...)
+
+	// Hard constraints for known edges
+	var knownConstrs []maxsat.Constr
+	for _, e := range known {
+		constr := maxsat.HardClause(mayFlow(e))
+		knownConstrs = append(knownConstrs, constr)
+	}
+	constraints = append(constraints, knownConstrs...)
+
+	// Maximize may-flow edges (minimize must-not-flow)
+	var maxConstrs []maxsat.Constr
+	for _, edges := range unknown {
+		for _, e := range edges {
+			constr := maxsat.SoftClause(mayFlow(e))
+			maxConstrs = append(maxConstrs, constr)
+		}
+	}
+	constraints = append(constraints, maxConstrs...)
+
+	// Transitivity
+	transitiveConstrs := buildTransitivityConstrs(g, calleeGraphs)
+	constraints = append(constraints, transitiveConstrs...)
+
+	// Block must-not-flows in wantSummary (most-general summary - want edges)
+	fGeneralEdges := mostGeneralEdges(g, nil, via)
+	fWantEdges := summaryToEdges(wantSummary, g)
+	for _, e := range fGeneralEdges {
+		if !slices.Contains(fWantEdges, e) {
+			constr := maxsat.HardClause(mayFlow(e).Negation())
+			constraints = append(constraints, constr)
+		}
+	}
+
+	// Find the optimal cost first
+	prob := maxsat.New(constraints...)
+	model, optimalCost := prob.Solve()
+	if model == nil {
+		panic("model is unsatisfiable")
+	}
+
+	// Enumerate all optimal models and convert them to summaries
+	allOptimalModels := findAllOptimalModels(model, optimalCost, constraints, unknown)
+	res := modelsToSummaries(s, allOptimalModels, unknown)
+
+	return res
+}
+
+// addCalleeEdges adds edges of all callees to known and unknown.
+// It returns a map from each call node to the callee's summary graph.
+//
+// If the callee has intra-procedural information, then its dataflow edges are added to known.
+// If not, its most-general summary edges are added to unknown.
+// The most-general summary is computed by the method specified by parameter via.
+func addCalleeEdges(
+	s *dataflow.State, g *dataflow.SummaryGraph, via Method,
+	known *[]edge, unknown map[*dataflow.CallNode][]edge,
+) map[*dataflow.CallNode]*dataflow.SummaryGraph {
 	calleeGraphs := make(map[*dataflow.CallNode]*dataflow.SummaryGraph)
 	for _, calleeToCall := range g.Callees {
 		for callee, call := range calleeToCall {
@@ -60,25 +124,18 @@ func inferCalleeSummaries(
 	for call, calleeG := range calleeGraphs {
 		if calleeG.Constructed {
 			edges := intraEdges(calleeG, call)
-			known = append(known, edges...)
+			*known = append(*known, edges...)
 		} else {
-			switch via {
-			case General:
-				dataflow.MakeMostGeneralNoPtr(calleeG)
-			case Types:
-				dataflow.MakeMostGeneral(calleeG)
-			}
-			edges := intraEdges(calleeG, call)
+			edges := mostGeneralEdges(calleeG, call, via)
 			unknown[call] = edges
-			// Reset constructed to false because MakeMostGeneral sets it to true
-			calleeG.Constructed = false
 		}
 	}
 
-	// Build MaxSAT problem
-	var constraints []maxsat.Constr
+	return calleeGraphs
+}
 
-	// Callees of the same function must have identical inferred summaries
+// buildCalleeSummaryConstrs returns the constraints to ensure that unknown edges for different callsites with the same callee are the same.
+func buildCalleeSummaryConstrs(unknown map[*dataflow.CallNode][]edge) []maxsat.Constr {
 	var summaryConstrs []maxsat.Constr
 	for call := range unknown {
 		edges := unknown[call]
@@ -104,6 +161,7 @@ func inferCalleeSummaries(
 				sig := edgeSignature(otherE)
 				if e, ok := edgeMap[sig]; ok {
 					// These edges correspond semantically
+					// Constraint ensures e <-> otherE (in CNF)
 					constrs := []maxsat.Constr{
 						maxsat.HardClause(
 							mayFlow(e).Negation(),
@@ -119,27 +177,13 @@ func inferCalleeSummaries(
 			}
 		}
 	}
-	constraints = append(constraints, summaryConstrs...)
 
-	// Hard constraints for known edges
-	var knownConstrs []maxsat.Constr
-	for _, e := range known {
-		constr := maxsat.HardClause(mayFlow(e))
-		knownConstrs = append(knownConstrs, constr)
-	}
-	constraints = append(constraints, knownConstrs...)
+	return summaryConstrs
+}
 
-	// Maximize may-flow edges (minimize must-not-flow)
-	var maxConstrs []maxsat.Constr
-	for _, edges := range unknown {
-		for _, e := range edges {
-			constr := maxsat.SoftClause(mayFlow(e))
-			maxConstrs = append(maxConstrs, constr)
-		}
-	}
-	constraints = append(constraints, maxConstrs...)
-
-	// Transitivity
+func buildTransitivityConstrs(
+	g *dataflow.SummaryGraph, calleeGraphs map[*dataflow.CallNode]*dataflow.SummaryGraph,
+) []maxsat.Constr {
 	var transitiveConstrs []maxsat.Constr
 	allNodes := make(map[node]struct{})
 	g.ForAllNodes(func(n dataflow.GraphNode) {
@@ -164,43 +208,14 @@ func inferCalleeSummaries(
 			}
 		}
 	}
-	constraints = append(constraints, transitiveConstrs...)
 
-	// Block must-not-flows in wantSummary
-	// Generate all possible edges between function-level nodes (params and returns only)
-	var fGeneralEdges []edge
-	fNodes := summaryNodes(g)
-	for _, from := range fNodes {
-		// Skip edges starting from return nodes
-		if _, isRet := from.(*dataflow.ReturnValNode); isRet {
-			continue
-		}
-		for _, to := range fNodes {
-			if from != to {
-				fGeneralEdges = append(fGeneralEdges,
-					edge{from: node{n: from, call: nil}, to: node{n: to, call: nil}})
-			}
-		}
-	}
-	fWantEdges := summaryToEdges(wantSummary, g)
-	for _, e := range fGeneralEdges {
-		if !slices.Contains(fWantEdges, e) {
-			constr := maxsat.HardClause(mayFlow(e).Negation())
-			constraints = append(constraints, constr)
-		}
-	}
+	return transitiveConstrs
+}
 
-	prob := maxsat.New(constraints...)
-
-	// Find the optimal cost first
-	model, optimalCost := prob.Solve()
-	if model == nil {
-		panic("model is unsatisfiable")
-	}
-
-	// Collect all models with the optimal cost
-	allOptimalModels := []maxsat.Model{model}
-
+func findAllOptimalModels(
+	model maxsat.Model, optimalCost int, constraints []maxsat.Constr,
+	unknown map[*dataflow.CallNode][]edge,
+) []maxsat.Model {
 	// Get all unknown edge variable names for blocking
 	unknownVars := make(map[string]bool)
 	for _, edges := range unknown {
@@ -209,6 +224,8 @@ func inferCalleeSummaries(
 		}
 	}
 
+	// Collect all models with the optimal cost
+	allOptimalModels := []maxsat.Model{model}
 	// Enumerate all other optimal solutions by blocking previous ones
 	// Limit to prevent infinite loops
 	maxSolutions := 100
@@ -236,7 +253,7 @@ func inferCalleeSummaries(
 		constraints = append(constraints, blockingConstr)
 
 		// Create new problem with blocking clause
-		prob = maxsat.New(constraints...)
+		prob := maxsat.New(constraints...)
 		newModel, newCost := prob.Solve()
 
 		// Stop if no more models or cost is worse
@@ -248,9 +265,13 @@ func inferCalleeSummaries(
 		model = newModel
 	}
 
-	// Convert all optimal models to summaries
-	res := make(map[*dataflow.SummaryGraph][]summaries.FrontendDataflowSummary)
+	return allOptimalModels
+}
 
+func modelsToSummaries(
+	s *dataflow.State, allOptimalModels []maxsat.Model, unknown map[*dataflow.CallNode][]edge,
+) map[*dataflow.SummaryGraph][]summaries.FrontendDataflowSummary {
+	res := make(map[*dataflow.SummaryGraph][]summaries.FrontendDataflowSummary)
 	for _, optimalModel := range allOptimalModels {
 		// Extract may-flow edges from this model
 		var allMayFlows []edge
@@ -279,6 +300,41 @@ func mayFlow(e edge) maxsat.Lit {
 	return maxsat.Var(fmt.Sprintf("%s->%s", e.from.String(), e.to.String()))
 }
 
+// mostGeneralEdges returns the edges corresponding to the most-general summary of g.
+// The parameter via is used to optionally filter out some edges.
+func mostGeneralEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode, via Method) []edge {
+	var edges []edge
+	fNodes := summaryNodes(g)
+	for _, from := range fNodes {
+		switch from := from.(type) {
+		case *dataflow.ParamNode:
+			for _, to := range fNodes {
+				if from == to {
+					continue
+				}
+				switch to := to.(type) {
+				case *dataflow.ParamNode:
+					switch via {
+					case Types:
+						// If the analysis method is Types, then scalar parameters cannot be outputs
+						if !pointer.CanPoint(to.Type()) {
+							continue
+						}
+					}
+					e := edge{from: node{n: from, call: call}, to: node{n: to, call: call}}
+					edges = append(edges, e)
+				case *dataflow.ReturnValNode:
+					e := edge{from: node{n: from, call: call}, to: node{n: to, call: call}}
+					edges = append(edges, e)
+				}
+			}
+		}
+	}
+
+	return edges
+}
+
+// summaryNodes returns all parameter and return nodes from a summary graph
 func summaryNodes(g *dataflow.SummaryGraph) []dataflow.GraphNode {
 	var nodes []dataflow.GraphNode
 	for _, param := range g.Params {
@@ -292,6 +348,10 @@ func summaryNodes(g *dataflow.SummaryGraph) []dataflow.GraphNode {
 	return nodes
 }
 
+// node represents a dataflow graph node, optionally scoped to a specific call site.
+//
+// The call site is important because if a function is called twice, then there needs to be two
+// different nodes for each node in the callee: one for each call site.
 type node struct {
 	n    dataflow.GraphNode
 	call *dataflow.CallNode
@@ -304,6 +364,7 @@ func (n node) String() string {
 	return fmt.Sprintf("%s_%s", dataflow.GraphNodeDesc(n.call), dataflow.GraphNodeDesc(n.n))
 }
 
+// edge represents a dataflow edge between two nodes
 type edge struct {
 	from node
 	to   node
@@ -313,6 +374,7 @@ func (e edge) String() string {
 	return fmt.Sprintf("%s->%s", e.from.String(), e.to.String())
 }
 
+// intraEdges collects all edges within a summary graph, scoped to a specific call site
 func intraEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
 	var res []edge
 	// Collect all edges in the graph, not just those reachable from params
@@ -324,6 +386,7 @@ func intraEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
 	return res
 }
 
+// interEdges collects edges between caller and callee (argument passing and return values)
 func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	var res []edge
 	for _, calleeToCall := range g.Callees {
@@ -365,6 +428,7 @@ func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	return res
 }
 
+// summaryToEdges converts a frontend summary to internal edge representation
 func summaryToEdges(s summaries.FrontendDataflowSummary, g *dataflow.SummaryGraph) []edge {
 	var res []edge
 	for from, tos := range s.Summary().Flows {
@@ -384,6 +448,7 @@ func summaryToEdges(s summaries.FrontendDataflowSummary, g *dataflow.SummaryGrap
 	return res
 }
 
+// unknownEdgesToSummaries converts inferred edges to frontend dataflow summaries
 func unknownEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.FrontendDataflowSummary {
 	calleeFlows := make(map[*ssa.Function]summaries.DetailedSummary)
 	for _, e := range unknown {
@@ -442,19 +507,14 @@ func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) bool {
 	return false
 }
 
-func dbgEdges(edges []edge) {
-	for _, e := range edges {
-		fmt.Printf("\t%+v\n", e)
-	}
-}
-
-// edgeSignature creates a semantic signature for an edge based on node types and indices
-// This allows matching edges across different call sites
+// edgeSignature creates a semantic signature for an edge based on node types and indices.
+// This allows matching edges across different call sites.
 func edgeSignature(e edge) string {
 	return fmt.Sprintf("%s->%s", nodeSignature(e.from.n), nodeSignature(e.to.n))
 }
 
-// nodeSignature creates a semantic signature for a node
+// nodeSignature creates a semantic signature for a node that is not specific to its enclosing
+// (parent) function.
 func nodeSignature(n dataflow.GraphNode) string {
 	switch node := n.(type) {
 	case *dataflow.ParamNode:
@@ -466,9 +526,18 @@ func nodeSignature(n dataflow.GraphNode) string {
 	}
 }
 
-func dbgConstrs(topic string, constrs []maxsat.Constr) {
+// For debugging:
+
+// func dbgConstrs(topic string, constrs []maxsat.Constr) {
+// 	fmt.Println(topic)
+// 	for _, c := range constrs {
+// 		fmt.Printf("\t%v\n", c)
+// 	}
+// }
+
+func dbgEdges(topic string, edges []edge) {
 	fmt.Println(topic)
-	for _, c := range constrs {
-		fmt.Printf("\t%v\n", c)
+	for _, e := range edges {
+		fmt.Printf("\t%+v\n", e)
 	}
 }

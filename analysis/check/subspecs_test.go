@@ -145,7 +145,7 @@ func TestFindSubspecs(t *testing.T) {
 			}
 			summs := inferCalleeSummaries(state, g, tc.fn, tc.via)
 			if len(summs) == 0 {
-				t.Fatalf("no summaries for function %s via %s", tc.fn, tc.via)
+				t.Fatalf("no summaries for function %s via %s", tc.fn.Name(), tc.via)
 			}
 
 			for calleeG, inferredSummaries := range summs {
