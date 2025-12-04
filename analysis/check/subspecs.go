@@ -18,9 +18,6 @@ import (
 	"fmt"
 
 	"github.com/crillab/gophersat/maxsat"
-	"golang.org/x/exp/maps"
-	"golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -35,35 +32,141 @@ import (
 // Goal is to output a summary which we check recursively
 func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summaries.FrontendDataflowSummary) []edge {
 	// Collect known (intra + inter) and unknown edges
-	var known, unknown []edge
-
-	intraParent := intraEdgesNonSummary(g)
+	intraParent := intraEdges(g, nil)
 	inter := interEdges(s, g)
 
-	known = append(intraParent, inter...)
+	known := append(intraParent, inter...)
 
-	allCallees := transitiveCallees(s.PointerAnalysis.CallGraph, g.Parent)
-	for _, callee := range allCallees {
-		// Skip the parent function itself
-		if callee == g.Parent {
-			continue
-		}
-		calleeG, ok := s.FlowGraph.Summaries[callee]
-		if !ok {
-			panic(fmt.Errorf("no summary for callee %s", callee))
-		}
-		// For callees, collect unknown edges (all possible intra-procedural edges)
-		edges := unknownEdges(s, calleeG)
-		for _, e := range edges {
-			unknown = append(unknown, e)
+	unknown := make(map[*dataflow.CallNode][]edge)
+	calleeGraphs := make(map[*dataflow.CallNode]*dataflow.SummaryGraph)
+	for _, calleeToCall := range g.Callees {
+		for callee, call := range calleeToCall {
+			calleeG, ok := s.FlowGraph.Summaries[callee]
+			if !ok {
+				panic(fmt.Errorf("no summary for callee %s", callee))
+			}
+			calleeGraphs[call] = calleeG
 		}
 	}
-	_ = known
-	fmt.Println("unknown:")
-	dbgEdges(unknown)
+
+	for call, calleeG := range calleeGraphs {
+		if calleeG.Constructed {
+			edges := intraEdges(calleeG, call)
+			known = append(known, edges...)
+		} else {
+			dataflow.MakeMostGeneralNoPtr(calleeG)
+			edges := intraEdges(calleeG, call)
+			unknown[call] = edges
+			// Reset constructed to false because MakeMostGeneralNoPtr sets it to true
+			calleeG.Constructed = false
+		}
+	}
 
 	// Build MaxSAT problem
 	var constraints []maxsat.Constr
+
+	// Callees of the same function must have identical inferred summaries
+	var summaryConstrs []maxsat.Constr
+	for call := range unknown {
+		for otherCall, edges := range unknown {
+			if call == otherCall {
+				continue
+			}
+			if call.Callee() == otherCall.Callee() {
+				otherEdges := unknown[otherCall]
+				for i, e := range edges {
+					constrs := []maxsat.Constr{
+						maxsat.HardClause(
+							mayFlow(e).Negation(),
+							mayFlow(otherEdges[i]),
+						),
+						maxsat.HardClause(
+							mayFlow(otherEdges[i]).Negation(),
+							mayFlow(e),
+						),
+					}
+					summaryConstrs = append(summaryConstrs, constrs...)
+				}
+			}
+		}
+	}
+	constraints = append(constraints, summaryConstrs...)
+	// dbgConstrs("summary constrs:", summaryConstrs)
+
+	// Hard constraints for known edges
+	var knownConstrs []maxsat.Constr
+	for _, e := range known {
+		constr := maxsat.HardClause(mayFlow(e))
+		knownConstrs = append(knownConstrs, constr)
+	}
+	constraints = append(constraints, knownConstrs...)
+
+	// Maximize may-flow edges (minimize must-not-flow)
+	var maxConstrs []maxsat.Constr
+	for _, edges := range unknown {
+		for _, e := range edges {
+			constr := maxsat.SoftClause(mayFlow(e))
+			maxConstrs = append(maxConstrs, constr)
+		}
+	}
+	constraints = append(constraints, maxConstrs...)
+
+	// Transitivity
+	var transitiveConstrs []maxsat.Constr
+	allNodes := make(map[node]struct{})
+	g.ForAllNodes(func(n dataflow.GraphNode) {
+		allNodes[node{n, nil}] = struct{}{}
+	})
+	for call, cg := range calleeGraphs {
+		cg.ForAllNodes(func(n dataflow.GraphNode) {
+			allNodes[node{n, call}] = struct{}{}
+		})
+	}
+	for a := range allNodes {
+		for b := range allNodes {
+			for c := range allNodes {
+				if a != b && b != c && a != c {
+					constr := maxsat.HardClause(
+						mayFlow(edge{from: a, to: b}).Negation(),
+						mayFlow(edge{from: b, to: c}).Negation(),
+						mayFlow(edge{from: a, to: c}),
+					)
+					transitiveConstrs = append(transitiveConstrs, constr)
+				}
+			}
+		}
+	}
+	constraints = append(constraints, transitiveConstrs...)
+
+	// Block must-not-flows in wantSummary
+	// Generate all possible edges between function-level nodes (params and returns only)
+	var fGeneralEdges []edge
+	fNodes := collectFunctionNodes(g)
+	for _, from := range fNodes {
+		// Skip edges starting from return nodes
+		if _, isRet := from.(*dataflow.ReturnValNode); isRet {
+			continue
+		}
+		for _, to := range fNodes {
+			if from != to {
+				fGeneralEdges = append(fGeneralEdges, edge{from: node{n: from, call: nil}, to: node{n: to, call: nil}})
+			}
+		}
+	}
+	fWantEdges := summaryEdges(wantSummary, g)
+	for _, e := range fGeneralEdges {
+		want := false
+		for _, we := range fWantEdges {
+			if we == e {
+				want = true
+				break
+			}
+		}
+		if !want {
+			constr := maxsat.HardClause(mayFlow(e).Negation())
+			constraints = append(constraints, constr)
+		}
+	}
 
 	prob := maxsat.New(constraints...)
 	model, _ := prob.Solve()
@@ -73,25 +176,22 @@ func findSubspecs(s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summa
 
 	// Return must-not-flow (negation of may-flow) edges
 	var res []edge
-	for _, e := range unknown {
-		mayFlowVar := mayFlow(e.from, e.to).Var
-		if val, ok := model[mayFlowVar]; ok && !val {
-			res = append(res, e)
+	for _, edges := range unknown {
+		// TODO merge same calls
+		for _, e := range edges {
+			mayFlowVar := mayFlow(e).Var
+			if val, ok := model[mayFlowVar]; ok && !val {
+				res = append(res, e)
+			}
 		}
 	}
 
 	return res
 }
 
-func dbgEdges(edges []edge) {
-	for _, e := range edges {
-		fmt.Printf("\t%+v\n", e)
-	}
-}
-
 // mayFlow creates a boolean variable representing the dataflow edge from→to
-func mayFlow(from, to dataflow.GraphNode) maxsat.Lit {
-	return maxsat.Var(fmt.Sprintf("r_%s->%s", from.String(), to.String()))
+func mayFlow(e edge) maxsat.Lit {
+	return maxsat.Var(fmt.Sprintf("%s->%s", e.from.String(), e.to.String()))
 }
 
 func collectFunctionNodes(g *dataflow.SummaryGraph) []dataflow.GraphNode {
@@ -107,54 +207,108 @@ func collectFunctionNodes(g *dataflow.SummaryGraph) []dataflow.GraphNode {
 	return nodes
 }
 
-func findNodeByName(nodes []dataflow.GraphNode, name string) dataflow.GraphNode {
-	// Try to parse as ArgumentSNode or ReturnSNode
-	snode, err := summaries.ParseSummaryNode(name)
-	if err != nil {
-		return nil
-	}
-
-	for _, n := range nodes {
-		switch s := snode.(type) {
-		case summaries.ArgumentSNode:
-			if param, ok := n.(*dataflow.ParamNode); ok {
-				if (s.Name != "" && param.SsaNode().Name() == s.Name) || param.Index() == s.Index {
-					return n
-				}
-			}
-		case summaries.ReturnSNode:
-			if ret, ok := n.(*dataflow.ReturnValNode); ok {
-				if ret.Index() == s.Index {
-					return n
-				}
-			}
-		}
-	}
-	return nil
+type node struct {
+	n    dataflow.GraphNode
+	call *dataflow.CallNode
 }
 
-func hasFlow(flows map[summaries.SummaryNode][]summaries.SummaryNode, from, to dataflow.GraphNode) bool {
-	for f, tos := range flows {
-		// Match from node
-		fromSNode, err := summaries.ParseSummaryNode(f.String())
-		if err != nil {
-			continue
+func (n node) String() string {
+	if n.call == nil {
+		return dataflow.GraphNodeDesc(n.n)
+	}
+	return fmt.Sprintf("%s_%s", dataflow.GraphNodeDesc(n.call), dataflow.GraphNodeDesc(n.n))
+}
+
+type edge struct {
+	from node
+	to   node
+}
+
+func (e edge) String() string {
+	return fmt.Sprintf("%s->%s", e.from.String(), e.to.String())
+}
+
+func intraEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
+	var res []edge
+	// Collect all edges in the graph, not just those reachable from params
+	g.ForAllNodes(func(n dataflow.GraphNode) {
+		for next := range n.Out() {
+			res = append(res, edge{from: node{n: n, call: call}, to: node{n: next, call: call}})
 		}
-		if !matchesNode(fromSNode, from) {
-			continue
-		}
-		// Check if to node is in the list
-		for _, t := range tos {
-			toSNode, err := summaries.ParseSummaryNode(t.String())
-			if err != nil {
-				continue
+	})
+	return res
+}
+
+func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
+	var res []edge
+	for _, calleeToCall := range g.Callees {
+		for f, call := range calleeToCall {
+			calleeSummary, ok := s.FlowGraph.Summaries[f]
+			if !ok {
+				panic(fmt.Errorf("failed to find summary for function %s", f))
 			}
-			if matchesNode(toSNode, to) {
-				return true
+			// callee return -> call node
+			for _, rets := range calleeSummary.Returns {
+				for _, ret := range rets {
+					res = append(res, edge{from: node{ret, call}, to: node{call, nil}})
+				}
+			}
+
+			// call arg -> callee param
+			for _, arg := range call.Args() {
+				for _, param := range calleeSummary.Params {
+					if param.Index() == arg.Index() {
+						res = append(res, edge{from: node{arg, nil}, to: node{param, call}})
+						break
+					}
+				}
+			}
+
+			// pointer-like callee param -> call arg
+			for _, param := range calleeSummary.Params {
+				if pointer.CanPoint(param.Type()) {
+					for _, arg := range call.Args() {
+						if param.Index() == arg.Index() {
+							res = append(res, edge{from: node{param, call}, to: node{arg, nil}})
+						}
+					}
+				}
 			}
 		}
 	}
-	return false
+
+	return res
+}
+
+func summaryEdges(s summaries.FrontendDataflowSummary, g *dataflow.SummaryGraph) []edge {
+	var res []edge
+	for from, tos := range s.Summary().Flows {
+		fromNode := findNode(g, from)
+		if fromNode == nil {
+			panic(fmt.Errorf("failed to find graphnode for %v", from))
+		}
+		for _, to := range tos {
+			toNode := findNode(g, to)
+			if fromNode == nil {
+				panic(fmt.Errorf("failed to find graphnode for %v", to))
+			}
+			res = append(res, edge{from: node{fromNode, nil}, to: node{toNode, nil}})
+		}
+	}
+
+	return res
+}
+
+func findNode(g *dataflow.SummaryGraph, sn summaries.SummaryNode) dataflow.GraphNode {
+	var res dataflow.GraphNode
+	g.ForAllNodes(func(n dataflow.GraphNode) {
+		// TODO use new iteration protocol to implement ForAllNodes to break when found
+		if matchesNode(sn, n) {
+			res = n
+		}
+	})
+
+	return res
 }
 
 func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) bool {
@@ -171,274 +325,15 @@ func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) bool {
 	return false
 }
 
-func findPathsThroughUnknown(src, dst dataflow.GraphNode, known, unknown []edge) [][]edge {
-	knownGraph := make(map[string][]dataflow.GraphNode)
-	unknownGraph := make(map[string][]edge)
-	for _, e := range known {
-		knownGraph[e.from.String()] = append(knownGraph[e.from.String()], e.to)
+func dbgEdges(edges []edge) {
+	for _, e := range edges {
+		fmt.Printf("\t%+v\n", e)
 	}
-	for _, e := range unknown {
-		unknownGraph[e.from.String()] = append(unknownGraph[e.from.String()], e)
-	}
-
-	type state struct {
-		node        dataflow.GraphNode
-		unknownUsed []edge
-		visited     map[string]bool
-	}
-
-	var paths [][]edge
-	queue := []state{{node: src, unknownUsed: nil, visited: make(map[string]bool)}}
-
-	for len(queue) > 0 {
-		curr := queue[0]
-		queue = queue[1:]
-
-		if curr.node.String() == dst.String() {
-			paths = append(paths, curr.unknownUsed)
-			continue
-		}
-
-		if curr.visited[curr.node.String()] {
-			continue
-		}
-		visited := make(map[string]bool)
-		for k, v := range curr.visited {
-			visited[k] = v
-		}
-		visited[curr.node.String()] = true
-
-		for _, next := range knownGraph[curr.node.String()] {
-			queue = append(queue, state{node: next, unknownUsed: curr.unknownUsed, visited: visited})
-		}
-
-		for _, e := range unknownGraph[curr.node.String()] {
-			newUnknown := make([]edge, len(curr.unknownUsed))
-			copy(newUnknown, curr.unknownUsed)
-			newUnknown = append(newUnknown, e)
-			queue = append(queue, state{node: e.to, unknownUsed: newUnknown, visited: visited})
-		}
-	}
-
-	return paths
 }
 
-type edge struct {
-	from  dataflow.GraphNode
-	to    dataflow.GraphNode
-	known bool
-}
-
-func (e edge) String() string {
-	return fmt.Sprintf("%s->%s, known: %v", e.from, e.to, e.known)
-}
-
-func (e edge) key() string {
-	return fmt.Sprintf("%s->%s", e.from.String(), e.to.String())
-}
-
-func intraEdgesNonSummary(g *dataflow.SummaryGraph) []edge {
-	if !g.Constructed {
-		panic(fmt.Errorf("summary graph for function %s must be constructed", g.Parent))
+func dbgConstrs(topic string, constrs []maxsat.Constr) {
+	fmt.Println(topic)
+	for _, c := range constrs {
+		fmt.Printf("\t%v\n", c)
 	}
-
-	var res []edge
-	seen := make(map[dataflow.GraphNode]struct{})
-	var stack []dataflow.GraphNode
-
-	// Start from params
-	for _, param := range g.Params {
-		stack = append(stack, param)
-	}
-
-	for len(stack) > 0 {
-		n := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if _, ok := seen[n]; ok {
-			continue
-		}
-		seen[n] = struct{}{}
-
-		// Use both Out() and ForwardEdges
-		for next := range n.Out() {
-			stack = append(stack, next)
-			// Exclude direct param-to-param and param-to-return edges (these are summary edges)
-			_, fromIsParam := n.(*dataflow.ParamNode)
-			_, toIsParam := next.(*dataflow.ParamNode)
-			_, toIsReturn := next.(*dataflow.ReturnValNode)
-			if fromIsParam && (toIsParam || toIsReturn) {
-				continue
-			}
-			res = append(res, edge{from: n, to: next, known: true})
-		}
-	}
-
-	return res
-}
-
-func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
-	var res []edge
-	for _, calleeToCall := range g.Callees {
-		for f, call := range calleeToCall {
-			calleeSummary, ok := s.FlowGraph.Summaries[f]
-			if !ok {
-				panic(fmt.Errorf("failed to find summary for function %s", f))
-			}
-			// callee return -> call node
-			for _, rets := range calleeSummary.Returns {
-				for _, ret := range rets {
-					res = append(res, edge{from: ret, to: call, known: true})
-				}
-			}
-
-			// call arg -> callee param
-			for _, arg := range call.Args() {
-				for _, param := range calleeSummary.Params {
-					if param.Index() == arg.Index() {
-						res = append(res, edge{from: arg, to: param, known: true})
-						break
-					}
-				}
-			}
-
-			// pointer-like callee param -> call arg
-			for _, param := range calleeSummary.Params {
-				if pointer.CanPoint(param.Type()) {
-					for _, arg := range call.Args() {
-						if param.Index() == arg.Index() {
-							res = append(res, edge{from: param, to: arg, known: true})
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return res
-}
-
-func unknownEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
-	// Return all possible edges between params and returns (permutations)
-	// Exclude edges from return nodes (returns are outputs, no outgoing edges)
-	var nodes []dataflow.GraphNode
-	for _, param := range g.Params {
-		nodes = append(nodes, param)
-	}
-	for _, rets := range g.Returns {
-		for _, ret := range rets {
-			nodes = append(nodes, ret)
-		}
-	}
-
-	var res []edge
-	for _, from := range nodes {
-		// Skip return nodes as sources
-		if _, isReturn := from.(*dataflow.ReturnValNode); isReturn {
-			continue
-		}
-		for _, to := range nodes {
-			if from != to {
-				res = append(res, edge{from: from, to: to, known: false})
-			}
-		}
-	}
-	return res
-}
-
-func transitiveCallees(cg *callgraph.Graph, f *ssa.Function) []*ssa.Function {
-	node, ok := cg.Nodes[f]
-	if !ok {
-		panic(fmt.Errorf("no callgraph node for function %s", f))
-	}
-
-	res := make(map[*ssa.Function]struct{})
-	seen := make(map[*callgraph.Node]struct{})
-	stack := []*callgraph.Node{node}
-
-	for len(stack) > 0 {
-		n := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if _, ok := seen[n]; ok {
-			continue
-		}
-
-		seen[n] = struct{}{}
-		res[n.Func] = struct{}{}
-		for _, edge := range node.Out {
-			stack = append(stack, edge.Callee)
-		}
-	}
-
-	return maps.Keys(res)
-}
-
-// permutations returns sucessive r length permutations of elements from
-// iterable.
-//
-// Elements are treated as unique based on their position,
-// not on their value. So if the input elements are unique, there
-// will be no repeat values in each permutation.
-//
-//	permutations([]int{1, 2, 3}, 3) -> [[1 2 3] [1 3 2] [2 1 3] [2 3 1] [3 1 2] [3 2 1]]
-//
-// from https://github.com/Skarlso/goitertools/blob/99fdc18feb0ed914387a5da682a1d889e60b3869/itertools/itertools.go#L340
-// TODO maybe take as a dependency or include license or write my own
-func permutations[T any](iterable []T, r int) [][]T {
-	pool := iterable
-	n := len(pool)
-
-	if r > n || r == 0 {
-		return nil
-	}
-
-	indices := make([]int, n)
-	for i := range indices {
-		indices[i] = i
-	}
-
-	cycles := make([]int, r)
-	for i := range cycles {
-		cycles[i] = n - i
-	}
-
-	result := make([]T, r)
-	for i, el := range indices[:r] {
-		result[i] = pool[el]
-	}
-
-	results := [][]T{result}
-
-	for n > 0 {
-		i := r - 1
-		for ; i >= 0; i -= 1 {
-			cycles[i] -= 1
-			if cycles[i] == 0 {
-				index := indices[i]
-				for j := i; j < n-1; j += 1 {
-					indices[j] = indices[j+1]
-				}
-				indices[n-1] = index
-				cycles[i] = n - i
-			} else {
-				j := cycles[i]
-				indices[i], indices[n-j] = indices[n-j], indices[i]
-
-				result := make([]T, r)
-				for k := 0; k < r; k += 1 {
-					result[k] = pool[indices[k]]
-				}
-
-				results = append(results, result)
-
-				break
-			}
-		}
-
-		if i < 0 {
-			return results
-		}
-
-	}
-
-	return nil
 }

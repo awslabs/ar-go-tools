@@ -71,9 +71,29 @@ func TestFindSubspecs(t *testing.T) {
 		dataflow.RunIntraProcedural(context.Background(), state, g)
 	}
 	mustNotFlowEdges := findSubspecs(state, g, wantSummary)
-	t.Log(mustNotFlowEdges)
-	if len(mustNotFlowEdges) != 3 {
-		t.Error("want 3 must not flow edges (TODO actually check edges)")
+
+	wantEdges := map[string]bool{
+		"call:add2(t0, t1, no)_param:a:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2": true,
+		"call:add2(t0, t1, no)_param:a:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":    true,
+		"call:add2(t0, t1, no)_param:b:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2": true,
+		"call:add2(t0, t1, no)_param:b:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":    true,
+		"call:add2(t0, t1, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t0, t1, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":   true,
+		"call:add2(t3, t4, no)_param:a:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2": true,
+		"call:add2(t3, t4, no)_param:a:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":    true,
+		"call:add2(t3, t4, no)_param:b:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2": true,
+		"call:add2(t3, t4, no)_param:b:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":    true,
+		"call:add2(t3, t4, no)_param:no:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2->call:add2(t3, t4, no)_ret#0:github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec.add2":   true,
+	}
+
+	if len(mustNotFlowEdges) != len(wantEdges) {
+		t.Errorf("want %d must not flow edges, got %d", len(wantEdges), len(mustNotFlowEdges))
+	}
+
+	// Verify the edges match expected
+	for _, e := range mustNotFlowEdges {
+		if _, ok := wantEdges[e.String()]; !ok {
+			t.Errorf("unexpected must-not-flow edge: %v", e)
+		}
 	}
 }
 
