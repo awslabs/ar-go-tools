@@ -141,6 +141,9 @@ func (wps *State) ReachableFunctions() (map[*ssa.Function]bool, error) {
 
 // FindMain finds main functions.
 func (wps *State) FindMain() (*ssa.Function, error) {
+	if wps == nil || wps.Program == nil {
+		return nil, fmt.Errorf("cannot find main function without program")
+	}
 	// Find main functions
 	for f := range ssautil.AllFunctions(wps.Program) {
 		if f.Name() == "main" && f.Pkg != nil && f.Pkg.Pkg != nil && f.Pkg.Pkg.Name() == "main" {

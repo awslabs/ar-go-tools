@@ -21,6 +21,7 @@ lint: **/*.go
 	gocyclo -ignore "test|internal/pointer|internal/typeparams" -over 15 .
 	ineffassign ./...
 	nilaway --test=false ./cmd/argot/... \
+                         ./cmd/argot-mcp-server/... \
                          ./analysis/annotations/... \
                          ./analysis/backtrace/... \
                          ./analysis/concurrency/... \
