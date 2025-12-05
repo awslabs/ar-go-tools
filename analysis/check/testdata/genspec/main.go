@@ -18,7 +18,7 @@ import (
 	"fmt"
 )
 
-func threeArgInter(no *int, a *int, b *int) int {
+func threeArgInter(no, a, b *int) int {
 	x := add2(*a, *a, no)
 	x += add2(*a, *b, no)
 	*b = x
@@ -35,6 +35,73 @@ func testThreeArgInter() {
 	fmt.Println(res) // 5
 }
 
+func threeArgInterDiffCallees(no, a, b *int) int {
+	x := add1(*a, *a, no)
+	x += add2(*a, *b, no)
+	*b = x
+	return x
+}
+
+func add1(a int, b int, no *int) int {
+	return a + 1
+}
+
+func testThreeArgInterDiffCallees() {
+	x, y, z := 0, 1, 2
+	res := threeArgInterDiffCallees(&x, &y, &z)
+	fmt.Println(res) // 5
+}
+
+type Container struct {
+	field *Data
+	other *Data
+}
+
+type Data struct {
+	value int
+}
+
+func fieldPropagation(src, dst *Container) {
+	dst.field = helper(src.field, src.other)
+	dst.other = helper(src.other, src.field)
+}
+
+func helper(a, b *Data) *Data {
+	return &Data{value: a.value + b.value}
+}
+
+func testFieldPropagation() {
+	x := &Container{field: &Data{0}, other: &Data{1}}
+	y := &Container{field: &Data{2}, other: &Data{2}}
+	fieldPropagation(x, y)
+	fmt.Println(x, y)
+}
+
+type State struct {
+	accumulated int
+	count       int
+}
+
+func sharedMutation(a, b *int, shared *State) int {
+	modify(a, shared)
+	modify(b, shared)
+	return shared.accumulated
+}
+
+func modify(val *int, s *State) {
+	s.accumulated += *val
+}
+
+func testSharedMutation() {
+	a, b := 0, 1
+	st := &State{2, 3}
+	res := sharedMutation(&a, &b, st)
+	fmt.Println(res)
+}
+
 func main() {
 	testThreeArgInter()
+	testThreeArgInterDiffCallees()
+	testFieldPropagation()
+	testSharedMutation()
 }

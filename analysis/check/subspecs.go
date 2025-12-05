@@ -26,10 +26,8 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
-// inferCalleeSummaries infers the most general possibly-valid dataflow summary for callees
-// using a pure MaxSAT encoding.
-// It returns all the maximally-general (most flow edges) callee summaries which satisfy
-// wantSummary's must-not-flow requirements.
+// inferCalleeSummaries returns all the maximally-general (most data flow edges) callee summaries
+// which satisfy wantSummary's must-not-flow requirements.
 func inferCalleeSummaries(
 	s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summaries.FrontendDataflowSummary,
 	via Method,
@@ -90,6 +88,7 @@ func inferCalleeSummaries(
 	prob := maxsat.New(constraints...)
 	model, optimalCost := prob.Solve()
 	if model == nil {
+		// TODO Decide how to handle unsat: return an error?
 		panic("model is unsatisfiable")
 	}
 
@@ -286,6 +285,19 @@ func modelsToSummaries(
 
 		// Convert edges to summaries
 		calleeToSumm := unknownEdgesToSummaries(allMayFlows)
+
+		// Add empty summaries for callees with no inferred edges
+		for call := range unknown {
+			callee := call.Callee()
+			if _, ok := calleeToSumm[callee]; !ok {
+				// Create empty summary
+				emptySumm := summaries.NewFrontendDataflowSummary(callee, summaries.DetailedSummary{
+					Flows: make(map[summaries.SummaryNode][]summaries.SummaryNode),
+				})
+				calleeToSumm[callee] = emptySumm
+			}
+		}
+
 		for callee, summ := range calleeToSumm {
 			cg := s.FlowGraph.Summaries[callee]
 			res[cg] = append(res[cg], summ)

@@ -86,7 +86,8 @@ func TestFindSubspecs(t *testing.T) {
 				},
 			},
 			via: General,
-		}, {
+		},
+		{
 			fn: summaries.NewFunctionFlowSummary(
 				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
 				"threeArgInter",
@@ -117,6 +118,148 @@ func TestFindSubspecs(t *testing.T) {
 			},
 			via: Types,
 		},
+		{
+			fn: summaries.NewFunctionFlowSummary(
+				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
+				"threeArgInterDiffCallees",
+				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+					summaries.ArgumentSNode{Name: "a", Index: 1}: {
+						summaries.ArgumentSNode{Name: "b", Index: 2},
+						summaries.ReturnSNode{Index: 0},
+					},
+					summaries.ArgumentSNode{Name: "b", Index: 2}: {
+						summaries.ReturnSNode{Index: 0},
+					},
+				},
+				},
+			),
+			want: map[string][]summaries.DetailedSummary{
+				"add1": {
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.ArgumentSNode{Name: "a", Index: 0}: {
+								summaries.ReturnSNode{Index: 0},
+							},
+							summaries.ArgumentSNode{Name: "b", Index: 1}: {
+								summaries.ReturnSNode{Index: 0},
+							},
+						},
+					},
+				},
+				"add2": {
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.ArgumentSNode{Name: "a", Index: 0}: {
+								summaries.ReturnSNode{Index: 0},
+							},
+							summaries.ArgumentSNode{Name: "b", Index: 1}: {
+								summaries.ReturnSNode{Index: 0},
+							},
+						},
+					},
+				},
+			},
+			via: Types,
+		},
+		{
+			// NOTE This summary is deliberately incorrect:
+			// If src cannot flow to dst, then no parameter of helper can flow to helper's return
+			fn: summaries.NewFunctionFlowSummary(
+				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
+				"fieldPropagation",
+				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+					summaries.ArgumentSNode{Name: "dst", Index: 1}: {
+						summaries.ArgumentSNode{Name: "src", Index: 0},
+					},
+				},
+				},
+			),
+			want: map[string][]summaries.DetailedSummary{
+				"helper": {
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.ArgumentSNode{Name: "a", Index: 0}: {
+								summaries.ArgumentSNode{Name: "b", Index: 1},
+							},
+							summaries.ArgumentSNode{Name: "b", Index: 1}: {
+								summaries.ArgumentSNode{Name: "a", Index: 0},
+							},
+						},
+					},
+				},
+			},
+			via: Types,
+		},
+		{
+			fn: summaries.NewFunctionFlowSummary(
+				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
+				"sharedMutation",
+				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+					summaries.ArgumentSNode{Name: "a", Index: 0}: {
+						summaries.ArgumentSNode{Name: "shared", Index: 2},
+					},
+					summaries.ArgumentSNode{Name: "b", Index: 1}: {
+						summaries.ArgumentSNode{Name: "shared", Index: 2},
+					},
+					summaries.ArgumentSNode{Name: "shared", Index: 2}: {
+						summaries.ReturnSNode{Index: 0},
+					},
+				},
+				},
+			),
+			want: map[string][]summaries.DetailedSummary{
+				"modify": {
+					{
+						// The empty summary is the only valid summary for `modify` given this summary because:
+						// - a and b cannot flow to ret, meaning that val cannot flow to s
+						// - shared cannot flow to a or b, meaning that s cannot flow to val
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+					},
+				},
+			},
+			via: Types,
+		},
+		{
+			fn: summaries.NewFunctionFlowSummary(
+				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
+				"sharedMutation",
+				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+					summaries.ArgumentSNode{Name: "a", Index: 0}: {
+						summaries.ArgumentSNode{Name: "shared", Index: 2},
+						summaries.ReturnSNode{Index: 0},
+					},
+					summaries.ArgumentSNode{Name: "b", Index: 1}: {
+						summaries.ArgumentSNode{Name: "shared", Index: 2},
+						summaries.ReturnSNode{Index: 0},
+					},
+					summaries.ArgumentSNode{Name: "shared", Index: 2}: {
+						summaries.ArgumentSNode{Name: "a", Index: 0},
+						summaries.ArgumentSNode{Name: "b", Index: 1},
+						summaries.ReturnSNode{Index: 0},
+					},
+				},
+				},
+			),
+			want: map[string][]summaries.DetailedSummary{
+				"modify": {
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.ArgumentSNode{Name: "val", Index: 0}: {
+								summaries.ArgumentSNode{Name: "s", Index: 1},
+							},
+						},
+					},
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.ArgumentSNode{Name: "s", Index: 1}: {
+								summaries.ArgumentSNode{Name: "val", Index: 0},
+							},
+						},
+					},
+				},
+			},
+			via: Types,
+		},
 	}
 
 	for _, tc := range tests {
@@ -134,7 +277,7 @@ func TestFindSubspecs(t *testing.T) {
 			InitializeState(state)
 			f, err := functionOfSummary(state, tc.fn)
 			if err != nil {
-				t.Fatalf("failed to find function for summary %v", tc.fn)
+				t.Fatalf("failed to find function for summary %v", tc.fn.Name())
 			}
 			g, ok := state.FlowGraph.Summaries[f]
 			if !ok {
@@ -145,7 +288,7 @@ func TestFindSubspecs(t *testing.T) {
 			}
 			summs := inferCalleeSummaries(state, g, tc.fn, tc.via)
 			if len(summs) == 0 {
-				t.Fatalf("no summaries for function %s via %s", tc.fn.Name(), tc.via)
+				t.Fatalf("no summaries inferred for function %s via %s", tc.fn.Name(), tc.via)
 			}
 
 			for calleeG, inferredSummaries := range summs {
@@ -218,6 +361,10 @@ func TestFindSubspecs(t *testing.T) {
 					if !foundMatch {
 						t.Errorf("expected summary [%d] for %s not found in inferred summaries", j, calleeName)
 						t.Logf("want: %+v", wantSumm)
+						t.Logf("got summaries:")
+						for i, gs := range inferredSummaries {
+							t.Logf("  [%d]: %+v", i, gs.Summary())
+						}
 					}
 				}
 			}
