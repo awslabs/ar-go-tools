@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"golang.org/x/tools/go/ssa"
@@ -43,86 +44,204 @@ const (
 	Naive Method = "naive"
 )
 
-// CheckSummary checks the soundness of summary.
-func CheckSummary(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, via Method) (SoundnessResult, error) {
-	start := time.Now()
-	// TODO implement other methods
-	switch via {
-	case Naive:
-		return checkSummaryNaive(ctx, s, summary, start)
-	case General:
-		return checkSummaryMostGeneral(s, summary, start, false)
-	case Types:
-		return checkSummaryMostGeneral(s, summary, start, true)
-	case Immutability:
-		return checkSummaryImmutability(ctx, s, summary, start)
-	default:
-		return SoundnessResult{}, fmt.Errorf("unsupported soundness checking method: %v", via)
+// CheckSummary checks the soundness of inferred summary want.
+//
+// If checkCallees is true, then it infers summaries for the callees that satisfies the
+// must-not-flow edges of summary and checks the soundness of these summaries recursively.
+func CheckSummary(
+	ctx context.Context, s *dataflow.State, want summaries.FrontendDataflowSummary,
+	via Method, checkCallees bool,
+) (SoundnessResult, error) {
+	f, err := functionOfSummary(s, want)
+	if err != nil {
+		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
 	}
+
+	return checkSummary(ctx, s, f, want.Summary(), via, checkCallees)
 }
 
-func checkSummaryImmutability(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
-	f, err := functionOfSummary(s, summary)
-	if err != nil {
-		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
+func checkSummary(
+	ctx context.Context, s *dataflow.State, f *ssa.Function,
+	want summaries.DetailedSummary, via Method, checkCallees bool,
+) (SoundnessResult, error) {
+	start := time.Now()
+	// If callees do not need to be checked, then the most-general and types analyses do not require
+	// the intra-procedural data flow results
+	if !checkCallees {
+		switch via {
+		case General:
+			return checkSummaryMostGeneral(f, want, start, false)
+		case Types:
+			return checkSummaryMostGeneral(f, want, start, true)
+		}
 	}
 
 	summ, ok := s.FlowGraph.Summaries[f]
 	if !ok {
-		return SoundnessResult{}, fmt.Errorf("summary has not been created for function %s", f)
+		summ = dataflow.NewSummaryGraph(s, f, dataflow.GetUniqueFunctionID(), nil, nil)
+		s.FlowGraph.Summaries[f] = summ
 	}
 
-	if !summ.Constructed {
+	if !summ.Constructed || summ.IsInterfaceContract || summ.IsPreSummarized {
 		if _, err := dataflow.RunIntraProcedural(ctx, s, summ); err != nil {
 			return SoundnessResult{},
-				fmt.Errorf("failed to run intra-procedural analysis for function %s: %v", summ.Parent, err)
+				fmt.Errorf("failed to run intra-procedural analysis for function %s: %v",
+					summ.Parent, err)
 		}
 	}
 
-	edges := inferCalleeSummaries(s, summ, summary, Types)
-	fmt.Println(edges)
-	return SoundnessResult{}, nil
-}
-
-func checkSummaryNaive(ctx context.Context, s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time) (SoundnessResult, error) {
-	f, err := functionOfSummary(s, summary)
+	// TODO implement other methods
+	var res SoundnessResult
+	var err error
+	switch via {
+	case General:
+		res, err = checkSummaryMostGeneral(summ.Parent, want, start, false)
+	case Types:
+		res, err = checkSummaryMostGeneral(summ.Parent, want, start, true)
+	case Immutability:
+		res, err = checkSummaryImmutability(ctx, s, summ, want, start)
+	case Naive:
+		res, err = checkSummaryNaive(ctx, s, summ.Parent, want, start)
+	default:
+		return SoundnessResult{}, fmt.Errorf("unsupported soundness checking method: %v", via)
+	}
 	if err != nil {
-		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
+		return res, err
 	}
 
-	gotSummary, err := FullySummarize(ctx, s, f)
-	if err != nil {
-		return SoundnessResult{Time: time.Since(start)}, fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
+	if !checkCallees || res.IsSound {
+		return res, nil
 	}
 
-	got := newDetailedSummary(gotSummary.Flows)
-	return SoundnessResult{
-		Name:     f.String(),
-		Want:     summary,
-		Got:      got,
-		GotGraph: gotSummary.Graph,
-		IsSound:  false,
-		Time:     time.Since(start),
-	}, nil
+	calleeSummaries, err := inferCalleeSummaries(s, summ, want, via)
+	if err != nil {
+		return res, fmt.Errorf("failed to infer callee summaries: %v", err)
+	}
+	for calleeG, calleeSumms := range calleeSummaries {
+		isSound := false
+		// Only one of the potential callee summaries needs to be sound
+		for _, calleeSumm := range calleeSumms {
+			// Recursively check the soundness of the callee's inferred summary
+			callee := calleeG.Parent
+			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm, via, checkCallees)
+			if err != nil {
+				s.Logger.Errorf("failed to check callee summary: %v", err)
+				continue
+			}
+
+			s.Logger.Tracef("callee check result: %v", calleeRes)
+			if calleeRes.IsSound {
+				if len(calleeRes.BadFlows) > 0 {
+					panic(fmt.Errorf("want no bad flows in callee %s summary, got: %v",
+						callee, calleeRes.BadFlows))
+				}
+				isSound = true
+				break
+			}
+			res.BadFlows = append(res.BadFlows, calleeRes.BadFlows...)
+		}
+
+		// If none of the inferred callee summaries are sound, don't bother checking the rest of the
+		// callees in the function
+		if !isSound {
+			res.IsSound = false
+			return res, nil
+		}
+	}
+
+	return res, nil
 }
 
-// checkSummaryMostGeneral checks the soundness of summary by comparing it to the most-general summary.
+type Flow struct {
+	Fn   string
+	From summaries.SummaryNode
+	To   summaries.SummaryNode
+}
+
+func (f Flow) String() string {
+	return fmt.Sprintf("%s: %s -> %s", f.Fn, f.From, f.To)
+}
+
+// isSummarySubset returns true if the edges in got is a subset of the edges in want.
+// If not, it also returns the edges in got that are not in want.
+func isSummarySubset(
+	fn string, want summaries.DetailedSummary, got summaries.DetailedSummary,
+) (bool, []Flow) {
+	var wantFlows []Flow
+	for wfrom, wtos := range want.Flows {
+		for _, wto := range wtos {
+			wantFlows = append(wantFlows, Flow{Fn: fn, From: wfrom, To: wto})
+		}
+	}
+	var gotFlows []Flow
+	for gfrom, gtos := range got.Flows {
+		for _, gto := range gtos {
+			gotFlows = append(gotFlows, Flow{Fn: fn, From: gfrom, To: gto})
+		}
+	}
+
+	var diff []Flow
+	for _, gflow := range gotFlows {
+		if !slices.Contains(wantFlows, gflow) {
+			diff = append(diff, gflow)
+		}
+	}
+
+	return len(diff) == 0, diff
+}
+
+// checkSummaryMostGeneral checks the soundness of want by comparing it to the most-general summary
+// of f.
 // The most-general summary assumes that all function inputs (parameters) flow to all function
 // outputs (parameters and all return values).
 // If useTypes is true, then non-pointer-like inputs are not considered to be outputs.
-func checkSummaryMostGeneral(s *dataflow.State, summary summaries.FrontendDataflowSummary, start time.Time, useTypes bool) (SoundnessResult, error) {
-	f, err := functionOfSummary(s, summary)
-	if err != nil {
-		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", summary.Name(), err)
-	}
+func checkSummaryMostGeneral(
+	f *ssa.Function, want summaries.DetailedSummary, start time.Time, useTypes bool,
+) (SoundnessResult, error) {
+	got := newMostGeneralDetailedSummary(f, useTypes)
+	end := time.Since(start)
+	fname := f.RelString(nil)
+	isSound, badFlows := isSummarySubset(fname, want, got)
 
 	return SoundnessResult{
-		Name:     f.String(),
-		Want:     summary,
-		Got:      newMostGeneralDetailedSummary(f, useTypes),
-		GotGraph: nil,
-		IsSound:  false,
-		Time:     time.Since(start),
+		Fn:       fname,
+		Want:     want,
+		Got:      got,
+		IsSound:  isSound,
+		BadFlows: badFlows,
+		Time:     end,
+	}, nil
+}
+
+func checkSummaryImmutability(
+	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph,
+	want summaries.DetailedSummary, start time.Time,
+) (SoundnessResult, error) {
+	panic("not implemented")
+}
+
+func checkSummaryNaive(
+	ctx context.Context, s *dataflow.State, f *ssa.Function,
+	want summaries.DetailedSummary, start time.Time,
+) (SoundnessResult, error) {
+	gotSummary, err := FullySummarize(ctx, s, f)
+	if err != nil {
+		return SoundnessResult{Time: time.Since(start)},
+			fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
+	}
+	end := time.Since(start)
+
+	got := newDetailedSummary(gotSummary.Flows)
+	fname := f.RelString(nil)
+	isSound, badFlows := isSummarySubset(fname, want, got)
+
+	return SoundnessResult{
+		Fn:       fname,
+		Want:     want,
+		Got:      got,
+		IsSound:  isSound,
+		BadFlows: badFlows,
+		Time:     end,
 	}, nil
 }
 
@@ -170,13 +289,20 @@ func FullySummarize(ctx context.Context, s *dataflow.State, f *ssa.Function) (Fu
 		return FullSummary{}, fmt.Errorf("data flow state is not initialized")
 	}
 
-	graph := dataflow.NewSummaryGraph(s, f, dataflow.GetUniqueFunctionID(), nil, nil)
-	graph.IsInterfaceContract = false
-	graph.IsPreSummarized = false
-	graph.Constructed = false
-	_, err := dataflow.RunIntraProcedural(ctx, s, graph)
-	if err != nil {
-		return FullSummary{}, fmt.Errorf("failed to run intra-procedural data flow analysis: %v", err)
+	graph, ok := s.FlowGraph.Summaries[f]
+	if !ok {
+		return FullSummary{}, fmt.Errorf("failed to find summary for function %s", f)
+	}
+	if !graph.Constructed || graph.IsInterfaceContract || graph.IsPreSummarized {
+		graph = dataflow.NewSummaryGraph(s, f, dataflow.GetUniqueFunctionID(), nil, nil)
+		graph.IsInterfaceContract = false
+		graph.IsPreSummarized = false
+		graph.Constructed = false
+		_, err := dataflow.RunIntraProcedural(ctx, s, graph)
+		if err != nil {
+			return FullSummary{},
+				fmt.Errorf("failed to run intra-procedural data flow analysis: %v", err)
+		}
 	}
 
 	flows := make(map[dataflow.GraphNode][]dataflow.GraphNode)

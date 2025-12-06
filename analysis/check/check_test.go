@@ -19,7 +19,6 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -38,7 +37,144 @@ import (
 //go:embed testdata
 var testfsys embed.FS
 
-func TestCheckSummary_Basic(t *testing.T) {
+func TestCheckSummary_Basic_Callees(t *testing.T) {
+	dir := filepath.Join("./testdata", "basic")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	check.InitializeState(state)
+
+	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic"
+	tests := []tcCheck{
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "threeArgInter",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1}: {
+							summaries.ArgumentSNode{Name: "b", Index: 2},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 2}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound: false,
+				// NOTE BadFlows are the flows unable to be proven sound with the given analysis
+				// method (Types in this case).
+				// Even though the summary above is technically sound, we need a more sophisticated
+				// analysis to prove that these flows indeed do not exist in the program.
+				BadFlows: []check.Flow{
+					{
+						Fn:   pkg + ".threeArgInter",
+						From: summaries.ArgumentSNode{Name: "no", Index: 0},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   pkg + ".threeArgInter",
+						From: summaries.ArgumentSNode{Name: "no", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
+					},
+					{
+						Fn:   pkg + ".threeArgInter",
+						From: summaries.ArgumentSNode{Name: "no", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "b", Index: 2},
+					},
+					{
+						Fn:   pkg + ".threeArgInter",
+						From: summaries.ArgumentSNode{Name: "a", Index: 1},
+						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
+					},
+					{
+						Fn:   pkg + ".threeArgInter",
+						From: summaries.ArgumentSNode{Name: "b", Index: 2},
+						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
+					},
+					{
+						Fn:   pkg + ".threeArgInter",
+						From: summaries.ArgumentSNode{Name: "b", Index: 2},
+						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
+					},
+					{
+						Fn:   pkg + ".add2",
+						From: summaries.ArgumentSNode{Name: "no", Index: 2},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   pkg + ".add2",
+						From: summaries.ArgumentSNode{Name: "a", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "no", Index: 2},
+					},
+					{
+						Fn:   pkg + ".add2",
+						From: summaries.ArgumentSNode{Name: "b", Index: 1},
+						To:   summaries.ArgumentSNode{Name: "no", Index: 2},
+					},
+				},
+			},
+			via: check.Types,
+		},
+	}
+
+	for _, tc := range tests {
+		var sound string
+		if tc.want.IsSound {
+			sound = "sound"
+		} else {
+			sound = "unsound"
+		}
+		name := fmt.Sprintf("%s_%s", tc.summary.Name(), sound)
+		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
+	}
+}
+
+type tcCheck struct {
+	summary summaries.FrontendDataflowSummary
+	want    check.SoundnessResult
+	via     check.Method
+}
+
+func checkSoundness(t *testing.T, tc tcCheck, state *dataflow.State) {
+	got, err := check.CheckSummary(context.Background(), state, tc.summary, tc.via, true)
+	if err != nil {
+		t.Fatalf("failed to check summary: %v", err)
+		return
+	}
+
+	if tc.want.IsSound != got.IsSound {
+		t.Fatalf("soundness mismatch: want %v, got %v\n", tc.want.IsSound, got.IsSound)
+		return
+	}
+
+	cmpFlow := func(a, b check.Flow) int {
+		return strings.Compare(a.String(), b.String())
+	}
+	slices.SortFunc(tc.want.BadFlows, cmpFlow)
+	slices.SortFunc(got.BadFlows, cmpFlow)
+	if !slices.Equal(tc.want.BadFlows, got.BadFlows) {
+		t.Errorf("bad flows mismatch")
+		t.Log("want bad flows:")
+		for _, f := range tc.want.BadFlows {
+			fname, _ := strings.CutPrefix(f.Fn, tc.summary.Package()+".")
+			t.Logf("\t%v: %v -> %v\n", fname, f.From, f.To)
+		}
+		t.Log("got bad flows:")
+		for _, f := range got.BadFlows {
+			fname, _ := strings.CutPrefix(f.Fn, tc.summary.Package()+".")
+			t.Logf("\t%v: %v -> %v\n", fname, f.From, f.To)
+		}
+	}
+}
+
+func TestCheckSummary_Flows_Basic(t *testing.T) {
 	dir := filepath.Join("./testdata", "basic")
 	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
 	if err != nil {
@@ -53,128 +189,128 @@ func TestCheckSummary_Basic(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		wants []checkRes
+		wants []flowRes
 	}{
 		{
 			name: "singleArgIntraOut",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
-					via:  check.General,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.General,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Types,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.Types,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Naive,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.Naive,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 			},
 		},
 		{
 			name: "singleArgInterNone",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
-					via:  check.General,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.General,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Types,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.Types,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Naive,
-					desc: []string{},
+					via:   check.Naive,
+					flows: []string{},
 				},
 			},
 		},
 		{
 			name: "twoArgIntraInout",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
 					via: check.General,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!arg <y>"}`,
 						`{"from": "!arg <y>", "to": "!arg <x>"}`,
 					},
 				},
 				{
 					via: check.Types,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!arg <y>"}`,
 						`{"from": "!arg <y>", "to": "!arg <x>"}`,
 					},
 				},
 				{
-					via:  check.Naive,
-					desc: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
+					via:   check.Naive,
+					flows: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
 				},
 			},
 		},
 		{
 			name: "twoArgInterInout",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
 					via: check.General,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!arg <y>"}`,
 						`{"from": "!arg <y>", "to": "!arg <x>"}`,
 					},
 				},
 				{
 					via: check.Types,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!arg <y>"}`,
 						`{"from": "!arg <y>", "to": "!arg <x>"}`,
 					},
 				},
 				{
-					via:  check.Naive,
-					desc: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
+					via:   check.Naive,
+					flows: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
 				},
 			},
 		},
 		{
 			name: "singleArgIntraGlobal",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
-					via:  check.General,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.General,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Types,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.Types,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Naive,
-					desc: dataflow.ErrGlobal,
+					via:   check.Naive,
+					flows: dataflow.ErrGlobal,
 				},
 			},
 		},
 		{
 			name: "singleArgInterGlobal",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
-					via:  check.General,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.General,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Types,
-					desc: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
+					via:   check.Types,
+					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Naive,
-					desc: dataflow.ErrGlobal,
+					via:   check.Naive,
+					flows: dataflow.ErrGlobal,
 				},
 			},
 		},
 		{
 			name: "twoArgInterBool",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
 					via: check.General,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <x>", "to": "!arg <y>"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
@@ -183,14 +319,14 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 				{
 					via: check.Types,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
 					},
 				},
 				{
 					via: check.Naive,
-					desc: []string{
+					flows: []string{
 						// `{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
 					},
@@ -199,10 +335,10 @@ func TestCheckSummary_Basic(t *testing.T) {
 		},
 		{
 			name: "twoArgInter",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
 					via: check.General,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <x>", "to": "!arg <y>"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
@@ -211,14 +347,14 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 				{
 					via: check.Types,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
 					},
 				},
 				{
 					via: check.Naive,
-					desc: []string{
+					flows: []string{
 						`{"from": "!arg <x>", "to": "!ret 0"}`,
 						`{"from": "!arg <y>", "to": "!ret 0"}`,
 					},
@@ -231,13 +367,15 @@ func TestCheckSummary_Basic(t *testing.T) {
 		for _, want := range tc.wants {
 			name := fmt.Sprintf("%s_%s", tc.name, want.via)
 			t.Run(name, func(t *testing.T) {
-				checkFlows(t, "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic", tc.name, want, state)
+				checkFlows(
+					t, "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic",
+					tc.name, want, state)
 			})
 		}
 	}
 }
 
-func TestCheckSummary_Stdlib(t *testing.T) {
+func TestCheckSummary_Flows_Stdlib(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping slow test in short mode")
 	}
@@ -247,24 +385,24 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 		dir      string
 		pkg      string
 		function string
-		wants    []checkRes
+		wants    []flowRes
 	}{
 		{
 			name:     "crypto/md5.Sum",
 			pkg:      "crypto/md5",
 			function: "Sum",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
-					via:  check.General,
-					desc: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
+					via:   check.General,
+					flows: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Types,
-					desc: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
+					via:   check.Types,
+					flows: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
 				},
 				{
-					via:  check.Naive,
-					desc: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
+					via:   check.Naive,
+					flows: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
 				},
 			},
 		},
@@ -272,18 +410,18 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 			name:     "sort.Ints",
 			pkg:      "sort",
 			function: "Ints",
-			wants: []checkRes{
+			wants: []flowRes{
 				{
-					via:  check.General,
-					desc: []string{},
+					via:   check.General,
+					flows: []string{},
 				},
 				{
-					via:  check.Types,
-					desc: []string{},
+					via:   check.Types,
+					flows: []string{},
 				},
 				{
-					via:  check.Naive,
-					desc: []string{},
+					via:   check.Naive,
+					flows: []string{},
 				},
 			},
 		},
@@ -311,16 +449,22 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 	}
 }
 
-func checkFlows(t *testing.T, pkg string, fn string, want checkRes, state *dataflow.State) {
+type flowRes struct {
+	via check.Method
+	// flows is the summary flows (usually a slice of JSON strings), but could be an error
+	flows any
+}
+
+func checkFlows(t *testing.T, pkg string, fn string, want flowRes, state *dataflow.State) {
 	var tcWantErr error
 	var tcWantFlows []string
-	switch tcWant := want.desc.(type) {
+	switch tcWant := want.flows.(type) {
 	case []string:
 		tcWantFlows = tcWant
 	case error:
 		tcWantErr = tcWant
 	default:
-		t.Fatalf("unexpected type: %T", want.desc)
+		t.Fatalf("unexpected type: %T", want.flows)
 	}
 	str := fmt.Sprintf(`
 {
@@ -332,11 +476,10 @@ func checkFlows(t *testing.T, pkg string, fn string, want checkRes, state *dataf
 	if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
 		t.Fatalf("failed to unmarshal summary %s: %v", str, err)
 	}
-	res, err := check.CheckSummary(context.Background(), state, wantSummary, want.via)
+	res, err := check.CheckSummary(
+		context.Background(), state, wantSummary, want.via, false) // don't check callees
 	if !errors.Is(err, tcWantErr) {
 		t.Errorf("unexpected check summary error:\n\twant %v,\n\tgot %v", tcWantErr, err)
-		t.Logf("got graph:\n")
-		res.GotGraph.PrettyPrint(true, os.Stdout, nil)
 		return
 	}
 	wantFlows := wantSummary.Summary().Flows
@@ -347,10 +490,6 @@ func checkFlows(t *testing.T, pkg string, fn string, want checkRes, state *dataf
 		dbgFlows(t, wantFlows)
 		t.Logf("got:\n")
 		dbgFlows(t, gotFlows)
-		if res.GotGraph != nil {
-			t.Logf("got graph:\n")
-			res.GotGraph.PrettyPrint(true, os.Stdout, nil)
-		}
 	}
 }
 
@@ -454,9 +593,4 @@ func setupConfig(lp *loadprogram.State) {
 	cfg.Options.ReportSummaries = false
 	cfg.Options.ReportsDir = ""
 	cfg.LogLevel = int(level)
-}
-
-type checkRes struct {
-	via  check.Method
-	desc any // desc is the summary description (usually a slice of JSON strings)
 }

@@ -34,7 +34,11 @@ import (
 //go:embed testdata
 var testfsys embed.FS
 
-func TestFindSubspecs(t *testing.T) {
+func TestInferCalleeSummaries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test in short mode")
+	}
+
 	tests := []struct {
 		fn   summaries.FrontendDataflowSummary
 		want map[string][]summaries.DetailedSummary
@@ -44,15 +48,16 @@ func TestFindSubspecs(t *testing.T) {
 			fn: summaries.NewFunctionFlowSummary(
 				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
 				"threeArgInter",
-				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-					summaries.ArgumentSNode{Name: "a", Index: 1}: {
-						summaries.ArgumentSNode{Name: "b", Index: 2},
-						summaries.ReturnSNode{Index: 0},
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1}: {
+							summaries.ArgumentSNode{Name: "b", Index: 2},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 2}: {
+							summaries.ReturnSNode{Index: 0},
+						},
 					},
-					summaries.ArgumentSNode{Name: "b", Index: 2}: {
-						summaries.ReturnSNode{Index: 0},
-					},
-				},
 				},
 			),
 			want: map[string][]summaries.DetailedSummary{
@@ -91,15 +96,16 @@ func TestFindSubspecs(t *testing.T) {
 			fn: summaries.NewFunctionFlowSummary(
 				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
 				"threeArgInter",
-				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-					summaries.ArgumentSNode{Name: "a", Index: 1}: {
-						summaries.ArgumentSNode{Name: "b", Index: 2},
-						summaries.ReturnSNode{Index: 0},
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1}: {
+							summaries.ArgumentSNode{Name: "b", Index: 2},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 2}: {
+							summaries.ReturnSNode{Index: 0},
+						},
 					},
-					summaries.ArgumentSNode{Name: "b", Index: 2}: {
-						summaries.ReturnSNode{Index: 0},
-					},
-				},
 				},
 			),
 			want: map[string][]summaries.DetailedSummary{
@@ -122,15 +128,16 @@ func TestFindSubspecs(t *testing.T) {
 			fn: summaries.NewFunctionFlowSummary(
 				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
 				"threeArgInterDiffCallees",
-				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-					summaries.ArgumentSNode{Name: "a", Index: 1}: {
-						summaries.ArgumentSNode{Name: "b", Index: 2},
-						summaries.ReturnSNode{Index: 0},
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1}: {
+							summaries.ArgumentSNode{Name: "b", Index: 2},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 2}: {
+							summaries.ReturnSNode{Index: 0},
+						},
 					},
-					summaries.ArgumentSNode{Name: "b", Index: 2}: {
-						summaries.ReturnSNode{Index: 0},
-					},
-				},
 				},
 			),
 			want: map[string][]summaries.DetailedSummary{
@@ -167,11 +174,12 @@ func TestFindSubspecs(t *testing.T) {
 			fn: summaries.NewFunctionFlowSummary(
 				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
 				"fieldPropagation",
-				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-					summaries.ArgumentSNode{Name: "dst", Index: 1}: {
-						summaries.ArgumentSNode{Name: "src", Index: 0},
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "dst", Index: 1}: {
+							summaries.ArgumentSNode{Name: "src", Index: 0},
+						},
 					},
-				},
 				},
 			),
 			want: map[string][]summaries.DetailedSummary{
@@ -194,17 +202,18 @@ func TestFindSubspecs(t *testing.T) {
 			fn: summaries.NewFunctionFlowSummary(
 				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
 				"sharedMutation",
-				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-					summaries.ArgumentSNode{Name: "a", Index: 0}: {
-						summaries.ArgumentSNode{Name: "shared", Index: 2},
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 0}: {
+							summaries.ArgumentSNode{Name: "shared", Index: 2},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 1}: {
+							summaries.ArgumentSNode{Name: "shared", Index: 2},
+						},
+						summaries.ArgumentSNode{Name: "shared", Index: 2}: {
+							summaries.ReturnSNode{Index: 0},
+						},
 					},
-					summaries.ArgumentSNode{Name: "b", Index: 1}: {
-						summaries.ArgumentSNode{Name: "shared", Index: 2},
-					},
-					summaries.ArgumentSNode{Name: "shared", Index: 2}: {
-						summaries.ReturnSNode{Index: 0},
-					},
-				},
 				},
 			),
 			want: map[string][]summaries.DetailedSummary{
@@ -223,21 +232,22 @@ func TestFindSubspecs(t *testing.T) {
 			fn: summaries.NewFunctionFlowSummary(
 				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
 				"sharedMutation",
-				summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-					summaries.ArgumentSNode{Name: "a", Index: 0}: {
-						summaries.ArgumentSNode{Name: "shared", Index: 2},
-						summaries.ReturnSNode{Index: 0},
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 0}: {
+							summaries.ArgumentSNode{Name: "shared", Index: 2},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 1}: {
+							summaries.ArgumentSNode{Name: "shared", Index: 2},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "shared", Index: 2}: {
+							summaries.ArgumentSNode{Name: "a", Index: 0},
+							summaries.ArgumentSNode{Name: "b", Index: 1},
+							summaries.ReturnSNode{Index: 0},
+						},
 					},
-					summaries.ArgumentSNode{Name: "b", Index: 1}: {
-						summaries.ArgumentSNode{Name: "shared", Index: 2},
-						summaries.ReturnSNode{Index: 0},
-					},
-					summaries.ArgumentSNode{Name: "shared", Index: 2}: {
-						summaries.ArgumentSNode{Name: "a", Index: 0},
-						summaries.ArgumentSNode{Name: "b", Index: 1},
-						summaries.ReturnSNode{Index: 0},
-					},
-				},
 				},
 			),
 			want: map[string][]summaries.DetailedSummary{
@@ -286,7 +296,10 @@ func TestFindSubspecs(t *testing.T) {
 			if !g.Constructed {
 				dataflow.RunIntraProcedural(context.Background(), state, g)
 			}
-			summs := inferCalleeSummaries(state, g, tc.fn, tc.via)
+			summs, err := inferCalleeSummaries(state, g, tc.fn.Summary(), tc.via)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if len(summs) == 0 {
 				t.Fatalf("no summaries inferred for function %s via %s", tc.fn.Name(), tc.via)
 			}
@@ -309,7 +322,7 @@ func TestFindSubspecs(t *testing.T) {
 					}
 					t.Logf("got summaries:")
 					for i, gs := range inferredSummaries {
-						t.Logf("  [%d]: %+v", i, gs.Summary())
+						t.Logf("  [%d]: %+v", i, gs)
 					}
 					continue
 				}
@@ -324,7 +337,7 @@ func TestFindSubspecs(t *testing.T) {
 							continue // Already matched to another expected summary
 						}
 
-						got := inferredSumm.Summary()
+						got := inferredSumm
 						if len(got.Flows) != len(wantSumm.Flows) {
 							continue
 						}
@@ -363,7 +376,7 @@ func TestFindSubspecs(t *testing.T) {
 						t.Logf("want: %+v", wantSumm)
 						t.Logf("got summaries:")
 						for i, gs := range inferredSummaries {
-							t.Logf("  [%d]: %+v", i, gs.Summary())
+							t.Logf("  [%d]: %+v", i, gs)
 						}
 					}
 				}

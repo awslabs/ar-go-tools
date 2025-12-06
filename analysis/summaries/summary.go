@@ -431,7 +431,7 @@ type ArgumentSNode struct {
 func (a ArgumentSNode) String() string {
 	baseStr := argPrefix
 	if a.Name != "" {
-		baseStr += argNameLeft + a.Name + argNameRight
+		baseStr += argNameLeft + a.Name + " " + strconv.Itoa(a.Index) + argNameRight
 	} else {
 		baseStr += strconv.Itoa(a.Index)
 	}

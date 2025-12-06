@@ -17,31 +17,26 @@ package check
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
 
 // SoundnessResult is the result of checking the soundness of a single data flow summary.
 type SoundnessResult struct {
-	Name     string                            // Name is the name of the summarized function
-	Want     summaries.FrontendDataflowSummary // Want is the summary being checked
-	Got      summaries.DetailedSummary         // Got is the actual summary computed, if any
-	GotGraph *dataflow.SummaryGraph            // GotGraph is the actual summary graph computed, if any
-	IsSound  bool                              // IsSound is true if Want is an overapproximation of Got
-	Time     time.Duration                     // Time is the time spent to calculate the result
+	Fn       string                    // Fn is the qualified name of the summarized function
+	Want     summaries.DetailedSummary // Want is the summary being checked
+	Got      summaries.DetailedSummary // Got is the actual summary computed, if any
+	IsSound  bool                      // IsSound is true if Want is an overapproximation of Got
+	BadFlows []Flow                    // BadFlows are the flows unable to be proven sound
+	Time     time.Duration             // Time is the time spent to calculate the result
 }
 
 func (r SoundnessResult) MarshalJSON() ([]byte, error) {
-	if r.Want == nil {
-		return nil, fmt.Errorf("Want summary is nil for function %s", r.Name)
-	}
 	b := &bytes.Buffer{}
 	raw := rawSoundnessResult{
-		Name:        r.Name,
-		Want:        rawFlows(r.Want.Summary().Flows),
+		Func:        r.Fn,
+		Want:        rawFlows(r.Want.Flows),
 		Got:         rawFlows(r.Got.Flows),
 		IsSound:     r.IsSound,
 		TimeSeconds: time.Duration(r.Time.Seconds()),
@@ -54,7 +49,7 @@ func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 }
 
 type rawSoundnessResult struct {
-	Name        string
+	Func        string
 	Want        map[string][]string
 	Got         map[string][]string
 	IsSound     bool
