@@ -16,7 +16,6 @@ package check
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -25,7 +24,6 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
 // Method determines how the tool checks soundness.
@@ -54,7 +52,8 @@ func CheckSummary(
 ) (SoundnessResult, error) {
 	f, err := functionOfSummary(s, want)
 	if err != nil {
-		return SoundnessResult{}, fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
+		return SoundnessResult{},
+			fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
 	}
 
 	return checkSummary(ctx, s, f, want.Summary(), via, checkCallees)
@@ -152,16 +151,6 @@ func checkSummary(
 	return res, nil
 }
 
-type Flow struct {
-	Fn   string
-	From summaries.SummaryNode
-	To   summaries.SummaryNode
-}
-
-func (f Flow) String() string {
-	return fmt.Sprintf("%s: %s -> %s", f.Fn, f.From, f.To)
-}
-
 // isSummarySubset returns true if the edges in got is a subset of the edges in want.
 // If not, it also returns the edges in got that are not in want.
 func isSummarySubset(
@@ -190,151 +179,17 @@ func isSummarySubset(
 	return len(diff) == 0, diff
 }
 
-// checkSummaryMostGeneral checks the soundness of want by comparing it to the most-general summary
-// of f.
-// The most-general summary assumes that all function inputs (parameters) flow to all function
-// outputs (parameters and all return values).
-// If useTypes is true, then non-pointer-like inputs are not considered to be outputs.
-func checkSummaryMostGeneral(
-	f *ssa.Function, want summaries.DetailedSummary, start time.Time, useTypes bool,
-) (SoundnessResult, error) {
-	got := newMostGeneralDetailedSummary(f, useTypes)
-	end := time.Since(start)
-	fname := f.RelString(nil)
-	isSound, badFlows := isSummarySubset(fname, want, got)
-
-	return SoundnessResult{
-		Fn:       fname,
-		Want:     want,
-		Got:      got,
-		IsSound:  isSound,
-		BadFlows: badFlows,
-		Time:     end,
-	}, nil
-}
-
-func checkSummaryImmutability(
-	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph,
-	want summaries.DetailedSummary, start time.Time,
-) (SoundnessResult, error) {
-	panic("not implemented")
-}
-
-func checkSummaryNaive(
-	ctx context.Context, s *dataflow.State, f *ssa.Function,
-	want summaries.DetailedSummary, start time.Time,
-) (SoundnessResult, error) {
-	gotSummary, err := FullySummarize(ctx, s, f)
-	if err != nil {
-		return SoundnessResult{Time: time.Since(start)},
-			fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
+func isBadFlow(s *dataflow.State, flow Flow, via Method) bool {
+	switch via {
+	// General and Types analyses cannot disprove bad flows:
+	// if there are any bad flows, the summary is unsound
+	case General, Types:
+		return true
+	case Immutability:
+		return isBadFlowImmutability(s, flow)
+	default:
+		panic("not implemented")
 	}
-	end := time.Since(start)
-
-	got := newDetailedSummary(gotSummary.Flows)
-	fname := f.RelString(nil)
-	isSound, badFlows := isSummarySubset(fname, want, got)
-
-	return SoundnessResult{
-		Fn:       fname,
-		Want:     want,
-		Got:      got,
-		IsSound:  isSound,
-		BadFlows: badFlows,
-		Time:     end,
-	}, nil
-}
-
-// newMostGeneralDetailedSummary returns the most-general summary for f.
-// If useTypes is true, then non-pointer-like inputs are not treated as outputs.
-// TODO include free variables as inputs and outputs
-func newMostGeneralDetailedSummary(f *ssa.Function, useTypes bool) summaries.DetailedSummary {
-	flows := make(map[summaries.SummaryNode][]summaries.SummaryNode)
-	for i, input := range f.Params {
-		inputNode := summaries.ArgumentSNode{Name: input.Name(), Index: i, ObjectPath: ""}
-		for j, output := range f.Params {
-			// We don't count self-flows (input flows to same input as an output) because the data
-			// flows to and from the parameter when used as an argument at a callsite are part of
-			// the data flow of the caller's summary, not the callee's.
-			if input == output {
-				continue
-			}
-			// If the types-based analysis is on, then only pointer-like parameters can be outputs
-			if useTypes && !pointer.CanPoint(output.Type()) {
-				continue
-			}
-			outputNode := summaries.ArgumentSNode{Name: output.Name(), Index: j, ObjectPath: ""}
-			flows[inputNode] = append(flows[inputNode], outputNode)
-		}
-		outputs := f.Signature.Results()
-		for i := range outputs.Len() {
-			outputNode := summaries.ReturnSNode{Index: i, ObjectPath: ""}
-			flows[inputNode] = append(flows[inputNode], outputNode)
-		}
-	}
-
-	return summaries.DetailedSummary{Flows: flows}
-}
-
-// FullSummary is the full inter-procedurally-generated data flow summary for a function.
-type FullSummary struct {
-	Graph *dataflow.SummaryGraph                      // Graph is the summary graph.
-	Flows map[dataflow.GraphNode][]dataflow.GraphNode // Flows are from function inputs to outputs.
-}
-
-// FullySummarize computes the full data flow summary for function f.
-// This uses both the intra- and inter-procedural data flow analyses.
-func FullySummarize(ctx context.Context, s *dataflow.State, f *ssa.Function) (FullSummary, error) {
-	if len(s.FlowGraph.Summaries) == 0 {
-		return FullSummary{}, fmt.Errorf("data flow state is not initialized")
-	}
-
-	graph, ok := s.FlowGraph.Summaries[f]
-	if !ok {
-		return FullSummary{}, fmt.Errorf("failed to find summary for function %s", f)
-	}
-	if !graph.Constructed || graph.IsInterfaceContract || graph.IsPreSummarized {
-		graph = dataflow.NewSummaryGraph(s, f, dataflow.GetUniqueFunctionID(), nil, nil)
-		graph.IsInterfaceContract = false
-		graph.IsPreSummarized = false
-		graph.Constructed = false
-		_, err := dataflow.RunIntraProcedural(ctx, s, graph)
-		if err != nil {
-			return FullSummary{},
-				fmt.Errorf("failed to run intra-procedural data flow analysis: %v", err)
-		}
-	}
-
-	flows := make(map[dataflow.GraphNode][]dataflow.GraphNode)
-	for _, param := range graph.Params {
-		v := dataflow.NewFuncInputVisitor()
-		v.Visit(ctx, s, dataflow.NodeWithTrace{Node: param})
-		// if there are no flows, don't add them
-		if len(v.Flows()) == 0 {
-			continue
-		}
-		flows[param] = v.Flows()
-	}
-	if s.Report.HasErrors() {
-		errs := s.Report.CheckError()
-		return FullSummary{}, fmt.Errorf(
-			"failed to run the inter-procedural data flow analysis: %w",
-			errors.Join(errs...))
-	}
-	s.FlowGraph.Sync()
-
-	for fn, completeSummary := range s.FlowGraph.Summaries {
-		if fn == f {
-			res := FullSummary{Graph: completeSummary, Flows: flows}
-			// Even if a global node isn't explicitly visited, it may still be in the summary
-			if len(completeSummary.AccessGlobalNodes) > 0 {
-				return res, fmt.Errorf("invalid summary: %w", dataflow.ErrGlobal)
-			}
-			return res, nil
-		}
-	}
-
-	panic("failed to find computed summary in graph")
 }
 
 func newDetailedSummary(flows map[dataflow.GraphNode][]dataflow.GraphNode) summaries.DetailedSummary {

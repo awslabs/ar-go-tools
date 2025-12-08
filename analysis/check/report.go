@@ -17,6 +17,7 @@ package check
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -46,6 +47,16 @@ func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 	err := enc.Encode(raw)
 	res := b.Bytes()
 	return res, err
+}
+
+type Flow struct {
+	Fn   string
+	From summaries.SummaryNode
+	To   summaries.SummaryNode
+}
+
+func (f Flow) String() string {
+	return fmt.Sprintf("%s: %s -> %s", f.Fn, f.From, f.To)
 }
 
 type rawSoundnessResult struct {
