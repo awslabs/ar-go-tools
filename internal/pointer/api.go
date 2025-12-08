@@ -189,7 +189,7 @@ type Result struct {
 // types may alias the same object.
 type Pointer struct {
 	a *analysis
-	n nodeid
+	n NodeID
 }
 
 // A PointsToSet is a set of labels (locations or allocations).
@@ -207,7 +207,7 @@ func (s PointsToSet) String() string {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			buf.WriteString(s.a.labelFor(nodeid(l)).String())
+			buf.WriteString(s.a.labelFor(NodeID(l)).String())
 		}
 	}
 	buf.WriteByte(']')
@@ -221,7 +221,7 @@ func (s PointsToSet) Labels() []*Label {
 	if s.pts != nil {
 		var space [50]int
 		for _, l := range s.pts.AppendTo(space[:0]) {
-			labels = append(labels, s.a.labelFor(nodeid(l)))
+			labels = append(labels, s.a.labelFor(NodeID(l)))
 		}
 	}
 	return labels
@@ -245,7 +245,7 @@ func (s PointsToSet) DynamicTypes() *typeutil.Map {
 	if s.pts != nil {
 		var space [50]int
 		for _, x := range s.pts.AppendTo(space[:0]) {
-			ifaceObjID := nodeid(x)
+			ifaceObjID := NodeID(x)
 			if !s.a.isTaggedObject(ifaceObjID) {
 				continue // !CanHaveDynamicTypes(tDyn)
 			}

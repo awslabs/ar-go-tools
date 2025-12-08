@@ -44,12 +44,12 @@ const (
 	otFunction             // function object
 )
 
-// An object represents a contiguous block of memory to which some
+// An Object represents a contiguous block of memory to which some
 // (generalized) pointer may point.
 //
 // (Note: most variables called 'obj' are not *objects but nodeids
 // such that a.nodes[obj].obj != nil.)
-type object struct {
+type Object struct {
 	// flags is a bitset of the node type (ot*) flags defined above.
 	flags uint32
 
@@ -71,13 +71,58 @@ type object struct {
 	cgn *cgnode
 }
 
-// nodeid denotes a node.
+// Data returns the object's data.
+//
+// It has one of these types:
+//   - ssa.Value	for an object allocated by an SSA operation.
+//   - types.Type	for an rtype instance object or *rtype-tagged object.
+//   - string	for an intrinsic object, e.g. the array behind os.Args.
+//   - nil		for an object allocated by an intrinsic.
+//     (cgn provides the identity of the intrinsic.)
+func (o *Object) Data() interface{} {
+	return o.data
+}
+
+// NodeID returns the object's node id or 0 if not found.
+func (o *Object) NodeID() NodeID {
+	if o.cgn == nil {
+		return NodeID(0)
+	}
+
+	return o.cgn.obj
+}
+
+// NodeIDs returns all the node ids in the object.
+func (o *Object) NodeIDs() []NodeID {
+	if o.cgn == nil {
+		return nil
+	}
+
+	ids := make([]NodeID, 0, o.size)
+	start := uint32(o.cgn.obj)
+	for i := uint32(0); i < o.size; i++ {
+		ids = append(ids, NodeID(start+i))
+	}
+
+	return ids
+}
+
+func (o *Object) String() string {
+	id := "<none>"
+	if o.cgn != nil {
+		id = o.cgn.obj.String()
+	}
+
+	return fmt.Sprintf("data: %v, nodeid: %v, ctx: %v", o.data, id, o.cgn)
+}
+
+// NodeID denotes a node.
 // It is an index within analysis.nodes.
 // We use small integers, not *node pointers, for many reasons:
 // - they are smaller on 64-bit systems.
 // - sets of them can be represented compactly in bitvectors or BDDs.
 // - order matters; a field offset can be computed by simple addition.
-type nodeid uint32
+type NodeID uint32
 
 // A node is an equivalence class of memory locations.
 // Nodes may be pointers, pointed-to locations, neither, or both.
@@ -89,7 +134,7 @@ type node struct {
 	// (addressable memory location).
 	// The following obj.size nodes implicitly belong to the object;
 	// they locate their object by scanning back.
-	obj *object
+	obj *Object
 
 	// The type of the field denoted by this node.  Non-aggregate,
 	// unless this is an tagged.T node (i.e. the thing
@@ -111,7 +156,7 @@ type analysis struct {
 	config      *Config                               // the client's control/observer interface
 	prog        *ssa.Program                          // the program being analyzed
 	log         io.Writer                             // log stream; nil to disable
-	panicNode   nodeid                                // sink for panic, source for recover
+	panicNode   NodeID                                // sink for panic, source for recover
 	nodes       []*node                               // indexed by nodeid
 	flattenMemo map[types.Type][]*fieldInfo           // memoization of flatten()
 	trackTypes  map[types.Type]bool                   // memoization of shouldTrack()
@@ -120,12 +165,12 @@ type analysis struct {
 	genq        []*cgnode                             // queue of functions to generate constraints for
 	intrinsics  map[*ssa.Function]constraintGenerator // non-nil values are summaries for intrinsic fns
 	summarized  map[*ssa.Function]constraintGenerator // non-nil values are summaries for user-defined functions
-	globalval   map[ssa.Value]nodeid                  // node for each global ssa.Value
-	globalobj   map[ssa.Value]nodeid                  // maps v to sole member of pts(v), if singleton
-	localval    map[ssa.Value]nodeid                  // node for each local ssa.Value
-	localobj    map[ssa.Value]nodeid                  // maps v to sole member of pts(v), if singleton
+	globalval   map[ssa.Value]NodeID                  // node for each global ssa.Value
+	globalobj   map[ssa.Value]NodeID                  // maps v to sole member of pts(v), if singleton
+	localval    map[ssa.Value]NodeID                  // node for each local ssa.Value
+	localobj    map[ssa.Value]NodeID                  // maps v to sole member of pts(v), if singleton
 	atFuncs     map[*ssa.Function]bool                // address-taken functions (for presolver)
-	mapValues   []nodeid                              // values of makemap objects (indirect in HVN)
+	mapValues   []NodeID                              // values of makemap objects (indirect in HVN)
 	work        nodeset                               // solver's worklist
 	result      *Result                               // results of the analysis
 	track       track                                 // pointerlike types whose aliasing we track
@@ -146,13 +191,13 @@ type analysis struct {
 // enclosingObj returns the first node of the addressable memory
 // object that encloses node id.  Panic ensues if that node does not
 // belong to any object.
-func (a *analysis) enclosingObj(id nodeid) nodeid {
+func (a *analysis) enclosingObj(id NodeID) NodeID {
 	// Find previous node with obj != nil.
 	i := id
 	for {
 		n := a.nodes[i]
 		if obj := n.obj; obj != nil {
-			if i+nodeid(obj.size) <= id {
+			if i+NodeID(obj.size) <= id {
 				break // out of bounds
 			}
 			return i
@@ -167,7 +212,7 @@ func (a *analysis) enclosingObj(id nodeid) nodeid {
 
 // labelFor returns the Label for node id.
 // Panic ensues if that node is not addressable.
-func (a *analysis) labelFor(id nodeid) *Label {
+func (a *analysis) labelFor(id NodeID) *Label {
 	return &Label{
 		obj:        a.nodes[a.enclosingObj(id)].obj,
 		subelement: a.nodes[id].subelement,
@@ -230,8 +275,6 @@ func Analyze(config *Config) (result *Result, err error) {
 		if p := recover(); p != nil {
 			err = fmt.Errorf("internal error in pointer analysis: %v (please report this bug)", p)
 			fmt.Fprintln(os.Stderr, "Internal panic in pointer analysis:")
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			fmt.Fprintln(os.Stderr, "Stack:")
 			debug.PrintStack()
 		}
 	}()
@@ -240,8 +283,8 @@ func Analyze(config *Config) (result *Result, err error) {
 		config:      config,
 		log:         config.Log,
 		prog:        config.prog(),
-		globalval:   make(map[ssa.Value]nodeid),
-		globalobj:   make(map[ssa.Value]nodeid),
+		globalval:   make(map[ssa.Value]NodeID),
+		globalobj:   make(map[ssa.Value]NodeID),
 		flattenMemo: make(map[types.Type][]*fieldInfo),
 		trackTypes:  make(map[types.Type]bool),
 		atFuncs:     make(map[*ssa.Function]bool),
@@ -359,7 +402,7 @@ func Analyze(config *Config) (result *Result, err error) {
 	for _, caller := range a.cgnodes {
 		for _, site := range caller.sites {
 			for _, callee := range a.nodes[site.targets].solve.pts.AppendTo(space[:0]) {
-				a.callEdge(caller, site, nodeid(callee))
+				a.callEdge(caller, site, NodeID(callee))
 			}
 		}
 	}
@@ -369,7 +412,7 @@ func Analyze(config *Config) (result *Result, err error) {
 
 // callEdge is called for each edge in the callgraph.
 // calleeid is the callee's object node (has otFunction flag).
-func (a *analysis) callEdge(caller *cgnode, site *callsite, calleeid nodeid) {
+func (a *analysis) callEdge(caller *cgnode, site *callsite, calleeid NodeID) {
 	obj := a.nodes[calleeid].obj
 	if obj.flags&otFunction == 0 {
 		panic(fmt.Sprintf("callEdge %s -> n%d: not a function object", site, calleeid))
