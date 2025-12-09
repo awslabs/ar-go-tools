@@ -82,6 +82,18 @@ func NewSession(flags tools.CommonFlags, isTt bool) *Session {
 	return s
 }
 
+// Reset the session (clear all the program state fields)
+func (s *Session) Reset() {
+	s.pkgs = nil
+	s.currentFunction = nil
+	s.initialPackages = nil
+	s.cfgState = nil
+	s.lpState = nil
+	s.dfState = nil
+	s.ptrState = nil
+	s.currentDataflowInformation = nil
+}
+
 func (s *Session) logger() *config.LogGroup {
 	if s.cfgState != nil {
 		return s.cfgState.Logger
@@ -162,6 +174,7 @@ func (s *Session) attemptSettingConfig(pConfig **config.Config, dir string, file
 }
 
 // LoadConfig triggers the config loading for the session.
+// Does nothing when the config state is non-null and reload is not true.
 func (s *Session) LoadConfig(o Outputter, reload bool) result.Result[config.State] {
 	if s.cfgState != nil && !reload {
 		return result.Ok(s.cfgState)
@@ -197,7 +210,9 @@ func (s *Session) LoadConfig(o Outputter, reload bool) result.Result[config.Stat
 		if slices.Equal(targetSpec.Files, s.args) {
 			if targetSpec.UseProgramTransforms && len(targetSpec.ReflectValueCallInstances) >= 1 {
 				var err error
-				s.logger().Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
+				s.logger().Infof(
+					"Reflect value call instances specified. " +
+						"Tool supports only 1 for now, will use the first.")
 				// TODO: handle more rewrites later
 				s.cfgState, err = statefulrewrite.StatefulRewritesOverlayTransform(s.cfgState,
 					statefulrewrite.StatefulRewritesOverlayTransformSpec{
@@ -228,6 +243,8 @@ func (s *Session) loadProgram(o Outputter) result.Result[loadprogram.State] {
 		// Program is already loaded!
 		return result.Ok(s.lpState)
 	}
+	// Ensures s.cfgState is present
+	s.LoadConfig(o, false)
 	lpstate := loadprogram.NewState(s.cfgState)
 	if lpstate.IsOk() {
 		s.lpState = lpstate.Unwrap()
@@ -244,7 +261,9 @@ func (s *Session) loadProgram(o Outputter) result.Result[loadprogram.State] {
 	// Attempt to print the main package given current information.
 	// It may fail; it's ok because we don't have the best call graph information yet.
 	if main, err := s.lpState.FindMain(); err == nil {
-		o.WriteSuccess("✔ main package: %s", main.Pkg.String())
+		o.WriteSuccess("✔ main package: %s. Use this package when looking for the main entry point.", main.Pkg.String())
+	} else {
+		o.Write("No main package loaded. Pointer and other analyses will not work.\n")
 	}
 	return lpstate
 }

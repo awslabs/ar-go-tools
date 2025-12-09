@@ -589,8 +589,8 @@ var Commands = map[string]CommandDefinition{
 		},
 		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
 			regex, ok := props["regex"].(string)
-			if !ok || regex == "" {
-				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			if ok && regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string if provided")
 			}
 			return Command{
 				Args:  []string{regex},
@@ -858,7 +858,7 @@ var Commands = map[string]CommandDefinition{
 					"description": "Force summarization and bypass filters",
 				},
 			},
-			Required: []string{},
+			Required: []string{"regex"},
 		},
 		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
 			forceFlag := false
@@ -871,6 +871,11 @@ var Commands = map[string]CommandDefinition{
 			}
 			regex := ""
 			regexObj, ok := props["regex"]
+			if !ok {
+				// regex must be provided when in the MCP server. Otherwise, the client might
+				// just make the server summarize the entire program
+				return Command{}, fmt.Errorf("regex must be provided")
+			}
 			if ok {
 				if regexStr, ok := regexObj.(string); ok {
 					regex = regexStr
