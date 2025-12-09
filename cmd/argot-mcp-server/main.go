@@ -350,7 +350,7 @@ func (s *serverState) handleCliCommand(id interface{},
 	// the MCP server.
 	defer func() {
 		if r := recover(); r != nil {
-			s.cliSession.LoadConfig(s.outputter, true)
+			s.cliSession = cli.NewSession(tools.CommonFlags{}, false)
 			s.sendError(id, codeInternalError, fmt.Sprintf("internal panic, reinitialized session: %v", r))
 		}
 	}()
@@ -712,7 +712,7 @@ func (s *serverState) splitIntoPages(output string) []string {
 	var pages []string
 	lines := strings.Split(output, "\n")
 	var currentPage strings.Builder
-	
+
 	for _, line := range lines {
 		if currentPage.Len()+len(line)+1 > pageSize && currentPage.Len() > 0 {
 			pages = append(pages, currentPage.String())
@@ -723,11 +723,11 @@ func (s *serverState) splitIntoPages(output string) []string {
 		}
 		currentPage.WriteString(line)
 	}
-	
+
 	if currentPage.Len() > 0 {
 		pages = append(pages, currentPage.String())
 	}
-	
+
 	return pages
 }
 

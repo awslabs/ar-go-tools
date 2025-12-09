@@ -47,7 +47,6 @@ func cmdLoad(o Outputter, sess *Session, command Command, withTest bool) bool {
 		// Update the session args only if some arguments are provided
 		sess.args = command.Args
 	}
-	sess.LoadConfig(o, true)
 	return cmdRebuild(o, sess, command, withTest)
 }
 
@@ -149,16 +148,11 @@ func cmdRebuild(o Outputter, sess *Session, _ Command, withTest bool) bool {
 			o.EscBlue(), CmdRebuildName, o.EscReset())
 		return false
 	}
+	sess.Reset()
 	res := sess.LoadConfig(o, false)
-	sess.currentFunction = nil
 	if o.tt != nil {
 		o.tt.SetPrompt("> ")
 	}
-	sess.currentDataflowInformation = nil
-	sess.initialPackages = nil
-	sess.lpState = nil
-	sess.dfState = nil
-	sess.ptrState = nil
 	if res.IsOk() {
 		sess.loadProgram(o)
 	} else {
