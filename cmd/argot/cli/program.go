@@ -27,14 +27,26 @@ import (
 func cmdLoad(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
 		o.Write("\t- %s%s%s : load new program\n", o.EscBlue(), CmdLoadName, o.EscReset())
+		o.Write("\t  Options:\n")
+		o.Write("\t   --target load program from target name (requires config active)\n")
+		o.Write("\t            If no argument is provided, reloads the current program.\n")
 		return false
 	}
-
-	if len(command.Args) == 0 {
-		o.WriteErr("%s expects at least one argument.", CmdLoadName)
-		return false
+	if namedTarget, exists := command.NamedArgs["target"]; exists {
+		if namedTarget == "" {
+			// Cannot load empty target
+			o.WriteErr("%s --target expects a non-empty target.", CmdLoadName)
+			return false
+		}
+		if sess.configPath == "" {
+			o.WriteErr("%s --target option requires an active configuration.", CmdLoadName)
+			return false
+		}
 	}
-	sess.args = command.Args
+	if len(command.Args) >= 0 {
+		// Update the session args only if some arguments are provided
+		sess.args = command.Args
+	}
 	sess.LoadConfig(o, true)
 	return cmdRebuild(o, sess, command, withTest)
 }
@@ -96,21 +108,6 @@ func cmdLoadPackages(o Outputter, sess *Session, command Command, withTest bool)
 		}
 	}
 	sess.pkgs = pkgMap
-	return false
-}
-
-func cmdLoadWholeProgram(o Outputter, sess *Session, command Command, withTest bool) bool {
-	if sess == nil {
-		o.Write("\t- %s%s%s : load the current session program path arguments as whole program\n",
-			o.EscBlue(), CmdLoadWholeProgramName, o.EscReset())
-		return false
-	}
-
-	lp := sess.loadProgram(o)
-	if lp.IsErr() {
-		o.WriteErr("%s", lp)
-		return false
-	}
 	return false
 }
 
