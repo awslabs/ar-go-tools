@@ -135,6 +135,16 @@ dataflow-problems:
 ```
 This implies that any method whose receiver implements the `mypackage.interfaceName` interface will be seen as a sink.
 
+**Global Loads** are of the form:
+```yaml
+dataflow-problems:
+  - sources:
+      - package: "mypackage"
+        global: "varName"
+        kind: "load"
+```
+This implies that code that loads the global variable `varName` in `myPackage` will be considered to load tainted data.
+
 > The specifications for sources can be function calls, types, channel receives or field reads. The specifications sanitizers and validators can only be functions (method and package) or interfaces (interface name and package). The specifications for sinks can be functions calls and field writes.
 
 #### Code locations in a specific context

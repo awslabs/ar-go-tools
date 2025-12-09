@@ -260,7 +260,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		}
 		return config.CodeIdentifier{}, false
 
-	// Storing into a specific struct field
+	// Storing into a specific struct field or global
 	case *ssa.Store:
 		if fieldAddr, isFieldAddr := node.Addr.(*ssa.FieldAddr); isFieldAddr {
 			fieldInfo := FieldAddrFieldInfo(fieldAddr)
@@ -280,6 +280,23 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 				return cid, true
 			}
 			return config.CodeIdentifier{}, false
+		}
+		if global, isGlobal := node.Addr.(*ssa.Global); isGlobal {
+			packageName, typeName, err := FindEltTypePackage(global.Type().Underlying(), "%s")
+			if err != nil {
+				return config.CodeIdentifier{}, false
+			}
+			cid := config.CodeIdentifier{
+				Context:    node.Parent().String(),
+				Package:    packageName,
+				Type:       typeName,
+				Global:     node.Addr.Name(),
+				Kind:       "store",
+				ValueMatch: n.String(),
+			}
+			if f(cid) {
+				return cid, true
+			}
 		}
 		return config.CodeIdentifier{}, false
 
@@ -301,6 +318,26 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 				return cid, true
 			}
 			return config.CodeIdentifier{}, false
+		}
+		// Reading a global variable
+		if node.Op == token.MUL {
+			if global, isGlobal := node.X.(*ssa.Global); isGlobal {
+				packageName, typeName, err := FindEltTypePackage(global.Type().Underlying(), "%s")
+				if err != nil {
+					return config.CodeIdentifier{}, false
+				}
+				cid := config.CodeIdentifier{
+					Context:    node.Parent().String(),
+					Package:    packageName,
+					Type:       typeName,
+					Global:     node.X.Name(),
+					Kind:       "load",
+					ValueMatch: n.String(),
+				}
+				if f(cid) {
+					return cid, true
+				}
+			}
 		}
 		return config.CodeIdentifier{}, false
 

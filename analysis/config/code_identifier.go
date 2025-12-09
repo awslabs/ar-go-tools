@@ -56,6 +56,10 @@ type CodeIdentifier struct {
 	// The Package field must be set as well.
 	Const string `xml:"const,attr"`
 
+	// Global identifies a global variable.
+	// The Package field must be set as well
+	Global string `xml:"global,attr"`
+
 	// Label can be used to store user-defined information about the code identifier.
 	Label string `xml:"label,attr"`
 
@@ -185,6 +189,7 @@ type codeIdentifierRegex struct {
 	receiverRegex   *regexp.Regexp
 	valueMatchRegex *regexp.Regexp
 	constRegex      *regexp.Regexp
+	globalRegex     *regexp.Regexp
 }
 
 // compileRegexes compiles the strings in the code identifier into regexes. It compiles all identifiers into regexes
@@ -193,24 +198,7 @@ type codeIdentifierRegex struct {
 // TODO improve error handling
 func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	if isNewFormat(cid) {
-		// Enclosing is the only object that may contain regexes (for now)
-		cid.Enclosing.computedRegexs = &callingContextRegex{}
-		if cid.Enclosing.PackageRegex != "" {
-			packageRegex, err := regexp.Compile(cid.Enclosing.PackageRegex)
-			if err != nil {
-				fmt.Printf("[WARN] failed to compile enclosing package regex %v: %v\n", cid.Enclosing.PackageRegex, err)
-			}
-			cid.Enclosing.computedRegexs.packageRegex = packageRegex
-		}
-		if cid.Enclosing.MethodRegex != "" {
-			methodRegex, err := regexp.Compile(cid.Enclosing.MethodRegex)
-			if err != nil {
-				fmt.Printf("[WARN] failed to compile enclosing method regex %v: %v\n", cid.Enclosing.MethodRegex, err)
-			}
-			cid.Enclosing.computedRegexs.methodRegex = methodRegex
-		}
-
-		return cid
+		return compileRegexesNewFormat(cid)
 	}
 
 	contextRegex, err := regexp.Compile(cid.Context)
@@ -249,6 +237,10 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 	if err != nil {
 		fmt.Printf("[WARN] failed to compile const regex %v: %v\n", cid.Const, err)
 	}
+	globalRegex, err := regexp.Compile(cid.Global)
+	if err != nil {
+		fmt.Printf("[WARN] failed to compile global regex %v: %v\n", cid.Global, err)
+	}
 	cid.computedRegexs = &codeIdentifierRegex{
 		contextRegex,
 		packageRegex,
@@ -259,6 +251,27 @@ func compileRegexes(cid CodeIdentifier) CodeIdentifier {
 		receiverRegex,
 		valueMatchRegex,
 		constRegex,
+		globalRegex,
+	}
+	return cid
+}
+
+func compileRegexesNewFormat(cid CodeIdentifier) CodeIdentifier {
+	// Enclosing is the only object that may contain regexes (for now)
+	cid.Enclosing.computedRegexs = &callingContextRegex{}
+	if cid.Enclosing.PackageRegex != "" {
+		packageRegex, err := regexp.Compile(cid.Enclosing.PackageRegex)
+		if err != nil {
+			fmt.Printf("[WARN] failed to compile enclosing package regex %v: %v\n", cid.Enclosing.PackageRegex, err)
+		}
+		cid.Enclosing.computedRegexs.packageRegex = packageRegex
+	}
+	if cid.Enclosing.MethodRegex != "" {
+		methodRegex, err := regexp.Compile(cid.Enclosing.MethodRegex)
+		if err != nil {
+			fmt.Printf("[WARN] failed to compile enclosing method regex %v: %v\n", cid.Enclosing.MethodRegex, err)
+		}
+		cid.Enclosing.computedRegexs.methodRegex = methodRegex
 	}
 	return cid
 }
@@ -280,6 +293,7 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 			((cidRef.computedRegexs.methodRegex.MatchString(cid.Method)) || (cidRef.Method == "")) &&
 			((cidRef.computedRegexs.receiverRegex.MatchString(cid.Receiver)) || (cidRef.Receiver == "")) &&
 			((cidRef.computedRegexs.constRegex.MatchString(cid.Const)) || (cidRef.Const == "")) &&
+			((cidRef.computedRegexs.globalRegex.MatchString(cid.Global)) || (cidRef.Global == "")) &&
 			((cidRef.computedRegexs.fieldRegex.MatchString(cid.Field)) || (cidRef.Field == "")) &&
 			(cidRef.computedRegexs.typeRegex.MatchString(cid.Type) || cidRef.Type == "") &&
 			(cidRef.computedRegexs.valueMatchRegex.MatchString(cid.ValueMatch) || cidRef.ValueMatch == "") &&
@@ -291,6 +305,7 @@ func (cid *CodeIdentifier) equalOnNonEmptyFields(cidRef CodeIdentifier) bool {
 		((cid.Method == cidRef.Method) || (cidRef.Method == "")) &&
 		((cid.Receiver == cidRef.Receiver) || (cidRef.Receiver == "")) &&
 		((cid.Const == cidRef.Const) || (cidRef.Const == "")) &&
+		((cid.Global == cidRef.Global) || (cidRef.Global == "")) &&
 		((cid.Field == cidRef.Field) || (cidRef.Field == "")) &&
 		((cid.Type == cidRef.Type) || (cidRef.Type == "")) &&
 		((cid.ValueMatch == cidRef.ValueMatch) || (cidRef.ValueMatch == "")) &&
@@ -468,6 +483,16 @@ func (cid *CodeIdentifier) MatchInterface(f *ssa.Function) bool {
 
 // MatchConst matches a named package-level constant to a code identifier.
 func (cid *CodeIdentifier) MatchConst(c *ssa.NamedConst) bool {
+	if cid == nil || c == nil {
+		return false
+	}
+
+	pkg := c.Package().String()
+	return cid.computedRegexs.packageRegex.MatchString(pkg) && cid.computedRegexs.constRegex.MatchString(c.Name())
+}
+
+// MatchGlobal matches a named package-level constant to a code identifier.
+func (cid *CodeIdentifier) MatchGlobal(c *ssa.Global) bool {
 	if cid == nil || c == nil {
 		return false
 	}
