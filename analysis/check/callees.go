@@ -15,6 +15,7 @@
 package check
 
 import (
+	"context"
 	"fmt"
 	"slices"
 
@@ -29,7 +30,7 @@ import (
 // inferCalleeSummaries returns all the maximally-general (most data flow edges) callee summaries
 // which satisfy wantSummary's must-not-flow requirements.
 func inferCalleeSummaries(
-	s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summaries.DetailedSummary,
+	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summaries.DetailedSummary,
 	via Method,
 ) (map[*dataflow.SummaryGraph][]summaries.DetailedSummary, error) {
 	// "Leaf" function (no callees)
@@ -41,6 +42,9 @@ func inferCalleeSummaries(
 	if !slices.Contains(validMethods, via) {
 		panic(fmt.Errorf("invalid inference method: want one of %v, got %v", validMethods, via))
 	}
+
+	// First run the intra-procedural analysis
+	dataflow.RunIntraProcedural(ctx, s, g)
 
 	// Collect known (intra + inter) and unknown edges
 	intraParent := intraEdges(g, nil)

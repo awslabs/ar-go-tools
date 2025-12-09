@@ -20,16 +20,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
 // SoundnessResult is the result of checking the soundness of a single data flow summary.
 type SoundnessResult struct {
 	Fn       string                    // Fn is the qualified name of the summarized function
 	Want     summaries.DetailedSummary // Want is the summary being checked
-	Got      summaries.DetailedSummary // Got is the actual summary computed, if any
 	IsSound  bool                      // IsSound is true if Want is an overapproximation of Got
 	BadFlows []Flow                    // BadFlows are the flows unable to be proven sound
+	Method   Method                    // Method is the check method used for the soundness check
 	Time     time.Duration             // Time is the time spent to calculate the result
 }
 
@@ -38,8 +40,9 @@ func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 	raw := rawSoundnessResult{
 		Func:        r.Fn,
 		Want:        rawFlows(r.Want.Flows),
-		Got:         rawFlows(r.Got.Flows),
 		IsSound:     r.IsSound,
+		BadFlows:    funcutil.Map(r.BadFlows, (Flow).String),
+		Method:      string(r.Method),
 		TimeSeconds: time.Duration(r.Time.Seconds()),
 	}
 	enc := json.NewEncoder(b)
@@ -49,10 +52,31 @@ func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 	return res, err
 }
 
+func newSoundnessResult(
+	g *dataflow.SummaryGraph, res checkResult, want summaries.DetailedSummary, start time.Time, via Method,
+) SoundnessResult {
+	return SoundnessResult{
+		Fn:       g.Parent.RelString(nil),
+		Want:     want,
+		IsSound:  res.isSound,
+		BadFlows: funcutil.Map(res.badFlows, newFlow),
+		Method:   via,
+		Time:     time.Since(start),
+	}
+}
+
 type Flow struct {
 	Fn   string
 	From summaries.SummaryNode
 	To   summaries.SummaryNode
+}
+
+func newFlow(f flow) Flow {
+	return Flow{
+		Fn:   f.from.Graph().Parent.RelString(nil),
+		From: newSummaryNode(f.from),
+		To:   newSummaryNode(f.to),
+	}
 }
 
 func (f Flow) String() string {
@@ -64,6 +88,8 @@ type rawSoundnessResult struct {
 	Want        map[string][]string
 	Got         map[string][]string
 	IsSound     bool
+	BadFlows    []string
+	Method      string
 	TimeSeconds time.Duration
 }
 
@@ -76,4 +102,22 @@ func rawFlows(flows map[summaries.SummaryNode][]summaries.SummaryNode) map[strin
 		}
 	}
 	return res
+}
+
+// newSummaryNode constructs a summary node from a data flow graph node.
+// Panics if gn is invalid since this should be enforced by the visitor.
+func newSummaryNode(gn dataflow.GraphNode) summaries.SummaryNode {
+	switch gn := gn.(type) {
+	case *dataflow.ParamNode:
+		f := gn.SsaNode().Parent()
+		if recv := f.Signature.Recv(); recv != nil {
+			// f is a method and param is a receiver
+			return summaries.ArgumentSNode{Name: gn.SsaNode().Name(), Index: 0, ObjectPath: ""}
+		}
+		return summaries.ArgumentSNode{Name: gn.SsaNode().Name(), Index: gn.Index(), ObjectPath: ""}
+	case *dataflow.ReturnValNode:
+		return summaries.ReturnSNode{Index: gn.Index(), ObjectPath: ""}
+	default:
+		panic(fmt.Errorf("unexpected graph node type: %v (%T)", gn, gn))
+	}
 }

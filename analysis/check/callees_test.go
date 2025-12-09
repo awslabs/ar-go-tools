@@ -280,12 +280,11 @@ func TestInferCalleeSummaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			setupConfig(lp)
-			state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
+			state, err := result.Bind(result.Bind(ptr.NewState(lp), dataflow.NewState), NewState).Value()
 			if err != nil {
 				t.Fatalf("failed to load state: %s", err)
 			}
-			InitializeState(state)
-			f, err := functionOfSummary(state, tc.fn)
+			f, err := functionOfName(state, tc.fn.Name())
 			if err != nil {
 				t.Fatalf("failed to find function for summary %v", tc.fn.Name())
 			}
@@ -293,10 +292,11 @@ func TestInferCalleeSummaries(t *testing.T) {
 			if !ok {
 				t.Fatalf("no summary for function %s", f)
 			}
+			ctx := context.Background()
 			if !g.Constructed {
-				dataflow.RunIntraProcedural(context.Background(), state, g)
+				dataflow.RunIntraProcedural(ctx, state.State, g)
 			}
-			summs, err := inferCalleeSummaries(state, g, tc.fn.Summary(), tc.via)
+			summs, err := inferCalleeSummaries(ctx, state.State, g, tc.fn.Summary(), tc.via)
 			if err != nil {
 				t.Fatal(err)
 			}

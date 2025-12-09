@@ -17,7 +17,6 @@ package check_test
 import (
 	"context"
 	"embed"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -37,21 +36,167 @@ import (
 //go:embed testdata
 var testfsys embed.FS
 
-func TestCheckSummary_Basic_Callees(t *testing.T) {
+func TestCheckSummary_Basic(t *testing.T) {
 	dir := filepath.Join("./testdata", "basic")
 	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setupConfig(lp)
-	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
+	state, err := result.Bind(result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
-	check.InitializeState(state)
 
 	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic"
 	tests := []tcCheck{
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "singleArgIntraOut",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:  true,
+				BadFlows: []check.Flow{},
+				Method:   check.General,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "singleArgInterNone",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound: false,
+				BadFlows: []check.Flow{
+					{
+						Fn:   pkg + ".singleArgInterNone",
+						From: summaries.ArgumentSNode{Name: "x", Index: 0},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   pkg + ".noop",
+						From: summaries.ArgumentSNode{Name: "arg0", Index: 0},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+				},
+				Method: check.Types,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "twoArgIntraInout",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ArgumentSNode{Name: "y", Index: 1},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound: false,
+				BadFlows: []check.Flow{
+					{
+						Fn:   pkg + ".twoArgIntraInout",
+						From: summaries.ArgumentSNode{Name: "y", Index: 1},
+						To:   summaries.ArgumentSNode{Name: "x", Index: 0},
+					},
+				},
+				Method: check.Types,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "twoArgInterInout",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ArgumentSNode{Name: "y", Index: 1},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:  true,
+				BadFlows: nil,
+				Method:   check.Types, // disproved flow from setmem dst -> src
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "singleArgIntraGlobal",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:  true, // TODO global analysis
+				BadFlows: nil,
+				Method:   check.General,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "singleArgInterGlobal",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:  true, // TODO global analysis
+				BadFlows: nil,
+				Method:   check.General,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "twoArgInterBool",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:  true,
+				BadFlows: nil,
+				Method:   check.Types,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "twoArgInter",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:  true,
+				BadFlows: nil,
+				Method:   check.Types,
+			},
+		},
 		{
 			summary: summaries.NewFunctionFlowSummary(pkg, "threeArgInter",
 				summaries.DetailedSummary{
@@ -119,8 +264,8 @@ func TestCheckSummary_Basic_Callees(t *testing.T) {
 						To:   summaries.ArgumentSNode{Name: "no", Index: 2},
 					},
 				},
+				Method: check.Types,
 			},
-			via: check.Types,
 		},
 	}
 
@@ -136,14 +281,73 @@ func TestCheckSummary_Basic_Callees(t *testing.T) {
 	}
 }
 
+func TestCheckSummary_Stdlib(t *testing.T) {
+	tests := []tcCheck{
+		{
+			// func Sum(data []byte) [Size]byte
+			summary: summaries.NewFunctionFlowSummary("crypto/md5", "Sum",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "data", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:  true,
+				BadFlows: nil,
+				Method:   check.General,
+			},
+		},
+		{
+			// func Ints(x []int)
+			summary: summaries.NewFunctionFlowSummary("sort", "Ints",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:  true,
+				BadFlows: nil,
+				Method:   check.General,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		var sound string
+		if tc.want.IsSound {
+			sound = "sound"
+		} else {
+			sound = "unsound"
+		}
+		name := fmt.Sprintf("%s_%s", tc.summary.Name(), sound)
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join("./testdata", "stdlib", tc.summary.Package())
+			lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+			if err != nil {
+				t.Fatal(err)
+			}
+			setupConfig(lp)
+			state, err := result.Bind(result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+			if err != nil {
+				t.Fatalf("failed to load state: %s", err)
+			}
+
+			checkSoundness(t, tc, state)
+		})
+	}
+}
+
 type tcCheck struct {
 	summary summaries.FrontendDataflowSummary
 	want    check.SoundnessResult
 	via     check.Method
 }
 
-func checkSoundness(t *testing.T, tc tcCheck, state *dataflow.State) {
-	got, err := check.CheckSummary(context.Background(), state, tc.summary, tc.via, true)
+func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
+	got, err := check.CheckSummary(context.Background(), state, tc.summary)
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
 		return
@@ -172,395 +376,10 @@ func checkSoundness(t *testing.T, tc tcCheck, state *dataflow.State) {
 			t.Logf("\t%v: %v -> %v\n", fname, f.From, f.To)
 		}
 	}
-}
 
-func TestCheckSummary_Flows_Basic(t *testing.T) {
-	dir := filepath.Join("./testdata", "basic")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
-	if err != nil {
-		t.Fatal(err)
+	if tc.want.Method != got.Method {
+		t.Errorf("method mismatch: want %v, got %v\n", tc.want.Method, got.Method)
 	}
-	setupConfig(lp)
-	state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
-	if err != nil {
-		t.Fatalf("failed to load state: %s", err)
-	}
-	check.InitializeState(state)
-
-	tests := []struct {
-		name  string
-		wants []flowRes
-	}{
-		{
-			name: "singleArgIntraOut",
-			wants: []flowRes{
-				{
-					via:   check.General,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Types,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Naive,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-			},
-		},
-		{
-			name: "singleArgInterNone",
-			wants: []flowRes{
-				{
-					via:   check.General,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Types,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Naive,
-					flows: []string{},
-				},
-			},
-		},
-		{
-			name: "twoArgIntraInout",
-			wants: []flowRes{
-				{
-					via: check.General,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!arg <y>"}`,
-						`{"from": "!arg <y>", "to": "!arg <x>"}`,
-					},
-				},
-				{
-					via: check.Types,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!arg <y>"}`,
-						`{"from": "!arg <y>", "to": "!arg <x>"}`,
-					},
-				},
-				{
-					via:   check.Naive,
-					flows: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
-				},
-			},
-		},
-		{
-			name: "twoArgInterInout",
-			wants: []flowRes{
-				{
-					via: check.General,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!arg <y>"}`,
-						`{"from": "!arg <y>", "to": "!arg <x>"}`,
-					},
-				},
-				{
-					via: check.Types,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!arg <y>"}`,
-						`{"from": "!arg <y>", "to": "!arg <x>"}`,
-					},
-				},
-				{
-					via:   check.Naive,
-					flows: []string{`{"from": "!arg <x>", "to": "!arg <y>"}`},
-				},
-			},
-		},
-		{
-			name: "singleArgIntraGlobal",
-			wants: []flowRes{
-				{
-					via:   check.General,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Types,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Naive,
-					flows: dataflow.ErrGlobal,
-				},
-			},
-		},
-		{
-			name: "singleArgInterGlobal",
-			wants: []flowRes{
-				{
-					via:   check.General,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Types,
-					flows: []string{`{"from": "!arg <x>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Naive,
-					flows: dataflow.ErrGlobal,
-				},
-			},
-		},
-		{
-			name: "twoArgInterBool",
-			wants: []flowRes{
-				{
-					via: check.General,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!ret 0"}`,
-						`{"from": "!arg <x>", "to": "!arg <y>"}`,
-						`{"from": "!arg <y>", "to": "!ret 0"}`,
-						`{"from": "!arg <y>", "to": "!arg <x>"}`,
-					},
-				},
-				{
-					via: check.Types,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!ret 0"}`,
-						`{"from": "!arg <y>", "to": "!ret 0"}`,
-					},
-				},
-				{
-					via: check.Naive,
-					flows: []string{
-						// `{"from": "!arg <x>", "to": "!ret 0"}`,
-						`{"from": "!arg <y>", "to": "!ret 0"}`,
-					},
-				},
-			},
-		},
-		{
-			name: "twoArgInter",
-			wants: []flowRes{
-				{
-					via: check.General,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!ret 0"}`,
-						`{"from": "!arg <x>", "to": "!arg <y>"}`,
-						`{"from": "!arg <y>", "to": "!ret 0"}`,
-						`{"from": "!arg <y>", "to": "!arg <x>"}`,
-					},
-				},
-				{
-					via: check.Types,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!ret 0"}`,
-						`{"from": "!arg <y>", "to": "!ret 0"}`,
-					},
-				},
-				{
-					via: check.Naive,
-					flows: []string{
-						`{"from": "!arg <x>", "to": "!ret 0"}`,
-						`{"from": "!arg <y>", "to": "!ret 0"}`,
-					},
-				},
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		for _, want := range tc.wants {
-			name := fmt.Sprintf("%s_%s", tc.name, want.via)
-			t.Run(name, func(t *testing.T) {
-				checkFlows(
-					t, "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic",
-					tc.name, want, state)
-			})
-		}
-	}
-}
-
-func TestCheckSummary_Flows_Stdlib(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping slow test in short mode")
-	}
-
-	tests := []struct {
-		name     string
-		dir      string
-		pkg      string
-		function string
-		wants    []flowRes
-	}{
-		{
-			name:     "crypto/md5.Sum",
-			pkg:      "crypto/md5",
-			function: "Sum",
-			wants: []flowRes{
-				{
-					via:   check.General,
-					flows: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Types,
-					flows: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
-				},
-				{
-					via:   check.Naive,
-					flows: []string{`{"from": "!arg <data>", "to": "!ret 0"}`},
-				},
-			},
-		},
-		{
-			name:     "sort.Ints",
-			pkg:      "sort",
-			function: "Ints",
-			wants: []flowRes{
-				{
-					via:   check.General,
-					flows: []string{},
-				},
-				{
-					via:   check.Types,
-					flows: []string{},
-				},
-				{
-					via:   check.Naive,
-					flows: []string{},
-				},
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		dir := filepath.Join("./testdata", "stdlib", tc.pkg)
-		lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
-		if err != nil {
-			t.Fatal(err)
-		}
-		setupConfig(lp)
-		state, err := result.Bind(ptr.NewState(lp), dataflow.NewState).Value()
-		if err != nil {
-			t.Fatalf("failed to load state: %s", err)
-		}
-
-		for _, want := range tc.wants {
-			name := fmt.Sprintf("%s_%s", tc.name, want.via)
-			t.Run(name, func(t *testing.T) {
-				check.InitializeState(state)
-				checkFlows(t, tc.pkg, tc.function, want, state)
-			})
-		}
-	}
-}
-
-type flowRes struct {
-	via check.Method
-	// flows is the summary flows (usually a slice of JSON strings), but could be an error
-	flows any
-}
-
-func checkFlows(t *testing.T, pkg string, fn string, want flowRes, state *dataflow.State) {
-	var tcWantErr error
-	var tcWantFlows []string
-	switch tcWant := want.flows.(type) {
-	case []string:
-		tcWantFlows = tcWant
-	case error:
-		tcWantErr = tcWant
-	default:
-		t.Fatalf("unexpected type: %T", want.flows)
-	}
-	str := fmt.Sprintf(`
-{
-	"package": "%s",
-	"function": "%s",
-	"flows": [%s]
-}`, pkg, fn, strings.Join(tcWantFlows, ", "))
-	var wantSummary summaries.FunctionFlowSummary
-	if err := wantSummary.UnmarshalJSON([]byte(str)); err != nil {
-		t.Fatalf("failed to unmarshal summary %s: %v", str, err)
-	}
-	res, err := check.CheckSummary(
-		context.Background(), state, wantSummary, want.via, false) // don't check callees
-	if !errors.Is(err, tcWantErr) {
-		t.Errorf("unexpected check summary error:\n\twant %v,\n\tgot %v", tcWantErr, err)
-		return
-	}
-	wantFlows := wantSummary.Summary().Flows
-	gotFlows := res.Got.Flows
-	if !eqFlows(wantFlows, gotFlows) {
-		t.Errorf("summary mismatch:\n\twant %v,\n\tgot %v\n", wantFlows, gotFlows)
-		t.Logf("want:\n")
-		dbgFlows(t, wantFlows)
-		t.Logf("got:\n")
-		dbgFlows(t, gotFlows)
-	}
-}
-
-func eqFlows(want, got map[summaries.SummaryNode][]summaries.SummaryNode) bool {
-	if len(want) == 0 && len(got) == 0 {
-		return true
-	}
-
-	if len(want) != len(got) {
-		return false
-	}
-
-	for wk, wvs := range want {
-		found := false
-		for gk, gvs := range got {
-			if !eqNode(wk, gk) {
-				continue
-			}
-			if !eqNodes(wvs, gvs) {
-				return false
-			}
-			found = true
-			break
-		}
-		if !found {
-			return false
-		}
-	}
-
-	return true
-}
-
-func eqNodes(want, got []summaries.SummaryNode) bool {
-	// need to sort the slices since EqualFunc compares elements in order
-	slices.SortFunc(want, cmpNode)
-	slices.SortFunc(got, cmpNode)
-	return slices.EqualFunc(want, got, eqNode)
-}
-
-func cmpNode(x, y summaries.SummaryNode) int {
-	return strings.Compare(x.String(), y.String())
-}
-
-func eqNode(want, got summaries.SummaryNode) bool {
-	switch want := want.(type) {
-	case summaries.ArgumentSNode:
-		got, ok := got.(summaries.ArgumentSNode)
-		if !ok {
-			return false
-		}
-		// If want has a name, match by name; otherwise match by index
-		if want.Name != "" {
-			return want.Name == got.Name
-		}
-		return want.Index == got.Index
-	case summaries.ReceiverSNode:
-		got, ok := got.(summaries.ReceiverSNode)
-		if !ok {
-			return false
-		}
-		return want == got
-	case summaries.ReturnSNode:
-		got, ok := got.(summaries.ReturnSNode)
-		if !ok {
-			return false
-		}
-		return want.Index == got.Index
-	default:
-		panic(fmt.Errorf("unexpected summary node type: %T", want))
-	}
-
 }
 
 func dbgFlows(t *testing.T, flows map[summaries.SummaryNode][]summaries.SummaryNode) {

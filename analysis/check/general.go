@@ -15,64 +15,82 @@
 package check
 
 import (
-	"time"
+	"fmt"
 
-	"golang.org/x/tools/go/ssa"
-
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
 // checkSummaryMostGeneral checks the soundness of want by comparing it to the most-general summary
-// of f.
+// of g.
 // The most-general summary assumes that all function inputs (parameters) flow to all function
 // outputs (parameters and all return values).
-// If useTypes is true, then non-pointer-like inputs are not considered to be outputs.
-func checkSummaryMostGeneral(
-	f *ssa.Function, want summaries.DetailedSummary, start time.Time, useTypes bool,
-) (SoundnessResult, error) {
-	got := newMostGeneralDetailedSummary(f, useTypes)
-	end := time.Since(start)
-	fname := f.RelString(nil)
-	isSound, badFlows := isSummarySubset(fname, want, got)
+func checkSummaryMostGeneral(g *dataflow.SummaryGraph, want summaries.DetailedSummary) checkResult {
+	gotFlows := mostGeneralFlows(g)
+	wantFlows := summaryFlows(g, want)
+	if len(gotFlows) < len(wantFlows) {
+		panic(fmt.Errorf("most-general flows is less than summary flows"))
+	}
 
-	return SoundnessResult{
-		Fn:       fname,
-		Want:     want,
-		Got:      got,
-		IsSound:  isSound,
-		BadFlows: badFlows,
-		Time:     end,
-	}, nil
+	unproven := difference(gotFlows, wantFlows)
+	return newCheckResult(unproven, General)
 }
 
-// newMostGeneralDetailedSummary returns the most-general summary for f.
-// If useTypes is true, then non-pointer-like inputs are not treated as outputs.
+// checkSummaryTypes tries to prove that the flows in bad do not hold by a simple type analysis:
+// if the node being flowed to is a non-pointer-like parameter, then the flow cannot exist.
+func checkSummaryTypes(bad []flow) checkResult {
+	var unproven []flow
+	for _, fl := range bad {
+		switch to := fl.to.(type) {
+		case *dataflow.ParamNode:
+			if isPointerLike(to.Type()) {
+				unproven = append(unproven, fl)
+			}
+		case *dataflow.ReturnValNode:
+			unproven = append(unproven, fl)
+		default:
+			panic(fmt.Errorf("invalid flow to node type: %v (%T)", to, to))
+		}
+	}
+
+	return newCheckResult(unproven, Types)
+}
+
+// mostGeneralFlows returns the most-general summary for the function in g.
 // TODO include free variables as inputs and outputs
-func newMostGeneralDetailedSummary(f *ssa.Function, useTypes bool) summaries.DetailedSummary {
-	flows := make(map[summaries.SummaryNode][]summaries.SummaryNode)
-	for i, input := range f.Params {
-		inputNode := summaries.ArgumentSNode{Name: input.Name(), Index: i, ObjectPath: ""}
-		for j, output := range f.Params {
+func mostGeneralFlows(g *dataflow.SummaryGraph) []flow {
+	var flows []flow
+	for _, input := range g.Params {
+		// A parameter can only be an output if it is pointer-like
+		for _, output := range g.Params {
 			// We don't count self-flows (input flows to same input as an output) because the data
 			// flows to and from the parameter when used as an argument at a callsite are part of
 			// the data flow of the caller's summary, not the callee's.
 			if input == output {
 				continue
 			}
-			// If the types-based analysis is on, then only pointer-like parameters can be outputs
-			if useTypes && !pointer.CanPoint(output.Type()) {
-				continue
-			}
-			outputNode := summaries.ArgumentSNode{Name: output.Name(), Index: j, ObjectPath: ""}
-			flows[inputNode] = append(flows[inputNode], outputNode)
+			flows = append(flows, flow{from: input, to: output})
 		}
-		outputs := f.Signature.Results()
-		for i := range outputs.Len() {
-			outputNode := summaries.ReturnSNode{Index: i, ObjectPath: ""}
-			flows[inputNode] = append(flows[inputNode], outputNode)
+
+		for _, outputs := range g.Returns {
+			for _, output := range outputs {
+				flows = append(flows, flow{from: input, to: output})
+			}
 		}
 	}
 
-	return summaries.DetailedSummary{Flows: flows}
+	return flows
+}
+
+func summaryFlows(g *dataflow.SummaryGraph, summ summaries.DetailedSummary) []flow {
+	var flows []flow
+	for input, outputs := range summ.Flows {
+		in := findNode(g, input)
+		for _, output := range outputs {
+			out := findNode(g, output)
+			flows = append(flows, flow{from: in, to: out})
+		}
+	}
+
+	return flows
 }

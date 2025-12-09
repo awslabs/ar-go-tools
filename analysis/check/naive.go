@@ -18,37 +18,34 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
 
-func checkSummaryNaive(
-	ctx context.Context, s *dataflow.State, f *ssa.Function,
-	want summaries.DetailedSummary, start time.Time,
-) (SoundnessResult, error) {
+// checkSummaryNaive computes the full inter-procedural data flow summary of f.
+// If there are any flows in bad that are not in the summary, then the result is unsound.
+func checkSummaryNaive(ctx context.Context, s *dataflow.State, f *ssa.Function, bad []flow) (checkResult, error) {
 	gotSummary, err := FullySummarize(ctx, s, f)
 	if err != nil {
-		return SoundnessResult{Time: time.Since(start)},
+		return newCheckResult(bad, Naive),
 			fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
 	}
-	end := time.Since(start)
 
-	got := newDetailedSummary(gotSummary.Flows)
-	fname := f.RelString(nil)
-	isSound, badFlows := isSummarySubset(fname, want, got)
+	var unproven []flow
+	for _, flow := range bad {
+		for input, outputs := range gotSummary.Flows {
+			for _, output := range outputs {
+				if input == flow.from && output == flow.to {
+					continue
+				}
+				unproven = append(unproven, flow)
+			}
+		}
+	}
 
-	return SoundnessResult{
-		Fn:       fname,
-		Want:     want,
-		Got:      got,
-		IsSound:  isSound,
-		BadFlows: badFlows,
-		Time:     end,
-	}, nil
+	return newCheckResult(unproven, Naive), nil
 }
 
 // FullSummary is the full inter-procedurally-generated data flow summary for a function.
