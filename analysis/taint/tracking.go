@@ -144,6 +144,18 @@ func Position(p *ssa.Program, instr ssa.Instruction) (token.Position, bool) {
 	if pos != token.NoPos && file != nil {
 		return file.Position(pos), true
 	}
-
+	// Sometimes the ssa creates extra instructions with no position, but the referrers might still have
+	// a position. We can try to find the position of the referrers.
+	if val, ok := instr.(ssa.Value); ok {
+		for _, i := range *val.Referrers() {
+			if i != nil {
+				pos = i.Pos()
+				file = p.Fset.File(pos)
+				if pos != token.NoPos && file != nil {
+					return file.Position(pos), true
+				}
+			}
+		}
+	}
 	return token.Position{}, false
 }

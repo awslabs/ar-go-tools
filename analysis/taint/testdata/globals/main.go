@@ -20,7 +20,7 @@ import (
 
 // TestTaintPropagatesThroughGlobal
 var x T
-var globalSource T
+var globalSource T // @Source(ex8)
 
 func TestTaintPropagatesThroughGlobal() {
 	a := source1() // @Source(ex1)
@@ -90,8 +90,17 @@ func TestTaintPropagatesThroughPackageGlobal() {
 }
 
 func TestReadGlobalIsTainted() {
-	y := globalSource //@Source(ex6)
-	sink(y.Data)      // @Sink(ex6)
+	local := globalSource //@Source(ex6)
+	//local := T{}
+	sink(local.Data) // @Sink(ex6)
+}
+
+func TestGlobalAsArgIsTainted() {
+	sink(globalSource) // @Source(ex7) @Sink(ex7) global is loaded here
+}
+
+func TestGlobalRefAsArgIsTainted() {
+	sink(&globalSource) // @Sink(ex8)
 }
 
 func main() {
@@ -102,4 +111,6 @@ func main() {
 	TestTaintGlobalFromSlice()
 	TestTaintPropagatesThroughPackageGlobal()
 	TestReadGlobalIsTainted()
+	TestGlobalAsArgIsTainted()
+	TestGlobalRefAsArgIsTainted()
 }

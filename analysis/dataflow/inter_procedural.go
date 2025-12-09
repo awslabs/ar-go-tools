@@ -388,12 +388,6 @@ func scanEntryPoints(
 			if !isValue {
 				return
 			}
-			if _, loads := node.Instr().(*ssa.UnOp); loads {
-				if _, ok := spec.IsEntryPointSsa(ssaNode); ok {
-					entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
-					entryPoints[entry.Key()] = entry
-				}
-			}
 			if _, ok := spec.IsEntryPointSsa(ssaNode); ok {
 				entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
 				entryPoints[entry.Key()] = entry

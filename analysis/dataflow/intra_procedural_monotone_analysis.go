@@ -155,6 +155,23 @@ func (state *IntraAnalysisState) markInstruction(i ssa.Instruction) {
 			if instr.Op == token.ARROW {
 				state.flowInfo.AddMark(i, instr, "", mark)
 			}
+			if instr.Op == token.MUL {
+				if glob, isGlob := instr.X.(*ssa.Global); isGlob {
+					gmark := state.flowInfo.GetNewMark(i.(ssa.Node), Global, glob, NonIndexMark)
+					state.flowInfo.AddMark(i, instr, "", gmark)
+				} else {
+					state.flowInfo.AddMark(i, instr, "", mark)
+				}
+			}
+		case *ssa.MakeInterface:
+			// Creating an interface can be a way to load a value
+			if glob, isGlob := instr.X.(*ssa.Global); isGlob {
+				gmark := state.flowInfo.GetNewMark(i.(ssa.Node), Global, glob, NonIndexMark)
+				state.flowInfo.AddMark(i, instr, "", gmark)
+			} else {
+				state.flowInfo.AddMark(i, instr, "", mark)
+			}
+
 		case *ssa.Alloc:
 			// Allocating a value of a certain type can be a source
 			state.flowInfo.AddMark(i, instr, "", mark)

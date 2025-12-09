@@ -341,6 +341,27 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		}
 		return config.CodeIdentifier{}, false
 
+	case *ssa.MakeInterface:
+		// Global is read an immediately cast to another interface type
+		if global, isGlobal := node.X.(*ssa.Global); isGlobal {
+			packageName, typeName, err := FindEltTypePackage(global.Type().Underlying(), "%s")
+			if err != nil {
+				return config.CodeIdentifier{}, false
+			}
+			cid := config.CodeIdentifier{
+				Context:    node.Parent().String(),
+				Package:    packageName,
+				Type:       typeName,
+				Global:     node.X.Name(),
+				Kind:       "load",
+				ValueMatch: n.String(),
+			}
+			if f(cid) {
+				return cid, true
+			}
+		}
+		return config.CodeIdentifier{}, false
+
 	default:
 		return config.CodeIdentifier{}, false
 	}
