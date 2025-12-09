@@ -73,20 +73,21 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound: false,
+				IsSound:  true,
 				BadFlows: []check.Flow{
-					{
-						Fn:   pkg + ".singleArgInterNone",
-						From: summaries.ArgumentSNode{Name: "x", Index: 0},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
-					{
-						Fn:   pkg + ".noop",
-						From: summaries.ArgumentSNode{Name: "arg0", Index: 0},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
+					// NOTE Immutability analysis disproved these flows
+					// {
+					// 	Fn:   pkg + ".singleArgInterNone",
+					// 	From: summaries.ArgumentSNode{Name: "x", Index: 0},
+					// 	To:   summaries.ReturnSNode{Index: 0},
+					// },
+					// {
+					// 	Fn:   pkg + ".noop",
+					// 	From: summaries.ArgumentSNode{Name: "arg0", Index: 0},
+					// 	To:   summaries.ReturnSNode{Index: 0},
+					// },
 				},
-				Method: check.Types,
+				Method: check.Immutability,
 			},
 		},
 		{
@@ -212,59 +213,56 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound: false,
-				// NOTE BadFlows are the flows unable to be proven sound with the given analysis
-				// method (Types in this case).
-				// Even though the summary above is technically sound, we need a more sophisticated
-				// analysis to prove that these flows indeed do not exist in the program.
+				IsSound:  true,
 				BadFlows: []check.Flow{
-					{
-						Fn:   pkg + ".threeArgInter",
-						From: summaries.ArgumentSNode{Name: "no", Index: 0},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
-					{
-						Fn:   pkg + ".threeArgInter",
-						From: summaries.ArgumentSNode{Name: "no", Index: 0},
-						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
-					},
-					{
-						Fn:   pkg + ".threeArgInter",
-						From: summaries.ArgumentSNode{Name: "no", Index: 0},
-						To:   summaries.ArgumentSNode{Name: "b", Index: 2},
-					},
-					{
-						Fn:   pkg + ".threeArgInter",
-						From: summaries.ArgumentSNode{Name: "a", Index: 1},
-						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
-					},
-					{
-						Fn:   pkg + ".threeArgInter",
-						From: summaries.ArgumentSNode{Name: "b", Index: 2},
-						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
-					},
-					{
-						Fn:   pkg + ".threeArgInter",
-						From: summaries.ArgumentSNode{Name: "b", Index: 2},
-						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
-					},
-					{
-						Fn:   pkg + ".add2",
-						From: summaries.ArgumentSNode{Name: "no", Index: 2},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
-					{
-						Fn:   pkg + ".add2",
-						From: summaries.ArgumentSNode{Name: "a", Index: 0},
-						To:   summaries.ArgumentSNode{Name: "no", Index: 2},
-					},
-					{
-						Fn:   pkg + ".add2",
-						From: summaries.ArgumentSNode{Name: "b", Index: 1},
-						To:   summaries.ArgumentSNode{Name: "no", Index: 2},
-					},
+					// NOTE Immutability analysis disproved these flows
+					// {
+					// 	Fn:   pkg + ".threeArgInter",
+					// 	From: summaries.ArgumentSNode{Name: "no", Index: 0},
+					// 	To:   summaries.ReturnSNode{Index: 0},
+					// },
+					// {
+					// 	Fn:   pkg + ".threeArgInter",
+					// 	From: summaries.ArgumentSNode{Name: "no", Index: 0},
+					// 	To:   summaries.ArgumentSNode{Name: "a", Index: 1},
+					// },
+					// {
+					// 	Fn:   pkg + ".threeArgInter",
+					// 	From: summaries.ArgumentSNode{Name: "no", Index: 0},
+					// 	To:   summaries.ArgumentSNode{Name: "b", Index: 2},
+					// },
+					// {
+					// 	Fn:   pkg + ".threeArgInter",
+					// 	From: summaries.ArgumentSNode{Name: "a", Index: 1},
+					// 	To:   summaries.ArgumentSNode{Name: "no", Index: 0},
+					// },
+					// {
+					// 	Fn:   pkg + ".threeArgInter",
+					// 	From: summaries.ArgumentSNode{Name: "b", Index: 2},
+					// 	To:   summaries.ArgumentSNode{Name: "no", Index: 0},
+					// },
+					// {
+					// 	Fn:   pkg + ".threeArgInter",
+					// 	From: summaries.ArgumentSNode{Name: "b", Index: 2},
+					// 	To:   summaries.ArgumentSNode{Name: "a", Index: 1},
+					// },
+					// {
+					// 	Fn:   pkg + ".add2",
+					// 	From: summaries.ArgumentSNode{Name: "no", Index: 2},
+					// 	To:   summaries.ReturnSNode{Index: 0},
+					// },
+					// {
+					// 	Fn:   pkg + ".add2",
+					// 	From: summaries.ArgumentSNode{Name: "a", Index: 0},
+					// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
+					// },
+					// {
+					// 	Fn:   pkg + ".add2",
+					// 	From: summaries.ArgumentSNode{Name: "b", Index: 1},
+					// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
+					// },
 				},
-				Method: check.Types,
+				Method: check.Immutability,
 			},
 		},
 	}

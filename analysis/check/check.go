@@ -108,12 +108,14 @@ func checkSummary(
 
 	start := time.Now()
 	var res checkResult
-	for _, method := range []Method{General, Types} {
+	for _, method := range []Method{General, Types, Immutability} {
 		switch method {
 		case General:
 			res = checkSummaryMostGeneral(g, want)
 		case Types:
 			res = checkSummaryTypes(res.badFlows)
+		case Immutability:
+			res = checkSummaryImmutability(s, res.badFlows)
 		}
 
 		if res.isSound {
@@ -200,6 +202,10 @@ func newCheckResult(unproven []flow, via Method) checkResult {
 type flow struct {
 	from dataflow.GraphNode
 	to   dataflow.GraphNode
+}
+
+func (f flow) String() string {
+	return fmt.Sprintf("%s -> %s", f.from, f.to)
 }
 
 // difference returns the elements of a that are not in b.

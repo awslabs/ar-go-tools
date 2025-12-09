@@ -14,323 +14,343 @@
 
 package check
 
-// import (
-// 	"context"
-// 	"fmt"
-// 	"go/types"
-// 	"time"
+import (
+	"fmt"
+	"go/types"
 
-// 	"golang.org/x/tools/container/intsets"
-// 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/container/intsets"
+	"golang.org/x/tools/go/callgraph"
+	"golang.org/x/tools/go/ssa"
 
-// 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-// 	"github.com/awslabs/ar-go-tools/analysis/lang"
-// 	"github.com/awslabs/ar-go-tools/analysis/summaries"
-// 	"github.com/awslabs/ar-go-tools/internal/pointer"
-// )
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/pointer"
+)
 
-// TODO Make sure the immutability analysis is linear: maybe when I hit a call instruction, analyze the callee (instead of computing transitively reachable callees up front)
-// func checkSummaryImmutability(
-// 	ctx context.Context, s *State, g *dataflow.SummaryGraph,
-// 	want summaries.DetailedSummary, start time.Time,
-// ) (SoundnessResult, error) {
-// 	general := newMostGeneralDetailedSummary(g.Parent, true)
-// 	fname := g.Parent.RelString(nil)
-// 	// badFlows are the flows in want that are not in the most-general summary
-// 	isSound, badFlows := isSummarySubset(fname, general, want)
-// 	if isSound {
-// 		return SoundnessResult{
-// 			Fn:       fname,
-// 			Want:     want,
-// 			Got:      want,
-// 			IsSound:  true,
-// 			BadFlows: nil,
-// 			Time:     time.Since(start),
-// 		}, nil
-// 	}
+func checkSummaryImmutability(s *State, bad []flow) checkResult {
+	var unproven []flow
+	immutableNodes := make(map[dataflow.GraphNode]struct{})
+	for _, fl := range bad {
+		if _, ok := immutableNodes[fl.to]; ok {
+			continue
+		}
 
-// 	sound := true
-// 	var resBad []Flow
-// 	for _, flow := range badFlows {
-// 		isBad, err := isBadFlowImmutability(s, flow)
-// 		if err != nil {
-// 			return SoundnessResult{}, fmt.Errorf("failed to check bad flow %v via immutability: %v", flow, err)
-// 		}
-// 		// If the analysis failed to disprove a single bad flow, don't bother checking the rest since the
-// 		// summary is unsound
-// 		if isBad {
-// 			resBad = append(resBad, flow)
-// 			sound = false
-// 			break
-// 		}
-// 	}
+		isBad := isBadFlowImmutability(s, fl)
+		// NOTE Maybe we shouldn't bother checking the rest since the summary is unsound, but
+		// filtering out all the bad flows makes it easier to test
+		if isBad {
+			unproven = append(unproven, fl)
+		}
+	}
 
-// 	return SoundnessResult{
-// 		Fn:       fname,
-// 		Want:     want,
-// 		Got:      general,
-// 		IsSound:  sound,
-// 		BadFlows: resBad,
-// 		Time:     time.Since(start),
-// 	}, nil
-// }
+	return newCheckResult(unproven, Immutability)
+}
 
-// // isBadFlowImmutability returns true if flow.To is written to (modified) in any way.
-// //
-// // If flow.To is pointer-like, then it uses the pointer analysis to detect any writes to the
-// // value(s)'s underlying memory in the flow's function or any of its transitively-reachable callees.
-// //
-// // Otherwise, it detects any explicit writes to flow.To's value(s) in the flow's function.
-// // There is no need to analyze any callees because the value is stack allocated and therefore cannot
-// // be modified outside of the function.
-// func isBadFlowImmutability(s *State, flow Flow) (bool, error) {
-// 	// TODO Avoid converting from summaries.SummaryNode to dataflow.GraphNode each time
-// 	f, err := functionOfName(s, flow.Fn)
-// 	if err != nil {
-// 		return true, err
-// 	}
-// 	g, ok := s.FlowGraph.Summaries[f]
-// 	if !ok {
-// 		return true, fmt.Errorf("failed to find summary for function %s", f)
-// 	}
-// 	vals := outputVals(g, flow)
-// 	for _, val := range vals {
-// 		if isPointerLike(val.Type()) {
-// 			ids := nodeIds(s.cache, val)
-// 		} else {
-// 			// reaching defs
-// 		}
-// 	}
+// isBadFlowImmutability returns true if fl.to is written to (modified) in any way.
+//
+// If fl.to is pointer-like, then it uses the pointer analysis to detect any writes to the
+// value(s)'s underlying memory in the flow's function or any of its transitively-reachable callees.
+//
+// Otherwise, it detects any explicit writes to fl.to's value(s) in the flow's function.
+// There is no need to analyze any callees because the value is stack allocated and therefore cannot
+// be modified outside of the function.
+func isBadFlowImmutability(s *State, fl flow) bool {
+	vals := outputVals(fl)
+	for _, val := range vals {
+		if isPointerLike(val.Type()) {
+			writeInstr, ok := checkWritesPtr(s.cache, s.PointerAnalysis.CallGraph, val)
+			if ok {
+				fmt.Printf("found modification of outgoing pointer flow value %v: %v at %s\n",
+					fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+				s.Logger.Debugf("found modification of outgoing pointer flow value %v: %v at %s\n",
+					fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+				return true
+			}
+		} else {
+			writeInstr := checkWritesScalar(val)
+			if writeInstr != nil {
+				fmt.Printf("found write of outgoing scalar flow value %v: %v at %s\n",
+					fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+				s.Logger.Debugf("found write of outgoing scalar flow value %v: %v at %s\n",
+					fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+				return true
+			}
+		}
+	}
 
-// 	return false, nil
-// }
+	return false
+}
 
-// func outputVals(g *dataflow.SummaryGraph, flow Flow) []ssa.Value {
-// 	var vals []ssa.Value
-// 	to := findNode(g, flow.To)
-// 	switch to := to.(type) {
-// 	case *dataflow.ParamNode:
-// 		vals = append(vals, to.SsaNode())
-// 	case *dataflow.ReturnValNode:
-// 		for retInstr := range g.Returns {
-// 			retInstr, ok := retInstr.(*ssa.Return)
-// 			if !ok {
-// 				panic(fmt.Errorf("invalid return instruction %v", retInstr))
-// 			}
-// 			val := retInstr.Results[to.Index()]
-// 			vals = append(vals, val)
-// 		}
-// 	}
+// checkWritesPtr returns the first instruction that writes a scalar value to to's underlying memory.
+// If it returns false, there are no writes.
+//
+// It is an inter-procedural analysis which checks for writes in the value's enclosing function and
+// its callees in BFS order.
+func checkWritesPtr(c *aliasCache, cg *callgraph.Graph, to ssa.Value) (ptrWrite, bool) {
+	queue := []*callgraph.Node{cg.Nodes[to.Parent()]}
+	seen := make(map[*callgraph.Node]struct{})
 
-// 	return vals
-// }
+	ids := nodeIds(c, to)
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		if _, ok := seen[node]; ok {
+			continue
+		}
 
-// func nodeIds(c *aliasCache, val ssa.Value) *intsets.Sparse {
-// 	ids := &intsets.Sparse{}
-// 	objs := c.Objects(val)
-// 	// initialize points-to-set of entrypoint
-// 	for obj := range objs {
-// 		switch data := obj.Data().(type) {
-// 		case *ssa.MakeInterface:
-// 			dataObjs := c.Objects(data.X) // get the objects of the concrete struct
-// 			for obj := range dataObjs {
-// 				for _, id := range obj.NodeIDs() {
-// 					ids.Insert(int(id))
-// 				}
-// 			}
-// 		default:
-// 			for _, id := range obj.NodeIDs() {
-// 				ids.Insert(int(id))
-// 			}
-// 		}
-// 	}
+		var writeInstr ptrWrite
+		wrote := false
+		lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
+			write, ok := ptrWrittenTo(instr)
+			if !ok {
+				return
+			}
+			// ASSUMPTION: We assume that errors are only used as values
+			if isAllocatedErrorType(write.Target) {
+				return
+			}
 
-// 	return ids
-// }
+			mobjs := c.Objects(write.Target)
+			for mobj := range mobjs {
+				if ids.Has(int(mobj.NodeID())) {
+					wrote = true
+					writeInstr = write
+					return
+				}
+			}
+		})
 
-// // findModifications adds:
-// //   - all write instructions to a member of the entrypoint's
-// //     points-to-set to s.entryWrites
-// //   - all read instructions from a member of the entrypoint's points-to-set to
-// //     s.entryReads
-// //
-// // Algorithm:
-// //  1. For each write and read instruction, compute the objects that the value written to
-// //     or read from can point to.
-// //  2. For each object, if the object is a member of the entrypoint's points-to-set,
-// //     then add the instruction to s.entryWrites or s.entryReads.
-// //  3. For each allocation instruction, compute the objects that the resulting
-// //     value can point to.
-// func (s *State) findModifications() {
-// 	for _, fna := range s.funcsToAnalyze {
-// 		s.findWrites(fna)
-// 		s.findReads(fna)
-// 		s.findAllocs(fna)
-// 	}
-// }
+		if wrote {
+			return writeInstr, true
+		}
 
-// func (s *State) findWrites(fna *funcToAnalyze) {
-// 	for instr := range fna.writeInstrs {
-// 		write, ok := ptrWrittenTo(instr)
-// 		if !ok {
-// 			continue
-// 		}
-// 		// We assume that errors are only used as values
-// 		if isAllocatedErrorType(write.Target) {
-// 			continue
-// 		}
-// 		pos := write.Pos
-// 		if s.PtrState.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
-// 			s.log.Tracef("//argot:ignore write at %s", pos)
-// 			continue
-// 		}
+		for _, edge := range node.Out {
+			queue = append(queue, edge.Callee)
+		}
+		seen[node] = struct{}{}
+	}
 
-// 		mobjs := s.Objects(write.Target)
-// 		for mobj := range mobjs {
-// 			if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-// 				s.entryWrites = append(s.entryWrites, write)
-// 				break
-// 			}
-// 		}
-// 	}
-// }
+	return ptrWrite{}, false
+}
 
-// //gocyclo:ignore
-// func (s *State) findReads(fna *funcToAnalyze) {
-// 	for instr := range fna.readInstrs {
-// 		read, ok := ptrsReadFrom(instr.Instruction, instr.Pos)
-// 		if !ok {
-// 			continue
-// 		}
+// checkWritesScalar returns the last instruction that writes any value to val.
+func checkWritesScalar(val ssa.Value) ssa.Instruction {
+	var write ssa.Instruction
+	lang.IterateInstructions(val.Parent(), func(_ int, instr ssa.Instruction) {
+		switch instr := instr.(type) {
+		case *ssa.Store:
+			if instr.Addr == val {
+				write = instr
+			}
+		}
+	})
 
-// 		pos := read.Pos
-// 		if s.PtrState.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
-// 			s.log.Tracef("//argot:ignore read at %s", pos)
-// 			continue
-// 		}
+	return write
+}
 
-// 		var aliasedReadVals []ssa.Value
-// 		for _, rval := range read.Values {
-// 			if !pointer.CanPoint(rval.Type()) {
-// 				continue
-// 			}
-// 			// We assume that errors are only used as values
-// 			if isAllocatedErrorType(rval) {
-// 				continue
-// 			}
+// outputVals returns all of the SSA values that the flow's "to" node may refer to.
+//
+// If the "to" node is a return, then it includes the value returned at the given index for each
+// return instruction in the function.
+func outputVals(fl flow) []ssa.Value {
+	var vals []ssa.Value
+	switch to := fl.to.(type) {
+	case *dataflow.ParamNode:
+		vals = append(vals, to.SsaNode())
+	case *dataflow.ReturnValNode:
+		g := to.Graph()
+		for retInstr := range g.Returns {
+			retInstr, ok := retInstr.(*ssa.Return)
+			if !ok {
+				panic(fmt.Errorf("invalid return instruction %v", retInstr))
+			}
+			val := retInstr.Results[to.Index()]
+			vals = append(vals, val)
+		}
+	}
 
-// 			if rval == s.entry {
-// 				s.log.Tracef("rvalue %v of read instruction %v is the same as entrypoint: skipping...", rval, instr)
-// 				continue
-// 			}
+	return vals
+}
 
-// 			mobjs := s.Objects(rval)
-// 			for mobj := range mobjs {
-// 				if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-// 					if val, ok := mobj.Data().(ssa.Value); ok {
-// 						// HACK Don't add reads to an object of the same type as the entrypoint
-// 						// This is sound because we validate that an entrypoint
-// 						// struct never has a field with the same type as it.
-// 						typ := val.Type().Underlying()
-// 						_, isInterface := typ.(*types.Interface)
-// 						_, isStruct := typ.(*types.Struct)
-// 						if isInterface || isStruct {
-// 							if typ == s.entry.Type().Underlying() {
-// 								s.log.Debugf("skipping read of pointer object %v (%v): has the same type as entrypoint: %v\n", mobj, val, typ)
-// 								continue
-// 							}
-// 						}
-// 					}
-// 					aliasedReadVals = append(aliasedReadVals, rval)
-// 					break
-// 				}
-// 			}
-// 		}
+func nodeIds(c *aliasCache, val ssa.Value) *intsets.Sparse {
+	ids := &intsets.Sparse{}
+	objs := c.Objects(val)
+	// initialize points-to-set of entrypoint
+	for obj := range objs {
+		switch data := obj.Data().(type) {
+		case *ssa.MakeInterface:
+			dataObjs := c.Objects(data.X) // get the objects of the concrete struct
+			for obj := range dataObjs {
+				for _, id := range obj.NodeIDs() {
+					ids.Insert(int(id))
+				}
+			}
+		default:
+			for _, id := range obj.NodeIDs() {
+				ids.Insert(int(id))
+			}
+		}
+	}
 
-// 		if len(aliasedReadVals) > 0 {
-// 			s.entryReads = append(s.entryReads, ptr.Read{Instruction: read.Instruction, Values: aliasedReadVals, Pos: read.Pos})
-// 		}
-// 	}
-// }
+	return ids
+}
 
-// func (s *State) findAllocs(fna *funcToAnalyze) {
-// 	for instr := range fna.allocInstrs {
-// 		val := instr.Instruction.(ssa.Value) // should not panic
-// 		if s.shouldFilterValue(val) {
-// 			s.log.Tracef("lvalue %v of alloc instruction %v filtered by spec: skipping...", val, instr)
-// 			continue
-// 		}
-// 		pos := instr.Pos
-// 		if s.PtrState.Annotations.IsIgnoredPos(pos, s.spec.Tag) {
-// 			s.log.Tracef("//argot:ignore alloc at %s", pos)
-// 			continue
-// 		}
+func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
+	lang.IterateValues(fn, func(_ int, val ssa.Value) {
+		if val == nil || val.Parent() == nil {
+			return
+		}
+		vals[val] = struct{}{}
+	})
+}
 
-// 		mobjs := s.Objects(val)
-// 		for mobj := range mobjs {
-// 			if s.entryPointsToSet.Has(int(mobj.NodeID())) {
-// 				alloc := Alloc{Instr: instr, Value: val}
-// 				s.entryAllocs = append(s.entryAllocs, alloc)
-// 				break
-// 			}
-// 		}
-// 	}
-// }
+func isAllocatedErrorType(val ssa.Value) bool {
+	// catch cases like: change interface any <- error (err)
+	if ci, ok := val.(*ssa.ChangeInterface); ok {
+		val = ci.X
+	}
 
-// type funcToAnalyze struct {
-// 	writeInstrs map[ssa.Instruction]struct{}
-// 	readInstrs  map[ssa.Instruction]struct{}
-// 	vals        map[ssa.Value]struct{}
-// }
+	typ := val.Type()
+	switch t := typ.(type) {
+	case *types.Pointer:
+		typ = t.Elem().Underlying()
+	case *types.Interface:
+		typ = t.Underlying()
+	}
 
-// func newFuncToAnalyze(fn *ssa.Function) *funcToAnalyze {
-// 	vals := make(map[ssa.Value]struct{})
-// 	addValuesOfFn(fn, vals)
-// 	writeInstrs := make(map[ssa.Instruction]struct{})
-// 	readInstrs := make(map[ssa.Instruction]struct{})
-// 	lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
-// 		if instr == nil || instr.Parent() == nil || !instr.Pos().IsValid() {
-// 			return
-// 		}
+	return types.AssignableTo(typ, types.Universe.Lookup("error").Type())
+}
 
-// 		switch instr.(type) {
-// 		case *ssa.Store, *ssa.MapUpdate, *ssa.Send:
-// 			writeInstrs[instr] = struct{}{}
-// 			readInstrs[instr] = struct{}{}
-// 		default:
-// 			readInstrs[instr] = struct{}{}
-// 		}
-// 	})
+// aliasCache is a cache for transitive pointers and aliases.
+type aliasCache struct {
+	ptrRes         *pointer.Result
+	objectPointees map[ssa.Value]map[*pointer.Object]struct{}
+}
 
-// 	return &funcToAnalyze{
-// 		vals:        vals,
-// 		writeInstrs: writeInstrs,
-// 		readInstrs:  readInstrs,
-// 	}
-// }
+// Objects returns all the unique Objects that val points to.
+// It caches the result for efficiency.
+func (ac *aliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
+	if mi, ok := val.(*ssa.MakeInterface); ok {
+		// if val is an interface, the object is the concrete struct
+		val = mi.X
+	}
+	if res, ok := ac.objectPointees[val]; ok && len(res) > 0 {
+		return res
+	}
 
-// func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
-// 	lang.IterateValues(fn, func(_ int, val ssa.Value) {
-// 		if val == nil || val.Parent() == nil {
-// 			return
-// 		}
-// 		vals[val] = struct{}{}
-// 	})
-// }
+	ptrs := findAllPointers(ac.ptrRes, val)
+	if len(ptrs) == 0 {
+		return nil
+	}
 
-// func isAllocatedErrorType(val ssa.Value) bool {
-// 	// catch cases like: change interface any <- error (err)
-// 	if ci, ok := val.(*ssa.ChangeInterface); ok {
-// 		val = ci.X
-// 	}
+	res := make(map[*pointer.Object]struct{}, len(ptrs))
+	for _, ptr := range ptrs {
+		for _, label := range ptr.PointsTo().Labels() {
+			obj := label.Obj()
+			if obj == nil {
+				continue
+			}
 
-// 	typ := val.Type()
-// 	switch t := typ.(type) {
-// 	case *types.Pointer:
-// 		typ = t.Elem().Underlying()
-// 	case *types.Interface:
-// 		typ = t.Underlying()
-// 	}
+			// ASSUMPTION: Skip allocated context.Context and error objects since we assume that
+			// they are used as values
+			switch data := obj.Data().(type) {
+			case *ssa.Alloc:
+				switch data.Type().String() {
+				case "*error", "*context.Context":
+					continue
+				}
+			}
 
-// 	return types.AssignableTo(typ, types.Universe.Lookup("error").Type())
-// }
+			res[obj] = struct{}{}
+		}
+	}
+
+	ac.objectPointees[val] = res
+	return res
+}
+
+// findAllPointers returns all the pointers that point to v.
+func findAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
+	var allptr []pointer.Pointer
+	if ptr, ptrExists := res.Queries[v]; ptrExists {
+		allptr = append(allptr, ptr)
+	}
+	// By indirect query
+	if ptr, ptrExists := res.IndirectQueries[v]; ptrExists {
+		allptr = append(allptr, ptr)
+	}
+	return allptr
+}
+
+// isPointerLike returns true if typ or any of its sub-types (e.g., struct fields) can point.
+func isPointerLike(t types.Type) bool {
+	// Structs and arrays are stack-allocated so check their field/element type(s)
+	switch t := t.(type) {
+	case *types.Struct:
+		for i, n := 0, t.NumFields(); i < n; i++ {
+			f := t.Field(i)
+			if isPointerLike(f.Type()) {
+				return true
+			}
+		}
+	case *types.Array:
+		return isPointerLike(t.Elem())
+	}
+
+	return pointer.CanPoint(t)
+}
+
+// ptrWrite is an instruction that writes to an entrypoint's underlying memory.
+type ptrWrite struct {
+	ssa.Instruction
+	Target ssa.Value // Target is the value written to.
+	Value  ssa.Value // Value is the value that is written.
+}
+
+func (w ptrWrite) String() string {
+	return fmt.Sprintf("write to %v with %v in %s", w.Target, w.Value, w.Instruction.Parent())
+}
+
+// ptrWrittenTo returns true if instruction writes a scalar value to a pointer
+// value.
+func ptrWrittenTo(instr ssa.Instruction) (ptrWrite, bool) {
+	var lval ssa.Value
+	var rval ssa.Value
+	switch instr := instr.(type) {
+	case *ssa.Store:
+		lval = instr.Addr
+		rval = instr.Val
+	case *ssa.MapUpdate:
+		lval = instr.Map
+		rval = instr.Value
+	case *ssa.Send:
+		lval = instr.Chan
+		rval = instr.X
+	default:
+		return ptrWrite{}, false
+	}
+
+	if instr.Parent() == nil {
+		return ptrWrite{}, false
+	}
+	pkg := instr.Parent().Pkg
+	// we assume that errors are never used as pointer values
+	if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
+		return ptrWrite{}, false
+	}
+
+	if !pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
+		return ptrWrite{Instruction: instr, Target: lval, Value: rval}, true
+	}
+
+	// calls to append builtin function modify
+	if call, ok := rval.(*ssa.Call); ok {
+		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
+			if builtin.Object().Name() == "append" && !pointer.CanPoint(rval.Type()) {
+				return ptrWrite{Instruction: instr, Target: lval, Value: rval}, true
+			}
+		}
+	}
+
+	return ptrWrite{}, false
+}
