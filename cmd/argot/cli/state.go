@@ -40,7 +40,9 @@ import (
 
 // Session stores state information about the current cli Session
 type Session struct {
-	args            []string
+	// args is always the args provided to load a program. Set either when starting the cli, or the load command.
+	args []string
+	// target is the optional target provided when starting the cli, or the load -target command.
 	target          string
 	configPath      string
 	withTest        bool
@@ -161,11 +163,11 @@ func (s *Session) attemptSettingConfig(pConfig **config.Config, dir string, file
 
 // LoadConfig triggers the config loading for the session.
 func (s *Session) LoadConfig(o Outputter, reload bool) result.Result[config.State] {
-	// This also works without a config.
 	if s.cfgState != nil && !reload {
 		return result.Ok(s.cfgState)
 	}
 
+	// This also works without a config.
 	pConfig, done, _ := s.seekConfig()
 	if done {
 		return result.Err[config.State](fmt.Errorf("failed to load config"))
@@ -187,6 +189,7 @@ func (s *Session) LoadConfig(o Outputter, reload bool) result.Result[config.Stat
 		LoadTests:     s.withTest,
 		ApplyRewrites: true,
 	}
+	// New state is initialized with the session args => the patterns in the config
 	s.cfgState = config.NewState(pConfig, "", s.args, loadOptions)
 	s.cfgState.Logger.SetAllOutput(o.Writer())
 	// Apply rewrites from config if the target can be recognized
@@ -205,9 +208,9 @@ func (s *Session) LoadConfig(o Outputter, reload bool) result.Result[config.Stat
 			}
 		}
 	}
-	// If the -targets option has been provided the cli should load the target
+	// If the -targets option has been provided the cli should load the target, unless args have been provided
 	// The -targets option for the cli should only contain one target
-	if s.target != "" {
+	if s.target != "" && len(s.args) == 0 {
 		targetInfo, ok := s.cfgState.Config.GetTargetMap()[s.target]
 		if !ok {
 			return result.Err[config.State](fmt.Errorf("target %s is not in config", s.target))
@@ -217,8 +220,12 @@ func (s *Session) LoadConfig(o Outputter, reload bool) result.Result[config.Stat
 	return result.Ok(s.cfgState)
 }
 
+// loadProgram loads the program specified by the config state if the program is not already loaded.
+// If the caller wants to laod a new program, it should set the lpstate to nil and set the parameters
+// of the config state (specifically, the Patterns of the config).
 func (s *Session) loadProgram(o Outputter) result.Result[loadprogram.State] {
 	if s.lpState != nil {
+		// Program is already loaded!
 		return result.Ok(s.lpState)
 	}
 	lpstate := loadprogram.NewState(s.cfgState)
@@ -372,6 +379,19 @@ func cmdState(o Outputter, s *Session, _ Command, _ bool) bool {
 	o.Write("Config path           : %s\n", s.configPath)
 	o.Write("Working dir           : %s\n", wd)
 	o.Write("Focused function      : %s\n", fName)
+	if s.cfgState != nil && s.cfgState.Config != nil && s.configPath != "" {
+		o.Write("┌────────── CONFIG ──────\n")
+		o.Write("│ # targets        : %d\n", len(s.cfgState.Config.Targets))
+		for _, target := range s.cfgState.Config.Targets {
+			o.Write("│ - %s\n", target.Name)
+		}
+		o.Write("│ # current target : %s\n", s.cfgState.Target)
+		o.Write("└─────────────────────\n")
+	} else {
+		o.Write("┌───────────────────────────┐\n")
+		o.Write("│ ⚠ Config not loaded       │\n")
+		o.Write("└───────────────────────────┘\n")
+	}
 	if s.lpState != nil {
 		o.Write("┌────────── SSA ──────\n")
 		o.Write("│ # packages        : %d\n", len(s.lpState.Packages))
