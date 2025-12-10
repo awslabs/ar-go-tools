@@ -108,6 +108,11 @@ func FindValuePackage(n ssa.Value) fn.Optional[string] {
 			return fn.Some(pkg.String())
 		}
 		return fn.None[string]()
+	case *ssa.Global:
+		if node.Pkg != nil {
+			return fn.Some(node.Pkg.String())
+		}
+		return fn.None[string]()
 	}
 	return fn.None[string]()
 }
@@ -281,24 +286,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			}
 			return config.CodeIdentifier{}, false
 		}
-		if global, isGlobal := node.Addr.(*ssa.Global); isGlobal {
-			packageName, typeName, err := FindEltTypePackage(global.Type().Underlying(), "%s")
-			if err != nil {
-				return config.CodeIdentifier{}, false
-			}
-			cid := config.CodeIdentifier{
-				Context:    node.Parent().String(),
-				Package:    packageName,
-				Type:       typeName,
-				Global:     node.Addr.Name(),
-				Kind:       "store",
-				ValueMatch: n.String(),
-			}
-			if f(cid) {
-				return cid, true
-			}
-		}
-		return config.CodeIdentifier{}, false
+		return isAccessGlobalEntryPoint(node, node.Addr, f)
 
 	// Channel receives can be sources
 	case *ssa.UnOp:
@@ -321,50 +309,42 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		}
 		// Reading a global variable
 		if node.Op == token.MUL {
-			if global, isGlobal := node.X.(*ssa.Global); isGlobal {
-				packageName, typeName, err := FindEltTypePackage(global.Type().Underlying(), "%s")
-				if err != nil {
-					return config.CodeIdentifier{}, false
-				}
-				cid := config.CodeIdentifier{
-					Context:    node.Parent().String(),
-					Package:    packageName,
-					Type:       typeName,
-					Global:     node.X.Name(),
-					Kind:       "load",
-					ValueMatch: n.String(),
-				}
-				if f(cid) {
-					return cid, true
-				}
-			}
+			return isAccessGlobalEntryPoint(node, node.X, f)
 		}
 		return config.CodeIdentifier{}, false
 
 	case *ssa.MakeInterface:
 		// Global is read an immediately cast to another interface type
-		if global, isGlobal := node.X.(*ssa.Global); isGlobal {
-			packageName, typeName, err := FindEltTypePackage(global.Type().Underlying(), "%s")
-			if err != nil {
-				return config.CodeIdentifier{}, false
-			}
-			cid := config.CodeIdentifier{
-				Context:    node.Parent().String(),
-				Package:    packageName,
-				Type:       typeName,
-				Global:     node.X.Name(),
-				Kind:       "load",
-				ValueMatch: n.String(),
-			}
-			if f(cid) {
-				return cid, true
-			}
-		}
-		return config.CodeIdentifier{}, false
+		return isAccessGlobalEntryPoint(node, node.X, f)
 
 	default:
 		return config.CodeIdentifier{}, false
 	}
+}
+
+func isAccessGlobalEntryPoint(
+	node ssa.Node,
+	subValue ssa.Value,
+	f func(config.CodeIdentifier) bool,
+) (config.CodeIdentifier, bool) {
+	global, isGlobal := subValue.(*ssa.Global)
+	if !isGlobal {
+		return config.CodeIdentifier{}, false
+	}
+	packageName := FindValuePackage(global).ValueOr("")
+	typeName := global.Type().String()
+	cid := config.CodeIdentifier{
+		Context:    node.Parent().String(),
+		Package:    packageName,
+		Type:       typeName,
+		Global:     global.Name(),
+		Kind:       "load",
+		ValueMatch: node.String(),
+	}
+	if f(cid) {
+		return cid, true
+	}
+	return config.CodeIdentifier{}, false
 }
 
 // newCodeIdentifierCall returns a code identifier for each possible object in the call.

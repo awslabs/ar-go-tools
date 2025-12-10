@@ -16,13 +16,12 @@ package dataflow
 
 import (
 	"fmt"
-	"go/token"
-	"go/types"
-
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
+	"go/token"
+	"go/types"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -140,10 +139,13 @@ func (state *IntraAnalysisState) markInstruction(i ssa.Instruction) {
 	switch instr := i.(type) {
 	case *ssa.MakeClosure:
 		state.markClosureNode(instr)
+		return
 	case *ssa.Call:
 		state.callCommonMark(instr, instr, instr.Common())
+		return
 	case *ssa.Go: // Analyze go like a function call, but a dedicated concurrency analysis should be used
 		state.callCommonMark(instr.Value(), instr, instr.Common())
+		return
 	}
 
 	// Instructions where marking is optional
@@ -155,23 +157,6 @@ func (state *IntraAnalysisState) markInstruction(i ssa.Instruction) {
 			if instr.Op == token.ARROW {
 				state.flowInfo.AddMark(i, instr, "", mark)
 			}
-			if instr.Op == token.MUL {
-				if glob, isGlob := instr.X.(*ssa.Global); isGlob {
-					gmark := state.flowInfo.GetNewMark(i.(ssa.Node), Global, glob, NonIndexMark)
-					state.flowInfo.AddMark(i, instr, "", gmark)
-				} else {
-					state.flowInfo.AddMark(i, instr, "", mark)
-				}
-			}
-		case *ssa.MakeInterface:
-			// Creating an interface can be a way to load a value
-			if glob, isGlob := instr.X.(*ssa.Global); isGlob {
-				gmark := state.flowInfo.GetNewMark(i.(ssa.Node), Global, glob, NonIndexMark)
-				state.flowInfo.AddMark(i, instr, "", gmark)
-			} else {
-				state.flowInfo.AddMark(i, instr, "", mark)
-			}
-
 		case *ssa.Alloc:
 			// Allocating a value of a certain type can be a source
 			state.flowInfo.AddMark(i, instr, "", mark)
@@ -312,9 +297,7 @@ func transfer(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out 
 // a value of true for pre indicates that field-sensitive value a prepended with indexing
 func transferPre(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string,
 	index MarkIndex, pre bool) {
-	if glob, ok := in.(*ssa.Global); ok {
-		state.markValue(loc, out, "", state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index))
-	}
+	state.checkFlowFromGlobal(loc, in, out, index)
 	isFieldSensitive := state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[out]]
 	for _, origin := range state.getMarks(loc, in, path, false) {
 		state.flowInfo.SetLoc(origin.Mark, loc)
@@ -333,6 +316,7 @@ func transferPre(state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, o
 
 // transferCopy propagates the marks for a load, which only requires copying over marks and paths
 func transferCopy(t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
+	t.checkFlowFromGlobal(loc, in, out, NonIndexMark)
 	pos, ok := t.flowInfo.GetPos(loc, in)
 	if !ok {
 		return
@@ -444,6 +428,12 @@ func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, ou
 	}
 	for _, origin := range state.getMarks(loc, in, "", true) {
 		state.summary.addGlobalEdge(origin, nil, loc, glob)
+	}
+}
+
+func (state *IntraAnalysisState) checkFlowFromGlobal(loc ssa.Instruction, in ssa.Value, out ssa.Value, index MarkIndex) {
+	if glob, ok := in.(*ssa.Global); ok {
+		state.markValue(loc, out, "", state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index))
 	}
 }
 
