@@ -51,3 +51,11 @@ func source2() R {
 func sink(_ ...any) {
 
 }
+
+func sinkStr(s string) {
+
+}
+
+func notSink(_ ...any) {
+
+}

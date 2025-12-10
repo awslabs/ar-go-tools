@@ -65,12 +65,13 @@ The `dataflow-problems` section configures taint tracking and slicing analyses:
 	  summarize-on-demand: true
 	  field-sensitive-funcs: [".*"]
 	  user-specs: ["specifications/std-specs.json"]
-	  
+
 	  # Taint tracking problems
 	  taint-tracking:
 	    - tag: "credential-logging"
 	      description: "Checking that credentials don't get logged."
 	      targets: ["project-name-unix", "project-name-windows"]
+	      unsafe-skip-bound-labels: false
 	      severity: "HIGH"
 	      sources:
 	        - package: "credentials"
@@ -81,7 +82,7 @@ The `dataflow-problems` section configures taint tracking and slicing analyses:
 	      sanitizers:
 	        - package: ".*signer/v4"
 	          method: "Sign"
-	  
+
 	  # Slicing problems (backward dataflow)
 	  slicing:
 	    - tag: "must-compile-must-be-const"
@@ -109,7 +110,7 @@ The `syntactic-problems` section defines syntactic analysis checks:
 	          value:
 	            package: "crypto/tls"
 	            const: "VersionTLS12"
-	  
+
 	  # Conditional checks
 	  cond-checks:
 	    - tag: "resource-check-availability"
@@ -124,7 +125,7 @@ The `syntactic-problems` section defines syntactic analysis checks:
 
 The config uses [CodeIdentifier] to identify specific code entities. Code identifiers can specify:
 - `package`: Package name or regex pattern
-- `method`: Method/function name or regex pattern  
+- `method`: Method/function name or regex pattern
 - `type`: Type name or regex pattern
 - `context`: Context name or regex pattern
 - `const`: Constant name

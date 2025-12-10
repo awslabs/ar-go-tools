@@ -414,7 +414,7 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 						}
 
 						// the callee summary may not have been created yet
-						if callSite.CalleeSummary == nil {
+						if callSite.CalleeSummary == nil && callSite.Callee() != nil {
 							logger.Tracef("Callee summary has not been created")
 							callSite.CalleeSummary = df.NewSummaryGraph(s,
 								callSite.Callee(),
@@ -426,6 +426,9 @@ func (v *Visitor) visit(s *df.State, entrypoint df.NodeWithTrace) error {
 									return false
 								},
 								nil)
+							if callSite.CalleeSummary == nil {
+								panic(fmt.Errorf("summary of %v is nil, this should never happen", callSite.Callee()))
+							}
 							v.onDemandIntraProcedural(s, callSite.CalleeSummary)
 						}
 					} else {
