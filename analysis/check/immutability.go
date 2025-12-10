@@ -15,6 +15,8 @@
 package check
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"go/types"
 
@@ -27,15 +29,17 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
-func checkSummaryImmutability(s *State, bad []flow) checkResult {
+func checkSummaryImmutability(ctx context.Context, s *State, bad []flow) checkResult {
 	var unproven []flow
-	immutableNodes := make(map[dataflow.GraphNode]struct{})
 	for _, fl := range bad {
-		if _, ok := immutableNodes[fl.to]; ok {
-			continue
+		isBad, err := isBadFlowImmutability(ctx, s, fl)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				// Analysis timed out: return all bad flows computed so far
+				unproven = append(unproven, fl)
+				break
+			}
 		}
-
-		isBad := isBadFlowImmutability(s, fl)
 		// NOTE Maybe we shouldn't bother checking the rest since the summary is unsound, but
 		// including all the bad flows makes it easier to test
 		if isBad {
@@ -58,17 +62,22 @@ func checkSummaryImmutability(s *State, bad []flow) checkResult {
 // immutable.
 // There is no need to analyze any callees because the value is stack allocated and therefore cannot
 // be modified outside of the function.
-func isBadFlowImmutability(s *State, fl flow) bool {
+func isBadFlowImmutability(ctx context.Context, s *State, fl flow) (bool, error) {
 	vals := outputVals(fl)
 
 	for _, val := range vals {
 		if isPointerLike(val.Type()) {
-			writeInstr, ok := checkWritesPtr(s.cache, s.PointerAnalysis.CallGraph, val)
+			s.Logger.Tracef("output value %v (%v) in flow %v is pointer-like\n", val, val.Type(), fl)
+			writeInstr, ok, err := checkWritesPtr(ctx, s, val)
+			if err != nil {
+				return true, fmt.Errorf(
+					"failed to check writes to pointer-like value %v: %w", val, err)
+			}
 			if ok {
 				s.Logger.Debugf(
 					"found modification of output pointer value %v in %v: %v at %s\n",
 					val, fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
-				return true
+				return true, nil
 			}
 		} else {
 			if _, ok := fl.to.(*dataflow.ReturnValNode); !ok {
@@ -79,12 +88,12 @@ func isBadFlowImmutability(s *State, fl flow) bool {
 				s.Logger.Debugf(
 					"found non-static output scalar value %v in function %v",
 					val, val.Parent())
-				return true
+				return true, nil
 			}
 		}
 	}
 
-	return false
+	return false, nil
 }
 
 // checkWritesPtr returns the first instruction that writes a scalar value to to's underlying memory.
@@ -92,42 +101,69 @@ func isBadFlowImmutability(s *State, fl flow) bool {
 //
 // It is an inter-procedural analysis which checks for writes in the value's enclosing function and
 // its callees in BFS order.
-func checkWritesPtr(c *aliasCache, cg *callgraph.Graph, to ssa.Value) (ptrWrite, bool) {
+func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool, error) {
+	cg := s.PointerAnalysis.CallGraph
 	queue := []*callgraph.Node{cg.Nodes[to.Parent()]}
 	seen := make(map[*callgraph.Node]struct{})
+	seenFunc := make(map[*ssa.Function]struct{})
 
-	ids := nodeIds(c, to)
+	ids := nodeIds(s.cache, to)
 	for len(queue) > 0 {
+		// This function can take a while so handle timeouts
+		select {
+		case <-ctx.Done():
+			return ptrWrite{}, false, ctx.Err()
+		default:
+		}
+
 		node := queue[0]
 		queue = queue[1:]
 		if _, ok := seen[node]; ok {
 			continue
 		}
+		if node.Func == nil {
+			return ptrWrite{}, false, nil
+		}
 
 		var writeInstr ptrWrite
 		wrote := false
-		lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
-			write, ok := ptrWrittenTo(instr)
-			if !ok {
-				return
-			}
-			// ASSUMPTION: We assume that errors are only used as values
-			if isAllocatedErrorType(write.Target) {
-				return
-			}
+		// A function may be visited multiple times in different calling contexts so only analyze
+		// each function once.
+		if _, ok := seenFunc[node.Func]; !ok {
+			// s.Logger.Tracef("checking for pointer writes in function %s\n", node.Func)
+			lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
+				write, ok := ptrWrittenTo(instr)
+				if !ok {
+					return
+				}
+				// ASSUMPTION: We assume that errors are only used as values
+				if isAllocatedErrorType(write.Target) {
+					return
+				}
 
-			mobjs := c.Objects(write.Target)
-			for mobj := range mobjs {
-				if ids.Has(int(mobj.NodeID())) {
+				mobjs := s.cache.Objects(write.Target)
+				// If the target does not point to any memory, it is probably a nil-like local value
+				// (e.g., empty slice), so any explicit stores to it counts as writing data.
+				if len(mobjs) == 0 {
 					wrote = true
 					writeInstr = write
 					return
 				}
-			}
-		})
+				// If the target's objects have any node ids as the output value, then the write
+				// instruction writes data to the output value's memory.
+				for mobj := range mobjs {
+					if ids.Has(int(mobj.NodeID())) {
+						wrote = true
+						writeInstr = write
+						return
+					}
+				}
+			})
+			seenFunc[node.Func] = struct{}{}
+		}
 
 		if wrote {
-			return writeInstr, true
+			return writeInstr, true, nil
 		}
 
 		for _, edge := range node.Out {
@@ -136,7 +172,7 @@ func checkWritesPtr(c *aliasCache, cg *callgraph.Graph, to ssa.Value) (ptrWrite,
 		seen[node] = struct{}{}
 	}
 
-	return ptrWrite{}, false
+	return ptrWrite{}, false, nil
 }
 
 // outputVals returns all of the SSA values that the flow's "to" node may refer to.
@@ -280,7 +316,7 @@ func isPointerLike(t types.Type) bool {
 		return isPointerLike(t.Elem())
 	}
 
-	return pointer.CanPoint(t)
+	return canPoint(t)
 }
 
 // ptrWrite is an instruction that writes to an entrypoint's underlying memory.
@@ -316,24 +352,59 @@ func ptrWrittenTo(instr ssa.Instruction) (ptrWrite, bool) {
 	if instr.Parent() == nil {
 		return ptrWrite{}, false
 	}
-	pkg := instr.Parent().Pkg
+	// pkg := instr.Parent().Pkg
 	// we assume that errors are never used as pointer values
-	if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
-		return ptrWrite{}, false
-	}
+	// if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
+	// 	return ptrWrite{}, false
+	// }
 
-	if !pointer.CanPoint(rval.Type()) && pointer.CanPoint(lval.Type()) {
+	if isPointerLike(lval.Type()) && isData(rval.Type()) {
 		return ptrWrite{Instruction: instr, Target: lval, Value: rval}, true
 	}
 
 	// calls to append builtin function modify
 	if call, ok := rval.(*ssa.Call); ok {
 		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
-			if builtin.Object().Name() == "append" && !pointer.CanPoint(rval.Type()) {
+			if builtin.Object().Name() == "append" && !canPoint(rval.Type()) {
 				return ptrWrite{Instruction: instr, Target: lval, Value: rval}, true
 			}
 		}
 	}
 
 	return ptrWrite{}, false
+}
+
+// canPoint reports whether the type T is pointerlike, for the purposes of this analysis.
+func canPoint(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Alias:
+		return canPoint(t.Underlying())
+	case *types.Named:
+		if obj := t.Obj(); obj.Name() == "Value" && obj.Pkg().Path() == "reflect" {
+			return true // treat reflect.Value like interface{}
+		}
+		return canPoint(t.Underlying())
+	case *types.Pointer, *types.Interface, *types.Map, *types.Chan, *types.Signature, *types.Slice:
+		return true
+	case *types.Array, *types.Struct, *types.Tuple, *types.Basic:
+		return false
+	default:
+		panic(fmt.Errorf("unhandled type: %v", t))
+	}
+}
+
+func isData(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Alias:
+		return isData(t.Underlying())
+	case *types.Named:
+		if obj := t.Obj(); obj.Name() == "Value" && obj.Pkg().Path() == "reflect" {
+			return true // treat reflect.Value as data
+		}
+		return isData(t.Underlying())
+	case *types.Basic, *types.Array, *types.Slice, *types.Map:
+		return true
+	default:
+		return false
+	}
 }

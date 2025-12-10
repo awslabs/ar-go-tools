@@ -50,14 +50,14 @@ const contextSepChar = "."
 
 // LogGroup holds a set of loggers that will be called depending on the logging kind
 type LogGroup struct {
-	Level        LogLevel
-	suppressWarn bool
-	contexts     []string
-	trace        *log.Logger
-	debug        *log.Logger
-	info         *log.Logger
-	warn         *log.Logger
-	err          *log.Logger
+	Level       LogLevel
+	SupressWarn bool
+	contexts    []string
+	trace       *log.Logger
+	debug       *log.Logger
+	info        *log.Logger
+	warn        *log.Logger
+	err         *log.Logger
 }
 
 // NewLogGroup returns a log group that is configured to the logging settings stored inside the config
@@ -65,25 +65,25 @@ func NewLogGroup(config *Config) *LogGroup {
 	if config == nil {
 		// Return a default config with nil arguments
 		return &LogGroup{
-			Level:        InfoLevel,
-			suppressWarn: false,
-			contexts:     []string{},
-			trace:        log.New(os.Stdout, formatutil.Faint("[TRACE]")+" ", 0),
-			debug:        log.New(os.Stdout, "[DEBUG]"+" ", 0),
-			info:         log.New(os.Stdout, formatutil.Green("[INFO]")+" ", 0),
-			warn:         log.New(os.Stdout, formatutil.Yellow("[WARN]")+" ", 0),
-			err:          log.New(os.Stdout, formatutil.Red("[ERROR]")+" ", 0),
+			Level:       InfoLevel,
+			SupressWarn: false,
+			contexts:    []string{},
+			trace:       log.New(os.Stdout, formatutil.Faint("[TRACE]")+" ", 0),
+			debug:       log.New(os.Stdout, "[DEBUG]"+" ", 0),
+			info:        log.New(os.Stdout, formatutil.Green("[INFO]")+" ", 0),
+			warn:        log.New(os.Stdout, formatutil.Yellow("[WARN]")+" ", 0),
+			err:         log.New(os.Stdout, formatutil.Red("[ERROR]")+" ", 0),
 		}
 	}
 	l := &LogGroup{
-		Level:        LogLevel(config.LogLevel),
-		suppressWarn: config.SilenceWarn,
-		contexts:     []string{},
-		trace:        log.New(os.Stdout, formatutil.Faint("[TRACE]")+" ", 0),
-		debug:        log.New(os.Stdout, "[DEBUG]"+" ", 0),
-		info:         log.New(os.Stdout, formatutil.Green("[INFO]")+" ", 0),
-		warn:         log.New(os.Stdout, formatutil.Yellow("[WARN]")+" ", 0),
-		err:          log.New(os.Stdout, formatutil.Red("[ERROR]")+" ", 0),
+		Level:       LogLevel(config.LogLevel),
+		SupressWarn: config.SilenceWarn,
+		contexts:    []string{},
+		trace:       log.New(os.Stdout, formatutil.Faint("[TRACE]")+" ", 0),
+		debug:       log.New(os.Stdout, "[DEBUG]"+" ", 0),
+		info:        log.New(os.Stdout, formatutil.Green("[INFO]")+" ", 0),
+		warn:        log.New(os.Stdout, formatutil.Yellow("[WARN]")+" ", 0),
+		err:         log.New(os.Stdout, formatutil.Red("[ERROR]")+" ", 0),
 	}
 	return l
 }
@@ -186,7 +186,7 @@ func (l *LogGroup) Infof(format string, v ...any) {
 
 // Warnf calls Warn.Printf to print to the trace logger. Arguments are handled in the manner of Printf
 func (l *LogGroup) Warnf(format string, v ...any) {
-	if l.Level >= WarnLevel && !l.suppressWarn {
+	if l.Level >= WarnLevel && !l.SupressWarn {
 		l.warn.Printf(format, v...)
 	}
 }
@@ -221,7 +221,7 @@ func (l *LogGroup) Info(msg string) {
 
 // Warn calls Warn.Print to print to the trace logger. Arguments are handled in the manner of Print
 func (l *LogGroup) Warn(msg string) {
-	if l.Level >= WarnLevel && !l.suppressWarn {
+	if l.Level >= WarnLevel && !l.SupressWarn {
 		l.warn.Print(msg)
 	}
 }
@@ -256,7 +256,7 @@ func (l *LogGroup) LogsError() bool {
 
 // LogsWarning returns true if the log group logs warning messages
 func (l *LogGroup) LogsWarning() bool {
-	return l.Level >= WarnLevel && !l.suppressWarn
+	return l.Level >= WarnLevel && !l.SupressWarn
 }
 
 // LogsInfo returns true if the log group logs info messages

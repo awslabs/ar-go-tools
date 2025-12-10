@@ -16,6 +16,7 @@ package check
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -55,17 +56,6 @@ type State struct {
 // Make sure this is called in isolation from any dataflow analyses because it removes
 // the pre-summarized standard library functions.
 func NewState(s *dataflow.State) result.Result[State] {
-	fg := dataflow.NewInterProceduralFlowGraph(map[*ssa.Function]*dataflow.SummaryGraph{}, s)
-	if len(s.ReachableFunctions()) == 0 {
-		panic("no reachable functions")
-	}
-	for fn := range s.ReachableFunctions() {
-		fg.Summaries[fn] = dataflow.NewSummaryGraph(
-			s, fn, dataflow.GetUniqueFunctionID(), nil, nil)
-	}
-	*s.FlowGraph = fg
-	s.FlowGraph.BuildGraph()
-
 	res := &State{
 		State: s,
 		cache: &aliasCache{
@@ -93,6 +83,8 @@ func CheckSummary(
 	return checkSummary(ctx, s, f, want.Summary())
 }
 
+var errInfer = errors.New("failed to infer callee summaries")
+
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
 ) (SoundnessResult, error) {
@@ -101,10 +93,10 @@ func checkSummary(
 	// Try general, then types, then immutability, etc.
 	// Each method disproves more flows, which makes the next task easier.
 
-	g, ok := s.FlowGraph.Summaries[f]
-	if !ok {
-		g = dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
-	}
+	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
+	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
+	// This way there is only one summary graph created per *ssa.Function
+	s.FlowGraph.Summaries[f] = g
 
 	start := time.Now()
 	var res checkResult
@@ -116,7 +108,14 @@ func checkSummary(
 		case Types:
 			res = checkSummaryTypes(res.badFlows)
 		case Immutability:
-			res = checkSummaryImmutability(s, res.badFlows)
+			res = checkSummaryImmutability(ctx, s, res.badFlows)
+		}
+
+		if s.Logger.LogsTrace() {
+			s.Logger.Tracef("bad flows from checking function %s via method %s:\n", f, meth)
+			for _, fl := range res.badFlows {
+				s.Logger.Tracef("\t%v\n", fl)
+			}
 		}
 
 		if res.isSound {
@@ -127,9 +126,16 @@ func checkSummary(
 
 	// Check callee summaries
 	// Use the type analysis to filter out unrealizable flows
+	s.Logger.Tracef("inferring callee summaries for function %s...\n", f)
 	calleeSummaries, err := inferCalleeSummaries(ctx, s.State, g, want, Types)
 	if err != nil {
-		return SoundnessResult{}, fmt.Errorf("failed to infer callee summaries: %v", err)
+		return SoundnessResult{
+			Fn:       f.RelString(nil),
+			Want:     want,
+			IsSound:  false,
+			BadFlows: funcutil.Map(res.badFlows, newFlow),
+			Method:   method,
+		}, fmt.Errorf("%w for %s: %v", errInfer, f, err)
 	}
 	if len(calleeSummaries) == 0 {
 		return newSoundnessResult(g, res, want, start, method), nil
@@ -146,10 +152,22 @@ func checkSummary(
 		for _, calleeSumm := range calleeSumms {
 			// Recursively check the soundness of the callee's inferred summary
 			callee := calleeG.Parent
+			s.Logger.Tracef("checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
 			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm)
-			method = calleeRes.Method
 			if err != nil {
 				s.Logger.Errorf("failed to check callee summary: %v", err)
+				if errors.Is(err, errInfer) {
+					// If callee summary inference failed, then the result is unsound because
+					// the inferred summaries are incomplete/incorrect.
+					return SoundnessResult{
+						Fn:       f.RelString(nil),
+						Want:     want,
+						IsSound:  false,
+						BadFlows: append(badFlows, calleeRes.BadFlows...),
+						Method:   method,
+					}, nil
+				}
+				method = calleeRes.Method
 				continue
 			}
 
@@ -206,7 +224,7 @@ type flow struct {
 }
 
 func (f flow) String() string {
-	return fmt.Sprintf("%s -> %s", f.from, f.to)
+	return fmt.Sprintf("%s->%s", dataflow.GraphNodeDesc(f.from), dataflow.GraphNodeDesc(f.to))
 }
 
 // difference returns the elements of a that are not in b.

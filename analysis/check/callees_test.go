@@ -288,13 +288,11 @@ func TestInferCalleeSummaries(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to find function for summary %v", tc.fn.Name())
 			}
-			g, ok := state.FlowGraph.Summaries[f]
-			if !ok {
-				t.Fatalf("no summary for function %s", f)
-			}
+			g := dataflow.NewSummaryGraph(state.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
+			state.FlowGraph.Summaries[f] = g
 			ctx := context.Background()
-			if !g.Constructed {
-				dataflow.RunIntraProcedural(ctx, state.State, g)
+			if _, err := dataflow.RunIntraProcedural(ctx, state.State, g); err != nil {
+				t.Fatal(err)
 			}
 			summs, err := inferCalleeSummaries(ctx, state.State, g, tc.fn.Summary(), tc.via)
 			if err != nil {

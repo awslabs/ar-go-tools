@@ -44,7 +44,9 @@ func inferCalleeSummaries(
 	}
 
 	// First run the intra-procedural analysis
-	dataflow.RunIntraProcedural(ctx, s, g)
+	if _, err := dataflow.RunIntraProcedural(ctx, s, g); err != nil {
+		return nil, fmt.Errorf("failed to run intra-procedural analysis: %v", err)
+	}
 
 	// Collect known (intra + inter) and unknown edges
 	intraParent := intraEdges(g, nil)
@@ -307,7 +309,10 @@ func modelsToSummaries(
 		}
 
 		for callee, summ := range calleeToSumm {
-			cg := s.FlowGraph.Summaries[callee]
+			cg, ok := s.FlowGraph.Summaries[callee]
+			if !ok {
+				panic(fmt.Errorf("no summary found for callee: %s", callee))
+			}
 			res[cg] = append(res[cg], summ)
 		}
 	}
@@ -396,7 +401,8 @@ func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 		for f, call := range calleeToCall {
 			calleeSummary, ok := s.FlowGraph.Summaries[f]
 			if !ok {
-				panic(fmt.Errorf("failed to find summary for function %s", f))
+				calleeSummary = dataflow.NewSummaryGraph(s, f, dataflow.GetUniqueFunctionID(), nil, nil)
+				s.FlowGraph.Summaries[f] = calleeSummary
 			}
 			// callee return -> call node
 			for _, rets := range calleeSummary.Returns {

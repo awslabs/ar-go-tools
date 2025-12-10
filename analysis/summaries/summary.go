@@ -182,6 +182,10 @@ type DetailedSummary struct {
 }
 
 func (s DetailedSummary) String() string {
+	if len(s.Flows) == 0 {
+		return "<empty>"
+	}
+
 	b := &strings.Builder{}
 	i := 0
 	for input, outputs := range s.Flows {
