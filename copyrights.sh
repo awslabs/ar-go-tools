@@ -28,6 +28,7 @@ FILES=$(
         -not -path "./internal/pointer/*" \
         -not -path "./internal/rewrite/*" \
         -not -path "./internal/typeparams/*" \
+        -not -path "./payload/public-repos-checks/*" \
         -print
 )
 

@@ -1,0 +1,38 @@
+options:
+  project-root: "./"
+  reports-dir: "logs/argot"
+  log-level: 3
+  report-paths: true
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 30
+dataflow-problems:
+  summarize-on-demand: true
+  taint-tracking:
+    - tag: "path-traversal"
+      severity: "HIGH"
+      description: "CLI output flag to file operations"
+      targets: ["govatar-cli"]
+      sources:
+        - package: "github.com/urfave/cli/v2"
+          method: "String"
+      sinks:
+        - package: "os"
+          method: "Create"
+      sanitizers:
+        - package: "path/filepath"
+          method: "Clean"
+    - tag: "username-injection"
+      severity: "MEDIUM"
+      description: "CLI username to hash functions"
+      targets: ["govatar-cli"]
+      sources:
+        - package: "github.com/urfave/cli/v2"
+          method: "String"
+      sinks:
+        - package: "hash/fnv"
+          method: "Write"
+targets:
+  - name: "govatar-cli"
+    files:
+      - "./govatar"
