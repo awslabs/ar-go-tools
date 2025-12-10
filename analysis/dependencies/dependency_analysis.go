@@ -168,16 +168,16 @@ type DependencyConfigs struct {
 	ComputeGraph bool
 }
 
-// count reachable and unreachable LOCs, per dependency
-type dependencyStats struct {
-	reachableLocs   uint
-	unreachableLocs uint
-	isIndirect      bool
+// DependencyStats records basic dependency statistics
+type DependencyStats struct {
+	ReachableLocs   uint
+	UnreachableLocs uint
+	IsIndirect      bool
 }
 
 // DependencyAnalysis runs the dependency analysis on all the functions in the ssa.Program
 // Writes a coverage file in covFile indicating which functions are reachable.
-func DependencyAnalysis(state *loadprogram.State, dc DependencyConfigs) reachability.DependencyGraph {
+func DependencyAnalysis(state *loadprogram.State, dc DependencyConfigs) (reachability.DependencyGraph, map[string]DependencyStats) {
 	// Collect modules
 	modules := make(map[string]*packages.Module)
 	packages.Visit(state.Packages, nil, func(pack *packages.Package) {
@@ -202,22 +202,22 @@ func DependencyAnalysis(state *loadprogram.State, dc DependencyConfigs) reachabi
 	// functions known to be reachable
 	reachable := reachability.FindReachable(state, false, false, dependencyGraph)
 
-	dependencyMap := make(map[string]dependencyStats)
+	dependencyMap := make(map[string]DependencyStats)
 	var maxLoc uint = 0 // for formatting output
 	for f := range allFunctions {
 		ok, isIndirect, id := isDependency(modules, f)
 		if ok || dc.IncludeStdlib {
 			entry := dependencyMap[id]
 			locs := calculateLocs(f)
-			entry.isIndirect = isIndirect
+			entry.IsIndirect = isIndirect
 			// is it reachable?
 			_, isReachable := reachable[f]
 			if isReachable {
-				entry.reachableLocs += locs
+				entry.ReachableLocs += locs
 			} else {
-				entry.unreachableLocs += locs
+				entry.UnreachableLocs += locs
 			}
-			maxLoc = max(entry.reachableLocs, maxLoc)
+			maxLoc = max(entry.ReachableLocs, maxLoc)
 			if dc.CoverageFile != nil {
 				emitCoverageLine(state, dc.CoverageFile, f, isReachable, locs)
 			}
@@ -245,47 +245,47 @@ func DependencyAnalysis(state *loadprogram.State, dc DependencyConfigs) reachabi
 	state.Logger.Infof("Dependencies (direct or indirect, name, reachable LOC, total LOC, %% LOC usage):")
 	for _, dependencyName := range dependencyNames {
 		entry := dependencyMap[dependencyName]
-		total := entry.reachableLocs + entry.unreachableLocs
-		percentage := (100.0 * float64(entry.reachableLocs)) / float64(total)
+		total := entry.ReachableLocs + entry.UnreachableLocs
+		percentage := (100.0 * float64(entry.ReachableLocs)) / float64(total)
 
 		printDependencyUsageSummary(state, dc, dependencyName, depNameMaxLen, maxLocLen, total, entry, percentage)
 
 		if dc.CsvFile != nil {
 			dc.CsvFile.Write([]byte(fmt.Sprintf("%s,%v,%d,%d,%3.2f\n",
-				dependencyName, !entry.isIndirect, entry.reachableLocs, total, percentage)))
+				dependencyName, !entry.IsIndirect, entry.ReachableLocs, total, percentage)))
 		}
 	}
 
-	return dependencyGraph
+	return dependencyGraph, dependencyMap
 }
 
-func compareDeps(d1 string, d2 string, dependencyMap map[string]dependencyStats) bool {
-	if !dependencyMap[d1].isIndirect && dependencyMap[d2].isIndirect {
+func compareDeps(d1 string, d2 string, dependencyMap map[string]DependencyStats) bool {
+	if !dependencyMap[d1].IsIndirect && dependencyMap[d2].IsIndirect {
 		return true
 	}
-	if dependencyMap[d1].isIndirect && !dependencyMap[d2].isIndirect {
+	if dependencyMap[d1].IsIndirect && !dependencyMap[d2].IsIndirect {
 		return false
 	}
 	return d1 < d2
 }
 
 func printDependencyUsageSummary(state *loadprogram.State, dc DependencyConfigs,
-	dependencyName string, depNameMaxLen int, maxLocLen int, total uint, entry dependencyStats, percentage float64) {
+	dependencyName string, depNameMaxLen int, maxLocLen int, total uint, entry DependencyStats, percentage float64) {
 
 	msgIndirect := formatutil.Bold(" direct ")
-	if entry.isIndirect {
+	if entry.IsIndirect {
 		msgIndirect = formatutil.Faint("indirect")
 	}
 
 	msg := fmt.Sprintf("%s %s %s %s ",
 		msgIndirect,
 		fmt.Sprintf("%-*s", depNameMaxLen, dependencyName), // padded dependency name
-		fmt.Sprintf("%-*d", maxLocLen, entry.reachableLocs),
+		fmt.Sprintf("%-*d", maxLocLen, entry.ReachableLocs),
 		fmt.Sprintf("%-*s", maxLocLen, fmt.Sprintf("%d", total)),
 	)
 
 	// the condition for warning
-	needsWarning := !entry.isIndirect && (int(entry.reachableLocs) < dc.LocThreshold && percentage < dc.UsageThreshold)
+	needsWarning := !entry.IsIndirect && (int(entry.ReachableLocs) < dc.LocThreshold && percentage < dc.UsageThreshold)
 
 	var percentageFormatted string
 	if needsWarning {

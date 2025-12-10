@@ -67,6 +67,8 @@ func FindEltTypePackage(t types.Type, preform string) (string, string, error) {
 	case *types.Struct:
 		// Anonymous structs
 		return "", "", fmt.Errorf("%q: not a type with a package and name", typ)
+	case *types.Alias:
+		return FindEltTypePackage(typ.Underlying(), preform) // recursive call
 	default:
 		// We should never reach this!
 		fmt.Printf("unexpected type received: %T %v; please report this issue\n", typ, typ)
@@ -104,6 +106,11 @@ func FindValuePackage(n ssa.Value) fn.Optional[string] {
 		}
 		if pkg != nil {
 			return fn.Some(pkg.Pkg.Path())
+		}
+		return fn.None[string]()
+	case *ssa.Global:
+		if node.Pkg != nil {
+			return fn.Some(node.Pkg.String())
 		}
 		return fn.None[string]()
 	}
@@ -258,7 +265,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 		}
 		return config.CodeIdentifier{}, false
 
-	// Storing into a specific struct field
+	// Storing into a specific struct field or global
 	case *ssa.Store:
 		if fieldAddr, isFieldAddr := node.Addr.(*ssa.FieldAddr); isFieldAddr {
 			fieldInfo := FieldAddrFieldInfo(fieldAddr)
@@ -279,7 +286,7 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			}
 			return config.CodeIdentifier{}, false
 		}
-		return config.CodeIdentifier{}, false
+		return isAccessGlobalEntryPoint(node, node.Addr, f)
 
 	// Channel receives can be sources
 	case *ssa.UnOp:
@@ -300,11 +307,44 @@ func IsEntrypointNode(pointer *pointer.Result, n ssa.Node,
 			}
 			return config.CodeIdentifier{}, false
 		}
+		// Reading a global variable
+		if node.Op == token.MUL {
+			return isAccessGlobalEntryPoint(node, node.X, f)
+		}
 		return config.CodeIdentifier{}, false
+
+	case *ssa.MakeInterface:
+		// Global is read an immediately cast to another interface type
+		return isAccessGlobalEntryPoint(node, node.X, f)
 
 	default:
 		return config.CodeIdentifier{}, false
 	}
+}
+
+func isAccessGlobalEntryPoint(
+	node ssa.Node,
+	subValue ssa.Value,
+	f func(config.CodeIdentifier) bool,
+) (config.CodeIdentifier, bool) {
+	global, isGlobal := subValue.(*ssa.Global)
+	if !isGlobal {
+		return config.CodeIdentifier{}, false
+	}
+	packageName := FindValuePackage(global).ValueOr("")
+	typeName := global.Type().String()
+	cid := config.CodeIdentifier{
+		Context:    node.Parent().String(),
+		Package:    packageName,
+		Type:       typeName,
+		Global:     global.Name(),
+		Kind:       "load",
+		ValueMatch: node.String(),
+	}
+	if f(cid) {
+		return cid, true
+	}
+	return config.CodeIdentifier{}, false
 }
 
 // newCodeIdentifierCall returns a code identifier for each possible object in the call.

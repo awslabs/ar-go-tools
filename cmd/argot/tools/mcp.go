@@ -12,50 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package tools
 
-import (
-	"math/rand"
-	"strconv"
-)
-
-type T struct {
-	Data  string
-	Other string
+// MCPTool is the simple struct returned in the result of a response for a tool description request
+type MCPTool struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema MCPInputSchema `json:"inputSchema"`
 }
 
-type R string
-
-func genStr() string {
-	return strconv.Itoa(rand.Int()) + "1234"
-}
-
-func genT() T {
-	return T{
-		Data:  genStr(),
-		Other: genStr() + "ok",
-	}
-}
-
-func source1() T {
-	return T{
-		Data:  strconv.Itoa(rand.Int()) + "tainted",
-		Other: "ok",
-	}
-}
-
-func source2() R {
-	return R(strconv.Itoa(rand.Int()) + "tainted")
-}
-
-func sink(_ ...any) {
-
-}
-
-func sinkStr(s string) {
-
-}
-
-func notSink(_ ...any) {
-
+// An MCPInputSchema describes the input schema of a tool
+type MCPInputSchema struct {
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties"`
+	Required   []string               `json:"required"`
 }

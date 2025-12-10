@@ -18,9 +18,10 @@ install: argot-install
 lint: **/*.go
 	deadcode -test -filter ar-go-tools/analysis ./...
 	go vet ./...
-	gocyclo -ignore "test|internal/pointer|internal/typeparams" -over 15 .
+	gocyclo -ignore "test|internal/pointer|internal/typeparams|payload" -over 15 .
 	ineffassign ./...
 	nilaway --test=false ./cmd/argot/... \
+                         ./cmd/argot-mcp-server/... \
                          ./analysis/annotations/... \
                          ./analysis/backtrace/... \
                          ./analysis/concurrency/... \
@@ -47,10 +48,18 @@ argot-build: go.mod cmd/argot/**/*.go
 argot-install:
 	go install github.com/awslabs/ar-go-tools/cmd/argot
 
+mcp-install:
+	cd cmd/argot-mcp-server && go generate
+	go install github.com/awslabs/ar-go-tools/cmd/argot-mcp-server
+
+mcp-build: go.mod cmd/argot-mcp-server/*.go
+	cd cmd/argot-mcp-server && go generate
+	go build -o bin/argot-mcp-server ./cmd/argot-mcp-server
+
 racerg-build: go.mod cmd/racerg/*.go
 	go build -o bin/racerg cmd/racerg/*.go
 
-build: argot-build racerg-build
+build: argot-build mcp-build racerg-build
 
 setup-precommit:
 	cp ./copyrights.sh .git/hooks/pre-commit

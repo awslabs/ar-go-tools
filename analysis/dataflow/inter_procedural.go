@@ -383,6 +383,16 @@ func scanEntryPoints(
 		switch node := n.(type) {
 		case *SyntheticNode:
 			addSyntheticNodeEntryPoints(spec, entryPoints, node)
+		case *AccessGlobalNode:
+			// Global access is a load or store
+			ssaNode, isValue := node.Instr().(ssa.Node)
+			if !isValue {
+				return
+			}
+			if _, ok := spec.IsEntryPointSsa(ssaNode); ok {
+				entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+				entryPoints[entry.Key()] = entry
+			}
 		case *CallNodeArg:
 			if spec.MarkCallArgsLikeCall {
 				if _, ok := spec.IsEntryPointSsa(node.parent.CallSite().Value()); ok {

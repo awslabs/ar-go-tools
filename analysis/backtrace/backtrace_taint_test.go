@@ -245,6 +245,8 @@ func sourceNode(source dataflow.GraphNode) ssa.Node {
 		return node.ParentNode().CallSite().Value()
 	case *dataflow.SyntheticNode:
 		return node.Instr().(ssa.Node)
+	case *dataflow.AccessGlobalNode:
+		return node.Instr().(ssa.Node)
 	default:
 		panic(fmt.Errorf("invalid source: %T", source))
 	}

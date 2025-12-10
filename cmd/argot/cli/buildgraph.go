@@ -14,29 +14,25 @@
 
 package cli
 
-import (
-	"golang.org/x/term"
-)
-
 // cmdBuildGraph builds the inter-procedural flow graph given the current summaries
-func cmdBuildGraph(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdBuildGraph(o Outputter, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : build the inter-procedural flow graph.\n",
-			tt.Escape.Blue, cmdBuildGraphName, tt.Escape.Reset)
-		writeFmt(tt, "\t   Summaries must be built first with `%s%s%s`.\n",
-			tt.Escape.Yellow, cmdSummarizeName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : build the inter-procedural flow graph.\n",
+			o.EscBlue(), CmdBuildGraphName, o.EscReset())
+		o.Write("\t   Summaries must be built first with `%s%s%s`.\n",
+			o.EscYellow(), CmdSummarizeName, o.EscReset())
 		return false
 	}
-	c, err := sess.loadDataflowAnalysis().Value()
+	c, err := sess.loadDataflowAnalysis(o).Value()
 	if err != nil {
-		WriteErr(tt, "%s", err.Error())
+		o.WriteErr("%s", err.Error())
 		return false
 	}
 	if len(c.FlowGraph.Summaries) == 0 {
-		WriteErr(tt, "No summaries present. Did you run `summarize`?")
+		o.WriteErr("No summaries present. Did you run `summarize`?")
 		return false
 	}
 	c.FlowGraph.BuildGraph()
-	WriteSuccess(tt, "Built cross function flow graph.")
+	o.WriteSuccess("Built cross function flow graph.")
 	return false
 }

@@ -135,6 +135,16 @@ dataflow-problems:
 ```
 This implies that any method whose receiver implements the `mypackage.interfaceName` interface will be seen as a sink.
 
+**Global Loads** are of the form:
+```yaml
+dataflow-problems:
+  - sources:
+      - package: "mypackage"
+        global: "varName"
+        kind: "load"
+```
+This implies that code that loads the global variable `varName` in `myPackage` will be considered to load tainted data.
+
 > The specifications for sources can be function calls, types, channel receives or field reads. The specifications sanitizers and validators can only be functions (method and package) or interfaces (interface name and package). The specifications for sinks can be functions calls and field writes.
 
 #### Code locations in a specific context
@@ -570,9 +580,9 @@ dataflow-summaries:
       - ...
     ...
 ```
-The function or method is identified by the `package`, `function` or `package`, `receiver`, `method` for individual function summaries, or `package`, `interface`, `method` for interface methods.
+The function or method is identified by the `package`, `function` or `package`, `receiver`, `method` for individual function summaries, or `package`, `interface`, `method` for interface methods. When you specify a summary for an interface method, this means that all implementations must satisfy this dataflow summary. 
 
-A flow of data is specified by `from` and `to`. The origin of data can be an argument by position `!arg 0`, by name `!arg <x>` or a receiver `!receiver`. The destination can also be an argument or receiver, or a return value `!ret 1` identified by the position of the value in the returned tuple (and `!ret` is a shortcut for `!ret 0`). A `!receiver` can only be used for methods (interface or struct), and for methods, the argument indexing starts after the receiver. For example, in a method `func (o O) foo(x bar) string`, `x` is identified by `!arg 0` or `!arg <x>` and `o` is identified by `!receiver`. Assuming this function is in package `mypackage`, we can write a summary specifying that `o` flows to the return value, and `x` flows to `o`:
+A flow of data is specified by `from` and `to`, indicating the taint of `from` flows to `to`. The origin of data can be an argument by position `!arg 0`, by name `!arg <x>` or a receiver `!receiver`. The destination can also be an argument or receiver, or a return value `!ret 1` identified by the position of the value in the returned tuple (and `!ret` is a shortcut for `!ret 0`). A `!receiver` can only be used for methods (interface or struct), and for methods, the argument indexing starts after the receiver. For example, in a method `func (o O) foo(x bar) string`, `x` is identified by `!arg 0` or `!arg <x>` and `o` is identified by `!receiver`. Assuming this function is in package `mypackage`, we can write a summary specifying that `o` flows to the return value, and `x` flows to `o`:
 ```yaml
 dataflow-summaries:
   - package: "mypackage"
@@ -584,6 +594,20 @@ dataflow-summaries:
       - from: "!arg <o>" # eqv. !arg 0
         to: "!receiver"
 ```
+You can specify more precise flows by adding struct fields and array or map indexing, although you cannot specify precise indices. For example, the following summary indicates that the struct field `.mem` of the argument `x` flows to the elements of the resulting array.
+```yaml
+dataflow-summaries:
+  - package: "mypackage"
+    function: "copyMem"
+    flows:
+      - from: "(!arg <x>).mem"
+        to: "(!ret 0)[*]"
+```
+Flows through struct fields and elements of maps/arrays are specified by parenthesizing the main component of the `from`/`to` and adding a suffix of several `.field` or `[*]`. For example, `(!ret 0).field1[*].field2` is a valid node description. In maps, `[*]` indicates flow to keys or values, but there is no way to distinguish.
+
+>⚠️ Correct specification of the summaries is currently the user's responsibility, but we are working on tools to check the correctness of the summaries when the functions summarized are supported by the analysis. There is currently no automated way to check a summary is sound.
+
+>⚠️ Interface dataflow contracts have precedence over function contracts. This means that if for some function call the tool has the choice between picking the function's contract or the dataflow contract, it will pick the interface dataflow contract.
 
 ### Legacy Format
 Each specification is a JSON structure that contains either an `"InterfaceId"` or an `"ObjectPath"`, along with a dictionary `"Methods"`. If an interface id is specified, then the dataflow specifications for each of the methods are interpreted as specifications for the interface methods, i.e. they specify every possible implementation of the interface. For example, consider the following dataflow specifications:
@@ -612,9 +636,6 @@ In the example, this means that the summary `"Marshal": { "Args": [ [ 0 ] ], "Re
 In the specification for the `Reader` method, the first argument's data flows to both itself and the second argument, as specified by `[0,1]` in the first list, and the second argument only flows to itself, as specified by `[1]` in the second list.
 
 
->⚠️ Correct specification of the summaries is currently the user's responsibility, but we are working on tools to check the correctness of the summaries when the functions summarized are supported by the analysis.
-
->⚠️ Dataflow contracts have precedence over function contracts. This means that if for some function call the tool has the choice between picking the function's contract or the dataflow contract, it will pick the dataflow contract.
 
 ## Using Escape Analysis (experimental)
 

@@ -17,13 +17,12 @@ package dataflow
 import (
 	"context"
 	"fmt"
-	"go/token"
-	"go/types"
-
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
+	"go/token"
+	"go/types"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -142,10 +141,13 @@ func (state *IntraAnalysisState) markInstruction(ctx context.Context, i ssa.Inst
 	switch instr := i.(type) {
 	case *ssa.MakeClosure:
 		state.markClosureNode(instr)
+		return
 	case *ssa.Call:
 		state.callCommonMark(ctx, instr, instr, instr.Common())
+		return
 	case *ssa.Go: // Analyze go like a function call, but a dedicated concurrency analysis should be used
 		state.callCommonMark(ctx, instr.Value(), instr, instr.Common())
+		return
 	}
 
 	// Instructions where marking is optional
@@ -297,9 +299,7 @@ func transfer(ctx context.Context, state *IntraAnalysisState, loc ssa.Instructio
 // a value of true for pre indicates that field-sensitive value a prepended with indexing
 func transferPre(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string,
 	index MarkIndex, pre bool) {
-	if glob, ok := in.(*ssa.Global); ok {
-		state.markValue(ctx, loc, out, "", state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index))
-	}
+	state.checkFlowFromGlobal(ctx, loc, in, out, index)
 	isFieldSensitive := state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[out]]
 	for _, origin := range state.getMarks(loc, in, path, false) {
 		state.flowInfo.SetLoc(origin.Mark, loc)
@@ -318,6 +318,7 @@ func transferPre(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruc
 
 // transferCopy propagates the marks for a load, which only requires copying over marks and paths
 func transferCopy(ctx context.Context, t *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value) {
+	t.checkFlowFromGlobal(ctx, loc, in, out, NonIndexMark)
 	pos, ok := t.flowInfo.GetPos(loc, in)
 	if !ok {
 		return
@@ -429,6 +430,12 @@ func (state *IntraAnalysisState) checkFlowIntoGlobal(loc ssa.Instruction, in, ou
 	}
 	for _, origin := range state.getMarks(loc, in, "", true) {
 		state.summary.addGlobalEdge(origin, nil, loc, glob)
+	}
+}
+
+func (state *IntraAnalysisState) checkFlowFromGlobal(ctx context.Context, loc ssa.Instruction, in ssa.Value, out ssa.Value, index MarkIndex) {
+	if glob, ok := in.(*ssa.Global); ok {
+		state.markValue(ctx, loc, out, "", state.flowInfo.GetNewMark(loc.(ssa.Node), Global, glob, index))
 	}
 }
 

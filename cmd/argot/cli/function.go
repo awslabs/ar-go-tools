@@ -27,143 +27,148 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 	"golang.org/x/exp/slices"
-	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
 
 // cmdFocus puts a given function into focus by setting state.CurrentFunction
-func cmdFocus(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdFocus(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: focus on a specific function.\n", tt.Escape.Blue, cmdFocusName,
-			tt.Escape.Reset)
-		writeFmt(tt, "\t   Once a function is focused, queries can be made about types, aliasing, etc.\n")
+		o.Write("\t- %s%s%s: focus on a specific function.\n", o.EscBlue(), CmdFocusName,
+			o.EscReset())
+		o.Write("\t   Once a function is focused, queries can be made about types, aliasing, etc.\n")
 		return false
 	}
 
-	funcs, err := sess.funcsMatchingCommand(tt, command)
+	funcs, err := sess.funcsMatchingCommand(o, command)
 	if err != nil {
-		WriteErr(tt, "Error: %s", err)
+		o.WriteErr("Error: %s", err)
 		return false
 	}
 
 	if len(funcs) == 0 {
-		WriteErr(tt, "No matching function.")
+		o.WriteErr("No matching function.")
 		return false
 	}
 
 	if len(funcs) > 1 {
-		WriteErr(tt, "Too many matching functions:")
+		o.WriteErr("Too many matching functions:")
 		for _, f := range funcs {
-			writeFmt(tt, "%s\n", f.String())
+			o.Write("%s\n", f.String())
 		}
-		WriteErr(tt, "Please refine your query.")
+		o.WriteErr("Please refine your query.")
 		return false
 	}
 
 	f := funcs[0]
 	if f == nil {
-		WriteErr(tt, "Unexpected error: found a matching function, but function is nil.")
+		o.WriteErr("Unexpected error: found a matching function, but function is nil.")
 		return false
 	}
 
 	sess.currentFunction = f
-	WriteSuccess(tt, "Focusing on %s.", f.String())
-	tt.SetPrompt(fmt.Sprintf("%s%s >%s ", tt.Escape.Green, f.Name(), tt.Escape.Reset))
+	o.WriteSuccess("Focusing on %s.", f.String())
+	if o.tt != nil {
+		o.tt.SetPrompt(fmt.Sprintf("%s%s >%s ", o.EscGreen(), f.Name(), o.EscReset()))
+	}
 
 	return false
 }
 
 // cmdPackage prints information about the package of the current function
-func cmdPackage(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdPackage(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: show package of current function.\n", tt.Escape.Blue, cmdPackageName,
-			tt.Escape.Reset)
+		o.Write("\t- %s%s%s: show package of current function.\n", o.EscBlue(), CmdPackageName,
+			o.EscReset())
 		return false
 	}
 
 	if sess.currentFunction == nil {
-		WriteErr(tt, "No function is focused.")
+		o.WriteErr("No function is focused.")
 		return false
 	}
 
 	pkgName := lang.PackageNameFromFunction(sess.currentFunction)
-	writeFmt(tt, "Package %s:\n", pkgName)
+	o.Write("Package %s:\n", pkgName)
 	pkg := lang.PackageTypeFromFunction(sess.currentFunction)
 	if pkg == nil {
-		WriteErr(tt, "Could not retrieve package object.")
+		o.WriteErr("Could not retrieve package object.")
 		return false
 	}
-	writeFmt(tt, "Path: %s\n", pkg.Path())
-	writeFmt(tt, "Imports:\n")
+	o.Write("Path: %s\n", pkg.Path())
+	o.Write("Imports:\n")
 	for _, impt := range pkg.Imports() {
-		writeFmt(tt, "\t%s\n", impt.Name())
+		o.Write("\t%s\n", impt.Name())
 	}
 	if _, printScope := command.NamedArgs["scope"]; printScope {
-		pkg.Scope().WriteTo(tt, 1, false)
+		if o.tt != nil {
+			pkg.Scope().WriteTo(o.tt, 1, false)
+		}
 	}
 	return false
 }
 
 // cmdUnfocus removes the focus on the current function (sets state.CurrentFunction to nil and resets the prompt)
-func cmdUnfocus(tt *term.Terminal, sess *session, _ Command, _ bool) bool {
+func cmdUnfocus(o Outputter, sess *Session, _ Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: unfocus current function.\n", tt.Escape.Blue,
-			cmdUnfocusName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s: unfocus current function.\n", o.EscBlue(),
+			CmdUnfocusName, o.EscReset())
 		return false
 	}
 
 	if sess.currentFunction == nil {
-		WriteErr(tt, "No function is focused.")
+		o.WriteErr("No function is focused.")
 		return false
 	}
 
-	WriteSuccess(tt, "Unfocus %s.", sess.currentFunction.Name())
+	o.WriteSuccess("Unfocus %s.", sess.currentFunction.Name())
 	sess.currentFunction = nil
-	tt.SetPrompt("> ")
+	if o.tt != nil {
+		o.tt.SetPrompt("> ")
+	}
 
 	return false
 }
 
 // cmdSsaValue prints the ssa values matching a regex in the state.CurrentFunction
-func cmdSsaValue(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdSsaValue(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: show SSA values matching regex\n", tt.Escape.Blue,
-			cmdSsaValueName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s: show SSA values matching regex\n", o.EscBlue(),
+			CmdSsaValueName, o.EscReset())
 		return false
 	}
 
 	if sess.currentFunction == nil {
-		WriteErr(tt, "You must first focus on a function to show an SSA value.")
+		o.WriteErr("You must first focus on a function to show an SSA value.")
 		return false
 	}
 
 	if len(command.Args) < 1 {
-		WriteErr(tt, "You must provide a regex string to filter SSA values.")
+		o.WriteErr("You must provide a regex string to filter SSA values.")
 		return false
 	}
 
 	r, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return false
 	}
 
 	for _, param := range sess.currentFunction.Params {
 		if matchValue(r, param) {
-			showValue(tt, sess, param)
+			showValue(o, sess, param)
 		}
 	}
 
 	for _, fv := range sess.currentFunction.FreeVars {
 		if matchValue(r, fv) {
-			showValue(tt, sess, fv)
+			showValue(o, sess, fv)
 		}
 	}
 
 	for _, block := range sess.currentFunction.Blocks {
 		for _, instr := range block.Instrs {
 			if val, isVal := instr.(ssa.Value); isVal && matchValue(r, val) {
-				showValue(tt, sess, val)
+				showValue(o, sess, val)
 			}
 		}
 	}
@@ -171,33 +176,33 @@ func cmdSsaValue(tt *term.Terminal, sess *session, command Command, _ bool) bool
 }
 
 // cmdSsaInstr prints the ssa instructions matching a regex in the state.CurrentFunction
-func cmdSsaInstr(tt *term.Terminal, c *session, command Command, _ bool) bool {
+func cmdSsaInstr(o Outputter, c *Session, command Command, _ bool) bool {
 	if c == nil {
-		writeFmt(tt, "\t- %s%s%s: show SSA instructions matching regex\n", tt.Escape.Blue,
-			cmdSsaInstrName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s: show SSA instructions matching regex\n", o.EscBlue(),
+			CmdSsaInstrName, o.EscReset())
 		return false
 	}
 
 	if c.currentFunction == nil {
-		WriteErr(tt, "You must first focus on a function to show an SSA instruction.")
+		o.WriteErr("You must first focus on a function to show an SSA instruction.")
 		return false
 	}
 
 	if len(command.Args) < 1 {
-		WriteErr(tt, "You must provide a regex string to filter SSA instructions.")
+		o.WriteErr("You must provide a regex string to filter SSA instructions.")
 		return false
 	}
 
 	r, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return false
 	}
 
 	for _, block := range c.currentFunction.Blocks {
 		for _, instr := range block.Instrs {
 			if matchInstr(r, instr) {
-				showInstr(tt, c, instr)
+				showInstr(o, c, instr)
 			}
 		}
 	}
@@ -205,32 +210,32 @@ func cmdSsaInstr(tt *term.Terminal, c *session, command Command, _ bool) bool {
 }
 
 // cmdMayAlias prints whether matches values may alias according to the pointer analysis
-func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool {
+func cmdMayAlias(o Outputter, sess *Session, command Command, _ bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: print whether matching values may alias\n", tt.Escape.Blue,
-			cmdMayAliasName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s: print whether matching values may alias\n", o.EscBlue(),
+			CmdMayAliasName, o.EscReset())
 		return false
 	}
 
-	ps, err := sess.loadPtrAnalysis().Value()
+	ps, err := sess.loadPtrAnalysis(o).Value()
 	if err != nil {
-		WriteErr(tt, "Error loading pointer analysis: %s", err)
+		o.WriteErr("Error loading pointer analysis: %s", err)
 		return false
 	}
 
 	if sess.currentFunction == nil {
-		WriteErr(tt, "You must first focus on a function to query aliasing information.")
+		o.WriteErr("You must first focus on a function to query aliasing information.")
 		return false
 	}
 
 	if len(command.Args) < 1 {
-		WriteErr(tt, "You must provide one regex to show aliasing information.")
+		o.WriteErr("You must provide one regex to show aliasing information.")
 		return false
 	}
 
 	r, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return false
 	}
 
@@ -245,18 +250,18 @@ func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool
 
 	for v1 := range values1 {
 		if ptr, ptrExists := ps.PointerAnalysis.Queries[v1]; ptrExists {
-			writeFmt(tt, "[direct]   %s may alias with:\n", v1.Name())
+			o.Write("[direct]   %s may alias with:\n", v1.Name())
 			lang.IterateValues(sess.currentFunction, func(_ int, value ssa.Value) {
 				if value != nil {
-					printAliases(tt, ps, value, ptr)
+					printAliases(o, ps, value, ptr)
 				}
 			})
 		}
 		if ptr, ptrExists := ps.PointerAnalysis.IndirectQueries[v1]; ptrExists {
-			writeFmt(tt, "[indirect] %s may alias with:\n", v1.Name())
+			o.Write("[indirect] %s may alias with:\n", v1.Name())
 			lang.IterateValues(sess.currentFunction, func(_ int, value ssa.Value) {
 				if value != nil {
-					printAliases(tt, ps, value, ptr)
+					printAliases(o, ps, value, ptr)
 				}
 			})
 		}
@@ -266,81 +271,81 @@ func cmdMayAlias(tt *term.Terminal, sess *session, command Command, _ bool) bool
 	return false
 }
 
-func printAliases(tt *term.Terminal, ps *ptr.State, v2 ssa.Value, ptr pointer.Pointer) {
+func printAliases(o Outputter, ps *ptr.State, v2 ssa.Value, ptr pointer.Pointer) {
 	if ptr2, ptrExists := ps.PointerAnalysis.IndirectQueries[v2]; ptrExists && ptr2.MayAlias(ptr) {
-		writeFmt(tt, "     [indirect] %s (%s) -> %s\n", v2.Name(), v2, ptr2)
+		o.Write("     [indirect] %s (%s) -> %s\n", v2.Name(), v2, ptr2)
 	}
 
 	if ptr2, ptrExists := ps.PointerAnalysis.Queries[v2]; ptrExists && ptr2.MayAlias(ptr) {
-		writeFmt(tt, "     [direct]   %s (%s) -> %s\n", v2.Name(), v2, ptr2)
+		o.Write("     [direct]   %s (%s) -> %s\n", v2.Name(), v2, ptr2)
 	}
 }
 
 // cmdWhere prints the position of a function
-func cmdWhere(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdWhere(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s : print the location of a function declaration.\n",
-			tt.Escape.Blue, cmdWhereName, tt.Escape.Reset)
+		o.Write("\t- %s%s%s : print the location of a function declaration.\n",
+			o.EscBlue(), CmdWhereName, o.EscReset())
 		return false
 	}
 
 	// This command requires loading the program
-	lp, err := sess.loadProgram().Value()
+	lp, err := sess.loadProgram(o).Value()
 	if err != nil {
-		WriteErr(tt, "Error loading program: %s", err)
+		o.WriteErr("Error loading program: %s", err)
 		return false
 	}
 
 	if len(command.Args) < 1 {
 		if sess.currentFunction != nil {
-			writeFmt(tt, "Location: %s\n", lp.Program.Fset.Position(sess.currentFunction.Pos()))
+			o.Write("Location: %s\n", lp.Program.Fset.Position(sess.currentFunction.Pos()))
 		} else {
-			WriteErr(tt, "Need at least one function to print position for.")
-			cmdWhere(tt, nil, command, withTest)
+			o.WriteErr("Need at least one function to print position for.")
+			cmdWhere(o, nil, command, withTest)
 		}
 		return false
 	}
 	target, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return false
 	}
 
 	funcs, err := sess.findFunc(target)
 	if err != nil {
-		WriteErr(tt, "Error: %s", err)
+		o.WriteErr("Error: %s", err)
 		return false
 	}
 	for _, f := range funcs {
-		writeFmt(tt, "Location: %s\n", lp.Program.Fset.Position(f.Pos()))
+		o.Write("Location: %s\n", lp.Program.Fset.Position(f.Pos()))
 	}
 	return false
 }
 
 // cmdIntra shows the intermediate result of running the dataflow analysis.
-func cmdIntra(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdIntra(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: show the intermediate result of the intraprocedural analysis\n",
-			tt.Escape.Blue, cmdIntraName, tt.Escape.Reset)
-		writeFmt(tt, "\t    -v    print the intermediate result every time a block is analyzed\n")
-		writeFmt(tt, "\t    -h    print this help message\n")
+		o.Write("\t- %s%s%s: show the intermediate result of the intraprocedural analysis\n",
+			o.EscBlue(), CmdIntraName, o.EscReset())
+		o.Write("\t    -v    print the intermediate result every time a block is analyzed\n")
+		o.Write("\t    -h    print this help message\n")
 		return false
 	}
 
 	if command.Flags["h"] {
-		return cmdIntra(tt, nil, command, withTest)
+		return cmdIntra(o, nil, command, withTest)
 	}
 
 	if sess.currentFunction == nil {
-		WriteErr(tt, "You must first focus on a function to run this command!")
-		WriteErr(tt, "Example: > focus command-line-arguments.main")
+		o.WriteErr("You must first focus on a function to run this command!")
+		o.WriteErr("Example: > focus command-line-arguments.main")
 		return false
 	}
 
 	// This command requires loading the dataflow state
-	dfs, err := sess.loadDataflowAnalysis().Value()
+	dfs, err := sess.loadDataflowAnalysis(o).Value()
 	if err != nil {
-		WriteErr(tt, "Error loading dataflow analysis: %s", err)
+		o.WriteErr("Error loading dataflow analysis: %s", err)
 		return false
 	}
 
@@ -351,12 +356,12 @@ func cmdIntra(tt *term.Terminal, sess *session, command Command, withTest bool) 
 		flowInfo = a.FlowInfo()
 		if command.Flags["v"] {
 			if block := a.Block(); block != nil {
-				writeFmt(tt, "\n")
-				writeFmt(tt, "---- New block analyzed ----\n")
-				showBlock(tt, sess, block)
-				writeFmt(tt, "     State is ↴\n")
+				o.Write("\n")
+				o.Write("---- New block analyzed ----\n")
+				showBlock(o, sess, block)
+				o.Write("     State is ↴\n")
 			}
-			showFlowInformation(tt, dfs, flowInfo)
+			showFlowInformation(o, dfs, flowInfo)
 		}
 	}
 
@@ -369,56 +374,56 @@ func cmdIntra(tt *term.Terminal, sess *session, command Command, withTest bool) 
 	_, err = dataflow.IntraProceduralAnalysis(ctx, dfs, sess.currentFunction, true, 0,
 		dataflow.IsNodeOfInterest, post)
 	if err != nil {
-		WriteErr(tt, "Error while analyzing: %v\n", err)
+		o.WriteErr("Error while analyzing: %v\n", err)
 		return false
 	}
 	if flowInfo != nil {
 		sess.currentDataflowInformation = flowInfo
 		if command.Flags["v"] {
-			writeFmt(tt, "\n")
-			writeFmt(tt, " ⎏  Final state is ↴\n")
+			o.Write("\n")
+			o.Write(" ⎏  Final state is ↴\n")
 		}
-		writeFmt(tt, "[function %s%s%s]\n", tt.Escape.Cyan, flowInfo.Function.Name(), tt.Escape.Reset)
-		showFlowInformation(tt, dfs, flowInfo)
+		o.Write("[function %s%s%s]\n", o.EscCyan(), flowInfo.Function.Name(), o.EscReset())
+		showFlowInformation(o, dfs, flowInfo)
 	} else {
-		WriteErr(tt, "Flow information is nil after analysis. Something went wrong?")
+		o.WriteErr("Flow information is nil after analysis. Something went wrong?")
 	}
 	return false
 }
 
 // cmdMark shows intermediate information about a mark in the dataflow analysis
-func cmdMark(tt *term.Terminal, sess *session, command Command, withTest bool) bool {
+func cmdMark(o Outputter, sess *Session, command Command, withTest bool) bool {
 	if sess == nil {
-		writeFmt(tt, "\t- %s%s%s: show information about a mark in the intraprocedural analysis\n",
-			tt.Escape.Blue, cmdMarkName, tt.Escape.Reset)
-		writeFmt(tt, "\t          (only in focused mode)\n")
-		writeFmt(tt, "\t    -h    print this help message\n")
+		o.Write("\t- %s%s%s: show information about a mark in the intraprocedural analysis\n",
+			o.EscBlue(), CmdMarkName, o.EscReset())
+		o.Write("\t          (only in focused mode)\n")
+		o.Write("\t    -h    print this help message\n")
 
 		return false
 	}
 
 	if sess.currentFunction == nil {
-		WriteErr(tt, "You must first focus on a function to run this command!")
-		WriteErr(tt, "Example: > focus command-line-arguments.main")
+		o.WriteErr("You must first focus on a function to run this command!")
+		o.WriteErr("Example: > focus command-line-arguments.main")
 	}
 
 	if command.Flags["h"] {
-		return cmdMark(tt, nil, command, withTest)
+		return cmdMark(o, nil, command, withTest)
 	}
 
 	if sess.currentDataflowInformation == nil || sess.currentDataflowInformation.Function != sess.currentFunction {
-		writeFmt(tt, "Running the intra-procedural dataflow analysis first...\n")
-		_ = cmdIntra(tt, sess, command, withTest)
+		o.Write("Running the intra-procedural dataflow analysis first...\n")
+		_ = cmdIntra(o, sess, command, withTest)
 	}
 
 	if sess.currentDataflowInformation == nil || sess.currentDataflowInformation.Function != sess.currentFunction {
-		WriteErr(tt, "Reached an unexpected state. Please restart the CLI.")
+		o.WriteErr("Reached an unexpected state. Please restart the CLI.")
 		return false
 	}
 
 	r, err := regexp.Compile(command.Args[0])
 	if err != nil {
-		regexErr(tt, command.Args[0], err)
+		regexErr(o, command.Args[0], err)
 		return false
 	}
 
@@ -426,14 +431,14 @@ func cmdMark(tt *term.Terminal, sess *session, command Command, withTest bool) b
 	for mark, instructionSet := range sess.currentDataflowInformation.LocSet {
 		if r.MatchString(mark.String()) {
 			foundMatch = true
-			writeFmt(tt, "Mark %s\n", mark.String())
+			o.Write("Mark %s\n", mark.String())
 			for instr := range instructionSet {
-				writeFmt(tt, "\t - %s\n", instr.String())
+				o.Write("\t - %s\n", instr.String())
 			}
 		}
 	}
 	if !foundMatch {
-		WriteErr(tt, "Did not find any mark matching %s", r.String())
+		o.WriteErr("Did not find any mark matching %s", r.String())
 	}
 
 	return false
@@ -447,44 +452,44 @@ func matchInstr(r *regexp.Regexp, instr ssa.Instruction) bool {
 	return r.MatchString(instr.String())
 }
 
-func showValue(tt *term.Terminal, sess *session, val ssa.Value) {
-	writeFmt(tt, "Matching value: %s\n", val.Name())
-	writeFmt(tt, "      kind    : %T\n", val)
-	writeFmt(tt, "      type    : %s\n", val.Type().String())
+func showValue(o Outputter, sess *Session, val ssa.Value) {
+	o.Write("Matching value: %s\n", val.Name())
+	o.Write("      kind    : %T\n", val)
+	o.Write("      type    : %s\n", val.Type().String())
 	if instr, ok := val.(ssa.Instruction); ok {
-		writeFmt(tt, "      instr   : %s\n", instr.String())
+		o.Write("      instr   : %s\n", instr.String())
 	}
-	writeFmt(tt, "      location: %s\n", sess.programOrPanic().Fset.Position(val.Pos()))
+	o.Write("      location: %s\n", sess.programOrPanic().Fset.Position(val.Pos()))
 	if len(*(val.Referrers())) > 0 {
-		writeFmt(tt, "  referrers:\n")
-		showReferrers(sess, tt, val)
+		o.Write("  referrers:\n")
+		showReferrers(sess, o, val)
 	}
 	if sess.ptrState != nil {
 		ps := sess.ptrState
 		if ptset, ok := ps.PointerAnalysis.Queries[val]; ok && len(ptset.PointsTo().Labels()) > 0 {
-			writeFmt(tt, "  direct aliases:\n")
-			showPointer(tt, sess, ps.PointerAnalysis.Queries[val])
+			o.Write("  direct aliases:\n")
+			showPointer(o, sess, ps.PointerAnalysis.Queries[val])
 		}
 		if ptset, ok := ps.PointerAnalysis.IndirectQueries[val]; ok && len(ptset.PointsTo().Labels()) > 0 {
-			writeFmt(tt, "  indirect aliases:\n")
-			showPointer(tt, sess, ps.PointerAnalysis.IndirectQueries[val])
+			o.Write("  indirect aliases:\n")
+			showPointer(o, sess, ps.PointerAnalysis.IndirectQueries[val])
 		}
 	}
 }
 
-func showReferrers(sess *session, tt *term.Terminal, val ssa.Value) {
+func showReferrers(sess *Session, o Outputter, val ssa.Value) {
 	var entries []displayElement
 	referrers := val.Referrers()
 	for _, label := range *referrers {
 		entries = append(entries, displayElement{
 			content: "[" + label.String() + "]",
-			escape:  tt.Escape.Blue,
+			escape:  o.EscBlue(),
 		})
 	}
-	writeEntries(tt, sess, entries, "    ")
+	writeEntries(o, sess, entries, "    ")
 }
 
-func showPointer(tt *term.Terminal, sess *session, ptr pointer.Pointer) {
+func showPointer(o Outputter, sess *Session, ptr pointer.Pointer) {
 	var entries []displayElement
 	for _, label := range ptr.PointsTo().Labels() {
 		if label.Value() != nil && label.Value().Parent() != nil {
@@ -496,23 +501,23 @@ func showPointer(tt *term.Terminal, sess *session, ptr pointer.Pointer) {
 			if label.Path() != "" {
 				dElt = displayElement{
 					content: "[" + label.Value().Name() + " @" + label.Path() + " (" + label.Value().String() + f + ")]",
-					escape:  tt.Escape.Yellow}
+					escape:  o.EscYellow()}
 			} else {
 				dElt = displayElement{content: "[" + label.Value().Name() + " (" + label.Value().String() + f + ")]",
-					escape: tt.Escape.Yellow}
+					escape: o.EscYellow()}
 			}
 			entries = append(entries, dElt)
 		} else {
 			entries = append(entries,
-				displayElement{content: "[" + label.String() + "]", escape: tt.Escape.White})
+				displayElement{content: "[" + label.String() + "]", escape: o.EscWhite()})
 		}
 	}
-	writeEntries(tt, sess, entries, "    ")
+	writeEntries(o, sess, entries, "    ")
 }
 
-func showInstr(tt *term.Terminal, c *session, instr ssa.Instruction) {
-	writeFmt(tt, "Matching instruction: %s\n", instr.String())
-	writeFmt(tt, "            location: %s\n", c.programOrPanic().Fset.Position(instr.Pos()))
+func showInstr(o Outputter, c *Session, instr ssa.Instruction) {
+	o.Write("Matching instruction: %s\n", instr.String())
+	o.Write("            location: %s\n", c.programOrPanic().Fset.Position(instr.Pos()))
 }
 
 func setStr(a ssa.Value, s *string) {
@@ -535,13 +540,13 @@ func setName(a ssa.Value, s *string) {
 	*s = a.Name()
 }
 
-func showFlowInformation(tt *term.Terminal, c *dataflow.State, fi *dataflow.FlowInformation) {
+func showFlowInformation(o Outputter, c *dataflow.State, fi *dataflow.FlowInformation) {
 	if fi.Function == nil {
 		return
 	}
 
 	lang.IterateInstructions(fi.Function, func(_ int, i ssa.Instruction) {
-		writeFmt(tt, "• instruction %s%s%s @ %s:\n", tt.Escape.Blue, i, tt.Escape.Reset,
+		o.Write("• instruction %s%s%s @ %s:\n", o.EscBlue(), i, o.EscReset(),
 			c.Program.Fset.Position(i.Pos()))
 		// sort and print value -> marks
 		var mVals []ssa.Value
@@ -574,33 +579,33 @@ func showFlowInformation(tt *term.Terminal, c *dataflow.State, fi *dataflow.Flow
 				for mark := range markSet {
 					markStrings = append(markStrings, formatutil.Red(mark.String()))
 				}
-				writeFmt(tt, "   %s%-30s%s %s%-10s%s marked by ", tt.Escape.Magenta, x, tt.Escape.Reset,
-					tt.Escape.Cyan, path, tt.Escape.Reset)
-				writeFmt(tt, "%s\n", strings.Join(markStrings, " & "))
+				o.Write("   %s%-30s%s %s%-10s%s marked by ", o.EscMagenta(), x, o.EscReset(),
+					o.EscCyan(), path, o.EscReset())
+				o.Write("%s\n", strings.Join(markStrings, " & "))
 			}
 		}
 	})
 }
 
 // showBlock pretty prints the block on the terminal
-func showBlock(tt *term.Terminal, _ *session, block *ssa.BasicBlock) {
-	writeFmt(tt, "block %d:\n", block.Index)
-	writeFmt(tt, "%s P:%d S:%d\n", block.Comment, len(block.Preds), len(block.Succs))
+func showBlock(o Outputter, _ *Session, block *ssa.BasicBlock) {
+	o.Write("block %d:\n", block.Index)
+	o.Write("%s P:%d S:%d\n", block.Comment, len(block.Preds), len(block.Succs))
 
 	for _, instr := range block.Instrs {
-		writeFmt(tt, "\t")
+		o.Write("\t")
 		switch v := instr.(type) {
 		case ssa.Value:
 			// Left-align the instruction.
 			if name := v.Name(); name != "" {
-				writeFmt(tt, "%s = ", name)
+				o.Write("%s = ", name)
 			}
-			writeFmt(tt, "%s", instr.String())
+			o.Write("%s", instr.String())
 		case nil:
-			writeFmt(tt, "<deleted>")
+			o.Write("<deleted>")
 		default:
-			writeFmt(tt, "%s", instr.String())
+			o.Write("%s", instr.String())
 		}
-		writeFmt(tt, "\n")
+		o.Write("\n")
 	}
 }

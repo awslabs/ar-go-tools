@@ -16,3 +16,4 @@ taint-report*
 .venv
 # Check targets
 amazon-ssm-agent
+.amazonq

@@ -24,123 +24,122 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/exp/slices"
-	"golang.org/x/term"
 	"golang.org/x/tools/go/ssa"
 )
 
 // cmdStats prints statistics about the program
 // Command is stats [all|general|closures]
-func cmdStats(tt *term.Terminal, c *session, command Command, withTest bool) bool {
+func cmdStats(o Outputter, c *Session, command Command, withTest bool) bool {
 	if c == nil {
-		writeFmt(tt, "\t- %s%s%s : show stats about program\n", tt.Escape.Blue, cmdStatsName, tt.Escape.Reset)
-		writeFmt(tt, "\t  subcommands:\n")
-		writeFmt(tt, "\t    help : print help message\n")
-		writeFmt(tt, "\t    all : print general and closure stats\n")
-		writeFmt(tt, "\t    general  : print general stats about the SSA program\n")
-		writeFmt(tt, "\t    defers  : print general stats about defers\n")
-		writeFmt(tt, "\t         -A to print functions with more than one defer\n")
-		writeFmt(tt, "\t    closures : print stats about closures with additional options for verbose output:\n")
-		writeFmt(tt, "\t        --filter to filter output\n")
-		writeFmt(tt, "\t         -U to print unclassified closures locations\n")
-		writeFmt(tt, "\t         -C to print anonymous functions capturing channels\n")
-		writeFmt(tt, "\t         -I to print closures called immediately after creation\n")
+		o.Write("\t- %s%s%s : show stats about program\n", o.EscBlue(), CmdStatsName, o.EscReset())
+		o.Write("\t  subcommands:\n")
+		o.Write("\t    help : print help message\n")
+		o.Write("\t    all : print general and closure stats\n")
+		o.Write("\t    general  : print general stats about the SSA program\n")
+		o.Write("\t    defers  : print general stats about defers\n")
+		o.Write("\t         -A to print functions with more than one defer\n")
+		o.Write("\t    closures : print stats about closures with additional options for verbose output:\n")
+		o.Write("\t        --filter to filter output\n")
+		o.Write("\t         -U to print unclassified closures locations\n")
+		o.Write("\t         -C to print anonymous functions capturing channels\n")
+		o.Write("\t         -I to print closures called immediately after creation\n")
 
 		return false
 	}
 	if funcutil.Contains(command.Args, "help") {
-		return cmdStats(tt, nil, command, withTest)
+		return cmdStats(o, nil, command, withTest)
 	}
 	all := funcutil.Contains(command.Args, "all")
 
 	if c.lpState == nil {
-		WriteErr(tt, "no program loaded")
+		o.WriteErr("no program loaded")
 		return false
 	}
 
 	if all || funcutil.Contains(command.Args, "general") || len(command.Args) == 0 {
 
 		// generate ssa stats with reachable from dataflow analysis
-		reachableFunctions, err := c.reachableFunctions()
+		reachableFunctions, err := c.reachableFunctions(o)
 		if err != nil {
-			WriteErr(tt, "%s", err.Error())
+			o.WriteErr("%s", err.Error())
 			return false
 		}
-		doGeneralStats(tt, reachableFunctions, command)
+		doGeneralStats(o, reachableFunctions, command)
 	}
 
 	if c.ptrState == nil {
-		WriteErr(tt, "no pointer analysis done, nothing else to report")
+		o.WriteErr("no pointer analysis done, nothing else to report")
 		return false
 	}
 	// general ssa stats
 	if all || funcutil.Contains(command.Args, "defers") || len(command.Args) == 0 {
-		doDeferStats(tt, c.ptrState, command)
+		doDeferStats(o, c.ptrState, command)
 	}
 
 	if c.dfState == nil {
-		WriteErr(tt, "no dataflow analysis done, nothing else to report")
+		o.WriteErr("no dataflow analysis done, nothing else to report")
 		return false
 	}
 	// stats about closures
 	if all || funcutil.Contains(command.Args, "closures") {
-		doClosureStats(tt, c.dfState, command)
+		doClosureStats(o, c.dfState, command)
 	}
 
 	return false
 }
 
-func doGeneralStats(tt *term.Terminal, reachableFunctions map[*ssa.Function]bool, _ Command) {
+func doGeneralStats(o Outputter, reachableFunctions map[*ssa.Function]bool, _ Command) {
 	result := analysis.SSAStatistics(&reachableFunctions, []string{})
 
-	WriteSuccess(tt, "SSA stats:")
-	writeFmt(tt, " # functions                   %d\n", result.NumberOfFunctions)
-	writeFmt(tt, " # nonempty functions          %d\n", result.NumberOfNonemptyFunctions)
-	writeFmt(tt, " # blocks                      %d\n", result.NumberOfBlocks)
-	writeFmt(tt, " # instructions                %d\n", result.NumberOfInstructions)
+	o.WriteSuccess("SSA stats:")
+	o.Write(" # functions                   %d\n", result.NumberOfFunctions)
+	o.Write(" # nonempty functions          %d\n", result.NumberOfNonemptyFunctions)
+	o.Write(" # blocks                      %d\n", result.NumberOfBlocks)
+	o.Write(" # instructions                %d\n", result.NumberOfInstructions)
 }
 
-func doDeferStats(tt *term.Terminal, c *ptr.State, command Command) {
+func doDeferStats(o Outputter, c *ptr.State, command Command) {
 	reachableFunctions := c.ReachableFunctions()
 	results := analysis.DeferStats(&reachableFunctions)
-	writeFmt(tt, "%d functions had defers\n", results.NumFunctionsWithDefers)
-	writeFmt(tt, "%d total defers (%f/func)\n", results.NumDefers,
+	o.Write("%d functions had defers\n", results.NumFunctionsWithDefers)
+	o.Write("%d total defers (%f/func)\n", results.NumDefers,
 		float32(results.NumDefers)/float32(results.NumFunctionsWithDefers))
-	writeFmt(tt, "%d total `rundefers` (%f/func)\n", results.NumRunDefers,
+	o.Write("%d total `rundefers` (%f/func)\n", results.NumRunDefers,
 		float32(results.NumRunDefers)/float32(results.NumFunctionsWithDefers))
 	if command.Flags["A"] {
 		for name, stat := range results.FunctionsWithManyDefers {
-			writeFmt(tt, "%s has %d defers and %d rundefers\n", name, stat.NumDefers, stat.NumRunDefers)
+			o.Write("%s has %d defers and %d rundefers\n", name, stat.NumDefers, stat.NumRunDefers)
 		}
 	}
 }
 
-func doClosureStats(tt *term.Terminal, c *dataflow.State, command Command) {
+func doClosureStats(o Outputter, c *dataflow.State, command Command) {
 	stats, err := analysis.ComputeClosureUsageStats(c)
 	if err != nil {
-		WriteErr(tt, "could not compute closure statistics.")
+		o.WriteErr("could not compute closure statistics.")
 	}
 	r, _ := regexp.Compile(".*")
 	if regexpStr, hasFilter := command.NamedArgs["filter"]; hasFilter {
 		r, err = regexp.Compile(regexpStr)
 		if err != nil {
-			regexErr(tt, regexpStr, err)
+			regexErr(o, regexpStr, err)
 		}
 	}
-	WriteSuccess(tt, "Closures/anonymous function stats:")
-	writeFmt(tt, " # MakeClosure                 %d\n", stats.TotalMakeClosures)
-	writeFmt(tt, " # Anon functions              %d\n", stats.TotalAnonFunctions)
-	writeFmt(tt, " # Anon fun. calls             %d\n", stats.TotalAnonCalls)
-	writeFmt(tt, " # Anons capturing channels    %d\n", len(stats.AnonsCapturingChannels))
-	writeFmt(tt, " Closure usage:\n")
-	writeFmt(tt, "   # Closures w. immediate call  %d\n", len(stats.ClosuresImmediatelyCalled))
-	writeFmt(tt, "   # Closures w. local call      %d\n", len(stats.ClosuresCalled))
-	writeFmt(tt, "   # Closures returned           %d\n", len(stats.ClosuresReturned))
-	writeFmt(tt, "   # Closures passed to call     %d\n", len(stats.ClosuresPassedAsArgs))
-	writeFmt(tt, "   # Unclassified                %d\n", len(stats.ClosuresNoClass))
+	o.WriteSuccess("Closures/anonymous function stats:")
+	o.Write(" # MakeClosure                 %d\n", stats.TotalMakeClosures)
+	o.Write(" # Anon functions              %d\n", stats.TotalAnonFunctions)
+	o.Write(" # Anon fun. calls             %d\n", stats.TotalAnonCalls)
+	o.Write(" # Anons capturing channels    %d\n", len(stats.AnonsCapturingChannels))
+	o.Write(" Closure usage:\n")
+	o.Write("   # Closures w. immediate call  %d\n", len(stats.ClosuresImmediatelyCalled))
+	o.Write("   # Closures w. local call      %d\n", len(stats.ClosuresCalled))
+	o.Write("   # Closures returned           %d\n", len(stats.ClosuresReturned))
+	o.Write("   # Closures passed to call     %d\n", len(stats.ClosuresPassedAsArgs))
+	o.Write("   # Unclassified                %d\n", len(stats.ClosuresNoClass))
 
 	// Functions capturing channels
 	if command.Flags["C"] {
-		WriteSuccess(tt, "Anonymous functions capturing channels:")
+		o.WriteSuccess("Anonymous functions capturing channels:")
 		var fnames []string
 		for function := range stats.AnonsCapturingChannels {
 			fnames = append(fnames, function.String())
@@ -148,24 +147,24 @@ func doClosureStats(tt *term.Terminal, c *dataflow.State, command Command) {
 		slices.Sort(fnames)
 		for _, fname := range fnames {
 			if r.MatchString(fname) {
-				writeFmt(tt, "  %s\n", fname)
+				o.Write("  %s\n", fname)
 			}
 		}
 	}
 	// Closures that are immediately called
 	if command.Flags["I"] {
-		WriteSuccess(tt, "Closures called immediately at creation:")
-		printInstrsWithParent(tt, c.Program, stats.ClosuresImmediatelyCalled, r)
+		o.WriteSuccess("Closures called immediately at creation:")
+		printInstrsWithParent(o, c.Program, stats.ClosuresImmediatelyCalled, r)
 	}
 
 	// Show unclassified closures uses
 	if command.Flags["U"] {
-		WriteSuccess(tt, "Unclassified closures:")
-		printInstrsWithParent(tt, c.Program, stats.ClosuresNoClass, r)
+		o.WriteSuccess("Unclassified closures:")
+		printInstrsWithParent(o, c.Program, stats.ClosuresNoClass, r)
 	}
 }
 
-func printInstrsWithParent[T any](tt *term.Terminal, p *ssa.Program, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
+func printInstrsWithParent[T any](o Outputter, p *ssa.Program, instrs map[ssa.Instruction]T, target *regexp.Regexp) {
 	var fnames []NameAndLoc
 	for instruction := range instrs {
 		loc := p.Fset.Position(instruction.Parent().Pos())
@@ -181,8 +180,8 @@ func printInstrsWithParent[T any](tt *term.Terminal, p *ssa.Program, instrs map[
 	slices.SortFunc(fnames, func(x NameAndLoc, y NameAndLoc) int { return strings.Compare(x.name, y.name) })
 	for _, x := range fnames {
 		if target.MatchString(x.name) {
-			writeFmt(tt, "  Parent function %s\n", x.name)
-			writeFmt(tt, "         location %s\n", x.loc)
+			o.Write("  Parent function %s\n", x.name)
+			o.Write("         location %s\n", x.loc)
 		}
 	}
 }

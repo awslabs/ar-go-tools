@@ -15,47 +15,23 @@
 package main
 
 import (
-	"math/rand"
-	"strconv"
+	"fmt"
+	"net/http"
 )
 
-type T struct {
-	Data  string
-	Other string
+func thisFunctionIsCalled(input string) string {
+	fmt.Println("This function is called with input:", input)
+	// Perform some operation on the input
+	result := "Processed: " + input
+	return result
 }
 
-type R string
+func main() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello, World!")
+	})
 
-func genStr() string {
-	return strconv.Itoa(rand.Int()) + "1234"
-}
-
-func genT() T {
-	return T{
-		Data:  genStr(),
-		Other: genStr() + "ok",
-	}
-}
-
-func source1() T {
-	return T{
-		Data:  strconv.Itoa(rand.Int()) + "tainted",
-		Other: "ok",
-	}
-}
-
-func source2() R {
-	return R(strconv.Itoa(rand.Int()) + "tainted")
-}
-
-func sink(_ ...any) {
-
-}
-
-func sinkStr(s string) {
-
-}
-
-func notSink(_ ...any) {
-
+	fmt.Println("Server starting on :8080")
+	fmt.Println(thisFunctionIsCalled("Hello, World!"))
+	http.ListenAndServe(":8080", nil)
 }

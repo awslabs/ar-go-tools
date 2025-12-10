@@ -415,7 +415,7 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 						}
 
 						// the callee summary may not have been created yet
-						if callSite.CalleeSummary == nil {
+						if callSite.CalleeSummary == nil && callSite.Callee() != nil {
 							logger.Tracef("Callee summary has not been created")
 							callSite.CalleeSummary = df.NewSummaryGraph(s,
 								callSite.Callee(),

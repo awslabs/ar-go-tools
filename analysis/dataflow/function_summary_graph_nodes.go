@@ -116,6 +116,8 @@ func Instr(node GraphNode) ssa.Instruction {
 		return node.Instr()
 	case *IfNode:
 		return node.SsaNode()
+	case *AccessGlobalNode:
+		return node.instr
 	}
 
 	return nil
@@ -272,7 +274,10 @@ func TermNodeSummary(g GraphNode) string {
 			formatutil.Green(x.fvPos),
 			x.ssaNode.Parent().String())
 	case *AccessGlobalNode:
-		return fmt.Sprintf("%s Global variable %s", nodeCode, formatutil.Red(x.Global.String()))
+		if x.IsWrite {
+			return fmt.Sprintf("%s Global variable write %s", nodeCode, formatutil.Yellow(x.Global.String()))
+		}
+		return fmt.Sprintf("%s Global variable read %s", nodeCode, formatutil.Red(x.Global.String()))
 	}
 	return ""
 }
@@ -325,7 +330,10 @@ func shortNodeSummary(g GraphNode) string {
 	case *FreeVarNode:
 		return "free-var"
 	case *AccessGlobalNode:
-		return fmt.Sprintf("global:%v", x.Global.Value())
+		if x.IsWrite {
+			return fmt.Sprintf("write-global:%v", x.Global.Value())
+		}
+		return fmt.Sprintf("read-global:%v", x.Global.Value())
 	}
 	return ""
 }

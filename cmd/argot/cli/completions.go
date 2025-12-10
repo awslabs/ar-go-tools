@@ -19,13 +19,13 @@ import (
 )
 
 // autoCompleteOfAnalyzerState provides the auto-completion functionality for the command-line interface
-func autoCompleteOfAnalyzerState(_ *session) func(string, int, rune) (string, int, bool) {
+func autoCompleteOfAnalyzerState(_ *Session) func(string, int, rune) (string, int, bool) {
 	f := func(line string, pos int, key rune) (string, int, bool) {
 		if key == '\t' {
 			if len(line) > 1 && pos == len(line) {
 				pc := 0
 				compl := line
-				for cmd := range commands {
+				for cmd := range Commands {
 					if strings.HasPrefix(cmd, line) {
 						pc++
 						compl = cmd
