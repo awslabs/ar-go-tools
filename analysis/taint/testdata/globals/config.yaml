@@ -8,7 +8,7 @@ dataflow-problems:
           # Sources can be source1, source2, etc.
           method: "source[1-9]?"
         - package: "(globals)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
-          global: "globalSource[12]"
+          global: "globalSource[1-9]"
           kind: "load"
       sinks:
         - method: "sink[1-9]?"

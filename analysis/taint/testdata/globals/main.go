@@ -22,6 +22,7 @@ import (
 var x T
 var globalSource1 T      // @Source(ex8)
 var globalSource2 string // @Source(ex9)
+var globalSource3 *T
 
 func TestTaintPropagatesThroughGlobal() {
 	a := source1() // @Source(ex1)
@@ -31,6 +32,16 @@ func TestTaintPropagatesThroughGlobal() {
 
 func runX(s T) {
 	x = s
+}
+
+// Testing taint propagation through aliasing a global
+var myGlobal *T
+
+func TestTaintPropagatesThroughAliasingGlobal() {
+	myAlias := myGlobal
+	notSink(myAlias)
+	*myAlias = source1() // @Source(ex11)
+	sink(*myGlobal)      // @Sink(ex11)
 }
 
 // TestTaintDoesNotFollowDataflow
@@ -109,9 +120,17 @@ func TestGlobalRefAsArgIsTainted2() {
 	sink(&globalSource2) // @Sink(ex9)
 }
 
+func TestGlobalAliasAsArgIsTainted() {
+	local := globalSource3 // @Source(ex10)
+	notSink(local)
+	value := *local
+	sinkStr(value.Data) // @Sink(ex10)
+}
+
 func main() {
 	taintGlobalDoesNotFollowDataFlow()
 	TestTaintPropagatesThroughGlobal()
+	TestTaintPropagatesThroughAliasingGlobal()
 	TestTaintDoesNotFollowDataflow()
 	TestTaintGlobalThroughClosure()
 	TestTaintGlobalFromSlice()
@@ -120,4 +139,5 @@ func main() {
 	TestGlobalAsArgIsTainted()
 	TestGlobalRefAsArgIsTainted()
 	TestGlobalRefAsArgIsTainted2()
+	TestGlobalAliasAsArgIsTainted()
 }
