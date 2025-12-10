@@ -1,22 +1,77 @@
-# Argot Configuration for OFXGo
-# Static analysis configuration for the OFXGo library and CLI tool
-
 options:
-  project-root: "./"                    # Root directory for relative paths
-  reports-dir: "logs/argot"             # Directory for analysis reports
-  log-level: 3                          # Info level logging (1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
-  report-paths: true                    # Generate detailed path reports for dataflow analyses
+  project-root: "."
+  reports-dir: "logs/argot"
+  log-level: 3
+  report-paths: true
   analysis-options:
-    unsafe-max-depth: 15                # Limit call depth to 15 for performance
-    max-alarms: 30                      # Maximum number of alarms to report
-
+    unsafe-max-depth: 15
+    max-alarms: 30
 targets:
-  # OFXGo library - core library code
-  - name: "ofxgo-library"
-    files:
-      - "./"
-  
-  # OFX CLI tool - command-line client for querying OFX servers
-  - name: "ofx-cli"
-    files:
-      - "./cmd/ofx"
+  - name: "ofxgo-cmd"
+    files: ["./cmd/ofx/"]
+dataflow-problems:
+  summarize-on-demand: true
+  field-sensitive-funcs: [".*"]
+  # Taint tracking problems
+  taint-tracking:
+    - tag: "credential-logging"
+      description: "Checking that credentials (UserID, UserPass, passwords) don't get logged or printed"
+      targets: ["ofxgo-cmd"]
+      severity: "HIGH"
+      sources:
+        # OFX credential fields
+        - package: "github.com/aclindsa/ofxgo"
+          method: "UserID"
+        - package: "github.com/aclindsa/ofxgo"
+          method: "UserPass"
+        # Password input functions
+        - package: "golang.org/x/term"
+          method: "ReadPassword"
+        - package: "syscall"
+          method: "Syscall"
+      sinks:
+        # Standard output/logging functions
+        - package: "fmt"
+          method: "^(Print|Printf|Println|Sprint|Sprintf|Sprintln|Fprint|Fprintf|Fprintln).*"
+        - package: "log"
+          method: "^(Print|Printf|Println|Fatal|Fatalf|Fatalln|Panic|Panicf|Panicln).*"
+        # Error handling that might expose credentials
+        - package: "errors"
+          method: "New"
+        - package: "fmt"
+          method: "Errorf"
+      sanitizers:
+        # Functions that mask or hash credentials
+        - package: "crypto/.*"
+          method: ".*"
+        - package: "hash/.*"
+          method: ".*"
+    - tag: "account-info-logging"
+      description: "Checking that sensitive account information doesn't get logged inappropriately"
+      targets: ["ofxgo-cmd"]
+      severity: "MEDIUM"
+      sources:
+        # Account identifiers that might be sensitive
+        - package: "ofxgo"
+          type: "(CCAct|InvAcct|BankAcct)"
+          field: "AcctID"
+        - package: "ofxgo"
+          type: "BankAcct"
+          field: "BankID"
+        - package: "ofxgo"
+          type: "InvAcct"
+          field: "BrokerID"
+      sinks:
+        # Only flag direct printing to stdout/stderr, not structured logging
+        - package: "fmt"
+          method: "^(Print|Printf|Println)$"
+        - package: "log"
+          method: "^(Print|Printf|Println)$"
+      sanitizers:
+        # Allow masked/truncated display
+        - package: "strings"
+          method: "Replace"
+        - package: ".*"
+          method: ".*[Mm]ask.*"
+        - package: ".*"
+          method: ".*[Tt]runcate.*"

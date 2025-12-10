@@ -10,3 +10,45 @@ options:
 targets:
   - name: "atlas-cli"
     files: ["./"]
+
+dataflow-problems:
+  summarize-on-demand: true
+  field-sensitive-funcs: [".*"]
+  
+  taint-tracking:
+    - tag: "sql-injection"
+      description: "SQL injection via database URLs and schema names"
+      targets: ["atlas-cli"]
+      severity: "HIGH"
+      sources:
+        - package: "ariga.io/atlas/cmd/atlas/internal/cmdapi"
+          method: ".*Flags.*"
+      sinks:
+        - package: "ariga.io/atlas/sql/sqlclient"
+          method: "Open"
+        - package: "database/sql"
+          method: ".*"
+    
+    - tag: "path-traversal"
+      description: "Path traversal in migration directories"
+      targets: ["atlas-cli"]
+      severity: "HIGH"
+      sources:
+        - package: "ariga.io/atlas/cmd/atlas/internal/cmdapi"
+          method: ".*dirURL.*"
+      sinks:
+        - package: "os"
+          method: "(Open|Create|ReadFile|WriteFile)"
+        - package: "io/fs"
+          method: ".*"
+    
+    - tag: "command-injection"
+      description: "Command injection in Docker operations"
+      targets: ["atlas-cli"]
+      severity: "HIGH"
+      sources:
+        - package: "ariga.io/atlas/cmd/atlas/internal/docker"
+          method: ".*"
+      sinks:
+        - package: "os/exec"
+          method: "Command"

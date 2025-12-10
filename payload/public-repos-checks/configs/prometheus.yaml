@@ -1,6 +1,5 @@
 # Argot Configuration for Prometheus Go Client Library
 # This config analyzes the core library and example programs
-
 options:
   project-root: "./"
   reports-dir: "logs/argot"
@@ -9,29 +8,91 @@ options:
   analysis-options:
     unsafe-max-depth: 15
     max-alarms: 30
-
 targets:
   # Core Prometheus client library
   - name: "prometheus-core"
     files:
       - "./prometheus"
-  
   # Simple instrumentation example
   - name: "example-simple"
     files:
       - "./examples/simple/main.go"
-  
   # Random metrics example
   - name: "example-random"
     files:
       - "./examples/random/main.go"
-  
   # Go collector example
-  - name: "example-gocollector"
+  - name: "gocollector"
     files:
       - "./examples/gocollector/main.go"
-  
   # HTTP middleware example
-  - name: "example-middleware"
+  - name: "middleware"
     files:
       - "./examples/middleware/main.go"
+dataflow-problems:
+  summarize-on-demand: true
+  field-sensitive-funcs: [".*"]
+  taint-tracking:
+    - tag: "http-input-to-metrics"
+      description: "HTTP request data should not influence Go runtime metrics"
+      targets: ["gocollector"]
+      severity: "MEDIUM"
+      sources:
+        - package: "net/http"
+          method: "^(Request|Header|Form|Body).*"
+        - package: "net/http"
+          method: "^.*Handler.*"
+      sinks:
+        - package: "github.com/prometheus/client_golang/prometheus"
+          method: "^(NewRegistry|MustRegister|Register).*"
+        - package: "github.com/prometheus/client_golang/prometheus/collectors"
+          method: "^NewGoCollector$"
+      sanitizers:
+        - package: "github.com/prometheus/client_golang/prometheus"
+          method: "^NewRegistry$"
+    - tag: "request-volume-metric-skew"
+      description: "User request patterns artificially affecting runtime metrics"
+      targets: ["gocollector"]
+      severity: "LOW"
+      sources:
+        - package: "net/http"
+          method: "^ListenAndServe$"
+        - package: "net/http"
+          method: "^.*Handler$"
+      sinks:
+        - package: "runtime"
+          method: "^(GC|MemStats|NumGoroutine).*"
+    - tag: "http-data-to-metric-labels"
+      description: "HTTP request data flowing into Prometheus metric labels"
+      targets: ["middleware"]
+      severity: "HIGH"
+      sources:
+        - package: "github.com/prometheus/client_golang/examples/middleware/httpmiddleware"
+          method: "WrapHandler"
+      sinks:
+        - package: "github.com/prometheus/client_golang/prometheus"
+          method: "^(Labels|CounterVec|HistogramVec|SummaryVec).*"
+        - package: "github.com/prometheus/client_golang/prometheus/promauto"
+          method: "^New.*Vec$"
+    - tag: "request-size-manipulation"
+      description: "User-controlled request sizes affecting metrics"
+      targets: ["middleware"]
+      severity: "MEDIUM"
+      sources:
+        - package: "net/http"
+          method: "^.*Body.*"
+        - package: "net/http"
+          method: "ContentLength"
+      sinks:
+        - package: "github.com/prometheus/client_golang/prometheus/promhttp"
+          method: "InstrumentHandlerRequestSize"
+    - tag: "label-cardinality-bomb"
+      description: "Unbounded handler names creating metric label explosion"
+      targets: ["middleware"]
+      severity: "HIGH"
+      sources:
+        - package: "github.com/prometheus/client_golang/examples/middleware/httpmiddleware"
+          method: "WrapHandler"
+      sinks:
+        - package: "github.com/prometheus/client_golang/prometheus"
+          method: "WrapRegistererWith"

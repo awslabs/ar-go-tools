@@ -14,3 +14,103 @@ targets:
   - name: "rclone"
     files:
       - "./rclone.go"
+
+dataflow-problems:
+  taint-tracking:
+    # Critical security problem: Command injection prevention
+    - tag: "command-injection"
+      severity: "CRITICAL"
+      description: "Prevent command injection via untrusted user input"
+      targets: ["rclone"]
+      sources:
+        - package: "os"
+          method: "Args"
+        - package: "flag"
+          method: "Parse"
+        - package: "os"
+          method: "Getenv"
+        - package: "net/http"
+          method: "FormValue"
+        - package: "io"
+          method: "ReadAll"
+      sinks:
+        - package: "os/exec"
+          method: "Command"
+        - package: "os/exec"
+          method: "Run"
+        - package: "os/exec"
+          method: "Start"
+      
+    # High security problem: Path traversal prevention  
+    - tag: "path-traversal"
+      severity: "HIGH"
+      description: "Prevent path traversal attacks in file operations"
+      targets: ["rclone"]
+      sources:
+        - package: "os"
+          method: "Args"
+        - package: "flag"
+          method: "Parse"
+        - package: "net/http"
+          method: "FormValue"
+        - package: "io"
+          method: "ReadAll"
+      sinks:
+        - package: "os"
+          method: "Create"
+        - package: "os"
+          method: "OpenFile"
+        - package: "os"
+          method: "Remove"
+        - package: "os"
+          method: "RemoveAll"
+      sanitizers:
+        - package: "path/filepath"
+          method: "Clean"
+        - package: "path/filepath"
+          method: "Abs"
+          
+    # Critical security problem: Credential exposure prevention
+    - tag: "credential-exposure"
+      severity: "CRITICAL" 
+      description: "Prevent credentials from being logged or exposed"
+      targets: ["rclone"]
+      sources:
+        - package: "github.com/rclone/rclone/fs/config"
+          method: "Get"
+        - package: "os"
+          method: "Getenv"
+      sinks:
+        - package: "log"
+          method: "Print"
+        - package: "log"
+          method: "Printf"
+        - package: "fmt"
+          method: "Print"
+        - package: "fmt"
+          method: "Printf"
+        - package: "fmt"
+          method: "Println"
+          
+    # Medium security problem: Network request validation
+    - tag: "network-request-validation"
+      severity: "MEDIUM"
+      description: "Validate URLs before making network requests"
+      targets: ["rclone"]
+      sources:
+        - package: "os"
+          method: "Args"
+        - package: "flag"
+          method: "Parse"
+        - package: "io"
+          method: "ReadAll"
+      sinks:
+        - package: "net/http"
+          method: "Get"
+        - package: "net/http"
+          method: "Post"
+      sanitizers:
+        - package: "net/url"
+          method: "Parse"
+        - package: "strings"
+          method: "HasPrefix"

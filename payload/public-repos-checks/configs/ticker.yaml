@@ -1,6 +1,5 @@
 # Argot Configuration for Ticker
 # Terminal stock & crypto price watcher
-
 options:
   project-root: "./"
   reports-dir: "logs/argot"
@@ -9,7 +8,146 @@ options:
   analysis-options:
     unsafe-max-depth: 15
     max-alarms: 30
-
 targets:
   - name: "ticker"
     files: ["./"]
+dataflow-problems:
+  summarize-on-demand: true
+  field-sensitive-funcs: [".*"]
+  taint-tracking:
+    # 1. Configuration file injection - untrusted config paths flowing to file operations
+    - tag: "config-path-injection"
+      description: "Check that user-controlled config paths don't lead to arbitrary file access"
+      targets: ["ticker"]
+      severity: "HIGH"
+      sources:
+        - package: "github.com/spf13/cobra"
+          method: ".*Args.*"
+        - package: "os"
+          method: "Args"
+      sinks:
+        - package: "github.com/spf13/afero"
+          method: "Open.*"
+        - package: "os"
+          method: "Open.*"
+        - package: "io/ioutil"
+          method: "ReadFile"
+        - package: "gopkg.in/yaml.v2"
+          method: ".*Decode.*"
+    # 2. HTTP request injection - user input flowing to HTTP requests
+    - tag: "http-request-injection"
+      description: "Check that user input doesn't flow into HTTP request URLs or headers"
+      targets: ["ticker"]
+      severity: "HIGH"
+      sources:
+        - package: "github.com/achannarasappa/ticker/v5/internal/cli"
+          method: ".*Config.*"
+        - package: "gopkg.in/yaml.v2"
+          method: ".*Decode.*"
+      sinks:
+        - package: "net/http"
+          method: "NewRequest"
+        - package: "net/http"
+          method: "Get"
+        - package: "net/http"
+          method: "Post"
+        - package: "net/url"
+          method: "Parse"
+    # 3. Log injection - user data flowing to log outputs
+    - tag: "log-injection"
+      description: "Check that user-controlled data doesn't get logged without sanitization"
+      targets: ["ticker"]
+      severity: "MEDIUM"
+      sources:
+        - package: "github.com/achannarasappa/ticker/v5/internal/cli"
+          method: ".*Config.*"
+        - package: "net/http"
+          method: ".*"
+        - package: "gopkg.in/yaml.v2"
+          method: ".*Decode.*"
+      sinks:
+        - package: "log"
+          method: ".*"
+        - package: "fmt"
+          method: "Print.*"
+        - package: "os"
+          method: ".*"
+    # 4. File path traversal - symbol names or config values leading to file operations
+    - tag: "path-traversal"
+      description: "Check for path traversal vulnerabilities in file operations"
+      targets: ["ticker"]
+      severity: "HIGH"
+      sources:
+        - package: "github.com/achannarasappa/ticker/v5/internal/cli/symbol"
+          method: ".*"
+        - package: "gopkg.in/yaml.v2"
+          method: ".*Decode.*"
+      sinks:
+        - package: "github.com/spf13/afero"
+          method: ".*"
+        - package: "os"
+          method: "Open.*"
+        - package: "os"
+          method: "Create.*"
+        - package: "path/filepath"
+          method: "Join"
+    # 5. Cookie/session data exposure - sensitive auth data flowing to logs
+    - tag: "cookie-exposure"
+      description: "Check that HTTP cookies and session data don't leak to logs or output"
+      targets: ["ticker"]
+      severity: "HIGH"
+      sources:
+        - package: "net/http"
+          method: ".*Cookie.*"
+        - context: "github.com/achannarasappa/ticker/v5/internal/monitor/yahoo/unary"
+          method: ".*crumb.*"
+        - context: "github.com/achannarasappa/ticker/v5/internal/monitor/yahoo/unary"
+          method: ".*session.*"
+      sinks:
+        - package: "log"
+          method: ".*"
+        - package: "fmt"
+          method: "Print.*"
+        - package: "os"
+          method: ".*"
+    # 6. Network data to file system - external API responses written to files
+    - tag: "network-to-filesystem"
+      description: "Check that untrusted network data doesn't get written to sensitive file locations"
+      targets: ["ticker"]
+      severity: "MEDIUM"
+      sources:
+        - package: "net/http"
+          method: ".*Response.*"
+        - package: "encoding/json"
+          method: ".*Decode.*"
+        - context: "github.com/achannarasappa/ticker/v5/internal/monitor"
+          method: ".*"
+      sinks:
+        - package: "github.com/spf13/afero"
+          method: ".*Write.*"
+        - package: "os"
+          method: ".*Write.*"
+        - package: "io"
+          method: ".*Write.*"
+syntactic-problems:
+  # Check for hardcoded credentials or API keys
+  struct-inits:
+    - tag: "hardcoded-credentials"
+      description: "Check for hardcoded API keys or credentials in struct initialization"
+      targets: ["ticker"]
+      struct:
+        type: ".*Config.*"
+      fields-set:
+        - field: ".*[Kk]ey.*"
+        - field: ".*[Tt]oken.*"
+        - field: ".*[Pp]assword.*"
+        - field: ".*[Ss]ecret.*"
+  # Check for insecure HTTP client configurations
+  cond-checks:
+    - tag: "insecure-http-client"
+      description: "Check that HTTP clients are configured securely"
+      targets: ["ticker"]
+      call:
+        - method: "NewRequest"
+      preconditions:
+        - precondition: ["TLSClientConfig"]
