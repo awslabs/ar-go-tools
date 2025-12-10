@@ -325,32 +325,13 @@ func mayFlow(e edge) maxsat.Lit {
 //
 // TODO merge this logic with newMostGeneralDetailedSummary
 func mostGeneralEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode, via Method) []edge {
+	flows := mostGeneralFlows(g)
+	if via == Types {
+		flows = checkSummaryTypes(flows).badFlows
+	}
 	var edges []edge
-	fNodes := summaryNodes(g)
-	for _, from := range fNodes {
-		switch from := from.(type) {
-		case *dataflow.ParamNode:
-			for _, to := range fNodes {
-				if from == to {
-					continue
-				}
-				switch to := to.(type) {
-				case *dataflow.ParamNode:
-					switch via {
-					case Types:
-						// If the analysis method is Types, then scalar parameters cannot be outputs
-						if !pointer.CanPoint(to.Type()) {
-							continue
-						}
-					}
-					e := edge{from: node{n: from, call: call}, to: node{n: to, call: call}}
-					edges = append(edges, e)
-				case *dataflow.ReturnValNode:
-					e := edge{from: node{n: from, call: call}, to: node{n: to, call: call}}
-					edges = append(edges, e)
-				}
-			}
-		}
+	for _, fl := range flows {
+		edges = append(edges, edge{from: node{fl.from, call}, to: node{fl.to, call}})
 	}
 
 	return edges

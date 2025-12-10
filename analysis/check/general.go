@@ -60,8 +60,8 @@ func checkSummaryTypes(bad []flow) checkResult {
 // TODO include free variables as inputs and outputs
 func mostGeneralFlows(g *dataflow.SummaryGraph) []flow {
 	var flows []flow
+	seen := make(map[flow]struct{})
 	for _, input := range g.Params {
-		// A parameter can only be an output if it is pointer-like
 		for _, output := range g.Params {
 			// We don't count self-flows (input flows to same input as an output) because the data
 			// flows to and from the parameter when used as an argument at a callsite are part of
@@ -69,12 +69,22 @@ func mostGeneralFlows(g *dataflow.SummaryGraph) []flow {
 			if input == output {
 				continue
 			}
-			flows = append(flows, flow{from: input, to: output})
+			fl := flow{from: input, to: output}
+			if _, ok := seen[fl]; ok {
+				continue
+			}
+			flows = append(flows, fl)
+			seen[fl] = struct{}{}
 		}
 
 		for _, outputs := range g.Returns {
 			for _, output := range outputs {
-				flows = append(flows, flow{from: input, to: output})
+				fl := flow{from: input, to: output}
+				if _, ok := seen[fl]; ok {
+					continue
+				}
+				flows = append(flows, fl)
+				seen[fl] = struct{}{}
 			}
 		}
 	}
