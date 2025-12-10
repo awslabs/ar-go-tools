@@ -1,0 +1,14 @@
+# Argot configuration for go-css CSS parser library
+
+options:
+  project-root: "./"
+  reports-dir: "logs/argot"
+  log-level: 3
+  report-paths: true
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 30
+
+targets:
+  - name: "go-css"
+    files: ["./"]

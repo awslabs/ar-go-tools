@@ -1,0 +1,34 @@
+options:
+  project-root: "./"
+  reports-dir: "logs/argot"
+  log-level: 3
+  report-paths: true
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 30
+
+targets:
+  # Main CloudWatch Agent daemon
+  - name: "cloudwatch-agent"
+    files:
+      - "./cmd/amazon-cloudwatch-agent"
+
+  # Configuration translator utility
+  - name: "config-translator"
+    files:
+      - "./cmd/config-translator"
+
+  # Configuration downloader utility
+  - name: "config-downloader"
+    files:
+      - "./cmd/config-downloader"
+
+  # Agent startup wrapper
+  - name: "start-agent"
+    files:
+      - "./cmd/start-amazon-cloudwatch-agent"
+
+  # Configuration wizard
+  - name: "config-wizard"
+    files:
+      - "./cmd/amazon-cloudwatch-agent-config-wizard"

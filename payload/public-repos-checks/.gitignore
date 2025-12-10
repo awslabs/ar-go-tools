@@ -1,0 +1,15 @@
+# Ignore all repository subfolders
+amazon-cloudwatch-agent/
+atlas/
+badger/
+cli/
+go-css/
+gogs/
+govatar/
+ofxgo/
+photoprism/
+prometheus/
+rclone/
+ticker/
+tidb/
+v2ray-core/

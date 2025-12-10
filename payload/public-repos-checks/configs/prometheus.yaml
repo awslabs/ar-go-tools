@@ -1,0 +1,37 @@
+# Argot Configuration for Prometheus Go Client Library
+# This config analyzes the core library and example programs
+
+options:
+  project-root: "./"
+  reports-dir: "logs/argot"
+  log-level: 3
+  report-paths: true
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 30
+
+targets:
+  # Core Prometheus client library
+  - name: "prometheus-core"
+    files:
+      - "./prometheus"
+  
+  # Simple instrumentation example
+  - name: "example-simple"
+    files:
+      - "./examples/simple/main.go"
+  
+  # Random metrics example
+  - name: "example-random"
+    files:
+      - "./examples/random/main.go"
+  
+  # Go collector example
+  - name: "example-gocollector"
+    files:
+      - "./examples/gocollector/main.go"
+  
+  # HTTP middleware example
+  - name: "example-middleware"
+    files:
+      - "./examples/middleware/main.go"

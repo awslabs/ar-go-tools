@@ -1,0 +1,37 @@
+# Argot Configuration for TiDB
+# TiDB is a distributed SQL database with multiple entry points
+
+options:
+  project-root: "./"
+  reports-dir: "logs/argot"
+  log-level: 3
+  report-paths: true
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 30
+
+targets:
+  # Main TiDB server - the core distributed SQL database server
+  - name: "tidb-server"
+    files:
+      - "./cmd/tidb-server"
+
+  # TiDB Lightning - high-speed data import tool
+  - name: "tidb-lightning"
+    files:
+      - "./lightning/cmd/tidb-lightning"
+
+  # Dumpling - data export tool (MySQL compatible)
+  - name: "dumpling"
+    files:
+      - "./dumpling/cmd/dumpling"
+
+  # BR (Backup & Restore) - backup and restore tool
+  - name: "br"
+    files:
+      - "./br/cmd/br"
+
+  # Importer - data import utility
+  - name: "importer"
+    files:
+      - "./cmd/importer"

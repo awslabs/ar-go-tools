@@ -1,0 +1,16 @@
+# Argot Configuration for rclone
+# rclone is a command-line program to sync files and directories to/from cloud storage
+
+options:
+  project-root: "./"
+  reports-dir: "logs/argot"
+  log-level: 3
+  report-paths: true
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 30
+
+targets:
+  - name: "rclone"
+    files:
+      - "./rclone.go"

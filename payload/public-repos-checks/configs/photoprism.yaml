@@ -1,0 +1,31 @@
+# Argot Configuration for PhotoPrism
+# PhotoPrism® is an AI-Powered Photos App for the Decentralized Web
+
+options:
+  # Root directory for resolving relative file paths
+  project-root: "./"
+  
+  # Directory where analysis reports will be written
+  reports-dir: "logs/argot"
+  
+  # Verbosity level: 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace
+  log-level: 3
+  
+  # Generate detailed path reports for dataflow analyses
+  report-paths: true
+  
+  # Analysis options
+  analysis-options:
+    # Maximum call depth for analysis (0 = unlimited, >0 = unsafe but faster)
+    # Set to 15 for reasonable performance on large codebases
+    unsafe-max-depth: 15
+    
+    # Maximum number of alarms to report before stopping
+    max-alarms: 50
+
+# Analysis targets - each target represents a program or executable
+targets:
+  # Main PhotoPrism application
+  - name: "photoprism-main"
+    files:
+      - "./cmd/photoprism"

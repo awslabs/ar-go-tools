@@ -1,0 +1,38 @@
+options:
+  project-root: "./"
+  reports-dir: "logs/argot"
+  log-level: 3
+  report-paths: true
+  analysis-options:
+    unsafe-max-depth: 15
+    max-alarms: 30
+
+targets:
+  # Badger CLI tool
+  - name: "badger-cli"
+    files: ["./badger/"]
+
+  # Integration test for garbage collection
+  - name: "testgc"
+    files: ["./integration/testgc/..."]
+
+dataflow-problems:
+  summarize-on-demand: true
+  taint-tracking:
+    - tag: "path-traversal-vuln-#1"
+      description: "Checking that user-supplied paths to not flow directly to file operation without sanitization"
+      targets: ["badger-cli"]
+      unsafe-skip-bound-labels: true
+      sources:
+        - package: ".*"
+          global: "sstDir"
+          kind: "load"
+      sinks:
+        - package: "os"
+          method: "(Open|Create)"
+        - package: "badger"
+          method: "Open"
+        - package: "filepath"
+          method: "Join"
+      sanitizers:
+        - package: "TODO"
