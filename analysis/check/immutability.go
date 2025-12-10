@@ -37,7 +37,7 @@ func checkSummaryImmutability(s *State, bad []flow) checkResult {
 
 		isBad := isBadFlowImmutability(s, fl)
 		// NOTE Maybe we shouldn't bother checking the rest since the summary is unsound, but
-		// filtering out all the bad flows makes it easier to test
+		// including all the bad flows makes it easier to test
 		if isBad {
 			unproven = append(unproven, fl)
 		}
@@ -47,32 +47,38 @@ func checkSummaryImmutability(s *State, bad []flow) checkResult {
 }
 
 // isBadFlowImmutability returns true if fl.to is written to (modified) in any way.
+// It is impossible to have a data flow to an immutable value.
 //
 // If fl.to is pointer-like, then it uses the pointer analysis to detect any writes to the
 // value(s)'s underlying memory in the flow's function or any of its transitively-reachable callees.
 //
-// Otherwise, it detects any explicit writes to fl.to's value(s) in the flow's function.
+// Otherwise, fl.to is a scalar and must be a return value (since the types analysis filters out all
+// scalar parameter outputs).
+// If all values returned from the summary's return node are constants, then the return node is
+// immutable.
 // There is no need to analyze any callees because the value is stack allocated and therefore cannot
 // be modified outside of the function.
 func isBadFlowImmutability(s *State, fl flow) bool {
 	vals := outputVals(fl)
+
 	for _, val := range vals {
 		if isPointerLike(val.Type()) {
 			writeInstr, ok := checkWritesPtr(s.cache, s.PointerAnalysis.CallGraph, val)
 			if ok {
-				fmt.Printf("found modification of outgoing pointer flow value %v: %v at %s\n",
-					fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
-				s.Logger.Debugf("found modification of outgoing pointer flow value %v: %v at %s\n",
-					fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+				s.Logger.Debugf(
+					"found modification of output pointer value %v in %v: %v at %s\n",
+					val, fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
 				return true
 			}
 		} else {
-			writeInstr := checkWritesScalar(val)
-			if writeInstr != nil {
-				fmt.Printf("found write of outgoing scalar flow value %v: %v at %s\n",
-					fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
-				s.Logger.Debugf("found write of outgoing scalar flow value %v: %v at %s\n",
-					fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+			if _, ok := fl.to.(*dataflow.ReturnValNode); !ok {
+				panic(fmt.Errorf("detected scalar output in flow %v that is not a return", fl))
+			}
+
+			if !isPointerLike(val.Type()) && !lang.IsStaticallyDefinedLocal(val) {
+				s.Logger.Debugf(
+					"found non-static output scalar value %v in function %v",
+					val, val.Parent())
 				return true
 			}
 		}
@@ -133,21 +139,6 @@ func checkWritesPtr(c *aliasCache, cg *callgraph.Graph, to ssa.Value) (ptrWrite,
 	return ptrWrite{}, false
 }
 
-// checkWritesScalar returns the last instruction that writes any value to val.
-func checkWritesScalar(val ssa.Value) ssa.Instruction {
-	var write ssa.Instruction
-	lang.IterateInstructions(val.Parent(), func(_ int, instr ssa.Instruction) {
-		switch instr := instr.(type) {
-		case *ssa.Store:
-			if instr.Addr == val {
-				write = instr
-			}
-		}
-	})
-
-	return write
-}
-
 // outputVals returns all of the SSA values that the flow's "to" node may refer to.
 //
 // If the "to" node is a return, then it includes the value returned at the given index for each
@@ -155,6 +146,7 @@ func checkWritesScalar(val ssa.Value) ssa.Instruction {
 func outputVals(fl flow) []ssa.Value {
 	var vals []ssa.Value
 	switch to := fl.to.(type) {
+	// TODO handle globals
 	case *dataflow.ParamNode:
 		vals = append(vals, to.SsaNode())
 	case *dataflow.ReturnValNode:
@@ -193,15 +185,6 @@ func nodeIds(c *aliasCache, val ssa.Value) *intsets.Sparse {
 	}
 
 	return ids
-}
-
-func addValuesOfFn(fn *ssa.Function, vals map[ssa.Value]struct{}) {
-	lang.IterateValues(fn, func(_ int, val ssa.Value) {
-		if val == nil || val.Parent() == nil {
-			return
-		}
-		vals[val] = struct{}{}
-	})
 }
 
 func isAllocatedErrorType(val ssa.Value) bool {

@@ -108,8 +108,9 @@ func checkSummary(
 
 	start := time.Now()
 	var res checkResult
-	for _, method := range []Method{General, Types, Immutability} {
-		switch method {
+	var method Method
+	for _, meth := range []Method{General, Types, Immutability} {
+		switch meth {
 		case General:
 			res = checkSummaryMostGeneral(g, want)
 		case Types:
@@ -119,8 +120,9 @@ func checkSummary(
 		}
 
 		if res.isSound {
-			return newSoundnessResult(g, res, want, start, method), nil
+			return newSoundnessResult(g, res, want, start, meth), nil
 		}
+		method = meth
 	}
 
 	// Check callee summaries
@@ -130,11 +132,10 @@ func checkSummary(
 		return SoundnessResult{}, fmt.Errorf("failed to infer callee summaries: %v", err)
 	}
 	if len(calleeSummaries) == 0 {
-		return newSoundnessResult(g, res, want, start, Types), nil
+		return newSoundnessResult(g, res, want, start, method), nil
 	}
 
 	var badFlows []Flow
-	var method Method
 	for calleeG, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
 			return SoundnessResult{},
