@@ -35,10 +35,6 @@ import (
 var testfsys embed.FS
 
 func TestInferCalleeSummaries(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping slow test in short mode")
-	}
-
 	tests := []struct {
 		fn   summaries.FrontendDataflowSummary
 		want map[string][]summaries.DetailedSummary
@@ -272,18 +268,19 @@ func TestInferCalleeSummaries(t *testing.T) {
 		},
 	}
 
+	dir := filepath.Join("./testdata", "genspec")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	state, err := result.Bind(result.Bind(ptr.NewState(lp), dataflow.NewState), NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+
 	for _, tc := range tests {
 		t.Run(fmt.Sprintf("%s via %s", tc.fn.Name(), tc.via), func(t *testing.T) {
-			dir := filepath.Join("./testdata", "genspec")
-			lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
-			if err != nil {
-				t.Fatal(err)
-			}
-			setupConfig(lp)
-			state, err := result.Bind(result.Bind(ptr.NewState(lp), dataflow.NewState), NewState).Value()
-			if err != nil {
-				t.Fatalf("failed to load state: %s", err)
-			}
 			f, err := functionOfName(state, tc.fn.Name())
 			if err != nil {
 				t.Fatalf("failed to find function for summary %v", tc.fn.Name())
