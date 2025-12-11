@@ -30,6 +30,8 @@ targets:
     files:
       - "./examples/middleware/main.go"
 dataflow-problems:
+  user-specs:
+    - user-specs.yaml
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
   taint-tracking:
@@ -38,10 +40,9 @@ dataflow-problems:
       targets: ["gocollector"]
       severity: "MEDIUM"
       sources:
-        - package: "net/http"
+        - context: "github.com"
+          package: "net/http"
           method: "^(Request|Header|Form|Body).*"
-        - package: "net/http"
-          method: "^.*Handler.*"
       sinks:
         - package: "github.com/prometheus/client_golang/prometheus"
           method: "^(NewRegistry|MustRegister|Register).*"
@@ -57,8 +58,6 @@ dataflow-problems:
       sources:
         - package: "net/http"
           method: "^ListenAndServe$"
-        - package: "net/http"
-          method: "^.*Handler$"
       sinks:
         - package: "runtime"
           method: "^(GC|MemStats|NumGoroutine).*"
@@ -80,7 +79,7 @@ dataflow-problems:
       severity: "MEDIUM"
       sources:
         - package: "net/http"
-          method: "^.*Body.*"
+          method: "^Body"
         - package: "net/http"
           method: "ContentLength"
       sinks:

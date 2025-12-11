@@ -1,0 +1,201 @@
+dataflow-summaries:
+  # func (c *conn) serve(ctx context.Context)
+  - package: "net/http"
+    receiver: "*conn"
+    method: "serve"
+    flows:
+      # Context flows through the method and is modified
+      - from: "!arg 0"
+        to: "(!receiver).cancelCtx"
+      # Remote address flows from connection to conn.remoteAddr
+      - from: "(!receiver).rwc"
+        to: "(!receiver).remoteAddr"
+      # TLS connection state flows from connection to conn.tlsState
+      - from: "(!receiver).rwc"
+        to: "(!receiver).tlsState"
+      # Server configuration flows through various operations
+      - from: "(!receiver).server"
+        to: "(!receiver).r"
+      - from: "(!receiver).server"
+        to: "(!receiver).bufr"
+      - from: "(!receiver).server"
+        to: "(!receiver).bufw"
+      # Connection flows to readers/writers
+      - from: "(!receiver).rwc"
+        to: "(!receiver).r"
+      - from: "(!receiver).rwc"
+        to: "(!receiver).bufr"
+      - from: "(!receiver).rwc"
+        to: "(!receiver).bufw"
+      # Current request flows through the connection
+      - from: "(!receiver).rwc"
+        to: "(!receiver).curReq"
+  # func (sc *http2serverConn) serve(conf http2http2Config)
+  - package: "net/http"
+    receiver: "*http2serverConn"
+    method: "serve"
+    flows:
+      # Configuration parameter flows to receiver state
+      - from: "!arg 0"
+        to: "!receiver"
+      # Connection flows through receiver
+      - from: "(!receiver).conn"
+        to: "!receiver"
+      # Server flows through receiver
+      - from: "(!receiver).srv"
+        to: "!receiver"
+  # func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...EncoderOption) (written int, err error)
+  - package: "github.com/prometheus/common/expfmt"
+    function: "MetricFamilyToOpenMetrics"
+    flows:
+      # Input parameters flow to output
+      - from: "!arg 1"
+        to: "!arg 0"
+      - from: "!arg 2"
+        to: "!arg 0"
+      # Return values from input processing
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 1"
+  # func MetricFamilyToText(out io.Writer, in *dto.MetricFamily) (written int, err error)
+  - package: "github.com/prometheus/common/expfmt"
+    function: "MetricFamilyToText"
+    flows:
+      # Input parameters flow to output
+      - from: "!arg 1"
+        to: "!arg 0"
+      # Return values from input processing
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 1"
+  # Key net/http functions
+  # func ListenAndServe(addr string, handler Handler) error
+  - package: "net/http"
+    function: "ListenAndServe"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+  # func Handle(pattern string, handler Handler)
+  - package: "net/http"
+    function: "Handle"
+    flows: []
+  # func HandleFunc(pattern string, handler func(ResponseWriter, *Request))
+  - package: "net/http"
+    function: "HandleFunc"
+    flows: []
+  # func Error(w ResponseWriter, error string, code int)
+  - package: "net/http"
+    function: "Error"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"
+      - from: "!arg 2"
+        to: "!arg 0"
+  # func Redirect(w ResponseWriter, r *Request, url string, code int)
+  - package: "net/http"
+    function: "Redirect"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"
+      - from: "!arg 2"
+        to: "!arg 0"
+      - from: "!arg 3"
+        to: "!arg 0"
+  # func NotFound(w ResponseWriter, r *Request)
+  - package: "net/http"
+    function: "NotFound"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"
+  # func StatusText(code int) string
+  - package: "net/http"
+    function: "StatusText"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+  # func CanonicalHeaderKey(s string) string
+  - package: "net/http"
+    function: "CanonicalHeaderKey"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+  # func DetectContentType(data []byte) string
+  - package: "net/http"
+    function: "DetectContentType"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+  # func NewRequest(method, url string, body io.Reader) (*Request, error)
+  - package: "net/http"
+    function: "NewRequest"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 2"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "!arg 1"
+        to: "!ret 1"
+  # func NewRequestWithContext(ctx context.Context, method, url string, body io.Reader) (*Request, error)
+  - package: "net/http"
+    function: "NewRequestWithContext"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 2"
+        to: "!ret 0"
+      - from: "!arg 3"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 1"
+      - from: "!arg 2"
+        to: "!ret 1"
+  # func Get(url string) (resp *Response, err error)
+  - package: "net/http"
+    function: "Get"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"
+  # func Post(url, contentType string, body io.Reader) (resp *Response, err error)
+  - package: "net/http"
+    function: "Post"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+      - from: "!arg 2"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"
+  # func ServeFile(w ResponseWriter, r *Request, name string)
+  - package: "net/http"
+    function: "ServeFile"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"
+      - from: "!arg 2"
+        to: "!arg 0"
+  # func FileServer(root FileSystem) Handler
+  - package: "net/http"
+    function: "FileServer"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+  # func SetCookie(w ResponseWriter, cookie *Cookie)
+  - package: "net/http"
+    function: "SetCookie"
+    flows:
+      - from: "!arg 1"
+        to: "!arg 0"
