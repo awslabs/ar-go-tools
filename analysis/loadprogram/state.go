@@ -66,6 +66,7 @@ type State struct {
 
 // NewState construct a whole program state from the provided SSA program and packages, and the config
 // with its logger. The packages are visited to extract all the annotations in the program.
+// The program loaded is specified by the Patterns field of the config.
 func NewState(c *config.State) result.Result[State] {
 	if c == nil || c.Config == nil {
 		return result.Err[State](fmt.Errorf("cannot create state without config"))
