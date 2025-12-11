@@ -492,8 +492,8 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 						fmt.Sprintf("no bound variable matching free variable in %s",
 							cur.ClosureTrace.Label.ClosureSummary.Parent.String()),
 						fmt.Errorf("at position %d", graphNode.Index()))
-					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d",
-						cur.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
+					//panic(fmt.Errorf("no bound variable matching free variable in %s at position %d",
+					//	cur.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
 				}
 			} else {
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
@@ -672,7 +672,9 @@ func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summ
 		dataflow.MakeMostGeneral(summary)
 
 		s.Logger.Debugf("intra-procedural analysis for %s timed out. most-general summary:\n", summary.Parent)
-		summary.PrettyPrint(true, s.Logger.GetDebug().Writer(), nil)
+		if s.Logger.LogsDebug() {
+			summary.PrettyPrint(true, s.Logger.GetDebug().Writer(), nil)
+		}
 		return
 	}
 

@@ -4,6 +4,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIGS_DIR="$SCRIPT_DIR/configs"
+SPECS_DIR="$SCRIPT_DIR/flow-specs"
 
 # Repository configurations (name:url pairs)
 REPOS="
@@ -27,6 +28,13 @@ get_config_path() {
     case "$1" in
         "atlas") echo "cmd/atlas/argot-config.yaml" ;;
         *) echo "argot-config.yaml" ;;
+    esac
+}
+
+get_spec_path() {
+    case "$1" in
+        "atlas") echo "cmd/atlas/user-specs.yaml" ;;
+        *) echo "user-specs.yaml" ;;
     esac
 }
 
@@ -60,15 +68,36 @@ deploy_configs() {
     done
 }
 
+deploy_user_specs() {
+    echo "Deploying user specs..."
+    for spec_file in "$SPECS_DIR"/*.yaml; do
+        if [ -f "$spec_file" ]; then
+            repo_name=$(basename "$spec_file" .yaml)
+            if [ -d "$repo_name" ]; then
+                spec_path=$(get_spec_path "$repo_name")
+                target_dir="$repo_name/$(dirname "$spec_path")"
+                mkdir -p "$target_dir"
+                cp "$spec_file" "$repo_name/$spec_path"
+                echo "Deployed config to $repo_name/$spec_path"
+            fi
+        fi
+    done
+}
+
 sync_back() {
     echo "Syncing configurations back from repositories..."
     echo "$REPOS" | while IFS=: read -r repo url; do
         [ -z "$repo" ] && continue
         if [ -d "$repo" ]; then
             config_path=$(get_config_path "$repo")
+            spec_path=$(get_spec_path "$repo")
             if [ -f "$repo/$config_path" ]; then
                 cp "$repo/$config_path" "$CONFIGS_DIR/$repo.yaml"
                 echo "Synced back config from $repo"
+            fi
+            if [ -f "$repo/$spec_path" ]; then
+                cp "$repo/$spec_path" "$SPECS_DIR/$repo.yaml"
+                echo "Synced back spec from $repo"
             fi
         fi
     done

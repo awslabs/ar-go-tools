@@ -57,9 +57,6 @@ func Run(flags tools.CommonFlags) error {
 	cfg.UserSpecs = nil
 	// Unset all pre-defined summaries
 	summaries.UnsetStdLibSummaries()
-	// Hardcode log level for now (TODO make this an option)
-	cfg.LogLevel = int(config.TraceLevel)
-
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot bench tool - " + analysis.Version))
 
@@ -315,7 +312,7 @@ type report []funcReport
 func newReport(reports []funcReport) report {
 	// sort report entries from longest time to shortest
 	slices.SortFunc(reports, func(a, b funcReport) int {
-		return int(b.IntraTime) - int(a.IntraTime)
+		return int(b.IntraTime.Microseconds()) - int(a.IntraTime.Microseconds())
 	})
 
 	return report(reports)
