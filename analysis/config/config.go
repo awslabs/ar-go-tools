@@ -432,8 +432,25 @@ func errorMisconfigurationGracefully(errYaml, errXML, errJson error) error {
 		}
 	}
 
+	otherConfigErrorFingerprints := map[string]string{
+		"cannot unmarshal !!str": "maybe you put a single string instead of a list",
+	}
+
+	// A list of messages that is likely to appear if the user is using an old configuration file
+	for fingerprint, msg := range otherConfigErrorFingerprints {
+		if strings.Contains(errYaml.Error(), fingerprint) {
+			return fmt.Errorf("could not parse config file:\n%w\n%s", errYaml, msg)
+		}
+		if strings.Contains(errJson.Error(), fingerprint) {
+			return fmt.Errorf("could not parse config file:\n%w\n%s", errJson, msg)
+		}
+		if strings.Contains(errXML.Error(), fingerprint) {
+			return fmt.Errorf("could not parse config file:\n%w\n%s", errXML, msg)
+		}
+	}
+
 	// default behaviour is just to forward the error messages of all unmarshalling attempts
-	return fmt.Errorf("could not parse config file, not as yaml: %w,\nnot as xml: %v,\nnot as json: %v",
+	return fmt.Errorf("could not parse config file,\nnot as yaml: %w,\nnot as xml: %v,\nnot as json: %v",
 		errYaml, errXML, errJson)
 }
 

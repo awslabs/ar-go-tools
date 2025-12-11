@@ -91,6 +91,10 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 	}
 	start := time.Now()
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
+	// If there  are too many variables, we will likely not be able to analyze
+	if flowInfo.NumValues > 10000 {
+		return time.Since(start), fmt.Errorf("too many values (%d) in %s", flowInfo.NumValues, sm.Parent.Name())
+	}
 	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{
 		flowInfo:            flowInfo,

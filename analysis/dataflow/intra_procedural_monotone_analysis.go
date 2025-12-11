@@ -17,12 +17,13 @@ package dataflow
 import (
 	"context"
 	"fmt"
+	"go/token"
+	"go/types"
+
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
-	"go/token"
-	"go/types"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -449,7 +450,7 @@ func (state *IntraAnalysisState) checkFlowFromGlobal(ctx context.Context, loc ss
 //
 //gocyclo:ignore
 func (state *IntraAnalysisState) markValue(ctx context.Context, i ssa.Instruction, v ssa.Value, path string, mark *Mark) {
-	if state.flowInfo.HasMarkAt(i, v, path, mark) {
+	if vok, hasMark := state.flowInfo.HasMarkAt(i, v, path, mark); !vok || hasMark {
 		return
 	}
 	// v was not marked before
@@ -603,7 +604,7 @@ func (state *IntraAnalysisState) markPtrAliases(ctx context.Context, i ssa.Instr
 	lang.IterateValues(state.summary.Parent, func(_ int, value ssa.Value) {
 		select {
 		case <-ctx.Done():
-			state.parentAnalyzerState.Logger.Errorf("intra-procedural analysis timed out when marking pointer aliases of %s\n", ptr)
+			//	state.parentAnalyzerState.Logger.Errorf("intra-procedural analysis timed out when marking pointer aliases of %s\n", ptr)
 			return
 		default:
 		}

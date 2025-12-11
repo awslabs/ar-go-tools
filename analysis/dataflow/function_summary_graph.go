@@ -210,7 +210,11 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 }
 
 func MakeMostGeneral(g *SummaryGraph) {
+	addedRedges := map[int]map[int]bool{}
 	for _, input := range g.Params {
+		if addedRedges[input.Index()] == nil {
+			addedRedges[input.Index()] = map[int]bool{}
+		}
 		for _, output := range g.Params {
 			if input == output {
 				continue
@@ -221,7 +225,12 @@ func MakeMostGeneral(g *SummaryGraph) {
 		}
 		for _, outputs := range g.Returns {
 			for _, output := range outputs {
-				g.addReturnEdgeByPos(input.Index(), output.Index())
+				// In the function summary, each return node is a return instruction, but in the edges
+				// we only need one edge to a return, not an edge for each return instruction.
+				if !addedRedges[input.Index()][output.Index()] {
+					g.addReturnEdgeByPos(input.Index(), output.Index())
+					addedRedges[input.Index()][output.Index()] = true
+				}
 			}
 		}
 	}
