@@ -474,9 +474,21 @@ func findNode(g *dataflow.SummaryGraph, sn summaries.SummaryNode) dataflow.Graph
 
 func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) bool {
 	switch s := snode.(type) {
+	case summaries.ReceiverSNode:
+		if param, ok := gnode.(*dataflow.ParamNode); ok {
+			if param.Graph().Parent.Signature.Recv() == nil {
+				panic(fmt.Errorf("expected function for recv summary node to have a receiver"))
+			}
+			return param.Index() == 0
+		}
 	case summaries.ArgumentSNode:
 		if param, ok := gnode.(*dataflow.ParamNode); ok {
-			return (s.Name != "" && param.SsaNode().Name() == s.Name) || param.Index() == s.Index
+			if param.Graph().Parent.Signature.Recv() != nil {
+				return (s.Name != "" && param.SsaNode().Name() == s.Name) ||
+					param.Index() == s.Index+1
+			}
+			return (s.Name != "" && param.SsaNode().Name() == s.Name) ||
+				param.Index() == s.Index
 		}
 	case summaries.ReturnSNode:
 		if ret, ok := gnode.(*dataflow.ReturnValNode); ok {

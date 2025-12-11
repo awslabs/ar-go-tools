@@ -118,7 +118,10 @@ func newSummaryNode(gn dataflow.GraphNode) summaries.SummaryNode {
 		f := gn.SsaNode().Parent()
 		if recv := f.Signature.Recv(); recv != nil {
 			// f is a method and param is a receiver
-			return summaries.ArgumentSNode{Name: gn.SsaNode().Name(), Index: 0, ObjectPath: ""}
+			if gn.Index() == 0 {
+				return summaries.ReceiverSNode{}
+			}
+			return summaries.ArgumentSNode{Name: gn.SsaNode().Name(), Index: gn.Index() - 1, ObjectPath: ""}
 		}
 		return summaries.ArgumentSNode{Name: gn.SsaNode().Name(), Index: gn.Index(), ObjectPath: ""}
 	case *dataflow.ReturnValNode:

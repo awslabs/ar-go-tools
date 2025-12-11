@@ -434,8 +434,39 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				UnprovenMustNotFlows: []check.Flow{
 					{
 						Fn:   "(*encoding/json.encodeState).marshal",
+						From: summaries.ReceiverSNode{},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   "(*encoding/json.encodeState).marshal",
+						From: summaries.ArgumentSNode{Name: "v", Index: 0},
+						To:   summaries.ReceiverSNode{},
+					},
+					{
+						Fn:   "(*encoding/json.encodeState).marshal",
 						From: summaries.ArgumentSNode{Name: "v", Index: 0},
 						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn: "(*encoding/json.encodeState).marshal$1",
+						// TODO Add free variables and globals to frontend summary nodes
+						From: summaries.ArgumentSNode{Name: "v", Index: 0},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   "(*encoding/json.encodeState).reflectValue",
+						From: summaries.ArgumentSNode{Name: "opts", Index: 0},
+						To:   summaries.ReceiverSNode{},
+					},
+					{
+						Fn:   "(*encoding/json.encodeState).reflectValue",
+						From: summaries.ArgumentSNode{Name: "opts", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "v", Index: 0},
+					},
+					{
+						Fn:   "reflect.ValueOf",
+						From: summaries.ArgumentSNode{Name: "v", Index: 0},
+						To:   summaries.ReturnSNode{},
 					},
 					{
 						Fn:   "Marshal",
@@ -455,8 +486,8 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 		} else {
 			sound = "unsound"
 		}
-		if tc.summary.Name() != "encoding/json.Marshal" {
-			continue
+		if tc.summary.Name() == "encoding/json.Marshal" {
+			// t.Skipf("test for json.Marshal is nondeterministic: skipping...")
 		}
 		name := fmt.Sprintf("%s_%s", tc.summary.Name(), sound)
 		t.Run(name, func(t *testing.T) {
@@ -483,7 +514,7 @@ type tcCheck struct {
 }
 
 func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	got, err := check.CheckSummary(ctx, state, tc.summary)
 	if err != nil {

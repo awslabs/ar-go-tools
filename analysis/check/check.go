@@ -166,8 +166,8 @@ func checkSummary(
 				if errors.Is(err, errInfer) {
 					// If callee summary inference failed, then the result is unsound because
 					// the inferred summaries are incomplete/incorrect.
-					// Return the must-not-flows for the caller as well as any inferred
-					// must-not-flows for the callees before it failed.
+					// Return the must-not-flows for the caller plus any successfully analyzed
+					// callees.
 					return SoundnessResult{
 						Fn:                   f.RelString(nil),
 						Want:                 want,
