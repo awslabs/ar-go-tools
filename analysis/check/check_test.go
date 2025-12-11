@@ -62,9 +62,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true,
-				BadFlows: []check.Flow{},
-				Method:   check.General,
+				IsSound:              true,
+				UnprovenMustNotFlows: []check.Flow{},
+				Method:               check.General,
 			},
 		},
 		{
@@ -74,8 +74,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true,
-				BadFlows: []check.Flow{
+				IsSound:              true,
+				UnprovenMustNotFlows: []check.Flow{
 					// NOTE Immutability analysis disproved these flows
 					// {
 					// 	Fn:   pkg + ".singleArgInterNone",
@@ -103,7 +103,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			),
 			want: check.SoundnessResult{
 				IsSound: false,
-				BadFlows: []check.Flow{
+				UnprovenMustNotFlows: []check.Flow{
 					// NOTE false-positive: pointer analysis claims that x and y have the same node id.
 					// Pointer analysis log:
 					//==== Generating constraints for cg10524:github.com/awslabs/ar-go-tools/analysis/check/testdata/basic.testTwoArgIntraInout, shared contour
@@ -224,9 +224,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true,
-				BadFlows: nil,
-				Method:   check.Types, // disproved flow from setmem dst -> src
+				IsSound: true,
+				// Disproved flow from setmem dst -> src via types
+				// Disproved flow from twoArgInterInout y -> x via immutability
+				UnprovenMustNotFlows: nil,
+				Method:               check.Immutability,
 			},
 		},
 		{
@@ -240,9 +242,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true, // TODO global analysis
-				BadFlows: nil,
-				Method:   check.General,
+				IsSound:              true, // TODO global analysis
+				UnprovenMustNotFlows: nil,
+				Method:               check.General,
 			},
 		},
 		{
@@ -256,9 +258,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true, // TODO global analysis
-				BadFlows: nil,
-				Method:   check.General,
+				IsSound:              true, // TODO global analysis
+				UnprovenMustNotFlows: nil,
+				Method:               check.General,
 			},
 		},
 		{
@@ -275,9 +277,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true,
-				BadFlows: nil,
-				Method:   check.Types,
+				IsSound:              true,
+				UnprovenMustNotFlows: nil,
+				Method:               check.Types,
 			},
 		},
 		{
@@ -294,9 +296,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true,
-				BadFlows: nil,
-				Method:   check.Types,
+				IsSound:              true,
+				UnprovenMustNotFlows: nil,
+				Method:               check.Types,
 			},
 		},
 		{
@@ -315,7 +317,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			),
 			want: check.SoundnessResult{
 				IsSound: false,
-				BadFlows: []check.Flow{
+				UnprovenMustNotFlows: []check.Flow{
 					{
 						Fn:   pkg + ".threeArgInter",
 						From: summaries.ArgumentSNode{Name: "no", Index: 0},
@@ -398,9 +400,9 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true,
-				BadFlows: nil,
-				Method:   check.General,
+				IsSound:              true,
+				UnprovenMustNotFlows: nil,
+				Method:               check.General,
 			},
 		},
 		{
@@ -411,9 +413,9 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  true,
-				BadFlows: nil,
-				Method:   check.General,
+				IsSound:              true,
+				UnprovenMustNotFlows: nil,
+				Method:               check.General,
 			},
 		},
 		{
@@ -428,9 +430,20 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				IsSound:  false,
-				BadFlows: nil,
-				Method:   check.Immutability,
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   "(*encoding/json.encodeState).marshal",
+						From: summaries.ArgumentSNode{Name: "v", Index: 0},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   "Marshal",
+						From: summaries.ArgumentSNode{Name: "v", Index: 0},
+						To:   summaries.ReturnSNode{Index: 1}, // error return
+					},
+				},
+				Method: check.Immutability,
 			},
 		},
 	}
@@ -486,17 +499,17 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 	cmpFlow := func(a, b check.Flow) int {
 		return strings.Compare(a.String(), b.String())
 	}
-	slices.SortFunc(tc.want.BadFlows, cmpFlow)
-	slices.SortFunc(got.BadFlows, cmpFlow)
-	if !slices.Equal(tc.want.BadFlows, got.BadFlows) {
-		t.Errorf("bad flows mismatch")
-		t.Log("want bad flows:")
-		for _, f := range tc.want.BadFlows {
+	slices.SortFunc(tc.want.UnprovenMustNotFlows, cmpFlow)
+	slices.SortFunc(got.UnprovenMustNotFlows, cmpFlow)
+	if !slices.Equal(tc.want.UnprovenMustNotFlows, got.UnprovenMustNotFlows) {
+		t.Errorf("unproven must-not-flows mismatch")
+		t.Log("want unproven must-not-flows:")
+		for _, f := range tc.want.UnprovenMustNotFlows {
 			fname, _ := strings.CutPrefix(f.Fn, tc.summary.Package()+".")
 			t.Logf("\t%v: %v -> %v\n", fname, f.From, f.To)
 		}
-		t.Log("got bad flows:")
-		for _, f := range got.BadFlows {
+		t.Log("got unproven must-not-flows:")
+		for _, f := range got.UnprovenMustNotFlows {
 			fname, _ := strings.CutPrefix(f.Fn, tc.summary.Package()+".")
 			t.Logf("\t%v: %v -> %v\n", fname, f.From, f.To)
 		}
@@ -530,7 +543,7 @@ func logNode(t *testing.T, n summaries.SummaryNode, indent int) {
 }
 
 func setupConfig(lp *loadprogram.State) {
-	level := config.ErrLevel // change this as needed for debugging
+	level := config.TraceLevel // change this as needed for debugging
 	lp.Logger.Level = level
 	lp.Logger.SupressWarn = true
 

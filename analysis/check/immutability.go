@@ -29,20 +29,24 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
-func checkSummaryImmutability(ctx context.Context, s *State, bad []flow) checkResult {
+// checkSummaryImmutability returns the must-not-flows that were unproven after performing the
+// immutability analysis.
+// The immutability analysis filters out all must-not-flows that do not modify their output value(s).
+// If an output value is not modified (immutable), then it is impossible to have data flow to it.
+func checkSummaryImmutability(ctx context.Context, s *State, mustNotFlows []flow) checkResult {
 	var unproven []flow
-	for _, fl := range bad {
-		isBad, err := isBadFlowImmutability(ctx, s, fl)
+	for _, fl := range mustNotFlows {
+		mustNotFlow, err := mustNotFlowImmutability(ctx, s, fl)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				// Analysis timed out: return all bad flows computed so far
+				// Analysis timed out: return all unproven must-not-flows computed so far.
 				unproven = append(unproven, fl)
 				break
 			}
 		}
 		// NOTE Maybe we shouldn't bother checking the rest since the summary is unsound, but
-		// including all the bad flows makes it easier to test
-		if isBad {
+		// including all the unproven must-not-flows makes it easier to test.
+		if !mustNotFlow {
 			unproven = append(unproven, fl)
 		}
 	}
@@ -50,7 +54,7 @@ func checkSummaryImmutability(ctx context.Context, s *State, bad []flow) checkRe
 	return newCheckResult(unproven, Immutability)
 }
 
-// isBadFlowImmutability returns true if fl.to is written to (modified) in any way.
+// mustNotFlowImmutability returns true if fl.to is not written to (modified) in any way.
 // It is impossible to have a data flow to an immutable value.
 //
 // If fl.to is pointer-like, then it uses the pointer analysis to detect any writes to the
@@ -62,38 +66,39 @@ func checkSummaryImmutability(ctx context.Context, s *State, bad []flow) checkRe
 // immutable.
 // There is no need to analyze any callees because the value is stack allocated and therefore cannot
 // be modified outside of the function.
-func isBadFlowImmutability(ctx context.Context, s *State, fl flow) (bool, error) {
+func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, error) {
 	vals := outputVals(fl)
 
 	for _, val := range vals {
 		if isPointerLike(val.Type()) {
-			s.Logger.Tracef("output value %v (%v) in flow %v is pointer-like\n", val, val.Type(), fl)
+			s.Logger.Tracef(
+				"output value %v (%v) in must-not-flow %v is pointer-like\n", val, val.Type(), fl)
 			writeInstr, ok, err := checkWritesPtr(ctx, s, val)
 			if err != nil {
-				return true, fmt.Errorf(
+				return false, fmt.Errorf(
 					"failed to check writes to pointer-like value %v: %w", val, err)
 			}
 			if ok {
 				s.Logger.Debugf(
-					"found modification of output pointer value %v in %v: %v at %s\n",
-					val, fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
-				return true, nil
+					"found modification of output pointer value %v: %v at %s\n",
+					val, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+				return false, nil
 			}
 		} else {
 			if _, ok := fl.to.(*dataflow.ReturnValNode); !ok {
-				panic(fmt.Errorf("detected scalar output in flow %v that is not a return", fl))
+				panic(fmt.Errorf("detected scalar output in must-not-flow %v that is not a return", fl))
 			}
 
 			if !isPointerLike(val.Type()) && !lang.IsStaticallyDefinedLocal(val) {
 				s.Logger.Debugf(
 					"found non-static output scalar value %v in function %v",
 					val, val.Parent())
-				return true, nil
+				return false, nil
 			}
 		}
 	}
 
-	return false, nil
+	return true, nil
 }
 
 // checkWritesPtr returns the first instruction that writes a scalar value to to's underlying memory.

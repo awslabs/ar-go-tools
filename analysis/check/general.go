@@ -25,6 +25,10 @@ import (
 // of g.
 // The most-general summary assumes that all function inputs (parameters) flow to all function
 // outputs (parameters and all return values).
+// It returns the difference of the most-general summary and want: all of the flows in want that are
+// not in the most-general summary.
+// This difference is the set of must-not-flows: the flows that must not exist (there cannot be a
+// possible data flow in the program) for the summary to be sound.
 func checkSummaryMostGeneral(g *dataflow.SummaryGraph, want summaries.DetailedSummary) checkResult {
 	gotFlows := mostGeneralFlows(g)
 	wantFlows := summaryFlows(g, want)
@@ -36,7 +40,7 @@ func checkSummaryMostGeneral(g *dataflow.SummaryGraph, want summaries.DetailedSu
 	return newCheckResult(unproven, General)
 }
 
-// checkSummaryTypes tries to prove that the flows in bad do not hold by a simple type analysis:
+// checkSummaryTypes tries to prove that the must-not-flows in bad do not hold by a simple type analysis:
 // if the node being flowed to is a non-pointer-like parameter, then the flow cannot exist.
 func checkSummaryTypes(bad []flow) checkResult {
 	var unproven []flow

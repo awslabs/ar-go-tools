@@ -294,7 +294,12 @@ func TestInferCalleeSummaries(t *testing.T) {
 			if _, err := dataflow.RunIntraProcedural(ctx, state.State, g); err != nil {
 				t.Fatal(err)
 			}
-			summs, err := inferCalleeSummaries(ctx, state.State, g, tc.fn.Summary(), tc.via)
+
+			res := checkSummaryMostGeneral(g, tc.fn.Summary())
+			if tc.via == Types {
+				res = checkSummaryTypes(res.mustNotFlows)
+			}
+			summs, err := inferCalleeSummaries(ctx, state.State, g, res.mustNotFlows, tc.via)
 			if err != nil {
 				t.Fatal(err)
 			}

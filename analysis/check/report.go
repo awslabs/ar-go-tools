@@ -27,23 +27,29 @@ import (
 
 // SoundnessResult is the result of checking the soundness of a single data flow summary.
 type SoundnessResult struct {
-	Fn       string                    // Fn is the qualified name of the summarized function
-	Want     summaries.DetailedSummary // Want is the summary being checked
-	IsSound  bool                      // IsSound is true if Want is an overapproximation of Got
-	BadFlows []Flow                    // BadFlows are the flows unable to be proven sound
-	Method   Method                    // Method is the check method used for the soundness check
-	Time     time.Duration             // Time is the time spent to calculate the result
+	// Fn is the qualified name of the summarized function.
+	Fn string
+	// Want is the summary being checked.
+	Want summaries.DetailedSummary
+	// IsSound is true if Want is an overapproximation of Got.
+	IsSound bool
+	// UnprovenMustNotFlows are the must-not-flows unable to be proven sound.
+	UnprovenMustNotFlows []Flow
+	// Method is the most effective method used for the soundness check.
+	Method Method
+	// Time is the time spent to calculate the result.
+	Time time.Duration
 }
 
 func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 	b := &bytes.Buffer{}
 	raw := rawSoundnessResult{
-		Func:        r.Fn,
-		Want:        rawFlows(r.Want.Flows),
-		IsSound:     r.IsSound,
-		BadFlows:    funcutil.Map(r.BadFlows, (Flow).String),
-		Method:      string(r.Method),
-		TimeSeconds: time.Duration(r.Time.Seconds()),
+		Func:                 r.Fn,
+		Want:                 rawFlows(r.Want.Flows),
+		IsSound:              r.IsSound,
+		UnprovenMustNotFlows: funcutil.Map(r.UnprovenMustNotFlows, (Flow).String),
+		Method:               string(r.Method),
+		TimeSeconds:          time.Duration(r.Time.Seconds()),
 	}
 	enc := json.NewEncoder(b)
 	enc.SetEscapeHTML(false) // don't escape characters like "<"
@@ -56,12 +62,12 @@ func newSoundnessResult(
 	g *dataflow.SummaryGraph, res checkResult, want summaries.DetailedSummary, start time.Time, via Method,
 ) SoundnessResult {
 	return SoundnessResult{
-		Fn:       g.Parent.RelString(nil),
-		Want:     want,
-		IsSound:  res.isSound,
-		BadFlows: funcutil.Map(res.badFlows, newFlow),
-		Method:   via,
-		Time:     time.Since(start),
+		Fn:                   g.Parent.RelString(nil),
+		Want:                 want,
+		IsSound:              res.isSound,
+		UnprovenMustNotFlows: funcutil.Map(res.mustNotFlows, newFlow),
+		Method:               via,
+		Time:                 time.Since(start),
 	}
 }
 
@@ -84,13 +90,13 @@ func (f Flow) String() string {
 }
 
 type rawSoundnessResult struct {
-	Func        string
-	Want        map[string][]string
-	Got         map[string][]string
-	IsSound     bool
-	BadFlows    []string
-	Method      string
-	TimeSeconds time.Duration
+	Func                 string
+	Want                 map[string][]string
+	Got                  map[string][]string
+	IsSound              bool
+	UnprovenMustNotFlows []string
+	Method               string
+	TimeSeconds          time.Duration
 }
 
 func rawFlows(flows map[summaries.SummaryNode][]summaries.SummaryNode) map[string][]string {

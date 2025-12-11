@@ -199,8 +199,8 @@ func checkSummaries(
 			// TODO proper soundness report
 			logger.Errorf("Unsound!")
 		}
-		logger.Info("Unproven flows:")
-		for _, flow := range soundness.BadFlows {
+		logger.Info("Unproven must-not-flows:")
+		for _, flow := range soundness.UnprovenMustNotFlows {
 			logger.Infof("\t%s\n", flow)
 		}
 

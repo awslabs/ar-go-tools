@@ -24,14 +24,14 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
 // inferCalleeSummaries returns all the maximally-general (most data flow edges) callee summaries
-// which satisfy wantSummary's must-not-flow requirements.
+// which satisfy the summary's must-not-flow requirements mustNotFlows.
 func inferCalleeSummaries(
-	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph, wantSummary summaries.DetailedSummary,
-	via Method,
+	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph, mustNotFlows []flow, via Method,
 ) (map[*dataflow.SummaryGraph][]summaries.DetailedSummary, error) {
 	// "Leaf" function (no callees)
 	if len(g.Callees) == 0 {
@@ -48,32 +48,32 @@ func inferCalleeSummaries(
 		return nil, fmt.Errorf("failed to run intra-procedural analysis: %v", err)
 	}
 
-	// Collect known (intra + inter) and unknown edges
-	intraParent := intraEdges(g, nil)
-	inter := interEdges(s, g)
+	// Collect known (intra + inter) and unknown may-flow edges
+	intraParent := intraMayFlowEdges(g, nil)
+	inter := interMayFlowEdges(s, g)
 
-	known := append(intraParent, inter...)
-	unknown := make(map[*dataflow.CallNode][]edge)
-	calleeGraphs := addCalleeEdges(s, g, via, &known, unknown)
+	knownMayFlow := append(intraParent, inter...)
+	unknownMayFlow := make(map[*dataflow.CallNode][]edge)
+	calleeGraphs := addCalleeMayFlowEdges(s, g, via, &knownMayFlow, unknownMayFlow)
 
 	// Build MaxSAT problem
 	var constraints []maxsat.Constr
 
 	// Callees of the same function must have identical inferred summaries
-	summaryConstrs := buildCalleeSummaryConstrs(unknown)
+	summaryConstrs := buildCalleeSummaryConstrs(unknownMayFlow)
 	constraints = append(constraints, summaryConstrs...)
 
-	// Hard constraints for known edges
+	// Hard constraints for known may-flow edges
 	var knownConstrs []maxsat.Constr
-	for _, e := range known {
+	for _, e := range knownMayFlow {
 		constr := maxsat.HardClause(mayFlow(e))
 		knownConstrs = append(knownConstrs, constr)
 	}
 	constraints = append(constraints, knownConstrs...)
 
-	// Maximize may-flow edges (minimize must-not-flow)
+	// Maximize unknown may-flow edges (minimize must-not-flow)
 	var maxConstrs []maxsat.Constr
-	for _, edges := range unknown {
+	for _, edges := range unknownMayFlow {
 		for _, e := range edges {
 			constr := maxsat.SoftClause(mayFlow(e))
 			maxConstrs = append(maxConstrs, constr)
@@ -85,14 +85,11 @@ func inferCalleeSummaries(
 	transitiveConstrs := buildTransitivityConstrs(g, calleeGraphs)
 	constraints = append(constraints, transitiveConstrs...)
 
-	// Block must-not-flows in wantSummary (most-general summary - want edges)
-	fGeneralEdges := mostGeneralEdges(g, nil, via)
-	fWantEdges := summaryToEdges(wantSummary, g)
-	for _, e := range fGeneralEdges {
-		if !slices.Contains(fWantEdges, e) {
-			constr := maxsat.HardClause(mayFlow(e).Negation())
-			constraints = append(constraints, constr)
-		}
+	// Block must-not-flows
+	mustNotFlowEdges := funcutil.Map(mustNotFlows, func(fl flow) edge { return newEdge(fl, nil) })
+	for _, e := range mustNotFlowEdges {
+		constr := maxsat.HardClause(mayFlow(e).Negation())
+		constraints = append(constraints, constr)
 	}
 
 	// Find the optimal cost first
@@ -103,19 +100,20 @@ func inferCalleeSummaries(
 	}
 
 	// Enumerate all optimal models and convert them to summaries
-	allOptimalModels := findAllOptimalModels(model, optimalCost, constraints, unknown)
-	res := modelsToSummaries(s, allOptimalModels, unknown)
+	allOptimalModels := findAllOptimalModels(model, optimalCost, constraints, unknownMayFlow)
+	res := modelsToSummaries(s, allOptimalModels, unknownMayFlow)
 
 	return res, nil
 }
 
-// addCalleeEdges adds edges of all callees to known and unknown.
-// It returns a map from each call node to the callee's summary graph.
+// addCalleeMayFlowEdges adds edges of all callees to known and unknown.
+// It returns a map from each call node to the callee's summary graph in terms of its may-flow
+// edges.
 //
 // If the callee has intra-procedural information, then its dataflow edges are added to known.
 // If not, its most-general summary edges are added to unknown.
 // The most-general summary is computed by the method specified by parameter via.
-func addCalleeEdges(
+func addCalleeMayFlowEdges(
 	s *dataflow.State, g *dataflow.SummaryGraph, via Method,
 	known *[]edge, unknown map[*dataflow.CallNode][]edge,
 ) map[*dataflow.CallNode]*dataflow.SummaryGraph {
@@ -132,7 +130,7 @@ func addCalleeEdges(
 
 	for call, calleeG := range calleeGraphs {
 		if calleeG.Constructed {
-			edges := intraEdges(calleeG, call)
+			edges := intraMayFlowEdges(calleeG, call)
 			*known = append(*known, edges...)
 		} else {
 			edges := mostGeneralEdges(calleeG, call, via)
@@ -294,7 +292,7 @@ func modelsToSummaries(
 		}
 
 		// Convert edges to summaries
-		calleeToSumm := unknownEdgesToSummaries(allMayFlows)
+		calleeToSumm := mayFlowEdgesToSummaries(allMayFlows)
 
 		// Add empty summaries for callees with no inferred edges
 		for call := range unknown {
@@ -326,34 +324,22 @@ func mayFlow(e edge) maxsat.Lit {
 }
 
 // mostGeneralEdges returns the edges corresponding to the most-general summary of g.
-// The parameter via is used to optionally filter out some edges.
-//
-// TODO merge this logic with newMostGeneralDetailedSummary
+// The parameter via is used to optionally filter out some edges (only Types is supported for now).
 func mostGeneralEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode, via Method) []edge {
+	if !(via == General || via == Types) {
+		panic(fmt.Errorf("unsupported most-general method: %v", via))
+	}
+
 	flows := mostGeneralFlows(g)
 	if via == Types {
-		flows = checkSummaryTypes(flows).badFlows
+		flows = checkSummaryTypes(flows).mustNotFlows
 	}
 	var edges []edge
 	for _, fl := range flows {
-		edges = append(edges, edge{from: node{fl.from, call}, to: node{fl.to, call}})
+		edges = append(edges, newEdge(fl, call))
 	}
 
 	return edges
-}
-
-// summaryNodes returns all parameter and return nodes from a summary graph
-func summaryNodes(g *dataflow.SummaryGraph) []dataflow.GraphNode {
-	var nodes []dataflow.GraphNode
-	for _, param := range g.Params {
-		nodes = append(nodes, param)
-	}
-	for _, rets := range g.Returns {
-		for _, ret := range rets {
-			nodes = append(nodes, ret)
-		}
-	}
-	return nodes
 }
 
 // node represents a dataflow graph node, optionally scoped to a specific call site.
@@ -378,12 +364,19 @@ type edge struct {
 	to   node
 }
 
+func newEdge(fl flow, call *dataflow.CallNode) edge {
+	return edge{
+		from: node{fl.from, call},
+		to:   node{fl.to, call},
+	}
+}
+
 func (e edge) String() string {
 	return fmt.Sprintf("%s->%s", e.from.String(), e.to.String())
 }
 
-// intraEdges collects all edges within a summary graph, scoped to a specific call site
-func intraEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
+// intraMayFlowEdges collects all edges within a summary graph, scoped to a specific call site
+func intraMayFlowEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
 	var res []edge
 	// Collect all edges in the graph, not just those reachable from params
 	g.ForAllNodes(func(n dataflow.GraphNode) {
@@ -394,8 +387,8 @@ func intraEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
 	return res
 }
 
-// interEdges collects edges between caller and callee (argument passing and return values)
-func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
+// interMayFlowEdges collects edges between caller and callee (argument passing and return values)
+func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	var res []edge
 	for _, calleeToCall := range g.Callees {
 		for f, call := range calleeToCall {
@@ -437,28 +430,8 @@ func interEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	return res
 }
 
-// summaryToEdges converts a frontend summary to internal edge representation
-func summaryToEdges(s summaries.DetailedSummary, g *dataflow.SummaryGraph) []edge {
-	var res []edge
-	for from, tos := range s.Flows {
-		fromNode := findNode(g, from)
-		if fromNode == nil {
-			panic(fmt.Errorf("failed to find graphnode for %v", from))
-		}
-		for _, to := range tos {
-			toNode := findNode(g, to)
-			if toNode == nil {
-				panic(fmt.Errorf("failed to find graphnode for %v", to))
-			}
-			res = append(res, edge{from: node{fromNode, nil}, to: node{toNode, nil}})
-		}
-	}
-
-	return res
-}
-
-// unknownEdgesToSummaries converts inferred edges to frontend dataflow summaries
-func unknownEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.DetailedSummary {
+// mayFlowEdgesToSummaries converts inferred edges to frontend dataflow summaries
+func mayFlowEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.DetailedSummary {
 	calleeFlows := make(map[*ssa.Function]summaries.DetailedSummary)
 	for _, e := range unknown {
 		if e.from.call != e.to.call {
@@ -492,6 +465,9 @@ func findNode(g *dataflow.SummaryGraph, sn summaries.SummaryNode) dataflow.Graph
 			res = n
 		}
 	})
+	if res == nil {
+		panic(fmt.Errorf("failed to find graph node for summary node: %v", sn))
+	}
 
 	return res
 }
@@ -525,7 +501,7 @@ func nodeSignature(n dataflow.GraphNode) string {
 	case *dataflow.ReturnValNode:
 		return fmt.Sprintf("ret:%d", node.Index())
 	default:
-		return dataflow.GraphNodeDesc(n)
+		panic(fmt.Errorf("invalid summary node: %v", n))
 	}
 }
 
