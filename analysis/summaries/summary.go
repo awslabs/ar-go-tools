@@ -19,6 +19,7 @@ package summaries
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -186,20 +187,31 @@ func (s DetailedSummary) String() string {
 		return "<empty>"
 	}
 
-	b := &strings.Builder{}
-	i := 0
+	// Sort flows for deterministic output
+	type flowEntry struct {
+		input   SummaryNode
+		outputs []SummaryNode
+	}
+	var entries []flowEntry
 	for input, outputs := range s.Flows {
-		fmt.Fprintf(b, "%s -> ", input)
-		for j, output := range outputs {
+		entries = append(entries, flowEntry{input, outputs})
+	}
+	slices.SortFunc(entries, func(a, b flowEntry) int {
+		return strings.Compare(a.input.String(), b.input.String())
+	})
+
+	b := &strings.Builder{}
+	for i, entry := range entries {
+		fmt.Fprintf(b, "%s -> ", entry.input)
+		for j, output := range entry.outputs {
 			fmt.Fprintf(b, "%s", output)
-			if j < len(outputs)-1 {
+			if j < len(entry.outputs)-1 {
 				fmt.Fprint(b, ", ")
 			}
 		}
-		if i < len(s.Flows)-1 {
+		if i < len(entries)-1 {
 			fmt.Fprint(b, " | ")
 		}
-		i++
 	}
 
 	return b.String()
