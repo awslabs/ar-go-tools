@@ -136,10 +136,11 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 				if !ok {
 					return
 				}
-				// ASSUMPTION: We assume that errors are only used as values
-				if isAllocatedErrorType(write.Target) {
-					return
-				}
+
+				// // ASSUMPTION: We assume that errors are only used as values
+				// if isAllocatedErrorType(write.Target) {
+				// 	return
+				// }
 
 				mobjs := s.cache.Objects(write.Target)
 				// If the target does not point to any memory, it is probably a nil-like local value
@@ -270,15 +271,15 @@ func (ac *aliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
 				continue
 			}
 
-			// ASSUMPTION: Skip allocated context.Context and error objects since we assume that
-			// they are used as values
-			switch data := obj.Data().(type) {
-			case *ssa.Alloc:
-				switch data.Type().String() {
-				case "*error", "*context.Context":
-					continue
-				}
-			}
+			// // ASSUMPTION: Skip allocated context.Context and error objects since we assume that
+			// // they are used as values
+			// switch data := obj.Data().(type) {
+			// case *ssa.Alloc:
+			// 	switch data.Type().String() {
+			// 	case "*error", "*context.Context":
+			// 		continue
+			// 	}
+			// }
 
 			res[obj] = struct{}{}
 		}
@@ -352,8 +353,9 @@ func ptrWrittenTo(instr ssa.Instruction) (ptrWrite, bool) {
 	if instr.Parent() == nil {
 		return ptrWrite{}, false
 	}
+
+	// // ASSUMPTION: we assume that errors are never used as pointer values
 	// pkg := instr.Parent().Pkg
-	// we assume that errors are never used as pointer values
 	// if pkg != nil && pkg.Pkg != nil && pkg.Pkg.Path() == "errors" {
 	// 	return ptrWrite{}, false
 	// }
