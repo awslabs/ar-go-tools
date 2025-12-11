@@ -16,12 +16,13 @@ package dataflow
 
 import (
 	"fmt"
+	"go/token"
+	"go/types"
+
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/pointer"
-	"go/token"
-	"go/types"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -447,7 +448,7 @@ func (state *IntraAnalysisState) checkFlowFromGlobal(loc ssa.Instruction, in ssa
 //
 //gocyclo:ignore
 func (state *IntraAnalysisState) markValue(i ssa.Instruction, v ssa.Value, path string, mark *Mark) {
-	if state.flowInfo.HasMarkAt(i, v, path, mark) {
+	if vok, hasMark := state.flowInfo.HasMarkAt(i, v, path, mark); !vok || hasMark {
 		return
 	}
 	// v was not marked before

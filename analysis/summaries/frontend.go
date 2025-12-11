@@ -203,7 +203,7 @@ func (s rawDataflowSummary) compile() (FrontendDataflowSummary, error) {
 	}
 	flows, flowErr := compileSummaryFlows(s.Flows, s.Receiver != "" || s.Interface != "")
 	if flowErr != nil {
-		return nil, flowErr
+		return nil, fmt.Errorf("%s: %v", s.Function+s.Method, flowErr) // Method or function
 	}
 	if s.Interface != "" {
 		// It's an interface method summary

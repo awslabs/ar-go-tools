@@ -222,15 +222,15 @@ func (fi *FlowInformation) ShowAt(w io.Writer, i ssa.Instruction) {
 	}
 }
 
-// HasMarkAt returns true if the Value v has an abstract state at instruction i, and this abstract state contains the
-// mark s.
-func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, path string, s *Mark) bool {
+// HasMarkAt returns a pair of booleans, where the first boolean indicates whether the value exists in the program
+// being analyzed, and the second value indicates whether that value has the given mark.
+func (fi *FlowInformation) HasMarkAt(i ssa.Instruction, v ssa.Value, path string, s *Mark) (bool, bool) {
 	pos, ok := fi.GetPos(i, v)
 	if !ok {
-		return false
+		return false, false
 	}
 	marks := fi.MarkedValues[pos]
-	return marks != nil && marks.HasMarkAt(path, s)
+	return true, marks != nil && marks.HasMarkAt(path, s)
 }
 
 // AddMark adds a mark to the tracking info structure and returns true if new information has been inserted.
