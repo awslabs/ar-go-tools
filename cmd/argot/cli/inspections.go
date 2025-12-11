@@ -61,6 +61,9 @@ func cmdScan(o Outputter, sess *Session, command Command, _ bool) bool {
 }
 
 func scanUsages(o Outputter, p *packages.Package, target *regexp.Regexp) {
+	if p == nil || p.Syntax == nil {
+		return
+	}
 	for _, astFile := range p.Syntax {
 		ast.Inspect(astFile,
 			func(n ast.Node) bool {

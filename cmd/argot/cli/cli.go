@@ -325,6 +325,10 @@ var Commands = map[string]CommandDefinition{
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Paths to load (files or directory)",
 				},
+				"target": map[string]interface{}{
+					"type":        "string",
+					"description": "Target to load (state? shows available targets from config, required loaded config)",
+				},
 			},
 			Required: []string{"paths"},
 		},
@@ -344,9 +348,18 @@ var Commands = map[string]CommandDefinition{
 					return Command{}, fmt.Errorf("path must be a string")
 				}
 			}
+			namedArgs := map[string]string{}
+			if target, ok := props["target"]; ok {
+				if targetStr, ok := target.(string); ok {
+					namedArgs["target"] = targetStr
+				} else {
+					return Command{}, fmt.Errorf("target must be a string")
+				}
+			}
 			return Command{
-				Args:  args,
-				Flags: map[string]bool{},
+				Args:      args,
+				Flags:     map[string]bool{},
+				NamedArgs: namedArgs,
 			}, nil
 		},
 		Function: cmdLoad,
@@ -354,7 +367,8 @@ var Commands = map[string]CommandDefinition{
 	CmdLoadPackagesName: {
 		Name: toolLoadPackagesName,
 		Description: "Load Go packages with optional type information for inspection." +
-			" This is faster than loading a whole program.",
+			" This is faster than loading a whole program, and doesn't require loading the main entry point." +
+			"However, dataflow and pointer analyses will not be available.",
 		InputSchema: tools.MCPInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -400,22 +414,6 @@ var Commands = map[string]CommandDefinition{
 			}, nil
 		},
 		Function: cmdLoadPackages,
-	},
-	CmdLoadWholeProgramName: {
-		Name:        toolLoadWholeProgramName,
-		Description: "Load and build complete SSA program from the current program path (show the state to see)",
-		InputSchema: tools.MCPInputSchema{
-			Type:       "object",
-			Properties: map[string]interface{}{},
-			Required:   []string{},
-		},
-		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
-			return Command{
-				Args:  []string{},
-				Flags: map[string]bool{},
-			}, nil
-		},
-		Function: cmdLoadWholeProgram,
 	},
 	CmdLsName: {
 		Name:        toolLsName,
@@ -534,6 +532,16 @@ var Commands = map[string]CommandDefinition{
 			},
 			Required: []string{"config_file"},
 		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			configFile, ok := props["config_file"].(string)
+			if !ok || configFile == "" {
+				return Command{}, fmt.Errorf("config_file must be a non-empty string")
+			}
+			return Command{
+				Args:  []string{configFile},
+				Flags: map[string]bool{},
+			}, nil
+		},
 		Function: cmdReconfig,
 	},
 	CmdScanName: {
@@ -581,8 +589,8 @@ var Commands = map[string]CommandDefinition{
 		},
 		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
 			regex, ok := props["regex"].(string)
-			if !ok || regex == "" {
-				return Command{}, fmt.Errorf("regex must be a non-empty string")
+			if ok && regex == "" {
+				return Command{}, fmt.Errorf("regex must be a non-empty string if provided")
 			}
 			return Command{
 				Args:  []string{regex},
@@ -850,7 +858,7 @@ var Commands = map[string]CommandDefinition{
 					"description": "Force summarization and bypass filters",
 				},
 			},
-			Required: []string{},
+			Required: []string{"regex"},
 		},
 		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
 			forceFlag := false
@@ -863,6 +871,11 @@ var Commands = map[string]CommandDefinition{
 			}
 			regex := ""
 			regexObj, ok := props["regex"]
+			if !ok {
+				// regex must be provided when in the MCP server. Otherwise, the client might
+				// just make the server summarize the entire program
+				return Command{}, fmt.Errorf("regex must be provided")
+			}
 			if ok {
 				if regexStr, ok := regexObj.(string); ok {
 					regex = regexStr
