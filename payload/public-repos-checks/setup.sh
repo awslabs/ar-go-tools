@@ -107,6 +107,7 @@ case "${1:-setup}" in
     "setup")
         clone_repos
         deploy_configs
+        deploy_user_specs
         echo "Setup complete!"
         ;;
     "sync-back")

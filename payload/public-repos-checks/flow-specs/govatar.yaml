@@ -1,0 +1,469 @@
+dataflow-summaries:
+  # Append functions - append formatted output to byte slice
+  - package: "fmt"
+    function: "Append"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0)[*]"
+      - from: "(!arg 1)[*]"
+        to: "(!ret 0)[*]"
+  - package: "fmt"
+    function: "Appendf"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0)[*]"
+      - from: "!arg 1"
+        to: "(!ret 0)[*]"
+      - from: "(!arg 2)[*]"
+        to: "(!ret 0)[*]"
+  - package: "fmt"
+    function: "Appendln"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0)[*]"
+      - from: "(!arg 1)[*]"
+        to: "(!ret 0)[*]"
+  # Sprint functions - format to string
+  - package: "fmt"
+    function: "Sprint"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 0"
+  - package: "fmt"
+    function: "Sprintf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "(!arg 1)[*]"
+        to: "!ret 0"
+  - package: "fmt"
+    function: "Sprintln"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 0"
+  # Print functions - format to stdout
+  - package: "fmt"
+    function: "Print"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Printf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "(!arg 1)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Println"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 1"
+  # Fprint functions - format to io.Writer
+  - package: "fmt"
+    function: "Fprint"
+    flows:
+      - from: "(!arg 1)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Fprintf"
+    flows:
+      - from: "!arg 1"
+        to: "!ret 1"
+      - from: "(!arg 2)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Fprintln"
+    flows:
+      - from: "(!arg 1)[*]"
+        to: "!ret 1"
+  # Errorf - format to error
+  - package: "fmt"
+    function: "Errorf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "(!arg 1)[*]"
+        to: "!ret 0"
+  # Scan functions - parse from stdin
+  - package: "fmt"
+    function: "Scan"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Scanf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "(!arg 1)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Scanln"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 1"
+  # Fscan functions - parse from io.Reader
+  - package: "fmt"
+    function: "Fscan"
+    flows:
+      - from: "(!arg 1)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Fscanf"
+    flows:
+      - from: "!arg 1"
+        to: "!ret 1"
+      - from: "(!arg 2)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Fscanln"
+    flows:
+      - from: "(!arg 1)[*]"
+        to: "!ret 1"
+  # Sscan functions - parse from string
+  - package: "fmt"
+    function: "Sscan"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "(!arg 1)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Sscanf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "!arg 1"
+        to: "!ret 1"
+      - from: "(!arg 2)[*]"
+        to: "!ret 1"
+  - package: "fmt"
+    function: "Sscanln"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "(!arg 1)[*]"
+        to: "!ret 1"
+  # FormatString - format State to string
+  - package: "fmt"
+    function: "FormatString"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+  # internal/abi functions
+  - package: "internal/abi"
+    # Critical unsafe/reflection functions from warnings - analyzed from source/SSA
+
+    receiver: "Name"
+    method: "DataChecked"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 0"
+  - package: "internal/abi"
+    function: "addChecked"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+  # encoding/json critical functions
+  - package: "encoding/json"
+    receiver: "decodeState"
+    method: "value"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!arg 0" # modifies the reflect.Value argument
+  - package: "encoding/json"
+    receiver: "encodeState"
+    method: "marshal"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+  # sync functions - no data flows, just state changes
+  - package: "sync"
+    receiver: "RWMutex"
+    method: "RUnlock"
+    flows: []
+  - package: "internal/sync"
+    receiver: "Mutex"
+    method: "Unlock"
+    flows: []
+  - package: "sync"
+    receiver: "poolDequeue"
+    method: "pushHead"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+  - package: "sync"
+    receiver: "poolDequeue"
+    method: "popHead"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+  - package: "sync/atomic"
+    receiver: "Value"
+    method: "Store"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+  - package: "sync/atomic"
+    receiver: "Pool"
+    method: "Put"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+  # fmt functions with reflection
+  - package: "fmt"
+    receiver: "pp"
+    method: "doPrintf"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "(!arg 1)[*]"
+        to: "!receiver"
+  - package: "fmt"
+    receiver: "pp"
+    method: "catchPanic"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+  - package: "fmt"
+    receiver: "ss"
+    method: "scanOne"
+    flows:
+      - from: "!receiver"
+        to: "!ret 1"
+      - from: "!arg 0"
+        to: "!arg 0" # modifies argument
+  # reflect functions
+  - package: "reflect"
+    function: "ValueOf"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+  - package: "reflect"
+    receiver: "Value"
+    method: "Complex"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+  - package: "reflect"
+    receiver: "Value"
+    method: "SetZero"
+    flows:
+      - from: "!receiver"
+        to: "!receiver" # modifies receiver
+  - package: "reflect"
+    receiver: "Value"
+    method: "MapRange"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+  - package: "reflect"
+    receiver: "rtype"
+    method: "NumIn"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+  # syscall functions
+  - package: "syscall"
+    function: "setrlimit"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+  - package: "syscall"
+    function: "Open"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 1"
+  # text/template functions
+  - package: "text/template"
+    function: "safeCall"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "(!arg 1)[*]"
+        to: "(!ret 0)[*]"
+  - package: "text/template"
+    function: "goodFunc"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+  - package: "text/template"
+    function: "addValueFuncs"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+  - package: "text/template"
+    receiver: "state"
+    method: "evalField"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 0"
+  - package: "text/template"
+    receiver: "Template"
+    method: "Funcs"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!receiver"
+        to: "!ret 0"
+  # strings functions
+  - package: "strings"
+    receiver: "Builder"
+    method: "copyCheck"
+    flows: [] # just validation, no data flow
+  # flag functions
+  - package: "flag"
+    function: "isZeroValue"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+  # Init functions - no meaningful data flows
+  - package: "internal/godebug"
+    function: "init"
+    flows: []
+  - package: "bytes"
+    function: "init"
+    flows: []
+  - package: "math/rand"
+    function: "init"
+    flows: []
+  - package: "encoding/json"
+    function: "init"
+    flows: []
+  - package: "net/url"
+    function: "init"
+    flows: []
+  - package: "internal/asan"
+    function: "init"
+    flows: []
+  - package: "internal/synctest"
+    function: "init"
+    flows: []
+  - package: "weak"
+    function: "init"
+  # Additional internal/poll function
+  - package: "internal/poll"
+    receiver: "*FD"
+    method: "OpenDir"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 2"
+  # Additional reflect function
+  - package: "reflect"
+    receiver: "Value"
+    method: "SetBool"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver" # sets bool value into receiver
+  - package: encoding/json
+    function: addrTextMarshalerEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via marshaling
+      - from: "(!arg 2)" # opts (escapeHTML flag)
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: marshalerEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via MarshalJSON
+      - from: "(!arg 2)" # opts (escapeHTML flag)
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: textMarshalerEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via MarshalText
+      - from: "(!arg 2)" # opts (escapeHTML flag)
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: stringEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via string conversion
+      - from: "(!arg 2)" # opts (quoted, escapeHTML flags)
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: boolEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via bool conversion
+      - from: "(!arg 2)" # opts (quoted flag)
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: intEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via int conversion
+      - from: "(!arg 2)" # opts (quoted flag)
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: uintEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via uint conversion
+      - from: "(!arg 2)" # opts (quoted flag)
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: interfaceEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0)" # e via reflectValue call
+      - from: "(!arg 2)" # opts
+        to: "(!arg 0)" # e via reflectValue call
+  - package: encoding/json
+    function: addrMarshalerEncoder
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via MarshalJSON
+      - from: "(!arg 2)" # opts (escapeHTML flag)
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: valueEncoder
+    flows:
+      - from: "!arg 0" # v reflect.Value
+        to: "!ret 0" # encoderFunc
+  - package: encoding/json
+    function: newTypeEncoder
+    flows:
+      - from: "!arg 0" # reflect.Type
+        to: "!ret 0" # encoderFunc
+  - package: encoding/json
+    function: newSliceEncoder
+    flows:
+      - from: "!arg 0" # reflect.Type
+        to: "!ret 0" # encoderFunc
+  - package: encoding/json
+    function: encodeByteSlice
+    flows:
+      - from: "(!arg 1)" # v reflect.Value
+        to: "(!arg 0).Buffer" # e.Buffer via base64 encoding
+      - from: "(!arg 2)" # opts
+        to: "(!arg 0).Buffer" # affects output formatting
+  - package: encoding/json
+    function: isEmptyValue
+    flows:
+      - from: "!arg 0" # reflect.Value
+        to: "!ret 0" # bool result
+  - package: encoding/json
+    function: resolveKeyName
+    flows:
+      - from: "!arg 0" # reflect.Value
+        to: "!ret 0" # string key name
