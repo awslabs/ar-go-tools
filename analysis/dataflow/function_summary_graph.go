@@ -135,14 +135,12 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 
 	// Only report when we don't have an external contract
 	deferStacks, unsoundFeatures := ComputeDefersAndUnsoundFeatures(f)
-	if s != nil && !s.HasExternalContractSummary(f) {
-		reportUnsoundFeatures(s, unsoundFeatures)
-	}
 
 	g := &SummaryGraph{
 		ID:                    id,
 		Constructed:           false,
 		IsInterfaceContract:   false,
+		IsPreSummarized:       false,
 		Parent:                f,
 		Params:                make(map[ssa.Node]*ParamNode, len(f.Params)),
 		FreeVars:              make(map[ssa.Node]*FreeVarNode, len(f.FreeVars)),

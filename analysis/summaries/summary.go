@@ -128,6 +128,20 @@ func PkgHasSummaries(pkg *ssa.Package) bool {
 	return okStd
 }
 
+// FnHasSummaries returns true if the function has a summary predefined in Argot.
+func FnHasSummaries(function *ssa.Function) bool {
+	if function == nil {
+		return false
+	}
+	pkgName := lang.PkgPathFromFunction(function)
+	if s, ok := stdPackages[pkgName]; ok {
+		_, found := s[function.String()]
+		return found
+	}
+
+	return false
+}
+
 // SummaryOfFunc returns the summary of function and true if function has a summary,
 // otherwise it returns an empty summary and false.
 //

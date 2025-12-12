@@ -150,6 +150,30 @@ func (u UnsoundFeaturesMap) HasAny() bool {
 	return len(u.Recovers) > 0 || len(u.UnsafeUsages) > 0 || len(u.ReflectUsages) > 0 || u.HasUnboundedDefers
 }
 
+// PrettyReason return a pretty-printed string explaining the unsoundness reason
+func (u UnsoundFeaturesMap) PrettyReason() string {
+	unsoundReason := ""
+	if len(u.Recovers) > 0 {
+		unsoundReason += "+ uses recover() builtin\n"
+	}
+	if len(u.UnsafeUsages) > 0 {
+		unsoundReason += "+ uses unsafe\n"
+		for pos, usageMsg := range u.UnsafeUsages {
+			unsoundReason += "  " + pos.String() + " : " + usageMsg + "\n"
+		}
+	}
+	if len(u.ReflectUsages) > 0 {
+		unsoundReason += "+ uses reflection:\n"
+		for pos, usageMsg := range u.ReflectUsages {
+			unsoundReason += "  " + pos.String() + " : " + usageMsg + "\n"
+		}
+	}
+	if u.HasUnboundedDefers {
+		unsoundReason += "defer stack unbounded\n"
+	}
+	return strings.TrimSpace(unsoundReason)
+}
+
 // reportUnsoundFeatures logs warning messages when unsound features are used in a function. Those include:
 //
 // - call to recover builtin

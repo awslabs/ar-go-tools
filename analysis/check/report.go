@@ -141,7 +141,7 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 		// Collect the summaries that have been computed (not pre-summarized and constructed) and have unsoundness
 		// results. Those are the summaries the user may want to soundly pre-summarize, because they can't rely
 		// on the dataflow analysis.
-		if g.Unsoundness().HasAny() && g.Constructed {
+		if g.Unsoundness().HasAny() && g.Constructed && !g.IsPreSummarized {
 			state.Logger.Debugf("Function %s has unsoundness in %+v", g.Parent.RelString(nil), g.Unsoundness())
 			targets = append(targets, g.Unsoundness())
 		}
@@ -152,12 +152,15 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 	// - if the function is not in dependencies or standard library, add it to the list to report
 	// - if the function is in dependencies, explore the callgraph to find the public caller ancestors
 	for _, target := range targets {
+		skipped := true
 		f := target.Func
 		fInfo, infoOk := lang.GetFunctionInfo(state.GoModInfo.Path, f)
 		if (summaries.IsUserDefinedFunction(f) && fInfo.IsLocal) || fInfo.IsExported || !infoOk {
 			if _, ok := toReport[f]; !ok {
+				skipped = false
 				toReport[f] = []dataflow.UnsoundFeaturesMap{target}
 			} else {
+				skipped = false
 				toReport[f] = append(toReport[f], target)
 			}
 			continue
@@ -165,17 +168,31 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 
 		for _, caller := range getExportedCallers(state, f) {
 			if _, ok := toReport[caller]; !ok {
+				skipped = false
 				toReport[caller] = []dataflow.UnsoundFeaturesMap{target}
 			} else {
+				skipped = false
 				toReport[caller] = append(toReport[caller], target)
 			}
 		}
+
+		if skipped {
+			state.Logger.Debugf("Function %s is not exported and not in dependencies, skipping", f.RelString(nil))
+		}
 	}
 
-	for _, functionToFix := range toReport {
-		state.Logger.Infof("Function %s should have a summary, because it calls unsound summaries:", functionToFix[0].Func.RelString(nil))
-		for _, unsoundness := range functionToFix {
-			state.Logger.Infof("Function %s has unsoundness in %+v", unsoundness.Func.RelString(nil), unsoundness)
+	for functionToFix, unsoundnessCalleesReasons := range toReport {
+		state.Logger.Warnf("Function %s should have a summary:", functionToFix)
+		for _, unsoundness := range unsoundnessCalleesReasons {
+			if unsoundness.Func == functionToFix {
+				state.Logger.Warnf("- it cannot be summarized soundly analyzed because it")
+				state.Logger.Warnf("  %s", unsoundness.PrettyReason())
+			} else {
+				state.Logger.Warnf("- it calls %s, which cannot be soundly analyzed because it",
+					unsoundness.Func.RelString(nil))
+				state.Logger.Warnf("  %s", unsoundness.PrettyReason())
+			}
+
 		}
 	}
 }

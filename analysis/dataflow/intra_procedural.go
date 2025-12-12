@@ -89,6 +89,10 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 	if sm == nil {
 		return 0, fmt.Errorf("summary graph is nil")
 	}
+
+	if a != nil && !a.HasExternalContractSummary(sm.Parent) && !summaries.FnHasSummaries(sm.Parent) {
+		reportUnsoundFeatures(a, sm.unsoundness)
+	}
 	start := time.Now()
 	flowInfo := NewFlowInfo(a.Config, sm.Parent)
 	// If there  are too many variables, we will likely not be able to analyze
