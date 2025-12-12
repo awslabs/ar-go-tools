@@ -128,6 +128,8 @@ func newSummaryNode(gn dataflow.GraphNode) summaries.SummaryNode {
 		return summaries.ArgumentSNode{Name: gn.SsaNode().Name(), Index: gn.Index(), ObjectPath: ""}
 	case *dataflow.ReturnValNode:
 		return summaries.ReturnSNode{Index: gn.Index(), ObjectPath: ""}
+	case *dataflow.FreeVarNode:
+		return summaries.FreeVarSNode{Name: gn.SsaNode().Name()}
 	default:
 		panic(fmt.Errorf("unexpected graph node type: %v (%T)", gn, gn))
 	}

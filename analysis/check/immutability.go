@@ -91,7 +91,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 
 			if !isPointerLike(val.Type()) && !lang.IsStaticallyDefinedLocal(val) {
 				s.Logger.Debugf(
-					"found non-static output scalar value %v in function %v",
+					"found non-static return scalar value %v in function %v",
 					val, val.Parent())
 				return false, nil
 			}

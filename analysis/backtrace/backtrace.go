@@ -728,7 +728,7 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 					summary := df.BuildSummary(s, f)
 					v.onDemandIntraProcedural(ctx, s, summary)
 					// This is needed to get the referring make closures outside the function
-					s.FlowGraph.BuildGraph()
+					s.FlowGraph.BuildGraph(true)
 				}
 
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {

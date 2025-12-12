@@ -120,63 +120,75 @@ func (g *InterProceduralFlowGraph) InsertSummaries(g2 InterProceduralFlowGraph) 
 	}
 }
 
-// BuildGraph builds the cross function flow graph by connecting summaries together
+// BuildGraph builds the cross function flow graph by first enforcing data flow contracts and then
+// connecting summaries together.
+// The parameter usePredefinedSummaries determines if functions should be summarized using external
+// contracts or pre-defined standard library function summaries when possible.
 //
 //gocyclo:ignore
-func (g *InterProceduralFlowGraph) BuildGraph() {
+func (g *InterProceduralFlowGraph) BuildGraph(usePredefinedSummaries bool) {
 	c := g.AnalyzerState
 	logger := c.Logger
 
 	logger.Debugf("Building inter-procedural flow graph...")
 
-	// Build the inter-procedural data flow graph:
-	nameAliases := map[string]*ssa.Function{}
-	// STEP 1: build a map from full function names to summaries
-	for summarized := range g.Summaries {
-		// sometimes a "thunk" function will be the same as a normal function,
-		// just with a different name ending in $thunk and the same position
-		nameAliases[summarized.String()] = summarized
-	}
-	// STEP 2: Enforce dataflow contracts
-	for _, summary := range g.Summaries {
-		if summary == nil {
-			continue
-		}
-		for _, callNodes := range summary.Callees {
-			for _, node := range callNodes {
-				if node.Callee() != nil && node.CalleeSummary == nil {
-					externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node)
-					if externalContractSummary != nil {
-						logger.Debugf("Loaded %s from external contracts.\n",
-							formatutil.SanitizeRepr(node.Callee()))
-						g.Summaries[node.Callee()] = externalContractSummary
-						node.CalleeSummary = externalContractSummary
-						if x := externalContractSummary.Callsites[node.CallSite()]; x == nil {
-							externalContractSummary.Callsites[node.CallSite()] = node
+	// STEP 1: Enforce dataflow contracts
+	if usePredefinedSummaries {
+		for _, summary := range g.Summaries {
+			if summary == nil {
+				continue
+			}
+			for _, callNodes := range summary.Callees {
+				for _, node := range callNodes {
+					if node.Callee() != nil && node.CalleeSummary == nil {
+						externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node)
+						if externalContractSummary != nil {
+							logger.Debugf("Loaded %s from external contracts.\n",
+								formatutil.SanitizeRepr(node.Callee()))
+							g.Summaries[node.Callee()] = externalContractSummary
+							node.CalleeSummary = externalContractSummary
+							if x := externalContractSummary.Callsites[node.CallSite()]; x == nil {
+								externalContractSummary.Callsites[node.CallSite()] = node
+							}
 						}
 					}
 				}
 			}
 		}
-	}
 
-	// Writes the summaries to file if the option is set
-	if summariesFile := openSummaries(c); summariesFile != nil {
-		defer summariesFile.Close()
-		// Read-only operation on summaries
-		go func() {
-			for _, summary := range g.Summaries {
-				if summary == nil {
-					continue
+		// Writes the summaries to file if the option is set
+		if summariesFile := openSummaries(c); summariesFile != nil {
+			defer summariesFile.Close()
+			// Read-only operation on summaries
+			go func() {
+				for _, summary := range g.Summaries {
+					if summary == nil {
+						continue
+					}
+					_, _ = summariesFile.WriteString(fmt.Sprintf("%s:\n", summary.Parent.String()))
+					summary.Print(false, summariesFile)
+					_, _ = summariesFile.WriteString("\n")
 				}
-				_, _ = summariesFile.WriteString(fmt.Sprintf("%s:\n", summary.Parent.String()))
-				summary.Print(false, summariesFile)
-				_, _ = summariesFile.WriteString("\n")
-			}
-		}()
+			}()
+		}
 	}
 
-	// STEP 3: link all the summaries together
+	// STEP 2: link all the summaries together
+	g.linkSummaries(usePredefinedSummaries)
+
+	// Change the built flag to true
+	g.built = true
+}
+
+// linkSummaries links the summaries in g together to form implicit inter-procedural edges.
+func (g *InterProceduralFlowGraph) linkSummaries(usePredefinedSummaries bool) {
+	nameAliases := map[string]*ssa.Function{}
+	for summarized := range g.Summaries {
+		// sometimes a "thunk" function will be the same as a normal function,
+		// just with a different name ending in $thunk and the same position
+		nameAliases[summarized.String()] = summarized
+	}
+
 	for _, summary := range g.Summaries {
 		if summary == nil {
 			continue
@@ -186,7 +198,7 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 			for _, node := range callNodes {
 				if node.Callee() != nil && node.CalleeSummary == nil &&
 					g.AnalyzerState.IsReachableFunction(node.Callee()) {
-					node.CalleeSummary = g.resolveCalleeSummary(node, nameAliases)
+					node.CalleeSummary = g.resolveCalleeSummary(node, nameAliases, usePredefinedSummaries)
 				}
 			}
 		}
@@ -213,7 +225,7 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 			}
 		}
 	}
-	// Change the built flag to true
+
 	g.built = true
 }
 
@@ -292,7 +304,7 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(ctx context.Context, c *St
 	}
 
 	// Build the inter-procedural flow graph
-	g.BuildGraph()
+	g.BuildGraph(true)
 
 	// Open the coverage file if specified in configuration
 	coverage := openCoverage(c)
@@ -467,8 +479,9 @@ func addContexts(contexts []*CallStack, node GraphNode) []NodeWithTrace {
 // resolveCalleeSummary fetches the summary of node's callee, using all possible summary resolution methods. It also
 // sets the edge from callee to caller, if it could find a summary.
 // Returns nil if no summary can be found.
-func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
-	nameAliases map[string]*ssa.Function) *SummaryGraph {
+func (g *InterProceduralFlowGraph) resolveCalleeSummary(
+	node *CallNode, nameAliases map[string]*ssa.Function, usePredefined bool,
+) *SummaryGraph {
 	var calleeSummary *SummaryGraph
 	logger := g.AnalyzerState.Logger
 
@@ -477,7 +490,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 		calleeSummary = g.findSummary(node.Callee(), nameAliases)
 	}
 
-	if calleeSummary == nil {
+	if calleeSummary == nil && usePredefined {
 		calleeSummary, err := NewPredefinedSummary(node.Callee(), GetUniqueFunctionID())
 		if err != nil {
 			// An error in our own predefined summaries: this should not happen, but panic if we missed something.
@@ -489,7 +502,7 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(node *CallNode,
 		}
 	}
 
-	if calleeSummary != nil && !calleeSummary.Constructed {
+	if calleeSummary != nil && !calleeSummary.Constructed && usePredefined {
 		if shortSummary, isPredefined := summaries.SummaryOfFunc(node.Callee()); isPredefined {
 			calleeSummary.PopulateGraphFromSummary(shortSummary, false)
 			logger.Debugf("Constructed %s from summaries.\n", formatutil.SanitizeRepr(node.Callee()))

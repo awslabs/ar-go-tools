@@ -27,6 +27,7 @@ Use these identifiers to specify data flow sources and destinations:
 - `!arg <name>` - Function arguments by name
 - `!receiver` - Method receiver (methods only)
 - `!ret`, `!ret 0`, `!ret 1`, etc. - Return values by position
+- `!free <name>` - Closure free variables by name, as referenced in the program (closures only)
 
 For methods, argument indexing starts after the receiver:
 - In `func (r Receiver) method(x, y int) string`, `x` is `!arg 0`, `y` is `!arg 1`

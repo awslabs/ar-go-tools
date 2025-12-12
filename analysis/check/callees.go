@@ -48,12 +48,21 @@ func inferCalleeSummaries(
 	}
 
 	// Collect known (intra + inter) and unknown may-flow edges
-	intraParent := intraMayFlowEdges(g, nil)
+	intraParent := intraMayFlowEdges(s, g, nil)
 	inter := interMayFlowEdges(s, g)
 
 	knownMayFlow := append(intraParent, inter...)
 	unknownMayFlow := make(map[*dataflow.CallNode][]edge)
 	calleeGraphs := addCalleeMayFlowEdges(s, g, via, &knownMayFlow, unknownMayFlow)
+
+	if s.Logger.LogsTrace() {
+		dbgEdges(s, "intra parent edges of "+g.Parent.Name(), intraParent)
+		dbgEdges(s, "inter edges of "+g.Parent.Name(), inter)
+		dbgEdges(s, "known edges with callees of "+g.Parent.Name(), knownMayFlow)
+		for call, edges := range unknownMayFlow {
+			dbgEdges(s, "unknown edges for call to "+call.FuncString(), edges)
+		}
+	}
 
 	// Build MaxSAT problem
 	var constraints []maxsat.Constr
@@ -129,7 +138,7 @@ func addCalleeMayFlowEdges(
 
 	for call, calleeG := range calleeGraphs {
 		if calleeG.Constructed {
-			edges := intraMayFlowEdges(calleeG, call)
+			edges := intraMayFlowEdges(s, calleeG, call)
 			*known = append(*known, edges...)
 		} else {
 			edges := mostGeneralEdges(calleeG, call, via)
@@ -140,7 +149,8 @@ func addCalleeMayFlowEdges(
 	return calleeGraphs
 }
 
-// buildCalleeSummaryConstrs returns the constraints to ensure that unknown edges for different callsites with the same callee are the same.
+// buildCalleeSummaryConstrs returns the constraints to ensure that unknown edges for different
+// callsites with the same callee are the same.
 func buildCalleeSummaryConstrs(unknown map[*dataflow.CallNode][]edge) []maxsat.Constr {
 	var summaryConstrs []maxsat.Constr
 	for call := range unknown {
@@ -193,10 +203,16 @@ func buildTransitivityConstrs(
 	var transitiveConstrs []maxsat.Constr
 	allNodes := make(map[node]struct{})
 	g.ForAllNodes(func(n dataflow.GraphNode) {
+		if skipNode(n) {
+			return
+		}
 		allNodes[node{n, nil}] = struct{}{}
 	})
 	for call, cg := range calleeGraphs {
 		cg.ForAllNodes(func(n dataflow.GraphNode) {
+			if skipNode(n) {
+				return
+			}
 			allNodes[node{n, call}] = struct{}{}
 		})
 	}
@@ -352,9 +368,30 @@ type node struct {
 
 func (n node) String() string {
 	if n.call == nil {
-		return dataflow.GraphNodeDesc(n.n)
+		return graphNodeDesc(n.n)
 	}
-	return fmt.Sprintf("%s_%s", dataflow.GraphNodeDesc(n.call), dataflow.GraphNodeDesc(n.n))
+	return fmt.Sprintf("%s_%s", graphNodeDesc(n.call), graphNodeDesc(n.n))
+}
+
+func graphNodeDesc(g dataflow.GraphNode) string {
+	switch x := g.(type) {
+	case *dataflow.ParamNode:
+		return fmt.Sprintf("param:%s", x.SsaNode().Name())
+	case *dataflow.CallNode:
+		return fmt.Sprintf("call:%s", x.CallSite().String())
+	case *dataflow.CallNodeArg:
+		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().CallSite().String())
+	case *dataflow.ReturnValNode:
+		return fmt.Sprintf("ret#%d", x.Index())
+	case *dataflow.BoundVarNode:
+		return fmt.Sprintf("bound-var:%s", x.Value().Name())
+	case *dataflow.FreeVarNode:
+		return fmt.Sprintf("free-var:%s", x.SsaNode().Name())
+	case *dataflow.AccessGlobalNode:
+		return fmt.Sprintf("global:%v", x.Global.Value())
+	default:
+		panic(fmt.Errorf("unsupported node type: %v %T", g, g))
+	}
 }
 
 // edge represents a dataflow edge between two nodes
@@ -374,32 +411,51 @@ func (e edge) String() string {
 	return fmt.Sprintf("%s->%s", e.from.String(), e.to.String())
 }
 
-// intraMayFlowEdges collects all edges within a summary graph, scoped to a specific call site
-func intraMayFlowEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
+// intraMayFlowEdges returns all the may-flow edges within a summary graph, scoped to a specific
+// call site.
+func intraMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
 	var res []edge
 	// Collect all edges in the graph, not just those reachable from params
 	g.ForAllNodes(func(n dataflow.GraphNode) {
+		if skipNode(n) {
+			return
+		}
+
 		for next := range n.Out() {
-			res = append(res, edge{from: node{n: n, call: call}, to: node{n: next, call: call}})
+			if skipNode(next) {
+				continue
+			}
+			e := edge{from: node{n: n, call: call}, to: node{n: next, call: call}}
+			res = append(res, e)
 		}
 	})
+
 	return res
 }
 
-// interMayFlowEdges collects edges between caller and callee (argument passing and return values)
+// interMayFlowEdges returns the interprocedural may-flow edges between callers and their
+// corresponding callees.
 func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	var res []edge
 	for _, calleeToCall := range g.Callees {
-		for f, call := range calleeToCall {
-			calleeSummary, ok := s.FlowGraph.Summaries[f]
+		for callee, call := range calleeToCall {
+			calleeSummary, ok := s.FlowGraph.Summaries[callee]
 			if !ok {
-				calleeSummary = dataflow.NewSummaryGraph(s, f, dataflow.GetUniqueFunctionID(), nil, nil)
-				s.FlowGraph.Summaries[f] = calleeSummary
+				calleeSummary = dataflow.NewSummaryGraph(
+					s, callee, dataflow.GetUniqueFunctionID(), nil, nil)
+				s.FlowGraph.Summaries[callee] = calleeSummary
 			}
+			// After building a summary graph, link the summaries together to form the implicit
+			// inter-procedural data flow edges. This is important because otherwise, summaries are
+			// incomplete. For example, a summary's referring make closure instructions will be
+			// empty.
+			s.FlowGraph.BuildGraph(false)
+
 			// callee return -> call node
 			for _, rets := range calleeSummary.Returns {
 				for _, ret := range rets {
-					res = append(res, edge{from: node{ret, call}, to: node{call, nil}})
+					e := edge{from: node{ret, call}, to: node{call, nil}}
+					res = append(res, e)
 				}
 			}
 
@@ -407,7 +463,8 @@ func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 			for _, arg := range call.Args() {
 				for _, param := range calleeSummary.Params {
 					if param.Index() == arg.Index() {
-						res = append(res, edge{from: node{arg, nil}, to: node{param, call}})
+						e := edge{from: node{arg, nil}, to: node{param, call}}
+						res = append(res, e)
 						break
 					}
 				}
@@ -418,9 +475,27 @@ func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 				if isPointerLike(param.Type()) {
 					for _, arg := range call.Args() {
 						if param.Index() == arg.Index() {
-							res = append(res, edge{from: node{param, call}, to: node{arg, nil}})
+							e := edge{from: node{param, call}, to: node{arg, nil}}
+							res = append(res, e)
 						}
 					}
+				}
+			}
+
+			for _, closure := range calleeSummary.ReferringMakeClosures {
+				// bound variable -> free variable
+				// free variable -> bound variable
+				for i, bv := range closure.BoundVars() {
+					fv := calleeSummary.Parent.FreeVars[i]
+					fvNode, ok := calleeSummary.FreeVars[fv]
+					if !ok {
+						panic(fmt.Errorf(
+							"no free variable for bound variable %v in closure %v", bv, closure))
+					}
+					e := edge{from: node{bv, nil}, to: node{fvNode, call}}
+					res = append(res, e)
+					e = edge{from: node{fvNode, call}, to: node{bv, nil}}
+					res = append(res, e)
 				}
 			}
 		}
@@ -429,12 +504,44 @@ func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	return res
 }
 
+func skipNode(n dataflow.GraphNode) bool {
+	switch n := n.(type) {
+	case *dataflow.BoundLabelNode:
+		closure := n.DestInfo().MakeClosure
+		if n.Graph().Parent != closure.Parent() {
+			// If a bound label is created in a different function as its corresponding make
+			// closure instruction, it means that there is no corresponding free variable
+			// inside the closure for this bound label value. We do not support summary
+			// nodes for closure-specific inputs/outputs other than bound and free
+			// variables. It does not make sense to summarize closures with bound labels
+			// because the input/output bound label value is not local to the closure: it is
+			// scoped to the completely different function that allocated the bound label.
+			//
+			// TODO add unsoundness instead of panicking
+			panic(fmt.Errorf(
+				"cannot check summary where bound label closure is non-local."+
+					"label: %v in %v, closure: %v in %v",
+				n, n.ParentName(), closure, closure.Parent()))
+		}
+		// We can soundly skip adding edges for bound labels which are created in the same
+		// function as their corresponding make closure instructions, as there will be a
+		// bound variable that references the same value.
+		return true
+	case *dataflow.ClosureNode:
+		// There's currently no need to track flows to closure nodes since we do not support
+		// function-like summary nodes.
+		return true
+	default:
+		return false
+	}
+}
+
 // mayFlowEdgesToSummaries converts inferred edges to frontend dataflow summaries
 func mayFlowEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.DetailedSummary {
 	calleeFlows := make(map[*ssa.Function]summaries.DetailedSummary)
 	for _, e := range unknown {
 		if e.from.call != e.to.call {
-			panic(fmt.Errorf("invalid unknown edge: %+v", e))
+			panic(fmt.Errorf("invalid unknown may-flow edge: %+v", e))
 		}
 
 		callee := e.from.call.Callee()
@@ -493,7 +600,14 @@ func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) bool {
 		if ret, ok := gnode.(*dataflow.ReturnValNode); ok {
 			return ret.Index() == s.Index
 		}
+	case summaries.FreeVarSNode:
+		if fv, ok := gnode.(*dataflow.FreeVarNode); ok {
+			return fv.SsaNode().Name() == s.Name
+		}
+	default:
+		panic(fmt.Errorf("unhandled summary node type: %T", snode))
 	}
+
 	return false
 }
 
@@ -511,6 +625,8 @@ func nodeSignature(n dataflow.GraphNode) string {
 		return fmt.Sprintf("param:%d:%s", node.Index(), node.SsaNode().Name())
 	case *dataflow.ReturnValNode:
 		return fmt.Sprintf("ret:%d", node.Index())
+	case *dataflow.FreeVarNode:
+		return fmt.Sprintf("fv:%s", node.SsaNode().Name())
 	default:
 		panic(fmt.Errorf("invalid summary node: %v", n))
 	}
@@ -525,9 +641,9 @@ func nodeSignature(n dataflow.GraphNode) string {
 // 	}
 // }
 
-// func dbgEdges(topic string, edges []edge) {
-// 	fmt.Println(topic)
-// 	for _, e := range edges {
-// 		fmt.Printf("\t%+v\n", e)
-// 	}
-// }
+func dbgEdges(s *dataflow.State, topic string, edges []edge) {
+	s.Logger.Tracef("%s\n", topic)
+	for _, e := range edges {
+		s.Logger.Tracef("\t%+v\n", e)
+	}
+}

@@ -32,7 +32,7 @@ func cmdBuildGraph(o Outputter, sess *Session, _ Command, _ bool) bool {
 		o.WriteErr("No summaries present. Did you run `summarize`?")
 		return false
 	}
-	c.FlowGraph.BuildGraph()
+	c.FlowGraph.BuildGraph(true)
 	o.WriteSuccess("Built cross function flow graph.")
 	return false
 }

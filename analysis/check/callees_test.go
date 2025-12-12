@@ -256,6 +256,70 @@ func TestInferCalleeSummaries(t *testing.T) {
 			},
 			via: Types,
 		},
+		{
+			fn: summaries.NewFunctionFlowSummary(pkg, "writeToClosed",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: map[string][]summaries.DetailedSummary{
+				"writeToClosed$1": {
+					{
+						// Without the types analysis, we cannot prove that param y must not flow to
+						// param x in writeToClosed, which means the closure's summary must satisfy
+						// this constraint. This means that free variable y cannot flow to free
+						// variable x or the closure's return.
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.FreeVarSNode{Name: "x"}: {
+								summaries.ReturnSNode{Index: 0},
+							},
+						},
+					},
+				},
+			},
+			via: General,
+		},
+		{
+			fn: summaries.NewFunctionFlowSummary(pkg, "writeToClosed",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: map[string][]summaries.DetailedSummary{
+				"writeToClosed$1": {
+					{
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.FreeVarSNode{Name: "x"}: {
+								summaries.FreeVarSNode{Name: "y"},
+								summaries.ReturnSNode{Index: 0},
+							},
+						},
+					},
+					{
+						// NOTE This second inferred summary is fine because it does not include a
+						// flow from x to the closure's return, which means y cannot flow to the
+						// return.
+						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+							summaries.FreeVarSNode{Name: "x"}: {
+								summaries.FreeVarSNode{Name: "y"},
+							},
+							summaries.FreeVarSNode{Name: "y"}: {
+								summaries.FreeVarSNode{Name: "x"},
+							},
+						},
+					},
+				},
+			},
+			via: Types,
+		},
 	}
 
 	dir := filepath.Join("./testdata", "basic")
@@ -287,6 +351,7 @@ func TestInferCalleeSummaries(t *testing.T) {
 			if tc.via == Types {
 				res = checkSummaryTypes(res.mustNotFlows)
 			}
+			state.Logger.Tracef("must-not-flows for function %s: %v\n", g.Parent, res.mustNotFlows)
 			summs, err := inferCalleeSummaries(ctx, state.State, g, res.mustNotFlows, tc.via)
 			if err != nil {
 				t.Fatal(err)

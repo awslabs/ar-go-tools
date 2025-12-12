@@ -177,9 +177,10 @@ func IsUserDefinedFunction(function *ssa.Function) bool {
 
 const receiverTag = "!receiver"
 const argPrefix = "!arg " // always with a space
-const argNameLeft = "<"
-const argNameRight = ">"
+const nameDelimLeft = "<"
+const nameDelimRight = ">"
 const returnPrefix = "!ret"
+const freeVarPrefix = "!free"
 
 // Parses valid names for parameters
 var validArgNameRegex = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
@@ -388,9 +389,9 @@ func ParseSummaryNode(summary string) (SummaryNode, error) {
 	if strings.HasPrefix(summary, argPrefix) {
 		// should be of the form !arg "name" or !arg index
 		s := strings.TrimPrefix(summary, argPrefix)
-		if strings.HasPrefix(s, argNameLeft) && strings.HasSuffix(s, argNameRight) {
-			s = strings.TrimPrefix(s, argNameLeft)
-			s = strings.TrimSuffix(s, argNameRight)
+		if strings.HasPrefix(s, nameDelimLeft) && strings.HasSuffix(s, nameDelimRight) {
+			s = strings.TrimPrefix(s, nameDelimLeft)
+			s = strings.TrimSuffix(s, nameDelimRight)
 			// check that s is a valid name
 			if !validArgNameRegex.MatchString(s) {
 				return nil, fmt.Errorf(
@@ -404,7 +405,7 @@ func ParseSummaryNode(summary string) (SummaryNode, error) {
 		if err != nil {
 			return nil, fmt.Errorf(
 				"cannot parse %q because %q is not an integer, or a string between %q and %q",
-				summary, s, argNameLeft, argNameRight,
+				summary, s, nameDelimLeft, nameDelimRight,
 			)
 		}
 		return ArgumentSNode{Index: i}, nil
@@ -432,7 +433,7 @@ type ReceiverSNode struct {
 	ObjectPath string
 }
 
-// Repr returns the string representation of the node. The returned string can be
+// String returns the string representation of the node. The returned string can be
 // parsed back using ParseSummaryNode
 func (r ReceiverSNode) String() string {
 	if r.ObjectPath == "" {
@@ -457,14 +458,14 @@ type ArgumentSNode struct {
 	ObjectPath string
 }
 
-// Repr returns the repr of an argument node, which is either !arg i where i is an integer
+// String returns the repr of an argument node, which is either !arg i where i is an integer
 // or !arg <name> where name is a string, which must be between < and >.
 // If the object path is not empty then the base object is wrapped in parentheses and the
 // object path is appended.
 func (a ArgumentSNode) String() string {
 	baseStr := argPrefix
 	if a.Name != "" {
-		baseStr += argNameLeft + a.Name + " " + strconv.Itoa(a.Index) + argNameRight
+		baseStr += nameDelimLeft + a.Name + " " + strconv.Itoa(a.Index) + nameDelimRight
 	} else {
 		baseStr += strconv.Itoa(a.Index)
 	}
@@ -487,7 +488,7 @@ type ReturnSNode struct {
 	ObjectPath string
 }
 
-// Repr returns the string representation of the node.
+// String returns the string representation of the node.
 // It always return the index reprsentation of the node, although the parsing
 // function also accepts the syntax "!ret" as short for "!ret 0"
 func (r ReturnSNode) String() string {
@@ -502,4 +503,25 @@ func (r ReturnSNode) String() string {
 // ignoring the original object path.
 func (r ReturnSNode) WithObjectPath(path string) SummaryNode {
 	return ReturnSNode{Index: r.Index, ObjectPath: path}
+}
+
+// FreeVarSNode is the summary node that corresponds to a free variable of the closure, with a name
+// specifying the name of the variable as it appears in the program.
+type FreeVarSNode struct {
+	Name       string
+	ObjectPath string
+}
+
+// String returns the string representation of the node which only includes the name and an optional
+// path.
+func (f FreeVarSNode) String() string {
+	baseStr := fmt.Sprintf("%s %s%s%s", freeVarPrefix, nameDelimLeft, f.Name, nameDelimRight)
+	if f.ObjectPath != "" {
+		baseStr = "(" + baseStr + ")" + f.ObjectPath
+	}
+	return baseStr
+}
+
+func (f FreeVarSNode) WithObjectPath(path string) SummaryNode {
+	return FreeVarSNode{Name: f.Name, ObjectPath: path}
 }

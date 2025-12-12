@@ -617,6 +617,156 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Method: check.Immutability,
 			},
 		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "writeToClosed",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   pkg + ".writeToClosed",
+						From: summaries.ArgumentSNode{Name: "y", Index: 1},
+						To:   summaries.ReturnSNode{},
+					},
+					{
+						Fn:   pkg + ".writeToClosed$1",
+						From: summaries.FreeVarSNode{Name: "y"},
+						To:   summaries.ReturnSNode{},
+					},
+					// NOTE Technically this flow is realizable but it's from the inferred callee
+					// summary: !free <x> -> !free <y> | !free <y> -> !free <x>.
+					{
+						Fn:   pkg + ".writeToClosed$1",
+						From: summaries.FreeVarSNode{Name: "x"},
+						To:   summaries.ReturnSNode{},
+					},
+					// TODO False-positive from immutability analysis
+					{
+						Fn:   pkg + ".writeToClosed$1",
+						From: summaries.FreeVarSNode{Name: "y"},
+						To:   summaries.FreeVarSNode{Name: "x"},
+					},
+				},
+				Method: check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "nestedClosures",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:              true,
+				UnprovenMustNotFlows: nil,
+				Method:               check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "closureShared",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ArgumentSNode{Name: "x", Index: 0},
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   pkg + ".closureShared",
+						From: summaries.ArgumentSNode{Name: "x", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
+					},
+					// TODO Immutability analysis false-positive
+					{
+						Fn:   pkg + ".closureShared$1",
+						From: summaries.FreeVarSNode{Name: "x"},
+						To:   summaries.FreeVarSNode{Name: "y"},
+					},
+				},
+				Method: check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "noFlowClosure",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   pkg + ".noFlowClosure",
+						From: summaries.ArgumentSNode{Name: "x", Index: 0},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   pkg + ".noFlowClosure",
+						From: summaries.ArgumentSNode{Name: "y", Index: 1},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+				},
+				Method: check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "noFlowClosure",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:              true,
+				UnprovenMustNotFlows: nil,
+				Method:               check.Immutability,
+			},
+		},
+		// TODO Don't panic for non-local bound label
+		// {
+		// 	summary: summaries.NewFunctionFlowSummary(pkg, "nestedClosuresInvalid",
+		// 		summaries.DetailedSummary{
+		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+		// 				summaries.ArgumentSNode{Name: "x", Index: 0}: {
+		// 					summaries.ReturnSNode{Index: 0},
+		// 				},
+		// 				summaries.ArgumentSNode{Name: "y", Index: 1}: {
+		// 					summaries.ReturnSNode{Index: 0},
+		// 				},
+		// 			},
+		// 		},
+		// 	),
+		// 	want: check.SoundnessResult{
+		// 		IsSound:              true,
+		// 		UnprovenMustNotFlows: []check.Flow{},
+		// 		Method:               check.Immutability,
+		// 	},
+		// },
 	}
 
 	for _, tc := range tests {
@@ -794,7 +944,7 @@ func dbgFlows(t *testing.T, flows []check.Flow, pkg string) {
 }
 
 func setupConfig(lp *loadprogram.State) {
-	level := config.TraceLevel // change this as needed for debugging
+	level := config.ErrLevel // change this as needed for debugging
 	lp.Logger.Level = level
 	lp.Logger.SupressWarn = true
 

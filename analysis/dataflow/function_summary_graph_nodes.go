@@ -282,32 +282,6 @@ func TermNodeSummary(g GraphNode) string {
 	return ""
 }
 
-func GraphNodeDesc(g GraphNode) string {
-	switch x := g.(type) {
-	case *ParamNode:
-		return fmt.Sprintf("param:%s", x.ssaNode.Name())
-	case *CallNode:
-		return fmt.Sprintf("call:%s", x.callSite.String())
-	case *CallNodeArg:
-		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().callSite.String())
-	case *ReturnValNode:
-		return fmt.Sprintf("ret#%d", x.Index())
-	case *ClosureNode:
-		return "closure"
-	case *BoundLabelNode:
-		return "bound-label"
-	case *SyntheticNode:
-		return "synth"
-	case *BoundVarNode:
-		return "bound-var"
-	case *FreeVarNode:
-		return "free-var"
-	case *AccessGlobalNode:
-		return fmt.Sprintf("global:%v", x.Global.Value())
-	}
-	return ""
-}
-
 // shortNodeSummary returns a condensed summary (no whitespace) of a node.
 func shortNodeSummary(g GraphNode) string {
 	switch x := g.(type) {
@@ -326,9 +300,9 @@ func shortNodeSummary(g GraphNode) string {
 	case *SyntheticNode:
 		return "synth"
 	case *BoundVarNode:
-		return "bound-var"
+		return fmt.Sprintf("bound-var:%s", x.ssaValue.Name())
 	case *FreeVarNode:
-		return "free-var"
+		return fmt.Sprintf("free-var:%s", x.ssaNode.Name())
 	case *AccessGlobalNode:
 		if x.IsWrite {
 			return fmt.Sprintf("write-global:%v", x.Global.Value())

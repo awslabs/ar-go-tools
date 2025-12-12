@@ -284,6 +284,87 @@ func testWriteStructPtr() {
 	fmt.Println("testWriteStructPtr", x.count) // 1
 }
 
+func writeToClosed(x, y int) int {
+	f := func() int {
+		y = x
+		return x
+	}
+	return f() + f()
+}
+
+func testClosure() {
+	res := writeToClosed(0, -5)
+	fmt.Println("testClosure", res) // 0
+}
+
+func nestedClosures(x, y *int) *int {
+	bv := *y
+	outer := func(z *int) *int {
+		inner := func() *int {
+			return z
+		}
+		res := *inner() + bv
+		return &res
+	}
+	return outer(x)
+}
+
+func testNestedClosures() {
+	a, b := 1, 2
+	res := nestedClosures(&a, &b)
+	fmt.Println("testNestedClosures", *res) // 3
+}
+
+func closureShared(x, y *int) *int {
+	f1 := func() *int {
+		*x = *y
+		return x
+	}
+	f2 := func() *int {
+		return y
+	}
+	f1()
+	return f2()
+}
+
+func testClosureShared() {
+	a, b := 1, 2
+	res := closureShared(&a, &b)
+	fmt.Println("testClosureShared", *res) // 2
+}
+
+func noFlowClosure(x, y *int) *int {
+	f := func() *int {
+		z := 42
+		return &z
+	}
+	f()
+	return x
+}
+
+func testNoFlowClosure() {
+	a, b := 1, 2
+	res := noFlowClosure(&a, &b)
+	fmt.Println("testNoFlowClosure", *res) // 1
+}
+
+func nestedClosuresInvalid(x, y *int) *int {
+	outer := func() *int {
+		inner := func() *int {
+			*x = *x + *y // x is a non-local bound label which cannot be soundly checked
+			return x
+		}
+		return inner()
+	}
+	return outer()
+}
+
+func testNestedClosuresInvalid() {
+	a, b := 1, 2
+	res := nestedClosuresInvalid(&a, &b)
+	fmt.Println("testNestedClosuresInvalid", *res) // 3
+}
+
 func main() {
 	testSingleArgIntraOut()
 	testSingleArgInterNone()
@@ -302,4 +383,9 @@ func main() {
 	testAliasInterNone()
 	testAliasInter()
 	testWriteStructPtr()
+	testClosure()
+	testNestedClosures()
+	testClosureShared()
+	testNoFlowClosure()
+	testNestedClosuresInvalid()
 }

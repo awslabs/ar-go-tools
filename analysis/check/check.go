@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"golang.org/x/tools/go/ssa"
@@ -85,15 +86,16 @@ func CheckSummary(
 
 var errInfer = errors.New("failed to infer callee summaries")
 
+// checkSummary checks the soundness of the given data flow summary for f in want.
+//
+// General takes want and returns all must-not-flows it couldn't prove.
+// Each analysis method takes a set of must-not-flows it needs to prove, and returns the set of
+// must-not-flows it wasn't able to prove.
+// Try general, then types, then immutability, etc.
+// Each method removes more must-not-flows, which makes the next task easier.
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
 ) (SoundnessResult, error) {
-	// General takes want and returns all must-not-flows it couldn't prove.
-	// Each analysis method takes a set of must-not-flows it needs to prove, and returns the set of
-	// must-not-flows it wasn't able to prove.
-	// Try general, then types, then immutability, etc.
-	// Each method removes more must-not-flows, which makes the next task easier.
-
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
 	// This way there is only one summary graph created per *ssa.Function
@@ -138,6 +140,7 @@ func checkSummary(
 			IsSound:              false,
 			UnprovenMustNotFlows: topMustNotFlows,
 			Method:               method,
+			Time:                 time.Since(start),
 		}, fmt.Errorf("%w for %s: %v", errInfer, f, err)
 	}
 	if len(calleeSummaries) == 0 {
@@ -152,15 +155,21 @@ func checkSummary(
 			return SoundnessResult{},
 				fmt.Errorf("no summaries inferred for callee: %s", calleeG.Parent)
 		}
-		// isSound := false
 		// Only one of the potential callee summaries needs to be sound
+		// isSound := false // NOTE temporarily disabled: see note below
 		for _, calleeSumm := range calleeSumms {
 			// Recursively check the soundness of the callee's inferred summary
 			callee := calleeG.Parent
 			s.Logger.Tracef(
 				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
 			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm)
-			calleeMustNotFlows = append(calleeMustNotFlows, calleeRes.UnprovenMustNotFlows...)
+			for _, fl := range calleeRes.UnprovenMustNotFlows {
+				// Callee must-not-flows should be relatively small so even though this is a linear
+				// scan, it should be faster than enforcing uniqueness via a map.
+				if !slices.Contains(calleeMustNotFlows, fl) {
+					calleeMustNotFlows = append(calleeMustNotFlows, fl)
+				}
+			}
 			if err != nil {
 				s.Logger.Errorf("failed to check callee summary: %v", err)
 				if errors.Is(err, errInfer) {
@@ -174,6 +183,7 @@ func checkSummary(
 						IsSound:              false,
 						UnprovenMustNotFlows: append(topMustNotFlows, calleeMustNotFlows...),
 						Method:               method,
+						Time:                 time.Since(start),
 					}, nil
 				}
 				method = calleeRes.Method
@@ -207,6 +217,7 @@ func checkSummary(
 		// 		IsSound:              false,
 		// 		UnprovenMustNotFlows: append(topMustNotFlows, calleeMustNotFlows...),
 		// 		Method:               method,
+		// 		Time:                 time.Since(start),
 		// 	}, nil
 		// }
 	}
@@ -229,6 +240,7 @@ func checkSummary(
 		IsSound:              isSound,
 		UnprovenMustNotFlows: unproven,
 		Method:               method,
+		Time:                 time.Since(start),
 	}, nil
 }
 
@@ -253,7 +265,7 @@ type flow struct {
 }
 
 func (f flow) String() string {
-	return fmt.Sprintf("%s->%s", dataflow.GraphNodeDesc(f.from), dataflow.GraphNodeDesc(f.to))
+	return fmt.Sprintf("%s->%s", graphNodeDesc(f.from), graphNodeDesc(f.to))
 }
 
 // difference returns the elements of a that are not in b.

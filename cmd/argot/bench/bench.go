@@ -236,7 +236,7 @@ func runBenchAll(state *dataflow.State) []incompleteFuncReport {
 
 func newReportFromIncomplete(state *dataflow.State, incReports []incompleteFuncReport) report {
 	// Build inter-procedural graph to populate Callsites
-	state.FlowGraph.BuildGraph()
+	state.FlowGraph.BuildGraph(false)
 
 	reports := make([]funcReport, 0, len(incReports))
 	for _, report := range incReports {

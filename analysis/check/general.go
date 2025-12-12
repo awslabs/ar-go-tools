@@ -40,7 +40,8 @@ func checkSummaryMostGeneral(g *dataflow.SummaryGraph, want summaries.DetailedSu
 	return newCheckResult(unproven, General)
 }
 
-// checkSummaryTypes tries to prove that the must-not-flows in bad do not hold by a simple type analysis:
+// checkSummaryTypes tries to prove that the must-not-flows in bad do not hold by a simple type
+// analysis:
 // if the node being flowed to is a non-pointer-like parameter, then the flow cannot exist.
 func checkSummaryTypes(bad []flow) checkResult {
 	var unproven []flow
@@ -50,7 +51,11 @@ func checkSummaryTypes(bad []flow) checkResult {
 			if isPointerLike(to.Type()) {
 				unproven = append(unproven, fl)
 			}
+		case *dataflow.FreeVarNode:
+			// Free variables are always pointer-like.
+			unproven = append(unproven, fl)
 		case *dataflow.ReturnValNode:
+			// Returns can always be outputs.
 			unproven = append(unproven, fl)
 		default:
 			panic(fmt.Errorf("invalid flow to node type: %v (%T)", to, to))
@@ -61,12 +66,28 @@ func checkSummaryTypes(bad []flow) checkResult {
 }
 
 // mostGeneralFlows returns the most-general summary for the function in g.
-// TODO include free variables as inputs and outputs
+// Params and free variables are both inputs and outputs.
+// Returns are only outputs.
 func mostGeneralFlows(g *dataflow.SummaryGraph) []flow {
 	var flows []flow
 	seen := make(map[flow]struct{})
-	for _, input := range g.Params {
-		for _, output := range g.Params {
+	var inputs []dataflow.GraphNode
+	var outputs []dataflow.GraphNode
+	for _, param := range g.Params {
+		inputs = append(inputs, param)
+		outputs = append(outputs, param)
+	}
+	for _, fv := range g.FreeVars {
+		inputs = append(inputs, fv)
+		outputs = append(outputs, fv)
+	}
+	for _, rets := range g.Returns {
+		for _, ret := range rets {
+			outputs = append(outputs, ret)
+		}
+	}
+	for _, input := range inputs {
+		for _, output := range outputs {
 			// We don't count self-flows (input flows to same input as an output) because the data
 			// flows to and from the parameter when used as an argument at a callsite are part of
 			// the data flow of the caller's summary, not the callee's.
@@ -79,17 +100,6 @@ func mostGeneralFlows(g *dataflow.SummaryGraph) []flow {
 			}
 			flows = append(flows, fl)
 			seen[fl] = struct{}{}
-		}
-
-		for _, outputs := range g.Returns {
-			for _, output := range outputs {
-				fl := flow{from: input, to: output}
-				if _, ok := seen[fl]; ok {
-					continue
-				}
-				flows = append(flows, fl)
-				seen[fl] = struct{}{}
-			}
 		}
 	}
 
