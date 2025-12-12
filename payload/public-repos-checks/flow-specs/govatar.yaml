@@ -467,3 +467,11 @@ dataflow-summaries:
     flows:
       - from: "!arg 0" # reflect.Value
         to: "!ret 0" # string key name
+  - package: text/template
+    receiver: "*Template"
+    method: Execute
+    flows:
+      - from: "!arg 1" # data any
+        to: "!arg 0" # wr io.Writer (data gets written to writer)
+      - from: "!receiver" # template content
+        to: "!arg 0" # wr io.Writer (template gets executed to writer)
