@@ -190,7 +190,6 @@ func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State) (b
 				fmt.Fprintf(os.Stderr, "\terror: %v\n", err)
 			}
 		}
-		return false, nil, fmt.Errorf("taint analysis failed: %v", err)
 	}
 
 	// Printing final results

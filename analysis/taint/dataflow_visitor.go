@@ -548,8 +548,6 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 						fmt.Sprintf("no bound variable matching free variable in %s",
 							cur.ClosureTrace.Label.ClosureSummary.Parent.String()),
 						fmt.Errorf("at position %d", graphNode.Index()))
-					panic(fmt.Errorf("no bound variable matching free variable in %s at position %d",
-						cur.ClosureTrace.Label.ClosureSummary.Parent.String(), graphNode.Index()))
 				}
 			} else {
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {

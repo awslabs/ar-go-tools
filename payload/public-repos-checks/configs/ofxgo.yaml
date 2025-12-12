@@ -12,6 +12,9 @@ targets:
 dataflow-problems:
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
+  generate-unsoundness-report: true
+  user-specs:
+    - "user-specs.yaml"
   # Taint tracking problems
   taint-tracking:
     - tag: "credential-logging"
