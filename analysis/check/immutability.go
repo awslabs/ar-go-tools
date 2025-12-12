@@ -80,7 +80,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 			}
 			if ok {
 				s.Logger.Debugf(
-					"found modification of output pointer value %v: %v at %s\n",
+					"found modification of output pointer value %v: write %v at %s\n",
 					val, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
 				return false, nil
 			}
@@ -135,7 +135,8 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 		// A function may be visited multiple times in different calling contexts so only analyze
 		// each function once.
 		if _, ok := seenFunc[node.Func]; !ok {
-			// s.Logger.Tracef("checking for pointer writes in function %s\n", node.Func)
+			s.Logger.Tracef("checking for pointer writes in function %s\n", node.Func)
+
 			lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
 				write, ok := ptrWrittenTo(instr)
 				if !ok {
@@ -147,6 +148,7 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 				// 	return
 				// }
 
+				s.Logger.Tracef("found pointer write %s\n", write)
 				mobjs := s.cache.Objects(write.Target)
 				// If the target does not point to any memory, it is probably a nil-like local value
 				// (e.g., empty slice), so any explicit stores to it counts as writing data.
@@ -333,11 +335,17 @@ type ptrWrite struct {
 }
 
 func (w ptrWrite) String() string {
-	return fmt.Sprintf("write to %v with %v in %s", w.Target, w.Value, w.Instruction.Parent())
+	return fmt.Sprintf("to %v with %v in %s", w.Target, w.Value, w.Instruction.Parent())
 }
 
-// ptrWrittenTo returns true if instruction writes a scalar value to a pointer
-// value.
+// ptrWrittenTo returns true if instruction writes a "data" value (r-value) to a pointer
+// value (l-value) in a write operation (store, map update, or channel send instruction).
+//
+// NOTE SSA store operations only store values to pointers. So a store to an integer will look like:
+//
+//	t0 = new int
+//	t1 = &t0
+//	*t1 = 1 <- the l-value ssa.Value is a pointer here
 func ptrWrittenTo(instr ssa.Instruction) (ptrWrite, bool) {
 	var lval ssa.Value
 	var rval ssa.Value
@@ -409,9 +417,19 @@ func isData(t types.Type) bool {
 			return true // treat reflect.Value as data
 		}
 		return isData(t.Underlying())
-	case *types.Basic, *types.Array, *types.Slice, *types.Map:
+	case *types.Basic, *types.Array, *types.Slice, *types.Map, *types.Struct:
 		return true
-	default:
+	case *types.Pointer:
+		// Consider pointers to data types as data, but not pointers to pointers
+		underlying := t.Elem()
+		if _, isPtr := underlying.(*types.Pointer); isPtr {
+			return false // pointer to pointer is not data
+		}
+		// Use recursion to handle aliases and named types in the element
+		return isData(underlying)
+	case *types.Interface:
 		return false
+	default:
+		panic(fmt.Errorf("unhandled type for isData: %v (%T)", t, t))
 	}
 }

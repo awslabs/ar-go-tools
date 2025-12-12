@@ -112,11 +112,11 @@ func checkSummary(
 			res = checkSummaryImmutability(ctx, s, res.mustNotFlows)
 		}
 
-		if s.Logger.LogsTrace() {
-			s.Logger.Tracef(
+		if s.Logger.LogsDebug() {
+			s.Logger.Debugf(
 				"unproven must-not-flows from checking function %s via method %s:\n", f, meth)
 			for _, fl := range res.mustNotFlows {
-				s.Logger.Tracef("\t%v\n", fl)
+				s.Logger.Debugf("\t%v\n", fl)
 			}
 		}
 
@@ -152,7 +152,7 @@ func checkSummary(
 			return SoundnessResult{},
 				fmt.Errorf("no summaries inferred for callee: %s", calleeG.Parent)
 		}
-		isSound := false
+		// isSound := false
 		// Only one of the potential callee summaries needs to be sound
 		for _, calleeSumm := range calleeSumms {
 			// Recursively check the soundness of the callee's inferred summary
@@ -187,29 +187,47 @@ func checkSummary(
 						"want no unproven must-not-flows in callee %s summary, got: %v",
 						callee, calleeRes.UnprovenMustNotFlows))
 				}
-				isSound = true
+				// If this inferred callee summary is sound, don't bother checking the rest of the
+				// inferred summaries.
+				// isSound = true
 				break
 			}
 		}
 
-		// If none of the inferred callee summaries are sound, don't bother checking the rest of the
-		// callees in the function
-		if !isSound {
-			return SoundnessResult{
-				Fn:                   f.RelString(nil),
-				Want:                 want,
-				IsSound:              false,
-				UnprovenMustNotFlows: append(topMustNotFlows, calleeMustNotFlows...),
-				Method:               method,
-			}, nil
-		}
+		// NOTE This logic is temporarily disabled to make tests with multiple callees more
+		// deterministic.
+		// It can be re-enabled if reporting all unproven must-not-flows has performance issues.
+		//
+		// // If none of the inferred callee summaries are sound, don't bother checking the rest of the
+		// // callees in the function
+		// if !isSound {
+		// 	return SoundnessResult{
+		// 		Fn:                   f.RelString(nil),
+		// 		Want:                 want,
+		// 		IsSound:              false,
+		// 		UnprovenMustNotFlows: append(topMustNotFlows, calleeMustNotFlows...),
+		// 		Method:               method,
+		// 	}, nil
+		// }
+	}
+
+	// If there are no callee must-not-flows, then the summary for f is sound.
+	isSound := len(calleeMustNotFlows) == 0
+
+	// If the summary is unsound, return the must-not-flows for f as well as any unproven
+	// must-not-flows for the callees.
+	// TODO This can probably be improved by only returning the must-not-flows for f that are
+	// implied by the must-not-flows for the callees.
+	unproven := calleeMustNotFlows
+	if !isSound {
+		unproven = append(topMustNotFlows, unproven...)
 	}
 
 	return SoundnessResult{
 		Fn:                   f.RelString(nil),
 		Want:                 want,
-		IsSound:              len(calleeMustNotFlows) == 0,
-		UnprovenMustNotFlows: calleeMustNotFlows,
+		IsSound:              isSound,
+		UnprovenMustNotFlows: unproven,
 		Method:               method,
 	}, nil
 }

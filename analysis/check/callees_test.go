@@ -35,15 +35,14 @@ import (
 var testfsys embed.FS
 
 func TestInferCalleeSummaries(t *testing.T) {
+	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic"
 	tests := []struct {
 		fn   summaries.FrontendDataflowSummary
 		want map[string][]summaries.DetailedSummary
 		via  Method
 	}{
 		{
-			fn: summaries.NewFunctionFlowSummary(
-				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
-				"threeArgInter",
+			fn: summaries.NewFunctionFlowSummary(pkg, "threeArgInter",
 				summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 1}: {
@@ -89,9 +88,7 @@ func TestInferCalleeSummaries(t *testing.T) {
 			via: General,
 		},
 		{
-			fn: summaries.NewFunctionFlowSummary(
-				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
-				"threeArgInter",
+			fn: summaries.NewFunctionFlowSummary(pkg, "threeArgInter",
 				summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 1}: {
@@ -121,9 +118,7 @@ func TestInferCalleeSummaries(t *testing.T) {
 			via: Types,
 		},
 		{
-			fn: summaries.NewFunctionFlowSummary(
-				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
-				"threeArgInterDiffCallees",
+			fn: summaries.NewFunctionFlowSummary(pkg, "threeArgInterDiffCallees",
 				summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 1}: {
@@ -166,10 +161,8 @@ func TestInferCalleeSummaries(t *testing.T) {
 		},
 		{
 			// NOTE This summary is deliberately incorrect:
-			// If src cannot flow to dst, then no parameter of helper can flow to helper's return
-			fn: summaries.NewFunctionFlowSummary(
-				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
-				"fieldPropagation",
+			// If src cannot flow to dst, then no parameter of addVals can flow to its return
+			fn: summaries.NewFunctionFlowSummary(pkg, "propagateFields",
 				summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "dst", Index: 1}: {
@@ -179,7 +172,7 @@ func TestInferCalleeSummaries(t *testing.T) {
 				},
 			),
 			want: map[string][]summaries.DetailedSummary{
-				"helper": {
+				"addVals": {
 					{
 						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 							summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -195,9 +188,7 @@ func TestInferCalleeSummaries(t *testing.T) {
 			via: Types,
 		},
 		{
-			fn: summaries.NewFunctionFlowSummary(
-				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
-				"sharedMutation",
+			fn: summaries.NewFunctionFlowSummary(pkg, "sharedMutation",
 				summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -215,7 +206,8 @@ func TestInferCalleeSummaries(t *testing.T) {
 			want: map[string][]summaries.DetailedSummary{
 				"modify": {
 					{
-						// The empty summary is the only valid summary for `modify` given this summary because:
+						// The empty summary is the only valid summary for `modify` given this
+						// summary because:
 						// - a and b cannot flow to ret, meaning that val cannot flow to s
 						// - shared cannot flow to a or b, meaning that s cannot flow to val
 						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
@@ -225,9 +217,7 @@ func TestInferCalleeSummaries(t *testing.T) {
 			via: Types,
 		},
 		{
-			fn: summaries.NewFunctionFlowSummary(
-				"github.com/awslabs/ar-go-tools/analysis/check/testdata/genspec",
-				"sharedMutation",
+			fn: summaries.NewFunctionFlowSummary(pkg, "sharedMutation",
 				summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -268,8 +258,9 @@ func TestInferCalleeSummaries(t *testing.T) {
 		},
 	}
 
-	dir := filepath.Join("./testdata", "genspec")
-	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	dir := filepath.Join("./testdata", "basic")
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +363,9 @@ func TestInferCalleeSummaries(t *testing.T) {
 					}
 
 					if !foundMatch {
-						t.Errorf("expected summary [%d] for %s not found in inferred summaries", j, calleeName)
+						t.Errorf(
+							"expected summary [%d] for %s not found in inferred summaries",
+							j, calleeName)
 						t.Logf("want: %+v", wantSumm)
 						t.Logf("got summaries:")
 						for i, gs := range inferredSummaries {

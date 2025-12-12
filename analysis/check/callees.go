@@ -25,7 +25,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
 // inferCalleeSummaries returns all the maximally-general (most data flow edges) callee summaries
@@ -416,7 +415,7 @@ func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 
 			// pointer-like callee param -> call arg
 			for _, param := range calleeSummary.Params {
-				if pointer.CanPoint(param.Type()) {
+				if isPointerLike(param.Type()) {
 					for _, arg := range call.Args() {
 						if param.Index() == arg.Index() {
 							res = append(res, edge{from: node{param, call}, to: node{arg, nil}})

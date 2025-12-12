@@ -368,6 +368,168 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Method: check.Immutability,
 			},
 		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "threeArgInterDiffCallees",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1}: {
+							summaries.ArgumentSNode{Name: "b", Index: 2},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 2}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   pkg + ".threeArgInterDiffCallees",
+						From: summaries.ArgumentSNode{Name: "no", Index: 0},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   pkg + ".threeArgInterDiffCallees",
+						From: summaries.ArgumentSNode{Name: "no", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
+					},
+					{
+						Fn:   pkg + ".threeArgInterDiffCallees",
+						From: summaries.ArgumentSNode{Name: "no", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "b", Index: 2},
+					},
+					{
+						Fn:   pkg + ".threeArgInterDiffCallees",
+						From: summaries.ArgumentSNode{Name: "a", Index: 1},
+						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
+					},
+					{
+						Fn:   pkg + ".threeArgInterDiffCallees",
+						From: summaries.ArgumentSNode{Name: "b", Index: 2},
+						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
+					},
+					{
+						Fn:   pkg + ".threeArgInterDiffCallees",
+						From: summaries.ArgumentSNode{Name: "b", Index: 2},
+						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
+					},
+					{
+						Fn:   pkg + ".add1",
+						From: summaries.ArgumentSNode{Name: "no", Index: 2},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   pkg + ".add2",
+						From: summaries.ArgumentSNode{Name: "no", Index: 2},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+				},
+				Method: check.Immutability,
+			},
+		},
+		{
+			// NOTE This summary is deliberately incorrect:
+			// If src cannot flow to dst, then no parameter of addVals can flow to its return.
+			summary: summaries.NewFunctionFlowSummary(pkg, "propagateFields",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "dst", Index: 1}: {
+							summaries.ArgumentSNode{Name: "src", Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   pkg + ".propagateFields",
+						From: summaries.ArgumentSNode{Name: "src", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "dst", Index: 1},
+					},
+					{
+						Fn:   pkg + ".addVals",
+						From: summaries.ArgumentSNode{Name: "a", Index: 0},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+					{
+						Fn:   pkg + ".addVals",
+						From: summaries.ArgumentSNode{Name: "b", Index: 1},
+						To:   summaries.ReturnSNode{Index: 0},
+					},
+				},
+				Method: check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "propagateFields",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "src", Index: 0}: {
+							summaries.ArgumentSNode{Name: "dst", Index: 1},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:              true,
+				UnprovenMustNotFlows: nil,
+				Method:               check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "sharedMutation",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+							summaries.ArgumentSNode{Name: "shared", Index: 2},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 1}: {
+							summaries.ReturnSNode{Index: 0},
+							summaries.ArgumentSNode{Name: "shared", Index: 2},
+						},
+						summaries.ArgumentSNode{Name: "shared", Index: 2}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				// TODO false-positive: there should not be a flow from modify s -> val
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   pkg + ".sharedMutation",
+						From: summaries.ArgumentSNode{Name: "a", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "b", Index: 1},
+					},
+					{
+						Fn:   pkg + ".sharedMutation",
+						From: summaries.ArgumentSNode{Name: "b", Index: 1},
+						To:   summaries.ArgumentSNode{Name: "a", Index: 0},
+					},
+					{
+						Fn:   pkg + ".sharedMutation",
+						From: summaries.ArgumentSNode{Name: "shared", Index: 2},
+						To:   summaries.ArgumentSNode{Name: "a", Index: 0},
+					},
+					{
+						Fn:   pkg + ".sharedMutation",
+						From: summaries.ArgumentSNode{Name: "shared", Index: 2},
+						To:   summaries.ArgumentSNode{Name: "b", Index: 1},
+					},
+					{
+						Fn:   pkg + ".modify",
+						From: summaries.ArgumentSNode{Name: "s", Index: 1},
+						To:   summaries.ArgumentSNode{Name: "val", Index: 0},
+					},
+				},
+				Method: check.Immutability,
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -486,18 +648,17 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 		} else {
 			sound = "unsound"
 		}
-		if tc.summary.Name() == "encoding/json.Marshal" {
-			// t.Skipf("test for json.Marshal is nondeterministic: skipping...")
-		}
 		name := fmt.Sprintf("%s_%s", tc.summary.Name(), sound)
 		t.Run(name, func(t *testing.T) {
 			dir := filepath.Join("./testdata", "stdlib", tc.summary.Package())
-			lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+			lp, err := analysistest.LoadTest(
+				testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
 			if err != nil {
 				t.Fatal(err)
 			}
 			setupConfig(lp)
-			state, err := result.Bind(result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+			state, err := result.Bind(
+				result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
 			if err != nil {
 				t.Fatalf("failed to load state: %s", err)
 			}
@@ -565,7 +726,9 @@ func logNode(t *testing.T, n summaries.SummaryNode, indent int) {
 	t.Helper()
 	switch n := n.(type) {
 	case summaries.ArgumentSNode:
-		t.Logf("%sARG name: %v, index: %v, path: %v\n", strings.Repeat("\t", indent), n.Name, n.Index, n.ObjectPath)
+		t.Logf(
+			"%sARG name: %v, index: %v, path: %v\n",
+			strings.Repeat("\t", indent), n.Name, n.Index, n.ObjectPath)
 	case summaries.ReturnSNode:
 		t.Logf("%sRET index: %v, path: %v\n", strings.Repeat("\t", indent), n.Index, n.ObjectPath)
 	default:

@@ -142,6 +142,73 @@ func testThreeArgInter() {
 	fmt.Println(res) // 5
 }
 
+func threeArgInterDiffCallees(no, a, b *int) int {
+	x := add1(*a, *a, no)
+	x += add2(*a, *b, no)
+	*b = x
+	return x
+}
+
+func add1(a int, b int, no *int) int {
+	return a + 1
+}
+
+func testThreeArgInterDiffCallees() {
+	x, y, z := 0, 1, 2
+	res := threeArgInterDiffCallees(&x, &y, &z)
+	fmt.Println(res) // 5
+}
+
+type container struct {
+	field *data
+	other *data
+}
+
+type data struct {
+	value int
+}
+
+func propagateFields(src, dst *container) {
+	dst.field = addVals(src.field, src.other)
+	dst.other = addVals(src.other, src.field)
+}
+
+func addVals(a, b *data) *data {
+	return &data{value: a.value + b.value}
+}
+
+func testFieldPropagation() {
+	x := &container{field: &data{0}, other: &data{1}}
+	y := &container{field: &data{2}, other: &data{2}}
+	propagateFields(x, y)
+	fmt.Printf(
+		"x.field:%v x.other:%v, y.field:%v y.other:%v\n",
+		x.field.value, x.other.value, y.field.value, y.other.value)
+	// x.field:0 x.other:1, y.field:1 y.other:1
+}
+
+type state struct {
+	acc   int
+	count int
+}
+
+func sharedMutation(a, b *int, shared *state) int {
+	modify(a, shared)
+	modify(b, shared)
+	return shared.acc
+}
+
+func modify(val *int, s *state) {
+	s.acc += *val
+}
+
+func testSharedMutation() {
+	a, b := 0, 1
+	st := &state{2, 3}
+	res := sharedMutation(&a, &b, st)
+	fmt.Println(res) // 3
+}
+
 func main() {
 	testSingleArgIntraOut()
 	testSingleArgInterNone()
@@ -152,4 +219,7 @@ func main() {
 	testTwoArgInterBool()
 	testTwoArgInter()
 	testThreeArgInter()
+	testThreeArgInterDiffCallees()
+	testFieldPropagation()
+	testSharedMutation()
 }
