@@ -18,6 +18,7 @@ import (
 	"go/token"
 	"go/types"
 	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -69,13 +70,13 @@ func PackageTypeFromFunction(f *ssa.Function) *types.Package {
 	return nil
 }
 
-// PackageNameFromFunction returns the best possible package name for a ssa.Function
+// PkgPathFromFunction returns the best possible package name for a ssa.Function
 // If the Function has a package, use that.
 // If the function doesn't have a package, check if it's a method and use
 // the package associated with its object
 // If none of those are true, it must be an error, so try to extract the package
 // name from the various error formats.
-func PackageNameFromFunction(f *ssa.Function) string {
+func PkgPathFromFunction(f *ssa.Function) string {
 	if f == nil {
 		return ""
 	}
@@ -172,4 +173,35 @@ func ExtractPkgNameFromPath(path string) string {
 		return slices[len(slices)-1]
 	}
 	return path
+}
+
+type FunctionInfo struct {
+	PkgName    string
+	PkgPath    string
+	IsLocal    bool
+	IsExported bool
+	RootMod    string
+}
+
+func GetFunctionInfo(root string, fn *ssa.Function) (FunctionInfo, bool) {
+	if fn == nil || fn.Pkg == nil {
+		return FunctionInfo{}, false
+	}
+	//
+	pkgPath := PkgPathFromFunction(fn)
+
+	isInternal := strings.Contains(pkgPath, "/internal/")
+
+	// Is the function exported?
+	isExported := fn.Name() != "" && unicode.IsUpper(rune(fn.Name()[0])) && fn.Synthetic == "" && !isInternal
+
+	isLocal := strings.HasPrefix(pkgPath, root)
+
+	return FunctionInfo{
+		PkgName:    ExtractPkgNameFromPath(pkgPath),
+		PkgPath:    pkgPath,
+		IsLocal:    isLocal,
+		IsExported: isExported,
+		RootMod:    root,
+	}, true
 }

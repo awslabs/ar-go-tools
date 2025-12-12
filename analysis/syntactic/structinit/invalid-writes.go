@@ -33,7 +33,7 @@ func runInvalidWritesAnalysis(st *state, res AnalysisResult) {
 			if instr == nil || instr.Parent() == nil || !instr.Pos().IsValid() {
 				return
 			}
-			if summaries.IsStdPackageName(lang.PackageNameFromFunction(instr.Parent())) {
+			if summaries.IsStdPackageName(lang.PkgPathFromFunction(instr.Parent())) {
 				return
 			}
 

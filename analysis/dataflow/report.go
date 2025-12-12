@@ -133,6 +133,8 @@ func (s *State) ReportSummaryNotConstructed(callSite *CallNode) {
 
 // UnsoundFeaturesMap maps positions (in a function) to explanations of the unsound features used.
 type UnsoundFeaturesMap struct {
+	// Func is the of the function if those unsound features relate to a function
+	Func *ssa.Function
 	// Recovers records the locations where a recover is used.
 	Recovers map[token.Position]bool
 	// UnsafeUsages records the locations where `unsafe` is used, with a short explanation.
@@ -141,6 +143,11 @@ type UnsoundFeaturesMap struct {
 	ReflectUsages map[token.Position]string
 	// HasUnboundedDefers indicates if the defers stack is unbounded.
 	HasUnboundedDefers bool
+}
+
+// HasAny returns true if the unsound features map has any unsound features.
+func (u UnsoundFeaturesMap) HasAny() bool {
+	return len(u.Recovers) > 0 || len(u.UnsafeUsages) > 0 || len(u.ReflectUsages) > 0 || u.HasUnboundedDefers
 }
 
 // reportUnsoundFeatures logs warning messages when unsound features are used in a function. Those include:
@@ -152,14 +159,14 @@ type UnsoundFeaturesMap struct {
 // - reflect
 //
 // Usages of those features are logged at WARN level with the position of where the feature is used.
-func reportUnsoundFeatures(deferRes defers.Results, unsoundFeatures UnsoundFeaturesMap, f *ssa.Function, logger *config.LogGroup) {
+func reportUnsoundFeatures(s *State, unsoundFeatures UnsoundFeaturesMap) {
 	if len(unsoundFeatures.Recovers) > 0 ||
 		len(unsoundFeatures.UnsafeUsages) > 0 ||
 		len(unsoundFeatures.ReflectUsages) > 0 {
 		msg := fmt.Sprintf("Function %s is using features that may make the analysis unsound.\n",
-			formatutil.Sanitize(f.String()))
+			formatutil.Sanitize(unsoundFeatures.Func.String()))
 
-		if !deferRes.DeferStackBounded {
+		if unsoundFeatures.HasUnboundedDefers {
 			msg += "    Defer stack unbounded\n"
 		}
 
@@ -187,12 +194,13 @@ func reportUnsoundFeatures(deferRes defers.Results, unsoundFeatures UnsoundFeatu
 		}
 		msg += "    Adding a predefined summary might help avoid soundness issues.\n"
 
-		logger.Warn(msg)
+		s.Logger.Warn(msg)
 	}
 }
 
-// FindUnsoundFeatures returns a record of the unsound features used by a function, if any.
-func FindUnsoundFeatures(f *ssa.Function) (defers.Results, UnsoundFeaturesMap) {
+// ComputeDefersAndUnsoundFeatures returns a record of the unsound features used by a function, if any and the result of the
+// defers analysis.
+func ComputeDefersAndUnsoundFeatures(f *ssa.Function) (defers.Results, UnsoundFeaturesMap) {
 	unsafeUsages := map[token.Position]string{}
 	recovers := map[token.Position]bool{}
 	reflectUsages := map[token.Position]string{}
@@ -216,7 +224,7 @@ func FindUnsoundFeatures(f *ssa.Function) (defers.Results, UnsoundFeaturesMap) {
 			var pkg string
 			switch callVal := callCommon.Value.(type) {
 			case *ssa.Function:
-				pkg = lang.PackageNameFromFunction(callVal)
+				pkg = lang.PkgPathFromFunction(callVal)
 				if strings.HasPrefix(pkg, "unsafe") {
 					unsafeUsages[iPos] = fmt.Sprintf("Calling %s from unsafe package.", callCommon.Value.Name())
 					return
@@ -255,7 +263,7 @@ func FindUnsoundFeatures(f *ssa.Function) (defers.Results, UnsoundFeaturesMap) {
 	logger := config.NewLogGroup(&config.Config{Options: config.Options{LogLevel: 3}})
 	deferStacks := defers.AnalyzeFunction(f, logger)
 
-	return deferStacks, UnsoundFeaturesMap{
+	return deferStacks, UnsoundFeaturesMap{f,
 		recovers, unsafeUsages, reflectUsages, !deferStacks.DeferStackBounded,
 	}
 }

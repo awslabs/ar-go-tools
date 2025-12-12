@@ -20,11 +20,12 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"golang.org/x/tools/go/ssa/ssautil"
 	"io/fs"
 	"os/exec"
 	"path/filepath"
 	"sync/atomic"
+
+	"golang.org/x/tools/go/ssa/ssautil"
 
 	"github.com/awslabs/ar-go-tools/analysis/annotations"
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -255,10 +256,15 @@ func allAstFiles(dirs []string, fset *token.FileSet, pkgs []*packages.Package) (
 
 // GoModInfo contains the data as returned by the `go list -m -u -json` command
 type GoModInfo struct {
-	Main      bool
-	Dir       string
-	Path      string
-	GoMod     string
+	// Main indicates whether this module is the main module
+	Main bool
+	// Dir is the root directory of the module
+	Dir string
+	// Path is the Go path of the module (the one you would use to import)
+	Path string
+	// GoMod is the path to the go.mod
+	GoMod string
+	// GoVersion is go version in the go.mod
 	GoVersion string
 }
 

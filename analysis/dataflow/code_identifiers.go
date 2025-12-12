@@ -67,7 +67,7 @@ func IsSourceNode(state *State, ts *config.TaintSpec, n ssa.Node) (config.CodeId
 // is nil, then it will look at whether the node can be any backtrace point in the config.
 func IsBacktraceNode(state *State, ss *config.SlicingSpec, n ssa.Node) (config.CodeIdentifier, bool) {
 	if f, ok := n.(*ssa.Function); ok {
-		pkg := lang.PackageNameFromFunction(f)
+		pkg := lang.PkgPathFromFunction(f)
 		return ss.IsBacktracePoint(config.CodeIdentifier{Package: pkg, Method: f.Name()})
 	}
 
@@ -239,7 +239,7 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 				return codeIDOracle(cid)
 			}
 			if callee != nil {
-				pkgName := lang.PackageNameFromFunction(callee)
+				pkgName := lang.PkgPathFromFunction(callee)
 				cid := config.CodeIdentifier{
 					Context:    context,
 					Package:    pkgName,
@@ -273,7 +273,7 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 		if callee == nil {
 			return false
 		}
-		pkgName := lang.PackageNameFromFunction(callee)
+		pkgName := lang.PkgPathFromFunction(callee)
 		cid := config.CodeIdentifier{
 			Context:    node.Parent().String(),
 			Package:    pkgName,
@@ -285,7 +285,7 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 
 	case *ssa.Function:
 		return codeIDOracle(config.CodeIdentifier{
-			Package:    lang.PackageNameFromFunction(node),
+			Package:    lang.PkgPathFromFunction(node),
 			Method:     node.Name(),
 			ValueMatch: n.String(),
 		})

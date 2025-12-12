@@ -46,6 +46,8 @@ In this configuration file, the user is trying to detect whether data coming fro
 An advanced feature of the taint analysis lets you specify dataflow summaries yourself for the dataflow problems:
 ```yaml
 dataflow-problems:
+    summarize-on-demand: true    # Whether to summarize ahead of time (false) or on-demand (true, recommended)
+    generate-unsoundness-report: true # Whether to generate a report of unsound functions / features encountered
     user-specs:                  # A list of dataflow
       # specifications, where each element is a json file containing
         - "specs-mylib.json"        # dataflow specifications.
@@ -68,7 +70,7 @@ dataflow-problems:
   taint-tracking:
     - source-taints-args: false  # by default, the result of a call to
     # a source function is tainted. In some cases a user might want
-    # to consider all arguments of a source function to be tainted
+    # to consider all arguments of a source function to be tainted    
 ```
 ### Specifying code locations
 

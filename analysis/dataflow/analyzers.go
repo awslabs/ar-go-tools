@@ -140,7 +140,7 @@ func runSingleFunctionJob(ctx context.Context, job singleFunctionJob,
 		defer cancel()
 	}
 
-	targetName := formatutil.Sanitize(lang.PackageNameFromFunction(job.function) + "." + job.function.Name())
+	targetName := formatutil.Sanitize(lang.PkgPathFromFunction(job.function) + "." + job.function.Name())
 	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
 	result, err := IntraProceduralAnalysis(ctx, job.analyzerState, job.function,
 		job.shouldBuildSummary, GetUniqueFunctionID(), shouldTrack, job.postBlockCallback)

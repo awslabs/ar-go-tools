@@ -455,7 +455,7 @@ func (cid *CodeIdentifier) MatchPackageAndMethod(f *ssa.Function) bool {
 	if f == nil {
 		return cid.Method == "" && cid.Package == ""
 	}
-	pkg := lang.PackageNameFromFunction(f)
+	pkg := lang.PkgPathFromFunction(f)
 	if cid.computedRegexs != nil && cid.computedRegexs.methodRegex != nil && cid.computedRegexs.packageRegex != nil {
 
 		return cid.computedRegexs.packageRegex.MatchString(pkg) && cid.computedRegexs.methodRegex.MatchString(f.Name())
@@ -473,7 +473,7 @@ func (cid *CodeIdentifier) MatchInterface(f *ssa.Function) bool {
 		return cid.Package == "" && cid.Interface == ""
 	}
 
-	pkg := lang.PackageNameFromFunction(f)
+	pkg := lang.PkgPathFromFunction(f)
 	if cid.computedRegexs != nil && cid.computedRegexs.packageRegex != nil && cid.computedRegexs.interfaceRegex != nil {
 		return cid.computedRegexs.packageRegex.MatchString(pkg) && cid.computedRegexs.interfaceRegex.MatchString(f.Type().String())
 	}

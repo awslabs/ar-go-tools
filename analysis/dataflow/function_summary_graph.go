@@ -23,7 +23,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -135,15 +134,9 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 	var lastNodeID uint32 = 0
 
 	// Only report when we don't have an external contract
-	deferRes, unsoundFeatures := FindUnsoundFeatures(f)
-	var logger *config.LogGroup
-	if s != nil && s.Logger != nil {
-		logger = s.Logger
-	} else {
-		logger = config.NewLogger(config.WarnLevel)
-	}
+	deferStacks, unsoundFeatures := ComputeDefersAndUnsoundFeatures(f)
 	if s != nil && !s.HasExternalContractSummary(f) {
-		reportUnsoundFeatures(deferRes, unsoundFeatures, f, logger)
+		reportUnsoundFeatures(s, unsoundFeatures)
 	}
 
 	g := &SummaryGraph{
@@ -168,7 +161,7 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 		shouldTrack:           shouldTrack,
 		postBlockCallBack:     postBlockCallBack,
 		unsoundness:           unsoundFeatures,
-		deferStacks:           deferRes,
+		deferStacks:           deferStacks,
 	}
 	// Add the parameters
 	for pos, param := range f.Params {
@@ -1543,6 +1536,7 @@ func (g *SummaryGraph) PrintNodes(w io.Writer) {
 	})
 }
 
+// Unsoundness returns the unsound features map of the summary.
 func (g *SummaryGraph) Unsoundness() UnsoundFeaturesMap {
 	return g.unsoundness
 }

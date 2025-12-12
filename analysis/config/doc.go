@@ -61,37 +61,38 @@ The `targets` section defines analysis targets (sets of files that form a progra
 
 The `dataflow-problems` section configures taint tracking and slicing analyses:
 
-	dataflow-problems:
-	  summarize-on-demand: true
-	  field-sensitive-funcs: [".*"]
-	  user-specs: ["specifications/std-specs.json"]
+		dataflow-problems:
+		  summarize-on-demand: true
+		  field-sensitive-funcs: [".*"]
+		  user-specs: ["specifications/std-specs.json"]
+	      generate-unsoundness-report: true
 
-	  # Taint tracking problems
-	  taint-tracking:
-	    - tag: "credential-logging"
-	      description: "Checking that credentials don't get logged."
-	      targets: ["project-name-unix", "project-name-windows"]
-	      unsafe-skip-bound-labels: false
-	      severity: "HIGH"
-	      sources:
-	        - package: "credentials"
-	          method: "Get"
-	      sinks:
-	        - context: "project-name"
-	          method: "^(Log|Error|Warn|Debug|Info|Print).*"
-	      sanitizers:
-	        - package: ".*signer/v4"
-	          method: "Sign"
+		  # Taint tracking problems
+		  taint-tracking:
+		    - tag: "credential-logging"
+		      description: "Checking that credentials don't get logged."
+		      targets: ["project-name-unix", "project-name-windows"]
+		      unsafe-skip-bound-labels: false
+		      severity: "HIGH"
+		      sources:
+		        - package: "credentials"
+		          method: "Get"
+		      sinks:
+		        - context: "project-name"
+		          method: "^(Log|Error|Warn|Debug|Info|Print).*"
+		      sanitizers:
+		        - package: ".*signer/v4"
+		          method: "Sign"
 
-	  # Slicing problems (backward dataflow)
-	  slicing:
-	    - tag: "must-compile-must-be-const"
-	      description: "Checking that regexp.MustCompile arguments are statically defined."
-	      targets: ["project-name-unix"]
-	      must-be-static: true
-	      backtracepoints:
-	        - package: "regexp"
-	          method: "^MustCompile$"
+		  # Slicing problems (backward dataflow)
+		  slicing:
+		    - tag: "must-compile-must-be-const"
+		      description: "Checking that regexp.MustCompile arguments are statically defined."
+		      targets: ["project-name-unix"]
+		      must-be-static: true
+		      backtracepoints:
+		        - package: "regexp"
+		          method: "^MustCompile$"
 
 ## Syntactic Problems
 

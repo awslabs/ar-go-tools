@@ -93,7 +93,7 @@ func FindImpl(s *loadprogram.State, ci config.CodeIdentifier) fn.Optional[Reflec
 			if callee == nil {
 				return
 			}
-			pkg := lang.PackageNameFromFunction(callee)
+			pkg := lang.PkgPathFromFunction(callee)
 
 			if pkg == "" || (pkg != ci.Package && ci.Package != "") {
 				return

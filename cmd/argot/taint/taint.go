@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis"
+	"github.com/awslabs/ar-go-tools/analysis/check"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
@@ -179,6 +180,9 @@ func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State) (b
 	analysisResult, err := taint.Analyze(ctx, df, taint.AnalysisReqs{
 		Tag: flags.Tag,
 	})
+	if df.Config.GenerateUnsoundnessReport {
+		check.GenerateUnsoundnessReport(analysisResult.State)
+	}
 	duration := time.Since(start)
 	if err != nil {
 		if analysisResult.State != nil {

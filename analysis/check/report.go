@@ -21,8 +21,10 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
+	"golang.org/x/tools/go/ssa"
 )
 
 // SoundnessResult is the result of checking the soundness of a single data flow summary.
@@ -128,5 +130,78 @@ func newSummaryNode(gn dataflow.GraphNode) summaries.SummaryNode {
 		return summaries.ReturnSNode{Index: gn.Index(), ObjectPath: ""}
 	default:
 		panic(fmt.Errorf("unexpected graph node type: %v (%T)", gn, gn))
+	}
+}
+
+// GenerateUnsoundnessReport generates an unsoundness report with suggestions on how to fix.
+func GenerateUnsoundnessReport(state *dataflow.State) {
+	var targets []dataflow.UnsoundFeaturesMap
+	state.Logger.Infof("Generating unsoundness report and fix suggestions...")
+	for _, g := range state.FlowGraph.Summaries {
+		// Collect the summaries that have been computed (not pre-summarized and constructed) and have unsoundness
+		// results. Those are the summaries the user may want to soundly pre-summarize, because they can't rely
+		// on the dataflow analysis.
+		if g.Unsoundness().HasAny() && g.Constructed {
+			state.Logger.Debugf("Function %s has unsoundness in %+v", g.Parent.RelString(nil), g.Unsoundness())
+			targets = append(targets, g.Unsoundness())
+		}
+	}
+
+	toReport := map[*ssa.Function][]dataflow.UnsoundFeaturesMap{}
+	// Now for each of the unsound feature maps:
+	// - if the function is not in dependencies or standard library, add it to the list to report
+	// - if the function is in dependencies, explore the callgraph to find the public caller ancestors
+	for _, target := range targets {
+		f := target.Func
+		fInfo, infoOk := lang.GetFunctionInfo(state.GoModInfo.Path, f)
+		if (summaries.IsUserDefinedFunction(f) && fInfo.IsLocal) || fInfo.IsExported || !infoOk {
+			if _, ok := toReport[f]; !ok {
+				toReport[f] = []dataflow.UnsoundFeaturesMap{target}
+			} else {
+				toReport[f] = append(toReport[f], target)
+			}
+			continue
+		}
+
+		for _, caller := range getExportedCallers(state, f) {
+			if _, ok := toReport[caller]; !ok {
+				toReport[caller] = []dataflow.UnsoundFeaturesMap{target}
+			} else {
+				toReport[caller] = append(toReport[caller], target)
+			}
+		}
+	}
+
+	for _, functionToFix := range toReport {
+		state.Logger.Infof("Function %s should have a summary, because it calls unsound summaries:", functionToFix[0].Func.RelString(nil))
+		for _, unsoundness := range functionToFix {
+			state.Logger.Infof("Function %s has unsoundness in %+v", unsoundness.Func.RelString(nil), unsoundness)
+		}
+	}
+}
+
+func getExportedCallers(state *dataflow.State, f *ssa.Function) []*ssa.Function {
+	var callers []*ssa.Function
+	queue := []*ssa.Function{f}
+	seen := map[*ssa.Function]bool{f: true}
+	for {
+		if len(queue) == 0 {
+			return callers
+		}
+		f := queue[0]
+		queue = queue[1:]
+		for _, caller := range state.PointerAnalysis.CallGraph.Nodes[f].In {
+			callerFunc := caller.Caller.Func
+			if seen[callerFunc] {
+				continue
+			}
+			seen[callerFunc] = true
+			callerInfo, infoOk := lang.GetFunctionInfo(state.GoModInfo.Path, callerFunc)
+			if callerInfo.IsExported || !infoOk {
+				callers = append(callers, callerFunc)
+			} else {
+				queue = append(queue, callerFunc)
+			}
+		}
 	}
 }

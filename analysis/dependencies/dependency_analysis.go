@@ -38,7 +38,7 @@ import (
 //
 // Returns false, _, _ when it is not a dependency.
 func isDependency(modules map[string]*packages.Module, f *ssa.Function) (bool, bool, string) {
-	packagePath := lang.PackageNameFromFunction(f)
+	packagePath := lang.PkgPathFromFunction(f)
 	if packagePath == "" {
 		return false, false, ""
 	}

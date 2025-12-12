@@ -100,7 +100,7 @@ func IsStdFunction(function *ssa.Function) bool {
 	if function == nil {
 		return false
 	}
-	pkgName := lang.PackageNameFromFunction(function)
+	pkgName := lang.PkgPathFromFunction(function)
 	_, ok := stdPackages[pkgName]
 	return ok || strings.HasPrefix(pkgName, "runtime")
 }
@@ -136,7 +136,7 @@ func SummaryOfFunc(function *ssa.Function) (Summarizer, bool) {
 	if function == nil {
 		return Summary{}, false
 	}
-	pkgName := lang.PackageNameFromFunction(function)
+	pkgName := lang.PkgPathFromFunction(function)
 	if s, ok := stdPackages[pkgName]; ok {
 		summary, ok := s[function.String()]
 		return summary, ok
@@ -152,7 +152,7 @@ func IsUserDefinedFunction(function *ssa.Function) bool {
 	if function == nil {
 		return false
 	}
-	pkgKey := lang.PackageNameFromFunction(function)
+	pkgKey := lang.PkgPathFromFunction(function)
 
 	if pkgKey == "" {
 		return false

@@ -129,12 +129,6 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 
 	logger.Debugf("Building inter-procedural flow graph...")
 
-	// Open a file to output summaries
-	summariesFile := openSummaries(c)
-	if summariesFile != nil {
-		defer summariesFile.Close()
-	}
-
 	// Build the inter-procedural data flow graph:
 	nameAliases := map[string]*ssa.Function{}
 	// STEP 1: build a map from full function names to summaries
@@ -167,7 +161,8 @@ func (g *InterProceduralFlowGraph) BuildGraph() {
 	}
 
 	// Writes the summaries to file if the option is set
-	if summariesFile != nil {
+	if summariesFile := openSummaries(c); summariesFile != nil {
+		defer summariesFile.Close()
 		// Read-only operation on summaries
 		go func() {
 			for _, summary := range g.Summaries {

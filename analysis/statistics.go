@@ -88,7 +88,7 @@ func DeferStats(functions *map[*ssa.Function]bool) DeferStatsResult {
 			}
 		}
 		if defers > 1 {
-			functionsWithManyDefers[lang.PackageNameFromFunction(f)+"."+f.Name()] = DeferStat{defers, rundefers}
+			functionsWithManyDefers[lang.PkgPathFromFunction(f)+"."+f.Name()] = DeferStat{defers, rundefers}
 		}
 		sumDefers += defers
 		if defers > 0 {
@@ -111,7 +111,7 @@ func ClosureLocationsStats(log *log.Logger, functions *map[*ssa.Function]bool, w
 
 	for f := range *functions {
 		found := false
-		pkg := lang.PackageNameFromFunction(f)
+		pkg := lang.PkgPathFromFunction(f)
 		if !ofInterest(pkg, false, withPkgPrefix) {
 			continue
 		}

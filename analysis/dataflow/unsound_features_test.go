@@ -40,21 +40,21 @@ func TestUnsoundFeatures(t *testing.T) {
 	for f := range state.ReachableFunctions() {
 		if strings.Contains(f.Name(), "usingUnsafe") {
 
-			_, uf := dataflow.FindUnsoundFeatures(f)
+			_, uf := dataflow.ComputeDefersAndUnsoundFeatures(f)
 			if len(uf.UnsafeUsages) <= 5 {
 				t.Errorf("Did not detect enough usages of unsafe in usingUnsafe")
 			}
 			unsafeChecked = true
 		}
 		if strings.Contains(f.Name(), "usingReflect") {
-			_, uf := dataflow.FindUnsoundFeatures(f)
+			_, uf := dataflow.ComputeDefersAndUnsoundFeatures(f)
 			if len(uf.ReflectUsages) <= 2 {
 				t.Errorf("Did not detect enough usages of unsage in usingReflect")
 			}
 			reflectChecked = true
 		}
 		if strings.Contains(f.Name(), "usingRecover$1") {
-			_, uf := dataflow.FindUnsoundFeatures(f)
+			_, uf := dataflow.ComputeDefersAndUnsoundFeatures(f)
 			if len(uf.Recovers) <= 0 {
 				t.Errorf("Did not detect enough usages of recover in usingRecover")
 			}

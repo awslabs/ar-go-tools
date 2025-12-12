@@ -35,6 +35,9 @@ type DataflowProblems struct {
 	// SummarizeOnDemand specifies whether the graph should build summaries on-demand instead of all at once
 	SummarizeOnDemand bool `xml:"summarize-on-demand,attr" yaml:"summarize-on-demand" json:"summarize-on-demand"`
 
+	// GenerateUnsoundnessReport specifies whether to generate a report of unsound features encountered during the analysis
+	GenerateUnsoundnessReport bool `xml:"generate-unsoundness-report,attr" yaml:"generate-unsoundness-report" json:"generate-unsoundness-report"`
+
 	// IntraTimeoutMs specifies the maximum duration for the intra-procedural dataflow analysis in milliseconds.
 	// If 0 (default), no timeout is applied.
 	IntraTimeoutMs int `xml:"intra-timeout-ms,attr" yaml:"intra-timeout-ms" json:"intra-timeout-ms"`

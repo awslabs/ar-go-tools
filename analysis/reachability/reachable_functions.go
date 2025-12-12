@@ -180,8 +180,8 @@ func FindReachable(state *loadprogram.State, excludeMain bool, excludeInit bool,
 		frontier = frontier[:len(frontier)-1]
 		findCallees(state.Program, f, func(fnext *ssa.Function) {
 			if graph != nil {
-				from := lang.PackageNameFromFunction(f)
-				to := lang.PackageNameFromFunction(fnext)
+				from := lang.PkgPathFromFunction(f)
+				to := lang.PkgPathFromFunction(fnext)
 				if from != to && from != "" {
 					graph.Add(from, to)
 				}

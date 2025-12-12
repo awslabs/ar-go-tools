@@ -255,7 +255,7 @@ func interfaceImplMethodIdent(impl *ssa.Function) config.CodeIdentifier {
 			return config.CodeIdentifier{}
 		}
 		return config.NewCodeIdentifier(config.CodeIdentifier{
-			Package:  lang.PackageNameFromFunction(impl),
+			Package:  lang.PkgPathFromFunction(impl),
 			Receiver: recvStr,
 			Method:   impl.Name(),
 		})

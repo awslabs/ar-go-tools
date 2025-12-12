@@ -87,7 +87,7 @@ func cmdPackage(o Outputter, sess *Session, command Command, _ bool) bool {
 		return false
 	}
 
-	pkgName := lang.PackageNameFromFunction(sess.currentFunction)
+	pkgName := lang.PkgPathFromFunction(sess.currentFunction)
 	o.Write("Package %s:\n", pkgName)
 	pkg := lang.PackageTypeFromFunction(sess.currentFunction)
 	if pkg == nil {

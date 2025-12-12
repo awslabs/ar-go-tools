@@ -287,7 +287,7 @@ func isFiltered(spec config.StructInitSpec, f *ssa.Function) bool {
 	}
 
 	// don't analyze the standard library
-	if summaries.IsStdPackageName(lang.PackageNameFromFunction(f)) {
+	if summaries.IsStdPackageName(lang.PkgPathFromFunction(f)) {
 		return true
 	}
 
@@ -313,7 +313,7 @@ func isFiltered(spec config.StructInitSpec, f *ssa.Function) bool {
 func runMustReinitChecks(st *state) map[*types.Named][]BadReinit {
 	badReinits := map[*types.Named][]BadReinit{}
 	for fn := range st.fns {
-		if summaries.IsStdPackageName(lang.PackageNameFromFunction(fn)) {
+		if summaries.IsStdPackageName(lang.PkgPathFromFunction(fn)) {
 			continue
 		}
 		lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
