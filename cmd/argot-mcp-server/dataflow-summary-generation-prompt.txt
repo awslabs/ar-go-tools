@@ -17,6 +17,8 @@ dataflow-summaries:
         to: "<destination>"
 ```
 
+The receiver name also indicates whether the receiver is a pointer to the type or a value. For example, if I have a function `func (f *FD) OpenDir() (...)` then `receiver: *FD` (i.e., the local type name with a pointer).
+
 ## Flow Identifiers
 
 Use these identifiers to specify data flow sources and destinations:

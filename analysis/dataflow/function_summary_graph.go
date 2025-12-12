@@ -134,6 +134,7 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 
 	var lastNodeID uint32 = 0
 
+	// Only report when we don't have an external contract
 	deferRes, unsoundFeatures := FindUnsoundFeatures(f)
 	var logger *config.LogGroup
 	if s != nil && s.Logger != nil {
@@ -141,7 +142,9 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 	} else {
 		logger = config.NewLogger(config.WarnLevel)
 	}
-	reportUnsoundFeatures(deferRes, unsoundFeatures, f, logger)
+	if s != nil && !s.HasExternalContractSummary(f) {
+		reportUnsoundFeatures(deferRes, unsoundFeatures, f, logger)
+	}
 
 	g := &SummaryGraph{
 		ID:                    id,
