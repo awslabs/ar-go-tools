@@ -193,6 +193,9 @@ func (s detailedSummary) GetArgFlows(f *ssa.Function) ([][]int, error) {
 			if err != nil {
 				return res, fmt.Errorf("failed to load arg flow: %s", err)
 			}
+			if srcIndex >= nArgs {
+				return res, fmt.Errorf("%d arg out of bounds in summary of %s", srcIndex, f.Signature.String())
+			}
 			res[srcIndex] = []int{}
 			for _, dest := range dests {
 				if destIndex, expectIndex, err := getParamOrRecvIndex(dest, f); expectIndex {

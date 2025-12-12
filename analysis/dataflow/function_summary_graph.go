@@ -125,6 +125,10 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 
 	var lastNodeID uint32 = 0
 
+	if s != nil && !s.HasExternalContractSummary(f) {
+		reportUnsoundFeatures(s, f)
+	}
+
 	g := &SummaryGraph{
 		ID:                    id,
 		Constructed:           false,
