@@ -1,0 +1,87 @@
+options:
+  project-root: "./" # Root directory for relative paths
+  reports-dir: "logs/argot" # Directory for analysis reports
+  log-level: 3 # Info level logging
+  report-paths: true # Generate detailed path reports
+  analysis-options:
+    unsafe-max-depth: 15 # Limit call depth for performance
+    max-alarms: 50 # Maximum number of alarms to report
+targets:
+  # Instrumentation executable - demonstrates XDG library usage
+  - name: "instrumentation"
+    files: ["./cmd/instrumentation/main.go"]
+dataflow-problems:
+  summarize-on-demand: true
+  generate-unsoundness-report: true
+  user-specs:
+    - "user-specs.yaml"
+  taint-tracking:
+    - tag: "path-traversal-xdg-files"
+      description: "Detects path traversal vulnerabilities where user-controlled input flows to XDG file creation functions, potentially allowing access to arbitrary filesystem locations."
+      targets: ["instrumentation"]
+      severity: "HIGH"
+      sources:
+        - package: "os"
+          method: "Getenv"
+        - package: "github.com/adrg/xdg/internal/pathutil"
+          method: "EnvPath.*"
+        - package: "github.com/adrg/xdg/internal/pathutil"
+          method: "EnvPathList"
+      sinks:
+        - package: "github.com/adrg/xdg"
+          method: ".*File"
+        - package: "os"
+          method: ".*File.*"
+        - package: "os"
+          method: "Create.*"
+        - package: "os"
+          method: "Open.*"
+      sanitizers:
+        - package: "path/filepath"
+          method: "Clean"
+        - package: "path/filepath"
+          method: "Abs"
+    - tag: "environment-injection-xdg-paths"
+      description: "Tracks environment variable injection where untrusted environment variables influence XDG directory paths, potentially redirecting sensitive data to attacker-controlled locations."
+      targets: ["instrumentation"]
+      severity: "MEDIUM"
+      sources:
+        - package: "os"
+          method: "Getenv"
+        - package: "os"
+          method: "Environ"
+      sinks:
+        - package: "github.com/adrg/xdg"
+          method: "init.*"
+        - package: "github.com/adrg/xdg"
+          method: "Reload"
+        - package: "github.com/adrg/xdg/internal/pathutil"
+          method: "UserHomeDir"
+      sanitizers:
+        - package: "path/filepath"
+          method: "IsAbs"
+    - tag: "sensitive-data-logging"
+      description: "Detects potential exposure of sensitive file paths or directory information through logging functions, which could reveal system structure or user data locations."
+      targets: ["instrumentation"]
+      severity: "LOW"
+      sources:
+        - package: "github.com/adrg/xdg"
+          global: "DataHome"
+          kind: "load"
+        - package: "github.com/adrg/xdg"
+          global: "ConfigHome"
+          kind: "load"
+        - package: "github.com/adrg/xdg"
+          global: "CacheHome"
+          kind: "load"
+        - package: "github.com/adrg/xdg"
+          global: "Home"
+          kind: "load"
+      sinks:
+        - package: "fmt"
+          method: ".*Print.*"
+        - package: "log"
+          method: ".*"
+      sanitizers:
+        - package: "path/filepath"
+          method: "Base"

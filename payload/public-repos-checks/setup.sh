@@ -23,6 +23,7 @@ rclone:git@github.com:rclone/rclone.git
 ticker:git@github.com:achannarasappa/ticker.git
 tidb:git@github.com:pingcap/tidb.git
 v2ray-core:git@github.com:v2fly/v2ray-core.git
+xdg:git@github.com:adrg/xdg.git
 "
 
 get_config_path() {
@@ -85,6 +86,22 @@ deploy_user_specs() {
     done
 }
 
+deploy_instrumentation() {
+    echo "Deploying instrumentation..."
+    if [ -d "instrumentation" ]; then
+        for instr_dir in instrumentation/*/; do
+            if [ -d "$instr_dir" ]; then
+                repo_name=$(basename "$instr_dir")
+                if [ -d "$repo_name" ]; then
+                    mkdir -p "$repo_name/cmd/instrumentation"
+                    cp -r "$instr_dir"* "$repo_name/cmd/instrumentation/"
+                    echo "Deployed instrumentation to $repo_name/cmd/instrumentation"
+                fi
+            fi
+        done
+    fi
+}
+
 sync_back() {
     echo "Syncing configurations back from repositories..."
     echo "$REPOS" | while IFS=: read -r repo url; do
@@ -100,6 +117,12 @@ sync_back() {
                 cp "$repo/$spec_path" "$SPECS_DIR/$repo.yaml"
                 echo "Synced back spec from $repo"
             fi
+            # Sync instrumentation if it exists
+            if [ -f "$repo/cmd/instrumentation/main.go" ]; then
+                mkdir -p "instrumentation/$repo"
+                cp -r "$repo/cmd/instrumentation"/* "instrumentation/$repo/"
+                echo "Synced back instrumentation from $repo"
+            fi
         fi
     done
 }
@@ -109,6 +132,7 @@ case "${1:-setup}" in
         clone_repos
         deploy_configs
         deploy_user_specs
+        deploy_instrumentation
         echo "Setup complete!"
         ;;
     "sync-back")

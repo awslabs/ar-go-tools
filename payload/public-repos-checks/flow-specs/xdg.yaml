@@ -1,0 +1,105 @@
+dataflow-summaries:
+  # File directory reading functions that use unsafe operations
+  - package: "os"
+    receiver: "*File"
+    method: "readdir"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 1"
+
+  - package: "os"
+    receiver: "fileWithoutReadFrom"
+    method: "readdir"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 1"
+
+  - package: "os"
+    receiver: "*fileWithoutReadFrom"
+    method: "readdir"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 1"
+
+  - package: "os"
+    receiver: "fileWithoutWriteTo"
+    method: "readdir"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 1"
+
+  - package: "os"
+    receiver: "*fileWithoutWriteTo"
+    method: "readdir"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+      - from: "!receiver"
+        to: "!ret 1"
+
+  # File operations that depend on readdir
+  - package: "os"
+    receiver: "*File"
+    method: "ReadDir"
+    flows:
+      - from: "!receiver"
+        to: "(!ret 0)[*]"
+      - from: "!receiver"
+        to: "!ret 1"
+
+  - package: "os"
+    receiver: "*File"
+    method: "Readdirnames"
+    flows:
+      - from: "!receiver"
+        to: "(!ret 0)[*]"
+      - from: "!receiver"
+        to: "!ret 1"
+
+  - package: "os"
+    receiver: "*File"
+    method: "Readdir"
+    flows:
+      - from: "!receiver"
+        to: "(!ret 0)[*]"
+      - from: "!receiver"
+        to: "!ret 1"
+
+  # System call that uses unsafe operations
+  - package: "syscall"
+    function: "Stat"
+    flows:
+      - from: "!arg 0"
+        to: "(!arg 1).Dev"
+      - from: "!arg 0"
+        to: "(!arg 1).Mode"
+      - from: "!arg 0"
+        to: "(!arg 1).Nlink"
+      - from: "!arg 0"
+        to: "(!arg 1).Uid"
+      - from: "!arg 0"
+        to: "(!arg 1).Gid"
+      - from: "!arg 0"
+        to: "(!arg 1).Rdev"
+      - from: "!arg 0"
+        to: "(!arg 1).Size"
+      - from: "!arg 0"
+        to: "(!arg 1).Blksize"
+      - from: "!arg 0"
+        to: "(!arg 1).Blocks"
+      - from: "!arg 0"
+        to: "(!arg 1).Atim"
+      - from: "!arg 0"
+        to: "(!arg 1).Mtim"
+      - from: "!arg 0"
+        to: "(!arg 1).Ctim"
+      - from: "!arg 0"
+        to: "!ret 0"
