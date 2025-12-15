@@ -6,12 +6,123 @@ options:
   analysis-options:
     unsafe-max-depth: 15
     max-alarms: 30
-
 targets:
   - name: "gh-cli"
     files:
       - "./cmd/gh"
-  
   - name: "gen-docs"
     files:
       - "./cmd/gen-docs"
+# Argot Configuration for GitHub CLI Taint Analysis
+# Detects authentication token leakage, hostname injection, and command injection
+dataflow-problems:
+  summarize-on-demand: true
+  field-sensitive-funcs: [".*"]
+  generate-unsoundness-report: true
+  user-specs:
+    - user-specs.yaml
+  # Taint tracking problems
+  taint-tracking:
+    - tag: "auth-token-leakage"
+      description: "Checking that authentication tokens don't get logged or exposed."
+      targets:
+        - gh-cli
+      unsafe-skip-bound-labels: false
+      severity: "HIGH"
+      sources:
+        - package: "github.com/cli/cli/v2/internal/prompter"
+          method: ".*\\.AuthToken"
+        - package: "github.com/cli/cli/v2/internal/prompter"
+          method: ".*\\.Password"
+        - package: "github.com/cli/cli/v2/internal/config"
+          method: ".*\\.ActiveToken"
+        - package: "github.com/cli/cli/v2/internal/config"
+          method: ".*\\.TokenForUser"
+        - package: "github.com/cli/cli/v2/internal/config"
+          method: ".*\\.TokenFromKeyring"
+        - package: "github.com/cli/go-gh/v2/pkg/auth"
+          method: "token.*"
+      sinks:
+        - package: "fmt"
+          method: ".*(Print|Sprint).*"
+        - package: "log"
+          method: ".*(Print|Fatal|Panic).*"
+        - package: ".*"
+          method: ".*Logger.*\\.(Print|Fatal|Panic|Error|Warn|Info|Debug).*"
+        - package: "errors"
+          method: "New|Errorf"
+        - package: "net/http"
+          method: ".*\\.Write.*"
+        - package: "io"
+          method: "Write.*"
+        - package: "os"
+          method: ".*\\.Write.*"
+      sanitizers:
+        - package: "strings"
+          method: "Replace.*"
+    - tag: "hostname-injection"
+      description: "Checking that user-provided hostnames don't reach HTTP requests without validation."
+      targets:
+        - gh-cli
+      unsafe-skip-bound-labels: false
+      severity: "HIGH"
+      sources:
+        - package: "github.com/cli/cli/v2/internal/prompter"
+          method: ".*\\.InputHostname"
+        - package: "github.com/cli/cli/v2/internal/prompter"
+          method: ".*\\.Input"
+        - package: "os"
+          method: "Args"
+        - package: "flag"
+          method: ".*\\.String"
+        - package: "github.com/cli/cli/v2/internal/config"
+          method: ".*\\.Get.*"
+      sinks:
+        - package: "net/http"
+          method: ".*\\.(Get|Post|Put|Delete|Head|Do).*"
+        - package: "net/http"
+          method: "NewRequest.*"
+        - package: ".*"
+          method: ".*Client.*\\.(Get|Post|Put|Delete|Head|Do).*"
+        - package: "github.com/cli/cli/v2/git"
+          method: ".*\\.(Clone|AddRemote|UpdateRemoteURL|Fetch|Pull|Push.*)"
+        - package: "os/exec"
+          method: "Command.*"
+        - package: "net/url"
+          method: "Parse.*"
+      sanitizers:
+        - package: "net/url"
+          method: "Parse.*"
+        - package: "strings"
+          method: "HasPrefix"
+    - tag: "git-command-injection"
+      description: "Checking that user input doesn't reach git command execution without sanitization."
+      targets:
+        - gh-cli
+      unsafe-skip-bound-labels: false
+      severity: "HIGH"
+      sources:
+        - package: "github.com/cli/cli/v2/internal/prompter"
+          method: ".*\\.Input"
+        - package: "os"
+          method: "Args"
+        - package: "flag"
+          method: ".*\\.String"
+        - package: "github.com/cli/cli/v2/git"
+          method: ".*\\.CurrentBranch"
+        - package: "github.com/cli/cli/v2/context"
+          method: ".*\\.String"
+      sinks:
+        - package: "github.com/cli/cli/v2/git"
+          method: ".*\\.Command"
+        - package: "github.com/cli/cli/v2/git"
+          method: ".*\\.AuthenticatedCommand"
+        - package: "os/exec"
+          method: "Command.*"
+        - package: ".*"
+          method: ".*\\.(Run|Start|Output|CombinedOutput)"
+      sanitizers:
+        - package: "strings"
+          method: "Replace.*"
+        - package: "regexp"
+          method: ".*\\.ReplaceAll.*"

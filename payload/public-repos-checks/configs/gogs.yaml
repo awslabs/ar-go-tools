@@ -3,6 +3,7 @@ options:
   reports-dir: "logs/argot"
   log-level: 3
   report-paths: true
+  report-summaries: true
   analysis-options:
     unsafe-max-depth: 15
     max-alarms: 30
@@ -11,3 +12,255 @@ targets:
   - name: "gogs"
     files:
       - "./gogs.go"
+
+dataflow-problems:
+  summarize-on-demand: true
+  generate-unsoundness-report: true
+  
+  taint-tracking:
+    # Command Injection - User input to command execution
+    - tag: "command-injection"
+      description: "Detects potential command injection vulnerabilities where user input flows to command execution functions"
+      targets: ["gogs"]
+      severity: "HIGH"
+      sources:
+        # HTTP input sources
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "gopkg.in/macaron.v1"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "net/http"
+          method: ".*FormValue.*|.*PostFormValue.*"
+        # Command line arguments
+        - package: "os"
+          method: "Args"
+        # Environment variables
+        - package: "os"
+          method: "Getenv.*"
+      sinks:
+        # Command execution functions
+        - package: "os/exec"
+          method: "Command.*"
+        - package: "github.com/gogs/git-module"
+          method: ".*Command.*|.*Run.*"
+        - package: "gogs.io/gogs/internal/process"
+          method: "Exec.*"
+        - package: "github.com/unknwon/com"
+          method: "ExecCmd.*"
+      sanitizers:
+        # Input validation and escaping
+        - package: "gogs.io/gogs/internal/strutil"
+          method: ".*"
+        - package: "strings"
+          method: "Replace.*|Trim.*"
+        - package: "regexp"
+          method: "Match.*|Replace.*"
+
+    # SQL Injection - User input to database queries
+    - tag: "sql-injection"
+      description: "Detects potential SQL injection vulnerabilities where user input flows to database operations"
+      targets: ["gogs"]
+      severity: "HIGH"
+      sources:
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "gopkg.in/macaron.v1"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "net/http"
+          method: ".*FormValue.*|.*PostFormValue.*"
+      sinks:
+        # Database query functions
+        - package: "database/sql"
+          method: ".*Query.*|.*Exec.*"
+        - package: "xorm.io/xorm"
+          method: ".*Query.*|.*Exec.*|SQL"
+        - package: "gorm.io/gorm"
+          method: ".*Query.*|.*Exec.*|Raw"
+        - package: "github.com/go-sql-driver/mysql"
+          method: ".*Query.*|.*Exec.*"
+        - package: "github.com/jackc/pgx/v5"
+          method: ".*Query.*|.*Exec.*"
+        - package: "github.com/mattn/go-sqlite3"
+          method: ".*Query.*|.*Exec.*"
+      sanitizers:
+        # Parameterized queries and validation
+        - package: "database/sql"
+          method: ".*Context.*"
+        - package: "strconv"
+          method: ".*"
+        - package: "gogs.io/gogs/internal/strutil"
+          method: ".*"
+
+    # Path Traversal - User input to file operations
+    - tag: "path-traversal"
+      description: "Detects potential path traversal vulnerabilities where user input flows to file system operations"
+      targets: ["gogs"]
+      severity: "HIGH"
+      sources:
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "gopkg.in/macaron.v1"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "net/http"
+          method: ".*FormValue.*|.*PostFormValue.*"
+      sinks:
+        # File system operations
+        - package: "os"
+          method: "Open.*|Create.*|Remove.*|Mkdir.*|Stat.*"
+        - package: "io/ioutil"
+          method: "ReadFile.*|WriteFile.*"
+        - package: "path/filepath"
+          method: "Walk.*|Glob.*"
+        - package: "gogs.io/gogs/internal/gitutil"
+          method: ".*"
+      sanitizers:
+        # Path validation and cleaning
+        - package: "path/filepath"
+          method: "Clean.*|Abs.*|Join.*"
+        - package: "gogs.io/gogs/internal/pathutil"
+          method: ".*"
+        - package: "strings"
+          method: "HasPrefix.*|Contains.*"
+
+    # Information Disclosure - Sensitive data to logging/output
+    - tag: "information-disclosure"
+      description: "Detects potential information disclosure where sensitive data flows to logging or output functions"
+      targets: ["gogs"]
+      severity: "MEDIUM"
+      sources:
+        # Sensitive data sources
+        - package: "gogs.io/gogs/internal/database"
+          type: "User"
+          field: "Password|Salt|Email"
+        - package: "gogs.io/gogs/internal/database"
+          type: "AccessToken"
+        - package: "gogs.io/gogs/internal/auth"
+          method: ".*Password.*|.*Token.*|.*Secret.*"
+        - package: "crypto/rand"
+          method: "Read.*"
+      sinks:
+        # Logging and output functions
+        - package: "log"
+          method: ".*"
+        - package: "fmt"
+          method: "Print.*|Sprintf.*|Fprintf.*"
+        - package: "gogs.io/gogs/internal/log"
+          method: ".*"
+        - package: "github.com/go-logr/logr"
+          method: ".*"
+        # HTTP responses
+        - package: "net/http"
+          method: ".*Write.*"
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*Write.*|JSON.*|HTML.*"
+      sanitizers:
+        # Data masking and filtering
+        - package: "gogs.io/gogs/internal/strutil"
+          method: ".*Mask.*|.*Hide.*"
+        - package: "strings"
+          method: "Replace.*"
+
+    # Authentication Bypass - User input affecting authentication
+    - tag: "auth-bypass"
+      description: "Detects potential authentication bypass where user input affects authentication decisions"
+      targets: ["gogs"]
+      severity: "HIGH"
+      sources:
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "gopkg.in/macaron.v1"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "net/http"
+          method: ".*Header.*|.*Cookie.*"
+      sinks:
+        # Authentication functions
+        - package: "gogs.io/gogs/internal/auth"
+          method: ".*Authenticate.*|.*Login.*|.*Verify.*"
+        - package: "gogs.io/gogs/internal/database"
+          method: ".*Authenticate.*|.*GetUser.*|.*ValidateCommit.*"
+        # Authorization checks
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*RequireSignIn.*|.*RequireAdmin.*"
+      sanitizers:
+        # Proper authentication validation
+        - package: "gogs.io/gogs/internal/cryptoutil"
+          method: ".*"
+        - package: "crypto/subtle"
+          method: "ConstantTimeCompare.*"
+
+    # XSS - User input to HTML output
+    - tag: "cross-site-scripting"
+      description: "Detects potential XSS vulnerabilities where user input flows to HTML output without proper encoding"
+      targets: ["gogs"]
+      severity: "MEDIUM"
+      sources:
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "gopkg.in/macaron.v1"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "net/http"
+          method: ".*FormValue.*|.*PostFormValue.*"
+      sinks:
+        # HTML output functions
+        - package: "html/template"
+          method: ".*Execute.*"
+        - package: "gogs.io/gogs/internal/context"
+          method: "HTML.*|Render.*"
+        - package: "net/http"
+          method: ".*Write.*"
+      sanitizers:
+        # HTML encoding and sanitization
+        - package: "html"
+          method: "EscapeString.*"
+        - package: "html/template"
+          method: "HTMLEscape.*|JSEscape.*"
+        - package: "github.com/microcosm-cc/bluemonday"
+          method: ".*Sanitize.*"
+
+    # LDAP Injection - User input to LDAP queries
+    - tag: "ldap-injection"
+      description: "Detects potential LDAP injection vulnerabilities where user input flows to LDAP operations"
+      targets: ["gogs"]
+      severity: "HIGH"
+      sources:
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "gopkg.in/macaron.v1"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+      sinks:
+        # LDAP operations
+        - package: "github.com/go-ldap/ldap/v3"
+          method: ".*Search.*|.*Bind.*|.*Modify.*"
+        - package: "gogs.io/gogs/internal/auth/ldap"
+          method: ".*"
+      sanitizers:
+        # LDAP escaping
+        - package: "github.com/go-ldap/ldap/v3"
+          method: ".*Escape.*"
+        - package: "gogs.io/gogs/internal/auth/ldap"
+          method: ".*sanitized.*"
+
+    # Email Header Injection - User input to email headers
+    - tag: "email-injection"
+      description: "Detects potential email header injection where user input flows to email operations"
+      targets: ["gogs"]
+      severity: "MEDIUM"
+      sources:
+        - package: "gogs.io/gogs/internal/context"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+        - package: "gopkg.in/macaron.v1"
+          method: ".*Query.*|.*Params.*|.*Form.*"
+      sinks:
+        # Email operations
+        - package: "gogs.io/gogs/internal/email"
+          method: ".*"
+        - package: "gopkg.in/gomail.v2"
+          method: ".*"
+        - package: "net/smtp"
+          method: ".*"
+      sanitizers:
+        # Email validation and encoding
+        - package: "net/mail"
+          method: "ParseAddress.*"
+        - package: "strings"
+          method: "Replace.*"

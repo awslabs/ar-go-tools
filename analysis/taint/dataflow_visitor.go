@@ -738,7 +738,7 @@ func (v *Visitor) initEscapeAnalysisInfo(s *df.State, source df.NodeWithTrace) {
 // This panics when the analysis fails, because it is expected that an error will cause any further result
 // to be invalid.
 func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summary *df.SummaryGraph) {
-	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
+	s.Logger.Debugf("[On-demand] Summarizing %s [%s]...", summary.Parent, lang.SafeFunctionPos(summary.Parent))
 	if timeout := s.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
