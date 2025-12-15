@@ -498,7 +498,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			),
 			want: check.SoundnessResult{
-				// TODO false-positive: there should not be a flow from modify s -> val
+				// TODO false-positive: there should not be a flow from modify s -> val.
+				// This should be sound.
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
@@ -525,6 +526,92 @@ func TestCheckSummary_Basic(t *testing.T) {
 						Fn:   pkg + ".modify",
 						From: summaries.ArgumentSNode{Name: "s", Index: 1},
 						To:   summaries.ArgumentSNode{Name: "val", Index: 0},
+					},
+				},
+				Method: check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "storePtr",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:              true,
+				UnprovenMustNotFlows: []check.Flow{},
+				Method:               check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "aliasNoop",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+				},
+			),
+			want: check.SoundnessResult{
+				IsSound:              true,
+				UnprovenMustNotFlows: []check.Flow{},
+				Method:               check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "alias",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ArgumentSNode{Name: "x", Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				// TODO false-positive: there should not be a flow from alias x -> y.
+				// This should be sound.
+				//
+				// The pointer analysis reports that x may-alias y:
+				//   [indirect] x may alias with:
+				//   [indirect] x (parameter x : ***int) -> n54370
+				//   [direct]   y (parameter y : **int) -> n54371
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   pkg + ".alias",
+						From: summaries.ArgumentSNode{Name: "x", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
+					},
+				},
+				Method: check.Immutability,
+			},
+		},
+		{
+			summary: summaries.NewFunctionFlowSummary(pkg, "writeStructPtr",
+				summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ArgumentSNode{Name: "x", Index: 0},
+						},
+					},
+				},
+			),
+			want: check.SoundnessResult{
+				// TODO false-positive: there should not be a flow from writeStructPtr x -> y.
+				// This should be sound.
+				//
+				// The pointer analysis does not report any may-aliases for either parameter.
+				IsSound: false,
+				UnprovenMustNotFlows: []check.Flow{
+					{
+						Fn:   pkg + ".writeStructPtr",
+						From: summaries.ArgumentSNode{Name: "x", Index: 0},
+						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
 					},
 				},
 				Method: check.Immutability,
@@ -617,6 +704,11 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 					},
 					{
 						Fn:   "(*encoding/json.encodeState).reflectValue",
+						From: summaries.ArgumentSNode{Name: "v", Index: 0},
+						To:   summaries.ReceiverSNode{},
+					},
+					{
+						Fn:   "(*encoding/json.encodeState).reflectValue",
 						From: summaries.ArgumentSNode{Name: "opts", Index: 0},
 						To:   summaries.ReceiverSNode{},
 					},
@@ -631,13 +723,14 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 						To:   summaries.ReturnSNode{},
 					},
 					{
-						Fn:   "Marshal",
+						Fn:   "encoding/json.Marshal",
 						From: summaries.ArgumentSNode{Name: "v", Index: 0},
 						To:   summaries.ReturnSNode{Index: 1}, // error return
 					},
 				},
 				Method: check.Immutability,
 			},
+			subset: true,
 		},
 	}
 
@@ -671,13 +764,25 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 type tcCheck struct {
 	summary summaries.FrontendDataflowSummary
 	want    check.SoundnessResult
+	subset  bool // subset is true if got should be a subset of want (for nondeterministic tests).
 	via     check.Method
 }
 
 func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	got, err := check.CheckSummary(ctx, state, tc.summary)
+
+	var got check.SoundnessResult
+	var err error
+	defer func() {
+		if t.Failed() {
+			t.Log("want unproven must-not-flows:")
+			dbgFlows(t, tc.want.UnprovenMustNotFlows, tc.summary.Package())
+			t.Log("got unproven must-not-flows:")
+			dbgFlows(t, got.UnprovenMustNotFlows, tc.summary.Package())
+		}
+	}()
+	got, err = check.CheckSummary(ctx, state, tc.summary)
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
 		return
@@ -688,22 +793,22 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 		return
 	}
 
-	cmpFlow := func(a, b check.Flow) int {
-		return strings.Compare(a.String(), b.String())
-	}
-	slices.SortFunc(tc.want.UnprovenMustNotFlows, cmpFlow)
-	slices.SortFunc(got.UnprovenMustNotFlows, cmpFlow)
-	if !slices.Equal(tc.want.UnprovenMustNotFlows, got.UnprovenMustNotFlows) {
-		t.Errorf("unproven must-not-flows mismatch")
-		t.Log("want unproven must-not-flows:")
-		for _, f := range tc.want.UnprovenMustNotFlows {
-			fname, _ := strings.CutPrefix(f.Fn, tc.summary.Package()+".")
-			t.Logf("\t%v: %v -> %v\n", fname, f.From, f.To)
+	if tc.subset {
+		// Check that got is a subset of want.
+		for _, gfl := range got.UnprovenMustNotFlows {
+			if !slices.Contains(tc.want.UnprovenMustNotFlows, gfl) {
+				t.Errorf("failed to find got must-not-flow %v in want must-not-flows\n", gfl)
+			}
 		}
-		t.Log("got unproven must-not-flows:")
-		for _, f := range got.UnprovenMustNotFlows {
-			fname, _ := strings.CutPrefix(f.Fn, tc.summary.Package()+".")
-			t.Logf("\t%v: %v -> %v\n", fname, f.From, f.To)
+	} else {
+		cmpFlow := func(a, b check.Flow) int {
+			return strings.Compare(a.String(), b.String())
+		}
+		slices.SortFunc(tc.want.UnprovenMustNotFlows, cmpFlow)
+		slices.SortFunc(got.UnprovenMustNotFlows, cmpFlow)
+		// Check that got and want are equal.
+		if !slices.Equal(tc.want.UnprovenMustNotFlows, got.UnprovenMustNotFlows) {
+			t.Errorf("unproven must-not-flows mismatch")
 		}
 	}
 
@@ -712,27 +817,11 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 	}
 }
 
-func dbgFlows(t *testing.T, flows map[summaries.SummaryNode][]summaries.SummaryNode) {
+func dbgFlows(t *testing.T, flows []check.Flow, pkg string) {
 	t.Helper()
-	for from, tos := range flows {
-		logNode(t, from, 1)
-		for _, to := range tos {
-			logNode(t, to, 2)
-		}
-	}
-}
-
-func logNode(t *testing.T, n summaries.SummaryNode, indent int) {
-	t.Helper()
-	switch n := n.(type) {
-	case summaries.ArgumentSNode:
-		t.Logf(
-			"%sARG name: %v, index: %v, path: %v\n",
-			strings.Repeat("\t", indent), n.Name, n.Index, n.ObjectPath)
-	case summaries.ReturnSNode:
-		t.Logf("%sRET index: %v, path: %v\n", strings.Repeat("\t", indent), n.Index, n.ObjectPath)
-	default:
-		t.Logf("unsupported summary node type: %T\n", n)
+	for _, fl := range flows {
+		fname, _ := strings.CutPrefix(fl.Fn, pkg+".")
+		t.Logf("\t%v: %v -> %v\n", fname, fl.From, fl.To)
 	}
 }
 

@@ -187,6 +187,23 @@ func testFieldPropagation() {
 	// x.field:0 x.other:1, y.field:1 y.other:1
 }
 
+func aliasPtr(out **int, a, b *int) {
+	setPtsB(out, a, b)
+}
+
+func setPtsB(out **int, a, b *int) {
+	*out = b
+}
+
+func testMutatePtr() {
+	outv, a, b := new(int), new(int), new(int)
+	*a = 0
+	*b = -5
+	outv = a
+	aliasPtr(&outv, a, b)
+	fmt.Println(*outv) // -5
+}
+
 type state struct {
 	acc   int
 	count int
@@ -209,6 +226,64 @@ func testSharedMutation() {
 	fmt.Println(res) // 3
 }
 
+func addPtrs(x, y *int) *int {
+	sum := *x + *y
+	return &sum
+}
+
+func storePtr(x, y *int) int {
+	z := addPtrs(x, y)
+	x = z
+	return *x
+}
+
+func testStorePtr() {
+	a, b := 0, 1
+	res := storePtr(&a, &b)
+	fmt.Println("testStorePtr", res)
+}
+
+func aliasNoop(x, y *int) {
+	x = y
+}
+
+func testAliasInterNone() {
+	x, y := new(int), new(int)
+	*x = 0
+	*y = 2
+	aliasNoop(y, x)
+	*x++
+	fmt.Println("testAliasInterNone", *y) // 2
+	// Does not print 1 because aliasNoop aliases a local copy of y and x, not the actual arguments
+}
+
+func alias(x ***int, y **int) {
+	*x = y
+}
+
+func testAliasInter() {
+	x, y := new(int), new(int)
+	*x = 0
+	*y = 2
+	yp := &y
+	alias(&yp, &x)
+	*x++
+	fmt.Println("testAliasInter", **yp) // 1
+}
+
+func writeStructPtr(x, y *state) {
+	*x = *y
+	// x.acc = y.acc
+	// x.count = y.count
+}
+
+func testWriteStructPtr() {
+	x := &state{}
+	y := &state{acc: 1, count: 1}
+	writeStructPtr(x, y)
+	fmt.Println("testWriteStructPtr", x.count) // 1
+}
+
 func main() {
 	testSingleArgIntraOut()
 	testSingleArgInterNone()
@@ -222,4 +297,9 @@ func main() {
 	testThreeArgInterDiffCallees()
 	testFieldPropagation()
 	testSharedMutation()
+	testStorePtr()
+	testMutatePtr()
+	testAliasInterNone()
+	testAliasInter()
+	testWriteStructPtr()
 }
