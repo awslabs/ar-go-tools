@@ -63,6 +63,9 @@ var dataflowPrompt string
 //go:embed config-generation-prompt.txt
 var configPrompt string
 
+//go:embed taint-tracking-definition-prompt.txt
+var taintPrompt string
+
 // jsonRPCRequest is plain struct representing a request sent to the server
 type jsonRPCRequest struct {
 	JSONRPC string      `json:"jsonrpc"`
@@ -424,6 +427,10 @@ func (s *serverState) handlePromptsList(req jsonRPCRequest) {
 			"name":        "config-generation",
 			"description": "Generate Argot configuration files with targets and analysis options",
 		},
+		{
+			"name":        "taint-tracking-definition",
+			"description": "Generate taint tracking problem definitions for Go codebases using Argot",
+		},
 	}
 	s.sendResponse(req.ID, map[string]interface{}{"prompts": prompts})
 }
@@ -470,6 +477,20 @@ func (s *serverState) handlePromptsGet(req jsonRPCRequest) {
 					"content": map[string]interface{}{
 						"type": "text",
 						"text": configPrompt,
+					},
+				},
+			},
+		}
+		s.sendResponse(req.ID, result)
+	case "taint-tracking-definition":
+		result := map[string]interface{}{
+			"description": "Generate taint tracking problem definitions for Go codebases using Argot",
+			"messages": []map[string]interface{}{
+				{
+					"role": "user",
+					"content": map[string]interface{}{
+						"type": "text",
+						"text": taintPrompt,
 					},
 				},
 			},
