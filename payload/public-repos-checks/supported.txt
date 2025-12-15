@@ -1,0 +1,12 @@
+amazon-ssm-agent ok
+badger ok
+cli ok
+govatar ok
+ofxgo ok
+prometheus ok
+xdg ok (instrumentation)
+atlas ok (slow)
+gogs - lots of functions that cannot be soundly analyzed
+ticker - cobra command analysis slow
+tidb - unspported language features ?
+v2ray - library
