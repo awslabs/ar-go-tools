@@ -390,6 +390,7 @@ func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 	}
 	foundDataflow := false
 	foundConfig := false
+	foundTaint := false
 	for _, prompt := range prompts {
 		promptMap, ok := prompt.(map[string]interface{})
 		if !ok {
@@ -402,6 +403,9 @@ func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 			if name == "config-generation" {
 				foundConfig = true
 			}
+			if name == "taint-tracking-definition" {
+				foundTaint = true
+			}
 		}
 	}
 	if !foundDataflow {
@@ -409,6 +413,9 @@ func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 	}
 	if !foundConfig {
 		t.Error("Expected config-generation prompt in prompts list")
+	}
+	if !foundTaint {
+		t.Error("Expected taint-tracking-definition prompt in prompts list")
 	}
 
 	// Test prompts get for dataflow-summary-generation
@@ -509,6 +516,56 @@ func checkPrompts(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
 	}
 	if !strings.Contains(configText, "targets") {
 		t.Error("Expected config prompt to contain 'targets'")
+	}
+
+	// Test prompts get for taint-tracking-definition
+	taintPromptReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      10,
+		Method:  "prompts/get",
+		Params: map[string]interface{}{
+			"name": "taint-tracking-definition",
+		},
+	}
+	sendRequest(t, stdin, taintPromptReq)
+	response = readResponse(t, scanner)
+	var taintPromptResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &taintPromptResp); err != nil {
+		t.Fatal(err)
+	}
+	if taintPromptResp.Error != nil {
+		t.Fatalf("Taint prompt get failed: %v", taintPromptResp.Error)
+	}
+
+	// Check taint prompt content
+	taintResult, ok := taintPromptResp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected taint prompt result to be a map")
+	}
+	taintMessages, ok := taintResult["messages"].([]interface{})
+	if !ok {
+		t.Fatal("Expected taint messages to be an array")
+	}
+	if len(taintMessages) == 0 {
+		t.Fatal("Expected at least one taint message")
+	}
+	taintMessage, ok := taintMessages[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected taint message to be a map")
+	}
+	taintContent, ok := taintMessage["content"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected taint content to be a map")
+	}
+	taintText, ok := taintContent["text"].(string)
+	if !ok {
+		t.Fatal("Expected taint text to be a string")
+	}
+	if !strings.Contains(taintText, "Taint Tracking Problem Definition Prompt") {
+		t.Error("Expected taint prompt to contain 'Taint Tracking Problem Definition Prompt'")
+	}
+	if !strings.Contains(taintText, "sources") {
+		t.Error("Expected taint prompt to contain 'sources'")
 	}
 }
 
