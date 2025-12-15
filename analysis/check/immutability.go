@@ -63,9 +63,9 @@ func checkSummaryImmutability(ctx context.Context, s *State, mustNotFlows []flow
 // Otherwise, fl.to is a scalar and must be a return value (since the types analysis filters out all
 // scalar parameter outputs).
 // If all values returned from the summary's return node are constants, then the return node is
-// immutable.
-// There is no need to analyze any callees because the value is stack allocated and therefore cannot
-// be modified outside of the function.
+// immutable, so the function returns true.
+// There is no need to analyze any callees because the return value is stack allocated and therefore
+// cannot be modified outside of the function.
 func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, error) {
 	vals := outputVals(fl)
 
@@ -80,8 +80,8 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 			}
 			if ok {
 				s.Logger.Debugf(
-					"found modification of output pointer value %v: write %v at %s\n",
-					val, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+					"found modification of output pointer value %v in must-not-flow %v: write %v at %s\n",
+					val, fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
 				return false, nil
 			}
 		} else {
@@ -101,7 +101,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 	return true, nil
 }
 
-// checkWritesPtr returns the first instruction that writes a scalar value to to's underlying memory.
+// checkWritesPtr returns an instruction that writes anything to to's underlying memory.
 // If it returns false, there are no writes.
 //
 // It is an inter-procedural analysis which checks for writes in the value's enclosing function and
@@ -113,6 +113,13 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 	seenFunc := make(map[*ssa.Function]struct{})
 
 	ids := nodeIds(s.cache, to)
+	s.Logger.Tracef("node ids of flow output value %v (%v): %v\n", to, to.Type(), ids)
+	if ids.Len() == 0 {
+		// If there are no node ids, then the pointee does not represent any object(s) allocated on
+		// the heap, which means it is impossible to write to it.
+		return ptrWrite{}, false, nil
+	}
+
 	for len(queue) > 0 {
 		// This function can take a while so handle timeouts
 		select {
@@ -135,7 +142,9 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 		// A function may be visited multiple times in different calling contexts so only analyze
 		// each function once.
 		if _, ok := seenFunc[node.Func]; !ok {
-			s.Logger.Tracef("checking for pointer writes in function %s\n", node.Func)
+			s.Logger.Tracef(
+				"checking for writes to memory of %v (%v) in function %s\n",
+				to, to.Type(), node.Func)
 
 			lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
 				write, ok := ptrWrittenTo(instr)
@@ -148,19 +157,22 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 				// 	return
 				// }
 
-				s.Logger.Tracef("found pointer write %s\n", write)
 				mobjs := s.cache.Objects(write.Target)
-				// If the target does not point to any memory, it is probably a nil-like local value
-				// (e.g., empty slice), so any explicit stores to it counts as writing data.
-				if len(mobjs) == 0 {
-					wrote = true
-					writeInstr = write
-					return
-				}
-				// If the target's objects have any node ids as the output value, then the write
-				// instruction writes data to the output value's memory.
+				// If the target's objects have any of the same node ids as the output value, then
+				// the write instruction writes a value to the output value's memory, and the output
+				// value is not immutable.
 				for mobj := range mobjs {
 					if ids.Has(int(mobj.NodeID())) {
+						if dataVal, ok := mobj.Data().(ssa.Value); ok {
+							s.Logger.Tracef(
+								"found write to val %v data: val node ids: %v, write target: %v, object: %v "+
+									"(SSA name: %v)\n",
+								to, ids, write.Target, mobj, dataVal.Name())
+						} else {
+							s.Logger.Tracef(
+								"found write to val %v data: val node ids: %v, write target: %v, object: %v\n",
+								to, ids, write.Target, mobj)
+						}
 						wrote = true
 						writeInstr = write
 						return
@@ -231,23 +243,6 @@ func nodeIds(c *aliasCache, val ssa.Value) *intsets.Sparse {
 	return ids
 }
 
-func isAllocatedErrorType(val ssa.Value) bool {
-	// catch cases like: change interface any <- error (err)
-	if ci, ok := val.(*ssa.ChangeInterface); ok {
-		val = ci.X
-	}
-
-	typ := val.Type()
-	switch t := typ.(type) {
-	case *types.Pointer:
-		typ = t.Elem().Underlying()
-	case *types.Interface:
-		typ = t.Underlying()
-	}
-
-	return types.AssignableTo(typ, types.Universe.Lookup("error").Type())
-}
-
 // aliasCache is a cache for transitive pointers and aliases.
 type aliasCache struct {
 	ptrRes         *pointer.Result
@@ -258,7 +253,7 @@ type aliasCache struct {
 // It caches the result for efficiency.
 func (ac *aliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
 	if mi, ok := val.(*ssa.MakeInterface); ok {
-		// if val is an interface, the object is the concrete struct
+		// If val is an interface, the object is the concrete struct.
 		val = mi.X
 	}
 	if res, ok := ac.objectPointees[val]; ok && len(res) > 0 {
@@ -327,6 +322,24 @@ func isPointerLike(t types.Type) bool {
 	return canPoint(t)
 }
 
+// canPoint returns true if the type t is pointer-like.
+//
+// We define pointer-like as a type whose underlying Go representation is a pointer.
+func canPoint(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Alias:
+		return canPoint(t.Underlying())
+	case *types.Named:
+		return canPoint(t.Underlying())
+	case *types.Pointer, *types.Interface, *types.Map, *types.Chan, *types.Signature, *types.Slice:
+		return true
+	case *types.Array, *types.Struct, *types.Tuple, *types.Basic:
+		return false
+	default:
+		panic(fmt.Errorf("unhandled type: %v", t))
+	}
+}
+
 // ptrWrite is an instruction that writes to an entrypoint's underlying memory.
 type ptrWrite struct {
 	ssa.Instruction
@@ -338,8 +351,8 @@ func (w ptrWrite) String() string {
 	return fmt.Sprintf("to %v with %v in %s", w.Target, w.Value, w.Instruction.Parent())
 }
 
-// ptrWrittenTo returns true if instruction writes a "data" value (r-value) to a pointer
-// value (l-value) in a write operation (store, map update, or channel send instruction).
+// ptrWrittenTo returns true if instruction writes a value (r-value) to a pointer-like value
+// (l-value) in a write operation (store, map update, or channel send instruction).
 //
 // NOTE SSA store operations only store values to pointers. So a store to an integer will look like:
 //
@@ -373,14 +386,14 @@ func ptrWrittenTo(instr ssa.Instruction) (ptrWrite, bool) {
 	// 	return ptrWrite{}, false
 	// }
 
-	if isPointerLike(lval.Type()) && isData(rval.Type()) {
+	if isPointerLike(lval.Type()) {
 		return ptrWrite{Instruction: instr, Target: lval, Value: rval}, true
 	}
 
 	// calls to append builtin function modify
 	if call, ok := rval.(*ssa.Call); ok {
 		if builtin, ok := call.Call.Value.(*ssa.Builtin); ok {
-			if builtin.Object().Name() == "append" && !canPoint(rval.Type()) {
+			if builtin.Object().Name() == "append" {
 				return ptrWrite{Instruction: instr, Target: lval, Value: rval}, true
 			}
 		}
@@ -389,47 +402,19 @@ func ptrWrittenTo(instr ssa.Instruction) (ptrWrite, bool) {
 	return ptrWrite{}, false
 }
 
-// canPoint reports whether the type T is pointerlike, for the purposes of this analysis.
-func canPoint(t types.Type) bool {
-	switch t := t.(type) {
-	case *types.Alias:
-		return canPoint(t.Underlying())
-	case *types.Named:
-		if obj := t.Obj(); obj.Name() == "Value" && obj.Pkg().Path() == "reflect" {
-			return true // treat reflect.Value like interface{}
-		}
-		return canPoint(t.Underlying())
-	case *types.Pointer, *types.Interface, *types.Map, *types.Chan, *types.Signature, *types.Slice:
-		return true
-	case *types.Array, *types.Struct, *types.Tuple, *types.Basic:
-		return false
-	default:
-		panic(fmt.Errorf("unhandled type: %v", t))
+func isAllocatedErrorType(val ssa.Value) bool {
+	// catch cases like: change interface any <- error (err)
+	if ci, ok := val.(*ssa.ChangeInterface); ok {
+		val = ci.X
 	}
-}
 
-func isData(t types.Type) bool {
-	switch t := t.(type) {
-	case *types.Alias:
-		return isData(t.Underlying())
-	case *types.Named:
-		if obj := t.Obj(); obj.Name() == "Value" && obj.Pkg().Path() == "reflect" {
-			return true // treat reflect.Value as data
-		}
-		return isData(t.Underlying())
-	case *types.Basic, *types.Array, *types.Slice, *types.Map, *types.Struct:
-		return true
+	typ := val.Type()
+	switch t := typ.(type) {
 	case *types.Pointer:
-		// Consider pointers to data types as data, but not pointers to pointers
-		underlying := t.Elem()
-		if _, isPtr := underlying.(*types.Pointer); isPtr {
-			return false // pointer to pointer is not data
-		}
-		// Use recursion to handle aliases and named types in the element
-		return isData(underlying)
+		typ = t.Elem().Underlying()
 	case *types.Interface:
-		return false
-	default:
-		panic(fmt.Errorf("unhandled type for isData: %v (%T)", t, t))
+		typ = t.Underlying()
 	}
+
+	return types.AssignableTo(typ, types.Universe.Lookup("error").Type())
 }

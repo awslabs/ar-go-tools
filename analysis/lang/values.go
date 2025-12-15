@@ -198,8 +198,6 @@ func CanType(v ssa.Value) (res bool) {
 // not have any other incoming edges, this function is sound: the dataflow analysis indirectly guarantees no data
 // is flowing from a parameter of the function, or from being written to by another function being called in the
 // function body.
-//
-// TODO: make this function usable outside of dataflow analysis
 func IsStaticallyDefinedLocal(v ssa.Value) bool {
 	if v == nil {
 		return false
