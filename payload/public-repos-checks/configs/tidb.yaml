@@ -1,6 +1,5 @@
 # Argot Configuration for TiDB
 # TiDB is a distributed SQL database with multiple entry points
-
 options:
   project-root: "./"
   reports-dir: "logs/argot"
@@ -9,29 +8,73 @@ options:
   analysis-options:
     unsafe-max-depth: 15
     max-alarms: 30
-
 targets:
   # Main TiDB server - the core distributed SQL database server
   - name: "tidb-server"
     files:
       - "./cmd/tidb-server"
-
   # TiDB Lightning - high-speed data import tool
   - name: "tidb-lightning"
     files:
       - "./lightning/cmd/tidb-lightning"
-
   # Dumpling - data export tool (MySQL compatible)
   - name: "dumpling"
     files:
       - "./dumpling/cmd/dumpling"
-
   # BR (Backup & Restore) - backup and restore tool
   - name: "br"
     files:
       - "./br/cmd/br"
-
   # Importer - data import utility
   - name: "importer"
     files:
       - "./cmd/importer"
+dataflow-problems:
+  summarize-on-demand: true
+  generate-unsoundness-report: true
+  taint-tracking:
+    - tag: "mysql-protocol-injection"
+      description: "Client data flows to query processing without validation"
+      targets: ["tidb-server"]
+      severity: "HIGH"
+      sources:
+        - package: "github.com/pingcap/tidb/pkg/server"
+          method: ".*(handleQuery|handleStmt).*"
+      sinks:
+        - package: "github.com/pingcap/tidb/pkg/parser"
+          method: ".*(Parse|ParseOneStmt).*"
+        - package: ".*executor.*"
+          method: ".*(Execute|ExecStmt).*"
+      sanitizers:
+        - package: ".*"
+          method: ".*(EscapeString|QuoteString).*"
+    
+    - tag: "credential-logging"
+      description: "Sensitive credentials logged to output"
+      targets: ["tidb-server"]
+      severity: "MEDIUM"
+      sources:
+        - package: ".*config.*"
+          method: ".*(Password|Token|Key|Secret).*"
+      sinks:
+        - package: "github.com/pingcap/log"
+          method: ".*(Info|Debug|Warn|Error).*"
+      sanitizers:
+        - package: ".*"
+          method: ".*(Redact|Mask).*"
+    
+    - tag: "command-injection"
+      description: "CLI arguments flow to command execution"
+      targets: ["tidb-server"]
+      severity: "HIGH"
+      sources:
+        - package: "os"
+          method: "^Args$"
+        - package: "flag"
+          method: ".*(String|Int).*"
+      sinks:
+        - package: "os/exec"
+          method: ".*(Command|CommandContext).*"
+      sanitizers:
+        - package: ".*"
+          method: ".*(Validate|Sanitize).*"

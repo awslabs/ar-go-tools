@@ -14,6 +14,8 @@ targets:
 dataflow-problems:
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
+  generate-unsoundness-report: true
+  user-specs: ["user-specs.yaml"]
   taint-tracking:
     # 1. Configuration file injection - untrusted config paths flowing to file operations
     - tag: "config-path-injection"
