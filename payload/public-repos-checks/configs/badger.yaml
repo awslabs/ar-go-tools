@@ -17,6 +17,9 @@ targets:
     files: ["./integration/testgc/..."]
 
 dataflow-problems:
+  generate-unsoundness-report: true
+  user-specs:
+    - "user-specs.yaml"
   summarize-on-demand: true
   taint-tracking:
     - tag: "path-traversal-vuln-#1"

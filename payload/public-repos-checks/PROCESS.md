@@ -73,7 +73,7 @@ dataflow-summaries:
 ### 6. Flow Identifiers
 
 - `!arg 0`, `!arg 1`, etc. - Function arguments by position
-- `!arg <name>` - Function arguments by name  
+- `!arg <name>` - Function arguments by name
 - `!receiver` - Method receiver (methods only)
 - `!ret`, `!ret 0`, `!ret 1`, etc. - Return values by position
 - `(!arg N)[*]` - Flow through pointer/slice/map elements
@@ -140,7 +140,7 @@ Most system calls flow all arguments to error returns and may modify pointer arg
 flows:
   - from: "!arg 0"
     to: "!ret 0"  # error
-  - from: "!arg 1" 
+  - from: "!arg 1"
     to: "(!arg 1)[*]"  # if pointer argument is modified
 ```
 
