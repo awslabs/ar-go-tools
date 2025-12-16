@@ -68,33 +68,36 @@ func checkSummaryImmutability(ctx context.Context, s *State, mustNotFlows []flow
 // cannot be modified outside of the function.
 func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, error) {
 	vals := outputVals(fl)
-
-	for _, val := range vals {
-		if isPointerLike(val.Type()) {
-			s.Logger.Tracef(
-				"output value %v (%v) in must-not-flow %v is pointer-like\n", val, val.Type(), fl)
-			writeInstr, ok, err := checkWritesPtr(ctx, s, val)
-			if err != nil {
-				return false, fmt.Errorf(
-					"failed to check writes to pointer-like value %v: %w", val, err)
-			}
-			if ok {
-				s.Logger.Debugf(
-					"found modification of output pointer value %v in must-not-flow %v: write %v at %s\n",
-					val, fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
-				return false, nil
-			}
-		} else {
-			if _, ok := fl.to.(*dataflow.ReturnValNode); !ok {
-				panic(fmt.Errorf("detected scalar output in must-not-flow %v that is not a return", fl))
-			}
-
-			if !isPointerLike(val.Type()) && !lang.IsStaticallyDefinedLocal(val) {
+	if _, ok := fl.to.(*dataflow.ReturnValNode); ok {
+		for _, val := range vals {
+			if !lang.IsStaticallyDefinedLocal(val) {
 				s.Logger.Debugf(
 					"found non-static return scalar value %v in function %v",
 					val, val.Parent())
 				return false, nil
 			}
+		}
+
+		return true, nil
+	}
+
+	if len(vals) > 1 {
+		panic(fmt.Errorf("multiple values for non-return flow output: %v", fl.to))
+	}
+	val := vals[0]
+	if isPointerLike(val.Type()) {
+		s.Logger.Tracef(
+			"output value %v (%v) in must-not-flow %v is pointer-like\n", val, val.Type(), fl)
+		writeInstr, ok, err := checkWritesPtr(ctx, s, val)
+		if err != nil {
+			return false, fmt.Errorf(
+				"failed to check writes to pointer-like value %v: %w", val, err)
+		}
+		if ok {
+			s.Logger.Debugf(
+				"found modification of output pointer value %v in must-not-flow %v: write %v at %s\n",
+				val, fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
+			return false, nil
 		}
 	}
 
@@ -215,6 +218,10 @@ func outputVals(fl flow) []ssa.Value {
 			val := retInstr.Results[to.Index()]
 			vals = append(vals, val)
 		}
+	case *dataflow.FreeVarNode:
+		vals = append(vals, to.SsaNode())
+	default:
+		panic(fmt.Errorf("unhandled flow output node type: %T", fl.to))
 	}
 
 	return vals
