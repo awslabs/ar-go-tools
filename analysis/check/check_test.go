@@ -1267,9 +1267,6 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 										summaries.ArgumentSNode{Name: "v", Index: 0},
 										summaries.ReturnSNode{Index: 0},
 									},
-									summaries.ArgumentSNode{Name: "v", Index: 0}: {
-										summaries.ReceiverSNode{},
-									},
 								},
 							},
 							IsSound:              true,
@@ -1336,7 +1333,6 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 									},
 									summaries.ReceiverSNode{}: {
 										summaries.ArgumentSNode{Name: "v", Index: 0},
-										summaries.ReturnSNode{Index: 0},
 									},
 									summaries.ArgumentSNode{Name: "v", Index: 0}: {
 										summaries.ReceiverSNode{},
@@ -1346,8 +1342,55 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 							IsSound:              true,
 							UnprovenMustNotFlows: nil,
 							Method:               check.Immutability,
-							// TODO Fill this in
-							CalleeResults: nil,
+							CalleeResults: [][]check.SoundnessResult{
+								{
+									{
+										Fn: "(*encoding/json.encodeState).marshal$1",
+										Want: summaries.DetailedSummary{
+											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+										},
+										IsSound:              true,
+										UnprovenMustNotFlows: nil,
+										Method:               check.General,
+										CalleeResults:        nil,
+									},
+								},
+								{
+									{
+										Fn: "reflect.ValueOf",
+										Want: summaries.DetailedSummary{
+											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+												summaries.ArgumentSNode{Name: "i", Index: 0}: {
+													summaries.ReturnSNode{Index: 0},
+												},
+											},
+										},
+										IsSound:              true,
+										UnprovenMustNotFlows: nil,
+										Method:               check.General,
+										CalleeResults:        nil,
+									},
+								},
+								{
+									{
+										Fn: "(*encoding/json.encodeState).reflectValue",
+										Want: summaries.DetailedSummary{
+											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+												summaries.ArgumentSNode{Name: "opts", Index: 1}: {
+													summaries.ReceiverSNode{},
+												},
+												summaries.ArgumentSNode{Name: "v", Index: 0}: {
+													summaries.ReceiverSNode{},
+												},
+											},
+										},
+										IsSound:              true,
+										UnprovenMustNotFlows: nil,
+										Method:               check.Types,
+										CalleeResults:        nil,
+									},
+								},
+							},
 						},
 					},
 				},
