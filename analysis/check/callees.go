@@ -31,7 +31,7 @@ import (
 // which satisfy the summary's must-not-flow requirements mustNotFlows.
 func inferCalleeSummaries(
 	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph, mustNotFlows []flow, via Method,
-) (map[*dataflow.SummaryGraph][]summaries.DetailedSummary, error) {
+) (map[*ssa.Function][]summaries.DetailedSummary, error) {
 	if len(g.Callees) == 0 {
 		s.Logger.Tracef("function %s is a leaf function (no callees)\n", g.Parent)
 		return nil, nil
@@ -43,8 +43,15 @@ func inferCalleeSummaries(
 	}
 
 	// First run the intra-procedural analysis
-	if _, err := dataflow.RunIntraProcedural(ctx, s, g); err != nil {
-		return nil, fmt.Errorf("failed to run intra-procedural analysis: %v", err)
+	if summ, ok := s.FlowGraph.Summaries[g.Parent]; ok && summ.Constructed {
+		s.Logger.Tracef(
+			"using already-computed intra-procedural results for function %s\n", g.Parent)
+		g = summ
+	} else {
+		s.Logger.Tracef("running intra-procedural analysis on function %s...\n", g.Parent)
+		if _, err := dataflow.RunIntraProcedural(ctx, s, g); err != nil {
+			return nil, fmt.Errorf("failed to run intra-procedural analysis: %v", err)
+		}
 	}
 
 	// Collect known (intra + inter) and unknown may-flow edges
@@ -297,8 +304,8 @@ func findAllOptimalModels(
 
 func modelsToSummaries(
 	s *dataflow.State, allOptimalModels []maxsat.Model, unknown map[*dataflow.CallNode][]edge,
-) map[*dataflow.SummaryGraph][]summaries.DetailedSummary {
-	res := make(map[*dataflow.SummaryGraph][]summaries.DetailedSummary)
+) map[*ssa.Function][]summaries.DetailedSummary {
+	res := make(map[*ssa.Function][]summaries.DetailedSummary)
 	for _, optimalModel := range allOptimalModels {
 		// Extract may-flow edges from this model
 		var allMayFlows []edge
@@ -331,7 +338,23 @@ func modelsToSummaries(
 			if !ok {
 				panic(fmt.Errorf("no summary found for callee: %s", callee))
 			}
-			res[cg] = append(res[cg], summ)
+
+			// Check if this summary already exists to avoid duplicates.
+			// There may be duplicate summaries even for unique MaxSAT models because there may be
+			// different variable (may-flow) assignments which map to the same summary.
+			existing := res[cg.Parent]
+			isDuplicate := false
+			for _, existingSumm := range existing {
+				if summariesEqual(summ, existingSumm) {
+					isDuplicate = true
+					break
+				}
+			}
+			if isDuplicate {
+				continue
+			}
+
+			res[cg.Parent] = append(res[cg.Parent], summ)
 		}
 	}
 
@@ -640,6 +663,29 @@ func nodeSignature(n dataflow.GraphNode) string {
 	default:
 		panic(fmt.Errorf("invalid summary node: %v", n))
 	}
+}
+
+// summariesEqual checks if two DetailedSummary instances are identical.
+func summariesEqual(a, b summaries.DetailedSummary) bool {
+	if len(a.Flows) != len(b.Flows) {
+		return false
+	}
+
+	for fromNode, aTargets := range a.Flows {
+		bTargets, ok := b.Flows[fromNode]
+		if !ok || len(aTargets) != len(bTargets) {
+			return false
+		}
+
+		// Check if all targets match (order doesn't matter)
+		for _, aTarget := range aTargets {
+			if !slices.Contains(bTargets, aTarget) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // For debugging:

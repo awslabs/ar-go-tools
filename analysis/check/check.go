@@ -150,15 +150,14 @@ func checkSummary(
 	// Since we inferred callee summaries, we have intra-procedural results for f.
 	// This means that we only need to prove the must-not-flows in the callees.
 	var calleeResults [][]SoundnessResult
-	for calleeG, calleeSumms := range calleeSummaries {
+	for callee, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
 			return SoundnessResult{},
-				fmt.Errorf("no summaries inferred for callee: %s", calleeG.Parent)
+				fmt.Errorf("no summaries inferred for callee: %s", callee)
 		}
 		var thisCalleeResults []SoundnessResult
 		for _, calleeSumm := range calleeSumms {
 			// Recursively check the soundness of the callee's inferred summary
-			callee := calleeG.Parent
 			s.Logger.Tracef(
 				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
 			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm)
