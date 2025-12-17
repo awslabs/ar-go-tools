@@ -624,6 +624,9 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 
 				// Tainted data is written to ALL locations where the global is read.
 				for nextNode := range graphNode.Global.ReadLocations {
+					if !s.IsReachableFunction(nextNode.Graph().Parent) {
+						continue
+					}
 					// Global jump makes trace irrelevant if we don't follow the call graph!
 					nextNodeWithTrace := df.NodeWithTrace{
 						Node:         nextNode,
@@ -635,6 +638,9 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			} else {
 				// From a read location, tainted data follows the out edges of the node
 				for nextNode, edgeInfos := range graphNode.Out() {
+					if !s.IsReachableFunction(nextNode.Graph().Parent) {
+						continue
+					}
 					for _, edgeInfo := range edgeInfos {
 						nextNodeWithTrace := df.NodeWithTrace{
 							Node:         nextNode,
@@ -651,14 +657,15 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			if v.taintSpec.SkipBoundLabels {
 				break
 			}
+			closureFn := graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function)
+			// The function that created the closure is not reachable, so it can't be the case
+			// that the data would flow from that closure creation site.
+			if !s.IsReachableFunction(closureFn) {
+				break
+			}
 			destClosureSummary := graphNode.DestClosure()
+
 			if destClosureSummary == nil {
-				closureFn := graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function)
-				// The function that created the closure is not reachable, so it can't be the case
-				// that the data would flow from that closure creation site.
-				if !s.IsReachableFunction(closureFn) {
-					break
-				}
 				destClosureSummary = df.BuildSummary(s, closureFn)
 				graphNode.SetDestClosure(destClosureSummary)
 				s.FlowGraph.Sync()

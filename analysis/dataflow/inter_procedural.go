@@ -134,6 +134,7 @@ func (g *InterProceduralFlowGraph) BuildGraph(usePredefinedSummaries bool) {
 
 	// STEP 1: Enforce dataflow contracts
 	if usePredefinedSummaries {
+		logged := map[*ssa.Function]bool{}
 		for _, summary := range g.Summaries {
 			if summary == nil {
 				continue
@@ -143,8 +144,11 @@ func (g *InterProceduralFlowGraph) BuildGraph(usePredefinedSummaries bool) {
 					if node.Callee() != nil && node.CalleeSummary == nil {
 						externalContractSummary := g.AnalyzerState.LoadExternalContractSummary(node)
 						if externalContractSummary != nil {
-							logger.Debugf("Loaded %s from external contracts.\n",
-								formatutil.SanitizeRepr(node.Callee()))
+							if !logged[node.Callee()] {
+								logger.Debugf("Loaded %s from user-specs.\n",
+									formatutil.SanitizeRepr(node.Callee()))
+								logged[node.Callee()] = true
+							}
 							g.Summaries[node.Callee()] = externalContractSummary
 							node.CalleeSummary = externalContractSummary
 							if x := externalContractSummary.Callsites[node.CallSite()]; x == nil {
@@ -504,7 +508,10 @@ func (g *InterProceduralFlowGraph) resolveCalleeSummary(
 
 	if calleeSummary != nil && !calleeSummary.Constructed && usePredefined {
 		if shortSummary, isPredefined := summaries.SummaryOfFunc(node.Callee()); isPredefined {
-			calleeSummary.PopulateGraphFromSummary(shortSummary, false)
+			err := calleeSummary.PopulateGraphFromSummary(shortSummary, false)
+			if err != nil {
+				logger.Errorf("Failed to construct summary for %s\n", formatutil.SanitizeRepr(node.Callee()))
+			}
 			logger.Debugf("Constructed %s from summaries.\n", formatutil.SanitizeRepr(node.Callee()))
 		}
 	}

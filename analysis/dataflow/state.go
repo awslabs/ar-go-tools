@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -40,7 +41,7 @@ type State struct {
 	ImplementationsByType map[string]map[*ssa.Function]bool
 	MethodKeys            map[string]string
 
-	// DataFlowContracts are dataflow graphs for interfaces.
+	// DataFlowContracts are dataflow graphs for interfaces and user-summarized functions.
 	DataFlowContracts map[string]*SummaryGraph
 
 	// The global analysis
@@ -125,7 +126,10 @@ func initializedState(ps ptr.State, steps []func(*State)) (*State, error) {
 	// if no steps are provided, there is no additional information to compute here.
 	// link contracts (using the reachable functions from the cha analysis)
 	if steps == nil {
-		state.linkContracts(allContracts)
+		err := state.linkContracts(allContracts)
+		if err != nil {
+			return nil, err
+		}
 		return state, nil
 	}
 
@@ -142,7 +146,7 @@ func initializedState(ps ptr.State, steps []func(*State)) (*State, error) {
 	if errs := state.Report.CheckError(); len(errs) > 0 {
 		// TODO: use errors.Join when min version of go is 1.20
 		// currently only first error is reported
-		return nil, fmt.Errorf("failed to build analyzer state: %w", errs[0])
+		return nil, fmt.Errorf("failed to build analyzer state: %w", errors.Join(errs...))
 	}
 
 	err := state.linkContracts(allContracts)
@@ -333,6 +337,7 @@ func (s *State) linkContracts(allContracts []Contract) error {
 			if err != nil {
 				return fmt.Errorf("inspect config, error while building summary graph for %s: %w", contract.Key(method), err)
 			}
+			s.Logger.Debugf("Built summary graph for %s", contract.Key(method))
 		}
 	}
 	return nil

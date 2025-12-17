@@ -571,6 +571,9 @@ func (v *FuncInputVisitor) Visit(ctx context.Context, s *State, entry NodeWithTr
 				logger.Warnf("Missing closure node for bound label %v at %v\n", graphNode, graphNode.Position(s))
 				break
 			}
+			if !closureNode.IsReachable(s) {
+				break
+			}
 
 			closureNodeWithTrace := NodeWithTrace{
 				Node:         closureNode,
