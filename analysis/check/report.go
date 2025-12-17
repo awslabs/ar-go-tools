@@ -41,20 +41,26 @@ type SoundnessResult struct {
 	Method Method
 	// Time is the time spent to calculate the result.
 	Time time.Duration
+	// CalleeResults are the soundness results of the callees.
+	// It's a slice of slices because there may be multiple inferred callee summaries.
+	CalleeResults [][]SoundnessResult
+}
+
+func (r SoundnessResult) String() string {
+	b, err := r.MarshalJSON()
+	if err != nil {
+		panic(fmt.Errorf("failed to marshal soundness result for function %s to JSON: %v", r.Fn, err))
+	}
+
+	return string(b)
 }
 
 func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 	b := &bytes.Buffer{}
-	raw := rawSoundnessResult{
-		Func:                 r.Fn,
-		Want:                 rawFlows(r.Want.Flows),
-		IsSound:              r.IsSound,
-		UnprovenMustNotFlows: funcutil.Map(r.UnprovenMustNotFlows, (Flow).String),
-		Method:               string(r.Method),
-		TimeSeconds:          time.Duration(r.Time.Seconds()),
-	}
+	raw := newRawSoundnessResult(r)
 	enc := json.NewEncoder(b)
 	enc.SetEscapeHTML(false) // don't escape characters like "<"
+	enc.SetIndent("", "  ")  // indent by 2 spaces (no prefix)
 	err := enc.Encode(raw)
 	res := b.Bytes()
 	return res, err
@@ -62,6 +68,7 @@ func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 
 func newSoundnessResult(
 	g *dataflow.SummaryGraph, res checkResult, want summaries.DetailedSummary, start time.Time, via Method,
+	calleeResults [][]SoundnessResult,
 ) SoundnessResult {
 	return SoundnessResult{
 		Fn:                   g.Parent.RelString(nil),
@@ -70,6 +77,7 @@ func newSoundnessResult(
 		UnprovenMustNotFlows: funcutil.Map(res.mustNotFlows, newFlow),
 		Method:               via,
 		Time:                 time.Since(start),
+		CalleeResults:        calleeResults,
 	}
 }
 
@@ -94,11 +102,28 @@ func (f Flow) String() string {
 type rawSoundnessResult struct {
 	Func                 string
 	Want                 map[string][]string
-	Got                  map[string][]string
 	IsSound              bool
 	UnprovenMustNotFlows []string
 	Method               string
 	TimeSeconds          time.Duration
+	CalleeResults        [][]rawSoundnessResult
+}
+
+func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
+	var calleeResults [][]rawSoundnessResult
+	for _, crs := range r.CalleeResults {
+		calleeResults = append(calleeResults, funcutil.Map(crs, newRawSoundnessResult))
+	}
+
+	return rawSoundnessResult{
+		Func:                 r.Fn,
+		Want:                 rawFlows(r.Want.Flows),
+		IsSound:              r.IsSound,
+		UnprovenMustNotFlows: funcutil.Map(r.UnprovenMustNotFlows, (Flow).String),
+		Method:               string(r.Method),
+		TimeSeconds:          time.Duration(r.Time.Seconds()),
+		CalleeResults:        calleeResults,
+	}
 }
 
 func rawFlows(flows map[summaries.SummaryNode][]summaries.SummaryNode) map[string][]string {

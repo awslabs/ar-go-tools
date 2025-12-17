@@ -196,13 +196,9 @@ func checkSummaries(
 		if soundness.IsSound {
 			logger.Infof("Sound!")
 		} else {
-			// TODO proper soundness report
 			logger.Errorf("Unsound!")
 		}
-		logger.Info("Unproven must-not-flows:")
-		for _, flow := range soundness.UnprovenMustNotFlows {
-			logger.Infof("\t%s\n", flow)
-		}
+		logger.Infof("Result:\n%s\n", soundness.String())
 
 		results = append(results, soundness)
 		logger.PopContext()

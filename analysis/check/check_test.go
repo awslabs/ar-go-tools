@@ -52,56 +52,74 @@ func TestCheckSummary_Basic(t *testing.T) {
 	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic"
 	tests := []tcCheck{
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "singleArgIntraOut",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "singleArgIntraOut",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".singleArgIntraOut",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
-				UnprovenMustNotFlows: []check.Flow{},
+				UnprovenMustNotFlows: nil,
 				Method:               check.General,
+				CalleeResults:        nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "singleArgInterNone",
-				summaries.DetailedSummary{
-					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
-				},
-			),
+			pkg:  pkg,
+			name: "singleArgInterNone",
+			typ:  functionSummary,
 			want: check.SoundnessResult{
+				Fn:                   pkg + ".singleArgInterNone",
 				IsSound:              true,
 				UnprovenMustNotFlows: []check.Flow{
-					// NOTE Immutability analysis disproved these flows
+					// NOTE Immutability analysis disproved this flow.
 					// {
 					// 	Fn:   pkg + ".singleArgInterNone",
 					// 	From: summaries.ArgumentSNode{Name: "x", Index: 0},
 					// 	To:   summaries.ReturnSNode{Index: 0},
 					// },
-					// {
-					// 	Fn:   pkg + ".noop",
-					// 	From: summaries.ArgumentSNode{Name: "arg0", Index: 0},
-					// 	To:   summaries.ReturnSNode{Index: 0},
-					// },
 				},
 				Method: check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn:                   pkg + ".noop",
+							Want:                 summaries.DetailedSummary{},
+							IsSound:              true,
+							UnprovenMustNotFlows: []check.Flow{
+								// NOTE Immutability analysis disproved this flow.
+								// {
+								// 	Fn:   pkg + ".noop",
+								// 	From: summaries.ArgumentSNode{Name: "arg0", Index: 0},
+								// 	To:   summaries.ReturnSNode{Index: 0},
+								// },
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "twoArgIntraInout",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "twoArgIntraInout",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".twoArgIntraInout",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ArgumentSNode{Name: "y", Index: 1},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					// NOTE false-positive: pointer analysis claims that x and y have the same node id.
@@ -210,62 +228,92 @@ func TestCheckSummary_Basic(t *testing.T) {
 						To:   summaries.ArgumentSNode{Name: "x", Index: 0},
 					},
 				},
-				Method: check.Immutability,
+				Method:        check.Immutability,
+				CalleeResults: nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "twoArgInterInout",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "twoArgInterInout",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".twoArgInterInout",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ArgumentSNode{Name: "y", Index: 1},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound: true,
-				// Disproved flow from setmem dst -> src via types
 				// Disproved flow from twoArgInterInout y -> x via immutability
 				UnprovenMustNotFlows: nil,
 				Method:               check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".setmem",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "src", Index: 1}: {
+										summaries.ArgumentSNode{Name: "dst", Index: 0},
+									},
+								},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.Types,
+							CalleeResults:        nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "singleArgIntraGlobal",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "singleArgIntraGlobal",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".singleArgIntraGlobal",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true, // TODO global analysis
 				UnprovenMustNotFlows: nil,
 				Method:               check.General,
+				CalleeResults:        nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "singleArgInterGlobal",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "singleArgInterGlobal",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".singleArgInterGlobal",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true, // TODO global analysis
 				UnprovenMustNotFlows: nil,
 				Method:               check.General,
+				CalleeResults:        nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "twoArgInterBool",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "twoArgInterBool",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".twoArgInterBool",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
@@ -275,16 +323,19 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
 				UnprovenMustNotFlows: nil,
 				Method:               check.Types,
+				CalleeResults:        nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "twoArgInter",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "twoArgInter",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".twoArgInter",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
@@ -294,16 +345,19 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
 				UnprovenMustNotFlows: nil,
 				Method:               check.Types,
+				CalleeResults:        nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "threeArgInter",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "threeArgInter",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".threeArgInter",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 1}: {
 							summaries.ArgumentSNode{Name: "b", Index: 2},
@@ -314,8 +368,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
@@ -348,29 +400,56 @@ func TestCheckSummary_Basic(t *testing.T) {
 						From: summaries.ArgumentSNode{Name: "b", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
 					},
-					{
-						Fn:   pkg + ".add2",
-						From: summaries.ArgumentSNode{Name: "no", Index: 2},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
-					// NOTE Immutability analysis disproved these flows
-					// {
-					// 	Fn:   pkg + ".add2",
-					// 	From: summaries.ArgumentSNode{Name: "a", Index: 0},
-					// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
-					// },
-					// {
-					// 	Fn:   pkg + ".add2",
-					// 	From: summaries.ArgumentSNode{Name: "b", Index: 1},
-					// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
-					// },
 				},
 				Method: check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".add2",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							IsSound: false,
+							UnprovenMustNotFlows: []check.Flow{
+								{
+									Fn:   pkg + ".add2",
+									From: summaries.ArgumentSNode{Name: "no", Index: 2},
+									To:   summaries.ReturnSNode{},
+								},
+								// NOTE Immutability analysis disproved these flows
+								// {
+								// 	Fn:   pkg + ".add2",
+								// 	From: summaries.ArgumentSNode{Name: "a", Index: 0},
+								// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
+								// },
+								// {
+								// 	Fn:   pkg + ".add2",
+								// 	From: summaries.ArgumentSNode{Name: "b", Index: 1},
+								// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
+								// },
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "threeArgInterDiffCallees",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "threeArgInterDiffCallees",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn:      pkg + ".threeArgInterDiffCallees",
+				IsSound: false,
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 1}: {
 							summaries.ArgumentSNode{Name: "b", Index: 2},
@@ -381,9 +460,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
-				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
 						Fn:   pkg + ".threeArgInterDiffCallees",
@@ -415,33 +491,75 @@ func TestCheckSummary_Basic(t *testing.T) {
 						From: summaries.ArgumentSNode{Name: "b", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
 					},
-					{
-						Fn:   pkg + ".add1",
-						From: summaries.ArgumentSNode{Name: "no", Index: 2},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
-					{
-						Fn:   pkg + ".add2",
-						From: summaries.ArgumentSNode{Name: "no", Index: 2},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
 				},
 				Method: check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".add1",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							UnprovenMustNotFlows: []check.Flow{
+								{
+									Fn:   pkg + ".add1",
+									From: summaries.ArgumentSNode{Name: "no", Index: 2},
+									To:   summaries.ReturnSNode{Index: 0},
+								},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+					{
+						{
+							Fn: pkg + ".add2",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							UnprovenMustNotFlows: []check.Flow{
+								{
+									Fn:   pkg + ".add2",
+									From: summaries.ArgumentSNode{Name: "no", Index: 2},
+									To:   summaries.ReturnSNode{Index: 0},
+								},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			// NOTE This summary is deliberately incorrect:
-			// If src cannot flow to dst, then no parameter of addVals can flow to its return.
-			summary: summaries.NewFunctionFlowSummary(pkg, "propagateFields",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "propagateFields",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".propagateFields",
+				// NOTE This summary is deliberately incorrect:
+				// If src cannot flow to dst, then no parameter of addVals can flow to its return.
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "dst", Index: 1}: {
 							summaries.ArgumentSNode{Name: "src", Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
@@ -449,39 +567,90 @@ func TestCheckSummary_Basic(t *testing.T) {
 						From: summaries.ArgumentSNode{Name: "src", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "dst", Index: 1},
 					},
-					{
-						Fn:   pkg + ".addVals",
-						From: summaries.ArgumentSNode{Name: "a", Index: 0},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
-					{
-						Fn:   pkg + ".addVals",
-						From: summaries.ArgumentSNode{Name: "b", Index: 1},
-						To:   summaries.ReturnSNode{Index: 0},
-					},
 				},
 				Method: check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".addVals",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "b", Index: 1},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "a", Index: 0},
+									},
+								},
+							},
+							IsSound: false,
+							UnprovenMustNotFlows: []check.Flow{
+								{
+									Fn:   pkg + ".addVals",
+									From: summaries.ArgumentSNode{Name: "a", Index: 0},
+									To:   summaries.ReturnSNode{Index: 0},
+								},
+								{
+									Fn:   pkg + ".addVals",
+									From: summaries.ArgumentSNode{Name: "b", Index: 1},
+									To:   summaries.ReturnSNode{Index: 0},
+								},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "propagateFields",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "propagateFields",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".propagateFields",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "src", Index: 0}: {
 							summaries.ArgumentSNode{Name: "dst", Index: 1},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
 				UnprovenMustNotFlows: nil,
 				Method:               check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".addVals",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "b", Index: 1},
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "a", Index: 0},
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.General,
+							CalleeResults:        nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "sharedMutation",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "sharedMutation",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".sharedMutation",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
@@ -496,10 +665,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
-				// TODO false-positive: there should not be a flow from modify s -> val.
-				// This should be sound.
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
@@ -522,18 +687,43 @@ func TestCheckSummary_Basic(t *testing.T) {
 						From: summaries.ArgumentSNode{Name: "shared", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "b", Index: 1},
 					},
-					{
-						Fn:   pkg + ".modify",
-						From: summaries.ArgumentSNode{Name: "s", Index: 1},
-						To:   summaries.ArgumentSNode{Name: "val", Index: 0},
-					},
 				},
 				Method: check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".modify",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "val", Index: 0}: {
+										summaries.ArgumentSNode{Name: "s", Index: 1},
+									},
+								},
+							},
+							IsSound: false,
+							UnprovenMustNotFlows: []check.Flow{
+								// TODO false-positive: there should not be a flow from modify s -> val.
+								// This should be sound.
+								{
+									Fn:   pkg + ".modify",
+									From: summaries.ArgumentSNode{Name: "s", Index: 1},
+									To:   summaries.ArgumentSNode{Name: "val", Index: 0},
+								},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "storePtr",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "storePtr",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".storePtr",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
@@ -543,91 +733,101 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
-				UnprovenMustNotFlows: []check.Flow{},
+				UnprovenMustNotFlows: nil,
 				Method:               check.Immutability,
+				CalleeResults:        nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "aliasNoop",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "aliasNoop",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".aliasNoop",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
-				UnprovenMustNotFlows: []check.Flow{},
+				UnprovenMustNotFlows: nil,
 				Method:               check.Immutability,
+				CalleeResults:        nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "alias",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "alias",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".alias",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "y", Index: 1}: {
 							summaries.ArgumentSNode{Name: "x", Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
-				// TODO false-positive: there should not be a flow from alias x -> y.
-				// This should be sound.
-				//
-				// The pointer analysis reports that x may-alias y:
-				//   [indirect] x may alias with:
-				//   [indirect] x (parameter x : ***int) -> n54370
-				//   [direct]   y (parameter y : **int) -> n54371
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
+					// TODO false-positive: there should not be a flow from alias x -> y.
+					// This should be sound.
+					//
+					// The pointer analysis reports that x may-alias y:
+					//   [indirect] x may alias with:
+					//   [indirect] x (parameter x : ***int) -> n54370
+					//   [direct]   y (parameter y : **int) -> n54371
 					{
 						Fn:   pkg + ".alias",
 						From: summaries.ArgumentSNode{Name: "x", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
 					},
 				},
-				Method: check.Immutability,
+				Method:        check.Immutability,
+				CalleeResults: nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "writeStructPtr",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "writeStructPtr",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".writeStructPtr",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "y", Index: 1}: {
 							summaries.ArgumentSNode{Name: "x", Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
-				// TODO false-positive: there should not be a flow from writeStructPtr x -> y.
-				// This should be sound.
-				//
-				// The pointer analysis does not report any may-aliases for either parameter.
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
+						// TODO false-positive: there should not be a flow from writeStructPtr x -> y.
+						// This should be sound.
+						//
+						// The pointer analysis does not report any may-aliases for either parameter.
 						Fn:   pkg + ".writeStructPtr",
 						From: summaries.ArgumentSNode{Name: "x", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
 					},
 				},
-				Method: check.Immutability,
+				Method:        check.Immutability,
+				CalleeResults: nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "writeToClosed",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "writeToClosed",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".writeToClosed",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
@@ -635,31 +835,81 @@ func TestCheckSummary_Basic(t *testing.T) {
 						From: summaries.ArgumentSNode{Name: "y", Index: 1},
 						To:   summaries.ReturnSNode{},
 					},
-					{
-						Fn:   pkg + ".writeToClosed$1",
-						From: summaries.FreeVarSNode{Name: "y"},
-						To:   summaries.ReturnSNode{},
-					},
-					// NOTE Technically this flow is realizable but it's from the inferred callee
-					// summary: !free <x> -> !free <y> | !free <y> -> !free <x>.
-					{
-						Fn:   pkg + ".writeToClosed$1",
-						From: summaries.FreeVarSNode{Name: "x"},
-						To:   summaries.ReturnSNode{},
-					},
-					// TODO False-positive from immutability analysis
-					{
-						Fn:   pkg + ".writeToClosed$1",
-						From: summaries.FreeVarSNode{Name: "y"},
-						To:   summaries.FreeVarSNode{Name: "x"},
-					},
 				},
 				Method: check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".writeToClosed$1",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.FreeVarSNode{Name: "x"}: {
+										summaries.FreeVarSNode{Name: "y"},
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							IsSound: false,
+							UnprovenMustNotFlows: []check.Flow{
+								// TODO False-positive from immutability analysis
+								{
+									Fn:   pkg + ".writeToClosed$1",
+									From: summaries.FreeVarSNode{Name: "y"},
+									To:   summaries.FreeVarSNode{Name: "x"},
+								},
+								{
+									Fn:   pkg + ".writeToClosed$1",
+									From: summaries.FreeVarSNode{Name: "y"},
+									To:   summaries.ReturnSNode{Index: 0},
+								},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+						{
+							Fn: pkg + ".writeToClosed$1",
+							Want: summaries.DetailedSummary{
+								// NOTE This second inferred summary is fine because it does not include a
+								// flow from x to the closure's return, which means y cannot flow to the
+								// return.
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.FreeVarSNode{Name: "x"}: {
+										summaries.FreeVarSNode{Name: "y"},
+									},
+									summaries.FreeVarSNode{Name: "y"}: {
+										summaries.FreeVarSNode{Name: "x"},
+									},
+								},
+							},
+							IsSound: false,
+							UnprovenMustNotFlows: []check.Flow{
+								// NOTE Technically this flow is realizable but it's from the inferred callee
+								// summary: !free <x> -> !free <y> | !free <y> -> !free <x>.
+								{
+									Fn:   pkg + ".writeToClosed$1",
+									From: summaries.FreeVarSNode{Name: "x"},
+									To:   summaries.ReturnSNode{Index: 0},
+								},
+								{
+									Fn:   pkg + ".writeToClosed$1",
+									From: summaries.FreeVarSNode{Name: "y"},
+									To:   summaries.ReturnSNode{Index: 0},
+								},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "nestedClosures",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "nestedClosures",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".nestedClosures",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
@@ -669,16 +919,57 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
 				UnprovenMustNotFlows: nil,
 				Method:               check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".nestedClosures$1",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "z", Index: 0}: {
+										summaries.FreeVarSNode{Name: "bv"},
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.FreeVarSNode{Name: "bv"}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.Immutability,
+							CalleeResults: [][]check.SoundnessResult{
+								{
+									{
+										Fn: pkg + ".nestedClosures$1$1",
+										Want: summaries.DetailedSummary{
+											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+												summaries.FreeVarSNode{Name: "z"}: {
+													summaries.ReturnSNode{Index: 0},
+												},
+											},
+										},
+										IsSound:              true,
+										UnprovenMustNotFlows: nil,
+										Method:               check.General,
+										CalleeResults:        nil,
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "closureShared",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "closureShared",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".closureShared",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
@@ -689,8 +980,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
@@ -698,23 +987,64 @@ func TestCheckSummary_Basic(t *testing.T) {
 						From: summaries.ArgumentSNode{Name: "x", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
 					},
-					// TODO Immutability analysis false-positive
-					{
-						Fn:   pkg + ".closureShared$1",
-						From: summaries.FreeVarSNode{Name: "x"},
-						To:   summaries.FreeVarSNode{Name: "y"},
-					},
 				},
 				Method: check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".closureShared$1",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.FreeVarSNode{Name: "x"}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.FreeVarSNode{Name: "y"}: {
+										summaries.FreeVarSNode{Name: "x"},
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							IsSound: false,
+							UnprovenMustNotFlows: []check.Flow{
+								// TODO Immutability analysis false-positive
+								{
+									Fn:   pkg + ".closureShared$1",
+									From: summaries.FreeVarSNode{Name: "x"},
+									To:   summaries.FreeVarSNode{Name: "y"},
+								},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+					{
+						{
+							Fn: pkg + ".closureShared$2",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.FreeVarSNode{Name: "y"}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.General,
+							CalleeResults:        nil,
+						},
+					},
+				},
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "noFlowClosure",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "noFlowClosure",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".noFlowClosure",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
@@ -728,27 +1058,46 @@ func TestCheckSummary_Basic(t *testing.T) {
 						To:   summaries.ReturnSNode{Index: 0},
 					},
 				},
-				Method: check.Immutability,
+				Method:        check.Immutability,
+				CalleeResults: nil,
 			},
 		},
 		{
-			summary: summaries.NewFunctionFlowSummary(pkg, "noFlowClosure",
-				summaries.DetailedSummary{
+			pkg:  pkg,
+			name: "noFlowClosure",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".noFlowClosure",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
 				UnprovenMustNotFlows: nil,
 				Method:               check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: pkg + ".noFlowClosure$1",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.General,
+							CalleeResults:        nil,
+						},
+					},
+				},
 			},
 		},
 		// TODO Don't panic for non-local bound label
 		// {
+		// pkg: pkg,
+		// name: "nestedClosuresInvalid",
 		// 	summary: summaries.NewFunctionFlowSummary(pkg, "nestedClosuresInvalid",
 		// 		summaries.DetailedSummary{
 		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
@@ -776,7 +1125,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 		} else {
 			sound = "unsound"
 		}
-		name := fmt.Sprintf("%s_%s", tc.summary.Name(), sound)
+		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
 		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
 	}
 }
@@ -789,46 +1138,54 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 	tests := []tcCheck{
 		{
 			// func Sum(data []byte) [Size]byte
-			summary: summaries.NewFunctionFlowSummary("crypto/md5", "Sum",
-				summaries.DetailedSummary{
+			pkg:  "crypto/md5",
+			name: "Sum",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: "crypto/md5.Sum",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "data", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
 				UnprovenMustNotFlows: nil,
 				Method:               check.General,
+				CalleeResults:        nil,
 			},
 		},
 		{
 			// func Ints(x []int)
-			summary: summaries.NewFunctionFlowSummary("sort", "Ints",
-				summaries.DetailedSummary{
+			pkg:  "sort",
+			name: "Ints",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: "sort.Ints",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound:              true,
 				UnprovenMustNotFlows: nil,
 				Method:               check.General,
+				CalleeResults:        nil,
 			},
 		},
 		{
 			// func json.Marshal(v any) ([]byte, error)
-			summary: summaries.NewFunctionFlowSummary("encoding/json", "Marshal",
-				summaries.DetailedSummary{
+			pkg:  "encoding/json",
+			name: "Marshal",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: "encoding/json.Marshal",
+				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "v", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
 						},
 					},
 				},
-			),
-			want: check.SoundnessResult{
 				IsSound: true,
 				// NOTE For some reason, the pointer analysis does not record any Labels for any
 				// errors returned in json.Marshal, meaning that the error return values are
@@ -846,8 +1203,154 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				//   			}
 				//   		}
 				//   	}()
-				UnprovenMustNotFlows: []check.Flow{},
+				UnprovenMustNotFlows: nil,
 				Method:               check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn: "encoding/json.newEncodeState",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.General,
+							CalleeResults:        nil,
+						},
+					},
+					{
+						{
+							Fn: "(*sync.Pool).Put",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "x", Index: 0}: {
+										summaries.ReceiverSNode{},
+									},
+									summaries.ReceiverSNode{}: {
+										summaries.ArgumentSNode{Name: "x", Index: 0},
+									},
+								},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.General,
+							CalleeResults:        nil,
+						},
+					},
+					{
+						{
+							Fn: "(*bytes.Buffer).Bytes",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ReceiverSNode{}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.General,
+							CalleeResults:        nil,
+						},
+					},
+					{
+						{
+							Fn: "(*encoding/json.encodeState).marshal",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "opts", Index: 1}: {
+										summaries.ReceiverSNode{},
+										summaries.ArgumentSNode{Name: "v", Index: 0},
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ReceiverSNode{}: {
+										summaries.ArgumentSNode{Name: "v", Index: 0},
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ArgumentSNode{Name: "v", Index: 0}: {
+										summaries.ReceiverSNode{},
+									},
+								},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.Immutability,
+							CalleeResults: [][]check.SoundnessResult{
+								{
+									{
+										Fn: "(*encoding/json.encodeState).marshal$1",
+										Want: summaries.DetailedSummary{
+											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+										},
+										IsSound:              true,
+										UnprovenMustNotFlows: nil,
+										Method:               check.General,
+										CalleeResults:        nil,
+									},
+								},
+								{
+									{
+										Fn: "reflect.ValueOf",
+										Want: summaries.DetailedSummary{
+											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+												summaries.ArgumentSNode{Name: "i", Index: 0}: {
+													summaries.ReturnSNode{Index: 0},
+												},
+											},
+										},
+										IsSound:              true,
+										UnprovenMustNotFlows: nil,
+										Method:               check.General,
+										CalleeResults:        nil,
+									},
+								},
+								{
+									{
+										Fn: "(*encoding/json.encodeState).reflectValue",
+										Want: summaries.DetailedSummary{
+											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+												summaries.ArgumentSNode{Name: "opts", Index: 1}: {
+													summaries.ReceiverSNode{},
+												},
+												summaries.ArgumentSNode{Name: "v", Index: 0}: {
+													summaries.ReceiverSNode{},
+												},
+											},
+										},
+										IsSound:              true,
+										UnprovenMustNotFlows: nil,
+										Method:               check.Types,
+										CalleeResults:        nil,
+									},
+								},
+							},
+						},
+						{
+							Fn: "(*encoding/json.encodeState).marshal",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "opts", Index: 1}: {
+										summaries.ReceiverSNode{},
+										summaries.ArgumentSNode{Name: "v", Index: 0},
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ReceiverSNode{}: {
+										summaries.ArgumentSNode{Name: "v", Index: 0},
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ArgumentSNode{Name: "v", Index: 0}: {
+										summaries.ReceiverSNode{},
+									},
+								},
+							},
+							IsSound:              true,
+							UnprovenMustNotFlows: nil,
+							Method:               check.Immutability,
+							// TODO Fill this in
+							CalleeResults: nil,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -859,9 +1362,9 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 		} else {
 			sound = "unsound"
 		}
-		name := fmt.Sprintf("%s_%s", tc.summary.Name(), sound)
+		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
 		t.Run(name, func(t *testing.T) {
-			dir := filepath.Join("./testdata", "stdlib", tc.summary.Package())
+			dir := filepath.Join("./testdata", "stdlib", tc.pkg)
 			lp, err := analysistest.LoadTest(
 				testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
 			if err != nil {
@@ -879,10 +1382,19 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 	}
 }
 
+type summaryType int
+
+const (
+	functionSummary summaryType = iota
+	methodSummary
+)
+
 type tcCheck struct {
 	summary summaries.FrontendDataflowSummary
+	pkg     string
+	name    string
+	typ     summaryType
 	want    check.SoundnessResult
-	subset  bool // subset is true if got should be a subset of want (for nondeterministic tests).
 	via     check.Method
 }
 
@@ -890,48 +1402,100 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
+	var summary summaries.FrontendDataflowSummary
+	switch tc.typ {
+	case functionSummary:
+		summary = summaries.NewFunctionFlowSummary(tc.pkg, tc.name, tc.want.Want)
+	default:
+		t.Fatalf("unsupported summary type: %v", tc.typ)
+	}
+
 	var got check.SoundnessResult
 	var err error
 	defer func() {
 		if t.Failed() {
-			t.Log("want unproven must-not-flows:")
-			dbgFlows(t, tc.want.UnprovenMustNotFlows, tc.summary.Package())
-			t.Log("got unproven must-not-flows:")
-			dbgFlows(t, got.UnprovenMustNotFlows, tc.summary.Package())
+			t.Log("want soundness result:")
+			t.Log(tc.want)
+			t.Log("got soundness result:")
+			t.Log(got)
 		}
 	}()
-	got, err = check.CheckSummary(ctx, state, tc.summary)
+	got, err = check.CheckSummary(ctx, state, summary)
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
+	}
+
+	checkResult(t, tc.want, got)
+}
+
+func checkResult(t *testing.T, want, got check.SoundnessResult) {
+	t.Helper()
+
+	if want.Fn != got.Fn {
+		// This is an invariant that should be maintained by the test so panic instead of t.Fatal.
+		panic(fmt.Errorf("function name mismatch: want %s, got %s", want.Fn, got.Fn))
+	}
+
+	if want.Want.String() != got.Want.String() {
+		t.Errorf(
+			"want summary mismatch for function %s: got %s, want %s", want.Fn, want.Want, got.Want)
 		return
 	}
 
-	if tc.want.IsSound != got.IsSound {
-		t.Fatalf("soundness mismatch: want %v, got %v\n", tc.want.IsSound, got.IsSound)
+	if want.IsSound != got.IsSound {
+		t.Errorf("soundness mismatch for function %s: want %v, got %v\n", want.Fn, want.IsSound, got.IsSound)
 		return
 	}
 
-	if tc.subset {
-		// Check that got is a subset of want.
-		for _, gfl := range got.UnprovenMustNotFlows {
-			if !slices.Contains(tc.want.UnprovenMustNotFlows, gfl) {
-				t.Errorf("failed to find got must-not-flow %v in want must-not-flows\n", gfl)
+	cmpFlow := func(a, b check.Flow) int {
+		return strings.Compare(a.String(), b.String())
+	}
+	slices.SortFunc(want.UnprovenMustNotFlows, cmpFlow)
+	slices.SortFunc(got.UnprovenMustNotFlows, cmpFlow)
+	if !slices.Equal(want.UnprovenMustNotFlows, got.UnprovenMustNotFlows) {
+		t.Errorf("unproven must-not-flows mismatch for function %s", want.Fn)
+		return
+	}
+
+	if want.Method != got.Method {
+		t.Errorf("method mismatch for function %s: want %v, got %v\n", want.Fn, want.Method, got.Method)
+		return
+	}
+
+	if len(want.CalleeResults) != len(got.CalleeResults) {
+		t.Errorf("callee results length mismatch for function %s", want.Fn)
+		return
+	}
+	for _, wResults := range want.CalleeResults {
+		matchFunc := false
+		wFunc := wResults[0].Fn
+		for _, gResults := range got.CalleeResults {
+			gFunc := gResults[0].Fn
+			if wFunc != gFunc {
+				continue
+			}
+			matchFunc = true
+
+			if len(wResults) != len(gResults) {
+				t.Errorf(
+					"inferred callee summary length mismatch for function %s: want %v, got %v",
+					wFunc, len(wResults), len(gResults))
+				return
+			}
+
+			cmpRes := func(a, b check.SoundnessResult) int {
+				return strings.Compare(a.String(), b.String())
+			}
+			slices.SortFunc(wResults, cmpRes)
+			slices.SortFunc(gResults, cmpRes)
+			for i := range wResults {
+				checkResult(t, wResults[i], gResults[i])
 			}
 		}
-	} else {
-		cmpFlow := func(a, b check.Flow) int {
-			return strings.Compare(a.String(), b.String())
+		if !matchFunc {
+			t.Errorf("failed to find callee result for function %s in got.CalleeResults", wFunc)
+			return
 		}
-		slices.SortFunc(tc.want.UnprovenMustNotFlows, cmpFlow)
-		slices.SortFunc(got.UnprovenMustNotFlows, cmpFlow)
-		// Check that got and want are equal.
-		if !slices.Equal(tc.want.UnprovenMustNotFlows, got.UnprovenMustNotFlows) {
-			t.Errorf("unproven must-not-flows mismatch")
-		}
-	}
-
-	if tc.want.Method != got.Method {
-		t.Errorf("method mismatch: want %v, got %v\n", tc.want.Method, got.Method)
 	}
 }
 

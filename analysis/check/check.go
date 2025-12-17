@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"golang.org/x/tools/go/ssa"
@@ -123,7 +122,7 @@ func checkSummary(
 		}
 
 		if res.isSound {
-			return newSoundnessResult(g, res, want, start, meth), nil
+			return newSoundnessResult(g, res, want, start, meth, nil), nil
 		}
 		method = meth
 	}
@@ -141,35 +140,28 @@ func checkSummary(
 			UnprovenMustNotFlows: topMustNotFlows,
 			Method:               method,
 			Time:                 time.Since(start),
+			CalleeResults:        nil,
 		}, fmt.Errorf("%w for %s: %v", errInfer, f, err)
 	}
 	if len(calleeSummaries) == 0 {
-		return newSoundnessResult(g, res, want, start, method), nil
+		return newSoundnessResult(g, res, want, start, method, nil), nil
 	}
 
 	// Since we inferred callee summaries, we have intra-procedural results for f.
 	// This means that we only need to prove the must-not-flows in the callees.
-	var calleeMustNotFlows []Flow
+	var calleeResults [][]SoundnessResult
 	for calleeG, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
 			return SoundnessResult{},
 				fmt.Errorf("no summaries inferred for callee: %s", calleeG.Parent)
 		}
-		// Only one of the potential callee summaries needs to be sound
-		// isSound := false // NOTE temporarily disabled: see note below
+		var thisCalleeResults []SoundnessResult
 		for _, calleeSumm := range calleeSumms {
 			// Recursively check the soundness of the callee's inferred summary
 			callee := calleeG.Parent
 			s.Logger.Tracef(
 				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
 			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm)
-			for _, fl := range calleeRes.UnprovenMustNotFlows {
-				// Callee must-not-flows should be relatively small so even though this is a linear
-				// scan, it should be faster than enforcing uniqueness via a map.
-				if !slices.Contains(calleeMustNotFlows, fl) {
-					calleeMustNotFlows = append(calleeMustNotFlows, fl)
-				}
-			}
 			if err != nil {
 				s.Logger.Errorf("failed to check callee summary: %v", err)
 				if errors.Is(err, errInfer) {
@@ -181,66 +173,61 @@ func checkSummary(
 						Fn:                   f.RelString(nil),
 						Want:                 want,
 						IsSound:              false,
-						UnprovenMustNotFlows: append(topMustNotFlows, calleeMustNotFlows...),
+						UnprovenMustNotFlows: topMustNotFlows,
 						Method:               method,
 						Time:                 time.Since(start),
+						CalleeResults:        append(calleeResults, thisCalleeResults),
 					}, nil
 				}
-				method = calleeRes.Method
 				continue
 			}
+			thisCalleeResults = append(thisCalleeResults, calleeRes)
 
 			s.Logger.Tracef("callee check result: %+v", calleeRes)
-			if calleeRes.IsSound {
-				if len(calleeRes.UnprovenMustNotFlows) > 0 {
-					panic(fmt.Errorf(
-						"want no unproven must-not-flows in callee %s summary, got: %v",
-						callee, calleeRes.UnprovenMustNotFlows))
-				}
-				// If this inferred callee summary is sound, don't bother checking the rest of the
-				// inferred summaries.
-				// isSound = true
+			// Only one of the potential callee summaries needs to be sound.
+			// NOTE This is disabled for now to make tests deterministic.
+			// if calleeRes.IsSound {
+			// 	if len(calleeRes.UnprovenMustNotFlows) > 0 {
+			// 		panic(fmt.Errorf(
+			// 			"want no unproven must-not-flows in callee %s summary, got: %v",
+			// 			callee, calleeRes.UnprovenMustNotFlows))
+			// 	}
+			// 	break
+			// }
+		}
+
+		calleeResults = append(calleeResults, thisCalleeResults)
+	}
+
+	// If all inferred callee summaries are sound, then the summary for f is sound.
+	calleesSound := true
+	for _, crs := range calleeResults {
+		// Only one inferred callee summary needs to be sound.
+		calleeSound := false
+		for _, cr := range crs {
+			if cr.IsSound {
+				calleeSound = true
 				break
 			}
 		}
-
-		// NOTE This logic is temporarily disabled to make tests with multiple callees more
-		// deterministic.
-		// It can be re-enabled if reporting all unproven must-not-flows has performance issues.
-		//
-		// // If none of the inferred callee summaries are sound, don't bother checking the rest of the
-		// // callees in the function
-		// if !isSound {
-		// 	return SoundnessResult{
-		// 		Fn:                   f.RelString(nil),
-		// 		Want:                 want,
-		// 		IsSound:              false,
-		// 		UnprovenMustNotFlows: append(topMustNotFlows, calleeMustNotFlows...),
-		// 		Method:               method,
-		// 		Time:                 time.Since(start),
-		// 	}, nil
-		// }
+		if !calleeSound {
+			calleesSound = false
+			break
+		}
+	}
+	if calleesSound {
+		topMustNotFlows = nil
 	}
 
-	// If there are no callee must-not-flows, then the summary for f is sound.
-	isSound := len(calleeMustNotFlows) == 0
-
-	// If the summary is unsound, return the must-not-flows for f as well as any unproven
-	// must-not-flows for the callees.
-	// TODO This can probably be improved by only returning the must-not-flows for f that are
-	// implied by the must-not-flows for the callees.
-	unproven := calleeMustNotFlows
-	if !isSound {
-		unproven = append(topMustNotFlows, unproven...)
-	}
-
+	// TODO Filter out top must-not-flows that are proven via checking the callees
 	return SoundnessResult{
 		Fn:                   f.RelString(nil),
 		Want:                 want,
-		IsSound:              isSound,
-		UnprovenMustNotFlows: unproven,
+		IsSound:              calleesSound,
+		UnprovenMustNotFlows: topMustNotFlows,
 		Method:               method,
 		Time:                 time.Since(start),
+		CalleeResults:        calleeResults,
 	}, nil
 }
 
