@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -59,24 +60,20 @@ Where:
 // Flags represents the parsed flags for the taint analysis.
 type Flags struct {
 	tools.CommonFlags
-	summaryPath string
-	via         check.Method
-	log         int
+	via check.Method
+	log int
 }
 
 // NewFlags returns the parsed flags for the data flow summary checking analysis with args.
 func NewFlags(args []string) (Flags, error) {
 	flags := tools.NewUnparsedCommonFlags(config.CheckTool)
-	summaryPath := flags.FlagSet.String("summary", "", "path to data flow summary file")
 	via := flags.FlagSet.String("via", "all", "how to perform the check")
 	level := flags.FlagSet.Int("log", 3, "log level (int)")
 	tools.SetUsage(flags.FlagSet, usage)
 	if err := flags.FlagSet.Parse(args); err != nil {
 		return Flags{}, fmt.Errorf("failed to parse command check with args %v: %v", args, err)
 	}
-	if summaryPath == nil || *summaryPath == "" {
-		return Flags{}, fmt.Errorf("must specify a data flow summary file")
-	}
+
 	if via == nil || !slices.Contains(methods, check.Method(*via)) {
 		return Flags{}, fmt.Errorf("incorrect checking method: want one of %s", methodsString())
 	}
@@ -92,9 +89,8 @@ func NewFlags(args []string) (Flags, error) {
 			Platform:   *flags.Platform,
 			Out:        *flags.Out,
 		},
-		summaryPath: *summaryPath,
-		via:         check.Method(*via),
-		log:         *level,
+		via: check.Method(*via),
+		log: *level,
 	}, nil
 }
 
@@ -109,34 +105,90 @@ func Run(flags Flags) error {
 	cfg.Options.UnsafeMaxDepth = -1
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot check tool - " + analysis.Version))
+	if len(cfg.UserSpecs) == 0 {
+		tmpLogger.Infof("no user specs provided, nothing to do!")
+		return nil
+	}
 	tmpLogger.Infof("Checking method: %s", flags.via)
 
-	parsedSummaries, checkErr := summaries.ParseSummariesFile(flags.summaryPath)
-	if checkErr != nil {
-		return fmt.Errorf("failed to parse summaries file %s: %v", flags.summaryPath, checkErr)
+	parsedSummaries := make([]summaries.FrontendDataflowSummary, 0)
+	for _, specFile := range cfg.DataflowProblems.UserSpecs {
+		userSummaries, checkErr := summaries.ParseSummariesFile(specFile)
+		if checkErr != nil {
+			return fmt.Errorf("failed to parse user specs file %s: %v", cfg.DataflowProblems.UserSpecs, checkErr)
+		}
+		parsedSummaries = append(parsedSummaries, userSummaries...)
 	}
 
+	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
+		CmdlineArgs: flags.FlagSet.Args(),
+		Tag:         flags.Tag,
+		Targets:     flags.Targets,
+		Platform:    flags.Platform,
+		Tool:        config.TaintTool,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get targets: %v", err)
+	}
+
+	for targetName, target := range actualTargets {
+		targetErr := runTarget(cfg, targetName, target, parsedSummaries, flags)
+		if targetErr != nil {
+			tmpLogger.Errorf("failed to check soundness of summaries in target %s: %s", targetName, targetErr)
+		}
+	}
+	return nil
+}
+
+func runTarget(
+	cfg *config.Config,
+	targetName string,
+	targetInfo config.TargetInfo,
+	parsedSummaries []summaries.FrontendDataflowSummary,
+	flags Flags,
+) error {
+	var err error
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
 		BuildMode:     ssa.InstantiateGenerics,
 		LoadTests:     flags.WithTest,
-		Platform:      flags.Platform,
-		ApplyRewrites: false,
+		Platform:      targetInfo.Platform,
+		ApplyRewrites: true,
 	}
-	c := config.NewState(cfg, flags.summaryPath, flags.FlagSet.Args(), loadOptions)
-	ptrState := result.Bind(loadprogram.NewState(c), ptr.NewState)
-	df, checkErr := result.Bind(ptrState, dataflow.NewState).Value()
-	if checkErr != nil {
-		return fmt.Errorf("failed to initialize dataflow state: %s", checkErr)
+	// Starting the analysis
+	c := config.NewState(cfg, targetName, targetInfo.Patterns, loadOptions)
+	c.Logger.PushContext(formatutil.Faint(targetName))
+	defer c.Logger.PopContext()
+	c.Logger.Infof("Dataflow checks for target \"%s\" = %v", targetName, targetInfo.Patterns)
+	var actual result.Result[config.State]
+	if targetInfo.UseProgramTransforms && len(targetInfo.ReflectValueCallInstances) >= 1 {
+		c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
+		// TODO: handle more rewrites later
+		actual = statefulrewrite.StatefulRewritesOverlayTransform(c,
+			statefulrewrite.StatefulRewritesOverlayTransformSpec{ReflectValueCallInstanceCid: targetInfo.ReflectValueCallInstances[0]})
+	} else {
+		actual = result.Ok(c)
 	}
 
-	// Create context with timeout from config
+	df, err := result.Bind(
+		result.Bind(
+			result.Bind(
+				actual,
+				loadprogram.NewState),
+			ptr.NewState),
+		dataflow.NewState).Value()
+
+	if err != nil {
+		return fmt.Errorf("failed to initialize dataflow state: %s", err)
+	}
+
 	ctx := context.Background()
 	if timeout := df.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
 		defer cancel()
 	}
+	// Create context with timeout from config
 
 	results, checkErr := checkSummaries(ctx, df, parsedSummaries, flags.via)
 	// write the report before exiting, even if there was an error in checking summaries
@@ -146,7 +198,6 @@ func Run(flags Flags) error {
 	if checkErr != nil {
 		return checkErr
 	}
-
 	return nil
 }
 
@@ -199,7 +250,6 @@ func checkSummaries(
 			logger.Errorf("Unsound!")
 		}
 		logger.Infof("Result:\n%s\n", soundness.String())
-
 		results = append(results, soundness)
 		logger.PopContext()
 	}
