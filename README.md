@@ -1,11 +1,6 @@
 [![build-analyze-test](https://github.com/awslabs/ar-go-tools/actions/workflows/bat.yml/badge.svg)](https://github.com/awslabs/ar-go-tools/actions/workflows/bat.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-
-| Repository                                                  | Status                                                                                                                                                                                                                 |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Amazon-ssm-agent](https://github.com/aws/amazon-ssm-agent) | [![Amazon-ssm-agent checks](https://github.com/awslabs/ar-go-tools/actions/workflows/amazon-ssm-agent-checking.yml/badge.svg)](https://github.com/awslabs/ar-go-tools/actions/workflows/amazon-ssm-agent-checking.yml) |
-
 # Argot
 
 ## Overview
