@@ -410,6 +410,17 @@ func ReceiverStr(t types.Type) string {
 // isFuncEntrypoint returns true if the actual function called matches an entrypoint.
 func isFuncEntrypoint(node *ssa.Call, parent *ssa.Function, f func(config.CodeIdentifier) bool) (config.CodeIdentifier, bool) {
 	funcValue := node.Call.Value.Name()
+	if _, isBuiltin := node.Call.Value.(*ssa.Builtin); isBuiltin {
+		cid := config.CodeIdentifier{
+			Context: parent.String(),
+			Package: "builtin",
+			Method:  funcValue,
+		}
+		if f(cid) {
+			return cid, true
+		}
+		return config.CodeIdentifier{}, false
+	}
 	calleePkg := FindSafeCalleePkg(node.Common())
 	if calleePkg.IsSome() {
 		cid := config.CodeIdentifier{Context: parent.String(), Package: calleePkg.Value(), Method: funcValue}

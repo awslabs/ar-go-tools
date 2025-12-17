@@ -6,6 +6,9 @@ dataflow-problems:
         - package: "(builtins)|(main)|(command-line-arguments)|(git.amazon.com[[:graph:]]*)$"
           # Sources can be source1, source2, etc.
           method: "source[1-9]?"
+        - package: "builtin"
+          context: "TestRecover"
+          method: "recover"
       sinks:
         - method: "sink[1-9]?"
       filters:

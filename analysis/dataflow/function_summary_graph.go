@@ -431,7 +431,7 @@ func (g *SummaryGraph) addCallInstr(c *State, instr ssa.CallInstruction) {
 // @requires g != nil
 func (g *SummaryGraph) addBuiltinCallInstr(instr ssa.CallInstruction) {
 	// Already seen this instruction? Multiple calls of this function will not gather more information.
-	if _, ok := g.Callees[instr]; ok {
+	if _, ok := g.BuiltinCalls[instr]; ok {
 		return
 	}
 
@@ -816,6 +816,8 @@ func updateEdgeInfo(source MarkWithAccessPath, dest GraphNode, info *ConditionIn
 	}
 	if !edgeInfoFound {
 		outMap[dest] = append(edgeInfos, EdgeInfo{relPath, source.Mark.Index.Value, info})
+	} else {
+		outMap[dest] = edgeInfos
 	}
 }
 
@@ -1415,6 +1417,10 @@ func (g *SummaryGraph) PrettyPrint(outEdgesOnly bool, w io.Writer, filter *regex
 		for _, s := range group {
 			ppNodes(ftu.Gray("Global"), w, s, outEdgesOnly, filter)
 		}
+	}
+
+	for _, group := range g.BuiltinCalls {
+		ppNodes(ftu.Blue("Builtin"), w, group, outEdgesOnly, filter)
 	}
 }
 

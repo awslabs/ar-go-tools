@@ -437,6 +437,12 @@ func scanEntryPoints(
 					}
 				}
 			}
+		case *BuiltinCallNode:
+			// No context for builtin calls
+			if _, ok := spec.IsEntryPointSsa(node.callSite.(ssa.Node)); ok {
+				entry := NodeWithTrace{Node: node, Trace: nil, ClosureTrace: nil}
+				entryPoints[entry.Key()] = entry
+			}
 		}
 	}
 }

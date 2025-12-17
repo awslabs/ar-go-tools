@@ -143,6 +143,19 @@ func TestReal2() {
 	sink(i) // @Sink(real21)
 }
 
+func TestRecover() {
+	s := "clean"
+	func() string {
+		defer func() {
+			if r := recover(); r != nil { // @Source(recover)
+				s = r.(string)
+			}
+		}()
+		panic("tainted")
+	}()
+	sink(s) // TODO: recover
+}
+
 func main() {
 	TestCopy()
 	TestCopy2()
@@ -161,4 +174,5 @@ func main() {
 	TestImag2()
 	TestReal()
 	TestReal2()
+	TestRecover()
 }

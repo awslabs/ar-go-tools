@@ -46,7 +46,7 @@ var handledBuiltins = map[string]bool{
 }
 
 // markedBuiltins is the subset of builtins that return values that should be tracked in the analysis
-var markedBuiltins = []string{"ssa:wrapnilchk", "append", "complex", "min", "max", "len", "imag", "real"}
+var markedBuiltins = []string{"ssa:wrapnilchk", "append", "complex", "min", "max", "len", "imag", "real", "recover"}
 
 // The builtins that are from the unsafe package
 var unsafeBuiltins = map[string]bool{
@@ -93,7 +93,7 @@ func makeEdgesAtBuiltinCall(t *IntraAnalysisState, instruction ssa.CallInstructi
 	callCommon := instruction.Common()
 	if callCommon.Value != nil {
 		if callCommon.Value.Name() == "recover" {
-			// TODO: handle recovers
+			// Recovers don't have arguments
 			return
 		}
 

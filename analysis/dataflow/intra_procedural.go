@@ -309,6 +309,10 @@ func (state *IntraAnalysisState) makeEdgesAtStoreInCapturedLabel(x *ssa.Store) {
 	if len(bounds) > 0 {
 		for _, label := range bounds {
 			for target := range state.parentAnalyzerState.BoundingInfo[label.Value()] {
+				// Check that it's not the bound variable corresponding to the free variable we are analyzing
+				if fn, ok := target.MakeClosure.Fn.(*ssa.Function); ok && state.summary.Parent == fn {
+					continue
+				}
 				state.summary.addBoundLabelNode(x, label, *target)
 			}
 		}
@@ -371,7 +375,7 @@ func (state *IntraAnalysisState) checkFlow(source *Mark, dest ssa.Instruction, d
 		// if destination is parameter or free variable, this check is not meant to do anything
 		// (the flow to a parameter or free var is observed AFTER the function returns)
 		_, isDestParam := destVal.(*ssa.Parameter)
-		_, isDestFreeVar := destVal.(*ssa.Parameter)
+		_, isDestFreeVar := destVal.(*ssa.FreeVar)
 		if !source.IsParameter() || len(dest.Parent().Blocks) <= 0 || isDestFreeVar || isDestParam {
 			return ConditionInfo{Satisfiable: true}
 		}
