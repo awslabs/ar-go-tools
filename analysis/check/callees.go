@@ -32,8 +32,8 @@ import (
 func inferCalleeSummaries(
 	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph, mustNotFlows []flow, via Method,
 ) (map[*dataflow.SummaryGraph][]summaries.DetailedSummary, error) {
-	// "Leaf" function (no callees)
 	if len(g.Callees) == 0 {
+		s.Logger.Tracef("function %s is a leaf function (no callees)\n", g.Parent)
 		return nil, nil
 	}
 
@@ -56,11 +56,11 @@ func inferCalleeSummaries(
 	calleeGraphs := addCalleeMayFlowEdges(s, g, via, &knownMayFlow, unknownMayFlow)
 
 	if s.Logger.LogsTrace() {
-		dbgEdges(s, "intra parent edges of "+g.Parent.Name(), intraParent)
-		dbgEdges(s, "inter edges of "+g.Parent.Name(), inter)
-		dbgEdges(s, "known edges with callees of "+g.Parent.Name(), knownMayFlow)
+		dbgEdges(s, "intra parent edges of "+g.Parent.Name()+":", intraParent)
+		dbgEdges(s, "inter edges of "+g.Parent.Name()+".", inter)
+		dbgEdges(s, "known edges with callees of "+g.Parent.Name()+":", knownMayFlow)
 		for call, edges := range unknownMayFlow {
-			dbgEdges(s, "unknown edges for call to "+call.FuncString(), edges)
+			dbgEdges(s, "unknown edges for call to "+call.FuncString()+":", edges)
 		}
 	}
 
@@ -104,7 +104,12 @@ func inferCalleeSummaries(
 	prob := maxsat.New(constraints...)
 	model, optimalCost := prob.Solve()
 	if model == nil {
-		return nil, fmt.Errorf("model is unsatisfiable")
+		// An unsatisfiable model is not necessarily an error. For example, if mustNotFlows
+		// contradicts a satisfiable may-flow edge generated from a successfull intra-procedural
+		// analysis, then the model will be unsatisfiable.
+		s.Logger.Debugf(
+			"callee summary inference MAXSAT model for function %s is unsatisfiable\n", g.Parent)
+		return nil, nil
 	}
 
 	// Enumerate all optimal models and convert them to summaries
@@ -519,7 +524,7 @@ func skipNode(n dataflow.GraphNode) bool {
 			//
 			// TODO add unsoundness instead of panicking
 			panic(fmt.Errorf(
-				"cannot check summary where bound label closure is non-local."+
+				"cannot check summary where bound label closure is non-local. "+
 					"label: %v in %v, closure: %v in %v",
 				n, n.ParentName(), closure, closure.Parent()))
 		}
@@ -643,6 +648,10 @@ func nodeSignature(n dataflow.GraphNode) string {
 
 func dbgEdges(s *dataflow.State, topic string, edges []edge) {
 	s.Logger.Tracef("%s\n", topic)
+	if len(edges) == 0 {
+		s.Logger.Tracef("\t<none>\n")
+		return
+	}
 	for _, e := range edges {
 		s.Logger.Tracef("\t%+v\n", e)
 	}
