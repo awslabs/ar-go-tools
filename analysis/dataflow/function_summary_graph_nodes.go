@@ -1297,3 +1297,8 @@ func (b *BuiltinCallNode) ParentName() string {
 	}
 	return "BuiltinCallNode"
 }
+
+// CallSite returns the call site instruction.
+func (b *BuiltinCallNode) CallSite() ssa.CallInstruction {
+	return b.callSite
+}

@@ -48,7 +48,7 @@ func inferCalleeSummaries(
 	}
 
 	// Collect known (intra + inter) and unknown may-flow edges
-	intraParent := intraMayFlowEdges(s, g, nil)
+	intraParent := intraMayFlowEdges(g, nil)
 	inter := interMayFlowEdges(s, g)
 
 	knownMayFlow := append(intraParent, inter...)
@@ -143,7 +143,7 @@ func addCalleeMayFlowEdges(
 
 	for call, calleeG := range calleeGraphs {
 		if calleeG.Constructed {
-			edges := intraMayFlowEdges(s, calleeG, call)
+			edges := intraMayFlowEdges(calleeG, call)
 			*known = append(*known, edges...)
 		} else {
 			edges := mostGeneralEdges(calleeG, call, via)
@@ -384,6 +384,8 @@ func graphNodeDesc(g dataflow.GraphNode) string {
 		return fmt.Sprintf("param:%s", x.SsaNode().Name())
 	case *dataflow.CallNode:
 		return fmt.Sprintf("call:%s", x.CallSite().String())
+	case *dataflow.BuiltinCallNode:
+		return fmt.Sprintf("builtin-call:%s", x.CallSite().String())
 	case *dataflow.CallNodeArg:
 		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().CallSite().String())
 	case *dataflow.ReturnValNode:
@@ -418,7 +420,7 @@ func (e edge) String() string {
 
 // intraMayFlowEdges returns all the may-flow edges within a summary graph, scoped to a specific
 // call site.
-func intraMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
+func intraMayFlowEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
 	var res []edge
 	// Collect all edges in the graph, not just those reachable from params
 	g.ForAllNodes(func(n dataflow.GraphNode) {
@@ -535,6 +537,9 @@ func skipNode(n dataflow.GraphNode) bool {
 	case *dataflow.ClosureNode:
 		// There's currently no need to track flows to closure nodes since we do not support
 		// function-like summary nodes.
+		return true
+	case *dataflow.IfNode:
+		// We do not support checking implicit data flows.
 		return true
 	default:
 		return false
