@@ -82,21 +82,19 @@ func newSoundnessResult(
 }
 
 type Flow struct {
-	Fn   string
 	From summaries.SummaryNode
 	To   summaries.SummaryNode
 }
 
 func newFlow(f flow) Flow {
 	return Flow{
-		Fn:   f.from.Graph().Parent.RelString(nil),
 		From: newSummaryNode(f.from),
 		To:   newSummaryNode(f.to),
 	}
 }
 
 func (f Flow) String() string {
-	return fmt.Sprintf("%s: %s -> %s", f.Fn, f.From, f.To)
+	return fmt.Sprintf("%s -> %s", f.From, f.To)
 }
 
 type rawSoundnessResult struct {

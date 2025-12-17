@@ -80,7 +80,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 				UnprovenMustNotFlows: []check.Flow{
 					// NOTE Immutability analysis disproved this flow.
 					// {
-					// 	Fn:   pkg + ".singleArgInterNone",
 					// 	From: summaries.ArgumentSNode{Name: "x", Index: 0},
 					// 	To:   summaries.ReturnSNode{Index: 0},
 					// },
@@ -95,7 +94,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 							UnprovenMustNotFlows: []check.Flow{
 								// NOTE Immutability analysis disproved this flow.
 								// {
-								// 	Fn:   pkg + ".noop",
 								// 	From: summaries.ArgumentSNode{Name: "arg0", Index: 0},
 								// 	To:   summaries.ReturnSNode{Index: 0},
 								// },
@@ -223,7 +221,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 					// ; return
 
 					{
-						Fn:   pkg + ".twoArgIntraInout",
 						From: summaries.ArgumentSNode{Name: "y", Index: 1},
 						To:   summaries.ArgumentSNode{Name: "x", Index: 0},
 					},
@@ -371,32 +368,26 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
-						Fn:   pkg + ".threeArgInter",
 						From: summaries.ArgumentSNode{Name: "no", Index: 0},
 						To:   summaries.ReturnSNode{Index: 0},
 					},
 					{
-						Fn:   pkg + ".threeArgInter",
 						From: summaries.ArgumentSNode{Name: "no", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
 					},
 					{
-						Fn:   pkg + ".threeArgInter",
 						From: summaries.ArgumentSNode{Name: "no", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "b", Index: 2},
 					},
 					{
-						Fn:   pkg + ".threeArgInter",
 						From: summaries.ArgumentSNode{Name: "a", Index: 1},
 						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
 					},
 					{
-						Fn:   pkg + ".threeArgInter",
 						From: summaries.ArgumentSNode{Name: "b", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
 					},
 					{
-						Fn:   pkg + ".threeArgInter",
 						From: summaries.ArgumentSNode{Name: "b", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
 					},
@@ -419,18 +410,15 @@ func TestCheckSummary_Basic(t *testing.T) {
 							IsSound: false,
 							UnprovenMustNotFlows: []check.Flow{
 								{
-									Fn:   pkg + ".add2",
 									From: summaries.ArgumentSNode{Name: "no", Index: 2},
 									To:   summaries.ReturnSNode{},
 								},
 								// NOTE Immutability analysis disproved these flows
 								// {
-								// 	Fn:   pkg + ".add2",
 								// 	From: summaries.ArgumentSNode{Name: "a", Index: 0},
 								// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
 								// },
 								// {
-								// 	Fn:   pkg + ".add2",
 								// 	From: summaries.ArgumentSNode{Name: "b", Index: 1},
 								// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
 								// },
@@ -462,32 +450,26 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 				UnprovenMustNotFlows: []check.Flow{
 					{
-						Fn:   pkg + ".threeArgInterDiffCallees",
 						From: summaries.ArgumentSNode{Name: "no", Index: 0},
 						To:   summaries.ReturnSNode{Index: 0},
 					},
 					{
-						Fn:   pkg + ".threeArgInterDiffCallees",
 						From: summaries.ArgumentSNode{Name: "no", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
 					},
 					{
-						Fn:   pkg + ".threeArgInterDiffCallees",
 						From: summaries.ArgumentSNode{Name: "no", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "b", Index: 2},
 					},
 					{
-						Fn:   pkg + ".threeArgInterDiffCallees",
 						From: summaries.ArgumentSNode{Name: "a", Index: 1},
 						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
 					},
 					{
-						Fn:   pkg + ".threeArgInterDiffCallees",
 						From: summaries.ArgumentSNode{Name: "b", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "no", Index: 0},
 					},
 					{
-						Fn:   pkg + ".threeArgInterDiffCallees",
 						From: summaries.ArgumentSNode{Name: "b", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "a", Index: 1},
 					},
@@ -509,7 +491,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 							},
 							UnprovenMustNotFlows: []check.Flow{
 								{
-									Fn:   pkg + ".add1",
 									From: summaries.ArgumentSNode{Name: "no", Index: 2},
 									To:   summaries.ReturnSNode{Index: 0},
 								},
@@ -533,7 +514,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 							},
 							UnprovenMustNotFlows: []check.Flow{
 								{
-									Fn:   pkg + ".add2",
 									From: summaries.ArgumentSNode{Name: "no", Index: 2},
 									To:   summaries.ReturnSNode{Index: 0},
 								},
@@ -563,7 +543,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
-						Fn:   pkg + ".propagateFields",
 						From: summaries.ArgumentSNode{Name: "src", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "dst", Index: 1},
 					},
@@ -586,12 +565,10 @@ func TestCheckSummary_Basic(t *testing.T) {
 							IsSound: false,
 							UnprovenMustNotFlows: []check.Flow{
 								{
-									Fn:   pkg + ".addVals",
 									From: summaries.ArgumentSNode{Name: "a", Index: 0},
 									To:   summaries.ReturnSNode{Index: 0},
 								},
 								{
-									Fn:   pkg + ".addVals",
 									From: summaries.ArgumentSNode{Name: "b", Index: 1},
 									To:   summaries.ReturnSNode{Index: 0},
 								},
@@ -668,22 +645,18 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
-						Fn:   pkg + ".sharedMutation",
 						From: summaries.ArgumentSNode{Name: "a", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "b", Index: 1},
 					},
 					{
-						Fn:   pkg + ".sharedMutation",
 						From: summaries.ArgumentSNode{Name: "b", Index: 1},
 						To:   summaries.ArgumentSNode{Name: "a", Index: 0},
 					},
 					{
-						Fn:   pkg + ".sharedMutation",
 						From: summaries.ArgumentSNode{Name: "shared", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "a", Index: 0},
 					},
 					{
-						Fn:   pkg + ".sharedMutation",
 						From: summaries.ArgumentSNode{Name: "shared", Index: 2},
 						To:   summaries.ArgumentSNode{Name: "b", Index: 1},
 					},
@@ -705,7 +678,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 								// TODO false-positive: there should not be a flow from modify s -> val.
 								// This should be sound.
 								{
-									Fn:   pkg + ".modify",
 									From: summaries.ArgumentSNode{Name: "s", Index: 1},
 									To:   summaries.ArgumentSNode{Name: "val", Index: 0},
 								},
@@ -777,7 +749,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 					//   [indirect] x (parameter x : ***int) -> n54370
 					//   [direct]   y (parameter y : **int) -> n54371
 					{
-						Fn:   pkg + ".alias",
 						From: summaries.ArgumentSNode{Name: "x", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
 					},
@@ -806,7 +777,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 						// This should be sound.
 						//
 						// The pointer analysis does not report any may-aliases for either parameter.
-						Fn:   pkg + ".writeStructPtr",
 						From: summaries.ArgumentSNode{Name: "x", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
 					},
@@ -831,7 +801,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
-						Fn:   pkg + ".writeToClosed",
 						From: summaries.ArgumentSNode{Name: "y", Index: 1},
 						To:   summaries.ReturnSNode{},
 					},
@@ -853,12 +822,10 @@ func TestCheckSummary_Basic(t *testing.T) {
 							UnprovenMustNotFlows: []check.Flow{
 								// TODO False-positive from immutability analysis
 								{
-									Fn:   pkg + ".writeToClosed$1",
 									From: summaries.FreeVarSNode{Name: "y"},
 									To:   summaries.FreeVarSNode{Name: "x"},
 								},
 								{
-									Fn:   pkg + ".writeToClosed$1",
 									From: summaries.FreeVarSNode{Name: "y"},
 									To:   summaries.ReturnSNode{Index: 0},
 								},
@@ -886,12 +853,10 @@ func TestCheckSummary_Basic(t *testing.T) {
 								// NOTE Technically this flow is realizable but it's from the inferred callee
 								// summary: !free <x> -> !free <y> | !free <y> -> !free <x>.
 								{
-									Fn:   pkg + ".writeToClosed$1",
 									From: summaries.FreeVarSNode{Name: "x"},
 									To:   summaries.ReturnSNode{Index: 0},
 								},
 								{
-									Fn:   pkg + ".writeToClosed$1",
 									From: summaries.FreeVarSNode{Name: "y"},
 									To:   summaries.ReturnSNode{Index: 0},
 								},
@@ -983,7 +948,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
-						Fn:   pkg + ".closureShared",
 						From: summaries.ArgumentSNode{Name: "x", Index: 0},
 						To:   summaries.ArgumentSNode{Name: "y", Index: 1},
 					},
@@ -1008,7 +972,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 							UnprovenMustNotFlows: []check.Flow{
 								// TODO Immutability analysis false-positive
 								{
-									Fn:   pkg + ".closureShared$1",
 									From: summaries.FreeVarSNode{Name: "x"},
 									To:   summaries.FreeVarSNode{Name: "y"},
 								},
@@ -1048,12 +1011,10 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false,
 				UnprovenMustNotFlows: []check.Flow{
 					{
-						Fn:   pkg + ".noFlowClosure",
 						From: summaries.ArgumentSNode{Name: "x", Index: 0},
 						To:   summaries.ReturnSNode{Index: 0},
 					},
 					{
-						Fn:   pkg + ".noFlowClosure",
 						From: summaries.ArgumentSNode{Name: "y", Index: 1},
 						To:   summaries.ReturnSNode{Index: 0},
 					},
@@ -1539,14 +1500,6 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 			t.Errorf("failed to find callee result for function %s in got.CalleeResults", wFunc)
 			return
 		}
-	}
-}
-
-func dbgFlows(t *testing.T, flows []check.Flow, pkg string) {
-	t.Helper()
-	for _, fl := range flows {
-		fname, _ := strings.CutPrefix(fl.Fn, pkg+".")
-		t.Logf("\t%v: %v -> %v\n", fname, fl.From, fl.To)
 	}
 }
 
