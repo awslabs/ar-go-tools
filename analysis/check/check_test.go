@@ -291,7 +291,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true, // TODO global analysis
+				IsSound: false, // TODO global analysis
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -312,7 +312,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true, // TODO global analysis
+				IsSound: false, // TODO global analysis
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -1189,7 +1189,8 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				// NOTE Accesses a global.
+				IsSound: false,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},

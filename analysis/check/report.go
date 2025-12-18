@@ -102,10 +102,13 @@ type UnsoundCheckFeatures struct {
 	// The checking algorithm assumes linearizability of instructions which is potentially violated
 	// in the presence of parallelism via goroutines.
 	GoUsages []token.Position
+	// GlobalUsages records the positions where a global is used (read/modified).
+	// The analysis does not handle globals yet.
+	GlobalUsages []token.Position
 }
 
 func (u UnsoundCheckFeatures) isSound() bool {
-	return len(u.UnsafeUsages) == 0 && len(u.GoUsages) == 0
+	return len(u.UnsafeUsages) == 0 && len(u.GoUsages) == 0 && len(u.GlobalUsages) == 0
 }
 
 // UnsoundDataflowFeatures are the specific Go features that the function may use that would make

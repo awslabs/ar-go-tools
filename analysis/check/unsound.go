@@ -34,6 +34,7 @@ func findUnsoundFeatures(cg *callgraph.Graph, f *ssa.Function) UnsoundCheckFeatu
 	seenFunc := make(map[*ssa.Function]struct{})
 	var unsafes []token.Position
 	var gos []token.Position
+	var globals []token.Position
 
 	for len(queue) > 0 {
 		node := queue[0]
@@ -52,6 +53,17 @@ func findUnsoundFeatures(cg *callgraph.Graph, f *ssa.Function) UnsoundCheckFeatu
 
 		lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
 			prog := instr.Parent().Prog
+			var operands []*ssa.Value
+			operands = instr.Operands(operands)
+			for _, operand := range operands {
+				if _, ok := (*operand).(*ssa.Global); ok {
+					pos := prog.Fset.Position(instr.Pos())
+					if !slices.Contains(globals, pos) {
+						globals = append(globals, pos)
+					}
+				}
+			}
+
 			if isUnsafeInstr(instr) {
 				pos := prog.Fset.Position(instr.Pos())
 				// This is fast because len(unsafes) is never greater than 5 or so.
@@ -76,7 +88,7 @@ func findUnsoundFeatures(cg *callgraph.Graph, f *ssa.Function) UnsoundCheckFeatu
 		}
 	}
 
-	return UnsoundCheckFeatures{UnsafeUsages: unsafes, GoUsages: gos}
+	return UnsoundCheckFeatures{UnsafeUsages: unsafes, GoUsages: gos, GlobalUsages: globals}
 }
 
 // isGoroutineInstr returns true if instr is a goroutine call.
@@ -144,14 +156,14 @@ func isUnsafeInstr(instr ssa.Instruction) bool {
 
 // unsafeBuiltins are the builtins that are from the unsafe package.
 var unsafeBuiltins = map[string]struct{}{
-	"Alignof":     struct{}{},
-	"Offsetof":    struct{}{},
-	"Sizeof":      struct{}{},
-	"Pointer":     struct{}{},
-	"SliceData":   struct{}{},
-	"String":      struct{}{},
-	"StringData":  struct{}{},
-	"Slice":       struct{}{},
-	"Add":         struct{}{},
-	"IntegerType": struct{}{},
+	"Alignof":     {},
+	"Offsetof":    {},
+	"Sizeof":      {},
+	"Pointer":     {},
+	"SliceData":   {},
+	"String":      {},
+	"StringData":  {},
+	"Slice":       {},
+	"Add":         {},
+	"IntegerType": {},
 }
