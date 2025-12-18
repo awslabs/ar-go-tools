@@ -29,8 +29,10 @@ import (
 
 // inferCalleeSummaries returns all the maximally-general (most data flow edges) callee summaries
 // which satisfy the summary's must-not-flow requirements mustNotFlows.
+// It also adds any potential sources of unsoundness to unsoundness.
 func inferCalleeSummaries(
-	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph, mustNotFlows []flow, via Method,
+	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph, mustNotFlows []flow,
+	unsoundness *Unsoundness, via Method,
 ) (map[*ssa.Function][]summaries.DetailedSummary, error) {
 	if len(g.Callees) == 0 {
 		s.Logger.Tracef("function %s is a leaf function (no callees)\n", g.Parent)
@@ -51,6 +53,10 @@ func inferCalleeSummaries(
 		s.Logger.Tracef("running intra-procedural analysis on function %s...\n", g.Parent)
 		if _, err := dataflow.RunIntraProcedural(ctx, s, g); err != nil {
 			return nil, fmt.Errorf("failed to run intra-procedural analysis: %v", err)
+		}
+		if g.Unsoundness().HasAny() {
+			unsoundness.DataflowFeatures = newUnsoundDataflowFeatures(g.Unsoundness())
+			return nil, nil
 		}
 	}
 
@@ -366,7 +372,7 @@ func mayFlow(e edge) maxsat.Lit {
 	return maxsat.Var(fmt.Sprintf("%s->%s", e.from.String(), e.to.String()))
 }
 
-// mostGeneralEdges returns the edges corresponding to the most-general summary of g.
+// mostGeneralEdges returns the edges corresponding to the most-general summary of g (as may-flows).
 // The parameter via is used to optionally filter out some edges (only Types is supported for now).
 func mostGeneralEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode, via Method) []edge {
 	if !(via == General || via == Types) {
@@ -374,8 +380,11 @@ func mostGeneralEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode, via Met
 	}
 
 	flows := mostGeneralFlows(g)
+	// TODO Maybe add more analyses?
+	// We're trying to balance maximizing may-flow edges AND the probability that we will be able
+	// to prove that these may-flow edges hold.
 	if via == Types {
-		flows = checkSummaryTypes(flows).mustNotFlows
+		flows = filterFlowsTypes(flows)
 	}
 	var edges []edge
 	for _, fl := range flows {

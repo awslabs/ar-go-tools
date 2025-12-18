@@ -95,56 +95,96 @@ var errInfer = errors.New("failed to infer callee summaries")
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
 ) (SoundnessResult, error) {
+	unsoundFeats := findUnsoundFeatures(s.PointerAnalysis.CallGraph, f)
+	if !unsoundFeats.isSound() {
+		s.Logger.Warnf("detected unsound features in function %s\n", f)
+		return SoundnessResult{
+			Fn:            f.RelString(nil),
+			Want:          want,
+			IsSound:       false,
+			Unsoundness:   Unsoundness{UnprovenMustNotFlows: nil, CheckFeatures: unsoundFeats},
+			Method:        General,
+			Time:          time.Duration(0),
+			CalleeResults: nil,
+		}, nil
+	}
+
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
 	// This way there is only one summary graph created per *ssa.Function
 	s.FlowGraph.Summaries[f] = g
 
 	start := time.Now()
-	var res checkResult
+	var unprovenMustNotFlows []flow
 	var method Method
-	for _, meth := range []Method{General, Types, Immutability} {
-		switch meth {
+	for _, m := range []Method{General, Types, Immutability} {
+		method = m
+
+		switch method {
 		case General:
-			res = checkSummaryMostGeneral(g, want)
+			unprovenMustNotFlows = checkSummaryMostGeneral(g, want)
 		case Types:
-			res = checkSummaryTypes(res.mustNotFlows)
+			unprovenMustNotFlows = filterFlowsTypes(unprovenMustNotFlows)
 		case Immutability:
-			res = checkSummaryImmutability(ctx, s, res.mustNotFlows)
+			unprovenMustNotFlows = filterFlowsImmutability(ctx, s, unprovenMustNotFlows)
+		}
+
+		if len(unprovenMustNotFlows) == 0 {
+			s.Logger.Debugf(
+				"no unproven must-not-flows from checking function %s via method %s: result sound\n",
+				f, method)
+			return SoundnessResult{
+				Fn:            f.RelString(nil),
+				Want:          want,
+				IsSound:       true,
+				Unsoundness:   Unsoundness{UnprovenMustNotFlows: nil, CheckFeatures: unsoundFeats},
+				Method:        method,
+				Time:          time.Since(start),
+				CalleeResults: nil,
+			}, nil
 		}
 
 		if s.Logger.LogsDebug() {
 			s.Logger.Debugf(
-				"unproven must-not-flows from checking function %s via method %s:\n", f, meth)
-			for _, fl := range res.mustNotFlows {
+				"unproven must-not-flows from checking function %s via method %s:\n", f, method)
+			for _, fl := range unprovenMustNotFlows {
 				s.Logger.Debugf("\t%v\n", fl)
 			}
 		}
-
-		if res.isSound {
-			return newSoundnessResult(g, res, want, start, meth, nil), nil
-		}
-		method = meth
 	}
-	topMustNotFlows := funcutil.Map(res.mustNotFlows, newFlow)
+	topMustNotFlows := funcutil.Map(unprovenMustNotFlows, newFlow)
+	unsoundness := Unsoundness{UnprovenMustNotFlows: topMustNotFlows, CheckFeatures: unsoundFeats}
 
 	// Check callee summaries
 	// Use the type analysis to filter out unrealizable flows
 	s.Logger.Tracef("inferring callee summaries for function %s...\n", f)
-	calleeSummaries, err := inferCalleeSummaries(ctx, s.State, g, res.mustNotFlows, Types)
+	calleeSummaries, err := inferCalleeSummaries(
+		ctx, s.State, g, unprovenMustNotFlows, &unsoundness, Types)
 	if err != nil {
 		return SoundnessResult{
-			Fn:                   f.RelString(nil),
-			Want:                 want,
-			IsSound:              false,
-			UnprovenMustNotFlows: topMustNotFlows,
-			Method:               method,
-			Time:                 time.Since(start),
-			CalleeResults:        nil,
+			Fn:            f.RelString(nil),
+			Want:          want,
+			IsSound:       false,
+			Unsoundness:   unsoundness,
+			Method:        method,
+			Time:          time.Since(start),
+			CalleeResults: nil,
 		}, fmt.Errorf("%w for %s: %v", errInfer, f, err)
 	}
 	if len(calleeSummaries) == 0 {
-		return newSoundnessResult(g, res, want, start, method, nil), nil
+		s.Logger.Tracef("no callee results for function %s: done analyzing\n", f)
+		if unsoundness.isSound() {
+			unsoundness.UnprovenMustNotFlows = nil
+		}
+		return SoundnessResult{
+			Fn:            f.RelString(nil),
+			Want:          want,
+			IsSound:       unsoundness.isSound(),
+			Unsoundness:   unsoundness,
+			Method:        method,
+			Time:          time.Since(start),
+			CalleeResults: nil,
+		}, nil
 	}
 
 	// Since we inferred callee summaries, we have intra-procedural results for f.
@@ -152,9 +192,10 @@ func checkSummary(
 	var calleeResults [][]SoundnessResult
 	for callee, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
-			return SoundnessResult{},
-				fmt.Errorf("no summaries inferred for callee: %s", callee)
+			// If there are no callee summaries inferred, this is a bug.
+			panic(fmt.Errorf("no summaries inferred for callee: %s", callee))
 		}
+
 		var thisCalleeResults []SoundnessResult
 		for _, calleeSumm := range calleeSumms {
 			// Recursively check the soundness of the callee's inferred summary
@@ -169,13 +210,13 @@ func checkSummary(
 					// Return the must-not-flows for the caller plus any successfully analyzed
 					// callees.
 					return SoundnessResult{
-						Fn:                   f.RelString(nil),
-						Want:                 want,
-						IsSound:              false,
-						UnprovenMustNotFlows: topMustNotFlows,
-						Method:               method,
-						Time:                 time.Since(start),
-						CalleeResults:        append(calleeResults, thisCalleeResults),
+						Fn:            f.RelString(nil),
+						Want:          want,
+						IsSound:       false,
+						Unsoundness:   unsoundness,
+						Method:        method,
+						Time:          time.Since(start),
+						CalleeResults: append(calleeResults, thisCalleeResults),
 					}, nil
 				}
 				continue
@@ -215,33 +256,19 @@ func checkSummary(
 		}
 	}
 	if calleesSound {
-		topMustNotFlows = nil
+		unsoundness.UnprovenMustNotFlows = nil
 	}
 
-	// TODO Filter out top must-not-flows that are proven via checking the callees
+	// TODO Filter out must-not-flows that are proven via checking the callees
 	return SoundnessResult{
-		Fn:                   f.RelString(nil),
-		Want:                 want,
-		IsSound:              calleesSound,
-		UnprovenMustNotFlows: topMustNotFlows,
-		Method:               method,
-		Time:                 time.Since(start),
-		CalleeResults:        calleeResults,
+		Fn:            f.RelString(nil),
+		Want:          want,
+		IsSound:       calleesSound,
+		Unsoundness:   unsoundness,
+		Method:        method,
+		Time:          time.Since(start),
+		CalleeResults: calleeResults,
 	}, nil
-}
-
-// checkResult is the result of a soundness sub-check.
-type checkResult struct {
-	// isSound is true if the summary is sound (all must-not-flows were proven to hold).
-	isSound bool
-	// mustNotFlows are all the must-not-flows that were not able to be proven by the analysis.
-	mustNotFlows []flow
-	// method is the method used to perform the check.
-	method Method
-}
-
-func newCheckResult(mustNotFlows []flow, via Method) checkResult {
-	return checkResult{isSound: len(mustNotFlows) == 0, mustNotFlows: mustNotFlows, method: via}
 }
 
 // flow is a data flow between two summary graph nodes.

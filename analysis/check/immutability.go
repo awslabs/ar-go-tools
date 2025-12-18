@@ -29,29 +29,29 @@ import (
 	"github.com/awslabs/ar-go-tools/internal/pointer"
 )
 
-// checkSummaryImmutability returns the must-not-flows that were unproven after performing the
-// immutability analysis.
-// The immutability analysis filters out all must-not-flows that do not modify their output value(s).
+// filterFlowsImmutability returns the flows that were unproven after performing the immutability
+// analysis.
+// The immutability analysis filters out all flows that do not modify their output value(s).
 // If an output value is not modified (immutable), then it is impossible to have data flow to it.
-func checkSummaryImmutability(ctx context.Context, s *State, mustNotFlows []flow) checkResult {
+func filterFlowsImmutability(ctx context.Context, s *State, flows []flow) []flow {
 	var unproven []flow
-	for _, fl := range mustNotFlows {
+	for _, fl := range flows {
 		mustNotFlow, err := mustNotFlowImmutability(ctx, s, fl)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				// Analysis timed out: return all unproven must-not-flows computed so far.
+				// Analysis timed out: return all unproven flows computed so far.
 				unproven = append(unproven, fl)
 				break
 			}
 		}
 		// NOTE Maybe we shouldn't bother checking the rest since the summary is unsound, but
-		// including all the unproven must-not-flows makes it easier to test.
+		// including all the unproven flows makes it easier to test.
 		if !mustNotFlow {
 			unproven = append(unproven, fl)
 		}
 	}
 
-	return newCheckResult(unproven, Immutability)
+	return unproven
 }
 
 // mustNotFlowImmutability returns true if fl.to is not written to (modified) in any way.
@@ -136,6 +136,7 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 		if _, ok := seen[node]; ok {
 			continue
 		}
+		seen[node] = struct{}{}
 		if node.Func == nil {
 			return ptrWrite{}, false, nil
 		}
@@ -144,46 +145,48 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 		wrote := false
 		// A function may be visited multiple times in different calling contexts so only analyze
 		// each function once.
-		if _, ok := seenFunc[node.Func]; !ok {
-			s.Logger.Tracef(
-				"checking for writes to memory of %v (%v) in function %s\n",
-				to, to.Type(), node.Func)
+		if _, ok := seenFunc[node.Func]; ok {
+			continue
+		}
+		seenFunc[node.Func] = struct{}{}
 
-			lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
-				write, ok := ptrWrittenTo(instr)
-				if !ok {
+		s.Logger.Tracef(
+			"checking for writes to memory of %v (%v) in function %s\n",
+			to, to.Type(), node.Func)
+
+		lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
+			write, ok := ptrWrittenTo(instr)
+			if !ok {
+				return
+			}
+
+			// // ASSUMPTION: We assume that errors are only used as values
+			// if isAllocatedErrorType(write.Target) {
+			// 	return
+			// }
+
+			mobjs := s.cache.Objects(write.Target)
+			// If the target's objects have any of the same node ids as the output value, then
+			// the write instruction writes a value to the output value's memory, and the output
+			// value is not immutable.
+			for mobj := range mobjs {
+				if ids.Has(int(mobj.NodeID())) {
+					if dataVal, ok := mobj.Data().(ssa.Value); ok {
+						s.Logger.Tracef(
+							"found write to val %v data: val node ids: %v, write target: %v, object: %v "+
+								"(SSA name: %v)\n",
+							to, ids, write.Target, mobj, dataVal.Name())
+					} else {
+						s.Logger.Tracef(
+							"found write to val %v data: val node ids: %v, write target: %v, object: %v\n",
+							to, ids, write.Target, mobj)
+					}
+					wrote = true
+					writeInstr = write
 					return
 				}
-
-				// // ASSUMPTION: We assume that errors are only used as values
-				// if isAllocatedErrorType(write.Target) {
-				// 	return
-				// }
-
-				mobjs := s.cache.Objects(write.Target)
-				// If the target's objects have any of the same node ids as the output value, then
-				// the write instruction writes a value to the output value's memory, and the output
-				// value is not immutable.
-				for mobj := range mobjs {
-					if ids.Has(int(mobj.NodeID())) {
-						if dataVal, ok := mobj.Data().(ssa.Value); ok {
-							s.Logger.Tracef(
-								"found write to val %v data: val node ids: %v, write target: %v, object: %v "+
-									"(SSA name: %v)\n",
-								to, ids, write.Target, mobj, dataVal.Name())
-						} else {
-							s.Logger.Tracef(
-								"found write to val %v data: val node ids: %v, write target: %v, object: %v\n",
-								to, ids, write.Target, mobj)
-						}
-						wrote = true
-						writeInstr = write
-						return
-					}
-				}
-			})
-			seenFunc[node.Func] = struct{}{}
-		}
+			}
+		})
 
 		if wrote {
 			return writeInstr, true, nil
@@ -192,7 +195,6 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 		for _, edge := range node.Out {
 			queue = append(queue, edge.Callee)
 		}
-		seen[node] = struct{}{}
 	}
 
 	return ptrWrite{}, false, nil

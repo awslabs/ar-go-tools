@@ -24,30 +24,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 )
 
-// checkSummaryNaive computes the full inter-procedural data flow summary of f.
-// If there are any flows in bad that are not in the summary, then the result is unsound.
-func checkSummaryNaive(ctx context.Context, s *dataflow.State, f *ssa.Function, bad []flow) (checkResult, error) {
-	gotSummary, err := FullySummarize(ctx, s, f)
-	if err != nil {
-		return newCheckResult(bad, Naive),
-			fmt.Errorf("failed to fully summarize function %s: %w", f.RelString(nil), err)
-	}
-
-	var unproven []flow
-	for _, flow := range bad {
-		for input, outputs := range gotSummary.Flows {
-			for _, output := range outputs {
-				if input == flow.from && output == flow.to {
-					continue
-				}
-				unproven = append(unproven, flow)
-			}
-		}
-	}
-
-	return newCheckResult(unproven, Naive), nil
-}
-
 // FullSummary is the full inter-procedurally-generated data flow summary for a function.
 type FullSummary struct {
 	Graph *dataflow.SummaryGraph                      // Graph is the summary graph.

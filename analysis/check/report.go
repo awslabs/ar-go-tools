@@ -18,13 +18,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/token"
 	"time"
+
+	"golang.org/x/exp/maps"
+	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
-	"golang.org/x/tools/go/ssa"
 )
 
 // SoundnessResult is the result of checking the soundness of a single data flow summary.
@@ -33,11 +36,12 @@ type SoundnessResult struct {
 	Fn string
 	// Want is the summary being checked.
 	Want summaries.DetailedSummary
-	// IsSound is true if Want is an overapproximation of Got.
+	// IsSound is true if there is no unsoundness.
 	IsSound bool
-	// UnprovenMustNotFlows are the must-not-flows unable to be proven sound.
-	UnprovenMustNotFlows []Flow
-	// Method is the most effective method used for the soundness check.
+	// Unsoundness is the potential sources of unsoundness in the soundness check.
+	// IsSound is false if there is any unsoundness.
+	Unsoundness Unsoundness
+	// Method is the least powerful method needed to be used for the soundness check.
 	Method Method
 	// Time is the time spent to calculate the result.
 	Time time.Duration
@@ -66,19 +70,65 @@ func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 	return res, err
 }
 
-func newSoundnessResult(
-	g *dataflow.SummaryGraph, res checkResult, want summaries.DetailedSummary, start time.Time, via Method,
-	calleeResults [][]SoundnessResult,
-) SoundnessResult {
-	return SoundnessResult{
-		Fn:                   g.Parent.RelString(nil),
-		Want:                 want,
-		IsSound:              res.isSound,
-		UnprovenMustNotFlows: funcutil.Map(res.mustNotFlows, newFlow),
-		Method:               via,
-		Time:                 time.Since(start),
-		CalleeResults:        calleeResults,
+// Unsoundness is the source(s) of unsoundness in the summary checking algorithm.
+type Unsoundness struct {
+	// UnprovenMustNotFlows are the must-not-flows unable to be proven.
+	UnprovenMustNotFlows []Flow
+	// CheckFeatures are the unsound features that make the checking algorithm unsound.
+	CheckFeatures UnsoundCheckFeatures
+	// DataflowFeatures are the unsound features that make the data flow analysis unsound.
+	DataflowFeatures UnsoundDataflowFeatures
+}
+
+func (u Unsoundness) isSound() bool {
+	return len(u.UnprovenMustNotFlows) == 0 &&
+		u.CheckFeatures.isSound() && u.DataflowFeatures.isSound()
+}
+
+// UnsoundCheckFeatures are the specific Go features that the function or any of its reachable
+// callees may use that would make the *checking algorithm* unsound, not necessarily the data flow
+// analysis.
+//
+// Note that this is a subset of the features that make the data flow analysis unsound.
+// For example, if a reachable callee has an unbounded defers stack, the checking algorithm is sound
+// as long as it doesn't need to perform an intra-procedural data flow analysis on the callee (and
+// there are no other sources of unsoundness).
+type UnsoundCheckFeatures struct {
+	// UnsafeUsages records the positions where `unsafe` is used.
+	// If any reachable instruction from the function uses unsafe, then that allows arbitrary memory
+	// corruption and we can no longer provide any guarantees.
+	UnsafeUsages []token.Position
+	// GoUsages records the positions where a goroutine is created.
+	// The checking algorithm assumes linearizability of instructions which is potentially violated
+	// in the presence of parallelism via goroutines.
+	GoUsages []token.Position
+}
+
+func (u UnsoundCheckFeatures) isSound() bool {
+	return len(u.UnsafeUsages) == 0 && len(u.GoUsages) == 0
+}
+
+// UnsoundDataflowFeatures are the specific Go features that the function may use that would make
+// the *intra-procedural data flow analysis* unsound.
+//
+// To avoid duplication, this does not include any unsound features that are covered by scanning for
+// check-specific unsound features.
+type UnsoundDataflowFeatures struct {
+	RecoverUsages      []token.Position
+	ReflectUsages      []token.Position
+	HasUnboundedDefers bool
+}
+
+func newUnsoundDataflowFeatures(feats dataflow.UnsoundFeaturesMap) UnsoundDataflowFeatures {
+	return UnsoundDataflowFeatures{
+		RecoverUsages:      maps.Keys(feats.Recovers),
+		ReflectUsages:      maps.Keys(feats.ReflectUsages),
+		HasUnboundedDefers: feats.HasUnboundedDefers,
 	}
+}
+
+func (u UnsoundDataflowFeatures) isSound() bool {
+	return len(u.RecoverUsages) == 0 && len(u.ReflectUsages) == 0 && !u.HasUnboundedDefers
 }
 
 type Flow struct {
@@ -98,13 +148,19 @@ func (f Flow) String() string {
 }
 
 type rawSoundnessResult struct {
-	Func                 string
-	Want                 map[string][]string
-	IsSound              bool
+	Func          string
+	Want          map[string][]string
+	IsSound       bool
+	Unsoundness   rawUnsoundness
+	Method        string
+	TimeSeconds   time.Duration
+	CalleeResults [][]rawSoundnessResult
+}
+
+type rawUnsoundness struct {
 	UnprovenMustNotFlows []string
-	Method               string
-	TimeSeconds          time.Duration
-	CalleeResults        [][]rawSoundnessResult
+	CheckFeatures        UnsoundCheckFeatures
+	DataflowFeatures     UnsoundDataflowFeatures
 }
 
 func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
@@ -114,13 +170,17 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 	}
 
 	return rawSoundnessResult{
-		Func:                 r.Fn,
-		Want:                 rawFlows(r.Want.Flows),
-		IsSound:              r.IsSound,
-		UnprovenMustNotFlows: funcutil.Map(r.UnprovenMustNotFlows, (Flow).String),
-		Method:               string(r.Method),
-		TimeSeconds:          time.Duration(r.Time.Seconds()),
-		CalleeResults:        calleeResults,
+		Func:    r.Fn,
+		Want:    rawFlows(r.Want.Flows),
+		IsSound: r.IsSound,
+		Unsoundness: rawUnsoundness{
+			UnprovenMustNotFlows: funcutil.Map(r.Unsoundness.UnprovenMustNotFlows, (Flow).String),
+			CheckFeatures:        r.Unsoundness.CheckFeatures,
+			DataflowFeatures:     r.Unsoundness.DataflowFeatures,
+		},
+		Method:        string(r.Method),
+		TimeSeconds:   time.Duration(r.Time.Seconds()),
+		CalleeResults: calleeResults,
 	}
 }
 

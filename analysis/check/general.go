@@ -29,23 +29,23 @@ import (
 // not in the most-general summary.
 // This difference is the set of must-not-flows: the flows that must not exist (there cannot be a
 // possible data flow in the program) for the summary to be sound.
-func checkSummaryMostGeneral(g *dataflow.SummaryGraph, want summaries.DetailedSummary) checkResult {
+func checkSummaryMostGeneral(g *dataflow.SummaryGraph, want summaries.DetailedSummary) []flow {
 	gotFlows := mostGeneralFlows(g)
 	wantFlows := summaryFlows(g, want)
 	if len(gotFlows) < len(wantFlows) {
 		panic(fmt.Errorf("most-general flows is less than summary flows"))
 	}
 
-	unproven := difference(gotFlows, wantFlows)
-	return newCheckResult(unproven, General)
+	return difference(gotFlows, wantFlows)
 }
 
-// checkSummaryTypes tries to prove that the must-not-flows in bad do not hold by a simple type
-// analysis:
-// if the node being flowed to is a non-pointer-like parameter, then the flow cannot exist.
-func checkSummaryTypes(bad []flow) checkResult {
+// filterFlowsTypes tries to prove that the flows do not hold by a simple type
+// analysis: if the node being flowed to is a pointer-like parameter, then the flow may exist.
+// It returns all the flows that have pointer-like parameter outputs, or whose outputs are not
+// parameters.
+func filterFlowsTypes(flows []flow) []flow {
 	var unproven []flow
-	for _, fl := range bad {
+	for _, fl := range flows {
 		switch to := fl.to.(type) {
 		case *dataflow.ParamNode:
 			if isPointerLike(to.Type()) {
@@ -62,7 +62,7 @@ func checkSummaryTypes(bad []flow) checkResult {
 		}
 	}
 
-	return newCheckResult(unproven, Types)
+	return unproven
 }
 
 // mostGeneralFlows returns the most-general summary for the function in g.
