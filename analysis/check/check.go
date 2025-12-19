@@ -71,16 +71,21 @@ func NewState(s *dataflow.State) result.Result[State] {
 //
 // If checkCallees is true, then it infers summaries for the callees that satisfies the
 // must-not-flow edges of summary and checks the soundness of these summaries recursively.
+//
+// The boolean returned by the function indicates whether the function was found and is reachable.
+// If it is not found nor reachable, checking soundness is meaningless: the summary is not a threat to the soundness
+// of the dataflow analysis since it will not be used in the same context by the dataflow analysis.
 func CheckSummary(
 	ctx context.Context, s *State, want summaries.FrontendDataflowSummary,
-) (SoundnessResult, error) {
+) (SoundnessResult, error, bool) {
 	f, err := functionOfName(s, want.Name())
 	if err != nil {
 		return SoundnessResult{},
-			fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
+			fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err), false
 	}
 
-	return checkSummary(ctx, s, f, want.Summary())
+	res, err := checkSummary(ctx, s, f, want.Summary())
+	return res, err, true
 }
 
 var errInfer = errors.New("failed to infer callee summaries")
@@ -297,7 +302,7 @@ func difference[T comparable](a, b []T) []T {
 	return diff
 }
 
-// functionOfName returns the SSA function that has name.
+// functionOfName returns the SSA function that has name and that is reachable.
 func functionOfName(s *State, name string) (*ssa.Function, error) {
 	for fn := range s.ReachableFunctions() {
 		fname := fn.RelString(nil)

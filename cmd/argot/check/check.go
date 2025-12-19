@@ -233,28 +233,40 @@ func checkSummaries(
 
 	results := make([]check.SoundnessResult, 0, len(parsedSummaries))
 	for _, summary := range parsedSummaries {
-		targetName := summary.Name()
-		logger.PushContext(formatutil.Faint(targetName))
-		logger.Infof("Checking summary via %v...", via)
-		soundness, err := check.CheckSummary(ctx, s, summary)
-		if err != nil {
-			// continue checking the rest of the summaries but return all the errors when finished
-			logger.Errorf("failed to check the summary of function %s in %v seconds: %v", targetName, soundness.Time.Seconds(), err)
-			errs = append(errs, err)
-			continue
-		}
-		logger.Infof("Checked soundness of summary for function %s in %v seconds:\n", targetName, soundness.Time.Seconds())
-		if soundness.IsSound {
-			logger.Infof("Sound!")
-		} else {
-			logger.Errorf("Unsound!")
-		}
-		logger.Infof("Result:\n%s\n", soundness.String())
-		results = append(results, soundness)
-		logger.PopContext()
+		errs, results = checkOneSummaryWrapper(ctx, summary, logger, via, s, errs, results)
 	}
 
 	return results, errors.Join(errs...)
+}
+
+func checkOneSummaryWrapper(ctx context.Context, summary summaries.FrontendDataflowSummary, logger *config.LogGroup, via check.Method, s *check.State, errs []error, results []check.SoundnessResult) ([]error, []check.SoundnessResult) {
+	targetFunctionName := summary.Name()
+	logger.PushContext(formatutil.Faint(targetFunctionName))
+	defer logger.PopContext()
+	logger.Infof("Checking summary via %v...", via)
+	soundness, err, foundFunc := check.CheckSummary(ctx, s, summary)
+	if !foundFunc {
+		logger.Warnf("Cannot find function %s, so summary will not be used in target (nothing to do).",
+			summary.Name())
+		return errs, results
+	}
+	if err != nil {
+		// continue checking the rest of the summaries but return all the errors when finished
+		logger.Errorf("failed to check the summary of function %s in %v seconds: %v",
+			targetFunctionName, soundness.Time.Seconds(), err)
+		errs = append(errs, err)
+		return errs, results
+	}
+	logger.Infof("Checked soundness of summary for function %s in %v seconds:\n",
+		targetFunctionName, soundness.Time.Seconds())
+	if soundness.IsSound {
+		logger.Infof("Sound!")
+	} else {
+		logger.Errorf("Unsound!")
+	}
+	logger.Infof("Result:\n%s\n", soundness.String())
+	results = append(results, soundness)
+	return errs, results
 }
 
 func methodsString() string {

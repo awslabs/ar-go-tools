@@ -1533,7 +1533,7 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 			t.Log(got)
 		}
 	}()
-	got, err = check.CheckSummary(ctx, state, summary)
+	got, err, _ = check.CheckSummary(ctx, state, summary)
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
 	}
