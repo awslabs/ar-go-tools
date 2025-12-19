@@ -19,8 +19,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/token"
+	"strings"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/exp/maps"
 	"golang.org/x/tools/go/ssa"
 
@@ -57,6 +59,71 @@ func (r SoundnessResult) String() string {
 	}
 
 	return string(b)
+}
+
+func (r SoundnessResult) PrettyString() string {
+	s := strings.Builder{}
+	if r.IsSound {
+		s.WriteString(fmt.Sprintf("%s: %s\n",
+			formatutil.BgBlue(r.Fn), formatutil.BgGreen(" sound ")))
+	} else {
+		s.WriteString(fmt.Sprintf("%s: %s\n",
+			formatutil.BgBlue(r.Fn), formatutil.BgRed(" unsound ")))
+	}
+	s.WriteString(fmt.Sprintf("  Method: %s\n", r.Method))
+	s.WriteString("  Checked summary:\n")
+	for origin, dests := range r.Want.Flows {
+		s.WriteString(fmt.Sprintf("  %s flows to %s\n", formatutil.BgDarkGray(origin.String()),
+			strings.Join(
+				funcutil.Map(dests,
+					func(n summaries.SummaryNode) string { return formatutil.BgDarkGray(n.String()) }), ", ")))
+	}
+	if !r.IsSound {
+		s.WriteString("  The summary is unsound because:\n")
+		if len(r.Unsoundness.UnprovenMustNotFlows) > 0 {
+			s.WriteString("    Could not prove that the following flows do not exist:\n")
+			for _, unprovenFlow := range r.Unsoundness.UnprovenMustNotFlows {
+				s.WriteString(fmt.Sprintf("      - %s\n", unprovenFlow))
+			}
+		} else {
+			s.WriteString("    All flows not in summary were checked not to exist, but there are some unsound features.\n")
+		}
+		if len(r.Unsoundness.DataflowFeatures.RecoverUsages) > 0 {
+			s.WriteString("    Recover is used, which may allow arbitrary memory access\n")
+			for _, pos := range r.Unsoundness.DataflowFeatures.RecoverUsages {
+				s.WriteString(fmt.Sprintf("      - %s\n", pos))
+			}
+		}
+		if len(r.Unsoundness.DataflowFeatures.ReflectUsages) > 0 {
+			s.WriteString("    Reflection is used, which may allow arbitrary memory access\n")
+			for _, pos := range r.Unsoundness.DataflowFeatures.ReflectUsages {
+				s.WriteString(fmt.Sprintf("      - %s\n", pos))
+			}
+		}
+		if r.Unsoundness.DataflowFeatures.HasUnboundedDefers {
+			s.WriteString("    Function has unbounded defer stack, which may cause unsoundness\n")
+		}
+		if len(r.Unsoundness.CheckFeatures.GoUsages) > 0 {
+			s.WriteString("    Go statements are used, which may cause unsoundness\n")
+			for _, pos := range r.Unsoundness.CheckFeatures.GoUsages {
+				s.WriteString(fmt.Sprintf("      - %s\n", pos))
+			}
+		}
+		if len(r.Unsoundness.CheckFeatures.UnsafeUsages) > 0 {
+			s.WriteString("    Unsafe is used, which may cause unsoundness\n")
+			for _, pos := range r.Unsoundness.CheckFeatures.UnsafeUsages {
+				s.WriteString(fmt.Sprintf("      - %s\n", pos))
+			}
+		}
+		if len(r.Unsoundness.CheckFeatures.GlobalUsages) > 0 {
+			s.WriteString("    Global variables are used, which may cause unsoundness\n")
+			for _, pos := range r.Unsoundness.CheckFeatures.GlobalUsages {
+				s.WriteString(fmt.Sprintf("     - %s\n", pos))
+			}
+		}
+		s.WriteString(fmt.Sprintf("  Time spent: %s\n", r.Time))
+	}
+	return s.String()
 }
 
 func (r SoundnessResult) MarshalJSON() ([]byte, error) {

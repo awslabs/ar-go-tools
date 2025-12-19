@@ -257,14 +257,7 @@ func checkOneSummaryWrapper(ctx context.Context, summary summaries.FrontendDataf
 		errs = append(errs, err)
 		return errs, results
 	}
-	logger.Infof("Checked soundness of summary for function %s in %v seconds:\n",
-		targetFunctionName, soundness.Time.Seconds())
-	if soundness.IsSound {
-		logger.Infof("Sound!")
-	} else {
-		logger.Errorf("Unsound!")
-	}
-	logger.Infof("Result:\n%s\n", soundness.String())
+	logger.Infof("Result:\n%s\n", soundness.PrettyString())
 	results = append(results, soundness)
 	return errs, results
 }

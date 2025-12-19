@@ -34,6 +34,7 @@ dataflow-problems:
     - user-specs.yaml
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
+  generate-unsoundness-report: true
   taint-tracking:
     - tag: "http-input-to-metrics"
       description: "HTTP request data should not influence Go runtime metrics"
