@@ -90,6 +90,9 @@ func CheckSummary(
 
 var errInfer = errors.New("failed to infer callee summaries")
 
+// continueIfUnsound lets the analysis continue even if there is unsoundness.
+const continueIfUnsound = true
+
 // checkSummary checks the soundness of the given data flow summary for f in want.
 //
 // General takes want and returns all must-not-flows it couldn't prove.
@@ -122,15 +125,17 @@ func checkSummary(
 			if len(unsoundCheckFeats.GlobalUsages) > 0 {
 				s.Logger.Warnf(
 					"most-general summary is unsound: detected global use in function %s\n", f)
-				return SoundnessResult{
-					Fn:            f.RelString(nil),
-					Want:          want,
-					IsSound:       false,
-					Unsoundness:   Unsoundness{CheckFeatures: unsoundCheckFeats},
-					Method:        method,
-					Time:          time.Duration(0),
-					CalleeResults: nil,
-				}, nil
+				if !continueIfUnsound {
+					return SoundnessResult{
+						Fn:            f.RelString(nil),
+						Want:          want,
+						IsSound:       false,
+						Unsoundness:   Unsoundness{CheckFeatures: unsoundCheckFeats},
+						Method:        method,
+						Time:          time.Duration(0),
+						CalleeResults: nil,
+					}, nil
+				}
 			}
 			unprovenMustNotFlows = checkSummaryMostGeneral(g, want)
 		case Types:
@@ -139,18 +144,20 @@ func checkSummary(
 			if len(unsoundCheckFeats.UnsafeUsages) > 0 {
 				s.Logger.Warnf(
 					"types analysis is unsound: detected unsafe use in function %s\n", f)
-				return SoundnessResult{
-					Fn:      f.RelString(nil),
-					Want:    want,
-					IsSound: false,
-					Unsoundness: Unsoundness{
-						UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
-						CheckFeatures:        unsoundCheckFeats,
-					},
-					Method:        method,
-					Time:          time.Since(start),
-					CalleeResults: nil,
-				}, nil
+				if !continueIfUnsound {
+					return SoundnessResult{
+						Fn:      f.RelString(nil),
+						Want:    want,
+						IsSound: false,
+						Unsoundness: Unsoundness{
+							UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
+							CheckFeatures:        unsoundCheckFeats,
+						},
+						Method:        method,
+						Time:          time.Since(start),
+						CalleeResults: nil,
+					}, nil
+				}
 			}
 			unprovenMustNotFlows = filterFlowsTypes(unprovenMustNotFlows)
 		case Immutability:
@@ -159,31 +166,36 @@ func checkSummary(
 			if len(unsoundCheckFeats.ReflectUsages) > 0 {
 				s.Logger.Warnf(
 					"immutability analysis is unsound: detected reflection use in function %s\n", f)
-				return SoundnessResult{
-					Fn:      f.RelString(nil),
-					Want:    want,
-					IsSound: false,
-					Unsoundness: Unsoundness{
-						UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
-						CheckFeatures:        unsoundCheckFeats,
-					},
-					Method:        method,
-					Time:          time.Since(start),
-					CalleeResults: nil,
-				}, nil
+				if !continueIfUnsound {
+					return SoundnessResult{
+						Fn:      f.RelString(nil),
+						Want:    want,
+						IsSound: false,
+						Unsoundness: Unsoundness{
+							UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
+							CheckFeatures:        unsoundCheckFeats,
+						},
+						Method:        method,
+						Time:          time.Since(start),
+						CalleeResults: nil,
+					}, nil
+				}
 			}
 			unprovenMustNotFlows = filterFlowsImmutability(ctx, s, unprovenMustNotFlows)
 		}
 
 		if len(unprovenMustNotFlows) == 0 {
 			s.Logger.Debugf(
-				"no unproven must-not-flows from checking function %s via method %s: result sound\n",
+				"no unproven must-not-flows from checking function %s via method %s: done checking\n",
 				f, method)
 			return SoundnessResult{
-				Fn:            f.RelString(nil),
-				Want:          want,
-				IsSound:       true,
-				Unsoundness:   Unsoundness{},
+				Fn:      f.RelString(nil),
+				Want:    want,
+				IsSound: unsoundCheckFeats.isSound(),
+				Unsoundness: Unsoundness{
+					UnprovenMustNotFlows: nil,
+					CheckFeatures:        unsoundCheckFeats,
+				},
 				Method:        method,
 				Time:          time.Since(start),
 				CalleeResults: nil,
