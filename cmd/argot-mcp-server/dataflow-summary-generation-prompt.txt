@@ -170,10 +170,15 @@ To generate a dataflow summary, you need:
 
 1. **File path** - A path to the main files of the program using the function. This is the path for the program to load, no the function to analyze.
 2. **Function name** - Name of the function to analyze
-3. **Package name** - Package containing the function 
+3. **Package name** - Package containing the function
+
+An alternative way to know which functions to summarize is to run a taint-tracking analysis that generates a report of functions that should be summarized.
+For example, if a given config file `argot-config.yaml` contains taint analysis problems and has `generate-unsoundness-report: true` then the taint tool will also print function names that need a dataflow summary and why.
 
 ## Example Request
 
 "Generate a dataflow summary for function `thisFunctionIsCalled` in file `/path/to/sample.go` in package `main`."
+
+"Generate dataflow summaries for all the function suggested by the taint tool running with the configuration `argot-config.yaml`"
 
 Generate only the YAML dataflow summary for the provided function. Do not include explanations unless the flow is complex and needs clarification.

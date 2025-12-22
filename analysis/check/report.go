@@ -330,7 +330,7 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 			continue
 		}
 
-		for _, caller := range getExportedCallers(state, f) {
+		for caller := range getExportedCallers(state, f) {
 			if _, ok := toReport[caller]; !ok {
 				skipped = false
 				toReport[caller] = []dataflow.UnsoundFeaturesMap{target}
@@ -346,7 +346,7 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 	}
 
 	for functionToFix, unsoundnessCalleesReasons := range toReport {
-		state.Logger.Warnf("Function %s should have a summary:", functionToFix)
+		state.Logger.Warnf("Function %s should have a summary:", formatutil.Blue(functionToFix))
 		for _, unsoundness := range unsoundnessCalleesReasons {
 			if unsoundness.Func == functionToFix {
 				state.Logger.Warnf("- it cannot be summarized soundly analyzed because it")
@@ -361,8 +361,8 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 	}
 }
 
-func getExportedCallers(state *dataflow.State, f *ssa.Function) []*ssa.Function {
-	var callers []*ssa.Function
+func getExportedCallers(state *dataflow.State, f *ssa.Function) map[*ssa.Function]bool {
+	callers := map[*ssa.Function]bool{}
 	queue := []*ssa.Function{f}
 	seen := map[*ssa.Function]bool{f: true}
 	for {
@@ -371,18 +371,18 @@ func getExportedCallers(state *dataflow.State, f *ssa.Function) []*ssa.Function 
 		}
 		f := queue[0]
 		queue = queue[1:]
-		for _, caller := range state.PointerAnalysis.CallGraph.Nodes[f].In {
-			callerFunc := caller.Caller.Func
+		seen[f] = true
+		fInfo, infoOk := lang.GetFunctionInfo(state.GoModInfo.Path, f)
+		if infoOk && fInfo.IsExported {
+			callers[f] = true
+			continue
+		}
+		for _, inEdge := range state.PointerAnalysis.CallGraph.Nodes[f].In {
+			callerFunc := inEdge.Caller.Func
 			if seen[callerFunc] {
 				continue
 			}
-			seen[callerFunc] = true
-			callerInfo, infoOk := lang.GetFunctionInfo(state.GoModInfo.Path, callerFunc)
-			if callerInfo.IsExported || !infoOk {
-				callers = append(callers, callerFunc)
-			} else {
-				queue = append(queue, callerFunc)
-			}
+			queue = append(queue, callerFunc)
 		}
 	}
 }

@@ -1,20 +1,54 @@
 dataflow-summaries:
-  - package: "crypto/ecdsa"
-    function: "SignASN1"
+  - package: "encoding/hex"
+    function: "EncodeToString"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 0"
+
+  - package: "crypto/x509"
+    function: "ParseECPrivateKey"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 0"
+      - from: "(!arg 0)[*]"
+        to: "!ret 1"
+
+  - package: "crypto/cipher"
+    function: "NewGCM"
     flows:
       - from: "!arg 0"
         to: "!ret 0"
+
+  - package: "crypto/aes"
+    function: "NewCipher"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 0"
+      - from: "(!arg 0)[*]"
+        to: "!ret 1"
+
+  - package: "encoding/hex"
+    function: "DecodeString"
+    flows:
+      - from: "!arg 0"
+        to: "(!ret 0)[*]"
       - from: "!arg 0"
         to: "!ret 1"
-      - from: "(!arg 1).PublicKey.Curve"
+
+  - package: "strings"
+    function: "TrimSpace"
+    flows:
+      - from: "!arg 0"
         to: "!ret 0"
-      - from: "(!arg 1).PublicKey.Curve"
+
+  - package: "io/ioutil"
+    function: "ReadFile"
+    flows:
+      - from: "!arg 0"
         to: "!ret 1"
-      - from: "(!arg 1).D"
+
+  - package: "github.com/aws/aws-sdk-go/aws"
+    function: "String"
+    flows:
+      - from: "!arg 0"
         to: "!ret 0"
-      - from: "(!arg 1).D"
-        to: "!ret 1"
-      - from: "!arg 2"
-        to: "!ret 0"
-      - from: "!arg 2"
-        to: "!ret 1"

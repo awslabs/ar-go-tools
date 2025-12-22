@@ -31,4 +31,6 @@ dataflow-problems:
       sinks:
         - method: "Printf"
           package: "fmt"
+        - method: "PutObject"
+          package: 
           
