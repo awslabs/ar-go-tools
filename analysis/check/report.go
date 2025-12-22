@@ -22,13 +22,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"golang.org/x/exp/maps"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
@@ -85,40 +84,52 @@ func (r SoundnessResult) PrettyString() string {
 			for _, unprovenFlow := range r.Unsoundness.UnprovenMustNotFlows {
 				s.WriteString(fmt.Sprintf("      - %s\n", unprovenFlow))
 			}
-		} else {
-			s.WriteString("    All flows not in summary were checked not to exist, but there are some unsound features.\n")
 		}
-		if len(r.Unsoundness.DataflowFeatures.RecoverUsages) > 0 {
-			s.WriteString("    Recover is used, which may allow arbitrary memory access\n")
-			for _, pos := range r.Unsoundness.DataflowFeatures.RecoverUsages {
-				s.WriteString(fmt.Sprintf("      - %s\n", pos))
+		if !r.Unsoundness.CheckFeatures.isSound() {
+			s.WriteString(
+				"    There are some features which make the soundness checking algorithm unsound.\n")
+			if len(r.Unsoundness.CheckFeatures.GlobalUsages) > 0 {
+				s.WriteString("    Global variables are used, which may cause unsoundness\n")
+				for _, pos := range r.Unsoundness.CheckFeatures.GlobalUsages {
+					s.WriteString(fmt.Sprintf("     - %s\n", pos))
+				}
+			}
+			if len(r.Unsoundness.CheckFeatures.UnsafeUsages) > 0 {
+				s.WriteString("    Unsafe is used, which may cause unsoundness\n")
+				for _, pos := range r.Unsoundness.CheckFeatures.UnsafeUsages {
+					s.WriteString(fmt.Sprintf("      - %s\n", pos))
+				}
+			}
+			if len(r.Unsoundness.CheckFeatures.ReflectUsages) > 0 {
+				s.WriteString("    Reflection is used, which may allow arbitrary memory access\n")
+				for _, pos := range r.Unsoundness.CheckFeatures.ReflectUsages {
+					s.WriteString(fmt.Sprintf("      - %s\n", pos))
+				}
+			}
+			if len(r.Unsoundness.CheckFeatures.NonLocalBoundLabelUsages) > 0 {
+				s.WriteString("    Non-local bound labels is used, which are not supported\n")
+				for _, pos := range r.Unsoundness.CheckFeatures.NonLocalBoundLabelUsages {
+					s.WriteString(fmt.Sprintf("      - %s\n", pos))
+				}
 			}
 		}
-		if len(r.Unsoundness.DataflowFeatures.ReflectUsages) > 0 {
-			s.WriteString("    Reflection is used, which may allow arbitrary memory access\n")
-			for _, pos := range r.Unsoundness.DataflowFeatures.ReflectUsages {
-				s.WriteString(fmt.Sprintf("      - %s\n", pos))
+		if !r.Unsoundness.DataflowFeatures.isSound() {
+			s.WriteString(
+				"    There are some features which make the dataflow analysis unsound.\n")
+			if len(r.Unsoundness.DataflowFeatures.RecoverUsages) > 0 {
+				s.WriteString("    Recover is used, which may allow arbitrary memory access\n")
+				for _, pos := range r.Unsoundness.DataflowFeatures.RecoverUsages {
+					s.WriteString(fmt.Sprintf("      - %s\n", pos))
+				}
 			}
-		}
-		if r.Unsoundness.DataflowFeatures.HasUnboundedDefers {
-			s.WriteString("    Function has unbounded defer stack, which may cause unsoundness\n")
-		}
-		if len(r.Unsoundness.CheckFeatures.GoUsages) > 0 {
-			s.WriteString("    Go statements are used, which may cause unsoundness\n")
-			for _, pos := range r.Unsoundness.CheckFeatures.GoUsages {
-				s.WriteString(fmt.Sprintf("      - %s\n", pos))
+			if r.Unsoundness.DataflowFeatures.HasUnboundedDefers {
+				s.WriteString("    Function has unbounded defer stack, which may cause unsoundness\n")
 			}
-		}
-		if len(r.Unsoundness.CheckFeatures.UnsafeUsages) > 0 {
-			s.WriteString("    Unsafe is used, which may cause unsoundness\n")
-			for _, pos := range r.Unsoundness.CheckFeatures.UnsafeUsages {
-				s.WriteString(fmt.Sprintf("      - %s\n", pos))
-			}
-		}
-		if len(r.Unsoundness.CheckFeatures.GlobalUsages) > 0 {
-			s.WriteString("    Global variables are used, which may cause unsoundness\n")
-			for _, pos := range r.Unsoundness.CheckFeatures.GlobalUsages {
-				s.WriteString(fmt.Sprintf("     - %s\n", pos))
+			if len(r.Unsoundness.DataflowFeatures.GoUsages) > 0 {
+				s.WriteString("    Go statements are used, which may cause unsoundness\n")
+				for _, pos := range r.Unsoundness.DataflowFeatures.GoUsages {
+					s.WriteString(fmt.Sprintf("      - %s\n", pos))
+				}
 			}
 		}
 		s.WriteString(fmt.Sprintf("  Time spent: %s\n", r.Time))
@@ -161,21 +172,27 @@ func (u Unsoundness) isSound() bool {
 // as long as it doesn't need to perform an intra-procedural data flow analysis on the callee (and
 // there are no other sources of unsoundness).
 type UnsoundCheckFeatures struct {
+	// GlobalUsages records the positions where a global is used (read/modified).
+	// The analysis does not handle globals yet.
+	GlobalUsages []token.Position
 	// UnsafeUsages records the positions where `unsafe` is used.
 	// If any reachable instruction from the function uses unsafe, then that allows arbitrary memory
 	// corruption and we can no longer provide any guarantees.
 	UnsafeUsages []token.Position
-	// GoUsages records the positions where a goroutine is created.
-	// The checking algorithm assumes linearizability of instructions which is potentially violated
-	// in the presence of parallelism via goroutines.
-	GoUsages []token.Position
-	// GlobalUsages records the positions where a global is used (read/modified).
-	// The analysis does not handle globals yet.
-	GlobalUsages []token.Position
+	// ReflectUsages records the positions where `reflect` is used.
+	// The pointer analysis, which the immutability analysis depends on, is unsafe in the presence
+	// of reflection.
+	ReflectUsages []token.Position
+	// NonLocalBoundLabelUsages records the positions of bound labels created outside their
+	// corresponding MakeClosure instructions.
+	// We do not support summary nodes for closure-specific inputs/outputs other than bound and free
+	// variables.
+	NonLocalBoundLabelUsages []token.Position
 }
 
 func (u UnsoundCheckFeatures) isSound() bool {
-	return len(u.UnsafeUsages) == 0 && len(u.GoUsages) == 0 && len(u.GlobalUsages) == 0
+	return len(u.UnsafeUsages) == 0 && len(u.GlobalUsages) == 0 && len(u.ReflectUsages) == 0 &&
+		len(u.NonLocalBoundLabelUsages) == 0
 }
 
 // UnsoundDataflowFeatures are the specific Go features that the function may use that would make
@@ -185,20 +202,12 @@ func (u UnsoundCheckFeatures) isSound() bool {
 // check-specific unsound features.
 type UnsoundDataflowFeatures struct {
 	RecoverUsages      []token.Position
-	ReflectUsages      []token.Position
+	GoUsages           []token.Position
 	HasUnboundedDefers bool
 }
 
-func newUnsoundDataflowFeatures(feats dataflow.UnsoundFeaturesMap) UnsoundDataflowFeatures {
-	return UnsoundDataflowFeatures{
-		RecoverUsages:      maps.Keys(feats.Recovers),
-		ReflectUsages:      maps.Keys(feats.ReflectUsages),
-		HasUnboundedDefers: feats.HasUnboundedDefers,
-	}
-}
-
 func (u UnsoundDataflowFeatures) isSound() bool {
-	return len(u.RecoverUsages) == 0 && len(u.ReflectUsages) == 0 && !u.HasUnboundedDefers
+	return len(u.RecoverUsages) == 0 && len(u.GoUsages) == 0 && !u.HasUnboundedDefers
 }
 
 type Flow struct {

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/crillab/gophersat/maxsat"
 	"golang.org/x/tools/go/ssa"
@@ -51,22 +52,29 @@ func inferCalleeSummaries(
 		g = summ
 	} else {
 		s.Logger.Tracef("running intra-procedural analysis on function %s...\n", g.Parent)
+		start := time.Now()
 		if _, err := dataflow.RunIntraProcedural(ctx, s, g); err != nil {
 			return nil, fmt.Errorf("failed to run intra-procedural analysis: %v", err)
 		}
-		if g.Unsoundness().HasAny() {
-			unsoundness.DataflowFeatures = newUnsoundDataflowFeatures(g.Unsoundness())
-			return nil, nil
+		intraUnsoundness := findUnsoundDataflowFeatures(g.Parent)
+		if !intraUnsoundness.isSound() {
+			s.Logger.Warnf("intra-procedural analysis for function %s is unsound", g.Parent)
+			unsoundness.DataflowFeatures = intraUnsoundness
 		}
+		s.Logger.Debugf(
+			"intra-procedural analysis on function %s took %s\n",
+			g.Parent, time.Since(start))
 	}
 
+	start := time.Now()
+
 	// Collect known (intra + inter) and unknown may-flow edges
-	intraParent := intraMayFlowEdges(g, nil)
+	intraParent := intraMayFlowEdges(s, g, nil, unsoundness)
 	inter := interMayFlowEdges(s, g)
 
 	knownMayFlow := append(intraParent, inter...)
 	unknownMayFlow := make(map[*dataflow.CallNode][]edge)
-	calleeGraphs := addCalleeMayFlowEdges(s, g, via, &knownMayFlow, unknownMayFlow)
+	calleeGraphs := addCalleeMayFlowEdges(s, g, via, &knownMayFlow, unknownMayFlow, unsoundness)
 
 	if s.Logger.LogsTrace() {
 		dbgEdges(s, "intra parent edges of "+g.Parent.Name()+":", intraParent)
@@ -103,7 +111,7 @@ func inferCalleeSummaries(
 	constraints = append(constraints, maxConstrs...)
 
 	// Transitivity
-	transitiveConstrs := buildTransitivityConstrs(g, calleeGraphs)
+	transitiveConstrs := buildTransitivityConstrs(s, g, calleeGraphs, unsoundness)
 	constraints = append(constraints, transitiveConstrs...)
 
 	// Block must-not-flows
@@ -129,6 +137,10 @@ func inferCalleeSummaries(
 	allOptimalModels := findAllOptimalModels(model, optimalCost, constraints, unknownMayFlow)
 	res := modelsToSummaries(s, allOptimalModels, unknownMayFlow)
 
+	s.Logger.Debugf(
+		"callee summary inference for function %s MAXSAT solver took %s\n",
+		g.Parent, time.Since(start))
+
 	return res, nil
 }
 
@@ -141,7 +153,7 @@ func inferCalleeSummaries(
 // The most-general summary is computed by the method specified by parameter via.
 func addCalleeMayFlowEdges(
 	s *dataflow.State, g *dataflow.SummaryGraph, via Method,
-	known *[]edge, unknown map[*dataflow.CallNode][]edge,
+	known *[]edge, unknown map[*dataflow.CallNode][]edge, unsoundness *Unsoundness,
 ) map[*dataflow.CallNode]*dataflow.SummaryGraph {
 	calleeGraphs := make(map[*dataflow.CallNode]*dataflow.SummaryGraph)
 	for _, calleeToCall := range g.Callees {
@@ -156,7 +168,7 @@ func addCalleeMayFlowEdges(
 
 	for call, calleeG := range calleeGraphs {
 		if calleeG.Constructed {
-			edges := intraMayFlowEdges(calleeG, call)
+			edges := intraMayFlowEdges(s, calleeG, call, unsoundness)
 			*known = append(*known, edges...)
 		} else {
 			edges := mostGeneralEdges(calleeG, call, via)
@@ -216,19 +228,20 @@ func buildCalleeSummaryConstrs(unknown map[*dataflow.CallNode][]edge) []maxsat.C
 }
 
 func buildTransitivityConstrs(
-	g *dataflow.SummaryGraph, calleeGraphs map[*dataflow.CallNode]*dataflow.SummaryGraph,
+	s *dataflow.State, g *dataflow.SummaryGraph,
+	calleeGraphs map[*dataflow.CallNode]*dataflow.SummaryGraph, unsoundness *Unsoundness,
 ) []maxsat.Constr {
 	var transitiveConstrs []maxsat.Constr
 	allNodes := make(map[node]struct{})
 	g.ForAllNodes(func(n dataflow.GraphNode) {
-		if skipNode(n) {
+		if skipNode(s, n, unsoundness) {
 			return
 		}
 		allNodes[node{n, nil}] = struct{}{}
 	})
 	for call, cg := range calleeGraphs {
 		cg.ForAllNodes(func(n dataflow.GraphNode) {
-			if skipNode(n) {
+			if skipNode(s, n, unsoundness) {
 				return
 			}
 			allNodes[node{n, call}] = struct{}{}
@@ -452,16 +465,18 @@ func (e edge) String() string {
 
 // intraMayFlowEdges returns all the may-flow edges within a summary graph, scoped to a specific
 // call site.
-func intraMayFlowEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode) []edge {
+func intraMayFlowEdges(
+	s *dataflow.State, g *dataflow.SummaryGraph, call *dataflow.CallNode, unsoundness *Unsoundness,
+) []edge {
 	var res []edge
 	// Collect all edges in the graph, not just those reachable from params
 	g.ForAllNodes(func(n dataflow.GraphNode) {
-		if skipNode(n) {
+		if skipNode(s, n, unsoundness) {
 			return
 		}
 
 		for next := range n.Out() {
-			if skipNode(next) {
+			if skipNode(s, next, unsoundness) {
 				continue
 			}
 			e := edge{from: node{n: n, call: call}, to: node{n: next, call: call}}
@@ -543,7 +558,7 @@ func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	return res
 }
 
-func skipNode(n dataflow.GraphNode) bool {
+func skipNode(s *dataflow.State, n dataflow.GraphNode, unsoundness *Unsoundness) bool {
 	switch n := n.(type) {
 	case *dataflow.BoundLabelNode:
 		closure := n.DestInfo().MakeClosure
@@ -555,12 +570,16 @@ func skipNode(n dataflow.GraphNode) bool {
 			// variables. It does not make sense to summarize closures with bound labels
 			// because the input/output bound label value is not local to the closure: it is
 			// scoped to the completely different function that allocated the bound label.
-			//
-			// TODO add unsoundness instead of panicking
-			panic(fmt.Errorf(
+			pos := n.Position(s)
+			if !slices.Contains(unsoundness.CheckFeatures.NonLocalBoundLabelUsages, pos) {
+				unsoundness.CheckFeatures.NonLocalBoundLabelUsages =
+					append(unsoundness.CheckFeatures.NonLocalBoundLabelUsages, pos)
+			}
+			s.Logger.Warnf(
 				"cannot check summary where bound label closure is non-local. "+
 					"label: %v in %v, closure: %v in %v",
-				n, n.ParentName(), closure, closure.Parent()))
+				n, n.ParentName(), closure, closure.Parent())
+			return true
 		}
 		// We can soundly skip adding edges for bound labels which are created in the same
 		// function as their corresponding make closure instructions, as there will be a

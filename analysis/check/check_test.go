@@ -1133,28 +1133,104 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			},
 		},
-		// TODO Don't panic for non-local bound label
-		// {
-		// pkg: pkg,
-		// name: "nestedClosuresInvalid",
-		// 	summary: summaries.NewFunctionFlowSummary(pkg, "nestedClosuresInvalid",
-		// 		summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "x", Index: 0}: {
-		// 					summaries.ReturnSNode{Index: 0},
-		// 				},
-		// 				summaries.ArgumentSNode{Name: "y", Index: 1}: {
-		// 					summaries.ReturnSNode{Index: 0},
-		// 				},
-		// 			},
-		// 		},
-		// 	),
-		// 	want: check.SoundnessResult{
-		// 		IsSound:              true,
-		// 		UnprovenMustNotFlows: []check.Flow{},
-		// 		Method:               check.Immutability,
-		// 	},
-		// },
+		{
+			pkg:  pkg,
+			name: "nestedClosuresInvalid",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".nestedClosuresInvalid",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				// NOTE Summary is unsound because closure has a non-local bound label
+				IsSound: false,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "x", Index: 0},
+							To:   summaries.ArgumentSNode{Name: "y", Index: 1},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "y", Index: 1},
+							To:   summaries.ArgumentSNode{Name: "x", Index: 0},
+						},
+					},
+				},
+				Method: check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Fn:      pkg + ".nestedClosuresInvalid$1",
+							IsSound: false,
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.FreeVarSNode{Name: "x"}: {
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.FreeVarSNode{Name: "x"},
+										To:   summaries.FreeVarSNode{Name: "y"},
+									},
+									{
+										From: summaries.FreeVarSNode{Name: "y"},
+										To:   summaries.FreeVarSNode{Name: "x"},
+									},
+									{
+										From: summaries.FreeVarSNode{Name: "y"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							Method: check.Immutability,
+							CalleeResults: [][]check.SoundnessResult{
+								{
+									{
+										Fn: pkg + ".nestedClosuresInvalid$1$1",
+										Want: summaries.DetailedSummary{
+											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+												summaries.FreeVarSNode{Name: "x"}: {
+													summaries.ReturnSNode{Index: 0},
+												},
+											},
+										},
+										IsSound: false,
+										Unsoundness: check.Unsoundness{
+											UnprovenMustNotFlows: []check.Flow{
+												{
+													From: summaries.FreeVarSNode{Name: "x"},
+													To:   summaries.FreeVarSNode{Name: "y"},
+												},
+												{
+													From: summaries.FreeVarSNode{Name: "y"},
+													To:   summaries.FreeVarSNode{Name: "x"},
+												},
+												{
+													From: summaries.FreeVarSNode{Name: "y"},
+													To:   summaries.ReturnSNode{Index: 0},
+												},
+											},
+										},
+										Method:        check.Immutability,
+										CalleeResults: nil,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -1189,7 +1265,8 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 						},
 					},
 				},
-				// NOTE Accesses a global.
+				// NOTE The most-general summary for function (*md5.digest).Write is unsound because
+				// it accesses a global.
 				IsSound: false,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
@@ -1230,7 +1307,8 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 						},
 					},
 				},
-				// NOTE sync/pool uses unsafe so the check result is unsound.
+				// NOTE The most-general summary of json.Marshal is unsound because it reads from
+				// the global variable `encodeStatePool`.
 				IsSound: false,
 				// NOTE For some reason, the pointer analysis does not record any Labels for any
 				// errors returned in json.Marshal, meaning that the error return values are
@@ -1618,7 +1696,7 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 func setupConfig(lp *loadprogram.State) {
 	level := config.ErrLevel // change this as needed for debugging
 	lp.Logger.Level = level
-	lp.Logger.SupressWarn = true
+	lp.Logger.SupressWarn = false
 
 	cfg := lp.Config
 	cfg.Options.ReportCoverage = false

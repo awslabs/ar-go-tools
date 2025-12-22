@@ -100,19 +100,9 @@ var errInfer = errors.New("failed to infer callee summaries")
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
 ) (SoundnessResult, error) {
-	unsoundFeats := findUnsoundFeatures(s.PointerAnalysis.CallGraph, f)
-	if !unsoundFeats.isSound() {
-		s.Logger.Warnf("detected unsound features in function %s\n", f)
-		return SoundnessResult{
-			Fn:            f.RelString(nil),
-			Want:          want,
-			IsSound:       false,
-			Unsoundness:   Unsoundness{UnprovenMustNotFlows: nil, CheckFeatures: unsoundFeats},
-			Method:        General,
-			Time:          time.Duration(0),
-			CalleeResults: nil,
-		}, nil
-	}
+	// Different sub-analyses may have different soundness requirements.
+	// Find all of the unsound features at once and then check them on a per-analysis basis.
+	unsoundCheckFeats := findUnsoundCheckFeatures(s.PointerAnalysis.CallGraph, f)
 
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
@@ -127,10 +117,61 @@ func checkSummary(
 
 		switch method {
 		case General:
+			// The most-general summary is unsound if there are any globals (as we do not have
+			// special global nodes in summaries yet).
+			if len(unsoundCheckFeats.GlobalUsages) > 0 {
+				s.Logger.Warnf(
+					"most-general summary is unsound: detected global use in function %s\n", f)
+				return SoundnessResult{
+					Fn:            f.RelString(nil),
+					Want:          want,
+					IsSound:       false,
+					Unsoundness:   Unsoundness{CheckFeatures: unsoundCheckFeats},
+					Method:        method,
+					Time:          time.Duration(0),
+					CalleeResults: nil,
+				}, nil
+			}
 			unprovenMustNotFlows = checkSummaryMostGeneral(g, want)
 		case Types:
+			// The types analysis is unsound if there is unsafe, as unsafe memory operations can
+			// induce data flow to non-pointer-like summary nodes.
+			if len(unsoundCheckFeats.UnsafeUsages) > 0 {
+				s.Logger.Warnf(
+					"types analysis is unsound: detected unsafe use in function %s\n", f)
+				return SoundnessResult{
+					Fn:      f.RelString(nil),
+					Want:    want,
+					IsSound: false,
+					Unsoundness: Unsoundness{
+						UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
+						CheckFeatures:        unsoundCheckFeats,
+					},
+					Method:        method,
+					Time:          time.Since(start),
+					CalleeResults: nil,
+				}, nil
+			}
 			unprovenMustNotFlows = filterFlowsTypes(unprovenMustNotFlows)
 		case Immutability:
+			// The immutability analysis is unsound if there is reflection, as it depends on the
+			// pointer analysis.
+			if len(unsoundCheckFeats.ReflectUsages) > 0 {
+				s.Logger.Warnf(
+					"immutability analysis is unsound: detected reflection use in function %s\n", f)
+				return SoundnessResult{
+					Fn:      f.RelString(nil),
+					Want:    want,
+					IsSound: false,
+					Unsoundness: Unsoundness{
+						UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
+						CheckFeatures:        unsoundCheckFeats,
+					},
+					Method:        method,
+					Time:          time.Since(start),
+					CalleeResults: nil,
+				}, nil
+			}
 			unprovenMustNotFlows = filterFlowsImmutability(ctx, s, unprovenMustNotFlows)
 		}
 
@@ -142,7 +183,7 @@ func checkSummary(
 				Fn:            f.RelString(nil),
 				Want:          want,
 				IsSound:       true,
-				Unsoundness:   Unsoundness{UnprovenMustNotFlows: nil, CheckFeatures: unsoundFeats},
+				Unsoundness:   Unsoundness{},
 				Method:        method,
 				Time:          time.Since(start),
 				CalleeResults: nil,
@@ -157,12 +198,13 @@ func checkSummary(
 			}
 		}
 	}
-	topMustNotFlows := funcutil.Map(unprovenMustNotFlows, newFlow)
-	unsoundness := Unsoundness{UnprovenMustNotFlows: topMustNotFlows, CheckFeatures: unsoundFeats}
 
-	// Check callee summaries
-	// Use the type analysis to filter out unrealizable flows
 	s.Logger.Tracef("inferring callee summaries for function %s...\n", f)
+	unsoundness := Unsoundness{
+		UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
+		CheckFeatures:        unsoundCheckFeats,
+	}
+	// Use the type analysis to filter out unrealizable flows
 	calleeSummaries, err := inferCalleeSummaries(
 		ctx, s.State, g, unprovenMustNotFlows, &unsoundness, Types)
 	if err != nil {
