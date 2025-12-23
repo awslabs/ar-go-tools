@@ -33,10 +33,11 @@ import (
 //
 // For efficiency, it only returns the first 5 unsound features.
 func findUnsoundCheckFeatures(
-	cg *callgraph.Graph,
+	s *State,
 	f *ssa.Function,
 	specs []dataflow.ScanningSpec,
 ) UnsoundCheckFeatures {
+	cg := s.PointerAnalysis.CallGraph
 	queue := []*callgraph.Node{cg.Nodes[f]}
 	seen := make(map[*callgraph.Node]struct{})
 	seenFunc := make(map[*ssa.Function]struct{})
@@ -62,7 +63,7 @@ func findUnsoundCheckFeatures(
 
 		lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
 			prog := instr.Parent().Prog
-			if isGlobalInstr(instr) {
+			if isGlobalInstr(s, instr) {
 				pos := prog.Fset.Position(instr.Pos())
 				// This is fast because len(globals) is never greater than 5 or so.
 				if !slices.Contains(globals, pos) {
@@ -140,15 +141,24 @@ func findUnsoundDataflowFeatures(f *ssa.Function) UnsoundDataflowFeatures {
 
 // isGlobalInstr returns true if any of instr's operands is a global.
 // A global means that it is a non-static global variable.
-func isGlobalInstr(instr ssa.Instruction) bool {
+func isGlobalInstr(s *State, instr ssa.Instruction) bool {
 	var operands []*ssa.Value
 	operands = instr.Operands(operands)
 	for _, operand := range operands {
-		if _, ok := (*operand).(*ssa.Global); ok {
+		if glob, ok := (*operand).(*ssa.Global); ok && isGlobalWrittenOutsideInit(s, glob) {
 			return true
 		}
 	}
+	return false
+}
 
+func isGlobalWrittenOutsideInit(s *State, glob *ssa.Global) bool {
+	globNodes := s.Globals[glob]
+	for writeLoc := range globNodes.WriteLocations {
+		if writeLoc.ParentName() != "init" {
+			return true
+		}
+	}
 	return false
 }
 

@@ -106,7 +106,7 @@ func checkSummary(
 ) (SoundnessResult, error) {
 	// Different sub-analyses may have different soundness requirements.
 	// Find all of the unsound features at once and then check them on a per-analysis basis.
-	unsoundCheckFeats := findUnsoundCheckFeatures(s.PointerAnalysis.CallGraph, f, specs)
+	unsoundCheckFeats := findUnsoundCheckFeatures(s, f, specs)
 
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
@@ -125,7 +125,8 @@ func checkSummary(
 			// special global nodes in summaries yet).
 			if len(unsoundCheckFeats.GlobalUsages) > 0 {
 				s.Logger.Warnf(
-					"most-general summary is unsound: detected global use in function %s\n", f)
+					"most-general summary is unsound: detected global use in function %s (%s)\n",
+					f, s.Program.Fset.Position(f.Pos()))
 				if !s.Config.CheckIgnoresUnsound {
 					return SoundnessResult{
 						Fn:            f.RelString(nil),
