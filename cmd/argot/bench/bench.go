@@ -163,7 +163,7 @@ func runBenchDemand(state *dataflow.State) []funcReport {
 
 	numRoutines := max(1, runtime.NumCPU()-1)
 	// Only build summaries for non-stdlib functions here
-	dataflow.RunIntraProceduralPass(context.Background(), state, numRoutines,
+	state.RunIntraProceduralPass(context.Background(), numRoutines,
 		dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: func(*dataflow.State, *ssa.Function) bool {
 				// Don't build any summaries: we compute them on-demand
@@ -184,7 +184,7 @@ func runBenchDemand(state *dataflow.State) []funcReport {
 			visitor := NewVisitor(&taintSpec, reports)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultInterTimeout)
 			defer cancel()
-			dataflow.RunInterProcedural(ctx, state, visitor, dataflow.ScanningSpec{
+			state.RunInterProcedural(ctx, visitor, dataflow.ScanningSpec{
 				// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
 					return dataflow.IsSourceNode(state, &taintSpec, node)

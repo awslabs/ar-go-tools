@@ -68,7 +68,7 @@ type State struct {
 func NewState(ps *ptr.State) result.Result[State] {
 	state, err := initializedState(*ps, []func(*State){
 		func(s *State) { s.PopulateImplementations() },
-		func(s *State) { s.PopulateGlobalsVerbose() },
+		func(s *State) { s.PopulateGlobals() },
 		func(s *State) {
 			err := s.PopulateBoundingInformation(true)
 			if err != nil {
@@ -195,27 +195,6 @@ func (s *State) PopulateImplementations() {
 	s.PopulateTypesToImplementationMap()
 	s.Logger.Infof("Pointer analysis state computed, added %d items (%.2f s)\n",
 		s.Size(), time.Since(start).Seconds())
-}
-
-// PopulateGlobals adds global nodes for every global defined in the program's packages
-func (s *State) PopulateGlobals() {
-	for _, pkg := range s.Program.AllPackages() {
-		for _, member := range pkg.Members {
-			glob, ok := member.(*ssa.Global)
-			if ok {
-				s.Globals[glob] = newGlobalNode(glob)
-			}
-		}
-	}
-}
-
-// PopulateGlobalsVerbose is a verbose wrapper around PopulateGlobals
-func (s *State) PopulateGlobalsVerbose() {
-	start := time.Now()
-	s.Logger.Infof("Gathering global variable declaration in the program...")
-	s.PopulateGlobals()
-	s.Logger.Infof("Global gathering terminated, added %d items (%.2f s)",
-		len(s.Globals), time.Since(start).Seconds())
 }
 
 // PopulateBoundingInformation runs the bounding analysis

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"go/types"
 	"sync"
+	"time"
 
 	"golang.org/x/tools/go/ssa"
 )
@@ -69,4 +70,20 @@ func (g *GlobalNode) Type() types.Type {
 // Value returns the ssa value of the node
 func (g *GlobalNode) Value() ssa.Value {
 	return g.value
+}
+
+// PopulateGlobals adds global nodes for every global defined in the program's packages
+func (s *State) PopulateGlobals() {
+	start := time.Now()
+	s.Logger.Infof("Gathering global variable declaration in the program...")
+	for _, pkg := range s.Program.AllPackages() {
+		for _, member := range pkg.Members {
+			glob, ok := member.(*ssa.Global)
+			if ok {
+				s.Globals[glob] = newGlobalNode(glob)
+			}
+		}
+	}
+	s.Logger.Infof("Global gathering terminated, added %d items (%.2f s)",
+		len(s.Globals), time.Since(start).Seconds())
 }

@@ -64,33 +64,33 @@ type IntraAnalysisParams struct {
 // RunIntraProceduralPass runs an intra-procedural analysis pass of program prog in parallel using numRoutines, using the
 // analyzer state. The args specify the intraprocedural analysis parameters.
 // RunIntraProceduralPass updates the summaries stored in the state's FlowGraph
-func RunIntraProceduralPass(ctx context.Context, state *State, numRoutines int, args IntraAnalysisParams) { //argot:ignore df-intra-uses
-	state.Logger.Infof("Starting intra-procedural analysis ...")
+func (s *State) RunIntraProceduralPass(ctx context.Context, numRoutines int, args IntraAnalysisParams) { //argot:ignore df-intra-uses
+	s.Logger.Infof("Starting intra-procedural analysis ...")
 	start := time.Now()
 
-	fg := NewInterProceduralFlowGraph(map[*ssa.Function]*SummaryGraph{}, state)
+	fg := NewInterProceduralFlowGraph(map[*ssa.Function]*SummaryGraph{}, s)
 	numRoutines = numRoutines + 1
 	if numRoutines < 1 {
 		numRoutines = 1
 	}
 
 	var jobs []singleFunctionJob
-	for function := range state.ReachableFunctions() {
+	for function := range s.ReachableFunctions() {
 		jobs = append(jobs, singleFunctionJob{
 			function:      function,
-			analyzerState: state,
+			analyzerState: s,
 			// Summary is built only when it is not on-demand, and the summary should be built
-			shouldBuildSummary: args.ShouldBuildSummary(state, function),
+			shouldBuildSummary: args.ShouldBuildSummary(s, function),
 		})
 	}
 
 	// Start the single function summary building routines
 	results := runJobs(ctx, jobs, numRoutines, args.ShouldTrack)
-	collectResults(results, &fg, state)
+	collectResults(results, &fg, s)
 
-	state.Logger.Infof("Intra-procedural pass done (%.2f s).", time.Since(start).Seconds())
+	s.Logger.Infof("Intra-procedural pass done (%.2f s).", time.Since(start).Seconds())
 
-	state.FlowGraph.InsertSummaries(fg)
+	s.FlowGraph.InsertSummaries(fg)
 }
 
 // runJobs runs the intra-procedural analysis on each job in jobs in parallel and returns a slice with all the results.
@@ -105,11 +105,11 @@ func runJobs(ctx context.Context, jobs []singleFunctionJob, numRoutines int,
 
 // RunInterProcedural runs the inter-procedural analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
-func RunInterProcedural(ctx context.Context, state *State, visitor Visitor, spec ScanningSpec) {
-	state.Logger.Infof("Starting inter-procedural pass...")
+func (s *State) RunInterProcedural(ctx context.Context, visitor Visitor, spec ScanningSpec) {
+	s.Logger.Infof("Starting inter-procedural pass...")
 	start := time.Now()
-	state.FlowGraph.BuildAndRunVisitor(ctx, state, visitor, spec)
-	state.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
+	s.FlowGraph.BuildAndRunVisitor(ctx, s, visitor, spec)
+	s.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
 }
 
 // singleFunctionJob contains all the information necessary to run the intra-procedural analysis on one function.

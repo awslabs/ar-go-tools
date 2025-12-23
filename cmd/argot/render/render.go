@@ -97,7 +97,7 @@ func WriteCrossFunctionGraph(wps *loadprogram.State, w io.Writer) error {
 	}
 
 	ctx := context.Background()
-	dataflow.RunIntraProceduralPass(ctx, flowState, numRoutines, dataflow.IntraAnalysisParams{
+	flowState.RunIntraProceduralPass(ctx, numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 		ShouldTrack:        func(*dataflow.State, ssa.Node) bool { return true }, //argot:ignore df-intra-uses
 	})

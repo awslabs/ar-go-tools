@@ -67,7 +67,7 @@ func Analyze(ctx context.Context, state *df.State, reqs AnalysisReqs) (AnalysisR
 		numRoutines = 1
 	}
 
-	df.RunIntraProceduralPass(ctx, state, numRoutines, df.IntraAnalysisParams{
+	state.RunIntraProceduralPass(ctx, numRoutines, df.IntraAnalysisParams{
 		ShouldBuildSummary: df.ShouldBuildSummary,
 		ShouldTrack: func(state *df.State, n ssa.Node) bool {
 			if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint); ok {
@@ -116,7 +116,7 @@ func runTag(ctx context.Context, state *df.State, reqs AnalysisReqs, ps config.S
 	}
 
 	visitor := NewVisitor(ps)
-	df.RunInterProcedural(ctx, state, visitor, df.ScanningSpec{
+	state.RunInterProcedural(ctx, visitor, df.ScanningSpec{
 		IsEntryPointGraph: func(node df.GraphNode) (config.CodeIdentifier, bool) {
 			if arg, ok := node.(*df.CallNodeArg); ok {
 				callee := arg.ParentNode().Callee()

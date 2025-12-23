@@ -104,14 +104,14 @@ func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
 	specs []dataflow.ScanningSpec,
 ) (SoundnessResult, error) {
-	// Different sub-analyses may have different soundness requirements.
-	// Find all of the unsound features at once and then check them on a per-analysis basis.
-	unsoundCheckFeats := findUnsoundCheckFeatures(s, f, specs)
-
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
 	// This way there is only one summary graph created per *ssa.Function
 	s.FlowGraph.Summaries[f] = g
+
+	// Different sub-analyses may have different soundness requirements.
+	// Find all of the unsound features at once and then check them on a per-analysis basis.
+	unsoundCheckFeats := findUnsoundCheckFeatures(s, f, specs)
 
 	start := time.Now()
 	var unprovenMustNotFlows []flow

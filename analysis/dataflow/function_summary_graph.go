@@ -502,10 +502,17 @@ func (g *SummaryGraph) AddAccessGlobalNode(instr ssa.Instruction, global *Global
 	if _, ok := g.AccessGlobalNodes[instr]; !ok {
 		g.AccessGlobalNodes[instr] = map[ssa.Value]*AccessGlobalNode{}
 	}
+	isWrite := false
+	// Quick check whether this is a write to the global
+	if store, ok := instr.(*ssa.Store); ok {
+		if store.Addr == global.value {
+			isWrite = true
+		}
+	}
 	if _, ok := g.AccessGlobalNodes[instr][global.value]; !ok {
 		node := &AccessGlobalNode{
 			id:      g.newNodeID(),
-			IsWrite: false,
+			IsWrite: isWrite,
 			graph:   g,
 			instr:   instr,
 			Global:  global,

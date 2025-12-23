@@ -418,7 +418,7 @@ func cmdSummarize(o Outputter, sess *Session, command Command, _ bool) bool {
 			return b
 		}
 		ctx := context.Background()
-		dataflow.RunIntraProceduralPass(ctx, c, numRoutines, dataflow.IntraAnalysisParams{
+		c.RunIntraProceduralPass(ctx, numRoutines, dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
 			ShouldTrack: func(state *dataflow.State, node ssa.Node) bool {
 				_, ok := dataflow.IsNodeOfInterest(state, node)
@@ -457,7 +457,7 @@ func cmdSummarize(o Outputter, sess *Session, command Command, _ bool) bool {
 
 		// Run the analysis with the filter.
 		ctx := context.Background()
-		dataflow.RunIntraProceduralPass(ctx, c, numRoutines, dataflow.IntraAnalysisParams{
+		c.RunIntraProceduralPass(ctx, numRoutines, dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
 			ShouldTrack: func(state *dataflow.State, node ssa.Node) bool {
 				_, ok := dataflow.IsNodeOfInterest(state, node)

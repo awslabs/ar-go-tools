@@ -184,6 +184,7 @@ const freeVarPrefix = "!free"
 
 // Parses valid names for parameters
 var validArgNameRegex = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
+var validArgNameAndPosRegex = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*\\s[0-9]+$")
 
 // rawSummary is a summary of flows for a function where the flow nodes still
 // need to be parsed into SummaryNode to form a DetailedSummary.
@@ -387,19 +388,28 @@ func ParseSummaryNode(summary string) (SummaryNode, error) {
 	}
 
 	if strings.HasPrefix(summary, argPrefix) {
-		// should be of the form !arg "name" or !arg index
+		// should be of the form !arg <name> or !arg index or !arg <name index>
 		s := strings.TrimPrefix(summary, argPrefix)
 		if strings.HasPrefix(s, nameDelimLeft) && strings.HasSuffix(s, nameDelimRight) {
 			s = strings.TrimPrefix(s, nameDelimLeft)
 			s = strings.TrimSuffix(s, nameDelimRight)
 			// check that s is a valid name
-			if !validArgNameRegex.MatchString(s) {
-				return nil, fmt.Errorf(
-					"cannot parse %q because %q is not a valid argument name",
-					summary, s,
-				)
+			if validArgNameRegex.MatchString(s) {
+				return ArgumentSNode{Name: s}, nil
 			}
-			return ArgumentSNode{Name: s}, nil
+			if validArgNameAndPosRegex.MatchString(s) {
+				parts := strings.Split(s, " ")
+				i, err := strconv.Atoi(parts[1])
+				if err != nil {
+					return nil, fmt.Errorf("cannot parse %q because %q is not an integer", summary, parts[1])
+				}
+				return ArgumentSNode{Name: parts[0], Index: i}, nil
+			}
+			return nil, fmt.Errorf(
+				"cannot parse %q because %q is not a valid argument name, "+
+					"nor an argument name followed by a valid position",
+				summary, s,
+			)
 		}
 		i, err := strconv.Atoi(s)
 		if err != nil {

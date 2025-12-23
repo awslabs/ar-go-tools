@@ -35,7 +35,7 @@ func BuildCrossFunctionGraph(state *dataflow.State) (*dataflow.State, error) {
 
 	state.Logger.Infof("Building full-program inter-procedural dataflow graph...")
 	start := time.Now()
-	dataflow.RunInterProcedural(context.Background(), state, CrossFunctionGraphVisitor{}, dataflow.ScanningSpec{
+	state.RunInterProcedural(context.Background(), CrossFunctionGraphVisitor{}, dataflow.ScanningSpec{
 		IsEntryPointSsa: func(ssa.Node) (config.CodeIdentifier, bool) { return config.CodeIdentifier{}, true },
 	})
 

@@ -79,7 +79,7 @@ func Analyze(ctx context.Context, state *dataflow.State, reqs AnalysisReqs) (Ana
 	// function being analyzed.
 
 	// Only build summaries for non-stdlib functions here
-	dataflow.RunIntraProceduralPass(ctx, state, numRoutines,
+	state.RunIntraProceduralPass(ctx, numRoutines,
 		dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
 			// For the intra-procedural pass, all source nodes of all problems are marked
@@ -165,7 +165,7 @@ func runSpec(ctx context.Context, state *dataflow.State, reqs AnalysisReqs, tain
 	}
 	state.Logger.Debugf("Options: %+v", state.Config.Options)
 	visitor := NewVisitor(&taintSpec)
-	dataflow.RunInterProcedural(ctx, state, visitor, dataflow.ScanningSpec{
+	state.RunInterProcedural(ctx, visitor, dataflow.ScanningSpec{
 		// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 		IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
 			return dataflow.IsSourceNode(state, &taintSpec, node)

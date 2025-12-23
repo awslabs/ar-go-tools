@@ -183,13 +183,13 @@ func runTarget(
 		return fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
 
+	// Create context with timeout from config
 	ctx := context.Background()
 	if timeout := df.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
 		defer cancel()
 	}
-	// Create context with timeout from config
 
 	results, checkErr := checkSummaries(ctx, df, parsedSummaries, flags.via, specs)
 	// write the report before exiting, even if there was an error in checking summaries
