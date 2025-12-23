@@ -188,11 +188,14 @@ type UnsoundCheckFeatures struct {
 	// We do not support summary nodes for closure-specific inputs/outputs other than bound and free
 	// variables.
 	NonLocalBoundLabelUsages []token.Position
+	// EntryPointUsages records the positions of entry points in the code that would be summarized by the dataflow
+	// summary. This means  a dataflow analysis would potentially miss some entry points.
+	EntryPointUsages []token.Position
 }
 
 func (u UnsoundCheckFeatures) isSound() bool {
 	return len(u.UnsafeUsages) == 0 && len(u.GlobalUsages) == 0 && len(u.ReflectUsages) == 0 &&
-		len(u.NonLocalBoundLabelUsages) == 0
+		len(u.NonLocalBoundLabelUsages) == 0 && len(u.EntryPointUsages) == 0
 }
 
 // UnsoundDataflowFeatures are the specific Go features that the function may use that would make

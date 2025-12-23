@@ -372,7 +372,10 @@ func cmdIntra(o Outputter, sess *Session, command Command, withTest bool) bool {
 		defer cancel()
 	}
 	_, err = dataflow.IntraProceduralAnalysis(ctx, dfs, sess.currentFunction, true, 0,
-		dataflow.IsNodeOfInterest, post)
+		func(state *dataflow.State, node ssa.Node) bool {
+			_, ok := dataflow.IsNodeOfInterest(state, node)
+			return ok
+		}, post)
 	if err != nil {
 		o.WriteErr("Error while analyzing: %v\n", err)
 		return false

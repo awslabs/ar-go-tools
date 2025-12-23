@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -177,7 +178,7 @@ func runTarget(
 				loadprogram.NewState),
 			ptr.NewState),
 		dataflow.NewState).Value()
-
+	specs := getScanningSpecs(df, targetName)
 	if err != nil {
 		return fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
@@ -190,7 +191,7 @@ func runTarget(
 	}
 	// Create context with timeout from config
 
-	results, checkErr := checkSummaries(ctx, df, parsedSummaries, flags.via)
+	results, checkErr := checkSummaries(ctx, df, parsedSummaries, flags.via, specs)
 	// write the report before exiting, even if there was an error in checking summaries
 	if err := report(cfg, results); err != nil {
 		return err
@@ -220,6 +221,7 @@ func report(cfg *config.Config, results []check.SoundnessResult) error {
 func checkSummaries(
 	ctx context.Context, ds *dataflow.State, parsedSummaries []summaries.FrontendDataflowSummary,
 	via check.Method,
+	specs []dataflow.ScanningSpec,
 ) ([]check.SoundnessResult, error) {
 	sr := check.NewState(ds)
 	s := sr.Unwrap()
@@ -233,31 +235,39 @@ func checkSummaries(
 
 	results := make([]check.SoundnessResult, 0, len(parsedSummaries))
 	for _, summary := range parsedSummaries {
-		errs, results = checkOneSummaryWrapper(ctx, summary, logger, via, s, errs, results)
+		errs, results = checkOneSummaryWrapper(ctx, specs, summary, via, s, errs, results)
 	}
 
 	return results, errors.Join(errs...)
 }
 
-func checkOneSummaryWrapper(ctx context.Context, summary summaries.FrontendDataflowSummary, logger *config.LogGroup, via check.Method, s *check.State, errs []error, results []check.SoundnessResult) ([]error, []check.SoundnessResult) {
+func checkOneSummaryWrapper(
+	ctx context.Context,
+	specs []dataflow.ScanningSpec,
+	summary summaries.FrontendDataflowSummary,
+	via check.Method,
+	s *check.State,
+	errs []error,
+	results []check.SoundnessResult,
+) ([]error, []check.SoundnessResult) {
 	targetFunctionName := summary.Name()
-	logger.PushContext(formatutil.Faint(targetFunctionName))
-	defer logger.PopContext()
-	logger.Infof("Checking summary via %v...", via)
-	soundness, err, foundFunc := check.CheckSummary(ctx, s, summary)
+	s.Logger.PushContext(formatutil.Faint(targetFunctionName))
+	defer s.Logger.PopContext()
+	s.Logger.Infof("Checking summary via %v...", via)
+	soundness, err, foundFunc := check.CheckSummary(ctx, s, summary, specs)
 	if !foundFunc {
-		logger.Warnf("Cannot find function %s, so summary will not be used in target (nothing to do).",
+		s.Logger.Warnf("Cannot find function %s, so summary will not be used in target (nothing to do).",
 			summary.Name())
 		return errs, results
 	}
 	if err != nil {
 		// continue checking the rest of the summaries but return all the errors when finished
-		logger.Errorf("failed to check the summary of function %s in %v seconds: %v",
+		s.Logger.Errorf("failed to check the summary of function %s in %v seconds: %v",
 			targetFunctionName, soundness.Time.Seconds(), err)
 		errs = append(errs, err)
 		return errs, results
 	}
-	logger.Infof("Result:\n%s\n", soundness.PrettyString())
+	s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
 	results = append(results, soundness)
 	return errs, results
 }
@@ -268,4 +278,26 @@ func methodsString() string {
 		res = append(res, string(m))
 	}
 	return strings.Join(res, ", ")
+}
+
+// getScanningSpecs returns the scanning specifications for the given configuration and target
+func getScanningSpecs(state *dataflow.State, target string) []dataflow.ScanningSpec {
+	if state == nil {
+		return []dataflow.ScanningSpec{}
+	}
+	scanningSpecs := []dataflow.ScanningSpec{}
+	for _, spec := range state.Config.DataflowProblems.TaintTrackingProblems {
+		if funcutil.Exists(spec.Targets, func(s string) bool { return s == target }) {
+			sc := dataflow.ScanningSpec{
+				// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
+				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+					return dataflow.IsNodeOfInterest(state, node)
+				},
+				MarkCallArgsLikeCall: spec.SourceTaintsArgs,
+			}
+			scanningSpecs = append(scanningSpecs, sc)
+		}
+	}
+	// Default scanning spec
+	return scanningSpecs
 }

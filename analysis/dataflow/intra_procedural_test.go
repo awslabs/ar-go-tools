@@ -49,7 +49,10 @@ func TestFunctionSummaries(t *testing.T) {
 
 	dataflow.RunIntraProceduralPass(context.Background(), state, numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
-		ShouldTrack:        dataflow.IsNodeOfInterest,
+		ShouldTrack: func(state *dataflow.State, node ssa.Node) bool {
+			_, ok := dataflow.IsNodeOfInterest(state, node)
+			return ok
+		},
 	})
 
 	if len(state.FlowGraph.Summaries) == 0 {

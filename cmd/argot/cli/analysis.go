@@ -420,7 +420,10 @@ func cmdSummarize(o Outputter, sess *Session, command Command, _ bool) bool {
 		ctx := context.Background()
 		dataflow.RunIntraProceduralPass(ctx, c, numRoutines, dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			ShouldTrack:        dataflow.IsNodeOfInterest,
+			ShouldTrack: func(state *dataflow.State, node ssa.Node) bool {
+				_, ok := dataflow.IsNodeOfInterest(state, node)
+				return ok
+			},
 		})
 		o.WriteSuccess("%d summaries created, %d built", createCounter, buildCounter)
 	} else {
@@ -456,7 +459,10 @@ func cmdSummarize(o Outputter, sess *Session, command Command, _ bool) bool {
 		ctx := context.Background()
 		dataflow.RunIntraProceduralPass(ctx, c, numRoutines, dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: shouldBuildSummary,
-			ShouldTrack:        dataflow.IsNodeOfInterest,
+			ShouldTrack: func(state *dataflow.State, node ssa.Node) bool {
+				_, ok := dataflow.IsNodeOfInterest(state, node)
+				return ok
+			},
 		})
 		// Insert the summaries, i.e. only updated the summaries that have been computed and do not discard old ones
 

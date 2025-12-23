@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 
@@ -31,13 +32,18 @@ import (
 // according to callgraph cg that make the check analysis unsound.
 //
 // For efficiency, it only returns the first 5 unsound features.
-func findUnsoundCheckFeatures(cg *callgraph.Graph, f *ssa.Function) UnsoundCheckFeatures {
+func findUnsoundCheckFeatures(
+	cg *callgraph.Graph,
+	f *ssa.Function,
+	specs []dataflow.ScanningSpec,
+) UnsoundCheckFeatures {
 	queue := []*callgraph.Node{cg.Nodes[f]}
 	seen := make(map[*callgraph.Node]struct{})
 	seenFunc := make(map[*ssa.Function]struct{})
 	var globals []token.Position
 	var unsafes []token.Position
 	var reflects []token.Position
+	var entrypoints []token.Position
 
 	for len(queue) > 0 {
 		node := queue[0]
@@ -72,14 +78,20 @@ func findUnsoundCheckFeatures(cg *callgraph.Graph, f *ssa.Function) UnsoundCheck
 				if !slices.Contains(unsafes, pos) {
 					reflects = append(unsafes, pos)
 				}
+			} else if isEntrypoint(instr, specs) {
+				pos := prog.Fset.Position(instr.Pos())
+				if !slices.Contains(entrypoints, pos) {
+					entrypoints = append(entrypoints, pos)
+				}
 			}
 		})
 
-		if len(globals)+len(unsafes)+len(reflects) >= 5 {
+		if len(globals)+len(unsafes)+len(reflects)+len(entrypoints) >= 5 {
 			return UnsoundCheckFeatures{
-				GlobalUsages:  globals,
-				UnsafeUsages:  unsafes,
-				ReflectUsages: reflects,
+				GlobalUsages:     globals,
+				UnsafeUsages:     unsafes,
+				ReflectUsages:    reflects,
+				EntryPointUsages: entrypoints,
 			}
 		}
 
@@ -89,9 +101,10 @@ func findUnsoundCheckFeatures(cg *callgraph.Graph, f *ssa.Function) UnsoundCheck
 	}
 
 	return UnsoundCheckFeatures{
-		GlobalUsages:  globals,
-		UnsafeUsages:  unsafes,
-		ReflectUsages: reflects,
+		GlobalUsages:     globals,
+		UnsafeUsages:     unsafes,
+		ReflectUsages:    reflects,
+		EntryPointUsages: entrypoints,
 	}
 }
 
@@ -136,6 +149,19 @@ func isGlobalInstr(instr ssa.Instruction) bool {
 		}
 	}
 
+	return false
+}
+
+func isEntrypoint(instr ssa.Instruction, specs []dataflow.ScanningSpec) bool {
+	instrNode, isNode := instr.(ssa.Node)
+	if !isNode {
+		return false
+	}
+	for _, spec := range specs {
+		if _, ok := spec.IsEntryPointSsa(instrNode); ok {
+			return true
+		}
+	}
 	return false
 }
 

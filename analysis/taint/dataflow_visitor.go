@@ -152,7 +152,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		}
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
-		if df.IsSink(s, v.taintSpec, cur.Node) && cur.Status.Kind == df.DefaultTracing {
+		if _, sin := df.IsSink(s, v.taintSpec, cur.Node); sin && cur.Status.Kind == df.DefaultTracing {
 			// Don't report taint flow if the sink location is annotated with //argot:ignore
 			if s.Annotations.IsIgnoredPos(cur.Node.Position(s), v.taintSpec.Tag) {
 				s.Logger.Infof("//argot:ignore taint flow to %s",
@@ -183,7 +183,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 
 		// If node is sanitizer, we don't want to propagate further
 		// The validators will be checked in the addNext function
-		if df.IsSanitizer(s, v.taintSpec, cur.Node) {
+		if _, san := df.IsSanitizer(s, v.taintSpec, cur.Node); san {
 			logger.Infof("Sanitizer encountered: %s\n", cur.Node.String())
 			logger.Infof("At: %s\n", cur.Node.Position(s))
 			continue

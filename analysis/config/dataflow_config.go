@@ -42,6 +42,10 @@ type DataflowProblems struct {
 	// If 0 (default), no timeout is applied.
 	IntraTimeoutMs int `xml:"intra-timeout-ms,attr" yaml:"intra-timeout-ms" json:"intra-timeout-ms"`
 
+	// CheckIgnoresUnsound lets the checking algorithm ignore when the functions being checked have feature that may
+	// make the check unsound.
+	CheckIgnoresUnsound bool `xml:"check-ignores-unsound,attr" yaml:"check-ignores-unsound" json:"check-ignores-unsound"`
+
 	// UserSpecs is a path to a json file that contains the data flows specs for the interfaces in the dataflow
 	// analyses
 	UserSpecs []string `yaml:"user-specs" json:"user-specs"`

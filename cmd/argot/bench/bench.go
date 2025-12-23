@@ -170,7 +170,10 @@ func runBenchDemand(state *dataflow.State) []funcReport {
 				return false
 			},
 			// For the intra-procedural pass, all source nodes of all problems are marked
-			ShouldTrack: dataflow.IsNodeOfInterest,
+			ShouldTrack: func(state *dataflow.State, node ssa.Node) bool {
+				_, ok := dataflow.IsNodeOfInterest(state, node)
+				return ok
+			},
 		})
 
 	var res []funcReport
@@ -289,7 +292,12 @@ func summarize(state *dataflow.State, f *ssa.Function) incompleteFuncReport {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Millisecond)
 	defer cancel()
 	intra, err := dataflow.IntraProceduralAnalysis(
-		ctx, state, f, true, dataflow.GetUniqueFunctionID(), dataflow.IsNodeOfInterest, nil)
+		ctx, state, f, true, dataflow.GetUniqueFunctionID(),
+		func(state *dataflow.State, node ssa.Node) bool {
+			_, ok := dataflow.IsNodeOfInterest(state, node)
+			return ok
+		},
+		nil)
 	timedOut := errors.Is(err, context.DeadlineExceeded)
 	if err != nil && !timedOut {
 		panic(fmt.Errorf("failed to summarize function %s: %v", f.String(), err))

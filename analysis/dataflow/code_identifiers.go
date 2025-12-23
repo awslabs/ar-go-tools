@@ -33,18 +33,18 @@ import (
 // - reading from struct fields that are marked as sources.
 // - reading from channels marked as source
 // - writing in struct fields that are marked as sinks.
-func IsNodeOfInterest(state *State, n ssa.Node) bool {
-	if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource); ok {
-		return true
+func IsNodeOfInterest(state *State, n ssa.Node) (config.CodeIdentifier, bool) {
+	if cid, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSource); ok {
+		return cid, true
 	}
-	if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSink); ok {
-		return true
+	if cid, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeSink); ok {
+		return cid, true
 	}
-	if _, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint); ok {
-		return true
+	if cid, ok := analysisutil.IsEntrypointNode(state.PointerAnalysis, n, state.Config.IsSomeBacktracePoint); ok {
+		return cid, true
 	}
-
-	return state.ResolveSsaNode(annotations.Source, "_", n) || state.ResolveSsaNode(annotations.Sink, "_", n)
+	// If we're looking for annotations we don't have code identifiers.
+	return config.CodeIdentifier{}, state.ResolveSsaNode(annotations.Source, "_", n) || state.ResolveSsaNode(annotations.Sink, "_", n)
 }
 
 // IsSourceNode returns true if n matches the code identifier of a source node in the taint specification.
@@ -90,13 +90,15 @@ func IsBacktraceNode(state *State, ss *config.SlicingSpec, n ssa.Node) (config.C
 }
 
 // IsSink returns true if the taint spec identifies n as a sink.
-func IsSink(state *State, ts *config.TaintSpec, n GraphNode) bool {
-	return isMatchingCodeID(ts.IsSink, n) || state.ResolveGraphNode(annotations.Sink, ts.Tag, n)
+func IsSink(state *State, ts *config.TaintSpec, n GraphNode) (config.CodeIdentifier, bool) {
+	cid, ok := isMatchingCodeID(ts.IsSink, n)
+	return cid, ok || state.ResolveGraphNode(annotations.Sink, ts.Tag, n)
 }
 
 // IsSanitizer returns true if the taint spec identified n as a sanitizer.
-func IsSanitizer(state *State, ts *config.TaintSpec, n GraphNode) bool {
-	return isMatchingCodeID(ts.IsSanitizer, n) || state.ResolveGraphNode(annotations.Sanitizer, ts.Tag, n)
+func IsSanitizer(state *State, ts *config.TaintSpec, n GraphNode) (config.CodeIdentifier, bool) {
+	cid, ok := isMatchingCodeID(ts.IsSanitizer, n)
+	return cid, ok || state.ResolveGraphNode(annotations.Sanitizer, ts.Tag, n)
 }
 
 // IsValidatorCondition checks whether v is a validator condition according to the validators stored in the taint
@@ -106,7 +108,8 @@ func IsValidatorCondition(ts *config.TaintSpec, v ssa.Value, isPositive bool) bo
 	switch val := v.(type) {
 	// Direct boolean check?
 	case *ssa.Call:
-		return isPositive && IsMatchingCodeIDWithCallee(ts.IsValidator, nil, val)
+		_, matching := IsMatchingCodeIDWithCallee(ts.IsValidator, nil, val)
+		return isPositive && matching
 	// Nil error check?
 	case *ssa.BinOp:
 		vNilChecked, isEqCheck := lang.MatchNilCheck(val)
@@ -161,43 +164,41 @@ func IsFilteredType(ts *config.TaintSpec, t types.Type) bool {
 	return false
 }
 
-func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n GraphNode) bool {
+func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n GraphNode) (config.CodeIdentifier, bool) {
 	switch n := n.(type) {
 	case *ParamNode, *FreeVarNode:
 		// A these nodes are never a sink; the sink will be identified at the call site, not the callee definition.
-		return false
+		return config.CodeIdentifier{}, false
 	case *CallNodeArg:
 		// A call node argument is a sink if the callee is a sink
-		if isMatchingCodeID(codeIDOracle, n.ParentNode()) {
-			return true
+		if c, ok := isMatchingCodeID(codeIDOracle, n.ParentNode()); ok {
+			return c, true
 		}
 
 		// The matching parameter node could be a sink
 		callSite := n.ParentNode()
 		if callSite == nil {
-			return false
+			return config.CodeIdentifier{}, false
 		}
 		if callSite.CalleeSummary == nil {
-			return false
+			return config.CodeIdentifier{}, false
 		}
 		param := callSite.CalleeSummary.Parent.Params[n.Index()]
 		if param == nil {
-			return false
+			return config.CodeIdentifier{}, false
 		}
 		return IsMatchingCodeIDWithCallee(codeIDOracle, callSite.CalleeSummary.Parent, param.Parent())
 	case *CallNode:
 		return IsMatchingCodeIDWithCallee(codeIDOracle, n.Callee(), n.CallSite().(ssa.Node))
 	case *BuiltinCallNode:
-		return codeIDOracle(config.CodeIdentifier{Context: n.parent.Parent.String(), Method: n.name})
+		cid := config.CodeIdentifier{Context: n.parent.Parent.String(), Method: n.name}
+		return cid, codeIDOracle(cid)
 	case *SyntheticNode:
-		if _, ok := analysisutil.IsEntrypointNode(nil, n.Instr().(ssa.Node), codeIDOracle); ok {
-			return true
-		}
-		return false
+		return analysisutil.IsEntrypointNode(nil, n.Instr().(ssa.Node), codeIDOracle)
 	case *ReturnValNode, *ClosureNode, *BoundVarNode:
-		return false
+		return config.CodeIdentifier{}, false
 	default:
-		return false
+		return config.CodeIdentifier{}, false
 	}
 }
 
@@ -205,9 +206,13 @@ func isMatchingCodeID(codeIDOracle func(config.CodeIdentifier) bool, n GraphNode
 // n in the context where callee is the callee.
 //
 //gocyclo:ignore
-func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, callee *ssa.Function, n ssa.Node) bool {
+func IsMatchingCodeIDWithCallee(
+	codeIDOracle func(config.CodeIdentifier) bool,
+	callee *ssa.Function,
+	n ssa.Node,
+) (config.CodeIdentifier, bool) {
 	if n == nil {
-		return false
+		return config.CodeIdentifier{}, false
 	}
 	switch node := (n).(type) {
 	// Look for callees to functions that are considered sinks
@@ -215,7 +220,7 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 		// This condition should always be true
 		callNode, ok := node.(ssa.CallInstruction)
 		if !ok || node == nil || callNode == nil {
-			return false
+			return config.CodeIdentifier{}, false
 		}
 		callCommon := callNode.Common()
 		// Handling interfaces
@@ -236,7 +241,7 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 					Receiver:   receiverType,
 					ValueMatch: n.String(),
 				}
-				return codeIDOracle(cid)
+				return cid, codeIDOracle(cid)
 			}
 			if callee != nil {
 				pkgName := lang.PkgPathFromFunction(callee)
@@ -247,9 +252,9 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 					Receiver:   receiverType,
 					ValueMatch: n.String(),
 				}
-				return codeIDOracle(cid)
+				return cid, codeIDOracle(cid)
 			}
-			return false
+			return config.CodeIdentifier{}, false
 		}
 
 		funcName := callCommon.Value.Name()
@@ -268,10 +273,10 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 				Receiver:   receiverType,
 				ValueMatch: n.String(),
 			}
-			return codeIDOracle(cid)
+			return cid, codeIDOracle(cid)
 		}
 		if callee == nil {
-			return false
+			return config.CodeIdentifier{}, false
 		}
 		pkgName := lang.PkgPathFromFunction(callee)
 		cid := config.CodeIdentifier{
@@ -281,16 +286,17 @@ func IsMatchingCodeIDWithCallee(codeIDOracle func(config.CodeIdentifier) bool, c
 			Receiver:   receiverType,
 			ValueMatch: n.String(),
 		}
-		return codeIDOracle(cid)
+		return cid, codeIDOracle(cid)
 
 	case *ssa.Function:
-		return codeIDOracle(config.CodeIdentifier{
+		cid := config.CodeIdentifier{
 			Package:    lang.PkgPathFromFunction(node),
 			Method:     node.Name(),
 			ValueMatch: n.String(),
-		})
+		}
+		return cid, codeIDOracle(cid)
 	// We will likely extend the functionality to other types of sanitizers
 	default:
-		return false
+		return config.CodeIdentifier{}, false
 	}
 }

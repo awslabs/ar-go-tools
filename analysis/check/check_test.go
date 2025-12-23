@@ -32,6 +32,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"github.com/awslabs/ar-go-tools/internal/funcutil/result"
+	"golang.org/x/tools/go/ssa"
 )
 
 //go:embed testdata
@@ -1231,6 +1232,43 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 			},
 		},
+		{
+			// sinkCaller is unsound because it's calling a sink function
+			// another solution would be to allow the user to promote the summarized function to a sink
+			pkg:  pkg,
+			name: "sinkCaller",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".sinkCaller",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+				},
+				IsSound: false,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.General,
+				CalleeResults: nil,
+			},
+		},
+		{
+			// sourceCaller is unsound because it's calling a source function
+			pkg:  pkg,
+			name: "sourceCaller",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Fn: pkg + ".sourceCaller",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+				},
+				IsSound: false,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.General,
+				CalleeResults: nil,
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -1611,7 +1649,14 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 			t.Log(got)
 		}
 	}()
-	got, err, _ = check.CheckSummary(ctx, state, summary)
+	specs := []dataflow.ScanningSpec{
+		{
+			IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+				return dataflow.IsNodeOfInterest(state.State, node)
+			},
+		},
+	}
+	got, err, _ = check.CheckSummary(ctx, state, summary, specs)
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
 	}

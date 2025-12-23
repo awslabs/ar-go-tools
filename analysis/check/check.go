@@ -76,7 +76,10 @@ func NewState(s *dataflow.State) result.Result[State] {
 // If it is not found nor reachable, checking soundness is meaningless: the summary is not a threat to the soundness
 // of the dataflow analysis since it will not be used in the same context by the dataflow analysis.
 func CheckSummary(
-	ctx context.Context, s *State, want summaries.FrontendDataflowSummary,
+	ctx context.Context,
+	s *State,
+	want summaries.FrontendDataflowSummary,
+	specs []dataflow.ScanningSpec,
 ) (SoundnessResult, error, bool) {
 	f, err := functionOfName(s, want.Name())
 	if err != nil {
@@ -84,14 +87,11 @@ func CheckSummary(
 			fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err), false
 	}
 
-	res, err := checkSummary(ctx, s, f, want.Summary())
+	res, err := checkSummary(ctx, s, f, want.Summary(), specs)
 	return res, err, true
 }
 
 var errInfer = errors.New("failed to infer callee summaries")
-
-// continueIfUnsound lets the analysis continue even if there is unsoundness.
-const continueIfUnsound = true
 
 // checkSummary checks the soundness of the given data flow summary for f in want.
 //
@@ -102,10 +102,11 @@ const continueIfUnsound = true
 // Each method removes more must-not-flows, which makes the next task easier.
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
+	specs []dataflow.ScanningSpec,
 ) (SoundnessResult, error) {
 	// Different sub-analyses may have different soundness requirements.
 	// Find all of the unsound features at once and then check them on a per-analysis basis.
-	unsoundCheckFeats := findUnsoundCheckFeatures(s.PointerAnalysis.CallGraph, f)
+	unsoundCheckFeats := findUnsoundCheckFeatures(s.PointerAnalysis.CallGraph, f, specs)
 
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
@@ -125,7 +126,7 @@ func checkSummary(
 			if len(unsoundCheckFeats.GlobalUsages) > 0 {
 				s.Logger.Warnf(
 					"most-general summary is unsound: detected global use in function %s\n", f)
-				if !continueIfUnsound {
+				if !s.Config.CheckIgnoresUnsound {
 					return SoundnessResult{
 						Fn:            f.RelString(nil),
 						Want:          want,
@@ -144,7 +145,7 @@ func checkSummary(
 			if len(unsoundCheckFeats.UnsafeUsages) > 0 {
 				s.Logger.Warnf(
 					"types analysis is unsound: detected unsafe use in function %s\n", f)
-				if !continueIfUnsound {
+				if !s.Config.CheckIgnoresUnsound {
 					return SoundnessResult{
 						Fn:      f.RelString(nil),
 						Want:    want,
@@ -166,7 +167,7 @@ func checkSummary(
 			if len(unsoundCheckFeats.ReflectUsages) > 0 {
 				s.Logger.Warnf(
 					"immutability analysis is unsound: detected reflection use in function %s\n", f)
-				if !continueIfUnsound {
+				if !s.Config.CheckIgnoresUnsound {
 					return SoundnessResult{
 						Fn:      f.RelString(nil),
 						Want:    want,
@@ -260,7 +261,7 @@ func checkSummary(
 			// Recursively check the soundness of the callee's inferred summary
 			s.Logger.Tracef(
 				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
-			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm)
+			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm, specs)
 			if err != nil {
 				s.Logger.Errorf("failed to check callee summary: %v", err)
 				if errors.Is(err, errInfer) {

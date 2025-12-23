@@ -83,7 +83,10 @@ func Analyze(ctx context.Context, state *dataflow.State, reqs AnalysisReqs) (Ana
 		dataflow.IntraAnalysisParams{
 			ShouldBuildSummary: dataflow.ShouldBuildSummary,
 			// For the intra-procedural pass, all source nodes of all problems are marked
-			ShouldTrack: dataflow.IsNodeOfInterest,
+			ShouldTrack: func(state *dataflow.State, node ssa.Node) bool {
+				_, ok := dataflow.IsNodeOfInterest(state, node)
+				return ok
+			},
 		})
 
 	// ** Third step **

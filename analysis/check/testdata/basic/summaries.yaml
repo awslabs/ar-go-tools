@@ -23,3 +23,11 @@ dataflow-summaries:
   - package: "command-line-arguments"
     function: "singleArgInterGlobal"
     flows: []
+  - package: "command-line-arguments"
+    function: "sourceCaller"
+    flows: [] # This is bad! Source caller calls source
+  - package: "command-line-arguments"
+    function: "sinkCaller"
+    flows:
+      - from: "!arg <x>"
+        to: "!arg <x>"

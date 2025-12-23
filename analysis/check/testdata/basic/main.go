@@ -16,7 +16,15 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
+	"strconv"
 )
+
+func Source() string {
+	return "Hello " + strconv.Itoa(rand.Intn(100)) + " world!"
+}
+
+func Sink(_ string) {}
 
 func singleArgIntraOut(x int) int {
 	return x
@@ -365,6 +373,24 @@ func testNestedClosuresInvalid() {
 	fmt.Println("testNestedClosuresInvalid", *res) // 3
 }
 
+func sourceCaller() string {
+	return Source()
+}
+
+func testSummarizeSourceCallerUnsound() {
+	s := sourceCaller()
+	Sink(s)
+}
+
+func sinkCaller(x string) {
+	Sink(x)
+}
+
+func testSummarizeSinkCallerUnsound() {
+	s := sourceCaller()
+	sinkCaller(s)
+}
+
 func main() {
 	testSingleArgIntraOut()
 	testSingleArgInterNone()
@@ -388,4 +414,6 @@ func main() {
 	testClosureShared()
 	testNoFlowClosure()
 	testNestedClosuresInvalid()
+	testSummarizeSourceCallerUnsound()
+	testSummarizeSinkCallerUnsound()
 }
