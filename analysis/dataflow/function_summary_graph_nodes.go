@@ -831,7 +831,7 @@ func (a *ClosureNode) IsReachable(s *State) bool {
 	if a == nil || a.instr == nil {
 		return false
 	}
-	// Documentation of ssa.MakeClosure guarantees the Fn is a function
+	// Documentation of ssa.MakeClosure guarantees the Name is a function
 	return s.IsReachableFunction(a.instr.Fn.(*ssa.Function))
 }
 

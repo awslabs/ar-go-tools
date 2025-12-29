@@ -267,6 +267,7 @@ func checkOneSummaryWrapper(
 		errs = append(errs, err)
 		return errs, results
 	}
+	s.Logger.Infof("Location: %s\n", s.Program.Fset.Position(soundness.Fn.Pos()))
 	s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
 	results = append(results, soundness)
 	return errs, results

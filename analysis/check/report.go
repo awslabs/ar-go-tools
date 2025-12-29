@@ -33,8 +33,9 @@ import (
 
 // SoundnessResult is the result of checking the soundness of a single data flow summary.
 type SoundnessResult struct {
-	// Fn is the qualified name of the summarized function.
-	Fn string
+	Fn *ssa.Function
+	// Name is the qualified name of the summarized function.
+	Name string
 	// Want is the summary being checked.
 	Want summaries.DetailedSummary
 	// IsSound is true if there is no unsoundness.
@@ -54,7 +55,7 @@ type SoundnessResult struct {
 func (r SoundnessResult) String() string {
 	b, err := r.MarshalJSON()
 	if err != nil {
-		panic(fmt.Errorf("failed to marshal soundness result for function %s to JSON: %v", r.Fn, err))
+		panic(fmt.Errorf("failed to marshal soundness result for function %s to JSON: %v", r.Name, err))
 	}
 
 	return string(b)
@@ -64,10 +65,10 @@ func (r SoundnessResult) PrettyString() string {
 	s := strings.Builder{}
 	if r.IsSound {
 		s.WriteString(fmt.Sprintf("%s: %s\n",
-			formatutil.BgBlue(r.Fn), formatutil.BgGreen(" sound ")))
+			formatutil.BgBlue(r.Name), formatutil.BgGreen(" sound ")))
 	} else {
 		s.WriteString(fmt.Sprintf("%s: %s\n",
-			formatutil.BgBlue(r.Fn), formatutil.BgRed(" unsound ")))
+			formatutil.BgBlue(r.Name), formatutil.BgRed(" unsound ")))
 	}
 	s.WriteString(fmt.Sprintf("  Method: %s\n", r.Method))
 	s.WriteString("  Checked summary:\n")
@@ -257,7 +258,7 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 	}
 
 	return rawSoundnessResult{
-		Func:    r.Fn,
+		Func:    r.Name,
 		Want:    rawFlows(r.Want.Flows),
 		IsSound: r.IsSound,
 		Unsoundness: rawUnsoundness{

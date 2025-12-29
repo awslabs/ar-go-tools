@@ -57,7 +57,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgIntraOut",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".singleArgIntraOut",
+				Name: pkg + ".singleArgIntraOut",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -78,7 +78,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgInterNone",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn:      pkg + ".singleArgInterNone",
+				Name:    pkg + ".singleArgInterNone",
 				IsSound: true,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
@@ -93,7 +93,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn:      pkg + ".noop",
+							Name:    pkg + ".noop",
 							Want:    summaries.DetailedSummary{},
 							IsSound: true,
 							Unsoundness: check.Unsoundness{
@@ -117,7 +117,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "twoArgIntraInout",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".twoArgIntraInout",
+				Name: pkg + ".twoArgIntraInout",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -243,7 +243,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "twoArgInterInout",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".twoArgInterInout",
+				Name: pkg + ".twoArgInterInout",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -260,7 +260,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".setmem",
+							Name: pkg + ".setmem",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "src", Index: 1}: {
@@ -284,7 +284,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgIntraGlobal",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".singleArgIntraGlobal",
+				Name: pkg + ".singleArgIntraGlobal",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -305,7 +305,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgInterGlobal",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".singleArgInterGlobal",
+				Name: pkg + ".singleArgInterGlobal",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -326,7 +326,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "twoArgInterBool",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".twoArgInterBool",
+				Name: pkg + ".twoArgInterBool",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -350,7 +350,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "twoArgInter",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".twoArgInter",
+				Name: pkg + ".twoArgInter",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -374,7 +374,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "threeArgInter",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".threeArgInter",
+				Name: pkg + ".threeArgInter",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 1}: {
@@ -419,7 +419,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".add2",
+							Name: pkg + ".add2",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -460,7 +460,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "threeArgInterDiffCallees",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn:      pkg + ".threeArgInterDiffCallees",
+				Name:    pkg + ".threeArgInterDiffCallees",
 				IsSound: false,
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
@@ -505,7 +505,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".add1",
+							Name: pkg + ".add1",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -530,7 +530,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 					},
 					{
 						{
-							Fn: pkg + ".add2",
+							Name: pkg + ".add2",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -561,7 +561,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "propagateFields",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".propagateFields",
+				Name: pkg + ".propagateFields",
 				// NOTE This summary is deliberately incorrect:
 				// If src cannot flow to dst, then no parameter of addVals can flow to its return.
 				Want: summaries.DetailedSummary{
@@ -584,7 +584,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".addVals",
+							Name: pkg + ".addVals",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -620,7 +620,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "propagateFields",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".propagateFields",
+				Name: pkg + ".propagateFields",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "src", Index: 0}: {
@@ -636,7 +636,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".addVals",
+							Name: pkg + ".addVals",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -665,7 +665,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "sharedMutation",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".sharedMutation",
+				Name: pkg + ".sharedMutation",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 0}: {
@@ -706,7 +706,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".modify",
+							Name: pkg + ".modify",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "val", Index: 0}: {
@@ -738,7 +738,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "storePtr",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".storePtr",
+				Name: pkg + ".storePtr",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -762,7 +762,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "aliasNoop",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".aliasNoop",
+				Name: pkg + ".aliasNoop",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
@@ -779,7 +779,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "alias",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".alias",
+				Name: pkg + ".alias",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "y", Index: 1}: {
@@ -812,7 +812,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "writeStructPtr",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".writeStructPtr",
+				Name: pkg + ".writeStructPtr",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "y", Index: 1}: {
@@ -844,7 +844,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "writeToClosed",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".writeToClosed",
+				Name: pkg + ".writeToClosed",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -865,7 +865,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".writeToClosed$1",
+							Name: pkg + ".writeToClosed$1",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.FreeVarSNode{Name: "x"}: {
@@ -892,7 +892,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 							CalleeResults: nil,
 						},
 						{
-							Fn: pkg + ".writeToClosed$1",
+							Name: pkg + ".writeToClosed$1",
 							Want: summaries.DetailedSummary{
 								// NOTE This second inferred summary is fine because it does not
 								// include a flow from x to the closure's return, which means y
@@ -934,7 +934,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "nestedClosures",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".nestedClosures",
+				Name: pkg + ".nestedClosures",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -953,7 +953,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".nestedClosures$1",
+							Name: pkg + ".nestedClosures$1",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "z", Index: 0}: {
@@ -973,7 +973,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 							CalleeResults: [][]check.SoundnessResult{
 								{
 									{
-										Fn: pkg + ".nestedClosures$1$1",
+										Name: pkg + ".nestedClosures$1$1",
 										Want: summaries.DetailedSummary{
 											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 												summaries.FreeVarSNode{Name: "z"}: {
@@ -1000,7 +1000,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "closureShared",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".closureShared",
+				Name: pkg + ".closureShared",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -1025,7 +1025,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".closureShared$1",
+							Name: pkg + ".closureShared$1",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.FreeVarSNode{Name: "x"}: {
@@ -1053,7 +1053,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 					},
 					{
 						{
-							Fn: pkg + ".closureShared$2",
+							Name: pkg + ".closureShared$2",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.FreeVarSNode{Name: "y"}: {
@@ -1077,7 +1077,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "noFlowClosure",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".noFlowClosure",
+				Name: pkg + ".noFlowClosure",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
@@ -1103,7 +1103,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "noFlowClosure",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".noFlowClosure",
+				Name: pkg + ".noFlowClosure",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -1119,7 +1119,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn: pkg + ".noFlowClosure$1",
+							Name: pkg + ".noFlowClosure$1",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 							},
@@ -1139,7 +1139,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "nestedClosuresInvalid",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".nestedClosuresInvalid",
+				Name: pkg + ".nestedClosuresInvalid",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -1168,7 +1168,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Fn:      pkg + ".nestedClosuresInvalid$1",
+							Name:    pkg + ".nestedClosuresInvalid$1",
 							IsSound: false,
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
@@ -1197,7 +1197,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 							CalleeResults: [][]check.SoundnessResult{
 								{
 									{
-										Fn: pkg + ".nestedClosuresInvalid$1$1",
+										Name: pkg + ".nestedClosuresInvalid$1$1",
 										Want: summaries.DetailedSummary{
 											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 												summaries.FreeVarSNode{Name: "x"}: {
@@ -1239,7 +1239,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "sinkCaller",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".sinkCaller",
+				Name: pkg + ".sinkCaller",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
@@ -1257,7 +1257,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "sourceCaller",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: pkg + ".sourceCaller",
+				Name: pkg + ".sourceCaller",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
@@ -1295,7 +1295,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 			name: "Sum",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: "crypto/md5.Sum",
+				Name: "crypto/md5.Sum",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "data", Index: 0}: {
@@ -1305,7 +1305,8 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				},
 				// NOTE The most-general summary for function (*md5.digest).Write is unsound because
 				// it accesses a global.
-				IsSound: false,
+				// NOTE: but that global is only written in init, so we consider the most-general summary sound.
+				IsSound: true,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -1319,7 +1320,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 			name: "Ints",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: "sort.Ints",
+				Name: "sort.Ints",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
@@ -1337,7 +1338,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 			name: "Marshal",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Fn: "encoding/json.Marshal",
+				Name: "encoding/json.Marshal",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "v", Index: 0}: {
@@ -1372,7 +1373,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// CalleeResults: [][]check.SoundnessResult{
 				// 	{
 				// 		{
-				// 			Fn: "encoding/json.newEncodeState",
+				// 			Name: "encoding/json.newEncodeState",
 				// 			Want: summaries.DetailedSummary{
 				// 				Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				// 			},
@@ -1386,7 +1387,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 	},
 				// 	{
 				// 		{
-				// 			Fn: "(*sync.Pool).Put",
+				// 			Name: "(*sync.Pool).Put",
 				// 			Want: summaries.DetailedSummary{
 				// 				Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				// 					summaries.ArgumentSNode{Name: "x", Index: 0}: {
@@ -1407,7 +1408,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 	},
 				// 	{
 				// 		{
-				// 			Fn: "(*bytes.Buffer).Bytes",
+				// 			Name: "(*bytes.Buffer).Bytes",
 				// 			Want: summaries.DetailedSummary{
 				// 				Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				// 					summaries.ReceiverSNode{}: {
@@ -1425,7 +1426,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 	},
 				// 	{
 				// 		{
-				// 			Fn: "(*encoding/json.encodeState).marshal",
+				// 			Name: "(*encoding/json.encodeState).marshal",
 				// 			Want: summaries.DetailedSummary{
 				// 				Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				// 					summaries.ArgumentSNode{Name: "opts", Index: 1}: {
@@ -1447,7 +1448,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 			CalleeResults: [][]check.SoundnessResult{
 				// 				{
 				// 					{
-				// 						Fn: "(*encoding/json.encodeState).marshal$1",
+				// 						Name: "(*encoding/json.encodeState).marshal$1",
 				// 						Want: summaries.DetailedSummary{
 				// 							Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				// 						},
@@ -1461,7 +1462,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 				},
 				// 				{
 				// 					{
-				// 						Fn: "reflect.ValueOf",
+				// 						Name: "reflect.ValueOf",
 				// 						Want: summaries.DetailedSummary{
 				// 							Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				// 								summaries.ArgumentSNode{Name: "i", Index: 0}: {
@@ -1479,7 +1480,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 				},
 				// 				{
 				// 					{
-				// 						Fn: "(*encoding/json.encodeState).reflectValue",
+				// 						Name: "(*encoding/json.encodeState).reflectValue",
 				// 						Want: summaries.DetailedSummary{
 				// 							Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				// 								summaries.ArgumentSNode{Name: "opts", Index: 1}: {
@@ -1501,7 +1502,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 			},
 				// 		},
 				// 		{
-				// 			Fn: "(*encoding/json.encodeState).marshal",
+				// 			Name: "(*encoding/json.encodeState).marshal",
 				// 			Want: summaries.DetailedSummary{
 				// 				Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				// 					summaries.ArgumentSNode{Name: "opts", Index: 1}: {
@@ -1525,7 +1526,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 			CalleeResults: [][]check.SoundnessResult{
 				// 				{
 				// 					{
-				// 						Fn: "(*encoding/json.encodeState).marshal$1",
+				// 						Name: "(*encoding/json.encodeState).marshal$1",
 				// 						Want: summaries.DetailedSummary{
 				// 							Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				// 						},
@@ -1539,7 +1540,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 				},
 				// 				{
 				// 					{
-				// 						Fn: "reflect.ValueOf",
+				// 						Name: "reflect.ValueOf",
 				// 						Want: summaries.DetailedSummary{
 				// 							Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				// 								summaries.ArgumentSNode{Name: "i", Index: 0}: {
@@ -1557,7 +1558,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 				},
 				// 				{
 				// 					{
-				// 						Fn: "(*encoding/json.encodeState).reflectValue",
+				// 						Name: "(*encoding/json.encodeState).reflectValue",
 				// 						Want: summaries.DetailedSummary{
 				// 							Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 				// 								summaries.ArgumentSNode{Name: "opts", Index: 1}: {
@@ -1667,21 +1668,21 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 func checkResult(t *testing.T, want, got check.SoundnessResult) {
 	t.Helper()
 
-	if want.Fn != got.Fn {
+	if want.Name != got.Name {
 		// This is an invariant that should be maintained by the test so panic instead of t.Fatal.
-		panic(fmt.Errorf("function name mismatch: want %s, got %s", want.Fn, got.Fn))
+		panic(fmt.Errorf("function name mismatch: want %s, got %s", want.Name, got.Name))
 	}
 
 	if want.Want.String() != got.Want.String() {
 		t.Errorf(
-			"want summary mismatch for function %s: got %s, want %s", want.Fn, want.Want, got.Want)
+			"want summary mismatch for function %s: got %s, want %s", want.Name, want.Want, got.Want)
 		return
 	}
 
 	if want.IsSound != got.IsSound {
 		t.Errorf(
 			"soundness mismatch for function %s: want %v, got %v\n",
-			want.Fn, want.IsSound, got.IsSound)
+			want.Name, want.IsSound, got.IsSound)
 		return
 	}
 
@@ -1691,25 +1692,25 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 	slices.SortFunc(want.Unsoundness.UnprovenMustNotFlows, cmpFlow)
 	slices.SortFunc(got.Unsoundness.UnprovenMustNotFlows, cmpFlow)
 	if !slices.Equal(want.Unsoundness.UnprovenMustNotFlows, got.Unsoundness.UnprovenMustNotFlows) {
-		t.Errorf("unproven must-not-flows mismatch for function %s", want.Fn)
+		t.Errorf("unproven must-not-flows mismatch for function %s", want.Name)
 		return
 	}
 
 	if want.Method != got.Method {
 		t.Errorf(
-			"method mismatch for function %s: want %v, got %v\n", want.Fn, want.Method, got.Method)
+			"method mismatch for function %s: want %v, got %v\n", want.Name, want.Method, got.Method)
 		return
 	}
 
 	if len(want.CalleeResults) != len(got.CalleeResults) {
-		t.Errorf("callee results length mismatch for function %s", want.Fn)
+		t.Errorf("callee results length mismatch for function %s", want.Name)
 		return
 	}
 	for _, wResults := range want.CalleeResults {
 		matchFunc := false
-		wFunc := wResults[0].Fn
+		wFunc := wResults[0].Name
 		for _, gResults := range got.CalleeResults {
-			gFunc := gResults[0].Fn
+			gFunc := gResults[0].Name
 			if wFunc != gFunc {
 				continue
 			}
@@ -1748,5 +1749,6 @@ func setupConfig(lp *loadprogram.State) {
 	cfg.Options.ReportPaths = false // change this as needed for debugging
 	cfg.Options.ReportSummaries = false
 	cfg.Options.ReportsDir = ""
+	cfg.CheckIgnoresUnsound = false
 	cfg.LogLevel = int(level)
 }

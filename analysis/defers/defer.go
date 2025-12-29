@@ -243,7 +243,7 @@ func AnalyzeFunction(fn *ssa.Function, l *config.LogGroup) Results {
 
 	// if l.LogsTrace() && len(runDeferSets) > 0 {
 	// 	l.Tracef("--- Defer analysis trace ---")
-	// 	l.Tracef("Fn: %s (%v)\n", formatutil.Sanitize(fn.Name()), fn.Prog.Fset.PositionFor(fn.Pos(), false))
+	// 	l.Tracef("Name: %s (%v)\n", formatutil.Sanitize(fn.Name()), fn.Prog.Fset.PositionFor(fn.Pos(), false))
 	// 	for ins, stacks := range runDeferSets {
 	// 		l.Tracef("Ins: %v (block %d), sets: %v\n", ins, ins.Block().Index, stacks)
 	// 		l.Tracef("$sets %d\n", len(stacks))
