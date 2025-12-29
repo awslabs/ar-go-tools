@@ -105,10 +105,10 @@ func IsStdFunction(function *ssa.Function) bool {
 	return ok || strings.HasPrefix(pkgName, "runtime")
 }
 
-// IsSummaryRequired returns true if the summary of function is needed to build a sound analysis.
+// IsAnalysisRequired returns true if the true summary of function is needed to build a sound analysis.
 // For example, sync.Once.Do needs to be summarized because its argument will be called only inside the function,
 // and therefore, it cannot be stubbed out.
-func IsSummaryRequired(function *ssa.Function) bool {
+func IsAnalysisRequired(function *ssa.Function) bool {
 	if function == nil {
 		return false
 	}

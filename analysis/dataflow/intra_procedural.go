@@ -471,7 +471,7 @@ func (state *IntraAnalysisState) isCapturedBy(value ssa.Value) []*pointer.Label 
 //
 // ShouldBuildSummary returns true when:
 //   - the state, the function or the function's package is nil (nil function must be handled by summary builder)
-//   - the function summary is always required, as specified by [summaries.IsSummaryRequired]
+//   - the function summary is always required, as specified by [summaries.IsAnalysisRequired]
 //   - summaries are not built on demand
 //   - the function is not filtered out by the pkg-filter (i.e. the pkg-filter matches the function when present)
 //   - the function is not already summarized by a predefined summary or has an external contract
@@ -480,7 +480,7 @@ func ShouldBuildSummary(state *State, function *ssa.Function) bool {
 		return false
 	}
 
-	if state == nil || function == nil || summaries.IsSummaryRequired(function) {
+	if state == nil || function == nil || summaries.IsAnalysisRequired(function) {
 		return true
 	}
 

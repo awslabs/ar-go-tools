@@ -632,10 +632,6 @@ func findNode(g *dataflow.SummaryGraph, sn summaries.SummaryNode) dataflow.Graph
 			res = n
 		}
 	})
-	if res == nil {
-		panic(fmt.Errorf("failed to find graph node for summary node: %v", sn))
-	}
-
 	return res
 }
 

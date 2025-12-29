@@ -79,6 +79,9 @@ func (r SoundnessResult) PrettyString() string {
 	}
 	if !r.IsSound {
 		s.WriteString("  The summary is unsound because:\n")
+		if r.Unsoundness.BadForm != nil {
+			s.WriteString(fmt.Sprintf("    Summary is malformed: %s\n", r.Unsoundness.BadForm.Error()))
+		}
 		if len(r.Unsoundness.UnprovenMustNotFlows) > 0 {
 			s.WriteString("    Could not prove that the following flows do not exist:\n")
 			for _, unprovenFlow := range r.Unsoundness.UnprovenMustNotFlows {
@@ -150,6 +153,8 @@ func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 
 // Unsoundness is the source(s) of unsoundness in the summary checking algorithm.
 type Unsoundness struct {
+	// BadForm indicates that the summary is not in the expected form, and there was an error building it.
+	BadForm error
 	// UnprovenMustNotFlows are the must-not-flows unable to be proven.
 	UnprovenMustNotFlows []Flow
 	// CheckFeatures are the unsound features that make the checking algorithm unsound.
@@ -338,6 +343,10 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 			if summaries.FnHasSummaries(caller) {
 				continue
 			}
+			// Skip the functions that we shouldn't summarize
+			if summaries.IsAnalysisRequired(caller) {
+				continue
+			}
 			if _, ok := toReport[caller]; !ok {
 				skipped = false
 				toReport[caller] = []dataflow.UnsoundFeaturesMap{target}
@@ -350,6 +359,11 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 		if skipped {
 			state.Logger.Debugf("Function %s is not exported and not in dependencies, skipping", f.RelString(nil))
 		}
+	}
+
+	if len(toReport) == 0 {
+		state.Logger.Infof("No unsoundness found in analyzed functions")
+		return
 	}
 
 	for functionToFix, unsoundnessCalleesReasons := range toReport {

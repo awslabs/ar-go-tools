@@ -121,6 +121,22 @@ func checkSummary(
 
 		switch method {
 		case General:
+			wantFlows, err := summaryFlows(g, want)
+			if err != nil {
+				return SoundnessResult{
+					Fn:      f.RelString(nil),
+					Want:    want,
+					IsSound: false,
+					Unsoundness: Unsoundness{
+						UnprovenMustNotFlows: []Flow{},
+						BadForm:              err,
+						CheckFeatures:        unsoundCheckFeats,
+					},
+					Method:        method,
+					Time:          time.Since(start),
+					CalleeResults: nil,
+				}, nil
+			}
 			// The most-general summary is unsound if there are any globals (as we do not have
 			// special global nodes in summaries yet).
 			if len(unsoundCheckFeats.GlobalUsages) > 0 {
@@ -139,7 +155,7 @@ func checkSummary(
 					}, nil
 				}
 			}
-			unprovenMustNotFlows = checkSummaryMostGeneral(g, want)
+			unprovenMustNotFlows = checkSummaryMostGeneral(g, wantFlows)
 		case Types:
 			// The types analysis is unsound if there is unsafe, as unsafe memory operations can
 			// induce data flow to non-pointer-like summary nodes.
