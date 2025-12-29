@@ -334,6 +334,10 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 		}
 
 		for caller := range getExportedCallers(state, f) {
+			// Skip the callers that are already summarized
+			if summaries.FnHasSummaries(caller) {
+				continue
+			}
 			if _, ok := toReport[caller]; !ok {
 				skipped = false
 				toReport[caller] = []dataflow.UnsoundFeaturesMap{target}

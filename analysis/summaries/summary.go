@@ -115,8 +115,8 @@ func IsSummaryRequired(function *ssa.Function) bool {
 	return requiredSummaries[function.String()]
 }
 
-// PkgHasSummaries returns true if the input package has summaries.
-// A package has summaries if it is present in the stdPackages.
+// PkgHasSummaries returns true if the input package has predefined summaries.
+// A package has predefined summaries if it is present in the stdPackages.
 //
 // Returns false if the input package is nil.
 func PkgHasSummaries(pkg *ssa.Package) bool {
