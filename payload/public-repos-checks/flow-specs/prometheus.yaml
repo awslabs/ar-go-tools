@@ -58,6 +58,15 @@ dataflow-summaries:
         to: "!ret 0"
       - from: "!arg 1"
         to: "!ret 1"
+      # Error handling 
+      - from: "!arg <out 0>"
+        to: "!ret 1"
+      - from: "!arg <out 0>"
+        to: "!ret 0"
+      - from: "!arg <options 3>"
+        to: "!ret 0"
+      - from: "!arg <options 3>"
+        to: "!ret 1"
   # func MetricFamilyToText(out io.Writer, in *dto.MetricFamily) (written int, err error)
   - package: "github.com/prometheus/common/expfmt"
     function: "MetricFamilyToText"
@@ -70,6 +79,11 @@ dataflow-summaries:
         to: "!ret 0"
       - from: "!arg 1"
         to: "!ret 1"
+      # Error handling 
+      - from: "!arg <out 0>"
+        to: "!ret 1"
+      - from: "!arg <out 0>"
+        to: "!ret 0"
   # Key net/http functions
   # func ListenAndServe(addr string, handler Handler) error
   - package: "net/http"
@@ -199,3 +213,9 @@ dataflow-summaries:
     flows:
       - from: "!arg 1"
         to: "!arg 0"
+  # func Clone(s string) string
+  - package: "internal/stringslite"
+    function: "Clone"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"

@@ -51,7 +51,7 @@ func inferCalleeSummaries(
 			"using already-computed intra-procedural results for function %s\n", g.Parent)
 		g = summ
 	} else {
-		s.Logger.Tracef("running intra-procedural analysis on function %s...\n", g.Parent)
+		s.Logger.Debugf("running intra-procedural analysis on function %s...\n", g.Parent)
 		start := time.Now()
 		if _, err := dataflow.RunIntraProcedural(ctx, s, g); err != nil {
 			return nil, fmt.Errorf("failed to run intra-procedural analysis: %v", err)
@@ -505,7 +505,7 @@ func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 			// inter-procedural data flow edges. This is important because otherwise, summaries are
 			// incomplete. For example, a summary's referring make closure instructions will be
 			// empty.
-			s.FlowGraph.BuildGraph(false)
+			s.FlowGraph.BuildGraph(!s.Config.CheckIgnoresPredefined)
 
 			// callee return -> call node
 			for _, rets := range calleeSummary.Returns {
@@ -561,28 +561,29 @@ func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 }
 
 func skipNode(s *dataflow.State, n dataflow.GraphNode, unsoundness *Unsoundness) bool {
-	switch n := n.(type) {
+	switch n.(type) {
 	case *dataflow.BoundLabelNode:
-		closure := n.DestInfo().MakeClosure
-		if n.Graph().Parent != closure.Parent() {
-			// If a bound label is created in a different function as its corresponding make
-			// closure instruction, it means that there is no corresponding free variable
-			// inside the closure for this bound label value. We do not support summary
-			// nodes for closure-specific inputs/outputs other than bound and free
-			// variables. It does not make sense to summarize closures with bound labels
-			// because the input/output bound label value is not local to the closure: it is
-			// scoped to the completely different function that allocated the bound label.
-			pos := n.Position(s)
-			if !slices.Contains(unsoundness.CheckFeatures.NonLocalBoundLabelUsages, pos) {
-				unsoundness.CheckFeatures.NonLocalBoundLabelUsages =
-					append(unsoundness.CheckFeatures.NonLocalBoundLabelUsages, pos)
-			}
-			s.Logger.Warnf(
-				"cannot check summary where bound label closure is non-local. "+
-					"label: %v in %v, closure: %v in %v",
-				n, n.ParentName(), closure, closure.Parent())
-			return true
-		}
+		// TODO: re-enable once we support bound labels properly
+		//closure := n.DestInfo().MakeClosure
+		//if n.Graph().Parent != closure.Parent() {
+		//	// If a bound label is created in a different function as its corresponding make
+		//	// closure instruction, it means that there is no corresponding free variable
+		//	// inside the closure for this bound label value. We do not support summary
+		//	// nodes for closure-specific inputs/outputs other than bound and free
+		//	// variables. It does not make sense to summarize closures with bound labels
+		//	// because the input/output bound label value is not local to the closure: it is
+		//	// scoped to the completely different function that allocated the bound label.
+		//	pos := n.Position(s)
+		//	if !slices.Contains(unsoundness.CheckFeatures.NonLocalBoundLabelUsages, pos) {
+		//		unsoundness.CheckFeatures.NonLocalBoundLabelUsages =
+		//			append(unsoundness.CheckFeatures.NonLocalBoundLabelUsages, pos)
+		//	}
+		//	s.Logger.Warnf(
+		//		"cannot check summary where bound label closure is non-local. "+
+		//			"label: %v in %v, closure: %v in %v",
+		//		n, n.ParentName(), closure, closure.Parent())
+		//	return true
+		//}
 		// We can soundly skip adding edges for bound labels which are created in the same
 		// function as their corresponding make closure instructions, as there will be a
 		// bound variable that references the same value.

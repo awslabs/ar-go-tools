@@ -1,240 +1,93 @@
 dataflow-summaries:
-  # func Errorf(format string, a ...any) error
-  # Analysis: Both format and variadic args flow into the returned error
-  # The function processes format string and args through doPrintf, then creates error
-  - package: "fmt"
-    function: "Errorf"
-    flows:
-      - from: "!arg 0"  # format string flows to error
-        to: "!ret 0"
-      - from: "!arg 1"  # variadic args flow to error
-        to: "!ret 0"
-
-  # func Sprintf(format string, a ...any) string
-  # Analysis: Both format and args flow through doPrintf into buffer, then to string result
-  - package: "fmt"
-    function: "Sprintf"
-    flows:
-      - from: "!arg 0"  # format string flows to result
-        to: "!ret 0"
-      - from: "!arg 1"  # variadic args flow to result
-        to: "!ret 0"
-
-  # func Lstat(path string, stat *Stat_t) (err error)
-  # Analysis: path affects error, syscall modifies stat structure
-  - package: "syscall"
-    function: "Lstat"
-    flows:
-      - from: "!arg 0"     # path affects error
-        to: "!ret 0"
-      - from: "!arg 0"     # syscall writes stat info based on path
-        to: "(!arg 1)[*]"
-
-  # func (p valuePointer) Encode() []byte
-  # Analysis: receiver data flows into returned byte slice
-  - package: "github.com/dgraph-io/badger/v4"
-    receiver: "valuePointer"
-    method: "Encode"
-    flows:
-      - from: "!receiver"  # valuePointer data flows to byte slice
-        to: "!ret 0"
-
-  # func Printf(format string, a ...any) (n int, err error)
-  # Analysis: calls Fprintf(os.Stdout, format, a...), so format and args flow to error
-  - package: "fmt"
-    function: "Printf"
-    flows:
-      - from: "!arg 0"  # format flows to error
-        to: "!ret 1"
-      - from: "!arg 1"  # args flow to error
-        to: "!ret 1"
-
-  # func Fprintf(w io.Writer, format string, a ...any) (n int, err error)
-  # Analysis: writer, format, and args all affect the error return
-  - package: "fmt"
-    function: "Fprintf"
-    flows:
-      - from: "!arg 0"  # writer affects error
-        to: "!ret 1"
-      - from: "!arg 1"  # format affects error
-        to: "!ret 1"
-      - from: "!arg 2"  # args affect error
-        to: "!ret 1"
-
-  # func Sprint(a ...any) string
-  - package: "fmt"
-    function: "Sprint"
-    flows:
-      - from: "!arg 0"  # args flow to string result
-        to: "!ret 0"
-
-  # func Sprintln(a ...any) string
-  - package: "fmt"
-    function: "Sprintln"
-    flows:
-      - from: "!arg 0"  # args flow to string result
-        to: "!ret 0"
-
-  # func Fprint(w io.Writer, a ...any) (n int, err error)
-  - package: "fmt"
-    function: "Fprint"
-    flows:
-      - from: "!arg 0"  # writer affects error
-        to: "!ret 1"
-      - from: "!arg 1"  # args affect error
-        to: "!ret 1"
-
-  # func Fprintln(w io.Writer, a ...any) (n int, err error)
-  - package: "fmt"
-    function: "Fprintln"
-    flows:
-      - from: "!arg 0"  # writer affects error
-        to: "!ret 1"
-      - from: "!arg 1"  # args affect error
-        to: "!ret 1"
-
-  # func Append(b []byte, a ...any) []byte
-  - package: "fmt"
-    function: "Append"
-    flows:
-      - from: "!arg 0"  # byte slice flows to result
-        to: "!ret 0"
-      - from: "!arg 1"  # args flow to result
-        to: "!ret 0"
-
-  # func Appendf(b []byte, format string, a ...any) []byte
-  - package: "fmt"
-    function: "Appendf"
-    flows:
-      - from: "!arg 0"  # byte slice flows to result
-        to: "!ret 0"
-      - from: "!arg 1"  # format flows to result
-        to: "!ret 0"
-      - from: "!arg 2"  # args flow to result
-        to: "!ret 0"
-
-  # func Appendln(b []byte, a ...any) []byte
-  - package: "fmt"
-    function: "Appendln"
-    flows:
-      - from: "!arg 0"  # byte slice flows to result
-        to: "!ret 0"
-      - from: "!arg 1"  # args flow to result
-        to: "!ret 0"
-
-  # func (*File).Readdir(n int) ([]FileInfo, error)
-  - package: "os"
-    receiver: "*File"
-    method: "Readdir"
-    flows:
-      - from: "!receiver"  # file path affects result and error
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"     # count affects error
-        to: "!ret 1"
-
-  # func (*File).Readdirnames(n int) ([]string, error)
-  - package: "os"
-    receiver: "*File"
-    method: "Readdirnames"
-    flows:
-      - from: "!receiver"  # file path affects result and error
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"     # count affects error
-        to: "!ret 1"
-
-  # func (*File).ReadDir(n int) ([]DirEntry, error)
-  - package: "os"
-    receiver: "*File"
-    method: "ReadDir"
-    flows:
-      - from: "!receiver"  # file path affects result and error
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"     # count affects error
-        to: "!ret 1"
-
-  # func (*File).readdir(n int) ([]FileInfo, error) - internal
-  - package: "os"
-    receiver: "*File"
-    method: "readdir"
-    flows:
-      - from: "!receiver"
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"
-        to: "!ret 1"
-
-  # Wrapper methods
-  - package: "os"
-    receiver: "*fileWithoutReadFrom"
-    method: "readdir"
-    flows:
-      - from: "!receiver"
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"
-        to: "!ret 1"
-
-  - package: "os"
-    receiver: "fileWithoutWriteTo"
-    method: "readdir"
-    flows:
-      - from: "!receiver"
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"
-        to: "!ret 1"
-
-  - package: "os"
-    receiver: "*fileWithoutReadFrom"
-    method: "readdir"
-    flows:
-      - from: "!receiver"
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"
-        to: "!ret 1"
-
-  - package: "os"
-    receiver: "fileWithoutWriteTo"
-    method: "readdir"
-    flows:
-      - from: "!receiver"
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"
-        to: "!ret 1"
-
-  # func Memclr(ptr unsafe.Pointer, n uintptr) - no returns
   - package: "github.com/dgraph-io/ristretto/v2/z"
-    function: "Memclr"
-    flows: []
+    function: "Munmap"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
 
-  # func (*Table).initBiggestAndSmallest$1() - compiler generated closure
-  - package: "github.com/dgraph-io/badger/v4/table"
-    receiver: "*Table"
-    method: "initBiggestAndSmallest$1"
-    flows: []
+  - package: "github.com/dgraph-io/ristretto/v2/z"
+    function: "mremap"
+    flows:
+      - from: "(!arg 0)"
+        to: "(!ret 0)"
+      - from: "!arg 1"
+        to: "!ret 1"
 
-  # func (*Table).VerifyChecksum() error
   - package: "github.com/dgraph-io/badger/v4/table"
     receiver: "*Table"
     method: "VerifyChecksum"
     flows:
-      - from: "!receiver"  # table data affects checksum result
+      - from: "!receiver"
         to: "!ret 0"
 
-  # Root initialization function - remove this entry as it's problematic
-  # - package: ""
-  #   function: "<root>"
-  #   flows: []
+  - package: "github.com/dgraph-io/badger/v4"
+    receiver: "valuePointer"
+    method: "Encode"
+    flows:
+      - from: "!receiver"
+        to: "(!ret 0)"
+
+  - package: "github.com/dgraph-io/ristretto/v2/z"
+    function: "Memclr"
+    flows:
+      - from: "!arg 0"
+        to: "!arg 0"
+
+  - package: "fmt"
+    function: "Append"
+    flows:
+      - from: "(!arg 0)"
+        to: "(!ret 0)"
+      - from: "(!arg 1)"
+        to: "(!ret 0)"
+
+  - package: "fmt"
+    function: "Appendf"
+    flows:
+      - from: "(!arg 0)"
+        to: "(!ret 0)"
+      - from: "!arg 1"
+        to: "(!ret 0)"
+      - from: "(!arg 2)"
+        to: "(!ret 0)"
+
+  - package: "fmt"
+    function: "Appendln"
+    flows:
+      - from: "(!arg 0)"
+        to: "(!ret 0)"
+      - from: "(!arg 1)"
+        to: "(!ret 0)"
+
+  - package: "fmt"
+    function: "Sprintln"
+    flows:
+      - from: "(!arg 0)"
+        to: "!ret 0"
+
+  - package: "syscall"
+    function: "Faccessat"
+    flows:
+      - from: "!arg 1"
+        to: "!ret 0"
+
+  - package: "syscall"
+    function: "Stat"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+
+  - package: "syscall"
+    function: "Lstat"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 1"
+        to: "!ret 0"
+
+  - package: "github.com/dgraph-io/badger/v4/table"
+    receiver: "*Table"
+    method: "initBiggestAndSmallest$1"
+    flows: []

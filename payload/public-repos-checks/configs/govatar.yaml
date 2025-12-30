@@ -10,6 +10,7 @@ dataflow-problems:
   user-specs: ["user-specs.yaml"]
   summarize-on-demand: true
   generate-unsoundness-report: true
+  check-ignores-unsound: true
   taint-tracking:
     - tag: "path-traversal"
       severity: "HIGH"

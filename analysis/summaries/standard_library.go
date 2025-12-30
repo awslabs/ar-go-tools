@@ -1506,19 +1506,64 @@ var summaryStrings = map[string]Summarizer{
 		[][]int{{0}},
 		[][]int{{0}},
 	},
+	// func (b *Builder) Reset()
+	"(*strings.Builder).Reset": rawSummary{
+		Flows:   map[string][]string{},
+		Mutates: []string{"!receiver"},
+	}.mustCompile(),
+	// func (b *Builder) Cap() int
+	"(*strings.Builder).Cap": rawSummary{
+		Flows: map[string][]string{
+			"!receiver": {"!ret"},
+		},
+		Mutates: []string{},
+	}.mustCompile(),
+	// func (b *Builder) String() string
+	"(*strings.Builder).String": rawSummary{
+		Flows: map[string][]string{
+			"!receiver": {"!ret"},
+		},
+		Mutates: []string{},
+	}.mustCompile(),
+	// func (b *Builder) Grow(n int)
+	"(*strings.Builder).Grow": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!receiver"}, // grow capacity of buffer
+		},
+		Mutates: []string{"!receiver"},
+	}.mustCompile(),
+	// func (b *Builder) Write(p []byte) (int, error)
+	"(*strings.Builder).Write": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0":    {"!receiver"},        // bytes written to buffer
+			"!receiver": {"!ret 0", "!ret 1"}, // buffer length returned, error
+		},
+		Mutates: []string{"!receiver"},
+	}.mustCompile(),
+	// func (b *Builder) WriteByte(c byte) error
+	"(*strings.Builder).WriteByte": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0":    {"!receiver"}, // byte written to buffer
+			"!receiver": {"!ret"},      // error returned
+		},
+		Mutates: []string{"!receiver"},
+	}.mustCompile(),
+	// func (b *Builder) WriteRune(r rune) (int, error)
+	"(*strings.Builder).WriteRune": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0":    {"!receiver"}, // rune written to buffer
+			"!receiver": {"!ret 0"},    // error returned
+		},
+		Mutates: []string{"!receiver"},
+	}.mustCompile(),
 	// func (b *Builder) WriteString(s string) (int, error)
-	// WriteString appends the contents of s to b's buffer.
-	// It returns the length of s and a nil error.
-	/* func (b *Builder) WriteString(s string) (int, error) {
-		b.copyCheck()
-		b.buf = append(b.buf, s...)
-		return len(s), nil
-	} */
-	"(*strings.Builder).WriteString": Summary{
-		[][]int{{0}, {1, 0}}, // input taints receiver
-		[][]int{{}, {0}},     // receiver doesn't flow to results,
-		//input flows only to first element of returned tuple
-	},
+	"(*strings.Builder).WriteString": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0":    {"!receiver"}, // string written to buffer
+			"!receiver": {"!ret 0"},    // buffer length returned, no error
+		},
+		Mutates: []string{"!receiver"},
+	}.mustCompile(),
 	// func (r *Reader) Len() int
 	"(*strings.Reader).Len": Summary{
 		[][]int{{}},
@@ -1625,10 +1670,74 @@ var summarySync = map[string]Summarizer{
 	"(*sync.WaitGroup).Done": NoDataFlowPropagation,
 	// func (wg *WaitGroup) Wait()
 	"(*sync.WaitGroup).Wait": NoDataFlowPropagation,
+	// func (p *Pool) Get() any
+	"(*sync.Pool).Get": rawSummary{
+		Flows: map[string][]string{
+			"!receiver": {"!ret"},
+		},
+		Mutates: []string{},
+	}.mustCompile(),
+	// func (p *Pool) Put(x any)
+	"(*sync.Pool).Put": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!receiver"},
+		},
+		Mutates: []string{},
+	}.mustCompile(),
 }
 
 var summarySyscall = map[string]Summarizer{
+	// func Faccessat(dirfd int, path string, mode uint32, flags int) (err error)
+	"syscall.Faccessat": rawSummary{
+		Flows: map[string][]string{
+			"!arg <dirfd 0>": {"!ret"},
+			"!arg <path 1>":  {"!ret"},
+			"!arg <mode 2>":  {"!ret"},
+			"!arg <flags 3>": {"!ret"},
+		},
+		Mutates: []string{},
+	}.mustCompile(),
 	"syscall.Getuid": NoDataFlowPropagation,
+	// func Getdents(fd int, buf []byte) (n int, err error)
+	"syscall.Getdents": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0"}, // file descriptor result in num of entries, weak flow
+			"!arg 1": {"!ret 1"}, // buffer erroring
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Getrlimit(resource int, rlim *Rlimit) (err error)
+	// We don't consider the resource type to flow to the limit set
+	"syscall.Getrlimit": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Lstat(path string, stat *Stat_t) (err error)
+	"syscall.Lstat": rawSummary{
+		Flows: map[string][]string{
+			"!arg <path 0>": {"!ret"},
+			"!arg <stat 1>": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"}, // the stat struct is mutated
+	}.mustCompile(),
+	// func Stat(path string, stat *Stat_t) (err error)
+	"syscall.Stat": rawSummary{
+		Flows: map[string][]string{
+			"!arg <path 0>": {"!ret"},
+			"!arg <stat 1>": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"}, // the stat struct is mutated
+	}.mustCompile(),
+	// func Setrlimit(resource int, rlim *Rlimit) error
+	"syscall.Setrlimit": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
 }
 
 var summaryTesting = map[string]Summarizer{}
@@ -1702,6 +1811,14 @@ var summaryUnicode = map[string]Summarizer{
 
 var summaryUnsafe = map[string]Summarizer{}
 
-var summaryInternal = map[string]Summarizer{}
+var summaryInternal = map[string]Summarizer{
+	// func Clone(s string) string
+	"internal/stringslite.Clone": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+		Mutates: []string{},
+	}.mustCompile(),
+}
 
 var summaryWeak = map[string]Summarizer{}

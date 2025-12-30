@@ -16,8 +16,10 @@ dataflow-summaries:
   - package: "crypto/cipher"
     function: "NewGCM"
     flows:
-      - from: "!arg 0"
+      - from: "!arg <cipher 0>"
         to: "!ret 0"
+      - from: "!arg <cipher 0>"
+        to: "!ret 1"
 
   - package: "crypto/aes"
     function: "NewCipher"
@@ -44,8 +46,10 @@ dataflow-summaries:
   - package: "io/ioutil"
     function: "ReadFile"
     flows:
-      - from: "!arg 0"
+      - from: "!arg <filename 0>"
         to: "!ret 1"
+      - from: "!arg <filename 0>"
+        to: "!ret 0"
 
   - package: "github.com/aws/aws-sdk-go/aws"
     function: "String"

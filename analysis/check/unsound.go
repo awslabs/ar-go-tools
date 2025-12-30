@@ -57,7 +57,7 @@ func findUnsoundCheckFeatures(
 		}
 		seen[node] = struct{}{}
 		// Skip the function if it has a summary and we are not ignoring predefined functions.
-		if !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(f) {
+		if !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(node.Func) {
 			continue
 		}
 		// A function may be visited multiple times in different calling contexts so only analyze

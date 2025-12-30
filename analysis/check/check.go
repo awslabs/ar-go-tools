@@ -39,6 +39,8 @@ const (
 	Types Method = "types"
 	// Immutability means use the immutability analysis
 	Immutability Method = "immutability"
+	// Recursive means we had to generate the intra-procedural summary and then analyze the functions
+	Recursive Method = "recursive"
 	// All means use all available analyses in the most efficient way
 	All Method = "all"
 	// Naive means use the full data flow analysis
@@ -174,7 +176,7 @@ func checkSummary(
 		}
 	}
 
-	s.Logger.Tracef("inferring callee summaries for function %s...\n", f)
+	s.Logger.Debugf("inferring callee summaries for function %s...\n", f)
 	unsoundness := Unsoundness{
 		UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
 		CheckFeatures:        unsoundCheckFeats,
@@ -186,7 +188,7 @@ func checkSummary(
 		soundnessResultBase.IsSound = false
 		soundnessResultBase.Unsoundness = unsoundness
 		soundnessResultBase.Time = time.Since(start)
-		soundnessResultBase.Method = method
+		soundnessResultBase.Method = Recursive
 		return soundnessResultBase, fmt.Errorf("%w for %s: %v", errInfer, f, err)
 	}
 	if len(calleeSummaries) == 0 {
@@ -197,14 +199,14 @@ func checkSummary(
 		soundnessResultBase.IsSound = unsoundness.isSound()
 		soundnessResultBase.Unsoundness = unsoundness
 		soundnessResultBase.Time = time.Since(start)
-		soundnessResultBase.Method = method
+		soundnessResultBase.Method = Recursive
 		return soundnessResultBase, nil
 	}
 
 	// Since we inferred callee summaries, we have intra-procedural results for f.
 	// This means that we only need to prove the must-not-flows in the callees.
 	calleeResults, soundnessResult, err2, done := checkCalleeSummaries(ctx, s, f,
-		calleeSummaries, specs, soundnessResultBase, unsoundness, start, method)
+		calleeSummaries, specs, soundnessResultBase, unsoundness, start)
 	if done {
 		return soundnessResult, err2
 	}
@@ -231,11 +233,12 @@ func checkSummary(
 
 	// TODO Filter out must-not-flows that are proven via checking the callees
 	return SoundnessResult{
+		Fn:            f,
 		Name:          f.RelString(nil),
 		Want:          want,
 		IsSound:       calleesSound,
 		Unsoundness:   unsoundness,
-		Method:        method,
+		Method:        Recursive,
 		Time:          time.Since(start),
 		CalleeResults: calleeResults,
 	}, nil
@@ -246,8 +249,7 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 	specs []dataflow.ScanningSpec,
 	soundnessResultBase SoundnessResult,
 	unsoundness Unsoundness,
-	start time.Time,
-	method Method) ([][]SoundnessResult, SoundnessResult, error, bool) {
+	start time.Time) ([][]SoundnessResult, SoundnessResult, error, bool) {
 	var calleeResults [][]SoundnessResult
 	for callee, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
@@ -272,7 +274,7 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 					soundnessResultBase.Unsoundness = unsoundness
 					soundnessResultBase.CalleeResults = append(calleeResults, thisCalleeResults)
 					soundnessResultBase.Time = time.Since(start)
-					soundnessResultBase.Method = method
+					soundnessResultBase.Method = calleeRes.Method
 					return nil, soundnessResultBase, nil, true
 				}
 				continue

@@ -190,16 +190,18 @@ var validArgNameAndPosRegex = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*\\s[0-9
 // need to be parsed into SummaryNode to form a DetailedSummary.
 // A rawSummary is not a Summarizer; it needs to be compiled first.
 type rawSummary struct {
-	Flows map[string][]string
+	Flows   map[string][]string
+	Mutates []string
 }
 
 // A DetailedSummary is a more human-friendly and more precise version of a summary.
 type DetailedSummary struct {
-	Flows map[SummaryNode][]SummaryNode
+	Flows   map[SummaryNode][]SummaryNode
+	Mutates []SummaryNode
 }
 
 func (s DetailedSummary) String() string {
-	if len(s.Flows) == 0 {
+	if len(s.Flows) == 0 && len(s.Mutates) == 0 {
 		return "<empty>"
 	}
 
@@ -340,7 +342,15 @@ func (s rawSummary) compile() (DetailedSummary, error) {
 			flows[key] = append(flows[key], value)
 		}
 	}
-	return DetailedSummary{Flows: flows}, nil
+	mutates := make([]SummaryNode, 0, len(s.Mutates))
+	for _, m := range s.Mutates {
+		node, err := ParseSummaryNode(m)
+		if err != nil {
+			return DetailedSummary{}, err
+		}
+		mutates = append(mutates, node)
+	}
+	return DetailedSummary{Flows: flows, Mutates: mutates}, nil
 }
 
 // mustCompile is the version of IntoDetailedSummary that panics instead of returning an error.

@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
@@ -101,9 +102,6 @@ func Run(flags Flags) error {
 	if checkErr != nil {
 		return fmt.Errorf("failed to load config: %v", checkErr)
 	}
-	cfg.DataflowProblems.SummarizeOnDemand = true
-	cfg.LogLevel = flags.log
-	cfg.Options.UnsafeMaxDepth = -1
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot check tool - " + analysis.Version))
 	if len(cfg.UserSpecs) == 0 {
@@ -193,7 +191,7 @@ func runTarget(
 
 	results, checkErr := checkSummaries(ctx, df, parsedSummaries, flags.via, specs)
 	// write the report before exiting, even if there was an error in checking summaries
-	if err := report(cfg, results); err != nil {
+	if err := report(&df.State.State.State, results); err != nil {
 		return err
 	}
 	if checkErr != nil {
@@ -202,12 +200,34 @@ func runTarget(
 	return nil
 }
 
-func report(cfg *config.Config, results []check.SoundnessResult) error {
-	if cfg.ReportsDir != "" {
-		reportFile, err := os.Create(filepath.Join(cfg.ReportsDir, "check-report.json"))
+func report(cfg *config.State, results []check.SoundnessResult) error {
+	// log a summary of the results
+	unsoundOnes := map[string]bool{}
+	soundOnes := map[string]bool{}
+	// Count per method
+	methodCounts := map[check.Method]int{}
+	for _, r := range results {
+		if r.IsSound {
+			soundOnes[r.Name] = true
+			if count, ok := methodCounts[r.Method]; ok {
+				methodCounts[r.Method] = count + 1
+			} else {
+				methodCounts[r.Method] = 1
+			}
+		} else {
+			unsoundOnes[r.Name] = true
+		}
+	}
+	cfg.Logger.Infof("Check results: %d sound / %d unsound\n", len(soundOnes), len(unsoundOnes))
+	for method, count := range methodCounts {
+		cfg.Logger.Infof("  %s: %d\n", method, count)
+	}
+	if cfg.Config.ReportsDir != "" {
+		reportFile, err := os.Create(filepath.Join(cfg.Config.ReportsDir, "check-report.json"))
 		if err != nil {
 			return fmt.Errorf("failed to create report file: %v", err)
 		}
+		cfg.Logger.Infof("Full report written to %s\n", reportFile.Name())
 		enc := json.NewEncoder(reportFile)
 		enc.SetEscapeHTML(false) // don't escape characters like "<"
 		enc.SetIndent("", "  ")
@@ -219,7 +239,9 @@ func report(cfg *config.Config, results []check.SoundnessResult) error {
 }
 
 func checkSummaries(
-	ctx context.Context, ds *dataflow.State, parsedSummaries []summaries.FrontendDataflowSummary,
+	ctx context.Context,
+	ds *dataflow.State,
+	parsedSummaries []summaries.FrontendDataflowSummary,
 	via check.Method,
 	specs []dataflow.ScanningSpec,
 ) ([]check.SoundnessResult, error) {
@@ -267,7 +289,7 @@ func checkOneSummaryWrapper(
 		errs = append(errs, err)
 		return errs, results
 	}
-	s.Logger.Infof("Location: %s\n", s.Program.Fset.Position(soundness.Fn.Pos()))
+	s.Logger.Infof("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
 	s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
 	results = append(results, soundness)
 	return errs, results

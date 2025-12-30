@@ -71,7 +71,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 	if _, ok := fl.to.(*dataflow.ReturnValNode); ok {
 		for _, val := range vals {
 			if !lang.IsStaticallyDefinedLocal(val) {
-				s.Logger.Debugf(
+				s.Logger.Tracef(
 					"found non-static return scalar value %v in function %v",
 					val, val.Parent())
 				return false, nil
@@ -215,7 +215,7 @@ func outputVals(fl flow) []ssa.Value {
 		for retInstr := range g.Returns {
 			retInstr, ok := retInstr.(*ssa.Return)
 			if !ok {
-				panic(fmt.Errorf("invalid return instruction %v", retInstr))
+				continue
 			}
 			val := retInstr.Results[to.Index()]
 			vals = append(vals, val)
