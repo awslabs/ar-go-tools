@@ -100,6 +100,8 @@ var errInfer = errors.New("failed to infer callee summaries")
 // must-not-flows it wasn't able to prove.
 // Try general, then types, then immutability, etc.
 // Each method removes more must-not-flows, which makes the next task easier.
+//
+//gocyclo:ignore
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
 	specs []dataflow.ScanningSpec,
@@ -125,71 +127,28 @@ func checkSummary(
 	var method Method
 	for _, m := range []Method{General, Types, Immutability} {
 		method = m
-
+		var soundnessResult SoundnessResult
+		var done bool
+		var err error
 		switch method {
 		case General:
-			wantFlows, err := summaryFlows(g, want)
-			if err != nil {
-				soundnessResultBase.IsSound = false
-				soundnessResultBase.Unsoundness = Unsoundness{
-					UnprovenMustNotFlows: []Flow{},
-					BadForm:              err,
-					CheckFeatures:        unsoundCheckFeats,
-				}
-				soundnessResultBase.Method = method
-				soundnessResultBase.Time = time.Since(start)
-				return soundnessResultBase, nil
+			unprovenMustNotFlows, soundnessResult, err, done = checkMethodGeneral(
+				s, f, unsoundCheckFeats, soundnessResultBase, g, unprovenMustNotFlows, want, start)
+			if done {
+				return soundnessResult, err
 			}
-			// The most-general summary is unsound if there are any globals (as we do not have
-			// special global nodes in summaries yet).
-			if len(unsoundCheckFeats.GlobalUsages) > 0 {
-				s.Logger.Warnf(
-					"most-general summary is unsound: detected global use in function %s (%s)\n",
-					f, s.Program.Fset.Position(f.Pos()))
-				if !s.Config.CheckIgnoresUnsound {
-					soundnessResultBase.IsSound = false
-					soundnessResultBase.Unsoundness = Unsoundness{CheckFeatures: unsoundCheckFeats}
-					soundnessResultBase.Method = method
-					return soundnessResultBase, nil
-				}
-			}
-			unprovenMustNotFlows = checkSummaryMostGeneral(g, wantFlows)
 		case Types:
-			// The types analysis is unsound if there is unsafe, as unsafe memory operations can
-			// induce data flow to non-pointer-like summary nodes.
-			if len(unsoundCheckFeats.UnsafeUsages) > 0 {
-				s.Logger.Warnf(
-					"types analysis is unsound: detected unsafe use in function %s\n", f)
-				if !s.Config.CheckIgnoresUnsound {
-					soundnessResultBase.IsSound = false
-					soundnessResultBase.Unsoundness = Unsoundness{
-						UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
-						CheckFeatures:        unsoundCheckFeats,
-					}
-					soundnessResultBase.Time = time.Since(start)
-					soundnessResultBase.Method = method
-					return soundnessResultBase, nil
-				}
+			unprovenMustNotFlows, soundnessResult, err, done = checkMethodTypes(
+				s, f, unsoundCheckFeats, soundnessResultBase, unprovenMustNotFlows, start)
+			if done {
+				return soundnessResult, err
 			}
-			unprovenMustNotFlows = filterFlowsTypes(unprovenMustNotFlows)
 		case Immutability:
-			// The immutability analysis is unsound if there is reflection, as it depends on the
-			// pointer analysis.
-			if len(unsoundCheckFeats.ReflectUsages) > 0 {
-				s.Logger.Warnf(
-					"immutability analysis is unsound: detected reflection use in function %s\n", f)
-				if !s.Config.CheckIgnoresUnsound {
-					soundnessResultBase.IsSound = false
-					soundnessResultBase.Unsoundness = Unsoundness{
-						UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
-						CheckFeatures:        unsoundCheckFeats,
-					}
-					soundnessResultBase.Method = method
-					soundnessResultBase.Time = time.Since(start)
-					return soundnessResultBase, nil
-				}
+			unprovenMustNotFlows, soundnessResult, err, done = checkMethodImmutability(
+				ctx, s, f, unsoundCheckFeats, soundnessResultBase, unprovenMustNotFlows, start)
+			if done {
+				return soundnessResult, err
 			}
-			unprovenMustNotFlows = filterFlowsImmutability(ctx, s, unprovenMustNotFlows)
 		}
 
 		if len(unprovenMustNotFlows) == 0 {
@@ -244,51 +203,10 @@ func checkSummary(
 
 	// Since we inferred callee summaries, we have intra-procedural results for f.
 	// This means that we only need to prove the must-not-flows in the callees.
-	var calleeResults [][]SoundnessResult
-	for callee, calleeSumms := range calleeSummaries {
-		if len(calleeSumms) == 0 {
-			// If there are no callee summaries inferred, this is a bug.
-			panic(fmt.Errorf("no summaries inferred for callee: %s", callee))
-		}
-
-		var thisCalleeResults []SoundnessResult
-		for _, calleeSumm := range calleeSumms {
-			// Recursively check the soundness of the callee's inferred summary
-			s.Logger.Tracef(
-				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
-			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm, specs)
-			if err != nil {
-				s.Logger.Errorf("failed to check callee summary: %v", err)
-				if errors.Is(err, errInfer) {
-					// If callee summary inference failed, then the result is unsound because
-					// the inferred summaries are incomplete/incorrect.
-					// Return the must-not-flows for the caller plus any successfully analyzed
-					// callees.
-					soundnessResultBase.IsSound = false
-					soundnessResultBase.Unsoundness = unsoundness
-					soundnessResultBase.CalleeResults = append(calleeResults, thisCalleeResults)
-					soundnessResultBase.Time = time.Since(start)
-					soundnessResultBase.Method = method
-					return soundnessResultBase, nil
-				}
-				continue
-			}
-			thisCalleeResults = append(thisCalleeResults, calleeRes)
-
-			s.Logger.Tracef("callee check result: %+v", calleeRes)
-			// Only one of the potential callee summaries needs to be sound.
-			// NOTE This is disabled for now to make tests deterministic.
-			// if calleeRes.IsSound {
-			// 	if len(calleeRes.UnprovenMustNotFlows) > 0 {
-			// 		panic(fmt.Errorf(
-			// 			"want no unproven must-not-flows in callee %s summary, got: %v",
-			// 			callee, calleeRes.UnprovenMustNotFlows))
-			// 	}
-			// 	break
-			// }
-		}
-
-		calleeResults = append(calleeResults, thisCalleeResults)
+	calleeResults, soundnessResult, err2, done := checkCalleeSummaries(ctx, s, f,
+		calleeSummaries, specs, soundnessResultBase, unsoundness, start, method)
+	if done {
+		return soundnessResult, err2
 	}
 
 	// If all inferred callee summaries are sound, then the summary for f is sound.
@@ -321,6 +239,148 @@ func checkSummary(
 		Time:          time.Since(start),
 		CalleeResults: calleeResults,
 	}, nil
+}
+
+func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
+	calleeSummaries map[*ssa.Function][]summaries.DetailedSummary,
+	specs []dataflow.ScanningSpec,
+	soundnessResultBase SoundnessResult,
+	unsoundness Unsoundness,
+	start time.Time,
+	method Method) ([][]SoundnessResult, SoundnessResult, error, bool) {
+	var calleeResults [][]SoundnessResult
+	for callee, calleeSumms := range calleeSummaries {
+		if len(calleeSumms) == 0 {
+			// If there are no callee summaries inferred, this is a bug.
+			panic(fmt.Errorf("no summaries inferred for callee: %s", callee))
+		}
+
+		var thisCalleeResults []SoundnessResult
+		for _, calleeSumm := range calleeSumms {
+			// Recursively check the soundness of the callee's inferred summary
+			s.Logger.Tracef(
+				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
+			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm, specs)
+			if err != nil {
+				s.Logger.Errorf("failed to check callee summary: %v", err)
+				if errors.Is(err, errInfer) {
+					// If callee summary inference failed, then the result is unsound because
+					// the inferred summaries are incomplete/incorrect.
+					// Return the must-not-flows for the caller plus any successfully analyzed
+					// callees.
+					soundnessResultBase.IsSound = false
+					soundnessResultBase.Unsoundness = unsoundness
+					soundnessResultBase.CalleeResults = append(calleeResults, thisCalleeResults)
+					soundnessResultBase.Time = time.Since(start)
+					soundnessResultBase.Method = method
+					return nil, soundnessResultBase, nil, true
+				}
+				continue
+			}
+			thisCalleeResults = append(thisCalleeResults, calleeRes)
+
+			s.Logger.Tracef("callee check result: %+v", calleeRes)
+			// Only one of the potential callee summaries needs to be sound.
+			// NOTE This is disabled for now to make tests deterministic.
+			// if calleeRes.IsSound {
+			// 	if len(calleeRes.UnprovenMustNotFlows) > 0 {
+			// 		panic(fmt.Errorf(
+			// 			"want no unproven must-not-flows in callee %s summary, got: %v",
+			// 			callee, calleeRes.UnprovenMustNotFlows))
+			// 	}
+			// 	break
+			// }
+		}
+
+		calleeResults = append(calleeResults, thisCalleeResults)
+	}
+	return calleeResults, SoundnessResult{}, nil, false
+}
+
+func checkMethodImmutability(ctx context.Context, s *State, f *ssa.Function,
+	unsoundCheckFeats UnsoundCheckFeatures,
+	soundnessResultBase SoundnessResult,
+	unprovenMustNotFlows []flow,
+	start time.Time) ([]flow, SoundnessResult, error, bool) {
+	// The immutability analysis is unsound if there is reflection, as it depends on the
+	// pointer analysis.
+	if len(unsoundCheckFeats.ReflectUsages) > 0 {
+		s.Logger.Warnf(
+			"immutability analysis is unsound: detected reflection use in function %s\n", f)
+		if !s.Config.CheckIgnoresUnsound {
+			soundnessResultBase.IsSound = false
+			soundnessResultBase.Unsoundness = Unsoundness{
+				UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
+				CheckFeatures:        unsoundCheckFeats,
+			}
+			soundnessResultBase.Method = Immutability
+			soundnessResultBase.Time = time.Since(start)
+			return nil, soundnessResultBase, nil, true
+		}
+	}
+	unprovenMustNotFlows = filterFlowsImmutability(ctx, s, unprovenMustNotFlows)
+	return unprovenMustNotFlows, SoundnessResult{}, nil, false
+}
+
+func checkMethodTypes(s *State, f *ssa.Function,
+	unsoundCheckFeats UnsoundCheckFeatures,
+	soundnessResultBase SoundnessResult,
+	unprovenMustNotFlows []flow,
+	start time.Time) ([]flow, SoundnessResult, error, bool) {
+	// The types analysis is unsound if there is unsafe, as unsafe memory operations can
+	// induce data flow to non-pointer-like summary nodes.
+	if len(unsoundCheckFeats.UnsafeUsages) > 0 {
+		s.Logger.Warnf(
+			"types analysis is unsound: detected unsafe use in function %s\n", f)
+		if !s.Config.CheckIgnoresUnsound {
+			soundnessResultBase.IsSound = false
+			soundnessResultBase.Unsoundness = Unsoundness{
+				UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
+				CheckFeatures:        unsoundCheckFeats,
+			}
+			soundnessResultBase.Time = time.Since(start)
+			soundnessResultBase.Method = Types
+			return nil, soundnessResultBase, nil, true
+		}
+	}
+	unprovenMustNotFlows = filterFlowsTypes(unprovenMustNotFlows)
+	return unprovenMustNotFlows, SoundnessResult{}, nil, false
+}
+
+func checkMethodGeneral(s *State, f *ssa.Function,
+	unsoundCheckFeats UnsoundCheckFeatures,
+	soundnessResultBase SoundnessResult,
+	g *dataflow.SummaryGraph,
+	unprovenMustNotFlows []flow,
+	want summaries.DetailedSummary,
+	start time.Time) ([]flow, SoundnessResult, error, bool) {
+	wantFlows, err := summaryFlows(g, want)
+	if err != nil {
+		soundnessResultBase.IsSound = false
+		soundnessResultBase.Unsoundness = Unsoundness{
+			UnprovenMustNotFlows: []Flow{},
+			BadForm:              err,
+			CheckFeatures:        unsoundCheckFeats,
+		}
+		soundnessResultBase.Method = General
+		soundnessResultBase.Time = time.Since(start)
+		return nil, soundnessResultBase, nil, true
+	}
+	// The most-general summary is unsound if there are any globals (as we do not have
+	// special global nodes in summaries yet).
+	if len(unsoundCheckFeats.GlobalUsages) > 0 {
+		s.Logger.Warnf(
+			"most-general summary is unsound: detected global use in function %s (%s)\n",
+			f, s.Program.Fset.Position(f.Pos()))
+		if !s.Config.CheckIgnoresUnsound {
+			soundnessResultBase.IsSound = false
+			soundnessResultBase.Unsoundness = Unsoundness{CheckFeatures: unsoundCheckFeats}
+			soundnessResultBase.Method = General
+			return nil, soundnessResultBase, nil, true
+		}
+	}
+	unprovenMustNotFlows = checkSummaryMostGeneral(g, wantFlows)
+	return unprovenMustNotFlows, SoundnessResult{}, nil, false
 }
 
 // flow is a data flow between two summary graph nodes.

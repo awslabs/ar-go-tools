@@ -19,6 +19,7 @@ package lang
 import (
 	"context"
 	"go/types"
+	"strings"
 
 	fn "github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
@@ -313,4 +314,68 @@ func FnWritesTo(fn *ssa.Function, val ssa.Value) bool {
 	}
 
 	return false
+}
+
+type UnsafeOrReflect struct {
+	IsUnsafe  bool
+	IsReflect bool
+}
+
+// IsUnsafeOrReflectInstr returns true if instr uses the unsafe or reflect package.
+//
+//gocyclo:ignore
+func IsUnsafeOrReflectInstr(instr ssa.Instruction) UnsafeOrReflect {
+	switch instr := instr.(type) {
+	case ssa.CallInstruction:
+		call := instr.Common()
+		if call == nil {
+			return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+		}
+
+		switch val := call.Value.(type) {
+		case *ssa.Function:
+			pkg := PkgPathFromFunction(val)
+			// Call a function from the unsafe package.
+			if strings.HasPrefix(pkg, "unsafe") {
+				return UnsafeOrReflect{IsUnsafe: true, IsReflect: false}
+			}
+			// Call a function from the reflect package.
+			if strings.HasPrefix(pkg, "reflect") {
+				return UnsafeOrReflect{IsUnsafe: false, IsReflect: true}
+			}
+		case *ssa.Builtin:
+			// Call an unsafe builtin function.
+			if _, ok := UnsafeBuiltins[val.Name()]; ok {
+				return UnsafeOrReflect{IsUnsafe: true, IsReflect: false}
+			}
+		}
+	case *ssa.Alloc:
+		typ := instr.Type().Underlying()
+		if typ == nil {
+			return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+		}
+		pkg := GetPackageOfType(typ)
+		if pkg == nil {
+			return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+		}
+		// Allocate an object of an unsafe type.
+		if strings.HasPrefix(pkg.Name(), "unsafe") {
+			return UnsafeOrReflect{IsUnsafe: true, IsReflect: false}
+		}
+		// Allocate an object of a reflect type.
+		if strings.HasPrefix(pkg.Name(), "reflect") {
+			return UnsafeOrReflect{IsUnsafe: false, IsReflect: true}
+		}
+	case *ssa.Convert:
+		typ := instr.Type()
+		if typ == nil {
+			return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+		}
+		// Convert data to an unsafe pointer.
+		if strings.Contains(typ.String(), "unsafe") {
+			return UnsafeOrReflect{IsUnsafe: true, IsReflect: false}
+		}
+	}
+
+	return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
 }

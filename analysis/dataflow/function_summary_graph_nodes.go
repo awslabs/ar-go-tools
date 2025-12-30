@@ -286,13 +286,13 @@ func TermNodeSummary(g GraphNode) string {
 func shortNodeSummary(g GraphNode) string {
 	switch x := g.(type) {
 	case *ParamNode:
-		return fmt.Sprintf("param:%s:%s", x.ssaNode.Name(), x.parent.Parent.String())
+		return fmt.Sprintf("param:%s:%s", x.ssaNode.Name(), x.parent.Parent.Name())
 	case *CallNode:
-		return fmt.Sprintf("call:%s", x.Callee().String())
+		return fmt.Sprintf("call:%s", x.Callee().Name())
 	case *CallNodeArg:
-		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().Callee().String())
+		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().Callee().Name())
 	case *ReturnValNode:
-		return fmt.Sprintf("ret#%d:%s", x.Index(), x.parent.Parent.String())
+		return fmt.Sprintf("ret#%d:%s", x.Index(), x.parent.Parent.Name())
 	case *ClosureNode:
 		return "closure"
 	case *BoundLabelNode:

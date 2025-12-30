@@ -489,6 +489,8 @@ func intraMayFlowEdges(
 
 // interMayFlowEdges returns the interprocedural may-flow edges between callers and their
 // corresponding callees.
+//
+//gocyclo:ignore
 func interMayFlowEdges(s *dataflow.State, g *dataflow.SummaryGraph) []edge {
 	var res []edge
 	for _, calleeToCall := range g.Callees {

@@ -17,6 +17,7 @@ package dataflow
 import (
 	"context"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -26,41 +27,13 @@ import (
 // https://pkg.go.dev/builtin
 //
 // Note that new, make and panic are their own SSA instructions.
-var handledBuiltins = map[string]bool{
-	"ssa:wrapnilchk": true,
-	"append":         true,
-	"len":            true,
-	"close":          true,
-	"delete":         true,
-	"println":        true,
-	"print":          true,
-	"recover":        true,
-	"cap":            true,
-	"complex":        true,
-	"imag":           true,
-	"real":           true,
-	"min":            true,
-	"max":            true,
-	"clear":          true,
-	"copy":           true,
-}
+var handledBuiltins = lang.HandledBuiltins
 
 // markedBuiltins is the subset of builtins that return values that should be tracked in the analysis
 var markedBuiltins = []string{"ssa:wrapnilchk", "append", "complex", "min", "max", "len", "imag", "real", "recover"}
 
 // The builtins that are from the unsafe package
-var unsafeBuiltins = map[string]bool{
-	"Alignof":     true,
-	"Offsetof":    true,
-	"Sizeof":      true,
-	"Pointer":     true,
-	"SliceData":   true,
-	"String":      true,
-	"StringData":  true,
-	"Slice":       true,
-	"Add":         true,
-	"IntegerType": true,
-}
+var unsafeBuiltins = lang.UnsafeBuiltins
 
 // isHandledBuiltinCall returns true if the call is handled internally by the analysis.
 func isHandledBuiltinCall(instruction ssa.CallInstruction) bool {

@@ -17,9 +17,9 @@ package check
 import (
 	"go/token"
 	"slices"
-	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 
@@ -32,6 +32,8 @@ import (
 // according to callgraph cg that make the check analysis unsound.
 //
 // For efficiency, it only returns the first 5 unsound features.
+//
+//gocyclo:ignore
 func findUnsoundCheckFeatures(
 	s *State,
 	f *ssa.Function,
@@ -46,6 +48,7 @@ func findUnsoundCheckFeatures(
 	var reflects []token.Position
 	var entrypoints []token.Position
 
+	// Callgraph traversal
 	for len(queue) > 0 {
 		node := queue[0]
 		queue = queue[1:]
@@ -53,7 +56,10 @@ func findUnsoundCheckFeatures(
 			continue
 		}
 		seen[node] = struct{}{}
-
+		// Skip the function if it has a summary and we are not ignoring predefined functions.
+		if !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(f) {
+			continue
+		}
 		// A function may be visited multiple times in different calling contexts so only analyze
 		// each function once.
 		if _, ok := seenFunc[node.Func]; ok {
@@ -69,12 +75,12 @@ func findUnsoundCheckFeatures(
 				if !slices.Contains(globals, pos) {
 					globals = append(globals, pos)
 				}
-			} else if isUnsafeOrReflect := isUnsafeOrReflectInstr(instr); isUnsafeOrReflect.isUnsafe {
+			} else if isUnsafeOrReflect := lang.IsUnsafeOrReflectInstr(instr); isUnsafeOrReflect.IsUnsafe {
 				pos := prog.Fset.Position(instr.Pos())
 				if !slices.Contains(unsafes, pos) {
 					unsafes = append(unsafes, pos)
 				}
-			} else if isUnsafeOrReflect.isReflect {
+			} else if isUnsafeOrReflect.IsReflect {
 				pos := prog.Fset.Position(instr.Pos())
 				if !slices.Contains(unsafes, pos) {
 					reflects = append(unsafes, pos)
@@ -173,71 +179,6 @@ func isEntrypoint(instr ssa.Instruction, specs []dataflow.ScanningSpec) bool {
 		}
 	}
 	return false
-}
-
-type unsafeOrReflect struct {
-	isUnsafe  bool
-	isReflect bool
-}
-
-// isUnsafeOrReflectInstr returns true if instr uses the unsafe or reflect package.
-//
-// TODO This is taken from analysis/dataflow/report.go and should eventually be refactored into a
-// common package.
-func isUnsafeOrReflectInstr(instr ssa.Instruction) unsafeOrReflect {
-	switch instr := instr.(type) {
-	case ssa.CallInstruction:
-		call := instr.Common()
-		if call == nil {
-			return unsafeOrReflect{isUnsafe: false, isReflect: false}
-		}
-
-		switch val := call.Value.(type) {
-		case *ssa.Function:
-			pkg := lang.PkgPathFromFunction(val)
-			// Call a function from the unsafe package.
-			if strings.HasPrefix(pkg, "unsafe") {
-				return unsafeOrReflect{isUnsafe: true, isReflect: false}
-			}
-			// Call a function from the reflect package.
-			if strings.HasPrefix(pkg, "reflect") {
-				return unsafeOrReflect{isUnsafe: false, isReflect: true}
-			}
-		case *ssa.Builtin:
-			// Call an unsafe builtin function.
-			if _, ok := unsafeBuiltins[val.Name()]; ok {
-				return unsafeOrReflect{isUnsafe: true, isReflect: false}
-			}
-		}
-	case *ssa.Alloc:
-		typ := instr.Type().Underlying()
-		if typ == nil {
-			return unsafeOrReflect{isUnsafe: false, isReflect: false}
-		}
-		pkg := lang.GetPackageOfType(typ)
-		if pkg == nil {
-			return unsafeOrReflect{isUnsafe: false, isReflect: false}
-		}
-		// Allocate an object of an unsafe type.
-		if strings.HasPrefix(pkg.Name(), "unsafe") {
-			return unsafeOrReflect{isUnsafe: true, isReflect: false}
-		}
-		// Allocate an object of a reflect type.
-		if strings.HasPrefix(pkg.Name(), "reflect") {
-			return unsafeOrReflect{isUnsafe: false, isReflect: true}
-		}
-	case *ssa.Convert:
-		typ := instr.Type()
-		if typ == nil {
-			return unsafeOrReflect{isUnsafe: false, isReflect: false}
-		}
-		// Convert data to an unsafe pointer.
-		if strings.Contains(typ.String(), "unsafe") {
-			return unsafeOrReflect{isUnsafe: true, isReflect: false}
-		}
-	}
-
-	return unsafeOrReflect{isUnsafe: false, isReflect: false}
 }
 
 // unsafeBuiltins are the builtins that are from the unsafe package.

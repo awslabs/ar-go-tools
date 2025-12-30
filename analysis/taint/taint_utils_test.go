@@ -61,7 +61,7 @@ func checkTaint(t *testing.T, prog *ssa.Program, expect analysistest.TargetToSou
 	}
 	cmpSource := func(actual seenSource) func(analysistest.AnnotationID) bool {
 		return func(expect analysistest.AnnotationID) bool {
-			return actual.Pos == expect.Pos && actual.Trace == expect.Meta
+			return actual.Pos == expect.Pos && expect.Meta == actual.Trace
 		}
 	}
 

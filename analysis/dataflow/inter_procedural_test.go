@@ -50,7 +50,7 @@ func TestCrossFunctionFlowGraph(t *testing.T) {
 		numRoutines = 1
 	}
 
-	dataflow.RunIntraProceduralPass(context.Background(), state, numRoutines, dataflow.IntraAnalysisParams{
+	state.RunIntraProceduralPass(context.Background(), numRoutines, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 		ShouldTrack:        func(*dataflow.State, ssa.Node) bool { return true },
 	})

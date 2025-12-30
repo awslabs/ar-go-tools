@@ -52,6 +52,7 @@ type SoundnessResult struct {
 	CalleeResults [][]SoundnessResult
 }
 
+// String returns a JSON representation of the soundness result.
 func (r SoundnessResult) String() string {
 	b, err := r.MarshalJSON()
 	if err != nil {
@@ -61,6 +62,9 @@ func (r SoundnessResult) String() string {
 	return string(b)
 }
 
+// PrettyString returns a pretty-printed version of the soundness result.
+//
+//gocyclo:ignore
 func (r SoundnessResult) PrettyString() string {
 	s := strings.Builder{}
 	if r.IsSound {
@@ -307,6 +311,8 @@ func newSummaryNode(gn dataflow.GraphNode) summaries.SummaryNode {
 }
 
 // GenerateUnsoundnessReport generates an unsoundness report with suggestions on how to fix.
+//
+//gocyclo:ignore
 func GenerateUnsoundnessReport(state *dataflow.State) {
 	var targets []dataflow.UnsoundFeaturesMap
 	state.Logger.Infof("Generating unsoundness report and fix suggestions...")
@@ -330,10 +336,8 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 		fInfo, infoOk := lang.GetFunctionInfo(state.GoModInfo.Path, f)
 		if (summaries.IsUserDefinedFunction(f) && fInfo.IsLocal) || fInfo.IsExported || !infoOk {
 			if _, ok := toReport[f]; !ok {
-				skipped = false
 				toReport[f] = []dataflow.UnsoundFeaturesMap{target}
 			} else {
-				skipped = false
 				toReport[f] = append(toReport[f], target)
 			}
 			continue
