@@ -159,7 +159,9 @@ func (state *IntraAnalysisState) makeEdgesAtInstruction(_ int, instr ssa.Instruc
 	case *ssa.Store:
 		state.makeEdgesAtStoreInCapturedLabel(typedInstr)
 	case *ssa.If:
-		state.makeEdgesAtIf(typedInstr)
+		if state.parentAnalyzerState.Config.UsesImplicitFlows() {
+			state.makeEdgesAtIf(typedInstr)
+		}
 	}
 	// Always check if it's a synthetic node
 	state.makeEdgesSyntheticNodes(instr)

@@ -555,6 +555,7 @@ func Load(filename string, configBytes []byte, cmdLineOverrides *CmdLineOverride
 		}
 	}
 
+	// Compile all the regular expression representations
 	if len(cfg.PathSensitiveFuncs) > 0 {
 		psRegexes := make([]*regexp.Regexp, 0, len(cfg.PathSensitiveFuncs))
 		for _, pf := range cfg.PathSensitiveFuncs {
@@ -568,13 +569,16 @@ func Load(filename string, configBytes []byte, cmdLineOverrides *CmdLineOverride
 	} else {
 		cfg.PathSensitiveFuncs = []string{}
 	}
-
+	cfg.DataflowProblems.usesImplicitFlows = false
 	for _, tSpec := range cfg.DataflowProblems.TaintTrackingProblems {
 		funcutil.MapInPlace(tSpec.Sanitizers, compileRegexes)
 		funcutil.MapInPlace(tSpec.Sinks, compileRegexes)
 		funcutil.MapInPlace(tSpec.Sources, compileRegexes)
 		funcutil.MapInPlace(tSpec.Validators, compileRegexes)
 		funcutil.MapInPlace(tSpec.Filters, compileRegexes)
+		if tSpec.FailOnImplicitFlow {
+			cfg.DataflowProblems.usesImplicitFlows = true
+		}
 	}
 
 	for _, sSpec := range cfg.DataflowProblems.SlicingProblems {

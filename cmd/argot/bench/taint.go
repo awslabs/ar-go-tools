@@ -354,7 +354,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			df.CheckNoGoRoutine(s, goroutines, graphNode)
 
 			if cur.Status.Kind == df.ClosureTracing {
-				if graphNode.CalleeSummary != nil &&
+				if graphNode.CalleeSummary != nil && cur.Status.CurrentClosure() != nil &&
 					// the following equality being true must imply that graphNode.CalleeSummary is a closure's summary
 					graphNode.CalleeSummary == cur.Status.CurrentClosure() {
 					fv := cur.Status.CurrentClosure().Parent.FreeVars[cur.Status.TracingInfo.Index]

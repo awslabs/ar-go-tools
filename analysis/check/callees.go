@@ -86,13 +86,14 @@ func inferCalleeSummaries(
 	}
 
 	// Build MaxSAT problem
+	s.Logger.Debugf("Computing problem constraints.")
 	var constraints []maxsat.Constr
-
 	// Callees of the same function must have identical inferred summaries
 	summaryConstrs := buildCalleeSummaryConstrs(unknownMayFlow)
 	constraints = append(constraints, summaryConstrs...)
 
 	// Hard constraints for known may-flow edges
+	s.Logger.Debugf("[%d constraints] Computing hard contraints for known may-flow edges", len(constraints))
 	var knownConstrs []maxsat.Constr
 	for _, e := range knownMayFlow {
 		constr := maxsat.HardClause(mayFlow(e))
@@ -101,6 +102,8 @@ func inferCalleeSummaries(
 	constraints = append(constraints, knownConstrs...)
 
 	// Maximize unknown may-flow edges (minimize must-not-flow)
+	s.Logger.Debugf("[%d constraints] Computing soft constraints for callee's may-flow edges",
+		len(constraints))
 	var maxConstrs []maxsat.Constr
 	for _, edges := range unknownMayFlow {
 		for _, e := range edges {
@@ -111,7 +114,10 @@ func inferCalleeSummaries(
 	constraints = append(constraints, maxConstrs...)
 
 	// Transitivity
+	s.Logger.Debugf("[%d constraints] Adding transitivity constraints (%d callee graphs)",
+		len(constraints), len(calleeGraphs))
 	transitiveConstrs := buildTransitivityConstrs(s, g, calleeGraphs, unsoundness)
+	s.Logger.Debugf("Added %d transitivity constraints", len(transitiveConstrs))
 	constraints = append(constraints, transitiveConstrs...)
 
 	// Block must-not-flows
@@ -120,10 +126,15 @@ func inferCalleeSummaries(
 		constr := maxsat.HardClause(mayFlow(e).Negation())
 		constraints = append(constraints, constr)
 	}
+	s.Logger.Debugf("Computed %d constraints", len(constraints))
 
 	// Find the optimal cost first
 	prob := maxsat.New(constraints...)
+	s.Logger.Debugf(
+		"running callee summary inference MAXSAT solver for function %s...\n", g.Parent)
+	startSolver := time.Now()
 	model, optimalCost := prob.Solve()
+	s.Logger.Debugf("... solver returned after %s", time.Since(startSolver))
 	if model == nil {
 		// An unsatisfiable model is not necessarily an error. For example, if mustNotFlows
 		// contradicts a satisfiable may-flow edge generated from a successfull intra-procedural
@@ -250,6 +261,7 @@ func buildTransitivityConstrs(
 			allNodes[node{n, call}] = struct{}{}
 		})
 	}
+	s.Logger.Tracef("transitivity constraints: %d nodes in graph", len(allNodes))
 	for a := range allNodes {
 		for b := range allNodes {
 			for c := range allNodes {

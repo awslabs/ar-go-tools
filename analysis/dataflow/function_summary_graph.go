@@ -118,6 +118,8 @@ type SummaryGraph struct {
 // Returns a non-nil Value if and only if f is non-nil.
 // If s is nil, this will not populate the callees of the summary.
 // If non-nil, the returned summary graph is marked as not constructed.
+//
+// IfNodes are only added when the config requires it, i.e. when s.Config.UsesImplicitFlows() returns true.
 func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 	shouldTrack func(*State, ssa.Node) bool,
 	postBlockCallBack func(state *IntraAnalysisState)) *SummaryGraph {
@@ -235,6 +237,7 @@ func (g *SummaryGraph) newNodeID() uint32 {
 	return atomic.AddUint32(g.lastNodeID, 1)
 }
 
+//gocyclo:ignore
 func (g *SummaryGraph) initializeInnerNodes(s *State,
 	shouldTrack func(*State, ssa.Node) bool) {
 	// Add all call instructions
@@ -251,7 +254,9 @@ func (g *SummaryGraph) initializeInnerNodes(s *State,
 		case *ssa.MakeClosure:
 			g.addClosure(x)
 		case *ssa.If:
-			g.addIfNode(x)
+			if s != nil && s.Config.UsesImplicitFlows() {
+				g.addIfNode(x)
+			}
 
 		// Other types of sources that may be used in config
 		case *ssa.Alloc, *ssa.FieldAddr, *ssa.Field, *ssa.UnOp, *ssa.Store:

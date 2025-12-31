@@ -56,3 +56,39 @@ dataflow-summaries:
     flows:
       - from: "!arg 0"
         to: "!ret 0"
+
+  - package: "crypto/internal/fips140/nistec/fiat"
+    receiver: "*P224Element"
+    method: "Square"
+    flows:
+      - from: "(!arg 0).x"
+        to: "(!receiver).x"
+      - from: "!receiver"
+        to: "!ret 0"
+
+  - package: "crypto/internal/fips140/nistec/fiat"
+    receiver: "*P256Element"
+    method: "Square"
+    flows:
+      - from: "(!arg 0).x"
+        to: "(!receiver).x"
+      - from: "!receiver"
+        to: "!ret 0"
+
+  - package: "crypto/internal/fips140/nistec/fiat"
+    receiver: "*P384Element"
+    method: "Square"
+    flows:
+      - from: "(!arg 0).x"
+        to: "(!receiver).x"
+      - from: "!receiver"
+        to: "!ret 0"
+
+  - package: "crypto/internal/fips140/nistec/fiat"
+    receiver: "*P521Element"
+    method: "Square"
+    flows:
+      - from: "(!arg 0).x"
+        to: "(!receiver).x"
+      - from: "!receiver"
+        to: "!ret 0"

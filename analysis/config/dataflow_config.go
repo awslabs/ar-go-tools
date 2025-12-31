@@ -60,6 +60,15 @@ type DataflowProblems struct {
 
 	// SlicingProblems lists the program slicing specifications
 	SlicingProblems []SlicingSpec `yaml:"slicing" json:"slicing"`
+
+	// usesImplicitFlows will be set to true during config initialization if any problem is set to track implicit
+	// flows (i.e. information flows rather than data flow).
+	usesImplicitFlows bool
+}
+
+// UsesImplicitFlows returns whether some problem in the dataflow problem uses implicit flows
+func (d DataflowProblems) UsesImplicitFlows() bool {
+	return d.usesImplicitFlows
 }
 
 // TaintSpec contains code identifiers that identify a specific taint tracking problem, or contains a code that

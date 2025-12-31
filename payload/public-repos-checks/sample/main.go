@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -44,6 +45,11 @@ func calculate() {
 
 func showTime() {
 	fmt.Println("Current time:", time.Now().Format("2006-01-02 15:04:05"))
+}
+
+func test() {
+	curve := elliptic.P521()
+	println(curve)
 }
 
 func signData(scanner *bufio.Scanner) {
@@ -199,6 +205,7 @@ func main() {
 			fmt.Println("Goodbye!")
 			return
 		default:
+			test()
 			fmt.Println("Unknown command. Try: greet, calc, time, sign, upload, quit")
 		}
 	}
