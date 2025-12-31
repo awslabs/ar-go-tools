@@ -1738,6 +1738,1540 @@ var summarySyscall = map[string]Summarizer{
 			"!arg 1": {"!ret"},
 		},
 	}.mustCompile(),
+	// func Access(path string, mode uint32) (err error)
+	"syscall.Access": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Chdir(path string) (err error)
+	"syscall.Chdir": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Chmod(path string, mode uint32) (err error)
+	"syscall.Chmod": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Chown(path string, uid int, gid int) (err error)
+	"syscall.Chown": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Chroot(path string) (err error)
+	"syscall.Chroot": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Close(fd int) (err error)
+	"syscall.Close": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Creat(path string, mode uint32) (fd int, err error)
+	"syscall.Creat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Open(path string, mode int, perm uint32) (fd int, err error)
+	"syscall.Open": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Openat(dirfd int, path string, flags int, mode uint32) (fd int, err error)
+	"syscall.Openat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+			"!arg 3": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Read(fd int, p []byte) (n int, err error)
+	"syscall.Read": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Write(fd int, p []byte) (n int, err error)
+	"syscall.Write": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func Pread(fd int, p []byte, offset int64) (n int, err error)
+	"syscall.Pread": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Pwrite(fd int, p []byte, offset int64) (n int, err error)
+	"syscall.Pwrite": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Getegid() (egid int)
+	"syscall.Getegid": NoDataFlowPropagation,
+	// func Geteuid() (euid int)
+	"syscall.Geteuid": NoDataFlowPropagation,
+	// func Getgid() (gid int)
+	"syscall.Getgid": NoDataFlowPropagation,
+	// func Getpid() (pid int)
+	"syscall.Getpid": NoDataFlowPropagation,
+	// func Getppid() (ppid int)
+	"syscall.Getppid": NoDataFlowPropagation,
+	// func Kill(pid int, sig Signal) (err error)
+	"syscall.Kill": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Exit(code int)
+	"syscall.Exit": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {},
+		},
+	}.mustCompile(),
+	// func Fstat(fd int, stat *Stat_t) (err error)
+	"syscall.Fstat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Mkdir(path string, mode uint32) (err error)
+	"syscall.Mkdir": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Rmdir(path string) error
+	"syscall.Rmdir": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Unlink(path string) error
+	"syscall.Unlink": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Link(oldpath string, newpath string) (err error)
+	"syscall.Link": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Rename(oldpath string, newpath string) (err error)
+	"syscall.Rename": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Socket(domain, typ, proto int) (fd int, err error)
+	"syscall.Socket": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Bind(fd int, sa Sockaddr) (err error)
+	"syscall.Bind": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Listen(s int, n int) (err error)
+	"syscall.Listen": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Accept(fd int) (nfd int, sa Sockaddr, err error)
+	"syscall.Accept": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+		},
+	}.mustCompile(),
+	// func Connect(fd int, sa Sockaddr) (err error)
+	"syscall.Connect": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Dup(oldfd int) (fd int, err error)
+	"syscall.Dup": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func Dup2(oldfd int, newfd int) (err error)
+	"syscall.Dup2": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Pipe(p []int) error
+	"syscall.Pipe": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Mmap(fd int, offset int64, length int, prot int, flags int) (data []byte, err error)
+	"syscall.Mmap": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+			"!arg 3": {"!ret 1"},
+			"!arg 4": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Munmap(b []byte) (err error)
+	"syscall.Munmap": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Sendto(fd int, p []byte, flags int, to Sockaddr) (err error)
+	"syscall.Sendto": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Recvfrom(fd int, p []byte, flags int) (n int, from Sockaddr, err error)
+	"syscall.Recvfrom": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!ret 0", "!ret 1", "!ret 2"},
+			"!arg 2": {"!ret 2"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Shutdown(fd int, how int) (err error)
+	"syscall.Shutdown": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fchmod(fd int, mode uint32) (err error)
+	"syscall.Fchmod": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fchown(fd int, uid int, gid int) (err error)
+	"syscall.Fchown": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fsync(fd int) (err error)
+	"syscall.Fsync": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Ftruncate(fd int, length int64) (err error)
+	"syscall.Ftruncate": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setuid(uid int) (err error)
+	"syscall.Setuid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setgid(gid int) (err error)
+	"syscall.Setgid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Seteuid(euid int) (err error)
+	"syscall.Seteuid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setegid(egid int) (err error)
+	"syscall.Setegid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Truncate(path string, length int64) (err error)
+	"syscall.Truncate": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Symlink(oldpath string, newpath string) (err error)
+	"syscall.Symlink": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Readlink(path string, buf []byte) (n int, err error)
+	"syscall.Readlink": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Dup3(oldfd int, newfd int, flags int) (err error)
+	"syscall.Dup3": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Pipe2(p []int, flags int) error
+	"syscall.Pipe2": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Accept4(fd int, flags int) (nfd int, sa Sockaddr, err error)
+	"syscall.Accept4": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 2"},
+		},
+	}.mustCompile(),
+	// func Socketpair(domain, typ, proto int) (fd [2]int, err error)
+	"syscall.Socketpair": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Lchown(path string, uid int, gid int) (err error)
+	"syscall.Lchown": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Gettimeofday(tv *Timeval) (err error)
+	"syscall.Gettimeofday": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Settimeofday(tv *Timeval) (err error)
+	"syscall.Settimeofday": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Time(t *Time_t) (tt Time_t, err error)
+	"syscall.Time": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 1"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Times(tms *Tms) (ticks uintptr, err error)
+	"syscall.Times": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 1"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Uname(buf *Utsname) (err error)
+	"syscall.Uname": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Sysinfo(info *Sysinfo_t) (err error)
+	"syscall.Sysinfo": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Getpagesize() int
+	"syscall.Getpagesize": NoDataFlowPropagation,
+	// func Getpriority(which int, who int) (prio int, err error)
+	"syscall.Getpriority": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func Setpriority(which int, who int, prio int) (err error)
+	"syscall.Setpriority": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Getrusage(who int, rusage *Rusage) (err error)
+	"syscall.Getrusage": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Umask(mask int) (oldmask int)
+	"syscall.Umask": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Reboot(cmd int) (err error)
+	"syscall.Reboot": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Acct(path string) (err error)
+	"syscall.Acct": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Adjtimex(buf *Timex) (state int, err error)
+	"syscall.Adjtimex": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Klogctl(typ int, buf []byte) (n int, err error)
+	"syscall.Klogctl": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Ustat(dev int, ubuf *Ustat_t) (err error)
+	"syscall.Ustat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Getxattr(path string, attr string, dest []byte) (sz int, err error)
+	"syscall.Getxattr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 2", "!ret 0", "!ret 1"},
+			"!arg 1": {"!arg 2", "!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 2"},
+	}.mustCompile(),
+	// func Setxattr(path string, attr string, data []byte, flags int) (err error)
+	"syscall.Setxattr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Listxattr(path string, dest []byte) (sz int, err error)
+	"syscall.Listxattr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Removexattr(path string, attr string) (err error)
+	"syscall.Removexattr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Exec(argv0 string, argv []string, envv []string) (err error)
+	"syscall.Exec": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func ForkExec(argv0 string, argv []string, attr *ProcAttr) (pid int, err error)
+	"syscall.ForkExec": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func StartProcess(argv0 string, argv []string, attr *ProcAttr) (pid int, handle uintptr, err error)
+	"syscall.StartProcess": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 2": {"!ret 0", "!ret 1", "!ret 2"},
+		},
+	}.mustCompile(),
+	// func Wait4(pid int, wstatus *WaitStatus, options int, rusage *Rusage) (wpid int, err error)
+	"syscall.Wait4": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+			"!arg 3": {"!ret 1"},
+		},
+		Mutates: []string{"!arg 1", "!arg 3"},
+	}.mustCompile(),
+	// func Getpgid(pid int) (pgid int, err error)
+	"syscall.Getpgid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func Getpgrp() (pid int)
+	"syscall.Getpgrp": NoDataFlowPropagation,
+	// func Setpgid(pid int, pgid int) (err error)
+	"syscall.Setpgid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setsid() (pid int, err error)
+	"syscall.Setsid": NoDataFlowPropagation,
+	// func Setreuid(ruid, euid int) (err error)
+	"syscall.Setreuid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setregid(rgid, egid int) (err error)
+	"syscall.Setregid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setresuid(ruid, euid, suid int) (err error)
+	"syscall.Setresuid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setresgid(rgid, egid, sgid int) (err error)
+	"syscall.Setresgid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setgroups(gids []int) (err error)
+	"syscall.Setgroups": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Getgroups() (gids []int, err error)
+	"syscall.Getgroups": NoDataFlowPropagation,
+	// func Gettid() (tid int)
+	"syscall.Gettid": NoDataFlowPropagation,
+	// func Tgkill(tgid int, tid int, sig Signal) (err error)
+	"syscall.Tgkill": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Nanosleep(time *Timespec, leftover *Timespec) (err error)
+	"syscall.Nanosleep": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Utime(path string, buf *Utimbuf) (err error)
+	"syscall.Utime": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Utimes(path string, tv []Timeval) (err error)
+	"syscall.Utimes": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func UtimesNano(path string, ts []Timespec) (err error)
+	"syscall.UtimesNano": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Futimes(fd int, tv []Timeval) (err error)
+	"syscall.Futimes": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Futimesat(dirfd int, path string, tv []Timeval) (err error)
+	"syscall.Futimesat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func TimespecToNsec(ts Timespec) int64
+	"syscall.TimespecToNsec": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func TimevalToNsec(tv Timeval) int64
+	"syscall.TimevalToNsec": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setdomainname(p []byte) (err error)
+	"syscall.Setdomainname": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Sethostname(p []byte) (err error)
+	"syscall.Sethostname": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setfsgid(gid int) (err error)
+	"syscall.Setfsgid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Setfsuid(uid int) (err error)
+	"syscall.Setfsuid": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Clearenv()
+	"syscall.Clearenv": NoDataFlowPropagation,
+	// func Environ() []string
+	"syscall.Environ": NoDataFlowPropagation,
+	// func Getenv(key string) (value string, found bool)
+	"syscall.Getenv": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func Setenv(key, value string) error
+	"syscall.Setenv": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Unsetenv(key string) error
+	"syscall.Unsetenv": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Unshare(flags int) (err error)
+	"syscall.Unshare": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Getcwd(buf []byte) (n int, err error)
+	"syscall.Getcwd": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 0"},
+	}.mustCompile(),
+	// func Getwd() (wd string, err error)
+	"syscall.Getwd": NoDataFlowPropagation,
+	// func Pause() (err error)
+	"syscall.Pause": NoDataFlowPropagation,
+	// func Sync()
+	"syscall.Sync": NoDataFlowPropagation,
+	// func EpollCreate(size int) (fd int, err error)
+	"syscall.EpollCreate": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func EpollCreate1(flag int) (fd int, err error)
+	"syscall.EpollCreate1": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func EpollCtl(epfd int, op int, fd int, event *EpollEvent) (err error)
+	"syscall.EpollCtl": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func EpollWait(epfd int, events []EpollEvent, msec int) (n int, err error)
+	"syscall.EpollWait": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func InotifyInit() (fd int, err error)
+	"syscall.InotifyInit": NoDataFlowPropagation,
+	// func InotifyInit1(flags int) (fd int, err error)
+	"syscall.InotifyInit1": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func InotifyAddWatch(fd int, pathname string, mask uint32) (watchdesc int, err error)
+	"syscall.InotifyAddWatch": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func InotifyRmWatch(fd int, watchdesc uint32) (success int, err error)
+	"syscall.InotifyRmWatch": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func Select(nfd int, r *FdSet, w *FdSet, e *FdSet, timeout *Timeval) (n int, err error)
+	"syscall.Select": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 0", "!ret 1"},
+			"!arg 3": {"!ret 0", "!ret 1"},
+			"!arg 4": {"!ret 1"},
+		},
+		Mutates: []string{"!arg 1", "!arg 2", "!arg 3", "!arg 4"},
+	}.mustCompile(),
+	// func Splice(rfd int, roff *int64, wfd int, woff *int64, len int, flags int) (n int64, err error)
+	"syscall.Splice": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 0", "!ret 1"},
+			"!arg 3": {"!ret 1"},
+			"!arg 4": {"!ret 0", "!ret 1"},
+			"!arg 5": {"!ret 1"},
+		},
+		Mutates: []string{"!arg 1", "!arg 3"},
+	}.mustCompile(),
+	// func Tee(rfd int, wfd int, len int, flags int) (n int64, err error)
+	"syscall.Tee": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 0", "!ret 1"},
+			"!arg 3": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func SyncFileRange(fd int, off int64, n int64, flags int) (err error)
+	"syscall.SyncFileRange": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fallocate(fd int, mode uint32, off int64, len int64) (err error)
+	"syscall.Fallocate": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fdatasync(fd int) (err error)
+	"syscall.Fdatasync": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Flock(fd int, how int) (err error)
+	"syscall.Flock": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func BytePtrFromString(s string) (*byte, error)
+	"syscall.BytePtrFromString": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func ByteSliceFromString(s string) ([]byte, error)
+	"syscall.ByteSliceFromString": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func SlicePtrFromStrings(ss []string) ([]*byte, error)
+	"syscall.SlicePtrFromStrings": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func StringBytePtr(s string) *byte
+	"syscall.StringBytePtr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func StringByteSlice(s string) []byte
+	"syscall.StringByteSlice": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func StringSlicePtr(ss []string) []*byte
+	"syscall.StringSlicePtr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func ParseDirent(buf []byte, max int, names []string) (consumed int, count int, newnames []string)
+	"syscall.ParseDirent": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 2"},
+		},
+	}.mustCompile(),
+	// func ParseNetlinkMessage(b []byte) ([]NetlinkMessage, error)
+	"syscall.ParseNetlinkMessage": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func ParseNetlinkRouteAttr(m *NetlinkMessage) ([]NetlinkRouteAttr, error)
+	"syscall.ParseNetlinkRouteAttr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func ParseSocketControlMessage(b []byte) ([]SocketControlMessage, error)
+	"syscall.ParseSocketControlMessage": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func ParseUnixCredentials(m *SocketControlMessage) (*Ucred, error)
+	"syscall.ParseUnixCredentials": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func ParseUnixRights(m *SocketControlMessage) ([]int, error)
+	"syscall.ParseUnixRights": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func UnixCredentials(ucred *Ucred) []byte
+	"syscall.UnixCredentials": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func UnixRights(fds ...int) []byte
+	"syscall.UnixRights": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func AllThreadsSyscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)
+	"syscall.AllThreadsSyscall": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 2": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 3": {"!ret 0", "!ret 1", "!ret 2"},
+		},
+	}.mustCompile(),
+	// func AllThreadsSyscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno)
+	"syscall.AllThreadsSyscall6": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 2": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 3": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 4": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 5": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 6": {"!ret 0", "!ret 1", "!ret 2"},
+		},
+	}.mustCompile(),
+	// func RawSyscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)
+	"syscall.RawSyscall": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 2": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 3": {"!ret 0", "!ret 1", "!ret 2"},
+		},
+	}.mustCompile(),
+	// func RawSyscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno)
+	"syscall.RawSyscall6": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 2": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 3": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 4": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 5": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 6": {"!ret 0", "!ret 1", "!ret 2"},
+		},
+	}.mustCompile(),
+	// func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)
+	"syscall.Syscall": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 2": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 3": {"!ret 0", "!ret 1", "!ret 2"},
+		},
+	}.mustCompile(),
+	// func Syscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno)
+	"syscall.Syscall6": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 1": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 2": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 3": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 4": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 5": {"!ret 0", "!ret 1", "!ret 2"},
+			"!arg 6": {"!ret 0", "!ret 1", "!ret 2"},
+		},
+	}.mustCompile(),
+	// func CloseOnExec(fd int)
+	"syscall.CloseOnExec": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {},
+		},
+	}.mustCompile(),
+	// func SetNonblock(fd int, nonblocking bool) (err error)
+	"syscall.SetNonblock": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func FcntlFlock(fd uintptr, cmd int, lk *Flock_t) error
+	"syscall.FcntlFlock": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+		Mutates: []string{"!arg 2"},
+	}.mustCompile(),
+	// func CmsgLen(datalen int) int
+	"syscall.CmsgLen": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func CmsgSpace(datalen int) int
+	"syscall.CmsgSpace": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Getpeername(fd int) (sa Sockaddr, err error)
+	"syscall.Getpeername": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func Getsockname(fd int) (sa Sockaddr, err error)
+	"syscall.Getsockname": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func GetsockoptICMPv6Filter(fd, level, opt int) (*ICMPv6Filter, error)
+	"syscall.GetsockoptICMPv6Filter": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func GetsockoptInet4Addr(fd, level, opt int) (value [4]byte, err error)
+	"syscall.GetsockoptInet4Addr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func GetsockoptInt(fd, level, opt int) (value int, err error)
+	"syscall.GetsockoptInt": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func GetsockoptIPMreq(fd, level, opt int) (*IPMreq, error)
+	"syscall.GetsockoptIPMreq": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func GetsockoptIPMreqn(fd, level, opt int) (*IPMreqn, error)
+	"syscall.GetsockoptIPMreqn": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func GetsockoptIPv6Mreq(fd, level, opt int) (*IPv6Mreq, error)
+	"syscall.GetsockoptIPv6Mreq": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func GetsockoptIPv6MTUInfo(fd, level, opt int) (*IPv6MTUInfo, error)
+	"syscall.GetsockoptIPv6MTUInfo": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func GetsockoptUcred(fd, level, opt int) (*Ucred, error)
+	"syscall.GetsockoptUcred": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func SetsockoptByte(fd, level, opt int, value byte) (err error)
+	"syscall.SetsockoptByte": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptICMPv6Filter(fd, level, opt int, filter *ICMPv6Filter) error
+	"syscall.SetsockoptICMPv6Filter": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptInet4Addr(fd, level, opt int, value [4]byte) (err error)
+	"syscall.SetsockoptInet4Addr": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptInt(fd, level, opt int, value int) (err error)
+	"syscall.SetsockoptInt": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptIPMreq(fd, level, opt int, mreq *IPMreq) (err error)
+	"syscall.SetsockoptIPMreq": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptIPMreqn(fd, level, opt int, mreq *IPMreqn) (err error)
+	"syscall.SetsockoptIPMreqn": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptIPv6Mreq(fd, level, opt int, mreq *IPv6Mreq) (err error)
+	"syscall.SetsockoptIPv6Mreq": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptLinger(fd, level, opt int, l *Linger) (err error)
+	"syscall.SetsockoptLinger": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptString(fd, level, opt int, s string) (err error)
+	"syscall.SetsockoptString": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SetsockoptTimeval(fd, level, opt int, tv *Timeval) (err error)
+	"syscall.SetsockoptTimeval": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Recvmsg(fd int, p, oob []byte, flags int) (n, oobn int, recvflags int, from Sockaddr, err error)
+	"syscall.Recvmsg": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!arg 2", "!ret 0", "!ret 1", "!ret 2", "!ret 3", "!ret 4"},
+			"!arg 3": {"!ret 4"},
+		},
+		Mutates: []string{"!arg 1", "!arg 2"},
+	}.mustCompile(),
+	// func Sendmsg(fd int, p, oob []byte, to Sockaddr, flags int) (err error)
+	"syscall.Sendmsg": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+			"!arg 4": {"!ret"},
+		},
+	}.mustCompile(),
+	// func SendmsgN(fd int, p, oob []byte, to Sockaddr, flags int) (n int, err error)
+	"syscall.SendmsgN": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+			"!arg 3": {"!ret 1"},
+			"!arg 4": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err error)
+	"syscall.Sendfile": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+			"!arg 3": {"!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 2"},
+	}.mustCompile(),
+	// func NetlinkRIB(proto, family int) ([]byte, error)
+	"syscall.NetlinkRIB": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func BindToDevice(fd int, device string) (err error)
+	"syscall.BindToDevice": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fchdir(fd int) (err error)
+	"syscall.Fchdir": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fchmodat(dirfd int, path string, mode uint32, flags int) error
+	"syscall.Fchmodat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fchownat(dirfd int, path string, uid int, gid int, flags int) (err error)
+	"syscall.Fchownat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+			"!arg 4": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Mkdirat(dirfd int, path string, mode uint32) (err error)
+	"syscall.Mkdirat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Unlinkat(dirfd int, path string) error
+	"syscall.Unlinkat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Mkfifo(path string, mode uint32) (err error)
+	"syscall.Mkfifo": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Mknod(path string, mode uint32, dev int) (err error)
+	"syscall.Mknod": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Mknodat(dirfd int, path string, mode uint32, dev int) (err error)
+	"syscall.Mknodat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Fstatfs(fd int, buf *Statfs_t) (err error)
+	"syscall.Fstatfs": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Statfs(path string, buf *Statfs_t) (err error)
+	"syscall.Statfs": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Mount(source string, target string, fstype string, flags uintptr, data string) (err error)
+	"syscall.Mount": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+			"!arg 4": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Unmount(target string, flags int) (err error)
+	"syscall.Unmount": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func PivotRoot(newroot string, putold string) (err error)
+	"syscall.PivotRoot": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Renameat(olddirfd int, oldpath string, newdirfd int, newpath string) (err error)
+	"syscall.Renameat": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+			"!arg 3": {"!ret"},
+		},
+	}.mustCompile(),
+	// func ReadDirent(fd int, buf []byte) (n int, err error)
+	"syscall.ReadDirent": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 1", "!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func Seek(fd int, offset int64, whence int) (off int64, err error)
+	"syscall.Seek": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 1"},
+		},
+	}.mustCompile(),
+	// func Madvise(b []byte, advice int) (err error)
+	"syscall.Madvise": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Mlock(b []byte) (err error)
+	"syscall.Mlock": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Mlockall(flags int) (err error)
+	"syscall.Mlockall": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Mprotect(b []byte, prot int) (err error)
+	"syscall.Mprotect": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Munlock(b []byte) (err error)
+	"syscall.Munlock": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Munlockall() (err error)
+	"syscall.Munlockall": NoDataFlowPropagation,
+	// func Ioperm(from int, num int, on int) (err error)
+	"syscall.Ioperm": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+			"!arg 2": {"!ret"},
+		},
+	}.mustCompile(),
+	// func Iopl(level int) (err error)
+	"syscall.Iopl": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func PtraceAttach(pid int) (err error)
+	"syscall.PtraceAttach": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func PtraceCont(pid int, signal int) (err error)
+	"syscall.PtraceCont": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func PtraceDetach(pid int) (err error)
+	"syscall.PtraceDetach": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func PtraceGetEventMsg(pid int) (msg uint, err error)
+	"syscall.PtraceGetEventMsg": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func PtraceGetRegs(pid int, regsout *PtraceRegs) (err error)
+	"syscall.PtraceGetRegs": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+		Mutates: []string{"!arg 1"},
+	}.mustCompile(),
+	// func PtracePeekData(pid int, addr uintptr, out []byte) (count int, err error)
+	"syscall.PtracePeekData": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 2", "!ret 0", "!ret 1"},
+			"!arg 1": {"!arg 2", "!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 2"},
+	}.mustCompile(),
+	// func PtracePeekText(pid int, addr uintptr, out []byte) (count int, err error)
+	"syscall.PtracePeekText": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!arg 2", "!ret 0", "!ret 1"},
+			"!arg 1": {"!arg 2", "!ret 0", "!ret 1"},
+		},
+		Mutates: []string{"!arg 2"},
+	}.mustCompile(),
+	// func PtracePokeData(pid int, addr uintptr, data []byte) (count int, err error)
+	"syscall.PtracePokeData": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func PtracePokeText(pid int, addr uintptr, data []byte) (count int, err error)
+	"syscall.PtracePokeText": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+			"!arg 2": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func PtraceSetOptions(pid int, options int) (err error)
+	"syscall.PtraceSetOptions": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func PtraceSetRegs(pid int, regs *PtraceRegs) (err error)
+	"syscall.PtraceSetRegs": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func PtraceSingleStep(pid int) (err error)
+	"syscall.PtraceSingleStep": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func PtraceSyscall(pid int, signal int) (err error)
+	"syscall.PtraceSyscall": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func AttachLsf(fd int, i []SockFilter) error
+	"syscall.AttachLsf": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
+	// func DetachLsf(fd int) error
+	"syscall.DetachLsf": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+	}.mustCompile(),
+	// func LsfSocket(ifindex, proto int) (int, error)
+	"syscall.LsfSocket": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret 0", "!ret 1"},
+			"!arg 1": {"!ret 0", "!ret 1"},
+		},
+	}.mustCompile(),
+	// func SetLsfPromisc(name string, m bool) error
+	"syscall.SetLsfPromisc": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+			"!arg 1": {"!ret"},
+		},
+	}.mustCompile(),
 }
 
 var summaryTesting = map[string]Summarizer{}
