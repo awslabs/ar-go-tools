@@ -145,6 +145,7 @@ func (r SoundnessResult) PrettyString() string {
 	return s.String()
 }
 
+// MarshalJSON implements the json.Marshaler interface for SoundnessResult.
 func (r SoundnessResult) MarshalJSON() ([]byte, error) {
 	b := &bytes.Buffer{}
 	raw := newRawSoundnessResult(r)
@@ -223,6 +224,7 @@ func (u UnsoundDataflowFeatures) isSound() bool {
 	return len(u.RecoverUsages) == 0 && len(u.GoUsages) == 0 && !u.HasUnboundedDefers
 }
 
+// Flow represents a data flow between two summary nodes.
 type Flow struct {
 	From summaries.SummaryNode
 	To   summaries.SummaryNode
@@ -245,7 +247,7 @@ type rawSoundnessResult struct {
 	IsSound       bool
 	Unsoundness   rawUnsoundness
 	Method        string
-	TimeSeconds   time.Duration
+	Elapsed       time.Duration
 	CalleeResults [][]rawSoundnessResult
 }
 
@@ -271,7 +273,7 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 			DataflowFeatures:     r.Unsoundness.DataflowFeatures,
 		},
 		Method:        string(r.Method),
-		TimeSeconds:   time.Duration(r.Time.Seconds()),
+		Elapsed:       time.Duration(r.Time.Seconds()),
 		CalleeResults: calleeResults,
 	}
 }

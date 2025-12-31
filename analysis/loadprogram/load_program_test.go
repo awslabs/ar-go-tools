@@ -49,6 +49,7 @@ func TestLoadWithProjectRoot(t *testing.T) {
 	c := config.NewState(cfg, "", []string{"main.go"}, loadOptions)
 	program, err := NewState(c).Value()
 	if err != nil || len(program.Packages) == 0 {
+
 		t.Fatalf("no packages loaded")
 	}
 	if err != nil {

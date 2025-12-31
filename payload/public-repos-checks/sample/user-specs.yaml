@@ -70,8 +70,8 @@ dataflow-summaries:
     receiver: "*P256Element"
     method: "Square"
     flows:
-      - from: "(!arg 0).x"
-        to: "(!receiver).x"
+      - from: "!arg 0"
+        to: "!receiver"
       - from: "!receiver"
         to: "!ret 0"
 
@@ -79,8 +79,8 @@ dataflow-summaries:
     receiver: "*P384Element"
     method: "Square"
     flows:
-      - from: "(!arg 0).x"
-        to: "(!receiver).x"
+      - from: "!arg 0"
+        to: "!receiver"
       - from: "!receiver"
         to: "!ret 0"
 
@@ -88,7 +88,7 @@ dataflow-summaries:
     receiver: "*P521Element"
     method: "Square"
     flows:
-      - from: "(!arg 0).x"
-        to: "(!receiver).x"
+      - from: "!arg 0"
+        to: "!receiver"
       - from: "!receiver"
         to: "!ret 0"

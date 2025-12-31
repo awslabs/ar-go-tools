@@ -316,6 +316,7 @@ func FnWritesTo(fn *ssa.Function, val ssa.Value) bool {
 	return false
 }
 
+// UnsafeOrReflect indicates whether a function uses unsafe operations or reflection.
 type UnsafeOrReflect struct {
 	IsUnsafe  bool
 	IsReflect bool

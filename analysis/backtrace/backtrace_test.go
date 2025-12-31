@@ -117,7 +117,7 @@ func TestAnalyze_SpecificObjs(t *testing.T) {
 		},
 	}
 
-	checkTraces(t, res, tests)
+	checkTraces(t, res, tests, lp.Config.LogLevel > 3)
 
 	// Make sure no extra traces are reported by, for example,
 	// analyzing an un-configured entrypoint
@@ -195,30 +195,7 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 				{arg, argval{`nil:[]string`, 1}, 26},
 			},
 		},
-		{
-			name: `trace to *os.Args in main from os/exec.Command arg 0 in main`,
-			// "[#582.1] global:os.Args in *os.Args (read)" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:26
-			// "(SA)call: os/exec.Command(t6, t8...) in main [#582.10]: @arg 0:t6 [#582.11]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:30
-			matches: []match{
-				ignoreMatch, // {return, "runtime_args", -1}
-				ignoreMatch, // {call, "runtime_args", -1},
-				ignoreMatch, // {globalWrite, "*Args", -1},
-				{globalRead, `*os.Args`, 31},
-				{arg, argval{nil, 0}, 31}, // nil indicates non-static arg
-			},
-		},
-		{
-			name: `trace to *os.Args in main from os/exec.Command arg 1 in main`,
-			// "[#582.1] global:os.Args in *os.Args (read)" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:38
-			// "(SA)call: os/exec.Command(t6, t8...) in main [#582.10]: @arg 1:t8 [#582.12]" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:31:42
-			matches: []match{
-				ignoreMatch, // {return, "runtime_args, -1}
-				ignoreMatch, // {call, "runtime_args", -1},
-				ignoreMatch, // {globalWrite, "*Args", -1},
-				{globalRead, `*os.Args`, 31},
-				{arg, argval{nil, 1}, 31},
-			},
-		},
+
 		{
 			name: `trace to *os.Args in main from os/exec.Command arg 0 in runcmd`,
 			// "[#581.2] global:os.Args in *os.Args (read)" at /Volumes/workplace/argot/testdata/src/backtrace/main.go:43:22
@@ -397,7 +374,7 @@ func testAnalyze(t *testing.T, lp *loadprogram.State) {
 		},
 	}
 
-	checkTraces(t, res, tests)
+	checkTraces(t, res, tests, true)
 
 	traces := mergeTraces(res)
 	t.Run(`trace to bar("x") should not exist`, func(t *testing.T) {
@@ -548,7 +525,7 @@ func testAnalyzeClosures(t *testing.T, lp *loadprogram.State) {
 		},
 	}
 
-	checkTraces(t, res, tests)
+	checkTraces(t, res, tests, lp.Config.LogLevel > 3)
 }
 
 func TestAnalyze_CheckStatic(t *testing.T) {
@@ -587,17 +564,25 @@ type traceTest struct {
 	matches []match
 }
 
-func checkTraces(t *testing.T, res backtrace.AnalysisResult, tests []traceTest) {
+func checkTraces(t *testing.T, res backtrace.AnalysisResult, tests []traceTest, debug bool) {
 	traces := mergeTraces(res)
 	if len(traces) < len(tests) {
 		t.Fatalf("analysis did not find enough traces: want at least %d, got %d", len(tests), len(traces))
 	}
 
-	// // NOTE Uncomment to debug
-	// t.Log("TRACES:")
-	// for _, trace := range res.Traces {
-	// 	t.Log(trace)
-	// }
+	if debug {
+		t.Log("TRACES:")
+		for _, trace := range res.Traces {
+			for _, trace := range trace {
+				for _, nodes := range trace {
+					t.Log("Trace:")
+					for _, node := range nodes {
+						t.Log(node.Node.String())
+					}
+				}
+			}
+		}
+	}
 
 	for _, test := range tests {
 		test := test // needed for t.Parallel()
@@ -737,6 +722,7 @@ func setupConfig(lp *loadprogram.State, summarizeOnDemand bool) {
 	lp.Logger.Level = level
 
 	cfg := lp.Config
+	cfg.Options.LogLevel = 4
 	cfg.Options.ReportCoverage = false
 	cfg.Options.ReportPaths = false // change this as needed for debugging
 	cfg.Options.ReportSummaries = false

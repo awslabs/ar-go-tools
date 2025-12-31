@@ -184,7 +184,7 @@ const freeVarPrefix = "!free"
 
 // Parses valid names for parameters
 var validArgNameRegex = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
-var validArgNameAndPosRegex = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*\\s[0-9]+$")
+var validArgNameAndPosRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*\s[0-9]+$`)
 
 // rawSummary is a summary of flows for a function where the flow nodes still
 // need to be parsed into SummaryNode to form a DetailedSummary.
@@ -542,6 +542,7 @@ func (f FreeVarSNode) String() string {
 	return baseStr
 }
 
+// WithObjectPath returns a new FreeVarSNode with the specified object path.
 func (f FreeVarSNode) WithObjectPath(path string) SummaryNode {
 	return FreeVarSNode{Name: f.Name, ObjectPath: path}
 }

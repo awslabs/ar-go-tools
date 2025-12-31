@@ -25,7 +25,6 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
@@ -36,12 +35,12 @@ import (
 type Visitor struct {
 	reports        chan funcReport
 	taintSpec      *config.TaintSpec
-	currentSource  df.NodeWithTrace
-	roots          map[df.NodeWithTrace]*df.VisitorNode
-	visited        map[*df.CallStack]bool
+	currentSource  dataflow.NodeWithTrace
+	roots          map[dataflow.NodeWithTrace]*dataflow.VisitorNode
+	visited        map[*dataflow.CallStack]bool
 	coverageWriter io.StringWriter
 	alarms         map[token.Pos]string
-	seen           map[df.KeyType]bool
+	seen           map[dataflow.KeyType]bool
 }
 
 // NewVisitor returns a Visitor that can be used with
@@ -51,25 +50,25 @@ func NewVisitor(ts *config.TaintSpec, reports chan funcReport) *Visitor {
 	return &Visitor{
 		reports:        reports,
 		taintSpec:      ts,
-		currentSource:  df.NodeWithTrace{},
+		currentSource:  dataflow.NodeWithTrace{},
 		coverageWriter: nil,
-		roots:          map[df.NodeWithTrace]*df.VisitorNode{},
-		visited:        map[*df.CallStack]bool{},
+		roots:          map[dataflow.NodeWithTrace]*dataflow.VisitorNode{},
+		visited:        map[*dataflow.CallStack]bool{},
 		alarms:         map[token.Pos]string{},
-		seen:           make(map[df.KeyType]bool),
+		seen:           make(map[dataflow.KeyType]bool),
 	}
 }
 
 // Reset resets the visitor by clearing the set of seen nodes
 func (v *Visitor) Reset() {
-	v.seen = make(map[df.KeyType]bool)
+	v.seen = make(map[dataflow.KeyType]bool)
 }
 
 // Visit runs an inter-procedural analysis to add any detected taint flow from currentSource to a sink. This implements
 // the visitor interface of the dataflow package.
 //
 //gocyclo:ignore
-func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrace) {
+func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.NodeWithTrace) {
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
 	v.currentSource = source
@@ -78,20 +77,20 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 	logger.Debugf(" entrypoint: %s\n",
 		formatutil.Blue(v.currentSource.Node.String()))
 	logger.Debugf("   %s %s\n", formatutil.Green("Found at"), v.currentSource.Node.Position(s))
-	logger.Debugf("   Context: %s", df.FuncNames(v.currentSource.Trace, s.Logger.LogsDebug()))
+	logger.Debugf("   Context: %s", dataflow.FuncNames(v.currentSource.Trace, s.Logger.LogsDebug()))
 
 	logger.PushContext(formatutil.Faint(v.currentSource.Node.LongID()))
 	defer logger.PopContext()
 
-	v.roots[source] = &df.VisitorNode{
+	v.roots[source] = &dataflow.VisitorNode{
 		NodeWithTrace: source,
 		AccessPaths:   []string{""},
 		Prev:          nil,
 		Depth:         0,
-		Status:        df.VisitorNodeStatus{Kind: df.DefaultTracing},
+		Status:        dataflow.VisitorNodeStatus{Kind: dataflow.DefaultTracing},
 	}
 
-	que := []*df.VisitorNode{v.roots[source]}
+	que := []*dataflow.VisitorNode{v.roots[source]}
 
 	// Search from path candidates in the inter-procedural flow graph from sources to sinks
 	// we don't revisit only if it has been visited with the same call stack
@@ -111,8 +110,8 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		// If the node is filtered out, we don't inspect children.
 		// Test this before checking for sink in case this is a filtered argument in a sink call (this is common when
 		// you are tracking flows to logging but don't care about integers and booleans for example).
-		if df.IsFiltered(s, v.taintSpec, cur.Node) {
-			if _, isIf := cur.Node.(*df.IfNode); !isIf || v.taintSpec.FailOnImplicitFlow {
+		if dataflow.IsFiltered(s, v.taintSpec, cur.Node) {
+			if _, isIf := cur.Node.(*dataflow.IfNode); !isIf || v.taintSpec.FailOnImplicitFlow {
 				// Filtered values logged at debug level -- there can be many of those.
 				logger.Debugf("Filtered value: %s\n", cur.Node.String())
 				logger.Debugf("At: %s\n", cur.Node.Position(s))
@@ -121,7 +120,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		}
 
 		// If node is sink, then we reached a sink from a source, and we must log the taint flow.
-		if _, sinks := df.IsSink(s, v.taintSpec, cur.Node); sinks && cur.Status.Kind == df.DefaultTracing {
+		if _, sinks := dataflow.IsSink(s, v.taintSpec, cur.Node); sinks && cur.Status.Kind == dataflow.DefaultTracing {
 			// A sink does not have successors in the taint flow analysis (but other sinks can be reached
 			// as there are still values flowing).
 			continue
@@ -129,7 +128,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 
 		// If node is sanitizer, we don't want to propagate further
 		// The validators will be checked in the addNext function
-		if _, sanitizes := df.IsSanitizer(s, v.taintSpec, cur.Node); sanitizes {
+		if _, sanitizes := dataflow.IsSanitizer(s, v.taintSpec, cur.Node); sanitizes {
 			logger.Infof("Sanitizer encountered: %s\n", cur.Node.String())
 			logger.Infof("At: %s\n", cur.Node.Position(s))
 			continue
@@ -150,16 +149,16 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		// - if the stack is non-empty, we flow back to the call-site argument.
 		//- if the stack is empty, there is no calling context. The flow goes back to every possible call site of
 		// the function's parameter.
-		case *df.ParamNode:
+		case *dataflow.ParamNode:
 			if cur.Prev != nil && cur.Prev.Node != nil {
-				callArg, prevIsCallArg := cur.Prev.Node.(*df.CallNodeArg)
+				callArg, prevIsCallArg := cur.Prev.Node.(*dataflow.CallNodeArg)
 				if cur.Prev.Node.Graph() != graphNode.Graph() || (prevIsCallArg &&
 					callArg.ParentNode().Callee() == graphNode.Graph().Parent) {
 					// Flows inside the function body. The data propagates to other locations inside the function body
 					// Second part of the condition allows self-recursive calls to be used
 					for nextNode, edgeInfos := range graphNode.Out() {
 						for _, edgeInfo := range edgeInfos {
-							nextNodeWithTrace := df.NodeWithTrace{
+							nextNodeWithTrace := dataflow.NodeWithTrace{
 								Node:         nextNode,
 								Trace:        cur.Trace,
 								ClosureTrace: cur.ClosureTrace,
@@ -175,26 +174,26 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			// func f(s string, s2 *string) { *s2 = s }
 			// The data can propagate from s to s2: we visit s from a callsite f(tainted, next), then
 			// visit the parameter s2, and then next needs to be visited by going back to the callsite.
-			if callSite := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSite != nil {
-				err := df.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site")
+			if callSite := dataflow.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSite != nil {
+				err := dataflow.CheckIndex(s, graphNode, callSite, "[Unwinding callstack] Argument at call site")
 				if err != nil {
 					s.Report.AddError("unwinding call stack at "+graphNode.Position(s).String(), err)
 				} else {
 					// Follow taint on matching argument at call site
 					nextNodeArg := callSite.Args()[graphNode.Index()]
 					if nextNodeArg != nil {
-						nextNodeWithTrace := df.NodeWithTrace{
+						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         nextNodeArg,
 							Trace:        cur.Trace.Parent(),
 							ClosureTrace: cur.ClosureTrace,
 						}
-						que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
+						que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, dataflow.EdgeInfo{})
 					}
 				}
 			} else {
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
-					err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
+					err := dataflow.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
 					if err != nil {
 						s.Report.AddError("argument at call site "+graphNode.String(), err)
 					} else {
@@ -204,7 +203,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 						}
 						for nextNode, edgeInfos := range callSiteArg.Out() {
 							for _, edgeInfo := range edgeInfos {
-								nextNodeWithTrace := df.NodeWithTrace{
+								nextNodeWithTrace := dataflow.NodeWithTrace{
 									Node:         nextNode,
 									Trace:        nil,
 									ClosureTrace: cur.ClosureTrace,
@@ -220,11 +219,11 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		// node, or we reached this inside a function from another node.
 		// In either case, the flow continues inside the function to the graphNode.Out() children and to the callee's
 		// parameters
-		case *df.CallNodeArg:
+		case *dataflow.CallNodeArg:
 			// Flow to next call
 			callSite := graphNode.ParentNode()
 
-			df.CheckNoGoRoutine(s, goroutines, callSite)
+			dataflow.CheckNoGoRoutine(s, goroutines, callSite)
 
 			// Logic for when the summary has not been created
 			if callSite.CalleeSummary == nil {
@@ -260,12 +259,12 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 
 				newCallStack := cur.Trace.Add(callSite)
 				v.visited[newCallStack] = true
-				nextNodeWithTrace := df.NodeWithTrace{
+				nextNodeWithTrace := dataflow.NodeWithTrace{
 					Node:         nextNode,
 					Trace:        newCallStack,
 					ClosureTrace: cur.ClosureTrace,
 				}
-				que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
+				que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, dataflow.EdgeInfo{})
 			} else {
 				s.Report.AddError(
 					fmt.Sprintf("no parameter matching argument at in %s", callSite.CalleeSummary.Parent.String()),
@@ -278,7 +277,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				// the flow inside the caller function: the outgoing edges computed for the summary
 				for nextNode, edgeInfos := range graphNode.Out() {
 					for _, edgeInfo := range edgeInfos {
-						nextNodeWithTrace := df.NodeWithTrace{
+						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         nextNode,
 							Trace:        cur.Trace,
 							ClosureTrace: cur.ClosureTrace,
@@ -293,10 +292,10 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		// If the stack is non-empty, then the data flows to back the call site in the stack(the CallNode).
 		// If the stack is empty, then the data flows back to every possible call site according to the call
 		// graph.
-		case *df.ReturnValNode:
+		case *dataflow.ReturnValNode:
 			// Check call stack is empty, and caller is one of the callsites
 			// Caller can be different if value flowed in function through a closure definition
-			if callSiteFromCallStack := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSiteFromCallStack != nil {
+			if callSiteFromCallStack := dataflow.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSiteFromCallStack != nil {
 				logger.Tracef("unwound caller: %v\n", callSiteFromCallStack)
 				if !callSiteFromCallStack.Graph().Constructed {
 					v.onDemandIntraProcedural(ctx, s, callSiteFromCallStack.Graph(), cur.Trace)
@@ -304,7 +303,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				for nextNode, edgeInfos := range callSiteFromCallStack.Out() {
 					for _, edgeInfo := range edgeInfos {
 						if !(graphNode.Index() >= 0 && edgeInfo.Index >= 0 && graphNode.Index() != edgeInfo.Index) {
-							nextNodeWithTrace := df.NodeWithTrace{
+							nextNodeWithTrace := dataflow.NodeWithTrace{
 								Node:         nextNode,
 								Trace:        cur.Trace.Parent(),
 								ClosureTrace: cur.ClosureTrace,
@@ -313,13 +312,13 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 						}
 					}
 				}
-			} else if cur.ClosureTrace != nil && df.CheckClosureReturns(graphNode, cur.ClosureTrace.Label) {
+			} else if cur.ClosureTrace != nil && dataflow.CheckClosureReturns(graphNode, cur.ClosureTrace.Label) {
 				if !cur.ClosureTrace.Label.Graph().Constructed {
 					v.onDemandIntraProcedural(ctx, s, cur.ClosureTrace.Label.Graph(), cur.Trace)
 				}
 				for nextNode, edgeInfos := range cur.ClosureTrace.Label.Out() {
 					for _, edgeInfo := range edgeInfos {
-						nextNodeWithTrace := df.NodeWithTrace{
+						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         nextNode,
 							Trace:        cur.Trace,
 							ClosureTrace: cur.ClosureTrace.Parent(),
@@ -335,7 +334,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 					}
 					for nextNode, edgeInfos := range callSite.Out() {
 						for _, edgeInfo := range edgeInfos {
-							nextNodeWithTrace := df.NodeWithTrace{
+							nextNodeWithTrace := dataflow.NodeWithTrace{
 								Node:         nextNode,
 								Trace:        nil,
 								ClosureTrace: cur.ClosureTrace,
@@ -350,23 +349,23 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		// This is a call node, which materializes where the callee returns. A call node is reached from a return
 		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
 		// flows to the children of the node.
-		case *df.CallNode:
-			df.CheckNoGoRoutine(s, goroutines, graphNode)
+		case *dataflow.CallNode:
+			dataflow.CheckNoGoRoutine(s, goroutines, graphNode)
 
-			if cur.Status.Kind == df.ClosureTracing {
+			if cur.Status.Kind == dataflow.ClosureTracing {
 				if graphNode.CalleeSummary != nil && cur.Status.CurrentClosure() != nil &&
 					// the following equality being true must imply that graphNode.CalleeSummary is a closure's summary
 					graphNode.CalleeSummary == cur.Status.CurrentClosure() {
 					fv := cur.Status.CurrentClosure().Parent.FreeVars[cur.Status.TracingInfo.Index]
 
 					if fv != nil {
-						nextNodeWithTrace := df.NodeWithTrace{
+						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         graphNode.CalleeSummary.FreeVars[fv],
 							Trace:        cur.Trace.Add(graphNode),
 							ClosureTrace: cur.ClosureTrace,
 						}
 
-						que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status.PopClosure(), df.EdgeInfo{})
+						que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status.PopClosure(), dataflow.EdgeInfo{})
 					} else {
 						s.Report.AddError(
 							fmt.Sprintf("no free variable matching bound variable in %s",
@@ -376,7 +375,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				}
 			}
 			// We pop the call from the stack and continue inside the caller
-			var trace *df.NodeTree[*df.CallNode]
+			var trace *dataflow.NodeTree[*dataflow.CallNode]
 			if cur.Trace != nil {
 				trace = cur.Trace.Parent()
 			}
@@ -384,10 +383,10 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				for _, edgeInfo := range edgeInfos {
 					// Filter outgoing edges with a type that is filtered by checking the index of the tuple
 					// The index is an edge property so we can't rely on the node being filtered out.
-					if df.IsFilteredType(v.taintSpec, lang.TryTupleIndexType(graphNode.Type(), edgeInfo.Index)) {
+					if dataflow.IsFilteredType(v.taintSpec, lang.TryTupleIndexType(graphNode.Type(), edgeInfo.Index)) {
 						continue
 					}
-					nextNodeWithTrace := df.NodeWithTrace{
+					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         nextNode,
 						Trace:        trace,
 						ClosureTrace: cur.ClosureTrace,
@@ -400,12 +399,12 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			// See the closures_paper test for an example
 			if graphNode == source.Node {
 				for _, arg := range graphNode.Args() {
-					nextNodeWithTrace := df.NodeWithTrace{
+					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         arg,
 						Trace:        trace,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
+					que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, dataflow.EdgeInfo{})
 				}
 			}
 
@@ -419,12 +418,12 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		// inside the closure definition, and finally from the return of the closure to the
 		// call site of the closure inside a sink.
 		// For more examples with closures, see testdata/src/taint/inter-procedural/closures/main.go
-		case *df.BoundVarNode:
+		case *dataflow.BoundVarNode:
 			// Flows inside the function creating the closure (where MakeClosure happens)
 			// This is similar to the df edges between arguments
 			for nextNode, edgeInfos := range graphNode.Out() {
 				for _, edgeInfo := range edgeInfos {
-					nextNodeWithTrace := df.NodeWithTrace{
+					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         nextNode,
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
@@ -444,29 +443,29 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				s.FlowGraph.Sync()
 			}
 
-			closureNodeWithTrace := df.NodeWithTrace{
+			closureNodeWithTrace := dataflow.NodeWithTrace{
 				Node:         closureNode,
-				Trace:        df.UnwindCallStackToFunc(cur.Trace, closureNode.Graph().Parent),
+				Trace:        dataflow.UnwindCallStackToFunc(cur.Trace, closureNode.Graph().Parent),
 				ClosureTrace: cur.ClosureTrace.Add(closureNode),
 			}
 
 			que = v.addNext(s, que, cur, nil, closureNodeWithTrace,
-				df.VisitorNodeStatus{
-					Kind:        df.ClosureTracing,
+				dataflow.VisitorNodeStatus{
+					Kind:        dataflow.ClosureTracing,
 					TracingInfo: cur.Status.TracingInfo.Next(closureNode.ClosureSummary, graphNode.Index()),
 				},
-				df.EdgeInfo{})
+				dataflow.EdgeInfo{})
 
 		// The data flows to a free variable inside a closure body from a bound variable inside a closure definition.
 		// (see the example for BoundVarNode)
 		// The date can also flow from the function body to the free var node, in which case it implies the bound
 		// variable (in the caller) is tainted after the function returns.
-		case *df.FreeVarNode:
+		case *dataflow.FreeVarNode:
 			// Flows inside the function
 			if cur.Prev == nil || (cur.Prev.Node.Graph() != graphNode.Graph()) {
 				for nextNode, edgeInfos := range graphNode.Out() {
 					for _, edgeInfo := range edgeInfos {
-						nextNodeWithTrace := df.NodeWithTrace{
+						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         nextNode,
 							Trace:        cur.Trace,
 							ClosureTrace: cur.ClosureTrace,
@@ -481,12 +480,12 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				}
 				if graphNode.Index() < len(bvs) {
 					bv := bvs[graphNode.Index()]
-					nextNodeWithTrace := df.NodeWithTrace{
+					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         bv,
 						Trace:        cur.Trace.Parent(),
 						ClosureTrace: cur.ClosureTrace.Parent(),
 					}
-					que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
+					que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, dataflow.EdgeInfo{})
 				} else {
 					s.Report.AddError(
 						fmt.Sprintf("no bound variable matching free variable in %s",
@@ -506,7 +505,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 						break
 					}
 					if f != nil {
-						df.BuildSummary(s, f)
+						dataflow.BuildSummary(s, f)
 					}
 					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.Sync()
@@ -519,12 +518,12 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				for _, makeClosureSite := range graphNode.Graph().ReferringMakeClosures {
 					bvs := makeClosureSite.BoundVars()
 					if graphNode.Index() < len(bvs) {
-						nextNodeWithTrace := df.NodeWithTrace{
+						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         bvs[graphNode.Index()],
 							Trace:        cur.Trace,
 							ClosureTrace: nil,
 						}
-						que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
+						que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, dataflow.EdgeInfo{})
 					} else {
 						panicOnUnexpectedMissingFreeVar(s, makeClosureSite, graphNode)
 					}
@@ -532,10 +531,10 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			}
 
 		// A closure node is usually reached when the visitor is tracing a specific closure
-		case *df.ClosureNode:
+		case *dataflow.ClosureNode:
 			for nextNode, edgeInfos := range graphNode.Out() {
 				for _, edgeInfo := range edgeInfos {
-					nextNodeWithTrace := df.NodeWithTrace{
+					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         nextNode,
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
@@ -547,10 +546,10 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		// Synthetic nodes can only be sources and data should only flow from those nodes: we only need to follow the
 		// outgoing edges. This node should only be a start node, unless some functionality is added to the df
 		// graph summaries.
-		case *df.SyntheticNode, *df.BuiltinCallNode:
+		case *dataflow.SyntheticNode, *dataflow.BuiltinCallNode:
 			for nextNode, edgeInfos := range graphNode.Out() {
 				for _, edgeInfo := range edgeInfos {
-					nextNodeWithTrace := df.NodeWithTrace{
+					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         nextNode,
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
@@ -559,30 +558,30 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				}
 			}
 
-		case *df.AccessGlobalNode:
+		case *dataflow.AccessGlobalNode:
 			if graphNode.IsWrite {
 				for f := range s.ReachableFunctions() {
 					if lang.FnReadsFrom(f, graphNode.Global.Value()) {
 						logger.Tracef("Global %v read in function: %v\n", graphNode, f)
-						df.BuildSummary(s, f)
+						dataflow.BuildSummary(s, f)
 					}
 				}
 
 				// Tainted data is written to ALL locations where the global is read.
 				for nextNode := range graphNode.Global.ReadLocations {
 					// Global jump makes trace irrelevant if we don't follow the call graph!
-					nextNodeWithTrace := df.NodeWithTrace{
+					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         nextNode,
 						Trace:        nil,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, df.EdgeInfo{})
+					que = v.addNext(s, que, cur, nil, nextNodeWithTrace, cur.Status, dataflow.EdgeInfo{})
 				}
 			} else {
 				// From a read location, tainted data follows the out edges of the node
 				for nextNode, edgeInfos := range graphNode.Out() {
 					for _, edgeInfo := range edgeInfos {
-						nextNodeWithTrace := df.NodeWithTrace{
+						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         nextNode,
 							Trace:        cur.Trace,
 							ClosureTrace: cur.ClosureTrace,
@@ -593,7 +592,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			}
 
 		// A BoundLabel flows to the body of the closure that captures it.
-		case *df.BoundLabelNode:
+		case *dataflow.BoundLabelNode:
 			if v.taintSpec.SkipBoundLabels {
 				break
 			}
@@ -605,7 +604,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				if !s.IsReachableFunction(closureFn) {
 					break
 				}
-				destClosureSummary = df.BuildSummary(s, closureFn)
+				destClosureSummary = dataflow.BuildSummary(s, closureFn)
 				graphNode.SetDestClosure(destClosureSummary)
 				s.FlowGraph.Sync()
 			}
@@ -620,19 +619,19 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				break
 			}
 
-			closureNodeWithTrace := df.NodeWithTrace{
+			closureNodeWithTrace := dataflow.NodeWithTrace{
 				Node:         closureNode,
-				Trace:        df.UnwindCallStackToFunc(cur.Trace, closureNode.Graph().Parent),
+				Trace:        dataflow.UnwindCallStackToFunc(cur.Trace, closureNode.Graph().Parent),
 				ClosureTrace: cur.ClosureTrace.Add(closureNode),
 			}
 
 			que = v.addNext(s, que, cur, nil, closureNodeWithTrace,
-				df.VisitorNodeStatus{
-					Kind:        df.ClosureTracing,
+				dataflow.VisitorNodeStatus{
+					Kind:        dataflow.ClosureTracing,
 					TracingInfo: cur.Status.TracingInfo.Next(closureNode.ClosureSummary, graphNode.Index()),
 				},
-				df.EdgeInfo{})
-		case *df.IfNode:
+				dataflow.EdgeInfo{})
+		case *dataflow.IfNode:
 			// Don't track taint from implicit flows
 			break
 		}
@@ -642,7 +641,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 // onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
 // This panics when the analysis fails, because it is expected that an error will cause any further result
 // to be invalid.
-func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summary *df.SummaryGraph, trace *df.CallStack) {
+func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *dataflow.State, summary *dataflow.SummaryGraph, trace *dataflow.CallStack) {
 	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
 	if timeout := s.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
 		var cancel context.CancelFunc
@@ -650,7 +649,7 @@ func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summ
 		defer cancel()
 	}
 
-	elapsed, err := df.RunIntraProcedural(ctx, s, summary)
+	elapsed, err := dataflow.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
 
 	timedOut := errors.Is(err, context.DeadlineExceeded)
@@ -661,7 +660,7 @@ func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summ
 			TimedOut: timedOut,
 		},
 		IntraTime: elapsed,
-		CallCtxs:  []*df.CallStack{trace},
+		CallCtxs:  []*dataflow.CallStack{trace},
 	}
 	s.Logger.Debugf("report: %+v\n", report)
 
@@ -699,18 +698,18 @@ func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summ
 // - edgeInfo is the label of the edge from cur's node to toAdd
 //
 //gocyclo:ignore
-func (v *Visitor) addNext(s *df.State,
-	que []*df.VisitorNode,
-	cur *df.VisitorNode,
-	intermediateNode df.GraphNode,
-	nextNodeWithTrace df.NodeWithTrace,
-	nextStatus df.VisitorNodeStatus,
-	edgeInfo df.EdgeInfo) []*df.VisitorNode {
+func (v *Visitor) addNext(s *dataflow.State,
+	que []*dataflow.VisitorNode,
+	cur *dataflow.VisitorNode,
+	intermediateNode dataflow.GraphNode,
+	nextNodeWithTrace dataflow.NodeWithTrace,
+	nextStatus dataflow.VisitorNodeStatus,
+	edgeInfo dataflow.EdgeInfo) []*dataflow.VisitorNode {
 
 	// Check for validators
 	if edgeInfo.Cond != nil && len(edgeInfo.Cond.Conditions) > 0 {
 		for _, condition := range edgeInfo.Cond.Conditions {
-			if df.IsValidatorCondition(v.taintSpec, condition.Value, condition.IsPositive) {
+			if dataflow.IsValidatorCondition(v.taintSpec, condition.Value, condition.IsPositive) {
 				s.Logger.Debugf("Validated %s.\n", condition)
 				return que
 			}
@@ -748,8 +747,8 @@ func (v *Visitor) addNext(s *df.State,
 	// The next node is used to fill in the information.
 	prevNode := cur
 	if intermediateNode != nil {
-		prevNode = &df.VisitorNode{
-			NodeWithTrace: df.NodeWithTrace{
+		prevNode = &dataflow.VisitorNode{
+			NodeWithTrace: dataflow.NodeWithTrace{
 				Node:         intermediateNode,
 				Trace:        nextNodeWithTrace.Trace,
 				ClosureTrace: nextNodeWithTrace.ClosureTrace,
@@ -762,7 +761,7 @@ func (v *Visitor) addNext(s *df.State,
 	}
 
 	// Adding the next node with trace in a visitor node to the queue, and recording the "execution" tree
-	nextVisitorNode := &df.VisitorNode{
+	nextVisitorNode := &dataflow.VisitorNode{
 		NodeWithTrace: nextNodeWithTrace,
 		AccessPaths:   nextNodeAccessPaths,
 		Status:        nextStatus,

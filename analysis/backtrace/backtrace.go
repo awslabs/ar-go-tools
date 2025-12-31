@@ -434,6 +434,9 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 						break
 					}
 				}
+				if callSite.CalleeSummary == nil {
+					panic("we should not be in this state now")
+				}
 
 				// Computing context-sensitive information for the analyses
 
@@ -802,6 +805,9 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 // This panics when the analysis fails, because it is expected that an error will cause any further result
 // to be invalid.
 func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summary *df.SummaryGraph) {
+	if summary == nil {
+		return
+	}
 	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
 	elapsed, err := df.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())

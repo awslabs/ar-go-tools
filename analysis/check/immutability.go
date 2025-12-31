@@ -410,20 +410,3 @@ func ptrWrittenTo(instr ssa.Instruction) (ptrWrite, bool) {
 
 	return ptrWrite{}, false
 }
-
-func isAllocatedErrorType(val ssa.Value) bool {
-	// catch cases like: change interface any <- error (err)
-	if ci, ok := val.(*ssa.ChangeInterface); ok {
-		val = ci.X
-	}
-
-	typ := val.Type()
-	switch t := typ.(type) {
-	case *types.Pointer:
-		typ = t.Elem().Underlying()
-	case *types.Interface:
-		typ = t.Underlying()
-	}
-
-	return types.AssignableTo(typ, types.Universe.Lookup("error").Type())
-}

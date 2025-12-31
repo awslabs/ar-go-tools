@@ -181,20 +181,6 @@ func isEntrypoint(instr ssa.Instruction, specs []dataflow.ScanningSpec) bool {
 	return false
 }
 
-// unsafeBuiltins are the builtins that are from the unsafe package.
-var unsafeBuiltins = map[string]struct{}{
-	"Alignof":     {},
-	"Offsetof":    {},
-	"Sizeof":      {},
-	"Pointer":     {},
-	"SliceData":   {},
-	"String":      {},
-	"StringData":  {},
-	"Slice":       {},
-	"Add":         {},
-	"IntegerType": {},
-}
-
 // isGoroutineInstr returns true if instr is a goroutine call.
 func isGoroutineInstr(instr ssa.Instruction) bool {
 	call, ok := instr.(ssa.CallInstruction)

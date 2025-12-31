@@ -909,7 +909,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 							IsSound: false,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
-									// NOTE Technically this flow is realizable but it's from the
+									// NOTE Technically this flow is realizable, but it's from the
 									// inferred callee
 									// summary: !free <x> -> !free <y> | !free <y> -> !free <x>.
 									{
@@ -1625,12 +1625,10 @@ const (
 )
 
 type tcCheck struct {
-	summary summaries.FrontendDataflowSummary
-	pkg     string
-	name    string
-	typ     summaryType
-	want    check.SoundnessResult
-	via     check.Method
+	pkg  string
+	name string
+	typ  summaryType
+	want check.SoundnessResult
 }
 
 func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
@@ -1662,7 +1660,7 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 			},
 		},
 	}
-	got, err, _ = check.CheckSummary(ctx, state, summary, specs)
+	got, _, err = check.CheckSummary(ctx, state, summary, specs)
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
 	}

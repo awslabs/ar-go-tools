@@ -94,6 +94,7 @@ type FunctionFlowSummary struct {
 	summary DetailedSummary
 }
 
+// NewFunctionFlowSummary creates a new FunctionFlowSummary with the given package, function name, and summary.
 func NewFunctionFlowSummary(pkg string, fn string, summary DetailedSummary) FunctionFlowSummary {
 	return FunctionFlowSummary{pkg: pkg, Function: fn, summary: summary}
 }
@@ -170,6 +171,7 @@ type FrontendDataflowSummary interface {
 	Summary() DetailedSummary
 }
 
+// NewFrontendDataflowSummary creates a new FrontendDataflowSummary from an SSA function and detailed summary.
 func NewFrontendDataflowSummary(f *ssa.Function, summary DetailedSummary) FrontendDataflowSummary {
 	pkgOpt := analysisutil.FindValuePackage(f)
 	if pkgOpt.IsNone() {

@@ -175,6 +175,7 @@ func ExtractPkgNameFromPath(path string) string {
 	return path
 }
 
+// FunctionInfo contains metadata about a function including package information and visibility.
 type FunctionInfo struct {
 	PkgName    string
 	PkgPath    string
@@ -183,6 +184,7 @@ type FunctionInfo struct {
 	RootMod    string
 }
 
+// GetFunctionInfo extracts metadata about a function from its SSA representation.
 func GetFunctionInfo(root string, fn *ssa.Function) (FunctionInfo, bool) {
 	if fn == nil || fn.Pkg == nil {
 		return FunctionInfo{}, false

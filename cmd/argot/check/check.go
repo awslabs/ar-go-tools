@@ -276,7 +276,7 @@ func checkOneSummaryWrapper(
 	s.Logger.PushContext(formatutil.Faint(targetFunctionName))
 	defer s.Logger.PopContext()
 	s.Logger.Infof("Checking summary via %v...", via)
-	soundness, err, foundFunc := check.CheckSummary(ctx, s, summary, specs)
+	soundness, foundFunc, err := check.CheckSummary(ctx, s, summary, specs)
 	if !foundFunc {
 		s.Logger.Warnf("Cannot find function %s, so summary will not be used in target (nothing to do).",
 			summary.Name())

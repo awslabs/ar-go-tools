@@ -41,6 +41,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// Usage contains the help text for the bench command.
 const Usage = ` Benchmark dataflow summarization on your packages.
 Usage:
   argot bench [options] [package path(s)]
@@ -48,6 +49,7 @@ Examples:
   % argot bench -config config.yaml package...
 `
 
+// Run executes the benchmark command with the provided flags.
 func Run(flags tools.CommonFlags) error {
 	cfg, err := tools.LoadConfig(flags, false)
 	if err != nil {
@@ -400,6 +402,7 @@ type incompleteFuncReport struct {
 	IntraTime   time.Duration
 }
 
+// UnsoundnessReport contains information about unsound features and timeouts during analysis.
 type UnsoundnessReport struct {
 	Features dataflow.UnsoundFeaturesMap
 	TimedOut bool

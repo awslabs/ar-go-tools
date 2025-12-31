@@ -205,6 +205,7 @@ func NewSummaryGraph(s *State, f *ssa.Function, id uint32,
 	return g
 }
 
+// MakeMostGeneral modifies the summary graph to be the most general possible.
 func MakeMostGeneral(g *SummaryGraph) {
 	addedRedges := map[int]map[int]bool{}
 	for _, input := range g.Params {

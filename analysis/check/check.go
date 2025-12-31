@@ -82,15 +82,15 @@ func CheckSummary(
 	s *State,
 	want summaries.FrontendDataflowSummary,
 	specs []dataflow.ScanningSpec,
-) (SoundnessResult, error, bool) {
+) (SoundnessResult, bool, error) {
 	f, err := functionOfName(s, want.Name())
 	if err != nil {
 		return SoundnessResult{},
-			fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err), false
+			false, fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
 	}
 
 	res, err := checkSummary(ctx, s, f, want.Summary(), specs)
-	return res, err, true
+	return res, true, err
 }
 
 var errInfer = errors.New("failed to infer callee summaries")
@@ -134,19 +134,19 @@ func checkSummary(
 		var err error
 		switch method {
 		case General:
-			unprovenMustNotFlows, soundnessResult, err, done = checkMethodGeneral(
-				s, f, unsoundCheckFeats, soundnessResultBase, g, unprovenMustNotFlows, want, start)
+			unprovenMustNotFlows, soundnessResult, done, err = checkMethodGeneral(
+				s, f, unsoundCheckFeats, soundnessResultBase, g, want, start)
 			if done {
 				return soundnessResult, err
 			}
 		case Types:
-			unprovenMustNotFlows, soundnessResult, err, done = checkMethodTypes(
+			unprovenMustNotFlows, soundnessResult, done, err = checkMethodTypes(
 				s, f, unsoundCheckFeats, soundnessResultBase, unprovenMustNotFlows, start)
 			if done {
 				return soundnessResult, err
 			}
 		case Immutability:
-			unprovenMustNotFlows, soundnessResult, err, done = checkMethodImmutability(
+			unprovenMustNotFlows, soundnessResult, done, err = checkMethodImmutability(
 				ctx, s, f, unsoundCheckFeats, soundnessResultBase, unprovenMustNotFlows, start)
 			if done {
 				return soundnessResult, err
@@ -205,7 +205,7 @@ func checkSummary(
 
 	// Since we inferred callee summaries, we have intra-procedural results for f.
 	// This means that we only need to prove the must-not-flows in the callees.
-	calleeResults, soundnessResult, err2, done := checkCalleeSummaries(ctx, s, f,
+	calleeResults, soundnessResult, done, err2 := checkCalleeSummaries(ctx, s, f,
 		calleeSummaries, specs, soundnessResultBase, unsoundness, start)
 	if done {
 		return soundnessResult, err2
@@ -249,7 +249,7 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 	specs []dataflow.ScanningSpec,
 	soundnessResultBase SoundnessResult,
 	unsoundness Unsoundness,
-	start time.Time) ([][]SoundnessResult, SoundnessResult, error, bool) {
+	start time.Time) ([][]SoundnessResult, SoundnessResult, bool, error) {
 	var calleeResults [][]SoundnessResult
 	for callee, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
@@ -275,7 +275,7 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 					soundnessResultBase.CalleeResults = append(calleeResults, thisCalleeResults)
 					soundnessResultBase.Time = time.Since(start)
 					soundnessResultBase.Method = calleeRes.Method
-					return nil, soundnessResultBase, nil, true
+					return nil, soundnessResultBase, true, nil
 				}
 				continue
 			}
@@ -296,14 +296,14 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 
 		calleeResults = append(calleeResults, thisCalleeResults)
 	}
-	return calleeResults, SoundnessResult{}, nil, false
+	return calleeResults, SoundnessResult{}, false, nil
 }
 
 func checkMethodImmutability(ctx context.Context, s *State, f *ssa.Function,
 	unsoundCheckFeats UnsoundCheckFeatures,
 	soundnessResultBase SoundnessResult,
 	unprovenMustNotFlows []flow,
-	start time.Time) ([]flow, SoundnessResult, error, bool) {
+	start time.Time) ([]flow, SoundnessResult, bool, error) {
 	// The immutability analysis is unsound if there is reflection, as it depends on the
 	// pointer analysis.
 	if len(unsoundCheckFeats.ReflectUsages) > 0 {
@@ -317,18 +317,18 @@ func checkMethodImmutability(ctx context.Context, s *State, f *ssa.Function,
 			}
 			soundnessResultBase.Method = Immutability
 			soundnessResultBase.Time = time.Since(start)
-			return nil, soundnessResultBase, nil, true
+			return nil, soundnessResultBase, true, nil
 		}
 	}
 	unprovenMustNotFlows = filterFlowsImmutability(ctx, s, unprovenMustNotFlows)
-	return unprovenMustNotFlows, SoundnessResult{}, nil, false
+	return unprovenMustNotFlows, SoundnessResult{}, false, nil
 }
 
 func checkMethodTypes(s *State, f *ssa.Function,
 	unsoundCheckFeats UnsoundCheckFeatures,
 	soundnessResultBase SoundnessResult,
 	unprovenMustNotFlows []flow,
-	start time.Time) ([]flow, SoundnessResult, error, bool) {
+	start time.Time) ([]flow, SoundnessResult, bool, error) {
 	// The types analysis is unsound if there is unsafe, as unsafe memory operations can
 	// induce data flow to non-pointer-like summary nodes.
 	if len(unsoundCheckFeats.UnsafeUsages) > 0 {
@@ -342,20 +342,19 @@ func checkMethodTypes(s *State, f *ssa.Function,
 			}
 			soundnessResultBase.Time = time.Since(start)
 			soundnessResultBase.Method = Types
-			return nil, soundnessResultBase, nil, true
+			return nil, soundnessResultBase, true, nil
 		}
 	}
 	unprovenMustNotFlows = filterFlowsTypes(unprovenMustNotFlows)
-	return unprovenMustNotFlows, SoundnessResult{}, nil, false
+	return unprovenMustNotFlows, SoundnessResult{}, false, nil
 }
 
 func checkMethodGeneral(s *State, f *ssa.Function,
 	unsoundCheckFeats UnsoundCheckFeatures,
 	soundnessResultBase SoundnessResult,
 	g *dataflow.SummaryGraph,
-	unprovenMustNotFlows []flow,
 	want summaries.DetailedSummary,
-	start time.Time) ([]flow, SoundnessResult, error, bool) {
+	start time.Time) ([]flow, SoundnessResult, bool, error) {
 	wantFlows, err := summaryFlows(g, want)
 	if err != nil {
 		soundnessResultBase.IsSound = false
@@ -366,7 +365,7 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 		}
 		soundnessResultBase.Method = General
 		soundnessResultBase.Time = time.Since(start)
-		return nil, soundnessResultBase, nil, true
+		return nil, soundnessResultBase, true, nil
 	}
 	// The most-general summary is unsound if there are any globals (as we do not have
 	// special global nodes in summaries yet).
@@ -378,11 +377,11 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 			soundnessResultBase.IsSound = false
 			soundnessResultBase.Unsoundness = Unsoundness{CheckFeatures: unsoundCheckFeats}
 			soundnessResultBase.Method = General
-			return nil, soundnessResultBase, nil, true
+			return nil, soundnessResultBase, true, nil
 		}
 	}
-	unprovenMustNotFlows = checkSummaryMostGeneral(g, wantFlows)
-	return unprovenMustNotFlows, SoundnessResult{}, nil, false
+	unprovenMustNotFlows := checkSummaryMostGeneral(g, wantFlows)
+	return unprovenMustNotFlows, SoundnessResult{}, false, nil
 }
 
 // flow is a data flow between two summary graph nodes.
