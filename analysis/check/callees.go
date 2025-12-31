@@ -241,6 +241,9 @@ func buildTransitivityConstrs(
 	})
 	for call, cg := range calleeGraphs {
 		cg.ForAllNodes(func(n dataflow.GraphNode) {
+			if !(isInputNode(n) || isOutputNode(n)) {
+				return
+			}
 			if skipNode(s, n, unsoundness) {
 				return
 			}
@@ -713,6 +716,24 @@ func summariesEqual(a, b summaries.DetailedSummary) bool {
 	}
 
 	return true
+}
+
+func isInputNode(n dataflow.GraphNode) bool {
+	switch n.(type) {
+	case *dataflow.ParamNode, *dataflow.BoundVarNode, *dataflow.AccessGlobalNode:
+		return true
+	default:
+		return false
+	}
+}
+
+func isOutputNode(n dataflow.GraphNode) bool {
+	switch n.(type) {
+	case *dataflow.ParamNode, *dataflow.FreeVarNode, *dataflow.ReturnValNode:
+		return true
+	default:
+		return false
+	}
 }
 
 // For debugging:
