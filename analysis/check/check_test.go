@@ -89,7 +89,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						// },
 					},
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -256,7 +256,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -415,7 +415,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -501,7 +501,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -580,7 +580,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -632,7 +632,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -702,7 +702,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -861,7 +861,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -949,7 +949,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -969,7 +969,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: nil,
 							},
-							Method: check.Immutability,
+							Method: check.Recursive,
 							CalleeResults: [][]check.SoundnessResult{
 								{
 									{
@@ -1021,7 +1021,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -1115,7 +1115,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -1164,7 +1164,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method: check.Immutability,
+				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
@@ -1193,7 +1193,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							Method: check.Immutability,
+							Method: check.Recursive,
 							CalleeResults: [][]check.SoundnessResult{
 								{
 									{
@@ -1373,7 +1373,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 						},
 					},
 				},
-				Method:        check.Immutability,
+				Method:        check.Recursive,
 				CalleeResults: nil,
 				// CalleeResults: [][]check.SoundnessResult{
 				// 	{

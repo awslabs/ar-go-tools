@@ -199,7 +199,7 @@ func checkSummary(
 		soundnessResultBase.IsSound = unsoundness.isSound()
 		soundnessResultBase.Unsoundness = unsoundness
 		soundnessResultBase.Time = time.Since(start)
-		soundnessResultBase.Method = Recursive
+		soundnessResultBase.Method = method // The algorithm didn't have to recurse here.
 		return soundnessResultBase, nil
 	}
 
