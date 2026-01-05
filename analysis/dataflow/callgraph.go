@@ -15,9 +15,9 @@
 package dataflow
 
 import (
-	"go/types"
 	"sync/atomic"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -44,106 +44,17 @@ func GetUniqueFunctionID() uint32 {
 // method such that contracts[methodId] = nil
 func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map[*ssa.Function]bool,
 	contracts map[string]*SummaryGraph, keys map[string]string) error {
-	interfaceTypes := map[*ssa.Type]map[string]*types.Selection{}
-	signatureTypes := map[string]bool{} // TODO: use this to index function by signature
-	// Fetch all interface types
-	for _, pkg := range p.AllPackages() {
-		for _, mem := range pkg.Members {
-			switch memType := mem.(type) {
-			case *ssa.Type:
-				switch iType := memType.Type().Underlying().(type) {
-				case *types.Interface:
-					interfaceTypes[memType] = methodSetToNameMap(p.MethodSets.MethodSet(memType.Type()))
-				case *types.Signature:
-					signatureTypes[iType.String()] = true
-				}
-			}
-		}
+	err := lang.ComputeMethodImplementations(p, implementations, keys)
+	if err != nil {
+		return err
 	}
 
-	// Fetch implementations of all interface methods
-
-	for interfaceType, interfaceMethods := range interfaceTypes {
-		for _, typ := range p.RuntimeTypes() {
-			// Find the interfaces it implements (type conversion cannot fail)
-			if types.Implements(typ.Underlying(), interfaceType.Type().Underlying().(*types.Interface)) {
-				set := p.MethodSets.MethodSet(typ)
-				for i := 0; i < set.Len(); i++ {
-					method := set.At(i)
-					// Get the function implementation
-					methodValue := p.MethodValue(method)
-					if methodValue == nil {
-						continue
-					}
-					// Get the interface method being implemented
-					matchingInterfaceMethod := interfaceMethods[methodValue.Name()]
-					if matchingInterfaceMethod == nil {
-						continue
-					}
-					receiver := matchingInterfaceMethod.Recv()
-					if receiver == nil {
-						continue
-					}
-					key := receiver.String() + "." + methodValue.Name()
-					keys[methodValue.String()] = key
-					addImplementation(implementations, key, methodValue)
-					addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionID())
-				}
-			}
+	for key, implementationSet := range implementations {
+		for implementation := range implementationSet {
+			addContractSummaryGraph(contracts, key, implementation, GetUniqueFunctionID())
 		}
 	}
-
-	computeErrorBuiltinImplementations(p, implementations, contracts, keys)
-
 	return nil
-}
-
-// computeErrorBuiltinImplementations adds the implementations of the builtin error interface (the error.Error method)
-// to the implementations map
-func computeErrorBuiltinImplementations(p *ssa.Program, implementations map[string]map[*ssa.Function]bool,
-	contracts map[string]*SummaryGraph, keys map[string]string) {
-	key := "error.Error"
-	for _, typ := range p.RuntimeTypes() {
-		set := p.MethodSets.MethodSet(typ)
-		// Does it implement the error builtin?
-		for i := 0; i < set.Len(); i++ {
-			method := set.At(i)
-			// Get the function implementation
-			methodValue := p.MethodValue(method)
-			if methodValue == nil || methodValue.Name() != "Error" || len(methodValue.Params) > 1 {
-				continue
-			}
-			results := methodValue.Signature.Results()
-			if results.Len() != 1 {
-				continue
-			}
-			res0typ := results.At(0).Type()
-			if res0typ == nil {
-				continue
-			}
-			expectedString := res0typ.Underlying()
-			if expectedString.String() != "string" {
-				continue
-			}
-
-			keys[methodValue.String()] = key
-			// Get the interface method being implemented
-			addImplementation(implementations, key, methodValue)
-			addContractSummaryGraph(contracts, key, methodValue, GetUniqueFunctionID())
-		}
-	}
-}
-
-// addImplementation sets the Value of key in implementationsMap to function, handling the creation of nested maps.
-// @requires implementationMap != nil
-func addImplementation(implementationMap map[string]map[*ssa.Function]bool, key string, function *ssa.Function) {
-	if implementations, ok := implementationMap[key]; ok {
-		if !implementations[function] {
-			implementationMap[key][function] = true
-		}
-	} else {
-		implementationMap[key] = map[*ssa.Function]bool{function: true}
-	}
 }
 
 // addContractSummaryGraph sets the Value of contract[methodId] to a new summary of function if the methodId key
@@ -159,14 +70,4 @@ func addContractSummaryGraph(contracts map[string]*SummaryGraph, methodID string
 			contracts[methodID] = NewSummaryGraph(nil, function, id, nil, nil)
 		}
 	}
-}
-
-func methodSetToNameMap(methodSet *types.MethodSet) map[string]*types.Selection {
-	nameMap := map[string]*types.Selection{}
-
-	for i := 0; i < methodSet.Len(); i++ {
-		method := methodSet.At(i)
-		nameMap[method.Obj().Name()] = method
-	}
-	return nameMap
 }

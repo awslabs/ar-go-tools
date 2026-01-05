@@ -1643,7 +1643,7 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 		t.Fatalf("unsupported summary type: %v", tc.typ)
 	}
 
-	var got check.SoundnessResult
+	var got []check.SoundnessResult
 	var err error
 	defer func() {
 		if t.Failed() {
@@ -1664,8 +1664,10 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
 	}
-
-	checkResult(t, tc.want, got)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(got))
+	}
+	checkResult(t, tc.want, got[0])
 }
 
 func checkResult(t *testing.T, want, got check.SoundnessResult) {

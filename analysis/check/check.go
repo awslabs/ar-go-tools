@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -77,20 +78,53 @@ func NewState(s *dataflow.State) result.Result[State] {
 // The boolean returned by the function indicates whether the function was found and is reachable.
 // If it is not found nor reachable, checking soundness is meaningless: the summary is not a threat to the soundness
 // of the dataflow analysis since it will not be used in the same context by the dataflow analysis.
+//
+// If the summary to be checked is the summary of an interface method, then the function returns a list of soundness
+// results, one for each possible implementation of the method.
+//
+// If the summary to be checked is the summary of a function or struct method, then a single soundness result will be
+// in the slice of results returned.
 func CheckSummary(
 	ctx context.Context,
 	s *State,
 	want summaries.FrontendDataflowSummary,
 	specs []dataflow.ScanningSpec,
-) (SoundnessResult, bool, error) {
+) ([]SoundnessResult, bool, error) {
+	if ifaceSummary, isIfaceSummary := want.(summaries.IfaceMethodFlowSummary); isIfaceSummary {
+		// Checking a summary that is for a method of an interface
+		// This means we need to gather all the possible implementations, and check every single one.
+		implementations := map[string]map[*ssa.Function]bool{}
+		keys := map[string]string{}
+		err := lang.ComputeMethodImplementations(s.Program, implementations, keys)
+		if err != nil {
+			return []SoundnessResult{}, false, fmt.Errorf("failed to compute method implementations: %v", err)
+		}
+		key := lang.MethodKey(ifaceSummary.Package()+"."+ifaceSummary.Interface, ifaceSummary.Method)
+		if implems, isPresent := implementations[key]; isPresent {
+			var res []SoundnessResult
+			for implem := range implems {
+				s.Logger.Infof("Checking that interface summary for %s is sound for implementation %s",
+					want.Name(), implem.Name())
+				partRes, err := checkSummary(ctx, s, implem, want.Summary(), specs)
+				res = append(res, partRes)
+				if err != nil {
+					return res, true, err
+				}
+			}
+			return res, true, nil
+		}
+		return []SoundnessResult{}, false, fmt.Errorf("failed to find method %s", key)
+	}
+
+	// Checking a summary that is for a single function/method
 	f, err := functionOfName(s, want.Name())
 	if err != nil {
-		return SoundnessResult{},
+		return []SoundnessResult{},
 			false, fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
 	}
 
 	res, err := checkSummary(ctx, s, f, want.Summary(), specs)
-	return res, true, err
+	return []SoundnessResult{res}, true, err
 }
 
 var errInfer = errors.New("failed to infer callee summaries")

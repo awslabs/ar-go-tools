@@ -116,6 +116,9 @@ func Run(flags Flags) error {
 		if checkErr != nil {
 			return fmt.Errorf("failed to parse user specs file %s: %v", cfg.DataflowProblems.UserSpecs, checkErr)
 		}
+		if cfg.LogLevel > 3 {
+			tmpLogger.Debugf("Parsed %d summaries in %s", len(userSummaries), specFile)
+		}
 		parsedSummaries = append(parsedSummaries, userSummaries...)
 	}
 
@@ -252,7 +255,14 @@ func checkSummaries(
 	var errs []error
 	logger.Info("Summaries to check:\n")
 	for _, summary := range parsedSummaries {
-		logger.Infof("\t%s\n", summary.Name())
+		switch summary.(type) {
+		case summaries.IfaceMethodFlowSummary:
+			logger.Infof("\t[interface] %s\n", summary.Name())
+		case summaries.ReceiverMethodFlowSummary:
+			logger.Infof("\t[ method  ] %s\n", summary.Name())
+		case summaries.FunctionFlowSummary:
+			logger.Infof("\t[function ] %s\n", summary.Name())
+		}
 	}
 
 	results := make([]check.SoundnessResult, 0, len(parsedSummaries))
@@ -278,20 +288,24 @@ func checkOneSummaryWrapper(
 	s.Logger.Infof("Checking summary via %v...", via)
 	soundness, foundFunc, err := check.CheckSummary(ctx, s, summary, specs)
 	if !foundFunc {
-		s.Logger.Warnf("Cannot find function %s, so summary will not be used in target (nothing to do).",
+		s.Logger.Warnf("Cannot find function %s, so summary will not be checked in target (nothing to do).",
 			summary.Name())
 		return errs, results
 	}
 	if err != nil {
-		// continue checking the rest of the summaries but return all the errors when finished
-		s.Logger.Errorf("failed to check the summary of function %s in %v seconds: %v",
-			targetFunctionName, soundness.Time.Seconds(), err)
+		if len(soundness) > 0 {
+			// continue checking the rest of the summaries but return all the errors when finished
+			s.Logger.Errorf("failed to check the summary of function %s in %v seconds: %v",
+				targetFunctionName, soundness[0].Time.Seconds(), err)
+		}
 		errs = append(errs, err)
 		return errs, results
 	}
-	s.Logger.Infof("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
-	s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
-	results = append(results, soundness)
+	for _, soundness := range soundness {
+		s.Logger.Infof("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
+		s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
+	}
+	results = append(results, soundness...)
 	return errs, results
 }
 

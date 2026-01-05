@@ -22,8 +22,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/awslabs/ar-go-tools/internal/analysisutil"
-	"golang.org/x/tools/go/ssa"
 	"gopkg.in/yaml.v3"
 )
 
@@ -169,29 +167,6 @@ type FrontendDataflowSummary interface {
 	Name() string
 	Package() string
 	Summary() DetailedSummary
-}
-
-// NewFrontendDataflowSummary creates a new FrontendDataflowSummary from an SSA function and detailed summary.
-func NewFrontendDataflowSummary(f *ssa.Function, summary DetailedSummary) FrontendDataflowSummary {
-	pkgOpt := analysisutil.FindValuePackage(f)
-	if pkgOpt.IsNone() {
-		return nil
-	}
-
-	if f.Signature.Recv() != nil {
-		return ReceiverMethodFlowSummary{
-			pkg:      pkgOpt.Value(),
-			Receiver: analysisutil.ReceiverStr(f.Type()),
-			Method:   f.Name(),
-			summary:  summary,
-		}
-	}
-
-	return FunctionFlowSummary{
-		pkg:      pkgOpt.Value(),
-		Function: f.Name(),
-		summary:  summary,
-	}
 }
 
 // ParseSummariesFile parses a file that represents a Summaries structure. The structure can be
