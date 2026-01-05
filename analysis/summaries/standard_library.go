@@ -40,6 +40,7 @@ var stdPackages = map[string]map[string]Summarizer{
 	"crypto/elliptic":                summaryCrypto,
 	"crypto/internal":                summaryCrypto,
 	"crypto/internal/boring":         summaryCrypto,
+	"crypto/internal/fips140/alias":  summaryCrypto,
 	"crypto/internal/fips140/aes":    summaryCrypto,
 	"crypto/internal/fips140/sha3":   summaryCrypto,
 	"crypto/internal/fips140/sha256": summaryCrypto,
@@ -342,6 +343,10 @@ var summaryCrypto = map[string]Summarizer{
 		[][]int{{0}},
 		[][]int{{0}},
 	},
+	// func AnyOverlap(x, y []byte) bool
+	"crypto/internal/fips140/alias.AnyOverlap": NoDataFlowPropagation,
+	// func InexactOverlap(x, y []byte) bool
+	"crypto/internal/fips140/alias.InexactOverlap": NoDataFlowPropagation,
 }
 
 var summaryDatabase = map[string]Summarizer{}
@@ -1636,6 +1641,14 @@ var summarySync = map[string]Summarizer{
 		[][]int{{0}, {0, 1}},
 		[][]int{{0}, {}},
 	},
+	// Policy for *Cond: there is no taint flowing through usages of conditions. This is a control-flow mechanism, not
+	// a dataflow mechanism.
+	// func (c *Cond) Broadcast()
+	"(*sync.Cond).Broadcast": NoDataFlowPropagation,
+	// func (c *Cond) Signal()
+	"(*sync.Cond).Signal": NoDataFlowPropagation,
+	// func (c *Cond) Wait()
+	"(*sync.Cond).Wait":  NoDataFlowPropagation,
 	"(*sync.Map).Load":   SingleVarArgPropagation,
 	"(*sync.Map).Delete": SingleVarArgPropagation,
 	"(*sync.Mutex).Unlock": Summary{
@@ -3346,6 +3359,13 @@ var summaryUnicode = map[string]Summarizer{
 var summaryUnsafe = map[string]Summarizer{}
 
 var summaryInternal = map[string]Summarizer{
+	// func TypeOf(a any) *Type
+	"internal/abi.TypeOf": rawSummary{
+		Flows: map[string][]string{
+			"!arg 0": {"!ret"},
+		},
+		Mutates: []string{},
+	}.mustCompile(),
 	// func Clone(s string) string
 	"internal/stringslite.Clone": rawSummary{
 		Flows: map[string][]string{

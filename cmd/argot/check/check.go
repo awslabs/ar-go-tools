@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -52,7 +53,7 @@ See the "Dataflow Specifications" section in the taint analysis documentation
 for information on how to write the summary file.
 
 Usage:
-  argot check [options] --summary <summary file path> --via <method> <package path(s)>
+  argot check --config <config file> [--filter <filter> --via <method>] 
 
 Where:
   <method> is one of %s`,
@@ -62,8 +63,9 @@ Where:
 // Flags represents the parsed flags for the taint analysis.
 type Flags struct {
 	tools.CommonFlags
-	via check.Method
-	log int
+	via    check.Method
+	filter string
+	log    int
 }
 
 // NewFlags returns the parsed flags for the data flow summary checking analysis with args.
@@ -71,6 +73,7 @@ func NewFlags(args []string) (Flags, error) {
 	flags := tools.NewUnparsedCommonFlags(config.CheckTool)
 	via := flags.FlagSet.String("via", "all", "how to perform the check")
 	level := flags.FlagSet.Int("log", 3, "log level (int)")
+	filter := flags.FlagSet.String("filter", "", "filter for the check")
 	tools.SetUsage(flags.FlagSet, usage)
 	if err := flags.FlagSet.Parse(args); err != nil {
 		return Flags{}, fmt.Errorf("failed to parse command check with args %v: %v", args, err)
@@ -91,8 +94,9 @@ func NewFlags(args []string) (Flags, error) {
 			Platform:   *flags.Platform,
 			Out:        *flags.Out,
 		},
-		via: check.Method(*via),
-		log: *level,
+		via:    check.Method(*via),
+		log:    *level,
+		filter: *filter,
 	}, nil
 }
 
@@ -121,6 +125,13 @@ func Run(flags Flags) error {
 		}
 		parsedSummaries = append(parsedSummaries, userSummaries...)
 	}
+	if flags.filter != "" {
+		if filterRegex, err := regexp.Compile(flags.filter); err == nil {
+			parsedSummaries = filterSummaries(parsedSummaries, filterRegex)
+		} else {
+			return fmt.Errorf("failed to compile filter regex: %v", err)
+		}
+	}
 
 	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
 		CmdlineArgs: flags.FlagSet.Args(),
@@ -140,6 +151,16 @@ func Run(flags Flags) error {
 		}
 	}
 	return nil
+}
+
+func filterSummaries(s []summaries.FrontendDataflowSummary, filterRegex *regexp.Regexp) []summaries.FrontendDataflowSummary {
+	filteredSummaries := make([]summaries.FrontendDataflowSummary, 0)
+	for _, summary := range s {
+		if filterRegex.MatchString(summary.Name()) {
+			filteredSummaries = append(filteredSummaries, summary)
+		}
+	}
+	return filteredSummaries
 }
 
 func runTarget(
@@ -207,6 +228,7 @@ func report(cfg *config.State, results []check.SoundnessResult) error {
 	// log a summary of the results
 	unsoundOnes := map[string]bool{}
 	soundOnes := map[string]bool{}
+	soundyOnes := map[string]bool{}
 	// Count per method
 	methodCounts := map[check.Method]int{}
 	for _, r := range results {
@@ -219,9 +241,15 @@ func report(cfg *config.State, results []check.SoundnessResult) error {
 			}
 		} else {
 			unsoundOnes[r.Name] = true
+			if len(r.Unsoundness.UnprovenMustNotFlows) == 0 {
+				soundyOnes[r.Name] = true
+			}
 		}
 	}
-	cfg.Logger.Infof("Check results: %d sound / %d unsound\n", len(soundOnes), len(unsoundOnes))
+	cfg.Logger.Infof("Check results: %d sound / %d soundy / %d unsound\n",
+		len(soundOnes),
+		len(soundyOnes),
+		len(unsoundOnes))
 	for method, count := range methodCounts {
 		cfg.Logger.Infof("  %s: %d\n", method, count)
 	}
