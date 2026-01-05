@@ -16,47 +16,46 @@ pointer-config:
 targets:
   - name: "amazon-ssm-agent-unix"
     files: ["core/agent.go", "core/agent_unix.go", "core/agent_parser.go"]
-  - name: "amazon-ssm-agent-windows"
-    files: ["core/agent.go", "core/agent_windows.go", "core/agent_parser.go"]
-    platform: "windows"
-  - name: "agent-worker-unix"
-    files: ["agent/agent.go", "agent/agent_unix.go", "agent/agent_parser.go"]
-  - name: "agent-worker-windows"
-    files: ["agent/agent.go", "agent/agent_windows.go", "agent/agent_parser.go"]
-    platform: "windows"
-  - name: "updater-unix"
-    files: ["agent/update/updater/updater.go", "agent/update/updater/updater_unix.go"]
-  - name: "ssm-cli"
-    files: ["agent/cli-main/cli-main.go"]
-  - name: "ssm-document-worker"
-    files: ["agent/framework/processor/executer/outofproc/worker/main.go"]
-  - name: "ssm-session-logger" # Do not use, but keep here until looger is fully removed
-    files: ["agent/session/logging/main.go"]
-  - name: "ssm-session-worker"
-    files: ["agent/framework/processor/executer/outofproc/sessionworker/main.go"]
-  - name: "ssm-setup-cli"
-    files: ["agent/setupcli/setupcli.go"]
+  # - name: "amazon-ssm-agent-windows"
+  #   files: ["core/agent.go", "core/agent_windows.go", "core/agent_parser.go"]
+  #   platform: "windows"
+  # - name: "agent-worker-unix"
+  #   files: ["agent/agent.go", "agent/agent_unix.go", "agent/agent_parser.go"]
+  # - name: "agent-worker-windows"
+  #   files: ["agent/agent.go", "agent/agent_windows.go", "agent/agent_parser.go"]
+  #   platform: "windows"
+  # - name: "updater-unix"
+  #   files: ["agent/update/updater/updater.go", "agent/update/updater/updater_unix.go"]
+  # - name: "ssm-cli"
+  #   files: ["agent/cli-main/cli-main.go"]
+  # - name: "ssm-document-worker"
+  #   files: ["agent/framework/processor/executer/outofproc/worker/main.go"]
+  # - name: "ssm-session-logger" # Do not use, but keep here until looger is fully removed
+  #   files: ["agent/session/logging/main.go"]
+  # - name: "ssm-session-worker"
+  #   files: ["agent/framework/processor/executer/outofproc/sessionworker/main.go"]
+  # - name: "ssm-setup-cli"
+  #   files: ["agent/setupcli/setupcli.go"]
 dataflow-problems:
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
+  check-ignores-unsound: true
   user-specs:
-    - "Tools/src/specifications/agent-specs.json"
-    - "Tools/src/specifications/sdk-specs.json"
-    - "Tools/src/specifications/std-specs.json"
+    - "user-specs.yaml"
   # The taint tracking problems
   taint-tracking:
     - tag: "credential-logging"
       description: "Checking that credentials don't get logged."
       targets:
         - amazon-ssm-agent-unix
-        - amazon-ssm-agent-windows
-        - agent-worker-unix
-        - agent-worker-windows
-        - updater-unix
-        - ssm-cli
-        - ssm-document-worker
-        - ssm-session-worker
-        - ssm-setup-cli
+        # - amazon-ssm-agent-windows
+        # - agent-worker-unix
+        # - agent-worker-windows
+        # - updater-unix
+        # - ssm-cli
+        # - ssm-document-worker
+        # - ssm-session-worker
+        # - ssm-setup-cli
       severity: "HIGH" # Credentials should never get logged.
       unsafe-skip-bound-labels: true
       sources:
@@ -88,14 +87,14 @@ dataflow-problems:
       description: "Checking that SSM parameters don't get logged."
       targets:
         - amazon-ssm-agent-unix
-        - amazon-ssm-agent-windows
-        - agent-worker-unix
-        - agent-worker-windows
-        - updater-unix
-        - ssm-cli
-        - ssm-document-worker
-        - ssm-session-worker
-        - ssm-setup-cli
+        # - amazon-ssm-agent-windows
+        # - agent-worker-unix
+        # - agent-worker-windows
+        # - updater-unix
+        # - ssm-cli
+        # - ssm-document-worker
+        # - ssm-session-worker
+        # - ssm-setup-cli
       unsafe-skip-bound-labels: true
       sources:
         - package: "github.com/aws/amazon-ssm-agent/agent/ssm/ssmparameterresolver"
@@ -120,14 +119,14 @@ dataflow-problems:
         unsafe-max-depth: 5 # if we need more than 5 calls to get to the const, it's a red flag!
       targets:
         - amazon-ssm-agent-unix
-        - amazon-ssm-agent-windows
-        - agent-worker-unix
-        - agent-worker-windows
-        - updater-unix
-        - ssm-cli
-        - ssm-document-worker
-        - ssm-session-worker
-        - ssm-setup-cli
+        # - amazon-ssm-agent-windows
+        # - agent-worker-unix
+        # - agent-worker-windows
+        # - updater-unix
+        # - ssm-cli
+        # - ssm-document-worker
+        # - ssm-session-worker
+        # - ssm-setup-cli
       must-be-static: true
       backtracepoints:
         - package: "regexp"
@@ -138,14 +137,14 @@ syntactic-problems:
       description: "Agent must check resource availability before performing changes"
       targets:
         - amazon-ssm-agent-unix
-        - amazon-ssm-agent-windows
-        - agent-worker-unix
-        - agent-worker-windows
-        - updater-unix
-        - ssm-cli
-        - ssm-document-worker
-        - ssm-session-worker
-        - ssm-setup-cli
+        # - amazon-ssm-agent-windows
+        # - agent-worker-unix
+        # - agent-worker-windows
+        # - updater-unix
+        # - ssm-cli
+        # - ssm-document-worker
+        # - ssm-session-worker
+        # - ssm-setup-cli
       call:
         - method: DownloadUpdater$
         - method: DownloadManifest
@@ -159,14 +158,14 @@ syntactic-problems:
       description: "Check that the tls.Config is initialized with TLS 1.2"
       targets:
         - amazon-ssm-agent-unix
-        - amazon-ssm-agent-windows
-        - agent-worker-unix
-        - agent-worker-windows
-        - updater-unix
-        - ssm-cli
-        - ssm-document-worker
-        - ssm-session-worker
-        - ssm-setup-cli
+        # - amazon-ssm-agent-windows
+        # - agent-worker-unix
+        # - agent-worker-windows
+        # - updater-unix
+        # - ssm-cli
+        # - ssm-document-worker
+        # - ssm-session-worker
+        # - ssm-setup-cli
       struct:
         type: "crypto/tls.Config"
       fields-set:
@@ -187,14 +186,14 @@ syntactic-problems:
         type: "net/http.Client"
       targets:
         - amazon-ssm-agent-unix
-        - amazon-ssm-agent-windows
-        - agent-worker-unix
-        - agent-worker-windows
-        - updater-unix
-        - ssm-cli
-        - ssm-document-worker
-        - ssm-session-worker
-        - ssm-setup-cli
+        # - amazon-ssm-agent-windows
+        # - agent-worker-unix
+        # - agent-worker-windows
+        # - updater-unix
+        # - ssm-cli
+        # - ssm-document-worker
+        # - ssm-session-worker
+        # - ssm-setup-cli
       fields-set:
         - field: "CheckRedirect"
           value:

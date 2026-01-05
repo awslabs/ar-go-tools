@@ -1,0 +1,17 @@
+dataflow-summaries:
+  - package: "github.com/aws/amazon-ssm-agent/agent/plugins/downloadcontent/httpresource/handler/auth/digest"
+    receiver: "*Authorization"
+    method: "String"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+  - package: "github.com/aws/amazon-ssm-agent/agent/log"
+    interface: "BasicT"
+    method: "Infof"
+    flows:
+      - from: "!arg 0"
+        to: "!receiver"
+      - from: "!arg 0"
+        to: "!arg 1"
+      - from: "!receiver"
+        to: "!arg 1"
