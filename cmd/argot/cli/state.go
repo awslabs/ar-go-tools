@@ -511,15 +511,12 @@ func cmdList(o Outputter, s *Session, command Command, withTest bool) bool {
 			o.WriteErr("Error: %s", err)
 			return false
 		}
-		for key, funcs := range implementations {
-			o.Write("Implementations for %s:\n", key)
-			for f := range funcs {
-				o.Write("\t- %s\n", f.String())
-			}
-			if len(funcs) > 10 {
-				o.Write("     --> %d total\n", len(funcs))
-			}
+		reachable, err := s.reachableFunctions(o)
+		if err != nil {
+			o.WriteErr("Cannot compute reachability info: %s", err)
+			return false
 		}
+		displayInterfaces(o, s, command, implementations, reachable)
 		return false
 	}
 
@@ -536,7 +533,7 @@ func cmdList(o Outputter, s *Session, command Command, withTest bool) bool {
 
 	reachable, err := s.reachableFunctions(o)
 	if err != nil {
-		o.WriteErr("Error: %s", err)
+		o.WriteErr("Cannot compute reachability info: %s", err)
 		return false
 	}
 
@@ -545,6 +542,34 @@ func cmdList(o Outputter, s *Session, command Command, withTest bool) bool {
 
 	displayFuncs(o, s, command, funcs, reachable)
 	return false
+}
+
+func displayInterfaces(o Outputter, s *Session, command Command,
+	implementations map[string]map[*ssa.Function]bool, reachable map[*ssa.Function]bool) {
+	for key, funcs := range implementations {
+		o.Write("Implementations for %s%s%s:\n", o.EscGreen(), key, o.EscReset())
+		for fun := range funcs {
+			summary, hasSummary := s.hasSummary(fun)
+			isReachable := reachable[fun]
+			reachStr := "_"
+			if isReachable {
+				reachStr = "x"
+			} else if command.Flags["r"] {
+				// -r means print only reachable functions
+				continue
+			}
+			if hasSummary && summary.Constructed {
+				o.Write("  %s[x][%s] %s%s\n", o.EscCyan(), reachStr, fun.String(), o.EscReset())
+			} else if isReachable && !command.Flags["s"] {
+				o.Write("  %s[_][%s] %s%s\n", o.EscMagenta(), reachStr, fun.String(), o.EscReset())
+			} else if !command.Flags["s"] && !command.Flags["r"] {
+				o.Write("  [_][%s] %s\n", reachStr, fun.String())
+			}
+		}
+		if len(funcs) > 10 {
+			o.Write("     (%d total implementations)\n", len(funcs))
+		}
+	}
 }
 
 func displayFuncs(o Outputter, s *Session, command Command, funcs []*ssa.Function, reachable map[*ssa.Function]bool) {
