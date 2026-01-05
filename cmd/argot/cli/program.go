@@ -42,6 +42,16 @@ func cmdLoad(o Outputter, sess *Session, command Command, withTest bool) bool {
 			o.WriteErr("%s --target option requires an active configuration.", CmdLoadName)
 			return false
 		}
+		if sess.cfgState == nil {
+			o.WriteErr("%s --target option requires an active configuration.", CmdLoadName)
+			return false
+		}
+		if _, ok := sess.cfgState.Config.GetTargetMap()[namedTarget]; !ok {
+			o.WriteErr("%s target %s does not exist.", CmdLoadName, namedTarget)
+			return false
+		}
+		sess.target = namedTarget
+		sess.args = []string{}
 	}
 	if len(command.Args) >= 0 {
 		// Update the session args only if some arguments are provided

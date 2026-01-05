@@ -347,6 +347,43 @@ func (s *Session) funcsMatchingCommand(o Outputter, command Command) ([]*ssa.Fun
 	return funcs, nil
 }
 
+func (s *Session) interfacesMatchingCommand(o Outputter, command Command) (map[string]map[*ssa.Function]bool, error) {
+	implementations := map[string]map[*ssa.Function]bool{}
+	rString := ".*"
+	if len(command.Args) >= 1 {
+		// otherwise build regex from arguments
+		var x []string
+		for _, arg := range command.Args {
+			x = append(x, "("+arg+")")
+		}
+		rString = strings.Join(x, "|")
+	}
+	r, err := regexp.Compile(rString)
+	if err != nil {
+		regexErr(o, rString, err)
+		return implementations, err
+	}
+	if s.lpState == nil {
+		s.loadProgram(o)
+	}
+	if s.lpState == nil {
+		return implementations, fmt.Errorf("no program loaded")
+	}
+	keys := map[string]string{}
+	contracts := map[string]*dataflow.SummaryGraph{}
+	err = dataflow.ComputeMethodImplementations(s.lpState.Program, implementations, contracts, keys)
+	if err != nil {
+		o.WriteErr("Error while computing method implementations: %v", err)
+		return implementations, err
+	}
+	for key := range implementations {
+		if !r.MatchString(key) {
+			delete(implementations, key)
+		}
+	}
+	return implementations, nil
+}
+
 func (s *Session) findFunc(target *regexp.Regexp) ([]*ssa.Function, error) {
 	var funcs []*ssa.Function
 	allFuncs, err := s.allFunctions()
@@ -459,12 +496,31 @@ func cmdList(o Outputter, s *Session, command Command, withTest bool) bool {
 		o.Write("\t  Options:\n")
 		o.Write("\t    -r     list only reachable functions\n")
 		o.Write("\t    -s     list only summarized functions\n")
+		o.Write("\t    -i     list interfaces matching regex\n")
 		o.Write("\t    -h     print this help message\n")
 		return false
 	}
 
 	if command.Flags["h"] {
 		return cmdList(o, nil, command, withTest)
+	}
+
+	if command.Flags["i"] {
+		implementations, err := s.interfacesMatchingCommand(o, command)
+		if err != nil {
+			o.WriteErr("Error: %s", err)
+			return false
+		}
+		for key, funcs := range implementations {
+			o.Write("Implementations for %s:\n", key)
+			for f := range funcs {
+				o.Write("\t- %s\n", f.String())
+			}
+			if len(funcs) > 10 {
+				o.Write("     --> %d total\n", len(funcs))
+			}
+		}
+		return false
 	}
 
 	funcs, err := s.funcsMatchingCommand(o, command)
@@ -487,6 +543,11 @@ func cmdList(o Outputter, s *Session, command Command, withTest bool) bool {
 	o.WriteSuccess("Found %d matching functions:", len(funcs))
 	o.WriteSuccess("[summarized?][reachable?] function name")
 
+	displayFuncs(o, s, command, funcs, reachable)
+	return false
+}
+
+func displayFuncs(o Outputter, s *Session, command Command, funcs []*ssa.Function, reachable map[*ssa.Function]bool) {
 	numSummarized := 0
 	numReachable := 0
 	for _, fun := range funcs {
@@ -511,5 +572,4 @@ func cmdList(o Outputter, s *Session, command Command, withTest bool) bool {
 	}
 	o.WriteSuccess("(%d matching functions, %d reachable, %d summarized)", len(funcs),
 		numReachable, numSummarized)
-	return false
 }
