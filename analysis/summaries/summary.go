@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -233,6 +234,33 @@ func (s DetailedSummary) String() string {
 	}
 
 	return b.String()
+}
+
+// IsMoreGeneralThan returns true if s is a more general summary than other, that is, its set of flow is a superset of
+// the other's flows.
+func (s DetailedSummary) IsMoreGeneralThan(other DetailedSummary) bool {
+	// Check that all flows in s are in other
+	if len(s.Flows) > len(other.Flows) {
+		return false
+	}
+	for input, outputs := range s.Flows {
+		if otherOutputs, ok := other.Flows[input]; ok {
+			if len(outputs) > len(otherOutputs) {
+				return false
+			}
+			if len(funcutil.Diff(otherOutputs, outputs)) > 0 {
+				return false
+			}
+			for _, output := range outputs {
+				if !slices.Contains(otherOutputs, output) {
+					return false
+				}
+			}
+		} else {
+			return false
+		}
+	}
+	return true
 }
 
 // GetArgFlows returns the indexed flows from parameters to returns of the detailed summary.

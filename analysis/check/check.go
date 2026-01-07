@@ -89,7 +89,9 @@ func CheckSummary(
 	s *State,
 	want summaries.FrontendDataflowSummary,
 	specs []dataflow.ScanningSpec,
+	testNaive bool,
 ) ([]SoundnessResult, bool, error) {
+	// SPECIAL CASE: INTERFACES
 	if ifaceSummary, isIfaceSummary := want.(summaries.IfaceMethodFlowSummary); isIfaceSummary {
 		// Checking a summary that is for a method of an interface
 		// This means we need to gather all the possible implementations, and check every single one.
@@ -105,7 +107,7 @@ func CheckSummary(
 			for implem := range implems {
 				s.Logger.Infof("Checking that interface summary for %s is sound for implementation %s",
 					want.Name(), implem.Name())
-				partRes, err := checkSummary(ctx, s, implem, want.Summary(), specs)
+				partRes, err := checkSummary(ctx, s, implem, want.Summary(), specs, testNaive)
 				res = append(res, partRes)
 				if err != nil {
 					return res, true, err
@@ -115,15 +117,15 @@ func CheckSummary(
 		}
 		return []SoundnessResult{}, false, fmt.Errorf("failed to find method %s", key)
 	}
-
+	// CASE: NORMAL FUNCTIONS
 	// Checking a summary that is for a single function/method
-	f, err := functionOfName(s, want.Name())
+	f, err := s.FunctionOfName(want.Name())
 	if err != nil {
 		return []SoundnessResult{},
 			false, fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
 	}
 
-	res, err := checkSummary(ctx, s, f, want.Summary(), specs)
+	res, err := checkSummary(ctx, s, f, want.Summary(), specs, testNaive)
 	return []SoundnessResult{res}, true, err
 }
 
@@ -140,7 +142,7 @@ var errInfer = errors.New("failed to infer callee summaries")
 //gocyclo:ignore
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
-	specs []dataflow.ScanningSpec,
+	specs []dataflow.ScanningSpec, testNaive bool,
 ) (SoundnessResult, error) {
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
@@ -160,6 +162,13 @@ func checkSummary(
 		Time:    time.Duration(0),
 	}
 	var unprovenMustNotFlows []flow
+	// Special case if we're testing the "naive" method
+	if testNaive {
+		_, soundnessResult, _, err := checkMethodNaive(
+			ctx, s, f, unsoundCheckFeats, soundnessResultBase, g, want, start)
+		return soundnessResult, err
+	}
+
 	var method Method
 	for _, m := range []Method{General, Types, Immutability} {
 		method = m
@@ -296,7 +305,7 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 			// Recursively check the soundness of the callee's inferred summary
 			s.Logger.Tracef(
 				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
-			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm, specs)
+			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm, specs, false)
 			if err != nil {
 				s.Logger.Errorf("failed to check callee summary: %v", err)
 				if errors.Is(err, errInfer) {
@@ -415,7 +424,69 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 		}
 	}
 	unprovenMustNotFlows := checkSummaryMostGeneral(g, wantFlows)
-	return unprovenMustNotFlows, SoundnessResult{}, false, nil
+	return unprovenMustNotFlows, soundnessResultBase, false, nil
+}
+
+func checkMethodNaive(ctx context.Context, s *State, f *ssa.Function,
+	unsoundCheckFeats UnsoundCheckFeatures,
+	soundnessResultBase SoundnessResult,
+	g *dataflow.SummaryGraph,
+	want summaries.DetailedSummary,
+	start time.Time) ([]flow, SoundnessResult, bool, error) {
+	// The naive summary is unsound if there are any globals (as we do not have
+	// special global nodes in summaries yet).
+	if len(unsoundCheckFeats.GlobalUsages) > 0 {
+		s.Logger.Warnf(
+			"naive summary is unsound: detected global use in function %s (%s)\n",
+			f, s.Program.Fset.Position(f.Pos()))
+		if !s.Config.CheckIgnoresUnsound {
+			soundnessResultBase.IsSound = false
+			soundnessResultBase.Unsoundness = Unsoundness{CheckFeatures: unsoundCheckFeats}
+			soundnessResultBase.Method = Naive
+			return nil, soundnessResultBase, true, nil
+		}
+	}
+	s.RunIntraProceduralPass(ctx, -1, dataflow.IntraAnalysisParams{
+		ShouldBuildSummary: dataflow.ShouldBuildSummary,
+	})
+	s.FlowGraph.BuildGraph(true)
+	checkResult, err := ComputeClosedSummary(ctx, s.State, g.Parent)
+	if err != nil {
+		soundnessResultBase.IsSound = false
+		soundnessResultBase.Unsoundness = Unsoundness{
+			UnprovenMustNotFlows: []Flow{},
+			BadForm:              err,
+			CheckFeatures:        unsoundCheckFeats,
+		}
+		soundnessResultBase.Method = Naive
+		soundnessResultBase.Time = time.Since(start)
+		return nil, soundnessResultBase, true, nil
+	}
+	computed, err := checkResult.ToDetailedSummary()
+	if err != nil {
+		soundnessResultBase.IsSound = false
+		soundnessResultBase.Unsoundness = Unsoundness{
+			UnprovenMustNotFlows: []Flow{},
+			BadForm:              err,
+			CheckFeatures:        unsoundCheckFeats,
+		}
+		soundnessResultBase.Method = Naive
+		soundnessResultBase.Time = time.Since(start)
+		return nil, soundnessResultBase, true, nil
+	}
+	if !want.IsMoreGeneralThan(computed) {
+		soundnessResultBase.IsSound = false
+		soundnessResultBase.Unsoundness = Unsoundness{
+			UnprovenMustNotFlows: []Flow{},
+			CheckFeatures:        unsoundCheckFeats,
+		}
+		soundnessResultBase.Method = Naive
+		soundnessResultBase.Time = time.Since(start)
+		return nil, soundnessResultBase, true, nil
+	}
+	soundnessResultBase.Time = time.Since(start)
+
+	return []flow{}, soundnessResultBase, true, nil
 }
 
 // flow is a data flow between two summary graph nodes.
@@ -426,33 +497,4 @@ type flow struct {
 
 func (f flow) String() string {
 	return fmt.Sprintf("%s->%s", graphNodeDesc(f.from), graphNodeDesc(f.to))
-}
-
-// difference returns the elements of a that are not in b.
-func difference[T comparable](a, b []T) []T {
-	mb := make(map[T]struct{}, len(b))
-	for _, x := range b {
-		mb[x] = struct{}{}
-	}
-	var diff []T
-	for _, x := range a {
-		if _, found := mb[x]; !found {
-			diff = append(diff, x)
-		}
-	}
-
-	return diff
-}
-
-// functionOfName returns the SSA function that has name and that is reachable.
-func functionOfName(s *State, name string) (*ssa.Function, error) {
-	for fn := range s.ReachableFunctions() {
-		fname := fn.RelString(nil)
-		if fname == name {
-			return fn, nil
-		}
-	}
-
-	return nil, fmt.Errorf(
-		"could not find function (is it spelled correctly and reachable from main?)")
 }

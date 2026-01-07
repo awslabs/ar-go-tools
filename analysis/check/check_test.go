@@ -1660,7 +1660,7 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 			},
 		},
 	}
-	got, _, err = check.CheckSummary(ctx, state, summary, specs)
+	got, _, err = check.CheckSummary(ctx, state, summary, specs, false)
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
 	}

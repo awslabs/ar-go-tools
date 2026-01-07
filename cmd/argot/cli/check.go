@@ -20,7 +20,6 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/check"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	checkCmd "github.com/awslabs/ar-go-tools/cmd/argot/check"
-	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 )
 
 // cmdCheck checks a dataflow summary
@@ -51,9 +50,9 @@ func cmdCheck(o Outputter, sess *Session, command Command, _ bool) bool {
 	}
 	var specs []dataflow.ScanningSpec
 	if targetName, ok := command.NamedArgs["target"]; ok {
-		specs = tools.GetScanningSpecs(state, targetName)
+		specs = dataflow.GetScanningSpecs(state, targetName)
 	} else if sess.target != "" {
-		specs = tools.GetScanningSpecs(state, sess.target)
+		specs = dataflow.GetScanningSpecs(state, sess.target)
 	}
 	_, err = checkCmd.SummariesWithSpecs(ctx, state, summaries, check.All, specs)
 	if err != nil {

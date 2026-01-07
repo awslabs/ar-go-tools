@@ -1,0 +1,12 @@
+options:
+  log-level: 3
+  silence-warn: true
+  reports-dir: .
+dataflow-problems:
+  field-sensitive-funcs: [ ".*" ]
+  taint-tracking:
+    - tag: "source-to-sink"
+      sources:
+        - method: "^Source$"
+      sinks:
+        - method: "^Sink$"

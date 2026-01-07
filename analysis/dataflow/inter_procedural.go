@@ -289,6 +289,28 @@ type ScanningSpec struct {
 	ScanCallArgsOnly bool
 }
 
+// GetScanningSpecs returns the scanning specifications for the given configuration and target
+func GetScanningSpecs(state *State, target string) []ScanningSpec {
+	if state == nil {
+		return []ScanningSpec{}
+	}
+	scanningSpecs := []ScanningSpec{}
+	for _, spec := range state.Config.DataflowProblems.TaintTrackingProblems {
+		if funcutil.Exists(spec.Targets, func(s string) bool { return s == target }) {
+			sc := ScanningSpec{
+				// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
+				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+					return IsNodeOfInterest(state, node)
+				},
+				MarkCallArgsLikeCall: spec.SourceTaintsArgs,
+			}
+			scanningSpecs = append(scanningSpecs, sc)
+		}
+	}
+	// Default scanning spec
+	return scanningSpecs
+}
+
 // BuildAndRunVisitor runs the pass on the inter-procedural flow graph. First, it calls the BuildGraph function to
 // build the inter-procedural dataflow graph. Then, it looks for every entry point designated by the isEntryPoint
 // predicate to RunIntraProcedural the visitor on those points (using the [*InterProceduralFlowGraph.RunVisitorOnEntryPoints]

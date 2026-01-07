@@ -19,6 +19,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/funcutil"
 )
 
 // checkSummaryMostGeneral checks the soundness of want by comparing it to the most-general summary
@@ -36,7 +37,7 @@ func checkSummaryMostGeneral(g *dataflow.SummaryGraph, wantFlows []flow) []flow 
 		return []flow{}
 	}
 
-	return difference(gotFlows, wantFlows)
+	return funcutil.Diff(gotFlows, wantFlows)
 }
 
 // filterFlowsTypes tries to prove that the flows do not hold by a simple type

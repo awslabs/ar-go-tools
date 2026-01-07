@@ -214,7 +214,7 @@ func runTarget(
 				loadprogram.NewState),
 			ptr.NewState),
 		dataflow.NewState).Value()
-	specs := tools.GetScanningSpecs(df, targetName)
+	specs := dataflow.GetScanningSpecs(df, targetName)
 	if err != nil {
 		return fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
@@ -335,7 +335,7 @@ func checkOneSummaryWrapper(
 	s.Logger.PushContext(formatutil.Faint(targetFunctionName))
 	defer s.Logger.PopContext()
 	s.Logger.Infof("Checking summary via %v...", via)
-	soundness, foundFunc, err := check.CheckSummary(ctx, s, summary, specs)
+	soundness, foundFunc, err := check.CheckSummary(ctx, s, summary, specs, false)
 	if !foundFunc {
 		s.Logger.Warnf("Cannot find function %s, so summary will not be checked in target (nothing to do).",
 			summary.Name())

@@ -67,7 +67,8 @@ var ErrGlobal = errors.New("data flow to global")
 func (v *FuncInputVisitor) Visit(ctx context.Context, s *State, entry NodeWithTrace) {
 	entryParam, ok := entry.Node.(*ParamNode)
 	if !ok {
-		s.Report.AddError("", fmt.Errorf("entrypoint to FunctionVisitor is not a ParamNode: %v (%T)", entry.Node, entry.Node))
+		s.Report.AddError("", fmt.Errorf("entrypoint to FunctionVisitor is not a ParamNode: %v (%T)",
+			entry.Node, entry.Node))
 		return
 	}
 
@@ -274,7 +275,7 @@ func (v *FuncInputVisitor) Visit(ctx context.Context, s *State, entry NodeWithTr
 		case *ReturnValNode:
 			// If the return node is a return of the parameter's function, then stop analyzing further
 			if graphNode.parent.Parent == entryParam.ssaNode.Parent() {
-				s.Logger.Tracef("dataflow from return is complete")
+				s.Logger.Tracef("dataflow to return is complete")
 				v.addFlow(graphNode)
 				continue
 			}

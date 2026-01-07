@@ -78,6 +78,19 @@ func (s *State) ReachableFunctions() map[*ssa.Function]bool {
 	return s.reachableFunctions
 }
 
+// FunctionOfName returns the SSA function that has name (RelString from nil of the function) and that is reachable.
+func (s *State) FunctionOfName(name string) (*ssa.Function, error) {
+	for fn := range s.ReachableFunctions() {
+		fname := fn.RelString(nil)
+		if fname == name {
+			return fn, nil
+		}
+	}
+
+	return nil, fmt.Errorf(
+		"could not find function (is it spelled correctly and reachable from main?)")
+}
+
 // DoPointerAnalysis runs the pointer analysis on the program p, marking every Value in the functions filtered by
 // functionFilter as potential Value to query for aliasing.
 //
