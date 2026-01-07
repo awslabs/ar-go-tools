@@ -320,6 +320,8 @@ func FnWritesTo(fn *ssa.Function, val ssa.Value) bool {
 type UnsafeOrReflect struct {
 	IsUnsafe  bool
 	IsReflect bool
+	Pkg       string
+	Name      string
 }
 
 // IsUnsafeOrReflectInstr returns true if instr uses the unsafe or reflect package.
@@ -330,7 +332,7 @@ func IsUnsafeOrReflectInstr(instr ssa.Instruction) UnsafeOrReflect {
 	case ssa.CallInstruction:
 		call := instr.Common()
 		if call == nil {
-			return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+			return UnsafeOrReflect{}
 		}
 
 		switch val := call.Value.(type) {
@@ -338,45 +340,45 @@ func IsUnsafeOrReflectInstr(instr ssa.Instruction) UnsafeOrReflect {
 			pkg := PkgPathFromFunction(val)
 			// Call a function from the unsafe package.
 			if strings.HasPrefix(pkg, "unsafe") {
-				return UnsafeOrReflect{IsUnsafe: true, IsReflect: false}
+				return UnsafeOrReflect{IsUnsafe: true, Pkg: pkg, Name: val.Name()}
 			}
 			// Call a function from the reflect package.
 			if strings.HasPrefix(pkg, "reflect") {
-				return UnsafeOrReflect{IsUnsafe: false, IsReflect: true}
+				return UnsafeOrReflect{IsReflect: true, Pkg: pkg, Name: val.Name()}
 			}
 		case *ssa.Builtin:
 			// Call an unsafe builtin function.
 			if _, ok := UnsafeBuiltins[val.Name()]; ok {
-				return UnsafeOrReflect{IsUnsafe: true, IsReflect: false}
+				return UnsafeOrReflect{IsUnsafe: true, Name: val.Name()}
 			}
 		}
 	case *ssa.Alloc:
 		typ := instr.Type().Underlying()
 		if typ == nil {
-			return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+			return UnsafeOrReflect{}
 		}
 		pkg := GetPackageOfType(typ)
 		if pkg == nil {
-			return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+			return UnsafeOrReflect{}
 		}
 		// Allocate an object of an unsafe type.
 		if strings.HasPrefix(pkg.Name(), "unsafe") {
-			return UnsafeOrReflect{IsUnsafe: true, IsReflect: false}
+			return UnsafeOrReflect{IsUnsafe: true, Pkg: pkg.Name()}
 		}
 		// Allocate an object of a reflect type.
 		if strings.HasPrefix(pkg.Name(), "reflect") {
-			return UnsafeOrReflect{IsUnsafe: false, IsReflect: true}
+			return UnsafeOrReflect{IsReflect: true, Pkg: pkg.Name()}
 		}
 	case *ssa.Convert:
 		typ := instr.Type()
 		if typ == nil {
-			return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+			return UnsafeOrReflect{}
 		}
 		// Convert data to an unsafe pointer.
 		if strings.Contains(typ.String(), "unsafe") {
-			return UnsafeOrReflect{IsUnsafe: true, IsReflect: false}
+			return UnsafeOrReflect{IsUnsafe: true}
 		}
 	}
 
-	return UnsafeOrReflect{IsUnsafe: false, IsReflect: false}
+	return UnsafeOrReflect{}
 }

@@ -23,8 +23,10 @@ import (
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/buildutil"
+	"golang.org/x/tools/go/ssa"
 )
 
 // UnparsedCommonFlags represents an unparsed CLI sub-command flags.
@@ -233,4 +235,26 @@ func addTargets[T config.TaggedSpec](
 			}
 		}
 	}
+}
+
+// GetScanningSpecs returns the scanning specifications for the given configuration and target
+func GetScanningSpecs(state *dataflow.State, target string) []dataflow.ScanningSpec {
+	if state == nil {
+		return []dataflow.ScanningSpec{}
+	}
+	scanningSpecs := []dataflow.ScanningSpec{}
+	for _, spec := range state.Config.DataflowProblems.TaintTrackingProblems {
+		if funcutil.Exists(spec.Targets, func(s string) bool { return s == target }) {
+			sc := dataflow.ScanningSpec{
+				// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
+				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+					return dataflow.IsNodeOfInterest(state, node)
+				},
+				MarkCallArgsLikeCall: spec.SourceTaintsArgs,
+			}
+			scanningSpecs = append(scanningSpecs, sc)
+		}
+	}
+	// Default scanning spec
+	return scanningSpecs
 }

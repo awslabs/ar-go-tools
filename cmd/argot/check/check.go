@@ -28,7 +28,6 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
-	"github.com/awslabs/ar-go-tools/internal/funcutil"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis"
@@ -139,6 +138,8 @@ func Run(flags Flags) error {
 	return nil
 }
 
+// ParseSummaries parses the user specs referenced in the config and returns the dataflow summaries defined there.
+// If non-empty, the filterStr is used to filter the summaries by the function/method name that is summarized.
 func ParseSummaries(
 	cfg *config.Config,
 	tmpLogger *config.LogGroup,
@@ -200,7 +201,8 @@ func runTarget(
 		c.Logger.Infof("Reflect value call instances specified. Tool supports only 1 for now, will use the first.")
 		// TODO: handle more rewrites later
 		actual = statefulrewrite.StatefulRewritesOverlayTransform(c,
-			statefulrewrite.StatefulRewritesOverlayTransformSpec{ReflectValueCallInstanceCid: targetInfo.ReflectValueCallInstances[0]})
+			statefulrewrite.StatefulRewritesOverlayTransformSpec{
+				ReflectValueCallInstanceCid: targetInfo.ReflectValueCallInstances[0]})
 	} else {
 		actual = result.Ok(c)
 	}
@@ -212,7 +214,7 @@ func runTarget(
 				loadprogram.NewState),
 			ptr.NewState),
 		dataflow.NewState).Value()
-	specs := GetScanningSpecs(df, targetName)
+	specs := tools.GetScanningSpecs(df, targetName)
 	if err != nil {
 		return fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
@@ -225,7 +227,7 @@ func runTarget(
 		defer cancel()
 	}
 
-	results, checkErr := ForSummariesWithSpecs(ctx, df, parsedSummaries, flags.via, specs)
+	results, checkErr := SummariesWithSpecs(ctx, df, parsedSummaries, flags.via, specs)
 	// write the report before exiting, even if there was an error in checking summaries
 	if err := report(&df.State.State.State, results); err != nil {
 		return err
@@ -286,7 +288,9 @@ func report(cfg *config.State, results []check.SoundnessResult) error {
 	return nil
 }
 
-func ForSummariesWithSpecs(
+// SummariesWithSpecs applies the check to summaries with a set of specs that defines entry-points and other points
+// of interest for the analysis that will be using the summaries.
+func SummariesWithSpecs(
 	ctx context.Context,
 	ds *dataflow.State,
 	parsedSummaries []summaries.FrontendDataflowSummary,
@@ -360,26 +364,4 @@ func methodsString() string {
 		res = append(res, string(m))
 	}
 	return strings.Join(res, ", ")
-}
-
-// GetScanningSpecs returns the scanning specifications for the given configuration and target
-func GetScanningSpecs(state *dataflow.State, target string) []dataflow.ScanningSpec {
-	if state == nil {
-		return []dataflow.ScanningSpec{}
-	}
-	scanningSpecs := []dataflow.ScanningSpec{}
-	for _, spec := range state.Config.DataflowProblems.TaintTrackingProblems {
-		if funcutil.Exists(spec.Targets, func(s string) bool { return s == target }) {
-			sc := dataflow.ScanningSpec{
-				// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
-				IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
-					return dataflow.IsNodeOfInterest(state, node)
-				},
-				MarkCallArgsLikeCall: spec.SourceTaintsArgs,
-			}
-			scanningSpecs = append(scanningSpecs, sc)
-		}
-	}
-	// Default scanning spec
-	return scanningSpecs
 }

@@ -28,6 +28,10 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 )
 
+var allowedReflect = []lang.UnsafeOrReflect{
+	lang.UnsafeOrReflect{IsReflect: true, Name: "TypeOf", Pkg: "reflect"},
+}
+
 // findUnsoundCheckFeatures returns the Go features used in all functions reachable from function f
 // according to callgraph cg that make the check analysis unsound.
 //
@@ -84,6 +88,9 @@ func findUnsoundCheckFeatures(
 					unsafes = append(unsafes, pos)
 				}
 			} else if isUnsafeOrReflect.IsReflect {
+				if slices.Contains(allowedReflect, isUnsafeOrReflect) {
+					return
+				}
 				pos := prog.Fset.Position(instr.Pos())
 				if !slices.Contains(unsafes, pos) {
 					reflects = append(unsafes, pos)
