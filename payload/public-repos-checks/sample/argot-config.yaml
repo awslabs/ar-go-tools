@@ -4,7 +4,7 @@
 options:
   project-root: "./"                    # Root directory for relative paths
   reports-dir: "logs/argot"             # Directory for analysis reports
-  log-level: 5                          # Info level logging (1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
+  log-level: 3                          # Info level logging (1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
   report-paths: true                    # Generate detailed path reports for dataflow analyses
   analysis-options:
     unsafe-max-depth: 15               # Limit call depth for faster analysis

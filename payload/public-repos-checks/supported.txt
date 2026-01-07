@@ -1,10 +1,12 @@
-amazon-ssm-agent ok
-badger ok
-cli ok
-govatar ok
-ofxgo ok
-prometheus ok
-xdg ok (instrumentation)
+Repository        Analyzed     Sound/Soundy / Unsound
+sample               ok         158 / 384   /  3
+amazon-ssm-agent     ok          3  /   30  /  0
+badger               ok          3  /    9  /  0
+cli                ptr_panic?
+govatar              ok          0  /   0   /  2
+ofxgo                ok          -  /   -   /  -
+prometheus           ok          6  /   8   /  0
+xdg ok (instrumentation)         1  /   0   /  0
 atlas ok (slow)
 gogs - lots of functions that cannot be soundly analyzed
 ticker - cobra command analysis slow

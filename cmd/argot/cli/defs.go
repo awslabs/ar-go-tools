@@ -31,6 +31,8 @@ const (
 	CmdCallersName = "callers"
 	// CmdCdName is the name of the cd command
 	CmdCdName = "cd"
+	// CmdCheckName is the name of the check command
+	CmdCheckName = "check"
 	// CmdExitName is the name of the exit command
 	CmdExitName = "exit"
 	// CmdFocusName is the name of the focus command
@@ -109,6 +111,7 @@ const (
 	toolCalleesName          = "argot_show_callees"
 	toolCallersName          = "argot_show_callers"
 	toolCdName               = "argot_system_cd"
+	toolCheckName            = "argot_dataflow_check"
 	toolExitName             = "argot_system_exit"
 	toolFocusName            = "argot_function_focus"
 	toolIntraName            = "argot_focused_intra"

@@ -17,12 +17,13 @@ package cli
 
 import (
 	"fmt"
-	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
-	"github.com/awslabs/ar-go-tools/internal/formatutil"
-	"golang.org/x/term"
 	"os"
 	"os/signal"
 	"strings"
+
+	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
+	"github.com/awslabs/ar-go-tools/internal/formatutil"
+	"golang.org/x/term"
 )
 
 // Usage for CLI
@@ -199,6 +200,47 @@ var Commands = map[string]CommandDefinition{
 		},
 		Function: cmdCd,
 	},
+	CmdCheckName: {
+		Name: toolCheckName,
+		Description: "Check whether one or more summaries are correct. This requires having loaded a " +
+			"program and having a configuration file where the dataflow specifications list user specified " +
+			"dataflow summaries.",
+		InputSchema: tools.MCPInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"regex": map[string]interface{}{
+					"type":        "string",
+					"description": "Regex to match summary names",
+				},
+				"target": map[string]interface{}{
+					"type":        "string",
+					"description": "Target name to use when collecting possible dataflow problems",
+				},
+			},
+			Required: []string{"regex"},
+		},
+		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
+			regex, ok := props["regex"].(string)
+			if !ok {
+				return Command{}, fmt.Errorf("regex must be a string (can be empty)")
+			}
+			named := map[string]string{}
+			if targetName, ok := props["target"]; ok {
+				if target, ok := targetName.(string); ok {
+					if target == "" {
+						return Command{}, fmt.Errorf("target must be a non-empty string")
+					}
+					named["target"] = target
+				}
+			}
+			return Command{
+				Args:      []string{regex},
+				NamedArgs: named,
+				Flags:     map[string]bool{},
+			}, nil
+		},
+		Function: cmdCheck,
+	},
 	CmdExitName: {
 		Name:        toolExitName,
 		Description: "Exit the program (system command, terminates the server).",
@@ -323,19 +365,20 @@ var Commands = map[string]CommandDefinition{
 				"paths": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Paths to load (files or directory)",
+					"description": "Paths to load (files or directory), must be provided without target",
 				},
 				"target": map[string]interface{}{
 					"type":        "string",
-					"description": "Target to load (state? shows available targets from config, required loaded config)",
+					"description": "Target to load (state? shows available targets from config, requires loaded config)",
 				},
 			},
-			Required: []string{"paths"},
+			Required: []string{},
 		},
 		SchemaTranslation: func(props map[string]interface{}) (Command, error) {
 			packagesObj, ok := props["paths"]
-			if !ok {
-				return Command{}, fmt.Errorf("paths must be provided")
+			target, okTarget := props["target"]
+			if !ok && !okTarget {
+				return Command{}, fmt.Errorf("paths must be provided if no target")
 			}
 			packages, ok := packagesObj.([]interface{})
 			if !ok {
@@ -349,7 +392,7 @@ var Commands = map[string]CommandDefinition{
 				}
 			}
 			namedArgs := map[string]string{}
-			if target, ok := props["target"]; ok {
+			if okTarget {
 				if targetStr, ok := target.(string); ok {
 					namedArgs["target"] = targetStr
 				} else {

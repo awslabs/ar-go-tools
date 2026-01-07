@@ -115,6 +115,8 @@ var allowedCliTools = map[string]bool{
 	cli.CmdSummarizeName:  true,
 	cli.CmdSummaryName:    true,
 	cli.CmdUnfocusName:    true,
+	cli.CmdCheckName:      true,
+	cli.CmdReconfigName:   true,
 }
 
 /*

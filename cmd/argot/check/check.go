@@ -114,23 +114,9 @@ func Run(flags Flags) error {
 	}
 	tmpLogger.Infof("Checking method: %s", flags.via)
 
-	parsedSummaries := make([]summaries.FrontendDataflowSummary, 0)
-	for _, specFile := range cfg.DataflowProblems.UserSpecs {
-		userSummaries, checkErr := summaries.ParseSummariesFile(specFile)
-		if checkErr != nil {
-			return fmt.Errorf("failed to parse user specs file %s: %v", cfg.DataflowProblems.UserSpecs, checkErr)
-		}
-		if cfg.LogLevel > 3 {
-			tmpLogger.Debugf("Parsed %d summaries in %s", len(userSummaries), specFile)
-		}
-		parsedSummaries = append(parsedSummaries, userSummaries...)
-	}
-	if flags.filter != "" {
-		if filterRegex, err := regexp.Compile(flags.filter); err == nil {
-			parsedSummaries = filterSummaries(parsedSummaries, filterRegex)
-		} else {
-			return fmt.Errorf("failed to compile filter regex: %v", err)
-		}
+	parsedSummaries, err2 := ParseSummaries(cfg, tmpLogger, flags.filter)
+	if err2 != nil {
+		return err2
 	}
 
 	actualTargets, err := tools.GetTargets(cfg, tools.TargetReqs{
@@ -151,6 +137,32 @@ func Run(flags Flags) error {
 		}
 	}
 	return nil
+}
+
+func ParseSummaries(
+	cfg *config.Config,
+	tmpLogger *config.LogGroup,
+	filterStr string,
+) ([]summaries.FrontendDataflowSummary, error) {
+	parsedSummaries := make([]summaries.FrontendDataflowSummary, 0)
+	for _, specFile := range cfg.DataflowProblems.UserSpecs {
+		userSummaries, checkErr := summaries.ParseSummariesFile(specFile)
+		if checkErr != nil {
+			return nil, fmt.Errorf("failed to parse user specs file %s: %v", cfg.DataflowProblems.UserSpecs, checkErr)
+		}
+		if cfg.LogLevel > 3 {
+			tmpLogger.Debugf("Parsed %d summaries in %s", len(userSummaries), specFile)
+		}
+		parsedSummaries = append(parsedSummaries, userSummaries...)
+	}
+	if filterStr != "" {
+		if filterRegex, err := regexp.Compile(filterStr); err == nil {
+			parsedSummaries = filterSummaries(parsedSummaries, filterRegex)
+		} else {
+			return nil, fmt.Errorf("failed to compile filter regex: %v", err)
+		}
+	}
+	return parsedSummaries, nil
 }
 
 func filterSummaries(s []summaries.FrontendDataflowSummary, filterRegex *regexp.Regexp) []summaries.FrontendDataflowSummary {
@@ -200,7 +212,7 @@ func runTarget(
 				loadprogram.NewState),
 			ptr.NewState),
 		dataflow.NewState).Value()
-	specs := getScanningSpecs(df, targetName)
+	specs := GetScanningSpecs(df, targetName)
 	if err != nil {
 		return fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
@@ -213,7 +225,7 @@ func runTarget(
 		defer cancel()
 	}
 
-	results, checkErr := checkSummaries(ctx, df, parsedSummaries, flags.via, specs)
+	results, checkErr := ForSummariesWithSpecs(ctx, df, parsedSummaries, flags.via, specs)
 	// write the report before exiting, even if there was an error in checking summaries
 	if err := report(&df.State.State.State, results); err != nil {
 		return err
@@ -243,6 +255,11 @@ func report(cfg *config.State, results []check.SoundnessResult) error {
 			unsoundOnes[r.Name] = true
 			if len(r.Unsoundness.UnprovenMustNotFlows) == 0 {
 				soundyOnes[r.Name] = true
+				if count, ok := methodCounts[r.Method]; ok {
+					methodCounts[r.Method] = count + 1
+				} else {
+					methodCounts[r.Method] = 1
+				}
 			}
 		}
 	}
@@ -269,7 +286,7 @@ func report(cfg *config.State, results []check.SoundnessResult) error {
 	return nil
 }
 
-func checkSummaries(
+func ForSummariesWithSpecs(
 	ctx context.Context,
 	ds *dataflow.State,
 	parsedSummaries []summaries.FrontendDataflowSummary,
@@ -345,8 +362,8 @@ func methodsString() string {
 	return strings.Join(res, ", ")
 }
 
-// getScanningSpecs returns the scanning specifications for the given configuration and target
-func getScanningSpecs(state *dataflow.State, target string) []dataflow.ScanningSpec {
+// GetScanningSpecs returns the scanning specifications for the given configuration and target
+func GetScanningSpecs(state *dataflow.State, target string) []dataflow.ScanningSpec {
 	if state == nil {
 		return []dataflow.ScanningSpec{}
 	}

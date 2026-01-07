@@ -120,9 +120,14 @@ dataflow-summaries:
 
 Use these argot analysis tools to understand the function before generating the summary:
 
+0. **`argot_reload_config`** - Loads (or reloads) a config.
+   - This is useful when a config for Argot is already defined. A config can list specific program targets and dataflow problems.
+   - The config will specify which file contains existing user specified dataflow summaries (in the dataflow-problems > user-specs section)
+
 1. **`argot_load`** - Load the program first (required)
    - Use the full path to the Go file: `argot_load ["/path/to/file.go"]`
    - For directories with multiple main functions, load individual files
+   - When a config is loaded, `argot_load --target target_name` loads the target specified in the config.
 
 2. **`argot_list_functions`** - List functions matching a regex
    - Use it to find the information of the function.
@@ -153,6 +158,11 @@ Use these argot analysis tools to understand the function before generating the 
    - Shows type information, instruction details, and referrers
    - Helps trace how values flow through the function
 
+8. **`argot_dataflow_check`** - Check whether a given dataflow summary is sound (requires loaded program and active configuration)
+   - Checks whether a dataflow summary is sound (correct, over-approximating) within the context of a loaded program.
+   - Returns the reasons for unsoundness, if any. When some must-not-flows cannot be proved, this may mean that they should be added to the summary.
+   - If all flows could be proved, there may be risks associated to underlying code. This may be unavoidable, and the summary may be "soundy". That means it is correct but we cannot prove it with 100% guarantee.
+
 ## Workflow
 
 1. Load the program with `argot_load`
@@ -163,6 +173,8 @@ Use these argot analysis tools to understand the function before generating the 
 6. Focus on the function with `argot_function_focus` if detailed analysis is needed
 7. Use `argot_show_ssa_value` to examine specific values if focused
 8. Generate the YAML dataflow summary based on your analysis
+9. (Optional) Write the dataflow summary in the user spec file.
+10. If the dataflow summary is written to a user spec file reference by a config, use the `argot_dataflow_check` tool to check the summary.
 
 ## Required Arguments
 

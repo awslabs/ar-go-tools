@@ -49,6 +49,7 @@ func showTime() {
 
 func test() {
 	curve := elliptic.P521()
+
 	println(curve)
 }
 
@@ -97,6 +98,22 @@ func loadPrivateKey(path string) (*ecdsa.PrivateKey, error) {
 	}
 
 	return key, nil
+}
+
+func generateCompressed() {
+	curve := elliptic.P256()
+
+	// Generate a key pair
+	priv, x, y, err := elliptic.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+
+	// Marshal the public key in compressed format
+	compressed := elliptic.MarshalCompressed(curve, x, y)
+
+	fmt.Printf("Private key: %x\n", priv)
+	fmt.Printf("Compressed public key: %x\n", compressed)
 }
 
 func encryptAndUpload(scanner *bufio.Scanner) {
@@ -181,7 +198,7 @@ func uploadToS3(data []byte, key string) error {
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Enter commands (greet, calc, time, sign, upload, quit):")
-
+	generateCompressed()
 	for {
 		fmt.Print("> ")
 		if !scanner.Scan() {
