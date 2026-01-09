@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 )
 
 func foo0(a string, b string) string {
@@ -42,6 +43,20 @@ func bar(s string) string {
 	}
 	res := fooTop(c.c)
 	return res + c.c
+}
+
+func baz(s string) string {
+	b := "ok"
+	a := "ok"
+	c := strconv.Itoa(rand.Int())
+	for {
+		a = b
+		b = c
+		if rand.Int()%2 == 0 {
+			break
+		}
+	}
+	return a
 }
 
 func zoo(c contents) string {
@@ -128,4 +143,5 @@ func main() {
 	transitiveChain(&s1, &s2, &s3)
 	transitiveSwapChain(&s1, &s2)
 	transitiveReturn(&s1)
+	baz("test")
 }

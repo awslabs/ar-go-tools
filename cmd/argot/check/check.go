@@ -268,7 +268,7 @@ func report(cfg *config.State, results []check.SoundnessResult) error {
 	cfg.Logger.Infof("Check results: %d sound / %d soundy / %d unsound\n",
 		len(soundOnes),
 		len(soundyOnes),
-		len(unsoundOnes))
+		len(unsoundOnes)-len(soundyOnes))
 	for method, count := range methodCounts {
 		cfg.Logger.Infof("  %s: %d\n", method, count)
 	}

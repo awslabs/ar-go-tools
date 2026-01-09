@@ -9,8 +9,9 @@ Generate summaries in YAML format using this structure:
 ```yaml
 dataflow-summaries:
   - package: "<package name>"
-    function: "<function name>"  # for standalone functions
-    receiver: "<struct name>"    # for methods (with method field)
+    function: "<function name>"  # for standalone functions (cannot have receiver or interface field)
+    receiver: "<struct name>"    # for methods (with method field, cannot have function field or interface)
+    interface: "<interface name>" # for interface methods only (cannot have receiver or function fields)
     method: "<method name>"      # for methods only
     flows:
       - from: "<source>"
@@ -25,7 +26,7 @@ Use these identifiers to specify data flow sources and destinations:
 
 - `!arg 0`, `!arg 1`, etc. - Function arguments by position
 - `!arg <name>` - Function arguments by name
-- `!receiver` - Method receiver (methods only)
+- `!receiver` - Method receiver (methods only), interface receiver (interface method)
 - `!ret`, `!ret 0`, `!ret 1`, etc. - Return values by position
 - `!free <name>` - Closure free variables by name, as referenced in the program (closures only)
 
@@ -108,10 +109,21 @@ dataflow-summaries:
         to: "(!ret 0)[*]"
 ```
 
+**Interface method summaries** are dataflow summaries that hold for all implementations of a given interface method. For example, the following summary should hold, since all `String()` methods should just result in flows from the receiver to the returned value:
+```go
+dataflow-summaries:
+  - package: "fmt"
+    interface: "Stringer"
+    method: "String"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"
+```
+
 ## Important Notes
 
 - **Soundness**: Your summary must be conservative - include all possible flows
-- **No validation**: There are no automated tools to check summary correctness
+- **Validation**: You can use argot_dataflow_check for summaries written in configuration files
 - **Error handling**: Consider flows through error return values in Go's `(result, error)` pattern
 - **Mutations**: If the function modifies input arguments, include flows back to them
 - **All execution paths**: Consider branches, loops, and error conditions

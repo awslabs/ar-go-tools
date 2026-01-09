@@ -310,6 +310,10 @@ var Commands = map[string]CommandDefinition{
 					"type":        "string",
 					"description": "Regex to match full function names",
 				},
+				"interface_mode": map[string]interface{}{
+					"type":        "boolean",
+					"description": "List interfaces matching regex instead of function",
+				},
 				"reachable_only": map[string]interface{}{
 					"type":        "boolean",
 					"description": "List only reachable functions",
@@ -343,6 +347,13 @@ var Commands = map[string]CommandDefinition{
 					flags["s"] = summarizedBool
 				} else {
 					return Command{}, fmt.Errorf("summarized_only must be a boolean")
+				}
+			}
+			if interfaceMode, ok := props["interface_mode"]; ok {
+				if interfaceModeBool, ok := interfaceMode.(bool); ok {
+					flags["i"] = interfaceModeBool
+				} else {
+					return Command{}, fmt.Errorf("interface_mode must be a boolean")
 				}
 			}
 			args := []string{}
