@@ -67,6 +67,7 @@ func NewState(s *dataflow.State) result.Result[State] {
 		},
 		immutableVals: make(map[ssa.Value]struct{}),
 	}
+	res.PopulateTypesToImplementationMap()
 	return result.Ok(res)
 }
 
@@ -95,18 +96,13 @@ func CheckSummary(
 	if ifaceSummary, isIfaceSummary := want.(summaries.IfaceMethodFlowSummary); isIfaceSummary {
 		// Checking a summary that is for a method of an interface
 		// This means we need to gather all the possible implementations, and check every single one.
-		implementations := map[string]map[*ssa.Function]bool{}
-		keys := map[string]string{}
-		err := lang.ComputeMethodImplementations(s.Program, implementations, keys)
-		if err != nil {
-			return []SoundnessResult{}, false, fmt.Errorf("failed to compute method implementations: %v", err)
-		}
+		implementations := s.ImplementationsByType
 		key := lang.MethodKey(ifaceSummary.Package()+"."+ifaceSummary.Interface, ifaceSummary.Method)
 		if implems, isPresent := implementations[key]; isPresent {
 			var res []SoundnessResult
 			for implem := range implems {
 				s.Logger.Infof("Checking that interface summary for %s is sound for implementation %s",
-					want.Name(), implem.Name())
+					want.Name(), implem.RelString(nil))
 				partRes, err := checkSummary(ctx, s, implem, want.Summary(), specs, testNaive)
 				res = append(res, partRes)
 				if err != nil {

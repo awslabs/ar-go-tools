@@ -43,3 +43,20 @@ func FormatLastSplit(s string, sep string, formatter func(...any) string) string
 	sls[len(sls)-1] = formatter(sls[len(sls)-1])
 	return strings.Join(sls, sep)
 }
+
+// Fit string s in n characters is s is longer than n characters.
+// Example:
+// Fit("hello world!", 10) = "hel...rld!"
+// Fit("aaa", 9) = "aaa      "
+func Fit(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	if n < 9 {
+		// Cut the string to n, not enough space for fancy stuff
+		return s[0:n]
+	}
+	m := len(s)
+	l := (n - 3) / 2
+	return s[0:l] + "..." + s[m-l:m]
+}

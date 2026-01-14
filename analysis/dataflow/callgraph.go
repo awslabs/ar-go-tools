@@ -42,9 +42,9 @@ func GetUniqueFunctionID() uint32 {
 // The map can be indexed by using the signature of an interface method and calling String() on it.
 // If the provided contracts map is non-nil, then the function also builds a summary graph for each interface
 // method such that contracts[methodId] = nil
-func ComputeMethodImplementations(p *ssa.Program, implementations map[string]map[*ssa.Function]bool,
+func (s *State) ComputeMethodImplementations(implementations map[string]map[*ssa.Function]bool,
 	contracts map[string]*SummaryGraph, keys map[string]string) error {
-	err := lang.ComputeMethodImplementations(p, implementations, keys)
+	err := lang.ComputeMethodImplementations(s.Program, implementations, keys)
 	if err != nil {
 		return err
 	}

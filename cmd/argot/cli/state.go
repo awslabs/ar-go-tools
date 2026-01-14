@@ -25,6 +25,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
 	"github.com/awslabs/ar-go-tools/analysis/ptr"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
@@ -370,8 +371,7 @@ func (s *Session) interfacesMatchingCommand(o Outputter, command Command) (map[s
 		return implementations, fmt.Errorf("no program loaded")
 	}
 	keys := map[string]string{}
-	contracts := map[string]*dataflow.SummaryGraph{}
-	err = dataflow.ComputeMethodImplementations(s.lpState.Program, implementations, contracts, keys)
+	err = lang.ComputeMethodImplementations(s.lpState.Program, implementations, keys)
 	if err != nil {
 		o.WriteErr("Error while computing method implementations: %v", err)
 		return implementations, err

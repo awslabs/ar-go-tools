@@ -182,7 +182,11 @@ func (s *State) PrintImplementations(w io.Writer) {
 
 // PopulateTypesToImplementationMap populates the implementationsByType maps from type strings to implementations
 func (s *State) PopulateTypesToImplementationMap() {
-	if err := ComputeMethodImplementations(s.Program, s.ImplementationsByType, s.DataFlowContracts, s.MethodKeys); err != nil {
+	if err := s.ComputeMethodImplementations(
+		s.ImplementationsByType,
+		s.DataFlowContracts,
+		s.MethodKeys,
+	); err != nil {
 		s.Report.AddError("implementationsmap", err)
 	}
 }

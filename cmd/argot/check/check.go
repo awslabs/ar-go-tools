@@ -332,7 +332,7 @@ func checkOneSummaryWrapper(
 	results []check.SoundnessResult,
 ) ([]error, []check.SoundnessResult) {
 	targetFunctionName := summary.Name()
-	s.Logger.PushContext(formatutil.Faint(targetFunctionName))
+	s.Logger.PushContext(formatutil.Faint(formatutil.Fit(targetFunctionName, 30)))
 	defer s.Logger.PopContext()
 	s.Logger.Infof("Checking summary via %v...", via)
 	soundness, foundFunc, err := check.CheckSummary(ctx, s, summary, specs, false)
@@ -351,8 +351,14 @@ func checkOneSummaryWrapper(
 		return errs, results
 	}
 	for _, soundness := range soundness {
-		s.Logger.Infof("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
-		s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
+		if soundness.IsSound {
+			s.Logger.Debugf("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
+			s.Logger.Infof("Summary for %s is sound!", soundness.Fn.String())
+			s.Logger.Debugf("Result:\n%s\n", soundness.PrettyString())
+		} else {
+			s.Logger.Warnf("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
+			s.Logger.Warnf("Result:\n%s\n", soundness.PrettyString())
+		}
 	}
 	results = append(results, soundness...)
 	return errs, results
