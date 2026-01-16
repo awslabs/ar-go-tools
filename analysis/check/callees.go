@@ -407,7 +407,10 @@ func mostGeneralEdges(g *dataflow.SummaryGraph, call *dataflow.CallNode, via Met
 		panic(fmt.Errorf("unsupported most-general method: %v", via))
 	}
 
-	flows := mostGeneralFlows(g)
+	flows, err := mostGeneralFlows(g, nil)
+	if err != nil {
+		panic(err)
+	}
 	// TODO Maybe add more analyses?
 	// We're trying to balance maximizing may-flow edges AND the probability that we will be able
 	// to prove that these may-flow edges hold.
@@ -469,8 +472,8 @@ type edge struct {
 
 func newEdge(fl flow, call *dataflow.CallNode) edge {
 	return edge{
-		from: node{fl.from, call},
-		to:   node{fl.to, call},
+		from: node{fl.from.node, call},
+		to:   node{fl.to.node, call},
 	}
 }
 
@@ -630,8 +633,8 @@ func mayFlowEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.Detaile
 				Flows: make(map[summaries.SummaryNode][]summaries.SummaryNode),
 			}
 		}
-		from := newSummaryNode(e.from.n)
-		to := newSummaryNode(e.to.n)
+		from := newSummaryNode(newGraphNode(e.from.n, ""))
+		to := newSummaryNode(newGraphNode(e.to.n, ""))
 		if slices.Contains(flows.Flows[from], to) {
 			continue
 		}

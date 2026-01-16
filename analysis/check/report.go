@@ -291,24 +291,25 @@ func rawFlows(flows map[summaries.SummaryNode][]summaries.SummaryNode) map[strin
 
 // newSummaryNode constructs a summary node from a data flow graph node.
 // Panics if gn is invalid since this should be enforced by the visitor.
-func newSummaryNode(gn dataflow.GraphNode) summaries.SummaryNode {
-	switch gn := gn.(type) {
+func newSummaryNode(gn graphNode) summaries.SummaryNode {
+	path := gn.pathStr()
+	switch n := gn.node.(type) {
 	case *dataflow.ParamNode:
-		f := gn.SsaNode().Parent()
+		f := n.SsaNode().Parent()
 		if recv := f.Signature.Recv(); recv != nil {
 			// f is a method and param is a receiver
-			if gn.Index() == 0 {
+			if n.Index() == 0 {
 				return summaries.ReceiverSNode{}
 			}
-			return summaries.ArgumentSNode{Name: gn.SsaNode().Name(), Index: gn.Index() - 1, ObjectPath: ""}
+			return summaries.ArgumentSNode{Name: n.SsaNode().Name(), Index: n.Index() - 1, ObjectPath: path}
 		}
-		return summaries.ArgumentSNode{Name: gn.SsaNode().Name(), Index: gn.Index(), ObjectPath: ""}
+		return summaries.ArgumentSNode{Name: n.SsaNode().Name(), Index: n.Index(), ObjectPath: path}
 	case *dataflow.ReturnValNode:
-		return summaries.ReturnSNode{Index: gn.Index(), ObjectPath: ""}
+		return summaries.ReturnSNode{Index: n.Index(), ObjectPath: path}
 	case *dataflow.FreeVarNode:
-		return summaries.FreeVarSNode{Name: gn.SsaNode().Name()}
+		return summaries.FreeVarSNode{Name: n.SsaNode().Name(), ObjectPath: path}
 	default:
-		panic(fmt.Errorf("unexpected graph node type: %v (%T)", gn, gn))
+		panic(fmt.Errorf("unexpected graph node type: %v (%T)", n, n))
 	}
 }
 

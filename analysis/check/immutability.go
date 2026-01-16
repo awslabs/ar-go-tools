@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/container/intsets"
 	"golang.org/x/tools/go/callgraph"
@@ -68,7 +69,7 @@ func filterFlowsImmutability(ctx context.Context, s *State, flows []flow) []flow
 // cannot be modified outside of the function.
 func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, error) {
 	vals := outputVals(fl)
-	if _, ok := fl.to.(*dataflow.ReturnValNode); ok {
+	if _, ok := fl.to.node.(*dataflow.ReturnValNode); ok {
 		for _, val := range vals {
 			if !lang.IsStaticallyDefinedLocal(val) {
 				s.Logger.Tracef(
@@ -88,7 +89,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 	if isPointerLike(val.Type()) {
 		s.Logger.Tracef(
 			"output value %v (%v) in must-not-flow %v is pointer-like\n", val, val.Type(), fl)
-		writeInstr, ok, err := checkWritesPtr(ctx, s, val)
+		writeInstr, ok, err := checkWritesPtrWithPath(ctx, s, val, fl.to)
 		if err != nil {
 			return false, fmt.Errorf(
 				"failed to check writes to pointer-like value %v: %w", val, err)
@@ -110,13 +111,17 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 // It is an inter-procedural analysis which checks for writes in the value's enclosing function and
 // its callees in BFS order.
 func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool, error) {
+	return checkWritesPtrWithPath(ctx, s, to, graphNode{})
+}
+
+func checkWritesPtrWithPath(ctx context.Context, s *State, to ssa.Value, gn graphNode) (ptrWrite, bool, error) {
 	cg := s.PointerAnalysis.CallGraph
 	queue := []*callgraph.Node{cg.Nodes[to.Parent()]}
 	seen := make(map[*callgraph.Node]struct{})
 	seenFunc := make(map[*ssa.Function]struct{})
 
-	ids := nodeIds(s.cache, to)
-	s.Logger.Tracef("node ids of flow output value %v (%v): %v\n", to, to.Type(), ids)
+	ids := nodeIdsWithPath(s.cache, to, gn)
+	s.Logger.Tracef("node ids of flow output value %v (%v) with path: %v\n", to, to.Type(), ids)
 	if ids.Len() == 0 {
 		// If there are no node ids, then the pointee does not represent any object(s) allocated on
 		// the heap, which means it is impossible to write to it.
@@ -206,7 +211,7 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool
 // return instruction in the function.
 func outputVals(fl flow) []ssa.Value {
 	var vals []ssa.Value
-	switch to := fl.to.(type) {
+	switch to := fl.to.node.(type) {
 	// TODO handle globals
 	case *dataflow.ParamNode:
 		vals = append(vals, to.SsaNode())
@@ -230,13 +235,17 @@ func outputVals(fl flow) []ssa.Value {
 }
 
 func nodeIds(c *aliasCache, val ssa.Value) *intsets.Sparse {
+	return nodeIdsWithPath(c, val, graphNode{})
+}
+
+func nodeIdsWithPath(c *aliasCache, val ssa.Value, gn graphNode) *intsets.Sparse {
 	ids := &intsets.Sparse{}
-	objs := c.Objects(val)
+	objs := c.ObjectsWithPath(val, gn)
 	// initialize points-to-set of entrypoint
 	for obj := range objs {
 		switch data := obj.Data().(type) {
 		case *ssa.MakeInterface:
-			dataObjs := c.Objects(data.X) // get the objects of the concrete struct
+			dataObjs := c.ObjectsWithPath(data.X, gn)
 			for obj := range dataObjs {
 				for _, id := range obj.NodeIDs() {
 					ids.Insert(int(id))
@@ -256,16 +265,29 @@ func nodeIds(c *aliasCache, val ssa.Value) *intsets.Sparse {
 type aliasCache struct {
 	ptrRes         *pointer.Result
 	objectPointees map[ssa.Value]map[*pointer.Object]struct{}
+	pathPointees   map[string]map[*pointer.Object]struct{}
 }
 
 // Objects returns all the unique Objects that val points to.
 // It caches the result for efficiency.
 func (ac *aliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
+	return ac.ObjectsWithPath(val, graphNode{})
+}
+
+// ObjectsWithPath returns all the unique Objects that val points to, filtered by field path.
+func (ac *aliasCache) ObjectsWithPath(val ssa.Value, gn graphNode) map[*pointer.Object]struct{} {
 	if mi, ok := val.(*ssa.MakeInterface); ok {
 		// If val is an interface, the object is the concrete struct.
 		val = mi.X
 	}
-	if res, ok := ac.objectPointees[val]; ok && len(res) > 0 {
+	
+	// Build cache key
+	cacheKey := val.String()
+	if gn.pathLen() > 0 {
+		cacheKey += gn.pathStr()
+	}
+	
+	if res, ok := ac.pathPointees[cacheKey]; ok && len(res) > 0 {
 		return res
 	}
 
@@ -273,6 +295,9 @@ func (ac *aliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
 	if len(ptrs) == 0 {
 		return nil
 	}
+
+	// Get target path for filtering
+	targetPath := gn.pathStr()
 
 	res := make(map[*pointer.Object]struct{}, len(ptrs))
 	for _, ptr := range ptrs {
@@ -282,15 +307,14 @@ func (ac *aliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
 				continue
 			}
 
-			// // ASSUMPTION: Skip allocated context.Context and error objects since we assume that
-			// // they are used as values
-			// switch data := obj.Data().(type) {
-			// case *ssa.Alloc:
-			// 	switch data.Type().String() {
-			// 	case "*error", "*context.Context":
-			// 		continue
-			// 	}
-			// }
+			// If we're looking for a specific path, filter by it
+			if gn.pathLen() > 0 {
+				labelPath := label.Path()
+				// Match exact path or paths that start with our target
+				if labelPath != targetPath && !strings.HasPrefix(labelPath, targetPath+".") {
+					continue
+				}
+			}
 
 			res[obj] = struct{}{}
 		}

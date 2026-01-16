@@ -399,6 +399,7 @@ func (s rawSummary) mustCompile() DetailedSummary {
 type SummaryNode interface {
 	fmt.Stringer
 	WithObjectPath(path string) SummaryNode
+	Path() string
 }
 
 // ParseSummaryNode parses the string representation of a summary node.
@@ -481,6 +482,10 @@ type ReceiverSNode struct {
 	ObjectPath string
 }
 
+func (r ReceiverSNode) Path() string {
+	return r.ObjectPath
+}
+
 // String returns the string representation of the node. The returned string can be
 // parsed back using ParseSummaryNode
 func (r ReceiverSNode) String() string {
@@ -504,6 +509,10 @@ type ArgumentSNode struct {
 	Name       string
 	Index      int
 	ObjectPath string
+}
+
+func (a ArgumentSNode) Path() string {
+	return a.ObjectPath
 }
 
 // String returns the repr of an argument node, which is either !arg i where i is an integer
@@ -536,6 +545,10 @@ type ReturnSNode struct {
 	ObjectPath string
 }
 
+func (r ReturnSNode) Path() string {
+	return r.ObjectPath
+}
+
 // String returns the string representation of the node.
 // It always return the index reprsentation of the node, although the parsing
 // function also accepts the syntax "!ret" as short for "!ret 0"
@@ -558,6 +571,10 @@ func (r ReturnSNode) WithObjectPath(path string) SummaryNode {
 type FreeVarSNode struct {
 	Name       string
 	ObjectPath string
+}
+
+func (f FreeVarSNode) Path() string {
+	return f.ObjectPath
 }
 
 // String returns the string representation of the node which only includes the name and an optional

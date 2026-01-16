@@ -1283,6 +1283,103 @@ func TestCheckSummary_Basic(t *testing.T) {
 	}
 }
 
+// TestCheckSummary_Fields tests field-sensitive summaries.
+func TestCheckSummary_Fields(t *testing.T) {
+	dir := filepath.Join("./testdata", "fields")
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	state, err := result.Bind(
+		result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+
+	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/fields"
+	tests := []tcCheck{
+		{
+			pkg:  pkg,
+			name: "propagateFieldsField",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".propagateFieldsField",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".field.value"}: {
+							summaries.ArgumentSNode{Name: "dst", Index: 1, ObjectPath: ".field"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "propagateFieldsOther",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".propagateFieldsOther",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".other.value"}: {
+							summaries.ArgumentSNode{Name: "dst", Index: 1, ObjectPath: ".other"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "propagateFieldsBoth",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".propagateFieldsBoth",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".field.value"}: {
+							summaries.ArgumentSNode{Name: "dst", Index: 1, ObjectPath: ".other"},
+						},
+						summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".other.value"}: {
+							summaries.ArgumentSNode{Name: "dst", Index: 1, ObjectPath: ".other"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		var sound string
+		if tc.want.IsSound {
+			sound = "sound"
+		} else {
+			sound = "unsound"
+		}
+		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
+		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
+	}
+}
+
 func TestCheckSummary_Stdlib(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping due to short mode")

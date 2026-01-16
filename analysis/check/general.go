@@ -16,6 +16,7 @@ package check
 
 import (
 	"fmt"
+	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -30,14 +31,17 @@ import (
 // not in the most-general summary.
 // This difference is the set of must-not-flows: the flows that must not exist (there cannot be a
 // possible data flow in the program) for the summary to be sound.
-func checkSummaryMostGeneral(g *dataflow.SummaryGraph, wantFlows []flow) []flow {
-	gotFlows := mostGeneralFlows(g)
+func checkSummaryMostGeneral(g *dataflow.SummaryGraph, wantFlows []flow) ([]flow, error) {
+	gotFlows, err := mostGeneralFlows(g, wantFlows)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute most-general flows: %v", err)
+	}
 	if len(gotFlows) < len(wantFlows) {
-		// panic(fmt.Errorf("most-general flows is less than summary flows"))
-		return []flow{}
+		panic(fmt.Errorf("most-general flows is less than summary flows"))
+		// return []flow{}, nil
 	}
 
-	return funcutil.Diff(gotFlows, wantFlows)
+	return funcutil.Diff(gotFlows, wantFlows), nil
 }
 
 // filterFlowsTypes tries to prove that the flows do not hold by a simple type
@@ -47,9 +51,14 @@ func checkSummaryMostGeneral(g *dataflow.SummaryGraph, wantFlows []flow) []flow 
 func filterFlowsTypes(flows []flow) []flow {
 	var unproven []flow
 	for _, fl := range flows {
-		switch to := fl.to.(type) {
+		switch to := fl.to.node.(type) {
 		case *dataflow.ParamNode:
-			if isPointerLike(to.Type()) {
+			typ := to.Type()
+			// If there's a path, get the type of the field
+			if fl.to.pathLen() > 0 {
+				typ = fieldType(typ, fl.to.path, fl.to.pathLen())
+			}
+			if isPointerLike(typ) {
 				unproven = append(unproven, fl)
 			}
 		case *dataflow.FreeVarNode:
@@ -66,25 +75,71 @@ func filterFlowsTypes(flows []flow) []flow {
 	return unproven
 }
 
+func fieldType(base types.Type, path [maxPathLen]string, pathLen int) types.Type {
+	typ := base
+	for i := 0; i < pathLen; i++ {
+		// Handle pointers and named types
+		for {
+			if ptr, ok := typ.(*types.Pointer); ok {
+				typ = ptr.Elem()
+			} else if named, ok := typ.(*types.Named); ok {
+				typ = named.Underlying()
+			} else {
+				break
+			}
+		}
+
+		st, ok := typ.(*types.Struct)
+		if !ok {
+			return base
+		}
+
+		found := false
+		for j := 0; j < st.NumFields(); j++ {
+			if st.Field(j).Name() == path[i] {
+				typ = st.Field(j).Type()
+				found = true
+				break
+			}
+		}
+		if !found {
+			return base
+		}
+	}
+	return typ
+}
+
 // mostGeneralFlows returns the most-general summary for the function in g.
 // Params and free variables are both inputs and outputs.
 // Returns are only outputs.
-func mostGeneralFlows(g *dataflow.SummaryGraph) []flow {
+func mostGeneralFlows(g *dataflow.SummaryGraph, wantFlows []flow) ([]flow, error) {
 	var flows []flow
 	seen := make(map[flow]struct{})
-	var inputs []dataflow.GraphNode
-	var outputs []dataflow.GraphNode
+	var inputs []graphNode
+	var outputs []graphNode
 	for _, param := range g.Params {
-		inputs = append(inputs, param)
-		outputs = append(outputs, param)
+		nodes, err := enumeratePaths(param, wantFlows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to enumerate param paths: %v", err)
+		}
+		inputs = append(inputs, nodes...)
+		outputs = append(outputs, nodes...)
 	}
 	for _, fv := range g.FreeVars {
-		inputs = append(inputs, fv)
-		outputs = append(outputs, fv)
+		nodes, err := enumeratePaths(fv, wantFlows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to enumerate free var paths: %v", err)
+		}
+		inputs = append(inputs, nodes...)
+		outputs = append(outputs, nodes...)
 	}
 	for _, rets := range g.Returns {
 		for _, ret := range rets {
-			outputs = append(outputs, ret)
+			nodes, err := enumeratePaths(ret, wantFlows)
+			if err != nil {
+				return nil, fmt.Errorf("failed to enumerate return paths: %v", err)
+			}
+			outputs = append(outputs, nodes...)
 		}
 	}
 	for _, input := range inputs {
@@ -104,7 +159,54 @@ func mostGeneralFlows(g *dataflow.SummaryGraph) []flow {
 		}
 	}
 
-	return flows
+	return flows, nil
+}
+
+func enumeratePaths(node dataflow.GraphNode, wantFlows []flow) ([]graphNode, error) {
+	if len(wantFlows) == 0 {
+		return []graphNode{{node, [maxPathLen]string{}}}, nil
+	}
+
+	// Check if this node appears with paths anywhere in the summary
+	longestPathLen := 0
+	hasMatch := false
+	for _, flow := range wantFlows {
+		// Check both inputs and outputs to determine if we need field sensitivity
+		for _, n := range []graphNode{flow.from, flow.to} {
+			if n.node == node {
+				hasMatch = true
+				if n.pathLen() > longestPathLen {
+					longestPathLen = n.pathLen()
+				}
+			}
+		}
+	}
+
+	// Node doesn't appear in summary at all - return base node
+	if !hasMatch {
+		return []graphNode{{node, [maxPathLen]string{}}}, nil
+	}
+
+	// No path sensitivity required: return just the node.
+	if longestPathLen == 0 {
+		return []graphNode{{node, [maxPathLen]string{}}}, nil
+	}
+
+	// Path sensitivity required: return nodes with all paths of the length of the longest path
+	// (plus shorter paths).
+	var res []graphNode
+	allPaths := dataflow.AccessPathsOfType(node.Type())
+	for _, path := range allPaths {
+		gn := newGraphNode(node, path)
+		if gn.pathLen() > longestPathLen {
+			var truncated [maxPathLen]string
+			copy(truncated[:], gn.path[:longestPathLen])
+			gn.path = truncated
+		}
+		res = append(res, gn)
+	}
+
+	return res, nil
 }
 
 func summaryFlows(g *dataflow.SummaryGraph, summ summaries.DetailedSummary) ([]flow, error) {
@@ -119,7 +221,10 @@ func summaryFlows(g *dataflow.SummaryGraph, summ summaries.DetailedSummary) ([]f
 			if out == nil {
 				return nil, fmt.Errorf("could not find node for %v", output)
 			}
-			flows = append(flows, flow{from: in, to: out})
+			flows = append(flows, flow{
+				from: newGraphNode(in, input.Path()),
+				to:   newGraphNode(out, output.Path()),
+			})
 		}
 	}
 

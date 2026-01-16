@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -190,6 +191,10 @@ func checkSummary(
 			if done {
 				return soundnessResult, err
 			}
+		}
+
+		if err != nil {
+			return soundnessResultBase, fmt.Errorf("failed to check via method %s: %w", method, err)
 		}
 
 		if len(unprovenMustNotFlows) == 0 {
@@ -419,7 +424,11 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 			return nil, soundnessResultBase, true, nil
 		}
 	}
-	unprovenMustNotFlows := checkSummaryMostGeneral(g, wantFlows)
+	unprovenMustNotFlows, err := checkSummaryMostGeneral(g, wantFlows)
+	if err != nil {
+		return unprovenMustNotFlows, soundnessResultBase, false,
+			fmt.Errorf("failed to check summary via most-general: %v", err)
+	}
 	return unprovenMustNotFlows, soundnessResultBase, false, nil
 }
 
@@ -487,10 +496,76 @@ func checkMethodNaive(ctx context.Context, s *State, f *ssa.Function,
 
 // flow is a data flow between two summary graph nodes.
 type flow struct {
-	from dataflow.GraphNode
-	to   dataflow.GraphNode
+	from graphNode
+	to   graphNode
 }
 
 func (f flow) String() string {
-	return fmt.Sprintf("%s->%s", graphNodeDesc(f.from), graphNodeDesc(f.to))
+	return fmt.Sprintf("%s%s->%s%s", graphNodeDesc(f.from.node), f.from.pathStr(), graphNodeDesc(f.to.node), f.to.pathStr())
+}
+
+// maxPathLen is the maximum path length.
+// We set it to 3 which matches the dataflow package's restriction.
+const maxPathLen = 3
+
+// graphNode is a dataflow.GraphNode augmented with an (empty or non-empty) access path.
+// If path is empty, that means that the graphNode refers to *all* access paths.
+type graphNode struct {
+	node dataflow.GraphNode
+	path [maxPathLen]string
+}
+
+func (n graphNode) pathLen() int {
+	if len(n.path[0]) == 0 {
+		return 0
+	}
+
+	for i, el := range n.path {
+		if len(el) == 0 {
+			return i
+		}
+	}
+
+	return maxPathLen
+}
+
+func (n graphNode) pathStr() string {
+	pLen := n.pathLen()
+	if pLen == 0 {
+		return ""
+	}
+	parts := make([]string, pLen)
+	for i := 0; i < pLen; i++ {
+		parts[i] = n.path[i]
+	}
+	return "." + strings.Join(parts, ".")
+}
+
+func newGraphNode(n dataflow.GraphNode, objPath string) graphNode {
+	if len(objPath) == 0 {
+		return graphNode{n, [maxPathLen]string{}}
+	}
+	path := parsePath(objPath)
+	return graphNode{n, path}
+}
+
+func parsePath(objPath string) [maxPathLen]string {
+	trimmed := strings.TrimPrefix(objPath, ".")
+	if len(trimmed) == 0 {
+		return [maxPathLen]string{}
+	}
+	path := strings.Split(trimmed, ".")
+	// The path element suffix "[*]" represents all elements of the array/slice/map.
+	// There is no actual difference between a path element "f" and "f[*]" in practice so we
+	// simplify the latter to the former.
+	path = funcutil.Map(path, func(el string) string { return strings.ReplaceAll(el, "[*]", "") })
+	var res [maxPathLen]string
+	for i, el := range path {
+		if i == maxPathLen-1 {
+			break
+		}
+		res[i] = el
+	}
+
+	return res
 }
