@@ -502,26 +502,28 @@ type flow struct {
 }
 
 func (f flow) String() string {
-	return fmt.Sprintf("%s%s->%s%s", graphNodeDesc(f.from.node), f.from.pathStr(), graphNodeDesc(f.to.node), f.to.pathStr())
+	return fmt.Sprintf("%s%s->%s%s", graphNodeDesc(f.from.node), f.from.path.String(), graphNodeDesc(f.to.node), f.to.path.String())
+}
+
+// graphNode is a dataflow.GraphNode augmented with an (empty or non-empty) access path.
+// If path is empty, that means that the graphNode refers to *all* access paths.
+type graphNode struct {
+	node dataflow.GraphNode
+	path path
 }
 
 // maxPathLen is the maximum path length.
 // We set it to 3 which matches the dataflow package's restriction.
 const maxPathLen = 3
 
-// graphNode is a dataflow.GraphNode augmented with an (empty or non-empty) access path.
-// If path is empty, that means that the graphNode refers to *all* access paths.
-type graphNode struct {
-	node dataflow.GraphNode
-	path [maxPathLen]string
-}
+type path [maxPathLen]string
 
-func (n graphNode) pathLen() int {
-	if len(n.path[0]) == 0 {
+func (p path) len() int {
+	if len(p[0]) == 0 {
 		return 0
 	}
 
-	for i, el := range n.path {
+	for i, el := range p {
 		if len(el) == 0 {
 			return i
 		}
@@ -530,14 +532,14 @@ func (n graphNode) pathLen() int {
 	return maxPathLen
 }
 
-func (n graphNode) pathStr() string {
-	pLen := n.pathLen()
+func (p path) String() string {
+	pLen := p.len()
 	if pLen == 0 {
 		return ""
 	}
 	parts := make([]string, pLen)
 	for i := 0; i < pLen; i++ {
-		parts[i] = n.path[i]
+		parts[i] = p[i]
 	}
 	return "." + strings.Join(parts, ".")
 }

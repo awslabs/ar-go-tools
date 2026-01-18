@@ -292,7 +292,7 @@ func rawFlows(flows map[summaries.SummaryNode][]summaries.SummaryNode) map[strin
 // newSummaryNode constructs a summary node from a data flow graph node.
 // Panics if gn is invalid since this should be enforced by the visitor.
 func newSummaryNode(gn graphNode) summaries.SummaryNode {
-	path := gn.pathStr()
+	path := gn.path.String()
 	switch n := gn.node.(type) {
 	case *dataflow.ParamNode:
 		f := n.SsaNode().Parent()

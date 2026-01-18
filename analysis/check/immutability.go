@@ -89,7 +89,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 	if isPointerLike(val.Type()) {
 		s.Logger.Tracef(
 			"output value %v (%v) in must-not-flow %v is pointer-like\n", val, val.Type(), fl)
-		writeInstr, ok, err := checkWritesPtrWithPath(ctx, s, val, fl.to)
+		writeInstr, ok, err := checkWritesPtr(ctx, s, val, fl.to.path)
 		if err != nil {
 			return false, fmt.Errorf(
 				"failed to check writes to pointer-like value %v: %w", val, err)
@@ -105,22 +105,19 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 	return true, nil
 }
 
-// checkWritesPtr returns an instruction that writes anything to to's underlying memory.
+// checkWritesPtr returns an instruction that writes anything to to's underlying memory, given the
+// path pth.
 // If it returns false, there are no writes.
 //
 // It is an inter-procedural analysis which checks for writes in the value's enclosing function and
 // its callees in BFS order.
-func checkWritesPtr(ctx context.Context, s *State, to ssa.Value) (ptrWrite, bool, error) {
-	return checkWritesPtrWithPath(ctx, s, to, graphNode{})
-}
-
-func checkWritesPtrWithPath(ctx context.Context, s *State, to ssa.Value, gn graphNode) (ptrWrite, bool, error) {
+func checkWritesPtr(ctx context.Context, s *State, to ssa.Value, pth path) (ptrWrite, bool, error) {
 	cg := s.PointerAnalysis.CallGraph
 	queue := []*callgraph.Node{cg.Nodes[to.Parent()]}
 	seen := make(map[*callgraph.Node]struct{})
 	seenFunc := make(map[*ssa.Function]struct{})
 
-	ids := nodeIdsWithPath(s.cache, to, gn)
+	ids := nodeIds(s.cache, to, pth)
 	s.Logger.Tracef("node ids of flow output value %v (%v) with path: %v\n", to, to.Type(), ids)
 	if ids.Len() == 0 {
 		// If there are no node ids, then the pointee does not represent any object(s) allocated on
@@ -234,18 +231,14 @@ func outputVals(fl flow) []ssa.Value {
 	return vals
 }
 
-func nodeIds(c *aliasCache, val ssa.Value) *intsets.Sparse {
-	return nodeIdsWithPath(c, val, graphNode{})
-}
-
-func nodeIdsWithPath(c *aliasCache, val ssa.Value, gn graphNode) *intsets.Sparse {
+func nodeIds(c *aliasCache, val ssa.Value, pth path) *intsets.Sparse {
 	ids := &intsets.Sparse{}
-	objs := c.ObjectsWithPath(val, gn)
+	objs := c.ObjectsWithPath(val, pth)
 	// initialize points-to-set of entrypoint
 	for obj := range objs {
 		switch data := obj.Data().(type) {
 		case *ssa.MakeInterface:
-			dataObjs := c.ObjectsWithPath(data.X, gn)
+			dataObjs := c.ObjectsWithPath(data.X, pth)
 			for obj := range dataObjs {
 				for _, id := range obj.NodeIDs() {
 					ids.Insert(int(id))
@@ -271,22 +264,22 @@ type aliasCache struct {
 // Objects returns all the unique Objects that val points to.
 // It caches the result for efficiency.
 func (ac *aliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
-	return ac.ObjectsWithPath(val, graphNode{})
+	return ac.ObjectsWithPath(val, path{})
 }
 
 // ObjectsWithPath returns all the unique Objects that val points to, filtered by field path.
-func (ac *aliasCache) ObjectsWithPath(val ssa.Value, gn graphNode) map[*pointer.Object]struct{} {
+func (ac *aliasCache) ObjectsWithPath(val ssa.Value, pth path) map[*pointer.Object]struct{} {
 	if mi, ok := val.(*ssa.MakeInterface); ok {
 		// If val is an interface, the object is the concrete struct.
 		val = mi.X
 	}
-	
+
 	// Build cache key
 	cacheKey := val.String()
-	if gn.pathLen() > 0 {
-		cacheKey += gn.pathStr()
+	if pth.len() > 0 {
+		cacheKey += pth.String()
 	}
-	
+
 	if res, ok := ac.pathPointees[cacheKey]; ok && len(res) > 0 {
 		return res
 	}
@@ -297,7 +290,7 @@ func (ac *aliasCache) ObjectsWithPath(val ssa.Value, gn graphNode) map[*pointer.
 	}
 
 	// Get target path for filtering
-	targetPath := gn.pathStr()
+	targetPath := pth.String()
 
 	res := make(map[*pointer.Object]struct{}, len(ptrs))
 	for _, ptr := range ptrs {
@@ -308,7 +301,7 @@ func (ac *aliasCache) ObjectsWithPath(val ssa.Value, gn graphNode) map[*pointer.
 			}
 
 			// If we're looking for a specific path, filter by it
-			if gn.pathLen() > 0 {
+			if pth.len() > 0 {
 				labelPath := label.Path()
 				// Match exact path or paths that start with our target
 				if labelPath != targetPath && !strings.HasPrefix(labelPath, targetPath+".") {

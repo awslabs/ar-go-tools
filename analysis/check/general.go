@@ -16,7 +16,6 @@ package check
 
 import (
 	"fmt"
-	"go/types"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
@@ -68,40 +67,6 @@ func filterFlowsTypes(flows []flow) []flow {
 	}
 
 	return unproven
-}
-
-func fieldType(base types.Type, path [maxPathLen]string, pathLen int) types.Type {
-	typ := base
-	for i := 0; i < pathLen; i++ {
-		// Handle pointers and named types
-		for {
-			if ptr, ok := typ.(*types.Pointer); ok {
-				typ = ptr.Elem()
-			} else if named, ok := typ.(*types.Named); ok {
-				typ = named.Underlying()
-			} else {
-				break
-			}
-		}
-
-		st, ok := typ.(*types.Struct)
-		if !ok {
-			return base
-		}
-
-		found := false
-		for j := 0; j < st.NumFields(); j++ {
-			if st.Field(j).Name() == path[i] {
-				typ = st.Field(j).Type()
-				found = true
-				break
-			}
-		}
-		if !found {
-			return base
-		}
-	}
-	return typ
 }
 
 // mostGeneralFlows returns the most-general summary for the function in g.
@@ -170,8 +135,8 @@ func enumeratePaths(node dataflow.GraphNode, wantFlows []flow) ([]graphNode, err
 		for _, n := range []graphNode{flow.from, flow.to} {
 			if n.node == node {
 				hasMatch = true
-				if n.pathLen() > longestPathLen {
-					longestPathLen = n.pathLen()
+				if n.path.len() > longestPathLen {
+					longestPathLen = n.path.len()
 				}
 			}
 		}
@@ -193,7 +158,7 @@ func enumeratePaths(node dataflow.GraphNode, wantFlows []flow) ([]graphNode, err
 	allPaths := dataflow.AccessPathsOfType(node.Type())
 	for _, path := range allPaths {
 		gn := newGraphNode(node, path)
-		if gn.pathLen() > longestPathLen {
+		if gn.path.len() > longestPathLen {
 			var truncated [maxPathLen]string
 			copy(truncated[:], gn.path[:longestPathLen])
 			gn.path = truncated
