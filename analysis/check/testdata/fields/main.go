@@ -18,13 +18,27 @@ import (
 	"fmt"
 )
 
-type container struct {
-	field *data
-	other *data
+type simpleContainer struct {
+	field data
 }
 
 type data struct {
 	value int
+}
+
+func incFieldBy(c *simpleContainer, n int) {
+	c.field.value += n
+}
+
+func testIncFieldBy() {
+	x := &simpleContainer{field: data{0}}
+	incFieldBy(x, 5)
+	fmt.Printf("x.field:%v\n", x.field.value)
+}
+
+type container struct {
+	field *data
+	other *data
 }
 
 func propagateFieldsField(src, dst *container) {
@@ -71,6 +85,7 @@ func testFieldPropagationBoth() {
 }
 
 func main() {
+	testIncFieldBy()
 	testFieldPropagationField()
 	testFieldPropagationOther()
 	testFieldPropagationBoth()

@@ -1302,6 +1302,27 @@ func TestCheckSummary_Fields(t *testing.T) {
 	tests := []tcCheck{
 		{
 			pkg:  pkg,
+			name: "incFieldBy",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".incFieldBy",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".field.value"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Types,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
 			name: "propagateFieldsField",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
