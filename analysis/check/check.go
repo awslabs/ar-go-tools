@@ -409,7 +409,8 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 		}
 		soundnessResultBase.Method = General
 		soundnessResultBase.Time = time.Since(start)
-		return nil, soundnessResultBase, true, nil
+		return nil, soundnessResultBase, true,
+			fmt.Errorf("failed to compute summary flows for %v: %v", want, err)
 	}
 	// The most-general summary is unsound if there are any globals (as we do not have
 	// special global nodes in summaries yet).
