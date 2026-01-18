@@ -53,12 +53,7 @@ func filterFlowsTypes(flows []flow) []flow {
 	for _, fl := range flows {
 		switch to := fl.to.node.(type) {
 		case *dataflow.ParamNode:
-			typ := to.Type()
-			// If there's a path, get the type of the field
-			if fl.to.pathLen() > 0 {
-				typ = fieldType(typ, fl.to.path, fl.to.pathLen())
-			}
-			if isPointerLike(typ) {
+			if isPointerLike(to.Type()) {
 				unproven = append(unproven, fl)
 			}
 		case *dataflow.FreeVarNode:
