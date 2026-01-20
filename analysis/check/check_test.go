@@ -1873,4 +1873,6 @@ func setupConfig(lp *loadprogram.State) {
 	cfg.Options.ReportsDir = ""
 	cfg.CheckIgnoresUnsound = false
 	cfg.LogLevel = int(level)
+	// Always ignore pre-defined summaries
+	cfg.DataflowProblems.CheckIgnoresPredefined = true
 }
