@@ -425,6 +425,19 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 			return nil, soundnessResultBase, true, nil
 		}
 	}
+	// The most-general analysis is unsound if there is unsafe, as unsafe memory operations can
+	// make new input/output nodes that are not in the summary.
+	if len(unsoundCheckFeats.UnsafeUsages) > 0 {
+		s.Logger.Warnf(
+			"most-general analysis is unsound: detected unsafe use in function %s\n", f)
+		if !s.Config.CheckIgnoresUnsound {
+			soundnessResultBase.IsSound = false
+			soundnessResultBase.Unsoundness = Unsoundness{CheckFeatures: unsoundCheckFeats}
+			soundnessResultBase.Method = General
+			return nil, soundnessResultBase, true, nil
+		}
+	}
+
 	unprovenMustNotFlows, err := checkSummaryMostGeneral(g, wantFlows)
 	if err != nil {
 		return unprovenMustNotFlows, soundnessResultBase, false,

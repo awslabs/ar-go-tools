@@ -1484,14 +1484,9 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				//   		}
 				//   	}()
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "v", Index: 0},
-							To:   summaries.ReturnSNode{Index: 1},
-						},
-					},
+					UnprovenMustNotFlows: nil,
 				},
-				Method:        check.Recursive,
+				Method:        check.General,
 				CalleeResults: nil,
 				// CalleeResults: [][]check.SoundnessResult{
 				// 	{
