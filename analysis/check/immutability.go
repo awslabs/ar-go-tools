@@ -334,6 +334,12 @@ func findAllPointers(res *pointer.Result, v ssa.Value) []pointer.Pointer {
 func isPointerLike(t types.Type) bool {
 	// Structs and arrays are stack-allocated so check their field/element type(s)
 	switch t := t.(type) {
+	case *types.Basic:
+		return false
+	case *types.Pointer, *types.Interface, *types.Map, *types.Chan, *types.Signature, *types.Slice:
+		return true
+	case *types.Named:
+		return isPointerLike(t.Underlying())
 	case *types.Struct:
 		for i, n := 0, t.NumFields(); i < n; i++ {
 			f := t.Field(i)
@@ -343,6 +349,8 @@ func isPointerLike(t types.Type) bool {
 		}
 	case *types.Array:
 		return isPointerLike(t.Elem())
+	default:
+		panic(fmt.Errorf("unsupported type for canPoint: %T", t))
 	}
 
 	return canPoint(t)
