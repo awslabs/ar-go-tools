@@ -482,6 +482,7 @@ type ReceiverSNode struct {
 	ObjectPath string
 }
 
+// Path returns the object path of the receiver, that is, the path to the field
 func (r ReceiverSNode) Path() string {
 	return r.ObjectPath
 }
@@ -511,6 +512,7 @@ type ArgumentSNode struct {
 	ObjectPath string
 }
 
+// Path returns the path to the argument summary node.
 func (a ArgumentSNode) Path() string {
 	return a.ObjectPath
 }
@@ -545,6 +547,7 @@ type ReturnSNode struct {
 	ObjectPath string
 }
 
+// Path returns the path to the return value.
 func (r ReturnSNode) Path() string {
 	return r.ObjectPath
 }
@@ -573,6 +576,7 @@ type FreeVarSNode struct {
 	ObjectPath string
 }
 
+// Path returns the path to the free variable.
 func (f FreeVarSNode) Path() string {
 	return f.ObjectPath
 }

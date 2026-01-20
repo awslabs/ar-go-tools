@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysistest"
 	"golang.org/x/tools/go/ssa"
 )
@@ -33,9 +33,8 @@ func TestComputeMethodImplementationsGo123(t *testing.T) {
 	}
 	program := lp.Program
 	implementations := map[string]map[*ssa.Function]bool{}
-	contracts := map[string]*df.SummaryGraph{}
 	keys := map[string]string{}
-	if err := df.ComputeMethodImplementations(program, implementations, contracts, keys); err != nil {
+	if err := lang.ComputeMethodImplementations(program, implementations, keys); err != nil {
 		t.Fatalf("Error computing method implementations: %s", err)
 	}
 	methodTest(t, implementations, "command-line-arguments.I.f", map[string]bool{
