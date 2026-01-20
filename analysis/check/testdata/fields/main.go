@@ -84,9 +84,29 @@ func testFieldPropagationBoth() {
 		x.field.value, x.other.value, y.field.value, y.other.value)
 }
 
+type tree struct {
+	n     int
+	right *tree
+	left  *tree
+}
+
+func incRight(t tree, n int) {
+	t.right.n += n
+}
+
+func testIncRight() {
+	x := tree{n: 1, right: &tree{}, left: nil}
+	fmt.Println("x.right:", x.right.n)
+	// x.right: 2
+	incRight(x, 2)
+	fmt.Println("x.right:", x.right.n)
+	// x.right: 2
+}
+
 func main() {
 	testIncFieldBy()
 	testFieldPropagationField()
 	testFieldPropagationOther()
 	testFieldPropagationBoth()
+	testIncRight()
 }

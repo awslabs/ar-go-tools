@@ -1387,6 +1387,27 @@ func TestCheckSummary_Fields(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{},
 			},
 		},
+		{
+			pkg:  pkg,
+			name: "incRight",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".incRight",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "t", Index: 0, ObjectPath: ".right.n"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{},
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
 	}
 
 	for _, tc := range tests {
