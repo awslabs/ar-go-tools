@@ -192,6 +192,13 @@ def create_summary_agent(argot_mcp_path: str, model_config: dict, config_dir: st
     return model, mcp_client, file_tools, prompt_tool
 
 
+def format_spec_iterm(spec_item: dict) -> str: 
+    """Format a single item from a tool specification."""
+    if spec_item.get('receiver') or spec_item.get('interface'):
+        recv = spec_item.get('receiver') or spec_item.get('interface')
+        return f"- {spec_item.get('package')}.{recv}.{spec_item.get('function') or spec_item.get('method')}"    
+    return f"- {spec_item.get('package')}.{spec_item.get('function') or spec_item.get('method')}"    
+
 def generate_summaries(agent, config_paths: list[str], target: str, functions: list[dict]) -> str:
     """Generate dataflow summaries for a list of functions.
     
@@ -202,14 +209,14 @@ def generate_summaries(agent, config_paths: list[str], target: str, functions: l
         functions: List of function specifications, each with:
             - package: Package name
             - function/method: Function or method name
-            - receiver/interface: (optional) For methods
+            - receiver/interface: (optional) For methods or interfaces
     
     Returns:
         YAML string with all generated summaries
     """
     # Format function list for the agent
     func_list = "\n".join([
-        f"- {f.get('package')}.{f.get('function') or f.get('method')}"
+        format_spec_iterm(f)
         for f in functions
     ])
     

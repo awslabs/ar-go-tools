@@ -15,5 +15,10 @@
   {
     "package": "github.com/awslabs/ar-go-tools/python/test/testprog",
     "function": "MultipleReturns"
+  },
+  {
+    "package": "github.com/awslabs/ar-go-tools/python/test/testprog",
+    "interface": "AbstractProcessor",
+    "method": "Process"
   }
 ]

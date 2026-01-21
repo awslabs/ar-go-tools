@@ -130,7 +130,9 @@ dataflow-summaries:
 
 ## Analysis Tools Available
 
-Use these argot analysis tools to understand the function before generating the summary:
+Use the following argot analysis tools to understand the function before generating the summary. This list is presented in order, and you
+should likely use the tools in that order. In some environments, the more complex analysis tools may not be available and you will
+need to perform an analysis without using those tools.
 
 0. **`argot_reload_config`** - Loads (or reloads) a config.
    - This is useful when a config for Argot is already defined. A config can list specific program targets and dataflow problems.
@@ -149,6 +151,7 @@ Use these argot analysis tools to understand the function before generating the 
    - The user may have given imprecise package and function name information, this allows you to find the specific function.
    - You can search for <package_name>.*<function_name>.* or the like (use package to filter down).
    - If there are multiple choices, you must come back to the user to allow them to make a selection.
+   - If you are summarizing an interface method, you can use the "interface_mode" option to list the implementations of an interface method.
 
 3. **`argot_show_src`** - View the source code
    - Use function name regex: `argot_show_src <function_name>`
@@ -181,7 +184,7 @@ Use these argot analysis tools to understand the function before generating the 
 ## Workflow
 
 1. Load the program with `argot_load`
-2. List matching functions with `argot_list_functions <function regex>`
+2. List matching functions / methods / interface methods with `argot_list_functions <function regex>` (optionally with interface_mode)
 3. View source code with `argot_show_src` to understand the function
 4. View SSA representation with `argot_show_ssa` to see data flow operations
 5. Run pointer analysis with `argot_run_pointer` for aliasing information

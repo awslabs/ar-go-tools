@@ -20,6 +20,10 @@ import (
 	"strings"
 )
 
+type AbstractProcessor interface {
+	Process(data []byte) []byte
+}
+
 // GetUserInput simulates getting sensitive user input (SOURCE)
 func GetUserInput() string {
 	return "sensitive-user-data"
@@ -38,6 +42,15 @@ func Sanitize(data string) string {
 // SimpleFunction demonstrates a basic data flow from argument to return
 func SimpleFunction(input string) string {
 	return input
+}
+
+// VoidProcessor does nothing to the data
+type VoidProcessor struct {
+	item int
+}
+
+func (vp *VoidProcessor) Process(data []byte) []byte {
+	return data
 }
 
 // ProcessData shows flow through struct fields
