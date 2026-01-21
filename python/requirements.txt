@@ -1,0 +1,11 @@
+# Strands Agents SDK
+strands-agents>=1.0.0
+
+# MCP SDK for connecting to Argot MCP server
+mcp>=1.0.0
+
+# AWS Bedrock support (optional - comment out if using other providers)
+boto3>=1.34.0
+
+# YAML handling for summaries
+pyyaml>=6.0

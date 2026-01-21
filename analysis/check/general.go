@@ -36,8 +36,7 @@ func checkSummaryMostGeneral(g *dataflow.SummaryGraph, wantFlows []flow) ([]flow
 		return nil, fmt.Errorf("failed to compute most-general flows: %v", err)
 	}
 	if len(gotFlows) < len(wantFlows) {
-		panic(fmt.Errorf("most-general flows is less than summary flows"))
-		// return []flow{}, nil
+		return gotFlows, fmt.Errorf("most-general flows is less than summary flows")
 	}
 
 	return funcutil.Diff(gotFlows, wantFlows), nil

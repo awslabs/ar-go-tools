@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""CLI for generating dataflow summaries."""
+
+import argparse
+import json
+import sys
+from typing import List
+import yaml
+from pathlib import Path
+
+from summary_generator.agent import create_summary_agent, generate_summaries, WORKFLOW_PROMPT
+from strands import Agent
+from strands.handlers import PrintingCallbackHandler
+
+
+def load_functions_list(path: str) -> list[dict]:
+    """Load function list from JSON or YAML file."""
+    file_path = Path(path)
+    with open(file_path) as f:
+        if file_path.suffix in ['.yaml', '.yml']:
+            return yaml.safe_load(f)
+        else:
+            return json.load(f)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate dataflow summaries using Strands Agents and Argot MCP",
+        epilog="""
+Available Bedrock models (as of Jan 2026):
+  - anthropic.claude-sonnet-4-5-20250929-v1:0 (recommended, default)
+  - anthropic.claude-haiku-4-5-20251001-v1:0 (fastest)
+  - anthropic.claude-opus-4-5-20251101-v1:0 (most capable)
+
+Note: Claude 4+ models use inference profiles automatically for better availability.
+
+For other providers, use their model IDs:
+  - Anthropic API: claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5
+  - Ollama: llama3, mistral, etc.
+  - OpenAI: gpt-4, gpt-4-turbo, etc.
+        """
+    )
+    parser.add_argument(
+        "--argot-mcp",
+        required=False,
+        # By default, argot users will have it on the path
+        default="argot-mcp-server",
+        help="Path to argot-mcp-server binary"
+    )
+    parser.add_argument(
+        "--config",
+        required=True,
+        nargs="+",
+        help="Argot config file(s) for the program to analyze"
+    )
+    parser.add_argument(
+        "--target",
+        default="main",
+        help="Target name in config to analyze (default: main)"
+    )
+    parser.add_argument(
+        "--functions",
+        required=True,
+        help="JSON/YAML file with list of functions to summarize"
+    )
+    parser.add_argument(
+        "--provider",
+        default="bedrock",
+        choices=["bedrock", "anthropic", "ollama", "openai"],
+        help="LLM provider"
+    )
+    parser.add_argument(
+        "--model",
+        default="anthropic.claude-sonnet-4-5-20250929-v1:0",
+        help="Model ID (default: Claude Sonnet 4.5 for Bedrock)"
+    )
+    parser.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region (for Bedrock)"
+    )
+    parser.add_argument(
+        "--inference-profile",
+        help="AWS Bedrock inference profile ARN (auto-detected if not specified)"
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        help="Output file (default: stdout)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Load function list
+    try:
+        functions = load_functions_list(args.functions)
+    except Exception as e:
+        print(f"Error loading functions list: {e}", file=sys.stderr)
+        return 1
+    
+    # Get config directory and filenames (use first config file's directory)
+    config_path = Path(args.config[0]).absolute()
+    config_dir = str(config_path.parent)
+    # Convert config paths to relative paths from config directory
+    config_files = [Path(c).absolute().relative_to(config_path.parent).as_posix() for c in args.config]
+    
+    # Configure model
+    model_config = {
+        "provider": args.provider,
+        "model_id": args.model,
+        "region": args.region,
+        "inference_profile": args.inference_profile
+    }
+    
+    # Create model and MCP client
+    try:
+        model, mcp_client, file_tools, prompt_tool = create_summary_agent(args.argot_mcp, model_config, config_dir)
+    except Exception as e:
+        print(f"Error creating agent: {e}", file=sys.stderr)
+        return 1
+    
+    # Generate summaries with MCP client context
+    try:
+        with mcp_client:
+            # Create agent with tools inside context manager
+            mcp_tools = mcp_client.list_tools_sync()
+            # Filter to only tools mentioned in the workflow prompt
+            allowed_tools = {
+                "argot_reload_config",
+                "argot_load",
+                "argot_show_state",
+                "argot_show_src",
+                "argot_show_ssa",
+                "argot_list_functions", 
+                "argot_show_ssa_value",
+                "argot_show_ssa_instr",
+                "argot_function_focus",
+                "argot_function_unfocus",
+                "argot_run_pointer",                
+                "argot_show_callees",
+                "argot_dataflow_check"
+            }
+            filtered_mcp_tools = [t for t in mcp_tools if t.tool_name in allowed_tools]
+            print(f"Available tools: {[t.tool_name for t in filtered_mcp_tools]}", file=sys.stderr)
+            
+            all_tools = filtered_mcp_tools + file_tools.get_tools() + [prompt_tool]
+
+            
+            agent = Agent(
+                model=model,
+                tools=all_tools,
+                system_prompt=WORKFLOW_PROMPT,
+            )
+            
+            result = generate_summaries(agent, config_files, args.target, functions)
+            
+            # Output result
+            if args.output:
+                with open(args.output, 'w') as f:
+                    f.write(result)
+                print(f"Summaries written to {args.output}", file=sys.stderr)
+            else:
+                print(result)
+                
+    except Exception as e:
+        print(f"Error generating summaries: {e}", file=sys.stderr)
+        return 1
+    
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

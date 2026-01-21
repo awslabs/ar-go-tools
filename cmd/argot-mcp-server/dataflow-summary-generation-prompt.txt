@@ -24,10 +24,10 @@ The receiver name also indicates whether the receiver is a pointer to the type o
 
 Use these identifiers to specify data flow sources and destinations:
 
-- `!arg 0`, `!arg 1`, etc. - Function arguments by position
-- `!arg <name>` - Function arguments by name
+- `!arg 0`, `!arg 1`, etc. - Function arguments by position, the position is not between delimiters.
+- `!arg <name>` - Function arguments by name, must be between < and >. You can also use `!arg <name 0>` to combine position and name.
 - `!receiver` - Method receiver (methods only), interface receiver (interface method)
-- `!ret`, `!ret 0`, `!ret 1`, etc. - Return values by position
+- `!ret`, `!ret 0`, `!ret 1`, etc. - Return values by position (this is the tuple position)
 - `!free <name>` - Closure free variables by name, as referenced in the program (closures only)
 
 For methods, argument indexing starts after the receiver:
@@ -134,7 +134,10 @@ Use these argot analysis tools to understand the function before generating the 
 
 0. **`argot_reload_config`** - Loads (or reloads) a config.
    - This is useful when a config for Argot is already defined. A config can list specific program targets and dataflow problems.
-   - The config will specify which file contains existing user specified dataflow summaries (in the dataflow-problems > user-specs section)
+   - The config will specify which files contains existing user specified dataflow summaries
+      (in the dataflow-problems > user-specs section, user-specs is a list of files)
+   - If you need to add a new user-specs files in the config, you need to reload the config and the program to update the state of
+     the mcp server.
 
 1. **`argot_load`** - Load the program first (required)
    - Use the full path to the Go file: `argot_load ["/path/to/file.go"]`

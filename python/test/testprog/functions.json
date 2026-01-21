@@ -1,0 +1,19 @@
+[
+  {
+    "package": "github.com/awslabs/ar-go-tools/python/test/testprog",
+    "function": "SimpleFunction"
+  },
+  {
+    "package": "github.com/awslabs/ar-go-tools/python/test/testprog",
+    "receiver": "*DataProcessor",
+    "method": "Process"
+  },
+  {
+    "package": "github.com/awslabs/ar-go-tools/python/test/testprog",
+    "function": "ReadAndTransform"
+  },
+  {
+    "package": "github.com/awslabs/ar-go-tools/python/test/testprog",
+    "function": "MultipleReturns"
+  }
+]

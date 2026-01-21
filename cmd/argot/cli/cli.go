@@ -392,7 +392,7 @@ var Commands = map[string]CommandDefinition{
 				return Command{}, fmt.Errorf("paths must be provided if no target")
 			}
 			packages, ok := packagesObj.([]interface{})
-			if !ok {
+			if !ok && !okTarget {
 				return Command{}, fmt.Errorf("paths must be an array")
 			}
 			args := make([]string, len(packages))

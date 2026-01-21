@@ -1,0 +1,23 @@
+targets:
+  - name: main
+    files: ["./"]
+
+dataflow-problems:
+  summarize-on-demand: true
+  user-specs:
+    - "specs.yaml"
+  check-ignores-unsound: true
+  taint-tracking:
+    - tag: "sensitive-data-leak"
+      sources:
+        - package: "(testprog)|(main)|(command-line-arguments)"
+          method: "GetUserInput"
+      sinks:
+        - package: "(testprog)|(main)|(command-line-arguments)"
+          method: "LogPublicly"
+      sanitizers:
+        - package: "(testprog)|(main)|(command-line-arguments)"
+          method: "Sanitize"
+
+options:
+  log-level: 3
