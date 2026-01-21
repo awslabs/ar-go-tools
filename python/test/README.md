@@ -48,8 +48,7 @@ pip install -r requirements.txt
 AWS_PROFILE=my-profile python -m summary_generator.generate \
   --config ./test/testprog/config.yaml \
   --target main \
-  --functions ./test/functions.json \
-  --output ./test/output_summaries.yaml
+  --functions ./test/functions.json
 
 # Or using local Ollama
 python -m summary_generator.generate \
@@ -57,9 +56,9 @@ python -m summary_generator.generate \
   --target main \
   --functions ./test/functions.json \
   --provider ollama \
-  --model llama3 \
-  --output ./test/output_summaries.yaml
+  --model llama3
 ```
+You can also run `run_test.py` from the `testprog` folder, which will also clean up the generated summaries.
 
 ## Expected Output
 
