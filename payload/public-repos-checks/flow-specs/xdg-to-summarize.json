@@ -1,0 +1,46 @@
+[
+  {
+    "package": "os",
+    "receiver": "*File",
+    "method": "readdir"
+  },
+  {
+    "package": "os",
+    "receiver": "fileWithoutReadFrom",
+    "method": "readdir"
+  },
+  {
+    "package": "os",
+    "receiver": "*fileWithoutReadFrom",
+    "method": "readdir"
+  },
+  {
+    "package": "os",
+    "receiver": "fileWithoutWriteTo",
+    "method": "readdir"
+  },
+  {
+    "package": "os",
+    "receiver": "*fileWithoutWriteTo",
+    "method": "readdir"
+  },
+  {
+    "package": "os",
+    "receiver": "*File",
+    "method": "ReadDir"
+  },
+  {
+    "package": "os",
+    "receiver": "*File",
+    "method": "Readdirnames"
+  },
+  {
+    "package": "os",
+    "receiver": "*File",
+    "method": "Readdir"
+  },
+  {
+    "package": "syscall",
+    "function": "Stat"
+  }
+]

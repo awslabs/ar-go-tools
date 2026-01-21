@@ -1,0 +1,57 @@
+[
+  {
+    "package": "github.com/dgraph-io/ristretto/v2/z",
+    "function": "Munmap"
+  },
+  {
+    "package": "github.com/dgraph-io/ristretto/v2/z",
+    "function": "mremap"
+  },
+  {
+    "package": "github.com/dgraph-io/badger/v4/table",
+    "receiver": "*Table",
+    "method": "VerifyChecksum"
+  },
+  {
+    "package": "github.com/dgraph-io/badger/v4",
+    "receiver": "valuePointer",
+    "method": "Encode"
+  },
+  {
+    "package": "github.com/dgraph-io/ristretto/v2/z",
+    "function": "Memclr"
+  },
+  {
+    "package": "fmt",
+    "function": "Append"
+  },
+  {
+    "package": "fmt",
+    "function": "Appendf"
+  },
+  {
+    "package": "fmt",
+    "function": "Appendln"
+  },
+  {
+    "package": "fmt",
+    "function": "Sprintln"
+  },
+  {
+    "package": "syscall",
+    "function": "Faccessat"
+  },
+  {
+    "package": "syscall",
+    "function": "Stat"
+  },
+  {
+    "package": "syscall",
+    "function": "Lstat"
+  },
+  {
+    "package": "github.com/dgraph-io/badger/v4/table",
+    "receiver": "*Table",
+    "method": "initBiggestAndSmallest$1"
+  }
+]

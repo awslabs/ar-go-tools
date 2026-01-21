@@ -1,0 +1,106 @@
+[
+  {
+    "package": "github.com/aclindsa/ofxgo/cmd/ofx",
+    "function": "invTransactions"
+  },
+  {
+    "package": "net",
+    "function": "DialUDP"
+  },
+  {
+    "package": "net",
+    "receiver": "*Dialer",
+    "method": "DialContext"
+  },
+  {
+    "package": "syscall",
+    "function": "SetsockoptInt"
+  },
+  {
+    "package": "syscall",
+    "function": "Getsockname"
+  },
+  {
+    "package": "syscall",
+    "function": "Getpeername"
+  },
+  {
+    "package": "syscall",
+    "function": "Sendfile"
+  },
+  {
+    "package": "syscall",
+    "function": "GetsockoptInt"
+  },
+  {
+    "package": "golang.org/x/sys/unix",
+    "function": "IoctlGetTermios"
+  },
+  {
+    "package": "golang.org/x/sys/unix",
+    "function": "IoctlSetTermios"
+  },
+  {
+    "package": "golang.org/x/sys/unix",
+    "function": "Read"
+  },
+  {
+    "package": "net",
+    "receiver": "*ListenConfig",
+    "method": "ListenPacket"
+  },
+  {
+    "package": "net",
+    "receiver": "*ListenConfig",
+    "method": "Listen"
+  },
+  {
+    "package": "github.com/aclindsa/xml",
+    "receiver": "*Encoder",
+    "method": "EncodeElement"
+  },
+  {
+    "package": "github.com/aclindsa/xml",
+    "receiver": "*Encoder",
+    "method": "Encode"
+  },
+  {
+    "package": "net",
+    "receiver": "*IPConn",
+    "method": "WriteTo"
+  },
+  {
+    "package": "net",
+    "receiver": "*UnixListener",
+    "method": "AcceptUnix"
+  },
+  {
+    "package": "github.com/aclindsa/xml",
+    "receiver": "*Decoder",
+    "method": "DecodeElement"
+  },
+  {
+    "package": "syscall",
+    "function": "Read"
+  },
+  {
+    "package": "syscall",
+    "function": "Fstat"
+  },
+  {
+    "package": "syscall",
+    "function": "Pipe2"
+  },
+  {
+    "package": "internal/syscall/unix",
+    "function": "Openat"
+  },
+  {
+    "package": "internal/syscall/unix",
+    "function": "GetRandom"
+  },
+  {
+    "package": "internal/syscall/unix",
+    "function": "Waitid"
+  }
+]

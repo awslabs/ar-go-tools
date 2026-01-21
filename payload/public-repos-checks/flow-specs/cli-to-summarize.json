@@ -1,0 +1,29 @@
+[
+  {
+    "package": "github.com/spf13/cobra",
+    "receiver": "*Command",
+    "method": "InheritedFlags"
+  },
+  {
+    "package": "github.com/cli/cli/v2/pkg/cmd/project",
+    "function": "NewCmdProject"
+  },
+  {
+    "package": "github.com/spf13/cobra",
+    "receiver": "*Command",
+    "method": "updateParentsPflags"
+  },
+  {
+    "package": "github.com/spf13/cobra",
+    "receiver": "*Command",
+    "method": "LocalFlags"
+  },
+  {
+    "package": "github.com/cli/cli/v2/pkg/cmd/root",
+    "function": "addAliases"
+  },
+  {
+    "package": "github.com/cli/cli/v2/pkg/cmd/extension",
+    "function": "NewCmdExtension"
+  }
+]

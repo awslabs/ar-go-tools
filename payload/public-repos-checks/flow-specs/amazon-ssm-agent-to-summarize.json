@@ -1,0 +1,141 @@
+[
+  {
+    "package": "github.com/aws/amazon-ssm-agent/agent/plugins/downloadcontent/httpresource/handler/auth/digest",
+    "receiver": "*Authorization",
+    "method": "String"
+  },
+  {
+    "package": "github.com/aws/amazon-ssm-agent/agent/log",
+    "interface": "BasicT",
+    "method": "Infof"
+  },
+  {
+    "package": "github.com/aws/amazon-ssm-agent/agent/log",
+    "interface": "BasicT",
+    "method": "Tracef"
+  },
+  {
+    "package": "github.com/aws/amazon-ssm-agent/agent/log",
+    "interface": "BasicT",
+    "method": "Debugf"
+  },
+  {
+    "package": "github.com/aws/amazon-ssm-agent/agent/log",
+    "interface": "BasicT",
+    "method": "Warnf"
+  },
+  {
+    "package": "github.com/aws/amazon-ssm-agent/agent/log",
+    "interface": "BasicT",
+    "method": "Errorf"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/csm",
+    "receiver": "*metric",
+    "method": "TruncateFields"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/csm",
+    "receiver": "*metric",
+    "method": "SetException"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/csm",
+    "receiver": "*metric",
+    "method": "SetFinalException"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/awsutil",
+    "function": "rcopy"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/private/protocol/rest",
+    "function": "Build"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/private/protocol/rest",
+    "function": "Unmarshal"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/private/protocol/rest",
+    "function": "UnmarshalMeta"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/request",
+    "receiver": "*Request",
+    "method": "Send"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/client",
+    "receiver": "*Client",
+    "method": "NewRequest"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws",
+    "function": "mergeInConfig"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil",
+    "function": "UnmarshalXML"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/awserr",
+    "interface": "Error",
+    "method": "Error"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/awserr",
+    "interface": "Error",
+    "method": "Code"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/awserr",
+    "interface": "Error",
+    "method": "OrigErr"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/awserr",
+    "interface": "Error",
+    "method": "Message"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/request",
+    "interface": "Validator",
+    "method": "Validate"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/request",
+    "interface": "temporary",
+    "method": "Temporary"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/service/s3",
+    "interface": "endpointARNGetter",
+    "method": "getEndpointARN"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/service/s3",
+    "interface": "endpointARNGetter",
+    "method": "hasEndpointARN"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/request",
+    "interface": "Retryer",
+    "method": "RetryRules"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/request",
+    "interface": "Retryer",
+    "method": "ShouldRetry"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/request",
+    "interface": "Retryer",
+    "method": "MaxRetries"
+  },
+  {
+    "package": "github.com/aws/aws-sdk-go/aws/awserr",
+    "interface": "RequestFailure",
+    "method": "StatusCode"
+  }
+]

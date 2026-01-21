@@ -1,6 +1,1 @@
-dataflow-specs:
-  - package: github.com/spf13/cobra
-    receive: *Command
-    method: execute
-    flows:
-      -
+dataflow-summaries: []

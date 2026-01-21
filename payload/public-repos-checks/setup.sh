@@ -71,7 +71,8 @@ deploy_configs() {
 }
 
 deploy_user_specs() {
-    echo "Deploying user specs..."
+    local mode="${1:-full}"
+    echo "Deploying user specs (mode: $mode)..."
     for spec_file in "$SPECS_DIR"/*.yaml; do
         if [ -f "$spec_file" ]; then
             repo_name=$(basename "$spec_file" .yaml)
@@ -79,8 +80,26 @@ deploy_user_specs() {
                 spec_path=$(get_spec_path "$repo_name")
                 target_dir="$repo_name/$(dirname "$spec_path")"
                 mkdir -p "$target_dir"
-                cp "$spec_file" "$repo_name/$spec_path"
-                echo "Deployed config to $repo_name/$spec_path"
+                if [ "$mode" = "empty" ]; then
+                    echo "dataflow-summaries: []" > "$repo_name/$spec_path"
+                    echo "Deployed empty spec to $repo_name/$spec_path"
+                else
+                    cp "$spec_file" "$repo_name/$spec_path"
+                    echo "Deployed spec to $repo_name/$spec_path"
+                fi
+            fi
+        fi
+    done
+}
+
+deploy_to_summarize() {
+    echo "Deploying to_summarize files..."
+    for json_file in "$SPECS_DIR"/*-to-summarize.json; do
+        if [ -f "$json_file" ]; then
+            repo_name=$(basename "$json_file" -to-summarize.json)
+            if [ -d "$repo_name" ]; then
+                cp "$json_file" "$repo_name/to_summarize.json"
+                echo "Deployed to_summarize to $repo_name/to_summarize.json"
             fi
         fi
     done
@@ -131,18 +150,27 @@ case "${1:-setup}" in
     "setup")
         clone_repos
         deploy_configs
-        deploy_user_specs
+        deploy_user_specs full
         deploy_instrumentation
         echo "Setup complete!"
+        ;;
+    "setup-test")
+        clone_repos
+        deploy_configs
+        deploy_user_specs empty
+        deploy_to_summarize
+        deploy_instrumentation
+        echo "Setup complete (test mode with to_summarize files)!"
         ;;
     "sync-back")
         sync_back
         echo "Sync back complete!"
         ;;
     *)
-        echo "Usage: $0 [setup|sync-back]"
-        echo "  setup     - Clone repositories and deploy configs (default)"
-        echo "  sync-back - Copy configs back from repositories to configs folder"
+        echo "Usage: $0 [setup|setup-test|sync-back]"
+        echo "  setup      - Clone repositories and deploy configs with full specs (default)"
+        echo "  setup-test - Deploy empty specs and to_summarize files for testing agent"
+        echo "  sync-back  - Copy configs back from repositories to configs folder"
         exit 1
         ;;
 esac
