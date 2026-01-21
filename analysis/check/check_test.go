@@ -1302,6 +1302,96 @@ func TestCheckSummary_Fields(t *testing.T) {
 	tests := []tcCheck{
 		{
 			pkg:  pkg,
+			name: "appendSliceLinkedList",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".appendSliceLinkedList",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		// Same function, more general summary: types is sufficient
+		{
+			pkg:  pkg,
+			name: "appendSliceLinkedList",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".appendSliceLinkedList",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Types,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		// Same function, most general summary
+		{
+			pkg:  pkg,
+			name: "appendSliceLinkedList",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".appendSliceLinkedList",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "head", Index: 0}: {
+							summaries.ArgumentSNode{Name: "n", Index: 1},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.General,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		// This is wrong
+		{
+			pkg:  pkg,
+			name: "appendSliceLinkedList",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".appendSliceLinkedList",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
+						},
+					},
+				},
+				IsSound: false,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
 			name: "incFieldBy",
 			typ:  functionSummary,
 			want: check.SoundnessResult{

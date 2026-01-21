@@ -103,10 +103,24 @@ func testIncRight() {
 	// x.right: 2
 }
 
+type sliceLinkedList struct {
+	value []string
+	next  *sliceLinkedList
+}
+
+func appendSliceLinkedList(head *sliceLinkedList, n string) {
+	current := head
+	for current.next != nil {
+		current = current.next
+	}
+	current.next = &sliceLinkedList{value: []string{n}, next: nil}
+}
+
 func main() {
 	testIncFieldBy()
 	testFieldPropagationField()
 	testFieldPropagationOther()
 	testFieldPropagationBoth()
 	testIncRight()
+	appendSliceLinkedList(&sliceLinkedList{value: []string{"hello"}, next: nil}, " world")
 }
