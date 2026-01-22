@@ -96,6 +96,27 @@ For other providers, use their model IDs:
     
     args = parser.parse_args()
     
+    # Check if argot-mcp-server exists
+    import shutil
+    argot_mcp_path = args.argot_mcp
+    
+    # Check if it's an absolute/relative path or just a command name
+    if '/' in argot_mcp_path or '\\' in argot_mcp_path:
+        # User specified a path
+        if not Path(argot_mcp_path).exists():
+            print(f"Error: argot-mcp-server not found at specified path: {argot_mcp_path}", file=sys.stderr)
+            print("Please check the path and try again.", file=sys.stderr)
+            return 1
+    else:
+        # Check if it's on PATH
+        if not shutil.which(argot_mcp_path):
+            print(f"Error: '{argot_mcp_path}' not found on PATH", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("To fix this:", file=sys.stderr)
+            print("  1. Run 'make mcp-install' from the repo root to install it, or", file=sys.stderr)
+            print("  2. Specify the path with --argot-mcp /path/to/argot-mcp-server", file=sys.stderr)
+            return 1
+    
     # Load function list
     try:
         functions = load_functions_list(args.functions)
@@ -119,7 +140,7 @@ For other providers, use their model IDs:
     
     # Create model and MCP client
     try:
-        model, mcp_client, file_tools, prompt_tool = create_summary_agent(args.argot_mcp, model_config, config_dir)
+        model, mcp_client, file_tools, prompt_tool = create_summary_agent(argot_mcp_path, model_config, config_dir)
     except Exception as e:
         print(f"Error creating agent: {e}", file=sys.stderr)
         return 1

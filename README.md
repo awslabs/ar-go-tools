@@ -44,6 +44,9 @@ shared options.
 ### MCP Server
 Argot also provides an MCP (Model Context Protocol) server that exposes analysis tools for AI assistants. See [13_mcp_server.md](doc/13_mcp_server.md) for setup and usage instructions.
 
+### Python Tools
+The `python/` directory contains optional Python-based tooling, including an AI agent that generates dataflow summaries using the MCP server. Install with `pip install -e python/` to get the `argot-summarize` command. See [python/README.md](python/README.md) for details.
+
 ## Source Code Organization
 
 The executables are in the `cmd` folder. There are currently only two: `argot` and `racerg` (an experimental static data race detector).

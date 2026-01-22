@@ -13,6 +13,16 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### Install as a command-line tool (optional)
+
+To use `argot-summarize` from anywhere:
+
+```bash
+pip install -e .
+```
+
+This installs the package in editable mode, creating the `argot-summarize` command.
+
 ## Tools
 
 ### Summary Generator
@@ -33,7 +43,7 @@ Use it to verify your setup:
 
 ```bash
 source venv/bin/activate
-python -m summary_generator.generate \
+argot-summarize \
   --config ./test/testprog/config.yaml \
   --target main \
   --functions ./test/functions.json \
@@ -44,7 +54,7 @@ python -m summary_generator.generate \
 
 ```bash
 source venv/bin/activate
-python -m summary_generator.generate \
+argot-summarize \
   --config ./test/testprog \
   --functions ./test/functions.json \
   --provider ollama \

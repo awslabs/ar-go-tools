@@ -22,6 +22,17 @@ Automated generation of dataflow summaries for Go functions using Strands Agents
 - Python virtual environment with dependencies installed (see `../README.md`)
 - Access to an LLM provider (AWS Bedrock, Anthropic, Ollama, etc.)
 
+## Installation
+
+```bash
+cd python
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .
+```
+
+This installs `argot-summarize` as a command-line tool.
+
 ## Usage
 
 ### 1. Create a functions list file
@@ -59,16 +70,18 @@ targets:
 
 ### 3. Run the generator
 
+Once installed, use `argot-summarize` instead of `python -m summary_generator.generate`:
+
 ```bash
 # Using AWS Bedrock (default)
-python -m summary_generator.generate \
+argot-summarize \
   --config config.yaml \
   --target main \
   --functions functions.json \
   --output summaries.yaml
 
 # Process in batches of 10 (useful for large function lists)
-python -m summary_generator.generate \
+argot-summarize \
   --config config.yaml \
   --target main \
   --functions functions.json \
@@ -76,14 +89,14 @@ python -m summary_generator.generate \
   --output summaries.yaml
 
 # With specific AWS profile (via environment)
-AWS_PROFILE=my-profile python -m summary_generator.generate \
+AWS_PROFILE=my-profile argot-summarize \
   --config config.yaml \
   --target main \
   --functions functions.json \
   --output summaries.yaml
 
 # Using local Ollama
-python -m summary_generator.generate \
+argot-summarize \
   --config config.yaml \
   --target main \
   --functions functions.json \
@@ -92,12 +105,18 @@ python -m summary_generator.generate \
   --output summaries.yaml
 
 # Using Anthropic API
-python -m summary_generator.generate \
+argot-summarize \
   --config config.yaml \
   --functions functions.json \
   --provider anthropic \
   --model claude-sonnet-4-5 \
   --output summaries.yaml
+```
+
+Alternatively, run directly with Python:
+
+```bash
+python -m summary_generator.generate --config config.yaml --functions functions.json
 ```
 
 **Note:** If `argot-mcp-server` is not on your PATH, specify it with `--argot-mcp /path/to/argot-mcp-server`.
@@ -145,7 +164,14 @@ source venv/bin/activate
 # Ensure argot-mcp-server is installed
 # (run 'make mcp-install' from repo root if needed)
 
-# Run on test program
+# Run on test program (if installed)
+argot-summarize \
+  --config ./test/testprog/config.yaml \
+  --target main \
+  --functions ./test/functions.json \
+  --output ./test/output_summaries.yaml
+
+# Or run directly with Python
 python -m summary_generator.generate \
   --config ./test/testprog/config.yaml \
   --target main \
