@@ -176,3 +176,4 @@ class SafeFileTools:
             List of tool functions
         """
         return [self.list_files, self.read_file, self.write_yaml_file]
+

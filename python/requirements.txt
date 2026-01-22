@@ -1,6 +1,9 @@
 # Strands Agents SDK
 strands-agents>=1.0.0
 
+# Strands Agents Tools
+strands-agents-tools>=0.2.0
+
 # MCP SDK for connecting to Argot MCP server
 mcp>=1.0.0
 
@@ -9,3 +12,4 @@ boto3>=1.34.0
 
 # YAML handling for summaries
 pyyaml>=6.0
+

@@ -4,13 +4,39 @@
 import argparse
 import json
 import sys
-from typing import List
+from typing import List, Any
+import os
 import yaml
 from pathlib import Path
 
 from summary_generator.agent import create_summary_agent, generate_summaries, WORKFLOW_PROMPT
 from strands import Agent
 from strands.handlers import PrintingCallbackHandler
+from strands.hooks import BeforeToolCallEvent, HookProvider, HookRegistry
+from strands_tools import editor
+
+
+os.environ["BYPASS_TOOL_CONSENT"] = "true"
+
+class YAMLOnlyEditorHook(HookProvider):
+    """Hook to restrict editor tool to only write YAML files."""
+    
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        registry.add_callback(BeforeToolCallEvent, self.validate_editor_write)
+    
+    def validate_editor_write(self, event: BeforeToolCallEvent) -> None:
+        if event.tool_use["name"] != "editor":
+            return
+        
+        tool_input = event.tool_use.get("input", {})
+        command = tool_input.get("command")
+        path = tool_input.get("path", "")
+        
+        if command not in ["view", "find_line"]:
+            path_obj = Path(path)
+            if path_obj.suffix not in [".yaml", ".yml"]:
+                event.cancel_tool = f"Editor write operations are restricted to YAML files only. Attempted to write: {path}"
+
 
 
 def load_functions_list(path: str) -> list[dict]:
@@ -169,13 +195,14 @@ For other providers, use their model IDs:
             filtered_mcp_tools = [t for t in mcp_tools if t.tool_name in allowed_tools]
             print(f"Available tools: {[t.tool_name for t in filtered_mcp_tools]}", file=sys.stderr)
             
-            all_tools = filtered_mcp_tools + file_tools.get_tools() + [prompt_tool]
+            all_tools = filtered_mcp_tools + file_tools.get_tools() + [prompt_tool] + [editor.editor]
 
             
             agent = Agent(
                 model=model,
                 tools=all_tools,
                 system_prompt=WORKFLOW_PROMPT,
+                hooks=[YAMLOnlyEditorHook()],
             )
             
             result = generate_summaries(agent, config_files, args.target, functions, args.batch_size)

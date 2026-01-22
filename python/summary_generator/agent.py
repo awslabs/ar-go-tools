@@ -144,6 +144,7 @@ def create_summary_agent(argot_mcp_path: str, model_config: dict, config_dir: st
     
     # Create safe file tools restricted to config directory
     file_tools = SafeFileTools(config_dir)
+
     
     # Find repository root (go up from config_dir until we find cmd/argot-mcp-server)
     repo_root = Path(config_dir).resolve()
@@ -199,7 +200,7 @@ def format_spec_iterm(spec_item: dict) -> str:
         return f"- {spec_item.get('package')}.{recv}.{spec_item.get('function') or spec_item.get('method')}"    
     return f"- {spec_item.get('package')}.{spec_item.get('function') or spec_item.get('method')}"    
 
-def generate_summaries(agent, config_paths: list[str], target: str, functions: list[dict], batch_size: int = None) -> str:
+def generate_summaries(agent, config_paths: list[str], target: str, functions: list[dict], batch_size: int | None = None) -> str:
     """Generate dataflow summaries for a list of functions.
     
     Args:
@@ -236,7 +237,7 @@ def generate_summaries(agent, config_paths: list[str], target: str, functions: l
     return "\n".join(all_summaries)
 
 
-def _generate_batch(agent, config_paths: list[str], target: str, functions: list[dict], previous_context: str = None) -> str:
+def _generate_batch(agent, config_paths: list[str], target: str, functions: list[dict], previous_context: str | None = None) -> str:
     """Generate summaries for a single batch of functions."""
     func_list = "\n".join([format_spec_iterm(f) for f in functions])
     
