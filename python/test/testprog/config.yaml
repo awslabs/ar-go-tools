@@ -9,6 +9,7 @@ dataflow-problems:
   check-ignores-unsound: true
   taint-tracking:
     - tag: "sensitive-data-leak"
+      targets: [ "main" ]
       sources:
         - package: "(testprog)|(main)|(command-line-arguments)"
           method: "GetUserInput"

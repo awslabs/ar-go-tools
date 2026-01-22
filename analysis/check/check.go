@@ -112,7 +112,7 @@ func CheckSummary(
 			}
 			return res, true, nil
 		}
-		return []SoundnessResult{}, false, fmt.Errorf("failed to find method %s", key)
+		return []SoundnessResult{}, false, fmt.Errorf("failed to find implementations of interface %s", key)
 	}
 	// CASE: NORMAL FUNCTIONS
 	// Checking a summary that is for a single function/method

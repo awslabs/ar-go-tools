@@ -85,6 +85,10 @@ func ClosureExample(multiplier int) func(int) int {
 	}
 }
 
+func WrapProcess(a AbstractProcessor, b []byte) []byte {
+	return a.Process(b)
+}
+
 // main demonstrates a taint flow problem and calls functions for summary generation
 func main() {
 	// Taint flow examples
@@ -100,7 +104,10 @@ func main() {
 	_ = SimpleFunction("test")
 
 	dp := &DataProcessor{}
-	_ = dp.Process([]byte("data"))
+	processed := dp.Process([]byte("data"))
+
+	cp := &VoidProcessor{}
+	_ = WrapProcess(cp, processed)
 
 	_, _ = MultipleReturns(1, 2)
 

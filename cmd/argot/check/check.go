@@ -123,10 +123,15 @@ func Run(flags Flags) error {
 		Tag:         flags.Tag,
 		Targets:     flags.Targets,
 		Platform:    flags.Platform,
-		Tool:        config.TaintTool,
+		Tool:        config.CheckTool,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get targets: %v", err)
+	}
+	if len(actualTargets) == 0 {
+		tmpLogger.Warnf("no targets to check")
+		tmpLogger.Warnf("this is either because the target pattern does not match any targets")
+		tmpLogger.Warnf("or because the target is not used in a dataflow problem (taint or slicing)")
 	}
 
 	for targetName, target := range actualTargets {
@@ -339,6 +344,9 @@ func checkOneSummaryWrapper(
 	if !foundFunc {
 		s.Logger.Warnf("Cannot find function %s, so summary will not be checked in target (nothing to do).",
 			summary.Name())
+		if err != nil {
+			s.Logger.Warnf("%s", err)
+		}
 		return errs, results
 	}
 	if err != nil {
