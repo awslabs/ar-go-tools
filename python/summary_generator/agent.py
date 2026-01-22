@@ -199,7 +199,7 @@ def format_spec_iterm(spec_item: dict) -> str:
         return f"- {spec_item.get('package')}.{recv}.{spec_item.get('function') or spec_item.get('method')}"    
     return f"- {spec_item.get('package')}.{spec_item.get('function') or spec_item.get('method')}"    
 
-def generate_summaries(agent, config_paths: list[str], target: str, functions: list[dict]) -> str:
+def generate_summaries(agent, config_paths: list[str], target: str, functions: list[dict], batch_size: int = None) -> str:
     """Generate dataflow summaries for a list of functions.
     
     Args:
@@ -210,22 +210,52 @@ def generate_summaries(agent, config_paths: list[str], target: str, functions: l
             - package: Package name
             - function/method: Function or method name
             - receiver/interface: (optional) For methods or interfaces
+        batch_size: Number of functions to process per batch (None = all at once)
     
     Returns:
         YAML string with all generated summaries
     """
-    # Format function list for the agent
-    func_list = "\n".join([
-        format_spec_iterm(f)
-        for f in functions
-    ])
+    if batch_size is None or batch_size >= len(functions):
+        # Process all at once
+        return _generate_batch(agent, config_paths, target, functions, None)
+    
+    # Process in batches
+    all_summaries = []
+    for i in range(0, len(functions), batch_size):
+        batch = functions[i:i + batch_size]
+        batch_num = i // batch_size + 1
+        total_batches = (len(functions) + batch_size - 1) // batch_size
+        
+        print(f"Processing batch {batch_num}/{total_batches} ({len(batch)} functions)...", file=sys.stderr)
+        
+        # Provide previous summaries as context
+        context = "\n".join(all_summaries) if all_summaries else None
+        result = _generate_batch(agent, config_paths, target, batch, context)
+        all_summaries.append(result)
+    
+    return "\n".join(all_summaries)
+
+
+def _generate_batch(agent, config_paths: list[str], target: str, functions: list[dict], previous_context: str = None) -> str:
+    """Generate summaries for a single batch of functions."""
+    func_list = "\n".join([format_spec_iterm(f) for f in functions])
+    
+    context_section = ""
+    if previous_context:
+        context_section = f"""
+Previously generated summaries (for context):
+```yaml
+{previous_context}
+```
+
+"""
     
     prompt = f"""Generate dataflow summaries for the following Go program:
 
 Config file(s): {', '.join(config_paths)}
 Target: {target}
 
-Functions to summarize:
+{context_section}Functions to summarize:
 {func_list}
 
 Follow the workflow:
@@ -235,5 +265,4 @@ Follow the workflow:
 3. Validate each summary with argot_check and revise if needed
 4. Output all validated summaries as a single YAML document
 """
-    result = agent(prompt)
-    return result
+    return agent(prompt)

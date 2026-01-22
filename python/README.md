@@ -49,6 +49,7 @@ python -m summary_generator.generate \
   --functions ./test/functions.json \
   --provider ollama \
   --model llama3 \
+  --batch-size 10 \
   --output ./test/output_summaries.yaml
 ```
 

@@ -64,6 +64,11 @@ For other providers, use their model IDs:
         help="JSON/YAML file with list of functions to summarize"
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        help="Process functions in batches of this size (default: all at once)"
+    )
+    parser.add_argument(
         "--provider",
         default="bedrock",
         choices=["bedrock", "anthropic", "ollama", "openai"],
@@ -152,7 +157,7 @@ For other providers, use their model IDs:
                 system_prompt=WORKFLOW_PROMPT,
             )
             
-            result = generate_summaries(agent, config_files, args.target, functions)
+            result = generate_summaries(agent, config_files, args.target, functions, args.batch_size)
             
             # Output result
             if args.output:

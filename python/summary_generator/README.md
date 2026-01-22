@@ -67,6 +67,14 @@ python -m summary_generator.generate \
   --functions functions.json \
   --output summaries.yaml
 
+# Process in batches of 10 (useful for large function lists)
+python -m summary_generator.generate \
+  --config config.yaml \
+  --target main \
+  --functions functions.json \
+  --batch-size 10 \
+  --output summaries.yaml
+
 # With specific AWS profile (via environment)
 AWS_PROFILE=my-profile python -m summary_generator.generate \
   --config config.yaml \
@@ -95,6 +103,14 @@ python -m summary_generator.generate \
 **Note:** If `argot-mcp-server` is not on your PATH, specify it with `--argot-mcp /path/to/argot-mcp-server`.
 
 ## Configuration
+
+### Batch Processing
+
+For large function lists, use `--batch-size` to process functions in smaller groups:
+- Each batch is processed sequentially
+- Previous summaries are provided as context to subsequent batches
+- Progress is shown: "Processing batch 1/5 (10 functions)..."
+- Recommended batch size: 10-20 functions depending on complexity
 
 ### LLM Providers
 
