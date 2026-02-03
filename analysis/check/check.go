@@ -63,8 +63,8 @@ func NewState(s *dataflow.State) result.Result[State] {
 	res := &State{
 		State: s,
 		cache: &aliasCache{
-			ptrRes:         s.PointerAnalysis,
-			objectPointees: make(map[ssa.Value]map[*pointer.Object]struct{}),
+			ptrRes: s.PointerAnalysis,
+			labels: make(map[ssa.Value]map[*pointer.Label]struct{}),
 		},
 		immutableVals: make(map[ssa.Value]struct{}),
 	}
@@ -438,7 +438,7 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 		}
 	}
 
-	unprovenMustNotFlows, err := checkSummaryMostGeneral(g, wantFlows)
+	unprovenMustNotFlows, err := checkSummaryMostGeneral(s.Logger, g, wantFlows)
 	if err != nil {
 		return unprovenMustNotFlows, soundnessResultBase, false,
 			fmt.Errorf("failed to check summary via most-general: %v", err)
@@ -551,7 +551,7 @@ func (p path) String() string {
 		return ""
 	}
 	parts := make([]string, pLen)
-	for i := 0; i < pLen; i++ {
+	for i := range pLen {
 		parts[i] = p[i]
 	}
 	return "." + strings.Join(parts, ".")

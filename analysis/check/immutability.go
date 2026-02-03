@@ -117,8 +117,8 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value, pth path) (ptrW
 	seen := make(map[*callgraph.Node]struct{})
 	seenFunc := make(map[*ssa.Function]struct{})
 
-	ids := nodeIds(s.cache, to, pth)
-	s.Logger.Tracef("node ids of flow output value %v (%v) with path: %v\n", to, to.Type(), ids)
+	ids := nodeIds(s.cache, to)
+	s.Logger.Tracef("node ids of flow output value %v (%v): %v\n", to, to.Type(), ids)
 	if ids.Len() == 0 {
 		// If there are no node ids, then the pointee does not represent any object(s) allocated on
 		// the heap, which means it is impossible to write to it.
@@ -153,8 +153,8 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value, pth path) (ptrW
 		seenFunc[node.Func] = struct{}{}
 
 		s.Logger.Tracef(
-			"checking for writes to memory of %v (%v) in function %s\n",
-			to, to.Type(), node.Func)
+			"checking for writes to memory of %v (%v) through access path %v in function %s\n",
+			to, to.Type(), pth, node.Func)
 
 		lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
 			write, ok := ptrWrittenTo(instr)
@@ -167,26 +167,44 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value, pth path) (ptrW
 			// 	return
 			// }
 
-			mobjs := s.cache.Objects(write.Target)
 			// If the target's objects have any of the same node ids as the output value, then
 			// the write instruction writes a value to the output value's memory, and the output
 			// value is not immutable.
-			for mobj := range mobjs {
-				if ids.Has(int(mobj.NodeID())) {
-					if dataVal, ok := mobj.Data().(ssa.Value); ok {
-						s.Logger.Tracef(
-							"found write to val %v data: val node ids: %v, write target: %v, object: %v "+
-								"(SSA name: %v)\n",
-							to, ids, write.Target, mobj, dataVal.Name())
-					} else {
-						s.Logger.Tracef(
-							"found write to val %v data: val node ids: %v, write target: %v, object: %v\n",
-							to, ids, write.Target, mobj)
+			mlabels := s.cache.Labels(write.Target)
+			for mlabel := range mlabels {
+				mobj := mlabel.Obj()
+				// Check if any node ID from the write target overlaps with the parameter's node IDs
+				found := false
+				for _, mid := range mobj.NodeIDs() {
+					if ids.Has(int(mid)) {
+						found = true
+						break
 					}
-					wrote = true
-					writeInstr = write
-					return
 				}
+				if !found {
+					continue
+				}
+
+				if pth.len() > 0 && len(mlabel.Path()) > 0 {
+					// If there is a path (field-sensitive), then only check writes to objects
+					// of that field's memory.
+					if !strings.HasPrefix(pth.String(), mlabel.Path()) {
+						continue
+					}
+				}
+				if dataVal, ok := mobj.Data().(ssa.Value); ok {
+					s.Logger.Tracef(
+						"found write to val %v data: val node ids: %v, write target: %v, object: %v "+
+							"(SSA name: %v), path: %v\n",
+						to, ids, write.Target, mobj, dataVal.Name(), pth)
+				} else {
+					s.Logger.Tracef(
+						"found write to val %v data: val node ids: %v, write target: %v, object: %v, path: %v\n",
+						to, ids, write.Target, mobj, pth)
+				}
+				wrote = true
+				writeInstr = write
+				return
 			}
 		})
 
@@ -231,15 +249,17 @@ func outputVals(fl flow) []ssa.Value {
 	return vals
 }
 
-func nodeIds(c *aliasCache, val ssa.Value, pth path) *intsets.Sparse {
+func nodeIds(c *aliasCache, val ssa.Value) *intsets.Sparse {
 	ids := &intsets.Sparse{}
-	objs := c.ObjectsWithPath(val, pth)
+	labels := c.Labels(val)
 	// initialize points-to-set of entrypoint
-	for obj := range objs {
+	for label := range labels {
+		obj := label.Obj()
 		switch data := obj.Data().(type) {
 		case *ssa.MakeInterface:
-			dataObjs := c.ObjectsWithPath(data.X, pth)
-			for obj := range dataObjs {
+			dataLabels := c.Labels(data.X)
+			for label := range dataLabels {
+				obj := label.Obj()
 				for _, id := range obj.NodeIDs() {
 					ids.Insert(int(id))
 				}
@@ -256,31 +276,18 @@ func nodeIds(c *aliasCache, val ssa.Value, pth path) *intsets.Sparse {
 
 // aliasCache is a cache for transitive pointers and aliases.
 type aliasCache struct {
-	ptrRes         *pointer.Result
-	objectPointees map[ssa.Value]map[*pointer.Object]struct{}
-	pathPointees   map[string]map[*pointer.Object]struct{}
+	ptrRes *pointer.Result
+	labels map[ssa.Value]map[*pointer.Label]struct{}
 }
 
-// Objects returns all the unique Objects that val points to.
+// Labels returns all the unique Labels that val points to.
 // It caches the result for efficiency.
-func (ac *aliasCache) Objects(val ssa.Value) map[*pointer.Object]struct{} {
-	return ac.ObjectsWithPath(val, path{})
-}
-
-// ObjectsWithPath returns all the unique Objects that val points to, filtered by field path.
-func (ac *aliasCache) ObjectsWithPath(val ssa.Value, pth path) map[*pointer.Object]struct{} {
+func (ac *aliasCache) Labels(val ssa.Value) map[*pointer.Label]struct{} {
 	if mi, ok := val.(*ssa.MakeInterface); ok {
 		// If val is an interface, the object is the concrete struct.
 		val = mi.X
 	}
-
-	// Build cache key
-	cacheKey := val.String()
-	if pth.len() > 0 {
-		cacheKey += pth.String()
-	}
-
-	if res, ok := ac.pathPointees[cacheKey]; ok && len(res) > 0 {
+	if res, ok := ac.labels[val]; ok && len(res) > 0 {
 		return res
 	}
 
@@ -289,31 +296,21 @@ func (ac *aliasCache) ObjectsWithPath(val ssa.Value, pth path) map[*pointer.Obje
 		return nil
 	}
 
-	// Get target path for filtering
-	targetPath := pth.String()
-
-	res := make(map[*pointer.Object]struct{}, len(ptrs))
+	res := make(map[*pointer.Label]struct{}, len(ptrs))
 	for _, ptr := range ptrs {
 		for _, label := range ptr.PointsTo().Labels() {
+			if label == nil {
+				continue
+			}
 			obj := label.Obj()
 			if obj == nil {
 				continue
 			}
-
-			// If we're looking for a specific path, filter by it
-			if pth.len() > 0 {
-				labelPath := label.Path()
-				// Match exact path or paths that start with our target
-				if labelPath != targetPath && !strings.HasPrefix(labelPath, targetPath+".") {
-					continue
-				}
-			}
-
-			res[obj] = struct{}{}
+			res[label] = struct{}{}
 		}
 	}
 
-	ac.objectPointees[val] = res
+	ac.labels[val] = res
 	return res
 }
 

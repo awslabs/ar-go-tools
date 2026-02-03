@@ -57,9 +57,17 @@ func addVals(a, b *data) *data {
 	return &data{value: a.value + b.value}
 }
 
+func newx() *container {
+	return &container{field: &data{0}, other: &data{1}}
+}
+
+func newy() *container {
+	return &container{field: &data{2}, other: &data{2}}
+}
+
 func testFieldPropagationField() {
-	x := &container{field: &data{0}, other: &data{1}}
-	y := &container{field: &data{2}, other: &data{2}}
+	x := newx()
+	y := newy()
 	propagateFieldsField(x, y)
 	fmt.Printf(
 		"x.field:%v x.other:%v, y.field:%v y.other:%v\n",
@@ -116,11 +124,17 @@ func appendSliceLinkedList(head *sliceLinkedList, n string) {
 	current.next = &sliceLinkedList{value: []string{n}, next: nil}
 }
 
+func testAppendSliceLinkedList() {
+	lst := &sliceLinkedList{value: []string{"hello"}, next: nil}
+	appendSliceLinkedList(lst, " world")
+	fmt.Println(lst.next.value) // world
+}
+
 func main() {
 	testIncFieldBy()
 	testFieldPropagationField()
 	testFieldPropagationOther()
 	testFieldPropagationBoth()
 	testIncRight()
-	appendSliceLinkedList(&sliceLinkedList{value: []string{"hello"}, next: nil}, " world")
+	testAppendSliceLinkedList()
 }
