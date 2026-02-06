@@ -6,17 +6,21 @@ import json
 import sys
 from typing import List, Any
 import os
+import logging
 import yaml
 from pathlib import Path
 
 from summary_generator.agent import create_summary_agent, generate_summaries, WORKFLOW_PROMPT
+from summary_generator.stats import compute_statistics, print_statistics
 from strands import Agent
-from strands.handlers import PrintingCallbackHandler
 from strands.hooks import BeforeToolCallEvent, HookProvider, HookRegistry
 from strands_tools import editor
 
 
 os.environ["BYPASS_TOOL_CONSENT"] = "true"
+
+
+
 
 class YAMLOnlyEditorHook(HookProvider):
     """Hook to restrict editor tool to only write YAML files."""
@@ -163,6 +167,17 @@ For other providers, use their model IDs:
         "region": args.region,
         "inference_profile": args.inference_profile
     }
+
+
+    logging.getLogger("strands").setLevel(logging.DEBUG)
+    log_out = 'summary-generator.log'
+    if args.output:
+        log_out = args.output
+    # Add a handler to see the logs
+    logging.basicConfig(
+        filename=log_out,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",        
+    )
     
     # Create model and MCP client
     try:
@@ -206,14 +221,10 @@ For other providers, use their model IDs:
             )
             
             result = generate_summaries(agent, config_files, args.target, functions, args.batch_size)
-            
-            # Output result
-            if args.output:
-                with open(args.output, 'w') as f:
-                    f.write(result)
-                print(f"Summaries written to {args.output}", file=sys.stderr)
-            else:
-                print(result)
+            print(result)
+            stats = compute_statistics(log_out)
+            print_statistics(stats)
+
                 
     except Exception as e:
         print(f"Error generating summaries: {e}", file=sys.stderr)

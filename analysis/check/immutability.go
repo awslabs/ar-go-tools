@@ -111,6 +111,8 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 //
 // It is an inter-procedural analysis which checks for writes in the value's enclosing function and
 // its callees in BFS order.
+//
+//gocyclo:ignore
 func checkWritesPtr(ctx context.Context, s *State, to ssa.Value, pth path) (ptrWrite, bool, error) {
 	cg := s.PointerAnalysis.CallGraph
 	queue := []*callgraph.Node{cg.Nodes[to.Parent()]}

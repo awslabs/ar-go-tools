@@ -49,7 +49,7 @@ argot-summarize \
   --functions ./test/functions.json \
   --provider ollama \
   --model llama3 \
-  --output ./test/output_summaries.yaml
+  --output ./test/test.log
 ```
 
 ```bash
@@ -60,7 +60,7 @@ argot-summarize \
   --provider ollama \
   --model llama3 \
   --batch-size 10 \
-  --output ./test/output_summaries.yaml
+  --output ./test/test.log
 ```
 
 See [test/README.md](test/README.md) for more details.

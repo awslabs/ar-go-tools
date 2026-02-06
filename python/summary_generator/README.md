@@ -179,6 +179,48 @@ python -m summary_generator.generate \
   --output ./test/output_summaries.yaml
 ```
 
+## Log Analysis
+
+Analyze usage statistics from generator logs:
+
+```bash
+python summary_generator/stats.py <log-file>
+```
+
+This displays:
+- Session duration and timing
+- Model invocation statistics (count, response times)
+- Tool usage breakdown
+- Success/error rates
+- **Timeline visualization** - 120-column colored graph showing tool usage over time
+- Log level distribution
+
+Example output:
+```
+📊 SESSION
+  Duration: 82.5s (1.4m)
+  
+🤖 MODEL INVOCATIONS
+  Total calls:     23
+  Avg response:    3.46s
+  Total LLM time:  79.6s
+  
+🔧 TOOL USAGE
+  Total calls:   26
+  Successes:     24
+  Top tools:
+    argot_show_src      6
+    argot_dataflow_check 5
+
+⏱️  TOOL USAGE TIMELINE (120 columns = 82.5s)
+  █   █     █           █  █     █   █   █   █    █    █
+  
+  Legend:
+    █ argot_dataflow_check (5)
+    █ argot_show_src (6)
+    ...
+```
+
 ## Troubleshooting
 
 **MCP connection errors**: Ensure `argot-mcp-server` is on your PATH or specify with `--argot-mcp`
