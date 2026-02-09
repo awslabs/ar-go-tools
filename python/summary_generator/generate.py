@@ -78,15 +78,15 @@ For other providers, use their model IDs:
         help="Path to argot-mcp-server binary"
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        help="Process functions in batches of this size (default: all at once)"
+    )
+    parser.add_argument(
         "--config",
         required=True,
         nargs="+",
         help="Argot config file(s) for the program to analyze"
-    )
-    parser.add_argument(
-        "--target",
-        default="main",
-        help="Target name in config to analyze (default: main)"
     )
     parser.add_argument(
         "--functions",
@@ -94,9 +94,23 @@ For other providers, use their model IDs:
         help="JSON/YAML file with list of functions to summarize"
     )
     parser.add_argument(
-        "--batch-size",
-        type=int,
-        help="Process functions in batches of this size (default: all at once)"
+        "--inference-profile",
+        help="AWS Bedrock inference profile ARN (auto-detected if not specified)"
+    )
+    parser.add_argument(
+        "--mask",
+        default="",
+        help="Mask for disallowed tools (comma-separated list of tool names)"
+    )
+    parser.add_argument(
+        "--model",
+        default="anthropic.claude-sonnet-4-5-20250929-v1:0",
+        help="Model ID (default: Claude Sonnet 4.5 for Bedrock)"
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        help="Output file (default: stdout)"
     )
     parser.add_argument(
         "--provider",
@@ -105,23 +119,14 @@ For other providers, use their model IDs:
         help="LLM provider"
     )
     parser.add_argument(
-        "--model",
-        default="anthropic.claude-sonnet-4-5-20250929-v1:0",
-        help="Model ID (default: Claude Sonnet 4.5 for Bedrock)"
-    )
-    parser.add_argument(
         "--region",
         default="us-east-1",
         help="AWS region (for Bedrock)"
     )
     parser.add_argument(
-        "--inference-profile",
-        help="AWS Bedrock inference profile ARN (auto-detected if not specified)"
-    )
-    parser.add_argument(
-        "--output",
-        "-o",
-        help="Output file (default: stdout)"
+        "--target",
+        default="main",
+        help="Target name in config to analyze (default: main)"
     )
     
     args = parser.parse_args()
@@ -207,6 +212,11 @@ For other providers, use their model IDs:
                 "argot_show_callees",
                 "argot_dataflow_check"
             }
+            if args.mask:
+                for tool_name in args.mask.split(','):
+                    if tool_name.strip() not in allowed_tools:
+                        print(f"Warning: Unknown tool name '{tool_name.strip()}' in mask, ignoring", file=sys.stderr)
+                    allowed_tools.discard(tool_name.strip())
             filtered_mcp_tools = [t for t in mcp_tools if t.tool_name in allowed_tools]
             print(f"Available tools: {[t.tool_name for t in filtered_mcp_tools]}", file=sys.stderr)
             
