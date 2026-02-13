@@ -32,8 +32,11 @@ import (
 // not in the most-general summary.
 // This difference is the set of must-not-flows: the flows that must not exist (there cannot be a
 // possible data flow in the program) for the summary to be sound.
-func checkSummaryMostGeneral(logger *config.LogGroup, g *dataflow.SummaryGraph, wantFlows []flow) ([]flow, error) {
-	gotFlows, err := mostGeneralFlows(g, wantFlows)
+func checkSummaryMostGeneral(
+	logger *config.LogGroup, g *dataflow.SummaryGraph, nodePathLen map[dataflow.GraphNode]int,
+	wantFlows []flow,
+) ([]flow, error) {
+	gotFlows, err := mostGeneralFlows(g, nodePathLen)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute most-general flows: %v", err)
 	}
@@ -97,7 +100,7 @@ func flowCovers(wantFlow, gotFlow flow) bool {
 	gotPath := gotFlow.to.path.String()
 
 	// Empty path matches everything
-	if wantPath == "" {
+	if wantPath == emptyPath {
 		return true
 	}
 
@@ -133,13 +136,15 @@ func filterFlowsTypes(flows []flow) []flow {
 // mostGeneralFlows returns the most-general summary for the function in g.
 // Params and free variables are both inputs and outputs.
 // Returns are only outputs.
-func mostGeneralFlows(g *dataflow.SummaryGraph, wantFlows []flow) ([]flow, error) {
+func mostGeneralFlows(
+	g *dataflow.SummaryGraph, nodePathLen map[dataflow.GraphNode]int,
+) ([]flow, error) {
 	var flows []flow
 	seen := make(map[flow]struct{})
 	var inputs []graphNode
 	var outputs []graphNode
 	for _, param := range g.Params {
-		nodes, err := enumeratePaths(param, wantFlows)
+		nodes, err := enumeratePaths(param, nodePathLen[param])
 		if err != nil {
 			return nil, fmt.Errorf("failed to enumerate param paths: %v", err)
 		}
@@ -147,7 +152,7 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, wantFlows []flow) ([]flow, error
 		outputs = append(outputs, nodes...)
 	}
 	for _, fv := range g.FreeVars {
-		nodes, err := enumeratePaths(fv, wantFlows)
+		nodes, err := enumeratePaths(fv, nodePathLen[fv])
 		if err != nil {
 			return nil, fmt.Errorf("failed to enumerate free var paths: %v", err)
 		}
@@ -156,7 +161,7 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, wantFlows []flow) ([]flow, error
 	}
 	for _, rets := range g.Returns {
 		for _, ret := range rets {
-			nodes, err := enumeratePaths(ret, wantFlows)
+			nodes, err := enumeratePaths(ret, nodePathLen[ret])
 			if err != nil {
 				return nil, fmt.Errorf("failed to enumerate return paths: %v", err)
 			}
@@ -183,51 +188,12 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, wantFlows []flow) ([]flow, error
 	return flows, nil
 }
 
-func enumeratePaths(node dataflow.GraphNode, wantFlows []flow) ([]graphNode, error) {
-	if len(wantFlows) == 0 {
-		return []graphNode{{node, [maxPathLen]string{}}}, nil
-	}
-
-	// Check if this node appears with paths anywhere in the summary.
-	longestPathLen := 0 // longestPathLen is the length of the longest access path in wantFlows
-	hasMatch := false
-	for _, flow := range wantFlows {
-		// Check both inputs and outputs to determine if we need field sensitivity.
-		for _, n := range []graphNode{flow.from, flow.to} {
-			if n.path.len() > longestPathLen {
-				longestPathLen = n.path.len()
-			}
-			if n.node == node {
-				hasMatch = true
-			}
-		}
-	}
-	if longestPathLen > maxPathLen {
-		longestPathLen = maxPathLen
-	}
-
-	// Node doesn't appear in summary at all - return base node
-	if !hasMatch {
-		return []graphNode{{node, [maxPathLen]string{}}}, nil
-	}
-
-	// No path sensitivity required: return just the node.
-	if longestPathLen == 0 {
-		return []graphNode{{node, [maxPathLen]string{}}}, nil
-	}
-
-	// Path sensitivity required: return nodes with all paths of the length of the longest path in
-	// the flow.
+// TODO remove error
+func enumeratePaths(node dataflow.GraphNode, pathLen int) ([]graphNode, error) {
 	var res []graphNode
-	allPaths := leafPathsUpTo(node.Type(), longestPathLen)
+	allPaths := leafPathsUpTo(node.Type(), pathLen)
 	for _, path := range allPaths {
-		gn := newGraphNode(node, path.String())
-		res = append(res, gn)
-	}
-
-	// If no paths found (e.g., pointer to scalar type), return base node
-	if len(res) == 0 {
-		return []graphNode{{node, [maxPathLen]string{}}}, nil
+		res = append(res, graphNode{node: node, path: path})
 	}
 
 	return res, nil
@@ -239,6 +205,10 @@ func enumeratePaths(node dataflow.GraphNode, wantFlows []flow) ([]graphNode, err
 // It traverses through pointers, named types, arrays, slices, maps, and struct fields to find all
 // reachable scalar values.
 func leafPathsUpTo(t types.Type, k int) []path {
+	if k == 0 {
+		return []path{[maxPathLen]string{}}
+	}
+
 	var res []path
 
 	type el struct {
@@ -289,6 +259,10 @@ func leafPathsUpTo(t types.Type, k int) []path {
 				res = append(res, cur.p)
 			}
 		}
+	}
+
+	if len(res) == 0 {
+		panic(fmt.Errorf("no access paths for type %v", t))
 	}
 
 	return res

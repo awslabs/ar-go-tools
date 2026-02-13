@@ -130,6 +130,54 @@ func testAppendSliceLinkedList() {
 	fmt.Println(lst.next.value) // world
 }
 
+// Field-sensitive versions of threeArgInter tests
+
+type Pair struct {
+	First  int
+	Second int
+}
+
+// Caller that flows to specific fields
+func threeArgInterFields(no, a, b *Pair) *Pair {
+	x := addPairFirst(a, a, no)
+	y := addPairFirst(a, b, no)
+	b.First = x.First + y.First
+	return &Pair{First: b.First}
+}
+
+func testThreeArgInterFields() {
+	x := &Pair{First: 0, Second: 0}
+	y := &Pair{First: 1, Second: 1}
+	z := &Pair{First: 2, Second: 2}
+	res := threeArgInterFields(x, y, z)
+	fmt.Printf("res: %v\n", res)
+}
+
+// Different callees version
+func addPairFirst(a, b *Pair, no *Pair) *Pair {
+	return &Pair{First: a.First + b.First, Second: 0}
+}
+
+func addPairSecond(a, b *Pair, no *Pair) *Pair {
+	return &Pair{First: 0, Second: a.Second + b.Second}
+}
+
+func threeArgInterFieldsDiffCallees(no, a, b *Pair) *Pair {
+	x := addPairFirst(a, a, no)
+	y := addPairSecond(a, b, no)
+	b.First = x.First
+	b.Second = y.Second
+	return &Pair{First: b.First, Second: b.Second}
+}
+
+func testThreeArgInterFieldsDiffCallees() {
+	x := &Pair{First: 0, Second: 0}
+	y := &Pair{First: 1, Second: 1}
+	z := &Pair{First: 2, Second: 2}
+	res := threeArgInterFieldsDiffCallees(x, y, z)
+	fmt.Printf("res: %v\n", res)
+}
+
 func main() {
 	testIncFieldBy()
 	testFieldPropagationField()
@@ -137,4 +185,6 @@ func main() {
 	testFieldPropagationBoth()
 	testIncRight()
 	testAppendSliceLinkedList()
+	testThreeArgInterFields()
+	testThreeArgInterFieldsDiffCallees()
 }

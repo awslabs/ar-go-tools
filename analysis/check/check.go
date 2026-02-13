@@ -167,6 +167,25 @@ func checkSummary(
 	}
 
 	var method Method
+	wantFlows, err := summaryFlows(g, want)
+	if err != nil {
+		soundnessResultBase.IsSound = false
+		soundnessResultBase.Unsoundness = Unsoundness{
+			UnprovenMustNotFlows: []Flow{},
+			BadForm:              err,
+			CheckFeatures:        unsoundCheckFeats,
+		}
+		soundnessResultBase.Method = General
+		soundnessResultBase.Time = time.Since(start)
+		return soundnessResultBase,
+			fmt.Errorf("failed to compute summary flows for %v: %v", want, err)
+	}
+
+	// Determine the precision we need for the analyses by the length of the access paths in each
+	// node in summary flows.
+	nodePathLen := make(map[dataflow.GraphNode]int)
+	addPrecision(nodePathLen, nodesOfFlows(wantFlows))
+
 	for _, m := range []Method{General, Types, Immutability} {
 		method = m
 		var soundnessResult SoundnessResult
@@ -175,7 +194,7 @@ func checkSummary(
 		switch method {
 		case General:
 			unprovenMustNotFlows, soundnessResult, done, err = checkMethodGeneral(
-				s, f, unsoundCheckFeats, soundnessResultBase, g, want, start)
+				s, f, unsoundCheckFeats, soundnessResultBase, g, wantFlows, nodePathLen, start)
 			if done {
 				return soundnessResult, err
 			}
@@ -227,7 +246,7 @@ func checkSummary(
 	}
 	// Use the type analysis to filter out unrealizable flows
 	calleeSummaries, err := inferCalleeSummaries(
-		ctx, s.State, g, unprovenMustNotFlows, &unsoundness, Types)
+		ctx, s.State, g, nodePathLen, unprovenMustNotFlows, &unsoundness, Types)
 	if err != nil {
 		soundnessResultBase.IsSound = false
 		soundnessResultBase.Unsoundness = unsoundness
@@ -397,21 +416,10 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 	unsoundCheckFeats UnsoundCheckFeatures,
 	soundnessResultBase SoundnessResult,
 	g *dataflow.SummaryGraph,
-	want summaries.DetailedSummary,
+	wantFlows []flow,
+	nodePathLen map[dataflow.GraphNode]int,
 	start time.Time) ([]flow, SoundnessResult, bool, error) {
-	wantFlows, err := summaryFlows(g, want)
-	if err != nil {
-		soundnessResultBase.IsSound = false
-		soundnessResultBase.Unsoundness = Unsoundness{
-			UnprovenMustNotFlows: []Flow{},
-			BadForm:              err,
-			CheckFeatures:        unsoundCheckFeats,
-		}
-		soundnessResultBase.Method = General
-		soundnessResultBase.Time = time.Since(start)
-		return nil, soundnessResultBase, true,
-			fmt.Errorf("failed to compute summary flows for %v: %v", want, err)
-	}
+
 	// The most-general summary is unsound if there are any globals (as we do not have
 	// special global nodes in summaries yet).
 	if len(unsoundCheckFeats.GlobalUsages) > 0 {
@@ -438,11 +446,17 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 		}
 	}
 
-	unprovenMustNotFlows, err := checkSummaryMostGeneral(s.Logger, g, wantFlows)
+	unprovenMustNotFlows, err := checkSummaryMostGeneral(s.Logger, g, nodePathLen, wantFlows)
 	if err != nil {
 		return unprovenMustNotFlows, soundnessResultBase, false,
 			fmt.Errorf("failed to check summary via most-general: %v", err)
 	}
+
+	// We only need to add the precision of the unproven must-not-flows once, because the set of
+	// unproven must-not-flows only shrinks with each analysis.
+	unprovenNodes := nodesOfFlows(unprovenMustNotFlows)
+	addPrecision(nodePathLen, unprovenNodes)
+
 	return unprovenMustNotFlows, soundnessResultBase, false, nil
 }
 
@@ -518,6 +532,15 @@ func (f flow) String() string {
 	return fmt.Sprintf("%s%s->%s%s", graphNodeDesc(f.from.node), f.from.path.String(), graphNodeDesc(f.to.node), f.to.path.String())
 }
 
+func nodesOfFlows(flows []flow) []graphNode {
+	var res []graphNode
+	for _, fl := range flows {
+		res = append(res, fl.from, fl.to)
+	}
+
+	return res
+}
+
 // graphNode is a dataflow.GraphNode augmented with an (empty or non-empty) access path.
 // If path is empty, that means that the graphNode refers to *all* access paths.
 type graphNode struct {
@@ -530,6 +553,36 @@ type graphNode struct {
 const maxPathLen = 3
 
 type path [maxPathLen]string
+
+const emptyPath = ""
+
+// newPath parses p and returns a path.
+// The length of the path is bounded by min(maxLen, maxPathLen).
+func newPath(p string, maxLen int) path {
+	if len(p) == 0 || maxLen == 0 {
+		return path{}
+	}
+	maxLen = min(maxLen, maxPathLen)
+
+	trimmed := strings.TrimPrefix(p, ".")
+	if len(trimmed) == 0 {
+		return path{}
+	}
+	pth := strings.Split(trimmed, ".")
+	// The path element suffix "[*]" represents all elements of the array/slice/map.
+	// There is no actual difference between a path element "f" and "f[*]" in practice so we
+	// simplify the latter to the former.
+	pth = funcutil.Map(pth, func(el string) string { return strings.ReplaceAll(el, "[*]", "") })
+	var res path
+	for i, el := range pth {
+		if i == maxLen-1 {
+			break
+		}
+		res[i] = el
+	}
+
+	return res
+}
 
 func (p path) len() int {
 	if len(p[0]) == 0 {
@@ -548,7 +601,7 @@ func (p path) len() int {
 func (p path) String() string {
 	pLen := p.len()
 	if pLen == 0 {
-		return ""
+		return emptyPath
 	}
 	parts := make([]string, pLen)
 	for i := range pLen {
@@ -559,29 +612,8 @@ func (p path) String() string {
 
 func newGraphNode(n dataflow.GraphNode, objPath string) graphNode {
 	if len(objPath) == 0 {
-		return graphNode{n, [maxPathLen]string{}}
+		return graphNode{n, path{}}
 	}
-	path := parsePath(objPath)
-	return graphNode{n, path}
-}
-
-func parsePath(objPath string) [maxPathLen]string {
-	trimmed := strings.TrimPrefix(objPath, ".")
-	if len(trimmed) == 0 {
-		return [maxPathLen]string{}
-	}
-	path := strings.Split(trimmed, ".")
-	// The path element suffix "[*]" represents all elements of the array/slice/map.
-	// There is no actual difference between a path element "f" and "f[*]" in practice so we
-	// simplify the latter to the former.
-	path = funcutil.Map(path, func(el string) string { return strings.ReplaceAll(el, "[*]", "") })
-	var res [maxPathLen]string
-	for i, el := range path {
-		if i == maxPathLen-1 {
-			break
-		}
-		res[i] = el
-	}
-
-	return res
+	p := newPath(objPath, maxPathLen)
+	return graphNode{n, p}
 }
