@@ -139,9 +139,8 @@ type Pair struct {
 
 // Caller that flows to specific fields
 func threeArgInterFields(no, a, b *Pair) *Pair {
-	x := addPairFirst(a, a, no)
-	y := addPairFirst(a, b, no)
-	b.First = x.First + y.First
+	addPairFirst(a, a, no)
+	addPairFirst(a, b, no)
 	return &Pair{First: b.First}
 }
 
@@ -153,20 +152,17 @@ func testThreeArgInterFields() {
 	fmt.Printf("res: %v\n", res)
 }
 
-// Different callees version
-func addPairFirst(a, b *Pair, no *Pair) *Pair {
-	return &Pair{First: a.First + b.First, Second: 0}
+func addPairFirst(a, b *Pair, no *Pair) {
+	b.First = a.First + b.First
 }
 
-func addPairSecond(a, b *Pair, no *Pair) *Pair {
-	return &Pair{First: 0, Second: a.Second + b.Second}
+func addPairSecond(a, b *Pair, no *Pair) {
+	b.Second = a.Second + b.Second
 }
 
 func threeArgInterFieldsDiffCallees(no, a, b *Pair) *Pair {
-	x := addPairFirst(a, a, no)
-	y := addPairSecond(a, b, no)
-	b.First = x.First
-	b.Second = y.Second
+	addPairFirst(a, a, no)
+	addPairSecond(a, b, no)
 	return &Pair{First: b.First, Second: b.Second}
 }
 

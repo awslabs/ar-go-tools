@@ -135,25 +135,37 @@ func inferCalleeSummaries(
 	constraints = append(constraints, maxConstrs...)
 
 	// Transitivity
-	calleeGraphs := make(map[*dataflow.CallNode]*dataflow.SummaryGraph)
-	for _, calleeToCall := range g.Callees {
-		for callee, call := range calleeToCall {
-			if cg, ok := s.FlowGraph.Summaries[callee]; ok {
-				calleeGraphs[call] = cg
-			}
-		}
-	}
-	transitiveConstrs := buildTransitivityConstrs(s, g, allEdges)
+	transitiveConstrs := buildTransitivityConstrs(s, allEdges)
 	s.Logger.Debugf("[%d constraints] added %d transitivity constraints",
 		len(constraints), len(transitiveConstrs))
 	constraints = append(constraints, transitiveConstrs...)
 
 	// Block must-not-flows
 	mustNotFlowEdges := funcutil.Map(mustNotFlows, func(fl flow) edge { return newEdge(fl, nil) })
+	mnfCount := 0
 	for _, e := range mustNotFlowEdges {
-		constr := maxsat.HardClause(mayFlow(e).Negation())
-		constraints = append(constraints, constr)
+		fromPaths := leafPathsUpTo(e.from.n.Type(), nodePathLen[e.from.n])
+		toPaths := leafPathsUpTo(e.to.n.Type(), nodePathLen[e.to.n])
+		// Also include the base paths
+		fromPaths = append(fromPaths, e.from.path)
+		toPaths = append(toPaths, e.to.path)
+
+		for _, fromPath := range fromPaths {
+			for _, toPath := range toPaths {
+				fn := node{e.from.n, e.from.call, fromPath}
+				tn := node{e.to.n, e.to.call, toPath}
+				// Block if source path is subsumed by must-not-flow source
+				// AND target path is subsumed by must-not-flow target
+				if pathSubsumes(e.from.path, fn.path) && pathSubsumes(e.to.path, tn.path) {
+					edg := edge{from: fn, to: tn}
+					constr := maxsat.HardClause(mayFlow(edg).Negation())
+					constraints = append(constraints, constr)
+					mnfCount++
+				}
+			}
+		}
 	}
+	s.Logger.Debugf("added %d must-not-flow constraints", mnfCount)
 	s.Logger.Debugf("computed %d constraints", len(constraints))
 
 	// Find the optimal cost first
@@ -261,10 +273,7 @@ func buildCalleeSummaryConstrs(unknown map[*dataflow.CallNode][]edge) []maxsat.C
 
 // buildTransitivityConstrs returns a list of constraints representing the transitivity relation
 // between edges over all nodes in the graph.
-func buildTransitivityConstrs(
-	s *dataflow.State, g *dataflow.SummaryGraph,
-	allEdges map[edge]struct{},
-) []maxsat.Constr {
+func buildTransitivityConstrs(s *dataflow.State, allEdges map[edge]struct{}) []maxsat.Constr {
 	var transitiveConstrs []maxsat.Constr
 
 	// Collect all nodes that appear in edges (these have path information)
@@ -274,20 +283,25 @@ func buildTransitivityConstrs(
 		allNodes[e.to] = struct{}{}
 	}
 
+	// Field-sensitive transitivity: a->b1 ∧ b2->c ⇒ a->c where b1 subsumes b2
 	for a := range allNodes {
-		for b := range allNodes {
-			for c := range allNodes {
-				if a != b && b != c && a != c {
-					constr := maxsat.HardClause(
-						mayFlow(edge{from: a, to: b}).Negation(),
-						mayFlow(edge{from: b, to: c}).Negation(),
-						mayFlow(edge{from: a, to: c}),
-					)
-					transitiveConstrs = append(transitiveConstrs, constr)
+		for b1 := range allNodes {
+			for b2 := range allNodes {
+				for c := range allNodes {
+					if a != b1 && b2 != c && a != c && nodeSubsumes(b1, b2) {
+						constr := maxsat.HardClause(
+							mayFlow(edge{from: a, to: b1}).Negation(),
+							mayFlow(edge{from: b2, to: c}).Negation(),
+							mayFlow(edge{from: a, to: c}),
+						)
+						transitiveConstrs = append(transitiveConstrs, constr)
+					}
 				}
 			}
 		}
 	}
+
+	s.Logger.Debugf("transitivity: %d nodes, %d constraints", len(allNodes), len(transitiveConstrs))
 
 	return transitiveConstrs
 }
@@ -299,6 +313,9 @@ func buildTransitivityConstrs(
 // NOTE This is similar to the flowCovers function.
 func nodeSubsumes(a, b node) bool {
 	if a.n != b.n {
+		return false
+	}
+	if a.call != b.call {
 		return false
 	}
 

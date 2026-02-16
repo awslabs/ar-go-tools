@@ -3,6 +3,7 @@ options:
   silence-warn: true
   reports-dir: .
 dataflow-problems:
+  field-sensitive-funcs: [".*"]
   taint-tracking:
     - tag: "source-to-sink"
       sources:
