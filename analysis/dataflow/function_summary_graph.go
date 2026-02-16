@@ -844,11 +844,13 @@ func (g *SummaryGraph) addCallArgEdge(mark MarkWithAccessPath, cond *ConditionIn
 	}
 
 	for _, callNode := range callNodes {
-		callNodeArg := callNode.FindArg(arg)
-		if callNodeArg == nil {
-			panic("attempting to set call arg edge but no call arg node")
+		// Add edges to ALL args that match this SSA value.
+		// A single SSA value can be passed as distinct arguments: e.g., call f(t0, t0).
+		for _, argNode := range callNode.Args() {
+			if argNode.Value() == arg {
+				g.addEdge(mark, argNode, cond)
+			}
 		}
-		g.addEdge(mark, callNodeArg, cond)
 	}
 }
 

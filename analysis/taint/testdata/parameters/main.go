@@ -34,6 +34,7 @@ func main() {
 	test4()
 	test5()
 	testReadFieldTaint()
+	testFlowSensitivityArg()
 }
 
 // This set of examples tests taint tracking across function calls that appear as parameters of other functions
@@ -149,4 +150,18 @@ func readToken(a *A, b *string) {
 	if a.token == "ok" {
 		*b = "f" + strconv.Itoa(rand.Int())
 	}
+}
+
+func testFlowSensitivityArg() {
+	x := "testing"
+	sink(x)
+	flowSensitivityArg(&x, &x)
+	sink(x) // @Sink(flowSensitivityArg)
+}
+
+func flowSensitivityArg(a, b *string) {
+	*b = "test"
+	*a = *b
+	sink(a)
+	*a = source("test") // @Source(flowSensitivityArg)
 }
