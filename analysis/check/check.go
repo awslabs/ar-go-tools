@@ -37,15 +37,17 @@ type Method string
 const (
 	// General means compare with the most-general summary.
 	General Method = "general"
-	// Types means use the type signature of the function to filter some impossible data flows.
+	// Read means use the read analysis to filter flow inputs.
+	Read Method = "read"
+	// Types means use the type signature of the function to filter flow outputs.
 	Types Method = "types"
-	// Immutability means use the immutability analysis
+	// Immutability means use the immutability analysis to filter flow outpts.
 	Immutability Method = "immutability"
-	// Recursive means we had to generate the intra-procedural summary and then analyze the functions
+	// Recursive means we had to generate the intra-procedural summary and then analyze the functions.
 	Recursive Method = "recursive"
-	// All means use all available analyses in the most efficient way
+	// All means use all available analyses in the most efficient way.
 	All Method = "all"
-	// Naive means use the full data flow analysis
+	// Naive means use the full data flow analysis.
 	Naive Method = "naive"
 )
 
@@ -54,6 +56,7 @@ type State struct {
 	*dataflow.State
 	cache         *aliasCache
 	immutableVals map[ssa.Value]struct{}
+	unreadVals    map[ssa.Value]struct{}
 }
 
 // NewState returns a State from an initialized (but not built!) dataflow analysis state.
@@ -67,6 +70,7 @@ func NewState(s *dataflow.State) result.Result[State] {
 			labels: make(map[ssa.Value]map[*pointer.Label]struct{}),
 		},
 		immutableVals: make(map[ssa.Value]struct{}),
+		unreadVals:    make(map[ssa.Value]struct{}),
 	}
 	res.PopulateTypesToImplementationMap()
 	return result.Ok(res)
@@ -186,7 +190,7 @@ func checkSummary(
 	nodePathLen := make(map[dataflow.GraphNode]int)
 	addPrecision(nodePathLen, nodesOfFlows(wantFlows))
 
-	for _, m := range []Method{General, Types, Immutability} {
+	for _, m := range []Method{General, Types, Immutability, Read} {
 		method = m
 		var soundnessResult SoundnessResult
 		var done bool
@@ -206,6 +210,12 @@ func checkSummary(
 			}
 		case Immutability:
 			unprovenMustNotFlows, soundnessResult, done, err = checkMethodImmutability(
+				ctx, s, f, unsoundCheckFeats, soundnessResultBase, unprovenMustNotFlows, start)
+			if done {
+				return soundnessResult, err
+			}
+		case Read:
+			unprovenMustNotFlows, soundnessResult, done, err = checkMethodRead(
 				ctx, s, f, unsoundCheckFeats, soundnessResultBase, unprovenMustNotFlows, start)
 			if done {
 				return soundnessResult, err
@@ -360,6 +370,31 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 		calleeResults = append(calleeResults, thisCalleeResults)
 	}
 	return calleeResults, SoundnessResult{}, false, nil
+}
+
+func checkMethodRead(ctx context.Context, s *State, f *ssa.Function,
+	unsoundCheckFeats UnsoundCheckFeatures,
+	soundnessResultBase SoundnessResult,
+	unprovenMustNotFlows []flow,
+	start time.Time) ([]flow, SoundnessResult, bool, error) {
+	// The read analysis is unsound if there is reflection, as it depends on the
+	// pointer analysis.
+	if len(unsoundCheckFeats.ReflectUsages) > 0 {
+		s.Logger.Warnf(
+			"read analysis is unsound: detected reflection use in function %s\n", f)
+		if !s.Config.CheckIgnoresUnsound {
+			soundnessResultBase.IsSound = false
+			soundnessResultBase.Unsoundness = Unsoundness{
+				UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
+				CheckFeatures:        unsoundCheckFeats,
+			}
+			soundnessResultBase.Method = Immutability
+			soundnessResultBase.Time = time.Since(start)
+			return nil, soundnessResultBase, true, nil
+		}
+	}
+	unprovenMustNotFlows = filterFlowsRead(ctx, s, unprovenMustNotFlows)
+	return unprovenMustNotFlows, SoundnessResult{}, false, nil
 }
 
 func checkMethodImmutability(ctx context.Context, s *State, f *ssa.Function,

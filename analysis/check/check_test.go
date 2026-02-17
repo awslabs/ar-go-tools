@@ -234,7 +234,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method:        check.Immutability,
+				Method:        check.Read,
 				CalleeResults: nil,
 			},
 		},
@@ -386,34 +386,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				IsSound: true,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ReturnSNode{Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "a", Index: 1},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 2},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "a", Index: 1},
-							To:   summaries.ArgumentSNode{Name: "no", Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 2},
-							To:   summaries.ArgumentSNode{Name: "no", Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 2},
-							To:   summaries.ArgumentSNode{Name: "a", Index: 1},
-						},
-					},
+					UnprovenMustNotFlows: []check.Flow{},
 				},
 				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
@@ -432,23 +407,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 							},
 							IsSound: false,
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									{
-										From: summaries.ArgumentSNode{Name: "no", Index: 2},
-										To:   summaries.ReturnSNode{},
-									},
-									// NOTE Immutability analysis disproved these flows
-									// {
-									// 	From: summaries.ArgumentSNode{Name: "a", Index: 0},
-									// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
-									// },
-									// {
-									// 	From: summaries.ArgumentSNode{Name: "b", Index: 1},
-									// 	To:   summaries.ArgumentSNode{Name: "no", Index: 2},
-									// },
-								},
+								UnprovenMustNotFlows: []check.Flow{},
 							},
-							Method:        check.Immutability,
+							Method:        check.Read,
 							CalleeResults: nil,
 						},
 					},
@@ -461,7 +422,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			typ:  functionSummary,
 			want: check.SoundnessResult{
 				Name:    pkg + ".threeArgInterDiffCallees",
-				IsSound: false,
+				IsSound: true,
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 1}: {
@@ -474,32 +435,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 					},
 				},
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ReturnSNode{Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "a", Index: 1},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 2},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "a", Index: 1},
-							To:   summaries.ArgumentSNode{Name: "no", Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 2},
-							To:   summaries.ArgumentSNode{Name: "no", Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 2},
-							To:   summaries.ArgumentSNode{Name: "a", Index: 1},
-						},
-					},
+					UnprovenMustNotFlows: []check.Flow{},
 				},
 				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
@@ -517,14 +453,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 								},
 							},
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									{
-										From: summaries.ArgumentSNode{Name: "no", Index: 2},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-								},
+								UnprovenMustNotFlows: []check.Flow{},
 							},
-							Method:        check.Immutability,
+							Method:        check.Read,
 							CalleeResults: nil,
 						},
 					},
@@ -542,14 +473,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 								},
 							},
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									{
-										From: summaries.ArgumentSNode{Name: "no", Index: 2},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-								},
+								UnprovenMustNotFlows: []check.Flow{},
 							},
-							Method:        check.Immutability,
+							Method:        check.Read,
 							CalleeResults: nil,
 						},
 					},
@@ -803,7 +729,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method:        check.Immutability,
+				Method:        check.Read,
 				CalleeResults: nil,
 			},
 		},
@@ -835,7 +761,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Method:        check.Immutability,
+				Method:        check.Read,
 				CalleeResults: nil,
 			},
 		},
@@ -1081,57 +1007,22 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-				IsSound: false,
-				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "x", Index: 0},
-							To:   summaries.ReturnSNode{Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "y", Index: 1},
-							To:   summaries.ReturnSNode{Index: 0},
-						},
-					},
-				},
-				Method:        check.Immutability,
-				CalleeResults: nil,
-			},
-		},
-		{
-			pkg:  pkg,
-			name: "noFlowClosure",
-			typ:  functionSummary,
-			want: check.SoundnessResult{
-				Name: pkg + ".noFlowClosure",
-				Want: summaries.DetailedSummary{
-					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-						summaries.ArgumentSNode{Name: "x", Index: 0}: {
-							summaries.ReturnSNode{Index: 0},
-						},
-					},
-				},
 				IsSound: true,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: nil,
-				},
-				Method: check.Recursive,
-				CalleeResults: [][]check.SoundnessResult{
-					{
-						{
-							Name: pkg + ".noFlowClosure$1",
-							Want: summaries.DetailedSummary{
-								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
-							},
-							IsSound: true,
-							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: nil,
-							},
-							Method:        check.General,
-							CalleeResults: nil,
-						},
+					UnprovenMustNotFlows: []check.Flow{
+						// NOTE Proven by read analysis.
+						// {
+						// 	From: summaries.ArgumentSNode{Name: "x", Index: 0},
+						// 	To:   summaries.ReturnSNode{Index: 0},
+						// },
+						// {
+						// 	From: summaries.ArgumentSNode{Name: "y", Index: 1},
+						// 	To:   summaries.ReturnSNode{Index: 0},
+						// },
 					},
 				},
+				Method:        check.Read,
+				CalleeResults: nil,
 			},
 		},
 		{
@@ -1324,7 +1215,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 		// 				},
 		// 			},
 		// 		},
-		// 		Method:        check.Immutability,
+		// 		Method:        check.Read,
 		// 		CalleeResults: [][]check.SoundnessResult{},
 		// 	},
 		// },
@@ -1401,7 +1292,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 		// 				},
 		// 			},
 		// 		},
-		// 		Method:        check.Immutability,
+		// 		Method:        check.Read,
 		// 		CalleeResults: [][]check.SoundnessResult{},
 		// 	},
 		// },

@@ -346,14 +346,13 @@ func noFlowClosure(x, y *int) *int {
 		z := 42
 		return &z
 	}
-	f()
-	return x
+	return f()
 }
 
 func testNoFlowClosure() {
 	a, b := 1, 2
 	res := noFlowClosure(&a, &b)
-	fmt.Println("testNoFlowClosure", *res) // 1
+	fmt.Println("testNoFlowClosure", *res) // 42
 }
 
 func nestedClosuresInvalid(x, y *int) *int {
