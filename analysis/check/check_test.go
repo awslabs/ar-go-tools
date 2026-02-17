@@ -1191,157 +1191,153 @@ func TestCheckSummary_Fields(t *testing.T) {
 
 	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/fields"
 	tests := []tcCheck{
-		// {
-		// 	pkg:  pkg,
-		// 	name: "appendSliceLinkedList",
-		// 	typ:  functionSummary,
-		// 	want: check.SoundnessResult{
-		// 		Name: pkg + ".appendSliceLinkedList",
-		// 		Want: summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "n", Index: 1}: {
-		// 					summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
-		// 				},
-		// 			},
-		// 		},
-		// 		// NOTE False-positive: this summary is actually sound but head.next is modified so
-		// 		// the soundness check fails.
-		// 		IsSound: false,
-		// 		Unsoundness: check.Unsoundness{
-		// 			UnprovenMustNotFlows: []check.Flow{
-		// 				{
-		// 					From: summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
-		// 					To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
-		// 				},
-		// 			},
-		// 		},
-		// 		Method:        check.Read,
-		// 		CalleeResults: [][]check.SoundnessResult{},
-		// 	},
-		// },
-		// // Same function, more general summary: types is sufficient
-		// {
-		// 	pkg:  pkg,
-		// 	name: "appendSliceLinkedList",
-		// 	typ:  functionSummary,
-		// 	want: check.SoundnessResult{
-		// 		Name: pkg + ".appendSliceLinkedList",
-		// 		Want: summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "n", Index: 1}: {
-		// 					summaries.ArgumentSNode{Name: "head", Index: 0},
-		// 				},
-		// 			},
-		// 		},
-		// 		IsSound: true,
-		// 		Unsoundness: check.Unsoundness{
-		// 			UnprovenMustNotFlows: nil,
-		// 		},
-		// 		Method:        check.Types,
-		// 		CalleeResults: [][]check.SoundnessResult{},
-		// 	},
-		// },
-		// // Same function, most general summary
-		// {
-		// 	pkg:  pkg,
-		// 	name: "appendSliceLinkedList",
-		// 	typ:  functionSummary,
-		// 	want: check.SoundnessResult{
-		// 		Name: pkg + ".appendSliceLinkedList",
-		// 		Want: summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "n", Index: 1}: {
-		// 					summaries.ArgumentSNode{Name: "head", Index: 0},
-		// 				},
-		// 				summaries.ArgumentSNode{Name: "head", Index: 0}: {
-		// 					summaries.ArgumentSNode{Name: "n", Index: 1},
-		// 				},
-		// 			},
-		// 		},
-		// 		IsSound: true,
-		// 		Unsoundness: check.Unsoundness{
-		// 			UnprovenMustNotFlows: nil,
-		// 		},
-		// 		Method:        check.General,
-		// 		CalleeResults: [][]check.SoundnessResult{},
-		// 	},
-		// },
-		// {
-		// 	pkg:  pkg,
-		// 	name: "appendSliceLinkedList",
-		// 	typ:  functionSummary,
-		// 	want: check.SoundnessResult{
-		// 		Name: pkg + ".appendSliceLinkedList",
-		// 		Want: summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "n", Index: 1}: {
-		// 					summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
-		// 				},
-		// 			},
-		// 		},
-		// 		IsSound: false,
-		// 		Unsoundness: check.Unsoundness{
-		// 			UnprovenMustNotFlows: []check.Flow{
-		// 				{
-		// 					From: summaries.ArgumentSNode{Name: "n", Index: 1},
-		// 					To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
-		// 				},
-		// 				{
-		// 					From: summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
-		// 					To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
-		// 				},
-		// 			},
-		// 		},
-		// 		Method:        check.Read,
-		// 		CalleeResults: [][]check.SoundnessResult{},
-		// 	},
-		// },
-		// {
-		// 	pkg:  pkg,
-		// 	name: "incFieldBy",
-		// 	typ:  functionSummary,
-		// 	want: check.SoundnessResult{
-		// 		Name: pkg + ".incFieldBy",
-		// 		Want: summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "n", Index: 1}: {
-		// 					summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".field.value"},
-		// 				},
-		// 			},
-		// 		},
-		// 		IsSound: true,
-		// 		Unsoundness: check.Unsoundness{
-		// 			UnprovenMustNotFlows: nil,
-		// 		},
-		// 		Method:        check.Types,
-		// 		CalleeResults: [][]check.SoundnessResult{},
-		// 	},
-		// },
-		// {
-		// 	pkg:  pkg,
-		// 	name: "threeArgInterFields",
-		// 	typ:  functionSummary,
-		// 	want: check.SoundnessResult{
-		// 		Name: pkg + ".threeArgInterFields",
-		// 		Want: summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"}: {
-		// 					// NOTE Missing flow to !arg b.First
-		// 					summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-		// 				},
-		// 				summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"}: {
-		// 					summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-		// 				},
-		// 			},
-		// 		},
-		// 		IsSound: false,
-		// 		Unsoundness: check.Unsoundness{
-		// 			UnprovenMustNotFlows: []check.Flow{},
-		// 		},
-		// 		Method:        check.Immutability,
-		// 		CalleeResults: nil,
-		// 	},
-		// },
+		{
+			pkg:  pkg,
+			name: "appendSliceLinkedList",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".appendSliceLinkedList",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
+						},
+					},
+				},
+				// NOTE False-positive: this summary is actually sound but head.next is modified so
+				// the soundness check fails.
+				IsSound: false,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
+							To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
+						},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		// Same function, more general summary: types is sufficient
+		{
+			pkg:  pkg,
+			name: "appendSliceLinkedList",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".appendSliceLinkedList",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Types,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		// Same function, most general summary
+		{
+			pkg:  pkg,
+			name: "appendSliceLinkedList",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".appendSliceLinkedList",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "head", Index: 0}: {
+							summaries.ArgumentSNode{Name: "n", Index: 1},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.General,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "appendSliceLinkedList",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".appendSliceLinkedList",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
+						},
+					},
+				},
+				IsSound: false,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "n", Index: 1},
+							To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
+							To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
+						},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "incFieldBy",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".incFieldBy",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".field.value"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Types,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "incRight",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".incRight",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "t", Index: 0, ObjectPath: ".right.n"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{},
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
 		{
 			pkg:  pkg,
 			name: "threeArgInterFields",
@@ -1355,11 +1351,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 							summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 						},
 						summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"}: {
-							summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"},
 							summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-						},
-						summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"}: {
-							summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"},
 						},
 					},
 				},
@@ -1394,83 +1386,83 @@ func TestCheckSummary_Fields(t *testing.T) {
 				},
 			},
 		},
-		// {
-		// 	pkg:  pkg,
-		// 	name: "threeArgInterFieldsDiffCallees",
-		// 	typ:  functionSummary,
-		// 	want: check.SoundnessResult{
-		// 		Name: pkg + ".threeArgInterFieldsDiffCallees",
-		// 		Want: summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"}: {
-		// 					summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
-		// 					summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-		// 				},
-		// 				summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"}: {
-		// 					summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
-		// 					summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-		// 				},
-		// 				summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"}: {
-		// 					summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-		// 				},
-		// 				summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"}: {
-		// 					summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-		// 				},
-		// 			},
-		// 		},
-		// 		IsSound: true,
-		// 		Unsoundness: check.Unsoundness{
-		// 			UnprovenMustNotFlows: []check.Flow{},
-		// 		},
-		// 		Method: check.Recursive,
-		// 		CalleeResults: [][]check.SoundnessResult{
-		// 			{
-		// 				{
-		// 					Name: pkg + ".addPairFirst",
-		// 					Want: summaries.DetailedSummary{
-		// 						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 							summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
-		// 								summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-		// 								summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
-		// 							},
-		// 							summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
-		// 								summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-		// 							},
-		// 						},
-		// 					},
-		// 					IsSound: true,
-		// 					Unsoundness: check.Unsoundness{
-		// 						UnprovenMustNotFlows: []check.Flow{},
-		// 					},
-		// 					Method:        check.Immutability,
-		// 					CalleeResults: nil,
-		// 				},
-		// 			},
-		// 			{
-		// 				{
-		// 					Name: pkg + ".addPairSecond",
-		// 					Want: summaries.DetailedSummary{
-		// 						Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 							summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
-		// 								summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-		// 								summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
-		// 							},
-		// 							summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
-		// 								summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-		// 							},
-		// 						},
-		// 					},
-		// 					IsSound: true,
-		// 					Unsoundness: check.Unsoundness{
-		// 						UnprovenMustNotFlows: []check.Flow{},
-		// 					},
-		// 					Method:        check.Immutability,
-		// 					CalleeResults: nil,
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// },
+		{
+			pkg:  pkg,
+			name: "threeArgInterFieldsDiffCallees",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".threeArgInterFieldsDiffCallees",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"}: {
+							summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"}: {
+							summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+							summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"}: {
+							summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"}: {
+							summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Name: pkg + ".addPairFirst",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+								},
+							},
+							IsSound: true,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+					{
+						{
+							Name: pkg + ".addPairSecond",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+								},
+							},
+							IsSound: true,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{},
+							},
+							Method:        check.Immutability,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
 		// // NOTE The propagateFields[...] cases are all correct but fail due to imprecision
 		// // in the pointer analysis.
 		// // {
@@ -1539,27 +1531,6 @@ func TestCheckSummary_Fields(t *testing.T) {
 		// // 		CalleeResults: [][]check.SoundnessResult{},
 		// // 	},
 		// // },
-		// {
-		// 	pkg:  pkg,
-		// 	name: "incRight",
-		// 	typ:  functionSummary,
-		// 	want: check.SoundnessResult{
-		// 		Name: pkg + ".incRight",
-		// 		Want: summaries.DetailedSummary{
-		// 			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-		// 				summaries.ArgumentSNode{Name: "n", Index: 1}: {
-		// 					summaries.ArgumentSNode{Name: "t", Index: 0, ObjectPath: ".right.n"},
-		// 				},
-		// 			},
-		// 		},
-		// 		IsSound: true,
-		// 		Unsoundness: check.Unsoundness{
-		// 			UnprovenMustNotFlows: []check.Flow{},
-		// 		},
-		// 		Method:        check.Immutability,
-		// 		CalleeResults: [][]check.SoundnessResult{},
-		// 	},
-		// },
 	}
 
 	for _, tc := range tests {
@@ -2035,7 +2006,7 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 }
 
 func setupConfig(lp *loadprogram.State) {
-	level := config.TraceLevel // change this as needed for debugging
+	level := config.ErrLevel // change this as needed for debugging
 	lp.Logger.Level = level
 	lp.Logger.SupressWarn = false
 

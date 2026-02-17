@@ -139,9 +139,10 @@ type Pair struct {
 
 // Caller that flows to specific fields
 func threeArgInterFields(no, a, b *Pair) *Pair {
-	addPairFirst(a, a, no)
-	addPairFirst(a, b, no)
-	return &Pair{First: b.First}
+	x := addPairFirst(*a, *a, no)
+	y := addPairFirst(*a, *b, no)
+	(*b).First = x.First + y.First
+	return b
 }
 
 func testThreeArgInterFields() {
@@ -152,18 +153,21 @@ func testThreeArgInterFields() {
 	fmt.Printf("res: %v\n", res)
 }
 
-func addPairFirst(a, b *Pair, no *Pair) {
+func addPairFirst(a, b Pair, no *Pair) Pair {
 	b.First = a.First + b.First
+	return b
 }
 
-func addPairSecond(a, b *Pair, no *Pair) {
+func addPairSecond(a, b Pair, no *Pair) Pair {
 	b.Second = a.Second + b.Second
+	return b
 }
 
 func threeArgInterFieldsDiffCallees(no, a, b *Pair) *Pair {
-	addPairFirst(a, a, no)
-	addPairSecond(a, b, no)
-	return &Pair{First: b.First, Second: b.Second}
+	x := addPairFirst(*a, *a, no)
+	y := addPairSecond(*a, *b, no)
+	(*b).Second = x.First + y.Second
+	return b
 }
 
 func testThreeArgInterFieldsDiffCallees() {

@@ -540,17 +540,6 @@ func (e edge) String() string {
 	return fmt.Sprintf("%s->%s", e.from.String(), e.to.String())
 }
 
-// addPrecision adds the access path length of a node in nodes that the node should have to
-// nodePathLen.
-//
-// If two nodes in flows have the same access path length, it takes the greater of the two to
-// maximize precision.
-func addPrecision(nodePathLen map[dataflow.GraphNode]int, nodes []graphNode) {
-	for _, node := range nodes {
-		nodePathLen[node.node] = max(nodePathLen[node.node], node.path.len())
-	}
-}
-
 // knownIntraEdges returns all the may-flow edges within a summary graph, scoped to a specific
 // call site.
 //
@@ -606,7 +595,7 @@ func knownIntraEdges(
 			}
 
 			for _, edgeInfo := range edgeInfos {
-				ns := nextNodes(cur, next, edgeInfo)
+				ns := nextNodes(cur, next, edgeInfo, nodePathLen)
 				// No matching access paths for this edge
 				if len(ns) == 0 {
 					continue
@@ -625,8 +614,6 @@ func knownIntraEdges(
 			}
 			seen[next] = struct{}{}
 			queue = append(queue, next)
-			// Update nodePathLen if next's path is more precise.
-			nodePathLen[next.n] = max(nodePathLen[next.n], next.path.len())
 		}
 	}
 
@@ -634,8 +621,17 @@ func knownIntraEdges(
 }
 
 // nextNodes returns the nodes corresponding to access paths in next that match cur's access path.
-func nextNodes(cur node, next dataflow.GraphNode, edgeInfo dataflow.EdgeInfo) []node {
+func nextNodes(
+	cur node, next dataflow.GraphNode, edgeInfo dataflow.EdgeInfo,
+	nodePathLen map[dataflow.GraphNode]int,
+) []node {
 	var nextNodes []node
+	pl := nodePathLen[cur.n]
+	if pl == 0 {
+		return []node{{n: next, call: cur.call, path: path{}}}
+	}
+	nodePathLen[next] = pl
+
 	for inPath, outPaths := range edgeInfo.RelPath {
 		for outPath := range outPaths {
 			// NOTE In the dataflow/taint analysis, nodes and access paths are separate, so x.a and
@@ -644,12 +640,13 @@ func nextNodes(cur node, next dataflow.GraphNode, edgeInfo dataflow.EdgeInfo) []
 
 			// Logic for matching paths:
 			if strings.HasPrefix(inPath, cur.path.String()) {
-				p := newPath(outPath, maxPathLen)
+				p := newPath(outPath, pl)
 				n := node{n: next, call: cur.call, path: p}
 				nextNodes = append(nextNodes, n)
 			}
 		}
 	}
+	// Special cases that appear in the taint analysis implementation:
 	if len(edgeInfo.RelPath) == 0 || len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""][""] {
 		n := node{n: next, call: cur.call, path: cur.path}
 		nextNodes = []node{n}
@@ -790,7 +787,7 @@ func unknownIntraEdges(
 			for _, path := range paths {
 				n := node{n: gn, call: nil, path: path}
 				for _, edgeInfo := range edgeInfos {
-					nexts := nextNodes(n, next, edgeInfo)
+					nexts := nextNodes(n, next, edgeInfo, nodePathLen)
 					for _, next := range nexts {
 						e := edge{from: n, to: next}
 						if slices.Contains(knownIntra, e) {

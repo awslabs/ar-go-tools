@@ -616,10 +616,10 @@ func newPath(p string, maxLen int) path {
 	pth = funcutil.Map(pth, func(el string) string { return strings.ReplaceAll(el, "[*]", "") })
 	var res path
 	for i, el := range pth {
+		res[i] = el
 		if i == maxLen-1 {
 			break
 		}
-		res[i] = el
 	}
 
 	return res
@@ -657,4 +657,19 @@ func newGraphNode(n dataflow.GraphNode, objPath string) graphNode {
 	}
 	p := newPath(objPath, maxPathLen)
 	return graphNode{n, p}
+}
+
+// addPrecision adds the access path length of a node in nodes that the node should have to
+// nodePathLen.
+//
+// If two nodes in flows have the same access path length, it takes the lesser of the two to
+// minimize precision.
+func addPrecision(nodePathLen map[dataflow.GraphNode]int, nodes []graphNode) {
+	for _, node := range nodes {
+		pl, ok := nodePathLen[node.node]
+		if !ok {
+			pl = node.path.len()
+		}
+		nodePathLen[node.node] = min(pl, node.path.len())
+	}
 }
