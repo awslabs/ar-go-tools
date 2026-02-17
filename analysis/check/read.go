@@ -23,6 +23,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -130,9 +131,32 @@ func checkReads(ctx context.Context, s *State, val ssa.Value, pth path) (readIns
 
 			for _, rval := range read.values {
 				if rval == val {
-					wasRead = true
-					res = read
-					return
+					if pth.len() == 0 {
+						wasRead = true
+						res = read
+						return
+					}
+
+					// Field-sensitivity: a struct field can only be read via a *ssa.Field or
+					// *ssa.FieldAddr instruction.
+					//
+					// TODO Keep track of field accesses to handle path lengths > 1.
+					switch instr := read.Instruction.(type) {
+					case *ssa.Field:
+						info := analysisutil.FieldFieldInfo(instr)
+						if pth.len() == 1 && strings.HasSuffix(pth.String(), info.FieldName) {
+							wasRead = true
+							res = read
+							return
+						}
+					case *ssa.FieldAddr:
+						info := analysisutil.FieldAddrFieldInfo(instr)
+						if pth.len() == 1 && strings.HasSuffix(pth.String(), info.FieldName) {
+							wasRead = true
+							res = read
+							return
+						}
+					}
 				}
 
 				// If the read objects have any of the same node ids as the input value, then
@@ -194,7 +218,7 @@ type readInstr struct {
 }
 
 func (r readInstr) String() string {
-	return fmt.Sprintf("from %v in %s", r.values, r.Instruction.Parent())
+	return fmt.Sprintf("from %v via %v in %s", r.values, r.Instruction, r.Instruction.Parent())
 }
 
 // valsReadFrom returns a read instruction containing all the non-nil values read from instr.
