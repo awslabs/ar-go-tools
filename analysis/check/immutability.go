@@ -71,7 +71,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 	vals := outputVals(fl)
 	if _, ok := fl.to.node.(*dataflow.ReturnValNode); ok {
 		for _, val := range vals {
-			if _, ok := s.immutableVals[val]; !ok {
+			if _, ok := s.immutableVals[value{val, fl.to.path}]; !ok {
 				if !lang.IsStaticallyDefinedLocal(val) {
 					s.Logger.Tracef(
 						"found non-static return scalar value %v in function %v",
@@ -79,7 +79,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 					return false, nil
 				}
 			}
-			s.immutableVals[val] = struct{}{}
+			s.immutableVals[value{val, fl.to.path}] = struct{}{}
 		}
 
 		return true, nil
@@ -89,7 +89,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 		panic(fmt.Errorf("multiple values for non-return flow output: %v", fl.to))
 	}
 	val := vals[0]
-	if _, ok := s.immutableVals[val]; ok {
+	if _, ok := s.immutableVals[value{val, fl.to.path}]; ok {
 		return true, nil
 	}
 
@@ -109,7 +109,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 		}
 	}
 
-	s.immutableVals[val] = struct{}{}
+	s.immutableVals[value{val, fl.to.path}] = struct{}{}
 	return true, nil
 }
 

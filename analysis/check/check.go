@@ -55,8 +55,14 @@ const (
 type State struct {
 	*dataflow.State
 	cache         *aliasCache
-	immutableVals map[ssa.Value]struct{}
-	unreadVals    map[ssa.Value]struct{}
+	immutableVals map[value]struct{}
+	unreadVals    map[value]struct{}
+}
+
+// value is an SSA value with an access path for field-sensitivity.
+type value struct {
+	ssa.Value
+	pth path
 }
 
 // NewState returns a State from an initialized (but not built!) dataflow analysis state.
@@ -69,8 +75,8 @@ func NewState(s *dataflow.State) result.Result[State] {
 			ptrRes: s.PointerAnalysis,
 			labels: make(map[ssa.Value]map[*pointer.Label]struct{}),
 		},
-		immutableVals: make(map[ssa.Value]struct{}),
-		unreadVals:    make(map[ssa.Value]struct{}),
+		immutableVals: make(map[value]struct{}),
+		unreadVals:    make(map[value]struct{}),
 	}
 	res.PopulateTypesToImplementationMap()
 	return result.Ok(res)

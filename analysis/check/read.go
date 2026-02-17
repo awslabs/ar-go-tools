@@ -54,7 +54,7 @@ func filterFlowsRead(ctx context.Context, s *State, flows []flow) []flow {
 func mustNotFlowRead(ctx context.Context, s *State, fl flow) (bool, error) {
 	vals := inputVals(fl)
 	for _, val := range vals {
-		if _, ok := s.unreadVals[val]; !ok {
+		if _, ok := s.unreadVals[value{val, fl.from.path}]; !ok {
 			ri, ok, err := checkReads(ctx, s, val, fl.from.path)
 			if err != nil {
 				return false, fmt.Errorf(
@@ -68,7 +68,7 @@ func mustNotFlowRead(ctx context.Context, s *State, fl flow) (bool, error) {
 			}
 		}
 
-		s.unreadVals[val] = struct{}{}
+		s.unreadVals[value{val, fl.from.path}] = struct{}{}
 	}
 
 	return true, nil
