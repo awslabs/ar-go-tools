@@ -194,7 +194,7 @@ func checkSummary(
 	// Determine the precision we need for the analyses by the length of the access paths in each
 	// node in summary flows.
 	nodePathLen := make(map[dataflow.GraphNode]int)
-	addPrecision(nodePathLen, nodesOfFlows(wantFlows))
+	updatePrecision(nodePathLen, nodesOfFlows(wantFlows))
 
 	for _, m := range []Method{General, Types, Immutability, Read} {
 		method = m
@@ -262,7 +262,7 @@ func checkSummary(
 	}
 	// Use the type analysis to filter out unrealizable flows
 	calleeSummaries, err := inferCalleeSummaries(
-		ctx, s.State, g, nodePathLen, unprovenMustNotFlows, &unsoundness, Types)
+		ctx, s.State, g, wantFlows, unprovenMustNotFlows, &unsoundness, Types)
 	if err != nil {
 		soundnessResultBase.IsSound = false
 		soundnessResultBase.Unsoundness = unsoundness
@@ -496,7 +496,7 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 	// We only need to add the precision of the unproven must-not-flows once, because the set of
 	// unproven must-not-flows only shrinks with each analysis.
 	unprovenNodes := nodesOfFlows(unprovenMustNotFlows)
-	addPrecision(nodePathLen, unprovenNodes)
+	updatePrecision(nodePathLen, unprovenNodes)
 
 	return unprovenMustNotFlows, soundnessResultBase, false, nil
 }
@@ -659,12 +659,12 @@ func newGraphNode(n dataflow.GraphNode, objPath string) graphNode {
 	return graphNode{n, p}
 }
 
-// addPrecision adds the access path length of a node in nodes that the node should have to
+// updatePrecision adds the access path length of a node in nodes that the node should have to
 // nodePathLen.
 //
-// If two nodes in flows have the same access path length, it takes the lesser of the two to
-// minimize precision.
-func addPrecision(nodePathLen map[dataflow.GraphNode]int, nodes []graphNode) {
+// If two nodes are the same, it takes the lesser of the access path lengths to minimize the
+// precision required to analyze the node.
+func updatePrecision(nodePathLen map[dataflow.GraphNode]int, nodes []graphNode) {
 	for _, node := range nodes {
 		pl, ok := nodePathLen[node.node]
 		if !ok {

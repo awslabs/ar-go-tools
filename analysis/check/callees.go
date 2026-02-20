@@ -34,7 +34,7 @@ import (
 // It also adds any potential sources of unsoundness to unsoundness.
 func inferCalleeSummaries(
 	ctx context.Context, s *dataflow.State, g *dataflow.SummaryGraph,
-	nodePathLen map[dataflow.GraphNode]int, mustNotFlows []flow,
+	wantFlows []flow, mustNotFlows []flow,
 	unsoundness *Unsoundness, via Method,
 ) (map[*ssa.Function][]summaries.DetailedSummary, error) {
 	if len(g.Callees) == 0 {
@@ -47,16 +47,40 @@ func inferCalleeSummaries(
 		panic(fmt.Errorf("invalid inference method: want one of %v, got %v", validMethods, via))
 	}
 
+	// Compute the level of precision needed for the intra-procedural analysis
+	// (bounded by maxPathLen).
+	pathLen := 0
+	nodePathLen := make(map[dataflow.GraphNode]int)
+	updatePrecision(nodePathLen, nodesOfFlows(wantFlows))
+	for _, pl := range nodePathLen {
+		pathLen = max(pathLen, pl)
+	}
+
+	s.Logger.Debugf("callee flow graph node access path length: %d\n", pathLen)
+
 	// First run the intra-procedural analysis
 	if summ, ok := s.FlowGraph.Summaries[g.Parent]; ok && summ.Constructed {
 		s.Logger.Tracef(
 			"using already-computed intra-procedural results for function %s\n", g.Parent)
 		g = summ
 	} else {
-		s.Logger.Debugf("running intra-procedural analysis on function %s...\n", g.Parent)
 		start := time.Now()
-		if _, err := dataflow.RunIntraProcedural(ctx, s, g); err != nil {
-			return nil, fmt.Errorf("failed to run intra-procedural analysis: %v", err)
+		if pathLen == 0 {
+			s.Logger.Debugf(
+				"running field-insensitive intra-procedural analysis on function %s...\n", g.Parent)
+			if _, err := dataflow.RunIntraProcedural(ctx, s, g); err != nil {
+				return nil, fmt.Errorf(
+					"failed to run field-insensitive intra-procedural analysis: %v", err)
+			}
+		} else {
+			s.Logger.Debugf(
+				"running field-sensitive (k=%d) intra-procedural analysis on function %s...\n",
+				pathLen, g.Parent)
+			s.Config.SetPathSensitiveFunc(g.Parent.String())
+			if _, err := dataflow.RunIntraProceduralFields(ctx, s, g, pathLen); err != nil {
+				return nil, fmt.Errorf(
+					"failed to run field-sensitive intra-procedural analysis: %v", err)
+			}
 		}
 		intraUnsoundness := findUnsoundDataflowFeatures(g.Parent)
 		if !intraUnsoundness.isSound() {
@@ -70,13 +94,9 @@ func inferCalleeSummaries(
 
 	start := time.Now()
 
-	// Use mustNotFlows to determine precision for parent's intra-procedural edges
-	knownIntra := knownIntraEdges(s, g, nil, unsoundness, nodePathLen)
-	// Use parent's intra edges to determine precision for unknown inter-procedural edges
-	unknownInter := unknownInterEdges(s, g, nodePathLen)
-	// Use parent's intra edges to determine precision for unknown intra-procedural edges
-	// (edges resulting from the inter-procedural edges).
-	unknownIntra := unknownIntraEdges(s, g, unsoundness, nodePathLen, knownIntra)
+	knownIntra := knownIntraEdges(s, g, nil, unsoundness, pathLen)
+	unknownInter := unknownInterEdges(s, g, pathLen)
+	unknownIntra := unknownIntraEdges(s, g, unsoundness, pathLen, unknownInter)
 
 	// hardEdges are the edges that make up the taint flow graph of g.Parent.
 	hardEdges := slices.Concat(knownIntra, unknownInter, unknownIntra)
@@ -84,17 +104,43 @@ func inferCalleeSummaries(
 	// unknownMayFlow are the edges that make up the callee taint flow summaries.
 	unknownMayFlow := make(map[*dataflow.CallNode][]edge)
 	addCalleeMayFlowEdges(
-		s, g, via, &hardEdges, unknownMayFlow, unsoundness, nodePathLen)
+		s, g, via, &hardEdges, unknownMayFlow, unsoundness, pathLen)
+
+	// Compute must-not-flow edges.
+	knownMustNotFlow := mustNotFlowEdges(mustNotFlows, pathLen)
+	// The parent most-general summary edges are part of the taint flow graph.
+	ge := mostGeneralEdges(g, nil, General, nodePathLen)
+	var parentSummaryEdges []edge
+	for _, edg := range ge {
+		fromPaths := leafPathsUpTo(edg.from.n.Type(), pathLen)
+		toPaths := leafPathsUpTo(edg.to.n.Type(), pathLen)
+		for _, fromPath := range fromPaths {
+			for _, toPath := range toPaths {
+				fn := node{edg.from.n, edg.from.call, fromPath}
+				tn := node{edg.to.n, edg.to.call, toPath}
+				if fn != tn {
+					e := edge{fn, tn}
+					parentSummaryEdges = append(parentSummaryEdges, e)
+				}
+			}
+		}
+	}
 
 	if s.Logger.LogsTrace() {
+		dbgEdges(s, "most-general summary parent edges of "+g.Parent.Name()+":", parentSummaryEdges)
 		dbgEdges(s, "known intra parent edges of "+g.Parent.Name()+":", knownIntra)
-		dbgEdges(s, "unknown inter edges of "+g.Parent.Name()+".", unknownInter)
-		dbgEdges(s, "unknown intra edges of "+g.Parent.Name()+".", unknownIntra)
+		dbgEdges(s, "unknown inter edges of "+g.Parent.Name()+":", unknownInter)
+		dbgEdges(s, "unknown intra edges of "+g.Parent.Name()+":", unknownIntra)
 		for call, edges := range unknownMayFlow {
 			dbgEdges(s, "unknown summary edges for call "+call.CallSite().String()+":", edges)
 		}
+		dbgEdges(s, "must-not-flow edges:", knownMustNotFlow)
 	}
+
 	allEdges := make(map[edge]struct{})
+	for _, e := range parentSummaryEdges {
+		allEdges[e] = struct{}{}
+	}
 	for _, e := range hardEdges {
 		allEdges[e] = struct{}{}
 	}
@@ -103,7 +149,7 @@ func inferCalleeSummaries(
 			allEdges[e] = struct{}{}
 		}
 	}
-	s.Logger.Debugf("call to %s has %d total edges", g.Parent.String(), len(allEdges))
+	s.Logger.Debugf("total unique edges of %s: %d", g.Parent.String(), len(allEdges))
 
 	// Build MaxSAT problem
 	s.Logger.Debugf("computing problem constraints...")
@@ -111,20 +157,18 @@ func inferCalleeSummaries(
 	// Callees of the same function must have identical inferred summaries
 	summaryConstrs := buildCalleeSummaryConstrs(unknownMayFlow)
 	constraints = append(constraints, summaryConstrs...)
+	s.Logger.Debugf("\t%d hard constraints for identical callee summaries", len(summaryConstrs))
 
 	// Hard constraints for known may-flow edges
-	s.Logger.Debugf("[%d constraints] computing hard contraints for known may-flow edges",
-		len(constraints))
 	var knownConstrs []maxsat.Constr
 	for _, e := range hardEdges {
 		constr := maxsat.HardClause(mayFlow(e))
 		knownConstrs = append(knownConstrs, constr)
 	}
 	constraints = append(constraints, knownConstrs...)
+	s.Logger.Debugf("\t%d hard contraints for known may-flow edges", len(knownConstrs))
 
 	// Maximize unknown may-flow edges (minimize must-not-flow)
-	s.Logger.Debugf("[%d constraints] computing soft constraints for callee's may-flow edges",
-		len(constraints))
 	var maxConstrs []maxsat.Constr
 	for _, edges := range unknownMayFlow {
 		for _, e := range edges {
@@ -133,45 +177,25 @@ func inferCalleeSummaries(
 		}
 	}
 	constraints = append(constraints, maxConstrs...)
+	s.Logger.Debugf("\t%d soft constraints for callee's may-flow edges", len(maxConstrs))
 
 	// Transitivity
-	transitiveConstrs := buildTransitivityConstrs(s, allEdges)
-	s.Logger.Debugf("[%d constraints] added %d transitivity constraints",
-		len(constraints), len(transitiveConstrs))
+	transitiveConstrs := buildTransitivityConstrs(allEdges, pathLen)
+	s.Logger.Debugf("\t%d transitivity constraints", len(transitiveConstrs))
 	constraints = append(constraints, transitiveConstrs...)
 
 	// Block must-not-flows
-	mustNotFlowEdges := funcutil.Map(mustNotFlows, func(fl flow) edge { return newEdge(fl, nil) })
-	mnfCount := 0
-	for _, e := range mustNotFlowEdges {
-		fromPaths := leafPathsUpTo(e.from.n.Type(), nodePathLen[e.from.n])
-		toPaths := leafPathsUpTo(e.to.n.Type(), nodePathLen[e.to.n])
-		// Also include the base paths
-		fromPaths = append(fromPaths, e.from.path)
-		toPaths = append(toPaths, e.to.path)
-
-		for _, fromPath := range fromPaths {
-			for _, toPath := range toPaths {
-				fn := node{e.from.n, e.from.call, fromPath}
-				tn := node{e.to.n, e.to.call, toPath}
-				// Block if source path is subsumed by must-not-flow source
-				// AND target path is subsumed by must-not-flow target
-				if pathSubsumes(e.from.path, fn.path) && pathSubsumes(e.to.path, tn.path) {
-					edg := edge{from: fn, to: tn}
-					constr := maxsat.HardClause(mayFlow(edg).Negation())
-					constraints = append(constraints, constr)
-					mnfCount++
-				}
-			}
-		}
+	for _, e := range knownMustNotFlow {
+		constr := maxsat.HardClause(mayFlow(e).Negation())
+		constraints = append(constraints, constr)
 	}
-	s.Logger.Debugf("added %d must-not-flow constraints", mnfCount)
-	s.Logger.Debugf("computed %d constraints", len(constraints))
+	s.Logger.Debugf("\t%d must-not-flow constraints", len(knownMustNotFlow))
+	s.Logger.Debugf("... computed %d total constraints", len(constraints))
 
 	// Find the optimal cost first
 	prob := maxsat.New(constraints...)
 	s.Logger.Debugf(
-		"running callee summary inference MAXSAT solver for function %s...\n", g.Parent)
+		"running callee summary inference for function %s...\n", g.Parent)
 	startSolver := time.Now()
 	model, optimalCost := prob.Solve()
 	s.Logger.Debugf("... solver returned after %s", time.Since(startSolver))
@@ -189,8 +213,7 @@ func inferCalleeSummaries(
 	res := modelsToSummaries(s, allOptimalModels, unknownMayFlow)
 
 	s.Logger.Debugf(
-		"callee summary inference for function %s MAXSAT solver took %s\n",
-		g.Parent, time.Since(start))
+		"callee summary inference for function %s took %s\n", g.Parent, time.Since(start))
 
 	return res, nil
 }
@@ -202,8 +225,7 @@ func inferCalleeSummaries(
 // The most-general summary is computed by the method specified by parameter via.
 func addCalleeMayFlowEdges(
 	s *dataflow.State, g *dataflow.SummaryGraph, via Method,
-	hardEdges *[]edge, softEdges map[*dataflow.CallNode][]edge, unsoundness *Unsoundness,
-	nodePathLen map[dataflow.GraphNode]int,
+	hardEdges *[]edge, softEdges map[*dataflow.CallNode][]edge, unsoundness *Unsoundness, pathLen int,
 ) {
 	for _, calleeToCall := range g.Callees {
 		for callee, call := range calleeToCall {
@@ -213,10 +235,15 @@ func addCalleeMayFlowEdges(
 			}
 
 			if calleeG.Constructed {
-				edges := knownIntraEdges(s, calleeG, call, unsoundness, nodePathLen)
+				edges := knownIntraEdges(s, calleeG, call, unsoundness, pathLen)
 				*hardEdges = append(*hardEdges, edges...)
 			} else {
-				edges := mostGeneralEdges(calleeG, call, via, nodePathLen)
+				lens := make(map[dataflow.GraphNode]int)
+				for _, edg := range *hardEdges {
+					lens[edg.from.n] = pathLen
+					lens[edg.to.n] = pathLen
+				}
+				edges := mostGeneralEdges(calleeG, call, via, lens)
 				softEdges[call] = edges
 			}
 		}
@@ -272,36 +299,59 @@ func buildCalleeSummaryConstrs(unknown map[*dataflow.CallNode][]edge) []maxsat.C
 }
 
 // buildTransitivityConstrs returns a list of constraints representing the transitivity relation
-// between edges over all nodes in the graph.
-func buildTransitivityConstrs(s *dataflow.State, allEdges map[edge]struct{}) []maxsat.Constr {
-	var transitiveConstrs []maxsat.Constr
-
-	// Collect all nodes that appear in edges (these have path information)
-	allNodes := make(map[node]struct{})
-	for e := range allEdges {
-		allNodes[e.from] = struct{}{}
-		allNodes[e.to] = struct{}{}
-	}
-
-	// Field-sensitive transitivity: a->b1 ∧ b2->c ⇒ a->c where b1 subsumes b2
-	for a := range allNodes {
-		for b1 := range allNodes {
-			for b2 := range allNodes {
-				for c := range allNodes {
-					if a != b1 && b2 != c && a != c && nodeSubsumes(b1, b2) {
-						constr := maxsat.HardClause(
-							mayFlow(edge{from: a, to: b1}).Negation(),
-							mayFlow(edge{from: b2, to: c}).Negation(),
-							mayFlow(edge{from: a, to: c}),
-						)
-						transitiveConstrs = append(transitiveConstrs, constr)
+// between the transitive closure of all edges in the taint flow graph.
+func buildTransitivityConstrs(allEdges map[edge]struct{}, pathLen int) []maxsat.Constr {
+	// Compute transitive closure to ensure all transitive edges are in allEdges
+	for {
+		added := 0
+		for e1 := range allEdges {
+			for e2 := range allEdges {
+				if e1.to == e2.from {
+					transitive := edge{from: e1.from, to: e2.to}
+					if _, ok := allEdges[transitive]; !ok {
+						allEdges[transitive] = struct{}{}
+						added++
 					}
 				}
 			}
 		}
+		if added == 0 {
+			break
+		}
 	}
 
-	s.Logger.Debugf("transitivity: %d nodes, %d constraints", len(allNodes), len(transitiveConstrs))
+	var transitiveConstrs []maxsat.Constr
+	for e1 := range allEdges {
+		for e2 := range allEdges {
+			if e1 == e2 || e1.to != e2.from {
+				continue
+			}
+			a := e1.from
+			b := e1.to // same as e2.from
+			c := e2.to
+			// if a.n.Type() == b.n.Type() && a.path.len() != b.path.len() {
+			// 	panic(fmt.Errorf(
+			// 		"transitivity constraints are incorrect: invalid access path lengths for edge %v->%v", a, b))
+			// }
+			// if b.n.Type() == c.n.Type() && b.path.len() != c.path.len() {
+			// 	panic(fmt.Errorf(
+			// 		"transitivity constraints are incorrect: invalid access path lengths for edge %v->%v", b, c))
+			// }
+			// if a.n.Type() == c.n.Type() && a.path.len() != c.path.len() {
+			// 	panic(fmt.Errorf(
+			// 		"transitivity constraints are incorrect: invalid access path lengths for edge %v->%v", a, c))
+			// }
+
+			if a != b && b != c && a != c {
+				constr := maxsat.HardClause(
+					mayFlow(edge{from: a, to: b}).Negation(),
+					mayFlow(edge{from: b, to: c}).Negation(),
+					mayFlow(edge{from: a, to: c}),
+				)
+				transitiveConstrs = append(transitiveConstrs, constr)
+			}
+		}
+	}
 
 	return transitiveConstrs
 }
@@ -549,7 +599,7 @@ func (e edge) String() string {
 // The intra-procedural taint analysis is a BFS over the intra-procedural flow graph g.
 func knownIntraEdges(
 	s *dataflow.State, g *dataflow.SummaryGraph, call *dataflow.CallNode,
-	unsoundness *Unsoundness, nodePathLen map[dataflow.GraphNode]int,
+	unsoundness *Unsoundness, pathLen int,
 ) []edge {
 	// Initialize queue with the input nodes.
 	var queue []node
@@ -560,16 +610,8 @@ func knownIntraEdges(
 
 		switch n.(type) {
 		case *dataflow.ParamNode, *dataflow.AccessGlobalNode, *dataflow.FreeVarNode:
-			pl, ok := nodePathLen[n]
-			if !ok || pl == 0 {
-				// Input should be field-insensitive.
-				from := node{n: n, call: call, path: newPath("", 0)}
-				queue = append(queue, from)
-				return
-			}
-
-			// Input should be field-sensitive: taint all input field paths with length up to pl.
-			paths := leafPathsUpTo(n.Type(), pl)
+			// Taint all input field paths with length up to pl.
+			paths := leafPathsUpTo(n.Type(), pathLen)
 			for _, path := range paths {
 				from := node{n: n, call: call, path: path}
 				queue = append(queue, from)
@@ -583,19 +625,20 @@ func knownIntraEdges(
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
-		var nexts []node
+
 		if skipNode(s, cur.n, unsoundness) {
 			continue
 		}
 
 		// Add intra-procedural edges.
+		var nexts []node
 		for next, edgeInfos := range cur.n.Out() {
 			if skipNode(s, next, unsoundness) {
 				continue
 			}
 
 			for _, edgeInfo := range edgeInfos {
-				ns := nextNodes(cur, next, edgeInfo, nodePathLen)
+				ns := nextNodes(cur, next, edgeInfo, pathLen)
 				// No matching access paths for this edge
 				if len(ns) == 0 {
 					continue
@@ -621,17 +664,8 @@ func knownIntraEdges(
 }
 
 // nextNodes returns the nodes corresponding to access paths in next that match cur's access path.
-func nextNodes(
-	cur node, next dataflow.GraphNode, edgeInfo dataflow.EdgeInfo,
-	nodePathLen map[dataflow.GraphNode]int,
-) []node {
+func nextNodes(cur node, next dataflow.GraphNode, edgeInfo dataflow.EdgeInfo, pathLen int) []node {
 	var nextNodes []node
-	pl := nodePathLen[cur.n]
-	if pl == 0 {
-		return []node{{n: next, call: cur.call, path: path{}}}
-	}
-	nodePathLen[next] = pl
-
 	for inPath, outPaths := range edgeInfo.RelPath {
 		for outPath := range outPaths {
 			// NOTE In the dataflow/taint analysis, nodes and access paths are separate, so x.a and
@@ -640,20 +674,26 @@ func nextNodes(
 
 			// Logic for matching paths:
 			if strings.HasPrefix(inPath, cur.path.String()) {
-				p := newPath(outPath, pl)
+				p := newPath(outPath, pathLen)
+				if p.len() > pathLen {
+					panic(fmt.Errorf("invalid node path length: %v (pathLen=%d)", p.len(), pathLen))
+				}
+
 				n := node{n: next, call: cur.call, path: p}
 				nextNodes = append(nextNodes, n)
 			}
 		}
 	}
 	// Special cases that appear in the taint analysis implementation:
-	if len(edgeInfo.RelPath) == 0 || len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""][""] {
-		n := node{n: next, call: cur.call, path: cur.path}
-		nextNodes = []node{n}
-	}
-	if len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath["*"][""] {
-		n := node{n: next, call: cur.call, path: path{}}
-		nextNodes = []node{n}
+	if len(nextNodes) == 0 {
+		if len(edgeInfo.RelPath) == 0 || len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath[""][""] {
+			n := node{n: next, call: cur.call, path: cur.path}
+			nextNodes = []node{n}
+		}
+		if len(edgeInfo.RelPath) == 1 && edgeInfo.RelPath["*"][""] {
+			n := node{n: next, call: cur.call, path: path{}}
+			nextNodes = []node{n}
+		}
 	}
 
 	return nextNodes
@@ -664,9 +704,7 @@ func nextNodes(
 // It uses nodePathLen to determine the field-sensitivity of the nodes in each edge.
 //
 //gocyclo:ignore
-func unknownInterEdges(
-	s *dataflow.State, g *dataflow.SummaryGraph, nodePathLen map[dataflow.GraphNode]int,
-) []edge {
+func unknownInterEdges(s *dataflow.State, g *dataflow.SummaryGraph, pathLen int) []edge {
 	var res []edge
 
 	// addEdge adds edg to res with field-sensitivity if required based on nodePathLen.
@@ -674,11 +712,8 @@ func unknownInterEdges(
 	addEdge := func(edg edge) {
 		from := edg.from.n
 		to := edg.to.n
-		pl := max(nodePathLen[from], nodePathLen[to])
-		nodePathLen[from] = pl
-		nodePathLen[to] = pl
-		fromPaths := leafPathsUpTo(from.Type(), pl)
-		toPaths := leafPathsUpTo(to.Type(), pl)
+		fromPaths := leafPathsUpTo(from.Type(), pathLen)
+		toPaths := leafPathsUpTo(to.Type(), pathLen)
 		for _, fromPath := range fromPaths {
 			for _, toPath := range toPaths {
 				fn := node{edg.from.n, edg.from.call, fromPath}
@@ -763,44 +798,145 @@ func unknownInterEdges(
 
 func unknownIntraEdges(
 	s *dataflow.State, g *dataflow.SummaryGraph, unsoundness *Unsoundness,
-	nodePathLen map[dataflow.GraphNode]int, knownIntra []edge,
+	pathLen int, unknownInter []edge,
 ) []edge {
-	var res []edge
-	// Collect all edges in the graph, not just those reachable from params.
-	g.ForAllNodes(func(gn dataflow.GraphNode) {
-		if skipNode(s, gn, unsoundness) {
-			return
+	// Taint all unknown inter-procedural edge inputs and outputs that are in the parent.
+	var queue []node
+	for _, edg := range unknownInter {
+		in := edg.from
+		if in.n.Graph().Parent == g.Parent {
+			queue = append(queue, in)
+		}
+		out := edg.to
+		if out.n.Graph().Parent == g.Parent {
+			queue = append(queue, out)
+		}
+	}
+
+	var edges []edge
+	seen := make(map[node]struct{})
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+
+		if skipNode(s, cur.n, unsoundness) {
+			continue
 		}
 
-		for next, edgeInfos := range gn.Out() {
+		// Add intra-procedural edges.
+		var nexts []node
+		for next, edgeInfos := range cur.n.Out() {
 			if skipNode(s, next, unsoundness) {
 				continue
 			}
 
-			// Each gn corresponds to access paths.
-			// The precision of each access path depends on the precision of gn and next.
-			pl := max(nodePathLen[gn], nodePathLen[next])
-			nodePathLen[gn] = pl
-			nodePathLen[next] = pl
+			for _, edgeInfo := range edgeInfos {
+				ns := nextNodes(cur, next, edgeInfo, pathLen)
+				// No matching access paths for this edge
+				if len(ns) == 0 {
+					continue
+				}
+				nexts = append(nexts, ns...)
+			}
+		}
 
-			paths := leafPathsUpTo(gn.Type(), pl)
-			for _, path := range paths {
-				n := node{n: gn, call: nil, path: path}
-				for _, edgeInfo := range edgeInfos {
-					nexts := nextNodes(n, next, edgeInfo, nodePathLen)
-					for _, next := range nexts {
-						e := edge{from: n, to: next}
-						if slices.Contains(knownIntra, e) {
-							continue
-						}
-						res = append(res, e)
-					}
+		for _, next := range nexts {
+			// Add the edge regardless of whether we've seen the node before
+			e := edge{from: cur, to: next}
+			edges = append(edges, e)
+
+			if _, ok := seen[next]; ok {
+				continue
+			}
+			seen[next] = struct{}{}
+
+			// Stop propagating taint when we reach an output node of the parent function.
+			if isOutputNode(next.n) && next.n.Graph().Parent == g.Parent {
+				continue
+			}
+
+			queue = append(queue, next)
+		}
+	}
+
+	return edges
+}
+
+// mustNotFlowEdges returns edges representing the must-not-flows with access paths of length pathLen.
+func mustNotFlowEdges(mustNotFlows []flow, pathLen int) []edge {
+	mnfEdges := funcutil.Map(mustNotFlows, func(fl flow) edge { return newEdge(fl, nil) })
+	var mustNotFlowEdges []edge
+	for _, edg := range mnfEdges {
+		// Truncate paths if they're longer than pathLen
+		fromPath := edg.from.path
+		if fromPath.len() > pathLen {
+			// Create truncated path
+			var truncated path
+			for i := 0; i < pathLen; i++ {
+				truncated[i] = fromPath[i]
+			}
+			fromPath = truncated
+		}
+		toPath := edg.to.path
+		if toPath.len() > pathLen {
+			// Create truncated path
+			var truncated path
+			for i := 0; i < pathLen; i++ {
+				truncated[i] = toPath[i]
+			}
+			toPath = truncated
+		}
+
+		// If both paths already have length pathLen, use them directly
+		if fromPath.len() == pathLen && toPath.len() == pathLen {
+			from := node{edg.from.n, edg.from.call, fromPath}
+			to := node{edg.to.n, edg.to.call, toPath}
+			if from != to {
+				mustNotFlowEdges = append(mustNotFlowEdges, edge{from: from, to: to})
+			}
+			continue
+		}
+
+		// Expand to field combinations that match the specified paths
+		var fromPaths []path
+		if fromPath.len() == pathLen {
+			fromPaths = []path{fromPath}
+		} else {
+			// Enumerate all paths that start with fromPath
+			allFromPaths := leafPathsUpTo(edg.from.n.Type(), pathLen)
+			for _, p := range allFromPaths {
+				if strings.HasPrefix(p.String(), fromPath.String()) {
+					fromPaths = append(fromPaths, p)
 				}
 			}
 		}
-	})
 
-	return res
+		var toPaths []path
+		if toPath.len() == pathLen {
+			toPaths = []path{toPath}
+		} else {
+			// Enumerate all paths that start with toPath
+			allToPaths := leafPathsUpTo(edg.to.n.Type(), pathLen)
+			for _, p := range allToPaths {
+				if strings.HasPrefix(p.String(), toPath.String()) {
+					toPaths = append(toPaths, p)
+				}
+			}
+		}
+
+		for _, fp := range fromPaths {
+			for _, tp := range toPaths {
+				from := node{edg.from.n, edg.from.call, fp}
+				to := node{edg.to.n, edg.to.call, tp}
+				if from == to {
+					continue
+				}
+				mustNotFlowEdges = append(mustNotFlowEdges, edge{from: from, to: to})
+			}
+		}
+	}
+
+	return mustNotFlowEdges
 }
 
 func skipNode(s *dataflow.State, n dataflow.GraphNode, unsoundness *Unsoundness) bool {

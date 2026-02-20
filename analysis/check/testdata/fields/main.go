@@ -41,57 +41,6 @@ type container struct {
 	other *data
 }
 
-func propagateFieldsField(src, dst *container) {
-	dst.field = &data{value: src.field.value + src.field.value}
-}
-
-func propagateFieldsOther(src, dst *container) {
-	dst.other = &data{value: src.other.value + src.other.value}
-}
-
-func propagateFieldsBoth(src, dst *container) {
-	dst.other = &data{value: src.field.value + src.other.value}
-}
-
-func addVals(a, b *data) *data {
-	return &data{value: a.value + b.value}
-}
-
-func newx() *container {
-	return &container{field: &data{0}, other: &data{1}}
-}
-
-func newy() *container {
-	return &container{field: &data{2}, other: &data{2}}
-}
-
-func testFieldPropagationField() {
-	x := newx()
-	y := newy()
-	propagateFieldsField(x, y)
-	fmt.Printf(
-		"x.field:%v x.other:%v, y.field:%v y.other:%v\n",
-		x.field.value, x.other.value, y.field.value, y.other.value)
-}
-
-func testFieldPropagationOther() {
-	x := &container{field: &data{0}, other: &data{1}}
-	y := &container{field: &data{2}, other: &data{2}}
-	propagateFieldsOther(x, y)
-	fmt.Printf(
-		"x.field:%v x.other:%v, y.field:%v y.other:%v\n",
-		x.field.value, x.other.value, y.field.value, y.other.value)
-}
-
-func testFieldPropagationBoth() {
-	x := &container{field: &data{0}, other: &data{1}}
-	y := &container{field: &data{2}, other: &data{2}}
-	propagateFieldsBoth(x, y)
-	fmt.Printf(
-		"x.field:%v x.other:%v, y.field:%v y.other:%v\n",
-		x.field.value, x.other.value, y.field.value, y.other.value)
-}
-
 type tree struct {
 	n     int
 	right *tree
@@ -142,7 +91,7 @@ func threeArgInterFields(no, a, b *Pair) *Pair {
 	x := addPairFirst(*a, *a, no)
 	y := addPairFirst(*a, *b, no)
 	(*b).First = x.First + y.First
-	return b
+	return &Pair{First: b.First}
 }
 
 func testThreeArgInterFields() {
@@ -155,7 +104,7 @@ func testThreeArgInterFields() {
 
 func addPairFirst(a, b Pair, no *Pair) Pair {
 	b.First = a.First + b.First
-	return b
+	return Pair{First: b.First}
 }
 
 func addPairSecond(a, b Pair, no *Pair) Pair {
@@ -166,8 +115,9 @@ func addPairSecond(a, b Pair, no *Pair) Pair {
 func threeArgInterFieldsDiffCallees(no, a, b *Pair) *Pair {
 	x := addPairFirst(*a, *a, no)
 	y := addPairSecond(*a, *b, no)
-	(*b).Second = x.First + y.Second
-	return b
+	(*b).First = x.First + y.First
+	(*b).Second = x.Second + y.Second
+	return &Pair{First: x.First, Second: y.Second}
 }
 
 func testThreeArgInterFieldsDiffCallees() {
@@ -180,9 +130,6 @@ func testThreeArgInterFieldsDiffCallees() {
 
 func main() {
 	testIncFieldBy()
-	testFieldPropagationField()
-	testFieldPropagationOther()
-	testFieldPropagationBoth()
 	testIncRight()
 	testAppendSliceLinkedList()
 	testThreeArgInterFields()
