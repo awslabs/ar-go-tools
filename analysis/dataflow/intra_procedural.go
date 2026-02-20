@@ -86,6 +86,18 @@ func IntraProceduralAnalysis(ctx context.Context, state *State,
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
 func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, error) {
+	return runIntraProcedural(ctx, a, sm, maxAccessPathLength)
+}
+
+// RunIntraProceduralFields runs the intra-procedural analysis with field-sensitive (if required by
+// the config) access paths bounded by maxPathLen.
+func RunIntraProceduralFields(
+	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int,
+) (time.Duration, error) {
+	return runIntraProcedural(ctx, a, sm, maxPathLen)
+}
+
+func runIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int) (time.Duration, error) {
 	if sm == nil {
 		return 0, fmt.Errorf("summary graph is nil")
 	}
@@ -94,7 +106,7 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 		reportUnsoundFeatures(a, sm.unsoundness)
 	}
 	start := time.Now()
-	flowInfo := NewFlowInfo(a.Config, sm.Parent)
+	flowInfo := newFlowInfo(a.Config, sm.Parent, maxPathLen)
 	// If there  are too many variables, we will likely not be able to analyze
 	if flowInfo.NumValues > 10000 {
 		return time.Since(start), fmt.Errorf("too many values (%d) in %s", flowInfo.NumValues, sm.Parent.Name())

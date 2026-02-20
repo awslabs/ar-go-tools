@@ -58,8 +58,9 @@ type FlowInformation struct {
 	// values maps value ids to ssa.Value
 	values []ssa.Value
 
-	// pathSensitivityFilter masks values that need to be handled in a field-sensitive manner
-	pathSensitivityFilter []bool
+	// fieldLength masks values that need to be handled in a field-sensitive manner:
+	// if fieldLength[value id] > 0
+	fieldLength []int
 
 	// MarkedValues maps instructions to abstract states, i.e. a map from values to their abstract Value, which is a
 	// set of marks
@@ -71,8 +72,9 @@ type FlowInformation struct {
 	LocSet map[*Mark]map[ssa.Instruction]bool
 }
 
-// NewFlowInfo returns a new FlowInformation with all maps initialized.
-func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
+// newFlowInfo returns a new FlowInformation with field-sensitivity if required by cfg.
+// The maximum length of each access path is pathLen.
+func newFlowInfo(cfg *config.Config, f *ssa.Function, maxPathLen int) *FlowInformation {
 	valueID := map[ssa.Value]IndexT{}
 	numValues := IndexT(0)
 	lang.IterateValues(f, func(_ int, v ssa.Value) {
@@ -108,29 +110,33 @@ func NewFlowInfo(cfg *config.Config, f *ssa.Function) *FlowInformation {
 		}
 	})
 
-	pathSensitivityFilter := make([]bool, numValues)
-	pathSensitive := false
+	fieldLength := make([]int, numValues)
+	allFieldSensitive := false
 	if f != nil {
-		pathSensitive = cfg.IsPathSensitiveFunc(f.String())
+		allFieldSensitive = cfg.IsPathSensitiveFunc(f.String())
 	}
 	for i := range values {
-		pathSensitivityFilter[i] = pathSensitive
+		if allFieldSensitive {
+			fieldLength[i] = maxPathLen
+		} else {
+			fieldLength[i] = 0
+		}
 	}
 
 	return &FlowInformation{
-		Function:              f,
-		Config:                cfg,
-		marks:                 make(map[Mark]*Mark),
-		NumBlocks:             IndexT(len(f.Blocks)),
-		NumValues:             numValues,
-		NumInstructions:       numInstructions,
-		ValueID:               valueID,
-		InstrID:               instrID,
-		FirstInstr:            firstInstr,
-		values:                values,
-		pathSensitivityFilter: pathSensitivityFilter,
-		MarkedValues:          make([]*AbstractValue, numValues*numInstructions),
-		LocSet:                make(map[*Mark]map[ssa.Instruction]bool, numValues),
+		Function:        f,
+		Config:          cfg,
+		marks:           make(map[Mark]*Mark),
+		NumBlocks:       IndexT(len(f.Blocks)),
+		NumValues:       numValues,
+		NumInstructions: numInstructions,
+		ValueID:         valueID,
+		InstrID:         instrID,
+		FirstInstr:      firstInstr,
+		values:          values,
+		fieldLength:     fieldLength,
+		MarkedValues:    make([]*AbstractValue, numValues*numInstructions),
+		LocSet:          make(map[*Mark]map[ssa.Instruction]bool, numValues),
 	}
 }
 
@@ -249,7 +255,7 @@ func (fi *FlowInformation) AddMark(i ssa.Instruction, value ssa.Value,
 		abstractState.add(path, s)
 		return true
 	}
-	as := NewAbstractValue(value, fi.pathSensitivityFilter[fi.ValueID[value]])
+	as := NewAbstractValue(value, fi.fieldLength[fi.ValueID[value]])
 	as.add(path, s)
 	fi.MarkedValues[pos] = as
 	return true

@@ -65,8 +65,8 @@ type AbstractValue struct {
 	// value is the SSA value represented by that abstract value
 	value ssa.Value
 
-	// isPathSensitive indicates whether that value is represented in a path sensitive manner
-	isPathSensitive bool
+	// pathLength is the maximum length of each access path of this value.
+	pathLength int
 
 	// marks is the set of marks of the value when !isPathSensitive
 	marks map[*Mark]bool
@@ -77,27 +77,19 @@ type AbstractValue struct {
 
 // NewAbstractValue returns a new abstract value v. If pathSensitive is true, then the abstract value is represented
 // in an access path sensitive manner (marks on the value are different depending on the access path).
-func NewAbstractValue(v ssa.Value, pathSensitive bool) *AbstractValue {
-	if pathSensitive {
-		return &AbstractValue{
-			value:           v,
-			accessMarks:     map[string]map[*Mark]bool{},
-			marks:           nil,
-			isPathSensitive: true,
-		}
-	}
+func NewAbstractValue(v ssa.Value, pathLength int) *AbstractValue {
 	return &AbstractValue{
-		value:           v,
-		accessMarks:     nil,
-		marks:           map[*Mark]bool{},
-		isPathSensitive: false,
+		value:       v,
+		accessMarks: map[string]map[*Mark]bool{},
+		marks:       map[*Mark]bool{},
+		pathLength:  pathLength,
 	}
 }
 
 // PathMappings returns a map from access path to set of marks. If the abstract value is no access-path (or field)
 // sensitive, then the only access path is "".
 func (a *AbstractValue) PathMappings() map[string]map[*Mark]bool {
-	if a.isPathSensitive {
+	if a.pathLength > 0 {
 		return a.accessMarks
 	}
 	return map[string]map[*Mark]bool{"": a.marks}
@@ -120,7 +112,7 @@ func (a *AbstractValue) add(path string, mark *Mark) {
 	if a.marks == nil {
 		a.marks = map[*Mark]bool{}
 	}
-	if a.isPathSensitive {
+	if a.pathLength > 0 {
 		if c, ok := a.accessMarks[path]; !ok || c == nil {
 			a.accessMarks[path] = map[*Mark]bool{}
 		}
@@ -142,7 +134,7 @@ func (a *AbstractValue) add(path string, mark *Mark) {
 //
 // TODO: the implementation of access paths will change, and we will provide a more complete documentation then.
 func (a *AbstractValue) MarksAt(path string) []MarkWithAccessPath {
-	if path == "" || !a.isPathSensitive {
+	if path == "" || a.pathLength == 0 {
 		return a.AllMarks()
 	}
 	marks := []MarkWithAccessPath{}
@@ -169,7 +161,7 @@ func (a *AbstractValue) AllMarks() []MarkWithAccessPath {
 		return []MarkWithAccessPath{}
 	}
 	var x []MarkWithAccessPath
-	if a.isPathSensitive {
+	if a.pathLength > 0 {
 		for path, marks := range a.accessMarks {
 			for mark := range marks {
 				x = append(x, MarkWithAccessPath{mark, path})
@@ -192,8 +184,8 @@ func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
 		return false
 	}
 	modified := false
-	if a.isPathSensitive {
-		if b.isPathSensitive {
+	if a.pathLength > 0 {
+		if b.pathLength > 0 {
 			// merge a path-sensitive value into a path-sensitive one
 			// paths need to be transferred
 			for path, aMarks := range a.accessMarks {
@@ -220,7 +212,7 @@ func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
 			}
 		}
 	} else {
-		if b.isPathSensitive {
+		if b.pathLength > 0 {
 			// transfer the marks of a to the root of b (path "")
 			for mark := range a.marks {
 				if bRootMapping, ok := b.accessMarks[""]; !ok {
@@ -245,7 +237,7 @@ func (a *AbstractValue) mergeInto(b *AbstractValue) bool {
 
 // HasMarkAt returns a boolean indicating whether the abstractValue has a mark at the given path.
 func (a *AbstractValue) HasMarkAt(path string, m *Mark) bool {
-	if !a.isPathSensitive {
+	if a.pathLength == 0 {
 		return a.marks[m]
 	}
 	for _, m2 := range a.MarksAt(path) {
@@ -258,7 +250,7 @@ func (a *AbstractValue) HasMarkAt(path string, m *Mark) bool {
 
 // Show writes information about the value on the writer
 func (a *AbstractValue) Show(w io.Writer) {
-	if !a.isPathSensitive {
+	if a.pathLength == 0 {
 		for mark := range a.marks {
 			fmt.Fprintf(w, "   %s = %s marked by <%s>", a.value.Name(), a.value,
 				formatutil.Sanitize(mark.String()))
@@ -274,11 +266,11 @@ func (a *AbstractValue) Show(w io.Writer) {
 	}
 }
 
-// AccessPathsOfType returns a slice of all the possible access paths that can be used on a value of type t.
+// AccessPathsOfType returns a slice of all the possible access paths up to length k that can be used on a value of type t.
 // For example, on a value of type struct{A: map[T]S, B: string} the possible access paths are
 // ".A", ".B", ".A[*]"
-func AccessPathsOfType(t types.Type) []string {
-	return boundedAccessPathsOfType(t, maxAccessPathLength)
+func AccessPathsOfType(t types.Type, k int) []string {
+	return boundedAccessPathsOfType(t, k)
 }
 
 //gocyclo:ignore

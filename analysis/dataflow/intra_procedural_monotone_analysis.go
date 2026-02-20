@@ -98,8 +98,9 @@ func (state *IntraAnalysisState) initialize() {
 
 	// The free variables of the function are marked
 	for _, fv := range function.FreeVars {
-		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[fv]] {
-			for _, path := range AccessPathsOfType(fv.Type()) {
+		// TODO change this to controlling the access path length
+		if fl := state.flowInfo.fieldLength[state.flowInfo.ValueID[fv]]; fl > 0 {
+			for _, path := range AccessPathsOfType(fv.Type(), fl) {
 				state.flowInfo.AddMark(firstInstr, fv, path,
 					state.flowInfo.GetNewLabelledMark(fv, FreeVar, nil, NonIndexMark, path))
 			}
@@ -110,8 +111,8 @@ func (state *IntraAnalysisState) initialize() {
 	}
 	// The parameters of the function are marked as Parameter
 	for _, param := range function.Params {
-		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[param]] {
-			for _, path := range AccessPathsOfType(param.Type()) {
+		if fl := state.flowInfo.fieldLength[state.flowInfo.ValueID[param]]; fl > 0 {
+			for _, path := range AccessPathsOfType(param.Type(), fl) {
 				state.flowInfo.AddMark(firstInstr, param, path,
 					state.flowInfo.GetNewLabelledMark(param, Parameter, nil, NonIndexMark, path))
 			}
@@ -241,7 +242,7 @@ func (state *IntraAnalysisState) Pre(ins ssa.Instruction) {
 			curAbstractValue := state.flowInfo.MarkedValues[ix+vNum]
 			if curAbstractValue == nil {
 				curAbstractValue = NewAbstractValue(state.flowInfo.values[valueNum],
-					state.flowInfo.pathSensitivityFilter[valueNum])
+					state.flowInfo.fieldLength[valueNum])
 				state.flowInfo.MarkedValues[ix+vNum] = curAbstractValue
 				state.changeFlag = true
 			}
@@ -301,13 +302,13 @@ func transfer(ctx context.Context, state *IntraAnalysisState, loc ssa.Instructio
 func transferPre(ctx context.Context, state *IntraAnalysisState, loc ssa.Instruction, in ssa.Value, out ssa.Value, path string,
 	index MarkIndex, pre bool) {
 	state.checkFlowFromGlobal(ctx, loc, in, out, index)
-	isFieldSensitive := state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[out]]
+	fieldLen := state.flowInfo.fieldLength[state.flowInfo.ValueID[out]]
 	for _, origin := range state.getMarks(loc, in, path, false) {
 		state.flowInfo.SetLoc(origin.Mark, loc)
 
 		if origin.Mark.Index.Kind == NonIndex || index.Kind == NonIndex || index.Value == origin.Mark.Index.Value {
 			newPath := origin.AccessPath
-			if isFieldSensitive && pre {
+			if fieldLen > 0 && pre {
 				newPath = accessPathPrependIndexing(newPath)
 			}
 			state.markValue(ctx, loc, out, newPath, origin.Mark)
@@ -363,8 +364,8 @@ func (state *IntraAnalysisState) callCommonMark(ctx context.Context, value ssa.V
 	// Iterate over each argument and add edges and marks when necessary
 	for _, arg := range args {
 		// Mark call argument
-		if state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[arg]] {
-			for _, path := range AccessPathsOfType(arg.Type()) {
+		if fl := state.flowInfo.fieldLength[state.flowInfo.ValueID[arg]]; fl > 0 {
+			for _, path := range AccessPathsOfType(arg.Type(), fl) {
 				newMark := state.flowInfo.GetNewLabelledMark(instr.(ssa.Node), CallSiteArg, arg, NonIndexMark, path)
 				state.markValue(ctx, instr, arg, path, newMark)
 			}
@@ -388,7 +389,8 @@ func (state *IntraAnalysisState) marksToAdd(
 		return trackingMarks
 	}
 	for i := 0; i < res.Len(); i++ {
-		if value != nil && lang.CanType(value) && state.flowInfo.pathSensitivityFilter[state.flowInfo.ValueID[value]] {
+		fl := state.flowInfo.fieldLength[state.flowInfo.ValueID[value]]
+		if value != nil && lang.CanType(value) && fl > 0 {
 			actualType := value.Type()
 			switch vt := value.Type().(type) {
 			case *types.Tuple:
@@ -397,7 +399,7 @@ func (state *IntraAnalysisState) marksToAdd(
 				}
 				actualType = vt.At(i).Type()
 			}
-			for _, path := range AccessPathsOfType(actualType) {
+			for _, path := range AccessPathsOfType(actualType, fl) {
 				m := MarkWithAccessPath{
 					Mark: state.flowInfo.GetNewLabelledMark(
 						instr.(ssa.Node), CallReturn, nil, NewIndex(i), path),
