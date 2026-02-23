@@ -91,7 +91,7 @@ func threeArgInterFields(no, a, b *Pair) *Pair {
 	x := addPairFirst(*a, *a, no)
 	y := addPairFirst(*a, *b, no)
 	(*b).First = x.First + y.First
-	return &Pair{First: b.First}
+	return &Pair{First: b.First, Second: y.Second}
 }
 
 func testThreeArgInterFields() {
@@ -115,9 +115,9 @@ func addPairSecond(a, b Pair, no *Pair) Pair {
 func threeArgInterFieldsDiffCallees(no, a, b *Pair) *Pair {
 	x := addPairFirst(*a, *a, no)
 	y := addPairSecond(*a, *b, no)
-	(*b).First = x.First + y.First
-	(*b).Second = x.Second + y.Second
-	return &Pair{First: x.First, Second: y.Second}
+	(*b).First = x.First + x.Second
+	(*b).Second = y.Second + y.First
+	return &Pair{First: x.First + y.First, Second: x.Second + y.Second}
 }
 
 func testThreeArgInterFieldsDiffCallees() {
@@ -128,10 +128,32 @@ func testThreeArgInterFieldsDiffCallees() {
 	fmt.Printf("res: %v\n", res)
 }
 
+func threeArgInterTree(a, b, no *tree) {
+	mergeTreesLeft(a, b, no)
+	mergeTreesRight(a, b, no)
+}
+
+func mergeTreesLeft(a, b, no *tree) {
+	a.left.right = b.left.left
+}
+
+func mergeTreesRight(a, b, no *tree) {
+	a.right.left = b.right.right
+}
+
+func testThreeArgInterTree() {
+	a := &tree{n: 3, left: &tree{n: 2, left: &tree{n: 1}, right: &tree{n: 0}}}
+	b := &tree{n: 3, right: &tree{n: 2, right: &tree{n: 1}, left: &tree{n: 0}}}
+	no := &tree{}
+	threeArgInterTree(a, b, no)
+	fmt.Printf("a: %v\n", a)
+}
+
 func main() {
 	testIncFieldBy()
 	testIncRight()
 	testAppendSliceLinkedList()
 	testThreeArgInterFields()
 	testThreeArgInterFieldsDiffCallees()
+	testThreeArgInterTree()
 }

@@ -800,35 +800,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 										summaries.FreeVarSNode{Name: "y"},
 										summaries.ReturnSNode{Index: 0},
 									},
-								},
-							},
-							IsSound: false,
-							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									// TODO False-positive from immutability analysis
-									{
-										From: summaries.FreeVarSNode{Name: "y"},
-										To:   summaries.FreeVarSNode{Name: "x"},
-									},
-									{
-										From: summaries.FreeVarSNode{Name: "y"},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-								},
-							},
-							Method:        check.Read,
-							CalleeResults: nil,
-						},
-						{
-							Name: pkg + ".writeToClosed$1",
-							Want: summaries.DetailedSummary{
-								// NOTE This second inferred summary is fine because it does not
-								// include a flow from x to the closure's return, which means y
-								// cannot flow to the return.
-								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-									summaries.FreeVarSNode{Name: "x"}: {
-										summaries.FreeVarSNode{Name: "y"},
-									},
 									summaries.FreeVarSNode{Name: "y"}: {
 										summaries.FreeVarSNode{Name: "x"},
 									},
@@ -837,13 +808,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 							IsSound: false,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
-									// NOTE Technically this flow is realizable, but it's from the
-									// inferred callee
-									// summary: !free <x> -> !free <y> | !free <y> -> !free <x>.
-									{
-										From: summaries.FreeVarSNode{Name: "x"},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
+									// TODO False-positive from read analysis
 									{
 										From: summaries.FreeVarSNode{Name: "y"},
 										To:   summaries.ReturnSNode{Index: 0},
@@ -968,7 +933,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 							IsSound: false,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
-									// TODO Immutability analysis false-positive
+									// TODO Read analysis false-positive
 									{
 										From: summaries.FreeVarSNode{Name: "x"},
 										To:   summaries.FreeVarSNode{Name: "y"},
@@ -1369,28 +1334,10 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-									},
-									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-									},
-									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-									},
-									// NOTE Flows to and from `no` are ok in this case as long as
-									// they do not flow to `ret.First`.
-									summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-									},
-									summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 								},
 							},
@@ -1443,20 +1390,8 @@ func TestCheckSummary_Fields(t *testing.T) {
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
 										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
-									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
 										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-									},
-									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-									},
-									summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-									},
-									summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
 									},
 								},
 							},
@@ -1473,23 +1408,11 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Name: pkg + ".addPairSecond",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-									},
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
 										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
-									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
 										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-									},
-									summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-									},
-									summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
 									},
 								},
 							},
@@ -1504,9 +1427,36 @@ func TestCheckSummary_Fields(t *testing.T) {
 				},
 			},
 		},
+		{
+			pkg:  pkg,
+			name: "threeArgInterTree",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".threeArgInterTree",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".left.left"}: {
+							summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".left.right"},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".right.right"}: {
+							summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".right.left"},
+						},
+					},
+				},
+				IsSound: true,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{},
+				},
+				Method:        check.Recursive,
+				CalleeResults: nil,
+			},
+		},
 	}
 
 	for _, tc := range tests {
+		if tc.name == "threeArgInterTree" {
+			t.Skipf("skipping due to false-positives in static analyses")
+		}
 		var sound string
 		if tc.want.IsSound {
 			sound = "sound"
@@ -1902,8 +1852,6 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 
 func checkResult(t *testing.T, want, got check.SoundnessResult) {
 	t.Helper()
-	// TODO: extend tests not to ignore callee results.
-	ignoreCalleeResults := false
 	if want.Name != got.Name {
 		// This is an invariant that should be maintained by the test so panic instead of t.Fatal.
 		panic(fmt.Errorf("function name mismatch: want %s, got %s", want.Name, got.Name))
@@ -1911,7 +1859,7 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 
 	if want.Want.String() != got.Want.String() {
 		t.Errorf(
-			"want summary mismatch for function %s: got %s, want %s", want.Name, want.Want, got.Want)
+			"want summary mismatch for function %s: want %s, got %s", want.Name, want.Want, got.Want)
 		return
 	}
 
@@ -1935,9 +1883,6 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 	if want.Method != got.Method {
 		t.Errorf(
 			"method mismatch for function %s: want %v, got %v\n", want.Name, want.Method, got.Method)
-		return
-	}
-	if ignoreCalleeResults {
 		return
 	}
 

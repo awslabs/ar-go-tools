@@ -213,6 +213,9 @@ func (s DetailedSummary) String() string {
 	}
 	var entries []flowEntry
 	for input, outputs := range s.Flows {
+		slices.SortFunc(outputs, func(a, b SummaryNode) int {
+			return strings.Compare(a.String(), b.String())
+		})
 		entries = append(entries, flowEntry{input, outputs})
 	}
 	slices.SortFunc(entries, func(a, b flowEntry) int {

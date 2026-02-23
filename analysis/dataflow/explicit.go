@@ -15,6 +15,7 @@
 package dataflow
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -98,6 +99,17 @@ type VisitorNode struct {
 	AccessPaths []string
 	Status      VisitorNodeStatus
 	children    []*VisitorNode
+}
+
+func (v *VisitorNode) String() string {
+	if v == nil {
+		return ""
+	}
+	pth := v.AccessPaths[0]
+	if len(pth) == 0 {
+		pth = "[*]"
+	}
+	return fmt.Sprintf("%s%s", v.Node.String(), pth)
 }
 
 // Key returns a unique string representation for the node with its trace

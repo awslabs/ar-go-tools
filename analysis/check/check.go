@@ -262,7 +262,7 @@ func checkSummary(
 	}
 	// Use the type analysis to filter out unrealizable flows
 	calleeSummaries, err := inferCalleeSummaries(
-		ctx, s.State, g, wantFlows, unprovenMustNotFlows, &unsoundness, Types)
+		ctx, s, g, wantFlows, unprovenMustNotFlows, &unsoundness, Types)
 	if err != nil {
 		soundnessResultBase.IsSound = false
 		soundnessResultBase.Unsoundness = unsoundness
@@ -637,6 +637,13 @@ func (p path) len() int {
 	}
 
 	return maxPathLen
+}
+
+// isCoveredBy is true iff x is covered by p; i.e, p's path is a prefix of x's path.
+//
+// Stated another way, x's path *has* a prefix of p's path.
+func (p path) isCoveredBy(x path) bool {
+	return strings.HasPrefix(x.String(), p.String())
 }
 
 func (p path) String() string {

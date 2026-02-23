@@ -152,9 +152,9 @@ func testThreeArgInter() {
 
 func threeArgInterDiffCallees(no, a, b *int) int {
 	x := add1(*a, *a, no)
-	x += add2(*a, *b, no)
-	*b = x
-	return x
+	y := add2(*a, *b, no)
+	*b = x + y
+	return x + y
 }
 
 func add1(a int, b int, no *int) int {

@@ -605,6 +605,9 @@ func (a *CallNode) Equal(node GraphNode) bool {
 
 // LongID returns a string identifier for the node
 func (a *CallNode) LongID() string {
+	if a == nil || a.parent == nil {
+		return "#0"
+	}
 	return "#" + strconv.Itoa(int(a.parent.ID)) + "." + strconv.Itoa(int(a.id))
 }
 
