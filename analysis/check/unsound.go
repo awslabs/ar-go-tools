@@ -55,6 +55,9 @@ func findUnsoundCheckFeatures(
 	// Callgraph traversal
 	for len(queue) > 0 {
 		node := queue[0]
+		if node == nil {
+			continue
+		}
 		queue = queue[1:]
 		if _, ok := seen[node]; ok || node.Func == nil {
 			continue
