@@ -62,7 +62,7 @@ func mustNotFlowRead(ctx context.Context, s *State, fl flow) (bool, error) {
 					"failed to check reads from flow input value %v: %w", val, err)
 			}
 			if ok {
-				s.Logger.Debugf(
+				s.Logger.Tracef(
 					"found access of flow input value %v with path %q in must-not-flow %v: read %v at %s\n",
 					val, fl, fl.to.path, ri, s.Program.Fset.Position(ri.Pos()))
 				return false, nil

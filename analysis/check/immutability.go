@@ -102,7 +102,7 @@ func mustNotFlowImmutability(ctx context.Context, s *State, fl flow) (bool, erro
 				"failed to check writes to pointer-like value %v: %w", val, err)
 		}
 		if ok {
-			s.Logger.Debugf(
+			s.Logger.Tracef(
 				"found modification of output pointer value %v in must-not-flow %v: write %v at %s\n",
 				val, fl, writeInstr, s.Program.Fset.Position(writeInstr.Pos()))
 			return false, nil
