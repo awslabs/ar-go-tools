@@ -1171,18 +1171,11 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				// NOTE False-positive: this summary is actually sound but head.next is modified so
-				// the soundness check fails.
-				IsSound: false,
+				IsSound: true,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
-							To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
-						},
-					},
+					UnprovenMustNotFlows: []check.Flow{},
 				},
-				Method:        check.Read,
+				Method:        check.Immutability,
 				CalleeResults: [][]check.SoundnessResult{},
 			},
 		},
@@ -1251,10 +1244,6 @@ func TestCheckSummary_Fields(t *testing.T) {
 					UnprovenMustNotFlows: []check.Flow{
 						{
 							From: summaries.ArgumentSNode{Name: "n", Index: 1},
-							To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".value"},
 							To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
 						},
 					},

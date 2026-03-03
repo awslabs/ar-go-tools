@@ -33,10 +33,9 @@ import (
 // This difference is the set of must-not-flows: the flows that must not exist (there cannot be a
 // possible data flow in the program) for the summary to be sound.
 func checkSummaryMostGeneral(
-	logger *config.LogGroup, g *dataflow.SummaryGraph, nodePathLen map[dataflow.GraphNode]int,
-	wantFlows []flow,
+	logger *config.LogGroup, g *dataflow.SummaryGraph, prec *precisions, wantFlows []flow,
 ) ([]flow, error) {
-	gotFlows, err := mostGeneralFlows(g, nodePathLen)
+	gotFlows, err := mostGeneralFlows(g, prec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute most-general flows: %v", err)
 	}
@@ -45,12 +44,12 @@ func checkSummaryMostGeneral(
 	}
 
 	if logger.LogsDebug() {
-		logger.Debugf("most-general summary for %s:\n", g.Parent)
-		for _, fl := range gotFlows {
-			logger.Debugf("\t%v\n", fl)
-		}
 		logger.Debugf("want flows:\n")
 		for _, fl := range wantFlows {
+			logger.Debugf("\t%v\n", fl)
+		}
+		logger.Debugf("most-general summary for %s:\n", g.Parent)
+		for _, fl := range gotFlows {
 			logger.Debugf("\t%v\n", fl)
 		}
 	}
@@ -136,46 +135,63 @@ func filterFlowsTypes(flows []flow) []flow {
 // mostGeneralFlows returns the most-general summary for the function in g.
 // Params and free variables are both inputs and outputs.
 // Returns are only outputs.
-func mostGeneralFlows(
-	g *dataflow.SummaryGraph, nodePathLen map[dataflow.GraphNode]int,
-) ([]flow, error) {
+func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error) {
 	var flows []flow
 	seen := make(map[flow]struct{})
 	var inputs []graphNode
 	var outputs []graphNode
 	for _, param := range g.Params {
-		nodes, err := enumeratePaths(param, nodePathLen[param])
+		inputNodes, err := enumeratePaths(param, prec.inputs.nodePathLen[param])
 		if err != nil {
-			return nil, fmt.Errorf("failed to enumerate param paths: %v", err)
+			return nil, fmt.Errorf("failed to enumerate input param paths: %v", err)
 		}
-		inputs = append(inputs, nodes...)
-		outputs = append(outputs, nodes...)
+		inputs = append(inputs, inputNodes...)
+
+		outputNodes, err := enumeratePaths(param, prec.outputs.nodePathLen[param])
+		if err != nil {
+			return nil, fmt.Errorf("failed to enumerate output param paths: %v", err)
+		}
+		outputs = append(outputs, outputNodes...)
 	}
 	for _, fv := range g.FreeVars {
-		nodes, err := enumeratePaths(fv, nodePathLen[fv])
+		inputNodes, err := enumeratePaths(fv, prec.inputs.nodePathLen[fv])
 		if err != nil {
-			return nil, fmt.Errorf("failed to enumerate free var paths: %v", err)
+			return nil, fmt.Errorf("failed to enumerate input free var paths: %v", err)
 		}
-		inputs = append(inputs, nodes...)
-		outputs = append(outputs, nodes...)
+		inputs = append(inputs, inputNodes...)
+
+		outputNodes, err := enumeratePaths(fv, prec.outputs.nodePathLen[fv])
+		if err != nil {
+			return nil, fmt.Errorf("failed to enumerate output free var paths: %v", err)
+		}
+		outputs = append(outputs, outputNodes...)
 	}
 	for _, rets := range g.Returns {
 		for _, ret := range rets {
-			nodes, err := enumeratePaths(ret, nodePathLen[ret])
+			nodes, err := enumeratePaths(ret, prec.outputs.nodePathLen[ret])
 			if err != nil {
-				return nil, fmt.Errorf("failed to enumerate return paths: %v", err)
+				return nil, fmt.Errorf("failed to enumerate output return paths: %v", err)
 			}
 			outputs = append(outputs, nodes...)
 		}
 	}
 	for _, input := range inputs {
 		for _, output := range outputs {
+			// If the input is not field-sensitive (path len of 0) and the output node is an input
+			// node, then do not enumerate the paths of its outputs, even if the outputs are
+			// supposed to be field-sensitive. This is because a flow from x -> x.f is implicit and
+			// doesn't make sense to include in a summary.
+			if input.node == output.node && input.path.isCoveredBy(output.path) {
+				continue
+			}
+
 			// We don't count self-flows (input flows to same input as an output) because the data
 			// flows to and from the parameter when used as an argument at a callsite are part of
 			// the data flow of the caller's summary, not the callee's.
 			if input == output {
 				continue
 			}
+
 			fl := flow{from: input, to: output}
 			if _, ok := seen[fl]; ok {
 				continue
@@ -254,10 +270,7 @@ func leafPathsUpTo(t types.Type, k int) []path {
 				stack = append(stack, el{t: fld.Type(), p: newPath, d: cur.d + 1})
 			}
 		default:
-			// Scalar (leaf) type: add to result only if we have a non-empty path
-			if cur.d > 0 {
-				res = append(res, cur.p)
-			}
+			res = append(res, cur.p)
 		}
 	}
 
@@ -287,5 +300,28 @@ func summaryFlows(g *dataflow.SummaryGraph, summ summaries.DetailedSummary) ([]f
 		}
 	}
 
-	return flows, nil
+	// Filter out redundant flows: e.g., a -> b implies a.f -> b.f
+	var filtered []flow
+	for _, fl1 := range flows {
+		skip := false
+		if fl1.from.path.len() > 0 && fl1.to.path.len() > 0 {
+			for _, fl2 := range flows {
+				if fl1 == fl2 {
+					continue
+				}
+				if fl1.from.node == fl2.from.node && fl1.to.node == fl2.to.node {
+					if fl1.from.path.isCoveredBy(fl2.from.path) && fl1.to.path.isCoveredBy(fl2.to.path) {
+						skip = true
+						break
+					}
+				}
+			}
+		}
+		if skip {
+			continue
+		}
+		filtered = append(filtered, fl1)
+	}
+
+	return filtered, nil
 }

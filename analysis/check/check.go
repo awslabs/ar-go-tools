@@ -132,6 +132,7 @@ func CheckSummary(
 			false, fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
 	}
 
+	s.Logger.Infof("checking the soundness of summary %s ...\n", want.Summary())
 	res, err := checkSummary(ctx, s, f, want.Summary(), specs, testNaive)
 	return []SoundnessResult{res}, true, err
 }
@@ -193,8 +194,9 @@ func checkSummary(
 
 	// Determine the precision we need for the analyses by the length of the access paths in each
 	// node in summary flows.
-	nodePathLen := make(map[dataflow.GraphNode]int)
-	updatePrecision(nodePathLen, nodesOfFlows(wantFlows))
+	prec := newPrecisions(wantFlows)
+	s.Logger.Debugf("input node path len: %+v\n", prec.inputs.nodePathLen)
+	s.Logger.Debugf("ouput node path len: %+v\n", prec.outputs.nodePathLen)
 
 	for _, m := range []Method{General, Types, Immutability, Read} {
 		method = m
@@ -204,7 +206,7 @@ func checkSummary(
 		switch method {
 		case General:
 			unprovenMustNotFlows, soundnessResult, done, err = checkMethodGeneral(
-				s, f, unsoundCheckFeats, soundnessResultBase, g, wantFlows, nodePathLen, start)
+				s, f, unsoundCheckFeats, soundnessResultBase, g, wantFlows, prec, start)
 			if done {
 				return soundnessResult, err
 			}
@@ -339,7 +341,7 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 		var thisCalleeResults []SoundnessResult
 		for _, calleeSumm := range calleeSumms {
 			// Recursively check the soundness of the callee's inferred summary
-			s.Logger.Tracef(
+			s.Logger.Infof(
 				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
 			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm, specs, false)
 			if err != nil {
@@ -458,7 +460,7 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 	soundnessResultBase SoundnessResult,
 	g *dataflow.SummaryGraph,
 	wantFlows []flow,
-	nodePathLen map[dataflow.GraphNode]int,
+	prec *precisions,
 	start time.Time) ([]flow, SoundnessResult, bool, error) {
 
 	// The most-general summary is unsound if there are any globals (as we do not have
@@ -487,7 +489,7 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 		}
 	}
 
-	unprovenMustNotFlows, err := checkSummaryMostGeneral(s.Logger, g, nodePathLen, wantFlows)
+	unprovenMustNotFlows, err := checkSummaryMostGeneral(s.Logger, g, prec, wantFlows)
 	if err != nil {
 		return unprovenMustNotFlows, soundnessResultBase, false,
 			fmt.Errorf("failed to check summary via most-general: %v", err)
@@ -495,8 +497,7 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 
 	// We only need to add the precision of the unproven must-not-flows once, because the set of
 	// unproven must-not-flows only shrinks with each analysis.
-	unprovenNodes := nodesOfFlows(unprovenMustNotFlows)
-	updatePrecision(nodePathLen, unprovenNodes)
+	updateNodePrecisions(prec, unprovenMustNotFlows)
 
 	return unprovenMustNotFlows, soundnessResultBase, false, nil
 }
@@ -573,20 +574,16 @@ func (f flow) String() string {
 	return fmt.Sprintf("%s%s->%s%s", graphNodeDesc(f.from.node), f.from.path.String(), graphNodeDesc(f.to.node), f.to.path.String())
 }
 
-func nodesOfFlows(flows []flow) []graphNode {
-	var res []graphNode
-	for _, fl := range flows {
-		res = append(res, fl.from, fl.to)
-	}
-
-	return res
-}
-
 // graphNode is a dataflow.GraphNode augmented with an (empty or non-empty) access path.
 // If path is empty, that means that the graphNode refers to *all* access paths.
 type graphNode struct {
 	node dataflow.GraphNode
 	path path
+}
+
+func (n graphNode) String() string {
+	pathStr := n.path.String()
+	return graphNodeDesc(n.node) + pathStr
 }
 
 // maxPathLen is the maximum path length.
@@ -666,17 +663,119 @@ func newGraphNode(n dataflow.GraphNode, objPath string) graphNode {
 	return graphNode{n, p}
 }
 
-// updatePrecision adds the access path length of a node in nodes that the node should have to
-// nodePathLen.
+// precisions is the precision for the summary inputs and outputs.
 //
-// If two nodes are the same, it takes the lesser of the access path lengths to minimize the
-// precision required to analyze the node.
-func updatePrecision(nodePathLen map[dataflow.GraphNode]int, nodes []graphNode) {
-	for _, node := range nodes {
-		pl, ok := nodePathLen[node.node]
+// Since our static analyses (for now) check for each flow, whether the input to the flow or the
+// output from the flow are valid, it makes sense to minimize the precision for each flow
+// input/output. We want to minimize the precision because of access path subsumption: a -> b
+// implies a.f -> b.f. Minimizing precision also makes the static analyses more efficient.
+// For example, given the summary { a -> b, a.f -> b, a -> b.f }, the access path length for input
+// `a` is 0 and output `b` is also 0.
+// However, given the summary { a.f -> b.f, b -> a, b.f -> a.f }, the access path length for input
+// `a` is 1, output `a` is 0, input `b` is 0, and output `b` is 1.
+type precisions struct {
+	inputs         precision
+	outputs        precision
+	longestPathLen int
+}
+
+func newPrecisions(flows []flow) *precisions {
+	in := newInputPrecision(flows)
+	out := newOutputPrecision(flows)
+	return &precisions{
+		inputs:         in,
+		outputs:        out,
+		longestPathLen: max(in.longestPathLen, out.longestPathLen),
+	}
+}
+
+type precision struct {
+	nodePathLen    map[dataflow.GraphNode]int
+	longestPathLen int
+}
+
+func newInputPrecision(flows []flow) precision {
+	nodePathLen := make(map[dataflow.GraphNode]int)
+	longest := 0
+	for _, fl := range flows {
+		pln, ok := nodePathLen[fl.from.node]
 		if !ok {
-			pl = node.path.len()
+			pln = fl.from.path.len()
+			nodePathLen[fl.from.node] = pln
 		}
-		nodePathLen[node.node] = min(pl, node.path.len())
+		nodePathLen[fl.from.node] = min(nodePathLen[fl.from.node], pln)
+		pln = nodePathLen[fl.from.node]
+		longest = max(longest, pln)
+	}
+
+	return precision{
+		nodePathLen:    nodePathLen,
+		longestPathLen: longest,
+	}
+}
+
+func newOutputPrecision(flows []flow) precision {
+	nodePathLen := make(map[dataflow.GraphNode]int)
+	longest := 0
+	for _, fl := range flows {
+		pln, ok := nodePathLen[fl.to.node]
+		if !ok {
+			pln = fl.to.path.len()
+			nodePathLen[fl.to.node] = pln
+		}
+		nodePathLen[fl.to.node] = min(nodePathLen[fl.to.node], pln)
+
+		pln = nodePathLen[fl.to.node]
+		longest = max(longest, pln)
+	}
+
+	return precision{
+		nodePathLen:    nodePathLen,
+		longestPathLen: longest,
+	}
+}
+
+// updateNodePrecisions updates prec for flows in the same way as newPrecisions.
+// It only updates nodePathLen for inputs and outputs, not valPathLen.
+func updateNodePrecisions(prec *precisions, flows []flow) {
+	for _, fl := range flows {
+		inLen, ok := prec.inputs.nodePathLen[fl.from.node]
+		if !ok {
+			inLen = fl.from.path.len()
+		}
+		prec.inputs.nodePathLen[fl.from.node] = min(prec.inputs.nodePathLen[fl.from.node], inLen)
+
+		outLen, ok := prec.outputs.nodePathLen[fl.to.node]
+		if !ok {
+			outLen = fl.to.path.len()
+		}
+		prec.outputs.nodePathLen[fl.to.node] = min(prec.outputs.nodePathLen[fl.to.node], outLen)
+
+		// longestPathLen should be the same since the must-not-flows are derived from the wantFlows.
+	}
+}
+
+func graphNodeDesc(g dataflow.GraphNode) string {
+	switch x := g.(type) {
+	case *dataflow.ParamNode:
+		return fmt.Sprintf("param:%s", x.SsaNode().Name())
+	case *dataflow.CallNode:
+		return fmt.Sprintf("call:%s", x.CallSite().String())
+	case *dataflow.BuiltinCallNode:
+		return fmt.Sprintf("builtin-call:%s", x.CallSite().String())
+	case *dataflow.CallNodeArg:
+		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().CallSite().String())
+	case *dataflow.ReturnValNode:
+		return fmt.Sprintf("ret#%d", x.Index())
+	case *dataflow.BoundVarNode:
+		return fmt.Sprintf("bound-var:%s", x.Value().Name())
+	case *dataflow.FreeVarNode:
+		return fmt.Sprintf("free-var:%s", x.SsaNode().Name())
+	case *dataflow.AccessGlobalNode:
+		return fmt.Sprintf("global:%v", x.Global.Value())
+	case *dataflow.ClosureNode:
+		return fmt.Sprintf("closure:%v", x.Instr())
+	default:
+		panic(fmt.Errorf("unsupported node type: %v %T", g, g))
 	}
 }

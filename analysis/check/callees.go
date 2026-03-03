@@ -25,7 +25,6 @@ import (
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
@@ -49,11 +48,12 @@ func inferCalleeSummaries(
 	}
 
 	// Compute the level of precision needed for the intra-procedural analysis.
-	prec := getParentIntraPrecision(wantFlows)
+	prec := newPrecisions(wantFlows)
 	// TODO We want to use node-level precision eventually; but for now, just set the precision of
 	// every node to the precision of the most-precise node (node with the longest access path).
 	g.ForAllNodes(func(n dataflow.GraphNode) {
-		prec.nodePathLen[n] = prec.longestPathLen
+		prec.inputs.nodePathLen[n] = prec.longestPathLen
+		prec.outputs.nodePathLen[n] = prec.longestPathLen
 	})
 
 	// First run the intra-procedural analysis
@@ -63,7 +63,7 @@ func inferCalleeSummaries(
 		g = summ
 	} else {
 		start := time.Now()
-		if len(prec.valPathLen) == 0 {
+		if prec.longestPathLen == 0 {
 			s.Logger.Debugf(
 				"running field-insensitive intra-procedural analysis on function %s...\n", g.Parent)
 			if _, err := dataflow.RunIntraProcedural(ctx, s.State, g); err != nil {
@@ -83,6 +83,9 @@ func inferCalleeSummaries(
 			k := prec.longestPathLen
 			s.Logger.Debugf("\twith path length: %d\n", k)
 			s.Config.SetPathSensitiveFunc(g.Parent.String())
+			// TODO We want to use node-level precision eventually; but for now, just set the
+			// precision of every node to the precision of the most-precise node (node with the
+			// longest access path).
 			if _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k); err != nil {
 				return nil, fmt.Errorf(
 					"failed to run field-sensitive intra-procedural analysis: %v", err)
@@ -100,7 +103,6 @@ func inferCalleeSummaries(
 
 	start := time.Now()
 
-	s.Logger.Debugf("node precision based on summary: %v\n", prec.nodePathLen)
 	traces := buildGraph(s, g, prec)
 	if len(traces) == 0 {
 		return nil, fmt.Errorf("no reachable traces from inputs")
@@ -141,6 +143,7 @@ func inferCalleeSummaries(
 	s.Logger.Debugf("computing problem constraints...")
 	var constraints []maxsat.Constr
 	// Callees of the same function must have identical inferred summaries
+	// TODO This assumes that all nodes have the same precision.
 	summaryConstrs := buildCalleeSummaryConstrs(unknownMayFlow)
 	constraints = append(constraints, summaryConstrs...)
 	s.Logger.Debugf("\t%d hard constraints for identical callee summaries", len(summaryConstrs))
@@ -201,7 +204,7 @@ func inferCalleeSummaries(
 // buildGraph builds the taint flow graph of g by tainting all of the inputs with access path length
 // specified by prec.
 // It returns the set of traces representing reachable flows (edges) from an input to an output.
-func buildGraph(s *State, g *dataflow.SummaryGraph, prec precision) []trace {
+func buildGraph(s *State, g *dataflow.SummaryGraph, prec *precisions) []trace {
 	inputs := inputNodes(g, prec)
 	var traces []trace
 	for _, input := range inputs {
@@ -277,19 +280,43 @@ func newTrace(vn *dataflow.VisitorNode) trace {
 			// Inter-procedural edge from parent to callee (known)
 			from := node{n.Node, nil, fromPath}
 			to := node{next.Node, next.Trace.Label, toPath}
+			if !isInputNode(to.n) {
+				panic(fmt.Errorf(
+					"callee->parent inter-procedural edge output %v is not a func input, partial trace: %v",
+					to.n, tr))
+			}
 			tr = append(tr, newInterHardEdge(from, to))
 		} else if n.Trace.Label != nil && next.Trace.Label == nil {
 			// Inter-procedural edge from callee to parent (known)
 			from := node{n.Node, n.Trace.Label, fromPath}
+			if !isOutputNode(from.n) {
+				panic(fmt.Errorf(
+					"callee->parent inter-procedural edge input %v is not a func output, partial trace: %v",
+					from.n, tr))
+			}
 			to := node{next.Node, nil, toPath}
 			tr = append(tr, newInterHardEdge(from, to))
 		} else if n.Trace.Label != nil && next.Trace.Label != nil && n.Trace.Label == next.Trace.Label {
+			if n.Node.Graph().Constructed {
+				panic(fmt.Errorf(
+					"callee %v summary should not be constructed", n.Node.Graph().Parent.String()))
+			}
 			// Callee intra-procedural edge (unknown)
 			from := node{n.Node, n.Trace.Label, fromPath}
+			if !isInputNode(from.n) {
+				panic(fmt.Errorf(
+					"callee unknown intra-procedural edge input %v is not a func input, partial trace: %v",
+					from.n, tr))
+			}
 			to := node{next.Node, next.Trace.Label, toPath}
+			if !isOutputNode(to.n) {
+				panic(fmt.Errorf(
+					"callee unknown intra-procedural edge output %v is not a func output, partial trace: %v",
+					to.n, tr))
+			}
 			tr = append(tr, newIntraSoftEdge(from, to))
 		} else {
-			panic(fmt.Errorf("unexpected node sequence in trace: %v -> %v", n, next))
+			panic(fmt.Errorf("unexpected node sequence %v -> %v for partial trace: %v", n, next, tr))
 		}
 	}
 
@@ -470,14 +497,13 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 		case *dataflow.CallNodeArg:
 			// Flow to next call
 			callSite := graphNode.ParentNode()
-			if callSite.CalleeSummary == nil {
-				if callSite.Callee() == nil {
-					panic("callsite has no callee")
-				}
-				callSite.CalleeSummary = dataflow.NewSummaryGraph(
-					s.State, callSite.Callee(), dataflow.GetUniqueFunctionID(), nil, nil)
-				s.FlowGraph.Summaries[callSite.Callee()] = callSite.CalleeSummary
+			// NOTE This deliberately ignores any pre-constructed summaries for the callee.
+			if callSite.Callee() == nil {
+				panic("callsite has no callee")
 			}
+			callSite.CalleeSummary = dataflow.NewSummaryGraph(
+				s.State, callSite.Callee(), dataflow.GetUniqueFunctionID(), nil, nil)
+			s.FlowGraph.Summaries[callSite.Callee()] = callSite.CalleeSummary
 
 			// Obtain the parameter node of the callee corresponding to the argument in the call site
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
@@ -535,15 +561,12 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 					panic(fmt.Errorf(
 						"nil closure from call node %v in closure tracing mode", graphNode))
 				}
-				if graphNode.CalleeSummary == nil {
-					graphNode.CalleeSummary = dataflow.NewSummaryGraph(
-						s.State, currentClosure.Parent, dataflow.GetUniqueFunctionID(), nil, nil)
-					s.FlowGraph.Summaries[currentClosure.Parent] = graphNode.CalleeSummary
-				}
-				if graphNode.CalleeSummary != nil &&
-					// The following equality being true must imply that graphNode.CalleeSummary is
-					// a closure's summary.
-					graphNode.CalleeSummary == currentClosure {
+				// NOTE This deliberately ignores any pre-constructed summaries for the callee.
+				graphNode.CalleeSummary = dataflow.NewSummaryGraph(
+					s.State, currentClosure.Parent, dataflow.GetUniqueFunctionID(), nil, nil)
+				s.FlowGraph.Summaries[currentClosure.Parent] = graphNode.CalleeSummary
+
+				if graphNode.CalleeSummary == currentClosure {
 					fv := currentClosure.Parent.FreeVars[cur.Status.TracingInfo.Index]
 					if fv != nil {
 						fvNode := graphNode.CalleeSummary.FreeVars[fv]
@@ -612,11 +635,10 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 				panic(fmt.Errorf(
 					"no function for closure %v of bound var %v", closureNode, graphNode))
 			}
-			if closureNode.ClosureSummary == nil {
-				closureNode.ClosureSummary = dataflow.NewSummaryGraph(
-					s.State, closureFn, dataflow.GetUniqueFunctionID(), nil, nil)
-				s.FlowGraph.Summaries[closureFn] = closureNode.ClosureSummary
-			}
+			// NOTE This deliberately ignores any pre-constructed summaries for the closure.
+			closureNode.ClosureSummary = dataflow.NewSummaryGraph(
+				s.State, closureFn, dataflow.GetUniqueFunctionID(), nil, nil)
+			s.FlowGraph.Summaries[closureFn] = closureNode.ClosureSummary
 
 			newTrace := cur.Trace
 			if cur.Trace != nil && cur.Trace.Label != nil {
@@ -1164,27 +1186,28 @@ func (v *visitor) addNextFromCalleeOutput(
 			}
 		}
 	case *dataflow.AccessGlobalNode:
-		for f := range s.ReachableFunctions() {
-			if lang.FnReadsFrom(f, n.Global.Value()) {
-				panic("TODO global read analysis")
-			}
-		}
+		s.Logger.Errorf("TODO global read analysis for node %v in %v\n", n, n.ParentName())
 
-		// Tainted data is written to ALL locations where the global is read.
-		for nextNode := range n.Global.ReadLocations {
-			if !s.IsReachableFunction(nextNode.Graph().Parent) {
-				continue
-			}
-			// Global jump makes trace irrelevant if we don't follow the call graph!
-			nextNodeWithTrace := dataflow.NodeWithTrace{
-				Node:         nextNode,
-				Trace:        nil,
-				ClosureTrace: calleeOutput.ClosureTrace,
-			}
-			stack = v.addNext(
-				s, stack, calleeOutput, nil, nextNodeWithTrace,
-				calleeOutput.Status, dataflow.EdgeInfo{})
-		}
+		// for f := range s.ReachableFunctions() {
+		// 	if lang.FnReadsFrom(f, n.Global.Value()) {
+		// 	}
+		// }
+
+		// // Tainted data is written to ALL locations where the global is read.
+		// for nextNode := range n.Global.ReadLocations {
+		// 	if !s.IsReachableFunction(nextNode.Graph().Parent) {
+		// 		continue
+		// 	}
+		// 	// Global jump makes trace irrelevant if we don't follow the call graph!
+		// 	nextNodeWithTrace := dataflow.NodeWithTrace{
+		// 		Node:         nextNode,
+		// 		Trace:        nil,
+		// 		ClosureTrace: calleeOutput.ClosureTrace,
+		// 	}
+		// 	stack = v.addNext(
+		// 		s, stack, calleeOutput, nil, nextNodeWithTrace,
+		// 		calleeOutput.Status, dataflow.EdgeInfo{})
+		// }
 	default:
 		panic(fmt.Errorf("invalid output node type: %T", n))
 	}
@@ -1204,14 +1227,14 @@ func traceNode(s *State, cur *dataflow.VisitorNode) {
 	s.Logger.Tracef("%s  closure trace: %v\n", pad, cur.ClosureTrace)
 }
 
-func inputNodes(g *dataflow.SummaryGraph, prec precision) []*dataflow.VisitorNode {
+func inputNodes(g *dataflow.SummaryGraph, prec *precisions) []*dataflow.VisitorNode {
 	// TODO Use static analyses to filter some?
 	var inputs []*dataflow.VisitorNode
 	g.ForAllNodes(func(n dataflow.GraphNode) {
 		if isInputNode(n) {
 			var pl int
-			if len(prec.nodePathLen) > 0 {
-				if k, ok := prec.nodePathLen[n]; ok {
+			if len(prec.inputs.nodePathLen) > 0 {
+				if k, ok := prec.inputs.nodePathLen[n]; ok {
 					pl = k
 				} else {
 					// If some flows in the summary are field-sensitive but n is not in nodePathLen,
@@ -1548,31 +1571,6 @@ func (n node) String() string {
 	return fmt.Sprintf("%s_%s%s", graphNodeDesc(n.call), graphNodeDesc(n.n), pathStr)
 }
 
-func graphNodeDesc(g dataflow.GraphNode) string {
-	switch x := g.(type) {
-	case *dataflow.ParamNode:
-		return fmt.Sprintf("param:%s", x.SsaNode().Name())
-	case *dataflow.CallNode:
-		return fmt.Sprintf("call:%s", x.CallSite().String())
-	case *dataflow.BuiltinCallNode:
-		return fmt.Sprintf("builtin-call:%s", x.CallSite().String())
-	case *dataflow.CallNodeArg:
-		return fmt.Sprintf("arg#%v:%s", x.Index(), x.ParentNode().CallSite().String())
-	case *dataflow.ReturnValNode:
-		return fmt.Sprintf("ret#%d", x.Index())
-	case *dataflow.BoundVarNode:
-		return fmt.Sprintf("bound-var:%s", x.Value().Name())
-	case *dataflow.FreeVarNode:
-		return fmt.Sprintf("free-var:%s", x.SsaNode().Name())
-	case *dataflow.AccessGlobalNode:
-		return fmt.Sprintf("global:%v", x.Global.Value())
-	case *dataflow.ClosureNode:
-		return fmt.Sprintf("closure:%v", x.Instr())
-	default:
-		panic(fmt.Errorf("unsupported node type: %v %T", g, g))
-	}
-}
-
 // edge represents a inter or intra-procedural taint flow edge between two nodes.
 // It can be hard or soft.
 type edge struct {
@@ -1678,67 +1676,6 @@ func mustNotFlowEdges(mustNotFlows []flow, pathLen int) []edge {
 	return edges
 }
 
-type precision struct {
-	nodePathLen    map[dataflow.GraphNode]int
-	valPathLen     map[ssa.Value]int
-	longestPathLen int
-}
-
-// getParentIntraPrecision returns the access path length of each SSA value in the inputs of
-// wantFlows.
-// This is used for the intra-procedural dataflow analysis for the parent function.
-//
-// It tries to minimize the amount of precision necessary. For example, if there are two flows
-// a.f->b and a.f.g->b, the access path length for value `a` is 1 because a.f subsumes a.f.g.
-func getParentIntraPrecision(wantFlows []flow) precision {
-	nodePathLen := make(map[dataflow.GraphNode]int)
-	valPathLen := make(map[ssa.Value]int)
-	for _, fl := range wantFlows {
-		var val ssa.Value
-		// Only inputs need to be field-sensitive, as we do not yet know the reachable outputs.
-		switch n := fl.from.node.(type) {
-		case *dataflow.ParamNode:
-			val = n.SsaNode()
-		case *dataflow.FreeVarNode:
-			val = n.SsaNode()
-		case *dataflow.AccessGlobalNode:
-			val = n.Global.Value()
-		default:
-			panic(fmt.Errorf("unsupported input node type: %T", n))
-		}
-		pln, ok := nodePathLen[fl.from.node]
-		if !ok {
-			pln = fl.from.path.len()
-			nodePathLen[fl.from.node] = pln
-		}
-		nodePathLen[fl.from.node] = min(nodePathLen[fl.from.node], pln)
-		plv, ok := valPathLen[val]
-		if !ok {
-			plv = fl.from.path.len()
-			valPathLen[val] = plv
-		}
-		valPathLen[val] = min(valPathLen[val], plv)
-		if pln != plv {
-			panic(fmt.Errorf("invalid node/value access path length: %d != %d", pln, plv))
-		}
-
-		// Update nodePathLen for outputs.
-		pln, ok = nodePathLen[fl.to.node]
-		if !ok {
-			pln = fl.to.path.len()
-			nodePathLen[fl.to.node] = pln
-		}
-		nodePathLen[fl.to.node] = min(nodePathLen[fl.to.node], pln)
-	}
-
-	k := 0
-	for _, pl := range valPathLen {
-		k = max(k, pl)
-	}
-
-	return precision{nodePathLen: nodePathLen, valPathLen: valPathLen, longestPathLen: k}
-}
-
 // mayFlowEdgesToSummaries converts inferred edges to frontend dataflow summaries
 func mayFlowEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.DetailedSummary {
 	calleeFlows := make(map[*ssa.Function]summaries.DetailedSummary)
@@ -1754,6 +1691,17 @@ func mayFlowEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.Detaile
 				Flows: make(map[summaries.SummaryNode][]summaries.SummaryNode),
 			}
 		}
+
+		// TODO Handle globals properly: skip for now.
+		if _, ok := e.from.n.(*dataflow.AccessGlobalNode); ok {
+			fmt.Printf("[ERROR] callee summary flow input %v is a global\n", e.from.n)
+			continue
+		}
+		if _, ok := e.to.n.(*dataflow.AccessGlobalNode); ok {
+			fmt.Printf("[ERROR] callee summary flow output %v is a global\n", e.to.n)
+			continue
+		}
+
 		from := newSummaryNode(graphNode{e.from.n, e.from.path})
 		to := newSummaryNode(graphNode{e.to.n, e.to.path})
 		if slices.Contains(flows.Flows[from], to) {
