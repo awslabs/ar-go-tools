@@ -17,3 +17,5 @@ taint-report*
 # Check targets
 amazon-ssm-agent
 .amazonq
+.kiro
+.claude

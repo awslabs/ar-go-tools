@@ -13,3 +13,6 @@ boto3>=1.34.0
 # YAML handling for summaries
 pyyaml>=6.0
 
+# Rich console output
+rich>=13.0.0
+

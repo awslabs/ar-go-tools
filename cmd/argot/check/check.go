@@ -52,7 +52,7 @@ See the "Dataflow Specifications" section in the taint analysis documentation
 for information on how to write the summary file.
 
 Usage:
-  argot check --config <config file> [--filter <filter> --via <method>] 
+  argot check --config <config file> [--filter <filter> --via <method>]
 
 Where:
   <method> is one of %s`,
@@ -340,7 +340,7 @@ func checkOneSummaryWrapper(
 	s.Logger.PushContext(formatutil.Faint(formatutil.Fit(targetFunctionName, 30)))
 	defer s.Logger.PopContext()
 	s.Logger.Infof("Checking summary via %v...", via)
-	soundness, foundFunc, err := check.CheckSummary(ctx, s, summary, specs, false)
+	soundness, foundFunc, err := check.CheckSummary(ctx, s, summary, specs, via == check.Naive)
 	if !foundFunc {
 		s.Logger.Warnf("Cannot find function %s, so summary will not be checked in target (nothing to do).",
 			summary.Name())

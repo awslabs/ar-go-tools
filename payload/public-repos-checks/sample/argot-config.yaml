@@ -20,6 +20,7 @@ dataflow-problems:
   check-ignores-unsound: true  
   user-specs:
     - user-specs.yaml
+    - generated-summaries.yaml
   generate-unsoundness-report: true
   taint-tracking:
     - tag: "data-logging"
@@ -35,4 +36,3 @@ dataflow-problems:
           package: "fmt"
         - method: "PutObject"
           package: 
-          

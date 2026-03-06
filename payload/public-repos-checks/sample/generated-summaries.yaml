@@ -1,46 +1,14 @@
 dataflow-summaries:
-  # encoding/hex.EncodeToString - converts bytes to hex string
+  # encoding/hex.EncodeToString
+  # Converts bytes to hex string
   - package: "encoding/hex"
     function: "EncodeToString"
     flows:
       - from: "(!arg 0)[*]"
         to: "!ret 0"
 
-  # crypto/x509.ParseECPrivateKey - parses EC private key from DER bytes
-  # Note: Uses reflection/unsafe internally, so soundness checking may report warnings
-  - package: "crypto/x509"
-    function: "ParseECPrivateKey"
-    flows:
-      - from: "(!arg 0)[*]"
-        to: "(!ret 0).D"
-      - from: "(!arg 0)[*]"
-        to: "(!ret 0).PublicKey.X"
-      - from: "(!arg 0)[*]"
-        to: "(!ret 0).PublicKey.Y"
-      - from: "(!arg 0)[*]"
-        to: "(!ret 0).PublicKey.Curve"
-      - from: "(!arg 0)[*]"
-        to: "!ret 1"
-
-  # crypto/cipher.NewGCM - creates GCM cipher from block cipher
-  - package: "crypto/cipher"
-    function: "NewGCM"
-    flows:
-      - from: "!arg 0"
-        to: "!ret 0"
-      - from: "!arg 0"
-        to: "!ret 1"
-
-  # crypto/aes.NewCipher - creates AES cipher from key
-  - package: "crypto/aes"
-    function: "NewCipher"
-    flows:
-      - from: "(!arg 0)[*]"
-        to: "!ret 0"
-      - from: "(!arg 0)[*]"
-        to: "!ret 1"
-
-  # encoding/hex.DecodeString - decodes hex string to bytes
+  # encoding/hex.DecodeString
+  # Decodes hex string to bytes
   - package: "encoding/hex"
     function: "DecodeString"
     flows:
@@ -49,14 +17,44 @@ dataflow-summaries:
       - from: "!arg 0"
         to: "!ret 1"
 
-  # strings.TrimSpace - trims whitespace from string
+  # crypto/x509.ParseECPrivateKey
+  # Parses DER-encoded EC private key
+  - package: "crypto/x509"
+    function: "ParseECPrivateKey"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 0"
+      - from: "(!arg 0)[*]"
+        to: "!ret 1"
+
+  # crypto/cipher.NewGCM
+  # Creates GCM cipher from block cipher
+  - package: "crypto/cipher"
+    function: "NewGCM"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+
+  # crypto/aes.NewCipher
+  # Creates AES cipher from key
+  - package: "crypto/aes"
+    function: "NewCipher"
+    flows:
+      - from: "(!arg 0)[*]"
+        to: "!ret 0"
+      - from: "(!arg 0)[*]"
+        to: "!ret 1"
+
+  # strings.TrimSpace
+  # Trims whitespace from string
   - package: "strings"
     function: "TrimSpace"
     flows:
       - from: "!arg 0"
         to: "!ret 0"
 
-  # io/ioutil.ReadFile - reads file content
+  # io/ioutil.ReadFile
+  # Reads file contents
   - package: "io/ioutil"
     function: "ReadFile"
     flows:
@@ -65,15 +63,16 @@ dataflow-summaries:
       - from: "!arg 0"
         to: "!ret 1"
 
-  # github.com/aws/aws-sdk-go/aws.String - creates pointer to string
+  # github.com/aws/aws-sdk-go/aws.String
+  # Converts string value to pointer
   - package: "github.com/aws/aws-sdk-go/aws"
     function: "String"
     flows:
       - from: "!arg 0"
-        to: "(!ret 0)"
+        to: "!ret 0"
 
-  # crypto/internal/fips140/nistec/fiat P224Element.Square - squares field element
-  # Note: Returns the receiver (modified), so all receiver data flows to return value
+  # crypto/internal/fips140/nistec/fiat.*P224Element.Square
+  # Squares P224 element (modifies receiver)
   - package: "crypto/internal/fips140/nistec/fiat"
     receiver: "*P224Element"
     method: "Square"
@@ -82,24 +81,9 @@ dataflow-summaries:
         to: "(!receiver).x"
       - from: "(!arg 0).x"
         to: "(!ret 0).x"
-      - from: "!receiver"
-        to: "!ret 0"
 
-  # crypto/internal/fips140/nistec/fiat P256Element.Square - squares field element
-  # Note: Returns the receiver (modified), so all receiver data flows to return value
-  - package: "crypto/internal/fips140/nistec/fiat"
-    receiver: "*P256Element"
-    method: "Square"
-    flows:
-      - from: "(!arg 0).x"
-        to: "(!receiver).x"
-      - from: "(!arg 0).x"
-        to: "(!ret 0).x"
-      - from: "!receiver"
-        to: "!ret 0"
-
-  # crypto/internal/fips140/nistec/fiat P384Element.Square - squares field element
-  # Note: Returns the receiver (modified), so all receiver data flows to return value
+  # crypto/internal/fips140/nistec/fiat.*P384Element.Square
+  # Squares P384 element (modifies receiver)
   - package: "crypto/internal/fips140/nistec/fiat"
     receiver: "*P384Element"
     method: "Square"
@@ -108,11 +92,9 @@ dataflow-summaries:
         to: "(!receiver).x"
       - from: "(!arg 0).x"
         to: "(!ret 0).x"
-      - from: "!receiver"
-        to: "!ret 0"
 
-  # crypto/internal/fips140/nistec/fiat P521Element.Square - squares field element
-  # Note: Returns the receiver (modified), so all receiver data flows to return value
+  # crypto/internal/fips140/nistec/fiat.*P521Element.Square
+  # Squares P521 element (modifies receiver)
   - package: "crypto/internal/fips140/nistec/fiat"
     receiver: "*P521Element"
     method: "Square"
@@ -121,10 +103,9 @@ dataflow-summaries:
         to: "(!receiver).x"
       - from: "(!arg 0).x"
         to: "(!ret 0).x"
-      - from: "!receiver"
-        to: "!ret 0"
 
-  # fmt.Stringer.String - interface method for string conversion
+  # fmt.Stringer.String interface method
+  # All String() methods flow receiver to return
   - package: "fmt"
     interface: "Stringer"
     method: "String"
@@ -132,112 +113,91 @@ dataflow-summaries:
       - from: "!receiver"
         to: "!ret 0"
 
-  # github.com/aws/aws-sdk-go/private/protocol/rest.Build - builds REST request
-  # Note: This function heavily uses reflection and internal structures, 
-  # so comprehensive flow tracking is limited. The main flows are captured.
+  # github.com/aws/aws-sdk-go/private/protocol/rest.Build
+  # Builds REST request from parameters
   - package: "github.com/aws/aws-sdk-go/private/protocol/rest"
     function: "Build"
     flows:
       - from: "(!arg 0).Params"
-        to: "(!arg 0).HTTPRequest.URL"
+        to: "(!arg 0).HTTPRequest"
       - from: "(!arg 0).Params"
-        to: "(!arg 0).HTTPRequest.Header"
-      - from: "(!arg 0).Params"
-        to: "(!arg 0).HTTPRequest.Body"
-      - from: "(!arg 0).Params"
-        to: "(!arg 0).Error"
+        to: "(!arg 0).Body"
 
-  # crypto/elliptic.MarshalCompressed - marshals point to compressed form
+  # crypto/elliptic.MarshalCompressed
+  # Marshals EC point to compressed format
   - package: "crypto/elliptic"
     function: "MarshalCompressed"
     flows:
       - from: "!arg 0"
         to: "(!ret 0)[*]"
-      - from: "(!arg 1)"
+      - from: "!arg 1"
         to: "(!ret 0)[*]"
-      - from: "(!arg 2)"
+      - from: "!arg 2"
         to: "(!ret 0)[*]"
 
-  # crypto/elliptic.GenerateKey - generates ECDSA key pair
+  # crypto/elliptic.GenerateKey
+  # Generates EC key pair
   - package: "crypto/elliptic"
     function: "GenerateKey"
     flows:
       - from: "!arg 0"
         to: "(!ret 0)[*]"
+      - from: "!arg 0"
+        to: "!ret 1"
+      - from: "!arg 0"
+        to: "!ret 2"
+      - from: "!arg 0"
+        to: "!ret 3"
       - from: "!arg 1"
         to: "(!ret 0)[*]"
-      - from: "!arg 0"
-        to: "(!ret 1)"
-      - from: "!arg 1"
-        to: "(!ret 1)"
-      - from: "!arg 0"
-        to: "(!ret 2)"
-      - from: "!arg 1"
-        to: "(!ret 2)"
       - from: "!arg 1"
         to: "!ret 3"
 
-  # encoding/base64 Encoding.EncodeToString - encodes bytes to base64 string
+  # encoding/base64.*Encoding.EncodeToString
+  # Encodes bytes to base64 string
   - package: "encoding/base64"
     receiver: "*Encoding"
     method: "EncodeToString"
     flows:
+      - from: "!receiver"
+        to: "!ret 0"
       - from: "(!arg 0)[*]"
         to: "!ret 0"
-      - from: "(!receiver).encode"
-        to: "!ret 0"
 
-  # crypto/internal/fips140/hmac HMAC.Sum - computes HMAC sum
-  # Note: Modifies and appends to the input slice, returns result
-  # The receiver flows to the input argument due to internal workings of hash
+  # crypto/internal/fips140/hmac.*HMAC.Sum
+  # Computes HMAC sum
   - package: "crypto/internal/fips140/hmac"
     receiver: "*HMAC"
     method: "Sum"
     flows:
-      - from: "(!arg 0)[*]"
-        to: "(!ret 0)[*]"
       - from: "(!receiver).inner"
         to: "(!ret 0)[*]"
       - from: "(!receiver).outer"
         to: "(!ret 0)[*]"
-      - from: "(!receiver).opad[*]"
+      - from: "(!receiver).opad"
         to: "(!ret 0)[*]"
       - from: "(!receiver).keyLen"
         to: "(!ret 0)[*]"
-      - from: "!receiver"
-        to: "!arg 0"
-      - from: "!receiver"
-        to: "!ret 0"
+      - from: "(!arg 0)[*]"
+        to: "(!ret 0)[*]"
 
-  # crypto/ecdsa PrivateKey.Sign - signs digest with ECDSA private key
-  # Note: Uses unsafe/weak pointers internally, soundness checking may report warnings
+  # crypto/ecdsa.*PrivateKey.Sign
+  # Signs digest with ECDSA private key
   - package: "crypto/ecdsa"
     receiver: "*PrivateKey"
     method: "Sign"
     flows:
-      - from: "(!receiver).D"
-        to: "(!ret 0)[*]"
-      - from: "(!receiver).PublicKey.X"
-        to: "(!ret 0)[*]"
-      - from: "(!receiver).PublicKey.Y"
-        to: "(!ret 0)[*]"
-      - from: "(!receiver).PublicKey.Curve"
-        to: "(!ret 0)[*]"
-      - from: "(!arg 1)[*]"
+      - from: "!receiver"
         to: "(!ret 0)[*]"
       - from: "!arg 0"
         to: "(!ret 0)[*]"
-      - from: "!arg 2"
-        to: "(!ret 0)[*]"
-      - from: "(!receiver).D"
+      - from: "!arg 0"
         to: "!ret 1"
+      - from: "(!arg 1)[*]"
+        to: "(!ret 0)[*]"
       - from: "(!arg 1)[*]"
         to: "!ret 1"
       - from: "!arg 2"
-        to: "!ret 1"
-      - from: "!receiver"
-        to: "!ret 0"
-      - from: "!receiver"
-        to: "!ret 1"
-      - from: "!arg 0"
+        to: "(!ret 0)[*]"
+      - from: "!arg 2"
         to: "!ret 1"

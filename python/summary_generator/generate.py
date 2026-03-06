@@ -124,6 +124,10 @@ For other providers, use their model IDs:
         help="AWS region (for Bedrock)"
     )
     parser.add_argument(
+        "--stats-json",
+        help="Output file for statistics in JSON format"
+    )
+    parser.add_argument(
         "--target",
         default="main",
         help="Target name in config to analyze (default: main)"
@@ -234,6 +238,23 @@ For other providers, use their model IDs:
             print(result)
             stats = compute_statistics(log_out)
             print_statistics(stats)
+            
+            # Write stats to JSON if requested
+            if args.stats_json:
+                import json
+                # Convert datetime objects to strings for JSON serialization
+                stats_json = stats.copy()
+                if 'session' in stats_json:
+                    stats_json['session']['start'] = stats_json['session']['start'].isoformat()
+                    stats_json['session']['end'] = stats_json['session']['end'].isoformat()
+                if 'tools' in stats_json and 'timeline' in stats_json['tools']:
+                    stats_json['tools']['timeline'] = [
+                        (ts.isoformat(), tool) for ts, tool in stats_json['tools']['timeline']
+                    ]
+                
+                with open(args.stats_json, 'w') as f:
+                    json.dump(stats_json, f, indent=2)
+                print(f"Statistics written to {args.stats_json}", file=sys.stderr)
 
                 
     except Exception as e:
