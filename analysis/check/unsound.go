@@ -15,34 +15,39 @@
 package check
 
 import (
+	"context"
 	"go/token"
 	"slices"
+	"time"
 
-	"github.com/awslabs/ar-go-tools/analysis/dataflow"
-	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
+	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 )
 
 var allowedReflect = []lang.UnsafeOrReflect{
-	lang.UnsafeOrReflect{IsReflect: true, Name: "TypeOf", Pkg: "reflect"},
+	{IsReflect: true, Name: "TypeOf", Pkg: "reflect"},
 }
 
 // findUnsoundCheckFeatures returns the Go features used in all functions reachable from function f
 // according to callgraph cg that make the check analysis unsound.
+// Returns an error if ctx is cancelled (most commonly due to a timeout).
 //
 // For efficiency, it only returns the first 5 unsound features.
 //
 //gocyclo:ignore
 func findUnsoundCheckFeatures(
+	ctx context.Context,
 	s *State,
 	f *ssa.Function,
 	specs []dataflow.ScanningSpec,
-) UnsoundCheckFeatures {
+) (UnsoundCheckFeatures, error) {
 	cg := s.PointerAnalysis.CallGraph
 	queue := []*callgraph.Node{cg.Nodes[f]}
 	seen := make(map[*callgraph.Node]struct{})
@@ -52,23 +57,40 @@ func findUnsoundCheckFeatures(
 	var reflects []token.Position
 	var entrypoints []token.Position
 
+	if _, ok := ctx.Deadline(); !ok {
+		// This can take a while so set a timeout if none is set already.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+	}
+
 	// Callgraph traversal
 	for len(queue) > 0 {
 		node := queue[0]
-		if node == nil {
+		if node == nil || node.Func == nil || node.Func.Package() == nil || node.Func.Package().Pkg == nil {
 			continue
 		}
 		queue = queue[1:]
 		if _, ok := seen[node]; ok || node.Func == nil {
 			continue
 		}
+		pos := s.State.Program.Fset.Position(node.Func.Pos())
 		seen[node] = struct{}{}
 		// Skip the function if it has a summary and we are not ignoring predefined functions.
 		if !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(node.Func) {
-			s.Logger.Tracef("%s has summaries.", node.Func.String())
+			s.Logger.Tracef(
+				"ignoring checking for unsoundness: %s has summaries.", node.Func.String())
+			continue
+		} else if analysisutil.IsStandardLibFilename(pos.Filename) {
+			// ASSUMPTION: We assume that standard library functions do not compromise the soundness
+			// of a taint analysis.
+			s.Logger.Tracef(
+				"ignoring checking for unsoundness: %s is a standard library function",
+				node.Func.String())
 			continue
 		} else {
-			s.Logger.Tracef("%s does not have a summary.", node.Func.String())
+			s.Logger.Tracef(
+				"checking for unsoundness: %s does not have a summary.", node.Func.String())
 		}
 		// A function may be visited multiple times in different calling contexts so only analyze
 		// each function once.
@@ -76,6 +98,13 @@ func findUnsoundCheckFeatures(
 			continue
 		}
 		seenFunc[node.Func] = struct{}{}
+
+		// This function can take a while so handle timeouts.
+		select {
+		case <-ctx.Done():
+			return UnsoundCheckFeatures{}, ctx.Err()
+		default:
+		}
 
 		lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
 			prog := instr.Parent().Prog
@@ -112,7 +141,7 @@ func findUnsoundCheckFeatures(
 				UnsafeUsages:     unsafes,
 				ReflectUsages:    reflects,
 				EntryPointUsages: entrypoints,
-			}
+			}, nil
 		}
 
 		for _, edge := range node.Out {
@@ -125,7 +154,7 @@ func findUnsoundCheckFeatures(
 		UnsafeUsages:     unsafes,
 		ReflectUsages:    reflects,
 		EntryPointUsages: entrypoints,
-	}
+	}, nil
 }
 
 func findUnsoundDataflowFeatures(f *ssa.Function) UnsoundDataflowFeatures {
