@@ -60,7 +60,7 @@ func findUnsoundCheckFeatures(
 	if _, ok := ctx.Deadline(); !ok {
 		// This can take a while so set a timeout if none is set already.
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 	}
 
@@ -74,9 +74,16 @@ func findUnsoundCheckFeatures(
 		if _, ok := seen[node]; ok || node.Func == nil {
 			continue
 		}
-		pos := s.State.Program.Fset.Position(node.Func.Pos())
 		seen[node] = struct{}{}
+		// A function may be visited multiple times in different calling contexts so only analyze
+		// each function once.
+		if _, ok := seenFunc[node.Func]; ok {
+			continue
+		}
+		seenFunc[node.Func] = struct{}{}
+
 		// Skip the function if it has a summary and we are not ignoring predefined functions.
+		pos := s.State.Program.Fset.Position(node.Func.Pos())
 		if !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(node.Func) {
 			s.Logger.Tracef(
 				"ignoring checking for unsoundness: %s has summaries.", node.Func.String())
@@ -92,21 +99,20 @@ func findUnsoundCheckFeatures(
 			s.Logger.Tracef(
 				"checking for unsoundness: %s does not have a summary.", node.Func.String())
 		}
-		// A function may be visited multiple times in different calling contexts so only analyze
-		// each function once.
-		if _, ok := seenFunc[node.Func]; ok {
-			continue
-		}
-		seenFunc[node.Func] = struct{}{}
-
-		// This function can take a while so handle timeouts.
-		select {
-		case <-ctx.Done():
-			return UnsoundCheckFeatures{}, ctx.Err()
-		default:
-		}
-
+		timedOut := false
 		lang.IterateInstructions(node.Func, func(_ int, instr ssa.Instruction) {
+			if timedOut {
+				return
+			}
+
+			// This function can take a while so handle timeouts.
+			select {
+			case <-ctx.Done():
+				timedOut = true
+				return
+			default:
+			}
+
 			prog := instr.Parent().Prog
 			if isGlobalInstr(s, instr) {
 				pos := prog.Fset.Position(instr.Pos())
@@ -134,6 +140,10 @@ func findUnsoundCheckFeatures(
 				}
 			}
 		})
+
+		if timedOut {
+			return UnsoundCheckFeatures{}, ctx.Err()
+		}
 
 		if len(globals)+len(unsafes)+len(reflects)+len(entrypoints) >= 5 {
 			return UnsoundCheckFeatures{
