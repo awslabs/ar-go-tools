@@ -159,7 +159,13 @@ func checkSummary(
 
 	// Different sub-analyses may have different soundness requirements.
 	// Find all of the unsound features at once and then check them on a per-analysis basis.
-	unsoundCheckFeats := findUnsoundCheckFeatures(s, f, specs)
+	s.Logger.Tracef("finding unsound check features of %s ...\n", f)
+	unsoundCheckFeats, err := findUnsoundCheckFeatures(ctx, s, f, specs)
+	if err != nil {
+		s.Logger.Errorf("assuming %s is unsound: failed to find unsound check features: %v", f, err)
+		return SoundnessResult{IsSound: false}, nil
+	}
+	s.Logger.Tracef("unsound check features of %s: %+v\n", f, unsoundCheckFeats)
 
 	start := time.Now()
 	soundnessResultBase := SoundnessResult{

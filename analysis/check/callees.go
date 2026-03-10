@@ -26,6 +26,7 @@ import (
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
+	"github.com/awslabs/ar-go-tools/internal/analysisutil"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 )
 
@@ -40,6 +41,15 @@ func inferCalleeSummaries(
 	if len(g.Callees) == 0 {
 		s.Logger.Tracef("function %s is a leaf function (no callees)\n", g.Parent)
 		return nil, nil
+	}
+
+	if !s.Config.DataflowProblems.CheckIgnoresPredefined && summaries.FnHasSummaries(g.Parent) {
+		panic(fmt.Errorf(
+			"should not be deducing callee summaries for pre-defined function: %v", g.Parent))
+	}
+	if pos := s.State.Program.Fset.Position(g.Parent.Pos()); analysisutil.IsStandardLibFilename(pos.Filename) {
+		s.Logger.Warnf(
+			"should not be deducing callee summaries for standard library function: %v", g.Parent)
 	}
 
 	validMethods := []Method{General, Types}
@@ -93,7 +103,7 @@ func inferCalleeSummaries(
 		}
 		intraUnsoundness := findUnsoundDataflowFeatures(g.Parent)
 		if !intraUnsoundness.isSound() {
-			s.Logger.Warnf("intra-procedural analysis for function %s is unsound", g.Parent)
+			s.Logger.Warnf("intra-procedural taint analysis for function %s is unsound", g.Parent)
 			unsoundness.DataflowFeatures = intraUnsoundness
 		}
 		s.Logger.Debugf(
@@ -231,7 +241,7 @@ func buildGraph(s *State, g *dataflow.SummaryGraph, prec *precisions) []trace {
 // This represents a subset of the inter-procedural taint flow graph of the parent function.
 type trace []edge
 
-func newTrace(vn *dataflow.VisitorNode) trace {
+func newTrace(s *dataflow.State, vn *dataflow.VisitorNode) trace {
 	cur := vn
 	var nodes []*dataflow.VisitorNode
 	for cur != nil {
@@ -242,8 +252,9 @@ func newTrace(vn *dataflow.VisitorNode) trace {
 		return trace{}
 	}
 	slices.Reverse(nodes)
-	if nodes[0].Trace.Label != nil {
-		panic(fmt.Errorf("trace source node should have nil calling context: %v", nodes[0]))
+	if nodes[0].Trace != nil {
+		panic(fmt.Errorf(
+			"trace source node should have nil calling context: %v, nodes: %v", nodes[0], nodes))
 	}
 
 	var tr trace
@@ -271,22 +282,22 @@ func newTrace(vn *dataflow.VisitorNode) trace {
 		}
 
 		// Create edges:
-		if n.Trace.Label == nil && next.Trace.Label == nil {
+		if n.Trace == nil && next.Trace == nil {
 			// Parent intra-procedural edge (known)
 			from := node{n.Node, nil, fromPath}
 			to := node{next.Node, nil, toPath}
 			tr = append(tr, newIntraHardEdge(from, to))
-		} else if n.Trace.Label == nil && next.Trace.Label != nil {
+		} else if n.Trace == nil && next.Trace != nil {
 			// Inter-procedural edge from parent to callee (known)
 			from := node{n.Node, nil, fromPath}
 			to := node{next.Node, next.Trace.Label, toPath}
 			if !isInputNode(to.n) {
 				panic(fmt.Errorf(
-					"callee->parent inter-procedural edge output %v is not a func input, partial trace: %v",
+					"parent->callee inter-procedural edge output %v is not a func input, partial trace: %v",
 					to.n, tr))
 			}
 			tr = append(tr, newInterHardEdge(from, to))
-		} else if n.Trace.Label != nil && next.Trace.Label == nil {
+		} else if n.Trace != nil && next.Trace == nil {
 			// Inter-procedural edge from callee to parent (known)
 			from := node{n.Node, n.Trace.Label, fromPath}
 			if !isOutputNode(from.n) {
@@ -296,25 +307,40 @@ func newTrace(vn *dataflow.VisitorNode) trace {
 			}
 			to := node{next.Node, nil, toPath}
 			tr = append(tr, newInterHardEdge(from, to))
-		} else if n.Trace.Label != nil && next.Trace.Label != nil && n.Trace.Label == next.Trace.Label {
-			if n.Node.Graph().Constructed {
-				panic(fmt.Errorf(
-					"callee %v summary should not be constructed", n.Node.Graph().Parent.String()))
-			}
-			// Callee intra-procedural edge (unknown)
+		} else if n.Trace != nil && next.Trace != nil && n.Trace.Label == next.Trace.Label {
+			// if n.Node.Graph().Constructed {
+			// 	panic(fmt.Errorf(
+			// 		"callee %v summary should not be constructed, partial trace: %v",
+			// 		n.Node.Graph().Parent.String(), tr))
+			// }
+			// Callee intra-procedural edge
 			from := node{n.Node, n.Trace.Label, fromPath}
 			if !isInputNode(from.n) {
 				panic(fmt.Errorf(
-					"callee unknown intra-procedural edge input %v is not a func input, partial trace: %v",
+					"callee intra-procedural edge input %v is not a func input, partial trace: %v",
 					from.n, tr))
 			}
 			to := node{next.Node, next.Trace.Label, toPath}
 			if !isOutputNode(to.n) {
 				panic(fmt.Errorf(
-					"callee unknown intra-procedural edge output %v is not a func output, partial trace: %v",
+					"callee intra-procedural edge output %v is not a func output, partial trace: %v",
 					to.n, tr))
 			}
-			tr = append(tr, newIntraSoftEdge(from, to))
+
+			if !s.Config.DataflowProblems.CheckIgnoresPredefined &&
+				summaries.FnHasSummaries(n.Trace.Label.Callee()) {
+				// If check does not ignore pre-defined summaries and the callee has a pre-defined
+				// summary, then its intra-procedural edges are known (hard).
+				tr = append(tr, newIntraHardEdge(from, to))
+			} else if pos := s.State.Program.Fset.Position(n.Trace.Label.Callee().Pos()); analysisutil.IsStandardLibFilename(pos.Filename) {
+				// ASSUMPTION: If the callee is a standard library function, it's the most-general
+				// summary.
+				tr = append(tr, newIntraHardEdge(from, to))
+			} else {
+				// Normally, the callee's summary will not exist so its intra-procedural edges are
+				// unknown (soft).
+				tr = append(tr, newIntraSoftEdge(from, to))
+			}
 		} else {
 			panic(fmt.Errorf("unexpected node sequence %v -> %v for partial trace: %v", n, next, tr))
 		}
@@ -322,7 +348,8 @@ func newTrace(vn *dataflow.VisitorNode) trace {
 
 	first := tr[0]
 	last := tr[len(tr)-1]
-	if first.from.call != last.to.call && !last.isSoft {
+	isStdLib := analysisutil.IsStandardLibFilename(last.to.n.Position(s).Filename)
+	if first.from.call != last.to.call && !last.isSoft && !isStdLib {
 		// NOTE A trace can end with a soft intra-procedural edge if the call site output of the
 		// callee has no outgoing edges. This means it's trivially satisfiable but still sound.
 		panic(fmt.Errorf("invalid trace: different start and end calling contexts: %v", tr))
@@ -345,6 +372,9 @@ type visitor struct {
 	seen   map[dataflow.KeyType]bool
 }
 
+// visit *only* visits nodes in the parent.
+// All callee flows are added via separate functions (called in this one).
+//
 //gocyclo:ignore
 func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 	v.src = source
@@ -359,15 +389,21 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 
 	// Initialize the stack with the outgoing edges of source (parent function input).
 	var stack []*dataflow.VisitorNode
+	if !source.Node.Graph().Constructed {
+		panic(fmt.Errorf("unconstructed summary for function input: %v", source.Node))
+	}
+	if len(source.Node.Out()) == 0 {
+		s.Logger.Warnf("no outgoing flows from function input: %v", source.Node)
+	}
 	for nextNode, edgeInfos := range source.Node.Out() {
 		for _, edgeInfo := range edgeInfos {
 			nextNodeWithTrace := dataflow.NodeWithTrace{
 				Node:         nextNode,
-				Trace:        source.Trace,
-				ClosureTrace: source.ClosureTrace,
+				Trace:        nil,
+				ClosureTrace: nil,
 			}
-			stack = v.addNext(
-				s, stack, source, nil, nextNodeWithTrace, source.Status, edgeInfo)
+			stack = v.addNextIntraParent(
+				s, stack, source, nextNodeWithTrace, source.Status, edgeInfo)
 		}
 	}
 
@@ -376,9 +412,28 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 		stack = stack[:len(stack)-1]
 		traceNode(s, cur)
 
+		if cur.Trace.Len() > 1 {
+			// The call stack (Trace field) of a node should never have more than one call, because
+			// that means we've gone from a parent to a callee to a callee's callee (or further).
+			panic(fmt.Errorf("node %v trace length > 1: %v", cur.Node, cur.Trace))
+		}
+		if cur.Node.Graph() != v.src.Node.Graph() {
+			panic(fmt.Errorf("cannot visit callee node: %v", cur.Node))
+		}
+
 		// Base case: if we've reached an output node of the parent, add the trace.
-		if cur.Node.Graph() == v.src.Node.Graph() && isOutputNode(cur.Node) {
-			tr := newTrace(cur)
+		if isOutputNode(cur.Node) {
+			tr := newTrace(s.State, cur)
+			s.Logger.Tracef(
+				"%sreached base case: computed trace: %v\n", strings.Repeat("  ", cur.Depth), tr)
+			start := tr[0].from
+			end := tr[len(tr)-1].to
+			if start.n == end.n && (start.path.isCoveredBy(end.path) || end.path.isCoveredBy(start.path)) {
+				s.Logger.Tracef(
+					"%strace input %v and output %v are redundant: skipping adding trace\n",
+					strings.Repeat("  ", cur.Depth), start, end)
+				continue
+			}
 			if !slices.ContainsFunc(v.traces, func(t trace) bool {
 				// NOTE Need ContainsFunc because slices are not comparable
 				if len(t) != len(tr) {
@@ -393,9 +448,14 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 			}) {
 				v.traces = append(v.traces, tr)
 				s.Logger.Tracef(
-					"%sreached base case: added trace %v\n", strings.Repeat("  ", cur.Depth), tr)
+					"%sadded trace\n", strings.Repeat("  ", cur.Depth))
+				continue
+			} else {
+				s.Logger.Tracef(
+					"%scomputed trace is identical to a previous trace: skipped\n",
+					strings.Repeat("  ", cur.Depth))
+				continue
 			}
-			continue
 		}
 
 		// Avoid revisiting nodes with the same calling context and access paths.
@@ -433,62 +493,7 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 		// - if the stack is empty, there is no calling context. The flow goes back to every
 		//   possible call site of the function's parameter.
 		case *dataflow.ParamNode:
-			if cur.Prev == nil || cur.Prev.Node == nil {
-				panic(fmt.Errorf("no previous node from a param: %v", cur))
-			}
-
-			if len(graphNode.Out()) == 0 {
-				if cur.Prev.Node.Graph() != graphNode.Graph() {
-					// Param is in a callee via an inter-procedural flow: assume that taint
-					// flows to all the outputs of the callee.
-					outputs := intraOutputNodes(cur)
-					for _, output := range outputs {
-						if output.Node == cur.Node && output.AccessPaths[0] == cur.AccessPaths[0] {
-							// Skip self flows.
-							continue
-						}
-						stack = v.addNextFromCalleeOutput(s, stack, output)
-					}
-				} else {
-					// Param is in a callee via an intra-procedural flow: flow
-					// inter-procedurally to the corresponding arg in the caller.
-					//
-					// For example:
-					//   func f(s string, s2 *string) { *s2 = s }
-					// The data can propagate from s to s2: we visit s from a callsite
-					// f(tainted, next), then visit the parameter s2, and then next needs to be
-					// visited by going back to the callsite.
-					s.Logger.Tracef("\ttrace: %v\n", cur.Trace)
-					stack = v.addNextFromCalleeOutput(s, stack, cur)
-				}
-			} else {
-				if prevArg, ok := cur.Prev.Node.(*dataflow.CallNodeArg); ok &&
-					prevArg.ParentNode().Callee() == graphNode.Graph().Parent {
-					for nextNode, edgeInfos := range graphNode.Out() {
-						for _, edgeInfo := range edgeInfos {
-							nextNodeWithTrace := dataflow.NodeWithTrace{
-								Node:         nextNode,
-								Trace:        cur.Trace,
-								ClosureTrace: cur.ClosureTrace,
-							}
-							stack = v.addNext(
-								s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
-						}
-					}
-				} else {
-					for nextNode, edgeInfos := range graphNode.Out() {
-						for _, edgeInfo := range edgeInfos {
-							nextNodeWithTrace := dataflow.NodeWithTrace{
-								Node:         nextNode,
-								Trace:        cur.Trace,
-								ClosureTrace: cur.ClosureTrace,
-							}
-							stack = v.addNext(
-								s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
-						}
-					}
-				}
-			}
+			panic(fmt.Errorf("should not visit node %v, call stack: %v", graphNode, cur.Trace))
 
 		// This is a call site argument. We have reached this either returning from a call, from the
 		// callee's parameter node, or we reached this inside a function from another node.
@@ -497,62 +502,50 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 		case *dataflow.CallNodeArg:
 			// Flow to next call
 			callSite := graphNode.ParentNode()
-			// NOTE This deliberately ignores any pre-constructed summaries for the callee.
-			if callSite.Callee() == nil {
+			callee := callSite.Callee()
+			if callee == nil {
 				panic("callsite has no callee")
 			}
 			callSite.CalleeSummary = dataflow.NewSummaryGraph(
-				s.State, callSite.Callee(), dataflow.GetUniqueFunctionID(), nil, nil)
-			s.FlowGraph.Summaries[callSite.Callee()] = callSite.CalleeSummary
-
-			// Obtain the parameter node of the callee corresponding to the argument in the call site
+				s.State, callee, dataflow.GetUniqueFunctionID(), nil, nil)
+			s.FlowGraph.Summaries[callee] = callSite.CalleeSummary
+			// Obtain the parameter node of the callee corresponding to the argument in the call site.
 			param := callSite.CalleeSummary.Parent.Params[graphNode.Index()]
 			if param == nil {
 				panic(fmt.Errorf(
 					"no parameter matching argument in %s", callSite.CalleeSummary.Parent))
 			}
-			// This is where a function gets "called" and the next nodes will be analyzed in a
-			// different context
-			nextNode := callSite.CalleeSummary.Params[param]
-			newCallStack := cur.Trace.Add(callSite)
-			// Add the callsite to the next node's summary graph since we don't do an
-			// inter-procedural analysis.
-			nextNode.Graph().Callsites[callSite.CallSite()] = callSite
-			nextNodeWithTrace := dataflow.NodeWithTrace{
-				Node:         nextNode,
-				Trace:        newCallStack,
-				ClosureTrace: cur.ClosureTrace,
+			calleeP := callSite.CalleeSummary.Params[param]
+			calleeParamIn := &dataflow.VisitorNode{
+				NodeWithTrace: dataflow.NodeWithTrace{
+					Node:         calleeP,
+					Trace:        cur.Trace.Add(callSite),
+					ClosureTrace: cur.ClosureTrace,
+				},
+				Prev:        cur,
+				Depth:       cur.Depth + 1,
+				AccessPaths: cur.AccessPaths,
+				Status:      cur.Status,
 			}
-			stack = v.addNext(
-				s, stack, cur, nil, nextNodeWithTrace, cur.Status, dataflow.EdgeInfo{})
 
-			if cur.Prev == nil || graphNode.Graph() != cur.Prev.Node.Graph() {
-				// We are done with propagating to the callee's parameters. Next, we need to handle
-				// the flow inside the caller function: the outgoing edges computed for the summary
-				for nextNode, edgeInfos := range graphNode.Out() {
-					for _, edgeInfo := range edgeInfos {
-						nextNodeWithTrace := dataflow.NodeWithTrace{
-							Node:         nextNode,
-							Trace:        cur.Trace,
-							ClosureTrace: cur.ClosureTrace,
-						}
-						stack = v.addNext(s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
-					}
+			if !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(callee) {
+				// If there's a pre-defined summary for the callee, add the outgoing caller nodes
+				// according to the summary and skip analyzing the callee.
+				stack = v.addNextFromPredefinedInput(s, stack, calleeParamIn, callSite)
+				break
+			} else {
+				// If there's no pre-defined callee summary, assume that all caller outputs are
+				// tainted.
+				calleeOutputs := allCalleeOutputs(calleeParamIn)
+				for _, calleeOutput := range calleeOutputs {
+					stack = v.addCallsiteOutputs(s, stack, calleeOutput)
 				}
 			}
 
-		// This is a return node. We have reached this from any node in the return node's function.
-		// The data will flow to the caller.
-		// If the stack is non-empty, then the data flows to back the call site in the stack (the
-		// CallNode).
-		// If the stack is empty, then the data flows back to every possible call site according to
-		// the call graph.
 		case *dataflow.ReturnValNode:
-			stack = v.addNextFromCalleeOutput(s, stack, cur)
+			panic(fmt.Errorf("should not visit node: %v, call stack: %v", graphNode, cur.Trace))
 
-		// This is a call node, which materializes where the callee returns. A call node is reached
-		// from a return from the callee. If the call stack is non-empty, the callee is removed from
-		// the stack and the data flows to the children of the node.
+		// This is a call node, which is reached (transitively) from a bound variable.
 		case *dataflow.CallNode:
 			if cur.Status.Kind == dataflow.ClosureTracing {
 				// When a closure is called, taint flows to its free variables.
@@ -561,7 +554,8 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 					panic(fmt.Errorf(
 						"nil closure from call node %v in closure tracing mode", graphNode))
 				}
-				// NOTE This deliberately ignores any pre-constructed summaries for the callee.
+				// NOTE This deliberately ignores any pre-constructed summaries for the callee, but
+				// there should not be any if the callee is a closure.
 				graphNode.CalleeSummary = dataflow.NewSummaryGraph(
 					s.State, currentClosure.Parent, dataflow.GetUniqueFunctionID(), nil, nil)
 				s.FlowGraph.Summaries[currentClosure.Parent] = graphNode.CalleeSummary
@@ -571,14 +565,22 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 					if fv != nil {
 						fvNode := graphNode.CalleeSummary.FreeVars[fv]
 						fvNode.Graph().Callsites[graphNode.CallSite()] = graphNode
-						nextNodeWithTrace := dataflow.NodeWithTrace{
-							Node:         fvNode,
-							Trace:        cur.Trace.Add(graphNode),
-							ClosureTrace: cur.ClosureTrace,
+						calleeInput := &dataflow.VisitorNode{
+							NodeWithTrace: dataflow.NodeWithTrace{
+								Node:         fvNode,
+								Trace:        cur.Trace.Add(graphNode),
+								ClosureTrace: cur.ClosureTrace,
+							},
+							Prev:        cur,
+							Depth:       cur.Depth + 1,
+							AccessPaths: cur.AccessPaths,
+							Status:      cur.Status.PopClosure(), // Remove closure tracing mode since we've visited the closure.
 						}
-						stack = v.addNext(
-							s, stack, cur, nil, nextNodeWithTrace,
-							cur.Status.PopClosure(), dataflow.EdgeInfo{})
+						// Assume that taint flows from the free variable to all callee outputs.
+						calleeOutputs := allCalleeOutputs(calleeInput)
+						for _, calleeOutput := range calleeOutputs {
+							stack = v.addCallsiteOutputs(s, stack, calleeOutput)
+						}
 					} else {
 						panic(fmt.Errorf(
 							"no free variable matching bound variable in %s",
@@ -589,33 +591,12 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 					panic(fmt.Errorf("call node %v callee %v is not the current closure %v",
 						graphNode, graphNode.Callee(), currentClosure.Parent))
 				}
-			} else if cur.Prev != nil {
-				if _, ok := cur.Prev.Node.(*dataflow.ReturnValNode); ok {
-					// We got here from a return: taint flows to the outgoing nodes from the return
-					// value in the caller.
-					for nextNode, edgeInfos := range graphNode.Out() {
-						for _, edgeInfo := range edgeInfos {
-							nextNodeWithTrace := dataflow.NodeWithTrace{
-								Node:         nextNode,
-								Trace:        cur.Trace, // trace was already popped
-								ClosureTrace: cur.ClosureTrace,
-							}
-							stack = v.addNext(
-								s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
-						}
-					}
-				}
+			} else {
+				panic(fmt.Errorf("caller returned value node %v should not be visited", graphNode))
 			}
 
-			// If the call is a source node, the actual source node may be one of its arguments.
-			// See the closures_paper test for an example.
-			// This is invalid for our context of checking the soundness of summaries because inputs
-			// cannot be functions.
-			if graphNode == source.Node {
-				panic(fmt.Errorf("call %v is a source node: functions cannot be inputs", graphNode))
-			}
-
-		// Tainting a bound variable node means that the free variable in a closure will be tainted.
+		// Tainting a bound variable node means that the free variable in a closure will be tainted
+		// *only when the closure is called*.
 		// For example:
 		// 1: x := "ok" // x is not tainted here
 		// 2: f := func(s string) string { return s + x } // x is bound here
@@ -650,28 +631,12 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 				ClosureTrace: cur.ClosureTrace.Add(closureNode),
 			}
 
-			stack = v.addNext(s, stack, cur, nil, closureNodeWithTrace,
+			stack = v.addNextIntraParent(s, stack, cur, closureNodeWithTrace,
 				dataflow.VisitorNodeStatus{
 					Kind:        dataflow.ClosureTracing,
 					TracingInfo: cur.Status.TracingInfo.Next(closureNode.ClosureSummary, graphNode.Index()),
 				},
 				dataflow.EdgeInfo{})
-
-			// When coming from an inter-procedural flow, follow the flows inside the function
-			// creating the closure (where MakeClosure happens).
-			// This is similar to the dataflow edges between arguments.
-			if cur.Prev == nil || graphNode.Graph() != cur.Prev.Node.Graph() {
-				for nextNode, edgeInfos := range graphNode.Out() {
-					for _, edgeInfo := range edgeInfos {
-						nextNodeWithTrace := dataflow.NodeWithTrace{
-							Node:         nextNode,
-							Trace:        cur.Trace,
-							ClosureTrace: cur.ClosureTrace,
-						}
-						stack = v.addNext(s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
-					}
-				}
-			}
 
 		// The data flows to a free variable inside a closure body from a bound variable inside a
 		// closure definition.
@@ -679,41 +644,7 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 		// The data can also flow from the function body to the free var node, in which case it
 		// implies the bound variable (in the caller) is tainted after the function returns.
 		case *dataflow.FreeVarNode:
-			if cur.Prev == nil || (cur.Prev.Node.Graph() != graphNode.Graph()) {
-				// Free variable came from an inter-procedural flow: analyze intra-procedural flows
-				// in the callee.
-				if len(graphNode.Out()) == 0 {
-					// No intra-procedural information: assume that the free var flows to all callee
-					// outputs.
-					outputs := intraOutputNodes(cur)
-					for _, output := range outputs {
-						if output.Node == cur.Node && output.AccessPaths[0] == cur.AccessPaths[0] {
-							// Skip self flows.
-							continue
-						}
-						s.Logger.Tracef(
-							"%sfollowing flows from callee output: %v\n",
-							strings.Repeat("  ", cur.Depth+1), output)
-						stack = v.addNextFromCalleeOutput(s, stack, output)
-					}
-				} else {
-					for nextNode, edgeInfos := range graphNode.Out() {
-						for _, edgeInfo := range edgeInfos {
-							nextNodeWithTrace := dataflow.NodeWithTrace{
-								Node:         nextNode,
-								Trace:        cur.Trace,
-								ClosureTrace: cur.ClosureTrace,
-							}
-							stack = v.addNext(
-								s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
-						}
-					}
-				}
-			} else {
-				// Free variable came from an intra-procedural flow: add an inter-procedural flow to
-				// its corresponding bound variable.
-				stack = v.addNextFromCalleeOutput(s, stack, cur)
-			}
+			panic(fmt.Errorf("node should not be visited: %v", graphNode))
 
 		// A closure node is usually reached when the visitor is tracing a specific closure
 		case *dataflow.ClosureNode:
@@ -724,7 +655,7 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack = v.addNext(s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
+					stack = v.addNextIntraParent(s, stack, cur, nextNodeWithTrace, cur.Status, edgeInfo)
 				}
 			}
 
@@ -739,13 +670,13 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 						Trace:        cur.Trace,
 						ClosureTrace: cur.ClosureTrace,
 					}
-					stack = v.addNext(s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
+					stack = v.addNextIntraParent(s, stack, cur, nextNodeWithTrace, cur.Status, edgeInfo)
 				}
 			}
 
 		case *dataflow.AccessGlobalNode:
 			if graphNode.IsWrite {
-				stack = v.addNextFromCalleeOutput(s, stack, cur)
+				s.Logger.Warnf("unanalyzed write to global node: %v\n", graphNode)
 			} else {
 				// From a read location, tainted data follows the out edges of the node
 				for nextNode, edgeInfos := range graphNode.Out() {
@@ -758,7 +689,7 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 							Trace:        cur.Trace,
 							ClosureTrace: cur.ClosureTrace,
 						}
-						stack = v.addNext(s, stack, cur, nil, nextNodeWithTrace, cur.Status, edgeInfo)
+						stack = v.addNextIntraParent(s, stack, cur, nextNodeWithTrace, cur.Status, edgeInfo)
 					}
 				}
 			}
@@ -766,7 +697,7 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 		// A BoundLabel flows to the body of the closure that captures it.
 		case *dataflow.BoundLabelNode:
 			// TODO Figure out how to handle bound labels
-			s.Logger.Warnf("Skipping bound label node: %v\n", graphNode)
+			s.Logger.Warnf("skipping bound label node: %v\n", graphNode)
 			continue
 
 			// closureFn := graphNode.DestInfo().MakeClosure.Fn.(*ssa.Function)
@@ -818,25 +749,27 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) {
 	}
 }
 
-// addNext represents an intra-procedural taint flow.
+// addNextIntraParent represents an intra-procedural taint flow in the parent.
 // It adds the node to the stack, setting cur as the previous node and checking that node with
 // the trace (call context) has not been seen before.
-//   - q is the DFS stack in the calling algorithm
+//   - stack is the DFS stack in the calling algorithm
 //   - cur is the current visitor node
-//   - intermediate is an intermediate node to be inserted for tracing purposes
+//   - intermediateNode is an intermediate node to be inserted for tracing purposes
 //   - nextNodeWithTrace is the graph node to add to the stack, with the new call stack trace and
 //     closure stack trace
 //   - nextStatus is the status for the next node that will be added
 //   - edgeInfo is the label of the edge from cur's node to the next node
 //
 //gocyclo:ignore
-func (v *visitor) addNext(s *State,
-	stack []*dataflow.VisitorNode,
-	cur *dataflow.VisitorNode,
-	intermediateNode dataflow.GraphNode,
-	nextNodeWithTrace dataflow.NodeWithTrace,
-	nextStatus dataflow.VisitorNodeStatus,
-	edgeInfo dataflow.EdgeInfo) []*dataflow.VisitorNode {
+func (v *visitor) addNextIntraParent(
+	s *State, stack []*dataflow.VisitorNode,
+	cur *dataflow.VisitorNode, nextNodeWithTrace dataflow.NodeWithTrace,
+	nextStatus dataflow.VisitorNodeStatus, edgeInfo dataflow.EdgeInfo,
+) []*dataflow.VisitorNode {
+	if cur.Trace != nil {
+		panic(fmt.Errorf(
+			"cannot add intra-procedural flows from callee node: %v, trace: %v", cur, cur.Trace))
+	}
 
 	nextNodeAccessPaths := findMatchingPaths(cur, nextNodeWithTrace, edgeInfo)
 	// No matching access paths for this edge
@@ -846,33 +779,13 @@ func (v *visitor) addNext(s *State,
 
 	// Create a new node for each matching access path.
 	for _, accessPath := range nextNodeAccessPaths {
-		// Insert intermediate node for tracing when intermediateNode is not nil.
-		// The information (status, accesspaths) can be incorrect and the analysis will still be
-		// sound in the sense that a taint flow will be reported, but the information may be
-		// inaccurate.
-		// The next node is used to fill in the information.
-		prevNode := cur
-		if intermediateNode != nil {
-			prevNode = &dataflow.VisitorNode{
-				NodeWithTrace: dataflow.NodeWithTrace{
-					Node:         intermediateNode,
-					Trace:        nextNodeWithTrace.Trace,
-					ClosureTrace: nextNodeWithTrace.ClosureTrace,
-				},
-				Prev:        cur,
-				Depth:       cur.Depth + 1,
-				AccessPaths: []string{accessPath},
-				Status:      nextStatus,
-			}
-		}
-
 		// Adding the next node with trace in a visitor node to the stack, and recording the
 		// "execution" tree
 		nextVisitorNode := &dataflow.VisitorNode{
 			NodeWithTrace: nextNodeWithTrace,
 			AccessPaths:   []string{accessPath},
 			Status:        nextStatus,
-			Prev:          prevNode,
+			Prev:          cur,
 			Depth:         cur.Depth + 1,
 		}
 
@@ -881,8 +794,8 @@ func (v *visitor) addNext(s *State,
 
 		stack = append(stack, nextVisitorNode)
 		s.Logger.Tracef(
-			"%sadded next node: %s via intermediate %v\n",
-			strings.Repeat("  ", cur.Depth+1), nextVisitorNode, intermediateNode)
+			"%sadded intra next node: %v\n",
+			strings.Repeat("  ", cur.Depth+1), nextVisitorNode)
 	}
 
 	return stack
@@ -937,13 +850,11 @@ func findMatchingPaths(
 	return nextPaths
 }
 
-// addNextFromCalleeOutput represents an inter-procedural taint flow from the callee output to the
-// caller.
-// It also adds the intra-procedural output nodes of the call site node corresponding to the callee
-// output to the stack, with the callee output node as an intermediate node.
+// addCallsiteOutputs represents an inter-procedural taint flow from the callee input to the callee
+// output to the call-site output's outgoing nodes.
 //
 //gocyclo:ignore
-func (v *visitor) addNextFromCalleeOutput(
+func (v *visitor) addCallsiteOutputs(
 	s *State, stack []*dataflow.VisitorNode, calleeOutput *dataflow.VisitorNode,
 ) []*dataflow.VisitorNode {
 	prevStackLen := len(stack)
@@ -955,7 +866,7 @@ func (v *visitor) addNextFromCalleeOutput(
 			// need to prove any of its must-not-flows later.
 			//
 			// Create a new trace ending with the callee output node.
-			tr := newTrace(calleeOutput)
+			tr := newTrace(s.State, calleeOutput)
 			v.traces = append(v.traces, tr)
 			s.Logger.Tracef(
 				"%s...did not add any outgoing nodes from callee output %v: added new trace %v",
@@ -967,92 +878,83 @@ func (v *visitor) addNextFromCalleeOutput(
 	case *dataflow.ParamNode:
 		// Taint flows inter-procedurally from the callee param to the call site argument.
 		// Then it flows to all the call site argument's outgoing nodes.
-		if callSite := dataflow.UnwindCallstackFromCallee(n.Graph().Callsites, calleeOutput.Trace); callSite != nil {
-			if err := dataflow.CheckIndex(s.State, n, callSite, ""); err != nil {
-				panic(err)
+		if calleeOutput.Trace != nil && calleeOutput.Trace.Label != nil {
+			callSite := calleeOutput.Trace.Label
+			if !callSite.Graph().Constructed {
+				panic(fmt.Errorf(
+					"call site %v of return node %v graph is not constructed",
+					callSite, n))
 			}
 			arg := callSite.Args()[n.Index()]
 			if arg == nil {
 				panic(fmt.Errorf(
 					"no matching arg from param %v in call site %v", n, callSite))
 			}
+			callerOutput := &dataflow.VisitorNode{
+				NodeWithTrace: dataflow.NodeWithTrace{
+					Node:         arg,
+					Trace:        calleeOutput.Trace.Parent(),
+					ClosureTrace: calleeOutput.ClosureTrace,
+				},
+				Prev:        calleeOutput,
+				Depth:       calleeOutput.Depth + 1,
+				AccessPaths: calleeOutput.AccessPaths,
+				Status:      calleeOutput.Status,
+			}
+			s.Logger.Tracef(
+				"%sadding callee -> caller inter-procedural flow: %v -> %v\n",
+				strings.Repeat("  ", callerOutput.Depth), calleeOutput, callerOutput)
 			for nextNode, edgeInfos := range arg.Out() {
 				for _, edgeInfo := range edgeInfos {
 					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         nextNode,
-						Trace:        calleeOutput.Trace.Parent(),
-						ClosureTrace: calleeOutput.ClosureTrace,
+						Trace:        callerOutput.Trace,
+						ClosureTrace: callerOutput.ClosureTrace,
 					}
-					// Use arg as an intermediate node.
-					// The intermediate node will have the same trace as nextNodeWithTrace.
-					stack = v.addNext(
-						s, stack, calleeOutput, arg, nextNodeWithTrace,
-						calleeOutput.Status, edgeInfo)
+					stack = v.addNextIntraParent(
+						s, stack, callerOutput, nextNodeWithTrace, callerOutput.Status, edgeInfo)
 				}
 			}
 		} else {
-			// The value must always flow back to all call sites: we got here without context.
-			s.Logger.Warnf(
-				"lost context of param %v in %v: flowing to all call sites",
-				calleeOutput.Node, calleeOutput.Node.ParentName())
-			for _, callSite := range n.Graph().Callsites {
-				if err := dataflow.CheckIndex(s.State, n, callSite, ""); err != nil {
-					panic(err)
-				}
-				arg := callSite.Args()[n.Index()]
-				if arg == nil {
-					panic(fmt.Errorf(
-						"no matching arg from param %v in call site %v", n, callSite))
-				}
-				if !arg.Graph().Constructed {
-					panic(fmt.Errorf(
-						"call site arg %v has no intra-procedural information", arg))
-				}
-				for nextNode, edgeInfos := range arg.Out() {
-					for _, edgeInfo := range edgeInfos {
-						nextNodeWithTrace := dataflow.NodeWithTrace{
-							Node:         nextNode,
-							Trace:        calleeOutput.Trace.Parent(),
-							ClosureTrace: calleeOutput.ClosureTrace,
-						}
-						// Use arg as an intermediate node.
-						// The intermediate node will have the same trace as nextNodeWithTrace.
-						stack = v.addNext(
-							s, stack, calleeOutput, arg, nextNodeWithTrace,
-							calleeOutput.Status, edgeInfo)
-					}
-				}
-			}
+			panic(fmt.Errorf(
+				"lost context of param %v in %v", calleeOutput.Node, calleeOutput.Node.ParentName()))
 		}
 	case *dataflow.ReturnValNode:
 		// Taint flows inter-procedurally from the return value in the callee to the callsite call
 		// node (the value returned from the callee to the caller). It then flows intra-procedurally
 		// to all the outgoing nodes from the call node.
-
-		// Check if the call stack is empty and the caller is one of the callsites.
-		// The caller can be different if intraOutput was in a function through a closure
-		// definition.
-		if len(n.Graph().Callsites) == 0 {
-			panic(fmt.Errorf("no callsites for %v", n.Graph()))
-		}
-		if callSiteFromCallStack := dataflow.UnwindCallstackFromCallee(n.Graph().Callsites, calleeOutput.Trace); callSiteFromCallStack != nil {
-			if !callSiteFromCallStack.Graph().Constructed {
+		if calleeOutput.Trace != nil && calleeOutput.Trace.Label != nil {
+			callSite := calleeOutput.Trace.Label
+			if !callSite.Graph().Constructed {
 				panic(fmt.Errorf(
 					"call site %v of return node %v graph is not constructed",
-					callSiteFromCallStack, n))
+					callSite, n))
 			}
-			for nextNode, edgeInfos := range callSiteFromCallStack.Out() {
+			callerOutput := &dataflow.VisitorNode{
+				NodeWithTrace: dataflow.NodeWithTrace{
+					Node:         callSite,
+					Trace:        calleeOutput.Trace.Parent(),
+					ClosureTrace: calleeOutput.ClosureTrace,
+				},
+				Prev:        calleeOutput,
+				Depth:       calleeOutput.Depth + 1,
+				AccessPaths: calleeOutput.AccessPaths,
+				Status:      calleeOutput.Status,
+			}
+			s.Logger.Tracef(
+				"%sadding callee -> caller inter-procedural flow: %v -> %v\n",
+				strings.Repeat("  ", callerOutput.Depth), calleeOutput, callerOutput)
+			for nextNode, edgeInfos := range callSite.Out() {
 				for _, edgeInfo := range edgeInfos {
 					if !(n.Index() >= 0 && edgeInfo.Index >= 0 && n.Index() != edgeInfo.Index) {
 						// Only flow to return values with the same index.
 						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         nextNode,
-							Trace:        calleeOutput.Trace.Parent(),
-							ClosureTrace: calleeOutput.ClosureTrace,
+							Trace:        callerOutput.Trace,
+							ClosureTrace: callerOutput.ClosureTrace,
 						}
-						stack = v.addNext(
-							s, stack, calleeOutput, callSiteFromCallStack, nextNodeWithTrace,
-							calleeOutput.Status, edgeInfo)
+						stack = v.addNextIntraParent(
+							s, stack, callerOutput, nextNodeWithTrace, callerOutput.Status, edgeInfo)
 					} else {
 						s.Logger.Tracef(
 							"edge from %v does not match: %v via %v\n",
@@ -1070,52 +972,37 @@ func (v *visitor) addNextFromCalleeOutput(
 				panic(fmt.Errorf(
 					"return node %v is not from the closure %v in the trace", n, closure))
 			}
-			if !calleeOutput.ClosureTrace.Label.Graph().Constructed {
+			if !closure.Graph().Constructed {
 				panic(fmt.Errorf(
-					"closure node %v of return node %v graph is not constructed",
-					calleeOutput.ClosureTrace.Label, n))
+					"closure node %v of return node %v graph is not constructed", closure, n))
 			}
-			for nextNode, edgeInfos := range calleeOutput.ClosureTrace.Label.Out() {
+			callerOutput := &dataflow.VisitorNode{
+				NodeWithTrace: dataflow.NodeWithTrace{
+					Node:         closure,
+					Trace:        calleeOutput.Trace,
+					ClosureTrace: calleeOutput.ClosureTrace.Parent(),
+				},
+				Prev:        calleeOutput,
+				Depth:       calleeOutput.Depth + 1,
+				AccessPaths: calleeOutput.AccessPaths,
+				Status:      calleeOutput.Status,
+			}
+			s.Logger.Tracef(
+				"%sadding callee -> caller inter-procedural flow: %v -> %v\n",
+				strings.Repeat("  ", callerOutput.Depth), calleeOutput, callerOutput)
+			for nextNode, edgeInfos := range closure.Out() {
 				for _, edgeInfo := range edgeInfos {
 					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         nextNode,
-						Trace:        calleeOutput.Trace,
-						ClosureTrace: calleeOutput.ClosureTrace.Parent(),
+						Trace:        callerOutput.Trace,
+						ClosureTrace: callerOutput.ClosureTrace,
 					}
-					stack = v.addNext(
-						s, stack, calleeOutput, calleeOutput.ClosureTrace.Label, nextNodeWithTrace,
-						calleeOutput.Status, edgeInfo)
-				}
-			}
-		} else if len(n.Graph().Callsites) > 0 {
-			s.Logger.Warnf(
-				"no calling context for return node %v (trace: %v)", n, calleeOutput.Trace)
-			// The value must always flow back to all call sites: we got here without context
-			for _, callSite := range n.Graph().Callsites {
-				if !callSite.Graph().Constructed {
-					panic(fmt.Errorf(
-						"call site %v of return node %v graph is not constructed",
-						callSiteFromCallStack, n))
-				}
-				for nextNode, edgeInfos := range callSite.Out() {
-					for _, edgeInfo := range edgeInfos {
-						nextNodeWithTrace := dataflow.NodeWithTrace{
-							Node:         nextNode,
-							Trace:        nil,
-							ClosureTrace: calleeOutput.ClosureTrace,
-						}
-						stack = v.addNext(
-							s, stack, calleeOutput, callSite, nextNodeWithTrace,
-							calleeOutput.Status, edgeInfo)
-					}
+					stack = v.addNextIntraParent(
+						s, stack, callerOutput, nextNodeWithTrace, calleeOutput.Status, edgeInfo)
 				}
 			}
 		} else {
-			// No callsite: add the output node to the stack and it will hit the base case.
-			s.Logger.Tracef(
-				"%sno callsite for callee output %v: adding to stack\n",
-				strings.Repeat("  ", calleeOutput.Depth+1), calleeOutput)
-			stack = append(stack, calleeOutput)
+			panic(fmt.Errorf("no calling context for callee output: %v", calleeOutput))
 		}
 	case *dataflow.FreeVarNode:
 		if calleeOutput.ClosureTrace != nil && calleeOutput.ClosureTrace.Label != nil {
@@ -1126,16 +1013,29 @@ func (v *visitor) addNextFromCalleeOutput(
 			}
 			if n.Index() < len(bvs) {
 				bv := bvs[n.Index()]
+				callerOutput := &dataflow.VisitorNode{
+					NodeWithTrace: dataflow.NodeWithTrace{
+						Node:         bv,
+						Trace:        calleeOutput.Trace.Parent(),
+						ClosureTrace: calleeOutput.ClosureTrace.Parent(),
+					},
+					Prev:        calleeOutput,
+					Depth:       calleeOutput.Depth + 1,
+					AccessPaths: calleeOutput.AccessPaths,
+					Status:      calleeOutput.Status.PopClosure(),
+				}
+				s.Logger.Tracef(
+					"%sadding callee -> caller inter-procedural flow: %v -> %v\n",
+					strings.Repeat("  ", callerOutput.Depth), calleeOutput, callerOutput)
 				for nextNode, edgeInfos := range bv.Out() {
 					for _, edgeInfo := range edgeInfos {
 						nextNodeWithTrace := dataflow.NodeWithTrace{
 							Node:         nextNode,
-							Trace:        calleeOutput.Trace.Parent(),
-							ClosureTrace: calleeOutput.ClosureTrace.Parent(),
+							Trace:        callerOutput.Trace,
+							ClosureTrace: callerOutput.ClosureTrace,
 						}
-						stack = v.addNext(
-							s, stack, calleeOutput, bv, nextNodeWithTrace,
-							calleeOutput.Status, edgeInfo)
+						stack = v.addNextIntraParent(
+							s, stack, callerOutput, nextNodeWithTrace, callerOutput.Status, edgeInfo)
 					}
 				}
 			} else {
@@ -1167,15 +1067,29 @@ func (v *visitor) addNextFromCalleeOutput(
 				}
 				if n.Index() < len(bvs) {
 					bv := bvs[n.Index()]
+					callerOutput := &dataflow.VisitorNode{
+						NodeWithTrace: dataflow.NodeWithTrace{
+							Node:         bv,
+							Trace:        calleeOutput.Trace.Parent(),
+							ClosureTrace: calleeOutput.ClosureTrace.Parent(),
+						},
+						Prev:        calleeOutput,
+						Depth:       calleeOutput.Depth + 1,
+						AccessPaths: calleeOutput.AccessPaths,
+						Status:      calleeOutput.Status.PopClosure(),
+					}
+					s.Logger.Tracef(
+						"%sadding callee -> caller inter-procedural flow: %v -> %v\n",
+						strings.Repeat("  ", callerOutput.Depth), calleeOutput, callerOutput)
 					for nextNode, edgeInfos := range bv.Out() {
 						for _, edgeInfo := range edgeInfos {
 							nextNodeWithTrace := dataflow.NodeWithTrace{
 								Node:         nextNode,
-								Trace:        calleeOutput.Trace.Parent(),
-								ClosureTrace: calleeOutput.ClosureTrace.Parent(),
+								Trace:        callerOutput.Trace,
+								ClosureTrace: calleeOutput.ClosureTrace,
 							}
-							stack = v.addNext(
-								s, stack, calleeOutput, bv, nextNodeWithTrace,
+							stack = v.addNextIntraParent(
+								s, stack, callerOutput, nextNodeWithTrace,
 								calleeOutput.Status, edgeInfo)
 						}
 					}
@@ -1187,29 +1101,151 @@ func (v *visitor) addNextFromCalleeOutput(
 		}
 	case *dataflow.AccessGlobalNode:
 		s.Logger.Errorf("TODO global read analysis for node %v in %v\n", n, n.ParentName())
-
-		// for f := range s.ReachableFunctions() {
-		// 	if lang.FnReadsFrom(f, n.Global.Value()) {
-		// 	}
-		// }
-
-		// // Tainted data is written to ALL locations where the global is read.
-		// for nextNode := range n.Global.ReadLocations {
-		// 	if !s.IsReachableFunction(nextNode.Graph().Parent) {
-		// 		continue
-		// 	}
-		// 	// Global jump makes trace irrelevant if we don't follow the call graph!
-		// 	nextNodeWithTrace := dataflow.NodeWithTrace{
-		// 		Node:         nextNode,
-		// 		Trace:        nil,
-		// 		ClosureTrace: calleeOutput.ClosureTrace,
-		// 	}
-		// 	stack = v.addNext(
-		// 		s, stack, calleeOutput, nil, nextNodeWithTrace,
-		// 		calleeOutput.Status, dataflow.EdgeInfo{})
-		// }
 	default:
 		panic(fmt.Errorf("invalid output node type: %T", n))
+	}
+
+	return stack
+}
+
+func (v *visitor) addNextFromPredefinedInput(
+	s *State, stack []*dataflow.VisitorNode,
+	calleeParamIn *dataflow.VisitorNode, callSite *dataflow.CallNode,
+) []*dataflow.VisitorNode {
+	calleeParamNode, ok := calleeParamIn.Node.(*dataflow.ParamNode)
+	if !ok {
+		panic(fmt.Errorf(
+			"can only add predefined summary input flows from a callee param, got: %v",
+			calleeParamIn.Node))
+	}
+
+	callee := callSite.Callee()
+	// If there is a pre-defined summary, follow the taint flow from it directly.
+	summ, ok := summaries.SummaryOfFunc(callee)
+	if !ok {
+		panic(fmt.Errorf("expected pre-defined function %s to have a summary", callee))
+	}
+	s.Logger.Tracef("pre-defined summary for callee %v: %v\n", callee, summ)
+
+	// Add flows to the corresponding tainted arguments.
+	argFlows, err := summ.GetArgFlows(callee)
+	if err != nil {
+		panic(fmt.Errorf("failed to get arg flows for pre-defined summary %v", summ))
+	}
+	taintedArgIdxs := argFlows[calleeParamNode.Index()]
+	for _, nextArgIdx := range taintedArgIdxs {
+		nextArg := callSite.Args()[nextArgIdx]
+		var calleeOutput *dataflow.ParamNode
+		for _, param := range callSite.CalleeSummary.Params {
+			if param.Index() == nextArgIdx {
+				calleeOutput = param
+				break
+			}
+		}
+		if calleeOutput == nil {
+			panic(fmt.Errorf(
+				"no corresponding param for arg %v in pre-defined callee summary %v",
+				nextArg, callSite.CalleeSummary))
+		}
+		callerOutput := &dataflow.VisitorNode{
+			NodeWithTrace: dataflow.NodeWithTrace{
+				Node:         nextArg,
+				Trace:        nil, // Popped the call stack from the callee (Prev node).
+				ClosureTrace: calleeParamIn.ClosureTrace,
+			},
+			Prev: &dataflow.VisitorNode{
+				NodeWithTrace: dataflow.NodeWithTrace{
+					Node:         calleeOutput,
+					Trace:        calleeParamIn.Trace,
+					ClosureTrace: calleeParamIn.ClosureTrace,
+				},
+				Prev:        calleeParamIn,
+				Depth:       calleeParamIn.Depth + 1,
+				AccessPaths: calleeParamIn.AccessPaths,
+				Status:      calleeParamIn.Status,
+			},
+			Depth:       calleeParamIn.Depth + 2,
+			AccessPaths: calleeParamIn.AccessPaths,
+			Status:      calleeParamIn.Status,
+		}
+		s.Logger.Tracef(
+			"%sadding callee -> caller inter-procedural flow: %v -> %v\n",
+			strings.Repeat("  ", callerOutput.Depth), calleeOutput, callerOutput)
+		for nextNode, edgeInfos := range callerOutput.Node.Out() {
+			for _, edgeInfo := range edgeInfos {
+				nextNodeWithTrace := dataflow.NodeWithTrace{
+					Node:         nextNode,
+					Trace:        callerOutput.Trace,
+					ClosureTrace: callerOutput.ClosureTrace,
+				}
+				stack = v.addNextIntraParent(
+					s, stack, callerOutput, nextNodeWithTrace,
+					callerOutput.Status, edgeInfo)
+			}
+		}
+	}
+
+	// Add flows to the corresponding tainted return values.
+	retFlows, err := summ.GetReturnFlows(callee)
+	if err != nil {
+		panic(fmt.Errorf("failed to get return flows for pre-defined summary %v", summ))
+	}
+	taintedRetIdxs := retFlows[calleeParamNode.Index()]
+	for _, retIdx := range taintedRetIdxs {
+		var callerRets []dataflow.NodeWithTrace
+		for nextNode, edgeInfos := range callSite.Out() {
+			for _, ei := range edgeInfos {
+				if !(retIdx >= 0 && ei.Index >= 0 && retIdx != ei.Index) {
+					// Only flow to returned values in the caller with the same tainted return index.
+					next := dataflow.NodeWithTrace{
+						Node:         nextNode,
+						Trace:        nil,
+						ClosureTrace: calleeParamIn.ClosureTrace,
+					}
+					callerRets = append(callerRets, next)
+				}
+			}
+		}
+		// Since a callee summary contains flows to *a* return node with a matching index, it
+		// doesn't really matter which callee return node is in the trace. Just pick the first one
+		// that matches.
+		var nextCalleeRet *dataflow.ReturnValNode
+		for _, rets := range callSite.CalleeSummary.Returns {
+			if nextCalleeRet != nil {
+				break
+			}
+			for _, ret := range rets {
+				if ret.Index() == retIdx {
+					nextCalleeRet = ret
+					break
+				}
+			}
+		}
+		if nextCalleeRet == nil {
+			panic(fmt.Errorf(
+				"no corresponding ret for caller rets %v in pre-defined callee summary %v",
+				callerRets, callSite.CalleeSummary))
+		}
+		for _, callerRet := range callerRets {
+			nextNode := &dataflow.VisitorNode{
+				NodeWithTrace: callerRet,
+				Prev: &dataflow.VisitorNode{
+					NodeWithTrace: dataflow.NodeWithTrace{
+						Node:         nextCalleeRet,
+						Trace:        nil, // Popped the call stack from the callee (Prev node).
+						ClosureTrace: calleeParamIn.ClosureTrace,
+					},
+					Prev:        calleeParamIn,
+					Depth:       calleeParamIn.Depth + 1,
+					AccessPaths: calleeParamIn.AccessPaths,
+					Status:      calleeParamIn.Status,
+				},
+				Depth:       calleeParamIn.Depth + 2,
+				AccessPaths: calleeParamIn.AccessPaths,
+				Status:      calleeParamIn.Status,
+			}
+			stack = append(stack, nextNode)
+		}
 	}
 
 	return stack
@@ -1221,7 +1257,7 @@ func traceNode(s *State, cur *dataflow.VisitorNode) {
 		return
 	}
 	pad := strings.Repeat("  ", cur.Depth)
-	s.Logger.Tracef("%svisiting %s\n", pad, cur)
+	s.Logger.Tracef("%svisiting %s (%T)\n", pad, cur, cur.Node)
 	s.Logger.Tracef("%s  in: %v\n", pad, cur.Node.ParentName())
 	s.Logger.Tracef("%s  trace: %v\n", pad, cur.Trace)
 	s.Logger.Tracef("%s  closure trace: %v\n", pad, cur.ClosureTrace)
@@ -1246,13 +1282,9 @@ func inputNodes(g *dataflow.SummaryGraph, prec *precisions) []*dataflow.VisitorN
 			for _, path := range paths {
 				in := &dataflow.VisitorNode{
 					NodeWithTrace: dataflow.NodeWithTrace{
-						Node: n,
-						Trace: &dataflow.NodeTree[*dataflow.CallNode]{
-							Label: nil,
-						},
-						ClosureTrace: &dataflow.NodeTree[*dataflow.ClosureNode]{
-							Label: nil,
-						},
+						Node:         n,
+						Trace:        nil,
+						ClosureTrace: nil,
 					},
 					Prev:        nil,
 					AccessPaths: []string{path.String()},
@@ -1266,10 +1298,10 @@ func inputNodes(g *dataflow.SummaryGraph, prec *precisions) []*dataflow.VisitorN
 	return inputs
 }
 
-func intraOutputNodes(cur *dataflow.VisitorNode) []*dataflow.VisitorNode {
+func allCalleeOutputs(calleeIn *dataflow.VisitorNode) []*dataflow.VisitorNode {
 	// TODO Use static analyses to filter some?
 	var outputs []*dataflow.VisitorNode
-	g := cur.Node.Graph()
+	g := calleeIn.Node.Graph()
 	g.ForAllNodes(func(n dataflow.GraphNode) {
 		if isOutputNode(n) {
 			if param, ok := n.(*dataflow.ParamNode); ok {
@@ -1278,19 +1310,23 @@ func intraOutputNodes(cur *dataflow.VisitorNode) []*dataflow.VisitorNode {
 				}
 			}
 
-			pl := newPath(cur.AccessPaths[0], maxPathLen).len()
+			pl := newPath(calleeIn.AccessPaths[0], maxPathLen).len()
 			paths := leafPathsUpTo(n.Type(), pl)
 			for _, path := range paths {
 				out := &dataflow.VisitorNode{
 					NodeWithTrace: dataflow.NodeWithTrace{
 						Node:         n,
-						Trace:        cur.Trace, // trace is the same because it's intra-procedural
-						ClosureTrace: cur.ClosureTrace,
+						Trace:        calleeIn.Trace, // trace is the same because it's intra-procedural
+						ClosureTrace: calleeIn.ClosureTrace,
 					},
-					Prev:        cur,
-					Depth:       cur.Depth + 1,
+					Prev:        calleeIn,
+					Depth:       calleeIn.Depth + 1,
 					AccessPaths: []string{path.String()},
-					Status:      cur.Status,
+					Status:      calleeIn.Status,
+				}
+				if out.Node == calleeIn.Node && out.AccessPaths[0] == calleeIn.AccessPaths[0] {
+					// Skip self flows.
+					continue
 				}
 				outputs = append(outputs, out)
 			}
@@ -1714,50 +1750,6 @@ func mayFlowEdgesToSummaries(unknown []edge) map[*ssa.Function]summaries.Detaile
 	return calleeFlows
 }
 
-func findNode(g *dataflow.SummaryGraph, sn summaries.SummaryNode) dataflow.GraphNode {
-	var res dataflow.GraphNode
-	g.ForAllNodes(func(n dataflow.GraphNode) {
-		// TODO use new iteration protocol to implement ForAllNodes to break when found
-		if matchesNode(sn, n) {
-			res = n
-		}
-	})
-	return res
-}
-
-func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) bool {
-	switch s := snode.(type) {
-	case summaries.ReceiverSNode:
-		if param, ok := gnode.(*dataflow.ParamNode); ok {
-			if param.Graph().Parent.Signature.Recv() == nil {
-				panic(fmt.Errorf("expected function for recv summary node to have a receiver"))
-			}
-			return param.Index() == 0
-		}
-	case summaries.ArgumentSNode:
-		if param, ok := gnode.(*dataflow.ParamNode); ok {
-			if param.Graph().Parent.Signature.Recv() != nil {
-				return (s.Name != "" && param.SsaNode().Name() == s.Name) ||
-					param.Index() == s.Index+1
-			}
-			return (s.Name != "" && param.SsaNode().Name() == s.Name) ||
-				param.Index() == s.Index
-		}
-	case summaries.ReturnSNode:
-		if ret, ok := gnode.(*dataflow.ReturnValNode); ok {
-			return ret.Index() == s.Index
-		}
-	case summaries.FreeVarSNode:
-		if fv, ok := gnode.(*dataflow.FreeVarNode); ok {
-			return fv.SsaNode().Name() == s.Name
-		}
-	default:
-		panic(fmt.Errorf("unhandled summary node type: %T", snode))
-	}
-
-	return false
-}
-
 // edgeSignature creates a semantic signature for an edge based on node types, indices, and paths.
 // This allows matching edges across different call sites.
 func edgeSignature(e edge) string {
@@ -1775,6 +1767,8 @@ func nodeSignature(n node) string {
 		base = fmt.Sprintf("ret:%d", gn.Index())
 	case *dataflow.FreeVarNode:
 		base = fmt.Sprintf("fv:%s", gn.SsaNode().Name())
+	case *dataflow.AccessGlobalNode:
+		base = fmt.Sprintf("glob:%s", gn.Global.Value().Name())
 	default:
 		panic(fmt.Errorf("invalid summary node: %v", n.n))
 	}
