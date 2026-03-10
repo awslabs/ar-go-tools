@@ -62,6 +62,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "x", Index: 0}: {
 							summaries.ReturnSNode{Index: 0},
+							// NOTE To test redundant summary flows
+							summaries.ReturnSNode{Index: 0},
 						},
 					},
 				},
@@ -1158,6 +1160,10 @@ func TestCheckSummary_Fields(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "n", Index: 1}: {
+							summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
+						},
+						// NOTE To test redundant summary flows
+						summaries.ArgumentSNode{Name: "n", Index: 1, ObjectPath: ".head"}: {
 							summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
 						},
 					},
