@@ -159,13 +159,15 @@ func checkSummary(
 
 	// Different sub-analyses may have different soundness requirements.
 	// Find all of the unsound features at once and then check them on a per-analysis basis.
-	s.Logger.Tracef("finding unsound check features of %s ...\n", f)
+	s.Logger.Debugf("finding unsound check features of %s ...\n", f)
 	unsoundCheckFeats, err := findUnsoundCheckFeatures(ctx, s, f, specs)
 	if err != nil {
-		s.Logger.Errorf("assuming %s is unsound: failed to find unsound check features: %v", f, err)
-		return SoundnessResult{IsSound: false}, nil
+		s.Logger.Errorf("failed to find unsound check features for %s: %v", f, err)
+		if !s.Config.CheckIgnoresUnsound {
+			return SoundnessResult{IsSound: false}, nil
+		}
 	}
-	s.Logger.Tracef("unsound check features of %s: %+v\n", f, unsoundCheckFeats)
+	s.Logger.Debugf("unsound check features of %s: %+v\n", f, unsoundCheckFeats)
 
 	start := time.Now()
 	soundnessResultBase := SoundnessResult{
@@ -184,7 +186,7 @@ func checkSummary(
 	}
 
 	var method Method
-	wantFlows, err := summaryFlows(g, want)
+	wantFlows, err := summaryFlows(s, g, want)
 	if err != nil {
 		soundnessResultBase.IsSound = false
 		soundnessResultBase.Unsoundness = Unsoundness{
@@ -237,7 +239,8 @@ func checkSummary(
 		}
 
 		if err != nil {
-			return soundnessResultBase, fmt.Errorf("failed to check via method %s: %w", method, err)
+			return soundnessResultBase,
+				fmt.Errorf("failed to check %s via method %s: %w", f, method, err)
 		}
 
 		if len(unprovenMustNotFlows) == 0 {
@@ -341,7 +344,8 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 	for callee, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
 			// If there are no callee summaries inferred, this is a bug.
-			panic(fmt.Errorf("no summaries inferred for callee: %s", callee))
+			return nil, SoundnessResult{IsSound: false}, true,
+				fmt.Errorf("no summaries inferred for callee: %s", callee)
 		}
 
 		var thisCalleeResults []SoundnessResult

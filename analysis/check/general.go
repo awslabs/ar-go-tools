@@ -17,6 +17,7 @@ package check
 import (
 	"fmt"
 	"go/types"
+	"slices"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -281,7 +282,7 @@ func leafPathsUpTo(t types.Type, k int) []path {
 	return res
 }
 
-func summaryFlows(g *dataflow.SummaryGraph, summ summaries.DetailedSummary) ([]flow, error) {
+func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSummary) ([]flow, error) {
 	var flows []flow
 	for input, outputs := range summ.Flows {
 		in := findNode(g, input)
@@ -300,27 +301,41 @@ func summaryFlows(g *dataflow.SummaryGraph, summ summaries.DetailedSummary) ([]f
 		}
 	}
 
-	// Filter out redundant flows: e.g., a -> b implies a.f -> b.f
+	// Filter out redundant flows: e.g., a -> b implies a.f -> b.f.
+	// Also return an error for self flows.
 	var filtered []flow
-	for _, fl1 := range flows {
+	for i, fl1 := range flows {
 		skip := false
-		if fl1.from.path.len() > 0 && fl1.to.path.len() > 0 {
-			for _, fl2 := range flows {
-				if fl1 == fl2 {
-					continue
-				}
-				if fl1.from.node == fl2.from.node && fl1.to.node == fl2.to.node {
-					if fl1.from.path.isCoveredBy(fl2.from.path) && fl1.to.path.isCoveredBy(fl2.to.path) {
+		for j, fl2 := range flows {
+			if i == j {
+				continue
+			}
+			if fl1.from.node == fl2.from.node && fl1.to.node == fl2.to.node {
+				if fl2.from.path.isCoveredBy(fl1.from.path) && fl2.to.path.isCoveredBy(fl1.to.path) {
+					// fl2 covers fl1: skip fl1 unless fl1 also covers fl2 (equal), in which
+					// case use the index to break the tie.
+					if !(fl1.from.path.isCoveredBy(fl2.from.path) && fl1.to.path.isCoveredBy(fl2.to.path)) ||
+						j < i {
+
 						skip = true
 						break
 					}
 				}
 			}
 		}
+		if fl1.from == fl1.to {
+			return nil, fmt.Errorf("flow %v is an invalid self-flow in summary %s\n", fl1, flows)
+		}
 		if skip {
 			continue
 		}
 		filtered = append(filtered, fl1)
+	}
+
+	if !slices.Equal(flows, filtered) {
+		s.Logger.Infof(
+			"removed redundant flows from summary:\n\toriginal: %v\n\tfiltered: %v\n",
+			flows, filtered)
 	}
 
 	return filtered, nil
