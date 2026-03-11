@@ -324,7 +324,8 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 			}
 		}
 		if fl1.from == fl1.to {
-			return nil, fmt.Errorf("flow %v is an invalid self-flow in summary %s\n", fl1, flows)
+			s.Logger.Warnf("flow %v is an invalid self-flow in summary %s\n", fl1, flows)
+			skip = true
 		}
 		if skip {
 			continue
@@ -333,7 +334,7 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 	}
 
 	if !slices.Equal(flows, filtered) {
-		s.Logger.Infof(
+		s.Logger.Warnf(
 			"removed redundant flows from summary:\n\toriginal: %v\n\tfiltered: %v\n",
 			flows, filtered)
 	}
