@@ -735,7 +735,7 @@ func (v *visitor) addNextIntraParent(
 	if cur.Trace != nil {
 		s.Logger.Errorf(
 			"cannot add intra-procedural flows from callee node: %v, trace: %v", cur, cur.Trace)
-		return nil
+		return stack
 	}
 
 	nextNodeAccessPaths := findMatchingPaths(cur, nextNodeWithTrace, edgeInfo)
@@ -856,13 +856,13 @@ func (v *visitor) addCallsiteOutputs(
 				s.Logger.Errorf(
 					"call site %v of return node %v graph is not constructed",
 					callSite, n)
-				return nil
+				return stack
 			}
 			arg := callSite.Args()[n.Index()]
 			if arg == nil {
 				s.Logger.Errorf(
 					"no matching arg from param %v in call site %v", n, callSite)
-				return nil
+				return stack
 			}
 			callerOutput := &dataflow.VisitorNode{
 				NodeWithTrace: dataflow.NodeWithTrace{
@@ -892,7 +892,7 @@ func (v *visitor) addCallsiteOutputs(
 		} else {
 			s.Logger.Errorf(
 				"lost context of param %v in %v", calleeOutput.Node, calleeOutput.Node.ParentName())
-			return nil
+			return stack
 		}
 	case *dataflow.ReturnValNode:
 		// Taint flows inter-procedurally from the return value in the callee to the callsite call
@@ -904,7 +904,7 @@ func (v *visitor) addCallsiteOutputs(
 				s.Logger.Errorf(
 					"call site %v of return node %v graph is not constructed",
 					callSite, n)
-				return nil
+				return stack
 			}
 			callerOutput := &dataflow.VisitorNode{
 				NodeWithTrace: dataflow.NodeWithTrace{
@@ -943,17 +943,17 @@ func (v *visitor) addCallsiteOutputs(
 			if closure.ClosureSummary == nil {
 				s.Logger.Errorf(
 					"closure summary from %v via trace %v is nil", n, calleeOutput.ClosureTrace)
-				return nil
+				return stack
 			}
 			if !dataflow.CheckClosureReturns(n, closure) {
 				s.Logger.Errorf(
 					"return node %v is not from the closure %v in the trace", n, closure)
-				return nil
+				return stack
 			}
 			if !closure.Graph().Constructed {
 				s.Logger.Errorf(
 					"closure node %v of return node %v graph is not constructed", closure, n)
-				return nil
+				return stack
 			}
 			callerOutput := &dataflow.VisitorNode{
 				NodeWithTrace: dataflow.NodeWithTrace{
@@ -982,7 +982,7 @@ func (v *visitor) addCallsiteOutputs(
 			}
 		} else {
 			s.Logger.Errorf("no calling context for callee output: %v", calleeOutput)
-			return nil
+			return stack
 		}
 	case *dataflow.FreeVarNode:
 		if calleeOutput.ClosureTrace != nil && calleeOutput.ClosureTrace.Label != nil {
@@ -990,7 +990,7 @@ func (v *visitor) addCallsiteOutputs(
 			bvs := calleeOutput.ClosureTrace.Label.BoundVars()
 			if len(bvs) == 0 {
 				s.Logger.Errorf("no bound vars for node %v", n)
-				return nil
+				return stack
 			}
 			if n.Index() < len(bvs) {
 				bv := bvs[n.Index()]
@@ -1022,7 +1022,7 @@ func (v *visitor) addCallsiteOutputs(
 			} else {
 				s.Logger.Errorf("no bound variable matching free variable in %s",
 					calleeOutput.ClosureTrace.Label.ClosureSummary.Parent.String())
-				return nil
+				return stack
 			}
 		} else {
 			// There is no closure trace so flow to the corresponding bound variable in each closure
@@ -1040,14 +1040,14 @@ func (v *visitor) addCallsiteOutputs(
 				}
 				s.Logger.Errorf(
 					"no closure context: no referring make closure nodes from %v", n)
-				return nil
+				return stack
 			}
 
 			for _, makeClosureSite := range n.Graph().ReferringMakeClosures {
 				bvs := makeClosureSite.BoundVars()
 				if len(bvs) == 0 {
 					s.Logger.Errorf("no bound vars for node %v", n)
-					return nil
+					return stack
 				}
 				if n.Index() < len(bvs) {
 					bv := bvs[n.Index()]
@@ -1080,7 +1080,7 @@ func (v *visitor) addCallsiteOutputs(
 				} else {
 					s.Logger.Errorf("no bound variable matching free variable in %s",
 						calleeOutput.ClosureTrace.Label.ClosureSummary.Parent.String())
-					return nil
+					return stack
 				}
 			}
 		}
@@ -1088,7 +1088,7 @@ func (v *visitor) addCallsiteOutputs(
 		// s.Logger.Errorf("TODO global read analysis for node %v in %v\n", n, n.ParentName())
 	default:
 		s.Logger.Errorf("invalid output node type: %T", n)
-		return nil
+		return stack
 	}
 
 	return stack
@@ -1103,7 +1103,7 @@ func (v *visitor) addNextFromPredefinedInput(
 		s.Logger.Errorf(
 			"can only add predefined summary input flows from a callee param, got: %v",
 			calleeParamIn.Node)
-		return nil
+		return stack
 	}
 
 	callee := callSite.Callee()
@@ -1111,7 +1111,7 @@ func (v *visitor) addNextFromPredefinedInput(
 	summ, ok := summaries.SummaryOfFunc(callee)
 	if !ok {
 		s.Logger.Errorf("expected pre-defined function %s to have a summary", callee)
-		return nil
+		return stack
 	}
 	s.Logger.Tracef("pre-defined summary for callee %v: %v\n", callee, summ)
 
@@ -1119,7 +1119,11 @@ func (v *visitor) addNextFromPredefinedInput(
 	argFlows, err := summ.GetArgFlows(callee)
 	if err != nil {
 		s.Logger.Errorf("failed to get arg flows for pre-defined summary %v", summ)
-		return nil
+		return stack
+	}
+	if len(argFlows) <= calleeParamNode.Index() {
+		s.Logger.Debugf("no arg flows for param %v in pre-defined summary %v", calleeParamNode, summ)
+		return stack
 	}
 	taintedArgIdxs := argFlows[calleeParamNode.Index()]
 	for _, nextArgIdx := range taintedArgIdxs {
@@ -1179,7 +1183,11 @@ func (v *visitor) addNextFromPredefinedInput(
 	retFlows, err := summ.GetReturnFlows(callee)
 	if err != nil {
 		s.Logger.Errorf("failed to get return flows for pre-defined summary %v", summ)
-		return nil
+		return stack
+	}
+	if len(retFlows) <= calleeParamNode.Index() {
+		s.Logger.Debugf("no ret flows for param %v in pre-defined summary %v", calleeParamNode, summ)
+		return stack
 	}
 	taintedRetIdxs := retFlows[calleeParamNode.Index()]
 	for _, retIdx := range taintedRetIdxs {
