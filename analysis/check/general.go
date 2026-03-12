@@ -111,7 +111,7 @@ func flowCovers(wantFlow, gotFlow flow) bool {
 // analysis: if the node being flowed to is a pointer-like parameter, then the flow may exist.
 // It returns all the flows that have pointer-like parameter outputs, or whose outputs are not
 // parameters.
-func filterFlowsTypes(flows []flow) []flow {
+func filterFlowsTypes(flows []flow) ([]flow, error) {
 	var unproven []flow
 	for _, fl := range flows {
 		switch to := fl.to.node.(type) {
@@ -126,11 +126,11 @@ func filterFlowsTypes(flows []flow) []flow {
 			// Returns can always be outputs.
 			unproven = append(unproven, fl)
 		default:
-			panic(fmt.Errorf("invalid flow to node type: %v (%T)", to, to))
+			return nil, fmt.Errorf("invalid flow to node type: %v (%T)", to, to)
 		}
 	}
 
-	return unproven
+	return unproven, nil
 }
 
 // mostGeneralFlows returns the most-general summary for the function in g.
@@ -276,6 +276,7 @@ func leafPathsUpTo(t types.Type, k int) []path {
 	}
 
 	if len(res) == 0 {
+		// NOTE Should be unreachable.
 		panic(fmt.Errorf("no access paths for type %v", t))
 	}
 
@@ -285,14 +286,14 @@ func leafPathsUpTo(t types.Type, k int) []path {
 func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSummary) ([]flow, error) {
 	var flows []flow
 	for input, outputs := range summ.Flows {
-		in := findNode(g, input)
-		if in == nil {
-			return nil, fmt.Errorf("could not find node for %v", input)
+		in, err := findNode(g, input)
+		if in == nil || err != nil {
+			return nil, fmt.Errorf("could not find node for %v: %v", input, err)
 		}
 		for _, output := range outputs {
-			out := findNode(g, output)
-			if out == nil {
-				return nil, fmt.Errorf("could not find node for %v", output)
+			out, err := findNode(g, output)
+			if out == nil || err != nil {
+				return nil, fmt.Errorf("could not find node for %v: %v", output, err)
 			}
 			flows = append(flows, flow{
 				from: newGraphNode(in, input.Path()),
@@ -342,46 +343,52 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 	return filtered, nil
 }
 
-func findNode(g *dataflow.SummaryGraph, sn summaries.SummaryNode) dataflow.GraphNode {
+func findNode(g *dataflow.SummaryGraph, sn summaries.SummaryNode) (dataflow.GraphNode, error) {
 	var res dataflow.GraphNode
+	var reserr error
 	g.ForAllNodes(func(n dataflow.GraphNode) {
 		// TODO use new iteration protocol to implement ForAllNodes to break when found
-		if matchesNode(sn, n) {
+		ok, err := matchesNode(sn, n)
+		if err != nil {
+			reserr = err
+			return
+		}
+		if ok {
 			res = n
 		}
 	})
-	return res
+	return res, reserr
 }
 
-func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) bool {
+func matchesNode(snode summaries.SummaryNode, gnode dataflow.GraphNode) (bool, error) {
 	switch s := snode.(type) {
 	case summaries.ReceiverSNode:
 		if param, ok := gnode.(*dataflow.ParamNode); ok {
 			if param.Graph().Parent.Signature.Recv() == nil {
-				panic(fmt.Errorf("expected function for recv summary node to have a receiver"))
+				return false, fmt.Errorf("expected function for recv summary node to have a receiver")
 			}
-			return param.Index() == 0
+			return param.Index() == 0, nil
 		}
 	case summaries.ArgumentSNode:
 		if param, ok := gnode.(*dataflow.ParamNode); ok {
 			if param.Graph().Parent.Signature.Recv() != nil {
 				return (s.Name != "" && param.SsaNode().Name() == s.Name) ||
-					param.Index() == s.Index+1
+					param.Index() == s.Index+1, nil
 			}
 			return (s.Name != "" && param.SsaNode().Name() == s.Name) ||
-				param.Index() == s.Index
+				param.Index() == s.Index, nil
 		}
 	case summaries.ReturnSNode:
 		if ret, ok := gnode.(*dataflow.ReturnValNode); ok {
-			return ret.Index() == s.Index
+			return ret.Index() == s.Index, nil
 		}
 	case summaries.FreeVarSNode:
 		if fv, ok := gnode.(*dataflow.FreeVarNode); ok {
-			return fv.SsaNode().Name() == s.Name
+			return fv.SsaNode().Name() == s.Name, nil
 		}
 	default:
-		panic(fmt.Errorf("unhandled summary node type: %T", snode))
+		return false, fmt.Errorf("unhandled summary node type: %T", snode)
 	}
 
-	return false
+	return false, nil
 }

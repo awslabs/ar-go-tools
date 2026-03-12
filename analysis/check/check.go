@@ -214,7 +214,7 @@ func checkSummary(
 		switch method {
 		case General:
 			unprovenMustNotFlows, soundnessResult, done, err = checkMethodGeneral(
-				s, f, unsoundCheckFeats, soundnessResultBase, g, wantFlows, prec, start)
+				s, f, unsoundCheckFeats, soundnessResultBase, g, wantFlows, prec)
 			if done {
 				return soundnessResult, err
 			}
@@ -461,8 +461,9 @@ func checkMethodTypes(s *State, f *ssa.Function,
 			return nil, soundnessResultBase, true, nil
 		}
 	}
-	unprovenMustNotFlows = filterFlowsTypes(unprovenMustNotFlows)
-	return unprovenMustNotFlows, SoundnessResult{}, false, nil
+	var err error
+	unprovenMustNotFlows, err = filterFlowsTypes(unprovenMustNotFlows)
+	return unprovenMustNotFlows, SoundnessResult{}, false, err
 }
 
 func checkMethodGeneral(s *State, f *ssa.Function,
@@ -471,7 +472,7 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 	g *dataflow.SummaryGraph,
 	wantFlows []flow,
 	prec *precisions,
-	start time.Time) ([]flow, SoundnessResult, bool, error) {
+) ([]flow, SoundnessResult, bool, error) {
 
 	// The most-general summary is unsound if there are any globals (as we do not have
 	// special global nodes in summaries yet).
@@ -786,6 +787,7 @@ func graphNodeDesc(g dataflow.GraphNode) string {
 	case *dataflow.ClosureNode:
 		return fmt.Sprintf("closure:%v", x.Instr())
 	default:
+		// NOTE Should be unreachable.
 		panic(fmt.Errorf("unsupported node type: %v %T", g, g))
 	}
 }
