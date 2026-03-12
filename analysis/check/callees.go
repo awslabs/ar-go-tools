@@ -1725,10 +1725,12 @@ func mayFlowEdgesToSummaries(unknown []edge) (map[*ssa.Function]summaries.Detail
 
 		// TODO Handle globals properly: skip for now.
 		if _, ok := e.from.n.(*dataflow.AccessGlobalNode); ok {
-			return calleeFlows, fmt.Errorf("callee summary flow input %v is a global", e.from.n)
+			// return calleeFlows, fmt.Errorf("callee summary flow input %v is a global", e.from.n)
+			continue
 		}
 		if _, ok := e.to.n.(*dataflow.AccessGlobalNode); ok {
-			return calleeFlows, fmt.Errorf("callee summary flow output %v is a global", e.to.n)
+			// return calleeFlows, fmt.Errorf("callee summary flow output %v is a global", e.to.n)
+			continue
 		}
 
 		from := newSummaryNode(graphNode{e.from.n, e.from.path})
