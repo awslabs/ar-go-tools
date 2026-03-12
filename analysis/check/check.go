@@ -348,6 +348,16 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 				fmt.Errorf("no summaries inferred for callee: %s", callee)
 		}
 
+		if callee == f {
+			soundnessResultBase.IsSound = false
+			soundnessResultBase.Unsoundness = unsoundness
+			soundnessResultBase.Time = time.Since(start)
+			soundnessResultBase.Method = Recursive
+			s.Logger.Errorf(
+				"cannot check the soundness of an inferred *recursive* callee summary: %s\n", f)
+			return nil, soundnessResultBase, true, nil
+		}
+
 		var thisCalleeResults []SoundnessResult
 		for _, calleeSumm := range calleeSumms {
 			// Recursively check the soundness of the callee's inferred summary
