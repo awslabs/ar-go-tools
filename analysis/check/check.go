@@ -406,15 +406,14 @@ func checkCalleeSummaries(
 
 			s.Logger.Tracef("callee check result: %+v", calleeRes)
 			// Only one of the potential callee summaries needs to be sound.
-			// NOTE This is disabled for now to make tests deterministic.
-			// if calleeRes.IsSound {
-			// 	if len(calleeRes.UnprovenMustNotFlows) > 0 {
-			// 		panic(fmt.Errorf(
-			// 			"want no unproven must-not-flows in callee %s summary, got: %v",
-			// 			callee, calleeRes.UnprovenMustNotFlows))
-			// 	}
-			// 	break
-			// }
+			if calleeRes.IsSound {
+				if len(calleeRes.Unsoundness.UnprovenMustNotFlows) > 0 {
+					panic(fmt.Errorf(
+						"want no unproven must-not-flows in callee %s summary, got: %v",
+						callee, calleeRes.Unsoundness.UnprovenMustNotFlows))
+				}
+				break
+			}
 		}
 
 		calleeResults = append(calleeResults, thisCalleeResults)
