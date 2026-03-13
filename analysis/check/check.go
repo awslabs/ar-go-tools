@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -357,12 +356,24 @@ func checkCalleeSummaries(
 				fmt.Errorf("no summaries inferred for callee: %s", callee)
 		}
 
-		if slices.Contains(callStack, callee) {
+		// Assume that multiple recursive calls to a callee makes checking the soundness of the
+		// callee impossible. We do this check to avoid looping forever when checking the soundness
+		// of recursive functions.
+		recursiveCalls := 0
+		for _, cf := range callStack {
+			if cf.String() == callee.String() {
+				recursiveCalls++
+			}
+		}
+		const maxRecursion = 2
+		if recursiveCalls > maxRecursion {
 			soundnessResultBase.IsSound = false
 			soundnessResultBase.Unsoundness = unsoundness
 			soundnessResultBase.Time = time.Since(start)
 			soundnessResultBase.Method = Recursive
-			s.Logger.Warnf("%s is recursive by calling callee %s: assuming unsound\n", f, callee)
+			s.Logger.Warnf(
+				"%s is recursive by calling callee %s %d+ times (ctx: %v): assuming unsound\n",
+				f, callee, maxRecursion, callStack)
 			return nil, soundnessResultBase, true, nil
 		}
 
@@ -371,8 +382,10 @@ func checkCalleeSummaries(
 			// Recursively check the soundness of the callee's inferred summary
 			s.Logger.Infof(
 				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
+			callStack = append(callStack, callee)
+			s.Logger.Debugf("call stack: %v\n", callStack)
 			calleeRes, err := checkSummary(
-				ctx, s, callee, calleeSumm, specs, false, append(callStack, callee))
+				ctx, s, callee, calleeSumm, specs, false, callStack)
 			if err != nil {
 				s.Logger.Errorf("failed to check callee summary: %v", err)
 				if errors.Is(err, errInfer) {
