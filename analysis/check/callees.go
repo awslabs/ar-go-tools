@@ -436,7 +436,12 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) error {
 				"%sreached base case: computed trace: %v\n", strings.Repeat("  ", cur.Depth), tr)
 			start := tr[0].from
 			end := tr[len(tr)-1].to
-			if start.n == end.n && (start.path.isCoveredBy(end.path) || end.path.isCoveredBy(start.path)) {
+
+			// Filter out redundant *hard* traces. If a redundant trace has soft edges, that is
+			// actually good because the soft edges will be trivially satisfiable, making the
+			// inferred callee summary less precise.
+			hasSoftEdge := slices.ContainsFunc(tr, func(e edge) bool { return e.isSoft })
+			if start.n == end.n && (start.path.isCoveredBy(end.path) || end.path.isCoveredBy(start.path)) && !hasSoftEdge {
 				s.Logger.Tracef(
 					"%strace input %v and output %v are redundant: skipping adding trace\n",
 					strings.Repeat("  ", cur.Depth), start, end)

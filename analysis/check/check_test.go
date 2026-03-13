@@ -493,7 +493,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 			want: check.SoundnessResult{
 				Name: pkg + ".propagateFields",
 				// NOTE This summary is deliberately incorrect:
-				// If src cannot flow to dst, then no parameter of addVals can flow to its return.
+				// If src cannot flow to dst, then the maximal callee summary for addVals
+				// that doesn't violate the must-not-flow is a <-> b (arg-to-arg flows that
+				// map to self-flows src -> src in the parent).
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "dst", Index: 1}: {
@@ -516,7 +518,14 @@ func TestCheckSummary_Basic(t *testing.T) {
 						{
 							Name: pkg + ".addVals",
 							Want: summaries.DetailedSummary{
-								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "b", Index: 1},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "a", Index: 0},
+									},
+								},
 							},
 							IsSound: false,
 							Unsoundness: check.Unsoundness{
@@ -563,9 +572,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "b", Index: 1},
 										summaries.ReturnSNode{Index: 0},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "a", Index: 0},
 										summaries.ReturnSNode{Index: 0},
 									},
 								},
@@ -574,7 +585,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: nil,
 							},
-							Method:        check.Immutability,
+							Method:        check.General,
 							CalleeResults: nil,
 						},
 					},
