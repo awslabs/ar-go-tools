@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -112,9 +113,12 @@ func CheckSummary(
 		if implems, isPresent := implementations[key]; isPresent {
 			var res []SoundnessResult
 			for implem := range implems {
-				s.Logger.Infof("Checking that interface summary for %s is sound for implementation %s",
+				s.Logger.Infof(
+					"Checking that interface summary for %s is sound for implementation %s",
 					want.Name(), implem.RelString(nil))
-				partRes, err := checkSummary(ctx, s, implem, want.Summary(), specs, testNaive)
+				callStack := []*ssa.Function{implem}
+				partRes, err := checkSummary(
+					ctx, s, implem, want.Summary(), specs, testNaive, callStack)
 				res = append(res, partRes)
 				if err != nil {
 					return res, true, err
@@ -133,7 +137,8 @@ func CheckSummary(
 	}
 
 	s.Logger.Infof("checking the soundness of summary %s ...\n", want.Summary())
-	res, err := checkSummary(ctx, s, f, want.Summary(), specs, testNaive)
+	callStack := []*ssa.Function{f}
+	res, err := checkSummary(ctx, s, f, want.Summary(), specs, testNaive, callStack)
 	return []SoundnessResult{res}, true, err
 }
 
@@ -147,10 +152,12 @@ var errInfer = errors.New("failed to infer callee summaries")
 // Try general, then types, then immutability, etc.
 // Each method removes more must-not-flows, which makes the next task easier.
 //
+// The callStack is used to avoid looping forever when checking the soundness of recursive callees.
+//
 //gocyclo:ignore
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
-	specs []dataflow.ScanningSpec, testNaive bool,
+	specs []dataflow.ScanningSpec, testNaive bool, callStack []*ssa.Function,
 ) (SoundnessResult, error) {
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
@@ -295,8 +302,8 @@ func checkSummary(
 
 	// Since we inferred callee summaries, we have intra-procedural results for f.
 	// This means that we only need to prove the must-not-flows in the callees.
-	calleeResults, soundnessResult, done, err2 := checkCalleeSummaries(ctx, s, f,
-		calleeSummaries, specs, soundnessResultBase, unsoundness, start)
+	calleeResults, soundnessResult, done, err2 := checkCalleeSummaries(
+		ctx, s, f, calleeSummaries, specs, soundnessResultBase, unsoundness, start, callStack)
 	if done {
 		return soundnessResult, err2
 	}
@@ -334,12 +341,14 @@ func checkSummary(
 	}, nil
 }
 
-func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
+func checkCalleeSummaries(
+	ctx context.Context, s *State, f *ssa.Function,
 	calleeSummaries map[*ssa.Function][]summaries.DetailedSummary,
 	specs []dataflow.ScanningSpec,
 	soundnessResultBase SoundnessResult,
-	unsoundness Unsoundness,
-	start time.Time) ([][]SoundnessResult, SoundnessResult, bool, error) {
+	unsoundness Unsoundness, start time.Time,
+	callStack []*ssa.Function,
+) ([][]SoundnessResult, SoundnessResult, bool, error) {
 	var calleeResults [][]SoundnessResult
 	for callee, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
@@ -348,13 +357,12 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 				fmt.Errorf("no summaries inferred for callee: %s", callee)
 		}
 
-		if callee == f {
+		if slices.Contains(callStack, callee) {
 			soundnessResultBase.IsSound = false
 			soundnessResultBase.Unsoundness = unsoundness
 			soundnessResultBase.Time = time.Since(start)
 			soundnessResultBase.Method = Recursive
-			s.Logger.Errorf(
-				"cannot check the soundness of an inferred *recursive* callee summary: %s\n", f)
+			s.Logger.Warnf("%s is recursive by calling callee %s: assuming unsound\n", f, callee)
 			return nil, soundnessResultBase, true, nil
 		}
 
@@ -363,7 +371,8 @@ func checkCalleeSummaries(ctx context.Context, s *State, f *ssa.Function,
 			// Recursively check the soundness of the callee's inferred summary
 			s.Logger.Infof(
 				"checking inferred summary for callee %s in %s: %v\n", callee, f, calleeSumm)
-			calleeRes, err := checkSummary(ctx, s, callee, calleeSumm, specs, false)
+			calleeRes, err := checkSummary(
+				ctx, s, callee, calleeSumm, specs, false, append(callStack, callee))
 			if err != nil {
 				s.Logger.Errorf("failed to check callee summary: %v", err)
 				if errors.Is(err, errInfer) {
