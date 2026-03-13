@@ -11,6 +11,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,7 +40,7 @@ class ExperimentRunner:
     """Runs experiments comparing taint analysis approaches."""
 
     def __init__(self, repo_dir: Path, output_dir: Path, timeout: int = 300,
-                 constructive_timeout: int = 300, aws_profile: Optional[str] = None):
+                 constructive_timeout: int = 180, aws_profile: Optional[str] = None):
         self.repo_dir = repo_dir
         self.output_dir = output_dir
         self.timeout = timeout
@@ -117,14 +118,14 @@ class ExperimentRunner:
     def verify_setup(self) -> bool:
         """Verify repository has required files."""
         config_path = self.repo_dir / self.get_config_path()
-        to_summarize = self.repo_dir / "to-summarize.json"
+        to_summarize = self.repo_dir / "to_summarize.json"
 
         if not config_path.exists():
             logger.error(f"Config file not found: {config_path}")
             return False
 
         if not to_summarize.exists():
-            logger.error(f"to-summarize.json not found: {to_summarize}")
+            logger.error(f"to_summarize.json not found: {to_summarize}")
             return False
 
         # Create empty user-specs.yaml if missing
@@ -158,7 +159,7 @@ class ExperimentRunner:
         cmd = [
             "argot-summarize",
             "--config", config_path,
-            "--functions", "to-summarize.json",
+            "--functions", "to_summarize.json",
             "--stats-json", str(stats_file)
         ]
 
@@ -376,16 +377,17 @@ class ExperimentRunner:
         # Parse output for summary counts
         if check_log.exists():
             content = check_log.read_text()
-            sound = content.count("sound summary")
-            soundy = content.count("soundy summary")
-            unsound = content.count("unsound summary")
-
-            return {
-                "sound": sound,
-                "soundy": soundy,
-                "unsound": unsound,
-                "total": sound + soundy + unsound
-            }
+            m = re.search(
+                r'Check results:\s*(\d+)\s*sound\s*/\s*(\d+)\s*soundy\s*/\s*(\d+)\s*unsound', content)
+            if m:
+                sound, soundy, unsound = int(m.group(1)), int(
+                    m.group(2)), int(m.group(3))
+                return {
+                    "sound": sound,
+                    "soundy": soundy,
+                    "unsound": unsound,
+                    "total": sound + soundy + unsound
+                }
 
         return {"sound": 0, "soundy": 0, "unsound": 0, "total": 0}
 
@@ -456,12 +458,12 @@ def get_all_repos(base_dir: Path) -> List[Path]:
         if not item.is_dir():
             continue
 
-        # Check for config and to-summarize.json
+        # Check for config and to_summarize.json
         config_exists = (
             (item / "argot-config.yaml").exists() or
             (item / "cmd/atlas/argot-config.yaml").exists()
         )
-        to_summarize_exists = (item / "to-summarize.json").exists()
+        to_summarize_exists = (item / "to_summarize.json").exists()
 
         if config_exists and to_summarize_exists:
             repos.append(item)
