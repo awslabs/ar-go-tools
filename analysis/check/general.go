@@ -307,26 +307,28 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 	var filtered []flow
 	for i, fl1 := range flows {
 		skip := false
-		for j, fl2 := range flows {
-			if i == j {
-				continue
-			}
-			if fl1.from.node == fl2.from.node && fl1.to.node == fl2.to.node {
-				if fl2.from.path.isCoveredBy(fl1.from.path) && fl2.to.path.isCoveredBy(fl1.to.path) {
-					// fl2 covers fl1: skip fl1 unless fl1 also covers fl2 (equal), in which
-					// case use the index to break the tie.
-					if !(fl1.from.path.isCoveredBy(fl2.from.path) && fl1.to.path.isCoveredBy(fl2.to.path)) ||
-						j < i {
+		if fl1.from.node == fl1.to.node {
+			s.Logger.Warnf("flow %v is a redundant self-flow\n", fl1)
+			skip = true
+		} else {
+			for j, fl2 := range flows {
+				if i == j {
+					continue
+				}
+				if fl1.from.node == fl2.from.node && fl1.to.node == fl2.to.node {
+					if fl2.from.path.isCoveredBy(fl1.from.path) && fl2.to.path.isCoveredBy(fl1.to.path) {
+						// fl2 covers fl1: skip fl1 unless fl1 also covers fl2 (equal), in which
+						// case use the index to break the tie.
+						if !(fl1.from.path.isCoveredBy(fl2.from.path) && fl1.to.path.isCoveredBy(fl2.to.path)) ||
+							j < i {
 
-						skip = true
-						break
+							s.Logger.Warnf("flow %v is redundant with %v\n", fl1, fl2)
+							skip = true
+							break
+						}
 					}
 				}
 			}
-		}
-		if fl1.from == fl1.to {
-			s.Logger.Warnf("flow %v is an invalid self-flow in summary %s\n", fl1, flows)
-			skip = true
 		}
 		if skip {
 			continue
