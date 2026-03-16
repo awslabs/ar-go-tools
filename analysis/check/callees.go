@@ -177,7 +177,7 @@ func inferCalleeSummaries(
 	mustNotFlowConstrs := buildMustNotFlowConstraints(traces, mustNotFlowEdges)
 	constraints = append(constraints, mustNotFlowConstrs...)
 	s.Logger.Debugf("\t%d must-not-flow constraints", len(mustNotFlowConstrs))
-	s.Logger.Debugf("... computed %d total constraints", len(constraints))
+	s.Logger.Infof("... computed %d total maxsat constraints", len(constraints))
 
 	// Find the optimal cost first
 	prob := maxsat.New(constraints...)
@@ -185,12 +185,12 @@ func inferCalleeSummaries(
 		"running callee summary inference for function %s...\n", g.Parent)
 	startSolver := time.Now()
 	model, optimalCost := prob.Solve()
-	s.Logger.Debugf("... solver returned after %s", time.Since(startSolver))
+	s.Logger.Infof("... maxsat solver returned after %s", time.Since(startSolver))
 	if model == nil {
 		// An unsatisfiable model is not necessarily an error. For example, if mustNotFlows
 		// contradicts a satisfiable may-flow edge generated from a successfull intra-procedural
 		// analysis, then the model will be unsatisfiable.
-		s.Logger.Debugf(
+		s.Logger.Warnf(
 			"callee summary inference MAXSAT model for function %s is unsatisfiable\n", g.Parent)
 		return nil, nil
 	}
