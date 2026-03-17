@@ -26,6 +26,10 @@
     "function": "Append"
   },
   {
+    "package": "github.com/dgraph-io/badger/v4",
+    "function": "Open"
+  },
+  {
     "package": "fmt",
     "function": "Appendf"
   },
@@ -40,14 +44,6 @@
   {
     "package": "syscall",
     "function": "Faccessat"
-  },
-  {
-    "package": "syscall",
-    "function": "Stat"
-  },
-  {
-    "package": "syscall",
-    "function": "Lstat"
   },
   {
     "package": "github.com/dgraph-io/badger/v4/table",

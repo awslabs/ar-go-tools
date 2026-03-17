@@ -1,7 +1,7 @@
 options:
   project-root: "./"
   reports-dir: "logs/argot"
-  log-level: 4
+  log-level: 3
   report-paths: true
   analysis-options:
     unsafe-max-depth: 15
@@ -18,8 +18,7 @@ targets:
 
 dataflow-problems:
   generate-unsoundness-report: true
-  user-specs:
-    - "user-specs.yaml"
+  user-specs: []
   summarize-on-demand: true
   check-ignores-unsound: true
   taint-tracking:

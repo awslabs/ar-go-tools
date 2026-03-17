@@ -313,6 +313,16 @@ class ExperimentRunner:
         log_dir = repo_output / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
+        # Copy argot config to results directory
+        config_src = self.repo_dir / self.get_config_path()
+        if config_src.exists():
+            shutil.copy(config_src, repo_output / "argot-config.yaml")
+
+        # Copy to_summarize.json to results directory
+        to_summarize_src = self.repo_dir / "to_summarize.json"
+        if to_summarize_src.exists():
+            shutil.copy(to_summarize_src, repo_output / "to_summarize.json")
+
         try:
             # Phase 1: Summarization
             summarization = self.run_summarization(log_dir)
