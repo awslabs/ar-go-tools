@@ -226,6 +226,7 @@ func runTarget(
 
 	// Create context with timeout from config
 	ctx := context.Background()
+	df.Config.DataflowProblems.IntraTimeoutMs = 60 * 1000 // 1 minute
 	if timeout := df.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)

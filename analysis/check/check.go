@@ -103,15 +103,10 @@ func CheckSummary(
 	specs []dataflow.ScanningSpec,
 	testNaive bool,
 ) ([]SoundnessResult, bool, error) {
-	if deadline, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		const timeout = 5 * time.Minute
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-		s.Logger.Debugf("no check timeout set: setting to %v\n", timeout)
-	} else {
-		s.Logger.Debugf("check deadline is: %v\n", deadline)
-	}
+	// NOTE Hardcode configs so we don't make unintentional mistakes.
+	s.Config.DataflowProblems.CheckIgnoresUnsound = true
+	s.Config.DataflowProblems.CheckIgnoresPredefined = false
+
 	// SPECIAL CASE: INTERFACES
 	if ifaceSummary, isIfaceSummary := want.(summaries.IfaceMethodFlowSummary); isIfaceSummary {
 		// Checking a summary that is for a method of an interface
