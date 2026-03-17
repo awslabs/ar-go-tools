@@ -360,13 +360,17 @@ func checkOneSummaryWrapper(
 	}
 	for _, soundness := range soundness {
 		if soundness.IsSound {
-			s.Logger.Infof("Summary for %s is sound! (%s)", soundness.Fn.String(), soundness.Method)
-			s.Logger.Debugf("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
-			s.Logger.Debugf("Result:\n%s\n", soundness.PrettyString())
+			s.Logger.Infof("Summary for %s is sound! (%s)", targetFunctionName, soundness.Method)
+			if soundness.Fn != nil {
+				s.Logger.Infof("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
+			}
+			s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
 		} else {
-			s.Logger.Infof("Summary for %s is unsound! (%s)", soundness.Fn.String(), soundness.Method)
-			s.Logger.Warnf("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
-			s.Logger.Warnf("Result:\n%s\n", soundness.PrettyString())
+			s.Logger.Infof("Summary for %s is unsound! (%s)", targetFunctionName, soundness.Method)
+			if soundness.Fn != nil {
+				s.Logger.Infof("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
+			}
+			s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
 		}
 	}
 	results = append(results, soundness...)
