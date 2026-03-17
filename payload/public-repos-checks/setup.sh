@@ -8,6 +8,7 @@ SPECS_DIR="$SCRIPT_DIR/flow-specs"
 
 # Repository configurations (name:url pairs)
 REPOS="
+ar-go-tools:git@github.com:awslabs/ar-go-tools.git
 amazon-cloudwatch-agent:git@github.com:aws/amazon-cloudwatch-agent.git
 amazon-ssm-agent:git@github.com:aws/amazon-ssm-agent.git
 atlas:git@github.com:ariga/atlas.git

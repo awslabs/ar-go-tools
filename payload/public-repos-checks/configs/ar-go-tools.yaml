@@ -1,0 +1,48 @@
+options:
+  project-root: "./" # Root directory for relative paths
+  reports-dir: "logs/argot" # Directory for analysis reports
+  log-level: 3 # Info level logging
+  report-paths: true # Generate detailed path reports
+  analysis-options:
+    unsafe-max-depth: 15 # Limit call depth for performance
+    max-alarms: 50 # Maximum number of alarms to report
+
+targets:
+  - name: "argot"
+    files:
+      - "cmd/argot/main.go"
+
+dataflow-problems:
+  summarize-on-demand: true
+  generate-unsoundness-report: true
+  user-specs:
+    - "user-specs.yaml"
+  taint-tracking:
+    # Tracking the data that flows from the client code being analyzed to location where we might log strings from
+    # that code. For example, if a (*ssa.Function).String() is logged in a log.Warnf call.
+    # Data should be Sanitized using the formatutil.Santitize function.
+    - tag: "source-formats"
+      targets: ["argot"]
+      severity: "LOW"
+      sources:
+        - package: "ssa"
+          method: "String" # any String method from the ssa package, includes function.String etc.
+          context: "ar-go-tools" # Only sources in our code, i.e. in ar-go-tools
+      sinks:
+        - context: "ar-go-tools"
+          package: "fmt"
+          value-match: ".*%s.*" # we only care about string formats. %q is fine to use
+          method: "((Printf)|(Fprintf))"
+        - package: "config"
+          value-match: ".*%s.*" # we only care about string formats. %q is fine to use
+          method: "((Warnf)|(Debugf)|(Infof)|(Errorf))" # the logging functions in our implementation
+      sanitizers:
+        - package: "formatutil"
+          method: "Sanitize"
+      filters:
+        - type: "LogGroup" # log group cannot be really tainted by the data, but taint tracking will mark it
+        # because formatters are deemed tainted by their arguments. This is a very restrictive assumption.
+        - type: "io.Writer"
+        - type: "^int$" # not enough data in an int to do terminal injection
+        - type: "^bool$" # same for bool
+        - type: "^float" # same for floats

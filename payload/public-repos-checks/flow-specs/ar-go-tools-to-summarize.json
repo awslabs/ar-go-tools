@@ -1,0 +1,124 @@
+[
+    {
+        "package": "github.com/awslabs/ar-go-tools/analysis/check",
+        "function": "CheckSummary"
+    },
+    {
+        "package": "github.com/awslabs/ar-go-tools/analysis/taint",
+        "function": "Analyze"
+    },
+    {
+        "package": "github.com/awslabs/ar-go-tools/analysis/backtrace",
+        "function": "Analyze"
+    },
+    {
+        "package": "github.com/awslabs/ar-go-tools/analysis/taint",
+        "receiver": "*Visitor",
+        "method": "Visit"
+    },
+    {
+        "package": "github.com/awslabs/ar-go-tools/analysis/backtrace",
+        "receiver": "*Visitor",
+        "method": "Visit"
+    },
+    {
+        "package": "github.com/awslabs/ar-go-tools/analysis/render",
+        "receiver": "CrossFunctionGraphVisitor",
+        "method": "Visit"
+    },
+    {
+        "package": "github.com/awslabs/ar-go-tools/internal/pointer",
+        "interface": "constraint",
+        "method": "solve"
+    },
+    {
+        "package": "github.com/awslabs/ar-go-tools/internal/pointer",
+        "interface": "constraint",
+        "method": "presolve"
+    },
+    {
+        "package": "github.com/awslabs/ar-go-tools/internal/pointer",
+        "interface": "constraint",
+        "method": "renumber"
+    },
+    {
+        "package": "go/types",
+        "receiver": "*Checker",
+        "method": "builtin"
+    },
+    {
+        "package": "go/types",
+        "receiver": "*unifier",
+        "method": "nify"
+    },
+    {
+        "package": "go/types",
+        "interface": "Type",
+        "method": "Underlying"
+    },
+    {
+        "package": "go/types",
+        "interface": "Type",
+        "method": "String"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Node",
+        "method": "String"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Value",
+        "method": "Pos"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Value",
+        "method": "Name"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Value",
+        "method": "Type"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Value",
+        "method": "String"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Value",
+        "method": "Referrers"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Instruction",
+        "method": "Pos"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Instruction",
+        "method": "Parent"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Instruction",
+        "method": "Block"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Instruction",
+        "method": "String"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Instruction",
+        "method": "Operands"
+    },
+    {
+        "package": "golang.org/x/tools/go/ssa",
+        "interface": "Instruction",
+        "method": "setBlock"
+    }
+]
