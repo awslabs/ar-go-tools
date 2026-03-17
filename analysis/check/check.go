@@ -416,6 +416,20 @@ func checkCalleeSummaries(
 			}
 		}
 
+		for _, crs := range calleeResults {
+			for _, cr := range crs {
+				if !cr.IsSound {
+					s.Logger.Infof("unsound deduced callee summary: %v\n", cr.Want)
+					soundnessResultBase.IsSound = false
+					soundnessResultBase.Unsoundness = unsoundness
+					soundnessResultBase.Time = time.Since(start)
+					soundnessResultBase.Method = Recursive
+					soundnessResultBase.CalleeResults = calleeResults
+					return nil, soundnessResultBase, true, nil
+				}
+			}
+		}
+
 		calleeResults = append(calleeResults, thisCalleeResults)
 	}
 	return calleeResults, SoundnessResult{}, false, nil
