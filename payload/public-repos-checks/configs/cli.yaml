@@ -19,6 +19,7 @@ dataflow-problems:
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
   generate-unsoundness-report: true
+  check-ignores-unsound: true
   user-specs: []
   # Taint tracking problems
   taint-tracking:

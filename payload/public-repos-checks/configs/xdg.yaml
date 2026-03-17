@@ -13,6 +13,7 @@ targets:
 dataflow-problems:
   summarize-on-demand: true
   generate-unsoundness-report: true
+  check-ignores-unsound: true
   user-specs: []
   taint-tracking:
     - tag: "path-traversal-xdg-files"

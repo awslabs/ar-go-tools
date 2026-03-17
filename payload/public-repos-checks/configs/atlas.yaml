@@ -14,7 +14,9 @@ targets:
 dataflow-problems:
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
-  
+  check-ignores-unsound: true
+  generate-unsoundness-report: true
+
   taint-tracking:
     - tag: "sql-injection"
       description: "SQL injection via database URLs and schema names"
@@ -28,7 +30,7 @@ dataflow-problems:
           method: "Open"
         - package: "database/sql"
           method: ".*"
-    
+
     - tag: "path-traversal"
       description: "Path traversal in migration directories"
       targets: ["atlas-cli"]
@@ -41,7 +43,7 @@ dataflow-problems:
           method: "(Open|Create|ReadFile|WriteFile)"
         - package: "io/fs"
           method: ".*"
-    
+
     - tag: "command-injection"
       description: "Command injection in Docker operations"
       targets: ["atlas-cli"]

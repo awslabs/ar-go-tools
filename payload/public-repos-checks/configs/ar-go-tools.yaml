@@ -15,6 +15,7 @@ targets:
 dataflow-problems:
   summarize-on-demand: true
   generate-unsoundness-report: true
+  check-ignores-unsound: true
   user-specs:
     - "user-specs.yaml"
   taint-tracking:
@@ -25,9 +26,9 @@ dataflow-problems:
       targets: ["argot"]
       severity: "LOW"
       sources:
-        - package: "ssa"
-          method: "String" # any String method from the ssa package, includes function.String etc.
-          context: "ar-go-tools" # Only sources in our code, i.e. in ar-go-tools
+        - package: "github.com/awslabs/ar-go-tools/analysis/taint"
+          method: "NewFlows"
+          context: "github.com/awslabs/ar-go-tools/analysis/taint" # Only sources in our code, i.e. in ar-go-tools
       sinks:
         - context: "ar-go-tools"
           package: "fmt"
