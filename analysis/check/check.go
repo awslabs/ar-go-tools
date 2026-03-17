@@ -342,16 +342,13 @@ func checkSummary(
 	}
 
 	// TODO Filter out must-not-flows that are proven via checking the callees
-	return SoundnessResult{
-		Fn:            f,
-		Name:          f.RelString(nil),
-		Want:          want,
-		IsSound:       calleesSound,
-		Unsoundness:   unsoundness,
-		Method:        Recursive,
-		Time:          time.Since(start),
-		CalleeResults: calleeResults,
-	}, nil
+	soundnessResultBase.MethodCounts[Recursive] = len(unprovenMustNotFlows)
+	soundnessResultBase.IsSound = calleesSound
+	soundnessResultBase.Unsoundness = unsoundness
+	soundnessResultBase.Method = Recursive
+	soundnessResultBase.Time = time.Since(start)
+	soundnessResultBase.CalleeResults = calleeResults
+	return soundnessResultBase, nil
 }
 
 func checkCalleeSummaries(

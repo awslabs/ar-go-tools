@@ -480,7 +480,10 @@ func (h *hvn) markIndirectNodes() {
 	//     stored or address-taken.
 	for _, c := range h.a.constraints {
 		if c, ok := c.(*addrConstraint); ok {
-			start := h.a.enclosingObj(c.src)
+			start, ok := h.a.enclosingObj(c.src)
+			if !ok {
+				continue
+			}
 			end := start + NodeID(h.a.nodes[start].obj.size)
 			for id := c.src; id < end; id++ {
 				h.markIndirect(onodeid(id), "A-T object")

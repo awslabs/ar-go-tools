@@ -191,7 +191,7 @@ type analysis struct {
 // enclosingObj returns the first node of the addressable memory
 // object that encloses node id.  Panic ensues if that node does not
 // belong to any object.
-func (a *analysis) enclosingObj(id NodeID) NodeID {
+func (a *analysis) enclosingObj(id NodeID) (NodeID, bool) {
 	// Find previous node with obj != nil.
 	i := id
 	for {
@@ -200,21 +200,25 @@ func (a *analysis) enclosingObj(id NodeID) NodeID {
 			if i+NodeID(obj.size) <= id {
 				break // out of bounds
 			}
-			return i
+			return i, true
+		}
+		if i == 0 {
+			break
 		}
 		i--
 	}
-	panic(fmt.Sprintf("node %v (%s, %s) has no enclosing object", id,
-		a.nodes[id].typ.Underlying().String(),
-		a.nodes[id].subelement.path(),
-	))
+	return 0, false
 }
 
 // labelFor returns the Label for node id.
 // Panic ensues if that node is not addressable.
 func (a *analysis) labelFor(id NodeID) *Label {
+	obj, ok := a.enclosingObj(id)
+	if !ok {
+		panic(fmt.Sprintf("labelFor(n%d): node has no enclosing object", id))
+	}
 	return &Label{
-		obj:        a.nodes[a.enclosingObj(id)].obj,
+		obj:        a.nodes[obj].obj,
 		subelement: a.nodes[id].subelement,
 	}
 }

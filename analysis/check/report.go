@@ -282,7 +282,7 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 		},
 		Method:        string(r.Method),
 		MethodCounts:  methodCounts,
-		Elapsed:       time.Duration(r.Time.Seconds()),
+		Elapsed:       r.Time,
 		CalleeResults: calleeResults,
 	}
 }
