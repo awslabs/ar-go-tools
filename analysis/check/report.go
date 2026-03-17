@@ -369,6 +369,13 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 		}
 	}
 
+	// Add functions that took too long to summarize
+	for f := range state.SlowSummaries {
+		if _, ok := toReport[f]; !ok {
+			toReport[f] = nil
+		}
+	}
+
 	if len(toReport) == 0 {
 		state.Logger.Infof("No unsoundness found in analyzed functions")
 		return
@@ -376,6 +383,9 @@ func GenerateUnsoundnessReport(state *dataflow.State) {
 
 	for functionToFix, unsoundnessCalleesReasons := range toReport {
 		state.Logger.Warnf("Function %s should have a summary:", formatutil.Blue(functionToFix))
+		if state.SlowSummaries[functionToFix] {
+			state.Logger.Warnf("- it took too long to summarize")
+		}
 		for _, unsoundness := range unsoundnessCalleesReasons {
 			if unsoundness.Func == functionToFix {
 				state.Logger.Warnf("- it cannot be summarized soundly analyzed because it")

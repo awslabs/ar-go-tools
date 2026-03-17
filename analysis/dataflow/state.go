@@ -56,6 +56,9 @@ type State struct {
 	// BoundingInfo is a map from pointer labels to the closures that bind them. The bounding analysis produces such
 	// a map
 	BoundingInfo BoundingMap
+
+	// SlowSummaries tracks functions whose summary construction took longer than 5 seconds
+	SlowSummaries map[*ssa.Function]bool
 }
 
 // NewState generates a State from a PointerState
@@ -92,6 +95,7 @@ func initializedState(ps ptr.State, steps []func(*State)) (*State, error) {
 		DataFlowContracts:     map[string]*SummaryGraph{},
 		MethodKeys:            map[string]string{},
 		Globals:               map[*ssa.Global]*GlobalNode{},
+		SlowSummaries:         map[*ssa.Function]bool{},
 		FlowGraph: &InterProceduralFlowGraph{
 			Summaries:     map[*ssa.Function]*SummaryGraph{},
 			ForwardEdges:  map[GraphNode]map[GraphNode]bool{},

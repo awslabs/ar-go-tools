@@ -13,8 +13,7 @@ targets:
 dataflow-problems:
   summarize-on-demand: true
   generate-unsoundness-report: true
-  user-specs:
-    - "user-specs.yaml"
+  user-specs: []
   taint-tracking:
     - tag: "path-traversal-xdg-files"
       description: "Detects path traversal vulnerabilities where user-controlled input flows to XDG file creation functions, potentially allowing access to arbitrary filesystem locations."

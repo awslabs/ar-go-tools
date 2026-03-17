@@ -743,8 +743,14 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 	if err != nil {
 		panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
 	}
-
-	logger.Debugf("BuildSummary: Finished constructing summary for %v (%.2f s)", function, elapsed.Seconds())
+	if elapsed.Seconds() > 1.0 {
+		logger.Infof("Constructing summary for %v took %.2f s", function, elapsed.Seconds())
+		if elapsed.Seconds() > 5.0 {
+			s.SlowSummaries[function] = true
+		}
+	} else {
+		logger.Debugf("BuildSummary: Finished constructing summary for %v (%.2f s)", function, elapsed.Seconds())
+	}
 
 	return summary
 }

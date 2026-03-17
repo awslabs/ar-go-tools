@@ -4,10 +4,10 @@ options:
   log-level: 3
   report-paths: true
   analysis-options:
-    unsafe-max-depth: 15
+    unsafe-max-depth: 30
     max-alarms: 30
 dataflow-problems:
-  user-specs: ["user-specs.yaml"]
+  user-specs: []
   summarize-on-demand: true
   generate-unsoundness-report: true
   check-ignores-unsound: true
@@ -35,6 +35,40 @@ dataflow-problems:
       sinks:
         - package: "hash/fnv"
           method: "Write"
+    - tag: "output-extension-to-encoder"
+      severity: "LOW"
+      description: "CLI output flag controls image encoding format"
+      targets: ["govatar-cli"]
+      sources:
+        - package: "github.com/urfave/cli/v2"
+          method: "String"
+      sinks:
+        - package: "image/jpeg"
+          method: "Encode"
+        - package: "image/gif"
+          method: "Encode"
+        - package: "image/png"
+          method: "Encode"
+    - tag: "cli-args-to-log"
+      severity: "MEDIUM"
+      description: "CLI positional args flow to log output"
+      targets: ["govatar-cli"]
+      sources:
+        - package: "github.com/urfave/cli/v2"
+          method: "First"
+      sinks:
+        - package: "log"
+          method: "Fatal"
+    - tag: "username-to-prng-seed"
+      severity: "LOW"
+      description: "Username controls PRNG seed for avatar generation"
+      targets: ["govatar-cli"]
+      sources:
+        - package: "github.com/urfave/cli/v2"
+          method: "String"
+      sinks:
+        - package: "math/rand"
+          method: "NewSource"
 targets:
   - name: "govatar-cli"
     files:

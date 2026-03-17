@@ -40,8 +40,7 @@ dataflow-problems:
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
   check-ignores-unsound: true
-  user-specs:
-    - "user-specs.yaml"
+  user-specs: []
   # The taint tracking problems
   taint-tracking:
     - tag: "credential-logging"

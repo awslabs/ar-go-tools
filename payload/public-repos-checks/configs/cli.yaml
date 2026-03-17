@@ -19,8 +19,7 @@ dataflow-problems:
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
   generate-unsoundness-report: true
-  user-specs:
-    - user-specs.yaml
+  user-specs: []
   # Taint tracking problems
   taint-tracking:
     - tag: "auth-token-leakage"

@@ -30,12 +30,11 @@ targets:
     files:
       - "./examples/middleware/main.go"
 dataflow-problems:
-  user-specs:
-    - user-specs.yaml
+  user-specs: []
   summarize-on-demand: true
   field-sensitive-funcs: [".*"]
   generate-unsoundness-report: true
-  check-ignores-unsound: true  
+  check-ignores-unsound: true
   taint-tracking:
     - tag: "http-input-to-metrics"
       description: "HTTP request data should not influence Go runtime metrics"

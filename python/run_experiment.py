@@ -243,6 +243,14 @@ class ExperimentRunner:
             "exit_code": exit_code
         }
 
+    def _count_taint_problems(self) -> int:
+        """Count taint-tracking problems defined in the config."""
+        config_path = self.repo_dir / self.get_config_path()
+        if not config_path.exists():
+            return 0
+        content = config_path.read_text()
+        return len(re.findall(r'^\s*- tag:', content, re.MULTILINE))
+
     def aggregate_results(self, summarization: Dict, taint_with: Dict, taint_baseline: Dict,
                           constructive: Dict) -> Dict:
         """Phase 5: Aggregate all results."""
@@ -274,6 +282,7 @@ class ExperimentRunner:
             "timestamp": self.timestamp,
             "timeout_seconds": self.timeout,
             "constructive_timeout_seconds": self.constructive_timeout,
+            "taint_problems": self._count_taint_problems(),
             "summarization": summarization,
             "taint_with_summaries": taint_with,
             "taint_baseline": taint_baseline,
@@ -372,6 +381,7 @@ class ExperimentRunner:
 
         cmd = ["argot", "check", "--config", config_path]
 
+        check_start = time.time()
         try:
             with open(check_log, 'w') as f:
                 subprocess.run(
@@ -383,6 +393,7 @@ class ExperimentRunner:
                 )
         except Exception as e:
             logger.warning(f"argot check failed: {e}")
+        check_duration = round(time.time() - check_start, 2)
 
         # Parse output for summary counts
         if check_log.exists():
@@ -392,14 +403,20 @@ class ExperimentRunner:
             if m:
                 sound, soundy, unsound = int(m.group(1)), int(
                     m.group(2)), int(m.group(3))
+                # Parse method breakdown lines that follow "Check results"
+                methods = {}
+                for mm in re.finditer(r'^\[INFO\]\.\S+\s{3}(\w+):\s*(\d+)', content, re.MULTILINE):
+                    methods[mm.group(1)] = int(mm.group(2))
                 return {
                     "sound": sound,
                     "soundy": soundy,
                     "unsound": unsound,
-                    "total": sound + soundy + unsound
+                    "total": sound + soundy + unsound,
+                    "methods": methods,
+                    "check_duration_seconds": check_duration
                 }
 
-        return {"sound": 0, "soundy": 0, "unsound": 0, "total": 0}
+        return {"sound": 0, "soundy": 0, "unsound": 0, "total": 0, "methods": {}, "check_duration_seconds": check_duration}
 
     def _count_summaries(self, spec_path: Path) -> Dict[str, int]:
         """Count summaries by type from user-specs.yaml."""
@@ -504,6 +521,11 @@ def display_report(report: Dict):
     summ_table.add_row(
         "Summaries", f"[bold]{summ['summaries']['total']}[/bold] (sound: {summ['summaries']['sound']}, soundy: {summ['summaries']['soundy']}, unsound: {summ['summaries']['unsound']})")
 
+    methods = summ['summaries'].get('methods', {})
+    if methods:
+        methods_str = ", ".join(f"{k}: {v}" for k, v in sorted(methods.items(), key=lambda x: -x[1]))
+        summ_table.add_row("Methods", methods_str)
+
     console.print(Panel(
         summ_table, title="[bold yellow]📝 Summary Generation[/bold yellow]", border_style="yellow"))
 
@@ -586,6 +608,158 @@ def display_report(report: Dict):
     console.print(Panel(" | ".join(comp_parts),
                   title="[bold]📊 Summary[/bold]", border_style="dim"))
     console.print()
+
+
+def _get_taint_problems_from_results(report_path: Path) -> Optional[int]:
+    """Count taint problems from the config saved in the results directory."""
+    config = report_path.parent / "argot-config.yaml"
+    if not config.exists():
+        return None
+    return len(re.findall(r'^\s*- tag:', config.read_text(), re.MULTILINE))
+
+
+def display_all_reports(output_dir: Path):
+    """Display a summary table of all experiments and generate LaTeX tables."""
+    experiments = list_experiments(output_dir)
+    if not experiments:
+        console.print("[yellow]No experiments found.[/yellow]")
+        return
+
+    # Keep only the latest experiment per repo
+    latest = {}
+    for report_path, report in experiments:
+        repo = report['repo']
+        if repo not in latest:
+            latest[repo] = (report_path, report)
+
+    # Collect all method names across reports
+    all_methods = set()
+    for _, report in latest.values():
+        all_methods.update(report.get('summarization', {}).get('summaries', {}).get('methods', {}).keys())
+    method_names = sorted(all_methods)
+
+    # Build rich table
+    table = Table(title="All Experiment Results", box=box.ROUNDED)
+    table.add_column("Repository", style="cyan")
+    table.add_column("Gen (s)", justify="right")
+    table.add_column("Check (s)", justify="right")
+    table.add_column("Constr (s)", justify="right")
+    table.add_column("Taint+S (s)", justify="right")
+    table.add_column("Taint-S (s)", justify="right")
+    table.add_column("Sound", justify="right", style="green")
+    table.add_column("Unsound", justify="right", style="red")
+    for m in method_names:
+        table.add_column(m, justify="right")
+
+    rows = []
+    for repo in sorted(latest):
+        report_path, r = latest[repo]
+        summ = r['summarization']
+        s = summ['summaries']
+        tw = r['taint_with_summaries']
+        tb = r['taint_baseline']
+        c = r.get('constructive', {})
+        check_dur = s.get('check_duration_seconds', '')
+        methods = s.get('methods', {})
+        taint_problems = r.get('taint_problems') or _get_taint_problems_from_results(report_path) or ''
+
+        row = {
+            'repo': repo,
+            'gen': summ['duration_seconds'],
+            'check': check_dur,
+            'constr': c.get('duration_seconds', ''),
+            'taint_w': tw['duration_seconds'],
+            'taint_b': tb['duration_seconds'],
+            'sound': s['sound'],
+            'unsound': s['unsound'],
+            'methods': methods,
+            'taint_problems': taint_problems,
+            'flows_w': len(tw.get('dataflows', [])),
+            'flows_b': len(tb.get('dataflows', [])),
+        }
+        rows.append(row)
+
+        table.add_row(
+            repo,
+            str(row['gen']),
+            str(row['check']),
+            str(row['constr']),
+            str(row['taint_w']),
+            str(row['taint_b']),
+            str(row['sound']),
+            str(row['unsound']),
+            *[str(methods.get(m, 0)) for m in method_names],
+        )
+
+    console.print(table)
+
+    # Generate LaTeX tables
+    latex_lines = []
+
+    # Table 1: Repository, taint problems, taint flows (with summaries)
+    method_cols = "".join(f" & {m}" for m in method_names)
+    method_col_spec = "r" * len(method_names)
+
+    latex_lines.append("% Table 1: Taint analysis problems and flows")
+    latex_lines.append("\\begin{table}[ht]")
+    latex_lines.append("\\centering")
+    latex_lines.append(f"\\begin{{tabular}}{{l r r r {method_col_spec}}}")
+    latex_lines.append("\\toprule")
+    latex_lines.append(f"Repository & Problems & Flows (w/) & Flows (w/o){method_cols} \\\\")
+    latex_lines.append("\\midrule")
+    for row in rows:
+        mcols = " & ".join(str(row['methods'].get(m, 0)) for m in method_names)
+        extra = f" & {mcols}" if method_names else ""
+        latex_lines.append(f"{row['repo']} & {row['taint_problems']} & {row['flows_w']} & {row['flows_b']}{extra} \\\\")
+    latex_lines.append("\\bottomrule")
+    latex_lines.append("\\end{tabular}")
+    latex_lines.append("\\caption{Taint analysis problems and reported flows}")
+    latex_lines.append("\\end{table}")
+    latex_lines.append("")
+
+    # Table 2: Repository, analysis time without summaries, with summaries, summarization+checking time
+    latex_lines.append("% Table 2: Analysis times")
+    latex_lines.append("\\begin{table}[ht]")
+    latex_lines.append("\\centering")
+    latex_lines.append("\\begin{tabular}{l r r r}")
+    latex_lines.append("\\toprule")
+    latex_lines.append("Repository & Baseline (s) & With Summaries (s) & Summarization + Check (s) \\\\")
+    latex_lines.append("\\midrule")
+    for row in rows:
+        check_val = row['check'] if row['check'] != '' else 0
+        summ_check = round(row['gen'] + (float(check_val) if check_val else 0), 2)
+        latex_lines.append(f"{row['repo']} & {row['taint_b']} & {row['taint_w']} & {summ_check} \\\\")
+    latex_lines.append("\\bottomrule")
+    latex_lines.append("\\end{tabular}")
+    latex_lines.append("\\caption{Analysis times comparison}")
+    latex_lines.append("\\end{table}")
+    latex_lines.append("")
+
+    # Table 3: Repository, sound, unsound, methods breakdown
+    latex_lines.append("% Table 3: Summary soundness and methods")
+    latex_lines.append("\\begin{table}[ht]")
+    latex_lines.append("\\centering")
+    latex_lines.append(f"\\begin{{tabular}}{{l r r {method_col_spec}}}")
+    latex_lines.append("\\toprule")
+    latex_lines.append(f"Repository & Sound & Unsound{method_cols} \\\\")
+    latex_lines.append("\\midrule")
+    for row in rows:
+        mcols = " & ".join(str(row['methods'].get(m, 0)) for m in method_names)
+        extra = f" & {mcols}" if method_names else ""
+        latex_lines.append(f"{row['repo']} & {row['sound']} & {row['unsound']}{extra} \\\\")
+    latex_lines.append("\\bottomrule")
+    latex_lines.append("\\end{tabular}")
+    latex_lines.append("\\caption{Summary soundness and proving methods}")
+    latex_lines.append("\\end{table}")
+
+    latex_output = "\n".join(latex_lines)
+
+    # Write to file and display
+    latex_path = output_dir / "tables.tex"
+    latex_path.write_text(latex_output)
+    console.print(f"\n[green]LaTeX tables written to {latex_path}[/green]")
+    console.print()
+    console.print(latex_output)
 
 
 def list_experiments(output_dir: Path) -> List[Tuple[Path, Dict]]:
@@ -776,6 +950,11 @@ def main():
         help="Repository name (optional, interactive selection if not provided)"
     )
     show_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Show summary table of all experiments"
+    )
+    show_parser.add_argument(
         "--output",
         type=Path,
         help="Output directory for results (default: ../payload/public-repos-checks/results)"
@@ -804,7 +983,10 @@ def main():
     if args.command == 'show':
         output_dir = args.output or script_dir.parent / \
             "payload" / "public-repos-checks" / "results"
-        show_command(output_dir, args.repo)
+        if getattr(args, 'all', False):
+            display_all_reports(output_dir)
+        else:
+            show_command(output_dir, args.repo)
         return 0
 
     elif args.command == 'clear':
