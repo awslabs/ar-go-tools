@@ -1,7 +1,7 @@
 options:
   project-root: "."
   reports-dir: "logs/argot"
-  log-level: 4
+  log-level: 3
   report-paths: true
   analysis-options:
     unsafe-max-depth: 15
