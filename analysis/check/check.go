@@ -182,11 +182,12 @@ func checkSummary(
 
 	start := time.Now()
 	soundnessResultBase := SoundnessResult{
-		Fn:      f,
-		Name:    f.RelString(nil),
-		Want:    want,
-		IsSound: true,
-		Time:    time.Duration(0),
+		Fn:           f,
+		Name:         f.RelString(nil),
+		Want:         want,
+		IsSound:      true,
+		MethodCounts: map[Method]int{},
+		Time:         time.Duration(0),
 	}
 	var unprovenMustNotFlows []flow
 	// Special case if we're testing the "naive" method
@@ -222,6 +223,7 @@ func checkSummary(
 		var soundnessResult SoundnessResult
 		var done bool
 		var err error
+		beforeCount := len(unprovenMustNotFlows)
 		switch method {
 		case General:
 			unprovenMustNotFlows, soundnessResult, done, err = checkMethodGeneral(
@@ -229,6 +231,9 @@ func checkSummary(
 			if done {
 				return soundnessResult, err
 			}
+			// For General, the initial must-not-flows come from wantFlows minus the actual flows.
+			// The "proved" count is the total wantFlows minus what remains unproven.
+			beforeCount = len(wantFlows)
 		case Types:
 			unprovenMustNotFlows, soundnessResult, done, err = checkMethodTypes(
 				s, f, unsoundCheckFeats, soundnessResultBase, unprovenMustNotFlows, start)
@@ -247,6 +252,10 @@ func checkSummary(
 			if done {
 				return soundnessResult, err
 			}
+		}
+
+		if proved := beforeCount - len(unprovenMustNotFlows); proved > 0 {
+			soundnessResultBase.MethodCounts[method] = proved
 		}
 
 		if err != nil {
@@ -620,6 +629,8 @@ func checkMethodNaive(ctx context.Context, s *State, f *ssa.Function,
 		soundnessResultBase.Time = time.Since(start)
 		return nil, soundnessResultBase, true, nil
 	}
+	soundnessResultBase.Method = Naive
+	soundnessResultBase.MethodCounts[Naive] = 1
 	soundnessResultBase.Time = time.Since(start)
 
 	return []flow{}, soundnessResultBase, true, nil

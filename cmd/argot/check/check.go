@@ -134,13 +134,16 @@ func Run(flags Flags) error {
 		tmpLogger.Warnf("or because the target is not used in a dataflow problem (taint or slicing)")
 	}
 
+	allResults := make(map[string][]check.SoundnessResult)
 	for targetName, target := range actualTargets {
-		targetErr := runTarget(cfg, targetName, target, parsedSummaries, flags)
+		results, targetErr := runTarget(cfg, targetName, target, parsedSummaries, flags)
 		if targetErr != nil {
 			tmpLogger.Errorf("failed to check soundness of summaries in target %s: %s", targetName, targetErr)
 		}
+		allResults[targetName] = results
 	}
-	return nil
+
+	return report(cfg, tmpLogger, allResults)
 }
 
 // ParseSummaries parses the user specs referenced in the config and returns the dataflow summaries defined there.
@@ -187,7 +190,7 @@ func runTarget(
 	targetInfo config.TargetInfo,
 	parsedSummaries []summaries.FrontendDataflowSummary,
 	flags Flags,
-) error {
+) ([]check.SoundnessResult, error) {
 	var err error
 	loadOptions := config.LoadOptions{
 		PackageConfig: nil,
@@ -221,7 +224,7 @@ func runTarget(
 		dataflow.NewState).Value()
 	specs := dataflow.GetScanningSpecs(df, targetName)
 	if err != nil {
-		return fmt.Errorf("failed to initialize dataflow state: %s", err)
+		return nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
 
 	// Create context with timeout from config
@@ -234,60 +237,59 @@ func runTarget(
 	}
 
 	results, checkErr := SummariesWithSpecs(ctx, df, parsedSummaries, flags.via, specs)
-	// write the report before exiting, even if there was an error in checking summaries
-	if err := report(&df.State.State.State, results); err != nil {
-		return err
-	}
-	if checkErr != nil {
-		return checkErr
-	}
-	return nil
+	return results, checkErr
 }
 
-func report(cfg *config.State, results []check.SoundnessResult) error {
-	// log a summary of the results
-	unsoundOnes := map[string]bool{}
+func report(cfg *config.Config, logger *config.LogGroup, allResults map[string][]check.SoundnessResult) error {
+	// Aggregate counts across all targets, deduplicating by function name.
 	soundOnes := map[string]bool{}
+	unsoundOnes := map[string]bool{}
 	soundyOnes := map[string]bool{}
-	// Count per method
 	methodCounts := map[check.Method]int{}
-	for _, r := range results {
-		if r.IsSound {
-			soundOnes[r.Name] = true
-			if count, ok := methodCounts[r.Method]; ok {
-				methodCounts[r.Method] = count + 1
-			} else {
-				methodCounts[r.Method] = 1
-			}
-		} else {
-			unsoundOnes[r.Name] = true
-			if len(r.Unsoundness.UnprovenMustNotFlows) == 0 {
-				soundyOnes[r.Name] = true
-				if count, ok := methodCounts[r.Method]; ok {
-					methodCounts[r.Method] = count + 1
-				} else {
-					methodCounts[r.Method] = 1
-				}
+
+	var collectMethodCounts func(r check.SoundnessResult)
+	collectMethodCounts = func(r check.SoundnessResult) {
+		for m, c := range r.MethodCounts {
+			methodCounts[m] += c
+		}
+		for _, crs := range r.CalleeResults {
+			for _, cr := range crs {
+				collectMethodCounts(cr)
 			}
 		}
 	}
-	cfg.Logger.Infof("Check results: %d sound / %d soundy / %d unsound\n",
+
+	for _, results := range allResults {
+		for _, r := range results {
+			if r.IsSound {
+				soundOnes[r.Name] = true
+			} else {
+				unsoundOnes[r.Name] = true
+				if len(r.Unsoundness.UnprovenMustNotFlows) == 0 {
+					soundyOnes[r.Name] = true
+				}
+			}
+			collectMethodCounts(r)
+		}
+	}
+
+	logger.Infof("Check results: %d sound / %d soundy / %d unsound\n",
 		len(soundOnes),
 		len(soundyOnes),
 		len(unsoundOnes)-len(soundyOnes))
 	for method, count := range methodCounts {
-		cfg.Logger.Infof("  %s: %d\n", method, count)
+		logger.Infof("   %s: %d\n", method, count)
 	}
-	if cfg.Config.ReportsDir != "" {
-		reportFile, err := os.Create(filepath.Join(cfg.Config.ReportsDir, "check-report.json"))
+	if cfg.ReportsDir != "" {
+		reportFile, err := os.Create(filepath.Join(cfg.ReportsDir, "check-report.json"))
 		if err != nil {
 			return fmt.Errorf("failed to create report file: %v", err)
 		}
-		cfg.Logger.Infof("Full report written to %s\n", reportFile.Name())
+		logger.Infof("Full report written to %s\n", reportFile.Name())
 		enc := json.NewEncoder(reportFile)
 		enc.SetEscapeHTML(false) // don't escape characters like "<"
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(results); err != nil {
+		if err := enc.Encode(allResults); err != nil {
 			return fmt.Errorf("failed to marshal report to json: %v", err)
 		}
 	}

@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import yaml
+
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -109,11 +111,20 @@ class ExperimentRunner:
             return "cmd/atlas/argot-config.yaml"
         return "argot-config.yaml"
 
-    def get_spec_path(self) -> str:
-        """Get user-specs path based on repository."""
-        if self.repo_name == "atlas":
-            return "cmd/atlas/user-specs.yaml"
-        return "user-specs.yaml"
+    def get_spec_paths(self) -> List[str]:
+        """Read the config file and return all user-specs paths listed in it."""
+        config_path = self.repo_dir / self.get_config_path()
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+                paths = (config or {}).get('dataflow-problems', {}).get('user-specs', [])
+                if paths:
+                    return paths
+            except Exception as e:
+                logger.warning(f"Failed to parse config for spec paths: {e}")
+        # Fallback
+        return ["user-specs.yaml"]
 
     def verify_setup(self) -> bool:
         """Verify repository has required files."""
@@ -129,10 +140,12 @@ class ExperimentRunner:
             return False
 
         # Create empty user-specs.yaml if missing
-        spec_path = self.repo_dir / self.get_spec_path()
-        if not spec_path.exists():
-            logger.info(f"Creating empty user-specs.yaml")
-            spec_path.write_text("dataflow-summaries: []\n")
+        for spec_rel in self.get_spec_paths():
+            spec_path = self.repo_dir / spec_rel
+            if not spec_path.exists():
+                logger.info(f"Creating empty {spec_rel}")
+                spec_path.parent.mkdir(parents=True, exist_ok=True)
+                spec_path.write_text("dataflow-summaries: []\n")
 
         return True
 
@@ -141,16 +154,16 @@ class ExperimentRunner:
         logger.info(
             f"Phase 1: Running summary generation for {self.repo_name}")
 
-        spec_path = self.repo_dir / self.get_spec_path()
+        spec_paths = self.get_spec_paths()
         config_path = self.get_config_path()
 
-        # Backup existing specs
-        backup_path = spec_path.with_suffix('.yaml.backup')
-        if spec_path.exists():
-            shutil.copy(spec_path, backup_path)
-
-        # Clear specs
-        spec_path.write_text("dataflow-summaries: []\n")
+        # Backup existing specs and clear them
+        for spec_rel in spec_paths:
+            spec_path = self.repo_dir / spec_rel
+            backup_path = spec_path.with_suffix('.yaml.backup')
+            if spec_path.exists():
+                shutil.copy(spec_path, backup_path)
+            spec_path.write_text("dataflow-summaries: []\n")
 
         # Run summarization
         log_file = log_dir / "summarize.log"
@@ -172,9 +185,12 @@ class ExperimentRunner:
             cmd, log_file, "📝 Summary generation", timeout=None, env=env)
 
         # Backup generated summaries to results dir
-        if spec_path.exists():
-            backup_summaries = log_dir / "generated-summaries.yaml"
-            shutil.copy(spec_path, backup_summaries)
+        for i, spec_rel in enumerate(spec_paths):
+            spec_path = self.repo_dir / spec_rel
+            if spec_path.exists():
+                suffix = f"-{i}" if i > 0 else ""
+                backup_summaries = log_dir / f"generated-summaries{suffix}.yaml"
+                shutil.copy(spec_path, backup_summaries)
 
         # Run argot check to get accurate soundness counts
         summaries = self._check_summaries(log_dir)
@@ -206,8 +222,9 @@ class ExperimentRunner:
     def run_taint_analysis(self, log_dir: Path, phase_name: str, clear_specs: bool = False) -> Dict:
         """Run taint analysis and collect results."""
         if clear_specs:
-            spec_path = self.repo_dir / self.get_spec_path()
-            spec_path.write_text("dataflow-summaries: []\n")
+            for spec_rel in self.get_spec_paths():
+                spec_path = self.repo_dir / spec_rel
+                spec_path.write_text("dataflow-summaries: []\n")
 
         config_path = self.get_config_path()
         log_file = log_dir / f"taint-{phase_name}.log"
@@ -301,13 +318,13 @@ class ExperimentRunner:
         return report
 
     def restore_specs(self):
-        """Restore backed up user-specs.yaml."""
-        spec_path = self.repo_dir / self.get_spec_path()
-        backup_path = spec_path.with_suffix('.yaml.backup')
-
-        if backup_path.exists():
-            shutil.move(backup_path, spec_path)
-            logger.info(f"Restored original user-specs.yaml")
+        """Restore backed up user-specs files."""
+        for spec_rel in self.get_spec_paths():
+            spec_path = self.repo_dir / spec_rel
+            backup_path = spec_path.with_suffix('.yaml.backup')
+            if backup_path.exists():
+                shutil.move(backup_path, spec_path)
+                logger.info(f"Restored {spec_rel}")
 
     def run(self) -> Optional[Dict]:
         """Run complete experiment."""
@@ -375,7 +392,7 @@ class ExperimentRunner:
             self.restore_specs()
 
     def _check_summaries(self, log_dir: Path) -> Dict[str, int]:
-        """Run argot check to get accurate summary counts."""
+        """Run argot check to get accurate summary counts from the JSON report."""
         config_path = self.get_config_path()
         check_log = log_dir / "check.log"
 
@@ -389,34 +406,73 @@ class ExperimentRunner:
                     cwd=self.repo_dir,
                     stdout=f,
                     stderr=subprocess.STDOUT,
-                    timeout=360  # Short timeout for check
+                    timeout=360
                 )
         except Exception as e:
             logger.warning(f"argot check failed: {e}")
         check_duration = round(time.time() - check_start, 2)
 
-        # Parse output for summary counts
+        # Find the JSON report path from the log
+        report_data = None
         if check_log.exists():
             content = check_log.read_text()
-            m = re.search(
-                r'Check results:\s*(\d+)\s*sound\s*/\s*(\d+)\s*soundy\s*/\s*(\d+)\s*unsound', content)
+            m = re.search(r'Full report written to (.+)', content)
             if m:
-                sound, soundy, unsound = int(m.group(1)), int(
-                    m.group(2)), int(m.group(3))
-                # Parse method breakdown lines that follow "Check results"
-                methods = {}
-                for mm in re.finditer(r'^\[INFO\]\.\S+\s{3}(\w+):\s*(\d+)', content, re.MULTILINE):
-                    methods[mm.group(1)] = int(mm.group(2))
-                return {
-                    "sound": sound,
-                    "soundy": soundy,
-                    "unsound": unsound,
-                    "total": sound + soundy + unsound,
-                    "methods": methods,
-                    "check_duration_seconds": check_duration
-                }
+                report_path = Path(m.group(1).strip())
+                if report_path.exists():
+                    try:
+                        report_data = json.loads(report_path.read_text())
+                        # Copy report into results directory
+                        shutil.copy(report_path, log_dir / "check-report.json")
+                    except Exception as e:
+                        logger.warning(f"Failed to read check report: {e}")
 
-        return {"sound": 0, "soundy": 0, "unsound": 0, "total": 0, "methods": {}, "check_duration_seconds": check_duration}
+        if report_data is None:
+            return {"sound": 0, "soundy": 0, "unsound": 0, "total": 0, "methods": {}, "check_duration_seconds": check_duration}
+
+        # report_data is map[target] -> []SoundnessResult
+        # Walk all results (including CalleeResults) to count per function name.
+        sound_names = set()
+        unsound_names = set()
+        soundy_names = set()
+        # methods: count once per function name, using the best method that proved it
+        func_methods = {}  # name -> set of methods used
+
+        def collect(result):
+            name = result.get("Func", "")
+            is_sound = result.get("IsSound", False)
+            unproven = result.get("Unsoundness", {}).get("UnprovenMustNotFlows") or []
+            if is_sound:
+                sound_names.add(name)
+            else:
+                unsound_names.add(name)
+                if len(unproven) == 0:
+                    soundy_names.add(name)
+            for method, count in (result.get("MethodCounts") or {}).items():
+                if count > 0:
+                    func_methods.setdefault(name, set()).add(method)
+            for callee_group in result.get("CalleeResults") or []:
+                for cr in callee_group:
+                    collect(cr)
+
+        for target_results in report_data.values():
+            for r in target_results:
+                collect(r)
+
+        # Build method counts: number of distinct functions proved by each method
+        methods = {}
+        for name, method_set in func_methods.items():
+            for m in method_set:
+                methods[m] = methods.get(m, 0) + 1
+
+        return {
+            "sound": len(sound_names),
+            "soundy": len(soundy_names),
+            "unsound": len(unsound_names) - len(soundy_names),
+            "total": len(sound_names | unsound_names),
+            "methods": methods,
+            "check_duration_seconds": check_duration
+        }
 
     def _count_summaries(self, spec_path: Path) -> Dict[str, int]:
         """Count summaries by type from user-specs.yaml."""
@@ -632,8 +688,8 @@ def display_all_reports(output_dir: Path):
         if repo not in latest:
             latest[repo] = (report_path, report)
 
-    # Collect all method names across reports
-    all_methods = set()
+    # Collect all method names across reports, ensuring all known methods are present
+    all_methods = {"general", "types", "immutability", "read", "recursive"}
     for _, report in latest.values():
         all_methods.update(report.get('summarization', {}).get('summaries', {}).get('methods', {}).keys())
     method_names = sorted(all_methods)
@@ -721,14 +777,15 @@ def display_all_reports(output_dir: Path):
     latex_lines.append("% Table 2: Analysis times")
     latex_lines.append("\\begin{table}[ht]")
     latex_lines.append("\\centering")
-    latex_lines.append("\\begin{tabular}{l r r r}")
+    latex_lines.append("\\begin{tabular}{l r r r r}")
     latex_lines.append("\\toprule")
-    latex_lines.append("Repository & Baseline (s) & With Summaries (s) & Summarization + Check (s) \\\\")
+    latex_lines.append("Repository & Baseline (s) & With Summaries (s) & Summarization + Check (s) & Constructive (s) \\\\")
     latex_lines.append("\\midrule")
     for row in rows:
         check_val = row['check'] if row['check'] != '' else 0
         summ_check = round(row['gen'] + (float(check_val) if check_val else 0), 2)
-        latex_lines.append(f"{row['repo']} & {row['taint_b']} & {row['taint_w']} & {summ_check} \\\\")
+        constr_val = row['constr'] if row['constr'] != '' else ''
+        latex_lines.append(f"{row['repo']} & {row['taint_b']} & {row['taint_w']} & {summ_check} & {constr_val} \\\\")
     latex_lines.append("\\bottomrule")
     latex_lines.append("\\end{tabular}")
     latex_lines.append("\\caption{Analysis times comparison}")

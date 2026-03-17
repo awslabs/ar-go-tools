@@ -45,6 +45,8 @@ type SoundnessResult struct {
 	Unsoundness Unsoundness
 	// Method is the least powerful method needed to be used for the soundness check.
 	Method Method
+	// MethodCounts records how many must-not-flows each method proved.
+	MethodCounts map[Method]int
 	// Time is the time spent to calculate the result.
 	Time time.Duration
 	// CalleeResults are the soundness results of the callees.
@@ -247,6 +249,7 @@ type rawSoundnessResult struct {
 	IsSound       bool
 	Unsoundness   rawUnsoundness
 	Method        string
+	MethodCounts  map[string]int
 	Elapsed       time.Duration
 	CalleeResults [][]rawSoundnessResult
 }
@@ -263,6 +266,11 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 		calleeResults = append(calleeResults, funcutil.Map(crs, newRawSoundnessResult))
 	}
 
+	methodCounts := make(map[string]int, len(r.MethodCounts))
+	for m, c := range r.MethodCounts {
+		methodCounts[string(m)] = c
+	}
+
 	return rawSoundnessResult{
 		Func:    r.Name,
 		Want:    rawFlows(r.Want.Flows),
@@ -273,6 +281,7 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 			DataflowFeatures:     r.Unsoundness.DataflowFeatures,
 		},
 		Method:        string(r.Method),
+		MethodCounts:  methodCounts,
 		Elapsed:       time.Duration(r.Time.Seconds()),
 		CalleeResults: calleeResults,
 	}
