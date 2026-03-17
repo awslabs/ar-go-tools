@@ -103,6 +103,15 @@ func CheckSummary(
 	specs []dataflow.ScanningSpec,
 	testNaive bool,
 ) ([]SoundnessResult, bool, error) {
+	if deadline, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		const timeout = 5 * time.Minute
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+		s.Logger.Debugf("no check timeout set: setting to %v\n", timeout)
+	} else {
+		s.Logger.Debugf("check deadline is: %v\n", deadline)
+	}
 	// SPECIAL CASE: INTERFACES
 	if ifaceSummary, isIfaceSummary := want.(summaries.IfaceMethodFlowSummary); isIfaceSummary {
 		// Checking a summary that is for a method of an interface
@@ -168,9 +177,10 @@ func checkSummary(
 	s.Logger.Debugf("finding unsound check features of %s ...\n", f)
 	unsoundCheckFeats, err := findUnsoundCheckFeatures(ctx, s, f, specs)
 	if err != nil {
-		s.Logger.Errorf("failed to find unsound check features for %s: %v", f, err)
+		err := fmt.Errorf("failed to find unsound check features for %s: %v", f, err)
+		s.Logger.Errorf("%s\n", err)
 		if !s.Config.CheckIgnoresUnsound {
-			return SoundnessResult{IsSound: false}, nil
+			return SoundnessResult{IsSound: false}, err
 		}
 	}
 	s.Logger.Debugf("unsound check features of %s: %+v\n", f, unsoundCheckFeats)
