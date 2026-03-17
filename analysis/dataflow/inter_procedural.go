@@ -619,12 +619,6 @@ func (g *InterProceduralFlowGraph) summaryNotFound(node *CallNode) {
 	if node.callee.Callee.Name() != "init" &&
 		g.AnalyzerState.IsReachableFunction(node.callee.Callee) {
 
-		g.AnalyzerState.Logger.Debugf("Could not find summary of %s", node.callSite)
-		if node.callee.Callee != nil {
-			g.AnalyzerState.Logger.Debugf("|-- Key: %s", formatutil.SanitizeRepr(node.callee.Callee))
-		}
-		g.AnalyzerState.Logger.Debugf("|-- Location: %s", node.Position(g.AnalyzerState))
-
 		if node.callSite.Common().IsInvoke() {
 			g.AnalyzerState.Logger.Debugf("|-- invoke resolved to callee %s",
 				formatutil.SanitizeRepr(node.callee.Callee))

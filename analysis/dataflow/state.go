@@ -324,7 +324,6 @@ func (s *State) linkContracts(allContracts []Contract) error {
 			if err != nil {
 				return fmt.Errorf("inspect config, error while building summary graph for %s: %w", contract.Key(method), err)
 			}
-			s.Logger.Debugf("Built summary graph for %s", contract.Key(method))
 		}
 	}
 	return nil
