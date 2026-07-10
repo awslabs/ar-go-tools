@@ -1149,6 +1149,195 @@ func TestCheckSummary_Basic(t *testing.T) {
 	}
 }
 
+// TestCheckSummary_Naive tests the naive checking method, which computes the full transitively
+// closed summary of a function and compares it directly against the summary being checked (rather
+// than searching for individual unproven must-not-flows). It reuses the transitive_closure testdata
+// package, which already has fixtures exercising field-sensitivity.
+func TestCheckSummary_Naive(t *testing.T) {
+	dir := filepath.Join("./testdata", "transitive_closure")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	state, err := result.Bind(
+		result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+
+	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/transitive_closure"
+	tests := []tcCheck{
+		{
+			// fooTop(s string) string { return foo0(s, s) }: s flows to the return.
+			pkg:   pkg,
+			name:  "fooTop",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".fooTop",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: true,
+				Method:  check.Naive,
+			},
+		},
+		{
+			// bar: s is only ever written into field .a of a local struct, and .a is never read,
+			// so there is no flow from s to anything. This specifically exercises
+			// field-sensitivity: a field-insensitive analysis would (incorrectly) find a flow from
+			// s to the return, since the struct's other fields are returned.
+			pkg:   pkg,
+			name:  "bar",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name:    pkg + ".bar",
+				Want:    summaries.DetailedSummary{},
+				IsSound: true,
+				Method:  check.Naive,
+			},
+		},
+		{
+			// zoo(c contents) string { return fooTop(c.a) + c.b }: fields .a and .b both flow to
+			// the return (through and around the fooTop call, respectively), but .c does not.
+			// The naive summary reports these as separate, field-sensitive flows.
+			pkg:   pkg,
+			name:  "zoo",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".zoo",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".a"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".b"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".a"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".b"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: true,
+				Method:  check.Naive,
+			},
+		},
+		{
+			// Same function as above, but the checked summary under-claims by omitting the
+			// c.b -> return flow. This makes it unsound, and Got shows the actual naive summary
+			// (including the missing flow) that was computed and compared against.
+			pkg:   pkg,
+			name:  "zoo",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".zoo",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".a"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".a"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".b"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: false,
+				Method:  check.Naive,
+			},
+		},
+		{
+			// globalRoundTrip(s) writes s into a global and reads it back via a different
+			// function, so the only path from s to the return goes through the global. This
+			// checks that the naive visitor's global write -> read jump discovers the flow
+			// instead of silently dropping it. Both writeGlobal and readGlobal are reachable from
+			// globalRoundTrip's own call tree, so this is fully modeled and reported as sound.
+			pkg:   pkg,
+			name:  "globalRoundTrip",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".globalRoundTrip",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: true,
+				Method:  check.Naive,
+			},
+		},
+		{
+			// globalEscape(s) writes s into a global whose only read (in readEscapeGlobal) is not
+			// reachable from globalEscape's own call tree (readEscapeGlobal is only called from
+			// main, independently). The naive visitor cannot follow that read, so it must record
+			// it as a potential source of unsoundness rather than silently missing it -- even
+			// though the (correctly!) computed summary Got has no flows at all, since s never
+			// reaches the return through any path the visitor can actually trace.
+			pkg:   pkg,
+			name:  "globalEscape",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name:    pkg + ".globalEscape",
+				Want:    summaries.DetailedSummary{},
+				Got:     summaries.DetailedSummary{},
+				IsSound: false,
+				Method:  check.Naive,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		var sound string
+		if tc.want.IsSound {
+			sound = "sound"
+		} else {
+			sound = "unsound"
+		}
+		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
+		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
+	}
+}
+
 // TestCheckSummary_Fields tests field-sensitive summaries.
 func TestCheckSummary_Fields(t *testing.T) {
 	dir := filepath.Join("./testdata", "fields")
@@ -1808,10 +1997,11 @@ const (
 )
 
 type tcCheck struct {
-	pkg  string
-	name string
-	typ  summaryType
-	want check.SoundnessResult
+	pkg   string
+	name  string
+	typ   summaryType
+	naive bool
+	want  check.SoundnessResult
 }
 
 func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
@@ -1843,7 +2033,7 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 			},
 		},
 	}
-	got, _, err = check.CheckSummary(ctx, state, summary, specs, false)
+	got, _, err = check.CheckSummary(ctx, state, summary, specs, tc.naive)
 	if err != nil {
 		t.Fatalf("failed to check summary: %v", err)
 	}
@@ -1863,6 +2053,12 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 	if want.Want.String() != got.Want.String() {
 		t.Errorf(
 			"want summary mismatch for function %s: want %s, got %s", want.Name, want.Want, got.Want)
+		return
+	}
+
+	if want.Got.String() != got.Got.String() {
+		t.Errorf(
+			"got (naive) summary mismatch for function %s: want %s, got %s", want.Name, want.Got, got.Got)
 		return
 	}
 

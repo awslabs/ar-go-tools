@@ -415,7 +415,7 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) error {
 	for len(stack) != 0 {
 		cur := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		traceNode(s, cur)
+		traceNode(s.State, cur)
 
 		if cur.Trace.Len() > 1 {
 			// The call stack (Trace field) of a node should never have more than one call, because
@@ -1254,18 +1254,6 @@ func (v *visitor) addNextFromPredefinedInput(
 	}
 
 	return stack
-}
-
-// traceNodes prints trace information about the cur node.
-func traceNode(s *State, cur *dataflow.VisitorNode) {
-	if !s.Logger.LogsTrace() {
-		return
-	}
-	pad := strings.Repeat("  ", cur.Depth)
-	s.Logger.Tracef("%svisiting %s (%T)\n", pad, cur, cur.Node)
-	s.Logger.Tracef("%s  in: %v\n", pad, cur.Node.ParentName())
-	s.Logger.Tracef("%s  trace: %v\n", pad, cur.Trace)
-	s.Logger.Tracef("%s  closure trace: %v\n", pad, cur.ClosureTrace)
 }
 
 func inputNodes(g *dataflow.SummaryGraph, prec *precisions) []*dataflow.VisitorNode {

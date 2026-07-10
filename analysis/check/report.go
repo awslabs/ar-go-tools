@@ -38,6 +38,10 @@ type SoundnessResult struct {
 	Name string
 	// Want is the summary being checked.
 	Want summaries.DetailedSummary
+	// Got is the summary actually computed by the full (naive) data flow analysis. It is only
+	// populated when Method is Naive: the other checking methods never compute a complete summary
+	// for the function, only a set of unproven must-not-flows.
+	Got summaries.DetailedSummary
 	// IsSound is true if there is no unsoundness.
 	IsSound bool
 	// Unsoundness is the potential sources of unsoundness in the soundness check.
@@ -83,6 +87,15 @@ func (r SoundnessResult) PrettyString() string {
 			strings.Join(
 				funcutil.Map(dests,
 					func(n summaries.SummaryNode) string { return formatutil.BgDarkGray(n.String()) }), ", ")))
+	}
+	if r.Method == Naive {
+		s.WriteString("  Computed summary (naive):\n")
+		for origin, dests := range r.Got.Flows {
+			s.WriteString(fmt.Sprintf("  %s flows to %s\n", formatutil.BgDarkGray(origin.String()),
+				strings.Join(
+					funcutil.Map(dests,
+						func(n summaries.SummaryNode) string { return formatutil.BgDarkGray(n.String()) }), ", ")))
+		}
 	}
 	if !r.IsSound {
 		s.WriteString("  The summary is unsound because:\n")
@@ -246,6 +259,7 @@ func (f Flow) String() string {
 type rawSoundnessResult struct {
 	Func          string
 	Want          map[string][]string
+	Got           map[string][]string
 	IsSound       bool
 	Unsoundness   rawUnsoundness
 	Method        string
@@ -274,6 +288,7 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 	return rawSoundnessResult{
 		Func:    r.Name,
 		Want:    rawFlows(r.Want.Flows),
+		Got:     rawFlows(r.Got.Flows),
 		IsSound: r.IsSound,
 		Unsoundness: rawUnsoundness{
 			UnprovenMustNotFlows: funcutil.Map(r.Unsoundness.UnprovenMustNotFlows, (Flow).String),

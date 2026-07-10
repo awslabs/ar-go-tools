@@ -193,7 +193,7 @@ func checkSummary(
 	// Special case if we're testing the "naive" method
 	if testNaive {
 		_, soundnessResult, _, err := checkMethodNaive(
-			ctx, s, f, unsoundCheckFeats, soundnessResultBase, g, want, start)
+			ctx, s, unsoundCheckFeats, soundnessResultBase, g, want, start)
 		return soundnessResult, err
 	}
 
@@ -569,25 +569,12 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 	return unprovenMustNotFlows, soundnessResultBase, false, nil
 }
 
-func checkMethodNaive(ctx context.Context, s *State, f *ssa.Function,
+func checkMethodNaive(ctx context.Context, s *State,
 	unsoundCheckFeats UnsoundCheckFeatures,
 	soundnessResultBase SoundnessResult,
 	g *dataflow.SummaryGraph,
 	want summaries.DetailedSummary,
 	start time.Time) ([]flow, SoundnessResult, bool, error) {
-	// The naive summary is unsound if there are any globals (as we do not have
-	// special global nodes in summaries yet).
-	if len(unsoundCheckFeats.GlobalUsages) > 0 {
-		s.Logger.Warnf(
-			"naive summary is unsound: detected global use in function %s (%s)\n",
-			f, s.Program.Fset.Position(f.Pos()))
-		if !s.Config.CheckIgnoresUnsound {
-			soundnessResultBase.IsSound = false
-			soundnessResultBase.Unsoundness = Unsoundness{CheckFeatures: unsoundCheckFeats}
-			soundnessResultBase.Method = Naive
-			return nil, soundnessResultBase, true, nil
-		}
-	}
 	s.RunIntraProceduralPass(ctx, -1, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: dataflow.ShouldBuildSummary,
 	})
@@ -616,12 +603,11 @@ func checkMethodNaive(ctx context.Context, s *State, f *ssa.Function,
 		soundnessResultBase.Time = time.Since(start)
 		return nil, soundnessResultBase, true, nil
 	}
-	if !want.IsMoreGeneralThan(computed) {
+	s.Logger.Infof("computed summary:\n%s\n", computed.String())
+	soundnessResultBase.Got = computed
+	if !want.IsMoreGeneralThan(computed) || !checkResult.Unsoundness.isSound() {
 		soundnessResultBase.IsSound = false
-		soundnessResultBase.Unsoundness = Unsoundness{
-			UnprovenMustNotFlows: []Flow{},
-			CheckFeatures:        unsoundCheckFeats,
-		}
+		soundnessResultBase.Unsoundness = checkResult.Unsoundness
 		soundnessResultBase.Method = Naive
 		soundnessResultBase.Time = time.Since(start)
 		return nil, soundnessResultBase, true, nil

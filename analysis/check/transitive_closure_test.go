@@ -56,8 +56,11 @@ func TestComputeTransitiveClosure(t *testing.T) {
 		{"fooTop", map[string][]string{"parameter s : string": {"return.0"}}},
 		// bar: empty thanks to field sensitive analysis!
 		{"bar", map[string][]string{}},
-		// zoo: parameter flows to return
-		{"zoo", map[string][]string{"parameter c : contents": {"return.0"}}},
+		// zoo: each field of c that is actually read flows to the return, field-sensitively
+		{"zoo", map[string][]string{
+			"parameter c : contents.a": {"return.0"},
+			"parameter c : contents.b": {"return.0"},
+		}},
 		// copyString: parameter b flows to parameter a (b -> *a)
 		{"copyString", map[string][]string{
 			"parameter b : *string": {"parameter a : *string"},
@@ -125,12 +128,19 @@ func simpleGraphNodeStr(node dataflow.GraphNode) string {
 	}
 }
 
-func test(t *testing.T, expected map[string][]string, actual map[dataflow.GraphNode][]dataflow.GraphNode) {
+// flowNodeStr renders a check.FlowNode as its underlying node's string representation suffixed
+// with its access path (e.g. "parameter c : contents.a").
+func flowNodeStr(fn check.FlowNode) string {
+	return simpleGraphNodeStr(fn.Node) + fn.Path
+}
+
+func test(t *testing.T, expected map[string][]string, actual map[check.FlowNode][]check.FlowNode) {
 	actualSer := make(map[string][]string)
 	for origin, dests := range actual {
-		actualSer[simpleGraphNodeStr(origin)] = make([]string, len(dests))
+		key := flowNodeStr(origin)
+		actualSer[key] = make([]string, len(dests))
 		for i, dest := range dests {
-			actualSer[simpleGraphNodeStr(origin)][i] = simpleGraphNodeStr(dest)
+			actualSer[key][i] = flowNodeStr(dest)
 		}
 	}
 	for origin, dests := range expected {

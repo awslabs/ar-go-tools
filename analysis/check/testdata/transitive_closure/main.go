@@ -121,9 +121,60 @@ func transitiveReturn(s *string) string {
 	return temp
 }
 
+// globalCache is a package-level global used to check that the naive method still discovers data
+// flow mediated by a global variable (rather than silently dropping it).
+var globalCache string
+
+// writeGlobal stores s into globalCache.
+func writeGlobal(s string) {
+	globalCache = s
+}
+
+// readGlobal returns the current value of globalCache.
+func readGlobal() string {
+	return globalCache
+}
+
+// globalRoundTrip writes s into a global and immediately reads it back via a different function,
+// so the only path from s to the return goes through the global, not through any direct call or
+// return edge between writeGlobal and readGlobal.
+func globalRoundTrip(s string) string {
+	writeGlobal(s)
+	return readGlobal()
+}
+
+// escapeCache is a package-level global used to check that the naive method correctly flags
+// unsoundness when a global write's only read location is not reachable from the entry function
+// being summarized (i.e. the flow escapes the call tree that is actually explored).
+var escapeCache string
+
+// writeEscapeGlobal stores s into escapeCache.
+func writeEscapeGlobal(s string) {
+	escapeCache = s
+}
+
+// readEscapeGlobal returns the current value of escapeCache. It is deliberately never called by
+// globalEscape (directly or transitively), so it is not reachable from globalEscape's own call
+// tree.
+func readEscapeGlobal() string {
+	return escapeCache
+}
+
+// globalEscape writes s into a global that is also read by readEscapeGlobal, a function entirely
+// unrelated to globalEscape's own call tree (readEscapeGlobal is only called from main). The naive
+// method cannot follow this read since it isn't reachable from globalEscape, so it must be
+// reported as a potential source of unsoundness rather than silently missed.
+func globalEscape(s string) string {
+	writeEscapeGlobal(s)
+	return "no flow back to this return through the global"
+}
+
 func main() {
 	fooTop("OI")
 	bar("OK")
+	globalRoundTrip("g")
+	globalEscape("g2")
+	readEscapeGlobal()
 	zoo(contents{
 		a: "a",
 		b: "b",

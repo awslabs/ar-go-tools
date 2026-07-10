@@ -3,6 +3,8 @@ options:
   silence-warn: true
   reports-dir: .
 dataflow-problems:
+  user-specs:
+    - user-specs.yaml
   field-sensitive-funcs: [ ".*" ]
   taint-tracking:
     - tag: "source-to-sink"
