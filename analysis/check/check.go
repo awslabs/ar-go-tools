@@ -575,8 +575,12 @@ func checkMethodNaive(ctx context.Context, s *State,
 	g *dataflow.SummaryGraph,
 	want summaries.DetailedSummary,
 	start time.Time) ([]flow, SoundnessResult, bool, error) {
+	// Summaries are built lazily on demand (see onDemandIntraProcedural) rather than eagerly here,
+	// since eagerly building every reachable function per checked summary doesn't scale. Global
+	// write->read jumps (the one case that used to need the eager pass) are now handled directly
+	// in Visit's AccessGlobalNode case.
 	s.RunIntraProceduralPass(ctx, -1, dataflow.IntraAnalysisParams{
-		ShouldBuildSummary: dataflow.ShouldBuildSummary,
+		ShouldBuildSummary: func(*dataflow.State, *ssa.Function) bool { return false },
 	})
 	s.FlowGraph.BuildGraph(true)
 	checkResult, err := ComputeClosedSummary(ctx, s.State, g.Parent)
@@ -586,6 +590,9 @@ func checkMethodNaive(ctx context.Context, s *State,
 			UnprovenMustNotFlows: []Flow{},
 			BadForm:              err,
 			CheckFeatures:        unsoundCheckFeats,
+			DataflowFeatures: UnsoundDataflowFeatures{
+				TimedOut: errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled),
+			},
 		}
 		soundnessResultBase.Method = Naive
 		soundnessResultBase.Time = time.Since(start)

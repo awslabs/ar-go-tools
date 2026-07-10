@@ -18,11 +18,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/token"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
+	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
@@ -106,10 +109,16 @@ func ComputeClosedSummary(
 		graph.IsInterfaceContract = false
 		graph.IsPreSummarized = false
 		graph.Constructed = false
-		_, err := dataflow.RunIntraProcedural(ctx, s, graph)
+		intraCtx := ctx
+		if timeout := s.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
+			var cancel context.CancelFunc
+			intraCtx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+			defer cancel()
+		}
+		_, err := dataflow.RunIntraProcedural(intraCtx, s, graph)
 		if err != nil {
 			return ClosedInterproceduralSummary{},
-				fmt.Errorf("failed to run intra-procedural data flow analysis: %v", err)
+				fmt.Errorf("failed to run intra-procedural data flow analysis: %w", err)
 		}
 	}
 
@@ -251,6 +260,11 @@ func functionsReachableFrom(cg *callgraph.Graph, root *ssa.Function) map[*ssa.Fu
 //
 //gocyclo:ignore
 func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataflow.NodeWithTrace) {
+	// Suppress warnings during the taint analysis because they're recorded as unsoundness.
+	oldWarn := s.Config.SilenceWarn
+	s.Config.SilenceWarn = true
+	defer func() { s.Config.SilenceWarn = oldWarn }()
+
 	entryParam, ok := entry.Node.(*dataflow.ParamNode)
 	if !ok {
 		s.Report.AddError("", fmt.Errorf("entrypoint to FunctionVisitor is not a ParamNode: %v (%T)",
@@ -305,7 +319,11 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 		if !cur.Node.Graph().Constructed {
 			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
 			// built summary
-			v.onDemandIntraProcedural(ctx, s, cur.Node.Graph())
+			if ok := v.onDemandIntraProcedural(ctx, s, cur.Node.Graph()); !ok {
+				// The summary could not be completed (timeout or other failure): stop exploring
+				// from here. This has already been recorded as a source of unsoundness.
+				return
+			}
 		}
 
 		switch graphNode := cur.Node.(type) {
@@ -374,7 +392,9 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
 						if !callSiteArg.Graph().Constructed {
-							v.onDemandIntraProcedural(ctx, s, callSiteArg.Graph())
+							if ok := v.onDemandIntraProcedural(ctx, s, callSiteArg.Graph()); !ok {
+								return
+							}
 						}
 						for nextNode, edgeInfos := range callSiteArg.Out() {
 							for _, edgeInfo := range edgeInfos {
@@ -421,7 +441,9 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 
 			// Logic for when the summary has not been constructed
 			if !callSite.CalleeSummary.Constructed {
-				v.onDemandIntraProcedural(ctx, s, callSite.CalleeSummary)
+				if ok := v.onDemandIntraProcedural(ctx, s, callSite.CalleeSummary); !ok {
+					return
+				}
 			}
 
 			// Computing context-sensitive information for the analyses
@@ -480,7 +502,9 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 			if callSiteFromCallStack := dataflow.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSiteFromCallStack != nil {
 				logger.Tracef("unwound caller: %v\n", callSiteFromCallStack)
 				if !callSiteFromCallStack.Graph().Constructed {
-					v.onDemandIntraProcedural(ctx, s, callSiteFromCallStack.Graph())
+					if ok := v.onDemandIntraProcedural(ctx, s, callSiteFromCallStack.Graph()); !ok {
+						return
+					}
 				}
 				for nextNode, edgeInfos := range callSiteFromCallStack.Out() {
 					for _, edgeInfo := range edgeInfos {
@@ -496,7 +520,9 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 				}
 			} else if cur.ClosureTrace != nil && dataflow.CheckClosureReturns(graphNode, cur.ClosureTrace.Label) {
 				if !cur.ClosureTrace.Label.Graph().Constructed {
-					v.onDemandIntraProcedural(ctx, s, cur.ClosureTrace.Label.Graph())
+					if ok := v.onDemandIntraProcedural(ctx, s, cur.ClosureTrace.Label.Graph()); !ok {
+						return
+					}
 				}
 				for nextNode, edgeInfos := range cur.ClosureTrace.Label.Out() {
 					for _, edgeInfo := range edgeInfos {
@@ -751,18 +777,37 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 
 		case *dataflow.AccessGlobalNode:
 			if graphNode.IsWrite {
-				// If taint flows to a global that is outside of the transitive callees of the
-				// top-level function, then the summary is potentially unsound because the global
-				// can induce new taint flows that are not captured by the summary.
+				// ReadLocations only contains a function once its summary has been built
+				// intra-procedurally. Since summaries are otherwise only built on demand along
+				// already-discovered edges, a reader outside that path would never get built and
+				// its read would be silently missed. So scan all reachable functions for a
+				// syntactic read of this global (same approach as taint.Visitor): run the
+				// intra-procedural analysis on demand if the reader is within v.reachable,
+				// otherwise flag it directly as GlobalUsages unsoundness.
+				for f := range s.ReachableFunctions() {
+					if !lang.FnReadsFrom(f, graphNode.Global.Value()) {
+						continue
+					}
+					if v.reachable != nil && !v.reachable[f] {
+						v.unsoundness.CheckFeatures.GlobalUsages = append(
+							v.unsoundness.CheckFeatures.GlobalUsages, lang.SafeFunctionPos(f).ValueOr(token.Position{}))
+						continue
+					}
+					candidateGraph := s.FlowGraph.Summaries[f]
+					if candidateGraph == nil {
+						candidateGraph = dataflow.NewSummaryGraph(s, f, dataflow.GetUniqueFunctionID(), nil, nil)
+					}
+					if !candidateGraph.Constructed {
+						if ok := v.onDemandIntraProcedural(ctx, s, candidateGraph); !ok {
+							// Failed (timeout or error), already recorded; try other candidates.
+							continue
+						}
+					}
+				}
 				for nextNode := range graphNode.Global.ReadLocations {
 					f := nextNode.Graph().Parent
 					if v.reachable != nil && !v.reachable[f] {
-						logger.Warnf(
-							"flow to global %s outside of transitive callees of %v:"+
-								" check is potentially unsound\n",
-							nextNode, f)
-						v.unsoundness.CheckFeatures.GlobalUsages = append(
-							v.unsoundness.CheckFeatures.GlobalUsages, nextNode.Position(s))
+						// Already flagged as GlobalUsages above; don't double-count or follow it.
 						continue
 					}
 					// Record sources of unsoundness in the function containing the read location.
@@ -848,16 +893,36 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 	}
 }
 
-// onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
-// This panics when the analysis fails, because it is expected that an error will cause any further result
-// to be invalid.
-func (v *inputVisitor) onDemandIntraProcedural(ctx context.Context, s *dataflow.State, summary *dataflow.SummaryGraph) {
-	s.Logger.Infof("[on-demand descent] summarizing callee: %s", summary.Parent)
+// onDemandIntraProcedural runs the intra-procedural analysis on the summary, modifying its state.
+// It returns false if the analysis could not complete, in which case summary is left
+// unconstructed and the caller should stop exploring from it. The failure is recorded as a source
+// of unsoundness on v.unsoundness.DataflowFeatures (TimedOut for a timeout, IntraTaintErrors for
+// any other error, e.g. a function too large to analyze) rather than failing the whole check:
+// the summary computed so far from other paths may still be sound/soundy, just incomplete.
+func (v *inputVisitor) onDemandIntraProcedural(ctx context.Context, s *dataflow.State, summary *dataflow.SummaryGraph) bool {
+	s.Logger.Debugf("[on-demand descent] summarizing callee: %s", summary.Parent)
+	if timeout := s.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+		defer cancel()
+	}
 	elapsed, err := dataflow.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
 	if err != nil {
-		panic(fmt.Sprintf("failed to run intra-procedural analysis : %v", err))
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			s.Logger.Warnf(
+				"intra-procedural analysis of %s did not complete before timeout: %v",
+				summary.Parent, err)
+			v.unsoundness.DataflowFeatures.TimedOut = true
+			return false
+		}
+		s.Logger.Errorf("intra-procedural analysis of %s failed: %v", summary.Parent, err)
+		v.unsoundness.DataflowFeatures.IntraTaintErrors = append(
+			v.unsoundness.DataflowFeatures.IntraTaintErrors,
+			fmt.Errorf("%s: %w", summary.Parent, err))
+		return false
 	}
+	return true
 }
 
 // recordUnsoundness records unsound dataflow features of f.
