@@ -55,6 +55,12 @@ type DataflowProblems struct {
 	// analyses
 	UserSpecs []string `yaml:"user-specs" json:"user-specs"`
 
+	// CheckSpecs is a list of paths to files containing dataflow summaries that `argot check`
+	// should verify the soundness of. Unlike UserSpecs, entries here are not automatically loaded
+	// as dataflow contracts for the analysis: if a summary needs to both be checked AND used to
+	// bound the dataflow analysis, list it in both UserSpecs and CheckSpecs.
+	CheckSpecs []string `yaml:"check-specs" json:"check-specs"`
+
 	// TaintTrackingProblems lists the taint tracking specifications
 	TaintTrackingProblems []TaintSpec `yaml:"taint-tracking" json:"taint-tracking"`
 

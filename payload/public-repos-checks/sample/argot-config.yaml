@@ -16,6 +16,8 @@ dataflow-problems:
   summarize-on-demand: true
   check-ignores-unsound: true
   user-specs:
+    - dataflow-contracts.yaml
+  check-specs:
     - user-specs.yaml
   generate-unsoundness-report: true
   taint-tracking:

@@ -24,7 +24,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
@@ -107,8 +106,8 @@ func Run(flags Flags) error {
 	}
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot check tool - " + analysis.Version))
-	if len(cfg.UserSpecs) == 0 {
-		tmpLogger.Infof("no user specs provided, nothing to do!")
+	if len(cfg.CheckSpecs) == 0 {
+		tmpLogger.Infof("no check specs provided, nothing to do!")
 		return nil
 	}
 	tmpLogger.Infof("Checking method: %s", flags.via)
@@ -154,10 +153,10 @@ func ParseSummaries(
 	filterStr string,
 ) ([]summaries.FrontendDataflowSummary, error) {
 	parsedSummaries := make([]summaries.FrontendDataflowSummary, 0)
-	for _, specFile := range cfg.DataflowProblems.UserSpecs {
+	for _, specFile := range cfg.DataflowProblems.CheckSpecs {
 		userSummaries, checkErr := summaries.ParseSummariesFile(specFile)
 		if checkErr != nil {
-			return nil, fmt.Errorf("failed to parse user specs file %s: %v", cfg.DataflowProblems.UserSpecs, checkErr)
+			return nil, fmt.Errorf("failed to parse check specs file %s: %v", cfg.DataflowProblems.CheckSpecs, checkErr)
 		}
 		if cfg.LogLevel > 3 {
 			tmpLogger.Debugf("Parsed %d summaries in %s", len(userSummaries), specFile)
@@ -227,13 +226,11 @@ func runTarget(
 		return nil, fmt.Errorf("failed to initialize dataflow state: %s", err)
 	}
 
-	// Create context with timeout from config
+	// Note: the intra-procedural timeout (dataflow-problems.intra-timeout-ms) is applied per
+	// function, not to this context.
 	ctx := context.Background()
-	df.Config.DataflowProblems.IntraTimeoutMs = 60 * 1000 // 1 minute
-	if timeout := df.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
-		defer cancel()
+	if df.Config.DataflowProblems.IntraTimeoutMs <= 0 {
+		df.Config.DataflowProblems.IntraTimeoutMs = 60 * 1000 // 1 minute default
 	}
 
 	results, checkErr := SummariesWithSpecs(ctx, df, parsedSummaries, flags.via, specs)

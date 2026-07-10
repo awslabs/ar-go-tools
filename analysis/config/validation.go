@@ -115,5 +115,11 @@ func (c Config) checkUserSpecsAreValid() error {
 			return fmt.Errorf("user spec file %q in dataflow-problems.user-specs does not exist", specFileName)
 		}
 	}
+	for _, specFileName := range c.DataflowProblems.CheckSpecs {
+		// test if specFileName exists
+		if _, err := os.Stat(c.RelPath(specFileName)); err != nil {
+			return fmt.Errorf("check spec file %q in dataflow-problems.check-specs does not exist", specFileName)
+		}
+	}
 	return nil
 }
