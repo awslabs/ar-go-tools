@@ -1387,6 +1387,38 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Method:  check.Naive,
 			},
 		},
+		{
+			// plainRecoverGap(s) calls plainRecoverCallee, which calls recover() from within a
+			// deferred closure -- the idiomatic (and virtually universal) way recover() is used
+			// in Go: `defer func() { recover() }()`. The recover() call therefore lives in an
+			// anonymous function nested one level inside plainRecoverCallee, not in
+			// plainRecoverCallee's own instructions. This regression test only passes if
+			// recover() detection recurses into a function's anonymous (deferred) closures rather
+			// than only scanning the function's own instructions.
+			pkg:   pkg,
+			name:  "plainRecoverGap",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".plainRecoverGap",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: false,
+				Method:  check.Naive,
+			},
+		},
 	}
 
 	for _, tc := range tests {

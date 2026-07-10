@@ -18,13 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go/token"
 	"slices"
 	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/defers"
-	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/callgraph"
@@ -873,17 +871,17 @@ func (v *inputVisitor) recordUnsoundness(f *ssa.Function) {
 	if !deferRes.DeferStackBounded {
 		v.unsoundness.DataflowFeatures.HasUnboundedDefers = true
 	}
-	var recovers []token.Position
-	lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
-		if isRecoverInstr(instr) {
-			pos := f.Prog.Fset.Position(instr.Pos())
-			if !slices.Contains(recovers, pos) {
-				recovers = append(recovers, pos)
-			}
+	// NOTE findRecoverUsages recurses into nested closures, so its result may overlap with a
+	// position already recorded for an enclosing or nested function that was recorded separately
+	// (e.g. the closure is reached both as a nested AnonFunc of an already-recorded function and
+	// directly via a closure-specific edge). Dedup against what's already recorded to keep the
+	// reported positions clean.
+	for _, pos := range findRecoverUsages(f) {
+		if !slices.Contains(v.unsoundness.DataflowFeatures.RecoverUsages, pos) {
+			v.unsoundness.DataflowFeatures.RecoverUsages = append(
+				v.unsoundness.DataflowFeatures.RecoverUsages, pos)
 		}
-	})
-	v.unsoundness.DataflowFeatures.RecoverUsages = append(
-		v.unsoundness.DataflowFeatures.RecoverUsages, recovers...)
+	}
 
 	v.recordedUnsoundness[f] = true
 }

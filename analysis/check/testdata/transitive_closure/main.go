@@ -209,6 +209,23 @@ func globalRoundTripUnboundedDefers(s string) string {
 	return readGlobalUnboundedDefers()
 }
 
+// plainRecoverCallee calls recover() from within a deferred closure, which is the idiomatic (and
+// virtually universal) way recover() is used in Go: `defer func() { recover() }()`. The recover()
+// call therefore lives in an anonymous function nested one level inside plainRecoverCallee, not in
+// plainRecoverCallee's own instructions, so detecting it requires recursing into AnonFuncs.
+func plainRecoverCallee(s string) string {
+	defer func() {
+		recover()
+	}()
+	return s
+}
+
+// plainRecoverGap calls plainRecoverCallee via a regular call, to check that recover() usage
+// nested inside a deferred closure is still detected even in the straightforward case.
+func plainRecoverGap(s string) string {
+	return plainRecoverCallee(s)
+}
+
 func main() {
 	fooTop("OI")
 	bar("OK")
@@ -217,6 +234,7 @@ func main() {
 	readEscapeGlobal()
 	closureUnboundedDefers("g3")
 	globalRoundTripUnboundedDefers("g4")
+	plainRecoverGap("g5")
 	zoo(contents{
 		a: "a",
 		b: "b",

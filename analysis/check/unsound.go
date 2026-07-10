@@ -168,7 +168,6 @@ func findUnsoundCheckFeatures(
 }
 
 func findUnsoundDataflowFeatures(f *ssa.Function) UnsoundDataflowFeatures {
-	var recovers []token.Position
 	var gos []token.Position
 	defersUnbounded := false
 	deferRes := defers.AnalyzeFunction(f, config.NewLogger(config.ErrLevel))
@@ -177,12 +176,7 @@ func findUnsoundDataflowFeatures(f *ssa.Function) UnsoundDataflowFeatures {
 	}
 
 	lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
-		if isRecoverInstr(instr) {
-			pos := f.Prog.Fset.Position(instr.Pos())
-			if !slices.Contains(recovers, pos) {
-				recovers = append(recovers, pos)
-			}
-		} else if isGoroutineInstr(instr) {
+		if isGoroutineInstr(instr) {
 			pos := f.Prog.Fset.Position(instr.Pos())
 			if !slices.Contains(gos, pos) {
 				gos = append(gos, pos)
@@ -191,7 +185,7 @@ func findUnsoundDataflowFeatures(f *ssa.Function) UnsoundDataflowFeatures {
 	})
 
 	return UnsoundDataflowFeatures{
-		RecoverUsages:      recovers,
+		RecoverUsages:      findRecoverUsages(f),
 		GoUsages:           gos,
 		HasUnboundedDefers: defersUnbounded,
 	}
@@ -242,6 +236,37 @@ func isGoroutineInstr(instr ssa.Instruction) bool {
 
 	_, ok = call.(*ssa.Go)
 	return ok
+}
+
+// findRecoverUsages returns the positions of recover() calls in f, including those in any
+// anonymous functions declared within f (transitively).
+//
+// This recursion is necessary because recover() is idiomatically called from within a deferred
+// closure (e.g. `defer func() { recover() }()`), which is always a distinct *ssa.Function from f
+// itself (an entry of f.AnonFuncs), never a direct instruction of f.
+func findRecoverUsages(f *ssa.Function) []token.Position {
+	var recovers []token.Position
+	seen := make(map[*ssa.Function]bool)
+	var visit func(fn *ssa.Function)
+	visit = func(fn *ssa.Function) {
+		if fn == nil || seen[fn] {
+			return
+		}
+		seen[fn] = true
+		lang.IterateInstructions(fn, func(_ int, instr ssa.Instruction) {
+			if isRecoverInstr(instr) {
+				pos := fn.Prog.Fset.Position(instr.Pos())
+				if !slices.Contains(recovers, pos) {
+					recovers = append(recovers, pos)
+				}
+			}
+		})
+		for _, anon := range fn.AnonFuncs {
+			visit(anon)
+		}
+	}
+	visit(f)
+	return recovers
 }
 
 // isRecoverInstr returns true if instr is a recover call.
