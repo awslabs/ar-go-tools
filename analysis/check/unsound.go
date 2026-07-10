@@ -171,12 +171,12 @@ func findUnsoundDataflowFeatures(f *ssa.Function) UnsoundDataflowFeatures {
 	var recovers []token.Position
 	var gos []token.Position
 	defersUnbounded := false
+	deferRes := defers.AnalyzeFunction(f, config.NewLogger(config.ErrLevel))
+	if !deferRes.DeferStackBounded {
+		defersUnbounded = true
+	}
 
 	lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
-		deferRes := defers.AnalyzeFunction(f, config.NewLogger(config.ErrLevel))
-		if !deferRes.DeferStackBounded {
-			defersUnbounded = true
-		}
 		if isRecoverInstr(instr) {
 			pos := f.Prog.Fset.Position(instr.Pos())
 			if !slices.Contains(recovers, pos) {
