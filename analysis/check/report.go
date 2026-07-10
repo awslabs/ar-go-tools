@@ -233,10 +233,20 @@ type UnsoundDataflowFeatures struct {
 	RecoverUsages      []token.Position
 	GoUsages           []token.Position
 	HasUnboundedDefers bool
+	// TimedOut is true if the intra-procedural analysis of the function or one of its
+	// transitively reachable callees did not complete before the configured timeout
+	// (dataflow-problems.intra-timeout-ms). When true, the computed summary may be incomplete.
+	TimedOut bool
+	// IntraTaintErrors records errors encountered while running the intra-procedural taint
+	// analysis on transitively reachable callees while building on-demand summaries (e.g. a
+	// callee too large to analyze). When non-empty, the computed summary may be incomplete, since
+	// exploration stopped at the failing callee.
+	IntraTaintErrors []error
 }
 
 func (u UnsoundDataflowFeatures) isSound() bool {
-	return len(u.RecoverUsages) == 0 && len(u.GoUsages) == 0 && !u.HasUnboundedDefers
+	return len(u.RecoverUsages) == 0 && len(u.GoUsages) == 0 && !u.HasUnboundedDefers && !u.TimedOut &&
+		len(u.IntraTaintErrors) == 0
 }
 
 // Flow represents a data flow between two summary nodes.
@@ -269,9 +279,33 @@ type rawSoundnessResult struct {
 }
 
 type rawUnsoundness struct {
+	// BadForm is the string representation of Unsoundness.BadForm (nil errors serialize to an
+	// empty string), since the error interface itself does not marshal to JSON.
+	BadForm              string
 	UnprovenMustNotFlows []string
 	CheckFeatures        UnsoundCheckFeatures
-	DataflowFeatures     UnsoundDataflowFeatures
+	DataflowFeatures     rawUnsoundDataflowFeatures
+}
+
+// rawUnsoundDataflowFeatures is the JSON-serializable form of UnsoundDataflowFeatures: it replaces
+// IntraTaintErrors ([]error, which has no exported fields to marshal) with its string
+// representation via newRawUnsoundDataflowFeatures.
+type rawUnsoundDataflowFeatures struct {
+	RecoverUsages      []token.Position
+	GoUsages           []token.Position
+	HasUnboundedDefers bool
+	TimedOut           bool
+	IntraTaintErrors   []string
+}
+
+func newRawUnsoundDataflowFeatures(f UnsoundDataflowFeatures) rawUnsoundDataflowFeatures {
+	return rawUnsoundDataflowFeatures{
+		RecoverUsages:      f.RecoverUsages,
+		GoUsages:           f.GoUsages,
+		HasUnboundedDefers: f.HasUnboundedDefers,
+		TimedOut:           f.TimedOut,
+		IntraTaintErrors:   funcutil.Map(f.IntraTaintErrors, error.Error),
+	}
 }
 
 func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
@@ -285,15 +319,21 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 		methodCounts[string(m)] = c
 	}
 
+	var badForm string
+	if r.Unsoundness.BadForm != nil {
+		badForm = r.Unsoundness.BadForm.Error()
+	}
+
 	return rawSoundnessResult{
 		Func:    r.Name,
 		Want:    rawFlows(r.Want.Flows),
 		Got:     rawFlows(r.Got.Flows),
 		IsSound: r.IsSound,
 		Unsoundness: rawUnsoundness{
+			BadForm:              badForm,
 			UnprovenMustNotFlows: funcutil.Map(r.Unsoundness.UnprovenMustNotFlows, (Flow).String),
 			CheckFeatures:        r.Unsoundness.CheckFeatures,
-			DataflowFeatures:     r.Unsoundness.DataflowFeatures,
+			DataflowFeatures:     newRawUnsoundDataflowFeatures(r.Unsoundness.DataflowFeatures),
 		},
 		Method:        string(r.Method),
 		MethodCounts:  methodCounts,

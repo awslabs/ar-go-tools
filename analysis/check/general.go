@@ -263,6 +263,12 @@ func leafPathsUpTo(t types.Type, k int) []path {
 			// Maps don't add to path depth (we don't track keys)
 			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d})
 		case *types.Struct:
+			if t.NumFields() == 0 {
+				// A struct with no fields (e.g. the common `_ struct{}` marker idiom) has
+				// nowhere left to descend into, so it is itself a leaf.
+				res = append(res, cur.p)
+				continue
+			}
 			// Each struct field adds to the path
 			for i := range t.NumFields() {
 				fld := t.Field(i)
