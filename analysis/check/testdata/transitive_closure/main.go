@@ -169,12 +169,28 @@ func globalEscape(s string) string {
 	return "no flow back to this return through the global"
 }
 
+// closureUnboundedDefers demonstrates that recordUnsoundness is invoked for a closure that is only
+// entered via free/bound-variable capture (BoundVarNode / a CallNode in ClosureTracing mode), not
+// via a regular CallNodeArg. The closure f has its own unbounded defer stack (a defer inside a
+// loop), distinct from closureUnboundedDefers' own body, so this can only be caught if the closure
+// itself is checked.
+func closureUnboundedDefers(s string) string {
+	f := func() string {
+		for i := 0; i < 3; i++ {
+			defer func() {}()
+		}
+		return s
+	}
+	return f()
+}
+
 func main() {
 	fooTop("OI")
 	bar("OK")
 	globalRoundTrip("g")
 	globalEscape("g2")
 	readEscapeGlobal()
+	closureUnboundedDefers("g3")
 	zoo(contents{
 		a: "a",
 		b: "b",

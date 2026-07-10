@@ -543,6 +543,10 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 				if graphNode.CalleeSummary != nil &&
 					// the following equality being true must imply that graphNode.CalleeSummary is a closure's summary
 					graphNode.CalleeSummary == cur.Status.CurrentClosure() {
+					// Record sources of unsoundness in the closure being entered. It is entered
+					// here rather than via a CallNodeArg, so it would otherwise never be checked.
+					v.recordUnsoundness(graphNode.CalleeSummary.Parent)
+
 					fv := cur.Status.CurrentClosure().Parent.FreeVars[cur.Status.TracingInfo.Index]
 
 					if fv != nil {
@@ -627,6 +631,10 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 				v.onDemandIntraProcedural(ctx, s, closureNode.ClosureSummary)
 				s.FlowGraph.Sync()
 			}
+
+			// Record sources of unsoundness in the closure being entered. It is entered here
+			// rather than via a CallNodeArg, so it would otherwise never be checked.
+			v.recordUnsoundness(closureNode.ClosureSummary.Parent)
 
 			closureNodeWithTrace := dataflow.NodeWithTrace{
 				Node:         closureNode,
@@ -810,6 +818,10 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 			if !closureNode.IsReachable(s) {
 				break
 			}
+
+			// Record sources of unsoundness in the closure being entered. It is entered here
+			// rather than via a CallNodeArg, so it would otherwise never be checked.
+			v.recordUnsoundness(destClosureSummary.Parent)
 
 			closureNodeWithTrace := dataflow.NodeWithTrace{
 				Node:         closureNode,

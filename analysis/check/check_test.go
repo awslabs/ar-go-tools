@@ -1324,6 +1324,39 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Method:  check.Naive,
 			},
 		},
+		{
+			// closureUnboundedDefers(s) calls a closure f that is only reached via free/bound
+			// variable capture (BoundVarNode / a CallNode in ClosureTracing mode), never via a
+			// regular CallNodeArg. f has its own unbounded defer stack, distinct from
+			// closureUnboundedDefers' own body, so this regression test only passes if the
+			// visitor records unsoundness for functions entered through closure capture, not just
+			// through direct calls.
+			pkg:   pkg,
+			name:  "closureUnboundedDefers",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".closureUnboundedDefers",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ArgumentSNode{Name: "s", Index: 0},
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ArgumentSNode{Name: "s", Index: 0},
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: false,
+				Method:  check.Naive,
+			},
+		},
 	}
 
 	for _, tc := range tests {
