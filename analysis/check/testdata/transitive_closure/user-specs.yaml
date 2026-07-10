@@ -1,5 +1,5 @@
 dataflow-summaries:
-- package: "(transitive_closure)|(main)|(command-line-arguments)"
+- package: "command-line-arguments"
   function: "zoo"
   flows:
     - from: "(!arg 0).a"
