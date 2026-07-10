@@ -1357,6 +1357,36 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Method:  check.Naive,
 			},
 		},
+		{
+			// globalRoundTripUnboundedDefers(s) writes s into a global and reads it back via
+			// readGlobalUnboundedDefers, which is only reached through the global write->read
+			// jump (not via any Call node) and has its own unbounded defer stack. This regression
+			// test only passes if the visitor records unsoundness for functions entered through
+			// the global jump, not just through direct calls.
+			pkg:   pkg,
+			name:  "globalRoundTripUnboundedDefers",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".globalRoundTripUnboundedDefers",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: false,
+				Method:  check.Naive,
+			},
+		},
 	}
 
 	for _, tc := range tests {

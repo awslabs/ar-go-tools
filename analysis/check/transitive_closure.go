@@ -767,6 +767,10 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 							v.unsoundness.CheckFeatures.GlobalUsages, nextNode.Position(s))
 						continue
 					}
+					// Record sources of unsoundness in the function containing the read location.
+					// It is entered here via the global write->read jump rather than via a
+					// CallNodeArg, so it would otherwise never be checked.
+					v.recordUnsoundness(f)
 					nextNodeWithTrace := dataflow.NodeWithTrace{
 						Node:         nextNode,
 						Trace:        nil,

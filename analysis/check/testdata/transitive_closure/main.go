@@ -184,6 +184,31 @@ func closureUnboundedDefers(s string) string {
 	return f()
 }
 
+// globalDefersCache is used to check that recordUnsoundness is invoked for a function reached only
+// via the global write->read jump (not via any Call node).
+var globalDefersCache string
+
+// writeGlobalDefersCache stores s into globalDefersCache.
+func writeGlobalDefersCache(s string) {
+	globalDefersCache = s
+}
+
+// readGlobalUnboundedDefers has its own unbounded defer stack and is only reached via the global
+// write->read jump from globalRoundTripUnboundedDefers, never via a regular call.
+func readGlobalUnboundedDefers() string {
+	for i := 0; i < 3; i++ {
+		defer func() {}()
+	}
+	return globalDefersCache
+}
+
+// globalRoundTripUnboundedDefers writes s into a global and reads it back via
+// readGlobalUnboundedDefers, which has an unbounded defer stack of its own.
+func globalRoundTripUnboundedDefers(s string) string {
+	writeGlobalDefersCache(s)
+	return readGlobalUnboundedDefers()
+}
+
 func main() {
 	fooTop("OI")
 	bar("OK")
@@ -191,6 +216,7 @@ func main() {
 	globalEscape("g2")
 	readEscapeGlobal()
 	closureUnboundedDefers("g3")
+	globalRoundTripUnboundedDefers("g4")
 	zoo(contents{
 		a: "a",
 		b: "b",
