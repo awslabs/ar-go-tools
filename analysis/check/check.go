@@ -162,6 +162,15 @@ func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
 	specs []dataflow.ScanningSpec, testNaive bool, callStack []*ssa.Function,
 ) (SoundnessResult, error) {
+	// The checkable summary format has no syntax for a top-level closure's free variables, so
+	// reject f if it's a closure -- but only at the outermost call (len(callStack) == 1):
+	// recursively-checked callees use an inferred summary, which does support free variables.
+	if len(callStack) == 1 && len(f.FreeVars) > 0 {
+		return SoundnessResult{IsSound: false},
+			fmt.Errorf("cannot check soundness of %s: it is a closure with free variables, which "+
+				"the checkable summary format cannot express for a top-level target", f)
+	}
+
 	g := dataflow.NewSummaryGraph(s.State, f, dataflow.GetUniqueFunctionID(), nil, nil)
 	// Store the newly-created graph in s.FlowGraph.Summaries so it can be referenced later.
 	// This way there is only one summary graph created per *ssa.Function
@@ -193,7 +202,7 @@ func checkSummary(
 	// Special case if we're testing the "naive" method
 	if testNaive {
 		_, soundnessResult, _, err := checkMethodNaive(
-			ctx, s, unsoundCheckFeats, soundnessResultBase, g, want, start)
+			ctx, s, unsoundCheckFeats, soundnessResultBase, g, want, start, specs)
 		return soundnessResult, err
 	}
 
@@ -574,7 +583,8 @@ func checkMethodNaive(ctx context.Context, s *State,
 	soundnessResultBase SoundnessResult,
 	g *dataflow.SummaryGraph,
 	want summaries.DetailedSummary,
-	start time.Time) ([]flow, SoundnessResult, bool, error) {
+	start time.Time,
+	specs []dataflow.ScanningSpec) ([]flow, SoundnessResult, bool, error) {
 	// Summaries are built lazily on demand (see onDemandIntraProcedural) rather than eagerly here,
 	// since eagerly building every reachable function per checked summary doesn't scale. Global
 	// write->read jumps (the one case that used to need the eager pass) are now handled directly
@@ -583,7 +593,7 @@ func checkMethodNaive(ctx context.Context, s *State,
 		ShouldBuildSummary: func(*dataflow.State, *ssa.Function) bool { return false },
 	})
 	s.FlowGraph.BuildGraph(true)
-	checkResult, err := ComputeClosedSummary(ctx, s.State, g.Parent)
+	checkResult, err := ComputeClosedSummary(ctx, s.State, g.Parent, specs)
 	if err != nil {
 		soundnessResultBase.IsSound = false
 		soundnessResultBase.Unsoundness = Unsoundness{

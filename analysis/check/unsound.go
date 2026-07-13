@@ -57,6 +57,11 @@ func findUnsoundCheckFeatures(
 	var reflects []token.Position
 	var entrypoints []token.Position
 
+	// The "standard library is safe" assumption below only applies to callees, not to f itself:
+	// if f is a standard library function under test (e.g. checking fmt.Append against ground
+	// truth), its own body must still be scanned.
+	fIsStandardLib := analysisutil.IsStandardLibFilename(s.State.Program.Fset.Position(f.Pos()).Filename)
+
 	if _, ok := ctx.Deadline(); !ok {
 		// This can take a while so set a timeout if none is set already.
 		var cancel context.CancelFunc
@@ -84,11 +89,11 @@ func findUnsoundCheckFeatures(
 
 		// Skip the function if it has a summary and we are not ignoring predefined functions.
 		pos := s.State.Program.Fset.Position(node.Func.Pos())
-		if !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(node.Func) {
+		if !fIsStandardLib && !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(node.Func) {
 			s.Logger.Tracef(
 				"ignoring checking for unsoundness: %s has summaries.", node.Func.String())
 			continue
-		} else if analysisutil.IsStandardLibFilename(pos.Filename) {
+		} else if !fIsStandardLib && analysisutil.IsStandardLibFilename(pos.Filename) {
 			// ASSUMPTION: We assume that standard library functions do not compromise the soundness
 			// of a taint analysis.
 			s.Logger.Tracef(
@@ -142,7 +147,13 @@ func findUnsoundCheckFeatures(
 		})
 
 		if timedOut {
-			return UnsoundCheckFeatures{}, ctx.Err()
+			return UnsoundCheckFeatures{
+				GlobalUsages:     globals,
+				UnsafeUsages:     unsafes,
+				ReflectUsages:    reflects,
+				EntryPointUsages: entrypoints,
+				TimedOut:         true,
+			}, ctx.Err()
 		}
 
 		if len(globals)+len(unsafes)+len(reflects)+len(entrypoints) >= 5 {

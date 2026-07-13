@@ -90,10 +90,13 @@ func (c ClosedInterproceduralSummary) ToDetailedSummary() (summaries.DetailedSum
 
 // ComputeClosedSummary computes the transitively closed summary for function f.
 // This uses both the intra- and inter-procedural data flow analyses.
+//
+// specs is used to detect entry point (source/sink) usages; may be nil to skip detection.
 func ComputeClosedSummary(
 	ctx context.Context,
 	s *dataflow.State,
 	f *ssa.Function,
+	specs []dataflow.ScanningSpec,
 ) (ClosedInterproceduralSummary, error) {
 	if len(s.FlowGraph.Summaries) == 0 {
 		return ClosedInterproceduralSummary{}, fmt.Errorf("data flow state is not initialized")
@@ -132,7 +135,7 @@ func ComputeClosedSummary(
 	recordedUnsoundness := make(map[*ssa.Function]bool)
 	for _, param := range graph.Params {
 		for _, p := range leafPathsUpTo(param.Type(), maxPathLen) {
-			v := newInputVisitor(p.String(), reachable, unsoundness, recordedUnsoundness)
+			v := newInputVisitor(p.String(), reachable, unsoundness, recordedUnsoundness, specs)
 			v.Visit(ctx, s, dataflow.NodeWithTrace{Node: param})
 			// if there are no flows, don't add them
 			if len(v.flows) == 0 {
@@ -197,6 +200,8 @@ type inputVisitor struct {
 	// been tracked.
 	// This is per-function meaning that it is shared across all the input visitors.
 	recordedUnsoundness map[*ssa.Function]bool
+	// specs is used to detect entry point (source/sink) usages for EntryPointUsages.
+	specs []dataflow.ScanningSpec
 }
 
 // flowTarget is a data flow destination: a graph node reached at a specific object access path
@@ -213,9 +218,12 @@ type flowTarget struct {
 //
 // reachable is the set of functions transitively reachable from the function being summarized (see
 // FunctionsReachableFrom); it may be nil, in which case global write->read jumps are unbounded.
+//
+// specs is used to detect entry point (source/sink) usages; may be nil to skip detection.
 func newInputVisitor(
 	accessPath string, reachable map[*ssa.Function]bool,
-	unsoundness *Unsoundness, recordedUnsoundness map[*ssa.Function]bool) *inputVisitor {
+	unsoundness *Unsoundness, recordedUnsoundness map[*ssa.Function]bool,
+	specs []dataflow.ScanningSpec) *inputVisitor {
 
 	return &inputVisitor{
 		entry:               dataflow.NodeWithTrace{},
@@ -225,6 +233,7 @@ func newInputVisitor(
 		reachable:           reachable,
 		unsoundness:         unsoundness,
 		recordedUnsoundness: recordedUnsoundness,
+		specs:               specs,
 	}
 }
 
@@ -925,8 +934,9 @@ func (v *inputVisitor) onDemandIntraProcedural(ctx context.Context, s *dataflow.
 	return true
 }
 
-// recordUnsoundness records unsound dataflow features of f.
-// NOTE This does not include globals because we track those in the visitor.
+// recordUnsoundness records unsound features of f: unbounded defers, recover, unsafe/reflect
+// usages, and entry point usages, scoped to f's own instructions.
+// NOTE This does not include globals, tracked separately in the visitor.
 func (v *inputVisitor) recordUnsoundness(f *ssa.Function) {
 	if _, ok := v.recordedUnsoundness[f]; ok {
 		return
@@ -936,17 +946,40 @@ func (v *inputVisitor) recordUnsoundness(f *ssa.Function) {
 	if !deferRes.DeferStackBounded {
 		v.unsoundness.DataflowFeatures.HasUnboundedDefers = true
 	}
-	// NOTE findRecoverUsages recurses into nested closures, so its result may overlap with a
-	// position already recorded for an enclosing or nested function that was recorded separately
-	// (e.g. the closure is reached both as a nested AnonFunc of an already-recorded function and
-	// directly via a closure-specific edge). Dedup against what's already recorded to keep the
-	// reported positions clean.
+	// findRecoverUsages recurses into nested closures, so dedup against positions already
+	// recorded via another path to the same closure.
 	for _, pos := range findRecoverUsages(f) {
 		if !slices.Contains(v.unsoundness.DataflowFeatures.RecoverUsages, pos) {
 			v.unsoundness.DataflowFeatures.RecoverUsages = append(
 				v.unsoundness.DataflowFeatures.RecoverUsages, pos)
 		}
 	}
+
+	// Unlike UnsoundCheckFeatures' whole-callgraph scan, only f's own instructions are scanned:
+	// callees get their own call to recordUnsoundness when the traversal visits them.
+	lang.IterateInstructions(f, func(_ int, instr ssa.Instruction) {
+		usage := lang.IsUnsafeOrReflectInstr(instr)
+		if usage.IsUnsafe {
+			pos := f.Prog.Fset.Position(instr.Pos())
+			if !slices.Contains(v.unsoundness.CheckFeatures.UnsafeUsages, pos) {
+				v.unsoundness.CheckFeatures.UnsafeUsages = append(
+					v.unsoundness.CheckFeatures.UnsafeUsages, pos)
+			}
+		} else if usage.IsReflect && !slices.Contains(allowedReflect, usage) {
+			pos := f.Prog.Fset.Position(instr.Pos())
+			if !slices.Contains(v.unsoundness.CheckFeatures.ReflectUsages, pos) {
+				v.unsoundness.CheckFeatures.ReflectUsages = append(
+					v.unsoundness.CheckFeatures.ReflectUsages, pos)
+			}
+		}
+		if isEntrypoint(instr, v.specs) {
+			pos := f.Prog.Fset.Position(instr.Pos())
+			if !slices.Contains(v.unsoundness.CheckFeatures.EntryPointUsages, pos) {
+				v.unsoundness.CheckFeatures.EntryPointUsages = append(
+					v.unsoundness.CheckFeatures.EntryPointUsages, pos)
+			}
+		}
+	})
 
 	v.recordedUnsoundness[f] = true
 }

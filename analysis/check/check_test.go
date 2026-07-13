@@ -18,6 +18,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"go/token"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -297,6 +298,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false, // TODO global analysis
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
+					CheckFeatures: check.UnsoundCheckFeatures{
+						GlobalUsages: []token.Position{{}, {}},
+					},
 				},
 				Method:        check.General,
 				CalleeResults: nil,
@@ -318,6 +322,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false, // TODO global analysis
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
+					CheckFeatures: check.UnsoundCheckFeatures{
+						GlobalUsages: []token.Position{{}, {}},
+					},
 				},
 				Method:        check.General,
 				CalleeResults: nil,
@@ -1108,6 +1115,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
+					CheckFeatures: check.UnsoundCheckFeatures{
+						EntryPointUsages: []token.Position{{}},
+					},
 				},
 				Method:        check.General,
 				CalleeResults: nil,
@@ -1126,6 +1136,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				IsSound: false,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
+					CheckFeatures: check.UnsoundCheckFeatures{
+						EntryPointUsages: []token.Position{{}},
+					},
 				},
 				Method:        check.General,
 				CalleeResults: nil,
@@ -1136,7 +1149,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 	for _, tc := range tests {
 		if tc.name == "closureShared" {
 			// TODO Enable this test once we can encode this case into the test expectation.
-			t.Skip("skipping because an inferred callee summary is unsound")
+			// NOTE t.Skip() on the parent t would halt this whole loop, silently skipping every
+			// subsequent test case in tests[]; continue only skips this one case.
+			continue
 		}
 		var sound string
 		if tc.want.IsSound {
@@ -1146,6 +1161,47 @@ func TestCheckSummary_Basic(t *testing.T) {
 		}
 		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
 		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
+	}
+}
+
+// TestCheckSummary_ClosureRejected checks that checkSummary refuses to check a summary for a
+// TestCheckSummary_ClosureRejected checks that checkSummary rejects a top-level target that is a
+// closure with free variables, since the checkable summary format has no syntax for them.
+func TestCheckSummary_ClosureRejected(t *testing.T) {
+	dir := filepath.Join("./testdata", "basic")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	state, err := result.Bind(
+		result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+
+	// nestedClosures' inner closure captures free variables (bv, z).
+	f := findFunc(state, "nestedClosures$1$1")
+	if f == nil {
+		t.Fatal("failed to find nestedClosures$1$1 (inner closure)")
+	}
+	if len(f.FreeVars) == 0 {
+		t.Fatalf("test setup invalid: %s has no free variables", f)
+	}
+
+	summary := summaries.NewFunctionFlowSummary(
+		"github.com/awslabs/ar-go-tools/analysis/check/testdata/basic", f.Name(),
+		summaries.DetailedSummary{})
+	specs := []dataflow.ScanningSpec{
+		{
+			IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+				return dataflow.IsNodeOfInterest(state.State, node)
+			},
+		},
+	}
+	_, _, err = check.CheckSummary(context.Background(), state, summary, specs, true)
+	if err == nil {
+		t.Fatalf("expected an error checking a closure with free variables, got nil")
 	}
 }
 
@@ -1321,7 +1377,12 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Want:    summaries.DetailedSummary{},
 				Got:     summaries.DetailedSummary{},
 				IsSound: false,
-				Method:  check.Naive,
+				Unsoundness: check.Unsoundness{
+					CheckFeatures: check.UnsoundCheckFeatures{
+						GlobalUsages: []token.Position{{}},
+					},
+				},
+				Method: check.Naive,
 			},
 		},
 		{
@@ -1416,6 +1477,77 @@ func TestCheckSummary_Naive(t *testing.T) {
 					},
 				},
 				IsSound: false,
+				Method:  check.Naive,
+			},
+		},
+		{
+			// sourceGap calls Source() and Sink(), taint entry points per config.yaml.
+			pkg:   pkg,
+			name:  "sourceGap",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".sourceGap",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: false,
+				Unsoundness: check.Unsoundness{
+					CheckFeatures: check.UnsoundCheckFeatures{
+						EntryPointUsages: []token.Position{{}, {}},
+					},
+				},
+				Method: check.Naive,
+			},
+		},
+		{
+			// inner's free variable x is bound to a value that is itself a free variable of
+			// outer. The naive visitor resolves this through nested MakeClosure/
+			// ReferringMakeClosures, so checking nestedClosureNonLocal should be sound.
+			pkg:   pkg,
+			name:  "nestedClosureNonLocal",
+			typ:   functionSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: pkg + ".nestedClosureNonLocal",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ArgumentSNode{Name: "x", Index: 0},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ArgumentSNode{Name: "x", Index: 0},
+							summaries.ArgumentSNode{Name: "y", Index: 1},
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ArgumentSNode{Name: "x", Index: 0},
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "y", Index: 1}: {
+							summaries.ArgumentSNode{Name: "x", Index: 0},
+							summaries.ArgumentSNode{Name: "y", Index: 1},
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				IsSound: true,
 				Method:  check.Naive,
 			},
 		},
@@ -2177,6 +2309,21 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 	if want.Method != got.Method {
 		t.Errorf(
 			"method mismatch for function %s: want %v, got %v\n", want.Name, want.Method, got.Method)
+		return
+	}
+
+	// Positions are not compared exactly (they're brittle: absolute filenames aren't portable
+	// across checkouts, and line/column shift whenever the testdata file is edited). Only the
+	// count of each feature category is compared.
+	wantCF, gotCF := want.Unsoundness.CheckFeatures, got.Unsoundness.CheckFeatures
+	if len(wantCF.GlobalUsages) != len(gotCF.GlobalUsages) ||
+		len(wantCF.UnsafeUsages) != len(gotCF.UnsafeUsages) ||
+		len(wantCF.ReflectUsages) != len(gotCF.ReflectUsages) ||
+		len(wantCF.NonLocalBoundLabelUsages) != len(gotCF.NonLocalBoundLabelUsages) ||
+		len(wantCF.EntryPointUsages) != len(gotCF.EntryPointUsages) ||
+		wantCF.TimedOut != gotCF.TimedOut {
+		t.Errorf(
+			"check features mismatch for function %s: want %+v, got %+v", want.Name, wantCF, gotCF)
 		return
 	}
 

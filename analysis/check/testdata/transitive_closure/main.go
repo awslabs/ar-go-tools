@@ -226,6 +226,33 @@ func plainRecoverGap(s string) string {
 	return plainRecoverCallee(s)
 }
 
+// Source and Sink are recognized as a taint source/sink by config.yaml's source-to-sink taint
+// spec (method "^Source$" / "^Sink$").
+func Source() string {
+	return "tainted"
+}
+
+func Sink(_ string) {}
+
+// sourceGap calls Source and Sink, taint entry points per config.yaml.
+func sourceGap(s string) string {
+	Sink(Source())
+	return s
+}
+
+// nestedClosureNonLocal: inner's free variable x is bound to a value that is itself a free
+// variable of outer, not a value local to or a parameter of outer.
+func nestedClosureNonLocal(x, y *int) *int {
+	outer := func() *int {
+		inner := func() *int {
+			*x = *x + *y
+			return x
+		}
+		return inner()
+	}
+	return outer()
+}
+
 func main() {
 	fooTop("OI")
 	bar("OK")
@@ -235,6 +262,8 @@ func main() {
 	closureUnboundedDefers("g3")
 	globalRoundTripUnboundedDefers("g4")
 	plainRecoverGap("g5")
+	sourceGap("g6")
+	nestedClosureNonLocal(new(int), new(int))
 	zoo(contents{
 		a: "a",
 		b: "b",

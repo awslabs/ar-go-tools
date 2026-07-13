@@ -217,11 +217,14 @@ type UnsoundCheckFeatures struct {
 	// EntryPointUsages records the positions of entry points in the code that would be summarized by the dataflow
 	// summary. This means  a dataflow analysis would potentially miss some entry points.
 	EntryPointUsages []token.Position
+	// TimedOut is true if the scan above did not complete before its internal timeout, so the
+	// fields above may be incomplete.
+	TimedOut bool
 }
 
 func (u UnsoundCheckFeatures) isSound() bool {
 	return len(u.UnsafeUsages) == 0 && len(u.GlobalUsages) == 0 && len(u.ReflectUsages) == 0 &&
-		len(u.NonLocalBoundLabelUsages) == 0 && len(u.EntryPointUsages) == 0
+		len(u.NonLocalBoundLabelUsages) == 0 && len(u.EntryPointUsages) == 0 && !u.TimedOut
 }
 
 // UnsoundDataflowFeatures are the specific Go features that the function may use that would make
