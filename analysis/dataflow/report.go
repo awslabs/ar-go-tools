@@ -184,6 +184,10 @@ func (u UnsoundFeaturesMap) PrettyReason() string {
 //
 // Usages of those features are logged at WARN level with the position of where the feature is used.
 func reportUnsoundFeatures(s *State, unsoundFeatures UnsoundFeaturesMap) {
+	if s.Config.SilenceWarn {
+		return
+	}
+
 	if len(unsoundFeatures.Recovers) > 0 ||
 		len(unsoundFeatures.UnsafeUsages) > 0 ||
 		len(unsoundFeatures.ReflectUsages) > 0 {

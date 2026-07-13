@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,14 +64,17 @@ type Flags struct {
 	tools.CommonFlags
 	via    check.Method
 	filter string
+	// log is the log level explicitly requested with -log; only meaningful when logSet is true. When -log is not
+	// passed on the command line, the config file's own log-level is used instead.
 	log    int
+	logSet bool
 }
 
 // NewFlags returns the parsed flags for the data flow summary checking analysis with args.
 func NewFlags(args []string) (Flags, error) {
 	flags := tools.NewUnparsedCommonFlags(config.CheckTool)
 	via := flags.FlagSet.String("via", "all", "how to perform the check")
-	level := flags.FlagSet.Int("log", 3, "log level (int)")
+	level := flags.FlagSet.Int("log", 3, "log level (int): overrides the config file's log-level if set")
 	filter := flags.FlagSet.String("filter", "", "filter for the check")
 	tools.SetUsage(flags.FlagSet, usage)
 	if err := flags.FlagSet.Parse(args); err != nil {
@@ -80,6 +84,13 @@ func NewFlags(args []string) (Flags, error) {
 	if via == nil || !slices.Contains(methods, check.Method(*via)) {
 		return Flags{}, fmt.Errorf("incorrect checking method: want one of %s", methodsString())
 	}
+
+	logSet := false
+	flags.FlagSet.Visit(func(f *flag.Flag) {
+		if f.Name == "log" {
+			logSet = true
+		}
+	})
 
 	return Flags{
 		CommonFlags: tools.CommonFlags{
@@ -94,6 +105,7 @@ func NewFlags(args []string) (Flags, error) {
 		},
 		via:    check.Method(*via),
 		log:    *level,
+		logSet: logSet,
 		filter: *filter,
 	}, nil
 }
@@ -103,6 +115,9 @@ func Run(flags Flags) error {
 	cfg, checkErr := tools.LoadConfig(flags.CommonFlags, true)
 	if checkErr != nil {
 		return fmt.Errorf("failed to load config: %v", checkErr)
+	}
+	if flags.logSet {
+		cfg.LogLevel = flags.log
 	}
 	tmpLogger := config.NewLogGroup(cfg)
 	tmpLogger.Info(formatutil.Faint("Argot check tool - " + analysis.Version))
