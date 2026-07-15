@@ -87,9 +87,9 @@ func findUnsoundCheckFeatures(
 		}
 		seenFunc[node.Func] = struct{}{}
 
-		// Skip the function if it has a summary and we are not ignoring predefined functions.
+		// Skip the function if it has a predefined summary (trusted).
 		pos := s.State.Program.Fset.Position(node.Func.Pos())
-		if !fIsStandardLib && !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(node.Func) {
+		if !fIsStandardLib && summaries.FnHasSummaries(node.Func) {
 			s.Logger.Tracef(
 				"ignoring checking for unsoundness: %s has summaries.", node.Func.String())
 			continue

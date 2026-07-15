@@ -103,9 +103,8 @@ func CheckSummary(
 	specs []dataflow.ScanningSpec,
 	testNaive bool,
 ) ([]SoundnessResult, bool, error) {
-	// NOTE Hardcode configs so we don't make unintentional mistakes.
+	// NOTE Hardcode config so we don't make unintentional mistakes.
 	s.Config.DataflowProblems.CheckIgnoresUnsound = true
-	s.Config.DataflowProblems.CheckIgnoresPredefined = false
 
 	// SPECIAL CASE: INTERFACES
 	if ifaceSummary, isIfaceSummary := want.(summaries.IfaceMethodFlowSummary); isIfaceSummary {
@@ -601,6 +600,8 @@ func checkMethodNaive(ctx context.Context, s *State,
 	s.RunIntraProceduralPass(ctx, -1, dataflow.IntraAnalysisParams{
 		ShouldBuildSummary: func(*dataflow.State, *ssa.Function) bool { return false },
 	})
+	// Build the inter-procedural data-flow graph, using contracts and predefined stdlib
+	// summaries when available.
 	s.FlowGraph.BuildGraph(true)
 	checkResult, err := ComputeClosedSummary(ctx, s.State, g.Parent, specs)
 	if err != nil {

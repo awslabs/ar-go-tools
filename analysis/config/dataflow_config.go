@@ -42,11 +42,6 @@ type DataflowProblems struct {
 	// If 0 (default), no timeout is applied.
 	IntraTimeoutMs int `xml:"intra-timeout-ms,attr" yaml:"intra-timeout-ms" json:"intra-timeout-ms"`
 
-	// CheckIgnoresPredefined lets the checking algorithm ignore the pre-defined summaries.
-	// By default, check will use the predefined summaries when scanning for unsoundness. If the function has a predefined
-	// summary, then it is ignored.
-	CheckIgnoresPredefined bool `xml:"check-ignores-predefined,attr" yaml:"check-ignores-predefined" json:"check-ignores-predefined"`
-
 	// CheckIgnoresUnsound lets the checking algorithm ignore when the functions being checked have feature that may
 	// make the check unsound.
 	CheckIgnoresUnsound bool `xml:"check-ignores-unsound,attr" yaml:"check-ignores-unsound" json:"check-ignores-unsound"`

@@ -43,7 +43,7 @@ func inferCalleeSummaries(
 		return nil, nil
 	}
 
-	if !s.Config.DataflowProblems.CheckIgnoresPredefined && summaries.FnHasSummaries(g.Parent) {
+	if summaries.FnHasSummaries(g.Parent) {
 		return nil, fmt.Errorf(
 			"should not be deducing callee summaries for pre-defined function: %v", g.Parent)
 	}
@@ -331,10 +331,9 @@ func newTrace(s *dataflow.State, vn *dataflow.VisitorNode) (trace, error) {
 					to.n, tr)
 			}
 
-			if !s.Config.DataflowProblems.CheckIgnoresPredefined &&
-				summaries.FnHasSummaries(n.Trace.Label.Callee()) {
-				// If check does not ignore pre-defined summaries and the callee has a pre-defined
-				// summary, then its intra-procedural edges are known (hard).
+			if summaries.FnHasSummaries(n.Trace.Label.Callee()) {
+				// The callee has a pre-defined summary, so its intra-procedural edges are known
+				// (hard).
 				tr = append(tr, newIntraHardEdge(from, to))
 			} else if pos := s.State.Program.Fset.Position(n.Trace.Label.Callee().Pos()); analysisutil.IsStandardLibFilename(pos.Filename) {
 				// ASSUMPTION: If the callee is a standard library function, it's the most-general
@@ -541,7 +540,7 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) error {
 				Status:      cur.Status,
 			}
 
-			if !s.Config.CheckIgnoresPredefined && summaries.FnHasSummaries(callee) {
+			if summaries.FnHasSummaries(callee) {
 				// If there's a pre-defined summary for the callee, add the outgoing caller nodes
 				// according to the summary and skip analyzing the callee.
 				stack = v.addNextFromPredefinedInput(s, stack, calleeParamIn, callSite)
@@ -1033,7 +1032,9 @@ func (v *visitor) addCallsiteOutputs(
 			// There is no closure trace so flow to the corresponding bound variable in each closure
 			// that may refer to the free variable.
 			s.Logger.Warnf("no closure trace for node %v\n", calleeOutput)
-			s.FlowGraph.BuildGraph(s.Config.CheckIgnoresPredefined)
+			// Build the inter-procedural data-flow graph, using contracts and predefined stdlib
+			// summaries when available.
+			s.FlowGraph.BuildGraph(true)
 			s.FlowGraph.Sync()
 			if len(n.Graph().ReferringMakeClosures) == 0 {
 				f := n.Graph().Parent.Parent()
