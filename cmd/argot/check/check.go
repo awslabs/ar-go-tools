@@ -369,13 +369,11 @@ func checkOneSummaryWrapper(
 		return errs, results
 	}
 	if err != nil {
-		if len(soundness) > 0 {
-			// continue checking the rest of the summaries but return all the errors when finished
-			s.Logger.Errorf("failed to check the summary of function %s in %v seconds: %v",
-				targetFunctionName, soundness[0].Time.Seconds(), err)
-		}
+		// Some implementations may have failed to check while others succeeded (e.g. an
+		// interface with many implementations): still report the results collected for the
+		// successful ones below, in addition to recording the error.
+		s.Logger.Errorf("failed to check summary of function %s: %v", targetFunctionName, err)
 		errs = append(errs, err)
-		return errs, results
 	}
 	for _, soundness := range soundness {
 		if soundness.Soundness == check.Sound {

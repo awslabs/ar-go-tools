@@ -115,6 +115,7 @@ func CheckSummary(
 		key := lang.MethodKey(ifaceSummary.Package()+"."+ifaceSummary.Interface, ifaceSummary.Method)
 		if implems, isPresent := implementations[key]; isPresent {
 			var res []SoundnessResult
+			var errs []error
 			for implem := range implems {
 				s.Logger.Infof(
 					"Checking that interface summary for %s is sound for implementation %s",
@@ -124,10 +125,11 @@ func CheckSummary(
 					ctx, s, implem, want.Summary(), specs, testNaive, callStack)
 				res = append(res, partRes)
 				if err != nil {
-					return res, true, err
+					s.Logger.Errorf("failed to check implementation %s: %v", implem, err)
+					errs = append(errs, err)
 				}
 			}
-			return res, true, nil
+			return res, true, errors.Join(errs...)
 		}
 		return []SoundnessResult{}, false, fmt.Errorf("failed to find implementations of interface %s", key)
 	}
