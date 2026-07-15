@@ -547,7 +547,9 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 				// The value must always flow back to all call sites: we got here without context
 				for _, callSite := range graphNode.Graph().Callsites {
 					if !callSite.Graph().Constructed {
-						v.onDemandIntraProcedural(ctx, s, callSite.Graph())
+						if ok := v.onDemandIntraProcedural(ctx, s, callSite.Graph()); !ok {
+							continue
+						}
 					}
 					for nextNode, edgeInfos := range callSite.Out() {
 						for _, edgeInfo := range edgeInfos {
@@ -661,7 +663,9 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 				closureNode.ClosureSummary = dataflow.NewSummaryGraph(s, closureNode.Graph().Parent, dataflow.GetUniqueFunctionID(), nil, nil)
 			}
 			if !closureNode.ClosureSummary.Constructed {
-				v.onDemandIntraProcedural(ctx, s, closureNode.ClosureSummary)
+				if ok := v.onDemandIntraProcedural(ctx, s, closureNode.ClosureSummary); !ok {
+					break // Don't analyze the closure if the intra-procedural didn't complete.
+				}
 				s.FlowGraph.Sync()
 			}
 
