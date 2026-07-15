@@ -68,7 +68,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -81,8 +81,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "singleArgInterNone",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Name:    pkg + ".singleArgInterNone",
-				IsSound: true,
+				Name:      pkg + ".singleArgInterNone",
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						// NOTE Immutability analysis disproved this flow.
@@ -96,9 +96,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Name:    pkg + ".noop",
-							Want:    summaries.DetailedSummary{},
-							IsSound: true,
+							Name:      pkg + ".noop",
+							Want:      summaries.DetailedSummary{},
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
 									// NOTE Immutability analysis disproved this flow.
@@ -128,7 +128,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						// NOTE false-positive: pointer analysis claims that x and y have the same node id.
@@ -254,7 +254,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				// Disproved flow from twoArgInterInout y -> x via immutability
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
@@ -271,7 +271,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: nil,
 							},
@@ -295,7 +295,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false, // TODO global analysis
+				Soundness: check.Soundy, // TODO global analysis
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 					CheckFeatures: check.UnsoundCheckFeatures{
@@ -319,7 +319,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false, // TODO global analysis
+				Soundness: check.Soundy, // TODO global analysis
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 					CheckFeatures: check.UnsoundCheckFeatures{
@@ -346,7 +346,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -370,7 +370,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -395,7 +395,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{},
 				},
@@ -414,7 +414,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{},
 							},
@@ -430,8 +430,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 			name: "threeArgInterDiffCallees",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Name:    pkg + ".threeArgInterDiffCallees",
-				IsSound: true,
+				Name:      pkg + ".threeArgInterDiffCallees",
+				Soundness: check.Sound,
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "a", Index: 1}: {
@@ -461,7 +461,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{},
 							},
@@ -482,7 +482,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{},
 							},
@@ -510,7 +510,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
@@ -534,7 +534,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: false,
+							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
 									{
@@ -567,7 +567,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -588,7 +588,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: nil,
 							},
@@ -620,7 +620,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
@@ -653,7 +653,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: false,
+							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
 									// TODO false-positive: there should not be a flow from
@@ -688,7 +688,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -705,7 +705,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -726,7 +726,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						// TODO false-positive: there should not be a flow from alias x -> y.
@@ -759,7 +759,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
@@ -791,7 +791,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
@@ -816,7 +816,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: false,
+							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
 									// TODO False-positive from read analysis
@@ -849,7 +849,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -869,7 +869,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: nil,
 							},
@@ -885,7 +885,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 												},
 											},
 										},
-										IsSound: true,
+										Soundness: check.Sound,
 										Unsoundness: check.Unsoundness{
 											UnprovenMustNotFlows: nil,
 										},
@@ -916,7 +916,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
@@ -941,7 +941,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: false,
+							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
 									// TODO Read analysis false-positive
@@ -965,7 +965,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: nil,
 							},
@@ -985,7 +985,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						// NOTE Proven by read analysis.
@@ -1020,7 +1020,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 					},
 				},
 				// NOTE Summary is unsound because closure has a non-local bound label
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
@@ -1037,8 +1037,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Name:    pkg + ".nestedClosuresInvalid$1",
-							IsSound: false,
+							Name:      pkg + ".nestedClosuresInvalid$1",
+							Soundness: check.Unsound,
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.FreeVarSNode{Name: "x"}: {
@@ -1074,7 +1074,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 												},
 											},
 										},
-										IsSound: false,
+										Soundness: check.Unsound,
 										Unsoundness: check.Unsoundness{
 											UnprovenMustNotFlows: []check.Flow{
 												{
@@ -1112,7 +1112,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-				IsSound: false,
+				Soundness: check.Soundy,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 					CheckFeatures: check.UnsoundCheckFeatures{
@@ -1133,7 +1133,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-				IsSound: false,
+				Soundness: check.Soundy,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 					CheckFeatures: check.UnsoundCheckFeatures{
@@ -1153,13 +1153,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 			// subsequent test case in tests[]; continue only skips this one case.
 			continue
 		}
-		var sound string
-		if tc.want.IsSound {
-			sound = "sound"
-		} else {
-			sound = "unsound"
-		}
-		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
+		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, tc.want.Soundness)
 		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
 	}
 }
@@ -1246,8 +1240,8 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
-				Method:  check.Naive,
+				Soundness: check.Sound,
+				Method:    check.Naive,
 			},
 		},
 		{
@@ -1260,10 +1254,10 @@ func TestCheckSummary_Naive(t *testing.T) {
 			typ:   functionSummary,
 			naive: true,
 			want: check.SoundnessResult{
-				Name:    pkg + ".bar",
-				Want:    summaries.DetailedSummary{},
-				IsSound: true,
-				Method:  check.Naive,
+				Name:      pkg + ".bar",
+				Want:      summaries.DetailedSummary{},
+				Soundness: check.Sound,
+				Method:    check.Naive,
 			},
 		},
 		{
@@ -1296,8 +1290,8 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
-				Method:  check.Naive,
+				Soundness: check.Sound,
+				Method:    check.Naive,
 			},
 		},
 		{
@@ -1327,8 +1321,8 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
-				Method:  check.Naive,
+				Soundness: check.Unsound,
+				Method:    check.Naive,
 			},
 		},
 		{
@@ -1357,8 +1351,8 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
-				Method:  check.Naive,
+				Soundness: check.Sound,
+				Method:    check.Naive,
 			},
 		},
 		{
@@ -1373,10 +1367,10 @@ func TestCheckSummary_Naive(t *testing.T) {
 			typ:   functionSummary,
 			naive: true,
 			want: check.SoundnessResult{
-				Name:    pkg + ".globalEscape",
-				Want:    summaries.DetailedSummary{},
-				Got:     summaries.DetailedSummary{},
-				IsSound: false,
+				Name:      pkg + ".globalEscape",
+				Want:      summaries.DetailedSummary{},
+				Got:       summaries.DetailedSummary{},
+				Soundness: check.Soundy,
 				Unsoundness: check.Unsoundness{
 					CheckFeatures: check.UnsoundCheckFeatures{
 						GlobalUsages: []token.Position{{}},
@@ -1414,8 +1408,13 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
-				Method:  check.Naive,
+				Soundness: check.Soundy,
+				Unsoundness: check.Unsoundness{
+					DataflowFeatures: check.UnsoundDataflowFeatures{
+						HasUnboundedDefers: true,
+					},
+				},
+				Method: check.Naive,
 			},
 		},
 		{
@@ -1444,8 +1443,13 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
-				Method:  check.Naive,
+				Soundness: check.Soundy,
+				Unsoundness: check.Unsoundness{
+					DataflowFeatures: check.UnsoundDataflowFeatures{
+						HasUnboundedDefers: true,
+					},
+				},
+				Method: check.Naive,
 			},
 		},
 		{
@@ -1476,8 +1480,13 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
-				Method:  check.Naive,
+				Soundness: check.Soundy,
+				Unsoundness: check.Unsoundness{
+					DataflowFeatures: check.UnsoundDataflowFeatures{
+						RecoverUsages: []token.Position{{}},
+					},
+				},
+				Method: check.Naive,
 			},
 		},
 		{
@@ -1502,7 +1511,7 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Soundy,
 				Unsoundness: check.Unsoundness{
 					CheckFeatures: check.UnsoundCheckFeatures{
 						EntryPointUsages: []token.Position{{}, {}},
@@ -1547,20 +1556,14 @@ func TestCheckSummary_Naive(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
-				Method:  check.Naive,
+				Soundness: check.Sound,
+				Method:    check.Naive,
 			},
 		},
 	}
 
 	for _, tc := range tests {
-		var sound string
-		if tc.want.IsSound {
-			sound = "sound"
-		} else {
-			sound = "unsound"
-		}
-		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
+		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, tc.want.Soundness)
 		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
 	}
 }
@@ -1599,7 +1602,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{},
 				},
@@ -1621,7 +1624,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -1646,7 +1649,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -1667,7 +1670,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: false,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
@@ -1693,7 +1696,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -1714,7 +1717,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{},
 				},
@@ -1739,7 +1742,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{},
 				},
@@ -1758,7 +1761,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{},
 							},
@@ -1793,7 +1796,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{},
 				},
@@ -1812,7 +1815,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{},
 							},
@@ -1833,7 +1836,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 									},
 								},
 							},
-							IsSound: true,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{},
 							},
@@ -1860,7 +1863,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{},
 				},
@@ -1874,13 +1877,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 		if tc.name == "threeArgInterTree" {
 			t.Skipf("skipping due to false-positives in static analyses")
 		}
-		var sound string
-		if tc.want.IsSound {
-			sound = "sound"
-		} else {
-			sound = "unsound"
-		}
-		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
+		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, tc.want.Soundness)
 		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
 	}
 }
@@ -1910,7 +1907,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// NOTE The most-general summary for function (*md5.digest).Write is unsound because
 				// it accesses a global.
 				// NOTE: but that global is only written in init, so we consider the most-general summary sound.
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -1928,7 +1925,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				},
-				IsSound: true,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
@@ -1952,7 +1949,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				},
 				// NOTE The most-general summary of json.Marshal is unsound because it reads from
 				// the global variable `encodeStatePool`.
-				IsSound: false,
+				Soundness: check.Soundy,
 				// NOTE For some reason, the pointer analysis does not record any Labels for any
 				// errors returned in json.Marshal, meaning that the error return values are
 				// trivially immutable.
@@ -1981,7 +1978,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 			Want: summaries.DetailedSummary{
 				// 				Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				// 			},
-				// 			IsSound: true,
+				// 			Soundness: check.Sound,
 				// 			Unsoundness: check.Unsoundness{
 				// 				UnprovenMustNotFlows: nil,
 				// 			},
@@ -2002,7 +1999,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 					},
 				// 				},
 				// 			},
-				// 			IsSound: true,
+				// 			Soundness: check.Sound,
 				// 			Unsoundness: check.Unsoundness{
 				// 				UnprovenMustNotFlows: nil,
 				// 			},
@@ -2020,7 +2017,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 					},
 				// 				},
 				// 			},
-				// 			IsSound: true,
+				// 			Soundness: check.Sound,
 				// 			Unsoundness: check.Unsoundness{
 				// 				UnprovenMustNotFlows: nil,
 				// 			},
@@ -2044,7 +2041,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 					},
 				// 				},
 				// 			},
-				// 			IsSound: true,
+				// 			Soundness: check.Sound,
 				// 			Unsoundness: check.Unsoundness{
 				// 				UnprovenMustNotFlows: nil,
 				// 			},
@@ -2056,7 +2053,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 						Want: summaries.DetailedSummary{
 				// 							Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				// 						},
-				// 						IsSound: true,
+				// 						Soundness: check.Sound,
 				// 						Unsoundness: check.Unsoundness{
 				// 							UnprovenMustNotFlows: nil,
 				// 						},
@@ -2074,7 +2071,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 								},
 				// 							},
 				// 						},
-				// 						IsSound: true,
+				// 						Soundness: check.Sound,
 				// 						Unsoundness: check.Unsoundness{
 				// 							UnprovenMustNotFlows: nil,
 				// 						},
@@ -2095,7 +2092,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 								},
 				// 							},
 				// 						},
-				// 						IsSound: true,
+				// 						Soundness: check.Sound,
 				// 						Unsoundness: check.Unsoundness{
 				// 							UnprovenMustNotFlows: nil,
 				// 						},
@@ -2122,7 +2119,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 					},
 				// 				},
 				// 			},
-				// 			IsSound: true,
+				// 			Soundness: check.Sound,
 				// 			Unsoundness: check.Unsoundness{
 				// 				UnprovenMustNotFlows: nil,
 				// 			},
@@ -2134,7 +2131,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 						Want: summaries.DetailedSummary{
 				// 							Flows: map[summaries.SummaryNode][]summaries.SummaryNode{},
 				// 						},
-				// 						IsSound: true,
+				// 						Soundness: check.Sound,
 				// 						Unsoundness: check.Unsoundness{
 				// 							UnprovenMustNotFlows: nil,
 				// 						},
@@ -2152,7 +2149,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 								},
 				// 							},
 				// 						},
-				// 						IsSound: true,
+				// 						Soundness: check.Sound,
 				// 						Unsoundness: check.Unsoundness{
 				// 							UnprovenMustNotFlows: nil,
 				// 						},
@@ -2173,7 +2170,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 				// 								},
 				// 							},
 				// 						},
-				// 						IsSound: true,
+				// 						Soundness: check.Sound,
 				// 						Unsoundness: check.Unsoundness{
 				// 							UnprovenMustNotFlows: nil,
 				// 						},
@@ -2190,13 +2187,7 @@ func TestCheckSummary_Stdlib(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		var sound string
-		if tc.want.IsSound {
-			sound = "sound"
-		} else {
-			sound = "unsound"
-		}
-		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, sound)
+		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, tc.want.Soundness)
 		t.Run(name, func(t *testing.T) {
 			dir := filepath.Join("./testdata", "stdlib", tc.pkg)
 			lp, err := analysistest.LoadTest(
@@ -2289,10 +2280,10 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 		return
 	}
 
-	if want.IsSound != got.IsSound {
+	if want.Soundness != got.Soundness {
 		t.Errorf(
 			"soundness mismatch for function %s: want %v, got %v\n",
-			want.Name, want.IsSound, got.IsSound)
+			want.Name, want.Soundness, got.Soundness)
 		return
 	}
 

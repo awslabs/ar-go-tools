@@ -166,7 +166,7 @@ func checkSummary(
 	// reject f if it's a closure -- but only at the outermost call (len(callStack) == 1):
 	// recursively-checked callees use an inferred summary, which does support free variables.
 	if len(callStack) == 1 && len(f.FreeVars) > 0 {
-		return SoundnessResult{IsSound: false},
+		return SoundnessResult{Soundness: Error},
 			fmt.Errorf("cannot check soundness of %s: it is a closure with free variables, which "+
 				"the checkable summary format cannot express for a top-level target", f)
 	}
@@ -184,7 +184,7 @@ func checkSummary(
 		err := fmt.Errorf("failed to find unsound check features for %s: %v", f, err)
 		s.Logger.Errorf("%s\n", err)
 		if !s.Config.CheckIgnoresUnsound {
-			return SoundnessResult{IsSound: false}, err
+			return SoundnessResult{Soundness: Error}, err
 		}
 	}
 	s.Logger.Debugf("unsound check features of %s: %+v\n", f, unsoundCheckFeats)
@@ -194,7 +194,7 @@ func checkSummary(
 		Fn:           f,
 		Name:         f.RelString(nil),
 		Want:         want,
-		IsSound:      true,
+		Soundness:    Sound,
 		MethodCounts: map[Method]int{},
 		Time:         time.Duration(0),
 	}
@@ -209,7 +209,7 @@ func checkSummary(
 	var method Method
 	wantFlows, err := summaryFlows(s, g, want)
 	if err != nil {
-		soundnessResultBase.IsSound = false
+		soundnessResultBase.Soundness = Error
 		soundnessResultBase.Unsoundness = Unsoundness{
 			UnprovenMustNotFlows: []Flow{},
 			BadForm:              err,
@@ -276,11 +276,12 @@ func checkSummary(
 			s.Logger.Debugf(
 				"no unproven must-not-flows from checking function %s via method %s: done checking\n",
 				f, method)
-			soundnessResultBase.IsSound = unsoundCheckFeats.isSound()
-			soundnessResultBase.Unsoundness = Unsoundness{
+			finalUnsoundness := Unsoundness{
 				UnprovenMustNotFlows: nil,
 				CheckFeatures:        unsoundCheckFeats,
 			}
+			soundnessResultBase.Soundness = finalUnsoundness.soundness()
+			soundnessResultBase.Unsoundness = finalUnsoundness
 			soundnessResultBase.Method = method
 			soundnessResultBase.Time = time.Since(start)
 			return soundnessResultBase, nil
@@ -304,7 +305,7 @@ func checkSummary(
 	calleeSummaries, err := inferCalleeSummaries(
 		ctx, s, g, wantFlows, unprovenMustNotFlows, &unsoundness, Types)
 	if err != nil {
-		soundnessResultBase.IsSound = false
+		soundnessResultBase.Soundness = Error
 		soundnessResultBase.Unsoundness = unsoundness
 		soundnessResultBase.Time = time.Since(start)
 		soundnessResultBase.Method = Recursive
@@ -315,7 +316,7 @@ func checkSummary(
 		if unsoundness.isSound() {
 			unsoundness.UnprovenMustNotFlows = nil
 		}
-		soundnessResultBase.IsSound = unsoundness.isSound()
+		soundnessResultBase.Soundness = unsoundness.soundness()
 		soundnessResultBase.Unsoundness = unsoundness
 		soundnessResultBase.Time = time.Since(start)
 		soundnessResultBase.Method = method // The algorithm didn't have to recurse here.
@@ -336,7 +337,7 @@ func checkSummary(
 		// Only one inferred callee summary needs to be sound.
 		calleeSound := false
 		for _, cr := range crs {
-			if cr.IsSound {
+			if cr.Soundness == Sound {
 				calleeSound = true
 				break
 			}
@@ -352,7 +353,11 @@ func checkSummary(
 
 	// TODO Filter out must-not-flows that are proven via checking the callees
 	soundnessResultBase.MethodCounts[Recursive] = len(unprovenMustNotFlows)
-	soundnessResultBase.IsSound = calleesSound
+	if calleesSound {
+		soundnessResultBase.Soundness = unsoundness.soundness()
+	} else {
+		soundnessResultBase.Soundness = Unsound
+	}
 	soundnessResultBase.Unsoundness = unsoundness
 	soundnessResultBase.Method = Recursive
 	soundnessResultBase.Time = time.Since(start)
@@ -372,7 +377,7 @@ func checkCalleeSummaries(
 	for callee, calleeSumms := range calleeSummaries {
 		if len(calleeSumms) == 0 {
 			// If there are no callee summaries inferred, this is a bug.
-			return nil, SoundnessResult{IsSound: false}, true,
+			return nil, SoundnessResult{Soundness: Error}, true,
 				fmt.Errorf("no summaries inferred for callee: %s", callee)
 		}
 
@@ -387,7 +392,7 @@ func checkCalleeSummaries(
 		}
 		const maxRecursion = 2
 		if recursiveCalls > maxRecursion {
-			soundnessResultBase.IsSound = false
+			soundnessResultBase.Soundness = Unsound
 			soundnessResultBase.Unsoundness = unsoundness
 			soundnessResultBase.Time = time.Since(start)
 			soundnessResultBase.Method = Recursive
@@ -413,7 +418,7 @@ func checkCalleeSummaries(
 					// the inferred summaries are incomplete/incorrect.
 					// Return the must-not-flows for the caller plus any successfully analyzed
 					// callees.
-					soundnessResultBase.IsSound = false
+					soundnessResultBase.Soundness = Unsound
 					soundnessResultBase.Unsoundness = unsoundness
 					soundnessResultBase.CalleeResults = append(calleeResults, thisCalleeResults)
 					soundnessResultBase.Time = time.Since(start)
@@ -426,7 +431,7 @@ func checkCalleeSummaries(
 
 			s.Logger.Tracef("callee check result: %+v", calleeRes)
 			// Only one of the potential callee summaries needs to be sound.
-			if calleeRes.IsSound {
+			if calleeRes.Soundness == Sound {
 				if len(calleeRes.Unsoundness.UnprovenMustNotFlows) > 0 {
 					panic(fmt.Errorf(
 						"want no unproven must-not-flows in callee %s summary, got: %v",
@@ -438,9 +443,9 @@ func checkCalleeSummaries(
 
 		for _, crs := range calleeResults {
 			for _, cr := range crs {
-				if !cr.IsSound {
+				if cr.Soundness != Sound {
 					s.Logger.Infof("unsound deduced callee summary: %v\n", cr.Want)
-					soundnessResultBase.IsSound = false
+					soundnessResultBase.Soundness = Unsound
 					soundnessResultBase.Unsoundness = unsoundness
 					soundnessResultBase.Time = time.Since(start)
 					soundnessResultBase.Method = Recursive
@@ -466,7 +471,7 @@ func checkMethodRead(ctx context.Context, s *State, f *ssa.Function,
 		s.Logger.Warnf(
 			"read analysis is unsound: detected reflection use in function %s\n", f)
 		if !s.Config.CheckIgnoresUnsound {
-			soundnessResultBase.IsSound = false
+			soundnessResultBase.Soundness = Unsound
 			soundnessResultBase.Unsoundness = Unsoundness{
 				UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
 				CheckFeatures:        unsoundCheckFeats,
@@ -491,7 +496,7 @@ func checkMethodImmutability(ctx context.Context, s *State, f *ssa.Function,
 		s.Logger.Warnf(
 			"immutability analysis is unsound: detected reflection use in function %s\n", f)
 		if !s.Config.CheckIgnoresUnsound {
-			soundnessResultBase.IsSound = false
+			soundnessResultBase.Soundness = Unsound
 			soundnessResultBase.Unsoundness = Unsoundness{
 				UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
 				CheckFeatures:        unsoundCheckFeats,
@@ -516,7 +521,7 @@ func checkMethodTypes(s *State, f *ssa.Function,
 		s.Logger.Warnf(
 			"types analysis is unsound: detected unsafe use in function %s\n", f)
 		if !s.Config.CheckIgnoresUnsound {
-			soundnessResultBase.IsSound = false
+			soundnessResultBase.Soundness = Unsound
 			soundnessResultBase.Unsoundness = Unsoundness{
 				UnprovenMustNotFlows: funcutil.Map(unprovenMustNotFlows, newFlow),
 				CheckFeatures:        unsoundCheckFeats,
@@ -546,8 +551,9 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 			"most-general summary is unsound: detected global use in function %s (%s)\n",
 			f, s.Program.Fset.Position(f.Pos()))
 		if !s.Config.CheckIgnoresUnsound {
-			soundnessResultBase.IsSound = false
-			soundnessResultBase.Unsoundness = Unsoundness{CheckFeatures: unsoundCheckFeats}
+			unsoundness := Unsoundness{CheckFeatures: unsoundCheckFeats}
+			soundnessResultBase.Soundness = unsoundness.soundness()
+			soundnessResultBase.Unsoundness = unsoundness
 			soundnessResultBase.Method = General
 			return nil, soundnessResultBase, true, nil
 		}
@@ -558,8 +564,9 @@ func checkMethodGeneral(s *State, f *ssa.Function,
 		s.Logger.Warnf(
 			"most-general analysis is unsound: detected unsafe use in function %s\n", f)
 		if !s.Config.CheckIgnoresUnsound {
-			soundnessResultBase.IsSound = false
-			soundnessResultBase.Unsoundness = Unsoundness{CheckFeatures: unsoundCheckFeats}
+			unsoundness := Unsoundness{CheckFeatures: unsoundCheckFeats}
+			soundnessResultBase.Soundness = unsoundness.soundness()
+			soundnessResultBase.Unsoundness = unsoundness
 			soundnessResultBase.Method = General
 			return nil, soundnessResultBase, true, nil
 		}
@@ -595,7 +602,7 @@ func checkMethodNaive(ctx context.Context, s *State,
 	s.FlowGraph.BuildGraph(true)
 	checkResult, err := ComputeClosedSummary(ctx, s.State, g.Parent, specs)
 	if err != nil {
-		soundnessResultBase.IsSound = false
+		soundnessResultBase.Soundness = Error
 		soundnessResultBase.Unsoundness = Unsoundness{
 			UnprovenMustNotFlows: []Flow{},
 			BadForm:              err,
@@ -610,7 +617,7 @@ func checkMethodNaive(ctx context.Context, s *State,
 	}
 	computed, err := checkResult.ToDetailedSummary()
 	if err != nil {
-		soundnessResultBase.IsSound = false
+		soundnessResultBase.Soundness = Error
 		soundnessResultBase.Unsoundness = Unsoundness{
 			UnprovenMustNotFlows: []Flow{},
 			BadForm:              err,
@@ -622,8 +629,15 @@ func checkMethodNaive(ctx context.Context, s *State,
 	}
 	s.Logger.Infof("computed summary:\n%s\n", computed.String())
 	soundnessResultBase.Got = computed
-	if !want.IsMoreGeneralThan(computed) || !checkResult.Unsoundness.isSound() {
-		soundnessResultBase.IsSound = false
+	if !want.IsMoreGeneralThan(computed) {
+		soundnessResultBase.Soundness = Unsound
+		soundnessResultBase.Unsoundness = checkResult.Unsoundness
+		soundnessResultBase.Method = Naive
+		soundnessResultBase.Time = time.Since(start)
+		return nil, soundnessResultBase, true, nil
+	}
+	if !checkResult.Unsoundness.isSound() {
+		soundnessResultBase.Soundness = checkResult.Unsoundness.soundness()
 		soundnessResultBase.Unsoundness = checkResult.Unsoundness
 		soundnessResultBase.Method = Naive
 		soundnessResultBase.Time = time.Since(start)

@@ -255,8 +255,9 @@ func runTarget(
 func report(cfg *config.Config, logger *config.LogGroup, allResults map[string][]check.SoundnessResult) error {
 	// Aggregate counts across all targets, deduplicating by function name.
 	soundOnes := map[string]bool{}
-	unsoundOnes := map[string]bool{}
 	soundyOnes := map[string]bool{}
+	unsoundOnes := map[string]bool{}
+	errorOnes := map[string]bool{}
 	methodCounts := map[check.Method]int{}
 
 	var collectMethodCounts func(r check.SoundnessResult)
@@ -273,22 +274,25 @@ func report(cfg *config.Config, logger *config.LogGroup, allResults map[string][
 
 	for _, results := range allResults {
 		for _, r := range results {
-			if r.IsSound {
+			switch r.Soundness {
+			case check.Sound:
 				soundOnes[r.Name] = true
-			} else {
+			case check.Soundy:
+				soundyOnes[r.Name] = true
+			case check.Unsound:
 				unsoundOnes[r.Name] = true
-				if len(r.Unsoundness.UnprovenMustNotFlows) == 0 {
-					soundyOnes[r.Name] = true
-				}
+			case check.Error:
+				errorOnes[r.Name] = true
 			}
 			collectMethodCounts(r)
 		}
 	}
 
-	logger.Infof("Check results: %d sound / %d soundy / %d unsound\n",
+	logger.Infof("Check results: %d sound / %d soundy / %d unsound / %d error\n",
 		len(soundOnes),
 		len(soundyOnes),
-		len(unsoundOnes)-len(soundyOnes))
+		len(unsoundOnes),
+		len(errorOnes))
 	for method, count := range methodCounts {
 		logger.Infof("   %s: %d\n", method, count)
 	}
@@ -374,14 +378,14 @@ func checkOneSummaryWrapper(
 		return errs, results
 	}
 	for _, soundness := range soundness {
-		if soundness.IsSound {
+		if soundness.Soundness == check.Sound {
 			s.Logger.Infof("Summary for %s is sound! (%s)", targetFunctionName, soundness.Method)
 			if soundness.Fn != nil {
 				s.Logger.Infof("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
 			}
 			s.Logger.Infof("Result:\n%s\n", soundness.PrettyString())
 		} else {
-			s.Logger.Infof("Summary for %s is unsound! (%s)", targetFunctionName, soundness.Method)
+			s.Logger.Infof("Summary for %s is %s! (%s)", targetFunctionName, soundness.Soundness, soundness.Method)
 			if soundness.Fn != nil {
 				s.Logger.Infof("Location: %s\n", lang.SafeFunctionPos(soundness.Fn))
 			}

@@ -42,10 +42,10 @@ type SoundnessResult struct {
 	// populated when Method is Naive: the other checking methods never compute a complete summary
 	// for the function, only a set of unproven must-not-flows.
 	Got summaries.DetailedSummary
-	// IsSound is true if there is no unsoundness.
-	IsSound bool
+	// Soundness classifies the outcome of the check: sound, soundy, unsound, or error (the check
+	// could not be attempted).
+	Soundness Soundness
 	// Unsoundness is the potential sources of unsoundness in the soundness check.
-	// IsSound is false if there is any unsoundness.
 	Unsoundness Unsoundness
 	// Method is the least powerful method needed to be used for the soundness check.
 	Method Method
@@ -73,12 +73,16 @@ func (r SoundnessResult) String() string {
 //gocyclo:ignore
 func (r SoundnessResult) PrettyString() string {
 	s := strings.Builder{}
-	if r.IsSound {
+	switch r.Soundness {
+	case Sound:
 		s.WriteString(fmt.Sprintf("%s: %s\n",
 			formatutil.BgBlue(r.Name), formatutil.BgGreen(" sound ")))
-	} else {
+	case Soundy:
 		s.WriteString(fmt.Sprintf("%s: %s\n",
-			formatutil.BgBlue(r.Name), formatutil.BgRed(" unsound ")))
+			formatutil.BgBlue(r.Name), formatutil.BgOrange(" soundy ")))
+	default:
+		s.WriteString(fmt.Sprintf("%s: %s\n",
+			formatutil.BgBlue(r.Name), formatutil.BgRed(fmt.Sprintf(" %s ", r.Soundness))))
 	}
 	s.WriteString(fmt.Sprintf("  Method: %s\n", r.Method))
 	s.WriteString("  Checked summary:\n")
@@ -97,7 +101,7 @@ func (r SoundnessResult) PrettyString() string {
 						func(n summaries.SummaryNode) string { return formatutil.BgDarkGray(n.String()) }), ", ")))
 		}
 	}
-	if !r.IsSound {
+	if r.Soundness != Sound {
 		s.WriteString("  The summary is unsound because:\n")
 		if r.Unsoundness.BadForm != nil {
 			s.WriteString(fmt.Sprintf("    Summary is malformed: %s\n", r.Unsoundness.BadForm.Error()))
@@ -182,6 +186,35 @@ type Unsoundness struct {
 	CheckFeatures UnsoundCheckFeatures
 	// DataflowFeatures are the unsound features that make the data flow analysis unsound.
 	DataflowFeatures UnsoundDataflowFeatures
+}
+
+// Soundness classifies the outcome of a soundness check.
+type Soundness string
+
+const (
+	// Sound: all must-not-flows were proven, with no unsoundness risk features.
+	Sound Soundness = "sound"
+	// Soundy: all must-not-flows were proven, but an unsoundness risk feature was found (e.g.
+	// reflection, unsafe, a global, a timeout).
+	Soundy Soundness = "soundy"
+	// Unsound: at least one must-not-flow could not be proven.
+	Unsound Soundness = "unsound"
+	// Error: the check could not be attempted (e.g. a malformed summary, or a closure target that
+	// the checkable summary format cannot express).
+	Error Soundness = "error"
+)
+
+func (u Unsoundness) soundness() Soundness {
+	if u.BadForm != nil {
+		return Error
+	}
+	if len(u.UnprovenMustNotFlows) > 0 {
+		return Unsound
+	}
+	if u.CheckFeatures.isSound() && u.DataflowFeatures.isSound() {
+		return Sound
+	}
+	return Soundy
 }
 
 func (u Unsoundness) isSound() bool {
@@ -273,7 +306,7 @@ type rawSoundnessResult struct {
 	Func          string
 	Want          map[string][]string
 	Got           map[string][]string
-	IsSound       bool
+	Soundness     Soundness
 	Unsoundness   rawUnsoundness
 	Method        string
 	MethodCounts  map[string]int
@@ -328,10 +361,10 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 	}
 
 	return rawSoundnessResult{
-		Func:    r.Name,
-		Want:    rawFlows(r.Want.Flows),
-		Got:     rawFlows(r.Got.Flows),
-		IsSound: r.IsSound,
+		Func:      r.Name,
+		Want:      rawFlows(r.Want.Flows),
+		Got:       rawFlows(r.Got.Flows),
+		Soundness: r.Soundness,
 		Unsoundness: rawUnsoundness{
 			BadForm:              badForm,
 			UnprovenMustNotFlows: funcutil.Map(r.Unsoundness.UnprovenMustNotFlows, (Flow).String),
