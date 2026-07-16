@@ -1,0 +1,87 @@
+# RQ1 ground-truth summaries for repo 'amazon-ssm-agent'.
+# selection: seed=20260702, this repo got 4 of 25 methods drawn from 54 distinct feature-free candidates.
+dataflow-summaries:
+  # ==========================================================================
+  # (*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest   (receiver)
+  # go doc:
+  #   package client // import "github.com/aws/aws-sdk-go/aws/client"
+  #
+  #   func (c *Client) NewRequest(operation *request.Operation, params interface{}, data interface{}) *request.Request
+  #       NewRequest returns a new Request pointer for the service API operation and
+  #       parameters.
+  # docs: https://pkg.go.dev/github.com/aws/aws-sdk-go/aws/client#Client.NewRequest
+  # ==========================================================================
+  - package: "github.com/aws/aws-sdk-go/aws/client"
+    receiver: "*Client"
+    method: "NewRequest"
+    flows:
+      - from: "!arg <data 2>"
+        to: "!ret 0"
+      - from: "!arg <operation 0>"
+        to: "!ret 0"
+      - from: "!arg <params 1>"
+        to: "!ret 0"
+      - from: "(!receiver).ClientInfo"
+        to: "!ret 0"
+      - from: "(!receiver).Config"
+        to: "!ret 0"
+      - from: "(!receiver).Handlers"
+        to: "!ret 0"
+      - from: "(!receiver).Retryer"
+        to: "!ret 0"
+  # ==========================================================================
+  # (*github.com/aws/aws-sdk-go/aws/csm.metric).SetException   (receiver)
+  # go doc:
+  #   package csm // import "github.com/aws/aws-sdk-go/aws/csm"
+  #
+  #   func (m *metric) SetException(e metricException)
+  # docs: https://pkg.go.dev/github.com/aws/aws-sdk-go/aws/csm#metric.SetException
+  # ==========================================================================
+  - package: "github.com/aws/aws-sdk-go/aws/csm"
+    receiver: "*metric"
+    method: "SetException"
+    flows:
+      - from: "(!arg 0).exception"
+        to: "(!receiver).AWSException"
+      - from: "(!arg 0).message"
+        to: "(!receiver).AWSExceptionMessage"
+      - from: "(!arg 0).exception"
+        to: "(!receiver).SDKException"
+      - from: "(!arg 0).message"
+        to: "(!receiver).SDKExceptionMessage"
+  # ==========================================================================
+  # (*github.com/aws/aws-sdk-go/aws/csm.metric).SetFinalException   (receiver)
+  # go doc:
+  #   package csm // import "github.com/aws/aws-sdk-go/aws/csm"
+  #
+  #   func (m *metric) SetFinalException(e metricException)
+  # docs: https://pkg.go.dev/github.com/aws/aws-sdk-go/aws/csm#metric.SetFinalException
+  # ==========================================================================
+  - package: "github.com/aws/aws-sdk-go/aws/csm"
+    receiver: "*metric"
+    method: "SetFinalException"
+    flows:
+      - from: "(!arg 0).exception"
+        to: "(!receiver).FinalAWSException"
+      - from: "(!arg 0).message"
+        to: "(!receiver).FinalAWSExceptionMessage"
+      - from: "(!arg 0).exception"
+        to: "(!receiver).FinalSDKException"
+      - from: "(!arg 0).message"
+        to: "(!receiver).FinalSDKExceptionMessage"
+  # ==========================================================================
+  # (github.com/aws/aws-sdk-go/aws/request.temporary).Temporary   (interface)
+  # go doc:
+  #   package request // import "github.com/aws/aws-sdk-go/aws/request"
+  #
+  #   type temporary interface {
+  #   	Temporary() bool
+  #   }
+  # docs: https://pkg.go.dev/github.com/aws/aws-sdk-go/aws/request#temporary.Temporary
+  # ==========================================================================
+  - package: "github.com/aws/aws-sdk-go/aws/request"
+    interface: "temporary"
+    method: "Temporary"
+    flows:
+      - from: "!receiver"
+        to: "!ret 0"

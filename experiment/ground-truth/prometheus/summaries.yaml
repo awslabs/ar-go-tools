@@ -1,0 +1,134 @@
+# RQ1 ground-truth summaries for repo 'prometheus'.
+# selection: seed=20260702, this repo got 7 of 25 methods drawn from 54 distinct feature-free candidates.
+dataflow-summaries:
+  # ==========================================================================
+  # (*net/http.conn).serve   (receiver)
+  # go doc:
+  #   package http // import "net/http"
+  #   
+  #   func (c *conn) serve(ctx context.Context)
+  #       Serve a new connection.
+  # docs: https://pkg.go.dev/net/http#conn.serve
+  # ==========================================================================
+  - package: 'net/http'
+    receiver: '*conn'
+    method: 'serve'
+    flows:
+      - from: '!arg 0'
+        to: '!receiver'
+  # ==========================================================================
+  # (*net/http.http2serverConn).serve   (receiver)
+  # go doc:
+  #   package http // import "net/http"
+  #   
+  #   func (sc *http2serverConn) serve(conf http2http2Config)
+  # docs: https://pkg.go.dev/net/http#http2serverConn.serve
+  #
+  # Keep only DURABLE flows: conf data still in a receiver field after serve() returns.
+  #   readIdleTimeout : sc.readIdleTimeout = conf.SendPingTimeout
+  #   readIdleTimer   : afterFunc(conf.SendPingTimeout,...) timer embeds the duration
+  #   inflow          : if diff>0, sendWindowUpdate -> inflow.add(MaxUploadBufferPerConnection)
+  #   framer          : SETTINGS(MaxReadFrameSize,MaxDecoderHeaderTableSize) + WINDOW_UPDATE
+  #                     serialize into sc.framer.wbuf (reused buffer, only reset on the next
+  #                     startWrite); can linger on an early return -> kept for soundness.
+  # Dropped flows (not durable): writeSched (Pop'd during handshake), bw (Flush sets w.bw=nil),
+  # conn (net.Conn.Write egress, no read-back).
+  # ==========================================================================
+  - package: 'net/http'
+    receiver: '*http2serverConn'
+    method: 'serve'
+    flows:
+      - from: '(!arg 0).SendPingTimeout'
+        to: '(!receiver).readIdleTimeout'
+      - from: '(!arg 0).SendPingTimeout'
+        to: '(!receiver).readIdleTimer'
+      - from: '(!arg 0).MaxUploadBufferPerConnection'
+        to: '(!receiver).inflow'
+      # sc.framer.wbuf may retain serialized SETTINGS/WINDOW_UPDATE bytes on early return.
+      - from: '(!arg 0).MaxReadFrameSize'
+        to: '(!receiver).framer'
+      - from: '(!arg 0).MaxDecoderHeaderTableSize'
+        to: '(!receiver).framer'
+      - from: '(!arg 0).MaxUploadBufferPerConnection'
+        to: '(!receiver).framer'
+  # ==========================================================================
+  # net/http.Handle   (function)
+  # go doc:
+  #   package http // import "net/http"
+  #   
+  #   func Handle(pattern string, handler Handler)
+  #       Handle registers the handler for the given pattern in DefaultServeMux.
+  #       The documentation for ServeMux explains how patterns are matched.
+  # docs: https://pkg.go.dev/net/http#Handle
+  #
+  # NOTE: Both pattern and handler flow to a global variable DefaultServeMux.
+  # ==========================================================================
+  - package: 'net/http'
+    function: 'Handle'
+    flows: []
+  # ==========================================================================
+  # net/http.HandleFunc   (function)
+  # go doc:
+  #   package http // import "net/http"
+  #   
+  #   func HandleFunc(pattern string, handler func(ResponseWriter, *Request))
+  #       HandleFunc registers the handler function for the given pattern in
+  #       DefaultServeMux. The documentation for ServeMux explains how patterns are
+  #       matched.
+  # docs: https://pkg.go.dev/net/http#HandleFunc
+  # ==========================================================================
+  - package: 'net/http'
+    function: 'HandleFunc'
+    flows: []
+  # ==========================================================================
+  # net/http.ListenAndServe   (function)
+  # go doc:
+  #   package http // import "net/http"
+  #   
+  #   func ListenAndServe(addr string, handler Handler) error
+  #       ListenAndServe listens on the TCP network address addr and then calls
+  #       Serve with handler to handle requests on incoming connections. Accepted
+  #       connections are configured to enable TCP keep-alives.
+  #   
+  #       The handler is typically nil, in which case DefaultServeMux is used.
+  #   
+  #       ListenAndServe always returns a non-nil error.
+  # docs: https://pkg.go.dev/net/http#ListenAndServe
+  # ==========================================================================
+  - package: 'net/http'
+    function: 'ListenAndServe'
+    flows:
+      # addr -> s.Addr -> net.Listen("tcp", addr); on failure the address is embedded
+      # in the returned error (net.AddrError.Addr / net.OpError.Addr).
+      - from: '!arg 0'
+        to: '!ret 0'
+      # handler (arg 1) only lands in s.Handler and is consumed per-connection in
+      # `go c.serve(...)`; it never flows to the returned error (ErrServerClosed /
+      # net.Listen / setupHTTP2 / Accept errors), so no !arg 1 -> !ret 0 flow.
+  # ==========================================================================
+  # net/http.NotFound   (function)
+  # go doc:
+  #   package http // import "net/http"
+  #   
+  #   func NotFound(w ResponseWriter, r *Request)
+  #       NotFound replies to the request with an HTTP 404 not found error.
+  # docs: https://pkg.go.dev/net/http#NotFound
+  # ==========================================================================
+  - package: 'net/http'
+    function: 'NotFound'
+    flows: [] # r is unused and the function writes a static error message to w.
+  # ==========================================================================
+  # net/http.StatusText   (function)
+  # go doc:
+  #   package http // import "net/http"
+  #   
+  #   func StatusText(code int) string
+  #       StatusText returns a text for the HTTP status code. It returns the empty
+  #       string if the code is unknown.
+  # docs: https://pkg.go.dev/net/http#StatusText
+  # ==========================================================================
+  - package: 'net/http'
+    function: 'StatusText'
+    flows:
+      - from: '!arg 0'
+        to: '!ret 0'

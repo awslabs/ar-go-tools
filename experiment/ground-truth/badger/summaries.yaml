@@ -1,0 +1,36 @@
+# RQ1 ground-truth summaries for repo 'badger'.
+# selection: seed=20260702, this repo got 2 of 25 methods drawn from 54 distinct feature-free candidates.
+dataflow-summaries:
+  # ==========================================================================
+  # fmt.Append   (function)
+  # go doc:
+  #   package fmt // import "fmt"
+  #   
+  #   func Append(b []byte, a ...any) []byte
+  #       Append formats using the default formats for its operands, appends the
+  #       result to the byte slice, and returns the updated slice.
+  # docs: https://pkg.go.dev/fmt#Append
+  # ==========================================================================
+  - package: 'fmt'
+    function: 'Append'
+    flows:
+      - from: '(!arg 0)[*]'
+        to: '(!ret 0)[*]'
+      - from: '(!arg 1)[*]'
+        to: '(!ret 0)[*]'
+  # ==========================================================================
+  # fmt.Sprintln   (function)
+  # go doc:
+  #   package fmt // import "fmt"
+  #   
+  #   func Sprintln(a ...any) string
+  #       Sprintln formats using the default formats for its operands and returns the
+  #       resulting string. Spaces are always added between operands and a newline is
+  #       appended.
+  # docs: https://pkg.go.dev/fmt#Sprintln
+  # ==========================================================================
+  - package: 'fmt'
+    function: 'Sprintln'
+    flows:
+      - from: '(!arg 0)[*]'
+        to: '!ret 0'

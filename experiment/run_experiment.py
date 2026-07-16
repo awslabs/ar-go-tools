@@ -19,10 +19,12 @@ this script from the shell.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -31,7 +33,64 @@ from rich.console import Console
 
 console = Console()
 
-REPOS_BASE_DIR = Path(__file__).parent.parent / "payload" / "public-repos-checks"
+EXPERIMENT_DIR = Path(__file__).parent
+REPOS_BASE_DIR = EXPERIMENT_DIR.parent / "payload" / "public-repos-checks"
+GROUND_TRUTH_DIR = EXPERIMENT_DIR / "ground-truth"
+
+
+@dataclass(frozen=True)
+class RepoInfo:
+    """Everything needed to check out a target repo at a pinned commit and build an
+    argot-config.yaml for it. url/commit are pinned for reproducibility (see Dockerfile)."""
+
+    url: str
+    commit: str
+    target_name: str
+    target_files: List[str]
+
+
+# The 5 repos used for the checker-precision (RQ1) ground-truth evaluation. Each repo's
+# argot-config.yaml is generated from _build_config below rather than checked into the repo,
+# since it's almost entirely boilerplate -- the only real per-repo variation is the build
+# target. The taint-tracking entry in the generated config is a placeholder: argot check
+# requires every target to be referenced by a taint-tracking/slicing problem to be selected,
+# even though the taint spec's actual sources/sinks are irrelevant to `check`.
+REPOS: Dict[str, RepoInfo] = {
+    "amazon-ssm-agent": RepoInfo(
+        url="https://github.com/aws/amazon-ssm-agent.git",
+        commit="ef5df636f7035bb1e3e325fab519379715678033",
+        target_name="amazon-ssm-agent-unix",
+        target_files=["core/agent.go", "core/agent_unix.go", "core/agent_parser.go"],
+    ),
+    "badger": RepoInfo(
+        url="https://github.com/dgraph-io/badger.git",
+        commit="a700dc3b6332e2351674f34f841233541568f782",
+        target_name="badger-cli",
+        target_files=["./badger/"],
+    ),
+    "govatar": RepoInfo(
+        url="https://github.com/o1egl/govatar.git",
+        commit="31618c34a7ae828c61629e022b1654e4ec552628",
+        target_name="govatar-cli",
+        target_files=["./govatar"],
+    ),
+    "prometheus": RepoInfo(
+        url="https://github.com/prometheus/client_golang.git",
+        commit="7ba246a648ca4e294ca008d95b6fcc8df2f9c255",
+        target_name="prometheus-core",
+        target_files=["./prometheus"],
+    ),
+    "sample": RepoInfo(
+        url="",  # local-only sample program, tracked directly in this repo; not cloned
+        commit="",
+        target_name="sample-main",
+        target_files=["./main.go"],
+    ),
+}
+
+
+def _ground_truth_path(repo: str) -> Path:
+    return GROUND_TRUTH_DIR / repo / "summaries.yaml"
 
 
 def main() -> int:
@@ -43,11 +102,12 @@ def main() -> int:
     p = subparsers.add_parser(
         "run-check", help="Run the soundness checker against a summaries file"
     )
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
     p.add_argument(
         "--summaries",
-        required=True,
-        help="Path (relative to the repo dir) to the summaries YAML to check",
+        type=Path,
+        help="Path to the summaries YAML to check "
+        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
     )
     p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_check)
@@ -56,11 +116,12 @@ def main() -> int:
         "run-constructive",
         help="Run the constructive (naive) approach against a list of methods",
     )
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
     p.add_argument(
         "--methods",
-        required=True,
-        help="Path (relative to the repo dir) to the interesting-methods summaries YAML",
+        type=Path,
+        help="Path to the interesting-methods summaries YAML "
+        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
     )
     p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_constructive)
@@ -95,12 +156,12 @@ def main() -> int:
         "eval-checker-precision",
         help="RQ checker-precision: checker vs. ground truth vs. constructive",
     )
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
     p.add_argument(
         "--summaries",
-        required=True,
         type=Path,
-        help="Path (relative to the repo dir) to the ground-truth summaries file that was checked",
+        help="Path to the ground-truth summaries file that was checked "
+        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
@@ -111,12 +172,12 @@ def main() -> int:
         "eval-checker-efficiency",
         help="RQ checker-efficiency: checker vs. constructive runtime",
     )
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
     p.add_argument(
         "--summaries",
-        required=True,
         type=Path,
-        help="Path (relative to the repo dir) to the summaries file that was checked",
+        help="Path to the summaries file that was checked "
+        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
@@ -126,12 +187,12 @@ def main() -> int:
     p = subparsers.add_parser(
         "eval-checker-ablation", help="RQ checker-ablation: sub-analysis usage counts"
     )
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
     p.add_argument(
         "--summaries",
-        required=True,
         type=Path,
-        help="Path (relative to the repo dir) to the summaries file that was checked",
+        help="Path to the summaries file that was checked "
+        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
@@ -169,10 +230,11 @@ def main() -> int:
 
 
 def cmd_run_check(args: argparse.Namespace) -> None:
+    summaries_path = args.summaries or _ground_truth_path(args.repo)
     _write_check_report(
         "run-check",
         args.repo,
-        args.summaries,
+        summaries_path,
         via="all",
         extra_config={},
         out_path=args.out,
@@ -180,10 +242,11 @@ def cmd_run_check(args: argparse.Namespace) -> None:
 
 
 def cmd_run_constructive(args: argparse.Namespace) -> None:
+    methods_path = args.methods or _ground_truth_path(args.repo)
     _write_check_report(
         "run-constructive",
         args.repo,
-        args.methods,
+        methods_path,
         via="naive",
         extra_config={},
         out_path=args.out,
@@ -198,7 +261,7 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
 def cmd_eval_checker_precision(args: argparse.Namespace) -> None:
     check_report = json.loads(Path(args.check_report).read_text())
     constructive_report = json.loads(Path(args.constructive_report).read_text())
-    summaries_path = repo_dir(args.repo) / args.summaries
+    summaries_path = args.summaries or _ground_truth_path(args.repo)
     targets = _build_targets(check_report, summaries_path, constructive_report)
 
     for t in targets:
@@ -214,7 +277,7 @@ def cmd_eval_checker_precision(args: argparse.Namespace) -> None:
 def cmd_eval_checker_efficiency(args: argparse.Namespace) -> None:
     check_report = json.loads(Path(args.check_report).read_text())
     constructive_report = json.loads(Path(args.constructive_report).read_text())
-    summaries_path = repo_dir(args.repo) / args.summaries
+    summaries_path = args.summaries or _ground_truth_path(args.repo)
     targets = _build_targets(check_report, summaries_path, constructive_report)
 
     for t in targets:
@@ -232,7 +295,7 @@ def cmd_eval_checker_efficiency(args: argparse.Namespace) -> None:
 
 def cmd_eval_checker_ablation(args: argparse.Namespace) -> None:
     check_report = json.loads(Path(args.check_report).read_text())
-    summaries_path = repo_dir(args.repo) / args.summaries
+    summaries_path = args.summaries or _ground_truth_path(args.repo)
     targets = _build_targets(check_report, summaries_path)
 
     for t in targets:
@@ -271,10 +334,11 @@ def _write_check_report(
     overriding dataflow-problems.check-specs/user-specs, runs `argot check`, and copies the
     resulting check-report.json to out_path."""
     repo_path = repo_dir(repo)
-    config = _load_base_config(repo_path)
-    config.setdefault("dataflow-problems", {})
+    config = _build_config(repo)
     config["dataflow-problems"]["user-specs"] = []
-    config["dataflow-problems"]["check-specs"] = [str(summaries_or_methods_path)]
+    config["dataflow-problems"]["check-specs"] = [
+        os.path.relpath(str(Path(summaries_or_methods_path).resolve()), start=repo_path)
+    ]
     config["dataflow-problems"].update(extra_config)
 
     with tempfile.NamedTemporaryFile(
@@ -316,13 +380,36 @@ def _write_check_report(
     console.print(f"[green]Wrote {out_path}[/green] ({duration:.1f}s)")
 
 
-def _load_base_config(repo: Path) -> Dict[str, Any]:
-    config_path = repo / "argot-config.yaml"
-    if not config_path.exists():
-        console.print(f"[red]Config file not found: {config_path}[/red]")
-        sys.exit(1)
-    with open(config_path) as f:
-        return yaml.safe_load(f)
+def _build_config(repo: str) -> Dict[str, Any]:
+    """Build a minimal argot-config.yaml for repo from the shared template. The only
+    per-repo variation is the build target; check-specs/user-specs are always overridden by
+    _write_check_report before this is used, and the taint-tracking entry is a placeholder
+    that exists solely to make the target selectable by `argot check` (see REPOS)."""
+    info = REPOS[repo]
+    return {
+        "dataflow-problems": {
+            "summarize-on-demand": True,
+            "check-ignores-unsound": True,
+            "taint-tracking": [
+                {
+                    "tag": "target-selection-placeholder",
+                    "description": "Placeholder taint-tracking problem so that the build "
+                    "target below is selected by `argot check`; not used for RQ1.",
+                    "targets": [info.target_name],
+                    "sources": [{"method": "^main$", "package": "main"}],
+                    "sinks": [{"method": "^main$", "package": "main"}],
+                }
+            ],
+        },
+        "options": {
+            "project-root": "./",
+            "reports-dir": "logs/argot",
+            "log-level": 3,
+            "report-paths": True,
+            "analysis-options": {"unsafe-max-depth": 30, "max-alarms": 30},
+        },
+        "targets": [{"name": info.target_name, "files": info.target_files}],
+    }
 
 
 def _run_subprocess(

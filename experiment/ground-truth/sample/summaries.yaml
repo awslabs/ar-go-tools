@@ -1,0 +1,249 @@
+# RQ1 ground-truth summaries for repo 'sample'.
+# selection: seed=20260702, this repo got 11 of 25 methods drawn from 54 distinct feature-free candidates.
+dataflow-summaries:
+  # ==========================================================================
+  # (*crypto/ecdsa.PrivateKey).Sign   (receiver)
+  # go doc:
+  #   package ecdsa // import "crypto/ecdsa"
+  #   
+  #   func (priv *PrivateKey) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error)
+  #       Sign signs a hash (which should be the result of hashing a larger message
+  #       with opts.HashFunc()) using the private key, priv. If the hash is longer
+  #       than the bit-length of the private key's curve order, the hash will be
+  #       truncated to that length. It returns the ASN.1 encoded signature, like
+  #       SignASN1.
+  #   
+  #       If rand is not nil, the signature is randomized. Most applications should
+  #       use crypto/rand.Reader as rand. Note that the returned signature does not
+  #       depend deterministically on the bytes read from rand, and may change between
+  #       calls and/or between versions.
+  #   
+  # docs: https://pkg.go.dev/crypto/ecdsa#PrivateKey.Sign
+  # ==========================================================================
+  - package: 'crypto/ecdsa'
+    receiver: '*PrivateKey'
+    method: 'Sign'
+    # NOTE: all error returns are static strings so no input data reaches !ret 1.
+    flows:
+      - from: '(!receiver).D'
+        to: '(!ret 0)[*]'
+      - from: '(!receiver).PublicKey.Curve'
+        to: '(!ret 0)[*]'
+      - from: '!arg 0'
+        to: '(!ret 0)[*]'
+      - from: '(!arg 1)[*]'
+        to: '(!ret 0)[*]'
+  # ==========================================================================
+  # (*crypto/internal/fips140/nistec/fiat.P224Element).Square   (receiver)
+  # go doc:
+  #   package fiat // import "crypto/internal/fips140/nistec/fiat"
+  #   
+  #   func (e *P224Element) Square(t *P224Element) *P224Element
+  #       Square sets e = t * t, and returns e.
+  # docs: https://pkg.go.dev/crypto/internal/fips140/nistec/fiat#P224Element.Square
+  #
+  # NOTE: P224Element only has one field: `x`.
+  # ==========================================================================
+  - package: 'crypto/internal/fips140/nistec/fiat'
+    receiver: '*P224Element'
+    method: 'Square'
+    flows:
+      - from: '(!receiver).x'
+        to: '(!ret 0).x'
+      - from: '(!arg 0).x'
+        to: '(!receiver).x'
+      - from: '(!arg 0).x'
+        to: '(!ret 0).x'
+  # ==========================================================================
+  # (*crypto/internal/fips140/nistec/fiat.P521Element).Square   (receiver)
+  # go doc:
+  #   package fiat // import "crypto/internal/fips140/nistec/fiat"
+  #   
+  #   func (e *P521Element) Square(t *P521Element) *P521Element
+  #       Square sets e = t * t, and returns e.
+  # docs: https://pkg.go.dev/crypto/internal/fips140/nistec/fiat#P521Element.Square
+  # ==========================================================================
+  - package: 'crypto/internal/fips140/nistec/fiat'
+    receiver: '*P521Element'
+    method: 'Square'
+    flows:
+      - from: '(!receiver).x'
+        to: '(!ret 0).x'
+      - from: '(!arg 0).x'
+        to: '(!receiver).x'
+      - from: '(!arg 0).x'
+        to: '(!ret 0).x'
+  # ==========================================================================
+  # (*encoding/base64.Encoding).EncodeToString   (receiver)
+  # go doc:
+  #   package base64 // import "encoding/base64"
+  #   
+  #   func (enc *Encoding) EncodeToString(src []byte) string
+  #       EncodeToString returns the base64 encoding of src.
+  # docs: https://pkg.go.dev/encoding/base64#Encoding.EncodeToString
+  # ==========================================================================
+  - package: 'encoding/base64'
+    receiver: '*Encoding'
+    method: 'EncodeToString'
+    flows:
+      - from: '!receiver'
+        to: '!ret 0'
+      - from: '(!arg 0)[*]'
+        to: '!ret 0'
+  # ==========================================================================
+  # (fmt.Stringer).String   (interface)
+  # go doc:
+  #   package fmt // import "fmt"
+  #   
+  #   type Stringer interface {
+  #   	String() string
+  #   }
+  # docs: https://pkg.go.dev/fmt#Stringer.String
+  #
+  # NOTE: checking this interface's soundness triggers a severe state-space explosion (unbounded
+  # memory growth, observed climbing to ~100GB before being killed) because some Stringer
+  # implementations internally call io.Writer.Write, which has ~80+ reachable implementations in
+  # this program; each such call site re-triggers on-demand exploration of all of them. This was
+  # mitigated by pre-summarizing (io.Writer).Write as a dataflow contract (see the tool's own log
+  # message: "Consider using a dataflow contract to minimize state explosion"). The contract was
+  # deliberately NOT added to this ground-truth file, since this file doubles as the corpus of
+  # summaries argot check verifies, and (io.Writer).Write is not part of the curated sample.
+  # ==========================================================================
+  - package: 'fmt'
+    interface: 'Stringer'
+    method: 'String'
+    flows:
+      - from: '!receiver'
+        to: '!ret 0'
+  # ==========================================================================
+  # crypto/cipher.NewGCM   (function)
+  # go doc:
+  #   package cipher // import "crypto/cipher"
+  #   
+  #   func NewGCM(cipher Block) (AEAD, error)
+  #       NewGCM returns the given 128-bit, block cipher wrapped in Galois Counter
+  #       Mode with the standard nonce length.
+  #   
+  #       In general, the GHASH operation performed by this implementation of GCM is
+  #       not constant-time. An exception is when the underlying Block was created by
+  #       aes.NewCipher on systems with hardware support for AES. See the crypto/aes
+  #       package documentation for details.
+  # docs: https://pkg.go.dev/crypto/cipher#NewGCM
+  # ==========================================================================
+  - package: 'crypto/cipher'
+    function: 'NewGCM'
+    flows:
+      - from: '!arg 0'
+        to: '!ret 0'
+      - from: '!arg 0'
+        to: '!ret 1'
+  # ==========================================================================
+  # crypto/elliptic.GenerateKey   (function) 
+  # go doc:
+  #   package elliptic // import "crypto/elliptic"
+  #   
+  #   func GenerateKey(curve Curve, rand io.Reader) (priv []byte, x, y *big.Int, err error)
+  #       GenerateKey returns a public/private key pair. The private key is generated
+  #       using the given reader, which must return random data.
+  #   
+  #       Deprecated: for ECDH, use the GenerateKey methods of the crypto/ecdh
+  #       package; for ECDSA, use the GenerateKey function of the crypto/ecdsa
+  #       package.
+  # docs: https://pkg.go.dev/crypto/elliptic#GenerateKey
+  # ==========================================================================
+  - package: 'crypto/elliptic'
+    function: 'GenerateKey'
+    flows:
+      - from: '!arg 0'
+        to: '(!ret 0)[*]'
+      - from: '!arg 0'
+        to: '!ret 1'
+      - from: '!arg 0'
+        to: '!ret 2'
+      - from: '!arg 0'
+        to: '!ret 3'
+      - from: '!arg 1'
+        to: '(!ret 0)[*]'
+      - from: '!arg 1'
+        to: '!ret 1'
+      - from: '!arg 1'
+        to: '!ret 2'
+      - from: '!arg 1'
+        to: '!ret 3'
+  # ==========================================================================
+  # crypto/elliptic.MarshalCompressed   (function)
+  # go doc:
+  #   package elliptic // import "crypto/elliptic"
+  #   
+  #   func MarshalCompressed(curve Curve, x, y *big.Int) []byte
+  #       MarshalCompressed converts a point on the curve into the compressed form
+  #       specified in SEC 1, Version 2.0, Section 2.3.3. If the point is not on the
+  #       curve (or is the conventional point at infinity), the behavior is undefined.
+  # docs: https://pkg.go.dev/crypto/elliptic#MarshalCompressed
+  # ==========================================================================
+  - package: 'crypto/elliptic'
+    function: 'MarshalCompressed'
+    flows:
+      - from: '!arg 0'
+        to: '(!ret 0)[*]'
+      - from: '!arg 1'
+        to: '(!ret 0)[*]'
+      - from: '!arg 2'
+        to: '(!ret 0)[*]'
+  # ==========================================================================
+  # encoding/hex.DecodeString   (function)
+  # go doc:
+  #   package hex // import "encoding/hex"
+  #   
+  #   func DecodeString(s string) ([]byte, error)
+  #       DecodeString returns the bytes represented by the hexadecimal string s.
+  #   
+  #       DecodeString expects that src contains only hexadecimal characters and that
+  #       src has even length. If the input is malformed, DecodeString returns the
+  #       bytes decoded before the error.
+  # docs: https://pkg.go.dev/encoding/hex#DecodeString
+  # ==========================================================================
+  - package: 'encoding/hex'
+    function: 'DecodeString'
+    flows:
+      - from: '!arg 0'
+        to: '(!ret 0)[*]'
+      - from: '!arg 0'
+        to: '!ret 1'
+  # ==========================================================================
+  # github.com/aws/aws-sdk-go/aws.String   (function)
+  # go doc:
+  #   package aws // import "github.com/aws/aws-sdk-go/aws"
+  #   
+  #   func String(v string) *string
+  #       String returns a pointer to the string value passed in.
+  # docs: https://pkg.go.dev/github.com/aws/aws-sdk-go/aws#String
+  # ==========================================================================
+  - package: 'github.com/aws/aws-sdk-go/aws'
+    function: 'String'
+    flows:
+      - from: '!arg 0'
+        to: '!ret 0'
+  # ==========================================================================
+  # io/ioutil.ReadFile   (function)
+  # go doc:
+  #   package ioutil // import "io/ioutil"
+  #   
+  #   func ReadFile(filename string) ([]byte, error)
+  #       ReadFile reads the file named by filename and returns the contents.
+  #       A successful call returns err == nil, not err == EOF. Because ReadFile
+  #       reads the whole file, it does not treat an EOF from Read as an error to be
+  #       reported.
+  #   
+  #       Deprecated: As of Go 1.16, this function simply calls os.ReadFile.
+  # docs: https://pkg.go.dev/io/ioutil#ReadFile
+  # ==========================================================================
+  - package: 'io/ioutil'
+    function: 'ReadFile'
+    # NOTE: There is technically an implicit flow from the filename to the returned byte slice via
+    # the operating system, but Argot's taint flow model format does not support these types of
+    # flows.
+    # On error, Open(name) returns *PathError{Path: name}, so filename does reach !ret 1.
+    flows:
+      - from: '!arg 0'
+        to: '!ret 1'

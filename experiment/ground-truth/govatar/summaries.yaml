@@ -1,0 +1,27 @@
+# RQ1 ground-truth summaries for repo 'govatar'.
+# selection: seed=20260702, this repo got 1 of 25 methods drawn from 54 distinct feature-free candidates.
+dataflow-summaries:
+  # ==========================================================================
+  # (*text/template.Template).Funcs   (receiver)
+  # go doc:
+  #   package template // import "text/template"
+  #   
+  #   func (t *Template) Funcs(funcMap FuncMap) *Template
+  #       Funcs adds the elements of the argument map to the template's function map.
+  #       It must be called before the template is parsed. It panics if a value in the
+  #       map is not a function with appropriate return type or if the name cannot be
+  #       used syntactically as a function in a template. It is legal to overwrite
+  #       elements of the map. The return value is the template, so calls can be
+  #       chained.
+  # docs: https://pkg.go.dev/text/template#Template.Funcs
+  # ==========================================================================
+  - package: 'text/template'
+    receiver: '*Template'
+    method: 'Funcs'
+    flows:
+      - from: '!arg 0'
+        to: '!receiver'
+      - from: '!arg 0'
+        to: '!ret 0'
+      - from: '!receiver'
+        to: '!ret 0'
