@@ -91,31 +91,6 @@ dataflow-summaries:
       - from: '(!arg 0)[*]'
         to: '!ret 0'
   # ==========================================================================
-  # (fmt.Stringer).String   (interface)
-  # go doc:
-  #   package fmt // import "fmt"
-  #   
-  #   type Stringer interface {
-  #   	String() string
-  #   }
-  # docs: https://pkg.go.dev/fmt#Stringer.String
-  #
-  # NOTE: checking this interface's soundness triggers a severe state-space explosion (unbounded
-  # memory growth, observed climbing to ~100GB before being killed) because some Stringer
-  # implementations internally call io.Writer.Write, which has ~80+ reachable implementations in
-  # this program; each such call site re-triggers on-demand exploration of all of them. This was
-  # mitigated by pre-summarizing (io.Writer).Write as a dataflow contract (see the tool's own log
-  # message: "Consider using a dataflow contract to minimize state explosion"). The contract was
-  # deliberately NOT added to this ground-truth file, since this file doubles as the corpus of
-  # summaries argot check verifies, and (io.Writer).Write is not part of the curated sample.
-  # ==========================================================================
-  - package: 'fmt'
-    interface: 'Stringer'
-    method: 'String'
-    flows:
-      - from: '!receiver'
-        to: '!ret 0'
-  # ==========================================================================
   # crypto/cipher.NewGCM   (function)
   # go doc:
   #   package cipher // import "crypto/cipher"

@@ -89,8 +89,8 @@ REPOS: Dict[str, RepoInfo] = {
 }
 
 
-def _ground_truth_path(repo: str) -> Path:
-    return GROUND_TRUTH_DIR / repo / "summaries.yaml"
+def _ground_truth_files(repo: str) -> List[Path]:
+    return sorted((GROUND_TRUTH_DIR / repo).glob("*.yaml"))
 
 
 def main() -> int:
@@ -106,8 +106,8 @@ def main() -> int:
     p.add_argument(
         "--summaries",
         type=Path,
-        help="Path to the summaries YAML to check "
-        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
+        help="Path to a single summaries YAML to check "
+        "(default: every file in experiment/ground-truth/<repo>/)",
     )
     p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_check)
@@ -120,8 +120,8 @@ def main() -> int:
     p.add_argument(
         "--methods",
         type=Path,
-        help="Path to the interesting-methods summaries YAML "
-        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
+        help="Path to a single interesting-methods summaries YAML "
+        "(default: every file in experiment/ground-truth/<repo>/)",
     )
     p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_constructive)
@@ -160,8 +160,8 @@ def main() -> int:
     p.add_argument(
         "--summaries",
         type=Path,
-        help="Path to the ground-truth summaries file that was checked "
-        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
+        help="Path to a single ground-truth summaries file that was checked "
+        "(default: every file in experiment/ground-truth/<repo>/)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
@@ -176,8 +176,8 @@ def main() -> int:
     p.add_argument(
         "--summaries",
         type=Path,
-        help="Path to the summaries file that was checked "
-        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
+        help="Path to a single summaries file that was checked "
+        "(default: every file in experiment/ground-truth/<repo>/)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
@@ -191,8 +191,8 @@ def main() -> int:
     p.add_argument(
         "--summaries",
         type=Path,
-        help="Path to the summaries file that was checked "
-        "(default: experiment/ground-truth/<repo>/summaries.yaml)",
+        help="Path to a single summaries file that was checked "
+        "(default: every file in experiment/ground-truth/<repo>/)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
@@ -230,11 +230,13 @@ def main() -> int:
 
 
 def cmd_run_check(args: argparse.Namespace) -> None:
-    summaries_path = args.summaries or _ground_truth_path(args.repo)
+    summaries_paths = (
+        [args.summaries] if args.summaries else _ground_truth_files(args.repo)
+    )
     _write_check_report(
         "run-check",
         args.repo,
-        summaries_path,
+        summaries_paths,
         via="all",
         extra_config={},
         out_path=args.out,
@@ -242,11 +244,11 @@ def cmd_run_check(args: argparse.Namespace) -> None:
 
 
 def cmd_run_constructive(args: argparse.Namespace) -> None:
-    methods_path = args.methods or _ground_truth_path(args.repo)
+    methods_paths = [args.methods] if args.methods else _ground_truth_files(args.repo)
     _write_check_report(
         "run-constructive",
         args.repo,
-        methods_path,
+        methods_paths,
         via="naive",
         extra_config={},
         out_path=args.out,
@@ -261,8 +263,10 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
 def cmd_eval_checker_precision(args: argparse.Namespace) -> None:
     check_report = json.loads(Path(args.check_report).read_text())
     constructive_report = json.loads(Path(args.constructive_report).read_text())
-    summaries_path = args.summaries or _ground_truth_path(args.repo)
-    targets = _build_targets(check_report, summaries_path, constructive_report)
+    summaries_paths = (
+        [args.summaries] if args.summaries else _ground_truth_files(args.repo)
+    )
+    targets = _build_targets(check_report, summaries_paths, constructive_report)
 
     for t in targets:
         for r in t["results"]:
@@ -277,8 +281,10 @@ def cmd_eval_checker_precision(args: argparse.Namespace) -> None:
 def cmd_eval_checker_efficiency(args: argparse.Namespace) -> None:
     check_report = json.loads(Path(args.check_report).read_text())
     constructive_report = json.loads(Path(args.constructive_report).read_text())
-    summaries_path = args.summaries or _ground_truth_path(args.repo)
-    targets = _build_targets(check_report, summaries_path, constructive_report)
+    summaries_paths = (
+        [args.summaries] if args.summaries else _ground_truth_files(args.repo)
+    )
+    targets = _build_targets(check_report, summaries_paths, constructive_report)
 
     for t in targets:
         for r in t["results"]:
@@ -295,8 +301,10 @@ def cmd_eval_checker_efficiency(args: argparse.Namespace) -> None:
 
 def cmd_eval_checker_ablation(args: argparse.Namespace) -> None:
     check_report = json.loads(Path(args.check_report).read_text())
-    summaries_path = args.summaries or _ground_truth_path(args.repo)
-    targets = _build_targets(check_report, summaries_path)
+    summaries_paths = (
+        [args.summaries] if args.summaries else _ground_truth_files(args.repo)
+    )
+    targets = _build_targets(check_report, summaries_paths)
 
     for t in targets:
         for r in t["results"]:
@@ -325,19 +333,72 @@ def _not_implemented(name: str):
 def _write_check_report(
     cmd_name: str,
     repo: str,
-    summaries_or_methods_path: str,
+    summaries_or_methods_paths: List[Path],
     via: str,
     extra_config: Dict[str, Any],
     out_path: Path,
 ) -> None:
-    """Shared implementation for run-check and run-constructive: writes a temp config
-    overriding dataflow-problems.check-specs/user-specs, runs `argot check`, and copies the
-    resulting check-report.json to out_path."""
+    """Shared implementation for run-check and run-constructive: runs `argot check` once per
+    path in summaries_or_methods_paths, and merges the resulting check-report.json's into
+    out_path.
+
+    Each path is checked in its own argot check process (rather than combining them into one
+    check-specs list) so that one memory-hungry interface can't compound with another path's
+    retained state, and a runaway invocation can be killed/retried independently.
+    """
     repo_path = repo_dir(repo)
+
+    merged_report: Dict[str, Any] = {}
+    total_duration = 0.0
+    for part_path in summaries_or_methods_paths:
+        part_out = out_path.with_suffix(f".{part_path.stem}.json")
+        try:
+            duration = _run_one_check(
+                cmd_name, repo, repo_path, part_path, via, extra_config, part_out
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            console.print(
+                f"[red]{cmd_name} ({repo}, {part_path.stem}) failed ({e}); "
+                "recording as a null result and continuing with remaining parts.[/red]"
+            )
+            merged_report.setdefault(part_path.stem, None)
+            # Persist what's been collected so far before moving on, so a subsequent
+            # part's crash (or the whole process being killed) doesn't lose this one.
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(merged_report, indent=2))
+            continue
+        total_duration += duration
+        part_report = json.loads(part_out.read_text())
+        for target_name, results in part_report.items():
+            if results is None:
+                merged_report.setdefault(target_name, None)
+                continue
+            existing = merged_report.get(target_name)
+            merged_report[target_name] = (existing or []) + results
+        part_out.unlink()
+        part_out.with_suffix(".log").unlink(missing_ok=True)
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(merged_report, indent=2))
+
+    console.print(f"[green]Wrote {out_path}[/green] ({total_duration:.1f}s)")
+
+
+def _run_one_check(
+    cmd_name: str,
+    repo: str,
+    repo_path: Path,
+    summaries_or_methods_path: Path,
+    via: str,
+    extra_config: Dict[str, Any],
+    out_path: Path,
+) -> float:
+    """Run a single `argot check` invocation against summaries_or_methods_path and write its
+    check-report.json verbatim to out_path. Returns the elapsed time in seconds."""
     config = _build_config(repo)
     config["dataflow-problems"]["user-specs"] = []
     config["dataflow-problems"]["check-specs"] = [
-        os.path.relpath(str(Path(summaries_or_methods_path).resolve()), start=repo_path)
+        os.path.relpath(str(summaries_or_methods_path.resolve()), start=repo_path)
     ]
     config["dataflow-problems"].update(extra_config)
 
@@ -355,12 +416,13 @@ def _write_check_report(
         tmp_config_path = Path(tmp.name)
 
     log_file = out_path.with_suffix(".log")
+    label = f"{cmd_name} ({repo}, {summaries_or_methods_path.stem})"
     try:
         duration = _run_subprocess(
             ["argot", "check", "-config", tmp_config_path.name, "-via", via],
             cwd=repo_path,
             log_file=log_file,
-            label=f"{cmd_name} ({repo})",
+            label=label,
         )
     finally:
         tmp_config_path.unlink(missing_ok=True)
@@ -374,13 +436,12 @@ def _write_check_report(
 
     if report_path is None or not report_path.exists():
         console.print(
-            f"[red]{cmd_name} did not produce a check-report.json; see {log_file}[/red]"
+            f"[red]{label} did not produce a check-report.json; see {log_file}[/red]"
         )
         sys.exit(1)
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report_path.read_text())
-    console.print(f"[green]Wrote {out_path}[/green] ({duration:.1f}s)")
+    return duration
 
 
 def _build_config(repo: str) -> Dict[str, Any]:
@@ -450,21 +511,27 @@ def _run_subprocess(
 
 def _build_targets(
     check_report: Dict[str, Any],
-    summaries_path: Path,
+    summaries_paths: List[Path],
     constructive_report: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Build the targets/kind/results grouping shared by eval-checker-* commands.
 
-    summaries_path is the summaries file that was checked (ground truth, for
+    summaries_paths are the summaries files that were checked (ground truth, for
     eval-checker-precision/efficiency/ablation): each entry becomes one target, grouped by
     SummaryName (see _group_by_summary_name) -- an interface entry's target has one result per
     concrete implementation, a plain function/method's target has exactly one result.
     """
-    entries = _load_summary_entries(summaries_path)
+    entries = _load_summary_entries(summaries_paths)
     check_by_summary = _group_by_summary_name(check_report)
     constructive_by_func = {}
     if constructive_report:
-        for _target_name, results in constructive_report.items():
+        for target_name, results in constructive_report.items():
+            if results is None:
+                console.print(
+                    f"[red]Warning: target {target_name!r} has no results in the "
+                    "constructive report; see the .log file.[/red]"
+                )
+                continue
             for r in results:
                 constructive_by_func.setdefault(r.get("Func", ""), []).append(r)
 
@@ -532,10 +599,13 @@ def _group_by_summary_name(
     return grouped
 
 
-def _load_summary_entries(summaries_path: Path) -> List[Dict[str, Any]]:
-    with open(summaries_path) as f:
-        data = yaml.safe_load(f) or {}
-    return data.get("dataflow-summaries", [])
+def _load_summary_entries(summaries_paths: List[Path]) -> List[Dict[str, Any]]:
+    entries = []
+    for path in summaries_paths:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        entries.extend(data.get("dataflow-summaries", []))
+    return entries
 
 
 def _summary_entry_name(entry: Dict[str, Any]) -> str:

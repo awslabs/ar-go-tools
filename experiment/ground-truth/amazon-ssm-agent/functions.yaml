@@ -69,19 +69,3 @@ dataflow-summaries:
         to: "(!receiver).FinalSDKException"
       - from: "(!arg 0).message"
         to: "(!receiver).FinalSDKExceptionMessage"
-  # ==========================================================================
-  # (github.com/aws/aws-sdk-go/aws/request.temporary).Temporary   (interface)
-  # go doc:
-  #   package request // import "github.com/aws/aws-sdk-go/aws/request"
-  #
-  #   type temporary interface {
-  #   	Temporary() bool
-  #   }
-  # docs: https://pkg.go.dev/github.com/aws/aws-sdk-go/aws/request#temporary.Temporary
-  # ==========================================================================
-  - package: "github.com/aws/aws-sdk-go/aws/request"
-    interface: "temporary"
-    method: "Temporary"
-    flows:
-      - from: "!receiver"
-        to: "!ret 0"
