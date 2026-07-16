@@ -454,6 +454,7 @@ def _build_config(repo: str) -> Dict[str, Any]:
         "dataflow-problems": {
             "summarize-on-demand": True,
             "check-ignores-unsound": True,
+            "field-sensitive-funcs": [".*"],
             "taint-tracking": [
                 {
                     "tag": "target-selection-placeholder",

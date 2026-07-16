@@ -92,11 +92,19 @@ func (c ClosedInterproceduralSummary) ToDetailedSummary() (summaries.DetailedSum
 // This uses both the intra- and inter-procedural data flow analyses.
 //
 // specs is used to detect entry point (source/sink) usages; may be nil to skip detection.
+//
+// isInterfaceImpl should be true when f is being checked as a concrete implementation of an
+// interface method: the checkable summary format for interface methods has no syntax for
+// field-sensitive access paths on inputs (a caller of the interface only knows the abstract
+// signature, not any implementation's field layout), so f's parameters (including the
+// receiver) are treated as field-insensitive on the input side, even though the underlying
+// intra-procedural analysis itself remains field-sensitive for precision.
 func ComputeClosedSummary(
 	ctx context.Context,
 	s *dataflow.State,
 	f *ssa.Function,
 	specs []dataflow.ScanningSpec,
+	isInterfaceImpl bool,
 ) (ClosedInterproceduralSummary, error) {
 	if len(s.FlowGraph.Summaries) == 0 {
 		return ClosedInterproceduralSummary{}, fmt.Errorf("data flow state is not initialized")
@@ -133,8 +141,16 @@ func ComputeClosedSummary(
 	flows := make(map[FlowNode][]FlowNode)
 	unsoundness := &Unsoundness{}
 	recordedUnsoundness := make(map[*ssa.Function]bool)
+	inputPathLen := maxPathLen
+	if isInterfaceImpl {
+		// The interface's checkable summary format can't express field-sensitive inputs, so
+		// only enumerate the coarse (whole-value) path for each parameter, including the
+		// receiver. The intra-procedural analysis that computed the reachable flows from each
+		// path is unaffected by this and remains field-sensitive.
+		inputPathLen = 0
+	}
 	for _, param := range graph.Params {
-		for _, p := range leafPathsUpTo(param.Type(), maxPathLen) {
+		for _, p := range leafPathsUpTo(param.Type(), inputPathLen) {
 			v := newInputVisitor(p.String(), reachable, unsoundness, recordedUnsoundness, specs)
 			v.Visit(ctx, s, dataflow.NodeWithTrace{Node: param})
 			// if there are no flows, don't add them

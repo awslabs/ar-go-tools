@@ -253,6 +253,22 @@ func nestedClosureNonLocal(x, y *int) *int {
 	return outer()
 }
 
+// greeter and wrapper exercise the naive method against an interface implementation:
+// wrapper.Greet only ever returns .msg, never .secret, so a field-insensitive analysis would
+// (incorrectly) also report .secret flowing to the return.
+type greeter interface {
+	Greet() string
+}
+
+type wrapper struct {
+	msg    string
+	secret string
+}
+
+func (w wrapper) Greet() string {
+	return w.msg
+}
+
 func main() {
 	fooTop("OI")
 	bar("OK")
@@ -284,4 +300,7 @@ func main() {
 	transitiveSwapChain(&s1, &s2)
 	transitiveReturn(&s1)
 	baz("test")
+
+	var g greeter = wrapper{msg: "hi"}
+	_ = g.Greet()
 }

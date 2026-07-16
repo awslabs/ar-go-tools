@@ -108,7 +108,7 @@ func TestComputeTransitiveClosure(t *testing.T) {
 			if f == nil {
 				t.Fatalf("failed to find function %s", tc.name)
 			}
-			cis, errC := check.ComputeClosedSummary(ctx, state.State, f, nil)
+			cis, errC := check.ComputeClosedSummary(ctx, state.State, f, nil, false)
 			if errC != nil {
 				t.Fatalf("failed to compute closed summary: %s", errC)
 			}

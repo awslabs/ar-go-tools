@@ -1560,6 +1560,37 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Method:    check.Naive,
 			},
 		},
+		{
+			// wrapper implements greeter; Greet only returns .msg, never .secret. Checked
+			// wrapper implements greeter; Greet only returns .msg, never .secret. When checking
+			// an interface implementation via naive, inputs (here, the receiver) are enumerated
+			// field-insensitively, so the computed summary is the coarse !receiver -> !ret 0,
+			// matching the interface's ground truth exactly rather than being flagged unsound.
+			pkg:   pkg,
+			name:  "Greet",
+			iface: "greeter",
+			typ:   interfaceSummary,
+			naive: true,
+			want: check.SoundnessResult{
+				Name: "(*" + pkg + ".wrapper).Greet",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ReceiverSNode{}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Got: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ReceiverSNode{}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Soundness: check.Sound,
+				Method:    check.Naive,
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -2212,11 +2243,13 @@ type summaryType int
 const (
 	functionSummary summaryType = iota
 	methodSummary
+	interfaceSummary
 )
 
 type tcCheck struct {
 	pkg   string
 	name  string
+	iface string // interface name, only used when typ is interfaceSummary
 	typ   summaryType
 	naive bool
 	want  check.SoundnessResult
@@ -2230,6 +2263,8 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 	switch tc.typ {
 	case functionSummary:
 		summary = summaries.NewFunctionFlowSummary(tc.pkg, tc.name, tc.want.Want)
+	case interfaceSummary:
+		summary = summaries.NewIfaceMethodFlowSummary(tc.pkg, tc.iface, tc.name, tc.want.Want)
 	default:
 		t.Fatalf("unsupported summary type: %v", tc.typ)
 	}

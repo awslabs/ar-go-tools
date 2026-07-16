@@ -121,7 +121,7 @@ func CheckSummary(
 					want.Name(), implem.RelString(nil))
 				callStack := []*ssa.Function{implem}
 				partRes, err := checkSummary(
-					ctx, s, implem, want.Summary(), specs, testNaive, callStack)
+					ctx, s, implem, want.Summary(), specs, testNaive, callStack, true)
 				partRes.SummaryName = want.Name()
 				res = append(res, partRes)
 				if err != nil {
@@ -143,7 +143,7 @@ func CheckSummary(
 
 	s.Logger.Infof("checking the soundness of summary %s ...\n", want.Summary())
 	callStack := []*ssa.Function{f}
-	res, err := checkSummary(ctx, s, f, want.Summary(), specs, testNaive, callStack)
+	res, err := checkSummary(ctx, s, f, want.Summary(), specs, testNaive, callStack, false)
 	res.SummaryName = want.Name()
 	return []SoundnessResult{res}, true, err
 }
@@ -163,7 +163,7 @@ var errInfer = errors.New("failed to infer callee summaries")
 //gocyclo:ignore
 func checkSummary(
 	ctx context.Context, s *State, f *ssa.Function, want summaries.DetailedSummary,
-	specs []dataflow.ScanningSpec, testNaive bool, callStack []*ssa.Function,
+	specs []dataflow.ScanningSpec, testNaive bool, callStack []*ssa.Function, isInterfaceImpl bool,
 ) (SoundnessResult, error) {
 	// The checkable summary format has no syntax for a top-level closure's free variables, so
 	// reject f if it's a closure -- but only at the outermost call (len(callStack) == 1):
@@ -205,7 +205,7 @@ func checkSummary(
 	// Special case if we're testing the "naive" method
 	if testNaive {
 		_, soundnessResult, _, err := checkMethodNaive(
-			ctx, s, unsoundCheckFeats, soundnessResultBase, g, want, start, specs)
+			ctx, s, unsoundCheckFeats, soundnessResultBase, g, want, start, specs, isInterfaceImpl)
 		return soundnessResult, err
 	}
 
@@ -413,7 +413,7 @@ func checkCalleeSummaries(
 			callStack = append(callStack, callee)
 			s.Logger.Debugf("call stack: %v\n", callStack)
 			calleeRes, err := checkSummary(
-				ctx, s, callee, calleeSumm, specs, false, callStack)
+				ctx, s, callee, calleeSumm, specs, false, callStack, false)
 			if err != nil {
 				s.Logger.Errorf("failed to check callee summary: %v", err)
 				if errors.Is(err, errInfer) {
@@ -594,7 +594,8 @@ func checkMethodNaive(ctx context.Context, s *State,
 	g *dataflow.SummaryGraph,
 	want summaries.DetailedSummary,
 	start time.Time,
-	specs []dataflow.ScanningSpec) ([]flow, SoundnessResult, bool, error) {
+	specs []dataflow.ScanningSpec,
+	isInterfaceImpl bool) ([]flow, SoundnessResult, bool, error) {
 	// Summaries are built lazily on demand (see onDemandIntraProcedural) rather than eagerly here,
 	// since eagerly building every reachable function per checked summary doesn't scale. Global
 	// write->read jumps (the one case that used to need the eager pass) are now handled directly
@@ -605,7 +606,7 @@ func checkMethodNaive(ctx context.Context, s *State,
 	// Build the inter-procedural data-flow graph, using contracts and predefined stdlib
 	// summaries when available.
 	s.FlowGraph.BuildGraph(true)
-	checkResult, err := ComputeClosedSummary(ctx, s.State, g.Parent, specs)
+	checkResult, err := ComputeClosedSummary(ctx, s.State, g.Parent, specs, isInterfaceImpl)
 	if err != nil {
 		soundnessResultBase.Soundness = Error
 		soundnessResultBase.Unsoundness = Unsoundness{

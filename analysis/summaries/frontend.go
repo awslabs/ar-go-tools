@@ -67,6 +67,12 @@ type IfaceMethodFlowSummary struct {
 	summary DetailedSummary
 }
 
+// NewIfaceMethodFlowSummary creates a new IfaceMethodFlowSummary with the given package,
+// interface name, method name, and summary.
+func NewIfaceMethodFlowSummary(pkg string, iface string, method string, summary DetailedSummary) IfaceMethodFlowSummary {
+	return IfaceMethodFlowSummary{pkg: pkg, Interface: iface, Method: method, summary: summary}
+}
+
 // Name returns the fully-qualified name of the interface this summary corresponds to.
 func (s IfaceMethodFlowSummary) Name() string {
 	return fmt.Sprintf("(%s.%s).%s", s.pkg, s.Interface, s.Method)

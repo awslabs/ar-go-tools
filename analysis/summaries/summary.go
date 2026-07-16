@@ -241,20 +241,43 @@ func (s DetailedSummary) String() string {
 // IsMoreGeneralThan returns true if s is a more general summary than other, that is, its set of
 // flow is a superset of the other's flows.
 func (s DetailedSummary) IsMoreGeneralThan(other DetailedSummary) bool {
-	// Every (input, output) pair in other's flows must also be present in s's flows. s may have
-	// additional inputs, or additional outputs per input, and still be more general.
+	// Every (input, output) pair in other's flows must be covered by some (input, output) pair
+	// in s's flows. s may have additional inputs, or additional outputs per input, and still be
+	// more general.
 	for input, otherOutputs := range other.Flows {
-		outputs, ok := s.Flows[input]
-		if !ok {
-			return false
-		}
 		for _, output := range otherOutputs {
-			if !slices.Contains(outputs, output) {
+			if !s.coversFlow(input, output) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// coversFlow returns true if some flow in s covers the flow (input, output): same base nodes on
+// both sides, and s's access path on each side is a prefix of (or equal to) other's -- an empty
+// path means "the whole node", which covers every path under it.
+func (s DetailedSummary) coversFlow(input, output SummaryNode) bool {
+	for sInput, sOutputs := range s.Flows {
+		if !nodeCovers(sInput, input) {
+			continue
+		}
+		for _, sOutput := range sOutputs {
+			if nodeCovers(sOutput, output) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// nodeCovers returns true if want and got have the same base node and want's access path is a
+// prefix of (or equal to) got's -- an empty path in want matches any path in got.
+func nodeCovers(want, got SummaryNode) bool {
+	if want.WithObjectPath("") != got.WithObjectPath("") {
+		return false
+	}
+	return strings.HasPrefix(got.Path(), want.Path())
 }
 
 // GetArgFlows returns the indexed flows from parameters to returns of the detailed summary.
