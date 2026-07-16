@@ -9,7 +9,10 @@
 # if you update a pinned commit there, update the corresponding git checkout below too). The
 # 5th target repo, "sample", is a small local Go program tracked directly in ar-go-tools
 # itself, so it needs no separate clone.
-FROM golang:1.23
+# The 5 target repos have their own go.mod requirements independent of argot's own; badger's
+# go.mod requires toolchain go1.25.0, the strictest of the 5, so the base image must be at
+# least that new.
+FROM golang:1.25
 
 WORKDIR /usr/src/app
 

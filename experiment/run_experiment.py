@@ -517,7 +517,16 @@ def _group_by_summary_name(
     concrete implementation's result shares the same SummaryName (the interface method's own
     name); for a plain function, SummaryName equals Func."""
     grouped: Dict[str, List[Dict[str, Any]]] = {}
-    for _target_name, results in report.items():
+    for target_name, results in report.items():
+        if results is None:
+            # A target with a null result means argot check failed to build/analyze it
+            # entirely (e.g. a Go toolchain mismatch) rather than reporting per-summary
+            # errors; surface this loudly instead of silently treating it as "no results".
+            console.print(
+                f"[red]Warning: target {target_name!r} has no results in the check "
+                "report (argot check likely failed to build it); see the .log file.[/red]"
+            )
+            continue
         for r in results:
             grouped.setdefault(r.get("SummaryName", ""), []).append(r)
     return grouped
