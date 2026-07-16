@@ -2,6 +2,11 @@
 
 # Collect the experiment data for all 5 target repos.
 #
+# Runs entirely on the instance in one shot; nothing is copied back to the local machine
+# automatically. For running/fetching one command at a time from your local machine instead
+# (e.g. to iterate on eval-checker-* locally against already-produced raw data), see
+# run-on-ec2.py / fetch-from-ec2.py.
+#
 # Each docker run is capped at 50GB RAM (--memory + --memory-swap set equal disables use of
 # any swap inside the container, giving a hard cap): the instance has no swap configured.
 #
