@@ -36,6 +36,13 @@ type SoundnessResult struct {
 	Fn *ssa.Function
 	// Name is the qualified name of the summarized function.
 	Name string
+	// SummaryName is the name of the top-level summary entry (from the checked specs file)
+	// that this result was produced for. For an interface method, this is the interface
+	// method's own name (e.g. "(fmt.Stringer).String"), shared by every concrete
+	// implementation's result; for a plain function or method, it equals Name. Only set on
+	// the top-level result returned by CheckSummary, not on CalleeResults (which have no
+	// corresponding user-facing spec entry).
+	SummaryName string
 	// Want is the summary being checked.
 	Want summaries.DetailedSummary
 	// Got is the summary actually computed by the full (naive) data flow analysis. It is only
@@ -304,6 +311,7 @@ func (f Flow) String() string {
 
 type rawSoundnessResult struct {
 	Func          string
+	SummaryName   string
 	Want          map[string][]string
 	Got           map[string][]string
 	Soundness     Soundness
@@ -361,10 +369,11 @@ func newRawSoundnessResult(r SoundnessResult) rawSoundnessResult {
 	}
 
 	return rawSoundnessResult{
-		Func:      r.Name,
-		Want:      rawFlows(r.Want.Flows),
-		Got:       rawFlows(r.Got.Flows),
-		Soundness: r.Soundness,
+		Func:        r.Name,
+		SummaryName: r.SummaryName,
+		Want:        rawFlows(r.Want.Flows),
+		Got:         rawFlows(r.Got.Flows),
+		Soundness:   r.Soundness,
 		Unsoundness: rawUnsoundness{
 			BadForm:              badForm,
 			UnprovenMustNotFlows: funcutil.Map(r.Unsoundness.UnprovenMustNotFlows, (Flow).String),

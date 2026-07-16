@@ -122,6 +122,7 @@ func CheckSummary(
 				callStack := []*ssa.Function{implem}
 				partRes, err := checkSummary(
 					ctx, s, implem, want.Summary(), specs, testNaive, callStack)
+				partRes.SummaryName = want.Name()
 				res = append(res, partRes)
 				if err != nil {
 					s.Logger.Errorf("failed to check implementation %s: %v", implem, err)
@@ -143,6 +144,7 @@ func CheckSummary(
 	s.Logger.Infof("checking the soundness of summary %s ...\n", want.Summary())
 	callStack := []*ssa.Function{f}
 	res, err := checkSummary(ctx, s, f, want.Summary(), specs, testNaive, callStack)
+	res.SummaryName = want.Name()
 	return []SoundnessResult{res}, true, err
 }
 
