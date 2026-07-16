@@ -341,6 +341,9 @@ def _write_check_report(
     ]
     config["dataflow-problems"].update(extra_config)
 
+    # argot check will not create its own reports-dir; it must already exist.
+    (repo_path / config["options"]["reports-dir"]).mkdir(parents=True, exist_ok=True)
+
     with tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".yaml",
