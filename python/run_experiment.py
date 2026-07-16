@@ -1,1119 +1,487 @@
 #!/usr/bin/env python3
 """
-Experiment runner for comparing taint analysis with and without AI-generated summaries.
+Experiment runner for the dataflow-soundness-checker paper's evaluation.
 
-This script runs experiments to measure the efficiency of the summarizer by comparing:
-1. Taint analysis with AI-generated summaries
-2. Baseline taint analysis without summaries
+Producer commands run argot and write its raw JSON output to a file you name:
+    run-check          run the soundness checker against a summaries file
+    run-constructive    run the constructive (naive) approach against a list of methods
+
+Consumer (eval-*) commands are pure functions over already-produced JSON files -- they
+never invoke argot themselves, so re-running an eval-* command (or running several of them
+in sequence) never re-runs the (possibly expensive) producer commands:
+    eval-checker-precision   RQ: checker-precision
+    eval-checker-efficiency  RQ: checker-efficiency
+    eval-checker-ablation    RQ: checker-ablation
+
+--repo is mandatory for every command. To run a command across multiple repos, loop over
+this script from the shell.
 """
 
 import argparse
 import json
-import logging
-import os
-import re
-import shutil
 import subprocess
 import sys
+import tempfile
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import yaml
-
 from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TaskProgressColumn
-from rich import box
 
 console = Console()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] %(message)s',
-    datefmt='%H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+REPOS_BASE_DIR = Path(__file__).parent.parent / "payload" / "public-repos-checks"
 
 
-class ExperimentRunner:
-    """Runs experiments comparing taint analysis approaches."""
-
-    def __init__(self, repo_dir: Path, output_dir: Path, timeout: int = 300,
-                 constructive_timeout: int = 180, aws_profile: Optional[str] = None):
-        self.repo_dir = repo_dir
-        self.output_dir = output_dir
-        self.timeout = timeout
-        self.constructive_timeout = constructive_timeout
-        self.aws_profile = aws_profile
-        self.repo_name = repo_dir.name
-        self.timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
-
-    def _run_with_progress(self, cmd: List[str], log_file: Path, label: str,
-                           timeout: Optional[int], env: Optional[Dict] = None) -> Tuple[int, float, bool]:
-        """Run a subprocess with a live progress bar showing elapsed time vs timeout.
-
-        Returns (exit_code, duration, timed_out).
-        """
-        start_time = time.time()
-        timed_out = False
-        exit_code = 0
-
-        with open(log_file, 'w') as f:
-            proc = subprocess.Popen(
-                cmd, cwd=self.repo_dir, stdout=f, stderr=subprocess.STDOUT, env=env)
-
-        try:
-            total = timeout if timeout else 360
-            with Progress(
-                TextColumn("[bold]{task.description}"),
-                BarColumn(bar_width=40),
-                TaskProgressColumn(),
-                TimeElapsedColumn(),
-                console=console,
-                transient=True,
-            ) as progress:
-                task = progress.add_task(label, total=total)
-                while proc.poll() is None:
-                    elapsed = time.time() - start_time
-                    if timeout:
-                        progress.update(task, completed=min(elapsed, total))
-                        if elapsed >= timeout:
-                            proc.kill()
-                            proc.wait()
-                            timed_out = True
-                            break
-                    else:
-                        # No timeout: pulse the bar based on elapsed minutes
-                        progress.update(task, completed=elapsed % total)
-                    time.sleep(0.25)
-                if not timed_out:
-                    progress.update(task, completed=total)
-
-            if not timed_out:
-                exit_code = proc.returncode
-        except Exception as e:
-            proc.kill()
-            proc.wait()
-            logger.error(f"{label} failed: {e}")
-            exit_code = -1
-
-        duration = time.time() - start_time
-        status = "timed out" if timed_out else f"exit code {exit_code}"
-        console.print(f"  [dim]{label}:[/dim] {duration:.1f}s ({status})")
-        return exit_code, duration, timed_out
-
-    def get_config_path(self) -> str:
-        """Get config path based on repository."""
-        if self.repo_name == "atlas":
-            return "cmd/atlas/argot-config.yaml"
-        return "argot-config.yaml"
-
-    def get_spec_paths(self) -> List[str]:
-        """Read the config file and return all user-specs paths listed in it."""
-        config_path = self.repo_dir / self.get_config_path()
-        if config_path.exists():
-            try:
-                with open(config_path) as f:
-                    config = yaml.safe_load(f)
-                paths = (config or {}).get('dataflow-problems', {}).get('user-specs', [])
-                if paths:
-                    return paths
-            except Exception as e:
-                logger.warning(f"Failed to parse config for spec paths: {e}")
-        # Fallback
-        return ["user-specs.yaml"]
-
-    def verify_setup(self) -> bool:
-        """Verify repository has required files."""
-        config_path = self.repo_dir / self.get_config_path()
-        to_summarize = self.repo_dir / "to_summarize.json"
-
-        if not config_path.exists():
-            logger.error(f"Config file not found: {config_path}")
-            return False
-
-        if not to_summarize.exists():
-            logger.error(f"to_summarize.json not found: {to_summarize}")
-            return False
-
-        # Create empty user-specs.yaml if missing
-        for spec_rel in self.get_spec_paths():
-            spec_path = self.repo_dir / spec_rel
-            if not spec_path.exists():
-                logger.info(f"Creating empty {spec_rel}")
-                spec_path.parent.mkdir(parents=True, exist_ok=True)
-                spec_path.write_text("dataflow-summaries: []\n")
-
-        return True
-
-    def run_summarization(self, log_dir: Path) -> Dict:
-        """Phase 1: Run summary generation."""
-        logger.info(
-            f"Phase 1: Running summary generation for {self.repo_name}")
-
-        spec_paths = self.get_spec_paths()
-        config_path = self.get_config_path()
-
-        # Backup existing specs and clear them
-        for spec_rel in spec_paths:
-            spec_path = self.repo_dir / spec_rel
-            backup_path = spec_path.with_suffix('.yaml.backup')
-            if spec_path.exists():
-                shutil.copy(spec_path, backup_path)
-            spec_path.write_text("dataflow-summaries: []\n")
-
-        # Run summarization
-        log_file = log_dir / "summarize.log"
-        stats_file = log_dir / "summarize-stats.json"
-
-        cmd = [
-            "argot-summarize",
-            "--config", config_path,
-            "--functions", "to_summarize.json",
-            "--stats-json", str(stats_file)
-        ]
-
-        # Set up environment with AWS profile if provided
-        env = os.environ.copy()
-        if self.aws_profile:
-            env['AWS_PROFILE'] = self.aws_profile
-
-        exit_code, duration, _ = self._run_with_progress(
-            cmd, log_file, "📝 Summary generation", timeout=None, env=env)
-
-        # Backup generated summaries to results dir
-        for i, spec_rel in enumerate(spec_paths):
-            spec_path = self.repo_dir / spec_rel
-            if spec_path.exists():
-                suffix = f"-{i}" if i > 0 else ""
-                backup_summaries = log_dir / f"generated-summaries{suffix}.yaml"
-                shutil.copy(spec_path, backup_summaries)
-
-        # Run argot check to get accurate soundness counts
-        summaries = self._check_summaries(log_dir)
-
-        # Load stats from JSON if available
-        tool_calls = 0
-        stats_data = None
-        if stats_file.exists():
-            try:
-                stats_data = json.loads(stats_file.read_text())
-                tool_calls = stats_data.get('tools', {}).get('total_calls', 0)
-            except Exception as e:
-                logger.warning(f"Failed to load stats JSON: {e}")
-
-        result = {
-            "duration_seconds": round(duration, 2),
-            "tool_calls": tool_calls,
-            "summaries": summaries,
-            "exit_code": exit_code,
-            "stats": stats_data
-        }
-
-        logger.info(
-            f"Summary generation completed in {duration:.1f}s (exit code: {exit_code})")
-        logger.info(f"Generated summaries: {summaries}")
-
-        return result
-
-    def run_taint_analysis(self, log_dir: Path, phase_name: str, clear_specs: bool = False) -> Dict:
-        """Run taint analysis and collect results."""
-        if clear_specs:
-            for spec_rel in self.get_spec_paths():
-                spec_path = self.repo_dir / spec_rel
-                spec_path.write_text("dataflow-summaries: []\n")
-
-        config_path = self.get_config_path()
-        log_file = log_dir / f"taint-{phase_name}.log"
-        cmd = ["argot", "taint", "-config", config_path]
-
-        exit_code, duration, timed_out = self._run_with_progress(
-            cmd, log_file, f"🔍 Taint ({phase_name})", timeout=self.timeout)
-
-        # Parse dataflows from output
-        dataflows = self._parse_dataflows(log_file)
-
-        result = {
-            "duration_seconds": round(duration, 2),
-            "timeout": timed_out,
-            "dataflows": dataflows,
-            "exit_code": exit_code
-        }
-
-        return result
-
-    def run_constructive_check(self, log_dir: Path) -> Dict:
-        """Run constructive summary generation via argot check --via naive."""
-        config_path = self.get_config_path()
-        log_file = log_dir / "constructive.log"
-        cmd = ["argot", "check", "--config", config_path, "--via", "naive"]
-
-        exit_code, duration, timed_out = self._run_with_progress(
-            cmd, log_file, "🔨 Constructive check", timeout=self.constructive_timeout)
-
-        return {
-            "duration_seconds": round(duration, 2),
-            "timeout": timed_out,
-            "exit_code": exit_code
-        }
-
-    def _count_taint_problems(self) -> int:
-        """Count taint-tracking problems defined in the config."""
-        config_path = self.repo_dir / self.get_config_path()
-        if not config_path.exists():
-            return 0
-        content = config_path.read_text()
-        return len(re.findall(r'^\s*- tag:', content, re.MULTILINE))
-
-    def aggregate_results(self, summarization: Dict, taint_with: Dict, taint_baseline: Dict,
-                          constructive: Dict) -> Dict:
-        """Phase 5: Aggregate all results."""
-        logger.info(f"Phase 5: Aggregating results for {self.repo_name}")
-
-        sum_duration = summarization["duration_seconds"]
-        with_duration = taint_with["duration_seconds"]
-        baseline_duration = taint_baseline["duration_seconds"]
-        constructive_duration = constructive["duration_seconds"]
-
-        # Calculate speedup
-        speedup = None
-        if baseline_duration > 0 and with_duration > 0:
-            speedup = round(baseline_duration / with_duration, 2)
-
-        total_with_overhead = sum_duration + with_duration
-
-        # Check if dataflows match (compare sets of source+sink locations)
-        dataflows_match = None
-        if not taint_with["timeout"] and not taint_baseline["timeout"]:
-            with_set = {(df['source'], df['sink'])
-                        for df in taint_with["dataflows"]}
-            baseline_set = {(df['source'], df['sink'])
-                            for df in taint_baseline["dataflows"]}
-            dataflows_match = with_set == baseline_set
-
-        report = {
-            "repo": self.repo_name,
-            "timestamp": self.timestamp,
-            "timeout_seconds": self.timeout,
-            "constructive_timeout_seconds": self.constructive_timeout,
-            "taint_problems": self._count_taint_problems(),
-            "summarization": summarization,
-            "taint_with_summaries": taint_with,
-            "taint_baseline": taint_baseline,
-            "constructive": constructive,
-            "comparison": {
-                "speedup_factor": speedup,
-                "summary_overhead_seconds": sum_duration,
-                "total_with_summaries_seconds": total_with_overhead,
-                "baseline_seconds": baseline_duration,
-                "constructive_seconds": constructive_duration,
-                "agentic_vs_constructive_speedup": round(constructive_duration / sum_duration, 2) if constructive_duration > 0 and sum_duration > 0 else None,
-                "dataflows_match": dataflows_match
-            }
-        }
-
-        return report
-
-    def restore_specs(self):
-        """Restore backed up user-specs files."""
-        for spec_rel in self.get_spec_paths():
-            spec_path = self.repo_dir / spec_rel
-            backup_path = spec_path.with_suffix('.yaml.backup')
-            if backup_path.exists():
-                shutil.move(backup_path, spec_path)
-                logger.info(f"Restored {spec_rel}")
-
-    def run(self) -> Optional[Dict]:
-        """Run complete experiment."""
-        logger.info(f"Starting experiment for repository: {self.repo_name}")
-
-        # Verify setup
-        if not self.verify_setup():
-            return None
-
-        # Create output directory
-        repo_output = self.output_dir / self.repo_name / self.timestamp
-        log_dir = repo_output / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-
-        # Copy argot config to results directory
-        config_src = self.repo_dir / self.get_config_path()
-        if config_src.exists():
-            shutil.copy(config_src, repo_output / "argot-config.yaml")
-
-        # Copy to_summarize.json to results directory
-        to_summarize_src = self.repo_dir / "to_summarize.json"
-        if to_summarize_src.exists():
-            shutil.copy(to_summarize_src, repo_output / "to_summarize.json")
-
-        try:
-            # Phase 1: Summarization
-            summarization = self.run_summarization(log_dir)
-            (repo_output / "summarization.json").write_text(
-                json.dumps(summarization, indent=2)
-            )
-
-            # Phase 2: Taint with summaries
-            taint_with = self.run_taint_analysis(
-                log_dir, "with-summaries", clear_specs=False)
-            (repo_output / "taint-with-summaries.json").write_text(
-                json.dumps(taint_with, indent=2)
-            )
-
-            # Phase 3: Constructive summary generation (needs generated summaries still in place)
-            constructive = self.run_constructive_check(log_dir)
-            (repo_output / "constructive.json").write_text(
-                json.dumps(constructive, indent=2)
-            )
-
-            # Phase 4: Baseline taint (clears specs)
-            taint_baseline = self.run_taint_analysis(
-                log_dir, "baseline", clear_specs=True)
-            (repo_output / "taint-baseline.json").write_text(
-                json.dumps(taint_baseline, indent=2)
-            )
-
-            # Phase 5: Aggregate
-            report = self.aggregate_results(
-                summarization, taint_with, taint_baseline, constructive)
-            report_path = repo_output / "report.json"
-            report_path.write_text(json.dumps(report, indent=2))
-
-            logger.info(f"Experiment completed for {self.repo_name}")
-            logger.info(f"Results: {report_path}")
-
-            return report
-
-        finally:
-            # Always restore specs
-            self.restore_specs()
-
-    def _check_summaries(self, log_dir: Path) -> Dict[str, int]:
-        """Run argot check to get accurate summary counts from the JSON report."""
-        config_path = self.get_config_path()
-        check_log = log_dir / "check.log"
-
-        cmd = ["argot", "check", "--config", config_path]
-
-        check_start = time.time()
-        try:
-            with open(check_log, 'w') as f:
-                subprocess.run(
-                    cmd,
-                    cwd=self.repo_dir,
-                    stdout=f,
-                    stderr=subprocess.STDOUT,
-                    timeout=360
-                )
-        except Exception as e:
-            logger.warning(f"argot check failed: {e}")
-        check_duration = round(time.time() - check_start, 2)
-
-        # Find the JSON report path from the log
-        report_data = None
-        if check_log.exists():
-            content = check_log.read_text()
-            m = re.search(r'Full report written to (.+)', content)
-            if m:
-                report_path = Path(m.group(1).strip())
-                if report_path.exists():
-                    try:
-                        report_data = json.loads(report_path.read_text())
-                        # Copy report into results directory
-                        shutil.copy(report_path, log_dir / "check-report.json")
-                    except Exception as e:
-                        logger.warning(f"Failed to read check report: {e}")
-
-        if report_data is None:
-            return {"sound": 0, "soundy": 0, "unsound": 0, "total": 0, "methods": {}, "check_duration_seconds": check_duration}
-
-        # report_data is map[target] -> []SoundnessResult
-        # Walk all results (including CalleeResults) to count per function name.
-        sound_names = set()
-        unsound_names = set()
-        soundy_names = set()
-        # methods: count once per function name, using the best method that proved it
-        func_methods = {}  # name -> set of methods used
-
-        def collect(result):
-            name = result.get("Func", "")
-            is_sound = result.get("IsSound", False)
-            unproven = result.get("Unsoundness", {}).get("UnprovenMustNotFlows") or []
-            if is_sound:
-                sound_names.add(name)
-            else:
-                unsound_names.add(name)
-                if len(unproven) == 0:
-                    soundy_names.add(name)
-            for method, count in (result.get("MethodCounts") or {}).items():
-                if count > 0:
-                    func_methods.setdefault(name, set()).add(method)
-            for callee_group in result.get("CalleeResults") or []:
-                for cr in callee_group:
-                    collect(cr)
-
-        for target_results in report_data.values():
-            for r in target_results:
-                collect(r)
-
-        # Build method counts: number of distinct functions proved by each method
-        methods = {}
-        for name, method_set in func_methods.items():
-            for m in method_set:
-                methods[m] = methods.get(m, 0) + 1
-
-        return {
-            "sound": len(sound_names),
-            "soundy": len(soundy_names),
-            "unsound": len(unsound_names) - len(soundy_names),
-            "total": len(sound_names | unsound_names),
-            "methods": methods,
-            "check_duration_seconds": check_duration
-        }
-
-    def _count_summaries(self, spec_path: Path) -> Dict[str, int]:
-        """Count summaries by type from user-specs.yaml."""
-        if not spec_path.exists():
-            return {"sound": 0, "soundy": 0, "unsound": 0, "total": 0}
-
-        content = spec_path.read_text()
-        sound = content.count("type: sound")
-        soundy = content.count("type: soundy")
-        unsound = content.count("type: unsound")
-
-        return {
-            "sound": sound,
-            "soundy": soundy,
-            "unsound": unsound,
-            "total": sound + soundy + unsound
-        }
-
-    def _parse_dataflows(self, log_file: Path) -> List[Dict[str, str]]:
-        """Parse dataflows from taint analysis log."""
-        if not log_file.exists():
-            return []
-
-        content = log_file.read_text()
-        dataflows = []
-
-        lines = content.split('\n')
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-
-            # Look for dataflow summary entries
-            if line.startswith('[WARN]') and 'Data from a source has reached a sink' in line:
-                source_loc = None
-                sink_loc = None
-
-                # Next lines have Source and Sink with locations
-                j = i + 1
-                while j < len(lines) and j < i + 10:  # Look ahead max 10 lines
-                    if '\tSource:' in lines[j]:
-                        # Location is on next line
-                        if j + 1 < len(lines):
-                            source_loc = lines[j + 1].strip()
-                    elif '\tSink:' in lines[j]:
-                        # Location is on next line
-                        if j + 1 < len(lines):
-                            sink_loc = lines[j + 1].strip()
-                            break  # Found both, stop looking
-                    j += 1
-
-                if source_loc and sink_loc:
-                    dataflows.append({
-                        'source': source_loc,
-                        'sink': sink_loc
-                    })
-
-            i += 1
-
-        return dataflows
-
-
-def get_all_repos(base_dir: Path) -> List[Path]:
-    """Find all repositories with required config files."""
-    repos = []
-    for item in base_dir.iterdir():
-        if not item.is_dir():
-            continue
-
-        # Check for config and to_summarize.json
-        config_exists = (
-            (item / "argot-config.yaml").exists() or
-            (item / "cmd/atlas/argot-config.yaml").exists()
-        )
-        to_summarize_exists = (item / "to_summarize.json").exists()
-
-        if config_exists and to_summarize_exists:
-            repos.append(item)
-
-    return sorted(repos)
-
-
-def display_report(report: Dict):
-    """Display experiment report in a readable format."""
-    console.print()
-
-    # Header
-    header = f"[bold cyan]Experiment Report: {report['repo']}[/bold cyan]\n"
-    header += f"[dim]Timestamp: {report['timestamp']} | Timeout: {report['timeout_seconds']}s[/dim]"
-    console.print(Panel(header, box=box.DOUBLE))
-
-    # Summarization
-    summ = report['summarization']
-    summ_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
-    summ_table.add_column(style="cyan")
-    summ_table.add_column(style="white")
-
-    exit_color = "green" if summ['exit_code'] == 0 else "red"
-    summ_table.add_row("Duration", f"{summ['duration_seconds']}s")
-    summ_table.add_row(
-        "Exit Code", f"[{exit_color}]{summ['exit_code']}[/{exit_color}]")
-    summ_table.add_row("Tool Calls", str(summ['tool_calls']))
-    summ_table.add_row(
-        "Summaries", f"[bold]{summ['summaries']['total']}[/bold] (sound: {summ['summaries']['sound']}, soundy: {summ['summaries']['soundy']}, unsound: {summ['summaries']['unsound']})")
-
-    methods = summ['summaries'].get('methods', {})
-    if methods:
-        methods_str = ", ".join(f"{k}: {v}" for k, v in sorted(methods.items(), key=lambda x: -x[1]))
-        summ_table.add_row("Methods", methods_str)
-
-    console.print(Panel(
-        summ_table, title="[bold yellow]📝 Summary Generation[/bold yellow]", border_style="yellow"))
-
-    # Taint analyses side by side
-    with_summ = report['taint_with_summaries']
-    baseline = report['taint_baseline']
-
-    taint_table = Table(box=box.ROUNDED, show_header=True)
-    taint_table.add_column("Metric", style="cyan")
-    taint_table.add_column("With Summaries", style="green", justify="right")
-    taint_table.add_column("Baseline", style="blue", justify="right")
-
-    # Duration
-    taint_table.add_row(
-        "Duration", f"{with_summ['duration_seconds']}s", f"{baseline['duration_seconds']}s")
-
-    # Timeout
-    with_timeout = "[red]Yes[/red]" if with_summ['timeout'] else "[green]No[/green]"
-    base_timeout = "[red]Yes[/red]" if baseline['timeout'] else "[green]No[/green]"
-    taint_table.add_row("Timeout", with_timeout, base_timeout)
-
-    # Exit code
-    with_exit_color = "green" if with_summ['exit_code'] == 0 else "yellow" if with_summ['exit_code'] == 2 else "red"
-    base_exit_color = "green" if baseline['exit_code'] == 0 else "yellow" if baseline['exit_code'] == 2 else "red"
-    taint_table.add_row("Exit Code", f"[{with_exit_color}]{with_summ['exit_code']}[/{with_exit_color}]",
-                        f"[{base_exit_color}]{baseline['exit_code']}[/{base_exit_color}]")
-
-    # Dataflows
-    taint_table.add_row(
-        "Dataflows", f"[bold]{len(with_summ['dataflows'])}[/bold]", f"[bold]{len(baseline['dataflows'])}[/bold]")
-
-    console.print(Panel(
-        taint_table, title="[bold magenta]🔍 Taint Analysis Comparison[/bold magenta]", border_style="magenta"))
-
-    # Constructive summary generation
-    if 'constructive' in report:
-        constr = report['constructive']
-        constr_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
-        constr_table.add_column(style="cyan")
-        constr_table.add_column(style="white")
-
-        exit_color = "green" if constr['exit_code'] == 0 else "red"
-        constr_table.add_row("Duration", f"{constr['duration_seconds']}s")
-        constr_table.add_row(
-            "Exit Code", f"[{exit_color}]{constr['exit_code']}[/{exit_color}]")
-        constr_table.add_row(
-            "Timed Out", "[red]Yes[/red]" if constr['timeout'] else "[green]No[/green]")
-
-        console.print(Panel(
-            constr_table, title="[bold blue]🔨 Constructive Summary Generation[/bold blue]", border_style="blue"))
-
-    # Comparison summary
-    comp = report['comparison']
-    comp_parts = []
-
-    speedup = comp['speedup_factor']
-    if speedup:
-        speedup_color = "green" if speedup > 1.0 else "yellow" if speedup > 0.8 else "red"
-        comp_parts.append(
-            f"Speedup: [{speedup_color}]{speedup:.2f}x[/{speedup_color}]")
-    else:
-        comp_parts.append("Speedup: [dim]N/A[/dim]")
-
-    comp_parts.append(f"Summary Overhead: {comp['summary_overhead_seconds']}s")
-
-    agentic_vs_constr = comp.get('agentic_vs_constructive_speedup')
-    if agentic_vs_constr:
-        c_color = "green" if agentic_vs_constr > 1.0 else "red"
-        comp_parts.append(
-            f"Constructive/Agentic: [{c_color}]{agentic_vs_constr:.2f}x[/{c_color}]")
-    else:
-        comp_parts.append("Constructive/Agentic: [dim]N/A[/dim]")
-
-    if comp['dataflows_match'] is not None:
-        match_str = "[green]✅ Match[/green]" if comp['dataflows_match'] else "[red]❌ Differ[/red]"
-        comp_parts.append(f"Dataflows: {match_str}")
-    else:
-        comp_parts.append("Dataflows: [dim]N/A[/dim]")
-
-    console.print(Panel(" | ".join(comp_parts),
-                  title="[bold]📊 Summary[/bold]", border_style="dim"))
-    console.print()
-
-
-def _get_taint_problems_from_results(report_path: Path) -> Optional[int]:
-    """Count taint problems from the config saved in the results directory."""
-    config = report_path.parent / "argot-config.yaml"
-    if not config.exists():
-        return None
-    return len(re.findall(r'^\s*- tag:', config.read_text(), re.MULTILINE))
-
-
-def display_all_reports(output_dir: Path):
-    """Display a summary table of all experiments and generate LaTeX tables."""
-    experiments = list_experiments(output_dir)
-    if not experiments:
-        console.print("[yellow]No experiments found.[/yellow]")
-        return
-
-    # Keep only the latest experiment per repo
-    latest = {}
-    for report_path, report in experiments:
-        repo = report['repo']
-        if repo not in latest:
-            latest[repo] = (report_path, report)
-
-    # Collect all method names across reports, ensuring all known methods are present
-    all_methods = {"general", "types", "immutability", "read", "recursive"}
-    for _, report in latest.values():
-        all_methods.update(report.get('summarization', {}).get('summaries', {}).get('methods', {}).keys())
-    method_names = sorted(all_methods)
-
-    # Build rich table
-    table = Table(title="All Experiment Results", box=box.ROUNDED)
-    table.add_column("Repository", style="cyan")
-    table.add_column("Gen (s)", justify="right")
-    table.add_column("Check (s)", justify="right")
-    table.add_column("Constr (s)", justify="right")
-    table.add_column("Taint+S (s)", justify="right")
-    table.add_column("Taint-S (s)", justify="right")
-    table.add_column("Sound", justify="right", style="green")
-    table.add_column("Unsound", justify="right", style="red")
-    for m in method_names:
-        table.add_column(m, justify="right")
-
-    rows = []
-    for repo in sorted(latest):
-        report_path, r = latest[repo]
-        summ = r['summarization']
-        s = summ['summaries']
-        tw = r['taint_with_summaries']
-        tb = r['taint_baseline']
-        c = r.get('constructive', {})
-        check_dur = s.get('check_duration_seconds', '')
-        methods = s.get('methods', {})
-        taint_problems = r.get('taint_problems') or _get_taint_problems_from_results(report_path) or ''
-
-        row = {
-            'repo': repo,
-            'gen': summ['duration_seconds'],
-            'check': check_dur,
-            'constr': c.get('duration_seconds', ''),
-            'taint_w': tw['duration_seconds'],
-            'taint_b': tb['duration_seconds'],
-            'sound': s['sound'],
-            'unsound': s['unsound'],
-            'methods': methods,
-            'taint_problems': taint_problems,
-            'flows_w': len(tw.get('dataflows', [])),
-            'flows_b': len(tb.get('dataflows', [])),
-        }
-        rows.append(row)
-
-        table.add_row(
-            repo,
-            str(row['gen']),
-            str(row['check']),
-            str(row['constr']),
-            str(row['taint_w']),
-            str(row['taint_b']),
-            str(row['sound']),
-            str(row['unsound']),
-            *[str(methods.get(m, 0)) for m in method_names],
-        )
-
-    console.print(table)
-
-    # Generate LaTeX tables
-    latex_lines = []
-
-    # Table 1: Repository, taint problems, taint flows (with summaries)
-    method_cols = "".join(f" & {m}" for m in method_names)
-    method_col_spec = "r" * len(method_names)
-
-    latex_lines.append("% Table 1: Taint analysis problems and flows")
-    latex_lines.append("\\begin{table}[ht]")
-    latex_lines.append("\\centering")
-    latex_lines.append(f"\\begin{{tabular}}{{l r r r {method_col_spec}}}")
-    latex_lines.append("\\toprule")
-    latex_lines.append(f"Repository & Problems & Flows (w/) & Flows (w/o){method_cols} \\\\")
-    latex_lines.append("\\midrule")
-    for row in rows:
-        mcols = " & ".join(str(row['methods'].get(m, 0)) for m in method_names)
-        extra = f" & {mcols}" if method_names else ""
-        latex_lines.append(f"{row['repo']} & {row['taint_problems']} & {row['flows_w']} & {row['flows_b']}{extra} \\\\")
-    latex_lines.append("\\bottomrule")
-    latex_lines.append("\\end{tabular}")
-    latex_lines.append("\\caption{Taint analysis problems and reported flows}")
-    latex_lines.append("\\end{table}")
-    latex_lines.append("")
-
-    # Table 2: Repository, analysis time without summaries, with summaries, summarization+checking time
-    latex_lines.append("% Table 2: Analysis times")
-    latex_lines.append("\\begin{table}[ht]")
-    latex_lines.append("\\centering")
-    latex_lines.append("\\begin{tabular}{l r r r r}")
-    latex_lines.append("\\toprule")
-    latex_lines.append("Repository & Baseline (s) & With Summaries (s) & Summarization + Check (s) & Constructive (s) \\\\")
-    latex_lines.append("\\midrule")
-    for row in rows:
-        check_val = row['check'] if row['check'] != '' else 0
-        summ_check = round(row['gen'] + (float(check_val) if check_val else 0), 2)
-        constr_val = row['constr'] if row['constr'] != '' else ''
-        latex_lines.append(f"{row['repo']} & {row['taint_b']} & {row['taint_w']} & {summ_check} & {constr_val} \\\\")
-    latex_lines.append("\\bottomrule")
-    latex_lines.append("\\end{tabular}")
-    latex_lines.append("\\caption{Analysis times comparison}")
-    latex_lines.append("\\end{table}")
-    latex_lines.append("")
-
-    # Table 3: Repository, sound, unsound, methods breakdown
-    latex_lines.append("% Table 3: Summary soundness and methods")
-    latex_lines.append("\\begin{table}[ht]")
-    latex_lines.append("\\centering")
-    latex_lines.append(f"\\begin{{tabular}}{{l r r {method_col_spec}}}")
-    latex_lines.append("\\toprule")
-    latex_lines.append(f"Repository & Sound & Unsound{method_cols} \\\\")
-    latex_lines.append("\\midrule")
-    for row in rows:
-        mcols = " & ".join(str(row['methods'].get(m, 0)) for m in method_names)
-        extra = f" & {mcols}" if method_names else ""
-        latex_lines.append(f"{row['repo']} & {row['sound']} & {row['unsound']}{extra} \\\\")
-    latex_lines.append("\\bottomrule")
-    latex_lines.append("\\end{tabular}")
-    latex_lines.append("\\caption{Summary soundness and proving methods}")
-    latex_lines.append("\\end{table}")
-
-    latex_output = "\n".join(latex_lines)
-
-    # Write to file and display
-    latex_path = output_dir / "tables.tex"
-    latex_path.write_text(latex_output)
-    console.print(f"\n[green]LaTeX tables written to {latex_path}[/green]")
-    console.print()
-    console.print(latex_output)
-
-
-def list_experiments(output_dir: Path) -> List[Tuple[Path, Dict]]:
-    """List all available experiment reports."""
-    experiments = []
-
-    if not output_dir.exists():
-        return experiments
-
-    for repo_dir in output_dir.iterdir():
-        if not repo_dir.is_dir():
-            continue
-
-        for timestamp_dir in repo_dir.iterdir():
-            if not timestamp_dir.is_dir():
-                continue
-
-            report_file = timestamp_dir / "report.json"
-            if report_file.exists():
-                try:
-                    report = json.loads(report_file.read_text())
-                    experiments.append((report_file, report))
-                except Exception as e:
-                    logger.warning(f"Failed to load report {report_file}: {e}")
-
-    return sorted(experiments, key=lambda x: x[1]['timestamp'], reverse=True)
-
-
-def interactive_select_experiment(output_dir: Path) -> Optional[Path]:
-    """Interactive menu to select an experiment."""
-    experiments = list_experiments(output_dir)
-
-    if not experiments:
-        console.print("[yellow]No experiments found.[/yellow]")
-        return None
-
-    table = Table(title="Available Experiments", box=box.ROUNDED)
-    table.add_column("#", style="cyan", justify="right")
-    table.add_column("Repository", style="green")
-    table.add_column("Timestamp", style="blue")
-    table.add_column("Summaries", justify="right", style="yellow")
-    table.add_column("Speedup", justify="right")
-    table.add_column("Exit", justify="right")
-
-    for idx, (path, report) in enumerate(experiments, 1):
-        repo = report['repo']
-        timestamp = report['timestamp']
-        summ_exit = report['summarization']['exit_code']
-        summ_count = report['summarization']['summaries']['total']
-        speedup = report['comparison']['speedup_factor']
-
-        speedup_str = f"{speedup:.2f}x" if speedup else "N/A"
-        if speedup and speedup > 1.0:
-            speedup_str = f"[green]{speedup_str}[/green]"
-        elif speedup and speedup > 0.8:
-            speedup_str = f"[yellow]{speedup_str}[/yellow]"
-        elif speedup:
-            speedup_str = f"[red]{speedup_str}[/red]"
-
-        exit_color = "green" if summ_exit == 0 else "red"
-
-        table.add_row(
-            str(idx),
-            repo,
-            timestamp,
-            str(summ_count),
-            speedup_str,
-            f"[{exit_color}]{summ_exit}[/{exit_color}]"
-        )
-
-    console.print(table)
-
-    try:
-        choice = console.input(
-            "\n[cyan]Select experiment number (or 'q' to quit):[/cyan] ").strip()
-        if choice.lower() == 'q':
-            return None
-
-        idx = int(choice) - 1
-        if 0 <= idx < len(experiments):
-            return experiments[idx][0]
-        else:
-            console.print("[red]Invalid selection.[/red]")
-            return None
-    except (ValueError, KeyboardInterrupt):
-        return None
-
-
-def clear_experiments(output_dir: Path, repo: Optional[str] = None):
-    """Clear experiment results."""
-    if not output_dir.exists():
-        console.print("[yellow]No results directory found.[/yellow]")
-        return
-
-    if repo:
-        # Clear specific repo
-        repo_dir = output_dir / repo
-        if repo_dir.exists():
-            confirm = console.input(
-                f"[red]Delete all experiments for '{repo}'? (yes/no):[/red] ").strip().lower()
-            if confirm == 'yes':
-                shutil.rmtree(repo_dir)
-                console.print(
-                    f"[green]✓ Deleted experiments for {repo}[/green]")
-            else:
-                console.print("[yellow]Cancelled.[/yellow]")
-        else:
-            console.print(
-                f"[yellow]No experiments found for repository: {repo}[/yellow]")
-    else:
-        # Clear all
-        confirm = console.input(
-            "[red]Delete ALL experiment results? (yes/no):[/red] ").strip().lower()
-        if confirm == 'yes':
-            shutil.rmtree(output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            console.print("[green]✓ Deleted all experiment results[/green]")
-        else:
-            console.print("[yellow]Cancelled.[/yellow]")
-
-
-def show_command(output_dir: Path, repo: Optional[str] = None):
-    """Show experiment results."""
-    if repo:
-        # Show latest for specific repo
-        experiments = [e for e in list_experiments(
-            output_dir) if e[1]['repo'] == repo]
-        if experiments:
-            report_path, report = experiments[0]
-            display_report(report)
-        else:
-            console.print(
-                f"[yellow]No experiments found for repository: {repo}[/yellow]")
-    else:
-        # Interactive selection
-        report_path = interactive_select_experiment(output_dir)
-        if report_path:
-            report = json.loads(report_path.read_text())
-            display_report(report)
-
-
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run experiments comparing taint analysis with and without AI-generated summaries"
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+    p = subparsers.add_parser(
+        "run-check", help="Run the soundness checker against a summaries file"
+    )
+    p.add_argument("--repo", required=True)
+    p.add_argument(
+        "--summaries",
+        required=True,
+        help="Path (relative to the repo dir) to the summaries YAML to check",
+    )
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=cmd_run_check)
 
-    # Run command
-    run_parser = subparsers.add_parser('run', help='Run experiments')
-    run_parser.add_argument(
-        "repo",
-        help="Repository name (e.g., 'sample') or 'all' for all repositories"
+    p = subparsers.add_parser(
+        "run-constructive",
+        help="Run the constructive (naive) approach against a list of methods",
     )
-    run_parser.add_argument(
-        "--timeout",
-        type=int,
-        default=600,
-        help="Timeout for taint analysis in seconds (default: 600)"
+    p.add_argument("--repo", required=True)
+    p.add_argument(
+        "--methods",
+        required=True,
+        help="Path (relative to the repo dir) to the interesting-methods summaries YAML",
     )
-    run_parser.add_argument(
-        "--constructive-timeout",
-        type=int,
-        default=600,
-        help="Timeout for constructive summary generation in seconds (default: 600)"
-    )
-    run_parser.add_argument(
-        "--aws-profile",
-        help="AWS profile to use for argot-summarize"
-    )
-    run_parser.add_argument(
-        "--output",
-        type=Path,
-        help="Output directory for results (default: ../payload/public-repos-checks/results)"
-    )
-    run_parser.add_argument(
-        "--base-dir",
-        type=Path,
-        help="Base directory containing repositories (default: ../payload/public-repos-checks)"
-    )
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=cmd_run_constructive)
 
-    # Show command
-    show_parser = subparsers.add_parser(
-        'show', help='Display experiment results')
-    show_parser.add_argument(
-        "repo",
-        nargs='?',
-        help="Repository name (optional, interactive selection if not provided)"
+    p = subparsers.add_parser(
+        "generate", help="(not yet implemented) Run LLM-based summary generation"
     )
-    show_parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Show summary table of all experiments"
-    )
-    show_parser.add_argument(
-        "--output",
-        type=Path,
-        help="Output directory for results (default: ../payload/public-repos-checks/results)"
-    )
+    p.add_argument("--repo", required=True)
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=_not_implemented("generate"))
 
-    # Clear command
-    clear_parser = subparsers.add_parser(
-        'clear', help='Clear experiment results')
-    clear_parser.add_argument(
-        "repo",
-        nargs='?',
-        help="Repository name (optional, clears all if not provided)"
+    p = subparsers.add_parser(
+        "run-taint-baseline",
+        help="(not yet implemented) Run the taint analysis without any summaries",
     )
-    clear_parser.add_argument(
-        "--output",
+    p.add_argument("--repo", required=True)
+    p.add_argument("--taint-problems", required=True)
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=_not_implemented("run-taint-baseline"))
+
+    p = subparsers.add_parser(
+        "run-taint-models",
+        help="(not yet implemented) Run the taint analysis with checked-sound summaries",
+    )
+    p.add_argument("--repo", required=True)
+    p.add_argument("--taint-problems", required=True)
+    p.add_argument("--summaries", required=True)
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=_not_implemented("run-taint-models"))
+
+    p = subparsers.add_parser(
+        "eval-checker-precision",
+        help="RQ checker-precision: checker vs. ground truth vs. constructive",
+    )
+    p.add_argument("--repo", required=True)
+    p.add_argument(
+        "--summaries",
+        required=True,
         type=Path,
-        help="Output directory for results (default: ../payload/public-repos-checks/results)"
+        help="Path (relative to the repo dir) to the ground-truth summaries file that was checked",
     )
+    p.add_argument("--check-report", required=True, type=Path)
+    p.add_argument("--constructive-report", required=True, type=Path)
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=cmd_eval_checker_precision)
+
+    p = subparsers.add_parser(
+        "eval-checker-efficiency",
+        help="RQ checker-efficiency: checker vs. constructive runtime",
+    )
+    p.add_argument("--repo", required=True)
+    p.add_argument(
+        "--summaries",
+        required=True,
+        type=Path,
+        help="Path (relative to the repo dir) to the summaries file that was checked",
+    )
+    p.add_argument("--check-report", required=True, type=Path)
+    p.add_argument("--constructive-report", required=True, type=Path)
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=cmd_eval_checker_efficiency)
+
+    p = subparsers.add_parser(
+        "eval-checker-ablation", help="RQ checker-ablation: sub-analysis usage counts"
+    )
+    p.add_argument("--repo", required=True)
+    p.add_argument(
+        "--summaries",
+        required=True,
+        type=Path,
+        help="Path (relative to the repo dir) to the summaries file that was checked",
+    )
+    p.add_argument("--check-report", required=True, type=Path)
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=cmd_eval_checker_ablation)
+
+    p = subparsers.add_parser(
+        "eval-llm-effectiveness", help="(not yet implemented) RQ llm-effectiveness"
+    )
+    p.add_argument("--repo", required=True)
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=_not_implemented("eval-llm-effectiveness"))
+
+    p = subparsers.add_parser(
+        "eval-workflow-efficiency", help="(not yet implemented) RQ workflow-efficiency"
+    )
+    p.add_argument("--repo", required=True)
+    p.add_argument("--out", required=True, type=Path)
+    p.set_defaults(func=_not_implemented("eval-workflow-efficiency"))
+
+    p = subparsers.add_parser(
+        "latex",
+        help="(not yet implemented) Render a paper table from eval-* output files",
+    )
+    p.add_argument("--data", required=True, nargs="+", type=Path)
+    p.set_defaults(func=_not_implemented("latex"))
 
     args = parser.parse_args()
+    args.func(args)
+    return 0
 
-    # Set defaults relative to script location
-    script_dir = Path(__file__).parent
 
-    # Handle commands
-    if args.command == 'show':
-        output_dir = args.output or script_dir.parent / \
-            "payload" / "public-repos-checks" / "results"
-        if getattr(args, 'all', False):
-            display_all_reports(output_dir)
-        else:
-            show_command(output_dir, args.repo)
-        return 0
+# ---------------------------------------------------------------------------
+# Producer commands: invoke argot, write its raw JSON output.
+# ---------------------------------------------------------------------------
 
-    elif args.command == 'clear':
-        output_dir = args.output or script_dir.parent / \
-            "payload" / "public-repos-checks" / "results"
-        clear_experiments(output_dir, args.repo)
-        return 0
 
-    elif args.command == 'run':
-        base_dir = args.base_dir or script_dir.parent / "payload" / "public-repos-checks"
-        output_dir = args.output or base_dir / "results"
+def cmd_run_check(args: argparse.Namespace) -> None:
+    _write_check_report(
+        "run-check",
+        args.repo,
+        args.summaries,
+        via="all",
+        extra_config={},
+        out_path=args.out,
+    )
 
-        if not base_dir.exists():
-            logger.error(f"Base directory not found: {base_dir}")
-            return 1
 
-        # Check dependencies
-        for cmd in ["argot", "argot-summarize"]:
-            if shutil.which(cmd) is None:
-                logger.error(f"Required command not found: {cmd}")
-                return 1
+def cmd_run_constructive(args: argparse.Namespace) -> None:
+    _write_check_report(
+        "run-constructive",
+        args.repo,
+        args.methods,
+        via="naive",
+        extra_config={},
+        out_path=args.out,
+    )
 
-        output_dir.mkdir(parents=True, exist_ok=True)
 
-        if args.repo == "all":
-            logger.info("Running experiments on all repositories")
-            repos = get_all_repos(base_dir)
-            logger.info(
-                f"Found {len(repos)} repositories: {[r.name for r in repos]}")
+# ---------------------------------------------------------------------------
+# eval-checker-* commands: pure analysis over already-produced check-report.json files.
+# ---------------------------------------------------------------------------
 
-            aggregate_results = []
 
-            for repo_dir in repos:
-                logger.info(f"\n{'='*60}")
-                logger.info(f"Processing {repo_dir.name}...")
-                logger.info(f"{'='*60}\n")
+def cmd_eval_checker_precision(args: argparse.Namespace) -> None:
+    check_report = json.loads(Path(args.check_report).read_text())
+    constructive_report = json.loads(Path(args.constructive_report).read_text())
+    summaries_path = repo_dir(args.repo) / args.summaries
+    targets = _build_targets(check_report, summaries_path, constructive_report)
 
-                runner = ExperimentRunner(
-                    repo_dir, output_dir, args.timeout, args.constructive_timeout, args.aws_profile)
-                report = runner.run()
+    for t in targets:
+        for r in t["results"]:
+            r.pop("checker_seconds", None)
+            r.pop("constructive_seconds", None)
 
-                if report:
-                    aggregate_results.append(report)
+    out = {"rq": "checker-precision", "repo": args.repo, "targets": targets}
+    Path(args.out).write_text(json.dumps(out, indent=2))
+    console.print(f"[green]Wrote {args.out}[/green]")
 
-            # Write aggregate results
-            timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
-            aggregate_path = output_dir / f"aggregate-{timestamp}.json"
-            aggregate_path.write_text(json.dumps(aggregate_results, indent=2))
 
-            logger.info(f"\nAll experiments completed")
-            logger.info(f"Aggregate results: {aggregate_path}")
+def cmd_eval_checker_efficiency(args: argparse.Namespace) -> None:
+    check_report = json.loads(Path(args.check_report).read_text())
+    constructive_report = json.loads(Path(args.constructive_report).read_text())
+    summaries_path = repo_dir(args.repo) / args.summaries
+    targets = _build_targets(check_report, summaries_path, constructive_report)
 
-        else:
-            repo_dir = base_dir / args.repo
-            if not repo_dir.exists():
-                logger.error(f"Repository directory not found: {repo_dir}")
-                return 1
+    for t in targets:
+        for r in t["results"]:
+            r.pop("checker_soundness", None)
+            r.pop("checker_method", None)
+            r.pop("ground_truth_flow_count", None)
+            r.pop("constructive_flow_count", None)
+            r.pop("constructive_excess_flow_count", None)
 
-            runner = ExperimentRunner(
-                repo_dir, output_dir, args.timeout, args.constructive_timeout, args.aws_profile)
-            report = runner.run()
+    out = {"rq": "checker-efficiency", "repo": args.repo, "targets": targets}
+    Path(args.out).write_text(json.dumps(out, indent=2))
+    console.print(f"[green]Wrote {args.out}[/green]")
 
-            if not report:
-                return 1
 
-        return 0
+def cmd_eval_checker_ablation(args: argparse.Namespace) -> None:
+    check_report = json.loads(Path(args.check_report).read_text())
+    summaries_path = repo_dir(args.repo) / args.summaries
+    targets = _build_targets(check_report, summaries_path)
 
-    else:
-        parser.print_help()
-        return 1
+    for t in targets:
+        for r in t["results"]:
+            for key in list(r.keys()):
+                if key not in ("name", "checker_method"):
+                    del r[key]
+
+    out = {"rq": "checker-ablation", "repo": args.repo, "targets": targets}
+    Path(args.out).write_text(json.dumps(out, indent=2))
+    console.print(f"[green]Wrote {args.out}[/green]")
+
+
+def _not_implemented(name: str):
+    def handler(_args: argparse.Namespace) -> None:
+        console.print(f"[red]{name} is not yet implemented.[/red]")
+        sys.exit(1)
+
+    return handler
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for the producer commands (run-check, run-constructive).
+# ---------------------------------------------------------------------------
+
+
+def _write_check_report(
+    cmd_name: str,
+    repo: str,
+    summaries_or_methods_path: str,
+    via: str,
+    extra_config: Dict[str, Any],
+    out_path: Path,
+) -> None:
+    """Shared implementation for run-check and run-constructive: writes a temp config
+    overriding dataflow-problems.check-specs/user-specs, runs `argot check`, and copies the
+    resulting check-report.json to out_path."""
+    repo_path = repo_dir(repo)
+    config = _load_base_config(repo_path)
+    config.setdefault("dataflow-problems", {})
+    config["dataflow-problems"]["user-specs"] = []
+    config["dataflow-problems"]["check-specs"] = [str(summaries_or_methods_path)]
+    config["dataflow-problems"].update(extra_config)
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".yaml",
+        dir=repo_path,
+        prefix=".tmp-argot-config-",
+        delete=False,
+    ) as tmp:
+        yaml.safe_dump(config, tmp)
+        tmp_config_path = Path(tmp.name)
+
+    log_file = out_path.with_suffix(".log")
+    try:
+        duration = _run_subprocess(
+            ["argot", "check", "-config", tmp_config_path.name, "-via", via],
+            cwd=repo_path,
+            log_file=log_file,
+            label=f"{cmd_name} ({repo})",
+        )
+    finally:
+        tmp_config_path.unlink(missing_ok=True)
+
+    report_path = None
+    content = log_file.read_text()
+    for line in content.splitlines():
+        if "Full report written to" in line:
+            report_path = Path(line.split("Full report written to", 1)[1].strip())
+            break
+
+    if report_path is None or not report_path.exists():
+        console.print(
+            f"[red]{cmd_name} did not produce a check-report.json; see {log_file}[/red]"
+        )
+        sys.exit(1)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(report_path.read_text())
+    console.print(f"[green]Wrote {out_path}[/green] ({duration:.1f}s)")
+
+
+def _load_base_config(repo: Path) -> Dict[str, Any]:
+    config_path = repo / "argot-config.yaml"
+    if not config_path.exists():
+        console.print(f"[red]Config file not found: {config_path}[/red]")
+        sys.exit(1)
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def _run_subprocess(
+    cmd: List[str], cwd: Path, log_file: Path, label: str, timeout: Optional[int] = None
+) -> float:
+    """Run a subprocess, logging its output to log_file. Returns the duration in seconds.
+
+    Raises subprocess.TimeoutExpired if timeout elapses, CalledProcessError on nonzero exit.
+    """
+    console.print(f"[dim]Running {label}...[/dim]")
+    start_time = time.time()
+    with open(log_file, "w") as f:
+        proc = subprocess.Popen(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT)
+
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        raise
+    finally:
+        duration = time.time() - start_time
+
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
+
+    console.print(f"  [dim]{label}:[/dim] {duration:.1f}s")
+    return duration
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for the eval-checker-* commands.
+# ---------------------------------------------------------------------------
+
+
+def _build_targets(
+    check_report: Dict[str, Any],
+    summaries_path: Path,
+    constructive_report: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Build the targets/kind/results grouping shared by eval-checker-* commands.
+
+    summaries_path is the summaries file that was checked (ground truth, for
+    eval-checker-precision/efficiency/ablation): each entry becomes one target, grouped by
+    SummaryName (see _group_by_summary_name) -- an interface entry's target has one result per
+    concrete implementation, a plain function/method's target has exactly one result.
+    """
+    entries = _load_summary_entries(summaries_path)
+    check_by_summary = _group_by_summary_name(check_report)
+    constructive_by_func = {}
+    if constructive_report:
+        for _target_name, results in constructive_report.items():
+            for r in results:
+                constructive_by_func.setdefault(r.get("Func", ""), []).append(r)
+
+    targets = []
+    for entry in entries:
+        kind = "interface" if "interface" in entry else "function"
+        summary_name = _summary_entry_name(entry)
+
+        check_results = check_by_summary.get(summary_name, [])
+        results = []
+        for check_result in check_results:
+            func_name = check_result.get("Func", "")
+            constructive_matches = constructive_by_func.get(func_name, [])
+            results.append(
+                _merge_result(
+                    check_result,
+                    constructive_matches[0] if constructive_matches else None,
+                )
+            )
+
+        targets.append({"summary_name": summary_name, "kind": kind, "results": results})
+
+    return targets
+
+
+def _merge_result(
+    check_result: Dict[str, Any], constructive_result: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    want = check_result.get("Want") or {}
+    merged = {
+        "name": check_result.get("Func", ""),
+        "checker_soundness": check_result.get("Soundness", ""),
+        "checker_method": check_result.get("Method", ""),
+        "checker_seconds": (check_result.get("Elapsed") or 0) / 1e9,
+        "ground_truth_flow_count": _flow_count(want),
+    }
+    if constructive_result is not None:
+        got = constructive_result.get("Got") or {}
+        merged["constructive_flow_count"] = _flow_count(got)
+        merged["constructive_excess_flow_count"] = _excess_flow_count(want, got)
+        merged["constructive_seconds"] = (constructive_result.get("Elapsed") or 0) / 1e9
+    return merged
+
+
+def _group_by_summary_name(
+    report: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Group a check-report.json's flat per-target result lists by SummaryName (the
+    top-level summary entry each result was checked against). For an interface method, every
+    concrete implementation's result shares the same SummaryName (the interface method's own
+    name); for a plain function, SummaryName equals Func."""
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for _target_name, results in report.items():
+        for r in results:
+            grouped.setdefault(r.get("SummaryName", ""), []).append(r)
+    return grouped
+
+
+def _load_summary_entries(summaries_path: Path) -> List[Dict[str, Any]]:
+    with open(summaries_path) as f:
+        data = yaml.safe_load(f) or {}
+    return data.get("dataflow-summaries", [])
+
+
+def _summary_entry_name(entry: Dict[str, Any]) -> str:
+    """Reconstruct the exact string produced by the corresponding Go
+    summaries.FrontendDataflowSummary.Name() implementation (frontend.go), so that entries
+    loaded from a summaries YAML file line up with SummaryName values in a check-report.json."""
+    if "interface" in entry:
+        return f"({entry['package']}.{entry['interface']}).{entry['method']}"
+    if "receiver" in entry:
+        receiver = entry["receiver"]
+        if receiver.startswith("*"):
+            return f"(*{entry['package']}.{receiver[1:]}).{entry['method']}"
+        return f"({entry['package']}.{receiver}).{entry['method']}"
+    return f"{entry['package']}.{entry['function']}"
+
+
+def _flow_count(summary: Dict[str, List[str]]) -> int:
+    """Count individual flow edges in a DetailedSummary-shaped {source: [dest, ...]} map."""
+    return sum(len(dests) for dests in (summary or {}).values())
+
+
+def _excess_flow_count(want: Dict[str, List[str]], got: Dict[str, List[str]]) -> int:
+    """Count flow edges present in got but not in want."""
+    want = want or {}
+    got = got or {}
+    excess = 0
+    for src, dests in got.items():
+        want_dests = set(want.get(src, []))
+        for d in dests:
+            if d not in want_dests:
+                excess += 1
+    return excess
+
+
+# ---------------------------------------------------------------------------
+# Generic low-level utilities.
+# ---------------------------------------------------------------------------
+
+
+def repo_dir(repo: str) -> Path:
+    d = REPOS_BASE_DIR / repo
+    if not d.exists():
+        console.print(f"[red]Repository directory not found: {d}[/red]")
+        sys.exit(1)
+    return d
 
 
 if __name__ == "__main__":
