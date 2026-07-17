@@ -408,7 +408,7 @@ func newSummaryNode(gn graphNode) summaries.SummaryNode {
 		if recv := f.Signature.Recv(); recv != nil {
 			// f is a method and param is a receiver
 			if n.Index() == 0 {
-				return summaries.ReceiverSNode{}
+				return summaries.ReceiverSNode{ObjectPath: path}
 			}
 			return summaries.ArgumentSNode{Name: n.SsaNode().Name(), Index: n.Index() - 1, ObjectPath: path}
 		}

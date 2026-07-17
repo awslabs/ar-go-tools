@@ -149,6 +149,12 @@ type ReceiverMethodFlowSummary struct {
 	summary DetailedSummary
 }
 
+// NewReceiverMethodFlowSummary creates a new ReceiverMethodFlowSummary with the given package,
+// receiver (e.g. "*Client" or "Client"), method name, and summary.
+func NewReceiverMethodFlowSummary(pkg string, receiver string, method string, summary DetailedSummary) ReceiverMethodFlowSummary {
+	return ReceiverMethodFlowSummary{pkg: pkg, Receiver: receiver, Method: method, summary: summary}
+}
+
 // Name returns the fully-qualified name of the method this summary corresponds to.
 func (s ReceiverMethodFlowSummary) Name() string {
 	if strings.HasPrefix(s.Receiver, "*") {

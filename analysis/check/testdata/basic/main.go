@@ -390,6 +390,64 @@ func testSummarizeSinkCallerUnsound() {
 	sinkCaller(s)
 }
 
+// multiFieldReceiver has several fields, mirroring a struct with multiple exported config-like
+// fields (e.g. aws-sdk-go's client.Client), to reproduce a duplication bug in
+// UnprovenMustNotFlows when Want has several field-sensitive entries with the same (!receiver)
+// base.
+type multiFieldReceiver struct {
+	fieldA string
+	fieldB string
+	fieldC string
+	fieldD string
+}
+
+// multiFieldResult mirrors a struct with many fields set from many different inputs so the helper's
+// own summary is itself non-trivial.
+type multiFieldResult struct {
+	outA string
+	outB string
+	outC string
+	outD string
+	outX string
+	outY string
+	outZ string
+}
+
+// multiFieldMethod calls a helper and writes into out; used with a Want that omits some real
+// flows, forcing the checker to recurse and report several receiver-sourced must-not-flows.
+func (r *multiFieldReceiver) multiFieldMethod(
+	argX string, argY string, argZ string, out *multiFieldReceiver) string {
+
+	res := multiFieldHelper(r.fieldA, r.fieldB, r.fieldC, r.fieldD, argX, argY, argZ)
+	out.fieldA = res.outA
+	out.fieldB = res.outB
+	return res.outA + res.outB + res.outC + res.outD + res.outX + res.outY + res.outZ
+}
+
+func multiFieldHelper(a, b, c, d, x, y, z string) *multiFieldResult {
+	res := &multiFieldResult{}
+	if len(a) > 0 {
+		res.outA = a
+		res.outX = x
+	} else {
+		res.outB = b
+		res.outY = y
+	}
+	if len(c) > 0 {
+		res.outC = c
+		res.outZ = z
+	} else {
+		res.outD = d
+	}
+	return res
+}
+
+func testMultiFieldReceiver() {
+	r := &multiFieldReceiver{fieldA: "a", fieldB: "b", fieldC: "c", fieldD: "d"}
+	out := &multiFieldReceiver{}
+	_ = r.multiFieldMethod("x", "y", "z", out)
+}
+
 func main() {
 	testSingleArgIntraOut()
 	testSingleArgInterNone()
@@ -415,4 +473,5 @@ func main() {
 	testNestedClosuresInvalid()
 	testSummarizeSourceCallerUnsound()
 	testSummarizeSinkCallerUnsound()
+	testMultiFieldReceiver()
 }

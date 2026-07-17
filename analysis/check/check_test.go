@@ -1144,6 +1144,76 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: nil,
 			},
 		},
+		{
+			// multiFieldMethod's real behavior writes into "out" too, but Want only declares
+			// flows into !ret 0, so every flow into out and every receiver-field-to-{receiver,
+			// out} pairing is an unproven must-not-flow. Each of the 4 receiver fields must be
+			// distinguishable in the result (regression test: newSummaryNode used to always
+			// return a bare ReceiverSNode{} with no ObjectPath, collapsing all 4 receiver-field-
+			// sourced flows into indistinguishable duplicate entries).
+			pkg:      pkg,
+			name:     "multiFieldMethod",
+			receiver: "*multiFieldReceiver",
+			typ:      methodSummary,
+			want: check.SoundnessResult{
+				Name: "(*" + pkg + ".multiFieldReceiver).multiFieldMethod",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ReceiverSNode{ObjectPath: ".fieldA"}:  {summaries.ReturnSNode{Index: 0}},
+						summaries.ReceiverSNode{ObjectPath: ".fieldB"}:  {summaries.ReturnSNode{Index: 0}},
+						summaries.ReceiverSNode{ObjectPath: ".fieldC"}:  {summaries.ReturnSNode{Index: 0}},
+						summaries.ReceiverSNode{ObjectPath: ".fieldD"}:  {summaries.ReturnSNode{Index: 0}},
+						summaries.ArgumentSNode{Name: "argX", Index: 0}: {summaries.ReturnSNode{Index: 0}},
+						summaries.ArgumentSNode{Name: "argY", Index: 1}: {summaries.ReturnSNode{Index: 0}},
+						summaries.ArgumentSNode{Name: "argZ", Index: 2}: {summaries.ReturnSNode{Index: 0}},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{From: summaries.ReceiverSNode{ObjectPath: ".fieldA"}, To: summaries.ReceiverSNode{}},
+						{From: summaries.ReceiverSNode{ObjectPath: ".fieldA"}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
+						{From: summaries.ReceiverSNode{ObjectPath: ".fieldB"}, To: summaries.ReceiverSNode{}},
+						{From: summaries.ReceiverSNode{ObjectPath: ".fieldB"}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
+						{From: summaries.ReceiverSNode{ObjectPath: ".fieldC"}, To: summaries.ReceiverSNode{}},
+						{From: summaries.ReceiverSNode{ObjectPath: ".fieldC"}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
+						{From: summaries.ReceiverSNode{ObjectPath: ".fieldD"}, To: summaries.ReceiverSNode{}},
+						{From: summaries.ReceiverSNode{ObjectPath: ".fieldD"}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
+						{From: summaries.ArgumentSNode{Name: "argX", Index: 0}, To: summaries.ReceiverSNode{}},
+						{From: summaries.ArgumentSNode{Name: "argX", Index: 0}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
+						{From: summaries.ArgumentSNode{Name: "argY", Index: 1}, To: summaries.ReceiverSNode{}},
+						{From: summaries.ArgumentSNode{Name: "argY", Index: 1}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
+						{From: summaries.ArgumentSNode{Name: "argZ", Index: 2}, To: summaries.ReceiverSNode{}},
+						{From: summaries.ArgumentSNode{Name: "argZ", Index: 2}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
+						{From: summaries.ArgumentSNode{Name: "out", Index: 3}, To: summaries.ReceiverSNode{}},
+						{From: summaries.ArgumentSNode{Name: "out", Index: 3}, To: summaries.ReturnSNode{Index: 0}},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Name: pkg + ".multiFieldHelper",
+							Want: summaries.DetailedSummary{},
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									{From: summaries.ArgumentSNode{Name: "a", Index: 0}, To: summaries.ReturnSNode{Index: 0}},
+									{From: summaries.ArgumentSNode{Name: "b", Index: 1}, To: summaries.ReturnSNode{Index: 0}},
+									{From: summaries.ArgumentSNode{Name: "c", Index: 2}, To: summaries.ReturnSNode{Index: 0}},
+									{From: summaries.ArgumentSNode{Name: "d", Index: 3}, To: summaries.ReturnSNode{Index: 0}},
+									{From: summaries.ArgumentSNode{Name: "x", Index: 4}, To: summaries.ReturnSNode{Index: 0}},
+									{From: summaries.ArgumentSNode{Name: "y", Index: 5}, To: summaries.ReturnSNode{Index: 0}},
+									{From: summaries.ArgumentSNode{Name: "z", Index: 6}, To: summaries.ReturnSNode{Index: 0}},
+								},
+							},
+							Soundness:     check.Unsound,
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -2247,12 +2317,13 @@ const (
 )
 
 type tcCheck struct {
-	pkg   string
-	name  string
-	iface string // interface name, only used when typ is interfaceSummary
-	typ   summaryType
-	naive bool
-	want  check.SoundnessResult
+	pkg      string
+	name     string
+	iface    string // interface name, only used when typ is interfaceSummary
+	receiver string // receiver type name (e.g. "*Client"), only used when typ is methodSummary
+	typ      summaryType
+	naive    bool
+	want     check.SoundnessResult
 }
 
 func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
@@ -2263,6 +2334,8 @@ func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
 	switch tc.typ {
 	case functionSummary:
 		summary = summaries.NewFunctionFlowSummary(tc.pkg, tc.name, tc.want.Want)
+	case methodSummary:
+		summary = summaries.NewReceiverMethodFlowSummary(tc.pkg, tc.receiver, tc.name, tc.want.Want)
 	case interfaceSummary:
 		summary = summaries.NewIfaceMethodFlowSummary(tc.pkg, tc.iface, tc.name, tc.want.Want)
 	default:
