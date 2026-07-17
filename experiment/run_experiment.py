@@ -39,52 +39,62 @@ GROUND_TRUTH_DIR = EXPERIMENT_DIR / "ground-truth"
 
 
 @dataclass(frozen=True)
+class Target:
+    """One argot-config.yaml build target."""
+
+    name: str
+    files: List[str]
+
+
+@dataclass(frozen=True)
 class RepoInfo:
     """Everything needed to check out a target repo at a pinned commit and build an
     argot-config.yaml for it. url/commit are pinned for reproducibility (see Dockerfile)."""
 
     url: str
     commit: str
-    target_name: str
-    target_files: List[str]
+    targets: List[Target]
 
 
 # The 5 repos used for the checker-precision (RQ1) ground-truth evaluation. Each repo's
 # argot-config.yaml is generated from _build_config below rather than checked into the repo,
 # since it's almost entirely boilerplate -- the only real per-repo variation is the build
-# target. The taint-tracking entry in the generated config is a placeholder: argot check
-# requires every target to be referenced by a taint-tracking/slicing problem to be selected,
-# even though the taint spec's actual sources/sinks are irrelevant to `check`.
+# targets.
 REPOS: Dict[str, RepoInfo] = {
     "amazon-ssm-agent": RepoInfo(
         url="https://github.com/aws/amazon-ssm-agent.git",
         commit="ef5df636f7035bb1e3e325fab519379715678033",
-        target_name="amazon-ssm-agent-unix",
-        target_files=["core/agent.go", "core/agent_unix.go", "core/agent_parser.go"],
+        targets=[
+            Target(
+                name="amazon-ssm-agent-unix",
+                files=["core/agent.go", "core/agent_unix.go", "core/agent_parser.go"],
+            ),
+        ],
     ),
     "badger": RepoInfo(
         url="https://github.com/dgraph-io/badger.git",
         commit="a700dc3b6332e2351674f34f841233541568f782",
-        target_name="badger-cli",
-        target_files=["./badger/"],
+        targets=[Target(name="badger-cli", files=["./badger/"])],
     ),
     "govatar": RepoInfo(
         url="https://github.com/o1egl/govatar.git",
         commit="31618c34a7ae828c61629e022b1654e4ec552628",
-        target_name="govatar-cli",
-        target_files=["./govatar"],
+        targets=[Target(name="govatar-cli", files=["./govatar"])],
     ),
     "prometheus": RepoInfo(
         url="https://github.com/prometheus/client_golang.git",
         commit="7ba246a648ca4e294ca008d95b6fcc8df2f9c255",
-        target_name="prometheus-core",
-        target_files=["./prometheus"],
+        targets=[
+            Target(name="example-simple", files=["./examples/simple/main.go"]),
+            Target(name="example-random", files=["./examples/random/main.go"]),
+            Target(name="gocollector", files=["./examples/gocollector/main.go"]),
+            Target(name="middleware", files=["./examples/middleware/main.go"]),
+        ],
     ),
     "sample": RepoInfo(
         url="",  # local-only sample program, tracked directly in this repo; not cloned
         commit="",
-        target_name="sample-main",
-        target_files=["./main.go"],
+        targets=[Target(name="sample-main", files=["./main.go"])],
     ),
 }
 
@@ -369,14 +379,22 @@ def _write_check_report(
             continue
         total_duration += duration
         part_report = json.loads(part_out.read_text())
+        any_null = False
         for target_name, results in part_report.items():
             if results is None:
                 merged_report.setdefault(target_name, None)
+                any_null = True
                 continue
             existing = merged_report.get(target_name)
             merged_report[target_name] = (existing or []) + results
         part_out.unlink()
-        part_out.with_suffix(".log").unlink(missing_ok=True)
+        if any_null:
+            console.print(
+                f"[red]{cmd_name} ({repo}, {part_path.stem}) produced a null result for at "
+                f"least one target; keeping {part_out.with_suffix('.log')} for diagnosis.[/red]"
+            )
+        else:
+            part_out.with_suffix(".log").unlink(missing_ok=True)
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(merged_report, indent=2))
@@ -446,25 +464,14 @@ def _run_one_check(
 
 def _build_config(repo: str) -> Dict[str, Any]:
     """Build a minimal argot-config.yaml for repo from the shared template. The only
-    per-repo variation is the build target; check-specs/user-specs are always overridden by
-    _write_check_report before this is used, and the taint-tracking entry is a placeholder
-    that exists solely to make the target selectable by `argot check` (see REPOS)."""
+    per-repo variation is the build targets; check-specs/user-specs are always overridden by
+    _write_check_report before this is used."""
     info = REPOS[repo]
     return {
         "dataflow-problems": {
             "summarize-on-demand": True,
             "check-ignores-unsound": True,
             "field-sensitive-funcs": [".*"],
-            "taint-tracking": [
-                {
-                    "tag": "target-selection-placeholder",
-                    "description": "Placeholder taint-tracking problem so that the build "
-                    "target below is selected by `argot check`; not used for RQ1.",
-                    "targets": [info.target_name],
-                    "sources": [{"method": "^main$", "package": "main"}],
-                    "sinks": [{"method": "^main$", "package": "main"}],
-                }
-            ],
         },
         "options": {
             "project-root": "./",
@@ -473,7 +480,7 @@ def _build_config(repo: str) -> Dict[str, Any]:
             "report-paths": True,
             "analysis-options": {"unsafe-max-depth": 30, "max-alarms": 30},
         },
-        "targets": [{"name": info.target_name, "files": info.target_files}],
+        "targets": [{"name": t.name, "files": t.files} for t in info.targets],
     }
 
 
@@ -578,7 +585,7 @@ def _merge_result(
 
 
 def _group_by_summary_name(
-    report: Dict[str, List[Dict[str, Any]]],
+    report: Dict[str, Optional[List[Dict[str, Any]]]],
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Group a check-report.json's flat per-target result lists by SummaryName (the
     top-level summary entry each result was checked against). For an interface method, every

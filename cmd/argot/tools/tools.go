@@ -202,8 +202,10 @@ func GetTargets(c *config.Config, reqs TargetReqs) (map[string]config.TargetInfo
 	targetsToAnalyze := map[string]config.TargetInfo{}
 	switch reqs.Tool {
 	case config.CheckTool:
-		addTargets(targetsToAnalyze, c.TaintTrackingProblems, allTargets, reqs.Tag, reqs.Platform)
-		addTargets(targetsToAnalyze, c.SlicingProblems, allTargets, reqs.Tag, reqs.Platform)
+		// Unlike taint-tracking/slicing problems, check-specs are not associated with any
+		// particular target, so there is no tag/target list to select from -- check every
+		// target defined in the config (already filtered above by -targets, if given).
+		return allTargets, nil
 	case config.TaintTool:
 		addTargets(targetsToAnalyze, c.TaintTrackingProblems, allTargets, reqs.Tag, reqs.Platform)
 	case config.BacktraceTool:
