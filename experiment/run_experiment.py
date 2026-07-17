@@ -271,60 +271,43 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
 
 
 def cmd_eval_checker_precision(args: argparse.Namespace) -> None:
-    check_report = json.loads(Path(args.check_report).read_text())
-    constructive_report = json.loads(Path(args.constructive_report).read_text())
-    summaries_paths = (
-        [args.summaries] if args.summaries else _ground_truth_files(args.repo)
-    )
-    targets = _build_targets(check_report, summaries_paths, constructive_report)
-
-    for t in targets:
-        for r in t["results"]:
-            r.pop("checker_seconds", None)
-            r.pop("constructive_seconds", None)
-
-    out = {"rq": "checker-precision", "repo": args.repo, "targets": targets}
-    Path(args.out).write_text(json.dumps(out, indent=2))
-    console.print(f"[green]Wrote {args.out}[/green]")
+    _run_eval_checker("precision", args, needs_constructive=True)
 
 
 def cmd_eval_checker_efficiency(args: argparse.Namespace) -> None:
-    check_report = json.loads(Path(args.check_report).read_text())
-    constructive_report = json.loads(Path(args.constructive_report).read_text())
-    summaries_paths = (
-        [args.summaries] if args.summaries else _ground_truth_files(args.repo)
-    )
-    targets = _build_targets(check_report, summaries_paths, constructive_report)
-
-    for t in targets:
-        for r in t["results"]:
-            r.pop("checker_soundness", None)
-            r.pop("checker_method", None)
-            r.pop("ground_truth_flow_count", None)
-            r.pop("constructive_flow_count", None)
-            r.pop("constructive_excess_flow_count", None)
-
-    out = {"rq": "checker-efficiency", "repo": args.repo, "targets": targets}
-    Path(args.out).write_text(json.dumps(out, indent=2))
-    console.print(f"[green]Wrote {args.out}[/green]")
+    _run_eval_checker("efficiency", args, needs_constructive=True)
 
 
 def cmd_eval_checker_ablation(args: argparse.Namespace) -> None:
-    check_report = json.loads(Path(args.check_report).read_text())
+    _run_eval_checker("ablation", args, needs_constructive=False)
+
+
+def _run_eval_checker(subcommand: str, args: argparse.Namespace, needs_constructive: bool) -> None:
+    """Shell out to the eval-checker Go tool (experiment/eval-checker), which does the actual
+    grouping/flow-count/excess-flow computation using analysis/summaries' own SummaryNode
+    parsing and comparison logic, rather than re-implementing it here."""
     summaries_paths = (
         [args.summaries] if args.summaries else _ground_truth_files(args.repo)
     )
-    targets = _build_targets(check_report, summaries_paths)
+    cmd = [
+        "go", "run", str(EXPERIMENT_DIR / "eval-checker"), subcommand,
+        "-repo", args.repo,
+        "-check-report", str(args.check_report),
+        "-out", str(args.out),
+    ]
+    for p in summaries_paths:
+        cmd += ["-summaries", str(p)]
+    if needs_constructive:
+        cmd += ["-constructive-report", str(args.constructive_report)]
 
-    for t in targets:
-        for r in t["results"]:
-            for key in list(r.keys()):
-                if key not in ("name", "checker_method"):
-                    del r[key]
-
-    out = {"rq": "checker-ablation", "repo": args.repo, "targets": targets}
-    Path(args.out).write_text(json.dumps(out, indent=2))
-    console.print(f"[green]Wrote {args.out}[/green]")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.stdout:
+        console.print(result.stdout, end="")
+    if result.returncode != 0:
+        console.print(f"[red]eval-checker {subcommand} failed:[/red]\n{result.stderr}")
+        sys.exit(1)
+    if result.stderr:
+        console.print(f"[yellow]{result.stderr}[/yellow]", end="")
 
 
 def _not_implemented(name: str):
@@ -510,142 +493,6 @@ def _run_subprocess(
 
     console.print(f"  [dim]{label}:[/dim] {duration:.1f}s")
     return duration
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers for the eval-checker-* commands.
-# ---------------------------------------------------------------------------
-
-
-def _build_targets(
-    check_report: Dict[str, Any],
-    summaries_paths: List[Path],
-    constructive_report: Optional[Dict[str, Any]] = None,
-) -> List[Dict[str, Any]]:
-    """Build the targets/kind/results grouping shared by eval-checker-* commands.
-
-    summaries_paths are the summaries files that were checked (ground truth, for
-    eval-checker-precision/efficiency/ablation): each entry becomes one target, grouped by
-    SummaryName (see _group_by_summary_name) -- an interface entry's target has one result per
-    concrete implementation, a plain function/method's target has exactly one result.
-    """
-    entries = _load_summary_entries(summaries_paths)
-    check_by_summary = _group_by_summary_name(check_report)
-    constructive_by_func = {}
-    if constructive_report:
-        for target_name, results in constructive_report.items():
-            if results is None:
-                console.print(
-                    f"[red]Warning: target {target_name!r} has no results in the "
-                    "constructive report; see the .log file.[/red]"
-                )
-                continue
-            for r in results:
-                constructive_by_func.setdefault(r.get("Func", ""), []).append(r)
-
-    targets = []
-    for entry in entries:
-        kind = "interface" if "interface" in entry else "function"
-        summary_name = _summary_entry_name(entry)
-
-        check_results = check_by_summary.get(summary_name, [])
-        results = []
-        for check_result in check_results:
-            func_name = check_result.get("Func", "")
-            constructive_matches = constructive_by_func.get(func_name, [])
-            results.append(
-                _merge_result(
-                    check_result,
-                    constructive_matches[0] if constructive_matches else None,
-                )
-            )
-
-        targets.append({"summary_name": summary_name, "kind": kind, "results": results})
-
-    return targets
-
-
-def _merge_result(
-    check_result: Dict[str, Any], constructive_result: Optional[Dict[str, Any]]
-) -> Dict[str, Any]:
-    want = check_result.get("Want") or {}
-    merged = {
-        "name": check_result.get("Func", ""),
-        "checker_soundness": check_result.get("Soundness", ""),
-        "checker_method": check_result.get("Method", ""),
-        "checker_seconds": (check_result.get("Elapsed") or 0) / 1e9,
-        "ground_truth_flow_count": _flow_count(want),
-    }
-    if constructive_result is not None:
-        got = constructive_result.get("Got") or {}
-        merged["constructive_flow_count"] = _flow_count(got)
-        merged["constructive_excess_flow_count"] = _excess_flow_count(want, got)
-        merged["constructive_seconds"] = (constructive_result.get("Elapsed") or 0) / 1e9
-    return merged
-
-
-def _group_by_summary_name(
-    report: Dict[str, Optional[List[Dict[str, Any]]]],
-) -> Dict[str, List[Dict[str, Any]]]:
-    """Group a check-report.json's flat per-target result lists by SummaryName (the
-    top-level summary entry each result was checked against). For an interface method, every
-    concrete implementation's result shares the same SummaryName (the interface method's own
-    name); for a plain function, SummaryName equals Func."""
-    grouped: Dict[str, List[Dict[str, Any]]] = {}
-    for target_name, results in report.items():
-        if results is None:
-            # A target with a null result means argot check failed to build/analyze it
-            # entirely (e.g. a Go toolchain mismatch) rather than reporting per-summary
-            # errors; surface this loudly instead of silently treating it as "no results".
-            console.print(
-                f"[red]Warning: target {target_name!r} has no results in the check "
-                "report (argot check likely failed to build it); see the .log file.[/red]"
-            )
-            continue
-        for r in results:
-            grouped.setdefault(r.get("SummaryName", ""), []).append(r)
-    return grouped
-
-
-def _load_summary_entries(summaries_paths: List[Path]) -> List[Dict[str, Any]]:
-    entries = []
-    for path in summaries_paths:
-        with open(path) as f:
-            data = yaml.safe_load(f) or {}
-        entries.extend(data.get("dataflow-summaries", []))
-    return entries
-
-
-def _summary_entry_name(entry: Dict[str, Any]) -> str:
-    """Reconstruct the exact string produced by the corresponding Go
-    summaries.FrontendDataflowSummary.Name() implementation (frontend.go), so that entries
-    loaded from a summaries YAML file line up with SummaryName values in a check-report.json."""
-    if "interface" in entry:
-        return f"({entry['package']}.{entry['interface']}).{entry['method']}"
-    if "receiver" in entry:
-        receiver = entry["receiver"]
-        if receiver.startswith("*"):
-            return f"(*{entry['package']}.{receiver[1:]}).{entry['method']}"
-        return f"({entry['package']}.{receiver}).{entry['method']}"
-    return f"{entry['package']}.{entry['function']}"
-
-
-def _flow_count(summary: Dict[str, List[str]]) -> int:
-    """Count individual flow edges in a DetailedSummary-shaped {source: [dest, ...]} map."""
-    return sum(len(dests) for dests in (summary or {}).values())
-
-
-def _excess_flow_count(want: Dict[str, List[str]], got: Dict[str, List[str]]) -> int:
-    """Count flow edges present in got but not in want."""
-    want = want or {}
-    got = got or {}
-    excess = 0
-    for src, dests in got.items():
-        want_dests = set(want.get(src, []))
-        for d in dests:
-            if d not in want_dests:
-                excess += 1
-    return excess
 
 
 # ---------------------------------------------------------------------------

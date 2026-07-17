@@ -238,20 +238,36 @@ func (s DetailedSummary) String() string {
 	return b.String()
 }
 
+// Flow is a single (source, destination) pair within a DetailedSummary.
+type Flow struct {
+	From SummaryNode
+	To   SummaryNode
+}
+
+func (f Flow) String() string {
+	return fmt.Sprintf("%s -> %s", f.From, f.To)
+}
+
 // IsMoreGeneralThan returns true if s is a more general summary than other, that is, its set of
 // flow is a superset of the other's flows.
 func (s DetailedSummary) IsMoreGeneralThan(other DetailedSummary) bool {
-	// Every (input, output) pair in other's flows must be covered by some (input, output) pair
-	// in s's flows. s may have additional inputs, or additional outputs per input, and still be
-	// more general.
+	return len(s.UncoveredFlows(other)) == 0
+}
+
+// UncoveredFlows returns the (input, output) pairs in other's flows that are not covered by any
+// flow in s. This is the same check as IsMoreGeneralThan, but returns the actual uncovered
+// flows instead of a boolean: e.g., for reporting how many flows in a computed summary exceed
+// a checked ground-truth summary.
+func (s DetailedSummary) UncoveredFlows(other DetailedSummary) []Flow {
+	var uncovered []Flow
 	for input, otherOutputs := range other.Flows {
 		for _, output := range otherOutputs {
 			if !s.coversFlow(input, output) {
-				return false
+				uncovered = append(uncovered, Flow{From: input, To: output})
 			}
 		}
 	}
-	return true
+	return uncovered
 }
 
 // coversFlow returns true if some flow in s covers the flow (input, output): same base nodes on
@@ -272,12 +288,40 @@ func (s DetailedSummary) coversFlow(input, output SummaryNode) bool {
 }
 
 // nodeCovers returns true if want and got have the same base node and want's access path is a
-// prefix of (or equal to) got's -- an empty path in want matches any path in got.
+// prefix of (or equal to) got's -- an empty path in want matches any path in got. "[*]" is
+// stripped from both paths before comparing: like in analysis/check's own path handling, it's
+// just an annotation that a node is a slice/array/map (as opposed to a scalar) and carries no
+// extra path semantics -- there's no real difference between a path element "f" and "f[*]".
 func nodeCovers(want, got SummaryNode) bool {
-	if want.WithObjectPath("") != got.WithObjectPath("") {
+	if !sameBase(want.WithObjectPath(""), got.WithObjectPath("")) {
 		return false
 	}
-	return strings.HasPrefix(got.Path(), want.Path())
+	stripVectorMarker := func(p string) string { return strings.ReplaceAll(p, "[*]", "") }
+	return strings.HasPrefix(stripVectorMarker(got.Path()), stripVectorMarker(want.Path()))
+}
+
+// sameBase returns true if a and b refer to the same base node (ignoring object path). This is
+// plain equality, except for ArgumentSNode: a hand-written ground-truth summary may refer to an
+// argument by index only (e.g. "!arg 0", parsed as ArgumentSNode{Index: 0}), while a computed
+// summary always has both a real Name and Index (e.g. ArgumentSNode{Name: "b", Index: 0}) --
+// sameArgument (see below) matches those two forms on Index, ignoring the absent Name.
+func sameBase(a, b SummaryNode) bool {
+	if a == b {
+		return true
+	}
+	aArg, aOk := a.(ArgumentSNode)
+	bArg, bOk := b.(ArgumentSNode)
+	if !aOk || !bOk {
+		return false
+	}
+	return sameArgument(aArg, bArg)
+}
+
+// sameArgument implements sameBase's ArgumentSNode case, matching analysis/check/general.go's
+// matchesNode (which resolves an ArgumentSNode against a live *ssa.Function parameter the same
+// way): two argument nodes are the same if either their names match, or their indices match.
+func sameArgument(a, b ArgumentSNode) bool {
+	return (a.Name != "" && a.Name == b.Name) || a.Index == b.Index
 }
 
 // GetArgFlows returns the indexed flows from parameters to returns of the detailed summary.

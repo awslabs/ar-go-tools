@@ -157,3 +157,86 @@ func TestIsMoreGeneralThan(t *testing.T) {
 		})
 	}
 }
+
+func TestUncoveredFlows(t *testing.T) {
+	testCases := []struct {
+		name string
+		want DetailedSummary
+		got  DetailedSummary
+		// uncovered is the expected count of flows in got not covered by want.
+		uncovered int
+	}{
+		{
+			// Regression case: a coarse declared flow (matching a real (*net.OpError).Temporary
+			// ground-truth entry) must cover every field-sensitive flow on the same base, so
+			// nothing here is genuinely uncovered.
+			name: "coarse want covers all field-sensitive got flows on the same base",
+			want: DetailedSummary{Flows: map[SummaryNode][]SummaryNode{
+				ReceiverSNode{}: {ReturnSNode{Index: 0}},
+			}},
+			got: DetailedSummary{Flows: map[SummaryNode][]SummaryNode{
+				ReceiverSNode{}: {
+					ReturnSNode{Index: 0, ObjectPath: ".Err"},
+					ReturnSNode{Index: 0, ObjectPath: ".Op"},
+				},
+			}},
+			uncovered: 0,
+		},
+		{
+			// A flow between two declared inputs (not into the return) is genuinely uncovered,
+			// matching the real fmt.Append self-flow finding. Got uses named argument nodes
+			// (as a computed summary always does), Want uses index-only nodes (as the
+			// hand-written ground truth does here) -- these must still match on index alone
+			// (see the sameBase name/index regression case below), so the only uncovered flow
+			// is the genuine arg-to-arg self-flow, not a naming-mismatch artifact.
+			name: "flow between two arguments is genuinely uncovered",
+			want: DetailedSummary{Flows: map[SummaryNode][]SummaryNode{
+				ArgumentSNode{Index: 0}: {ReturnSNode{Index: 0}},
+				ArgumentSNode{Index: 1}: {ReturnSNode{Index: 0}},
+			}},
+			got: DetailedSummary{Flows: map[SummaryNode][]SummaryNode{
+				ArgumentSNode{Name: "a", Index: 1}: {ArgumentSNode{Name: "b", Index: 0}, ReturnSNode{Index: 0}},
+				ArgumentSNode{Name: "b", Index: 0}: {ReturnSNode{Index: 0}},
+			}},
+			uncovered: 1,
+		},
+		{
+			// Regression case: matches the real fmt.Append ground-truth entry exactly,
+			// including its "[*]" vector markers (ObjectPath ".[*]"-ish suffix). "[*]" is a
+			// cosmetic annotation ("this node is a slice/array, not a scalar") with no extra
+			// path semantics, so it must not prevent a coarse want (arg[*] -> ret[*]) from
+			// covering a computed summary's matching whole-value flow (no "[*]" at all).
+			name: "vector marker on want does not prevent covering a scalar-looking got",
+			want: DetailedSummary{Flows: map[SummaryNode][]SummaryNode{
+				ArgumentSNode{Index: 0, ObjectPath: "[*]"}: {ReturnSNode{Index: 0, ObjectPath: "[*]"}},
+				ArgumentSNode{Index: 1, ObjectPath: "[*]"}: {ReturnSNode{Index: 0, ObjectPath: "[*]"}},
+			}},
+			got: DetailedSummary{Flows: map[SummaryNode][]SummaryNode{
+				ArgumentSNode{Name: "a", Index: 1}: {ArgumentSNode{Name: "b", Index: 0}, ReturnSNode{Index: 0}},
+				ArgumentSNode{Name: "b", Index: 0}: {ReturnSNode{Index: 0}},
+			}},
+			uncovered: 1, // only the genuine arg-to-arg self-flow.
+		},
+		{
+			// Regression case: a ground-truth entry written by name only (no index) must still
+			// cover a computed summary's matching named+indexed argument node.
+			name: "want argument by name only covers got's matching named+indexed argument",
+			want: DetailedSummary{Flows: map[SummaryNode][]SummaryNode{
+				ArgumentSNode{Name: "b"}: {ReturnSNode{Index: 0}},
+			}},
+			got: DetailedSummary{Flows: map[SummaryNode][]SummaryNode{
+				ArgumentSNode{Name: "b", Index: 0}: {ReturnSNode{Index: 0}},
+			}},
+			uncovered: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			uncovered := tc.want.UncoveredFlows(tc.got)
+			if len(uncovered) != tc.uncovered {
+				t.Errorf("expected %d uncovered flows, got %d: %v", tc.uncovered, len(uncovered), uncovered)
+			}
+		})
+	}
+}
