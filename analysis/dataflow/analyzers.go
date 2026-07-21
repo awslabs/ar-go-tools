@@ -141,7 +141,6 @@ func runSingleFunctionJob(ctx context.Context, job singleFunctionJob,
 	}
 
 	targetName := formatutil.Sanitize(lang.PkgPathFromFunction(job.function) + "." + job.function.Name())
-	job.analyzerState.Logger.Debugf("%-12s %-90s ...", "Summarizing", formatutil.Sanitize(targetName))
 	result, err := IntraProceduralAnalysis(ctx, job.analyzerState, job.function,
 		job.shouldBuildSummary, GetUniqueFunctionID(), shouldTrack, job.postBlockCallback)
 
@@ -150,13 +149,9 @@ func runSingleFunctionJob(ctx context.Context, job singleFunctionJob,
 		return IntraProceduralResult{}
 	}
 
-	if job.analyzerState.Logger.LogsDebug() {
-		if job.shouldBuildSummary {
-			job.analyzerState.Logger.Debugf("%-12s %-90s [%.2f s]\n",
-				" ", targetName, result.Time.Seconds())
-		} else {
-			job.analyzerState.Logger.Debugf("%-12s %-90s [ SKIP ]\n", " ", targetName)
-		}
+	if job.analyzerState.Logger.LogsDebug() && job.shouldBuildSummary {
+		job.analyzerState.Logger.Debugf("%-12s %-90s [%.2f s]\n",
+			"Summarized", targetName, result.Time.Seconds())
 	}
 
 	summary := result.Summary
