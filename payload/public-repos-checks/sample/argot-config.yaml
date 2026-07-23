@@ -6,7 +6,7 @@ options:
   log-level: 3 # Info level logging (1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
   report-paths: true # Generate detailed path reports for dataflow analyses
   analysis-options:
-    unsafe-max-depth: 30 # Limit call depth for faster analysis
+    unsafe-max-depth: 35 # Limit call depth for faster analysis
     max-alarms: 30 # Maximum number of alarms to report
 targets:
   - name: "sample-main"
@@ -33,4 +33,4 @@ dataflow-problems:
         - method: "Printf"
           package: "fmt"
         - method: "PutObject"
-          package:
+          package: ".*"

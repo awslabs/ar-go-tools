@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"os"
 	"strings"
 	"time"
@@ -65,6 +66,63 @@ func test() {
 	curve := elliptic.P521()
 
 	println(curve)
+}
+
+// parseECDHKey validates a raw hex-encoded, compressed P-224 curve point. This exercises the
+// curve's point-decompression path (crypto/elliptic.UnmarshalCompressed ->
+// crypto/internal/fips140/nistec.P224Point.SetBytes ->
+// crypto/internal/fips140/nistec/fiat.P224Element.Square, as part of the curve-equation check).
+func parseECDHKey(scanner *bufio.Scanner) {
+	fmt.Print("Enter hex-encoded compressed P-224 point: ")
+	if !scanner.Scan() {
+		return
+	}
+	pointHex := strings.TrimSpace(scanner.Text())
+
+	pointBytes, err := hex.DecodeString(pointHex)
+	if err != nil {
+		fmt.Printf("Error decoding point: %v\n", err)
+		return
+	}
+
+	x, y := elliptic.UnmarshalCompressed(elliptic.P224(), pointBytes)
+	if x == nil {
+		fmt.Println("Error parsing point: invalid encoding")
+		return
+	}
+
+	fmt.Printf("Parsed point: x=%x y=%x\n", x, y)
+}
+
+// checkOnCurve validates raw, attacker-controlled x/y coordinates against the P-224 curve
+// equation. This directly exercises crypto/elliptic.Curve.IsOnCurve ->
+// crypto/elliptic.nistCurve.pointFromAffine -> crypto/internal/fips140/nistec.P224Point.SetBytes
+// -> crypto/internal/fips140/nistec/fiat.P224Element.Square (used in the curve-equation check).
+func checkOnCurve(scanner *bufio.Scanner) {
+	fmt.Print("Enter hex-encoded x coordinate: ")
+	if !scanner.Scan() {
+		return
+	}
+	xHex := strings.TrimSpace(scanner.Text())
+
+	fmt.Print("Enter hex-encoded y coordinate: ")
+	if !scanner.Scan() {
+		return
+	}
+	yHex := strings.TrimSpace(scanner.Text())
+
+	xBytes, xErr := hex.DecodeString(xHex)
+	yBytes, yErr := hex.DecodeString(yHex)
+	if xErr != nil || yErr != nil {
+		fmt.Println("Error decoding coordinates")
+		return
+	}
+
+	x := new(big.Int).SetBytes(xBytes)
+	y := new(big.Int).SetBytes(yBytes)
+
+	onCurve := elliptic.P224().IsOnCurve(x, y)
+	fmt.Printf("On curve: %v\n", onCurve)
 }
 
 func signData(scanner *bufio.Scanner) {
@@ -211,7 +269,7 @@ func uploadToS3(data []byte, key string) error {
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("Enter commands (greet, calc, time, sign, upload, quit):")
+	fmt.Println("Enter commands (greet, calc, time, sign, upload, ecdhkey, oncurve, quit):")
 	generateCompressed()
 	for {
 		fmt.Print("> ")
@@ -232,12 +290,16 @@ func main() {
 			signData(scanner)
 		case "upload":
 			encryptAndUpload(scanner)
+		case "ecdhkey":
+			parseECDHKey(scanner)
+		case "oncurve":
+			checkOnCurve(scanner)
 		case "quit":
 			fmt.Println("Goodbye!")
 			return
 		default:
 			test()
-			fmt.Println("Unknown command. Try: greet, calc, time, sign, upload, quit")
+			fmt.Println("Unknown command. Try: greet, calc, time, sign, upload, ecdhkey, oncurve, quit")
 		}
 	}
 }
