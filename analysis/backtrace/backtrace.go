@@ -224,7 +224,7 @@ func NewVisitor(spec config.SlicingSpec) *Visitor {
 }
 
 // Visit runs an inter-procedural backwards analysis to add any detected backtraces to v.Traces.
-func (v *Visitor) Visit(ctx context.Context, s *df.State, entrypoint df.NodeWithTrace) {
+func (v *Visitor) Visit(ctx context.Context, s *df.State, entrypoint df.NodeWithTrace) error {
 	if v.prevEdgeInfos == nil {
 		v.prevEdgeInfos = make(map[*df.CallNodeArg][]df.EdgeInfo)
 	}
@@ -259,6 +259,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 		traces := v.Traces[nt]
 		validateTraces(s, traces)
 	}
+	return nil
 }
 
 //gocyclo:ignore
@@ -538,7 +539,7 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 		// Data flows from the function call to the called function's return statement.
 		// It also flows backwards within the parent function.
 		case *df.CallNode:
-			df.CheckNoGoRoutine(s, goroutines, graphNode)
+			df.SpawnsGoroutine(s, goroutines, graphNode)
 
 			prevStackLen := len(stack)
 
@@ -809,7 +810,7 @@ func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summ
 		return
 	}
 	s.Logger.Debugf("[On-demand] Summarizing %s...", summary.Parent)
-	elapsed, err := df.RunIntraProcedural(ctx, s, summary)
+	elapsed, _, err := df.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
 	if err != nil {
 		panic(fmt.Sprintf("failed to run intra-procedural analysis : %v", err))

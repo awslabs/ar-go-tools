@@ -14,7 +14,7 @@ taint-report*
 .idea
 .venv
 # Check targets
-/payload/public-repos-checks/amazon-ssm-agent
+/payload/public-repos-checks/*
 .amazonq
 .kiro
 .claude

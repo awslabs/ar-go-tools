@@ -1,0 +1,9 @@
+dataflow-problems:
+  taint-tracking:
+    -
+      sources:
+        - package: "(interesting-functions)|(main)|(command-line-arguments)"
+          method: "source[1-9]?"
+      sinks:
+        - package: "(interesting-functions)|(main)|(command-line-arguments)"
+          method: "sink[1-9]?"

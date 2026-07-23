@@ -38,10 +38,10 @@ func CheckClosureReturns(returnNode *ReturnValNode, closureNode *ClosureNode) bo
 	return returnNode.Graph() == closureNode.ClosureSummary
 }
 
-// CheckNoGoRoutine logs a message if node's callsite is a goroutine.
-func CheckNoGoRoutine(s *State, reportedLocs map[*ssa.Go]bool, node *CallNode) {
+// SpawnsGoroutine logs a message if node's callsite is a goroutine, and returns true if it is.
+func SpawnsGoroutine(s *State, reportedLocs map[*ssa.Go]bool, node *CallNode) bool {
 	if s.Config.UseEscapeAnalysis {
-		return // escape analysis will handle any unsoundness, so there is no need to report
+		return false // escape analysis will handle any unsoundness, so there is no need to report
 	}
 
 	if goroutine, isGo := node.CallSite().(*ssa.Go); isGo {
@@ -50,5 +50,7 @@ func CheckNoGoRoutine(s *State, reportedLocs map[*ssa.Go]bool, node *CallNode) {
 			s.Logger.Warn(formatutil.Yellow("Data flows to Go call."))
 			s.Logger.Warnf("-> Position: %s", node.Position(s))
 		}
+		return true
 	}
+	return false
 }

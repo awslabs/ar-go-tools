@@ -31,7 +31,7 @@ import (
 
 // Visitor represents a visitor that runs an inter-procedural analysis from entrypoint.
 type Visitor interface {
-	Visit(ctx context.Context, s *State, entrypoint NodeWithTrace)
+	Visit(ctx context.Context, s *State, entrypoint NodeWithTrace) error
 }
 
 // InterProceduralFlowGraph represents an inter-procedural data flow graph.
@@ -322,11 +322,11 @@ func GetScanningSpecs(state *State, target string) []ScanningSpec {
 // This function does nothing if there are no summaries
 // (i.e. `len(g.summaries) == 0`)
 // or if `cfg.SkipInterprocedural` is set to true.
-func (g *InterProceduralFlowGraph) BuildAndRunVisitor(ctx context.Context, c *State, visitor Visitor, spec ScanningSpec) {
+func (g *InterProceduralFlowGraph) BuildAndRunVisitor(ctx context.Context, c *State, visitor Visitor, spec ScanningSpec) error {
 	// Skip the pass if user configuration demands it
 	if !c.Config.SummarizeOnDemand && len(g.Summaries) == 0 {
 		c.Logger.Infof("Skipping inter-procedural pass: no summaries, and not summarizing on demand.")
-		return
+		return nil
 	}
 
 	// Build the inter-procedural flow graph
@@ -339,12 +339,13 @@ func (g *InterProceduralFlowGraph) BuildAndRunVisitor(ctx context.Context, c *St
 	}
 
 	// Run the analysis
-	g.RunVisitorOnEntryPoints(ctx, visitor, spec)
+	return g.RunVisitorOnEntryPoints(ctx, visitor, spec)
 }
 
 // RunVisitorOnEntryPoints runs the visitor on the entry points designated by either the isEntryPoint function
-// or the isGraphEntryPoint function.
-func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(ctx context.Context, visitor Visitor, spec ScanningSpec) {
+// or the isGraphEntryPoint function. It stops and returns the first error returned by the visitor: a returned
+// error means the analysis result is incomplete past that point.
+func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(ctx context.Context, visitor Visitor, spec ScanningSpec) error {
 
 	g.AnalyzerState.Logger.Infof("Scanning for entry points ...\n")
 	entryPoints := make(map[KeyType]NodeWithTrace)
@@ -370,11 +371,14 @@ func (g *InterProceduralFlowGraph) RunVisitorOnEntryPoints(ctx context.Context, 
 		if !g.AnalyzerState.TestAlarmCount() {
 			g.AnalyzerState.Logger.Warnf("%d entrypoints are skipped, max number of alarms reached.",
 				len(entryPoints)-i)
-			return
+			return nil
 		}
-		visitor.Visit(ctx, g.AnalyzerState, entry)
+		if err := visitor.Visit(ctx, g.AnalyzerState, entry); err != nil {
+			return err
+		}
 		i++
 	}
+	return nil
 }
 
 // TODO this will likely get refactored in the future anyways
@@ -732,7 +736,7 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 	logger := s.Logger
 
 	logger.Debugf("BuildSummary: Constructing summary for %v...\n", function)
-	elapsed, err := RunIntraProcedural(context.Background(), s, summary)
+	elapsed, _, err := RunIntraProcedural(context.Background(), s, summary)
 
 	if err != nil {
 		panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))

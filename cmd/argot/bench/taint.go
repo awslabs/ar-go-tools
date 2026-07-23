@@ -68,7 +68,7 @@ func (v *Visitor) Reset() {
 // the visitor interface of the dataflow package.
 //
 //gocyclo:ignore
-func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.NodeWithTrace) {
+func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.NodeWithTrace) error {
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
 	v.currentSource = source
@@ -101,7 +101,7 @@ func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.
 		select {
 		case <-ctx.Done():
 			s.Logger.Errorf("inter-procedural analysis for source %v timed out\n", source.Node)
-			return
+			return nil
 		default:
 		}
 
@@ -223,7 +223,7 @@ func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.
 			// Flow to next call
 			callSite := graphNode.ParentNode()
 
-			dataflow.CheckNoGoRoutine(s, goroutines, callSite)
+			dataflow.SpawnsGoroutine(s, goroutines, callSite)
 
 			// Logic for when the summary has not been created
 			if callSite.CalleeSummary == nil {
@@ -350,7 +350,7 @@ func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.
 		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
 		// flows to the children of the node.
 		case *dataflow.CallNode:
-			dataflow.CheckNoGoRoutine(s, goroutines, graphNode)
+			dataflow.SpawnsGoroutine(s, goroutines, graphNode)
 
 			if cur.Status.Kind == dataflow.ClosureTracing {
 				if graphNode.CalleeSummary != nil && cur.Status.CurrentClosure() != nil &&
@@ -636,6 +636,7 @@ func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.
 			break
 		}
 	}
+	return nil
 }
 
 // onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
@@ -649,7 +650,7 @@ func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *dataflow.State
 		defer cancel()
 	}
 
-	elapsed, err := dataflow.RunIntraProcedural(ctx, s, summary)
+	elapsed, _, err := dataflow.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
 
 	timedOut := errors.Is(err, context.DeadlineExceeded)

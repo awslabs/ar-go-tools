@@ -48,6 +48,10 @@ type AnalysisResult struct {
 	// Errors contains a list of errors produced by the analysis. Errors may have been added at different steps of the
 	// analysis.
 	Errors []error
+
+	// InterestingFunctions accumulates, across all taint tracking problems analyzed, the signals
+	// recorded for each function reached by taint propagation.
+	InterestingFunctions InterestingFunctions
 }
 
 // AnalysisReqs provides constraints on the taint analysis to run.
@@ -115,9 +119,13 @@ func Analyze(ctx context.Context, state *dataflow.State, reqs AnalysisReqs) (Ana
 	})
 
 	taintFlows := NewFlows()
+	interesting := InterestingFunctions{}
 
 	for _, taintSpec := range state.Config.TaintTrackingProblems {
-		runSpec(ctx, state, reqs, taintSpec, taintFlows)
+		if specErr := runSpec(ctx, state, reqs, taintSpec, taintFlows, interesting); specErr != nil {
+			return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows,
+				InterestingFunctions: interesting}, specErr
+		}
 	}
 
 	// ** Fourth step **
@@ -127,20 +135,21 @@ func Analyze(ctx context.Context, state *dataflow.State, reqs AnalysisReqs) (Ana
 	if state.Report.HasErrors() {
 		err = errors.Join(state.Report.CheckError()...)
 	}
-	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows}, err
+	return AnalysisResult{State: state, Graph: *state.FlowGraph, TaintFlows: taintFlows, InterestingFunctions: interesting}, err
 }
 
-func runSpec(ctx context.Context, state *dataflow.State, reqs AnalysisReqs, taintSpec config.TaintSpec, taintFlows *Flows) {
+func runSpec(ctx context.Context, state *dataflow.State, reqs AnalysisReqs, taintSpec config.TaintSpec,
+	taintFlows *Flows, interesting InterestingFunctions) error {
 	state.Logger.PushContext(formatutil.Yellow(taintSpec.Tag))
 	defer state.Logger.PopContext()
 	// Check the tag must be analyzed
 	if reqs.Tag != "" && taintSpec.Tag != reqs.Tag {
 		state.Logger.Infof("Ignoring problem tagged %s since tag to analyze is provided.", taintSpec.Tag)
-		return
+		return nil
 	}
 	// Check the problem applies to the current target
 	if !config.TargetIncludes(taintSpec.Targets, state.Target) {
-		return
+		return nil
 	}
 	// Number of alarms is problem specific, not global
 	state.ResetAlarms()
@@ -165,7 +174,8 @@ func runSpec(ctx context.Context, state *dataflow.State, reqs AnalysisReqs, tain
 	}
 	state.Logger.Debugf("Options: %+v", state.Config.Options)
 	visitor := NewVisitor(&taintSpec)
-	state.RunInterProcedural(ctx, visitor, dataflow.ScanningSpec{
+	visitor.SetInterestingFunctions(interesting)
+	err := state.RunInterProcedural(ctx, visitor, dataflow.ScanningSpec{
 		// The entry points are specific to each taint tracking problem (unlike in the intra-procedural pass)
 		IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
 			return dataflow.IsSourceNode(state, &taintSpec, node)
@@ -176,6 +186,7 @@ func runSpec(ctx context.Context, state *dataflow.State, reqs AnalysisReqs, tain
 	// Restore global options
 	state.Config.AnalysisProblemOptions = prevOptions
 	state.Logger.Infof("Done analyzing %s", taintSpec.Tag)
+	return err
 }
 
 // AnalysisPreamble groups different minor analyses that need to run before the intra-procedural step of the taint

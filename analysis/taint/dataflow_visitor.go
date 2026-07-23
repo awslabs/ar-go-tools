@@ -16,15 +16,19 @@ package taint
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go/token"
+	"go/types"
 	"io"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	df "github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/internal/formatutil"
 	"golang.org/x/tools/go/ssa"
 )
@@ -60,6 +64,26 @@ type Visitor struct {
 	coverageWriter io.StringWriter
 	alarms         map[token.Pos]string
 	seen           map[df.KeyType]bool
+	interesting    InterestingFunctions
+	// interfaceTypesSeen tracks, per callee function and interface method name, the widest
+	// interface type recorded so far in InterestingFunctionSignals.InterfaceFanouts (see
+	// recordInterfaceFanout): this lets later calls compare against the real *types.Interface to
+	// detect subsumption (e.g. io.ReadCloser.Close is subsumed by io.Closer.Close) without
+	// storing analysis-internal type information on the serializable InterfaceFanout struct.
+	interfaceTypesSeen map[*ssa.Function]map[string]*types.Interface
+}
+
+// SetInterestingFunctions sets the InterestingFunctions map that this Visitor records signals
+// into as it visits functions during taint propagation. Passing nil (the default) disables
+// recording.
+func (v *Visitor) SetInterestingFunctions(m InterestingFunctions) {
+	v.interesting = m
+}
+
+// InterestingFunctions returns the signals recorded so far by this Visitor, or nil if recording
+// is disabled (see SetInterestingFunctions).
+func (v *Visitor) InterestingFunctions() InterestingFunctions {
+	return v.interesting
 }
 
 // NewVisitor returns a Visitor that can be used with
@@ -100,7 +124,7 @@ func (e *CondError) Error() string {
 // the visitor interface of the dataflow package.
 //
 //gocyclo:ignore
-func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrace) {
+func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrace) error {
 	coverage := make(map[string]bool)
 	v.Reset()
 	goroutines := make(map[*ssa.Go]bool)
@@ -173,7 +197,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				// Stop if there is a limit on number of alarms, and it has been reached.
 				if !s.IncrementAndTestAlarms() {
 					logger.Warnf("Reached the limit of %d alarms.", s.Config.MaxAlarms)
-					return
+					return nil
 				}
 			}
 			// A sink does not have successors in the taint flow analysis (but other sinks can be reached
@@ -193,7 +217,11 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		if !cur.Node.Graph().Constructed {
 			// If on-demand summarization is enabled, build the summary and set the node's summary to point to the
 			// built summary
-			v.onDemandIntraProcedural(ctx, s, cur.Node.Graph())
+			if err := v.onDemandIntraProcedural(ctx, s, cur.Node.Graph()); err != nil {
+				return err
+			}
+		} else if cur.Node.Graph().IsPreSummarized {
+			v.recordSummarizedReachable(s, cur.Node.Graph().Parent, cur.Node.Position(s))
 		}
 
 		switch graphNode := cur.Node.(type) {
@@ -246,15 +274,22 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 					}
 				}
 			} else {
+				// NOTE: potential state space explosion
 				// The value must always flow back to all call sites: we got here without context
+				v.recordContextLossFanout(graphNode.Graph(), ContextLossCallSites, len(graphNode.Graph().Callsites))
 				for _, callSite := range graphNode.Graph().Callsites {
 					err := df.CheckIndex(s, graphNode, callSite, "[No Context] Argument at call site")
 					if err != nil {
 						s.Report.AddError("argument at call site "+graphNode.String(), err)
 					} else {
 						callSiteArg := callSite.Args()[graphNode.Index()]
+						v.recordInterfaceFanout(s, callSite)
 						if !callSiteArg.Graph().Constructed {
-							v.onDemandIntraProcedural(ctx, s, callSiteArg.Graph())
+							if err := v.onDemandIntraProcedural(ctx, s, callSiteArg.Graph()); err != nil {
+								return err
+							}
+						} else if callSiteArg.Graph().IsPreSummarized {
+							v.recordSummarizedReachable(s, callSiteArg.Graph().Parent, callSiteArg.Position(s))
 						}
 						for nextNode, edgeInfos := range callSiteArg.Out() {
 							for _, edgeInfo := range edgeInfos {
@@ -278,7 +313,10 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			// Flow to next call
 			callSite := graphNode.ParentNode()
 
-			df.CheckNoGoRoutine(s, goroutines, callSite)
+			if df.SpawnsGoroutine(s, goroutines, callSite) {
+				v.recordUnsoundness(callSite.Graph(), UnsoundnessConcurrency)
+			}
+			v.recordInterfaceFanout(s, callSite)
 
 			// Logic for when the summary has not been created
 			if callSite.CalleeSummary == nil {
@@ -299,9 +337,12 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			}
 			// callSiteFromCallStack.CalleeSummary should be non-nil from now on in this branch.
 
-			// Logic for when the summary has not been constructed
 			if !callSite.CalleeSummary.Constructed {
-				v.onDemandIntraProcedural(ctx, s, callSite.CalleeSummary)
+				if err := v.onDemandIntraProcedural(ctx, s, callSite.CalleeSummary); err != nil {
+					return err
+				}
+			} else if callSite.CalleeSummary.IsPreSummarized {
+				v.recordSummarizedReachable(s, callSite.CalleeSummary.Parent, callSite.Position(s))
 			}
 
 			// Computing context-sensitive information for the analyses
@@ -312,6 +353,9 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				// This is where a function gets "called" and the next nodes will be analyzed in a different context
 				nextNode := callSite.CalleeSummary.Params[param]
 
+				if v.interesting != nil && df.IsRecursive(cur.Trace, callSite) {
+					v.interesting.signalsFor(callSite.CalleeSummary.Parent).IsRecursive = true
+				}
 				newCallStack := cur.Trace.Add(callSite)
 				v.visited[newCallStack] = true
 				nextNodeWithTrace := df.NodeWithTrace{
@@ -352,8 +396,13 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			// Caller can be different if value flowed in function through a closure definition
 			if callSiteFromCallStack := df.UnwindCallstackFromCallee(graphNode.Graph().Callsites, cur.Trace); callSiteFromCallStack != nil {
 				logger.Tracef("unwound caller: %v\n", callSiteFromCallStack)
+				v.recordInterfaceFanout(s, callSiteFromCallStack)
 				if !callSiteFromCallStack.Graph().Constructed {
-					v.onDemandIntraProcedural(ctx, s, callSiteFromCallStack.Graph())
+					if err := v.onDemandIntraProcedural(ctx, s, callSiteFromCallStack.Graph()); err != nil {
+						return err
+					}
+				} else if callSiteFromCallStack.Graph().IsPreSummarized {
+					v.recordSummarizedReachable(s, callSiteFromCallStack.Graph().Parent, callSiteFromCallStack.Position(s))
 				}
 				for nextNode, edgeInfos := range callSiteFromCallStack.Out() {
 					for _, edgeInfo := range edgeInfos {
@@ -369,7 +418,11 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				}
 			} else if cur.ClosureTrace != nil && df.CheckClosureReturns(graphNode, cur.ClosureTrace.Label) {
 				if !cur.ClosureTrace.Label.Graph().Constructed {
-					v.onDemandIntraProcedural(ctx, s, cur.ClosureTrace.Label.Graph())
+					if err := v.onDemandIntraProcedural(ctx, s, cur.ClosureTrace.Label.Graph()); err != nil {
+						return err
+					}
+				} else if cur.ClosureTrace.Label.Graph().IsPreSummarized {
+					v.recordSummarizedReachable(s, cur.ClosureTrace.Label.Graph().Parent, cur.ClosureTrace.Label.Position(s))
 				}
 				for nextNode, edgeInfos := range cur.ClosureTrace.Label.Out() {
 					for _, edgeInfo := range edgeInfos {
@@ -382,10 +435,17 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 					}
 				}
 			} else if len(graphNode.Graph().Callsites) > 0 {
+				// NOTE: potential state space explosion
 				// The value must always flow back to all call sites: we got here without context
+				v.recordContextLossFanout(graphNode.Graph(), ContextLossCallSites, len(graphNode.Graph().Callsites))
 				for _, callSite := range graphNode.Graph().Callsites {
+					v.recordInterfaceFanout(s, callSite)
 					if !callSite.Graph().Constructed {
-						v.onDemandIntraProcedural(ctx, s, callSite.Graph())
+						if err := v.onDemandIntraProcedural(ctx, s, callSite.Graph()); err != nil {
+							return err
+						}
+					} else if callSite.Graph().IsPreSummarized {
+						v.recordSummarizedReachable(s, callSite.Graph().Parent, callSite.Position(s))
 					}
 					for nextNode, edgeInfos := range callSite.Out() {
 						for _, edgeInfo := range edgeInfos {
@@ -405,7 +465,9 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
 		// flows to the children of the node.
 		case *df.CallNode:
-			df.CheckNoGoRoutine(s, goroutines, graphNode)
+			if df.SpawnsGoroutine(s, goroutines, graphNode) {
+				v.recordUnsoundness(graphNode.Graph(), UnsoundnessConcurrency)
+			}
 
 			if cur.Status.Kind == df.ClosureTracing {
 				currentClosure := cur.Status.CurrentClosure()
@@ -416,6 +478,9 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 					fv := currentClosure.Parent.FreeVars[cur.Status.TracingInfo.Index]
 
 					if fv != nil {
+						if v.interesting != nil && df.IsRecursive(cur.Trace, graphNode) {
+							v.interesting.signalsFor(currentClosure.Parent).IsRecursive = true
+						}
 						nextNodeWithTrace := df.NodeWithTrace{
 							Node:         graphNode.CalleeSummary.FreeVars[fv],
 							Trace:        cur.Trace.Add(graphNode),
@@ -496,8 +561,12 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			}
 
 			if !closureNode.ClosureSummary.Constructed {
-				v.onDemandIntraProcedural(ctx, s, closureNode.ClosureSummary)
+				if err := v.onDemandIntraProcedural(ctx, s, closureNode.ClosureSummary); err != nil {
+					return err
+				}
 				s.FlowGraph.Sync()
+			} else if closureNode.ClosureSummary.IsPreSummarized {
+				v.recordSummarizedReachable(s, closureNode.ClosureSummary.Parent, closureNode.Position(s))
 			}
 
 			closureNodeWithTrace := df.NodeWithTrace{
@@ -550,6 +619,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 						fmt.Errorf("at position %d", graphNode.Index()))
 				}
 			} else {
+				// NOTE: potential state space explosion
 				if len(graphNode.Graph().ReferringMakeClosures) == 0 {
 					// Summarize the free variable's closure's parent function if there is one
 					f := graphNode.Graph().Parent.Parent()
@@ -570,6 +640,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 					panic(fmt.Errorf("[No Context] no referring make closure nodes from %v", graphNode))
 				}
 
+				v.recordContextLossFanout(graphNode.Graph(), ContextLossClosureSites, len(graphNode.Graph().ReferringMakeClosures))
 				for _, makeClosureSite := range graphNode.Graph().ReferringMakeClosures {
 					bvs := makeClosureSite.BoundVars()
 					if graphNode.Index() < len(bvs) {
@@ -623,6 +694,8 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				}
 
 				// Tainted data is written to ALL locations where the global is read.
+				// NOTE: potential state space explosion
+				v.recordContextLossFanout(graphNode.Graph(), ContextLossGlobalReads, len(graphNode.Global.ReadLocations))
 				for nextNode := range graphNode.Global.ReadLocations {
 					if !s.IsReachableFunction(nextNode.Graph().Parent) {
 						continue
@@ -716,6 +789,7 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 	if v.coverageWriter != nil {
 		reportCoverage(coverage, v.coverageWriter)
 	}
+	return nil
 }
 
 // initEscapeAnalysisInfo initializes the information required by the escape analysis.
@@ -741,10 +815,183 @@ func (v *Visitor) initEscapeAnalysisInfo(s *df.State, source df.NodeWithTrace) {
 	}
 }
 
-// onDemandIntraProcedural runs the intra-procedural on the summary, modifying its state
-// This panics when the analysis fails, because it is expected that an error will cause any further result
-// to be invalid.
-func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summary *df.SummaryGraph) {
+// recordSummarizedReachable logs and records that taint propagation reached f, whose
+// summary is loaded from an external dataflow contract like user-specs, at the given position.
+func (v *Visitor) recordSummarizedReachable(s *df.State, f *ssa.Function, pos token.Position) {
+	if summaries.FnHasSummaries(f) {
+		// Don't track pre-summarized functions that come with Argot.
+		return
+	}
+
+	s.Logger.Debugf("Taint reached pre-summarized callee %s at %s\n", f.String(), pos)
+}
+
+// recordContextLossFanout records that summary's function propagated a value with no known
+// calling context back to n possible call sites, closure-creation sites, or global read
+// locations.
+func (v *Visitor) recordContextLossFanout(summary *df.SummaryGraph, kind ContextLossKind, n int) {
+	if v.interesting == nil {
+		return
+	}
+	// A context loss to a single call site (or closure-creation site, or global read location)
+	// isn't a meaningful fanout -- it's the same as having full context. Only record it once
+	// there's more than one possible destination.
+	if n <= 1 {
+		return
+	}
+	sig := v.interesting.signalsFor(summary.Parent)
+	loss := ContextLoss{Kind: kind, Degree: n}
+	for _, existing := range sig.ContextLosses {
+		if existing == loss {
+			return
+		}
+	}
+	sig.ContextLosses = append(sig.ContextLosses, loss)
+}
+
+// recordUnsoundness records that summary's function has a potential source of unsoundness. Each
+// kind is recorded at most once per function: unsoundness kinds are boolean facts (did this
+// happen at all), not counts.
+func (v *Visitor) recordUnsoundness(summary *df.SummaryGraph, kind UnsoundnessKind) {
+	if v.interesting == nil {
+		return
+	}
+	sig := v.interesting.signalsFor(summary.Parent)
+	for _, existing := range sig.Unsoundness {
+		if existing == kind {
+			return
+		}
+	}
+	sig.Unsoundness = append(sig.Unsoundness, kind)
+}
+
+// recordMaxDepthExceeded records UnsoundnessMaxDepth on the nearest exported function at or
+// above cur in the calling context. A private/unexported function isn't a natural target to
+// write a ground-truth summary for, so we walk the call stack up (towards the source) until we
+// find an exported function, and attribute the signal there instead.
+func (v *Visitor) recordMaxDepthExceeded(cur *df.VisitorNode) {
+	if v.interesting == nil {
+		return
+	}
+	f := cur.Node.Graph().Parent
+	trace := cur.Trace
+	for f != nil && !isExportedFunction(f) {
+		trace = trace.Parent()
+		if trace == nil {
+			return
+		}
+		f = trace.Label.Graph().Parent
+	}
+	if f == nil {
+		return
+	}
+	sig := v.interesting.signalsFor(f)
+	for _, existing := range sig.Unsoundness {
+		if existing == UnsoundnessMaxDepth {
+			return
+		}
+	}
+	sig.Unsoundness = append(sig.Unsoundness, UnsoundnessMaxDepth)
+}
+
+// isExportedFunction returns true if f is an exported (public), non-synthetic function -- a
+// natural target to write a ground-truth summary for.
+func isExportedFunction(f *ssa.Function) bool {
+	return f.Name() != "" && unicode.IsUpper(rune(f.Name()[0])) && f.Synthetic == ""
+}
+
+// recordInterfaceFanout records, on node's callee, that the callee was reached via an interface
+// method call site with 10+ possible implementations. Called at every point where a *df.CallNode
+// is resolved into a callee summary, regardless of traversal direction (forward into an argument,
+// or backward via a call-stack unwind). If the same method was already recorded via a narrower
+// interface (e.g. io.ReadCloser.Close, a strict subset of implementations of io.Closer.Close),
+// the wider interface (io.Closer) replaces it, since a summary for the wider interface already
+// covers every implementation of the narrower one.
+func (v *Visitor) recordInterfaceFanout(s *df.State, node *df.CallNode) {
+	if v.interesting == nil || node.CalleeSummary == nil {
+		return
+	}
+	instr := node.CallSite()
+	if instr == nil || !instr.Common().IsInvoke() {
+		return
+	}
+	impls := node.Graph().Callees[instr]
+	if len(impls) <= 10 {
+		return
+	}
+	ifaceType := instr.Common().Value.Type()
+	newIface, _ := ifaceType.Underlying().(*types.Interface)
+	pkgPath, ifaceName := "", ifaceType.String()
+	if named, ok := ifaceType.(*types.Named); ok {
+		ifaceName = named.Obj().Name()
+		if pkg := named.Obj().Pkg(); pkg != nil {
+			pkgPath = pkg.Path()
+		}
+	}
+	methodName := instr.Common().Method.Name()
+	f := node.CalleeSummary.Parent
+	sig := v.interesting.signalsFor(f)
+	fanout := InterfaceFanout{
+		InterfacePackage: pkgPath,
+		InterfaceName:    ifaceName,
+		MethodName:       methodName,
+		NumImpls:         len(impls),
+		Callsite:         node.Position(s).String(),
+	}
+
+	if v.interfaceTypesSeen == nil {
+		v.interfaceTypesSeen = map[*ssa.Function]map[string]*types.Interface{}
+	}
+	seenByMethod := v.interfaceTypesSeen[f]
+	if seenByMethod == nil {
+		seenByMethod = map[string]*types.Interface{}
+		v.interfaceTypesSeen[f] = seenByMethod
+	}
+
+	if existingIface, ok := seenByMethod[methodName]; ok && newIface != nil {
+		switch {
+		case types.Implements(ifaceType, existingIface):
+			// The new interface implements the existing, wider one (e.g. new=ReadCloser,
+			// existing=Closer): the existing entry already covers this call site, so there is
+			// nothing new to record.
+			return
+		case types.Implements(asType(existingIface), newIface):
+			// The existing interface implements the new, wider one (e.g. existing=ReadCloser,
+			// new=Closer): replace the narrower entry with the wider one.
+			for i, existing := range sig.InterfaceFanouts {
+				if existing.MethodName == methodName {
+					sig.InterfaceFanouts[i] = fanout
+				}
+			}
+			seenByMethod[methodName] = newIface
+			return
+		}
+	}
+
+	for _, existing := range sig.InterfaceFanouts {
+		if existing == fanout {
+			return
+		}
+	}
+	sig.InterfaceFanouts = append(sig.InterfaceFanouts, fanout)
+	if newIface != nil {
+		if existingIface, ok := seenByMethod[methodName]; !ok || types.Implements(asType(existingIface), newIface) {
+			seenByMethod[methodName] = newIface
+		}
+	}
+}
+
+// asType wraps iface back into a types.Type usable with types.Implements. Since
+// *types.Interface satisfies types.Type directly, this is just a type assertion helper for
+// readability at call sites above.
+func asType(iface *types.Interface) types.Type {
+	return iface
+}
+
+// onDemandIntraProcedural runs the intra-procedural analysis on the summary, modifying its state.
+// It returns an error if the analysis failed (e.g., timeout or too many values), meaning the
+// result past this point is incomplete.
+func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summary *df.SummaryGraph) error {
 	s.Logger.Debugf("[On-demand] Summarizing %s [%s]...", summary.Parent, lang.SafeFunctionPos(summary.Parent))
 	if timeout := s.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
 		var cancel context.CancelFunc
@@ -752,11 +999,35 @@ func (v *Visitor) onDemandIntraProcedural(ctx context.Context, s *df.State, summ
 		defer cancel()
 	}
 
-	elapsed, err := df.RunIntraProcedural(ctx, s, summary)
+	elapsed, numValues, err := df.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
-	if err != nil {
-		panic(fmt.Sprintf("failed to run intra-procedural analysis : %v", err))
+	if v.interesting != nil {
+		sig := v.interesting.signalsFor(summary.Parent)
+		if elapsed > sig.IntraTime {
+			sig.IntraTime = elapsed
+		}
+		if numValues > sig.NumValues {
+			sig.NumValues = numValues
+		}
+		unsoundness := summary.Unsoundness()
+		if len(unsoundness.Recovers) > 0 {
+			sig.Unsoundness = append(sig.Unsoundness, UnsoundnessRecovers)
+		}
+		if unsoundness.HasUnboundedDefers {
+			sig.Unsoundness = append(sig.Unsoundness, UnsoundnessUnboundedDefers)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			sig.Unsoundness = append(sig.Unsoundness, UnsoundnessTimeout)
+		} else if err != nil {
+			sig.Unsoundness = append(sig.Unsoundness, UnsoundnessErr)
+		}
 	}
+	if err != nil {
+		s.Logger.Errorf("failed to run intra-procedural analysis on %s [%s]: %v",
+			summary.Parent, lang.SafeFunctionPos(summary.Parent), err)
+		return fmt.Errorf("failed to run intra-procedural analysis on %s: %w", summary.Parent, err)
+	}
+	return nil
 }
 
 // addNext adds the node to the queue que, setting cur as the previous node and checking that node with the
@@ -847,7 +1118,13 @@ func (v *Visitor) addNext(s *df.State,
 	}
 
 	// First set of stop conditions: node has already been seen, or depth exceeds limit
-	if v.seen[nextVisitorNode.Key()] || s.Config.ExceedsMaxDepth(cur.Depth) {
+	if v.seen[nextVisitorNode.Key()] {
+		return que
+	}
+	if s.Config.ExceedsMaxDepth(cur.Depth) {
+		s.Logger.Debugf("Max depth (%d) exceeded at %s, not visiting %s\n",
+			s.Config.UnsafeMaxDepth, cur.Node.Position(s), nextVisitorNode.Node.String())
+		v.recordMaxDepthExceeded(cur)
 		return que
 	}
 

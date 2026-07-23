@@ -228,7 +228,7 @@ func RunTaint(targetName string, flags tools.CommonFlags, df *dataflow.State) (b
 	analysisResult.State.Logger.Info(strings.Repeat("*", 80))
 	// If some taint flows have been found, or some taint flow escapes, the analysis should return an error.
 	// Scripts that use the taint analysis can then rely on the boolean fail/success state of the analysis terminating.
-	return len(analysisResult.TaintFlows.Sinks) > 0 || len(analysisResult.TaintFlows.Escapes) > 0, analysisResult.State.Report, nil
+	return len(analysisResult.TaintFlows.Sinks) > 0 || len(analysisResult.TaintFlows.Escapes) > 0, analysisResult.State.Report, err
 }
 
 // LogResult logs the taint analysis result

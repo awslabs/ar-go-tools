@@ -70,7 +70,7 @@ func IntraProceduralAnalysis(ctx context.Context, state *State,
 	elapsed := time.Duration(0)
 	// Run the analysis. Once the analysis terminates, mark the summary as constructed.
 	if buildSummary {
-		elapsed, err = RunIntraProcedural(ctx, state, sm)
+		elapsed, _, err = RunIntraProcedural(ctx, state, sm)
 		if err != nil {
 			return IntraProceduralResult{Summary: sm, Time: elapsed}, err
 		}
@@ -85,7 +85,7 @@ func IntraProceduralAnalysis(ctx context.Context, state *State,
 //
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
-func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, error) {
+func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, int, error) {
 	return runIntraProcedural(ctx, a, sm, maxAccessPathLength)
 }
 
@@ -93,13 +93,15 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 // the config) access paths bounded by maxPathLen.
 func RunIntraProceduralFields(
 	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int,
-) (time.Duration, error) {
+) (time.Duration, int, error) {
 	return runIntraProcedural(ctx, a, sm, maxPathLen)
 }
 
-func runIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int) (time.Duration, error) {
+// runIntraProcedural runs the intra-procedural analysis on sm, returning the elapsed time, the
+// number of distinct SSA values tracked, and an error if the analysis failed.
+func runIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int) (time.Duration, int, error) {
 	if sm == nil {
-		return 0, fmt.Errorf("summary graph is nil")
+		return 0, 0, fmt.Errorf("summary graph is nil")
 	}
 
 	if a != nil && !a.HasExternalContractSummary(sm.Parent) && !summaries.FnHasSummaries(sm.Parent) {
@@ -109,7 +111,7 @@ func runIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph, maxPath
 	flowInfo := newFlowInfo(a.Config, sm.Parent, maxPathLen)
 	// If there  are too many variables, we will likely not be able to analyze
 	if flowInfo.NumValues > 10000 {
-		return time.Since(start), fmt.Errorf("too many values (%d) in %s", flowInfo.NumValues, sm.Parent.Name())
+		return time.Since(start), int(flowInfo.NumValues), fmt.Errorf("too many values (%d) in %s", flowInfo.NumValues, sm.Parent.Name())
 	}
 	// This is the only place an IntraAnalysisState is initialized
 	state := &IntraAnalysisState{
@@ -134,7 +136,7 @@ func runIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph, maxPath
 	// defined generally in the lang package, but all the details, including transfer functions, are in the
 	// single_function_monotone_analysis.go file
 	if err := lang.RunForwardIterative(ctx, state, sm.Parent); err != nil {
-		return time.Since(start), err
+		return time.Since(start), int(flowInfo.NumValues), err
 	}
 	// Once the analysis has RunIntraProcedural, we have a state that maps each instruction to an abstract Value at
 	// that instruction.  This abstract valuation maps values to the values that flow into them. This can directly be
@@ -152,9 +154,9 @@ func runIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph, maxPath
 	// If we have errors, return one. This is sufficient to warn the user that the results are incorrect.
 	// TODO: manage error messages for better debugging
 	for _, err := range state.errors {
-		return time.Since(start), fmt.Errorf("error in intraprocedural analysis: %w", err)
+		return time.Since(start), int(flowInfo.NumValues), fmt.Errorf("error in intraprocedural analysis: %w", err)
 	}
-	return time.Since(start), nil
+	return time.Since(start), int(flowInfo.NumValues), nil
 }
 
 // Dataflow edges in the summary graph are added by the following functions. Those can be called after the iterative

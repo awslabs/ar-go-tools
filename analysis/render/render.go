@@ -53,7 +53,7 @@ type CrossFunctionGraphVisitor struct{}
 // complete dataflow graph.
 //
 //gocyclo:ignore
-func (v CrossFunctionGraphVisitor) Visit(ctx context.Context, c *dataflow.State, entrypoint dataflow.NodeWithTrace) {
+func (v CrossFunctionGraphVisitor) Visit(ctx context.Context, c *dataflow.State, entrypoint dataflow.NodeWithTrace) error {
 	que := []*dataflow.VisitorNode{{NodeWithTrace: entrypoint, Prev: nil, Depth: 0}}
 	seen := make(map[dataflow.NodeWithTrace]bool)
 	goroutines := make(map[*ssa.Go]bool)
@@ -132,7 +132,7 @@ func (v CrossFunctionGraphVisitor) Visit(ctx context.Context, c *dataflow.State,
 			// Flow to next call
 			callSite := graphNode.ParentNode()
 
-			dataflow.CheckNoGoRoutine(c, goroutines, callSite)
+			dataflow.SpawnsGoroutine(c, goroutines, callSite)
 
 			if callSite.CalleeSummary == nil { // this function has not been summarized
 				c.ReportMissingOrNotConstructedSummary(callSite)
@@ -196,7 +196,7 @@ func (v CrossFunctionGraphVisitor) Visit(ctx context.Context, c *dataflow.State,
 		// from the callee. If the call stack is non-empty, the callee is removed from the stack and the data
 		// flows to the children of the node.
 		case *dataflow.CallNode:
-			dataflow.CheckNoGoRoutine(c, goroutines, graphNode)
+			dataflow.SpawnsGoroutine(c, goroutines, graphNode)
 			// We pop the call from the stack and continue inside the caller
 			var trace *dataflow.NodeTree[*dataflow.CallNode]
 			if elt.Trace != nil {
@@ -345,6 +345,7 @@ func (v CrossFunctionGraphVisitor) Visit(ctx context.Context, c *dataflow.State,
 			}
 		}
 	}
+	return nil
 }
 
 // addEdge adds forward edge src -> dst and backwards edge src <- dst to graph.

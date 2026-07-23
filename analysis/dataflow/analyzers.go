@@ -105,11 +105,14 @@ func runJobs(ctx context.Context, jobs []singleFunctionJob, numRoutines int,
 
 // RunInterProcedural runs the inter-procedural analysis pass.
 // It builds args.FlowGraph and populates args.DataFlowCandidates based on additional data from the analysis.
-func (s *State) RunInterProcedural(ctx context.Context, visitor Visitor, spec ScanningSpec) {
+// It returns an error if the visitor could not complete the analysis (e.g., a timeout), meaning the
+// result is incomplete.
+func (s *State) RunInterProcedural(ctx context.Context, visitor Visitor, spec ScanningSpec) error {
 	s.Logger.Infof("Starting inter-procedural pass...")
 	start := time.Now()
-	s.FlowGraph.BuildAndRunVisitor(ctx, s, visitor, spec)
+	err := s.FlowGraph.BuildAndRunVisitor(ctx, s, visitor, spec)
 	s.Logger.Infof("inter-procedural pass done (%.2f s).", time.Since(start).Seconds())
+	return err
 }
 
 // singleFunctionJob contains all the information necessary to run the intra-procedural analysis on one function.

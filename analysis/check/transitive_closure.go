@@ -126,7 +126,7 @@ func ComputeClosedSummary(
 			intraCtx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
 			defer cancel()
 		}
-		_, err := dataflow.RunIntraProcedural(intraCtx, s, graph)
+		_, _, err := dataflow.RunIntraProcedural(intraCtx, s, graph)
 		if err != nil {
 			return ClosedInterproceduralSummary{},
 				fmt.Errorf("failed to run intra-procedural data flow analysis: %w", err)
@@ -935,7 +935,7 @@ func (v *inputVisitor) onDemandIntraProcedural(ctx context.Context, s *dataflow.
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
 		defer cancel()
 	}
-	elapsed, err := dataflow.RunIntraProcedural(ctx, s, summary)
+	elapsed, _, err := dataflow.RunIntraProcedural(ctx, s, summary)
 	s.Logger.Debugf("%-12s %-90s [%.2f s]\n", " ", summary.Parent.String(), elapsed.Seconds())
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {

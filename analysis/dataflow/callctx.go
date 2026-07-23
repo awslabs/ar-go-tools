@@ -65,7 +65,7 @@ func GetAllCallingContexts(s *State, n *CallNode) []*CallStack {
 			summary := elt.Label.parent
 			if summary != nil {
 				for _, callNode := range summary.Callsites {
-					if !isRecursive(elt, callNode) {
+					if !IsRecursive(elt, callNode) {
 						newElt := elt.Add(callNode)
 						if !queInserted[newElt.key] {
 							que = append(que, newElt)
@@ -91,7 +91,8 @@ func GetAllCallingContexts(s *State, n *CallNode) []*CallStack {
 	return results
 }
 
-func isRecursive(stack *CallStack, call *CallNode) bool {
+// IsRecursive returns true if call already appears somewhere in stack.
+func IsRecursive(stack *CallStack, call *CallNode) bool {
 	for stack != nil {
 		if stack.Label == call {
 			return true

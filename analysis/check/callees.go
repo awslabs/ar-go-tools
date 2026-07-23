@@ -76,7 +76,7 @@ func inferCalleeSummaries(
 		if prec.longestPathLen == 0 {
 			s.Logger.Debugf(
 				"running field-insensitive intra-procedural analysis on function %s...\n", g.Parent)
-			if _, err := dataflow.RunIntraProcedural(ctx, s.State, g); err != nil {
+			if _, _, err := dataflow.RunIntraProcedural(ctx, s.State, g); err != nil {
 				return nil, fmt.Errorf(
 					"failed to run field-insensitive intra-procedural analysis: %v", err)
 			}
@@ -96,7 +96,7 @@ func inferCalleeSummaries(
 			// TODO We want to use node-level precision eventually; but for now, just set the
 			// precision of every node to the precision of the most-precise node (node with the
 			// longest access path).
-			if _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k); err != nil {
+			if _, _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k); err != nil {
 				return nil, fmt.Errorf(
 					"failed to run field-sensitive intra-procedural analysis: %v", err)
 			}
