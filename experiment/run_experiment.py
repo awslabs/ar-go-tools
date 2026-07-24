@@ -751,6 +751,7 @@ def _base_config(repo: str) -> Dict[str, Any]:
             "field-sensitive-funcs": [
                 ".*"
             ],  # Analyze every function field-sensitively.
+            "intra-timeout-ms": 60000,  # 1 minute per-function cap
         },
         "options": {
             "project-root": "./",
