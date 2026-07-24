@@ -1,0 +1,1604 @@
+{
+  "records": [
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).Mul",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "Mul"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.093352375,
+      "num_values": 130
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).SetOverflowingBytes",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "SetOverflowingBytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.007899833,
+      "num_values": 46
+    },
+    {
+      "func": "math/bits.Sub32",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Sub32"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000088084,
+      "num_values": 13
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/rest.Unmarshal",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/rest",
+          "function": "Unmarshal"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.012635708,
+      "num_values": 14
+    },
+    {
+      "func": "net/http/httputil.DumpRequestOut",
+      "entries": [
+        {
+          "package": "net/http/httputil",
+          "function": "DumpRequestOut"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.3268345,
+      "num_values": 113
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/ec2metadata.EC2Metadata).GetMetadataWithContext",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/ec2metadata",
+          "receiver": "*EC2Metadata",
+          "method": "GetMetadataWithContext"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.014885833,
+      "num_values": 31
+    },
+    {
+      "func": "(*regexp.Regexp).FindStringSubmatch",
+      "entries": [
+        {
+          "package": "regexp",
+          "receiver": "*Regexp",
+          "method": "FindStringSubmatch"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0,
+      "num_values": 0
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/rest.Build",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/rest",
+          "function": "Build"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.016282,
+      "num_values": 14
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Modulus).Size",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Modulus",
+          "method": "Size"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000075708,
+      "num_values": 7
+    },
+    {
+      "func": "(*math/big.Int).Bytes",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Bytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000160125,
+      "num_values": 13
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/restjson.Build",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/restjson",
+          "function": "Build"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.040534792,
+      "num_values": 32
+    },
+    {
+      "func": "(github.com/aws/aws-sdk-go/aws/client.DefaultRetryer).ShouldRetry",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/client",
+          "receiver": "DefaultRetryer",
+          "method": "ShouldRetry"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.010773792,
+      "num_values": 21
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.Request).SetStringBody",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*Request",
+          "method": "SetStringBody"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.003068125,
+      "num_values": 7
+    },
+    {
+      "func": "(*math/big.Int).Rsh",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Rsh"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000642375,
+      "num_values": 29
+    },
+    {
+      "func": "(*crypto/internal/fips140/nistec/fiat.P224Element).Sub",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/nistec/fiat",
+          "receiver": "*P224Element",
+          "method": "Sub"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000462334,
+      "num_values": 8
+    },
+    {
+      "func": "strings.Replace",
+      "entries": [
+        {
+          "package": "strings",
+          "function": "Replace"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0,
+      "num_values": 0
+    },
+    {
+      "func": "(*math/big.Int).Sub",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Sub"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.002293625,
+      "num_values": 55
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/aws/signer/v4.SignSDKRequestWithCurrentTime",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/signer/v4",
+          "function": "SignSDKRequestWithCurrentTime"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 1.509812541,
+      "num_values": 92
+    },
+    {
+      "func": "math/bits.Sub",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Sub"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000164125,
+      "num_values": 22
+    },
+    {
+      "func": "(*net/http.Transport).RoundTrip",
+      "entries": [
+        {
+          "package": "net/http",
+          "receiver": "*Transport",
+          "method": "RoundTrip"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.003143375,
+      "num_values": 6
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.Request).SetBufferBody",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*Request",
+          "method": "SetBufferBody"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.003071709,
+      "num_values": 7
+    },
+    {
+      "func": "math/bits.Add",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Add"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000150375,
+      "num_values": 22
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).Bytes",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "Bytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000815416,
+      "num_values": 37
+    },
+    {
+      "func": "(*math/big.Int).Add",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Add"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.002233708,
+      "num_values": 55
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/rest.UnmarshalMeta",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/rest",
+          "function": "UnmarshalMeta"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.054032541,
+      "num_values": 36
+    },
+    {
+      "func": "(*math/big.Int).Cmp",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Cmp"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000407834,
+      "num_values": 23
+    },
+    {
+      "func": "(*math/big.Int).FillBytes",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "FillBytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000098583,
+      "num_values": 8
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/restjson.UnmarshalMeta",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/restjson",
+          "function": "UnmarshalMeta"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.004425291,
+      "num_values": 3
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.Request).Build",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*Request",
+          "method": "Build"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth",
+        "recursive"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.061266375,
+      "num_values": 37,
+      "is_recursive": true
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.Request).ResetBody",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*Request",
+          "method": "ResetBody"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.026359875,
+      "num_values": 21
+    },
+    {
+      "func": "(*crypto/internal/fips140/nistec/fiat.P224Element).SetBytes",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/nistec/fiat",
+          "receiver": "*P224Element",
+          "method": "SetBytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.002566,
+      "num_values": 54
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.Request).SetReaderBody",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*Request",
+          "method": "SetReaderBody"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.006911541,
+      "num_values": 22
+    },
+    {
+      "func": "(*math/big.Int).BitLen",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "BitLen"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000053125,
+      "num_values": 5
+    },
+    {
+      "func": "(*crypto/internal/fips140/nistec/fiat.P224Element).Bytes",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/nistec/fiat",
+          "receiver": "*P224Element",
+          "method": "Bytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000067083,
+      "num_values": 4
+    },
+    {
+      "func": "math/bits.Add32",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Add32"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000087,
+      "num_values": 12
+    },
+    {
+      "func": "(*math/big.Int).Lsh",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Lsh"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000251375,
+      "num_values": 13
+    },
+    {
+      "func": "(*math/big.Int).Mod",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Mod"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000825042,
+      "num_values": 25
+    },
+    {
+      "func": "(*crypto/internal/fips140/aes/gcm.GCM).Seal",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/aes/gcm",
+          "receiver": "*GCM",
+          "method": "Seal"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000237333,
+      "num_values": 9
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/restxml.Build",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/restxml",
+          "function": "Build"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.020431625,
+      "num_values": 36
+    },
+    {
+      "func": "(*math/big.Int).QuoRem",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "QuoRem"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.001304709,
+      "num_values": 43
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/aws/signer/v4.SignSDKRequest",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/signer/v4",
+          "function": "SignSDKRequest"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.004380917,
+      "num_values": 5
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/jsonrpc.Build",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/jsonrpc",
+          "function": "Build"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.106253875,
+      "num_values": 74
+    },
+    {
+      "func": "math/bits.Sub64",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Sub64"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000078917,
+      "num_values": 13
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.HandlerList).Run",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*HandlerList",
+          "method": "Run"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth",
+        "recursive"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.557235375,
+      "num_values": 30,
+      "is_recursive": true
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Modulus).BitLen",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Modulus",
+          "method": "BitLen"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000093958,
+      "num_values": 5
+    },
+    {
+      "func": "math/bits.Mul32",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Mul32"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000051958,
+      "num_values": 9
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/restxml.UnmarshalError",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/restxml",
+          "function": "UnmarshalError"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.010153667,
+      "num_values": 3
+    },
+    {
+      "func": "(*crypto/internal/fips140/nistec/fiat.P224Element).One",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/nistec/fiat",
+          "receiver": "*P224Element",
+          "method": "One"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000047375,
+      "num_values": 4
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/restxml.Unmarshal",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/restxml",
+          "function": "Unmarshal"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.05515725,
+      "num_values": 43
+    },
+    {
+      "func": "math/bits.Add64",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Add64"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000075542,
+      "num_values": 11
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/restjson.Unmarshal",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/restjson",
+          "function": "Unmarshal"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.008194667,
+      "num_values": 13
+    },
+    {
+      "func": "(*math/big.Int).SetBytes",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "SetBytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000161125,
+      "num_values": 9
+    },
+    {
+      "func": "internal/byteorder.BEUint32",
+      "entries": [
+        {
+          "package": "internal/byteorder",
+          "function": "BEUint32"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000652792,
+      "num_values": 29
+    },
+    {
+      "func": "math/bits.Mul64",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Mul64"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000199542,
+      "num_values": 27
+    },
+    {
+      "func": "(*math/big.Int).Exp",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Exp"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000077167,
+      "num_values": 7
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/jsonrpc.Unmarshal",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/jsonrpc",
+          "function": "Unmarshal"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.040419875,
+      "num_values": 32
+    },
+    {
+      "func": "(github.com/aws/aws-sdk-go/aws/client.DefaultRetryer).RetryRules",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/client",
+          "receiver": "DefaultRetryer",
+          "method": "RetryRules"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.016054791,
+      "num_values": 55
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).SetBytes",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "SetBytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000527208,
+      "num_values": 21
+    },
+    {
+      "func": "internal/byteorder.BEUint64",
+      "entries": [
+        {
+          "package": "internal/byteorder",
+          "function": "BEUint64"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.001778917,
+      "num_values": 57
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.Request).WillRetry",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*Request",
+          "method": "WillRetry"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.007938209,
+      "num_values": 31
+    },
+    {
+      "func": "net/url.Parse",
+      "entries": [
+        {
+          "package": "net/url",
+          "function": "Parse"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0,
+      "num_values": 0
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.Request).Sign",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*Request",
+          "method": "Sign"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.043027625,
+      "num_values": 25
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).IsZero",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "IsZero"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000490667,
+      "num_values": 21
+    },
+    {
+      "func": "(*math/big.Int).Bit",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Bit"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000547583,
+      "num_values": 41
+    },
+    {
+      "func": "(*net/url.URL).Query",
+      "entries": [
+        {
+          "package": "net/url",
+          "receiver": "*URL",
+          "method": "Query"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.00008275,
+      "num_values": 7
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/query.Unmarshal",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/query",
+          "function": "Unmarshal"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.071758125,
+      "num_values": 40
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/request.Request).Send",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "receiver": "*Request",
+          "method": "Send"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 4.5421453750000005,
+      "num_values": 70
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).ExpandFor",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "ExpandFor"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000224584,
+      "num_values": 10
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).Mod",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "Mod"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.010949584,
+      "num_values": 47
+    },
+    {
+      "func": "math/big.Jacobi",
+      "entries": [
+        {
+          "package": "math/big",
+          "function": "Jacobi"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.008223083,
+      "num_values": 111
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/restxml.UnmarshalMeta",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/restxml",
+          "function": "UnmarshalMeta"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.00444975,
+      "num_values": 3
+    },
+    {
+      "func": "(github.com/aws/aws-sdk-go/internal/s3shared.ResourceRequest).IsCrossRegion",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/internal/s3shared",
+          "receiver": "ResourceRequest",
+          "method": "IsCrossRegion"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.016954,
+      "num_values": 10
+    },
+    {
+      "func": "(*net/http.Client).Do",
+      "entries": [
+        {
+          "package": "net/http",
+          "receiver": "*Client",
+          "method": "Do"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0,
+      "num_values": 0
+    },
+    {
+      "func": "(*crypto/internal/fips140/nistec/fiat.P224Element).Set",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/nistec/fiat",
+          "receiver": "*P224Element",
+          "method": "Set"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000148292,
+      "num_values": 5
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).BitLenVarTime",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "BitLenVarTime"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000751875,
+      "num_values": 27
+    },
+    {
+      "func": "crypto/elliptic.UnmarshalCompressed",
+      "entries": [
+        {
+          "package": "crypto/elliptic",
+          "function": "UnmarshalCompressed"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.002293125,
+      "num_values": 74
+    },
+    {
+      "func": "(*crypto/internal/fips140/nistec/fiat.P224Element).Select",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/nistec/fiat",
+          "receiver": "*P224Element",
+          "method": "Select"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.0009635,
+      "num_values": 13
+    },
+    {
+      "func": "(*math/big.Int).Neg",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "Neg"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000242625,
+      "num_values": 16
+    },
+    {
+      "func": "crypto/ecdsa.SignASN1",
+      "entries": [
+        {
+          "package": "crypto/ecdsa",
+          "function": "SignASN1"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.003329667,
+      "num_values": 70
+    },
+    {
+      "func": "(math/big.nat).add",
+      "entries": null,
+      "reasons": [
+        "recursive"
+      ],
+      "intra_time_seconds": 0.000555875,
+      "num_values": 40,
+      "is_recursive": true
+    },
+    {
+      "func": "(*math/big.Int).ModSqrt",
+      "entries": [
+        {
+          "package": "math/big",
+          "receiver": "*Int",
+          "method": "ModSqrt"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.001506666,
+      "num_values": 49
+    },
+    {
+      "func": "(github.com/aws/aws-sdk-go/aws/endpoints.ResolverFunc).EndpointFor",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/endpoints",
+          "receiver": "ResolverFunc",
+          "method": "EndpointFor"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth",
+        "context-loss:call-sites(4)"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000110375,
+      "num_values": 7,
+      "context_losses": [
+        {
+          "Kind": "call-sites",
+          "Degree": 4
+        }
+      ]
+    },
+    {
+      "func": "(*net/http.Transport).roundTrip",
+      "entries": null,
+      "reasons": [
+        "unsoundness:concurrency",
+        "slow-intra-procedural:9.22s"
+      ],
+      "unsoundness": [
+        "concurrency"
+      ],
+      "intra_time_seconds": 9.216074333,
+      "num_values": 272
+    },
+    {
+      "func": "math/bits.Mul",
+      "entries": [
+        {
+          "package": "math/bits",
+          "function": "Mul"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000133292,
+      "num_values": 19
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/aws/awserr.New",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/awserr",
+          "function": "New"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.001109833,
+      "num_values": 16
+    },
+    {
+      "func": "(*github.com/aws/aws-sdk-go/aws/client.Client).NewRequest",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/client",
+          "receiver": "*Client",
+          "method": "NewRequest"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.007790209,
+      "num_values": 14
+    },
+    {
+      "func": "bytes.Clone",
+      "entries": [
+        {
+          "package": "bytes",
+          "function": "Clone"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.00005225,
+      "num_values": 8
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/private/protocol/query.Build",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/private/protocol/query",
+          "function": "Build"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.133150333,
+      "num_values": 62
+    },
+    {
+      "func": "(*crypto/internal/fips140/bigmod.Nat).Add",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/bigmod",
+          "receiver": "*Nat",
+          "method": "Add"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.000238041,
+      "num_values": 8
+    },
+    {
+      "func": "(*crypto/internal/fips140/nistec.P224Point).SetBytes",
+      "entries": [
+        {
+          "package": "crypto/internal/fips140/nistec",
+          "receiver": "*P224Point",
+          "method": "SetBytes"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.0890665,
+      "num_values": 134
+    },
+    {
+      "func": "github.com/aws/aws-sdk-go/aws/request.SanitizeHostForHeader",
+      "entries": [
+        {
+          "package": "github.com/aws/aws-sdk-go/aws/request",
+          "function": "SanitizeHostForHeader"
+        }
+      ],
+      "reasons": [
+        "unsoundness:max-callstack-depth"
+      ],
+      "unsoundness": [
+        "max-callstack-depth"
+      ],
+      "intra_time_seconds": 0.003082542,
+      "num_values": 16
+    }
+  ]
+}

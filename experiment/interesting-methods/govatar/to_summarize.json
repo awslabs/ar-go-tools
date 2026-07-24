@@ -1,0 +1,31 @@
+[
+  {
+    "package": "text/template",
+    "receiver": "*Template",
+    "method": "Funcs"
+  },
+  {
+    "package": "text/template",
+    "receiver": "*Template",
+    "method": "Execute"
+  },
+  {
+    "package": "text/tabwriter",
+    "receiver": "*Writer",
+    "method": "Write"
+  },
+  {
+    "package": "text/tabwriter",
+    "receiver": "*Writer",
+    "method": "Flush"
+  },
+  {
+    "package": "text/template/parse",
+    "receiver": "*Tree",
+    "method": "Parse"
+  },
+  {
+    "package": "fmt",
+    "function": "Append"
+  }
+]
