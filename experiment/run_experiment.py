@@ -44,6 +44,7 @@ LLM_SUMMARIES_DIR = EXPERIMENT_DIR / "llm-summaries"
 ARGOT_CONFIGS_DIR = EXPERIMENT_DIR / "argot-configs"
 # Generated, read-only, per-task argot-config.yaml files -- see _generate_configs_for_repo.
 GENERATED_CONFIGS_DIR = EXPERIMENT_DIR / "generated-configs"
+INTERESTING_METHODS_DIR = EXPERIMENT_DIR / "interesting-methods"
 FIND_INTERESTING_METHODS_DIR = EXPERIMENT_DIR / "find-interesting-methods"
 
 
@@ -132,7 +133,7 @@ def main() -> int:
         "--target",
         help="Target name to load (default: the repo's first argot-config.yaml target)",
     )
-    p.add_argument("--model", default="anthropic.claude-sonnet-4-5-20250929-v1:0")
+    p.add_argument("--model", default="anthropic.claude-sonnet-5")
     p.add_argument(
         "--inference-profile",
         help="Bedrock inference profile ARN/ID (skips auto-detection if set)",
@@ -161,13 +162,6 @@ def main() -> int:
         help="Run find-interesting-methods (produce then consume) against repo's built config",
     )
     p.add_argument("--repo", required=True, choices=sorted(REPOS))
-    p.add_argument(
-        "--raw-out",
-        type=Path,
-        help="Path to write produce's raw signals JSON (default: --out with a "
-        "'.raw' suffix inserted before .json)",
-    )
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_find_interesting_methods)
 
     p = subparsers.add_parser(
@@ -290,16 +284,11 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
 def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     """Run argot-summarize (the LLM agent) against repo's to_summarize.json.
 
-    The agent's file read/write tools are restricted to the directory containing the config
-    file we give it (see summary_generator.SafeFileTools) -- so rather than pointing it at the
-    real repo checkout (which would let it read/write arbitrary files there), we run it
-    against a config that lives in its own dedicated directory, experiment/llm-summaries/<repo>/,
-    with project-root pointing back at the real repo checkout. The agent's only writable file
-    is summaries.yaml in that same directory, which becomes this repo's persistent
-    LLM-generated-summaries output.
+    The agent's file writes are sandboxed to --out-dir (experiment/llm-summaries/<repo>/),
+    decoupled from the config file's location and the real repo checkout. summaries.yaml is
+    the agent's only writable file and becomes this repo's persistent output.
     """
-    repo_path = repo_dir(args.repo)
-    real_config = _base_config(args.repo)
+    repo_dir(args.repo)  # sanity check that the repo checkout exists
 
     llm_dir = LLM_SUMMARIES_DIR / args.repo
     llm_dir.mkdir(parents=True, exist_ok=True)
@@ -307,22 +296,26 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     if not summaries_path.exists():
         summaries_path.write_text("dataflow-summaries: []\n")
 
-    config = dict(real_config)
-    config["options"] = dict(config.get("options") or {})
-    project_root = config["options"].get("project-root", "./")
-    resolved_project_root = (repo_path / project_root).resolve()
-    config["options"]["project-root"] = os.path.relpath(
-        resolved_project_root, start=llm_dir
-    )
-    config["dataflow-problems"] = dict(config.get("dataflow-problems") or {})
-
-    config_path = llm_dir / "argot-config.yaml"
-    config_path.write_text(yaml.safe_dump(config))
+    # check-llm.yaml already points check-specs at summaries_path, so the agent can validate
+    # its own output via argot_dataflow_check with no per-run config needed.
+    config_path = GENERATED_CONFIGS_DIR / args.repo / "check-llm.yaml"
+    if not config_path.exists():
+        console.print(
+            f"[red]{config_path} not found; run generate-configs --repo {args.repo} first[/red]"
+        )
+        sys.exit(1)
+    config = yaml.safe_load(config_path.read_text())
 
     target_name = args.target or (config.get("targets") or [{}])[0].get("name")
     if not target_name:
+        console.print(f"[red]run-llm-summarization: no target found in {config_path}[/red]")
+        sys.exit(1)
+
+    functions_path = INTERESTING_METHODS_DIR / args.repo / "to_summarize.json"
+    if not functions_path.exists():
         console.print(
-            f"[red]run-llm-summarization: no target found in {args.repo}'s argot-config.yaml[/red]"
+            f"[red]{functions_path} not found; run run-find-interesting-methods "
+            f"--repo {args.repo} first[/red]"
         )
         sys.exit(1)
 
@@ -331,21 +324,17 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     cmd = [
         "argot-summarize",
         "--config",
-        str(config_path),
+        str(config_path.resolve()),
         "--target",
         target_name,
         "--functions",
-        str((repo_path / "to_summarize.json").resolve()),
+        str(functions_path.resolve()),
+        "--out-dir",
+        str(llm_dir.resolve()),
         "--stats-json",
         str(stats_path),
         "--model",
         args.model,
-        # argot-mcp-server's own CWD must be inside repo_path's Go module for target file
-        # paths (e.g. "./govatar") to resolve via Go's package loading -- llm_dir is a
-        # different module (ar-go-tools itself), so it can't be used here even though it's
-        # where the config file (and SafeFileTools' write-scope restriction) lives.
-        "--mcp-cwd",
-        str(repo_path),
     ]
     if args.inference_profile:
         cmd += ["--inference-profile", args.inference_profile]
@@ -430,9 +419,10 @@ def cmd_run_find_interesting_methods(args: argparse.Namespace) -> None:
 
     (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
 
-    raw_out = args.raw_out or args.out.with_name(
-        args.out.stem + ".raw" + args.out.suffix
-    )
+    out_dir = INTERESTING_METHODS_DIR / args.repo
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw_out = out_dir / "raw.json"
+    out = out_dir / "to_summarize.json"
 
     with tempfile.TemporaryDirectory() as tmp_bin_dir:
         bin_path = Path(tmp_bin_dir) / "find-interesting-methods"
@@ -459,8 +449,7 @@ def cmd_run_find_interesting_methods(args: argparse.Namespace) -> None:
             label=f"run-find-interesting-methods produce ({args.repo})",
         )
 
-        consume_log = args.out.with_suffix(".log")
-        args.out.parent.mkdir(parents=True, exist_ok=True)
+        consume_log = out.with_suffix(".log")
         duration = _run_subprocess(
             [
                 str(bin_path),
@@ -468,13 +457,13 @@ def cmd_run_find_interesting_methods(args: argparse.Namespace) -> None:
                 "-in",
                 str(raw_out.resolve()),
                 "-out",
-                str(args.out.resolve()),
+                str(out.resolve()),
             ],
             cwd=repo_path,
             log_file=consume_log,
             label=f"run-find-interesting-methods consume ({args.repo})",
         )
-    console.print(f"[green]Wrote {raw_out}[/green] and {args.out} ({duration:.1f}s)")
+    console.print(f"[green]Wrote {raw_out}[/green] and {out} ({duration:.1f}s)")
 
 
 # ---------------------------------------------------------------------------
@@ -955,7 +944,9 @@ def _run_subprocess(
 
     Raises subprocess.TimeoutExpired if timeout elapses, CalledProcessError on nonzero exit
     unless the exit code is in tolerate_exit_codes (e.g. argot taint's exit code 1 for "found
-    taint flows", which is an expected, meaningful result, not a crash).
+    taint flows", which is an expected, meaningful result, not a crash). On failure, the last
+    lines of log_file are also printed, so callers don't need to open the file themselves just
+    to see why a command failed.
     """
     console.print(f"[dim]Running {label}...[/dim]")
     start_time = time.time()
@@ -972,6 +963,9 @@ def _run_subprocess(
         duration = time.time() - start_time
 
     if proc.returncode != 0 and proc.returncode not in tolerate_exit_codes:
+        console.print(f"[red]{label} failed (exit {proc.returncode}); last lines of {log_file}:[/red]")
+        tail = log_file.read_text().splitlines()[-20:]
+        console.print("[red]" + "\n".join(tail) + "[/red]")
         raise subprocess.CalledProcessError(proc.returncode, cmd)
 
     console.print(f"  [dim]{label}:[/dim] {duration:.1f}s")

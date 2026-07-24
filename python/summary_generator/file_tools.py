@@ -1,6 +1,7 @@
 """Safe file operation tools for the summary generator agent."""
 
 import os
+import subprocess
 from pathlib import Path
 from typing import List
 from strands.tools import tool
@@ -37,6 +38,54 @@ def create_dataflow_prompt_tool(repo_root: str):
             return f"Error reading prompt: {e}"
     
     return get_dataflow_summary_prompt
+
+
+def create_go_doc_tool(cwd: str):
+    """Create a tool that runs `go doc` for a package/function/method query.
+
+    Args:
+        cwd: Directory to run `go doc` from -- must be inside the target repo's own Go
+            module for the query to resolve against that module's dependencies, so this
+            should be the same directory passed as mcp_cwd (not config_dir, which may be a
+            different, unrelated module).
+
+    Returns:
+        Tool function
+    """
+
+    @tool
+    def go_doc(query: str, src: bool = False) -> str:
+        """Run `go doc` to look up a function/method/type's signature and documentation.
+
+        Always includes unexported symbols (`go doc -u`), since many functions/types worth
+        summarizing (e.g. unexported structs/methods on a public package) are otherwise
+        reported as "not found" even though they exist.
+
+        Args:
+            query: The go doc query, e.g. "fmt.Sprintf" or "bytes.Buffer.Write"
+            src: If true, also show the source code (equivalent to `go doc -src`)
+
+        Returns:
+            The command's output, or an error message
+        """
+        cmd = ["go", "doc", "-u"]
+        if src:
+            cmd.append("-src")
+        cmd.append(query)
+        try:
+            result = subprocess.run(
+                cmd, cwd=cwd, capture_output=True, text=True, timeout=30
+            )
+            output = result.stdout
+            if result.returncode != 0:
+                output += f"\n(exit code {result.returncode})\n{result.stderr}"
+            return output or "(no output)"
+        except subprocess.TimeoutExpired:
+            return "Error: go doc timed out after 30s"
+        except Exception as e:
+            return f"Error running go doc: {e}"
+
+    return go_doc
 
 
 class SafeFileTools:

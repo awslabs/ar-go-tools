@@ -28,28 +28,55 @@ Use these identifiers to specify data flow sources and destinations:
 - `!arg <name>` - Function arguments by name, must be between < and >. You can also use `!arg <name 0>` to combine position and name.
 - `!receiver` - Method receiver (methods only), interface receiver (interface method)
 - `!ret`, `!ret 0`, `!ret 1`, etc. - Return values by position (this is the tuple position)
-- `!free <name>` - Closure free variables by name, as referenced in the program (closures only)
 
 For methods, argument indexing starts after the receiver:
 - In `func (r Receiver) method(x, y int) string`, `x` is `!arg 0`, `y` is `!arg 1`
 
 ## Complex Data Flows
 
-For flows through struct fields, arrays, or maps, use parentheses and suffixes:
+For flows through struct fields, use parentheses and suffixes:
 
 - `(!arg 0).field` - Flow through struct field
-- `(!ret 0)[*]` - Flow through array/slice/map elements
-- `(!arg <x>).field1[*].field2` - Nested field and element access
+- `(!arg <x>).field1.field2` - Nested field access
 
-For maps, `[*]` represents flow to both keys and values (no distinction possible).
+The maximum access path length is 3 (e.g. `a.b.c`).
+
+We do not support tracking flows through individual elements of arrays, slices, maps, or channels. If a single element of an array/slice/map/channel gets tainted, the entire array/slice/map/channel gets tainted.
 
 ## Task Instructions
 
-1. **Analyze the function**: Understand what the function does and how data moves through it
+1. **Analyze the function**: Understand what the function does and how data moves through it and its callees
 2. **Identify flows**: Determine which inputs affect which outputs
-3. **Be conservative**: Include all possible data flows to ensure soundness
+3a. **Be precise**: Only include input->output data flows that actually exist
+3b. **Be sound**: Include all possible input->output data flows
+3c. **When precision and soundness conflict**: prefer the more precise (narrower) flow unless you
+    have a concrete reason to believe a broader flow exists -- don't pad a summary with flows
+    "just in case." A summary that's too broad is as unhelpful as one that's wrong.
 4. **Consider all paths**: Account for all execution paths (branches, loops, error cases)
 5. **Handle mutations**: If arguments are modified, include flows back to them
+
+## Tracing Through Callees
+
+You are effectively simulating a dynamic taint analysis. Taint applies to access paths, not whole
+values: e.g., a struct argument's fields can each be tainted independently (up to the maximum access
+path length of 3 from "Complex Data Flows" above). For each tainted access path in the function
+body, follow it into every call it's passed to, and determine how that call's own inputs affect its
+outputs, before deciding whether taint continues past that call. This is recursive -- a callee's own
+callees may need the same treatment. Don't follow taint flows into global variables since they are
+not represented in the summary format.
+
+- Use `go_doc -src`/`argot_show_src` (plain Go source) as your primary tool -- calls are
+  syntactically obvious in the source, and it's easier to read than SSA for most functions.
+- For each call that receives a potentially-tainted access path, inspect that callee's source
+  the same way you would the top-level function, and repeat as needed.
+- Stop recursing into a call once you're confident of its behavior from its signature/doc comment
+  alone (e.g., well-known standard library functions like `fmt.Sprintf`, `strings.TrimSpace`), or
+  once you've already generated a summary for it in this session.
+- Fall back to `argot_show_ssa`/`argot_show_ssa_value` only when source alone leaves real
+  ambiguity about exactly which struct field/value a line of source touches.
+- If a call's behavior is genuinely unclear after inspection (e.g. it's a large, unfamiliar
+  function you can't fully trace), don't guess -- fall back to the safer, sound-but-coarser flow
+  (e.g., treat the whole return value as tainted) rather than omitting the flow entirely.
 
 ## Examples
 
@@ -103,10 +130,10 @@ dataflow-summaries:
   - package: "mypackage"
     function: "appendToSlice"
     flows:
-      - from: "(!arg 0)[*]"
-        to: "(!ret 0)[*]"
+      - from: "!arg 0"
+        to: "!ret 0"
       - from: "!arg 1"
-        to: "(!ret 0)[*]"
+        to: "!ret 0"
 ```
 
 **Interface method summaries** are dataflow summaries that hold for all implementations of a given interface method. For example, the following summary should hold, since all `String()` methods should just result in flows from the receiver to the returned value:
@@ -120,19 +147,19 @@ dataflow-summaries:
         to: "!ret 0"
 ```
 
+Interface method summaries are *not* field-sensitive.
+
 ## Important Notes
 
-- **Soundness**: Your summary must be conservative - include all possible flows
-- **Validation**: You can use argot_dataflow_check for summaries written in configuration files
+- **Precision vs. soundness**: prefer precise flows; see "When precision and soundness conflict" above for the tiebreaker
 - **Error handling**: Consider flows through error return values in Go's `(result, error)` pattern
 - **Mutations**: If the function modifies input arguments, include flows back to them
 - **All execution paths**: Consider branches, loops, and error conditions
 
 ## Analysis Tools Available
 
-Use the following argot analysis tools to understand the function before generating the summary. This list is presented in order, and you
-should likely use the tools in that order. In some environments, the more complex analysis tools may not be available and you will
-need to perform an analysis without using those tools.
+Use the following argot analysis tools to understand a function and its callees. Tracing is
+recursive, not a fixed sequence -- expect to revisit these tools for each callee you inspect.
 
 0. **`argot_reload_config`** - Loads (or reloads) a config.
    - This is useful when a config for Argot is already defined. A config can list specific program targets and dataflow problems.
@@ -153,46 +180,35 @@ need to perform an analysis without using those tools.
    - If there are multiple choices, you must come back to the user to allow them to make a selection.
    - If you are summarizing an interface method, you can use the "interface_mode" option to list the implementations of an interface method.
 
-3. **`argot_show_src`** - View the source code
-   - Use function name regex: `argot_show_src <function_name>`
-   - Helps understand the function's logic and structure
+3. **`argot_show_src`** / **`go_doc -src`** - View the source code (primary tool)
+   - Use function name regex: `argot_show_src <function_name>`, or `go_doc <query> src=true`
+   - Use this for most functions -- source is easier to read than SSA, and calls are
+     syntactically obvious
 
-4. **`argot_show_ssa`** - View SSA (Static Single Assignment) representation
+4. **`argot_show_ssa`** (optional) - View SSA (Static Single Assignment) representation
    - Use function name regex: `argot_show_ssa <function_name>`
-   - Shows precise data flow operations and variable assignments
-   - Critical for understanding how data moves through the function
+   - Only needed when source alone leaves ambiguity about exactly which field/value a line touches
 
-5. **`argot_run_pointer`** - Run pointer analysis for aliasing information
-   - Provides aliasing information crucial for understanding data flow
-   - Must be run before using pointer-dependent analysis tools
-   - Takes some time but provides essential information for complex functions
-
-6. **`argot_function_focus`** - Focus on specific function for detailed analysis
+5. **`argot_function_focus`** (optional) - Focus on specific function for detailed analysis
    - Use function name regex: `argot_function_focus <function_name>`
    - Enables use of value-specific analysis tools
 
-7. **`argot_show_ssa_value`** - Examine specific SSA values (requires focused function)
+6. **`argot_show_ssa_value`** (optional) - Examine specific SSA values (requires focused function)
    - Use SSA variable names from the SSA output (e.g., `t7`, `input`)
    - Shows type information, instruction details, and referrers
    - Helps trace how values flow through the function
-
-8. **`argot_dataflow_check`** - Check whether a given dataflow summary is sound (requires loaded program and active configuration)
-   - Checks whether a dataflow summary is sound (correct, over-approximating) within the context of a loaded program.
-   - Returns the reasons for unsoundness, if any. When some must-not-flows cannot be proved, this may mean that they should be added to the summary.
-   - If all flows could be proved, there may be risks associated to underlying code. This may be unavoidable, and the summary may be "soundy". That means it is correct but we cannot prove it with 100% guarantee.
 
 ## Workflow
 
 1. Load the program with `argot_load`
 2. List matching functions / methods / interface methods with `argot_list_functions <function regex>` (optionally with interface_mode)
-3. View source code with `argot_show_src` to understand the function
-4. View SSA representation with `argot_show_ssa` to see data flow operations
-5. Run pointer analysis with `argot_run_pointer` for aliasing information
-6. Focus on the function with `argot_function_focus` if detailed analysis is needed
-7. Use `argot_show_ssa_value` to examine specific values if focused
-8. Generate the YAML dataflow summary based on your analysis
-9. (Optional) Write the dataflow summary in the user spec file.
-10. If the dataflow summary is written to a user spec file reference by a config, use the `argot_dataflow_check` tool to check the summary.
+3. View source code with `argot_show_src`/`go_doc -src` to understand the function and identify callees
+4. Repeat steps 2-3 for any callee that receives a value you can't otherwise be confident about
+   (see "Tracing Through Callees" above)
+5. (optional) If source alone leaves ambiguity, view SSA with `argot_show_ssa`, focus with
+   `argot_function_focus`, and examine specific values with `argot_show_ssa_value`
+6. Generate the YAML dataflow summary based on your analysis
+7. Write the dataflow summary to the user spec file.
 
 ## Required Arguments
 
@@ -202,13 +218,8 @@ To generate a dataflow summary, you need:
 2. **Function name** - Name of the function to analyze
 3. **Package name** - Package containing the function
 
-An alternative way to know which functions to summarize is to run a taint-tracking analysis that generates a report of functions that should be summarized.
-For example, if a given config file `argot-config.yaml` contains taint analysis problems and has `generate-unsoundness-report: true` then the taint tool will also print function names that need a dataflow summary and why.
-
 ## Example Request
 
 "Generate a dataflow summary for function `thisFunctionIsCalled` in file `/path/to/sample.go` in package `main`."
-
-"Generate dataflow summaries for all the function suggested by the taint tool running with the configuration `argot-config.yaml`"
 
 Generate only the YAML dataflow summary for the provided function. Do not include explanations unless the flow is complex and needs clarification.

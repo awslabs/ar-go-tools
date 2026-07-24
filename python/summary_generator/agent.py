@@ -6,7 +6,7 @@ from pathlib import Path
 from mcp import stdio_client, StdioServerParameters
 from strands import Agent
 from strands.tools.mcp import MCPClient, MCPAgentTool
-from summary_generator.file_tools import SafeFileTools, create_dataflow_prompt_tool
+from summary_generator.file_tools import SafeFileTools, create_dataflow_prompt_tool, create_go_doc_tool
 
 
 class CacheBustingMCPClient(MCPClient):
@@ -54,14 +54,11 @@ Your workflow:
 1. Load the program using argot_load with the provided config file(s) and target name
 2. Read the dataflow summary generation prompt using get_dataflow_summary_prompt to understand the format
 3. For each function in the provided list:
-   - Use argot_info to get the function signature and details
-   - Use argot_ssa to see the SSA form of the function
-   - Use argot_callees to understand what functions it calls (if relevant)
+   - Use `go doc <function>` to see the function signature and documentation.
+   - Use `go doc -src <function>` to see the source code of the function.
+   - Make sure the summary includes taint flows within all callees.
    - Generate a dataflow summary following the YAML format from the prompt
-   - Use argot_check to validate the summary
-   - If validation fails, analyze the error and revise the summary
-   - Retry validation until it passes
-4. Collect all validated summaries and output them as a single YAML document
+4. Collect all summaries and output them as a single YAML document
 
 You have access to file operations:
 - get_dataflow_summary_prompt: Get the dataflow summary generation instructions
@@ -69,9 +66,11 @@ You have access to file operations:
 - read_file: Read any text file
 - write_yaml_file: Write YAML files (only .yaml/.yml extensions allowed)
 
-All file operations are restricted to the config directory and its subdirectories.
+All file operations are restricted to a dedicated output directory and its subdirectories (not the config file's own directory, and not the analyzed program's directory).
 
-Be thorough and conservative in your analysis - include all possible data flows to ensure soundness.
+Include all possible flows in the summaries, but make sure to be as precise as possible. Only include a flow in the summary if you are reasonably sure it exists.
+
+Use field-sensitive summaries whenever possible. The maximum access path length is 3: (e.g., a.b.c).
 """
 
 
@@ -118,7 +117,7 @@ def get_inference_profile(region: str, model_id: str) -> str:
         return model_id
 
 
-def create_summary_agent(argot_mcp_path: str, model_config: dict, config_dir: str):
+def create_summary_agent(argot_mcp_path: str, model_config: dict, out_dir: str, mcp_cwd: str):
     """Create a Strands agent configured for summary generation.
     
     Args:
@@ -127,34 +126,40 @@ def create_summary_agent(argot_mcp_path: str, model_config: dict, config_dir: st
             - provider: "bedrock", "anthropic", "ollama", etc.
             - model_id: Model identifier
             - Additional provider-specific config
-        config_dir: Directory containing the Argot config file (MCP server will run from here)
+        out_dir: Directory the agent may write summaries.yaml to. SafeFileTools restricts
+            all agent file writes here -- separate from mcp_cwd (the target repo, never
+            writable) and from the config file's own directory.
+        mcp_cwd: Working directory for the argot-mcp-server subprocess -- Go's package
+            loading resolves target file paths relative to this, so it must be the target
+            repo's own Go module.
     
     Returns:
-        Model instance, MCPClient, SafeFileTools, and prompt tool (for context management)
+        Model instance, MCPClient, SafeFileTools, prompt tool (for context management), and
+        go doc tool
     """
-    # Create MCP client for Argot tools
-    # Start the MCP server in the config directory
     mcp_client = CacheBustingMCPClient(lambda: stdio_client(
         StdioServerParameters(
             command=argot_mcp_path,
             args=[],
-            cwd=config_dir
+            cwd=mcp_cwd
         )
     ))
     
-    # Create safe file tools restricted to config directory
-    file_tools = SafeFileTools(config_dir)
+    file_tools = SafeFileTools(out_dir)
 
-    
-    # Find repository root (go up from config_dir until we find cmd/argot-mcp-server)
-    repo_root = Path(config_dir).resolve()
+    # Walk up from out_dir (not mcp_cwd, which is an external repo for everything but
+    # sample) to find cmd/argot-mcp-server.
+    repo_root = Path(out_dir).resolve()
     while repo_root != repo_root.parent:
         if (repo_root / "cmd" / "argot-mcp-server").exists():
             break
         repo_root = repo_root.parent
     
-    # Create dataflow prompt tool
     prompt_tool = create_dataflow_prompt_tool(str(repo_root))
+
+    # go doc must run from mcp_cwd (the target repo's own Go module), not out_dir -- same
+    # reasoning as the MCP server subprocess above.
+    go_doc_tool = create_go_doc_tool(mcp_cwd)
     
     # Select model based on provider
     provider = model_config.get("provider", "bedrock")
@@ -190,7 +195,7 @@ def create_summary_agent(argot_mcp_path: str, model_config: dict, config_dir: st
     else:
         raise ValueError(f"Unsupported provider: {provider}")
     
-    return model, mcp_client, file_tools, prompt_tool
+    return model, mcp_client, file_tools, prompt_tool, go_doc_tool
 
 
 def format_spec_iterm(spec_item: dict) -> str: 
@@ -263,7 +268,6 @@ Follow the workflow:
 0. Load the config using argot_reload_config by passing the config file 
 1. Load the program with argot_load using the config file(s) and target (provide the target argument, not paths)
 2. For each function, gather context and generate a summary
-3. Validate each summary with argot_check and revise if needed
-4. Output all validated summaries as a single YAML document
+3. Output all validated summaries as a single YAML document
 """
     return agent(prompt)
