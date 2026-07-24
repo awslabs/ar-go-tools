@@ -1,0 +1,37 @@
+- tag: "http-data-to-metric-labels"
+  description: "HTTP request data flowing into Prometheus metric labels"
+  severity: "HIGH"
+  targets:
+    - middleware
+  sources:
+    - method: "WrapHandler"
+      package: "github.com/prometheus/client_golang/examples/middleware/httpmiddleware"
+  sinks:
+    - method: "^(Labels|CounterVec|HistogramVec|SummaryVec).*"
+      package: "github.com/prometheus/client_golang/prometheus"
+    - method: "^New.*Vec$"
+      package: "github.com/prometheus/client_golang/prometheus/promauto"
+- tag: "request-size-manipulation"
+  description: "User-controlled request sizes affecting metrics"
+  severity: "MEDIUM"
+  targets:
+    - middleware
+  sources:
+    - method: "^Body"
+      package: "net/http"
+    - method: "ContentLength"
+      package: "net/http"
+  sinks:
+    - method: "InstrumentHandlerRequestSize"
+      package: "github.com/prometheus/client_golang/prometheus/promhttp"
+- tag: "label-cardinality-bomb"
+  description: "Unbounded handler names creating metric label explosion"
+  severity: "HIGH"
+  targets:
+    - middleware
+  sources:
+    - method: "WrapHandler"
+      package: "github.com/prometheus/client_golang/examples/middleware/httpmiddleware"
+  sinks:
+    - method: "WrapRegistererWith"
+      package: "github.com/prometheus/client_golang/prometheus"

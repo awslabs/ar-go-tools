@@ -20,13 +20,15 @@ this script from the shell.
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 from rich.console import Console
@@ -35,72 +37,48 @@ console = Console()
 
 EXPERIMENT_DIR = Path(__file__).parent
 REPOS_BASE_DIR = EXPERIMENT_DIR.parent / "payload" / "public-repos-checks"
-GROUND_TRUTH_DIR = EXPERIMENT_DIR / "ground-truth"
-
-
-@dataclass(frozen=True)
-class Target:
-    """One argot-config.yaml build target."""
-
-    name: str
-    files: List[str]
+GROUND_TRUTH_DIR = EXPERIMENT_DIR / "ground-truth-summaries"
+LLM_SUMMARIES_DIR = EXPERIMENT_DIR / "llm-summaries"
+# Per-repo build target + taint-tracking-problems, mirroring ground-truth-summaries/<repo>/*.yaml's
+# layout. See _base_config/_taint_specs.
+ARGOT_CONFIGS_DIR = EXPERIMENT_DIR / "argot-configs"
+# Generated, read-only, per-task argot-config.yaml files -- see _generate_configs_for_repo.
+GENERATED_CONFIGS_DIR = EXPERIMENT_DIR / "generated-configs"
+FIND_INTERESTING_METHODS_DIR = EXPERIMENT_DIR / "find-interesting-methods"
 
 
 @dataclass(frozen=True)
 class RepoInfo:
-    """Everything needed to check out a target repo at a pinned commit and build an
-    argot-config.yaml for it. url/commit are pinned for reproducibility (see Dockerfile)."""
+    """Everything needed to check out a target repo at a pinned commit. url/commit are pinned
+    for reproducibility (see Dockerfile)."""
 
     url: str
     commit: str
-    targets: List[Target]
 
 
-# The 5 repos used for the checker-precision (RQ1) ground-truth evaluation. Each repo's
-# argot-config.yaml is generated from _build_config below rather than checked into the repo,
-# since it's almost entirely boilerplate -- the only real per-repo variation is the build
-# targets.
+# The 5 repos used for the checker-precision (RQ1) ground-truth evaluation.
 REPOS: Dict[str, RepoInfo] = {
     "amazon-ssm-agent": RepoInfo(
         url="https://github.com/aws/amazon-ssm-agent.git",
         commit="ef5df636f7035bb1e3e325fab519379715678033",
-        targets=[
-            Target(
-                name="amazon-ssm-agent-unix",
-                files=["core/agent.go", "core/agent_unix.go", "core/agent_parser.go"],
-            ),
-        ],
     ),
     "badger": RepoInfo(
         url="https://github.com/dgraph-io/badger.git",
         commit="a700dc3b6332e2351674f34f841233541568f782",
-        targets=[Target(name="badger-cli", files=["./badger/"])],
     ),
     "govatar": RepoInfo(
         url="https://github.com/o1egl/govatar.git",
         commit="31618c34a7ae828c61629e022b1654e4ec552628",
-        targets=[Target(name="govatar-cli", files=["./govatar"])],
     ),
     "prometheus": RepoInfo(
         url="https://github.com/prometheus/client_golang.git",
         commit="7ba246a648ca4e294ca008d95b6fcc8df2f9c255",
-        targets=[
-            Target(name="example-simple", files=["./examples/simple/main.go"]),
-            Target(name="example-random", files=["./examples/random/main.go"]),
-            Target(name="gocollector", files=["./examples/gocollector/main.go"]),
-            Target(name="middleware", files=["./examples/middleware/main.go"]),
-        ],
     ),
     "sample": RepoInfo(
         url="",  # local-only sample program, tracked directly in this repo; not cloned
         commit="",
-        targets=[Target(name="sample-main", files=["./main.go"])],
     ),
 }
-
-
-def _ground_truth_files(repo: str) -> List[Path]:
-    return sorted((GROUND_TRUTH_DIR / repo).glob("*.yaml"))
 
 
 def main() -> int:
@@ -110,6 +88,14 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     p = subparsers.add_parser(
+        "generate-configs",
+        help="(Re)generate the fixed, read-only argot-config.yaml files in "
+        "generated-configs/<repo>/ for repo (or every repo, if --repo is omitted)",
+    )
+    p.add_argument("--repo", choices=sorted(REPOS))
+    p.set_defaults(func=cmd_generate_configs)
+
+    p = subparsers.add_parser(
         "run-check", help="Run the soundness checker against a summaries file"
     )
     p.add_argument("--repo", required=True, choices=sorted(REPOS))
@@ -117,7 +103,7 @@ def main() -> int:
         "--summaries",
         type=Path,
         help="Path to a single summaries YAML to check "
-        "(default: every file in experiment/ground-truth/<repo>/)",
+        "(default: every file in experiment/ground-truth-summaries/<repo>/)",
     )
     p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_check)
@@ -131,36 +117,58 @@ def main() -> int:
         "--methods",
         type=Path,
         help="Path to a single interesting-methods summaries YAML "
-        "(default: every file in experiment/ground-truth/<repo>/)",
+        "(default: every file in experiment/ground-truth-summaries/<repo>/)",
     )
     p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_constructive)
 
     p = subparsers.add_parser(
-        "generate", help="(not yet implemented) Run LLM-based summary generation"
+        "run-llm-summarization",
+        help="Run the LLM agent (argot-summarize) to generate dataflow summaries for repo's "
+        "to_summarize.json",
     )
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    p.add_argument(
+        "--target",
+        help="Target name to load (default: the repo's first argot-config.yaml target)",
+    )
+    p.add_argument("--model", default="anthropic.claude-sonnet-4-5-20250929-v1:0")
+    p.add_argument(
+        "--inference-profile",
+        help="Bedrock inference profile ARN/ID (skips auto-detection if set)",
+    )
     p.add_argument("--out", required=True, type=Path)
-    p.set_defaults(func=_not_implemented("generate"))
+    p.set_defaults(func=cmd_run_llm_summarization)
 
     p = subparsers.add_parser(
-        "run-taint-baseline",
-        help="(not yet implemented) Run the taint analysis without any summaries",
+        "run-taint",
+        help="Run the taint analysis using one of repo's fixed generated configs",
     )
-    p.add_argument("--repo", required=True)
-    p.add_argument("--taint-problems", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    p.add_argument(
+        "--variant",
+        choices=["baseline", "ground-truth", "llm"],
+        default="baseline",
+        help="Which generated-configs/<repo>/taint-*.yaml to run: baseline (no summaries "
+        "loaded), ground-truth (every ground-truth file as user-specs), or llm (the "
+        "LLM-generated summaries file as user-specs). Default: baseline.",
+    )
     p.add_argument("--out", required=True, type=Path)
-    p.set_defaults(func=_not_implemented("run-taint-baseline"))
+    p.set_defaults(func=cmd_run_taint)
 
     p = subparsers.add_parser(
-        "run-taint-models",
-        help="(not yet implemented) Run the taint analysis with checked-sound summaries",
+        "run-find-interesting-methods",
+        help="Run find-interesting-methods (produce then consume) against repo's built config",
     )
-    p.add_argument("--repo", required=True)
-    p.add_argument("--taint-problems", required=True)
-    p.add_argument("--summaries", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    p.add_argument(
+        "--raw-out",
+        type=Path,
+        help="Path to write produce's raw signals JSON (default: --out with a "
+        "'.raw' suffix inserted before .json)",
+    )
     p.add_argument("--out", required=True, type=Path)
-    p.set_defaults(func=_not_implemented("run-taint-models"))
+    p.set_defaults(func=cmd_run_find_interesting_methods)
 
     p = subparsers.add_parser(
         "eval-checker-precision",
@@ -171,7 +179,7 @@ def main() -> int:
         "--summaries",
         type=Path,
         help="Path to a single ground-truth summaries file that was checked "
-        "(default: every file in experiment/ground-truth/<repo>/)",
+        "(default: every file in experiment/ground-truth-summaries/<repo>/)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
@@ -187,7 +195,7 @@ def main() -> int:
         "--summaries",
         type=Path,
         help="Path to a single summaries file that was checked "
-        "(default: every file in experiment/ground-truth/<repo>/)",
+        "(default: every file in experiment/ground-truth-summaries/<repo>/)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
@@ -202,25 +210,41 @@ def main() -> int:
         "--summaries",
         type=Path,
         help="Path to a single summaries file that was checked "
-        "(default: every file in experiment/ground-truth/<repo>/)",
+        "(default: every file in experiment/ground-truth-summaries/<repo>/)",
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_eval_checker_ablation)
 
     p = subparsers.add_parser(
-        "eval-llm-effectiveness", help="(not yet implemented) RQ llm-effectiveness"
+        "eval-llm-effectiveness",
+        help="RQ llm-effectiveness: checker vs. LLM-generated summaries vs. constructive",
     )
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    p.add_argument(
+        "--summaries",
+        required=True,
+        type=Path,
+        help="Path to the LLM-generated summaries file",
+    )
+    p.add_argument("--check-report", required=True, type=Path)
+    p.add_argument("--constructive-report", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
-    p.set_defaults(func=_not_implemented("eval-llm-effectiveness"))
+    p.set_defaults(func=cmd_eval_llm_effectiveness)
 
     p = subparsers.add_parser(
-        "eval-workflow-efficiency", help="(not yet implemented) RQ workflow-efficiency"
+        "eval-workflow-efficiency",
+        help="RQ workflow-efficiency: baseline vs. with-summaries taint analysis runtime, "
+        "and summarization/checking overhead",
     )
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", required=True, choices=sorted(REPOS))
+    p.add_argument("--summarization", required=True, type=Path)
+    p.add_argument("--check-report", required=True, type=Path)
+    p.add_argument("--taint-with-summaries", required=True, type=Path)
+    p.add_argument("--taint-baseline", required=True, type=Path)
+    p.add_argument("--constructive-report", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
-    p.set_defaults(func=_not_implemented("eval-workflow-efficiency"))
+    p.set_defaults(func=cmd_eval_workflow_efficiency)
 
     p = subparsers.add_parser(
         "latex",
@@ -248,7 +272,6 @@ def cmd_run_check(args: argparse.Namespace) -> None:
         args.repo,
         summaries_paths,
         via="all",
-        extra_config={},
         out_path=args.out,
     )
 
@@ -260,9 +283,198 @@ def cmd_run_constructive(args: argparse.Namespace) -> None:
         args.repo,
         methods_paths,
         via="naive",
-        extra_config={},
         out_path=args.out,
     )
+
+
+def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
+    """Run argot-summarize (the LLM agent) against repo's to_summarize.json.
+
+    The agent's file read/write tools are restricted to the directory containing the config
+    file we give it (see summary_generator.SafeFileTools) -- so rather than pointing it at the
+    real repo checkout (which would let it read/write arbitrary files there), we run it
+    against a config that lives in its own dedicated directory, experiment/llm-summaries/<repo>/,
+    with project-root pointing back at the real repo checkout. The agent's only writable file
+    is summaries.yaml in that same directory, which becomes this repo's persistent
+    LLM-generated-summaries output.
+    """
+    repo_path = repo_dir(args.repo)
+    real_config = _base_config(args.repo)
+
+    llm_dir = LLM_SUMMARIES_DIR / args.repo
+    llm_dir.mkdir(parents=True, exist_ok=True)
+    summaries_path = llm_dir / "summaries.yaml"
+    if not summaries_path.exists():
+        summaries_path.write_text("dataflow-summaries: []\n")
+
+    config = dict(real_config)
+    config["options"] = dict(config.get("options") or {})
+    project_root = config["options"].get("project-root", "./")
+    resolved_project_root = (repo_path / project_root).resolve()
+    config["options"]["project-root"] = os.path.relpath(
+        resolved_project_root, start=llm_dir
+    )
+    config["dataflow-problems"] = dict(config.get("dataflow-problems") or {})
+
+    config_path = llm_dir / "argot-config.yaml"
+    config_path.write_text(yaml.safe_dump(config))
+
+    target_name = args.target or (config.get("targets") or [{}])[0].get("name")
+    if not target_name:
+        console.print(
+            f"[red]run-llm-summarization: no target found in {args.repo}'s argot-config.yaml[/red]"
+        )
+        sys.exit(1)
+
+    stats_path = llm_dir / "summarize-stats.json"
+    log_file = args.out.with_suffix(".log")
+    cmd = [
+        "argot-summarize",
+        "--config",
+        str(config_path),
+        "--target",
+        target_name,
+        "--functions",
+        str((repo_path / "to_summarize.json").resolve()),
+        "--stats-json",
+        str(stats_path),
+        "--model",
+        args.model,
+        # argot-mcp-server's own CWD must be inside repo_path's Go module for target file
+        # paths (e.g. "./govatar") to resolve via Go's package loading -- llm_dir is a
+        # different module (ar-go-tools itself), so it can't be used here even though it's
+        # where the config file (and SafeFileTools' write-scope restriction) lives.
+        "--mcp-cwd",
+        str(repo_path),
+    ]
+    if args.inference_profile:
+        cmd += ["--inference-profile", args.inference_profile]
+
+    duration = _run_subprocess(
+        cmd,
+        cwd=llm_dir,
+        log_file=log_file,
+        label=f"run-llm-summarization ({args.repo})",
+        timeout=None,
+    )
+
+    stats = json.loads(stats_path.read_text()) if stats_path.exists() else None
+    result = {
+        "repo": args.repo,
+        "duration_seconds": round(duration, 2),
+        "stats": stats,
+        "summaries_path": str(summaries_path),
+    }
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(result, indent=2))
+    console.print(f"[green]Wrote {args.out}[/green] ({duration:.1f}s)")
+    console.print(f"[green]Generated summaries in {summaries_path}[/green]")
+
+
+def cmd_run_taint(args: argparse.Namespace) -> None:
+    """Run argot taint using the fixed generated-configs/<repo>/taint-<variant>.yaml."""
+    repo_path = repo_dir(args.repo)
+    config_path = GENERATED_CONFIGS_DIR / args.repo / f"taint-{args.variant}.yaml"
+    if not config_path.exists():
+        console.print(
+            f"[red]{config_path} not found; run generate-configs --repo {args.repo} first[/red]"
+        )
+        sys.exit(1)
+
+    (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
+
+    log_file = args.out.with_suffix(".log")
+    label = f"run-taint ({args.repo}, {args.variant})"
+    duration = _run_subprocess(
+        ["argot", "taint", "-config", str(config_path.resolve())],
+        cwd=repo_path,
+        log_file=log_file,
+        label=label,
+        # exit code 2 is argot's generic "command returned an error" code, used both for
+        # taint's expected "found taint flows" result and for a real crash/misconfiguration
+        # -- tolerated here, disambiguated below by whether a report was actually written.
+        tolerate_exit_codes=(2,),
+    )
+
+    report = _read_taint_report(log_file, repo_path)
+    if report["report_path"] is None:
+        console.print(f"[red]{label} failed; no report found, see {log_file}[/red]")
+        sys.exit(1)
+    report["duration_seconds"] = round(duration, 2)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(report, indent=2))
+    console.print(f"[green]Wrote {args.out}[/green] ({duration:.1f}s)")
+
+
+def cmd_run_find_interesting_methods(args: argparse.Namespace) -> None:
+    """Run find-interesting-methods produce then consume against repo's fixed
+    generated-configs/<repo>/taint-baseline.yaml (the baseline, no-summaries config -- the
+    same one used by `run-taint --variant baseline`).
+    """
+    # NOTE: find-interesting-methods is a separate Go binary (not installed anywhere). Unlike
+    # project-root (resolved relative to the config file's own path, see analysis/config/config.go),
+    # target file paths (e.g. "./main.go") are resolved by golang.org/x/tools/go/packages relative
+    # to the process's cwd -- so the binary must run with cwd=repo_path, the same as argot itself.
+    # That conflicts with needing `go run` (or `go build`) to execute from ar-go-tools' own module
+    # (repo_path is a separate Go module, e.g. sample/badger, that find-interesting-methods' package
+    # path is outside of) -- so a temp binary is built once from EXPERIMENT_DIR, then run separately
+    # with cwd=repo_path.
+
+    repo_path = repo_dir(args.repo)
+    config_path = GENERATED_CONFIGS_DIR / args.repo / "taint-baseline.yaml"
+    if not config_path.exists():
+        console.print(
+            f"[red]{config_path} not found; run generate-configs --repo {args.repo} first[/red]"
+        )
+        sys.exit(1)
+
+    (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
+
+    raw_out = args.raw_out or args.out.with_name(
+        args.out.stem + ".raw" + args.out.suffix
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_bin_dir:
+        bin_path = Path(tmp_bin_dir) / "find-interesting-methods"
+        build_log = raw_out.with_suffix(".build.log")
+        _run_subprocess(
+            ["go", "build", "-o", str(bin_path), str(FIND_INTERESTING_METHODS_DIR)],
+            cwd=EXPERIMENT_DIR,
+            log_file=build_log,
+            label=f"run-find-interesting-methods build ({args.repo})",
+        )
+
+        produce_log = raw_out.with_suffix(".log")
+        _run_subprocess(
+            [
+                str(bin_path),
+                "produce",
+                "-config",
+                str(config_path.resolve()),
+                "-out",
+                str(raw_out.resolve()),
+            ],
+            cwd=repo_path,
+            log_file=produce_log,
+            label=f"run-find-interesting-methods produce ({args.repo})",
+        )
+
+        consume_log = args.out.with_suffix(".log")
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        duration = _run_subprocess(
+            [
+                str(bin_path),
+                "consume",
+                "-in",
+                str(raw_out.resolve()),
+                "-out",
+                str(args.out.resolve()),
+            ],
+            cwd=repo_path,
+            log_file=consume_log,
+            label=f"run-find-interesting-methods consume ({args.repo})",
+        )
+    console.print(f"[green]Wrote {raw_out}[/green] and {args.out} ({duration:.1f}s)")
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +494,84 @@ def cmd_eval_checker_ablation(args: argparse.Namespace) -> None:
     _run_eval_checker("ablation", args, needs_constructive=False)
 
 
-def _run_eval_checker(subcommand: str, args: argparse.Namespace, needs_constructive: bool) -> None:
+def cmd_eval_llm_effectiveness(args: argparse.Namespace) -> None:
+    """RQ llm-effectiveness: same computation as eval-checker-precision (checker soundness +
+    constructive excess-flow comparison), but against the LLM-generated summaries file
+    (--summaries) rather than the RQ1 ground-truth corpus."""
+    _run_eval_checker(
+        "precision", args, needs_constructive=True, rq="llm-effectiveness"
+    )
+
+
+def cmd_eval_workflow_efficiency(args: argparse.Namespace) -> None:
+    """RQ workflow-efficiency: is running the soundness checker + taint analysis with
+    LLM-generated (checked-sound) models faster than the baseline taint analysis, and is the
+    LLM-based summarization + checking faster than the constructive approach?"""
+    summarization = json.loads(args.summarization.read_text())
+    check_report = json.loads(args.check_report.read_text())
+    taint_with = json.loads(args.taint_with_summaries.read_text())
+    taint_baseline = json.loads(args.taint_baseline.read_text())
+    constructive_report = json.loads(args.constructive_report.read_text())
+
+    sum_duration = summarization.get("duration_seconds") or 0
+    check_duration = _check_report_duration(check_report)
+    with_duration = taint_with.get("duration_seconds") or 0
+    baseline_duration = taint_baseline.get("duration_seconds") or 0
+    constructive_duration = _check_report_duration(constructive_report)
+
+    speedup = None
+    if baseline_duration > 0 and with_duration > 0:
+        speedup = round(baseline_duration / with_duration, 2)
+
+    agentic_vs_constructive_speedup = None
+    if constructive_duration > 0 and sum_duration > 0:
+        agentic_vs_constructive_speedup = round(constructive_duration / sum_duration, 2)
+
+    with_set = {
+        (df["tag"], df["source"], df["sink"])
+        for df in taint_with.get("dataflows") or []
+    }
+    baseline_set = {
+        (df["tag"], df["source"], df["sink"])
+        for df in taint_baseline.get("dataflows") or []
+    }
+    dataflows_match = with_set == baseline_set
+
+    out = {
+        "rq": "workflow-efficiency",
+        "repo": args.repo,
+        "summarization_seconds": sum_duration,
+        "check_seconds": check_duration,
+        "taint_with_summaries_seconds": with_duration,
+        "taint_baseline_seconds": baseline_duration,
+        "constructive_seconds": constructive_duration,
+        "speedup_factor": speedup,
+        "agentic_vs_constructive_speedup": agentic_vs_constructive_speedup,
+        "dataflows_match": dataflows_match,
+        "extra_dataflows_with_summaries": sorted(with_set - baseline_set),
+        "missing_dataflows_with_summaries": sorted(baseline_set - with_set),
+    }
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(out, indent=2))
+    console.print(f"[green]Wrote {args.out}[/green]")
+
+
+def _check_report_duration(check_report: Dict[str, Any]) -> float:
+    """Sum Elapsed (nanoseconds) across every result in a check-report.json, for the total
+    checking/constructive time across all targets."""
+    total_ns = 0
+    for results in check_report.values():
+        for r in results or []:
+            total_ns += r.get("Elapsed") or 0
+    return round(total_ns / 1e9, 2)
+
+
+def _run_eval_checker(
+    subcommand: str,
+    args: argparse.Namespace,
+    needs_constructive: bool,
+    rq: Optional[str] = None,
+) -> None:
     """Shell out to the eval-checker Go tool (experiment/eval-checker), which does the actual
     grouping/flow-count/excess-flow computation using analysis/summaries' own SummaryNode
     parsing and comparison logic, rather than re-implementing it here."""
@@ -290,10 +579,16 @@ def _run_eval_checker(subcommand: str, args: argparse.Namespace, needs_construct
         [args.summaries] if args.summaries else _ground_truth_files(args.repo)
     )
     cmd = [
-        "go", "run", str(EXPERIMENT_DIR / "eval-checker"), subcommand,
-        "-repo", args.repo,
-        "-check-report", str(args.check_report),
-        "-out", str(args.out),
+        "go",
+        "run",
+        str(EXPERIMENT_DIR / "eval-checker"),
+        subcommand,
+        "-repo",
+        args.repo,
+        "-check-report",
+        str(args.check_report),
+        "-out",
+        str(args.out),
     ]
     for p in summaries_paths:
         cmd += ["-summaries", str(p)]
@@ -309,6 +604,11 @@ def _run_eval_checker(subcommand: str, args: argparse.Namespace, needs_construct
     if result.stderr:
         console.print(f"[yellow]{result.stderr}[/yellow]", end="")
 
+    if rq is not None:
+        data = json.loads(args.out.read_text())
+        data["rq"] = rq
+        args.out.write_text(json.dumps(data, indent=2))
+
 
 def _not_implemented(name: str):
     def handler(_args: argparse.Namespace) -> None:
@@ -323,12 +623,15 @@ def _not_implemented(name: str):
 # ---------------------------------------------------------------------------
 
 
+def _ground_truth_files(repo: str) -> List[Path]:
+    return sorted((GROUND_TRUTH_DIR / repo).glob("*.yaml"))
+
+
 def _write_check_report(
     cmd_name: str,
     repo: str,
     summaries_or_methods_paths: List[Path],
     via: str,
-    extra_config: Dict[str, Any],
     out_path: Path,
 ) -> None:
     """Shared implementation for run-check and run-constructive: runs `argot check` once per
@@ -347,7 +650,7 @@ def _write_check_report(
         part_out = out_path.with_suffix(f".{part_path.stem}.json")
         try:
             duration = _run_one_check(
-                cmd_name, repo, repo_path, part_path, via, extra_config, part_out
+                cmd_name, repo, repo_path, part_path, via, part_out
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             console.print(
@@ -391,42 +694,43 @@ def _run_one_check(
     repo_path: Path,
     summaries_or_methods_path: Path,
     via: str,
-    extra_config: Dict[str, Any],
     out_path: Path,
 ) -> float:
     """Run a single `argot check` invocation against summaries_or_methods_path and write its
-    check-report.json verbatim to out_path. Returns the elapsed time in seconds."""
-    config = _build_config(repo)
-    config["dataflow-problems"]["user-specs"] = []
-    config["dataflow-problems"]["check-specs"] = [
-        os.path.relpath(str(summaries_or_methods_path.resolve()), start=repo_path)
-    ]
-    config["dataflow-problems"].update(extra_config)
+    check-report.json verbatim to out_path. Returns the elapsed time in seconds.
+
+    summaries_or_methods_path must be one of repo's standard ground-truth files -- the matching
+    pre-generated generated-configs/<repo>/check-ground-truth-<stem>.yaml is used directly. No
+    config is assembled at run time; an arbitrary/unrecognized path fails fast instead.
+    """
+    config_path = (
+        GENERATED_CONFIGS_DIR
+        / repo
+        / f"check-ground-truth-{summaries_or_methods_path.stem}.yaml"
+    )
+    if (
+        summaries_or_methods_path not in _ground_truth_files(repo)
+        or not config_path.exists()
+    ):
+        console.print(
+            f"[red]{summaries_or_methods_path} is not one of {repo}'s ground-truth files "
+            f"with a generated config ({config_path} not found). Run generate-configs "
+            f"--repo {repo}, or pass one of the files under "
+            f"{GROUND_TRUTH_DIR / repo}.[/red]"
+        )
+        sys.exit(1)
 
     # argot check will not create its own reports-dir; it must already exist.
-    (repo_path / config["options"]["reports-dir"]).mkdir(parents=True, exist_ok=True)
-
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".yaml",
-        dir=repo_path,
-        prefix=".tmp-argot-config-",
-        delete=False,
-    ) as tmp:
-        yaml.safe_dump(config, tmp)
-        tmp_config_path = Path(tmp.name)
+    (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
 
     log_file = out_path.with_suffix(".log")
     label = f"{cmd_name} ({repo}, {summaries_or_methods_path.stem})"
-    try:
-        duration = _run_subprocess(
-            ["argot", "check", "-config", tmp_config_path.name, "-via", via],
-            cwd=repo_path,
-            log_file=log_file,
-            label=label,
-        )
-    finally:
-        tmp_config_path.unlink(missing_ok=True)
+    duration = _run_subprocess(
+        ["argot", "check", "-config", str(config_path.resolve()), "-via", via],
+        cwd=repo_path,
+        log_file=log_file,
+        label=label,
+    )
 
     report_path = None
     content = log_file.read_text()
@@ -445,34 +749,213 @@ def _run_one_check(
     return duration
 
 
-def _build_config(repo: str) -> Dict[str, Any]:
-    """Build a minimal argot-config.yaml for repo from the shared template. The only
-    per-repo variation is the build targets; check-specs/user-specs are always overridden by
-    _write_check_report before this is used."""
-    info = REPOS[repo]
-    return {
+def _base_config(repo: str) -> Dict[str, Any]:
+    """Build the shared template plus repo's argot-configs/<repo>/target.yaml (single build
+    target) merged in -- everything every generated config needs, regardless of task. Callers
+    add task-specific pieces on top (taint-tracking for taint configs, check-specs for check
+    configs, etc.) -- see _generate_configs_for_repo.
+    """
+    config: Dict[str, Any] = {
         "dataflow-problems": {
             "summarize-on-demand": True,
             "check-ignores-unsound": True,
-            "field-sensitive-funcs": [".*"],
+            "field-sensitive-funcs": [
+                ".*"
+            ],  # Analyze every function field-sensitively.
         },
         "options": {
             "project-root": "./",
             "reports-dir": "logs/argot",
             "log-level": 3,
             "report-paths": True,
-            "analysis-options": {"unsafe-max-depth": 30, "max-alarms": 30},
+            "analysis-options": {"unsafe-max-depth": 35},
         },
-        "targets": [{"name": t.name, "files": t.files} for t in info.targets],
+    }
+
+    target = yaml.safe_load((ARGOT_CONFIGS_DIR / repo / "target.yaml").read_text())
+    assert isinstance(target, dict)  # There must only be a single target per repo.
+    config["targets"] = [target]
+
+    if not config.get("targets"):
+        console.print(f"[red]{repo}: built config has no target[/red]")
+        sys.exit(1)
+    return config
+
+
+def _taint_specs(repo: str) -> List[Dict[str, Any]]:
+    """Load repo's argot-configs/<repo>/taint-specs.yaml (taint-tracking problems) -- only
+    needed by taint-analysis configs (taint-baseline/ground-truth/llm and
+    find-interesting-methods), not by check configs, which never reference taint-tracking at
+    all (see cmd/argot/check/check.go -- it only reads CheckSpecs)."""
+    taint_specs = yaml.safe_load(
+        (ARGOT_CONFIGS_DIR / repo / "taint-specs.yaml").read_text()
+    )
+    if not taint_specs:
+        console.print(f"[red]{repo}: built config has no taint-tracking problems[/red]")
+        sys.exit(1)
+    return taint_specs
+
+
+def cmd_generate_configs(args: argparse.Namespace) -> None:
+    repos = [args.repo] if args.repo else sorted(REPOS)
+    for repo in repos:
+        paths = _generate_configs_for_repo(repo)
+        console.print(f"[green]Generated {len(paths)} config(s) for {repo}[/green]")
+
+
+def _generate_configs_for_repo(repo: str) -> List[Path]:
+    """Write the fixed set of read-only argot-config.yaml files for repo to
+    generated-configs/<repo>/, replacing whatever was there before. Every consumer (run-taint,
+    run-check, run-find-interesting-methods, run-llm-summarization) reads one of these paths
+    directly instead of assembling a config (in a temp file or otherwise) at run time.
+
+    Each config includes only what its task actually needs: taint configs get taint-tracking
+    and no check-specs/user-specs beyond what the variant calls for; check configs get
+    check-specs and no taint-tracking at all (the soundness checker never reads it).
+
+    The 5 kinds of task, and which of these files serves each:
+      - baseline taint analysis (also used by find-interesting-methods): taint-baseline.yaml
+      - taint analysis with ground-truth summaries loaded: taint-ground-truth.yaml
+      - taint analysis with LLM-generated summaries loaded: taint-llm.yaml
+      - checking soundness of each ground-truth summaries file: check-ground-truth-<stem>.yaml
+        (one per file in ground-truth-summaries/<repo>/, kept separate rather than combined
+        into one check-specs list, so each file's `argot check` run is isolated -- see
+        _run_one_check)
+      - checking soundness of the LLM-generated summaries file: check-llm.yaml
+
+    user-specs/check-specs entries are resolved relative to project-root (the repo checkout),
+    not to the generated config file's own location -- see argot/analysis/config/config.go -- so
+    paths back to experiment/ground-truth-summaries or experiment/llm-summaries are computed
+    relative to repo_dir(repo) regardless of where the generated config file itself lives.
+    """
+    repo_path = repo_dir(repo)
+    out_dir = GENERATED_CONFIGS_DIR / repo
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True)
+
+    # NOTE: project-root is resolved relative to the config file's location, so it must point from
+    # out_dir back to repo_path instead.
+    project_root = os.path.relpath(repo_path.resolve(), start=out_dir.resolve())
+
+    def write_taint_config(name: str, user_specs: Optional[List[str]] = None) -> Path:
+        config = _base_config(repo)
+        config["options"]["project-root"] = project_root
+        config["dataflow-problems"]["taint-tracking"] = _taint_specs(repo)
+        if user_specs:
+            config["dataflow-problems"]["user-specs"] = user_specs
+        path = out_dir / name
+        path.write_text(yaml.safe_dump(config))
+        return path
+
+    def write_check_config(name: str, check_specs: List[str]) -> Path:
+        config = _base_config(repo)
+        config["options"]["project-root"] = project_root
+        config["dataflow-problems"]["check-specs"] = check_specs
+        path = out_dir / name
+        path.write_text(yaml.safe_dump(config))
+        return path
+
+    def rel_to_repo(p: Path) -> str:
+        return os.path.relpath(p.resolve(), start=repo_path.resolve())
+
+    written = []
+
+    # Baseline: no user-specs.
+    written.append(write_taint_config("taint-baseline.yaml"))
+
+    # Taint analysis with every ground-truth file combined into one user-specs list.
+    ground_truth_paths = _ground_truth_files(repo)
+    written.append(
+        write_taint_config(
+            "taint-ground-truth.yaml",
+            user_specs=[rel_to_repo(p) for p in ground_truth_paths],
+        )
+    )
+
+    # Taint analysis with the LLM-generated summaries file as user-specs.
+    llm_summaries_path = LLM_SUMMARIES_DIR / repo / "summaries.yaml"
+    written.append(
+        write_taint_config(
+            "taint-llm.yaml", user_specs=[rel_to_repo(llm_summaries_path)]
+        )
+    )
+
+    # One soundness-check config per ground-truth file, isolated from each other. No
+    # taint-tracking at all -- argot check never reads it (see cmd/argot/check/check.go).
+    for gt_path in ground_truth_paths:
+        written.append(
+            write_check_config(
+                f"check-ground-truth-{gt_path.stem}.yaml",
+                check_specs=[rel_to_repo(gt_path)],
+            )
+        )
+
+    # Soundness-check config for the LLM-generated summaries file.
+    written.append(
+        write_check_config(
+            "check-llm.yaml", check_specs=[rel_to_repo(llm_summaries_path)]
+        )
+    )
+
+    return written
+
+
+def _read_taint_report(log_file: Path, repo_path: Path) -> Dict[str, Any]:
+    """Parse an `argot taint` run's log for its "Wrote final report in <path>" line, then read
+    that overall-report-*.json and every per-flow report file it references, returning a dict
+    with a flat list of {tag, source, sink} dataflows found."""
+    content = log_file.read_text() if log_file.exists() else ""
+    m = re.search(r"Wrote final report in (\S+)", content)
+    if not m:
+        console.print(f"[red]run-taint: no final report path found in {log_file}[/red]")
+        return {"dataflows": [], "count_by_severity": {}, "report_path": None}
+
+    report_path = Path(m.group(1))
+    if not report_path.is_absolute():
+        report_path = repo_path / report_path
+    if not report_path.exists():
+        console.print(f"[red]run-taint: report file not found: {report_path}[/red]")
+        return {"dataflows": [], "count_by_severity": {}, "report_path": None}
+
+    overall = json.loads(report_path.read_text())
+    dataflows = []
+    for tag, group in (overall.get("Reports") or {}).items():
+        for detail_path in group.get("Details") or []:
+            p = Path(detail_path)
+            if not p.is_absolute():
+                p = repo_path / p
+            if not p.exists():
+                continue
+            flow = json.loads(p.read_text())
+            dataflows.append(
+                {
+                    "tag": tag,
+                    "source": (flow.get("Source") or {}).get("Position", ""),
+                    "sink": (flow.get("Sink") or {}).get("Position", ""),
+                }
+            )
+
+    return {
+        "dataflows": dataflows,
+        "count_by_severity": overall.get("CountBySeverity") or {},
+        "report_path": str(report_path),
     }
 
 
 def _run_subprocess(
-    cmd: List[str], cwd: Path, log_file: Path, label: str, timeout: Optional[int] = None
+    cmd: List[str],
+    cwd: Path,
+    log_file: Path,
+    label: str,
+    timeout: Optional[int] = None,
+    tolerate_exit_codes: Tuple[int, ...] = (),
 ) -> float:
     """Run a subprocess, logging its output to log_file. Returns the duration in seconds.
 
-    Raises subprocess.TimeoutExpired if timeout elapses, CalledProcessError on nonzero exit.
+    Raises subprocess.TimeoutExpired if timeout elapses, CalledProcessError on nonzero exit
+    unless the exit code is in tolerate_exit_codes (e.g. argot taint's exit code 1 for "found
+    taint flows", which is an expected, meaningful result, not a crash).
     """
     console.print(f"[dim]Running {label}...[/dim]")
     start_time = time.time()
@@ -488,7 +971,7 @@ def _run_subprocess(
     finally:
         duration = time.time() - start_time
 
-    if proc.returncode != 0:
+    if proc.returncode != 0 and proc.returncode not in tolerate_exit_codes:
         raise subprocess.CalledProcessError(proc.returncode, cmd)
 
     console.print(f"  [dim]{label}:[/dim] {duration:.1f}s")

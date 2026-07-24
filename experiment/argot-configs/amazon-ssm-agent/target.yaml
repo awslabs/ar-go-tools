@@ -1,0 +1,5 @@
+name: "amazon-ssm-agent-unix"
+files:
+  - "core/agent.go"
+  - "core/agent_unix.go"
+  - "core/agent_parser.go"

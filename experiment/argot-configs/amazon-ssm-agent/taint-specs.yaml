@@ -1,0 +1,48 @@
+- tag: "credential-logging"
+  description: "Checking that credentials don't get logged."
+  severity: "HIGH"
+  targets:
+    - amazon-ssm-agent-unix
+  unsafe-skip-bound-labels: true
+  sources:
+    - package: ".*"
+      method: "RemoteRetrieve"
+    - package: "credentials"
+      method: "Get"
+  sinks:
+    - context: "amazon-ssm-agent"
+      method: "^(Log|Error|Warn|Debug|Info|Print).*"
+    - package: "github.com/aws/amazon-ssm-agent/agent/session/controlchannel"
+      method: "SendMessage"
+  sanitizers:
+    # Signing using the credentials doesn't taint the signed data by definition!
+    - package: ".*signer/v4"
+      method: "Sign"
+    - package: ".*signer/v4"
+      method: "signWithBody"
+    - package: ".*ec2roleprovider"
+      method: "^GetInstanceRegion$"
+  filters:
+    - type: "^error"
+    - type: "^int"
+    - package: "log"
+      type: "T"
+- tag: "ssm-parameter-logging"
+  description: "Checking that SSM parameters don't get logged."
+  targets:
+    - amazon-ssm-agent-unix
+  unsafe-skip-bound-labels: true
+  sources:
+    - package: "github.com/aws/amazon-ssm-agent/agent/ssm/ssmparameterresolver"
+      method: "getParametersFromSsmParameterStore" # where the parameters are retrieved
+  sinks:
+    - context: "amazon-ssm-agent"
+      method: "^(Log|Error|Warn|Debug|Info|Print).*"
+  sanitizers:
+    - package: "ssmparameterresolver"
+      method: "(GetName|GetType)" # Allow logging the type and name of the parameter
+  filters:
+    - type: "^error" # Error shouldn't contain data from parameter since fmt.Errorf is a sink
+    - type: "^int" # Allow logging integers derived from data (counts, length, ..)
+    - package: "log" # Don't track the log itself
+      type: "T"

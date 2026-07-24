@@ -1,0 +1,13 @@
+- tag: "data-logging"
+  description: "Untrusted data is being logged"
+  unsafe-skip-bound-labels: true
+  targets:
+    - sample-main
+  sources:
+    - method: "^Text$"
+      package: "bufio"
+  sinks:
+    - method: "Printf"
+      package: "fmt"
+    - method: "PutObject"
+      package: ".*"

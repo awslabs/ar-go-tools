@@ -1,0 +1,18 @@
+- tag: "path-traversal-vuln-#1"
+  description: >-
+    Checking that user-supplied paths to not flow directly to file operation
+    without sanitization
+  targets:
+    - badger-cli
+  unsafe-skip-bound-labels: true
+  sources:
+    - global: "sstDir"
+      kind: "load"
+      package: ".*"
+  sinks:
+    - method: "(Open|Create)"
+      package: "os"
+    - method: "Open"
+      package: "badger"
+    - method: "Join"
+      package: "filepath"

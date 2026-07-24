@@ -1,0 +1,62 @@
+- tag: "path-traversal"
+  description: "CLI output flag to file operations"
+  severity: "HIGH"
+  targets:
+    - govatar-cli
+  sources:
+    - method: "String"
+      package: "github.com/urfave/cli/v2"
+  sinks:
+    - method: "Create"
+      package: "os"
+  sanitizers:
+    - method: "Clean"
+      package: "path/filepath"
+- tag: "username-injection"
+  description: "CLI username to hash functions"
+  severity: "MEDIUM"
+  targets:
+    - govatar-cli
+  sources:
+    - method: "String"
+      package: "github.com/urfave/cli/v2"
+  sinks:
+    - method: "Write"
+      package: "hash/fnv"
+- tag: "output-extension-to-encoder"
+  description: "CLI output flag controls image encoding format"
+  severity: "LOW"
+  targets:
+    - govatar-cli
+  sources:
+    - method: "String"
+      package: "github.com/urfave/cli/v2"
+  sinks:
+    - method: "Encode"
+      package: "image/jpeg"
+    - method: "Encode"
+      package: "image/gif"
+    - method: "Encode"
+      package: "image/png"
+- tag: "cli-args-to-log"
+  description: "CLI positional args flow to log output"
+  severity: "MEDIUM"
+  targets:
+    - govatar-cli
+  sources:
+    - method: "First"
+      package: "github.com/urfave/cli/v2"
+  sinks:
+    - method: "Fatal"
+      package: "log"
+- tag: "username-to-prng-seed"
+  description: "Username controls PRNG seed for avatar generation"
+  severity: "LOW"
+  targets:
+    - govatar-cli
+  sources:
+    - method: "String"
+      package: "github.com/urfave/cli/v2"
+  sinks:
+    - method: "NewSource"
+      package: "math/rand"
