@@ -505,7 +505,9 @@ func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.
 						break
 					}
 					if f != nil {
-						dataflow.BuildSummary(s, f)
+						if _, err := dataflow.BuildSummary(ctx, s, f); err != nil {
+							return err
+						}
 					}
 					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.Sync()
@@ -563,7 +565,9 @@ func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.
 				for f := range s.ReachableFunctions() {
 					if lang.FnReadsFrom(f, graphNode.Global.Value()) {
 						logger.Tracef("Global %v read in function: %v\n", graphNode, f)
-						dataflow.BuildSummary(s, f)
+						if _, err := dataflow.BuildSummary(ctx, s, f); err != nil {
+							return err
+						}
 					}
 				}
 
@@ -604,7 +608,11 @@ func (v *Visitor) Visit(ctx context.Context, s *dataflow.State, source dataflow.
 				if !s.IsReachableFunction(closureFn) {
 					break
 				}
-				destClosureSummary = dataflow.BuildSummary(s, closureFn)
+				var err error
+				destClosureSummary, err = dataflow.BuildSummary(ctx, s, closureFn)
+				if err != nil {
+					return err
+				}
 				graphNode.SetDestClosure(destClosureSummary)
 				s.FlowGraph.Sync()
 			}

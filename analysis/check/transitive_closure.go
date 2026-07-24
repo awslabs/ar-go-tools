@@ -153,6 +153,9 @@ func ComputeClosedSummary(
 		for _, p := range leafPathsUpTo(param.Type(), inputPathLen) {
 			v := newInputVisitor(p.String(), reachable, unsoundness, recordedUnsoundness, specs)
 			v.Visit(ctx, s, dataflow.NodeWithTrace{Node: param})
+			if v.err != nil {
+				return ClosedInterproceduralSummary{}, v.err
+			}
 			// if there are no flows, don't add them
 			if len(v.flows) == 0 {
 				continue
@@ -218,6 +221,10 @@ type inputVisitor struct {
 	recordedUnsoundness map[*ssa.Function]bool
 	// specs is used to detect entry point (source/sink) usages for EntryPointUsages.
 	specs []dataflow.ScanningSpec
+	// err stores the first error encountered while building a callee/closure summary on demand
+	// (e.g. a timeout). Visit does not return an error itself, so callers must check this field
+	// after Visit returns.
+	err error
 }
 
 // flowTarget is a data flow destination: a graph node reached at a specific object access path
@@ -751,7 +758,10 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 						break
 					}
 					if f != nil {
-						dataflow.BuildSummary(s, f)
+						if _, err := dataflow.BuildSummary(ctx, s, f); err != nil {
+							v.err = err
+							return
+						}
 					}
 					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.Sync()
@@ -877,7 +887,12 @@ func (v *inputVisitor) Visit(ctx context.Context, s *dataflow.State, entry dataf
 				if !s.IsReachableFunction(closureFn) {
 					break
 				}
-				destClosureSummary = dataflow.BuildSummary(s, closureFn)
+				var err error
+				destClosureSummary, err = dataflow.BuildSummary(ctx, s, closureFn)
+				if err != nil {
+					v.err = err
+					return
+				}
 				graphNode.SetDestClosure(destClosureSummary)
 				s.FlowGraph.Sync()
 			}

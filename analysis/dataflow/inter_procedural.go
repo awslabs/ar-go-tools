@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -710,10 +711,13 @@ func UnwindCallStackToFunc(stack *CallStack, f *ssa.Function) *CallStack {
 //
 // BuildSummary expects to be called only on reachable functions, because the analyses usually instantiate the summaries
 // only for those functions.
-func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
+//
+// ctx is used to bound the intra-procedural analysis by DataflowProblems.IntraTimeoutMs, the same as
+// onDemandIntraProcedural. On error (including a timeout), the returned summary is nil.
+func BuildSummary(ctx context.Context, s *State, function *ssa.Function) (*SummaryGraph, error) {
 	summary := s.FlowGraph.Summaries[function]
 	if summary != nil && summary.Constructed {
-		return summary
+		return summary, nil
 	}
 	// nil summaries should only happen for functions that should have an internally defined summary, i.e. standard library.
 	if summary == nil {
@@ -721,25 +725,30 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 		predef, err := NewPredefinedSummary(function, id)
 		if err != nil {
 			// An error in the predefined summaries: this should not happen
-			panic(fmt.Errorf("could not create summary for %v: %v", function, err))
+			return nil, fmt.Errorf("could not create summary for %v: %w", function, err)
 		}
 		if predef != nil {
 			s.FlowGraph.Summaries[function] = predef
 			summary = predef
 		}
 	}
-	// Summary is still nil, we should panic now.
+	// Summary is still nil: there is nothing to build.
 	if summary == nil {
-		panic(fmt.Errorf("summary for function %v is nil", function))
+		return nil, fmt.Errorf("summary for function %v is nil", function)
 	}
 
 	logger := s.Logger
 
 	logger.Debugf("BuildSummary: Constructing summary for %v...\n", function)
-	elapsed, _, err := RunIntraProcedural(context.Background(), s, summary)
+	if timeout := s.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+		defer cancel()
+	}
+	elapsed, _, err := RunIntraProcedural(ctx, s, summary)
 
 	if err != nil {
-		panic(fmt.Errorf("single function analysis failed for %v: %v", function, err))
+		return nil, fmt.Errorf("single function analysis failed for %v: %w", function, err)
 	}
 	if elapsed.Seconds() > 1.0 {
 		logger.Infof("Constructing summary for %v took %.2f s", function, elapsed.Seconds())
@@ -750,5 +759,5 @@ func BuildSummary(s *State, function *ssa.Function) *SummaryGraph {
 		logger.Debugf("BuildSummary: Finished constructing summary for %v (%.2f s)", function, elapsed.Seconds())
 	}
 
-	return summary
+	return summary, nil
 }

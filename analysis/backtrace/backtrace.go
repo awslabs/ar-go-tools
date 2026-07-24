@@ -553,7 +553,11 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 			if s.Config.SummarizeOnDemand &&
 				(graphNode.CalleeSummary == nil || !graphNode.CalleeSummary.Constructed ||
 					strings.Contains(graphNode.ParentName(), "$bound")) {
-				graphNode.CalleeSummary = df.BuildSummary(s, graphNode.Callee())
+				summary, err := df.BuildSummary(ctx, s, graphNode.Callee())
+				if err != nil {
+					return err
+				}
+				graphNode.CalleeSummary = summary
 			}
 
 			if graphNode.CalleeSummary == nil {
@@ -639,7 +643,9 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 					for f := range s.ReachableFunctions() {
 						if lang.FnWritesTo(f, graphNode.Global.Value()) {
 							logger.Tracef("Global %v written in function: %v\n", graphNode, f)
-							df.BuildSummary(s, f)
+							if _, err := df.BuildSummary(ctx, s, f); err != nil {
+								return err
+							}
 						}
 					}
 				}
@@ -668,7 +674,11 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 
 			closureNode := graphNode.ParentNode()
 			if closureNode.ClosureSummary == nil {
-				closureNode.ClosureSummary = df.BuildSummary(s, closureNode.Instr().Fn.(*ssa.Function))
+				summary, err := df.BuildSummary(ctx, s, closureNode.Instr().Fn.(*ssa.Function))
+				if err != nil {
+					return err
+				}
+				closureNode.ClosureSummary = summary
 				logger.Tracef("closure summary parent: %v\n", closureNode.ClosureSummary.Parent)
 			}
 
@@ -729,7 +739,10 @@ func (v *Visitor) visit(ctx context.Context, s *df.State, entrypoint df.NodeWith
 					if f == nil {
 						panic(fmt.Errorf("closure's parent function does not exist for free variable: %v", graphNode))
 					}
-					summary := df.BuildSummary(s, f)
+					summary, err := df.BuildSummary(ctx, s, f)
+					if err != nil {
+						panic(err)
+					}
 					v.onDemandIntraProcedural(ctx, s, summary)
 					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.BuildGraph(true)

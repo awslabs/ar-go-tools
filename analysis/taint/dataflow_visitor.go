@@ -630,7 +630,9 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 						break
 					}
 					if f != nil {
-						df.BuildSummary(s, f)
+						if _, err := df.BuildSummary(ctx, s, f); err != nil {
+							return err
+						}
 					}
 					// This is needed to get the referring make closures outside the function
 					s.FlowGraph.Sync()
@@ -689,7 +691,9 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 				for f := range s.ReachableFunctions() {
 					if lang.FnReadsFrom(f, graphNode.Global.Value()) {
 						logger.Tracef("Global %v read in function: %v\n", graphNode, f)
-						df.BuildSummary(s, f)
+						if _, err := df.BuildSummary(ctx, s, f); err != nil {
+							return err
+						}
 					}
 				}
 
@@ -739,7 +743,11 @@ func (v *Visitor) Visit(ctx context.Context, s *df.State, source df.NodeWithTrac
 			destClosureSummary := graphNode.DestClosure()
 
 			if destClosureSummary == nil {
-				destClosureSummary = df.BuildSummary(s, closureFn)
+				var err error
+				destClosureSummary, err = df.BuildSummary(ctx, s, closureFn)
+				if err != nil {
+					return err
+				}
 				graphNode.SetDestClosure(destClosureSummary)
 				s.FlowGraph.Sync()
 			}
