@@ -313,7 +313,12 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 	var filtered []flow
 	for i, fl1 := range flows {
 		skip := false
-		if fl1.from.node == fl1.to.node {
+		if fl1.from.node == fl1.to.node &&
+			fl1.from.path.isCoveredBy(fl1.to.path) && fl1.to.path.isCoveredBy(fl1.from.path) {
+			// Same node AND same (or overlapping) access path: this is a true self-flow (e.g.
+			// r.Params -> r.Params), not merely a flow between two different fields of the same
+			// node (e.g. r.Params -> r.Body, which has from.node == to.node but distinct paths
+			// and must not be dropped).
 			s.Logger.Warnf("flow %v is a redundant self-flow\n", fl1)
 			skip = true
 		} else {

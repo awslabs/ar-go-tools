@@ -1949,6 +1949,30 @@ func TestCheckSummary_Fields(t *testing.T) {
 			},
 		},
 		{
+			// Regression test: c.Src -> c.Dst has from.node == to.node (both are the parameter
+			// c) but distinct access paths, so it must NOT be filtered out as a redundant
+			// self-flow (see general.go's summaryFlows).
+			pkg:  pkg,
+			name: "copyFieldToOther",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".copyFieldToOther",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src"}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst"},
+						},
+					},
+				},
+				Soundness: check.Sound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
 			pkg:  pkg,
 			name: "threeArgInterTree",
 			typ:  functionSummary,

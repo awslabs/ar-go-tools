@@ -41,6 +41,26 @@ type container struct {
 	other *data
 }
 
+// twoFields is used to test that a flow between two distinct fields of the same parameter
+// (c.Src -> c.Dst below) is not mistaken for a self-flow.
+type twoFields struct {
+	Src int
+	Dst int
+}
+
+// copyFieldToOther flows c.Src into c.Dst: same underlying parameter node (c), but two
+// distinct fields. This is not a self-flow (Src != Dst) and must not be filtered out by the
+// redundant-self-flow check in summaryFlows.
+func copyFieldToOther(c *twoFields) {
+	c.Dst = c.Src
+}
+
+func testCopyFieldToOther() {
+	x := &twoFields{Src: 1, Dst: 0}
+	copyFieldToOther(x)
+	fmt.Printf("x.Dst:%v\n", x.Dst)
+}
+
 type tree struct {
 	n     int
 	right *tree
@@ -156,4 +176,5 @@ func main() {
 	testThreeArgInterFields()
 	testThreeArgInterFieldsDiffCallees()
 	testThreeArgInterTree()
+	testCopyFieldToOther()
 }
