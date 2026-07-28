@@ -58,7 +58,8 @@ Your workflow:
    - Use `go doc -src <function>` to see the source code of the function.
    - Make sure the summary includes taint flows within all callees.
    - Generate a dataflow summary following the YAML format from the prompt
-4. Collect all summaries and output them as a single YAML document
+4. Write the summaries with write_yaml_file, using exactly the filename given in the request
+   (not a name based on the function/package)
 
 You have access to file operations:
 - get_dataflow_summary_prompt: Get the dataflow summary generation instructions
@@ -223,7 +224,7 @@ def generate_summaries(agent, config_paths: list[str], target: str, functions: l
     """
     if batch_size is None or batch_size >= len(functions):
         # Process all at once
-        return _generate_batch(agent, config_paths, target, functions, None)
+        return _generate_batch(agent, config_paths, target, functions, 1, None)
     
     # Process in batches
     all_summaries = []
@@ -236,15 +237,19 @@ def generate_summaries(agent, config_paths: list[str], target: str, functions: l
         
         # Provide previous summaries as context
         context = "\n".join(all_summaries) if all_summaries else None
-        result = _generate_batch(agent, config_paths, target, batch, context)
+        result = _generate_batch(agent, config_paths, target, batch, batch_num, context)
         all_summaries.append(result)
     
     return "\n".join(all_summaries)
 
 
-def _generate_batch(agent, config_paths: list[str], target: str, functions: list[dict], previous_context: str | None = None) -> str:
+def _generate_batch(
+    agent, config_paths: list[str], target: str, functions: list[dict],
+    batch_num: int, previous_context: str | None = None,
+) -> str:
     """Generate summaries for a single batch of functions."""
     func_list = "\n".join([format_spec_iterm(f) for f in functions])
+    out_file = f"summaries-{batch_num:04d}.yaml"
     
     context_section = ""
     if previous_context:
@@ -268,6 +273,7 @@ Follow the workflow:
 0. Load the config using argot_reload_config by passing the config file 
 1. Load the program with argot_load using the config file(s) and target (provide the target argument, not paths)
 2. For each function, gather context and generate a summary
-3. Output all validated summaries as a single YAML document
+3. Write the summaries to {out_file} with write_yaml_file, using exactly that filename
+   (not a name based on the function/package). Output the same YAML document as your response.
 """
-    return agent(prompt)
+    return str(agent(prompt))

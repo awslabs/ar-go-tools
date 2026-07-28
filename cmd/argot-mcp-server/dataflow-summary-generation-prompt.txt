@@ -208,7 +208,8 @@ recursive, not a fixed sequence -- expect to revisit these tools for each callee
 5. (optional) If source alone leaves ambiguity, view SSA with `argot_show_ssa`, focus with
    `argot_function_focus`, and examine specific values with `argot_show_ssa_value`
 6. Generate the YAML dataflow summary based on your analysis
-7. Write the dataflow summary to the user spec file.
+7. Write the summary with write_yaml_file, using exactly the filename given in the request
+   (not a name based on the function/package)
 
 ## Required Arguments
 

@@ -101,10 +101,12 @@ def main() -> int:
     )
     p.add_argument("--repo", required=True, choices=sorted(REPOS))
     p.add_argument(
-        "--summaries",
-        type=Path,
-        help="Path to a single summaries YAML to check "
-        "(default: every file in experiment/ground-truth-summaries/<repo>/)",
+        "--variant",
+        required=True,
+        choices=["ground-truth", "llm"],
+        help="Which summaries to check: ground-truth (every file in "
+        "experiment/ground-truth-summaries/<repo>/) or llm "
+        "(experiment/llm-summaries/<repo>/summaries.yaml)",
     )
     p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_check)
@@ -258,16 +260,7 @@ def main() -> int:
 
 
 def cmd_run_check(args: argparse.Namespace) -> None:
-    summaries_paths = (
-        [args.summaries] if args.summaries else _ground_truth_files(args.repo)
-    )
-    _write_check_report(
-        "run-check",
-        args.repo,
-        summaries_paths,
-        via="all",
-        out_path=args.out,
-    )
+    _run_check_split(args.repo, args.variant, args.out)
 
 
 def cmd_run_constructive(args: argparse.Namespace) -> None:
@@ -285,16 +278,17 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     """Run argot-summarize (the LLM agent) against repo's to_summarize.json.
 
     The agent's file writes are sandboxed to --out-dir (experiment/llm-summaries/<repo>/),
-    decoupled from the config file's location and the real repo checkout. summaries.yaml is
-    the agent's only writable file and becomes this repo's persistent output.
+    decoupled from the config file's location and the real repo checkout. Each batch (see
+    --batch-size below) writes its own summaries-NNNN.yaml file rather than appending to a
+    shared file, so one batch's mistake can't corrupt another's output. Once all batches are
+    done, these are concatenated into a single summaries.yaml -- the file taint-llm.yaml/
+    check-llm.yaml actually reference.
     """
     repo_dir(args.repo)  # sanity check that the repo checkout exists
 
     llm_dir = LLM_SUMMARIES_DIR / args.repo
     llm_dir.mkdir(parents=True, exist_ok=True)
     summaries_path = llm_dir / "summaries.yaml"
-    if not summaries_path.exists():
-        summaries_path.write_text("dataflow-summaries: []\n")
 
     # check-llm.yaml already points check-specs at summaries_path, so the agent can validate
     # its own output via argot_dataflow_check with no per-run config needed.
@@ -338,6 +332,8 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     ]
     if args.inference_profile:
         cmd += ["--inference-profile", args.inference_profile]
+    # Batched to avoid hitting the model's max-output-tokens limit on larger function lists.
+    cmd += ["--batch-size", "1"]
 
     duration = _run_subprocess(
         cmd,
@@ -346,6 +342,8 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
         label=f"run-llm-summarization ({args.repo})",
         timeout=None,
     )
+
+    _consolidate_batch_summaries(llm_dir, summaries_path)
 
     stats = json.loads(stats_path.read_text()) if stats_path.exists() else None
     result = {
@@ -358,6 +356,17 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
     args.out.write_text(json.dumps(result, indent=2))
     console.print(f"[green]Wrote {args.out}[/green] ({duration:.1f}s)")
     console.print(f"[green]Generated summaries in {summaries_path}[/green]")
+
+
+def _consolidate_batch_summaries(llm_dir: Path, summaries_path: Path) -> None:
+    """Concatenate every summaries-*.yaml in llm_dir (one per batch, see
+    cmd_run_llm_summarization) into a single summaries_path, the file taint-llm.yaml/
+    check-llm.yaml actually reference."""
+    combined: List[Any] = []
+    for batch_path in sorted(llm_dir.glob("summaries-*.yaml")):
+        batch = yaml.safe_load(batch_path.read_text()) or {}
+        combined.extend(batch.get("dataflow-summaries") or [])
+    summaries_path.write_text(yaml.safe_dump({"dataflow-summaries": combined}))
 
 
 def cmd_run_taint(args: argparse.Namespace) -> None:
@@ -616,6 +625,99 @@ def _ground_truth_files(repo: str) -> List[Path]:
     return sorted((GROUND_TRUTH_DIR / repo).glob("*.yaml"))
 
 
+def _run_check_split(repo: str, variant: str, out_path: Path) -> None:
+    """Implementation for run-check: runs `argot check` once per kind (functions, interface
+    methods) against repo's pre-generated check-<variant>-split-{functions,interfaces}.yaml
+    configs (see _generate_configs_for_repo / _split_entries_by_kind), and merges the resulting
+    check-report.json's into out_path, tagged with which kind each result came from.
+
+    Functions and interface methods are checked in separate, isolated `argot check` processes
+    (like _write_check_report does per ground-truth file) so a memory-hungry interface can't
+    compound with a function's retained state, and either can be diagnosed independently.
+    A kind is skipped entirely if repo/variant has no entries of that kind (no config was
+    generated for it -- see write_split_check_configs).
+    """
+    repo_path = repo_dir(repo)
+
+    merged_report: Dict[str, Any] = {}
+    total_duration = 0.0
+    found_any_config = False
+    for kind in ("functions", "interfaces"):
+        config_path = (
+            GENERATED_CONFIGS_DIR / repo / f"check-{variant}-split-{kind}.yaml"
+        )
+        if not config_path.exists():
+            continue
+        found_any_config = True
+
+        part_out = out_path.with_suffix(f".{kind}.json")
+        log_file = part_out.with_suffix(".log")
+        label = f"run-check ({repo}, {variant}, {kind})"
+        try:
+            duration = _run_subprocess(
+                ["argot", "check", "-config", str(config_path.resolve()), "-via", "all"],
+                cwd=repo_path,
+                log_file=log_file,
+                label=label,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            console.print(
+                f"[red]{label} failed ({e}); recording as a null result and continuing "
+                "with the other kind.[/red]"
+            )
+            merged_report.setdefault(kind, None)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(merged_report, indent=2))
+            continue
+
+        report_path = None
+        for line in log_file.read_text().splitlines():
+            if "Full report written to" in line:
+                report_path = Path(line.split("Full report written to", 1)[1].strip())
+                break
+        if report_path is None or not report_path.exists():
+            console.print(f"[red]{label} did not produce a check-report.json; see {log_file}[/red]")
+            sys.exit(1)
+
+        total_duration += duration
+        part_report = json.loads(report_path.read_text())
+        any_null = False
+        for target_name, results in part_report.items():
+            # Tag each result with which kind it came from, so functions and interface
+            # methods stay distinguishable after merging.
+            tagged_target = f"{target_name}:{kind}"
+            if results is None:
+                merged_report.setdefault(tagged_target, None)
+                any_null = True
+                continue
+            merged_report[tagged_target] = results
+        if any_null:
+            console.print(
+                f"[red]{label} produced a null result for at least one target; keeping "
+                f"{log_file} for diagnosis.[/red]"
+            )
+        else:
+            log_file.unlink(missing_ok=True)
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(merged_report, indent=2))
+
+    if not found_any_config:
+        console.print(
+            f"[red]No check-{variant}-split-{{functions,interfaces}}.yaml found for {repo}; "
+            f"run generate-configs --repo {repo}"
+            + (
+                " after run-llm-summarization has produced summaries.yaml"
+                if variant == "llm"
+                else ""
+            )
+            + ".[/red]"
+        )
+        sys.exit(1)
+
+    console.print(f"[green]Wrote {out_path}[/green] ({total_duration:.1f}s)")
+
+
 def _write_check_report(
     cmd_name: str,
     repo: str,
@@ -623,9 +725,8 @@ def _write_check_report(
     via: str,
     out_path: Path,
 ) -> None:
-    """Shared implementation for run-check and run-constructive: runs `argot check` once per
-    path in summaries_or_methods_paths, and merges the resulting check-report.json's into
-    out_path.
+    """Shared implementation for run-constructive: runs `argot check` once per path in
+    summaries_or_methods_paths, and merges the resulting check-report.json's into out_path.
 
     Each path is checked in its own argot check process (rather than combining them into one
     check-specs list) so that one memory-hungry interface can't compound with another path's
@@ -793,6 +894,34 @@ def cmd_generate_configs(args: argparse.Namespace) -> None:
         console.print(f"[green]Generated {len(paths)} config(s) for {repo}[/green]")
 
 
+def _split_entries_by_kind(
+    entries: List[Dict[str, Any]]
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Split a flat list of raw dataflow-summaries entries (as loaded from a summaries YAML's
+    "dataflow-summaries" key) into (functions, interfaces), using the same discriminator as
+    analysis/summaries' rawDataflowSummary.compile(): an entry is an interface-method summary
+    iff its "interface" key is set (non-empty); otherwise it's a function/receiver-method
+    summary. See ar-go-tools' analysis/summaries/frontend.go.
+    """
+    functions: List[Dict[str, Any]] = []
+    interfaces: List[Dict[str, Any]] = []
+    for entry in entries:
+        if entry.get("interface"):
+            interfaces.append(entry)
+        else:
+            functions.append(entry)
+    return functions, interfaces
+
+
+def _load_all_entries(paths: List[Path]) -> List[Dict[str, Any]]:
+    """Load and concatenate the "dataflow-summaries" lists of every YAML file in paths."""
+    entries: List[Dict[str, Any]] = []
+    for p in paths:
+        data = yaml.safe_load(p.read_text()) or {}
+        entries.extend(data.get("dataflow-summaries") or [])
+    return entries
+
+
 def _generate_configs_for_repo(repo: str) -> List[Path]:
     """Write the fixed set of read-only argot-config.yaml files for repo to
     generated-configs/<repo>/, replacing whatever was there before. Every consumer (run-taint,
@@ -803,7 +932,7 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
     and no check-specs/user-specs beyond what the variant calls for; check configs get
     check-specs and no taint-tracking at all (the soundness checker never reads it).
 
-    The 5 kinds of task, and which of these files serves each:
+    The kinds of task, and which of these files serves each:
       - baseline taint analysis (also used by find-interesting-methods): taint-baseline.yaml
       - taint analysis with ground-truth summaries loaded: taint-ground-truth.yaml
       - taint analysis with LLM-generated summaries loaded: taint-llm.yaml
@@ -812,6 +941,15 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
         into one check-specs list, so each file's `argot check` run is isolated -- see
         _run_one_check)
       - checking soundness of the LLM-generated summaries file: check-llm.yaml
+      - checking soundness of ground-truth/LLM summaries split by kind (function vs. interface
+        method), used by run-check --variant {ground-truth,llm}: every ground-truth file's (or
+        the LLM file's) dataflow-summaries entries are pooled, then partitioned into functions
+        and interface methods (see _split_entries_by_kind), and each half is materialized as
+        its own data file (_split-ground-truth-functions.yaml, _split-ground-truth-
+        interfaces.yaml, _split-llm-functions.yaml, _split-llm-interfaces.yaml) with a matching
+        check-ground-truth-split-{functions,interfaces}.yaml / check-llm-split-
+        {functions,interfaces}.yaml config, so functions and interface methods are always
+        checked in separate, isolated `argot check` invocations.
 
     user-specs/check-specs entries are resolved relative to project-root (the repo checkout),
     not to the generated config file's own location -- see argot/analysis/config/config.go -- so
@@ -887,6 +1025,37 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
             "check-llm.yaml", check_specs=[rel_to_repo(llm_summaries_path)]
         )
     )
+
+    def write_split_check_configs(prefix: str, data_paths: List[Path]) -> None:
+        """Pool every file in data_paths, split by kind (see _split_entries_by_kind), and
+        write one materialized data file + matching check config per non-empty kind, named
+        _split-<prefix>-{functions,interfaces}.yaml and check-<prefix>-split-
+        {functions,interfaces}.yaml. Skips a kind entirely if it has no entries, so run-check
+        doesn't have to special-case an empty check-specs list. Skips entirely if any of
+        data_paths doesn't exist yet (e.g. the LLM summaries file, generated later by
+        run-llm-summarization -- callers must re-run generate-configs afterward)."""
+        if not all(p.exists() for p in data_paths):
+            return
+        entries = _load_all_entries(data_paths)
+        functions, interfaces = _split_entries_by_kind(entries)
+        for kind, kind_entries in (("functions", functions), ("interfaces", interfaces)):
+            if not kind_entries:
+                continue
+            data_path = out_dir / f"_split-{prefix}-{kind}.yaml"
+            data_path.write_text(
+                yaml.safe_dump({"dataflow-summaries": kind_entries})
+            )
+            written.append(
+                write_check_config(
+                    f"check-{prefix}-split-{kind}.yaml",
+                    check_specs=[rel_to_repo(data_path)],
+                )
+            )
+
+    # Ground-truth and LLM summaries, pooled and split by kind (function vs. interface
+    # method) rather than by source file -- see run-check --variant {ground-truth,llm}.
+    write_split_check_configs("ground-truth", ground_truth_paths)
+    write_split_check_configs("llm", [llm_summaries_path])
 
     return written
 
