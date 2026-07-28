@@ -728,11 +728,24 @@ func (p path) len() int {
 	return maxPathLen
 }
 
-// isCoveredBy is true iff x is covered by p; i.e, p's path is a prefix of x's path.
+// isCoveredBy is true iff x is covered by p; i.e, p's path is a segment-wise prefix of x's path.
 //
 // Stated another way, x's path *has* a prefix of p's path.
+//
+// This compares path segments individually (not the joined dotted string) so that, e.g.,
+// "Body" is not considered a prefix of "BodyStart": they are sibling field names that happen to
+// share a string prefix, not one path containing the other.
 func (p path) isCoveredBy(x path) bool {
-	return strings.HasPrefix(x.String(), p.String())
+	pLen := p.len()
+	if pLen > x.len() {
+		return false
+	}
+	for i := range pLen {
+		if p[i] != x[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (p path) String() string {

@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"go/token"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
@@ -1052,7 +1051,7 @@ func (v *inputVisitor) addNext(s *dataflow.State,
 		for outPath := range outPaths {
 			// Logic for matching paths
 			for _, ap := range cur.AccessPaths {
-				if strings.HasPrefix(inPath, ap) {
+				if newPath(ap, maxPathLen).isCoveredBy(newPath(inPath, maxPathLen)) {
 					nextNodeAccessPaths = append(nextNodeAccessPaths, outPath)
 				}
 			}

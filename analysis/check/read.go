@@ -178,7 +178,7 @@ func checkReads(ctx context.Context, s *State, val ssa.Value, pth path) (readIns
 					if pth.len() > 0 && len(mlabel.Path()) > 0 {
 						// If there is a path (field-sensitive), then only check writes to objects
 						// of that field's memory.
-						if !strings.HasPrefix(pth.String(), mlabel.Path()) {
+						if !newPath(mlabel.Path(), maxPathLen).isCoveredBy(pth) {
 							continue
 						}
 					}

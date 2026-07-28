@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"go/types"
 	"slices"
-	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -95,16 +94,9 @@ func flowCovers(wantFlow, gotFlow flow) bool {
 		return false
 	}
 
-	// Target path in gotFlow must start with target path in wantFlow
-	wantPath := wantFlow.to.path.String()
-	gotPath := gotFlow.to.path.String()
-
-	// Empty path matches everything
-	if wantPath == emptyPath {
-		return true
-	}
-
-	return strings.HasPrefix(gotPath, wantPath)
+	// Target path in gotFlow must have the target path in wantFlow as a (segment-wise) prefix.
+	// Empty path matches everything.
+	return wantFlow.to.path.isCoveredBy(gotFlow.to.path)
 }
 
 // filterFlowsTypes tries to prove that the flows do not hold by a simple type
