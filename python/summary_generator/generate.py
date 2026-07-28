@@ -81,8 +81,8 @@ def main():
         epilog="""
 Available Bedrock models (as of July 2026):
   - anthropic.claude-sonnet-5 (recommended, default)
+  - anthropic.claude-opus-5 (most capable)
   - anthropic.claude-haiku-4-5-20251001-v1:0 (fastest)
-  - anthropic.claude-opus-4-8 (most capable)
 
 Note: Claude 4+ models use inference profiles automatically for better availability.
 
