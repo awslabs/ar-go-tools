@@ -57,6 +57,15 @@ type Object struct {
 	// allocation.  Zero for all other nodes.
 	size uint32
 
+	// obj is this object's own starting NodeID (its index into a.nodes): i.e. the obj parameter
+	// originally passed to endObject.
+	//
+	// This is NOT the same as cgn.obj (the call- graph node/context's own base ID): multiple
+	// distinct objects can be allocated within the same context (e.g. several composite literals in
+	// one function body under a context-insensitive analysis), and they must not share a NodeIDs()
+	// range just because they share a cgn.
+	obj NodeID
+
 	// data describes this object; it has one of these types:
 	//
 	// ssa.Value	for an object allocated by an SSA operation.
@@ -85,21 +94,17 @@ func (o *Object) Data() interface{} {
 
 // NodeID returns the object's node id or 0 if not found.
 func (o *Object) NodeID() NodeID {
-	if o.cgn == nil {
-		return NodeID(0)
-	}
-
-	return o.cgn.obj
+	return o.obj
 }
 
 // NodeIDs returns all the node ids in the object.
 func (o *Object) NodeIDs() []NodeID {
-	if o.cgn == nil {
+	if o.obj == 0 {
 		return nil
 	}
 
 	ids := make([]NodeID, 0, o.size)
-	start := uint32(o.cgn.obj)
+	start := uint32(o.obj)
 	for i := uint32(0); i < o.size; i++ {
 		ids = append(ids, NodeID(start+i))
 	}
@@ -109,8 +114,8 @@ func (o *Object) NodeIDs() []NodeID {
 
 func (o *Object) String() string {
 	id := "<none>"
-	if o.cgn != nil {
-		id = o.cgn.obj.String()
+	if o.obj != 0 {
+		id = o.obj.String()
 	}
 
 	return fmt.Sprintf("data: %v, nodeid: %v, ctx: %v", o.data, id, o.cgn)

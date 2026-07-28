@@ -292,6 +292,28 @@ func testWriteStructPtr() {
 	fmt.Println("testWriteStructPtr", x.count) // 1
 }
 
+// writeStructPtrWithExtra mirrors writeStructPtr's known alias-analysis false positive (x -> y
+// falsely reported unproven) but adds a third, unrelated pointer parameter z that is only ever read
+// (never written, never aliased with x or y). This is a regression test for whether
+// unprovenFlowsAfterCalleeCheck forces only the callee's own genuinely unproven edges true, rather
+// than every edge belonging to the callee.
+func writeStructPtrWithExtra(x, y *state, z *int) int {
+	*x = *y
+	return *z
+}
+
+func callerOfWriteStructPtrWithExtra(a, b *state, c *int) int {
+	return writeStructPtrWithExtra(a, b, c)
+}
+
+func testCallerOfWriteStructPtrWithExtra() {
+	a := &state{}
+	b := &state{acc: 1, count: 1}
+	c := 5
+	res := callerOfWriteStructPtrWithExtra(a, b, &c)
+	fmt.Println(a.count, res)
+}
+
 func writeToClosed(x, y int) int {
 	f := func() int {
 		y = x
@@ -461,6 +483,7 @@ func main() {
 	testThreeArgInterDiffCallees()
 	testFieldPropagation()
 	testSharedMutation()
+	testCallerOfWriteStructPtrWithExtra()
 	testStorePtr()
 	testMutatePtr()
 	testAliasInterNone()

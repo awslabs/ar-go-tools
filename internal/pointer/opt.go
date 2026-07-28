@@ -52,6 +52,11 @@ func (a *analysis) renumber() {
 			continue
 		}
 
+		// The object's own starting NodeID is being relocated from i to j;
+		// keep obj.obj in sync so that NodeID()/NodeIDs() remain correct
+		// after renumbering.
+		obj.obj = j
+
 		end := i + NodeID(obj.size)
 		for i < end {
 			newNodes[j] = a.nodes[i]

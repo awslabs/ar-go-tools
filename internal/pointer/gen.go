@@ -136,6 +136,7 @@ func (a *analysis) endObject(obj NodeID, cgn *cgnode, data interface{}) *Object 
 	objNode := a.nodes[obj]
 	o := &Object{
 		size: size, // excludes padding
+		obj:  obj,
 		cgn:  cgn,
 		data: data,
 	}

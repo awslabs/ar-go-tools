@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/internal/analysisutil"
+	"golang.org/x/tools/container/intsets"
 	"golang.org/x/tools/go/callgraph"
 	"golang.org/x/tools/go/ssa"
 )
@@ -81,6 +82,19 @@ func mustNotFlowRead(ctx context.Context, s *State, fl flow) (bool, error) {
 // It is an inter-procedural analysis which checks for reads in the value's enclosing function and
 // its callees in BFS order.
 //
+// For each instruction, it uses two independent, complementary mechanisms to decide whether the
+// instruction reads (val, pth) -- neither one alone is sound/complete for every SSA shape, so
+// both are tried and either one matching is sufficient:
+//
+//   - matchesViaFieldChain walks the SSA structure of nested *ssa.Field/*ssa.FieldAddr operand
+//     chains directly, independent of the pointer analysis. It exists because stack-allocated
+//     values that never escape have no points-to information, so matchesViaPointsTo can't see
+//     them at all. It only understands simple field-chain and Alloc-spill shapes, so a non-match
+//     does not prove the instruction is irrelevant.
+//   - matchesViaPointsTo uses the pointer analysis (val's and the read operands' NodeIDs()) to
+//     decide aliasing in the general case, including through calls and arbitrary indirection
+//     that matchesViaFieldChain does not understand.
+//
 //gocyclo:ignore
 func checkReads(ctx context.Context, s *State, val ssa.Value, pth path) (readInstr, bool, error) {
 	cg := s.PointerAnalysis.CallGraph
@@ -89,6 +103,13 @@ func checkReads(ctx context.Context, s *State, val ssa.Value, pth path) (readIns
 	seenFunc := make(map[*ssa.Function]struct{})
 
 	ids := nodeIds(s.cache, val)
+	if s.Logger != nil {
+		for lbl := range s.cache.Labels(val) {
+			s.Logger.Tracef(
+				"  label for %v: obj=%p value=%v pos=%v\n",
+				val, lbl.Obj(), lbl.Value(), lbl.Pos())
+		}
+	}
 	s.Logger.Tracef("node ids of flow input value %v (%v): %v\n", val, val.Type(), ids)
 
 	for len(queue) > 0 {
@@ -128,79 +149,16 @@ func checkReads(ctx context.Context, s *State, val ssa.Value, pth path) (readIns
 				return
 			}
 
-			for _, rval := range read.values {
-				if rval == val {
-					if pth.len() == 0 {
-						wasRead = true
-						res = read
-						return
-					}
+			if matchesViaFieldChain(instr, val, pth) {
+				wasRead = true
+				res = read
+				return
+			}
 
-					// Field-sensitivity: a struct field can only be read via a *ssa.Field or
-					// *ssa.FieldAddr instruction, and each such instruction addresses exactly
-					// one field. So if the field doesn't match pth, skip to the next rval
-					// instead of falling through to the generic mlabels check below, which
-					// would otherwise re-match on any sibling field of the same object (e.g. a
-					// *ssa.FieldAddr for &c.Body must not count as touching c.BodyStart).
-					//
-					// TODO Keep track of field accesses to handle path lengths > 1.
-					switch instr := read.Instruction.(type) {
-					case *ssa.Field:
-						info := analysisutil.FieldFieldInfo(instr)
-						if pth.len() == 1 && pth[0] == info.FieldName {
-							wasRead = true
-							res = read
-							return
-						}
-						continue
-					case *ssa.FieldAddr:
-						info := analysisutil.FieldAddrFieldInfo(instr)
-						if pth.len() == 1 && pth[0] == info.FieldName {
-							wasRead = true
-							res = read
-							return
-						}
-						continue
-					}
-				}
-
-				// If the read objects have any of the same node ids as the input value, then
-				// the read instruction reads a value from the input value's memory.
-				mlabels := s.cache.Labels(rval)
-				for mlabel := range mlabels {
-					mobj := mlabel.Obj()
-					found := false
-					for _, mid := range mobj.NodeIDs() {
-						if ids.Has(int(mid)) {
-							found = true
-							break
-						}
-					}
-					if !found {
-						continue
-					}
-
-					if pth.len() > 0 && len(mlabel.Path()) > 0 {
-						// If there is a path (field-sensitive), then only check writes to objects
-						// of that field's memory.
-						if !newPath(mlabel.Path(), maxPathLen).isCoveredBy(pth) {
-							continue
-						}
-					}
-					if dataVal, ok := mobj.Data().(ssa.Value); ok {
-						s.Logger.Tracef(
-							"found read from val %v data: val node ids: %v, read source: %v, object: %v "+
-								"(SSA name: %v), path: %v\n",
-							val, ids, rval, mobj, dataVal.Name(), pth)
-					} else {
-						s.Logger.Tracef(
-							"found read from val %v data: val node ids: %v, read source: %v, object: %v, path: %v\n",
-							val, ids, rval, mobj, pth)
-					}
-					wasRead = true
-					res = read
-					return
-				}
+			if matchesViaPointsTo(s, val, ids, pth, read) {
+				wasRead = true
+				res = read
+				return
 			}
 		})
 
@@ -214,6 +172,109 @@ func checkReads(ctx context.Context, s *State, val ssa.Value, pth path) (readIns
 	}
 
 	return readInstr{}, false, nil
+}
+
+// matchesViaFieldChain reports whether instr definitively reads (val, pth) based purely on SSA
+// field-access structure, independent of the pointer analysis. It exists because stack-allocated
+// values that never escape have no points-to information (see matchesViaPointsTo, which finds
+// nothing for such values).
+//
+// A struct field can only be read via a *ssa.Field or *ssa.FieldAddr instruction, and each such
+// instruction addresses exactly one field. This walks the chain of nested field accesses
+// backward from instr: if it matches pth exactly, all the way down to val, instr definitively
+// reads pth. This covers pth.len() > 1 (e.g. val.a.b) and by-value struct parameters spilled to a
+// local *ssa.Alloc (see fieldPathMatches/allocInitializedFrom), neither of which
+// matchesViaPointsTo's rval == val check detects on its own.
+//
+// A false result does not by itself prove instr is irrelevant: the chain walk does not understand
+// every SSA shape (e.g. aliasing through calls), so callers must still try matchesViaPointsTo
+// rather than skip the instruction outright.
+func matchesViaFieldChain(instr ssa.Instruction, val ssa.Value, pth path) bool {
+	if pth.len() == 0 {
+		return false
+	}
+	switch instr.(type) {
+	case *ssa.Field, *ssa.FieldAddr:
+		return fieldPathMatches(instr, val, pth)
+	default:
+		return false
+	}
+}
+
+// matchesViaPointsTo reports whether read reads (val, pth), using val's ids (from the pointer
+// analysis) to decide aliasing in the general case that matchesViaFieldChain's structural walk
+// does not understand (e.g. aliasing through calls or arbitrary indirection). It is the fallback
+// used when matchesViaFieldChain does not find a match; it is blind to values with no points-to
+// information (e.g. non-escaping stack locals), which is why matchesViaFieldChain exists
+// alongside it.
+func matchesViaPointsTo(s *State, val ssa.Value, ids *intsets.Sparse, pth path, read readInstr) bool {
+	for _, rval := range read.values {
+		if rval == val {
+			if pth.len() == 0 {
+				return true
+			}
+
+			// Same-node, single-level field check: instr's operand is val directly (no
+			// intermediate Alloc/copy or nested chain). matchesViaFieldChain already covers this
+			// case (and the pth.len() > 1 / Alloc-spill cases) when it succeeds; this only needs
+			// to rule out a *mismatched* field on val itself, so this instruction (definitively
+			// about a different field) is skipped rather than falling through to the generic
+			// mlabels check below, which would otherwise re-match on any sibling field of the
+			// same object (e.g. a *ssa.FieldAddr for &c.Body must not count as touching
+			// c.BodyStart).
+			switch instr := read.Instruction.(type) {
+			case *ssa.Field:
+				info := analysisutil.FieldFieldInfo(instr)
+				if pth.len() == 1 && pth[0] == info.FieldName {
+					return true
+				}
+				continue
+			case *ssa.FieldAddr:
+				info := analysisutil.FieldAddrFieldInfo(instr)
+				if pth.len() == 1 && pth[0] == info.FieldName {
+					return true
+				}
+				continue
+			}
+		}
+
+		// If the read objects have any of the same node ids as the input value, then the read
+		// instruction reads a value from the input value's memory.
+		mlabels := s.cache.Labels(rval)
+		for mlabel := range mlabels {
+			mobj := mlabel.Obj()
+			found := false
+			for _, mid := range mobj.NodeIDs() {
+				if ids.Has(int(mid)) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+
+			if pth.len() > 0 && len(mlabel.Path()) > 0 {
+				// If there is a path (field-sensitive), then only check writes to objects
+				// of that field's memory.
+				if !newPath(mlabel.Path(), maxPathLen).isCoveredBy(pth) {
+					continue
+				}
+			}
+			if dataVal, ok := mobj.Data().(ssa.Value); ok {
+				s.Logger.Tracef(
+					"found read from val %v data: val node ids: %v, read source: %v, object: %v "+
+						"(SSA name: %v), path: %v\n",
+					val, ids, rval, mobj, dataVal.Name(), pth)
+			} else {
+				s.Logger.Tracef(
+					"found read from val %v data: val node ids: %v, read source: %v, object: %v, path: %v\n",
+					val, ids, rval, mobj, pth)
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // readInstr is an instruction that reads from an SSA value's underlying memory.
@@ -328,6 +389,81 @@ func fieldAddrIsDereferenced(instr *ssa.FieldAddr) bool {
 			// Any other use (passed as a call argument, stored into another variable, returned,
 			// etc.) may lead to the field being read somewhere we don't track locally.
 			// Conservatively treat it as a read to avoid unsoundness.
+			return true
+		}
+	}
+	return false
+}
+
+// fieldPathMatches returns true if instr (a *ssa.Field or *ssa.FieldAddr) is the innermost step
+// of a chain of nested field accesses that exactly matches pth, all the way down to val: e.g.
+// for pth = [.Src, .X], instr must address field X of some value that is itself instr2.X where
+// instr2 addresses field Src of val.
+//
+// This walks purely on SSA structure (Field/FieldAddr/UnOp/Alloc), independent of the pointer
+// analysis, so it remains sound for stack-allocated values that never escape and therefore have
+// no points-to information (see checkReads' ids/mlabels fallback, which silently finds nothing
+// for such values).
+func fieldPathMatches(instr ssa.Instruction, val ssa.Value, pth path) bool {
+	// Walk from the last segment of pth to the first, matching each one against a step in the
+	// instr chain, until pth is exhausted (then instr's receiver must be val) or a mismatch.
+	for i := pth.len() - 1; i >= 0; i-- {
+		var fieldName string
+		var receiver ssa.Value
+		switch instr := instr.(type) {
+		case *ssa.Field:
+			fieldName = analysisutil.FieldFieldInfo(instr).FieldName
+			receiver = instr.X
+		case *ssa.FieldAddr:
+			fieldName = analysisutil.FieldAddrFieldInfo(instr).FieldName
+			receiver = instr.X
+		default:
+			return false
+		}
+		if fieldName != pth[i] {
+			return false
+		}
+		if i == 0 {
+			if receiver == val {
+				return true
+			}
+			// A by-value struct parameter is spilled to a local *ssa.Alloc so its fields can be
+			// addressed (e.g. c nestedTwoFields lowers to a local Alloc, with *alloc = c
+			// storing the parameter's value into it). Recognize this pattern: the chain
+			// bottoms out at val if receiver is such an Alloc.
+			return allocInitializedFrom(receiver, val)
+		}
+		// More segments remain: the receiver of this step must itself be a Field/FieldAddr
+		// instruction addressing the previous segment. If receiver is a *ssa.UnOp dereference
+		// (e.g. *ssa.FieldAddr's result is dereferenced before the next field is accessed via
+		// *ssa.Field on the dereferenced value), unwrap it to continue the chain.
+		if unop, ok := receiver.(*ssa.UnOp); ok && unop.Op == token.MUL {
+			receiver = unop.X
+		}
+		nextInstr, ok := receiver.(ssa.Instruction)
+		if !ok {
+			return false
+		}
+		instr = nextInstr
+	}
+	// pth.len() == 0 never reaches here (checked by the caller), but guard defensively.
+	return pth.len() == 0
+}
+
+// allocInitializedFrom returns true if receiver is a *ssa.Alloc whose sole initializing store
+// writes val's value into it (the standard SSA pattern for spilling a by-value parameter to an
+// addressable local slot, e.g. a struct parameter passed by value that needs FieldAddr access).
+func allocInitializedFrom(receiver ssa.Value, val ssa.Value) bool {
+	alloc, ok := receiver.(*ssa.Alloc)
+	if !ok {
+		return false
+	}
+	refs := alloc.Referrers()
+	if refs == nil {
+		return false
+	}
+	for _, ref := range *refs {
+		if store, ok := ref.(*ssa.Store); ok && store.Addr == alloc && store.Val == val {
 			return true
 		}
 	}

@@ -128,116 +128,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Unsound,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						// NOTE false-positive: pointer analysis claims that x and y have the same node id.
-						// Pointer analysis log:
-						//==== Generating constraints for cg10524:github.com/awslabs/ar-go-tools/analysis/check/testdata/basic.testTwoArgIntraInout, shared contour
-						// # Name: github.com/awslabs/ar-go-tools/analysis/check/testdata/basic.testTwoArgIntraInout
-						// # Package: github.com/awslabs/ar-go-tools/analysis/check/testdata/basic
-						// # Location: /Volumes/workplace/argot/analysis/check/testdata/basic/main.go:65:6
-						// func testTwoArgIntraInout():
-						// 0:                                                                entry P:0 S:0
-						//         t0 = new int (x)                                                   *int
-						//         *t0 = 1:int
-						//         t1 = new int (y)                                                   *int
-						//         *t1 = -1:int
-						//         t2 = twoArgIntraInout(t0, t1)                                        ()
-						//         t3 = *t1                                                            int
-						//         t4 = new [1]any (varargs)                                       *[1]any
-						//         t5 = &t4[0:int]                                                    *any
-						//         t6 = make any <- int (t3)                                           any
-						//         *t5 = t6
-						//         t7 = slice t4[:]                                                  []any
-						//         t8 = fmt.Println(t7...)                              (n int, err error)
-						//         return
-						//
-						// ; Creating nodes for local values
-						//         create n33318 *int for t0
-						//         val[t0] = n33318  (*ssa.Alloc)
-						//         create n33319 *int for query
-						//         copy n33319 <- n33318
-						//         create n33320 *int for t1
-						//         val[t1] = n33320  (*ssa.Alloc)
-						//         create n33321 *int for query
-						//         copy n33321 <- n33320
-						//         val[t2] = n0  (*ssa.Call)
-						//         create n33322 int for t3
-						//         val[t3] = n33322  (*ssa.UnOp)
-						//         create n33323 *[1]any for t4
-						//         val[t4] = n33323  (*ssa.Alloc)
-						//         create n33324 *[1]any for query
-						//         copy n33324 <- n33323
-						//         create n33325 *any for t5
-						//         val[t5] = n33325  (*ssa.IndexAddr)
-						//         create n33326 *any for query
-						//         copy n33326 <- n33325
-						//         create n33327 *any for query.indirect
-						//         create n33328 [1]any for alloc
-						//         create n33329 any for alloc[*]
-						//         localobj[t4] = n33328
-						//         localobj[t5] = n33329
-						// --
-						//         static function call to targets n0 from cg10524:github.com/awslabs/ar-go-tools/analysis/check/testdata/basic.testTwoArgIntraInout
-						// ; t3 = *t1
-						//         copy n33322 <- n33338
-						// ; t4 = new [1]any (varargs)
-						//         addr n33323 <- {&n33328}
-						// ; t5 = &t4[0:int]
-						//         addr n33325 <- {&n33329}
-						// ; t6 = make any <- int (t3)
-						//         create n33343 int for tagged.T
-						//         create n33344 int for tagged.v
-						//         copy n33344 <- n33322
-						//         localobj[t6] = n33343
-						//         addr n33330 <- {&n33343}
-						// ; *t5 = t6
-						//         copy n33329 <- n33330
-						// ; t7 = slice t4[:]
-						//         copy n33332 <- n33323
-						// ; t8 = fmt.Println(t7...)
-						//         call edge static function call -> cg33294:fmt.Println
-						//         copy n33295 <- n33332
-						//         copy n33334 <- n33296
-						//         copy n33335 <- n33297
-						//         static function call to targets n0 from cg10524:github.com/awslabs/ar-go-tools/analysis/check/testdata/basic.testTwoArgIntraInout
-						// ; return
-						//
-						// ==== Generating constraints for cg33340:github.com/awslabs/ar-go-tools/analysis/check/testdata/basic.twoArgIntraInout, as called from github.com/awslabs/ar-go-tools/analysis/check/testdata/basic.testTwoArgIntraInout
-						// # Name: github.com/awslabs/ar-go-tools/analysis/check/testdata/basic.twoArgIntraInout
-						// # Package: github.com/awslabs/ar-go-tools/analysis/check/testdata/basic
-						// # Location: /Volumes/workplace/argot/analysis/check/testdata/basic/main.go:33:6
-						// func twoArgIntraInout(x *int, y *int):
-						// 0:                                                                entry P:0 S:0
-						//         t0 = *x                                                             int
-						//         *y = t0
-						//         return
-
-						// ; Creating nodes for local values
-						//         val[x] = n33341  (*ssa.Parameter)
-						//         create n49893 *int for query
-						//         copy n49893 <- n33341
-						//         val[y] = n33342  (*ssa.Parameter)
-						//         create n49894 *int for query
-						//         copy n49894 <- n33342
-						//         create n49895 int for t0
-						//         val[t0] = n49895  (*ssa.UnOp)
-						// ; t0 = *x
-						//         localobj[x] = n0
-						//         load n49895 <- n33341[0]
-						// ; *y = t0
-						//         localobj[y] = n0
-						//         store n33342[0] <- n49895
-						// ; return
-
-						{
-							From: summaries.ArgumentSNode{Name: "y", Index: 1},
-							To:   summaries.ArgumentSNode{Name: "x", Index: 0},
-						},
-					},
+					UnprovenMustNotFlows: nil,
 				},
-				Method:        check.Read,
+				Method:        check.Immutability,
 				CalleeResults: nil,
 			},
 		},
@@ -259,27 +154,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
-				Method: check.Recursive,
-				CalleeResults: [][]check.SoundnessResult{
-					{
-						{
-							Name: pkg + ".setmem",
-							Want: summaries.DetailedSummary{
-								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-									summaries.ArgumentSNode{Name: "src", Index: 1}: {
-										summaries.ArgumentSNode{Name: "dst", Index: 0},
-									},
-								},
-							},
-							Soundness: check.Sound,
-							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: nil,
-							},
-							Method:        check.Types,
-							CalleeResults: nil,
-						},
-					},
-				},
+				Method:        check.Immutability,
+				CalleeResults: nil,
 			},
 		},
 		{
@@ -407,9 +283,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 										summaries.ReturnSNode{Index: 0},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 										summaries.ReturnSNode{Index: 0},
 									},
 								},
@@ -454,9 +332,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 										summaries.ReturnSNode{Index: 0},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 										summaries.ReturnSNode{Index: 0},
 									},
 								},
@@ -475,9 +355,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 										summaries.ReturnSNode{Index: 0},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 										summaries.ReturnSNode{Index: 0},
 									},
 								},
@@ -571,32 +453,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: nil,
 				},
-				Method: check.Recursive,
-				CalleeResults: [][]check.SoundnessResult{
-					{
-						{
-							Name: pkg + ".addVals",
-							Want: summaries.DetailedSummary{
-								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-									summaries.ArgumentSNode{Name: "a", Index: 0}: {
-										summaries.ArgumentSNode{Name: "b", Index: 1},
-										summaries.ReturnSNode{Index: 0},
-									},
-									summaries.ArgumentSNode{Name: "b", Index: 1}: {
-										summaries.ArgumentSNode{Name: "a", Index: 0},
-										summaries.ReturnSNode{Index: 0},
-									},
-								},
-							},
-							Soundness: check.Sound,
-							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: nil,
-							},
-							Method:        check.General,
-							CalleeResults: nil,
-						},
-					},
-				},
+				Method:        check.Immutability,
+				CalleeResults: nil,
 			},
 		},
 		{
@@ -620,56 +478,10 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Unsound,
-				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "a", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 1},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 1},
-							To:   summaries.ArgumentSNode{Name: "a", Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "shared", Index: 2},
-							To:   summaries.ArgumentSNode{Name: "a", Index: 0},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "shared", Index: 2},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 1},
-						},
-					},
-				},
-				Method: check.Recursive,
-				CalleeResults: [][]check.SoundnessResult{
-					{
-						{
-							Name: pkg + ".modify",
-							Want: summaries.DetailedSummary{
-								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-									summaries.ArgumentSNode{Name: "val", Index: 0}: {
-										summaries.ArgumentSNode{Name: "s", Index: 1},
-									},
-								},
-							},
-							Soundness: check.Unsound,
-							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									// TODO false-positive: there should not be a flow from
-									// modify s -> val.
-									// This should be sound.
-									{
-										From: summaries.ArgumentSNode{Name: "s", Index: 1},
-										To:   summaries.ArgumentSNode{Name: "val", Index: 0},
-									},
-								},
-							},
-							Method:        check.Read,
-							CalleeResults: nil,
-						},
-					},
-				},
+				Soundness:     check.Sound,
+				Unsoundness:   check.Unsoundness{UnprovenMustNotFlows: nil},
+				Method:        check.Immutability,
+				CalleeResults: nil,
 			},
 		},
 		{
@@ -759,22 +571,11 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Unsound,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							// TODO false-positive: there should not be a flow from
-							// writeStructPtr x -> y.
-							// This should be sound.
-							//
-							// The pointer analysis does not report any may-aliases for either
-							// parameter.
-							From: summaries.ArgumentSNode{Name: "x", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "y", Index: 1},
-						},
-					},
+					UnprovenMustNotFlows: nil,
 				},
-				Method:        check.Read,
+				Method:        check.Immutability,
 				CalleeResults: nil,
 			},
 		},
@@ -791,14 +592,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Unsound,
+				Soundness: check.Sound,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "y", Index: 1},
-							To:   summaries.ReturnSNode{},
-						},
-					},
+					UnprovenMustNotFlows: nil,
 				},
 				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
@@ -816,15 +612,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 									},
 								},
 							},
-							Soundness: check.Unsound,
+							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									// TODO False-positive from read analysis
-									{
-										From: summaries.FreeVarSNode{Name: "y"},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-								},
+								UnprovenMustNotFlows: nil,
 							},
 							Method:        check.Read,
 							CalleeResults: nil,
@@ -1049,10 +839,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
 									{
-										From: summaries.FreeVarSNode{Name: "x"},
-										To:   summaries.FreeVarSNode{Name: "y"},
-									},
-									{
 										From: summaries.FreeVarSNode{Name: "y"},
 										To:   summaries.FreeVarSNode{Name: "x"},
 									},
@@ -1070,6 +856,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 										Want: summaries.DetailedSummary{
 											Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 												summaries.FreeVarSNode{Name: "x"}: {
+													summaries.FreeVarSNode{Name: "y"},
 													summaries.ReturnSNode{Index: 0},
 												},
 											},
@@ -1077,10 +864,6 @@ func TestCheckSummary_Basic(t *testing.T) {
 										Soundness: check.Unsound,
 										Unsoundness: check.Unsoundness{
 											UnprovenMustNotFlows: []check.Flow{
-												{
-													From: summaries.FreeVarSNode{Name: "x"},
-													To:   summaries.FreeVarSNode{Name: "y"},
-												},
 												{
 													From: summaries.FreeVarSNode{Name: "y"},
 													To:   summaries.FreeVarSNode{Name: "x"},
@@ -1843,9 +1626,54 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Sound,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{},
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "no", Index: 0},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "no", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "no", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+					},
 				},
 				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
@@ -1855,16 +1683,37 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
 										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
+									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
 										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
 									},
 								},
 							},
-							Soundness: check.Sound,
+							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{},
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+								},
 							},
 							Method:        check.Read,
 							CalleeResults: nil,
@@ -1897,28 +1746,94 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Sound,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{},
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "no", Index: 0},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "no", Index: 0},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "no", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "no", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+					},
 				},
 				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							Name: pkg + ".addPairFirst",
+							Name: pkg + ".addPairSecond",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+									},
+									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 								},
 							},
-							Soundness: check.Sound,
+							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{},
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+								},
 							},
 							Method:        check.Read,
 							CalleeResults: nil,
@@ -1926,20 +1841,41 @@ func TestCheckSummary_Fields(t *testing.T) {
 					},
 					{
 						{
-							Name: pkg + ".addPairSecond",
+							Name: pkg + ".addPairFirst",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
 									},
 								},
 							},
-							Soundness: check.Sound,
+							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{},
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+								},
 							},
 							Method:        check.Read,
 							CalleeResults: nil,
@@ -2092,6 +2028,79 @@ func TestCheckSummary_Fields(t *testing.T) {
 					},
 				},
 				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "readNestedFieldValue",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".readNestedFieldValue",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst.X"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "readNestedFieldValueByVal",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".readNestedFieldValueByVal",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst.X"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "writeNestedFieldOnly",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".writeNestedFieldOnly",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "v", Index: 1}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"},
+						},
+					},
+				},
+				Soundness: check.Sound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
 				CalleeResults: [][]check.SoundnessResult{},
 			},
 		},

@@ -84,6 +84,56 @@ func testCopyNestedFieldToOther() {
 	fmt.Printf("x.Dst:%v\n", x.Dst)
 }
 
+func readNestedFieldValue(c *nestedTwoFields) int {
+	return c.Src.X
+}
+
+func testReadNestedFieldValue() {
+	x := &nestedTwoFields{Src: inner{X: 1}, Dst: inner{X: 0}}
+	fmt.Println(readNestedFieldValue(x))
+}
+
+// readNestedFieldValueByVal is the by-value counterpart to readNestedFieldValue: c is a plain
+// (non-pointer) parameter, so it never escapes and the pointer analysis has no points-to
+// information for it. This tests whether checkReads' pth.len() > 1 fallback (which depends on
+// pointer-analysis labels) produces a false "not read" for a value that has no points-to set at
+// all, since only the pth.len() == 1 fast path is independent of pointer-analysis results.
+func readNestedFieldValueByVal(c nestedTwoFields) int {
+	return c.Src.X
+}
+
+func testReadNestedFieldValueByVal() {
+	fmt.Println(readNestedFieldValueByVal(nestedTwoFields{Src: inner{X: 1}, Dst: inner{X: 0}}))
+}
+
+// readNestedFieldViaHelper reads c.Src.X via a helper function readInnerX, to test the
+// inter-procedural case: fieldPathMatches must correctly bottom out at the callee's own
+// parameter (not literal identity with the top-level val, which never holds across function
+// boundaries) when checkReads' BFS descends into a callee.
+func readInnerX(in *inner) int {
+	return in.X
+}
+
+func readNestedFieldViaHelper(c *nestedTwoFields) int {
+	return readInnerX(&c.Src)
+}
+
+func testReadNestedFieldViaHelper() {
+	x := &nestedTwoFields{Src: inner{X: 1}, Dst: inner{X: 0}}
+	fmt.Println(readNestedFieldViaHelper(x))
+}
+
+// writeNestedFieldOnly writes only c.Src.X, mirroring writeBodyOnly but for a 2-segment path.
+func writeNestedFieldOnly(c *nestedTwoFields, v int) {
+	c.Src.X = v
+}
+
+func testWriteNestedFieldOnly() {
+	x := &nestedTwoFields{Src: inner{X: 1}, Dst: inner{X: 0}}
+	writeNestedFieldOnly(x, 5)
+	fmt.Println(x.Src.X)
+}
+
 // prefixSiblingFields is used to test that isCoveredBy does not mistake one field name being a
 // string-prefix of another (e.g. "Body" is a string-prefix of "BodyStart") for one path
 // containing the other: they are sibling fields, not nested. Mirrors aws-sdk-go's
@@ -253,6 +303,10 @@ func main() {
 	testThreeArgInterTree()
 	testCopyFieldToOther()
 	testCopyNestedFieldToOther()
+	testReadNestedFieldValue()
+	testReadNestedFieldValueByVal()
+	testReadNestedFieldViaHelper()
+	testWriteNestedFieldOnly()
 	testCopySrcToBodyAndBodyStart()
 	testWriteBodyOnly()
 	testReadFieldViaPointer()
