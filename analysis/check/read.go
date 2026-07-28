@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"go/token"
-	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"github.com/awslabs/ar-go-tools/analysis/lang"
@@ -138,24 +137,30 @@ func checkReads(ctx context.Context, s *State, val ssa.Value, pth path) (readIns
 					}
 
 					// Field-sensitivity: a struct field can only be read via a *ssa.Field or
-					// *ssa.FieldAddr instruction.
+					// *ssa.FieldAddr instruction, and each such instruction addresses exactly
+					// one field. So if the field doesn't match pth, skip to the next rval
+					// instead of falling through to the generic mlabels check below, which
+					// would otherwise re-match on any sibling field of the same object (e.g. a
+					// *ssa.FieldAddr for &c.Body must not count as touching c.BodyStart).
 					//
 					// TODO Keep track of field accesses to handle path lengths > 1.
 					switch instr := read.Instruction.(type) {
 					case *ssa.Field:
 						info := analysisutil.FieldFieldInfo(instr)
-						if pth.len() == 1 && strings.HasSuffix(pth.String(), info.FieldName) {
+						if pth.len() == 1 && pth[0] == info.FieldName {
 							wasRead = true
 							res = read
 							return
 						}
+						continue
 					case *ssa.FieldAddr:
 						info := analysisutil.FieldAddrFieldInfo(instr)
-						if pth.len() == 1 && strings.HasSuffix(pth.String(), info.FieldName) {
+						if pth.len() == 1 && pth[0] == info.FieldName {
 							wasRead = true
 							res = read
 							return
 						}
+						continue
 					}
 				}
 
@@ -255,7 +260,13 @@ func valsReadFrom(instr ssa.Instruction) (readInstr, bool) {
 	case *ssa.Field:
 		add(instr.X)
 	case *ssa.FieldAddr:
-		add(instr.X)
+		// A FieldAddr only computes an address (&x.Field); it does not itself read the field's
+		// value. Treat it as reading instr.X only if the computed address is actually
+		// dereferenced for its value somewhere (e.g. *p), not merely used as a write
+		// destination (e.g. *p = v, which is a write, not a read of the prior value).
+		if fieldAddrIsDereferenced(instr) {
+			add(instr.X)
+		}
 	case *ssa.BinOp:
 		add(instr.X, instr.Y)
 	case *ssa.IndexAddr:
@@ -281,6 +292,46 @@ func valsReadFrom(instr ssa.Instruction) (readInstr, bool) {
 	}
 
 	return readInstr{Instruction: instr, values: rvals}, true
+}
+
+// fieldAddrIsDereferenced returns true if instr's result (a field address, &x.Field) is ever
+// dereferenced for its value (e.g. via *p, or passed to another instruction that reads through
+// it), as opposed to being used only as a write destination (e.g. *p = v, or being passed to a
+// FieldAddr computing a nested field's address). Computing a field's address is not itself a
+// read of that field: `t1 = &x.Body` followed only by `*t1 = v` is a write to x.Body, not a read
+// of the value x.Body held before the write.
+func fieldAddrIsDereferenced(instr *ssa.FieldAddr) bool {
+	refs := instr.Referrers()
+	if refs == nil {
+		return false
+	}
+	for _, ref := range *refs {
+		switch ref := ref.(type) {
+		case *ssa.UnOp:
+			// *t1 dereferences the address to read its value.
+			if ref.Op == token.MUL && ref.X == instr {
+				return true
+			}
+		case *ssa.Store:
+			// *t1 = v is a write through t1, not a read: ref.Val (not ref.Addr) is the value
+			// being written, and t1 (the FieldAddr result) is only ever ref.Addr here, never
+			// ref.Val. No read of the field's prior value occurs.
+			continue
+		case *ssa.FieldAddr:
+			// A nested field access (&(&x.Field).Nested) navigates through the outer address;
+			// conservatively treat this as a read only if the nested access is itself
+			// dereferenced.
+			if fieldAddrIsDereferenced(ref) {
+				return true
+			}
+		default:
+			// Any other use (passed as a call argument, stored into another variable, returned,
+			// etc.) may lead to the field being read somewhere we don't track locally.
+			// Conservatively treat it as a read to avoid unsoundness.
+			return true
+		}
+	}
+	return false
 }
 
 // inputVals returns all of the SSA values that the flow's "from" node may refer to.

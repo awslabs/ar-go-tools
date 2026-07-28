@@ -1973,6 +1973,129 @@ func TestCheckSummary_Fields(t *testing.T) {
 			},
 		},
 		{
+			// Regression test: interaction between the self-flow filter and the
+			// redundant-with-another-flow (subsumption) filter within the same summaryFlows
+			// call. The declared summary has three flows:
+			//   1. c.Src -> c.Dst        (real, distinct fields -- must survive)
+			//   2. c.Src.X -> c.Dst.X    (finer version of #1 -- redundant via subsumption,
+			//                             since a -> b implies a.f -> b.f; must be filtered)
+			//   3. c.Src -> c.Src        (true self-flow on the whole Src field -- must be
+			//                             filtered by the self-flow check, not by subsumption)
+			// This checks that the self-flow filter (which only applies to flow #3, since it's
+			// the only from.node==to.node pair) does not interfere with, or get bypassed by,
+			// the separate subsumption filter applied to #1/#2 (a different node pairing).
+			pkg:  pkg,
+			name: "copyNestedFieldToOther",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".copyNestedFieldToOther",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src"}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst"},
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src"},
+						},
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst.X"},
+						},
+					},
+				},
+				Soundness: check.Sound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			// Regression test for the access-path string-matching / field-attribution bugs:
+			// "Body" is a string-prefix of "BodyStart", so path comparisons that used raw
+			// string prefix/suffix checks previously misattributed writes/reads of one field to
+			// the other. Three sub-bugs are exercised and fixed here:
+			//   1. general.go's flowCovers / summaryFlows's subsumption filter no longer treats
+			//      .Body as covering .BodyStart (fixed via isCoveredBy comparing path segments
+			//      instead of raw strings).
+			//   2. read.go's checkReads no longer falls through from a definitive field
+			//      mismatch (e.g. a *ssa.FieldAddr for &c.Body) into the generic points-to
+			//      fallback, which would otherwise match any sibling field's label.
+			//   3. valsReadFrom's *ssa.FieldAddr case no longer treats computing a field's
+			//      address (&c.Body) as itself "reading" that field: c.Body/c.BodyStart's
+			//      FieldAddr results here are only ever used as store *destinations*
+			//      (c.Body = c.Src), never dereferenced for their prior value, so neither field
+			//      is actually read by copySrcToBodyAndBodyStart -- the summary is Sound.
+			pkg:  pkg,
+			name: "copySrcToBodyAndBodyStart",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".copySrcToBodyAndBodyStart",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src"}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Body"},
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".BodyStart"},
+						},
+					},
+				},
+				Soundness: check.Sound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			// Isolation test for checkWritesPtr (immutability method): writeBodyOnly writes only
+			// c.Body, never c.BodyStart. A must-not-flow into c.BodyStart must be provable by
+			// Immutability alone (c.BodyStart is never written), without being misattributed as
+			// written because c.Body (a sibling field sharing a string prefix) was written.
+			pkg:  pkg,
+			name: "writeBodyOnly",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".writeBodyOnly",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "v", Index: 1}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Body"},
+						},
+					},
+				},
+				Soundness: check.Sound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: nil,
+				},
+				Method:        check.Immutability,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			// True-positive counterpart to copySrcToBodyAndBodyStart: confirms
+			// fieldAddrIsDereferenced still detects a genuine read through a field address
+			// (p := &c.Val; return *p), rather than always reporting "not read" after the fix.
+			// Want is empty (declares no flows), so c.Val -> !ret 0 (a real flow) must remain
+			// unproven.
+			pkg:  pkg,
+			name: "readFieldViaPointer",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name:      pkg + ".readFieldViaPointer",
+				Want:      summaries.DetailedSummary{},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "c", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
 			pkg:  pkg,
 			name: "threeArgInterTree",
 			typ:  functionSummary,

@@ -61,6 +61,81 @@ func testCopyFieldToOther() {
 	fmt.Printf("x.Dst:%v\n", x.Dst)
 }
 
+// nestedTwoFields is used to test the interaction between the self-flow filter and the
+// subsumption filter (a -> b implies a.f -> b.f) in the same summaryFlows call: a summary can
+// declare a true self-flow (Src -> Src) alongside a coarse/fine pair on Src -> Dst that should
+// be filtered by subsumption, without either filter interfering with the other.
+type nestedTwoFields struct {
+	Src inner
+	Dst inner
+}
+
+type inner struct {
+	X int
+}
+
+func copyNestedFieldToOther(c *nestedTwoFields) {
+	c.Dst = c.Src
+}
+
+func testCopyNestedFieldToOther() {
+	x := &nestedTwoFields{Src: inner{X: 1}, Dst: inner{X: 0}}
+	copyNestedFieldToOther(x)
+	fmt.Printf("x.Dst:%v\n", x.Dst)
+}
+
+// prefixSiblingFields is used to test that isCoveredBy does not mistake one field name being a
+// string-prefix of another (e.g. "Body" is a string-prefix of "BodyStart") for one path
+// containing the other: they are sibling fields, not nested. Mirrors aws-sdk-go's
+// aws/request.Request, whose Body and BodyStart fields previously tripped this bug.
+type prefixSiblingFields struct {
+	Src       int
+	Body      int
+	BodyStart int
+}
+
+func copySrcToBodyAndBodyStart(c *prefixSiblingFields) {
+	c.Body = c.Src
+	c.BodyStart = c.Src
+}
+
+func testCopySrcToBodyAndBodyStart() {
+	x := &prefixSiblingFields{Src: 1, Body: 0, BodyStart: 0}
+	copySrcToBodyAndBodyStart(x)
+	fmt.Printf("x.Body:%v x.BodyStart:%v\n", x.Body, x.BodyStart)
+}
+
+// writeBodyOnly is used to test that checkWritesPtr's field-path filtering correctly
+// distinguishes writes to sibling fields whose names share a string prefix ("Body" is a
+// string-prefix of "BodyStart"): writing to c.Body must not be misattributed as a write to
+// c.BodyStart (or vice versa) by the immutability analysis.
+func writeBodyOnly(c *prefixSiblingFields, v int) {
+	c.Body = v
+}
+
+func testWriteBodyOnly() {
+	x := &prefixSiblingFields{Src: 1, Body: 0, BodyStart: 0}
+	writeBodyOnly(x, 5)
+	fmt.Printf("x.Body:%v x.BodyStart:%v\n", x.Body, x.BodyStart)
+}
+
+// readFieldViaPointer is used to confirm that fieldAddrIsDereferenced still correctly detects a
+// genuine read through a field address (as opposed to copySrcToBodyAndBodyStart above, where the
+// field addresses are only ever used as write destinations).
+type oneField struct {
+	Val int
+}
+
+func readFieldViaPointer(c *oneField) int {
+	p := &c.Val // *ssa.FieldAddr
+	return *p   // *ssa.UnOp (MUL) dereferences p: this is a real read of c.Val
+}
+
+func testReadFieldViaPointer() {
+	x := &oneField{Val: 1}
+	fmt.Println(readFieldViaPointer(x))
+}
+
 type tree struct {
 	n     int
 	right *tree
@@ -177,4 +252,8 @@ func main() {
 	testThreeArgInterFieldsDiffCallees()
 	testThreeArgInterTree()
 	testCopyFieldToOther()
+	testCopyNestedFieldToOther()
+	testCopySrcToBodyAndBodyStart()
+	testWriteBodyOnly()
+	testReadFieldViaPointer()
 }
