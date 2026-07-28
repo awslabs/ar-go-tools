@@ -33,18 +33,24 @@ import (
 // inferCalleeSummaries returns all the maximally-general (most data flow edges) callee summaries
 // which satisfy the summary's must-not-flow requirements mustNotFlows.
 // It also adds any potential sources of unsoundness to unsoundness.
+//
+// The returned traces are all the reachable traces (from function inputs to outputs) that were used
+// to build the callee summary inference problem. They are returned so that callers can later
+// determine, for a given must-not-flow, which callees (if any) it passes through, which is needed
+// to determine whether the must-not-flow remains proven if only a subset of the returned callee
+// summaries turn out to be sound (see unprovenFlowsAfterCalleeCheck).
 func inferCalleeSummaries(
 	ctx context.Context, s *State, g *dataflow.SummaryGraph,
 	wantFlows []flow, mustNotFlows []flow,
 	unsoundness *Unsoundness, via Method,
-) (map[*ssa.Function][]summaries.DetailedSummary, error) {
+) (map[*ssa.Function][]summaries.DetailedSummary, []trace, error) {
 	if len(g.Callees) == 0 {
 		s.Logger.Tracef("function %s is a leaf function (no callees)\n", g.Parent)
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	if summaries.FnHasSummaries(g.Parent) {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"should not be deducing callee summaries for pre-defined function: %v", g.Parent)
 	}
 	if pos := s.State.Program.Fset.Position(g.Parent.Pos()); analysisutil.IsStandardLibFilename(pos.Filename) {
@@ -54,7 +60,7 @@ func inferCalleeSummaries(
 
 	validMethods := []Method{General, Types}
 	if !slices.Contains(validMethods, via) {
-		return nil, fmt.Errorf("invalid inference method: want one of %v, got %v", validMethods, via)
+		return nil, nil, fmt.Errorf("invalid inference method: want one of %v, got %v", validMethods, via)
 	}
 
 	// Compute the level of precision needed for the intra-procedural analysis.
@@ -77,7 +83,7 @@ func inferCalleeSummaries(
 			s.Logger.Debugf(
 				"running field-insensitive intra-procedural analysis on function %s...\n", g.Parent)
 			if _, _, err := dataflow.RunIntraProcedural(ctx, s.State, g); err != nil {
-				return nil, fmt.Errorf(
+				return nil, nil, fmt.Errorf(
 					"failed to run field-insensitive intra-procedural analysis: %v", err)
 			}
 		} else {
@@ -97,7 +103,7 @@ func inferCalleeSummaries(
 			// precision of every node to the precision of the most-precise node (node with the
 			// longest access path).
 			if _, _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k); err != nil {
-				return nil, fmt.Errorf(
+				return nil, nil, fmt.Errorf(
 					"failed to run field-sensitive intra-procedural analysis: %v", err)
 			}
 		}
@@ -116,25 +122,12 @@ func inferCalleeSummaries(
 
 	traces := buildGraph(s, g, prec)
 	if len(traces) == 0 {
-		return nil, fmt.Errorf("no reachable traces from inputs")
+		return nil, nil, fmt.Errorf("no reachable traces from inputs")
 	}
 	s.Logger.Debugf("taint flow graph has %d reachable traces\n", len(traces))
 
 	// unknownMayFlow are the edges that make up the callee taint flow summaries.
-	unknownMayFlow := make(map[*dataflow.CallNode][]edge)
-	for _, tr := range traces {
-		for _, edg := range tr {
-			isIntra := edg.from.call == edg.to.call
-			isCallee := edg.from.call != nil
-			call := edg.from.call
-			if isIntra && isCallee && edg.isSoft {
-				edges := unknownMayFlow[call]
-				if !slices.Contains(edges, edg) {
-					unknownMayFlow[call] = append(unknownMayFlow[call], edg)
-				}
-			}
-		}
-	}
+	unknownMayFlow := unknownMayFlowEdges(traces)
 
 	mustNotFlowEdges := mustNotFlowEdges(mustNotFlows, prec.longestPathLen)
 	if s.Logger.LogsDebug() {
@@ -153,25 +146,20 @@ func inferCalleeSummaries(
 	// Build MaxSAT problem
 	s.Logger.Debugf("computing problem constraints...")
 	var constraints []maxsat.Constr
-	// Callees of the same function must have identical inferred summaries
+	// Callees of the same function must have identical inferred summaries, known (hard) edges are
+	// asserted true, and transitivity constraints propagate flows through the traces. These are
+	// exactly the "base" constraints reused by unprovenFlowsAfterCalleeCheck to re-check
+	// individual must-not-flows once some callees turn out unsound.
 	// TODO This assumes that all nodes have the same precision.
-	summaryConstrs := buildCalleeSummaryConstrs(unknownMayFlow)
-	constraints = append(constraints, summaryConstrs...)
-	s.Logger.Debugf("\t%d hard constraints for identical callee summaries", len(summaryConstrs))
+	baseConstrs := calleeGraphConstraints(unknownMayFlow, traces)
+	constraints = append(constraints, baseConstrs...)
+	s.Logger.Debugf("\t%d hard constraints for identical callee summaries/known edges/transitivity",
+		len(baseConstrs))
 
 	// Maximize unknown may-flow edges (minimize must-not-flow).
 	softConstrs := buildSoftConstraints(unknownMayFlow)
 	constraints = append(constraints, softConstrs...)
 	s.Logger.Debugf("\t%d soft constraints for callee's may-flow edges", len(softConstrs))
-
-	// Assert hard edges as true.
-	hardConstrs := buildHardConstraints(traces)
-	constraints = append(constraints, hardConstrs...)
-	s.Logger.Debugf("\t%d hard constraints for known edges", len(hardConstrs))
-
-	transitiveConstrs := buildTransitivityConstraints(traces)
-	constraints = append(constraints, transitiveConstrs...)
-	s.Logger.Debugf("\t%d transitivity constraints", len(transitiveConstrs))
 
 	// Block must-not-flows
 	mustNotFlowConstrs := buildMustNotFlowConstraints(traces, mustNotFlowEdges)
@@ -192,14 +180,14 @@ func inferCalleeSummaries(
 		// analysis, then the model will be unsatisfiable.
 		s.Logger.Warnf(
 			"callee summary inference MAXSAT model for function %s is unsatisfiable\n", g.Parent)
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Enumerate all optimal models and convert them to summaries
 	allOptimalModels := findAllOptimalModels(model, optimalCost, constraints, unknownMayFlow)
 	res, err := modelsToSummaries(s.State, allOptimalModels, unknownMayFlow)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert maxsat model to summaries: %v", err)
+		return nil, nil, fmt.Errorf("failed to convert maxsat model to summaries: %v", err)
 	}
 
 	s.Logger.Debugf(
@@ -212,7 +200,186 @@ func inferCalleeSummaries(
 		}
 	}
 
-	return res, nil
+	return res, traces, nil
+}
+
+// unprovenFlowsAfterCalleeCheck returns the subset of mustNotFlows that remain unproven after
+// recursively checking the soundness of the callee summaries inferred by inferCalleeSummaries.
+//
+// inferCalleeSummaries finds callee summaries that block every flow in mustNotFlows *assuming those
+// inferred summaries are correct*. If a callee's inferred summary later turns out to be unsound
+// (checkSummary could not prove it), we can no longer trust that it doesn't leak along its unknown
+// (soft) edges. To determine which must-not-flows still hold despite this, we negate the property
+// for each must-not-flow individually: we force every soft edge belonging to an unsound callee to
+// true (its worst-case, most-general behavior) and assert the must-not-flow's blocking edge to be
+// true as well, then check satisfiability of the resulting hard-clause problem (reusing the same
+// hard/transitivity/inter-procedural constraints used during inference).
+//   - UNSAT: there is no way to realize the must-not-flow even if the unsound callees leak
+//     everything, so it remains proven and can be pruned.
+//   - SAT: the model is a genuine counterexample witnessing the flow, so it must stay unproven.
+//
+// unsoundCalleeFlows maps each unsound callee to its own reported UnprovenMustNotFlows (from
+// recursively checking its inferred summary): only the edges corresponding to those specific flows
+// are forced to true, not every edge belonging to the callee. This matters because a callee's
+// inferred summary (calleeSumm, from inferCalleeSummaries) already claims some edges as may-flow --
+// those are trusted regardless of the callee's soundness verdict -- and being unsound only means
+// some of the *remaining* (blocked) edges couldn't be proven safe; edges that were independently
+// disproven when checking the callee itself (e.g. by General/Types/Immutability/Read on the callee)
+// are not must-not-flows of the callee and should stay blocked here too.
+func unprovenFlowsAfterCalleeCheck(
+	s *State, g *dataflow.SummaryGraph, wantFlows, mustNotFlows []flow, traces []trace,
+	unsoundCalleeFlows map[*ssa.Function][]Flow,
+) ([]flow, error) {
+	if len(unsoundCalleeFlows) == 0 {
+		// No unsound callees: every must-not-flow that inferCalleeSummaries was able to block is
+		// validly proven.
+		return nil, nil
+	}
+	if len(traces) == 0 {
+		// No traces means nothing was proven via callee inference; conservatively keep everything.
+		return mustNotFlows, nil
+	}
+
+	prec := newPrecisions(wantFlows)
+	g.ForAllNodes(func(n dataflow.GraphNode) {
+		prec.inputs.nodePathLen[n] = prec.longestPathLen
+		prec.outputs.nodePathLen[n] = prec.longestPathLen
+	})
+
+	unknownMayFlow := unknownMayFlowEdges(traces)
+
+	// Base constraints shared by every per-flow satisfiability check: identical summaries for
+	// callees called at multiple sites, known (hard) edges, and transitivity. These are the same
+	// constraints inferCalleeSummaries builds (minus the soft/maximization and must-not-flow
+	// constraints, which don't apply here: we want plain satisfiability of one flow at a time, not
+	// an optimal blocking assignment).
+	baseConstraints := calleeGraphConstraints(unknownMayFlow, traces)
+
+	// Force to true only the specific edges matching an unsound callee's own unproven must-not-
+	// flows (its worst case: those specific leaks are real), not every edge belonging to it.
+	forcedTrue, err := edgesForUnsoundCalleeFlows(unknownMayFlow, unsoundCalleeFlows)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range forcedTrue {
+		baseConstraints = append(baseConstraints, maxsat.HardClause(newMayFlowLit(e)))
+	}
+
+	var stillUnproven []flow
+	for _, mnf := range mustNotFlows {
+		// Each must-not-flow is checked in its own SAT call, rather than asserting all of their
+		// edges at once, because each needs its own independent proven/unproven verdict: a single
+		// joint query's SAT/UNSAT result can't be attributed back to any one flow (e.g. SAT could
+		// be witnessed entirely by a different flow in the set, telling us nothing about mnf).
+		mnfEdges := mustNotFlowEdges([]flow{mnf}, prec.longestPathLen)
+		sat, err := mustNotFlowHasCounterexample(baseConstraints, traces, mnfEdges)
+		if err != nil {
+			return nil, err
+		}
+		if sat {
+			stillUnproven = append(stillUnproven, mnf)
+		}
+	}
+	return stillUnproven, nil
+}
+
+// edgesForUnsoundCalleeFlows resolves each unsound callee's reported UnprovenMustNotFlows (given in
+// that callee's own signature vocabulary) against the caller's unknownMayFlow edges, returning the
+// specific edges (across every call site to that callee) that correspond to those flows.
+//
+// Resolution must happen per call site, against that call site's own call.CalleeSummary graph, not
+// against s.FlowGraph.Summaries[callee]: checkCalleeSummaries recursively calls checkSummary on the
+// callee to verify its inferred summary, and checkSummary unconditionally builds a brand-new
+// dataflow.SummaryGraph for the function it's given, overwriting s.FlowGraph.Summaries[callee] with
+// a graph whose nodes are distinct (pointer-wise) from the ones traces/unknownMayFlow were built
+// with -- so resolving there would silently match nothing.
+func edgesForUnsoundCalleeFlows(
+	unknownMayFlow map[*dataflow.CallNode][]edge, unsoundCalleeFlows map[*ssa.Function][]Flow,
+) ([]edge, error) {
+	var forced []edge
+	for call, edges := range unknownMayFlow {
+		flows, ok := unsoundCalleeFlows[call.Callee()]
+		if !ok {
+			continue
+		}
+		var calleeFlows []flow
+		for _, f := range flows {
+			fl, err := flowFromReport(call.CalleeSummary, f)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to resolve unproven flow %v for callee %s: %v", f, call.Callee(), err)
+			}
+			calleeFlows = append(calleeFlows, fl)
+		}
+		for _, e := range edges {
+			for _, fl := range calleeFlows {
+				if e.from.n == fl.from.node && e.to.n == fl.to.node &&
+					e.from.path.isCoveredBy(fl.from.path) && e.to.path.isCoveredBy(fl.to.path) {
+					forced = append(forced, e)
+					break
+				}
+			}
+		}
+	}
+	return forced, nil
+}
+
+// flowFromReport converts a reported Flow (the exported, summary-node based representation used in
+// SoundnessResult) back into the internal graph-node based flow representation, resolving both
+// endpoints against g. This is the inverse of newFlow, used by edgesForUnsoundCalleeFlows to
+// translate a callee's own reported UnprovenMustNotFlows back into edges over the caller's view of
+// that callee's graph nodes.
+func flowFromReport(g *dataflow.SummaryGraph, f Flow) (flow, error) {
+	from, err := findNode(g, f.From)
+	if from == nil || err != nil {
+		return flow{}, fmt.Errorf("could not find node for %v: %v", f.From, err)
+	}
+	to, err := findNode(g, f.To)
+	if to == nil || err != nil {
+		return flow{}, fmt.Errorf("could not find node for %v: %v", f.To, err)
+	}
+	return flow{
+		from: newGraphNode(from, f.From.Path()),
+		to:   newGraphNode(to, f.To.Path()),
+	}, nil
+}
+
+// mustNotFlowHasCounterexample checks whether, given baseConstraints (identical-summary,
+// hard-edge, and transitivity constraints, plus any forced-true edges for unsound callees), there is
+// a satisfying assignment that realizes any of mnfEdges -- i.e., a counterexample to the property
+// that the must-not-flow does not hold.
+func mustNotFlowHasCounterexample(
+	baseConstraints []maxsat.Constr, traces []trace, mnfEdges []edge,
+) (bool, error) {
+	// Negate the property: assert that at least one of the (start, end) hard edges matching the
+	// must-not-flow is true, i.e., that the flow is realized. This is the same matching
+	// buildMustNotFlowConstraints uses to decide which edges to block, just asserted rather than
+	// negated.
+	matched := matchingTraceEdges(traces, mnfEdges)
+	if len(matched) == 0 {
+		// The must-not-flow's endpoints are not connected by any trace, meaning f's own real
+		// (SSA-derived) intra-procedural dataflow graph -- not a syntactic enumeration like
+		// mostGeneralFlows, but the actual graph the visitor walks by following real def-use
+		// edges, including forward through call-site arguments/outputs (see addCallsiteOutputs)
+		// -- has no path between them. Since traces are built by an exhaustive DFS from every
+		// input of f, absence of a matching trace is a genuine non-reachability result, not an
+		// artifact of the search failing to compose multiple calls: the visitor continues through
+		// a callee's output back into the caller's own graph and onward into later calls in the
+		// same DFS. So there is no counterexample.
+		return false, nil
+	}
+
+	constraints := make([]maxsat.Constr, len(baseConstraints))
+	copy(constraints, baseConstraints)
+	negationLits := make([]maxsat.Lit, len(matched))
+	for i, edg := range matched {
+		negationLits[i] = newMayFlowLit(edg)
+	}
+	constraints = append(constraints, maxsat.HardClause(negationLits...))
+
+	prob := maxsat.New(constraints...)
+	model, _ := prob.Solve()
+	return model != nil, nil
 }
 
 // buildGraph builds the taint flow graph of g by tainting all of the inputs with access path length
@@ -812,7 +979,7 @@ func findMatchingPaths(
 	}
 
 	for inPath, outPaths := range edgeInfo.RelPath {
-		if strings.HasPrefix(inPath, curPath) {
+		if newPath(curPath, maxPathLen).isCoveredBy(newPath(inPath, maxPathLen)) {
 			for outPath := range outPaths {
 				nextPaths = append(nextPaths, outPath)
 			}
@@ -1330,6 +1497,40 @@ func allCalleeOutputs(calleeIn *dataflow.VisitorNode) []*dataflow.VisitorNode {
 	return outputs
 }
 
+// unknownMayFlowEdges collects, from traces, the intra-procedural soft (unknown) edges belonging to
+// each callee -- i.e. the edges that make up the callee taint flow summaries to be inferred, or (for
+// unprovenFlowsAfterCalleeCheck) re-examined.
+func unknownMayFlowEdges(traces []trace) map[*dataflow.CallNode][]edge {
+	unknownMayFlow := make(map[*dataflow.CallNode][]edge)
+	for _, tr := range traces {
+		for _, edg := range tr {
+			isIntra := edg.from.call == edg.to.call
+			isCallee := edg.from.call != nil
+			call := edg.from.call
+			if isIntra && isCallee && edg.isSoft {
+				edges := unknownMayFlow[call]
+				if !slices.Contains(edges, edg) {
+					unknownMayFlow[call] = append(unknownMayFlow[call], edg)
+				}
+			}
+		}
+	}
+	return unknownMayFlow
+}
+
+// calleeGraphConstraints returns the constraints common to both inferCalleeSummaries (which
+// additionally maximizes unknown may-flow edges and blocks must-not-flows) and
+// unprovenFlowsAfterCalleeCheck (which additionally forces unsound callees' edges true and asserts
+// one must-not-flow at a time): callees called at multiple sites must have identical inferred
+// summaries, known (hard) edges are asserted true, and transitivity propagates flows along traces.
+func calleeGraphConstraints(unknownMayFlow map[*dataflow.CallNode][]edge, traces []trace) []maxsat.Constr {
+	var constrs []maxsat.Constr
+	constrs = append(constrs, buildCalleeSummaryConstrs(unknownMayFlow)...)
+	constrs = append(constrs, buildHardConstraints(traces)...)
+	constrs = append(constrs, buildTransitivityConstraints(traces)...)
+	return constrs
+}
+
 // buildCalleeSummaryConstrs returns the constraints to ensure that unknown edges for different
 // callsites with the same callee are the same.
 func buildCalleeSummaryConstrs(unknown map[*dataflow.CallNode][]edge) []maxsat.Constr {
@@ -1441,10 +1642,13 @@ func buildTransitivityConstraints(traces []trace) []maxsat.Constr {
 
 // buildMustNotFlowConstraints returns the constraints that block must-not-flows.
 //
-// Since traces contains all the reachable traces from inputs to the function, we only need to block
-// traces that are implied by the must-not-flows.
-func buildMustNotFlowConstraints(traces []trace, mustNotFlows []edge) []maxsat.Constr {
-	var constrs []maxsat.Constr
+// matchingTraceEdges returns, for each mustNotFlow, the single deduplicated intra-hard edge
+// representing the (start, end) endpoints of the first trace in traces whose start/end are covered
+// by that must-not-flow, if any. This is the common trace-to-must-not-flow matching logic shared by
+// buildMustNotFlowConstraints (which blocks the returned edges) and mustNotFlowHasCounterexample
+// (which asserts them, to check whether blocking them is still possible).
+func matchingTraceEdges(traces []trace, mustNotFlows []edge) []edge {
+	var edges []edge
 	seen := make(map[edge]struct{})
 	for _, tr := range traces {
 		for _, mnf := range mustNotFlows {
@@ -1457,12 +1661,23 @@ func buildMustNotFlowConstraints(traces []trace, mustNotFlows []edge) []maxsat.C
 						continue
 					}
 					seen[edg] = struct{}{}
-					lit := newMayFlowLit(edg).Negation()
-					constrs = append(constrs, maxsat.HardClause(lit))
+					edges = append(edges, edg)
 					break
 				}
 			}
 		}
+	}
+	return edges
+}
+
+// buildMustNotFlowConstraints returns the constraints that block must-not-flows.
+//
+// Since traces contains all the reachable traces from inputs to the function, we only need to block
+// traces that are implied by the must-not-flows.
+func buildMustNotFlowConstraints(traces []trace, mustNotFlows []edge) []maxsat.Constr {
+	var constrs []maxsat.Constr
+	for _, edg := range matchingTraceEdges(traces, mustNotFlows) {
+		constrs = append(constrs, maxsat.HardClause(newMayFlowLit(edg).Negation()))
 	}
 
 	return constrs

@@ -234,6 +234,25 @@ func testSharedMutation() {
 	fmt.Println(res) // 3
 }
 
+// mixedCalleeSoundness calls two different callees on disjoint inputs: modify (whose checked
+// summary is unsound due to a known alias-analysis false-positive reverse leak, see sharedMutation)
+// and add1 (whose checked summary is sound). This isolates the Recursive method's must-not-flow
+// pruning: must-not-flows that can only be realized through modify's call site must remain
+// unproven, while must-not-flows that can only be realized through add1's call site -- unrelated to
+// modify entirely -- must be pruned despite modify being unsound.
+func mixedCalleeSoundness(a, b *int, shared *state) int {
+	modify(a, shared)
+	no := 0
+	return add1(*b, *b, &no)
+}
+
+func testMixedCalleeSoundness() {
+	a, b := 0, 1
+	shared := &state{2, 3}
+	res := mixedCalleeSoundness(&a, &b, shared)
+	fmt.Println(res)
+}
+
 func addPtrs(x, y *int) *int {
 	sum := *x + *y
 	return &sum
@@ -312,6 +331,26 @@ func testCallerOfWriteStructPtrWithExtra() {
 	c := 5
 	res := callerOfWriteStructPtrWithExtra(a, b, &c)
 	fmt.Println(a.count, res)
+}
+
+// twoCallSitesOfWriteStructPtrWithExtra calls writeStructPtrWithExtra at two call sites with
+// disjoint arguments, mirroring sharedMutation's two-call-site pattern. This is a regression test
+// for combining buildCalleeSummaryConstrs (which forces both call sites to share an identical
+// inferred summary) with edgesForUnsoundCalleeFlows's per-call-site resolution via
+// call.CalleeSummary: each call site has its own distinct CalleeSummary graph object, so resolving
+// the shared callee's UnprovenMustNotFlows must correctly match edges at both sites, not just one.
+func twoCallSitesOfWriteStructPtrWithExtra(a, b, p, q *state, c, d *int) int {
+	r1 := writeStructPtrWithExtra(a, b, c)
+	r2 := writeStructPtrWithExtra(p, q, d)
+	return r1 + r2
+}
+
+func testTwoCallSitesOfWriteStructPtrWithExtra() {
+	a, b := &state{}, &state{acc: 1, count: 1}
+	p, q := &state{}, &state{acc: 2, count: 2}
+	c, d := 5, 6
+	res := twoCallSitesOfWriteStructPtrWithExtra(a, b, p, q, &c, &d)
+	fmt.Println(a.count, p.count, res)
 }
 
 func writeToClosed(x, y int) int {
@@ -483,7 +522,9 @@ func main() {
 	testThreeArgInterDiffCallees()
 	testFieldPropagation()
 	testSharedMutation()
+	testMixedCalleeSoundness()
 	testCallerOfWriteStructPtrWithExtra()
+	testTwoCallSitesOfWriteStructPtrWithExtra()
 	testStorePtr()
 	testMutatePtr()
 	testAliasInterNone()

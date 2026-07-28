@@ -305,7 +305,7 @@ func checkSummary(
 		CheckFeatures:        unsoundCheckFeats,
 	}
 	// Use the type analysis to filter out unrealizable flows
-	calleeSummaries, err := inferCalleeSummaries(
+	calleeSummaries, traces, err := inferCalleeSummaries(
 		ctx, s, g, wantFlows, unprovenMustNotFlows, &unsoundness, Types)
 	if err != nil {
 		soundnessResultBase.Soundness = Error
@@ -335,8 +335,16 @@ func checkSummary(
 	}
 
 	// If all inferred callee summaries are sound, then the summary for f is sound.
+	// unsoundCalleeFlows maps each callee for which none of the inferred summary variants could be
+	// proven sound to the union of those variants' own reported UnprovenMustNotFlows (since we
+	// don't know which variant, if any, matches the callee's real behavior, we conservatively
+	// assume any of their unproven flows could be real).
 	calleesSound := true
+	unsoundCalleeFlows := map[*ssa.Function][]Flow{}
 	for _, crs := range calleeResults {
+		if len(crs) == 0 {
+			continue
+		}
 		// Only one inferred callee summary needs to be sound.
 		calleeSound := false
 		for _, cr := range crs {
@@ -347,20 +355,32 @@ func checkSummary(
 		}
 		if !calleeSound {
 			calleesSound = false
-			break
+			callee := crs[0].Fn
+			for _, cr := range crs {
+				unsoundCalleeFlows[callee] = append(
+					unsoundCalleeFlows[callee], cr.Unsoundness.UnprovenMustNotFlows...)
+			}
 		}
 	}
 	if calleesSound {
 		unsoundness.UnprovenMustNotFlows = nil
+	} else {
+		stillUnproven, pruneErr := unprovenFlowsAfterCalleeCheck(
+			s, g, wantFlows, unprovenMustNotFlows, traces, unsoundCalleeFlows)
+		if pruneErr != nil {
+			return soundnessResultBase, fmt.Errorf(
+				"failed to determine unproven must-not-flows after callee check for %s: %v", f, pruneErr)
+		}
+		unsoundness.UnprovenMustNotFlows = funcutil.Map(stillUnproven, newFlow)
 	}
 
-	// TODO Filter out must-not-flows that are proven via checking the callees
 	soundnessResultBase.MethodCounts[Recursive] = len(unprovenMustNotFlows)
-	if calleesSound {
-		soundnessResultBase.Soundness = unsoundness.soundness()
-	} else {
-		soundnessResultBase.Soundness = Unsound
-	}
+	// unsoundness.soundness() already returns Unsound whenever UnprovenMustNotFlows is non-empty,
+	// which covers the calleesSound == false case where pruning left some flows unproven. This
+	// call also covers calleesSound == true (list is nil) and calleesSound == false with every
+	// flow pruned (list is empty): both rely on CheckFeatures/DataflowFeatures to decide between
+	// Sound and Soundy instead of hardcoding Sound.
+	soundnessResultBase.Soundness = unsoundness.soundness()
 	soundnessResultBase.Unsoundness = unsoundness
 	soundnessResultBase.Method = Recursive
 	soundnessResultBase.Time = time.Since(start)
@@ -444,20 +464,11 @@ func checkCalleeSummaries(
 			}
 		}
 
-		for _, crs := range calleeResults {
-			for _, cr := range crs {
-				if cr.Soundness != Sound {
-					s.Logger.Infof("unsound deduced callee summary: %v\n", cr.Want)
-					soundnessResultBase.Soundness = Unsound
-					soundnessResultBase.Unsoundness = unsoundness
-					soundnessResultBase.Time = time.Since(start)
-					soundnessResultBase.Method = Recursive
-					soundnessResultBase.CalleeResults = calleeResults
-					return nil, soundnessResultBase, true, nil
-				}
-			}
-		}
-
+		// NOTE We deliberately don't exit early here even if none of this callee's summary
+		// variants are sound: the caller (checkSummary) needs the full set of callee results,
+		// including for callees processed later in this loop, to determine precisely which
+		// must-not-flows remain unproven (a must-not-flow is only unproven if it depends on this
+		// specific unsound callee; see unprovenFlowsAfterCalleeCheck).
 		calleeResults = append(calleeResults, thisCalleeResults)
 	}
 	return calleeResults, SoundnessResult{}, false, nil

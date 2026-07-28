@@ -929,11 +929,17 @@ func TestCheckSummary_Basic(t *testing.T) {
 		},
 		{
 			// multiFieldMethod's real behavior writes into "out" too, but Want only declares
-			// flows into !ret 0, so every flow into out and every receiver-field-to-{receiver,
-			// out} pairing is an unproven must-not-flow. Each of the 4 receiver fields must be
+			// flows into !ret 0, so every real flow into "out" (from the receiver's fields and
+			// argX/Y/Z) is a genuine unproven must-not-flow. Each of the 4 receiver fields must be
 			// distinguishable in the result (regression test: newSummaryNode used to always
 			// return a bare ReceiverSNode{} with no ObjectPath, collapsing all 4 receiver-field-
 			// sourced flows into indistinguishable duplicate entries).
+			//
+			// Flows into the receiver itself (and out -> !ret 0) are NOT unproven: the callee
+			// multiFieldHelper is unsound only because it may leak its inputs to its own return
+			// value, and multiFieldMethod only routes that return value into its own return (not
+			// into the receiver or back out of "out"), so those must-not-flows remain proven even
+			// though multiFieldHelper itself is unsound (see unprovenFlowsAfterCalleeCheck).
 			pkg:      pkg,
 			name:     "multiFieldMethod",
 			receiver: "*multiFieldReceiver",
@@ -954,22 +960,22 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
-						{From: summaries.ReceiverSNode{ObjectPath: ".fieldA"}, To: summaries.ReceiverSNode{}},
+						// NOTE Only X -> out remains unproven: multiFieldHelper's return value is
+						// written into out.fieldA/out.fieldB in the real code
+						// (out.fieldA = res.outA), so this flow is real and correctly stays
+						// unproven. Flows into the receiver (X -> receiver, out -> receiver) and
+						// out -> !ret 0 are pruned: multiFieldHelper's unsound leak only reaches
+						// its own return value, which multiFieldMethod only routes to its own
+						// return (not to the receiver or out), so those must-not-flows remain
+						// proven even though multiFieldHelper itself is unsound. (See
+						// unprovenFlowsAfterCalleeCheck.)
 						{From: summaries.ReceiverSNode{ObjectPath: ".fieldA"}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
-						{From: summaries.ReceiverSNode{ObjectPath: ".fieldB"}, To: summaries.ReceiverSNode{}},
 						{From: summaries.ReceiverSNode{ObjectPath: ".fieldB"}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
-						{From: summaries.ReceiverSNode{ObjectPath: ".fieldC"}, To: summaries.ReceiverSNode{}},
 						{From: summaries.ReceiverSNode{ObjectPath: ".fieldC"}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
-						{From: summaries.ReceiverSNode{ObjectPath: ".fieldD"}, To: summaries.ReceiverSNode{}},
 						{From: summaries.ReceiverSNode{ObjectPath: ".fieldD"}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
-						{From: summaries.ArgumentSNode{Name: "argX", Index: 0}, To: summaries.ReceiverSNode{}},
 						{From: summaries.ArgumentSNode{Name: "argX", Index: 0}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
-						{From: summaries.ArgumentSNode{Name: "argY", Index: 1}, To: summaries.ReceiverSNode{}},
 						{From: summaries.ArgumentSNode{Name: "argY", Index: 1}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
-						{From: summaries.ArgumentSNode{Name: "argZ", Index: 2}, To: summaries.ReceiverSNode{}},
 						{From: summaries.ArgumentSNode{Name: "argZ", Index: 2}, To: summaries.ArgumentSNode{Name: "out", Index: 3}},
-						{From: summaries.ArgumentSNode{Name: "out", Index: 3}, To: summaries.ReceiverSNode{}},
-						{From: summaries.ArgumentSNode{Name: "out", Index: 3}, To: summaries.ReturnSNode{Index: 0}},
 					},
 				},
 				Method: check.Recursive,
@@ -990,6 +996,290 @@ func TestCheckSummary_Basic(t *testing.T) {
 								},
 							},
 							Soundness:     check.Unsound,
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			// mixedCalleeSoundness is a regression test for pruning UnprovenMustNotFlows after
+			// the Recursive method's callee soundness check: it calls two different callees on
+			// disjoint inputs -- modify (unsound, see sharedMutation above) and add1 (sound). Want
+			// only declares b -> !ret 0 (add1's real flow), so every other pairing among a, b,
+			// shared, and !ret 0 starts out as a must-not-flow. Only shared <-> a survive: they
+			// are the only pairings realizable through modify's unsound reverse leak
+			// (!arg <s> -> !arg <val>). Every must-not-flow touching b is proven despite modify
+			// being unsound, because b is never passed to modify and add1 (the only callee that
+			// touches b) is itself sound.
+			pkg:  pkg,
+			name: "mixedCalleeSoundness",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".mixedCalleeSoundness",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "b", Index: 1}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 0},
+							To:   summaries.ArgumentSNode{Name: "shared", Index: 2},
+						},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Name: pkg + ".add1",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
+										summaries.ReturnSNode{Index: 0},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							Soundness: check.Sound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: nil,
+							},
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+					{
+						{
+							Name: pkg + ".modify",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "s", Index: 1}: {
+										summaries.ArgumentSNode{Name: "val", Index: 0},
+									},
+								},
+							},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{Name: "val", Index: 0},
+										To:   summaries.ArgumentSNode{Name: "s", Index: 1},
+									},
+								},
+							},
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			// callerOfWriteStructPtrWithExtra is a regression test for a graph-identity bug found
+			// while trying to distinguish precise vs. blanket forcing in
+			// unprovenFlowsAfterCalleeCheck: checkCalleeSummaries recursively calls checkSummary
+			// to verify writeStructPtrWithExtra's inferred summary, and checkSummary
+			// unconditionally builds a *new* dataflow.SummaryGraph for it, overwriting
+			// s.FlowGraph.Summaries[writeStructPtrWithExtra] with a graph whose nodes are distinct
+			// (pointer-wise) from the ones the caller's traces/unknownMayFlow were built with. An
+			// earlier version of edgesForUnsoundCalleeFlows resolved against that clobbered global
+			// map entry, silently matching zero edges (instead of an error) and therefore forcing
+			// nothing -- which happened to still prune a -> b (mapping to x -> y), silently
+			// masking that a -> b was, at the time, also a false-positive in its own right (a and
+			// b share a NodeIDs() collision with writeStructPtr above, since fixed). The fix
+			// resolves against the call site's own call.CalleeSummary instead, which is never
+			// clobbered.
+			//
+			// Want declares only b -> a (x = y, the real accepted direction, via *x = *y).
+			// a -> b is now correctly proven by Immutability (b/y is never written), along with
+			// c -> b and a -> c (c/z is never aliased). a -> ret0, b -> ret0, c -> a, and c -> ret0
+			// remain genuinely unproven: none are disprovable by Read on writeStructPtrWithExtra
+			// itself.
+			pkg:  pkg,
+			name: "callerOfWriteStructPtrWithExtra",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".callerOfWriteStructPtrWithExtra",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "b", Index: 1}: {
+							summaries.ArgumentSNode{Name: "a", Index: 0},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 1},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "c", Index: 2},
+							To:   summaries.ArgumentSNode{Name: "a", Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "c", Index: 2},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Name: pkg + ".writeStructPtrWithExtra",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "x", Index: 0}: {
+										summaries.ArgumentSNode{Name: "y", Index: 1},
+										summaries.ArgumentSNode{Name: "z", Index: 2},
+									},
+									summaries.ArgumentSNode{Name: "y", Index: 1}: {
+										summaries.ArgumentSNode{Name: "x", Index: 0},
+										summaries.ArgumentSNode{Name: "z", Index: 2},
+									},
+									summaries.ArgumentSNode{Name: "z", Index: 2}: {
+										summaries.ArgumentSNode{Name: "y", Index: 1},
+									},
+								},
+							},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{Name: "y", Index: 1},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "z", Index: 2},
+										To:   summaries.ArgumentSNode{Name: "x", Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "z", Index: 2},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			// twoCallSitesOfWriteStructPtrWithExtra calls writeStructPtrWithExtra at two call
+			// sites with disjoint arguments (mirroring sharedMutation's two-call-site pattern).
+			// This exercises buildCalleeSummaryConstrs (which forces both call sites to share an
+			// identical inferred summary) together with edgesForUnsoundCalleeFlows's per-call-site
+			// resolution via call.CalleeSummary: each call site has its own distinct
+			// CalleeSummary graph object, so resolving the shared callee's UnprovenMustNotFlows
+			// must correctly match edges at both sites.
+			pkg:  pkg,
+			name: "twoCallSitesOfWriteStructPtrWithExtra",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".twoCallSitesOfWriteStructPtrWithExtra",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "b", Index: 1}: {
+							summaries.ArgumentSNode{Name: "a", Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "q", Index: 3}: {
+							summaries.ArgumentSNode{Name: "p", Index: 2},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 1},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "p", Index: 2},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "q", Index: 3},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "c", Index: 4},
+							To:   summaries.ArgumentSNode{Name: "a", Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "c", Index: 4},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "d", Index: 5},
+							To:   summaries.ArgumentSNode{Name: "p", Index: 2},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "d", Index: 5},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Name: pkg + ".writeStructPtrWithExtra",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "x", Index: 0}: {
+										summaries.ArgumentSNode{Name: "y", Index: 1},
+										summaries.ArgumentSNode{Name: "z", Index: 2},
+									},
+									summaries.ArgumentSNode{Name: "y", Index: 1}: {
+										summaries.ArgumentSNode{Name: "x", Index: 0},
+										summaries.ArgumentSNode{Name: "z", Index: 2},
+									},
+									summaries.ArgumentSNode{Name: "z", Index: 2}: {
+										summaries.ArgumentSNode{Name: "y", Index: 1},
+									},
+								},
+							},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{Name: "y", Index: 1},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "z", Index: 2},
+										To:   summaries.ArgumentSNode{Name: "x", Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "z", Index: 2},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
 							Method:        check.Read,
 							CalleeResults: nil,
 						},
@@ -2620,7 +2910,7 @@ func checkResult(t *testing.T, want, got check.SoundnessResult) {
 }
 
 func setupConfig(lp *loadprogram.State) {
-	level := config.ErrLevel // change this as needed for debugging
+	level := config.TraceLevel // change this as needed for debugging
 	lp.Logger.Level = level
 	lp.Logger.SupressWarn = false
 
