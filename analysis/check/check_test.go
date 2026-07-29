@@ -1973,22 +1973,16 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 								},
 							},
@@ -1997,11 +1991,11 @@ func TestCheckSummary_Fields(t *testing.T) {
 								UnprovenMustNotFlows: []check.Flow{
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0},
 									},
 									{
 										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0},
 									},
 								},
 							},
@@ -2093,22 +2087,16 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 								},
 							},
@@ -2117,11 +2105,11 @@ func TestCheckSummary_Fields(t *testing.T) {
 								UnprovenMustNotFlows: []check.Flow{
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
-										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0},
 									},
 									{
 										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
-										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0},
 									},
 								},
 							},
@@ -2135,22 +2123,16 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
-										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".First"},
-										summaries.ArgumentSNode{Name: "no", Index: 2, ObjectPath: ".Second"},
+										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 								},
 							},
@@ -2159,11 +2141,11 @@ func TestCheckSummary_Fields(t *testing.T) {
 								UnprovenMustNotFlows: []check.Flow{
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0},
 									},
 									{
 										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0},
 									},
 								},
 							},

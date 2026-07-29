@@ -949,10 +949,6 @@ func findMatchingPaths(
 
 	var nextPaths []string
 	curPath := cur.AccessPaths[0]
-	// If cur is field-insensitive, then the next node should be field-insensitive.
-	if len(curPath) == 0 {
-		return []string{""}
-	}
 
 	if len(edgeInfo.RelPath) == 0 {
 		// If there's no edge information, this is likely an inter-procedural flow or a callee
@@ -1471,8 +1467,13 @@ func allCalleeOutputs(calleeIn *dataflow.VisitorNode) []*dataflow.VisitorNode {
 				}
 			}
 
-			pl := newPath(calleeIn.AccessPaths[0], maxPathLen).len()
-			paths := leafPathsUpTo(n.Type(), pl)
+			// Enumerate outputs field-insensitively (path length 0, one node per output) rather
+			// than following calleeIn's own path length: no summary is available yet for this
+			// callee during trace-building, so there is no real per-field information
+			// distinguishing its outputs, and naming individual fields (e.g. one leaf per field of
+			// a wide struct) would add specificity that isn't backed by any actual analysis, while
+			// multiplying the number of traces buildGraph builds.
+			paths := leafPathsUpTo(n.Type(), 0)
 			for _, path := range paths {
 				out := &dataflow.VisitorNode{
 					NodeWithTrace: dataflow.NodeWithTrace{
