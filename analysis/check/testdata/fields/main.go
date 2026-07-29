@@ -294,6 +294,55 @@ func testThreeArgInterTree() {
 	fmt.Printf("a: %v\n", a)
 }
 
+// offsetReaderLike mirrors aws-sdk-go's request.Request.safeBody (an *offsetReader): an
+// irrelevant sibling field that is itself a pointer to a multi-field struct, one level deeper
+// than the relevant field being checked.
+type offsetReaderLike struct {
+	closed bool
+	buf    string
+}
+
+// wideRequest mirrors aws-sdk-go's request.Request: a struct with a relevant field (body, the
+// only one named in the checked "want" summary below) alongside an irrelevant sibling field
+// (safeBody) that is itself a pointer to a further nested struct.
+type wideRequest struct {
+	body     string
+	safeBody *offsetReaderLike
+	err      error
+}
+
+// unmarshalLike mirrors aws-sdk-go's rest.unmarshalBody: it has no summary (so buildGraph must
+// infer one), and only touches r.body/r.err, never r.safeBody -- but it is passed the whole *r,
+// so buildGraph's fallback (no RelPath) must consider every field of r as a possible output,
+// including safeBody and its own nested field(s).
+func unmarshalLike(r *wideRequest) error {
+	if r.body != "" {
+		r.err = fmt.Errorf("got: %s", r.body)
+	}
+	return r.err
+}
+
+// requestUnmarshalLike mirrors aws-sdk-go's rest.Unmarshal: it calls the unsummarized
+// unmarshalLike with the whole *r, even though the checked summary (see check_test.go) only
+// cares about r.body flowing to r.err. r.safeBody is passed along as part of r but is never
+// itself read or written by requestUnmarshalLike or unmarshalLike.
+//
+// This reproduces a scaling bug in buildGraph: r.safeBody (already collapsed to one path by
+// inputNodes, since it's irrelevant to the checked summary) was still being expanded one level
+// deeper via a redundant edge of the form r.safeBody -> (r as unmarshalLike's argument).safeBody,
+// which is just r's own field flowing to itself through the call, carrying no information about
+// what unmarshalLike does. This edge should be filtered out as a self-flow rather than requiring
+// buildGraph to keep exploring one level deeper for every irrelevant field of r, however deeply
+// nested its own type is.
+func requestUnmarshalLike(r *wideRequest) error {
+	return unmarshalLike(r)
+}
+
+func testRequestUnmarshalLike() {
+	r := &wideRequest{body: "hello", safeBody: &offsetReaderLike{closed: false, buf: "x"}}
+	fmt.Println(requestUnmarshalLike(r))
+}
+
 func main() {
 	testIncFieldBy()
 	testIncRight()
@@ -310,4 +359,5 @@ func main() {
 	testCopySrcToBodyAndBodyStart()
 	testWriteBodyOnly()
 	testReadFieldViaPointer()
+	testRequestUnmarshalLike()
 }

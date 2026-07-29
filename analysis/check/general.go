@@ -134,26 +134,26 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error
 	var inputs []graphNode
 	var outputs []graphNode
 	for _, param := range g.Params {
-		inputNodes, err := enumeratePaths(param, prec.inputs.nodePathLen[param])
+		inputNodes, err := enumeratePaths(param, prec.inputs.nodePathLen[param], prec.inputs.nodePaths[param])
 		if err != nil {
 			return nil, fmt.Errorf("failed to enumerate input param paths: %v", err)
 		}
 		inputs = append(inputs, inputNodes...)
 
-		outputNodes, err := enumeratePaths(param, prec.outputs.nodePathLen[param])
+		outputNodes, err := enumeratePaths(param, prec.outputs.nodePathLen[param], prec.outputs.nodePaths[param])
 		if err != nil {
 			return nil, fmt.Errorf("failed to enumerate output param paths: %v", err)
 		}
 		outputs = append(outputs, outputNodes...)
 	}
 	for _, fv := range g.FreeVars {
-		inputNodes, err := enumeratePaths(fv, prec.inputs.nodePathLen[fv])
+		inputNodes, err := enumeratePaths(fv, prec.inputs.nodePathLen[fv], prec.inputs.nodePaths[fv])
 		if err != nil {
 			return nil, fmt.Errorf("failed to enumerate input free var paths: %v", err)
 		}
 		inputs = append(inputs, inputNodes...)
 
-		outputNodes, err := enumeratePaths(fv, prec.outputs.nodePathLen[fv])
+		outputNodes, err := enumeratePaths(fv, prec.outputs.nodePathLen[fv], prec.outputs.nodePaths[fv])
 		if err != nil {
 			return nil, fmt.Errorf("failed to enumerate output free var paths: %v", err)
 		}
@@ -161,7 +161,7 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error
 	}
 	for _, rets := range g.Returns {
 		for _, ret := range rets {
-			nodes, err := enumeratePaths(ret, prec.outputs.nodePathLen[ret])
+			nodes, err := enumeratePaths(ret, prec.outputs.nodePathLen[ret], prec.outputs.nodePaths[ret])
 			if err != nil {
 				return nil, fmt.Errorf("failed to enumerate output return paths: %v", err)
 			}
@@ -198,14 +198,147 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error
 }
 
 // TODO remove error
-func enumeratePaths(node dataflow.GraphNode, pathLen int) ([]graphNode, error) {
+//
+// relevantPaths, if non-empty, restricts the enumeration to relevantPathsOfType's collapsed
+// enumeration instead of every leaf path up to pathLen (see relevantPathsOfType for why this is
+// sound and does not lose precision for the paths that matter).
+func enumeratePaths(node dataflow.GraphNode, pathLen int, relevantPaths []path) ([]graphNode, error) {
 	var res []graphNode
-	allPaths := leafPathsUpTo(node.Type(), pathLen)
+	allPaths := relevantPathsOfType(node.Type(), pathLen, relevantPaths)
 	for _, path := range allPaths {
 		res = append(res, graphNode{node: node, path: path})
 	}
 
 	return res, nil
+}
+
+// relevantPathsOfType returns the access paths of t needed to represent every path that is either:
+//   - a path in relevantPaths, enumerated in full (i.e. exactly as leafPathsUpTo would, down to
+//     depth k along that path), or
+//   - part of the "uncovered" remainder of t's access-path tree: a path outside every relevantPaths
+//     entry, represented by exactly one path per branch point where the relevant paths and the
+//     uncovered remainder diverge, rather than one path per leaf beneath that branch point.
+//
+// This is used in place of leafPathsUpTo when enumerating a node's access paths for the purpose of
+// building candidate flows (see mostGeneralFlows): since the resulting flows are only interesting
+// insofar as they are covered by (relevant to), or represent the absence of a flow not covered by,
+// some entry in relevantPaths, there is no need to separately enumerate every leaf beneath a branch
+// that contains no relevant path at all -- a single path standing for that whole subtree suffices,
+// and (unlike a sentinel value) remains a real, meaningful access path that downstream
+// path-sensitive analyses (e.g. checkWritesPtr, checkReads) can match against normally.
+//
+// If relevantPaths is empty, nothing in t is relevant, so the whole tree collapses to a single
+// path (t's root, i.e. path{}) rather than falling back to full leaf enumeration: a node with no
+// relevant paths at all still needs exactly one entry to represent "any access path into this
+// node," not zero and not every leaf. Callers that want every leaf enumerated regardless of
+// relevance should call leafPathsUpTo directly instead of passing an empty relevantPaths here.
+func relevantPathsOfType(t types.Type, k int, relevantPaths []path) []path {
+	if k == 0 || len(relevantPaths) == 0 {
+		return []path{{}}
+	}
+
+	var res []path
+
+	type el struct {
+		t types.Type
+		p path
+		d int // d is the current depth (number of field accesses)
+		// onRelevantPath is true if p is a (possibly empty) prefix of some entry in relevantPaths,
+		// i.e. this branch must still be recursed into to expose the relevant leaf(s) beneath it.
+		// A branch with onRelevantPath == false has already diverged from every relevant path, and
+		// is emitted as a single leaf without further recursion.
+		onRelevantPath bool
+	}
+	stack := []el{{t: t, p: path{}, d: 0, onRelevantPath: true}}
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// A branch that has diverged from every relevant path represents the whole subtree beneath
+		// it: emit its own path as a single leaf, regardless of depth or further structure.
+		if !cur.onRelevantPath {
+			res = append(res, cur.p)
+			continue
+		}
+
+		// If we've reached the max depth, add the current path if non-empty
+		if cur.d == k {
+			if cur.d > 0 {
+				res = append(res, cur.p)
+			}
+			continue
+		}
+
+		switch t := cur.t.(type) {
+		case *types.Pointer:
+			// Pointers don't add to path depth
+			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
+		case *types.Named:
+			// Named types don't add to path depth
+			stack = append(stack, el{t: t.Underlying(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
+		case *types.Array:
+			// Arrays don't add to path depth (we don't track indices)
+			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
+		case *types.Slice:
+			// Slices don't add to path depth
+			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
+		case *types.Map:
+			// Maps don't add to path depth (we don't track keys)
+			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
+		case *types.Struct:
+			if t.NumFields() == 0 {
+				// A struct with no fields (e.g. the common `_ struct{}` marker idiom) has
+				// nowhere left to descend into, so it is itself a leaf.
+				res = append(res, cur.p)
+				continue
+			}
+			// Each struct field adds to the path. A field continues on a relevant path only if
+			// extending cur.p with that field name is still a prefix of (or equal to) some entry
+			// in relevantPaths.
+			for i := range t.NumFields() {
+				fld := t.Field(i)
+				newP := cur.p
+				newP[cur.d] = fld.Name()
+				stack = append(stack, el{
+					t: fld.Type(), p: newP, d: cur.d + 1,
+					onRelevantPath: pathIsPrefixOfAny(newP, cur.d+1, relevantPaths),
+				})
+			}
+		default:
+			res = append(res, cur.p)
+		}
+	}
+
+	if len(res) == 0 {
+		// NOTE Should be unreachable.
+		panic(fmt.Errorf("no access paths for type %v", t))
+	}
+
+	return res
+}
+
+// pathIsPrefixOfAny returns true if p (whose first n segments are populated) is a segment-wise
+// prefix of, or equal to, some entry in paths -- i.e. whether continuing to recurse along p could
+// still reach one of paths' entries (or, once n reaches that entry's own length, has reached it
+// exactly).
+func pathIsPrefixOfAny(p path, n int, paths []path) bool {
+	for _, rp := range paths {
+		rpLen := rp.len()
+		if n > rpLen {
+			continue
+		}
+		matches := true
+		for i := range n {
+			if p[i] != rp[i] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
 }
 
 // leafPathsUpTo returns all access paths from type t to its leaf (scalar) types, up to a maximum

@@ -65,8 +65,12 @@ func inferCalleeSummaries(
 
 	// Compute the level of precision needed for the intra-procedural analysis.
 	prec := newPrecisions(wantFlows)
-	// TODO We want to use node-level precision eventually; but for now, just set the precision of
-	// every node to the precision of the most-precise node (node with the longest access path).
+	// Every node gets at least the precision of the most-precise node (the one with the longest
+	// access path in wantFlows), so the intra-procedural analysis has enough depth to track any
+	// field-sensitive flow the summary being checked cares about. This only sets nodePathLen (the
+	// depth bound); prec.inputs.nodePaths/prec.outputs.nodePaths (the actual relevant paths from
+	// wantFlows, used by inputNodes via relevantPathsOfType to avoid enumerating every leaf path
+	// of nodes that have nothing relevant in them) are left untouched by this loop.
 	g.ForAllNodes(func(n dataflow.GraphNode) {
 		prec.inputs.nodePathLen[n] = prec.longestPathLen
 		prec.outputs.nodePathLen[n] = prec.longestPathLen
@@ -637,16 +641,6 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) error {
 			}
 		}
 
-		// Avoid revisiting nodes with the same calling context and access paths.
-		key := cur.Key()
-		if v.seen[key] {
-			s.Logger.Tracef(
-				"%sseen node %v (path %v): stopped\n",
-				strings.Repeat("  ", cur.Depth+1), cur.Node, cur.AccessPaths)
-			continue
-		}
-		v.seen[key] = true
-
 		// Check for recursion: don't analyze further if there's a loop in the call trace.
 		if cur.Trace != nil && cur.Trace.GetLassoHandle() != nil {
 			s.Logger.Tracef(
@@ -661,6 +655,16 @@ func (v *visitor) visit(s *State, source *dataflow.VisitorNode) error {
 				strings.Repeat("  ", cur.Depth+1), cur.Node, cur.ClosureTrace)
 			continue
 		}
+
+		// Avoid revisiting nodes with the same calling context and access paths.
+		key := cur.Key()
+		if v.seen[key] {
+			s.Logger.Tracef(
+				"%sseen node %v (path %v): stopped\n",
+				strings.Repeat("  ", cur.Depth+1), cur.Node, cur.AccessPaths)
+			continue
+		}
+		v.seen[key] = true
 
 		switch graphNode := cur.Node.(type) {
 
@@ -939,6 +943,48 @@ func (v *visitor) addNextIntraParent(
 	return stack
 }
 
+// nodeSsaValue returns the ssa.Value underlying node, if node is a kind of node whose identity is
+// tied to a single ssa.Value (currently: ParamNode and CallNodeArg). It returns nil for any other
+// node kind.
+func nodeSsaValue(node dataflow.GraphNode) ssa.Value {
+	switch n := node.(type) {
+	case *dataflow.ParamNode:
+		return n.SsaNode()
+	case *dataflow.CallNodeArg:
+		return n.Value()
+	default:
+		return nil
+	}
+}
+
+// isRedundantIntraSelfFlow reports whether the intra-procedural edge from src (at curPath) to
+// dst (at nextPath) is a redundant self-flow introduced by passing a value as-is into a call,
+// e.g. f(r) where r is src's own ssa.Value: dst is then a CallNodeArg wrapping that same
+// ssa.Value. Passing r into the call at the same access path (curPath == nextPath) is the
+// legitimate way to enter the callee's analysis for that field and must not be filtered. But when
+// nextPath is strictly deeper than curPath (a proper extension, e.g. curPath is r.safeBody and
+// nextPath is r.safeBody.closed), the edge doesn't correspond to any real flow discovered by the
+// intra-procedural analysis of the callee: it's an artifact of curPath itself already being a
+// collapsed, field-insensitive placeholder for "any field of r.safeBody" (see
+// relevantPathsOfType/allCalleeOutputs), and following it would force every field of that
+// collapsed subtree to be re-expanded one level deeper at every call site the value passes
+// through.
+func isRedundantIntraSelfFlow(src, dst dataflow.GraphNode, curPath, nextPath path) bool {
+	if curPath == nextPath {
+		return false
+	}
+	srcVal := nodeSsaValue(src)
+	dstVal := nodeSsaValue(dst)
+	if srcVal == nil || dstVal == nil || srcVal != dstVal {
+		return false
+	}
+	// Only filter when nextPath is a proper extension of curPath (strictly deeper, same prefix).
+	// curPath.isCoveredBy(nextPath) means curPath is a prefix of nextPath (or equal); we want the
+	// opposite direction (nextPath strictly deeper), which the curPath == nextPath check above
+	// already excludes the equal case for.
+	return curPath.isCoveredBy(nextPath) && curPath.len() < nextPath.len()
+}
+
 func findMatchingPaths(
 	cur *dataflow.VisitorNode, next dataflow.NodeWithTrace, edgeInfo dataflow.EdgeInfo,
 ) []string {
@@ -949,6 +995,7 @@ func findMatchingPaths(
 
 	var nextPaths []string
 	curPath := cur.AccessPaths[0]
+	curPathParsed := newPath(curPath, maxPathLen)
 
 	if len(edgeInfo.RelPath) == 0 {
 		// If there's no edge information, this is likely an inter-procedural flow or a callee
@@ -957,14 +1004,16 @@ func findMatchingPaths(
 		//
 		// HACK newPath is the easiest way to compute the access path length for now since the
 		// dataflow analysis processes them as strings.
-		curLen := newPath(curPath, maxPathLen).len()
+		curLen := curPathParsed.len()
 		edgeInfo.RelPath = make(map[string]map[string]bool)
 		edgeInfo.RelPath[curPath] = make(map[string]bool)
 		if cur.Node.Graph() == next.Node.Graph() {
 			// If this is an intra-procedural flow, then enumerate all the possible outgoing access
 			// paths.
-			nextPaths := leafPathsUpTo(next.Node.Type(), curLen)
-			for _, nextPath := range nextPaths {
+			for _, nextPath := range leafPathsUpTo(next.Node.Type(), curLen) {
+				if isRedundantIntraSelfFlow(cur.Node, next.Node, curPathParsed, nextPath) {
+					continue
+				}
 				edgeInfo.RelPath[curPath][nextPath.String()] = true
 			}
 		} else {
@@ -975,10 +1024,17 @@ func findMatchingPaths(
 	}
 
 	for inPath, outPaths := range edgeInfo.RelPath {
-		if newPath(curPath, maxPathLen).isCoveredBy(newPath(inPath, maxPathLen)) {
-			for outPath := range outPaths {
-				nextPaths = append(nextPaths, outPath)
+		if !curPathParsed.isCoveredBy(newPath(inPath, maxPathLen)) {
+			continue
+		}
+		for outPath := range outPaths {
+			if cur.Node.Graph() == next.Node.Graph() {
+				nextPathParsed := newPath(outPath, maxPathLen)
+				if isRedundantIntraSelfFlow(cur.Node, next.Node, curPathParsed, nextPathParsed) {
+					continue
+				}
 			}
+			nextPaths = append(nextPaths, outPath)
 		}
 	}
 
@@ -1435,7 +1491,14 @@ func inputNodes(g *dataflow.SummaryGraph, prec *precisions) []*dataflow.VisitorN
 					pl = 0
 				}
 			}
-			paths := leafPathsUpTo(n.Type(), pl)
+			// prec.inputs.nodePaths[n] holds the real access paths (from the original wantFlows,
+			// not the uniform pl assigned above) that are actually relevant for n; paths outside
+			// them collapse to a single entry per branch instead of being enumerated leaf-by-leaf
+			// (see relevantPathsOfType). This is what turns buildGraph's per-leaf-path DFS fan-out
+			// (one full traversal per leaf path of n's type) into one DFS per relevant leaf path
+			// plus a small, fixed number of collapsed-branch DFS runs, instead of one per every
+			// leaf path the type happens to have.
+			paths := relevantPathsOfType(n.Type(), pl, prec.inputs.nodePaths[n])
 			for _, path := range paths {
 				in := &dataflow.VisitorNode{
 					NodeWithTrace: dataflow.NodeWithTrace{

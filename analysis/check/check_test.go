@@ -2320,7 +2320,11 @@ func TestCheckSummary_Fields(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
-							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"},
+							// .Src (not .Src.X): nothing in the checked summary names any path
+							// under c.Src, so it is not on any relevant path and collapses to a
+							// single path representing the whole field (see relevantPathsOfType)
+							// instead of being enumerated leaf-by-leaf.
+							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src"},
 							To:   summaries.ReturnSNode{Index: 0},
 						},
 					},
@@ -2346,7 +2350,8 @@ func TestCheckSummary_Fields(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
-							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"},
+							// .Src (not .Src.X): see readNestedFieldValue above.
+							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src"},
 							To:   summaries.ReturnSNode{Index: 0},
 						},
 					},
@@ -2408,6 +2413,59 @@ func TestCheckSummary_Fields(t *testing.T) {
 		}
 		name := fmt.Sprintf("%s.%s_%s", tc.pkg, tc.name, tc.want.Soundness)
 		t.Run(name, func(t *testing.T) { checkSoundness(t, tc, state) })
+	}
+}
+
+// TestCheckSummary_RedundantCallSiteSelfFlow reproduces a scaling bug where buildGraph treats an
+// argument's own field flowing to a deeper field of the *same* argument, at an unsummarized call
+// site, as a real, distinct fact to keep exploring -- when it actually carries no information
+// about the callee at all (see requestUnmarshalLike's doc comment in testdata/fields/main.go).
+// Left unfixed, this made checking real-world functions with wide, deeply-nested parameter types
+// (e.g. aws-sdk-go's rest.Unmarshal on *request.Request) too slow to finish.
+func TestCheckSummary_RedundantCallSiteSelfFlow(t *testing.T) {
+	dir := filepath.Join("./testdata", "fields")
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	state, err := result.Bind(
+		result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+
+	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/fields"
+	summary := summaries.NewFunctionFlowSummary(pkg, "requestUnmarshalLike", summaries.DetailedSummary{
+		Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+			summaries.ArgumentSNode{Name: "r", Index: 0, ObjectPath: ".body"}: {
+				summaries.ArgumentSNode{Name: "r", Index: 0, ObjectPath: ".err"},
+			},
+		},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	specs := []dataflow.ScanningSpec{
+		{
+			IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+				return dataflow.IsNodeOfInterest(state.State, node)
+			},
+		},
+	}
+	// buildGraph's own traversal (inferring requestUnmarshalLike's callee summary) must complete
+	// well within the context timeout: before the redundant-self-flow fix, the combinatorial
+	// fan-out from r.safeBody -> (r as unmarshalLike's argument).safeBody caused this to blow up
+	// (in the real aws-sdk-go case, hang indefinitely). This test only asserts that check
+	// terminates promptly and produces a result; it does not assert anything about the precision
+	// of checkReads/checkWritesPtr (a separate, pre-existing conservativeness in how a call
+	// argument is treated as a "read" of the passed value, unrelated to this fix).
+	got, _, err := check.CheckSummary(ctx, state, summary, specs, false)
+	if err != nil {
+		t.Fatalf("failed to check summary: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(got))
 	}
 }
 

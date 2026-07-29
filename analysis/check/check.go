@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -806,12 +807,18 @@ func newPrecisions(flows []flow) *precisions {
 }
 
 type precision struct {
-	nodePathLen    map[dataflow.GraphNode]int
+	nodePathLen map[dataflow.GraphNode]int
+	// nodePaths holds, for each node, the actual access paths seen for it in the flows this
+	// precision was built/updated from. This is the real path content (as opposed to
+	// nodePathLen's mere depth) needed by relevantPathsOfType to decide which branches of a
+	// node's access-path tree are relevant and must be enumerated exactly, versus collapsed.
+	nodePaths      map[dataflow.GraphNode][]path
 	longestPathLen int
 }
 
 func newInputPrecision(flows []flow) precision {
 	nodePathLen := make(map[dataflow.GraphNode]int)
+	nodePaths := make(map[dataflow.GraphNode][]path)
 	longest := 0
 	for _, fl := range flows {
 		pln, ok := nodePathLen[fl.from.node]
@@ -822,16 +829,20 @@ func newInputPrecision(flows []flow) precision {
 		nodePathLen[fl.from.node] = min(nodePathLen[fl.from.node], pln)
 		pln = nodePathLen[fl.from.node]
 		longest = max(longest, pln)
+
+		addNodePath(nodePaths, fl.from.node, fl.from.path)
 	}
 
 	return precision{
 		nodePathLen:    nodePathLen,
+		nodePaths:      nodePaths,
 		longestPathLen: longest,
 	}
 }
 
 func newOutputPrecision(flows []flow) precision {
 	nodePathLen := make(map[dataflow.GraphNode]int)
+	nodePaths := make(map[dataflow.GraphNode][]path)
 	longest := 0
 	for _, fl := range flows {
 		pln, ok := nodePathLen[fl.to.node]
@@ -843,16 +854,28 @@ func newOutputPrecision(flows []flow) precision {
 
 		pln = nodePathLen[fl.to.node]
 		longest = max(longest, pln)
+
+		addNodePath(nodePaths, fl.to.node, fl.to.path)
 	}
 
 	return precision{
 		nodePathLen:    nodePathLen,
+		nodePaths:      nodePaths,
 		longestPathLen: longest,
 	}
 }
 
+// addNodePath records p as one of the relevant access paths seen for n in nodePaths, without
+// adding a duplicate.
+func addNodePath(nodePaths map[dataflow.GraphNode][]path, n dataflow.GraphNode, p path) {
+	if slices.Contains(nodePaths[n], p) {
+		return
+	}
+	nodePaths[n] = append(nodePaths[n], p)
+}
+
 // updateNodePrecisions updates prec for flows in the same way as newPrecisions.
-// It only updates nodePathLen for inputs and outputs, not valPathLen.
+// It only updates nodePathLen and nodePaths for inputs and outputs, not valPathLen.
 func updateNodePrecisions(prec *precisions, flows []flow) {
 	for _, fl := range flows {
 		inLen, ok := prec.inputs.nodePathLen[fl.from.node]
@@ -860,12 +883,14 @@ func updateNodePrecisions(prec *precisions, flows []flow) {
 			inLen = fl.from.path.len()
 		}
 		prec.inputs.nodePathLen[fl.from.node] = min(prec.inputs.nodePathLen[fl.from.node], inLen)
+		addNodePath(prec.inputs.nodePaths, fl.from.node, fl.from.path)
 
 		outLen, ok := prec.outputs.nodePathLen[fl.to.node]
 		if !ok {
 			outLen = fl.to.path.len()
 		}
 		prec.outputs.nodePathLen[fl.to.node] = min(prec.outputs.nodePathLen[fl.to.node], outLen)
+		addNodePath(prec.outputs.nodePaths, fl.to.node, fl.to.path)
 
 		// longestPathLen should be the same since the must-not-flows are derived from the wantFlows.
 	}
