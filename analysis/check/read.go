@@ -28,6 +28,13 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// readCacheEntry caches the result of checkReads for a given (value, path): whether it was read,
+// and if so, the instruction that reads it (used for logging on a cache hit).
+type readCacheEntry struct {
+	wasRead bool
+	instr   readInstr
+}
+
 // filterFlowsRead returns the flows that were unproven after performing the read analysis.
 // The read analysis filters out all flows that do not access their input value(s).
 // If an input value is not accessed (unread), then it is impossible to have data flow from it.
@@ -55,21 +62,24 @@ func filterFlowsRead(ctx context.Context, s *State, flows []flow) []flow {
 func mustNotFlowRead(ctx context.Context, s *State, fl flow) (bool, error) {
 	vals := inputVals(fl)
 	for _, val := range vals {
-		if _, ok := s.unreadVals[value{val, fl.from.path}]; !ok {
-			ri, ok, err := checkReads(ctx, s, val, fl.from.path)
+		key := value{val, fl.from.path}
+		cached, ok := s.readCache[key]
+		if !ok {
+			ri, wasRead, err := checkReads(ctx, s, val, fl.from.path)
 			if err != nil {
 				return false, fmt.Errorf(
 					"failed to check reads from flow input value %v: %w", val, err)
 			}
-			if ok {
-				s.Logger.Tracef(
-					"found access of flow input value %v with path %q in must-not-flow %v: read %v at %s\n",
-					val, fl, fl.to.path, ri, s.Program.Fset.Position(ri.Pos()))
-				return false, nil
-			}
+			cached = readCacheEntry{wasRead: wasRead, instr: ri}
+			s.readCache[key] = cached
 		}
 
-		s.unreadVals[value{val, fl.from.path}] = struct{}{}
+		if cached.wasRead {
+			s.Logger.Tracef(
+				"found access of flow input value %v with path %q in must-not-flow %v: read %v at %s\n",
+				val, fl, fl.to.path, cached.instr, s.Program.Fset.Position(cached.instr.Pos()))
+			return false, nil
+		}
 	}
 
 	return true, nil

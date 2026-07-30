@@ -57,7 +57,11 @@ type State struct {
 	*dataflow.State
 	cache         *aliasCache
 	immutableVals map[value]struct{}
-	unreadVals    map[value]struct{}
+	// readCache caches the result of checkReads for a given (value, path), since the result
+	// depends only on those two values, not on the flow being checked. Without this, the same
+	// (value, path) can be re-walked via checkReads' full call-graph BFS once per candidate flow
+	// that shares it as a "from", which is one per output field state pairs it with.
+	readCache map[value]readCacheEntry
 }
 
 // value is an SSA value with an access path for field-sensitivity.
@@ -77,7 +81,7 @@ func NewState(s *dataflow.State) result.Result[State] {
 			labels: make(map[ssa.Value]map[*pointer.Label]struct{}),
 		},
 		immutableVals: make(map[value]struct{}),
-		unreadVals:    make(map[value]struct{}),
+		readCache:     make(map[value]readCacheEntry),
 	}
 	res.PopulateTypesToImplementationMap()
 	return result.Ok(res)
