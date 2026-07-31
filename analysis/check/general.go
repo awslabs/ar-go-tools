@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"go/types"
 	"slices"
+	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
@@ -131,8 +132,8 @@ func filterFlowsTypes(flows []flow) ([]flow, error) {
 func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error) {
 	var flows []flow
 	seen := make(map[flow]struct{})
-	var inputs []graphNode
-	var outputs []graphNode
+	var inputs []summaryNode
+	var outputs []summaryNode
 	for _, param := range g.Params {
 		inputNodes, err := enumeratePaths(param, prec.inputs.nodePathLen[param], prec.inputs.nodePaths[param])
 		if err != nil {
@@ -194,6 +195,14 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error
 		}
 	}
 
+	// g.Params, g.FreeVars and g.Returns are maps, so inputs and outputs are enumerated in random
+	// order. The resulting flow order is not cosmetic: these flows become the must-not-flows, whose
+	// order decides the order of the clauses handed to maxsat, and the solver breaks ties between
+	// equally-optimal models in the order it sees them.
+	slices.SortFunc(flows, func(a, b flow) int {
+		return strings.Compare(a.String(), b.String())
+	})
+
 	return flows, nil
 }
 
@@ -202,11 +211,11 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error
 // relevantPaths, if non-empty, restricts the enumeration to relevantPathsOfType's collapsed
 // enumeration instead of every leaf path up to pathLen (see relevantPathsOfType for why this is
 // sound and does not lose precision for the paths that matter).
-func enumeratePaths(node dataflow.GraphNode, pathLen int, relevantPaths []path) ([]graphNode, error) {
-	var res []graphNode
+func enumeratePaths(node dataflow.GraphNode, pathLen int, relevantPaths []path) ([]summaryNode, error) {
+	var res []summaryNode
 	allPaths := relevantPathsOfType(node.Type(), pathLen, relevantPaths)
 	for _, path := range allPaths {
-		res = append(res, graphNode{node: node, path: path})
+		res = append(res, summaryNode{node: node, path: path})
 	}
 
 	return res, nil
@@ -427,8 +436,8 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 				return nil, fmt.Errorf("could not find node for %v: %v", output, err)
 			}
 			flows = append(flows, flow{
-				from: newGraphNode(in, input.Path()),
-				to:   newGraphNode(out, output.Path()),
+				from: newSummaryNode(in, input.Path()),
+				to:   newSummaryNode(out, output.Path()),
 			})
 		}
 	}

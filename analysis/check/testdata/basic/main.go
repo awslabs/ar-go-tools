@@ -366,6 +366,31 @@ func testClosure() {
 	fmt.Println("testClosure", res) // 0
 }
 
+// leakAcrossClosureCalls is writeToClosed's counterpart, where the closure really does copy its
+// captured y into x -- but reads x into the return value *before* that write. Within a single call y
+// therefore does not reach the return value, so the closure's own flows are {x -> !ret 0, y -> x}
+// and not y -> !ret 0. Calling it twice makes y -> !ret 0 real anyway: the first call stores y into
+// the captured x, and the second call returns it.
+//
+// This is a regression test for composing a callee's own summary edges. An encoding that treats
+// y -> x and x -> !ret 0 as independent will infer a closure summary containing both, find that the
+// real closure satisfies it, and report the summary x -> !ret 0 as sound even though y reaches the
+// return value. Composing them makes the two edges mutually exclusive, so no inferred summary
+// covers the closure's real behavior and the check correctly comes back unsound.
+func leakAcrossClosureCalls(x, y int) int {
+	f := func() int {
+		r := x
+		x = y
+		return r
+	}
+	return f() + f()
+}
+
+func testLeakAcrossClosureCalls() {
+	res := leakAcrossClosureCalls(1, -5)
+	fmt.Println("testLeakAcrossClosureCalls", res) // 1 + (-5)
+}
+
 func nestedClosures(x, y *int) *int {
 	bv := *y
 	outer := func(z *int) *int {
@@ -503,6 +528,56 @@ func multiFieldHelper(a, b, c, d, x, y, z string) *multiFieldResult {
 	return res
 }
 
+type slots struct {
+	A string
+	B string
+}
+
+func joinSlots(a, b string) slots {
+	return slots{A: a + b, B: b + a}
+}
+
+// coarsenedOutParam is a minimal version of multiFieldMethod's shape, and exercises the coarsening
+// pass. The summary names src's fields, which makes the whole analysis field-sensitive, but names out
+// only as a whole. The body writes two distinct fields of out, so the flow graph gets out.A and out.B
+// vertices -- both dead ends, since neither is read again, and both indistinguishable to the encoding,
+// which never refers to out at a field. Coarsening merges them back into out.
+//
+// This is the shape where the merge must not go too far: out is also an *input* of the function, so
+// the vertex it collapses onto already exists with outgoing edges. Merging into that one would splice
+// the dead ends onto out's successors and chain unrelated callee hypotheses, which is what
+// coarserVertex's occupancy guard prevents.
+func coarsenedOutParam(src *slots, out *slots) string {
+	r := joinSlots(src.A, src.B)
+	out.A = r.A
+	out.B = r.B
+	return r.A + r.B
+}
+
+func testCoarsenedOutParam() {
+	src := &slots{A: "a", B: "b"}
+	out := &slots{}
+	res := coarsenedOutParam(src, out)
+	fmt.Println("testCoarsenedOutParam", res, out.A, out.B)
+}
+
+// negateInt returns -x, so x really does flow to the return value. The read analysis has to recognize
+// an arithmetic UnOp as reading its operand; a switch that only handles pointer dereference and
+// channel receive does not, and then "proves" this flow absent.
+func negateInt(x, y int) int {
+	return -x
+}
+
+// toAny returns x boxed in an interface, so x really does flow to the return value. The read analysis
+// has to recognize MakeInterface as reading its operand.
+func toAny(x string) any {
+	return x
+}
+
+func testReadInstructionKinds() {
+	fmt.Println("testReadInstructionKinds", negateInt(1, 2), toAny("a"))
+}
+
 func testMultiFieldReceiver() {
 	r := &multiFieldReceiver{fieldA: "a", fieldB: "b", fieldC: "c", fieldD: "d"}
 	out := &multiFieldReceiver{}
@@ -531,6 +606,7 @@ func main() {
 	testAliasInter()
 	testWriteStructPtr()
 	testClosure()
+	testLeakAcrossClosureCalls()
 	testNestedClosures()
 	testClosureShared()
 	testNoFlowClosure()
@@ -538,4 +614,6 @@ func main() {
 	testSummarizeSourceCallerUnsound()
 	testSummarizeSinkCallerUnsound()
 	testMultiFieldReceiver()
+	testReadInstructionKinds()
+	testCoarsenedOutParam()
 }

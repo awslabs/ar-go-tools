@@ -253,6 +253,12 @@ type UnsoundCheckFeatures struct {
 	// corresponding MakeClosure instructions.
 	// We do not support summary nodes for closure-specific inputs/outputs other than bound and free
 	// variables.
+	//
+	// TODO Nothing populates this field. It is declared, documented, printed by the reporter and
+	// compared by the test harness, but never assigned, so it always reads empty and isSound below
+	// always treats bound labels as fine. Combined with expandVertex dropping BoundLabelNode edges
+	// entirely, a function using a bound label comes back Sound with no indication. See the TODO on
+	// that case in flowgraph.go.
 	NonLocalBoundLabelUsages []token.Position
 	// EntryPointUsages records the positions of entry points in the code that would be summarized by the dataflow
 	// summary. This means  a dataflow analysis would potentially miss some entry points.
@@ -300,9 +306,23 @@ type Flow struct {
 
 func newFlow(f flow) Flow {
 	return Flow{
-		From: newSummaryNode(f.from),
-		To:   newSummaryNode(f.to),
+		From: reportedNode(f.from),
+		To:   reportedNode(f.to),
 	}
+}
+
+// reportedNode converts an endpoint of a must-not-flow being reported to the user.
+//
+// It panics rather than dropping an endpoint it cannot name. Must-not-flow endpoints are in the
+// summary vocabulary by construction -- they are resolved from the summary nodes written in the
+// target config -- so a failure here is a bug, and silently omitting the flow would present an
+// unproven must-not-flow as if it had been proven.
+func reportedNode(gn summaryNode) summaries.SummaryNode {
+	sn, ok := frontendNode(gn)
+	if !ok {
+		panic(fmt.Errorf("must-not-flow endpoint has no summary representation: %v (%T)", gn.node, gn.node))
+	}
+	return sn
 }
 
 func (f Flow) String() string {
@@ -398,9 +418,14 @@ func rawFlows(flows map[summaries.SummaryNode][]summaries.SummaryNode) map[strin
 	return res
 }
 
-// newSummaryNode constructs a summary node from a data flow graph node.
-// Panics if gn is invalid since this should be enforced by the visitor.
-func newSummaryNode(gn graphNode) summaries.SummaryNode {
+// frontendNode converts an internal graph node into the exported summary vocabulary, preserving its
+// access path as the ObjectPath.
+//
+// It reports false for node kinds that have no summary vocabulary, notably globals: a summary
+// describes flows between a function's parameters, results and captured variables, and a global is
+// none of those. Callers that can encounter such nodes must decide what to do rather than be handed
+// a meaningless position.
+func frontendNode(gn summaryNode) (summaries.SummaryNode, bool) {
 	path := gn.path.String()
 	switch n := gn.node.(type) {
 	case *dataflow.ParamNode:
@@ -408,17 +433,17 @@ func newSummaryNode(gn graphNode) summaries.SummaryNode {
 		if recv := f.Signature.Recv(); recv != nil {
 			// f is a method and param is a receiver
 			if n.Index() == 0 {
-				return summaries.ReceiverSNode{ObjectPath: path}
+				return summaries.ReceiverSNode{ObjectPath: path}, true
 			}
-			return summaries.ArgumentSNode{Name: n.SsaNode().Name(), Index: n.Index() - 1, ObjectPath: path}
+			return summaries.ArgumentSNode{Name: n.SsaNode().Name(), Index: n.Index() - 1, ObjectPath: path}, true
 		}
-		return summaries.ArgumentSNode{Name: n.SsaNode().Name(), Index: n.Index(), ObjectPath: path}
+		return summaries.ArgumentSNode{Name: n.SsaNode().Name(), Index: n.Index(), ObjectPath: path}, true
 	case *dataflow.ReturnValNode:
-		return summaries.ReturnSNode{Index: n.Index(), ObjectPath: path}
+		return summaries.ReturnSNode{Index: n.Index(), ObjectPath: path}, true
 	case *dataflow.FreeVarNode:
-		return summaries.FreeVarSNode{Name: n.SsaNode().Name(), ObjectPath: path}
+		return summaries.FreeVarSNode{Name: n.SsaNode().Name(), ObjectPath: path}, true
 	default:
-		panic(fmt.Errorf("unexpected graph node type: %v (%T)", n, n))
+		return nil, false
 	}
 }
 

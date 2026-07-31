@@ -301,6 +301,9 @@ func main() {
 	transitiveReturn(&s1)
 	baz("test")
 
-	var g greeter = wrapper{msg: "hi"}
+	// Assigned as a pointer so that the (*wrapper).Greet thunk -- the implementation the interface
+	// summary test checks -- is actually reachable. With a value here, Go still generates the
+	// pointer-receiver thunk but nothing ever calls it.
+	var g greeter = &wrapper{msg: "hi"}
 	_ = g.Greet()
 }

@@ -78,6 +78,36 @@ func copyNestedFieldToOther(c *nestedTwoFields) {
 	c.Dst = c.Src
 }
 
+// returnNestedByVal returns a whole nested struct field of a by-value parameter, so c.Src.X really
+// does reach the return value's .X even though nothing in the body ever addresses X under Src.
+// c is by value, so its spill slot does not escape and the pointer analysis has nothing to say
+// about it either.
+func returnNestedByVal(c nestedTwoFields, n int) inner {
+	c.Dst.X = n
+	return c.Src
+}
+
+func testReturnNestedByVal() {
+	c := nestedTwoFields{Src: inner{X: 1}, Dst: inner{X: 2}}
+	res := returnNestedByVal(c, 7)
+	fmt.Println("testReturnNestedByVal", res.X) // 1
+}
+
+// returnArrayElemByVal returns a whole element of a by-value array, so a.Src.X really does reach the
+// return value's .Src.X. Nothing in the body addresses X under Src, and the array is by value so its
+// spill slot does not escape -- the same shape as returnNestedByVal, but reached through an index
+// rather than a field.
+func returnArrayElemByVal(a [2]nestedTwoFields, n int) nestedTwoFields {
+	a[1].Dst.X = n
+	return a[0]
+}
+
+func testReturnArrayElemByVal() {
+	a := [2]nestedTwoFields{{Src: inner{X: 1}}, {Src: inner{X: 2}}}
+	res := returnArrayElemByVal(a, 7)
+	fmt.Println("testReturnArrayElemByVal", res.Src.X) // 1
+}
+
 func testCopyNestedFieldToOther() {
 	x := &nestedTwoFields{Src: inner{X: 1}, Dst: inner{X: 0}}
 	copyNestedFieldToOther(x)
@@ -239,6 +269,41 @@ func threeArgInterFields(no, a, b *Pair) *Pair {
 	return &Pair{First: b.First, Second: y.Second}
 }
 
+// differentOutputDepths calls addPairFirst twice, reading one result at a field and using the other
+// whole. calleeOutputPaths derives each call site's output precision from how the caller reads it, so
+// the two sites get different access paths for the same callee output -- which is what
+// buildCalleeSummaryConstrs has to relate when it forces both sites to infer one summary.
+func differentOutputDepths(no, a, b *Pair) (int, Pair) {
+	x := addPairFirst(*a, *a, no)
+	y := addPairFirst(*b, *b, no)
+	return x.First, y
+}
+
+func testDifferentOutputDepths() {
+	a := &Pair{First: 1, Second: 2}
+	b := &Pair{First: 3, Second: 4}
+	no := &Pair{}
+	n, p := differentOutputDepths(no, a, b)
+	fmt.Println("testDifferentOutputDepths", n, p)
+}
+
+// sameArgDifferentOutputDepths calls addPairFirst twice with the same arguments, so both call sites
+// receive their inputs at identical precision, and differ only in how deeply the *result* is read: one
+// at .First, the other used whole. That isolates output-side precision, which calleeOutputDemand
+// aggregates per callee output so both sites share one summary vocabulary.
+func sameArgDifferentOutputDepths(no, a *Pair) (int, Pair) {
+	x := addPairFirst(*a, *a, no)
+	y := addPairFirst(*a, *a, no)
+	return x.First, y
+}
+
+func testSameArgDifferentOutputDepths() {
+	a := &Pair{First: 1, Second: 2}
+	no := &Pair{}
+	n, p := sameArgDifferentOutputDepths(no, a)
+	fmt.Println("testSameArgDifferentOutputDepths", n, p)
+}
+
 func testThreeArgInterFields() {
 	x := &Pair{First: 0, Second: 0}
 	y := &Pair{First: 1, Second: 1}
@@ -348,10 +413,14 @@ func main() {
 	testIncRight()
 	testAppendSliceLinkedList()
 	testThreeArgInterFields()
+	testDifferentOutputDepths()
+	testSameArgDifferentOutputDepths()
 	testThreeArgInterFieldsDiffCallees()
 	testThreeArgInterTree()
 	testCopyFieldToOther()
 	testCopyNestedFieldToOther()
+	testReturnArrayElemByVal()
+	testReturnNestedByVal()
 	testReadNestedFieldValue()
 	testReadNestedFieldValueByVal()
 	testReadNestedFieldViaHelper()

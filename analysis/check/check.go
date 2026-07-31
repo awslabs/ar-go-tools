@@ -121,6 +121,11 @@ func CheckSummary(
 			var res []SoundnessResult
 			var errs []error
 			for implem := range implems {
+				if err := checkReachable(s, implem); err != nil {
+					s.Logger.Errorf("skipping implementation %s: %v", implem, err)
+					errs = append(errs, err)
+					continue
+				}
 				s.Logger.Infof(
 					"Checking that interface summary for %s is sound for implementation %s",
 					want.Name(), implem.RelString(nil))
@@ -145,6 +150,9 @@ func CheckSummary(
 		return []SoundnessResult{},
 			false, fmt.Errorf("failed to find function of summary %s: %v", want.Name(), err)
 	}
+	if err := checkReachable(s, f); err != nil {
+		return []SoundnessResult{}, false, err
+	}
 
 	s.Logger.Infof("checking the soundness of summary %s ...\n", want.Summary())
 	callStack := []*ssa.Function{f}
@@ -154,6 +162,27 @@ func CheckSummary(
 }
 
 var errInfer = errors.New("failed to infer callee summaries")
+
+// errUnreachable is returned for a function that the pointer analysis did not find reachable.
+var errUnreachable = errors.New("function is not reachable")
+
+// checkReachable rejects a function the pointer analysis never reached, before any soundness checking
+// runs.
+//
+// Every method the checker uses to prove a must-not-flow absent reasons over the function's body and
+// the bodies it can call, using structures the pointer analysis populated: checkReads walks out from
+// f's call graph node, checkWritesPtr and the type analysis consult points-to sets, and the flow graph
+// is built from f's summary graph. For a function outside the call graph all of those are empty, so
+// every must-not-flow comes back vacuously proven and the summary is reported sound on no evidence at
+// all. That is not a conservative default worth having deeper in the pipeline: there is no useful
+// answer to give, so refuse the request here instead.
+func checkReachable(s *State, f *ssa.Function) error {
+	if s.IsReachableFunction(f) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s is not reachable from the analysis entry points, so there is"+
+		" nothing to check its summary against", errUnreachable, f)
+}
 
 // checkSummary checks the soundness of the given data flow summary for f in want.
 //
@@ -310,7 +339,7 @@ func checkSummary(
 		CheckFeatures:        unsoundCheckFeats,
 	}
 	// Use the type analysis to filter out unrealizable flows
-	calleeSummaries, traces, err := inferCalleeSummaries(
+	calleeSummaries, calleeGraph, err := inferCalleeSummaries(
 		ctx, s, g, wantFlows, unprovenMustNotFlows, &unsoundness, Types)
 	if err != nil {
 		soundnessResultBase.Soundness = Error
@@ -371,7 +400,7 @@ func checkSummary(
 		unsoundness.UnprovenMustNotFlows = nil
 	} else {
 		stillUnproven, pruneErr := unprovenFlowsAfterCalleeCheck(
-			s, g, wantFlows, unprovenMustNotFlows, traces, unsoundCalleeFlows)
+			s, g, wantFlows, unprovenMustNotFlows, calleeGraph, unsoundCalleeFlows)
 		if pruneErr != nil {
 			return soundnessResultBase, fmt.Errorf(
 				"failed to determine unproven must-not-flows after callee check for %s: %v", f, pruneErr)
@@ -402,7 +431,19 @@ func checkCalleeSummaries(
 	callStack []*ssa.Function,
 ) ([][]SoundnessResult, SoundnessResult, bool, error) {
 	var calleeResults [][]SoundnessResult
-	for callee, calleeSumms := range calleeSummaries {
+	// Iterate callees in a deterministic order: calleeSummaries is keyed by *ssa.Function, so
+	// ranging over it directly varies per run. That order is observable in the result -- it fixes
+	// the order of calleeResults, and each callee's check contributes to unsoundCalleeFlows, which
+	// later callees' checks and the final verdict depend on.
+	callees := make([]*ssa.Function, 0, len(calleeSummaries))
+	for callee := range calleeSummaries {
+		callees = append(callees, callee)
+	}
+	slices.SortFunc(callees, func(a, b *ssa.Function) int {
+		return strings.Compare(a.String(), b.String())
+	})
+	for _, callee := range callees {
+		calleeSumms := calleeSummaries[callee]
 		if len(calleeSumms) == 0 {
 			// If there are no callee summaries inferred, this is a bug.
 			return nil, SoundnessResult{Soundness: Error}, true,
@@ -674,22 +715,33 @@ func checkMethodNaive(ctx context.Context, s *State,
 
 // flow is a data flow between two summary graph nodes.
 type flow struct {
-	from graphNode
-	to   graphNode
+	from summaryNode
+	to   summaryNode
 }
 
 func (f flow) String() string {
 	return fmt.Sprintf("%s%s->%s%s", graphNodeDesc(f.from.node), f.from.path.String(), graphNodeDesc(f.to.node), f.to.path.String())
 }
 
-// graphNode is a dataflow.GraphNode augmented with an (empty or non-empty) access path.
-// If path is empty, that means that the graphNode refers to *all* access paths.
-type graphNode struct {
+// summaryNode is a position in a function's dataflow summary: a dataflow.GraphNode plus an access
+// path into it. An empty path refers to *all* access paths under that node.
+//
+// It is the base of a three-level flow-endpoint vocabulary, each level adding exactly the context the
+// next stage of the analysis needs:
+//
+//   - summaryNode: a position in one function's summary, with no calling context. This is what a
+//     must-not-flow names and what gets reported to the user (see frontendNode, which maps it into
+//     the exported summaries.SummaryNode vocabulary).
+//   - calledSummaryNode: summaryNode plus the call site whose frame it is in. Needed because a
+//     callee's summary graph is shared across all of its call sites, so without the frame, nodes for
+//     two calls to the same function merge.
+//   - vertex: calledSummaryNode plus the traversal state the construction fixpoint carries.
+type summaryNode struct {
 	node dataflow.GraphNode
 	path path
 }
 
-func (n graphNode) String() string {
+func (n summaryNode) String() string {
 	pathStr := n.path.String()
 	return graphNodeDesc(n.node) + pathStr
 }
@@ -770,6 +822,14 @@ func pathsOverlap(a, b path) bool {
 	return a.isCoveredBy(b) || b.isCoveredBy(a)
 }
 
+// truncate returns p keeping only its first k segments.
+func (p path) truncate(k int) path {
+	for i := k; i < maxPathLen; i++ {
+		p[i] = ""
+	}
+	return p
+}
+
 func (p path) String() string {
 	pLen := p.len()
 	if pLen == 0 {
@@ -782,12 +842,12 @@ func (p path) String() string {
 	return "." + strings.Join(parts, ".")
 }
 
-func newGraphNode(n dataflow.GraphNode, objPath string) graphNode {
+func newSummaryNode(n dataflow.GraphNode, objPath string) summaryNode {
 	if len(objPath) == 0 {
-		return graphNode{n, path{}}
+		return summaryNode{n, path{}}
 	}
 	p := newPath(objPath, maxPathLen)
-	return graphNode{n, p}
+	return summaryNode{n, p}
 }
 
 // precisions is the precision for the summary inputs and outputs.
@@ -926,8 +986,16 @@ func graphNodeDesc(g dataflow.GraphNode) string {
 		return fmt.Sprintf("global:%v", x.Global.Value())
 	case *dataflow.ClosureNode:
 		return fmt.Sprintf("closure:%v", x.Instr())
+	case *dataflow.BoundLabelNode:
+		return fmt.Sprintf("bound-label:%v", x.Instr())
+	case *dataflow.SyntheticNode:
+		return fmt.Sprintf("synthetic:%v", x.Instr())
+	case *dataflow.IfNode:
+		return fmt.Sprintf("if:%v", x.SsaNode())
 	default:
-		// NOTE Should be unreachable.
-		panic(fmt.Errorf("unsupported node type: %v %T", g, g))
+		// Every node kind the flow graph can contain needs a description: graphNodeDesc names the
+		// maxsat reachability variables and orders edges, so it is reached for every vertex, not
+		// just the ones that can be summary endpoints.
+		return fmt.Sprintf("node:%T:%v", g, g)
 	}
 }

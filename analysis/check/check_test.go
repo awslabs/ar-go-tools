@@ -39,6 +39,9 @@ import (
 //go:embed testdata
 var testfsys embed.FS
 
+// basicPkg is the import path of the basic testdata package.
+const basicPkg = "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic"
+
 func TestCheckSummary_Basic(t *testing.T) {
 	dir := filepath.Join("./testdata", "basic")
 	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
@@ -46,12 +49,13 @@ func TestCheckSummary_Basic(t *testing.T) {
 		t.Fatal(err)
 	}
 	setupConfig(lp)
-	state, err := result.Bind(result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	ptrState, err := ptr.NewState(lp).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
+	state := newCheckState(t, ptrState)
 
-	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/basic"
+	pkg := basicPkg
 	tests := []tcCheck{
 		{
 			pkg:  pkg,
@@ -603,18 +607,125 @@ func TestCheckSummary_Basic(t *testing.T) {
 							Name: pkg + ".writeToClosed$1",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									// y -> x is absent, and correctly so: the closure is
+									// `y = x; return x`, so nothing flows from y. It is excluded
+									// because the encoding composes summary edges transitively --
+									// y -> x together with x -> !ret 0 would realize y -> !ret 0,
+									// which Want forbids -- and the free variables x and y are the
+									// same vertices whether they act as the closure's inputs or its
+									// outputs, so the composition is a real path in the flow graph.
 									summaries.FreeVarSNode{Name: "x"}: {
 										summaries.FreeVarSNode{Name: "y"},
 										summaries.ReturnSNode{Index: 0},
-									},
-									summaries.FreeVarSNode{Name: "y"}: {
-										summaries.FreeVarSNode{Name: "x"},
 									},
 								},
 							},
 							Soundness: check.Sound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: nil,
+							},
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			// See leakAcrossClosureCalls in the testdata: a regression test for composing a
+			// callee's own summary edges. y -> x and x -> !ret 0 are both real flows of the
+			// closure, and composed across the two calls they realize y -> !ret 0, which this Want
+			// forbids. No inferred closure summary can contain both, so every candidate omits one
+			// of the closure's real flows and the check correctly reports unsound. Treating the two
+			// edges as independent instead yields a candidate the closure does satisfy, and the
+			// summary is then reported sound even though y reaches the return value.
+			pkg:  pkg,
+			name: "leakAcrossClosureCalls",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".leakAcrossClosureCalls",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "x", Index: 0}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "y", Index: 1},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						// Two co-optimal candidates, each satisfying 2 of the 4 possible
+						// free-var/return may-flow edges. y -> !ret 0 must be false in both (it is
+						// the flow being blocked), and of the remaining three, y -> x and
+						// x -> !ret 0 are mutually exclusive because composing them realizes
+						// y -> !ret 0. So each candidate keeps x -> y plus exactly one of them --
+						// and therefore omits one of the closure's two real flows, which is why
+						// neither can be proven sound.
+						{
+							Name: pkg + ".leakAcrossClosureCalls$1",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.FreeVarSNode{Name: "x"}: {
+										summaries.FreeVarSNode{Name: "y"},
+										summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									// y -> x is real (`x = y`), so this candidate genuinely does
+									// not cover the closure. y -> !ret 0 does not hold within a
+									// single call, since r is read before x is overwritten, but
+									// Read cannot show that: y is read.
+									{
+										From: summaries.FreeVarSNode{Name: "y"},
+										To:   summaries.FreeVarSNode{Name: "x"},
+									},
+									{
+										From: summaries.FreeVarSNode{Name: "y"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+						{
+							Name: pkg + ".leakAcrossClosureCalls$1",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.FreeVarSNode{Name: "x"}: {
+										summaries.FreeVarSNode{Name: "y"},
+									},
+									summaries.FreeVarSNode{Name: "y"}: {
+										summaries.FreeVarSNode{Name: "x"},
+									},
+								},
+							},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									// x -> !ret 0 is real (`r := x; return r`), so this candidate
+									// does not cover the closure either.
+									{
+										From: summaries.FreeVarSNode{Name: "x"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
+										From: summaries.FreeVarSNode{Name: "y"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+								},
 							},
 							Method:        check.Read,
 							CalleeResults: nil,
@@ -813,10 +924,10 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
-						{
-							From: summaries.ArgumentSNode{Name: "x", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "y", Index: 1},
-						},
+						// Only y -> x. The closure body is `*x = *x + *y`, so y is only ever
+						// dereferenced for reading and nothing can flow into it; x -> y is
+						// genuinely absent, and no inferred closure summary admits an edge into
+						// the free variable y.
 						{
 							From: summaries.ArgumentSNode{Name: "y", Index: 1},
 							To:   summaries.ArgumentSNode{Name: "x", Index: 0},
@@ -928,6 +1039,115 @@ func TestCheckSummary_Basic(t *testing.T) {
 			},
 		},
 		{
+			// See coarsenedOutParam in the testdata: the shape that exercises the coarsening pass.
+			// out.A and out.B are dead-end parent outputs that the encoding only ever names as a
+			// whole, so coarsening merges them back into out -- while the occupancy guard stops the
+			// merge from landing on out in its role as an *input*, which has outgoing edges.
+			pkg:  pkg,
+			name: "coarsenedOutParam",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".coarsenedOutParam",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".A"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+						summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".B"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						// Both real: joinSlots mixes a and b into both fields of its result, and the
+						// body writes those into out.A/out.B. Coarsening merges those two dead-end
+						// vertices into out, which is what these two flows are stated against.
+						{
+							From: summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".A"},
+							To:   summaries.ArgumentSNode{Name: "out", Index: 1},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".B"},
+							To:   summaries.ArgumentSNode{Name: "out", Index: 1},
+						},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							// Empty: any a -> !ret 0 or b -> !ret 0 would realize src -> out, so
+							// every edge has to be false. joinSlots really does route both inputs
+							// into both result fields, so it cannot satisfy that.
+							Name:      pkg + ".joinSlots",
+							Want:      summaries.DetailedSummary{},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			// negateInt is `return -x`. x really does reach the return value, via an arithmetic UnOp
+			// rather than a dereference, so the read analysis must count that as reading x.
+			pkg:  pkg,
+			name: "negateInt",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name:      pkg + ".negateInt",
+				Want:      summaries.DetailedSummary{},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "x", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			// toAny is `return x` boxed into an interface, so x reaches the return value through a
+			// MakeInterface.
+			pkg:  pkg,
+			name: "toAny",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name:      pkg + ".toAny",
+				Want:      summaries.DetailedSummary{},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "x", Index: 0},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
 			// multiFieldMethod's real behavior writes into "out" too, but Want only declares
 			// flows into !ret 0, so every real flow into "out" (from the receiver's fields and
 			// argX/Y/Z) is a genuine unproven must-not-flow. Each of the 4 receiver fields must be
@@ -983,16 +1203,39 @@ func TestCheckSummary_Basic(t *testing.T) {
 					{
 						{
 							Name: pkg + ".multiFieldHelper",
-							Want: summaries.DetailedSummary{},
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "a", Index: 0}: multiFieldHelperLeaks,
+									summaries.ArgumentSNode{Name: "b", Index: 1}: multiFieldHelperLeaks,
+									summaries.ArgumentSNode{Name: "c", Index: 2}: multiFieldHelperLeaks,
+									summaries.ArgumentSNode{Name: "d", Index: 3}: multiFieldHelperLeaks,
+									summaries.ArgumentSNode{Name: "x", Index: 4}: multiFieldHelperLeaks,
+									summaries.ArgumentSNode{Name: "y", Index: 5}: multiFieldHelperLeaks,
+									summaries.ArgumentSNode{Name: "z", Index: 6}: multiFieldHelperLeaks,
+								},
+							},
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
-									{From: summaries.ArgumentSNode{Name: "a", Index: 0}, To: summaries.ReturnSNode{Index: 0}},
-									{From: summaries.ArgumentSNode{Name: "b", Index: 1}, To: summaries.ReturnSNode{Index: 0}},
-									{From: summaries.ArgumentSNode{Name: "c", Index: 2}, To: summaries.ReturnSNode{Index: 0}},
-									{From: summaries.ArgumentSNode{Name: "d", Index: 3}, To: summaries.ReturnSNode{Index: 0}},
-									{From: summaries.ArgumentSNode{Name: "x", Index: 4}, To: summaries.ReturnSNode{Index: 0}},
-									{From: summaries.ArgumentSNode{Name: "y", Index: 5}, To: summaries.ReturnSNode{Index: 0}},
-									{From: summaries.ArgumentSNode{Name: "z", Index: 6}, To: summaries.ReturnSNode{Index: 0}},
+									// Only outA and outB remain: those are the two fields
+									// multiFieldMethod routes into "out", so they are excluded from
+									// the inferred summary above and become must-not-flows here.
+									// The checker cannot prove any of them absent, because the
+									// "read" method only proves absence for an input that is never
+									// read at all, and every argument is read on some branch.
+									{From: summaries.ArgumentSNode{Name: "a", Index: 0}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outA"}},
+									{From: summaries.ArgumentSNode{Name: "a", Index: 0}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outB"}},
+									{From: summaries.ArgumentSNode{Name: "b", Index: 1}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outA"}},
+									{From: summaries.ArgumentSNode{Name: "b", Index: 1}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outB"}},
+									{From: summaries.ArgumentSNode{Name: "c", Index: 2}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outA"}},
+									{From: summaries.ArgumentSNode{Name: "c", Index: 2}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outB"}},
+									{From: summaries.ArgumentSNode{Name: "d", Index: 3}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outA"}},
+									{From: summaries.ArgumentSNode{Name: "d", Index: 3}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outB"}},
+									{From: summaries.ArgumentSNode{Name: "x", Index: 4}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outA"}},
+									{From: summaries.ArgumentSNode{Name: "x", Index: 4}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outB"}},
+									{From: summaries.ArgumentSNode{Name: "y", Index: 5}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outA"}},
+									{From: summaries.ArgumentSNode{Name: "y", Index: 5}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outB"}},
+									{From: summaries.ArgumentSNode{Name: "z", Index: 6}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outA"}},
+									{From: summaries.ArgumentSNode{Name: "z", Index: 6}, To: summaries.ReturnSNode{Index: 0, ObjectPath: ".outB"}},
 								},
 							},
 							Soundness:     check.Unsound,
@@ -1141,56 +1384,18 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
-					{
-						{
-							Name: pkg + ".writeStructPtrWithExtra",
-							Want: summaries.DetailedSummary{
-								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-									summaries.ArgumentSNode{Name: "x", Index: 0}: {
-										summaries.ArgumentSNode{Name: "y", Index: 1},
-										summaries.ArgumentSNode{Name: "z", Index: 2},
-									},
-									summaries.ArgumentSNode{Name: "y", Index: 1}: {
-										summaries.ArgumentSNode{Name: "x", Index: 0},
-										summaries.ArgumentSNode{Name: "z", Index: 2},
-									},
-									summaries.ArgumentSNode{Name: "z", Index: 2}: {
-										summaries.ArgumentSNode{Name: "y", Index: 1},
-									},
-								},
-							},
-							Soundness: check.Unsound,
-							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									{
-										From: summaries.ArgumentSNode{Name: "y", Index: 1},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-									{
-										From: summaries.ArgumentSNode{Name: "z", Index: 2},
-										To:   summaries.ArgumentSNode{Name: "x", Index: 0},
-									},
-									{
-										From: summaries.ArgumentSNode{Name: "z", Index: 2},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-								},
-							},
-							Method:        check.Read,
-							CalleeResults: nil,
-						},
-					},
+					writeStructPtrWithExtraCandidates,
 				},
 			},
 		},
 		{
 			// twoCallSitesOfWriteStructPtrWithExtra calls writeStructPtrWithExtra at two call
 			// sites with disjoint arguments (mirroring sharedMutation's two-call-site pattern).
-			// This exercises buildCalleeSummaryConstrs (which forces both call sites to share an
-			// identical inferred summary) together with edgesForUnsoundCalleeFlows's per-call-site
-			// resolution via call.CalleeSummary: each call site has its own distinct
-			// CalleeSummary graph object, so resolving the shared callee's UnprovenMustNotFlows
-			// must correctly match edges at both sites.
+			// This exercises calleeFlowKey (which gives both call sites one variable per summary
+			// edge, so they cannot infer different summaries) together with
+			// edgesForUnsoundCalleeFlows's per-call-site resolution via call.CalleeSummary: each call
+			// site has its own distinct CalleeSummary graph object, so resolving the shared callee's
+			// UnprovenMustNotFlows must correctly match edges at both sites.
 			pkg:  pkg,
 			name: "twoCallSitesOfWriteStructPtrWithExtra",
 			typ:  functionSummary,
@@ -1245,45 +1450,7 @@ func TestCheckSummary_Basic(t *testing.T) {
 				},
 				Method: check.Recursive,
 				CalleeResults: [][]check.SoundnessResult{
-					{
-						{
-							Name: pkg + ".writeStructPtrWithExtra",
-							Want: summaries.DetailedSummary{
-								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-									summaries.ArgumentSNode{Name: "x", Index: 0}: {
-										summaries.ArgumentSNode{Name: "y", Index: 1},
-										summaries.ArgumentSNode{Name: "z", Index: 2},
-									},
-									summaries.ArgumentSNode{Name: "y", Index: 1}: {
-										summaries.ArgumentSNode{Name: "x", Index: 0},
-										summaries.ArgumentSNode{Name: "z", Index: 2},
-									},
-									summaries.ArgumentSNode{Name: "z", Index: 2}: {
-										summaries.ArgumentSNode{Name: "y", Index: 1},
-									},
-								},
-							},
-							Soundness: check.Unsound,
-							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									{
-										From: summaries.ArgumentSNode{Name: "y", Index: 1},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-									{
-										From: summaries.ArgumentSNode{Name: "z", Index: 2},
-										To:   summaries.ArgumentSNode{Name: "x", Index: 0},
-									},
-									{
-										From: summaries.ArgumentSNode{Name: "z", Index: 2},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-								},
-							},
-							Method:        check.Read,
-							CalleeResults: nil,
-						},
-					},
+					writeStructPtrWithExtraCandidates,
 				},
 			},
 		},
@@ -1311,11 +1478,11 @@ func TestCheckSummary_ClosureRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	setupConfig(lp)
-	state, err := result.Bind(
-		result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	ptrState, err := ptr.NewState(lp).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
+	state := newCheckState(t, ptrState)
 
 	// nestedClosures' inner closure captures free variables (bv, z).
 	f := findFunc(state, "nestedClosures$1$1")
@@ -1353,11 +1520,11 @@ func TestCheckSummary_Naive(t *testing.T) {
 		t.Fatal(err)
 	}
 	setupConfig(lp)
-	state, err := result.Bind(
-		result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	ptrState, err := ptr.NewState(lp).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
+	state := newCheckState(t, ptrState)
 
 	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/transitive_closure"
 	tests := []tcCheck{
@@ -1704,11 +1871,23 @@ func TestCheckSummary_Naive(t *testing.T) {
 			},
 		},
 		{
-			// wrapper implements greeter; Greet only returns .msg, never .secret. Checked
-			// wrapper implements greeter; Greet only returns .msg, never .secret. When checking
-			// an interface implementation via naive, inputs (here, the receiver) are enumerated
-			// field-insensitively, so the computed summary is the coarse !receiver -> !ret 0,
-			// matching the interface's ground truth exactly rather than being flagged unsound.
+			// wrapper implements greeter; Greet only returns .msg, never .secret.
+			//
+			// NOTE This test previously expected the naive summary to be exactly !receiver -> !ret 0,
+			// and therefore sound. That was an artifact of analyzing dead code: ImplementationsByType
+			// only ever yields the pointer form (*wrapper).Greet, which is Go's auto-generated thunk,
+			// and main assigned a wrapper *value* to the interface -- so nothing ever called the
+			// thunk, the pointer analysis had nothing for it, and the computed summary came out
+			// artificially small. main now assigns a pointer so the checked implementation is live,
+			// which CheckSummary requires (see checkReachable).
+			//
+			// With it live, the most-general summary necessarily includes the receiver as an output:
+			// (*wrapper).Greet's receiver is a pointer, hence pointer-like, hence both an input and
+			// an output. The declared interface summary does not cover those, so naive reports
+			// unsound. That is naive being naive rather than a real flow -- the underlying method has
+			// a value receiver and cannot mutate anything -- but it does mean this case no longer
+			// demonstrates "naive matches the ground truth exactly", and is worth redesigning if that
+			// property still needs coverage.
 			pkg:   pkg,
 			name:  "Greet",
 			iface: "greeter",
@@ -1726,11 +1905,14 @@ func TestCheckSummary_Naive(t *testing.T) {
 				Got: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ReceiverSNode{}: {
+							summaries.ReceiverSNode{},
 							summaries.ReturnSNode{Index: 0},
+							summaries.ReceiverSNode{ObjectPath: ".msg"},
+							summaries.ReceiverSNode{ObjectPath: ".secret"},
 						},
 					},
 				},
-				Soundness: check.Sound,
+				Soundness: check.Unsound,
 				Method:    check.Naive,
 			},
 		},
@@ -1751,11 +1933,11 @@ func TestCheckSummary_Fields(t *testing.T) {
 		t.Fatal(err)
 	}
 	setupConfig(lp)
-	state, err := result.Bind(
-		result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	ptrState, err := ptr.NewState(lp).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
+	state := newCheckState(t, ptrState)
 
 	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/fields"
 	tests := []tcCheck{
@@ -1900,19 +2082,21 @@ func TestCheckSummary_Fields(t *testing.T) {
 			},
 		},
 		{
+			// returnNestedByVal is `c.Dst.X = n; return c.Src`, so c.Src.X really does reach the
+			// return value's .X. Nothing in the body addresses X under Src -- the return copies the
+			// whole nested struct -- and c is by value, so its spill slot does not escape and the
+			// pointer analysis has nothing to say about it. Both of the other read matchers
+			// therefore find nothing, and only matchesWholeValueRead's prefix rule keeps this real
+			// flow unproven instead of "proving" it absent.
 			pkg:  pkg,
-			name: "threeArgInterFields",
+			name: "returnNestedByVal",
 			typ:  functionSummary,
 			want: check.SoundnessResult{
-				Name: pkg + ".threeArgInterFields",
+				Name: pkg + ".returnNestedByVal",
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
-						summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"}: {
-							summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
-							summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-						},
-						summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"}: {
-							summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst.X"},
 						},
 					},
 				},
@@ -1920,48 +2104,105 @@ func TestCheckSummary_Fields(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							// Not real -- `return c.Src` does not return Dst -- but c is a by-value
+							// struct with no points-to information, so it is tracked
+							// field-insensitively: reading any of it counts as reading all of it.
+							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst"},
+							To:   summaries.ReturnSNode{Index: 0},
 						},
 						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+							// Real: `return c.Src` copies the whole nested struct, including X.
+							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"},
+							To:   summaries.ReturnSNode{Index: 0},
 						},
 						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+							// Not real, but n is read by `c.Dst.X = n`, so Read cannot rule it out.
+							From: summaries.ArgumentSNode{Name: "n", Index: 1},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			// returnArrayElemByVal is returnNestedByVal reached through an index instead of a field:
+			// `a[1].Dst.X = n; return a[0]`, so a.Src.X really does reach the return value's .Src.X
+			// (access paths do not track indices, so the two elements are one path). Nothing
+			// addresses X under Src, and the array is by value so its spill slot does not escape.
+			pkg:  pkg,
+			name: "returnArrayElemByVal",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".returnArrayElemByVal",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Src.X"}: {
+							summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Dst.X"},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							// Real: `return a[0]` copies the whole element, so its Dst comes out too.
+							// (.Dst rather than .Dst.X because Want names a as an input only at
+							// .Src.X, so the rest of its tree collapses to one path per branch.)
+							From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Dst"},
+							To:   summaries.ReturnSNode{Index: 0},
 						},
 						{
-							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							// Real: `return a[0]` copies the whole element, including Src.X.
+							From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Src.X"},
+							To:   summaries.ReturnSNode{Index: 0},
 						},
 						{
-							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+							// Not real, but n is read by `a[1].Dst.X = n`.
+							From: summaries.ArgumentSNode{Name: "n", Index: 1},
+							To:   summaries.ReturnSNode{Index: 0},
 						},
-						{
-							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+					},
+				},
+				Method:        check.Read,
+				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			// Isolates output-side precision divergence: both call sites of addPairFirst receive the
+			// same arguments, so their inputs have identical precision, and they differ only in how
+			// deeply the result is read. calleeOutputDemand aggregates per output slot, so both sites
+			// share one vocabulary rather than one naming the return whole and the other by field.
+			pkg:  pkg,
+			name: "sameArgDifferentOutputDepths",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".sameArgDifferentOutputDepths",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"}: {
+							summaries.ReturnSNode{Index: 0},
 						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
 						{
+							// Real: y is returned whole as !ret 1 and comes from a.
 							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 1},
 						},
 						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							// Not real -- addPairFirst reads only .First -- but a is a by-value Pair
+							// at the call, tracked field-insensitively by Read.
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0},
 						},
 						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 1},
 						},
 					},
 				},
@@ -1969,6 +2210,8 @@ func TestCheckSummary_Fields(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
+							// One granularity throughout, unlike differentOutputDepths below: every
+							// input is named at .First/.Second, with no bare !arg entry alongside.
 							Name: pkg + ".addPairFirst",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
@@ -1989,9 +2232,16 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
-									// Read tracks by-value struct arguments field-insensitively, so
-									// every field of a and b is treated as read even though the body
-									// touches only one. None of the .Second flows is real.
+									// Targets are the bare return because these are addPairFirst's
+									// own must-not-flows, stated in its own vocabulary: its inferred
+									// summary names the return nowhere, so its output precision there
+									// is 0. That is independent of the caller-side demand, which is
+									// .First/.Second for this slot.
+									//
+									// None is a real flow (the return's .Second is never written, and
+									// the .Second inputs are never read); they stay unproven because
+									// a and b are by-value Pairs, which Read tracks
+									// field-insensitively.
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
 										To:   summaries.ReturnSNode{Index: 0},
@@ -2009,6 +2259,199 @@ func TestCheckSummary_Fields(t *testing.T) {
 										To:   summaries.ReturnSNode{Index: 0},
 									},
 								},
+							},
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			// differentOutputDepths calls addPairFirst twice, reading one result at .First and using
+			// the other whole, so the two sites reach addPairFirst's arguments at different depths.
+			// The callee summary below is nonetheless stated at a single granularity: the bare
+			// parameters, which is the shallowest depth either site enters them at.
+			//
+			// This is the input-side counterpart of calleeOutputDemand. A callee's summary is shared
+			// by all of its call sites, and calleeFlowKey names a summary edge partly by its access
+			// path, so two granularities for one parameter would be two unrelated maxsat variables and
+			// the reported summary would be the union of both -- more general than either site's model
+			// justified. calleeInputDemand collapses them to one; see its comment for why the
+			// shallowest depth is both the only realizable choice and the safe one.
+			pkg:  pkg,
+			name: "differentOutputDepths",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".differentOutputDepths",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"}: {
+							summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							// Real: y is returned as !ret 1 and comes from b.
+							From: summaries.ArgumentSNode{Name: "b", Index: 2},
+							To:   summaries.ReturnSNode{Index: 1},
+						},
+						{
+							// Not real -- addPairFirst reads only .First fields -- but a is a
+							// by-value Pair, tracked field-insensitively by Read.
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0},
+						},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Name: pkg + ".addPairFirst",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									// One granularity, despite the two call sites reading the results
+									// at different depths: calleeInputDemand collapses each parameter
+									// to the shallowest depth any site enters it at, which here is the
+									// bare parameter because one site uses its result whole.
+									summaries.ArgumentSNode{Name: "a", Index: 0}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
+									},
+								},
+							},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+								},
+							},
+							Method:        check.Read,
+							CalleeResults: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			pkg:  pkg,
+			name: "threeArgInterFields",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".threeArgInterFields",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"}: {
+							summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"}: {
+							summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						// All eight follow from addPairFirst being unsound, and none is a real flow.
+						// Its a and b are by-value Pairs with no points-to information, so Read
+						// tracks them field-insensitively: reading a.First counts as reading all of
+						// a, so a.Second and b.Second can no longer be proven unread and every
+						// must-not-flow out of them stays open. The "no" flows are still proven --
+						// addPairFirst never touches it at all.
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+						},
+						{
+							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
+							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+						},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							Name: pkg + ".addPairFirst",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									// addPairFirst is `b.First = a.First + b.First; return
+									// Pair{First: b.First}`, so both a.First and b.First really do
+									// reach the return's .First.
+									//
+									// Only .First of the return value may be leaked into: the
+									// parent routes y.Second straight into its own (!ret 0).Second,
+									// a must-not-flow for every input, so every
+									// -> (!ret 0).Second edge must be false. Telling the two halves
+									// of the return value apart is what calleeOutputPaths makes
+									// possible -- the parent reads x.First/y.First and y.Second, so
+									// the return value is represented at depth 1 instead of as one
+									// opaque value. Collapsed to a single output, b.First -> ret
+									// would also imply b.First -> (!ret 0).Second and could not be
+									// asserted at all, which is why it used to be missing here
+									// despite being a real flow.
+									//
+									// "no" stays field-insensitive: the parent only forwards it to
+									// the two calls and never reads a field of it, so
+									// calleeOutputPaths finds no demand for depth (see the
+									// same-value filter there).
+									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
+										summaries.ArgumentSNode{Name: "no", Index: 2},
+									},
+								},
+							},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: addPairFirstUnproven,
 							},
 							Method:        check.Read,
 							CalleeResults: nil,
@@ -2053,6 +2496,16 @@ func TestCheckSummary_Fields(t *testing.T) {
 							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 						},
 						{
+							// Not a real flow, and the reason is flow-insensitivity rather than
+							// anything about access paths. The route is
+							// a.First -> x.First (addPairFirst, real) -> (*b).First at line 263
+							// -> *b as addPairSecond's argument at line 262 -> y.First
+							// (`return b`, real) -> (*b).Second at line 264.
+							// The middle step goes backwards in time: the write to (*b).First
+							// happens after the call that reads *b. A pointer-like parameter is one
+							// node standing for the memory it points to across the whole function,
+							// so "b on entry" and "b after the write" are the same vertex and the
+							// two calls are not ordered relative to it.
 							From: summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"},
 							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
 						},
@@ -2065,28 +2518,14 @@ func TestCheckSummary_Fields(t *testing.T) {
 							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 						},
 						{
+							// Real: b.First reaches y.First through addPairSecond's `return b`,
+							// and the parent writes y.First into (*b).Second.
 							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
 							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
 						},
 						{
 							From: summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
 							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".Second"},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ArgumentSNode{Name: "b", Index: 2, ObjectPath: ".First"},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
-						},
-						{
-							From: summaries.ArgumentSNode{Name: "no", Index: 0},
-							To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 						},
 					},
 				},
@@ -2100,38 +2539,61 @@ func TestCheckSummary_Fields(t *testing.T) {
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
+									// addPairSecond is `b.Second = a.Second + b.Second; return b`,
+									// so a.Second really does reach the return's .Second.
+									//
+									// Nothing reaches .First: the parent writes y.First into
+									// (*b).Second, and every input's flow to b.Second other than
+									// a.Second's and b.Second's own is a must-not-flow.
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 								},
 							},
 							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
-									// Read tracks by-value struct arguments field-insensitively, so
-									// every field of a and b is treated as read even though the body
-									// touches only one. None of the .Second flows is real.
+									// b.First -> (!ret 0).First is real: `return b` copies the whole
+									// struct, so the caller's b.First comes back out in the return
+									// value's .First.
+									//
+									// The other five are not real (the return's .First comes only
+									// from b.First, and .Second only from a.Second/b.Second). They
+									// stay unproven because a and b are by-value Pairs with no
+									// points-to information, so Read tracks them
+									// field-insensitively and cannot prove anything about an
+									// individual field of either.
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
-										To:   summaries.ReturnSNode{Index: 0},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
 									{
 										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 									{
 										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
-										To:   summaries.ReturnSNode{Index: 0},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
 								},
 							},
@@ -2144,14 +2606,22 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Name: pkg + ".addPairFirst",
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									// addPairFirst is `b.First = a.First + b.First; return
+									// Pair{First: b.First}`, so both a.First and b.First really do
+									// reach the return's .First. Nothing reaches .Second: the
+									// parent writes x.Second into (*b).First and (!ret 0).Second,
+									// and every input's flow to those is a must-not-flow except
+									// a.First's and b.First's to b.First.
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
 									summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
+										summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
 									summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
@@ -2160,27 +2630,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 							},
 							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
-								UnprovenMustNotFlows: []check.Flow{
-									// Read tracks by-value struct arguments field-insensitively, so
-									// every field of a and b is treated as read even though the body
-									// touches only one. None of the .Second flows is real.
-									{
-										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-									{
-										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-									{
-										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-									{
-										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
-										To:   summaries.ReturnSNode{Index: 0},
-									},
-								},
+								UnprovenMustNotFlows: addPairFirstUnproven,
 							},
 							Method:        check.Read,
 							CalleeResults: nil,
@@ -2449,6 +2899,147 @@ func TestCheckSummary_Fields(t *testing.T) {
 	}
 }
 
+// writeStructPtrWithExtraCandidates are the two co-optimal callee summaries inferred for
+// writeStructPtrWithExtra (`*x = *y; return *z`), shared by its two caller test cases.
+//
+// The optimum satisfies 4 of the 6 possible arg-to-arg may-flow edges, not 5: the encoding composes
+// a callee's summary edges transitively over the flow graph, so y -> x together with z -> y would
+// realize z -> x -- c -> a in the caller, which the summary being checked forbids. Each candidate
+// drops exactly one of those two edges, and neither dominates the other, so both are reported.
+//
+// In both, x -> !ret 0 is proven (x is only written, never read, so nothing of x can be returned)
+// and z -> y is only available when y -> x is given up. y -> !ret 0, z -> x and z -> !ret 0 stay
+// unproven: z is read and x is modified, so Read and Immutability cannot rule them out.
+var writeStructPtrWithExtraCandidates = []check.SoundnessResult{
+	{
+		Name: basicPkg + ".writeStructPtrWithExtra",
+		Want: summaries.DetailedSummary{
+			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ArgumentSNode{Name: "x", Index: 0}: {
+					summaries.ArgumentSNode{Name: "y", Index: 1},
+					summaries.ArgumentSNode{Name: "z", Index: 2},
+				},
+				summaries.ArgumentSNode{Name: "y", Index: 1}: {
+					summaries.ArgumentSNode{Name: "x", Index: 0},
+					summaries.ArgumentSNode{Name: "z", Index: 2},
+				},
+			},
+		},
+		Soundness: check.Unsound,
+		Unsoundness: check.Unsoundness{
+			UnprovenMustNotFlows: []check.Flow{
+				{
+					From: summaries.ArgumentSNode{Name: "y", Index: 1},
+					To:   summaries.ReturnSNode{Index: 0},
+				},
+				{
+					From: summaries.ArgumentSNode{Name: "z", Index: 2},
+					To:   summaries.ArgumentSNode{Name: "x", Index: 0},
+				},
+				{
+					From: summaries.ArgumentSNode{Name: "z", Index: 2},
+					To:   summaries.ReturnSNode{Index: 0},
+				},
+			},
+		},
+		Method:        check.Read,
+		CalleeResults: nil,
+	},
+	{
+		Name: basicPkg + ".writeStructPtrWithExtra",
+		Want: summaries.DetailedSummary{
+			Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ArgumentSNode{Name: "x", Index: 0}: {
+					summaries.ArgumentSNode{Name: "y", Index: 1},
+					summaries.ArgumentSNode{Name: "z", Index: 2},
+				},
+				summaries.ArgumentSNode{Name: "y", Index: 1}: {
+					summaries.ArgumentSNode{Name: "z", Index: 2},
+				},
+				summaries.ArgumentSNode{Name: "z", Index: 2}: {
+					summaries.ArgumentSNode{Name: "y", Index: 1},
+				},
+			},
+		},
+		Soundness: check.Unsound,
+		Unsoundness: check.Unsoundness{
+			UnprovenMustNotFlows: []check.Flow{
+				{
+					From: summaries.ArgumentSNode{Name: "y", Index: 1},
+					To:   summaries.ArgumentSNode{Name: "x", Index: 0},
+				},
+				{
+					From: summaries.ArgumentSNode{Name: "y", Index: 1},
+					To:   summaries.ReturnSNode{Index: 0},
+				},
+				{
+					From: summaries.ArgumentSNode{Name: "z", Index: 2},
+					To:   summaries.ArgumentSNode{Name: "x", Index: 0},
+				},
+				{
+					From: summaries.ArgumentSNode{Name: "z", Index: 2},
+					To:   summaries.ReturnSNode{Index: 0},
+				},
+			},
+		},
+		Method:        check.Read,
+		CalleeResults: nil,
+	},
+}
+
+// addPairFirstUnproven is the unproven must-not-flow set for addPairFirst's inferred summary, shared
+// by the two callers that infer it.
+//
+// None of the six is a real flow: addPairFirst is `b.First = a.First + b.First; return
+// Pair{First: b.First}`, so the return's .Second is never written and a.Second/b.Second are never
+// used. They stay unproven because a and b are by-value Pairs with no points-to information, which
+// Read tracks field-insensitively -- reading a.First counts as reading all of a, so nothing about
+// a.Second can be proven. Flows out of "no" are still proven, since addPairFirst never touches it.
+var addPairFirstUnproven = []check.Flow{
+	{
+		From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
+		To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+	},
+	{
+		From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
+		To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+	},
+	{
+		From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
+		To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+	},
+	{
+		From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
+		To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+	},
+	{
+		From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
+		To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+	},
+	{
+		From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
+		To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+	},
+}
+
+// multiFieldHelperLeaks are the fields of multiFieldHelper's return value that its inferred
+// most-general callee summary may leak any input into.
+//
+// outA and outB are excluded, and that exclusion is the point of the test: multiFieldMethod writes
+// res.outA/res.outB into "out", so a leak into either would realize a must-not-flow (input -> out),
+// while the other five fields only reach multiFieldMethod's own return value, which Want allows.
+// This distinction is only expressible because a callee output's access-path depth is discovered
+// from how deeply the caller reads it (calleeOutputPaths); collapsed to a single field-insensitive
+// output, no assignment can leak the five safe fields without also leaking outA/outB, and the
+// inferred summary comes back empty.
+var multiFieldHelperLeaks = []summaries.SummaryNode{
+	summaries.ReturnSNode{Index: 0, ObjectPath: ".outC"},
+	summaries.ReturnSNode{Index: 0, ObjectPath: ".outD"},
+	summaries.ReturnSNode{Index: 0, ObjectPath: ".outX"},
+	summaries.ReturnSNode{Index: 0, ObjectPath: ".outY"},
+	summaries.ReturnSNode{Index: 0, ObjectPath: ".outZ"},
+}
+
 // TestCheckSummary_RedundantCallSiteSelfFlow reproduces a scaling bug where buildGraph treats an
 // argument's own field flowing to a deeper field of the *same* argument, at an unsummarized call
 // site, as a real, distinct fact to keep exploring -- when it actually carries no information
@@ -2463,11 +3054,11 @@ func TestCheckSummary_RedundantCallSiteSelfFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	setupConfig(lp)
-	state, err := result.Bind(
-		result.Bind(ptr.NewState(lp), dataflow.NewState), check.NewState).Value()
+	ptrState, err := ptr.NewState(lp).Value()
 	if err != nil {
 		t.Fatalf("failed to load state: %s", err)
 	}
+	state := newCheckState(t, ptrState)
 
 	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/fields"
 	summary := summaries.NewFunctionFlowSummary(pkg, "requestUnmarshalLike", summaries.DetailedSummary{
@@ -2843,6 +3434,25 @@ type tcCheck struct {
 	typ      summaryType
 	naive    bool
 	want     check.SoundnessResult
+}
+
+// newCheckState builds a fresh dataflow and check state over an already-computed pointer analysis
+// state.
+//
+// Loading the program and running the pointer analysis is the expensive part and is safe to share,
+// but the dataflow state must not be: it owns FlowGraph.Summaries, the cache of per-function
+// summary graphs that checking a summary populates and mutates (a callee's summary graph is built
+// on demand and stored there). Sharing one state across a table of subtests therefore leaks
+// results between them -- a subtest can observe a callee summary graph left behind by whichever
+// subtest ran earlier, which makes results depend on execution order. dataflow.NewState builds a
+// fresh FlowGraph with empty maps on every call, so each subtest gets its own.
+func newCheckState(t *testing.T, ptrState *ptr.State) *check.State {
+	t.Helper()
+	state, err := result.Bind(dataflow.NewState(ptrState), check.NewState).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	return state
 }
 
 func checkSoundness(t *testing.T, tc tcCheck, state *check.State) {
