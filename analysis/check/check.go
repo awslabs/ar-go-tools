@@ -764,6 +764,12 @@ func (p path) isCoveredBy(x path) bool {
 	return true
 }
 
+// pathsOverlap reports whether two access paths denote overlapping memory, i.e. whether either is a
+// prefix of the other.
+func pathsOverlap(a, b path) bool {
+	return a.isCoveredBy(b) || b.isCoveredBy(a)
+}
+
 func (p path) String() string {
 	pLen := p.len()
 	if pLen == 0 {

@@ -1989,12 +1989,23 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
+									// Read tracks by-value struct arguments field-insensitively, so
+									// every field of a and b is treated as read even though the body
+									// touches only one. None of the .Second flows is real.
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
 										To:   summaries.ReturnSNode{Index: 0},
 									},
 									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
 										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
 										To:   summaries.ReturnSNode{Index: 0},
 									},
 								},
@@ -2103,8 +2114,19 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
+									// Read tracks by-value struct arguments field-insensitively, so
+									// every field of a and b is treated as read even though the body
+									// touches only one. None of the .Second flows is real.
+									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
 										To:   summaries.ReturnSNode{Index: 0},
 									},
 									{
@@ -2139,12 +2161,23 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
 								UnprovenMustNotFlows: []check.Flow{
+									// Read tracks by-value struct arguments field-insensitively, so
+									// every field of a and b is treated as read even though the body
+									// touches only one. None of the .Second flows is real.
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
 										To:   summaries.ReturnSNode{Index: 0},
 									},
 									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
 										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
+										To:   summaries.ReturnSNode{Index: 0},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
 										To:   summaries.ReturnSNode{Index: 0},
 									},
 								},
