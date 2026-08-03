@@ -849,9 +849,6 @@ def _base_config(repo: str) -> Dict[str, Any]:
         "dataflow-problems": {
             "summarize-on-demand": True,
             "check-ignores-unsound": True,
-            "field-sensitive-funcs": [
-                ".*"
-            ],  # Analyze every function field-sensitively.
             "intra-timeout-ms": 60000,  # 1 minute per-function cap
         },
         "options": {
@@ -970,6 +967,9 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
         config = _base_config(repo)
         config["options"]["project-root"] = project_root
         config["dataflow-problems"]["taint-tracking"] = _taint_specs(repo)
+        # Analyze every function field-sensitively. Only the taint analysis needs this: `argot check`
+        # takes its access path length from the summary being checked and ignores this setting.
+        config["dataflow-problems"]["field-sensitive-funcs"] = [".*"]
         if user_specs:
             config["dataflow-problems"]["user-specs"] = user_specs
         path = out_dir / name
