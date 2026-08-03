@@ -28,7 +28,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import yaml
 from rich.console import Console
@@ -955,9 +955,14 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
     """
     repo_path = repo_dir(repo)
     out_dir = GENERATED_CONFIGS_DIR / repo
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True)
+    # Generated files are overwritten in place rather than the directory being cleared, so
+    # hand-written configs alongside them survive.
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Names of every file this run writes, including the _split-* data files that `written` omits.
+    # Anything else in out_dir is either hand-written or left over from a run whose inputs differed,
+    # and is reported at the end so a stale config is not mistaken for a current one.
+    produced: Set[str] = set()
 
     # NOTE: project-root is resolved relative to the config file's location, so it must point from
     # out_dir back to repo_path instead.
@@ -974,6 +979,7 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
             config["dataflow-problems"]["user-specs"] = user_specs
         path = out_dir / name
         path.write_text(yaml.safe_dump(config))
+        produced.add(path.name)
         return path
 
     def write_check_config(name: str, check_specs: List[str]) -> Path:
@@ -982,6 +988,7 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
         config["dataflow-problems"]["check-specs"] = check_specs
         path = out_dir / name
         path.write_text(yaml.safe_dump(config))
+        produced.add(path.name)
         return path
 
     def rel_to_repo(p: Path) -> str:
@@ -1045,6 +1052,7 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
             data_path.write_text(
                 yaml.safe_dump({"dataflow-summaries": kind_entries})
             )
+            produced.add(data_path.name)
             written.append(
                 write_check_config(
                     f"check-{prefix}-split-{kind}.yaml",
@@ -1056,6 +1064,15 @@ def _generate_configs_for_repo(repo: str) -> List[Path]:
     # method) rather than by source file -- see run-check --variant {ground-truth,llm}.
     write_split_check_configs("ground-truth", ground_truth_paths)
     write_split_check_configs("llm", [llm_summaries_path])
+
+    extra = sorted(
+        p.name for p in out_dir.iterdir() if p.is_file() and p.name not in produced
+    )
+    if extra:
+        console.print(
+            f"[yellow]{repo}: {len(extra)} file(s) in {out_dir} were not written by this run "
+            f"(hand-written, or stale from a previous run): {', '.join(extra)}[/yellow]"
+        )
 
     return written
 
