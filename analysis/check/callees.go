@@ -96,7 +96,7 @@ func inferCalleeSummaries(
 		k := prec.longestPathLen
 		s.Logger.Debugf(
 			"running intra-procedural analysis on function %s with path length %d...\n", g.Parent, k)
-		if _, _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k); err != nil {
+		if err := runIntraProceduralWithTimeout(ctx, s, g, k); err != nil {
 			return nil, nil, fmt.Errorf("failed to run intra-procedural analysis: %w", err)
 		}
 		s.Logger.Debugf("finding unsound taint features for %s...\n", g.Parent)
@@ -222,6 +222,23 @@ func checkCancelled(ctx context.Context, phase string) error {
 		return fmt.Errorf("%s: %w", phase, err)
 	}
 	return nil
+}
+
+// runIntraProceduralWithTimeout runs the intra-procedural analysis on g at access path length k,
+// bounded by dataflow-problems.intra-timeout-ms as well as by ctx.
+//
+// The per-function bound matters on its own: a single instruction's transfer function can exceed the
+// whole-summary deadline, and cancellation is only checked between instructions. A function that
+// takes that long yields no verdict either way, so bounding it per function and reporting the timeout
+// is better than spending the summary's entire budget on it.
+func runIntraProceduralWithTimeout(ctx context.Context, s *State, g *dataflow.SummaryGraph, k int) error {
+	if timeout := s.Config.DataflowProblems.IntraTimeoutMs; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+		defer cancel()
+	}
+	_, _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k)
+	return err
 }
 
 // calleeInference is the state of one callee summary inference problem, beyond the summaries it
