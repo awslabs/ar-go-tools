@@ -72,9 +72,10 @@ type FlowInformation struct {
 	LocSet map[*Mark]map[ssa.Instruction]bool
 }
 
-// newFlowInfo returns a new FlowInformation with field-sensitivity if required by cfg.
-// The maximum length of each access path is pathLen.
-func newFlowInfo(cfg *config.Config, f *ssa.Function, maxPathLen int, forceFieldSensitive bool) *FlowInformation {
+// newFlowInfo returns a new FlowInformation tracking every value at an access path length of
+// maxPathLen. If explicitPathLen is false, maxPathLen applies only to functions matched by the
+// config's field-sensitive-funcs, and every other function is field-insensitive.
+func newFlowInfo(cfg *config.Config, f *ssa.Function, maxPathLen int, explicitPathLen bool) *FlowInformation {
 	valueID := map[ssa.Value]IndexT{}
 	numValues := IndexT(0)
 	lang.IterateValues(f, func(_ int, v ssa.Value) {
@@ -110,17 +111,14 @@ func newFlowInfo(cfg *config.Config, f *ssa.Function, maxPathLen int, forceField
 		}
 	})
 
-	fieldLength := make([]int, numValues)
-	allFieldSensitive := forceFieldSensitive
-	if !allFieldSensitive && f != nil {
-		allFieldSensitive = cfg.IsPathSensitiveFunc(f.String())
+	// pathLen is the access path length every value in f is tracked at. Zero is field-insensitive.
+	pathLen := 0
+	if explicitPathLen || (f != nil && cfg.IsPathSensitiveFunc(f.String())) {
+		pathLen = maxPathLen
 	}
+	fieldLength := make([]int, numValues)
 	for i := range values {
-		if allFieldSensitive {
-			fieldLength[i] = maxPathLen
-		} else {
-			fieldLength[i] = 0
-		}
+		fieldLength[i] = pathLen
 	}
 
 	return &FlowInformation{

@@ -29,12 +29,6 @@ import (
 // this value does not affect soundness
 var maxAccessPathLength = 3
 
-// SetMaxAccessPathLength sets the maximum access path length for field sensitivity. This should only be set once,
-// changing this value while the analysis is running may lead to unpredictable results.
-func SetMaxAccessPathLength(n int) {
-	maxAccessPathLength = n
-}
-
 // A MarkWithAccessPath is a mark with an access path
 type MarkWithAccessPath struct {
 	Mark       *Mark

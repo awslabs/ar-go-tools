@@ -89,18 +89,26 @@ func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.D
 	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, false)
 }
 
-// RunIntraProceduralFields runs the intra-procedural analysis with field-sensitive access paths bounded
-// by maxPathLen, whether or not the config's field-sensitive-funcs matches sm.Parent.
+// RunIntraProceduralFields runs the intra-procedural analysis tracking every value at an access path
+// length of maxPathLen, ignoring the config's field-sensitive-funcs. A maxPathLen of 0 is
+// field-insensitive.
 func RunIntraProceduralFields(
 	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int,
 ) (time.Duration, int, error) {
 	return runIntraProcedural(ctx, a, sm, maxPathLen, true)
 }
 
+// RunIntraProceduralMaxFields runs the intra-procedural analysis at the deepest access path length any
+// analysis tracks, ignoring the config's field-sensitive-funcs. For callers that construct a summary
+// rather than check one, and so have no summary to take a precision from.
+func RunIntraProceduralMaxFields(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, int, error) {
+	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, true)
+}
+
 // runIntraProcedural runs the intra-procedural analysis on sm, returning the elapsed time, the
 // number of distinct SSA values tracked, and an error if the analysis failed.
 func runIntraProcedural(
-	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int, forceFieldSensitive bool,
+	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int, explicitPathLen bool,
 ) (time.Duration, int, error) {
 	if sm == nil {
 		return 0, 0, fmt.Errorf("summary graph is nil")
@@ -110,7 +118,7 @@ func runIntraProcedural(
 		reportUnsoundFeatures(a, sm.unsoundness)
 	}
 	start := time.Now()
-	flowInfo := newFlowInfo(a.Config, sm.Parent, maxPathLen, forceFieldSensitive)
+	flowInfo := newFlowInfo(a.Config, sm.Parent, maxPathLen, explicitPathLen)
 	// If there  are too many variables, we will likely not be able to analyze
 	if flowInfo.NumValues > 10000 {
 		return time.Since(start), int(flowInfo.NumValues), fmt.Errorf("too many values (%d) in %s", flowInfo.NumValues, sm.Parent.Name())

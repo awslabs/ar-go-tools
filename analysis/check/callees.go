@@ -80,32 +80,24 @@ func inferCalleeSummaries(
 		g = summ
 	} else {
 		start := time.Now()
-		if prec.longestPathLen == 0 {
-			s.Logger.Debugf(
-				"running field-insensitive intra-procedural analysis on function %s...\n", g.Parent)
-			if _, _, err := dataflow.RunIntraProcedural(ctx, s.State, g); err != nil {
-				return nil, nil, fmt.Errorf(
-					"failed to run field-insensitive intra-procedural analysis: %w", err)
-			}
-		} else {
-			s.Logger.Debugf(
-				"running field-sensitive intra-procedural analysis on function %s...\n",
-				g.Parent)
-			// The access path length for the values in the intra-procedural analysis must be the
-			// maximum path length in prec (the precision according to the summary we are checking).
-			// This is because the intra-procedural analysis specifies the precision (maximum access
-			// path length) of all the values in the function at once. A smaller access path length
-			// is more efficient, but we need enough precision to reason about any field-sensitive
-			// flows in the summary we are checking.
-			k := prec.longestPathLen
-			s.Logger.Debugf("\twith path length: %d\n", k)
-			// TODO We want to use node-level precision eventually; but for now, just set the
-			// precision of every node to the precision of the most-precise node (node with the
-			// longest access path).
-			if _, _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k); err != nil {
-				return nil, nil, fmt.Errorf(
-					"failed to run field-sensitive intra-procedural analysis: %w", err)
-			}
+		// The access path length for the values in the intra-procedural analysis must be the
+		// maximum path length in prec (the precision according to the summary we are checking).
+		// This is because the intra-procedural analysis specifies the precision (maximum access
+		// path length) of all the values in the function at once. A smaller access path length
+		// is more efficient, but we need enough precision to reason about any field-sensitive
+		// flows in the summary we are checking.
+		//
+		// The config's field-sensitive-funcs is not consulted: the summary is the only thing that
+		// decides precision here.
+		//
+		// TODO We want to use node-level precision eventually; but for now, just set the
+		// precision of every node to the precision of the most-precise node (node with the
+		// longest access path).
+		k := prec.longestPathLen
+		s.Logger.Debugf(
+			"running intra-procedural analysis on function %s with path length %d...\n", g.Parent, k)
+		if _, _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k); err != nil {
+			return nil, nil, fmt.Errorf("failed to run intra-procedural analysis: %w", err)
 		}
 		s.Logger.Debugf("finding unsound taint features for %s...\n", g.Parent)
 		intraUnsoundness := findUnsoundDataflowFeatures(g.Parent)
@@ -290,7 +282,7 @@ func unprovenFlowsAfterCalleeCheck(
 	})
 
 	unknownMayFlow := unknownMayFlowEdges(inf.fg)
-	reopened, err := edgesForUnsoundCalleeFlows(s, unknownMayFlow, unsoundCalleeFlows)
+	reopened, err := edgesForUnsoundCalleeFlows(s, inf.fg, unknownMayFlow, unsoundCalleeFlows)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +384,8 @@ func mustNotFlowIsRealizable(
 // a graph whose nodes are distinct (pointer-wise) from the ones the flow graph/unknownMayFlow were
 // built with -- so resolving there would silently match nothing.
 func edgesForUnsoundCalleeFlows(
-	s *State, unknownMayFlow map[*dataflow.CallNode][]edge, unsoundCalleeFlows map[*ssa.Function][]Flow,
+	s *State, fg *flowGraph, unknownMayFlow map[*dataflow.CallNode][]edge,
+	unsoundCalleeFlows map[*ssa.Function][]Flow,
 ) ([]edge, error) {
 	var forced []edge
 	for _, call := range sortedUnknownCalls(unknownMayFlow) {
@@ -419,15 +412,23 @@ func edgesForUnsoundCalleeFlows(
 				}
 			}
 			if matched == 0 {
-				// Not fatal, but worth surfacing: the re-check treats a summary edge no model
-				// claimed as disproven, so an unsound callee's flow that resolves to no edge is
-				// silently dropped from the worst case and a must-not-flow it realizes can come back
-				// proven. The likely cause is resolving against the wrong graph -- checkSummary
-				// rebuilds s.FlowGraph.Summaries[callee] with fresh nodes, which is why resolution
-				// goes through each call site's own call.CalleeSummary.
+				// A flow whose endpoints the caller never materialized cannot lie on a path from a
+				// caller input to a caller output, so leaving it out of the worst case is exact. This
+				// is the common case for an argument that is a constant at this call site: nothing
+				// flows into a literal, so no vertex exists for it.
+				if !hasVertex(fg, call, fl.from) || !hasVertex(fg, call, fl.to) {
+					s.Logger.Debugf(
+						"unproven flow %v of unsound callee %s has no vertex at call site %v;"+
+							" it cannot be realized here\n",
+						fl, call.Callee(), call.CallSite())
+					continue
+				}
+				// Both endpoints exist, so this flow is potentially realizable and should have
+				// matched an edge. Treating it as absent lets a must-not-flow it realizes come back
+				// proven.
 				s.Logger.Warnf(
-					"unproven flow %v of unsound callee %s matched no may-flow edge at call site %v;"+
-						" it will not be treated as realizable\n",
+					"unproven flow %v of unsound callee %s matched no may-flow edge at call site %v"+
+						" despite both endpoints existing; it will not be treated as realizable\n",
 					fl, call.Callee(), call.CallSite())
 			}
 		}
@@ -446,6 +447,16 @@ func edgesForUnsoundCalleeFlows(
 func matchesReportedFlow(e edge, fl flow) bool {
 	return e.from.node == fl.from.node && e.to.node == fl.to.node &&
 		pathsOverlap(e.from.path, fl.from.path) && pathsOverlap(e.to.path, fl.to.path)
+}
+
+// hasVertex reports whether fg has a vertex for n's node in call's frame, at a path overlapping n's.
+func hasVertex(fg *flowGraph, call *dataflow.CallNode, n summaryNode) bool {
+	for k := range fg.vertices {
+		if k.node == n.node && k.call == call && pathsOverlap(k.path, n.path) {
+			return true
+		}
+	}
+	return false
 }
 
 // flowFromReport converts a reported Flow (the exported, summary-node based representation used in
