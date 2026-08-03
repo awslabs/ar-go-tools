@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/awslabs/ar-go-tools/analysis/lang"
 	"github.com/awslabs/ar-go-tools/analysis/refactor/statefulrewrite"
@@ -312,8 +313,12 @@ func report(cfg *config.Config, logger *config.LogGroup, allResults map[string][
 	return nil
 }
 
-// SummariesWithSpecs applies the check to summaries with a set of specs that defines entry-points and other points
-// of interest for the analysis that will be using the summaries.
+// summaryCheckTimeout bounds how long one summary may be checked for. The maxsat solver cannot be
+// interrupted, so a single long Solve call overshoots it.
+const summaryCheckTimeout = 5 * time.Minute
+
+// SummariesWithSpecs applies the check to summaries with a set of specs that defines entry-points and
+// other points of interest for the analysis that will be using the summaries.
 func SummariesWithSpecs(
 	ctx context.Context,
 	ds *dataflow.State,
@@ -358,6 +363,10 @@ func checkOneSummaryWrapper(
 	targetFunctionName := summary.Name()
 	s.Logger.PushContext(formatutil.Faint(formatutil.Fit(targetFunctionName, 30)))
 	defer s.Logger.PopContext()
+	// Bounds the inter-procedural work, which intra-timeout-ms does not cover. Per summary, so one
+	// pathological function cannot consume the budget for the rest.
+	ctx, cancel := context.WithTimeout(ctx, summaryCheckTimeout)
+	defer cancel()
 	s.Logger.Infof("Checking summary via %v...", via)
 	soundness, foundFunc, err := check.CheckSummary(ctx, s, summary, specs, via == check.Naive)
 	if !foundFunc {

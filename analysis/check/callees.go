@@ -85,7 +85,7 @@ func inferCalleeSummaries(
 				"running field-insensitive intra-procedural analysis on function %s...\n", g.Parent)
 			if _, _, err := dataflow.RunIntraProcedural(ctx, s.State, g); err != nil {
 				return nil, nil, fmt.Errorf(
-					"failed to run field-insensitive intra-procedural analysis: %v", err)
+					"failed to run field-insensitive intra-procedural analysis: %w", err)
 			}
 		} else {
 			s.Logger.Debugf(
@@ -105,7 +105,7 @@ func inferCalleeSummaries(
 			// longest access path).
 			if _, _, err := dataflow.RunIntraProceduralFields(ctx, s.State, g, k); err != nil {
 				return nil, nil, fmt.Errorf(
-					"failed to run field-sensitive intra-procedural analysis: %v", err)
+					"failed to run field-sensitive intra-procedural analysis: %w", err)
 			}
 		}
 		s.Logger.Debugf("finding unsound taint features for %s...\n", g.Parent)
@@ -121,7 +121,7 @@ func inferCalleeSummaries(
 
 	start := time.Now()
 
-	fg, err := buildGraph(s, g, prec, wantFlows, mustNotFlows)
+	fg, err := buildGraph(ctx, s, g, prec, wantFlows, mustNotFlows)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build flow graph: %w", err)
 	}
@@ -160,7 +160,10 @@ func inferCalleeSummaries(
 	// exactly the "base" constraints reused by unprovenFlowsAfterCalleeCheck to re-check
 	// individual must-not-flows once some callees turn out unsound.
 	// TODO This assumes that all nodes have the same precision.
-	baseConstrs := calleeGraphConstraints(fg)
+	baseConstrs, err := calleeGraphConstraints(ctx, fg)
+	if err != nil {
+		return nil, nil, err
+	}
 	constraints = append(constraints, baseConstrs...)
 	s.Logger.Debugf("\t%d hard constraints for identical callee summaries/known edges/reachability",
 		len(baseConstrs))
@@ -171,7 +174,10 @@ func inferCalleeSummaries(
 	s.Logger.Debugf("\t%d soft constraints for callee's may-flow edges", len(softConstrs))
 
 	// Block must-not-flows
-	mustNotFlowConstrs := buildMustNotFlowConstraints(fg, mustNotFlows, prec.longestPathLen > 0)
+	mustNotFlowConstrs, err := buildMustNotFlowConstraints(ctx, fg, mustNotFlows, prec.longestPathLen > 0)
+	if err != nil {
+		return nil, nil, err
+	}
 	constraints = append(constraints, mustNotFlowConstrs...)
 	s.Logger.Debugf("\t%d must-not-flow constraints", len(mustNotFlowConstrs))
 	s.Logger.Infof("... computed %d total maxsat constraints", len(constraints))
@@ -193,7 +199,10 @@ func inferCalleeSummaries(
 	}
 
 	// Enumerate all optimal models and convert them to summaries
-	allOptimalModels := findAllOptimalModels(model, optimalCost, constraints, unknownMayFlow)
+	allOptimalModels, err := findAllOptimalModels(ctx, model, optimalCost, constraints, unknownMayFlow)
+	if err != nil {
+		return nil, nil, err
+	}
 	res, err := modelsToSummaries(s.State, allOptimalModels, unknownMayFlow)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to convert maxsat model to summaries: %v", err)
@@ -210,6 +219,18 @@ func inferCalleeSummaries(
 	}
 
 	return res, &calleeInference{fg: fg, models: allOptimalModels}, nil
+}
+
+// checkCancelled reports ctx's error, labelled with the phase that was running.
+//
+// Inference has no natural yield points once the intra-procedural analysis is done, so the phases that
+// scale with graph size poll this. The maxsat solver cannot be interrupted, so a single long Solve call
+// overshoots the deadline regardless.
+func checkCancelled(ctx context.Context, phase string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s: %w", phase, err)
+	}
+	return nil
 }
 
 // calleeInference is the state of one callee summary inference problem, beyond the summaries it
@@ -251,8 +272,8 @@ func (ci *calleeInference) setsAnyTrue(v string) bool {
 // asserting a reach variable is satisfiable with no supporting path, and every must-not-flow whose
 // endpoints appear in the graph would come back unproven.
 func unprovenFlowsAfterCalleeCheck(
-	s *State, g *dataflow.SummaryGraph, wantFlows, mustNotFlows []flow, inf *calleeInference,
-	unsoundCalleeFlows map[*ssa.Function][]Flow,
+	ctx context.Context, s *State, g *dataflow.SummaryGraph, wantFlows, mustNotFlows []flow,
+	inf *calleeInference, unsoundCalleeFlows map[*ssa.Function][]Flow,
 ) ([]flow, error) {
 	if len(unsoundCalleeFlows) == 0 {
 		// No unsound callees: every must-not-flow that inferCalleeSummaries was able to block is
@@ -280,7 +301,11 @@ func unprovenFlowsAfterCalleeCheck(
 	for _, mnf := range mustNotFlows {
 		// Each must-not-flow is searched for on its own, rather than all of them at once, because
 		// each needs its own independent proven/unproven verdict.
-		if mustNotFlowIsRealizable(inf.fg, mnf, admit) {
+		realizable, err := mustNotFlowIsRealizable(ctx, inf.fg, mnf, admit)
+		if err != nil {
+			return nil, err
+		}
+		if realizable {
 			stillUnproven = append(stillUnproven, mnf)
 		}
 	}
@@ -335,8 +360,13 @@ func realizableCalleeEdges(
 
 // mustNotFlowIsRealizable reports whether some input matching one of mnfEdges' sources can still
 // reach an output matching that edge's target, travelling only over edges admit accepts.
-func mustNotFlowIsRealizable(fg *flowGraph, mnf flow, admit func(gedge) bool) bool {
+func mustNotFlowIsRealizable(
+	ctx context.Context, fg *flowGraph, mnf flow, admit func(gedge) bool,
+) (bool, error) {
 	for _, src := range fg.seeds {
+		if err := checkCancelled(ctx, "must-not-flow re-check"); err != nil {
+			return false, err
+		}
 		if src.node != mnf.from.node || !pathsOverlap(src.path, mnf.from.path) {
 			continue
 		}
@@ -345,11 +375,11 @@ func mustNotFlowIsRealizable(fg *flowGraph, mnf flow, admit func(gedge) bool) bo
 				continue
 			}
 			if v.node == mnf.to.node && pathsOverlap(v.path, mnf.to.path) {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
 // edgesForUnsoundCalleeFlows resolves each unsound callee's reported UnprovenMustNotFlows (given in
@@ -452,7 +482,8 @@ func flowFromReport(g *dataflow.SummaryGraph, f Flow) (flow, error) {
 //
 // coarsen then collapses whatever precision turned out to be unobservable.
 func buildGraph(
-	s *State, g *dataflow.SummaryGraph, prec *precisions, wantFlows, mustNotFlows []flow,
+	ctx context.Context, s *State, g *dataflow.SummaryGraph,
+	prec *precisions, wantFlows, mustNotFlows []flow,
 ) (*flowGraph, error) {
 	fg := newFlowGraph()
 	fg.outputPaths = calleeOutputDemand(g)
@@ -460,7 +491,11 @@ func buildGraph(
 		seed := newVertex(
 			input.Node, newPath(input.AccessPaths[0], maxPathLen),
 			nil, input.Status, nil)
-		if err := buildFlowGraph(s, fg, seed); err != nil {
+		if err := buildFlowGraph(ctx, s, fg, seed); err != nil {
+			// Cancellation will recur for every remaining input, so abort instead of skipping.
+			if ctx.Err() != nil {
+				return nil, err
+			}
 			s.Logger.Errorf("failed to build flow graph for input %v: %v", input, err)
 			continue
 		}
@@ -776,11 +811,15 @@ func checkCalleeVocabulary(fg *flowGraph, edges []gedge) error {
 // at multiple sites must have identical inferred summaries, known (hard) edges are asserted true, and
 // reachability propagates flows through the graph. inferCalleeSummaries adds the soft
 // (maximization) and must-not-flow (blocking) constraints on top.
-func calleeGraphConstraints(fg *flowGraph) []maxsat.Constr {
+func calleeGraphConstraints(ctx context.Context, fg *flowGraph) ([]maxsat.Constr, error) {
+	reach, err := buildReachabilityConstraints(ctx, fg)
+	if err != nil {
+		return nil, err
+	}
 	var constrs []maxsat.Constr
 	constrs = append(constrs, buildHardConstraints(fg)...)
-	constrs = append(constrs, buildReachabilityConstraints(fg)...)
-	return constrs
+	constrs = append(constrs, reach...)
+	return constrs, nil
 }
 
 // buildSoftConstraints returns the constraints to maximize the soft (unknown) edges.
@@ -834,9 +873,12 @@ func reachLit(src, v vertex) maxsat.Lit {
 // into root-to-output paths and emitted one transitivity clause per path, which to stay polynomial had
 // to pick one prefix and one suffix per edge based on traversal order -- so the constraint set was not
 // a function of the graph, and two runs could disagree about whether a must-not-flow was provable.
-func buildReachabilityConstraints(fg *flowGraph) []maxsat.Constr {
+func buildReachabilityConstraints(ctx context.Context, fg *flowGraph) ([]maxsat.Constr, error) {
 	var constrs []maxsat.Constr
 	for _, src := range fg.seeds {
+		if err := checkCancelled(ctx, "reachability encoding"); err != nil {
+			return nil, err
+		}
 		constrs = append(constrs, maxsat.HardClause(reachLit(src, src)))
 		for _, v := range reachableFrom(fg, src) {
 			for _, e := range fg.out[v.key()] {
@@ -847,7 +889,7 @@ func buildReachabilityConstraints(fg *flowGraph) []maxsat.Constr {
 			}
 		}
 	}
-	return constrs
+	return constrs, nil
 }
 
 // mustNotFlowReachability returns the reachability variables that realize some must-not-flow: one per
@@ -862,7 +904,9 @@ func buildReachabilityConstraints(fg *flowGraph) []maxsat.Constr {
 // fieldSensitive additionally blocks flows between distinct fields of a node that the must-not-flows
 // only ever name as a whole. Without it, a field-sensitive summary that says nothing about a node's
 // fields would let one field reach another and be used as a stepping stone.
-func mustNotFlowReachability(fg *flowGraph, mustNotFlows []flow, fieldSensitive bool) []maxsat.Lit {
+func mustNotFlowReachability(
+	ctx context.Context, fg *flowGraph, mustNotFlows []flow, fieldSensitive bool,
+) ([]maxsat.Lit, error) {
 	// Nodes the must-not-flows name without any access path.
 	namedAsWhole := make(map[dataflow.GraphNode]bool)
 	for _, mnf := range mustNotFlows {
@@ -888,6 +932,9 @@ func mustNotFlowReachability(fg *flowGraph, mustNotFlows []flow, fieldSensitive 
 	}
 
 	for _, src := range fg.seeds {
+		if err := checkCancelled(ctx, "must-not-flow encoding"); err != nil {
+			return nil, err
+		}
 		reachable := reachableFrom(fg, src)
 		for _, mnf := range mustNotFlows {
 			if src.node != mnf.from.node || !pathsOverlap(src.path, mnf.from.path) {
@@ -912,17 +959,23 @@ func mustNotFlowReachability(fg *flowGraph, mustNotFlows []flow, fieldSensitive 
 			add(src, v)
 		}
 	}
-	return lits
+	return lits, nil
 }
 
 // buildMustNotFlowConstraints returns the constraints that block must-not-flows: no input may reach
 // an output the summary says it must not reach.
-func buildMustNotFlowConstraints(fg *flowGraph, mustNotFlows []flow, fieldSensitive bool) []maxsat.Constr {
+func buildMustNotFlowConstraints(
+	ctx context.Context, fg *flowGraph, mustNotFlows []flow, fieldSensitive bool,
+) ([]maxsat.Constr, error) {
+	lits, err := mustNotFlowReachability(ctx, fg, mustNotFlows, fieldSensitive)
+	if err != nil {
+		return nil, err
+	}
 	var constrs []maxsat.Constr
-	for _, lit := range mustNotFlowReachability(fg, mustNotFlows, fieldSensitive) {
+	for _, lit := range lits {
 		constrs = append(constrs, maxsat.HardClause(lit.Negation()))
 	}
-	return constrs
+	return constrs, nil
 }
 
 // sortedUnknownEdges flattens unknown into a single deterministically ordered slice.
@@ -971,9 +1024,9 @@ func sortedUnknownCalls(unknown map[*dataflow.CallNode][]edge) []*dataflow.CallN
 const maxOptimalModels = 100
 
 func findAllOptimalModels(
-	model maxsat.Model, optimalCost int, constraints []maxsat.Constr,
+	ctx context.Context, model maxsat.Model, optimalCost int, constraints []maxsat.Constr,
 	unknown map[*dataflow.CallNode][]edge,
-) []maxsat.Model {
+) ([]maxsat.Model, error) {
 	// The unknown edge variables, in a deterministic order: these are the only ones blocked (the
 	// hard-edge variables are fixed anyway), and the order they appear in each blocking clause
 	// steers the solver's search, so iterating the model map here would make which co-optimal
@@ -994,6 +1047,12 @@ func findAllOptimalModels(
 	// Enumerate all other optimal solutions by blocking previous ones
 	// Create blocking clause: at least one UNKNOWN variable must differ from current model
 	for len(allOptimalModels) < maxOptimalModels {
+		// Abort rather than returning the models found so far: modelsAreComplete infers truncation from
+		// having hit maxOptimalModels, so a short enumeration would claim to be complete and every
+		// unenumerated summary edge would be treated as disproven.
+		if err := checkCancelled(ctx, "model enumeration"); err != nil {
+			return nil, err
+		}
 		var blockingLits []maxsat.Lit
 		for _, varName := range unknownVars {
 			val, ok := model[varName]
@@ -1028,7 +1087,7 @@ func findAllOptimalModels(
 		model = newModel
 	}
 
-	return allOptimalModels
+	return allOptimalModels, nil
 }
 
 // modelsAreComplete reports whether findAllOptimalModels enumerated every optimal model rather than

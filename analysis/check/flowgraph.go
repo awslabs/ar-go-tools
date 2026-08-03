@@ -15,6 +15,7 @@
 package check
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strconv"
@@ -250,7 +251,7 @@ func (fg *flowGraph) addEdge(e gedge) (fromIsNew, toIsNew bool) {
 
 // buildFlowGraph runs the worklist fixpoint starting from src, adding every discovered vertex and
 // edge to fg. It is the entry point; everything below it is the per-node successor logic it drives.
-func buildFlowGraph(s *State, fg *flowGraph, src vertex) error {
+func buildFlowGraph(ctx context.Context, s *State, fg *flowGraph, src vertex) error {
 	// The seed is never treated as a sink even if isOutputNode(src.node) holds (it always does for
 	// a ParamNode, regardless of whether that parameter is an output of the check being
 	// performed), so its edges come from expandFrom -- the same successor logic as expandVertex,
@@ -282,6 +283,9 @@ func buildFlowGraph(s *State, fg *flowGraph, src vertex) error {
 	}
 
 	for len(worklist) > 0 {
+		if err := checkCancelled(ctx, "flow graph construction"); err != nil {
+			return err
+		}
 		v := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 

@@ -346,7 +346,10 @@ func checkSummary(
 		soundnessResultBase.Unsoundness = unsoundness
 		soundnessResultBase.Time = time.Since(start)
 		soundnessResultBase.Method = Recursive
-		return soundnessResultBase, fmt.Errorf("%w for %s: %v", errInfer, f, err)
+		// Wraps both the sentinel and the cause: callers test errors.Is against errInfer to decide how
+		// to report, and against context.DeadlineExceeded to set TimedOut. Wrapping only the sentinel
+		// loses the latter silently.
+		return soundnessResultBase, fmt.Errorf("%w for %s: %w", errInfer, f, err)
 	}
 	if len(calleeSummaries) == 0 {
 		s.Logger.Tracef("no callee results for function %s: done analyzing\n", f)
@@ -400,7 +403,7 @@ func checkSummary(
 		unsoundness.UnprovenMustNotFlows = nil
 	} else {
 		stillUnproven, pruneErr := unprovenFlowsAfterCalleeCheck(
-			s, g, wantFlows, unprovenMustNotFlows, calleeGraph, unsoundCalleeFlows)
+			ctx, s, g, wantFlows, unprovenMustNotFlows, calleeGraph, unsoundCalleeFlows)
 		if pruneErr != nil {
 			return soundnessResultBase, fmt.Errorf(
 				"failed to determine unproven must-not-flows after callee check for %s: %v", f, pruneErr)

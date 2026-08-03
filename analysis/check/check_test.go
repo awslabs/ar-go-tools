@@ -17,6 +17,7 @@ package check_test
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"go/token"
 	"path/filepath"
@@ -3090,6 +3091,58 @@ func TestCheckSummary_RedundantCallSiteSelfFlow(t *testing.T) {
 	}
 	if len(got) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(got))
+	}
+}
+
+// TestCheckSummary_CancelledContext asserts that cancelling the context surfaces as an error rather
+// than as a soundness verdict.
+//
+// Must-not-flows are proven by absence of evidence, so an interrupted search must never be read as an
+// absence: a timed-out summary reported Sound would be proven by a search that never finished.
+func TestCheckSummary_CancelledContext(t *testing.T) {
+	dir := filepath.Join("./testdata", "fields")
+	lp, err := analysistest.LoadTest(
+		testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	ptrState, err := ptr.NewState(lp).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	state := newCheckState(t, ptrState)
+
+	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/fields"
+	summary := summaries.NewFunctionFlowSummary(pkg, "differentOutputDepths", summaries.DetailedSummary{
+		Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+			summaries.ArgumentSNode{Name: "a", Index: 1, ObjectPath: ".First"}: {
+				summaries.ReturnSNode{Index: 0},
+			},
+		},
+	})
+	specs := []dataflow.ScanningSpec{
+		{
+			IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+				return dataflow.IsNodeOfInterest(state.State, node)
+			},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	got, _, err := check.CheckSummary(ctx, state, summary, specs, false)
+	if err == nil {
+		t.Fatal("expected an error from a cancelled context, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected the error to wrap context.Canceled, got %v", err)
+	}
+	for _, r := range got {
+		if r.Soundness == check.Sound {
+			t.Errorf("cancelled check reported %s as Sound", r.Name)
+		}
 	}
 }
 
