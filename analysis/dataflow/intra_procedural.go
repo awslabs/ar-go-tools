@@ -86,20 +86,22 @@ func IntraProceduralAnalysis(ctx context.Context, state *State,
 // RunIntraProcedural does not add any nod except bound label nodes to the summary graph, it only updates information
 // related to the edges.
 func RunIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph) (time.Duration, int, error) {
-	return runIntraProcedural(ctx, a, sm, maxAccessPathLength)
+	return runIntraProcedural(ctx, a, sm, maxAccessPathLength, false)
 }
 
-// RunIntraProceduralFields runs the intra-procedural analysis with field-sensitive (if required by
-// the config) access paths bounded by maxPathLen.
+// RunIntraProceduralFields runs the intra-procedural analysis with field-sensitive access paths bounded
+// by maxPathLen, whether or not the config's field-sensitive-funcs matches sm.Parent.
 func RunIntraProceduralFields(
 	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int,
 ) (time.Duration, int, error) {
-	return runIntraProcedural(ctx, a, sm, maxPathLen)
+	return runIntraProcedural(ctx, a, sm, maxPathLen, true)
 }
 
 // runIntraProcedural runs the intra-procedural analysis on sm, returning the elapsed time, the
 // number of distinct SSA values tracked, and an error if the analysis failed.
-func runIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int) (time.Duration, int, error) {
+func runIntraProcedural(
+	ctx context.Context, a *State, sm *SummaryGraph, maxPathLen int, forceFieldSensitive bool,
+) (time.Duration, int, error) {
 	if sm == nil {
 		return 0, 0, fmt.Errorf("summary graph is nil")
 	}
@@ -108,7 +110,7 @@ func runIntraProcedural(ctx context.Context, a *State, sm *SummaryGraph, maxPath
 		reportUnsoundFeatures(a, sm.unsoundness)
 	}
 	start := time.Now()
-	flowInfo := newFlowInfo(a.Config, sm.Parent, maxPathLen)
+	flowInfo := newFlowInfo(a.Config, sm.Parent, maxPathLen, forceFieldSensitive)
 	// If there  are too many variables, we will likely not be able to analyze
 	if flowInfo.NumValues > 10000 {
 		return time.Since(start), int(flowInfo.NumValues), fmt.Errorf("too many values (%d) in %s", flowInfo.NumValues, sm.Parent.Name())

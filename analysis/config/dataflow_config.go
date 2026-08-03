@@ -192,15 +192,6 @@ func (c Config) IsPathSensitiveFunc(funcName string) bool {
 	return false
 }
 
-// SetPathSensitiveFunc adds a function to the path-sensitive functions list
-func (c *Config) SetPathSensitiveFunc(funcName string) {
-	pattern := regexp.QuoteMeta(funcName)
-	c.PathSensitiveFuncs = append(c.PathSensitiveFuncs, pattern)
-	if r, err := regexp.Compile(pattern); err == nil {
-		c.pathSensitiveFuncsRegexes = append(c.pathSensitiveFuncsRegexes, r)
-	}
-}
-
 // Below are functions used to query the configuration on specific facts
 
 func (c Config) isSomeTaintSpecCid(cid CodeIdentifier, f func(t TaintSpec, cid CodeIdentifier) bool) bool {

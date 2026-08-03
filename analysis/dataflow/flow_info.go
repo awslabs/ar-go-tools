@@ -74,7 +74,7 @@ type FlowInformation struct {
 
 // newFlowInfo returns a new FlowInformation with field-sensitivity if required by cfg.
 // The maximum length of each access path is pathLen.
-func newFlowInfo(cfg *config.Config, f *ssa.Function, maxPathLen int) *FlowInformation {
+func newFlowInfo(cfg *config.Config, f *ssa.Function, maxPathLen int, forceFieldSensitive bool) *FlowInformation {
 	valueID := map[ssa.Value]IndexT{}
 	numValues := IndexT(0)
 	lang.IterateValues(f, func(_ int, v ssa.Value) {
@@ -111,8 +111,8 @@ func newFlowInfo(cfg *config.Config, f *ssa.Function, maxPathLen int) *FlowInfor
 	})
 
 	fieldLength := make([]int, numValues)
-	allFieldSensitive := false
-	if f != nil {
+	allFieldSensitive := forceFieldSensitive
+	if !allFieldSensitive && f != nil {
 		allFieldSensitive = cfg.IsPathSensitiveFunc(f.String())
 	}
 	for i := range values {

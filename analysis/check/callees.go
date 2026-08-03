@@ -99,7 +99,6 @@ func inferCalleeSummaries(
 			// flows in the summary we are checking.
 			k := prec.longestPathLen
 			s.Logger.Debugf("\twith path length: %d\n", k)
-			s.Config.SetPathSensitiveFunc(g.Parent.String())
 			// TODO We want to use node-level precision eventually; but for now, just set the
 			// precision of every node to the precision of the most-precise node (node with the
 			// longest access path).
