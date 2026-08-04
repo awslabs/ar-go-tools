@@ -134,7 +134,7 @@ func (a *AbstractValue) MarksAt(path string) []MarkWithAccessPath {
 	marks := []MarkWithAccessPath{}
 	for p, m := range a.accessMarks {
 		// Logic for matching paths
-		relAccessPath, ok := strings.CutPrefix(p, path)
+		relAccessPath, ok := accessPathCutPrefix(p, path)
 		if p == "" {
 			relAccessPath = p
 			ok = true
@@ -234,8 +234,15 @@ func (a *AbstractValue) HasMarkAt(path string, m *Mark) bool {
 	if a.pathLength == 0 {
 		return a.marks[m]
 	}
-	for _, m2 := range a.MarksAt(path) {
-		if m2.Mark == m {
+	// The path matching here must agree with MarksAt: an empty stored path matches any queried
+	// path, and otherwise the stored path must extend it at an element boundary.
+	for p, marks := range a.accessMarks {
+		if p != "" {
+			if _, ok := accessPathCutPrefix(p, path); !ok {
+				continue
+			}
+		}
+		if marks[m] {
 			return true
 		}
 	}
@@ -367,15 +374,32 @@ func accessPathPrependIndexing(path string) string {
 	return accessPathPrepend(path, "[*]")
 }
 
+// accessPathCutPrefix removes prefix from path, but only when prefix ends on an element boundary,
+// and reports whether it did. If it does not, path is returned unchanged.
+//
+// A string prefix is not necessarily a path prefix: ".SDKException" is a string prefix of
+// ".SDKExceptionMessage", but those are sibling fields, not nested ones. The remainder must therefore
+// be empty or start with a separator, otherwise it is not a well-formed access path.
+func accessPathCutPrefix(path string, prefix string) (string, bool) {
+	rest, ok := strings.CutPrefix(path, prefix)
+	if !ok {
+		return path, false
+	}
+	if rest == "" || rest[0] == '.' || rest[0] == '[' {
+		return rest, true
+	}
+	return path, false
+}
+
 // accessPathMatchField checks whether path starts with the field fieldName.
 // For example, accessPathMatchField(".field1.field2", "field1") is ".field2", true
-// and accessPathMatchField(".field2.field1", "field1") is "field2.field1", false.
-// / If path is empty, always returns true.
+// and accessPathMatchField(".field2.field1", "field1") is ".field2.field1", false.
+// If path is empty, always returns true.
 func accessPathMatchField(path string, fieldName string) (string, bool) {
 	if path == "" {
 		return "", true
 	}
-	return strings.CutPrefix(path, "."+fieldName)
+	return accessPathCutPrefix(path, "."+fieldName)
 }
 
 // accessPathMatchIndex checks whether path start with some indexing and returns the suffix

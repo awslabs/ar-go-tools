@@ -15,8 +15,10 @@
 package dataflow
 
 import (
+	"fmt"
 	"go/types"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +57,36 @@ func Test_accessPathMatchField(t *testing.T) {
 			want:  ".field2.field1",
 			want1: false,
 		},
+		{
+			name:  "field name is a string prefix of the path's field",
+			args:  args{path: ".SDKExceptionMessage", fieldName: "SDKException"},
+			want:  ".SDKExceptionMessage",
+			want1: false,
+		},
+		{
+			name:  "field name is a string prefix of the path's field, deeper path",
+			args:  args{path: ".SDKExceptionMessage.field1", fieldName: "SDKException"},
+			want:  ".SDKExceptionMessage.field1",
+			want1: false,
+		},
+		{
+			name:  "path's field is a string prefix of the field name",
+			args:  args{path: ".SDKException", fieldName: "SDKExceptionMessage"},
+			want:  ".SDKException",
+			want1: false,
+		},
+		{
+			name:  "exact field name",
+			args:  args{path: ".SDKException", fieldName: "SDKException"},
+			want:  "",
+			want1: true,
+		},
+		{
+			name:  "field then indexing",
+			args:  args{path: ".SDKException[*]", fieldName: "SDKException"},
+			want:  "[*]",
+			want1: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -66,6 +98,80 @@ func Test_accessPathMatchField(t *testing.T) {
 				t.Errorf("accessPathMatchField() got1 = %v, want %v", got1, tt.want1)
 			}
 		})
+	}
+}
+
+// isWellFormedAccessPath returns true if path is empty or starts with a path separator.
+func isWellFormedAccessPath(path string) bool {
+	return path == "" || path[0] == '.' || path[0] == '['
+}
+
+// formatMarks formats marks by label and relative path. Mark.String cannot be used here because the
+// test marks have no ssa node.
+func formatMarks(marks []MarkWithAccessPath) string {
+	s := make([]string, 0, len(marks))
+	for _, m := range marks {
+		s = append(s, fmt.Sprintf("{%s at %q}", m.Mark.Label, m.AccessPath))
+	}
+	return "[" + strings.Join(s, " ") + "]"
+}
+
+// Test_accessPathMatchField_wellFormedSuffix checks that a successful match always leaves a
+// well-formed access path. A suffix without a leading separator gets re-prefixed by
+// accessPathPrepend, which produces a path that grows by one field name on every iteration of the
+// intra-procedural fixpoint and is never truncated, since accessPathLen only counts separators.
+func Test_accessPathMatchField_wellFormedSuffix(t *testing.T) {
+	fields := []string{"Exception", "ExceptionMessage", "FinalException", "A", "AB"}
+	for _, path := range fields {
+		for _, field := range fields {
+			suffix, ok := accessPathMatchField("."+path, field)
+			if ok && !isWellFormedAccessPath(suffix) {
+				t.Errorf("accessPathMatchField(%q, %q) = %q, which is not a well-formed access path",
+					"."+path, field, suffix)
+			}
+		}
+	}
+}
+
+func Test_AbstractValue_marksAtSiblingFields(t *testing.T) {
+	exception := &Mark{Label: "exception"}
+	exceptionMessage := &Mark{Label: "exceptionMessage"}
+	a := NewAbstractValue(nil, 2)
+	a.add(".Exception", exception)
+	a.add(".ExceptionMessage", exceptionMessage)
+
+	// .ExceptionMessage is a sibling of .Exception, not a member of it, so the mark on
+	// .ExceptionMessage must not be visible when reading .Exception.
+	marks := a.MarksAt(".Exception")
+	if len(marks) != 1 || marks[0].Mark != exception || marks[0].AccessPath != "" {
+		t.Errorf("MarksAt(\".Exception\") = %v, want the mark on .Exception with an empty relative path",
+			formatMarks(marks))
+	}
+	if a.HasMarkAt(".Exception", exceptionMessage) {
+		t.Error("HasMarkAt(\".Exception\", exceptionMessage) = true, want false")
+	}
+	if !a.HasMarkAt(".Exception", exception) {
+		t.Error("HasMarkAt(\".Exception\", exception) = false, want true")
+	}
+	for _, m := range marks {
+		if !isWellFormedAccessPath(m.AccessPath) {
+			t.Errorf("MarksAt returned relative path %q, which is not a well-formed access path", m.AccessPath)
+		}
+	}
+}
+
+func Test_AbstractValue_marksAtNestedField(t *testing.T) {
+	nested := &Mark{Label: "nested"}
+	a := NewAbstractValue(nil, 2)
+	a.add(".Exception.Message", nested)
+
+	marks := a.MarksAt(".Exception")
+	if len(marks) != 1 || marks[0].Mark != nested || marks[0].AccessPath != ".Message" {
+		t.Errorf("MarksAt(\".Exception\") = %v, want the mark on .Exception.Message at relative path .Message",
+			formatMarks(marks))
+	}
+	if !a.HasMarkAt(".Exception", nested) {
+		t.Error("HasMarkAt(\".Exception\", nested) = false, want true")
 	}
 }
 
