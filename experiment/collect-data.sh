@@ -21,13 +21,24 @@ mkdir -p experiment/results
 
 run() {
   local repo="$1"; shift
+  # llm-summaries and generated-configs are mounted rather than living inside the image:
+  # llm-summaries is not tracked in git, and generated-configs must persist across the separate
+  # containers each step below runs in.
   docker run --rm --memory="$MEM_LIMIT" --memory-swap="$MEM_LIMIT" \
     -v "$(pwd)/experiment/results:/usr/src/app/experiment/results" \
+    -v "$(pwd)/experiment/llm-summaries:/usr/src/app/experiment/llm-summaries" \
+    -v "$(pwd)/experiment/generated-configs:/usr/src/app/experiment/generated-configs" \
     argot-experiment "$@"
 }
 
 for repo in amazon-ssm-agent badger govatar prometheus sample; do
   mkdir -p "experiment/results/$repo"
+
+  # Each step below is its own container, so the configs must live on a mount to survive between
+  # them. Without this, run-check finds no check-*-split-*.yaml at all.
+  echo "=== $repo: generate-configs ==="
+  run "$repo" generate-configs --repo "$repo" \
+    || echo "$repo generate-configs FAILED (exit $?)"
 
   echo "=== $repo: run-check ==="
   run "$repo" run-check --repo "$repo" --out "results/$repo/check.json" \
