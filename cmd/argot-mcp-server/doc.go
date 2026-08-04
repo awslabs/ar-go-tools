@@ -40,6 +40,8 @@
 //   - argot_dataflow_summarize: Build dataflow summaries
 //   - argot_show_callees/callers: Show call relationships
 //   - go_dependencies: Analyze package dependencies
+//   - check_summary_valid: Validate a dataflow summaries file/content for well-formedness
+//     problems (e.g. self-flows) detectable without loading a program
 //
 // Function-Level Analysis (requires focused function):
 //   - argot_function_focus/unfocus: Focus on specific functions

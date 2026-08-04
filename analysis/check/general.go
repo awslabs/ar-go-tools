@@ -25,6 +25,70 @@ import (
 	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
 
+// ValidateSummary checks want for well-formedness problems that are detectable from its syntax
+// alone, without loading or resolving it against any program. This lets callers (e.g. an LLM
+// summary generator) reject a malformed summary immediately, instead of only discovering the
+// problem indirectly once CheckSummary tries to resolve it against a live SummaryGraph.
+//
+// Currently checks that every summary has at least one flow that is not a self-flow (same base
+// node and the same access path, e.g. "(!receiver).Foo" -> "(!receiver).Foo"). Self-flows carry
+// no information -- they are always dropped by summaryFlows' own redundant-flow filtering -- so
+// a summary made up entirely of them (e.g. one self-flow declared per struct field, in place of
+// the real cross-field flows) is vacuous. A self-flow mixed in with genuine flows is not an
+// error here: it is silently filtered out later by summaryFlows, same as any other redundant
+// flow.
+func ValidateSummary(want summaries.DetailedSummary) error {
+	if len(want.Flows) == 0 {
+		return nil
+	}
+	for from, tos := range want.Flows {
+		for _, to := range tos {
+			if !isSyntacticSelfFlow(from, to) {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf(
+		"summary contains only self-flows (e.g. %s): once redundant flows are filtered out, "+
+			"this summary carries no information", firstFlowDesc(want))
+}
+
+// isSyntacticSelfFlow returns true if from and to denote the exact same memory location, based
+// only on their syntactic SummaryNode representation: same base node (ignoring object path) and
+// the same access path. This mirrors summaryFlows' own self-flow test (same dataflow.GraphNode
+// and path both covering each other, i.e. equal paths), but without needing a resolved graph
+// node -- only the SummaryNode itself. A flow from a coarser node to one of its own fields (e.g.
+// "!receiver" -> "(!receiver).Foo") is deliberately NOT a self-flow: it is a real, meaningful
+// flow, not a redundant one.
+// needing a resolved graph node -- only the SummaryNode itself.
+func isSyntacticSelfFlow(from, to summaries.SummaryNode) bool {
+	if from.WithObjectPath("") != to.WithObjectPath("") {
+		return false
+	}
+	stripVectorMarker := func(p string) string { return strings.ReplaceAll(p, "[*]", "") }
+	fromPath := newPath(stripVectorMarker(from.Path()), maxPathLen)
+	toPath := newPath(stripVectorMarker(to.Path()), maxPathLen)
+	return fromPath.isCoveredBy(toPath) && toPath.isCoveredBy(fromPath)
+}
+
+// firstFlowDesc returns a deterministic description of one flow in want, for use in an error
+// message. want must be non-empty.
+func firstFlowDesc(want summaries.DetailedSummary) string {
+	var froms []summaries.SummaryNode
+	for from := range want.Flows {
+		froms = append(froms, from)
+	}
+	slices.SortFunc(froms, func(a, b summaries.SummaryNode) int {
+		return strings.Compare(a.String(), b.String())
+	})
+	from := froms[0]
+	tos := want.Flows[from]
+	to := slices.MinFunc(tos, func(a, b summaries.SummaryNode) int {
+		return strings.Compare(a.String(), b.String())
+	})
+	return fmt.Sprintf("%s -> %s", from, to)
+}
+
 // checkSummaryMostGeneral checks the soundness of want by comparing it to the most-general summary
 // of g.
 // The most-general summary assumes that all function inputs (parameters) flow to all function

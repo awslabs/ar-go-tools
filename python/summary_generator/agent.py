@@ -60,12 +60,18 @@ Your workflow:
    - Generate a dataflow summary following the YAML format from the prompt
 4. Write the summaries with write_yaml_file, using exactly the filename given in the request
    (not a name based on the function/package)
+5. Validate the file you just wrote with check_summary_valid (pass the same filename as
+   'path'). If it reports any problems (e.g. a self-flow, or a summary with no real flows
+   once self-flows are removed), fix the affected summaries and write the file again with
+   write_yaml_file, then re-validate. Repeat until check_summary_valid reports no problems.
 
 You have access to file operations:
 - get_dataflow_summary_prompt: Get the dataflow summary generation instructions
 - list_files: List files in a directory
 - read_file: Read any text file
 - write_yaml_file: Write YAML files (only .yaml/.yml extensions allowed)
+- check_summary_valid: Check a summaries file for well-formedness problems (e.g. self-flows)
+  that are detectable from the YAML alone, without loading the program
 
 All file operations are restricted to a dedicated output directory and its subdirectories (not the config file's own directory, and not the analyzed program's directory).
 
@@ -275,5 +281,7 @@ Follow the workflow:
 2. For each function, gather context and generate a summary
 3. Write the summaries to {out_file} with write_yaml_file, using exactly that filename
    (not a name based on the function/package). Output the same YAML document as your response.
+4. Validate {out_file} with check_summary_valid. If it reports any problems, fix the
+   affected summaries, write the file again, and re-validate until no problems remain.
 """
     return str(agent(prompt))

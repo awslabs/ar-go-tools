@@ -193,6 +193,14 @@ func ParseSummariesFile(path string) ([]FrontendDataflowSummary, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ParseSummaries(content)
+}
+
+// ParseSummaries parses content representing a Summaries structure, serialized either in yaml
+// or json format. This is the shared implementation behind ParseSummariesFile, for callers that
+// already have the content in memory (e.g. a summary an LLM just generated, before it is even
+// written to disk).
+func ParseSummaries(content []byte) ([]FrontendDataflowSummary, error) {
 	var summaries *rawSummaries
 	errJson := json.Unmarshal(content, &summaries)
 	if errJson == nil {

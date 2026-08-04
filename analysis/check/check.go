@@ -111,6 +111,19 @@ func CheckSummary(
 	// NOTE Hardcode config so we don't make unintentional mistakes.
 	s.Config.DataflowProblems.CheckIgnoresUnsound = true
 
+	if err := ValidateSummary(want.Summary()); err != nil {
+		return []SoundnessResult{{
+			Name:        want.Name(),
+			SummaryName: want.Name(),
+			Want:        want.Summary(),
+			Soundness:   Error,
+			Unsoundness: Unsoundness{
+				UnprovenMustNotFlows: []Flow{},
+				BadForm:              err,
+			},
+		}}, false, fmt.Errorf("invalid summary %s: %v", want.Name(), err)
+	}
+
 	// SPECIAL CASE: INTERFACES
 	if ifaceSummary, isIfaceSummary := want.(summaries.IfaceMethodFlowSummary); isIfaceSummary {
 		// Checking a summary that is for a method of an interface

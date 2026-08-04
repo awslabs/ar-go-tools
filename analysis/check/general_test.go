@@ -23,6 +23,8 @@ import (
 	"slices"
 	"sort"
 	"testing"
+
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
 )
 
 // syntheticRequestSrc mirrors the shape of aws-sdk-go's request.Request that motivates
@@ -223,5 +225,76 @@ func TestRelevantPathsOfType_ZeroDepth(t *testing.T) {
 	got := relevantPathsOfType(requestType, 0, mustPaths(t, ".Data"))
 	if len(got) != 1 || got[0].len() != 0 {
 		t.Errorf("relevantPathsOfType(Request, 0, [.Data]) = %v, want a single empty path", got)
+	}
+}
+
+func TestValidateSummary(t *testing.T) {
+	tests := []struct {
+		name    string
+		summary summaries.DetailedSummary
+		wantErr bool
+	}{
+		{
+			name:    "empty summary is valid",
+			summary: summaries.DetailedSummary{},
+			wantErr: false,
+		},
+		{
+			name: "single genuine flow is valid",
+			summary: summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ArgumentSNode{Index: 0}: {summaries.ReturnSNode{Index: 0}},
+			}},
+			wantErr: false,
+		},
+		{
+			// Reproduces the reported (*.../aws/csm.metric).TruncateFields case: every declared
+			// flow is a field flowing to itself, so the whole summary is vacuous once redundant
+			// self-flows are (as they always are, see summaryFlows) filtered out.
+			name: "only-self-flows summary is invalid",
+			summary: summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ReceiverSNode{ObjectPath: ".AWSException"}:        {summaries.ReceiverSNode{ObjectPath: ".AWSException"}},
+				summaries.ReceiverSNode{ObjectPath: ".AWSExceptionMessage"}: {summaries.ReceiverSNode{ObjectPath: ".AWSExceptionMessage"}},
+				summaries.ReceiverSNode{ObjectPath: ".ClientID"}:            {summaries.ReceiverSNode{ObjectPath: ".ClientID"}},
+			}},
+			wantErr: true,
+		},
+		{
+			// A self-flow mixed in with a real flow must NOT be rejected here: summaryFlows
+			// silently filters individual self-flows out later, it's only an error when nothing
+			// real is left.
+			name: "single self-flow among real flows is still valid",
+			summary: summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ReceiverSNode{ObjectPath: ".Foo"}: {summaries.ReceiverSNode{ObjectPath: ".Foo"}},
+				summaries.ArgumentSNode{Index: 0}:           {summaries.ReturnSNode{Index: 0}},
+			}},
+			wantErr: false,
+		},
+		{
+			name: "distinct fields of the same node are not self-flows",
+			summary: summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ReceiverSNode{ObjectPath: ".Params"}: {summaries.ReceiverSNode{ObjectPath: ".Body"}},
+			}},
+			wantErr: false,
+		},
+		{
+			// Coarse-to-field is NOT a self-flow by this codebase's existing definition (see
+			// summaryFlows: it requires the paths to cover each other in both directions, i.e.
+			// be equal) -- a flow from the whole receiver to one of its own fields is considered
+			// meaningful, not redundant.
+			name: "coarse-to-field flow is not a self-flow",
+			summary: summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+				summaries.ReceiverSNode{}: {summaries.ReceiverSNode{ObjectPath: ".Foo"}},
+			}},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateSummary(tc.summary)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("ValidateSummary() = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
 	}
 }

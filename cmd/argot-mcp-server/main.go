@@ -26,9 +26,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/awslabs/ar-go-tools/analysis/check"
 	"github.com/awslabs/ar-go-tools/analysis/config"
 	"github.com/awslabs/ar-go-tools/analysis/dependencies"
 	"github.com/awslabs/ar-go-tools/analysis/loadprogram"
+	"github.com/awslabs/ar-go-tools/analysis/summaries"
 	"github.com/awslabs/ar-go-tools/cmd/argot/cli"
 	"github.com/awslabs/ar-go-tools/cmd/argot/tools"
 	"golang.org/x/tools/go/ssa"
@@ -296,6 +298,29 @@ func (s *serverState) handleToolsList(req jsonRPCRequest) {
 				Required: []string{"paths"},
 			},
 		},
+		{
+			Name: "check_summary_valid",
+			Description: "Checks a dataflow summaries file (YAML or JSON) for well-formedness problems that are " +
+				"detectable from its syntax alone, without loading the summarized program. In particular, flags " +
+				"self-flows (a field flowing to itself, e.g. \"(!receiver).Foo\" -> \"(!receiver).Foo\") and " +
+				"summaries that, once self-flows are removed, contain no real flows at all -- both are signs a " +
+				"generated summary is vacuous or wrong. Provide either 'path' (a file on disk) or 'content' " +
+				"(the summaries YAML/JSON text directly).",
+			InputSchema: tools.MCPInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to a summaries YAML or JSON file to validate.",
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "Summaries YAML or JSON text to validate directly, instead of a file path.",
+					},
+				},
+				Required: []string{},
+			},
+		},
 	}
 	for commandName, tool := range cli.Commands {
 		if allowedCliTools[commandName] {
@@ -329,6 +354,8 @@ func (s *serverState) handleToolCall(req jsonRPCRequest) {
 	switch toolCall.Name {
 	case "go_dependencies":
 		s.handleDependencies(req.ID, toolCall.Arguments)
+	case "check_summary_valid":
+		s.handleCheckSummaryValid(req.ID, toolCall.Arguments)
 	default:
 		// Is this a CLI command?
 		if command, ok := s.tools[toolCall.Name]; ok {
@@ -549,6 +576,62 @@ func (s *serverState) handleDependencies(id interface{}, args map[string]interfa
 
 	s.sendResponse(id, map[string]interface{}{
 		"content": []content{{Type: "text", Text: fmt.Sprintf("%+v", results)}},
+		"isError": false,
+	})
+}
+
+/*
+*
+handleCheckSummaryValid is a method that handles the "check_summary_valid" tool call.
+It parses a dataflow summaries file or inline content and reports well-formedness problems that
+are detectable from the summary's syntax alone (e.g. self-flows), without needing a loaded
+program.
+*/
+func (s *serverState) handleCheckSummaryValid(id interface{}, args map[string]interface{}) {
+	path, _ := args["path"].(string)
+	summaryText, _ := args["content"].(string)
+	if path == "" && summaryText == "" {
+		s.sendError(id, codeInvalidParams, "either 'path' or 'content' must be provided")
+		return
+	}
+	if path != "" && summaryText != "" {
+		s.sendError(id, codeInvalidParams, "only one of 'path' or 'content' may be provided")
+		return
+	}
+
+	var parsed []summaries.FrontendDataflowSummary
+	var err error
+	if path != "" {
+		parsed, err = summaries.ParseSummariesFile(path)
+	} else {
+		parsed, err = summaries.ParseSummaries([]byte(summaryText))
+	}
+	if err != nil {
+		s.sendError(id, codeInvalidParams, fmt.Sprintf("failed to parse summaries: %v", err))
+		return
+	}
+
+	var validationErrs []error
+	for _, summ := range parsed {
+		if err := check.ValidateSummary(summ.Summary()); err != nil {
+			validationErrs = append(validationErrs, fmt.Errorf("%s: %w", summ.Name(), err))
+		}
+	}
+	if len(validationErrs) == 0 {
+		s.sendResponse(id, map[string]interface{}{
+			"content": []content{{Type: "text", Text: fmt.Sprintf("valid: %d summaries checked, no problems found", len(parsed))}},
+			"isError": false,
+		})
+		return
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "invalid: %d problem(s) found across %d summaries:\n", len(validationErrs), len(parsed))
+	for _, verr := range validationErrs {
+		fmt.Fprintf(&b, "- %v\n", verr)
+	}
+	s.sendResponse(id, map[string]interface{}{
+		"content": []content{{Type: "text", Text: b.String()}},
 		"isError": false,
 	})
 }

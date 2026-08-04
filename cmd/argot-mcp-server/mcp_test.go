@@ -149,6 +149,8 @@ func TestMCPServer(t *testing.T) {
 	checkListTool(t, stdin, scanner)
 	// Check resources
 	checkResources(t, stdin, scanner)
+	// Check the summary validity checker tool
+	checkSummaryValidTool(t, stdin, scanner)
 }
 
 func sendRequest(t *testing.T, stdin io.WriteCloser, req jsonRPCRequest) {
@@ -642,4 +644,129 @@ func checkResources(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) 
 	if !strings.Contains(text, "ARGOT") {
 		t.Error("Expected intro doc to contain 'ARGOT'")
 	}
+}
+
+// checkSummaryValidTool exercises the check_summary_valid MCP tool: a well-formed summary must
+// report no problems, a summary containing only self-flows (matching the reported
+// TruncateFields-style regression) must be flagged, missing arguments must error, and an
+// unparsable summary must error.
+func checkSummaryValidTool(t *testing.T, stdin io.WriteCloser, scanner *bufio.Scanner) {
+	const validSummary = `
+dataflow-summaries:
+  - package: "example.com/pkg"
+    function: "F"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+`
+	validReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      13,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "check_summary_valid",
+			"arguments": map[string]interface{}{"content": validSummary},
+		},
+	}
+	sendRequest(t, stdin, validReq)
+	response := readResponse(t, scanner)
+	var validResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &validResp); err != nil {
+		t.Fatal(err)
+	}
+	if validResp.Error != nil {
+		t.Fatalf("check_summary_valid on a well-formed summary failed: %v", validResp.Error)
+	}
+	if text := firstResponseText(t, validResp); !strings.Contains(text, "valid") {
+		t.Errorf("expected well-formed summary to be reported valid, got: %s", text)
+	}
+
+	const selfFlowOnlySummary = `
+dataflow-summaries:
+  - package: "github.com/aws/aws-sdk-go/aws/csm"
+    receiver: "*metric"
+    method: "TruncateFields"
+    flows:
+      - from: "(!receiver).AWSException"
+        to: "(!receiver).AWSException"
+      - from: "(!receiver).ClientID"
+        to: "(!receiver).ClientID"
+`
+	invalidReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      14,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "check_summary_valid",
+			"arguments": map[string]interface{}{"content": selfFlowOnlySummary},
+		},
+	}
+	sendRequest(t, stdin, invalidReq)
+	response = readResponse(t, scanner)
+	var invalidResp jsonRPCResponse
+	if err := json.Unmarshal([]byte(response), &invalidResp); err != nil {
+		t.Fatal(err)
+	}
+	if invalidResp.Error != nil {
+		t.Fatalf("check_summary_valid on a self-flow-only summary failed: %v", invalidResp.Error)
+	}
+	if text := firstResponseText(t, invalidResp); !strings.Contains(text, "invalid") || !strings.Contains(text, "self-flow") {
+		t.Errorf("expected self-flow-only summary to be reported invalid with a self-flow problem, got: %s", text)
+	}
+
+	// Missing both path and content should error.
+	missingReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      15,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "check_summary_valid",
+			"arguments": map[string]interface{}{},
+		},
+	}
+	sendRequest(t, stdin, missingReq)
+	response = readResponse(t, scanner)
+	var missingResp jsonRPCResponse
+	json.Unmarshal([]byte(response), &missingResp)
+	if missingResp.Error == nil {
+		t.Error("expected error when neither path nor content is provided")
+	}
+
+	// Unparsable content should error.
+	badReq := jsonRPCRequest{
+		JSONRPC: jsonRpcVersion,
+		ID:      16,
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "check_summary_valid",
+			"arguments": map[string]interface{}{"content": "not: valid: yaml: [unterminated"},
+		},
+	}
+	sendRequest(t, stdin, badReq)
+	response = readResponse(t, scanner)
+	var badResp jsonRPCResponse
+	json.Unmarshal([]byte(response), &badResp)
+	if badResp.Error == nil {
+		t.Error("expected error for unparsable summary content")
+	}
+}
+
+func firstResponseText(t *testing.T, resp jsonRPCResponse) string {
+	result, ok := resp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("expected result to be a map")
+	}
+	contents, ok := result["content"].([]interface{})
+	if !ok || len(contents) == 0 {
+		t.Fatal("expected non-empty content array")
+	}
+	item, ok := contents[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected content item to be a map")
+	}
+	text, ok := item["text"].(string)
+	if !ok {
+		t.Fatal("expected text field to be a string")
+	}
+	return text
 }

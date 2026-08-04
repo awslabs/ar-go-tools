@@ -264,6 +264,7 @@ For other providers, use their model IDs:
                 "argot_show_ssa_instr",
                 "argot_function_focus",
                 "argot_function_unfocus",
+                "check_summary_valid",
             }
             if args.mask:
                 for tool_name in args.mask.split(","):
