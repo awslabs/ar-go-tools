@@ -639,6 +639,9 @@ def _run_check_split(repo: str, variant: str, out_path: Path) -> None:
     """
     repo_path = repo_dir(repo)
 
+    # argot check will not create its own reports-dir; it must already exist.
+    (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
+
     merged_report: Dict[str, Any] = {}
     total_duration = 0.0
     found_any_config = False
