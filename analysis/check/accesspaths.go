@@ -15,48 +15,47 @@
 // This file holds the access-path precision decisions made while inferring callee summaries: every
 // answer to "how deeply should this node be tracked?".
 //
-// Field sensitivity here is demand-driven. Tracking a node at depth k means one vertex per access path
-// of its type up to k, and each of those becomes its own maxsat variable, so precision nobody asks for
-// is paid for in problem size and in spurious co-optimal models. The decisions therefore happen in
-// four stages, in this order:
+// Field sensitivity here is demand-driven. Tracking a position at depth k means one vertex per access
+// path of its type up to k, and each of those becomes its own maxsat variable, so precision nobody asks
+// for is paid for in problem size and in spurious co-optimal models.
 //
-//  1. From the summary being checked, before construction. The summary's own flows say which nodes
-//     need which paths.
+// Precision is decided per position, by a bound (see pathbound.go). A bound is a tree over field names,
+// so the descent stops at different depths on different branches, and the access paths it admits form a
+// partition of the position's memory: no two of them overlap, and together they cover all of it. That is
+// what makes truncation a function into the enumerated set, so each concrete access path has exactly one
+// representative and the encoding can never name the same memory twice.
 //
-//  2. During construction, per edge. findMatchingPaths in callees.go decides which paths an edge
+// Three sources contribute to a bound, all joined before construction starts:
+//
+//  1. The summary being checked, and its must-not-flows: the access paths they name.
+//
+//  2. During construction, per edge: findMatchingPaths in callees.go decides which paths an edge
 //     produces from the intra-procedural analysis's own access-path information.
 //
-//  3. During construction, for callee outputs. A callee's body has not been analyzed, so it has no
-//     per-field information of its own; its outputs are tracked only as deeply as some caller is
-//     observed to read them.
+//  3. For callee outputs: a callee's body has not been analyzed, so it has no per-field information of
+//     its own; its outputs are tracked only as deeply as some caller is observed to read them
+//     (calleeOutputDemand).
 //
-//  4. After construction has converged. Two passes narrow what the graph ended up with:
-//     calleeInputDemand fixes one vocabulary per callee input, and coarsen drops precision on
-//     dead-end vertices that nothing can distinguish.
+// The callee input side is the one asymmetry, and it is a *naming* decision rather than a precision one.
+// A callee's summary graph is shared by all of its call sites -- the same ParamNode object represents
+// that parameter at every site -- while the maxsat encoding names a summary edge partly by its access
+// path. Two sites disagreeing about how deeply to track a callee input would give the same summary fact
+// two unrelated variable names, the solver would assign them independently, and the reported summary
+// would be the union of both. So calleeInputNames picks one depth per callee input: the shallowest any
+// site enters it at, since an input's path is inherited from the caller rather than derived from a
+// signature position, and a path above the bound's frontier would have to be *expanded* into the
+// frontier beneath it -- one edge becoming several -- which a per-edge projection cannot do.
 //
-// Stages 3 and 4 exist for the same underlying reason and are easy to confuse. A callee's summary
-// graph is shared by all of its call sites -- the same ParamNode object represents that parameter
-// at every site -- while the maxsat encoding names a summary edge partly by its access path. So if
-// two call sites disagree about how deeply to track a callee node, the same summary fact acquires
-// two unrelated variable names, the solver assigns them independently, and the reported summary is
-// the union of both: more general than any single site's model justified. Both stages force one
-// vocabulary per callee node, differing only in which direction they can move:
+// Naming coarsely does not coarsen what the callee is checked at. calleeInputBounds computes the join of
+// every site's demand and that bound travels with the deduced summary into the callee's own check, so
+// the callee still has to account for every distinction any site relied on.
 //
-//   - Outputs (stage 3) take the *deepest* depth any site reads, aggregated per callee output before
-//     the vertices exist, so construction can materialize them at that depth.
-//   - Inputs (stage 4) take the *shallowest*, because an input's path is inherited from the caller
-//     rather than derived from a signature position, and by the time that divergence is visible the
-//     vertices already exist. A vertex at the empty path stands for every path under it and cannot be
-//     split per field without re-running construction.
-//
-// checkCalleeVocabulary in callees.go enforces the result of both, and fails the run if any callee
-// position ends up named at two overlapping granularities.
+// checkCalleeVocabulary in callees.go enforces the result, and fails the run if any callee position ends
+// up named at two overlapping access paths on the same side.
 package check
 
 import (
-	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/awslabs/ar-go-tools/analysis/dataflow"
 	"golang.org/x/tools/go/ssa"
@@ -75,34 +74,18 @@ type calleeOutput struct {
 	index  int
 }
 
-// pathDemand is the access-path precision one callee output needs: the deepest path any call site
-// reads it at, and the union of the specific paths they read.
-type pathDemand struct {
-	longest  int
-	relevant []path
-}
-
-// calleeOutputDemand computes, per callee output, the precision that output is represented at across
-// the whole of g -- the max depth and the union of relevant paths over every call site of that
-// callee.
+// calleeOutputDemand computes, per callee output, the access path bound that output is represented at
+// across the whole of g: the join of the bounds each call site reads it at.
 //
 // Aggregating per output position rather than per call site is what gives the callee's outputs one
-// vocabulary. calleeInputDemand does the same for inputs.
-func calleeOutputDemand(g *dataflow.SummaryGraph) map[calleeOutput]pathDemand {
-	demand := make(map[calleeOutput]pathDemand)
+// vocabulary. calleeInputBounds does the same for inputs.
+func calleeOutputDemand(g *dataflow.SummaryGraph) map[calleeOutput]lengthBound {
+	demand := make(map[calleeOutput]lengthBound)
 	record := func(output calleeOutput, callerNode dataflow.GraphNode, tupleIndex int) {
 		if callerNode == nil {
 			return
 		}
-		longest, relevant := readDepth(callerNode, tupleIndex)
-		cur := demand[output]
-		cur.longest = max(cur.longest, longest)
-		for _, p := range relevant {
-			if !slices.Contains(cur.relevant, p) {
-				cur.relevant = append(cur.relevant, p)
-			}
-		}
-		demand[output] = cur
+		demand[output] = joinLengthBounds(demand[output], boundOfPaths(readPaths(callerNode, tupleIndex)))
 	}
 
 	for _, callees := range g.Callees {
@@ -127,14 +110,9 @@ func calleeOutputDemand(g *dataflow.SummaryGraph) map[calleeOutput]pathDemand {
 		}
 	}
 
-	for output, d := range demand {
-		// RelPath is a map, so relevant paths arrive in random order, and relevantPathsOfType's
-		// output order follows theirs -- which reaches the maxsat variable order via the soft edges.
-		slices.SortFunc(d.relevant, func(a, b path) int {
-			return strings.Compare(a.String(), b.String())
-		})
-		demand[output] = d
-	}
+	// No sort is needed: pathsOfTypeUnderBound walks the type's fields in declaration order and looks
+	// the bound up per field, so its output order does not depend on the order the read paths were
+	// discovered in.
 	return demand
 }
 
@@ -167,26 +145,22 @@ func calleeOutputOf(callee *ssa.Function, out dataflow.GraphNode) (calleeOutput,
 // conflated: one soft edge standing for "the whole returned value" cannot tell y.First from y.Second,
 // and reports flows the field-sensitive graph does not have. An output with no recorded demand stays
 // field-insensitive.
-func calleeOutputPaths(demand map[calleeOutput]pathDemand, callee *ssa.Function, out dataflow.GraphNode) []path {
+func calleeOutputPaths(
+	demand map[calleeOutput]lengthBound, callee *ssa.Function, out dataflow.GraphNode,
+) []path {
 	output, ok := calleeOutputOf(callee, out)
 	if !ok {
 		return []path{{}}
 	}
-	d, ok := demand[output]
-	if !ok || d.longest == 0 {
-		return []path{{}}
-	}
-	return relevantPathsOfType(out.Type(), d.longest, d.relevant)
+	return pathsOfTypeUnderBound(out.Type(), demand[output])
 }
 
-// readDepth reports how deeply the caller reads callerNode: the deepest access path appearing as a
-// source on its outgoing edges, and the specific paths seen. tupleIndex, when non-negative,
-// restricts the query to edges carrying that tuple index, mirroring expandCalleeOutput's filter so
-// a multi-value call doesn't demand depth for one return value because a different one is read
-// field-sensitively.
-func readDepth(callerNode dataflow.GraphNode, tupleIndex int) (int, []path) {
+// readPaths reports the access paths the caller reads callerNode at: those appearing as a source on its
+// outgoing edges. tupleIndex, when non-negative, restricts the query to edges carrying that tuple index,
+// mirroring expandCalleeOutput's filter so a multi-value call doesn't demand depth for one return value
+// because a different one is read field-sensitively.
+func readPaths(callerNode dataflow.GraphNode, tupleIndex int) []path {
 	var relevant []path
-	longest := 0
 	callerVal := nodeSsaValue(callerNode)
 	for nextNode, edgeInfos := range callerNode.Out() {
 		// Skip edges that just pass the same value along, e.g. into another call. The caller is not
@@ -206,45 +180,79 @@ func readDepth(callerNode dataflow.GraphNode, tupleIndex int) (int, []path) {
 				if p.len() == 0 {
 					continue
 				}
-				longest = max(longest, p.len())
 				if !slices.Contains(relevant, p) {
 					relevant = append(relevant, p)
 				}
 			}
 		}
 	}
-	return longest, relevant
+	return relevant
 }
 
 // -----------------------------------------------------------------------------
 // Stage 4a: callee input vocabulary
 // -----------------------------------------------------------------------------
 
-// calleeInputDemand returns, per callee input node, the shallowest access path depth any call site
-// enters that node at.
+// calleeInputNames returns, per callee input node, the access path depth that node is *named* at in the
+// encoding: the shallowest depth any call site enters it at.
 //
-// This is the input-side counterpart of calleeOutputDemand; see the file comment for why one
-// vocabulary per callee is required and why this side can only move shallower.
+// This is a naming decision, not a precision one. A summary edge's maxsat variable is keyed by its
+// endpoints, so a callee input must have exactly one name per side; two sites entering at different
+// depths would otherwise produce two overlapping names for the same memory and hence two independent
+// variables for one fact, which checkCalleeVocabulary rejects. Truncating to the shallowest depth is the
+// only projection available here, because a path above the bound's frontier would have to be *expanded*
+// into the frontier beneath it -- one edge becoming several -- which a per-edge projection cannot do.
 //
-// Collapsing is the safe direction: it only makes the inferred summary coarser. If it blocks a flow the
-// callee really has, the callee check fails to prove it and unprovenFlowsAfterCalleeCheck re-opens the
-// edges, and matchesReportedFlow uses pathsOverlap so a coarsened edge still matches the callee's finer
-// reported flow.
-//
-// fg.toEdge applies the result, which is what keeps it out of reach of the encoding: every route from
-// the graph to a maxsat variable name or a reported summary node goes through that projection.
-func calleeInputDemand(fg *flowGraph) map[dataflow.GraphNode]int {
-	demand := make(map[dataflow.GraphNode]int)
+// Naming coarsely does not coarsen what the callee is checked at: calleeInputBounds computes the join of
+// every site's demand and that travels with the deduced summary, so the callee's own check still
+// distinguishes everything any site relied on.
+func calleeInputNames(fg *flowGraph) map[dataflow.GraphNode]int {
+	names := make(map[dataflow.GraphNode]int)
 	for _, ge := range fg.allEdges() {
 		if !isCalleeSummaryEdge(ge) {
 			continue
 		}
 		d := ge.from.path.len()
-		if cur, ok := demand[ge.from.node]; !ok || d < cur {
-			demand[ge.from.node] = d
+		if cur, ok := names[ge.from.node]; !ok || d < cur {
+			names[ge.from.node] = d
 		}
 	}
-	return demand
+	return names
+}
+
+// calleeInputBounds returns, per callee, the access path bound its call sites entered it at: the join
+// over every site of the paths that site used.
+//
+// A callee's summary is one set of facts shared by all of its call sites, so it is checked against a
+// single bound. Taking the *shallowest* depth any site entered at would place two access paths under one
+// name that a finer site told apart, so a flow between them becomes implicit and no summary at that
+// bound can deny it. A caller that discharged a must-not-flow by relying on the callee lacking that flow
+// would then be relying on something unprovable. The join is the coarsest bound that keeps every site's
+// distinctions.
+//
+// The result is keyed by signature position rather than by graph node, because it has to survive into
+// the callee's own check, where the graph nodes are different objects.
+func calleeInputBounds(fg *flowGraph) calleeBounds {
+	demands := make(calleeBounds)
+	for _, ge := range fg.allEdges() {
+		if !isCalleeSummaryEdge(ge) {
+			continue
+		}
+		callee := ge.from.call.Callee()
+		if callee == nil {
+			continue
+		}
+		for _, end := range []vertex{ge.from, ge.to} {
+			sn, ok := frontendNode(summaryNode{node: end.node})
+			if !ok {
+				// A position with no exported name -- a global -- cannot carry a bound across the
+				// boundary, so it stays field-insensitive.
+				continue
+			}
+			demands.demand(callee, newBoundPosition(sn), end.path)
+		}
+	}
+	return demands
 }
 
 // isCalleeSummaryEdge reports whether ge is one of the unknown may-flow edges that make up a callee's
@@ -255,72 +263,21 @@ func isCalleeSummaryEdge(ge gedge) bool {
 }
 
 // -----------------------------------------------------------------------------
-// Stage 4b: coarsening
+// Stage 4b: canonicalization
 // -----------------------------------------------------------------------------
 
-// coarsen collapses each dead-end vertex to the shallowest access path the maxsat encoding can
-// still tell apart, returning how many were coarsened. It also canonicalizes adjacency order so the
-// encoding does not depend on the order construction discovered edges in.
+// canonicalize deduplicates each vertex's adjacency list and fixes its order, then rebuilds the
+// vertex set from what survives. Without it the maxsat encoding depends on the order construction
+// happened to discover edges in, which makes variable numbering and the solver's choice among
+// co-optimal models unstable across runs.
 //
-// Only vertices with no outgoing edges are eligible, since their path cannot affect a downstream
-// edge that does not exist. What can still tell them apart is the depth each node is named at by
-// the summary under check and its must-not-flows, which is what distinguished records. Keeping
-// deeper siblings apart only multiplies soft edges: a callee output the caller never looks at
-// becomes one free variable per field, making every subset of them an equally optimal model.
-//
-// Must run only after construction converges. Coarsening removes distinctions, the opposite of
-// construction's add-only invariant, so merging early can merge two vertices that only look
-// indistinguishable because the edge separating them has not been discovered yet.
-//
-// Named vertices and seeds keep their paths; see the postconditions below for why.
-func coarsen(fg *flowGraph, distinguished map[dataflow.GraphNode]int) (int, error) {
-	isSeed := make(map[vertexKey]bool, len(fg.seeds))
-	for _, seed := range fg.seeds {
-		isSeed[seed.key()] = true
-	}
-
-	// floor is the depth a node's vertices may not be collapsed below. It combines the depth the
-	// encoding names the node at with the deepest path any *live* vertex of that node uses, so that
-	// collapsing stays uniform across call sites: coarsening one call site's copy of an output but not
-	// another's would produce two granularities for the same summary edge, and the solver could then
-	// satisfy a must-not-flow clause through the coarse copy while the fine copies stay true.
-	floor := make(map[dataflow.GraphNode]int, len(distinguished))
-	for n, k := range distinguished {
-		floor[n] = k
-	}
-	for _, seed := range fg.seeds {
-		floor[seed.node] = max(floor[seed.node], seed.path.len())
-	}
-	for _, edges := range fg.out {
-		for _, e := range edges {
-			floor[e.from.node] = max(floor[e.from.node], e.from.path.len())
-		}
-	}
-
-	coarsened := 0
+// Must run only after construction converges, since it rebuilds fg.vertices from fg.out.
+func canonicalize(fg *flowGraph) {
 	newOut := make(map[vertexKey][]gedge, len(fg.out))
 	for k, edges := range fg.out {
 		seen := make(map[gedge]struct{}, len(edges))
 		kept := make([]gedge, 0, len(edges))
 		for _, e := range edges {
-			// Only the destination can be a dead end: a source has this very edge leaving it.
-			if to, ok := coarserVertex(fg, isSeed, floor, e.to); ok {
-				if to.path.len() < floor[to.node] {
-					// A path shortened below the node's floor stops the must-not-flow that
-					// names it from matching, turning an unproven flow into a proven one
-					return 0, fmt.Errorf(
-						"coarsening %v to %v dropped below its floor of %d", e.to, to, floor[to.node])
-				}
-				if len(fg.out[to.key()]) > 0 {
-					// Merging onto a vertex that has outgoing edges splices this dead end onto
-					// unrelated successors, letting the solver satisfy a must-not-flow clause
-					// without asserting the edge the flow needs.
-					return 0, fmt.Errorf(
-						"coarsening %v merged it onto %v, which has outgoing edges", e.to, to)
-				}
-				coarsened++
-				e.to = to
-			}
 			if _, dup := seen[e]; dup {
 				continue
 			}
@@ -346,31 +303,4 @@ func coarsen(fg *flowGraph, distinguished map[dataflow.GraphNode]int) (int, erro
 			delete(fg.expanded, k)
 		}
 	}
-	return coarsened, nil
-}
-
-// coarserVertex returns v at the shallowest path coarsen may collapse it to, and whether that is
-// actually shallower than v's own path.
-//
-// Collapsing stops short of a path already occupied by a vertex with outgoing edges. Merging into
-// one would splice this dead end onto that vertex's successors, chaining soft edges that represent
-// unrelated hypotheses: a callee's output parameter collapsed onto the same parameter in its role
-// as an *input* would let the solver route a flow in through the parameter and back out through the
-// callee's other outputs, satisfying a must-not-flow clause without asserting the edge the flow
-// needs.
-func coarserVertex(
-	fg *flowGraph, isSeed map[vertexKey]bool, floor map[dataflow.GraphNode]int, v vertex,
-) (vertex, bool) {
-	if isSeed[v.key()] || len(fg.out[v.key()]) > 0 {
-		return v, false
-	}
-	for k := floor[v.node]; k < v.path.len(); k++ {
-		c := v
-		c.path = v.path.truncate(k)
-		if len(fg.out[c.key()]) > 0 {
-			continue
-		}
-		return c, true
-	}
-	return v, false
 }

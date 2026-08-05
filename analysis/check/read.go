@@ -231,7 +231,7 @@ func matchesWholeValueRead(instr ssa.Instruction, val ssa.Value, pth path, read 
 		}
 		// region overlaps pth: reading either contains or is contained by the queried path, and in
 		// both directions memory belonging to pth was read.
-		if pathsOverlap(region, pth) {
+		if overlaps(region, pth) {
 			return true
 		}
 	}
@@ -347,10 +347,18 @@ func matchesViaPointsTo(s *State, val ssa.Value, ids *intsets.Sparse, pth path, 
 			if pth.len() > 0 && len(mlabel.Path()) > 0 {
 				// If there is a path (field-sensitive), then only check writes to objects
 				// of that field's memory.
-				if !newPath(mlabel.Path(), maxPathLen).isCoveredBy(pth) {
+				if !newPath(mlabel.Path(), maxPathLen).subsumes(pth) {
 					continue
 				}
 			}
+			// TODO A read whose label carries no path skips the filter above and therefore counts as
+			// reading every field of the object. That is the sound reading of "we do not know which
+			// field was read", but it means one imprecisely-labelled read of a position blocks proving
+			// any of its fields unread -- so a must-not-flow between two sibling fields cannot be
+			// discharged even when neither field is touched. Attributing the label to the field the
+			// load actually names (a load of x.f should carry path .f rather than the empty path) would
+			// let this filter apply and discharge those must-not-flows. See the false positive recorded
+			// on appendSliceLinkedList in check_test.go.
 			if dataVal, ok := mobj.Data().(ssa.Value); ok {
 				s.Logger.Tracef(
 					"found read from val %v data: val node ids: %v, read source: %v, object: %v "+

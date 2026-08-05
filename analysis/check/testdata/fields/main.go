@@ -164,7 +164,7 @@ func testWriteNestedFieldOnly() {
 	fmt.Println(x.Src.X)
 }
 
-// prefixSiblingFields is used to test that isCoveredBy does not mistake one field name being a
+// prefixSiblingFields is used to test that subsumes does not mistake one field name being a
 // string-prefix of another (e.g. "Body" is a string-prefix of "BodyStart") for one path
 // containing the other: they are sibling fields, not nested. Mirrors aws-sdk-go's
 // aws/request.Request, whose Body and BodyStart fields previously tripped this bug.
@@ -408,6 +408,33 @@ func testRequestUnmarshalLike() {
 	fmt.Println(requestUnmarshalLike(r))
 }
 
+// siblingFields, writeSiblingField and siblingFieldViaCallee test whether the field-to-field
+// blocking in mustNotFlowReachability is load-bearing. siblingFieldViaCallee has a real flow
+// s.A -> s.B between two sibling fields of one parameter, realized inside a callee, and a second
+// parameter t whose field-to-field flow makes any summary of siblingFieldViaCallee field-sensitive.
+// A summary that declares only t.Src -> t.Dst omits s.A -> s.B and is therefore unsound; the
+// question is whether the checker notices, given that s is named at no access path in that summary.
+type siblingFields struct {
+	A int
+	B int
+}
+
+func writeSiblingField(s *siblingFields) {
+	s.B = s.A
+}
+
+func siblingFieldViaCallee(s *siblingFields, t *twoFields) {
+	writeSiblingField(s)
+	t.Dst = t.Src
+}
+
+func testSiblingFieldViaCallee() {
+	s := &siblingFields{A: 1, B: 0}
+	t := &twoFields{Src: 2, Dst: 0}
+	siblingFieldViaCallee(s, t)
+	fmt.Printf("s.B:%v t.Dst:%v\n", s.B, t.Dst)
+}
+
 func main() {
 	testIncFieldBy()
 	testIncRight()
@@ -429,4 +456,5 @@ func main() {
 	testWriteBodyOnly()
 	testReadFieldViaPointer()
 	testRequestUnmarshalLike()
+	testSiblingFieldViaCallee()
 }

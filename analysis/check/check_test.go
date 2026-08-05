@@ -1040,10 +1040,9 @@ func TestCheckSummary_Basic(t *testing.T) {
 			},
 		},
 		{
-			// See coarsenedOutParam in the testdata: the shape that exercises the coarsening pass.
-			// out.A and out.B are dead-end parent outputs that the encoding only ever names as a
-			// whole, so coarsening merges them back into out -- while the occupancy guard stops the
-			// merge from landing on out in its role as an *input*, which has outgoing edges.
+			// See coarsenedOutParam in the testdata: out is both an input and an output of the
+			// function, named as a whole by the summary while its fields are written. The must-not-flows
+			// against it are therefore stated at out as a whole.
 			pkg:  pkg,
 			name: "coarsenedOutParam",
 			typ:  functionSummary,
@@ -1063,8 +1062,8 @@ func TestCheckSummary_Basic(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						// Both real: joinSlots mixes a and b into both fields of its result, and the
-						// body writes those into out.A/out.B. Coarsening merges those two dead-end
-						// vertices into out, which is what these two flows are stated against.
+						// body writes those into out.A/out.B. Stated against out as a whole, which is
+						// how the summary names it.
 						{
 							From: summaries.ArgumentSNode{Name: "src", Index: 0, ObjectPath: ".A"},
 							To:   summaries.ArgumentSNode{Name: "out", Index: 1},
@@ -1079,9 +1078,12 @@ func TestCheckSummary_Basic(t *testing.T) {
 				CalleeResults: [][]check.SoundnessResult{
 					{
 						{
-							// Empty: any a -> !ret 0 or b -> !ret 0 would realize src -> out, so
-							// every edge has to be false. joinSlots really does route both inputs
-							// into both result fields, so it cannot satisfy that.
+							// Empty: any flow from a or b into the result would realize src -> out, so
+							// every edge has to be false. joinSlots really does route both inputs into
+							// both result fields, so it cannot satisfy that.
+							//
+							// Stated at depth 1 on the return because the caller reads r.A and r.B, so
+							// that is the bound it demands of this callee. All four are real.
 							Name:      pkg + ".joinSlots",
 							Want:      summaries.DetailedSummary{},
 							Soundness: check.Unsound,
@@ -1089,11 +1091,19 @@ func TestCheckSummary_Basic(t *testing.T) {
 								UnprovenMustNotFlows: []check.Flow{
 									{
 										From: summaries.ArgumentSNode{Name: "a", Index: 0},
-										To:   summaries.ReturnSNode{Index: 0},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".A"},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "a", Index: 0},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".B"},
 									},
 									{
 										From: summaries.ArgumentSNode{Name: "b", Index: 1},
-										To:   summaries.ReturnSNode{Index: 0},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".A"},
+									},
+									{
+										From: summaries.ArgumentSNode{Name: "b", Index: 1},
+										To:   summaries.ReturnSNode{Index: 0, ObjectPath: ".B"},
 									},
 								},
 							},
@@ -1943,6 +1953,14 @@ func TestCheckSummary_Fields(t *testing.T) {
 	pkg := "github.com/awslabs/ar-go-tools/analysis/check/testdata/fields"
 	tests := []tcCheck{
 		{
+			// FALSE POSITIVE, recorded rather than asserted to be correct. The summary is sound:
+			// nothing flows from head.value to head.next, since the only write to a .next is a fresh
+			// node whose value comes from n, and .value is never read.
+			//
+			// head is named at .next, so its bound reaches depth 1 and head.value -> head.next is a
+			// deniable must-not-flow rather than an implicit flow. Discharging it needs head.value
+			// proven unread, which the read analysis cannot do -- see the TODO in read.go's checkReads,
+			// where a read whose label carries no path counts as reading every field.
 			pkg:  pkg,
 			name: "appendSliceLinkedList",
 			typ:  functionSummary,
@@ -1959,11 +1977,18 @@ func TestCheckSummary_Fields(t *testing.T) {
 						},
 					},
 				},
-				Soundness: check.Sound,
+				Soundness: check.Unsound,
 				Unsoundness: check.Unsoundness{
-					UnprovenMustNotFlows: []check.Flow{},
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{
+								Name: "head", Index: 0, ObjectPath: ".value"},
+							To: summaries.ArgumentSNode{
+								Name: "head", Index: 0, ObjectPath: ".next"},
+						},
+					},
 				},
-				Method:        check.Immutability,
+				Method:        check.Read,
 				CalleeResults: [][]check.SoundnessResult{},
 			},
 		},
@@ -2031,8 +2056,18 @@ func TestCheckSummary_Fields(t *testing.T) {
 				Unsoundness: check.Unsoundness{
 					UnprovenMustNotFlows: []check.Flow{
 						{
+							// Real: the fresh node assigned to current.next carries n in its value.
 							From: summaries.ArgumentSNode{Name: "n", Index: 1},
 							To:   summaries.ArgumentSNode{Name: "head", Index: 0, ObjectPath: ".next"},
+						},
+						{
+							// The same false positive as the first appendSliceLinkedList case: head is
+							// named at .value here, so its bound reaches depth 1 and this sibling flow
+							// is deniable, but the read analysis cannot show head.value unread.
+							From: summaries.ArgumentSNode{
+								Name: "head", Index: 0, ObjectPath: ".value"},
+							To: summaries.ArgumentSNode{
+								Name: "head", Index: 0, ObjectPath: ".next"},
 						},
 					},
 				},
@@ -2108,7 +2143,10 @@ func TestCheckSummary_Fields(t *testing.T) {
 							// Not real -- `return c.Src` does not return Dst -- but c is a by-value
 							// struct with no points-to information, so it is tracked
 							// field-insensitively: reading any of it counts as reading all of it.
-							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst"},
+							//
+							// Stated at .Dst.X because the summary names .Dst.X, so c's bound descends
+							// on the Dst branch and .Dst.X is the access path enumerated there.
+							From: summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst.X"},
 							To:   summaries.ReturnSNode{Index: 0},
 						},
 						{
@@ -2149,9 +2187,9 @@ func TestCheckSummary_Fields(t *testing.T) {
 					UnprovenMustNotFlows: []check.Flow{
 						{
 							// Real: `return a[0]` copies the whole element, so its Dst comes out too.
-							// (.Dst rather than .Dst.X because Want names a as an input only at
-							// .Src.X, so the rest of its tree collapses to one path per branch.)
-							From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Dst"},
+							// Stated at .Dst.X because Want names a at .Dst.X, so a's bound descends on
+							// the Dst branch and .Dst.X is the access path enumerated there.
+							From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Dst.X"},
 							To:   summaries.ReturnSNode{Index: 0},
 						},
 						{
@@ -2168,6 +2206,70 @@ func TestCheckSummary_Fields(t *testing.T) {
 				},
 				Method:        check.Read,
 				CalleeResults: [][]check.SoundnessResult{},
+			},
+		},
+		{
+			// The soundness fix under test: siblingFieldViaCallee has a real flow s.A -> s.B, realized
+			// inside writeSiblingField, alongside a second parameter t whose field-to-field flow makes
+			// the summary field-sensitive. The summary below declares only t.Src -> t.Dst.
+			//
+			// The verdict turns on how a position the summary never names is read.
+			pkg:  pkg,
+			name: "siblingFieldViaCallee",
+			typ:  functionSummary,
+			want: check.SoundnessResult{
+				Name: pkg + ".siblingFieldViaCallee",
+				Want: summaries.DetailedSummary{
+					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+						summaries.ArgumentSNode{Name: "s", Index: 0, ObjectPath: ".A"}: {
+							summaries.ArgumentSNode{Name: "t", Index: 1, ObjectPath: ".Dst"},
+						},
+						summaries.ArgumentSNode{Name: "t", Index: 1, ObjectPath: ".Src"}: {
+							summaries.ArgumentSNode{Name: "t", Index: 1, ObjectPath: ".Dst"},
+						},
+					},
+				},
+				Soundness: check.Unsound,
+				Unsoundness: check.Unsoundness{
+					UnprovenMustNotFlows: []check.Flow{
+						{
+							From: summaries.ArgumentSNode{Name: "s", Index: 0, ObjectPath: ".A"},
+							To:   summaries.ArgumentSNode{Name: "s", Index: 0, ObjectPath: ".B"},
+						},
+					},
+				},
+				Method: check.Recursive,
+				CalleeResults: [][]check.SoundnessResult{
+					{
+						{
+							// The deduced summary for writeSiblingField declares s.B -> s, which does
+							// not cover s.A -> s.B. Checked at the bound the caller entered it at --
+							// where s.A and s.B are distinct -- the real flow s.A -> s.B is a
+							// must-not-flow that no analysis discharges, so the callee is unsound and
+							// the caller's must-not-flow stays unproven.
+							Name: pkg + ".writeSiblingField",
+							Want: summaries.DetailedSummary{
+								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+									summaries.ArgumentSNode{Name: "s", Index: 0, ObjectPath: ".B"}: {
+										summaries.ArgumentSNode{Name: "s", Index: 0},
+									},
+								},
+							},
+							Soundness: check.Unsound,
+							Unsoundness: check.Unsoundness{
+								UnprovenMustNotFlows: []check.Flow{
+									{
+										From: summaries.ArgumentSNode{
+											Name: "s", Index: 0, ObjectPath: ".A"},
+										To: summaries.ArgumentSNode{
+											Name: "s", Index: 0, ObjectPath: ".B"},
+									},
+								},
+							},
+							Method: check.Read,
+						},
+					},
+				},
 			},
 		},
 		{
@@ -2232,32 +2334,53 @@ func TestCheckSummary_Fields(t *testing.T) {
 							},
 							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
+								// Both endpoints at depth 1: the callee is checked at the bound its call
+								// sites demanded, which reaches .First/.Second on the arguments and on
+								// the return slot alike.
+								//
+								// None is a real flow (the return's .Second is never written, and the
+								// .Second inputs are never read); they stay unproven because a and b are
+								// by-value Pairs, which Read tracks field-insensitively.
 								UnprovenMustNotFlows: []check.Flow{
-									// Targets are the bare return because these are addPairFirst's
-									// own must-not-flows, stated in its own vocabulary: its inferred
-									// summary names the return nowhere, so its output precision there
-									// is 0. That is independent of the caller-side demand, which is
-									// .First/.Second for this slot.
-									//
-									// None is a real flow (the return's .Second is never written, and
-									// the .Second inputs are never read); they stay unproven because
-									// a and b are by-value Pairs, which Read tracks
-									// field-insensitively.
 									{
-										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0},
+										From: summaries.ArgumentSNode{
+											Name: "a", Index: 0, ObjectPath: ".First"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
 									{
-										From: summaries.ArgumentSNode{Name: "a", Index: 0, ObjectPath: ".Second"},
-										To:   summaries.ReturnSNode{Index: 0},
+										From: summaries.ArgumentSNode{
+											Name: "a", Index: 0, ObjectPath: ".First"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 									{
-										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".First"},
-										To:   summaries.ReturnSNode{Index: 0},
+										From: summaries.ArgumentSNode{
+											Name: "a", Index: 0, ObjectPath: ".Second"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
 									{
-										From: summaries.ArgumentSNode{Name: "b", Index: 1, ObjectPath: ".Second"},
-										To:   summaries.ReturnSNode{Index: 0},
+										From: summaries.ArgumentSNode{
+											Name: "a", Index: 0, ObjectPath: ".Second"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "b", Index: 1, ObjectPath: ".First"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "b", Index: 1, ObjectPath: ".First"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "b", Index: 1, ObjectPath: ".Second"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "b", Index: 1, ObjectPath: ".Second"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 								},
 							},
@@ -2316,9 +2439,9 @@ func TestCheckSummary_Fields(t *testing.T) {
 							Want: summaries.DetailedSummary{
 								Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 									// One granularity, despite the two call sites reading the results
-									// at different depths: calleeInputDemand collapses each parameter
-									// to the shallowest depth any site enters it at, which here is the
-									// bare parameter because one site uses its result whole.
+									// at different depths: the encoding names each parameter at the
+									// shallowest depth any site enters it at, which here is the bare
+									// parameter because one site uses its result whole.
 									summaries.ArgumentSNode{Name: "a", Index: 0}: {
 										summaries.ArgumentSNode{Name: "no", Index: 2},
 									},
@@ -2329,14 +2452,53 @@ func TestCheckSummary_Fields(t *testing.T) {
 							},
 							Soundness: check.Unsound,
 							Unsoundness: check.Unsoundness{
+								// Stated at depth 1 because the callee is checked at the bound its call
+								// sites demanded, not at the coarse one its own inferred summary is
+								// named in. a.First -> ret.First and b.First -> ret.First are real
+								// (`b.First = a.First + b.First; return Pair{First: b.First}`); the
+								// rest are the by-value Pair imprecision -- a and b have no points-to
+								// information, so reading any of one counts as reading all of it, and
+								// ret.Second is never written but cannot be shown immutable.
 								UnprovenMustNotFlows: []check.Flow{
 									{
-										From: summaries.ArgumentSNode{Name: "a", Index: 0},
-										To:   summaries.ReturnSNode{Index: 0},
+										From: summaries.ArgumentSNode{
+											Name: "a", Index: 0, ObjectPath: ".First"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
 									},
 									{
-										From: summaries.ArgumentSNode{Name: "b", Index: 1},
-										To:   summaries.ReturnSNode{Index: 0},
+										From: summaries.ArgumentSNode{
+											Name: "a", Index: 0, ObjectPath: ".First"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "a", Index: 0, ObjectPath: ".Second"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "a", Index: 0, ObjectPath: ".Second"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "b", Index: 1, ObjectPath: ".First"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "b", Index: 1, ObjectPath: ".First"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "b", Index: 1, ObjectPath: ".Second"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".First"},
+									},
+									{
+										From: summaries.ArgumentSNode{
+											Name: "b", Index: 1, ObjectPath: ".Second"},
+										To: summaries.ReturnSNode{Index: 0, ObjectPath: ".Second"},
 									},
 								},
 							},
@@ -2706,7 +2868,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 			// string prefix/suffix checks previously misattributed writes/reads of one field to
 			// the other. Three sub-bugs are exercised and fixed here:
 			//   1. general.go's flowCovers / summaryFlows's subsumption filter no longer treats
-			//      .Body as covering .BodyStart (fixed via isCoveredBy comparing path segments
+			//      .Body as covering .BodyStart (fixed via subsumes comparing path segments
 			//      instead of raw strings).
 			//   2. read.go's checkReads no longer falls through from a definitive field
 			//      mismatch (e.g. a *ssa.FieldAddr for &c.Body) into the generic points-to
@@ -2742,6 +2904,11 @@ func TestCheckSummary_Fields(t *testing.T) {
 			// c.Body, never c.BodyStart. A must-not-flow into c.BodyStart must be provable by
 			// Immutability alone (c.BodyStart is never written), without being misattributed as
 			// written because c.Body (a sibling field sharing a string prefix) was written.
+			//
+			// The flows into c.Body from c's other fields are declared so that the only must-not-flows
+			// left are the ones into never-written fields. Immutability discharges those, so it is the
+			// last analysis to run and Method pins that it did the work. Declaring them is
+			// over-approximation, which a summary is free to do.
 			pkg:  pkg,
 			name: "writeBodyOnly",
 			typ:  functionSummary,
@@ -2750,6 +2917,12 @@ func TestCheckSummary_Fields(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "v", Index: 1}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Body"},
+						},
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src"}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Body"},
+						},
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".BodyStart"}: {
 							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Body"},
 						},
 					},
@@ -2845,6 +3018,12 @@ func TestCheckSummary_Fields(t *testing.T) {
 			},
 		},
 		{
+			// Isolation test for checkWritesPtr at a 2-segment path: writeNestedFieldOnly writes only
+			// c.Src.X, so must-not-flows into c.Dst hold by immutability alone.
+			//
+			// As in writeBodyOnly, the flow into the written path from c's other enumerated path is
+			// declared, so the must-not-flows that remain are only those into never-written memory and
+			// Immutability is the last analysis to run.
 			pkg:  pkg,
 			name: "writeNestedFieldOnly",
 			typ:  functionSummary,
@@ -2853,6 +3032,9 @@ func TestCheckSummary_Fields(t *testing.T) {
 				Want: summaries.DetailedSummary{
 					Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
 						summaries.ArgumentSNode{Name: "v", Index: 1}: {
+							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"},
+						},
+						summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Dst"}: {
 							summaries.ArgumentSNode{Name: "c", Index: 0, ObjectPath: ".Src.X"},
 						},
 					},

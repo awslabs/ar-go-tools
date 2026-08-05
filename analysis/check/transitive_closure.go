@@ -1049,7 +1049,7 @@ func (v *inputVisitor) addNext(s *dataflow.State,
 		for outPath := range outPaths {
 			// Logic for matching paths
 			for _, ap := range cur.AccessPaths {
-				if newPath(ap, maxPathLen).isCoveredBy(newPath(inPath, maxPathLen)) {
+				if newPath(ap, maxPathLen).subsumes(newPath(inPath, maxPathLen)) {
 					nextNodeAccessPaths = append(nextNodeAccessPaths, outPath)
 				}
 			}

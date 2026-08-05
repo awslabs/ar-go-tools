@@ -197,7 +197,7 @@ func checkWritesPtr(ctx context.Context, s *State, to ssa.Value, pth path) (ptrW
 				if pth.len() > 0 && len(mlabel.Path()) > 0 {
 					// If there is a path (field-sensitive), then only check writes to objects
 					// of that field's memory.
-					if !newPath(mlabel.Path(), maxPathLen).isCoveredBy(pth) {
+					if !newPath(mlabel.Path(), maxPathLen).subsumes(pth) {
 						continue
 					}
 				}

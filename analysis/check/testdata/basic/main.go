@@ -537,16 +537,11 @@ func joinSlots(a, b string) slots {
 	return slots{A: a + b, B: b + a}
 }
 
-// coarsenedOutParam is a minimal version of multiFieldMethod's shape, and exercises the coarsening
-// pass. The summary names src's fields, which makes the whole analysis field-sensitive, but names out
-// only as a whole. The body writes two distinct fields of out, so the flow graph gets out.A and out.B
-// vertices -- both dead ends, since neither is read again, and both indistinguishable to the encoding,
-// which never refers to out at a field. Coarsening merges them back into out.
-//
-// This is the shape where the merge must not go too far: out is also an *input* of the function, so
-// the vertex it collapses onto already exists with outgoing edges. Merging into that one would splice
-// the dead ends onto out's successors and chain unrelated callee hypotheses, which is what
-// coarserVertex's occupancy guard prevents.
+// coarsenedOutParam is a minimal version of multiFieldMethod's shape. The summary names src's fields,
+// which makes the analysis field-sensitive there, but names out only as a whole. The body writes two
+// distinct fields of out, and out is also an *input* of the function, so out appears on both sides at
+// different depths -- which is the shape that decides whether a position's enumerated access paths are
+// derived per position or per position and side.
 func coarsenedOutParam(src *slots, out *slots) string {
 	r := joinSlots(src.A, src.B)
 	out.A = r.A

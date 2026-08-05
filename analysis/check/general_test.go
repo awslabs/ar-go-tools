@@ -107,124 +107,135 @@ func mustPaths(t *testing.T, strs ...string) []path {
 	return res
 }
 
-func TestRelevantPathsOfType(t *testing.T) {
+func TestPathsOfTypeUnderBound(t *testing.T) {
 	requestType := loadSyntheticType(t, "Request")
 
 	tests := []struct {
-		name          string
-		relevantPaths []path
-		k             int
-		want          []string
+		name     string
+		mentions []path
+		want     []string
 	}{
 		{
-			// Mirrors the Unmarshal destination-side enumeration: relevant paths are top-level
-			// fields (.Data, .Error), each already a leaf at depth 1, so every other top-level
-			// field collapses to its own single path with no need to recurse further.
-			name:          "top-level relevant leaves, k matches their depth",
-			relevantPaths: mustPaths(t, ".Data", ".Error"),
-			k:             1,
-			want:          []string{".Config", ".ClientInfo", ".HTTPResponse", ".Data", ".Error", ".RequestID", ".SafeBody"},
+			// Mirrors the Unmarshal destination-side enumeration: the mentioned paths are top-level
+			// fields (.Data, .Error), each already a leaf at depth 1, so the bound admits one field
+			// anywhere and every other top-level field is enumerated as a single path.
+			name:     "top-level mentions admit one field anywhere",
+			mentions: mustPaths(t, ".Data", ".Error"),
+			want:     []string{".Config", ".ClientInfo", ".HTTPResponse", ".Data", ".Error", ".RequestID", ".SafeBody"},
 		},
 		{
-			// Mirrors the Unmarshal source-side enumeration: the relevant path is
-			// .HTTPResponse.Body (depth 2), so HTTPResponse is on the relevant spine and must be
-			// recursed into to expose Body and its siblings, while every other top-level field
-			// (not on the spine) collapses to one path each without recursing into their own
-			// substructure (e.g. Config's fields are never individually enumerated).
-			name:          "nested relevant leaf, siblings under the spine kept, everything else collapsed",
-			relevantPaths: mustPaths(t, ".HTTPResponse.Body"),
-			k:             2,
+			// Mirrors the Unmarshal source-side enumeration: .HTTPResponse.Body is mentioned, so the
+			// bound descends under HTTPResponse to expose Body and its siblings, while every other
+			// top-level field stops at depth 1 (e.g. Config's fields are never enumerated).
+			name:     "a nested mention descends only on that branch",
+			mentions: mustPaths(t, ".HTTPResponse.Body"),
 			want: []string{
 				".Config", ".ClientInfo", ".Data", ".Error", ".RequestID", ".SafeBody",
 				".HTTPResponse.StatusCode", ".HTTPResponse.Header", ".HTTPResponse.Body",
 			},
 		},
 		{
-			// Two relevant paths sharing a prefix (both under HTTPResponse): both must be exposed
-			// exactly, their shared spine (HTTPResponse) must be recursed into once (not
-			// duplicated), and the remaining sibling (Header) still collapses to one path.
-			name:          "two relevant leaves sharing a prefix",
-			relevantPaths: mustPaths(t, ".HTTPResponse.Body", ".HTTPResponse.StatusCode"),
-			k:             2,
+			// Two mentions sharing a prefix: the shared branch is descended once, not duplicated,
+			// and the remaining sibling under it is still enumerated.
+			name:     "two mentions sharing a prefix",
+			mentions: mustPaths(t, ".HTTPResponse.Body", ".HTTPResponse.StatusCode"),
 			want: []string{
 				".Config", ".ClientInfo", ".Data", ".Error", ".RequestID", ".SafeBody",
 				".HTTPResponse.StatusCode", ".HTTPResponse.Header", ".HTTPResponse.Body",
 			},
 		},
 		{
-			// A relevant path whose own length exceeds k: since k bounds recursion depth overall
-			// (mirroring leafPathsUpTo's existing behavior), the walk cannot go deeper than k
-			// regardless of relevance, so the relevant path itself gets truncated to k, same as
-			// leafPathsUpTo would for a too-small k. This does not currently arise in practice
-			// (k is always derived as at least the longest relevant path's own length), but the
-			// function should degrade the same way leafPathsUpTo does rather than panic or drop
-			// output entirely.
-			name:          "k smaller than the relevant path's own depth",
-			relevantPaths: mustPaths(t, ".HTTPResponse.Body"),
-			k:             1,
-			want:          []string{".Config", ".ClientInfo", ".Data", ".Error", ".RequestID", ".SafeBody", ".HTTPResponse"},
+			// A shallower bound collapses deeper structure: mentioning HTTPResponse as a whole stops
+			// the descent at depth 1, so its fields are not enumerated.
+			name:     "a shallow mention collapses the branch's interior",
+			mentions: mustPaths(t, ".HTTPResponse"),
+			want:     []string{".Config", ".ClientInfo", ".Data", ".Error", ".RequestID", ".SafeBody", ".HTTPResponse"},
 		},
 		{
-			// A relevant path that doesn't actually exist as a real field of the type (e.g. a
-			// stale/mismatched path). Every branch diverges from it immediately, so the result is
-			// identical to leafPathsUpTo(t, k) with nothing relevant at all: everything collapses
-			// to top-level leaves.
-			name:          "relevant path not present in the type",
-			relevantPaths: mustPaths(t, ".NoSuchField"),
-			k:             2,
-			want:          []string{".Config", ".ClientInfo", ".HTTPResponse", ".Data", ".Error", ".RequestID", ".SafeBody"},
+			// A mentioned path that is not a real field of the type (e.g. a stale path). The bound
+			// still admits one field anywhere, since the mention has depth 1, so the result is the
+			// top-level enumeration.
+			name:     "mentioned path not present in the type",
+			mentions: mustPaths(t, ".NoSuchField"),
+			want:     []string{".Config", ".ClientInfo", ".HTTPResponse", ".Data", ".Error", ".RequestID", ".SafeBody"},
 		},
 		{
-			// Empty relevantPaths: nothing in the type is relevant, so the whole tree collapses
-			// to a single path representing the entire node -- not full leaf enumeration (that
-			// would defeat the purpose: a node not mentioned anywhere in the summary being
-			// checked should collapse entirely, not expand to every leaf).
-			name:          "no relevant paths collapses the whole type to one path",
-			relevantPaths: nil,
-			k:             2,
-			want:          []string{""},
+			// No mention at all: the bound is maximal, so the whole type is one enumerated path. A
+			// position the summary never names should collapse entirely, not expand to every leaf.
+			name:     "no mentions collapse the whole type to one path",
+			mentions: nil,
+			want:     []string{""},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := relevantPathsOfType(requestType, tc.k, tc.relevantPaths)
+			b := boundOfPaths(tc.mentions)
+			got := pathsOfTypeUnderBound(requestType, b)
 			gotStrs := pathsToStrings(got)
 			wantStrs := slices.Clone(tc.want)
 			sort.Strings(wantStrs)
 			if !slices.Equal(gotStrs, wantStrs) {
-				t.Errorf("relevantPathsOfType(Request, %d, %v):\n got:  %v\n want: %v",
-					tc.k, pathsToStrings(tc.relevantPaths), gotStrs, wantStrs)
+				t.Errorf("pathsOfTypeUnderBound(Request, %s) from %v:\n got:  %v\n want: %v",
+					b, pathsToStrings(tc.mentions), gotStrs, wantStrs)
 			}
 		})
 	}
 }
 
-// TestRelevantPathsOfType_MatchesLeafPathsUpToWhenAllRelevant checks that when relevantPaths
-// includes every leaf of the type (i.e. nothing is irrelevant), the result is identical to full
-// leafPathsUpTo enumeration -- collapsing should never discard or coarsen a genuinely relevant
-// leaf.
-func TestRelevantPathsOfType_MatchesLeafPathsUpToWhenAllRelevant(t *testing.T) {
+// TestPathsOfTypeUnderBound_PartitionsMemory checks the two properties the enumeration is relied on
+// for: no enumerated path subsumes another (so none names memory another also names), and each is its
+// own truncation at the bound (so truncation maps into the enumerated set).
+func TestPathsOfTypeUnderBound_PartitionsMemory(t *testing.T) {
 	requestType := loadSyntheticType(t, "Request")
-	k := 2
-	full := leafPathsUpTo(requestType, k)
+	for _, mentions := range [][]path{
+		nil,
+		mustPaths(t, ".Data"),
+		mustPaths(t, ".HTTPResponse.Body"),
+		mustPaths(t, ".HTTPResponse.Body", ".Data"),
+		leafPathsUpTo(requestType, 2),
+	} {
+		b := boundOfPaths(mentions)
+		got := pathsOfTypeUnderBound(requestType, b)
+		for i, p := range got {
+			if b.truncate(p) != p {
+				t.Errorf("bound %s: enumerated %s is not its own truncation (%s)", b, p, b.truncate(p))
+			}
+			for j, q := range got {
+				if i == j {
+					continue
+				}
+				if p.subsumes(q) {
+					t.Errorf("bound %s: enumerated %s subsumes enumerated %s", b, p, q)
+				}
+			}
+		}
+	}
+}
 
-	got := relevantPathsOfType(requestType, k, full)
+// TestPathsOfTypeUnderBound_AllLeavesMentioned checks that when every leaf of the type is mentioned,
+// the enumeration is full leaf enumeration -- a bound built from the leaves never coarsens one of
+// them.
+func TestPathsOfTypeUnderBound_AllLeavesMentioned(t *testing.T) {
+	requestType := loadSyntheticType(t, "Request")
+	full := leafPathsUpTo(requestType, 2)
+
+	got := pathsOfTypeUnderBound(requestType, boundOfPaths(full))
 	gotStrs := pathsToStrings(got)
 	wantStrs := pathsToStrings(full)
 	if !slices.Equal(gotStrs, wantStrs) {
-		t.Errorf("relevantPathsOfType with every leaf marked relevant:\n got:  %v\n want: %v",
+		t.Errorf("enumeration under a bound built from every leaf:\n got:  %v\n want: %v",
 			gotStrs, wantStrs)
 	}
 }
 
-// TestRelevantPathsOfType_ZeroDepth checks the k == 0 base case, mirroring leafPathsUpTo's own
-// k == 0 behavior (a single field-insensitive empty path), regardless of relevantPaths.
-func TestRelevantPathsOfType_ZeroDepth(t *testing.T) {
+// TestPathsOfTypeUnderBound_Maximal checks the maximal bound: whatever the type, a position read as a
+// whole is one enumerated path.
+func TestPathsOfTypeUnderBound_Maximal(t *testing.T) {
 	requestType := loadSyntheticType(t, "Request")
-	got := relevantPathsOfType(requestType, 0, mustPaths(t, ".Data"))
+	got := pathsOfTypeUnderBound(requestType, lengthBound{})
 	if len(got) != 1 || got[0].len() != 0 {
-		t.Errorf("relevantPathsOfType(Request, 0, [.Data]) = %v, want a single empty path", got)
+		t.Errorf("pathsOfTypeUnderBound(Request, maximal) = %v, want a single empty path", got)
 	}
 }
 

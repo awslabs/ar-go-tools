@@ -60,18 +60,10 @@ func inferCalleeSummaries(
 		return nil, nil, fmt.Errorf("invalid inference method: want one of %v, got %v", validMethods, via)
 	}
 
-	// Compute the level of precision needed for the intra-procedural analysis.
-	prec := newPrecisions(wantFlows)
-	// Every node gets at least the precision of the most-precise node (the one with the longest
-	// access path in wantFlows), so the intra-procedural analysis has enough depth to track any
-	// field-sensitive flow the summary being checked cares about. This only sets nodePathLen (the
-	// depth bound); prec.inputs.nodePaths/prec.outputs.nodePaths (the actual relevant paths from
-	// wantFlows, used by inputNodes via relevantPathsOfType to avoid enumerating every leaf path
-	// of nodes that have nothing relevant in them) are left untouched by this loop.
-	g.ForAllNodes(func(n dataflow.GraphNode) {
-		prec.inputs.nodePathLen[n] = prec.longestPathLen
-		prec.outputs.nodePathLen[n] = prec.longestPathLen
-	})
+	// The bound this function is read against, widened by what the must-not-flows name. Each position
+	// is bounded on its own, so a position the summary never names field-sensitively costs one seed
+	// rather than one per leaf path of its type.
+	bounds := boundsOfFlows(wantFlows, mustNotFlows)
 
 	// First run the intra-procedural analysis
 	if summ, ok := s.FlowGraph.Summaries[g.Parent]; ok && summ.Constructed {
@@ -93,7 +85,7 @@ func inferCalleeSummaries(
 		// TODO We want to use node-level precision eventually; but for now, just set the
 		// precision of every node to the precision of the most-precise node (node with the
 		// longest access path).
-		k := prec.longestPathLen
+		k := bounds.maxDepth()
 		s.Logger.Debugf(
 			"running intra-procedural analysis on function %s with path length %d...\n", g.Parent, k)
 		if err := runIntraProceduralWithTimeout(ctx, s, g, k); err != nil {
@@ -112,7 +104,7 @@ func inferCalleeSummaries(
 
 	start := time.Now()
 
-	fg, err := buildGraph(ctx, s, g, prec, wantFlows, mustNotFlows)
+	fg, err := buildGraph(ctx, s, g, bounds, wantFlows, mustNotFlows)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build flow graph: %w", err)
 	}
@@ -165,7 +157,7 @@ func inferCalleeSummaries(
 	s.Logger.Debugf("\t%d soft constraints for callee's may-flow edges", len(softConstrs))
 
 	// Block must-not-flows
-	mustNotFlowConstrs, err := buildMustNotFlowConstraints(ctx, fg, mustNotFlows, prec.longestPathLen > 0)
+	mustNotFlowConstrs, err := buildMustNotFlowConstraints(ctx, fg, mustNotFlows)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -209,7 +201,7 @@ func inferCalleeSummaries(
 		}
 	}
 
-	return res, &calleeInference{fg: fg, models: allOptimalModels}, nil
+	return res, &calleeInference{fg: fg, models: allOptimalModels, demands: calleeInputBounds(fg)}, nil
 }
 
 // checkCancelled reports ctx's error, labelled with the phase that was running.
@@ -250,6 +242,11 @@ func runIntraProceduralWithTimeout(ctx context.Context, s *State, g *dataflow.Su
 type calleeInference struct {
 	fg     *flowGraph
 	models []maxsat.Model
+	// demands is the access path bound each callee was entered at, in the portable position
+	// vocabulary so it survives into that callee's own check. It is what the caller relied on when it
+	// discharged a must-not-flow by assuming the callee lacks a flow, so the callee has to be checked
+	// against a bound at least this fine.
+	demands calleeBounds
 }
 
 // setsAnyTrue reports whether any of the models assigned the variable v true.
@@ -292,11 +289,6 @@ func unprovenFlowsAfterCalleeCheck(
 		// An empty graph means nothing was proven via callee inference; keep everything.
 		return mustNotFlows, nil
 	}
-	prec := newPrecisions(wantFlows)
-	g.ForAllNodes(func(n dataflow.GraphNode) {
-		prec.inputs.nodePathLen[n] = prec.longestPathLen
-		prec.outputs.nodePathLen[n] = prec.longestPathLen
-	})
 
 	unknownMayFlow := unknownMayFlowEdges(inf.fg)
 	reopened, err := edgesForUnsoundCalleeFlows(s, inf.fg, unknownMayFlow, unsoundCalleeFlows)
@@ -375,14 +367,14 @@ func mustNotFlowIsRealizable(
 		if err := checkCancelled(ctx, "must-not-flow re-check"); err != nil {
 			return false, err
 		}
-		if src.node != mnf.from.node || !pathsOverlap(src.path, mnf.from.path) {
+		if src.node != mnf.from.node || !overlaps(src.path, mnf.from.path) {
 			continue
 		}
 		for _, v := range reachableFromVia(fg, src, admit) {
 			if v.key() == src.key() {
 				continue
 			}
-			if v.node == mnf.to.node && pathsOverlap(v.path, mnf.to.path) {
+			if v.node == mnf.to.node && overlaps(v.path, mnf.to.path) {
 				return true, nil
 			}
 		}
@@ -463,13 +455,13 @@ func edgesForUnsoundCalleeFlows(
 // widens the worst case.
 func matchesReportedFlow(e edge, fl flow) bool {
 	return e.from.node == fl.from.node && e.to.node == fl.to.node &&
-		pathsOverlap(e.from.path, fl.from.path) && pathsOverlap(e.to.path, fl.to.path)
+		overlaps(e.from.path, fl.from.path) && overlaps(e.to.path, fl.to.path)
 }
 
 // hasVertex reports whether fg has a vertex for n's node in call's frame, at a path overlapping n's.
 func hasVertex(fg *flowGraph, call *dataflow.CallNode, n summaryNode) bool {
 	for k := range fg.vertices {
-		if k.node == n.node && k.call == call && pathsOverlap(k.path, n.path) {
+		if k.node == n.node && k.call == call && overlaps(k.path, n.path) {
 			return true
 		}
 	}
@@ -496,25 +488,20 @@ func flowFromReport(g *dataflow.SummaryGraph, f Flow) (flow, error) {
 	}, nil
 }
 
-// buildGraph builds the taint flow graph of g, tainting every input at the access path length prec
-// specifies.
+// buildGraph builds the taint flow graph of g, tainting every input at the access paths its bound
+// admits. Precision is decided per position, in one place: the bound. The three sources that used to
+// disagree -- the summary's own paths, the must-not-flows', and a callee's observed reads -- are joined
+// into it before construction starts, so no vertex is ever created at an access path the encoding
+// cannot name.
 //
 // Construction is a monotone worklist fixpoint over vertices.
-//
-// Access-path precision is per node:
-//   - The parent's own nodes use the precision its intra-procedural analysis computed.
-//   - Summary endpoints are seeded at that summary's path length (inputNodes)
-//   - A callee's outputs get only the access path depth the caller is observed to read them at
-//     (calleeOutputPaths)
-//
-// coarsen then collapses whatever precision turned out to be unobservable.
 func buildGraph(
 	ctx context.Context, s *State, g *dataflow.SummaryGraph,
-	prec *precisions, wantFlows, mustNotFlows []flow,
+	bounds nodeBounds, wantFlows, mustNotFlows []flow,
 ) (*flowGraph, error) {
 	fg := newFlowGraph()
 	fg.outputPaths = calleeOutputDemand(g)
-	for _, input := range inputNodes(g, prec) {
+	for _, input := range inputNodes(g, bounds) {
 		seed := newVertex(
 			input.Node, newPath(input.AccessPaths[0], maxPathLen),
 			nil, input.Status, nil)
@@ -529,36 +516,16 @@ func buildGraph(
 		fg.seeds = append(fg.seeds, seed)
 	}
 
-	// Run the coarsening step: after every input has been expanded (so no distinction can still be
+	// Canonicalize adjacency: after every input has been expanded (so no edge can still be
 	// discovered) and before handing the graph to the maxsat encoding.
-	n, err := coarsen(fg, distinguishedPathLens(wantFlows, mustNotFlows))
-	if err != nil {
-		return nil, err
-	}
-	if n > 0 {
-		s.Logger.Debugf("coarsened %d indistinguishable flow graph vertices\n", n)
-	}
+	canonicalize(fg)
 
-	// The callee input vocabulary is fixed last, over the final graph, since coarsening can still
-	// change which paths its vertices carry.
-	fg.inputPaths = calleeInputDemand(fg)
+	// The callee input vocabulary is fixed last, over the final graph. Naming and checking are decided
+	// separately: inputNames is the single depth the encoding names each callee input at, while the
+	// bound the callee is recursively checked against is the join of every site's demand.
+	fg.inputNames = calleeInputNames(fg)
 
 	return fg, nil
-}
-
-// distinguishedPathLens returns, per graph node, the deepest access path at which the maxsat
-// encoding refers to that node: the endpoints of the summary being checked and of its
-// must-not-flows. A node absent from the result is only ever referred to as a whole, so nothing can
-// tell its fields apart. See coarsen.
-func distinguishedPathLens(flowSets ...[]flow) map[dataflow.GraphNode]int {
-	lens := make(map[dataflow.GraphNode]int)
-	for _, flows := range flowSets {
-		for _, fl := range flows {
-			lens[fl.from.node] = max(lens[fl.from.node], fl.from.path.len())
-			lens[fl.to.node] = max(lens[fl.to.node], fl.to.path.len())
-		}
-	}
-	return lens
 }
 
 // nodeSsaValue returns the ssa.Value underlying node, if node is a kind of node whose identity is
@@ -584,7 +551,7 @@ func nodeSsaValue(node dataflow.GraphNode) ssa.Value {
 // nextPath is r.safeBody.closed), the edge doesn't correspond to any real flow discovered by the
 // intra-procedural analysis of the callee: it's an artifact of curPath itself already being a
 // collapsed, field-insensitive placeholder for "any field of r.safeBody" (see
-// relevantPathsOfType/allCalleeOutputs), and following it would force every field of that
+// pathsOfTypeUnderBound/allCalleeOutputs), and following it would force every field of that
 // collapsed subtree to be re-expanded one level deeper at every call site the value passes
 // through.
 func isRedundantIntraSelfFlow(src, dst dataflow.GraphNode, curPath, nextPath path) bool {
@@ -597,10 +564,10 @@ func isRedundantIntraSelfFlow(src, dst dataflow.GraphNode, curPath, nextPath pat
 		return false
 	}
 	// Only filter when nextPath is a proper extension of curPath (strictly deeper, same prefix).
-	// curPath.isCoveredBy(nextPath) means curPath is a prefix of nextPath (or equal); we want the
+	// curPath.subsumes(nextPath) means curPath is a prefix of nextPath (or equal); we want the
 	// opposite direction (nextPath strictly deeper), which the curPath == nextPath check above
 	// already excludes the equal case for.
-	return curPath.isCoveredBy(nextPath) && curPath.len() < nextPath.len()
+	return curPath.subsumes(nextPath) && curPath.len() < nextPath.len()
 }
 
 func findMatchingPaths(
@@ -642,7 +609,7 @@ func findMatchingPaths(
 	}
 
 	for inPath, outPaths := range edgeInfo.RelPath {
-		if !curPathParsed.isCoveredBy(newPath(inPath, maxPathLen)) {
+		if !curPathParsed.subsumes(newPath(inPath, maxPathLen)) {
 			continue
 		}
 		for outPath := range outPaths {
@@ -659,42 +626,27 @@ func findMatchingPaths(
 	return nextPaths
 }
 
-func inputNodes(g *dataflow.SummaryGraph, prec *precisions) []*dataflow.VisitorNode {
+func inputNodes(g *dataflow.SummaryGraph, bounds nodeBounds) []*dataflow.VisitorNode {
 	// TODO Use static analyses to filter some?
 	var inputs []*dataflow.VisitorNode
 	g.ForAllNodes(func(n dataflow.GraphNode) {
-		if isInputNode(n) {
-			var pl int
-			if len(prec.inputs.nodePathLen) > 0 {
-				if k, ok := prec.inputs.nodePathLen[n]; ok {
-					pl = k
-				} else {
-					// If some flows in the summary are field-sensitive but n is not in nodePathLen,
-					// then it should be field-insensitive.
-					pl = 0
-				}
-			}
-			// prec.inputs.nodePaths[n] holds the real access paths (from the original wantFlows,
-			// not the uniform pl assigned above) that are actually relevant for n; paths outside
-			// them collapse to a single entry per branch instead of being enumerated leaf-by-leaf
-			// (see relevantPathsOfType). This is what turns buildGraph's per-leaf-path DFS fan-out
-			// (one full traversal per leaf path of n's type) into one DFS per relevant leaf path
-			// plus a small, fixed number of collapsed-branch DFS runs, instead of one per every
-			// leaf path the type happens to have.
-			paths := relevantPathsOfType(n.Type(), pl, prec.inputs.nodePaths[n])
-			for _, path := range paths {
-				in := &dataflow.VisitorNode{
-					NodeWithTrace: dataflow.NodeWithTrace{
-						Node:         n,
-						Trace:        nil,
-						ClosureTrace: nil,
-					},
-					Prev:        nil,
-					AccessPaths: []string{path.String()},
-					Status:      dataflow.VisitorNodeStatus{Kind: dataflow.DefaultTracing},
-				}
-				inputs = append(inputs, in)
-			}
+		if !isInputNode(n) {
+			return
+		}
+		// Seed one traversal per access path the position's bound admits. A branch the bound stops at
+		// is seeded once, standing for its whole subtree, so a position nothing names field-sensitively
+		// costs a single traversal rather than one per leaf path of its type.
+		for _, p := range bounds.paths(n) {
+			inputs = append(inputs, &dataflow.VisitorNode{
+				NodeWithTrace: dataflow.NodeWithTrace{
+					Node:         n,
+					Trace:        nil,
+					ClosureTrace: nil,
+				},
+				Prev:        nil,
+				AccessPaths: []string{p.String()},
+				Status:      dataflow.VisitorNodeStatus{Kind: dataflow.DefaultTracing},
+			})
 		}
 	})
 
@@ -777,13 +729,13 @@ func checkVarNameUniqueness(fg *flowGraph, edges []gedge) error {
 }
 
 // checkCalleeVocabulary checks that each position in a callee's inferred summary is named at a single
-// access path granularity.
+// access path, per side.
 //
 // A callee's summary is one set of facts shared by every call site targeting it, and calleeFlowKey
 // names a summary edge partly by its access path. If the same position is named both bare and at a
 // field, those are two unrelated maxsat variables: the solver assigns them independently and the
 // reported summary is the union of both, which is more general than any single call site's model
-// justified. calleeOutputDemand and calleeInputDemand exist to prevent that, from the output and
+// justified. calleeOutputDemand and calleeInputNames exist to prevent that, from the output and
 // input sides respectively.
 //
 // The check is stated over the summary vocabulary rather than over what those two functions compute,
@@ -791,17 +743,22 @@ func checkVarNameUniqueness(fg *flowGraph, edges []gedge) error {
 // paths for one position are fine only if neither is a prefix of the other: .First and .Second are
 // separate facts, whereas "" and .First are the same fact at two granularities.
 func checkCalleeVocabulary(fg *flowGraph, edges []gedge) error {
-	type position struct {
+	// Keyed by side as well as position, because the most-general summary ranges over inputs times
+	// outputs: a position that is both draws its input name from one vocabulary and its output name
+	// from the other, and those two may legitimately sit at different depths. What must not happen is
+	// two overlapping names on the *same* side, since a summary edge's variable is keyed by its
+	// endpoints and the same memory would then carry two independent variables.
+	type calleePosition struct {
 		callee *ssa.Function
-		node   summaries.SummaryNode
+		pos    boundPosition
 		isFrom bool
 	}
-	paths := make(map[position][]path)
+	paths := make(map[calleePosition][]path)
 	record := func(callee *ssa.Function, sn summaries.SummaryNode, isFrom bool) {
-		pos := position{callee: callee, node: sn.WithObjectPath(""), isFrom: isFrom}
+		key := calleePosition{callee: callee, pos: newBoundPosition(sn), isFrom: isFrom}
 		p := newPath(sn.Path(), maxPathLen)
-		if !slices.Contains(paths[pos], p) {
-			paths[pos] = append(paths[pos], p)
+		if !slices.Contains(paths[key], p) {
+			paths[key] = append(paths[key], p)
 		}
 	}
 	for _, ge := range edges {
@@ -813,21 +770,21 @@ func checkCalleeVocabulary(fg *flowGraph, edges []gedge) error {
 		record(k.callee, k.to, false)
 	}
 
-	for pos, ps := range paths {
+	for key, ps := range paths {
 		for i, a := range ps {
 			for _, b := range ps[i+1:] {
-				if !pathsOverlap(a, b) {
+				if !overlaps(a, b) {
 					continue
 				}
 				side := "output"
-				if pos.isFrom {
+				if key.isFrom {
 					side = "input"
 				}
 				return fmt.Errorf(
-					"callee %s %s %v is named at two access path granularities, %q and %q:"+
-						" they become independent maxsat variables, so the inferred summary would be"+
-						" the union of both",
-					pos.callee.String(), side, pos.node, a.String(), b.String())
+					"callee %s %s %v is named at two overlapping access paths, %q and %q:"+
+						" the encoding then names the same memory twice, so they become independent"+
+						" maxsat variables and the inferred summary is the union of both",
+					key.callee.String(), side, key.pos.node, a.String(), b.String())
 			}
 		}
 	}
@@ -928,22 +885,15 @@ func buildReachabilityConstraints(ctx context.Context, fg *flowGraph) ([]maxsat.
 // the whole value, or name the whole value while the graph is field-sensitive. Both mean the vertex
 // holds memory the must-not-flow is about.
 //
-// fieldSensitive additionally blocks flows between distinct fields of a node that the must-not-flows
-// only ever name as a whole. Without it, a field-sensitive summary that says nothing about a node's
-// fields would let one field reach another and be used as a stepping stone.
+// Flows between two access paths of one node that truncate to the same access path are deliberately
+// not blocked here. Such a flow is implicit: the summary format has no way to write it down, since a
+// row from an access path to itself says nothing. Blocking it would assert the negation of something
+// the summary already implies, so no callee summary could discharge it -- a callee whose summary is
+// sound at its own bound can still perform the flow, because at that bound the summary asserts it
+// rather than denying it.
 func mustNotFlowReachability(
-	ctx context.Context, fg *flowGraph, mustNotFlows []flow, fieldSensitive bool,
+	ctx context.Context, fg *flowGraph, mustNotFlows []flow,
 ) ([]maxsat.Lit, error) {
-	// Nodes the must-not-flows name without any access path.
-	namedAsWhole := make(map[dataflow.GraphNode]bool)
-	for _, mnf := range mustNotFlows {
-		for _, end := range []summaryNode{mnf.from, mnf.to} {
-			if end.path.len() == 0 {
-				namedAsWhole[end.node] = true
-			}
-		}
-	}
-
 	var lits []maxsat.Lit
 	seen := make(map[string]struct{})
 	add := func(src, v vertex) {
@@ -964,26 +914,15 @@ func mustNotFlowReachability(
 		}
 		reachable := reachableFrom(fg, src)
 		for _, mnf := range mustNotFlows {
-			if src.node != mnf.from.node || !pathsOverlap(src.path, mnf.from.path) {
+			if src.node != mnf.from.node || !overlaps(src.path, mnf.from.path) {
 				continue
 			}
 			for _, v := range reachable {
-				if v.node != mnf.to.node || !pathsOverlap(v.path, mnf.to.path) {
+				if v.node != mnf.to.node || !overlaps(v.path, mnf.to.path) {
 					continue
 				}
 				add(src, v)
 			}
-		}
-
-		if !fieldSensitive || !namedAsWhole[src.node] {
-			continue
-		}
-		for _, v := range reachable {
-			// x -/-> x.f is a contradiction, so only distinct, non-nested fields are blocked.
-			if v.node != src.node || v.path.isCoveredBy(src.path) {
-				continue
-			}
-			add(src, v)
 		}
 	}
 	return lits, nil
@@ -992,9 +931,9 @@ func mustNotFlowReachability(
 // buildMustNotFlowConstraints returns the constraints that block must-not-flows: no input may reach
 // an output the summary says it must not reach.
 func buildMustNotFlowConstraints(
-	ctx context.Context, fg *flowGraph, mustNotFlows []flow, fieldSensitive bool,
+	ctx context.Context, fg *flowGraph, mustNotFlows []flow,
 ) ([]maxsat.Constr, error) {
-	lits, err := mustNotFlowReachability(ctx, fg, mustNotFlows, fieldSensitive)
+	lits, err := mustNotFlowReachability(ctx, fg, mustNotFlows)
 	if err != nil {
 		return nil, err
 	}

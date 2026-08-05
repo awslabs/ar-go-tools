@@ -161,15 +161,15 @@ type flowGraph struct {
 	expanded map[vertexKey]struct{}
 	// out is the adjacency list.
 	out map[vertexKey][]gedge
-	// outputPaths gives, per callee output, the access paths that output is represented at. It is
+	// outputPaths gives, per callee output, the access path bound that output is represented at. It is
 	// computed once for the whole analyzed function so that every call site of a callee shares one
 	// summary vocabulary; see calleeOutputDemand in accesspaths.go.
-	outputPaths map[calleeOutput]pathDemand
-	// inputPaths gives, per callee input node, the access path depth that node is named at in the
-	// callee's summary vocabulary. It is the counterpart of outputPaths for the input side, where the
-	// path cannot be derived from a signature position because it is inherited from the caller; see
-	// calleeInputDemand in accesspaths.go.
-	inputPaths map[dataflow.GraphNode]int
+	outputPaths map[calleeOutput]lengthBound
+	// inputNames gives, per callee input node, the access path depth that node is named at in the
+	// encoding. It is the counterpart of outputPaths for the input side, where the path cannot be
+	// derived from a signature position because it is inherited from the caller; see calleeInputNames
+	// in accesspaths.go. Distinct from the bound the callee is *checked* at, which is calleeInputBounds.
+	inputNames map[dataflow.GraphNode]int
 }
 
 // newFlowGraph returns an empty flowGraph.
@@ -900,15 +900,16 @@ func sortGedges(edges []gedge) []gedge {
 // conversion consume. Each endpoint's frame comes from that vertex's own call field, which is part of
 // vertex identity precisely so that two calls to the same callee stay separate.
 //
-// It also canonicalizes the callee-input side to the callee's single vocabulary. Canonicalizing here rather than at each use is what makes the input-side vocabulary consistent by
-// construction: every path from the graph to a maxsat variable name (newMayFlowLit) and to a reported
-// summary node (mayFlowEdgesToSummaries) goes through this projection, so neither can see a
-// per-call-site path. The graph itself keeps its full precision, since vertex-level reachability is
-// answered over fg.out, not over these edges.
+// It also canonicalizes the callee-input side to the single depth that side is named at. Canonicalizing
+// here rather than at each use is what makes the input-side vocabulary consistent by construction: every
+// path from the graph to a maxsat variable name (newMayFlowLit) and to a reported summary node
+// (mayFlowEdgesToSummaries) goes through this projection, so neither can see a per-call-site path. The
+// graph itself keeps its full precision, since vertex-level reachability is answered over fg.out, not
+// over these edges.
 func (fg *flowGraph) toEdge(e gedge) edge {
 	from := summaryNode{node: e.from.node, path: e.from.path}
 	if isCalleeSummaryEdge(e) {
-		if d, ok := fg.inputPaths[e.from.node]; ok {
+		if d, ok := fg.inputNames[e.from.node]; ok {
 			from.path = from.path.truncate(d)
 		}
 	}

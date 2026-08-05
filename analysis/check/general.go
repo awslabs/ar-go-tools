@@ -68,7 +68,7 @@ func isSyntacticSelfFlow(from, to summaries.SummaryNode) bool {
 	stripVectorMarker := func(p string) string { return strings.ReplaceAll(p, "[*]", "") }
 	fromPath := newPath(stripVectorMarker(from.Path()), maxPathLen)
 	toPath := newPath(stripVectorMarker(to.Path()), maxPathLen)
-	return fromPath.isCoveredBy(toPath) && toPath.isCoveredBy(fromPath)
+	return fromPath.subsumes(toPath) && toPath.subsumes(fromPath)
 }
 
 // firstFlowDesc returns a deterministic description of one flow in want, for use in an error
@@ -98,9 +98,9 @@ func firstFlowDesc(want summaries.DetailedSummary) string {
 // This difference is the set of must-not-flows: the flows that must not exist (there cannot be a
 // possible data flow in the program) for the summary to be sound.
 func checkSummaryMostGeneral(
-	logger *config.LogGroup, g *dataflow.SummaryGraph, prec *precisions, wantFlows []flow,
+	logger *config.LogGroup, g *dataflow.SummaryGraph, bounds nodeBounds, wantFlows []flow,
 ) ([]flow, error) {
-	gotFlows, err := mostGeneralFlows(g, prec)
+	gotFlows, err := mostGeneralFlows(g, bounds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute most-general flows: %v", err)
 	}
@@ -161,7 +161,7 @@ func flowCovers(wantFlow, gotFlow flow) bool {
 
 	// Target path in gotFlow must have the target path in wantFlow as a (segment-wise) prefix.
 	// Empty path matches everything.
-	return wantFlow.to.path.isCoveredBy(gotFlow.to.path)
+	return wantFlow.to.path.subsumes(gotFlow.to.path)
 }
 
 // filterFlowsTypes tries to prove that the flows do not hold by a simple type
@@ -190,47 +190,30 @@ func filterFlowsTypes(flows []flow) ([]flow, error) {
 	return unproven, nil
 }
 
-// mostGeneralFlows returns the most-general summary for the function in g.
-// Params and free variables are both inputs and outputs.
-// Returns are only outputs.
-func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error) {
+// mostGeneralFlows returns the most-general summary for the function in g: every flow between access
+// paths the bounds admit, from an input position to an output position.
+//
+// Params and free variables are both inputs and outputs. Returns are only outputs. Inputs and outputs
+// are enumerated at the same bound per position, since a pointer parameter that is both is one piece
+// of memory.
+func mostGeneralFlows(g *dataflow.SummaryGraph, bounds nodeBounds) ([]flow, error) {
 	var flows []flow
 	seen := make(map[flow]struct{})
 	var inputs []summaryNode
 	var outputs []summaryNode
 	for _, param := range g.Params {
-		inputNodes, err := enumeratePaths(param, prec.inputs.nodePathLen[param], prec.inputs.nodePaths[param])
-		if err != nil {
-			return nil, fmt.Errorf("failed to enumerate input param paths: %v", err)
-		}
-		inputs = append(inputs, inputNodes...)
-
-		outputNodes, err := enumeratePaths(param, prec.outputs.nodePathLen[param], prec.outputs.nodePaths[param])
-		if err != nil {
-			return nil, fmt.Errorf("failed to enumerate output param paths: %v", err)
-		}
-		outputs = append(outputs, outputNodes...)
+		nodes := enumerateBounded(param, bounds)
+		inputs = append(inputs, nodes...)
+		outputs = append(outputs, nodes...)
 	}
 	for _, fv := range g.FreeVars {
-		inputNodes, err := enumeratePaths(fv, prec.inputs.nodePathLen[fv], prec.inputs.nodePaths[fv])
-		if err != nil {
-			return nil, fmt.Errorf("failed to enumerate input free var paths: %v", err)
-		}
-		inputs = append(inputs, inputNodes...)
-
-		outputNodes, err := enumeratePaths(fv, prec.outputs.nodePathLen[fv], prec.outputs.nodePaths[fv])
-		if err != nil {
-			return nil, fmt.Errorf("failed to enumerate output free var paths: %v", err)
-		}
-		outputs = append(outputs, outputNodes...)
+		nodes := enumerateBounded(fv, bounds)
+		inputs = append(inputs, nodes...)
+		outputs = append(outputs, nodes...)
 	}
 	for _, rets := range g.Returns {
 		for _, ret := range rets {
-			nodes, err := enumeratePaths(ret, prec.outputs.nodePathLen[ret], prec.outputs.nodePaths[ret])
-			if err != nil {
-				return nil, fmt.Errorf("failed to enumerate output return paths: %v", err)
-			}
-			outputs = append(outputs, nodes...)
+			outputs = append(outputs, enumerateBounded(ret, bounds)...)
 		}
 	}
 	for _, input := range inputs {
@@ -239,7 +222,7 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error
 			// node, then do not enumerate the paths of its outputs, even if the outputs are
 			// supposed to be field-sensitive. This is because a flow from x -> x.f is implicit and
 			// doesn't make sense to include in a summary.
-			if input.node == output.node && input.path.isCoveredBy(output.path) {
+			if input.node == output.node && input.path.subsumes(output.path) {
 				continue
 			}
 
@@ -270,148 +253,14 @@ func mostGeneralFlows(g *dataflow.SummaryGraph, prec *precisions) ([]flow, error
 	return flows, nil
 }
 
-// TODO remove error
-//
-// relevantPaths, if non-empty, restricts the enumeration to relevantPathsOfType's collapsed
-// enumeration instead of every leaf path up to pathLen (see relevantPathsOfType for why this is
-// sound and does not lose precision for the paths that matter).
-func enumeratePaths(node dataflow.GraphNode, pathLen int, relevantPaths []path) ([]summaryNode, error) {
-	var res []summaryNode
-	allPaths := relevantPathsOfType(node.Type(), pathLen, relevantPaths)
-	for _, path := range allPaths {
-		res = append(res, summaryNode{node: node, path: path})
+// enumerateBounded returns node paired with each access path its bound admits.
+func enumerateBounded(node dataflow.GraphNode, bounds nodeBounds) []summaryNode {
+	paths := bounds.paths(node)
+	res := make([]summaryNode, 0, len(paths))
+	for _, p := range paths {
+		res = append(res, summaryNode{node: node, path: p})
 	}
-
-	return res, nil
-}
-
-// relevantPathsOfType returns the access paths of t needed to represent every path that is either:
-//   - a path in relevantPaths, enumerated in full (i.e. exactly as leafPathsUpTo would, down to
-//     depth k along that path), or
-//   - part of the "uncovered" remainder of t's access-path tree: a path outside every relevantPaths
-//     entry, represented by exactly one path per branch point where the relevant paths and the
-//     uncovered remainder diverge, rather than one path per leaf beneath that branch point.
-//
-// This is used in place of leafPathsUpTo when enumerating a node's access paths for the purpose of
-// building candidate flows (see mostGeneralFlows): since the resulting flows are only interesting
-// insofar as they are covered by (relevant to), or represent the absence of a flow not covered by,
-// some entry in relevantPaths, there is no need to separately enumerate every leaf beneath a branch
-// that contains no relevant path at all -- a single path standing for that whole subtree suffices,
-// and (unlike a sentinel value) remains a real, meaningful access path that downstream
-// path-sensitive analyses (e.g. checkWritesPtr, checkReads) can match against normally.
-//
-// If relevantPaths is empty, nothing in t is relevant, so the whole tree collapses to a single
-// path (t's root, i.e. path{}) rather than falling back to full leaf enumeration: a node with no
-// relevant paths at all still needs exactly one entry to represent "any access path into this
-// node," not zero and not every leaf. Callers that want every leaf enumerated regardless of
-// relevance should call leafPathsUpTo directly instead of passing an empty relevantPaths here.
-func relevantPathsOfType(t types.Type, k int, relevantPaths []path) []path {
-	if k == 0 || len(relevantPaths) == 0 {
-		return []path{{}}
-	}
-
-	var res []path
-
-	type el struct {
-		t types.Type
-		p path
-		d int // d is the current depth (number of field accesses)
-		// onRelevantPath is true if p is a (possibly empty) prefix of some entry in relevantPaths,
-		// i.e. this branch must still be recursed into to expose the relevant leaf(s) beneath it.
-		// A branch with onRelevantPath == false has already diverged from every relevant path, and
-		// is emitted as a single leaf without further recursion.
-		onRelevantPath bool
-	}
-	stack := []el{{t: t, p: path{}, d: 0, onRelevantPath: true}}
-	for len(stack) > 0 {
-		cur := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-
-		// A branch that has diverged from every relevant path represents the whole subtree beneath
-		// it: emit its own path as a single leaf, regardless of depth or further structure.
-		if !cur.onRelevantPath {
-			res = append(res, cur.p)
-			continue
-		}
-
-		// If we've reached the max depth, add the current path if non-empty
-		if cur.d == k {
-			if cur.d > 0 {
-				res = append(res, cur.p)
-			}
-			continue
-		}
-
-		switch t := cur.t.(type) {
-		case *types.Pointer:
-			// Pointers don't add to path depth
-			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
-		case *types.Named:
-			// Named types don't add to path depth
-			stack = append(stack, el{t: t.Underlying(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
-		case *types.Array:
-			// Arrays don't add to path depth (we don't track indices)
-			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
-		case *types.Slice:
-			// Slices don't add to path depth
-			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
-		case *types.Map:
-			// Maps don't add to path depth (we don't track keys)
-			stack = append(stack, el{t: t.Elem(), p: cur.p, d: cur.d, onRelevantPath: cur.onRelevantPath})
-		case *types.Struct:
-			if t.NumFields() == 0 {
-				// A struct with no fields (e.g. the common `_ struct{}` marker idiom) has
-				// nowhere left to descend into, so it is itself a leaf.
-				res = append(res, cur.p)
-				continue
-			}
-			// Each struct field adds to the path. A field continues on a relevant path only if
-			// extending cur.p with that field name is still a prefix of (or equal to) some entry
-			// in relevantPaths.
-			for i := range t.NumFields() {
-				fld := t.Field(i)
-				newP := cur.p
-				newP[cur.d] = fld.Name()
-				stack = append(stack, el{
-					t: fld.Type(), p: newP, d: cur.d + 1,
-					onRelevantPath: pathIsPrefixOfAny(newP, cur.d+1, relevantPaths),
-				})
-			}
-		default:
-			res = append(res, cur.p)
-		}
-	}
-
-	if len(res) == 0 {
-		// NOTE Should be unreachable.
-		panic(fmt.Errorf("no access paths for type %v", t))
-	}
-
 	return res
-}
-
-// pathIsPrefixOfAny returns true if p (whose first n segments are populated) is a segment-wise
-// prefix of, or equal to, some entry in paths -- i.e. whether continuing to recurse along p could
-// still reach one of paths' entries (or, once n reaches that entry's own length, has reached it
-// exactly).
-func pathIsPrefixOfAny(p path, n int, paths []path) bool {
-	for _, rp := range paths {
-		rpLen := rp.len()
-		if n > rpLen {
-			continue
-		}
-		matches := true
-		for i := range n {
-			if p[i] != rp[i] {
-				matches = false
-				break
-			}
-		}
-		if matches {
-			return true
-		}
-	}
-	return false
 }
 
 // leafPathsUpTo returns all access paths from type t to its leaf (scalar) types, up to a maximum
@@ -512,7 +361,7 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 	for i, fl1 := range flows {
 		skip := false
 		if fl1.from.node == fl1.to.node &&
-			fl1.from.path.isCoveredBy(fl1.to.path) && fl1.to.path.isCoveredBy(fl1.from.path) {
+			fl1.from.path.subsumes(fl1.to.path) && fl1.to.path.subsumes(fl1.from.path) {
 			// Same node AND same (or overlapping) access path: this is a true self-flow (e.g.
 			// r.Params -> r.Params), not merely a flow between two different fields of the same
 			// node (e.g. r.Params -> r.Body, which has from.node == to.node but distinct paths
@@ -525,10 +374,10 @@ func summaryFlows(s *State, g *dataflow.SummaryGraph, summ summaries.DetailedSum
 					continue
 				}
 				if fl1.from.node == fl2.from.node && fl1.to.node == fl2.to.node {
-					if fl2.from.path.isCoveredBy(fl1.from.path) && fl2.to.path.isCoveredBy(fl1.to.path) {
+					if fl2.from.path.subsumes(fl1.from.path) && fl2.to.path.subsumes(fl1.to.path) {
 						// fl2 covers fl1: skip fl1 unless fl1 also covers fl2 (equal), in which
 						// case use the index to break the tie.
-						if !(fl1.from.path.isCoveredBy(fl2.from.path) && fl1.to.path.isCoveredBy(fl2.to.path)) ||
+						if !(fl1.from.path.subsumes(fl2.from.path) && fl1.to.path.subsumes(fl2.to.path)) ||
 							j < i {
 
 							s.Logger.Warnf("flow %v is redundant with %v\n", fl1, fl2)

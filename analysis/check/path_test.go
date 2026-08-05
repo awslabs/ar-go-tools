@@ -16,10 +16,10 @@ package check
 
 import "testing"
 
-func TestPathIsCoveredBy(t *testing.T) {
+func TestPathSubsumes(t *testing.T) {
 	tests := []struct {
 		name string
-		p    string // p.isCoveredBy(x)
+		p    string // p.subsumes(x)
 		x    string
 		want bool
 	}{
@@ -31,7 +31,7 @@ func TestPathIsCoveredBy(t *testing.T) {
 		{"anything is not covered by empty", ".Body", "", false},
 		{
 			// Regression: "Body" is a string-prefix of "BodyStart", but they are sibling field
-			// names, not one path nested inside the other. isCoveredBy must not treat
+			// names, not one path nested inside the other. subsumes must not treat
 			// field-name string overlap as path containment.
 			name: "sibling field names sharing a string prefix",
 			p:    ".Body",
@@ -63,9 +63,9 @@ func TestPathIsCoveredBy(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := newPath(tc.p, maxPathLen)
 			x := newPath(tc.x, maxPathLen)
-			got := p.isCoveredBy(x)
+			got := p.subsumes(x)
 			if got != tc.want {
-				t.Errorf("path(%q).isCoveredBy(path(%q)) = %v, want %v", tc.p, tc.x, got, tc.want)
+				t.Errorf("path(%q).subsumes(path(%q)) = %v, want %v", tc.p, tc.x, got, tc.want)
 			}
 		})
 	}
