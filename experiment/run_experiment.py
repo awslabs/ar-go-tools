@@ -46,6 +46,9 @@ ARGOT_CONFIGS_DIR = EXPERIMENT_DIR / "argot-configs"
 GENERATED_CONFIGS_DIR = EXPERIMENT_DIR / "generated-configs"
 INTERESTING_METHODS_DIR = EXPERIMENT_DIR / "interesting-methods"
 FIND_INTERESTING_METHODS_DIR = EXPERIMENT_DIR / "find-interesting-methods"
+# Every producer/eval command writes its result to
+# results/<repo>/<command-name>-results.json -- see _result_path.
+RESULTS_DIR = EXPERIMENT_DIR / "results"
 # A prebuilt eval-checker to use instead of `go run`. run-on-ec2.py sets this so that eval-checker
 # runs the local tree's analysis/summaries code: `go run` inside the container would compile
 # against the clone baked into the image instead.
@@ -112,7 +115,6 @@ def main() -> int:
         "experiment/ground-truth-summaries/<repo>/) or llm "
         "(experiment/llm-summaries/<repo>/summaries.yaml)",
     )
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_check)
 
     p = subparsers.add_parser(
@@ -126,7 +128,6 @@ def main() -> int:
         help="Path to a single interesting-methods summaries YAML "
         "(default: every file in experiment/ground-truth-summaries/<repo>/)",
     )
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_constructive)
 
     p = subparsers.add_parser(
@@ -144,7 +145,6 @@ def main() -> int:
         "--inference-profile",
         help="Bedrock inference profile ARN/ID (skips auto-detection if set)",
     )
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_llm_summarization)
 
     p = subparsers.add_parser(
@@ -160,7 +160,6 @@ def main() -> int:
         "loaded), ground-truth (every ground-truth file as user-specs), or llm (the "
         "LLM-generated summaries file as user-specs). Default: baseline.",
     )
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_run_taint)
 
     p = subparsers.add_parser(
@@ -183,7 +182,6 @@ def main() -> int:
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_eval_checker_precision)
 
     p = subparsers.add_parser(
@@ -199,7 +197,6 @@ def main() -> int:
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_eval_checker_efficiency)
 
     p = subparsers.add_parser(
@@ -213,7 +210,6 @@ def main() -> int:
         "(default: every file in experiment/ground-truth-summaries/<repo>/)",
     )
     p.add_argument("--check-report", required=True, type=Path)
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_eval_checker_ablation)
 
     p = subparsers.add_parser(
@@ -229,7 +225,6 @@ def main() -> int:
     )
     p.add_argument("--check-report", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_eval_llm_effectiveness)
 
     p = subparsers.add_parser(
@@ -243,7 +238,6 @@ def main() -> int:
     p.add_argument("--taint-with-summaries", required=True, type=Path)
     p.add_argument("--taint-baseline", required=True, type=Path)
     p.add_argument("--constructive-report", required=True, type=Path)
-    p.add_argument("--out", required=True, type=Path)
     p.set_defaults(func=cmd_eval_workflow_efficiency)
 
     p = subparsers.add_parser(
@@ -264,17 +258,19 @@ def main() -> int:
 
 
 def cmd_run_check(args: argparse.Namespace) -> None:
-    _run_check_split(args.repo, args.variant, args.out)
+    out = _result_path(args.repo, f"run-check-{args.variant}-results")
+    _run_check_split(args.repo, args.variant, out)
 
 
 def cmd_run_constructive(args: argparse.Namespace) -> None:
     methods_paths = [args.methods] if args.methods else _ground_truth_files(args.repo)
+    out = _result_path(args.repo, "run-constructive-results")
     _write_check_report(
         "run-constructive",
         args.repo,
         methods_paths,
         via="naive",
-        out_path=args.out,
+        out_path=out,
     )
 
 
@@ -318,7 +314,8 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     stats_path = llm_dir / "summarize-stats.json"
-    log_file = args.out.with_suffix(".log")
+    out = _result_path(args.repo, "run-llm-summarization-results")
+    log_file = out.with_suffix(".log")
     cmd = [
         "argot-summarize",
         "--config",
@@ -356,9 +353,8 @@ def cmd_run_llm_summarization(args: argparse.Namespace) -> None:
         "stats": stats,
         "summaries_path": str(summaries_path),
     }
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(result, indent=2))
-    console.print(f"[green]Wrote {args.out}[/green] ({duration:.1f}s)")
+    out.write_text(json.dumps(result, indent=2))
+    console.print(f"[green]Wrote {out}[/green] ({duration:.1f}s)")
     console.print(f"[green]Generated summaries in {summaries_path}[/green]")
 
 
@@ -385,7 +381,8 @@ def cmd_run_taint(args: argparse.Namespace) -> None:
 
     (repo_path / "logs" / "argot").mkdir(parents=True, exist_ok=True)
 
-    log_file = args.out.with_suffix(".log")
+    out = _result_path(args.repo, f"run-taint-{args.variant}-results")
+    log_file = out.with_suffix(".log")
     label = f"run-taint ({args.repo}, {args.variant})"
     duration = _run_subprocess(
         ["argot", "taint", "-config", str(config_path.resolve())],
@@ -403,9 +400,8 @@ def cmd_run_taint(args: argparse.Namespace) -> None:
         console.print(f"[red]{label} failed; no report found, see {log_file}[/red]")
         sys.exit(1)
     report["duration_seconds"] = round(duration, 2)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
-    console.print(f"[green]Wrote {args.out}[/green] ({duration:.1f}s)")
+    out.write_text(json.dumps(report, indent=2))
+    console.print(f"[green]Wrote {out}[/green] ({duration:.1f}s)")
 
 
 def cmd_run_find_interesting_methods(args: argparse.Namespace) -> None:
@@ -501,7 +497,11 @@ def cmd_eval_llm_effectiveness(args: argparse.Namespace) -> None:
     constructive excess-flow comparison), but against the LLM-generated summaries file
     (--summaries) rather than the RQ1 ground-truth corpus."""
     _run_eval_checker(
-        "precision", args, needs_constructive=True, rq="llm-effectiveness"
+        "precision",
+        args,
+        needs_constructive=True,
+        rq="llm-effectiveness",
+        result_name="eval-llm-effectiveness-results",
     )
 
 
@@ -539,7 +539,7 @@ def cmd_eval_workflow_efficiency(args: argparse.Namespace) -> None:
     }
     dataflows_match = with_set == baseline_set
 
-    out = {
+    result = {
         "rq": "workflow-efficiency",
         "repo": args.repo,
         "summarization_seconds": sum_duration,
@@ -553,9 +553,9 @@ def cmd_eval_workflow_efficiency(args: argparse.Namespace) -> None:
         "extra_dataflows_with_summaries": sorted(with_set - baseline_set),
         "missing_dataflows_with_summaries": sorted(baseline_set - with_set),
     }
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(out, indent=2))
-    console.print(f"[green]Wrote {args.out}[/green]")
+    out = _result_path(args.repo, "eval-workflow-efficiency-results")
+    out.write_text(json.dumps(result, indent=2))
+    console.print(f"[green]Wrote {out}[/green]")
 
 
 def _check_report_duration(check_report: Dict[str, Any]) -> float:
@@ -573,6 +573,7 @@ def _run_eval_checker(
     args: argparse.Namespace,
     needs_constructive: bool,
     rq: Optional[str] = None,
+    result_name: Optional[str] = None,
 ) -> None:
     """Shell out to the eval-checker Go tool (experiment/eval-checker), which does the actual
     grouping/flow-count/excess-flow computation using analysis/summaries' own SummaryNode
@@ -580,6 +581,7 @@ def _run_eval_checker(
     summaries_paths = (
         [args.summaries] if args.summaries else _ground_truth_files(args.repo)
     )
+    out = _result_path(args.repo, result_name or f"eval-checker-{subcommand}-results")
     cmd = [
         *(
             [EVAL_CHECKER_BIN]
@@ -592,7 +594,7 @@ def _run_eval_checker(
         "-check-report",
         str(args.check_report),
         "-out",
-        str(args.out),
+        str(out),
     ]
     for p in summaries_paths:
         cmd += ["-summaries", str(p)]
@@ -609,9 +611,9 @@ def _run_eval_checker(
         console.print(f"[yellow]{result.stderr}[/yellow]", end="")
 
     if rq is not None:
-        data = json.loads(args.out.read_text())
+        data = json.loads(out.read_text())
         data["rq"] = rq
-        args.out.write_text(json.dumps(data, indent=2))
+        out.write_text(json.dumps(data, indent=2))
 
 
 def _not_implemented(name: str):
@@ -1179,6 +1181,16 @@ def repo_dir(repo: str) -> Path:
         console.print(f"[red]Repository directory not found: {d}[/red]")
         sys.exit(1)
     return d
+
+
+def _result_path(repo: str, name: str) -> Path:
+    """The fixed output path for a producer/eval command's result: results/<repo>/<name>.json,
+    where name is the command name plus a "-results" suffix (e.g.
+    "eval-checker-precision-results"). Creates the parent directory (results/<repo>/) if it
+    doesn't exist yet, so callers can write to the returned path immediately."""
+    path = RESULTS_DIR / repo / f"{name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 if __name__ == "__main__":

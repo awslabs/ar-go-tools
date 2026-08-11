@@ -20,10 +20,10 @@ Usage:
 
 Example:
     python3 run-on-ec2.py i-07f90b78bdeb63408 -- \\
-        run-check --repo badger --out results/badger/check.json
+        run-check --repo badger --variant ground-truth
 
-Paths in the command (e.g. --out) are relative to /home/ubuntu/ar-go-tools/experiment/ on the
-instance, matching collect-data.sh's convention.
+Every producer/eval command writes its result to a fixed path,
+results/<repo>/<command-name>-results.json, matching collect-data.sh's convention.
 
 What gets synced and mounted, and why each has to be rather than baked into the image:
 

@@ -16,12 +16,12 @@ boto3.
 Usage:
     python3 fetch-from-ec2.py <ec2-instance-id> <repo> <result-type>
 
-result-type is one of: check, constructive, precision, efficiency, ablation -- matching the
-results/<repo>/<result-type>.json path convention used by collect-data.sh and run-on-ec2.py on
-both sides (remote and local).
+result-type is one of the RESULT_TYPES below, matching the
+results/<repo>/<result-type>-results.json path convention used by collect-data.sh and
+run-on-ec2.py on both sides (remote and local).
 
 Example:
-    python3 fetch-from-ec2.py i-07f90b78bdeb63408 badger check
+    python3 fetch-from-ec2.py i-07f90b78bdeb63408 badger run-check-ground-truth
 """
 
 import argparse
@@ -37,7 +37,20 @@ TRANSFER_BUCKET = "argot-experiment-transfer-127797153327"
 REMOTE_REPO_DIR = "/home/ubuntu/ar-go-tools"
 EXPERIMENT_DIR = Path(__file__).parent
 
-RESULT_TYPES = ["check", "constructive", "precision", "efficiency", "ablation"]
+RESULT_TYPES = [
+    "run-check-ground-truth",
+    "run-check-llm",
+    "run-constructive",
+    "run-llm-summarization",
+    "run-taint-baseline",
+    "run-taint-ground-truth",
+    "run-taint-llm",
+    "eval-checker-precision",
+    "eval-checker-efficiency",
+    "eval-checker-ablation",
+    "eval-llm-effectiveness",
+    "eval-workflow-efficiency",
+]
 REPOS = ["amazon-ssm-agent", "badger", "govatar", "prometheus", "sample"]
 
 
@@ -76,7 +89,7 @@ def main() -> int:
     parser.add_argument("result_type", choices=RESULT_TYPES)
     args = parser.parse_args()
 
-    relative_path = f"results/{args.repo}/{args.result_type}.json"
+    relative_path = f"results/{args.repo}/{args.result_type}-results.json"
 
     ssm = boto3.client("ssm", region_name=REGION)
     s3 = boto3.client("s3", region_name=REGION)

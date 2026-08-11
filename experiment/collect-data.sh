@@ -41,31 +41,28 @@ for repo in amazon-ssm-agent badger govatar prometheus sample; do
     || echo "$repo generate-configs FAILED (exit $?)"
 
   echo "=== $repo: run-check ==="
-  run "$repo" run-check --repo "$repo" --out "results/$repo/check.json" \
+  run "$repo" run-check --repo "$repo" --variant ground-truth \
     || echo "$repo run-check FAILED (exit $?)"
 
   echo "=== $repo: run-constructive ==="
-  run "$repo" run-constructive --repo "$repo" --out "results/$repo/constructive.json" \
+  run "$repo" run-constructive --repo "$repo" \
     || echo "$repo run-constructive FAILED (exit $?)"
 
   echo "=== $repo: eval-checker-precision ==="
   run "$repo" eval-checker-precision --repo "$repo" \
-    --check-report "results/$repo/check.json" \
-    --constructive-report "results/$repo/constructive.json" \
-    --out "results/$repo/precision.json" \
+    --check-report "results/$repo/run-check-ground-truth-results.json" \
+    --constructive-report "results/$repo/run-constructive-results.json" \
     || echo "$repo eval-checker-precision FAILED (exit $?)"
 
   echo "=== $repo: eval-checker-efficiency ==="
   run "$repo" eval-checker-efficiency --repo "$repo" \
-    --check-report "results/$repo/check.json" \
-    --constructive-report "results/$repo/constructive.json" \
-    --out "results/$repo/efficiency.json" \
+    --check-report "results/$repo/run-check-ground-truth-results.json" \
+    --constructive-report "results/$repo/run-constructive-results.json" \
     || echo "$repo eval-checker-efficiency FAILED (exit $?)"
 
   echo "=== $repo: eval-checker-ablation ==="
   run "$repo" eval-checker-ablation --repo "$repo" \
-    --check-report "results/$repo/check.json" \
-    --out "results/$repo/ablation.json" \
+    --check-report "results/$repo/run-check-ground-truth-results.json" \
     || echo "$repo eval-checker-ablation FAILED (exit $?)"
 done
 
