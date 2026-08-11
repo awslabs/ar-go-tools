@@ -1520,6 +1520,59 @@ func TestCheckSummary_ClosureRejected(t *testing.T) {
 	}
 }
 
+// TestCheckSummary_InvalidSummaryStillFound checks that CheckSummary reports foundFunc=true (not
+// false) for a reachable function whose summary ValidateSummary rejects, and that the returned
+// SoundnessResult records the problem in Unsoundness.BadForm. This matters beyond CheckSummary's
+// own contract: cmd/argot/check treats foundFunc=false as "no such function, nothing to
+// report" and drops the result entirely (see checkOneSummaryWrapper), which would silently make
+// an invalid summary vanish from check output instead of being reported as an error -- exactly
+// the bug that motivated this test (a self-flow-only LLM-generated summary for a real, reachable
+// function disappeared from experiment results instead of showing up as an error).
+func TestCheckSummary_InvalidSummaryStillFound(t *testing.T) {
+	dir := filepath.Join("./testdata", "basic")
+	lp, err := analysistest.LoadTest(testfsys, dir, []string{}, analysistest.LoadTestOptions{}).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupConfig(lp)
+	ptrState, err := ptr.NewState(lp).Value()
+	if err != nil {
+		t.Fatalf("failed to load state: %s", err)
+	}
+	state := newCheckState(t, ptrState)
+
+	// singleArgIntraOut is a real, reachable function (see TestCheckSummary_Basic); give it a
+	// summary that is only a self-flow, which ValidateSummary must reject.
+	summary := summaries.NewFunctionFlowSummary(basicPkg, "singleArgIntraOut",
+		summaries.DetailedSummary{Flows: map[summaries.SummaryNode][]summaries.SummaryNode{
+			summaries.ArgumentSNode{Index: 0}: {summaries.ArgumentSNode{Index: 0}},
+		}})
+	specs := []dataflow.ScanningSpec{
+		{
+			IsEntryPointSsa: func(node ssa.Node) (config.CodeIdentifier, bool) {
+				return dataflow.IsNodeOfInterest(state.State, node)
+			},
+		},
+	}
+	results, found, err := check.CheckSummary(context.Background(), state, summary, specs, false)
+	if err == nil {
+		t.Fatal("expected an error for a self-flow-only summary, got nil")
+	}
+	if !found {
+		t.Fatal("expected foundFunc=true: the function was found and is reachable, only its " +
+			"summary is malformed -- callers must not treat this the same as \"no such function\"")
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Soundness != check.Error {
+		t.Errorf("expected Soundness = Error, got %v", results[0].Soundness)
+	}
+	if results[0].Unsoundness.BadForm == nil {
+		t.Error("expected Unsoundness.BadForm to be set")
+	}
+}
+
 // TestCheckSummary_Naive tests the naive checking method, which computes the full transitively
 // closed summary of a function and compares it directly against the summary being checked (rather
 // than searching for individual unproven must-not-flows). It reuses the transitive_closure testdata
@@ -2401,7 +2454,7 @@ func TestCheckSummary_Fields(t *testing.T) {
 			// by all of its call sites, and calleeFlowKey names a summary edge partly by its access
 			// path, so two granularities for one parameter would be two unrelated maxsat variables and
 			// the reported summary would be the union of both -- more general than either site's model
-			// justified. calleeInputDemand collapses them to one; see its comment for why the
+			// justified. calleeInputNames collapses them to one; see its comment for why the
 			// shallowest depth is both the only realizable choice and the safe one.
 			pkg:  pkg,
 			name: "differentOutputDepths",

@@ -111,19 +111,6 @@ func CheckSummary(
 	// NOTE Hardcode config so we don't make unintentional mistakes.
 	s.Config.DataflowProblems.CheckIgnoresUnsound = true
 
-	if err := ValidateSummary(want.Summary()); err != nil {
-		return []SoundnessResult{{
-			Name:        want.Name(),
-			SummaryName: want.Name(),
-			Want:        want.Summary(),
-			Soundness:   Error,
-			Unsoundness: Unsoundness{
-				UnprovenMustNotFlows: []Flow{},
-				BadForm:              err,
-			},
-		}}, false, fmt.Errorf("invalid summary %s: %v", want.Name(), err)
-	}
-
 	// SPECIAL CASE: INTERFACES
 	if ifaceSummary, isIfaceSummary := want.(summaries.IfaceMethodFlowSummary); isIfaceSummary {
 		// Checking a summary that is for a method of an interface
@@ -131,6 +118,9 @@ func CheckSummary(
 		implementations := s.ImplementationsByType
 		key := lang.MethodKey(ifaceSummary.Package()+"."+ifaceSummary.Interface, ifaceSummary.Method)
 		if implems, isPresent := implementations[key]; isPresent {
+			if err := ValidateSummary(want.Summary()); err != nil {
+				return []SoundnessResult{newInvalidSummaryResult(want, err)}, true, err
+			}
 			var res []SoundnessResult
 			var errs []error
 			for implem := range implems {
@@ -166,12 +156,29 @@ func CheckSummary(
 	if err := checkReachable(s, f); err != nil {
 		return []SoundnessResult{}, false, err
 	}
+	if err := ValidateSummary(want.Summary()); err != nil {
+		return []SoundnessResult{newInvalidSummaryResult(want, err)}, true, err
+	}
 
 	s.Logger.Infof("checking the soundness of summary %s ...\n", want.Summary())
 	callStack := []*ssa.Function{f}
 	res, err := checkSummary(ctx, s, f, want.Summary(), specs, testNaive, callStack, false, pathBound{})
 	res.SummaryName = want.Name()
 	return []SoundnessResult{res}, true, err
+}
+
+// newInvalidSummaryResult builds the SoundnessResult for a summary that is syntactically invalid.
+func newInvalidSummaryResult(want summaries.FrontendDataflowSummary, err error) SoundnessResult {
+	return SoundnessResult{
+		Name:        want.Name(),
+		SummaryName: want.Name(),
+		Want:        want.Summary(),
+		Soundness:   Error,
+		Unsoundness: Unsoundness{
+			UnprovenMustNotFlows: []Flow{},
+			BadForm:              err,
+		},
+	}
 }
 
 var errInfer = errors.New("failed to infer callee summaries")
