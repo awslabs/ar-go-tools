@@ -47,6 +47,21 @@ output (or set of outputs) the same way, describe that with one field-insensitiv
 to `!ret 0`) rather than one line per field. A field-sensitive flow is only worth writing when it says
 something a coarser flow couldn't: that this field goes somewhere others don't.
 
+Embedded (anonymous) fields need the fully qualified access path, named after the embedded type --
+the same name Go source uses only when *declaring* the field, not the promoted name used to *access*
+it. For
+```go
+type Base struct { X int }
+type Outer struct {
+    Base
+    Y int
+}
+```
+the correct path to `X` is `(!arg 0).Base.X`, not `(!arg 0).X`, even though ordinary Go source may
+access `outer.X` (promotion), never mentioning `Base`. Always check the actual struct declaration
+(via `go doc -src -u`, per "Workflow" below) rather than inferring field names from how the source
+accesses them.
+
 We do not support tracking flows through individual elements of arrays, slices, maps, or channels. If a single element of an array/slice/map/channel gets tainted, the entire array/slice/map/channel gets tainted.
 
 ## Interfaces
