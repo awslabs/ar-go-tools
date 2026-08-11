@@ -41,7 +41,56 @@ For flows through struct fields, use parentheses and suffixes:
 
 The maximum access path length is 3 (e.g. `a.b.c`).
 
+Field-sensitivity exists to *distinguish* fields that behave differently -- it is not a requirement
+to enumerate fields whenever a struct is involved. If every field of an input flows to the same
+output (or set of outputs) the same way, describe that with one field-insensitive flow (e.g. `!arg 0`
+to `!ret 0`) rather than one line per field. A field-sensitive flow is only worth writing when it says
+something a coarser flow couldn't: that this field goes somewhere others don't.
+
 We do not support tracking flows through individual elements of arrays, slices, maps, or channels. If a single element of an array/slice/map/channel gets tainted, the entire array/slice/map/channel gets tainted.
+
+## Interfaces
+
+For flows to or from interface types (e.g. `fmt.Stringer`), use a field-insensitive identifier (e.g.
+`!arg 0`). Interfaces do not have fields. Use field-insensitive identifiers even if the function
+implementation uses the concrete type of an interface at run-time (i.e., through a type switch), and
+even if every possible implementation happens to share a field of the same name: the checker has no
+way to represent that a position is field-sensitive only for certain types, so any such summary will
+be rejected as unsound no matter how the implementations line up.
+
+This applies wherever an interface-typed position occurs, not just whole top-level arguments:
+- A struct field of interface type: stop at that field and go no deeper, e.g. `(!arg 0).Handler` but
+  never `(!arg 0).Handler.something`.
+- A receiver or return value of interface type: use `!receiver` or `!ret 0` directly, with no suffix.
+- This applies through named types and pointers wrapping an interface, not just literal
+  `interface{...}` syntax: if the underlying type is an interface, treat the position as
+  field-insensitive regardless of its static type.
+
+E.g., for the following method `(*Rec).F`, the only valid summary is `!arg 0` flows to `receiver`,
+even though there is a type switch, and even though `impl1` and `impl2` share an identically-named
+and identically-typed field `f`:
+
+```go
+type iface interface { impl() }
+// impl1 and impl2 are the *only* types that implement iface
+type impl1 struct { f int }
+func (*impl1) impl() {}
+type impl2 struct { f int }
+func (*impl2) impl() {}
+
+type Rec struct { a int; b int }
+
+func (r *Rec) F(i iface) {
+    switch it := i.(type) {
+    case impl1:
+        r.a = it.f
+    case impl2:
+        r.a = it.f
+    default:
+        panic("unreachable")
+    }
+}
+```
 
 ## Task Instructions
 
@@ -52,10 +101,13 @@ We do not support tracking flows through individual elements of arrays, slices, 
 3c. **When precision and soundness conflict**: prefer the more precise (narrower) flow unless you
     have a concrete reason to believe a broader flow exists -- don't pad a summary with flows
     "just in case." A summary that's too broad is as unhelpful as one that's wrong.
+3d. **Don't fragment a flow that isn't actually field-sensitive**: per the field-sensitivity note
+    under "Complex Data Flows" above, if every field of a struct input flows to the same output the
+    same way, write one field-insensitive flow instead of one line per field.
 4. **Consider all paths**: Account for all execution paths (branches, loops, error cases)
 5. **Handle mutations**: If arguments are modified, include flows back to them
 
-## Tracing Through Callees
+## Workflow
 
 You are effectively simulating a dynamic taint analysis. Taint applies to access paths, not whole
 values: e.g., a struct argument's fields can each be tainted independently (up to the maximum access
@@ -65,8 +117,11 @@ outputs, before deciding whether taint continues past that call. This is recursi
 callees may need the same treatment. Don't follow taint flows into global variables since they are
 not represented in the summary format.
 
-- Use `go_doc -src`/`argot_show_src` (plain Go source) as your primary tool -- calls are
-  syntactically obvious in the source, and it's easier to read than SSA for most functions.
+- Use `go doc -src -u`/`argot_show_src` (plain Go source) to read the source code of the function.
+- For tainted inputs (e.g., function parameters or the receiver) or outputs (e.g., return values or
+  the receiver), if its type is named, use `go doc -src -u <TypeName>` to see the specific struct
+  fields -- `argot_show_src` only shows function bodies, not type declarations, so it can't answer
+  this. If the type is an interface, do not specify any fields.
 - For each call that receives a potentially-tainted access path, inspect that callee's source
   the same way you would the top-level function, and repeat as needed.
 - Stop recursing into a call once you're confident of its behavior from its signature/doc comment
@@ -180,11 +235,12 @@ recursive, not a fixed sequence -- expect to revisit these tools for each callee
    - If there are multiple choices, you must come back to the user to allow them to make a selection.
    - If you are summarizing an interface method, you can use the "interface_mode" option to list the implementations of an interface method.
 
-3. **`argot_show_src`** / **`go_doc -src`** - View the source code (primary tool)
+3. **`argot_show_src`** / **`go doc -src -u`** - View the source code (primary tool)
    - Use function name regex: `argot_show_src <function_name>`, or `go_doc <query> src=true`
    - Use this for most functions -- source is easier to read than SSA, and calls are
      syntactically obvious
-
+   - The `-u` flag of the `go doc` command shows documentation for unexported as well as exported
+      symbols, methods, and fields.
 4. **`argot_show_ssa`** (optional) - View SSA (Static Single Assignment) representation
    - Use function name regex: `argot_show_ssa <function_name>`
    - Only needed when source alone leaves ambiguity about exactly which field/value a line touches
@@ -198,13 +254,13 @@ recursive, not a fixed sequence -- expect to revisit these tools for each callee
    - Shows type information, instruction details, and referrers
    - Helps trace how values flow through the function
 
-## Workflow
+## Step-by-Step Procedure
 
 1. Load the program with `argot_load`
 2. List matching functions / methods / interface methods with `argot_list_functions <function regex>` (optionally with interface_mode)
-3. View source code with `argot_show_src`/`go_doc -src` to understand the function and identify callees
+3. View source code with `argot_show_src`/`go_doc -src -u` to understand the function and identify callees
 4. Repeat steps 2-3 for any callee that receives a value you can't otherwise be confident about
-   (see "Tracing Through Callees" above)
+   (see "Workflow" above)
 5. (optional) If source alone leaves ambiguity, view SSA with `argot_show_ssa`, focus with
    `argot_function_focus`, and examine specific values with `argot_show_ssa_value`
 6. Generate the YAML dataflow summary based on your analysis
