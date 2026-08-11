@@ -29,8 +29,11 @@ What gets synced and mounted, and why each has to be rather than baked into the 
 
   - argot itself, cross-compiled locally for linux/amd64. The image builds argot from a git
     clone, so without this a local change needs a push and an image rebuild.
-  - run_experiment.py, and the eval-checker / find-interesting-methods sources it shells out to
-    with `go run`.
+  - eval-checker, cross-compiled the same way. It is normally run with `go run`, which inside
+    the container would compile it against the image's clone of analysis/summaries rather than
+    the local one.
+  - run_experiment.py, and the find-interesting-methods source it shells out to with `go run`
+    (which does compile against the image's clone).
   - llm-summaries, which is not tracked in git, so the clone cannot supply it. Without it
     generate-configs writes no check-llm-split-*.yaml.
   - argot-configs, ground-truth-summaries, interesting-methods: inputs that change as the
@@ -45,7 +48,7 @@ that has to resolve inside the container. It overwrites only the files it produc
 hand-written configs and regenerating do not conflict.
 
 --no-sync skips all of the above and uses whatever is already on the instance, including the
-image's own argot binary.
+image's own argot binary and `go run` for eval-checker.
 
 Transfers use a presigned S3 URL, matching fetch-from-ec2.py: the instance has no IAM role for
 S3, so it only ever sees a short-lived signed URL. Local credentials need
@@ -85,10 +88,19 @@ SYNC_PATHS = [
 # results is mounted but never synced up: the instance is what produces it.
 MOUNT_PATHS = ["results", *SYNC_PATHS]
 
-# Where the locally built argot is staged on the instance, and where it is mounted in the
-# container. The image's `go install` puts argot in /go/bin (GOPATH=/go in the golang image).
-REMOTE_ARGOT = f"{REMOTE_REPO_DIR}/experiment/.bin/argot"
-CONTAINER_ARGOT = "/go/bin/argot"
+# Where the locally built binaries are staged on the instance, and where they are mounted in the
+# container. The image's `go install` puts argot in /go/bin (GOPATH=/go in the golang image), which
+# is on PATH, so mounting there overrides it.
+REMOTE_BIN_DIR = f"{REMOTE_REPO_DIR}/experiment/.bin"
+CONTAINER_BIN_DIR = "/go/bin"
+
+# Tools cross-compiled locally and mounted, so that they run the local tree's code rather than the
+# clone baked into the image. eval-checker is not in the image and is normally run with `go run`;
+# EVAL_CHECKER_BIN points run_experiment.py at the mounted binary instead.
+LOCAL_BINARIES = {
+    "argot": "./cmd/argot",
+    "eval-checker": "./experiment/eval-checker",
+}
 
 
 def run_ssm_command(
@@ -117,21 +129,22 @@ def run_ssm_command(
         return
 
 
-def build_argot(dest: Path) -> None:
-    """Cross-compile argot for the instance (linux/amd64) into dest."""
-    print(f"Building argot for linux/amd64 -> {dest.name}...")
+def build_binaries(dest_dir: Path) -> None:
+    """Cross-compile every tool in LOCAL_BINARIES for the instance (linux/amd64) into dest_dir."""
     env = dict(os.environ)
     env.update({"CGO_ENABLED": "0", "GOOS": "linux", "GOARCH": "amd64"})
-    subprocess.run(
-        ["go", "build", "-o", str(dest), "./cmd/argot"],
-        cwd=REPO_ROOT,
-        check=True,
-        env=env,
-    )
+    for name, pkg in LOCAL_BINARIES.items():
+        print(f"Building {name} for linux/amd64...")
+        subprocess.run(
+            ["go", "build", "-o", str(dest_dir / name), pkg],
+            cwd=REPO_ROOT,
+            check=True,
+            env=env,
+        )
 
 
 def sync_up(ssm, s3, instance_id: str) -> None:
-    """Copy the local argot binary and every present path in SYNC_PATHS to the instance.
+    """Copy the locally built binaries and every present path in SYNC_PATHS to the instance.
 
     Extraction merges into what is already there rather than replacing it, so a file present
     remotely but not locally survives.
@@ -142,11 +155,12 @@ def sync_up(ssm, s3, instance_id: str) -> None:
         print(f"not syncing (absent locally): {', '.join(missing)}")
 
     with tempfile.TemporaryDirectory() as tmp:
-        staged_argot = Path(tmp) / "argot"
-        build_argot(staged_argot)
+        staged_bin = Path(tmp) / ".bin"
+        staged_bin.mkdir()
+        build_binaries(staged_bin)
 
         archive = Path(tmp) / "sync.tgz"
-        # -C per member so the binary lands at .bin/argot while the rest keep their own paths.
+        # -C per member so the binaries land in .bin/ while the rest keep their own paths.
         # COPYFILE_DISABLE stops macOS tar emitting AppleDouble ._* companions, which would match
         # globs like *.yaml on the instance and be parsed as input.
         subprocess.run(
@@ -159,14 +173,17 @@ def sync_up(ssm, s3, instance_id: str) -> None:
                 *present,
                 "-C",
                 tmp,
-                "argot",
+                ".bin",
             ],
             check=True,
             env={**os.environ, "COPYFILE_DISABLE": "1"},
         )
         key = f"sync-{uuid.uuid4().hex}.tgz"
         size_mb = archive.stat().st_size / 1e6
-        print(f"Syncing argot + {len(present)} path(s) ({size_mb:.1f} MB)...")
+        print(
+            f"Syncing {len(LOCAL_BINARIES)} binaries + {len(present)} path(s) "
+            f"({size_mb:.1f} MB)..."
+        )
         s3.upload_file(str(archive), TRANSFER_BUCKET, key)
 
     try:
@@ -182,15 +199,13 @@ def sync_up(ssm, s3, instance_id: str) -> None:
             [
                 f"set -e",
                 f"cd {remote_exp}",
-                f"mkdir -p .bin",
                 f"curl -fsS -o /tmp/{key} '{download_url}'",
                 f"tar xzf /tmp/{key} -C {remote_exp}",
-                f"test -f {remote_exp}/argot",
-                f"mv -f {remote_exp}/argot {REMOTE_ARGOT}",
-                f"chmod +x {REMOTE_ARGOT}",
+                *(f"test -f {REMOTE_BIN_DIR}/{name}" for name in LOCAL_BINARIES),
+                f"chmod +x {REMOTE_BIN_DIR}/*",
                 f"chown -R ubuntu:ubuntu {remote_exp}",
                 f"rm -f /tmp/{key}",
-                f"echo synced argot: $({REMOTE_ARGOT} --version 2>&1 | head -1)",
+                f"echo synced argot: $({REMOTE_BIN_DIR}/argot --version 2>&1 | head -1)",
             ],
         )
     finally:
@@ -207,16 +222,21 @@ def repo_in_command(command: list) -> str:
     return ""
 
 
-def docker_run(quoted_cmd: str, with_local_argot: bool) -> str:
+def docker_run(quoted_cmd: str, with_local_binaries: bool) -> str:
     mounts = [
         f"-v {REMOTE_REPO_DIR}/experiment/{p}:/usr/src/app/experiment/{p}"
         for p in MOUNT_PATHS
     ]
-    if with_local_argot:
-        mounts.append(f"-v {REMOTE_ARGOT}:{CONTAINER_ARGOT}")
+    env = []
+    if with_local_binaries:
+        mounts += [
+            f"-v {REMOTE_BIN_DIR}/{name}:{CONTAINER_BIN_DIR}/{name}"
+            for name in LOCAL_BINARIES
+        ]
+        env.append(f"-e EVAL_CHECKER_BIN={CONTAINER_BIN_DIR}/eval-checker")
     return (
-        f"docker run --rm --memory=50g --memory-swap=50g {' '.join(mounts)} "
-        f"argot-experiment {quoted_cmd}"
+        f"docker run --rm --memory=50g --memory-swap=50g "
+        f"{' '.join(mounts)} {' '.join(env)} argot-experiment {quoted_cmd}"
     )
 
 
@@ -228,7 +248,7 @@ def main() -> int:
     parser.add_argument(
         "--no-sync",
         action="store_true",
-        help="use what is already on the instance, including the image's own argot",
+        help="use what is already on the instance, including the image's own binaries",
     )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()

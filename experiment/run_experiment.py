@@ -46,6 +46,10 @@ ARGOT_CONFIGS_DIR = EXPERIMENT_DIR / "argot-configs"
 GENERATED_CONFIGS_DIR = EXPERIMENT_DIR / "generated-configs"
 INTERESTING_METHODS_DIR = EXPERIMENT_DIR / "interesting-methods"
 FIND_INTERESTING_METHODS_DIR = EXPERIMENT_DIR / "find-interesting-methods"
+# A prebuilt eval-checker to use instead of `go run`. run-on-ec2.py sets this so that eval-checker
+# runs the local tree's analysis/summaries code: `go run` inside the container would compile
+# against the clone baked into the image instead.
+EVAL_CHECKER_BIN = os.environ.get("EVAL_CHECKER_BIN")
 
 
 @dataclass(frozen=True)
@@ -577,9 +581,11 @@ def _run_eval_checker(
         [args.summaries] if args.summaries else _ground_truth_files(args.repo)
     )
     cmd = [
-        "go",
-        "run",
-        str(EXPERIMENT_DIR / "eval-checker"),
+        *(
+            [EVAL_CHECKER_BIN]
+            if EVAL_CHECKER_BIN
+            else ["go", "run", str(EXPERIMENT_DIR / "eval-checker")]
+        ),
         subcommand,
         "-repo",
         args.repo,
