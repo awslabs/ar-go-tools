@@ -32,7 +32,7 @@ Use these identifiers to specify data flow sources and destinations:
 For methods, argument indexing starts after the receiver:
 - In `func (r Receiver) method(x, y int) string`, `x` is `!arg 0`, `y` is `!arg 1`
 
-## Complex Data Flows
+## Field-sensitivity
 
 For flows through struct fields, use parentheses and suffixes:
 
@@ -117,7 +117,7 @@ func (r *Rec) F(i iface) {
     have a concrete reason to believe a broader flow exists -- don't pad a summary with flows
     "just in case." A summary that's too broad is as unhelpful as one that's wrong.
 3d. **Don't fragment a flow that isn't actually field-sensitive**: per the field-sensitivity note
-    under "Complex Data Flows" above, if every field of a struct input flows to the same output the
+    under "Field-sensitivity" above, if every field of a struct input flows to the same output the
     same way, write one field-insensitive flow instead of one line per field.
 3e. **Never omit a flow because the data seems unimportant, non-sensitive, or "not meaningful"**:
     a dataflow summary is a mechanical description of what data reaches what output, not a judgment
@@ -130,56 +130,43 @@ func (r *Rec) F(i iface) {
 4. **Consider all paths**: Account for all execution paths (branches, loops, error cases)
 5. **Handle mutations**: If arguments are modified, include flows back to them
 
-## Workflow
+## Workflow and Step-by-Step Procedure
 
 You are effectively simulating a dynamic taint analysis. Taint applies to access paths, not whole
 values: e.g., a struct argument's fields can each be tainted independently (up to the maximum access
-path length of 3 from "Complex Data Flows" above). For each tainted access path in the function
+path length of 3 from "Field-sensitivity" above). For each tainted access path in the function
 body, follow it into every call it's passed to, and determine how that call's own inputs affect its
 outputs, before deciding whether taint continues past that call. This is recursive -- a callee's own
 callees may need the same treatment. Don't follow taint flows into global variables since they are
 not represented in the summary format.
 
-- Use `go doc -src -u`/`argot_show_src` (plain Go source) to read the source code of the function.
-- For tainted inputs (e.g., function parameters or the receiver) or outputs (e.g., return values or
-  the receiver), if its type is named, use `go doc -src -u <TypeName>` to see the specific struct
-  fields -- `argot_show_src` only shows function bodies, not type declarations, so it can't answer
-  this. If the type is an interface, do not specify any fields.
-- For each call that receives a potentially-tainted access path, inspect that callee's source
-  the same way you would the top-level function, and repeat as needed.
-- Stop recursing into a call once you're confident of its behavior from its signature/doc comment
-  alone (e.g., well-known standard library functions like `fmt.Sprintf`, `strings.TrimSpace`), or
-  once you've already generated a summary for it in this session.
-- Fall back to `argot_show_ssa`/`argot_show_ssa_value` only when source alone leaves real
-  ambiguity about exactly which struct field/value a line of source touches.
-- If a call's behavior is genuinely unclear after inspection (e.g. it's a large, unfamiliar
-  function you can't fully trace), don't guess -- fall back to the safer, sound-but-coarser flow
-  (e.g., treat the whole return value as tainted) rather than omitting the flow entirely.
+1. Load the program with `argot_load` (see "Analysis Tools Available" below for all tools).
+2. List matching functions/methods/interface methods with `argot_list_functions`.
+3. Read the function's source with `argot_show_src`/`go doc -src -u` to understand it and identify
+   callees. For any input/output/receiver whose type is named, check its real declaration with
+   `go doc -src -u <TypeName>` rather than inferring fields from how the source accesses them (see
+   "Field-sensitivity" above for why this matters, e.g. for embedded fields).
+4. For each call that receives a potentially-tainted access path, inspect that callee's source the
+   same way, and repeat recursively. Stop recursing once you're confident of a callee's behavior from
+   its signature/doc comment alone (e.g. well-known stdlib functions), or once you've already
+   generated a summary for it this session.
+5. Fall back to `argot_show_ssa`/`argot_function_focus`/`argot_show_ssa_value` only when source alone
+   leaves real ambiguity about exactly which field/value a line touches.
+6. If a call's behavior is genuinely unclear after inspection, don't guess -- fall back to the safer,
+   sound-but-coarser flow (e.g. treat the whole return value as tainted) rather than omitting it.
+7. Generate the YAML dataflow summary based on your analysis.
+8. Run `check_summary_valid` on it (see "Analysis Tools Available" below) before writing it. This is
+   mandatory. If it reports an error, fix the summary and re-run it before proceeding -- don't write
+   a summary that fails this check.
+9. Write it with `write_yaml_file`, using *exactly* the filename given in the request.
 
 ## Examples
 
-**Simple function:**
+**Field access and mutation:**
 ```go
-func concat(a, b string) string {
-    return a + b
-}
-```
-Summary:
-```yaml
-dataflow-summaries:
-  - package: "mypackage"
-    function: "concat"
-    flows:
-      - from: "!arg 0"
-        to: "!ret 0"
-      - from: "!arg 1"
-        to: "!ret 0"
-```
-
-**Method with field access:**
-```go
-func (u *User) GetFullName() string {
-    return u.FirstName + " " + u.LastName
+func (u *User) UpdateAndGetFullName(newSuffix string) string {
+    u.Suffix = newSuffix
+    return u.FirstName + " " + u.LastName + u.Suffix
 }
 ```
 Summary:
@@ -187,35 +174,20 @@ Summary:
 dataflow-summaries:
   - package: "mypackage"
     receiver: "User"
-    method: "GetFullName"
+    method: "UpdateAndGetFullName"
     flows:
       - from: "(!receiver).FirstName"
         to: "!ret 0"
       - from: "(!receiver).LastName"
         to: "!ret 0"
-```
-
-**Function modifying arguments:**
-```go
-func appendToSlice(slice []string, item string) []string {
-    slice = append(slice, item)
-    return slice
-}
-```
-Summary:
-```yaml
-dataflow-summaries:
-  - package: "mypackage"
-    function: "appendToSlice"
-    flows:
       - from: "!arg 0"
         to: "!ret 0"
-      - from: "!arg 1"
-        to: "!ret 0"
+      - from: "!arg 0"
+        to: "(!receiver).Suffix"
 ```
 
 **Interface method summaries** are dataflow summaries that hold for all implementations of a given interface method. For example, the following summary should hold, since all `String()` methods should just result in flows from the receiver to the returned value:
-```go
+```yaml
 dataflow-summaries:
   - package: "fmt"
     interface: "Stringer"
@@ -227,12 +199,31 @@ dataflow-summaries:
 
 Interface method summaries are *not* field-sensitive.
 
-## Important Notes
-
-- **Precision vs. soundness**: prefer precise flows; see "When precision and soundness conflict" above for the tiebreaker
-- **Error handling**: Consider flows through error return values in Go's `(result, error)` pattern
-- **Mutations**: If the function modifies input arguments, include flows back to them
-- **All execution paths**: Consider branches, loops, and error conditions
+**Multi-value return, including a bool and an error:**
+```go
+func ValidateToken(token string) (bool, error) {
+    if len(token) == 0 {
+        return false, fmt.Errorf("token %q is empty", token)
+    }
+    return isKnownToken(token), nil
+}
+```
+Summary:
+```yaml
+dataflow-summaries:
+  - package: "mypackage"
+    function: "ValidateToken"
+    flows:
+      - from: "!arg 0"
+        to: "!ret 0"
+      - from: "!arg 0"
+        to: "!ret 1"
+```
+`token` determines both the returned `bool` (via `isKnownToken(token)`) and the returned `error`
+(its content ends up embedded in the error via `fmt.Errorf("...%q...", token)`). Per 3e above, the
+fact that one return is a `bool` and the other is an `error` -- not an obviously "sensitive" type --
+has no bearing on whether the flow belongs in the summary; both `!ret 0` and `!ret 1` are ordinary
+output positions, indexed by their position in the return tuple like any other return value.
 
 ## Analysis Tools Available
 
@@ -259,7 +250,7 @@ recursive, not a fixed sequence -- expect to revisit these tools for each callee
    - If you are summarizing an interface method, you can use the "interface_mode" option to list the implementations of an interface method.
 
 3. **`argot_show_src`** / **`go doc -src -u`** - View the source code (primary tool)
-   - Use function name regex: `argot_show_src <function_name>`, or `go_doc <query> src=true`
+   - Use function name regex: `argot_show_src <function_name>`, or `go doc -src -u <query>`
    - Use this for most functions -- source is easier to read than SSA, and calls are
      syntactically obvious
    - The `-u` flag of the `go doc` command shows documentation for unexported as well as exported
@@ -277,18 +268,16 @@ recursive, not a fixed sequence -- expect to revisit these tools for each callee
    - Shows type information, instruction details, and referrers
    - Helps trace how values flow through the function
 
-## Step-by-Step Procedure
-
-1. Load the program with `argot_load`
-2. List matching functions / methods / interface methods with `argot_list_functions <function regex>` (optionally with interface_mode)
-3. View source code with `argot_show_src`/`go_doc -src -u` to understand the function and identify callees
-4. Repeat steps 2-3 for any callee that receives a value you can't otherwise be confident about
-   (see "Workflow" above)
-5. (optional) If source alone leaves ambiguity, view SSA with `argot_show_ssa`, focus with
-   `argot_function_focus`, and examine specific values with `argot_show_ssa_value`
-6. Generate the YAML dataflow summary based on your analysis
-7. Write the summary with write_yaml_file, using exactly the filename given in the request
-   (not a name based on the function/package)
+7. **`check_summary_valid`** - Checks a generated summary for well-formedness problems detectable
+   from its syntax alone, without loading the program. Pass either `path` (a file on disk) or
+   `content` (the YAML/JSON text directly). This catches two kinds of mistakes: (1) a malformed
+   `from`/`to` string that doesn't parse at all, e.g. a bare name like `e` instead of `!arg 0`, or
+   `!receiver.Foo` instead of `(!receiver).Foo` -- these are rejected as parse errors before the
+   summary is even checked further; and (2) self-flows, or a summary that is vacuous once self-flows
+   are removed. Running this is a mandatory step (see "Workflow" above), not just a suggestion. It
+   cannot tell you whether a field name is real, whether a position is actually an interface, or
+   whether a claimed flow actually occurs -- it has no access to the real program, so it does not
+   replace inspecting the source.
 
 ## Required Arguments
 
