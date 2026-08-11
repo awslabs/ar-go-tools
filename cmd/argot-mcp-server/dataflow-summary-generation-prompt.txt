@@ -119,6 +119,14 @@ func (r *Rec) F(i iface) {
 3d. **Don't fragment a flow that isn't actually field-sensitive**: per the field-sensitivity note
     under "Complex Data Flows" above, if every field of a struct input flows to the same output the
     same way, write one field-insensitive flow instead of one line per field.
+3e. **Never omit a flow because the data seems unimportant, non-sensitive, or "not meaningful"**:
+    a dataflow summary is a mechanical description of what data reaches what output, not a judgment
+    about which of those flows a security review would care about. Whether a value is a retry delay,
+    a timestamp, a byte count, or a piece of user credentials is completely irrelevant to whether the
+    flow belongs in the summary -- only "does this input's data actually determine that output's
+    value" matters. Reasoning like "this is just metadata, no meaningful taint flow needed" is never
+    a valid basis for leaving a flow out; if the data flows, include it, full stop. Downstream tools
+    that consume this summary decide what is sensitive; the summary's only job is to be accurate.
 4. **Consider all paths**: Account for all execution paths (branches, loops, error cases)
 5. **Handle mutations**: If arguments are modified, include flows back to them
 
